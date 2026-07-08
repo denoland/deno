@@ -17,7 +17,7 @@ pub async fn check(
   flags: Arc<Flags>,
   check_flags: CheckFlags,
 ) -> Result<(), AnyError> {
-  if let Some(watch_flags) = &check_flags.watch {
+  if let Some(watch_flags) = &flags.watch {
     let no_clear_screen = watch_flags.no_clear_screen;
     file_watcher::watch_func(
       flags,

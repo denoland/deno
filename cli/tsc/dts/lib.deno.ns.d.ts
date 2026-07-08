@@ -5677,7 +5677,16 @@ declare namespace Deno {
   export interface ServeHandlerInfo<Addr extends Deno.Addr = Deno.Addr> {
     /** The remote address of the connection. */
     remoteAddr: Addr;
-    /** The completion promise */
+    /** A promise that settles when the request has been fully handled and the
+     * response has been sent.
+     *
+     * It resolves once the response (including its body) has been completely
+     * delivered to the client. It **rejects** with a
+     * {@linkcode Deno.errors.Interrupted} error if the response could not be
+     * sent successfully — for example when the client
+     * disconnects before the response body has been fully written. Attach a
+     * `.catch()` (or wrap an `await` in `try`/`catch`) if you need to observe
+     * these failures. */
     completed: Promise<void>;
   }
 

@@ -1,0 +1,9 @@
+{
+  "name": "@denotest/pre-release-latest-min-age",
+  "version": "1.0.0-dev.2",
+  "main": "index.js",
+  "publishDate": "9999-01-01T00:00:00.000Z",
+  "publishConfig": {
+    "tag": "latest"
+  }
+}

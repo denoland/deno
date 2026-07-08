@@ -18,7 +18,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 118;
+const cacheVersion = 120;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
@@ -517,6 +517,18 @@ const denoCoreChangesCheckStep = step({
   outputs: ["skip_deno_core_test"] as const,
 });
 
+// Detects PRs that only touch the `doc/` directory. Such PRs run the `lint`
+// job alone (markdown is still formatted/linted) and skip the build, test,
+// bench and deno_core jobs. The base SHA is already fetched by the deno_core
+// changes step above.
+const docsOnlyChangesCheckStep = step({
+  id: "docs_only_changes",
+  run: [
+    `deno run -A tools/check_docs_only_changes.js \${{ github.event.pull_request.base.sha }}`,
+  ],
+  outputs: ["docs_only"] as const,
+});
+
 const preBuildJob = job("pre_build", {
   name: "pre-build",
   runsOn: "ubuntu-latest",
@@ -525,12 +537,17 @@ const preBuildJob = job("pre_build", {
     installDenoStep,
     step.if(conditions.isDraftPr())(preBuildCheckStep),
     denoCoreChangesCheckStep,
+    docsOnlyChangesCheckStep,
   ),
   outputs: {
     skip_build: preBuildCheckStep.outputs.skip_build,
     skip_deno_core_test: denoCoreChangesCheckStep.outputs.skip_deno_core_test,
+    docs_only: docsOnlyChangesCheckStep.outputs.docs_only,
   },
 });
+
+// Jobs that compile or test code should not run when a PR only edits docs.
+const notDocsOnly = preBuildJob.outputs.docs_only.notEquals("true");
 
 // === build job ===
 
@@ -661,7 +678,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
     {
       name: jobNameForJob("build"),
       needs: [preBuildJob],
-      if: preBuildJob.outputs.skip_build.notEquals("true"),
+      if: preBuildJob.outputs.skip_build.notEquals("true").and(notDocsOnly),
       runsOn: buildItem.runner,
       // This is required to successfully authenticate with Azure using OIDC for
       // code signing.
@@ -1361,7 +1378,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
     additionalJobs.push(job(jobIdForJob("build-libs"), {
       name: jobNameForJob("build libs"),
       needs: [preBuildJob],
-      if: preBuildJob.outputs.skip_build.notEquals("true"),
+      if: preBuildJob.outputs.skip_build.notEquals("true").and(notDocsOnly),
       runsOn: buildItem.runner,
       timeoutMinutes: 30,
       steps: step.if(isNotTag.and(buildItem.skip.not()))(
@@ -1513,7 +1530,7 @@ const benchJob = job(
   {
     name: `bench release ${benchProfile.os}-${benchProfile.arch}`,
     needs: [preBuildJob],
-    if: preBuildJob.outputs.skip_build.notEquals("true"),
+    if: preBuildJob.outputs.skip_build.notEquals("true").and(notDocsOnly),
     runsOn: benchProfile.runner,
     timeoutMinutes: 240,
     defaults: {
@@ -1699,7 +1716,8 @@ const denoCoreTestJob = job("deno-core-test", {
   name: `deno_core test linux-x86_64`,
   needs: [preBuildJob],
   if: preBuildJob.outputs.skip_build.notEquals("true")
-    .and(preBuildJob.outputs.skip_deno_core_test.notEquals("true")),
+    .and(preBuildJob.outputs.skip_deno_core_test.notEquals("true"))
+    .and(notDocsOnly),
   runsOn: denoCoreTestProfile.runner,
   timeoutMinutes: 60,
   defaults: {
@@ -1767,7 +1785,7 @@ const miriNightlyToolchain = "nightly-2025-11-12";
 const denoCoreMiriJob = job("deno-core-miri", {
   name: "deno_core miri linux-x86_64",
   needs: [preBuildJob],
-  if: preBuildJob.outputs.skip_build.notEquals("true"),
+  if: preBuildJob.outputs.skip_build.notEquals("true").and(notDocsOnly),
   runsOn: Runners.linuxX86Xl.runner,
   timeoutMinutes: 60,
   defaults: {

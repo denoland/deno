@@ -453,10 +453,13 @@ struct JsRuntimeInspectorState {
   flags: Rc<RefCell<InspectorFlags>>,
   waker: Arc<InspectorWaker>,
   sessions: Rc<RefCell<SessionContainer>>,
+  active_session_count: Rc<Cell<usize>>,
   is_dispatching_message: Rc<RefCell<bool>>,
   pending_worker_messages: Arc<Mutex<Vec<(String, String)>>>,
   nodeworker_enabled: Rc<Cell<bool>>,
+  nodeworker_wait_for_debugger_on_start: Rc<Cell<bool>>,
   auto_attach_enabled: Rc<Cell<bool>>,
+  auto_attach_wait_for_debugger_on_start: Rc<Cell<bool>>,
   discover_targets_enabled: Rc<Cell<bool>>,
   /// Shared buffer of captured Network.* request/response bodies, populated
   /// from `op_inspector_emit_protocol_event` and read by the dispatcher
@@ -557,7 +560,7 @@ impl JsRuntimeInspectorState {
           // to yield back its ID).
           if fut.poll_unpin(cx).is_pending() {
             sessions.established.push(fut);
-            sessions.local.insert(id, session);
+            sessions.insert_local_session(id, session);
 
             // Track the first session as the main session for Target events
             if sessions.main_session_id.is_none() {
@@ -616,26 +619,30 @@ impl JsRuntimeInspectorState {
 
                 if self.auto_attach_enabled.get() {
                   ts.attached.set(true);
+                  let waiting_for_debugger =
+                    self.auto_attach_wait_for_debugger_on_start.get();
                   (main_session.state.send)(InspectorMsg::notification(
                     json!({
                       "method": "Target.attachedToTarget",
                       "params": {
                         "sessionId": ts.session_id,
                         "targetInfo": ts.target_info(true),
-                        "waitingForDebugger": false
+                        "waitingForDebugger": waiting_for_debugger
                       }
                     }),
                   ));
                 }
 
                 if self.nodeworker_enabled.get() {
+                  let waiting_for_debugger =
+                    self.nodeworker_wait_for_debugger_on_start.get();
                   (main_session.state.send)(InspectorMsg::notification(
                     json!({
                       "method": "NodeWorker.attachedToWorker",
                       "params": {
                         "sessionId": ts.session_id,
                         "workerInfo": ts.worker_info(),
-                        "waitingForDebugger": false
+                        "waitingForDebugger": waiting_for_debugger
                       }
                     }),
                   ));
@@ -657,7 +664,9 @@ impl JsRuntimeInspectorState {
                 self.sessions.clone(),
                 self.pending_worker_messages.clone(),
                 self.nodeworker_enabled.clone(),
+                self.nodeworker_wait_for_debugger_on_start.clone(),
                 self.auto_attach_enabled.clone(),
+                self.auto_attach_wait_for_debugger_on_start.clone(),
                 self.discover_targets_enabled.clone(),
                 self.flags.clone(),
                 self.network_data.clone(),
@@ -775,7 +784,7 @@ impl JsRuntimeInspectorState {
             // A session's pump future completed (WS disconnected).
             // Remove it from local so sessions_state() no longer
             // reports it as active.
-            sessions.local.remove(&completed_id);
+            sessions.remove_local_session(completed_id);
             // If this was the main session, promote another session
             // or clear, so new connections can become main and
             // Target/worker notifications continue to work.
@@ -876,18 +885,22 @@ impl JsRuntimeInspector {
       mpsc::unbounded::<InspectorSessionProxy>();
 
     let waker = InspectorWaker::new(scope.thread_safe_handle());
+    let active_session_count = Rc::new(Cell::new(0));
     let state = Rc::new(JsRuntimeInspectorState {
       waker,
       flags: Default::default(),
       isolate_ptr,
       context: v8::Global::new(scope, context),
-      sessions: Rc::new(
-        RefCell::new(SessionContainer::temporary_placeholder()),
-      ),
+      sessions: Rc::new(RefCell::new(SessionContainer::temporary_placeholder(
+        active_session_count.clone(),
+      ))),
+      active_session_count,
       is_dispatching_message: Default::default(),
       pending_worker_messages: Arc::new(Mutex::new(Vec::new())),
       nodeworker_enabled: Rc::new(Cell::new(false)),
+      nodeworker_wait_for_debugger_on_start: Rc::new(Cell::new(false)),
       auto_attach_enabled: Rc::new(Cell::new(false)),
+      auto_attach_wait_for_debugger_on_start: Rc::new(Cell::new(false)),
       discover_targets_enabled: Rc::new(Cell::new(false)),
       network_data: Rc::new(RefCell::new(NetworkDataBuffer::default())),
     });
@@ -898,8 +911,11 @@ impl JsRuntimeInspector {
       v8_inspector_client,
     ));
 
-    *state.sessions.borrow_mut() =
-      SessionContainer::new(v8_inspector.clone(), new_session_rx);
+    *state.sessions.borrow_mut() = SessionContainer::new(
+      v8_inspector.clone(),
+      new_session_rx,
+      state.active_session_count.clone(),
+    );
 
     // Tell the inspector about the main realm.
     let context_name_bytes = if is_main_runtime {
@@ -912,12 +928,15 @@ impl JsRuntimeInspector {
     // NOTE(bartlomieju): this is what Node.js does and it turns out some
     // debuggers (like VSCode) rely on this information to disconnect after
     // program completes.
-    // The auxData structure should match {isDefault: boolean, type: 'default'|'isolated'|'worker'}
-    // For Chrome DevTools to properly show workers in the execution context dropdown.
+    // The auxData structure should match
+    // {isDefault: boolean, type: 'default'|'isolated'|'worker'}.
+    // `isDefault` means this is the default context for its target, not
+    // whether the target is the main runtime. Chrome DevTools treats
+    // non-default contexts as content scripts and may blackbox them.
     let aux_data = if is_main_runtime {
       r#"{"isDefault": true, "type": "default"}"#
     } else {
-      r#"{"isDefault": false, "type": "worker"}"#
+      r#"{"isDefault": true, "type": "worker"}"#
     };
     let aux_data_view = v8::inspector::StringView::from(aux_data.as_bytes());
     v8_inspector.context_created(
@@ -1114,6 +1133,94 @@ impl JsRuntimeInspector {
     self.state.flags.borrow_mut().resumed_by_session_id = None;
   }
 
+  pub fn wait_for_runtime_run_if_waiting_for_debugger(&self) {
+    self.state.flags.borrow_mut().paused_on_start = true;
+    loop {
+      if !self.state.flags.borrow().paused_on_start {
+        break;
+      }
+      self.state.flags.borrow_mut().waiting_for_session = true;
+      let _ = self.state.poll_sessions(None).unwrap();
+    }
+    self.state.flags.borrow_mut().resumed_by_session_id = None;
+  }
+
+  pub fn wait_for_page_wait_for_debugger(&self) {
+    const PAGE_WAIT_GRACE_PERIOD: std::time::Duration =
+      std::time::Duration::from_millis(500);
+
+    {
+      let mut flags = self.state.flags.borrow_mut();
+      flags.paused_on_start = true;
+      flags.waiting_for_session = false;
+      flags.page_wait_for_debugger_received = false;
+    }
+
+    let deadline = std::time::Instant::now() + PAGE_WAIT_GRACE_PERIOD;
+    loop {
+      {
+        let flags = self.state.flags.borrow();
+        if !flags.paused_on_start || flags.page_wait_for_debugger_received {
+          break;
+        }
+      }
+      if std::time::Instant::now() >= deadline {
+        let mut flags = self.state.flags.borrow_mut();
+        if !flags.page_wait_for_debugger_received {
+          flags.paused_on_start = false;
+          flags.waiting_for_session = false;
+          flags.resumed_by_session_id = None;
+          break;
+        }
+      }
+      let _ = self.state.poll_sessions(None).unwrap();
+      std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+
+    if self.state.flags.borrow().paused_on_start {
+      loop {
+        if !self.state.flags.borrow().paused_on_start {
+          break;
+        }
+        self.state.flags.borrow_mut().waiting_for_session = true;
+        let _ = self.state.poll_sessions(None).unwrap();
+      }
+      let mut flags = self.state.flags.borrow_mut();
+      flags.page_wait_for_debugger_received = false;
+      flags.resumed_by_session_id = None;
+    }
+  }
+
+  pub fn should_wait_for_debugger_on_worker_start(&self) -> bool {
+    self.state.auto_attach_enabled.get()
+      && self.state.auto_attach_wait_for_debugger_on_start.get()
+      || self.state.nodeworker_enabled.get()
+        && self.state.nodeworker_wait_for_debugger_on_start.get()
+  }
+
+  pub fn should_wait_for_page_wait_for_debugger_on_worker_start(&self) -> bool {
+    self.state.active_session_count.get() > 0
+      && !self.should_wait_for_debugger_on_worker_start()
+  }
+
+  pub fn wait_for_debugger_enabled_for_worker_message(&self) {
+    const WORKER_MESSAGE_DEBUGGER_GRACE_PERIOD: std::time::Duration =
+      std::time::Duration::from_millis(500);
+
+    let deadline =
+      std::time::Instant::now() + WORKER_MESSAGE_DEBUGGER_GRACE_PERIOD;
+    loop {
+      if self.state.flags.borrow().debugger_enabled_session_count > 0 {
+        break;
+      }
+      if std::time::Instant::now() >= deadline {
+        break;
+      }
+      let _ = self.state.poll_sessions(None).unwrap();
+      std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+  }
+
   /// Obtain a sender for proxy channels.
   pub fn get_session_sender(&self) -> UnboundedSender<InspectorSessionProxy> {
     self.new_session_tx.clone()
@@ -1294,7 +1401,15 @@ impl JsRuntimeInspector {
         sessions.clone(),
         inspector.state.pending_worker_messages.clone(),
         inspector.state.nodeworker_enabled.clone(),
+        inspector
+          .state
+          .nodeworker_wait_for_debugger_on_start
+          .clone(),
         inspector.state.auto_attach_enabled.clone(),
+        inspector
+          .state
+          .auto_attach_wait_for_debugger_on_start
+          .clone(),
         inspector.state.discover_targets_enabled.clone(),
         inspector.state.flags.clone(),
         inspector.state.network_data.clone(),
@@ -1304,7 +1419,7 @@ impl JsRuntimeInspector {
         let mut s = sessions.borrow_mut();
         let id = s.next_local_id;
         s.next_local_id += 1;
-        assert!(s.local.insert(id, inspector_session).is_none());
+        assert!(s.insert_local_session(id, inspector_session).is_none());
         id
       };
 
@@ -1324,9 +1439,12 @@ struct InspectorFlags {
   /// Runtime.runIfWaitingForDebugger is received, allowing
   /// NodeRuntime.waitingForDebugger to be emitted.
   paused_on_start: bool,
+  /// Set when a frontend explicitly sends Page.waitForDebugger.
+  page_wait_for_debugger_received: bool,
   /// Tracks which session sent Runtime.runIfWaitingForDebugger,
   /// so schedule_pause_on_next_statement targets the correct session.
   resumed_by_session_id: Option<i32>,
+  debugger_enabled_session_count: usize,
 }
 
 #[derive(Debug)]
@@ -1346,6 +1464,7 @@ pub struct SessionContainer {
   established: FuturesUnordered<InspectorSessionPumpMessages>,
   next_local_id: i32,
   local: HashMap<i32, Rc<InspectorSession>>,
+  active_session_count: Rc<Cell<usize>>,
 
   target_sessions: HashMap<String, Rc<TargetSession>>, // sessionId -> TargetSession
   main_session_id: Option<i32>, // The first session that should receive Target events
@@ -1407,6 +1526,7 @@ impl SessionContainer {
   fn new(
     v8_inspector: Rc<v8::inspector::V8Inspector>,
     new_session_rx: UnboundedReceiver<InspectorSessionProxy>,
+    active_session_count: Rc<Cell<usize>>,
   ) -> Self {
     Self {
       v8_inspector: Some(v8_inspector),
@@ -1415,6 +1535,7 @@ impl SessionContainer {
       established: FuturesUnordered::new(),
       next_local_id: 1,
       local: HashMap::new(),
+      active_session_count,
 
       target_sessions: HashMap::new(),
       main_session_id: None,
@@ -1431,6 +1552,31 @@ impl SessionContainer {
     self.handshake.take();
     self.established.clear();
     self.local.clear();
+    self.active_session_count.set(0);
+  }
+
+  fn insert_local_session(
+    &mut self,
+    id: i32,
+    session: Rc<InspectorSession>,
+  ) -> Option<Rc<InspectorSession>> {
+    let previous = self.local.insert(id, session);
+    if previous.is_none() {
+      self
+        .active_session_count
+        .set(self.active_session_count.get() + 1);
+    }
+    previous
+  }
+
+  fn remove_local_session(&mut self, id: i32) -> Option<Rc<InspectorSession>> {
+    let removed = self.local.remove(&id);
+    if removed.is_some() {
+      self
+        .active_session_count
+        .set(self.active_session_count.get().saturating_sub(1));
+    }
+    removed
   }
 
   fn sessions_state(&self) -> SessionsState {
@@ -1460,7 +1606,7 @@ impl SessionContainer {
   /// instance of V8Inspector is created. It's used in favor
   /// of `Default` implementation to signal that it's not meant
   /// for actual use.
-  fn temporary_placeholder() -> Self {
+  fn temporary_placeholder(active_session_count: Rc<Cell<usize>>) -> Self {
     let (_tx, rx) = mpsc::unbounded::<InspectorSessionProxy>();
     Self {
       v8_inspector: Default::default(),
@@ -1469,6 +1615,7 @@ impl SessionContainer {
       established: FuturesUnordered::new(),
       next_local_id: 1,
       local: HashMap::new(),
+      active_session_count,
 
       target_sessions: HashMap::new(),
       main_session_id: None,
@@ -1488,21 +1635,42 @@ impl SessionContainer {
     // and skip V8 entirely.
     if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&message)
       && let Some(method) = parsed.get("method").and_then(|m| m.as_str())
-      && let Some(outcome) = dispatch_custom_domain(method, &parsed, session)
     {
-      if let Some(id) = parsed.get("id") {
-        let call_id = id.as_i64().unwrap_or(0) as i32;
-        let content = match outcome {
-          CustomDomainOutcome::Empty => make_cdp_ok_response(id, json!({})),
-          CustomDomainOutcome::Result(v) => make_cdp_ok_response(id, v),
-          CustomDomainOutcome::Error(err) => make_cdp_error_response(id, &err),
-        };
-        (session.state.send)(InspectorMsg {
-          kind: InspectorMsgKind::Message(call_id),
-          content,
-        });
+      match method {
+        "Debugger.enable" => session.set_debugger_enabled(true),
+        "Debugger.disable" => session.set_debugger_enabled(false),
+        _ => {}
       }
-      return;
+
+      if method == "Page.waitForDebugger" {
+        session.wait_for_debugger();
+        if let Some(id) = parsed.get("id") {
+          let call_id = id.as_i64().unwrap_or(0) as i32;
+          (session.state.send)(InspectorMsg {
+            kind: InspectorMsgKind::Message(call_id),
+            content: make_cdp_ok_response(id, json!({})),
+          });
+        }
+        return;
+      }
+
+      if let Some(outcome) = dispatch_custom_domain(method, &parsed, session) {
+        if let Some(id) = parsed.get("id") {
+          let call_id = id.as_i64().unwrap_or(0) as i32;
+          let content = match outcome {
+            CustomDomainOutcome::Empty => make_cdp_ok_response(id, json!({})),
+            CustomDomainOutcome::Result(v) => make_cdp_ok_response(id, v),
+            CustomDomainOutcome::Error(err) => {
+              make_cdp_error_response(id, &err)
+            }
+          };
+          (session.state.send)(InspectorMsg {
+            kind: InspectorMsgKind::Message(call_id),
+            content,
+          });
+        }
+        return;
+      }
     }
 
     session.dispatch_message(message);
@@ -1558,6 +1726,17 @@ impl SessionContainer {
       }
     }
     false
+  }
+
+  fn target_session_by_target_id(
+    &self,
+    target_id: &str,
+  ) -> Option<Rc<TargetSession>> {
+    self
+      .target_sessions
+      .values()
+      .find(|ts| ts.target_id == target_id)
+      .cloned()
   }
 }
 
@@ -1656,8 +1835,10 @@ struct InspectorSessionState {
   pending_worker_messages: Arc<Mutex<Vec<(String, String)>>>,
   // Track whether NodeWorker.enable has been called (enables VSCode-style worker debugging)
   nodeworker_enabled: Rc<Cell<bool>>,
+  nodeworker_wait_for_debugger_on_start: Rc<Cell<bool>>,
   // Track whether Target.setAutoAttach has been called (enables worker auto-attach)
   auto_attach_enabled: Rc<Cell<bool>>,
+  auto_attach_wait_for_debugger_on_start: Rc<Cell<bool>>,
   // Track whether Target.setDiscoverTargets has been called (enables target discovery)
   discover_targets_enabled: Rc<Cell<bool>>,
   // Track whether Network.enable has been called (per-session, not shared)
@@ -1673,6 +1854,7 @@ struct InspectorSessionState {
   // Runtime.executionContextDestroyed) to this session at exit, and waits for
   // the session to disconnect before terminating the process.
   notify_waiting_for_disconnect: Cell<bool>,
+  debugger_enabled: Cell<bool>,
   // Inspector flags (shared with JsRuntimeInspectorState) for checking waiting_for_session
   flags: Rc<RefCell<InspectorFlags>>,
   // Shared body buffer used by the Network.* command handlers.
@@ -1699,7 +1881,9 @@ impl InspectorSession {
     sessions: Rc<RefCell<SessionContainer>>,
     pending_worker_messages: Arc<Mutex<Vec<(String, String)>>>,
     nodeworker_enabled: Rc<Cell<bool>>,
+    nodeworker_wait_for_debugger_on_start: Rc<Cell<bool>>,
     auto_attach_enabled: Rc<Cell<bool>>,
+    auto_attach_wait_for_debugger_on_start: Rc<Cell<bool>>,
     discover_targets_enabled: Rc<Cell<bool>>,
     flags: Rc<RefCell<InspectorFlags>>,
     network_data: Rc<RefCell<NetworkDataBuffer>>,
@@ -1712,12 +1896,15 @@ impl InspectorSession {
       sessions,
       pending_worker_messages,
       nodeworker_enabled,
+      nodeworker_wait_for_debugger_on_start,
       auto_attach_enabled,
+      auto_attach_wait_for_debugger_on_start,
       discover_targets_enabled,
       network_enabled: Cell::new(false),
       dom_storage_enabled: Cell::new(false),
       noderuntime_enabled: Cell::new(false),
       notify_waiting_for_disconnect: Cell::new(false),
+      debugger_enabled: Cell::new(false),
       flags,
       network_data,
     };
@@ -1738,6 +1925,26 @@ impl InspectorSession {
     let msg = v8::inspector::StringView::from(msg.as_bytes());
     self.v8_session.dispatch_protocol_message(msg);
     *self.state.is_dispatching_message.borrow_mut() = false;
+  }
+
+  fn wait_for_debugger(&self) {
+    let mut flags = self.state.flags.borrow_mut();
+    flags.paused_on_start = true;
+    flags.waiting_for_session = true;
+    flags.page_wait_for_debugger_received = true;
+  }
+
+  fn set_debugger_enabled(&self, enabled: bool) {
+    if self.state.debugger_enabled.replace(enabled) == enabled {
+      return;
+    }
+    let mut flags = self.state.flags.borrow_mut();
+    if enabled {
+      flags.debugger_enabled_session_count += 1;
+    } else {
+      flags.debugger_enabled_session_count =
+        flags.debugger_enabled_session_count.saturating_sub(1);
+    }
   }
 
   /// Queue a message to be sent to a worker
@@ -1888,6 +2095,16 @@ async fn pump_inspector_session_messages(
     }
 
     match method {
+      "Debugger.enable" => {
+        session.set_debugger_enabled(true);
+        session.dispatch_message(msg);
+        continue;
+      }
+      "Debugger.disable" => {
+        session.set_debugger_enabled(false);
+        session.dispatch_message(msg);
+        continue;
+      }
       "NodeRuntime.enable" => {
         session.state.noderuntime_enabled.set(true);
         // If the runtime is paused on start (--inspect-brk), emit
@@ -1924,15 +2141,24 @@ async fn pump_inspector_session_messages(
         session.dispatch_message(msg);
         continue;
       }
+      "Page.waitForDebugger" => {
+        session.wait_for_debugger();
+      }
       "NodeWorker.enable" => {
         session.state.nodeworker_enabled.set(true);
-        session.notify_workers(|ts, send| {
+        session
+          .state
+          .nodeworker_wait_for_debugger_on_start
+          .set(get_bool_param(&params, "waitForDebuggerOnStart"));
+        let waiting_for_debugger =
+          session.state.nodeworker_wait_for_debugger_on_start.get();
+        session.notify_workers(move |ts, send| {
           send(InspectorMsg::notification(json!({
             "method": "NodeWorker.attachedToWorker",
             "params": {
               "sessionId": ts.session_id,
               "workerInfo": ts.worker_info(),
-              "waitingForDebugger": false
+              "waitingForDebugger": waiting_for_debugger
             }
           })));
         });
@@ -1956,11 +2182,86 @@ async fn pump_inspector_session_messages(
           });
         }
       }
+      "Target.getTargets" => {
+        if let Some(id) = msg_id {
+          let call_id = id.as_i64().unwrap_or(0) as i32;
+          let send = session.state.send.clone();
+          let sessions = session.state.sessions.clone();
+          deno_core::unsync::spawn(async move {
+            let sessions = sessions.borrow();
+            let target_infos = sessions
+              .target_sessions
+              .values()
+              .map(|ts| ts.target_info(ts.attached.get()))
+              .collect::<Vec<_>>();
+            send(InspectorMsg {
+              kind: InspectorMsgKind::Message(call_id),
+              content: json!({
+                "id": id,
+                "result": {
+                  "targetInfos": target_infos
+                }
+              })
+              .to_string(),
+            });
+          });
+        }
+        continue;
+      }
+      "Target.attachToTarget" => {
+        let target_id = get_str_param(&params, "targetId");
+        if let Some(id) = msg_id {
+          let call_id = id.as_i64().unwrap_or(0) as i32;
+          let send = session.state.send.clone();
+          let sessions = session.state.sessions.clone();
+          deno_core::unsync::spawn(async move {
+            let target_session =
+              sessions.borrow().target_session_by_target_id(&target_id);
+            let content = if let Some(ts) = target_session {
+              ts.attached.set(true);
+              json!({
+                "id": id,
+                "result": {
+                  "sessionId": ts.session_id
+                }
+              })
+            } else {
+              json!({
+                "id": id,
+                "error": {
+                  "code": -32602,
+                  "message": "No target with given id found"
+                }
+              })
+            };
+            send(InspectorMsg {
+              kind: InspectorMsgKind::Message(call_id),
+              content: content.to_string(),
+            });
+          });
+        }
+        continue;
+      }
+      "Target.detachFromTarget" => {
+        let session_id = get_str_param(&params, "sessionId");
+        let sessions = session.state.sessions.clone();
+        deno_core::unsync::spawn(async move {
+          if let Some(ts) = sessions.borrow().target_sessions.get(&session_id) {
+            ts.attached.set(false);
+          }
+        });
+      }
       "Target.setAutoAttach" => {
         let auto_attach = get_bool_param(&params, "autoAttach");
+        let wait_for_debugger_on_start =
+          get_bool_param(&params, "waitForDebuggerOnStart");
         let send = session.state.send.clone();
         let sessions = session.state.sessions.clone();
         session.state.auto_attach_enabled.set(auto_attach);
+        session
+          .state
+          .auto_attach_wait_for_debugger_on_start
+          .set(wait_for_debugger_on_start);
         if auto_attach {
           deno_core::unsync::spawn(async move {
             let sessions = sessions.borrow();
@@ -1973,7 +2274,7 @@ async fn pump_inspector_session_messages(
                 "params": {
                   "sessionId": ts.session_id,
                   "targetInfo": ts.target_info(true),
-                  "waitingForDebugger": false
+                  "waitingForDebugger": wait_for_debugger_on_start
                 }
               })));
             }
@@ -2047,7 +2348,7 @@ impl LocalInspectorSession {
 impl Drop for LocalInspectorSession {
   fn drop(&mut self) {
     let mut sessions = self.sessions.borrow_mut();
-    sessions.local.remove(&self.session_id);
+    sessions.remove_local_session(self.session_id);
     if sessions.main_session_id == Some(self.session_id) {
       sessions.main_session_id = sessions.local.keys().next().copied();
     }
