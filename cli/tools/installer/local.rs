@@ -178,6 +178,25 @@ async fn install_top_level(
     lockfile.write_if_changed()?;
   }
 
+  // Post-install: set up jsr packages in node_modules and generate tsconfig
+  // mappings so stock TypeScript tooling understands the project.
+  {
+    let cli_options = factory.cli_options()?;
+    let file_fetcher = factory.file_fetcher()?.clone();
+    let http_client = factory.http_client_provider().get_or_create()?;
+    let permissions = factory.root_permissions_container()?.clone();
+    if let Err(e) = super::npm_compat::setup_npm_compat(
+      cli_options.initial_cwd(),
+      &file_fetcher,
+      &http_client,
+      &permissions,
+    )
+    .await
+    {
+      log::warn!("Failed to set up TypeScript compatibility: {e}");
+    }
+  }
+
   let install_reporter = factory.install_reporter()?.unwrap().clone();
   let workspace = factory.workspace_resolver().await?;
   let npm_resolver = factory.npm_resolver().await?;
