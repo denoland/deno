@@ -5,6 +5,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_config::deno_json::DesktopConfig;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
@@ -57,6 +58,50 @@ pub async fn desktop(
   let laufey_resolver = Arc::new(LaufeyBackendResolver::new(&factory)?);
   let deno_dir_root = factory.deno_dir()?.root.clone();
 
+  apply_desktop_config_to_flags(&mut desktop_flags, desktop_config);
+
+  if all_targets {
+    let targets = [
+      "x86_64-apple-darwin",
+      "aarch64-apple-darwin",
+      "x86_64-unknown-linux-gnu",
+      "aarch64-unknown-linux-gnu",
+      "x86_64-pc-windows-msvc",
+    ];
+    for target in targets {
+      log::info!("Building for target: {}", target);
+      let mut desktop_flags = desktop_flags.clone();
+      desktop_flags.target = Some(target.to_string());
+      Box::pin(compile_desktop(
+        flags.clone(),
+        desktop_flags,
+        cli_options,
+        &laufey_resolver,
+        &deno_dir_root,
+      ))
+      .await?;
+    }
+    Ok(())
+  } else {
+    Box::pin(compile_desktop(
+      flags,
+      desktop_flags,
+      cli_options,
+      &laufey_resolver,
+      &deno_dir_root,
+    ))
+    .await
+  }
+}
+
+/// Applies `deno.json`'s `desktop` config to the CLI flags. A `deno.json` field
+/// only fills in a flag that was left unset — CLI flags always win. The webview
+/// backend remains the final fallback via the `unwrap_or("webview")` call sites
+/// that consume `desktop_flags.backend`.
+fn apply_desktop_config_to_flags(
+  desktop_flags: &mut DesktopFlags,
+  desktop_config: DesktopConfig,
+) {
   if let Some(output) = desktop_config.output
     && desktop_flags.output.is_none()
   {
@@ -125,39 +170,6 @@ pub async fn desktop(
     && desktop_flags.codesign_identity.is_none()
   {
     desktop_flags.codesign_identity = Some(identity);
-  }
-
-  if all_targets {
-    let targets = [
-      "x86_64-apple-darwin",
-      "aarch64-apple-darwin",
-      "x86_64-unknown-linux-gnu",
-      "aarch64-unknown-linux-gnu",
-      "x86_64-pc-windows-msvc",
-    ];
-    for target in targets {
-      log::info!("Building for target: {}", target);
-      let mut desktop_flags = desktop_flags.clone();
-      desktop_flags.target = Some(target.to_string());
-      Box::pin(compile_desktop(
-        flags.clone(),
-        desktop_flags,
-        cli_options,
-        &laufey_resolver,
-        &deno_dir_root,
-      ))
-      .await?;
-    }
-    Ok(())
-  } else {
-    Box::pin(compile_desktop(
-      flags,
-      desktop_flags,
-      cli_options,
-      &laufey_resolver,
-      &deno_dir_root,
-    ))
-    .await
   }
 }
 
@@ -311,14 +323,21 @@ async fn compile_desktop(
   let desktop_entrypoint_file = if desktop_flags.source_file == "." {
     let cwd = &detection_cwd;
     if let Some(detection) = detected_framework.as_ref() {
-      let entrypoint_code = detection.entrypoint_code.clone();
-      let includes = detection.include_paths.clone();
+      let use_framework_hmr =
+        desktop_flags.hmr && detection.hmr_command.is_some();
+      let entrypoint_code = if use_framework_hmr {
+        NOOP_ENTRYPOINT.to_string()
+      } else {
+        detection.entrypoint_code.clone()
+      };
       log::info!("Detected {} framework", detection.name);
-      // Run the framework's build step (e.g. `deno task build`) before its
-      // build output (`dist`, `.next`, etc.) is added to the compile includes
-      // below; otherwise the include points at a directory that doesn't exist
-      // yet and the compile fails (#35535). Mirrors `deno compile .`.
-      super::framework::run_build_command(detection, cwd)?;
+      if !use_framework_hmr {
+        // Run the framework's build step (e.g. `deno task build`) before its
+        // build output (`dist`, `.next`, etc.) is added to the compile includes
+        // below; otherwise the include points at a directory that doesn't exist
+        // yet and the compile fails (#35535). Mirrors `deno compile .`.
+        super::framework::run_build_command(detection, cwd)?;
+      }
       // Enable CJS detection for Node-based frameworks.
       flags.unstable_config.detect_cjs = true;
       if detection.name == "Next.js"
@@ -370,16 +389,18 @@ async fn compile_desktop(
       {
         desktop_flags.output = Some(dir_name.to_string_lossy().into_owned());
       }
-      // Add framework build output to includes.
-      for inc in includes {
-        if !desktop_flags.include.contains(&inc) {
-          desktop_flags.include.push(inc.clone());
+      // Add framework build output to includes. Skipped in HMR mode.
+      if !use_framework_hmr {
+        for inc in &detection.include_paths {
+          if !desktop_flags.include.contains(inc) {
+            desktop_flags.include.push(inc.clone());
+          }
         }
       }
       Some(entrypoint_temp)
     } else {
       bail!(
-        "Could not detect a supported framework in the current directory.\nSupported frameworks: Next.js, Astro, Fresh, Remix, SvelteKit, Nuxt, SolidStart, TanStack Start, Vite\nProvide an explicit entrypoint instead."
+        "Could not detect a supported framework in the current directory.\nSupported frameworks: Next.js, Astro, Fresh, Remix, React Router, SvelteKit, Nuxt, SolidStart, TanStack Start, Vite\nProvide an explicit entrypoint instead."
       );
     }
   } else {
@@ -475,7 +496,6 @@ async fn compile_desktop(
     app_name: None,
     args: desktop_flags.args.clone(),
     target: desktop_flags.target.clone(),
-    watch: None,
     no_terminal: false,
     icon: match &desktop_flags.icon {
       Some(crate::args::IconConfig::Single(s)) => Some(s.clone()),
@@ -487,7 +507,7 @@ async fn compile_desktop(
     self_extracting,
     bundle: false,
     minify: false,
-    exclude_unused_npm: false,
+    exclude_unused_npm: desktop_flags.exclude_unused_npm,
   };
 
   let mut temp_flags = flags.clone();
@@ -834,12 +854,12 @@ fn register_deep_links_windows(
   bundle_path: &Path,
   schemes: &[String],
 ) -> Result<(), AnyError> {
-  // The launcher written by the Windows packaging step is `<app>.bat`.
-  let launcher = std::fs::read_dir(bundle_path)?
-    .filter_map(|e| e.ok().map(|e| e.path()))
-    .find(|p| p.extension().is_some_and(|e| e == "bat"))
-    .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
-    .unwrap_or_else(|| "launcher.bat".to_string());
+  // The launcher written by the Windows packaging step is `<app>.exe` (the
+  // backend binary renamed to the bundle/app name).
+  let launcher = bundle_path
+    .file_name()
+    .map(|n| format!("{}.exe", n.to_string_lossy()))
+    .unwrap_or_else(|| "launcher.exe".to_string());
 
   let mut script = String::from("@echo off\r\nsetlocal\r\n");
   for scheme in schemes {
@@ -1051,11 +1071,11 @@ fn make_self_extracting_dir(
        setlocal\r\n\
        set \"DIR=%~dp0\"\r\n\
        set \"DEST=%LOCALAPPDATA%\\{id}\\{hash}\"\r\n\
-       if not exist \"%DEST%\\{app_name}\\{app_name}.bat\" (\r\n\
+       if not exist \"%DEST%\\{app_name}\\{app_name}.exe\" (\r\n\
        \u{20} mkdir \"%DEST%\" 2>nul\r\n\
        \u{20} tar -xf \"%DIR%{payload_name}\" -C \"%DEST%\"\r\n\
        )\r\n\
-       call \"%DEST%\\{app_name}\\{app_name}.bat\" %*\r\n",
+       \"%DEST%\\{app_name}\\{app_name}.exe\" %*\r\n",
     );
     std::fs::write(bundle_path.join(format!("{app_name}.bat")), launcher)?;
   } else {
@@ -1138,6 +1158,71 @@ fn resolve_hmr_icon_path(
   Ok(crate::util::fs::canonicalize_path(&icon_path).unwrap_or(icon_path))
 }
 
+/// Extract the local URL from a line of dev server output.
+fn parse_dev_server_url(line: &str) -> Option<String> {
+  // Vite prints `  ➜  Local:   http://localhost:5173/`
+  regex::Regex::new(r"Local:\s+(https?://\S+)")
+    .expect("regex to parse local url failed")
+    .captures(line)
+    .and_then(|c| c.get(1))
+    .map(|m| m.as_str().to_owned())
+}
+
+/// Spawns a framework HMR dev server
+async fn spawn_framework_dev_server(
+  name: &str,
+  cmd_args: &[String],
+  cwd: &Path,
+) -> Result<(String, tokio::process::Child), AnyError> {
+  use tokio::io::AsyncBufReadExt;
+  use tokio::io::BufReader;
+
+  let mut child = tokio::process::Command::new(&cmd_args[0])
+    .args(&cmd_args[1..])
+    .current_dir(cwd)
+    .stdout(std::process::Stdio::piped())
+    .kill_on_drop(true)
+    .spawn()
+    .with_context(|| {
+      format!("failed to spawn HMR dev server: {:?}", cmd_args)
+    })?;
+
+  let stdout = child.stdout.take().ok_or_else(|| {
+    deno_core::anyhow::anyhow!("failed to capture HMR dev server stdout")
+  })?;
+  let mut lines = BufReader::new(stdout).lines();
+
+  let url = tokio::time::timeout(std::time::Duration::from_secs(15), async {
+    while let Ok(Some(line)) = lines.next_line().await {
+      let url = parse_dev_server_url(&line);
+      // Echo the dev server's own startup output (banner, URL, warnings) so
+      // it isn't swallowed while we scan for the URL.
+      log::info!("{line}");
+      if let Some(url) = url {
+        return Ok(url);
+      }
+    }
+    deno_core::anyhow::bail!("dev server exited without printing a URL")
+  })
+  .await
+  .map_err(|_| {
+    deno_core::anyhow::anyhow!(
+      "{name} dev server with HMR did not start within 15s"
+    )
+  })??;
+
+  // Keep forwarding the dev server's stdout so its HMR/compile logs stay
+  // visible after startup instead of being silently swallowed. The task ends
+  // on its own once the child is killed (on drop) and the pipe closes.
+  tokio::spawn(async move {
+    while let Ok(Some(line)) = lines.next_line().await {
+      log::info!("{line}");
+    }
+  });
+
+  Ok((url, child))
+}
+
 /// Launch the desktop app with HMR enabled after compilation.
 ///
 /// Framework dev servers provide HMR via websocket. Since they run inside
@@ -1206,8 +1291,11 @@ async fn run_desktop_hmr(
 
   if desktop_flags.hmr {
     log::info!(
-      "{} desktop app with HMR (watching {})",
+      "{} {}desktop app with HMR (watching {})",
       colors::green("Running"),
+      framework
+        .map(|f| format!("{} ", f.name))
+        .unwrap_or_default(),
       source_abs.display(),
     );
   } else {
@@ -1234,6 +1322,24 @@ async fn run_desktop_hmr(
   if desktop_flags.hmr {
     cmd.env("DENO_DESKTOP_HMR", &source_abs);
   }
+
+  let _dev_server_child = if desktop_flags.hmr
+    && let Some(fw) = framework
+    && let Some(dev_cmd) = &fw.hmr_command
+  {
+    let (dev_url, child) =
+      spawn_framework_dev_server(fw.name, dev_cmd, &source_abs).await?;
+    log::info!(
+      "{} {} HMR dev server at {}",
+      colors::green("Running"),
+      fw.name,
+      dev_url,
+    );
+    cmd.env("DENO_DESKTOP_DEV_URL", &dev_url);
+    Some(child)
+  } else {
+    None
+  };
 
   // Wire up the unified DevTools multiplexer when --inspect is set.
   // The mux runs in this (parent) process and fronts both the Deno runtime
@@ -1363,6 +1469,11 @@ async fn run_desktop_hmr(
 /// touching unrelated user data that happens to share the inferred app name.
 const APP_DIR_MARKER: &str = ".deno-desktop-app";
 
+/// Used for `deno desktop --hmr` when a framework runs its own HMR server.
+/// The compiled app has nothing to serve in this case.
+const NOOP_ENTRYPOINT: &str =
+  "// @ts-nocheck\nawait new Promise<void>(() => {});\n";
+
 /// Prepare `app_dir` to receive a freshly built bundle.
 ///
 /// The app name is inferred from the entrypoint (or, for generic names like
@@ -1465,12 +1576,14 @@ async fn package_desktop_app(
 /// Directory structure:
 /// ```text
 /// AppName/
-///   AppName.bat         (launcher)
-///   laufey.exe             (LAUFEY backend binary)
+///   AppName.exe         (LAUFEY backend binary, renamed to the app name)
 ///   libcef.dll, ...     (CEF support files, if any)
-///   denort.dll          (compiled Deno runtime + user code)
+///   AppName.dll         (compiled Deno runtime + user code)
 ///   AppIcon.ico         (optional)
 /// ```
+///
+/// The backend binary is renamed to `AppName.exe` so it auto-loads the
+/// co-located `AppName.dll` runtime — no `.bat` launcher is needed.
 async fn package_windows_app_dir(
   dylib_path: &Path,
   desktop_flags: &DesktopFlags,
@@ -1516,33 +1629,22 @@ async fn package_windows_app_dir(
   let dest_dylib = app_dir.join(dylib_filename);
   std::fs::copy(dylib_path, &dest_dylib)?;
 
-  // Create a .bat launcher that invokes the backend with --runtime.
-  // Validate every name we interpolate: cmd.exe expands `%VAR%` and
-  // treats `^` `&` etc. as command separators even inside `"..."`.
-  let dylib_filename_str = dylib_filename.to_string_lossy();
+  // Rename the LAUFEY backend binary to the app name (`<app>.exe`) so it sits
+  // next to `<app>.dll` and auto-loads it: laufey's LaufeyFindColocatedRuntime
+  // resolves a runtime library whose base name matches the executable's, in the
+  // executable's own directory. A bare double-click of `<app>.exe` therefore
+  // "just works" with no `.bat` wrapper and no `--runtime` argument.
+  //
+  // This also fixes runtime loading from paths containing a space (e.g. the
+  // default MSI target `C:\Program Files\`): laufey resolves the co-located
+  // runtime from its own module path rather than a `--runtime` string, avoiding
+  // the historical `ERROR_MOD_NOT_FOUND` (126) failure on such paths.
   validate_launcher_name(&app_name, "app name")?;
-  validate_launcher_name(&laufey_binary_name, "LAUFEY backend binary name")?;
-  validate_launcher_name(&dylib_filename_str, "dylib filename")?;
-  let launcher_path = app_dir.join(format!("{}.bat", app_name));
-  // Pass the runtime dylib to laufey by its bare filename, not a full path. The
-  // laufey backend mishandles a `--runtime` path that contains a space (it fails
-  // to load the dylib with error 126, ERROR_MOD_NOT_FOUND, when it re-launches),
-  // which broke every install location with a space in it — most importantly the
-  // default MSI target `C:\Program Files\`. laufey resolves a bare dylib name
-  // against its own executable's directory (where the dylib is co-located), so a
-  // plain filename loads correctly regardless of the install path or the current
-  // working directory. The laufey binary itself is launched by cmd with normal
-  // quoting, which handles spaces fine.
-  std::fs::write(
-    &launcher_path,
-    format!(
-      "@echo off\r\n\
-       set DIR=%~dp0\r\n\
-       \"%DIR%{laufey_binary}\" --runtime \"{dylib}\" %*\r\n",
-      laufey_binary = laufey_binary_name,
-      dylib = dylib_filename_str,
-    ),
-  )?;
+  let launcher_path = app_dir.join(format!("{}.exe", app_name));
+  let staged_backend = app_dir.join(&laufey_binary_name);
+  if staged_backend != launcher_path {
+    std::fs::rename(&staged_backend, &launcher_path)?;
+  }
 
   // Handle icon — drop an .ico next to the launcher. Embedding the icon
   // into the .exe itself requires rcedit or equivalent and is out of scope.
@@ -1587,12 +1689,14 @@ async fn package_windows_app_dir(
 /// Directory structure:
 /// ```text
 /// AppName/
-///   AppName             (launcher shell script)
-///   laufey                 (LAUFEY backend binary)
+///   AppName             (LAUFEY backend binary, renamed to the app name)
 ///   libcef.so, ...      (CEF support files, if any)
-///   libdenort.so        (compiled Deno runtime + user code)
+///   AppName.so          (compiled Deno runtime + user code)
 ///   AppIcon.png         (optional)
 /// ```
+///
+/// The backend binary is renamed to `AppName` so it auto-loads the co-located
+/// `AppName.so` runtime — no launcher shell script is needed.
 async fn package_linux_app_dir(
   dylib_path: &Path,
   desktop_flags: &DesktopFlags,
@@ -1639,37 +1743,22 @@ async fn package_linux_app_dir(
     let _ = std::fs::remove_file(&cache_file);
   }
 
-  // Copy the compiled dylib alongside the backend binary.
-  let dylib_filename = parts.file_name;
-  let dest_dylib = app_dir.join(dylib_filename);
+  // Copy the compiled dylib as `<app>.so` so the renamed backend binary
+  // auto-loads it: laufey's LaufeyFindColocatedRuntime resolves `<exe-base>.so`
+  // next to the binary. It reads the real path via `/proc/self/exe`, which
+  // follows the `/usr/bin/<pkg>` -> `/usr/lib/<pkg>/<app>` symlink that
+  // `.deb`/`.rpm` install (issue #35623), so no wrapper script is needed.
+  validate_launcher_name(&app_name, "app name")?;
+  let dest_dylib = app_dir.join(format!("{}.so", app_name));
   std::fs::copy(dylib_path, &dest_dylib)?;
 
-  // Create a shell launcher that invokes the backend with --runtime.
-  // laufey auto-detects Wayland vs X11 at runtime.
-  //
-  // Validate every name we interpolate: bash expands `$VAR`, backticks,
-  // and `$(...)` even inside `"..."`.
-  let dylib_filename_str = dylib_filename.to_string_lossy();
-  validate_launcher_name(&app_name, "app name")?;
-  validate_launcher_name(&laufey_binary_name, "LAUFEY backend binary name")?;
-  validate_launcher_name(&dylib_filename_str, "dylib filename")?;
+  // Rename the LAUFEY backend binary to the app name so `<app>` is the launcher
+  // the user runs directly — no `--runtime` argument and no shell wrapper.
   let launcher_path = app_dir.join(&app_name);
-  std::fs::write(
-    &launcher_path,
-    format!(
-      // Resolve `$0` through symlinks before deriving DIR: `.deb`/`.rpm`
-      // install the real launcher under `/usr/lib/<pkg>/` and expose it via a
-      // `/usr/bin/<pkg>` symlink, so a bare `$0` would resolve DIR to
-      // `/usr/bin` and look for the backend binary there (issue #35623).
-      // `readlink -f` is fine here: this launcher only ships on Linux.
-      "#!/bin/sh\n\
-       DIR=\"$(cd \"$(dirname \"$(readlink -f \"$0\")\")\" && pwd)\"\n\
-       export LAUFEY_RUNTIME_PATH=\"$DIR/{dylib}\"\n\
-       exec \"$DIR/{laufey_binary}\" --runtime \"$DIR/{dylib}\" \"$@\"\n",
-      laufey_binary = laufey_binary_name,
-      dylib = dylib_filename_str,
-    ),
-  )?;
+  let staged_backend = app_dir.join(&laufey_binary_name);
+  if staged_backend != launcher_path {
+    std::fs::rename(&staged_backend, &launcher_path)?;
+  }
   #[cfg(unix)]
   {
     use std::os::unix::fs::PermissionsExt;
@@ -4265,23 +4354,21 @@ fn create_windows_msi(
 
   // Locate the laufey launcher in the install root so we can author a Start Menu
   // shortcut to it (otherwise the installed app is not discoverable — there is no
-  // icon anywhere, only files under Program Files). The shortcut targets the
-  // laufey exe directly with `--runtime <dylib>` so launching it opens the app's
-  // window with no console, mirroring the `.bat` launcher. laufey resolves the
-  // bare dylib name against its own directory, so no path (and no space) is
-  // needed in the arguments.
+  // icon anywhere, only files under Program Files). The launcher is the backend
+  // binary renamed to `<app>.exe`; it auto-loads the co-located `<app>.dll`
+  // runtime, so the shortcut targets it directly with no arguments.
+  let launcher_exe = format!("{app_name}.exe").to_ascii_lowercase();
   let shortcut_target = rel_files
     .iter()
     .zip(files.iter())
     .find(|((rel, _), _)| {
       rel.parent() == Some(Path::new(""))
-        && rel.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
-          let n = n.to_ascii_lowercase();
-          n.starts_with("laufey") && n.ends_with(".exe")
-        })
+        && rel
+          .file_name()
+          .and_then(|n| n.to_str())
+          .is_some_and(|n| n.to_ascii_lowercase() == launcher_exe)
     })
     .map(|(_, f)| (f.key.clone(), f.component.clone()));
-  let dylib_name = format!("{app_name}.dll");
 
   // The all-users Start Menu folder that hosts the app shortcut. Only added when
   // we found a launcher to point at.
@@ -4554,12 +4641,12 @@ fn create_windows_msi(
       Value::Str(launcher_comp.clone()),
       // Non-advertised shortcut: `[#key]` resolves to the installed exe's path.
       Value::Str(format!("[#{launcher_key}]")),
-      Value::Str(format!("--runtime \"{dylib_name}\"")),
-      Value::Null,                          // Description
-      Value::Null,                          // Hotkey
-      Value::Null,                          // Icon_
-      Value::Null,                          // IconIndex
-      Value::Null,                          // ShowCmd
+      Value::Null, // Arguments (co-located auto-load)
+      Value::Null, // Description
+      Value::Null, // Hotkey
+      Value::Null, // Icon_
+      Value::Null, // IconIndex
+      Value::Null, // ShowCmd
       Value::Str("INSTALLDIR".to_string()), // WkDir
     ]))?;
   }
@@ -5497,6 +5584,46 @@ def456  other.zip
     assert_eq!(
       parse_sha256sum(contents, "other.zip").as_deref(),
       Some("def456")
+    );
+  }
+
+  // --- parse_dev_server_url ---
+
+  #[test]
+  fn dev_server_url_matches() {
+    assert_eq!(
+      parse_dev_server_url("  ➜  Local:   http://localhost:5173/").as_deref(),
+      Some("http://localhost:5173/")
+    );
+    assert_eq!(
+      parse_dev_server_url("  Local:   https://localhost:5173/").as_deref(),
+      Some("https://localhost:5173/")
+    );
+  }
+
+  #[test]
+  fn dev_server_url_matches_with_subpath() {
+    assert_eq!(
+      parse_dev_server_url("  Local:   http://localhost:5173/app").as_deref(),
+      Some("http://localhost:5173/app")
+    );
+    assert_eq!(
+      parse_dev_server_url("  Local:   http://192.168.1.1:5173").as_deref(),
+      Some("http://192.168.1.1:5173")
+    );
+    assert_eq!(
+      parse_dev_server_url("  Local:   https://localhost:5173/app").as_deref(),
+      Some("https://localhost:5173/app")
+    );
+  }
+
+  #[test]
+  fn dev_server_url_no_match() {
+    assert_eq!(parse_dev_server_url("Watching for file changes..."), None);
+    assert_eq!(parse_dev_server_url(""), None);
+    assert_eq!(
+      parse_dev_server_url("  Network:  http://192.168.1.1:5173/"),
+      None
     );
   }
 
@@ -6578,9 +6705,11 @@ def456  other.zip
   fn fake_linux_app_dir(parent: &Path, app_name: &str) -> PathBuf {
     let app_dir = parent.join(app_name);
     std::fs::create_dir_all(&app_dir).unwrap();
-    std::fs::write(app_dir.join(app_name), "#!/bin/sh\nexec ./laufey\n")
+    // The backend binary is renamed to `<app>` and auto-loads the co-located
+    // `<app>.so`; there is no launcher shell script.
+    std::fs::write(app_dir.join(app_name), b"\x7fELFfake-bin").unwrap();
+    std::fs::write(app_dir.join(format!("{app_name}.so")), b"\x7fELFfake")
       .unwrap();
-    std::fs::write(app_dir.join("libdenort.so"), b"\x7fELFfake").unwrap();
     std::fs::write(app_dir.join("AppIcon.png"), STUB_ICON_PNG).unwrap();
     app_dir
   }
@@ -6602,6 +6731,7 @@ def456  other.zip
       codesign_identity: None,
       inspect_renderer: None,
       compress: None,
+      exclude_unused_npm: false,
     }
   }
 
@@ -6707,7 +6837,7 @@ def456  other.zip
       paths.push(p);
     }
     assert!(paths.iter().any(|p| p == "usr/lib/myapp/MyApp"));
-    assert!(paths.iter().any(|p| p == "usr/lib/myapp/libdenort.so"));
+    assert!(paths.iter().any(|p| p == "usr/lib/myapp/MyApp.so"));
     assert!(
       paths
         .iter()
@@ -6819,13 +6949,12 @@ def456  other.zip
   fn fake_windows_app_dir(parent: &Path, app_name: &str) -> PathBuf {
     let app_dir = parent.join(app_name);
     std::fs::create_dir_all(&app_dir).unwrap();
-    std::fs::write(
-      app_dir.join(format!("{app_name}.bat")),
-      "@echo off\r\nlaufey.exe --runtime denort.dll %*\r\n",
-    )
-    .unwrap();
-    std::fs::write(app_dir.join("laufey.exe"), b"MZfake-exe").unwrap();
-    std::fs::write(app_dir.join("denort.dll"), b"MZfake-dll").unwrap();
+    // The backend binary is renamed to `<app>.exe` and auto-loads the
+    // co-located `<app>.dll`; there is no `.bat` wrapper.
+    std::fs::write(app_dir.join(format!("{app_name}.exe")), b"MZfake-exe")
+      .unwrap();
+    std::fs::write(app_dir.join(format!("{app_name}.dll")), b"MZfake-dll")
+      .unwrap();
     let locales = app_dir.join("locales");
     std::fs::create_dir_all(&locales).unwrap();
     std::fs::write(locales.join("en-US.pak"), b"pakdata").unwrap();
@@ -6901,17 +7030,16 @@ def456  other.zip
       })
       .collect();
     files.sort_by_key(|f| f.2);
-    assert_eq!(files.len(), 4, "4 files staged: {files:?}");
+    assert_eq!(files.len(), 3, "3 files staged: {files:?}");
     let long_names: Vec<&str> = files
       .iter()
       .map(|(_, name, _)| name.rsplit('|').next().unwrap())
       .collect();
-    assert!(long_names.contains(&"MyApp.bat"));
-    assert!(long_names.contains(&"laufey.exe"));
-    assert!(long_names.contains(&"denort.dll"));
+    assert!(long_names.contains(&"MyApp.exe"));
+    assert!(long_names.contains(&"MyApp.dll"));
     assert!(long_names.contains(&"en-US.pak"));
     let seqs: Vec<i32> = files.iter().map(|f| f.2).collect();
-    assert_eq!(seqs, vec![1, 2, 3, 4], "sequence must be contiguous 1..N");
+    assert_eq!(seqs, vec![1, 2, 3], "sequence must be contiguous 1..N");
 
     // Two components: one for the root dir, one for locales/.
     let comps: Vec<String> = package
@@ -6934,7 +7062,7 @@ def456  other.zip
     // member name is the MSI File key.
     let key_for_dll = files
       .iter()
-      .find(|(_, name, _)| name.ends_with("denort.dll"))
+      .find(|(_, name, _)| name.ends_with("MyApp.dll"))
       .map(|(key, _, _)| key.clone())
       .unwrap();
     let mut cab_bytes = Vec::new();
@@ -7019,8 +7147,8 @@ def456  other.zip
   #[test]
   fn msi_authors_start_menu_shortcut() {
     let tmp = tempfile::tempdir().unwrap();
-    // fake_windows_app_dir stages a `laufey.exe`, which is detected as the
-    // launcher the shortcut points at.
+    // fake_windows_app_dir stages `MyApp.exe`, the renamed backend binary the
+    // shortcut points at.
     let app_dir = fake_windows_app_dir(tmp.path(), "MyApp");
     let msi_path = tmp.path().join("MyApp.msi");
     create_windows_msi(
@@ -7040,9 +7168,9 @@ def456  other.zip
       .collect();
     assert!(dirs.iter().any(|d| d == "ProgramMenuFolder"));
 
-    // Exactly one shortcut, targeting the laufey launcher (`[#fkey]`) with
-    // `--runtime "<app>.dll"` and running from INSTALLDIR — no console window and
-    // no spaced path handed to laufey.
+    // Exactly one shortcut, targeting `<app>.exe` (`[#fkey]`) with no arguments
+    // (it auto-loads the co-located `<app>.dll`) and running from INSTALLDIR —
+    // no console window.
     let shortcuts: Vec<_> = package
       .select_rows(msi::Select::table("Shortcut"))
       .unwrap()
@@ -7050,7 +7178,7 @@ def456  other.zip
     assert_eq!(shortcuts.len(), 1);
     let s = &shortcuts[0];
     assert_eq!(s["Directory_"].as_str(), Some("ProgramMenuFolder"));
-    assert_eq!(s["Arguments"].as_str(), Some("--runtime \"MyApp.dll\""));
+    assert_eq!(s["Arguments"].as_str(), None);
     assert_eq!(s["WkDir"].as_str(), Some("INSTALLDIR"));
     assert!(s["Target"].as_str().unwrap().starts_with("[#"));
 
@@ -7228,16 +7356,18 @@ def456  other.zip
   #[test]
   fn deep_links_windows_writes_registry_script() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("MyApp.bat"), "@echo off\r\n").unwrap();
+    // The launcher is `<bundle-dir-name>.exe`, so the bundle dir must be named
+    // after the app.
+    let bundle = tmp.path().join("MyApp");
+    std::fs::create_dir_all(&bundle).unwrap();
     register_deep_links_windows(
-      tmp.path(),
+      &bundle,
       &["acme".to_string(), "acme-beta".to_string()],
     )
     .unwrap();
 
     let script =
-      std::fs::read_to_string(tmp.path().join("register-deep-links.bat"))
-        .unwrap();
+      std::fs::read_to_string(bundle.join("register-deep-links.bat")).unwrap();
     for scheme in &["acme", "acme-beta"] {
       assert!(
         script
@@ -7245,9 +7375,9 @@ def456  other.zip
         "script should register {scheme}; got:\n{script}"
       );
     }
-    // The protocol handler must point back at the packaged launcher.
+    // The protocol handler must point back at the renamed launcher exe.
     assert!(
-      script.contains("MyApp.bat"),
+      script.contains("MyApp.exe"),
       "handler should invoke the launcher; got:\n{script}"
     );
   }
@@ -7358,5 +7488,50 @@ def456  other.zip
     let err = reserve_app_dir(&path).unwrap_err();
     assert!(err.to_string().contains("a file with that name"));
     assert!(path.exists());
+  }
+
+  // --- desktop.backend config merge (CLI flag > deno.json > webview) ---
+
+  #[test]
+  fn backend_from_deno_json_when_flag_absent() {
+    let mut flags = DesktopFlags {
+      source_file: "main.ts".to_string(),
+      backend: None,
+      ..Default::default()
+    };
+    let config = DesktopConfig {
+      backend: Some("cef".to_string()),
+      ..Default::default()
+    };
+    apply_desktop_config_to_flags(&mut flags, config);
+    assert_eq!(flags.backend.as_deref(), Some("cef"));
+  }
+
+  #[test]
+  fn cli_flag_overrides_deno_json_backend() {
+    let mut flags = DesktopFlags {
+      source_file: "main.ts".to_string(),
+      backend: Some("webview".to_string()),
+      ..Default::default()
+    };
+    let config = DesktopConfig {
+      backend: Some("cef".to_string()),
+      ..Default::default()
+    };
+    apply_desktop_config_to_flags(&mut flags, config);
+    assert_eq!(flags.backend.as_deref(), Some("webview"));
+  }
+
+  #[test]
+  fn backend_defaults_to_none_when_unset() {
+    let mut flags = DesktopFlags {
+      source_file: "main.ts".to_string(),
+      backend: None,
+      ..Default::default()
+    };
+    let config = DesktopConfig::default();
+    apply_desktop_config_to_flags(&mut flags, config);
+    // Left unset; callers fall back to "webview" via unwrap_or("webview").
+    assert_eq!(flags.backend.as_deref(), None);
   }
 }

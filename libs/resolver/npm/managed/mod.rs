@@ -128,7 +128,7 @@ impl<TSys: ManagedNpmResolverSys> ManagedNpmResolver<TSys> {
   ) -> ManagedNpmResolver<TCreateSys> {
     let fs_resolver = match options.maybe_node_modules_path {
       Some(node_modules_folder) => {
-        NpmPackageFsResolver::Local(LocalNpmPackageResolver::new(
+        NpmPackageFsResolver::Local(Box::new(LocalNpmPackageResolver::new(
           options.npm_resolution.clone(),
           options.sys.clone(),
           node_modules_folder,
@@ -136,7 +136,7 @@ impl<TSys: ManagedNpmResolverSys> ManagedNpmResolver<TSys> {
           options.npm_system_info.clone(),
           options.global_virtual_store_lifecycle_scripts.clone(),
           options.global_virtual_store_patch_hashes.clone(),
-        ))
+        )))
       }
       None => NpmPackageFsResolver::Global(GlobalNpmPackageResolver::new(
         options.npm_cache_dir.clone(),

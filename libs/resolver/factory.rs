@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
@@ -1081,6 +1082,13 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     self.jsr_version_resolver.get_or_try_init(|| {
       let minimum_dependency_age_config =
         self.minimum_dependency_age_config()?;
+
+      let (exclude_jsr_pkgs, exclude_jsr_pkg_prefixes) =
+        split_minimum_dependency_age_excludes(
+          &minimum_dependency_age_config.exclude,
+          "jsr:",
+        );
+
       Ok(new_rc(deno_graph::packages::JsrVersionResolver {
         newest_dependency_date_options:
           deno_graph::packages::NewestDependencyDateOptions {
@@ -1089,12 +1097,8 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
               .as_ref()
               .and_then(|d| d.into_option())
               .map(deno_graph::packages::NewestDependencyDate),
-            exclude_jsr_pkgs: minimum_dependency_age_config
-              .exclude
-              .iter()
-              .filter_map(|v| v.strip_prefix("jsr:"))
-              .map(|v| v.into())
-              .collect(),
+            exclude_jsr_pkgs,
+            exclude_jsr_pkg_prefixes,
           },
       }))
     })
@@ -1298,6 +1302,11 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         ),
       };
 
+      let (exclude, exclude_prefixes) = split_minimum_dependency_age_excludes(
+        &minimum_dependency_age_config.exclude,
+        "npm:",
+      );
+
       Ok(new_rc(NpmVersionResolver {
         newest_dependency_date_options:
           deno_npm::resolution::NewestDependencyDateOptions {
@@ -1306,12 +1315,8 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
               .as_ref()
               .and_then(|d| d.into_option())
               .map(deno_npm::resolution::NewestDependencyDate),
-            exclude: minimum_dependency_age_config
-              .exclude
-              .iter()
-              .filter_map(|v| v.strip_prefix("npm:"))
-              .map(|v| v.into())
-              .collect(),
+            exclude,
+            exclude_prefixes,
           },
         link_packages: self
           .workspace_factory
@@ -1445,6 +1450,29 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         == NodeModulesDirMode::Manual,
     )
   }
+}
+
+/// Splits `minimumDependencyAge.exclude` entries with the given scheme
+/// (`npm:` or `jsr:`) into exact package names and package name prefixes
+/// (from trailing `*` wildcard entries like `npm:@scope/*`).
+fn split_minimum_dependency_age_excludes(
+  exclude: &[String],
+  scheme: &str,
+) -> (BTreeSet<PackageName>, Vec<PackageName>) {
+  let mut exact = BTreeSet::new();
+  let mut prefixes = Vec::new();
+  for entry in exclude.iter().filter_map(|v| v.strip_prefix(scheme)) {
+    match entry.strip_suffix('*') {
+      // an empty prefix (from an invalid entry like `npm:*` that a config
+      // diagnostic warns about) would exclude every package
+      Some(prefix) if !prefix.is_empty() => prefixes.push(prefix.into()),
+      Some(_) => {}
+      None => {
+        exact.insert(entry.into());
+      }
+    }
+  }
+  (exact, prefixes)
 }
 
 fn apply_minimum_dependency_age_fallbacks(

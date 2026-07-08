@@ -298,12 +298,15 @@ impl<
       if setup_cache.packages_changed(packages_hash) {
         cleanup_unused_packages(
           sys.as_ref(),
-          &self.root_node_modules_path,
-          &deno_local_registry_dir,
-          &package_partitions,
-          &root_folder_names,
-          global_virtual_store_package_folder_names.as_ref(),
-          &self.system_info,
+          CleanupUnusedPackagesContext {
+            root_node_modules_dir: &self.root_node_modules_path,
+            deno_local_registry_dir: &deno_local_registry_dir,
+            package_partitions: &package_partitions,
+            root_folder_names: &root_folder_names,
+            global_virtual_store_package_folder_names:
+              global_virtual_store_package_folder_names.as_ref(),
+            system_info: &self.system_info,
+          },
           &mut setup_cache,
         );
       }
@@ -1263,6 +1266,7 @@ impl<
           init_cwd: &self.lifecycle_scripts_config.initial_cwd,
           process_state: process_state.as_str(),
           root_node_modules_dir_path: &self.root_node_modules_path,
+          resolve_pkg_folder: None,
           on_ran_pkg_scripts: &|pkg| {
             let path = ran_scripts_file(
               lifecycle_state_dir,
@@ -1490,20 +1494,10 @@ fn clone_dir_recursive_except_node_modules_child_inner(
         remove_to,
       )?;
     } else if file_type.is_file() {
-      sys
-        .fs_copy(&new_from, &new_to)
-        .or_else(|err| {
-          if deno_npm_cache::is_etxtbsy(&err) {
-            // The destination is a hardlink to a currently-executing
-            // binary (ETXTBSY). Remove it to break the hardlink, then
-            // retry the copy.
-            let _ = sys.fs_remove_file(&new_to);
-            sys.fs_copy(&new_from, &new_to)
-          } else {
-            Err(err)
-          }
-        })
-        .map(|_| ())?;
+      // Use a real copy here because patch packages and side-effects cache
+      // entries may be mutated independently from their source.
+      let _ = sys.fs_remove_file(&new_to);
+      sys.fs_copy(&new_from, &new_to).map(|_| ())?;
     }
   }
   Ok(())
@@ -2479,9 +2473,15 @@ fn calculate_packages_hash(
 
   let mut hasher = twox_hash::XxHash64::default();
 
-  // Hash all package IDs (iter_all is deterministic)
-  for package in package_partitions.iter_all() {
-    package.id.hash(&mut hasher);
+  // the order of the packages is non-deterministic (hash map iteration
+  // during resolution traversal), so sort the ids before hashing
+  let mut package_ids = package_partitions
+    .iter_all()
+    .map(|package| &package.id)
+    .collect::<Vec<_>>();
+  package_ids.sort_unstable();
+  for package_id in package_ids {
+    package_id.hash(&mut hasher);
   }
 
   // also hash the packages expected at the root of node_modules so that
@@ -2543,33 +2543,40 @@ fn root_package_folder_names(
 
 /// Cleans up unused packages from the node_modules/.deno directory.
 /// This removes any package folders that are not part of the current resolution.
-fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
-  sys: &TSys,
-  root_node_modules_dir: &Path,
-  deno_local_registry_dir: &Path,
-  package_partitions: &deno_npm::resolution::NpmPackagesPartitioned,
-  root_folder_names: &BTreeSet<String>,
-  global_virtual_store_package_folder_names: Option<
-    &GlobalVirtualStorePackageFolderNames,
-  >,
-  system_info: &NpmSystemInfo,
-  setup_cache: &mut LocalSetupCache<TSys>,
-) {
-  let folder_name = |package: &NpmResolutionPackage| {
+struct CleanupUnusedPackagesContext<'a> {
+  root_node_modules_dir: &'a Path,
+  deno_local_registry_dir: &'a Path,
+  package_partitions: &'a deno_npm::resolution::NpmPackagesPartitioned,
+  root_folder_names: &'a BTreeSet<String>,
+  global_virtual_store_package_folder_names:
+    Option<&'a GlobalVirtualStorePackageFolderNames>,
+  system_info: &'a NpmSystemInfo,
+}
+
+impl CleanupUnusedPackagesContext<'_> {
+  fn package_folder_name(&self, package: &NpmResolutionPackage) -> String {
     package_folder_name_for_package(
       package,
-      global_virtual_store_package_folder_names,
-      system_info,
+      self.global_virtual_store_package_folder_names,
+      self.system_info,
     )
-  };
+  }
+}
+
+fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
+  sys: &TSys,
+  context: CleanupUnusedPackagesContext<'_>,
+  setup_cache: &mut LocalSetupCache<TSys>,
+) {
   // Collect all package folder names that should exist in .deno/
-  let expected_folders: HashSet<_> = package_partitions
+  let expected_folders: HashSet<_> = context
+    .package_partitions
     .iter_all()
-    .map(|package| folder_name(package))
+    .map(|package| context.package_folder_name(package))
     .collect();
 
   // Clean up package folders in .deno/ that are no longer needed
-  if let Ok(entries) = sys.fs_read_dir(deno_local_registry_dir) {
+  if let Ok(entries) = sys.fs_read_dir(context.deno_local_registry_dir) {
     for entry in entries.flatten() {
       let file_name = entry.file_name();
       if let Some(name_str) = file_name.to_str() {
@@ -2579,7 +2586,7 @@ fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
 
         // If this folder is not expected, remove it
         if !expected_folders.contains(name_str) {
-          let path = deno_local_registry_dir.join(file_name);
+          let path = context.deno_local_registry_dir.join(file_name);
           let _ignore = sys.fs_remove_dir_all(&path);
         }
       }
@@ -2587,13 +2594,15 @@ fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
   }
 
   // Build set of package folder names that should exist
-  let keep_names = package_partitions
+  let keep_names = context
+    .package_partitions
     .iter_all()
-    .map(|package| folder_name(package))
+    .map(|package| context.package_folder_name(package))
     .collect::<HashSet<_>>();
 
   // Clean up .deno/node_modules/* symlinks for packages no longer needed
-  let deno_node_modules_dir = deno_local_registry_dir.join("node_modules");
+  let deno_node_modules_dir =
+    context.deno_local_registry_dir.join("node_modules");
   let _ignore = remove_unused_node_modules_symlinks(
     sys,
     &deno_node_modules_dir,
@@ -2608,11 +2617,14 @@ fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
   // be linked at the root. Only direct dependencies and top level packages
   // get a root symlink, so a package that remains in the resolution solely as
   // a transitive dependency must not stay linked at the root (#35083).
-  let root_keep_names =
-    root_folder_names.iter().cloned().collect::<HashSet<_>>();
+  let root_keep_names = context
+    .root_folder_names
+    .iter()
+    .cloned()
+    .collect::<HashSet<_>>();
   let _ignore = remove_unused_node_modules_symlinks(
     sys,
-    root_node_modules_dir,
+    context.root_node_modules_dir,
     &root_keep_names,
     &mut |name, path| {
       setup_cache.remove_root_symlink(name);
@@ -2621,7 +2633,7 @@ fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
   );
 
   // remove the .bin directory entries
-  let bin_dir = root_node_modules_dir.join(".bin");
+  let bin_dir = context.root_node_modules_dir.join(".bin");
   if let Ok(entries) = sys.fs_read_dir(&bin_dir) {
     for entry in entries.flatten() {
       let Ok(file_type) = entry.file_type() else {
@@ -2746,6 +2758,51 @@ mod test {
         .with_dep("package-a")
         .insert("package-b", "package-b@1.0.0")
     );
+  }
+
+  #[test]
+  fn test_calculate_packages_hash_order_independent() {
+    fn pkg(id: &str) -> NpmResolutionPackage {
+      NpmResolutionPackage {
+        id: NpmPackageId::from_serialized(id).unwrap(),
+        copy_index: 0,
+        system: Default::default(),
+        dist: None,
+        dependencies: Default::default(),
+        optional_dependencies: Default::default(),
+        optional_peer_dependencies: Default::default(),
+        extra: None,
+        is_deprecated: false,
+        has_bin: false,
+        has_scripts: false,
+      }
+    }
+
+    let packages = vec![
+      pkg("package-a@1.0.0"),
+      pkg("package-b@2.0.0"),
+      pkg("package-c@3.0.0"),
+    ];
+    let mut reversed_packages = packages.clone();
+    reversed_packages.reverse();
+    let root_folder_names =
+      BTreeSet::from(["package-a".to_string(), "package-b".to_string()]);
+
+    let hash = calculate_packages_hash(
+      &deno_npm::resolution::NpmPackagesPartitioned {
+        packages,
+        copy_packages: Vec::new(),
+      },
+      &root_folder_names,
+    );
+    let reversed_hash = calculate_packages_hash(
+      &deno_npm::resolution::NpmPackagesPartitioned {
+        packages: reversed_packages,
+        copy_packages: Vec::new(),
+      },
+      &root_folder_names,
+    );
+    assert_eq!(hash, reversed_hash);
   }
 
   #[test]

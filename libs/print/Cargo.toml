@@ -1,0 +1,14 @@
+# Copyright 2018-2026 the Deno authors. MIT license.
+[package]
+name = "deno_print"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Print macros that don't panic on broken pipes, for Deno crates"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]

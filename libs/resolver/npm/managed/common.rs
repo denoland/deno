@@ -16,7 +16,7 @@ use url::Url;
 
 #[derive(Debug)]
 pub enum NpmPackageFsResolver<TSys: FsCanonicalize + FsMetadata> {
-  Local(super::local::LocalNpmPackageResolver<TSys>),
+  Local(Box<super::local::LocalNpmPackageResolver<TSys>>),
   Global(super::global::GlobalNpmPackageResolver<TSys>),
 }
 

@@ -1,5 +1,9 @@
 const packagePath =
   "node_modules/@denotest/esm-package-no-default-export-types";
+function normalizePath(path: string) {
+  return path.replaceAll("\\", "/");
+}
+
 const aRealPath = Deno.realPathSync(`a/${packagePath}`);
 const bRealPath = Deno.realPathSync(`b/${packagePath}`);
 
@@ -56,7 +60,7 @@ if (eRealPath.includes("_virtual_store")) {
     `expected hardlisted package to use project store: ${eRealPath}`,
   );
 }
-if (!eRealPath.includes("node_modules/.deno")) {
+if (!normalizePath(eRealPath).includes("node_modules/.deno")) {
   throw new Error(
     `expected hardlisted package to use local .deno store: ${eRealPath}`,
   );
