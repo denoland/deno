@@ -1,0 +1,11 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "init --lib project -y",
+    "output": "init.out"
+  }, {
+    "cwd": "project",
+    "args": "test",
+    "output": "test.out"
+  }]
+}

@@ -1,0 +1,14 @@
+Download http://127.0.0.1:4250/@std/assert/meta.json
+Download http://127.0.0.1:4250/@std/assert/1.0.0_meta.json
+[UNORDERED_START]
+Download http://127.0.0.1:4250/@std/assert/1.0.0/mod.ts
+Download http://127.0.0.1:4250/@std/assert/1.0.0/assert_equals.ts
+Download http://127.0.0.1:4250/@std/assert/1.0.0/assert.ts
+Download http://127.0.0.1:4250/@std/assert/1.0.0/fail.ts
+[UNORDERED_END]
+Check [WILDCARD]mod_test.ts
+running 1 test from ./mod_test.ts
+addTest ... ok ([WILDLINE])
+
+ok | 1 passed | 0 failed ([WILDLINE])
+

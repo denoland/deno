@@ -7269,10 +7269,10 @@ fn init_parse(
       if !args.is_empty() {
         args.insert(0, "init".to_string());
         let inner_matches = init_subcommand().try_get_matches_from_mut(args)?;
-        lib = inner_matches.get_flag("lib");
-        serve = inner_matches.get_flag("serve");
-        empty = inner_matches.get_flag("empty");
-        yes = inner_matches.get_flag("yes");
+        lib |= inner_matches.get_flag("lib");
+        serve |= inner_matches.get_flag("serve");
+        empty |= inner_matches.get_flag("empty");
+        yes |= inner_matches.get_flag("yes");
       }
     }
   } else if use_npm {
@@ -15230,6 +15230,23 @@ mod tests {
           serve: false,
           empty: false,
           yes: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "init", "--lib", "foo", "-y"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          package: None,
+          package_args: vec![],
+          dir: Some(String::from("foo")),
+          lib: true,
+          serve: false,
+          empty: false,
+          yes: true,
         }),
         ..Flags::default()
       }
