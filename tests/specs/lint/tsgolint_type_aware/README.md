@@ -1,30 +1,23 @@
 # tsgolint type-aware lint — manual verification
 
 This fixture exercises type-aware linting via `tsgolint`. It is **not** a CI
-spec test because it requires the external `tsgolint` binary, which is not
-available in CI yet (auto-download is a follow-up). Protocol decoding and rule
-resolution are covered by unit tests in `cli/tools/lint/tsgolint.rs`.
+spec test because the spec-test npm registry is a local mock that does not serve
+the `@oxlint-tsgolint/*` packages the binary is downloaded from. Protocol
+decoding and rule resolution are covered by unit tests in
+`cli/tools/lint/tsgolint.rs`.
 
 ## Run it
 
-1. Obtain a `tsgolint` binary. The reliable way is the prebuilt platform binary
-   shipped on npm (building from source needs tsgolint's codegen, not a plain
-   `go build`):
+From this directory, run the dev build with the feature enabled. The `tsgolint`
+binary is downloaded from npm into `DENO_DIR` automatically on first use (the
+same way `deno bundle` fetches esbuild), so no manual setup is needed:
 
-   ```sh
-   # picks the right @oxlint-tsgolint/<os>-<arch> binary for your platform
-   npm pack @oxlint-tsgolint/darwin-arm64   # or linux-x64, etc.
-   tar xzf oxlint-tsgolint-*.tgz
-   # binary is at package/tsgolint
-   ```
+```sh
+DENO_UNSTABLE_TSGOLINT=1 ../../../../target/debug/deno lint floating.ts
+```
 
-2. From this directory, run the dev build with the feature enabled:
-
-   ```sh
-   DENO_UNSTABLE_TSGOLINT=1 \
-   DENO_TSGOLINT_BIN=/path/to/tsgolint \
-     ../../../../target/debug/deno lint floating.ts
-   ```
+To point at a locally built or hand-downloaded binary instead of the
+auto-downloaded one, set `DENO_TSGOLINT_BIN=/path/to/tsgolint`.
 
 ## Expected
 

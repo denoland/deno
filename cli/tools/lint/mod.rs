@@ -107,6 +107,11 @@ pub async fn lint(
       compiler_options_resolver,
     )?
   } else {
+    let maybe_tsgolint_bin = if tsgolint::is_enabled() {
+      Some(tsgolint::ensure_tsgolint(&factory).await?)
+    } else {
+      None
+    };
     let mut linter = WorkspaceLinter::new(
       factory.caches()?.clone(),
       lint_rule_provider,
@@ -114,6 +119,7 @@ pub async fn lint(
       compiler_options_resolver.clone(),
       cli_options.start_dir.clone(),
       &workspace_lint_options,
+      maybe_tsgolint_bin,
     );
     let paths_with_options_batches =
       resolve_paths_with_options_batches(cli_options, &lint_flags)?;
@@ -171,6 +177,11 @@ async fn lint_with_watch_inner(
     };
   }
 
+  let maybe_tsgolint_bin = if tsgolint::is_enabled() {
+    Some(tsgolint::ensure_tsgolint(&factory).await?)
+  } else {
+    None
+  };
   let mut linter = WorkspaceLinter::new(
     factory.caches()?.clone(),
     factory.lint_rule_provider().await?,
@@ -178,6 +189,7 @@ async fn lint_with_watch_inner(
     factory.compiler_options_resolver()?.clone(),
     cli_options.start_dir.clone(),
     &cli_options.resolve_workspace_lint_options(&lint_flags)?,
+    maybe_tsgolint_bin,
   );
   for paths_with_options in paths_with_options_batches {
     linter
@@ -264,6 +276,9 @@ struct WorkspaceLinter {
   workspace_module_graph: Option<WorkspaceModuleGraphFuture>,
   has_error: Arc<AtomicFlag>,
   file_count: usize,
+  // Path to the tsgolint binary for type-aware linting, resolved (and
+  // downloaded) once up front. `None` when type-aware linting is disabled.
+  maybe_tsgolint_bin: Option<PathBuf>,
 }
 
 impl WorkspaceLinter {
@@ -274,6 +289,7 @@ impl WorkspaceLinter {
     compiler_options_resolver: Arc<CompilerOptionsResolver>,
     workspace_dir: Arc<WorkspaceDirectory>,
     workspace_options: &WorkspaceLintOptions,
+    maybe_tsgolint_bin: Option<PathBuf>,
   ) -> Self {
     let reporter_lock =
       Arc::new(Mutex::new(create_reporter(workspace_options.reporter_kind)));
@@ -287,6 +303,7 @@ impl WorkspaceLinter {
       workspace_module_graph: None,
       has_error: Default::default(),
       file_count: 0,
+      maybe_tsgolint_bin,
     }
   }
 
@@ -362,9 +379,9 @@ impl WorkspaceLinter {
 
     // Type-aware linting (unstable): run tsgolint once over the whole batch
     // up front; the per-file external_linter callback looks up the results.
-    let maybe_tsgolint = if tsgolint::is_enabled() {
+    let maybe_tsgolint = if let Some(bin) = &self.maybe_tsgolint_bin {
       let rules = tsgolint::resolve_rules(&rules_config);
-      match tsgolint::run(&member_dir, &paths, rules) {
+      match tsgolint::run(bin, &member_dir, &paths, rules) {
         Ok(results) => Some(Arc::new(results)),
         Err(err) => {
           log::warn!("Failed to run type-aware lint (tsgolint): {err:#}");

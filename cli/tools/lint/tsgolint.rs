@@ -16,10 +16,12 @@
 //! `ExternalLinterResult` means `// deno-lint-ignore` filtering,
 //! `ban-unused-ignore` and diagnostic sorting are applied to them for free.
 //!
-//! NOTE(unstable): this is gated behind `DENO_UNSTABLE_TSGOLINT=1` and the
-//! binary is located via `DENO_TSGOLINT_BIN`. Auto-downloading the binary and
-//! generating a `tsconfig.json` (so files aren't left "unmatched") are
-//! follow-ups, tracked against the Deno 3 "no fork of tsgo" plan.
+//! NOTE(unstable): this is gated behind `DENO_UNSTABLE_TSGOLINT=1`. The binary
+//! is downloaded automatically from npm on first use (see [`ensure_tsgolint`]),
+//! the same way `deno bundle` fetches esbuild; `DENO_TSGOLINT_BIN` can override
+//! the resolved path. Generating a `tsconfig.json` (so files aren't left
+//! "unmatched") is a follow-up, tracked against the Deno 3 "no fork of tsgo"
+//! plan.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -34,6 +36,8 @@ use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
 use deno_config::deno_json::LintRulesConfig;
 use deno_config::workspace::WorkspaceDirectoryRc;
+use deno_core::anyhow;
+use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -41,7 +45,15 @@ use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::diagnostic::LintDiagnosticDetails;
 use deno_lint::diagnostic::LintDiagnosticRange;
 use deno_lint::diagnostic::LintDocsUrl;
+use deno_npm::registry::NpmRegistryApi;
+use deno_semver::package::PackageNv;
 use serde::Deserialize;
+
+use crate::factory::CliFactory;
+
+/// Version of the `tsgolint` binary (npm `oxlint-tsgolint`) to download. Kept in
+/// sync with the type-aware rules Deno knows about in [`ALL_RULES`].
+pub const TSGOLINT_VERSION: &str = "0.24.0";
 
 /// Type-aware rules enabled by default when tsgolint is turned on. A
 /// conservative, high-signal subset of what tsgolint implements. The full set
@@ -230,6 +242,7 @@ impl TsgolintResults {
 /// (it can't type-check them), so they simply produce no type-aware
 /// diagnostics.
 pub fn run(
+  bin: &Path,
   member_dir: &WorkspaceDirectoryRc,
   paths: &[PathBuf],
   rules: Vec<String>,
@@ -238,7 +251,6 @@ pub fn run(
     return Ok(TsgolintResults::default());
   }
 
-  let bin = resolve_bin()?;
   let cwd = deno_path_util::url_to_file_path(member_dir.dir_url())?;
 
   let file_paths: Vec<String> =
@@ -258,7 +270,7 @@ pub fn run(
   });
   let payload_bytes = serde_json::to_vec(&payload)?;
 
-  let mut child = Command::new(&bin)
+  let mut child = Command::new(bin)
     .arg("headless")
     .current_dir(&cwd)
     .stdin(Stdio::piped())
@@ -348,16 +360,155 @@ fn parse_frames(
   })
 }
 
-fn resolve_bin() -> Result<PathBuf, AnyError> {
+/// npm platform target for the current host, matching the
+/// `@oxlint-tsgolint/<target>` optional-dependency packages.
+fn tsgolint_platform() -> Result<&'static str, AnyError> {
+  Ok(match (std::env::consts::ARCH, std::env::consts::OS) {
+    ("x86_64", "linux") => "linux-x64",
+    ("aarch64", "linux") => "linux-arm64",
+    ("x86_64", "macos") => "darwin-x64",
+    ("aarch64", "macos") => "darwin-arm64",
+    ("x86_64", "windows") => "win32-x64",
+    ("aarch64", "windows") => "win32-arm64",
+    (arch, os) => bail!(
+      "type-aware linting (tsgolint) is not supported on this platform: {os} {arch}"
+    ),
+  })
+}
+
+/// Resolve the path to the tsgolint binary, downloading it from npm on first
+/// use (into `DENO_DIR`, like `deno bundle` does for esbuild). Setting
+/// `DENO_TSGOLINT_BIN` overrides this with an explicit path.
+pub async fn ensure_tsgolint(
+  factory: &CliFactory,
+) -> Result<PathBuf, AnyError> {
   if let Ok(p) = std::env::var("DENO_TSGOLINT_BIN")
     && !p.is_empty()
   {
     return Ok(PathBuf::from(p));
   }
-  bail!(
-    "tsgolint binary not found. Set DENO_TSGOLINT_BIN to the path of a \
-     tsgolint executable to use type-aware linting."
-  )
+
+  let target = tsgolint_platform()?;
+  let deno_dir = factory.deno_dir()?;
+  let mut bin_path = deno_dir
+    .dl_folder_path()
+    .join(format!("tsgolint-{}", TSGOLINT_VERSION))
+    .join(format!("tsgolint-{}", target));
+  if cfg!(windows) {
+    bin_path.set_extension("exe");
+  }
+
+  if bin_path.exists() {
+    return Ok(bin_path);
+  }
+
+  let installer_factory = factory.npm_installer_factory()?;
+  let npmrc = factory.npmrc()?;
+  let api = installer_factory.registry_info_provider()?;
+  let workspace_link_packages = factory
+    .resolver_factory()?
+    .workspace_factory()
+    .workspace_npm_link_packages()?;
+  let tarball_cache = installer_factory.tarball_cache()?;
+  let npm_cache = factory.npm_cache()?;
+
+  let pkg_name = format!("@oxlint-tsgolint/{}", target);
+  let nv =
+    PackageNv::from_str(&format!("{}@{}", pkg_name, TSGOLINT_VERSION)).unwrap();
+  let mut info = api.package_info(&pkg_name).await?;
+  let version_info = match info.version_info(&nv, &workspace_link_packages.0) {
+    Ok(version_info) => version_info,
+    Err(_) => {
+      api.mark_force_reload();
+      info = api.package_info(&pkg_name).await?;
+      info.version_info(&nv, &workspace_link_packages.0)?
+    }
+  };
+  let Some(dist) = &version_info.dist else {
+    anyhow::bail!(
+      "could not fetch tsgolint binary; download it manually and set \
+       DENO_TSGOLINT_BIN to {}",
+      bin_path.display()
+    );
+  };
+
+  let registry_url = npmrc.get_registry_url(&nv.name);
+  let package_folder =
+    npm_cache.package_folder_for_nv_and_url(&nv, registry_url);
+  let existed = package_folder.exists();
+  if !existed {
+    log::info!("Downloading tsgolint for type-aware linting...");
+    tarball_cache
+      .ensure_package(&nv, dist)
+      .await
+      .with_context(|| {
+        format!(
+          "failed to download tsgolint package tarball {} from {}",
+          nv, dist.tarball
+        )
+      })?;
+  }
+
+  let src = if cfg!(windows) {
+    package_folder.join("tsgolint.exe")
+  } else {
+    package_folder.join("tsgolint")
+  };
+
+  let bin_dir = bin_path.parent().unwrap();
+  std::fs::create_dir_all(bin_dir).with_context(|| {
+    format!("failed to create directory {}", bin_dir.display())
+  })?;
+  // Install the binary atomically: copy to a temporary file in the same
+  // directory and then rename it into place. The rename is atomic, so a
+  // concurrent `deno lint` process never observes (via the `exists()` check
+  // above) and tries to execute a half-written binary, which would otherwise
+  // fail with ETXTBSY ("text file busy") on Linux.
+  let tmp_path = bin_dir.join(format!(".tsgolint-{}.tmp", std::process::id()));
+  std::fs::copy(&src, &tmp_path).with_context(|| {
+    format!(
+      "failed to copy tsgolint binary from {} to {}",
+      src.display(),
+      tmp_path.display()
+    )
+  })?;
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = std::fs::set_permissions(
+      &tmp_path,
+      std::fs::Permissions::from_mode(0o755),
+    );
+  }
+  match std::fs::rename(&tmp_path, &bin_path) {
+    Ok(()) => {}
+    // Another process won the race and installed the binary already; our copy
+    // is redundant, so just discard it.
+    Err(_) if bin_path.exists() => {
+      let _ = std::fs::remove_file(&tmp_path);
+    }
+    Err(err) => {
+      let _ = std::fs::remove_file(&tmp_path);
+      return Err(err).with_context(|| {
+        format!(
+          "failed to move tsgolint binary into place at {}",
+          bin_path.display()
+        )
+      });
+    }
+  }
+
+  if !existed {
+    let _ = std::fs::remove_dir_all(&package_folder).inspect_err(|e| {
+      log::warn!(
+        "failed to remove directory {}: {}",
+        package_folder.display(),
+        e
+      );
+    });
+  }
+
+  Ok(bin_path)
 }
 
 /// Normalize a path to the string form tsgolint reports (absolute, forward

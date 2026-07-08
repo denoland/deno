@@ -1,10 +1,12 @@
 {
   "tests": {
-    // These are ignored in CI because type-aware linting requires the external
-    // `tsgolint` binary, which is not available on CI yet (auto-download is a
-    // follow-up). See README.md for how to run them manually. Protocol decoding
-    // and rule resolution are covered by unit tests in
-    // cli/tools/lint/tsgolint.rs.
+    // Type-aware linting downloads the `tsgolint` binary from npm on first use
+    // (like `deno bundle` does for esbuild), so it works out of the box for
+    // users. These are still ignored in CI: the spec-test npm registry is a
+    // local mock that does not serve the `@oxlint-tsgolint/*` packages, so the
+    // download can't be exercised here. See README.md for how to run them
+    // manually. Protocol decoding and rule resolution are covered by unit tests
+    // in cli/tools/lint/tsgolint.rs.
     "floating": {
       "ignore": true,
       "args": "lint floating.ts",
