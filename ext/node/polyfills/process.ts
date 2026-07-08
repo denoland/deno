@@ -1897,6 +1897,9 @@ internals.__bootstrapNodeProcess = function (
           }
         };
         addSigwinchListener(s);
+        // Node's process stdio streams do not keep the event loop alive on
+        // their own. Pending writes still complete, and users can call ref().
+        s.unref();
       } else {
         s = lazyStreamsMod().createWritableStdioStream(ioStream, name);
       }

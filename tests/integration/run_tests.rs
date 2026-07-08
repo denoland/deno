@@ -3652,6 +3652,24 @@ fn process_stdout_destroy_undestroy_pty() {
     });
 }
 
+#[test]
+fn process_stderr_tty_write_exit() {
+  let deno_exe = util::deno_exe_path();
+  let testdata = util::testdata_path();
+  let env_vars = std::env::vars().collect();
+  let output = util::pty::run_in_pty(
+    deno_exe.as_path(),
+    &["run", "--quiet", "run/process_stderr_tty_write_exit.js"],
+    testdata.as_path(),
+    Some(env_vars),
+    std::time::Duration::from_secs(15),
+  );
+  assert_eq!(output.exit_code, Some(0));
+
+  let output_text = String::from_utf8_lossy(&output.output);
+  assert_contains!(&output_text, "stderr write callback");
+}
+
 // Regression test for https://github.com/denoland/deno/issues/32782
 // Verifies that consecutive readline prompts work (e.g. @inquirer/prompts).
 #[test]
