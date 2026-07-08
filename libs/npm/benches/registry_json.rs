@@ -3,6 +3,7 @@
 use std::hint::black_box;
 use std::path::PathBuf;
 
+use deno_npm::fast_registry_json;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmPackageVersionInfo;
 use divan::Bencher;

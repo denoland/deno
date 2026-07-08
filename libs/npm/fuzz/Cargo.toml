@@ -1,7 +1,7 @@
 # Copyright 2018-2026 the Deno authors. MIT license.
 
 [package]
-name = "fast-registry-json-fuzz"
+name = "deno-npm-fuzz"
 version = "0.0.0"
 edition = "2024"
 publish = false
@@ -10,7 +10,7 @@ publish = false
 cargo-fuzz = true
 
 [dependencies]
-fast-registry-json = { path = ".." }
+deno_npm = { path = ".." }
 libfuzzer-sys = "0.4"
 
 [[bin]]
