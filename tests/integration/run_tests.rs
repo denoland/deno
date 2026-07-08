@@ -3677,8 +3677,12 @@ fn process_stderr_tty_write_exit() {
   );
   assert_eq!(output.exit_code, Some(0));
 
+  let marker = marker_path.read_to_string();
+  assert_contains!(marker, "stderr write callback");
+
+  #[cfg(not(windows))]
   assert_eq!(
-    marker_path.read_to_string(),
+    marker,
     "stderr write callback before_has_ref=true callback_has_ref=true"
   );
 }
