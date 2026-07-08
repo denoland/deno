@@ -1386,64 +1386,20 @@ Deno.test(function canvas2dDrawImageNonFiniteSilent() {
   ctx.drawImage(bitmap, 0, Infinity);
 });
 
-Deno.test(function canvasFilterConstructorValidates() {
-  new CanvasFilter({ name: "gaussianBlur", stdDeviation: 5 });
-  new CanvasFilter({ name: "gaussianBlur", stdDeviation: [1, 2] });
-  new CanvasFilter([
-    { name: "gaussianBlur", stdDeviation: 5 },
-    { name: "dropShadow", dx: 10, dy: 10 },
-  ]);
-  new CanvasFilter({ name: "convolveMatrix", kernelMatrix: [[1]] });
-  new CanvasFilter({ name: "dropShadow", floodColor: "canvas" });
-  new CanvasFilter({ name: "turbulence", stitchTiles: "stitch" });
-  // Unknown filter names are tolerated.
-  new CanvasFilter({ name: "unknownFilter" });
-
-  assertThrows(() => new CanvasFilter({ name: "gaussianBlur" }), TypeError);
-  assertThrows(
-    () => new CanvasFilter({ name: "gaussianBlur", stdDeviation: [1, 2, 3] }),
-    TypeError,
-  );
-  assertThrows(
-    () => new CanvasFilter({ name: "colorMatrix", values: [1, 2, 3] }),
-    TypeError,
-  );
-  assertThrows(
-    () => new CanvasFilter({ name: "convolveMatrix", kernelMatrix: [[], []] }),
-    TypeError,
-  );
-  assertThrows(
-    () => new CanvasFilter({ name: "dropShadow", dx: NaN }),
-    TypeError,
-  );
-  assertThrows(
-    () => new CanvasFilter({ name: "dropShadow", floodColor: "not-a-color" }),
-    TypeError,
-  );
-  assertThrows(
-    () => new CanvasFilter({ name: "turbulence", stitchTiles: "yes" }),
-    TypeError,
-  );
+Deno.test(function canvasFilterGlobalIsNotExposed() {
+  assertStrictEquals("CanvasFilter" in globalThis, false);
 });
 
-Deno.test(function canvasFilterPropertyUnion() {
+Deno.test(function canvas2dFilterPropertyDomString() {
   const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
   assertStrictEquals(ctx.filter, "none");
 
   ctx.filter = "blur(5px)";
   assertStrictEquals(ctx.filter, "blur(5px)");
 
-  const filter = new CanvasFilter({ name: "gaussianBlur", stdDeviation: 5 });
-  ctx.filter = filter;
-  assertStrictEquals(ctx.filter, filter);
-  assertStrictEquals(
-    Object.prototype.toString.call(ctx.filter),
-    "[object CanvasFilter]",
-  );
-
-  // An invalid filter string leaves the current (object) value in place.
+  // An invalid filter string leaves the current value in place.
   ctx.filter = "this string is not a filter";
-  assertStrictEquals(ctx.filter, filter);
+  assertStrictEquals(ctx.filter, "blur(5px)");
 
   ctx.filter = "none";
   assertStrictEquals(ctx.filter, "none");

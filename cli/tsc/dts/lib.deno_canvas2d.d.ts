@@ -208,43 +208,6 @@ declare var TextMetrics: {
 type CanvasImageSource = ImageBitmap | OffscreenCanvas;
 
 /**
- * A filter primitive dictionary accepted by the `CanvasFilter()` constructor
- * and the `beginLayer()` filter option, e.g.
- * `{ name: "gaussianBlur", stdDeviation: 5 }`.
- *
- * @experimental **UNSTABLE**: New API, yet to be vetted.
- * @category Canvas 2D
- */
-interface CanvasFilterInput {
-  name: string;
-  // deno-lint-ignore no-explicit-any
-  [param: string]: any;
-}
-
-/**
- * The **`CanvasFilter`** interface represents a list of filter primitives to
- * apply when drawing, assignable to
- * `OffscreenCanvasRenderingContext2D.filter`.
- *
- * > [!NOTE]
- * > Constructing a `CanvasFilter` only validates the given filter primitives;
- * > filter effects are not applied when rendering yet.
- *
- * @experimental **UNSTABLE**: New API, yet to be vetted.
- * @category Canvas 2D
- */
-interface CanvasFilter {}
-
-/**
- * @experimental **UNSTABLE**: New API, yet to be vetted.
- * @category Canvas 2D
- */
-declare var CanvasFilter: {
-  prototype: CanvasFilter;
-  new (filters: CanvasFilterInput | CanvasFilterInput[]): CanvasFilter;
-};
-
-/**
  * The **`CanvasGradient`** interface represents an opaque object describing a
  * gradient. It is returned by the methods
  * `OffscreenCanvasRenderingContext2D.createLinearGradient()`,
@@ -478,7 +441,7 @@ interface CanvasFilters {
   /**
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/filter)
    */
-  filter: string | CanvasFilter;
+  filter: string;
 }
 
 /**
@@ -705,7 +668,7 @@ interface CanvasState {
   /**
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/beginLayer)
    */
-  beginLayer(options?: BeginLayerOptions | null): void;
+  beginLayer(): void;
   /**
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/endLayer)
    */
@@ -726,20 +689,6 @@ interface CanvasState {
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/save)
    */
   save(): void;
-}
-
-/**
- * Options for the `beginLayer()` method.
- *
- * @experimental **UNSTABLE**: New API, yet to be vetted.
- * @category Canvas 2D
- */
-interface BeginLayerOptions {
-  filter?:
-    | string
-    | CanvasFilter
-    | CanvasFilterInput
-    | CanvasFilterInput[];
 }
 
 /**

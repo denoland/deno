@@ -17,10 +17,24 @@ use vello::kurbo::Point;
 use vello::kurbo::Vec2;
 
 use crate::canvas2d::error::Canvas2DError;
-use crate::canvas2d::filter::to_number_guarded;
 
 pub struct Path2D {
   pub(super) path: RefCell<BezPath>,
+}
+
+/// `ToNumber(v)` guarded by a `TryCatch`: a user `valueOf` may throw, and an
+/// unguarded `number_value` would leave that exception pending on the isolate.
+fn to_number_guarded(
+  scope: &mut v8::PinScope<'_, '_>,
+  value: v8::Local<'_, v8::Value>,
+) -> Option<f64> {
+  v8::tc_scope!(tc, scope);
+  let n = value.number_value(tc);
+  if tc.has_caught() {
+    tc.reset();
+    return None;
+  }
+  n
 }
 
 // SAFETY: Path2D is only accessed from the JS thread (same as context).
