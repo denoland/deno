@@ -52,7 +52,9 @@ struct LspCoverageReporter {
   reports: Arc<std::sync::Mutex<Vec<crate::tools::coverage::CoverageReport>>>,
 }
 
-impl crate::tools::coverage::reporter::CoverageReporter for LspCoverageReporter {
+impl crate::tools::coverage::reporter::CoverageReporter
+  for LspCoverageReporter
+{
   fn done(
     &self,
     _coverage_root: &std::path::Path,
@@ -549,7 +551,7 @@ impl TestRun {
       let reporter = LspCoverageReporter {
         reports: reports.clone(),
       };
-      
+
       let res = crate::tools::coverage::cover_files(
         flags.clone(),
         vec![coverage_dir.path().to_string_lossy().to_string()],
@@ -574,9 +576,9 @@ impl TestRun {
               count: hits as u32,
             });
           }
-          
+
           let text_document = lsp::TextDocumentIdentifier {
-             uri: url_to_uri(&report.url).unwrap(),
+            uri: url_to_uri(&report.url).unwrap(),
           };
 
           coverage_payload.push(lsp_custom::TestRunCoverage {
@@ -586,14 +588,14 @@ impl TestRun {
         }
 
         if !coverage_payload.is_empty() {
-           client.send_test_notification(TestingNotification::Progress(
-             lsp_custom::TestRunProgressParams {
-               id: self.id,
-               message: lsp_custom::TestRunProgressMessage::Coverage {
-                 value: coverage_payload,
-               },
-             }
-           ));
+          client.send_test_notification(TestingNotification::Progress(
+            lsp_custom::TestRunProgressParams {
+              id: self.id,
+              message: lsp_custom::TestRunProgressMessage::Coverage {
+                value: coverage_payload,
+              },
+            },
+          ));
         }
       }
     }
@@ -601,7 +603,10 @@ impl TestRun {
     Ok(())
   }
 
-  fn get_args(&self, coverage_dir: Option<&std::path::Path>) -> Vec<Cow<'_, str>> {
+  fn get_args(
+    &self,
+    coverage_dir: Option<&std::path::Path>,
+  ) -> Vec<Cow<'_, str>> {
     let mut args = vec![Cow::Borrowed("deno"), Cow::Borrowed("test")];
     args.extend(
       self
