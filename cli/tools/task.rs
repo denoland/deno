@@ -16,6 +16,7 @@ use deno_config::workspace::TaskDefinition;
 use deno_config::workspace::TaskOrScript;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceMemberTasksConfig;
+use deno_config::workspace::WorkspaceMemberTasksConfigFile;
 use deno_config::workspace::WorkspaceTasksConfig;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::anyhow;
@@ -44,6 +45,7 @@ use crate::factory::CliFactory;
 use crate::node::CliNodeResolver;
 use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmResolver;
+use crate::sys::CliSys;
 use crate::task_runner;
 use crate::task_runner::run_future_forwarding_signals;
 use crate::util::fs::canonicalize_path;
@@ -158,7 +160,16 @@ pub async fn execute_script(
     let mut tasks_config = start_dir.to_tasks_config()?;
 
     if force_use_pkg_json {
-      tasks_config = tasks_config.with_only_pkg_json()
+      // an `npm run <script>` rewritten to `deno task`, so match npm and
+      // resolve the scripts of the package.json nearest to the cwd — most
+      // importantly the cwd may be a package inside a node_modules directory
+      // (a lifecycle script running `npm run <script>`), which workspace
+      // discovery deliberately never descends into, so `start_dir` points at
+      // the surrounding project whose scripts are unrelated (#35742)
+      tasks_config = match node_modules_pkg_json_tasks_config(cli_options)? {
+        Some(config) => config,
+        None => tasks_config.with_only_pkg_json(),
+      };
     }
 
     let Some(task_name) = &task_flags.task else {
@@ -268,6 +279,46 @@ struct ParallelInfo {
   /// When true, the prefix label includes the package name (`[pkg#task]`) so
   /// identically-named tasks from sibling workspace members stay distinct.
   include_package: bool,
+}
+
+/// When an `npm run <script>` rewritten to `deno task` executes inside a
+/// `node_modules` directory (a dependency's lifecycle script invoking
+/// `npm run`), resolve the tasks from that package's own package.json.
+/// Workspace discovery deliberately never descends into `node_modules`, so
+/// without this the surrounding project's config would be used and the
+/// package's scripts would never be found (#35742).
+fn node_modules_pkg_json_tasks_config(
+  cli_options: &CliOptions,
+) -> Result<Option<WorkspaceTasksConfig>, AnyError> {
+  let initial_cwd = cli_options.initial_cwd();
+  if !initial_cwd
+    .components()
+    .any(|component| component.as_os_str() == "node_modules")
+  {
+    return Ok(None);
+  }
+  let Some(pkg_json) = deno_package_json::PackageJson::load_from_path(
+    &CliSys::default(),
+    None,
+    &initial_cwd.join("package.json"),
+  )?
+  else {
+    return Ok(None);
+  };
+  let Some(scripts) = pkg_json.scripts.clone() else {
+    return Ok(None);
+  };
+  Ok(Some(WorkspaceTasksConfig {
+    root: WorkspaceMemberTasksConfig::default(),
+    member: WorkspaceMemberTasksConfig {
+      deno_json: None,
+      package_json: Some(WorkspaceMemberTasksConfigFile {
+        package_name: pkg_json.name.clone(),
+        folder_url: deno_path_util::url_from_directory_path(initial_cwd)?,
+        tasks: scripts,
+      }),
+    },
+  }))
 }
 
 /// For each task that could run concurrently with at least one other task,
