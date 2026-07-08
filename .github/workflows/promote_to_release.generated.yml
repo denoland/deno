@@ -99,17 +99,6 @@ jobs:
         with:
           token: '${{ secrets.DENOBOT_PAT }}'
           submodules: recursive
-      - name: Authenticate with Google Cloud
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
-        with:
-          project_id: denoland
-          credentials_json: '${{ secrets.GCP_SA_KEY }}'
-          export_environment_variables: true
-          create_credentials_file: true
-      - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
-        with:
-          project_id: denoland
       - name: Install deno
         uses: denoland/setup-deno@667a34cdef165d8d2b2e98dde39547c9daac7282
         with:
@@ -151,5 +140,3 @@ jobs:
 # gagen:pin actions/upload-artifact@v6 = b7c566a772e6b6bfb58ed0dc250532a479d7789f
 # gagen:pin azure/login@v1 = cb79c773a3cfa27f31f25eb3f677781210c9ce3d
 # gagen:pin denoland/setup-deno@v2 = 667a34cdef165d8d2b2e98dde39547c9daac7282
-# gagen:pin google-github-actions/auth@v3 = 7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
-# gagen:pin google-github-actions/setup-gcloud@v3 = aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
