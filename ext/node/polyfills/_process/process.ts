@@ -44,6 +44,10 @@ function arch(): string {
     return "arm64";
   } else if (build.arch == "riscv64gc") {
     return "riscv64";
+  } else if (build.arch == "loongarch64") {
+    return "loong64";
+  } else if (build.arch == "powerpc64le") {
+    return "ppc64";
   } else {
     throw new Error("unreachable");
   }
@@ -200,12 +204,17 @@ const env:
 /**
  * https://nodejs.org/api/process.html#process_process_version
  *
- * This value is hard coded to latest stable release of Node, as
- * some packages are checking it for compatibility. Previously
- * it pointed to Deno version, but that led to incompability
- * with some packages.
+ * This value tracks a stable release of Node, as some packages are
+ * checking it for compatibility. Previously it pointed to Deno version,
+ * but that led to incompability with some packages.
+ *
+ * The `__NODE_VERSION__` token is substituted at snapshot build time with
+ * `NODE_VERSION` from `ext/node/lib.rs` (see `maybe_transpile_source` in
+ * `runtime/transpile.rs`), which is the single source of truth, so the
+ * reported version can never drift from it.
  */
-const version = "v24.2.0";
+const nodeVersion = "__NODE_VERSION__";
+const version = `v${nodeVersion}`;
 
 /**
  * https://nodejs.org/api/process.html#process_process_versions
@@ -216,23 +225,30 @@ const version = "v24.2.0";
  * with some packages. Value of `v8` field is still taken from `Deno.version`.
  */
 const versions = {
-  node: "24.2.0",
-  uv: "1.43.0",
-  zlib: "1.2.11",
-  brotli: "1.0.9",
-  ares: "1.18.1",
-  modules: "108",
-  nghttp2: "1.47.0",
-  napi: "9",
-  llhttp: "6.0.10",
+  node: nodeVersion,
+  uv: "1.52.1",
+  zlib: "1.3.1-e00f703",
+  brotli: "1.2.0",
+  ares: "1.34.6",
+  modules: "147",
+  nghttp2: "1.69.0",
+  // `napi` reflects the N-API version Deno actually implements, not Node's.
+  // It must match NAPI_VERSION in ext/napi/js_native_api.rs.
+  napi: "10",
+  llhttp: "9.4.1",
+  // `openssl` is intentionally NOT bumped to Node's value. Deno's crypto/TLS
+  // stack does not ship OpenSSL 3.5 behavior (e.g. no ML-DSA/ML-KEM, different
+  // TLS alert strings), and npm packages and Node's own test suite feature
+  // detect via `hasOpenSSL()` on this field. Reporting >= 3.2/3.5 here makes
+  // them take code paths Deno cannot satisfy.
   openssl: "3.0.7+quic",
-  cldr: "41.0",
-  icu: "71.1",
-  tz: "2022b",
-  unicode: "14.0",
-  ngtcp2: "0.8.1",
-  nghttp3: "0.7.0",
-  sqlite: "3.49.0",
+  cldr: "48.0",
+  icu: "78.3",
+  tz: "2026b",
+  unicode: "17.0",
+  ngtcp2: "",
+  nghttp3: "",
+  sqlite: "3.53.1",
   // Will be filled when calling "__bootstrapNodeProcess()",
   deno: "",
   v8: "",

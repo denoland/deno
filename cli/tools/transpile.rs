@@ -14,6 +14,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_graph::GraphKind;
 use deno_graph::ModuleGraph;
+use deno_resolver::emit::patch_public_decorator_access_has;
 use deno_terminal::colors;
 use sys_traits::PathsInErrorsExt;
 
@@ -21,7 +22,6 @@ use crate::args::Flags;
 use crate::args::SourceMapMode;
 use crate::args::TranspileFlags;
 use crate::factory::CliFactory;
-use crate::util::display;
 
 pub async fn transpile(
   flags: Arc<Flags>,
@@ -173,14 +173,24 @@ pub async fn transpile(
       &emit_options,
     )?;
 
-    let emitted = transpile_result.into_source();
-    let js_text = &emitted.text;
+    let mut emitted = transpile_result.into_source();
+    patch_public_decorator_access_has(&mut emitted.text);
+    // Skip the newline restoration pass when source maps are requested,
+    // since inserting newlines would shift line numbers in the generated
+    // output without a corresponding adjustment to the mappings.
+    let emitted_text;
+    let js_text = if matches!(source_map_option, SourceMapOption::None) {
+      emitted_text = restore_block_comment_newlines(&emitted.text);
+      &emitted_text
+    } else {
+      &emitted.text
+    };
     let source_map_text = &emitted.source_map;
 
     // Determine output path
     if is_stdout_mode {
       // Single file, no output specified: print to stdout
-      display::write_to_stdout_ignore_sigpipe(js_text.as_bytes())?;
+      deno_print::drop_write_stdout(js_text.as_bytes());
     } else {
       let output_path = maybe_output_path.unwrap();
 
@@ -366,6 +376,152 @@ fn resolve_dts_output_path(
     // No output specified: place next to source file
     Ok(path)
   }
+}
+
+/// SWC's code generator always writes a single space after a block
+/// comment's closing `*/`, regardless of whether the original source had a
+/// newline. For multi-line block comments (typically JSDoc) this collapses
+/// the comment onto the same line as the following statement. This function
+/// walks the emitted source and replaces that single space with a newline
+/// (plus the comment's own leading indentation) when the preceding block
+/// comment spans multiple lines.
+fn restore_block_comment_newlines(input: &str) -> String {
+  let bytes = input.as_bytes();
+  let n = bytes.len();
+  let mut out: Vec<u8> = Vec::with_capacity(n);
+  let mut i = 0;
+
+  // Stack of brace depths at which template-literal substitutions started.
+  // When `}` is reached at the top of the stack, we re-enter the template.
+  let mut template_stack: Vec<u32> = Vec::new();
+  let mut brace_depth: u32 = 0;
+
+  // 0 = code, 1 = single-quote string, 2 = double-quote string,
+  // 3 = template literal.
+  let mut mode: u8 = 0;
+
+  while i < n {
+    let c = bytes[i];
+    match mode {
+      0 => match c {
+        b'\'' => {
+          out.push(c);
+          mode = 1;
+          i += 1;
+        }
+        b'"' => {
+          out.push(c);
+          mode = 2;
+          i += 1;
+        }
+        b'`' => {
+          out.push(c);
+          mode = 3;
+          i += 1;
+        }
+        b'{' => {
+          brace_depth += 1;
+          out.push(c);
+          i += 1;
+        }
+        b'}' => {
+          if template_stack.last() == Some(&brace_depth) {
+            template_stack.pop();
+            mode = 3;
+          }
+          brace_depth = brace_depth.saturating_sub(1);
+          out.push(c);
+          i += 1;
+        }
+        b'/' if i + 1 < n && bytes[i + 1] == b'/' => {
+          // Line comment: copy through end of line.
+          while i < n && bytes[i] != b'\n' {
+            out.push(bytes[i]);
+            i += 1;
+          }
+        }
+        b'/' if i + 1 < n && bytes[i + 1] == b'*' => {
+          // Block comment: copy through `*/`, then maybe restore newline.
+          let start = i;
+          out.push(bytes[i]);
+          out.push(bytes[i + 1]);
+          i += 2;
+          let mut has_newline = false;
+          while i + 1 < n && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+            if bytes[i] == b'\n' {
+              has_newline = true;
+            }
+            out.push(bytes[i]);
+            i += 1;
+          }
+          if i + 1 < n {
+            out.push(b'*');
+            out.push(b'/');
+            i += 2;
+          }
+          // If multi-line and SWC emitted the trailing space, replace it
+          // with a newline + the comment's own indentation. We only act
+          // when the comment is indented by pure whitespace on its line;
+          // otherwise leave the output untouched to avoid breaking layout.
+          if has_newline && i < n && bytes[i] == b' ' {
+            // Locate the start of the line containing the comment.
+            let mut line_start = start;
+            while line_start > 0 && bytes[line_start - 1] != b'\n' {
+              line_start -= 1;
+            }
+            let indent = &bytes[line_start..start];
+            if indent.iter().all(|&b| b == b' ' || b == b'\t') {
+              out.push(b'\n');
+              out.extend_from_slice(indent);
+              i += 1; // skip the space SWC wrote
+            }
+          }
+        }
+        _ => {
+          out.push(c);
+          i += 1;
+        }
+      },
+      1 | 2 => {
+        let quote = if mode == 1 { b'\'' } else { b'"' };
+        out.push(c);
+        i += 1;
+        if c == b'\\' && i < n {
+          out.push(bytes[i]);
+          i += 1;
+        } else if c == quote {
+          mode = 0;
+        }
+      }
+      3 => {
+        if c == b'\\' && i + 1 < n {
+          out.push(c);
+          out.push(bytes[i + 1]);
+          i += 2;
+        } else if c == b'`' {
+          out.push(c);
+          mode = 0;
+          i += 1;
+        } else if c == b'$' && i + 1 < n && bytes[i + 1] == b'{' {
+          out.push(c);
+          out.push(b'{');
+          brace_depth += 1;
+          template_stack.push(brace_depth);
+          mode = 0;
+          i += 2;
+        } else {
+          out.push(c);
+          i += 1;
+        }
+      }
+      _ => unreachable!(),
+    }
+  }
+
+  // Safety: input is valid UTF-8 and we only branch on ASCII bytes; the
+  // newlines and spaces we insert are ASCII. Multi-byte UTF-8 sequences are
+  // copied byte-for-byte so the output remains valid UTF-8.
+  String::from_utf8(out).expect("post-processed text must remain valid UTF-8")
 }
 
 fn js_extension_for_media_type(media_type: MediaType) -> &'static str {

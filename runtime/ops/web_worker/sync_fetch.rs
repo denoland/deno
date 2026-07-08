@@ -10,7 +10,7 @@ use deno_core::op2;
 use deno_core::url::Url;
 use deno_fetch::FetchError;
 use deno_fetch::data_url::DataUrl;
-use deno_web::BlobStore;
+use deno_web::BlobStoreTrait;
 use http_body_util::BodyExt;
 use hyper::body::Bytes;
 
@@ -100,7 +100,7 @@ pub fn op_worker_sync_fetch(
   // URLs when none of the script URLs use the blob scheme.
   // Also, in which contexts are blob URLs not supported?
   let blob_store = state
-    .try_borrow::<Arc<BlobStore>>()
+    .try_borrow::<Arc<dyn BlobStoreTrait>>()
     .ok_or(SyncFetchErrorKind::BlobUrlsNotSupportedInContext)?
     .clone();
 
@@ -119,6 +119,7 @@ pub fn op_worker_sync_fetch(
         .map(|script| {
           let client = client.clone();
           let blob_store = blob_store.clone();
+          let maybe_main_module_blob = handle.maybe_main_module_blob.clone();
           deno_core::unsync::spawn(async move {
             let script_url = Url::parse(&script)
               .map_err(|_| SyncFetchErrorKind::InvalidScriptUrl)?;
@@ -173,8 +174,11 @@ pub fn op_worker_sync_fetch(
                 (Bytes::from(body), Some(mime_type), script)
               }
               "blob" => {
-                let blob = blob_store
-                  .get_object_url(script_url)
+                let blob = maybe_main_module_blob
+                  .as_ref()
+                  .filter(|(blob_specifier, _)| *blob_specifier == script_url)
+                  .map(|(_, blob)| blob.clone())
+                  .or_else(|| blob_store.get_object_url(script_url))
                   .ok_or(FetchError::BlobNotFound)?;
 
                 let mime_type = mime_type_essence(&blob.media_type);

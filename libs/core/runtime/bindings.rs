@@ -6,6 +6,7 @@ use std::os::raw::c_void;
 use std::path::PathBuf;
 
 use deno_error::JsErrorBox;
+use deno_error::JsErrorClass;
 use url::Url;
 use v8::MapFnTo;
 
@@ -28,10 +29,12 @@ use crate::error::JsStackFrame;
 use crate::error::callsite_fns;
 use crate::error::has_call_site;
 use crate::error::is_instance_of_error;
+use crate::extension_set::LoadedSource;
 use crate::extension_set::LoadedSources;
 use crate::modules::ImportAttributesKind;
 use crate::modules::ModuleImportPhase;
 use crate::modules::ModuleMap;
+use crate::modules::ModuleName;
 use crate::modules::get_requested_module_type_from_attributes;
 use crate::modules::parse_import_attributes;
 use crate::modules::synthetic_module_evaluation_steps;
@@ -178,13 +181,24 @@ pub(crate) fn create_external_references(
   references
 }
 
+/// Result of [`externalize_sources`]: the `v8::OneByteConst` backings, the
+/// original source strings they borrow from (kept alive), and the specifiers of
+/// the externalized `lazy_loaded_js` sources (parallel to the trailing
+/// `original_sources` entries).
+pub(crate) type ExternalizedSources = (
+  Box<[v8::OneByteConst]>,
+  Box<[FastString]>,
+  Box<[ModuleName]>,
+);
+
 /// Combine the snapshotted sources (which may be empty) with the loaded sources, and ensure that
 /// each of the loaded source files passed to this function has a correct `v8::OneByteConst` backing
 /// that can be used for compilation.
 pub(crate) fn externalize_sources(
   sources: &mut LoadedSources,
   snapshot_sources: Vec<&'static [u8]>,
-) -> (Box<[v8::OneByteConst]>, Box<[FastString]>) {
+  externalize_lazy_js: bool,
+) -> ExternalizedSources {
   // This is a complex method partly because we're still waiting on the `Copy` trait on v8::OneByteConst
   // to land.
 
@@ -192,13 +206,34 @@ pub(crate) fn externalize_sources(
   // Because we don't have that trait, we work around it with [usize; 3].
   const INIT_VALUE: MaybeUninit<[usize; 3]> =
     MaybeUninit::<[usize; 3]>::uninit();
-  // Size to match the actual iteration (`js + esm + lazy_esm`). `LoadedSources::len`
-  // also counts `lazy_loaded_js`, which are *not* externalized here — counting them
-  // leaves trailing uninitialized slots that later flow into V8's external_references
-  // list and shift snapshot indices, causing miscompilation of JIT'd code that
-  // references those entries.
-  let sources_count =
-    sources.js.len() + sources.esm.len() + sources.lazy_esm.len();
+  // Size to match the actual iteration below. The count must EXACTLY match the
+  // number of sources iterated (and the `source_count` recorded into the
+  // snapshot sidecar in `jsruntime`): a mismatch leaves trailing uninitialized
+  // slots that flow into V8's external_references list and shift snapshot
+  // indices, causing miscompilation of JIT'd code that references those
+  // entries. `lazy_loaded_js` is only externalized when building the snapshot
+  // (`externalize_lazy_js`); at runtime those scripts stay as static
+  // registrations and consumed ones re-link via `snapshot_sources`.
+  let sources_count = sources.js.len()
+    + sources.esm.len()
+    + sources.lazy_esm.len()
+    + if externalize_lazy_js {
+      sources.lazy_js.len()
+    } else {
+      0
+    };
+  // Record the externalized `lazy_loaded_js` specifiers in iteration order
+  // (these become the trailing entries of `original_sources`). `snapshot()`
+  // uses them to drop non-consumed scripts' bytes from the sidecar.
+  let lazy_js_specifiers: Box<[ModuleName]> = if externalize_lazy_js {
+    sources
+      .lazy_js
+      .iter()
+      .map(|s| s.specifier.try_clone().unwrap())
+      .collect()
+  } else {
+    Box::default()
+  };
   let externals =
     vec![INIT_VALUE; sources_count + snapshot_sources.len()].into_boxed_slice();
 
@@ -208,7 +243,8 @@ pub(crate) fn externalize_sources(
   // SAFETY: We are creating `v8::OneByteConst`s here for each of the input sources. Because
   // we keep the original source alive, we can safely make a `v8::OneByteConst` from _any_
   // source type. We'll make this lifetime static elsewhere in the code so we can safely
-  // use it with v8 strings.
+  // use it with v8 strings. These setup sources are ASCII; debug builds retain V8's
+  // checked constructor for that invariant.
   unsafe {
     let mut externals: Box<[v8::OneByteConst]> = std::mem::transmute(externals);
 
@@ -218,21 +254,34 @@ pub(crate) fn externalize_sources(
     let offset = 0;
     for (index, source) in snapshot_sources.iter().enumerate() {
       externals[index + offset] =
-        FastStaticString::create_external_onebyte_const(source);
+        FastStaticString::create_external_onebyte_const_unchecked_in_release(
+          source,
+        );
     }
 
     // Next, add the non-snapshot sources. For each source file, we swap its `code`
     // member to use this new external string. Note that this is only safe because
     // we keep the original source alive.
+    //
+    // Iterate `js + esm + lazy_esm` always, plus `lazy_js` only when building the
+    // snapshot. The empty slice keeps the iterator type identical in both arms.
+    let lazy_js: &mut [LoadedSource] = if externalize_lazy_js {
+      &mut sources.lazy_js
+    } else {
+      &mut []
+    };
+    let source_iter = sources
+      .js
+      .iter_mut()
+      .chain(sources.esm.iter_mut())
+      .chain(sources.lazy_esm.iter_mut())
+      .chain(lazy_js.iter_mut());
     let offset = snapshot_sources.len();
-    for (index, source) in sources.into_iter().enumerate() {
+    for (index, source) in source_iter.enumerate() {
       externals[index + offset] =
-        FastStaticString::create_external_onebyte_const(std::mem::transmute::<
-          &[u8],
-          &[u8],
-        >(
-          source.code.as_bytes(),
-        ));
+        FastStaticString::create_external_onebyte_const_unchecked_in_release(
+          std::mem::transmute::<&[u8], &[u8]>(source.code.as_bytes()),
+        );
       let ptr = &externals[index + offset] as *const v8::OneByteConst;
       let original_source = std::mem::replace(
         &mut source.code,
@@ -241,7 +290,11 @@ pub(crate) fn externalize_sources(
       original_sources.push(original_source)
     }
 
-    (externals, original_sources.into_boxed_slice())
+    (
+      externals,
+      original_sources.into_boxed_slice(),
+      lazy_js_specifiers,
+    )
   }
 }
 
@@ -385,6 +438,7 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
     "Deno.core.setUpAsyncStub",
   );
 
+  let prototype_key = v8::String::new(scope, "prototype").unwrap();
   let undefined = v8::undefined(scope);
   let mut index = 0;
 
@@ -412,48 +466,17 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
 
     let key = decl.name.1.v8_string(scope).unwrap();
 
-    let prototype = tmpl.prototype_template(scope);
     let method_ctxs = &op_ctxs[index..index + decl.methods.len()];
-
     let accessor_store = create_accessor_store(method_ctxs);
 
-    for method in method_ctxs.iter() {
-      // Skip async methods, we are going to register them later.
-      if method.decl.is_async {
-        continue;
-      }
+    if !will_snapshot {
+      let prototype = tmpl.prototype_template(scope);
+      for method in method_ctxs.iter() {
+        // Skip async methods, we are going to register them later.
+        if method.decl.is_async {
+          continue;
+        }
 
-      op_ctx_template_or_accessor(
-        &accessor_store,
-        set_up_async_stub_fn,
-        scope,
-        prototype,
-        tmpl,
-        method,
-        will_snapshot,
-      );
-    }
-
-    index += decl.methods.len();
-
-    let static_method_ctxs = &op_ctxs[index..index + decl.static_methods.len()];
-    for method in static_method_ctxs.iter() {
-      let op_fn = op_ctx_template(
-        scope,
-        method,
-        v8::ConstructorBehavior::Throw,
-        will_snapshot,
-      );
-      let method_key = name_key(scope, &method.decl);
-
-      tmpl.set(method_key, op_fn.into());
-    }
-
-    index += decl.static_methods.len();
-
-    // Register async methods at the end since we need to create the template instance.
-    for method in method_ctxs.iter() {
-      if method.decl.is_async {
         op_ctx_template_or_accessor(
           &accessor_store,
           set_up_async_stub_fn,
@@ -466,6 +489,43 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
       }
     }
 
+    index += decl.methods.len();
+
+    let static_method_ctxs = &op_ctxs[index..index + decl.static_methods.len()];
+    if !will_snapshot {
+      for method in static_method_ctxs.iter() {
+        let op_fn = op_ctx_template(
+          scope,
+          method,
+          v8::ConstructorBehavior::Throw,
+          will_snapshot,
+        );
+        let method_key = name_key(scope, &method.decl);
+
+        tmpl.set(method_key, op_fn.into());
+      }
+    }
+
+    index += decl.static_methods.len();
+
+    if !will_snapshot {
+      let prototype = tmpl.prototype_template(scope);
+      // Register async methods at the end since we need to create the template instance.
+      for method in method_ctxs.iter() {
+        if method.decl.is_async {
+          op_ctx_template_or_accessor(
+            &accessor_store,
+            set_up_async_stub_fn,
+            scope,
+            prototype,
+            tmpl,
+            method,
+            will_snapshot,
+          );
+        }
+      }
+    }
+
     if let Some(e) = (decl.inherits_type_name)() {
       let parent = fn_template_store.get_raw(e).unwrap();
       tmpl.inherit(v8::Local::new(scope, parent));
@@ -473,6 +533,33 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
 
     let op_fn = tmpl.get_function(scope).unwrap();
     op_fn.set_name(key);
+
+    if will_snapshot {
+      let prototype = op_fn
+        .get(scope, prototype_key.into())
+        .and_then(|p| v8::Local::<v8::Object>::try_from(p).ok())
+        .unwrap();
+
+      for method in method_ctxs.iter() {
+        op_ctx_function_or_accessor(
+          &accessor_store,
+          set_up_async_stub_fn,
+          scope,
+          prototype,
+          op_fn,
+          method,
+        );
+      }
+
+      for method in static_method_ctxs.iter() {
+        let method_fn =
+          op_ctx_plain_function(scope, method, v8::ConstructorBehavior::Throw);
+        let method_key = name_key(scope, &method.decl);
+
+        op_fn.set(scope, method_key.into(), method_fn.into());
+      }
+    }
+
     deno_core_ops_obj.set(scope, key.into(), op_fn.into());
 
     let id = (decl.type_name)().to_string();
@@ -481,12 +568,12 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
 
   let op_ctxs = &op_ctxs[index..];
   for op_ctx in op_ctxs {
-    let mut op_fn = op_ctx_function(
-      scope,
-      op_ctx,
-      v8::ConstructorBehavior::Allow,
-      will_snapshot,
-    );
+    let constructor_behavior = op_ctx_constructor_behavior(op_ctx);
+    let mut op_fn = if will_snapshot && !op_ctx.decl.constructable {
+      op_ctx_plain_function(scope, op_ctx, constructor_behavior)
+    } else {
+      op_ctx_function(scope, op_ctx, constructor_behavior, will_snapshot)
+    };
     let key = op_ctx.decl.name_fast.v8_string(scope).unwrap();
 
     // For async ops we need to set them up, by calling `Deno.core.setUpAsyncStub` -
@@ -519,22 +606,23 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
 /// `FunctionTemplate::build` (no `Managed`) and survived the snapshot.
 pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  context: v8::Local<'s, v8::Context>,
+  // `Deno.core.ops` and `Deno.core.setUpAsyncStub`, passed in directly because
+  // `Deno.core` is scrubbed from the public `Deno` after bootstrap and the
+  // deferred caller can no longer read them from the global (see
+  // `snapshotted_fast_op_refs` / `ensure_fast_ops_upgraded`).
+  deno_core_ops_obj: v8::Local<'s, v8::Object>,
+  // The captured-bootstrap clone of `Deno.core.ops` (`capturedCore.ops` in
+  // 01_core.js) that residual ext modules read ops through. The flat-op `.set`s
+  // below replace slots on the ops object, which the shallow clone doesn't see;
+  // mirror them here so residual ext modules get the fast functions too.
+  // (Method/static-method upgrades mutate the shared class objects that the
+  // clone already references, so they need no mirroring.)
+  clone_ops_obj: Option<v8::Local<'s, v8::Object>>,
+  set_up_async_stub_fn: v8::Local<'s, v8::Function>,
   op_ctxs: &[OpCtx],
   op_method_decls: &[OpMethodDecl],
   methods_ctx_offset: usize,
 ) {
-  let global = context.global(scope);
-  let deno_obj = get(scope, global, DENO, "Deno");
-  let deno_core_obj = get(scope, deno_obj, CORE, "Deno.core");
-  let deno_core_ops_obj: v8::Local<v8::Object> =
-    get(scope, deno_core_obj, OPS, "Deno.core.ops");
-  let set_up_async_stub_fn: v8::Local<v8::Function> = get(
-    scope,
-    deno_core_obj,
-    SET_UP_ASYNC_STUB,
-    "Deno.core.setUpAsyncStub",
-  );
   let prototype_key = v8::String::new(scope, "prototype").unwrap();
   let undefined = v8::undefined(scope);
 
@@ -604,8 +692,8 @@ pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
       continue;
     }
 
-    let mut op_fn =
-      op_ctx_function(scope, op_ctx, v8::ConstructorBehavior::Allow, false);
+    let constructor_behavior = op_ctx_constructor_behavior(op_ctx);
+    let mut op_fn = op_ctx_function(scope, op_ctx, constructor_behavior, false);
     let key = op_ctx.decl.name_fast.v8_string(scope).unwrap();
 
     if op_ctx.decl.is_async {
@@ -616,14 +704,98 @@ pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
     }
 
     deno_core_ops_obj.set(scope, key.into(), op_fn.into());
+    if let Some(clone_ops_obj) = clone_ops_obj {
+      clone_ops_obj.set(scope, key.into(), op_fn.into());
+    }
   }
 }
 
+/// Run the deferred fast-call op upgrade exactly once, lazily. Called from the
+/// residual ext-module loaders (`op_lazy_load_esm` / `op_load_ext_script`)
+/// before the loaded module's body captures its op references, so runtime
+/// modules see the fast-call overloads. Programs that never load a residual
+/// module (e.g. `deno run empty.js`) never trigger it, saving the ~0.9ms pass.
+/// No-op during snapshot build / fresh-bind (flag pre-set in `new_inner`).
+/// Read `Deno.core.ops` + `Deno.core.setUpAsyncStub` from the global. Valid
+/// only while `Deno.core` is still present (during `new_inner`, before the
+/// bootstrap scrubs `Deno.core` from the public `Deno`). The deferred upgrade
+/// stashes the result (`ContextState::deferred_fast_ops`) for later use.
+pub(crate) fn snapshotted_fast_op_refs<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  context: v8::Local<'s, v8::Context>,
+) -> (v8::Local<'s, v8::Object>, v8::Local<'s, v8::Function>) {
+  let global = context.global(scope);
+  let deno_obj = get(scope, global, DENO, "Deno");
+  let deno_core_obj = get(scope, deno_obj, CORE, "Deno.core");
+  let deno_core_ops_obj: v8::Local<v8::Object> =
+    get(scope, deno_core_obj, OPS, "Deno.core.ops");
+  let set_up_async_stub_fn: v8::Local<v8::Function> = get(
+    scope,
+    deno_core_obj,
+    SET_UP_ASYNC_STUB,
+    "Deno.core.setUpAsyncStub",
+  );
+  (deno_core_ops_obj, set_up_async_stub_fn)
+}
+
+pub(crate) fn ensure_fast_ops_upgraded(scope: &mut v8::PinScope) {
+  let context_state = JsRealm::state_from_scope(scope);
+  if context_state.fast_ops_upgraded.get() {
+    return;
+  }
+  // Set the flag BEFORE running the upgrade so any reentrant residual load
+  // during the upgrade (which calls back into JS via setUpAsyncStub) no-ops.
+  context_state.fast_ops_upgraded.set(true);
+  let refs = context_state.deferred_fast_ops.borrow().clone();
+  let Some((ops_global, stub_global)) = refs else {
+    return;
+  };
+  let deno_core_ops_obj = v8::Local::new(scope, &ops_global);
+  let set_up_async_stub_fn = v8::Local::new(scope, &stub_global);
+
+  // Residual ext modules read ops through the captured-bootstrap clone of
+  // `core.ops` (`capturedCore.ops` in 01_core.js), a shallow copy that the
+  // flat-op `.set`s below otherwise wouldn't reach. Resolve `<captured>.core
+  // .ops` so the upgrade can mirror the fast functions onto it.
+  let module_map = JsRealm::module_map_from(scope);
+  let clone_ops_obj = module_map.captured_bootstrap().and_then(|g| {
+    let captured = v8::Local::new(scope, &g);
+    let captured = v8::Local::<v8::Object>::try_from(captured).ok()?;
+    let core_key = CORE.v8_string(scope).unwrap();
+    let core = captured.get(scope, core_key.into())?;
+    let core = v8::Local::<v8::Object>::try_from(core).ok()?;
+    let ops_key = OPS.v8_string(scope).unwrap();
+    let ops = core.get(scope, ops_key.into())?;
+    v8::Local::<v8::Object>::try_from(ops).ok()
+  });
+
+  upgrade_snapshotted_ops_with_fast_calls(
+    scope,
+    deno_core_ops_obj,
+    clone_ops_obj,
+    set_up_async_stub_fn,
+    &context_state.op_ctxs,
+    &context_state.op_method_decls,
+    context_state.methods_ctx_offset,
+  );
+}
+
 fn method_needs_fast_call_upgrade(op_ctx: &OpCtx) -> bool {
+  if op_ctx.decl.constructable {
+    return false;
+  }
   if op_ctx.metrics_enabled() {
     op_ctx.decl.fast_fn_with_metrics.is_some()
   } else {
     op_ctx.decl.fast_fn.is_some()
+  }
+}
+
+fn op_ctx_constructor_behavior(op_ctx: &OpCtx) -> v8::ConstructorBehavior {
+  if op_ctx.decl.constructable {
+    v8::ConstructorBehavior::Allow
+  } else {
+    v8::ConstructorBehavior::Throw
   }
 }
 
@@ -681,6 +853,7 @@ fn op_ctx_template_or_accessor<'s, 'i>(
 
       let tmpl = v8::FunctionTemplate::builder_raw(getter_raw)
         .data(external.into())
+        .constructor_behavior(v8::ConstructorBehavior::Throw)
         .build(scope);
       let op_fn = tmpl.get_function(scope).unwrap();
       let method_name = format!("get {}", op_ctx.decl.name_fast);
@@ -701,6 +874,7 @@ fn op_ctx_template_or_accessor<'s, 'i>(
 
       let tmpl = v8::FunctionTemplate::builder_raw(setter_raw)
         .data(external.into())
+        .constructor_behavior(v8::ConstructorBehavior::Throw)
         .length(1)
         .build(scope);
       let op_fn = tmpl.get_function(scope).unwrap();
@@ -720,6 +894,91 @@ fn op_ctx_template_or_accessor<'s, 'i>(
       setter_fn,
       v8::PropertyAttribute::default(),
     );
+  }
+}
+
+fn op_ctx_function_or_accessor<'s, 'i>(
+  accessor_store: &AccessorStore,
+  set_up_async_stub_fn: v8::Local<'s, v8::Function>,
+  scope: &mut v8::PinScope<'s, 'i>,
+  target: v8::Local<'s, v8::Object>,
+  constructor: v8::Local<'s, v8::Function>,
+  op_ctx: &OpCtx,
+) {
+  if !op_ctx.decl.is_accessor() {
+    let op_fn =
+      op_ctx_plain_function(scope, op_ctx, v8::ConstructorBehavior::Throw);
+    let method_key = name_key(scope, &op_ctx.decl);
+    if op_ctx.decl.is_async {
+      let undefined = v8::undefined(scope);
+      let _result = set_up_async_stub_fn
+        .call(
+          scope,
+          undefined.into(),
+          &[method_key.into(), op_fn.into(), constructor.into()],
+        )
+        .unwrap();
+
+      return;
+    }
+
+    target.set(scope, method_key.into(), op_fn.into());
+
+    return;
+  }
+
+  if let Some((named_getter, named_setter)) =
+    accessor_store.get(op_ctx.decl.name)
+  {
+    let should_define = if let Some(getter) = named_getter {
+      std::ptr::eq(*getter, op_ctx)
+    } else if let Some(setter) = named_setter {
+      std::ptr::eq(*setter, op_ctx)
+    } else {
+      false
+    };
+    if !should_define {
+      return;
+    }
+
+    let getter_fn: v8::Local<v8::Value> = if let Some(getter) = named_getter {
+      let op_fn = op_ctx_plain_function_with_length(
+        scope,
+        getter,
+        v8::ConstructorBehavior::Throw,
+        0,
+      );
+      let method_name = format!("get {}", op_ctx.decl.name_fast);
+      let method_name = v8::String::new(scope, method_name.as_str()).unwrap();
+      op_fn.set_name(method_name);
+
+      op_fn.into()
+    } else {
+      v8::undefined(scope).into()
+    };
+
+    let setter_fn: v8::Local<v8::Value> = if let Some(setter) = named_setter {
+      let op_fn = op_ctx_plain_function_with_length(
+        scope,
+        setter,
+        v8::ConstructorBehavior::Throw,
+        1,
+      );
+      let method_name = format!("set {}", op_ctx.decl.name_fast);
+      let method_name = v8::String::new(scope, method_name.as_str()).unwrap();
+      op_fn.set_name(method_name);
+
+      op_fn.into()
+    } else {
+      v8::undefined(scope).into()
+    };
+
+    let key = op_ctx.decl.name_fast.v8_string(scope).unwrap();
+    let mut desc =
+      v8::PropertyDescriptor::new_from_get_set(getter_fn, setter_fn);
+    desc.set_enumerable(true);
+    desc.set_configurable(true);
+    target.define_property(scope, key.into(), &desc).unwrap();
   }
 }
 
@@ -762,6 +1021,7 @@ pub(crate) fn op_ctx_template<'s, 'i>(
   // snapshot deserialization.
   let template = if let Some(fast_function) = fast_fn
     && !will_snapshot
+    && !op_ctx.decl.constructable
   {
     builder.build_fast(scope, &[fast_function])
   } else {
@@ -782,6 +1042,49 @@ fn op_ctx_function<'s, 'i>(
   let template =
     op_ctx_template(scope, op_ctx, constructor_behaviour, will_snapshot);
   let v8fn = template.get_function(scope).unwrap();
+  v8fn.set_name(v8name);
+  v8fn
+}
+
+fn op_ctx_plain_function<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  op_ctx: &OpCtx,
+  constructor_behaviour: v8::ConstructorBehavior,
+) -> v8::Local<'s, v8::Function> {
+  op_ctx_plain_function_with_length(
+    scope,
+    op_ctx,
+    constructor_behaviour,
+    op_ctx.decl.arg_count as i32,
+  )
+}
+
+fn op_ctx_plain_function_with_length<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  op_ctx: &OpCtx,
+  constructor_behaviour: v8::ConstructorBehavior,
+  length: i32,
+) -> v8::Local<'s, v8::Function> {
+  let op_ctx_ptr = op_ctx as *const OpCtx as *const c_void;
+  let external = v8::External::new(scope, op_ctx_ptr as *mut c_void);
+  let slow_fn = if op_ctx.metrics_enabled() {
+    op_ctx.decl.slow_fn_with_metrics
+  } else {
+    op_ctx.decl.slow_fn
+  };
+
+  let v8fn = v8::Function::builder_raw(slow_fn)
+    .data(external.into())
+    .constructor_behavior(constructor_behaviour)
+    .side_effect_type(if op_ctx.decl.no_side_effects {
+      v8::SideEffectType::HasNoSideEffect
+    } else {
+      v8::SideEffectType::HasSideEffect
+    })
+    .length(length)
+    .build(scope)
+    .unwrap();
+  let v8name = op_ctx.decl.name_fast.v8_string(scope).unwrap();
   v8fn.set_name(v8name);
   v8fn
 }
@@ -862,12 +1165,50 @@ pub fn host_import_module_dynamically_callback<'s, 'i>(
 )]
 pub fn host_import_module_with_phase_dynamically_callback<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  _host_defined_options: v8::Local<'s, v8::Data>,
+  host_defined_options: v8::Local<'s, v8::Data>,
   resource_name: v8::Local<'s, v8::Value>,
   specifier: v8::Local<'s, v8::String>,
   phase: v8::ModuleImportPhase,
   import_attributes: v8::Local<'s, v8::FixedArray>,
 ) -> Option<v8::Local<'s, v8::Promise>> {
+  let host_defined_options_kind =
+    crate::runtime::host_defined_options::read_host_defined_options_kind(
+      scope,
+      host_defined_options,
+    );
+
+  // Scripts compiled by `node:vm` without an `importModuleDynamically`
+  // callback tag their host-defined options so that dynamic `import()` at
+  // runtime rejects with `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING` instead
+  // of falling through to the embedder's module loader (which would let
+  // the sandboxed script reach arbitrary modules).
+  if matches!(
+    host_defined_options_kind,
+    Some(
+      crate::runtime::host_defined_options::host_defined_options_kind::VM_DYNAMIC_IMPORT_MISSING,
+    )
+  ) {
+    let resolver = v8::PromiseResolver::new(scope).unwrap();
+    let promise = resolver.get_promise(scope);
+    let exception = vm_dynamic_import_callback_missing_exception(scope);
+    resolver.reject(scope, exception);
+    return Some(promise);
+  }
+
+  if matches!(
+    host_defined_options_kind,
+    Some(
+      crate::runtime::host_defined_options::host_defined_options_kind::VM_DYNAMIC_IMPORT_CALLBACK,
+    )
+  ) {
+    return Some(host_import_module_with_vm_dynamic_import_callback(
+      scope,
+      host_defined_options,
+      specifier,
+      import_attributes,
+    ));
+  }
+
   // NOTE(bartlomieju): will crash for non-UTF-8 specifier
   let specifier_str = specifier
     .to_string(scope)
@@ -903,7 +1244,15 @@ pub fn host_import_module_with_phase_dynamically_callback<'s, 'i>(
       if let Some(validate_import_attributes_cb) =
         &state.validate_import_attributes_cb
       {
-        (validate_import_attributes_cb)(tc_scope, &assertions);
+        // Dynamic imports don't expose a source offset, so line/column are
+        // unavailable here.
+        let context = crate::modules::ImportAttributesContext {
+          referrer: referrer_name_str.clone(),
+          specifier: specifier_str.clone(),
+          line_number: None,
+          column_number: None,
+        };
+        (validate_import_attributes_cb)(tc_scope, &assertions, &context);
       }
     }
 
@@ -958,6 +1307,100 @@ pub fn host_import_module_with_phase_dynamically_callback<'s, 'i>(
   Some(promise_new)
 }
 
+fn host_import_module_with_vm_dynamic_import_callback<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  host_defined_options: v8::Local<'s, v8::Data>,
+  specifier: v8::Local<'s, v8::String>,
+  import_attributes: v8::Local<'s, v8::FixedArray>,
+) -> v8::Local<'s, v8::Promise> {
+  let resolver = v8::PromiseResolver::new(scope).unwrap();
+  let promise = resolver.get_promise(scope);
+
+  let Some(callback_id) =
+    crate::runtime::host_defined_options::read_host_defined_options_key(
+      scope,
+      host_defined_options,
+    )
+  else {
+    let exception = vm_dynamic_import_callback_missing_exception(scope);
+    resolver.reject(scope, exception);
+    return promise;
+  };
+
+  let assertions = parse_import_attributes(
+    scope,
+    import_attributes,
+    ImportAttributesKind::DynamicImport,
+  );
+  let attributes_obj = v8::Object::new(scope);
+  for (key, value) in assertions {
+    let key = v8::String::new(scope, &key).unwrap();
+    let value = v8::String::new(scope, &value).unwrap();
+    attributes_obj.create_data_property(scope, key.into(), value.into());
+  }
+
+  v8::tc_scope!(let tc_scope, scope);
+  let callback = {
+    let state = JsRuntime::state_from(tc_scope);
+    state
+      .vm_dynamic_import_callbacks
+      .borrow()
+      .get(&callback_id)
+      .cloned()
+  };
+
+  let Some(callback) = callback else {
+    let exception = vm_dynamic_import_callback_missing_exception(tc_scope);
+    resolver.reject(tc_scope, exception);
+    return promise;
+  };
+
+  let callback = v8::Local::new(tc_scope, callback);
+  let recv = v8::undefined(tc_scope).into();
+  let args = [specifier.into(), attributes_obj.into()];
+  match callback.call(tc_scope, recv, &args) {
+    Some(value) => {
+      resolver.resolve(tc_scope, value);
+    }
+    None => {
+      if tc_scope.has_caught() {
+        let exception = tc_scope.exception().unwrap();
+        resolver.reject(tc_scope, exception);
+      } else {
+        let exception = vm_dynamic_import_callback_missing_exception(tc_scope);
+        resolver.reject(tc_scope, exception);
+      }
+    }
+  }
+
+  promise
+}
+
+/// Build a Node-style `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING` TypeError.
+/// The error code and message string match Node.js exactly so that user
+/// code switching on `err.code` behaves the same under Deno.
+fn vm_dynamic_import_callback_missing_exception<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+) -> v8::Local<'s, v8::Value> {
+  let message = v8::String::new_external_onebyte_static(
+    scope,
+    b"A dynamic import callback was not specified.",
+  )
+  .unwrap();
+  let exception = v8::Exception::type_error(scope, message);
+  let code_key =
+    v8::String::new_external_onebyte_static(scope, b"code").unwrap();
+  let code_val = v8::String::new_external_onebyte_static(
+    scope,
+    b"ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING",
+  )
+  .unwrap();
+  if let Ok(obj) = v8::Local::<v8::Object>::try_from(exception) {
+    obj.set(scope, code_key.into(), code_val.into());
+  }
+  exception
+}
+
 pub extern "C" fn host_initialize_import_meta_object_callback(
   context: v8::Local<v8::Context>,
   module: v8::Local<v8::Module>,
@@ -969,9 +1412,19 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   let state = JsRealm::state_from_scope(scope);
 
   let module_global = v8::Global::new(scope, module);
-  let name = module_map
-    .get_name_by_module(&module_global)
-    .expect("Module not found");
+  let Some(name) = module_map.get_name_by_module(&module_global) else {
+    // The module is not tracked by deno_core's module map. This is the
+    // happy path for `node:vm` `SourceTextModule`, whose v8::Module is
+    // created directly by the `node:vm` op and never registered. Delegate
+    // to the external hook (set by `node:vm`) if one is registered; if
+    // not, just leave `import.meta` empty rather than panicking — V8 will
+    // hand the empty object to user code.
+    let runtime_state = JsRuntime::state_from(scope);
+    if let Some(cb) = runtime_state.external_module_import_meta_cb.get() {
+      cb(scope, module, meta);
+    }
+    return;
+  };
   let module_type = module_map
     .get_type_by_module(&module_global)
     .expect("Module not found");
@@ -1007,6 +1460,24 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
         scope.throw_exception(exception);
         return;
       }
+    }
+    // Registry of instance exports keyed by module namespace, used so that
+    // Wasm-to-Wasm global imports link against the original
+    // `WebAssembly.Global` object rather than the unwrapped snapshot value.
+    //
+    // Exposed only on `.wasm` modules' `import.meta` (this branch is gated on
+    // `ModuleType::Wasm`), since only the generated `.wasm` source reads it.
+    // The map itself is a per-realm `WeakMap` shared across all of them; Node
+    // keeps the equivalent registry in its translator closure rather than on
+    // `import.meta`, but our synthetic source reads it from `import.meta`.
+    if let Some(m) = state.wasm_instances_map.borrow().as_ref() {
+      let wasm_instances_key = WASM_INSTANCES.v8_string(scope).unwrap();
+      let wasm_instances_val = v8::Local::new(scope, m.clone());
+      meta.create_data_property(
+        scope,
+        wasm_instances_key.into(),
+        wasm_instances_val.into(),
+      );
     }
   }
 
@@ -1111,7 +1582,16 @@ fn import_meta_resolve(
       rv.set(resolved_val);
     }
     Err(err) => {
-      crate::error::throw_js_error_class(scope, &err);
+      // Per the HTML spec, `import.meta.resolve()` throws a `TypeError` when
+      // the specifier can't be resolved, whatever the underlying loader error
+      // class is (e.g. a URL parse error surfaces as a `URIError`). Coerce to
+      // `TypeError` to match the spec. This used to happen implicitly because
+      // `throw_js_error_class` always built a `TypeError`; now that it faithfully
+      // rebuilds the registered class, the coercion has to be explicit.
+      crate::error::throw_js_error_class(
+        scope,
+        &JsErrorBox::type_error(err.get_message().into_owned()),
+      );
     }
   };
 }
@@ -1166,10 +1646,15 @@ fn catch_dynamic_import_promise_error<'s, 'i>(
         }
         _ => v8::Exception::error(scope, message),
       };
-      let code_key = CODE.v8_string(scope).unwrap();
-      let code_value = ERR_MODULE_NOT_FOUND.v8_string(scope).unwrap();
-      let exception_obj = exception.to_object(scope).unwrap();
-      exception_obj.set(scope, code_key.into(), code_value.into());
+      // V8 module linking errors (e.g. a missing named export) are
+      // spec-defined `SyntaxError`s and must not carry a host-defined `code`.
+      // Only genuine resolution/loading failures get `ERR_MODULE_NOT_FOUND`.
+      if name.as_str() != deno_error::builtin_classes::SYNTAX_ERROR {
+        let code_key = CODE.v8_string(scope).unwrap();
+        let code_value = ERR_MODULE_NOT_FOUND.v8_string(scope).unwrap();
+        let exception_obj = exception.to_object(scope).unwrap();
+        exception_obj.set(scope, code_key.into(), code_value.into());
+      }
       scope.throw_exception(exception);
       return;
     }

@@ -9,6 +9,8 @@
     ErrorCaptureStackTrace,
     FunctionPrototypeBind,
     ObjectAssign,
+    ObjectDefineProperties,
+    ObjectDefineProperty,
     ObjectFreeze,
     ObjectFromEntries,
     ObjectKeys,
@@ -64,7 +66,6 @@
     op_memory_usage,
     op_op_names,
     op_print,
-    op_queue_microtask,
     op_ref_op,
     op_resources,
     op_run_microtasks,
@@ -441,30 +442,21 @@
   // Use a wrapper since reportExceptionCallback is defined later.
   __timers.setReportException((e) => reportExceptionCallback(e));
 
-  // Shared buffer for timer next-expiry, backed by ContextState::timer_expiry.
-  // JS writes after processing timers; Rust reads to schedule next wake-up.
-  //   positive = next expiry (has refed timers)
-  //   negative = next expiry negated (only unrefed timers)
-  //   0.0 = no timers remain
-  let timerExpiry;
+  // Called from Rust when the native user timer fires.
+  function __processTimers(now) {
+    return __timers.processTimers(now);
+  }
 
-  // Combined event loop tick: process timers + resolve ops.
-  // Called from Rust with args: (timerNow, promiseId, isOk, res, ...)
-  // timerNow > 0 means timers should be processed; 0 means skip.
-  // Remaining args are completed async op results in triplets.
+  // Resolve completed async ops.
+  // Called from Rust with args: (promiseId, isOk, res, ...)
   //
   // NOTE: This does NOT drain ticks. Under Explicit microtask policy,
   // microtasks from op resolution are deferred. Rust calls
   // __drainNextTickAndMacrotasks separately after this returns,
   // with the correct microtask checkpoint ordering to preserve
   // the nextTick-before-then invariant.
-  function __eventLoopTick(timerNow) {
-    // 1. Process expired timers if the timer deadline fired
-    if (timerNow >= 0) {
-      timerExpiry[0] = __timers.processTimers(timerNow);
-    }
-    // 2. Resolve all completed async ops (args after timerNow)
-    for (let i = 1; i < arguments.length; i += 3) {
+  function __eventLoopTick() {
+    for (let i = 0; i < arguments.length; i += 3) {
       const promiseId = arguments[i];
       const isOk = arguments[i + 1];
       const res = arguments[i + 2];
@@ -563,11 +555,34 @@
     }
   }
 
+  // V8 installs a native `queueMicrotask` on the global object (enabled via the
+  // `--enable-queue-microtask` flag). We wrap it below to route uncaught
+  // exceptions through `reportExceptionCallback`, so we grab a reference to the
+  // native implementation here - it lets us enqueue microtasks without crossing
+  // the op boundary.
+  //
+  // V8 skips experimental globals while snapshotting, so the native function is
+  // only installed at runtime. In a from-scratch runtime it's already on the
+  // global when this module runs (before our wrapper replaces it below), so we
+  // can grab it directly. When restoring from a snapshot it isn't there yet, so
+  // fall back to a lazy capture on first use: our wrapper shadows the native one
+  // as an own property of the global, so momentarily remove our property to
+  // reveal the native one underneath, then restore our wrapper.
+  let nativeQueueMicrotask = window.queueMicrotask;
+  function captureNativeQueueMicrotask() {
+    const wrapper = window.queueMicrotask;
+    delete window.queueMicrotask;
+    nativeQueueMicrotask = window.queueMicrotask;
+    window.queueMicrotask = wrapper;
+    return nativeQueueMicrotask;
+  }
+
   function queueMicrotask(cb) {
     if (typeof cb != "function") {
       throw new TypeError("expected a function");
     }
-    return op_queue_microtask(() => {
+    const enqueue = nativeQueueMicrotask ?? captureNativeQueueMicrotask();
+    return enqueue(() => {
       try {
         cb();
       } catch (error) {
@@ -682,6 +697,7 @@
   const {
     op_close: close,
     op_try_close: tryClose,
+    op_cancel_read: cancelRead,
     op_read: read,
     op_read_all: readAll,
     op_write: write,
@@ -842,50 +858,79 @@
     };
   }
 
-  function propWritableLazyLoaded(getter, loadFn) {
-    let valueIsSet = false;
-    let value;
+  // Marker symbol identifying a lazy-loaded property descriptor. The property
+  // name is filled in by `defineGlobalProperties` at install time so the
+  // setter can mimic data-property [[Set]] semantics (define an own data
+  // property on the receiver) instead of mutating a closure shared across all
+  // receivers - see denoland/deno#34403.
+  const lazyNameSym = Symbol("lazyName");
 
-    return {
+  function propWritableLazyLoaded(getter, loadFn) {
+    const desc = {
       get() {
-        const loadedValue = loadFn();
-        if (valueIsSet) {
-          return value;
-        } else {
-          return getter(loadedValue);
-        }
+        return getter(loadFn());
       },
       set(v) {
-        loadFn();
-        valueIsSet = true;
-        value = v;
+        ObjectDefineProperty(this, desc[lazyNameSym], {
+          value: v,
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        });
       },
       enumerable: true,
       configurable: true,
+      [lazyNameSym]: undefined,
     };
+    return desc;
   }
 
   function propNonEnumerableLazyLoaded(getter, loadFn) {
-    let valueIsSet = false;
-    let value;
-
-    return {
+    const desc = {
       get() {
-        const loadedValue = loadFn();
-        if (valueIsSet) {
-          return value;
-        } else {
-          return getter(loadedValue);
-        }
+        return getter(loadFn());
       },
       set(v) {
-        loadFn();
-        valueIsSet = true;
-        value = v;
+        const name = desc[lazyNameSym];
+        // Match OrdinarySetWithOwnDescriptor semantics for an inherited
+        // writable data property: a direct set on the holder updates the
+        // value in place (preserving enumerable: false), while an inherited
+        // set creates a new enumerable own data property on the receiver.
+        if (ObjectHasOwn(this, name)) {
+          ObjectDefineProperty(this, name, {
+            value: v,
+            writable: true,
+            enumerable: false,
+            configurable: true,
+          });
+        } else {
+          ObjectDefineProperty(this, name, {
+            value: v,
+            writable: true,
+            enumerable: true,
+            configurable: true,
+          });
+        }
       },
       enumerable: false,
       configurable: true,
+      [lazyNameSym]: undefined,
     };
+    return desc;
+  }
+
+  // Like `Object.defineProperties`, but also stamps the property name into any
+  // lazy-loaded descriptors so their setters can target the correct receiver.
+  function defineGlobalProperties(target, props) {
+    const keys = ObjectKeys(props);
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      const desc = props[key];
+      if (desc !== null && typeof desc === "object" && lazyNameSym in desc) {
+        desc[lazyNameSym] = key;
+      }
+    }
+    ObjectDefineProperties(target, props);
   }
 
   function createLazyLoader(specifier) {
@@ -927,6 +972,7 @@
 
   const getAsyncContext = getContinuationPreservedEmbedderData;
   const setAsyncContext = setContinuationPreservedEmbedderData;
+  const kNoAsyncContextRestore = Symbol("Deno.core.noAsyncContextRestore");
 
   function scopeAsyncContext(ctx) {
     const old = getAsyncContext();
@@ -946,6 +992,24 @@
 
     enter(value) {
       const previousContextMapping = getAsyncContext();
+      this.#enterWithPreviousContext(value, previousContextMapping);
+      return previousContextMapping;
+    }
+
+    enterIfActive(value) {
+      const previousContextMapping = getAsyncContext();
+      if (
+        previousContextMapping === null ||
+        previousContextMapping === undefined ||
+        ObjectKeys(previousContextMapping).length === 0
+      ) {
+        return kNoAsyncContextRestore;
+      }
+      this.#enterWithPreviousContext(value, previousContextMapping);
+      return previousContextMapping;
+    }
+
+    #enterWithPreviousContext(value, previousContextMapping) {
       const entry = { id: this.#id };
       const asyncContextMapping = {
         __proto__: null,
@@ -954,7 +1018,6 @@
       };
       this.#data.set(entry, value);
       setAsyncContext(asyncContextMapping);
-      return previousContextMapping;
     }
 
     get() {
@@ -973,14 +1036,12 @@
     internalFdSymbol: Symbol("Deno.internal.fd"),
     resources,
     __eventLoopTick,
+    __processTimers,
     __setTickInfo(buf) {
       tickInfo = buf;
     },
     __setImmediateInfo(buf) {
       immediateInfo = buf;
-    },
-    __setTimerExpiry(buf) {
-      timerExpiry = buf;
     },
     __drainNextTickAndMacrotasks,
     __handleRejections,
@@ -1013,6 +1074,7 @@
     consoleStringify,
     close,
     tryClose,
+    cancelRead,
     read,
     readAll,
     write,
@@ -1042,6 +1104,9 @@
     clearImmediate,
     runImmediates,
     immediateQueue,
+    getActiveImmediateCount() {
+      return immediateInfo[kImmRefCount];
+    },
     kRefed,
     runMicrotasks: () => op_run_microtasks(),
     hasTickScheduled,
@@ -1199,6 +1264,7 @@
     propGetterOnly,
     propWritableLazyLoaded,
     propNonEnumerableLazyLoaded,
+    defineGlobalProperties,
     createLazyLoader,
     loadExtScript,
     createCancelHandle: () => op_cancel_handle(),
@@ -1206,6 +1272,7 @@
     setAsyncContext,
     scopeAsyncContext,
     AsyncVariable,
+    kNoAsyncContextRestore,
   });
 
   const internals = {};

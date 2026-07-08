@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_web"
-version = "0.279.0"
+version = "0.284.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -23,10 +23,10 @@ deno_error.workspace = true
 encoding_rs.workspace = true
 flate2 = { workspace = true, features = ["default"] }
 futures.workspace = true
-nalgebra.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+unicode-normalization.workspace = true
 urlpattern.workspace = true
 uuid = { workspace = true, features = ["serde"] }
 
@@ -45,4 +45,8 @@ harness = false
 
 [[bench]]
 name = "url_ops"
+harness = false
+
+[[bench]]
+name = "text_decoder_stream"
 harness = false

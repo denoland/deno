@@ -8,6 +8,9 @@ import * as dns from "node:dns";
 import * as dnsPromises from "node:dns/promises";
 import util from "node:util";
 import console from "node:console";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
 
 Deno.test("[node/net] close event emits after error event - when host is not found", async () => {
   const socket = net.createConnection(27009, "doesnotexist");
@@ -28,6 +31,24 @@ Deno.test("[node/net] close event emits after error event - when host is not fou
   assertEquals(events, ["error", "close"]);
 });
 
+// Regression for https://github.com/denoland/deno/issues/33879. When a handle
+// exposes `getAsyncId` borrowed from `TCP.prototype` (or any AsyncWrap-derived
+// prototype) but isn't itself a real AsyncWrap, Node silently falls back to a
+// fresh async id rather than throwing. The Deno op2 brand check throws
+// `TypeError: expected AsyncWrap`, so `_getNewAsyncId` has to swallow that.
+Deno.test("[node/net] Socket falls back when handle.getAsyncId has wrong receiver", () => {
+  const { TCP } = require("internal/test/binding").internalBinding("tcp_wrap");
+  const socket = new net.Socket({
+    handle: {
+      getAsyncId: TCP.prototype.getAsyncId,
+    },
+    readable: false,
+    writable: false,
+    // deno-lint-ignore no-explicit-any
+  } as any);
+  socket.destroy();
+});
+
 Deno.test("[node/net] close event emits after error event - when connection is refused", async () => {
   const socket = net.createConnection(27009, "127.0.0.1");
   const events: ("error" | "close")[] = [];
@@ -45,6 +66,35 @@ Deno.test("[node/net] close event emits after error event - when connection is r
 
   // `error` happens before `close`
   assertEquals(events, ["error", "close"]);
+});
+
+// Regression for https://github.com/denoland/deno/issues/34729. The native
+// TCPWrap must expose `setKeepAlive` so `socket.setKeepAlive()` toggles
+// SO_KEEPALIVE on the underlying socket instead of silently no-op'ing.
+// Libraries such as `tedious`/`mssql` enable keepalive right after connecting
+// to keep tunneled connections alive; losing it surfaced as ECONNRESET.
+Deno.test("[node/net] socket.setKeepAlive() reaches the handle", async () => {
+  const server = net.createServer((socket) => {
+    socket.end();
+  });
+  const listening = Promise.withResolvers<void>();
+  server.listen(0, "127.0.0.1", () => listening.resolve());
+  await listening.promise;
+  const { port } = server.address() as net.AddressInfo;
+
+  const done = Promise.withResolvers<void>();
+  const socket = net.connect(port, "127.0.0.1", () => {
+    // The handle backing a connected TCP socket must implement setKeepAlive.
+    // deno-lint-ignore no-explicit-any
+    assertEquals(typeof (socket as any)._handle.setKeepAlive, "function");
+    // Must not throw and must return the socket for chaining (Node API).
+    assertEquals(socket.setKeepAlive(true, 30000), socket);
+    socket.setKeepAlive(false);
+    socket.destroy();
+    done.resolve();
+  });
+  await done.promise;
+  server.close();
 });
 
 Deno.test("[node/net] the port is available immediately after close callback", async () => {

@@ -18,6 +18,7 @@ const {
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
+  SafeWeakMap,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetByteOffset,
@@ -25,6 +26,8 @@ const {
   TypedArrayPrototypeSlice,
   TypeError,
   Uint8Array,
+  WeakMapPrototypeGet,
+  WeakMapPrototypeSet,
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
@@ -42,6 +45,7 @@ const mimesniff = core.loadExtScript("ext:deno_web/01_mimesniff.js");
 const { BlobPrototype } = core.loadExtScript("ext:deno_web/09_file.js");
 const {
   createProxy,
+  createReadableStream,
   errorReadableStream,
   isReadableStreamDisturbed,
   readableStreamClose,
@@ -51,6 +55,20 @@ const {
   readableStreamTee,
   readableStreamThrowIfErrored,
 } = core.loadExtScript("ext:deno_web/06_streams.js");
+
+const noop = () => {};
+const noopAsync = async () => {};
+
+/** @type {WeakMap<ReadableStream<Uint8Array>, number>} */
+const staticBodyLength = new SafeWeakMap();
+
+// Maps a ReadableStream that was materialized from a static body (a string or
+// Uint8Array passed to `new Response(...)` / `new Request(...)`) back to that
+// original static body. This lets `extractBody` recover the static body when a
+// body stream is round-tripped through a new Response/Request without being
+// read, preserving the fast (Content-Length, single-write) response path.
+/** @type {WeakMap<ReadableStream<Uint8Array>, Uint8Array | string>} */
+const staticBodySource = new SafeWeakMap();
 
 /**
  * @param {Uint8Array | string} chunk
@@ -96,12 +114,33 @@ class InnerBody {
         readableStreamDisturb(this.streamOrStatic);
         readableStreamClose(this.streamOrStatic);
       } else {
-        this.streamOrStatic = new ReadableStream({
-          start(controller) {
+        const length = this.length;
+        // Materialize the static body into a stream lazily. With a high water
+        // mark of 0 the body is only encoded/enqueued once the stream is
+        // actually read. The very common pattern of round-tripping a body
+        // through a new Response/Request just to mutate headers recovers the
+        // static body in `extractBody` (below) and never reads this stream, so
+        // the encode is skipped entirely. `createReadableStream` also avoids
+        // the webidl UnderlyingSource conversion `new ReadableStream({...})`
+        // performs.
+        // The cancel algorithm must return a promise (`readableStreamCancel`
+        // calls `.then` on it directly); the pull algorithm returns undefined,
+        // the synchronous completion sentinel understood by the controller's
+        // pull machinery (see `createReadableStream`).
+        const stream = createReadableStream(
+          noop,
+          (controller) => {
             controller.enqueue(chunkToU8(body));
             controller.close();
           },
-        });
+          noopAsync,
+          0,
+        );
+        if (length !== null) {
+          WeakMapPrototypeSet(staticBodyLength, stream, length);
+        }
+        WeakMapPrototypeSet(staticBodySource, stream, body);
+        this.streamOrStatic = stream;
       }
     }
     return this.streamOrStatic;
@@ -471,9 +510,34 @@ function extractBody(object) {
     source = object.toString();
     contentType = "application/x-www-form-urlencoded;charset=UTF-8";
   } else if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, object)) {
-    stream = object;
     if (object.locked || isReadableStreamDisturbed(object)) {
       throw new TypeError("ReadableStream is locked or disturbed");
+    }
+    // Fast path: this stream was materialized from a static body and has not
+    // been read. A common framework pattern (e.g. Hono middleware) is to
+    // reconstruct a response via `new Response(oldResponse.body, oldResponse)`
+    // just to mutate headers. Without recovering the static body, the
+    // reconstructed body would be served through the streaming (chunked) path,
+    // losing Content-Length and the single-write fast response op. Recover the
+    // original static body so the fast path is preserved.
+    //
+    // Only recover when the resulting length matches the original body's
+    // known-length semantics: a string source's byte length is genuinely known
+    // (just deferred to avoid an eager encode), and a Uint8Array source is only
+    // known-length if `staticBodyLength` was recorded for it. Recovering a
+    // Uint8Array whose length was *unknown* (e.g. a chunked request body the
+    // server buffered) would wrongly synthesize a Content-Length when the body
+    // is later sent, so leave those as a stream.
+    const recoveredSource = WeakMapPrototypeGet(staticBodySource, object);
+    const knownLength = WeakMapPrototypeGet(staticBodyLength, object);
+    if (
+      recoveredSource !== undefined &&
+      (typeof recoveredSource === "string" || knownLength !== undefined)
+    ) {
+      source = recoveredSource;
+    } else {
+      stream = object;
+      length = knownLength ?? null;
     }
   } else if (object[webidl.AsyncIterable] === webidl.AsyncIterable) {
     // If the underlying body is a Node `Readable` running in binary mode

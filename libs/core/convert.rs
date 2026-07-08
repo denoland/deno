@@ -1,9 +1,13 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::collections::HashMap;
 use std::convert::Infallible;
+use std::ffi::c_void;
+use std::hash::BuildHasher;
 use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::ops::DerefMut;
+use std::sync::Arc;
 
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
@@ -475,6 +479,99 @@ impl<'s> ToV8<'s> for Box<str> {
   }
 }
 
+impl<'s> ToV8<'s> for Arc<str> {
+  type Error = Infallible;
+  #[inline]
+  fn to_v8<'i>(
+    self,
+    scope: &mut v8::PinScope<'s, 'i>,
+  ) -> Result<v8::Local<'s, v8::Value>, Self::Error> {
+    Ok(v8::String::new(scope, &self).unwrap().into()) // TODO
+  }
+}
+
+/// A wrapper around a raw `*mut c_void` pointer for conversion to/from V8.
+///
+/// A null pointer maps to JS `null`; a non-null pointer maps to a
+/// [`v8::External`].  Round-trips correctly through both [`ToV8`] and
+/// [`FromV8`].
+///
+/// # Safety
+/// The caller is responsible for ensuring the pointer is valid for the
+/// lifetime of any V8 External that wraps it.
+#[repr(transparent)]
+pub struct ExternalPointer(pub *mut c_void);
+
+// SAFETY: Pointer safety is the caller's responsibility.
+unsafe impl Send for ExternalPointer {}
+// SAFETY: Pointer safety is the caller's responsibility.
+unsafe impl Sync for ExternalPointer {}
+
+impl<'a> ToV8<'a> for ExternalPointer {
+  type Error = Infallible;
+
+  fn to_v8<'i>(
+    self,
+    scope: &mut v8::PinScope<'a, 'i>,
+  ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
+    Ok(if self.0.is_null() {
+      v8::null(scope).into()
+    } else {
+      v8::External::new(scope, self.0).into()
+    })
+  }
+}
+
+impl<'a> FromV8<'a> for ExternalPointer {
+  type Error = DataError;
+
+  fn from_v8<'i>(
+    _scope: &mut v8::PinScope<'a, 'i>,
+    value: v8::Local<'a, v8::Value>,
+  ) -> Result<Self, Self::Error> {
+    <Self as FromV8Scopeless>::from_v8(value)
+  }
+}
+
+impl<'a> FromV8Scopeless<'a> for ExternalPointer {
+  fn from_v8(value: v8::Local<'a, v8::Value>) -> Result<Self, Self::Error> {
+    if value.is_null() {
+      Ok(ExternalPointer(std::ptr::null_mut()))
+    } else if let Ok(ext) = v8::Local::<v8::External>::try_from(value) {
+      Ok(ExternalPointer(ext.value()))
+    } else {
+      Err(DataError(v8::DataError::BadType {
+        actual: value.type_repr(),
+        expected: "External",
+      }))
+    }
+  }
+}
+
+impl From<*mut c_void> for ExternalPointer {
+  fn from(p: *mut c_void) -> Self {
+    Self(p)
+  }
+}
+
+impl From<*const c_void> for ExternalPointer {
+  fn from(p: *const c_void) -> Self {
+    Self(p as *mut c_void)
+  }
+}
+
+impl From<ExternalPointer> for *mut c_void {
+  fn from(ep: ExternalPointer) -> Self {
+    ep.0
+  }
+}
+
+impl From<ExternalPointer> for *const c_void {
+  fn from(ep: ExternalPointer) -> Self {
+    ep.0
+  }
+}
+
 const USIZE2X: usize = std::mem::size_of::<usize>() * 2;
 #[derive(PartialEq, Eq, Clone, Debug, Default)]
 pub struct ByteString(SmallVec<[u8; USIZE2X]>);
@@ -929,6 +1026,35 @@ where
   }
 }
 
+impl<'a, K, V, S> ToV8<'a> for HashMap<K, V, S>
+where
+  K: AsRef<str>,
+  V: ToV8<'a>,
+  S: BuildHasher,
+{
+  type Error = JsErrorBox;
+
+  fn to_v8<'i>(
+    self,
+    scope: &mut v8::PinScope<'a, 'i>,
+  ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
+    let len = self.len();
+    let mut keys: Vec<v8::Local<v8::Name>> = Vec::with_capacity(len);
+    let mut values: Vec<v8::Local<v8::Value>> = Vec::with_capacity(len);
+    for (k, v) in self {
+      let key = v8::String::new(scope, k.as_ref())
+        .ok_or_else(|| JsErrorBox::type_error("Failed to create string key"))?;
+      let val = v.to_v8(scope).map_err(JsErrorBox::from_err)?;
+      keys.push(key.into());
+      values.push(val);
+    }
+    let null = v8::null(scope).into();
+    let obj =
+      v8::Object::with_prototype_and_properties(scope, null, &keys, &values);
+    Ok(obj.into())
+  }
+}
+
 impl<'a, T> FromV8<'a> for Vec<T>
 where
   T: FromV8<'a>,
@@ -1084,6 +1210,34 @@ where
       Some(value) => value.to_v8(scope),
       None => Ok(v8::null(scope).into()),
     }
+  }
+}
+
+impl<'s, T> ToV8<'s> for Box<T>
+where
+  T: ToV8<'s>,
+{
+  type Error = T::Error;
+
+  fn to_v8<'i>(
+    self,
+    scope: &mut v8::PinScope<'s, 'i>,
+  ) -> Result<v8::Local<'s, v8::Value>, Self::Error> {
+    (*self).to_v8(scope)
+  }
+}
+
+impl<'s, T> FromV8<'s> for Box<T>
+where
+  T: FromV8<'s>,
+{
+  type Error = T::Error;
+
+  fn from_v8<'i>(
+    scope: &mut v8::PinScope<'s, 'i>,
+    value: v8::Local<'s, v8::Value>,
+  ) -> Result<Self, Self::Error> {
+    T::from_v8(scope, value).map(Box::new)
   }
 }
 
@@ -2038,6 +2192,29 @@ function equal(a, b) {
 
     let from = ToV8::to_v8(TupleSingle(1), scope).unwrap();
     assert_eq!(from.number_value(scope).unwrap(), 1.0);
+  }
+
+  #[test]
+  fn test_box_roundtrip() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    // Box<T> forwards to T's ToV8/FromV8 — JS sees the inner shape, never
+    // a wrapper.
+    let inner: Box<String> = Box::new("hello".to_string());
+    let v = inner.clone().to_v8(scope).unwrap();
+    let s = v8::Local::<v8::String>::try_from(v).unwrap();
+    assert_eq!(s.to_rust_string_lossy(scope), "hello");
+
+    let back: Box<String> = FromV8::from_v8(scope, v).unwrap();
+    assert_eq!(back, inner);
+
+    // Box<Box<T>> collapses on the wire.
+    let nested: Box<Box<u32>> = Box::new(Box::new(42));
+    let v = nested.clone().to_v8(scope).unwrap();
+    assert_eq!(v.number_value(scope).unwrap(), 42.0);
+    let back: Box<Box<u32>> = FromV8::from_v8(scope, v).unwrap();
+    assert_eq!(back, nested);
   }
 
   #[test]

@@ -42,6 +42,34 @@ pub struct SerializedCachedPackageInfo {
     rename = "_deno.etag"
   )]
   pub etag: Option<String>,
+  /// Custom property recording that this cache entry was created from a full
+  /// packument response, so an empty `time` map means the registry provides
+  /// no publish dates rather than that the abbreviated install manifest
+  /// omitted them (see #35761).
+  #[serde(
+    default,
+    skip_serializing_if = "std::ops::Not::not",
+    rename = "_deno.packumentFormat",
+    with = "full_packument_marker"
+  )]
+  pub full_packument: bool,
+}
+
+mod full_packument_marker {
+  pub fn serialize<S: serde::Serializer>(
+    value: &bool,
+    serializer: S,
+  ) -> Result<S::Ok, S::Error> {
+    debug_assert!(*value, "skipped via skip_serializing_if when false");
+    serializer.serialize_str("full")
+  }
+
+  pub fn deserialize<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+  ) -> Result<bool, D::Error> {
+    let value = <String as serde::Deserialize>::deserialize(deserializer)?;
+    Ok(value == "full")
+  }
 }
 
 #[derive(Debug, Clone)]
@@ -174,9 +202,32 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
         cache_item.clone()
       } else {
         let value_creator = MultiRuntimeAsyncValueCreator::new({
-          let downloader = self.clone();
+          // Capture a weak reference here. The value creator is stored in
+          // `memory_cache` (a field of `self`) for the lifetime of this
+          // provider, so capturing a strong `Arc<Self>` would form a reference
+          // cycle (`self` -> `memory_cache` -> value creator -> `self`) that
+          // keeps the whole provider — and every package's cached registry
+          // metadata — alive for the life of the process. Under `deno run
+          // --watch` that leaks one full registry cache per reload (see
+          // denoland/deno#35664). `create_load_future` re-clones a strong
+          // reference for the duration of an in-flight load, which is fine.
+          let downloader = Arc::downgrade(self);
           let name = name.to_string();
-          Box::new(move || downloader.create_load_future(&name))
+          Box::new(move || match downloader.upgrade() {
+            Some(downloader) => downloader.create_load_future(&name),
+            None => {
+              let name = name.clone();
+              async move {
+                Err(Arc::new(JsErrorBox::new(
+                  "Error",
+                  format!(
+                    "npm registry info provider was dropped while loading '{name}'"
+                  ),
+                )))
+              }
+              .boxed_local()
+            }
+          })
         });
         let cache_item = MemoryCacheItem::Pending(Arc::new(value_creator));
         mem_cache.insert(name.to_string(), cache_item.clone());
@@ -242,12 +293,23 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
         || downloader.previously_loaded_packages.lock().contains(&name)
       {
         // attempt to load from the file cache
-        match downloader.cache.load_package_info(&name).await.map_err(JsErrorBox::from_err)? { Some(cached_info) => {
-          if downloader.packument_format == NpmPackumentFormat::Full && cached_info.info.time.is_empty() && !cached_info.info.versions.is_empty() {
+        match downloader.cache.load_package_info(&name, downloader.packument_format).await.map_err(JsErrorBox::from_err)? { Some(cached_info) => {
+          if downloader.packument_format == NpmPackumentFormat::Full
+            && cached_info.info.time.is_empty()
+            && !cached_info.info.versions.is_empty()
+            && !cached_info.full_packument
+          {
             // Cached data is from the abbreviated install manifest which
             // doesn't include the `time` field. Since minimumDependencyAge
             // is configured, we need to re-fetch the full packument.
             // Don't use the etag since it corresponds to the abbreviated format.
+            //
+            // When the cache entry records that it already came from a full
+            // packument response (`full_packument`), an empty `time` map means
+            // the registry provides no publish dates at all, so re-fetching
+            // would find nothing new — doing so anyway made every process
+            // start re-download every packument against such registries
+            // (see #35761).
             Some(SerializedCachedPackageInfo { etag: None, ..cached_info })
           } else {
             return Ok(FutureResult::SavedFsCache(Arc::new(cached_info.info)));
@@ -256,7 +318,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
           None
         }}
       } else {
-        downloader.cache.load_package_info(&name).await.ok().flatten()
+        downloader.cache.load_package_info(&name, downloader.packument_format).await.ok().flatten()
       };
 
       if *downloader.cache.cache_setting() == NpmCacheSetting::Only {
@@ -298,11 +360,25 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
         NpmCacheHttpClientResponse::Bytes(response) => {
           let future_result = spawn_blocking(
             move || -> Result<FutureResult, JsErrorBox> {
-              let mut package_info: SerializedCachedPackageInfo = serde_json::from_slice(&response.bytes).map_err(JsErrorBox::from_err)?;
-              package_info.etag = response.etag;
-              match downloader.cache.save_package_info(&name, &package_info) {
+              let package_info_bytes = downloader.cache
+                .build_package_info_cache_bytes(
+                  &response.bytes,
+                  response.etag.as_deref(),
+                  downloader.packument_format,
+                )?;
+              let package_info =
+                NpmPackageInfo::from_packument_bytes(package_info_bytes)
+                  .map_err(JsErrorBox::generic)?;
+              let package_info_bytes =
+                package_info.lazy_packument_source_bytes().ok_or_else(|| {
+                  JsErrorBox::generic("npm packument was not lazily parsed")
+                })?;
+              match downloader.cache.save_package_info_bytes(
+                &name,
+                package_info_bytes,
+              ) {
                 Ok(()) => {
-                  Ok(FutureResult::SavedFsCache(Arc::new(package_info.info)))
+                  Ok(FutureResult::SavedFsCache(Arc::new(package_info)))
                 }
                 Err(err) => {
                   log::debug!(
@@ -310,7 +386,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
                     name,
                     err
                   );
-                  Ok(FutureResult::ErroredFsCache(Arc::new(package_info.info)))
+                  Ok(FutureResult::ErroredFsCache(Arc::new(package_info)))
                 }
               }
             },
@@ -375,6 +451,14 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
   /// Clears the internal memory cache.
   pub fn clear_memory_cache(&self) {
     self.0.memory_cache.lock().clear();
+  }
+
+  /// Whether only cached registry data may be used (the `--cached-only`
+  /// setting). In this mode fetching missing registry metadata is an error, so
+  /// callers should avoid triggering a re-resolution when the lockfile already
+  /// satisfies the requirements.
+  pub fn is_cached_only(&self) -> bool {
+    *self.0.cache.cache_setting() == NpmCacheSetting::Only
   }
 
   pub async fn maybe_package_info(

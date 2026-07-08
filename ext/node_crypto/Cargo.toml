@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node_crypto"
-version = "0.18.0"
+version = "0.23.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -37,6 +37,7 @@ ed448-goldilocks = { workspace = true }
 elliptic-curve.workspace = true
 faster-hex.workspace = true
 hkdf.workspace = true
+hmac.workspace = true
 k256.workspace = true
 md-5 = { workspace = true, features = ["oid"] }
 md4.workspace = true
@@ -66,4 +67,5 @@ thiserror.workspace = true
 tokio.workspace = true
 x25519-dalek = { workspace = true, features = ["static_secrets"] }
 x509-parser.workspace = true
+yasna = { version = "0.5", features = ["std"] }
 yoke.workspace = true

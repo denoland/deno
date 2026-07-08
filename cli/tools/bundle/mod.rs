@@ -4,6 +4,7 @@ mod externals;
 mod html;
 mod provider;
 mod transform;
+mod wasm;
 
 use std::borrow::Cow;
 use std::fmt::Debug;
@@ -21,13 +22,17 @@ use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
 use deno_bundle_runtime::BundleFormat;
 use deno_bundle_runtime::BundlePlatform;
+use deno_bundle_runtime::PackageHandling;
 use deno_bundle_runtime::SourceMapType;
 use deno_config::workspace::TsTypeLib;
+use deno_core::anyhow::Context as _;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt as _;
 use deno_core::parking_lot::RwLock;
 use deno_core::url::Url;
 use deno_error::JsErrorClass;
+use deno_graph::GraphKind;
+use deno_graph::ModuleGraph;
 use deno_graph::Position;
 use deno_path_util::resolve_url_or_path;
 use deno_resolver::cache::ParsedSourceCache;
@@ -60,12 +65,17 @@ use rolldown_common::ModuleType;
 use rolldown_common::Output;
 use rolldown_common::ResolvedExternal;
 use rolldown_common::SourceMapType as RolldownSourceMapType;
+use rolldown_common::side_effects::HookSideEffects;
 use rolldown_error::Severity;
+use sys_traits::PathsInErrorsExt;
 
 use crate::args::BundleFlags;
 use crate::args::Flags;
+use crate::args::TypeCheckMode;
 use crate::factory::CliFactory;
 use crate::file_fetcher::CliFileFetcher;
+use crate::graph_container::CheckSpecifiersOptions;
+use crate::graph_container::CollectSpecifiersOptions;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
@@ -215,6 +225,7 @@ pub async fn bundle_init(
     parsed_source_cache: factory.parsed_source_cache()?.clone(),
     cjs_tracker: factory.cjs_tracker()?.clone(),
     emitter: factory.emitter()?.clone(),
+    pkg_json_resolver: factory.pkg_json_resolver()?.clone(),
     virtual_modules: None,
     initial_cwd: deno_path_util::url_from_directory_path(
       cli_options.initial_cwd(),
@@ -260,6 +271,29 @@ pub async fn bundle(
     let flags_mut = Arc::make_mut(&mut flags);
     flags_mut.unstable_config.sloppy_imports = true;
   }
+  // `--check[=all]` is documented in `bundle --help`; honour it before we
+  // hand the graph to esbuild so type errors surface alongside (and not
+  // after) the bundle output (denoland/deno#30159).
+  if !matches!(flags.type_check_mode, TypeCheckMode::None) {
+    let check_factory = CliFactory::from_flags(flags.clone());
+    let main_graph_container =
+      check_factory.main_module_graph_container().await?;
+    let specifiers = main_graph_container.collect_specifiers(
+      &bundle_flags.entrypoints,
+      CollectSpecifiersOptions {
+        include_ignored_specified: false,
+      },
+    )?;
+    main_graph_container
+      .check_specifiers(
+        &specifiers,
+        CheckSpecifiersOptions {
+          allow_unknown_media_types: true,
+          ..Default::default()
+        },
+      )
+      .await?;
+  }
   let bundler = bundle_init(flags.clone(), &bundle_flags).await?;
   let init_cwd = bundler.cwd.clone();
   let start = std::time::Instant::now();
@@ -294,6 +328,10 @@ pub async fn bundle(
       Some(&bundler.input),
     )?;
 
+    if bundle_flags.declaration {
+      emit_bundle_declarations(flags.clone(), &bundle_flags, &init_cwd).await?;
+    }
+
     if bundle_flags.output_dir.is_some() || bundle_flags.output_path.is_some() {
       print_finished_message(&output, &output_infos, duration)?;
     }
@@ -304,6 +342,516 @@ pub async fn bundle(
   }
 
   Ok(())
+}
+
+async fn emit_bundle_declarations(
+  flags: Arc<Flags>,
+  bundle_flags: &BundleFlags,
+  init_cwd: &Path,
+) -> Result<(), AnyError> {
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
+  let real_sys = factory.sys();
+  let sys = real_sys.with_paths_in_errors();
+
+  // Resolve entrypoints to specifiers
+  let resolver = factory.resolver().await?;
+  let entrypoint_specifiers =
+    resolve_entrypoints(resolver, init_cwd, &bundle_flags.entrypoints)?;
+
+  // Determine root names with media types
+  let root_names: Vec<(ModuleSpecifier, MediaType)> = entrypoint_specifiers
+    .iter()
+    .map(|s| (s.clone(), MediaType::from_specifier(s)))
+    .collect();
+
+  let specifiers: Vec<ModuleSpecifier> =
+    root_names.iter().map(|(s, _)| s.clone()).collect();
+
+  // Build the module graph for type checking
+  let mut graph = ModuleGraph::new(GraphKind::All);
+  let module_graph_builder = factory.module_graph_builder().await?;
+  module_graph_builder
+    .build_graph_roots_with_npm_resolution(
+      &mut graph,
+      specifiers,
+      crate::graph_util::BuildGraphWithNpmOptions {
+        is_dynamic: false,
+        loader: None,
+        npm_caching: cli_options.default_npm_caching_strategy(),
+      },
+    )
+    .await?;
+
+  // Run type checker to emit declaration files
+  let type_checker = factory.type_checker().await?;
+  let result = type_checker.emit_declarations(
+    Arc::new(graph),
+    root_names,
+    cli_options.ts_type_lib_window(),
+  )?;
+
+  if result.diagnostics.has_diagnostic() {
+    deno_core::anyhow::bail!(
+      "Type checking failed when generating declarations:\n{}",
+      result.diagnostics
+    );
+  }
+
+  // Index emitted .d.ts files by their original source specifier
+  // TSC emits keys like "file:///path/to/file.d.ts" - map them back to source paths
+  let mut dts_by_source: std::collections::HashMap<String, String> =
+    std::collections::HashMap::new();
+  for (file_name, content) in &result.emitted_files {
+    // Map "file:///path/to/mod.d.ts" -> normalized source path
+    if let Ok(specifier) = Url::parse(file_name)
+      && let Ok(file_path) = specifier.to_file_path()
+    {
+      let source_path = file_path.to_string_lossy().to_string();
+      dts_by_source.insert(source_path, content.clone());
+    }
+  }
+
+  // For each entry point, produce a single rolled-up .d.ts
+  for entry_specifier in &entrypoint_specifiers {
+    let entry_path = entry_specifier.to_file_path().map_err(|_| {
+      deno_core::anyhow::anyhow!(
+        "Entry point must be a file: {}",
+        entry_specifier
+      )
+    })?;
+
+    // Find the .d.ts for this entry point
+    let dts_path = to_dts_path(&entry_path);
+    let entry_dts = dts_by_source
+      .get(&dts_path.to_string_lossy().to_string())
+      .ok_or_else(|| {
+        deno_core::anyhow::anyhow!(
+          "No declaration file emitted for entry point: {}",
+          entry_specifier
+        )
+      })?;
+
+    // Flatten: resolve all `export ... from "..."` re-exports by inlining
+    // the referenced declarations from other .d.ts files.
+    let flattened =
+      flatten_declarations(entry_dts, &entry_path, &dts_by_source);
+
+    // Determine output path for the rolled-up .d.ts
+    let dts_output_path = if let Some(ref output) = bundle_flags.output_path {
+      let js_path = init_cwd.join(output);
+      to_dts_path(&js_path)
+    } else if let Some(ref outdir) = bundle_flags.output_dir {
+      let outdir = PathBuf::from(outdir);
+      let stem = entry_path.file_stem().unwrap_or_default();
+      outdir.join(format!("{}.d.ts", stem.to_string_lossy()))
+    } else {
+      to_dts_path(&entry_path)
+    };
+
+    if let Some(parent) = dts_output_path.parent() {
+      sys.fs_create_dir_all(parent).with_context(|| {
+        format!("Failed to create directory {}", parent.display())
+      })?;
+    }
+
+    sys
+      .fs_write(&dts_output_path, flattened.as_bytes())
+      .with_context(|| {
+        format!("Failed to write {}", dts_output_path.display())
+      })?;
+    log::info!(
+      "{} {}",
+      deno_terminal::colors::green("Emit"),
+      dts_output_path.display()
+    );
+  }
+
+  Ok(())
+}
+
+/// Convert a source file path to its corresponding declaration file path.
+///
+/// Mirrors TSC's declaration emit: `.mts`/`.mjs` sources produce `.d.mts`,
+/// `.cts`/`.cjs` produce `.d.cts`, and everything else produces `.d.ts`. Using
+/// the wrong extension here would make the rolled-up output reference a
+/// declaration file that was never emitted.
+fn to_dts_path(source_path: &Path) -> PathBuf {
+  let stem = source_path.file_stem().unwrap_or_default();
+  let parent = source_path.parent().unwrap_or(Path::new(""));
+  let dts_ext = match source_path.extension().and_then(|e| e.to_str()) {
+    Some("mts" | "mjs") => "d.mts",
+    Some("cts" | "cjs") => "d.cts",
+    _ => "d.ts",
+  };
+  parent.join(format!("{}.{}", stem.to_string_lossy(), dts_ext))
+}
+
+/// Join multi-line `export { ... } from "..."` and `import type { ... } from "..."`
+/// statements into single lines so that line-based parsing can handle them.
+fn join_multiline_statements(content: &str) -> String {
+  let mut result = Vec::new();
+  let mut accumulator: Option<String> = None;
+
+  for line in content.lines() {
+    if let Some(ref mut acc) = accumulator {
+      // We're inside a multi-line statement, keep accumulating
+      acc.push(' ');
+      acc.push_str(line.trim());
+      if line.contains(';') {
+        // Statement is complete
+        result.push(acc.clone());
+        accumulator = None;
+      }
+    } else {
+      let trimmed = line.trim();
+      // Detect start of a multi-line export/import that has `{` but no closing `}`
+      let is_export_or_import =
+        trimmed.starts_with("export ") || trimmed.starts_with("import ");
+      if is_export_or_import && trimmed.contains('{') && !trimmed.contains('}')
+      {
+        accumulator = Some(line.trim().to_string());
+      } else {
+        result.push(line.to_string());
+      }
+    }
+  }
+
+  // If there's an unterminated accumulator, flush it
+  if let Some(acc) = accumulator {
+    result.push(acc);
+  }
+
+  result.join("\n")
+}
+
+/// Warn that a relative re-export could not be inlined, so the rolled-up
+/// declaration file keeps a dangling `from "./..."` reference.
+fn warn_dangling_reexport(reexport_path: &str, source_path: &Path) {
+  log::warn!(
+    "{} could not inline re-exported declarations from {:?} in {}; the generated .d.ts will keep a dangling relative reference",
+    deno_terminal::colors::yellow("warning:"),
+    reexport_path,
+    source_path.display(),
+  );
+}
+
+/// Flatten a .d.ts file by resolving all `export ... from "..."` re-exports,
+/// inlining the referenced declarations from other emitted .d.ts files.
+///
+/// This produces a single self-contained .d.ts file with no relative imports.
+fn flatten_declarations(
+  entry_dts_content: &str,
+  entry_source_path: &Path,
+  dts_by_source: &std::collections::HashMap<String, String>,
+) -> String {
+  let entry_dir = entry_source_path.parent().unwrap_or(Path::new(""));
+  let mut output_lines: Vec<String> = Vec::new();
+  // Track which declarations have already been inlined to avoid duplicates
+  let mut inlined_files: std::collections::HashSet<String> =
+    std::collections::HashSet::new();
+
+  // The set of files whose declarations actually get inlined into the output,
+  // i.e. everything transitively reachable from the entry via `export ... from`
+  // chains. An `import ... from "./relative"` line may only be dropped when its
+  // target is in this set; otherwise the imported symbol would have no
+  // declaration in the rolled-up output. (Membership in `dts_by_source` is not
+  // enough: a module can be emitted yet never inlined because nothing
+  // re-exports it.)
+  let reexport_closure =
+    collect_reexport_closure(entry_dts_content, entry_dir, dts_by_source);
+
+  let joined = join_multiline_statements(entry_dts_content);
+
+  for line in joined.lines() {
+    let trimmed = line.trim();
+
+    // Skip amd-module directives
+    if trimmed.starts_with("/// <amd-module") {
+      continue;
+    }
+
+    // Handle: export { Name1, Name2 } from "./relative";
+    // Handle: export type { Name1, Name2 } from "./relative";
+    if let Some(from_path) = extract_reexport_path(trimmed) {
+      // Resolve the relative path to absolute
+      let resolved = resolve_relative_dts_path(entry_dir, &from_path);
+      let resolved_str = resolved.to_string_lossy().to_string();
+
+      if let Some(referenced_dts) = dts_by_source.get(&resolved_str) {
+        if !inlined_files.contains(&resolved_str) {
+          inlined_files.insert(resolved_str.clone());
+          // Inline all declarations from the referenced file
+          inline_declarations(
+            referenced_dts,
+            &resolved,
+            dts_by_source,
+            &reexport_closure,
+            &mut output_lines,
+            &mut inlined_files,
+          );
+        }
+        // The re-export line is replaced by the inlined content
+        continue;
+      }
+      // A relative re-export whose declaration file was not emitted. Keeping
+      // the line leaves a dangling `from "./..."` in the supposedly
+      // self-contained output, so warn rather than silently shipping it.
+      warn_dangling_reexport(&from_path, entry_source_path);
+    }
+
+    // Drop an `import ... from "./relative"` whose target is inlined into the
+    // output (its declarations are already present). A target that is not in
+    // the closure is left as-is rather than deleted, so we never strip an
+    // import whose symbol has no inlined declaration.
+    if let Some(import_path) = extract_import_path(trimmed) {
+      let resolved = resolve_relative_dts_path(entry_dir, &import_path);
+      let resolved_str = resolved.to_string_lossy().to_string();
+      if reexport_closure.contains(&resolved_str) {
+        continue;
+      }
+    }
+
+    output_lines.push(line.to_string());
+  }
+
+  output_lines.join("\n") + "\n"
+}
+
+/// Collect the set of `.d.ts` files (keyed as in `dts_by_source`) that are
+/// transitively reachable from the entry through `export ... from "./relative"`
+/// re-export chains. These are exactly the files whose declarations get inlined
+/// into the rolled-up output by [`inline_declarations`].
+fn collect_reexport_closure(
+  entry_dts_content: &str,
+  entry_dir: &Path,
+  dts_by_source: &std::collections::HashMap<String, String>,
+) -> std::collections::HashSet<String> {
+  let mut closure = std::collections::HashSet::new();
+  let mut stack: Vec<(String, PathBuf)> =
+    vec![(entry_dts_content.to_string(), entry_dir.to_path_buf())];
+
+  while let Some((content, dir)) = stack.pop() {
+    let joined = join_multiline_statements(&content);
+    for line in joined.lines() {
+      let trimmed = line.trim();
+      if let Some(from_path) = extract_reexport_path(trimmed) {
+        let resolved = resolve_relative_dts_path(&dir, &from_path);
+        let resolved_str = resolved.to_string_lossy().to_string();
+        if !closure.contains(&resolved_str)
+          && let Some(referenced_dts) = dts_by_source.get(&resolved_str)
+        {
+          closure.insert(resolved_str.clone());
+          let child_dir =
+            resolved.parent().unwrap_or(Path::new("")).to_path_buf();
+          stack.push((referenced_dts.clone(), child_dir));
+        }
+      }
+    }
+  }
+
+  closure
+}
+
+/// Extract the relative path from an `export ... from "..."` line.
+/// Returns None if the line is not a re-export or uses a non-relative path.
+fn extract_reexport_path(line: &str) -> Option<String> {
+  // Match patterns like:
+  //   export { X } from "./foo";
+  //   export { X, Y } from "./foo.ts";
+  //   export type { X } from "./foo";
+  let trimmed = line.trim();
+  if !trimmed.starts_with("export ") || !trimmed.contains(" from ") {
+    return None;
+  }
+  // Extract the path between quotes after "from"
+  let from_idx = trimmed.find(" from ")?;
+  let after_from = &trimmed[from_idx + 6..];
+  let quote_char = after_from.chars().next()?;
+  if quote_char != '"' && quote_char != '\'' {
+    return None;
+  }
+  let end_quote = after_from[1..].find(quote_char)?;
+  let path = &after_from[1..1 + end_quote];
+
+  // Only resolve relative paths (starting with ./ or ../)
+  if path.starts_with("./") || path.starts_with("../") {
+    Some(path.to_string())
+  } else {
+    None
+  }
+}
+
+/// Resolve a relative .d.ts path from the given directory.
+fn resolve_relative_dts_path(base_dir: &Path, relative: &str) -> PathBuf {
+  let mut resolved = base_dir.join(relative);
+  // The reference might be "./lib.ts" but the actual .d.ts is at the
+  // path with .d.ts extension
+  resolved = to_dts_path(&resolved);
+  deno_path_util::normalize_path(Cow::Owned(resolved)).into_owned()
+}
+
+/// Extract a relative path from an `import ... from "..."` line.
+fn extract_import_path(line: &str) -> Option<String> {
+  let trimmed = line.trim();
+  if !trimmed.starts_with("import ") || !trimmed.contains(" from ") {
+    return None;
+  }
+  let from_idx = trimmed.find(" from ")?;
+  let after_from = &trimmed[from_idx + 6..];
+  let quote_char = after_from.chars().next()?;
+  if quote_char != '"' && quote_char != '\'' {
+    return None;
+  }
+  let end_quote = after_from[1..].find(quote_char)?;
+  let path = &after_from[1..1 + end_quote];
+  if path.starts_with("./") || path.starts_with("../") {
+    Some(path.to_string())
+  } else {
+    None
+  }
+}
+
+/// Inline declarations from a .d.ts file into the output, recursively
+/// resolving any re-exports in the referenced file.
+fn inline_declarations(
+  dts_content: &str,
+  source_path: &Path,
+  dts_by_source: &std::collections::HashMap<String, String>,
+  reexport_closure: &std::collections::HashSet<String>,
+  output_lines: &mut Vec<String>,
+  inlined_files: &mut std::collections::HashSet<String>,
+) {
+  let source_dir = source_path.parent().unwrap_or(Path::new(""));
+
+  let joined = join_multiline_statements(dts_content);
+
+  for line in joined.lines() {
+    let trimmed = line.trim();
+
+    // Skip amd-module directives
+    if trimmed.starts_with("/// <amd-module") {
+      continue;
+    }
+
+    // Recursively resolve re-exports from this file too
+    if let Some(from_path) = extract_reexport_path(trimmed) {
+      let resolved = resolve_relative_dts_path(source_dir, &from_path);
+      let resolved_str = resolved.to_string_lossy().to_string();
+
+      if let Some(referenced_dts) = dts_by_source.get(&resolved_str) {
+        if !inlined_files.contains(&resolved_str) {
+          inlined_files.insert(resolved_str.clone());
+          inline_declarations(
+            referenced_dts,
+            &resolved,
+            dts_by_source,
+            reexport_closure,
+            output_lines,
+            inlined_files,
+          );
+        }
+        continue;
+      }
+      // A relative re-export whose declaration file was not emitted; warn so a
+      // dangling reference in the output does not pass by unnoticed.
+      warn_dangling_reexport(&from_path, source_path);
+    }
+
+    // Strip `import type ... from "./relative"` / `import { ... } from
+    // "./relative"` lines only when the referenced file is actually inlined
+    // into this rolled-up output (it's in the re-export closure). The imported
+    // symbol's declaration is then present directly. A target that is emitted
+    // but never inlined is intentionally left untouched, so we don't delete an
+    // import whose symbol would otherwise vanish.
+    if let Some(import_path) = extract_import_path(trimmed) {
+      let resolved = resolve_relative_dts_path(source_dir, &import_path);
+      let resolved_str = resolved.to_string_lossy().to_string();
+      if reexport_closure.contains(&resolved_str) {
+        continue; // skip - declarations are inlined
+      }
+    }
+
+    output_lines.push(line.to_string());
+  }
+}
+
+/// Bundle a single entrypoint for `deno compile --bundle` and return the
+/// resulting JavaScript bytes in memory. The Deno-specific `createRequire`
+/// shim is applied to the output so CJS `require()` calls keep working in
+/// the compiled binary.
+///
+/// `external` is the set of import patterns (typically npm package names) to
+/// leave unbundled. For `deno compile --bundle` this is populated with the
+/// names of packages that ship native `.node` addons so their internal
+/// `require('./X.node')` calls keep their original `__dirname` context at
+/// runtime.
+pub async fn bundle_for_compile(
+  flags: Arc<Flags>,
+  entrypoint: String,
+  external: Vec<String>,
+  minify: bool,
+) -> Result<Vec<u8>, AnyError> {
+  let bundle_flags = BundleFlags {
+    entrypoints: vec![entrypoint],
+    output_path: None,
+    output_dir: None,
+    declaration: false,
+    external,
+    format: BundleFormat::Esm,
+    minify,
+    keep_names: false,
+    code_splitting: false,
+    inline_imports: true,
+    packages: PackageHandling::Bundle,
+    sourcemap: None,
+    platform: BundlePlatform::Deno,
+    watch: false,
+  };
+
+  // Force bundle-style resolver config for the duration of bundling.
+  // Without this, module-graph creation skips deep CJS files inside
+  // `node_modules` (jiti.cjs is the canonical case) and the parent
+  // `.mjs` trips an esbuild parse error when its import target can't
+  // be loaded. This flips the same three resolver knobs `deno bundle`
+  // sets (`bundle_mode`, `node_code_translator_mode` = Disabled,
+  // `allow_json_imports` = Always) without otherwise swapping the
+  // subcommand, so the rest of compilation keeps Compile semantics.
+  // Disabling the code translator means the CJS analyzer's
+  // extensionless `.node` auto-resolution no longer runs, which is why
+  // the resolver grows a `.node` fallback (see `resolution.rs`).
+  let mut flags = flags;
+  {
+    let flags_mut = Arc::make_mut(&mut flags);
+    flags_mut.internal.force_bundle_mode = true;
+  }
+
+  let bundler = bundle_init(flags, &bundle_flags).await?;
+  let output = bundler.build().await?;
+
+  handle_diagnostics(&output);
+  if has_errors(&output) {
+    deno_core::anyhow::bail!("bundling failed");
+  }
+
+  // Return the first JS chunk, post-processed the same way `deno bundle`
+  // output is.
+  for asset in &output.assets {
+    let path = Path::new(asset.filename());
+    if !is_js(path) {
+      continue;
+    }
+    let contents = asset.content_as_bytes();
+    let s = std::str::from_utf8(contents)?;
+    let s = if should_replace_require_shim(bundle_flags.platform) {
+      replace_require_shim(s, bundle_flags.minify)
+    } else {
+      s.to_string()
+    };
+    return Ok(s.into_bytes());
+  }
+
+  deno_core::anyhow::bail!("bundler produced no JavaScript output")
 }
 
 async fn bundle_watch(
@@ -385,7 +933,9 @@ async fn bundle_watch(
             watcher_communicator.watch_paths(current_roots.borrow().clone());
         }
 
-        Ok(())
+        // `deno bundle --watch` has no per-run exit code (and disables the
+        // "finished" message above), so report 0 to the watcher.
+        Ok(0)
       })
     },
   )
@@ -575,6 +1125,10 @@ impl VirtualModules {
   }
 }
 
+/// Path prefix used to mark modules disabled via a `browser` map (`"foo": false`).
+/// `\0` keeps it from colliding with any real filesystem path.
+const BROWSER_DISABLED_PREFIX: &str = "\0deno-browser-disabled:";
+
 pub struct DenoPluginHandler {
   file_fetcher: Arc<CliFileFetcher>,
   resolver: Arc<CliResolver>,
@@ -587,6 +1141,7 @@ pub struct DenoPluginHandler {
   parsed_source_cache: Arc<ParsedSourceCache>,
   cjs_tracker: Arc<CliCjsTracker>,
   emitter: Arc<CliEmitter>,
+  pkg_json_resolver: Arc<crate::node::CliPackageJsonResolver>,
   initial_cwd: Url,
 }
 
@@ -595,6 +1150,77 @@ impl Debug for DenoPluginHandler {
     f.debug_struct("DenoPluginHandler")
       .field("initial_cwd", &self.initial_cwd)
       .finish()
+  }
+}
+
+/// Determines whether the resolved file has side effects by consulting
+/// the closest `package.json`'s `sideEffects` field. Returns `Some(false)`
+/// when the file is known to be side-effect-free (which lets the bundler
+/// tree-shake unused exports), and `None` otherwise (the default is to
+/// assume side effects).
+fn resolve_side_effects(
+  pkg_json_resolver: &crate::node::CliPackageJsonResolver,
+  resolved: &str,
+) -> Option<bool> {
+  // Only inspect concrete local file paths. URLs (jsr:, https:, data:, etc.)
+  // are handled elsewhere and don't have a package.json context.
+  if resolved.starts_with("jsr:")
+    || resolved.starts_with("https:")
+    || resolved.starts_with("http:")
+    || resolved.starts_with("data:")
+    || resolved.starts_with("node:")
+    || resolved.starts_with("bun:")
+    || resolved.starts_with("npm:")
+  {
+    return None;
+  }
+  let file_path = std::path::Path::new(resolved);
+  if !file_path.is_absolute() {
+    return None;
+  }
+  let pkg_json = pkg_json_resolver
+    .get_closest_package_json(file_path)
+    .ok()
+    .flatten()?;
+  match pkg_json.side_effects.as_ref()? {
+    deno_package_json::PackageJsonSideEffects::Bool(true) => None,
+    deno_package_json::PackageJsonSideEffects::Bool(false) => Some(false),
+    deno_package_json::PackageJsonSideEffects::Patterns(patterns) => {
+      let rel = file_path.strip_prefix(pkg_json.dir_path()).ok()?;
+      let rel_str = rel.to_string_lossy().replace('\\', "/");
+      for pattern in patterns {
+        if side_effects_pattern_matches(pattern, &rel_str) {
+          return None;
+        }
+      }
+      Some(false)
+    }
+  }
+}
+
+/// Matches a path (relative to the package root, using forward slashes)
+/// against a `sideEffects` entry from a `package.json`.
+///
+/// Per webpack's convention, a pattern without a leading `./`, `/`, or `*`
+/// is implicitly treated as `**/<pattern>`.
+fn side_effects_pattern_matches(pattern: &str, rel_path: &str) -> bool {
+  let normalized = if let Some(rest) = pattern.strip_prefix("./") {
+    rest.to_string()
+  } else if pattern.starts_with('/') {
+    pattern.trim_start_matches('/').to_string()
+  } else {
+    format!("**/{pattern}")
+  };
+  match glob::Pattern::new(&normalized) {
+    Ok(p) => p.matches_with(
+      rel_path,
+      glob::MatchOptions {
+        case_sensitive: true,
+        require_literal_separator: false,
+        require_literal_leading_dot: false,
+      },
+    ),
+    Err(_) => false,
   }
 }
 
@@ -624,6 +1250,8 @@ impl Plugin for DenoPluginHandler {
     let virtual_modules = self.virtual_modules.clone();
     let module_graph_container = self.module_graph_container.clone();
     let initial_cwd = self.initial_cwd.clone();
+
+    let pkg_json_resolver = self.pkg_json_resolver.clone();
 
     async move {
       // Virtual module
@@ -699,9 +1327,21 @@ impl Plugin for DenoPluginHandler {
             .as_ref()
             .map(|m| m.is_post_resolve_match(&resolved_str))
             .unwrap_or(false);
+          // Always externalize native addons regardless of `--external`.
+          // There is no loader for `.node` files, and the user-facing
+          // `*.node` pre-resolve pattern doesn't catch paths that arrive
+          // here only after `.node`-extension auto-resolution (e.g. CJS
+          // `require('./build/Release/foo')`).
           let is_external = is_post_external
             || resolved_str.starts_with("node:")
-            || resolved_str.starts_with("bun:");
+            || resolved_str.starts_with("bun:")
+            || resolved_str.ends_with(".node");
+
+          let side_effects = if is_external {
+            None
+          } else {
+            resolve_side_effects(&pkg_json_resolver, &resolved_str)
+          };
 
           Ok(Some(HookResolveIdOutput {
             id: ArcStr::from(resolved_str),
@@ -710,10 +1350,45 @@ impl Plugin for DenoPluginHandler {
             } else {
               None
             },
+            side_effects: side_effects.map(|se| {
+              if se {
+                HookSideEffects::True
+              } else {
+                HookSideEffects::False
+              }
+            }),
             ..Default::default()
           }))
         }
         Err(e) => {
+          // The graph may record an unmapped-bare-specifier error for a
+          // referrer pulled in from outside the entrypoint's package scope
+          // (e.g. a source file reached via a `new Worker(new URL(...))`
+          // reference next to a `dist/`-rooted entrypoint). The package is
+          // still in the build's npm snapshot, so resolve it by name the way
+          // Node/Bun do before giving up.
+          if looks_like_bare_specifier(&specifier)
+            && let Some(url) = resolver.resolve_bare_specifier_in_npm_snapshot(
+              &specifier,
+              Some(&referrer),
+              resolution_mode,
+              NodeResolutionKind::Execution,
+            )
+          {
+            return Ok(Some(HookResolveIdOutput {
+              id: ArcStr::from(file_path_or_url(url)?),
+              ..Default::default()
+            }));
+          }
+          // A `browser` map entry of `false` disables the module: return a
+          // sentinel id that the load hook recognizes and turns into an
+          // empty module, rather than surfacing the resolver error.
+          if let Some(orig) = browser_map_disabled_specifier(&e) {
+            return Ok(Some(HookResolveIdOutput {
+              id: ArcStr::from(format!("{BROWSER_DISABLED_PREFIX}{orig}")),
+              ..Default::default()
+            }));
+          }
           if maybe_ignorable_resolution_error(&e).is_some() {
             return Ok(None);
           }
@@ -742,6 +1417,16 @@ impl Plugin for DenoPluginHandler {
     let resolved_roots = self.resolved_roots.clone();
 
     async move {
+      // A module disabled via a `browser` map entry of `false`: emit an
+      // empty module in its place.
+      if id.starts_with(BROWSER_DISABLED_PREFIX) {
+        return Ok(Some(HookLoadOutput {
+          code: ArcStr::from("module.exports = {};\n"),
+          module_type: Some(ModuleType::Js),
+          ..Default::default()
+        }));
+      }
+
       // Virtual module
       if let Some(vm) = &virtual_modules
         && let Some(module) = vm.get(&id)
@@ -772,10 +1457,18 @@ impl Plugin for DenoPluginHandler {
         Some(deno_graph::Module::Json(json)) => {
           (json.specifier.clone(), MediaType::Json)
         }
-        Some(deno_graph::Module::Wasm(_)) => {
-          return Err(deno_core::anyhow::anyhow!(
-            "Wasm modules are not yet implemented in deno bundle."
-          ));
+        Some(deno_graph::Module::Wasm(wasm_module)) => {
+          // Emit a JS shim that instantiates the wasm module and re-exports
+          // its exports; the wasm bytes themselves are emitted as an asset.
+          let code = wasm::render_js_wasm_module(wasm_module.source.as_ref())
+            .map_err(|e| {
+            deno_core::anyhow::anyhow!("Failed to parse Wasm module: {}", e)
+          })?;
+          return Ok(Some(HookLoadOutput {
+            code: ArcStr::from(code),
+            module_type: Some(ModuleType::Js),
+            ..Default::default()
+          }));
         }
         Some(deno_graph::Module::Npm(_)) => {
           let req_ref = NpmPackageReqReference::from_specifier(&specifier)?;
@@ -960,13 +1653,13 @@ impl DenoPluginHandler {
           allow_unknown_media_types: true,
           skip_graph_roots_validation: true,
           file_content_overrides: Default::default(),
+          file_header_overrides: Default::default(),
         },
       )
       .await?;
     graph_permit.commit();
     Ok(())
   }
-
 }
 
 fn apply_transform(
@@ -980,6 +1673,17 @@ fn apply_transform(
   let mut xform = transform::BundleImportMetaMainTransform::new(
     graph.roots.contains(specifier) || resolved_roots.contains(specifier),
   );
+  // A CJS module imported from ESM reaches us as an ESM facade the module
+  // loader generated (`import { createRequire } ...; export default mod;`).
+  // Parsing that under `MediaType::Cjs` forces script mode (see
+  // deno_ast `refine_parse_mode`), which rejects the facade's import/export
+  // statements with a parse error. Parse as JavaScript so program mode
+  // auto-detects module vs script and handles both the facade and genuine
+  // CJS scripts.
+  let media_type = match media_type {
+    deno_ast::MediaType::Cjs => deno_ast::MediaType::JavaScript,
+    other => other,
+  };
   let parsed_source = deno_ast::parse_program_with_post_process(
     deno_ast::ParseParams {
       specifier: specifier.clone(),
@@ -1032,6 +1736,42 @@ fn media_type_to_module_type(media_type: MediaType) -> ModuleType {
 }
 
 // --- Error types ---
+
+/// Walk a `ResolveWithGraphError` looking for a `BrowserMapDisabled` error
+/// returned by `node_resolver`. Returns the original specifier so the bundle
+/// can emit an empty-module stub in place of the resolution.
+fn browser_map_disabled_specifier(
+  error: &ResolveWithGraphError,
+) -> Option<String> {
+  let deno_resolver::graph::ResolveWithGraphErrorKind::Resolve(e) =
+    error.as_kind()
+  else {
+    return None;
+  };
+  let deno_resolver::DenoResolveErrorKind::Node(node_err) = e.as_kind() else {
+    return None;
+  };
+  let node_resolver::errors::NodeResolveErrorKind::BrowserMapDisabled(disabled) =
+    node_err.as_kind()
+  else {
+    return None;
+  };
+  Some(disabled.specifier.clone())
+}
+
+/// Whether a specifier looks like a bare (npm/node-style) specifier, i.e. not
+/// a relative path, absolute path, package-internal `#` import, or a URL with a
+/// scheme (`file:`, `data:`, `node:`, `npm:`, `jsr:`, `http(s):`, ...).
+fn looks_like_bare_specifier(specifier: &str) -> bool {
+  !specifier.is_empty()
+    && !specifier.starts_with('.')
+    && !specifier.starts_with('/')
+    && !specifier.starts_with('#')
+    // Load-bearing on Windows: `Url::parse("C:/foo")` succeeds (scheme `c`), so
+    // a drive-letter absolute path is correctly treated as not bare here. Don't
+    // "simplify" this away or Windows absolute paths regress into the fallback.
+    && Url::parse(specifier).is_err()
+}
 
 fn maybe_ignorable_resolution_error(
   error: &ResolveWithGraphError,
@@ -1250,7 +1990,7 @@ pub fn process_result(
 
     // If no output dir or path specified and single entry, write to stdout
     if outdir.is_none() && output_path.is_none() && output_files.len() == 1 {
-      crate::display::write_to_stdout_ignore_sigpipe(bytes)?;
+      deno_print::drop_write_stdout(bytes);
       continue;
     }
 
@@ -1300,7 +2040,7 @@ fn print_finished_message(
     deno_terminal::colors::green("Bundled"),
     input_count,
     if input_count == 1 { "" } else { "s" },
-    crate::display::human_elapsed(duration.as_millis()),
+    crate::display::human_elapsed(duration),
   ));
 
   let longest = output_infos

@@ -1,0 +1,27 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_DIR": "$PWD/deno_dir"
+  },
+  "steps": [{
+    // create deno dir
+    "args": "run http://localhost:4545/echo.ts hi",
+    "output": "[WILDCARD]"
+  }, {
+    // dry run reports what would be removed without deleting anything,
+    // using the same output as a real clean followed by an abort notice
+    "args": "clean --dry-run",
+    "output": "Removed [WILDLINE]/deno_dir ([WILDCARD]files, [WILDCARD])\nAborting due to --dry-run flag\n"
+  }, {
+    // the deno dir is still present after a dry run
+    "args": [
+      "eval",
+      "console.log(Deno.statSync('./deno_dir') != null)"
+    ],
+    "output": "true\n"
+  }, {
+    // a real clean still removes it
+    "args": "clean",
+    "output": "Removed [WILDLINE]/deno_dir ([WILDCARD]files, [WILDCARD])\n"
+  }]
+}

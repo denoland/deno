@@ -21,16 +21,8 @@
       "toString.any.worker.html": true,
       "type.tentative.any.html": false,
       "type.tentative.any.worker.html": false,
-      "value-get-set.any.html": {
-        "expectedFailures": [
-          "Calling setter without argument"
-        ]
-      },
-      "value-get-set.any.worker.html": {
-        "expectedFailures": [
-          "Calling setter without argument"
-        ]
-      },
+      "value-get-set.any.html": true,
+      "value-get-set.any.worker.html": true,
       "valueOf.any.html": true,
       "valueOf.any.worker.html": true
     },
@@ -77,32 +69,12 @@
       "constructor-types.tentative.any.worker.html": false,
       "to-fixed-length-buffer-shared.any.html": true,
       "to-fixed-length-buffer-shared.any.worker.html": true,
-      "to-fixed-length-buffer.any.html": {
-        "expectedFailures": [
-          "toFixedLengthBuffer caching behavior"
-        ]
-      },
-      "to-fixed-length-buffer.any.worker.html": {
-        "expectedFailures": [
-          "toFixedLengthBuffer caching behavior"
-        ]
-      },
+      "to-fixed-length-buffer.any.html": true,
+      "to-fixed-length-buffer.any.worker.html": true,
       "to-resizable-buffer-shared.any.html": true,
       "to-resizable-buffer-shared.any.worker.html": true,
-      "to-resizable-buffer.any.html": {
-        "expectedFailures": [
-          "toResizableBuffer caching behavior",
-          "toResizableBuffer max size",
-          "Resizable buffers from Memory cannot be detached by JS"
-        ]
-      },
-      "to-resizable-buffer.any.worker.html": {
-        "expectedFailures": [
-          "toResizableBuffer caching behavior",
-          "toResizableBuffer max size",
-          "Resizable buffers from Memory cannot be detached by JS"
-        ]
-      }
+      "to-resizable-buffer.any.html": true,
+      "to-resizable-buffer.any.worker.html": true
     },
     "module": {
       "constructor.any.html": true,
@@ -115,16 +87,8 @@
       "imports.any.worker.html": true,
       "toString.any.html": true,
       "toString.any.worker.html": true,
-      "moduleSource.tentative.any.html": {
-        "expectedFailures": [
-          "AbstractModuleSourceProto toStringTag brand check"
-        ]
-      },
-      "moduleSource.tentative.any.worker.html": {
-        "expectedFailures": [
-          "AbstractModuleSourceProto toStringTag brand check"
-        ]
-      }
+      "moduleSource.tentative.any.html": true,
+      "moduleSource.tentative.any.worker.html": true
     },
     "prototypes.any.html": true,
     "prototypes.any.worker.html": true,
@@ -147,16 +111,8 @@
     "exception": {
       "basic.tentative.any.html": true,
       "basic.tentative.any.worker.html": true,
-      "constructor.tentative.any.html": {
-        "expectedFailures": [
-          "length"
-        ]
-      },
-      "constructor.tentative.any.worker.html": {
-        "expectedFailures": [
-          "length"
-        ]
-      },
+      "constructor.tentative.any.html": true,
+      "constructor.tentative.any.worker.html": true,
       "getArg.tentative.any.html": {
         "expectedFailures": [
           "Getting out-of-range argument"
@@ -234,13 +190,23 @@
       "broadcastchannel-success.html": false,
       "cross-origin-module-sharing-fails.html": false,
       "identity-not-preserved.html": false,
-      "no-transferring.html": false,
+      "no-transferring.html": {
+        "expectedFailures": [
+          "Trying to transfer a WebAssembly.Module to this window throws"
+        ]
+      },
       "serialization-via-history.html": false,
       "share-module-cross-origin-fails.sub.html": false,
       "window-domain-success.sub.html": false,
-      "window-messagechannel-success.html": false,
+      "window-messagechannel-success.html": true,
       "window-similar-but-cross-origin-success.sub.html": false,
-      "window-simple-success.html": false
+      "window-simple-success.html": {
+        "expectedFailures": [
+          "postMessaging to a same-origin iframe allows them to instantiate",
+          "postMessaging to a same-origin deeply-nested iframe allows them to instantiate",
+          "postMessaging to a same-origin opened window allows them to instantiate"
+        ]
+      }
     },
     "arraybuffer": {
       "transfer.window.html": false
@@ -307,16 +273,6 @@
       "worker-import.tentative.html": false,
       "worker.tentative.html": false,
       "worklet-import-source-phase.tentative.https.html": false
-    },
-    "wasm_stream_compile_test.html": {
-      "expectedFailures": [
-        "compileStreaming raise error if no-cors"
-      ]
-    },
-    "wasm_stream_instantiate_test.html": {
-      "expectedFailures": [
-        "instantiateStreaming raise error if no-cors"
-      ]
     }
   },
   "create_multiple_memory.worker.html": true,
@@ -324,31 +280,11 @@
     "address.wast.js.html": true,
     "align.wast.js.html": true,
     "binary-leb128.wast.js.html": true,
-    "binary.wast.js.html": {
-      "expectedFailures": [
-        "#40 Test that WebAssembly compilation fails",
-        "#41 Test that WebAssembly compilation fails",
-        "#42 Test that WebAssembly compilation fails",
-        "#43 Test that WebAssembly compilation fails",
-        "#45 Test that WebAssembly compilation fails",
-        "#46 Test that WebAssembly compilation fails",
-        "#47 Test that WebAssembly compilation fails",
-        "#48 Test that WebAssembly compilation fails",
-        "#161 Test that WebAssembly compilation fails",
-        "#162 Test that WebAssembly compilation fails",
-        "#163 Test that WebAssembly compilation fails",
-        "#164 Test that WebAssembly compilation fails",
-        "#166 Test that WebAssembly compilation fails",
-        "#167 Test that WebAssembly compilation fails",
-        "#168 Test that WebAssembly compilation fails",
-        "#169 Test that WebAssembly compilation fails"
-      ]
-    },
+    "binary.wast.js.html": true,
     "block.wast.js.html": true,
     "br.wast.js.html": true,
     "br_if.wast.js.html": true,
     "br_table.wast.js.html": true,
-    "bulk.wast.js.html": true,
     "call.wast.js.html": true,
     "call_indirect.wast.js.html": true,
     "comments.wast.js.html": true,
@@ -357,26 +293,18 @@
     "custom.wast.js.html": true,
     "data.wast.js.html": {
       "expectedFailures": [
-        "#2 Test that WebAssembly compilation fails",
-        "#3 Test that WebAssembly compilation fails",
-        "#34 Test that WebAssembly compilation fails",
-        "#35 Test that WebAssembly compilation fails",
-        "#63 Test that a WebAssembly module is uninstantiable",
-        "#67 Test that a WebAssembly module is uninstantiable",
-        "#75 Test that a WebAssembly module is uninstantiable",
-        "#79 Test that a WebAssembly module is uninstantiable"
+        "#147 Test that a WebAssembly module is uninstantiable",
+        "#153 Test that a WebAssembly module is uninstantiable",
+        "#165 Test that a WebAssembly module is uninstantiable",
+        "#171 Test that a WebAssembly module is uninstantiable"
       ]
     },
     "elem.wast.js.html": {
       "expectedFailures": [
-        "#2 Test that WebAssembly compilation fails",
-        "#3 Test that WebAssembly compilation fails",
-        "#43 Test that WebAssembly compilation fails",
-        "#44 Test that WebAssembly compilation fails",
-        "#66 Test that a WebAssembly module is uninstantiable",
-        "#70 Test that a WebAssembly module is uninstantiable",
-        "#74 Test that a WebAssembly module is uninstantiable",
-        "#78 Test that a WebAssembly module is uninstantiable"
+        "#262 Test that a WebAssembly module is uninstantiable",
+        "#268 Test that a WebAssembly module is uninstantiable",
+        "#274 Test that a WebAssembly module is uninstantiable",
+        "#280 Test that a WebAssembly module is uninstantiable"
       ]
     },
     "endianness.wast.js.html": true,
@@ -395,96 +323,105 @@
     "forward.wast.js.html": true,
     "func.wast.js.html": true,
     "func_ptrs.wast.js.html": true,
-    "global.wast.js.html": {
-      "expectedFailures": [
-        "#17 Test that WebAssembly compilation fails",
-        "#18 Test that WebAssembly compilation fails",
-        "#144 Test that WebAssembly compilation fails",
-        "#145 Test that WebAssembly compilation fails"
-      ]
-    },
+    "global.wast.js.html": true,
     "i32.wast.js.html": true,
     "i64.wast.js.html": true,
     "if.wast.js.html": true,
     "imports.wast.js.html": {
       "expectedFailures": [
-        "#3 Test that WebAssembly compilation fails",
-        "#4 Test that WebAssembly compilation fails",
-        "#5 Test that WebAssembly compilation fails",
-        "#41 Test that a WebAssembly module is unlinkable",
-        "#43 Test that a WebAssembly module is unlinkable",
-        "#45 Test that a WebAssembly module is unlinkable",
-        "#47 Test that a WebAssembly module is unlinkable",
-        "#49 Test that a WebAssembly module is unlinkable",
-        "#51 Test that a WebAssembly module is unlinkable",
-        "#53 Test that a WebAssembly module is unlinkable",
-        "#55 Test that a WebAssembly module is unlinkable",
-        "#57 Test that a WebAssembly module is unlinkable",
-        "#59 Test that a WebAssembly module is unlinkable",
-        "#61 Test that a WebAssembly module is unlinkable",
-        "#63 Test that a WebAssembly module is unlinkable",
-        "#65 Test that a WebAssembly module is unlinkable",
-        "#67 Test that a WebAssembly module is unlinkable",
-        "#69 Test that a WebAssembly module is unlinkable",
-        "#71 Test that a WebAssembly module is unlinkable",
-        "#73 Test that a WebAssembly module is unlinkable",
-        "#75 Test that a WebAssembly module is unlinkable",
-        "#77 Test that a WebAssembly module is unlinkable",
-        "#79 Test that a WebAssembly module is unlinkable",
-        "#81 Test that a WebAssembly module is unlinkable",
-        "#83 Test that a WebAssembly module is unlinkable",
-        "#85 Test that a WebAssembly module is unlinkable",
-        "#87 Test that a WebAssembly module is unlinkable",
-        "#103 Test that a WebAssembly module is unlinkable",
-        "#105 Test that a WebAssembly module is unlinkable",
-        "#107 Test that a WebAssembly module is unlinkable",
-        "#109 Test that a WebAssembly module is unlinkable",
-        "#111 Test that a WebAssembly module is unlinkable",
-        "#113 Test that a WebAssembly module is unlinkable",
-        "#115 Test that a WebAssembly module is unlinkable",
-        "#117 Test that a WebAssembly module is unlinkable",
-        "#119 Test that a WebAssembly module is unlinkable",
-        "#121 Test that a WebAssembly module is unlinkable",
-        "#123 Test that a WebAssembly module is unlinkable",
-        "#125 Test that a WebAssembly module is unlinkable",
-        "#127 Test that a WebAssembly module is unlinkable",
-        "#129 Test that a WebAssembly module is unlinkable",
-        "#131 Test that a WebAssembly module is unlinkable",
-        "#133 Test that a WebAssembly module is unlinkable",
-        "#135 Test that a WebAssembly module is unlinkable",
-        "#137 Test that a WebAssembly module is unlinkable",
-        "#139 Test that a WebAssembly module is unlinkable",
-        "#141 Test that a WebAssembly module is unlinkable",
-        "#176 Test that a WebAssembly module is unlinkable",
-        "#178 Test that a WebAssembly module is unlinkable",
-        "#180 Test that a WebAssembly module is unlinkable",
-        "#182 Test that a WebAssembly module is unlinkable",
-        "#184 Test that a WebAssembly module is unlinkable",
-        "#186 Test that a WebAssembly module is unlinkable",
-        "#188 Test that a WebAssembly module is unlinkable",
-        "#190 Test that a WebAssembly module is unlinkable",
-        "#192 Test that a WebAssembly module is unlinkable",
-        "#194 Test that a WebAssembly module is unlinkable",
-        "#196 Test that a WebAssembly module is unlinkable",
-        "#198 Test that a WebAssembly module is unlinkable",
-        "#209 Test that WebAssembly compilation fails",
-        "#210 Test that WebAssembly compilation fails",
-        "#211 Test that WebAssembly compilation fails",
-        "#222 Test that a WebAssembly module is unlinkable",
-        "#224 Test that a WebAssembly module is unlinkable",
+        "#220 Test that a WebAssembly module is unlinkable",
+        "#223 Test that a WebAssembly module is unlinkable",
         "#226 Test that a WebAssembly module is unlinkable",
-        "#228 Test that a WebAssembly module is unlinkable",
-        "#230 Test that a WebAssembly module is unlinkable",
+        "#229 Test that a WebAssembly module is unlinkable",
         "#232 Test that a WebAssembly module is unlinkable",
-        "#234 Test that a WebAssembly module is unlinkable",
-        "#236 Test that a WebAssembly module is unlinkable",
+        "#235 Test that a WebAssembly module is unlinkable",
         "#238 Test that a WebAssembly module is unlinkable",
-        "#240 Test that a WebAssembly module is unlinkable",
-        "#242 Test that a WebAssembly module is unlinkable",
+        "#241 Test that a WebAssembly module is unlinkable",
         "#244 Test that a WebAssembly module is unlinkable",
-        "#246 Test that a WebAssembly module is unlinkable",
-        "#248 Test that a WebAssembly module is unlinkable",
-        "#273 Test that a WebAssembly module is unlinkable"
+        "#247 Test that a WebAssembly module is unlinkable",
+        "#250 Test that a WebAssembly module is unlinkable",
+        "#253 Test that a WebAssembly module is unlinkable",
+        "#256 Test that a WebAssembly module is unlinkable",
+        "#259 Test that a WebAssembly module is unlinkable",
+        "#262 Test that a WebAssembly module is unlinkable",
+        "#265 Test that a WebAssembly module is unlinkable",
+        "#268 Test that a WebAssembly module is unlinkable",
+        "#271 Test that a WebAssembly module is unlinkable",
+        "#274 Test that a WebAssembly module is unlinkable",
+        "#277 Test that a WebAssembly module is unlinkable",
+        "#280 Test that a WebAssembly module is unlinkable",
+        "#283 Test that a WebAssembly module is unlinkable",
+        "#286 Test that a WebAssembly module is unlinkable",
+        "#289 Test that a WebAssembly module is unlinkable",
+        "#292 Test that a WebAssembly module is unlinkable",
+        "#295 Test that a WebAssembly module is unlinkable",
+        "#298 Test that a WebAssembly module is unlinkable",
+        "#301 Test that a WebAssembly module is unlinkable",
+        "#304 Test that a WebAssembly module is unlinkable",
+        "#307 Test that a WebAssembly module is unlinkable",
+        "#329 Test that a WebAssembly module is unlinkable",
+        "#332 Test that a WebAssembly module is unlinkable",
+        "#335 Test that a WebAssembly module is unlinkable",
+        "#338 Test that a WebAssembly module is unlinkable",
+        "#341 Test that a WebAssembly module is unlinkable",
+        "#344 Test that a WebAssembly module is unlinkable",
+        "#347 Test that a WebAssembly module is unlinkable",
+        "#350 Test that a WebAssembly module is unlinkable",
+        "#353 Test that a WebAssembly module is unlinkable",
+        "#356 Test that a WebAssembly module is unlinkable",
+        "#359 Test that a WebAssembly module is unlinkable",
+        "#362 Test that a WebAssembly module is unlinkable",
+        "#365 Test that a WebAssembly module is unlinkable",
+        "#368 Test that a WebAssembly module is unlinkable",
+        "#371 Test that a WebAssembly module is unlinkable",
+        "#374 Test that a WebAssembly module is unlinkable",
+        "#377 Test that a WebAssembly module is unlinkable",
+        "#380 Test that a WebAssembly module is unlinkable",
+        "#383 Test that a WebAssembly module is unlinkable",
+        "#386 Test that a WebAssembly module is unlinkable",
+        "#451 Test that a WebAssembly module is unlinkable",
+        "#454 Test that a WebAssembly module is unlinkable",
+        "#457 Test that a WebAssembly module is unlinkable",
+        "#460 Test that a WebAssembly module is unlinkable",
+        "#463 Test that a WebAssembly module is unlinkable",
+        "#466 Test that a WebAssembly module is unlinkable",
+        "#469 Test that a WebAssembly module is unlinkable",
+        "#472 Test that a WebAssembly module is unlinkable",
+        "#475 Test that a WebAssembly module is unlinkable",
+        "#478 Test that a WebAssembly module is unlinkable",
+        "#481 Test that a WebAssembly module is unlinkable",
+        "#484 Test that a WebAssembly module is unlinkable",
+        "#537 Test that a WebAssembly module is unlinkable",
+        "#540 Test that a WebAssembly module is unlinkable",
+        "#543 Test that a WebAssembly module is unlinkable",
+        "#546 Test that a WebAssembly module is unlinkable",
+        "#549 Test that a WebAssembly module is unlinkable",
+        "#552 Test that a WebAssembly module is unlinkable",
+        "#555 Test that a WebAssembly module is unlinkable",
+        "#558 Test that a WebAssembly module is unlinkable",
+        "#561 Test that a WebAssembly module is unlinkable",
+        "#564 Test that a WebAssembly module is unlinkable",
+        "#567 Test that a WebAssembly module is unlinkable",
+        "#570 Test that a WebAssembly module is unlinkable",
+        "#573 Test that a WebAssembly module is unlinkable",
+        "#576 Test that a WebAssembly module is unlinkable",
+        "#579 Test that a WebAssembly module is unlinkable",
+        "#582 Test that a WebAssembly module is unlinkable",
+        "#585 Test that a WebAssembly module is unlinkable",
+        "#588 Test that a WebAssembly module is unlinkable",
+        "#591 Test that a WebAssembly module is unlinkable",
+        "#594 Test that a WebAssembly module is unlinkable",
+        "#597 Test that a WebAssembly module is unlinkable",
+        "#600 Test that a WebAssembly module is unlinkable",
+        "#603 Test that a WebAssembly module is unlinkable",
+        "#606 Test that a WebAssembly module is unlinkable",
+        "#609 Test that a WebAssembly module is unlinkable",
+        "#612 Test that a WebAssembly module is unlinkable",
+        "#615 Test that a WebAssembly module is unlinkable",
+        "#618 Test that a WebAssembly module is unlinkable",
+        "#621 Test that a WebAssembly module is unlinkable",
+        "#624 Test that a WebAssembly module is unlinkable",
+        "#652 Test that a WebAssembly module is unlinkable"
       ]
     },
     "inline-module.wast.js.html": true,
@@ -494,31 +431,62 @@
     "left-to-right.wast.js.html": true,
     "linking.wast.js.html": {
       "expectedFailures": [
-        "#11 Test that a WebAssembly module is unlinkable",
-        "#13 Test that a WebAssembly module is unlinkable",
-        "#36 Test that a WebAssembly module is unlinkable",
-        "#38 Test that a WebAssembly module is unlinkable",
-        "#42 Test that a WebAssembly module is unlinkable",
-        "#44 Test that a WebAssembly module is unlinkable",
-        "#46 Test that a WebAssembly module is unlinkable",
-        "#48 Test that a WebAssembly module is unlinkable",
-        "#95 Test that a WebAssembly module is uninstantiable",
-        "#97 Test that a WebAssembly module is unlinkable",
-        "#100 Test that a WebAssembly module is uninstantiable",
-        "#101 Test that a WebAssembly code returns a specific result",
-        "#104 Test that a WebAssembly module is uninstantiable",
-        "#105 Test that a WebAssembly code returns a specific result",
-        "#109 Test that a WebAssembly module is unlinkable",
-        "#111 Test that a WebAssembly module is unlinkable",
-        "#124 Test that a WebAssembly module is uninstantiable",
-        "#135 Test that a WebAssembly module is unlinkable",
-        "#138 Test that a WebAssembly module is uninstantiable",
-        "#139 Test that a WebAssembly code returns a specific result",
-        "#142 Test that a WebAssembly module is uninstantiable",
-        "#143 Test that a WebAssembly code returns a specific result",
-        "#146 Test that a WebAssembly module is uninstantiable",
-        "#147 Test that a WebAssembly code returns a specific result",
-        "#148 Test that a WebAssembly code returns a specific result"
+        "#90 Test that a WebAssembly module is unlinkable",
+        "#93 Test that a WebAssembly module is unlinkable",
+        "#123 Test that a WebAssembly module is unlinkable",
+        "#126 Test that a WebAssembly module is unlinkable",
+        "#133 Test that a WebAssembly module is unlinkable",
+        "#136 Test that a WebAssembly module is unlinkable",
+        "#139 Test that a WebAssembly module is unlinkable",
+        "#142 Test that a WebAssembly module is unlinkable",
+        "#145 Test that a WebAssembly module is unlinkable",
+        "#148 Test that a WebAssembly module is unlinkable",
+        "#151 Test that a WebAssembly module is unlinkable",
+        "#154 Test that a WebAssembly module is unlinkable",
+        "#157 Test that a WebAssembly module is unlinkable",
+        "#160 Test that a WebAssembly module is unlinkable",
+        "#163 Test that a WebAssembly module is unlinkable",
+        "#166 Test that a WebAssembly module is unlinkable",
+        "#169 Test that a WebAssembly module is unlinkable",
+        "#172 Test that a WebAssembly module is unlinkable",
+        "#175 Test that a WebAssembly module is unlinkable",
+        "#178 Test that a WebAssembly module is unlinkable",
+        "#181 Test that a WebAssembly module is unlinkable",
+        "#184 Test that a WebAssembly module is unlinkable",
+        "#187 Test that a WebAssembly module is unlinkable",
+        "#190 Test that a WebAssembly module is unlinkable",
+        "#193 Test that a WebAssembly module is unlinkable",
+        "#196 Test that a WebAssembly module is unlinkable",
+        "#199 Test that a WebAssembly module is unlinkable",
+        "#202 Test that a WebAssembly module is unlinkable",
+        "#205 Test that a WebAssembly module is unlinkable",
+        "#208 Test that a WebAssembly module is unlinkable",
+        "#211 Test that a WebAssembly module is unlinkable",
+        "#214 Test that a WebAssembly module is unlinkable",
+        "#217 Test that a WebAssembly module is unlinkable",
+        "#220 Test that a WebAssembly module is unlinkable",
+        "#223 Test that a WebAssembly module is unlinkable",
+        "#277 Test that a WebAssembly module is uninstantiable",
+        "#280 Test that a WebAssembly module is unlinkable",
+        "#284 Test that a WebAssembly module is uninstantiable",
+        "#285 Test that a WebAssembly code returns a specific result (linking.wast:410)",
+        "#289 Test that a WebAssembly module is uninstantiable",
+        "#290 Test that a WebAssembly code returns a specific result (linking.wast:423)",
+        "#297 Test that a WebAssembly module is unlinkable",
+        "#300 Test that a WebAssembly module is unlinkable",
+        "#303 Test that a WebAssembly module is unlinkable",
+        "#306 Test that a WebAssembly module is unlinkable",
+        "#309 Test that a WebAssembly module is unlinkable",
+        "#312 Test that a WebAssembly module is unlinkable",
+        "#330 Test that a WebAssembly module is uninstantiable",
+        "#343 Test that a WebAssembly module is unlinkable",
+        "#347 Test that a WebAssembly module is uninstantiable",
+        "#348 Test that a WebAssembly code returns a specific result (linking.wast:563)",
+        "#352 Test that a WebAssembly module is uninstantiable",
+        "#353 Test that a WebAssembly code returns a specific result (linking.wast:576)",
+        "#358 Test that a WebAssembly module is uninstantiable",
+        "#359 Test that a WebAssembly code returns a specific result (linking.wast:609)",
+        "#360 Test that a WebAssembly code returns a specific result (linking.wast:610)"
       ]
     },
     "load.wast.js.html": true,
@@ -526,18 +494,8 @@
     "local_set.wast.js.html": true,
     "local_tee.wast.js.html": true,
     "loop.wast.js.html": true,
-    "memory.wast.js.html": {
-      "expectedFailures": [
-        "#2 Test that WebAssembly compilation fails",
-        "#3 Test that WebAssembly compilation fails",
-        "#33 Test that WebAssembly compilation fails",
-        "#34 Test that WebAssembly compilation fails"
-      ]
-    },
-    "memory_copy.wast.js.html": true,
-    "memory_fill.wast.js.html": true,
+    "memory.wast.js.html": true,
     "memory_grow.wast.js.html": true,
-    "memory_init.wast.js.html": true,
     "memory_redundancy.wast.js.html": true,
     "memory_size.wast.js.html": true,
     "memory_trap.wast.js.html": true,
@@ -607,20 +565,22 @@
       "simd_store16_lane.wast.js.html": true,
       "simd_store32_lane.wast.js.html": true,
       "simd_store64_lane.wast.js.html": true,
-      "simd_store8_lane.wast.js.html": true
+      "simd_store8_lane.wast.js.html": true,
+      "simd_memory-multi.wast.js.html": true
     },
     "skip-stack-guard-page.wast.js.html": true,
     "stack.wast.js.html": true,
     "start.wast.js.html": true,
     "store.wast.js.html": true,
     "switch.wast.js.html": true,
-    "table-sub.wast.js.html": true,
-    "table.wast.js.html": true,
-    "table_copy.wast.js.html": true,
-    "table_fill.wast.js.html": true,
+    "table.wast.js.html": {
+      "expectedFailures": [
+        "#8 Test that WebAssembly compilation succeeds (table.wast:9)",
+        "#55 Test that WebAssembly compilation succeeds (table.wast:9)"
+      ]
+    },
     "table_get.wast.js.html": true,
     "table_grow.wast.js.html": true,
-    "table_init.wast.js.html": true,
     "table_set.wast.js.html": true,
     "table_size.wast.js.html": true,
     "token.wast.js.html": true,
@@ -633,6 +593,260 @@
     "utf8-custom-section-id.wast.js.html": true,
     "utf8-import-field.wast.js.html": true,
     "utf8-import-module.wast.js.html": true,
-    "utf8-invalid-encoding.wast.js.html": true
+    "utf8-invalid-encoding.wast.js.html": true,
+    "annotations.wast.js.html": true,
+    "br_on_non_null.wast.js.html": true,
+    "br_on_null.wast.js.html": true,
+    "bulk-memory": {
+      "bulk.wast.js.html": true,
+      "memory_copy.wast.js.html": true,
+      "memory_fill.wast.js.html": true,
+      "memory_init.wast.js.html": true,
+      "table-sub.wast.js.html": true,
+      "table_copy.wast.js.html": true,
+      "table_fill.wast.js.html": true,
+      "table_init.wast.js.html": true
+    },
+    "call_ref.wast.js.html": true,
+    "exceptions": {
+      "tag.wast.js.html": {
+        "expectedFailures": [
+          "#23 Test that a WebAssembly module is unlinkable",
+          "#26 Test that a WebAssembly module is unlinkable"
+        ]
+      },
+      "throw.wast.js.html": true,
+      "throw_ref.wast.js.html": true,
+      "try_table.wast.js.html": true
+    },
+    "gc": {
+      "array.wast.js.html": true,
+      "array_copy.wast.js.html": true,
+      "array_fill.wast.js.html": true,
+      "array_init_data.wast.js.html": true,
+      "array_init_elem.wast.js.html": true,
+      "array_new_data.wast.js.html": true,
+      "array_new_elem.wast.js.html": true,
+      "binary-gc.wast.js.html": true,
+      "br_on_cast.wast.js.html": true,
+      "br_on_cast_fail.wast.js.html": true,
+      "extern.wast.js.html": true,
+      "i31.wast.js.html": true,
+      "ref_cast.wast.js.html": true,
+      "ref_eq.wast.js.html": true,
+      "ref_test.wast.js.html": true,
+      "struct.wast.js.html": true,
+      "type-subtyping.wast.js.html": {
+        "expectedFailures": [
+          "#195 Test that a WebAssembly module is unlinkable",
+          "#198 Test that a WebAssembly module is unlinkable",
+          "#201 Test that a WebAssembly module is unlinkable",
+          "#206 Test that a WebAssembly module is unlinkable",
+          "#209 Test that a WebAssembly module is unlinkable",
+          "#222 Test that a WebAssembly module is unlinkable",
+          "#243 Test that a WebAssembly module is unlinkable",
+          "#248 Test that a WebAssembly module is unlinkable"
+        ]
+      }
+    },
+    "id.wast.js.html": true,
+    "instance.wast.js.html": true,
+    "local_init.wast.js.html": true,
+    "memory64": {
+      "address64.wast.js.html": true,
+      "align64.wast.js.html": true,
+      "binary_leb128_64.wast.js.html": true,
+      "bulk64.wast.js.html": true,
+      "call_indirect64.wast.js.html": true,
+      "endianness64.wast.js.html": true,
+      "float_memory64.wast.js.html": true,
+      "load64.wast.js.html": true,
+      "memory64-imports.wast.js.html": {
+        "expectedFailures": [
+          "#127 Test that a WebAssembly module is unlinkable",
+          "#130 Test that a WebAssembly module is unlinkable",
+          "#133 Test that a WebAssembly module is unlinkable",
+          "#136 Test that a WebAssembly module is unlinkable",
+          "#139 Test that a WebAssembly module is unlinkable",
+          "#142 Test that a WebAssembly module is unlinkable",
+          "#145 Test that a WebAssembly module is unlinkable",
+          "#148 Test that a WebAssembly module is unlinkable",
+          "#179 Test that a WebAssembly module is unlinkable",
+          "#182 Test that a WebAssembly module is unlinkable",
+          "#185 Test that a WebAssembly module is unlinkable",
+          "#188 Test that a WebAssembly module is unlinkable",
+          "#191 Test that a WebAssembly module is unlinkable",
+          "#194 Test that a WebAssembly module is unlinkable",
+          "#197 Test that a WebAssembly module is unlinkable",
+          "#200 Test that a WebAssembly module is unlinkable",
+          "#203 Test that a WebAssembly module is unlinkable",
+          "#206 Test that a WebAssembly module is unlinkable",
+          "#209 Test that a WebAssembly module is unlinkable",
+          "#212 Test that a WebAssembly module is unlinkable",
+          "#215 Test that a WebAssembly module is unlinkable",
+          "#218 Test that a WebAssembly module is unlinkable",
+          "#221 Test that a WebAssembly module is unlinkable",
+          "#224 Test that a WebAssembly module is unlinkable",
+          "#227 Test that a WebAssembly module is unlinkable",
+          "#230 Test that a WebAssembly module is unlinkable",
+          "#233 Test that a WebAssembly module is unlinkable",
+          "#236 Test that a WebAssembly module is unlinkable",
+          "#239 Test that a WebAssembly module is unlinkable",
+          "#242 Test that a WebAssembly module is unlinkable"
+        ]
+      },
+      "memory64.wast.js.html": {
+        "expectedFailures": [
+          "#6 Test that WebAssembly compilation succeeds (memory64.wast:8)",
+          "#7 Test that WebAssembly compilation succeeds (memory64.wast:9)",
+          "#36 Test that WebAssembly compilation succeeds (memory64.wast:8)",
+          "#37 Test that WebAssembly compilation succeeds (memory64.wast:9)",
+          "#38 Test that WebAssembly instantiation succeeds"
+        ]
+      },
+      "memory_copy64.wast.js.html": true,
+      "memory_fill64.wast.js.html": true,
+      "memory_grow64.wast.js.html": true,
+      "memory_init64.wast.js.html": true,
+      "memory_redundancy64.wast.js.html": true,
+      "memory_trap64.wast.js.html": true,
+      "table64.wast.js.html": {
+        "expectedFailures": [
+          "#10 Test that WebAssembly compilation succeeds (table64.wast:9)",
+          "#33 Test that WebAssembly compilation succeeds (table64.wast:9)"
+        ]
+      },
+      "table_copy64.wast.js.html": true,
+      "table_copy_mixed.wast.js.html": true,
+      "table_fill64.wast.js.html": true,
+      "table_get64.wast.js.html": true,
+      "table_grow64.wast.js.html": true,
+      "table_init64.wast.js.html": true,
+      "table_set64.wast.js.html": true,
+      "table_size64.wast.js.html": true
+    },
+    "multi-memory": {
+      "address0.wast.js.html": true,
+      "address1.wast.js.html": true,
+      "align0.wast.js.html": true,
+      "binary0.wast.js.html": true,
+      "data0.wast.js.html": true,
+      "data1.wast.js.html": {
+        "expectedFailures": [
+          "#34 Test that a WebAssembly module is uninstantiable",
+          "#40 Test that a WebAssembly module is uninstantiable",
+          "#52 Test that a WebAssembly module is uninstantiable",
+          "#58 Test that a WebAssembly module is uninstantiable"
+        ]
+      },
+      "data_drop0.wast.js.html": true,
+      "exports0.wast.js.html": true,
+      "float_exprs0.wast.js.html": true,
+      "float_exprs1.wast.js.html": true,
+      "float_memory0.wast.js.html": true,
+      "imports0.wast.js.html": {
+        "expectedFailures": [
+          "#14 Test that a WebAssembly module is unlinkable",
+          "#17 Test that a WebAssembly module is unlinkable",
+          "#20 Test that a WebAssembly module is unlinkable",
+          "#23 Test that a WebAssembly module is unlinkable",
+          "#26 Test that a WebAssembly module is unlinkable",
+          "#29 Test that a WebAssembly module is unlinkable"
+        ]
+      },
+      "imports1.wast.js.html": true,
+      "imports2.wast.js.html": {
+        "expectedFailures": [
+          "#34 Test that a WebAssembly module is unlinkable",
+          "#37 Test that a WebAssembly module is unlinkable",
+          "#40 Test that a WebAssembly module is unlinkable",
+          "#43 Test that a WebAssembly module is unlinkable",
+          "#46 Test that a WebAssembly module is unlinkable",
+          "#49 Test that a WebAssembly module is unlinkable"
+        ]
+      },
+      "imports3.wast.js.html": {
+        "expectedFailures": [
+          "#16 Test that a WebAssembly module is unlinkable",
+          "#19 Test that a WebAssembly module is unlinkable",
+          "#22 Test that a WebAssembly module is unlinkable",
+          "#25 Test that a WebAssembly module is unlinkable",
+          "#28 Test that a WebAssembly module is unlinkable",
+          "#31 Test that a WebAssembly module is unlinkable",
+          "#34 Test that a WebAssembly module is unlinkable",
+          "#37 Test that a WebAssembly module is unlinkable"
+        ]
+      },
+      "imports4.wast.js.html": true,
+      "linking0.wast.js.html": {
+        "expectedFailures": [
+          "#10 Test that a WebAssembly module is unlinkable",
+          "#14 Test that a WebAssembly module is uninstantiable",
+          "#15 Test that a WebAssembly code returns a specific result (linking0.wast:42)"
+        ]
+      },
+      "linking1.wast.js.html": {
+        "expectedFailures": [
+          "#26 Test that a WebAssembly module is uninstantiable",
+          "#29 Test that a WebAssembly module is uninstantiable"
+        ]
+      },
+      "linking2.wast.js.html": true,
+      "linking3.wast.js.html": {
+        "expectedFailures": [
+          "#13 Test that a WebAssembly module is unlinkable",
+          "#17 Test that a WebAssembly module is uninstantiable",
+          "#18 Test that a WebAssembly code returns a specific result (linking3.wast:36)",
+          "#22 Test that a WebAssembly module is uninstantiable",
+          "#23 Test that a WebAssembly code returns a specific result (linking3.wast:49)",
+          "#28 Test that a WebAssembly module is uninstantiable",
+          "#29 Test that a WebAssembly code returns a specific result (linking3.wast:82)",
+          "#30 Test that a WebAssembly code returns a specific result (linking3.wast:83)"
+        ]
+      },
+      "load0.wast.js.html": true,
+      "load1.wast.js.html": true,
+      "load2.wast.js.html": true,
+      "memory-multi.wast.js.html": true,
+      "memory_copy0.wast.js.html": true,
+      "memory_copy1.wast.js.html": true,
+      "memory_fill0.wast.js.html": true,
+      "memory_grow.wast.js.html": true,
+      "memory_init0.wast.js.html": true,
+      "memory_size0.wast.js.html": true,
+      "memory_size1.wast.js.html": true,
+      "memory_size2.wast.js.html": true,
+      "memory_size3.wast.js.html": true,
+      "memory_size_import.wast.js.html": true,
+      "memory_trap0.wast.js.html": true,
+      "memory_trap1.wast.js.html": true,
+      "start0.wast.js.html": true,
+      "store0.wast.js.html": true,
+      "store1.wast.js.html": true,
+      "store2.wast.js.html": true,
+      "traps0.wast.js.html": true
+    },
+    "ref.wast.js.html": true,
+    "ref_as_non_null.wast.js.html": true,
+    "relaxed-simd": {
+      "i16x8_relaxed_q15mulr_s.wast.js.html": true,
+      "i32x4_relaxed_trunc.wast.js.html": true,
+      "i8x16_relaxed_swizzle.wast.js.html": true,
+      "relaxed_dot_product.wast.js.html": true,
+      "relaxed_laneselect.wast.js.html": true,
+      "relaxed_madd_nmadd.wast.js.html": true,
+      "relaxed_min_max.wast.js.html": true
+    },
+    "return_call.wast.js.html": true,
+    "return_call_indirect.wast.js.html": true,
+    "return_call_ref.wast.js.html": true,
+    "type-canon.wast.js.html": true,
+    "type-equivalence.wast.js.html": true,
+    "type-rec.wast.js.html": {
+      "expectedFailures": [
+        "#50 Test that a WebAssembly module is unlinkable",
+        "#53 Test that a WebAssembly module is unlinkable"
+      ]
+    }
   }
 }

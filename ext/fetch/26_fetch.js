@@ -6,7 +6,7 @@ const {
   op_fetch,
   op_fetch_promise_is_settled,
   op_fetch_send,
-  op_wasm_streaming_feed,
+  op_pipe,
   op_wasm_streaming_set_url,
 } = core.ops;
 const {
@@ -38,8 +38,13 @@ const {
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const { byteLowerCase } = core.loadExtScript("ext:deno_web/00_infra.js");
 const {
+  acquireReadableStreamDefaultReader,
   errorReadableStream,
   getReadableStreamResourceBacking,
+  getReadableStreamStoredError,
+  readableStreamClose,
+  readableStreamDisturb,
+  readableStreamError,
   readableStreamForRid,
   ReadableStreamPrototype,
   resourceForReadableStream,
@@ -59,6 +64,17 @@ const {
   toInnerResponse,
 } = core.loadExtScript("ext:deno_fetch/23_response.js");
 const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
+// Make sure both telemetry modules are loaded before destructuring their
+// `internals` slots. 99_main.js / 90_deno_ns.js used to load `telemetry.ts`
+// unconditionally at snapshot time, but now defer it to actual telemetry
+// use. Fetch is the one always-on caller that depends on `__telemetry` and
+// `__telemetryUtil`, so it loads both modules on first use.
+if (!internals.__telemetry) {
+  core.loadExtScript("ext:deno_telemetry/telemetry.ts");
+}
+if (!internals.__telemetryUtil) {
+  core.loadExtScript("ext:deno_telemetry/util.ts");
+}
 const {
   builtinTracer,
   ContextManager,
@@ -84,6 +100,98 @@ const REDIRECT_SENSITIVE_HEADER_NAMES = [
   "proxy-authorization",
   "cookie",
 ];
+
+// https://fetch.spec.whatwg.org/#bad-port
+// "bad ports" that fetch must block before any network I/O occurs. Keys are
+// the (leading-zero-free) port strings produced by `URL.prototype.port`, so a
+// lookup is a single `BAD_PORTS[url.port]` with no parsing. `__proto__: null`
+// keeps the lookup safe from prototype pollution.
+const BAD_PORTS = {
+  __proto__: null,
+  "0": true, // (port 0)
+  "1": true, // tcpmux
+  "7": true, // echo
+  "9": true, // discard
+  "11": true, // systat
+  "13": true, // daytime
+  "15": true, // netstat
+  "17": true, // qotd
+  "19": true, // chargen
+  "20": true, // ftp-data
+  "21": true, // ftp
+  "22": true, // ssh
+  "23": true, // telnet
+  "25": true, // smtp
+  "37": true, // time
+  "42": true, // name
+  "43": true, // nicname
+  "53": true, // domain
+  "69": true, // tftp
+  "77": true, // priv-rjs
+  "79": true, // finger
+  "87": true, // ttylink
+  "95": true, // supdup
+  "101": true, // hostname
+  "102": true, // iso-tsap
+  "103": true, // gppitnp
+  "104": true, // acr-nema
+  "109": true, // pop2
+  "110": true, // pop3
+  "111": true, // sunrpc
+  "113": true, // auth
+  "115": true, // sftp
+  "117": true, // uucp-path
+  "119": true, // nntp
+  "123": true, // ntp
+  "135": true, // loc-srv / epmap
+  "137": true, // netbios-ns
+  "139": true, // netbios-ssn
+  "143": true, // imap2
+  "161": true, // snmp
+  "179": true, // bgp
+  "389": true, // ldap
+  "427": true, // svrloc
+  "465": true, // submissions
+  "512": true, // exec
+  "513": true, // login
+  "514": true, // shell
+  "515": true, // printer
+  "526": true, // tempo
+  "530": true, // courier
+  "531": true, // chat
+  "532": true, // netnews
+  "540": true, // uucp
+  "548": true, // afp
+  "554": true, // rtsp
+  "556": true, // remotefs
+  "563": true, // nntp+ssl
+  "587": true, // submission
+  "601": true, // syslog-conn
+  "636": true, // ldap+ssl
+  "989": true, // ftps-data
+  "990": true, // ftps
+  "993": true, // imap+ssl
+  "995": true, // pop3+ssl
+  "1719": true, // h323gatestat
+  "1720": true, // h323hostcall
+  "1723": true, // pptp
+  "2049": true, // nfs
+  "3659": true, // apple-sasl
+  "4045": true, // lockd
+  "4190": true, // sieve
+  "5060": true, // sip
+  "5061": true, // sips
+  "6000": true, // x11
+  "6566": true, // sane-port
+  "6665": true, // ircu
+  "6666": true, // ircu
+  "6667": true, // ircu
+  "6668": true, // ircu
+  "6669": true, // ircu
+  "6679": true, // osaut
+  "6697": true, // ircs-u
+  "10080": true, // amanda
+};
 
 // ============================================================================
 // Inspector Network domain instrumentation (Chrome DevTools Protocol).
@@ -276,6 +384,24 @@ function createResponseBodyStream(responseBodyRid, terminator) {
  * @returns {Promise<InnerResponse>}
  */
 async function mainFetch(req, recursive, terminator, inspectorCtx = null) {
+  // https://fetch.spec.whatwg.org/#main-fetch step 5: if the request should be
+  // blocked due to a bad port, return a network error before any network I/O
+  // occurs. This applies to every hop, including those reached via redirects.
+  //
+  // Per https://fetch.spec.whatwg.org/#block-bad-port the check only applies
+  // when the URL's scheme is an HTTP(S) scheme, so https bad ports (e.g.
+  // https://example.com:22) are blocked too, while non-HTTP(S) schemes are
+  // left alone. The spec's ALPN note covers *new* protocols negotiated over
+  // TLS; it does not exempt https fetch from the list. This matches Node's
+  // undici (`requestBadPort` gates on `urlIsHttpHttpsScheme`).
+  const url = new URL(req.currentUrl());
+  if (
+    (url.protocol === "http:" || url.protocol === "https:") &&
+    url.port !== "" && BAD_PORTS[url.port] === true
+  ) {
+    return networkError(`Requests to port ${url.port} are blocked`);
+  }
+
   if (req.blobUrlEntry !== null) {
     if (req.method !== "GET") {
       throw new TypeError("Blob URL fetch only supports GET method");
@@ -463,8 +589,11 @@ async function mainFetch(req, recursive, terminator, inspectorCtx = null) {
         errorText: resp.error[0],
       });
     }
-    const { 0: message, 1: cause } = resp.error;
-    throw new TypeError(message, { cause: new Error(cause) });
+    // `resp.error` is `[detail, cause]`, where `detail` is the full reqwest
+    // message and `cause` is the underlying transport error detail. Mirror
+    // Node's shape: `TypeError: "fetch failed"` with the detail in `.cause`.
+    const cause = resp.error[1];
+    throw new TypeError("fetch failed", { cause: new Error(cause) });
   }
   if (terminator.aborted) {
     // op_fetch_send resolved successfully, so the FetchResponseResource is already in
@@ -483,6 +612,7 @@ async function mainFetch(req, recursive, terminator, inspectorCtx = null) {
     headerList: resp.headers,
     status: resp.status,
     body: null,
+    bodyDecoded: resp.bodyDecoded,
     statusMessage: resp.statusText,
     type: "basic",
     url() {
@@ -933,22 +1063,68 @@ function handleWasmStreaming(source, rid) {
 
     if (res.body !== null) {
       // 2.6.
-      // Rather than consuming the body as an ArrayBuffer, this passes each
-      // chunk to the feed as soon as it's available.
-      PromisePrototypeThen(
-        (async () => {
-          const reader = res.body.getReader();
-          while (true) {
-            const { value: chunk, done } = await reader.read();
-            if (done) break;
-            op_wasm_streaming_feed(rid, chunk);
-          }
-        })(),
-        // 2.7
-        () => core.close(rid),
-        // 2.8
-        (err) => core.abortWasmStreaming(rid, err),
-      );
+      // Rather than consuming the body as an ArrayBuffer, this feeds each chunk
+      // to the streaming compiler as soon as it's available. Instead of reading
+      // the body chunk-by-chunk in JS and calling `op_wasm_streaming_feed` once
+      // per chunk, hand the underlying stream resource to `op_pipe` with the
+      // wasm streaming resource as the sink (`WasmStreamingResource` implements
+      // `Resource::write`), so a single async op pumps the bytes straight into
+      // V8's streaming compiler.
+      const stream = res.body;
+      const resourceBacking = getReadableStreamResourceBacking(stream);
+      let streamRid, closeStreamRid;
+      if (resourceBacking) {
+        // Fast path: feed straight from the body's backing resource. Acquire a
+        // reader and mark the stream disturbed (as the response-body fast path
+        // does) so nothing else consumes it and, crucially, so the stream stays
+        // referenced until we're done. Otherwise it could be GC'd mid-feed and
+        // its finalizer would close (and thereby cancel the read of) the backing
+        // resource out from under us.
+        acquireReadableStreamDefaultReader(stream);
+        readableStreamDisturb(stream);
+        streamRid = resourceBacking.rid;
+        // Only close the resource if the stream owns it (mirrors the fast path
+        // in `readableStreamCollectIntoUint8Array`).
+        closeStreamRid = resourceBacking.autoClose;
+      } else {
+        // We allocated the resource, so we own it and must close it.
+        streamRid = resourceForReadableStream(stream);
+        closeStreamRid = true;
+      }
+
+      // Pump the bytes in Rust, then reconcile the stream and the wasm
+      // streaming resource. This is wrapped in an async IIFE (rather than a
+      // `.then`/`.catch` pair) so that nothing thrown while handling the
+      // result can escape as an unhandled rejection.
+      PromisePrototypeThen((async () => {
+        let feedError;
+        try {
+          await op_pipe(streamRid, rid, undefined);
+        } catch (err) {
+          feedError = err;
+        }
+        if (closeStreamRid) core.tryClose(streamRid);
+
+        // If the request was aborted, the body stream was errored with the
+        // abort reason (e.g. an AbortError). Surface that reason rather than
+        // the op's generic cancellation error, and don't try to close an
+        // already-errored stream (which would assert).
+        const storedError = resourceBacking
+          ? getReadableStreamStoredError(stream)
+          : undefined;
+        if (storedError !== undefined) {
+          // 2.8
+          core.abortWasmStreaming(rid, storedError);
+        } else if (feedError !== undefined) {
+          // 2.8
+          if (resourceBacking) readableStreamError(stream, feedError);
+          core.abortWasmStreaming(rid, feedError);
+        } else {
+          // 2.7
+          if (resourceBacking) readableStreamClose(stream);
+          core.close(rid);
+        }
+      })());
     } else {
       // 2.7
       core.close(rid);

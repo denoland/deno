@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::fmt::Formatter;
 use std::io;
 use std::path::Path;
@@ -12,6 +13,9 @@ use std::time::UNIX_EPOCH;
 
 use deno_core::BufMutView;
 use deno_core::BufView;
+use deno_core::CancelHandle;
+use deno_core::CancelTryFuture;
+use deno_core::Canceled;
 use deno_core::OpState;
 use deno_core::ResourceHandleFd;
 use deno_core::ResourceId;
@@ -98,6 +102,12 @@ impl From<JoinError> for FsError {
   }
 }
 
+impl From<Canceled> for FsError {
+  fn from(err: Canceled) -> Self {
+    Self::Io(err.into())
+  }
+}
+
 pub type FsResult<T> = Result<T, FsError>;
 
 pub struct FsStat {
@@ -106,10 +116,10 @@ pub struct FsStat {
   pub is_symlink: bool,
   pub size: u64,
 
-  pub mtime: Option<u64>,
-  pub atime: Option<u64>,
-  pub birthtime: Option<u64>,
-  pub ctime: Option<u64>,
+  pub mtime: Option<i64>,
+  pub atime: Option<i64>,
+  pub birthtime: Option<i64>,
+  pub ctime: Option<i64>,
 
   pub dev: u64,
   pub ino: Option<u64>,
@@ -124,6 +134,19 @@ pub struct FsStat {
   pub is_char_device: bool,
   pub is_fifo: bool,
   pub is_socket: bool,
+}
+
+/// File system statistics as returned by `statfs(2)` (or `GetDiskFreeSpaceW`
+/// on Windows). Mirrors the result of Node's `fs.statfs`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct FsStatFs {
+  pub typ: u64,
+  pub bsize: u64,
+  pub blocks: u64,
+  pub bfree: u64,
+  pub bavail: u64,
+  pub files: u64,
+  pub ffree: u64,
 }
 
 impl FsStat {
@@ -171,26 +194,28 @@ impl FsStat {
     }
 
     #[inline(always)]
-    fn to_msec(maybe_time: Result<SystemTime, io::Error>) -> Option<u64> {
+    fn to_msec(maybe_time: Result<SystemTime, io::Error>) -> Option<i64> {
       match maybe_time {
-        Ok(time) => Some(
-          time
-            .duration_since(UNIX_EPOCH)
-            .map(|t| t.as_millis() as u64)
-            .unwrap_or_else(|err| err.duration().as_millis() as u64),
-        ),
+        Ok(time) => {
+          let ms = match time.duration_since(UNIX_EPOCH) {
+            Ok(d) => d.as_millis() as i64,
+            // Pre-epoch: negate the duration
+            Err(e) => -(e.duration().as_millis() as i64),
+          };
+          Some(ms)
+        }
         Err(_) => None,
       }
     }
 
     #[inline(always)]
-    fn get_ctime(ctime_or_0: i64) -> Option<u64> {
-      if ctime_or_0 > 0 {
-        // ctime return seconds since epoch, but we need milliseconds
-        return Some(ctime_or_0 as u64 * 1000);
+    fn get_ctime(ctime_secs: i64) -> Option<i64> {
+      if ctime_secs != 0 {
+        // ctime is seconds since epoch; convert to milliseconds
+        Some(ctime_secs * 1000)
+      } else {
+        None
       }
-
-      None
     }
 
     Self {
@@ -332,11 +357,28 @@ pub trait File {
 pub struct FileResource {
   name: String,
   file: Rc<dyn File>,
+  /// Cancels pending read operations when the resource is closed.
+  /// Used so streams backed by a file (especially pipes / FIFOs whose
+  /// reads can block indefinitely) can be cancelled — see
+  /// <https://github.com/denoland/deno/issues/21186>.
+  cancel_handle: RefCell<Rc<CancelHandle>>,
 }
 
 impl FileResource {
   pub fn new(file: Rc<dyn File>, name: String) -> Self {
-    Self { name, file }
+    Self {
+      name,
+      file,
+      cancel_handle: RefCell::new(CancelHandle::new_rc()),
+    }
+  }
+
+  fn cancel_handle(&self) -> Rc<CancelHandle> {
+    self.cancel_handle.borrow().clone()
+  }
+
+  fn cancel_read_ops(&self) {
+    self.cancel_handle.replace(CancelHandle::new_rc()).cancel();
   }
 
   fn with_resource<F, R>(
@@ -384,11 +426,13 @@ impl deno_core::Resource for FileResource {
   }
 
   fn read(self: Rc<Self>, limit: usize) -> deno_core::AsyncResult<BufView> {
+    let cancel_handle = self.cancel_handle();
     Box::pin(async move {
       self
         .file
         .clone()
         .read(limit)
+        .try_or_cancel(cancel_handle)
         .await
         .map_err(JsErrorBox::from_err)
     })
@@ -398,11 +442,13 @@ impl deno_core::Resource for FileResource {
     self: Rc<Self>,
     buf: BufMutView,
   ) -> deno_core::AsyncResult<(usize, BufMutView)> {
+    let cancel_handle = self.cancel_handle();
     Box::pin(async move {
       self
         .file
         .clone()
         .read_byob(buf)
+        .try_or_cancel(cancel_handle)
         .await
         .map_err(JsErrorBox::from_err)
     })
@@ -454,5 +500,17 @@ impl deno_core::Resource for FileResource {
 
   fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {
     self.file.clone().backing_fd()
+  }
+
+  fn close(self: Rc<Self>) {
+    // Cancel any pending read operations. Reads on pipes / FIFOs can
+    // block indefinitely; without this, a `ReadableStream` backed by
+    // such a file could never have its `cancel()` promise resolve while
+    // a read is outstanding.
+    self.cancel_read_ops();
+  }
+
+  fn cancel_read_ops(self: Rc<Self>) {
+    FileResource::cancel_read_ops(&self);
   }
 }

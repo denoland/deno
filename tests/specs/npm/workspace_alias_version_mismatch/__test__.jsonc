@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      // Same as workspace_explicit_version_mismatch, but the dependency uses a
+      // pnpm-style alias (`workspace:<name>@<range>`). The version constraint
+      // still has to be satisfied by the member, and the error names both the
+      // import alias ('my-member') and the resolved member ('@denotest/member')
+      // so the offending entry is easy to locate.
+      "args": "install",
+      "output": "mismatch.out",
+      "exitCode": 1
+    }
+  ]
+}

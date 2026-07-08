@@ -63,6 +63,29 @@ use ipc::IpcJsonStreamResource;
 use ipc::IpcRefTracker;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "process";
+#[cfg(unix)]
+use deno_io::DENO_EXTRA_STDIO_FDS_ENV_VAR;
+
+#[cfg(unix)]
+fn clear_nonblocking(fd: i32) -> std::io::Result<()> {
+  // SAFETY: fcntl is called with a valid file descriptor supplied by the
+  // caller. The command variants used here do not require pointer arguments.
+  let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+  if flags < 0 {
+    return Err(std::io::Error::last_os_error());
+  }
+
+  if flags & libc::O_NONBLOCK == 0 {
+    return Ok(());
+  }
+
+  // SAFETY: same as above; F_SETFL accepts the updated descriptor flags.
+  if unsafe { libc::fcntl(fd, libc::F_SETFL, flags & !libc::O_NONBLOCK) } < 0 {
+    return Err(std::io::Error::last_os_error());
+  }
+
+  Ok(())
+}
 
 /// Read CRT errno and map it to a Win32 error code for std::io::Error.
 ///
@@ -157,15 +180,16 @@ impl StdioOrFd {
       StdioOrFd::Fd(fd) => {
         #[cfg(unix)]
         {
-          // Safety: we dup the fd so the original remains open for the caller
+          // SAFETY: we dup the fd so the original remains open for the caller.
           let new_fd = unsafe { libc::dup(*fd) };
           if new_fd < 0 {
             return Err(ProcessError::Io(std::io::Error::last_os_error()));
           }
-          // Safety: new_fd is a valid, freshly duplicated file descriptor
-          Ok(unsafe {
-            StdStdio::from(std::os::unix::io::OwnedFd::from_raw_fd(new_fd))
-          })
+          // SAFETY: new_fd is a valid, freshly duplicated file descriptor.
+          let owned_fd =
+            unsafe { std::os::unix::io::OwnedFd::from_raw_fd(new_fd) };
+          clear_nonblocking(new_fd).map_err(ProcessError::Io)?;
+          Ok(StdStdio::from(owned_fd))
         }
         #[cfg(windows)]
         {
@@ -282,7 +306,7 @@ impl Drop for ChildResource {
   }
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpawnArgs {
   cmd: String,
@@ -296,6 +320,9 @@ pub struct SpawnArgs {
   uid: Option<u32>,
   #[cfg(windows)]
   windows_raw_arguments: bool,
+  #[cfg(windows)]
+  #[serde(default)]
+  windows_hide: bool,
   ipc: Option<i32>,
 
   serialization: Option<ChildIpcSerialization>,
@@ -320,6 +347,11 @@ pub struct SpawnArgs {
     allow(dead_code, reason = "deserialized from JS but only used on Unix")
   )]
   kill_signal: Option<KillSignal>,
+  /// Maximum number of bytes that may accumulate in stdout/stderr before the
+  /// child is killed. Mirrors Node.js `child_process.spawnSync({ maxBuffer })`.
+  /// `None` means unlimited.
+  #[serde(default)]
+  max_buffer: Option<u64>,
 }
 
 #[derive(Clone, Deserialize)]
@@ -333,7 +365,7 @@ enum KillSignal {
   Number(i32),
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ChildIpcSerialization {
   Json,
@@ -424,7 +456,24 @@ pub enum ProcessError {
   MissingCmd, // only for Deno.run
 }
 
-#[derive(Deserialize)]
+impl ProcessError {
+  /// Returns `true` if this error was caused by the OS rejecting the target
+  /// file as not being in an executable format (`ENOEXEC`). This happens for
+  /// e.g. shell scripts without a shebang line. POSIX `execvp`/`posix_spawnp`
+  /// fall back to running such files with `/bin/sh`; glibc's `posix_spawnp`
+  /// (used by Rust's `std::process::Command` on Linux) does not, so Deno
+  /// performs this fallback explicitly to match Node.js/libuv behavior.
+  #[cfg(unix)]
+  fn is_enoexec(&self) -> bool {
+    match self {
+      ProcessError::SpawnFailed { error, .. } => error.is_enoexec(),
+      ProcessError::Io(err) => err.raw_os_error() == Some(libc::ENOEXEC),
+      _ => false,
+    }
+  }
+}
+
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChildStdio {
   stdin: StdioOrFd,
@@ -479,6 +528,7 @@ pub struct SpawnOutput {
   stdout: Option<Uint8Array>,
   stderr: Option<Uint8Array>,
   killed_by_timeout: bool,
+  killed_by_max_buffer: bool,
 }
 
 type CreateCommand = (
@@ -498,7 +548,7 @@ pub fn npm_process_state_tempfile(
   {
     use windows_sys::Win32::Foundation::HANDLE_FLAG_INHERIT;
     // make the handle inheritable
-    // SAFETY: winapi call, handle is valid
+    // SAFETY: Win32 call, handle is valid
     unsafe {
       windows_sys::Win32::Foundation::SetHandleInformation(
         handle as _,
@@ -533,6 +583,11 @@ fn create_command(
   mut args: SpawnArgs,
   api_name: &str,
   allow_cwd_inherit: bool,
+  // When `true` (Unix only), the resolved command is run as an argument to
+  // `/bin/sh` instead of being exec'd directly. Used as a fallback when a
+  // direct spawn fails with `ENOEXEC` (e.g. a shebang-less shell script), to
+  // match the POSIX `execvp` / Node.js behavior. Always `false` on Windows.
+  wrap_in_shell: bool,
 ) -> Result<CreateCommand, ProcessError> {
   let maybe_npm_process_state = if args.needs_npm_process_state {
     let provider = state.borrow::<NpmProcessStateProviderRc>();
@@ -556,7 +611,28 @@ fn create_command(
     api_name,
     allow_cwd_inherit,
   )?;
-  let mut command = Command::new(cmd);
+
+  // On Unix, optionally run the command through `/bin/sh` so that files which
+  // the kernel can't exec directly (e.g. shell scripts without a shebang) are
+  // still executed. This mirrors glibc's `execvp` (`maybe_script_execute`),
+  // which on `ENOEXEC` re-execs `/bin/sh` with argv `[sh, file, args...]` —
+  // the original argv[0] is dropped and replaced by the shell. Node.js/libuv
+  // inherit this from `execvp`; Rust's `posix_spawn` on Linux does not, so we
+  // replicate it. The user args (`args.args`, i.e. argv[1..]) are appended
+  // below; `argv0` is intentionally skipped (see below) to match libc.
+  #[cfg(unix)]
+  let mut command = if wrap_in_shell {
+    let mut command = Command::new("/bin/sh");
+    command.arg(&cmd);
+    command
+  } else {
+    Command::new(cmd)
+  };
+  #[cfg(windows)]
+  let mut command = {
+    let _ = wrap_in_shell;
+    Command::new(cmd)
+  };
 
   #[cfg(windows)]
   {
@@ -567,12 +643,19 @@ fn create_command(
     if args.windows_raw_arguments {
       command.verbatim_arguments(true);
     }
+    if args.windows_hide {
+      command.windows_hide(true);
+    }
     command.args(args.args);
   }
 
   #[cfg(not(windows))]
   {
-    if let Some(ref argv0) = args.argv0 {
+    // `argv0` overrides the executable's own argv[0]; when wrapping in a shell
+    // it would incorrectly apply to `/bin/sh`, so skip it in that case.
+    if let Some(ref argv0) = args.argv0
+      && !wrap_in_shell
+    {
       command.arg0(argv0);
     }
     command.args(args.args);
@@ -624,6 +707,7 @@ fn create_command(
   )]
   unsafe {
     let mut extra_pipe_fds = Vec::new();
+    let mut child_extra_stdio_fds = Vec::new();
     let mut fds_to_dup = Vec::new();
     let mut fds_to_close = Vec::new();
     let mut ipc_rid = None;
@@ -634,7 +718,7 @@ fn create_command(
       && ipc >= 0
     {
       let (ipc_fd1, ipc_fd2) = deno_io::bi_pipe_pair_raw()?;
-      fds_to_dup.push((ipc_fd2, ipc));
+      fds_to_dup.push((ipc_fd2, ipc, false));
       fds_to_close.push(ipc_fd2);
       /* One end returned to parent process (this) */
       let pipe_rid = match args.serialization {
@@ -671,13 +755,19 @@ fn create_command(
       match stdio {
         StdioOrFd::Stdio(Stdio::Piped) => {
           let (fd1, fd2) = deno_io::bi_pipe_pair_raw()?;
-          fds_to_dup.push((fd2, target_fd));
+          fds_to_dup.push((fd2, target_fd, false));
           fds_to_close.push(fd2);
+          child_extra_stdio_fds.push(target_fd);
           extra_pipe_fds.push(Some(fd1 as i64));
         }
         StdioOrFd::Fd(fd) => {
-          // Dup the caller's fd onto the target fd slot in the child
-          fds_to_dup.push((fd, target_fd));
+          // Dup the caller's fd onto the target fd slot in the child. The
+          // trailing `true` requests that O_NONBLOCK be cleared on the dup'd
+          // fd: Deno opens piped stdio non-blocking for async reads from JS,
+          // but a child doing blocking reads on the inherited fd would
+          // otherwise fail with EAGAIN.
+          fds_to_dup.push((fd, target_fd, true));
+          child_extra_stdio_fds.push(target_fd);
           extra_pipe_fds.push(None);
         }
         _ => {
@@ -692,19 +782,41 @@ fn create_command(
         if detached {
           libc::setsid();
         }
-        for &(src, dst) in &fds_to_dup {
+        for &(src, dst, should_clear_nonblocking) in &fds_to_dup {
           if src >= 0 && dst >= 0 {
             if src != dst {
-              libc::dup2(src, dst);
+              if libc::dup2(src, dst) < 0 {
+                return Err(std::io::Error::last_os_error());
+              }
               libc::close(src);
             }
+            // Caller-provided fds (e.g. another child's piped stdout) are
+            // non-blocking; clear it so the exec'd child can do blocking reads.
+            if should_clear_nonblocking {
+              clear_nonblocking(dst)?;
+            }
             // Clear CLOEXEC so the fd survives exec.
-            libc::fcntl(dst, libc::F_SETFD, 0);
+            if libc::fcntl(dst, libc::F_SETFD, 0) < 0 {
+              return Err(std::io::Error::last_os_error());
+            }
           }
         }
         libc::setgroups(0, std::ptr::null());
         Ok(())
       });
+    }
+
+    if !child_extra_stdio_fds.is_empty() {
+      let mut value = String::new();
+      for (i, fd) in child_extra_stdio_fds.iter().enumerate() {
+        if i > 0 {
+          value.push(',');
+        }
+        value.push_str(&fd.to_string());
+      }
+      command.env(DENO_EXTRA_STDIO_FDS_ENV_VAR, value);
+    } else {
+      command.env_remove(DENO_EXTRA_STDIO_FDS_ENV_VAR);
     }
 
     Ok((command, ipc_rid, extra_pipe_fds, fds_to_close))
@@ -1342,11 +1454,27 @@ fn op_spawn_child(
   #[string] api_name: String,
 ) -> Result<Child, ProcessError> {
   let detached = args.detached;
-  let (command, pipe_rid, extra_pipe_fds, handles_to_close) =
-    create_command(state, args, &api_name, /* allow_cwd_inherit */ false)?;
+  #[cfg(unix)]
+  let retry_args = args.clone();
+  let (command, pipe_rid, extra_pipe_fds, handles_to_close) = create_command(
+    state, args, &api_name, /* allow_cwd_inherit */ false,
+    /* wrap_in_shell */ false,
+  )?;
   let child = spawn_child(state, command, pipe_rid, extra_pipe_fds, detached);
   for handle in handles_to_close {
     deno_io::close_raw_handle(handle);
+  }
+  #[cfg(unix)]
+  if matches!(&child, Err(err) if err.is_enoexec()) {
+    let (command, pipe_rid, extra_pipe_fds, handles_to_close) = create_command(
+      state, retry_args, &api_name, /* allow_cwd_inherit */ false,
+      /* wrap_in_shell */ true,
+    )?;
+    let child = spawn_child(state, command, pipe_rid, extra_pipe_fds, detached);
+    for handle in handles_to_close {
+      deno_io::close_raw_handle(handle);
+    }
+    return child;
   }
   child
 }
@@ -1360,14 +1488,31 @@ fn op_node_spawn_child(
   #[string] api_name: String,
 ) -> Result<NodeChild, ProcessError> {
   let detached = args.detached;
+  #[cfg(unix)]
+  let retry_args = args.clone();
   // `child_process.spawn` in Node tolerates the parent's cwd being unlinked
   // by inheriting it, so allow cwd inheritance for Node-compat spawns.
-  let (command, pipe_rid, extra_pipe_fds, handles_to_close) =
-    create_command(state, args, &api_name, /* allow_cwd_inherit */ true)?;
+  let (command, pipe_rid, extra_pipe_fds, handles_to_close) = create_command(
+    state, args, &api_name, /* allow_cwd_inherit */ true,
+    /* wrap_in_shell */ false,
+  )?;
   let child =
     spawn_child_node(state, command, pipe_rid, extra_pipe_fds, detached);
   for handle in handles_to_close {
     deno_io::close_raw_handle(handle);
+  }
+  #[cfg(unix)]
+  if matches!(&child, Err(err) if err.is_enoexec()) {
+    let (command, pipe_rid, extra_pipe_fds, handles_to_close) = create_command(
+      state, retry_args, &api_name, /* allow_cwd_inherit */ true,
+      /* wrap_in_shell */ true,
+    )?;
+    let child =
+      spawn_child_node(state, command, pipe_rid, extra_pipe_fds, detached);
+    for handle in handles_to_close {
+      deno_io::close_raw_handle(handle);
+    }
+    return child;
   }
   child
 }
@@ -1408,26 +1553,64 @@ fn op_spawn_sync(
   let stderr = matches!(args.stdio.stderr, StdioOrFd::Stdio(Stdio::Piped));
   let input = args.input.clone();
   let timeout = args.timeout;
+  let max_buffer = args.max_buffer;
   #[cfg(unix)]
   let kill_signal = args.kill_signal.clone();
+  #[cfg(unix)]
+  let retry_args = args.clone();
   let (mut command, _, _, _) = create_command(
     state,
     args,
     "Deno.Command().outputSync()",
     /* allow_cwd_inherit */ false,
+    /* wrap_in_shell */ false,
   )?;
 
-  // When timeout is specified on Unix, create a new process group so we can
-  // kill the entire tree (shell + children) on timeout, not just the shell.
+  // When a timeout is specified on Unix, create a new process group so the
+  // watchdog can kill the entire tree (shell + children), not just the shell.
+  //
+  // The `maxBuffer` kill path deliberately does NOT force a new group. Node's
+  // spawnSync defaults `maxBuffer` to 1 MiB, so doing so would move every
+  // spawnSync child with a piped stdout/stderr into its own process group,
+  // detaching it from the controlling terminal's foreground group. That breaks
+  // TTY operations like `setRawMode` on inherited stdin: a background-group
+  // `tcsetattr` raises SIGTTOU, which stops the child and hangs the parent.
+  // Node enforces `maxBuffer` by killing only the direct child, so the
+  // maxBuffer reader threads below do the same (see `kill_child`).
   #[cfg(unix)]
   if timeout.is_some_and(|t| t > 0) {
     command.process_group(0);
   }
 
-  let mut child = command.spawn().map_err(|e| ProcessError::SpawnFailed {
-    command: command.get_program().to_string_lossy().into_owned(),
-    error: Box::new(e.into()),
-  })?;
+  let mut child = match command.spawn() {
+    Ok(child) => child,
+    // A shebang-less script (or other file the kernel can't exec directly)
+    // fails with `ENOEXEC` on Linux; retry it through `/bin/sh` to match the
+    // POSIX `execvp` / Node.js behavior.
+    #[cfg(unix)]
+    Err(err) if err.raw_os_error() == Some(libc::ENOEXEC) => {
+      let (mut command, _, _, _) = create_command(
+        state,
+        retry_args,
+        "Deno.Command().outputSync()",
+        /* allow_cwd_inherit */ false,
+        /* wrap_in_shell */ true,
+      )?;
+      if timeout.is_some_and(|t| t > 0) {
+        command.process_group(0);
+      }
+      command.spawn().map_err(|e| ProcessError::SpawnFailed {
+        command: command.get_program().to_string_lossy().into_owned(),
+        error: Box::new(e.into()),
+      })?
+    }
+    Err(err) => {
+      return Err(ProcessError::SpawnFailed {
+        command: command.get_program().to_string_lossy().into_owned(),
+        error: Box::new(err.into()),
+      });
+    }
+  };
   #[cfg(unix)]
   let pid = child.id();
   #[cfg(windows)]
@@ -1440,26 +1623,135 @@ fn op_spawn_sync(
     stdin.flush()?;
   }
 
+  // Resolve the configured kill signal once so it can be shared with the
+  // background threads that enforce timeout and maxBuffer. On Windows there
+  // are no real Unix signals, but the signal is still tracked so JS can
+  // surface the configured `killSignal` to callers.
+  #[cfg(unix)]
+  let kill_signal_int: i32 = match &kill_signal {
+    Some(KillSignal::Number(n)) => *n,
+    Some(KillSignal::String(s)) => {
+      deno_signals::signal_str_to_int(s).unwrap_or(libc::SIGTERM)
+    }
+    None => libc::SIGTERM,
+  };
+
+  #[cfg(unix)]
+  let child_pid_for_kill = child.id();
+  #[cfg(windows)]
+  let child_pid_for_kill = child.id().expect("Process ID should be set.");
+
+  // How far the kill should reach.
+  enum KillScope {
+    // Signal the child's whole process group. Only valid on the timeout path,
+    // where `process_group(0)` above made the child a group leader; this also
+    // reaps shell-wrapped subprocesses.
+    ProcessGroup,
+    // Signal only the direct child. Used by the maxBuffer path, matching Node,
+    // which never moves the child into a new group for `maxBuffer`.
+    Child,
+  }
+
+  // Kill the spawned child with the requested scope.
+  let kill_child: Arc<dyn Fn(KillScope) + Send + Sync> =
+    Arc::new(move |scope: KillScope| {
+      #[cfg(unix)]
+      {
+        // A negative PID targets the process group. There is a minor race
+        // window if the child has already exited and the PID was recycled; in
+        // practice the watchdog and readers race against EOF / wait()
+        // returning so this window is negligible.
+        let pid = child_pid_for_kill as i32;
+        let target = match scope {
+          KillScope::ProcessGroup => -pid,
+          KillScope::Child => pid,
+        };
+        // SAFETY: `target` references the just-spawned child (or its group).
+        unsafe {
+          libc::kill(target, kill_signal_int);
+        }
+      }
+      #[cfg(windows)]
+      {
+        // Windows has no process groups here; both scopes terminate the direct
+        // child.
+        let _ = scope;
+        // SAFETY: standard Win32 calls; child_pid_for_kill is a valid PID.
+        unsafe {
+          let handle = windows_sys::Win32::System::Threading::OpenProcess(
+            windows_sys::Win32::System::Threading::PROCESS_TERMINATE,
+            false.into(),
+            child_pid_for_kill,
+          );
+          if !handle.is_null() {
+            windows_sys::Win32::System::Threading::TerminateProcess(handle, 1);
+            windows_sys::Win32::Foundation::CloseHandle(handle);
+          }
+        }
+      }
+    });
+
   // Take stdout/stderr pipes from child so we can read them in background
   // threads. This lets us drop the pipes on timeout to unblock the readers
   // (matching libuv's behavior of stopping pipe reads after process kill).
   let child_stdout = child.stdout.take();
   let child_stderr = child.stderr.take();
 
-  let stdout_handle = child_stdout.map(|pipe| {
-    std::thread::spawn(move || {
-      let mut buf = Vec::new();
-      let mut pipe = pipe;
+  let killed_by_max_buffer = Arc::new(AtomicBool::new(false));
+
+  // Read a pipe to EOF, enforcing `max_buffer` if set. On overflow the first
+  // reader to notice flips `killed_by_max_buffer` (CAS-style) and kills the
+  // child; the subsequent EOF lets both reader threads return.
+  fn read_with_limit<R: std::io::Read>(
+    mut pipe: R,
+    max_buffer: Option<u64>,
+    killed_by_max_buffer: Arc<AtomicBool>,
+    kill_child: Arc<dyn Fn(KillScope) + Send + Sync>,
+  ) -> Vec<u8> {
+    let mut buf = Vec::new();
+    // No limit: fall back to read_to_end so we don't waste cycles checking.
+    let Some(limit) = max_buffer else {
       let _ = std::io::Read::read_to_end(&mut pipe, &mut buf);
-      buf
+      return buf;
+    };
+    let mut tmp = [0u8; 64 * 1024];
+    let mut overflowed = false;
+    loop {
+      match pipe.read(&mut tmp) {
+        Ok(0) => break,
+        Ok(n) => {
+          if !overflowed {
+            buf.extend_from_slice(&tmp[..n]);
+            if buf.len() as u64 > limit {
+              overflowed = true;
+              if !killed_by_max_buffer.swap(true, Ordering::SeqCst) {
+                // Kill only the direct child (matching Node); no process
+                // group is created for the maxBuffer path.
+                kill_child(KillScope::Child);
+              }
+            }
+          }
+          // After overflow, drain the pipe without buffering further so
+          // the child's pending writes don't keep the pipe open.
+        }
+        Err(_) => break,
+      }
+    }
+    buf
+  }
+
+  let stdout_handle = child_stdout.map(|pipe| {
+    let killed = killed_by_max_buffer.clone();
+    let kill_child = kill_child.clone();
+    std::thread::spawn(move || {
+      read_with_limit(pipe, max_buffer, killed, kill_child)
     })
   });
   let stderr_handle = child_stderr.map(|pipe| {
+    let killed = killed_by_max_buffer.clone();
+    let kill_child = kill_child.clone();
     std::thread::spawn(move || {
-      let mut buf = Vec::new();
-      let mut pipe = pipe;
-      let _ = std::io::Read::read_to_end(&mut pipe, &mut buf);
-      buf
+      read_with_limit(pipe, max_buffer, killed, kill_child)
     })
   });
 
@@ -1471,20 +1763,9 @@ fn op_spawn_sync(
   if let Some(timeout_ms) = timeout
     && timeout_ms > 0
   {
-    #[cfg(unix)]
-    let child_id = child.id();
-    #[cfg(windows)]
-    let child_id = child.id().expect("Process ID should be set.");
     let killed = killed_by_timeout.clone();
     let cancel2 = cancel.clone();
-    #[cfg(unix)]
-    let signal: i32 = match &kill_signal {
-      Some(KillSignal::Number(n)) => *n,
-      Some(KillSignal::String(s)) => {
-        deno_signals::signal_str_to_int(s).unwrap_or(libc::SIGTERM)
-      }
-      None => libc::SIGTERM,
-    };
+    let kill_child = kill_child.clone();
     std::thread::spawn(move || {
       let (lock, cvar) = &*cancel2;
       let guard = lock.lock().unwrap();
@@ -1497,40 +1778,12 @@ fn op_spawn_sync(
         return;
       }
       killed.store(true, Ordering::SeqCst);
-      // NOTE: There is a minor race window where the child exits and its
-      // PID gets recycled before we send the kill signal. The condvar
-      // cancel above prevents this in practice (the main thread cancels
-      // the timer immediately after wait() returns), but if the OS
-      // recycles the PID in that narrow window we could signal the wrong
-      // process. This matches libuv's behavior.
-      #[cfg(unix)]
-      // SAFETY: child_id is a valid PID from the spawned child process.
-      // We use negative PID to kill the entire process group (created via
-      // process_group(0) above), ensuring shell children are also killed.
-      // NOTE: There is a minor theoretical race window where the child
-      // could exit and its PID get recycled between wait() returning and
-      // the condvar cancel reaching this thread. In practice the condvar
-      // cancellation is near-instant so this window is negligible.
-      unsafe {
-        libc::kill(-(child_id as i32), signal);
-      }
-      #[cfg(windows)]
-      // SAFETY: child_id is a valid PID from the spawned child process.
-      // OpenProcess/TerminateProcess/CloseHandle are safe to call with
-      // valid arguments.
-      unsafe {
-        let handle = windows_sys::Win32::System::Threading::OpenProcess(
-          windows_sys::Win32::System::Threading::PROCESS_TERMINATE,
-          false.into(),
-          child_id,
-        );
-        if !handle.is_null() {
-          windows_sys::Win32::System::Threading::TerminateProcess(handle, 1);
-          windows_sys::Win32::Foundation::CloseHandle(handle);
-        }
-      }
+      // Kill the whole process group: a new group was created above when a
+      // timeout is set, so this also reaps shell-wrapped subprocesses.
+      kill_child(KillScope::ProcessGroup);
     });
   }
+  drop(kill_child);
 
   #[cfg(unix)]
   let status = child.wait().map_err(|e| ProcessError::SpawnFailed {
@@ -1555,6 +1808,7 @@ fn op_spawn_sync(
   }
 
   let timed_out = killed_by_timeout.load(Ordering::SeqCst);
+  let buffered_overflow = killed_by_max_buffer.load(Ordering::SeqCst);
 
   // Collect stdout/stderr from background reader threads.
   // On Unix, the process group kill ensures all children are dead and
@@ -1571,7 +1825,7 @@ fn op_spawn_sync(
     }
     #[cfg(windows)]
     {
-      if timed_out {
+      if timed_out || buffered_overflow {
         // Brief timeout to avoid blocking on orphaned grandchildren.
         let start = std::time::Instant::now();
         loop {
@@ -1605,6 +1859,7 @@ fn op_spawn_sync(
       None
     },
     killed_by_timeout: timed_out,
+    killed_by_max_buffer: buffered_overflow,
   })
 }
 
@@ -1883,20 +2138,51 @@ mod deprecated {
       .map_err(|e| ProcessError::Nix(JsNixError(e)))
   }
 
+  /// Returns whether the process with the given pid is still running.
+  ///
+  /// Opens the process with `PROCESS_QUERY_LIMITED_INFORMATION` and checks its
+  /// exit code. A process that has fully exited cannot be opened (so this
+  /// returns `false`), and one that is still running reports `STILL_ACTIVE`.
+  #[cfg(not(unix))]
+  fn process_is_alive(pid: u32) -> bool {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::Foundation::FALSE;
+    use windows_sys::Win32::System::Threading::GetExitCodeProcess;
+    use windows_sys::Win32::System::Threading::OpenProcess;
+    use windows_sys::Win32::System::Threading::PROCESS_QUERY_LIMITED_INFORMATION;
+
+    // SAFETY: Win32 call
+    let handle =
+      unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid) };
+    if handle.is_null() {
+      return false;
+    }
+    let mut status: u32 = 0;
+    // SAFETY: Win32 call
+    let alive = unsafe {
+      GetExitCodeProcess(handle, &mut status) != FALSE && status == 259 // STILL_ACTIVE
+    };
+    // SAFETY: Win32 call
+    unsafe {
+      CloseHandle(handle);
+    }
+    alive
+  }
+
   #[cfg(not(unix))]
   pub fn kill(pid: i32, signal: &SignalArg) -> Result<(), ProcessError> {
     use std::io::Error;
     use std::io::ErrorKind::NotFound;
 
-    use winapi::shared::minwindef::DWORD;
-    use winapi::shared::minwindef::FALSE;
-    use winapi::shared::minwindef::TRUE;
-    use winapi::shared::winerror::ERROR_INVALID_PARAMETER;
-    use winapi::um::errhandlingapi::GetLastError;
-    use winapi::um::handleapi::CloseHandle;
-    use winapi::um::processthreadsapi::OpenProcess;
-    use winapi::um::processthreadsapi::TerminateProcess;
-    use winapi::um::winnt::PROCESS_TERMINATE;
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::Foundation::ERROR_ACCESS_DENIED;
+    use windows_sys::Win32::Foundation::ERROR_INVALID_PARAMETER;
+    use windows_sys::Win32::Foundation::FALSE;
+    use windows_sys::Win32::Foundation::GetLastError;
+    use windows_sys::Win32::Foundation::TRUE;
+    use windows_sys::Win32::System::Threading::OpenProcess;
+    use windows_sys::Win32::System::Threading::PROCESS_TERMINATE;
+    use windows_sys::Win32::System::Threading::TerminateProcess;
 
     let signo = match signal {
       SignalArg::Int(n) => *n,
@@ -1906,29 +2192,7 @@ mod deprecated {
 
     if signo == 0 {
       // Signal 0 is a health check: verify the process is still alive.
-      // SAFETY: winapi call
-      let handle = unsafe {
-        OpenProcess(
-          winapi::um::winnt::PROCESS_QUERY_LIMITED_INFORMATION,
-          FALSE,
-          pid as DWORD,
-        )
-      };
-      if handle.is_null() {
-        return Err(Error::from(NotFound).into());
-      }
-      let mut status: DWORD = 0;
-      // SAFETY: winapi call
-      let alive = unsafe {
-        winapi::um::processthreadsapi::GetExitCodeProcess(handle, &mut status)
-          != FALSE
-          && status == 259 // STILL_ACTIVE
-      };
-      // SAFETY: winapi call
-      unsafe {
-        CloseHandle(handle);
-      }
-      if alive {
+      if process_is_alive(pid as u32) {
         return Ok(());
       } else {
         return Err(Error::from(NotFound).into());
@@ -1951,18 +2215,27 @@ mod deprecated {
       Err(ProcessError::InvalidPid)
     } else {
       let handle =
-        // SAFETY: winapi call
-        unsafe { OpenProcess(PROCESS_TERMINATE, FALSE, pid as DWORD) };
+        // SAFETY: Win32 call
+        unsafe { OpenProcess(PROCESS_TERMINATE, FALSE, pid as u32) };
 
       if handle.is_null() {
-        // SAFETY: winapi call
+        // SAFETY: Win32 call
         let err = match unsafe { GetLastError() } {
           ERROR_INVALID_PARAMETER => Error::from(NotFound), // Invalid `pid`.
+          // `OpenProcess(PROCESS_TERMINATE, ...)` can fail with
+          // `ERROR_ACCESS_DENIED` in the brief window while the child is
+          // exiting (or if the pid has been reused). If the process is no
+          // longer alive, treat it as `NotFound` (mirroring the Unix `ESRCH`
+          // behavior) instead of surfacing a misleading `PermissionError`.
+          // See https://github.com/denoland/deno/issues/28882
+          ERROR_ACCESS_DENIED if !process_is_alive(pid as u32) => {
+            Error::from(NotFound)
+          }
           errno => Error::from_raw_os_error(errno as i32),
         };
         Err(err.into())
       } else {
-        // SAFETY: winapi calls
+        // SAFETY: Win32 calls
         unsafe {
           let is_terminated = TerminateProcess(handle, 1);
           CloseHandle(handle);
@@ -1983,9 +2256,11 @@ mod deprecated {
     #[serde] signal: SignalArg,
     #[string] api_name: String,
   ) -> Result<(), ProcessError> {
-    state
-      .borrow_mut::<PermissionsContainer>()
-      .check_run_all(&api_name)?;
+    if pid != std::process::id() as i32 {
+      state
+        .borrow_mut::<PermissionsContainer>()
+        .check_run_all(&api_name)?;
+    }
     kill(pid, &signal)
   }
 }

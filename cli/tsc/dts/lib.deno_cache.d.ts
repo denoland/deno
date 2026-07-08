@@ -5,10 +5,18 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-/** @category Cache */
+/** The global {@linkcode CacheStorage} instance, providing access to the named
+ * {@linkcode Cache} objects used to store and retrieve `Request`/`Response`
+ * pairs.
+ *
+ * @category Cache */
 declare var caches: CacheStorage;
 
-/** @category Cache */
+/** Represents the storage for named {@linkcode Cache} objects. It provides the
+ * methods used to open, enumerate, look up, and delete caches, and is accessed
+ * via the global {@linkcode caches} property.
+ *
+ * @category Cache */
 interface CacheStorage {
   /** Open a cache storage for the provided name. */
   open(cacheName: string): Promise<Cache>;
@@ -31,13 +39,17 @@ interface CacheStorage {
   ): Promise<Response | undefined>;
 }
 
-/** @category Cache */
+/** Represents a single named store of `Request`/`Response` pairs. Obtain a
+ * `Cache` via {@linkcode CacheStorage.open} and use it to persist responses and
+ * later match incoming requests against them.
+ *
+ * @category Cache */
 interface Cache {
   /**
    * Put the provided request/response into the cache.
    *
    * How is the API different from browsers?
-   * 1. You cannot match cache objects using by relative paths.
+   * 1. You cannot match cache objects using relative paths.
    * 2. You cannot pass options like `ignoreVary`, `ignoreMethod`, `ignoreSearch`.
    */
   put(request: RequestInfo | URL, response: Response): Promise<void>;
@@ -45,7 +57,7 @@ interface Cache {
    * Return cache object matching the provided request.
    *
    * How is the API different from browsers?
-   * 1. You cannot match cache objects using by relative paths.
+   * 1. You cannot match cache objects using relative paths.
    * 2. You cannot pass options like `ignoreVary`, `ignoreMethod`, `ignoreSearch`.
    */
   match(
@@ -56,22 +68,44 @@ interface Cache {
    * Delete cache object matching the provided request.
    *
    * How is the API different from browsers?
-   * 1. You cannot delete cache objects using by relative paths.
+   * 1. You cannot delete cache objects using relative paths.
    * 2. You cannot pass options like `ignoreVary`, `ignoreMethod`, `ignoreSearch`.
    */
   delete(
     request: RequestInfo | URL,
     options?: CacheQueryOptions,
   ): Promise<boolean>;
+  /**
+   * Return the {@linkcode Request} keys stored in the cache, in insertion
+   * order. When a `request` is provided, only the matching keys are returned.
+   *
+   * How is the API different from browsers?
+   * 1. You cannot match cache objects using relative paths.
+   * 2. You cannot pass options like `ignoreVary`, `ignoreMethod`, `ignoreSearch`.
+   */
+  keys(
+    request?: RequestInfo | URL,
+    options?: CacheQueryOptions,
+  ): Promise<ReadonlyArray<Request>>;
 }
 
-/** @category Cache */
+/** The constructor object for {@linkcode Cache}.
+ *
+ * `Cache` instances are obtained via {@linkcode CacheStorage.open} rather than
+ * constructed directly, so calling the constructor throws.
+ *
+ * @category Cache */
 declare var Cache: {
   readonly prototype: Cache;
   new (): never;
 };
 
-/** @category Cache */
+/** The constructor object for {@linkcode CacheStorage}.
+ *
+ * The `CacheStorage` instance is accessed via the global {@linkcode caches}
+ * property rather than constructed directly, so calling the constructor throws.
+ *
+ * @category Cache */
 declare var CacheStorage: {
   readonly prototype: CacheStorage;
   new (): never;
