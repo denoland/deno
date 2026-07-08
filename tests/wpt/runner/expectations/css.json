@@ -57,13 +57,9 @@
     "idlharness.any.html": {
       "expectedFailures": [
         "DOMPointReadOnly interface: existence and properties of interface object",
-        "DOMPointReadOnly interface: existence and properties of interface prototype object",
         "DOMPoint interface: existence and properties of interface object",
-        "DOMPoint interface: existence and properties of interface prototype object",
         "DOMRectReadOnly interface: existence and properties of interface object",
-        "DOMRectReadOnly interface: existence and properties of interface prototype object",
         "DOMRect interface: existence and properties of interface object",
-        "DOMRect interface: existence and properties of interface prototype object",
         "DOMRectList interface: existence and properties of interface object",
         "DOMRectList interface object length",
         "DOMRectList interface object name",
@@ -73,29 +69,19 @@
         "DOMRectList interface: attribute length",
         "DOMRectList interface: operation item(unsigned long)",
         "DOMQuad interface: existence and properties of interface object",
-        "DOMQuad interface: existence and properties of interface prototype object",
         "DOMMatrixReadOnly interface: existence and properties of interface object",
-        "DOMMatrixReadOnly interface: existence and properties of interface prototype object",
-        "DOMMatrix interface: existence and properties of interface object",
-        "DOMMatrix interface: existence and properties of interface prototype object"
+        "DOMMatrix interface: existence and properties of interface object"
       ]
     },
     "idlharness.any.worker.html": {
       "expectedFailures": [
         "DOMPointReadOnly interface: existence and properties of interface object",
-        "DOMPointReadOnly interface: existence and properties of interface prototype object",
         "DOMPoint interface: existence and properties of interface object",
-        "DOMPoint interface: existence and properties of interface prototype object",
         "DOMRectReadOnly interface: existence and properties of interface object",
-        "DOMRectReadOnly interface: existence and properties of interface prototype object",
         "DOMRect interface: existence and properties of interface object",
-        "DOMRect interface: existence and properties of interface prototype object",
         "DOMQuad interface: existence and properties of interface object",
-        "DOMQuad interface: existence and properties of interface prototype object",
         "DOMMatrixReadOnly interface: existence and properties of interface object",
-        "DOMMatrixReadOnly interface: existence and properties of interface prototype object",
-        "DOMMatrix interface: existence and properties of interface object",
-        "DOMMatrix interface: existence and properties of interface prototype object"
+        "DOMMatrix interface: existence and properties of interface object"
       ]
     },
     "spec-examples.html": true,
