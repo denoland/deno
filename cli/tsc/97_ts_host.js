@@ -817,20 +817,6 @@ export function filterMapDiagnostic(diagnostic) {
       return false;
     }
   }
-  // make the diagnostic for using an `export =` in an es module a warning
-  if (diagnostic.code === 1203) {
-    diagnostic.category = ts.DiagnosticCategory.Warning;
-    if (typeof diagnostic.messageText === "string") {
-      const message =
-        " This will start erroring in a future version of Deno 2 " +
-        "in order to align with TypeScript.";
-      // seems typescript shares objects, so check if it's already been set
-      if (!diagnostic.messageText.endsWith(message)) {
-        diagnostic.messageText += message;
-      }
-    }
-  }
-
   return true;
 }
 
