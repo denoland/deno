@@ -342,7 +342,7 @@ pub trait DesktopApi: Send + Sync + 'static {
   /// uses for navigation / HMR). The default implementation is a no-op
   /// returning the original id, so backends without an eager initial window are
   /// unaffected.
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "window init flags")]
   fn reinit_initial_window(
     &self,
     initial_window_id: u32,

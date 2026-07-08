@@ -297,7 +297,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     id
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "window init flags")]
   fn reinit_initial_window(
     &self,
     initial_window_id: u32,
