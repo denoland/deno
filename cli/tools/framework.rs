@@ -608,7 +608,11 @@ fn detect_nitro_framework(
     ),
     include_paths: vec![".output".into()],
     build_command: Some(deno_task_build()),
-    hmr_command: None, // TODO: add command to enable `deno desktop --hmr` for Nuxt, SolidStart, TanStack Start
+    // Nuxt (`nuxi dev`), SolidStart and TanStack Start (`vinxi dev`) all run a
+    // Vite-based dev server that prints the `Local:   http://…` line
+    // `parse_dev_server_url` scans for, so `deno task dev` drives HMR for all
+    // three.
+    hmr_command: Some(deno_task_dev()),
   }
 }
 
@@ -624,7 +628,10 @@ fn detect_vite(dir: &Path) -> FrameworkDetection {
       entrypoint_code: format!("// @ts-nocheck\nimport \"./{server_file}\";\n"),
       include_paths: vec!["dist".into()],
       build_command: Some(deno_task_build()),
-      hmr_command: None, // TODO: add command to enable `deno desktop --hmr` for Vite
+      // `vite` (and Vue/React SPA templates built on it) prints the
+      // `Local:   http://…` line `parse_dev_server_url` scans for, so
+      // `deno task dev` drives HMR.
+      hmr_command: Some(deno_task_dev()),
     };
   }
 
@@ -661,7 +668,9 @@ Deno.serve(async (req) => {
     .into(),
     include_paths: vec!["dist".into()],
     build_command: Some(deno_task_build()),
-    hmr_command: None, // TODO: add command to enable `deno desktop --hmr` for Vite
+    // See the SSR branch above: the Vite dev server prints the `Local:` URL
+    // that `parse_dev_server_url` scans for, so `deno task dev` drives HMR.
+    hmr_command: Some(deno_task_dev()),
   }
 }
 
@@ -940,6 +949,9 @@ mod tests {
     assert_eq!(det.include_paths, vec![".output"]);
     let cmd = det.build_command.unwrap();
     assert_eq!(cmd[1..], vec!["task", "build"]);
+    // Nuxt runs a Vite-based dev server, so `deno desktop --hmr` is supported.
+    let hmr = det.hmr_command.unwrap();
+    assert_eq!(hmr[1..], vec!["task", "dev"]);
   }
 
   #[test]
@@ -1348,6 +1360,9 @@ mod tests {
     assert_eq!(det.include_paths, vec!["dist"]);
     let cmd = det.build_command.unwrap();
     assert_eq!(cmd[1..], vec!["task", "build"]);
+    // The Vite dev server drives HMR for `deno desktop --hmr`.
+    let hmr = det.hmr_command.unwrap();
+    assert_eq!(hmr[1..], vec!["task", "dev"]);
   }
 
   #[test]
@@ -1377,6 +1392,28 @@ mod tests {
     assert_eq!(det.include_paths, vec!["dist"]);
     let cmd = det.build_command.unwrap();
     assert_eq!(cmd[1..], vec!["task", "build"]);
+    // A plain Vite SPA (e.g. the Vue template) supports `deno desktop --hmr`.
+    let hmr = det.hmr_command.unwrap();
+    assert_eq!(hmr[1..], vec!["task", "dev"]);
+  }
+
+  #[test]
+  fn vue_vite_spa_supports_hmr() {
+    // A Vue SPA scaffolded with `npm create vue@latest` is a plain Vite project
+    // (`vue` + `vite` in devDependencies, a `vite.config.ts`). It must resolve
+    // to the Vite path with `deno desktop --hmr` enabled so the dev-server
+    // workflow from issue #35745 works.
+    let dir = setup_dir();
+    fs::write(dir.path().join("vite.config.ts"), "").unwrap();
+    fs::write(
+      dir.path().join("package.json"),
+      r#"{"dependencies":{"vue":"^3.0.0"},"devDependencies":{"vite":"^5.0.0","@vitejs/plugin-vue":"^5.0.0"}}"#,
+    )
+    .unwrap();
+    let det = detect_framework(dir.path()).unwrap().unwrap();
+    assert_eq!(det.name, "Vite");
+    let hmr = det.hmr_command.unwrap();
+    assert_eq!(hmr[1..], vec!["task", "dev"]);
   }
 
   #[test]
