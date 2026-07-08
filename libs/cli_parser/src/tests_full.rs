@@ -6733,7 +6733,6 @@ fn add_or_install_subcommand() {
 }
 
 #[test]
-#[ignore = "PORT-GAP(parse): output differs from clap; needs grinding against the cli/args/flags.rs parse fn"]
 fn remove_subcommand() {
   let r = flags_from_vec(svec!["deno", "remove"]);
   r.unwrap_err();
