@@ -2111,6 +2111,7 @@ fn init_parse(result: &ParseResult, flags: &mut Flags) {
   let mut lib = result.get_bool("lib");
   let mut serve = result.get_bool("serve");
   let mut empty = result.get_bool("empty");
+  let mut desktop = result.get_bool("desktop");
   let mut yes = result.get_bool("yes");
 
   let use_npm = result.get_bool("npm");
@@ -2147,6 +2148,7 @@ fn init_parse(result: &ParseResult, flags: &mut Flags) {
         match extra.as_str() {
           "--lib" => lib = true,
           "--serve" => serve = true,
+          "--desktop" => desktop = true,
           "--empty" => empty = true,
           "--yes" | "-y" => yes = true,
           _ => {}
@@ -2162,6 +2164,7 @@ fn init_parse(result: &ParseResult, flags: &mut Flags) {
     lib,
     serve,
     empty,
+    desktop,
     yes,
   });
 }
@@ -2198,6 +2201,7 @@ fn create_parse(result: &ParseResult, flags: &mut Flags) {
     lib: false,
     serve: false,
     empty: false,
+    desktop: false,
     yes: result.get_bool("yes"),
   });
 }
