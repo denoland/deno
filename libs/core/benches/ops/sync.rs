@@ -175,6 +175,12 @@ fn bench_op(
     "This benchmark must be run with --features=unsafe_runtime_options"
   );
 
+  // Creating a `JsRuntime` requires a tokio runtime context.
+  let tokio = tokio::runtime::Builder::new_current_thread()
+    .enable_time()
+    .build()
+    .unwrap();
+  let _tokio_guard = tokio.enter();
   let mut runtime = JsRuntime::new(RuntimeOptions {
     extensions: vec![testing::init()],
     // We need to feature gate this here to prevent IDE errors

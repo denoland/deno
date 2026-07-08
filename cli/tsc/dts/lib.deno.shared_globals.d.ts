@@ -566,7 +566,8 @@ interface ErrorEvent extends Event {
  * scope as `error`.
  *
  * @category Events */
-declare var ErrorEvent: {
+declare var ErrorEvent: typeof globalThis extends
+  { document: any; ErrorEvent: infer T } ? T : {
   readonly prototype: ErrorEvent;
   new (type: string, eventInitDict?: ErrorEventInit): ErrorEvent;
 };
@@ -873,7 +874,8 @@ interface Performance extends EventTarget {
  * property rather than constructed directly, so calling the constructor throws.
  *
  * @category Performance */
-declare var Performance: {
+declare var Performance: typeof globalThis extends
+  { document: any; Performance: infer T } ? T : {
   readonly prototype: Performance;
   new (): never;
 };
@@ -883,7 +885,8 @@ declare var Performance: {
  * measures APIs.
  *
  * @category Performance */
-declare var performance: Performance;
+declare var performance: typeof globalThis extends
+  { document: any; performance: infer T } ? T : Performance;
 
 /** @category Performance */
 interface PerformanceMarkOptions {
@@ -932,7 +935,8 @@ interface PerformanceEntry {
  *
  * @category Performance
  */
-declare var PerformanceEntry: {
+declare var PerformanceEntry: typeof globalThis extends
+  { document: any; PerformanceEntry: infer T } ? T : {
   readonly prototype: PerformanceEntry;
   new (): never;
 };
@@ -956,7 +960,8 @@ interface PerformanceMark extends PerformanceEntry {
  *
  * @category Performance
  */
-declare var PerformanceMark: {
+declare var PerformanceMark: typeof globalThis extends
+  { document: any; PerformanceMark: infer T } ? T : {
   readonly prototype: PerformanceMark;
   new (name: string, options?: PerformanceMarkOptions): PerformanceMark;
 };
@@ -980,9 +985,75 @@ interface PerformanceMeasure extends PerformanceEntry {
  *
  * @category Performance
  */
-declare var PerformanceMeasure: {
+declare var PerformanceMeasure: typeof globalThis extends
+  { document: any; PerformanceMeasure: infer T } ? T : {
   readonly prototype: PerformanceMeasure;
   new (): never;
+};
+
+/** A list of {@linkcode PerformanceEntry} objects passed to a
+ * {@linkcode PerformanceObserver} callback via its `observe()` method.
+ *
+ * @category Performance
+ */
+interface PerformanceObserverEntryList {
+  /** Returns all explicitly observed performance entries. */
+  getEntries(): PerformanceEntry[];
+  /** Returns the observed performance entries with the given name. */
+  getEntriesByName(name: string, type?: string): PerformanceEntry[];
+  /** Returns the observed performance entries with the given entry type. */
+  getEntriesByType(type: string): PerformanceEntry[];
+}
+
+/** A list of {@linkcode PerformanceEntry} objects passed to a
+ * {@linkcode PerformanceObserver} callback via its `observe()` method.
+ *
+ * @category Performance
+ */
+declare var PerformanceObserverEntryList: {
+  readonly prototype: PerformanceObserverEntryList;
+  new (): never;
+};
+
+/** The callback invoked when the observed set of performance entries grows.
+ *
+ * @category Performance
+ */
+interface PerformanceObserverCallback {
+  (list: PerformanceObserverEntryList, observer: PerformanceObserver): void;
+}
+
+/** Observes performance measurement events and is notified of new
+ * {@linkcode PerformanceEntry} objects as they are recorded in the performance
+ * timeline.
+ *
+ * @category Performance
+ */
+interface PerformanceObserver {
+  /** Stops the observer from receiving any further performance entries. */
+  disconnect(): void;
+  /** Specifies the set of performance entry types to observe. */
+  observe(
+    options?: {
+      entryTypes?: string[];
+      type?: string;
+      buffered?: boolean;
+    },
+  ): void;
+  /** Returns the current list of buffered performance entries, emptying it. */
+  takeRecords(): PerformanceEntry[];
+}
+
+/** Observes performance measurement events and is notified of new
+ * {@linkcode PerformanceEntry} objects as they are recorded in the performance
+ * timeline.
+ *
+ * @category Performance
+ */
+declare var PerformanceObserver: {
+  readonly prototype: PerformanceObserver;
+  readonly supportedEntryTypes: readonly string[];
+  new (callback: PerformanceObserverCallback): PerformanceObserver;
 };
 
 /** @category Events */
@@ -1002,7 +1073,8 @@ interface CustomEvent<T = any> extends Event {
  * property.
  *
  * @category Events */
-declare var CustomEvent: {
+declare var CustomEvent: typeof globalThis extends
+  { document: any; CustomEvent: infer T } ? T : {
   readonly prototype: CustomEvent;
   new <T>(typeArg: string, eventInitDict?: CustomEventInit<T>): CustomEvent<T>;
 };

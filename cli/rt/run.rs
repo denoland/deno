@@ -79,6 +79,7 @@ use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_tls::rustls::RootCertStore;
+use deno_runtime::deno_web::Blob;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_semver::npm::NpmPackageReqReference;
@@ -155,6 +156,11 @@ struct EmbeddedModuleLoader {
   shared: Arc<SharedModuleLoaderState>,
   hook_registry: LoaderHookRegistry,
   sys: DenoRtSys,
+  /// For blob/object-URL module workers, the captured root blob and its
+  /// specifier. Used so the worker's root module load resolves from the
+  /// synchronously-captured blob even if `URL.revokeObjectURL` has since
+  /// removed it from the blob store.
+  maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
 }
 
 impl std::fmt::Debug for EmbeddedModuleLoader {
@@ -771,8 +777,16 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
     if original_specifier.scheme() == "blob" {
       let specifier = original_specifier.clone();
-      let Some(blob) = self.shared.blob_store.get_object_url(specifier.clone())
-      else {
+      // Prefer the synchronously-captured root blob (if this is the worker's
+      // main module) so a racing `URL.revokeObjectURL` can't make the load
+      // fail; otherwise look the object URL up in the blob store.
+      let maybe_blob = self
+        .maybe_main_module_blob
+        .as_ref()
+        .filter(|(blob_specifier, _)| *blob_specifier == specifier)
+        .map(|(_, blob)| blob.clone())
+        .or_else(|| self.shared.blob_store.get_object_url(specifier.clone()));
+      let Some(blob) = maybe_blob else {
         return deno_core::ModuleLoadResponse::Sync(Err(
           JsErrorBox::type_error(format!("Blob URL not found: {specifier}")),
         ));
@@ -1126,12 +1140,16 @@ struct StandaloneModuleLoaderFactory {
 }
 
 impl StandaloneModuleLoaderFactory {
-  pub fn create_result(&self) -> CreateModuleLoaderResult {
+  pub fn create_result(
+    &self,
+    maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
+  ) -> CreateModuleLoaderResult {
     let hook_registry = LoaderHookRegistry::default();
     let loader = Rc::new(EmbeddedModuleLoader {
       shared: self.shared.clone(),
       hook_registry: hook_registry.clone(),
       sys: self.sys.clone(),
+      maybe_main_module_blob,
     });
     {
       let loader = loader.clone();
@@ -1157,15 +1175,16 @@ impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
     &self,
     _root_permissions: PermissionsContainer,
   ) -> CreateModuleLoaderResult {
-    self.create_result()
+    self.create_result(None)
   }
 
   fn create_for_worker(
     &self,
     _parent_permissions: PermissionsContainer,
     _permissions: PermissionsContainer,
+    maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
   ) -> CreateModuleLoaderResult {
-    self.create_result()
+    self.create_result(maybe_main_module_blob)
   }
 }
 
@@ -1196,6 +1215,55 @@ impl RootCertStoreProvider for StandaloneRootCertStoreProvider {
 
 /// Callback to initialize additional `OpState` during worker creation.
 pub type OpStateInitFn = Box<dyn FnOnce(&mut deno_core::OpState) + Send>;
+
+/// Error raised while a compiled desktop app's main module is still loading or
+/// first evaluating (e.g. a failed import, a link error, or a top-level
+/// throw/await rejection during evaluation).
+///
+/// Such failures happen before the app's own `error` / `unhandledrejection`
+/// listeners can observe them (the event loop hasn't started yet), so the
+/// desktop shell can't rely on the app to report them. It carries a
+/// pre-formatted, user-facing message so the shell can surface it in a native
+/// dialog: a GUI-launched app (Finder/Dock) has no visible stderr, so an
+/// unsurfaced startup error otherwise presents as a window that blinks open and
+/// immediately closes (deno#35544).
+///
+/// The original error is retained as the [`std::error::Error::source`] so the
+/// `{:?}` debug logs in the desktop shell still print the full cause chain.
+#[derive(Debug)]
+pub struct DesktopStartupError {
+  /// Pre-formatted, user-facing error message.
+  pub message: String,
+  /// The original error, kept so the cause chain survives in debug logs.
+  source: AnyError,
+}
+
+impl std::fmt::Display for DesktopStartupError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.write_str(&self.message)
+  }
+}
+
+impl std::error::Error for DesktopStartupError {
+  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    Some(self.source.as_ref())
+  }
+}
+
+/// Wrap a desktop main-module load/evaluation failure as a
+/// [`DesktopStartupError`], formatting JS errors the same way the runtime would
+/// print them to stderr while retaining the original error as the source.
+fn desktop_startup_error<E: Into<AnyError>>(err: E) -> AnyError {
+  let err: AnyError = err.into();
+  let message = match deno_lib::util::result::js_error_downcast_ref(&err) {
+    Some(js_error) => deno_runtime::fmt_errors::format_js_error(js_error, None),
+    None => format!("{err:?}"),
+  };
+  AnyError::new(DesktopStartupError {
+    message,
+    source: err,
+  })
+}
 
 /// Options to override default standalone runtime behavior.
 /// Used by the desktop runtime to enable auto_serve and set the port.
@@ -1341,6 +1409,9 @@ pub async fn run_with_options(
         scopes: Default::default(),
         registry_configs: Default::default(),
         min_release_age_days: None,
+        trust_policy: Default::default(),
+        trust_policy_ignore_after_minutes: None,
+        trust_policy_exclude: Vec::new(),
       });
       let npm_cache_dir = Arc::new(NpmCacheDir::new(
         &sys,
@@ -1592,8 +1663,51 @@ pub async fn run_with_options(
       // can leak the string here.
       checker.enable_feature(feature.leak());
     }
+    // Mirror cli/factory.rs: force-enable the unstable KV feature when
+    // DENO_KV_REQUIRES_DISTRIBUTED_DATABASE=error so Deno.openKv() is exposed
+    // and surfaces a clear "no database attached" error.
+    if std::env::var("DENO_KV_REQUIRES_DISTRIBUTED_DATABASE").as_deref()
+      == Ok("error")
+      && !checker.check("kv")
+    {
+      checker.enable_feature("kv");
+    }
     checker
   });
+  // Resolve a persistent, per-app data directory so origin-bound storage such
+  // as the default `Deno.openKv()`, `localStorage` and `caches` persists to
+  // disk instead of silently falling back to an in-memory database. A compiled
+  // binary is a standalone app, so we store under the platform's app data
+  // directory (`%LOCALAPPDATA%`, `~/Library/Application Support`,
+  // `$XDG_DATA_HOME`) keyed by the app name, rather than polluting `DENO_DIR`.
+  //
+  // The app name is baked in at compile time (`--app-name`, otherwise the
+  // output file name), so it is stable across runs and even if the binary is
+  // later renamed. Recompiling with a different `--output`/`--app-name` starts
+  // a fresh store. If we can't resolve a data directory we leave both pieces
+  // unset and keep the in-memory fallback.
+  //
+  // `metadata.app_name` is always set by binaries this version produces; the
+  // fallback to the executable file stem only matters for binaries compiled
+  // before the field existed.
+  let app_name = metadata.app_name.unwrap_or_else(|| {
+    std::env::current_exe()
+      .ok()
+      .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
+      .unwrap_or_else(|| "deno-compile".to_string())
+  });
+  // `--app-name` is validated at compile time (see `validate_app_name`), so it
+  // is safe to use directly as a single directory component here.
+  let origin_data_folder_path =
+    crate::binary::get_data_local_dir().map(|dir| dir.join(&app_name));
+  // Only enable persistent storage when we resolved a data directory. The
+  // storage key resolver must stay empty otherwise, because the worker unwraps
+  // `origin_data_folder_path` whenever the key resolves to a value.
+  let storage_key_resolver = if origin_data_folder_path.is_some() {
+    StorageKeyResolver::from_compile_app_name(&app_name)
+  } else {
+    StorageKeyResolver::empty()
+  };
   let lib_main_worker_options = LibMainWorkerOptions {
     argv: metadata.argv,
     log_level: WorkerLogLevel::Info,
@@ -1614,7 +1728,7 @@ pub async fn run_with_options(
     node_debug: std::env::var("NODE_DEBUG").ok(),
     node_cluster_unique_id: std::env::var("NODE_UNIQUE_ID").ok(),
     node_cluster_sched_policy: std::env::var("NODE_CLUSTER_SCHED_POLICY").ok(),
-    origin_data_folder_path: None,
+    origin_data_folder_path,
     seed: metadata.seed,
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,
@@ -1647,7 +1761,7 @@ pub async fn run_with_options(
     create_npm_process_state_provider(&npm_resolver),
     pkg_json_resolver,
     root_cert_store_provider,
-    StorageKeyResolver::empty(),
+    storage_key_resolver,
     sys.clone(),
     lib_main_worker_options,
     Default::default(),
@@ -1739,10 +1853,7 @@ pub async fn run_with_options(
     // This ensures scriptParsed notifications are emitted during module load.
     worker.run_event_loop(false).await?;
 
-    // Run preload modules first
-    worker.execute_preload_modules().await?;
-    worker.execute_main_module().await?;
-    worker.dispatch_load_event()?;
+    worker.execute_load_phase().await?;
 
     loop {
       let hmr_fut = hmr_runner.run();
@@ -1771,6 +1882,19 @@ pub async fn run_with_options(
     worker.dispatch_unload_event()?;
     worker.dispatch_process_exit_event()?;
     Ok(worker.exit_code())
+  } else if has_desktop {
+    // Same as `LibMainWorker::run()`, but tag any failure from the load phase
+    // (main module still loading or first evaluating) as a
+    // `DesktopStartupError` (see its docs for why these otherwise vanish). The
+    // tag lets the desktop shell surface them in a native dialog. Errors raised
+    // later, during the steady-state event loop, are left untagged: those are
+    // already reported by the app's JS listeners, and tagging them would
+    // produce a duplicate dialog.
+    worker
+      .execute_load_phase()
+      .await
+      .map_err(desktop_startup_error)?;
+    Ok(worker.run_event_loop_to_completion().await?)
   } else {
     let exit_code = worker.run().await?;
     Ok(exit_code)
@@ -1898,6 +2022,9 @@ fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
     scopes: Default::default(),
     registry_configs: Default::default(),
     min_release_age_days: None,
+    trust_policy: Default::default(),
+    trust_policy_ignore_after_minutes: None,
+    trust_policy_exclude: Vec::new(),
   })
 }
 
@@ -1984,11 +2111,38 @@ mod tests {
 
   use super::DESKTOP_ENV_KEYS;
   use super::DESKTOP_LOOPBACK_HOSTS;
+  use super::DesktopStartupError;
   use super::apply_desktop_permission_defaults;
+  use super::desktop_startup_error;
   use super::grant_vfs_read_access;
 
   fn strs(v: &[&str]) -> Vec<String> {
     v.iter().map(|s| (*s).to_string()).collect()
+  }
+
+  #[test]
+  fn desktop_startup_error_tags_and_carries_message() {
+    // A desktop main-module load/eval failure is wrapped so the shell can
+    // recognize it (downcast) and show the carried message in a dialog,
+    // instead of letting it exit silently (deno#35544).
+    let original =
+      deno_error::JsErrorBox::generic("could not load workspace member");
+    let wrapped = desktop_startup_error(original);
+    let startup = wrapped
+      .downcast_ref::<DesktopStartupError>()
+      .expect("must be tagged as a startup error");
+    assert!(startup.message.contains("could not load workspace member"));
+    // Display delegates to the carried message.
+    assert_eq!(startup.to_string(), startup.message);
+    // The original error is retained as the source so `{:?}` debug logs keep
+    // the full cause chain.
+    let source =
+      std::error::Error::source(startup).expect("source must be retained");
+    assert!(
+      source
+        .to_string()
+        .contains("could not load workspace member")
+    );
   }
 
   #[test]

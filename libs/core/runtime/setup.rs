@@ -43,7 +43,7 @@ pub type ForegroundTaskQueue = std::sync::Arc<Mutex<Vec<v8::Task>>>;
 /// push tasks and wake the event loop.
 struct IsolateEntry {
   waker: std::sync::Arc<AtomicWaker>,
-  handle: tokio::runtime::Handle,
+  handle: Option<tokio::runtime::Handle>,
   tasks: ForegroundTaskQueue,
 }
 
@@ -57,7 +57,7 @@ static ISOLATE_ENTRIES: std::sync::LazyLock<
 pub fn register_isolate(
   isolate_ptr: usize,
   waker: std::sync::Arc<AtomicWaker>,
-  handle: tokio::runtime::Handle,
+  handle: Option<tokio::runtime::Handle>,
   tasks: ForegroundTaskQueue,
 ) {
   let mut map = ISOLATE_ENTRIES.lock().unwrap();
@@ -88,17 +88,33 @@ fn queue_task(key: usize, task: v8::Task) {
 /// Spawn a delayed V8 foreground task on the isolate's tokio runtime.
 /// After the delay, the task is queued for synchronous draining (not
 /// run directly on the tokio worker thread).
+///
+/// Aborts the process when the isolate was registered without a tokio
+/// handle: the delay cannot be honored, queuing the task immediately
+/// would busy-loop the event loop on any self-rescheduling V8 task
+/// (e.g. GC memory reducer tasks), and dropping it would lose foreground
+/// work. Note that a regular `panic!` cannot be used here — this is
+/// called by V8 from C++ frames that Rust cannot unwind through, which
+/// would abort anyway but with the panic message swallowed.
 fn spawn_delayed_task(key: usize, task: v8::Task, delay_in_seconds: f64) {
   let map = ISOLATE_ENTRIES.lock().unwrap();
-  if let Some(entry) = map.get(&key) {
-    let tasks = entry.tasks.clone();
-    let waker = entry.waker.clone();
-    entry.handle.spawn(async move {
-      tokio::time::sleep(Duration::from_secs_f64(delay_in_seconds)).await;
-      tasks.lock().unwrap().push(task);
-      waker.wake();
-    });
-  }
+  let Some(entry) = map.get(&key) else { return };
+  let Some(handle) = entry.handle.as_ref() else {
+    #[allow(clippy::print_stderr, reason = "printed before aborting")]
+    {
+      eprintln!(
+        "V8 posted a delayed task, but this isolate was created outside of a tokio runtime context and the delay cannot be honored. Enter a tokio runtime (e.g. via `tokio::runtime::Runtime::enter()`) before creating the `JsRuntime`."
+      );
+    }
+    std::process::abort();
+  };
+  let tasks = entry.tasks.clone();
+  let waker = entry.waker.clone();
+  handle.spawn(async move {
+    tokio::time::sleep(Duration::from_secs_f64(delay_in_seconds)).await;
+    tasks.lock().unwrap().push(task);
+    waker.wake();
+  });
 }
 
 /// Custom V8 platform implementation that queues immediate foreground
@@ -154,7 +170,11 @@ fn v8_init(
     " --js-float16array",
     " --js-explicit-resource-management",
     " --js-source-phase-imports",
-    " --js-defer-import-eval"
+    " --js-defer-import-eval",
+    // Installs a native `queueMicrotask` on the global object, letting us
+    // enqueue microtasks from JS without crossing the op boundary. See
+    // `queueMicrotask` in `01_core.js`.
+    " --enable-queue-microtask"
   );
   let snapshot_flags = "--predictable --random-seed=42";
   let expose_natives_flags = "--expose_gc --allow_natives_syntax";

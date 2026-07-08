@@ -1002,6 +1002,12 @@ async fn test_specifier_inner(
     .dispatch_unload_event()
     .map_err(|e| CoreErrorKind::Js(e).into_box())?;
 
+  // Run any pending Node-API finalizers before the worker is torn down. This
+  // matches the `deno run`/`deno bench` paths and Node.js, where finalizers
+  // registered via `napi_wrap`/`napi_add_finalizer` are invoked at teardown
+  // even if the wrapped value was never garbage collected during the run.
+  worker.run_napi_ref_finalizers();
+
   // Ensure all output has been flushed
   _ = worker
     .js_runtime
@@ -1452,7 +1458,7 @@ async fn run_tests_for_worker_inner(
   })?;
 
   let mut had_uncaught_error = false;
-  let sanitizer_helper = sanitizers::create_test_sanitizer_helper(worker);
+  let mut sanitizer_helper = sanitizers::create_test_sanitizer_helper(worker);
   let watchdog = TestWatchdog::new(&mut worker.js_runtime);
 
   // Execute beforeAll hooks (FIFO order)
@@ -1600,22 +1606,33 @@ async fn run_tests_for_worker_inner(
         // attempt, and is therefore retryable like any other failure. Only
         // check when the test function itself passed and afterEach didn't error
         // (a real failure takes precedence over a leak report).
-        if matches!(attempt_result, TestResult::Ok)
-          && after_each_failure.is_none()
-          && let Some(diff) = sanitizers::wait_for_activity_to_stabilize(
+        let should_check_sanitizers = matches!(attempt_result, TestResult::Ok)
+          && after_each_failure.is_none();
+        if should_check_sanitizers {
+          if let Some(diff) = sanitizers::wait_for_activity_to_stabilize(
             worker,
-            &sanitizer_helper,
+            &mut sanitizer_helper,
             before_test_stats,
             desc.sanitize_ops,
             desc.sanitize_resources,
           )
           .await?
-        {
-          let (formatted, trailer_notes) = format_sanitizer_diff(diff);
-          if !formatted.is_empty() {
-            attempt_result =
-              TestResult::Failed(TestFailure::Leaked(formatted, trailer_notes));
+          {
+            let (formatted, trailer_notes) = format_sanitizer_diff(diff);
+            if !formatted.is_empty() {
+              attempt_result = TestResult::Failed(TestFailure::Leaked(
+                formatted,
+                trailer_notes,
+              ));
+            }
           }
+        } else {
+          sanitizers::record_ignored_leaks(
+            &mut sanitizer_helper,
+            before_test_stats,
+            desc.sanitize_ops,
+            desc.sanitize_resources,
+          );
         }
 
         // An afterEach error is terminal, but only wins when the test itself
@@ -2517,16 +2534,14 @@ pub async fn run_tests_with_watch(
     }
   });
 
+  let clear_screen = flags
+    .watch
+    .as_ref()
+    .map(|w| !w.no_clear_screen)
+    .unwrap_or(true);
   file_watcher::watch_func(
     flags,
-    file_watcher::PrintConfig::new(
-      "Test",
-      test_flags
-        .watch
-        .as_ref()
-        .map(|w| !w.no_clear_screen)
-        .unwrap_or(true),
-    ),
+    file_watcher::PrintConfig::new("Test", clear_screen),
     move |flags, watcher_communicator, changed_paths| {
       let test_flags = test_flags.clone();
       watcher_communicator.show_path_changed(changed_paths.clone());

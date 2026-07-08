@@ -4,8 +4,6 @@ use std::fmt::Write as _;
 use std::io::Write as IoWrite;
 use std::time::SystemTime;
 
-use async_trait::async_trait;
-use deno_core::futures::future::BoxFuture;
 use deno_terminal::colors;
 use opentelemetry::InstrumentationScope;
 use opentelemetry::KeyValue;
@@ -15,15 +13,15 @@ use opentelemetry::trace::SpanId;
 use opentelemetry::trace::SpanKind;
 use opentelemetry::trace::Status as SpanStatus;
 use opentelemetry_sdk::Resource;
-use opentelemetry_sdk::export::logs::LogBatch;
-use opentelemetry_sdk::export::trace::SpanData;
-use opentelemetry_sdk::logs::LogRecord;
-use opentelemetry_sdk::metrics::MetricResult;
+use opentelemetry_sdk::error::OTelSdkResult;
+use opentelemetry_sdk::logs::LogBatch;
+use opentelemetry_sdk::logs::SdkLogRecord;
 use opentelemetry_sdk::metrics::Temporality;
-use opentelemetry_sdk::metrics::data::Gauge;
+use opentelemetry_sdk::metrics::data::AggregatedMetrics;
 use opentelemetry_sdk::metrics::data::Histogram;
+use opentelemetry_sdk::metrics::data::MetricData;
 use opentelemetry_sdk::metrics::data::ResourceMetrics;
-use opentelemetry_sdk::metrics::data::Sum;
+use opentelemetry_sdk::trace::SpanData;
 
 // ---- Span Exporter ----
 
@@ -38,23 +36,16 @@ impl ConsoleSpanExporter {
   }
 }
 
-impl opentelemetry_sdk::export::trace::SpanExporter for ConsoleSpanExporter {
-  fn export(
-    &mut self,
-    batch: Vec<SpanData>,
-  ) -> BoxFuture<'static, opentelemetry_sdk::export::trace::ExportResult> {
+impl opentelemetry_sdk::trace::SpanExporter for ConsoleSpanExporter {
+  async fn export(&self, batch: Vec<SpanData>) -> OTelSdkResult {
     let resource = self.resource.clone();
-    Box::pin(async move {
-      let mut out = String::new();
-      for span in &batch {
-        format_span(&mut out, span, resource.as_ref());
-      }
-      let _ = std::io::stderr().write_all(out.as_bytes());
-      Ok(())
-    })
+    let mut out = String::new();
+    for span in &batch {
+      format_span(&mut out, span, resource.as_ref());
+    }
+    let _ = std::io::stderr().write_all(out.as_bytes());
+    Ok(())
   }
-
-  fn shutdown(&mut self) {}
 
   fn set_resource(&mut self, resource: &Resource) {
     self.resource = Some(resource.clone());
@@ -181,12 +172,8 @@ impl ConsoleLogExporter {
   }
 }
 
-#[async_trait]
-impl opentelemetry_sdk::export::logs::LogExporter for ConsoleLogExporter {
-  async fn export(
-    &mut self,
-    batch: LogBatch<'_>,
-  ) -> opentelemetry_sdk::export::logs::ExportResult {
+impl opentelemetry_sdk::logs::LogExporter for ConsoleLogExporter {
+  async fn export(&self, batch: LogBatch<'_>) -> OTelSdkResult {
     let mut out = String::new();
     for (record, scope) in batch.iter() {
       format_log(&mut out, record, scope);
@@ -194,8 +181,6 @@ impl opentelemetry_sdk::export::logs::LogExporter for ConsoleLogExporter {
     let _ = std::io::stderr().write_all(out.as_bytes());
     Ok(())
   }
-
-  fn shutdown(&mut self) {}
 
   fn set_resource(&mut self, resource: &Resource) {
     self.resource = Some(resource.clone());
@@ -231,12 +216,12 @@ fn severity_to_str(s: Severity) -> &'static str {
 
 fn format_log(
   out: &mut String,
-  record: &LogRecord,
+  record: &SdkLogRecord,
   scope: &InstrumentationScope,
 ) {
   let severity = record
-    .severity_text
-    .or_else(|| record.severity_number.map(severity_to_str))
+    .severity_text()
+    .or_else(|| record.severity_number().map(severity_to_str))
     .unwrap_or("UNKNOWN");
 
   let colored_severity: String = match severity {
@@ -247,13 +232,12 @@ fn format_log(
     _ => colors::gray(severity).to_string(),
   };
 
-  let ts = record.timestamp.map(format_system_time).unwrap_or_default();
-
-  let body = record
-    .body
-    .as_ref()
-    .map(format_any_value)
+  let ts = record
+    .timestamp()
+    .map(format_system_time)
     .unwrap_or_default();
+
+  let body = record.body().map(format_any_value).unwrap_or_default();
 
   let _ = writeln!(
     out,
@@ -270,7 +254,7 @@ fn format_log(
     colors::gray(format_scope(scope)),
   );
 
-  if let Some(tc) = &record.trace_context {
+  if let Some(tc) = record.trace_context() {
     let _ = writeln!(
       out,
       "  {}: {}",
@@ -298,26 +282,28 @@ impl ConsoleMetricExporter {
   }
 }
 
-#[async_trait]
 impl opentelemetry_sdk::metrics::exporter::PushMetricExporter
   for ConsoleMetricExporter
 {
-  async fn export(&self, metrics: &mut ResourceMetrics) -> MetricResult<()> {
+  async fn export(&self, metrics: &ResourceMetrics) -> OTelSdkResult {
     let mut out = String::new();
-    for scope_metrics in &metrics.scope_metrics {
-      for metric in &scope_metrics.metrics {
-        format_metric(&mut out, metric, &scope_metrics.scope);
+    for scope_metrics in metrics.scope_metrics() {
+      for metric in scope_metrics.metrics() {
+        format_metric(&mut out, metric, scope_metrics.scope());
       }
     }
     let _ = std::io::stderr().write_all(out.as_bytes());
     Ok(())
   }
 
-  async fn force_flush(&self) -> MetricResult<()> {
+  fn force_flush(&self) -> OTelSdkResult {
     Ok(())
   }
 
-  fn shutdown(&self) -> MetricResult<()> {
+  fn shutdown_with_timeout(
+    &self,
+    _timeout: std::time::Duration,
+  ) -> OTelSdkResult {
     Ok(())
   }
 
@@ -331,38 +317,25 @@ fn format_metric(
   metric: &opentelemetry_sdk::metrics::data::Metric,
   scope: &InstrumentationScope,
 ) {
-  let data = metric.data.as_any();
+  let data = metric.data();
 
-  let kind = if data.is::<Sum<f64>>()
-    || data.is::<Sum<u64>>()
-    || data.is::<Sum<i64>>()
-  {
-    "Sum"
-  } else if data.is::<Gauge<f64>>()
-    || data.is::<Gauge<u64>>()
-    || data.is::<Gauge<i64>>()
-  {
-    "Gauge"
-  } else if data.is::<Histogram<f64>>()
-    || data.is::<Histogram<u64>>()
-    || data.is::<Histogram<i64>>()
-  {
-    "Histogram"
-  } else {
-    "Unknown"
+  let kind = match data {
+    AggregatedMetrics::F64(d) => metric_data_kind(d),
+    AggregatedMetrics::U64(d) => metric_data_kind(d),
+    AggregatedMetrics::I64(d) => metric_data_kind(d),
   };
 
-  let unit = if metric.unit.is_empty() {
+  let unit = if metric.unit().is_empty() {
     String::new()
   } else {
-    format!(", unit={}", metric.unit)
+    format!(", unit={}", metric.unit())
   };
 
   let _ = writeln!(
     out,
     "{} {} {}",
     colors::magenta(colors::bold("METRIC")),
-    colors::bold(&metric.name),
+    colors::bold(metric.name()),
     colors::gray(format!("({kind}{unit})")),
   );
   let _ = writeln!(
@@ -372,187 +345,112 @@ fn format_metric(
     colors::gray(format_scope(scope)),
   );
 
-  if !metric.description.is_empty() {
+  if !metric.description().is_empty() {
     let _ = writeln!(
       out,
       "  {}: {}",
       colors::gray("description"),
-      colors::gray(&metric.description),
+      colors::gray(metric.description()),
     );
   }
 
-  // Sum
-  if let Some(sum) = data.downcast_ref::<Sum<f64>>() {
-    let _ = writeln!(
-      out,
-      "  {} | {}",
-      colors::gray(format!(
-        "temporality: {}",
-        format_temporality(sum.temporality)
-      )),
-      colors::gray(format!("monotonic: {}", sum.is_monotonic)),
-    );
-    for dp in &sum.data_points {
-      let _ = writeln!(
-        out,
-        "  {} {}={}",
-        format_attributes_colored(&dp.attributes),
-        colors::gray("value"),
-        colors::yellow(dp.value),
-      );
-    }
-  } else if let Some(sum) = data.downcast_ref::<Sum<u64>>() {
-    let _ = writeln!(
-      out,
-      "  {} | {}",
-      colors::gray(format!(
-        "temporality: {}",
-        format_temporality(sum.temporality)
-      )),
-      colors::gray(format!("monotonic: {}", sum.is_monotonic)),
-    );
-    for dp in &sum.data_points {
-      let _ = writeln!(
-        out,
-        "  {} {}={}",
-        format_attributes_colored(&dp.attributes),
-        colors::gray("value"),
-        colors::yellow(dp.value),
-      );
-    }
-  } else if let Some(sum) = data.downcast_ref::<Sum<i64>>() {
-    let _ = writeln!(
-      out,
-      "  {} | {}",
-      colors::gray(format!(
-        "temporality: {}",
-        format_temporality(sum.temporality)
-      )),
-      colors::gray(format!("monotonic: {}", sum.is_monotonic)),
-    );
-    for dp in &sum.data_points {
-      let _ = writeln!(
-        out,
-        "  {} {}={}",
-        format_attributes_colored(&dp.attributes),
-        colors::gray("value"),
-        colors::yellow(dp.value),
-      );
-    }
+  match data {
+    AggregatedMetrics::F64(d) => format_metric_data(out, d),
+    AggregatedMetrics::U64(d) => format_metric_data(out, d),
+    AggregatedMetrics::I64(d) => format_metric_data(out, d),
   }
+}
 
-  // Gauge
-  if let Some(gauge) = data.downcast_ref::<Gauge<f64>>() {
-    for dp in &gauge.data_points {
-      let _ = writeln!(
-        out,
-        "  {} {}={}",
-        format_attributes_colored(&dp.attributes),
-        colors::gray("value"),
-        colors::yellow(dp.value),
-      );
-    }
-  } else if let Some(gauge) = data.downcast_ref::<Gauge<u64>>() {
-    for dp in &gauge.data_points {
-      let _ = writeln!(
-        out,
-        "  {} {}={}",
-        format_attributes_colored(&dp.attributes),
-        colors::gray("value"),
-        colors::yellow(dp.value),
-      );
-    }
-  } else if let Some(gauge) = data.downcast_ref::<Gauge<i64>>() {
-    for dp in &gauge.data_points {
-      let _ = writeln!(
-        out,
-        "  {} {}={}",
-        format_attributes_colored(&dp.attributes),
-        colors::gray("value"),
-        colors::yellow(dp.value),
-      );
-    }
+fn metric_data_kind<T>(data: &MetricData<T>) -> &'static str {
+  match data {
+    MetricData::Sum(_) => "Sum",
+    MetricData::Gauge(_) => "Gauge",
+    MetricData::Histogram(_) => "Histogram",
+    MetricData::ExponentialHistogram(_) => "ExponentialHistogram",
   }
+}
 
-  // Histogram
-  if let Some(hist) = data.downcast_ref::<Histogram<f64>>() {
+fn format_metric_data<T: std::fmt::Display + Copy>(
+  out: &mut String,
+  data: &MetricData<T>,
+) {
+  match data {
+    MetricData::Sum(sum) => {
+      let _ = writeln!(
+        out,
+        "  {} | {}",
+        colors::gray(format!(
+          "temporality: {}",
+          format_temporality(sum.temporality())
+        )),
+        colors::gray(format!("monotonic: {}", sum.is_monotonic())),
+      );
+      for dp in sum.data_points() {
+        let _ = writeln!(
+          out,
+          "  {} {}={}",
+          format_attributes_colored(dp.attributes()),
+          colors::gray("value"),
+          colors::yellow(dp.value()),
+        );
+      }
+    }
+    MetricData::Gauge(gauge) => {
+      for dp in gauge.data_points() {
+        let _ = writeln!(
+          out,
+          "  {} {}={}",
+          format_attributes_colored(dp.attributes()),
+          colors::gray("value"),
+          colors::yellow(dp.value()),
+        );
+      }
+    }
+    MetricData::Histogram(hist) => {
+      format_histogram(out, hist);
+    }
+    MetricData::ExponentialHistogram(_) => {}
+  }
+}
+
+fn format_histogram<T: std::fmt::Display + Copy>(
+  out: &mut String,
+  hist: &Histogram<T>,
+) {
+  let _ = writeln!(
+    out,
+    "  {}",
+    colors::gray(format!(
+      "temporality: {}",
+      format_temporality(hist.temporality())
+    )),
+  );
+  for dp in hist.data_points() {
     let _ = writeln!(
       out,
-      "  {}",
-      colors::gray(format!(
-        "temporality: {}",
-        format_temporality(hist.temporality)
-      )),
+      "  {} {}={} {}={} {}={} {}={}",
+      format_attributes_colored(dp.attributes()),
+      colors::gray("count"),
+      colors::yellow(dp.count()),
+      colors::gray("sum"),
+      colors::yellow(dp.sum()),
+      colors::gray("min"),
+      colors::yellow(
+        dp.min()
+          .map(|v| v.to_string())
+          .unwrap_or_else(|| "-".to_string())
+      ),
+      colors::gray("max"),
+      colors::yellow(
+        dp.max()
+          .map(|v| v.to_string())
+          .unwrap_or_else(|| "-".to_string())
+      ),
     );
-    for dp in &hist.data_points {
-      let _ = writeln!(
-        out,
-        "  {} {}={} {}={} {}={} {}={}",
-        format_attributes_colored(&dp.attributes),
-        colors::gray("count"),
-        colors::yellow(dp.count),
-        colors::gray("sum"),
-        colors::yellow(dp.sum),
-        colors::gray("min"),
-        colors::yellow(
-          dp.min
-            .map(|v| v.to_string())
-            .unwrap_or_else(|| "-".to_string())
-        ),
-        colors::gray("max"),
-        colors::yellow(
-          dp.max
-            .map(|v| v.to_string())
-            .unwrap_or_else(|| "-".to_string())
-        ),
-      );
-      let _ = writeln!(out, "    {}  {:?}", colors::gray("bounds:"), dp.bounds);
-      let _ = writeln!(
-        out,
-        "    {}  {:?}",
-        colors::gray("counts:"),
-        dp.bucket_counts
-      );
-    }
-  } else if let Some(hist) = data.downcast_ref::<Histogram<u64>>() {
-    let _ = writeln!(
-      out,
-      "  {}",
-      colors::gray(format!(
-        "temporality: {}",
-        format_temporality(hist.temporality)
-      )),
-    );
-    for dp in &hist.data_points {
-      let _ = writeln!(
-        out,
-        "  {} {}={} {}={} {}={} {}={}",
-        format_attributes_colored(&dp.attributes),
-        colors::gray("count"),
-        colors::yellow(dp.count),
-        colors::gray("sum"),
-        colors::yellow(dp.sum),
-        colors::gray("min"),
-        colors::yellow(
-          dp.min
-            .map(|v| v.to_string())
-            .unwrap_or_else(|| "-".to_string())
-        ),
-        colors::gray("max"),
-        colors::yellow(
-          dp.max
-            .map(|v| v.to_string())
-            .unwrap_or_else(|| "-".to_string())
-        ),
-      );
-      let _ = writeln!(out, "    {}  {:?}", colors::gray("bounds:"), dp.bounds);
-      let _ = writeln!(
-        out,
-        "    {}  {:?}",
-        colors::gray("counts:"),
-        dp.bucket_counts
-      );
-    }
+    let bounds = dp.bounds().collect::<Vec<_>>();
+    let counts = dp.bucket_counts().collect::<Vec<_>>();
+    let _ = writeln!(out, "    {}  {:?}", colors::gray("bounds:"), bounds);
+    let _ = writeln!(out, "    {}  {:?}", colors::gray("counts:"), counts);
   }
 }
 
@@ -626,14 +524,15 @@ fn format_any_value(value: &AnyValue) -> String {
   }
 }
 
-fn format_attributes_colored(attrs: &[KeyValue]) -> String {
-  if attrs.is_empty() {
-    return colors::gray("{}").to_string();
-  }
+fn format_attributes_colored<'a>(
+  attrs: impl Iterator<Item = &'a KeyValue>,
+) -> String {
   let items: Vec<String> = attrs
-    .iter()
     .map(|kv| format!("{}={}", colors::magenta(&kv.key), kv.value))
     .collect();
+  if items.is_empty() {
+    return colors::gray("{}").to_string();
+  }
   format!("{{{}}}", items.join(", "))
 }
 

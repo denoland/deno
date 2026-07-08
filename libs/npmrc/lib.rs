@@ -60,6 +60,20 @@ impl RegistryConfig {
   }
 }
 
+/// `trust-policy` value. Controls whether a resolved npm version may have
+/// weaker publishing-trust evidence than an earlier-published version of the
+/// same package. Mirrors pnpm's `trustPolicy`.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum TrustPolicyConfig {
+  /// Trust evidence is ignored during resolution (the default).
+  #[default]
+  Off,
+  /// Refuse to resolve a version whose publishing-trust evidence is weaker
+  /// than the strongest evidence on any earlier-published version of the same
+  /// package.
+  NoDowngrade,
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct NpmRc {
   pub registry: Option<String>,
@@ -68,6 +82,16 @@ pub struct NpmRc {
   /// `min-release-age` value in days. See
   /// https://docs.npmjs.com/cli/v11/using-npm/config#min-release-age
   pub min_release_age_days: Option<u64>,
+  /// `trust-policy` value (`off` or `no-downgrade`).
+  pub trust_policy: TrustPolicyConfig,
+  /// `trust-policy-ignore-after` value in minutes: skip the `no-downgrade`
+  /// check for versions published more than this many minutes ago. Mirrors
+  /// pnpm's `trustPolicyIgnoreAfter`.
+  pub trust_policy_ignore_after_minutes: Option<u64>,
+  /// `trust-policy-exclude[]` values: package names exempted from the
+  /// `no-downgrade` trust policy. Mirrors pnpm's `trustPolicyExclude`. Set via
+  /// repeated `trust-policy-exclude[]=<package>` entries in `.npmrc`.
+  pub trust_policy_exclude: Vec<String>,
 }
 
 impl NpmRc {
@@ -79,7 +103,10 @@ impl NpmRc {
     let mut registry = None;
     let mut scope_registries: HashMap<String, String> = HashMap::new();
     let mut registry_configs: HashMap<String, RegistryConfig> = HashMap::new();
-    let mut min_release_age_days: Option<u64> = None;
+    let mut min_release_age_days = min_release_age_days_from_env(sys);
+    let mut trust_policy = TrustPolicyConfig::default();
+    let mut trust_policy_ignore_after_minutes: Option<u64> = None;
+    let mut trust_policy_exclude: Vec<String> = Vec::new();
 
     for kv_or_section in kv_or_sections {
       match kv_or_section {
@@ -146,6 +173,42 @@ impl NpmRc {
                 }
                 _ => {}
               }
+            } else if key == "trust-policy"
+              && let Value::String(text) = &kv.value
+            {
+              let value = expand_vars(text, sys);
+              trust_policy = match value.trim() {
+                "no-downgrade" => TrustPolicyConfig::NoDowngrade,
+                // unknown/`off` values fall back to off (npm is lenient about
+                // unknown config values)
+                _ => TrustPolicyConfig::Off,
+              };
+            } else if key == "trust-policy-ignore-after" {
+              // a number of minutes; ignore unparsable values (npm is lenient
+              // about unknown/invalid config values)
+              match &kv.value {
+                Value::Number(n) if *n >= 0 => {
+                  trust_policy_ignore_after_minutes = Some(*n as u64);
+                }
+                Value::String(text) => {
+                  let value = expand_vars(text, sys);
+                  if let Ok(minutes) = value.trim().parse::<u64>() {
+                    trust_policy_ignore_after_minutes = Some(minutes);
+                  }
+                }
+                _ => {}
+              }
+            }
+          } else if let Key::Array(key) = &kv.key
+            && key == "trust-policy-exclude"
+            && let Value::String(text) = &kv.value
+          {
+            // repeated `trust-policy-exclude[]=<package>` entries, each adding
+            // one package name to exempt from the `no-downgrade` policy
+            let value = expand_vars(text, sys);
+            let value = value.trim();
+            if !value.is_empty() {
+              trust_policy_exclude.push(value.to_string());
             }
           }
         }
@@ -163,6 +226,9 @@ impl NpmRc {
         .map(|(k, v)| (k, Arc::new(v)))
         .collect(),
       min_release_age_days,
+      trust_policy,
+      trust_policy_ignore_after_minutes,
+      trust_policy_exclude,
     })
   }
 
@@ -199,6 +265,9 @@ impl NpmRc {
       scopes,
       registry_configs: self.registry_configs.clone(),
       min_release_age_days: self.min_release_age_days,
+      trust_policy: self.trust_policy,
+      trust_policy_ignore_after_minutes: self.trust_policy_ignore_after_minutes,
+      trust_policy_exclude: self.trust_policy_exclude.clone(),
     })
   }
 
@@ -254,6 +323,19 @@ impl NpmRc {
   }
 }
 
+pub fn min_release_age_days_from_env(sys: &impl EnvVar) -> Option<u64> {
+  for env_var_name in
+    ["NPM_CONFIG_MIN_RELEASE_AGE", "npm_config_min_release_age"]
+  {
+    if let Ok(value) = sys.env_var(env_var_name)
+      && let Ok(days) = value.trim().parse::<u64>()
+    {
+      return Some(days);
+    }
+  }
+  None
+}
+
 fn get_scope_name(package_name: &str) -> Option<&str> {
   let no_at_pkg_name = package_name.strip_prefix('@')?;
   no_at_pkg_name.split_once('/').map(|(scope, _)| scope)
@@ -273,6 +355,13 @@ pub struct ResolvedNpmRc {
   /// `min-release-age` value in days. See
   /// https://docs.npmjs.com/cli/v11/using-npm/config#min-release-age
   pub min_release_age_days: Option<u64>,
+  /// `trust-policy` value (`off` or `no-downgrade`).
+  pub trust_policy: TrustPolicyConfig,
+  /// `trust-policy-ignore-after` value in minutes.
+  pub trust_policy_ignore_after_minutes: Option<u64>,
+  /// `trust-policy-exclude[]` package names exempted from the `no-downgrade`
+  /// trust policy.
+  pub trust_policy_exclude: Vec<String>,
 }
 
 impl ResolvedNpmRc {
@@ -563,6 +652,9 @@ registry=https://registry.npmjs.org/
           ),
         ]),
         min_release_age_days: None,
+        trust_policy: Default::default(),
+        trust_policy_ignore_after_minutes: None,
+        trust_policy_exclude: Vec::new(),
       }
     );
 
@@ -625,6 +717,9 @@ registry=https://registry.npmjs.org/
         ]),
         registry_configs: npm_rc.registry_configs.clone(),
         min_release_age_days: None,
+        trust_policy: Default::default(),
+        trust_policy_ignore_after_minutes: None,
+        trust_policy_exclude: Vec::new(),
       }
     );
 
@@ -801,6 +896,9 @@ registry=${VAR_FOUND}
           })
         ),]),
         min_release_age_days: None,
+        trust_policy: Default::default(),
+        trust_policy_ignore_after_minutes: None,
+        trust_policy_exclude: Vec::new(),
       }
     )
   }
@@ -851,6 +949,76 @@ registry=${VAR_FOUND}
     sys.env_set_var("MIN_AGE", "7");
     let npm_rc = NpmRc::parse(&sys, "min-release-age=${MIN_AGE}").unwrap();
     assert_eq!(npm_rc.min_release_age_days, Some(7));
+
+    // npm config environment variable
+    let sys = InMemorySys::default();
+    sys.env_set_var("NPM_CONFIG_MIN_RELEASE_AGE", "4");
+    let npm_rc = NpmRc::parse(&sys, "").unwrap();
+    assert_eq!(npm_rc.min_release_age_days, Some(4));
+
+    // .npmrc value takes precedence over the environment fallback.
+    let npm_rc = NpmRc::parse(&sys, "min-release-age=5").unwrap();
+    assert_eq!(npm_rc.min_release_age_days, Some(5));
+  }
+
+  #[test]
+  fn test_parse_trust_policy() {
+    let sys = InMemorySys::default();
+
+    // default is off
+    let npm_rc = NpmRc::parse(&sys, "").unwrap();
+    assert_eq!(npm_rc.trust_policy, TrustPolicyConfig::Off);
+
+    let npm_rc = NpmRc::parse(&sys, "trust-policy=no-downgrade").unwrap();
+    assert_eq!(npm_rc.trust_policy, TrustPolicyConfig::NoDowngrade);
+    let resolved = npm_rc
+      .as_resolved(&npm_url("https://registry.npmjs.org/"))
+      .unwrap();
+    assert_eq!(resolved.trust_policy, TrustPolicyConfig::NoDowngrade);
+
+    // unknown values fall back to off
+    let npm_rc = NpmRc::parse(&sys, "trust-policy=bogus").unwrap();
+    assert_eq!(npm_rc.trust_policy, TrustPolicyConfig::Off);
+
+    // trust-policy-ignore-after parses as a number of minutes and propagates
+    // through to the resolved npmrc
+    let npm_rc = NpmRc::parse(
+      &sys,
+      "trust-policy=no-downgrade\ntrust-policy-ignore-after=4320",
+    )
+    .unwrap();
+    assert_eq!(npm_rc.trust_policy_ignore_after_minutes, Some(4320));
+    let resolved = npm_rc
+      .as_resolved(&npm_url("https://registry.npmjs.org/"))
+      .unwrap();
+    assert_eq!(resolved.trust_policy_ignore_after_minutes, Some(4320));
+
+    // unparsable values are ignored
+    let npm_rc = NpmRc::parse(&sys, "trust-policy-ignore-after=soon").unwrap();
+    assert_eq!(npm_rc.trust_policy_ignore_after_minutes, None);
+
+    // repeated `trust-policy-exclude[]` entries accumulate into the exclude
+    // list and propagate through to the resolved npmrc
+    let npm_rc = NpmRc::parse(
+      &sys,
+      "trust-policy=no-downgrade\ntrust-policy-exclude[]=@scope/pkg\ntrust-policy-exclude[]=other",
+    )
+    .unwrap();
+    assert_eq!(
+      npm_rc.trust_policy_exclude,
+      vec!["@scope/pkg".to_string(), "other".to_string()]
+    );
+    let resolved = npm_rc
+      .as_resolved(&npm_url("https://registry.npmjs.org/"))
+      .unwrap();
+    assert_eq!(
+      resolved.trust_policy_exclude,
+      vec!["@scope/pkg".to_string(), "other".to_string()]
+    );
+
+    // default is an empty exclude list
+    let npm_rc = NpmRc::parse(&sys, "").unwrap();
+    assert!(npm_rc.trust_policy_exclude.is_empty());
   }
 
   #[test]

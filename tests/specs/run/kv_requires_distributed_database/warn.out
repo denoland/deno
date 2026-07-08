@@ -1,0 +1,3 @@
+typeof openKv: function
+Deno.openKv(): no KV database is attached to this app; using a temporary in-memory store. Data will not persist and is not shared between instances. Attach a KV database in the Deno Deploy dashboard.
+opened ok
