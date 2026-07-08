@@ -6,6 +6,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_ast::MediaType;
 use deno_config::deno_json;
 use deno_config::deno_json::CompilerOptionTypesDeserializeError;
 use deno_config::deno_json::NodeModulesDirMode;
@@ -418,6 +419,38 @@ pub struct CreatePublishGraphOptions<'a> {
   pub packages: &'a [JsrPackageConfig],
   pub build_fast_check_graph: bool,
   pub validate_graph: bool,
+  /// Whether to skip exports that can't be analyzed as modules
+  /// (ex. CSS files) instead of surfacing diagnostics for them.
+  /// This is used when linting because validating the exports is
+  /// the responsibility of `deno publish`.
+  /// See https://github.com/denoland/deno/issues/26308
+  pub skip_unanalyzable_exports: bool,
+}
+
+fn is_analyzable_export(url: &ModuleSpecifier) -> bool {
+  match MediaType::from_specifier(url) {
+    MediaType::JavaScript
+    | MediaType::Jsx
+    | MediaType::Mjs
+    | MediaType::Cjs
+    | MediaType::TypeScript
+    | MediaType::Mts
+    | MediaType::Cts
+    | MediaType::Dts
+    | MediaType::Dmts
+    | MediaType::Dcts
+    | MediaType::Tsx
+    | MediaType::Json
+    | MediaType::Wasm => true,
+    MediaType::Css
+    | MediaType::Jsonc
+    | MediaType::Json5
+    | MediaType::Html
+    | MediaType::Markdown
+    | MediaType::Sql
+    | MediaType::SourceMap
+    | MediaType::Unknown => false,
+  }
 }
 
 pub struct ModuleGraphCreator {
@@ -527,7 +560,13 @@ impl ModuleGraphCreator {
 
     let mut roots = Vec::new();
     for package_config in options.packages {
-      roots.extend(package_config.config_file.resolve_export_value_urls()?);
+      let export_urls =
+        package_config.config_file.resolve_export_value_urls()?;
+      if options.skip_unanalyzable_exports {
+        roots.extend(export_urls.into_iter().filter(is_analyzable_export));
+      } else {
+        roots.extend(export_urls);
+      }
     }
 
     let loader = self
@@ -578,11 +617,22 @@ impl ModuleGraphCreator {
     }
 
     if options.build_fast_check_graph {
-      let fast_check_workspace_members = options
+      let mut fast_check_workspace_members = options
         .packages
         .iter()
         .map(|p| config_to_deno_graph_workspace_member(&p.config_file))
         .collect::<Result<Vec<_>, _>>()?;
+      if options.skip_unanalyzable_exports {
+        for member in &mut fast_check_workspace_members {
+          let base = member.base.clone();
+          member.exports.retain(|_, value| {
+            base
+              .join(value)
+              .map(|url| is_analyzable_export(&url))
+              .unwrap_or(true)
+          });
+        }
+      }
       self.module_graph_builder.build_fast_check_graph(
         &mut graph,
         BuildFastCheckGraphOptions {
@@ -879,6 +929,7 @@ impl ModuleGraphBuilder {
           unstable_bytes_imports: self.cli_options.unstable_raw_imports(),
           unstable_text_imports: true,
           unstable_css_imports: self.cli_options.unstable_raw_imports(),
+          unstable_config_imports: false,
         }
       };
     }

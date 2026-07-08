@@ -25,6 +25,7 @@ const {
 } = core.ops;
 const {
   deserializeJsMessageData,
+  deserializeMessageData,
   isUncloneable,
   markAsUncloneable: webMarkAsUncloneable,
   MessageChannel,
@@ -35,6 +36,7 @@ const {
   nodeWorkerThreadCloseCb,
   refMessagePort,
   serializeJsMessageData,
+  serializeMessageData,
   unrefParentPort,
 } = core.loadExtScript("ext:deno_web/13_message_port.js");
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
@@ -81,6 +83,7 @@ const lazyModule = core.createLazyLoader("node:module");
 // loaders.
 
 const {
+  ArrayBufferIsView,
   ArrayIsArray,
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,
@@ -793,7 +796,7 @@ class NodeWorker extends EventEmitter {
       }
       op_host_post_message_raw(
         this.#id,
-        core.serialize(message),
+        serializeMessageData(message),
       );
       return;
     }
@@ -1804,7 +1807,13 @@ function moveMessagePortToContext(
         // surface as `messageerror` per Node semantics.
         let message;
         try {
-          message = core.deserialize(data.data);
+          // `data` is either the raw serialized buffer (no transferables) or a
+          // `{ data, transferables }` object. Deserialize without the
+          // host-object deserializers registry either way.
+          message = deserializeMessageData(
+            ArrayBufferIsView(data) ? data : data.data,
+            false,
+          );
         } catch {
           const err = new Error(
             "Message could not be deserialized in the target context",
@@ -1831,7 +1840,7 @@ function moveMessagePortToContext(
 
   wrapper.postMessage = (msg: unknown) => {
     if (closed) return;
-    op_message_port_post_message_raw(portId, core.serialize(msg));
+    op_message_port_post_message_raw(portId, serializeMessageData(msg));
   };
 
   return wrapper;

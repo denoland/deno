@@ -291,9 +291,9 @@ fn default_parse(
     };
     cpu_prof_parse(result, flags);
 
+    flags.watch = watch_arg_parse_with_paths(result);
     flags.subcommand = DenoSubcommand::Run(RunFlags {
       script: script.to_string(),
-      watch: watch_arg_parse_with_paths(result),
       bare: true,
       coverage_dir,
       print_task_list: false,
@@ -954,11 +954,12 @@ fn allow_and_deny_import_parse(result: &ParseResult, flags: &mut Flags) {
 // Watch helpers
 // ============================================================
 
-/// Parse watch flags without paths (for fmt, lint, bench).
-fn watch_arg_parse(result: &ParseResult) -> Option<WatchFlags> {
+/// Parse watch flags without paths (for check, compile).
+fn watch_arg_parse(result: &ParseResult) -> Option<WatchFlagsWithPaths> {
   if result.contains("watch") {
-    Some(WatchFlags {
+    Some(WatchFlagsWithPaths {
       hmr: false,
+      paths: vec![],
       no_clear_screen: result.get_bool("no-clear-screen"),
       exclude: result
         .get_many("watch-exclude")
@@ -1242,9 +1243,9 @@ fn run_parse(result: &ParseResult, flags: &mut Flags) {
   cpu_prof_parse(result, flags);
 
   if let Some(script) = result.get_one("script_arg") {
+    flags.watch = watch_arg_parse_with_paths(result);
     flags.subcommand = DenoSubcommand::Run(RunFlags {
       script: script.to_string(),
-      watch: watch_arg_parse_with_paths(result),
       bare: false,
       coverage_dir,
       print_task_list: false,
@@ -1253,7 +1254,6 @@ fn run_parse(result: &ParseResult, flags: &mut Flags) {
     // `deno run --v8-flags=--help` with no script
     flags.subcommand = DenoSubcommand::Run(RunFlags {
       script: "_".to_string(),
-      watch: None,
       bare: false,
       coverage_dir: None,
       print_task_list: false,
@@ -1262,7 +1262,6 @@ fn run_parse(result: &ParseResult, flags: &mut Flags) {
     // `deno run` with no script - show available tasks
     flags.subcommand = DenoSubcommand::Run(RunFlags {
       script: String::new(),
-      watch: None,
       bare: false,
       coverage_dir: None,
       print_task_list: true,
@@ -1294,9 +1293,9 @@ fn serve_parse(result: &ParseResult, flags: &mut Flags) {
 
   let parallel = result.get_bool("parallel");
 
+  flags.watch = watch_arg_parse_with_paths(result);
   flags.subcommand = DenoSubcommand::Serve(ServeFlags {
     script,
-    watch: watch_arg_parse_with_paths(result),
     port,
     host,
     parallel,
@@ -1366,6 +1365,7 @@ fn fmt_parse(result: &ParseResult, flags: &mut Flags) {
   let unstable_component = result.get_bool("unstable-component");
   let unstable_sql = result.get_bool("unstable-sql");
 
+  flags.watch = watch_arg_parse_with_paths(result);
   flags.subcommand = DenoSubcommand::Fmt(FmtFlags {
     check: result.get_bool("check"),
     fail_fast: result.get_bool("fail-fast"),
@@ -1378,7 +1378,6 @@ fn fmt_parse(result: &ParseResult, flags: &mut Flags) {
     prose_wrap,
     no_semicolons,
     no_editorconfig: result.get_bool("no-editorconfig"),
-    watch: watch_arg_parse(result),
     unstable_component,
     unstable_sql,
   });
@@ -1412,6 +1411,7 @@ fn lint_parse(result: &ParseResult, flags: &mut Flags) {
   let json = result.get_bool("json");
   let compact = result.get_bool("compact");
 
+  flags.watch = watch_arg_parse_with_paths(result);
   flags.subcommand = DenoSubcommand::Lint(LintFlags {
     files: FileFlags {
       include: files,
@@ -1425,7 +1425,6 @@ fn lint_parse(result: &ParseResult, flags: &mut Flags) {
     permit_no_files: result.get_bool("permit-no-files"),
     json,
     compact,
-    watch: watch_arg_parse(result),
   });
 }
 
@@ -1499,6 +1498,7 @@ fn test_parse(result: &ParseResult, flags: &mut Flags) {
     None
   };
 
+  flags.watch = watch_arg_parse_with_paths(result);
   flags.subcommand = DenoSubcommand::Test(TestFlags {
     no_run,
     doc,
@@ -1526,7 +1526,6 @@ fn test_parse(result: &ParseResult, flags: &mut Flags) {
       .and_then(|s| s.parse().ok())
       .unwrap_or(0),
     shard: result.get_one("shard").and_then(parse_shard),
-    watch: watch_arg_parse_with_paths(result),
     reporter,
     junit_path,
     hide_stacktraces,
@@ -1657,12 +1656,12 @@ fn check_parse(result: &ParseResult, flags: &mut Flags) {
     flags.type_check_mode = TypeCheckMode::All;
   }
 
+  flags.watch = watch_arg_parse(result);
   flags.subcommand = DenoSubcommand::Check(CheckFlags {
     files,
     doc: result.get_bool("doc"),
     doc_only: result.get_bool("doc-only"),
     check_js: result.get_bool("check-js"),
-    watch: watch_arg_parse(result),
   });
   flags.code_cache_enabled = !result.get_bool("no-code-cache");
   allow_and_deny_import_parse(result, flags);
@@ -1806,13 +1805,13 @@ fn bench_parse(result: &ParseResult, flags: &mut Flags) {
     .unwrap_or_default();
   let no_run = result.get_bool("no-run");
 
+  flags.watch = watch_arg_parse_with_paths(result);
   flags.subcommand = DenoSubcommand::Bench(BenchFlags {
     files: FileFlags { include, ignore },
     filter,
     json,
     no_run,
     permit_no_files: result.get_bool("permit-no-files"),
-    watch: watch_arg_parse(result),
   });
 }
 
@@ -1846,12 +1845,12 @@ fn compile_parse(result: &ParseResult, flags: &mut Flags) {
   // Trailing args are the compile args
   let args = result.trailing.clone();
 
+  flags.watch = watch_arg_parse(result);
   flags.subcommand = DenoSubcommand::Compile(CompileFlags {
     source_file,
     output,
     args,
     target,
-    watch: watch_arg_parse(result),
     no_terminal,
     icon,
     include,
