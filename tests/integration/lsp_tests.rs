@@ -11300,11 +11300,6 @@ fn lsp_completions_empty_tsx_react_jsx() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/25775.
-// Disabled during the TypeScript un-fork: stock TS surfaces additional bare
-// node builtin import fixes (node:assert, node:test) that the forked compiler
-// did not. Re-enabled once the auto-import quick-fix behavior for node builtins
-// is settled under stock TS.
-#[ignore = "un-fork: stock TS offers extra node builtin import fixes"]
 #[test(timeout = 300)]
 fn lsp_quick_fix_missing_import_exclude_bare_node_builtins() {
   let context = TestContextBuilder::new()
@@ -11361,10 +11356,17 @@ fn lsp_quick_fix_missing_import_exclude_bare_node_builtins() {
     .iter()
     .map(|a| a.title.clone())
     .collect::<Vec<_>>();
+  // The invariant is that every suggested node builtin import carries the
+  // `node:` prefix (#25775) - no bare `"assert"` / `"test"` specifiers, which
+  // do not resolve in Deno. Stock TS surfaces the additional prefixed builtins
+  // `node:assert` and `node:test` (the forked compiler only offered
+  // `node:console`); they are all valid, resolvable imports.
   assert_eq!(
     json!(titles),
     json!([
+      "Add import from \"node:assert\"",
       "Add import from \"node:console\"",
+      "Add import from \"node:test\"",
       "Add missing function declaration 'assert'",
     ]),
   );
