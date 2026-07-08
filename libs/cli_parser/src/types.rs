@@ -99,6 +99,9 @@ pub struct ArgDef {
   /// Names of args that cannot be used together with this one. If both are
   /// present, parsing fails (mirrors clap's `conflicts_with`).
   pub conflicts: &'static [&'static str],
+  /// Names of args that must also be present when this one is used. If any
+  /// is missing, parsing fails (mirrors clap's `requires`).
+  pub requires: &'static [&'static str],
 }
 
 impl ArgDef {
@@ -122,6 +125,7 @@ impl ArgDef {
       trailing: false,
       value_name: None,
       conflicts: &[],
+      requires: &[],
     }
   }
 
@@ -130,6 +134,11 @@ impl ArgDef {
     conflicts: &'static [&'static str],
   ) -> Self {
     self.conflicts = conflicts;
+    self
+  }
+
+  pub const fn requires(mut self, requires: &'static [&'static str]) -> Self {
+    self.requires = requires;
     self
   }
 

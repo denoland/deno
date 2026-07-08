@@ -266,6 +266,16 @@ fn parse_args(
     }
   }
 
+  // `--help`/`--version` preempt validation (mirrors clap): the command is
+  // never executed, so missing/conflicting args don't matter. A value-taking
+  // `--version` (e.g. `upgrade --version 1.2.3`) is a normal arg, not the
+  // root version flag.
+  if result.contains("help")
+    || (result.contains("version") && result.get_one("version").is_none())
+  {
+    return Ok(());
+  }
+
   // Enforce required args: every arg marked `required` must have been provided.
   for arg_def in cmd_def.all_args() {
     if arg_def.required && !result.contains(arg_def.name) {
@@ -296,7 +306,48 @@ fn parse_args(
     }
   }
 
+  // Enforce arg dependencies (clap's `requires`): when an arg is present,
+  // every arg it requires must be present too. A missing requirement is
+  // waived when the required arg conflicts with another present arg
+  // (mirrors clap, e.g. `--no-clear-screen` requires `--watch` but is
+  // fine with `--watch-hmr`, which conflicts with `--watch`).
+  for arg_def in cmd_def.all_args() {
+    if result.contains(arg_def.name) {
+      for required in arg_def.requires {
+        if !result.contains(required)
+          && !requirement_waived_by_conflict(cmd_def, result, required)
+        {
+          return Err(CliError::new(
+            CliErrorKind::MissingRequired,
+            format!(
+              "the following required arguments were not provided: --{required}"
+            ),
+          ));
+        }
+      }
+    }
+  }
+
   Ok(())
+}
+
+/// Whether a missing required arg conflicts with any arg that is present,
+/// which waives the requirement (clap behavior).
+fn requirement_waived_by_conflict(
+  cmd_def: &CommandDef,
+  result: &ParseResult,
+  required: &str,
+) -> bool {
+  let required_conflicts = cmd_def
+    .all_args()
+    .find(|a| a.name == required)
+    .map(|a| a.conflicts)
+    .unwrap_or(&[]);
+  cmd_def.all_args().any(|a| {
+    result.contains(a.name)
+      && (a.conflicts.contains(&required)
+        || required_conflicts.contains(&a.name))
+  })
 }
 
 /// Parse a `--long-flag` or `--long-flag=value`.

@@ -109,7 +109,8 @@ pub fn convert(result: ParseResult) -> Result<Flags, CliError> {
   unstable_args_parse(&result, &mut flags);
 
   match result.subcommand.as_deref() {
-    Some("run") => run_parse(&result, &mut flags),
+    Some("run") => run_parse(&result, &mut flags, false)?,
+    Some("watch") => run_parse(&result, &mut flags, true)?,
     Some("serve") => serve_parse(&result, &mut flags),
     Some("eval") => eval_parse(&result, &mut flags),
     Some("fmt") => fmt_parse(&result, &mut flags),
@@ -120,7 +121,7 @@ pub fn convert(result: ParseResult) -> Result<Flags, CliError> {
     Some("check") => check_parse(&result, &mut flags),
     Some("info") => info_parse(&result, &mut flags),
     Some("doc") => doc_parse(&result, &mut flags),
-    Some("task") => task_parse(&result, &mut flags),
+    Some("task") => task_parse(&result, &mut flags)?,
     Some("bench") => bench_parse(&result, &mut flags),
     Some("compile") => compile_parse(&result, &mut flags),
     Some("coverage") => coverage_parse(&result, &mut flags)?,
@@ -129,7 +130,7 @@ pub fn convert(result: ParseResult) -> Result<Flags, CliError> {
     Some("uninstall") => uninstall_parse(&result, &mut flags),
     Some("completions") => completions_parse(&result, &mut flags),
     Some("init") => init_parse(&result, &mut flags),
-    Some("create") => create_parse(&result, &mut flags),
+    Some("create") => create_parse(&result, &mut flags)?,
     Some("jupyter") => jupyter_parse(&result, &mut flags),
     Some("publish") => publish_parse(&result, &mut flags),
     Some("add") => add_parse(&result, &mut flags),
@@ -164,9 +165,6 @@ pub fn convert(result: ParseResult) -> Result<Flags, CliError> {
       ));
     }
   }
-
-  // Validate --no-clear-screen requires --watch
-  no_clear_screen_requires_watch(&result)?;
 
   // Validate permission args
   validate_permission_args(&result, &flags)?;
@@ -204,6 +202,7 @@ fn default_parse(
     // If so, a non-global flag was placed before it and we should error.
     let known_subcommands = [
       "run",
+      "watch",
       "serve",
       "eval",
       "fmt",
@@ -279,13 +278,23 @@ fn default_parse(
           .first()
           .cloned()
           .unwrap_or_else(|| "unknown".to_string());
-        return Err(
-          CliError::new(
-            CliErrorKind::UnknownFlag,
-            format!("unexpected argument '{first_flag}' found"),
-          )
-          .with_suggestion(format!("'{script} {first_flag}' exists")),
+        let mut err = CliError::new(
+          CliErrorKind::UnknownFlag,
+          format!("unexpected argument '{first_flag}' found"),
         );
+        // Only claim `<subcommand> <flag>` exists when that subcommand
+        // actually accepts the flag (see issue #27336).
+        let accepts_flag = crate::defs::DENO_ROOT
+          .find_subcommand(script)
+          .is_some_and(|sub| {
+            sub
+              .find_arg_long(first_flag.trim_start_matches('-'))
+              .is_some()
+          });
+        if accepts_flag {
+          err = err.with_suggestion(format!("'{script} {first_flag}' exists"));
+        }
+        return Err(err);
       }
     }
 
@@ -301,7 +310,14 @@ fn default_parse(
     };
     cpu_prof_parse(result, flags);
 
-    flags.watch = watch_arg_parse_with_paths(result);
+    let watch = watch_arg_parse_with_paths(result);
+    if script == "-" && watch.is_some() {
+      return Err(CliError::new(
+        CliErrorKind::InvalidValue,
+        "--watch and --watch-hmr cannot be used while reading from stdin.",
+      ));
+    }
+    flags.watch = watch;
     flags.subcommand = DenoSubcommand::Run(RunFlags {
       script: script.to_string(),
       bare: true,
@@ -1024,21 +1040,6 @@ fn watch_arg_parse_with_paths(
 // Subcommand conversion functions
 // ============================================================
 
-fn no_clear_screen_requires_watch(
-  result: &ParseResult,
-) -> Result<(), CliError> {
-  if result.get_bool("no-clear-screen")
-    && !result.contains("watch")
-    && !result.contains("hmr")
-  {
-    return Err(CliError::new(
-      CliErrorKind::MissingRequired,
-      "the following required arguments were not provided:\n  --watch\n\n  tip: '--no-clear-screen' requires '--watch' to be provided",
-    ));
-  }
-  Ok(())
-}
-
 /// Known valid sys descriptors.
 const VALID_SYS_DESCRIPTORS: &[&str] = &[
   "hostname",
@@ -1239,7 +1240,11 @@ pub fn escape_and_split_commas(s: String) -> Result<Vec<String>, CliError> {
   Ok(result)
 }
 
-fn run_parse(result: &ParseResult, flags: &mut Flags) {
+fn run_parse(
+  result: &ParseResult,
+  flags: &mut Flags,
+  force_hmr: bool,
+) -> Result<(), CliError> {
   runtime_args_parse(result, flags, true, true, true);
   ext_arg_parse(result, flags);
 
@@ -1253,7 +1258,33 @@ fn run_parse(result: &ParseResult, flags: &mut Flags) {
   cpu_prof_parse(result, flags);
 
   if let Some(script) = result.get_one("script_arg") {
-    flags.watch = watch_arg_parse_with_paths(result);
+    let mut watch = watch_arg_parse_with_paths(result);
+    // `deno watch` is an alias for `deno run --watch-hmr`, so enable hot
+    // module replacement watching by default when no explicit watch flag
+    // was passed.
+    if force_hmr {
+      match &mut watch {
+        Some(watch) => watch.hmr = true,
+        None => {
+          watch = Some(WatchFlagsWithPaths {
+            hmr: true,
+            paths: vec![],
+            no_clear_screen: result.get_bool("no-clear-screen"),
+            exclude: result
+              .get_many("watch-exclude")
+              .map(|v| v.iter().map(|s| s.to_string()).collect())
+              .unwrap_or_default(),
+          });
+        }
+      }
+    }
+    if script == "-" && watch.is_some() {
+      return Err(CliError::new(
+        CliErrorKind::InvalidValue,
+        "--watch and --watch-hmr cannot be used while reading from stdin.",
+      ));
+    }
+    flags.watch = watch;
     flags.subcommand = DenoSubcommand::Run(RunFlags {
       script: script.to_string(),
       bare: false,
@@ -1277,6 +1308,7 @@ fn run_parse(result: &ParseResult, flags: &mut Flags) {
       print_task_list: true,
     });
   }
+  Ok(())
 }
 
 fn serve_parse(result: &ParseResult, flags: &mut Flags) {
@@ -1691,6 +1723,9 @@ fn check_parse(result: &ParseResult, flags: &mut Flags) {
   if result.get_bool("all") || result.get_bool("remote") {
     flags.type_check_mode = TypeCheckMode::All;
   }
+  if result.get_bool("desktop") {
+    flags.internal.is_desktop = true;
+  }
 
   flags.watch = watch_arg_parse(result);
   flags.subcommand = DenoSubcommand::Check(CheckFlags {
@@ -1787,7 +1822,7 @@ fn doc_parse(result: &ParseResult, flags: &mut Flags) {
   });
 }
 
-fn task_parse(result: &ParseResult, flags: &mut Flags) {
+fn task_parse(result: &ParseResult, flags: &mut Flags) -> Result<(), CliError> {
   config_args_parse(result, flags);
   node_modules_arg_parse(result, flags);
   lock_args_parse(result, flags);
@@ -1809,6 +1844,13 @@ fn task_parse(result: &ParseResult, flags: &mut Flags) {
   let task_name = result.get_one("task_name").map(|s| s.to_string());
   let eval = result.get_bool("eval");
 
+  if eval && task_name.is_none() {
+    return Err(CliError::new(
+      CliErrorKind::MissingRequired,
+      "[TASK] must be specified when using --eval",
+    ));
+  }
+
   flags.subcommand = DenoSubcommand::Task(TaskFlags {
     cwd: result.get_one("cwd").map(|s| s.to_string()),
     task: task_name,
@@ -1820,6 +1862,7 @@ fn task_parse(result: &ParseResult, flags: &mut Flags) {
     concurrency: result.get_one("jobs").and_then(|s| s.parse().ok()),
     if_present: result.get_bool("if-present"),
   });
+  Ok(())
 }
 
 fn bench_parse(result: &ParseResult, flags: &mut Flags) {
@@ -2219,30 +2262,21 @@ fn init_parse(result: &ParseResult, flags: &mut Flags) {
   });
 }
 
-fn create_parse(result: &ParseResult, flags: &mut Flags) {
+fn create_parse(
+  result: &ParseResult,
+  flags: &mut Flags,
+) -> Result<(), CliError> {
   let package = result
     .get_one("package")
     .map(|s| s.to_string())
     .unwrap_or_default();
   let use_npm = result.get_bool("npm");
   let use_jsr = result.get_bool("jsr");
-  // With per-positional trailing on package_args, values after the
-  // package positional (including after --) go directly into
-  // the package_args positional's values.
-  let package_args: Vec<String> = result
-    .get_many("package_args")
-    .map(|v| v.iter().map(|s| s.to_string()).collect())
-    .unwrap_or_default();
+  // Extra package args are only accepted after `--` (clap's `last(true)`),
+  // so they arrive via `result.trailing`.
+  let package_args: Vec<String> = result.trailing.clone();
 
-  let package = if package.starts_with("jsr:") || package.starts_with("npm:") {
-    package
-  } else if use_npm {
-    format!("npm:{package}")
-  } else if use_jsr {
-    format!("jsr:{package}")
-  } else {
-    package
-  };
+  let package = normalize_create_package_name(package, use_npm, use_jsr)?;
 
   flags.subcommand = DenoSubcommand::Init(InitFlags {
     package: Some(package),
@@ -2253,6 +2287,52 @@ fn create_parse(result: &ParseResult, flags: &mut Flags) {
     empty: false,
     yes: result.get_bool("yes"),
   });
+  Ok(())
+}
+
+fn normalize_create_package_name(
+  package: String,
+  use_npm: bool,
+  use_jsr: bool,
+) -> Result<String, CliError> {
+  if let Some(name) = package.strip_prefix("jsr:") {
+    if use_npm {
+      Err(CliError::new(
+        CliErrorKind::InvalidValue,
+        "Cannot use `--npm` with a `jsr:` specifier.",
+      ))
+    } else if name.is_empty() {
+      Err(CliError::new(
+        CliErrorKind::InvalidValue,
+        "Missing package name after 'jsr:' prefix.",
+      ))
+    } else {
+      Ok(package)
+    }
+  } else if let Some(name) = package.strip_prefix("npm:") {
+    if use_jsr {
+      Err(CliError::new(
+        CliErrorKind::InvalidValue,
+        "Cannot use `--jsr` with an `npm:` specifier.",
+      ))
+    } else if name.is_empty() {
+      Err(CliError::new(
+        CliErrorKind::InvalidValue,
+        "Missing package name after 'npm:' prefix.",
+      ))
+    } else {
+      Ok(package)
+    }
+  } else if use_npm {
+    Ok(format!("npm:{package}"))
+  } else if use_jsr {
+    Ok(format!("jsr:{package}"))
+  } else {
+    Err(CliError::new(
+      CliErrorKind::InvalidValue,
+      "Missing `jsr:` or `npm:` prefix. For example: `deno create npm:vite`.",
+    ))
+  }
 }
 
 fn jupyter_parse(result: &ParseResult, flags: &mut Flags) {
@@ -2436,11 +2516,25 @@ fn why_parse(result: &ParseResult, flags: &mut Flags) {
 
 fn remove_parse(result: &ParseResult, flags: &mut Flags) {
   lock_args_parse(result, flags);
+  let packages: Vec<String> = result
+    .get_many("packages")
+    .map(|v| v.iter().map(|s| s.to_string()).collect())
+    .unwrap_or_default();
+
+  // `deno remove --global <name>...` is an alias for `deno uninstall
+  // --global <name>...`: it removes globally installed executables rather
+  // than dependencies from the configuration file, so route it through the
+  // same subcommand the uninstaller uses.
+  if result.get_bool("global") {
+    let root = result.get_one("root").map(|s| s.to_string());
+    flags.subcommand = DenoSubcommand::Uninstall(UninstallFlags {
+      kind: UninstallKind::Global(UninstallFlagsGlobal { packages, root }),
+    });
+    return;
+  }
+
   flags.subcommand = DenoSubcommand::Remove(RemoveFlags {
-    packages: result
-      .get_many("packages")
-      .map(|v| v.iter().map(|s| s.to_string()).collect())
-      .unwrap_or_default(),
+    packages,
     lockfile_only: result.get_bool("lockfile-only"),
     package_json: result.get_bool("package-json"),
   });

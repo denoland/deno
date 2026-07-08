@@ -432,76 +432,96 @@ pub static LOCK_ARGS: &[ArgDef] = &[
 // Subcommand definitions
 // ============================================================
 
+// Shared between `run` and its alias-like `watch` subcommand
+// (`deno watch` == `deno run --watch-hmr`).
+static RUN_ARGS: &[ArgDef] = &[
+  ArgDef::new("script_arg")
+    .positional()
+    .action(ArgAction::Set)
+    .num_args(NumArgs::Exact(1)),
+  ArgDef::new("check")
+    .long("check")
+    .action(ArgAction::Set)
+    .num_args(NumArgs::Optional)
+    .require_equals(),
+  ArgDef::new("watch")
+    .long("watch")
+    .action(ArgAction::Append)
+    .num_args(NumArgs::ZeroOrMore)
+    .require_equals()
+    .value_delimiter(','),
+  ArgDef::new("hmr")
+    .long("hmr")
+    .long_aliases(&["watch-hmr", "unstable-hmr"])
+    .action(ArgAction::Append)
+    .num_args(NumArgs::ZeroOrMore)
+    .require_equals()
+    .value_delimiter(',')
+    .conflicts_with(&["watch"]),
+  ArgDef::new("watch-exclude")
+    .long("watch-exclude")
+    .action(ArgAction::Append)
+    .num_args(NumArgs::ZeroOrMore)
+    .require_equals()
+    .value_delimiter(','),
+  ArgDef::new("no-clear-screen")
+    .long("no-clear-screen")
+    .set_true()
+    .requires(&["watch"]),
+  ArgDef::new("ext")
+    .long("ext")
+    .action(ArgAction::Set)
+    .num_args(NumArgs::Exact(1)),
+  ArgDef::new("env-file")
+    .long("env-file")
+    .long_aliases(&["env"])
+    .action(ArgAction::Append)
+    .num_args(NumArgs::Optional)
+    .require_equals(),
+  ArgDef::new("no-code-cache")
+    .long("no-code-cache")
+    .set_true(),
+  ArgDef::new("coverage")
+    .long("coverage")
+    .action(ArgAction::Set)
+    .num_args(NumArgs::Optional)
+    .require_equals(),
+  ArgDef::new("tunnel")
+    .long("tunnel")
+    .long_aliases(&["connected"])
+    .set_true()
+    .hidden(),
+  // Allow --allow-scripts on run (through arg_groups, but also directly)
+];
+
+static RUN_ARG_GROUPS: &[&[ArgDef]] = &[
+  UNSTABLE_ARGS,
+  PERMISSION_ARGS,
+  COMPILE_ARGS,
+  INSPECT_ARGS,
+  RUNTIME_MISC_ARGS,
+  CPU_PROF_ARGS,
+  ALLOW_SCRIPTS_ARG,
+];
+
 pub static RUN_SUBCOMMAND: CommandDef = CommandDef {
   name: "run",
   about: "Run a JavaScript or TypeScript program, or a task",
   aliases: &[],
-  args: &[
-    ArgDef::new("script_arg")
-      .positional()
-      .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
-    ArgDef::new("check")
-      .long("check")
-      .action(ArgAction::Set)
-      .num_args(NumArgs::Optional)
-      .require_equals(),
-    ArgDef::new("watch")
-      .long("watch")
-      .action(ArgAction::Append)
-      .num_args(NumArgs::ZeroOrMore)
-      .require_equals()
-      .value_delimiter(','),
-    ArgDef::new("hmr")
-      .long("hmr")
-      .long_aliases(&["watch-hmr", "unstable-hmr"])
-      .action(ArgAction::Append)
-      .num_args(NumArgs::ZeroOrMore)
-      .require_equals()
-      .value_delimiter(','),
-    ArgDef::new("watch-exclude")
-      .long("watch-exclude")
-      .action(ArgAction::Append)
-      .num_args(NumArgs::ZeroOrMore)
-      .require_equals()
-      .value_delimiter(','),
-    ArgDef::new("no-clear-screen")
-      .long("no-clear-screen")
-      .set_true(),
-    ArgDef::new("ext")
-      .long("ext")
-      .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
-    ArgDef::new("env-file")
-      .long("env-file")
-      .long_aliases(&["env"])
-      .action(ArgAction::Append)
-      .num_args(NumArgs::Optional)
-      .require_equals(),
-    ArgDef::new("no-code-cache")
-      .long("no-code-cache")
-      .set_true(),
-    ArgDef::new("coverage")
-      .long("coverage")
-      .action(ArgAction::Set)
-      .num_args(NumArgs::Optional)
-      .require_equals(),
-    ArgDef::new("tunnel")
-      .long("tunnel")
-      .long_aliases(&["connected"])
-      .set_true()
-      .hidden(),
-    // Allow --allow-scripts on run (through arg_groups, but also directly)
-  ],
-  arg_groups: &[
-    UNSTABLE_ARGS,
-    PERMISSION_ARGS,
-    COMPILE_ARGS,
-    INSPECT_ARGS,
-    RUNTIME_MISC_ARGS,
-    CPU_PROF_ARGS,
-    ALLOW_SCRIPTS_ARG,
-  ],
+  args: RUN_ARGS,
+  arg_groups: RUN_ARG_GROUPS,
+  subcommands: &[],
+  default_subcommand: None,
+  trailing_var_arg: true,
+  passthrough: false,
+};
+
+pub static WATCH_SUBCOMMAND: CommandDef = CommandDef {
+  name: "watch",
+  about: "Run a JavaScript or TypeScript program, watching for file changes and hot-replacing modules",
+  aliases: &[],
+  args: RUN_ARGS,
+  arg_groups: RUN_ARG_GROUPS,
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: true,
@@ -542,7 +562,8 @@ pub static SERVE_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Append)
       .num_args(NumArgs::ZeroOrMore)
       .require_equals()
-      .value_delimiter(','),
+      .value_delimiter(',')
+      .conflicts_with(&["watch"]),
     ArgDef::new("watch-exclude")
       .long("watch-exclude")
       .action(ArgAction::Append)
@@ -551,7 +572,8 @@ pub static SERVE_SUBCOMMAND: CommandDef = CommandDef {
       .value_delimiter(','),
     ArgDef::new("no-clear-screen")
       .long("no-clear-screen")
-      .set_true(),
+      .set_true()
+      .requires(&["watch"]),
     ArgDef::new("ext")
       .long("ext")
       .action(ArgAction::Set)
@@ -648,7 +670,8 @@ pub static FMT_SUBCOMMAND: CommandDef = CommandDef {
       .value_delimiter(','),
     ArgDef::new("no-clear-screen")
       .long("no-clear-screen")
-      .set_true(),
+      .set_true()
+      .requires(&["watch"]),
     ArgDef::new("ext")
       .long("ext")
       .action(ArgAction::Set)
@@ -767,7 +790,8 @@ pub static LINT_SUBCOMMAND: CommandDef = CommandDef {
       .value_delimiter(','),
     ArgDef::new("no-clear-screen")
       .long("no-clear-screen")
-      .set_true(),
+      .set_true()
+      .requires(&["watch"]),
     ArgDef::new("permit-no-files")
       .long("permit-no-files")
       .set_true(),
@@ -781,8 +805,23 @@ pub static LINT_SUBCOMMAND: CommandDef = CommandDef {
       .long("ext")
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1)),
+    ArgDef::new("allow-import")
+      .short('I')
+      .long("allow-import")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore)
+      .require_equals()
+      .value_delimiter(','),
+    ArgDef::new("deny-import")
+      .long("deny-import")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore)
+      .require_equals()
+      .value_delimiter(','),
   ],
-  arg_groups: &[UNSTABLE_ARGS, PERMISSION_ARGS],
+  // NOTE: lint takes only import permission args, no other permission
+  // args (see issue #27336).
+  arg_groups: &[UNSTABLE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -839,7 +878,8 @@ pub static TEST_SUBCOMMAND: CommandDef = CommandDef {
       .value_delimiter(','),
     ArgDef::new("no-clear-screen")
       .long("no-clear-screen")
-      .set_true(),
+      .set_true()
+      .requires(&["watch"]),
     ArgDef::new("reporter")
       .long("reporter")
       .action(ArgAction::Set)
@@ -1017,11 +1057,22 @@ pub static CHECK_SUBCOMMAND: CommandDef = CommandDef {
       .positional()
       .action(ArgAction::Append)
       .num_args(NumArgs::OneOrMore),
-    ArgDef::new("all").long("all").set_true(),
-    ArgDef::new("remote").long("remote").set_true(),
+    ArgDef::new("all")
+      .long("all")
+      .set_true()
+      .conflicts_with(&["no-remote"]),
+    ArgDef::new("remote")
+      .long("remote")
+      .set_true()
+      .conflicts_with(&["no-remote"])
+      .hidden(),
     ArgDef::new("doc").long("doc").set_true(),
-    ArgDef::new("doc-only").long("doc-only").set_true(),
+    ArgDef::new("doc-only")
+      .long("doc-only")
+      .set_true()
+      .conflicts_with(&["doc"]),
     ArgDef::new("check-js").long("check-js").set_true().hidden(),
+    ArgDef::new("desktop").long("desktop").set_true(),
   ],
   arg_groups: &[
     UNSTABLE_ARGS,
@@ -1204,7 +1255,8 @@ pub static BENCH_SUBCOMMAND: CommandDef = CommandDef {
       .value_delimiter(','),
     ArgDef::new("no-clear-screen")
       .long("no-clear-screen")
-      .set_true(),
+      .set_true()
+      .requires(&["watch"]),
     ArgDef::new("ignore")
       .long("ignore")
       .action(ArgAction::Append)
@@ -1412,7 +1464,10 @@ pub static INSTALL_SUBCOMMAND: CommandDef = CommandDef {
       .long("prod")
       .set_true()
       .conflicts_with(&["global", "dev"]),
-    ArgDef::new("skip-types").long("skip-types").set_true(),
+    ArgDef::new("skip-types")
+      .long("skip-types")
+      .set_true()
+      .requires(&["prod"]),
     ArgDef::new("entrypoint")
       .short('e')
       .long("entrypoint")
@@ -1462,12 +1517,14 @@ pub static UNINSTALL_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("packages")
       .positional()
       .action(ArgAction::Append)
-      .num_args(NumArgs::ZeroOrMore),
+      .num_args(NumArgs::OneOrMore)
+      .required(),
     ArgDef::new("global").short('g').long("global").set_true(),
     ArgDef::new("root")
       .long("root")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .requires(&["global"]),
     ArgDef::new("lockfile-only")
       .long("lockfile-only")
       .set_true(),
@@ -1538,20 +1595,21 @@ pub static CREATE_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("package")
       .positional()
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
-    ArgDef::new("package_args")
-      .positional()
-      .action(ArgAction::Append)
-      .num_args(NumArgs::ZeroOrMore)
-      .trailing(),
-    ArgDef::new("npm").long("npm").set_true(),
+      .num_args(NumArgs::Exact(1))
+      .required(),
+    // Extra package args are only accepted after `--` (clap's `last(true)`)
+    // and land in `result.trailing`.
+    ArgDef::new("npm")
+      .long("npm")
+      .set_true()
+      .conflicts_with(&["jsr"]),
     ArgDef::new("jsr").long("jsr").set_true(),
     ArgDef::new("yes").short('y').long("yes").set_true(),
   ],
   arg_groups: &[],
   subcommands: &[],
   default_subcommand: None,
-  trailing_var_arg: true,
+  trailing_var_arg: false,
   passthrough: false,
 };
 
@@ -1658,10 +1716,18 @@ pub static REMOVE_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("packages")
       .positional()
       .action(ArgAction::Append)
-      .num_args(NumArgs::OneOrMore),
+      .num_args(NumArgs::OneOrMore)
+      .required(),
+    ArgDef::new("global").short('g').long("global").set_true(),
+    ArgDef::new("root")
+      .long("root")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .requires(&["global"]),
     ArgDef::new("lockfile-only")
       .long("lockfile-only")
-      .set_true(),
+      .set_true()
+      .conflicts_with(&["global"]),
   ],
   arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
   subcommands: &[],
@@ -2151,7 +2217,10 @@ pub static CI_SUBCOMMAND: CommandDef = CommandDef {
   aliases: &[],
   args: &[
     ArgDef::new("prod").long("prod").set_true(),
-    ArgDef::new("skip-types").long("skip-types").set_true(),
+    ArgDef::new("skip-types")
+      .long("skip-types")
+      .set_true()
+      .requires(&["prod"]),
     ArgDef::new("env-file")
       .long("env-file")
       .long_aliases(&["env"])
@@ -2271,6 +2340,7 @@ pub static DENO_ROOT: CommandDef = CommandDef {
   arg_groups: &[UNSTABLE_ARGS],
   subcommands: &[
     RUN_SUBCOMMAND,
+    WATCH_SUBCOMMAND,
     SERVE_SUBCOMMAND,
     EVAL_SUBCOMMAND,
     FMT_SUBCOMMAND,

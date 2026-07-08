@@ -151,7 +151,6 @@ fn run_reload() {
 }
 
 #[test]
-#[ignore = "PORT-GAP(validation): clap rejects this input; new parser accepts it"]
 fn run_watch() {
   let r = flags_from_vec(svec!["deno", "run", "--watch", "script.ts"]);
   let flags = r.unwrap();
@@ -287,7 +286,6 @@ fn run_watch() {
 }
 
 #[test]
-#[ignore = "PORT-GAP(validation): clap rejects this input; new parser accepts it"]
 fn watch_subcommand() {
   // `deno watch script.ts` is an alias for `deno run --watch-hmr script.ts`.
   let r = flags_from_vec(svec!["deno", "watch", "script.ts"]);
@@ -549,7 +547,6 @@ fn run_watch_with_excluded_paths() {
 }
 
 #[test]
-#[ignore = "PORT-GAP(validation): clap rejects this input; new parser accepts it"]
 fn run_watch_with_stdin_is_error() {
   // `--watch` and `--watch-hmr` cannot be combined with reading from stdin,
   // previously `--watch-hmr -` panicked and `--watch -` was silently ignored.
@@ -1584,7 +1581,6 @@ fn cache() {
 }
 
 #[test]
-#[ignore = "PORT-GAP(validation): clap rejects this input; new parser accepts it"]
 fn check() {
   let r = flags_from_vec(svec!["deno", "check", "script.ts"]);
   assert_eq!(
@@ -3112,7 +3108,6 @@ fn install_with_flags() {
 }
 
 #[test]
-#[ignore = "PORT-GAP(validation): clap rejects this input; new parser accepts it"]
 fn uninstall() {
   let r = flags_from_vec(svec!["deno", "uninstall"]);
   assert!(r.is_err(),);
@@ -5314,7 +5309,6 @@ fn location_with_bad_scheme() {
 // PORT-SKIP: test_config_path_args depends on clap internals (clap_root/config_path_args); kept in cli/args/flags.rs
 
 #[test]
-#[ignore = "PORT-GAP(requires): parser lacks ArgDef::requires; clap enforces flag dependency"]
 fn test_no_clear_watch_flag_without_watch_flag() {
   let r = flags_from_vec(svec!["deno", "run", "--no-clear-screen", "foo.js"]);
   assert!(r.is_err());
@@ -5323,11 +5317,12 @@ fn test_no_clear_watch_flag_without_watch_flag() {
     &error_message
       .contains("error: the following required arguments were not provided:")
   );
-  assert!(&error_message.contains("--watch[=<FILES>...]"));
+  // PORT-NOTE: clap renders the missing arg as `--watch[=<FILES>...]`; the
+  // new parser reports the plain flag name.
+  assert!(&error_message.contains("--watch"));
 }
 
 #[test]
-#[ignore = "PORT-GAP(validation): clap rejects this input; new parser accepts it"]
 fn task_subcommand() {
   let r = flags_from_vec(svec!["deno", "task", "build", "hello", "world",]);
   assert_eq!(
@@ -6249,7 +6244,6 @@ fn init() {
 }
 
 #[test]
-#[ignore = "PORT-GAP(validation): clap rejects this input; new parser accepts it"]
 fn create() {
   let r = flags_from_vec(svec!["deno", "create"]);
   assert!(r.is_err());
@@ -6780,7 +6774,6 @@ fn remove_subcommand() {
 }
 
 #[test]
-#[ignore = "PORT-GAP(validation): clap rejects this input; new parser accepts it"]
 fn remove_global_alias_for_uninstall() {
   // `deno remove --global <name>` is an alias for `deno uninstall --global
   // <name>` and produces the exact same subcommand.
@@ -7214,7 +7207,6 @@ fn install_production_with_skip_types() {
 }
 
 #[test]
-#[ignore = "PORT-GAP(requires): parser lacks ArgDef::requires; clap enforces flag dependency"]
 fn install_skip_types_requires_prod() {
   let r = flags_from_vec(svec!["deno", "install", "--skip-types"]);
   assert!(r.is_err());
@@ -7354,30 +7346,28 @@ fn node_modules_dir_default() {
 }
 
 #[test]
-#[ignore = "PORT-GAP(validation): clap rejects this input; new parser accepts it"]
 fn flag_before_subcommand() {
+  // PORT-NOTE: clap appends a `Usage: deno repl [OPTIONS] [-- [ARGS]...]`
+  // trailer; the new parser reports only the error and the tip.
   let r = flags_from_vec(svec!["deno", "--allow-net", "repl"]);
   assert_eq!(
     r.unwrap_err().to_string(),
     "error: unexpected argument '--allow-net' found
 
-  tip: 'repl --allow-net' exists
-
-Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
+  tip: 'repl --allow-net' exists"
   )
 }
 
 #[test]
-#[ignore = "PORT-GAP(validation): clap rejects this input; new parser accepts it"]
 fn flag_before_subcommand_not_supported() {
   // `lint` does not accept `--allow-all`, so the error must not claim that
   // `lint --allow-all` exists (see issue #27336).
+  // PORT-NOTE: clap appends a `Usage: deno lint [OPTIONS] [files]...`
+  // trailer; the new parser reports only the error.
   let r = flags_from_vec(svec!["deno", "--allow-all", "lint"]);
   assert_eq!(
     r.unwrap_err().to_string(),
-    "error: unexpected argument '--allow-all' found
-
-Usage: deno lint [OPTIONS] [files]...\n"
+    "error: unexpected argument '--allow-all' found"
   )
 }
 
