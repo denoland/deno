@@ -3488,11 +3488,13 @@ function watch(
   let resolvedWatchPath = watchPath;
   try {
     // Pre-validate path existence so missing-path failures surface as a
-    // typed `Deno.errors.NotFound` consistently across platforms. notify
-    // 6.1.1's Windows backend (`add_watch` in src/windows.rs) returns a
-    // Generic error rather than a typed NotFound when the path doesn't
-    // exist, which would otherwise bypass the prototype check in
-    // makeWatchNodeError above.
+    // typed `Deno.errors.NotFound` consistently across platforms. The
+    // notify crate's Windows backend (`add_watch` in src/windows.rs)
+    // reports a missing path as a Generic error rather than a typed
+    // NotFound; runtime/ops/fs_events.rs maps that message to NotFound so
+    // the prototype check in makeWatchNodeError above also covers paths
+    // that vanish between this check and the watch (or mid-watch), see
+    // denoland/deno#35855.
     Deno.lstatSync(watchPath);
     iterator = Deno.watchFs(watchPath, { recursive });
     // Resolve the watched path once so we can compute relative paths.
