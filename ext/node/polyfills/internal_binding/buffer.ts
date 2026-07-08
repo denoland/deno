@@ -30,6 +30,7 @@ function indexOfNeedle(
   needle: Uint8Array,
   start = 0,
   step = 1,
+  end = TypedArrayPrototypeGetLength(source),
 ): number {
   const sourceLength = TypedArrayPrototypeGetLength(source);
   const needleLength = TypedArrayPrototypeGetLength(needle);
@@ -40,8 +41,13 @@ function indexOfNeedle(
   if (start < 0) {
     start = MathMax(0, sourceLength + start);
   }
+
   const s = needle[0];
-  for (let i = start; i < sourceLength; i += step) {
+  // If `end` is small/negative, this naturally yields zero iterations below.
+  // No separate "empty range" branch needed.
+  // Same as Node's implementation
+  const lastStart = end - needleLength;
+  for (let i = start; i <= lastStart; i += step) {
     if (source[i] !== s) continue;
     const pin = i;
     let matched = 1;
@@ -70,11 +76,18 @@ function findLastIndex(
   targetBuffer: Uint8Array,
   buffer: Uint8Array,
   offset: number,
+  end: number,
 ) {
   const targetBufferLength = TypedArrayPrototypeGetLength(targetBuffer);
   const bufferLength = TypedArrayPrototypeGetLength(buffer);
 
+  const maxStart = end - bufferLength;
+  if (maxStart < 0) {
+    return -1;
+  }
+
   offset = offset > targetBufferLength ? targetBufferLength : offset;
+  offset = offset > maxStart ? maxStart : offset;
 
   const searchableBuffer = TypedArrayPrototypeSlice(
     targetBuffer,
@@ -127,6 +140,7 @@ function indexOfBuffer(
   byteOffset: number,
   encoding: Encodings,
   forwardDirection: boolean,
+  end: number,
 ) {
   if (Encodings[encoding] === undefined) {
     throw new Error(`Unknown encoding code ${encoding}`);
@@ -144,25 +158,28 @@ function indexOfBuffer(
     }
   }
 
+  end = end < targetBufferLength ? end : targetBufferLength;
+  if (end < 0) end = 0;
+  if (isUcs2) end &= ~1;
+
   if (!forwardDirection) {
     // If negative the offset is calculated from the end of the buffer
-
     if (byteOffset < 0) {
       byteOffset = targetBufferLength + byteOffset;
     }
 
     if (bufferLength === 0) {
-      return byteOffset <= targetBufferLength ? byteOffset : targetBufferLength;
+      return byteOffset <= end ? byteOffset : end;
     }
 
-    return findLastIndex(targetBuffer, buffer, byteOffset);
+    return findLastIndex(targetBuffer, buffer, byteOffset, end);
   }
 
   if (buffer.length === 0) {
-    return byteOffset <= targetBufferLength ? byteOffset : targetBufferLength;
+    return byteOffset <= end ? byteOffset : end;
   }
 
-  return indexOfNeedle(targetBuffer, buffer, byteOffset, isUcs2 ? 2 : 1);
+  return indexOfNeedle(targetBuffer, buffer, byteOffset, isUcs2 ? 2 : 1, end);
 }
 
 function indexOfNumber(
@@ -170,6 +187,7 @@ function indexOfNumber(
   number: number,
   byteOffset: number,
   forwardDirection: boolean,
+  end: number,
 ) {
   return indexOfBuffer(
     targetBuffer,
@@ -179,6 +197,7 @@ function indexOfNumber(
     byteOffset,
     Encodings.UTF8,
     forwardDirection,
+    end,
   );
 }
 

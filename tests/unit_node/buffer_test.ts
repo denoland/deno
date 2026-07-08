@@ -1004,3 +1004,38 @@ Deno.test({
     assertEquals((Buffer.alloc(1) as any)._isBuffer, undefined);
   },
 });
+
+// Empty needle + negative end must clamp to 0, matching Node's
+// search_end = min(max(end, 0), haystack_length). Not covered by
+// upstream test-buffer-indexof.js
+Deno.test({
+  name: "[node/buffer] indexOf clamps negative end to 0 for empty needle",
+  fn() {
+    const buf = Buffer.from("abcabc");
+    assertEquals(buf.indexOf("", 0, -1), 0);
+    assertEquals(buf.indexOf("", 0, -100), 0);
+    assertEquals(buf.indexOf(Buffer.from(""), 0, -1), 0);
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] lastIndexOf clamps negative end to 0 for empty needle",
+  fn() {
+    const buf = Buffer.from("abcabc");
+    assertEquals(buf.lastIndexOf("", 5, -1), 0);
+    assertEquals(buf.lastIndexOf(Buffer.from(""), 5, -1), 0);
+  },
+});
+
+// UCS2/utf16le end must round down to an even boundary, matching
+// Node's `search_end &= ~1`. Not covered by upstream for any
+// ucs2/utf16le case that passes an explicit `end`.
+Deno.test({
+  name:
+    "[node/buffer] indexOf rounds odd end down to nearest ucs2 code unit boundary",
+  fn() {
+    const ucs2buf = Buffer.from("abc", "ucs2"); // 6 bytes, 3 code units
+    assertEquals(ucs2buf.indexOf("b", 0, 3, "ucs2"), -1);
+    assertEquals(ucs2buf.indexOf("b", 0, 4, "ucs2"), 2);
+  },
+});
