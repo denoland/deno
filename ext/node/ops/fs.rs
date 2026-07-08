@@ -1731,6 +1731,9 @@ fn cp_sync_on_dir_no_filter(
   opts: CpOptions,
 ) -> Result<(), FsError> {
   if !stat_info.is_dest_exists {
+    if try_clone_dir_no_filter(permissions, fs, src, dest, opts)? {
+      return Ok(());
+    }
     return cp_sync_mkdir_and_copy_no_filter(
       permissions,
       fs,
@@ -1742,6 +1745,157 @@ fn cp_sync_on_dir_no_filter(
   }
 
   cp_sync_copy_dir_no_filter(permissions, fs, src, dest, opts)
+}
+
+#[cfg(target_os = "macos")]
+fn try_clone_dir_no_filter(
+  permissions: &PermissionsContainer,
+  fs: &FileSystemRc,
+  src: &str,
+  dest: &str,
+  opts: CpOptions,
+) -> Result<bool, FsError> {
+  if opts.dereference
+    || !opts.recursive
+    || !opts.force
+    || opts.error_on_exist
+    || opts.preserve_timestamps
+    || opts.verbatim_symlinks
+    || opts.mode != 0
+    || !cp_tree_only_regular_files_and_dirs(permissions, fs, src, dest)?
+  {
+    return Ok(false);
+  }
+
+  let src_path =
+    check_cp_path_with_permissions(permissions, src, OpenAccessKind::Read)?;
+  let dest_path =
+    check_cp_path_with_permissions(permissions, dest, OpenAccessKind::Write)?;
+
+  match clonefile_sync(
+    &src_path.as_checked_path(),
+    &dest_path.as_checked_path(),
+  ) {
+    Ok(()) => Ok(true),
+    Err(_) => {
+      if fs.exists_sync(&dest_path.as_checked_path()) {
+        fs.remove_sync(&dest_path.as_checked_path(), true)
+          .map_err(|err| {
+            map_fs_error_to_node_fs_error(
+              err,
+              NodeFsErrorContext {
+                path: Some(dest.to_string()),
+                syscall: Some("rm".into()),
+                ..Default::default()
+              },
+            )
+          })?;
+      }
+      Ok(false)
+    }
+  }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn try_clone_dir_no_filter(
+  _permissions: &PermissionsContainer,
+  _fs: &FileSystemRc,
+  _src: &str,
+  _dest: &str,
+  _opts: CpOptions,
+) -> Result<bool, FsError> {
+  Ok(false)
+}
+
+#[cfg(target_os = "macos")]
+fn cp_tree_only_regular_files_and_dirs(
+  permissions: &PermissionsContainer,
+  fs: &FileSystemRc,
+  src: &str,
+  dest: &str,
+) -> Result<bool, FsError> {
+  let src_path = check_cp_path_with_permissions(
+    permissions,
+    src,
+    OpenAccessKind::ReadNoFollow,
+  )?;
+  check_cp_path_with_permissions(permissions, dest, OpenAccessKind::Write)?;
+
+  let entries =
+    fs.read_dir_sync(&src_path.as_checked_path())
+      .map_err(|err| {
+        map_fs_error_to_node_fs_error(
+          err,
+          NodeFsErrorContext {
+            path: Some(src.to_string()),
+            syscall: Some("opendir".into()),
+            ..Default::default()
+          },
+        )
+      })?;
+
+  for entry in entries {
+    let src_item = Path::new(src)
+      .join(&entry.name)
+      .to_string_lossy()
+      .to_string();
+    let dest_item = Path::new(dest)
+      .join(&entry.name)
+      .to_string_lossy()
+      .to_string();
+
+    let stat_info =
+      check_paths_impl_sync(permissions, fs, &src_item, &dest_item, false)?;
+    if stat_info.is_src_directory {
+      if !cp_tree_only_regular_files_and_dirs(
+        permissions,
+        fs,
+        &src_item,
+        &dest_item,
+      )? {
+        return Ok(false);
+      }
+    } else if stat_info.is_src_file {
+      check_cp_path_with_permissions(
+        permissions,
+        &src_item,
+        OpenAccessKind::Read,
+      )?;
+      check_cp_path_with_permissions(
+        permissions,
+        &dest_item,
+        OpenAccessKind::Write,
+      )?;
+    } else {
+      return Ok(false);
+    }
+  }
+
+  Ok(true)
+}
+
+#[cfg(target_os = "macos")]
+fn clonefile_sync(
+  src: &CheckedPath,
+  dest: &CheckedPath,
+) -> std::io::Result<()> {
+  use std::ffi::CString;
+  use std::os::unix::ffi::OsStrExt;
+
+  let src = CString::new(src.as_os_str().as_bytes()).map_err(|err| {
+    std::io::Error::new(std::io::ErrorKind::InvalidInput, err)
+  })?;
+  let dest = CString::new(dest.as_os_str().as_bytes()).map_err(|err| {
+    std::io::Error::new(std::io::ErrorKind::InvalidInput, err)
+  })?;
+
+  // SAFETY: `src` and `dest` are valid C strings.
+  let result = unsafe { libc::clonefile(src.as_ptr(), dest.as_ptr(), 0) };
+  if result == 0 {
+    Ok(())
+  } else {
+    Err(std::io::Error::last_os_error())
+  }
 }
 
 fn cp_sync_dispatch_no_filter(
