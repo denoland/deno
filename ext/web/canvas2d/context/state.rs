@@ -191,12 +191,10 @@ pub(super) enum FillStrokeStyle {
   Pattern(v8::Global<v8::Object>),
 }
 
-/// Value most recently assigned to `ctx.filter`: either a CSS filter string
-/// or a `CanvasFilter` object (whose getter must return the same object).
+/// CSS filter string most recently assigned to `ctx.filter`.
 #[derive(Clone)]
 pub(super) enum FilterStyle {
   Css(String),
-  Object(v8::Global<v8::Object>),
 }
 
 // `DrawingBackend` abstracts over two unrelated vello renderer families that do

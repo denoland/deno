@@ -1,47 +1,13 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use deno_core::GarbageCollected;
-use deno_core::op2;
 use deno_core::v8;
-use deno_core::v8::cppgc::Visitor;
 
 use crate::canvas2d::error::Canvas2DError;
 use crate::css::color::is_css_system_color;
 use crate::css::color::parse_css_color;
 
-/// Validation-only implementation of the proposed `CanvasFilter` interface
-/// (https://github.com/whatwg/html/issues/5621, tested as tentative in WPT).
-///
-/// Constructing a `CanvasFilter` validates the given filter primitives, but
-/// no filter effect is applied when rendering: the Vello backend does not
-/// support filter effects yet, so the object is only carried through
-/// `ctx.filter` and `beginLayer()` for API-shape compatibility.
-pub struct CanvasFilter {}
-
-// SAFETY: CanvasFilter is only accessed from the JS thread.
-unsafe impl GarbageCollected for CanvasFilter {
-  fn trace(&self, _visitor: &mut Visitor) {}
-
-  fn get_name(&self) -> &'static std::ffi::CStr {
-    c"CanvasFilter"
-  }
-}
-
-#[op2]
-impl CanvasFilter {
-  #[constructor]
-  #[cppgc]
-  #[reentrant]
-  fn new(
-    scope: &mut v8::PinScope<'_, '_>,
-    init: v8::Local<'_, v8::Value>,
-  ) -> Result<CanvasFilter, Canvas2DError> {
-    validate_filter_input(scope, init)?;
-    Ok(CanvasFilter {})
-  }
-}
-
-/// Validates a `(CanvasFilterInput or sequence<CanvasFilterInput>)` value.
+/// Validates the object-form `beginLayer({ filter })` value implemented by the
+/// tentative layer API.
 pub(super) fn validate_filter_input(
   scope: &mut v8::PinScope<'_, '_>,
   value: v8::Local<'_, v8::Value>,

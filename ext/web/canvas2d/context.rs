@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 mod draw;
+mod filter;
 mod hit_test;
 mod renderer;
 mod state;
@@ -31,6 +32,7 @@ use vello::kurbo::Rect;
 use vello::kurbo::Vec2;
 use vello::peniko;
 
+use self::filter::validate_filter_input;
 use self::renderer::DenoCanvasBackend;
 use self::renderer::SharedRenderer;
 use self::state::Canvas2DSettings;
@@ -49,8 +51,6 @@ use self::state::TextBaseline;
 use self::text::compute_text_metrics;
 use crate::canvas2d::TextMetrics;
 use crate::canvas2d::error::Canvas2DError;
-use crate::canvas2d::filter::CanvasFilter;
-use crate::canvas2d::filter::validate_filter_input;
 use crate::canvas2d::gradient::CanvasGradient;
 use crate::canvas2d::gradient::build_conic_gradient;
 use crate::canvas2d::gradient::build_linear_gradient;
@@ -91,7 +91,7 @@ fn check_image_data_size(w: u32, h: u32) -> Result<(), Canvas2DError> {
 }
 
 /// Validates the `CanvasLayerOptions` argument of `beginLayer()`. The layer
-/// `filter` is only validated, not rendered (see `CanvasFilter`).
+/// `filter` is only validated, not rendered.
 fn validate_begin_layer_options(
   scope: &mut v8::PinScope<'_, '_>,
   options: v8::Local<'_, v8::Value>,
@@ -113,11 +113,6 @@ fn validate_begin_layer_options(
   if !filter.is_object() {
     // The DOMString branch of the filter union: any string (or stringifiable
     // primitive) is accepted, even when it is not a parsable CSS filter.
-    return Ok(());
-  }
-  if deno_core::cppgc::try_unwrap_cppgc_object::<CanvasFilter>(scope, filter)
-    .is_some()
-  {
     return Ok(());
   }
   validate_filter_input(scope, filter)
@@ -735,10 +730,9 @@ impl OffscreenCanvasRenderingContext2D {
     &self,
     scope: &mut v8::PinScope<'a, '_>,
   ) -> v8::Local<'a, v8::Value> {
-    match &self.state.borrow().filter_style {
-      FilterStyle::Css(value) => v8::String::new(scope, value).unwrap().into(),
-      FilterStyle::Object(object) => v8::Local::new(scope, object).into(),
-    }
+    let state = self.state.borrow();
+    let FilterStyle::Css(value) = &state.filter_style;
+    v8::String::new(scope, value).unwrap().into()
   }
 
   #[reentrant]
@@ -748,16 +742,6 @@ impl OffscreenCanvasRenderingContext2D {
     scope: &mut v8::PinScope<'_, '_>,
     value: v8::Local<'_, v8::Value>,
   ) {
-    if deno_core::cppgc::try_unwrap_cppgc_object::<CanvasFilter>(scope, value)
-      .is_some()
-    {
-      let mut state = self.state.borrow_mut();
-      state.filter_style =
-        FilterStyle::Object(v8::Global::new(scope, value.cast::<v8::Object>()));
-      // Object-form filters carry no CSS filter function list.
-      state.filter = Vec::new();
-      return;
-    }
     // The DOMString branch of the union: a failed ToString leaves the pending
     // exception to propagate, and an invalid filter string is ignored.
     let Some(value) = value.to_string(scope) else {
