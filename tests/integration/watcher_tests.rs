@@ -2402,6 +2402,52 @@ async fn test_watch_sigint_and_sigterm_on_ctrlc() {
   assert_eq!(exit_status.code(), Some(0));
 }
 
+/// Test that Ctrl+C terminates the watcher right away while the
+/// watched program is blocked in synchronous JS code and has no
+/// signal listeners registered.
+/// Regression test for https://github.com/denoland/deno/issues/35824.
+#[cfg(unix)]
+#[test(flaky)]
+async fn test_watch_sigint_during_blocking_sync_code() {
+  use std::os::unix::process::ExitStatusExt;
+
+  use nix::sys::signal;
+  use nix::sys::signal::Signal;
+  use nix::unistd::Pid;
+
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+      console.log("looping");
+      const start = Date.now();
+      while (Date.now() - start < 60000) {}
+    "#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, _stderr_lines) = child_lines(&mut child);
+
+  wait_contains("looping", &mut stdout_lines).await;
+
+  // Send SIGINT (simulating Ctrl+C) while the program is inside the
+  // synchronous busy loop and cannot service the event loop.
+  signal::kill(Pid::from_raw(child.id() as i32), Signal::SIGINT).unwrap();
+
+  // The process must be terminated by the default SIGINT behavior
+  // without waiting for the synchronous code to finish.
+  let exit_status = child.wait().unwrap();
+  assert_eq!(exit_status.signal(), Some(Signal::SIGINT as i32));
+}
+
 #[test(flaky)]
 async fn bench_watch_basic() {
   let t = TempDir::new();
