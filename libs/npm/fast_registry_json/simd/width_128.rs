@@ -19,7 +19,7 @@ use arrayref::array_refs;
 use arrayref::mut_array_refs;
 use wide::u8x16;
 
-use crate::pick;
+use crate::fast_registry_json::pick;
 
 #[derive(Copy, Clone)]
 pub struct Simd8<T> {

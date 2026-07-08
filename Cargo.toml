@@ -45,7 +45,6 @@ members = [
   "libs/dcore",
   "libs/dotenv",
   "libs/eszip",
-  "libs/fast-registry-json",
   "libs/http_h1",
   "libs/inspector_server",
   "libs/lockfile",
@@ -218,7 +217,6 @@ data-encoding = "2.3.3"
 data-url = "=0.3.1"
 encoding_rs = "=0.8.35"
 error_reporter = "1"
-fast-registry-json = { path = "./libs/fast-registry-json" }
 fast-socks5 = "0.9.6"
 faster-hex = "0.10.0"
 fastrand = "2"
@@ -494,7 +492,7 @@ split-debuginfo = "packed"
 debug = "line-tables-only"
 panic = "abort"
 
-[profile.bench.package.fast-registry-json]
+[profile.bench.package.deno_npm]
 opt-level = 3
 
 # Build release with debug symbols: cargo build --profile=release-with-debug
@@ -511,7 +509,7 @@ incremental = true
 codegen-units = 128
 lto = "thin"
 
-[profile.release-lite.package.fast-registry-json]
+[profile.release-lite.package.deno_npm]
 opt-level = 3
 
 # Key generation is too slow on `debug`
@@ -570,8 +568,6 @@ opt-level = 3
 [profile.release.package.deno_websocket]
 opt-level = 3
 [profile.release.package.fastwebsockets]
-opt-level = 3
-[profile.release.package.fast-registry-json]
 opt-level = 3
 [profile.release.package.flate2]
 opt-level = 3
