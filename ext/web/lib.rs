@@ -14,7 +14,6 @@ mod geometry;
 mod image_data;
 mod message_port;
 mod stream_resource;
-mod text_metrics;
 mod timers;
 mod url;
 mod urlpattern;
@@ -173,7 +172,7 @@ deno_core::extension!(deno_web,
     canvas2d::CanvasPattern,
     canvas2d::OffscreenCanvasRenderingContext2D,
     canvas2d::Path2D,
-    text_metrics::TextMetrics,
+    canvas2d::TextMetrics,
   ],
   lazy_loaded_esm = [
     "locks.js",
