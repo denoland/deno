@@ -3677,7 +3677,10 @@ fn process_stderr_tty_write_exit() {
   );
   assert_eq!(output.exit_code, Some(0));
 
-  assert_eq!(marker_path.read_to_string(), "stderr write callback");
+  assert_eq!(
+    marker_path.read_to_string(),
+    "stderr write callback before_has_ref=true callback_has_ref=true"
+  );
 }
 
 // Regression test for https://github.com/denoland/deno/issues/32782

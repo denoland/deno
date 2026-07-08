@@ -998,70 +998,6 @@ const process = new Process();
 // reads see the real stream directly.
 const streamDelegates = new SafeWeakSet<object>();
 
-function autoUnrefStdioWriteStream(stream) {
-  const write = stream.write;
-  const ref = stream.ref;
-  const unref = stream.unref;
-  let pendingWrites = 0;
-  let userRefed = false;
-
-  stream.ref = function () {
-    userRefed = true;
-    return FunctionPrototypeCall(ref, this);
-  };
-
-  stream.unref = function () {
-    userRefed = false;
-    if (pendingWrites === 0) {
-      return FunctionPrototypeCall(unref, this);
-    }
-    return this;
-  };
-
-  stream.write = function (chunk, encoding, cb) {
-    let callback = cb;
-    if (typeof encoding === "function") {
-      callback = encoding;
-    }
-
-    pendingWrites++;
-    if (pendingWrites === 1 && !userRefed) {
-      FunctionPrototypeCall(ref, this);
-    }
-
-    const done = (...args) => {
-      try {
-        if (typeof callback === "function") {
-          ReflectApply(callback, this, args);
-        }
-      } finally {
-        pendingWrites--;
-        if (pendingWrites === 0 && !userRefed) {
-          FunctionPrototypeCall(unref, this);
-        }
-      }
-    };
-
-    try {
-      if (typeof encoding === "function") {
-        return FunctionPrototypeCall(write, this, chunk, done);
-      }
-      if (encoding !== undefined) {
-        return FunctionPrototypeCall(write, this, chunk, encoding, done);
-      }
-      return FunctionPrototypeCall(write, this, chunk, done);
-    } catch (err) {
-      pendingWrites--;
-      if (pendingWrites === 0 && !userRefed) {
-        FunctionPrototypeCall(unref, this);
-      }
-      throw err;
-    }
-  };
-
-  FunctionPrototypeCall(unref, stream);
-}
-
 function makeStreamDelegate(name: "stdin" | "stdout" | "stderr"): unknown {
   const delegate = new Proxy(ObjectCreate(null), {
     get(_target, prop) {
@@ -1961,9 +1897,6 @@ internals.__bootstrapNodeProcess = function (
           }
         };
         addSigwinchListener(s);
-        // Stdio streams should not keep the event loop alive while idle, but
-        // pending writes still need to hold the loop until callbacks run.
-        autoUnrefStdioWriteStream(s);
       } else {
         s = lazyStreamsMod().createWritableStdioStream(ioStream, name);
       }
