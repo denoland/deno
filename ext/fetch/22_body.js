@@ -18,7 +18,6 @@ const {
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
-  PromiseResolve,
   SafeWeakMap,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
@@ -124,15 +123,15 @@ class InnerBody {
         // the encode is skipped entirely. `createReadableStream` also avoids
         // the webidl UnderlyingSource conversion `new ReadableStream({...})`
         // performs.
-        // The pull and cancel algorithms must return promises (see
-        // `createReadableStream`): `readableStreamCancel` and the controller's
-        // pull machinery call `.then` on the returned value directly.
+        // The cancel algorithm must return a promise (`readableStreamCancel`
+        // calls `.then` on it directly); the pull algorithm returns undefined,
+        // the synchronous completion sentinel understood by the controller's
+        // pull machinery (see `createReadableStream`).
         const stream = createReadableStream(
           noop,
           (controller) => {
             controller.enqueue(chunkToU8(body));
             controller.close();
-            return PromiseResolve(undefined);
           },
           noopAsync,
           0,

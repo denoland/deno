@@ -66,7 +66,6 @@
     op_memory_usage,
     op_op_names,
     op_print,
-    op_queue_microtask,
     op_ref_op,
     op_resources,
     op_run_microtasks,
@@ -556,11 +555,34 @@
     }
   }
 
+  // V8 installs a native `queueMicrotask` on the global object (enabled via the
+  // `--enable-queue-microtask` flag). We wrap it below to route uncaught
+  // exceptions through `reportExceptionCallback`, so we grab a reference to the
+  // native implementation here - it lets us enqueue microtasks without crossing
+  // the op boundary.
+  //
+  // V8 skips experimental globals while snapshotting, so the native function is
+  // only installed at runtime. In a from-scratch runtime it's already on the
+  // global when this module runs (before our wrapper replaces it below), so we
+  // can grab it directly. When restoring from a snapshot it isn't there yet, so
+  // fall back to a lazy capture on first use: our wrapper shadows the native one
+  // as an own property of the global, so momentarily remove our property to
+  // reveal the native one underneath, then restore our wrapper.
+  let nativeQueueMicrotask = window.queueMicrotask;
+  function captureNativeQueueMicrotask() {
+    const wrapper = window.queueMicrotask;
+    delete window.queueMicrotask;
+    nativeQueueMicrotask = window.queueMicrotask;
+    window.queueMicrotask = wrapper;
+    return nativeQueueMicrotask;
+  }
+
   function queueMicrotask(cb) {
     if (typeof cb != "function") {
       throw new TypeError("expected a function");
     }
-    return op_queue_microtask(() => {
+    const enqueue = nativeQueueMicrotask ?? captureNativeQueueMicrotask();
+    return enqueue(() => {
       try {
         cb();
       } catch (error) {
@@ -1082,6 +1104,9 @@
     clearImmediate,
     runImmediates,
     immediateQueue,
+    getActiveImmediateCount() {
+      return immediateInfo[kImmRefCount];
+    },
     kRefed,
     runMicrotasks: () => op_run_microtasks(),
     hasTickScheduled,

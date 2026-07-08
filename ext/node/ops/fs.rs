@@ -2435,14 +2435,13 @@ fn set_dest_timestamps_and_mode(
   })?;
 
   if let (Some(atime), Some(mtime)) = (src_stat.atime, src_stat.mtime) {
-    // FsStat stores times as milliseconds since the Unix epoch.
-    // utime_async expects split values: whole seconds + nanoseconds remainder.
-    let atime_secs = (atime / 1000) as i64;
-    // Remaining milliseconds are converted to nanoseconds.
-    let atime_nanos = ((atime % 1000) * 1_000_000) as u32;
-    let mtime_secs = (mtime / 1000) as i64;
-    // Same conversion for mtime: ms remainder -> ns.
-    let mtime_nanos = ((mtime % 1000) * 1_000_000) as u32;
+    // FsStat stores times as i64 milliseconds since the Unix epoch (negative
+    // for pre-1970). Use Euclidean division so the nanosecond remainder is
+    // always non-negative, matching the POSIX timespec convention.
+    let atime_secs = atime.div_euclid(1000);
+    let atime_nanos = (atime.rem_euclid(1000) * 1_000_000) as u32;
+    let mtime_secs = mtime.div_euclid(1000);
+    let mtime_nanos = (mtime.rem_euclid(1000) * 1_000_000) as u32;
     fs.utime_sync(dest_path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
       .map_err(|err| {
         map_fs_error_to_node_fs_error(

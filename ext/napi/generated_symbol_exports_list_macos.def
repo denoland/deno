@@ -204,3 +204,9 @@ _uv_sem_destroy
 _uv_sem_post
 _uv_sem_wait
 _uv_sem_trywait
+_uv_cond_init
+_uv_cond_destroy
+_uv_cond_signal
+_uv_cond_broadcast
+_uv_cond_wait
+_uv_cond_timedwait

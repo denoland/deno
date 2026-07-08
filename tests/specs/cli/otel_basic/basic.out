@@ -5,7 +5,7 @@
       "spanId": "0000000000000001",
       "traceState": "",
       "parentSpanId": "",
-      "flags": 1,
+      "flags": 257,
       "name": "GET",
       "kind": 3,
       "startTimeUnixNano": "[WILDCARD]",
@@ -63,7 +63,7 @@
       "spanId": "0000000000000002",
       "traceState": "",
       "parentSpanId": "0000000000000001",
-      "flags": 1,
+      "flags": 257,
       "name": "GET",
       "kind": 2,
       "startTimeUnixNano": "[WILDCARD]",
@@ -121,7 +121,7 @@
       "spanId": "0000000000000003",
       "traceState": "",
       "parentSpanId": "0000000000000002",
-      "flags": 1,
+      "flags": 257,
       "name": "outer span",
       "kind": 1,
       "startTimeUnixNano": "[WILDCARD]",
@@ -142,7 +142,7 @@
       "spanId": "0000000000000004",
       "traceState": "",
       "parentSpanId": "0000000000000003",
-      "flags": 1,
+      "flags": 257,
       "name": "inner span",
       "kind": 1,
       "startTimeUnixNano": "[WILDCARD]",
@@ -179,7 +179,8 @@
       "droppedAttributesCount": 0,
       "flags": 1,
       "traceId": "00000000000000000000000000000001",
-      "spanId": "0000000000000004"
+      "spanId": "0000000000000004",
+      "eventName": ""
     },
     {
       "timeUnixNano": "[WILDLINE]",
@@ -200,7 +201,8 @@
       "droppedAttributesCount": 0,
       "flags": 1,
       "traceId": "00000000000000000000000000000001",
-      "spanId": "0000000000000004"
+      "spanId": "0000000000000004",
+      "eventName": ""
     }
   ],
   "metrics": [
@@ -273,7 +275,7 @@
             ],
             "startTimeUnixNano": "[WILDCARD]",
             "timeUnixNano": "[WILDCARD]",
-            "count": 1,
+            "count": "1",
             "sum": 0,
             "bucketCounts": [
               [WILDLINE],
@@ -343,7 +345,7 @@
             ],
             "startTimeUnixNano": "[WILDCARD]",
             "timeUnixNano": "[WILDCARD]",
-            "count": 1,
+            "count": "1",
             "sum": [WILDCARD],
             "bucketCounts": [
               [WILDLINE],
@@ -423,7 +425,7 @@
             ],
             "startTimeUnixNano": "[WILDCARD]",
             "timeUnixNano": "[WILDCARD]",
-            "count": 1,
+            "count": "1",
             "sum": 0,
             "bucketCounts": [
               [WILDLINE],

@@ -12,7 +12,7 @@ BRH:1
 DA:1,1
 DA:2,1
 DA:3,1
-DA:4,0
+DA:4,1
 DA:5,0
 DA:6,0
 DA:7,1
@@ -23,6 +23,6 @@ DA:12,0
 DA:13,0
 DA:14,0
 DA:15,0
-LH:4
+LH:5
 LF:14
 end_of_record

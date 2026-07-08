@@ -52,6 +52,7 @@ use crate::blob::op_blob_slice_part;
 pub use crate::broadcast_channel::InMemoryBroadcastChannel;
 pub use crate::message_port::JsMessageData;
 pub use crate::message_port::MessagePort;
+pub use crate::message_port::RecvMessageData;
 pub use crate::message_port::Transferable;
 pub use crate::message_port::create_entangled_message_port;
 pub use crate::message_port::deserialize_js_transferables;

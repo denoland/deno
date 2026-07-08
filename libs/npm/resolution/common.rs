@@ -4,9 +4,14 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use deno_semver::CowVec;
+use deno_semver::RangeBound;
 use deno_semver::RangeSetOrTag;
+use deno_semver::SmallStackString;
 use deno_semver::StackString;
 use deno_semver::Version;
+use deno_semver::VersionRange;
+use deno_semver::VersionRangeSet;
 use deno_semver::VersionReq;
 use deno_semver::WILDCARD_VERSION_REQ;
 use deno_semver::package::PackageName;
@@ -131,6 +136,9 @@ pub struct NewestDependencyDateOptions {
   /// Prevents installing packages newer than the specified date.
   pub date: Option<NewestDependencyDate>,
   pub exclude: BTreeSet<PackageName>,
+  /// Package name prefixes to exclude (e.g. `@scope/` from a
+  /// `@scope/*` wildcard entry).
+  pub exclude_prefixes: Vec<PackageName>,
 }
 
 impl NewestDependencyDateOptions {
@@ -138,6 +146,7 @@ impl NewestDependencyDateOptions {
     Self {
       date: Some(NewestDependencyDate(date)),
       exclude: Default::default(),
+      exclude_prefixes: Default::default(),
     }
   }
 
@@ -146,7 +155,12 @@ impl NewestDependencyDateOptions {
     package_name: &PackageName,
   ) -> Option<NewestDependencyDate> {
     let date = self.date?;
-    if self.exclude.contains(package_name) {
+    if self.exclude.contains(package_name)
+      || self
+        .exclude_prefixes
+        .iter()
+        .any(|prefix| package_name.starts_with(prefix.as_str()))
+    {
       None
     } else {
       Some(date)
@@ -174,7 +188,10 @@ impl NpmVersionResolver {
       // `trust-policy-exclude[]` packages are resolved as if the policy were
       // off
       NpmTrustPolicy::NoDowngrade
-        if !self.trust_policy.exclude.contains(info.name.as_str()) =>
+        if !self
+          .trust_policy
+          .exclude
+          .contains(&info.name.to_ascii_lowercase()) =>
       {
         Some(TrustDowngradeCheck {
           ignore_after_cutoff: self.trust_policy.ignore_after_cutoff,
@@ -308,6 +325,28 @@ impl<'a> NpmPackageVersionResolver<'a> {
     exclude_prerelease: bool,
   ) -> Option<TrustEvidence> {
     let mut best: Option<TrustEvidence> = None;
+    let mut indexed_evidence = self.info.versions.trust_evidence().peekable();
+    if indexed_evidence.peek().is_some() {
+      for (version, evidence) in indexed_evidence {
+        if exclude_prerelease && !version.pre.is_empty() {
+          continue;
+        }
+        let Some(published_at) = self.info.time.get(version) else {
+          continue;
+        };
+        if *published_at >= before_date {
+          continue;
+        }
+        if best.is_none_or(|current| *evidence > current) {
+          best = Some(*evidence);
+          if *evidence == TrustEvidence::StagedPublish {
+            return best;
+          }
+        }
+      }
+      return best;
+    }
+
     for version_info in self.info.versions.values() {
       let version = &version_info.version;
       if exclude_prerelease && !version.pre.is_empty() {
@@ -428,11 +467,14 @@ impl<'a> NpmPackageVersionResolver<'a> {
     let version_info = if let Some(tag) = version_req.tag() {
       match self.tag_to_version_info(tag) {
         Ok(version_info) => Ok(version_info),
-        Err(NpmPackageVersionResolutionError::DistTagVersionTooNew {
-          ..
-        }) if tag == "latest" => self.resolve_best_matching_version_info(
-          &WILDCARD_VERSION_REQ,
+        Err(
+          err @ NpmPackageVersionResolutionError::DistTagVersionTooNew {
+            ..
+          },
+        ) => self.resolve_best_matching_dist_tag_fallback_version_info(
+          tag,
           version_req,
+          err,
         ),
         Err(err) => Err(err),
       }
@@ -461,31 +503,74 @@ impl<'a> NpmPackageVersionResolver<'a> {
     Ok(version_info)
   }
 
+  fn resolve_best_matching_dist_tag_fallback_version_info(
+    &self,
+    tag: &str,
+    error_version_req: &VersionReq,
+    too_new_error: NpmPackageVersionResolutionError,
+  ) -> Result<&'a NpmPackageVersionInfo, NpmPackageVersionResolutionError> {
+    let Some(tagged_version) = self.info.dist_tags.get(tag) else {
+      // Unreachable in practice: this fn is only called after
+      // `tag_to_version_info` returned `DistTagVersionTooNew`, which already
+      // found the tag in `dist_tags`. Kept as defensive code.
+      return Err(NpmPackageVersionResolutionError::DistTagNotFound {
+        package_name: self.info.name.clone(),
+        dist_tag: tag.to_string(),
+      });
+    };
+    // Match npm-pick-manifest/pnpm: when a dist-tag points to a version newer
+    // than the allowed publish date, retry as a semver `<= tagged_version`.
+    // Build the range directly from the parsed `Version` rather than
+    // formatting and reparsing, which avoids an `unwrap` and any round-trip
+    // edge cases (e.g. build metadata like `1.0.0+build`).
+    let fallback_req = VersionReq::from_raw_text_and_inner(
+      SmallStackString::from_string(format!("<={tagged_version}")),
+      RangeSetOrTag::RangeSet(VersionRangeSet(CowVec::from(vec![
+        VersionRange {
+          start: RangeBound::Unbounded,
+          end: RangeBound::inclusive(tagged_version.clone()),
+        },
+      ]))),
+    );
+    match self
+      .resolve_best_matching_version_info(&fallback_req, error_version_req)
+    {
+      Ok(version_info) => Ok(version_info),
+      // No version at or below the tagged version satisfies the minimum
+      // dependency age either. Surface the original error, which names the
+      // tag and the too-new version it maps to, rather than the generic
+      // "version req not matched" message for the synthesized `<=` range.
+      Err(NpmPackageVersionResolutionError::VersionReqNotMatched {
+        ..
+      }) => Err(too_new_error),
+      Err(err) => Err(err),
+    }
+  }
+
   fn resolve_best_matching_version_info(
     &self,
     matching_version_req: &VersionReq,
     error_version_req: &VersionReq,
   ) -> Result<&'a NpmPackageVersionInfo, NpmPackageVersionResolutionError> {
     let mut found_matching_version = false;
-    let mut maybe_best_version: Option<&'a NpmPackageVersionInfo> = None;
-    for version_info in self.info.versions.values() {
-      let version = &version_info.version;
+    let mut maybe_best_version: Option<&Version> = None;
+    for version in self.info.versions.keys() {
       if self.version_req_satisfies(matching_version_req, version)? {
         found_matching_version = true;
         if self.matches_newest_dependency_date(version) {
           let is_best_version = maybe_best_version
             .as_ref()
-            .map(|best_version| best_version.version.cmp(version).is_lt())
+            .map(|best_version| (*best_version).cmp(version).is_lt())
             .unwrap_or(true);
           if is_best_version {
-            maybe_best_version = Some(version_info);
+            maybe_best_version = Some(version);
           }
         }
       }
     }
 
     match maybe_best_version {
-      Some(v) => Ok(v),
+      Some(version) => Ok(self.info.versions.get(version).unwrap()),
       // Although it seems like we could make this smart by fetching the latest
       // information for this package here, we really need a full restart. There
       // could be very interesting bugs that occur if this package's version was
@@ -579,7 +664,7 @@ fn create_link_package_info(
   }
   Arc::new(NpmPackageInfo {
     name: name.clone(),
-    versions: version_map,
+    versions: version_map.into(),
     dist_tags,
     time: HashMap::new(),
   })
@@ -619,13 +704,39 @@ mod test {
 
   use super::*;
 
+  fn version(text: &str) -> Version {
+    Version::parse_from_npm(text).unwrap()
+  }
+
+  fn version_info(text: &str) -> NpmPackageVersionInfo {
+    NpmPackageVersionInfo {
+      version: version(text),
+      ..Default::default()
+    }
+  }
+
+  fn date(text: &str) -> chrono::DateTime<chrono::Utc> {
+    text.parse().unwrap()
+  }
+
+  fn resolver_with_newest_dependency_date(text: &str) -> NpmVersionResolver {
+    NpmVersionResolver {
+      link_packages: Default::default(),
+      newest_dependency_date_options: NewestDependencyDateOptions::from_date(
+        date(text),
+      ),
+      overrides: Default::default(),
+      trust_policy: Default::default(),
+    }
+  }
+
   #[test]
   fn test_get_resolved_package_version_and_info() {
     // dist tag where version doesn't exist
     let package_req = PackageReq::from_str("test@latest").unwrap();
     let package_info = NpmPackageInfo {
       name: "test".into(),
-      versions: HashMap::new(),
+      versions: HashMap::new().into(),
       dist_tags: HashMap::from([(
         "latest".into(),
         Version::parse_from_npm("1.0.0-alpha").unwrap(),
@@ -662,7 +773,8 @@ mod test {
             ..Default::default()
           },
         ),
-      ]),
+      ])
+      .into(),
       dist_tags: HashMap::from([(
         "latest".into(),
         Version::parse_from_npm("1.0.0-alpha").unwrap(),
@@ -695,7 +807,8 @@ mod test {
             ..Default::default()
           },
         ),
-      ]),
+      ])
+      .into(),
       dist_tags: HashMap::from([(
         "latest".into(),
         Version::parse_from_npm("1.1.0").unwrap(),
@@ -761,7 +874,7 @@ mod test {
             r#"{ "version": "1.3.0", "_npmUser": { "approver": {} } }"#,
           ),
         ),
-      ]),
+      ]).into(),
       dist_tags: Default::default(),
       time: HashMap::from([
         (ver("1.0.0"), "2025-01-01T00:00:00.000Z".parse().unwrap()),
@@ -850,7 +963,8 @@ mod test {
           ),
         ),
         (ver("1.1.0"), version_info(r#"{ "version": "1.1.0" }"#)),
-      ]),
+      ])
+      .into(),
       dist_tags: Default::default(),
       time: HashMap::from([
         (ver("1.0.0"), "2025-01-01T00:00:00.000Z".parse().unwrap()),
@@ -907,6 +1021,26 @@ mod test {
   }
 
   #[test]
+  fn test_newest_dependency_date_exclude() {
+    let options = NewestDependencyDateOptions {
+      date: Some(NewestDependencyDate(
+        "2025-01-01T00:00:00.000Z".parse().unwrap(),
+      )),
+      exclude: BTreeSet::from(["@denotest/exact".into()]),
+      exclude_prefixes: vec!["@scope/".into()],
+    };
+    // exact match
+    assert!(options.get_for_package(&"@denotest/exact".into()).is_none());
+    // prefix match (from a `@scope/*` wildcard entry)
+    assert!(options.get_for_package(&"@scope/foo".into()).is_none());
+    assert!(options.get_for_package(&"@scope/bar".into()).is_none());
+    // no match
+    assert!(options.get_for_package(&"@denotest/other".into()).is_some());
+    assert!(options.get_for_package(&"@scoped/foo".into()).is_some());
+    assert!(options.get_for_package(&"@scope".into()).is_some());
+  }
+
+  #[test]
   fn test_trust_policy_excludes_prereleases_from_history() {
     fn version_info(json: &str) -> NpmPackageVersionInfo {
       serde_json::from_str(json).unwrap()
@@ -928,7 +1062,8 @@ mod test {
           ),
         ),
         (ver("1.0.0"), version_info(r#"{ "version": "1.0.0" }"#)),
-      ]),
+      ])
+      .into(),
       dist_tags: Default::default(),
       time: HashMap::from([
         (
@@ -959,40 +1094,180 @@ mod test {
   }
 
   #[test]
-  fn test_non_latest_tag_too_new_errors() {
+  fn test_stable_tag_too_new_uses_newest_allowed_lte_version() {
+    let package_req = PackageReq::from_str("test@stable").unwrap();
+    let package_info = NpmPackageInfo {
+      name: "test".into(),
+      versions: HashMap::from([
+        (version("1.9.0"), version_info("1.9.0")),
+        (version("2.0.0-beta.1"), version_info("2.0.0-beta.1")),
+        (version("2.0.0"), version_info("2.0.0")),
+        (version("2.1.0"), version_info("2.1.0")),
+      ])
+      .into(),
+      dist_tags: HashMap::from([("stable".into(), version("2.0.0"))]),
+      time: HashMap::from([
+        (version("1.9.0"), date("2025-05-15T00:00:00.000Z")),
+        (version("2.0.0-beta.1"), date("2025-05-15T00:00:00.000Z")),
+        (version("2.0.0"), date("2025-05-29T00:00:00.000Z")),
+        (version("2.1.0"), date("2025-05-15T00:00:00.000Z")),
+      ]),
+    };
+    let resolver =
+      resolver_with_newest_dependency_date("2025-05-20T00:00:00.000Z");
+    let version_resolver = resolver.get_for_package(&package_info);
+    let result = version_resolver
+      .get_resolved_package_version_and_info(&package_req.version_req);
+    assert_eq!(result.unwrap().version.to_string(), "1.9.0");
+  }
+
+  #[test]
+  fn test_prerelease_tag_too_new_uses_semver_lte_version() {
     let package_req = PackageReq::from_str("test@next").unwrap();
     let package_info = NpmPackageInfo {
       name: "test".into(),
-      versions: HashMap::from([(
-        Version::parse_from_npm("1.1.0").unwrap(),
-        NpmPackageVersionInfo {
-          version: Version::parse_from_npm("1.1.0").unwrap(),
-          ..Default::default()
-        },
-      )]),
+      versions: HashMap::from([
+        (version("1.0.0-beta.9"), version_info("1.0.0-beta.9")),
+        (version("1.0.0-next.2"), version_info("1.0.0-next.2")),
+        (version("1.0.0"), version_info("1.0.0")),
+      ])
+      .into(),
+      dist_tags: HashMap::from([("next".into(), version("1.0.0-next.2"))]),
+      time: HashMap::from([
+        (version("1.0.0-beta.9"), date("2025-05-15T00:00:00.000Z")),
+        (version("1.0.0-next.2"), date("2025-05-29T00:00:00.000Z")),
+        (version("1.0.0"), date("2025-05-15T00:00:00.000Z")),
+      ]),
+    };
+    let resolver =
+      resolver_with_newest_dependency_date("2025-05-20T00:00:00.000Z");
+    let version_resolver = resolver.get_for_package(&package_info);
+    let result = version_resolver
+      .get_resolved_package_version_and_info(&package_req.version_req);
+    assert_eq!(result.unwrap().version.to_string(), "1.0.0-beta.9");
+  }
+
+  #[test]
+  fn test_latest_prerelease_tag_too_new_uses_newest_allowed_lte_version() {
+    let package_req = PackageReq::from_str("test@latest").unwrap();
+    let package_info = NpmPackageInfo {
+      name: "test".into(),
+      versions: HashMap::from([
+        (
+          version("7.0.0-dev.20260624.1"),
+          version_info("7.0.0-dev.20260624.1"),
+        ),
+        (
+          version("7.0.0-dev.20260626.1"),
+          version_info("7.0.0-dev.20260626.1"),
+        ),
+      ])
+      .into(),
       dist_tags: HashMap::from([(
-        "next".into(),
-        Version::parse_from_npm("1.1.0").unwrap(),
+        "latest".into(),
+        version("7.0.0-dev.20260626.1"),
       )]),
-      time: HashMap::from([(
-        Version::parse_from_npm("1.1.0").unwrap(),
-        "2025-05-29T00:00:00.000Z".parse().unwrap(),
-      )]),
+      time: HashMap::from([
+        (
+          version("7.0.0-dev.20260624.1"),
+          date("2025-05-15T00:00:00.000Z"),
+        ),
+        (
+          version("7.0.0-dev.20260626.1"),
+          date("2025-05-29T00:00:00.000Z"),
+        ),
+      ]),
     };
-    let resolver = NpmVersionResolver {
-      link_packages: Default::default(),
-      newest_dependency_date_options: NewestDependencyDateOptions::from_date(
-        "2025-05-20T00:00:00.000Z".parse().unwrap(),
-      ),
-      overrides: Default::default(),
-      trust_policy: Default::default(),
+    let resolver =
+      resolver_with_newest_dependency_date("2025-05-20T00:00:00.000Z");
+    let version_resolver = resolver.get_for_package(&package_info);
+    let result = version_resolver
+      .get_resolved_package_version_and_info(&package_req.version_req);
+    assert_eq!(result.unwrap().version.to_string(), "7.0.0-dev.20260624.1");
+  }
+
+  #[test]
+  fn test_exact_version_too_new_does_not_use_lte_fallback() {
+    let package_req = PackageReq::from_str("test@2.0.0").unwrap();
+    let package_info = NpmPackageInfo {
+      name: "test".into(),
+      versions: HashMap::from([
+        (version("1.9.0"), version_info("1.9.0")),
+        (version("2.0.0"), version_info("2.0.0")),
+      ])
+      .into(),
+      dist_tags: HashMap::from([("latest".into(), version("2.0.0"))]),
+      time: HashMap::from([
+        (version("1.9.0"), date("2025-05-15T00:00:00.000Z")),
+        (version("2.0.0"), date("2025-05-29T00:00:00.000Z")),
+      ]),
     };
+    let resolver =
+      resolver_with_newest_dependency_date("2025-05-20T00:00:00.000Z");
     let version_resolver = resolver.get_for_package(&package_info);
     let result = version_resolver
       .get_resolved_package_version_and_info(&package_req.version_req);
     assert!(matches!(
       result,
-      Err(NpmPackageVersionResolutionError::DistTagVersionTooNew { .. })
+      Err(NpmPackageVersionResolutionError::VersionReqNotMatched { .. })
+    ));
+  }
+
+  #[test]
+  fn test_tag_too_new_with_build_metadata_uses_lte_version() {
+    // The fallback range is built directly from the parsed tagged `Version`,
+    // so a tag pointing at a version carrying build metadata resolves without
+    // a format/reparse round-trip. Regression guard for that construction.
+    let package_req = PackageReq::from_str("test@latest").unwrap();
+    let package_info = NpmPackageInfo {
+      name: "test".into(),
+      versions: HashMap::from([
+        (version("1.9.0"), version_info("1.9.0")),
+        (version("2.0.0+build.5"), version_info("2.0.0+build.5")),
+      ])
+      .into(),
+      dist_tags: HashMap::from([("latest".into(), version("2.0.0+build.5"))]),
+      time: HashMap::from([
+        (version("1.9.0"), date("2025-05-15T00:00:00.000Z")),
+        (version("2.0.0+build.5"), date("2025-05-29T00:00:00.000Z")),
+      ]),
+    };
+    let resolver =
+      resolver_with_newest_dependency_date("2025-05-20T00:00:00.000Z");
+    let version_resolver = resolver.get_for_package(&package_info);
+    let result = version_resolver
+      .get_resolved_package_version_and_info(&package_req.version_req);
+    assert_eq!(result.unwrap().version.to_string(), "1.9.0");
+  }
+
+  #[test]
+  fn test_tag_too_new_with_no_allowed_lower_version_reports_tag_error() {
+    // When nothing at or below the tagged version satisfies the minimum
+    // dependency age, the error names the dist-tag and the version it maps to
+    // rather than the synthesized `<=` range.
+    let package_req = PackageReq::from_str("test@latest").unwrap();
+    let package_info = NpmPackageInfo {
+      name: "test".into(),
+      versions: HashMap::from([
+        (version("1.9.0"), version_info("1.9.0")),
+        (version("2.0.0"), version_info("2.0.0")),
+      ])
+      .into(),
+      dist_tags: HashMap::from([("latest".into(), version("2.0.0"))]),
+      time: HashMap::from([
+        (version("1.9.0"), date("2025-05-29T00:00:00.000Z")),
+        (version("2.0.0"), date("2025-05-30T00:00:00.000Z")),
+      ]),
+    };
+    let resolver =
+      resolver_with_newest_dependency_date("2025-05-20T00:00:00.000Z");
+    let version_resolver = resolver.get_for_package(&package_info);
+    let err = version_resolver
+      .get_resolved_package_version_and_info(&package_req.version_req)
+      .unwrap_err();
+    assert!(matches!(
+      err,
+      NpmPackageVersionResolutionError::DistTagVersionTooNew { .. }
     ));
   }
 
@@ -1016,7 +1291,8 @@ mod test {
             ..Default::default()
           },
         ),
-      ]),
+      ])
+      .into(),
       dist_tags: HashMap::from([(
         "latest".into(),
         Version::parse_from_npm("1.0.0-rc.1").unwrap(),
@@ -1068,7 +1344,8 @@ mod test {
             ..Default::default()
           },
         ),
-      ]),
+      ])
+      .into(),
       dist_tags: HashMap::from([
         (
           "latest".into(),
@@ -1103,5 +1380,120 @@ mod test {
     let result = version_resolver
       .get_resolved_package_version_and_info(&package_req.version_req);
     assert_eq!(result.unwrap().version.to_string(), "0.1.0-beta.2");
+  }
+
+  // Tests for case-insensitive `trust-policy-exclude[]` matching.
+  // npm package names are case-insensitive by specification; the exclude check
+  // must use `eq_ignore_ascii_case` rather than an exact `BTreeSet::contains`.
+
+  // shared helper — builds a simple 1.0.0 (staged) → 1.1.0 (plain) package
+  fn make_downgrade_package(name: &str) -> NpmPackageInfo {
+    fn vi(json: &str) -> NpmPackageVersionInfo {
+      serde_json::from_str(json).unwrap()
+    }
+    fn ver(v: &str) -> Version {
+      Version::parse_from_npm(v).unwrap()
+    }
+    NpmPackageInfo {
+      name: name.into(),
+      versions: HashMap::from([
+        (
+          ver("1.0.0"),
+          vi(r#"{ "version": "1.0.0", "_npmUser": { "approver": {} } }"#),
+        ),
+        (ver("1.1.0"), vi(r#"{ "version": "1.1.0" }"#)),
+      ])
+      .into(),
+      dist_tags: Default::default(),
+      time: HashMap::from([
+        (ver("1.0.0"), "2025-01-01T00:00:00.000Z".parse().unwrap()),
+        (ver("1.1.0"), "2025-02-01T00:00:00.000Z".parse().unwrap()),
+      ]),
+    }
+  }
+
+  fn resolve_with_exclude(
+    package_info: &NpmPackageInfo,
+    req: &str,
+    exclude: &[&str],
+  ) -> Result<String, NpmPackageVersionResolutionError> {
+    let resolver = NpmVersionResolver {
+      trust_policy: TrustPolicyOptions {
+        policy: NpmTrustPolicy::NoDowngrade,
+        ignore_after_cutoff: None,
+        exclude: Arc::new(
+          exclude.iter().map(|s| s.to_ascii_lowercase()).collect(),
+        ),
+      },
+      ..Default::default()
+    };
+    let package_req = PackageReq::from_str(req).unwrap();
+    resolver
+      .get_for_package(package_info)
+      .get_resolved_package_version_and_info(&package_req.version_req)
+      .map(|info| info.version.to_string())
+  }
+
+  #[test]
+  fn test_trust_policy_exclude_case_insensitive_simple_name() {
+    // EC1: .npmrc has uppercase `TEST`, package name from registry is `test`.
+    // npm names are case-insensitive — the exclude should match regardless of case.
+    let pkg = make_downgrade_package("test");
+
+    // baseline: exact-case exclude works
+    assert_eq!(
+      resolve_with_exclude(&pkg, "test@1.1.0", &["test"]).unwrap(),
+      "1.1.0",
+      "EC5 baseline: exact-case lowercase exclude should allow the downgrade"
+    );
+
+    // EC1: uppercase exclude in .npmrc should still match
+    let result = resolve_with_exclude(&pkg, "test@1.1.0", &["TEST"]);
+    assert_eq!(
+      result.unwrap(),
+      "1.1.0",
+      "EC1: uppercase exclude 'TEST' should match lowercase package 'test' (npm is case-insensitive)"
+    );
+  }
+
+  #[test]
+  fn test_trust_policy_exclude_case_insensitive_mixed_case() {
+    // EC2: .npmrc has mixed-case `Test`, registry name is `test`.
+    let pkg = make_downgrade_package("test");
+    let result = resolve_with_exclude(&pkg, "test@1.1.0", &["Test"]);
+    assert_eq!(
+      result.unwrap(),
+      "1.1.0",
+      "EC2: mixed-case exclude 'Test' should match registry name 'test'"
+    );
+  }
+
+  #[test]
+  fn test_trust_policy_exclude_case_insensitive_scoped_package() {
+    // EC3: scoped package — user writes @MyScope/MyPkg in .npmrc,
+    // registry returns @myscope/mypkg (npm normalises scopes to lowercase).
+    // The exclude check must be case-insensitive for scoped names too.
+    let pkg = make_downgrade_package("@myscope/mypkg");
+    let result =
+      resolve_with_exclude(&pkg, "@myscope/mypkg@1.1.0", &["@MyScope/MyPkg"]);
+    assert_eq!(
+      result.unwrap(),
+      "1.1.0",
+      "EC3: mixed-case scoped exclude '@MyScope/MyPkg' should match '@myscope/mypkg'"
+    );
+  }
+
+  #[test]
+  fn test_trust_policy_exclude_case_insensitive_registry_uppercase() {
+    // EC4: reverse — registry name has mixed-case (unusual but valid for some
+    // private registries), user wrote lowercase in .npmrc exclude.
+    // Both directions must work after the fix.
+    let pkg = make_downgrade_package("MyPkg");
+    let result = resolve_with_exclude(&pkg, "MyPkg@1.1.0", &["mypkg"]);
+    assert_eq!(
+      result.unwrap(),
+      "1.1.0",
+      "EC4: lowercase exclude 'mypkg' should match mixed-case registry name 'MyPkg'"
+    );
   }
 }
