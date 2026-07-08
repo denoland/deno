@@ -386,6 +386,38 @@ Deno.test(function headersAppendMultiple() {
   ]);
 });
 
+Deno.test(function headersIterationReflectsMutationsAfterCache() {
+  const headers = new Headers([
+    ["X-A", "1"],
+    ["X-B", "2"],
+  ]);
+
+  assertEquals([...headers], [
+    ["x-a", "1"],
+    ["x-b", "2"],
+  ]);
+
+  headers.append("X-C", "3");
+  assertEquals([...headers], [
+    ["x-a", "1"],
+    ["x-b", "2"],
+    ["x-c", "3"],
+  ]);
+
+  headers.set("X-B", "updated");
+  assertEquals([...headers], [
+    ["x-a", "1"],
+    ["x-b", "updated"],
+    ["x-c", "3"],
+  ]);
+
+  headers.delete("X-A");
+  assertEquals([...headers], [
+    ["x-b", "updated"],
+    ["x-c", "3"],
+  ]);
+});
+
 Deno.test(function headersAppendDuplicateSetCookieKey() {
   const headers = new Headers([["Set-Cookie", "foo=bar"]]);
   headers.append("set-Cookie", "foo=baz");
