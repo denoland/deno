@@ -13,6 +13,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use std::task::Context;
 use std::task::Poll;
@@ -1912,15 +1913,6 @@ fn parse_serve_address(input: &str) -> (u8, String, u32, bool) {
       }
     }
     Some(("tunnel", _)) => (4, String::new(), 0, duplicate),
-    Some(("memory", name)) => {
-      // In-process byte channel. `name` identifies the listener; the peer
-      // (e.g. the desktop runtime) connects to it by the same name.
-      if name.is_empty() {
-        log::error!("DENO_SERVE_ADDRESS: empty memory name");
-        return (0, String::new(), 0, duplicate);
-      }
-      (5, name.to_string(), 0, duplicate)
-    }
     Some((_, _)) | None => {
       log::error!("DENO_SERVE_ADDRESS: invalid address format: {}", input);
       (0, String::new(), 0, false)
@@ -1930,14 +1922,32 @@ fn parse_serve_address(input: &str) -> (u8, String, u32, bool) {
 
 pub static SERVE_NOTIFIER: Notify = Notify::const_new();
 
+/// Kind of server that fired the first "serving" notification, as reported
+/// by `op_http_notify_serving`. Zero until the notification fires.
+static SERVE_KIND: AtomicU32 = AtomicU32::new(0);
+
+/// Returns the kind of server that triggered [`SERVE_NOTIFIER`]:
+/// `"deno-serve"` for `Deno.serve`, `"node-http"` for a `node:http` or
+/// `node:https` server, `"node-http2"` for a `node:http2` server, or
+/// `None` when unknown.
+pub fn serving_server_kind() -> Option<&'static str> {
+  match SERVE_KIND.load(Ordering::Acquire) {
+    1 => Some("deno-serve"),
+    2 => Some("node-http"),
+    3 => Some("node-http2"),
+    _ => None,
+  }
+}
+
 #[op2(fast)]
-fn op_http_notify_serving() {
+fn op_http_notify_serving(#[smi] kind: u32) {
   static ONCE: AtomicBool = AtomicBool::new(false);
 
   if ONCE
     .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
     .is_ok()
   {
+    SERVE_KIND.store(kind, Ordering::Release);
     SERVE_NOTIFIER.notify_one();
   }
 }

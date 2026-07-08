@@ -13,6 +13,7 @@ export const {
   beforeEach,
   afterEach,
   mock,
+  getTestContext,
 } = mod;
 
 export default mod.default;

@@ -312,15 +312,14 @@ impl PipeWrap {
 
   #[fast]
   fn open(&self, state: &mut OpState, #[smi] fd: i32) -> i32 {
-    // Check FdTable for duplicate fds. Stdio fds (0-2) are pre-registered
-    // as TableOwned; for those, open is allowed (no-op check). Non-stdio
-    // fds already in FdTable are rejected (EEXIST).
-    {
-      let fd_table = state.borrow::<deno_io::FdTable>();
-      if fd_table.contains(fd) && !(0..=2).contains(&fd) {
-        return -libc::EEXIST;
-      }
-    }
+    // See `FdTable::begin_uv_adopt` for the duplicate-fd policy (stdio and
+    // inherited extra stdio fds may be adopted; other tracked fds are
+    // rejected).
+    let Some(was_inherited) =
+      state.borrow::<deno_io::FdTable>().begin_uv_adopt(fd)
+    else {
+      return -libc::EEXIST;
+    };
     let pipe = self.pipe_ptr();
     if pipe.is_null() {
       return uv_compat::UV_EBADF;
@@ -338,8 +337,9 @@ impl PipeWrap {
       unsafe { uv_compat::uv_pipe_open(pipe, fd) }
     };
     if ret == 0 {
-      // Register as UvOwned - the native handle owns the fd.
-      state.borrow_mut::<deno_io::FdTable>().register_uv_owned(fd);
+      state
+        .borrow_mut::<deno_io::FdTable>()
+        .finish_uv_adopt(fd, was_inherited);
       self.base.set_fd(fd);
     }
     ret
