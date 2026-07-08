@@ -1,14 +1,14 @@
 Check [WILDCARD]main.ts
 Check [WILDCARD]mod.ts
-TS2304 [ERROR]: Cannot find name 'onmessage'.
-onmessage;
-~~~~~~~~~
-    at file:///[WILDLINE]/main.ts:8:1
+TS2304 [ERROR]: Cannot find name 'postMessage'.
+postMessage;
+~~~~~~~~~~~
+    at file:///[WILDLINE]/main.ts:11:1
 
-TS2304 [ERROR]: Cannot find name 'onmessage'.
-onmessage;
-~~~~~~~~~
-    at file:///[WILDLINE]/member/mod.ts:5:1
+TS2304 [ERROR]: Cannot find name 'postMessage'.
+postMessage;
+~~~~~~~~~~~
+    at file:///[WILDLINE]/member/mod.ts:8:1
 
 Found 2 errors.
 

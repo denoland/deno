@@ -1,5 +1,8 @@
 // Only defined for window.
 localStorage;
 
-// Only defined for worker.
+// Defined for worker; in window it resolves via the @types/node marker global.
 onmessage;
+
+// Only defined for worker.
+postMessage;

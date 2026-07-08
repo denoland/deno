@@ -616,3 +616,36 @@ declare var location: Location;
  *
  * @category Platform */
 declare var name: string;
+
+// Marker globals so `@types/node` defers its web-platform globals to Deno's,
+// mirroring how it defers to `lib.dom`. `@types/node` guards each of its web
+// globals with a probe of the form
+// `typeof globalThis extends { <marker>; <Name>: infer T } ? T : <fallback>`,
+// where the markers are `onmessage` (most globals), `onabort` (`Storage`) and
+// `ReportingObserver` (`CompressionStream`/`DecompressionStream`). Declaring
+// them here makes those probes resolve to Deno's own globals. Each marker
+// itself uses the document-deferral form so it still merges cleanly when real
+// `lib.dom` is loaded. (The worker scope already declares `onmessage`; these
+// exist for the main scope and are not backed by the runtime.)
+
+/** Marker so `@types/node` defers its web-platform globals to Deno's; not
+ * backed by the runtime in the main scope.
+ *
+ * @category Platform */
+declare var onmessage: typeof globalThis extends
+  { document: any; onmessage: infer T } ? T
+  : ((this: void, ev: MessageEvent) => unknown) | null;
+/** Marker so `@types/node` defers its `Storage` global to Deno's; not backed
+ * by the runtime in the main scope.
+ *
+ * @category Platform */
+declare var onabort: typeof globalThis extends
+  { document: any; onabort: infer T } ? T
+  : ((this: void, ev: Event) => unknown) | null;
+/** Marker so `@types/node` defers its `CompressionStream` and
+ * `DecompressionStream` globals to Deno's; not backed by the runtime.
+ *
+ * @category Platform */
+declare var ReportingObserver: typeof globalThis extends
+  { document: any; ReportingObserver: infer T } ? T
+  : { readonly prototype: unknown; new (...args: any[]): unknown };
