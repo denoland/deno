@@ -21,7 +21,8 @@ Failed to extract with [WILDCARD]
       "droppedAttributesCount": 0,
       "flags": 0,
       "traceId": "",
-      "spanId": ""
+      "spanId": "",
+      "eventName": ""
     },
     {
       "timeUnixNano": "[WILDCARD]",
@@ -42,7 +43,8 @@ Failed to extract with [WILDCARD]
       "droppedAttributesCount": 0,
       "flags": 0,
       "traceId": "",
-      "spanId": ""
+      "spanId": "",
+      "eventName": ""
     }
   ],
   "metrics": []
