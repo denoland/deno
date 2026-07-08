@@ -2,17 +2,21 @@
 
 //! Framework detection for `deno compile .`.
 //!
-//! Detects web frameworks (Next.js, Astro, Remix, SvelteKit, Nuxt, Fresh,
-//! SolidStart, TanStack Start, Vite) and generates the appropriate
-//! entrypoint and include paths so that `deno compile .` just works.
+//! Detects web frameworks (Next.js, Astro, Remix, React Router, SvelteKit,
+//! Nuxt, Fresh, SolidStart, TanStack Start, Vite) and generates the
+//! appropriate entrypoint and include paths so that `deno compile .` just
+//! works.
 
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_core::anyhow::Context;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 
 /// Result of framework detection.
+#[derive(Debug)]
 pub struct FrameworkDetection {
   /// Name of the detected framework (for display).
   pub name: &'static str,
@@ -23,6 +27,8 @@ pub struct FrameworkDetection {
   /// Optional build command to run before compilation (e.g. "next build").
   /// The command is run with the detected directory as cwd.
   pub build_command: Option<Vec<String>>,
+  /// Command to launch the framework's HMR server for desktop
+  pub hmr_command: Option<Vec<String>>,
 }
 
 impl FrameworkDetection {
@@ -73,6 +79,41 @@ pub fn find_framework_favicon(
   None
 }
 
+/// Run the framework's build step (e.g. `deno task build`) with `dir` as the
+/// working directory, if the detection specifies one. This must run before the
+/// framework's `include_paths` are bundled, since they point at the build
+/// output (`dist`, `.next`, etc.) which doesn't exist until the build runs.
+///
+/// Shared by `deno compile .` and `deno desktop .` so the two can't drift.
+pub fn run_build_command(
+  detection: &FrameworkDetection,
+  dir: &Path,
+) -> Result<(), AnyError> {
+  let Some(build_cmd) = &detection.build_command else {
+    return Ok(());
+  };
+  log::info!(
+    "{} {} project...",
+    deno_terminal::colors::green("Building"),
+    detection.name,
+  );
+  let status = std::process::Command::new(&build_cmd[0])
+    .args(&build_cmd[1..])
+    .current_dir(dir)
+    .status()
+    .with_context(|| {
+      format!("Failed to run build command: {}", build_cmd.join(" "))
+    })?;
+  if !status.success() {
+    deno_core::anyhow::bail!(
+      "{} build failed (exit code: {})",
+      detection.name,
+      status.code().unwrap_or(-1)
+    );
+  }
+  Ok(())
+}
+
 /// Detect a web framework in the given directory.
 ///
 /// Detection priority:
@@ -104,15 +145,21 @@ pub fn detect_framework(
     return Ok(Some(detect_nuxt(dir)));
   }
 
-  // SvelteKit: svelte.config.{js,ts} — but only when there's positive
-  // evidence of a Deno-targeted adapter or a recognized server output
-  // shape. A bare svelte.config.* is not enough, since SvelteKit can be
-  // built with many adapters (node, vercel, cloudflare, static, ...) that
-  // do not produce `./.output/server/index.{ts,mjs}`.
-  if has_config_file(dir, "svelte.config")
-    && let Some(detection) = detect_sveltekit(dir)
-  {
-    return Ok(Some(detection));
+  // SvelteKit: svelte.config.{js,ts} plus a `@sveltejs/kit` dependency. Once
+  // SvelteKit owns detection we must NOT fall through to the generic Vite
+  // branch below (SvelteKit ships a vite.config + `vite` dependency, so it
+  // would otherwise be misdetected as a plain Vite SPA and bundle a
+  // non-existent `dist/`). `detect_sveltekit` resolves the adapter's output
+  // shape, or errors with an actionable hint when the configured adapter isn't
+  // one `deno desktop` can bundle. A bare `svelte.config.*` is not enough on
+  // its own: the Vite Svelte template ships a `svelte.config.js` with only
+  // `vitePreprocess()` and no SvelteKit, and such plain Svelte SPAs must keep
+  // falling through to the Vite branch that bundles `dist/`.
+  let has_sveltekit = read_package_deps(dir)
+    .map(|deps| deps.has("@sveltejs/kit") || deps.has_dev("@sveltejs/kit"))
+    .unwrap_or(false);
+  if has_config_file(dir, "svelte.config") && has_sveltekit {
+    return detect_sveltekit(dir).map(Some);
   }
 
   // --- Package.json dependency-based detection ---
@@ -120,6 +167,15 @@ pub fn detect_framework(
     // Remix
     if deps.has("@remix-run/react") || deps.has_dev("@remix-run/dev") {
       return Ok(Some(detect_remix(dir)));
+    }
+
+    // React Router (framework mode) - the successor to Remix. It uses the
+    // `@react-router/dev` build tool rather than the old `@remix-run/*`
+    // packages, so without this branch it would fall through to generic Vite
+    // detection (which looks for `dist/` and misses React Router's
+    // `build/client` output).
+    if deps.has("@react-router/dev") || deps.has_dev("@react-router/dev") {
+      return Ok(Some(detect_react_router(dir)));
     }
 
     // SolidStart
@@ -169,6 +225,10 @@ fn deno_task_build() -> Vec<String> {
   vec![deno_exe(), "task".into(), "build".into()]
 }
 
+fn deno_task_dev() -> Vec<String> {
+  vec![deno_exe(), "task".into(), "dev".into()]
+}
+
 fn detect_nextjs(dir: &Path) -> Result<FrameworkDetection, AnyError> {
   let version = detect_package_version(dir, "next").unwrap_or(15);
   let entrypoint = format!(
@@ -199,6 +259,7 @@ if (!Deno.env.get("NODE_CHANNEL_FD")) {{
     entrypoint_code: entrypoint,
     include_paths,
     build_command: Some(deno_task_build()),
+    hmr_command: None, // TODO: add command to enable `deno desktop --hmr` for Next.js
   })
 }
 
@@ -209,6 +270,7 @@ fn detect_astro(_dir: &Path) -> FrameworkDetection {
       .into(),
     include_paths: vec!["dist".into()],
     build_command: Some(deno_task_build()),
+    hmr_command: None, // TODO: add command to enable `deno desktop --hmr` for Astro
   }
 }
 
@@ -240,7 +302,8 @@ Deno.serve(mod.default.fetch);
 "#
       .into(),
       include_paths,
-      build_command: Some(vec![deno_exe(), "task".into(), "build".into()]),
+      build_command: Some(deno_task_build()),
+      hmr_command: Some(deno_task_dev()),
     }
   } else {
     // Fresh 1.x — no build step needed, server-rendered
@@ -249,6 +312,7 @@ Deno.serve(mod.default.fetch);
       entrypoint_code: "// @ts-nocheck\nimport \"./main.ts\";\n".into(),
       include_paths: vec![],
       build_command: None,
+      hmr_command: None,
     }
   }
 }
@@ -266,23 +330,161 @@ fn detect_remix(dir: &Path) -> FrameworkDetection {
       "// @ts-nocheck\nimport \"./node_modules/.bin/remix-serve\";\n".into(),
     include_paths,
     build_command: Some(deno_task_build()),
+    hmr_command: None, // TODO: add command to enable `deno desktop --hmr` for Remix
   }
+}
+
+fn detect_react_router(dir: &Path) -> FrameworkDetection {
+  // React Router framework mode builds in one of two shapes:
+  //   * SPA (`ssr: false`): a fully static site in `build/client` with a
+  //     prerendered `index.html` fallback and no server to run.
+  //   * SSR (default): a server build at `build/server/index.js`. This works in
+  //     Deno when the app provides a Web Streams `app/entry.server.tsx` using
+  //     `renderToReadableStream`; the default React Router Node entry uses
+  //     `renderToPipeableStream` and fails during `react-router build` under
+  //     Deno before this generated entrypoint is compiled.
+  // Detection runs *before* the build, so decide from the config file.
+  let spa_mode = [
+    "react-router.config.ts",
+    "react-router.config.js",
+    "react-router.config.mjs",
+  ]
+  .iter()
+  .find_map(|f| std::fs::read_to_string(dir.join(f)).ok())
+  .map(|text| {
+    // Strip comments first so a commented-out `// ssr: false` can't be mistaken
+    // for the real setting, then match whitespace-insensitively so `ssr: false`
+    // and `ssr:false` both count.
+    strip_comments(&text)
+      .chars()
+      .filter(|c| !c.is_whitespace())
+      .collect::<String>()
+      .contains("ssr:false")
+  })
+  .unwrap_or(false);
+
+  if spa_mode {
+    // SPA: serve the static client build, falling back to `index.html` so the
+    // client-side router survives a hard refresh on a history-API route.
+    FrameworkDetection {
+      name: "React Router",
+      entrypoint_code: r#"// @ts-nocheck
+import { serveDir } from "jsr:@std/http/file-server";
+// React Router SPA mode emits a static site into `build/client`. Resolve it
+// against the VFS in the compiled binary via import.meta.dirname rather than
+// the runtime CWD.
+const fsRoot = import.meta.dirname + "/build/client";
+Deno.serve(async (req) => {
+  const res = await serveDir(req, { fsRoot, quiet: true });
+  // SPA fallback: route unmatched HTML navigations back to index.html so
+  // client-side routers keep working after a hard refresh.
+  if (
+    res.status === 404 &&
+    req.method === "GET" &&
+    (req.headers.get("accept") ?? "").includes("text/html")
+  ) {
+    const index = new Request(new URL("/index.html", req.url), {
+      headers: req.headers,
+    });
+    return await serveDir(index, { fsRoot, quiet: true });
+  }
+  return res;
+});
+"#
+      .into(),
+      include_paths: vec!["build/client".into()],
+      build_command: Some(deno_task_build()),
+      hmr_command: None, // TODO: add command to enable `deno desktop --hmr` for React Router
+    }
+  } else {
+    // SSR: serve immutable client assets from `build/client`, then hand all
+    // application routes, data requests, actions, and misses to React Router's
+    // Fetch API request handler from `build/server/index.js`.
+    FrameworkDetection {
+      name: "React Router",
+      entrypoint_code: r#"// @ts-nocheck
+import { serveDir } from "jsr:@std/http/file-server";
+import { createRequestHandler } from "react-router";
+import * as build from "./build/server/index.js";
+
+// React Router emits client assets into `build/client` and its server build
+// into `build/server`. Resolve both against the VFS in the compiled binary via
+// import.meta.dirname rather than the runtime CWD.
+const fsRoot = import.meta.dirname + "/build/client";
+const handler = createRequestHandler(build, "production");
+
+Deno.serve(async (req) => {
+  if (req.method === "GET" || req.method === "HEAD") {
+    const staticRes = await serveDir(req, { fsRoot, quiet: true });
+    if (staticRes.status !== 404) {
+      return staticRes;
+    }
+  }
+  return await handler(req);
+});
+"#
+      .into(),
+      include_paths: vec!["build".into()],
+      build_command: Some(deno_task_build()),
+      hmr_command: None, // TODO: add command to enable `deno desktop --hmr` for React Router
+    }
+  }
+}
+
+/// Remove `//` line comments and `/* */` block comments from config source, so
+/// a commented-out setting (e.g. `// ssr: false`) isn't mistaken for the real
+/// one by the substring heuristics above.
+fn strip_comments(src: &str) -> String {
+  let mut out = String::with_capacity(src.len());
+  let mut chars = src.chars().peekable();
+  while let Some(c) = chars.next() {
+    if c == '/' {
+      match chars.peek() {
+        Some('/') => {
+          // Line comment: drop until end of line.
+          for c2 in chars.by_ref() {
+            if c2 == '\n' {
+              out.push('\n');
+              break;
+            }
+          }
+          continue;
+        }
+        Some('*') => {
+          // Block comment: drop until the closing `*/`.
+          chars.next();
+          let mut prev = '\0';
+          for c2 in chars.by_ref() {
+            if prev == '*' && c2 == '/' {
+              break;
+            }
+            prev = c2;
+          }
+          continue;
+        }
+        _ => {}
+      }
+    }
+    out.push(c);
+  }
+  out
 }
 
 fn detect_nuxt(dir: &Path) -> FrameworkDetection {
   detect_nitro_framework(dir, "Nuxt")
 }
 
-fn detect_sveltekit(dir: &Path) -> Option<FrameworkDetection> {
+fn detect_sveltekit(dir: &Path) -> Result<FrameworkDetection, AnyError> {
   // Prefer post-build evidence of a supported output shape, since that
   // proves which adapter was actually used.
   if dir.join(".deno-deploy/server.ts").exists() {
-    return Some(FrameworkDetection {
+    return Ok(FrameworkDetection {
       name: "SvelteKit",
       entrypoint_code: "// @ts-nocheck\nimport \"./.deno-deploy/server.ts\";\n"
         .into(),
       include_paths: vec![".deno-deploy".into()],
       build_command: Some(deno_task_build()),
+      hmr_command: Some(deno_task_dev()),
     });
   }
   if dir.join(".output/server/index.ts").exists()
@@ -293,66 +495,89 @@ fn detect_sveltekit(dir: &Path) -> Option<FrameworkDetection> {
     } else {
       "mjs"
     };
-    return Some(FrameworkDetection {
+    return Ok(FrameworkDetection {
       name: "SvelteKit",
       entrypoint_code: format!(
         "// @ts-nocheck\nimport \"./.output/server/index.{ext}\";\n"
       ),
       include_paths: vec![".output".into()],
       build_command: Some(deno_task_build()),
+      hmr_command: Some(deno_task_dev()),
     });
   }
-  // `svelte-adapter-deno` emits a `build/` directory whose `index.js`
-  // boots the server and whose `handler.js` serves the static assets from
-  // sibling `client`/`static`/`prerendered` directories. Those asset
-  // directories aren't part of the module graph, so they must be included
-  // explicitly or every request 404s in the compiled binary.
+  // `@sveltejs/adapter-node` and `svelte-adapter-deno` both emit a `build/`
+  // directory whose `index.js` boots the server and whose `handler.js` serves
+  // the static assets from sibling `client`/`static`/`prerendered`
+  // directories. Those asset directories aren't part of the module graph, so
+  // they must be included explicitly or every request 404s in the compiled
+  // binary. The adapter-node server runs under Deno via Node.js compatibility.
   if dir.join("build/index.js").exists()
     && dir.join("build/handler.js").exists()
   {
-    return Some(FrameworkDetection {
+    return Ok(FrameworkDetection {
       name: "SvelteKit",
       entrypoint_code: "// @ts-nocheck\nimport \"./build/index.js\";\n".into(),
       include_paths: sveltekit_build_includes(dir),
       build_command: Some(deno_task_build()),
+      hmr_command: Some(deno_task_dev()),
     });
   }
-  // No build artifacts yet — fall back to config inspection. We only
-  // claim SvelteKit if the config references a supported adapter.
-  let config_text =
-    ["svelte.config.js", "svelte.config.ts", "svelte.config.mjs"]
-      .iter()
-      .find_map(|f| std::fs::read_to_string(dir.join(f)).ok())?;
+  // No build artifacts yet — fall back to config inspection.
+  let config_text = read_config_text(dir, "svelte.config");
   if config_text.contains("@deno/svelte-adapter") {
-    return Some(FrameworkDetection {
+    return Ok(FrameworkDetection {
       name: "SvelteKit",
       entrypoint_code: "// @ts-nocheck\nimport \"./.deno-deploy/server.ts\";\n"
         .into(),
       include_paths: vec![".deno-deploy".into()],
       build_command: Some(deno_task_build()),
+      hmr_command: Some(deno_task_dev()),
     });
   }
-  if config_text.contains("svelte-adapter-deno") {
-    // Default `out` is `build`. Only `build/client` is guaranteed to exist
-    // after the build, so include just that here; the post-build branch
-    // above picks up `static`/`prerendered` when they're present.
-    return Some(FrameworkDetection {
+  // `@sveltejs/adapter-node` emits the same `build/index.js` shape as
+  // `svelte-adapter-deno` and runs under Deno via Node.js compatibility, so no
+  // Deno-specific adapter is required. Default `out` is `build`; only
+  // `build/client` is guaranteed to exist after the build, so include just
+  // that here — the post-build branch above picks up `static`/`prerendered`
+  // when they're present.
+  if config_text.contains("svelte-adapter-deno")
+    || config_text.contains("@sveltejs/adapter-node")
+  {
+    return Ok(FrameworkDetection {
       name: "SvelteKit",
       entrypoint_code: "// @ts-nocheck\nimport \"./build/index.js\";\n".into(),
       include_paths: vec!["build/client".into()],
       build_command: Some(deno_task_build()),
+      hmr_command: Some(deno_task_dev()),
     });
   }
   if config_text.contains("nitro") {
-    return Some(FrameworkDetection {
+    return Ok(FrameworkDetection {
       name: "SvelteKit",
       entrypoint_code:
         "// @ts-nocheck\nimport \"./.output/server/index.mjs\";\n".into(),
       include_paths: vec![".output".into()],
       build_command: Some(deno_task_build()),
+      hmr_command: Some(deno_task_dev()),
     });
   }
-  None
+  // SvelteKit is present but the configured adapter isn't one we can locate a
+  // bundleable server output for (e.g. `adapter-auto`, `adapter-vercel`,
+  // `adapter-cloudflare`). `adapter-auto` is the `npx sv create` default and
+  // produces *no* local server output unless a known cloud platform is
+  // detected at build time, so point the user at a concrete adapter.
+  let auto_hint = if config_text.contains("adapter-auto") {
+    "`@sveltejs/adapter-auto` produces no local server output, so there is \
+     nothing to bundle. "
+  } else {
+    ""
+  };
+  bail!(
+    "SvelteKit detected, but no adapter that `deno desktop` can bundle is \
+     configured.\n{auto_hint}Configure a supported adapter in your \
+     svelte.config:\n  - `@sveltejs/adapter-node` (runs under Deno via \
+     Node.js compatibility)\n  - `@deno/svelte-adapter` (for Deno Deploy)"
+  );
 }
 
 /// Existing asset directories under a `svelte-adapter-deno` `build/` output
@@ -383,6 +608,11 @@ fn detect_nitro_framework(
     ),
     include_paths: vec![".output".into()],
     build_command: Some(deno_task_build()),
+    // Nuxt (`nuxi dev`), SolidStart and TanStack Start (`vinxi dev`) all run a
+    // Vite-based dev server that prints the `Local:   http://…` line
+    // `parse_dev_server_url` scans for, so `deno task dev` drives HMR for all
+    // three.
+    hmr_command: Some(deno_task_dev()),
   }
 }
 
@@ -398,6 +628,10 @@ fn detect_vite(dir: &Path) -> FrameworkDetection {
       entrypoint_code: format!("// @ts-nocheck\nimport \"./{server_file}\";\n"),
       include_paths: vec!["dist".into()],
       build_command: Some(deno_task_build()),
+      // `vite` (and Vue/React SPA templates built on it) prints the
+      // `Local:   http://…` line `parse_dev_server_url` scans for, so
+      // `deno task dev` drives HMR.
+      hmr_command: Some(deno_task_dev()),
     };
   }
 
@@ -408,7 +642,9 @@ fn detect_vite(dir: &Path) -> FrameworkDetection {
   FrameworkDetection {
     name: "Vite",
     entrypoint_code: r#"// @ts-nocheck
-import { serveDir } from "jsr:@std/http/file-server";
+// Pin the major version so the compiled binary is reproducible and doesn't pick
+// up a breaking `@std/http` release on a later rebuild.
+import { serveDir } from "jsr:@std/http@^1/file-server";
 // `vite build` emits a static site into `dist/`. Resolve it against the VFS in
 // the compiled binary via import.meta.dirname rather than the runtime CWD.
 const fsRoot = import.meta.dirname + "/dist";
@@ -432,16 +668,35 @@ Deno.serve(async (req) => {
     .into(),
     include_paths: vec!["dist".into()],
     build_command: Some(deno_task_build()),
+    // See the SSR branch above: the Vite dev server prints the `Local:` URL
+    // that `parse_dev_server_url` scans for, so `deno task dev` drives HMR.
+    hmr_command: Some(deno_task_dev()),
   }
 }
 
 // --- Helpers ---
 
 /// Check if a config file exists with any common extension.
+/// Config-file extensions framework detection recognizes. Used both to detect
+/// a config's presence and to read its text, so the two can't drift.
+const CONFIG_EXTENSIONS: [&str; 5] = ["js", "mjs", "ts", "mts", "cjs"];
+
 fn has_config_file(dir: &Path, base_name: &str) -> bool {
-  ["js", "mjs", "ts", "mts", "cjs"]
+  CONFIG_EXTENSIONS
     .iter()
     .any(|ext| dir.join(format!("{base_name}.{ext}")).exists())
+}
+
+/// Read the text of the first matching `base_name.<ext>` config file, trying
+/// the same extension set as [`has_config_file`] so a config that passes the
+/// presence gate is never read as empty.
+fn read_config_text(dir: &Path, base_name: &str) -> String {
+  CONFIG_EXTENSIONS
+    .iter()
+    .find_map(|ext| {
+      std::fs::read_to_string(dir.join(format!("{base_name}.{ext}"))).ok()
+    })
+    .unwrap_or_default()
 }
 
 /// Read package.json dependencies.
@@ -518,6 +773,16 @@ mod tests {
 
   fn setup_dir() -> tempfile::TempDir {
     tempfile::tempdir().unwrap()
+  }
+
+  /// Write a minimal `package.json` declaring `@sveltejs/kit` so the SvelteKit
+  /// detection gate (which requires positive SvelteKit evidence) fires.
+  fn write_sveltekit_pkg(dir: &Path) {
+    fs::write(
+      dir.join("package.json"),
+      r#"{"devDependencies":{"@sveltejs/kit":"^2.0.0"}}"#,
+    )
+    .unwrap();
   }
 
   #[test]
@@ -684,6 +949,9 @@ mod tests {
     assert_eq!(det.include_paths, vec![".output"]);
     let cmd = det.build_command.unwrap();
     assert_eq!(cmd[1..], vec!["task", "build"]);
+    // Nuxt runs a Vite-based dev server, so `deno desktop --hmr` is supported.
+    let hmr = det.hmr_command.unwrap();
+    assert_eq!(hmr[1..], vec!["task", "dev"]);
   }
 
   #[test]
@@ -699,6 +967,7 @@ mod tests {
   #[test]
   fn detects_sveltekit_deno_deploy() {
     let dir = setup_dir();
+    write_sveltekit_pkg(dir.path());
     fs::write(dir.path().join("svelte.config.js"), "").unwrap();
     fs::create_dir_all(dir.path().join(".deno-deploy")).unwrap();
     fs::write(dir.path().join(".deno-deploy/server.ts"), "").unwrap();
@@ -713,6 +982,7 @@ mod tests {
   #[test]
   fn detects_sveltekit_nitro_from_built_output() {
     let dir = setup_dir();
+    write_sveltekit_pkg(dir.path());
     fs::write(dir.path().join("svelte.config.ts"), "").unwrap();
     fs::create_dir_all(dir.path().join(".output/server")).unwrap();
     fs::write(dir.path().join(".output/server/index.mjs"), "").unwrap();
@@ -726,6 +996,7 @@ mod tests {
   fn detects_sveltekit_adapter_deno_from_config() {
     // `svelte-adapter-deno` emits a `build/` directory (not `.output`).
     let dir = setup_dir();
+    write_sveltekit_pkg(dir.path());
     fs::write(
       dir.path().join("svelte.config.js"),
       "import adapter from 'svelte-adapter-deno';\nexport default { kit: { adapter: adapter() } };\n",
@@ -742,6 +1013,7 @@ mod tests {
     // Post-build evidence: `build/index.js` + `build/handler.js` is the
     // `svelte-adapter-deno` output shape. Existing asset dirs are included.
     let dir = setup_dir();
+    write_sveltekit_pkg(dir.path());
     fs::write(dir.path().join("svelte.config.js"), "").unwrap();
     fs::create_dir_all(dir.path().join("build/client")).unwrap();
     fs::create_dir_all(dir.path().join("build/prerendered")).unwrap();
@@ -757,6 +1029,7 @@ mod tests {
   #[test]
   fn detects_sveltekit_nitro_from_config() {
     let dir = setup_dir();
+    write_sveltekit_pkg(dir.path());
     fs::write(
       dir.path().join("svelte.config.js"),
       "// uses a nitro-based adapter\nexport default { kit: {} };\n",
@@ -768,17 +1041,94 @@ mod tests {
   }
 
   #[test]
-  fn does_not_detect_sveltekit_with_unknown_adapter() {
-    // Regression: a SvelteKit project using e.g. adapter-vercel should
-    // NOT be claimed by our detector — it would generate a wrong
-    // entrypoint that imports a path that doesn't exist.
+  fn detects_sveltekit_adapter_node_from_config() {
+    // `@sveltejs/adapter-node` emits the `build/index.js` shape and runs under
+    // Deno via Node.js compatibility — no Deno-specific adapter required.
     let dir = setup_dir();
+    write_sveltekit_pkg(dir.path());
+    fs::write(
+      dir.path().join("svelte.config.js"),
+      "import adapter from '@sveltejs/adapter-node';\nexport default { kit: { adapter: adapter() } };\n",
+    )
+    .unwrap();
+    let det = detect_framework(dir.path()).unwrap().unwrap();
+    assert_eq!(det.name, "SvelteKit");
+    assert!(det.entrypoint_code.contains("build/index.js"));
+    assert_eq!(det.include_paths, vec!["build/client"]);
+  }
+
+  #[test]
+  fn detects_sveltekit_adapter_node_from_mts_config() {
+    // `svelte.config.mts` passes the presence gate, so its text must be read
+    // too — otherwise a valid adapter-node config reads as empty and bails.
+    let dir = setup_dir();
+    write_sveltekit_pkg(dir.path());
+    fs::write(
+      dir.path().join("svelte.config.mts"),
+      "import adapter from '@sveltejs/adapter-node';\nexport default { kit: { adapter: adapter() } };\n",
+    )
+    .unwrap();
+    let det = detect_framework(dir.path()).unwrap().unwrap();
+    assert_eq!(det.name, "SvelteKit");
+    assert!(det.entrypoint_code.contains("build/index.js"));
+    assert_eq!(det.include_paths, vec!["build/client"]);
+  }
+
+  #[test]
+  fn errors_on_sveltekit_with_unsupported_adapter() {
+    // A SvelteKit project using e.g. adapter-vercel must NOT fall through to
+    // the generic Vite branch (which would bundle a non-existent `dist/`).
+    // Instead we surface an actionable error.
+    let dir = setup_dir();
+    write_sveltekit_pkg(dir.path());
     fs::write(
       dir.path().join("svelte.config.js"),
       "import adapter from '@sveltejs/adapter-vercel';\nexport default { kit: { adapter: adapter() } };\n",
     )
     .unwrap();
-    assert!(detect_framework(dir.path()).unwrap().is_none());
+    let err = detect_framework(dir.path()).unwrap_err().to_string();
+    assert!(err.contains("SvelteKit detected"));
+    assert!(err.contains("adapter-node"));
+  }
+
+  #[test]
+  fn errors_on_sveltekit_adapter_auto() {
+    // `adapter-auto` is the `sv create` default and produces no local server
+    // output, so we bail with a hint pointing at a concrete adapter.
+    let dir = setup_dir();
+    write_sveltekit_pkg(dir.path());
+    fs::write(
+      dir.path().join("svelte.config.js"),
+      "import adapter from '@sveltejs/adapter-auto';\nexport default { kit: { adapter: adapter() } };\n",
+    )
+    .unwrap();
+    let err = detect_framework(dir.path()).unwrap_err().to_string();
+    assert!(err.contains("adapter-auto"));
+    assert!(err.contains("no local server output"));
+  }
+
+  #[test]
+  fn plain_svelte_spa_falls_through_to_vite() {
+    // The Vite Svelte template (`npm create vite -- --template svelte`) ships a
+    // `svelte.config.js` with only `vitePreprocess()` and no `@sveltejs/kit`.
+    // Without positive SvelteKit evidence it must NOT be taken over by
+    // SvelteKit detection (which would bail on the missing adapter) — it stays
+    // on the Vite path that bundles `dist/`.
+    let dir = setup_dir();
+    fs::write(
+      dir.path().join("svelte.config.js"),
+      "import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';\nexport default { preprocess: vitePreprocess() };\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("vite.config.js"), "").unwrap();
+    fs::write(
+      dir.path().join("package.json"),
+      r#"{"devDependencies":{"svelte":"^5.0.0","vite":"^5.0.0"}}"#,
+    )
+    .unwrap();
+    let det = detect_framework(dir.path()).unwrap().unwrap();
+    assert_eq!(det.name, "Vite");
+    assert_eq!(det.include_paths, vec!["dist"]);
   }
 
   // --- Package.json dependency-based detection ---
@@ -849,6 +1199,154 @@ mod tests {
     assert_eq!(det.name, "TanStack Start");
   }
 
+  // --- React Router ---
+
+  #[test]
+  fn detects_react_router_spa() {
+    let dir = setup_dir();
+    fs::write(
+      dir.path().join("package.json"),
+      r#"{"devDependencies":{"@react-router/dev":"^7.0.0"}}"#,
+    )
+    .unwrap();
+    fs::write(dir.path().join("vite.config.ts"), "").unwrap();
+    fs::write(
+      dir.path().join("react-router.config.ts"),
+      "export default { ssr: false };\n",
+    )
+    .unwrap();
+    let det = detect_framework(dir.path()).unwrap().unwrap();
+    assert_eq!(det.name, "React Router");
+    // SPA serves the static client build, not `dist/`.
+    assert!(det.entrypoint_code.contains("serveDir"));
+    assert!(det.entrypoint_code.contains("build/client"));
+    assert!(!det.entrypoint_code.contains("createRequestHandler"));
+    assert_eq!(det.include_paths, vec!["build/client"]);
+    let cmd = det.build_command.unwrap();
+    assert_eq!(cmd[1..], vec!["task", "build"]);
+  }
+
+  #[test]
+  fn detects_react_router_spa_whitespace_insensitive() {
+    // The `ssr: false` heuristic strips whitespace, so `ssr:false` (no space)
+    // must still be recognized as SPA.
+    let dir = setup_dir();
+    fs::write(
+      dir.path().join("package.json"),
+      r#"{"devDependencies":{"@react-router/dev":"^7.0.0"}}"#,
+    )
+    .unwrap();
+    fs::write(dir.path().join("vite.config.ts"), "").unwrap();
+    fs::write(
+      dir.path().join("react-router.config.ts"),
+      "export default {\n  ssr:false,\n};\n",
+    )
+    .unwrap();
+    let det = detect_framework(dir.path()).unwrap().unwrap();
+    assert_eq!(det.name, "React Router");
+    assert_eq!(det.include_paths, vec!["build/client"]);
+  }
+
+  #[test]
+  fn detects_react_router_ssr_config() {
+    // SSR (the React Router default) serves static client assets first, then
+    // hands application requests to the server build's Fetch API handler.
+    let dir = setup_dir();
+    fs::write(
+      dir.path().join("package.json"),
+      r#"{"devDependencies":{"@react-router/dev":"^7.0.0"}}"#,
+    )
+    .unwrap();
+    fs::write(dir.path().join("vite.config.ts"), "").unwrap();
+    fs::write(
+      dir.path().join("react-router.config.ts"),
+      "export default {};\n",
+    )
+    .unwrap();
+    let det = detect_framework(dir.path()).unwrap().unwrap();
+    assert_eq!(det.name, "React Router");
+    assert!(det.entrypoint_code.contains("createRequestHandler"));
+    assert!(det.entrypoint_code.contains("build/server/index.js"));
+    assert!(det.entrypoint_code.contains("build/client"));
+    assert_eq!(det.include_paths, vec!["build"]);
+  }
+
+  #[test]
+  fn detects_react_router_without_config_defaults_to_ssr() {
+    // No react-router.config file at all -> React Router defaults to SSR.
+    let dir = setup_dir();
+    fs::write(
+      dir.path().join("package.json"),
+      r#"{"devDependencies":{"@react-router/dev":"^7.0.0"}}"#,
+    )
+    .unwrap();
+    fs::write(dir.path().join("vite.config.ts"), "").unwrap();
+    let det = detect_framework(dir.path()).unwrap().unwrap();
+    assert_eq!(det.name, "React Router");
+    assert_eq!(det.include_paths, vec!["build"]);
+    assert!(det.entrypoint_code.contains("createRequestHandler"));
+  }
+
+  #[test]
+  fn react_router_commented_ssr_false_is_still_ssr() {
+    // A commented-out `// ssr: false` above a real `ssr: true` must NOT be
+    // mistaken for SPA.
+    let dir = setup_dir();
+    fs::write(
+      dir.path().join("package.json"),
+      r#"{"devDependencies":{"@react-router/dev":"^7.0.0"}}"#,
+    )
+    .unwrap();
+    fs::write(dir.path().join("vite.config.ts"), "").unwrap();
+    fs::write(
+      dir.path().join("react-router.config.ts"),
+      "export default {\n  // set ssr: false to opt into SPA\n  ssr: true,\n};\n",
+    )
+    .unwrap();
+    let det = detect_framework(dir.path()).unwrap().unwrap();
+    assert_eq!(det.name, "React Router");
+    assert_eq!(det.include_paths, vec!["build"]);
+    assert!(det.entrypoint_code.contains("createRequestHandler"));
+  }
+
+  #[test]
+  fn react_router_takes_precedence_over_generic_vite() {
+    // A React Router project always carries a vite.config + vite dep; make sure
+    // an `ssr: false` SPA is detected as React Router rather than falling
+    // through to generic Vite.
+    let dir = setup_dir();
+    fs::write(
+      dir.path().join("package.json"),
+      r#"{"devDependencies":{"@react-router/dev":"^7.0.0","vite":"^5.0.0"}}"#,
+    )
+    .unwrap();
+    fs::write(dir.path().join("vite.config.ts"), "").unwrap();
+    fs::write(
+      dir.path().join("react-router.config.ts"),
+      "export default { ssr: false };\n",
+    )
+    .unwrap();
+    let det = detect_framework(dir.path()).unwrap().unwrap();
+    assert_eq!(det.name, "React Router");
+  }
+
+  #[test]
+  fn react_router_library_mode_is_detected_as_vite() {
+    // React Router used purely as a routing *library* (no `@react-router/dev`
+    // build tool) is just a Vite SPA. It must NOT be detected as the React
+    // Router framework, which would look for a `build/` output a library user
+    // never produces.
+    let dir = setup_dir();
+    fs::write(
+      dir.path().join("package.json"),
+      r#"{"dependencies":{"react-router":"^7.0.0"},"devDependencies":{"vite":"^5.0.0"}}"#,
+    )
+    .unwrap();
+    fs::write(dir.path().join("vite.config.ts"), "").unwrap();
+    let det = detect_framework(dir.path()).unwrap().unwrap();
+    assert_eq!(det.name, "Vite");
+  }
+
   // --- Vite ---
 
   #[test]
@@ -862,6 +1360,9 @@ mod tests {
     assert_eq!(det.include_paths, vec!["dist"]);
     let cmd = det.build_command.unwrap();
     assert_eq!(cmd[1..], vec!["task", "build"]);
+    // The Vite dev server drives HMR for `deno desktop --hmr`.
+    let hmr = det.hmr_command.unwrap();
+    assert_eq!(hmr[1..], vec!["task", "dev"]);
   }
 
   #[test]
@@ -885,9 +1386,34 @@ mod tests {
     assert!(det.entrypoint_code.contains("serveDir"));
     assert!(det.entrypoint_code.contains("/dist"));
     assert!(det.entrypoint_code.contains("Deno.serve"));
+    // The remote `@std/http` dependency must be version-pinned so the compiled
+    // binary is reproducible.
+    assert!(det.entrypoint_code.contains("jsr:@std/http@^1/file-server"));
     assert_eq!(det.include_paths, vec!["dist"]);
     let cmd = det.build_command.unwrap();
     assert_eq!(cmd[1..], vec!["task", "build"]);
+    // A plain Vite SPA (e.g. the Vue template) supports `deno desktop --hmr`.
+    let hmr = det.hmr_command.unwrap();
+    assert_eq!(hmr[1..], vec!["task", "dev"]);
+  }
+
+  #[test]
+  fn vue_vite_spa_supports_hmr() {
+    // A Vue SPA scaffolded with `npm create vue@latest` is a plain Vite project
+    // (`vue` + `vite` in devDependencies, a `vite.config.ts`). It must resolve
+    // to the Vite path with `deno desktop --hmr` enabled so the dev-server
+    // workflow from issue #35745 works.
+    let dir = setup_dir();
+    fs::write(dir.path().join("vite.config.ts"), "").unwrap();
+    fs::write(
+      dir.path().join("package.json"),
+      r#"{"dependencies":{"vue":"^3.0.0"},"devDependencies":{"vite":"^5.0.0","@vitejs/plugin-vue":"^5.0.0"}}"#,
+    )
+    .unwrap();
+    let det = detect_framework(dir.path()).unwrap().unwrap();
+    assert_eq!(det.name, "Vite");
+    let hmr = det.hmr_command.unwrap();
+    assert_eq!(hmr[1..], vec!["task", "dev"]);
   }
 
   #[test]
@@ -1119,6 +1645,7 @@ mod tests {
       entrypoint_code: String::new(),
       include_paths: vec![],
       build_command: None,
+      hmr_command: None,
     }
   }
 
@@ -1128,6 +1655,7 @@ mod tests {
       entrypoint_code: String::new(),
       include_paths: vec![],
       build_command: None,
+      hmr_command: None,
     }
   }
 
@@ -1215,5 +1743,47 @@ mod tests {
     let p = find_framework_favicon(dir.path(), &det, "linux").unwrap();
     // public/ is checked before app/.
     assert_eq!(p, dir.path().join("public/favicon.png"));
+  }
+
+  // --- run_build_command ---
+
+  #[test]
+  fn run_build_command_none_is_noop() {
+    let dir = setup_dir();
+    let mut det = nextjs_detection();
+    det.build_command = None;
+    // No command to run, so this must succeed without doing anything.
+    run_build_command(&det, dir.path()).unwrap();
+  }
+
+  #[test]
+  fn run_build_command_runs_in_dir() {
+    // The build command runs with the detected directory as cwd. Use a
+    // shell command that writes the framework's build output so we can assert
+    // it ran in the right place (a regression test for #35535, where the
+    // build step was skipped and the include path didn't exist).
+    let dir = setup_dir();
+    let mut det = nextjs_detection();
+    det.include_paths = vec!["dist".into()];
+    det.build_command = if cfg!(windows) {
+      Some(vec!["cmd".into(), "/C".into(), "mkdir dist".into()])
+    } else {
+      Some(vec!["sh".into(), "-c".into(), "mkdir dist".into()])
+    };
+    run_build_command(&det, dir.path()).unwrap();
+    assert!(dir.path().join("dist").is_dir());
+  }
+
+  #[test]
+  fn run_build_command_propagates_failure() {
+    let dir = setup_dir();
+    let mut det = nextjs_detection();
+    det.build_command = if cfg!(windows) {
+      Some(vec!["cmd".into(), "/C".into(), "exit 1".into()])
+    } else {
+      Some(vec!["sh".into(), "-c".into(), "exit 1".into()])
+    };
+    let err = run_build_command(&det, dir.path()).unwrap_err();
+    assert!(err.to_string().contains("build failed"));
   }
 }

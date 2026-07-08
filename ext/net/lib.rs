@@ -2,7 +2,6 @@
 
 pub mod happy_eyeballs;
 pub mod io;
-pub mod memory;
 pub mod ops;
 pub mod ops_tls;
 #[cfg(unix)]
@@ -24,6 +23,51 @@ use deno_tls::rustls::RootCertStore;
 pub use quic::QuicError;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "net";
+
+/// Permission check for opening a unix-domain socket path. Shared by the
+/// native unix-socket ops and the node-compat `PipeWrap` path in `ext/node`,
+/// which also backs Windows named pipes; unlike `ops_unix` this must compile
+/// on all platforms.
+///
+/// A unix socket is both a filesystem entry and an outbound network
+/// primitive, so this requires an `--allow-net=unix:<path>` rule in addition
+/// to filesystem access on the socket path. Without this, a script with only
+/// `--allow-read=/var/run/docker.sock` could connect to local IPC services
+/// (Docker, dbus, podman, etc.) with no `--allow-net` grant.
+///
+/// Abstract socket paths (Linux, leading NUL) have no filesystem entry, so
+/// they skip the filesystem check and rely on the network check alone.
+pub fn check_unix_socket_path<'a>(
+  permissions: &mut deno_permissions::PermissionsContainer,
+  path: std::borrow::Cow<'a, std::path::Path>,
+  access_kind: deno_permissions::OpenAccessKind,
+  api_name: Option<&str>,
+) -> Result<
+  deno_permissions::CheckedPath<'a>,
+  deno_permissions::PermissionCheckError,
+> {
+  let checked = if is_unix_socket_abstract_path(path.as_ref()) {
+    deno_permissions::CheckedPath::unsafe_new(path)
+  } else {
+    permissions.check_open(path, access_kind, api_name)?
+  };
+  permissions.check_net_unix_socket(&checked, api_name)?;
+  Ok(checked)
+}
+
+pub(crate) fn is_unix_socket_abstract_path(path: &std::path::Path) -> bool {
+  #[cfg(any(target_os = "android", target_os = "linux"))]
+  {
+    use std::os::unix::ffi::OsStrExt;
+    path.as_os_str().as_bytes().first() == Some(&0)
+  }
+
+  #[cfg(not(any(target_os = "android", target_os = "linux")))]
+  {
+    let _ = path;
+    false
+  }
+}
 
 /// Helper for checking unstable features. Used for sync ops.
 fn check_unstable(state: &OpState, api_name: &str) {
@@ -82,7 +126,6 @@ deno_core::extension!(deno_net,
     ops::op_net_connect_vsock,
     ops::op_net_listen_tunnel,
     ops::op_net_accept_tunnel,
-    ops::op_net_listen_memory,
 
     ops_tls::op_tls_key_null,
     ops_tls::op_tls_key_static,

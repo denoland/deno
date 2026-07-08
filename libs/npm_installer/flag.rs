@@ -15,6 +15,22 @@ mod inner {
 
   use crate::Reporter;
 
+  /// How often the lock holder touches the poll file to signal it's still
+  /// alive.
+  const POLL_FILE_UPDATE_INTERVAL_MS: u64 = 100;
+  /// How long the poll file may go stale before a waiter assumes the lock
+  /// holder died and proceeds *without* the lock.
+  ///
+  /// This is intentionally much larger than the update interval. OS file locks
+  /// are released automatically when a process exits, so this poll-based check
+  /// is only a backstop for the rare case where the OS releases a dead
+  /// process's lock at an indeterminate later time. A tight margin here is
+  /// dangerous: a busy but perfectly alive holder (e.g. running native install
+  /// scripts across several parallel processes on Windows) can fail to tick the
+  /// poll file in time, causing every waiter to falsely conclude it died and
+  /// mutate `node_modules` concurrently — corrupting the tree (see #35804).
+  const POLL_FILE_STALE_THRESHOLD_MS: u128 = 5_000;
+
   #[sys_traits::auto_impl]
   pub trait LaxSingleProcessFsFlagSys:
     sys_traits::FsOpen
@@ -118,7 +134,6 @@ mod inner {
           while error_count < 10 {
             let lock_result =
               fs_file.fs_file_try_lock(sys_traits::FsFileLockMode::Exclusive);
-            let poll_file_update_ms = 100;
             match lock_result {
               Ok(_) => {
                 log::debug!("Acquired file lock at {}", file_path.display());
@@ -140,8 +155,9 @@ mod inner {
                 deno_unsync::spawn_blocking({
                   let poll_file = poll_file.clone();
                   move || loop {
-                    sys
-                      .thread_sleep(Duration::from_millis(poll_file_update_ms));
+                    sys.thread_sleep(Duration::from_millis(
+                      POLL_FILE_UPDATE_INTERVAL_MS,
+                    ));
                     match &mut *poll_file.lock() {
                       Some(poll_file) => poll_file.touch(),
                       None => return,
@@ -178,9 +194,7 @@ mod inner {
                     let current_time = sys.sys_time_now();
                     match current_time.duration_since(last_updated_time) {
                       Ok(duration) => {
-                        if duration.as_millis()
-                          > (poll_file_update_ms * 2) as u128
-                        {
+                        if duration.as_millis() > POLL_FILE_STALE_THRESHOLD_MS {
                           // the other process hasn't updated this file in a long time
                           // so maybe it was killed and the operating system hasn't
                           // released the file lock yet

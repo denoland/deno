@@ -632,6 +632,7 @@ fn compute_document_doc_diagnostics(
       unstable_bytes_imports: false,
       unstable_text_imports: false,
       unstable_css_imports: false,
+      unstable_config_imports: false,
     },
   ));
   if token.is_cancelled() {
@@ -2051,6 +2052,7 @@ fn collect_scope_no_slow_types_diagnostics(
           packages: &packages,
           build_fast_check_graph: true,
           validate_graph: false,
+          skip_unanalyzable_exports: true,
         })
         .await?;
       let mut diagnostics_by_specifier: HashMap<

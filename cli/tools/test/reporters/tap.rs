@@ -2,6 +2,7 @@
 
 use deno_core::serde_json::json;
 use deno_core::serde_json::{self};
+use deno_print::drop_println;
 use serde::Serialize;
 
 use super::common;
@@ -23,7 +24,6 @@ pub struct TapTestReporter {
   failure_format_options: TestFailureFormatOptions,
 }
 
-#[allow(clippy::print_stdout, reason = "test reporter")]
 impl TapTestReporter {
   pub fn new(
     cwd: Url,
@@ -68,9 +68,9 @@ impl TapTestReporter {
       "at": location,
     }))
     .expect("failed to serialize TAP diagnostic");
-    println!("{:indent$}  ---", "", indent = indent);
-    println!("{:indent$}  {}", "", diagnostic, indent = indent);
-    println!("{:indent$}  ...", "", indent = indent);
+    drop_println!("{:indent$}  ---", "", indent = indent);
+    drop_println!("{:indent$}  {}", "", diagnostic, indent = indent);
+    drop_println!("{:indent$}  ...", "", indent = indent);
   }
 
   fn print_line(
@@ -80,7 +80,7 @@ impl TapTestReporter {
     description: &str,
     directive: &str,
   ) {
-    println!(
+    drop_println!(
       "{:indent$}{} {} - {}{}",
       "",
       status,
@@ -97,7 +97,7 @@ impl TapTestReporter {
     result: &TestStepResult,
   ) {
     if self.step_n == 0 {
-      println!("# Subtest: {}", desc.root_name)
+      drop_println!("# Subtest: {}", desc.root_name)
     }
 
     let (status, directive) = match result {
@@ -121,13 +121,12 @@ impl TapTestReporter {
   }
 }
 
-#[allow(clippy::print_stdout, reason = "test reporter")]
 impl TestReporter for TapTestReporter {
   fn report_register(&mut self, _description: &TestDescription) {}
 
   fn report_plan(&mut self, plan: &TestPlan) {
     if !self.header {
-      println!("{}", VERSION_HEADER);
+      drop_println!("{}", VERSION_HEADER);
       self.header = true;
     }
     self.planned += plan.total;
@@ -135,7 +134,7 @@ impl TestReporter for TapTestReporter {
     if !self.is_concurrent {
       // Unspecified behavior: Consumers tend to interpret a comment as a test suite name.
       // During concurrent execution these would not correspond to the actual test file, so skip them.
-      println!(
+      drop_println!(
         "# {}",
         to_relative_path_or_remote_url(&self.cwd, &plan.origin)
       )
@@ -169,7 +168,7 @@ impl TestReporter for TapTestReporter {
     }
 
     if self.step_n != 0 {
-      println!("    1..{}", self.step_n);
+      drop_println!("    1..{}", self.step_n);
       self.step_n = 0;
     }
 
@@ -232,7 +231,7 @@ impl TestReporter for TapTestReporter {
     _tests: &IndexMap<usize, TestDescription>,
     _test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
-    println!("1..{}", self.planned);
+    drop_println!("1..{}", self.planned);
   }
 
   fn report_sigint(
@@ -241,7 +240,7 @@ impl TestReporter for TapTestReporter {
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
-    println!("Bail out! SIGINT received.");
+    drop_println!("Bail out! SIGINT received.");
     common::report_sigint(
       &mut std::io::stdout(),
       &self.cwd,
@@ -258,7 +257,7 @@ impl TestReporter for TapTestReporter {
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
-    println!("Bail out! Deno.exit({}) called.", exit_code);
+    drop_println!("Bail out! Deno.exit({}) called.", exit_code);
     common::report_exit(
       &mut std::io::stdout(),
       &self.cwd,

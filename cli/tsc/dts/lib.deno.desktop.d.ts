@@ -257,34 +257,89 @@ declare namespace Deno {
   export interface AutoUpdateOptions {
     /** Base URL of the release server hosting `latest.json` and patch
      * files. Defaults to `desktop.release.baseUrl` from `deno.json` when
-     * configured; required otherwise. */
+     * configured; required otherwise.
+     *
+     * Must be an `https:` URL — non-HTTPS URLs are refused. */
     url?: string;
     /** Poll interval in milliseconds. If omitted, only a single check is
-     * performed ~1s after the call. */
+     * performed ~1s after the call; pass an interval to keep checking for
+     * the lifetime of the process. */
     interval?: number;
-    /** Called once an update has been downloaded and staged for the next
-     * launch. */
+    /** Base64-encoded 32-byte Ed25519 public key used to verify the
+     * release manifest.
+     *
+     * When set, `latest.json` must carry a top-level `signature` (base64
+     * Ed25519 signature) over a `signed` field holding the manifest JSON
+     * as a string. The signature is verified before any patch is fetched,
+     * and only the contents of the verified `signed` payload are trusted.
+     * A manifest that is unsigned or fails verification is rejected.
+     *
+     * Strongly recommended for production: without it, update integrity
+     * rests solely on TLS and the per-patch SHA-256 in the manifest. */
+    publicKey?: string;
+    /** Called once an update has been downloaded, verified, and staged for
+     * the next launch. Receives the version string being staged. */
     onUpdateReady?: (version: string) => void;
     /** Called if the previous launch's update failed to start and was
-     * rolled back. */
+     * automatically rolled back to the prior version. Receives a
+     * human-readable reason. */
     onRollback?: (reason: string) => void;
   }
 
-  /** Start polling a release server for binary-diff updates.
+  /** Start checking a release server for over-the-air updates.
    *
-   * The manifest at `<url>/latest.json` is fetched and compared against
-   * {@linkcode Deno.desktopVersion}. If a newer version is available and
-   * a patch from the current version exists, the patch is downloaded and
-   * staged for the next launch, and `onUpdateReady` is invoked.
+   * Updates are delivered as binary diffs against the app's native
+   * library, so only the bytes that changed between versions are
+   * downloaded. On each check, the manifest at `<url>/latest.json` is
+   * fetched and its `version` compared against {@linkcode
+   * Deno.desktopVersion}:
    *
-   * If the previous launch's update failed and was rolled back,
-   * `onRollback` is invoked shortly after this call.
+   * - If `publicKey` is set, the manifest signature is verified first and
+   *   an unsigned or invalid manifest is rejected.
+   * - If the manifest advertises a newer version and lists a patch from
+   *   the currently running version (under `patches[<currentVersion>]`,
+   *   as `{ name, sha256 }`), that patch is downloaded, checked against
+   *   its declared SHA-256, applied, and staged for the next launch.
+   * - `onUpdateReady` is then invoked. The new version takes effect the
+   *   next time the app starts.
    *
-   * Only available in apps compiled with `deno desktop`.
+   * The staged update is swapped in atomically on the next launch, with
+   * the previous version kept as a backup. If the updated app fails to
+   * start, it is automatically rolled back to the backup and `onRollback`
+   * is invoked shortly after the next `autoUpdate` call.
    *
    * The release server URL may be passed directly, supplied via
    * {@linkcode AutoUpdateOptions.url}, or configured once in `deno.json`
-   * under `desktop.release.baseUrl` (in which case it can be omitted). */
+   * under `desktop.release.baseUrl` (in which case it can be omitted).
+   * A single check runs ~1s after the call; pass `interval` to keep
+   * polling.
+   *
+   * Because updates rewrite the app's own library file in place, they only
+   * apply where the running process can write to its installed files. This
+   * works for self-contained, user-writable installs (a `.app` bundle or a
+   * loose binary in the user's home directory, a writable AppImage next to
+   * its data). It does **not** work for read-only or system-owned installs
+   * — an AppImage mounted read-only, or an app installed under `/usr` from
+   * an `rpm`/`deb` package owned by `root`. In those cases the write fails,
+   * the failure is logged, and the update is skipped; distribute updates
+   * through the system package manager instead.
+   *
+   * Only available in apps compiled with `deno desktop`.
+   *
+   * ```ts
+   * Deno.autoUpdate({
+   *   url: "https://releases.example.com/myapp",
+   *   interval: 60 * 60 * 1000, // hourly
+   *   publicKey: "b64EncodedEd25519PublicKey==",
+   *   onUpdateReady(version) {
+   *     console.log(`v${version} staged; restart to apply`);
+   *   },
+   *   onRollback(reason) {
+   *     console.warn(`update rolled back: ${reason}`);
+   *   },
+   * });
+   * ```
+   */
   export function autoUpdate(url: string): void;
   export function autoUpdate(options?: AutoUpdateOptions): void;
 
@@ -307,6 +362,16 @@ declare namespace Deno {
     resizable?: boolean;
     /** @default {false} */
     alwaysOnTop?: boolean;
+    /** Overall window opacity as a uniform factor in the range `0`–`1`, where
+     * `1` is fully opaque (the default) and `0` is fully transparent. Fades the
+     * entire window — web content and native chrome alike — like CSS `opacity`.
+     * This is distinct from {@linkcode transparent}, which makes the background
+     * transparent while honoring the page's own per-pixel alpha. Out-of-range
+     * values are clamped. Can also be changed at runtime with
+     * {@linkcode BrowserWindow.setOpacity}.
+     *
+     * @default {1} */
+    opacity?: number;
     /** Remove the title bar and standard window chrome (border, traffic
      * light / caption buttons). Set at creation time only.
      *
@@ -322,6 +387,18 @@ declare namespace Deno {
      * @default {false} */
     noActivate?: boolean;
     transparentTitlebar?: boolean;
+    /** Give the window a transparent background so the web content's own alpha
+     * composites against whatever is behind the window. Any region the page
+     * leaves transparent (e.g. a `transparent` root background) shows the
+     * desktop through it. Often combined with {@linkcode frameless}. Distinct
+     * from {@linkcode opacity}, which uniformly fades the whole window. Set at
+     * creation time only.
+     *
+     * Supported on macOS and Linux with the system WebView; ignored on Windows
+     * and with the CEF backend, which paint an opaque window background.
+     *
+     * @default {false} */
+    transparent?: boolean;
   }
 
   interface BrowserWindowObject {
@@ -464,6 +541,16 @@ declare namespace Deno {
 
     isAlwaysOnTop(): boolean;
     setAlwaysOnTop(alwaysOnTop: boolean): void;
+
+    /** Get the window's overall opacity, a uniform factor in the range `0`–`1`
+     * where `1` is fully opaque. */
+    getOpacity(): number;
+    /** Set the window's overall opacity, a uniform factor in the range `0`–`1`
+     * where `1` is fully opaque (the default) and `0` is fully transparent.
+     * Fades the entire window — web content and native chrome alike — like CSS
+     * `opacity`. Out-of-range values are clamped. No-op on backends without
+     * opacity support. */
+    setOpacity(opacity: number): void;
 
     isClosed(): boolean;
     close(): void;

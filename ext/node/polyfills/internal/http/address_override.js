@@ -73,8 +73,13 @@ function consumeOverride() {
   addressOverrideConsumed = true;
 }
 
-function notifyAddressOverrideServing() {
-  op_http_notify_serving();
+// Server kind codes for op_http_notify_serving. Must match
+// `serving_server_kind()` in ext/http/lib.rs.
+const SERVER_KIND_NODE_HTTP = 2;
+const SERVER_KIND_NODE_HTTP2 = 3;
+
+function notifyAddressOverrideServing(kind = SERVER_KIND_NODE_HTTP) {
+  op_http_notify_serving(kind);
 }
 
 // Translate an override record into the argument for denoListen().
@@ -522,7 +527,9 @@ function startOverrideListener(
   }
 
   server[kOverrideListener] = denoListener;
-  notifyAddressOverrideServing();
+  notifyAddressOverrideServing(
+    alpnRouting ? SERVER_KIND_NODE_HTTP2 : SERVER_KIND_NODE_HTTP,
+  );
 
   (async () => {
     try {
@@ -623,5 +630,7 @@ function applyAddressOverride() {
 export {
   applyAddressOverride,
   notifyAddressOverrideServing,
+  SERVER_KIND_NODE_HTTP,
+  SERVER_KIND_NODE_HTTP2,
   startOverrideListener,
 };

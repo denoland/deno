@@ -495,6 +495,10 @@ fn get_npm_package(
   let registry_hostname = if package_name == "@denotest/tarballs-privateserver2"
   {
     "http://localhost:4262"
+  } else if package_name == "@denotest/tarballs-privateserver404" {
+    // Tarball served from a registry that 404s the unauthenticated request
+    // (and has no fixture there), to exercise the 404 auth-hint path.
+    "http://localhost:4263"
   } else {
     registry_hostname
   };
