@@ -406,13 +406,24 @@ pub fn parse_jsr_specifier(
   let slash_pos = rest.find('/')?;
   let scope = &rest[..slash_pos];
   let after_slash = &rest[slash_pos + 1..];
+  // `after_slash` is `name`, `name@version`, `name/subpath`, or
+  // `name@version/subpath`. Split off the version (if any), and drop any
+  // trailing `/subpath` from both the version and the bare name so we never
+  // feed a subpath into a semver requirement (e.g. `jsr:@std/x@1/walk`).
   let (name, version) = if let Some(at_pos) = after_slash.find('@') {
-    (
-      &after_slash[..at_pos],
-      Some(after_slash[at_pos + 1..].to_string()),
-    )
+    let name = &after_slash[..at_pos];
+    let version_and_subpath = &after_slash[at_pos + 1..];
+    let version = version_and_subpath
+      .split_once('/')
+      .map(|(v, _subpath)| v)
+      .unwrap_or(version_and_subpath);
+    (name, Some(version.to_string()))
   } else {
-    (after_slash, None)
+    let name = after_slash
+      .split_once('/')
+      .map(|(n, _subpath)| n)
+      .unwrap_or(after_slash);
+    (name, None)
   };
   Some((scope.to_string(), name.to_string(), version))
 }
