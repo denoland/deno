@@ -164,7 +164,24 @@ pub enum TestRunProgressMessage {
     #[serde(skip_serializing_if = "Option::is_none")]
     location: Option<lsp::Location>,
   },
+  Coverage {
+    value: Vec<TestRunCoverage>,
+  },
   End,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestRunCoverage {
+  pub text_document: lsp::TextDocumentIdentifier,
+  pub line_coverage: Vec<TestRunLineCoverage>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestRunLineCoverage {
+  pub line: u32,
+  pub count: u32,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

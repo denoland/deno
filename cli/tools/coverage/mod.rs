@@ -49,29 +49,29 @@ mod util;
 use merge::ProcessCoverage;
 
 #[derive(Debug, Clone)]
-struct BranchCoverageItem {
-  line_index: usize,
-  block_number: usize,
-  branch_number: usize,
-  taken: Option<i64>,
-  is_hit: bool,
+pub struct BranchCoverageItem {
+  pub line_index: usize,
+  pub block_number: usize,
+  pub branch_number: usize,
+  pub taken: Option<i64>,
+  pub is_hit: bool,
 }
 
 #[derive(Debug, Clone)]
-struct FunctionCoverageItem {
-  name: String,
-  line_index: usize,
-  execution_count: i64,
+pub struct FunctionCoverageItem {
+  pub name: String,
+  pub line_index: usize,
+  pub execution_count: i64,
 }
 
 #[derive(Debug, Clone)]
 pub struct CoverageReport {
-  url: ModuleSpecifier,
-  named_functions: Vec<FunctionCoverageItem>,
-  branches: Vec<BranchCoverageItem>,
+  pub url: ModuleSpecifier,
+  pub named_functions: Vec<FunctionCoverageItem>,
+  pub branches: Vec<BranchCoverageItem>,
   /// (line_index, number_of_hits)
-  found_lines: Vec<(usize, i64)>,
-  output: Option<PathBuf>,
+  pub found_lines: Vec<(usize, i64)>,
+  pub output: Option<PathBuf>,
 }
 
 struct GenerateCoverageReportOptions<'a> {

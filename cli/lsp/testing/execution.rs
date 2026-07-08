@@ -48,6 +48,23 @@ use crate::tools::test::create_test_event_channel;
 use crate::util::env::WatchEnvTracker;
 use crate::util::env::resolve_cwd_or_fallback;
 
+struct LspCoverageReporter {
+  reports: Arc<std::sync::Mutex<Vec<crate::tools::coverage::CoverageReport>>>,
+}
+
+impl crate::tools::coverage::reporter::CoverageReporter for LspCoverageReporter {
+  fn done(
+    &self,
+    _coverage_root: &std::path::Path,
+    file_reports: &[(crate::tools::coverage::CoverageReport, String)],
+  ) {
+    let mut reports = self.reports.lock().unwrap();
+    for (report, _) in file_reports {
+      reports.push(report.clone());
+    }
+  }
+}
+
 /// Logic to convert a test request into a set of test modules to be tested and
 /// any filters to be applied to those tests
 fn as_queue_and_filters(
@@ -237,7 +254,12 @@ impl TestRun {
     client: &Client,
     maybe_root_uri: Option<&ModuleSpecifier>,
   ) -> Result<(), AnyError> {
-    let args = self.get_args();
+    let maybe_coverage_dir = if self.kind == lsp_custom::TestRunKind::Coverage {
+      Some(tempfile::tempdir()?)
+    } else {
+      None
+    };
+    let args = self.get_args(maybe_coverage_dir.as_ref().map(|d| d.path()));
     lsp_log!("Executing test run with arguments: {}", args.join(" "));
     let flags = Arc::new(flags_from_vec(
       args.into_iter().map(|s| From::from(s.as_ref())).collect(),
@@ -270,7 +292,7 @@ impl TestRun {
         flags.log_level,
       );
     }
-    let factory = CliFactory::from_flags(flags);
+    let factory = CliFactory::from_flags(flags.clone());
     let cli_options = factory.cli_options()?;
     let permission_desc_parser = factory.permission_desc_parser()?;
     let main_graph_container = factory.main_module_graph_container().await?;
@@ -522,10 +544,64 @@ impl TestRun {
 
     result??;
 
+    if let Some(coverage_dir) = maybe_coverage_dir {
+      let reports = Arc::new(std::sync::Mutex::new(Vec::new()));
+      let reporter = LspCoverageReporter {
+        reports: reports.clone(),
+      };
+      
+      let res = crate::tools::coverage::cover_files(
+        flags.clone(),
+        vec![coverage_dir.path().to_string_lossy().to_string()],
+        vec![],
+        vec![],
+        vec![],
+        None,
+        None,
+        &[&reporter],
+      );
+
+      if let Err(e) = res {
+        lsp_log!("Failed to collect coverage: {}", e);
+      } else {
+        let reports = reports.lock().unwrap();
+        let mut coverage_payload = Vec::new();
+        for report in reports.iter() {
+          let mut line_coverage = Vec::new();
+          for &(line_index, hits) in &report.found_lines {
+            line_coverage.push(lsp_custom::TestRunLineCoverage {
+              line: line_index as u32,
+              count: hits as u32,
+            });
+          }
+          
+          let text_document = lsp::TextDocumentIdentifier {
+             uri: url_to_uri(&report.url).unwrap(),
+          };
+
+          coverage_payload.push(lsp_custom::TestRunCoverage {
+            text_document,
+            line_coverage,
+          });
+        }
+
+        if !coverage_payload.is_empty() {
+           client.send_test_notification(TestingNotification::Progress(
+             lsp_custom::TestRunProgressParams {
+               id: self.id,
+               message: lsp_custom::TestRunProgressMessage::Coverage {
+                 value: coverage_payload,
+               },
+             }
+           ));
+        }
+      }
+    }
+
     Ok(())
   }
 
-  fn get_args(&self) -> Vec<Cow<'_, str>> {
+  fn get_args(&self, coverage_dir: Option<&std::path::Path>) -> Vec<Cow<'_, str>> {
     let mut args = vec![Cow::Borrowed("deno"), Cow::Borrowed("test")];
     args.extend(
       self
@@ -560,6 +636,13 @@ impl TestRun {
       && !args.contains(&Cow::Borrowed("--inspect-brk"))
     {
       args.push(Cow::Borrowed("--inspect"));
+    }
+    if self.kind == lsp_custom::TestRunKind::Coverage {
+      if let Some(dir) = coverage_dir {
+        args.push(Cow::Owned(format!("--coverage={}", dir.to_string_lossy())));
+      } else {
+        args.push(Cow::Borrowed("--coverage"));
+      }
     }
     // Inherit `--env-file` paths from the `test` task in deno.json when the
     // user hasn't already supplied one via `deno.testing.args`. Without this,
