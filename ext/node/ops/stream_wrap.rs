@@ -1229,6 +1229,11 @@ impl LibUvStreamWrap {
     scope: &mut v8::PinScope<'_, '_>,
     #[scoped] cb: Option<v8::Global<v8::Function>>,
   ) -> Result<(), ResourceError> {
+    // Stop any active read before clearing the JS handle so the read-callback
+    // registry drops its strong `Global<this>` and the wrapper can be GC'd
+    // after close. The stream pointer is still valid here (close_handle runs
+    // afterwards). Covers TLSWrap, which uses this base close op.
+    self.read_stop_internal();
     self.clear_js_handle();
     self.base.close_handle(op_state, this, scope, cb)
   }
