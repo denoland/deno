@@ -1409,16 +1409,20 @@ Deno.test(function canvas2dBeginLayerOptionsValidated() {
   const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
   ctx.beginLayer();
   ctx.endLayer();
+  // @ts-expect-error Deno's d.ts follows lib.dom, but runtime still accepts legacy null options.
   ctx.beginLayer(null);
   ctx.endLayer();
+  // @ts-expect-error Deno's d.ts follows lib.dom, but runtime still validates legacy filter options.
   ctx.beginLayer({ filter: { name: "unknownFilter" } });
   ctx.endLayer();
+  // @ts-expect-error Deno's d.ts follows lib.dom, but runtime still validates legacy filter options.
   ctx.beginLayer({ filter: "invalid filter strings are tolerated" });
   ctx.endLayer();
 
-  // deno-lint-ignore no-explicit-any
-  assertThrows(() => ctx.beginLayer("" as any), TypeError);
+  // @ts-expect-error Deno's d.ts follows lib.dom, but runtime still rejects legacy invalid options.
+  assertThrows(() => ctx.beginLayer(""), TypeError);
   assertThrows(
+    // @ts-expect-error Deno's d.ts follows lib.dom, but runtime still validates legacy filter options.
     () => ctx.beginLayer({ filter: { name: "gaussianBlur" } }),
     TypeError,
   );
