@@ -15,10 +15,10 @@ use parley::style::GenericFamily;
 
 use super::state::TextAlign;
 use super::state::TextBaseline;
+use crate::canvas2d::text_metrics::TextMetrics;
 use crate::css::font::FontKerning;
 use crate::css::font::FontState;
 use crate::css::font::TextDirection;
-use crate::text_metrics::TextMetrics;
 
 pub(super) fn build_text_layout(
   font_ctx: &mut FontContext,

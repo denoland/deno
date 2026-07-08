@@ -7,6 +7,7 @@ pub mod gradient;
 mod image;
 mod path;
 pub mod pattern;
+pub mod text_metrics;
 
 pub use context::CONTEXT_ID;
 pub use context::OffscreenCanvasRenderingContext2D;
@@ -20,3 +21,4 @@ pub use gradient::CanvasGradient;
 pub use image::set_offscreen_canvas_pixel_sync;
 pub use path::Path2D;
 pub use pattern::CanvasPattern;
+pub use text_metrics::TextMetrics;

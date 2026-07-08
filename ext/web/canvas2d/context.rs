@@ -47,6 +47,7 @@ use self::state::StateStackEntry;
 use self::state::TextAlign;
 use self::state::TextBaseline;
 use self::text::compute_text_metrics;
+use crate::canvas2d::TextMetrics;
 use crate::canvas2d::error::Canvas2DError;
 use crate::canvas2d::filter::CanvasFilter;
 use crate::canvas2d::filter::validate_filter_input;
@@ -74,7 +75,6 @@ use crate::css::font::FontState;
 use crate::css::font::parse_css_font;
 use crate::css::font::parse_css_spacing;
 use crate::image_data::ImageData;
-use crate::text_metrics::TextMetrics;
 
 pub const CONTEXT_ID: &str = "2d";
 pub const UNSTABLE_FEATURE_NAME: &str = "canvas2d";
