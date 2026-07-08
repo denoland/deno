@@ -45,15 +45,12 @@ const {
   headersFromHeaderList,
 } = core.loadExtScript("ext:deno_fetch/20_headers.js");
 
-// Line splitting with the same semantics as
+// Same semantics as
 // https://github.com/denoland/deno_std/blob/e0753abe0c8602552862a568348c046996709521/streams/text_line_stream.ts#L20-L74
-// but linear in the input size: partial fragments accumulate in an array and
-// are joined only when a fragment arrives that can complete a line, and
-// complete lines are extracted by index scanning instead of re-slicing the
-// remaining buffer per line. The previous implementation re-concatenated the
-// pending buffer into every incoming fragment, which is O(n^2) in the line
-// length when a line spans many fragments (e.g. a multi-megabyte SSE `data:`
-// line delivered in TCP-sized reads).
+// but linear in the input size: fragments that cannot complete a line are
+// buffered in an array and joined only when a line terminator arrives, and
+// complete lines are extracted by index scanning instead of re-slicing, so
+// a line spanning many fragments costs O(length) rather than O(length^2).
 class TextLineStream extends TransformStream {
   #allowCR;
   #frags = [];
