@@ -30,7 +30,9 @@ interface ImportMeta {
 
   /** The absolute path of the current module.
    *
-   * This property is only provided for local modules (ie. using `file://` URLs).
+   * > **Caveat**: only present at runtime for local modules (ie. using
+   * > `file://` URLs); `undefined` for non-local modules (eg. `https://` or
+   * > `data:`).
    *
    * Example:
    * ```
@@ -41,11 +43,13 @@ interface ImportMeta {
    * console.log(import.meta.filename); // C:\alice\my_module.ts
    * ```
    */
-  filename?: string;
+  filename: string;
 
   /** The absolute path of the directory containing the current module.
    *
-   * This property is only provided for local modules (ie. using `file://` URLs).
+   * > **Caveat**: only present at runtime for local modules (ie. using
+   * > `file://` URLs); `undefined` for non-local modules (eg. `https://` or
+   * > `data:`).
    *
    * * Example:
    * ```
@@ -56,7 +60,7 @@ interface ImportMeta {
    * console.log(import.meta.dirname); // C:\alice
    * ```
    */
-  dirname?: string;
+  dirname: string;
 
   /** A flag that indicates if the current module is the main module that was
    * called when starting the program under Deno.
