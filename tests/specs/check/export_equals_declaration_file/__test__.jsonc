@@ -1,6 +1,8 @@
 {
+  // Disabled during the TypeScript un-fork: stock TS resolves the @deno-types
+  // .d.ts `export =` default import differently. Re-enabled by a follow-up
+  // once the behavior is settled.
   "ignore": true,
-  "//": "Disabled during the TypeScript un-fork: stock TS resolves the @deno-types .d.ts `export =` default import differently. Re-enabled by a follow-up once the behavior is settled.",
   "steps": [
     {
       "args": "check main.ts",
