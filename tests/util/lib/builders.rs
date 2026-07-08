@@ -969,6 +969,16 @@ impl TestCommandBuilder {
     if !envs.contains_key("DENO_NO_UPDATE_CHECK") {
       envs.insert("DENO_NO_UPDATE_CHECK".to_string(), "1".to_string());
     }
+    if !envs.contains_key("DENO_UNSTABLE_ALLOW_ALL_BY_DEFAULT") {
+      // The unstable allow-all default permission profile is on by default in
+      // the real binary, but the existing test corpus asserts today's
+      // deny-by-default behavior. Disable it here so tests are deterministic;
+      // tests exercising the profile opt back in with `envs`.
+      envs.insert(
+        "DENO_UNSTABLE_ALLOW_ALL_BY_DEFAULT".to_string(),
+        "0".to_string(),
+      );
+    }
     if !envs.contains_key("JSR_URL") {
       envs.insert("JSR_URL".to_string(), jsr_registry_unset_url());
     }
