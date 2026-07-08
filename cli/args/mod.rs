@@ -1206,11 +1206,16 @@ impl CliOptions {
     dir: &WorkspaceDirectory,
   ) -> Result<PermissionsOptions, AnyError> {
     let config_permissions = self.resolve_config_permissions_for_dir(dir)?;
+    let has_config_permissions = config_permissions.is_some();
     let mut permissions_options = flags_to_permissions_options(
       &self.flags.permissions,
       config_permissions,
     )?;
     self.augment_import_permissions(&mut permissions_options);
+    self.maybe_apply_allow_all_default_permissions(
+      &mut permissions_options,
+      has_config_permissions,
+    );
     if let DenoSubcommand::Serve(serve_flags) = &self.flags.subcommand {
       augment_permissions_with_serve_flags(
         &mut permissions_options,
@@ -1218,6 +1223,87 @@ impl CliOptions {
       )?;
     }
     Ok(permissions_options)
+  }
+
+  /// Applies the unstable allow-all default permission profile to the computed
+  /// permission options when the gate is on and the user provided no explicit
+  /// allow-side permission configuration.
+  ///
+  /// This is groundwork for the Deno 3 default-permissions change: instead of
+  /// denying every capability and prompting one by one, running user code with
+  /// no permission flags grants everything (equivalent to `-A`). Users then
+  /// scope back down with `--allow-*` (which switches to that explicit set) or
+  /// carve out exceptions with `--deny-*` (which composes on top since deny
+  /// always wins).
+  ///
+  /// Any explicit allow-side configuration (`--allow-*`, `-A`, `-P`, or a
+  /// permission set from the config file) opts out entirely, keeping behavior
+  /// byte-for-byte identical to today. `--deny-*` flags are intentionally not
+  /// consulted so they compose on top of the profile.
+  fn maybe_apply_allow_all_default_permissions(
+    &self,
+    options: &mut PermissionsOptions,
+    has_config_permissions: bool,
+  ) {
+    // Only for subcommands that execute user code with the prompt-based
+    // defaults. `deno eval` and `deno x` already imply allow-all, and
+    // `deno compile` bakes permissions at compile time (out of scope).
+    if !matches!(
+      self.flags.subcommand,
+      DenoSubcommand::Run(_)
+        | DenoSubcommand::Serve(_)
+        | DenoSubcommand::Test(_)
+        | DenoSubcommand::Bench(_)
+        | DenoSubcommand::Task(_)
+        | DenoSubcommand::Repl(_)
+    ) {
+      return;
+    }
+
+    // Gated behind an unstable env var while we gather feedback.
+    if !allow_all_default_permissions_enabled() {
+      return;
+    }
+
+    // Any explicit allow-side configuration opts out entirely. Note `--deny-*`
+    // flags are intentionally not consulted here so they compose on top of the
+    // profile.
+    if self.flags.permissions.has_allow_permission()
+      || self.flags.permission_set.is_some()
+      || has_config_permissions
+    {
+      return;
+    }
+
+    log::debug!("Applying unstable allow-all default permission profile.");
+
+    // Grant every capability (an empty allow-list means "allow all"), matching
+    // `--allow-all`. `--deny-*` flags already recorded in `options` still apply
+    // on top since deny wins at check time. `allow_import` is left untouched so
+    // it keeps the implicit trusted-host allowance from
+    // `augment_import_permissions`.
+    let allow_all = || Some(Vec::new());
+    options.allow_env = allow_all();
+    options.allow_net = allow_all();
+    options.allow_ffi = allow_all();
+    options.allow_read = allow_all();
+    options.allow_run = allow_all();
+    options.allow_sys = allow_all();
+    options.allow_write = allow_all();
+
+    // Warn once when `deno run` falls back to the default so it is not silently
+    // running with everything granted.
+    if matches!(self.flags.subcommand, DenoSubcommand::Run(_)) {
+      static WARNED: std::sync::Once = std::sync::Once::new();
+      WARNED.call_once(|| {
+        log::warn!(
+          "{} Running with all permissions granted by default. Use {} to restrict permissions, or {} to deny specific permissions.",
+          colors::yellow("Warning"),
+          colors::gray("--allow-*"),
+          colors::gray("--deny-*"),
+        );
+      });
+    }
   }
 
   fn resolve_config_permissions_for_dir<'a>(
@@ -1705,6 +1791,21 @@ fn allow_import_host_from_url(url: &Url) -> Option<String> {
       "http" => Some(format!("{}:80", host)),
       _ => None,
     }
+  }
+}
+
+/// Env var gating the unstable allow-all default permission profile.
+/// Groundwork for the Deno 3 default-permissions change: the profile is on by
+/// default and setting the var to `0` opts back out to today's deny-by-default
+/// behavior.
+const ALLOW_ALL_PERMISSIONS_ENV_VAR: &str =
+  "DENO_UNSTABLE_ALLOW_ALL_BY_DEFAULT";
+
+fn allow_all_default_permissions_enabled() -> bool {
+  match std::env::var(ALLOW_ALL_PERMISSIONS_ENV_VAR) {
+    // On by default; only an explicit `0` disables it.
+    Ok(value) => value != "0",
+    Err(_) => true,
   }
 }
 
