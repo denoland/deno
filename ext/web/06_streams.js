@@ -63,6 +63,7 @@ const {
   PromiseResolve,
   PromiseWithResolvers,
   RangeError,
+  ReflectApply,
   ReflectHas,
   SafeFinalizationRegistry,
   SafePromiseAll,
@@ -4542,15 +4543,27 @@ function setUpTransformStreamDefaultControllerFromTransformer(
   let flushAlgorithm = _defaultFlushAlgorithm;
   let cancelAlgorithm = _defaultCancelAlgorithm;
   if (transformerDict.transform !== undefined) {
-    transformAlgorithm = (chunk, controller) =>
-      webidl.invokeCallbackFunction(
-        transformerDict.transform,
-        [chunk, controller],
-        transformer,
-        webidl.converters["Promise<undefined>"],
-        "Failed to execute 'transformAlgorithm' on 'TransformStreamDefaultController'",
-        true,
-      );
+    const transformCallback = transformerDict.transform;
+    // Synchronous-transform fast path: a transform() that enqueues and returns
+    // undefined (or any non-thenable) completes without a wrapper promise from
+    // the Promise<undefined> converter. Returning undefined signals synchronous
+    // completion to transformStreamDefaultControllerPerformTransform, which then
+    // skips that promise and the transformPromiseWith() microtask hop -- pure
+    // per-chunk overhead on the transform hot loop. A synchronous throw becomes
+    // a rejected promise so the stream errors as before; a thenable return keeps
+    // the full async path (matching webidl.invokeCallbackFunction).
+    transformAlgorithm = (chunk, controller) => {
+      let rv;
+      try {
+        rv = ReflectApply(transformCallback, transformer, [chunk, controller]);
+      } catch (err) {
+        return PromiseReject(err);
+      }
+      if (rv === undefined || typeof rv?.then !== "function") {
+        return undefined;
+      }
+      return PromiseResolve(rv);
+    };
   }
   if (transformerDict.flush !== undefined) {
     flushAlgorithm = (controller) =>
@@ -4837,6 +4850,13 @@ function transformStreamDefaultControllerPerformTransform(controller, chunk) {
     return resolvedPromise();
   }
   const transformPromise = transformAlgorithm(chunk, controller);
+  if (transformPromise === undefined) {
+    // The transform completed synchronously (see the transformAlgorithm set up
+    // in setUpTransformStreamDefaultControllerFromTransformer): the chunk was
+    // already enqueued, so resolve the write without a per-chunk promise or a
+    // microtask hop, exactly like the identity-transform fast path above.
+    return resolvedPromise();
+  }
   return transformPromiseWith(transformPromise, undefined, (r) => {
     transformStreamError(controller[_stream], r);
     throw r;
@@ -5708,42 +5728,91 @@ class ReadableStreamAsyncIteratorReadRequest {
   }
 }
 
+/**
+ * The generic (async) path for the default async iterator's next(): allocate a
+ * Deferred + read request and hand it to the reader. Hoisted out of next() so
+ * the closure isn't allocated on every iteration, and reused by the chained
+ * (concurrent next()) path.
+ * @param {ReadableStreamDefaultReader} reader
+ * @returns {Promise<IteratorResult<unknown>>}
+ */
+function readableStreamAsyncIteratorNextSteps(reader) {
+  if (reader[_iteratorFinished]) {
+    return PromiseResolve({ value: undefined, done: true });
+  }
+
+  if (reader[_stream] === undefined) {
+    return PromiseReject(
+      new TypeError(
+        "Cannot get the next iteration result once the reader has been released.",
+      ),
+    );
+  }
+
+  /** @type {Deferred<IteratorResult<any>>} */
+  const promise = new Deferred();
+  // internal values (_iteratorNext & _iteratorFinished) are modified inside
+  // ReadableStreamAsyncIteratorReadRequest methods
+  // see: https://webidl.spec.whatwg.org/#es-default-asynchronous-iterator-object
+  const readRequest = new ReadableStreamAsyncIteratorReadRequest(
+    reader,
+    promise,
+  );
+
+  readableStreamDefaultReaderRead(reader, readRequest);
+  // The extra PromisePrototypeThen hop is load-bearing, not redundant: for a
+  // lazily-pulling source the queue is empty here, so the read triggers pull()
+  // and the controller schedules a follow-up pull a microtask later. This hop
+  // delays next()'s resolution by that one tick so the follow-up pull is
+  // observed before the consumer acts on the result (e.g. calls return() to
+  // cancel). Returning promise.promise directly resolves a tick too early and
+  // drops that pull -- see WPT streams async-iterator "next() ...; return()".
+  return PromisePrototypeThen(promise.promise);
+}
+
 /** @type {AsyncIterator<unknown>} */
 const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
   /** @returns {Promise<IteratorResult<unknown>>} */
   next() {
     /** @type {ReadableStreamDefaultReader} */
     const reader = this[_reader];
-    function nextSteps() {
-      if (reader[_iteratorFinished]) {
-        return PromiseResolve({ value: undefined, done: true });
-      }
 
-      if (reader[_stream] === undefined) {
-        return PromiseReject(
-          new TypeError(
-            "Cannot get the next iteration result once the reader has been released.",
-          ),
-        );
-      }
-
-      /** @type {Deferred<IteratorResult<any>>} */
-      const promise = new Deferred();
-      // internal values (_iteratorNext & _iteratorFinished) are modified inside
-      // ReadableStreamAsyncIteratorReadRequest methods
-      // see: https://webidl.spec.whatwg.org/#es-default-asynchronous-iterator-object
-      const readRequest = new ReadableStreamAsyncIteratorReadRequest(
-        reader,
-        promise,
+    // A prior next() is still in flight: chain after it so iteration results are
+    // delivered in call order (per the WebIDL default async iterator).
+    const ongoing = reader[_iteratorNext];
+    if (ongoing) {
+      return reader[_iteratorNext] = PromisePrototypeThen(
+        ongoing,
+        () => readableStreamAsyncIteratorNextSteps(reader),
+        () => readableStreamAsyncIteratorNextSteps(reader),
       );
-
-      readableStreamDefaultReaderRead(reader, readRequest);
-      return PromisePrototypeThen(promise.promise);
     }
 
-    return reader[_iteratorNext] = reader[_iteratorNext]
-      ? PromisePrototypeThen(reader[_iteratorNext], nextSteps, nextSteps)
-      : nextSteps();
+    // Sync fast path: nothing in flight, stream readable, default (non-byte)
+    // controller with a chunk already queued. Mirrors
+    // ReadableStreamDefaultReader.read()'s fast path, skips allocating a
+    // Deferred, a ReadRequest object, and a microtask hop, and leaves
+    // _iteratorNext null so subsequent iterations stay on this path.
+    const stream = reader[_stream];
+    if (stream !== undefined && stream[_state] === "readable") {
+      const controller = stream[_controller];
+      if (
+        controller[_pendingPullIntos] === undefined &&
+        controller[_queue].size !== 0
+      ) {
+        stream[_disturbed] = true;
+        const chunk = dequeueValue(controller);
+        if (controller[_closeRequested] && controller[_queue].size === 0) {
+          readableStreamDefaultControllerClearAlgorithms(controller);
+          readableStreamClose(stream);
+        } else {
+          readableStreamDefaultControllerCallPullIfNeeded(controller);
+        }
+        return PromiseResolve({ value: chunk, done: false });
+      }
+    }
+
+    return reader[_iteratorNext] = readableStreamAsyncIteratorNextSteps(reader);
   },
   /**
    * @param {unknown} arg
