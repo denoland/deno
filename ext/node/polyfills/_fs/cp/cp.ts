@@ -140,7 +140,8 @@ async function cpFn(
 ) {
   try {
     if (canUseNativeFastPath(opts)) {
-      return await op_node_cp_fast(src, dest, opts.recursive);
+      await op_node_cp_fast(src, dest, opts.recursive);
+      return;
     }
 
     const filter = opts.filter;

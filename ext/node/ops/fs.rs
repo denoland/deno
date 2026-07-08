@@ -2494,6 +2494,10 @@ pub fn op_node_cp_sync<'a>(
 }
 
 #[op2(stack_trace)]
+#[allow(
+  clippy::unused_async,
+  reason = "maybe_spawn_blocking awaits with sync_fs"
+)]
 pub async fn op_node_cp_fast(
   state: Rc<RefCell<OpState>>,
   #[string] src: String,
