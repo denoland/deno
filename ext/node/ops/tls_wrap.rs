@@ -36,6 +36,7 @@ use deno_core::CppgcInherits;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::ToJsBuffer;
+use deno_core::V8TaskSpawner;
 use deno_core::op2;
 use deno_core::uv_compat;
 use deno_core::uv_compat::UV_EBADF;
@@ -655,6 +656,67 @@ unsafe fn do_invoke_queued(
   }
 }
 
+/// Signal write completion to JS on the next event loop iteration.
+///
+/// The synchronous `do_invoke_queued` is only safe from a libuv callback
+/// dispatched by the event loop. The TLS write ops (`writev`, `writeBuffer`,
+/// `writeUtf8String`, ...) hold the `OpState` borrow for their entire body,
+/// so running `oncomplete` synchronously from them re-enters JS while
+/// `OpState` is borrowed, and any op the callback reaches (e.g.
+/// `op_node_new_async_id` via `process.nextTick`) panics with "RefCell
+/// already borrowed" (#35820). Deferring also matches libuv/Node semantics:
+/// write callbacks never fire synchronously from the write call itself.
+fn defer_invoke_queued(
+  spawner: &V8TaskSpawner,
+  js_handle: v8::Global<v8::Object>,
+  write_obj: v8::Global<v8::Object>,
+  status: i32,
+) {
+  spawner.spawn(move |scope| {
+    let req_obj = v8::Local::new(scope, &write_obj);
+    let handle = v8::Local::new(scope, &js_handle);
+    let oncomplete_str =
+      v8::String::new_external_onebyte_static(scope, b"oncomplete").unwrap();
+    let Some(oncomplete) = req_obj.get(scope, oncomplete_str.into()) else {
+      return;
+    };
+    let Ok(func) = v8::Local::<v8::Function>::try_from(oncomplete) else {
+      return;
+    };
+    let status_val = v8::Integer::new(scope, status);
+    let undef = v8::undefined(scope);
+    // The task shares the event loop's scope; catch exceptions from the
+    // callback and report them as uncaught (matching stream_wrap's
+    // MakeCallback behavior) instead of leaking them into the event loop.
+    let caught_exception = {
+      v8::tc_scope!(tc, scope);
+      let result = func.call(
+        tc,
+        req_obj.into(),
+        &[status_val.into(), handle.into(), undef.into()],
+      );
+      if result.is_none() && tc.has_caught() {
+        let exc = tc.exception();
+        tc.reset();
+        exc
+      } else {
+        None
+      }
+    };
+    if let Some(exception) = caught_exception {
+      let global = scope.get_current_context().global(scope);
+      let key = v8::String::new(scope, "reportError").unwrap();
+      if let Some(report_fn_val) = global.get(scope, key.into())
+        && let Ok(report_fn) =
+          v8::Local::<v8::Function>::try_from(report_fn_val)
+      {
+        let undef = v8::undefined(scope);
+        report_fn.call(scope, undef.into(), &[exception]);
+      }
+    }
+  });
+}
+
 /// Write encrypted data to a JS-backed stream via the JS `encOut` callback.
 ///
 /// # Safety
@@ -984,6 +1046,11 @@ struct TLSWrapInner {
   /// emitted via a fresh ArrayBuffer; the JS callback receives the same
   /// Uint8Array each time. Updated by `TLSWrap::useUserBuffer`.
   user_buffer: Option<crate::ops::stream_wrap::UserBuffer>,
+
+  /// Same-thread task spawner used to defer the JS write-completion
+  /// callback out of ops that hold the `OpState` borrow (see
+  /// `defer_invoke_queued`). Captured from `OpState` in `TLSWrap::new`.
+  task_spawner: Option<V8TaskSpawner>,
 }
 
 /// Convert a rustls error to a (message, code) pair that matches Node's
@@ -1124,6 +1191,7 @@ impl TLSWrapInner {
       client_hello_servername: None,
       client_hello_alpn: Vec::new(),
       user_buffer: None,
+      task_spawner: None,
     }
   }
 
@@ -1603,13 +1671,9 @@ impl TLSWrapInner {
       match action {
         EncOutAction::None => {}
         EncOutAction::WriteUv => {
+          // enc_out_uv defers its error-path invoke_queued to the event
+          // loop, so no JS runs synchronously from this arm.
           (*ptr).enc_out_uv();
-          // enc_out_uv may call invoke_queued on error; those paths
-          // already work through &mut self which is fine since we
-          // don't hold any reference here. But we should also convert
-          // those paths — for now, enc_out_uv's invoke_queued calls
-          // go through the old path (acceptable since they only fire
-          // on synchronous uv_write failure, not during normal flow).
         }
         EncOutAction::WriteJs => {
           // Pull-based: leave data in pending_enc_out for JS to drain
@@ -1618,7 +1682,13 @@ impl TLSWrapInner {
         }
         EncOutAction::InvokeQueued(status) => {
           if let Some((write_obj, ctx)) = prepare_invoke_queued(ptr) {
-            do_invoke_queued(&ctx, write_obj, status);
+            // This arm is reachable from the write ops while they hold
+            // the OpState borrow — never run the JS callback here.
+            if let Some(spawner) = (*ptr).task_spawner.clone() {
+              defer_invoke_queued(&spawner, ctx.js_handle, write_obj, status);
+            } else {
+              do_invoke_queued(&ctx, write_obj, status);
+            }
           }
         }
       }
@@ -1657,13 +1727,24 @@ impl TLSWrapInner {
         self.write_callback_scheduled
       };
       if should_invoke {
+        // Synchronous write failures surface here while a write op is
+        // still on the stack holding the OpState borrow (e.g. the
+        // underlying handle was already closed → UV_EBADF). Running the
+        // JS `oncomplete` callback synchronously from that context
+        // panics with "RefCell already borrowed" as soon as the callback
+        // reaches another op (#35820) — defer it to the event loop.
+        let spawner = self.task_spawner.clone();
         // Use raw pointer to drop the &mut self borrow before JS call
         let ptr = self_ptr;
         // SAFETY: self_ptr is valid (points to self); prepare_invoke_queued
         // and do_invoke_queued do not hold references across JS calls.
         unsafe {
           if let Some((write_obj, ctx)) = prepare_invoke_queued(ptr) {
-            do_invoke_queued(&ctx, write_obj, ret);
+            if let Some(spawner) = spawner {
+              defer_invoke_queued(&spawner, ctx.js_handle, write_obj, ret);
+            } else {
+              do_invoke_queued(&ctx, write_obj, ret);
+            }
           }
         }
       }
@@ -1981,9 +2062,12 @@ impl TLSWrap {
       std::ptr::null(),
     );
 
+    let mut inner = TLSWrapInner::new(kind);
+    inner.task_spawner = op_state.try_borrow::<V8TaskSpawner>().cloned();
+
     TLSWrap {
       base,
-      inner: OwnedPtr::from_box(Box::new(TLSWrapInner::new(kind))),
+      inner: OwnedPtr::from_box(Box::new(inner)),
     }
   }
 
