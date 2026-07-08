@@ -1314,6 +1314,7 @@ pub fn flags_from_vec_with_initial_cwd(
         "jupyter" => jupyter_parse(&mut flags, &mut m),
         "lint" => lint_parse(&mut flags, &mut m)?,
         "lsp" => lsp_parse(&mut flags, &mut m),
+        "sync-types" => sync_types_parse(&mut flags, &mut m),
         "outdated" => outdated_parse(&mut flags, &mut m, false)?,
         "repl" => repl_parse(&mut flags, &mut m)?,
         "run" => run_parse(&mut flags, &mut m, app, false, false)?,
@@ -1597,6 +1598,7 @@ pub fn clap_root() -> Command {
         .subcommand(link_subcommand())
         .subcommand(unlink_subcommand())
         .subcommand(lsp_subcommand())
+        .subcommand(sync_types_subcommand())
         .subcommand(lint_subcommand())
         .subcommand(publish_subcommand())
         .subcommand(pack_subcommand())
@@ -3786,6 +3788,18 @@ using the Language Server Protocol. Usually humans do not use this subcommand di
 For example, 'deno lsp' can provide IDEs with go-to-definition support and automatic code formatting.
 
 How to connect various editors and IDEs to 'deno lsp': https://docs.deno.com/go/lsp",
+  )
+}
+
+fn sync_types_subcommand() -> Command {
+  command(
+    "sync-types",
+    cstr!(
+      "Generate a <c>tsconfig.json</> and type mappings so stock TypeScript tooling (tsc, tsgo, editors) can type-check the project.
+
+Run after installing dependencies; it materializes <c>jsr:</>/<c>http(s):</> types and writes <p(245)>.deno/tsconfig.json</>."
+    ),
+    UnstableArgsConfig::None,
   )
 }
 
@@ -7656,6 +7670,10 @@ fn uninstall_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
 fn lsp_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Lsp;
+}
+
+fn sync_types_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
+  flags.subcommand = DenoSubcommand::SyncTypes;
 }
 
 fn lint_parse(

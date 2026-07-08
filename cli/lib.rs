@@ -237,6 +237,9 @@ async fn run_subcommand(
     DenoSubcommand::Ci(ci_flags) => spawn_subcommand(async {
       tools::installer::ci_command(Arc::new(flags), ci_flags).await
     }),
+    DenoSubcommand::SyncTypes => spawn_subcommand(async {
+      tools::installer::sync_types_command(Arc::new(flags)).await
+    }),
     DenoSubcommand::JSONReference(json_reference) => {
       spawn_subcommand(async move {
         display::write_json_to_stdout(&json_reference.json)
