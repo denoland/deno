@@ -753,14 +753,18 @@ fn maybe_minimum_dependency_age_hint(error_string: &str) -> Option<String> {
     concat!(
       "\n\n{} This version is blocked by the minimum dependency age policy, ",
       "which avoids installing recently published versions to reduce supply ",
-      "chain risk (the default is 24 hours). To use this version now, set {} ",
-      "in your deno.json (for example {} to disable it, or a shorter duration ",
-      "like {}), or wait until the version is old enough."
+      "chain risk (the default is 24 hours). To use this version now, pass the ",
+      "{} flag (for example {} to disable it, or a shorter duration like {} ",
+      "minutes) or set {} in your deno.json, or wait until the version is old ",
+      "enough.\n{} {}"
     ),
     colors::yellow("hint:"),
-    colors::bold("\"minimumDependencyAge\""),
+    colors::bold("--minimum-dependency-age"),
     colors::bold("0"),
-    colors::bold("\"1 hour\""),
+    colors::bold("60"),
+    colors::bold("\"minimumDependencyAge\""),
+    colors::yellow("docs:"),
+    colors::cyan("https://docs.deno.com/go/minimum-dependency-age"),
   ))
 }
 

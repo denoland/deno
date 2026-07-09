@@ -289,6 +289,7 @@ fn add_npm_minimum_dependency_age_no_matching_shows_hint() {
   let output = output.combined_output();
   assert_contains!(output, "minimum dependency date");
   assert_contains!(output, "minimumDependencyAge");
+  assert_contains!(output, "--minimum-dependency-age");
 }
 
 fn pm_context_builder() -> TestContextBuilder {
