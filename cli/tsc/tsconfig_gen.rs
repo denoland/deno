@@ -246,6 +246,25 @@ fn build_tsconfig(
     }
   }
 
+  // Merge the user's `compilerOptions.types` with the deno/node types we inject,
+  // rather than dropping them. Such an entry (e.g. `lume/types.ts`) can carry
+  // both ambient declarations (a `Lume` namespace) and `/// <reference
+  // lib="dom" />`, so clobbering it loses DOM globals and project namespaces the
+  // code relies on.
+  //
+  // Guard: only emit an entry we can actually resolve. A bare name (no `/`)
+  // resolves via typeRoots/node_modules (`deno`, `node`, `@types/*`); a slashed
+  // entry needs a matching `paths` mapping. Emitting an unresolvable `types`
+  // entry makes stock tsc/tsgo fail the whole program build (TS2688) and skip
+  // every file, which masks all real diagnostics — worse than dropping it.
+  if let Some(user_types) = deno_compiler_options
+    .and_then(|co| co.get("types"))
+    .and_then(|t| t.as_array())
+    && let Some(Value::Array(types)) = compiler_options.get_mut("types")
+  {
+    merge_user_types(types, user_types, &specifier_paths);
+  }
+
   if !specifier_paths.is_empty() {
     compiler_options.insert("paths".to_string(), json!(specifier_paths));
   }
@@ -358,52 +377,67 @@ fn generate_npm_paths(
       };
       let pkg_name = npm_ref.req().name.to_string();
       let pkg_dir = project_root.join(format!("node_modules/{pkg_name}"));
-      if !pkg_dir.exists() {
-        continue;
-      }
-      let subpath = npm_ref.sub_path();
 
-      // For a subpath (`npm:preact/compat`, `react/jsx-runtime`), resolve it
-      // through the package's `exports` to a concrete .d.ts (a relative path,
-      // to avoid TS5090). For the bare package, map to the package directory,
-      // which resolves via its package.json `types`/`exports["."]`.
-      let target_paths: Value = match subpath {
+      // A plain alias whose name matches the package (`"chalk": "npm:chalk"`,
+      // and its subpaths like `chalk/foo`) resolves natively through
+      // `node_modules` under `moduleResolution: bundler`, so an alias key would
+      // be redundant. A *renamed* alias (`"$prism": "npm:prismjs"`, so source
+      // writes `$prism/components/x`) has no `node_modules/$prism`, so it needs
+      // an explicit mapping. `npm:`-scheme keys are always emitted since bundler
+      // can't resolve the scheme on its own.
+      let alias_renamed = alias != &pkg_name;
+      match npm_ref.sub_path() {
         Some(sub) => {
-          let Some(types_rel) =
-            resolve_jsr_types_entry(&pkg_dir, &format!("./{sub}"))
-          else {
-            continue;
-          };
-          json!([types_rel])
-        }
-        None => json!([format!("../node_modules/{pkg_name}")]),
-      };
-
-      // Key on the exact `npm:` specifier as written, and on the import-map
-      // alias (which is what most source actually imports).
-      paths
-        .entry(target_str.to_string())
-        .or_insert_with(|| target_paths.clone());
-      if alias != target_str {
-        paths.entry(alias.clone()).or_insert(target_paths);
-      }
-
-      // For a bare alias -> package, enumerate the package's exports and map
-      // each subpath under the alias and the npm: specifier (e.g. `preact/hooks`).
-      if subpath.is_none() {
-        for exp_key in package_export_keys(&pkg_dir) {
-          let sub = exp_key.trim_start_matches("./");
-          let Some(sub_rel) = resolve_jsr_types_entry(&pkg_dir, &exp_key)
-          else {
-            continue;
-          };
+          // `npm:preact/compat`: resolve through the package's `exports` to a
+          // concrete .d.ts (relative, to avoid TS5090). Fall back to the naive
+          // subpath under the package dir when exports can't be read (e.g. the
+          // package isn't materialized yet). Key both the version-less scheme
+          // (`npm:preact/compat`) and the exact specifier as written, plus the
+          // source-written alias form when the alias is renamed.
+          let rel = resolve_jsr_types_entry(&pkg_dir, &format!("./{sub}"))
+            .unwrap_or_else(|| format!("../node_modules/{pkg_name}/{sub}"));
           paths
             .entry(format!("npm:{pkg_name}/{sub}"))
-            .or_insert_with(|| json!([&sub_rel]));
-          if alias != target_str {
+            .or_insert_with(|| json!([&rel]));
+          paths
+            .entry(target_str.to_string())
+            .or_insert_with(|| json!([&rel]));
+          if alias_renamed {
+            paths.entry(alias.clone()).or_insert_with(|| json!([&rel]));
+          }
+        }
+        None => {
+          // Bare `npm:preact`: map to the package directory, which resolves via
+          // its package.json `types`/`exports["."]`. Emitted unconditionally so
+          // the mapping exists even if generation runs before install. Key both
+          // the version-less scheme (`npm:preact`) and the exact specifier.
+          let dir = format!("../node_modules/{pkg_name}");
+          paths
+            .entry(format!("npm:{pkg_name}"))
+            .or_insert_with(|| json!([&dir]));
+          paths
+            .entry(target_str.to_string())
+            .or_insert_with(|| json!([&dir]));
+          if alias_renamed {
+            paths.entry(alias.clone()).or_insert_with(|| json!([&dir]));
+          }
+          // Enumerate the package's own `exports` so subpaths written in source
+          // map to their concrete .d.ts: the `npm:` scheme form always, and the
+          // renamed-alias form (`$prism/components`) when applicable.
+          for exp_key in package_export_keys(&pkg_dir) {
+            let sub = exp_key.trim_start_matches("./");
+            let Some(sub_rel) = resolve_jsr_types_entry(&pkg_dir, &exp_key)
+            else {
+              continue;
+            };
             paths
-              .entry(format!("{alias}/{sub}"))
+              .entry(format!("npm:{pkg_name}/{sub}"))
               .or_insert_with(|| json!([&sub_rel]));
+            if alias_renamed {
+              paths
+                .entry(format!("{alias}/{sub}"))
+                .or_insert_with(|| json!([&sub_rel]));
+            }
           }
         }
       }
@@ -734,6 +768,41 @@ fn merge_deno_options(base: &mut Map<String, Value>, user_opts: &Value) {
   }
 }
 
+/// Merge the user's `compilerOptions.types` into `base_types`, skipping any
+/// entry we can't resolve.
+///
+/// A bare name (no `/`) resolves via typeRoots/node_modules (`deno`, `node`,
+/// `@types/*`); a slashed entry (e.g. `lume/types.ts`) needs a matching `paths`
+/// mapping. Emitting an unresolvable `types` entry makes stock tsc/tsgo fail the
+/// whole program build (TS2688) and skip every file, masking all real
+/// diagnostics, so it is dropped rather than passed through.
+fn merge_user_types(
+  base_types: &mut Vec<Value>,
+  user_types: &[Value],
+  specifier_paths: &Map<String, Value>,
+) {
+  for entry in user_types {
+    let Some(s) = entry.as_str() else { continue };
+    // A bare package name resolves via typeRoots/node_modules: either unscoped
+    // (`node`, no slash) or scoped (`@types/react`, `@`-prefixed, one slash). A
+    // subpath entry (`lume/types.ts`, `@scope/pkg/sub`) needs a `paths` mapping.
+    let is_bare_package = match s.strip_prefix('@') {
+      Some(rest) => rest.matches('/').count() == 1,
+      None => !s.contains('/'),
+    };
+    let resolvable = is_bare_package || specifier_paths.contains_key(s);
+    if !resolvable {
+      log::debug!(
+        "sync-types: dropping unresolvable `types` entry {s:?} (no mapping)"
+      );
+      continue;
+    }
+    if !base_types.iter().any(|e| e == entry) {
+      base_types.push(entry.clone());
+    }
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -794,6 +863,35 @@ mod tests {
     assert!(base.get("unknownOption").is_none());
     // target stays at the base value
     assert_eq!(base.get("target").unwrap(), &json!("esnext"));
+  }
+
+  #[test]
+  fn test_merge_user_types() {
+    let mut base = vec![json!("deno"), json!("node")];
+    let user = vec![
+      // bare name -> resolves via node_modules/@types, kept
+      json!("@types/react"),
+      // slashed with a matching paths mapping -> kept
+      json!("lume/types.ts"),
+      // slashed without a mapping -> dropped (would abort the build)
+      json!("unmapped/types.ts"),
+      // duplicate of an injected type -> not added twice
+      json!("node"),
+    ];
+    let mut paths = Map::new();
+    paths.insert("lume/types.ts".to_string(), json!(["../.deno/x.d.ts"]));
+
+    merge_user_types(&mut base, &user, &paths);
+
+    assert_eq!(
+      base,
+      vec![
+        json!("deno"),
+        json!("node"),
+        json!("@types/react"),
+        json!("lume/types.ts"),
+      ]
+    );
   }
 
   #[test]
@@ -870,10 +968,10 @@ mod tests {
     let paths = generate_npm_paths(Path::new("/tmp/project"), Some(&imports));
 
     assert!(paths.contains_key("npm:chalk"));
-    // jsr specifiers should not appear in npm paths
+    // jsr specifiers should not appear in npm paths; every key is npm:-scheme
     assert!(!paths.contains_key("jsr:@std/assert"));
     assert!(!paths.contains_key("@std/assert"));
-    assert_eq!(paths.len(), 1);
+    assert!(paths.keys().all(|k| k.starts_with("npm:")));
   }
 
   #[test]
@@ -889,8 +987,15 @@ mod tests {
   #[test]
   fn test_build_tsconfig_includes_relative_to_deno_dir() {
     let project_root = Path::new("/tmp/project");
-    let tsconfig =
-      build_tsconfig(project_root, None, None, &[], &BTreeMap::new());
+    let tsconfig = build_tsconfig(
+      project_root,
+      None,
+      None,
+      &[],
+      &BTreeMap::new(),
+      &Map::new(),
+      false,
+    );
 
     let include = tsconfig.get("include").unwrap().as_array().unwrap();
     assert_eq!(include, &vec![json!("../**/*")]);
@@ -903,8 +1008,15 @@ mod tests {
   fn test_build_tsconfig_with_files() {
     let project_root = Path::new("/tmp/project");
     let files = vec!["main.ts".to_string(), "lib.ts".to_string()];
-    let tsconfig =
-      build_tsconfig(project_root, None, None, &files, &BTreeMap::new());
+    let tsconfig = build_tsconfig(
+      project_root,
+      None,
+      None,
+      &files,
+      &BTreeMap::new(),
+      &Map::new(),
+      false,
+    );
 
     // Should use "files" instead of "include"/"exclude"
     assert!(tsconfig.get("include").is_none());
@@ -931,6 +1043,8 @@ mod tests {
       Some(&imports),
       &[],
       &BTreeMap::new(),
+      &Map::new(),
+      false,
     );
 
     let paths = tsconfig
