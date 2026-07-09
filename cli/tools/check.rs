@@ -48,7 +48,8 @@ async fn check_with_factory(
   let main_graph_container = factory.main_module_graph_container().await?;
 
   let specifiers = main_graph_container.collect_specifiers(
-    &check_flags.files,
+    &check_flags.files.include,
+    &check_flags.files.ignore,
     CollectSpecifiersOptions {
       include_ignored_specified: false,
     },

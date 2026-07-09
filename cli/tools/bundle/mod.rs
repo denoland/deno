@@ -320,6 +320,7 @@ pub async fn bundle(
       check_factory.main_module_graph_container().await?;
     let specifiers = main_graph_container.collect_specifiers(
       &bundle_flags.entrypoints,
+      &[],
       CollectSpecifiersOptions {
         include_ignored_specified: false,
       },

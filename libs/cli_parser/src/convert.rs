@@ -1652,13 +1652,21 @@ fn check_parse(result: &ParseResult, flags: &mut Flags) {
     .map(|v| v.iter().map(|s| s.to_string()).collect())
     .unwrap_or_else(|| vec![".".to_string()]);
 
+  let ignore = result
+    .get_many("ignore")
+    .map(|v| v.iter().map(|s| s.to_string()).collect())
+    .unwrap_or_default();
+
   if result.get_bool("all") || result.get_bool("remote") {
     flags.type_check_mode = TypeCheckMode::All;
   }
 
   flags.watch = watch_arg_parse(result);
   flags.subcommand = DenoSubcommand::Check(CheckFlags {
-    files,
+    files: FileFlags {
+      include: files,
+      ignore,
+    },
     doc: result.get_bool("doc"),
     doc_only: result.get_bool("doc-only"),
     check_js: result.get_bool("check-js"),

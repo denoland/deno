@@ -2295,6 +2295,15 @@ Unless --reload is specified, this command will not re-download already cached d
             .num_args(1..)
             .value_hint(ValueHint::FilePath),
         )
+        .arg(
+          Arg::new("ignore")
+            .long("ignore")
+            .num_args(1..)
+            .action(ArgAction::Append)
+            .require_equals(true)
+            .help("Ignore type-checking particular source files")
+            .value_hint(ValueHint::AnyPath),
+        )
         .arg(allow_import_arg())
         .arg(deny_import_arg())
         .arg(v8_flags_arg())
@@ -6789,6 +6798,12 @@ fn check_parse(
     Some(f) => f.collect(),
     None => vec![".".to_string()], // default
   };
+  let ignore = match matches.remove_many::<String>("ignore") {
+    Some(f) => f
+      .flat_map(flat_escape_split_commas)
+      .collect::<Result<Vec<_>, _>>()?,
+    None => vec![],
+  };
   if matches.get_flag("all") || matches.get_flag("remote") {
     flags.type_check_mode = TypeCheckMode::All;
   }
@@ -6797,7 +6812,10 @@ fn check_parse(
   }
   flags.watch = watch_arg_parse(matches)?;
   flags.subcommand = DenoSubcommand::Check(CheckFlags {
-    files,
+    files: FileFlags {
+      include: files,
+      ignore,
+    },
     doc: matches.get_flag("doc"),
     doc_only: matches.get_flag("doc-only"),
     check_js: matches.get_flag("check-js"),
@@ -10587,7 +10605,10 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Check(CheckFlags {
-          files: svec!["script.ts"],
+          files: FileFlags {
+            include: svec!["script.ts"],
+            ignore: vec![],
+          },
           doc: false,
           doc_only: false,
           check_js: false,
@@ -10603,7 +10624,10 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Check(CheckFlags {
-          files: svec!["."],
+          files: FileFlags {
+            include: svec!["."],
+            ignore: vec![],
+          },
           doc: false,
           doc_only: false,
           check_js: false,
@@ -10619,7 +10643,10 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Check(CheckFlags {
-          files: svec!["script.ts"],
+          files: FileFlags {
+            include: svec!["script.ts"],
+            ignore: vec![],
+          },
           doc: true,
           doc_only: false,
           check_js: false,
@@ -10635,7 +10662,10 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Check(CheckFlags {
-          files: svec!["markdown.md"],
+          files: FileFlags {
+            include: svec!["markdown.md"],
+            ignore: vec![],
+          },
           doc: false,
           doc_only: true,
           check_js: false,
@@ -10665,7 +10695,10 @@ mod tests {
         r.unwrap(),
         Flags {
           subcommand: DenoSubcommand::Check(CheckFlags {
-            files: svec!["script.ts"],
+            files: FileFlags {
+              include: svec!["script.ts"],
+              ignore: vec![],
+            },
             doc: false,
             doc_only: false,
             check_js: false,
@@ -10694,7 +10727,10 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Check(CheckFlags {
-          files: svec!["script.js"],
+          files: FileFlags {
+            include: svec!["script.js"],
+            ignore: vec![],
+          },
           doc: false,
           doc_only: false,
           check_js: true,
@@ -10710,7 +10746,10 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Check(CheckFlags {
-          files: svec!["script.ts"],
+          files: FileFlags {
+            include: svec!["script.ts"],
+            ignore: vec![],
+          },
           doc: false,
           doc_only: false,
           check_js: false,
@@ -10721,6 +10760,30 @@ mod tests {
           is_desktop: true,
           ..Default::default()
         },
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "check",
+      "--ignore=generated.ts,vendor",
+      "."
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Check(CheckFlags {
+          files: FileFlags {
+            include: svec!["."],
+            ignore: svec!["generated.ts", "vendor"],
+          },
+          doc: false,
+          doc_only: false,
+          check_js: false,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -17365,7 +17428,10 @@ Usage: deno lint [OPTIONS] [files]...\n"
       flags,
       Flags {
         subcommand: DenoSubcommand::Check(CheckFlags {
-          files: svec!["script.ts"],
+          files: FileFlags {
+            include: svec!["script.ts"],
+            ignore: vec![],
+          },
           doc: false,
           doc_only: false,
           check_js: false,

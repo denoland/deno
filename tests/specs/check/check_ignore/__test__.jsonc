@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "ignore_flag_excludes_file": {
+      "args": "check --ignore=error.ts .",
+      "output": "ignore_pass.out",
+      "exitCode": 0
+    },
+    "without_ignore_flag_errors": {
+      "args": "check .",
+      "output": "no_ignore.out",
+      "exitCode": 1
+    }
+  }
+}
