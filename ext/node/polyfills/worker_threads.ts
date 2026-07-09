@@ -29,6 +29,8 @@ const {
   deserializeJsMessageData,
   markAsUncloneable: webMarkAsUncloneable,
   addInternalMessageListener,
+  incrementActiveCpuProfileCount,
+  decrementActiveCpuProfileCount,
   MessageChannel,
   MessagePort,
   MessagePortIdSymbol,
@@ -94,7 +96,7 @@ const {
   FunctionPrototypeApply,
   FunctionPrototypeBind,
   FunctionPrototypeCall,
-  JSONParse,
+  MapPrototypeForEach,
   MathFloor,
   NumberIsFinite,
   NumberIsNaN,
@@ -733,6 +735,7 @@ class NodeWorker extends EventEmitter {
       switch (type) {
         case 1: { // TerminalError
           this.#status = "CLOSED";
+          this.#rejectPendingCpuProfileRequests();
           if (this.listenerCount("error") > 0) {
             const errMsg = data.errorMessage ?? data.message;
             const errName = data.name;
@@ -773,6 +776,7 @@ class NodeWorker extends EventEmitter {
         case 3: { // Close
           debugWT(`Host got "close" message from worker: ${this.#name}`);
           this.#status = "CLOSED";
+          this.#rejectPendingCpuProfileRequests();
           // Drain pending messages before closing stdio and emitting exit:
           // any stdio chunks still queued on the message channel must be
           // pushed onto the Readable streams *before* we EOF them, otherwise
@@ -853,9 +857,28 @@ class NodeWorker extends EventEmitter {
     } else if (type === "WORKER_CPU_PROFILE_STARTED") {
       pending.resolve(message.profileId);
     } else {
-      pending.resolve(JSONParse(message.profile));
+      // Resolve with the raw profile JSON string, matching Node.js where
+      // `handle.stop()` fulfills with a string (e.g. so it can be written
+      // directly to a `.cpuprofile` file).
+      pending.resolve(message.profile);
     }
     return true;
+  }
+
+  // Reject any in-flight `startCpuProfile`/`stop` promises once the worker is
+  // no longer running, matching Node.js which rejects with
+  // ERR_WORKER_NOT_RUNNING rather than hanging when the worker has exited
+  // before responding to a profile control message.
+  #rejectPendingCpuProfileRequests() {
+    if (this.#pendingCpuProfileRequests.size === 0) {
+      return;
+    }
+    const pending = this.#pendingCpuProfileRequests;
+    this.#pendingCpuProfileRequests = new SafeMap();
+    MapPrototypeForEach(
+      pending,
+      (request) => request.reject(new ERR_WORKER_NOT_RUNNING()),
+    );
   }
 
   #pollMessages = async () => {
@@ -931,6 +954,7 @@ class NodeWorker extends EventEmitter {
     this.#status = "TERMINATED";
     op_host_terminate_worker(this.#id);
     this.#closeStdio();
+    this.#rejectPendingCpuProfileRequests();
 
     if (!this.#exited) {
       this.#exited = true;
@@ -1366,6 +1390,10 @@ internals.__initWorkerThreads = (
                 msg.samplingIntervalMicros,
                 msg.maxSamples,
               );
+              // Keep the worker alive while this profile is active so the
+              // matching `stop()` can be serviced even if the worker would
+              // otherwise idle-terminate.
+              incrementActiveCpuProfileCount();
             } catch (err) {
               error = err?.message ?? String(err);
             }
@@ -1380,6 +1408,9 @@ internals.__initWorkerThreads = (
             PromisePrototypeThen(
               op_worker_thread_cpu_profile_stop(msg.profileId),
               (profile) => {
+                // The profile is no longer active; release the keep-alive so
+                // the worker can idle-terminate again.
+                decrementActiveCpuProfileCount();
                 parentPort.postMessage({
                   type: "WORKER_CPU_PROFILE_RESULT",
                   requestId: msg.requestId,
@@ -1387,6 +1418,7 @@ internals.__initWorkerThreads = (
                 });
               },
               (err) => {
+                decrementActiveCpuProfileCount();
                 parentPort.postMessage({
                   type: "WORKER_CPU_PROFILE_RESULT",
                   requestId: msg.requestId,

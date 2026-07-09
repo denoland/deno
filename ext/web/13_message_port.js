@@ -79,6 +79,23 @@ function addInternalMessageListener() {
   internalMessageListenerCount++;
 }
 
+// counter of CPU profiles that are currently active on the worker global
+// scope (between `worker.startCpuProfile()` and `handle.stop()`). While a
+// profile is active the worker must NOT idle-terminate, otherwise the pending
+// `stop()` would never resolve. `hasMessageEventListener()` treats a non-zero
+// count as a reason to keep the worker alive.
+let activeCpuProfileCount = 0;
+
+function incrementActiveCpuProfileCount() {
+  activeCpuProfileCount++;
+}
+
+function decrementActiveCpuProfileCount() {
+  if (activeCpuProfileCount > 0) {
+    activeCpuProfileCount--;
+  }
+}
+
 class MessageChannel {
   /** @type {MessagePort} */
   #port1;
@@ -905,6 +922,13 @@ function structuredClone(value, options) {
 
 return {
   addInternalMessageListener,
+  incrementActiveCpuProfileCount,
+  decrementActiveCpuProfileCount,
+  // Exposed as a getter for the same live-binding reason as
+  // `refedMessagePortsCount` below.
+  get activeCpuProfileCount() {
+    return activeCpuProfileCount;
+  },
   deserializeJsMessageData,
   // Exposed as a getter for the same live-binding reason as
   // `refedMessagePortsCount` below.

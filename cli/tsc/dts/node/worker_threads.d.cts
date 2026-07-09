@@ -310,50 +310,29 @@ declare module "worker_threads" {
          */
         stackSizeMb?: number | undefined;
     }
-    interface CpuProfileOptions {
+    interface CPUProfileOptions {
         /**
-         * The sampling interval in milliseconds. Defaults to V8's internal value.
+         * Requested sampling interval in milliseconds.
+         * @default 0
          */
         sampleInterval?: number | undefined;
         /**
-         * The maximum number of samples to collect. Defaults to unlimited.
+         * Maximum number of samples to retain.
+         * @default 4294967295
          */
         maxBufferSize?: number | undefined;
-    }
-    interface CpuProfileNode {
-        id: number;
-        hitCount?: number | undefined;
-        callFrame: {
-            functionName: string;
-            scriptId: string | number;
-            url: string;
-            lineNumber: number;
-            columnNumber: number;
-        };
-        children?: number[] | undefined;
-        [key: string]: unknown;
-    }
-    /**
-     * A V8 CPU profile, as produced by {@link CPUProfileHandle.stop}. Matches the
-     * `Profiler.Profile` shape from the Chrome DevTools Protocol.
-     */
-    interface CpuProfile {
-        nodes: CpuProfileNode[];
-        startTime: number;
-        endTime: number;
-        samples: number[];
-        timeDeltas: number[];
-        [key: string]: unknown;
     }
     /**
      * A handle to an in-progress CPU profile started via {@link Worker.startCpuProfile}.
      */
     interface CPUProfileHandle {
         /**
-         * Stops the CPU profile and resolves with the collected V8 CPU profile.
-         * Calling `stop()` more than once returns the same promise.
+         * Stops collecting the profile, then returns a `Promise` that fulfills
+         * with the profile data as a JSON string (the Chrome DevTools Protocol
+         * `Profiler.Profile` shape). Calling `stop()` more than once returns the
+         * same promise.
          */
-        stop(): Promise<CpuProfile>;
+        stop(): Promise<string>;
         [Symbol.asyncDispose](): Promise<void>;
     }
     /**
@@ -537,7 +516,7 @@ declare module "worker_threads" {
          * rejected with an `ERR_WORKER_NOT_RUNNING` error.
          * @since v24.7.0
          */
-        startCpuProfile(options?: CpuProfileOptions): Promise<CPUProfileHandle>;
+        startCpuProfile(options?: CPUProfileOptions): Promise<CPUProfileHandle>;
         /**
          * Calls `worker.terminate()` when the dispose scope is exited.
          *

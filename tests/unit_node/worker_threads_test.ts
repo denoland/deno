@@ -1130,18 +1130,13 @@ Deno.test({
 
 Deno.test({
   name: "[node/worker_threads] Worker.startCpuProfile",
-  // TODO(#35250): re-enable once CPU profiling keeps the worker alive while a
-  // profile is active. The worker used here registers no "message" listener,
-  // so it now idle-terminates before the profile control messages are
-  // exchanged and `startCpuProfile()`/`stop()` never resolve. This previously
-  // "worked" only because the internal profiling listener kept every worker
-  // alive forever, which broke worker idle-termination (see node_compat
-  // worker tests).
-  ignore: true,
   async fn() {
+    // A realistic profiling target keeps itself alive (here via a "message"
+    // listener) so the profile control round-trip completes.
     const worker = new workerThreads.Worker(
       `
       const { parentPort } = require("node:worker_threads");
+      parentPort.on("message", () => {});
       let x = 0;
       for (let i = 0; i < 1e6; i++) x += i;
       parentPort.postMessage(x);
@@ -1151,7 +1146,10 @@ Deno.test({
     await once(worker, "online");
 
     const handle = await worker.startCpuProfile();
-    const profile = await handle.stop();
+    // `stop()` resolves with the profile as a JSON string, matching Node.js.
+    const raw = await handle.stop();
+    assertEquals(typeof raw, "string");
+    const profile = JSON.parse(raw);
 
     assert(Array.isArray(profile.nodes), "profile has nodes array");
     assert(Array.isArray(profile.samples), "profile has samples array");
@@ -1161,9 +1159,56 @@ Deno.test({
 
     // Calling stop() again returns the same (already-resolved) promise.
     const again = await handle.stop();
-    assertEquals(again, profile);
+    assertEquals(again, raw);
 
     await worker.terminate();
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] Worker.startCpuProfile keeps worker alive",
+  async fn() {
+    // The worker registers no "message" listener and only a short-lived timer,
+    // so it would idle-terminate before stop() is called. An active CPU profile
+    // must keep it alive until stop() resolves.
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort } = require("node:worker_threads");
+      setTimeout(() => {}, 100);
+      parentPort.postMessage("ready");
+      `,
+      { eval: true },
+    );
+    await once(worker, "online");
+
+    const handle = await worker.startCpuProfile();
+    // Wait past the worker's timer so it would normally idle-terminate here.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const profile = JSON.parse(await handle.stop());
+    assert(Array.isArray(profile.nodes), "profile has nodes array");
+
+    await worker.terminate();
+  },
+});
+
+Deno.test({
+  name:
+    "[node/worker_threads] Worker.startCpuProfile rejects in-flight on exit",
+  async fn() {
+    const worker = new workerThreads.Worker("setInterval(() => {}, 1000);", {
+      eval: true,
+    });
+    await once(worker, "online");
+
+    // Terminate synchronously after starting the request, before the worker
+    // can reply: the in-flight promise must reject rather than hang.
+    const pending = worker.startCpuProfile();
+    await worker.terminate();
+    await assertRejects(
+      () => pending,
+      Error,
+      "Worker instance not running",
+    );
   },
 });
 
