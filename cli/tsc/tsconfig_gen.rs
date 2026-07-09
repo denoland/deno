@@ -42,7 +42,10 @@ pub struct GeneratedTsConfig {
 /// Generates `.deno/tsconfig.json` with compiler options and paths mappings
 /// for npm:/jsr: specifiers. Also ensures a root `tsconfig.json` exists
 /// that extends it.
-#[allow(clippy::too_many_arguments)]
+#[allow(
+  clippy::too_many_arguments,
+  reason = "threads the independent inputs needed to generate a tsconfig"
+)]
 pub fn generate_tsconfig(
   project_root: &Path,
   deno_compiler_options: Option<&Value>,
@@ -350,7 +353,10 @@ fn rebase_onto_deno_dir(path: &str) -> String {
 ///
 /// The generated tsconfig lives at `.deno/tsconfig.json`, so all paths
 /// are relative to that directory (e.g. `../node_modules/...`).
-#[allow(clippy::too_many_arguments)]
+#[allow(
+  clippy::too_many_arguments,
+  reason = "threads the independent inputs needed to generate a tsconfig"
+)]
 fn build_tsconfig(
   project_root: &Path,
   deno_compiler_options: Option<&Value>,

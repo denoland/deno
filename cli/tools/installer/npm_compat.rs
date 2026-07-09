@@ -508,7 +508,10 @@ fn read_deno_json(project_root: &Path) -> Result<Option<Value>, AnyError> {
 }
 
 /// Generate tsconfig.deno.json at the project root with paths mappings.
-#[allow(clippy::too_many_arguments)]
+#[allow(
+  clippy::too_many_arguments,
+  reason = "threads the independent inputs needed to generate a tsconfig"
+)]
 fn generate_deno_tsconfig(
   project_root: &Path,
   deno_compiler_options: Option<&Value>,
