@@ -56,7 +56,7 @@ pub fn generate_tsconfig(
   // Write Deno type definitions to .deno/types/deno/ (private typeRoot).
   let types_dir = project_root.join(".deno/types/deno");
   std::fs::create_dir_all(&types_dir)?;
-  write_deno_types(&types_dir.join("index.d.ts"))?;
+  write_deno_types(&types_dir.join("index.d.ts"), has_node_types)?;
 
   // Write a package.json for the @types/deno package so the typeRoots lookup
   // resolves the directory as a package.
@@ -163,8 +163,35 @@ fn ensure_root_tsconfig(project_root: &Path) -> Result<(), std::io::Error> {
   std::fs::write(&root_tsconfig_path, &content)
 }
 
+/// Web-global types that `@types/node` also declares (globally, via `node:url`)
+/// and that must be owned by a single source. Deno ships the `URLPattern`
+/// *interface* but lets `@types/node` own the *constructor var* (a second
+/// unconditional `declare var URLPattern` would collide, TS2403). That split
+/// means `new URLPattern()` yields Node's type while `x: URLPattern`
+/// annotations use Deno's, and the shapes diverge (`@types/node`'s
+/// `URLPatternResult.inputs` is `URLPatternInput[]`, Deno's/the DOM lib's is the
+/// `[URLPatternInit] | [URLPatternInit, string]` tuple) -> TS2322.
+///
+/// This is a deliberate hack: when generating types we drop Deno's declarations
+/// for the whole family so both the constructor and the instance type come from
+/// `@types/node`. It assumes the `@types/node` we always install provides these
+/// globals; a project pinning an `@types/node` that doesn't is on its own. The
+/// proper fix is dual-globals reconciliation in Deno's core libs (which also
+/// fixes `deno check`, broken on this today), not this generator.
+const NODE_OWNED_GLOBAL_TYPES: &[&str] = &[
+  "URLPattern",
+  "URLPatternInit",
+  "URLPatternInput",
+  "URLPatternComponentResult",
+  "URLPatternResult",
+  "URLPatternOptions",
+];
+
 /// Write the Deno type declarations to a `.d.ts` file.
-fn write_deno_types(path: &Path) -> Result<(), std::io::Error> {
+fn write_deno_types(
+  path: &Path,
+  has_node_types: bool,
+) -> Result<(), std::io::Error> {
   let types_text = get_types_declaration_file_text();
   // Strip triple-slash reference directives that conflict with stock tsc
   let filtered: String = types_text
@@ -177,6 +204,14 @@ fn write_deno_types(path: &Path) -> Result<(), std::io::Error> {
     .collect::<Vec<_>>()
     .join("\n");
 
+  // Defer node-owned web globals to @types/node so the instance type and the
+  // constructor agree (see NODE_OWNED_GLOBAL_TYPES).
+  let filtered = if has_node_types {
+    strip_top_level_type_decls(&filtered, NODE_OWNED_GLOBAL_TYPES)
+  } else {
+    filtered
+  };
+
   std::fs::write(
     path,
     format!(
@@ -185,6 +220,55 @@ fn write_deno_types(path: &Path) -> Result<(), std::io::Error> {
        {filtered}"
     ),
   )
+}
+
+/// Remove top-level `interface NAME {...}` and `type NAME = ...;` declarations
+/// (and their leading JSDoc block) for each NAME in `names`. Deno's lib types
+/// are formatted with each top-level declaration's opening at column 0 and its
+/// closing `}` at column 0, which this relies on.
+fn strip_top_level_type_decls(text: &str, names: &[&str]) -> String {
+  let lines: Vec<&str> = text.lines().collect();
+  let mut out: Vec<&str> = Vec::with_capacity(lines.len());
+  let mut i = 0;
+  while i < lines.len() {
+    let line = lines[i];
+    let is_interface =
+      names.iter().any(|n| line == format!("interface {n} {{"));
+    let is_type_alias = names.iter().any(|n| {
+      line.starts_with(&format!("type {n} =")) || line == format!("type {n}")
+    });
+    if is_interface || is_type_alias {
+      // Drop the JSDoc block immediately preceding this declaration.
+      while out.last().is_some_and(|l| l.trim().is_empty()) {
+        out.pop();
+      }
+      if out.last().is_some_and(|l| l.trim().ends_with("*/")) {
+        while let Some(popped) = out.pop() {
+          if popped.trim_start().starts_with("/**") {
+            break;
+          }
+        }
+      }
+      if is_interface {
+        // Skip to the matching top-level `}` (column 0).
+        i += 1;
+        while i < lines.len() && lines[i] != "}" {
+          i += 1;
+        }
+        i += 1;
+      } else {
+        // Type alias: skip until the line that ends the statement.
+        while i < lines.len() && !lines[i].trim_end().ends_with(';') {
+          i += 1;
+        }
+        i += 1;
+      }
+      continue;
+    }
+    out.push(line);
+    i += 1;
+  }
+  out.join("\n")
 }
 
 /// Build the tsconfig JSON object.
@@ -818,6 +902,35 @@ fn merge_user_types(base_types: &mut Vec<Value>, user_types: &[Value]) {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn test_strip_top_level_type_decls() {
+    let text = "\
+interface Keep {
+  a: number;
+}
+
+/** JSDoc for URLPattern. */
+interface URLPattern {
+  exec(): void;
+}
+
+type URLPatternInput = string | URLPatternInit;
+
+interface AlsoKeep {
+  b: string;
+}";
+    let out =
+      strip_top_level_type_decls(text, &["URLPattern", "URLPatternInput"]);
+    assert!(out.contains("interface Keep {"));
+    assert!(out.contains("interface AlsoKeep {"));
+    // stripped: the interface, the type alias, and the JSDoc block
+    assert!(!out.contains("interface URLPattern {"));
+    assert!(!out.contains("type URLPatternInput"));
+    assert!(!out.contains("JSDoc for URLPattern"));
+    // nested/other members untouched
+    assert!(!out.contains("exec(): void"));
+  }
 
   #[test]
   fn test_base_compiler_options() {
