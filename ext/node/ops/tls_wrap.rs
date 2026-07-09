@@ -58,6 +58,7 @@ use crate::ops::handle_wrap::OwnedPtr;
 use crate::ops::handle_wrap::ProviderType;
 use crate::ops::stream_wrap::LibUvStreamWrap;
 use crate::ops::stream_wrap::StreamBaseState;
+use crate::ops::stream_wrap::call_fatal_exception;
 use crate::ops::stream_wrap::free_uv_buf;
 use crate::ops::stream_wrap_state::ReadInterceptor;
 use crate::ops::tls::NodeTlsState;
@@ -666,6 +667,14 @@ unsafe fn do_invoke_queued(
 /// `op_node_new_async_id` via `process.nextTick`) panics with "RefCell
 /// already borrowed" (#35820). Deferring also matches libuv/Node semantics:
 /// write callbacks never fire synchronously from the write call itself.
+///
+/// Unlike `do_invoke_queued`, this runs on the spawner's ambient context (the
+/// main context) rather than recovering the TLSWrap's stored context via
+/// `clone_context_global(loop_ptr->data)`. Recovering it here would require
+/// reconstructing the isolate while the spawner's event-loop `HandleScope` is
+/// already live, which is not sound. For a TLSSocket used inside a secondary
+/// realm, `oncomplete` and the `reportError` lookup therefore resolve against
+/// the main global; this is correct for the common single-context case.
 fn defer_invoke_queued(
   spawner: &V8TaskSpawner,
   js_handle: v8::Global<v8::Object>,
@@ -704,17 +713,42 @@ fn defer_invoke_queued(
       }
     };
     if let Some(exception) = caught_exception {
-      let global = scope.get_current_context().global(scope);
-      let key = v8::String::new(scope, "reportError").unwrap();
-      if let Some(report_fn_val) = global.get(scope, key.into())
-        && let Ok(report_fn) =
-          v8::Local::<v8::Function>::try_from(report_fn_val)
-      {
-        let undef = v8::undefined(scope);
-        report_fn.call(scope, undef.into(), &[exception]);
-      }
+      call_fatal_exception(scope, exception);
     }
   });
+}
+
+/// Fire the queued write-completion callback, keeping the defer-vs-sync policy
+/// in one place. When `defer` is set (the call originates from a write op that
+/// still holds the `OpState` borrow) the callback is scheduled on the event
+/// loop via `defer_invoke_queued`; otherwise (a libuv callback) it runs
+/// synchronously via `do_invoke_queued`. See `defer_invoke_queued` for why
+/// write ops must defer.
+///
+/// # Safety
+/// `ptr` must be a valid, non-null pointer to a live TLSWrapInner.
+unsafe fn dispatch_invoke_queued(
+  ptr: *mut TLSWrapInner,
+  defer: bool,
+  status: i32,
+) {
+  unsafe {
+    let Some((write_obj, ctx)) = prepare_invoke_queued(ptr) else {
+      return;
+    };
+    if defer {
+      // The spawner is populated at construction (see `TLSWrap::new`), so a
+      // missing one here is a broken invariant; fail loudly rather than
+      // degrading to the synchronous reentrancy panic (#35820).
+      let spawner = (*ptr)
+        .task_spawner
+        .clone()
+        .expect("V8TaskSpawner must be present for deferred write completion");
+      defer_invoke_queued(&spawner, ctx.js_handle, write_obj, status);
+    } else {
+      do_invoke_queued(&ctx, write_obj, status);
+    }
+  }
 }
 
 /// Write encrypted data to a JS-backed stream via the JS `encOut` callback.
@@ -1694,14 +1728,7 @@ impl TLSWrapInner {
           // within an op, eliminating reentrancy issues.
         }
         EncOutAction::InvokeQueued(status) => {
-          if let Some((write_obj, ctx)) = prepare_invoke_queued(ptr) {
-            match (*ptr).task_spawner.clone() {
-              Some(spawner) if defer => {
-                defer_invoke_queued(&spawner, ctx.js_handle, write_obj, status);
-              }
-              _ => do_invoke_queued(&ctx, write_obj, status),
-            }
-          }
+          dispatch_invoke_queued(ptr, defer, status);
         }
       }
     }
@@ -1745,25 +1772,17 @@ impl TLSWrapInner {
       };
       if should_invoke {
         // A synchronous write failure (e.g. the underlying handle was
-        // already closed → UV_EBADF). When this is reached from a write op
+        // already closed -> UV_EBADF). When this is reached from a write op
         // (`defer` is true) the op still holds the OpState borrow, so
         // running the JS `oncomplete` callback here would panic with
         // "RefCell already borrowed" as soon as it reaches another op
-        // (#35820); schedule it on the event loop instead.
-        let spawner = self.task_spawner.clone();
-        // Use raw pointer to drop the &mut self borrow before JS call
+        // (#35820); dispatch_invoke_queued schedules it on the event loop.
+        // Use raw pointer to drop the &mut self borrow before the JS call.
         let ptr = self_ptr;
         // SAFETY: self_ptr is valid (points to self); prepare_invoke_queued
         // and do_invoke_queued do not hold references across JS calls.
         unsafe {
-          if let Some((write_obj, ctx)) = prepare_invoke_queued(ptr) {
-            match spawner {
-              Some(spawner) if defer => {
-                defer_invoke_queued(&spawner, ctx.js_handle, write_obj, ret);
-              }
-              _ => do_invoke_queued(&ctx, write_obj, ret),
-            }
-          }
+          dispatch_invoke_queued(ptr, defer, ret);
         }
       }
     }
@@ -2084,7 +2103,12 @@ impl TLSWrap {
     );
 
     let mut inner = TLSWrapInner::new(kind);
-    inner.task_spawner = op_state.try_borrow::<V8TaskSpawner>().cloned();
+    // `V8TaskSpawner` is always present in `OpState` for a live runtime. Borrow
+    // (rather than `try_borrow`) so a missing spawner fails loudly here instead
+    // of silently leaving `task_spawner` as `None`, which would degrade the
+    // deferred write-completion path back to the synchronous reentrancy panic
+    // this fix avoids (#35820).
+    inner.task_spawner = Some(op_state.borrow::<V8TaskSpawner>().clone());
 
     TLSWrap {
       base,

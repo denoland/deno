@@ -816,12 +816,12 @@ fn user_owned_buf(
   std::ptr::eq(base as *const u8, user_buf.ptr)
 }
 
-/// Handle uncaught exceptions from stream onread callbacks.
-/// Uses globalThis.reportError() to report the exception as uncaught,
-/// matching Node's MakeCallback behavior where unhandled exceptions
+/// Handle uncaught exceptions from native callbacks (stream onread, TLS write
+/// completion, ...). Uses globalThis.reportError() to report the exception as
+/// uncaught, matching Node's MakeCallback behavior where unhandled exceptions
 /// from native callbacks terminate the process.
-fn call_fatal_exception(
-  scope: &mut v8::ContextScope<v8::HandleScope>,
+pub(crate) fn call_fatal_exception(
+  scope: &mut v8::PinnedRef<v8::HandleScope>,
   exception: v8::Local<v8::Value>,
 ) {
   let global = scope.get_current_context().global(scope);
