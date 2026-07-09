@@ -234,16 +234,64 @@ pub async fn ci_command(
 /// installed (run `deno install` first); materializes `jsr:`/`http(s):` types
 /// and writes `.deno/tsconfig.json`.
 pub async fn sync_types_command(flags: Arc<Flags>) -> Result<(), AnyError> {
+  use crate::graph_container::CheckSpecifiersOptions;
+  use crate::graph_container::CollectSpecifiersOptions;
+  use crate::graph_container::ModuleGraphContainer;
+
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
   let file_fetcher = factory.file_fetcher()?.clone();
   let http_client = factory.http_client_provider().get_or_create()?;
   let permissions = factory.root_permissions_container()?.clone();
+
+  // Build the module graph over the whole project to discover every external
+  // (npm:/jsr:/http(s):) specifier the code actually uses — including specifiers
+  // written directly in source and across workspace members, not just the ones
+  // declared in the root deno.json import map.
+  let graph_specifiers = {
+    let graph_container = factory.main_module_graph_container().await?;
+    let roots = graph_container.collect_specifiers(
+      &[".".to_string()],
+      CollectSpecifiersOptions {
+        include_ignored_specified: false,
+      },
+    )?;
+    // Best-effort: build the graph; type/resolution errors here shouldn't stop
+    // us from generating config for whatever did resolve.
+    if let Err(e) = graph_container
+      .check_specifiers(
+        &roots,
+        CheckSpecifiersOptions {
+          ext_overwrite: None,
+          allow_unknown_media_types: true,
+        },
+      )
+      .await
+    {
+      log::debug!("sync-types: graph build had errors (continuing): {e}");
+    }
+    let graph = graph_container.graph();
+    let mut specifiers = std::collections::BTreeSet::new();
+    for module in graph.modules() {
+      for (raw, _dep) in module.dependencies() {
+        if raw.starts_with("npm:")
+          || raw.starts_with("jsr:")
+          || raw.starts_with("http://")
+          || raw.starts_with("https://")
+        {
+          specifiers.insert(raw.clone());
+        }
+      }
+    }
+    specifiers.into_iter().collect::<Vec<_>>()
+  };
+
   super::npm_compat::setup_npm_compat(
     cli_options.initial_cwd(),
     &file_fetcher,
     &http_client,
     &permissions,
+    &graph_specifiers,
   )
   .await?;
   Ok(())

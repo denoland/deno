@@ -41,37 +41,53 @@ pub struct InstalledJsrPackage {
 ///
 /// Called after `deno install` completes npm resolution and node_modules setup.
 /// Returns the list of newly installed JSR packages for reporting.
+fn is_special_specifier(s: &str) -> bool {
+  s.starts_with("jsr:")
+    || s.starts_with("npm:")
+    || s.starts_with("http://")
+    || s.starts_with("https://")
+}
+
 pub async fn setup_npm_compat(
   project_root: &Path,
   file_fetcher: &CliFileFetcher,
   http_client: &HttpClient,
   permissions: &PermissionsContainer,
+  graph_specifiers: &[String],
 ) -> Result<Vec<InstalledJsrPackage>, AnyError> {
   let deno_json = read_deno_json(project_root)?;
-  let Some(deno_json) = deno_json else {
-    return Ok(vec![]);
-  };
+  let deno_compiler_options = deno_json
+    .as_ref()
+    .and_then(|d| d.get("compilerOptions"))
+    .cloned();
 
-  let deno_imports = deno_json.get("imports");
-  let deno_compiler_options = deno_json.get("compilerOptions");
-
-  // Check if there are any jsr:, npm:, or http(s): specifiers — if not, skip
-  let has_special_specifiers = deno_imports
+  // Combine the root import-map targets with the specifiers discovered in the
+  // module graph. Graph specifiers (e.g. `jsr:@std/path` written directly in
+  // source, or a workspace member's deps) are keyed by themselves so the
+  // existing import-map-driven generation maps them to their installed location
+  // just like an import-map alias.
+  let mut combined = deno_json
+    .as_ref()
+    .and_then(|d| d.get("imports"))
     .and_then(|v| v.as_object())
-    .is_some_and(|imports| {
-      imports.values().any(|v| {
-        v.as_str().is_some_and(|s| {
-          s.starts_with("jsr:")
-            || s.starts_with("npm:")
-            || s.starts_with("http://")
-            || s.starts_with("https://")
-        })
-      })
-    });
+    .cloned()
+    .unwrap_or_default();
+  for spec in graph_specifiers {
+    combined
+      .entry(spec.clone())
+      .or_insert_with(|| Value::String(spec.clone()));
+  }
 
+  let has_special_specifiers = combined.iter().any(|(k, v)| {
+    is_special_specifier(k) || v.as_str().is_some_and(is_special_specifier)
+  });
   if !has_special_specifiers {
     return Ok(vec![]);
   }
+
+  let combined_imports = Value::Object(combined);
+  let deno_imports = Some(&combined_imports);
+  let deno_compiler_options = deno_compiler_options.as_ref();
 
   // Install jsr: packages to node_modules/@jsr/
   let installed =
