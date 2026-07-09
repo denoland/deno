@@ -107,11 +107,8 @@ pub async fn lint(
       compiler_options_resolver,
     )?
   } else {
-    let maybe_tsgolint_bin = if tsgolint::is_enabled() {
-      Some(tsgolint::ensure_tsgolint(&factory).await?)
-    } else {
-      None
-    };
+    let maybe_tsgolint_bin =
+      tsgolint::maybe_resolve_bin(&factory, lint_flags.no_type).await;
     let mut linter = WorkspaceLinter::new(
       factory.caches()?.clone(),
       lint_rule_provider,
@@ -177,11 +174,8 @@ async fn lint_with_watch_inner(
     };
   }
 
-  let maybe_tsgolint_bin = if tsgolint::is_enabled() {
-    Some(tsgolint::ensure_tsgolint(&factory).await?)
-  } else {
-    None
-  };
+  let maybe_tsgolint_bin =
+    tsgolint::maybe_resolve_bin(&factory, lint_flags.no_type).await;
   let mut linter = WorkspaceLinter::new(
     factory.caches()?.clone(),
     factory.lint_rule_provider().await?,
@@ -333,11 +327,11 @@ impl WorkspaceLinter {
     // https://github.com/denoland/deno/issues/28025
     //
     // Likewise, skip the incremental cache when type-aware (tsgolint) linting is
-    // enabled: its diagnostics aren't reflected in the cache hash, so a file
+    // running: its diagnostics aren't reflected in the cache hash, so a file
     // cached as "clean" would wrongly be skipped.
     if lint_rules.supports_incremental_cache()
       && plugin_specifiers.is_empty()
-      && !tsgolint::is_enabled()
+      && self.maybe_tsgolint_bin.is_none()
     {
       let mut hasher = FastInsecureHasher::new_deno_versioned();
       hasher.write_hashable(lint_rules.incremental_cache_state());

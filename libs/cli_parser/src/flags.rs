@@ -487,6 +487,8 @@ pub struct LintFlags {
   pub permit_no_files: bool,
   pub json: bool,
   pub compact: bool,
+  /// Disable type-aware lint rules (skip downloading/running tsgolint).
+  pub no_type: bool,
 }
 
 impl LintFlags {

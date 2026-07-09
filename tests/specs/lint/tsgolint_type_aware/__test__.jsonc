@@ -1,28 +1,28 @@
 {
   "tests": {
-    // Type-aware linting downloads the `tsgolint` binary from npm on first use
-    // (like `deno bundle` does for esbuild), so it works out of the box for
-    // users. These are still ignored in CI: the spec-test npm registry is a
-    // local mock that does not serve the `@oxlint-tsgolint/*` packages, so the
-    // download can't be exercised here. See README.md for how to run them
-    // manually. Protocol decoding and rule resolution are covered by unit tests
-    // in cli/tools/lint/tsgolint.rs.
+    // Type-aware linting runs as part of `deno lint` by default and downloads
+    // the `tsgolint` binary from npm on first use (like `deno bundle` does for
+    // esbuild), so it works out of the box for users. These are still ignored
+    // in CI: the spec-test npm registry is a local mock that does not serve the
+    // `@oxlint-tsgolint/*` packages, so the download can't be exercised here.
+    // See README.md for how to run them manually. Protocol decoding and rule
+    // resolution are covered by unit tests in cli/tools/lint/tsgolint.rs.
     "floating": {
       "ignore": true,
       "args": "lint floating.ts",
       "exitCode": 1,
-      "envs": {
-        "DENO_UNSTABLE_TSGOLINT": "1"
-      },
       "output": "[WILDCARD]no-floating-promises[WILDCARD]"
     },
     "ignore_directive": {
       "ignore": true,
       "args": "lint ignore_test.ts",
       "exitCode": 0,
-      "envs": {
-        "DENO_UNSTABLE_TSGOLINT": "1"
-      },
+      "output": "[WILDCARD]"
+    },
+    "no_type_flag": {
+      "ignore": true,
+      "args": "lint --no-type floating.ts",
+      "exitCode": 0,
       "output": "[WILDCARD]"
     }
   }

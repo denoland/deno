@@ -3902,6 +3902,13 @@ To ignore linting on an entire file, you can add an ignore comment at the top of
           .help_heading(LINT_HEADING),
       )
       .arg(
+        Arg::new("no-type")
+          .long("no-type")
+          .help("Disable type-aware lint rules (skips downloading and running tsgolint)")
+          .action(ArgAction::SetTrue)
+          .help_heading(LINT_HEADING),
+      )
+      .arg(
         Arg::new("files")
           .num_args(1..)
           .action(ArgAction::Append)
@@ -7693,6 +7700,7 @@ fn lint_parse(
 
   let json = matches.get_flag("json");
   let compact = matches.get_flag("compact");
+  let no_type = matches.get_flag("no-type");
 
   flags.subcommand = DenoSubcommand::Lint(LintFlags {
     files: FileFlags {
@@ -7707,6 +7715,7 @@ fn lint_parse(
     permit_no_files: permit_no_files_parse(matches),
     json,
     compact,
+    no_type,
   });
   flags.watch = watch_arg_parse_with_paths(matches)?;
   Ok(())
@@ -10263,6 +10272,7 @@ mod tests {
           permit_no_files: false,
           json: false,
           compact: false,
+          no_type: false,
         }),
         ..Flags::default()
       }
@@ -10293,6 +10303,7 @@ mod tests {
           permit_no_files: true,
           json: false,
           compact: false,
+          no_type: false,
         }),
         permissions: PermissionFlags {
           allow_import: Some(vec![]),
@@ -10344,6 +10355,7 @@ mod tests {
           permit_no_files: false,
           json: false,
           compact: false,
+          no_type: false,
         }),
         watch: Some(WatchFlagsWithPaths {
           hmr: false,
@@ -10377,6 +10389,7 @@ mod tests {
           permit_no_files: false,
           json: false,
           compact: false,
+          no_type: false,
         }),
         ..Flags::default()
       }
@@ -10399,6 +10412,7 @@ mod tests {
           permit_no_files: false,
           json: false,
           compact: false,
+          no_type: false,
         }),
         ..Flags::default()
       }
@@ -10426,6 +10440,7 @@ mod tests {
           permit_no_files: false,
           json: false,
           compact: false,
+          no_type: false,
         }),
         ..Flags::default()
       }
@@ -10454,6 +10469,7 @@ mod tests {
           permit_no_files: false,
           json: false,
           compact: false,
+          no_type: false,
         }),
         ..Flags::default()
       }
@@ -10476,6 +10492,7 @@ mod tests {
           permit_no_files: false,
           json: true,
           compact: false,
+          no_type: false,
         }),
         ..Flags::default()
       }
@@ -10505,6 +10522,7 @@ mod tests {
           permit_no_files: false,
           json: true,
           compact: false,
+          no_type: false,
         }),
         config_flag: ConfigFlag::Path("Deno.jsonc".to_string()),
         ..Flags::default()
@@ -10535,6 +10553,7 @@ mod tests {
           permit_no_files: false,
           json: false,
           compact: true,
+          no_type: false,
         }),
         config_flag: ConfigFlag::Path("Deno.jsonc".to_string()),
         ..Flags::default()

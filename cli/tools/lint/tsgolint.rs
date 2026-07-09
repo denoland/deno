@@ -16,12 +16,21 @@
 //! `ExternalLinterResult` means `// deno-lint-ignore` filtering,
 //! `ban-unused-ignore` and diagnostic sorting are applied to them for free.
 //!
-//! NOTE(unstable): this is gated behind `DENO_UNSTABLE_TSGOLINT=1`. The binary
-//! is downloaded automatically from npm on first use (see [`ensure_tsgolint`]),
+//! Type-aware linting runs as part of `deno lint` by default. The binary is
+//! downloaded automatically from npm on first use (see [`ensure_tsgolint`]),
 //! the same way `deno bundle` fetches esbuild; `DENO_TSGOLINT_BIN` can override
-//! the resolved path. Generating a `tsconfig.json` (so files aren't left
-//! "unmatched") is a follow-up, tracked against the Deno 3 "no fork of tsgo"
-//! plan.
+//! the resolved path. `deno lint --no-type` turns it off. Obtaining the binary
+//! is best-effort: on an unsupported platform, or when the download fails, we
+//! warn and continue with the regular (non-type-aware) lint rather than
+//! aborting (see [`maybe_resolve_bin`]).
+//!
+//! tsgolint does not accept an explicit `tsconfig.json` or inline compiler
+//! options over its headless protocol; it discovers a `tsconfig.json` by
+//! walking up from each file, and any file without one is still linted under a
+//! built-in "inferred project" (ESNext + bundler resolution + strict null
+//! checks). So type-aware linting works out of the box for Deno projects that
+//! only have a `deno.json`; feeding Deno's own compiler options through is a
+//! follow-up, tracked against the Deno 3 "no fork of tsgo" plan.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -141,12 +150,30 @@ pub const ALL_RULES: &[&str] = &[
   "use-unknown-in-catch-callback-variable",
 ];
 
-/// Whether type-aware linting via tsgolint is enabled. Unstable, opt-in.
-pub fn is_enabled() -> bool {
-  matches!(
-    std::env::var("DENO_UNSTABLE_TSGOLINT").as_deref(),
-    Ok("1") | Ok("true")
-  )
+/// Resolve the tsgolint binary for type-aware linting, unless it is turned off
+/// with `--no-type`.
+///
+/// This never fails the lint: it returns `None` (type-aware linting off) when
+/// `no_type` is set, when the platform is unsupported, or when the binary can't
+/// be downloaded. A genuine download/resolution failure is surfaced as a
+/// warning; an unsupported platform is skipped quietly.
+pub async fn maybe_resolve_bin(
+  factory: &CliFactory,
+  no_type: bool,
+) -> Option<PathBuf> {
+  if no_type {
+    return None;
+  }
+  match ensure_tsgolint(factory).await {
+    Ok(bin) => bin,
+    Err(err) => {
+      log::warn!(
+        "Type-aware linting is unavailable (could not obtain tsgolint): \
+         {err:#}. Pass --no-type to silence this."
+      );
+      None
+    }
+  }
 }
 
 /// Resolve the set of tsgolint rules to run from the lint config, starting
@@ -379,16 +406,23 @@ fn tsgolint_platform() -> Result<&'static str, AnyError> {
 /// Resolve the path to the tsgolint binary, downloading it from npm on first
 /// use (into `DENO_DIR`, like `deno bundle` does for esbuild). Setting
 /// `DENO_TSGOLINT_BIN` overrides this with an explicit path.
+///
+/// Returns `Ok(None)` when the current platform has no tsgolint binary, so the
+/// caller can skip type-aware linting quietly. `Err` is reserved for genuine
+/// failures (e.g. the download failed).
 pub async fn ensure_tsgolint(
   factory: &CliFactory,
-) -> Result<PathBuf, AnyError> {
+) -> Result<Option<PathBuf>, AnyError> {
   if let Ok(p) = std::env::var("DENO_TSGOLINT_BIN")
     && !p.is_empty()
   {
-    return Ok(PathBuf::from(p));
+    return Ok(Some(PathBuf::from(p)));
   }
 
-  let target = tsgolint_platform()?;
+  // No binary for this platform: skip type-aware linting rather than error.
+  let Ok(target) = tsgolint_platform() else {
+    return Ok(None);
+  };
   let deno_dir = factory.deno_dir()?;
   let mut bin_path = deno_dir
     .dl_folder_path()
@@ -399,7 +433,7 @@ pub async fn ensure_tsgolint(
   }
 
   if bin_path.exists() {
-    return Ok(bin_path);
+    return Ok(Some(bin_path));
   }
 
   let installer_factory = factory.npm_installer_factory()?;
@@ -508,7 +542,7 @@ pub async fn ensure_tsgolint(
     });
   }
 
-  Ok(bin_path)
+  Ok(Some(bin_path))
 }
 
 /// Normalize a path to the string form tsgolint reports (absolute, forward

@@ -8,16 +8,17 @@ decoding and rule resolution are covered by unit tests in
 
 ## Run it
 
-From this directory, run the dev build with the feature enabled. The `tsgolint`
-binary is downloaded from npm into `DENO_DIR` automatically on first use (the
-same way `deno bundle` fetches esbuild), so no manual setup is needed:
+Type-aware linting runs as part of `deno lint` by default. The `tsgolint` binary
+is downloaded from npm into `DENO_DIR` automatically on first use (the same way
+`deno bundle` fetches esbuild), so no manual setup is needed:
 
 ```sh
-DENO_UNSTABLE_TSGOLINT=1 ../../../../target/debug/deno lint floating.ts
+../../../../target/debug/deno lint floating.ts
 ```
 
 To point at a locally built or hand-downloaded binary instead of the
-auto-downloaded one, set `DENO_TSGOLINT_BIN=/path/to/tsgolint`.
+auto-downloaded one, set `DENO_TSGOLINT_BIN=/path/to/tsgolint`. To turn
+type-aware linting off, pass `--no-type`.
 
 ## Expected
 
@@ -30,4 +31,9 @@ output. This is the key property: ignore directives apply to tsgolint
 diagnostics because they flow back through deno_lint's external-linter path, so
 deno_lint's ignore-directive filtering (and `ban-unused-ignore`) covers them.
 
+`deno lint --no-type floating.ts` exits 0: the `--no-type` flag skips tsgolint
+entirely, so the floating promise is not reported.
+
 Both files are listed in `tsconfig.json` `include` so tsgolint type-checks them.
+Even without a `tsconfig.json`, tsgolint would still lint them under its
+built-in inferred project, so the type-aware rules run out of the box.
