@@ -64,7 +64,7 @@ pub async fn setup_npm_compat(
   // Workspace member aliases (`@std/assert` -> the local `./assert` member's
   // exports) shadow any published jsr mapping, so compute them up front and let
   // them win in the generated `paths`.
-  let member_paths = deno_json
+  let mut member_paths = deno_json
     .as_ref()
     .map(|d| workspace_member_paths(project_root, d))
     .unwrap_or_default();
@@ -93,6 +93,14 @@ pub async fn setup_npm_compat(
     .iter()
     .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
     .collect();
+
+  // An alias that points at `jsr:`/`npm:<name>` where `<name>` is itself a
+  // workspace member (e.g. `"fresh": "jsr:@fresh/core"` in a repo whose
+  // `packages/fresh` member is named `@fresh/core`) must resolve to the LOCAL
+  // member, not the published registry copy. Otherwise imports through the alias
+  // get the registry package's types while local/relative imports get the
+  // member's, and the two identical-looking types don't unify.
+  add_member_alias_paths(&mut member_paths, &alias_targets);
   for spec in graph_specifiers {
     if is_special_specifier(spec) {
       // Direct scheme specifier: key it to itself.
@@ -316,8 +324,10 @@ fn workspace_member_paths(
   else {
     return paths;
   };
-  for member in members.iter().filter_map(|m| m.as_str()) {
-    let member_rel = member.trim_start_matches("./").trim_end_matches('/');
+  let member_patterns: Vec<&str> =
+    members.iter().filter_map(|m| m.as_str()).collect();
+  for member_rel in expand_member_patterns(project_root, &member_patterns) {
+    let member_rel = member_rel.as_str();
     let Some(member_json) = read_deno_json(&project_root.join(member_rel))
       .ok()
       .flatten()
@@ -355,6 +365,89 @@ fn workspace_member_paths(
     }
   }
   paths
+}
+
+/// Expand workspace member patterns into concrete member directories (relative
+/// to the project root). A trailing `/*` (e.g. `./packages/*`) enumerates the
+/// immediate subdirectories that contain a `deno.json(c)`; everything else is
+/// treated as a literal member path. Deno's own workspace config supports this
+/// glob form, and it's common in monorepos.
+fn expand_member_patterns(
+  project_root: &Path,
+  patterns: &[&str],
+) -> Vec<String> {
+  let mut out = Vec::new();
+  for pattern in patterns {
+    let cleaned = pattern.trim_start_matches("./").trim_end_matches('/');
+    if let Some(parent) = cleaned.strip_suffix("/*") {
+      let Ok(entries) = std::fs::read_dir(project_root.join(parent)) else {
+        continue;
+      };
+      for entry in entries.flatten() {
+        if !entry.path().is_dir() {
+          continue;
+        }
+        let dir = entry.path();
+        if (dir.join("deno.json").exists() || dir.join("deno.jsonc").exists())
+          && let Some(name) = entry.file_name().to_str()
+        {
+          out.push(format!("{parent}/{name}"));
+        }
+      }
+    } else {
+      out.push(cleaned.to_string());
+    }
+  }
+  out.sort();
+  out
+}
+
+/// Extract the bare package name from a `jsr:`/`npm:` specifier, dropping the
+/// scheme and any version/subpath (`jsr:@fresh/core@^2` -> `@fresh/core`,
+/// `npm:chalk@5` -> `chalk`, `npm:@scope/pkg@1` -> `@scope/pkg`).
+fn scheme_package_name(spec: &str) -> Option<String> {
+  let rest = spec
+    .strip_prefix("jsr:")
+    .or_else(|| spec.strip_prefix("npm:"))?;
+  if let Some(scoped) = rest.strip_prefix('@') {
+    let (scope, name_and_rest) = scoped.split_once('/')?;
+    let name = name_and_rest.split('@').next()?;
+    Some(format!("@{scope}/{name}"))
+  } else {
+    Some(rest.split('@').next()?.to_string())
+  }
+}
+
+/// For each import-map alias whose target's package name matches a workspace
+/// member, mirror that member's `paths` entries under the alias so imports
+/// through the alias resolve to the local member's source rather than a
+/// materialized registry copy.
+fn add_member_alias_paths(
+  member_paths: &mut serde_json::Map<String, Value>,
+  alias_targets: &[(String, String)],
+) {
+  // Snapshot member entries so we can extend `member_paths` while iterating.
+  let member_entries: Vec<(String, Value)> = member_paths
+    .iter()
+    .map(|(k, v)| (k.clone(), v.clone()))
+    .collect();
+  for (alias, target) in alias_targets {
+    let Some(base) = scheme_package_name(target) else {
+      continue;
+    };
+    let sub_prefix = format!("{base}/");
+    for (member_key, member_val) in &member_entries {
+      if member_key == &base {
+        member_paths
+          .entry(alias.clone())
+          .or_insert_with(|| member_val.clone());
+      } else if let Some(sub) = member_key.strip_prefix(&sub_prefix) {
+        member_paths
+          .entry(format!("{alias}/{sub}"))
+          .or_insert_with(|| member_val.clone());
+      }
+    }
+  }
 }
 
 fn read_deno_json(project_root: &Path) -> Result<Option<Value>, AnyError> {
@@ -874,5 +967,61 @@ fn resolve_jsr_version(
         anyhow!("No version matching '{req_str}' for {registry_name}")
       })
     }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_scheme_package_name() {
+    assert_eq!(
+      scheme_package_name("jsr:@fresh/core@^2.0.0").as_deref(),
+      Some("@fresh/core")
+    );
+    assert_eq!(scheme_package_name("npm:chalk@5").as_deref(), Some("chalk"));
+    assert_eq!(
+      scheme_package_name("npm:@scope/pkg@1.2.3").as_deref(),
+      Some("@scope/pkg")
+    );
+    assert_eq!(scheme_package_name("npm:chalk").as_deref(), Some("chalk"));
+    assert_eq!(scheme_package_name("./local.ts"), None);
+    assert_eq!(scheme_package_name("https://example.com/x.ts"), None);
+  }
+
+  #[test]
+  fn test_add_member_alias_paths() {
+    // `packages/fresh` (name `@fresh/core`) is a workspace member; the root
+    // import map aliases `fresh` -> `jsr:@fresh/core`.
+    let mut member_paths = serde_json::Map::new();
+    member_paths.insert(
+      "@fresh/core".into(),
+      json!(["../packages/fresh/src/mod.ts"]),
+    );
+    member_paths.insert(
+      "@fresh/core/runtime".into(),
+      json!(["../packages/fresh/src/runtime.ts"]),
+    );
+
+    let alias_targets = vec![
+      ("fresh".to_string(), "jsr:@fresh/core@^2.0.0".to_string()),
+      // an alias to a non-member package is left alone
+      ("chalk".to_string(), "npm:chalk@5".to_string()),
+    ];
+
+    add_member_alias_paths(&mut member_paths, &alias_targets);
+
+    // alias and its subpath now point at the local member source
+    assert_eq!(
+      member_paths.get("fresh").unwrap(),
+      &json!(["../packages/fresh/src/mod.ts"])
+    );
+    assert_eq!(
+      member_paths.get("fresh/runtime").unwrap(),
+      &json!(["../packages/fresh/src/runtime.ts"])
+    );
+    // non-member alias produced no new entry
+    assert!(!member_paths.contains_key("chalk"));
   }
 }
