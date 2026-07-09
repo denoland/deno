@@ -302,34 +302,55 @@ fn generate_jsr_paths(
   let mut paths = Map::new();
 
   if let Some(imports) = deno_imports.and_then(|v| v.as_object()) {
-    for (_alias, target) in imports {
+    for (alias, target) in imports {
       let target_str = match target.as_str() {
         Some(s) => s,
         None => continue,
       };
 
-      if let Some((scope, name, _version)) = parse_jsr_specifier(target_str) {
-        // JSR npm compat uses @jsr/<scope>__<name>
+      if let Some((scope, name, version)) = parse_jsr_specifier(target_str) {
+        // JSR npm compat installs to node_modules/@jsr/<scope>__<name>.
         let jsr_npm_name =
           format!("{}__{}", scope.trim_start_matches('@'), name);
-        let nm_path = format!("../node_modules/@jsr/{jsr_npm_name}");
-
-        // Check if the package actually exists in node_modules
-        let abs_path =
+        let pkg_dir =
           project_root.join(format!("node_modules/@jsr/{jsr_npm_name}"));
-        if !abs_path.exists() {
+        if !pkg_dir.exists() {
           continue;
         }
 
-        // Resolve the types entry point from package.json exports
-        let types_entry = resolve_jsr_types_entry(&abs_path)
-          .unwrap_or_else(|| nm_path.to_string());
+        // Recover the subpath the source actually imports (everything after
+        // `jsr:@scope/name[@version]`), and resolve it through the installed
+        // package's `exports` to a concrete .d.ts. We map to that *relative*
+        // file rather than a non-relative `@jsr/*` wildcard so tsc/tsgo doesn't
+        // emit TS5090 ("non-relative paths are not allowed") - verified.
+        let prefix = match &version {
+          Some(v) => format!("jsr:{scope}/{name}@{v}"),
+          None => format!("jsr:{scope}/{name}"),
+        };
+        let subpath = target_str
+          .strip_prefix(&prefix)
+          .map(|s| s.trim_start_matches('/'))
+          .unwrap_or("");
+        let export_key = if subpath.is_empty() {
+          ".".to_string()
+        } else {
+          format!("./{subpath}")
+        };
+        let Some(types_rel) = resolve_jsr_types_entry(&pkg_dir, &export_key)
+        else {
+          continue;
+        };
 
-        // Map the jsr: specifier
-        let jsr_key = format!("jsr:{scope}/{name}");
+        // Key on the exact specifier as written in source. Also map the
+        // import-map alias form (bare) when this came from an alias entry.
         paths
-          .entry(jsr_key)
-          .or_insert_with(|| json!([&types_entry]));
+          .entry(target_str.to_string())
+          .or_insert_with(|| json!([&types_rel]));
+        if alias != target_str && subpath.is_empty() {
+          paths
+            .entry(alias.clone())
+            .or_insert_with(|| json!([&types_rel]));
+        }
       }
     }
   }
@@ -341,20 +362,27 @@ fn generate_jsr_paths(
 ///
 /// Reads the `"exports"` field and looks for `"."` -> `"types"` condition.
 /// Returns a path relative to `.deno/` (e.g., `../node_modules/@jsr/std__assert/_dist/mod.d.ts`).
-fn resolve_jsr_types_entry(pkg_dir: &Path) -> Option<String> {
+fn resolve_jsr_types_entry(pkg_dir: &Path, export_key: &str) -> Option<String> {
   let pkg_json_path = pkg_dir.join("package.json");
   let content = std::fs::read_to_string(&pkg_json_path).ok()?;
   let pkg_json: Value = serde_json::from_str(&content).ok()?;
 
-  // Try exports["."]["types"]
-  let types_path = pkg_json
-    .get("exports")
-    .and_then(|e| e.get("."))
-    .and_then(|dot| dot.get("types"))
-    .and_then(|t| t.as_str())
+  // Resolve `exports[export_key]` (e.g. "." or "./cookie_map"), preferring the
+  // "types" condition; the entry may be a conditions object or a bare string.
+  let entry = pkg_json.get("exports").and_then(|e| e.get(export_key));
+  let types_path = entry
+    .and_then(|v| {
+      v.get("types")
+        .and_then(|t| t.as_str())
+        .or_else(|| v.as_str())
+    })
     .or_else(|| {
-      // Fallback: top-level "types" field
-      pkg_json.get("types").and_then(|t| t.as_str())
+      // Fallback: top-level "types" field, only for the root export.
+      if export_key == "." {
+        pkg_json.get("types").and_then(|t| t.as_str())
+      } else {
+        None
+      }
     })?;
 
   // Convert package-relative path to .deno/-relative path

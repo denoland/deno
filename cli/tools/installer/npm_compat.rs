@@ -305,6 +305,12 @@ fn extract_tarball_gz(gz_bytes: &[u8], dest: &Path) -> Result<(), AnyError> {
       ));
     }
     let out_path = dest.join(stripped);
+    // tar entries aren't guaranteed to list a directory before the files under
+    // it, and `Entry::unpack` won't create missing parents — so ensure the
+    // parent exists first (otherwise nested files like `_dist/mod.d.ts` fail).
+    if let Some(parent) = out_path.parent() {
+      std::fs::create_dir_all(parent)?;
+    }
     entry.unpack(&out_path)?;
   }
   Ok(())
