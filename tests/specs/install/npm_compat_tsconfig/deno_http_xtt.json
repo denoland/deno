@@ -1,0 +1,6 @@
+{
+  "nodeModulesDir": "auto",
+  "imports": {
+    "xtt": "http://localhost:4545/xTypeScriptTypes.ts"
+  }
+}
