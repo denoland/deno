@@ -50,6 +50,7 @@ pub fn generate_tsconfig(
   files: &[String],
   http_modules: &BTreeMap<Url, String>,
   member_paths: &Map<String, Value>,
+  has_node_types: bool,
 ) -> Result<GeneratedTsConfig, std::io::Error> {
   // Write Deno type definitions to .deno/types/deno/ (private typeRoot).
   let types_dir = project_root.join(".deno/types/deno");
@@ -76,6 +77,7 @@ pub fn generate_tsconfig(
     files,
     http_modules,
     member_paths,
+    has_node_types,
   );
 
   // Write to .deno/tsconfig.json
@@ -195,8 +197,20 @@ fn build_tsconfig(
   check_files: &[String],
   http_modules: &BTreeMap<Url, String>,
   member_paths: &Map<String, Value>,
+  has_node_types: bool,
 ) -> Value {
   let mut compiler_options = base_compiler_options();
+
+  // When @types/node is available, load it alongside @types/deno so Node
+  // globals (timers, node: builtins, Buffer, URLPattern, ...) resolve. It lives
+  // in node_modules/@types, so add that typeRoot too.
+  if has_node_types {
+    compiler_options.insert(
+      "typeRoots".to_string(),
+      json!(["./types", "../node_modules/@types"]),
+    );
+    compiler_options.insert("types".to_string(), json!(["deno", "node"]));
+  }
 
   // Merge user's deno.json compilerOptions (filtered to stock-tsc-compatible
   // options only)

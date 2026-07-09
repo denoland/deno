@@ -127,6 +127,10 @@ pub async fn setup_npm_compat(
     }
   };
 
+  // Ensure @types/node is available so Node globals (timers, node: builtins,
+  // Buffer, URLPattern, ...) resolve under stock tooling.
+  let has_node_types = ensure_types_node(project_root, http_client).await;
+
   // Generate .deno/tsconfig.json and ensure root tsconfig.json extends it
   generate_deno_tsconfig(
     project_root,
@@ -134,9 +138,108 @@ pub async fn setup_npm_compat(
     deno_imports,
     &http_modules,
     &member_paths,
+    has_node_types,
   )?;
 
   Ok(installed)
+}
+
+/// Ensure a stock `@types/node` (and its `undici-types` dependency) is present
+/// in `node_modules/@types` so the generated tsconfig can load Node globals
+/// (timers, `node:` builtins, `Buffer`, `URLPattern`, ...). No-op when the
+/// project already has `@types/node` installed. Returns whether it's available.
+///
+/// This is the interim: once #35889 lands, node types come from the global
+/// cache instead of being materialized per-project here.
+async fn ensure_types_node(
+  project_root: &Path,
+  http_client: &HttpClient,
+) -> bool {
+  if project_root.join("node_modules/@types/node").exists() {
+    return true;
+  }
+  match download_npm_package(project_root, "@types/node", None, http_client)
+    .await
+  {
+    Ok(Some((_version, deps))) => {
+      if let Some(req) = deps.get("undici-types").and_then(|v| v.as_str()) {
+        let _ = download_npm_package(
+          project_root,
+          "undici-types",
+          Some(req),
+          http_client,
+        )
+        .await;
+      }
+      project_root.join("node_modules/@types/node").exists()
+    }
+    _ => false,
+  }
+}
+
+/// Download an npm package tarball from registry.npmjs.org into
+/// `node_modules/<pkg>` and return its resolved version + dependency map.
+/// Resolves `req` (a semver range) if given, otherwise the `latest` dist-tag.
+async fn download_npm_package(
+  project_root: &Path,
+  pkg: &str,
+  req: Option<&str>,
+  http_client: &HttpClient,
+) -> Result<Option<(String, serde_json::Map<String, Value>)>, AnyError> {
+  let meta_url =
+    format!("https://registry.npmjs.org/{}", pkg.replace('/', "%2f"));
+  let bytes = match http_client.download(Url::parse(&meta_url)?).await {
+    Ok(b) => b,
+    Err(e) => {
+      log::debug!("Failed to fetch metadata for {pkg}: {e}");
+      return Ok(None);
+    }
+  };
+  let meta: Value = serde_json::from_slice(&bytes)?;
+  let version = match req {
+    Some(r) => resolve_version_req(&meta, r),
+    None => meta
+      .get("dist-tags")
+      .and_then(|t| t.get("latest"))
+      .and_then(|v| v.as_str())
+      .map(String::from),
+  };
+  let Some(version) = version else {
+    return Ok(None);
+  };
+  let vinfo = meta.get("versions").and_then(|vs| vs.get(&version));
+  let Some(tarball) = vinfo
+    .and_then(|v| v.get("dist"))
+    .and_then(|d| d.get("tarball"))
+    .and_then(|t| t.as_str())
+  else {
+    return Ok(None);
+  };
+  let tb = http_client.download(Url::parse(tarball)?).await?;
+  let dest = project_root.join("node_modules").join(pkg);
+  if let Err(e) = extract_tarball_gz(&tb, &dest) {
+    log::debug!("Failed to extract {pkg}: {e}");
+    let _ = std::fs::remove_dir_all(&dest);
+    return Ok(None);
+  }
+  let deps = vinfo
+    .and_then(|v| v.get("dependencies"))
+    .and_then(|d| d.as_object())
+    .cloned()
+    .unwrap_or_default();
+  Ok(Some((version, deps)))
+}
+
+/// Highest version in the packument satisfying the npm semver range `req`.
+fn resolve_version_req(meta: &Value, req: &str) -> Option<String> {
+  let vr = VersionReq::parse_from_npm(req).ok()?;
+  let versions = meta.get("versions")?.as_object()?;
+  versions
+    .keys()
+    .filter_map(|v| Version::parse_from_npm(v).ok())
+    .filter(|v| vr.matches(v))
+    .max()
+    .map(|v| v.to_string())
 }
 
 /// If `deno_json` references an external import map via `importMap`, read that
@@ -226,12 +329,14 @@ fn read_deno_json(project_root: &Path) -> Result<Option<Value>, AnyError> {
 }
 
 /// Generate tsconfig.deno.json at the project root with paths mappings.
+#[allow(clippy::too_many_arguments)]
 fn generate_deno_tsconfig(
   project_root: &Path,
   deno_compiler_options: Option<&Value>,
   deno_imports: Option<&Value>,
   http_modules: &BTreeMap<Url, String>,
   member_paths: &serde_json::Map<String, Value>,
+  has_node_types: bool,
 ) -> Result<(), AnyError> {
   let generated = crate::tsc::tsconfig_gen::generate_tsconfig(
     project_root,
@@ -240,6 +345,7 @@ fn generate_deno_tsconfig(
     &[],
     http_modules,
     member_paths,
+    has_node_types,
   )
   .map_err(|e| anyhow!("Failed to generate tsconfig: {e}"))?;
 
