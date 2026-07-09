@@ -161,6 +161,27 @@ async function runRcodesign(
   await $`codesign -dv --verbose=4 ./deno`;
 }
 
+async function removeExistingSignature(target: string, binaryName: string) {
+  // patchver runs as a Wasm module and can no longer strip a Mach-O code
+  // signature itself: libsui's Intel signature strip shells out to `codesign`,
+  // which is gated to Apple hosts and so is absent from the Wasm build.
+  // Injecting the channel section then leaves stale signature data in
+  // __LINKEDIT that rcodesign rejects with "data after signature". Strip it
+  // here first with the runner's native codesign so patchver writes into an
+  // unsigned binary that can be re-signed cleanly.
+  if (!target.includes("apple")) {
+    return;
+  }
+  $.logStep("Remove signature", binaryName);
+  const output = await $`codesign --remove-signature ./${binaryName}`.noThrow();
+  if (output.code !== 0) {
+    $.logError(
+      `Failed to remove existing signature from ${binaryName} (error code ${output.code})`,
+    );
+    Deno.exit(1);
+  }
+}
+
 async function promoteBinaryToRc(
   binary: string,
   target: string,
@@ -182,6 +203,8 @@ async function promoteBinaryToRc(
 
   await unzipArchive(archiveName, unzippedName);
   await remove(archiveName);
+
+  await removeExistingSignature(target, unzippedName);
 
   $.logStep(
     "Patchver",
