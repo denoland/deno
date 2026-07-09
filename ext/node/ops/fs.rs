@@ -156,6 +156,21 @@ fn file_for_fd(
     .ok_or_else(ebadf)
 }
 
+fn check_fd_metadata_write(
+  state: &OpState,
+  file: &Rc<dyn deno_io::fs::File>,
+  api_name: &'static str,
+) -> Result<(), FsError> {
+  if let Some(path) = file.maybe_path() {
+    state.borrow::<PermissionsContainer>().check_open(
+      Cow::Borrowed(path),
+      OpenAccessKind::WriteNoFollow,
+      Some(api_name),
+    )?;
+  }
+  Ok(())
+}
+
 /// When `sync_fs` is enabled, `FileSystemRc` is `Arc` (Send) and we can
 /// offload work to a blocking thread. Otherwise, run inline.
 macro_rules! maybe_spawn_blocking {
@@ -1240,6 +1255,7 @@ pub fn op_node_fs_futimes_sync(
   #[smi] mtime_nanos: u32,
 ) -> Result<(), FsError> {
   let file = file_for_fd(state, fd)?;
+  check_fd_metadata_write(state, &file, "node:fs.futimesSync()")?;
   file.utime_sync(atime_secs, atime_nanos, mtime_secs, mtime_nanos)?;
   Ok(())
 }
@@ -1253,7 +1269,12 @@ pub async fn op_node_fs_futimes(
   #[number] mtime_secs: i64,
   #[smi] mtime_nanos: u32,
 ) -> Result<(), FsError> {
-  let file = file_for_fd(&state.borrow(), fd)?;
+  let file = {
+    let state = state.borrow();
+    let file = file_for_fd(&state, fd)?;
+    check_fd_metadata_write(&state, &file, "node:fs.futimes()")?;
+    file
+  };
   file
     .utime_async(atime_secs, atime_nanos, mtime_secs, mtime_nanos)
     .await?;
@@ -1267,6 +1288,7 @@ pub fn op_node_fs_fchmod_sync(
   #[smi] mode: u32,
 ) -> Result<(), FsError> {
   let file = file_for_fd(state, fd)?;
+  check_fd_metadata_write(state, &file, "node:fs.fchmodSync()")?;
   file.chmod_sync(mode)?;
   Ok(())
 }
@@ -1277,7 +1299,12 @@ pub async fn op_node_fs_fchmod(
   fd: i32,
   #[smi] mode: u32,
 ) -> Result<(), FsError> {
-  let file = file_for_fd(&state.borrow(), fd)?;
+  let file = {
+    let state = state.borrow();
+    let file = file_for_fd(&state, fd)?;
+    check_fd_metadata_write(&state, &file, "node:fs.fchmod()")?;
+    file
+  };
   file.chmod_async(mode).await?;
   Ok(())
 }
@@ -1290,6 +1317,7 @@ pub fn op_node_fs_fchown_sync(
   #[smi] gid: u32,
 ) -> Result<(), FsError> {
   let file = file_for_fd(state, fd)?;
+  check_fd_metadata_write(state, &file, "node:fs.fchownSync()")?;
   file.chown_sync(Some(uid), Some(gid))?;
   Ok(())
 }
@@ -1301,7 +1329,12 @@ pub async fn op_node_fs_fchown(
   #[smi] uid: u32,
   #[smi] gid: u32,
 ) -> Result<(), FsError> {
-  let file = file_for_fd(&state.borrow(), fd)?;
+  let file = {
+    let state = state.borrow();
+    let file = file_for_fd(&state, fd)?;
+    check_fd_metadata_write(&state, &file, "node:fs.fchown()")?;
+    file
+  };
   file.chown_async(Some(uid), Some(gid)).await?;
   Ok(())
 }
