@@ -51,6 +51,7 @@ pub fn generate_tsconfig(
   http_modules: &BTreeMap<Url, String>,
   member_paths: &Map<String, Value>,
   has_node_types: bool,
+  excludes: &[String],
 ) -> Result<GeneratedTsConfig, std::io::Error> {
   // Write Deno type definitions to .deno/types/deno/ (private typeRoot).
   let types_dir = project_root.join(".deno/types/deno");
@@ -78,6 +79,7 @@ pub fn generate_tsconfig(
     http_modules,
     member_paths,
     has_node_types,
+    excludes,
   );
 
   // Write to .deno/tsconfig.json
@@ -198,6 +200,7 @@ fn build_tsconfig(
   http_modules: &BTreeMap<Url, String>,
   member_paths: &Map<String, Value>,
   has_node_types: bool,
+  excludes: &[String],
 ) -> Value {
   let mut compiler_options = base_compiler_options();
 
@@ -266,12 +269,20 @@ fn build_tsconfig(
   // libs/resolver/deno_json.rs. Stock tsc/tsgo ignore unknown top-level
   // properties.
   if check_files.is_empty() {
-    // No specific files — check entire project
+    // No specific files — check entire project. Mirror the project's own
+    // `exclude` (from deno.json) so we don't type-check paths Deno itself skips
+    // (test fixtures, generated output, etc.); the tsconfig lives in `.deno/`,
+    // so a project-root pattern `x` is rebased to `../x`.
+    let mut exclude = vec![json!("../**/node_modules")];
+    for pattern in excludes {
+      let rebased = format!("../{}", pattern.trim_start_matches("./"));
+      exclude.push(json!(rebased));
+    }
     json!({
       "_deno_generated": true,
       "compilerOptions": compiler_options,
       "include": ["../**/*"],
-      "exclude": ["../**/node_modules"],
+      "exclude": exclude,
     })
   } else {
     // Specific files requested — only check those
@@ -1007,6 +1018,7 @@ mod tests {
       &BTreeMap::new(),
       &Map::new(),
       false,
+      &[],
     );
 
     let include = tsconfig.get("include").unwrap().as_array().unwrap();
@@ -1014,6 +1026,32 @@ mod tests {
 
     let exclude = tsconfig.get("exclude").unwrap().as_array().unwrap();
     assert_eq!(exclude, &vec![json!("../**/node_modules")]);
+  }
+
+  #[test]
+  fn test_build_tsconfig_propagates_excludes() {
+    let project_root = Path::new("/tmp/project");
+    let excludes = vec!["jsonc/testdata".to_string(), "./_site".to_string()];
+    let tsconfig = build_tsconfig(
+      project_root,
+      None,
+      None,
+      &[],
+      &BTreeMap::new(),
+      &Map::new(),
+      false,
+      &excludes,
+    );
+    let exclude = tsconfig.get("exclude").unwrap().as_array().unwrap();
+    // node_modules always excluded; project excludes are rebased onto `../`.
+    assert_eq!(
+      exclude,
+      &vec![
+        json!("../**/node_modules"),
+        json!("../jsonc/testdata"),
+        json!("../_site"),
+      ]
+    );
   }
 
   #[test]
@@ -1028,6 +1066,7 @@ mod tests {
       &BTreeMap::new(),
       &Map::new(),
       false,
+      &[],
     );
 
     // Should use "files" instead of "include"/"exclude"
@@ -1057,6 +1096,7 @@ mod tests {
       &BTreeMap::new(),
       &Map::new(),
       false,
+      &[],
     );
 
     let paths = tsconfig

@@ -157,6 +157,21 @@ pub async fn setup_npm_compat(
   // Buffer, URLPattern, ...) resolve under stock tooling.
   let has_node_types = ensure_types_node(project_root, http_client).await;
 
+  // The project's own `exclude` (from deno.json) tells us which paths Deno
+  // doesn't check (test fixtures, generated output); mirror it into the tsconfig
+  // so we don't surface diagnostics for files Deno itself skips.
+  let excludes: Vec<String> = deno_json
+    .as_ref()
+    .and_then(|d| d.get("exclude"))
+    .and_then(|v| v.as_array())
+    .map(|arr| {
+      arr
+        .iter()
+        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+        .collect()
+    })
+    .unwrap_or_default();
+
   // Generate .deno/tsconfig.json and ensure root tsconfig.json extends it
   generate_deno_tsconfig(
     project_root,
@@ -165,6 +180,7 @@ pub async fn setup_npm_compat(
     &http_modules,
     &member_paths,
     has_node_types,
+    &excludes,
   )?;
 
   Ok(installed)
@@ -478,6 +494,7 @@ fn generate_deno_tsconfig(
   http_modules: &BTreeMap<Url, String>,
   member_paths: &serde_json::Map<String, Value>,
   has_node_types: bool,
+  excludes: &[String],
 ) -> Result<(), AnyError> {
   let generated = crate::tsc::tsconfig_gen::generate_tsconfig(
     project_root,
@@ -487,6 +504,7 @@ fn generate_deno_tsconfig(
     http_modules,
     member_paths,
     has_node_types,
+    excludes,
   )
   .map_err(|e| anyhow!("Failed to generate tsconfig: {e}"))?;
 
