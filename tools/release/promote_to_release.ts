@@ -162,14 +162,18 @@ async function runRcodesign(
 }
 
 async function removeExistingSignature(target: string, binaryName: string) {
-  // patchver runs as a Wasm module and can no longer strip a Mach-O code
-  // signature itself: libsui's Intel signature strip shells out to `codesign`,
-  // which is gated to Apple hosts and so is absent from the Wasm build.
-  // Injecting the channel section then leaves stale signature data in
-  // __LINKEDIT that rcodesign rejects with "data after signature". Strip it
+  // Only Intel macOS needs this. patchver runs as a Wasm module: libsui's
+  // Intel Mach-O path used to strip the existing code signature by shelling
+  // out to `codesign`, which is gated to Apple hosts and so is absent from the
+  // Wasm build. Injecting the channel section then leaves stale signature data
+  // in __LINKEDIT that rcodesign rejects with "data after signature". Strip it
   // here first with the runner's native codesign so patchver writes into an
   // unsigned binary that can be re-signed cleanly.
-  if (!target.includes("apple")) {
+  //
+  // arm64 must NOT be stripped: its patchver path rebuilds the signature
+  // in-memory, and removing the signature first makes that output unrecognizable
+  // to rcodesign ("specified path is not of a recognized type").
+  if (target !== "x86_64-apple-darwin") {
     return;
   }
   $.logStep("Remove signature", binaryName);
