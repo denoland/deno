@@ -79,9 +79,7 @@ use crate::image_data::ImageData;
 pub const CONTEXT_ID: &str = "2d";
 pub const UNSTABLE_FEATURE_NAME: &str = "canvas2d";
 
-/// Rejects `ImageData` allocations whose backing buffer would exceed what a
-/// JS typed array can address, so absurd `getImageData()`/`createImageData()`
-/// requests throw instead of aborting on an out-of-memory allocation.
+/// Rejects ImageData buffers too large for JS typed arrays.
 fn check_image_data_size(w: u32, h: u32) -> Result<(), Canvas2DError> {
   const MAX_IMAGE_DATA_BYTES: u64 = i32::MAX as u64;
   if (w as u64) * (h as u64) * 4 > MAX_IMAGE_DATA_BYTES {
@@ -90,8 +88,7 @@ fn check_image_data_size(w: u32, h: u32) -> Result<(), Canvas2DError> {
   Ok(())
 }
 
-/// Parses the `CanvasLayerOptions` argument of `beginLayer()`. The layer
-/// `filter` is retained in drawing state, but not rendered yet.
+/// Parses `CanvasLayerOptions` for `beginLayer()`.
 #[inline]
 fn parse_begin_layer_options<'a>(
   scope: &mut v8::PinScope<'a, 'a>,
@@ -138,7 +135,6 @@ pub struct OffscreenCanvasRenderingContext2D {
   data: deno_webgpu::canvas::ContextData,
 
   drawing: RefCell<DrawingBackend>,
-
   renderer: SharedRenderer,
 
   font_ctx: Arc<Mutex<FontContext>>,
@@ -146,11 +142,8 @@ pub struct OffscreenCanvasRenderingContext2D {
 
   state: RefCell<DrawingState>,
   state_stack: RefCell<Vec<StateStackEntry>>,
-
   layer_depth: std::cell::Cell<usize>,
-
   clip_stack: RefCell<Vec<ClipEntry>>,
-
   current_path: RefCell<BezPath>,
 
   settings: Canvas2DSettings,
@@ -211,12 +204,7 @@ impl OffscreenCanvasRenderingContext2D {
       .extend(Self::transform_path(path, transform).iter());
   }
 
-  /// Appends a shape (built in the local coordinate space corresponding to
-  /// `transform`, starting with a `MoveTo`) to the current default path. Per
-  /// spec, `arc()`, `ellipse()`, and `arcTo()` join to an existing subpath
-  /// with a straight line instead of starting a new one, so when the
-  /// current default path is non-empty, the shape's leading `MoveTo` is
-  /// downgraded to a `LineTo`.
+  /// Appends a transformed shape to the current path.
   fn append_shape_path(&self, path: &BezPath, transform: Affine) {
     let transformed = Self::transform_path(path, transform);
     let mut current = self.current_path.borrow_mut();
@@ -231,10 +219,7 @@ impl OffscreenCanvasRenderingContext2D {
     current.extend(iter);
   }
 
-  /// Returns the last on-path point of `path` in the same coordinate space
-  /// the path is stored in, or `None` if the path has no subpath yet (i.e.
-  /// it is empty or ends with `ClosePath`, which per spec is equivalent to
-  /// having no current point for arcTo()'s purposes).
+  /// Returns the current path point.
   fn last_path_point(path: &BezPath) -> Option<Point> {
     match path.elements().last()? {
       PathEl::MoveTo(p) => Some(*p),
@@ -244,6 +229,7 @@ impl OffscreenCanvasRenderingContext2D {
       PathEl::ClosePath => None,
     }
   }
+
   pub fn has_open_layers(&self) -> bool {
     draw::has_open_layers(self)
   }
@@ -349,21 +335,17 @@ impl OffscreenCanvasRenderingContext2D {
     }
   }
 
-  /// See <https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-font>
   #[getter]
   #[string]
   fn font(&self) -> String {
     self.state.borrow().font_state.to_css_string()
   }
 
-  /// See <https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-font>
   #[setter]
   fn font(&self, #[webidl] value: String) {
     if let Some(state) = parse_css_font(&value) {
       let mut s = self.state.borrow_mut();
-      // The font shorthand only covers style, variant-caps, weight, stretch,
-      // size, line-height and family. The other text drawing styles are
-      // independent attributes and must survive a font change.
+      // Keep non-shorthand canvas text state.
       s.font_state = FontState {
         direction: s.font_state.direction,
         font_kerning: s.font_state.font_kerning,
@@ -412,7 +394,6 @@ impl OffscreenCanvasRenderingContext2D {
     };
   }
 
-  /// See <https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-direction>
   #[getter]
   #[string]
   fn direction(&self) -> &'static str {
@@ -430,7 +411,6 @@ impl OffscreenCanvasRenderingContext2D {
     self.state.borrow_mut().font_state.direction = d;
   }
 
-  /// See <https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-lang>
   #[getter]
   #[string]
   fn lang(&self) -> String {
@@ -442,7 +422,6 @@ impl OffscreenCanvasRenderingContext2D {
     self.state.borrow_mut().lang = value;
   }
 
-  /// See <https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-fontkerning>
   #[getter]
   #[string]
   fn font_kerning(&self) -> &'static str {
@@ -460,7 +439,6 @@ impl OffscreenCanvasRenderingContext2D {
     self.state.borrow_mut().font_state.font_kerning = k;
   }
 
-  /// See <https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-fontstretch>
   #[getter]
   #[string]
   fn font_stretch(&self) -> &'static str {
@@ -474,7 +452,6 @@ impl OffscreenCanvasRenderingContext2D {
     }
   }
 
-  /// See <https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-fontvariantcaps>
   #[getter]
   #[string]
   fn font_variant_caps(&self) -> &'static str {
@@ -496,7 +473,6 @@ impl OffscreenCanvasRenderingContext2D {
     self.state.borrow_mut().font_state.font_variant_caps = v;
   }
 
-  /// See <https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-letterspacing>
   #[getter]
   #[string]
   fn letter_spacing(&self) -> String {
@@ -515,7 +491,6 @@ impl OffscreenCanvasRenderingContext2D {
     }
   }
 
-  /// See <https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-wordspacing>
   #[getter]
   #[string]
   fn word_spacing(&self) -> String {
@@ -529,7 +504,6 @@ impl OffscreenCanvasRenderingContext2D {
     }
   }
 
-  /// See <https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-textrendering>
   #[getter]
   #[string]
   fn text_rendering(&self) -> &'static str {
@@ -571,6 +545,7 @@ impl OffscreenCanvasRenderingContext2D {
     {
       return;
     }
+
     let state = self.state.borrow();
     let op = state.global_composite_operation;
     let alpha = state.global_alpha;
@@ -585,6 +560,7 @@ impl OffscreenCanvasRenderingContext2D {
       draw::resolve_brush(scope, &state.fill_style, 1.0);
     let transform = state.transform;
     drop(state);
+
     let rect = Rect::new(*x, *y, *x + *w, *y + *h);
     let (width, height) = self.data.dimensions();
     let mut drawing = self.drawing.borrow_mut();
@@ -601,8 +577,7 @@ impl OffscreenCanvasRenderingContext2D {
           brush_transform,
         );
       });
-      // Per spec, the shadow is composited first, then the source shape is
-      // composited on top as a separate step.
+      // Composite shadow before the source shape.
       if has_layer {
         draw::pop_compositing_layer(&mut drawing);
         draw::push_compositing_layer(&mut drawing, op, alpha, width, height);
@@ -633,14 +608,12 @@ impl OffscreenCanvasRenderingContext2D {
     {
       return;
     }
+
     let transform = self.state.borrow().transform;
     let rect = Rect::new(x, y, x + w, y + h);
     let (width, height) = self.data.dimensions();
     let mut drawing = self.drawing.borrow_mut();
-    // Erase the rect to transparent black regardless of the current
-    // globalCompositeOperation/globalAlpha, by punching it out with an
-    // opaque brush under a canvas-wide "destination-out" layer. A plain
-    // source-over fill with a transparent color would be a no-op instead.
+    // clearRect ignores compositing and alpha.
     draw::push_compositing_layer(
       &mut drawing,
       GlobalCompositeOperation::DestinationOut,
@@ -659,7 +632,6 @@ impl OffscreenCanvasRenderingContext2D {
     draw::pop_compositing_layer(&mut drawing);
   }
 
-  /// See <https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-filltext>
   #[required(3)]
   #[undefined]
   fn fill_text(
@@ -673,7 +645,6 @@ impl OffscreenCanvasRenderingContext2D {
     draw::draw_text(self, scope, &text, *x, *y, max_width.map(|v| *v), false);
   }
 
-  /// See <https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-stroketext>
   #[required(3)]
   #[undefined]
   fn stroke_text(
@@ -687,7 +658,6 @@ impl OffscreenCanvasRenderingContext2D {
     draw::draw_text(self, scope, &text, *x, *y, max_width.map(|v| *v), true);
   }
 
-  /// See <https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-measuretext>
   #[required(1)]
   #[cppgc]
   fn measure_text(&self, #[string] text: &str) -> TextMetrics {
@@ -764,6 +734,7 @@ impl OffscreenCanvasRenderingContext2D {
     let Some(value) = value.to_string(scope) else {
       return;
     };
+
     let value = value.to_rust_string_lossy(scope);
     let functions = {
       let mut parser_input = FilterParserInput::new(&value);
@@ -1022,9 +993,9 @@ impl OffscreenCanvasRenderingContext2D {
       ));
     }
 
-    let mut stack = self.state_stack.borrow_mut();
     // A save() with no matching restore() sits on top of the stack:
     // endLayer() must not reach past it to an earlier beginLayer().
+    let mut stack = self.state_stack.borrow_mut();
     match stack.last() {
       Some(StateStackEntry::Layer(..)) => {}
       _ => {
@@ -1036,6 +1007,7 @@ impl OffscreenCanvasRenderingContext2D {
     let Some(StateStackEntry::Layer(saved_state, pushed)) = stack.pop() else {
       unreachable!("just matched Layer above");
     };
+
     *self.state.borrow_mut() = saved_state;
     self.layer_depth.set(depth - 1);
     if pushed {
@@ -1162,8 +1134,7 @@ impl OffscreenCanvasRenderingContext2D {
     counterclockwise: Option<bool>,
   ) -> Result<(), Canvas2DError> {
     let counterclockwise = counterclockwise.unwrap_or(false);
-    // Per spec, non-finite arguments are silently ignored; only a finite
-    // negative radius throws IndexSizeError.
+    // Ignore non-finite values; reject finite negative radii.
     if !x.is_finite()
       || !y.is_finite()
       || !radius.is_finite()
@@ -1208,8 +1179,7 @@ impl OffscreenCanvasRenderingContext2D {
     #[webidl] y2: UnrestrictedDouble,
     #[webidl] radius: UnrestrictedDouble,
   ) -> Result<(), Canvas2DError> {
-    // Per spec, non-finite arguments are silently ignored; only a finite
-    // negative radius throws IndexSizeError.
+    // Ignore non-finite values; reject finite negative radii.
     if !x1.is_finite()
       || !y1.is_finite()
       || !x2.is_finite()
@@ -1221,9 +1191,9 @@ impl OffscreenCanvasRenderingContext2D {
     if *radius < 0.0 {
       return Err(Canvas2DError::NegativeRadius(*radius));
     }
+
     let transform = self.state.borrow().transform;
-    // Per spec, arcTo() behaves like moveTo(x1, y1) when there is no
-    // current subpath to compute the tangent circle from.
+    // arcTo() starts at (x1, y1) when there is no current point.
     let Some(current_canvas_pt) =
       Self::last_path_point(&self.current_path.borrow())
     else {
@@ -1232,13 +1202,11 @@ impl OffscreenCanvasRenderingContext2D {
       self.append_transformed_path(&path, transform);
       return Ok(());
     };
-    // arc_to_impl's tangent-circle math assumes a Euclidean coordinate
-    // system, so it must run in user space: the current point is mapped
-    // back through the inverse CTM, and the resulting path is transformed
-    // forward again before being joined onto the current default path.
+    // arc_to_impl runs in user space, then the result is transformed back.
     if transform.determinant() == 0.0 {
       return Ok(());
     }
+
     let user_current = transform.inverse() * current_canvas_pt;
     let mut path = BezPath::new();
     path.move_to(user_current);
@@ -1318,6 +1286,7 @@ impl OffscreenCanvasRenderingContext2D {
     if !x.is_finite() || !y.is_finite() || !w.is_finite() || !h.is_finite() {
       return;
     }
+
     let transform = self.state.borrow().transform;
     let mut path = BezPath::new();
     path.move_to((*x, *y));
@@ -1343,6 +1312,7 @@ impl OffscreenCanvasRenderingContext2D {
     if !x.is_finite() || !y.is_finite() || !w.is_finite() || !h.is_finite() {
       return Ok(());
     }
+
     let radii_val = radii.unwrap_or_else(|| v8::undefined(scope).into());
     // Per spec, a non-finite radius (unlike a negative one) is silently
     // ignored rather than throwing, matching the x/y/w/h check above.
@@ -1374,11 +1344,8 @@ impl OffscreenCanvasRenderingContext2D {
     if *w == 0.0 && *h == 0.0 {
       return;
     }
-    // Per spec this is equivalent to stroking a rect() path, even when one
-    // dimension is zero: Rect's own path conversion may collapse a
-    // zero-height/width rect to nothing, but an explicit closed 4-segment
-    // path still traces out and back along the non-zero dimension, so
-    // caps/joins render a degenerate "doubled-over line" as required.
+
+    // Stroke an explicit rect path so degenerate dimensions still render.
     let mut path = BezPath::new();
     path.move_to((*x, *y));
     path.line_to((*x + *w, *y));
@@ -1401,6 +1368,7 @@ impl OffscreenCanvasRenderingContext2D {
     if path.is_empty() {
       return;
     }
+
     let transform = if is_path2d {
       self.state.borrow().transform
     } else {
@@ -1420,6 +1388,7 @@ impl OffscreenCanvasRenderingContext2D {
     if path.is_empty() {
       return;
     }
+
     let transform = self.state.borrow().transform;
     draw::draw_path_stroke(self, scope, path, transform, is_path2d);
   }
@@ -1433,10 +1402,7 @@ impl OffscreenCanvasRenderingContext2D {
   ) {
     let (path, rule, is_path2d) =
       draw::resolve_path_and_fill_rule(self, scope, first, second);
-    // Note: unlike fill()/stroke(), an empty path must not be a no-op here
-    // -- per spec, clipping to an empty path shrinks the clip region to
-    // nothing -- so apply_clip() is still called (it handles the empty
-    // case itself).
+    // Empty paths clip everything.
     let transform = if is_path2d {
       self.state.borrow().transform
     } else {
@@ -1454,11 +1420,7 @@ impl OffscreenCanvasRenderingContext2D {
     c: v8::Local<'_, v8::Value>,
     d: v8::Local<'_, v8::Value>,
   ) -> Result<bool, Canvas2DError> {
-    // The op2 `Option` conversion folds an explicit `null` into `None`, but
-    // the slots that can carry a CanvasFillRule (a non-nullable enum) must
-    // distinguish them: `null` stringifies to "null" (an invalid variant)
-    // while an omitted argument (padded to `undefined` by V8) falls back to
-    // "nonzero".
+    // Preserve explicit null for CanvasFillRule conversion.
     let c = (!c.is_undefined()).then_some(c);
     let d = (!d.is_undefined()).then_some(d);
     let (path, x, y, rule, is_path2d) =
@@ -1466,12 +1428,12 @@ impl OffscreenCanvasRenderingContext2D {
     if !x.is_finite() || !y.is_finite() {
       return Ok(false);
     }
-    // Per spec, isPointInPath() returns false outright when the current
-    // transformation matrix has no inverse.
+    // No inverse CTM means no hit.
     let transform = self.state.borrow().transform;
     if transform.determinant() == 0.0 {
       return Ok(false);
     }
+
     let p = if is_path2d {
       transform.inverse() * Point::new(x, y)
     } else {
@@ -1493,16 +1455,13 @@ impl OffscreenCanvasRenderingContext2D {
     if !x.is_finite() || !y.is_finite() {
       return Ok(false);
     }
-    // Per spec, isPointInStroke() returns false outright when the current
-    // transformation matrix has no inverse.
+    // No inverse CTM means no hit.
     let transform = self.state.borrow().transform;
     if transform.determinant() == 0.0 {
       return Ok(false);
     }
-    // The stroke outline is always built in user space (see
-    // test_point_in_stroke), so the query point must land there too,
-    // regardless of whether it is being tested against the default path or
-    // an explicit Path2D.
+
+    // Stroke hit-testing runs in user space.
     let p = transform.inverse() * Point::new(x, y);
     Ok(hit_test::test_point_in_stroke(
       self, path, p.x, p.y, transform, is_path2d,
@@ -1598,6 +1557,7 @@ impl OffscreenCanvasRenderingContext2D {
     {
       return;
     }
+
     let m = Affine::new([*a, *b, *c, *d, *e, *f]);
     let mut state = self.state.borrow_mut();
     state.transform *= m;
@@ -1613,6 +1573,7 @@ impl OffscreenCanvasRenderingContext2D {
     if !x.is_finite() || !y.is_finite() {
       return;
     }
+
     let mut state = self.state.borrow_mut();
     state.transform *= Affine::scale_non_uniform(*x, *y);
   }
@@ -1623,6 +1584,7 @@ impl OffscreenCanvasRenderingContext2D {
     if !angle.is_finite() {
       return;
     }
+
     let mut state = self.state.borrow_mut();
     state.transform *= Affine::rotate(*angle);
   }
@@ -1637,6 +1599,7 @@ impl OffscreenCanvasRenderingContext2D {
     if !x.is_finite() || !y.is_finite() {
       return;
     }
+
     let mut state = self.state.borrow_mut();
     state.transform *= Affine::translate((*x, *y));
   }
@@ -1675,6 +1638,7 @@ impl OffscreenCanvasRenderingContext2D {
     if *r1 < 0.0 {
       return Err(Canvas2DError::NegativeRadius(*r1));
     }
+
     let gradient = build_radial_gradient(*x0, *y0, *r0, *x1, *y1, *r1);
     Ok(CanvasGradient {
       gradient: RefCell::new(gradient),
@@ -1710,6 +1674,7 @@ impl OffscreenCanvasRenderingContext2D {
         "createPattern called while layers are open".into(),
       ));
     }
+
     let repetition = if rep.is_undefined() {
       return Err(Canvas2DError::PatternSyntax);
     } else if rep.is_null() {
@@ -1718,7 +1683,6 @@ impl OffscreenCanvasRenderingContext2D {
       rep.to_rust_string_lossy(scope)
     };
     let repetition = parse_repetition(&repetition)?;
-
     let resolved = resolve_canvas_image_source(state, scope, image)?;
 
     let pad_x = repetition.x_extend == peniko::Extend::Pad;
@@ -1819,10 +1783,7 @@ impl OffscreenCanvasRenderingContext2D {
       return Ok(());
     }
 
-    // Normalize both rectangles' negative width/height by flipping the
-    // origin and taking the absolute size -- per spec this only changes
-    // *which* pixels are selected/where they land, it must not mirror the
-    // rendered image (unlike a negative scale would).
+    // Negative sizes move the origin; they do not mirror the image.
     let (sx, sw) = if sw < 0.0 { (sx + sw, -sw) } else { (sx, sw) };
     let (sy, sh) = if sh < 0.0 { (sy + sh, -sh) } else { (sy, sh) };
     let (dx, dw) = if dw < 0.0 { (dx + dw, -dw) } else { (dx, dw) };
@@ -1845,11 +1806,7 @@ impl OffscreenCanvasRenderingContext2D {
     let image_brush = peniko::ImageBrush::new(img).with_quality(quality);
     let brush = peniko::Brush::Image(image_brush);
 
-    // The shape is the (possibly fractional) source rect in the image's own
-    // pixel space; the transform maps that rect onto the destination rect,
-    // so the image is sampled at full precision without an intermediate
-    // pixel-copy/crop step (which previously truncated fractional source
-    // coordinates to integers).
+    // Sample the fractional source rect directly.
     let scale_x = dw / sw;
     let scale_y = dh / sh;
     let image_transform = ds.transform
@@ -1877,8 +1834,7 @@ impl OffscreenCanvasRenderingContext2D {
       draw::draw_shadow(&mut drawing, width, height, shadow_color, |d| {
         draw::fill_on(d, &rect, peniko::Fill::NonZero, st, brush.clone(), None);
       });
-      // Per spec, the shadow is composited first, then the source image is
-      // composited on top as a separate step.
+      // Composite shadow before the source image.
       if has_layer {
         draw::pop_compositing_layer(&mut drawing);
         draw::push_compositing_layer(&mut drawing, op, alpha, width, height);
@@ -2012,6 +1968,7 @@ impl OffscreenCanvasRenderingContext2D {
         "putImageData called while layers are open".into(),
       ));
     }
+
     let imagedata = deno_core::cppgc::try_unwrap_cppgc_object::<ImageData>(
       scope,
       imagedata_val,
@@ -2160,7 +2117,7 @@ impl OffscreenCanvasRenderingContext2D {
   }
 }
 
-/// Creates an OffscreenCanvasRenderingContext2D cppgc object.
+/// Creates an OffscreenCanvasRenderingContext2D object.
 #[allow(
   clippy::too_many_arguments,
   reason = "matches CreateCanvasContext signature"
@@ -2193,9 +2150,7 @@ pub fn create_context<'s>(
     (renderer, font_ctx, layout_ctx)
   };
 
-  // Per spec, a non-object `options` value (e.g. a number, string, or
-  // symbol) is not a WebIDL dictionary conversion failure here -- it is
-  // simply ignored, as though no options were passed at all.
+  // Non-object options are ignored.
   let options = if options.is_object() || options.is_null_or_undefined() {
     options
   } else {
@@ -2243,7 +2198,3 @@ pub fn create_context<'s>(
   let val: v8::Local<v8::Value> = obj.cast();
   Ok(v8::Global::new(scope, val))
 }
-
-/// Placeholder init op (reserved for future initialization).
-#[op2(fast)]
-pub fn op_canvas2d_init(_state: &mut OpState) {}

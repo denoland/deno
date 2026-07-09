@@ -104,17 +104,14 @@ impl Length {
     }
   }
 
-  /// Resolves an absolute `<length>` to pixels. Only valid for absolute units;
-  /// font-relative units never reach here (they are rejected at parse time in
-  /// contexts that call this, e.g. transforms).
+  /// Resolves an absolute `<length>` to pixels.
   #[inline]
   pub fn to_pixels(&self) -> f64 {
     debug_assert!(self.unit.is_absolute());
     self.resolve(0.0)
   }
 
-  /// Resolves a `<length>` to pixels, resolving font-relative units against the
-  /// given `font_size` (and `rem` against the fixed root font size).
+  /// Resolves a `<length>` to pixels.
   #[inline]
   pub fn resolve_to_pixels(&self, font_size: f64) -> f64 {
     self.resolve(font_size)

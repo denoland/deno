@@ -12,10 +12,9 @@ use super::value::ParseOptions;
 use super::value::Parser;
 use super::value::ParserInput;
 
-/// Parsed representation of a CSS font shorthand value.
-///
-/// See <https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-font>
-/// See <https://drafts.csswg.org/css-fonts-4/#font-prop>
+/// Parsed CSS font shorthand.
+/// https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-font
+/// https://drafts.csswg.org/css-fonts-4/#font-prop
 /// Values for `CanvasTextDrawingStyles.direction`.
 #[derive(WebIDL, Clone, Copy, Debug, Default, PartialEq)]
 #[webidl(enum)]
@@ -115,13 +114,7 @@ impl CssFontStretch {
   }
 }
 
-/// Parses a CSS `<length>` value for `letterSpacing` / `wordSpacing`.
-///
-/// Font-relative units are kept in their original unit (resolved lazily against
-/// the current font size via [`Length::resolve_to_pixels`]) so they follow
-/// later font size changes. Inside math functions (e.g. `calc()`) font-relative
-/// units are folded to pixels against the default em base at parse time.
-/// Returns `None` for invalid or unsupported values.
+/// Parses `letterSpacing` / `wordSpacing`.
 pub fn parse_css_spacing(s: &str) -> Option<Length> {
   let mut input = ParserInput::new(s.trim());
   let mut parser = Parser::new(&mut input);
@@ -220,8 +213,7 @@ impl FontState {
   }
 }
 
-/// Serializes a font family name, quoting and escaping it when it is not a
-/// valid sequence of CSS identifiers.
+/// Serializes a font family name.
 fn serialize_font_family(family: &str) -> String {
   let valid_unquoted = !family.is_empty()
     && family.split(' ').all(|part| {
@@ -243,9 +235,7 @@ fn serialize_font_family(family: &str) -> String {
 }
 
 /// Parses a CSS `font-style` value.
-/// Returns `None` for unrecognized values.
-///
-/// See <https://drafts.csswg.org/css-fonts-4/#font-style-prop>
+/// https://drafts.csswg.org/css-fonts-4/#font-style-prop
 pub fn parse_css_style(s: &str) -> Option<CssFontStyle> {
   let s = s.trim();
   match s {
@@ -256,10 +246,8 @@ pub fn parse_css_style(s: &str) -> Option<CssFontStyle> {
   }
 }
 
-/// Parses a CSS `font-weight` value into a raw `u16`.
-/// Returns `None` for unrecognized values.
-///
-/// See <https://drafts.csswg.org/css-fonts-4/#font-weight-prop>
+/// Parses a CSS `font-weight` value.
+/// https://drafts.csswg.org/css-fonts-4/#font-weight-prop
 pub fn parse_css_weight(s: &str) -> Option<u16> {
   let s = s.trim();
   match s {
@@ -270,9 +258,7 @@ pub fn parse_css_weight(s: &str) -> Option<u16> {
 }
 
 /// Parses a CSS `font-stretch` keyword.
-/// Returns `None` for unrecognized values.
-///
-/// See <https://drafts.csswg.org/css-fonts-4/#font-stretch-prop>
+/// https://drafts.csswg.org/css-fonts-4/#font-stretch-prop
 pub fn parse_css_stretch(s: &str) -> Option<CssFontStretch> {
   let s = s.trim();
   match s {
@@ -321,7 +307,7 @@ pub fn stretch_to_css_str(stretch: CssFontStretch) -> &'static str {
 ///   font-size[/line-height]? font-family-list
 /// ```
 ///
-/// See <https://drafts.csswg.org/css-fonts-4/#font-prop>
+/// https://drafts.csswg.org/css-fonts-4/#font-prop
 pub fn parse_css_font(s: &str) -> Option<FontState> {
   let s = s.trim();
 
@@ -338,8 +324,7 @@ pub fn parse_css_font(s: &str) -> Option<FontState> {
   parse_css_font_inner(&mut parser)
 }
 
-/// Base used when resolving em/rem and percentage font sizes.
-/// Canvas resolves font-size relative units against the default font size (10px).
+/// Canvas default font-size base.
 const EM_BASE_PX: f64 = 10.0;
 
 /// Result of attempting to parse one optional prefix keyword in the font shorthand.
@@ -352,8 +337,7 @@ enum PrefixValue {
   Neutral,
 }
 
-/// Tries to parse one optional prefix keyword (style / weight / stretch / variant).
-/// Returns `Err` to signal that the current token starts the font-size instead.
+/// Tries to parse one optional font shorthand prefix keyword.
 fn parse_prefix<'i, 't>(
   p: &mut Parser<'i, 't>,
 ) -> Result<PrefixValue, CSSParseError<'i>> {
@@ -481,8 +465,7 @@ fn parse_font_family_list<'i, 't>(
   Some(families)
 }
 
-/// Generic font family keywords, which are case-insensitive and serialize
-/// lowercased.
+/// Case-insensitive generic font family keywords.
 const GENERIC_FAMILIES: &[&str] = &[
   "serif",
   "sans-serif",
@@ -497,8 +480,7 @@ const GENERIC_FAMILIES: &[&str] = &[
   "ui-rounded",
 ];
 
-/// CSS-wide keywords and `default` are not allowed as unquoted font family
-/// names.
+/// Reserved unquoted font family names.
 fn is_reserved_family_ident(ident: &str) -> bool {
   ident.eq_ignore_ascii_case("inherit")
     || ident.eq_ignore_ascii_case("initial")

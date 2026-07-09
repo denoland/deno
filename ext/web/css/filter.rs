@@ -13,7 +13,7 @@ use super::value::Length;
 use super::value::NumericValue;
 use super::value::ParseOptions;
 
-/// A single CSS filter function as defined in
+/// A parsed CSS filter function.
 /// https://www.w3.org/TR/filter-effects-1/#filter-functions
 #[derive(Clone, Debug, PartialEq)]
 pub enum CssFilterFunction {

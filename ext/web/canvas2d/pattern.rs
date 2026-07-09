@@ -13,16 +13,14 @@ use vello::peniko;
 
 use crate::canvas2d::error::Canvas2DError;
 
-/// Parsed repetition modes for Canvas 2D createPattern().
+/// Parsed createPattern repetition mode.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PatternRepetition {
   pub x_extend: peniko::Extend,
   pub y_extend: peniko::Extend,
 }
 
-/// Parses the repetition argument for createPattern().
-///
-/// `null` should be normalized to `""` by the caller before invoking this function.
+/// Parses the createPattern repetition argument.
 pub fn parse_repetition(s: &str) -> Result<PatternRepetition, Canvas2DError> {
   match s {
     "" | "repeat" => Ok(PatternRepetition {
@@ -51,23 +49,11 @@ pub struct CanvasPattern {
   pub(super) x_extend: peniko::Extend,
   pub(super) y_extend: peniko::Extend,
   pub(super) transform: RefCell<Affine>,
-  /// Offset (in image pixels) of the original image content within `image`.
-  /// Non-zero on axes using `Extend::Pad` (i.e. a non-repeating direction),
-  /// since those get a 1px transparent border baked in so the pad extend
-  /// fades to transparent at the tile edge instead of smearing the source
-  /// image's edge pixels outward (see `pad_pattern_image`). Must be
-  /// subtracted from the brush transform at draw time to keep the pattern
-  /// positioned as if the border weren't there.
+  /// Offset of the source content within the padded image.
   pub(super) content_offset: Vec2,
 }
 
-/// Per spec, no-repeat/repeat-x/repeat-y must show the pattern's tile only
-/// once along the non-repeating axis/axes, with nothing (not a smear of the
-/// edge pixel) beyond it. `peniko::Extend` has no such "decal" mode, so a
-/// 1px fully-transparent border is added on each non-repeating axis and
-/// `Extend::Pad` spreads that transparency outward instead of the source
-/// image's edge color. Returns the padded RGBA8 pixels, new dimensions, and
-/// the content offset to compensate for in the brush transform.
+/// Pads non-repeating axes so `Extend::Pad` behaves like decal.
 pub fn pad_pattern_image(
   pixels: &[u8],
   width: u32,
