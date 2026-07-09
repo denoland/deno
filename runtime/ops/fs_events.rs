@@ -710,6 +710,37 @@ mod tests {
     assert_eq!(other.get_class(), GENERIC_ERROR);
   }
 
+  // The test above only proves the match arm fires for our own constant. This
+  // drives the real notify backend against a path that does not exist so a
+  // notify upgrade that rewords the Windows missing-path message fails loudly
+  // here instead of silently regressing fs.watch to a non-ENOENT error (see
+  // denoland/deno#35855). notify's `watch_inner` returns this Generic error
+  // synchronously from its is_dir/is_file check, so no real watch is opened.
+  #[cfg(windows)]
+  #[test]
+  fn notify_windows_missing_path_message_matches_constant() {
+    let mut watcher: RecommendedWatcher = Watcher::new(
+      |_res: Result<NotifyEvent, NotifyError>| {},
+      Default::default(),
+    )
+    .unwrap();
+
+    let missing = PathBuf::from(r"C:\deno-nonexistent\watch\target");
+    let err = watcher
+      .watch(&missing, RecursiveMode::NonRecursive)
+      .expect_err("watching a nonexistent path should fail");
+
+    assert!(
+      matches!(
+        &err.kind,
+        notify::ErrorKind::Generic(msg) if msg == WINDOWS_PATH_NOT_FOUND_MSG
+      ),
+      "notify no longer reports the expected Generic message; got {:?}",
+      err.kind,
+    );
+    assert_eq!(JsNotifyError(err).get_class(), "NotFound");
+  }
+
   #[test]
   fn clone_notify_error_preserves_kind_and_paths() {
     let err = NotifyError {
