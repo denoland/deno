@@ -470,31 +470,20 @@ async fn update(
       }
     };
 
-    // Determine whether re-resolution could move this npm package to a version
-    // that a stale cached packument might be hiding, in which case its metadata
-    // must be refetched first.
-    let force_reload_npm = dep.kind == DepKind::Npm
-      && if cache_options.lockfile_only {
-        // `--lockfile-only` leaves the version requirement untouched, so the
-        // package can only move if a newer version already exists within its
-        // existing range. Refetching the others would emit spurious downloads
-        // (and network requests) without ever changing the lockfile.
-        match (
-          resolved.as_ref(),
-          latest_versions.semver_compatible.as_ref(),
-        ) {
-          (Some(resolved), Some(compatible)) => {
-            compatible.version > resolved.version
-          }
-          // No resolved version (or unknown compatible version) -- refetch to
-          // be safe.
-          _ => true,
-        }
-      } else {
-        // Otherwise the requirement is rewritten to `new_version_req`, so the
-        // package is going to be re-resolved to a new version regardless.
-        true
-      };
+    // The post-modification install re-resolves each package through the npm
+    // installer, which reads the npm registry cache with the default
+    // `CacheSetting::Use`. That cache is *separate* from the one behind
+    // `latest_versions` (the `NpmFetchResolver` fetched those fresh with
+    // `RespectHeaders`), so it can be stale in ways the displayed "latest"
+    // versions don't reveal. A stale installer cache re-resolves to whatever
+    // version it happens to know about, which can move the lockfile up (hiding
+    // a newer in-range version, #35348) or, worse, *down* -- silently
+    // downgrading a lockfile entry that was pinned ahead of the stale cache
+    // (#35822). Comparing `latest_versions` against the resolved version can't
+    // detect this: both can read a fresh newest version while the installer
+    // cache lags behind. So refetch the installer's metadata for every npm
+    // package we might re-resolve.
+    let force_reload_npm = dep.kind == DepKind::Npm;
 
     to_update.push(ToUpdate {
       dep_id,
