@@ -870,6 +870,7 @@ pub(super) fn push_clip(
 /// (width, cap, join, miter limit, dash pattern). Shared by actual
 /// stroke rendering and isPointInStroke() hit-testing so the two stay in
 /// sync.
+#[inline]
 pub(super) fn build_stroke(state: &DrawingState) -> Stroke {
   let mut stroke =
     Stroke::new(state.line_width).with_miter_limit(state.miter_limit);
@@ -905,6 +906,7 @@ pub(super) fn build_stroke(state: &DrawingState) -> Stroke {
   stroke
 }
 
+#[inline]
 pub(super) fn has_shadow(state: &DrawingState) -> bool {
   !is_color_transparent(state.shadow_color_rgba)
     && (state.shadow_blur > 0.0
@@ -912,6 +914,7 @@ pub(super) fn has_shadow(state: &DrawingState) -> bool {
       || state.shadow_offset_y != 0.0)
 }
 
+#[inline]
 pub(super) fn shadow_transform(
   state: &DrawingState,
   transform: Affine,

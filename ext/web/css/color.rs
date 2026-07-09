@@ -11,6 +11,7 @@ use vello::peniko;
 
 use super::error::CSSCustomError;
 
+#[inline]
 pub fn is_color_transparent(c: Color) -> bool {
   c.to_rgba8().a == 0
 }
@@ -19,6 +20,7 @@ pub fn is_color_transparent(c: Color) -> bool {
 /// does not support them, so callers that only need to know whether a string
 /// is a valid `<color>` (e.g. canvas filter validation) check this as a
 /// fallback to [`parse_css_color`].
+#[inline]
 pub fn is_css_system_color(s: &str) -> bool {
   matches!(
     s.trim().to_ascii_lowercase().as_str(),
@@ -44,6 +46,7 @@ pub fn is_css_system_color(s: &str) -> bool {
   )
 }
 
+#[inline]
 pub fn color_to_css_string(color: Color) -> String {
   let rgba = color.to_rgba8();
   if rgba.a == 255 {
@@ -65,6 +68,7 @@ pub fn color_to_css_string(color: Color) -> String {
 /// - Modern: `lab()`, `lch()`, `oklab()`, `oklch()`
 /// - Color function: `color(srgb ...)`, `color(display-p3 ...)`, etc.
 /// - Named: `red`, `blue`, `transparent`, etc.
+#[inline]
 pub fn parse_css_color(s: &str) -> Result<Color, CSSCustomError> {
   let s = s.trim();
   let dyn_color: DynamicColor =

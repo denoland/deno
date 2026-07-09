@@ -32,7 +32,8 @@ use vello::kurbo::Rect;
 use vello::kurbo::Vec2;
 use vello::peniko;
 
-use self::filter::validate_filter_input;
+use self::filter::CanvasLayerFilterPrimitive;
+use self::filter::parse_filter_input;
 use self::renderer::DenoCanvasBackend;
 use self::renderer::SharedRenderer;
 use self::state::Canvas2DSettings;
@@ -90,14 +91,15 @@ fn check_image_data_size(w: u32, h: u32) -> Result<(), Canvas2DError> {
   Ok(())
 }
 
-/// Validates the `CanvasLayerOptions` argument of `beginLayer()`. The layer
-/// `filter` is only validated, not rendered.
-fn validate_begin_layer_options(
-  scope: &mut v8::PinScope<'_, '_>,
-  options: v8::Local<'_, v8::Value>,
-) -> Result<(), Canvas2DError> {
+/// Parses the `CanvasLayerOptions` argument of `beginLayer()`. The layer
+/// `filter` is retained in drawing state, but not rendered yet.
+#[inline]
+fn parse_begin_layer_options<'a>(
+  scope: &mut v8::PinScope<'a, 'a>,
+  options: v8::Local<'a, v8::Value>,
+) -> Result<Vec<CanvasLayerFilterPrimitive>, Canvas2DError> {
   if options.is_null_or_undefined() {
-    return Ok(());
+    return Ok(Vec::new());
   }
   if !options.is_object() {
     return Err(Canvas2DError::InvalidBeginLayerOptions);
@@ -108,14 +110,28 @@ fn validate_begin_layer_options(
     return Err(Canvas2DError::InvalidBeginLayerOptions);
   };
   if filter.is_null_or_undefined() {
-    return Ok(());
+    return Ok(Vec::new());
   }
   if !filter.is_object() {
     // The DOMString branch of the filter union: any string (or stringifiable
     // primitive) is accepted, even when it is not a parsable CSS filter.
-    return Ok(());
+    let Some(value) = filter.to_string(scope) else {
+      return Ok(Vec::new());
+    };
+    let value = value.to_rust_string_lossy(scope);
+    let mut parser_input = FilterParserInput::new(&value);
+    let result: Result<Vec<_>, _> =
+      FilterValueListParser::new(&mut parser_input).collect();
+    return Ok(
+      result
+        .ok()
+        .unwrap_or_default()
+        .into_iter()
+        .map(Into::into)
+        .collect(),
+    );
   }
-  validate_filter_input(scope, filter)
+  parse_filter_input(scope, filter)
 }
 
 pub struct OffscreenCanvasRenderingContext2D {
@@ -151,6 +167,7 @@ unsafe impl GarbageCollected for OffscreenCanvasRenderingContext2D {
 }
 
 impl OffscreenCanvasRenderingContext2D {
+  #[inline]
   fn transform_path(path: &BezPath, transform: Affine) -> BezPath {
     if transform == Affine::IDENTITY {
       return path.clone();
@@ -178,6 +195,7 @@ impl OffscreenCanvasRenderingContext2D {
     transformed
   }
 
+  #[inline]
   fn transform_point_or_original(transform: Affine, point: Point) -> Point {
     let p = transform * point;
     if p.x.is_finite() && p.y.is_finite() {
@@ -757,7 +775,7 @@ impl OffscreenCanvasRenderingContext2D {
     if let Some(functions) = functions {
       let mut state = self.state.borrow_mut();
       state.filter_style = FilterStyle::Css(value);
-      state.filter = functions;
+      state.filter = functions.into_iter().map(Into::into).collect();
     }
   }
 
@@ -956,12 +974,12 @@ impl OffscreenCanvasRenderingContext2D {
   #[fast]
   #[reentrant]
   #[undefined]
-  fn begin_layer(
+  fn begin_layer<'a>(
     &self,
-    scope: &mut v8::PinScope<'_, '_>,
-    options: v8::Local<'_, v8::Value>,
+    scope: &mut v8::PinScope<'a, 'a>,
+    options: v8::Local<'a, v8::Value>,
   ) -> Result<(), Canvas2DError> {
-    validate_begin_layer_options(scope, options)?;
+    let layer_filter = parse_begin_layer_options(scope, options)?;
 
     let current_state = self.state.borrow().clone();
     let op = current_state.global_composite_operation;
@@ -979,7 +997,7 @@ impl OffscreenCanvasRenderingContext2D {
       state.shadow_offset_y = 0.0;
       state.shadow_blur = 0.0;
       state.filter_style = FilterStyle::Css(String::from("none"));
-      state.filter = Vec::new();
+      state.filter = layer_filter;
     }
 
     let (width, height) = self.data.dimensions();
