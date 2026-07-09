@@ -477,7 +477,13 @@ fn generate_jsr_paths(
           Some(v) => format!("jsr:{scope}/{name}@{v}"),
           None => format!("jsr:{scope}/{name}"),
         };
-        let subpath = target_str
+        // Normalize a `jsr:/…` (deno_graph resolved form) to `jsr:…` so the
+        // prefix match below works; the emitted key keeps the original spelling.
+        let norm_target = target_str
+          .strip_prefix("jsr:/")
+          .map(|r| format!("jsr:{r}"))
+          .unwrap_or_else(|| target_str.to_string());
+        let subpath = norm_target
           .strip_prefix(&prefix)
           .map(|s| s.trim_start_matches('/'))
           .unwrap_or("");
@@ -619,6 +625,9 @@ pub fn parse_jsr_specifier(
   specifier: &str,
 ) -> Option<(String, String, Option<String>)> {
   let rest = specifier.strip_prefix("jsr:")?;
+  // deno_graph emits resolved jsr specifiers as `jsr:/@scope/...` (slash after
+  // the scheme); accept that form too.
+  let rest = rest.strip_prefix('/').unwrap_or(rest);
   // JSR specifiers are always scoped: @scope/name@version
   if !rest.starts_with('@') {
     return None;
@@ -907,6 +916,16 @@ mod tests {
         "@scope".to_string(),
         "name".to_string(),
         Some("1.2.3".to_string())
+      ))
+    );
+    // deno_graph resolved form: `jsr:/` with a slash after the scheme, plus a
+    // subpath after the version.
+    assert_eq!(
+      parse_jsr_specifier("jsr:/@std/async@^1/deadline"),
+      Some((
+        "@std".to_string(),
+        "async".to_string(),
+        Some("^1".to_string())
       ))
     );
   }
