@@ -9,10 +9,10 @@ pub mod pattern;
 pub mod text_metrics;
 
 pub use context::CONTEXT_ID;
+pub(crate) use context::DenoCanvasBackend;
 pub use context::OffscreenCanvasRenderingContext2D;
 pub use context::UNSTABLE_FEATURE_NAME;
 pub use context::create_context;
-pub(crate) use context::init_canvas_renderer;
 pub use context::op_canvas2d_init;
 pub use error::Canvas2DError;
 pub use gradient::CanvasGradient;

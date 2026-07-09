@@ -220,8 +220,7 @@ deno_core::extension!(deno_web,
     state.put(geometry::State::new(options.enable_css_parser_features));
     state.put(options.bc);
     state.put(broadcast_channel::BroadcastSabStash::default());
-    let renderer = canvas2d::init_canvas_renderer();
-    state.put(Arc::new(OnceLock::from(renderer)));
+    state.put(Arc::new(OnceLock::<Option<canvas2d::DenoCanvasBackend>>::new()));
     state.put(Arc::new(Mutex::new(parley::FontContext::new())));
     state.put(Arc::new(Mutex::new(parley::LayoutContext::<()>::new())));
     state.put(options.shared_local_font_db);
