@@ -5,9 +5,9 @@ use deno_core::v8;
 use vello::kurbo;
 use vello::peniko;
 
+use super::filter::CanvasLayerFilterPrimitive;
 use super::renderer::DenoCanvasBackend;
 use crate::css::color::Color;
-use crate::css::filter::CssFilterFunction;
 use crate::css::font::FontState;
 
 // TODO(petamoriken): move to a shared crate when canvas2d and webgpu types need to be unified.
@@ -249,7 +249,7 @@ pub(super) struct DrawingState {
   pub(super) lang: String,
   pub(super) global_composite_operation: GlobalCompositeOperation,
   pub(super) filter_style: FilterStyle,
-  pub(super) filter: Vec<CssFilterFunction>,
+  pub(super) filter: Vec<CanvasLayerFilterPrimitive>,
   pub(super) image_smoothing_enabled: bool,
   pub(super) image_smoothing_quality: ImageSmoothingQuality,
   pub(super) line_width: f64,

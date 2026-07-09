@@ -35,6 +35,7 @@ pub enum CssFilterFunction {
 }
 
 impl CssFilterFunction {
+  #[inline]
   fn parse<'i, 't>(
     input: &mut Parser<'i, 't>,
   ) -> Result<Self, CSSParseError<'i>> {
@@ -153,6 +154,7 @@ impl CssFilterFunction {
   }
 }
 
+#[inline]
 fn parse_drop_shadow<'i, 't>(
   args: &mut Parser<'i, 't>,
 ) -> Result<CssFilterFunction, CSSParseError<'i>> {
@@ -208,6 +210,7 @@ pub struct FilterValueListParser<'i, 't> {
 }
 
 impl<'i: 't, 't> FilterValueListParser<'i, 't> {
+  #[inline]
   pub fn new(input: &'t mut ParserInput<'i>) -> Self {
     Self {
       parser: Parser::new(input),
@@ -220,6 +223,7 @@ impl<'i: 't, 't> FilterValueListParser<'i, 't> {
 impl<'i, 't> Iterator for FilterValueListParser<'i, 't> {
   type Item = Result<CssFilterFunction, CSSParseError<'i>>;
 
+  #[inline]
   fn next(&mut self) -> Option<Self::Item> {
     if self.finished {
       return None;
