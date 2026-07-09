@@ -1,7 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
-use std::f64::consts::PI;
 use std::f64::consts::TAU;
 
 use deno_core::GarbageCollected;
@@ -16,6 +15,8 @@ use vello::kurbo::PathEl;
 use vello::kurbo::Point;
 use vello::kurbo::Vec2;
 
+use crate::canvas2d::angle::positive_angle_delta;
+use crate::canvas2d::angle::signed_angle_delta;
 use crate::canvas2d::error::Canvas2DError;
 
 pub struct Path2D {
@@ -345,19 +346,8 @@ pub(super) fn compute_arc_sweep(
   end_angle: f64,
   counterclockwise: bool,
 ) -> f64 {
-  // Mirrors the normalization algorithm in the HTML spec for arc()/ellipse():
-  // for a clockwise sweep, endAngle is advanced until it is not less than
-  // startAngle (sweep in [0, 2*PI)); for a counterclockwise sweep, endAngle
-  // is retreated until it is not greater than startAngle (sweep in
-  // (-2*PI, 0]). Either way, a request for a full lap in the sweep
-  // direction (or more) is clamped to exactly one full turn, and
-  // startAngle == endAngle always yields a zero-length sweep.
-  //
-  // A subtlety: if endAngle is congruent to startAngle mod 2*PI but was not
-  // literally equal to it (e.g. startAngle=0, endAngle=2*PI), `rem_euclid`
-  // normalizes the difference to exactly 0, which must be treated as a
-  // full-circle sweep rather than a zero-length one -- only a *literal*
-  // startAngle == endAngle (no wrapping needed) is a zero-length sweep.
+  // arc()/ellipse() clamp sweeps to one full turn. Equal angles stay empty,
+  // but congruent unequal angles such as 0 and 2*PI draw a full circle.
   let diff = end_angle - start_angle;
   if diff == 0.0 {
     return 0.0;
@@ -366,13 +356,13 @@ pub(super) fn compute_arc_sweep(
     if diff >= TAU {
       return TAU;
     }
-    let sweep = diff.rem_euclid(TAU);
+    let sweep = positive_angle_delta(start_angle, end_angle);
     if sweep == 0.0 { TAU } else { sweep }
   } else {
     if -diff >= TAU {
       return -TAU;
     }
-    let sweep = -(-diff).rem_euclid(TAU);
+    let sweep = -positive_angle_delta(end_angle, start_angle);
     if sweep == 0.0 { -TAU } else { sweep }
   }
 }
@@ -442,20 +432,9 @@ pub(super) fn arc_to_impl(
   let start_angle = (t0.y - center.y).atan2(t0.x - center.x);
   let end_angle = (t1.y - center.y).atan2(t1.x - center.x);
 
-  // Unlike arc()/ellipse(), a corner fillet never needs to wrap more than
-  // half a turn: the swept angle is always `PI` minus the angle between the
-  // two tangent lines, i.e. strictly between 0 and PI in magnitude. So the
-  // correct sweep is simply the shortest signed angular distance from
-  // start_angle to end_angle, normalized to (-PI, PI] -- no need for
-  // compute_arc_sweep's full-turn/direction-clamping semantics, which are
-  // specific to the public arc()/ellipse() `counterclockwise` argument.
-  let mut sweep = end_angle - start_angle;
-  while sweep <= -PI {
-    sweep += TAU;
-  }
-  while sweep > PI {
-    sweep -= TAU;
-  }
+  // arcTo() corner fillets never wrap more than half a turn, so the shortest
+  // signed angular distance is enough.
+  let sweep = signed_angle_delta(start_angle, end_angle);
 
   path.line_to(t0);
   let arc = Arc {
