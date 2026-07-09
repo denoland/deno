@@ -951,6 +951,7 @@ jobs:
             target/release/deno-*.bsdiff.sha256sum
           body_path: target/release/release-notes.md
           draft: true
+          prerelease: '${{ contains(github.ref_name, ''-'') }}'
   test-release-macos-x86_64:
     name: 'test ${{ matrix.test_crate }} ${{ matrix.shard_label }}release macos-x86_64'
     needs:
@@ -1998,6 +1999,7 @@ jobs:
             target/release/deno-*.bsdiff.sha256sum
           body_path: target/release/release-notes.md
           draft: true
+          prerelease: '${{ contains(github.ref_name, ''-'') }}'
   test-release-macos-aarch64:
     name: 'test ${{ matrix.test_crate }} ${{ matrix.shard_label }}release macos-aarch64'
     needs:
@@ -3004,6 +3006,7 @@ jobs:
             target/release/deno-*.bsdiff.sha256sum
           body_path: target/release/release-notes.md
           draft: true
+          prerelease: '${{ contains(github.ref_name, ''-'') }}'
   test-release-windows-x86_64:
     name: 'test ${{ matrix.test_crate }} ${{ matrix.shard_label }}release windows-x86_64'
     needs:
@@ -3868,6 +3871,7 @@ jobs:
             target/release/deno-*.bsdiff.sha256sum
           body_path: target/release/release-notes.md
           draft: true
+          prerelease: '${{ contains(github.ref_name, ''-'') }}'
   test-release-windows-aarch64:
     name: 'test ${{ matrix.test_crate }} ${{ matrix.shard_label }}release windows-aarch64'
     needs:
@@ -4441,6 +4445,7 @@ jobs:
             target/release/deno-*.bsdiff.sha256sum
           body_path: target/release/release-notes.md
           draft: true
+          prerelease: '${{ contains(github.ref_name, ''-'') }}'
       - name: Cache cargo home
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: 'github.ref == ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')'
@@ -6457,6 +6462,7 @@ jobs:
             target/release/deno-*.bsdiff.sha256sum
           body_path: target/release/release-notes.md
           draft: true
+          prerelease: '${{ contains(github.ref_name, ''-'') }}'
   test-release-linux-aarch64:
     name: 'test ${{ matrix.test_crate }} ${{ matrix.shard_label }}release linux-aarch64'
     needs:
