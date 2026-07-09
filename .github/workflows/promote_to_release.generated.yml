@@ -42,7 +42,7 @@ jobs:
           Expand-Archive -Path "deno-windows.zip" -DestinationPath "."
           Expand-Archive -Path "denort-windows.zip" -DestinationPath "."
       - name: Run patchver for Windows
-        run: 'deno run -A ./tools/release/promote_to_release_windows.ts ${{github.event.inputs.releaseKind}}'
+        run: 'deno run -A --minimum-dependency-age=0 ./tools/release/promote_to_release_windows.ts ${{github.event.inputs.releaseKind}}'
       - name: Authenticate with Azure
         uses: azure/login@cb79c773a3cfa27f31f25eb3f677781210c9ce3d
         with:
@@ -122,7 +122,7 @@ jobs:
         env:
           APPLE_CODESIGN_KEY: '${{ secrets.APPLE_CODESIGN_KEY }}'
           APPLE_CODESIGN_PASSWORD: '${{ secrets.APPLE_CODESIGN_PASSWORD }}'
-        run: 'deno run -A ./tools/release/promote_to_release.ts ${{github.event.inputs.releaseKind}} ${{github.event.inputs.commitHash}}'
+        run: 'deno run -A --minimum-dependency-age=0 ./tools/release/promote_to_release.ts ${{github.event.inputs.releaseKind}} ${{github.event.inputs.commitHash}}'
       - name: Download Windows binaries
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
