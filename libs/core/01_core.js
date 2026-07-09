@@ -934,6 +934,10 @@
   }
 
   function createLazyLoader(specifier) {
+    if (specifier === "ext:core/ops") {
+      throw new TypeError('"ext:core/ops" cannot be lazy-loaded');
+    }
+
     let value;
 
     return function lazyLoad() {
