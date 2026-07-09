@@ -61,17 +61,32 @@ pub async fn setup_npm_compat(
     .and_then(|d| d.get("compilerOptions"))
     .cloned();
 
-  // Combine the root import-map targets with the specifiers discovered in the
-  // module graph. Graph specifiers (e.g. `jsr:@std/path` written directly in
-  // source, or a workspace member's deps) are keyed by themselves so the
-  // existing import-map-driven generation maps them to their installed location
-  // just like an import-map alias.
+  // Workspace member aliases (`@std/assert` -> the local `./assert` member's
+  // exports) shadow any published jsr mapping, so compute them up front and let
+  // them win in the generated `paths`.
+  let member_paths = deno_json
+    .as_ref()
+    .map(|d| workspace_member_paths(project_root, d))
+    .unwrap_or_default();
+
+  // Combine the root import map (inline `imports`, or an `importMap` file) with
+  // the specifiers discovered in the module graph. Graph specifiers (e.g.
+  // `jsr:@std/path` written directly in source) are keyed by themselves so the
+  // import-map-driven generation maps them like an alias.
   let mut combined = deno_json
     .as_ref()
     .and_then(|d| d.get("imports"))
     .and_then(|v| v.as_object())
     .cloned()
     .unwrap_or_default();
+  if let Some(map_imports) = deno_json
+    .as_ref()
+    .and_then(|d| read_referenced_import_map(project_root, d))
+  {
+    for (k, v) in map_imports {
+      combined.entry(k).or_insert(v);
+    }
+  }
   for spec in graph_specifiers {
     combined
       .entry(spec.clone())
@@ -81,7 +96,9 @@ pub async fn setup_npm_compat(
   let has_special_specifiers = combined.iter().any(|(k, v)| {
     is_special_specifier(k) || v.as_str().is_some_and(is_special_specifier)
   });
-  if !has_special_specifiers {
+  // Generate if there's anything to map: external specifiers, or a workspace
+  // whose members need local-path aliases (e.g. std).
+  if !has_special_specifiers && member_paths.is_empty() {
     return Ok(vec![]);
   }
 
@@ -116,9 +133,77 @@ pub async fn setup_npm_compat(
     deno_compiler_options,
     deno_imports,
     &http_modules,
+    &member_paths,
   )?;
 
   Ok(installed)
+}
+
+/// If `deno_json` references an external import map via `importMap`, read that
+/// file and return its `imports` object.
+fn read_referenced_import_map(
+  project_root: &Path,
+  deno_json: &Value,
+) -> Option<serde_json::Map<String, Value>> {
+  let rel = deno_json.get("importMap").and_then(|v| v.as_str())?;
+  let content = std::fs::read_to_string(project_root.join(rel)).ok()?;
+  let parsed: Value = serde_json::from_str(&content).ok()?;
+  parsed.get("imports").and_then(|v| v.as_object()).cloned()
+}
+
+/// Build tsconfig `paths` entries that map each workspace member's package name
+/// (and subpath exports) to its local source files, so stock tooling resolves
+/// e.g. `@std/assert` and `@std/assert/equals` to `../assert/mod.ts` and
+/// `../assert/equals.ts` rather than a published copy. Paths are relative to
+/// the generated `.deno/tsconfig.json`.
+fn workspace_member_paths(
+  project_root: &Path,
+  deno_json: &Value,
+) -> serde_json::Map<String, Value> {
+  let mut paths = serde_json::Map::new();
+  let Some(members) = deno_json.get("workspace").and_then(|w| w.as_array())
+  else {
+    return paths;
+  };
+  for member in members.iter().filter_map(|m| m.as_str()) {
+    let member_rel = member.trim_start_matches("./").trim_end_matches('/');
+    let Some(member_json) = read_deno_json(&project_root.join(member_rel))
+      .ok()
+      .flatten()
+    else {
+      continue;
+    };
+    let Some(name) = member_json.get("name").and_then(|n| n.as_str()) else {
+      continue;
+    };
+    let Some(exports) = member_json.get("exports") else {
+      continue;
+    };
+    let mut add = |sub: &str, file: &str| {
+      let file = file.trim_start_matches("./");
+      let target = format!("../{member_rel}/{file}");
+      let key = if sub == "." {
+        name.to_string()
+      } else {
+        format!("{name}/{}", sub.trim_start_matches("./"))
+      };
+      paths.insert(key, json!([target]));
+    };
+    match exports {
+      // `"exports": "./mod.ts"`
+      Value::String(file) => add(".", file),
+      // `"exports": { ".": "./mod.ts", "./x": "./x.ts" }`
+      Value::Object(map) => {
+        for (sub, target) in map {
+          if let Some(file) = target.as_str() {
+            add(sub, file);
+          }
+        }
+      }
+      _ => {}
+    }
+  }
+  paths
 }
 
 fn read_deno_json(project_root: &Path) -> Result<Option<Value>, AnyError> {
@@ -146,6 +231,7 @@ fn generate_deno_tsconfig(
   deno_compiler_options: Option<&Value>,
   deno_imports: Option<&Value>,
   http_modules: &BTreeMap<Url, String>,
+  member_paths: &serde_json::Map<String, Value>,
 ) -> Result<(), AnyError> {
   let generated = crate::tsc::tsconfig_gen::generate_tsconfig(
     project_root,
@@ -153,6 +239,7 @@ fn generate_deno_tsconfig(
     deno_imports,
     &[],
     http_modules,
+    member_paths,
   )
   .map_err(|e| anyhow!("Failed to generate tsconfig: {e}"))?;
 

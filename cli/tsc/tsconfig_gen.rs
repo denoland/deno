@@ -42,12 +42,14 @@ pub struct GeneratedTsConfig {
 /// Generates `.deno/tsconfig.json` with compiler options and paths mappings
 /// for npm:/jsr: specifiers. Also ensures a root `tsconfig.json` exists
 /// that extends it.
+#[allow(clippy::too_many_arguments)]
 pub fn generate_tsconfig(
   project_root: &Path,
   deno_compiler_options: Option<&Value>,
   deno_imports: Option<&Value>,
   files: &[String],
   http_modules: &BTreeMap<Url, String>,
+  member_paths: &Map<String, Value>,
 ) -> Result<GeneratedTsConfig, std::io::Error> {
   // Write Deno type definitions to .deno/types/deno/ (private typeRoot).
   let types_dir = project_root.join(".deno/types/deno");
@@ -73,6 +75,7 @@ pub fn generate_tsconfig(
     deno_imports,
     files,
     http_modules,
+    member_paths,
   );
 
   // Write to .deno/tsconfig.json
@@ -184,12 +187,14 @@ fn write_deno_types(path: &Path) -> Result<(), std::io::Error> {
 ///
 /// The generated tsconfig lives at `.deno/tsconfig.json`, so all paths
 /// are relative to that directory (e.g. `../node_modules/...`).
+#[allow(clippy::too_many_arguments)]
 fn build_tsconfig(
   project_root: &Path,
   deno_compiler_options: Option<&Value>,
   deno_imports: Option<&Value>,
   check_files: &[String],
   http_modules: &BTreeMap<Url, String>,
+  member_paths: &Map<String, Value>,
 ) -> Value {
   let mut compiler_options = base_compiler_options();
 
@@ -205,6 +210,12 @@ fn build_tsconfig(
   specifier_paths.extend(jsr_paths);
   let http_paths = generate_http_paths(http_modules);
   specifier_paths.extend(http_paths);
+
+  // Workspace-member aliases map to local source and shadow any published jsr
+  // mapping for the same name, so apply them after the specifier paths.
+  for (key, value) in member_paths {
+    specifier_paths.insert(key.clone(), value.clone());
+  }
 
   // Merge user-defined paths from deno.json compilerOptions — these take
   // priority over generated specifier mappings.
