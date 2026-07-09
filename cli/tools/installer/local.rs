@@ -285,7 +285,13 @@ pub async fn sync_types_command(flags: Arc<Flags>) -> Result<(), AnyError> {
     // broken file (dead example scripts, etc.); we want every specifier that
     // *did* resolve regardless.
     let graph_creator = factory.module_graph_creator().await?;
-    let graph = match graph_creator
+    // Silence warn-level diagnostics during this discovery build. It's an
+    // internal step (not the user's `deno check`), and the graph the user
+    // installed was already validated by `deno install` — re-emitting e.g.
+    // "workspace member ... was not used" warnings here is just noise.
+    let prev_log_level = log::max_level();
+    log::set_max_level(log::LevelFilter::Error);
+    let graph_result = graph_creator
       .create_graph_with_options(crate::graph_util::CreateGraphOptions {
         graph_kind: deno_graph::GraphKind::All,
         roots,
@@ -294,8 +300,9 @@ pub async fn sync_types_command(flags: Arc<Flags>) -> Result<(), AnyError> {
         loader: None,
         npm_caching: cli_options.default_npm_caching_strategy(),
       })
-      .await
-    {
+      .await;
+    log::set_max_level(prev_log_level);
+    let graph = match graph_result {
       Ok(graph) => graph,
       Err(e) => {
         log::debug!("sync-types: graph build failed (continuing): {e}");

@@ -744,6 +744,12 @@ pub async fn install_http_modules(
     if paths.contains_key(&requested_url) {
       continue;
     }
+    // A trailing-slash URL is a directory/prefix specifier, not a module; the
+    // files under it are discovered and mirrored per-subpath. Skip silently
+    // (fetching the bare prefix just 404s).
+    if requested_url.path().ends_with('/') {
+      continue;
+    }
 
     // Fetch (cached) source + headers via the standard file fetcher, gated
     // by --allow-import the same way runtime http imports are. Follows
