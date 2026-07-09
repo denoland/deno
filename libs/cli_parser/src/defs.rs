@@ -1730,6 +1730,28 @@ pub static CLEAN_SUBCOMMAND: CommandDef = CommandDef {
   passthrough: false,
 };
 
+pub static DOCTOR_SUBCOMMAND: CommandDef = CommandDef {
+  name: "doctor",
+  about: "Check a project for Deno 3 readiness",
+  aliases: &[],
+  args: &[
+    ArgDef::new("check").long("check").set_true(),
+    ArgDef::new("fix").long("fix").set_true(),
+    ArgDef::new("json").long("json").set_true(),
+    ArgDef::new("config")
+      .short('c')
+      .long("config")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("no-config").long("no-config").set_true(),
+  ],
+  arg_groups: &[UNSTABLE_ARGS],
+  subcommands: &[],
+  default_subcommand: None,
+  trailing_var_arg: false,
+  passthrough: false,
+};
+
 pub static APPROVE_SCRIPTS_SUBCOMMAND: CommandDef = CommandDef {
   name: "approve-scripts",
   about: "Approve npm lifecycle scripts",
@@ -2013,6 +2035,7 @@ pub static DENO_ROOT: CommandDef = CommandDef {
     CHECK_SUBCOMMAND,
     INFO_SUBCOMMAND,
     DOC_SUBCOMMAND,
+    DOCTOR_SUBCOMMAND,
     TASK_SUBCOMMAND,
     BENCH_SUBCOMMAND,
     COMPILE_SUBCOMMAND,

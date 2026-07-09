@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "doctor --json",
+      "output": "report.out"
+    },
+    {
+      // --check composes with --json: same output, exit code 1
+      "args": "doctor --check --json",
+      "output": "report.out",
+      "exitCode": 1
+    }
+  ]
+}

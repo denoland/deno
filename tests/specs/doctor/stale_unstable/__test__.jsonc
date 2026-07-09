@@ -1,0 +1,21 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "doctor",
+      "output": "report.out"
+    },
+    {
+      // removes the unknown entry but keeps the valid one
+      "args": "doctor --fix",
+      "output": "fix.out"
+    },
+    {
+      "args": [
+        "eval",
+        "console.log(Deno.readTextFileSync('deno.json').trim())"
+      ],
+      "output": "deno.json.out"
+    }
+  ]
+}

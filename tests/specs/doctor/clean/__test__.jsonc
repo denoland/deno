@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      // a fully pinned project has no findings
+      "args": "doctor",
+      "output": "report.out"
+    },
+    {
+      // --check exits 0 when there are no findings
+      "args": "doctor --check",
+      "output": "report.out"
+    }
+  ]
+}

@@ -646,6 +646,7 @@ impl CliFactory {
             | DenoSubcommand::Coverage { .. }
             | DenoSubcommand::Deploy { .. }
             | DenoSubcommand::Doc { .. }
+            | DenoSubcommand::Doctor { .. }
             | DenoSubcommand::Eval { .. }
             | DenoSubcommand::Fmt { .. }
             | DenoSubcommand::Init { .. }
@@ -760,7 +761,9 @@ impl CliFactory {
     self.workspace_factory()?.node_modules_dir_path()
   }
 
-  fn workspace_factory(&self) -> Result<&Arc<CliWorkspaceFactory>, AnyError> {
+  pub fn workspace_factory(
+    &self,
+  ) -> Result<&Arc<CliWorkspaceFactory>, AnyError> {
     self.services.workspace_factory.get_or_try_init(|| {
       let initial_cwd = match self.overrides.initial_cwd.clone() {
         Some(v) => v,

@@ -1,0 +1,41 @@
+{
+  "findings": [
+    {
+      "id": "node-modules-dir-not-pinned",
+      "severity": "warning",
+      "message": "\"nodeModulesDir\" is not set in deno.json. Deno currently uses the \"none\" mode for this project (implicit because there is no package.json in the workspace root). Deno 3 changes the default to \"manual\", which changes how npm packages are set up and resolved.",
+      "file": "deno.json",
+      "fixable": true,
+      "fix_description": "set \"nodeModulesDir\": \"none\" (pins the mode Deno currently picks because there is no package.json in the workspace root)",
+      "fixed": false
+    },
+    {
+      "id": "compiler-options-not-pinned",
+      "severity": "warning",
+      "message": "\"compilerOptions.strict\" is not set in deno.json. Deno currently type-checks deno.json projects with an implicit \"strict\": true, while stock TypeScript — which Deno 3's type checking is based on — defaults to false.",
+      "file": "deno.json",
+      "fixable": true,
+      "fix_description": "set \"compilerOptions.strict\": true (pins Deno's current implicit default)",
+      "fixed": false
+    },
+    {
+      "id": "compiler-options-not-pinned",
+      "severity": "warning",
+      "message": "\"compilerOptions.noImplicitOverride\" is not set in deno.json. Deno currently type-checks deno.json projects with an implicit \"noImplicitOverride\": true, while stock TypeScript — which Deno 3's type checking is based on — defaults to false.",
+      "file": "deno.json",
+      "fixable": true,
+      "fix_description": "set \"compilerOptions.noImplicitOverride\": true (pins Deno's current implicit default)",
+      "fixed": false
+    }
+  ],
+  "notes": [
+    {
+      "id": "permission-defaults",
+      "message": "Deno 3 changes some permission prompting defaults. There is no configuration to pin the current behavior yet; check the migration guide once available (https://docs.deno.com/runtime/help/deno-3)."
+    },
+    {
+      "id": "package-lock-json",
+      "message": "Deno 3 changes how package-lock.json files are taken into account in npm-compatible projects. There is no configuration to pin the current behavior yet; check the migration guide once available (https://docs.deno.com/runtime/help/deno-3)."
+    }
+  ]
+}

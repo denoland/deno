@@ -193,6 +193,9 @@ async fn run_subcommand(
     DenoSubcommand::Compile(compile_flags) => spawn_subcommand(async {
       tools::compile::compile(flags, compile_flags).await
     }),
+    DenoSubcommand::Doctor(doctor_flags) => spawn_subcommand(async move {
+      tools::doctor::doctor(Arc::new(flags), doctor_flags).await
+    }),
     DenoSubcommand::Desktop(desktop_flags) => spawn_subcommand(async {
       Box::pin(tools::desktop::desktop(flags, desktop_flags)).await
     }),

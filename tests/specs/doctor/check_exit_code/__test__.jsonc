@@ -1,0 +1,20 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      // --check exits 1 when any finding exists
+      "args": "doctor --check",
+      "output": "report.out",
+      "exitCode": 1
+    },
+    {
+      "args": "doctor --fix",
+      "output": "[WILDCARD]"
+    },
+    {
+      // after fixing, --check exits 0
+      "args": "doctor --check",
+      "output": "after_fix.out"
+    }
+  ]
+}

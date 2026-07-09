@@ -1,0 +1,21 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      // findings are grouped by the config file they derive from
+      "args": "doctor",
+      "output": "report.out"
+    },
+    {
+      "args": "doctor --fix",
+      "output": "fix.out"
+    },
+    {
+      "args": [
+        "eval",
+        "console.log(Deno.readTextFileSync('member/deno.json').trim())"
+      ],
+      "output": "member_deno.json.out"
+    }
+  ]
+}

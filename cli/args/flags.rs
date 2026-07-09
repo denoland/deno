@@ -1301,6 +1301,7 @@ pub fn flags_from_vec_with_initial_cwd(
         "completions" => completions_parse(&mut flags, &mut m, app),
         "coverage" => coverage_parse(&mut flags, &mut m)?,
         "doc" => doc_parse(&mut flags, &mut m)?,
+        "doctor" => doctor_parse(&mut flags, &mut m),
         "eval" => eval_parse(&mut flags, &mut m)?,
         "fmt" => fmt_parse(&mut flags, &mut m)?,
         "init" => init_parse(&mut flags, &mut m)?,
@@ -1580,6 +1581,7 @@ pub fn clap_root() -> Command {
         .subcommand(completions_subcommand())
         .subcommand(coverage_subcommand())
         .subcommand(doc_subcommand())
+        .subcommand(doctor_subcommand())
         .subcommand(deploy_subcommand())
         .subcommand(sandbox_subcommand())
         .subcommand(eval_subcommand())
@@ -2852,6 +2854,46 @@ Show documentation for runtime built-ins:
             .required_if_eq_any([("html", "true"), ("lint", "true")]),
         )
     })
+}
+
+fn doctor_subcommand() -> Command {
+  command(
+    "doctor",
+    cstr!(
+      "Check a project for Deno 3 readiness.
+
+Reports configuration that relies on implicit defaults which change in Deno 3
+and, with <c>--fix</>, pins the current behavior explicitly in the config file:
+  <p(245)>deno doctor</>
+  <p(245)>deno doctor --fix</>
+
+Without <c>--fix</> nothing is written to disk."
+    ),
+    UnstableArgsConfig::None,
+  )
+  .defer(|cmd| {
+    cmd
+      .arg(
+        Arg::new("check")
+          .long("check")
+          .help("Exit with code 1 if any finding is reported (for CI)")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("fix")
+          .long("fix")
+          .help("Apply safe fixes by writing the current implicit behavior explicitly to the config file")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("json")
+          .long("json")
+          .help("Output the findings in JSON format")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(config_arg())
+      .arg(no_config_arg())
+  })
 }
 
 fn eval_subcommand() -> Command {
@@ -7163,6 +7205,15 @@ fn doc_parse(
     private,
   });
   Ok(())
+}
+
+fn doctor_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  config_args_parse(flags, matches);
+  flags.subcommand = DenoSubcommand::Doctor(DoctorFlags {
+    check: matches.get_flag("check"),
+    fix: matches.get_flag("fix"),
+    json: matches.get_flag("json"),
+  });
 }
 
 fn eval_parse(
@@ -17115,6 +17166,68 @@ Usage: deno lint [OPTIONS] [files]...\n"
         args
       );
     }
+  }
+
+  #[test]
+  fn doctor_subcommand() {
+    let cases = [
+      (svec![], DoctorFlags::default()),
+      (
+        svec!["--check"],
+        DoctorFlags {
+          check: true,
+          ..Default::default()
+        },
+      ),
+      (
+        svec!["--fix"],
+        DoctorFlags {
+          fix: true,
+          ..Default::default()
+        },
+      ),
+      (
+        svec!["--check", "--json"],
+        DoctorFlags {
+          check: true,
+          json: true,
+          ..Default::default()
+        },
+      ),
+      (
+        svec!["--fix", "--json"],
+        DoctorFlags {
+          fix: true,
+          json: true,
+          ..Default::default()
+        },
+      ),
+    ];
+    for (input, expected) in cases {
+      let mut args = svec!["deno", "doctor"];
+      args.extend(input);
+      let r = flags_from_vec(args.clone()).unwrap();
+      assert_eq!(
+        r,
+        Flags {
+          subcommand: DenoSubcommand::Doctor(expected),
+          ..Flags::default()
+        },
+        "incorrect result for args: {:?}",
+        args
+      );
+    }
+
+    let r = flags_from_vec(svec!["deno", "doctor", "--config", "deno.jsonc"]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags.config_flag,
+      ConfigFlag::Path("deno.jsonc".to_string())
+    );
+    assert_eq!(
+      flags.subcommand,
+      DenoSubcommand::Doctor(DoctorFlags::default())
+    );
   }
 
   #[test]
