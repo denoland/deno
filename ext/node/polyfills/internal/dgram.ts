@@ -37,6 +37,8 @@ const {
   isInt32,
   validateFunction,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const { isIP } = core.loadExtScript("ext:deno_node/internal/net.ts");
 const { FunctionPrototypeBind, MapPrototypeGet, Symbol } = primordials;
 
 type SocketType = "udp4" | "udp6";
@@ -67,14 +69,25 @@ function lookup6(
   return lookup(address || "::1", 6, callback);
 }
 
+function defaultLookup(
+  address: string,
+  family: number,
+  callback: (err: unknown, address: string, family: number) => void,
+) {
+  if (isIP(address) === family) {
+    lazyDns();
+    nextTick(callback, null, address, family);
+    return;
+  }
+  return lazyDns().default.lookup(address, family, callback);
+}
+
 function newHandle(
   type: SocketType,
   lookup?: (...args: unknown[]) => void,
 ): InstanceType<typeof UDP> {
-  let isDefaultLookup = false;
   if (lookup === undefined) {
-    lookup = lazyDns().default.lookup;
-    isDefaultLookup = true;
+    lookup = defaultLookup as (...args: unknown[]) => void;
   } else {
     validateFunction(lookup, "lookup");
   }
@@ -83,7 +96,6 @@ function newHandle(
     const handle = new UDP();
 
     handle.lookup = FunctionPrototypeBind(lookup4, handle, lookup);
-    (handle as any).isDefaultLookup = isDefaultLookup;
 
     return handle;
   }
@@ -95,7 +107,6 @@ function newHandle(
     handle.bind = handle.bind6;
     handle.connect = handle.connect6;
     handle.send = handle.send6;
-    (handle as any).isDefaultLookup = isDefaultLookup;
 
     return handle;
   }

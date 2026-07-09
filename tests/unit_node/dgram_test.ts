@@ -289,3 +289,104 @@ Deno.test("[node/dgram] large recvBufferSize and sendBufferSize do not throw", a
   });
   await promise;
 });
+
+Deno.test("[node/dgram] default lookup skips dns.lookup for literal IP", async () => {
+  const [statusCode] = await execCode(`
+    import dgram from "node:dgram";
+    import dns from "node:dns";
+    import assert from "node:assert";
+
+    const originalLookup = dns.lookup;
+    dns.lookup = () => {
+      assert.fail("dns.lookup() ran for an IPv4 literal");
+    };
+
+    const receiver = dgram.createSocket("udp4");
+    const sender = dgram.createSocket("udp4");
+
+    receiver.on("message", (msg) => {
+      assert.strictEqual(msg.toString(), "payload");
+      dns.lookup = originalLookup;
+      receiver.close();
+      sender.close();
+    });
+
+    receiver.bind(0, "127.0.0.1", () => {
+      sender.send("payload", receiver.address().port, "127.0.0.1");
+    });
+  `);
+  assertEquals(statusCode, 0);
+});
+
+Deno.test("[node/dgram] mismatched family falls through to dns.lookup", async () => {
+  const [statusCode] = await execCode(`
+    import dgram from "node:dgram";
+    import dns from "node:dns";
+    import assert from "node:assert";
+
+    const originalLookup = dns.lookup;
+    // '::1' is not an IPv4 literal, so a udp4 socket must still call dns.lookup()
+    // rather than short-circuiting.
+    let lookupCalled = false;
+    dns.lookup = (host, family, callback) => {
+      lookupCalled = true;
+      dns.lookup = originalLookup;
+      assert.strictEqual(host, "::1");
+      assert.strictEqual(family, 4);
+      callback(null, "127.0.0.1", 4);
+    };
+
+    const socket = dgram.createSocket("udp4");
+    socket.bind(0, "::1", () => {
+      assert.strictEqual(lookupCalled, true);
+      socket.close();
+    });
+  `);
+  assertEquals(statusCode, 0);
+});
+
+Deno.test("[node/dgram] custom lookup is called", async () => {
+  const [statusCode] = await execCode(`
+    import dgram from "node:dgram";
+    import dns from "node:dns";
+    import assert from "node:assert";
+
+    let called = false;
+    const lookup = (host, family, callback) => {
+      called = true;
+      dns.lookup(host, family, callback);
+    };
+
+    const socket = dgram.createSocket({ type: "udp4", lookup });
+    socket.bind(0, () => {
+      assert.strictEqual(called, true);
+      socket.close();
+    });
+  `);
+  assertEquals(statusCode, 0);
+});
+
+Deno.test("[node/dgram] implicit bind failure", async () => {
+  const [statusCode] = await execCode(`
+    import dgram from "node:dgram";
+    import dns from "node:dns";
+    import assert from "node:assert";
+    import process from "node:process";
+
+    const mockError = new Error("fake DNS");
+    dns.lookup = (address, family, callback) => {
+      process.nextTick(() => callback(mockError));
+    };
+
+    const socket = dgram.createSocket("udp4");
+    
+    socket.on("error", (err) => {
+      assert.strictEqual(err, mockError);
+      socket.close();
+    });
+
+    // localhost is not a literal IP, so it will trigger the monkey-patched dns.lookup
+    socket.send("foobar", 12345, "localhost");
+  `);
+  assertEquals(statusCode, 0);
+});

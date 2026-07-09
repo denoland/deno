@@ -77,7 +77,6 @@ const { os } = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
 );
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
-const { isIP } = core.loadExtScript("ext:deno_node/internal/net.ts");
 const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
 const { channel } = core.loadExtScript(
   "ext:deno_node/diagnostics_channel.js",
@@ -1037,11 +1036,7 @@ class Socket extends EventEmitter {
     };
 
     if (!connected) {
-      if ((state.handle as any).isDefaultLookup && isIP(address as string)) {
-        nextTick(afterDns, null, address);
-      } else {
-        state.handle!.lookup(address as string, afterDns);
-      }
+      state.handle!.lookup(address as string, afterDns);
     } else {
       afterDns(null, "");
     }
