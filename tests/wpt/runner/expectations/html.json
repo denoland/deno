@@ -1314,8 +1314,8 @@
         "2d.canvas.context.type.replace.worker.html": true,
         "2d.canvas.context.unique.html": true,
         "2d.canvas.context.unique.worker.html": true,
-        "2d.getContext.options.any.html": false,
-        "2d.getContext.options.any.worker.html": false
+        "2d.getContext.options.any.html": true,
+        "2d.getContext.options.any.worker.html": true
       },
       "canvas-host": {
         "2d.canvas.host.initial.color.html": true,
