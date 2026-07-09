@@ -719,7 +719,25 @@ fn write_mirror(
   if let Some(parent) = local_path.parent() {
     std::fs::create_dir_all(parent)?;
   }
-  std::fs::write(&local_path, bytes)?;
+  // Mark mirrored script modules `// @ts-nocheck`. Remote dependencies are not
+  // the user's code and Deno itself doesn't re-type-check them; without this,
+  // stock tsc/tsgo would report every type error inside the dependency (which
+  // dwarfs the project's own diagnostics). `@ts-nocheck` suppresses errors in
+  // the file while keeping its exported and ambient types available to
+  // importers, and triple-slash directives (which may follow a leading comment)
+  // still apply.
+  let is_script = matches!(
+    local_path.extension().and_then(|e| e.to_str()),
+    Some("ts" | "tsx" | "mts" | "cts" | "js" | "jsx" | "mjs" | "cjs")
+  );
+  if is_script {
+    let mut content = Vec::with_capacity(bytes.len() + 16);
+    content.extend_from_slice(b"// @ts-nocheck\n");
+    content.extend_from_slice(bytes);
+    std::fs::write(&local_path, &content)?;
+  } else {
+    std::fs::write(&local_path, bytes)?;
+  }
   url_to_tsconfig_path(url)
     .ok_or_else(|| anyhow!("URL has no resolvable mirror path: {url}"))
 }

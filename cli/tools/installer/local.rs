@@ -234,9 +234,7 @@ pub async fn ci_command(
 /// installed (run `deno install` first); materializes `jsr:`/`http(s):` types
 /// and writes `.deno/tsconfig.json`.
 pub async fn sync_types_command(flags: Arc<Flags>) -> Result<(), AnyError> {
-  use crate::graph_container::CheckSpecifiersOptions;
   use crate::graph_container::CollectSpecifiersOptions;
-  use crate::graph_container::ModuleGraphContainer;
 
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
@@ -256,21 +254,55 @@ pub async fn sync_types_command(flags: Arc<Flags>) -> Result<(), AnyError> {
         include_ignored_specified: false,
       },
     )?;
-    // Best-effort: build the graph; type/resolution errors here shouldn't stop
-    // us from generating config for whatever did resolve.
-    if let Err(e) = graph_container
-      .check_specifiers(
-        &roots,
-        CheckSpecifiersOptions {
-          ext_overwrite: None,
-          allow_unknown_media_types: true,
-        },
-      )
+    // `collect_specifiers` honors deno.json excludes and the vendor dir, but not
+    // `node_modules`, our generated `.deno/`, or the DENO_DIR cache. On a real
+    // project those trees hold tens of thousands of files; feeding them as graph
+    // roots makes the build choke. Keep only the project's own source so we
+    // discover the external specifiers it actually imports.
+    let deno_dir_root = factory.deno_dir().ok().map(|d| d.root.clone());
+    let roots: Vec<_> = roots
+      .into_iter()
+      .filter(|u| {
+        let Ok(path) = u.to_file_path() else {
+          return true;
+        };
+        if path.components().any(|c| {
+          matches!(c.as_os_str().to_str(), Some("node_modules") | Some(".deno"))
+        }) {
+          return false;
+        }
+        match &deno_dir_root {
+          Some(root) => !path.starts_with(root),
+          None => true,
+        }
+      })
+      .collect();
+
+    // Build the graph error-tolerantly: `create_graph_with_options` populates
+    // the graph and records unresolved modules as error entries without failing
+    // the whole build (unlike `check_specifiers`, which validates and discards
+    // everything on the first missing module). A real project always has some
+    // broken file (dead example scripts, etc.); we want every specifier that
+    // *did* resolve regardless.
+    let graph_creator = factory.module_graph_creator().await?;
+    let graph = match graph_creator
+      .create_graph_with_options(crate::graph_util::CreateGraphOptions {
+        graph_kind: deno_graph::GraphKind::All,
+        roots,
+        imports: vec![],
+        is_dynamic: false,
+        loader: None,
+        npm_caching: cli_options.default_npm_caching_strategy(),
+      })
       .await
     {
-      log::debug!("sync-types: graph build had errors (continuing): {e}");
-    }
-    let graph = graph_container.graph();
+      Ok(graph) => graph,
+      Err(e) => {
+        log::debug!("sync-types: graph build failed (continuing): {e}");
+        deno_graph::ModuleGraph::new(deno_graph::GraphKind::All)
+      }
+    };
+
     let mut specifiers = std::collections::BTreeSet::new();
     for module in graph.modules() {
       for (raw, _dep) in module.dependencies() {

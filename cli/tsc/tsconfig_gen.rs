@@ -246,23 +246,15 @@ fn build_tsconfig(
     }
   }
 
-  // Merge the user's `compilerOptions.types` with the deno/node types we inject,
-  // rather than dropping them. Such an entry (e.g. `lume/types.ts`) can carry
-  // both ambient declarations (a `Lume` namespace) and `/// <reference
-  // lib="dom" />`, so clobbering it loses DOM globals and project namespaces the
-  // code relies on.
-  //
-  // Guard: only emit an entry we can actually resolve. A bare name (no `/`)
-  // resolves via typeRoots/node_modules (`deno`, `node`, `@types/*`); a slashed
-  // entry needs a matching `paths` mapping. Emitting an unresolvable `types`
-  // entry makes stock tsc/tsgo fail the whole program build (TS2688) and skip
-  // every file, which masks all real diagnostics — worse than dropping it.
+  // Merge the user's bare-package `compilerOptions.types` with the deno/node
+  // types we inject, rather than dropping them (see `merge_user_types` for why
+  // subpath entries like `lume/types.ts` are handled via `include` instead).
   if let Some(user_types) = deno_compiler_options
     .and_then(|co| co.get("types"))
     .and_then(|t| t.as_array())
     && let Some(Value::Array(types)) = compiler_options.get_mut("types")
   {
-    merge_user_types(types, user_types, &specifier_paths);
+    merge_user_types(types, user_types);
   }
 
   if !specifier_paths.is_empty() {
@@ -768,32 +760,29 @@ fn merge_deno_options(base: &mut Map<String, Value>, user_opts: &Value) {
   }
 }
 
-/// Merge the user's `compilerOptions.types` into `base_types`, skipping any
-/// entry we can't resolve.
+/// Merge the user's `compilerOptions.types` into `base_types`, keeping only the
+/// entries that actually resolve as `types` entries.
 ///
-/// A bare name (no `/`) resolves via typeRoots/node_modules (`deno`, `node`,
-/// `@types/*`); a slashed entry (e.g. `lume/types.ts`) needs a matching `paths`
-/// mapping. Emitting an unresolvable `types` entry makes stock tsc/tsgo fail the
-/// whole program build (TS2688) and skip every file, masking all real
-/// diagnostics, so it is dropped rather than passed through.
-fn merge_user_types(
-  base_types: &mut Vec<Value>,
-  user_types: &[Value],
-  specifier_paths: &Map<String, Value>,
-) {
+/// `compilerOptions.types` resolves entries as type *packages* via
+/// typeRoots/node_modules; it does NOT consult `paths`. So only a bare package
+/// name belongs here: unscoped (`node`) or scoped (`@types/react`). A subpath
+/// entry (`lume/types.ts`) can't resolve this way and would make stock tsc/tsgo
+/// fail the whole program build (TS2688), masking every real diagnostic, so it
+/// is dropped. Deno accepts such entries because it loads them as modules; the
+/// stock-tooling equivalent is that the (materialized) file is pulled into the
+/// program by the tsconfig `include` glob, which carries its ambient
+/// declarations and `/// <reference lib=... />` directives just the same.
+fn merge_user_types(base_types: &mut Vec<Value>, user_types: &[Value]) {
   for entry in user_types {
     let Some(s) = entry.as_str() else { continue };
-    // A bare package name resolves via typeRoots/node_modules: either unscoped
-    // (`node`, no slash) or scoped (`@types/react`, `@`-prefixed, one slash). A
-    // subpath entry (`lume/types.ts`, `@scope/pkg/sub`) needs a `paths` mapping.
     let is_bare_package = match s.strip_prefix('@') {
       Some(rest) => rest.matches('/').count() == 1,
       None => !s.contains('/'),
     };
-    let resolvable = is_bare_package || specifier_paths.contains_key(s);
-    if !resolvable {
+    if !is_bare_package {
       log::debug!(
-        "sync-types: dropping unresolvable `types` entry {s:?} (no mapping)"
+        "sync-types: dropping non-package `types` entry {s:?} \
+         (resolved via `include` instead)"
       );
       continue;
     }
@@ -869,27 +858,28 @@ mod tests {
   fn test_merge_user_types() {
     let mut base = vec![json!("deno"), json!("node")];
     let user = vec![
-      // bare name -> resolves via node_modules/@types, kept
+      // unscoped bare package -> resolves via typeRoots/node_modules, kept
+      json!("react"),
+      // scoped bare package -> kept
       json!("@types/react"),
-      // slashed with a matching paths mapping -> kept
+      // subpath entry -> `types` can't resolve it (would TS2688); dropped and
+      // instead covered by the `include` glob pulling in the mirrored file
       json!("lume/types.ts"),
-      // slashed without a mapping -> dropped (would abort the build)
-      json!("unmapped/types.ts"),
+      // scoped subpath entry -> also dropped
+      json!("@scope/pkg/sub"),
       // duplicate of an injected type -> not added twice
       json!("node"),
     ];
-    let mut paths = Map::new();
-    paths.insert("lume/types.ts".to_string(), json!(["../.deno/x.d.ts"]));
 
-    merge_user_types(&mut base, &user, &paths);
+    merge_user_types(&mut base, &user);
 
     assert_eq!(
       base,
       vec![
         json!("deno"),
         json!("node"),
+        json!("react"),
         json!("@types/react"),
-        json!("lume/types.ts"),
       ]
     );
   }
