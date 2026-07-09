@@ -1232,7 +1232,10 @@ impl LibUvStreamWrap {
     // Stop any active read before clearing the JS handle so the read-callback
     // registry drops its strong `Global<this>` and the wrapper can be GC'd
     // after close. The stream pointer is still valid here (close_handle runs
-    // afterwards). Covers TLSWrap, which uses this base close op.
+    // afterwards). Note: TLSWrap uses this base close op, but its own base
+    // stream is null (reads are owned by the underlying TCP/Pipe wrap), so this
+    // `read_stop_internal()` is a no-op for TLS; the TLS socket is freed
+    // transitively when its underlying `net.Socket` is destroyed.
     self.read_stop_internal();
     self.clear_js_handle();
     self.base.close_handle(op_state, this, scope, cb)
