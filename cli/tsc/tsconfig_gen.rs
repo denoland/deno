@@ -222,6 +222,8 @@ fn build_tsconfig(
   let mut specifier_paths = generate_npm_paths(project_root, deno_imports);
   let jsr_paths = generate_jsr_paths(project_root, deno_imports);
   specifier_paths.extend(jsr_paths);
+  let local_paths = generate_local_alias_paths(deno_imports);
+  specifier_paths.extend(local_paths);
   let http_paths = generate_http_paths(http_modules);
   specifier_paths.extend(http_paths);
 
@@ -277,41 +279,88 @@ fn build_tsconfig(
 ///
 /// Only generates `npm:<pkg>` keys -- bare aliases are resolved by
 /// TypeScript via `node_modules` with `moduleResolution: "bundler"`.
+/// Map import-map aliases that point at local files/directories (e.g.
+/// `"@/": "./"`, `"utils": "./src/utils.ts"`) to project-relative paths. The
+/// generated tsconfig lives in `.deno/`, so a project-root path `./x` becomes
+/// `../x`. Trailing-slash prefix aliases become `<alias>*` -> `../<base>*`.
+fn generate_local_alias_paths(
+  deno_imports: Option<&Value>,
+) -> Map<String, Value> {
+  let mut paths = Map::new();
+  let Some(imports) = deno_imports.and_then(|v| v.as_object()) else {
+    return paths;
+  };
+  for (alias, target) in imports {
+    let Some(target) = target.as_str() else {
+      continue;
+    };
+    if !(target.starts_with("./") || target.starts_with("../")) {
+      continue;
+    }
+    // Re-base a project-root-relative path onto `.deno/` (one level down).
+    let rebased = format!("../{}", target.trim_start_matches("./"));
+    if let Some(prefix) = alias.strip_suffix('/') {
+      // Prefix alias: `@/` -> `./` becomes `@/*` -> `../*`.
+      paths.insert(format!("{prefix}/*"), json!([format!("{}*", rebased)]));
+    } else {
+      paths.insert(alias.clone(), json!([rebased]));
+    }
+  }
+  paths
+}
+
 fn generate_npm_paths(
-  _project_root: &Path,
+  project_root: &Path,
   deno_imports: Option<&Value>,
 ) -> Map<String, Value> {
   let mut paths = Map::new();
 
   if let Some(imports) = deno_imports.and_then(|v| v.as_object()) {
-    for (_alias, target) in imports {
+    for (alias, target) in imports {
       let target_str = match target.as_str() {
-        Some(s) => s,
-        None => continue,
+        Some(s) if s.starts_with("npm:") => s,
+        _ => continue,
+      };
+      let Ok(npm_ref) =
+        deno_semver::npm::NpmPackageReqReference::from_str(target_str)
+      else {
+        continue;
+      };
+      let pkg_name = npm_ref.req().name.to_string();
+      let pkg_dir = project_root.join(format!("node_modules/{pkg_name}"));
+      if !pkg_dir.exists() {
+        continue;
+      }
+      let subpath = npm_ref.sub_path();
+
+      // For a subpath (`npm:preact/compat`, `react/jsx-runtime`), resolve it
+      // through the package's `exports` to a concrete .d.ts (a relative path,
+      // to avoid TS5090). For the bare package, map to the package directory,
+      // which resolves via its package.json `types`/`exports["."]`.
+      let target_paths: Value = match subpath {
+        Some(sub) => {
+          let Some(types_rel) =
+            resolve_jsr_types_entry(&pkg_dir, &format!("./{sub}"))
+          else {
+            continue;
+          };
+          json!([types_rel])
+        }
+        None => json!([format!("../node_modules/{pkg_name}")]),
       };
 
-      if let Some(pkg_name) = parse_npm_specifier(target_str) {
-        // Paths are relative to .deno/ directory
-        let nm_path = format!("../node_modules/{pkg_name}");
-
-        // Map the npm: specifier
-        // e.g. "npm:express" -> ["../node_modules/express"]
-        let npm_key = format!("npm:{pkg_name}");
-        paths.entry(npm_key).or_insert_with(|| json!([&nm_path]));
+      // Key on the exact `npm:` specifier as written, and on the import-map
+      // alias (which is what most source actually imports).
+      paths
+        .entry(target_str.to_string())
+        .or_insert_with(|| target_paths.clone());
+      if alias != target_str {
+        paths.entry(alias.clone()).or_insert(target_paths);
       }
     }
   }
 
   paths
-}
-
-/// Parse an npm specifier like "npm:express@4", "npm:@scope/pkg@1.2.3",
-/// or "npm:express/foo" and return just the package name (without version
-/// or subpath). Returns `None` if `specifier` is not a valid npm: reference.
-pub fn parse_npm_specifier(specifier: &str) -> Option<String> {
-  deno_semver::npm::NpmPackageReqReference::from_str(specifier)
-    .ok()
-    .map(|r| r.req().name.to_string())
 }
 
 /// Generate tsconfig "paths" entries for jsr: specifiers.
@@ -656,65 +705,6 @@ mod tests {
     assert!(base.get("unknownOption").is_none());
     // target stays at the base value
     assert_eq!(base.get("target").unwrap(), &json!("esnext"));
-  }
-
-  #[test]
-  fn test_parse_npm_specifier_unscoped() {
-    assert_eq!(
-      parse_npm_specifier("npm:chalk@5"),
-      Some("chalk".to_string())
-    );
-    assert_eq!(
-      parse_npm_specifier("npm:express"),
-      Some("express".to_string())
-    );
-    assert_eq!(
-      parse_npm_specifier("npm:foo@1.2.3"),
-      Some("foo".to_string())
-    );
-  }
-
-  #[test]
-  fn test_parse_npm_specifier_scoped() {
-    assert_eq!(
-      parse_npm_specifier("npm:@types/node@20"),
-      Some("@types/node".to_string())
-    );
-    assert_eq!(
-      parse_npm_specifier("npm:@scope/pkg@1.2.3"),
-      Some("@scope/pkg".to_string())
-    );
-    assert_eq!(
-      parse_npm_specifier("npm:@scope/pkg"),
-      Some("@scope/pkg".to_string())
-    );
-  }
-
-  #[test]
-  fn test_parse_npm_specifier_with_subpath() {
-    assert_eq!(
-      parse_npm_specifier("npm:express/foo"),
-      Some("express".to_string())
-    );
-    assert_eq!(
-      parse_npm_specifier("npm:express@4/foo"),
-      Some("express".to_string())
-    );
-    assert_eq!(
-      parse_npm_specifier("npm:@scope/pkg/subpath"),
-      Some("@scope/pkg".to_string())
-    );
-    assert_eq!(
-      parse_npm_specifier("npm:@scope/pkg@1.0.0/subpath"),
-      Some("@scope/pkg".to_string())
-    );
-  }
-
-  #[test]
-  fn test_parse_npm_specifier_not_npm() {
-    assert_eq!(parse_npm_specifier("jsr:@std/assert@1"), None);
-    assert_eq!(parse_npm_specifier("chalk@5"), None);
-    assert_eq!(parse_npm_specifier("https://example.com"), None);
   }
 
   #[test]
