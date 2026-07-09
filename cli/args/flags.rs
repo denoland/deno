@@ -5747,6 +5747,7 @@ fn require_arg() -> Arg {
 fn min_dep_age_arg() -> Arg {
   Arg::new("minimum-dependency-age")
     .long("minimum-dependency-age")
+    .alias("min-dep-age")
     .value_parser(minutes_duration_or_date_parser)
     .help("(Unstable) The age in minutes, ISO-8601 duration or RFC3339 absolute timestamp (e.g. '120' for two hours, 'P2D' for two days, '2025-09-16' for cutoff date, '2025-09-16T12:00:00+00:00' for cutoff time, '0' to disable)")
 }
@@ -12021,6 +12022,18 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn minimum_dependency_age_alias() {
+    for flag in ["--minimum-dependency-age=0", "--min-dep-age=0"] {
+      let flags =
+        flags_from_vec(svec!["deno", "run", flag, "script.ts"]).unwrap();
+      assert_eq!(
+        flags.minimum_dependency_age,
+        Some(NewestDependencyDate::Disabled)
+      );
+    }
   }
 
   #[test]
