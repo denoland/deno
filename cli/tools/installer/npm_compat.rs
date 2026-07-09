@@ -119,15 +119,10 @@ pub async fn setup_npm_compat(
     }
   }
 
-  let has_special_specifiers = combined.iter().any(|(k, v)| {
-    is_special_specifier(k) || v.as_str().is_some_and(is_special_specifier)
-  });
-  // Generate if there's anything to map: external specifiers, or a workspace
-  // whose members need local-path aliases (e.g. std).
-  if !has_special_specifiers && member_paths.is_empty() {
-    return Ok(vec![]);
-  }
-
+  // Always generate the base config: even a project with no external deps needs
+  // the generated tsconfig + private `@types/deno` so stock tooling sees the
+  // Deno globals. There's simply nothing to map into `paths` when there are no
+  // external specifiers or workspace members.
   let combined_imports = Value::Object(combined);
   let deno_imports = Some(&combined_imports);
   let deno_compiler_options = deno_compiler_options.as_ref();
@@ -152,6 +147,33 @@ pub async fn setup_npm_compat(
       BTreeMap::new()
     }
   };
+
+  // Warn about npm packages that aren't materialized under `node_modules`. With
+  // Deno's default global-cache mode, `deno install` can resolve npm deps
+  // without a local `node_modules/<pkg>`, so their `paths` are skipped (see
+  // generate_npm_paths) and stock tsc can't resolve them.
+  let mut unmaterialized: Vec<String> = combined_imports
+    .as_object()
+    .into_iter()
+    .flatten()
+    .filter_map(|(_k, v)| v.as_str())
+    .filter(|s| s.starts_with("npm:"))
+    .filter_map(|s| deno_semver::npm::NpmPackageReqReference::from_str(s).ok())
+    .map(|r| r.req().name.to_string())
+    .filter(|name| !project_root.join(format!("node_modules/{name}")).exists())
+    .collect();
+  unmaterialized.sort();
+  unmaterialized.dedup();
+  if !unmaterialized.is_empty() {
+    log::warn!(
+      "sync-types: {} npm package(s) are not present under node_modules and \
+       were left unmapped ({}). Enable a node_modules directory (e.g. set \
+       \"nodeModulesDir\": \"auto\" in deno.json) so stock TypeScript can \
+       resolve them.",
+      unmaterialized.len(),
+      unmaterialized.join(", "),
+    );
+  }
 
   // Ensure @types/node is available so Node globals (timers, node: builtins,
   // Buffer, URLPattern, ...) resolve under stock tooling.
@@ -853,32 +875,68 @@ fn write_mirror(
     .ok_or_else(|| anyhow!("URL has no resolvable mirror path: {url}"))
 }
 
+/// Compute the mirror location for `url` relative to the remote root, e.g.
+/// `https://example.com/x/foo.ts` → `example.com/x/foo.ts`. Includes a
+/// non-default port and a hash of the query string so URLs that share a path
+/// but differ by port or query (common on CDNs like esm.sh) don't collide on
+/// disk or in the generated `paths`. The query hash goes into the last
+/// segment's stem (before its first `.`), keeping the file in the same
+/// directory and preserving its extension so relative imports still resolve.
+/// Returns None for directory-like URLs (path ends in `/`), since we can't
+/// infer an index filename without server cooperation.
+fn url_to_mirror_rel(url: &Url) -> Option<String> {
+  let host = url.host_str()?;
+  let path = url.path();
+  if path.ends_with('/') || path.is_empty() {
+    return None;
+  }
+  let mut host_seg = host.to_string();
+  if let Some(port) = url.port() {
+    host_seg.push_str(&format!("__{port}"));
+  }
+  let rel = path.trim_start_matches('/');
+  let rel = match url.query() {
+    Some(query) => {
+      let hash = short_hash(query);
+      match rel.rsplit_once('/') {
+        Some((dir, file)) => {
+          format!("{dir}/{}", inject_stem_suffix(file, &hash))
+        }
+        None => inject_stem_suffix(rel, &hash),
+      }
+    }
+    None => rel.to_string(),
+  };
+  Some(format!("{host_seg}/{rel}"))
+}
+
+/// Insert `suffix` into a filename before its first `.` (`mod.d.ts` ->
+/// `mod.<suffix>.d.ts`), or append it when there's no extension.
+fn inject_stem_suffix(file: &str, suffix: &str) -> String {
+  match file.split_once('.') {
+    Some((stem, ext)) => format!("{stem}.{suffix}.{ext}"),
+    None => format!("{file}.{suffix}"),
+  }
+}
+
+/// Deterministic short hex hash, used to disambiguate mirror paths by query.
+fn short_hash(s: &str) -> String {
+  use std::hash::Hash;
+  use std::hash::Hasher;
+  let mut hasher = std::collections::hash_map::DefaultHasher::new();
+  s.hash(&mut hasher);
+  format!("{:08x}", hasher.finish() as u32)
+}
+
 /// Compute the `paths`-relative mirror location for `url`, e.g.
 /// `https://example.com/x/foo.ts` → `./remote/example.com/x/foo.ts`.
 fn url_to_tsconfig_path(url: &Url) -> Option<String> {
-  let host = url.host_str()?;
-  let path = url.path();
-  if path.ends_with('/') || path.is_empty() {
-    return None;
-  }
-  let rel = path.trim_start_matches('/');
-  Some(format!("./remote/{host}/{rel}"))
+  Some(format!("./remote/{}", url_to_mirror_rel(url)?))
 }
 
-/// Map a URL to its mirror file path under `<remote_root>/<host><path>`.
-/// Returns None for URLs that don't yield a sensible file path (e.g. ending
-/// in `/`, since we can't infer an index filename without server cooperation).
+/// Map a URL to its mirror file path under `<remote_root>/<mirror-rel>`.
 fn url_to_local_path(remote_root: &Path, url: &Url) -> Option<PathBuf> {
-  let host = url.host_str()?;
-  let path = url.path();
-  if path.ends_with('/') || path.is_empty() {
-    // Directory-like URL — would need server to tell us the actual filename.
-    // Skip for the prototype; full deno_graph handles this via redirects.
-    return None;
-  }
-  // Strip leading '/', percent-decoding left as-is for the prototype.
-  let rel = path.trim_start_matches('/');
-  Some(remote_root.join(host).join(rel))
+  Some(remote_root.join(url_to_mirror_rel(url)?))
 }
 
 /// Extract module specifier string literals from a JS/TS source via
@@ -1041,5 +1099,26 @@ mod tests {
     );
     // non-member alias produced no new entry
     assert!(!member_paths.contains_key("chalk"));
+  }
+
+  #[test]
+  fn test_url_to_mirror_rel_disambiguates_query_and_port() {
+    let rel = |u: &str| url_to_mirror_rel(&Url::parse(u).unwrap()).unwrap();
+
+    // Plain URL: host/path, unchanged.
+    assert_eq!(rel("https://example.com/x/foo.ts"), "example.com/x/foo.ts");
+
+    // Distinct queries must not collide, and the extension is preserved.
+    let a = rel("https://esm.sh/react.ts?a=1");
+    let b = rel("https://esm.sh/react.ts?a=2");
+    assert_ne!(a, b);
+    assert!(a.ends_with(".ts") && b.ends_with(".ts"));
+    assert!(a.starts_with("esm.sh/") && b.starts_with("esm.sh/"));
+
+    // Non-default port is part of the host segment.
+    let p = rel("https://example.com:8443/x/foo.ts");
+    assert!(p.starts_with("example.com__8443/"));
+    // Same host, different port -> different mirror path.
+    assert_ne!(p, rel("https://example.com:9443/x/foo.ts"));
   }
 }

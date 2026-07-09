@@ -100,13 +100,16 @@ pub fn generate_tsconfig(
 ///
 /// - No existing tsconfig: create one with `extends: "./.deno/tsconfig.json"`.
 /// - Existing `extends` is a single string (or absent): coerce into an array
-///   that includes the original entry followed by our generated path. TS 5.0+
-///   resolves array extends left-to-right, with later entries overriding
-///   earlier ones — putting ours last lets us add the URL `paths` mappings
-///   without clobbering user-managed settings inherited from e.g. a shared
-///   team config.
-/// - Existing `extends` is already an array: append our path if missing,
-///   otherwise leave it alone.
+///   with our generated path FIRST, then the original entry. TS 5.0+ resolves
+///   array extends left-to-right with later entries overriding earlier ones, so
+///   putting ours first makes our config the base and lets the user's own
+///   config (e.g. a shared team config) override it — while our `paths`, which a
+///   team config won't set, survive.
+/// - Existing `extends` is already an array: prepend our path if missing.
+///
+/// The existing file is parsed as JSONC (tsconfig commonly has comments and
+/// trailing commas); an unparseable file is a hard error rather than being
+/// silently overwritten, which would drop the user's compiler options.
 fn ensure_root_tsconfig(project_root: &Path) -> Result<(), std::io::Error> {
   let root_tsconfig_path = project_root.join("tsconfig.json");
   let extends_path = "./.deno/tsconfig.json";
@@ -119,8 +122,21 @@ fn ensure_root_tsconfig(project_root: &Path) -> Result<(), std::io::Error> {
   }
 
   let content = std::fs::read_to_string(&root_tsconfig_path)?;
-  let mut tsconfig: Value =
-    serde_json::from_str(&content).unwrap_or_else(|_| json!({}));
+  let parsed: Option<Value> = jsonc_parser::parse_to_serde_value(
+    &content,
+    &jsonc_parser::ParseOptions::default(),
+  )
+  .map_err(|e| {
+    std::io::Error::new(
+      std::io::ErrorKind::InvalidData,
+      format!(
+        "existing {} is not valid JSON/JSONC: {e}. Fix or remove it and re-run \
+         `deno sync-types`.",
+        root_tsconfig_path.display()
+      ),
+    )
+  })?;
+  let mut tsconfig = parsed.unwrap_or_else(|| json!({}));
 
   let Some(obj) = tsconfig.as_object_mut() else {
     return Ok(());
@@ -134,7 +150,7 @@ fn ensure_root_tsconfig(project_root: &Path) -> Result<(), std::io::Error> {
       return Ok(());
     }
     Some(Value::String(existing)) => {
-      obj.insert("extends".to_string(), json!([existing, extends_path]));
+      obj.insert("extends".to_string(), json!([extends_path, existing]));
     }
     Some(Value::Array(arr)) => {
       let already = arr
@@ -143,8 +159,8 @@ fn ensure_root_tsconfig(project_root: &Path) -> Result<(), std::io::Error> {
       if already {
         return Ok(());
       }
-      let mut new_arr = arr;
-      new_arr.push(json!(extends_path));
+      let mut new_arr = vec![json!(extends_path)];
+      new_arr.extend(arr);
       obj.insert("extends".to_string(), Value::Array(new_arr));
     }
     Some(_) => {
@@ -464,6 +480,14 @@ fn generate_npm_paths(
       };
       let pkg_name = npm_ref.req().name.to_string();
       let pkg_dir = project_root.join(format!("node_modules/{pkg_name}"));
+      // Only map a package that is actually materialized under `node_modules`.
+      // With Deno's default global-cache mode, `deno install` may resolve npm
+      // deps without a local `node_modules/<pkg>`; emitting a path to a
+      // nonexistent directory just makes stock tsc fail. The caller warns when
+      // this happens so the user knows to enable a node_modules directory.
+      if !pkg_dir.exists() {
+        continue;
+      }
 
       // A plain alias whose name matches the package (`"chalk": "npm:chalk"`,
       // and its subpaths like `chalk/foo`) resolves natively through
@@ -1061,14 +1085,24 @@ interface AlsoKeep {
     assert_eq!(parse_jsr_specifier("jsr:assert@1"), None);
   }
 
+  // Create empty `node_modules/<pkg>` dirs so generate_npm_paths (which only
+  // maps materialized packages) has something to map.
+  fn touch_node_modules(root: &Path, pkgs: &[&str]) {
+    for pkg in pkgs {
+      std::fs::create_dir_all(root.join("node_modules").join(pkg)).unwrap();
+    }
+  }
+
   #[test]
   fn test_generate_npm_paths_only_npm_keys() {
+    let dir = tempfile::tempdir().unwrap();
+    touch_node_modules(dir.path(), &["chalk", "express", "@mylib/foo"]);
     let imports = json!({
       "chalk": "npm:chalk@5",
       "express": "npm:express@4",
       "@mylib/foo": "npm:@mylib/foo@1",
     });
-    let paths = generate_npm_paths(Path::new("/tmp/project"), Some(&imports));
+    let paths = generate_npm_paths(dir.path(), Some(&imports));
 
     // Should have npm: prefixed keys only
     assert!(paths.contains_key("npm:chalk"));
@@ -1096,12 +1130,23 @@ interface AlsoKeep {
   }
 
   #[test]
+  fn test_generate_npm_paths_skips_unmaterialized() {
+    // No node_modules on disk -> nothing to map (avoids dangling paths).
+    let dir = tempfile::tempdir().unwrap();
+    let imports = json!({ "chalk": "npm:chalk@5" });
+    let paths = generate_npm_paths(dir.path(), Some(&imports));
+    assert!(paths.is_empty());
+  }
+
+  #[test]
   fn test_generate_npm_paths_skips_jsr() {
+    let dir = tempfile::tempdir().unwrap();
+    touch_node_modules(dir.path(), &["chalk"]);
     let imports = json!({
       "@std/assert": "jsr:@std/assert@1",
       "chalk": "npm:chalk@5",
     });
-    let paths = generate_npm_paths(Path::new("/tmp/project"), Some(&imports));
+    let paths = generate_npm_paths(dir.path(), Some(&imports));
 
     assert!(paths.contains_key("npm:chalk"));
     // jsr specifiers should not appear in npm paths; every key is npm:-scheme
@@ -1291,9 +1336,10 @@ interface AlsoKeep {
 
     let content = std::fs::read_to_string(root.join("tsconfig.json")).unwrap();
     let tsconfig: Value = serde_json::from_str(&content).unwrap();
+    // Ours goes first so the user's team config overrides our defaults.
     assert_eq!(
       tsconfig.get("extends").unwrap(),
-      &json!(["./team-shared.json", "./.deno/tsconfig.json"])
+      &json!(["./.deno/tsconfig.json", "./team-shared.json"])
     );
   }
 
@@ -1314,8 +1360,45 @@ interface AlsoKeep {
     let tsconfig: Value = serde_json::from_str(&content).unwrap();
     assert_eq!(
       tsconfig.get("extends").unwrap(),
-      &json!(["./a.json", "./b.json", "./.deno/tsconfig.json"])
+      &json!(["./.deno/tsconfig.json", "./a.json", "./b.json"])
     );
+  }
+
+  #[test]
+  fn test_ensure_root_tsconfig_preserves_jsonc_options() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    // JSONC: line comment + trailing comma + user compilerOptions.
+    std::fs::write(
+      root.join("tsconfig.json"),
+      "{\n  // team config\n  \"compilerOptions\": { \"strict\": false, },\n}",
+    )
+    .unwrap();
+
+    ensure_root_tsconfig(root).unwrap();
+
+    let content = std::fs::read_to_string(root.join("tsconfig.json")).unwrap();
+    let tsconfig: Value = serde_json::from_str(&content).unwrap();
+    // extends added (ours first), and the user's options are NOT dropped.
+    assert_eq!(
+      tsconfig.get("extends").unwrap(),
+      &json!("./.deno/tsconfig.json")
+    );
+    assert_eq!(
+      tsconfig
+        .get("compilerOptions")
+        .and_then(|c| c.get("strict")),
+      Some(&json!(false))
+    );
+  }
+
+  #[test]
+  fn test_ensure_root_tsconfig_rejects_invalid() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("tsconfig.json"), "{ not valid").unwrap();
+    // Fails loudly rather than silently overwriting the user's file.
+    assert!(ensure_root_tsconfig(root).is_err());
   }
 
   #[test]

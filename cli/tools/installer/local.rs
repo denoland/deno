@@ -322,8 +322,19 @@ pub async fn sync_types_command(flags: Arc<Flags>) -> Result<(), AnyError> {
     specifiers.into_iter().collect::<Vec<_>>()
   };
 
+  // Generate at the workspace/config root, not the current working directory,
+  // so running `deno sync-types` from a subdirectory still writes the config
+  // next to deno.json and picks up the root import map.
+  let project_root = cli_options
+    .workspace()
+    .root_dir_url()
+    .to_file_path()
+    .map_err(|_| {
+      deno_core::anyhow::anyhow!("workspace root is not a local directory")
+    })?;
+
   super::npm_compat::setup_npm_compat(
-    cli_options.initial_cwd(),
+    &project_root,
     &file_fetcher,
     &http_client,
     &permissions,
