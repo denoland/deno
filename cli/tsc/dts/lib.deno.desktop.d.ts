@@ -424,9 +424,9 @@ declare namespace Deno {
     | string
     | Uint8Array;
 
-  /** Maps `T` to itself if every value it can hold survives serialization,
-   * and to `never` at the first member that does not. A type is serializable
-   * when `[T] extends [BrowserWindowReturn<T>]`.
+  /** Maps `T` to itself if every value it can hold survives the trip across
+   * the webview boundary, and to `never` at the first member that does not.
+   * `T` is serializable when `[T] extends [BrowserWindowSerializable<T>]`.
    *
    * This is a structural walk rather than a plain union because TypeScript
    * never gives an `interface` an implicit index signature: a union arm of
@@ -435,17 +435,17 @@ declare namespace Deno {
    * interfaces, and rejects the values that silently serialize to `{}` —
    * `Date`, `Map`, `Set`, class instances with methods, and functions.
    *
-   * `any` and `unknown` are let through: nothing can be proven about them,
-   * and rejecting them would break `Record<string, unknown>` payloads.
+   * `unknown extends T` holds only for `unknown` and `any`. Both are let
+   * through: nothing can be proven about them, and rejecting them would
+   * break `Record<string, unknown>` payloads.
    *
    * `undefined` (and optional) properties are dropped during serialization,
    * and a handler that returns nothing resolves as `null` in the webview. */
-  type BrowserWindowReturn<T> = 0 extends 1 & T ? T
-    : [unknown] extends [T] ? T
+  type BrowserWindowSerializable<T> = unknown extends T ? T
     : T extends BrowserWindowLeaf ? T
     : T extends (...args: any[]) => any ? never
-    : T extends readonly (infer U)[] ? readonly BrowserWindowReturn<U>[]
-    : T extends object ? { [K in keyof T]: BrowserWindowReturn<T[K]> }
+    : T extends readonly (infer U)[] ? readonly BrowserWindowSerializable<U>[]
+    : T extends object ? { [K in keyof T]: BrowserWindowSerializable<T[K]> }
     : never;
 
   /** The default bindings type: any set of async handlers.
@@ -460,23 +460,22 @@ declare namespace Deno {
     (this: BrowserWindow, ...args: any[]) => Promise<unknown>
   >;
 
-  /** The value a binding handler `F` resolves with. */
-  type BrowserWindowResolved<F> = F extends (...args: any[]) => Promise<infer P>
-    ? P
-    : never;
-
   /** Intersected with a handler's own type to reject non-serializable return
    * values at the call site of {@linkcode BrowserWindow.bind}.
    *
-   * The check lives here, in parameter position, rather than as a
-   * `R extends BrowserWindowReturn<R>` type-parameter constraint, because a
-   * type parameter constrained by a conditional type over itself is circular
-   * (TS2313). Intersecting the string makes the mismatch print the reason. */
-  type BrowserWindowSerializableCheck<F> = [BrowserWindowResolved<F>] extends
-    [BrowserWindowReturn<BrowserWindowResolved<F>>] ? unknown
-    : "binding handler must resolve with a serializable value";
+   * The check lives here, in parameter position, rather than as an
+   * `R extends BrowserWindowSerializable<R>` type-parameter constraint,
+   * because a type parameter constrained by a conditional type over itself
+   * is circular (TS2313). Intersecting the string makes the mismatch print
+   * the reason. */
+  type BrowserWindowSerializableCheck<F> = F extends
+    (...args: any[]) => Promise<infer P>
+    ? [P] extends [BrowserWindowSerializable<P>] ? unknown
+    : "binding handler must resolve with a serializable value"
+    : unknown;
 
-  /** Constrains T to a record of async binding functions.
+  /** Constrains T to a record of async binding functions taking and
+   * resolving with serializable values.
    *
    * Each handler is validated and then passed through unchanged, so that
    * {@linkcode BrowserWindow.bind} keeps the caller's own parameter types.
@@ -484,12 +483,9 @@ declare namespace Deno {
    * handler's parameters to be checked contravariantly against that
    * supertype, rejecting any handler that narrows them. */
   type ValidBindings<T> = {
-    [K in keyof T]: T[K] extends (...args: infer A) => infer R
-      ? [A] extends [BrowserWindowReturn<A>]
-        ? R extends Promise<infer P>
-          ? [P] extends [BrowserWindowReturn<P>] ? T[K]
-          : never
-        : never
+    [K in keyof T]: T[K] extends (...args: infer A) => Promise<infer P>
+      ? [A, P] extends
+        [BrowserWindowSerializable<A>, BrowserWindowSerializable<P>] ? T[K]
       : never
       : never;
   };
@@ -571,9 +567,9 @@ declare namespace Deno {
     /** Expose `fn` to the webview under `name`.
      *
      * The resolved value must be serializable; see
-     * {@linkcode BrowserWindowReturn}. This is checked even when `T` is left
-     * to its default, so returning e.g. a `Date` is a type error rather than
-     * an empty object at runtime. */
+     * {@linkcode BrowserWindowSerializable}. This is checked even when `T` is
+     * left to its default, so returning e.g. a `Date` is a type error rather
+     * than an empty object at runtime. */
     bind<N extends keyof T, F extends T[N]>(
       name: N,
       fn: F & BrowserWindowSerializableCheck<F>,
