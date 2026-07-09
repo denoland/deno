@@ -82,6 +82,16 @@ pub enum PackagesAllowedScripts {
   None,
 }
 
+impl PackagesAllowedScripts {
+  pub fn has_allowed_scripts(&self) -> bool {
+    match self {
+      Self::All => true,
+      Self::Some(package_reqs) => !package_reqs.is_empty(),
+      Self::None => false,
+    }
+  }
+}
+
 /// Info needed to run NPM lifecycle scripts
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct LifecycleScriptsConfig {
@@ -91,6 +101,12 @@ pub struct LifecycleScriptsConfig {
   pub root_dir: PathBuf,
   /// Part of an explicit `deno install`
   pub explicit_install: bool,
+}
+
+impl LifecycleScriptsConfig {
+  pub fn has_allowed_scripts(&self) -> bool {
+    self.allowed.has_allowed_scripts()
+  }
 }
 
 pub trait InstallProgressReporter:
@@ -155,6 +171,7 @@ pub struct NpmInstallerOptions<TSys: NpmInstallerSys> {
   pub clean_on_install: bool,
   pub maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
   pub maybe_node_modules_path: Option<PathBuf>,
+  pub maybe_global_virtual_store_path: Option<PathBuf>,
   pub linker_mode: NodeModulesLinkerMode,
   pub lifecycle_scripts: Arc<LifecycleScriptsConfig>,
   pub system_info: NpmSystemInfo,
@@ -228,6 +245,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
                   system_info: options.system_info,
                   reporter: install_reporter,
                   node_modules_folder,
+                  global_virtual_store_path: None,
                   jsr_deps_in_node_modules: options.jsr_deps_in_node_modules,
                 },
               ))
@@ -248,6 +266,8 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
                   system_info: options.system_info,
                   reporter: install_reporter,
                   node_modules_folder,
+                  global_virtual_store_path: options
+                    .maybe_global_virtual_store_path,
                   jsr_deps_in_node_modules: options.jsr_deps_in_node_modules,
                 },
               ))

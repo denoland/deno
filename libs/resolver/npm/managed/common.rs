@@ -16,7 +16,7 @@ use url::Url;
 
 #[derive(Debug)]
 pub enum NpmPackageFsResolver<TSys: FsCanonicalize + FsMetadata> {
-  Local(super::local::LocalNpmPackageResolver<TSys>),
+  Local(Box<super::local::LocalNpmPackageResolver<TSys>>),
   Global(super::global::GlobalNpmPackageResolver<TSys>),
 }
 
@@ -25,6 +25,15 @@ impl<TSys: FsCanonicalize + FsMetadata> NpmPackageFsResolver<TSys> {
   pub fn node_modules_path(&self) -> Option<&Path> {
     match self {
       NpmPackageFsResolver::Local(resolver) => resolver.node_modules_path(),
+      NpmPackageFsResolver::Global(_) => None,
+    }
+  }
+
+  pub fn global_virtual_store_path(&self) -> Option<&Path> {
+    match self {
+      NpmPackageFsResolver::Local(resolver) => {
+        resolver.global_virtual_store_path()
+      }
       NpmPackageFsResolver::Global(_) => None,
     }
   }

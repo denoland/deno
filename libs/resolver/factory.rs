@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::collections::BTreeSet;
+use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -12,12 +13,14 @@ use deno_cache_dir::GlobalHttpCacheRc;
 use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_cache_dir::LocalHttpCache;
 use deno_cache_dir::npm::NpmCacheDir;
+use deno_config::deno_json::AllowScriptsValueConfig;
 use deno_config::deno_json::MinimumDependencyAgeConfig;
 use deno_config::deno_json::NewestDependencyDate;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::deno_json::NodeModulesLinkerMode;
 use deno_config::workspace::FolderConfigs;
 use deno_config::workspace::VendorEnablement;
+use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDirectoryEmptyOptions;
 use deno_config::workspace::WorkspaceDirectoryRc;
@@ -31,7 +34,11 @@ pub use deno_npm::NpmSystemInfo;
 use deno_npm::resolution::NpmOverrides;
 use deno_npm::resolution::NpmVersionResolver;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
+use deno_semver::Version;
+use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageKind;
 use deno_semver::package::PackageName;
+use deno_semver::package::PackageNv;
 use futures::future::FutureExt;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolver;
@@ -78,11 +85,13 @@ use crate::lockfile::LockfileLockRc;
 use crate::npm::ByonmNpmResolverCreateOptions;
 use crate::npm::CreateInNpmPkgCheckerOptions;
 use crate::npm::DenoInNpmPackageChecker;
+use crate::npm::GlobalVirtualStoreLifecycleScripts;
 use crate::npm::NpmReqResolver;
 use crate::npm::NpmReqResolverOptions;
 use crate::npm::NpmReqResolverRc;
 use crate::npm::NpmResolver;
 use crate::npm::NpmResolverCreateOptions;
+use crate::npm::get_global_virtual_store_patch_hash;
 use crate::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
 use crate::npm::managed::ManagedNpmResolverCreateOptions;
 use crate::npm::managed::NpmResolutionCellRc;
@@ -199,6 +208,7 @@ pub trait SpecifiedImportMapProvider:
 #[derive(Debug)]
 pub struct NpmProcessStateOptions {
   pub node_modules_dir: Option<Cow<'static, str>>,
+  pub global_virtual_store_dir: Option<Cow<'static, str>>,
   pub is_byonm: bool,
   pub linker_mode: Option<NodeModulesLinkerMode>,
 }
@@ -214,6 +224,8 @@ pub struct WorkspaceFactoryOptions {
   pub lockfile_skip_write: bool,
   pub maybe_custom_deno_dir_root: Option<PathBuf>,
   pub node_modules_dir: Option<NodeModulesDirMode>,
+  pub npm_global_virtual_store: bool,
+  pub npm_lifecycle_scripts: GlobalVirtualStoreLifecycleScripts,
   pub node_modules_linker: Option<NodeModulesLinkerMode>,
   pub no_lock: bool,
   pub no_npm: bool,
@@ -254,6 +266,7 @@ pub struct WorkspaceFactory<TSys: WorkspaceFactorySys> {
   jsr_url: Deferred<Url>,
   lockfile: async_once_cell::OnceCell<Option<LockfileLockRc<TSys>>>,
   node_modules_dir_path: Deferred<Option<PathBuf>>,
+  npm_global_virtual_store_dir_path: Deferred<Option<PathBuf>>,
   npm_cache_dir: Deferred<NpmCacheDirRc>,
   npmrc: Deferred<(ResolvedNpmRcRc, Option<PathBuf>)>,
   node_modules_dir_mode: Deferred<NodeModulesDirMode>,
@@ -281,6 +294,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       jsr_url: Default::default(),
       lockfile: Default::default(),
       node_modules_dir_path: Default::default(),
+      npm_global_virtual_store_dir_path: Default::default(),
       npm_cache_dir: Default::default(),
       npmrc: Default::default(),
       node_modules_dir_mode: Default::default(),
@@ -487,6 +501,86 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
         )?))
       })
       .map(|p| p.as_deref())
+  }
+
+  pub fn npm_global_virtual_store_dir_path(
+    &self,
+  ) -> Result<Option<&Path>, anyhow::Error> {
+    self
+      .npm_global_virtual_store_dir_path
+      .get_or_try_init(|| {
+        if let Some(process_state) = &self.options.npm_process_state
+          && let Some(path) = &process_state.global_virtual_store_dir
+        {
+          return Ok(Some(PathBuf::from(path.as_ref())));
+        }
+
+        let workspace = &self.workspace_directory()?.workspace;
+        let enabled = self.options.npm_global_virtual_store
+          || workspace.has_unstable("npm-global-virtual-store");
+        if !enabled
+          || self.node_modules_dir_path()?.is_none()
+          || self.node_modules_linker_mode()? != NodeModulesLinkerMode::Isolated
+        {
+          return Ok(None);
+        }
+        if let Some(package_name) =
+          global_virtual_store_incompatible_package(workspace)
+        {
+          log::warn!(
+            "npm package '{}' is not compatible with the global virtual store; falling back to the project-local npm store",
+            package_name,
+          );
+          return Ok(None);
+        }
+
+        Ok(Some(canonicalize_path_maybe_not_exists(
+          &self.sys,
+          &self
+            .npm_cache_dir()?
+            .root_dir()
+            .join("_virtual_store")
+            .join("v1"),
+        )?))
+      })
+      .map(|p| p.as_deref())
+  }
+
+  pub fn npm_global_virtual_store_lifecycle_scripts(
+    &self,
+  ) -> Result<GlobalVirtualStoreLifecycleScripts, anyhow::Error> {
+    let mut lifecycle_scripts = self.options.npm_lifecycle_scripts.clone();
+    lifecycle_scripts.merge(workspace_lifecycle_scripts(
+      &self.workspace_directory()?.workspace,
+    )?);
+    Ok(lifecycle_scripts)
+  }
+
+  pub fn npm_global_virtual_store_patch_hashes(
+    &self,
+  ) -> Result<HashMap<PackageNv, String>, anyhow::Error> {
+    let mut patch_hashes = HashMap::new();
+    for pkg in self.workspace_directory()?.workspace.link_pkg_jsons() {
+      let Some(name) = pkg.name.as_ref() else {
+        continue;
+      };
+      let Some(version) = pkg
+        .version
+        .as_ref()
+        .and_then(|v| Version::parse_from_npm(v).ok())
+      else {
+        continue;
+      };
+      let nv = PackageNv {
+        name: PackageName::from_str(name),
+        version,
+      };
+      patch_hashes.insert(
+        nv,
+        get_global_virtual_store_patch_hash(&self.sys, pkg.dir_path())?,
+      );
+    }
+    Ok(patch_hashes)
   }
 
   pub fn deno_dir(&self) -> Result<&DenoDir<TSys>, DenoDirResolutionError> {
@@ -971,6 +1065,9 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
             maybe_node_modules_path: self
               .workspace_factory
               .node_modules_dir_path()?,
+            maybe_global_virtual_store_path: self
+              .workspace_factory
+              .npm_global_virtual_store_dir_path()?,
           },
         ),
       };
@@ -1140,6 +1237,16 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
             .workspace_factory
             .node_modules_dir_path()?
             .map(|p| p.to_path_buf()),
+          maybe_global_virtual_store_path: self
+            .workspace_factory
+            .npm_global_virtual_store_dir_path()?
+            .map(|p| p.to_path_buf()),
+          global_virtual_store_lifecycle_scripts: self
+            .workspace_factory
+            .npm_global_virtual_store_lifecycle_scripts()?,
+          global_virtual_store_patch_hashes: self
+            .workspace_factory
+            .npm_global_virtual_store_patch_hashes()?,
           npm_system_info: self.options.npm_system_info.clone(),
           npmrc: self.workspace_factory.npmrc()?.clone(),
           linker_mode: self.workspace_factory.node_modules_linker_mode()?,
@@ -1418,6 +1525,92 @@ pub fn npm_overrides_from_workspace(
       NpmOverrides::default()
     }
   }
+}
+
+fn workspace_lifecycle_scripts(
+  workspace: &Workspace,
+) -> Result<GlobalVirtualStoreLifecycleScripts, anyhow::Error> {
+  match workspace.allow_scripts()?.allow {
+    AllowScriptsValueConfig::All => Ok(GlobalVirtualStoreLifecycleScripts::All),
+    AllowScriptsValueConfig::Limited(deps) => {
+      let npm_reqs = deps
+        .into_iter()
+        .filter_map(|dep| (dep.kind == PackageKind::Npm).then_some(dep.req))
+        .collect::<Vec<_>>();
+      if npm_reqs.is_empty() {
+        Ok(GlobalVirtualStoreLifecycleScripts::None)
+      } else {
+        Ok(GlobalVirtualStoreLifecycleScripts::Some(npm_reqs))
+      }
+    }
+  }
+}
+
+const GLOBAL_VIRTUAL_STORE_INCOMPATIBLE_PACKAGES: &[&str] =
+  &["next", "nuxt", "vite", "vitepress", "parcel"];
+
+fn global_virtual_store_incompatible_package(
+  workspace: &Workspace,
+) -> Option<&'static str> {
+  fn check_name(name: &str) -> Option<&'static str> {
+    GLOBAL_VIRTUAL_STORE_INCOMPATIBLE_PACKAGES
+      .iter()
+      .copied()
+      .find(|package_name| *package_name == name)
+  }
+
+  for (_, folder) in workspace.config_folders() {
+    if let Some(deno_json) = &folder.deno_json
+      && let Some(serde_json::Value::Object(imports)) = &deno_json.json.imports
+    {
+      for (alias, value) in imports {
+        let Some(specifier) = value.as_str() else {
+          continue;
+        };
+        if let Some(catalog_name) = specifier.strip_prefix("catalog:") {
+          let catalog_name = if catalog_name.is_empty() {
+            "default"
+          } else {
+            catalog_name
+          };
+          let name = alias.strip_suffix('/').unwrap_or(alias);
+          if workspace
+            .catalogs()
+            .get(catalog_name)
+            .is_some_and(|catalog| catalog.contains_key(name))
+            && let Some(package_name) = check_name(name)
+          {
+            return Some(package_name);
+          }
+        } else if let Ok(npm_req_ref) =
+          NpmPackageReqReference::from_str(specifier)
+          && let Some(package_name) =
+            check_name(npm_req_ref.into_inner().req.name.as_str())
+        {
+          return Some(package_name);
+        }
+      }
+    }
+
+    if let Some(pkg_json) = &folder.pkg_json {
+      for deps in [
+        pkg_json.dependencies.as_ref(),
+        pkg_json.dev_dependencies.as_ref(),
+        pkg_json.optional_dependencies.as_ref(),
+      ]
+      .into_iter()
+      .flatten()
+      {
+        for alias in deps.keys() {
+          if let Some(package_name) = check_name(alias) {
+            return Some(package_name);
+          }
+        }
+      }
+    }
+  }
+
+  None
 }
 
 #[cfg(test)]

@@ -10,6 +10,7 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::hash_map::Entry;
+use std::hash::Hasher;
 use std::io;
 use std::path::Path;
 use std::path::PathBuf;
@@ -30,10 +31,13 @@ use deno_npm_cache::NpmCache;
 use deno_npm_cache::NpmCacheHttpClient;
 use deno_npm_cache::NpmCacheSys;
 use deno_npm_cache::TarballCache;
-use deno_npm_cache::hard_link_file;
 use deno_path_util::fs::atomic_write_file_with_retries;
+use deno_resolver::npm::GlobalVirtualStoreLifecycleScripts;
+use deno_resolver::npm::GlobalVirtualStorePackageFolderNames;
+use deno_resolver::npm::get_global_virtual_store_patch_hash;
 use deno_resolver::npm::get_package_folder_id_folder_name;
 use deno_resolver::npm::managed::NpmResolutionCell;
+use deno_resolver::npm::normalize_pkg_name_for_node_modules_deno_folder;
 use deno_semver::StackString;
 use deno_semver::package::PackageNv;
 use deno_terminal::colors;
@@ -69,6 +73,7 @@ use crate::lifecycle_scripts::LifecycleScripts;
 use crate::lifecycle_scripts::LifecycleScriptsExecutor;
 use crate::lifecycle_scripts::LifecycleScriptsExecutorOptions;
 use crate::lifecycle_scripts::LifecycleScriptsStrategy;
+use crate::lifecycle_scripts::PackageWithScript;
 use crate::lifecycle_scripts::has_lifecycle_scripts;
 use crate::lifecycle_scripts::is_running_lifecycle_script;
 use crate::package_json::InstallWorkspacePkgDep;
@@ -92,6 +97,7 @@ pub trait LocalNpmInstallSys:
 pub struct LocalNpmPackageInstallerOptions {
   pub clean_on_install: bool,
   pub lifecycle_scripts: Arc<LifecycleScriptsConfig>,
+  pub global_virtual_store_path: Option<PathBuf>,
   pub node_modules_folder: PathBuf,
   pub reporter: Option<Arc<dyn crate::InstallReporter>>,
   pub system_info: NpmSystemInfo,
@@ -119,6 +125,7 @@ pub struct LocalNpmPackageInstaller<
   tarball_cache: Arc<TarballCache<THttpClient, TSys>>,
   clean_on_install: bool,
   lifecycle_scripts_config: Arc<LifecycleScriptsConfig>,
+  global_virtual_store_path: Option<PathBuf>,
   root_node_modules_path: PathBuf,
   system_info: NpmSystemInfo,
   install_reporter: Option<Arc<dyn crate::InstallReporter>>,
@@ -187,6 +194,7 @@ impl<
       sys,
       clean_on_install: options.clean_on_install,
       lifecycle_scripts_config: options.lifecycle_scripts,
+      global_virtual_store_path: options.global_virtual_store_path,
       root_node_modules_path: options.node_modules_folder,
       install_reporter: options.reporter,
       system_info: options.system_info,
@@ -220,12 +228,21 @@ impl<
     }
 
     let sys = self.sys.with_paths_in_errors();
+    let use_global_virtual_store = self.global_virtual_store_path.is_some();
+    let package_store_dir = self
+      .global_virtual_store_path
+      .as_deref()
+      .unwrap_or(&deno_local_registry_dir);
     let deno_node_modules_dir = deno_local_registry_dir.join("node_modules");
     sys.fs_create_dir_all(&deno_node_modules_dir)?;
+    if use_global_virtual_store {
+      sys.fs_create_dir_all(package_store_dir)?;
+    }
+    let lifecycle_state_dir = &deno_local_registry_dir;
     let bin_node_modules_dir_path = self.root_node_modules_path.join(".bin");
     let single_process_lock = LaxSingleProcessFsFlag::lock(
       sys.as_ref(),
-      deno_local_registry_dir.join(".deno.lock"),
+      package_store_dir.join(".deno.lock"),
       &self.reporter,
       // similar message used by cargo build
       "waiting for file lock on node_modules directory",
@@ -234,6 +251,32 @@ impl<
 
     let package_partitions =
       snapshot.all_system_packages_partitioned(&self.system_info);
+    let global_virtual_store_lifecycle_scripts =
+      global_virtual_store_lifecycle_scripts(&self.lifecycle_scripts_config);
+    let global_virtual_store_patch_hashes = if use_global_virtual_store {
+      global_virtual_store_patch_hashes(
+        sys.as_ref(),
+        &self.npm_install_deps_provider,
+      )?
+    } else {
+      HashMap::new()
+    };
+    let global_virtual_store_package_folder_names = use_global_virtual_store
+      .then(|| {
+        GlobalVirtualStorePackageFolderNames::new(
+          snapshot,
+          &self.system_info,
+          &global_virtual_store_lifecycle_scripts,
+          &global_virtual_store_patch_hashes,
+        )
+      });
+    let package_folder_name = |package: &NpmResolutionPackage| {
+      package_folder_name_for_package(
+        package,
+        global_virtual_store_package_folder_names.as_ref(),
+        &self.system_info,
+      )
+    };
     let pb_clear_guard = self.reporter.clear_guard(); // prevent flickering
 
     // load this after we get the directory lock
@@ -244,17 +287,26 @@ impl<
 
     // 1. Check if packages changed and clean up if needed
     if self.clean_on_install {
-      let root_folder_names =
-        root_package_folder_names(snapshot, &self.npm_install_deps_provider);
+      let root_folder_names = root_package_folder_names(
+        snapshot,
+        &self.npm_install_deps_provider,
+        global_virtual_store_package_folder_names.as_ref(),
+        &self.system_info,
+      );
       let packages_hash =
         calculate_packages_hash(&package_partitions, &root_folder_names);
       if setup_cache.packages_changed(packages_hash) {
         cleanup_unused_packages(
           sys.as_ref(),
-          &self.root_node_modules_path,
-          &deno_local_registry_dir,
-          &package_partitions,
-          &root_folder_names,
+          CleanupUnusedPackagesContext {
+            root_node_modules_dir: &self.root_node_modules_path,
+            deno_local_registry_dir: &deno_local_registry_dir,
+            package_partitions: &package_partitions,
+            root_folder_names: &root_folder_names,
+            global_virtual_store_package_folder_names:
+              global_virtual_store_package_folder_names.as_ref(),
+            system_info: &self.system_info,
+          },
           &mut setup_cache,
         );
       }
@@ -278,7 +330,10 @@ impl<
       &self.lifecycle_scripts_config,
       LocalLifecycleScripts {
         sys: sys.as_ref(),
-        deno_local_registry_dir: &deno_local_registry_dir,
+        lifecycle_state_dir,
+        global_virtual_store_package_folder_names:
+          global_virtual_store_package_folder_names.as_ref(),
+        system_info: &self.system_info,
         install_reporter: self.install_reporter.clone(),
       },
     )));
@@ -305,7 +360,12 @@ impl<
         self.root_node_modules_path.parent(),
       ));
 
-    for package in &package_partitions.packages {
+    let packages_to_initialize = if use_global_virtual_store {
+      package_partitions.iter_all().collect::<Vec<_>>()
+    } else {
+      package_partitions.packages.iter().collect::<Vec<_>>()
+    };
+    for package in packages_to_initialize {
       if let Some(current_pkg) =
         newest_packages_by_name.get_mut(&package.id.nv.name)
       {
@@ -316,10 +376,8 @@ impl<
         newest_packages_by_name.insert(&package.id.nv.name, package);
       };
 
-      let package_folder_name = get_package_folder_id_folder_name(
-        &package.get_package_cache_folder_id(),
-      );
-      let folder_path = deno_local_registry_dir.join(&package_folder_name);
+      let package_folder_name = package_folder_name(package);
+      let folder_path = package_store_dir.join(&package_folder_name);
       let tags = package_tags
         .get(&package.id.nv)
         .map(|tags| {
@@ -560,13 +618,11 @@ impl<
       // there might be multiple ids per package due to peer dep copy packages
       for id in snapshot.package_ids_for_nv(&patch_pkg.nv) {
         let package = snapshot.package_from_id(id).unwrap();
-        let package_folder_name = get_package_folder_id_folder_name(
-          &package.get_package_cache_folder_id(),
-        );
+        let package_folder_name = package_folder_name(package);
         // node_modules/.deno/<package_folder_id_folder_name>/node_modules/<package_name> -> local package folder
         let target = join_package_name(
           Cow::Owned(
-            deno_local_registry_dir
+            package_store_dir
               .join(&package_folder_name)
               .join("node_modules"),
           ),
@@ -600,45 +656,51 @@ impl<
       result?; // surface the first error
     }
 
-    // 4. Create any "copy" packages, which are used for peer dependencies
-    for package in &package_partitions.copy_packages {
-      let package_cache_folder_id = package.get_package_cache_folder_id();
-      let destination_path = deno_local_registry_dir
-        .join(get_package_folder_id_folder_name(&package_cache_folder_id));
-      let initialized_file = destination_path.join(".initialized");
-      if !sys.fs_exists_no_err(&initialized_file) {
-        let sub_node_modules = destination_path.join("node_modules");
-        let package_path =
-          join_package_name(Cow::Owned(sub_node_modules), &package.id.nv.name);
-        let source_path = join_package_name(
-          Cow::Owned(
-            deno_local_registry_dir
-              .join(get_package_folder_id_folder_name(
-                &package_cache_folder_id.with_no_count(),
-              ))
-              .join("node_modules"),
-          ),
-          &package.id.nv.name,
-        );
+    // 4. Create any "copy" packages, which are used for peer dependencies.
+    // In the global virtual store these were initialized directly from the
+    // tarball cache above, keyed by the full package id.
+    if !use_global_virtual_store {
+      for package in &package_partitions.copy_packages {
+        let package_cache_folder_id = package.get_package_cache_folder_id();
+        let destination_path = deno_local_registry_dir
+          .join(get_package_folder_id_folder_name(&package_cache_folder_id));
+        let initialized_file = destination_path.join(".initialized");
+        if !sys.fs_exists_no_err(&initialized_file) {
+          let sub_node_modules = destination_path.join("node_modules");
+          let package_path = join_package_name(
+            Cow::Owned(sub_node_modules),
+            &package.id.nv.name,
+          );
+          let source_path = join_package_name(
+            Cow::Owned(
+              deno_local_registry_dir
+                .join(get_package_folder_id_folder_name(
+                  &package_cache_folder_id.with_no_count(),
+                ))
+                .join("node_modules"),
+            ),
+            &package.id.nv.name,
+          );
 
-        cache_futures.push(
-          async move {
-            let sys = self.sys.clone();
-            crate::rt::spawn_blocking(move || {
-              clone_dir_recursive(&sys, &source_path, &package_path)
-                .map_err(JsErrorBox::from_err)?;
-              // write out a file that indicates this folder has been initialized
-              create_initialized_file(&sys, &initialized_file)
-                .map_err(JsErrorBox::from_err)?;
+          cache_futures.push(
+            async move {
+              let sys = self.sys.clone();
+              crate::rt::spawn_blocking(move || {
+                clone_dir_recursive(&sys, &source_path, &package_path)
+                  .map_err(JsErrorBox::from_err)?;
+                // write out a file that indicates this folder has been initialized
+                create_initialized_file(&sys, &initialized_file)
+                  .map_err(JsErrorBox::from_err)?;
+                Ok::<_, JsErrorBox>(())
+              })
+              .await
+              .map_err(JsErrorBox::from_err)?
+              .map_err(JsErrorBox::from_err)?;
               Ok::<_, JsErrorBox>(())
-            })
-            .await
-            .map_err(JsErrorBox::from_err)?
-            .map_err(JsErrorBox::from_err)?;
-            Ok::<_, JsErrorBox>(())
-          }
-          .boxed_local(),
-        );
+            }
+            .boxed_local(),
+          );
+        }
       }
     }
 
@@ -652,13 +714,12 @@ impl<
     // Symlink node_modules/.deno/<package_id>/node_modules/<dep_name> to
     // node_modules/.deno/<dep_id>/node_modules/<dep_package_name>
     for package in package_partitions.iter_all() {
-      let package_folder_name = get_package_folder_id_folder_name(
-        &package.get_package_cache_folder_id(),
-      );
-      let sub_node_modules = deno_local_registry_dir
-        .join(&package_folder_name)
+      let current_package_folder_name = package_folder_name(package);
+      let sub_node_modules = package_store_dir
+        .join(&current_package_folder_name)
         .join("node_modules");
-      let mut dep_setup_cache = setup_cache.with_dep(&package_folder_name);
+      let mut dep_setup_cache =
+        setup_cache.with_dep(&current_package_folder_name);
       for (name, dep_id) in &package.dependencies {
         let dep = snapshot.package_from_id(dep_id).unwrap();
         if package.optional_dependencies.contains(name)
@@ -666,17 +727,13 @@ impl<
         {
           continue; // this isn't a dependency for the current system
         }
-        let dep_cache_folder_id = dep.get_package_cache_folder_id();
-        let dep_folder_name =
-          get_package_folder_id_folder_name(&dep_cache_folder_id);
+        let dep_folder_name = package_folder_name(dep);
         if package.dist.is_none()
           || dep_setup_cache.insert(name, &dep_folder_name)
         {
           let dep_folder_path = join_package_name(
             Cow::Owned(
-              deno_local_registry_dir
-                .join(dep_folder_name)
-                .join("node_modules"),
+              package_store_dir.join(dep_folder_name).join("node_modules"),
             ),
             &dep_id.nv.name,
           );
@@ -740,12 +797,10 @@ impl<
             }
           }
         };
-        let target_folder_name = get_package_folder_id_folder_name(
-          &remote_pkg.get_package_cache_folder_id(),
-        );
+        let target_folder_name = package_folder_name(remote_pkg);
         let local_registry_package_path = join_package_name(
           Cow::Owned(
-            deno_local_registry_dir
+            package_store_dir
               .join(&target_folder_name)
               .join("node_modules"),
           ),
@@ -802,13 +857,11 @@ impl<
         }
       }
       let package = snapshot.package_from_id(id).unwrap();
-      let target_folder_name = get_package_folder_id_folder_name(
-        &package.get_package_cache_folder_id(),
-      );
+      let target_folder_name = package_folder_name(package);
       if setup_cache.insert_root_symlink(&id.nv.name, &target_folder_name) {
         let local_registry_package_path = join_package_name(
           Cow::Owned(
-            deno_local_registry_dir
+            package_store_dir
               .join(&target_folder_name)
               .join("node_modules"),
           ),
@@ -841,7 +894,7 @@ impl<
       {
         let local_registry_package_path = join_package_name(
           Cow::Owned(
-            deno_local_registry_dir
+            package_store_dir
               .join(&target_folder_name)
               .join("node_modules"),
           ),
@@ -886,15 +939,13 @@ impl<
         }
       }
 
-      let target_folder_name = get_package_folder_id_folder_name(
-        &package.get_package_cache_folder_id(),
-      );
+      let target_folder_name = package_folder_name(package);
       if setup_cache
         .insert_deno_symlink(&package.id.nv.name, &target_folder_name)
       {
         let local_registry_package_path = join_package_name(
           Cow::Owned(
-            deno_local_registry_dir
+            package_store_dir
               .join(target_folder_name)
               .join("node_modules"),
           ),
@@ -1013,12 +1064,10 @@ impl<
                   continue;
                 };
                 let package = snapshot.package_from_id(&id).unwrap();
-                let target_folder_name = get_package_folder_id_folder_name(
-                  &package.get_package_cache_folder_id(),
-                );
+                let target_folder_name = package_folder_name(package);
                 let local_registry_package_path = join_package_name(
                   Cow::Owned(
-                    deno_local_registry_dir
+                    package_store_dir
                       .join(&target_folder_name)
                       .join("node_modules"),
                   ),
@@ -1031,7 +1080,7 @@ impl<
                   bin_deps.push(MemberBinDep {
                     package,
                     read_path: local_registry_package_path.clone(),
-                    link_path: member_node_modules.join(alias.as_str()),
+                    link_path: member_node_modules.join(alias),
                   });
                 }
                 (alias, local_registry_package_path, target_folder_name)
@@ -1053,7 +1102,7 @@ impl<
             symlink_package_dir(
               sys.as_ref(),
               &target_path,
-              &member_node_modules.join(alias.as_str()),
+              &member_node_modules.join(alias),
             )?;
           }
         }
@@ -1072,8 +1121,10 @@ impl<
 
     for package in &workspace_lifecycle_packages {
       sys.fs_create_dir_all(local_node_modules_package_folder(
-        &deno_local_registry_dir,
+        lifecycle_state_dir,
         &package.package,
+        global_virtual_store_package_folder_names.as_ref(),
+        &self.system_info,
       ))?;
       lifecycle_scripts.borrow_mut().add(
         &package.package,
@@ -1128,7 +1179,10 @@ impl<
         &self.lifecycle_scripts_config,
         LocalLifecycleScripts {
           sys: sys.as_ref(),
-          deno_local_registry_dir: &deno_local_registry_dir,
+          lifecycle_state_dir,
+          global_virtual_store_package_folder_names:
+            global_virtual_store_package_folder_names.as_ref(),
+          system_info: &self.system_info,
           install_reporter: self.install_reporter.clone(),
         },
       ),
@@ -1139,6 +1193,61 @@ impl<
     let packages_with_scripts =
       lifecycle_scripts_to_run.packages_with_scripts();
     if !packages_with_scripts.is_empty() {
+      let side_effects_cache_root = self
+        .global_virtual_store_path
+        .as_deref()
+        .map(side_effects_cache_root);
+      let mut side_effects_cache_entries =
+        HashMap::<NpmPackageId, SideEffectsCacheEntry>::new();
+      let mut packages_with_scripts_to_run =
+        Vec::<PackageWithScript<'_>>::with_capacity(
+          packages_with_scripts.len(),
+        );
+      for package_with_script in packages_with_scripts {
+        if let Some(side_effects_cache_root) = &side_effects_cache_root
+          && package_with_script.package.dist.is_some()
+        {
+          let side_effects_cache_entry = SideEffectsCacheEntry::new(
+            sys.as_ref(),
+            side_effects_cache_root,
+            package_with_script.package,
+            &package_with_script.package_folder,
+            &self.system_info,
+          )?;
+          match side_effects_cache_entry.restore_if_available(sys.as_ref())? {
+            SideEffectsCacheRestore::Miss => {
+              side_effects_cache_entries.insert(
+                package_with_script.package.id.clone(),
+                side_effects_cache_entry,
+              );
+            }
+            SideEffectsCacheRestore::Restored
+            | SideEffectsCacheRestore::AlreadyApplied => {
+              let path = ran_scripts_file(
+                lifecycle_state_dir,
+                package_with_script.package,
+                global_virtual_store_package_folder_names.as_ref(),
+                &self.system_info,
+              );
+              ensure_lifecycle_state_parent(sys.as_ref(), &path)?;
+              create_initialized_file(sys.as_ref(), &path)?;
+              continue;
+            }
+          }
+        }
+        packages_with_scripts_to_run.push(PackageWithScript {
+          package: package_with_script.package,
+          scripts: package_with_script.scripts.clone(),
+          package_folder: package_with_script.package_folder.clone(),
+          init_cwds: package_with_script.init_cwds.clone(),
+        });
+      }
+      if packages_with_scripts_to_run.is_empty() {
+        setup_cache.save();
+        drop(single_process_lock);
+        drop(pb_clear_guard);
+        return Ok(());
+      }
       let additional_packages = workspace_lifecycle_packages
         .iter()
         .map(|package| &package.package)
@@ -1146,6 +1255,7 @@ impl<
       let process_state = NpmProcessState::new_local(
         snapshot.as_valid_serialized(),
         &self.root_node_modules_path,
+        self.global_virtual_store_path.as_deref(),
         crate::process_state::NpmProcessStateLinkerMode::Isolated,
       )
       .as_serialized();
@@ -1158,16 +1268,29 @@ impl<
           root_node_modules_dir_path: &self.root_node_modules_path,
           resolve_pkg_folder: None,
           on_ran_pkg_scripts: &|pkg| {
-            create_initialized_file(
-              sys.as_ref(),
-              &ran_scripts_file(&deno_local_registry_dir, pkg),
-            )
-            .map_err(JsErrorBox::from_err)
+            let path = ran_scripts_file(
+              lifecycle_state_dir,
+              pkg,
+              global_virtual_store_package_folder_names.as_ref(),
+              &self.system_info,
+            );
+            ensure_lifecycle_state_parent(sys.as_ref(), &path)
+              .map_err(JsErrorBox::from_err)?;
+            create_initialized_file(sys.as_ref(), &path)
+              .map_err(JsErrorBox::from_err)?;
+            if let Some(side_effects_cache_entry) =
+              side_effects_cache_entries.get(&pkg.id)
+            {
+              side_effects_cache_entry
+                .save(sys.as_ref())
+                .map_err(JsErrorBox::from_err)?;
+            }
+            Ok(())
           },
           snapshot,
           system_packages: &package_partitions.packages,
           additional_packages: &additional_packages,
-          packages_with_scripts,
+          packages_with_scripts: &packages_with_scripts_to_run,
           extra_info_provider: &extra_info_provider,
         })
         .await
@@ -1302,8 +1425,57 @@ pub(crate) fn clone_dir_recursive_except_node_modules_child(
   from: &Path,
   to: &Path,
 ) -> Result<(), std::io::Error> {
+  clone_dir_recursive_except_node_modules_child_inner(sys, from, to, true)
+}
+
+fn clone_dir_recursive_except_node_modules_child_overlay(
+  sys: &impl CloneDirRecursiveSys,
+  from: &Path,
+  to: &Path,
+) -> Result<(), std::io::Error> {
+  clone_dir_recursive_except_node_modules_child_inner(sys, from, to, false)
+}
+
+fn clear_dir_except_node_modules_child(
+  sys: &impl LocalNpmInstallSys,
+  path: &Path,
+) -> Result<(), std::io::Error> {
   let sys = sys.with_paths_in_errors();
-  _ = sys.fs_remove_dir_all(to);
+  let read_dir = match sys.fs_read_dir(path) {
+    Ok(read_dir) => read_dir,
+    Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+    Err(err) => return Err(err),
+  };
+  for entry in read_dir {
+    let entry = entry?;
+    if entry.file_name().to_str() == Some("node_modules") {
+      continue;
+    }
+    let path = entry.path();
+    let file_type = entry.file_type()?;
+    if file_type.is_dir() {
+      sys.fs_remove_dir_all(&path)?;
+    } else {
+      match sys.fs_remove_file(&path) {
+        Ok(()) => {}
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => return Err(err),
+      }
+    }
+  }
+  Ok(())
+}
+
+fn clone_dir_recursive_except_node_modules_child_inner(
+  sys: &impl CloneDirRecursiveSys,
+  from: &Path,
+  to: &Path,
+  remove_to: bool,
+) -> Result<(), std::io::Error> {
+  let sys = sys.with_paths_in_errors();
+  if remove_to {
+    _ = sys.fs_remove_dir_all(to);
+  }
   sys.fs_create_dir_all(to)?;
   for entry in sys.fs_read_dir(from)? {
     let entry = entry?;
@@ -1315,20 +1487,17 @@ pub(crate) fn clone_dir_recursive_except_node_modules_child(
     let new_to = to.join(entry.file_name());
 
     if file_type.is_dir() {
-      clone_dir_recursive_except_node_modules_child(
+      clone_dir_recursive_except_node_modules_child_inner(
         sys.as_ref(),
         &new_from,
         &new_to,
+        remove_to,
       )?;
     } else if file_type.is_file() {
-      hard_link_file(sys.as_ref(), &new_from, &new_to).or_else(|_| {
-        // Remove any existing file first so the copy writes a new inode
-        // rather than writing through a hardlinked destination, which
-        // would corrupt the file at its other paths. Removing first also
-        // breaks hardlinks to currently-executing binaries (ETXTBSY).
-        let _ = sys.fs_remove_file(&new_to);
-        sys.fs_copy(&new_from, &new_to).map(|_| ())
-      })?;
+      // Use a real copy here because patch packages and side-effects cache
+      // entries may be mutated independently from their source.
+      let _ = sys.fs_remove_file(&new_to);
+      sys.fs_copy(&new_from, &new_to).map(|_| ())?;
     }
   }
   Ok(())
@@ -1386,41 +1555,295 @@ fn ensure_jsr_npmrc<TSys: NpmCacheSys>(
   )
 }
 
+fn package_folder_name_for_package(
+  package: &NpmResolutionPackage,
+  global_virtual_store_package_folder_names: Option<
+    &GlobalVirtualStorePackageFolderNames,
+  >,
+  system_info: &NpmSystemInfo,
+) -> String {
+  if let Some(global_virtual_store_package_folder_names) =
+    global_virtual_store_package_folder_names
+  {
+    global_virtual_store_package_folder_names.get(&package.id, system_info)
+  } else {
+    get_package_folder_id_folder_name(&package.get_package_cache_folder_id())
+  }
+}
+
+fn global_virtual_store_lifecycle_scripts(
+  config: &LifecycleScriptsConfig,
+) -> GlobalVirtualStoreLifecycleScripts {
+  match &config.allowed {
+    crate::PackagesAllowedScripts::All => {
+      GlobalVirtualStoreLifecycleScripts::All
+    }
+    crate::PackagesAllowedScripts::Some(package_reqs) => {
+      GlobalVirtualStoreLifecycleScripts::Some(package_reqs.clone())
+    }
+    crate::PackagesAllowedScripts::None => {
+      GlobalVirtualStoreLifecycleScripts::None
+    }
+  }
+}
+
+fn global_virtual_store_patch_hashes(
+  sys: &impl LocalNpmInstallSys,
+  npm_install_deps_provider: &NpmInstallDepsProvider,
+) -> std::io::Result<HashMap<PackageNv, String>> {
+  let mut patch_hashes = HashMap::new();
+  for pkg in npm_install_deps_provider.patch_pkgs() {
+    patch_hashes.insert(
+      pkg.nv.clone(),
+      get_global_virtual_store_patch_hash(sys, &pkg.target_dir)?,
+    );
+  }
+  Ok(patch_hashes)
+}
+
+const SIDE_EFFECTS_CACHE_MARKER: &str = ".deno-side-effects-cache";
+
+#[derive(Debug)]
+enum SideEffectsCacheRestore {
+  Miss,
+  Restored,
+  AlreadyApplied,
+}
+
+#[derive(Debug, Clone)]
+struct SideEffectsCacheEntry {
+  package_dir: PathBuf,
+  cache_path: PathBuf,
+  input_hash: String,
+}
+
+impl SideEffectsCacheEntry {
+  fn new<TSys: LocalNpmInstallSys>(
+    sys: &TSys,
+    root: &Path,
+    package: &NpmResolutionPackage,
+    package_dir: &Path,
+    system_info: &NpmSystemInfo,
+  ) -> std::io::Result<Self> {
+    let input_hash = side_effects_input_hash(sys, package_dir)?;
+    let name =
+      normalize_pkg_name_for_node_modules_deno_folder(&package.id.nv.name);
+    let cache_path = root
+      .join(format!("{}@{}", name, package.id.nv.version))
+      .join(format!("{}-{}", system_info.os, system_info.cpu))
+      .join(&input_hash);
+    Ok(Self {
+      package_dir: package_dir.to_path_buf(),
+      cache_path,
+      input_hash,
+    })
+  }
+
+  fn restore_if_available<TSys: LocalNpmInstallSys>(
+    &self,
+    sys: &TSys,
+  ) -> std::io::Result<SideEffectsCacheRestore> {
+    if !sys.fs_exists_no_err(&self.cache_path) {
+      return Ok(SideEffectsCacheRestore::Miss);
+    }
+    if package_has_side_effects_marker(sys, &self.package_dir, &self.input_hash)
+    {
+      return Ok(SideEffectsCacheRestore::AlreadyApplied);
+    }
+    clear_dir_except_node_modules_child(sys, &self.package_dir)?;
+    clone_dir_recursive_except_node_modules_child_overlay(
+      sys,
+      &self.cache_path,
+      &self.package_dir,
+    )?;
+    write_side_effects_marker(sys, &self.package_dir, &self.input_hash)?;
+    Ok(SideEffectsCacheRestore::Restored)
+  }
+
+  fn save<TSys: LocalNpmInstallSys>(&self, sys: &TSys) -> std::io::Result<()> {
+    write_side_effects_marker(sys, &self.package_dir, &self.input_hash)?;
+    if sys.fs_exists_no_err(&self.cache_path) {
+      return Ok(());
+    }
+    let parent = self.cache_path.parent().unwrap();
+    sys.fs_create_dir_all(parent)?;
+    let tmp_path =
+      parent.join(format!(".tmp-{}-{}", self.input_hash, std::process::id()));
+    _ = sys.fs_remove_dir_all(&tmp_path);
+    clone_dir_recursive_except_node_modules_child(
+      sys,
+      &self.package_dir,
+      &tmp_path,
+    )?;
+    match sys.fs_rename(&tmp_path, &self.cache_path) {
+      Ok(()) => Ok(()),
+      Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+        _ = sys.fs_remove_dir_all(&tmp_path);
+        Ok(())
+      }
+      Err(err) => {
+        _ = sys.fs_remove_dir_all(&tmp_path);
+        Err(err)
+      }
+    }
+  }
+}
+
+fn side_effects_cache_root(global_virtual_store_path: &Path) -> PathBuf {
+  global_virtual_store_path
+    .parent()
+    .and_then(|p| p.parent())
+    .unwrap_or(global_virtual_store_path)
+    .join("side-effects-v1")
+}
+
+fn side_effects_input_hash<TSys: LocalNpmInstallSys>(
+  sys: &TSys,
+  package_dir: &Path,
+) -> std::io::Result<String> {
+  if let Ok(marker) =
+    sys.fs_read_to_string(package_dir.join(SIDE_EFFECTS_CACHE_MARKER))
+  {
+    let marker = marker.trim();
+    if is_side_effects_hash(marker) {
+      return Ok(marker.to_string());
+    }
+  }
+  let mut hasher = twox_hash::XxHash64::default();
+  write_side_effects_dir_hash(sys, package_dir, package_dir, &mut hasher)?;
+  Ok(format!("{:016x}", hasher.finish()))
+}
+
+fn write_side_effects_dir_hash<TSys: LocalNpmInstallSys>(
+  sys: &TSys,
+  root_dir: &Path,
+  dir: &Path,
+  hasher: &mut impl std::hash::Hasher,
+) -> std::io::Result<()> {
+  let mut entries = Vec::new();
+  for entry in sys.fs_read_dir(dir)? {
+    let entry = entry?;
+    let file_name = entry.file_name();
+    let file_name_str = file_name.to_string_lossy();
+    if file_name_str == "node_modules"
+      || file_name_str == SIDE_EFFECTS_CACHE_MARKER
+    {
+      continue;
+    }
+    entries.push((file_name_str.into_owned(), entry));
+  }
+  entries.sort_by(|a, b| a.0.cmp(&b.0));
+  for (_, entry) in entries {
+    let path = entry.path();
+    let Ok(relative_path) = path.strip_prefix(root_dir) else {
+      continue;
+    };
+    let relative_path = relative_path.to_string_lossy();
+    hasher.write(&relative_path.len().to_le_bytes());
+    hasher.write(relative_path.as_bytes());
+    let file_type = entry.file_type()?;
+    if file_type.is_dir() {
+      hasher.write(b"d");
+      write_side_effects_dir_hash(sys, root_dir, &path, hasher)?;
+    } else if file_type.is_file() {
+      hasher.write(b"f");
+      let bytes = sys.fs_read(&path)?;
+      hasher.write(&bytes.len().to_le_bytes());
+      hasher.write(&bytes);
+    }
+  }
+  Ok(())
+}
+
+fn write_side_effects_marker<TSys: LocalNpmInstallSys>(
+  sys: &TSys,
+  package_dir: &Path,
+  input_hash: &str,
+) -> std::io::Result<()> {
+  sys.fs_write(
+    package_dir.join(SIDE_EFFECTS_CACHE_MARKER),
+    format!("{input_hash}\n"),
+  )
+}
+
+fn package_has_side_effects_marker<TSys: LocalNpmInstallSys>(
+  sys: &TSys,
+  package_dir: &Path,
+  input_hash: &str,
+) -> bool {
+  sys
+    .fs_read_to_string(package_dir.join(SIDE_EFFECTS_CACHE_MARKER))
+    .map(|marker| marker.trim() == input_hash)
+    .unwrap_or(false)
+}
+
+fn is_side_effects_hash(value: &str) -> bool {
+  value.len() == 16 && value.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
 /// `node_modules/.deno/<package>/`
 fn local_node_modules_package_folder(
-  local_registry_dir: &Path,
+  package_store_dir: &Path,
   package: &NpmResolutionPackage,
+  global_virtual_store_package_folder_names: Option<
+    &GlobalVirtualStorePackageFolderNames,
+  >,
+  system_info: &NpmSystemInfo,
 ) -> PathBuf {
-  local_registry_dir.join(get_package_folder_id_folder_name(
-    &package.get_package_cache_folder_id(),
+  package_store_dir.join(package_folder_name_for_package(
+    package,
+    global_virtual_store_package_folder_names,
+    system_info,
   ))
 }
 
 /// `node_modules/.deno/<package>/.scripts-run`
 fn ran_scripts_file(
-  local_registry_dir: &Path,
+  lifecycle_state_dir: &Path,
   package: &NpmResolutionPackage,
+  global_virtual_store_package_folder_names: Option<
+    &GlobalVirtualStorePackageFolderNames,
+  >,
+  system_info: &NpmSystemInfo,
 ) -> PathBuf {
-  local_node_modules_package_folder(local_registry_dir, package)
-    .join(".scripts-run")
+  local_node_modules_package_folder(
+    lifecycle_state_dir,
+    package,
+    global_virtual_store_package_folder_names,
+    system_info,
+  )
+  .join(".scripts-run")
 }
 
-struct LocalLifecycleScripts<'a, TSys: FsOpen + FsMetadata> {
+struct LocalLifecycleScripts<
+  'a,
+  TSys: FsOpen + FsMetadata + sys_traits::FsCreateDirAll,
+> {
   sys: &'a TSys,
-  deno_local_registry_dir: &'a Path,
+  lifecycle_state_dir: &'a Path,
+  global_virtual_store_package_folder_names:
+    Option<&'a GlobalVirtualStorePackageFolderNames>,
+  system_info: &'a NpmSystemInfo,
   install_reporter: Option<Arc<dyn crate::InstallReporter>>,
 }
 
-impl<TSys: FsOpen + FsMetadata> LocalLifecycleScripts<'_, TSys> {
+impl<TSys: FsOpen + FsMetadata + sys_traits::FsCreateDirAll>
+  LocalLifecycleScripts<'_, TSys>
+{
   /// `node_modules/.deno/<package>/.scripts-warned`
   fn warned_scripts_file(&self, package: &NpmResolutionPackage) -> PathBuf {
-    local_node_modules_package_folder(self.deno_local_registry_dir, package)
-      .join(".scripts-warned")
+    local_node_modules_package_folder(
+      self.lifecycle_state_dir,
+      package,
+      self.global_virtual_store_package_folder_names,
+      self.system_info,
+    )
+    .join(".scripts-warned")
   }
 }
 
-impl<TSys: FsOpen + FsMetadata> LifecycleScriptsStrategy
-  for LocalLifecycleScripts<'_, TSys>
+impl<TSys: FsOpen + FsMetadata + sys_traits::FsCreateDirAll>
+  LifecycleScriptsStrategy for LocalLifecycleScripts<'_, TSys>
 {
   fn warn_on_scripts_not_run(
     &self,
@@ -1467,6 +1890,9 @@ impl<TSys: FsOpen + FsMetadata> LifecycleScriptsStrategy
           .iter()
           .map(|(package, _)| self.warned_scripts_file(package))
           .collect::<Vec<_>>();
+        for path in &paths {
+          ensure_lifecycle_state_parent(self.sys, path)?;
+        }
         install_reporter.scripts_not_run_warning(
           crate::lifecycle_scripts::LifecycleScriptsWarning::new(
             output,
@@ -1480,10 +1906,9 @@ impl<TSys: FsOpen + FsMetadata> LifecycleScriptsStrategy
       } else {
         log::info!("{}", output);
         for (package, _) in packages {
-          let _ignore_err = create_initialized_file(
-            self.sys,
-            &self.warned_scripts_file(package),
-          );
+          let path = self.warned_scripts_file(package);
+          ensure_lifecycle_state_parent(self.sys, &path)?;
+          let _ignore_err = create_initialized_file(self.sys, &path);
         }
       }
     }
@@ -1495,9 +1920,12 @@ impl<TSys: FsOpen + FsMetadata> LifecycleScriptsStrategy
   }
 
   fn has_run(&self, package: &NpmResolutionPackage) -> bool {
-    self
-      .sys
-      .fs_exists_no_err(ran_scripts_file(self.deno_local_registry_dir, package))
+    self.sys.fs_exists_no_err(ran_scripts_file(
+      self.lifecycle_state_dir,
+      package,
+      self.global_virtual_store_package_folder_names,
+      self.system_info,
+    ))
   }
 }
 
@@ -2008,6 +2436,16 @@ fn create_initialized_file<F: sys_traits::boxed::FsOpenBoxed + ?Sized>(
     .map(|_| ())
 }
 
+fn ensure_lifecycle_state_parent(
+  sys: &(impl sys_traits::FsCreateDirAll + ?Sized),
+  path: &Path,
+) -> Result<(), std::io::Error> {
+  if let Some(parent) = path.parent() {
+    sys.fs_create_dir_all(parent)?;
+  }
+  Ok(())
+}
+
 pub(crate) fn join_package_name(
   mut path: Cow<'_, Path>,
   package_name: &str,
@@ -2062,13 +2500,22 @@ fn calculate_packages_hash(
 fn root_package_folder_names(
   snapshot: &NpmResolutionSnapshot,
   npm_install_deps_provider: &NpmInstallDepsProvider,
+  global_virtual_store_package_folder_names: Option<
+    &GlobalVirtualStorePackageFolderNames,
+  >,
+  system_info: &NpmSystemInfo,
 ) -> BTreeSet<String> {
+  let folder_name = |package: &NpmResolutionPackage| {
+    package_folder_name_for_package(
+      package,
+      global_virtual_store_package_folder_names,
+      system_info,
+    )
+  };
   let mut folder_names = BTreeSet::new();
   for id in snapshot.top_level_packages() {
     if let Some(package) = snapshot.package_from_id(id) {
-      folder_names.insert(get_package_folder_id_folder_name(
-        &package.get_package_cache_folder_id(),
-      ));
+      folder_names.insert(folder_name(package));
     }
   }
   // resolve the same way as when creating the root symlinks for
@@ -2089,33 +2536,47 @@ fn root_package_folder_names(
         }
       }
     };
-    folder_names.insert(get_package_folder_id_folder_name(
-      &package.get_package_cache_folder_id(),
-    ));
+    folder_names.insert(folder_name(package));
   }
   folder_names
 }
 
 /// Cleans up unused packages from the node_modules/.deno directory.
 /// This removes any package folders that are not part of the current resolution.
+struct CleanupUnusedPackagesContext<'a> {
+  root_node_modules_dir: &'a Path,
+  deno_local_registry_dir: &'a Path,
+  package_partitions: &'a deno_npm::resolution::NpmPackagesPartitioned,
+  root_folder_names: &'a BTreeSet<String>,
+  global_virtual_store_package_folder_names:
+    Option<&'a GlobalVirtualStorePackageFolderNames>,
+  system_info: &'a NpmSystemInfo,
+}
+
+impl CleanupUnusedPackagesContext<'_> {
+  fn package_folder_name(&self, package: &NpmResolutionPackage) -> String {
+    package_folder_name_for_package(
+      package,
+      self.global_virtual_store_package_folder_names,
+      self.system_info,
+    )
+  }
+}
+
 fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
   sys: &TSys,
-  root_node_modules_dir: &Path,
-  deno_local_registry_dir: &Path,
-  package_partitions: &deno_npm::resolution::NpmPackagesPartitioned,
-  root_folder_names: &BTreeSet<String>,
+  context: CleanupUnusedPackagesContext<'_>,
   setup_cache: &mut LocalSetupCache<TSys>,
 ) {
   // Collect all package folder names that should exist in .deno/
-  let expected_folders: HashSet<_> = package_partitions
+  let expected_folders: HashSet<_> = context
+    .package_partitions
     .iter_all()
-    .map(|package| {
-      get_package_folder_id_folder_name(&package.get_package_cache_folder_id())
-    })
+    .map(|package| context.package_folder_name(package))
     .collect();
 
   // Clean up package folders in .deno/ that are no longer needed
-  if let Ok(entries) = sys.fs_read_dir(deno_local_registry_dir) {
+  if let Ok(entries) = sys.fs_read_dir(context.deno_local_registry_dir) {
     for entry in entries.flatten() {
       let file_name = entry.file_name();
       if let Some(name_str) = file_name.to_str() {
@@ -2125,7 +2586,7 @@ fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
 
         // If this folder is not expected, remove it
         if !expected_folders.contains(name_str) {
-          let path = deno_local_registry_dir.join(file_name);
+          let path = context.deno_local_registry_dir.join(file_name);
           let _ignore = sys.fs_remove_dir_all(&path);
         }
       }
@@ -2133,15 +2594,15 @@ fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
   }
 
   // Build set of package folder names that should exist
-  let keep_names = package_partitions
+  let keep_names = context
+    .package_partitions
     .iter_all()
-    .map(|package| {
-      get_package_folder_id_folder_name(&package.get_package_cache_folder_id())
-    })
+    .map(|package| context.package_folder_name(package))
     .collect::<HashSet<_>>();
 
   // Clean up .deno/node_modules/* symlinks for packages no longer needed
-  let deno_node_modules_dir = deno_local_registry_dir.join("node_modules");
+  let deno_node_modules_dir =
+    context.deno_local_registry_dir.join("node_modules");
   let _ignore = remove_unused_node_modules_symlinks(
     sys,
     &deno_node_modules_dir,
@@ -2156,11 +2617,14 @@ fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
   // be linked at the root. Only direct dependencies and top level packages
   // get a root symlink, so a package that remains in the resolution solely as
   // a transitive dependency must not stay linked at the root (#35083).
-  let root_keep_names =
-    root_folder_names.iter().cloned().collect::<HashSet<_>>();
+  let root_keep_names = context
+    .root_folder_names
+    .iter()
+    .cloned()
+    .collect::<HashSet<_>>();
   let _ignore = remove_unused_node_modules_symlinks(
     sys,
-    root_node_modules_dir,
+    context.root_node_modules_dir,
     &root_keep_names,
     &mut |name, path| {
       setup_cache.remove_root_symlink(name);
@@ -2169,7 +2633,7 @@ fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
   );
 
   // remove the .bin directory entries
-  let bin_dir = root_node_modules_dir.join(".bin");
+  let bin_dir = context.root_node_modules_dir.join(".bin");
   if let Ok(entries) = sys.fs_read_dir(&bin_dir) {
     for entry in entries.flatten() {
       let Ok(file_type) = entry.file_type() else {

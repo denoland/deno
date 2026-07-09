@@ -125,6 +125,13 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
     env_var: Some("DENO_UNSTABLE_NPM_LAZY_CACHING"),
   },
   UnstableFeatureDescription {
+    name: "npm-global-virtual-store",
+    help_text: "Enable unstable global virtual store for managed npm node_modules installs",
+    show_in_help: true,
+    kind: UnstableFeatureKind::Cli,
+    env_var: Some("DENO_UNSTABLE_NPM_GLOBAL_VIRTUAL_STORE"),
+  },
+  UnstableFeatureDescription {
     name: "otel",
     help_text: "Enable unstable OpenTelemetry features",
     show_in_help: false,

@@ -46,6 +46,7 @@ impl<TSys: DenoLibSys> NpmProcessStateProvider
     NpmProcessState::new_managed(
       self.0.resolution().serialized_valid_snapshot(),
       self.0.root_node_modules_path(),
+      self.0.global_virtual_store_path(),
       linker_mode,
     )
     .as_serialized()
@@ -67,6 +68,7 @@ impl<TSys: DenoLibSys> NpmProcessStateProvider
         .0
         .root_node_modules_path()
         .map(|p| p.to_string_lossy().into_owned()),
+      global_virtual_store_path: None,
       linker_mode: NpmProcessStateLinkerMode::default(),
     }
     .as_serialized()

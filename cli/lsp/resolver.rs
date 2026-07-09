@@ -278,9 +278,14 @@ impl LspScopedResolver {
                 maybe_node_modules_path: managed_npm_resolver
                   .root_node_modules_path()
                   .map(|p| p.to_path_buf()),
+                maybe_global_virtual_store_path: managed_npm_resolver
+                  .global_virtual_store_path()
+                  .map(|p| p.to_path_buf()),
                 npmrc,
                 npm_resolution: factory.services.npm_resolution.clone(),
                 npm_system_info: NpmSystemInfo::default(),
+                global_virtual_store_lifecycle_scripts: Default::default(),
+                global_virtual_store_patch_hashes: Default::default(),
                 linker_mode:
                   deno_config::deno_json::NodeModulesLinkerMode::default(),
               }
@@ -1143,6 +1148,7 @@ impl<'a> ResolverFactory<'a> {
           clean_on_install: false,
           maybe_lockfile,
           maybe_node_modules_path: maybe_node_modules_path.clone(),
+          maybe_global_virtual_store_path: None,
           linker_mode: deno_config::deno_json::NodeModulesLinkerMode::default(),
           lifecycle_scripts: Arc::new(LifecycleScriptsConfig::default()),
           system_info: NpmSystemInfo::default(),
@@ -1161,9 +1167,12 @@ impl<'a> ResolverFactory<'a> {
         sys: self.node_resolution_sys.clone(),
         npm_cache_dir,
         maybe_node_modules_path,
+        maybe_global_virtual_store_path: None,
         npmrc,
         npm_resolution: self.services.npm_resolution.clone(),
         npm_system_info: NpmSystemInfo::default(),
+        global_virtual_store_lifecycle_scripts: Default::default(),
+        global_virtual_store_patch_hashes: Default::default(),
         linker_mode: deno_config::deno_json::NodeModulesLinkerMode::default(),
       })
     };
@@ -1320,6 +1329,7 @@ impl<'a> ResolverFactory<'a> {
             ManagedInNpmPkgCheckerCreateOptions {
               root_cache_dir_url: m.global_cache_root_url(),
               maybe_node_modules_path: m.root_node_modules_path(),
+              maybe_global_virtual_store_path: m.global_virtual_store_path(),
             },
           )
         }

@@ -781,6 +781,7 @@ impl<
       let process_state = NpmProcessState::new_local(
         snapshot.as_valid_serialized(),
         &self.root_node_modules_path,
+        None,
         crate::process_state::NpmProcessStateLinkerMode::Hoisted,
       )
       .as_serialized();

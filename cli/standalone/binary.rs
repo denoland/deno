@@ -1076,6 +1076,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           .map(|s| s.to_string())
           .collect(),
         lazy_dynamic_imports: self.cli_options.unstable_lazy_dynamic_imports(),
+        npm_global_virtual_store: self
+          .cli_options
+          .unstable_npm_global_virtual_store(),
         npm_lazy_caching: self.cli_options.unstable_npm_lazy_caching(),
         raw_imports: self.cli_options.unstable_raw_imports(),
         sloppy_imports: self.cli_options.unstable_sloppy_imports(),

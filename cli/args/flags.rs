@@ -8934,6 +8934,8 @@ fn unstable_args_parse(
   flags.unstable_config.raw_imports = matches.get_flag("unstable-raw-imports");
   flags.unstable_config.sloppy_imports =
     matches.get_flag("unstable-sloppy-imports");
+  flags.unstable_config.npm_global_virtual_store =
+    matches.get_flag("unstable-npm-global-virtual-store");
   flags.unstable_config.npm_lazy_caching =
     matches.get_flag("unstable-npm-lazy-caching");
   flags.unstable_config.tsgo = matches.get_flag("unstable-tsgo");
