@@ -87,10 +87,28 @@ pub async fn setup_npm_compat(
       combined.entry(k).or_insert(v);
     }
   }
+  // Snapshot the import-map alias -> target pairs (before adding graph specs)
+  // so we can resolve bare specifiers against them.
+  let alias_targets: Vec<(String, String)> = combined
+    .iter()
+    .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+    .collect();
   for spec in graph_specifiers {
-    combined
-      .entry(spec.clone())
-      .or_insert_with(|| Value::String(spec.clone()));
+    if is_special_specifier(spec) {
+      // Direct scheme specifier: key it to itself.
+      combined
+        .entry(spec.clone())
+        .or_insert_with(|| Value::String(spec.clone()));
+    } else if let Some(resolved) =
+      resolve_bare_against_import_map(spec, &alias_targets)
+    {
+      // Bare alias (+ maybe subpath): map it to the resolved scheme specifier
+      // so the per-flavor path generators handle it (e.g. `@std/fmt/colors` ->
+      // `jsr:@std/fmt@^1/colors`, `lume/foo` -> `https://.../lume@3/foo`).
+      combined
+        .entry(spec.clone())
+        .or_insert(Value::String(resolved));
+    }
   }
 
   let has_special_specifiers = combined.iter().any(|(k, v)| {
@@ -142,6 +160,36 @@ pub async fn setup_npm_compat(
   )?;
 
   Ok(installed)
+}
+
+/// Resolve a bare specifier (import-map alias, possibly with a subpath) against
+/// the import map by longest-prefix match, returning the composed scheme
+/// specifier if the matched alias targets `npm:`/`jsr:`/`http(s):`.
+///
+/// - exact alias:            `@fresh/core`      + `@fresh/core` -> `jsr:@fresh/core@^2`
+/// - alias + subpath:        `@std/fmt/colors`  + `@std/fmt`    -> `jsr:@std/fmt@^1/colors`
+/// - trailing-slash prefix:  `lume/foo`         + `lume/`       -> `https://.../lume@3/foo`
+fn resolve_bare_against_import_map(
+  spec: &str,
+  alias_targets: &[(String, String)],
+) -> Option<String> {
+  let mut best: Option<(&str, &str)> = None;
+  for (alias, target) in alias_targets {
+    let matches = spec == alias
+      || (alias.ends_with('/') && spec.starts_with(alias.as_str()))
+      || (!alias.ends_with('/') && spec.starts_with(&format!("{alias}/")));
+    if matches && best.is_none_or(|(b, _)| alias.len() > b.len()) {
+      best = Some((alias, target));
+    }
+  }
+  let (alias, target) = best?;
+  if !is_special_specifier(target) {
+    return None;
+  }
+  // Append whatever of `spec` extends past the matched alias. For a trailing-
+  // slash prefix that's `foo`; for a non-slash alias it's `/subpath` (or empty
+  // for an exact match).
+  Some(format!("{}{}", target, &spec[alias.len()..]))
 }
 
 /// Ensure a stock `@types/node` (and its `undici-types` dependency) is present

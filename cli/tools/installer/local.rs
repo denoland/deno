@@ -274,13 +274,17 @@ pub async fn sync_types_command(flags: Arc<Flags>) -> Result<(), AnyError> {
     let mut specifiers = std::collections::BTreeSet::new();
     for module in graph.modules() {
       for (raw, _dep) in module.dependencies() {
-        if raw.starts_with("npm:")
-          || raw.starts_with("jsr:")
-          || raw.starts_with("http://")
-          || raw.starts_with("https://")
+        // Collect scheme specifiers (npm:/jsr:/http:) and bare specifiers
+        // (import-map aliases like `@std/fmt/colors`, `fresh/runtime`). Skip
+        // relative imports and node: builtins. setup_npm_compat resolves the
+        // bare ones against the import map.
+        if raw.starts_with('.')
+          || raw.starts_with('/')
+          || raw.starts_with("node:")
         {
-          specifiers.insert(raw.clone());
+          continue;
         }
+        specifiers.insert(raw.clone());
       }
     }
     specifiers.into_iter().collect::<Vec<_>>()

@@ -387,6 +387,26 @@ fn generate_npm_paths(
       if alias != target_str {
         paths.entry(alias.clone()).or_insert(target_paths);
       }
+
+      // For a bare alias -> package, enumerate the package's exports and map
+      // each subpath under the alias and the npm: specifier (e.g. `preact/hooks`).
+      if subpath.is_none() {
+        for exp_key in package_export_keys(&pkg_dir) {
+          let sub = exp_key.trim_start_matches("./");
+          let Some(sub_rel) = resolve_jsr_types_entry(&pkg_dir, &exp_key)
+          else {
+            continue;
+          };
+          paths
+            .entry(format!("npm:{pkg_name}/{sub}"))
+            .or_insert_with(|| json!([&sub_rel]));
+          if alias != target_str {
+            paths
+              .entry(format!("{alias}/{sub}"))
+              .or_insert_with(|| json!([&sub_rel]));
+          }
+        }
+      }
     }
   }
 
@@ -455,11 +475,50 @@ fn generate_jsr_paths(
             .entry(alias.clone())
             .or_insert_with(|| json!([&types_rel]));
         }
+
+        // For a bare alias -> package (no subpath), enumerate the package's own
+        // exports and map each under both the alias and the jsr: specifier, so
+        // subpath imports like `fresh/runtime` resolve without depending on the
+        // module graph having discovered them.
+        if subpath.is_empty() {
+          for exp_key in package_export_keys(&pkg_dir) {
+            let sub = exp_key.trim_start_matches("./");
+            let Some(sub_rel) = resolve_jsr_types_entry(&pkg_dir, &exp_key)
+            else {
+              continue;
+            };
+            paths
+              .entry(format!("{prefix}/{sub}"))
+              .or_insert_with(|| json!([&sub_rel]));
+            if alias != target_str {
+              paths
+                .entry(format!("{alias}/{sub}"))
+                .or_insert_with(|| json!([&sub_rel]));
+            }
+          }
+        }
       }
     }
   }
 
   paths
+}
+
+/// List a package's `exports` subpath keys (`"./foo"`), excluding the root
+/// `"."`. Used to enumerate what an import-map alias can reach by subpath.
+fn package_export_keys(pkg_dir: &Path) -> Vec<String> {
+  let Ok(content) = std::fs::read_to_string(pkg_dir.join("package.json"))
+  else {
+    return vec![];
+  };
+  let Ok(pkg) = serde_json::from_str::<Value>(&content) else {
+    return vec![];
+  };
+  pkg
+    .get("exports")
+    .and_then(|e| e.as_object())
+    .map(|m| m.keys().filter(|k| k.starts_with("./")).cloned().collect())
+    .unwrap_or_default()
 }
 
 /// Resolve the types entry point from a JSR package's package.json.
