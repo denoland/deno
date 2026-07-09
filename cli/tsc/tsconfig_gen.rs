@@ -492,11 +492,14 @@ fn generate_jsr_paths(
         };
 
         // Key on the exact specifier as written in source. Also map the
-        // import-map alias form (bare) when this came from an alias entry.
+        // import-map alias form when this came from an alias entry, including
+        // aliases that point straight at a jsr subpath (e.g.
+        // `"$std/fs/walk.ts": "jsr:@std/fs@1/walk"`), which the source imports
+        // by the alias, not the scheme.
         paths
           .entry(target_str.to_string())
           .or_insert_with(|| json!([&types_rel]));
-        if alias != target_str && subpath.is_empty() {
+        if alias != target_str {
           paths
             .entry(alias.clone())
             .or_insert_with(|| json!([&types_rel]));
