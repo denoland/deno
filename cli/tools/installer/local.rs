@@ -333,7 +333,7 @@ pub async fn sync_types_command(flags: Arc<Flags>) -> Result<(), AnyError> {
       deno_core::anyhow::anyhow!("workspace root is not a local directory")
     })?;
 
-  super::npm_compat::setup_npm_compat(
+  let installed = super::npm_compat::setup_npm_compat(
     &project_root,
     &file_fetcher,
     &http_client,
@@ -341,6 +341,18 @@ pub async fn sync_types_command(flags: Arc<Flags>) -> Result<(), AnyError> {
     &graph_specifiers,
   )
   .await?;
+
+  log::info!(
+    "{} tsconfig for stock TypeScript at {}",
+    deno_terminal::colors::green("Synced"),
+    project_root.join("tsconfig.json").display(),
+  );
+  for pkg in &installed {
+    log::debug!("  installed jsr package {}@{}", pkg.name, pkg.version);
+  }
+  if !installed.is_empty() {
+    log::info!("  installed {} jsr package(s)", installed.len());
+  }
   Ok(())
 }
 
