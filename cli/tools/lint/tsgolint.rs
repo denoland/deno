@@ -161,7 +161,7 @@ pub async fn maybe_resolve_bin(
   factory: &CliFactory,
   no_type: bool,
 ) -> Option<PathBuf> {
-  if no_type {
+  if no_type || is_disabled_via_env() {
     return None;
   }
   match ensure_tsgolint(factory).await {
@@ -174,6 +174,17 @@ pub async fn maybe_resolve_bin(
       None
     }
   }
+}
+
+/// Escape hatch for disabling type-aware linting through the environment (as
+/// `--no-type` does on the command line). Also used by the test harness to keep
+/// `deno lint` hermetic: the tsgolint binary would otherwise be fetched from
+/// npm, which the spec-test mock registry does not serve.
+fn is_disabled_via_env() -> bool {
+  matches!(
+    std::env::var("DENO_NO_TYPE_LINT").as_deref(),
+    Ok("1") | Ok("true")
+  )
 }
 
 /// Resolve the set of tsgolint rules to run from the lint config, starting
