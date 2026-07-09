@@ -71,8 +71,10 @@ function newHandle(
   type: SocketType,
   lookup?: (...args: unknown[]) => void,
 ): InstanceType<typeof UDP> {
+  let isDefaultLookup = false;
   if (lookup === undefined) {
     lookup = lazyDns().default.lookup;
+    isDefaultLookup = true;
   } else {
     validateFunction(lookup, "lookup");
   }
@@ -81,6 +83,7 @@ function newHandle(
     const handle = new UDP();
 
     handle.lookup = FunctionPrototypeBind(lookup4, handle, lookup);
+    (handle as any).isDefaultLookup = isDefaultLookup;
 
     return handle;
   }
@@ -92,6 +95,7 @@ function newHandle(
     handle.bind = handle.bind6;
     handle.connect = handle.connect6;
     handle.send = handle.send6;
+    (handle as any).isDefaultLookup = isDefaultLookup;
 
     return handle;
   }
