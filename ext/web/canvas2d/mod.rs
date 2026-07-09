@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+mod angle;
 mod context;
 mod error;
 pub mod gradient;

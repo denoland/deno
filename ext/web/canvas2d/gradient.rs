@@ -10,9 +10,11 @@ use vello::kurbo::Point;
 use vello::peniko;
 use vello::peniko::InterpolationAlphaSpace;
 
+use crate::canvas2d::angle::normalize_angle;
 use crate::canvas2d::error::Canvas2DError;
 use crate::css::color::parse_css_color;
 
+#[inline]
 fn canvas_gradient_base(mut gradient: peniko::Gradient) -> peniko::Gradient {
   gradient.interpolation_alpha_space = InterpolationAlphaSpace::Unpremultiplied;
   gradient
@@ -54,7 +56,7 @@ pub fn build_conic_gradient(
   x: f64,
   y: f64,
 ) -> peniko::Gradient {
-  let start = start_angle as f32;
+  let start = normalize_angle(start_angle) as f32;
   canvas_gradient_base(peniko::Gradient::new_sweep(
     Point::new(x, y),
     start,

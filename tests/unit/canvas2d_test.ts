@@ -1041,6 +1041,29 @@ Deno.test(function canvas2dCreateConicGradient() {
   assert(g instanceof globalThis.CanvasGradient);
 });
 
+Deno.test({
+  ignore: !hasCanvasRenderer,
+}, function canvas2dCreateConicGradientNormalizesStartAngle() {
+  function sample(startAngle: number): number[][] {
+    const canvas = new OffscreenCanvas(100, 50);
+    const ctx = canvas.getContext("2d")!;
+    const gradient = ctx.createConicGradient(startAngle, 50, 25);
+    gradient.addColorStop(0, "#f00");
+    gradient.addColorStop(0.25, "#0f0");
+    gradient.addColorStop(0.5, "#0f0");
+    gradient.addColorStop(0.75, "#f00");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 100, 50);
+    return [
+      Array.from(ctx.getImageData(25, 15, 1, 1).data),
+      Array.from(ctx.getImageData(75, 40, 1, 1).data),
+    ];
+  }
+
+  assertEquals(sample(3 * Math.PI / 2), sample(-Math.PI / 2));
+  assertEquals(sample(2 * Math.PI), sample(0));
+});
+
 Deno.test(function canvas2dCreateLinearGradientNonFiniteThrows() {
   const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
   assertThrows(
