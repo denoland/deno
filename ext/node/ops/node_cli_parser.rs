@@ -5,6 +5,7 @@
 //! This module uses the node_shim crate to parse Node.js CLI arguments
 //! and translates them to Deno CLI arguments.
 
+use deno_core::ToV8;
 use deno_core::op2;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -33,17 +34,23 @@ pub use node_shim::parse_args;
 pub use node_shim::parse_node_options_env_var;
 pub use node_shim::translate_to_deno_args as translate_to_deno_args_impl;
 pub use node_shim::wrap_eval_code;
-use serde::Serialize;
 
 /// Result of translating Node.js CLI args to Deno args
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, ToV8)]
 pub struct TranslatedArgs {
   /// The Deno CLI arguments
   pub deno_args: Vec<String>,
   /// Node options that should be added to NODE_OPTIONS env var
   pub node_options: Vec<String>,
+  /// CA store configuration that should be passed to the spawned Deno process.
+  pub ca_stores: Option<Vec<String>>,
+  /// Whether the translated flags selected OpenSSL/system-only CA handling.
+  pub use_openssl_ca: bool,
   /// Whether the child process needs npm process state
   pub needs_npm_process_state: bool,
+  /// Comma-separated trace event categories from --trace-event-categories,
+  /// to be propagated via DENO_NODE_TRACE_EVENT_CATEGORIES.
+  pub trace_event_categories: Option<String>,
 }
 
 /// Translate parsed Node.js CLI arguments to Deno CLI arguments.
@@ -58,12 +65,33 @@ fn translate_to_deno_args(
   } else {
     TranslateOptions::for_shell_command()
   };
+  let use_openssl_ca = parsed_args.options.use_openssl_ca;
+  let use_system_ca = parsed_args.options.use_system_ca;
+  let use_bundled_ca = parsed_args.options.use_bundled_ca;
   let result = translate_to_deno_args_impl(parsed_args, &options);
+  let ca_stores = if use_openssl_ca {
+    Some(vec!["system".to_string()])
+  } else {
+    match (use_system_ca, use_bundled_ca) {
+      (true, _) => Some(vec!["mozilla".to_string(), "system".to_string()]),
+      (false, true) => Some(vec!["mozilla".to_string()]),
+      (false, false) => None,
+    }
+  };
+
+  let trace_event_categories = if result.trace_event_categories.is_empty() {
+    None
+  } else {
+    Some(result.trace_event_categories)
+  };
 
   TranslatedArgs {
     deno_args: result.deno_args,
     node_options: result.node_options,
+    ca_stores,
+    use_openssl_ca,
     needs_npm_process_state: script_in_npm_package,
+    trace_event_categories,
   }
 }
 
@@ -76,9 +104,8 @@ fn translate_to_deno_args(
 /// (used for direct child_process spawning). When false, eval code is passed
 /// through as-is (used for shell command transformation).
 #[op2]
-#[serde]
 pub fn op_node_translate_cli_args(
-  #[serde] args: Vec<String>,
+  #[scoped] args: Vec<String>,
   script_in_npm_package: bool,
   wrap_eval: bool,
 ) -> Result<TranslatedArgs, CliParserError> {
@@ -89,7 +116,10 @@ pub fn op_node_translate_cli_args(
     return Ok(TranslatedArgs {
       deno_args: vec!["run".to_string(), "-A".to_string(), "-".to_string()],
       node_options: vec![],
+      ca_stores: None,
+      use_openssl_ca: false,
       needs_npm_process_state: script_in_npm_package,
+      trace_event_categories: None,
     });
   }
 
@@ -201,7 +231,6 @@ mod tests {
       svec![
         "run",
         "-A",
-        "--unstable-node-globals",
         "--unstable-bare-node-builtins",
         "--unstable-detect-cjs",
         "script.js"
@@ -357,6 +386,20 @@ mod tests {
     let result = translate_to_deno_args(parsed, false, true);
     assert!(result.deno_args.contains(&"test".to_string()));
     assert!(result.deno_args.contains(&"--watch".to_string()));
+  }
+
+  #[test]
+  fn test_translate_subcommand_passthrough() {
+    // Deno subcommands spawned via node:child_process should be passed through
+    // unchanged rather than being treated as a script for `deno run`. See
+    // #35591.
+    for subcommand in ["bundle", "serve", "fmt", "compile", "lint"] {
+      let parsed =
+        parse_args(svec![subcommand, "jsr:@std/http/file-server"]).unwrap();
+      let result = translate_to_deno_args(parsed, false, true);
+      assert_eq!(result.deno_args[0], subcommand);
+      assert!(!result.deno_args.contains(&"run".to_string()));
+    }
   }
 
   #[test]

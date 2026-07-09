@@ -1,0 +1,6 @@
+{
+  "workspace": ["./libs/greet"],
+  "imports": {
+    "@app/util": "./util.ts"
+  }
+}

@@ -40,7 +40,6 @@ use deno_core::futures::StreamExt;
 use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::located_script_name;
-use deno_core::serde_v8;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_core::url::Url;
@@ -70,6 +69,7 @@ use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::TestFlags;
 use crate::args::TestReporterConfig;
+use crate::args::TypeCheckModeExt;
 use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
@@ -81,7 +81,9 @@ use crate::sys::CliSys;
 use crate::util::extract::extract_doc_tests;
 use crate::util::file_watcher;
 use crate::util::fs::CollectSpecifiersOptions;
+use crate::util::fs::canonicalize_path;
 use crate::util::fs::collect_specifiers;
+use crate::util::git::run_git;
 use crate::util::path::get_extension;
 use crate::util::path::is_script_ext;
 use crate::util::path::matches_pattern_or_exact_path;
@@ -107,6 +109,7 @@ use reporters::PrettyTestReporter;
 use reporters::TapTestReporter;
 use reporters::TestReporter;
 
+use crate::tools::coverage::CoverageThresholdError;
 use crate::tools::coverage::cover_files;
 use crate::tools::coverage::reporter;
 use crate::tools::test::channel::ChannelClosedError;
@@ -194,6 +197,14 @@ impl TestFilter {
       regex,
       ..Default::default()
     }
+  }
+
+  /// Returns `true` when this filter may exclude some tests from running.
+  pub fn is_active(&self) -> bool {
+    self.substring.is_some()
+      || self.regex.is_some()
+      || self.include.is_some()
+      || !self.exclude.is_empty()
   }
 }
 
@@ -299,6 +310,17 @@ pub struct TestDescription {
   pub location: TestLocation,
   pub sanitize_ops: bool,
   pub sanitize_resources: bool,
+  pub timeout_ms: Option<u32>,
+  /// Per-test `retry` option: number of times to re-run the test if it fails
+  /// (the test passes if any attempt passes). `None` means the test did not set
+  /// the option and inherits the `--retry` flag default; `Some(0)` is an
+  /// explicit opt-out that takes precedence over the flag.
+  pub retry: Option<u32>,
+  /// Per-test `repeats` option: number of additional times to repeat the test
+  /// (every repetition must pass). `None` means the test did not set the option
+  /// and inherits the `--repeats` flag default; `Some(0)` is an explicit
+  /// opt-out that takes precedence over the flag.
+  pub repeats: Option<u32>,
 }
 
 /// May represent a failure of a test or test step.
@@ -336,7 +358,9 @@ pub enum TestFailure {
   JsError(Box<JsError>),
   FailedSteps(usize),
   IncompleteSteps,
+  PendingPromiseResolution,
   Leaked(Vec<String>, Vec<String>), // Details, trailer notes
+  TimedOut(u32),
   // The rest are for steps only.
   Incomplete,
   OverlapsWithSanitizers(IndexSet<String>), // Long names of overlapped tests
@@ -359,6 +383,9 @@ impl TestFailure {
       TestFailure::IncompleteSteps => Cow::Borrowed(
         "Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.",
       ),
+      TestFailure::PendingPromiseResolution => Cow::Borrowed(
+        "Promise resolution is still pending but the event loop has already resolved.",
+      ),
       TestFailure::Incomplete => Cow::Borrowed(
         "Didn't complete before parent. Await step with `await t.step(...)`.",
       ),
@@ -372,6 +399,9 @@ impl TestFailure {
           write!(f, "\n{}", trailer).ok();
         }
         Cow::Owned(f)
+      }
+      TestFailure::TimedOut(ms) => {
+        Cow::Owned(format!("Test timed out after {}ms.", ms))
       }
       TestFailure::OverlapsWithSanitizers(long_names) => {
         let mut f = String::new();
@@ -400,8 +430,12 @@ impl TestFailure {
       TestFailure::IncompleteSteps => {
         "Completed while steps were still running".to_string()
       }
+      TestFailure::PendingPromiseResolution => {
+        "Promise resolution is still pending".to_string()
+      }
       TestFailure::Incomplete => "Didn't complete before parent".to_string(),
       TestFailure::Leaked(_, _) => "Leaks detected".to_string(),
+      TestFailure::TimedOut(ms) => format!("Timed out after {}ms", ms),
       TestFailure::OverlapsWithSanitizers(_) => {
         "Started test step while another test step with sanitizers was running"
           .to_string()
@@ -478,11 +512,11 @@ impl TestFailure {
 }
 
 #[allow(clippy::derive_partial_eq_without_eq, reason = "not important")]
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq, deno_core::FromV8)]
 pub enum TestResult {
   Ok,
   Ignored,
+  #[from_v8(serde)]
   Failed(TestFailure),
   Cancelled,
 }
@@ -524,17 +558,39 @@ pub enum TestEvent {
   Plan(TestPlan),
   Wait(usize),
   Output(Vec<u8>),
-  Slow(usize, u64),
-  Result(usize, TestResult, u64),
+  Slow(usize, Duration),
+  Result(usize, TestResult, Duration),
+  /// A test attempt failed but will be retried (`retry` option). Carries the
+  /// test id, the zero-based attempt index that failed, and the failure. This
+  /// is informational only and does not count toward the test's final result.
+  Retry(usize, u32, TestFailure),
+  /// A test is starting a fresh repetition (`repeats` option). Carries the test
+  /// id and the one-based repetition index. Lets the reporter drop the previous
+  /// repetition's step results so they aren't tallied more than once.
+  Repeat(usize, u32),
   UncaughtError(String, Box<JsError>),
   StepRegister(TestStepDescription),
   StepWait(usize),
-  StepResult(usize, TestStepResult, u64),
+  StepResult(usize, TestStepResult, Duration),
+  /// Reports how many snapshots were updated and which were removed for a
+  /// test module after it finished running with `--update-snapshots`.
+  SnapshotSummary(TestSnapshotSummary),
   /// Indicates that this worker has completed running tests.
   Completed,
   /// Indicates that the user has cancelled the test run with Ctrl+C and
   /// the run should be aborted.
   Sigint,
+  /// Indicates that a test called `Deno.exit()` while the exit sanitizer was
+  /// disabled (`sanitizeExit: false`). The test run should be aborted, a
+  /// message printed, and the process should exit with the given code. This
+  /// ensures that buffered output is reliably flushed before exiting, instead
+  /// of letting the test silently terminate the process.
+  Exit(i32),
+  /// Indicates that the test isolate called `Deno.exit()` outside of any test
+  /// function (top-level code, or in the `unload` event). The isolate has
+  /// been terminated; the test runner should report the exit code and
+  /// continue with any remaining specifiers instead of killing the process.
+  IsolateExit(String, i32),
   /// Used by the REPL to force a report to end without closing the worker
   /// or receiver.
   ForceEndReport,
@@ -548,11 +604,15 @@ impl TestEvent {
       self,
       TestEvent::Plan(..)
         | TestEvent::Result(..)
+        | TestEvent::Retry(..)
+        | TestEvent::Repeat(..)
         | TestEvent::StepWait(..)
         | TestEvent::StepResult(..)
         | TestEvent::UncaughtError(..)
         | TestEvent::ForceEndReport
         | TestEvent::Completed
+        | TestEvent::Exit(..)
+        | TestEvent::IsolateExit(..)
     )
   }
 }
@@ -562,14 +622,26 @@ pub struct TestSummary {
   pub total: usize,
   pub passed: usize,
   pub failed: usize,
+  /// Number of tests that passed but only after one or more retries.
+  pub flaky: usize,
   pub ignored: usize,
   pub passed_steps: usize,
   pub failed_steps: usize,
   pub ignored_steps: usize,
   pub filtered_out: usize,
   pub measured: usize,
+  pub snapshots_updated: usize,
+  pub snapshots_removed: Vec<String>,
   pub failures: Vec<(TestFailureDescription, TestFailure)>,
   pub uncaught_errors: Vec<(String, Box<JsError>)>,
+}
+
+/// Snapshot statistics for a single test module run with
+/// `--update-snapshots`, sent after all of its tests have finished.
+#[derive(Debug, Clone)]
+pub struct TestSnapshotSummary {
+  pub updated: usize,
+  pub removed: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -583,15 +655,25 @@ struct TestSpecifiersOptions {
   reporter: TestReporterConfig,
   junit_path: Option<String>,
   hide_stacktraces: bool,
+  /// `(index, count)` with a 1-based index, from `--shard`. Selects a subset
+  /// of test files so a run can be split across machines.
+  shard: Option<(usize, usize)>,
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct TestSpecifierOptions {
   pub shuffle: Option<u64>,
   pub filter: TestFilter,
+  /// Default number of retries applied to tests that don't set their own
+  /// `retry` option (from the `--retry` flag).
+  pub retry: u32,
+  /// Default number of repeats applied to tests that don't set their own
+  /// `repeats` option (from the `--repeats` flag).
+  pub repeats: u32,
   pub trace_leaks: bool,
   pub sanitize_ops: bool,
   pub sanitize_resources: bool,
+  pub update_snapshots: bool,
 }
 
 impl TestSummary {
@@ -600,12 +682,15 @@ impl TestSummary {
       total: 0,
       passed: 0,
       failed: 0,
+      flaky: 0,
       ignored: 0,
       passed_steps: 0,
       failed_steps: 0,
       ignored_steps: 0,
       filtered_out: 0,
       measured: 0,
+      snapshots_updated: 0,
+      snapshots_removed: Vec::new(),
       failures: Vec::new(),
       uncaught_errors: Vec::new(),
     }
@@ -676,7 +761,7 @@ async fn configure_main_worker(
   permissions_container: PermissionsContainer,
   worker_sender: TestEventWorkerSender,
   options: &TestSpecifierOptions,
-  sender: UnboundedSender<jupyter_protocol::messaging::StreamContent>,
+  sender: UnboundedSender<crate::ops::jupyter::IopubMessage>,
 ) -> Result<(Option<CoverageCollector>, MainWorker), CreateCustomWorkerError> {
   let mut worker = worker_factory
     .create_custom_worker(
@@ -688,7 +773,13 @@ async fn configure_main_worker(
       vec![
         ops::testing::deno_test::init(worker_sender.sender),
         ops::lint::deno_lint_ext_for_test::init(),
-        ops::jupyter::deno_jupyter_for_test::init(sender),
+        ops::jupyter::deno_jupyter_for_test::init(
+          sender,
+          // deno test does not service stdin requests; supplying a sender keeps
+          // the extension uniform with the live kernel build but the rx end is
+          // dropped so any `op_jupyter_input` call will resolve to `None`.
+          tokio::sync::mpsc::unbounded_channel().0,
+        ),
       ],
       Stdio {
         stdin: StdioPipe::inherit(),
@@ -699,6 +790,30 @@ async fn configure_main_worker(
     )
     .await?;
   let coverage_collector = worker.maybe_setup_coverage_collector();
+  // Store the isolate handle in OpState so that `op_test_isolate_exit` can
+  // ask V8 to terminate the isolate when user code calls `Deno.exit()`
+  // outside of any test function. Then install the default exit handler -
+  // both must be in place before user code (including preload / side
+  // modules) gets a chance to run.
+  let isolate_handle = worker.v8_isolate_handle();
+  worker
+    .op_state()
+    .borrow_mut()
+    .put(ops::testing::TestIsolateHandle(isolate_handle));
+  if options.update_snapshots {
+    // Authorizes `op_test_snapshot_write` for this isolate. Only ever set
+    // from the `--update-snapshots` CLI flag, never from JS.
+    worker
+      .op_state()
+      .borrow_mut()
+      .put(ops::testing::SnapshotUpdateMode);
+  }
+  worker
+    .execute_script_static(
+      located_script_name!(),
+      "Deno[Deno.internal].installTestIsolateExitHandler();",
+    )
+    .map_err(|e| CoreErrorKind::Js(e).into_box())?;
   if options.trace_leaks {
     worker
       .execute_script_static(
@@ -729,14 +844,30 @@ async fn configure_main_worker(
   let check_res =
     |res: Result<(), CoreError>| match res.map_err(|err| err.into_kind()) {
       Ok(()) => Ok(()),
-      Err(CoreErrorKind::Js(err)) => TestEventTracker::new(op_state.clone())
-        .uncaught_error(specifier.to_string(), err)
-        .map_err(|e| CoreErrorKind::JsBox(JsErrorBox::from_err(e)).into_box()),
+      Err(CoreErrorKind::Js(err)) => {
+        // If the failure was caused by user code calling `Deno.exit()` at
+        // top level, the isolate-exit event has already been reported.
+        // Swallow the resulting termination error instead of double-reporting
+        // it as an uncaught error.
+        if op_state.borrow().has::<ops::testing::IsolateExitInfo>() {
+          return Ok(());
+        }
+        TestEventTracker::new(op_state.clone())
+          .uncaught_error(specifier.to_string(), err)
+          .map_err(|e| CoreErrorKind::JsBox(JsErrorBox::from_err(e)).into_box())
+      }
       Err(err) => Err(err.into_box()),
     };
 
   check_res(worker.execute_preload_modules().await)?;
+  if op_state.borrow().has::<ops::testing::IsolateExitInfo>() {
+    worker.cancel_terminate_execution();
+    return Ok((coverage_collector, worker.into_main_worker()));
+  }
   check_res(worker.execute_side_module().await)?;
+  if op_state.borrow().has::<ops::testing::IsolateExitInfo>() {
+    worker.cancel_terminate_execution();
+  }
 
   let worker = worker.into_main_worker();
 
@@ -773,7 +904,20 @@ pub async fn test_specifier(
   .await?;
   let event_tracker = TestEventTracker::new(worker.js_runtime.op_state());
 
-  match test_specifier_inner(
+  // If user code already called `Deno.exit()` during top-level evaluation in
+  // `configure_main_worker`, the isolate-exit event has already been sent.
+  // Skip the rest of the lifecycle - the isolate is terminated and there are
+  // no tests to run.
+  if worker
+    .js_runtime
+    .op_state()
+    .borrow()
+    .has::<ops::testing::IsolateExitInfo>()
+  {
+    return Ok(());
+  }
+
+  let result = test_specifier_inner(
     &mut worker,
     coverage_collector,
     specifier.clone(),
@@ -781,9 +925,27 @@ pub async fn test_specifier(
     &event_tracker,
     options,
   )
-  .await
-  {
+  .await;
+
+  // If user code called `Deno.exit()` from inside `dispatch_load_event`,
+  // `run_tests_for_worker`, or `dispatch_unload_event`, the V8 isolate was
+  // forcibly terminated and the call surfaces as a JS error. The
+  // `op_test_isolate_exit` op already queued an `IsolateExit` event with the
+  // requested exit code, so don't double-report the resulting termination as
+  // an uncaught error.
+  let isolate_exited = worker
+    .js_runtime
+    .op_state()
+    .borrow()
+    .has::<ops::testing::IsolateExitInfo>();
+  if isolate_exited {
+    // Clear V8's "terminating" flag so the worker can be cleanly dropped.
+    worker.js_runtime.v8_isolate().cancel_terminate_execution();
+  }
+
+  match result {
     Ok(()) => Ok(()),
+    Err(_) if isolate_exited => Ok(()),
     Err(TestSpecifierError::Core(err)) => match err.into_kind() {
       CoreErrorKind::Js(err) => {
         event_tracker.uncaught_error(specifier.to_string(), err)?;
@@ -840,6 +1002,12 @@ async fn test_specifier_inner(
     .dispatch_unload_event()
     .map_err(|e| CoreErrorKind::Js(e).into_box())?;
 
+  // Run any pending Node-API finalizers before the worker is torn down. This
+  // matches the `deno run`/`deno bench` paths and Node.js, where finalizers
+  // registered via `napi_wrap`/`napi_add_finalizer` are invoked at teardown
+  // even if the wrapped value was never garbage collected during the run.
+  worker.run_napi_ref_finalizers();
+
   // Ensure all output has been flushed
   _ = worker
     .js_runtime
@@ -852,9 +1020,19 @@ async fn test_specifier_inner(
   // want to wait forever here.
   worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
-  if let Some(coverage_collector) = &mut coverage_collector {
+  // Stop coverage before waiting for external debugger sessions. Coverage owns
+  // a blocking local inspector session, so waiting first would hang forever.
+  if let Some(mut coverage_collector) = coverage_collector.take() {
     coverage_collector.stop_collecting()?;
   }
+
+  // If a debugger session is still attached (e.g. Chrome DevTools holding
+  // the connection open for an in-progress Performance recording), wait for
+  // it to disconnect before tearing down the worker. Mirrors `deno run`'s
+  // behavior; otherwise the connection is dropped mid-flight, making it
+  // impossible to profile `deno test` runs. See issue #19289.
+  worker.wait_for_inspector_session_disconnect().await?;
+
   Ok(())
 }
 
@@ -905,7 +1083,113 @@ pub enum RunTestsForWorkerErr {
   Core(#[from] CoreError),
   #[class(inherit)]
   #[error(transparent)]
-  SerdeV8(#[from] serde_v8::Error),
+  JsErrorBox(#[from] deno_error::JsErrorBox),
+}
+
+/// Single watchdog thread for an entire test specifier. Reused across all
+/// tests in the file: each test calls `arm()` before running and `disarm()`
+/// after, replacing the per-test thread spawn.
+struct TestWatchdog {
+  shared: std::sync::Arc<WatchdogShared>,
+  thread: Option<std::thread::JoinHandle<()>>,
+}
+
+struct WatchdogShared {
+  mutex: std::sync::Mutex<WatchdogState>,
+  cvar: std::sync::Condvar,
+}
+
+#[derive(PartialEq, Eq)]
+enum WatchdogState {
+  Idle,
+  Armed { deadline: Instant, fired: bool },
+  Shutdown,
+}
+
+impl TestWatchdog {
+  fn new(js_runtime: &mut deno_core::JsRuntime) -> Self {
+    let isolate_handle = js_runtime.v8_isolate().thread_safe_handle();
+    let shared = std::sync::Arc::new(WatchdogShared {
+      mutex: std::sync::Mutex::new(WatchdogState::Idle),
+      cvar: std::sync::Condvar::new(),
+    });
+    let shared_thread = shared.clone();
+    let thread = std::thread::Builder::new()
+      .name("deno-test-watchdog".to_string())
+      .spawn(move || Self::run(shared_thread, isolate_handle))
+      .expect("failed to spawn test watchdog thread");
+    Self {
+      shared,
+      thread: Some(thread),
+    }
+  }
+
+  fn run(shared: std::sync::Arc<WatchdogShared>, isolate: v8::IsolateHandle) {
+    let mut state = shared.mutex.lock().unwrap();
+    loop {
+      match *state {
+        WatchdogState::Shutdown => return,
+        WatchdogState::Idle => {
+          state = shared.cvar.wait(state).unwrap();
+        }
+        WatchdogState::Armed { fired: true, .. } => {
+          state = shared.cvar.wait(state).unwrap();
+        }
+        WatchdogState::Armed {
+          deadline,
+          fired: false,
+        } => {
+          let now = Instant::now();
+          if now >= deadline {
+            // Hold the lock across `terminate_execution` so disarm()
+            // can't call `cancel_terminate_execution` before the V8
+            // flag is actually set.
+            if let WatchdogState::Armed { ref mut fired, .. } = *state {
+              *fired = true;
+            }
+            isolate.terminate_execution();
+          } else {
+            let (s, _) =
+              shared.cvar.wait_timeout(state, deadline - now).unwrap();
+            state = s;
+          }
+        }
+      }
+    }
+  }
+
+  fn arm(&self, timeout_ms: u32) {
+    let mut state = self.shared.mutex.lock().unwrap();
+    *state = WatchdogState::Armed {
+      deadline: Instant::now() + Duration::from_millis(timeout_ms as u64),
+      fired: false,
+    };
+    self.shared.cvar.notify_all();
+  }
+
+  /// Returns true if the watchdog fired — i.e. `terminate_execution` was
+  /// called for this arming. The caller must then `cancel_terminate_execution`
+  /// before running JS again on the isolate.
+  fn disarm(&self) -> bool {
+    let mut state = self.shared.mutex.lock().unwrap();
+    let fired = matches!(*state, WatchdogState::Armed { fired: true, .. });
+    *state = WatchdogState::Idle;
+    self.shared.cvar.notify_all();
+    fired
+  }
+}
+
+impl Drop for TestWatchdog {
+  fn drop(&mut self) {
+    {
+      let mut state = self.shared.mutex.lock().unwrap();
+      *state = WatchdogState::Shutdown;
+      self.shared.cvar.notify_all();
+    }
+    if let Some(t) = self.thread.take() {
+      let _ = t.join();
+    }
+  }
 }
 
 async fn slow_test_watchdog(event_tracker: TestEventTracker, test_id: usize) {
@@ -962,6 +1246,31 @@ pub async fn run_tests_for_worker(
     .await
   }
   .await;
+
+  // Let the snapshot machinery write pending `t.assertSnapshot()` updates and
+  // report a summary (no-op unless running with `--update-snapshots`). Stale
+  // snapshots may only be removed when every test in the module had a chance
+  // to run its assertions: a name filter or an aborted (fail-fast) run must
+  // not cause snapshots of tests that didn't run to be treated as stale.
+  let result = if result.is_ok()
+    && !state_rc.borrow().has::<ops::testing::IsolateExitInfo>()
+  {
+    let allow_stale_removal =
+      !options.filter.is_active() && !fail_fast_tracker.should_stop();
+    worker
+      .js_runtime
+      .execute_script(
+        located_script_name!(),
+        format!(
+          "Deno[Deno.internal].flushTestSnapshots?.({})",
+          allow_stale_removal
+        ),
+      )
+      .map(|_| ())
+      .map_err(|e| RunTestsForWorkerErr::Core(CoreErrorKind::Js(e).into_box()))
+  } else {
+    result
+  };
 
   // This worker can execute another discovery/run cycle (for example in REPL),
   // so reset to a fresh container after the current run ends.
@@ -1026,6 +1335,101 @@ where
   Ok(())
 }
 
+/// The outcome of a single invocation of a test function (one attempt).
+enum AttemptInvocation {
+  /// The test function ran to completion and produced this result.
+  Completed(TestResult),
+  /// The test function threw an uncaught error that escaped the test wrapper.
+  /// The error has already been reported via the event tracker; the isolate is
+  /// considered poisoned and the test run should be abandoned.
+  Uncaught,
+}
+
+/// Runs the wrapped test function once, applying the timeout/watchdog handling.
+/// This is the unit that `retry`/`repeats` re-invoke.
+#[allow(clippy::too_many_arguments, reason = "internal helper")]
+async fn invoke_test_function(
+  worker: &mut MainWorker,
+  function: &v8::Global<v8::Function>,
+  timeout_ms: Option<u32>,
+  watchdog: &TestWatchdog,
+  event_tracker: &TestEventTracker,
+  test_id: usize,
+  specifier: &ModuleSpecifier,
+) -> Result<AttemptInvocation, RunTestsForWorkerErr> {
+  if let Some(ms) = timeout_ms {
+    watchdog.arm(ms);
+  }
+
+  let call = worker.js_runtime.call(function);
+
+  let slow_test_warning =
+    spawn(slow_test_watchdog(event_tracker.clone(), test_id));
+
+  let test_fut = worker
+    .js_runtime
+    .with_event_loop_promise(call, PollEventLoopOptions::default());
+
+  let raced = match timeout_ms {
+    Some(ms) => {
+      match tokio::time::timeout(Duration::from_millis(ms as u64), test_fut)
+        .await
+      {
+        Ok(r) => Ok(r),
+        Err(_elapsed) => Err(()),
+      }
+    }
+    None => Ok(test_fut.await),
+  };
+  slow_test_warning.abort();
+
+  // `disarm()` must run before any further JS executes on the isolate —
+  // a stale `Fired` flag would kill the next test. The
+  // `cancel_terminate_execution` below clears it; do not refactor this
+  // pair apart.
+  let watchdog_fired = timeout_ms.is_some() && watchdog.disarm();
+  if watchdog_fired {
+    worker.js_runtime.v8_isolate().cancel_terminate_execution();
+  }
+
+  // Tokio fires for async hangs; the watchdog fires for sync hot loops.
+  // If the test still produced a valid result, a watchdog fire must have
+  // raced after V8 was already done — preserve the result.
+  let timed_out = match &raced {
+    Err(_) => true,
+    Ok(Ok(_)) => false,
+    Ok(Err(_)) => watchdog_fired,
+  };
+
+  if timed_out {
+    return Ok(AttemptInvocation::Completed(TestResult::Failed(
+      TestFailure::TimedOut(timeout_ms.unwrap_or(0)),
+    )));
+  }
+
+  match raced.unwrap() {
+    Ok(r) => {
+      deno_core::scope!(scope, &mut worker.js_runtime);
+      let result = v8::Local::new(scope, r);
+      Ok(AttemptInvocation::Completed(
+        <TestResult as deno_core::FromV8>::from_v8(scope, result)?,
+      ))
+    }
+    Err(error) => match error.into_kind() {
+      CoreErrorKind::Js(js_error) => {
+        event_tracker.uncaught_error(specifier.to_string(), js_error)?;
+        Ok(AttemptInvocation::Uncaught)
+      }
+      CoreErrorKind::PendingPromiseResolution => {
+        Ok(AttemptInvocation::Completed(TestResult::Failed(
+          TestFailure::PendingPromiseResolution,
+        )))
+      }
+      err => Err(err.into_box().into()),
+    },
+  }
+}
+
 #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
 async fn run_tests_for_worker_inner(
   worker: &mut MainWorker,
@@ -1054,7 +1458,8 @@ async fn run_tests_for_worker_inner(
   })?;
 
   let mut had_uncaught_error = false;
-  let sanitizer_helper = sanitizers::create_test_sanitizer_helper(worker);
+  let mut sanitizer_helper = sanitizers::create_test_sanitizer_helper(worker);
+  let watchdog = TestWatchdog::new(&mut worker.js_runtime);
 
   // Execute beforeAll hooks (FIFO order)
   call_hooks(worker, test_hooks.before_all.iter(), |core_error| {
@@ -1086,124 +1491,185 @@ async fn run_tests_for_worker_inner(
     }
     event_tracker.wait(desc)?;
 
-    // Poll event loop once, to allow all ops that are already resolved, but haven't
-    // responded to settle.
-    // TODO(mmastrac): we should provide an API to poll the event loop until no further
-    // progress is made.
-    poll_event_loop(worker).await?;
-
-    // We always capture stats, regardless of sanitization state
-    let before_test_stats = sanitizer_helper.capture_stats();
-
+    let timeout_ms = desc.timeout_ms.filter(|&t| t > 0);
+    // A test's own `retry`/`repeats` option takes precedence (including an
+    // explicit `0` to opt out); otherwise fall back to the `--retry`/`--repeats`
+    // flag defaults.
+    let retry = desc.retry.unwrap_or(options.retry);
+    let repeats = desc.repeats.unwrap_or(options.repeats);
     let earlier = Instant::now();
 
-    // Execute beforeEach hooks (FIFO order)
-    let mut before_each_hook_errored = false;
+    // The terminal result of the test once all repetitions/attempts settle.
+    // `None` means an early exit (uncaught error) already reported a result.
+    let mut final_result: Option<TestResult> = None;
 
-    call_hooks(worker, test_hooks.before_each.iter(), |core_error| {
-      match core_error {
-        CoreErrorKind::Js(err) => {
-          before_each_hook_errored = true;
-          let test_result = TestResult::Failed(TestFailure::JsError(err));
-          fail_fast_tracker.add_failure();
-          event_tracker.result(desc, test_result, earlier.elapsed())?;
-          Ok(())
-        }
-        err => Err(err.into_box().into()),
+    // `repeats` requires every repetition to pass; `retry` allows each
+    // repetition up to `1 + retry` attempts and passes on the first success.
+    'repetitions: for repetition in 0..=repeats {
+      // Signal the start of a fresh repetition so the reporter discards the
+      // previous repetition's step results instead of tallying them again.
+      if repetition > 0 {
+        event_tracker.repeat(desc, repetition)?;
       }
-    })
-    .await?;
+      let mut repetition_result = TestResult::Ok;
 
-    // TODO(bartlomieju): this whole block/binding could be reworked into something better
-    let result = if !before_each_hook_errored {
-      let call = worker.js_runtime.call(&function);
+      'attempts: for attempt in 0..=retry {
+        // Poll event loop once, to allow all ops that are already resolved, but
+        // haven't responded, to settle.
+        // TODO(mmastrac): we should provide an API to poll the event loop until
+        // no further progress is made.
+        poll_event_loop(worker).await?;
 
-      let slow_test_warning =
-        spawn(slow_test_watchdog(event_tracker.clone(), desc.id));
+        // We always capture stats, regardless of sanitization state. A fresh
+        // baseline per attempt keeps each attempt's leak check independent of
+        // resources leaked by a previous, retried attempt.
+        let before_test_stats = sanitizer_helper.capture_stats();
 
-      let result = worker
-        .js_runtime
-        .with_event_loop_promise(call, PollEventLoopOptions::default())
-        .await;
-      slow_test_warning.abort();
-      let result = match result {
-        Ok(r) => r,
-        Err(error) => match error.into_kind() {
-          CoreErrorKind::Js(js_error) => {
-            event_tracker.uncaught_error(specifier.to_string(), js_error)?;
+        // Execute beforeEach hooks (FIFO order). A hook error is terminal and
+        // is not retried.
+        let mut before_each_failure: Option<Box<JsError>> = None;
+        call_hooks(worker, test_hooks.before_each.iter(), |core_error| {
+          match core_error {
+            CoreErrorKind::Js(err) => {
+              if before_each_failure.is_none() {
+                before_each_failure = Some(err);
+              }
+              Ok(())
+            }
+            err => Err(err.into_box().into()),
+          }
+        })
+        .await?;
+
+        if let Some(err) = before_each_failure {
+          // Run afterEach for best-effort cleanup, ignoring its errors, then
+          // fail the test without retrying.
+          call_hooks(
+            worker,
+            test_hooks.after_each.iter().rev(),
+            |core_error| match core_error {
+              CoreErrorKind::Js(_) => Ok(()),
+              err => Err(err.into_box().into()),
+            },
+          )
+          .await?;
+          final_result = Some(TestResult::Failed(TestFailure::JsError(err)));
+          break 'repetitions;
+        }
+
+        let mut attempt_result = match invoke_test_function(
+          worker,
+          &function,
+          timeout_ms,
+          &watchdog,
+          event_tracker,
+          desc.id,
+          specifier,
+        )
+        .await?
+        {
+          AttemptInvocation::Completed(result) => result,
+          AttemptInvocation::Uncaught => {
             fail_fast_tracker.add_failure();
             event_tracker.cancelled(desc)?;
             had_uncaught_error = true;
-            continue;
+            final_result = None;
+            break 'repetitions;
           }
-          err => return Err(err.into_box().into()),
-        },
-      };
+        };
 
-      // Check the result before we check for leaks
-      deno_core::scope!(scope, &mut worker.js_runtime);
-      let result = v8::Local::new(scope, result);
-      serde_v8::from_v8::<TestResult>(scope, result)?
-    } else {
-      TestResult::Ignored
-    };
+        // Execute afterEach hooks (LIFO order). A hook error is terminal and is
+        // not retried.
+        let mut after_each_failure: Option<Box<JsError>> = None;
+        call_hooks(worker, test_hooks.after_each.iter().rev(), |core_error| {
+          match core_error {
+            CoreErrorKind::Js(err) => {
+              if after_each_failure.is_none() {
+                after_each_failure = Some(err);
+              }
+              Ok(())
+            }
+            err => Err(err.into_box().into()),
+          }
+        })
+        .await?;
 
-    if matches!(result, TestResult::Failed(_)) {
-      fail_fast_tracker.add_failure();
-      event_tracker.result(desc, result.clone(), earlier.elapsed())?;
-    }
+        // Close idle Node.js HTTP Agent connections to prevent cross-test
+        // pollution and false positive resource leak detection from pooled
+        // keepAlive connections. Defined in ext/node/polyfills/01_require.js.
+        _ = worker.js_runtime.execute_script(
+          located_script_name!(),
+          "Deno[Deno.internal].closeIdleConnections?.()",
+        );
 
-    // Execute afterEach hooks (LIFO order)
-    call_hooks(worker, test_hooks.after_each.iter().rev(), |core_error| {
-      match core_error {
-        CoreErrorKind::Js(err) => {
-          let test_result = TestResult::Failed(TestFailure::JsError(err));
-          fail_fast_tracker.add_failure();
-          event_tracker.result(desc, test_result, earlier.elapsed())?;
-          Ok(())
+        // Await activity stabilization. A leak counts as a failure of the
+        // attempt, and is therefore retryable like any other failure. Only
+        // check when the test function itself passed and afterEach didn't error
+        // (a real failure takes precedence over a leak report).
+        let should_check_sanitizers = matches!(attempt_result, TestResult::Ok)
+          && after_each_failure.is_none();
+        if should_check_sanitizers {
+          if let Some(diff) = sanitizers::wait_for_activity_to_stabilize(
+            worker,
+            &mut sanitizer_helper,
+            before_test_stats,
+            desc.sanitize_ops,
+            desc.sanitize_resources,
+          )
+          .await?
+          {
+            let (formatted, trailer_notes) = format_sanitizer_diff(diff);
+            if !formatted.is_empty() {
+              attempt_result = TestResult::Failed(TestFailure::Leaked(
+                formatted,
+                trailer_notes,
+              ));
+            }
+          }
+        } else {
+          sanitizers::record_ignored_leaks(
+            &mut sanitizer_helper,
+            before_test_stats,
+            desc.sanitize_ops,
+            desc.sanitize_resources,
+          );
         }
-        err => Err(err.into_box().into()),
-      }
-    })
-    .await?;
 
-    if matches!(result, TestResult::Failed(_)) {
-      continue;
+        // An afterEach error is terminal, but only wins when the test itself
+        // passed (a test failure takes precedence, matching the old behavior).
+        if matches!(attempt_result, TestResult::Ok)
+          && let Some(err) = after_each_failure
+        {
+          final_result = Some(TestResult::Failed(TestFailure::JsError(err)));
+          break 'repetitions;
+        }
+
+        match attempt_result {
+          TestResult::Failed(failure) if attempt < retry => {
+            // Attempts remain: surface the retry and try this repetition again.
+            event_tracker.retry(desc, attempt, failure)?;
+            continue 'attempts;
+          }
+          other => {
+            repetition_result = other;
+            break 'attempts;
+          }
+        }
+      }
+
+      if matches!(repetition_result, TestResult::Failed(_)) {
+        // This repetition failed definitively; the whole test fails.
+        final_result = Some(repetition_result);
+        break 'repetitions;
+      }
+      // This repetition passed; carry on to the next one (if any).
+      final_result = Some(repetition_result);
     }
 
-    // Close idle Node.js HTTP Agent connections to prevent cross-test
-    // pollution and false positive resource leak detection from pooled
-    // keepAlive connections.
-    _ = worker.js_runtime.execute_script(
-      located_script_name!(),
-      "Deno[Deno.internal].node?.closeIdleConnections?.()",
-    );
-
-    // Await activity stabilization
-    if let Some(diff) = sanitizers::wait_for_activity_to_stabilize(
-      worker,
-      &sanitizer_helper,
-      before_test_stats,
-      desc.sanitize_ops,
-      desc.sanitize_resources,
-    )
-    .await?
-    {
-      let (formatted, trailer_notes) = format_sanitizer_diff(diff);
-      if !formatted.is_empty() {
-        let failure = TestFailure::Leaked(formatted, trailer_notes);
+    if let Some(result) = final_result {
+      if matches!(result, TestResult::Failed(_)) {
         fail_fast_tracker.add_failure();
-        event_tracker.result(
-          desc,
-          TestResult::Failed(failure),
-          earlier.elapsed(),
-        )?;
-        continue;
       }
-    }
-
-    // TODO(bartlomieju): using `before_each_hook_errored` is fishy
-    if !before_each_hook_errored {
       event_tracker.result(desc, result, earlier.elapsed())?;
     }
   }
@@ -1228,6 +1694,24 @@ async fn run_tests_for_worker_inner(
 static HAS_TEST_RUN_SIGINT_HANDLER: AtomicBool = AtomicBool::new(false);
 
 /// Test a collection of specifiers with test modes concurrently.
+/// Selects the test files belonging to shard `index` of `count` (1-based).
+/// The files are sorted for a stable order, then split into `count`
+/// consecutive, balanced groups. Assumes `1 <= index <= count` (validated at
+/// flag-parse time).
+fn shard_specifiers(
+  mut specifiers: Vec<ModuleSpecifier>,
+  index: usize,
+  count: usize,
+) -> Vec<ModuleSpecifier> {
+  specifiers.sort();
+  let total = specifiers.len();
+  // Balanced split: shard i covers [total*(i-1)/count, total*i/count). This
+  // partitions every file into exactly one shard with sizes differing by <= 1.
+  let start = total * (index - 1) / count;
+  let end = total * index / count;
+  specifiers.into_iter().take(end).skip(start).collect()
+}
+
 async fn test_specifiers(
   worker_factory: Arc<CliMainWorkerFactory>,
   cli_options: &Arc<CliOptions>,
@@ -1237,6 +1721,14 @@ async fn test_specifiers(
   require_modules: Vec<ModuleSpecifier>,
   options: TestSpecifiersOptions,
 ) -> Result<(), AnyError> {
+  // Select this shard's files first (on a stable sorted order) so the split is
+  // deterministic across machines regardless of any later shuffling.
+  let specifiers = if let Some((index, count)) = options.shard {
+    shard_specifiers(specifiers, index, count)
+  } else {
+    specifiers
+  };
+
   let specifiers = if let Some(seed) = options.specifier.shuffle {
     let mut rng = SmallRng::seed_from_u64(seed);
     let mut specifiers = specifiers;
@@ -1367,6 +1859,16 @@ pub async fn report_tests(
           reporter.report_result(tests.get(&id).unwrap(), &result, elapsed);
         }
       }
+      TestEvent::Retry(id, attempt, failure) => {
+        // Informational only: a retried attempt does not produce a terminal
+        // result and is intentionally not gated by `tests_with_result`.
+        reporter.report_retry(tests.get(&id).unwrap(), attempt, &failure);
+      }
+      TestEvent::Repeat(id, repetition) => {
+        // Informational only: a repetition boundary lets the reporter drop the
+        // previous repetition's step state before the next one runs.
+        reporter.report_repeat(tests.get(&id).unwrap(), repetition);
+      }
       TestEvent::UncaughtError(origin, error) => {
         failed = true;
         reporter.report_uncaught_error(&origin, error);
@@ -1390,6 +1892,9 @@ pub async fn report_tests(
             &test_steps,
           );
         }
+      }
+      TestEvent::SnapshotSummary(summary) => {
+        reporter.report_snapshot_summary(&summary);
       }
       TestEvent::ForceEndReport => {
         break;
@@ -1420,6 +1925,39 @@ pub async fn report_tests(
         )]
         std::process::exit(130);
       }
+      TestEvent::Exit(exit_code) => {
+        let elapsed = start_time
+          .map(|t| Instant::now().duration_since(t))
+          .unwrap_or_default();
+        reporter.report_exit(
+          exit_code,
+          &tests_started
+            .difference(&tests_with_result)
+            .copied()
+            .collect(),
+          &tests,
+          &test_steps,
+        );
+
+        #[allow(clippy::print_stderr, reason = "force outputting on failure")]
+        if let Err(err) = reporter.flush_report(&elapsed, &tests, &test_steps) {
+          eprint!("Test reporter failed to flush: {}", err)
+        }
+        #[allow(
+          clippy::disallowed_methods,
+          reason = "a test called Deno.exit() with the exit sanitizer disabled"
+        )]
+        std::process::exit(exit_code);
+      }
+      TestEvent::IsolateExit(origin, exit_code) => {
+        // A non-zero exit code from top-level `Deno.exit()` (or from an
+        // `unload` handler) should fail the test run. A zero exit code is
+        // treated as a clean isolate teardown.
+        if exit_code != 0 {
+          failed = true;
+        }
+        reporter.report_isolate_exit(&origin, exit_code);
+      }
     }
   }
 
@@ -1434,15 +1972,18 @@ pub async fn report_tests(
     );
   }
 
+  // A genuine test failure takes precedence over the `only` notice: if a test
+  // failed on its own, reporting that it failed "because the \"only\" option
+  // was used" is misleading.
+  if failed {
+    return (Err(anyhow!("Test failed")), receiver);
+  }
+
   if used_only {
     return (
       Err(anyhow!("Test failed because the \"only\" option was used",)),
       receiver,
     );
-  }
-
-  if failed {
-    return (Err(anyhow!("Test failed")), receiver);
   }
 
   (Ok(()), receiver)
@@ -1618,6 +2159,197 @@ async fn fetch_specifiers_with_test_mode(
   Ok(specifiers_with_mode)
 }
 
+/// Returns whether the specifier points at a file the module graph can parse
+/// (i.e. a script, not a markdown doc-test file). Mirrors the partition used in
+/// watch mode.
+fn is_script_specifier(specifier: &ModuleSpecifier) -> bool {
+  deno_path_util::url_to_file_path(specifier)
+    .map(|p| is_script_ext(&p))
+    .unwrap_or(true)
+}
+
+/// Collect the set of files changed in git, as absolute paths.
+///
+/// Without a `base` this is the working-tree diff (staged, unstaged and
+/// untracked). With a `base` git ref it additionally includes committed changes
+/// since the merge-base of `base` and `HEAD` (the `base...HEAD` three-dot form),
+/// matching the behavior of Vitest and Jest.
+fn changed_files_from_git(
+  cwd: &Path,
+  base: Option<&str>,
+) -> Result<Vec<PathBuf>, AnyError> {
+  // Resolve the repository root so git's repo-relative paths can be made
+  // absolute.
+  let repo_root = run_git(cwd, &["rev-parse", "--show-toplevel"])
+    .map_err(|err| anyhow!("`--changed` requires a git repository: {err}"))?;
+  let repo_root = PathBuf::from(repo_root.trim());
+
+  let mut commands: Vec<Vec<&str>> = vec![
+    // staged changes
+    vec!["diff", "--cached", "--name-only"],
+    // unstaged + untracked changes (respecting .gitignore)
+    vec!["ls-files", "--other", "--modified", "--exclude-standard"],
+  ];
+  let range;
+  if let Some(base) = base {
+    // committed changes since the merge-base of `base` and HEAD
+    range = format!("{base}...HEAD");
+    commands.push(vec!["diff", "--name-only", &range]);
+  }
+
+  // Run the commands from the repository root so their output is uniformly
+  // root-relative. `diff --name-only` is always root-relative, but `ls-files`
+  // prints paths relative to the current directory, so running from a
+  // subdirectory would otherwise emit paths that `repo_root.join` can't resolve.
+  let mut files = Vec::new();
+  for args in &commands {
+    let stdout = run_git(&repo_root, args)?;
+    for line in stdout.lines() {
+      let line = line.trim();
+      if !line.is_empty() {
+        files.push(repo_root.join(line));
+      }
+    }
+  }
+  Ok(files)
+}
+
+/// Resolve the set of changed/related file paths requested via `--changed` and
+/// `--related`, canonicalized so they line up with the module graph's paths.
+///
+/// Returns `None` when neither flag was passed (no filtering).
+fn collect_changed_paths(
+  cli_options: &CliOptions,
+  changed: &Option<Option<String>>,
+  related: &[String],
+) -> Result<Option<HashSet<PathBuf>>, AnyError> {
+  if changed.is_none() && related.is_empty() {
+    return Ok(None);
+  }
+
+  let cwd = cli_options.initial_cwd();
+  // Canonicalize so paths match the graph's canonicalized module paths. Deleted
+  // files can't be canonicalized and are simply dropped.
+  let mut result = HashSet::new();
+
+  if let Some(base) = changed {
+    for path in changed_files_from_git(cwd, base.as_deref())? {
+      if let Ok(path) = canonicalize_path(&path) {
+        result.insert(path);
+      }
+    }
+  }
+  // Unlike git-derived paths, a `--related` argument is typed by the user, so
+  // warn when it doesn't resolve to an existing file rather than silently
+  // dropping it (which would look like a legitimately empty result).
+  for file in related {
+    match canonicalize_path(&cwd.join(file)) {
+      Ok(path) => {
+        result.insert(path);
+      }
+      Err(_) => {
+        log::warn!(
+          "{} --related file not found: {}",
+          colors::yellow("Warning"),
+          file
+        );
+      }
+    }
+  }
+  Ok(Some(result))
+}
+
+/// Filter `specifiers_with_mode` down to the test modules affected by
+/// `changed_paths`, using the module graph to find dependents.
+///
+/// A module is kept when it is itself a changed/related file, or when any of its
+/// local dependencies changed. As an escape hatch, a change to a file that can
+/// affect any test but isn't visible in the import graph (an env file, a deno
+/// config file or the lockfile) disables filtering and keeps every module.
+async fn filter_specifiers_by_changed(
+  factory: &CliFactory,
+  cli_options: &CliOptions,
+  specifiers_with_mode: Vec<(ModuleSpecifier, TestMode)>,
+  changed_paths: HashSet<PathBuf>,
+) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
+  // A change to one of these files can affect resolution or runtime behavior of
+  // any test in ways the import graph doesn't capture (env vars, import maps,
+  // workspace config, locked versions), so don't filter when one of them
+  // changed. This mirrors Vitest/Jest, which re-run everything on config changes.
+  let mut run_everything_paths = cli_options
+    .possible_env_file_paths_for_watch()
+    .collect::<HashSet<_>>();
+  for deno_json in cli_options.workspace().deno_jsons() {
+    if let Ok(path) = deno_path_util::url_to_file_path(&deno_json.specifier)
+      && let Ok(path) = canonicalize_path(&path)
+    {
+      run_everything_paths.insert(path);
+    }
+  }
+  // A changed package.json can alter npm dependencies (and thus any test's
+  // runtime behavior) in ways the import graph doesn't capture, so treat it
+  // like a deno config change.
+  for pkg_json in cli_options.workspace().package_jsons() {
+    if let Ok(path) = canonicalize_path(&pkg_json.path) {
+      run_everything_paths.insert(path);
+    }
+  }
+  if let Some(lockfile) = factory.maybe_lockfile().await?
+    && let Ok(path) = canonicalize_path(&lockfile.filename)
+  {
+    run_everything_paths.insert(path);
+  }
+  if changed_paths
+    .iter()
+    .any(|p| run_everything_paths.contains(p))
+  {
+    return Ok(specifiers_with_mode);
+  }
+
+  // Build a graph over the script test modules so we can walk each test's
+  // dependencies. Doc-only (e.g. markdown) modules aren't part of the graph and
+  // are matched by path instead. A markdown doc test is therefore only selected
+  // when it is itself a changed/related file, never via the dependency walk.
+  //
+  // Note: this graph is built solely to resolve the affected set; the downstream
+  // typecheck/run path builds its own graph again. That's the same shape watch
+  // mode uses, where the cost is amortized across reruns; for a one-shot
+  // `--changed`/`--related` run it's an extra graph build we accept for now to
+  // keep the filtering self-contained.
+  let graph_kind = cli_options.type_check_mode().as_graph_kind();
+  let module_graph_creator = factory.module_graph_creator().await?;
+  let graph_roots = specifiers_with_mode
+    .iter()
+    .filter(|(specifier, _)| is_script_specifier(specifier))
+    .map(|(specifier, _)| specifier.clone())
+    .collect::<Vec<_>>();
+  let graph = module_graph_creator
+    .create_graph(graph_kind, graph_roots, NpmCachingStrategy::Eager)
+    .await?;
+  module_graph_creator.graph_valid(&graph)?;
+
+  let result = specifiers_with_mode
+    .into_iter()
+    .filter(|(specifier, _)| {
+      // Always keep a module that is itself a changed/related file.
+      if let Ok(path) = deno_path_util::url_to_file_path(specifier)
+        && let Ok(path) = canonicalize_path(&path)
+        && changed_paths.contains(&path)
+      {
+        return true;
+      }
+      // Keep a script module if any of its local dependencies changed.
+      is_script_specifier(specifier)
+        && has_graph_root_local_dependent_changed(
+          &graph,
+          specifier,
+          &changed_paths,
+        )
+    })
+    .collect();
+  Ok(result)
+}
+
 pub async fn run_tests(
   flags: Arc<Flags>,
   test_flags: TestFlags,
@@ -1639,9 +2371,37 @@ pub async fn run_tests(
   )
   .await?;
 
-  if !workspace_test_options.permit_no_files && specifiers_with_mode.is_empty()
+  let is_changed_filter =
+    test_flags.changed.is_some() || !test_flags.related.is_empty();
+
+  if !workspace_test_options.permit_no_files
+    && !is_changed_filter
+    && specifiers_with_mode.is_empty()
   {
     return Err(anyhow!("No test modules found"));
+  }
+
+  // Filter down to test modules affected by `--changed` / `--related`.
+  let specifiers_with_mode = match collect_changed_paths(
+    cli_options,
+    &test_flags.changed,
+    &test_flags.related,
+  )? {
+    None => specifiers_with_mode,
+    Some(changed_paths) => {
+      filter_specifiers_by_changed(
+        &factory,
+        cli_options,
+        specifiers_with_mode,
+        changed_paths,
+      )
+      .await?
+    }
+  };
+
+  if is_changed_filter && specifiers_with_mode.is_empty() {
+    log::info!("No test modules were affected by the given changes");
+    return Ok(());
   }
 
   let doc_tests = get_doc_tests(&specifiers_with_mode, file_fetcher).await?;
@@ -1697,12 +2457,16 @@ pub async fn run_tests(
       reporter: workspace_test_options.reporter,
       junit_path: workspace_test_options.junit_path,
       hide_stacktraces: workspace_test_options.hide_stacktraces,
+      shard: workspace_test_options.shard,
       specifier: TestSpecifierOptions {
         filter: TestFilter::from_flag(&workspace_test_options.filter),
         shuffle: workspace_test_options.shuffle,
+        retry: workspace_test_options.retry,
+        repeats: workspace_test_options.repeats,
         trace_leaks: workspace_test_options.trace_leaks,
         sanitize_ops: workspace_test_options.sanitize_ops,
         sanitize_resources: workspace_test_options.sanitize_resources,
+        update_snapshots: workspace_test_options.update_snapshots,
       },
     },
   )
@@ -1713,6 +2477,10 @@ pub async fn run_tests(
   }
 
   if let Some(ref coverage) = test_flags.coverage_dir {
+    // A malformed `coverage` config is a user error and must fail the command.
+    // The best-effort error handling below only logs report-generation errors,
+    // so surface an invalid config as a hard error before generating reports.
+    cli_options.resolve_coverage_thresholds()?;
     let reporters: [&dyn reporter::CoverageReporter; 3] = [
       &reporter::SummaryCoverageReporter::new(),
       &reporter::LcovCoverageReporter::new(),
@@ -1730,8 +2498,14 @@ pub async fn run_tests(
           .to_string_lossy()
           .into_owned(),
       ),
+      test_flags.coverage_threshold.map(|t| t as f64),
       &reporters,
     ) {
+      // An unmet coverage threshold is a deliberate failure and must fail the
+      // command; other (best-effort) report errors are only logged.
+      if err.downcast_ref::<CoverageThresholdError>().is_some() {
+        return Err(err);
+      }
       log::info!("Error generating coverage report: {}", err);
     }
   }
@@ -1760,16 +2534,14 @@ pub async fn run_tests_with_watch(
     }
   });
 
+  let clear_screen = flags
+    .watch
+    .as_ref()
+    .map(|w| !w.no_clear_screen)
+    .unwrap_or(true);
   file_watcher::watch_func(
     flags,
-    file_watcher::PrintConfig::new(
-      "Test",
-      test_flags
-        .watch
-        .as_ref()
-        .map(|w| !w.no_clear_screen)
-        .unwrap_or(true),
-    ),
+    file_watcher::PrintConfig::new("Test", clear_screen),
     move |flags, watcher_communicator, changed_paths| {
       let test_flags = test_flags.clone();
       watcher_communicator.show_path_changed(changed_paths.clone());
@@ -1792,14 +2564,9 @@ pub async fn run_tests_with_watch(
           cli_options.resolve_test_options_for_members(&test_flags)?;
         let watch_paths = members_with_test_options
           .iter()
-          .filter_map(|(_, test_options)| {
-            test_options
-              .files
-              .include
-              .as_ref()
-              .map(|set| set.base_paths())
+          .flat_map(|(_, test_options)| {
+            file_watcher::watch_paths_for_file_patterns(&test_options.files)
           })
-          .flatten()
           .collect::<Vec<_>>();
         let _ = watcher_communicator.watch_paths(watch_paths);
         let test_modules = members_with_test_options
@@ -1826,11 +2593,23 @@ pub async fn run_tests_with_watch(
           .flatten()
           .collect::<Vec<_>>();
 
+        // Markdown (and other non-script) doc-test files cannot be parsed
+        // by the module graph, so split them out and track reloads for
+        // them by path instead of by graph dependency. With `--doc`, the
+        // collector accepts extensions like `.md` that `is_script_ext`
+        // rejects.
+        let (graph_modules, doc_only_modules): (Vec<_>, Vec<_>) =
+          test_modules.into_iter().partition(|specifier| {
+            deno_path_util::url_to_file_path(specifier)
+              .map(|p| is_script_ext(&p))
+              .unwrap_or(true)
+          });
+
         let graph = module_graph_creator
-          .create_graph(graph_kind, test_modules, NpmCachingStrategy::Eager)
+          .create_graph(graph_kind, graph_modules, NpmCachingStrategy::Eager)
           .await?;
         module_graph_creator.graph_valid(&graph)?;
-        let test_modules = &graph.roots;
+        let graph_modules = graph.roots.clone();
 
         let test_modules_to_reload = if let Some(changed_paths) = changed_paths
         {
@@ -1841,10 +2620,15 @@ pub async fn run_tests_with_watch(
             .possible_env_file_paths_for_watch()
             .any(|path| changed_paths.contains(&path));
           if env_file_changed {
-            test_modules.clone()
+            graph_modules
+              .into_iter()
+              .chain(doc_only_modules)
+              .collect::<IndexSet<_>>()
           } else {
-            let mut result = IndexSet::with_capacity(test_modules.len());
-            for test_module_specifier in test_modules {
+            let mut result = IndexSet::with_capacity(
+              graph_modules.len() + doc_only_modules.len(),
+            );
+            for test_module_specifier in &graph_modules {
               if has_graph_root_local_dependent_changed(
                 &graph,
                 test_module_specifier,
@@ -1853,10 +2637,21 @@ pub async fn run_tests_with_watch(
                 result.insert(test_module_specifier.clone());
               }
             }
+            for specifier in &doc_only_modules {
+              if let Ok(path) = deno_path_util::url_to_file_path(specifier)
+                && let Ok(path) = canonicalize_path(&path)
+                && changed_paths.contains(&path)
+              {
+                result.insert(specifier.clone());
+              }
+            }
             result
           }
         } else {
-          test_modules.clone()
+          graph_modules
+            .into_iter()
+            .chain(doc_only_modules)
+            .collect::<IndexSet<_>>()
         };
 
         let specifiers_with_mode = fetch_specifiers_with_test_mode(
@@ -1924,12 +2719,16 @@ pub async fn run_tests_with_watch(
             reporter: workspace_test_options.reporter,
             junit_path: workspace_test_options.junit_path,
             hide_stacktraces: workspace_test_options.hide_stacktraces,
+            shard: workspace_test_options.shard,
             specifier: TestSpecifierOptions {
               filter: TestFilter::from_flag(&workspace_test_options.filter),
               shuffle: workspace_test_options.shuffle,
+              retry: workspace_test_options.retry,
+              repeats: workspace_test_options.repeats,
               trace_leaks: workspace_test_options.trace_leaks,
               sanitize_ops: workspace_test_options.sanitize_ops,
               sanitize_resources: workspace_test_options.sanitize_resources,
+              update_snapshots: workspace_test_options.update_snapshots,
             },
           },
         )
@@ -1999,7 +2798,7 @@ impl TestEventTracker {
     test_id: usize,
     duration: Duration,
   ) -> Result<(), ChannelClosedError> {
-    self.send_event(TestEvent::Slow(test_id, duration.as_millis() as _))
+    self.send_event(TestEvent::Slow(test_id, duration))
   }
 
   fn wait(&self, desc: &TestDescription) -> Result<(), ChannelClosedError> {
@@ -2007,14 +2806,22 @@ impl TestEventTracker {
   }
 
   fn ignored(&self, desc: &TestDescription) -> Result<(), ChannelClosedError> {
-    self.send_event(TestEvent::Result(desc.id, TestResult::Ignored, 0))
+    self.send_event(TestEvent::Result(
+      desc.id,
+      TestResult::Ignored,
+      Duration::default(),
+    ))
   }
 
   fn cancelled(
     &self,
     desc: &TestDescription,
   ) -> Result<(), ChannelClosedError> {
-    self.send_event(TestEvent::Result(desc.id, TestResult::Cancelled, 0))
+    self.send_event(TestEvent::Result(
+      desc.id,
+      TestResult::Cancelled,
+      Duration::default(),
+    ))
   }
 
   fn register(
@@ -2046,11 +2853,24 @@ impl TestEventTracker {
     test_result: TestResult,
     duration: Duration,
   ) -> Result<(), ChannelClosedError> {
-    self.send_event(TestEvent::Result(
-      desc.id,
-      test_result,
-      duration.as_millis() as u64,
-    ))
+    self.send_event(TestEvent::Result(desc.id, test_result, duration))
+  }
+
+  fn retry(
+    &self,
+    desc: &TestDescription,
+    attempt: u32,
+    failure: TestFailure,
+  ) -> Result<(), ChannelClosedError> {
+    self.send_event(TestEvent::Retry(desc.id, attempt, failure))
+  }
+
+  fn repeat(
+    &self,
+    desc: &TestDescription,
+    repetition: u32,
+  ) -> Result<(), ChannelClosedError> {
+    self.send_event(TestEvent::Repeat(desc.id, repetition))
   }
 
   pub(crate) fn force_end_report(&self) -> Result<(), ChannelClosedError> {

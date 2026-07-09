@@ -1,0 +1,12 @@
+{
+  "name": "@foo/bar",
+  "version": "1.0.0",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "license": "MIT",
+  "compilerOptions": {
+    "noUnusedParameters": true,
+    "noUnusedLocals": true
+  }
+}

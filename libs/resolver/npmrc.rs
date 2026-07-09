@@ -136,6 +136,30 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
         project_rc.registry_configs,
         home_rc.registry_configs,
       ),
+      min_release_age_days: project_rc
+        .min_release_age_days
+        .or(home_rc.min_release_age_days),
+      trust_policy: if project_rc.trust_policy
+        != deno_npmrc::TrustPolicyConfig::Off
+      {
+        project_rc.trust_policy
+      } else {
+        home_rc.trust_policy
+      },
+      trust_policy_ignore_after_minutes: project_rc
+        .trust_policy_ignore_after_minutes
+        .or(home_rc.trust_policy_ignore_after_minutes),
+      // union of project and home excludes (project entries first), so an
+      // exemption in either file applies
+      trust_policy_exclude: {
+        let mut excludes = project_rc.trust_policy_exclude;
+        for pkg in home_rc.trust_policy_exclude {
+          if !excludes.contains(&pkg) {
+            excludes.push(pkg);
+          }
+        }
+        excludes
+      },
     }
   }
 
@@ -235,5 +259,9 @@ pub fn create_default_npmrc(sys: &impl EnvVar) -> ResolvedNpmRc {
       },
     )]),
     registry_configs: Default::default(),
+    min_release_age_days: deno_npmrc::min_release_age_days_from_env(sys),
+    trust_policy: Default::default(),
+    trust_policy_ignore_after_minutes: None,
+    trust_policy_exclude: Vec::new(),
   }
 }

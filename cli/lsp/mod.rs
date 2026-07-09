@@ -30,6 +30,7 @@ mod registries;
 mod resolver;
 mod search;
 mod semantic_tokens;
+mod test_code_actions;
 mod testing;
 mod text;
 mod trace;
@@ -47,6 +48,10 @@ pub async fn start() -> Result<(), AnyError> {
   .custom_method(
     lsp_custom::PERFORMANCE_REQUEST,
     LanguageServer::performance_request,
+  )
+  .custom_method(
+    lsp_custom::INFERRED_TYPE_REQUEST,
+    LanguageServer::inferred_type,
   )
   .custom_method(lsp_custom::TASK_REQUEST, LanguageServer::task_definitions)
   .custom_method(testing::TEST_RUN_REQUEST, LanguageServer::test_run_request)

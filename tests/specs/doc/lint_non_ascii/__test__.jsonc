@@ -1,0 +1,5 @@
+{
+  "args": "doc --lint non_ascii.ts",
+  "exitCode": 1,
+  "output": "non_ascii.out"
+}

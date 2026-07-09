@@ -1,12 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+pub mod happy_eyeballs;
 pub mod io;
 pub mod ops;
 pub mod ops_tls;
 #[cfg(unix)]
 pub mod ops_unix;
-#[cfg(windows)]
-mod ops_win_pipe;
 mod quic;
 pub mod raw;
 pub mod resolve_addr;
@@ -24,6 +23,51 @@ use deno_tls::rustls::RootCertStore;
 pub use quic::QuicError;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "net";
+
+/// Permission check for opening a unix-domain socket path. Shared by the
+/// native unix-socket ops and the node-compat `PipeWrap` path in `ext/node`,
+/// which also backs Windows named pipes; unlike `ops_unix` this must compile
+/// on all platforms.
+///
+/// A unix socket is both a filesystem entry and an outbound network
+/// primitive, so this requires an `--allow-net=unix:<path>` rule in addition
+/// to filesystem access on the socket path. Without this, a script with only
+/// `--allow-read=/var/run/docker.sock` could connect to local IPC services
+/// (Docker, dbus, podman, etc.) with no `--allow-net` grant.
+///
+/// Abstract socket paths (Linux, leading NUL) have no filesystem entry, so
+/// they skip the filesystem check and rely on the network check alone.
+pub fn check_unix_socket_path<'a>(
+  permissions: &mut deno_permissions::PermissionsContainer,
+  path: std::borrow::Cow<'a, std::path::Path>,
+  access_kind: deno_permissions::OpenAccessKind,
+  api_name: Option<&str>,
+) -> Result<
+  deno_permissions::CheckedPath<'a>,
+  deno_permissions::PermissionCheckError,
+> {
+  let checked = if is_unix_socket_abstract_path(path.as_ref()) {
+    deno_permissions::CheckedPath::unsafe_new(path)
+  } else {
+    permissions.check_open(path, access_kind, api_name)?
+  };
+  permissions.check_net_unix_socket(&checked, api_name)?;
+  Ok(checked)
+}
+
+pub(crate) fn is_unix_socket_abstract_path(path: &std::path::Path) -> bool {
+  #[cfg(any(target_os = "android", target_os = "linux"))]
+  {
+    use std::os::unix::ffi::OsStrExt;
+    path.as_os_str().as_bytes().first() == Some(&0)
+  }
+
+  #[cfg(not(any(target_os = "android", target_os = "linux")))]
+  {
+    let _ = path;
+    false
+  }
+}
 
 /// Helper for checking unstable features. Used for sync ops.
 fn check_unstable(state: &OpState, api_name: &str) {
@@ -102,9 +146,6 @@ deno_core::extension!(deno_net,
     ops_unix::op_node_unstable_net_listen_unixpacket,
     ops_unix::op_net_recv_unixpacket,
     ops_unix::op_net_send_unixpacket,
-    ops_win_pipe::op_pipe_open,
-    ops_win_pipe::op_pipe_connect,
-    ops_win_pipe::op_pipe_windows_wait,
 
     quic::op_quic_connecting_0rtt,
     quic::op_quic_connecting_1rtt,
@@ -142,8 +183,8 @@ deno_core::extension!(deno_net,
     quic::webtransport::op_webtransport_accept,
     quic::webtransport::op_webtransport_connect,
   ],
-  esm = [ "01_net.js", "02_tls.js" ],
   lazy_loaded_esm = [ "03_quic.js" ],
+  lazy_loaded_js = [ "01_net.js", "02_tls.js" ],
   options = {
     root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
     unsafely_ignore_certificate_errors: Option<Vec<String>>,
@@ -186,38 +227,4 @@ mod ops_unix {
   stub_op!(op_node_unstable_net_listen_unixpacket);
   stub_op!(op_net_recv_unixpacket);
   stub_op!(op_net_send_unixpacket);
-}
-
-/// Stub ops for non-windows platforms.
-#[cfg(not(windows))]
-mod ops_win_pipe {
-  use deno_core::op2;
-
-  use crate::ops::NetError;
-
-  #[op2(fast)]
-  #[smi]
-  pub fn op_pipe_open() -> Result<u32, NetError> {
-    Err(NetError::Io(std::io::Error::new(
-      std::io::ErrorKind::Unsupported,
-      "Windows named pipes are not supported on this platform",
-    )))
-  }
-
-  #[op2(fast)]
-  #[smi]
-  pub fn op_pipe_connect() -> Result<u32, NetError> {
-    Err(NetError::Io(std::io::Error::new(
-      std::io::ErrorKind::Unsupported,
-      "Windows named pipes are not supported on this platform",
-    )))
-  }
-
-  #[op2(fast)]
-  pub fn op_pipe_windows_wait() -> Result<(), NetError> {
-    Err(NetError::Io(std::io::Error::new(
-      std::io::ErrorKind::Unsupported,
-      "Windows named pipes are not supported on this platform",
-    )))
-  }
 }

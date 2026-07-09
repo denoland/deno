@@ -20,24 +20,38 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { ownerSymbol } from "ext:deno_node/internal/async_hooks.ts";
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+
+const { ownerSymbol } = core.loadExtScript(
+  "ext:deno_node/internal/async_hooks.ts",
+);
+// deno-lint-ignore no-unused-vars
+const { HandleWrap } = core.loadExtScript(
+  "ext:deno_node/internal_binding/handle_wrap.ts",
+);
+const {
   kArrayBufferOffset,
   kBytesWritten,
   kLastWriteWasAsync,
   kReadBytesOrError,
-  LibuvStreamWrap,
   streamBaseState,
   WriteWrap,
-} from "ext:deno_node/internal_binding/stream_wrap.ts";
-import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
-import { errnoException } from "ext:deno_node/internal/errors.ts";
-import { getTimerDuration, kTimeout } from "ext:deno_node/internal/timers.mjs";
-import { clearTimeout, setUnrefTimeout } from "node:timers";
-import { validateFunction } from "ext:deno_node/internal/validators.mjs";
-import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
-import { primordials } from "ext:core/mod.js";
-import { Buffer } from "node:buffer";
+} = core.loadExtScript("ext:deno_node/internal_binding/stream_wrap.ts");
+const { errnoException } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+const lazyInternalTimers = () =>
+  core.loadExtScript("ext:deno_node/internal/timers.mjs");
+const lazyTimers = core.createLazyLoader("node:timers");
+const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const { isUint8Array } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
+const { validateFunction } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 
 const {
   Array,
@@ -49,15 +63,15 @@ const {
   TypedArrayPrototypeGetBuffer,
 } = primordials;
 
-export const kMaybeDestroy = Symbol("kMaybeDestroy");
-export const kUpdateTimer = Symbol("kUpdateTimer");
-export const kAfterAsyncWrite = Symbol("kAfterAsyncWrite");
-export const kBoundSession = Symbol("kBoundSession");
-export const kHandle = Symbol("kHandle");
-export const kSession = Symbol("kSession");
-export const kBuffer = Symbol("kBuffer");
-export const kBufferGen = Symbol("kBufferGen");
-export const kBufferCb = Symbol("kBufferCb");
+const kMaybeDestroy = Symbol("kMaybeDestroy");
+const kUpdateTimer = Symbol("kUpdateTimer");
+const kAfterAsyncWrite = Symbol("kAfterAsyncWrite");
+const kBoundSession = Symbol("kBoundSession");
+const kHandle = Symbol("kHandle");
+const kSession = Symbol("kSession");
+const kBuffer = Symbol("kBuffer");
+const kBufferGen = Symbol("kBufferGen");
+const kBufferCb = Symbol("kBufferCb");
 
 // deno-lint-ignore no-explicit-any
 function handleWriteReq(req: any, data: any, encoding: string) {
@@ -107,14 +121,6 @@ function onWriteComplete(this: any, status: number) {
     stream = stream.handle;
   }
 
-  if (stream.destroyed) {
-    if (typeof this.callback === "function") {
-      this.callback(null);
-    }
-
-    return;
-  }
-
   if (status < 0) {
     const ex = errnoException(status, "write", this.error);
 
@@ -122,6 +128,14 @@ function onWriteComplete(this: any, status: number) {
       this.callback(ex);
     } else {
       stream.destroy(ex);
+    }
+
+    return;
+  }
+
+  if (stream.destroyed) {
+    if (typeof this.callback === "function") {
+      this.callback(null);
     }
 
     return;
@@ -136,10 +150,10 @@ function onWriteComplete(this: any, status: number) {
 }
 
 function createWriteWrap(
-  handle: LibuvStreamWrap,
+  handle: HandleWrap,
   callback: (err?: Error | null) => void,
 ) {
-  const req = new WriteWrap<LibuvStreamWrap>();
+  const req = new WriteWrap<HandleWrap>();
 
   req.handle = handle;
   req.oncomplete = onWriteComplete;
@@ -151,7 +165,7 @@ function createWriteWrap(
   return req;
 }
 
-export function writevGeneric(
+function writevGeneric(
   // deno-lint-ignore no-explicit-any
   owner: any,
   // deno-lint-ignore no-explicit-any
@@ -173,8 +187,22 @@ export function writevGeneric(
 
     for (let i = 0; i < data.length; i++) {
       const entry = data[i];
-      chunks[i * 2] = entry.chunk;
-      chunks[i * 2 + 1] = entry.encoding;
+      const enc = entry.encoding;
+      // The native writev only handles utf8, latin1, ascii, ucs2, and
+      // buffer.  For other encodings (base64, hex, etc.) pre-convert to
+      // a Buffer so the bytes are correct on the wire.
+      if (
+        typeof entry.chunk === "string" && enc !== "utf8" &&
+        enc !== "utf-8" && enc !== "latin1" && enc !== "binary" &&
+        enc !== "ascii" && enc !== "ucs2" && enc !== "ucs-2" &&
+        enc !== "utf16le" && enc !== "utf-16le" && enc !== "buffer"
+      ) {
+        chunks[i * 2] = Buffer.from(entry.chunk, enc);
+        chunks[i * 2 + 1] = "buffer";
+      } else {
+        chunks[i * 2] = entry.chunk;
+        chunks[i * 2 + 1] = enc;
+      }
     }
   }
 
@@ -190,7 +218,7 @@ export function writevGeneric(
   return req;
 }
 
-export function writeGeneric(
+function writeGeneric(
   // deno-lint-ignore no-explicit-any
   owner: any,
   // deno-lint-ignore no-explicit-any
@@ -228,7 +256,7 @@ function afterWriteDispatched(
 // entry of the `streamBaseState` array from the `stream_wrap` internal binding.
 // Here we pass the `nread` value directly to this method as async Deno APIs
 // don't grant us the ability to rely on some mutable array entry setting.
-export function onStreamRead(
+function onStreamRead(
   // deno-lint-ignore no-explicit-any
   this: any,
   arrayBuffer: Uint8Array,
@@ -264,6 +292,14 @@ export function onStreamRead(
 
         if (isUint8Array(nextBuf)) {
           stream[kBuffer] = ret = nextBuf;
+          // Re-point the handle at the rotated buffer so the next
+          // libuv read lands in the new slab. Node's native
+          // OnStreamRead consumes onread's return value here; we
+          // forward it explicitly to keep the buffer hand-off
+          // purely on the JS side.
+          if (typeof handle.useUserBuffer === "function") {
+            handle.useUserBuffer(nextBuf);
+          }
         }
       }
     } else {
@@ -304,6 +340,13 @@ export function onStreamRead(
     return;
   }
 
+  // Bytes arrived on a stream the consumer already destroyed (e.g. during a
+  // re-entrant handshake callback that called socket.destroy()). Drop them;
+  // forwarding a positive nread to errnoException would raise RangeError.
+  if (nread > 0) {
+    return;
+  }
+
   if (nread !== MapPrototypeGet(codeMap, "EOF")) {
     // CallJSOnreadMethod expects the return value to be a buffer.
     // Ref: https://github.com/nodejs/node/pull/34375
@@ -333,7 +376,7 @@ export function onStreamRead(
   }
 }
 
-export function setStreamTimeout(
+function setStreamTimeout(
   // deno-lint-ignore no-explicit-any
   this: any,
   msecs: number,
@@ -346,11 +389,11 @@ export function setStreamTimeout(
   this.timeout = msecs;
 
   // Type checking identical to timers.enroll()
-  msecs = getTimerDuration(msecs, "msecs");
+  msecs = lazyInternalTimers().getTimerDuration(msecs, "msecs");
 
   // Attempt to clear an existing timer in both cases -
   //  even if it will be rescheduled we don't want to leak an existing timer.
-  clearTimeout(this[kTimeout]);
+  lazyTimers().clearTimeout(this[lazyInternalTimers().kTimeout]);
 
   if (msecs === 0) {
     if (callback !== undefined) {
@@ -358,7 +401,7 @@ export function setStreamTimeout(
       this.removeListener("timeout", callback);
     }
   } else {
-    this[kTimeout] = setUnrefTimeout(
+    this[lazyInternalTimers().kTimeout] = lazyInternalTimers().setUnrefTimeout(
       FunctionPrototypeBind(this._onTimeout, this),
       msecs,
     );
@@ -375,3 +418,20 @@ export function setStreamTimeout(
 
   return this;
 }
+
+return {
+  kMaybeDestroy,
+  kUpdateTimer,
+  kAfterAsyncWrite,
+  kBoundSession,
+  kHandle,
+  kSession,
+  kBuffer,
+  kBufferGen,
+  kBufferCb,
+  writevGeneric,
+  writeGeneric,
+  onStreamRead,
+  setStreamTimeout,
+};
+})();

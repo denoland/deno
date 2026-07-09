@@ -29,6 +29,7 @@ use wgpu_core::pipeline::CreateComputePipelineError;
 use wgpu_core::pipeline::CreateRenderPipelineError;
 use wgpu_core::pipeline::CreateShaderModuleError;
 use wgpu_core::present::ConfigureSurfaceError;
+use wgpu_core::present::SurfaceError;
 use wgpu_core::resource::BufferAccessError;
 use wgpu_core::resource::CreateBufferError;
 use wgpu_core::resource::CreateQuerySetError;
@@ -45,7 +46,7 @@ pub type ErrorHandler = std::rc::Rc<DeviceErrorHandler>;
 
 pub struct DeviceErrorHandler {
   pub is_lost: OnceLock<()>,
-  pub scopes: Mutex<Vec<(GPUErrorFilter, Vec<GPUError>)>>,
+  pub scopes: Mutex<Vec<(GPUErrorFilter, Option<GPUError>)>>,
   lost_resolver: Mutex<Option<v8::Global<v8::PromiseResolver>>>,
   spawner: V8TaskSpawner,
 
@@ -111,7 +112,10 @@ impl DeviceErrorHandler {
       .rfind(|(filter, _)| filter == &error_filter);
 
     if let Some(scope) = scope {
-      scope.1.push(err);
+      // Only saving the first error in the scope as it's likely the culprit.
+      if scope.1.is_none() {
+        scope.1 = Some(err);
+      }
     } else {
       let device = self
         .device
@@ -201,7 +205,7 @@ impl GPUError {
   }
 }
 
-fn fmt_err(err: &(dyn std::error::Error + 'static)) -> String {
+pub(crate) fn fmt_err(err: &(dyn std::error::Error + 'static)) -> String {
   let mut output = err.to_string();
 
   let mut e = err.source();
@@ -373,9 +377,54 @@ impl From<ConfigureSurfaceError> for GPUError {
   }
 }
 
+impl From<SurfaceError> for GPUError {
+  fn from(err: SurfaceError) -> Self {
+    GPUError::from_webgpu(err)
+  }
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum GPUGenericError {
   #[class(type)]
   #[error("Illegal constructor")]
   InvalidConstructor,
+}
+
+pub enum GPUPipelineErrorReason {
+  Validation,
+  Internal,
+}
+
+impl Display for GPUPipelineErrorReason {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Self::Validation => f.write_str("validation"),
+      Self::Internal => f.write_str("internal"),
+    }
+  }
+}
+
+pub(crate) fn make_pipeline_error<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  reason: GPUPipelineErrorReason,
+  message: &str,
+) -> v8::Local<'a, v8::Object> {
+  let state = JsRuntime::op_state_from(scope);
+  let class = state
+    .borrow()
+    .borrow::<crate::PipelineErrorClass>()
+    .0
+    .clone();
+  let constructor =
+    v8::Local::<v8::Function>::try_from(v8::Local::new(scope, class)).unwrap();
+  let message_str = v8::String::new(scope, message).unwrap();
+  let reason_str = v8::String::new(scope, &reason.to_string()).unwrap();
+
+  let options = v8::Object::new(scope);
+  let key = v8::String::new(scope, "reason").unwrap();
+  options.set(scope, key.into(), reason_str.into());
+
+  constructor
+    .new_instance(scope, &[message_str.into(), options.into()])
+    .unwrap()
 }

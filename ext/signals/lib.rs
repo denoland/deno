@@ -90,7 +90,7 @@ fn init() -> Handle {
 
   // SAFETY: Registering handler
   unsafe {
-    winapi::um::consoleapi::SetConsoleCtrlHandler(Some(handle), 1);
+    windows_sys::Win32::System::Console::SetConsoleCtrlHandler(Some(handle), 1);
   }
 
   Handle
@@ -101,21 +101,21 @@ fn start_sigwinch_polling() {
   static STARTED: OnceLock<()> = OnceLock::new();
   STARTED.get_or_init(|| {
     std::thread::spawn(|| {
-      // SAFETY: winapi calls to open CONOUT$ and poll console size
+      // SAFETY: Win32 calls to open CONOUT$ and poll console size
       unsafe {
         let conout_name: Vec<u16> =
           "CONOUT$".encode_utf16().chain(Some(0)).collect();
-        let handle = winapi::um::fileapi::CreateFileW(
+        let handle = windows_sys::Win32::Storage::FileSystem::CreateFileW(
           conout_name.as_ptr(),
-          winapi::um::winnt::GENERIC_READ,
-          winapi::um::winnt::FILE_SHARE_READ
-            | winapi::um::winnt::FILE_SHARE_WRITE,
-          std::ptr::null_mut(),
-          winapi::um::fileapi::OPEN_EXISTING,
+          windows_sys::Win32::Foundation::GENERIC_READ,
+          windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ
+            | windows_sys::Win32::Storage::FileSystem::FILE_SHARE_WRITE,
+          std::ptr::null(),
+          windows_sys::Win32::Storage::FileSystem::OPEN_EXISTING,
           0,
           std::ptr::null_mut(),
         );
-        if handle == winapi::um::handleapi::INVALID_HANDLE_VALUE {
+        if handle == windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
           return;
         }
 
@@ -123,9 +123,9 @@ fn start_sigwinch_polling() {
         let mut prev_rows: i32 = 0;
 
         // Read initial size
-        let mut bufinfo: winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO =
+        let mut bufinfo: windows_sys::Win32::System::Console::CONSOLE_SCREEN_BUFFER_INFO =
           std::mem::zeroed();
-        if winapi::um::wincon::GetConsoleScreenBufferInfo(handle, &mut bufinfo)
+        if windows_sys::Win32::System::Console::GetConsoleScreenBufferInfo(handle, &mut bufinfo)
           != 0
         {
           prev_cols =
@@ -135,11 +135,11 @@ fn start_sigwinch_polling() {
         }
 
         loop {
-          winapi::um::synchapi::Sleep(250);
+          windows_sys::Win32::System::Threading::Sleep(250);
 
-          let mut bufinfo: winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO =
+          let mut bufinfo: windows_sys::Win32::System::Console::CONSOLE_SCREEN_BUFFER_INFO =
             std::mem::zeroed();
-          if winapi::um::wincon::GetConsoleScreenBufferInfo(
+          if windows_sys::Win32::System::Console::GetConsoleScreenBufferInfo(
             handle,
             &mut bufinfo,
           ) == 0
@@ -275,6 +275,8 @@ pub fn is_forbidden(signo: i32) -> bool {
 }
 
 pub struct SignalStream {
+  signo: i32,
+  id: u32,
   rx: watch::Receiver<()>,
 }
 
@@ -284,17 +286,53 @@ impl SignalStream {
   }
 }
 
+impl Drop for SignalStream {
+  fn drop(&mut self) {
+    unregister(self.signo, self.id);
+  }
+}
+
 pub fn signal_stream(signo: i32) -> Result<SignalStream, std::io::Error> {
+  signal_stream_inner(signo, true)
+}
+
+/// Like [`signal_stream`], but does not prevent the default signal behavior.
+///
+/// The stream only observes the signal: if no other registered handler
+/// (e.g. a JS signal listener) prevents the default, the default action
+/// still runs, terminating the process for signals like SIGINT. This is
+/// important for consumers that poll the stream from the main event loop,
+/// which may be blocked in synchronous JS execution and unable to react
+/// to the notification.
+pub fn signal_stream_allow_default(
+  signo: i32,
+) -> Result<SignalStream, std::io::Error> {
+  signal_stream_inner(signo, false)
+}
+
+fn signal_stream_inner(
+  signo: i32,
+  prevent_default: bool,
+) -> Result<SignalStream, std::io::Error> {
   let (tx, rx) = watch::channel(());
   let cb = Box::new(move || {
     tx.send_replace(());
   });
-  register(signo, true, cb)?;
-  Ok(SignalStream { rx })
+  let id = register(signo, prevent_default, cb)?;
+  Ok(SignalStream { signo, id, rx })
 }
 
 pub async fn ctrl_c() -> std::io::Result<()> {
-  let mut stream = signal_stream(libc::SIGINT)?;
+  ctrl_c_inner(signal_stream(libc::SIGINT)?).await
+}
+
+/// Like [`ctrl_c`], but does not prevent the default SIGINT behavior.
+/// See [`signal_stream_allow_default`].
+pub async fn ctrl_c_allow_default() -> std::io::Result<()> {
+  ctrl_c_inner(signal_stream_allow_default(libc::SIGINT)?).await
+}
+
+async fn ctrl_c_inner(mut stream: SignalStream) -> std::io::Result<()> {
   match stream.recv().await {
     Some(_) => Ok(()),
     None => Err(std::io::Error::other("failed to receive SIGINT signal")),

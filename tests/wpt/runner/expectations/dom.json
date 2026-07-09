@@ -12,16 +12,8 @@
   "events": {
     "AddEventListenerOptions-once.any.html": true,
     "AddEventListenerOptions-once.any.worker.html": true,
-    "AddEventListenerOptions-passive.any.html": {
-      "expectedFailures": [
-        "returnValue should be ignored if-and-only-if the passive option is true"
-      ]
-    },
-    "AddEventListenerOptions-passive.any.worker.html": {
-      "expectedFailures": [
-        "returnValue should be ignored if-and-only-if the passive option is true"
-      ]
-    },
+    "AddEventListenerOptions-passive.any.html": true,
+    "AddEventListenerOptions-passive.any.worker.html": true,
     "AddEventListenerOptions-signal.any.html": true,
     "AddEventListenerOptions-signal.any.worker.html": true,
     "Event-isTrusted.any.html": false,
@@ -86,7 +78,6 @@
     "Event-propagation.html": false,
     "Event-returnValue.html": {
       "expectedFailures": [
-        "returnValue=false should have no effect if cancelable is false.",
         "initEvent should unset returnValue."
       ]
     },
@@ -411,8 +402,8 @@
       "Element interface: operation getAttributeNames()",
       "Element interface: operation getAttribute(DOMString)",
       "Element interface: operation getAttributeNS(DOMString?, DOMString)",
-      "Element interface: operation setAttribute(DOMString, DOMString)",
-      "Element interface: operation setAttributeNS(DOMString?, DOMString, DOMString)",
+      "Element interface: operation setAttribute(DOMString, (TrustedType or DOMString))",
+      "Element interface: operation setAttributeNS(DOMString?, DOMString, (TrustedType or DOMString))",
       "Element interface: operation removeAttribute(DOMString)",
       "Element interface: operation removeAttributeNS(DOMString?, DOMString)",
       "Element interface: operation toggleAttribute(DOMString, optional boolean)",
@@ -1228,7 +1219,6 @@
     "attributes.html": {
       "expectedFailures": [
         "When qualifiedName does not match the Name production, an INVALID_CHARACTER_ERR exception is to be thrown. (toggleAttribute)",
-        "When qualifiedName does not match the Name production, an INVALID_CHARACTER_ERR exception is to be thrown, even if the attribute is already present. (toggleAttribute)",
         "toggleAttribute should lowercase its name argument (upper case attribute)",
         "toggleAttribute should lowercase its name argument (mixed case attribute)",
         "toggleAttribute should not throw even when qualifiedName starts with 'xmlns'",
@@ -1238,7 +1228,6 @@
         "toggleAttribute should set the attribute with the given qualified name",
         "Toggling element with inline style should make inline style disappear",
         "When qualifiedName does not match the Name production, an INVALID_CHARACTER_ERR exception is to be thrown. (setAttribute)",
-        "When qualifiedName does not match the Name production, an INVALID_CHARACTER_ERR exception is to be thrown, even if the attribute is already present. (setAttribute)",
         "setAttribute should lowercase its name argument (upper case attribute)",
         "setAttribute should lowercase its name argument (mixed case attribute)",
         "setAttribute should not throw even when qualifiedName starts with 'xmlns'",
@@ -1247,7 +1236,6 @@
         "setAttribute should set the first attribute with the given name",
         "setAttribute should set the attribute with the given qualified name",
         "When qualifiedName does not match the Name production, an INVALID_CHARACTER_ERR exception is to be thrown. (setAttributeNS)",
-        "When qualifiedName does not match the Name production, an INVALID_CHARACTER_ERR exception is to be thrown, even if the attribute is already present. (setAttributeNS)",
         "When qualifiedName does not match the QName production, an INVALID_CHARACTER_ERR exception is to be thrown.",
         "null and the empty string should result in a null namespace.",
         "A namespace is required to use a prefix.",
@@ -1304,21 +1292,7 @@
     "getElementsByClassName-whitespace-class-names.html": false,
     "insert-adjacent.html": false,
     "insertion-removing-steps": {
-      "Node-append-form-and-script-from-fragment.tentative.html": false,
-      "Node-append-meta-referrer-and-script-from-fragment.tentative.html": false,
-      "Node-appendChild-script-and-button-from-div.tentative.html": false,
-      "Node-appendChild-script-and-custom-from-fragment.tentative.html": false,
-      "Node-appendChild-script-and-default-style-meta-from-fragment.tentative.html": false,
-      "Node-appendChild-script-and-div-from-fragment.tentative.html": false,
-      "Node-appendChild-script-and-iframe.tentative.html": false,
-      "Node-appendChild-script-and-source-from-fragment.tentative.html": false,
-      "Node-appendChild-script-and-style.tentative.html": false,
-      "Node-appendChild-script-in-script.tentative.html": false,
       "Node-appendChild-script-with-mutation-observer-takeRecords.html": false,
-      "Node-appendChild-text-and-script-in-style.tentative.html": false,
-      "Node-appendChild-text-in-script.tentative.html": false,
-      "Node-appendChild-three-scripts-from-fragment.tentative.html": false,
-      "Node-appendChild-three-scripts.tentative.html": false,
       "blur-event.window.html": false,
       "insertion-removing-steps-iframe.window.html": false,
       "insertion-removing-steps-script.window.html": false,
@@ -1420,15 +1394,6 @@
       "observable-reduce.any.worker.html": false
     }
   },
-  "parts": {
-    "basic-dom-part-declarative-brace-syntax-innerhtml.tentative.html": false,
-    "basic-dom-part-declarative-brace-syntax.tentative.html": false,
-    "basic-dom-part-objects.tentative.html": false,
-    "dom-parts-parseparts-on-body.tentative.html": false,
-    "dom-parts-parseparts-on-head.tentative.html": false,
-    "dom-parts-parseparts-on-root.tentative.html": false,
-    "dom-parts-valid-node-types.tentative.html": false
-  },
   "ranges": {
     "Range-adopt-test.html": false,
     "Range-attributes.html": false,
@@ -1491,11 +1456,6 @@
       "window.addEventListener respects custom `this`",
       "window.addEventListener treats nullish `this` as `window`"
     ]
-  },
-  "xslt": {
-    "functions.tentative.window.html": false,
-    "transformToFragment.tentative.window.html": false,
-    "document-function.window.html": false
   },
   "historical-mutation-events.html": {
     "expectedFailures": [

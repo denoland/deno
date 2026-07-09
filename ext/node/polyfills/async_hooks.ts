@@ -1,18 +1,24 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
-import { core, primordials } from "ext:core/mod.js";
-import { validateFunction } from "ext:deno_node/internal/validators.mjs";
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const {
+  validateFunction,
+  validateObject,
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const {
   AsyncHook,
-  emitDestroy as emitDestroyHook,
+  emitAfter,
+  emitBefore,
+  emitDestroy: emitDestroyHook,
   emitInit,
-  executionAsyncId as internalExecutionAsyncId,
+  enterAsyncResource,
+  exitAsyncResource,
+  executionAsyncId: internalExecutionAsyncId,
+  executionAsyncResource: internalExecutionAsyncResource,
   newAsyncId,
-} from "ext:deno_node/internal/async_hooks.ts";
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 
 const {
   ObjectDefineProperties,
@@ -20,6 +26,8 @@ const {
   FunctionPrototypeBind,
   ArrayPrototypeUnshift,
   ObjectFreeze,
+  SafeFinalizationRegistry,
+  SafeArrayIterator,
 } = primordials;
 
 const {
@@ -30,11 +38,11 @@ const {
 
 // FinalizationRegistry to emit the async hook destroy callback when an
 // AsyncResource is garbage collected, matching Node.js behaviour.
-const asyncResourceRegistry = new FinalizationRegistry(
+const asyncResourceRegistry = new SafeFinalizationRegistry(
   (asyncId: number) => emitDestroyHook(asyncId),
 );
 
-export class AsyncResource {
+class AsyncResource {
   type: string;
   #snapshot: unknown;
   #asyncId: number;
@@ -47,8 +55,9 @@ export class AsyncResource {
     // receive this resource, matching Node.js behaviour.
     emitInit(this.#asyncId, type, internalExecutionAsyncId(), this);
     // Register with the FinalizationRegistry so emitDestroy is called when
-    // this object is garbage collected.
-    asyncResourceRegistry.register(this, this.#asyncId);
+    // this object is garbage collected. Pass `this` as the unregister token so
+    // emitDestroy() can cancel the finalizer.
+    asyncResourceRegistry.register(this, this.#asyncId, this);
   }
 
   asyncId() {
@@ -61,11 +70,20 @@ export class AsyncResource {
     ...args: unknown[]
   ) {
     const previousContext = getAsyncContext();
+    emitBefore(this.#asyncId);
     try {
       setAsyncContext(this.#snapshot);
-      return ReflectApply(fn, thisArg, args);
+      // Enter this resource as the current executionAsyncResource() so that
+      // user code inside the scope observes `this` as the active resource.
+      const prevResource = enterAsyncResource(this);
+      try {
+        return ReflectApply(fn, thisArg, args);
+      } finally {
+        exitAsyncResource(prevResource);
+      }
     } finally {
       setAsyncContext(previousContext);
+      emitAfter(this.#asyncId);
     }
   }
 
@@ -106,13 +124,31 @@ export class AsyncResource {
     thisArg?: AsyncResource,
   ) {
     type = type || fn.name || "bound-anonymous-fn";
+    // deno-lint-ignore prefer-primordials -- `bind` is AsyncResource's own method, not Function.prototype.bind
     return (new AsyncResource(type)).bind(fn, thisArg);
   }
 }
 
-export class AsyncLocalStorage {
+class AsyncLocalStorage {
   #variable = new AsyncVariable();
+  // deno-lint-ignore no-explicit-any
+  #defaultValue: any = undefined;
+  #name = "";
   enabled = false;
+
+  constructor(
+    options: { defaultValue?: unknown; name?: string } = { __proto__: null },
+  ) {
+    validateObject(options, "options");
+    this.#defaultValue = options.defaultValue;
+    if (options.name !== undefined) {
+      this.#name = `${options.name}`;
+    }
+  }
+
+  get name() {
+    return this.#name;
+  }
 
   // deno-lint-ignore no-explicit-any
   run(store: any, callback: any, ...args: any[]): any {
@@ -141,9 +177,10 @@ export class AsyncLocalStorage {
   // deno-lint-ignore no-explicit-any
   getStore(): any {
     if (!this.enabled) {
-      return undefined;
+      return this.#defaultValue;
     }
-    return this.#variable.get();
+    const value = this.#variable.get();
+    return value === undefined ? this.#defaultValue : value;
   }
 
   enterWith(store: unknown) {
@@ -156,29 +193,35 @@ export class AsyncLocalStorage {
   }
 
   static bind(fn: (...args: unknown[]) => unknown) {
+    // deno-lint-ignore prefer-primordials -- `bind` is AsyncResource's own static method, not Function.prototype.bind
     return AsyncResource.bind(fn);
   }
 
   static snapshot() {
     const resource = new AsyncResource("AsyncLocalStorage.snapshot");
-    return function (cb: (...args: unknown[]) => unknown, ...args: unknown[]) {
-      return resource.runInAsyncScope(cb, null, ...args);
+    return function (
+      cb: (...args: unknown[]) => unknown,
+      ...args: unknown[]
+    ) {
+      return resource.runInAsyncScope(
+        cb,
+        null,
+        ...new SafeArrayIterator(args),
+      );
     };
   }
 }
 
 // Re-export executionAsyncId from internal
-export const executionAsyncId = internalExecutionAsyncId;
+const executionAsyncId = internalExecutionAsyncId;
 
-export function triggerAsyncId() {
+function triggerAsyncId() {
   return 0;
 }
 
-export function executionAsyncResource() {
-  return {};
-}
+const executionAsyncResource = internalExecutionAsyncResource;
 
-export const asyncWrapProviders = ObjectFreeze({
+const asyncWrapProviders = ObjectFreeze({
   __proto__: null,
   NONE: 0,
   DIRHANDLE: 1,
@@ -246,7 +289,7 @@ export const asyncWrapProviders = ObjectFreeze({
 });
 
 // Use the AsyncHook from the internal module
-export function createHook(callbacks: {
+function createHook(callbacks: {
   init?: (
     asyncId: number,
     type: string,
@@ -261,12 +304,22 @@ export function createHook(callbacks: {
   return new AsyncHook(callbacks);
 }
 
-export default {
+return {
+  default: {
+    AsyncLocalStorage,
+    createHook,
+    executionAsyncId,
+    triggerAsyncId,
+    executionAsyncResource,
+    asyncWrapProviders,
+    AsyncResource,
+  },
   AsyncLocalStorage,
+  AsyncResource,
   createHook,
   executionAsyncId,
   triggerAsyncId,
   executionAsyncResource,
   asyncWrapProviders,
-  AsyncResource,
 };
+})();

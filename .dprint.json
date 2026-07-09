@@ -1,6 +1,7 @@
 {
   "typescript": {
-    "deno": true
+    "deno": true,
+    "functionExpression.flatIife": true
   },
   "markdown": {
     "deno": true
@@ -82,10 +83,11 @@
     "tests/specs/run/shebang_with_json_imports_tsc",
     "tests/specs/run/shebang_with_json_imports_swc",
     "tests/specs/run/ext_flag_takes_precedence_over_extension",
-    "tests/specs/run/error_syntax_empty_trailing_line/error_syntax_empty_trailing_line.mjs"
+    "tests/specs/run/error_syntax_empty_trailing_line/error_syntax_empty_trailing_line.mjs",
+    "tools/lzld"
   ],
   "plugins": [
-    "https://plugins.dprint.dev/typescript-0.95.15.wasm",
+    "https://plugins.dprint.dev/typescript-0.96.0.wasm",
     "https://plugins.dprint.dev/json-0.21.3.wasm",
     "https://plugins.dprint.dev/markdown-0.21.1.wasm",
     "https://plugins.dprint.dev/toml-0.7.0.wasm",

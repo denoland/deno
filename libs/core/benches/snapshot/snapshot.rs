@@ -44,6 +44,21 @@ macro_rules! fake_extensions {
   );
 }
 
+/// Creating a `JsRuntime` requires a tokio runtime context; hold the
+/// returned guard across runtime construction.
+fn tokio_context() -> tokio::runtime::EnterGuard<'static> {
+  static TOKIO: std::sync::OnceLock<tokio::runtime::Runtime> =
+    std::sync::OnceLock::new();
+  TOKIO
+    .get_or_init(|| {
+      tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .build()
+        .unwrap()
+    })
+    .enter()
+}
+
 fn make_extensions() -> Vec<Extension> {
   fake_extensions!(
     a0, b0, c0, d0, e0, f0, g0, h0, i0, j0, k0, l0, m0, n0, o0, p0, q0, r0, s0,
@@ -95,6 +110,7 @@ pub fn maybe_transpile_source(
 fn bench_take_snapshot_empty(c: &mut Criterion) {
   c.bench_function("take snapshot (empty)", |b| {
     b.iter_custom(|iters| {
+      let _tokio = tokio_context();
       let mut total = 0;
       for _ in 0..iters {
         let runtime = JsRuntimeForSnapshot::new(RuntimeOptions {
@@ -113,6 +129,7 @@ fn bench_take_snapshot_empty(c: &mut Criterion) {
 fn bench_take_snapshot(c: &mut Criterion) {
   fn inner(b: &mut Bencher, transpile: bool) {
     b.iter_custom(|iters| {
+      let _tokio = tokio_context();
       let mut total = 0;
       for _ in 0..iters {
         let extensions = make_extensions();
@@ -144,6 +161,7 @@ fn bench_take_snapshot(c: &mut Criterion) {
 
 fn bench_load_snapshot(c: &mut Criterion) {
   fn inner(b: &mut Bencher, transpile: bool) {
+    let _tokio = tokio_context();
     let extensions = make_extensions();
     let runtime = JsRuntimeForSnapshot::new(RuntimeOptions {
       extensions,

@@ -253,6 +253,9 @@ pub struct uv_tty_t {
   pub(crate) internal_line_read_result: Option<LineReadResult>,
   #[cfg(windows)]
   pub(crate) internal_line_read_pending: bool,
+
+  pub(crate) internal_waker:
+    Option<std::sync::Arc<crate::uv_compat::waker::TtyHandleWaker>>,
 }
 
 #[cfg(windows)]
@@ -1302,7 +1305,7 @@ pub unsafe fn uv_tty_init(
       let mut reopened = false;
       if handle_type == uv_handle_type::UV_TTY && tty_is_slave(fd) {
         let mut path = [0u8; 256];
-        if libc::ttyname_r(fd, path.as_mut_ptr().cast(), path.len()) == 0 {
+        if tty_path(fd, &mut path) {
           let new_fd =
             open_cloexec(path.as_ptr().cast(), mode | libc::O_NOCTTY);
           if new_fd >= 0 {
@@ -1485,6 +1488,15 @@ pub unsafe fn uv_tty_init(
       write(addr_of_mut!((*tty).internal_line_read_result), None);
       write(addr_of_mut!((*tty).internal_line_read_pending), false);
     }
+
+    let shared = super::get_inner(loop_).shared.clone();
+    write(
+      addr_of_mut!((*tty).internal_waker),
+      Some(crate::uv_compat::waker::TtyHandleWaker::new(
+        tty as usize,
+        shared,
+      )),
+    );
   }
   0
 }
@@ -1750,6 +1762,9 @@ pub(crate) unsafe fn read_start_tty(
       handles.push(tty);
     }
     drop(handles);
+    if let Some(w) = (*tty).internal_waker.as_ref() {
+      w.mark_ready();
+    }
 
     // Wake the event loop so poll_tty_handle runs on the next tick.
     // This registers the RegisterWaitForSingleObject (for future
@@ -1778,17 +1793,7 @@ pub(crate) unsafe fn read_stop_tty(tty: *mut uv_tty_t) -> c_int {
     // Notify the select fallback thread about interest change.
     #[cfg(target_os = "macos")]
     update_select_interest(tty);
-    if (*tty).internal_write_queue.is_empty()
-      && (*tty).internal_shutdown.is_none()
-    {
-      (*tty).flags &= !UV_HANDLE_ACTIVE;
-      // Remove from poll list when fully inactive.
-      let inner = get_inner((*tty).loop_);
-      inner
-        .tty_handles
-        .borrow_mut()
-        .retain(|&h| !std::ptr::eq(h, tty));
-    }
+    deactivate_tty_if_idle(tty);
   }
   0
 }
@@ -1835,6 +1840,7 @@ pub(crate) unsafe fn write_tty(
         req,
         data,
         offset: 0,
+        iovecs: None,
         cb,
         status: None,
       });
@@ -1857,6 +1863,7 @@ pub(crate) unsafe fn write_tty(
                   req,
                   data: Vec::new(),
                   offset: 0,
+                  iovecs: None,
                   cb,
                   status: Some(0),
                 });
@@ -1869,6 +1876,7 @@ pub(crate) unsafe fn write_tty(
                 req,
                 data: data[offset..].to_vec(),
                 offset: 0,
+                iovecs: None,
                 cb,
                 status: None,
               });
@@ -1880,6 +1888,7 @@ pub(crate) unsafe fn write_tty(
                 req,
                 data: Vec::new(),
                 offset: 0,
+                iovecs: None,
                 cb,
                 status: Some(UV_EPIPE),
               });
@@ -1893,6 +1902,7 @@ pub(crate) unsafe fn write_tty(
         req,
         data: Vec::new(),
         offset: 0,
+        iovecs: None,
         cb,
         status: Some(0),
       });
@@ -1907,6 +1917,7 @@ pub(crate) unsafe fn write_tty(
         req,
         data: Vec::new(),
         offset: 0,
+        iovecs: None,
         cb,
         status: Some(0),
       });
@@ -1924,6 +1935,7 @@ pub(crate) unsafe fn write_tty(
               req,
               data: Vec::new(),
               offset: 0,
+              iovecs: None,
               cb,
               status: Some(0),
             });
@@ -1936,6 +1948,7 @@ pub(crate) unsafe fn write_tty(
             req,
             data: data[offset..].to_vec(),
             offset: 0,
+            iovecs: None,
             cb,
             status: None,
           });
@@ -1947,6 +1960,7 @@ pub(crate) unsafe fn write_tty(
             req,
             data: Vec::new(),
             offset: 0,
+            iovecs: None,
             cb,
             status: Some(UV_EPIPE),
           });
@@ -1977,12 +1991,40 @@ unsafe fn ensure_tty_registered(tty: *mut uv_tty_t) {
       handles.push(tty);
     }
     drop(handles);
+    if let Some(w) = (*tty).internal_waker.as_ref() {
+      w.mark_ready();
+    }
 
     // On Windows, wake the event loop so pending write callbacks are
     // processed promptly. Without this, deferred callbacks can stall
     // until something else wakes the loop (e.g. console input).
     #[cfg(windows)]
     inner.wake();
+  }
+}
+
+/// Deactivate a TTY handle when it has no active read, write, or shutdown
+/// work. A ref'ed but inactive libuv handle does not keep the loop alive.
+///
+/// # Safety
+/// `tty` must be a valid pointer to an initialized `uv_tty_t`.
+unsafe fn deactivate_tty_if_idle(tty: *mut uv_tty_t) {
+  unsafe {
+    if !(*tty).internal_reading
+      && (*tty).internal_write_queue.is_empty()
+      && (*tty).internal_shutdown.is_none()
+    {
+      (*tty).flags &= !UV_HANDLE_ACTIVE;
+
+      #[cfg(target_os = "macos")]
+      update_select_interest(tty);
+
+      let inner = get_inner((*tty).loop_);
+      inner
+        .tty_handles
+        .borrow_mut()
+        .retain(|&h| !std::ptr::eq(h, tty));
+    }
   }
 }
 
@@ -2016,6 +2058,9 @@ pub(crate) unsafe fn shutdown_tty(
       handles.push(tty);
     }
     (*tty).flags |= UV_HANDLE_ACTIVE;
+    if let Some(w) = (*tty).internal_waker.as_ref() {
+      w.mark_ready();
+    }
   }
   0
 }
@@ -2466,19 +2511,48 @@ pub(crate) unsafe fn poll_tty_handle(
           let pw = (*tty_ptr).internal_write_queue.front_mut().unwrap();
           let mut done = false;
           let mut error = false;
-          loop {
-            if pw.offset >= pw.data.len() {
-              done = true;
-              break;
-            }
-            match tty_try_write(tty_ptr, &pw.data[pw.offset..]) {
-              Ok(n) => pw.offset += n,
-              Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+          if let Some(ref mut iov) = pw.iovecs {
+            // TTY has no native writev — iterate across iovecs calling
+            // single-buffer try_write.
+            loop {
+              if iov.is_empty() {
+                done = true;
                 break;
               }
-              Err(_) => {
-                error = true;
+              let (head_base, head_len) = {
+                let first = &iov.bufs[iov.head_index];
+                (first.base, first.len - iov.head_off)
+              };
+              let slice = std::slice::from_raw_parts(
+                (head_base as *const u8).add(iov.head_off),
+                head_len,
+              );
+              match tty_try_write(tty_ptr, slice) {
+                Ok(n) => iov.advance(n),
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                  break;
+                }
+                Err(_) => {
+                  error = true;
+                  break;
+                }
+              }
+            }
+          } else {
+            loop {
+              if pw.offset >= pw.data.len() {
+                done = true;
                 break;
+              }
+              match tty_try_write(tty_ptr, &pw.data[pw.offset..]) {
+                Ok(n) => pw.offset += n,
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                  break;
+                }
+                Err(_) => {
+                  error = true;
+                  break;
+                }
               }
             }
           }
@@ -2513,20 +2587,9 @@ pub(crate) unsafe fn poll_tty_handle(
       if let Some(cb) = pending.cb {
         cb(pending.req, 0);
       }
-      // Deactivate the handle if there's no more pending work.
-      // In real libuv, uv__drain stops the I/O watcher so the
-      // handle no longer keeps the event loop alive. Our
-      // UV_HANDLE_ACTIVE flag serves the same purpose.
-      if !(*tty_ptr).internal_reading
-        && (*tty_ptr).internal_write_queue.is_empty()
-        && (*tty_ptr).internal_shutdown.is_none()
-      {
-        (*tty_ptr).flags &= !UV_HANDLE_ACTIVE;
-        #[cfg(target_os = "macos")]
-        update_select_interest(tty_ptr);
-      }
       any_work = true;
     }
+    deactivate_tty_if_idle(tty_ptr);
   }
 
   // Post the select fallback semaphore so the background thread can
@@ -2543,6 +2606,34 @@ pub(crate) unsafe fn poll_tty_handle(
       && (*tty_ptr).flags & super::UV_HANDLE_CLOSING == 0
     {
       s.async_sem.post();
+    }
+  }
+
+  // Re-register tokio read interest for the next edge.
+  //
+  // Our read loop hits WouldBlock on its last iteration and calls
+  // `guard.clear_ready()`, which clears tokio's internal readiness
+  // bit but does NOT store a new waker. Without a follow-up
+  // `poll_read_ready(cx)`, no waker is registered when the next
+  // input arrives, so tokio has nothing to fire and the handle
+  // never re-enters the ready queue — the PTY appears dead after
+  // the first read.
+  //
+  // Calling `poll_read_ready(cx)` here stores the per-handle waker
+  // if still Pending, or re-queues the handle for another pass if
+  // already Ready. Mirrors the block at the end of
+  // `tcp::poll_tcp_handle` / `pipe::poll_pipe_handle`.
+  #[cfg(unix)]
+  unsafe {
+    if (*tty_ptr).internal_reading
+      && let Some(ref reactor) = (*tty_ptr).internal_reactor
+      && matches!(
+        reactor.async_fd().poll_read_ready(cx),
+        std::task::Poll::Ready(_)
+      )
+      && let Some(w) = (*tty_ptr).internal_waker.as_ref()
+    {
+      w.mark_ready();
     }
   }
 
@@ -2597,6 +2688,7 @@ pub fn new_tty() -> uv_tty_t {
     internal_line_read_result: None,
     #[cfg(windows)]
     internal_line_read_pending: false,
+    internal_waker: None,
   }
 }
 
@@ -2998,6 +3090,56 @@ unsafe fn tty_is_slave(fd: c_int) -> bool {
     // Fallback: ptsname() returns NULL for slave fds.
     unsafe { libc::ptsname(fd).is_null() }
   }
+}
+
+/// Resolve the path of a TTY slave fd into `buf` (NUL-terminated).
+///
+/// `ttyname_r` on macOS scans `/dev` with `lstat` on every entry, which
+/// shows up as a startup-time hot spot when initializing stdin/stdout/stderr.
+/// `F_GETPATH` (macOS) and `/proc/self/fd` (Linux) read the path directly
+/// from the fd's vnode entry in O(1) without touching the filesystem.
+#[cfg(unix)]
+unsafe fn tty_path(fd: c_int, buf: &mut [u8]) -> bool {
+  #[cfg(target_os = "macos")]
+  {
+    // F_GETPATH requires a buffer of MAXPATHLEN (1024). Resolve into a
+    // local buffer, then copy the (short) tty path into the caller's buf.
+    let mut tmp = [0u8; libc::PATH_MAX as usize];
+    if unsafe { libc::fcntl(fd, libc::F_GETPATH, tmp.as_mut_ptr()) } == 0 {
+      let len = tmp.iter().position(|&b| b == 0).unwrap_or(tmp.len());
+      if len < buf.len() {
+        buf[..len].copy_from_slice(&tmp[..len]);
+        buf[len] = 0;
+        return true;
+      }
+    }
+  }
+  #[cfg(target_os = "linux")]
+  {
+    let mut link = [0u8; 64];
+    let n = unsafe {
+      libc::snprintf(
+        link.as_mut_ptr().cast(),
+        link.len(),
+        c"/proc/self/fd/%d".as_ptr(),
+        fd,
+      )
+    };
+    if n > 0 && (n as usize) < link.len() {
+      let r = unsafe {
+        libc::readlink(
+          link.as_ptr().cast(),
+          buf.as_mut_ptr().cast(),
+          buf.len() - 1,
+        )
+      };
+      if r > 0 && (r as usize) < buf.len() {
+        buf[r as usize] = 0;
+        return true;
+      }
+    }
+  }
+  unsafe { libc::ttyname_r(fd, buf.as_mut_ptr().cast(), buf.len()) == 0 }
 }
 
 /// Open a file with O_CLOEXEC set.

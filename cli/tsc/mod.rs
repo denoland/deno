@@ -2,6 +2,7 @@
 //
 mod js;
 
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
@@ -212,6 +213,7 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.deno.webgpu.d.ts", "lib.deno_webgpu.d.ts"),
     maybe_compressed_lib!("lib.deno.window.d.ts"),
     maybe_compressed_lib!("lib.deno.worker.d.ts"),
+    maybe_compressed_lib!("lib.deno.desktop.d.ts"),
     maybe_compressed_lib!("lib.deno.shared_globals.d.ts"),
     maybe_compressed_lib!("lib.deno.ns.d.ts"),
     maybe_compressed_lib!("lib.deno.unstable.d.ts"),
@@ -281,6 +283,7 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.es2022.intl.d.ts"),
     maybe_compressed_lib!("lib.es2022.object.d.ts"),
     maybe_compressed_lib!("lib.es2022.regexp.d.ts"),
+    maybe_compressed_lib!("lib.es2022.sharedmemory.d.ts"),
     maybe_compressed_lib!("lib.es2022.string.d.ts"),
     maybe_compressed_lib!("lib.es2023.array.d.ts"),
     maybe_compressed_lib!("lib.es2023.collection.d.ts"),
@@ -313,12 +316,13 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.esnext.decorators.d.ts"),
     maybe_compressed_lib!("lib.esnext.disposable.d.ts"),
     maybe_compressed_lib!("lib.esnext.error.d.ts"),
-    maybe_compressed_lib!("lib.esnext.float16.d.ts"),
     maybe_compressed_lib!("lib.esnext.full.d.ts"),
     maybe_compressed_lib!("lib.esnext.intl.d.ts"),
-    maybe_compressed_lib!("lib.esnext.iterator.d.ts"),
+    maybe_compressed_lib!("lib.esnext.object.d.ts"),
     maybe_compressed_lib!("lib.esnext.promise.d.ts"),
+    maybe_compressed_lib!("lib.esnext.regexp.d.ts"),
     maybe_compressed_lib!("lib.esnext.sharedmemory.d.ts"),
+    maybe_compressed_lib!("lib.esnext.string.d.ts"),
     maybe_compressed_lib!("lib.esnext.temporal.d.ts"),
     maybe_compressed_lib!("lib.esnext.typedarrays.d.ts"),
     maybe_compressed_lib!("lib.node.d.ts"),
@@ -527,6 +531,9 @@ pub struct Request {
   pub check_mode: TypeCheckMode,
 
   pub initial_cwd: PathBuf,
+  /// When true, .d.ts and .d.ts.map files emitted by TSC will be captured
+  /// in the response. Only set this for `deno transpile --declaration`.
+  pub capture_emitted_files: bool,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -538,6 +545,8 @@ pub struct Response {
   pub ambient_modules: Vec<String>,
   /// Statistics from the check.
   pub stats: Stats,
+  /// Emitted files from the compiler (e.g., .d.ts declaration files).
+  pub emitted_files: BTreeMap<String, String>,
 }
 
 pub fn as_ts_script_kind(media_type: MediaType) -> i32 {
@@ -589,12 +598,15 @@ pub static BYTES_IMPORT_SOURCE: &str =
   "const data: Uint8Array<ArrayBuffer>;\nexport default data;\n";
 pub static TEXT_IMPORT_SOURCE: &str =
   "const data: string;\nexport default data;\n";
+pub static CSS_IMPORT_SOURCE: &str =
+  "const sheet: CSSStyleSheet;\nexport default sheet;\n";
 
 pub fn load_raw_import_source(specifier: &Url) -> Option<&'static str> {
   let raw_import = get_specifier_raw_import(specifier)?;
   let source = match raw_import {
     RawImportKind::Bytes => BYTES_IMPORT_SOURCE,
     RawImportKind::Text => TEXT_IMPORT_SOURCE,
+    RawImportKind::Css => CSS_IMPORT_SOURCE,
   };
   Some(source)
 }
@@ -603,6 +615,7 @@ pub fn load_raw_import_source(specifier: &Url) -> Option<&'static str> {
 pub enum RawImportKind {
   Bytes,
   Text,
+  Css,
 }
 
 /// We store the raw import kind in the fragment of the Url
@@ -621,6 +634,8 @@ fn get_specifier_raw_import(specifier: &Url) -> Option<RawImportKind> {
     Some(RawImportKind::Text)
   } else if remaining.starts_with("bytes") {
     Some(RawImportKind::Bytes)
+  } else if remaining.starts_with("css") {
+    Some(RawImportKind::Css)
   } else {
     None
   }
@@ -834,6 +849,35 @@ fn resolve_non_graph_specifier_types(
       _ => Ok(None),
     }
   }
+}
+
+/// Finds an `@types/node` that is only present in the npm resolution snapshot
+/// as a transitive dependency (not resolvable from the project root) and
+/// resolves its types entry point. Picks the highest installed version for
+/// determinism when multiple copies exist.
+fn resolve_transitive_types_node(
+  npm: &RequestNpmState,
+  referrer: &ModuleSpecifier,
+) -> Option<ModuleSpecifier> {
+  let managed = npm.npm_resolver.as_managed()?;
+  let snapshot = managed.resolution().snapshot();
+  let pkg_id = snapshot
+    .all_packages_for_every_system()
+    .filter(|pkg| pkg.id.nv.name.as_str() == "@types/node")
+    .max_by(|a, b| a.id.nv.version.cmp(&b.id.nv.version))
+    .map(|pkg| pkg.id.clone())?;
+  let package_folder = managed.resolve_pkg_folder_from_pkg_id(&pkg_id).ok()?;
+  let url_or_path = npm
+    .node_resolver
+    .resolve_package_subpath_from_deno_module(
+      &package_folder,
+      None,
+      Some(referrer),
+      ResolutionMode::Import,
+      NodeResolutionKind::Types,
+    )
+    .ok()?;
+  url_or_path.into_url().ok()
 }
 
 #[derive(Debug, Error, deno_error::JsError)]
@@ -1138,6 +1182,50 @@ pub fn load_for_tsc<T: LoadContent, M: Mapper>(
   // handle the request for that module here.
   } else if load_specifier == MISSING_DEPENDENCY_SPECIFIER {
     None
+  } else if load_specifier == "asset:///lib.node.d.ts" {
+    // With a single global symbol table, loading both the built-in `@types/node`
+    // and a user-installed one duplicates every node declaration. If the user
+    // provides their own `@types/node`, reference that resolved file directly so
+    // exactly one copy is in the program; otherwise serve the built-in. We
+    // reference the resolved path rather than `types="npm:@types/node"` because
+    // the latter would be re-resolved relative to this asset file, which fails
+    // for cache-only / frozen installs.
+    let user_types_node = maybe_npm.and_then(|npm| {
+      let referrer =
+        deno_path_util::resolve_url_or_path("./", current_dir).ok()?;
+      let spec = match resolve_non_graph_specifier_types(
+        "npm:@types/node",
+        &referrer,
+        ResolutionMode::Import,
+        Some(npm),
+      )
+      .ok()
+      .flatten()
+      {
+        Some((spec, _)) => spec,
+        // Not a declared dependency, but a package may still pull in
+        // `@types/node` transitively, in which case tsc will load that copy
+        // through node resolution from inside the package. Serve the same
+        // copy here so only one `@types/node` ends up in the program.
+        None => resolve_transitive_types_node(npm, &referrer)?,
+      };
+      spec
+        .to_file_path()
+        .ok()
+        .filter(|p| p.exists())
+        .map(|_| spec)
+    });
+    let source: Arc<str> = match user_types_node {
+      Some(spec) => format!(
+        "/// <reference no-default-lib=\"true\"/>\n/// <reference path=\"{}\" />\n",
+        spec.as_str(),
+      )
+      .into(),
+      None => get_lazily_loaded_asset("lib.node.d.ts").unwrap_or_default().into(),
+    };
+    hash = get_maybe_hash(Some(source.as_ref()), hash_data);
+    media_type = MediaType::Dts;
+    Some(T::from_arc_str(source))
   } else if let Some(name) = load_specifier.strip_prefix("asset:///") {
     let maybe_source = get_lazily_loaded_asset(name);
     hash = get_maybe_hash(maybe_source, hash_data);
@@ -1275,15 +1363,32 @@ pub static IGNORED_DIAGNOSTIC_CODES: LazyLock<HashSet<u64>> =
       // Microsoft/TypeScript#26825 but that doesn't seem to be working here,
       // so we will ignore complaints about this compiler setting.
       5070,
+      // TS6200: Definitions of the following identifiers conflict with those in another file.
+      // Deno provides its own web API types (WebAssembly, BufferSource, etc.) that intentionally
+      // overlap with lib.dom.d.ts or @types/node. This is expected when both are loaded together.
+      6200,
       // TS7016: Could not find a declaration file for module '...'. '...'
       // implicitly has an 'any' type.  This is due to `allowJs` being off by
       // default but importing of a JavaScript module.
       7016,
+      // TS18060: Deferred imports are only supported when the '--module' flag
+      // is set to 'esnext' or 'preserve'. Deno uses its own module resolution
+      // and supports import defer natively.
+      18060,
     ]
     .into_iter()
     .collect()
   });
 
+// Names of globals that `@types/node` redeclares but that Deno already
+// declares natively (typically in `lib.deno.web.d.ts`). When the TypeScript
+// fork merges `@types/node` into the global symbol table, declarations for
+// these names are dropped so the user-visible global remains Deno's.
+//
+// This keeps `new AbortController().signal` assignable to the `AbortSignal`
+// parameters of `node:fs`, `node:timers/promises`, etc., and avoids the
+// `TS2300` / `TS2320` duplicate-identifier diagnostics reported in
+// https://github.com/denoland/deno/issues/19527.
 pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "AbortController",
   "AbortSignal",
@@ -1324,6 +1429,9 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "PerformanceEntry",
   "PerformanceMark",
   "PerformanceMeasure",
+  "PerformanceObserver",
+  "PerformanceObserverEntryList",
+  "PerformanceResourceTiming",
   "QueuingStrategy",
   "QueuingStrategySize",
   "QuotaExceededError",
@@ -1336,7 +1444,9 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "ReadableStreamDefaultReader",
   "ReadonlyArray",
   "Request",
+  "RequestInit",
   "Response",
+  "ResponseInit",
   "Storage",
   "SubtleCrypto",
   "TextDecoder",
@@ -1355,27 +1465,10 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
 ];
 
 pub static NODE_ONLY_GLOBALS: &[&str] = &[
-  "__dirname",
-  "__filename",
-  "\"buffer\"",
-  "Buffer",
-  "BufferConstructor",
-  "BufferEncoding",
-  "clearImmediate",
-  "clearInterval",
-  "clearTimeout",
   "console",
   "Console",
   "crypto",
-  "ErrorConstructor",
   "gc",
-  "Global",
   "localStorage",
-  "queueMicrotask",
-  "RequestInit",
-  "ResponseInit",
   "sessionStorage",
-  "setImmediate",
-  "setInterval",
-  "setTimeout",
 ];

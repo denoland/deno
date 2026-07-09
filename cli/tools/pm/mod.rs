@@ -11,6 +11,7 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
+use deno_core::serde_json;
 use deno_path_util::url_to_file_path;
 use deno_semver::StackString;
 use deno_semver::Version;
@@ -28,7 +29,9 @@ use jsonc_parser::json;
 use crate::args::AddFlags;
 use crate::args::CliOptions;
 use crate::args::Flags;
+use crate::args::LinkFlags;
 use crate::args::RemoveFlags;
+use crate::args::UnlinkFlags;
 use crate::factory::CliFactory;
 use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::file_fetcher::create_cli_file_fetcher;
@@ -40,16 +43,20 @@ mod audit;
 mod cache_deps;
 pub(crate) mod deps;
 pub(crate) mod interactive_picker;
-mod outdated;
+mod list;
+pub(crate) mod outdated;
+mod why;
 
 pub use approve_scripts::approve_scripts;
 pub use audit::audit;
 pub use cache_deps::CacheTopLevelDepsOptions;
 pub use cache_deps::cache_top_level_deps;
+pub use list::list;
 pub use outdated::outdated;
+pub use why::why;
 
 #[derive(Debug, Copy, Clone, Hash)]
-enum ConfigKind {
+pub(crate) enum ConfigKind {
   DenoJson,
   PackageJson,
 }
@@ -119,6 +126,41 @@ impl ConfigUpdater {
     }
 
     None
+  }
+
+  /// Looks up a property by key path without marking the file as modified.
+  fn get_existing_property(&self, key_path: &KeyPath) -> Option<CstObjectProp> {
+    let mut current_node = self.root_object.clone();
+    for (i, part) in key_path.parts.iter().enumerate() {
+      let s = part.as_str();
+      if i < key_path.parts.len().saturating_sub(1) {
+        current_node = current_node.object_value(s)?;
+      } else {
+        return current_node.get(s);
+      }
+    }
+    None
+  }
+
+  /// Updates a catalog entry's bare version requirement. `key_paths` lists
+  /// candidate locations (e.g. top-level `catalog` vs `workspaces.catalog` in
+  /// package.json); the first one that exists is updated. Returns whether an
+  /// entry was found and updated.
+  fn update_catalog_entry(
+    &mut self,
+    key_paths: &[KeyPath],
+    new_value: &str,
+  ) -> bool {
+    for key_path in key_paths {
+      if let Some(property) = self.get_existing_property(key_path) {
+        property.set_value(jsonc_parser::cst::CstInputValue::String(
+          new_value.to_string(),
+        ));
+        self.modified = true;
+        return true;
+      }
+    }
+    false
   }
 
   fn add(&mut self, selected: SelectedPackage, dev: bool) {
@@ -343,14 +385,61 @@ impl std::fmt::Display for AddCommandName {
   }
 }
 
+fn create_package_json(
+  flags: &Arc<Flags>,
+  options: &CliOptions,
+) -> Result<CliFactory, AnyError> {
+  std::fs::write(options.initial_cwd().join("package.json"), "{}\n")
+    .context("Failed to create package.json file")?;
+  log::info!("Created package.json configuration file.");
+  let factory = CliFactory::from_flags(flags.clone());
+  Ok(factory)
+}
+
 fn load_configs(
   flags: &Arc<Flags>,
   has_jsr_specifiers: impl FnOnce() -> bool,
-) -> Result<(CliFactory, Option<ConfigUpdater>, Option<ConfigUpdater>), AnyError>
-{
+  force_package_json: bool,
+  honor_prefer_package_json: bool,
+) -> Result<
+  (
+    CliFactory,
+    bool,
+    Option<ConfigUpdater>,
+    Option<ConfigUpdater>,
+  ),
+  AnyError,
+> {
   let cli_factory = CliFactory::from_flags(flags.clone());
   let options = cli_factory.cli_options()?;
   let start_dir = &options.start_dir;
+
+  // The `--package-json` flag or the `preferPackageJson` config setting both
+  // force dependencies to be managed via package.json. `link`/`unlink` opt out
+  // of the config setting because the `"links"` field lives in deno.json.
+  let force_package_json = force_package_json
+    || (honor_prefer_package_json && start_dir.workspace.prefer_package_json());
+
+  if force_package_json {
+    let npm_config = match start_dir.member_pkg_json() {
+      Some(pkg_json) => Some(ConfigUpdater::new(
+        ConfigKind::PackageJson,
+        pkg_json.path.clone(),
+      )?),
+      None => {
+        let pkg_json_path = options.initial_cwd().join("package.json");
+        let factory = create_package_json(flags, options)?;
+        return Ok((
+          factory,
+          force_package_json,
+          Some(ConfigUpdater::new(ConfigKind::PackageJson, pkg_json_path)?),
+          None,
+        ));
+      }
+    };
+    return Ok((cli_factory, force_package_json, npm_config, None));
+  }
+
   let npm_config = match start_dir.member_pkg_json() {
     Some(pkg_json) => Some(ConfigUpdater::new(
       ConfigKind::PackageJson,
@@ -374,10 +463,12 @@ fn load_configs(
     _ => {
       let factory = create_deno_json(flags, options)?;
       let options = factory.cli_options()?.clone();
-      let deno_json = options
-        .start_dir
-        .member_or_root_deno_json()
-        .expect("Just created deno.json");
+      let Some(deno_json) = options.start_dir.member_or_root_deno_json() else {
+        bail!(
+          "Failed to discover the newly created deno.json at \"{}\". This can happen when the current directory is inside a node_modules directory.",
+          options.initial_cwd().join("deno.json").display(),
+        );
+      };
       (
         factory,
         Some(ConfigUpdater::new(
@@ -388,7 +479,7 @@ fn load_configs(
     }
   };
   assert!(deno_config.is_some() || npm_config.is_some());
-  Ok((cli_factory, npm_config, deno_config))
+  Ok((cli_factory, force_package_json, npm_config, deno_config))
 }
 
 fn path_distance(a: &Path, b: &Path) -> usize {
@@ -405,10 +496,13 @@ pub async fn add(
   cmd_name: AddCommandName,
 ) -> Result<(), AnyError> {
   let save_exact = add_flags.save_exact;
-  let (cli_factory, mut npm_config, mut deno_config) =
-    load_configs(&flags, || {
-      add_flags.packages.iter().any(|s| s.starts_with("jsr:"))
-    })?;
+  let (cli_factory, force_package_json, mut npm_config, mut deno_config) =
+    load_configs(
+      &flags,
+      || add_flags.packages.iter().any(|s| s.starts_with("jsr:")),
+      add_flags.package_json,
+      true,
+    )?;
 
   if let Some(deno) = &deno_config
     && deno.obj().get("importMap").is_some()
@@ -442,7 +536,7 @@ pub async fn add(
   let http_client = cli_factory.http_client_provider();
   let deps_http_cache = cli_factory.global_http_cache()?;
   let deps_file_fetcher = create_cli_file_fetcher(
-    Default::default(),
+    deno_runtime::deno_web::BlobStore::default_arc(),
     GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
     http_client.clone(),
     cli_factory.memory_files().clone(),
@@ -471,7 +565,11 @@ pub async fn add(
   let mut selected_packages = Vec::with_capacity(add_flags.packages.len());
   let mut package_reqs = Vec::with_capacity(add_flags.packages.len());
 
+  let initial_cwd = cli_factory.cli_options()?.initial_cwd().to_path_buf();
   for entry_text in add_flags.packages.iter() {
+    if let Some(hint) = link_hint_for_spec(&initial_cwd, entry_text) {
+      bail!("{hint}");
+    }
     let req = AddRmPackageReq::parse(
       entry_text,
       add_flags.default_registry.map(|r| r.into()),
@@ -584,7 +682,11 @@ pub async fn add(
       selected_package.selected_version
     );
 
-    if selected_package.package_name.starts_with("npm:") && prefer_npm_config {
+    if force_package_json {
+      npm_config.as_mut().unwrap().add(selected_package, dev);
+    } else if selected_package.package_name.starts_with("npm:")
+      && prefer_npm_config
+    {
       if let Some(npm) = &mut npm_config {
         npm.add(selected_package, dev);
       } else {
@@ -723,52 +825,79 @@ async fn find_package_and_select_version_for_req(
     };
     let prefixed_name = format!("{}:{}", T::SPECIFIER_PREFIX, req.name);
     let help_if_found_in_fallback = S::HELP;
-    let nv = match main_resolver.req_to_nv(req).await {
-      Ok(Some(nv)) => nv,
-      Ok(None) => {
-        if fallback_resolver
-          .req_to_nv(req)
-          .await
-          .ok()
-          .flatten()
-          .is_some()
-        {
-          // it's in the other registry
-          return Ok(PackageAndVersion::NotFound {
-            package: prefixed_name,
-            help: Some(help_if_found_in_fallback),
-            package_req: req.clone(),
-          });
-        }
-
-        return Ok(PackageAndVersion::NotFound {
-          package: prefixed_name,
-          help: None,
-          package_req: req.clone(),
-        });
+    // JSR has no dist-tags, so a tag can't go through req_to_nv
+    // (VersionReq::matches panics on a tag). "@latest" is conventionally
+    // understood as "the newest version", so resolve it to the latest
+    // published version; reject any other tag rather than silently treating
+    // it as latest. npm resolves dist-tags natively via its registry, so this
+    // only applies to JSR.
+    let maybe_nv = if matches!(
+      &add_package_req.value,
+      AddRmPackageReqValue::Jsr(_)
+    ) && let Some(tag) = req.version_req.tag()
+    {
+      if tag != "latest" {
+        bail!(
+          "{} does not support the tag '{tag}'. JSR has no dist-tags; use '@latest' or a version requirement instead.",
+          prefixed_name,
+        );
       }
-      Err(err) => {
-        if req.version_req.version_text() == "*"
-          && let Some(pre_release_version) =
-            main_resolver.latest_version(&req.name).await
-        {
-          return Ok(PackageAndVersion::NotFound {
-            package: prefixed_name,
-            package_req: req.clone(),
-            help: Some(NotFoundHelp::PreReleaseVersion(
-              pre_release_version.clone(),
-            )),
-          });
+      main_resolver
+        .latest_version(&req.name)
+        .await
+        .map(|version| PackageNv {
+          name: req.name.clone(),
+          version,
+        })
+    } else {
+      match main_resolver.req_to_nv(req).await {
+        Ok(maybe_nv) => maybe_nv,
+        Err(err) => {
+          if req.version_req.version_text() == "*"
+            && let Some(pre_release_version) =
+              main_resolver.latest_version(&req.name).await
+          {
+            return Ok(PackageAndVersion::NotFound {
+              package: prefixed_name,
+              package_req: req.clone(),
+              help: Some(NotFoundHelp::PreReleaseVersion(
+                pre_release_version.clone(),
+              )),
+            });
+          }
+          return Err(err);
         }
-        return Err(err);
       }
     };
-    let range_symbol = if req.version_req.version_text().starts_with('~') {
-      "~"
-    } else if save_exact
+    let Some(nv) = maybe_nv else {
+      // Not in the primary registry; point at the other one if it's there.
+      let help = fallback_resolver
+        .req_to_nv(req)
+        .await
+        .ok()
+        .flatten()
+        .map(|_| help_if_found_in_fallback);
+      return Ok(PackageAndVersion::NotFound {
+        package: prefixed_name,
+        help,
+        package_req: req.clone(),
+      });
+    };
+    let range_symbol = if save_exact
       || req.version_req.version_text() == nv.version.to_string()
     {
       ""
+    } else if !nv.version.pre.is_empty() {
+      // Pin pre-release versions exactly, regardless of any range operator the
+      // user requested. A caret or tilde range over a pre-release matches every
+      // pre-release sharing the same major.minor.patch and resolves to the
+      // lexicographically greatest one. For hash based pre-release identifiers
+      // (e.g. an npm dist-tag like `@insiders` that resolves to
+      // `0.0.0-insiders.<hash>`) that is not the newest build and not what the
+      // user asked to install. See #35577.
+      ""
+    } else if req.version_req.version_text().starts_with('~') {
+      "~"
     } else {
       "^"
     };
@@ -872,20 +1001,45 @@ impl AddRmPackageReq {
       },
     };
 
+    // The reference parsers use the strict specifier version grammar, which
+    // only accepts `^`, `~`, exact versions and tags. On the command line we
+    // also accept the full npm range grammar (`>=4`, `>=4 <5`, `^4 || 5`,
+    // `1 - 2`, etc) by falling back to loose parsing. `deno add` resolves the
+    // requirement to a concrete version before writing it, so what ends up in
+    // the config (and in `npm:`/`jsr:` specifiers in code) still uses the
+    // strict grammar.
     match prefix {
       Prefix::Jsr => {
-        let req_ref =
-          JsrPackageReqReference::from_str(&format!("jsr:{}", entry_text))?;
-        let package_req = req_ref.into_inner().req;
+        let package_req = match JsrPackageReqReference::from_str(&format!(
+          "jsr:{}",
+          entry_text
+        )) {
+          Ok(req_ref) => req_ref.into_inner().req,
+          // If loose parsing also fails the input is genuinely malformed, so
+          // surface the original strict error, which carries the more helpful
+          // diagnostic (e.g. the "did you mean" subpath suggestion).
+          Err(err) => {
+            PackageReq::from_str_loose(entry_text).map_err(|_| err)?
+          }
+        };
         Ok(Ok(AddRmPackageReq {
           alias: maybe_alias.unwrap_or_else(|| package_req.name.clone()),
           value: AddRmPackageReqValue::Jsr(package_req),
         }))
       }
       Prefix::Npm => {
-        let req_ref =
-          NpmPackageReqReference::from_str(&format!("npm:{}", entry_text))?;
-        let package_req = req_ref.into_inner().req;
+        let package_req = match NpmPackageReqReference::from_str(&format!(
+          "npm:{}",
+          entry_text
+        )) {
+          Ok(req_ref) => req_ref.into_inner().req,
+          // If loose parsing also fails the input is genuinely malformed, so
+          // surface the original strict error, which carries the more helpful
+          // diagnostic (e.g. the "did you mean" subpath suggestion).
+          Err(err) => {
+            PackageReq::from_str_loose(entry_text).map_err(|_| err)?
+          }
+        };
         Ok(Ok(AddRmPackageReq {
           alias: maybe_alias.unwrap_or_else(|| package_req.name.clone()),
           value: AddRmPackageReqValue::Npm(package_req),
@@ -899,9 +1053,14 @@ pub async fn remove(
   flags: Arc<Flags>,
   remove_flags: RemoveFlags,
 ) -> Result<(), AnyError> {
-  let (_, npm_config, deno_config) = load_configs(&flags, || false)?;
+  let (_, force_package_json, npm_config, deno_config) =
+    load_configs(&flags, || false, remove_flags.package_json, true)?;
 
-  let mut configs = [npm_config, deno_config];
+  let mut configs = if force_package_json {
+    [npm_config, None]
+  } else {
+    [npm_config, deno_config]
+  };
 
   let mut removed_packages = vec![];
 
@@ -953,6 +1112,70 @@ pub async fn remove(
   Ok(())
 }
 
+pub(crate) async fn create_dep_manager_and_resolvers(
+  factory: &CliFactory,
+) -> Result<(deps::DepManager, Arc<crate::jsr::JsrFetchResolver>), AnyError> {
+  let cli_options = factory.cli_options()?;
+  let workspace = cli_options.workspace();
+  let http_client = factory.http_client_provider();
+  let deps_http_cache = factory.global_http_cache()?;
+  let file_fetcher = create_cli_file_fetcher(
+    deno_runtime::deno_web::BlobStore::default_arc(),
+    GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
+    http_client.clone(),
+    factory.memory_files().clone(),
+    factory.sys(),
+    CreateCliFileFetcherOptions {
+      allow_remote: true,
+      cache_setting: CacheSetting::RespectHeaders,
+      download_log_level: log::Level::Trace,
+      progress_bar: None,
+    },
+  );
+  let file_fetcher = Arc::new(file_fetcher);
+  let npm_fetch_resolver = Arc::new(NpmFetchResolver::new(
+    file_fetcher.clone(),
+    factory.npmrc()?.clone(),
+    factory.npm_version_resolver()?.clone(),
+  ));
+  let jsr_fetch_resolver = Arc::new(JsrFetchResolver::new(
+    file_fetcher.clone(),
+    factory.jsr_version_resolver()?.clone(),
+  ));
+
+  let args = deps::DepManagerArgs {
+    module_load_preparer: factory.module_load_preparer().await?.clone(),
+    jsr_fetch_resolver: jsr_fetch_resolver.clone(),
+    npm_fetch_resolver,
+    npm_resolver: factory.npm_resolver().await?.clone(),
+    npm_installer: factory.npm_installer().await?.clone(),
+    npm_version_resolver: factory.npm_version_resolver()?.clone(),
+    progress_bar: factory.text_only_progress_bar().clone(),
+    permissions_container: factory.root_permissions_container()?.clone(),
+    main_module_graph_container: factory
+      .main_module_graph_container()
+      .await?
+      .clone(),
+    lockfile: factory.maybe_lockfile().await?.cloned(),
+  };
+
+  let filter_fn = |_alias: Option<&str>,
+                   _req: &deno_semver::package::PackageReq,
+                   _: deps::DepKind| true;
+
+  let deps = if cli_options.start_dir.has_deno_or_pkg_json() {
+    deps::DepManager::from_workspace_dir(
+      &cli_options.start_dir,
+      filter_fn,
+      args,
+    )?
+  } else {
+    deps::DepManager::from_workspace(workspace, filter_fn, args)?
+  };
+
+  Ok((deps, jsr_fetch_resolver))
+}
+
 async fn npm_install_after_modification(
   flags: Arc<Flags>,
   // explicitly provided to prevent redownloading
@@ -991,6 +1214,311 @@ async fn npm_install_after_modification(
   Ok(cli_factory)
 }
 
+/// If the user-supplied `spec` looks like a path to a local JSR package
+/// directory (relative or absolute, currently exists, and contains a
+/// `deno.json`(c)), return a message suggesting `deno link` instead.
+fn link_hint_for_spec(cwd: &Path, spec: &str) -> Option<String> {
+  // Skip anything with a registry prefix.
+  if spec.contains(':') {
+    return None;
+  }
+  // Only treat path-shaped inputs as candidates: `.` / `..` / contains a
+  // separator. This avoids false positives on bare package names like `foo`.
+  let looks_pathy = spec == "."
+    || spec == ".."
+    || spec.starts_with("./")
+    || spec.starts_with("../")
+    || spec.starts_with(".\\")
+    || spec.starts_with("..\\")
+    || spec.contains('/')
+    || spec.contains('\\')
+    || Path::new(spec).is_absolute();
+  if !looks_pathy {
+    return None;
+  }
+  let abs = resolve_link_path(cwd, spec);
+  if !abs.is_dir() {
+    return None;
+  }
+  // Only hint when the directory is actually linkable. `deno link` requires
+  // the target's deno.json(c) to exist *and* declare a "name", so check the
+  // same condition here. Otherwise the hint dead-ends: `deno add ./pkg` ->
+  // "Did you mean `deno link ./pkg`?" -> `deno link ./pkg` -> "its deno.json
+  // has no name field".
+  read_link_target_name(&abs)?;
+  Some(format!(
+    "'{}' looks like a local package directory. Did you mean `{}`?",
+    spec,
+    crate::colors::yellow(format!("deno link {spec}"))
+  ))
+}
+
+/// Convert a `Path` into the string form we store in the `"links"` array.
+///
+/// Always uses forward slashes (the `"links"` field is treated as a portable
+/// relative path), and strips a leading `./`.
+fn path_to_link_string(path: &Path) -> String {
+  let s = path
+    .to_string_lossy()
+    .replace(std::path::MAIN_SEPARATOR, "/");
+  s.strip_prefix("./").map(|s| s.to_string()).unwrap_or(s)
+}
+
+/// Read the `"name"` field from a deno.json(c) in the given directory.
+fn read_link_target_name(dir: &Path) -> Option<String> {
+  for filename in ["deno.json", "deno.jsonc"] {
+    let path = dir.join(filename);
+    let Ok(text) = std::fs::read_to_string(&path) else {
+      continue;
+    };
+    let parsed = jsonc_parser::parse_to_serde_value::<serde_json::Value>(
+      &text,
+      &Default::default(),
+    );
+    if let Ok(v) = parsed
+      && let Some(name) = v.get("name").and_then(|n| n.as_str())
+    {
+      return Some(name.to_string());
+    }
+  }
+  None
+}
+
+/// Resolve a user-supplied path to an absolute, normalized form, relative to
+/// `cwd` when not already absolute.
+fn resolve_link_path(cwd: &Path, raw: &str) -> PathBuf {
+  let candidate = Path::new(raw);
+  let abs = if candidate.is_absolute() {
+    candidate.to_path_buf()
+  } else {
+    cwd.join(candidate)
+  };
+  deno_path_util::normalize_path(std::borrow::Cow::Owned(abs)).into_owned()
+}
+
+fn load_deno_config_for_link(
+  flags: &Arc<Flags>,
+  create_if_missing: bool,
+) -> Result<(CliFactory, ConfigUpdater), AnyError> {
+  if create_if_missing {
+    // For `link`, force creation of deno.json if missing; the `"links"` field
+    // lives there. We achieve this by claiming jsr specifiers are present,
+    // which makes `load_configs` materialise a deno.json when one isn't found.
+    let (cli_factory, _force_package_json, _npm_config, deno_config) =
+      load_configs(flags, || true, false, false)?;
+    let deno_config = deno_config.ok_or_else(|| {
+      deno_core::anyhow::anyhow!("Could not load or create deno.json")
+    })?;
+    return Ok((cli_factory, deno_config));
+  }
+
+  // For `unlink`, never create a deno.json: if there isn't one, there's
+  // nothing to unlink. Load only an existing config so a failed unlink can't
+  // leave an empty deno.json behind.
+  let cli_factory = CliFactory::from_flags(flags.clone());
+  let options = cli_factory.cli_options()?;
+  let deno_config = match options.start_dir.member_deno_json() {
+    Some(deno_json) => ConfigUpdater::new(
+      ConfigKind::DenoJson,
+      url_to_file_path(&deno_json.specifier)?,
+    )?,
+    None => bail!("No deno.json found; there are no linked packages to unlink"),
+  };
+  Ok((cli_factory, deno_config))
+}
+
+pub async fn link(
+  flags: Arc<Flags>,
+  link_flags: LinkFlags,
+) -> Result<(), AnyError> {
+  let (cli_factory, mut deno_config) = load_deno_config_for_link(&flags, true)?;
+  let cwd = cli_factory.cli_options()?.initial_cwd().to_path_buf();
+  let config_dir = deno_config
+    .path
+    .parent()
+    .ok_or_else(|| {
+      deno_core::anyhow::anyhow!(
+        "Could not determine directory of '{}'",
+        deno_config.path.display()
+      )
+    })?
+    .to_path_buf();
+
+  // Validate every path and compute the relative form we'll store.
+  let mut resolved = Vec::with_capacity(link_flags.paths.len());
+  for raw_path in &link_flags.paths {
+    let abs = resolve_link_path(&cwd, raw_path);
+    if !abs.exists() {
+      bail!("Cannot link '{}': directory does not exist", raw_path);
+    }
+    if !abs.is_dir() {
+      bail!("Cannot link '{}': not a directory", raw_path);
+    }
+    let has_config =
+      abs.join("deno.json").exists() || abs.join("deno.jsonc").exists();
+    if !has_config {
+      bail!(
+        "Cannot link '{}': no deno.json found in directory. \
+         A linked package must contain a deno.json with a \"name\" field.",
+        raw_path
+      );
+    }
+    if read_link_target_name(&abs).is_none() {
+      bail!(
+        "Cannot link '{}': its deno.json has no \"name\" field. \
+         A linked package must declare a JSR-style \"name\" to be importable.",
+        raw_path
+      );
+    }
+    let rel = pathdiff::diff_paths(&abs, &config_dir).unwrap_or(abs);
+    resolved.push((raw_path.clone(), path_to_link_string(&rel)));
+  }
+
+  // Listing the path in "links" is all that's needed: a linked package is
+  // importable by its bare "name" just like a workspace member, so there's no
+  // `imports` entry to wire up.
+  let links_arr = deno_config.root_object.array_value_or_set("links");
+  let existing: Vec<String> = links_arr
+    .elements()
+    .iter()
+    .filter_map(|el| el.as_string_lit())
+    .filter_map(|s| s.decoded_value().ok())
+    .collect();
+
+  let mut changed = false;
+  for (display, rel_str) in &resolved {
+    if existing.contains(rel_str) {
+      log::info!("{} is already linked", crate::colors::yellow(display));
+      continue;
+    }
+    links_arr.append(jsonc_parser::cst::CstInputValue::String(rel_str.clone()));
+    log::info!(
+      "Link {} {}",
+      crate::colors::green(display),
+      crate::colors::gray(format!("({})", rel_str))
+    );
+    changed = true;
+  }
+
+  if changed {
+    deno_config.modified = true;
+    deno_config.commit()?;
+    npm_install_after_modification(
+      flags,
+      None,
+      CacheTopLevelDepsOptions {
+        lockfile_only: link_flags.lockfile_only,
+      },
+    )
+    .await?;
+  }
+
+  Ok(())
+}
+
+pub async fn unlink(
+  flags: Arc<Flags>,
+  unlink_flags: UnlinkFlags,
+) -> Result<(), AnyError> {
+  let (cli_factory, mut deno_config) =
+    load_deno_config_for_link(&flags, false)?;
+  // Resolve path arguments relative to the cwd, matching how `link()` resolves
+  // them, so `deno unlink ../pkg` finds an entry created by `deno link ../pkg`
+  // from the same directory regardless of where the deno.json lives.
+  let cwd = cli_factory.cli_options()?.initial_cwd().to_path_buf();
+  let config_dir = deno_config
+    .path
+    .parent()
+    .ok_or_else(|| {
+      deno_core::anyhow::anyhow!(
+        "Could not determine directory of '{}'",
+        deno_config.path.display()
+      )
+    })?
+    .to_path_buf();
+
+  let Some(links_arr) = deno_config.root_object.array_value("links") else {
+    bail!(
+      "No \"links\" entries found in '{}'",
+      deno_config.display_path()
+    );
+  };
+
+  let mut removed = Vec::new();
+  for arg in &unlink_flags.names_or_paths {
+    let mut matched = false;
+    // Snapshot of current elements (each iteration may mutate the array).
+    let elements = links_arr.elements();
+    for element in elements {
+      let Some(lit) = element.as_string_lit() else {
+        continue;
+      };
+      let Ok(value) = lit.decoded_value() else {
+        continue;
+      };
+
+      let entry_dir = config_dir.join(&value);
+      let entry_dir =
+        deno_path_util::normalize_path(std::borrow::Cow::Owned(entry_dir))
+          .into_owned();
+      let target_name = read_link_target_name(&entry_dir);
+
+      // Match by literal entry, by resolved path, or by JSR name.
+      let is_match = value == *arg
+        || entry_dir == resolve_link_path(&cwd, arg)
+        || target_name.as_deref() == Some(arg.as_str());
+
+      if is_match {
+        element.remove();
+        removed.push(arg.clone());
+        matched = true;
+        break;
+      }
+    }
+    if !matched {
+      log::warn!("No linked package matched '{}'", arg);
+    }
+  }
+
+  if removed.is_empty() {
+    // Nothing matched any argument. Fail (exit 1) rather than reporting
+    // success, so a typo'd name or path is detectable from scripts and CI.
+    bail!(
+      "No linked packages matched the given {}",
+      if unlink_flags.names_or_paths.len() == 1 {
+        "name or path"
+      } else {
+        "names or paths"
+      }
+    );
+  }
+
+  // If the "links" array is now empty, remove the property entirely.
+  if links_arr.elements().is_empty()
+    && let Some(prop) = deno_config.root_object.get("links")
+  {
+    prop.remove();
+  }
+
+  for name in &removed {
+    log::info!("Unlink {}", crate::colors::green(name));
+  }
+
+  deno_config.modified = true;
+  deno_config.commit()?;
+
+  npm_install_after_modification(
+    flags,
+    None,
+    CacheTopLevelDepsOptions {
+      lockfile_only: unlink_flags.lockfile_only,
+    },
+  )
+  .await?;
+
+  Ok(())
+}
+
 #[cfg(test)]
 mod test {
   use super::*;
@@ -998,14 +1526,18 @@ mod test {
   fn jsr_pkg_req(alias: &str, req: &str) -> AddRmPackageReq {
     AddRmPackageReq {
       alias: alias.into(),
-      value: AddRmPackageReqValue::Jsr(PackageReq::from_str(req).unwrap()),
+      value: AddRmPackageReqValue::Jsr(
+        PackageReq::from_str_loose(req).unwrap(),
+      ),
     }
   }
 
   fn npm_pkg_req(alias: &str, req: &str) -> AddRmPackageReq {
     AddRmPackageReq {
       alias: alias.into(),
-      value: AddRmPackageReqValue::Npm(PackageReq::from_str(req).unwrap()),
+      value: AddRmPackageReqValue::Npm(
+        PackageReq::from_str_loose(req).unwrap(),
+      ),
     }
   }
 
@@ -1049,6 +1581,31 @@ mod test {
       (
         ("@scope/pkg", Some(Prefix::Npm)),
         npm_pkg_req("@scope/pkg", "@scope/pkg@*"),
+      ),
+      // npm range syntax is accepted on the command line (issue #26587)
+      (
+        ("npm:chalk@>=4", Some(Prefix::Npm)),
+        npm_pkg_req("chalk", "chalk@>=4"),
+      ),
+      (
+        ("npm:chalk@>=4 <5", Some(Prefix::Npm)),
+        npm_pkg_req("chalk", "chalk@>=4 <5"),
+      ),
+      (
+        ("npm:chalk@^4 || 5", Some(Prefix::Npm)),
+        npm_pkg_req("chalk", "chalk@^4 || 5"),
+      ),
+      (
+        ("npm:chalk@1 - 2", Some(Prefix::Npm)),
+        npm_pkg_req("chalk", "chalk@1 - 2"),
+      ),
+      (
+        ("alias@npm:chalk@>=4 <5", Some(Prefix::Npm)),
+        npm_pkg_req("alias", "chalk@>=4 <5"),
+      ),
+      (
+        ("jsr:@std/path@>=1.0.0", Some(Prefix::Jsr)),
+        jsr_pkg_req("@std/path", "@std/path@>=1.0.0"),
       ),
     ];
 

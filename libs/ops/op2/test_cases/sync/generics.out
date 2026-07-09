@@ -13,6 +13,7 @@ pub const fn op_generics<T: Trait>() -> ::deno_core::_ops::OpDecl {
             false,
             0usize as u8,
             false,
+            false,
             Self::v8_fn_ptr as _,
             Self::slow_function_impl,
             ::deno_core::AccessorType::None,
@@ -95,7 +96,8 @@ pub const fn op_generics<T: Trait>() -> ::deno_core::_ops::OpDecl {
             let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
                 &<Self as deno_core::_ops::Op>::DECL,
             );
-            let mut rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
+            let parts: deno_core::v8::FunctionCallbackInfoParts<'s> = info.get_parts();
+            let mut rv = parts.return_value;
             let result = { Self::call() };
             deno_core::_ops::RustToV8RetVal::to_v8_rv(result, &mut rv);
             return 0;
@@ -126,6 +128,7 @@ pub const fn op_generics_static<T: Trait + 'static>() -> ::deno_core::_ops::OpDe
             false,
             0usize as u8,
             false,
+            false,
             Self::v8_fn_ptr as _,
             Self::slow_function_impl,
             ::deno_core::AccessorType::None,
@@ -208,7 +211,8 @@ pub const fn op_generics_static<T: Trait + 'static>() -> ::deno_core::_ops::OpDe
             let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
                 &<Self as deno_core::_ops::Op>::DECL,
             );
-            let mut rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
+            let parts: deno_core::v8::FunctionCallbackInfoParts<'s> = info.get_parts();
+            let mut rv = parts.return_value;
             let result = { Self::call() };
             deno_core::_ops::RustToV8RetVal::to_v8_rv(result, &mut rv);
             return 0;
@@ -238,6 +242,7 @@ pub const fn op_generics_static_where<T: Trait + 'static>() -> ::deno_core::_ops
             false,
             false,
             0usize as u8,
+            false,
             false,
             Self::v8_fn_ptr as _,
             Self::slow_function_impl,
@@ -321,7 +326,8 @@ pub const fn op_generics_static_where<T: Trait + 'static>() -> ::deno_core::_ops
             let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
                 &<Self as deno_core::_ops::Op>::DECL,
             );
-            let mut rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
+            let parts: deno_core::v8::FunctionCallbackInfoParts<'s> = info.get_parts();
+            let mut rv = parts.return_value;
             let result = { Self::call() };
             deno_core::_ops::RustToV8RetVal::to_v8_rv(result, &mut rv);
             return 0;

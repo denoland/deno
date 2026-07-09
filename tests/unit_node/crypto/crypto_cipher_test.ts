@@ -304,7 +304,7 @@ Deno.test({
     assertThrows(
       () =>
         crypto.createCipheriv("foo", new Uint8Array(16), new Uint8Array(16)),
-      TypeError,
+      Error,
       "Unknown cipher",
     );
   },
@@ -359,7 +359,7 @@ Deno.test({
     assertThrows(
       () =>
         crypto.createDecipheriv("foo", new Uint8Array(16), new Uint8Array(16)),
-      TypeError,
+      Error,
       "Unknown cipher",
     );
   },
@@ -418,7 +418,11 @@ Deno.test({
       return zeros(+cipher.match(/\d+/)![0] / 8);
     };
     const getZeroIv = (cipher: string) => {
-      if (cipher.includes("gcm") || cipher.includes("ecb")) {
+      // ECB mode takes no IV; a non-empty IV is now rejected.
+      if (cipher.includes("ecb")) {
+        return zeros(0);
+      }
+      if (cipher.includes("gcm")) {
         return zeros(12);
       }
       if (cipher === "chacha20-poly1305") return zeros(12);
@@ -1013,5 +1017,233 @@ Deno.test({
     d.setAuthTag(tag2);
     const dec = Buffer.concat([d.update(enc2), d.final()]);
     assertEquals(dec, plaintext);
+  },
+});
+
+// Helper for the tests below: assert that a cipher/decipher created with
+// `algorithm` rejects each `invalidValue` from `update()` with a TypeError
+// whose code is ERR_INVALID_ARG_TYPE, and releases the native resource.
+function assertUpdateRejects(
+  algorithm: string,
+  keyLen: number,
+  ivLen: number,
+  invalidValues: readonly unknown[],
+) {
+  const key = Buffer.alloc(keyLen);
+  const iv = ivLen === 0 ? null : Buffer.alloc(ivLen);
+
+  for (const value of invalidValues) {
+    for (
+      const factory of [crypto.createCipheriv, crypto.createDecipheriv]
+    ) {
+      // deno-lint-ignore no-explicit-any
+      const stream = (factory as any)(algorithm, key, iv);
+      const err = assertThrows(
+        // deno-lint-ignore no-explicit-any
+        () => stream.update(value as any),
+        TypeError,
+        'The "data" argument must be of type string or an instance of ' +
+          "Buffer, TypedArray, or DataView",
+      ) as Error & { code?: string };
+      assertEquals(err.code, "ERR_INVALID_ARG_TYPE");
+      try {
+        stream.final();
+      } catch { /* release native resource */ }
+    }
+  }
+}
+
+Deno.test({
+  name:
+    "Cipheriv/Decipheriv update() throws ERR_INVALID_ARG_TYPE for invalid data type",
+  fn() {
+    // Node.js uses `ArrayBuffer.isView(data)`, which rejects raw
+    // ArrayBuffer / SharedArrayBuffer (only TypedArray / DataView pass).
+    const invalidValues: readonly unknown[] = [
+      123,
+      true,
+      null,
+      undefined,
+      {},
+      [],
+      Symbol("nope"),
+      0n,
+      new ArrayBuffer(16),
+      new SharedArrayBuffer(16),
+    ];
+
+    // Cover several block / stream / AEAD modes to ensure the validation
+    // applies regardless of the underlying cipher type.
+    assertUpdateRejects("aes-256-cbc", 32, 16, invalidValues);
+    assertUpdateRejects("aes-128-cbc", 16, 16, invalidValues);
+    assertUpdateRejects("aes-128-ctr", 16, 16, invalidValues);
+    assertUpdateRejects("aes-256-gcm", 32, 12, invalidValues);
+  },
+});
+
+Deno.test({
+  name:
+    "Cipheriv/Decipheriv update() accepts string, Buffer, and TypedArray without throwing",
+  fn() {
+    const key = Buffer.alloc(32);
+    const iv = Buffer.alloc(16);
+    // Buffer is the typed surface for binary input; Uint8Array/Uint16Array
+    // round-trip through Buffer.from to satisfy the typed `update()`
+    // overload, while still exercising the runtime validation against
+    // distinct backing storage shapes.
+    const validInputs: readonly (string | Buffer)[] = [
+      "hello world",
+      Buffer.from("hello world"),
+      Buffer.from(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8])),
+      Buffer.from(new Uint16Array([1, 2, 3, 4]).buffer),
+    ];
+
+    for (const input of validInputs) {
+      const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
+      // Round-trip to confirm the validation does not break the happy path.
+      const head = typeof input === "string"
+        ? cipher.update(input, "utf8")
+        : cipher.update(input);
+      const enc = Buffer.concat([head, cipher.final()]);
+      assert(enc.length > 0);
+
+      const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
+      const dec = Buffer.concat([decipher.update(enc), decipher.final()]);
+      assert(dec.length > 0);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "Cipheriv/Decipheriv update() leaves stream usable after type-error throw",
+  fn() {
+    const key = Buffer.alloc(32);
+    const iv = Buffer.alloc(16);
+
+    // After update() rejects bad input, a subsequent valid update() + final()
+    // should still produce ciphertext that round-trips correctly. This guards
+    // against the validation accidentally finalizing the cipher state.
+    const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
+    assertThrows(
+      // deno-lint-ignore no-explicit-any
+      () => cipher.update(42 as any),
+      TypeError,
+    );
+    const enc = Buffer.concat([cipher.update("ok", "utf8"), cipher.final()]);
+
+    const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
+    assertThrows(
+      // deno-lint-ignore no-explicit-any
+      () => decipher.update(42 as any),
+      TypeError,
+    );
+    const dec = Buffer.concat([decipher.update(enc), decipher.final()]);
+    assertEquals(dec.toString("utf8"), "ok");
+  },
+});
+
+Deno.test({
+  name:
+    "Cipheriv/Decipheriv final(encoding) flushes StringDecoder for stream ciphers",
+  fn() {
+    // Regression test for https://github.com/denoland/deno/issues/35797:
+    // stream-mode ciphers (GCM/CTR/ChaCha20) took early-return paths in
+    // final() that returned "" without flushing the StringDecoder used by
+    // update(). A base64 decoder withholds up to 2 trailing bytes until
+    // end(), so any plaintext whose byte length was not a multiple of 3 was
+    // silently truncated with no error.
+    const key = Buffer.alloc(32, 1);
+    const plaintext = "hello"; // 5 bytes, 5 % 3 !== 0
+
+    for (
+      const [algo, iv, isAead] of [
+        ["aes-256-gcm", Buffer.alloc(12, 2), true],
+        ["aes-256-ctr", Buffer.alloc(16, 2), false],
+        ["chacha20-poly1305", Buffer.alloc(12, 2), true],
+      ] as const
+    ) {
+      const cipher = crypto.createCipheriv(algo, key, iv);
+      const enc = cipher.update(plaintext, "utf8", "base64") +
+        cipher.final("base64");
+      // The full ciphertext must survive base64 round-tripping.
+      assertEquals(
+        Buffer.from(enc, "base64").length,
+        plaintext.length,
+        `${algo}: encrypted length`,
+      );
+
+      const decipher = crypto.createDecipheriv(algo, key, iv);
+      if (isAead) {
+        (decipher as crypto.DecipherGCM).setAuthTag(
+          (cipher as crypto.CipherGCM).getAuthTag(),
+        );
+      }
+      const dec = decipher.update(enc, "base64", "utf8") +
+        decipher.final("utf8");
+      assertEquals(dec, plaintext, `${algo}: round-trip`);
+    }
+  },
+});
+
+Deno.test({
+  name: "Decipheriv final(utf8) flushes a truncated multibyte tail as U+FFFD",
+  fn() {
+    // Exercises the Decipheriv-side final() flush directly: the plaintext
+    // ends with a lone UTF-8 lead byte, so the utf8 StringDecoder buffers
+    // that byte during update() and only end() (invoked by final()) emits
+    // the U+FFFD replacement char. Before the fix, final() returned "" and
+    // dropped it. Matches Node, which returns "a�".
+    const key = Buffer.alloc(32, 1);
+    const iv = Buffer.alloc(16, 2);
+    const raw = Buffer.from([0x61, 0xc3]); // "a" + incomplete 2-byte lead
+
+    const cipher = crypto.createCipheriv("aes-256-ctr", key, iv);
+    const enc = Buffer.concat([cipher.update(raw), cipher.final()]);
+
+    const decipher = crypto.createDecipheriv("aes-256-ctr", key, iv);
+    const dec = decipher.update(enc, undefined, "utf8") +
+      decipher.final("utf8");
+    assertEquals(dec, "a�");
+  },
+});
+
+Deno.test({
+  name: "Cipheriv/Decipheriv AES key wrap flushes StringDecoder in final()",
+  fn() {
+    // The AES key-wrap path computes its whole output in update() and takes
+    // an early return in final(). With a base64 output encoding the decoder
+    // buffers the trailing bytes, so final() must flush them too.
+    const kek = Buffer.alloc(32, 7);
+    // 24-byte key -> 32-byte wrapped output -> 32 % 3 === 2 buffered bytes.
+    const keyToWrap = Buffer.alloc(24, 9);
+    const iv = Buffer.alloc(8, 0xa6);
+
+    const cipher = crypto.createCipheriv("aes256-wrap", kek, iv);
+    const wrapped = cipher.update(keyToWrap, undefined, "base64") +
+      cipher.final("base64");
+    assertEquals(
+      Buffer.from(wrapped, "base64").length,
+      keyToWrap.length + 8,
+      "wrapped length",
+    );
+
+    const decipher = crypto.createDecipheriv("aes256-wrap", kek, iv);
+    const unwrapped = Buffer.concat([
+      decipher.update(wrapped, "base64"),
+      decipher.final(),
+    ]);
+    assertEquals(unwrapped, keyToWrap, "unwrap round-trip");
+
+    // final() with an unknown output encoding now throws ERR_UNKNOWN_ENCODING
+    // on the wrap path instead of silently returning "" (matches Node).
+    const bad = crypto.createCipheriv("aes256-wrap", kek, iv);
+    bad.update(keyToWrap);
+    assertThrows(
+      // deno-lint-ignore no-explicit-any
+      () => bad.final("not-an-encoding" as any),
+      Error,
+      "Unknown encoding",
+    );
   },
 });

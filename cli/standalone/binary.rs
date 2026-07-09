@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::cell::Cell;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::env;
 use std::ffi::OsString;
@@ -64,6 +65,7 @@ use node_resolver::analyze::ResolvedCjsAnalysis;
 use super::virtual_fs::output_vfs;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
+use crate::args::CompileFlagsExt;
 use crate::args::get_default_v8_flags;
 use crate::cache::DenoDir;
 use crate::file_fetcher::CliFileFetcher;
@@ -79,6 +81,7 @@ use crate::util::env::handle_dotenv_io_error;
 use crate::util::env::handle_dotenv_not_found;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
+use crate::util::progress_bar::ProgressMessagePrompt;
 
 /// A URL that can be designated as the base for relative URLs.
 ///
@@ -181,6 +184,21 @@ impl<'a> BytesAppendable<'a> for &'a SpecifierStoreForSerialization<'a> {
   }
 }
 
+/// Given a canonical npm package folder (e.g.
+/// `<.deno>/<id>/node_modules/@scope/name`), walk up to the enclosing
+/// `node_modules/` directory. Embedding from there picks up sibling
+/// symlinks the deno linker creates for direct dependencies, which the
+/// canonical folder itself doesn't contain.
+fn pkg_folder_node_modules_root(folder: &Path) -> Option<&Path> {
+  let mut current = folder.parent()?;
+  loop {
+    if current.file_name() == Some(std::ffi::OsStr::new("node_modules")) {
+      return Some(current);
+    }
+    current = current.parent()?;
+  }
+}
+
 pub fn is_standalone_binary(exe_path: &Path) -> bool {
   let Ok(data) = std::fs::read(exe_path) else {
     return false;
@@ -188,6 +206,79 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
   libsui::utils::is_elf(&data)
     || libsui::utils::is_pe(&data)
     || libsui::utils::is_macho(&data)
+}
+
+/// Validate a user-provided `--app-name`. The name becomes a single directory
+/// component under the platform's app data directory at runtime. Because a
+/// binary can be cross-compiled, validate against the union of what every
+/// target OS allows so the baked identity resolves to one unambiguous
+/// directory component everywhere, rather than escaping the directory or
+/// failing on the target's filesystem. Done here so the user gets a clear
+/// compile-time error instead of a surprising (or unusable) store location.
+fn validate_app_name(app_name: &str) -> Result<(), AnyError> {
+  const RESERVED_NAMES: [&str; 22] = [
+    "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6",
+    "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6",
+    "lpt7", "lpt8", "lpt9",
+  ];
+
+  // Windows reserved device names match case-insensitively against the portion
+  // before the first `.` (so `nul`, `NUL`, and `nul.txt` all match).
+  let stem = app_name.split('.').next().unwrap_or(app_name);
+  let is_reserved_name =
+    RESERVED_NAMES.iter().any(|n| stem.eq_ignore_ascii_case(n));
+
+  let reason = if app_name.is_empty() {
+    Some("must not be empty")
+  } else if app_name == "." || app_name == ".." {
+    Some("must not be `.` or `..`")
+  } else if app_name
+    // `/` and `\` are path separators; `<>:"|?*` are reserved on Windows;
+    // control characters are rejected by the filesystem.
+    .contains(|c: char| {
+      matches!(c, '/' | '\\' | '<' | '>' | ':' | '"' | '|' | '?' | '*')
+        || c.is_control()
+    })
+  {
+    Some("must not contain path separators or any of `<>:\"|?*`")
+  } else if app_name.ends_with('.')
+    || app_name.ends_with(' ')
+    || app_name.starts_with(' ')
+  {
+    // Windows silently strips trailing dots and spaces, which would change the
+    // identity out from under the user; a leading space is an error-prone
+    // directory name everywhere, so reject it too.
+    Some("must not start or end with a space, or end with a `.`")
+  } else if is_reserved_name {
+    Some("must not be a reserved device name (e.g. `CON`, `NUL`, `COM1`)")
+  } else {
+    None
+  };
+
+  if let Some(reason) = reason {
+    bail!("Invalid `--app-name` value {:?}: {}.", app_name, reason);
+  }
+  Ok(())
+}
+
+/// Resolve the stable app identity baked into a compiled binary: an explicit
+/// `--app-name`, otherwise the output file name (minus any `.exe` extension).
+/// The derived default is held to the same rules as an explicit flag, since it
+/// becomes a single directory component at runtime (possibly on a different
+/// target OS when cross-compiling); otherwise an output name like `aux` or one
+/// with a trailing dot would silently break persistent storage on the target.
+fn resolve_app_name(
+  compile_flags: &CompileFlags,
+  display_output_filename: &str,
+) -> Result<String, AnyError> {
+  let app_name = compile_flags.app_name.clone().unwrap_or_else(|| {
+    display_output_filename
+      .strip_suffix(".exe")
+      .unwrap_or(display_output_filename)
+      .to_string()
+  });
+  validate_app_name(&app_name)?;
+  Ok(app_name)
 }
 
 pub struct WriteBinOptions<'a> {
@@ -211,6 +302,7 @@ pub struct DenoCompileBinaryWriter<'a> {
   npm_resolver: &'a CliNpmResolver,
   workspace_resolver: &'a WorkspaceResolver<CliSys>,
   npm_system_info: NpmSystemInfo,
+  is_desktop: bool,
 }
 
 impl<'a> DenoCompileBinaryWriter<'a> {
@@ -226,6 +318,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     npm_resolver: &'a CliNpmResolver,
     workspace_resolver: &'a WorkspaceResolver<CliSys>,
     npm_system_info: NpmSystemInfo,
+    is_desktop: bool,
   ) -> Self {
     Self {
       cjs_module_export_analyzer,
@@ -238,6 +331,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       npm_resolver,
       workspace_resolver,
       npm_system_info,
+      is_desktop,
     }
   }
 
@@ -262,13 +356,20 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     }
     if options.compile_flags.icon.is_some() {
       let target = options.compile_flags.resolve_target();
-      if !target.contains("windows") {
+      // Desktop builds handle icons during app bundle packaging.
+      if !target.contains("windows") && !self.is_desktop {
         bail!(
           "The `--icon` flag is only available when targeting Windows (current: {})",
           target,
         );
       }
     }
+    // Validate the resolved app name (explicit `--app-name` or the default
+    // derived from the output file name) up front, so an invalid name fails
+    // before we do any work to write the binary. The returned name is discarded
+    // here; the value actually baked into the metadata is resolved again at the
+    // write site below.
+    resolve_app_name(options.compile_flags, options.display_output_filename)?;
     self.write_standalone_binary(options, original_binary).await
   }
 
@@ -276,6 +377,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     &self,
     compile_flags: &CompileFlags,
   ) -> Result<Vec<u8>, AnyError> {
+    if self.is_desktop {
+      return self.get_desktop_base_binary(compile_flags).await;
+    }
+
     // Used for testing.
     //
     // Phase 2 of the 'min sized' deno compile RFC talks
@@ -316,14 +421,81 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     };
     let temp_dir = tempfile::TempDir::new()?;
     let base_binary_path = archive::unpack_into_dir(archive::UnpackArgs {
-      exe_name: "denort",
+      exe_name: if target.contains("windows") {
+        "denort.exe"
+      } else {
+        "denort"
+      },
       archive_name: &binary_name,
       archive_data: &archive_data,
-      is_windows: target.contains("windows"),
       dest_path: temp_dir.path(),
     })?;
     let base_binary = read_file(&base_binary_path)?;
     drop(temp_dir); // delete the temp dir
+    Ok(base_binary)
+  }
+
+  async fn get_desktop_base_binary(
+    &self,
+    compile_flags: &CompileFlags,
+  ) -> Result<Vec<u8>, AnyError> {
+    // For development: check DENORT_DESKTOP_BIN env var or look
+    // for libdenort next to the deno executable.
+    if let Some(path) = get_dev_desktop_binary_path() {
+      log::debug!("Resolved libdenort: {}", path.to_string_lossy());
+      return std::fs::read(&path).with_context(|| {
+        format!("Could not find libdenort at '{}'", path.to_string_lossy())
+      });
+    }
+
+    let target = compile_flags.resolve_target();
+    let lib_ext = if target.contains("darwin") {
+      "dylib"
+    } else if target.contains("windows") {
+      "dll"
+    } else {
+      "so"
+    };
+    let lib_name = if target.contains("windows") {
+      format!("denort.{lib_ext}")
+    } else {
+      format!("libdenort.{lib_ext}")
+    };
+    let binary_name = format!("libdenort-{target}.zip");
+
+    let binary_path_suffix = match DENO_VERSION_INFO.release_channel {
+      ReleaseChannel::Canary => {
+        format!("canary/{}/{}", DENO_VERSION_INFO.git_hash, binary_name)
+      }
+      _ => {
+        format!("release/v{}/{}", DENO_VERSION_INFO.deno, binary_name)
+      }
+    };
+
+    let download_directory = self.deno_dir.dl_folder_path();
+    let binary_path = download_directory.join(&binary_path_suffix);
+    log::debug!("Resolved libdenort: {}", binary_path.display());
+
+    let read_file = |path: &Path| -> Result<Vec<u8>, AnyError> {
+      std::fs::read(path).with_context(|| format!("Reading {}", path.display()))
+    };
+    let archive_data = if binary_path.exists() {
+      read_file(&binary_path)?
+    } else {
+      self
+        .download_base_binary(&binary_path, &binary_path_suffix)
+        .await
+        .context("Setting up desktop base binary.")?
+    };
+    let temp_dir = tempfile::TempDir::new()?;
+    let base_binary_path = archive::unpack_into_dir(archive::UnpackArgs {
+      exe_name: &lib_name,
+      archive_name: &binary_name,
+      archive_data: &archive_data,
+      dest_path: temp_dir.path(),
+    })?;
+    let base_binary = read_file(&base_binary_path)?;
+    drop(temp_dir);
     Ok(base_binary)
   }
 
@@ -393,39 +565,66 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     for path in exclude_paths {
       vfs.add_exclude_path(path);
     }
-    let npm_snapshot = match &self.npm_resolver {
-      CliNpmResolver::Managed(managed) => {
-        if graph.modules().any(|m| m.npm().is_some()) {
-          let snapshot = managed.resolution().snapshot();
-          let snapshot = if self.cli_options.unstable_npm_lazy_caching() {
-            let reqs = graph
-              .specifiers()
-              .filter_map(|(s, _)| {
-                NpmPackageReqReference::from_specifier(s)
-                  .ok()
-                  .map(|req_ref| req_ref.into_inner().req)
-              })
-              .collect::<Vec<_>>();
-            snapshot.subset(&reqs)
-          } else {
-            snapshot
-          }
-          .as_valid_serialized_for_system(&self.npm_system_info);
-          if !snapshot.as_serialized().packages.is_empty() {
-            self
-              .fill_npm_vfs(&mut vfs, Some(&snapshot))
-              .context("Building npm vfs.")?;
-            Some(snapshot)
+    // Embed the workspace package.json files so the standalone binary's node
+    // resolver can read their "exports" (and other) fields at runtime. Without
+    // this, resolving a workspace member by its package name falls back to
+    // legacy `index.js` resolution instead of honoring the package's exports.
+    for pkg_json in self.cli_options.workspace().package_jsons() {
+      vfs.add_path(&pkg_json.path)?;
+    }
+    let progress_bar = ProgressBar::new(ProgressBarStyle::ProgressBars);
+    // With --bundle the JS graph is self-contained, so the whole npm tree
+    // is intentionally left out of the binary. The exception is packages
+    // that ship native (.node) addons: the package JS is still bundled, but
+    // its `.node` file imports stay external (`external = ["*.node"]` in
+    // compile.rs) so the addon loader resolves them against the embedded VFS
+    // at runtime. For that to work the package's installed folder, plus the
+    // closure of its dependencies, must be embedded in the VFS.
+    let npm_snapshot = if compile_flags.bundle {
+      self
+        .fill_bundle_native_addon_vfs(&mut vfs, &progress_bar)
+        .context("Embedding native addon packages.")?
+    } else {
+      match &self.npm_resolver {
+        CliNpmResolver::Managed(managed) => {
+          if graph.modules().any(|m| m.npm().is_some()) {
+            let snapshot = managed.resolution().snapshot();
+            // When the user opts in (or via the existing unstable lazy-caching
+            // path), prune the resolution snapshot to packages reachable from
+            // npm specifiers in the graph. Otherwise embed the full snapshot
+            // so non-statically-analyzable dynamic imports keep working.
+            let snapshot = if compile_flags.exclude_unused_npm
+              || self.cli_options.unstable_npm_lazy_caching()
+            {
+              let reqs = graph
+                .specifiers()
+                .filter_map(|(s, _)| {
+                  NpmPackageReqReference::from_specifier(s)
+                    .ok()
+                    .map(|req_ref| req_ref.into_inner().req)
+                })
+                .collect::<Vec<_>>();
+              snapshot.subset(&reqs)
+            } else {
+              snapshot
+            }
+            .as_valid_serialized_for_system(&self.npm_system_info);
+            if !snapshot.as_serialized().packages.is_empty() {
+              self
+                .fill_npm_vfs(&mut vfs, Some(&snapshot), &progress_bar)
+                .context("Building npm vfs.")?;
+              Some(snapshot)
+            } else {
+              None
+            }
           } else {
             None
           }
-        } else {
+        }
+        CliNpmResolver::Byonm(_) => {
+          self.fill_npm_vfs(&mut vfs, None, &progress_bar)?;
           None
         }
-      }
-      CliNpmResolver::Byonm(_) => {
-        self.fill_npm_vfs(&mut vfs, None)?;
-        None
       }
     };
     for include_file in include_paths {
@@ -439,6 +638,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let mut remote_modules_store =
       SpecifierDataStore::with_capacity(specifiers_count);
     let mut asset_module_urls = graph.asset_module_urls();
+    let progress =
+      progress_bar.update_with_prompt(ProgressMessagePrompt::Compile, "");
+    progress.set_total_size(specifiers_count as u64);
+    let mut modules_done: u64 = 0;
     // todo(dsherret): transpile and analyze CJS in parallel
     for module in graph.modules() {
       if module.specifier().scheme() == "data" {
@@ -558,7 +761,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           );
         }
       }
+      modules_done += 1;
+      progress.set_position(modules_done);
     }
+    drop(progress);
 
     for url in asset_module_urls {
       if graph.try_get(url).is_err() {
@@ -629,13 +835,42 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
       let specifier = deno_path_util::url_from_file_path(&file_path)?;
       let media_type = MediaType::from_specifier(&specifier);
+      // Only script-flavored files can carry CJS exports. Extensions answer
+      // this for everything except extensionless files (`MediaType::Unknown`),
+      // which may be real modules (an npm `"main"` with no extension — see
+      // test-module-main-extension-lookup); those are disambiguated by content
+      // below rather than skipped outright.
+      if !matches!(
+        media_type,
+        MediaType::JavaScript
+          | MediaType::Mjs
+          | MediaType::Cjs
+          | MediaType::Jsx
+          | MediaType::TypeScript
+          | MediaType::Mts
+          | MediaType::Cts
+          | MediaType::Tsx
+          | MediaType::Dts
+          | MediaType::Dmts
+          | MediaType::Dcts
+          | MediaType::Unknown
+      ) {
+        continue;
+      }
       if self.cjs_tracker.is_maybe_cjs(&specifier, media_type)? {
-        let maybe_source = vfs
-          .file_bytes(file.offset)
-          .map(|text| String::from_utf8_lossy(text));
+        // Strict UTF-8 (not `from_utf8_lossy`): binary assets (images,
+        // fonts, …) that resolve to `Unknown` are skipped rather than
+        // mangled into garbage that panics swc. Extensionless *text*
+        // modules still flow through.
+        let Some(bytes) = vfs.file_bytes(file.offset) else {
+          continue;
+        };
+        let Ok(source) = std::str::from_utf8(bytes) else {
+          continue;
+        };
         let cjs_analysis_result = self
           .cjs_module_export_analyzer
-          .analyze_all_exports(&specifier, maybe_source)
+          .analyze_all_exports(&specifier, Some(source.into()))
           .await;
         let analysis = match cjs_analysis_result {
           Ok(ResolvedCjsAnalysis::Esm(_)) => CjsExportAnalysisEntry::Esm,
@@ -828,11 +1063,11 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           })
           .collect(),
         pkg_json_resolution: self.workspace_resolver.pkg_json_dep_resolution(),
+        catalogs: self.workspace_resolver.catalogs().clone(),
       },
       node_modules,
       unstable_config: UnstableConfig {
         legacy_flag_enabled: false,
-        bare_node_builtins: self.cli_options.unstable_bare_node_builtins(),
         detect_cjs: self.cli_options.unstable_detect_cjs(),
         features: self
           .cli_options
@@ -858,6 +1093,30 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       } else {
         None
       },
+      // Bake in a stable app identity so origin-bound storage (default
+      // `Deno.openKv()`, `localStorage`, `caches`) persists to a per-app
+      // directory at runtime. Prefer an explicit `--app-name`, otherwise derive
+      // it from the output file name (minus any `.exe` extension). Resolving
+      // here keeps the identity stable even if the binary is later renamed. The
+      // name is already validated in `write_bin` (via `resolve_app_name`).
+      app_name: Some(resolve_app_name(compile_flags, display_output_filename)?),
+      app_version: self
+        .cli_options
+        .workspace()
+        .root_deno_json()
+        .and_then(|c| c.json.version.clone()),
+      error_reporting_url: self
+        .cli_options
+        .start_dir
+        .to_desktop_config()
+        .ok()
+        .and_then(|c| c.error_reporting.as_ref()?.url.clone()),
+      release_base_url: self
+        .cli_options
+        .start_dir
+        .to_desktop_config()
+        .ok()
+        .and_then(|c| c.release.as_ref()?.base_url.clone()),
     };
 
     let (data_section_bytes, section_sizes) = serialize_binary_data_section(
@@ -916,10 +1175,110 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       .await
   }
 
+  /// Decide what to embed for `deno compile --bundle`. The bundle is
+  /// always shipped; this controls the npm portion. We need it when
+  /// either the CJS-from-ESM wrapper pointed at on-disk paths during
+  /// rewriting, or the resolved tree has a native (`.node`) addon — in
+  /// both cases the compiled binary will do node-module resolution at
+  /// runtime. Pure-ESM bundles with no native addons skip this and ship
+  /// nothing npm-related.
+  ///
+  /// When embedding is needed, we ship only the packages actually
+  /// reached: the rewriter recorded every absolute path it pointed at,
+  /// and we map each path back to its owning npm package and walk that
+  /// closure. The full resolution snapshot still goes in the metadata
+  /// so denort can resolve packages by name at runtime.
+  fn fill_bundle_native_addon_vfs(
+    &self,
+    builder: &mut VfsBuilder,
+    progress_bar: &ProgressBar,
+  ) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, AnyError> {
+    let needs_for_cjs_wrapper =
+      self.cli_options.compile_bundle_embed_node_modules();
+    let referenced_paths = self.cli_options.compile_bundle_referenced_paths();
+    // For BYONM the addon scan walks the workspace `node_modules` trees, so
+    // it needs the workspace root (managed npm ignores it).
+    let workspace_root = self
+      .cli_options
+      .workspace()
+      .root_dir_url()
+      .to_file_path()
+      .ok();
+    let needs_for_native_addons = !needs_for_cjs_wrapper
+      && !super::native_addons::find_native_addon_packages(
+        self.npm_resolver,
+        &self.npm_system_info,
+        workspace_root.as_deref(),
+      )?
+      .is_empty();
+    if !needs_for_cjs_wrapper && !needs_for_native_addons {
+      return Ok(None);
+    }
+
+    match self.npm_resolver {
+      CliNpmResolver::Managed(managed) => {
+        let snapshot = managed
+          .resolution()
+          .snapshot()
+          .as_valid_serialized_for_system(&self.npm_system_info);
+        if snapshot.as_serialized().packages.is_empty() {
+          return Ok(None);
+        }
+        // `collect_bundle_required_packages` only returns `None` for BYONM,
+        // which is handled by the `CliNpmResolver::Byonm` arm below, so a
+        // managed resolver always yields `Some` here.
+        let Some(needed_ids) =
+          super::native_addons::collect_bundle_required_packages(
+            self.npm_resolver,
+            &self.npm_system_info,
+            referenced_paths,
+          )?
+        else {
+          unreachable!(
+            "collect_bundle_required_packages returns None only for BYONM"
+          );
+        };
+        let progress =
+          progress_bar.update_with_prompt(ProgressMessagePrompt::Compile, "");
+        progress.set_total_size(needed_ids.len() as u64);
+        // Dedup the set of `<deno-cache>/<id>/node_modules/` directories we
+        // add: a single id's node_modules dir contains the canonical package
+        // folder plus sibling symlinks to its direct deps. Going one level up
+        // from the canonical folder picks both up so node-module resolution at
+        // runtime can follow the symlink chain (e.g. the NAPI-RS
+        // platform-specific sibling package).
+        let mut embedded_roots: std::collections::HashSet<PathBuf> =
+          std::collections::HashSet::new();
+        let mut done: u64 = 0;
+        for id in &needed_ids {
+          if let Ok(folder) = managed.resolve_pkg_folder_from_pkg_id(id)
+            && folder.exists()
+          {
+            let root_to_add =
+              pkg_folder_node_modules_root(&folder).unwrap_or(folder.as_path());
+            if embedded_roots.insert(root_to_add.to_path_buf()) {
+              builder.add_dir_recursive(root_to_add).with_context(|| {
+                format!("Embedding npm package at '{}'", root_to_add.display())
+              })?;
+            }
+          }
+          done += 1;
+          progress.set_position(done);
+        }
+        Ok(Some(snapshot))
+      }
+      CliNpmResolver::Byonm(_) => {
+        self.fill_npm_vfs(builder, None, progress_bar)?;
+        Ok(None)
+      }
+    }
+  }
+
   fn fill_npm_vfs(
     &self,
     builder: &mut VfsBuilder,
     snapshot: Option<&ValidSerializedNpmResolutionSnapshot>,
+    progress_bar: &ProgressBar,
   ) -> Result<(), AnyError> {
     fn maybe_warn_different_system(system_info: &NpmSystemInfo) {
       if system_info != &NpmSystemInfo::default() {
@@ -934,6 +1293,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       CliNpmResolver::Managed(npm_resolver) => {
         if let Some(node_modules_path) = npm_resolver.root_node_modules_path() {
           maybe_warn_different_system(&self.npm_system_info);
+          let _progress =
+            progress_bar.update_with_prompt(ProgressMessagePrompt::Compile, "");
           builder.add_dir_recursive(node_modules_path)?;
           Ok(())
         } else {
@@ -943,6 +1304,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             snapshot.as_serialized().packages.iter().collect::<Vec<_>>();
           packages.sort_by(|a, b| a.id.cmp(&b.id)); // determinism
           let current_system = NpmSystemInfo::default();
+          let progress =
+            progress_bar.update_with_prompt(ProgressMessagePrompt::Compile, "");
+          progress.set_total_size(packages.len() as u64);
+          let mut packages_done: u64 = 0;
           for package in packages {
             let folder =
               npm_resolver.resolve_pkg_folder_from_pkg_id(&package.id)?;
@@ -957,15 +1322,17 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             } else {
               builder.add_dir_recursive(&folder)?;
             }
+            packages_done += 1;
+            progress.set_position(packages_done);
           }
+          drop(progress);
           Ok(())
         }
       }
       CliNpmResolver::Byonm(_) => {
         maybe_warn_different_system(&self.npm_system_info);
-        for pkg_json in self.cli_options.workspace().package_jsons() {
-          builder.add_path(&pkg_json.path)?;
-        }
+        let _progress =
+          progress_bar.update_with_prompt(ProgressMessagePrompt::Compile, "");
         // traverse and add all the node_modules directories in the workspace
         let mut pending_dirs = VecDeque::new();
         pending_dirs.push_back(
@@ -1017,29 +1384,54 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         // that will be used by denort when loading the npm cache. This avoids us exposing
         // the user's private registry information and means we don't have to bother
         // serializing all the different registry config into the binary.
+        //
+        // A registry url may include a sub-path (e.g.
+        // `http://mirrors.example.com/npm/`), in which case the on-disk cache
+        // layout is `<global_cache>/<host>/<sub>/<pkg>/...` rather than
+        // `<global_cache>/<host>/<pkg>/...`. Walk to each known registry's
+        // package root before flattening so packages always end up directly
+        // under `localhost/`.
+        let known_registries_dirnames: Vec<String> =
+          npm_resolver.known_registries_dirnames().to_vec();
+        let mut localhost_entries: IndexMap<String, VfsEntry> = IndexMap::new();
+        let mut registry_top_segments: HashSet<String> = HashSet::new();
+        for registry_dirname in &known_registries_dirnames {
+          if let Some(first) = registry_dirname.split('/').next()
+            && !first.is_empty()
+          {
+            registry_top_segments.insert(first.to_string());
+          }
+          let registry_path = global_cache_root_path.join(registry_dirname);
+          let Some(registry_dir) = vfs.get_dir_mut(&registry_path) else {
+            continue;
+          };
+          for entry in registry_dir.entries.take_inner() {
+            log::debug!("Flattening {} into node_modules", entry.name());
+            if let Some(existing) =
+              localhost_entries.insert(entry.name().to_string(), entry)
+            {
+              panic!(
+                "Unhandled scenario where a duplicate entry was found: {:?}",
+                existing
+              );
+            }
+          }
+        }
+
         let Some(root_dir) = vfs.get_dir_mut(global_cache_root_path) else {
           return vfs.build();
         };
 
         root_dir.name = DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME.to_string();
         let mut new_entries = Vec::with_capacity(root_dir.entries.len());
-        let mut localhost_entries = IndexMap::new();
         for entry in root_dir.entries.take_inner() {
-          match entry {
-            VfsEntry::Dir(mut dir) => {
-              for entry in dir.entries.take_inner() {
-                log::debug!("Flattening {} into node_modules", entry.name());
-                if let Some(existing) =
-                  localhost_entries.insert(entry.name().to_string(), entry)
-                {
-                  panic!(
-                    "Unhandled scenario where a duplicate entry was found: {:?}",
-                    existing
-                  );
-                }
-              }
+          match &entry {
+            VfsEntry::Dir(dir) if registry_top_segments.contains(&dir.name) => {
+              // The packages under this registry host dir have already been
+              // flattened into `localhost_entries`. Drop the (now empty)
+              // intermediate directory tree so it isn't embedded twice.
             }
-            VfsEntry::File(_) | VfsEntry::Symlink(_) => {
+            _ => {
               new_entries.push(entry);
             }
           }
@@ -1281,6 +1673,39 @@ fn get_dev_binary_path() -> Option<OsString> {
         .any(|component| component == Component::Normal("target".as_ref()))
       {
         get_denort_path(exec_path)
+      } else {
+        None
+      }
+    })
+  })
+}
+
+fn get_libdenort_path(deno_exe: PathBuf) -> Option<OsString> {
+  let mut libdenort = deno_exe;
+  if cfg!(target_os = "macos") {
+    libdenort.set_file_name("libdenort.dylib");
+  } else if cfg!(windows) {
+    libdenort.set_file_name("denort.dll");
+  } else {
+    libdenort.set_file_name("libdenort.so");
+  }
+  libdenort.exists().then(|| libdenort.into_os_string())
+}
+
+fn get_dev_desktop_binary_path() -> Option<OsString> {
+  env::var_os("DENORT_DESKTOP_BIN").or_else(|| {
+    env::current_exe().ok().and_then(|exec_path| {
+      if exec_path
+        .components()
+        .any(|component| component == Component::Normal("target".as_ref()))
+      {
+        // Prefer release libdenort (optimized) over debug.
+        let target_dir = exec_path.parent().and_then(|p| p.parent());
+        target_dir
+          .and_then(|d| {
+            get_libdenort_path(d.join("release").join("libdenort.dylib"))
+          })
+          .or_else(|| get_libdenort_path(exec_path.clone()))
       } else {
         None
       }

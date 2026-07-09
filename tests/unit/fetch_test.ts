@@ -9,7 +9,9 @@ import {
   assertStringIncludes,
   assertThrows,
   delay,
+  execCode3,
   fail,
+  tmpUnixSocketPath,
   unimplemented,
 } from "./test_util.ts";
 import { Buffer } from "@std/io/buffer";
@@ -61,17 +63,42 @@ function findClosedPortInRange(
 }
 
 Deno.test(
-  // TODO(bartlomieju): reenable this test
-  // https://github.com/denoland/deno/issues/18350
-  { ignore: Deno.build.os === "windows", permissions: { net: true } },
+  { permissions: { net: true } },
   async function fetchConnectionError() {
     const port = findClosedPortInRange(4000, 9999);
-    await assertRejects(
+    const err = await assertRejects(
       async () => {
         await fetch(`http://localhost:${port}`);
       },
       TypeError,
-      "client error (Connect)",
+      "fetch failed",
+    );
+    assert(err.cause instanceof Error, `err.cause was ${err.cause}`);
+    assertStringIncludes(err.cause.message, "client error (Connect)");
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchBadPortBlocked() {
+    // Ports on the Fetch Standard "bad ports" list must be rejected with a
+    // network error before any TCP connection is attempted.
+    // https://fetch.spec.whatwg.org/#bad-port
+    await assertRejects(
+      async () => {
+        await fetch("http://localhost:6000");
+      },
+      TypeError,
+      "Requests to port 6000 are blocked",
+    );
+    // The block applies to HTTP(S) schemes, so https bad ports are rejected
+    // before any TLS handshake too.
+    await assertRejects(
+      async () => {
+        await fetch("https://localhost:6000");
+      },
+      TypeError,
+      "Requests to port 6000 are blocked",
     );
   },
 );
@@ -79,13 +106,15 @@ Deno.test(
 Deno.test(
   { permissions: { net: true } },
   async function fetchDnsError() {
-    await assertRejects(
+    const err = await assertRejects(
       async () => {
         await fetch("http://nil/");
       },
       TypeError,
-      "client error (Connect)",
+      "fetch failed",
     );
+    assert(err.cause instanceof Error, `err.cause was ${err.cause}`);
+    assertStringIncludes(err.cause.message, "client error (Connect)");
   },
 );
 
@@ -1264,6 +1293,27 @@ Deno.test(
   },
 );
 
+// Regression test for https://github.com/denoland/deno/issues/29347
+// `Deno.createHttpClient` used to scribble `caCerts` and `proxy.transport`
+// onto the caller's options object, so reusing a single options object
+// across multiple calls would either throw on the second call (the proxy
+// URL no longer matched the auto-rewritten `transport: "http"`) or leave
+// the user with surprising state.
+Deno.test(function createHttpClientDoesNotMutateOptions() {
+  const proxy = { url: "socks5h://127.0.0.1:1080" };
+  const options = { proxy };
+
+  const c1 = Deno.createHttpClient(options);
+  c1.close();
+  // The user's options must be unchanged...
+  assertEquals(options, { proxy: { url: "socks5h://127.0.0.1:1080" } });
+  assertEquals(proxy, { url: "socks5h://127.0.0.1:1080" });
+  // ...so a second call with the same options object still works.
+  const c2 = Deno.createHttpClient(options);
+  c2.close();
+  assertEquals(options, { proxy: { url: "socks5h://127.0.0.1:1080" } });
+});
+
 Deno.test(
   {
     permissions: { net: true },
@@ -1777,11 +1827,13 @@ Deno.test(
 Deno.test(
   { permissions: { read: true } },
   async function fetchFileDoesNotExist() {
+    const url = import.meta.resolve("./bad.json");
     await assertRejects(
       async () => {
-        await fetch(import.meta.resolve("./bad.json"));
+        await fetch(url);
       },
       TypeError,
+      `Error fetching file '${url}'`,
     );
   },
 );
@@ -1916,9 +1968,7 @@ Deno.test(
 );
 
 Deno.test(
-  // TODO(bartlomieju): reenable this test
-  // https://github.com/denoland/deno/issues/18350
-  { ignore: Deno.build.os === "windows", permissions: { net: true } },
+  { permissions: { net: true } },
   async function fetchWithInvalidContentLength(): Promise<
     void
   > {
@@ -1933,13 +1983,15 @@ Deno.test(
 
     // It should fail if multiple content-length headers with different values are sent
     const listener = invalidServer(addr, body);
-    await assertRejects(
+    const err = await assertRejects(
       async () => {
         await fetch(`http://${addr}/`);
       },
       TypeError,
-      "client error",
+      "fetch failed",
     );
+    assert(err.cause instanceof Error, `err.cause was ${err.cause}`);
+    assertStringIncludes(err.cause.message, "client error");
 
     listener.close();
   },
@@ -2057,6 +2109,17 @@ Deno.test(
   },
 );
 
+Deno.test(function requestConstructorDoesNotNormalizePatchMethod() {
+  assertEquals(
+    new Request("https://example.com", { method: "patch" }).method,
+    "patch",
+  );
+  assertEquals(
+    new Request("https://example.com", { method: "PATCH" }).method,
+    "PATCH",
+  );
+});
+
 Deno.test(
   // TODO(bartlomieju): reenable this test
   // https://github.com/denoland/deno/issues/18350
@@ -2098,16 +2161,9 @@ Deno.test(
 
     assert(err instanceof TypeError, `err was ${err}`);
 
-    assertStringIncludes(
-      err.message,
-      "error sending request from 127.0.0.1:",
-      `err.message was ${err.message}`,
-    );
-    assertStringIncludes(
-      err.message,
-      ` for http://localhost:${listenPort}/ (127.0.0.1:${listenPort}): client error (SendRequest): error from user's Body stream`,
-      `err.message was ${err.message}`,
-    );
+    // Node-compatible fetch error shape: `TypeError: "fetch failed"` with the
+    // underlying error surfaced via `.cause`.
+    assertEquals(err.message, "fetch failed", `err.message was ${err.message}`);
 
     assert(err.cause, `err.cause was null ${err}`);
     assert(
@@ -2189,9 +2245,15 @@ Deno.test("URL authority is used as 'Authorization' header", async () => {
 Deno.test(
   { permissions: { net: true } },
   async function errorMessageIncludesUrlAndDetailsWithNoTcpInfo() {
-    await assertRejects(
+    const err = await assertRejects(
       () => fetch("http://example.invalid"),
       TypeError,
+      "fetch failed",
+    );
+    // The url and low-level detail are surfaced via `.cause` (Node-compatible).
+    assert(err.cause instanceof Error, `err.cause was ${err.cause}`);
+    assertStringIncludes(
+      err.cause.message,
       "error sending request for url (http://example.invalid/): client error (Connect): dns error: ",
     );
   },
@@ -2220,25 +2282,58 @@ Deno.test(
     listener.close();
 
     assert(err instanceof TypeError, `${err}`);
-    assertStringIncludes(
-      err.message,
-      "error sending request from 127.0.0.1:",
-      `${err.message}`,
-    );
-    assertStringIncludes(
-      err.message,
-      ` for http://localhost:${listenPort}/ (127.0.0.1:${listenPort}): client error (SendRequest): `,
-      `${err.message}`,
-    );
+    // Node-compatible shape: `"fetch failed"` with the low-level transport
+    // detail surfaced via `.cause`. The exact `.cause` text (the innermost OS
+    // error, e.g. "Connection reset by peer") is platform-specific, so only the
+    // shape is asserted here.
+    assertEquals(err.message, "fetch failed", `${err.message}`);
+    assert(err.cause instanceof Error, `err.cause was ${err.cause}`);
+    assert(err.cause.message.length > 0, `err.cause.message was empty`);
 
     await server;
   },
 );
 
+// Regression test for https://github.com/denoland/deno/issues/35612
+// When the server closes the connection before the response message is
+// complete, fetch must reject with Node's error shape: `TypeError: "fetch
+// failed"` whose `.cause` carries the low-level detail, rather than leaking
+// the raw reqwest message into `.message` with an undefined `.cause`.
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchConnectionClosedBeforeMessageComplete() {
+    const { default: http } = await import("node:http");
+    const server = http.createServer((_req, res) => {
+      res.writeHead(200);
+      res.write("hi");
+      res.socket!.destroy();
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve)
+    );
+    const { port } = server.address() as { port: number };
+
+    const err = await assertRejects(async () => {
+      const res = await fetch(`http://127.0.0.1:${port}/`);
+      await res.text();
+    });
+
+    server.close();
+
+    assert(err instanceof TypeError, `err was ${err}`);
+    assertEquals(err.message, "fetch failed", `err.message was ${err.message}`);
+    assert(err.cause instanceof Error, `err.cause was ${err.cause}`);
+    assertStringIncludes(
+      err.cause.message,
+      "connection closed before message completed",
+    );
+  },
+);
+
 Deno.test("fetch async iterable", async () => {
   const iterable = (async function* () {
-    yield new Uint8Array([1, 2, 3, 4, 5]);
-    yield new Uint8Array([6, 7, 8, 9, 10]);
+  yield new Uint8Array([1, 2, 3, 4, 5]);
+  yield new Uint8Array([6, 7, 8, 9, 10]);
   })();
   const res = new Response(iterable);
   const actual = await res.bytes();
@@ -2248,8 +2343,8 @@ Deno.test("fetch async iterable", async () => {
 
 Deno.test("fetch iterable", async () => {
   const iterable = (function* () {
-    yield new Uint8Array([1, 2, 3, 4, 5]);
-    yield new Uint8Array([6, 7, 8, 9, 10]);
+  yield new Uint8Array([1, 2, 3, 4, 5]);
+  yield new Uint8Array([6, 7, 8, 9, 10]);
   })();
   const res = new Response(iterable);
   const actual = await res.bytes();
@@ -2304,6 +2399,202 @@ Deno.test(
     const resp2 = await fetch("http://localhost/not-found", { client });
     assertEquals(resp2.status, 404);
     assertEquals(await resp2.text(), "Not found");
+  },
+);
+
+// A Unix-socket proxy is an outbound network primitive, so it requires an
+// `--allow-net=unix:<path>` rule in addition to filesystem access on the
+// socket path. Filesystem read/write alone must not let a custom client route
+// fetch traffic to a local Unix socket.
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
+  function fetchUnixProxyRequiresAllowNet() {
+    const socketPath = tmpUnixSocketPath();
+    assertThrows(
+      () =>
+        Deno.createHttpClient({
+          proxy: { transport: "unix", path: socketPath },
+        }),
+      Deno.errors.NotCapable,
+    );
+  },
+);
+
+// The scoped form must match the exact path: an `--allow-net=unix:<path>` rule
+// for a different socket does not grant the Unix proxy access to this one.
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: {
+      read: true,
+      write: true,
+      net: ["unix:/some/other/path.sock"],
+    },
+  },
+  function fetchUnixProxyScopedAllowNetMatchesExactly() {
+    const socketPath = tmpUnixSocketPath();
+    assertThrows(
+      () =>
+        Deno.createHttpClient({
+          proxy: { transport: "unix", path: socketPath },
+        }),
+      Deno.errors.NotCapable,
+    );
+  },
+);
+
+// An `--allow-net=unix:<path>` rule scoped to the exact socket path grants the
+// Unix proxy access. Run in a subprocess so the dynamic socket path can be
+// passed in the allow-net rule. The temp dir is canonicalized up front so the
+// resolved socket path matches the rule exactly. The `localhost` grant is also
+// required: routing through the Unix proxy still issues `fetch()` against the
+// request URL, whose host (`localhost`) goes through the normal net check.
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true, run: true },
+  },
+  async function fetchUnixProxyScopedAllowNetGrantsAccess() {
+    const folder = Deno.realPathSync(Deno.makeTempDirSync());
+    const socketPath = `${folder}/socket`;
+    const scriptPath = Deno.makeTempFileSync({ suffix: ".js" });
+    Deno.writeTextFileSync(
+      scriptPath,
+      `
+      await using _server = Deno.serve({
+        path: ${JSON.stringify(socketPath)},
+        transport: "unix",
+        onListen: () => {},
+      }, () => new Response("OK"));
+      using client = Deno.createHttpClient({
+        proxy: { transport: "unix", path: ${JSON.stringify(socketPath)} },
+      });
+      const resp = await fetch("http://localhost/", { client });
+      console.log(await resp.text());
+      `,
+    );
+    const [status, output] = await execCode3(Deno.execPath(), [
+      "run",
+      "--allow-read",
+      "--allow-write",
+      `--allow-net=unix:${socketPath},localhost`,
+      scriptPath,
+    ]).finished();
+    assertEquals(status, 0);
+    assertStringIncludes(output, "OK");
+  },
+);
+
+// Regression test for https://github.com/denoland/deno/issues/29281
+// A server advertising `Content-Encoding: gzip` (or br) while returning an
+// empty body should not fail decompression with "unexpected end of file".
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchEmptyBodyWithContentEncoding() {
+    for (const encoding of ["gzip", "br"]) {
+      const ac = new AbortController();
+      const server = Deno.serve(
+        { port: listenPort, signal: ac.signal, onListen() {} },
+        () =>
+          new Response(new Uint8Array(), {
+            headers: { "content-encoding": encoding },
+          }),
+      );
+      try {
+        const resp = await fetch(`http://localhost:${listenPort}/`);
+        assertEquals(await resp.text(), "");
+      } finally {
+        ac.abort();
+        await server.finished;
+      }
+    }
+  },
+);
+
+// Regression test for https://github.com/denoland/deno/issues/20548
+// `content-encoding` and `content-length` response headers must stay visible
+// when the body is transparently decompressed; only the body is decoded.
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchPreservesContentEncodingHeader() {
+    const compressed = await new Response(
+      new Blob(["hello world"]).stream().pipeThrough(
+        new CompressionStream("gzip"),
+      ),
+    ).bytes();
+    const ac = new AbortController();
+    const server = Deno.serve(
+      { port: listenPort, signal: ac.signal, onListen() {} },
+      () =>
+        new Response(compressed, {
+          headers: {
+            "content-encoding": "gzip",
+            "content-length": String(compressed.length),
+          },
+        }),
+    );
+    try {
+      const resp = await fetch(`http://localhost:${listenPort}/`);
+      assertEquals(resp.headers.get("content-encoding"), "gzip");
+      assertEquals(
+        resp.headers.get("content-length"),
+        String(compressed.length),
+      );
+      assertEquals(await resp.text(), "hello world");
+    } finally {
+      ac.abort();
+      await server.finished;
+    }
+  },
+);
+
+// The flip side of the regression test above: when a fetch response with a
+// transparently decompressed body is re-serialized by an HTTP server
+// (`return fetch(...)` proxying), the retained `content-encoding` and
+// `content-length` headers describe the original wire body, not the decoded
+// one, and must not be forwarded with it.
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchProxyingDecompressedResponseStripsWireHeaders() {
+    const compressed = await new Response(
+      new Blob(["hello world"]).stream().pipeThrough(
+        new CompressionStream("gzip"),
+      ),
+    ).bytes();
+    const ac = new AbortController();
+    const upstream = Deno.serve(
+      { port: listenPort, signal: ac.signal, onListen() {} },
+      () =>
+        new Response(compressed, {
+          headers: {
+            "content-encoding": "gzip",
+            "content-length": String(compressed.length),
+          },
+        }),
+    );
+    const { promise: proxyPort, resolve } = Promise.withResolvers<number>();
+    const proxy = Deno.serve(
+      {
+        port: 0,
+        signal: ac.signal,
+        onListen({ port }) {
+          resolve(port);
+        },
+      },
+      () => fetch(`http://localhost:${listenPort}/`),
+    );
+    try {
+      const resp = await fetch(`http://localhost:${await proxyPort}/`);
+      assertEquals(resp.headers.get("content-encoding"), null);
+      assertEquals(await resp.text(), "hello world");
+    } finally {
+      ac.abort();
+      await upstream.finished;
+      await proxy.finished;
+    }
   },
 );
 

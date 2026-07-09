@@ -13,7 +13,11 @@ interface BroadcastChannelEventMap {
   "messageerror": MessageEvent;
 }
 
-/**
+/** Represents a named channel that any
+ * {@linkcode BroadcastChannel} with the same name (across workers or isolates
+ * in the same Deno process) can use to send and receive messages, allowing
+ * one-to-many communication between execution contexts.
+ *
  * @category Messaging
  */
 interface BroadcastChannel extends EventTarget {
@@ -55,10 +59,16 @@ interface BroadcastChannel extends EventTarget {
   ): void;
 }
 
-/**
+/** The constructor object for {@linkcode BroadcastChannel}.
+ *
+ * Construct a channel with `new BroadcastChannel(name)` to join the channel
+ * identified by `name`; messages posted on it are delivered to every other
+ * `BroadcastChannel` connected to the same name.
+ *
  * @category Messaging
  */
-declare var BroadcastChannel: {
+declare var BroadcastChannel: typeof globalThis extends
+  { document: any; BroadcastChannel: infer T } ? T : {
   readonly prototype: BroadcastChannel;
   new (name: string): BroadcastChannel;
 };

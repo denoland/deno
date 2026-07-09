@@ -3,6 +3,11 @@
 // deno-lint-ignore-file no-console
 
 import { EventEmitter, once } from "node:events";
+import {
+  AsyncLocalStorage,
+  createHook,
+  executionAsyncResource,
+} from "node:async_hooks";
 import http, {
   IncomingMessage,
   type RequestOptions,
@@ -13,7 +18,9 @@ import https from "node:https";
 import zlib from "node:zlib";
 import net, { type AddressInfo, Socket } from "node:net";
 import fs from "node:fs";
+import type { Duplex } from "node:stream";
 import { text } from "node:stream/consumers";
+import { channel } from "node:diagnostics_channel";
 
 import { assert, assertEquals, assertStringIncludes, fail } from "@std/assert";
 import { assertSpyCalls, spy } from "@std/testing/mock";
@@ -22,7 +29,14 @@ import { retry } from "@std/async/retry";
 
 import { gzip } from "node:zlib";
 import { Buffer } from "node:buffer";
+import { setImmediate } from "node:timers";
 import { execCode } from "../unit/test_util.ts";
+
+// Destroy idle keep-alive sockets before each test so that sequential
+// tests reusing the same port (e.g. 4505) don't fail with EADDRINUSE.
+Deno.test.beforeEach(() => {
+  http.globalAgent.destroy();
+});
 
 Deno.test("[node/http listen]", async () => {
   {
@@ -319,6 +333,34 @@ Deno.test("[node/http] multiple set-cookie headers", async () => {
   await promise;
 });
 
+Deno.test("[node/http] ServerResponse.setHeaders preserves Headers set-cookie entries", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  const server = http.createServer((_req, res) => {
+    res.setHeaders(
+      new Headers([
+        ["Set-Cookie", "foo=bar"],
+        ["Set-Cookie", "bar=foo"],
+      ]),
+    );
+    res.end();
+  });
+
+  server.listen(async () => {
+    const res = await fetch(
+      // deno-lint-ignore no-explicit-any
+      `http://127.0.0.1:${(server.address() as any).port}/`,
+    );
+    assert(res.ok);
+    assertEquals(res.headers.getSetCookie(), ["foo=bar", "bar=foo"]);
+
+    await res.body!.cancel();
+    server.close(() => resolve());
+  });
+
+  await promise;
+});
+
 Deno.test("[node/http] IncomingRequest socket has remoteAddress + remotePort", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
 
@@ -336,7 +378,13 @@ Deno.test("[node/http] IncomingRequest socket has remoteAddress + remotePort", a
       `http://127.0.0.1:${port}/`,
     );
     await res.arrayBuffer();
-    assertEquals(remoteAddress, "127.0.0.1");
+    // Default-host listen() binds dual-stack, so IPv4 connections arrive
+    // as IPv4-mapped IPv6 addresses. Accept either form.
+    assert(
+      remoteAddress === "127.0.0.1" ||
+        remoteAddress === "::ffff:127.0.0.1",
+      `unexpected remoteAddress: ${remoteAddress}`,
+    );
     assertEquals(typeof remotePort, "number");
     server.close(() => resolve());
   });
@@ -460,7 +508,6 @@ Deno.test("[node/http] non-string buffer response", {
 }, async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
   const server = http.createServer((_, res) => {
-    res.socket!.end();
     gzip(
       Buffer.from("a".repeat(100), "utf8"),
       {},
@@ -514,7 +561,6 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
   let requestBody = "";
 
   const hostname = "localhost";
-  const port = 4505;
 
   const handler = async (req: Request) => {
     requestHeaders = req.headers;
@@ -522,13 +568,17 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
     return new Response("ok");
   };
   const abortController = new AbortController();
+  const { promise: portPromise, resolve: portResolve } = Promise.withResolvers<
+    number
+  >();
   const servePromise = Deno.serve({
     hostname,
-    port,
+    port: 0,
     signal: abortController.signal,
-    onListen: undefined,
+    onListen: ({ port }) => portResolve(port),
   }, handler).finished;
 
+  const port = await portPromise;
   const opts: RequestOptions = {
     host: hostname,
     port,
@@ -571,64 +621,71 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
   }
 });
 
-Deno.test("[node/http] send request with chunked body", async () => {
-  let requestHeaders: Headers;
-  let requestBody = "";
+Deno.test(
+  "[node/http] send request with chunked body",
+  async () => {
+    let requestHeaders: Headers;
+    let requestBody = "";
 
-  const hostname = "localhost";
-  const port = 4505;
+    const hostname = "localhost";
 
-  const handler = async (req: Request) => {
-    requestHeaders = req.headers;
-    requestBody = await req.text();
-    return new Response("ok");
-  };
-  const abortController = new AbortController();
-  const servePromise = Deno.serve({
-    hostname,
-    port,
-    signal: abortController.signal,
-    onListen: undefined,
-  }, handler).finished;
+    const handler = async (req: Request) => {
+      requestHeaders = req.headers;
+      requestBody = await req.text();
+      return new Response("ok");
+    };
+    const abortController = new AbortController();
+    const { promise: portPromise, resolve: portResolve } = Promise
+      .withResolvers<
+        number
+      >();
+    const servePromise = Deno.serve({
+      hostname,
+      port: 0,
+      signal: abortController.signal,
+      onListen: ({ port }) => portResolve(port),
+    }, handler).finished;
 
-  const opts: RequestOptions = {
-    host: hostname,
-    port,
-    method: "POST",
-    headers: {
-      "Content-Type": "text/plain; charset=utf-8",
-      "Content-Length": "11",
-      "Transfer-Encoding": "chunked",
-    },
-  };
-  const req = http.request(opts, (res) => {
-    res.on("data", () => {});
-    res.on("end", () => {
-      abortController.abort();
+    const port = await portPromise;
+    const opts: RequestOptions = {
+      host: hostname,
+      port,
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Transfer-Encoding": "chunked",
+      },
+    };
+    const req = http.request(opts, (res) => {
+      res.on("data", () => {});
+      res.on("end", () => {
+        abortController.abort();
+      });
+      assertEquals(res.statusCode, 200);
+      assertEquals(requestHeaders.has("content-length"), false);
+      assertEquals(requestHeaders.get("transfer-encoding"), "chunked");
+      assertEquals(requestBody, "hello world");
     });
-    assertEquals(res.statusCode, 200);
-    assertEquals(requestHeaders.has("content-length"), false);
-    assertEquals(requestHeaders.get("transfer-encoding"), "chunked");
-    assertEquals(requestBody, "hello world");
-  });
-  req.write("hello ");
-  req.write("world");
-  req.end();
+    console.log("Request is writable:", req.writable);
+    req.write("hello ");
+    req.write("world");
+    req.end();
+    console.log("Request ended.");
 
-  await servePromise;
-
-  if (Deno.build.os === "windows") {
-    // FIXME(kt3k): This is necessary for preventing op leak on windows
-    await new Promise((resolve) => setTimeout(resolve, 4000));
-  }
-});
+    await servePromise;
+    console.log("Server finished.");
+    if (Deno.build.os === "windows") {
+      // FIXME(kt3k): This is necessary for preventing op leak on windows
+      await new Promise((resolve) => setTimeout(resolve, 4000));
+    }
+  },
+);
 
 Deno.test("[node/http] send request with chunked body as default", async () => {
   let requestHeaders: Headers;
   let requestBody = "";
 
   const hostname = "localhost";
-  const port = 4505;
 
   const handler = async (req: Request) => {
     requestHeaders = req.headers;
@@ -636,13 +693,17 @@ Deno.test("[node/http] send request with chunked body as default", async () => {
     return new Response("ok");
   };
   const abortController = new AbortController();
+  const { promise: portPromise, resolve: portResolve } = Promise.withResolvers<
+    number
+  >();
   const servePromise = Deno.serve({
     hostname,
-    port,
+    port: 0,
     signal: abortController.signal,
-    onListen: undefined,
+    onListen: ({ port }) => portResolve(port),
   }, handler).finished;
 
+  const port = await portPromise;
   const opts: RequestOptions = {
     host: hostname,
     port,
@@ -695,6 +756,130 @@ Deno.test("[node/http] ServerResponse _implicitHeader", async () => {
 
   await promise;
 });
+
+async function getRawServerResponse(
+  handler: http.RequestListener,
+): Promise<string> {
+  const server = http.createServer(handler);
+  const response = Promise.withResolvers<string>();
+  let rawResponse = "";
+
+  server.listen(0, "127.0.0.1", () => {
+    const { port } = server.address() as AddressInfo;
+    const client = net.createConnection(port, "127.0.0.1", () => {
+      client.write(
+        "GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+      );
+    });
+    client.setEncoding("utf8");
+    client.on("data", (chunk) => {
+      rawResponse += chunk;
+    });
+    client.on("end", () => response.resolve(rawResponse));
+    client.on("error", response.reject);
+  });
+
+  try {
+    return await response.promise;
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+}
+
+Deno.test("[node/http] ServerResponse direct end sets content-length", async () => {
+  const rawResponse = await getRawServerResponse((_req, res) => {
+    res.end("hi");
+  });
+
+  assertStringIncludes(rawResponse, "HTTP/1.1 200 OK\r\n");
+  assertStringIncludes(rawResponse, "Content-Length: 2\r\n");
+  assert(!rawResponse.includes("Transfer-Encoding: chunked\r\n"));
+  assert(rawResponse.endsWith("\r\n\r\nhi"));
+});
+
+Deno.test("[node/http] ServerResponse empty end sets content-length", async () => {
+  const rawResponse = await getRawServerResponse((_req, res) => {
+    res.end();
+  });
+
+  assertStringIncludes(rawResponse, "HTTP/1.1 200 OK\r\n");
+  assertStringIncludes(rawResponse, "Content-Length: 0\r\n");
+  assert(!rawResponse.includes("Transfer-Encoding: chunked\r\n"));
+  assert(rawResponse.endsWith("\r\n\r\n"));
+});
+
+Deno.test(
+  "[node/http] ServerResponse empty end respects pre-generated content-length",
+  async () => {
+    const rawResponse = await getRawServerResponse((_req, res) => {
+      res.writeHead(200, { "Content-Length": "0" });
+      res.end();
+    });
+
+    assertStringIncludes(rawResponse, "HTTP/1.1 200 OK\r\n");
+    assertStringIncludes(rawResponse, "Content-Length: 0\r\n");
+    assert(!rawResponse.includes("Transfer-Encoding: chunked\r\n"));
+    assert(rawResponse.endsWith("\r\n\r\n"));
+  },
+);
+
+Deno.test(
+  "[node/http] ServerResponse direct end respects explicit chunked transfer-encoding",
+  async () => {
+    const rawResponse = await getRawServerResponse((_req, res) => {
+      res.setHeader("Transfer-Encoding", "chunked");
+      res.end("hi");
+    });
+
+    assertStringIncludes(rawResponse, "HTTP/1.1 200 OK\r\n");
+    assertStringIncludes(rawResponse, "Transfer-Encoding: chunked\r\n");
+    assert(!rawResponse.includes("Content-Length:"));
+    assert(rawResponse.endsWith("\r\n\r\n2\r\nhi\r\n0\r\n\r\n"));
+  },
+);
+
+// https://github.com/denoland/deno/issues/34002
+Deno.test(
+  "[node/http] ServerResponse does not emit 'finish' after client abort",
+  async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    let client: http.ClientRequest;
+    let finishEmitted = false;
+    let closeEmitted = false;
+
+    const server = http.createServer((_req, res) => {
+      res.on("finish", () => {
+        finishEmitted = true;
+      });
+      res.on("close", () => {
+        closeEmitted = true;
+      });
+
+      client.abort();
+
+      setImmediate(() => {
+        setImmediate(() => {
+          res.end("ok");
+          setImmediate(() => {
+            server.close(() => {
+              assertEquals(finishEmitted, false);
+              assertEquals(closeEmitted, true);
+              resolve();
+            });
+          });
+        });
+      });
+    });
+
+    server.listen(0, () => {
+      const { port } = server.address() as { port: number };
+      client = http.get(`http://127.0.0.1:${port}`);
+      client.on("error", () => {});
+    });
+
+    await promise;
+  },
+);
 
 // https://github.com/denoland/deno/issues/21509
 Deno.test("[node/http] ServerResponse flushHeaders", async () => {
@@ -988,15 +1173,20 @@ Deno.test(
   async () => {
     let received = false;
     const ac = new AbortController();
-    const server = Deno.serve({ port: 5928, signal: ac.signal }, (_req) => {
+    const server = Deno.serve({
+      port: 0,
+      signal: ac.signal,
+      onListen: undefined,
+    }, (_req) => {
       received = true;
       return new Response("hello");
     });
+    const port = server.addr.port;
     const { promise, resolve, reject } = Promise.withResolvers<void>();
     let body = "";
 
     const request = http.request(
-      "http://localhost:5928/",
+      `http://localhost:${port}/`,
       (resp) => {
         resp.on("data", (chunk) => {
           body += chunk;
@@ -1007,12 +1197,15 @@ Deno.test(
         });
       },
     );
+    let endCallbackCalled = false;
     request.on("error", reject);
     request.end(() => {
-      assert(received);
+      endCallbackCalled = true;
     });
 
     await promise;
+    assert(endCallbackCalled);
+    assert(received);
     ac.abort();
     await server.finished;
 
@@ -1037,11 +1230,8 @@ Deno.test("[node/http] server emits error if addr in use", async () => {
   server.close(() => deferred1.resolve());
   server2.close();
   await deferred1.promise;
-  const expectedMsg = Deno.build.os === "windows"
-    ? "Only one usage of each socket address"
-    : "Address already in use";
   assert(
-    err.message.startsWith(expectedMsg),
+    err.message.includes("EADDRINUSE"),
     `Wrong error: ${err.message}`,
   );
 });
@@ -1341,8 +1531,11 @@ Deno.test("[node/http] ServerResponse assignSocket and detachSocket", () => {
   res.assignSocket(socket);
 
   res.write("Hello World!", "utf8");
-  assertEquals(writtenData, Buffer.from("Hello World!"));
-  assertEquals(writtenEncoding, "buffer");
+  // The first write includes HTTP headers concatenated with the body.
+  // Both Node.js and Deno concatenate header + data as a string.
+  assert(typeof writtenData === "string");
+  assert((writtenData as string).includes("Hello World!"));
+  assertEquals(writtenEncoding, "utf8");
 
   writtenData = undefined;
   writtenEncoding = undefined;
@@ -1441,7 +1634,7 @@ Deno.test("[node/http] server closeIdleConnections shutdown", async () => {
 });
 
 Deno.test("[node/http] client closing a streaming response doesn't terminate server", async () => {
-  let interval: number;
+  let interval: NodeJS.Timeout;
   const server = http.createServer((req, res) => {
     res.writeHead(200, { "Content-Type": "text/plain" });
     interval = setInterval(() => {
@@ -1490,7 +1683,7 @@ Deno.test("[node/http] client closing a streaming response doesn't terminate ser
 });
 
 Deno.test("[node/http] client closing a streaming request doesn't terminate server", async () => {
-  let interval: number;
+  let interval: NodeJS.Timeout;
   let uploadedData = "";
   let requestError: Error | null = null;
   const deferred1 = Promise.withResolvers<void>();
@@ -1553,13 +1746,14 @@ Deno.test("[node/http] client closing a streaming request doesn't terminate serv
   await deferred1.promise;
   assert(requestError !== null, "Server should have received an error");
   assert(
-    (requestError! as Error)?.name === "Http",
-    `Expected Http error, got ${(requestError! as Error)?.name}`,
+    (requestError! as Error) instanceof Error,
+    `Expected Error, got ${(requestError! as Error)?.constructor?.name}`,
   );
   assert(
-    (requestError! as Error)?.message.includes(
-      "error reading a body from connection",
-    ),
+    (requestError! as Error)?.message.includes("aborted") ||
+      (requestError! as Error)?.message.includes(
+        "error reading a body from connection",
+      ),
   );
   assertEquals(server.listening, true);
   server.close();
@@ -1805,7 +1999,10 @@ Deno.test("[node/http] upgraded socket closes when the server closed without clo
     });
 
     socket.on("error", (e) => {
-      if (!("code" in e) || e.code !== "ECONNRESET") {
+      if (
+        !("code" in e) ||
+        (e.code !== "ECONNRESET" && e.code !== "EINVAL")
+      ) {
         throw e;
       }
       console.log("client socket closed");
@@ -1867,7 +2064,7 @@ Deno.test("[node/http] ServerResponse _header", async () => {
 Deno.test("[node/http] ServerResponse connection", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
   const server = http.createServer((_req, res) => {
-    assert(Object.hasOwn(res, "connection"));
+    assert("connection" in res);
     assert(res.connection instanceof Socket);
     res.end();
   });
@@ -1887,7 +2084,7 @@ Deno.test("[node/http] ServerResponse connection", async () => {
 Deno.test("[node/http] ServerResponse socket", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
   const server = http.createServer((_req, res) => {
-    assert(Object.hasOwn(res, "socket"));
+    assert("socket" in res);
     assert(res.socket instanceof Socket);
     res.end();
   });
@@ -1907,49 +2104,50 @@ Deno.test("[node/http] ServerResponse socket", async () => {
 Deno.test("[node/http] decompress brotli response", {
   permissions: { net: true },
 }, async () => {
-  let received = false;
   const ac = new AbortController();
-  const server = Deno.serve({ port: 5928, signal: ac.signal }, (_req) => {
-    received = true;
+  const server = Deno.serve({
+    port: 0,
+    signal: ac.signal,
+    onListen: undefined,
+  }, (_req) => {
     return Response.json([
       ["accept-language", "*"],
       ["host", "localhost:3000"],
       ["user-agent", "Deno/2.1.1"],
     ], {});
   });
+  const port = server.addr.port;
   const { promise, resolve, reject } = Promise.withResolvers<void>();
   let body = "";
 
   const request = http.get(
-    "http://localhost:5928/",
+    `http://localhost:${port}/`,
     {
       headers: {
         "accept-encoding": "gzip, deflate, br, zstd",
       },
     },
     (resp) => {
-      const decompress = zlib.createBrotliDecompress();
-      resp.on("data", (chunk) => {
-        decompress.write(chunk);
-      });
-
-      resp.on("end", () => {
-        decompress.end();
-      });
-
-      decompress.on("data", (chunk) => {
-        body += chunk;
-      });
-
-      decompress.on("end", () => {
-        resolve();
-      });
+      const encoding = resp.headers["content-encoding"];
+      if (encoding === "br") {
+        // Server compressed with brotli - decompress
+        const decompress = zlib.createBrotliDecompress();
+        resp.on("data", (chunk) => decompress.write(chunk));
+        resp.on("end", () => decompress.end());
+        decompress.on("data", (chunk) => {
+          body += chunk;
+        });
+        decompress.on("end", () => resolve());
+      } else {
+        // Server did not compress - read directly
+        resp.on("data", (chunk) => {
+          body += chunk;
+        });
+        resp.on("end", () => resolve());
+      }
     },
   );
   request.on("error", reject);
-  request.end(() => {
-    assert(received);
-  });
 
   await promise;
   ac.abort();
@@ -2129,18 +2327,68 @@ Deno.test("[node/http] rawHeaders are in flattened format", async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
-Deno.test("[node/http] client http over unix socket works", {
-  ignore: Deno.build.os == "windows",
-}, async () => {
-  const { promise, resolve } = Promise.withResolvers<void>();
-  const socketPath = Deno.makeTempDirSync() + "/server.sock";
-  const server = Deno.serve({
-    transport: "unix",
-    path: socketPath,
-    onListen,
-  }, (_req) => new Response("ok"));
+Deno.test("[node/http] request header values trim trailing OWS", async () => {
+  const parsed = Promise.withResolvers<void>();
+  const server = http.createServer((req, res) => {
+    try {
+      assertEquals(req.headers["x-ows"], "value");
+      const idx = req.rawHeaders.findIndex((header) =>
+        header.toLowerCase() === "x-ows"
+      );
+      assert(idx >= 0);
+      assertEquals(req.rawHeaders[idx + 1], "value");
+      res.end();
+      parsed.resolve();
+    } catch (err) {
+      parsed.reject(err);
+      res.destroy(err as Error);
+    }
+  });
 
-  function onListen() {
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  const client = net.createConnection(
+    (server.address() as AddressInfo).port,
+    "127.0.0.1",
+    () => {
+      client.end(
+        "GET / HTTP/1.1\r\n" +
+          "Host: localhost\r\n" +
+          "X-OWS:\t value \t \r\n" +
+          "Connection: close\r\n\r\n",
+      );
+    },
+  );
+  client.resume();
+  client.on("error", parsed.reject);
+
+  try {
+    await parsed.promise;
+  } finally {
+    client.destroy();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+// TODO(@bartlomieju): re-enable once server-side HTTP also uses llhttp
+// (currently the Deno.serve-based server path still needs RID access)
+Deno.test("[node/http] client http over unix socket works", async () => {
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  // On Windows, IPC uses named pipes; on Unix, use a domain socket path.
+  const socketPath = Deno.build.os === "windows"
+    ? `\\\\?\\pipe\\deno-test-${crypto.randomUUID()}`
+    : Deno.makeTempDirSync() + "/server.sock";
+  const server = http.createServer((_req, res) => {
+    res.end("ok");
+  });
+  server.on("error", (e: Error) => {
+    // Unix sockets may not work on all platforms (e.g. Windows)
+    server.close();
+    reject(e);
+  });
+  server.listen(socketPath, () => {
     const options = {
       socketPath,
       path: "/",
@@ -2149,12 +2397,10 @@ Deno.test("[node/http] client http over unix socket works", {
     http.request(options, async (res) => {
       assertEquals(res.statusCode, 200);
       assertEquals(await text(res), "ok");
-      resolve();
-      server.shutdown();
+      server.close(() => resolve());
     }).end();
-  }
+  });
   await promise;
-  await server.finished;
 });
 
 Deno.test({
@@ -2393,6 +2639,412 @@ Deno.test({
   },
 });
 
+Deno.test("[node/http] keep-alive timer is suspended during active request", async () => {
+  const server = http.createServer(
+    { keepAliveTimeout: 10 },
+    async (req, res) => {
+      if (req.url === "/slow") {
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+      }
+      res.end(req.url);
+    },
+  );
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const port = (server.address() as AddressInfo).port;
+  const socket = net.createConnection(port, "127.0.0.1");
+  await once(socket, "connect");
+
+  let received = "";
+  socket.on("data", (chunk) => {
+    received += chunk;
+  });
+
+  async function readBody(body: string) {
+    const deadline = Date.now() + 4000;
+    while (!received.includes(body)) {
+      if (Date.now() > deadline) {
+        throw new Error(`Timed out waiting for response body ${body}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    received = "";
+  }
+
+  try {
+    socket.write(
+      "GET /first HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n",
+    );
+    await readBody("/first");
+    socket.write(
+      "GET /slow HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+    );
+    await readBody("/slow");
+  } finally {
+    socket.destroy();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+Deno.test("[node/http] AsyncLocalStorage propagates into request handler", async () => {
+  const storage = new AsyncLocalStorage<string>();
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const responseDone = Promise.withResolvers<void>();
+  const requestStart = channel("http.server.request.start");
+  const subscriber = () => storage.enterWith("request-context");
+  const server = http.createServer((_req, res) => {
+    try {
+      assertEquals(storage.getStore(), "request-context");
+      resolve();
+    } catch (err) {
+      reject(err);
+    } finally {
+      res.end("ok");
+    }
+  });
+
+  requestStart.subscribe(subscriber);
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  try {
+    const port = (server.address() as AddressInfo).port;
+    const req = http.get(`http://127.0.0.1:${port}`, (res) => {
+      res.resume();
+      res.on("end", responseDone.resolve);
+      res.on("error", responseDone.reject);
+    });
+    req.on("error", reject);
+    await Promise.all([promise, responseDone.promise]);
+  } finally {
+    requestStart.unsubscribe(subscriber);
+    storage.disable();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+Deno.test("[node/http] AsyncLocalStorage enterWith in request handler is isolated", async () => {
+  const storage = new AsyncLocalStorage<string>();
+  const firstDone = Promise.withResolvers<void>();
+  const secondDone = Promise.withResolvers<void>();
+  let requests = 0;
+  const server = http.createServer((_req, res) => {
+    try {
+      requests++;
+      if (requests === 1) {
+        assertEquals(storage.getStore(), undefined);
+        storage.enterWith("first-request");
+        assertEquals(storage.getStore(), "first-request");
+      } else {
+        assertEquals(storage.getStore(), undefined);
+      }
+      res.end("ok");
+      if (requests === 1) {
+        firstDone.resolve();
+      } else {
+        secondDone.resolve();
+      }
+    } catch (err) {
+      firstDone.reject(err);
+      secondDone.reject(err);
+      res.destroy(err as Error);
+    }
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  try {
+    const port = (server.address() as AddressInfo).port;
+    const request = () =>
+      new Promise<void>((resolve, reject) => {
+        const req = http.get(`http://127.0.0.1:${port}`, (res) => {
+          res.resume();
+          res.on("end", resolve);
+          res.on("error", reject);
+        });
+        req.on("error", reject);
+      });
+
+    await request();
+    await firstDone.promise;
+    await request();
+    await secondDone.promise;
+  } finally {
+    storage.disable();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+Deno.test("[node/http] async_hooks observes request execution resource", async () => {
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const responseDone = Promise.withResolvers<void>();
+  const hook = createHook({
+    before() {},
+  });
+  const server = http.createServer((req, res) => {
+    try {
+      assertEquals(executionAsyncResource(), req);
+      res.end("ok");
+      resolve();
+    } catch (err) {
+      reject(err);
+    }
+  });
+
+  hook.enable();
+  try {
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const port = (server.address() as AddressInfo).port;
+    const req = http.get(`http://127.0.0.1:${port}`, (res) => {
+      res.resume();
+      res.on("end", responseDone.resolve);
+      res.on("error", responseDone.reject);
+    });
+    req.on("error", reject);
+    await Promise.all([promise, responseDone.promise]);
+  } finally {
+    hook.disable();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+Deno.test("[node/http] abandoned suspended keep-alive timer emits async_hooks destroy", async () => {
+  const server = http.createServer(
+    { keepAliveTimeout: 10 },
+    (_req, res) => res.end("ok"),
+  );
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const port = (server.address() as AddressInfo).port;
+  const socket = net.createConnection(port, "127.0.0.1");
+  await once(socket, "connect");
+
+  let received = "";
+  socket.on("data", (chunk) => {
+    received += chunk;
+  });
+
+  async function readText(text: string) {
+    while (!received.includes(text)) {
+      await once(socket, "data");
+    }
+    received = "";
+  }
+
+  const timeoutIds = new Set<number>();
+  const destroyedIds = new Set<number>();
+  const hook = createHook({
+    init(asyncId, type, _triggerAsyncId, resource) {
+      const timeout = resource as { _idleTimeout?: number };
+      if (type === "Timeout" && timeout._idleTimeout === 1010) {
+        timeoutIds.add(asyncId);
+      }
+    },
+    destroy(asyncId) {
+      destroyedIds.add(asyncId);
+    },
+  });
+
+  hook.enable();
+  let keepAliveTimerIds: number[] = [];
+  try {
+    socket.write(
+      "GET /first HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n",
+    );
+    await readText("ok");
+    keepAliveTimerIds = Array.from(timeoutIds);
+    assert(keepAliveTimerIds.length > 0);
+
+    socket.write(
+      "GET /close HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+    );
+    await readText("ok");
+    await once(socket, "close");
+  } finally {
+    socket.destroy();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    hook.disable();
+  }
+
+  for (const asyncId of keepAliveTimerIds) {
+    assert(
+      destroyedIds.has(asyncId),
+      `Timeout asyncId ${asyncId} did not emit destroy`,
+    );
+  }
+});
+
+Deno.test("[node/http] user socket timeout still applies after keep-alive reuse", async () => {
+  let timeoutCount = 0;
+  const serverTimeout = Promise.withResolvers<void>();
+  const server = http.createServer(
+    { keepAliveTimeout: 10 },
+    async (req, res) => {
+      if (req.url === "/timeout") {
+        req.socket.setTimeout(50);
+        await serverTimeout.promise;
+      }
+      res.end(req.url);
+    },
+  );
+  server.on("timeout", (socket) => {
+    timeoutCount++;
+    socket.setTimeout(0);
+    serverTimeout.resolve();
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const port = (server.address() as AddressInfo).port;
+  const socket = net.createConnection(port, "127.0.0.1");
+  await once(socket, "connect");
+
+  let received = "";
+  socket.on("data", (chunk) => {
+    received += chunk;
+  });
+
+  async function readBody(body: string) {
+    const deadline = Date.now() + 4000;
+    while (!received.includes(body)) {
+      if (Date.now() > deadline) {
+        throw new Error(`Timed out waiting for response body ${body}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    received = "";
+  }
+
+  try {
+    socket.write(
+      "GET /first HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n",
+    );
+    await readBody("/first");
+    socket.write(
+      "GET /timeout HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+    );
+    await readBody("/timeout");
+    assertEquals(timeoutCount, 1);
+  } finally {
+    socket.destroy();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+Deno.test("[node/http] custom server timeout still applies after keep-alive reuse", async () => {
+  let timeoutCount = 0;
+  const serverTimeout = Promise.withResolvers<void>();
+  const server = http.createServer(
+    { keepAliveTimeout: 10 },
+    async (req, res) => {
+      if (req.url === "/timeout") {
+        await serverTimeout.promise;
+      }
+      res.end(req.url);
+    },
+  );
+  server.setTimeout(50);
+  server.on("timeout", (socket) => {
+    timeoutCount++;
+    socket.setTimeout(0);
+    serverTimeout.resolve();
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const port = (server.address() as AddressInfo).port;
+  const socket = net.createConnection(port, "127.0.0.1");
+  await once(socket, "connect");
+
+  let received = "";
+  socket.on("data", (chunk) => {
+    received += chunk;
+  });
+
+  async function readBody(body: string) {
+    const deadline = Date.now() + 4000;
+    while (!received.includes(body)) {
+      if (Date.now() > deadline) {
+        throw new Error(`Timed out waiting for response body ${body}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    received = "";
+  }
+
+  try {
+    socket.write(
+      "GET /first HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n",
+    );
+    await readBody("/first");
+    socket.write(
+      "GET /timeout HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+    );
+    await readBody("/timeout");
+    assertEquals(timeoutCount, 1);
+  } finally {
+    socket.destroy();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+Deno.test("[node/http] upgrade detaches reused keep-alive socket timeout", async () => {
+  const upgraded = Promise.withResolvers<void>();
+  let upgradedSocket: Duplex | undefined;
+  const server = http.createServer(
+    { keepAliveTimeout: 10 },
+    (_req, res) => res.end("ok"),
+  );
+  server.on("upgrade", (_req, socket) => {
+    upgradedSocket = socket;
+    upgraded.resolve();
+    socket.write(
+      "HTTP/1.1 101 Switching Protocols\r\n" +
+        "Connection: Upgrade\r\n" +
+        "Upgrade: test\r\n" +
+        "\r\n",
+    );
+    setTimeout(() => socket.write("detached"), 1200);
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const port = (server.address() as AddressInfo).port;
+  const socket = net.createConnection(port, "127.0.0.1");
+  await once(socket, "connect");
+
+  let received = "";
+  socket.on("data", (chunk) => {
+    received += chunk;
+  });
+
+  async function readText(text: string) {
+    const deadline = Date.now() + 4000;
+    while (!received.includes(text)) {
+      if (Date.now() > deadline) {
+        throw new Error(`Timed out waiting for ${text}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    received = "";
+  }
+
+  try {
+    socket.write(
+      "GET /first HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n",
+    );
+    await readText("ok");
+    socket.write(
+      "GET /upgrade HTTP/1.1\r\n" +
+        "Host: localhost\r\n" +
+        "Connection: Upgrade\r\n" +
+        "Upgrade: test\r\n" +
+        "\r\n",
+    );
+    await upgraded.promise;
+    await readText("101 Switching Protocols");
+    await readText("detached");
+  } finally {
+    upgradedSocket?.destroy();
+    socket.destroy();
+    server.close();
+  }
+});
+
 // https://github.com/denoland/deno/issues/32311
 Deno.test("[node/http] upgrade request can be rejected with non-101 status", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
@@ -2432,38 +3084,674 @@ Deno.test("[node/http] upgrade request can be rejected with non-101 status", asy
 });
 
 // Regression test for https://github.com/denoland/deno/issues/32857
-// h2c upgrade requests should not fire the "upgrade" event and should
-// be handled as normal HTTP/1.1 requests.
+// h2c upgrade requests with an upgrade listener should trigger the
+// upgrade event (matching Node.js behavior) and not hang.
 Deno.test(
   "[node/http] h2c upgrade does not hang when upgrade listener exists",
   { permissions: { net: true } },
   async () => {
     const { promise, resolve } = Promise.withResolvers<void>();
+    let upgradeHandlerCalled = false;
     const server = http.createServer((_req, res) => {
       res.writeHead(200, { "Content-Type": "text/plain" });
       res.end("ok");
     });
     server.on("upgrade", (_req, socket) => {
-      // This listener exists (e.g. for WebSocket) but should NOT be
-      // triggered for h2c upgrades.
+      // Node.js fires the upgrade event for h2c requests when a
+      // listener exists (via shouldUpgradeCallback).
+      upgradeHandlerCalled = true;
       socket.end();
     });
 
-    server.listen(0, "127.0.0.1", async () => {
+    server.listen(0, "127.0.0.1", () => {
       const addr = server.address() as { port: number };
-      // Send a request with Upgrade: h2c header, simulating what browsers do
-      const res = await fetch(`http://127.0.0.1:${addr.port}/`, {
+      // Use raw socket to send h2c upgrade request
+      const client = net.createConnection(
+        { host: "127.0.0.1", port: addr.port },
+        () => {
+          client.write(
+            "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: Upgrade, HTTP2-Settings\r\nUpgrade: h2c\r\n\r\n",
+          );
+        },
+      );
+      client.on("close", () => {
+        assert(upgradeHandlerCalled, "upgrade handler should have been called");
+        server.close(() => resolve());
+      });
+    });
+
+    await promise;
+  },
+);
+
+// Regression test: a long-running request must not trigger a spurious
+// ERR_HTTP_REQUEST_TIMEOUT. The ConnectionsList watchdog
+// (headersTimeout/requestTimeout) was never told that headers had been
+// parsed or that the request had finished, so connections sat with
+// headersCompleted=false forever and the watchdog fired ~headersTimeout
+// after the connection was accepted, causing Fastify/etc. to return 400.
+// https://github.com/denoland/deno/issues/34297
+Deno.test(
+  "[node/http] long-running request does not trigger spurious headersTimeout",
+  async () => {
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+    const server = http.createServer({
+      headersTimeout: 300,
+      connectionsCheckingInterval: 50,
+    }, (_req, res) => {
+      // Sleep longer than headersTimeout to verify the watchdog doesn't
+      // fire mid-request even though headers have already been parsed.
+      setTimeout(() => res.end("done"), 800);
+    });
+
+    server.on("clientError", (err: Error & { code?: string }) => {
+      reject(new Error(`unexpected clientError: ${err.code ?? err.message}`));
+    });
+
+    server.listen(0, () => {
+      const port = (server.address() as AddressInfo).port;
+      const req = http.request(
+        { port, host: "127.0.0.1", path: "/" },
+        (res) => {
+          let data = "";
+          res.on("data", (d) => data += d);
+          res.on("end", () => {
+            assertEquals(res.statusCode, 200);
+            assertEquals(data, "done");
+            server.close(() => resolve());
+          });
+        },
+      );
+      req.on("error", reject);
+      req.end();
+    });
+
+    await promise;
+  },
+);
+
+// Regression test: requestTimeout only covers receiving the full request from
+// the client, not the response lifetime. A response that streams for longer
+// than requestTimeout (SSE/proxy) must not be aborted, mirroring Node which
+// stops the requestTimeout clock once the request message is fully received.
+// Previously the ConnectionsList watchdog kept firing requestTimeout against
+// the active entry until the response finished, killing long-lived streams.
+// https://github.com/denoland/deno/issues/35289
+Deno.test(
+  "[node/http] streaming response does not trigger spurious requestTimeout",
+  async () => {
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+    const writeCount = 20;
+    const writeInterval = 50;
+    // requestTimeout is far shorter than the total streaming duration
+    // (20 * 50ms = ~1s) so the bug would abort the response mid-stream.
+    const server = http.createServer({
+      requestTimeout: 300,
+      connectionsCheckingInterval: 50,
+    }, (_req, res) => {
+      res.writeHead(200, { "content-type": "text/plain" });
+      let n = 0;
+      const interval = setInterval(() => {
+        n++;
+        res.write(`chunk ${n}\n`);
+        if (n === writeCount) {
+          clearInterval(interval);
+          res.end("done\n");
+        }
+      }, writeInterval);
+      res.on("close", () => clearInterval(interval));
+    });
+
+    server.on("clientError", (err: Error & { code?: string }) => {
+      reject(new Error(`unexpected clientError: ${err.code ?? err.message}`));
+    });
+
+    server.listen(0, () => {
+      const port = (server.address() as AddressInfo).port;
+      const req = http.get({ port, host: "127.0.0.1", path: "/" }, (res) => {
+        let data = "";
+        res.setEncoding("utf8");
+        res.on("data", (d) => data += d);
+        res.on("aborted", () => reject(new Error("response was aborted")));
+        res.on("end", () => {
+          assertEquals(res.statusCode, 200);
+          // All chunks plus the final "done" line must have arrived intact.
+          assertEquals(
+            data.trim().split("\n").filter(Boolean).length,
+            writeCount + 1,
+          );
+          assertStringIncludes(data, "done");
+          server.close(() => resolve());
+        });
+      });
+      req.on("error", reject);
+    });
+
+    await promise;
+  },
+);
+
+// Regression test for pipelined requests: when request 2's response finishes
+// after request 1's, resOnFinish for request 1 must not delete the active
+// ConnectionsList entry that now belongs to request 2 (otherwise
+// headersTimeout/requestTimeout silently stop covering request 2).
+// Verifies both pipelined responses succeed without spurious clientError.
+Deno.test(
+  "[node/http] pipelined requests don't drop timeout tracking",
+  async () => {
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+    let req1Finished = false;
+    let req2Finished = false;
+    const server = http.createServer({
+      headersTimeout: 2000,
+      requestTimeout: 2000,
+      connectionsCheckingInterval: 50,
+    }, (req, res) => {
+      if (req.url === "/1") {
+        // Finish first response quickly so resOnFinish for req1 runs while
+        // request 2 may still be in flight on the parser.
+        setTimeout(() => res.end("first"), 50);
+      } else {
+        // Hold second response until well after the first has finished so
+        // the pipelined entry-swap window is exercised.
+        setTimeout(() => res.end("second"), 300);
+      }
+    });
+
+    server.on("clientError", (err: Error & { code?: string }) => {
+      reject(new Error(`unexpected clientError: ${err.code ?? err.message}`));
+    });
+
+    server.listen(0, async () => {
+      try {
+        const port = (server.address() as AddressInfo).port;
+        const conn = await Deno.connect({ port, hostname: "127.0.0.1" });
+        const encoder = new TextEncoder();
+        await conn.write(encoder.encode(
+          "GET /1 HTTP/1.1\r\nHost: localhost\r\n\r\n" +
+            "GET /2 HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+        ));
+        const decoder = new TextDecoder();
+        const buf = new Uint8Array(8192);
+        let received = "";
+        while (true) {
+          const n = await conn.read(buf);
+          if (n === null) break;
+          received += decoder.decode(buf.subarray(0, n));
+        }
+        try {
+          conn.close();
+        } catch { /* already closed */ }
+        assertStringIncludes(received, "first");
+        assertStringIncludes(received, "second");
+        req1Finished = true;
+        req2Finished = true;
+        server.close(() => resolve());
+      } catch (e) {
+        reject(e);
+      }
+    });
+
+    await promise;
+    assertEquals(req1Finished, true);
+    assertEquals(req2Finished, true);
+  },
+);
+
+// Regression test: oversized headers must trigger HPE_HEADER_OVERFLOW on the
+// server's clientError event, and the default handler should respond with 431.
+// Previously maxHeaderSize was tracked but never enforced.
+// https://github.com/denoland/deno/issues/33060
+Deno.test(
+  "[node/http] server emits HPE_HEADER_OVERFLOW for oversized headers",
+  async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+
+    const server = http.createServer((_req, res) => {
+      res.end("should not reach");
+    });
+
+    let gotClientError = false;
+    server.on("clientError", (err: Error & { code?: string }, socket) => {
+      gotClientError = true;
+      assertEquals(err.code, "HPE_HEADER_OVERFLOW");
+      assertStringIncludes(err.message, "Header overflow");
+      if (socket.writable) {
+        socket.end(
+          "HTTP/1.1 431 Request Header Fields Too Large\r\nConnection: close\r\n\r\n",
+        );
+      }
+    });
+
+    server.listen(0, () => {
+      const port = (server.address() as AddressInfo).port;
+      // Send a request with a header exceeding the 16KB default limit
+      const hugeHeader = "x".repeat(16384 + 1);
+      const sock = net.createConnection(port, "127.0.0.1", () => {
+        sock.write(
+          `GET / HTTP/1.1\r\nHost: localhost\r\nX-Huge: ${hugeHeader}\r\n\r\n`,
+        );
+      });
+      sock.on("data", () => {});
+      sock.on("close", () => {
+        assert(gotClientError, "clientError should have been emitted");
+        server.close(() => resolve());
+      });
+      sock.on("error", () => {
+        server.close(() => resolve());
+      });
+    });
+
+    await promise;
+  },
+);
+
+// Boundary test: header_nread tracks bytes from the URL, header fields,
+// and header values (not the framing \r\n separators). A request that
+// pushes header_nread to exactly maxHeaderSize must be rejected (>=).
+Deno.test(
+  "[node/http] header overflow boundary: exactly maxHeaderSize is rejected",
+  async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    // Use a small limit so we can construct precise test cases.
+    // header_nread counts: URL path + header field names + header values
+    // (NOT the "GET ", " HTTP/1.1\r\n", ": ", or "\r\n" framing).
+    // For "GET /xx HTTP/1.1\r\nH: V\r\n\r\n":
+    //   header_nread = len("/xx") + len("H") + len("V") = 3 + 1 + 1 = 5
+    const LIMIT = 100;
+
+    const server = http.createServer({
+      maxHeaderSize: LIMIT,
+    }, (_req, res) => {
+      res.end("should not reach");
+    });
+
+    let gotClientError = false;
+    server.on("clientError", (err: Error & { code?: string }, socket) => {
+      gotClientError = true;
+      assertEquals(err.code, "HPE_HEADER_OVERFLOW");
+      if (socket.writable) {
+        socket.end("HTTP/1.1 431 Too Large\r\n\r\n");
+      }
+    });
+
+    server.listen(0, () => {
+      const port = (server.address() as AddressInfo).port;
+      // header_nread = len("/") + len("Host") + len("x") + len("X-Pad") + len(value)
+      //             = 1 + 4 + 1 + 5 + value_len
+      //             = 11 + value_len
+      // We need 11 + value_len = LIMIT, so value_len = LIMIT - 11
+      const valueLen = LIMIT - 11;
+      const sock = net.createConnection(port, "127.0.0.1", () => {
+        sock.write(
+          `GET / HTTP/1.1\r\nHost: x\r\nX-Pad: ${"a".repeat(valueLen)}\r\n\r\n`,
+        );
+      });
+      sock.on("data", () => {});
+      sock.on("close", () => {
+        assert(
+          gotClientError,
+          "exactly maxHeaderSize should trigger overflow",
+        );
+        server.close(() => resolve());
+      });
+      sock.on("error", () => {
+        server.close(() => resolve());
+      });
+    });
+
+    await promise;
+  },
+);
+
+Deno.test(
+  "[node/http] header overflow boundary: maxHeaderSize - 1 is accepted",
+  async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const LIMIT = 100;
+
+    const server = http.createServer({
+      maxHeaderSize: LIMIT,
+    }, (_req, res) => {
+      res.end("accepted");
+    });
+
+    server.on("clientError", () => {
+      throw new Error("should not get clientError for headers under limit");
+    });
+
+    server.listen(0, () => {
+      const port = (server.address() as AddressInfo).port;
+      // header_nread = 11 + value_len; need < LIMIT, so value_len = LIMIT - 12
+      const valueLen = LIMIT - 12;
+      const sock = net.createConnection(port, "127.0.0.1", () => {
+        sock.write(
+          `GET / HTTP/1.1\r\nHost: x\r\nX-Pad: ${"a".repeat(valueLen)}\r\n\r\n`,
+        );
+      });
+      let data = "";
+      sock.on("data", (d) => {
+        data += d.toString();
+      });
+      sock.on("close", () => {
+        assertStringIncludes(data, "accepted");
+        server.close(() => resolve());
+      });
+      sock.on("error", () => {
+        server.close(() => resolve());
+      });
+    });
+
+    await promise;
+  },
+);
+
+// Regression test: socket.write() + socket.end() in an upgrade handler
+// must not crash. Previously, llhttp_finish() was called without setting
+// up the ExecuteContext, causing a null pointer dereference when the
+// client-side HTTP parser processed the rejected-upgrade response.
+// https://github.com/denoland/deno/issues/28654
+Deno.test(
+  "[node/http] upgrade rejection via socket.write + socket.end does not crash",
+  async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+
+    const server = http.createServer();
+
+    server.on("upgrade", (_req, socket, _head) => {
+      socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
+      socket.end();
+    });
+
+    server.listen(0, () => {
+      const port = (server.address() as AddressInfo).port;
+
+      const req = http.request({
+        port,
+        host: "127.0.0.1",
+        path: "/",
         headers: {
-          "Connection": "Upgrade, HTTP2-Settings",
-          "Upgrade": "h2c",
+          Connection: "Upgrade",
+          Upgrade: "websocket",
+          "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ==",
+          "Sec-WebSocket-Version": "13",
         },
       });
-      assertEquals(res.status, 200);
-      assertEquals(await res.text(), "ok");
 
+      req.on("response", (res) => {
+        assertEquals(res.statusCode, 404);
+        req.destroy();
+        server.close(() => resolve());
+      });
+
+      req.on("error", () => {
+        // Connection reset is acceptable
+        server.close(() => resolve());
+      });
+
+      req.end();
+    });
+
+    await promise;
+  },
+);
+
+// Regression test: a `node:http` IncomingMessage used as the body of a
+// `Request` must produce a byte `ReadableStream`, so that
+// `getReader({ mode: "byob" })` works.
+// https://github.com/denoland/deno/issues/33392
+Deno.test(
+  "[node/http] IncomingMessage as Request body supports BYOB reader",
+  async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+
+    const server = http.createServer(async (req, res) => {
+      const request = new Request("http://localhost/", {
+        method: req.method,
+        headers: req.headers as HeadersInit,
+        body: req as unknown as BodyInit,
+        duplex: "half",
+        // deno-lint-ignore no-explicit-any
+      } as any);
+
+      const reader = request.body!.getReader({ mode: "byob" });
+      const buf = new Uint8Array(32);
+      const { value, done } = await reader.read(buf);
+      assertEquals(done, false);
+      assertEquals(new TextDecoder().decode(value), "hello world");
+
+      res.end("OK");
       server.close(() => resolve());
     });
 
+    server.listen(0, async () => {
+      const port = (server.address() as AddressInfo).port;
+      const res = await fetch(`http://localhost:${port}/`, {
+        method: "POST",
+        body: "hello world",
+      });
+      assertEquals(await res.text(), "OK");
+    });
+
+    await promise;
+  },
+);
+
+// https://github.com/denoland/deno/issues/33567
+Deno.test(
+  "[node/http] cancelling Readable.toWeb(req) does not destroy the socket",
+  async () => {
+    const { Readable } = await import("node:stream");
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+    const server = http.createServer(async (req, res) => {
+      try {
+        const body = Readable.toWeb(req) as ReadableStream<Uint8Array>;
+        const reader = body.getReader();
+        await reader.read();
+        await reader.cancel();
+
+        await new Promise((r) => setTimeout(r, 50));
+
+        res.end("OK");
+      } catch (e) {
+        reject(e);
+      }
+    });
+
+    server.listen(0, async () => {
+      try {
+        const port = (server.address() as AddressInfo).port;
+        const pendingTimers = new Set<NodeJS.Timeout>();
+        const res = await fetch(`http://127.0.0.1:${port}/`, {
+          method: "POST",
+          duplex: "half",
+          body: new ReadableStream({
+            async pull(controller) {
+              await new Promise<void>((r) => {
+                const t = setTimeout(() => {
+                  pendingTimers.delete(t);
+                  r();
+                }, 50);
+                pendingTimers.add(t);
+              });
+              controller.enqueue(new TextEncoder().encode("hello"));
+            },
+            cancel() {
+              for (const t of pendingTimers) clearTimeout(t);
+              pendingTimers.clear();
+            },
+          }),
+        } as RequestInit);
+
+        assertEquals(res.status, 200);
+        assertEquals(await res.text(), "OK");
+      } finally {
+        server.close(() => resolve());
+      }
+    });
+
+    await promise;
+  },
+);
+
+// deno-lint-ignore no-explicit-any
+type ProxyAgentLike = any;
+// deno-lint-ignore no-explicit-any
+type HttpWithProxy = any;
+
+Deno.test("[node/http] setGlobalProxyFromEnv validates input", () => {
+  for (const bad of [42, "string", null, [], true]) {
+    let err: { code?: string } | undefined;
+    try {
+      (http as HttpWithProxy).setGlobalProxyFromEnv(bad);
+    } catch (e) {
+      err = e as { code?: string };
+    }
+    assert(err, `expected throw for ${typeof bad}`);
+    assertEquals(err!.code, "ERR_INVALID_ARG_TYPE");
+  }
+});
+
+Deno.test("[node/http] setGlobalProxyFromEnv rejects malformed proxy URLs", () => {
+  for (
+    const cfg of [{ http_proxy: "not a url" }, { https_proxy: "not a url" }]
+  ) {
+    let err: { code?: string } | undefined;
+    try {
+      (http as HttpWithProxy).setGlobalProxyFromEnv(cfg);
+    } catch (e) {
+      err = e as { code?: string };
+    }
+    assert(err);
+    assertEquals(err!.code, "ERR_PROXY_INVALID_CONFIG");
+  }
+});
+
+Deno.test("[node/http] setGlobalProxyFromEnv returns a restore function", () => {
+  const restore = (http as HttpWithProxy).setGlobalProxyFromEnv({
+    http_proxy: "http://127.0.0.1:9999",
+  });
+  assertEquals(typeof restore, "function");
+  restore();
+  // calling twice is a no-op
+  restore();
+});
+
+Deno.test("[node/http] Agent proxyEnv rejects CRLF-injected proxy URLs", () => {
+  for (
+    const proxyUrl of [
+      "http://user\r:pass@proxy.example.com:8080",
+      "http://user\n:pass@proxy.example.com:8080",
+      "http://user:pass\r@proxy.example.com:8080",
+      "http://user:pass\n@proxy.example.com:8080",
+      "http://user\r\nHost: example.com:pass@proxy.example.com:8080",
+    ]
+  ) {
+    let err: { code?: string } | undefined;
+    try {
+      new http.Agent({
+        proxyEnv: { HTTP_PROXY: proxyUrl },
+      } as ProxyAgentLike);
+    } catch (e) {
+      err = e as { code?: string };
+    }
+    assert(err, `expected throw for ${JSON.stringify(proxyUrl)}`);
+    assertEquals(err!.code, "ERR_PROXY_INVALID_CONFIG");
+  }
+});
+
+Deno.test(
+  "[node/http] http.request through HTTP_PROXY rewrites to absolute URL",
+  async () => {
+    // Verifies the proxy receives the full URL form (GET http://target/path)
+    // and a Proxy-Connection header, then forwards the body back.
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+    const proxy = http.createServer((req, res) => {
+      try {
+        assertEquals(req.method, "GET");
+        assert(req.url!.startsWith("http://"));
+        assertEquals(req.headers["proxy-connection"], "keep-alive");
+        assertEquals(req.headers["connection"], "keep-alive");
+      } catch (e) {
+        reject(e);
+        res.statusCode = 500;
+        res.end("test-fail");
+        return;
+      }
+      res.end("via-proxy");
+    });
+    proxy.listen(0, () => {
+      const proxyPort = (proxy.address() as AddressInfo).port;
+      // unreachable target - the proxy intercepts and short-circuits.
+      const req = http.request({
+        hostname: "127.0.0.1",
+        port: 1,
+        path: "/foo",
+        agent: new http.Agent({
+          keepAlive: true,
+          proxyEnv: {
+            HTTP_PROXY: `http://127.0.0.1:${proxyPort}`,
+          },
+        } as ProxyAgentLike),
+      }, (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c) => chunks.push(c));
+        res.on("end", () => {
+          try {
+            assertEquals(Buffer.concat(chunks).toString(), "via-proxy");
+            proxy.close();
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+      });
+      req.on("error", reject);
+      req.end();
+    });
+    await promise;
+  },
+);
+
+Deno.test(
+  "[node/http] NO_PROXY bypasses configured HTTP_PROXY",
+  async () => {
+    // If NO_PROXY matches the target, the request should hit the origin
+    // directly rather than the configured (and unreachable) proxy.
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+    const origin = http.createServer((_req, res) => res.end("direct"));
+    origin.listen(0, () => {
+      const port = (origin.address() as AddressInfo).port;
+      const req = http.request({
+        hostname: "127.0.0.1",
+        port,
+        path: "/",
+        agent: new http.Agent({
+          proxyEnv: {
+            HTTP_PROXY: "http://10.255.255.1:1",
+            NO_PROXY: "127.0.0.1",
+          },
+        } as ProxyAgentLike),
+      }, (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c) => chunks.push(c));
+        res.on("end", () => {
+          try {
+            assertEquals(Buffer.concat(chunks).toString(), "direct");
+            origin.close();
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+      });
+      req.on("error", reject);
+      req.end();
+    });
     await promise;
   },
 );

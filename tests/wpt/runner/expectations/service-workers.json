@@ -85,6 +85,7 @@
       "NavigationPreloadManager interface: operation disable()",
       "NavigationPreloadManager interface: operation setHeaderValue(ByteString)",
       "NavigationPreloadManager interface: operation getState()",
+      "Cache interface: existence and properties of interface object",
       "Cache interface: operation match(RequestInfo, optional CacheQueryOptions)",
       "Cache interface: operation matchAll(optional RequestInfo, optional CacheQueryOptions)",
       "Cache interface: operation add(RequestInfo)",
@@ -97,13 +98,8 @@
       "Cache interface: calling add(RequestInfo) on self.cacheInstance with too few arguments must throw TypeError",
       "Cache interface: self.cacheInstance must inherit property \"addAll(sequence<RequestInfo>)\" with the proper type",
       "Cache interface: calling addAll(sequence<RequestInfo>) on self.cacheInstance with too few arguments must throw TypeError",
-      "Cache interface: self.cacheInstance must inherit property \"keys(optional RequestInfo, optional CacheQueryOptions)\" with the proper type",
-      "Cache interface: calling keys(optional RequestInfo, optional CacheQueryOptions) on self.cacheInstance with too few arguments must throw TypeError",
+      "CacheStorage interface: existence and properties of interface object",
       "CacheStorage interface: operation match(RequestInfo, optional MultiCacheQueryOptions)",
-      "CacheStorage interface: operation keys()",
-      "CacheStorage interface: caches must inherit property \"match(RequestInfo, optional MultiCacheQueryOptions)\" with the proper type",
-      "CacheStorage interface: calling match(RequestInfo, optional MultiCacheQueryOptions) on caches with too few arguments must throw TypeError",
-      "CacheStorage interface: caches must inherit property \"keys()\" with the proper type",
       "Window interface: attribute caches",
       "Navigator interface: attribute serviceWorker",
       "idl_test setup"
@@ -175,6 +171,7 @@
       "NavigationPreloadManager interface: operation disable()",
       "NavigationPreloadManager interface: operation setHeaderValue(ByteString)",
       "NavigationPreloadManager interface: operation getState()",
+      "Cache interface: existence and properties of interface object",
       "Cache interface: operation match(RequestInfo, optional CacheQueryOptions)",
       "Cache interface: operation matchAll(optional RequestInfo, optional CacheQueryOptions)",
       "Cache interface: operation add(RequestInfo)",
@@ -187,13 +184,8 @@
       "Cache interface: calling add(RequestInfo) on self.cacheInstance with too few arguments must throw TypeError",
       "Cache interface: self.cacheInstance must inherit property \"addAll(sequence<RequestInfo>)\" with the proper type",
       "Cache interface: calling addAll(sequence<RequestInfo>) on self.cacheInstance with too few arguments must throw TypeError",
-      "Cache interface: self.cacheInstance must inherit property \"keys(optional RequestInfo, optional CacheQueryOptions)\" with the proper type",
-      "Cache interface: calling keys(optional RequestInfo, optional CacheQueryOptions) on self.cacheInstance with too few arguments must throw TypeError",
+      "CacheStorage interface: existence and properties of interface object",
       "CacheStorage interface: operation match(RequestInfo, optional MultiCacheQueryOptions)",
-      "CacheStorage interface: operation keys()",
-      "CacheStorage interface: caches must inherit property \"match(RequestInfo, optional MultiCacheQueryOptions)\" with the proper type",
-      "CacheStorage interface: calling match(RequestInfo, optional MultiCacheQueryOptions) on caches with too few arguments must throw TypeError",
-      "CacheStorage interface: caches must inherit property \"keys()\" with the proper type",
       "WorkerGlobalScope interface: attribute caches",
       "WorkerNavigator interface: attribute serviceWorker"
     ]
@@ -230,8 +222,24 @@
         "Cache.delete with ignoreSearch option (when it is specified as false)"
       ]
     },
-    "cache-keys.https.any.html": false,
-    "cache-keys.https.any.worker.html": false,
+    "cache-keys.https.any.html": {
+      "expectedFailures": [
+        "Cache.keys with ignoreSearch option (request with no search parameters)",
+        "Cache.keys with ignoreSearch option (request with search parameters)",
+        "Cache.keys supports ignoreMethod",
+        "Cache.keys supports ignoreVary",
+        "Cache.keys without parameters and VARY entries"
+      ]
+    },
+    "cache-keys.https.any.worker.html": {
+      "expectedFailures": [
+        "Cache.keys with ignoreSearch option (request with no search parameters)",
+        "Cache.keys with ignoreSearch option (request with search parameters)",
+        "Cache.keys supports ignoreMethod",
+        "Cache.keys supports ignoreVary",
+        "Cache.keys without parameters and VARY entries"
+      ]
+    },
     "cache-match.https.any.worker.html": {
       "expectedFailures": [
         "Cache.match supports ignoreMethod",
@@ -263,10 +271,26 @@
         "Cache.put with a VARY:* opaque response should not reject"
       ]
     },
-    "cache-storage-keys.https.any.html": false,
-    "cache-storage-keys.https.any.worker.html": false,
-    "cache-storage-match.https.any.html": false,
-    "cache-storage-match.https.any.worker.html": false,
+    "cache-storage-keys.https.any.html": {
+      "ignore": true
+    },
+    "cache-storage-keys.https.any.worker.html": {
+      "ignore": true
+    },
+    "cache-storage-match.https.any.html": {
+      "expectedFailures": [
+        "CacheStorageMatch supports ignoreSearch",
+        "Cache.match supports ignoreMethod",
+        "CacheStorageMatch supports ignoreVary"
+      ]
+    },
+    "cache-storage-match.https.any.worker.html": {
+      "expectedFailures": [
+        "CacheStorageMatch supports ignoreSearch",
+        "Cache.match supports ignoreMethod",
+        "CacheStorageMatch supports ignoreVary"
+      ]
+    },
     "cache-storage.https.any.html": {
       "expectedFailures": [
         "CacheStorage.delete dooms, but does not delete immediately",

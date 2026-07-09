@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_process"
-version = "0.59.0"
+version = "0.69.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -26,10 +26,8 @@ deno_subprocess_windows.workspace = true
 libc.workspace = true
 log.workspace = true
 memchr.workspace = true
-pin-project-lite.workspace = true
 rand.workspace = true
 serde.workspace = true
-simd-json.workspace = true
 sys_traits = { workspace = true, features = ["real", "winapi", "libc"] }
 tempfile.workspace = true
 thiserror.workspace = true
@@ -39,5 +37,4 @@ tokio.workspace = true
 nix = { workspace = true, features = ["signal", "process"] }
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = [] }
-windows-sys.workspace = true
+windows-sys = { workspace = true, features = ["Win32_System_Threading"] }
