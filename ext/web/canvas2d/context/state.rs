@@ -2,6 +2,7 @@
 
 use deno_core::WebIDL;
 use deno_core::v8;
+use deno_core::webidl::WebIdlConverter;
 use vello::kurbo;
 use vello::peniko;
 
@@ -18,7 +19,6 @@ pub(super) enum PredefinedColorSpace {
   #[default]
   #[webidl(rename = "srgb")]
   Srgb,
-  // TODO(petamoriken): rendering in display-p3 color space is not yet implemented.
   #[webidl(rename = "display-p3")]
   DisplayP3,
 }
@@ -165,23 +165,90 @@ impl GlobalCompositeOperation {
   }
 }
 
-#[derive(WebIDL)]
-#[webidl(dictionary)]
 pub(super) struct Canvas2DSettings {
-  #[webidl(default = true)]
   pub(super) alpha: bool,
   // OffscreenCanvas has no display compositor; accepted but unused.
   #[allow(dead_code, reason = "no display compositor; accepted but unused")]
-  #[webidl(default = false)]
   pub(super) desynchronized: bool,
-  #[webidl(default = PredefinedColorSpace::Srgb)]
+  // TODO(petamoriken): rendering in display-p3 color space is not yet implemented.
   pub(super) color_space: PredefinedColorSpace,
   // TODO(petamoriken): float16 rendering is not yet implemented.
   #[allow(dead_code, reason = "float16 rendering is not yet implemented")]
-  #[webidl(default = CanvasColorType::Unorm8)]
   pub(super) color_type: CanvasColorType,
-  #[webidl(default = false)]
   pub(super) will_read_frequently: bool,
+}
+
+impl<'a> WebIdlConverter<'a> for Canvas2DSettings {
+  type Options = ();
+
+  fn convert<'b, 'i>(
+    scope: &mut v8::PinScope<'a, 'i>,
+    value: v8::Local<'a, v8::Value>,
+    prefix: std::borrow::Cow<'static, str>,
+    context: deno_core::webidl::ContextFn<'b>,
+    options: &Self::Options,
+  ) -> Result<Self, deno_core::webidl::WebIdlError> {
+    #[derive(WebIDL)]
+    #[webidl(dictionary)]
+    struct RawCanvas2DSettings {
+      #[webidl(default = true)]
+      alpha: bool,
+      #[webidl(default = false)]
+      desynchronized: bool,
+      #[webidl(default = String::from("srgb"))]
+      color_space: String,
+      #[webidl(default = String::from("unorm8"))]
+      color_type: String,
+      #[webidl(default = false)]
+      will_read_frequently: bool,
+    }
+
+    let raw = RawCanvas2DSettings::convert(
+      scope,
+      value,
+      prefix.clone(),
+      context.borrowed(),
+      options,
+    )?;
+
+    let color_space = match raw.color_space.as_str() {
+      "srgb" => PredefinedColorSpace::Srgb,
+      "display-p3" => PredefinedColorSpace::DisplayP3,
+      _ => {
+        return Err(deno_core::webidl::WebIdlError::new(
+          prefix,
+          context.borrowed(),
+          deno_core::webidl::WebIdlErrorKind::InvalidEnumVariant {
+            converter: "PredefinedColorSpace",
+            variant: raw.color_space,
+          },
+        ));
+      }
+    };
+
+    let color_type = match raw.color_type.as_str() {
+      "unorm8" => CanvasColorType::Unorm8,
+      "float16" => CanvasColorType::Float16,
+      _ => {
+        return Err(deno_core::webidl::WebIdlError::new(
+          prefix,
+          context.borrowed(),
+          deno_core::webidl::WebIdlErrorKind::InvalidEnumVariant {
+            converter: "CanvasColorType",
+            variant: raw.color_type,
+          },
+        ));
+      }
+    };
+
+    Ok(Self {
+      alpha: raw.alpha,
+      desynchronized: raw.desynchronized,
+      color_space,
+      color_type,
+      will_read_frequently: raw.will_read_frequently,
+    })
+  }
 }
 
 #[derive(Clone)]
