@@ -29,20 +29,10 @@ mod report;
 /// Global counter for generating unique test serial IDs
 static TEST_SERIAL_ID: AtomicUsize = AtomicUsize::new(0);
 
-const RUN_ARGS: &[&str] = &[
-  "run",
-  "-A",
-  "--quiet",
-  "--unsafe-proto",
-];
+const RUN_ARGS: &[&str] = &["run", "-A", "--quiet", "--unsafe-proto"];
 
-const TEST_ARGS: &[&str] = &[
-  "test",
-  "-A",
-  "--quiet",
-  "--unsafe-proto",
-  "--no-check",
-];
+const TEST_ARGS: &[&str] =
+  &["test", "-A", "--quiet", "--unsafe-proto", "--no-check"];
 
 /// Per-platform value: either a boolean (true = enabled, false = disabled)
 /// or an object describing an expected failure.
