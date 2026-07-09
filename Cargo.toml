@@ -92,7 +92,7 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "=0.53.2", features = ["transpiling"] }
+deno_ast = { version = "=0.53.3", features = ["transpiling"] }
 deno_core_icudata = "0.77.0"
 deno_doc = "=0.202.0"
 deno_error = "=0.7.1"
@@ -635,8 +635,3 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.twox-hash]
 opt-level = 3
-
-# TODO(bartlomieju): remove once a deno_ast release with the collapsed
-# multi-line diagnostic snippets (denoland/deno_ast#334) is published.
-[patch.crates-io]
-deno_ast = { git = "https://github.com/bartlomieju/deno_ast", rev = "77c4b62316874dded8cbd74e0a823d3445f6a433" }
