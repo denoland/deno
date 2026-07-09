@@ -659,6 +659,14 @@ fn extract_tarball_gz(gz_bytes: &[u8], dest: &Path) -> Result<(), AnyError> {
   let mut archive = tar::Archive::new(GzDecoder::new(gz_bytes));
   for entry in archive.entries()? {
     let mut entry = entry?;
+    // Never materialize link entries. A symlink entry pointing outside `dest`,
+    // followed by a regular-file entry nested "under" it, would let `unpack`
+    // (via `create_dir_all` following the symlink) write outside `dest`. We only
+    // need regular files/dirs for type extraction, so skip links entirely.
+    let entry_type = entry.header().entry_type();
+    if entry_type.is_symlink() || entry_type.is_hard_link() {
+      continue;
+    }
     let path = entry.path()?.into_owned();
     // Skip the leading "package/" (or whatever the single root dir is named).
     let stripped: PathBuf = path.components().skip(1).collect();

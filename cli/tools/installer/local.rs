@@ -242,6 +242,17 @@ pub async fn sync_types_command(flags: Arc<Flags>) -> Result<(), AnyError> {
   let http_client = factory.http_client_provider().get_or_create()?;
   let permissions = factory.root_permissions_container()?.clone();
 
+  // Generate at the workspace/config root, not the current working directory,
+  // so running `deno sync-types` from a subdirectory still writes the config
+  // next to deno.json and picks up the root import map.
+  let project_root = cli_options
+    .workspace()
+    .root_dir_url()
+    .to_file_path()
+    .map_err(|_| {
+      deno_core::anyhow::anyhow!("workspace root is not a local directory")
+    })?;
+
   // Build the module graph over the whole project to discover every external
   // (npm:/jsr:/http(s):) specifier the code actually uses — including specifiers
   // written directly in source and across workspace members, not just the ones
@@ -259,6 +270,12 @@ pub async fn sync_types_command(flags: Arc<Flags>) -> Result<(), AnyError> {
     // project those trees hold tens of thousands of files; feeding them as graph
     // roots makes the build choke. Keep only the project's own source so we
     // discover the external specifiers it actually imports.
+    //
+    // The `node_modules`/`.deno` check is on the path RELATIVE to the project
+    // root, so a project that happens to live beneath an ancestor directory
+    // named `node_modules` (e.g. developed in place) isn't filtered away
+    // entirely. DENO_DIR is filtered by prefix when resolvable; it's normally
+    // outside the project so its files aren't collected as roots regardless.
     let deno_dir_root = factory.deno_dir().ok().map(|d| d.root.clone());
     let roots: Vec<_> = roots
       .into_iter()
@@ -266,15 +283,15 @@ pub async fn sync_types_command(flags: Arc<Flags>) -> Result<(), AnyError> {
         let Ok(path) = u.to_file_path() else {
           return true;
         };
-        if path.components().any(|c| {
-          matches!(c.as_os_str().to_str(), Some("node_modules") | Some(".deno"))
-        }) {
+        if let Some(root) = &deno_dir_root
+          && path.starts_with(root)
+        {
           return false;
         }
-        match &deno_dir_root {
-          Some(root) => !path.starts_with(root),
-          None => true,
-        }
+        let rel = path.strip_prefix(&project_root).unwrap_or(&path);
+        !rel.components().any(|c| {
+          matches!(c.as_os_str().to_str(), Some("node_modules") | Some(".deno"))
+        })
       })
       .collect();
 
@@ -328,17 +345,6 @@ pub async fn sync_types_command(flags: Arc<Flags>) -> Result<(), AnyError> {
     }
     specifiers.into_iter().collect::<Vec<_>>()
   };
-
-  // Generate at the workspace/config root, not the current working directory,
-  // so running `deno sync-types` from a subdirectory still writes the config
-  // next to deno.json and picks up the root import map.
-  let project_root = cli_options
-    .workspace()
-    .root_dir_url()
-    .to_file_path()
-    .map_err(|_| {
-      deno_core::anyhow::anyhow!("workspace root is not a local directory")
-    })?;
 
   let installed = super::npm_compat::setup_npm_compat(
     &project_root,

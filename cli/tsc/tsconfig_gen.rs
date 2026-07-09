@@ -122,8 +122,18 @@ fn ensure_root_tsconfig(project_root: &Path) -> Result<(), std::io::Error> {
   }
 
   let content = std::fs::read_to_string(&root_tsconfig_path)?;
-  let parsed: Option<Value> = jsonc_parser::parse_to_serde_value(
+
+  // Parse as JSONC and edit the raw text by byte range (rather than
+  // re-serializing) so the user's comments and formatting are preserved. An
+  // unparseable file is a hard error rather than being silently overwritten.
+  use jsonc_parser::ast::ObjectPropName;
+  use jsonc_parser::ast::Value as JsoncValue;
+  let ast = jsonc_parser::parse_to_ast(
     &content,
+    &jsonc_parser::CollectOptions {
+      comments: jsonc_parser::CommentCollectionStrategy::Off,
+      tokens: false,
+    },
     &jsonc_parser::ParseOptions::default(),
   )
   .map_err(|e| {
@@ -136,47 +146,67 @@ fn ensure_root_tsconfig(project_root: &Path) -> Result<(), std::io::Error> {
       ),
     )
   })?;
-  let mut tsconfig = parsed.unwrap_or_else(|| json!({}));
 
-  let Some(obj) = tsconfig.as_object_mut() else {
+  let Some(JsoncValue::Object(obj)) = ast.value else {
+    // Not a JSON object (empty file, array, ...) — leave it alone.
     return Ok(());
   };
+  let extends = obj.properties.iter().find(|p| {
+    let name = match &p.name {
+      ObjectPropName::String(s) => s.value.as_ref(),
+      ObjectPropName::Word(w) => w.value,
+    };
+    name == "extends"
+  });
 
-  match obj.get("extends").cloned() {
+  let quoted = format!("\"{extends_path}\"");
+  // Each arm yields Some((start, end, replacement)) as a byte-range splice, or
+  // None when no change is needed.
+  let edit: Option<(usize, usize, String)> = match extends.map(|p| &p.value) {
+    // No `extends` yet: insert it as the first member, right after the `{`.
     None => {
-      obj.insert("extends".to_string(), json!(extends_path));
+      let at = obj.range.start + 1;
+      let comma = if obj.properties.is_empty() { "" } else { "," };
+      Some((at, at, format!("\n  \"extends\": {quoted}{comma}")))
     }
-    Some(Value::String(s)) if s == extends_path => {
-      return Ok(());
+    // Already ours: nothing to do.
+    Some(JsoncValue::StringLit(s)) if s.value.as_ref() == extends_path => None,
+    // A single string: coerce to an array with ours first, original verbatim.
+    Some(JsoncValue::StringLit(s)) => {
+      let orig = &content[s.range.start..s.range.end];
+      Some((s.range.start, s.range.end, format!("[{quoted}, {orig}]")))
     }
-    Some(Value::String(existing)) => {
-      obj.insert("extends".to_string(), json!([extends_path, existing]));
-    }
-    Some(Value::Array(arr)) => {
-      let already = arr
-        .iter()
-        .any(|v| v.as_str().is_some_and(|s| s == extends_path));
-      if already {
-        return Ok(());
+    // An array: prepend ours (right after `[`) unless it's already present.
+    Some(JsoncValue::Array(arr)) => {
+      let present = arr.elements.iter().any(|e| {
+        matches!(e, JsoncValue::StringLit(s) if s.value.as_ref() == extends_path)
+      });
+      if present {
+        None
+      } else {
+        let at = arr.range.start + 1;
+        Some((at, at, format!("{quoted}, ")))
       }
-      let mut new_arr = vec![json!(extends_path)];
-      new_arr.extend(arr);
-      obj.insert("extends".to_string(), Value::Array(new_arr));
     }
+    // Non-string/array `extends` — leave the user's config alone.
     Some(_) => {
-      // Non-string, non-array extends — leave the user's config alone rather
-      // than guessing.
       log::warn!(
-        "tsconfig.json has a non-string `extends`; not modifying. \
+        "tsconfig.json has a non-string/array `extends`; not modifying. \
          Add \"{extends_path}\" to it manually for stock tsc support."
       );
-      return Ok(());
+      None
     }
-  }
+  };
 
-  let content = serde_json::to_string_pretty(&tsconfig)
-    .expect("failed to serialize tsconfig");
-  std::fs::write(&root_tsconfig_path, &content)
+  let Some((start, end, replacement)) = edit else {
+    return Ok(());
+  };
+  let mut new_content =
+    String::with_capacity(content.len() + replacement.len());
+  new_content.push_str(&content[..start]);
+  new_content.push_str(&replacement);
+  new_content.push_str(&content[end..]);
+  std::fs::write(&root_tsconfig_path, &new_content)
 }
 
 /// Web-global types that `@types/node` also declares (globally, via `node:url`)
@@ -254,16 +284,18 @@ fn strip_top_level_type_decls(text: &str, names: &[&str]) -> String {
       line.starts_with(&format!("type {n} =")) || line == format!("type {n}")
     });
     if is_interface || is_type_alias {
-      // Drop the JSDoc block immediately preceding this declaration.
-      while out.last().is_some_and(|l| l.trim().is_empty()) {
+      // Drop the leading comment block (JSDoc etc.) immediately preceding this
+      // declaration. Bounded to contiguous comment-looking / blank lines so we
+      // never pop real code — a `*/` that closes a non-JSDoc `/* */` block would
+      // otherwise send an unbounded "pop until /**" loop through earlier decls.
+      while out.last().is_some_and(|l| {
+        let t = l.trim_start();
+        t.is_empty()
+          || t.starts_with('*')
+          || t.starts_with("/*")
+          || t.starts_with("//")
+      }) {
         out.pop();
-      }
-      if out.last().is_some_and(|l| l.trim().ends_with("*/")) {
-        while let Some(popped) = out.pop() {
-          if popped.trim_start().starts_with("/**") {
-            break;
-          }
-        }
       }
       if is_interface {
         // Skip to the matching top-level `}` (column 0).
@@ -273,11 +305,25 @@ fn strip_top_level_type_decls(text: &str, names: &[&str]) -> String {
         }
         i += 1;
       } else {
-        // Type alias: skip until the line that ends the statement.
-        while i < lines.len() && !lines[i].trim_end().ends_with(';') {
+        // Type alias. Skip until the statement terminates: a `;` at bracket
+        // depth 0, so an interior `;` inside an object/union type doesn't end it
+        // early. Bounded by end-of-input.
+        let mut depth: i32 = 0;
+        while i < lines.len() {
+          let l = lines[i];
+          for ch in l.chars() {
+            match ch {
+              '{' | '(' | '[' => depth += 1,
+              '}' | ')' | ']' => depth -= 1,
+              _ => {}
+            }
+          }
+          let done = depth <= 0 && l.trim_end().ends_with(';');
           i += 1;
+          if done {
+            break;
+          }
         }
-        i += 1;
       }
       continue;
     }
@@ -285,6 +331,19 @@ fn strip_top_level_type_decls(text: &str, names: &[&str]) -> String {
     i += 1;
   }
   out.join("\n")
+}
+
+/// Rebase a project-root-relative path onto `.deno/`, where the generated
+/// tsconfig lives one level down: `.` -> `..`, `./src` -> `../src`,
+/// `src` -> `../src`, `../x` -> `../../x`. Absolute paths are left untouched.
+fn rebase_onto_deno_dir(path: &str) -> String {
+  if path == "." {
+    return "..".to_string();
+  }
+  if path.starts_with('/') {
+    return path.to_string();
+  }
+  format!("../{}", path.trim_start_matches("./"))
 }
 
 /// Build the tsconfig JSON object.
@@ -339,14 +398,38 @@ fn build_tsconfig(
   }
 
   // Merge user-defined paths from deno.json compilerOptions — these take
-  // priority over generated specifier mappings.
+  // priority over generated specifier mappings. The user's values are relative
+  // to the project root, but the generated tsconfig lives in `.deno/`, so each
+  // value is rebased one level up (like every generated mapping above).
   if let Some(user_paths) = deno_compiler_options
     .and_then(|co| co.get("paths"))
     .and_then(|p| p.as_object())
   {
     for (key, value) in user_paths {
-      specifier_paths.insert(key.clone(), value.clone());
+      let rebased = match value.as_array() {
+        Some(arr) => Value::Array(
+          arr
+            .iter()
+            .map(|v| match v.as_str() {
+              Some(s) => Value::String(rebase_onto_deno_dir(s)),
+              None => v.clone(),
+            })
+            .collect(),
+        ),
+        None => value.clone(),
+      };
+      specifier_paths.insert(key.clone(), rebased);
     }
+  }
+
+  // Rebase the user's `baseUrl` onto `.deno/` too (`.` -> `..`, `./src` ->
+  // `../src`), for the same reason.
+  if let Some(base_url) = deno_compiler_options
+    .and_then(|co| co.get("baseUrl"))
+    .and_then(|b| b.as_str())
+  {
+    compiler_options
+      .insert("baseUrl".to_string(), json!(rebase_onto_deno_dir(base_url)));
   }
 
   // Merge the user's bare-package `compilerOptions.types` with the deno/node
@@ -849,8 +932,11 @@ fn merge_deno_options(base: &mut Map<String, Value>, user_opts: &Value) {
     "noUncheckedIndexedAccess",
     "noUnusedLocals",
     "noUnusedParameters",
-    "paths",
-    "baseUrl",
+    // NOTE: `paths`, `baseUrl` are deliberately NOT passed through here — they
+    // hold project-root-relative paths that must be rebased onto `.deno/` (the
+    // generated tsconfig lives one level down). They're handled in
+    // `build_tsconfig`. (`rootDirs` has the same hazard but is passed through
+    // for now; rebase it too if it ever matters.)
     "rootDirs",
     "skipLibCheck",
     "strict",
@@ -1265,13 +1351,23 @@ interface AlsoKeep {
       .as_object()
       .unwrap();
 
-    // User's custom path should override generated one
+    // User's custom path should override the generated one, rebased onto
+    // `.deno/` (the generated tsconfig lives one level below the project root).
     assert_eq!(
       paths.get("npm:chalk").unwrap(),
-      &json!(["./my-custom-chalk"])
+      &json!(["../my-custom-chalk"])
     );
-    // User's custom path alias should be present
-    assert_eq!(paths.get("~/*").unwrap(), &json!(["./src/*"]));
+    // User's custom path alias is present and rebased.
+    assert_eq!(paths.get("~/*").unwrap(), &json!(["../src/*"]));
+  }
+
+  #[test]
+  fn test_rebase_onto_deno_dir() {
+    assert_eq!(rebase_onto_deno_dir("."), "..");
+    assert_eq!(rebase_onto_deno_dir("./src/*"), "../src/*");
+    assert_eq!(rebase_onto_deno_dir("src/*"), "../src/*");
+    assert_eq!(rebase_onto_deno_dir("../shared"), "../../shared");
+    assert_eq!(rebase_onto_deno_dir("/abs/path"), "/abs/path");
   }
 
   #[test]
@@ -1378,16 +1474,22 @@ interface AlsoKeep {
     ensure_root_tsconfig(root).unwrap();
 
     let content = std::fs::read_to_string(root.join("tsconfig.json")).unwrap();
-    let tsconfig: Value = serde_json::from_str(&content).unwrap();
-    // extends added (ours first), and the user's options are NOT dropped.
+    // The user's comment and trailing comma are PRESERVED (text is spliced, not
+    // re-serialized), so it's still JSONC — parse it as such.
+    assert!(content.contains("// team config"));
+    assert!(content.contains("\"strict\": false,"));
+    let parsed = jsonc_parser::parse_to_serde_value::<Value>(
+      &content,
+      &jsonc_parser::ParseOptions::default(),
+    )
+    .unwrap();
+    // extends added, user's options not dropped.
     assert_eq!(
-      tsconfig.get("extends").unwrap(),
+      parsed.get("extends").unwrap(),
       &json!("./.deno/tsconfig.json")
     );
     assert_eq!(
-      tsconfig
-        .get("compilerOptions")
-        .and_then(|c| c.get("strict")),
+      parsed.get("compilerOptions").and_then(|c| c.get("strict")),
       Some(&json!(false))
     );
   }
