@@ -22,7 +22,6 @@ use deno_error::JsErrorBox;
 use deno_image::image::DynamicImage;
 use parley::FontContext;
 use parley::LayoutContext;
-pub(crate) use renderer::init_canvas_renderer;
 use vello::kurbo;
 use vello::kurbo::Affine;
 use vello::kurbo::BezPath;
@@ -34,7 +33,7 @@ use vello::peniko;
 
 use self::filter::CanvasLayerFilterPrimitive;
 use self::filter::parse_filter_input;
-use self::renderer::DenoCanvasBackend;
+pub(crate) use self::renderer::DenoCanvasBackend;
 use self::renderer::SharedRenderer;
 use self::state::Canvas2DSettings;
 use self::state::ClipEntry;
@@ -2210,6 +2209,7 @@ pub fn create_context<'s>(
     &(),
   )
   .map_err(Canvas2DError::from)?;
+  renderer.get_or_init(renderer::init_canvas_renderer);
 
   let ctx = OffscreenCanvasRenderingContext2D {
     canvas,
