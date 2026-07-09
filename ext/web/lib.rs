@@ -462,11 +462,10 @@ fn op_base64_atob(#[scoped] mut s: ByteString) -> Result<ByteString, WebError> {
     s.truncate(decoded_len);
     Ok(s)
   } else {
-    let decoded = simdutf_base64_decode_to_vec(&s)?;
-    let decoded_len = decoded.len();
-    s[..decoded_len].copy_from_slice(&decoded[..decoded_len]);
-    s.truncate(decoded_len);
-    Ok(s)
+    // Return the freshly decoded bytes directly rather than copying them back
+    // into the (larger) input string's buffer and truncating -- this saves a
+    // full-size memcpy of the output on every large `atob` call.
+    Ok(simdutf_base64_decode_to_vec(&s)?.into())
   }
 }
 

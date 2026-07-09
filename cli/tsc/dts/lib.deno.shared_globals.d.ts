@@ -992,31 +992,7 @@ declare var PerformanceMeasure: typeof globalThis extends
   new (): never;
 };
 
-/** A list of {@linkcode PerformanceEntry} objects passed to a
- * {@linkcode PerformanceObserver} callback via its `observe()` method.
- *
- * @category Performance
- */
-interface PerformanceObserverEntryList {
-  /** Returns all explicitly observed performance entries. */
-  getEntries(): PerformanceEntry[];
-  /** Returns the observed performance entries with the given name. */
-  getEntriesByName(name: string, type?: string): PerformanceEntry[];
-  /** Returns the observed performance entries with the given entry type. */
-  getEntriesByType(type: string): PerformanceEntry[];
-}
-
-/** A list of {@linkcode PerformanceEntry} objects passed to a
- * {@linkcode PerformanceObserver} callback via its `observe()` method.
- *
- * @category Performance
- */
-declare var PerformanceObserverEntryList: {
-  readonly prototype: PerformanceObserverEntryList;
-  new (): never;
-};
-
-/** The callback invoked when the observed set of performance entries grows.
+/** The callback invoked when observed performance entries are recorded.
  *
  * @category Performance
  */
@@ -1024,37 +1000,71 @@ interface PerformanceObserverCallback {
   (list: PerformanceObserverEntryList, observer: PerformanceObserver): void;
 }
 
+/** A list of {@linkcode PerformanceEntry} objects passed to a
+ * {@linkcode PerformanceObserver} callback.
+ *
+ * @category Performance
+ */
+interface PerformanceObserverEntryList {
+  getEntries(): PerformanceEntry[];
+  getEntriesByName(name: string, type?: string): PerformanceEntry[];
+  getEntriesByType(type: string): PerformanceEntry[];
+}
+
+/** A list of {@linkcode PerformanceEntry} objects passed to a
+ * {@linkcode PerformanceObserver} callback.
+ *
+ * @category Performance
+ */
+declare var PerformanceObserverEntryList: typeof globalThis extends
+  { document: any; PerformanceObserverEntryList: infer T } ? T : {
+  readonly prototype: PerformanceObserverEntryList;
+  new (): never;
+};
+
 /** Observes performance measurement events and is notified of new
- * {@linkcode PerformanceEntry} objects as they are recorded in the performance
- * timeline.
+ * {@linkcode PerformanceEntry} objects as they are recorded.
  *
  * @category Performance
  */
 interface PerformanceObserver {
-  /** Stops the observer from receiving any further performance entries. */
   disconnect(): void;
-  /** Specifies the set of performance entry types to observe. */
   observe(
-    options?: {
-      entryTypes?: string[];
-      type?: string;
-      buffered?: boolean;
-    },
+    options?: { entryTypes?: string[]; type?: string; buffered?: boolean },
   ): void;
-  /** Returns the current list of buffered performance entries, emptying it. */
   takeRecords(): PerformanceEntry[];
 }
 
 /** Observes performance measurement events and is notified of new
- * {@linkcode PerformanceEntry} objects as they are recorded in the performance
- * timeline.
+ * {@linkcode PerformanceEntry} objects as they are recorded.
  *
  * @category Performance
  */
-declare var PerformanceObserver: {
+declare var PerformanceObserver: typeof globalThis extends
+  { document: any; PerformanceObserver: infer T } ? T : {
   readonly prototype: PerformanceObserver;
   readonly supportedEntryTypes: readonly string[];
   new (callback: PerformanceObserverCallback): PerformanceObserver;
+};
+
+/** Detailed network timing data for the fetching of a resource, an entry in
+ * the performance timeline with an `entryType` of `"resource"`.
+ *
+ * @category Performance
+ */
+interface PerformanceResourceTiming extends PerformanceEntry {
+  readonly entryType: "resource";
+}
+
+/** Detailed network timing data for the fetching of a resource, an entry in
+ * the performance timeline with an `entryType` of `"resource"`.
+ *
+ * @category Performance
+ */
+declare var PerformanceResourceTiming: typeof globalThis extends
+  { document: any; PerformanceResourceTiming: infer T } ? T : {
+  readonly prototype: PerformanceResourceTiming;
+  new (): never;
 };
 
 /** @category Events */
