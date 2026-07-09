@@ -26,6 +26,7 @@ use serde::ser::SerializeMap;
 use serde_json::Value;
 use thiserror::Error;
 
+use crate::fast_registry_json;
 use crate::resolution::NewestDependencyDate;
 use crate::resolution::NpmPackageVersionNotFound;
 
