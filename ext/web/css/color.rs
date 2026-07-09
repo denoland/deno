@@ -1,8 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// TODO(petamoriken): peniko::Color is AlphaColor<Srgb>. When peniko adds
-// support for non-sRGB color spaces (e.g. display-p3), update this module
-// to leverage those types for wide-gamut canvas color spaces.
+// TODO(petamoriken): use peniko wide-gamut colors when available.
 
 use color::DynamicColor;
 use color::Srgb;
@@ -16,10 +14,7 @@ pub fn is_color_transparent(c: Color) -> bool {
   c.to_rgba8().a == 0
 }
 
-/// CSS system color keywords (CSS Color 4 §6.1). The `color` crate's parser
-/// does not support them, so callers that only need to know whether a string
-/// is a valid `<color>` (e.g. canvas filter validation) check this as a
-/// fallback to [`parse_css_color`].
+/// Returns whether `s` is a CSS system color keyword.
 #[inline]
 pub fn is_css_system_color(s: &str) -> bool {
   matches!(
@@ -60,7 +55,7 @@ pub fn color_to_css_string(color: Color) -> String {
   }
 }
 
-/// Parses a CSS Color Level 4 string into a [`Color`].
+/// Parses a CSS Color Level 4 string.
 ///
 /// Supported formats:
 /// - Hex: `#RGB`, `#RRGGBB`, `#RGBA`, `#RRGGBBAA`

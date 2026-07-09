@@ -273,9 +273,7 @@ pub(super) fn resize(context: &OffscreenCanvasRenderingContext2D) {
   context.drawing.borrow_mut().reset(width, height);
 }
 
-/// Renders the accumulated scene to raw RGBA8 bytes.
-///
-/// Returns a blank zero-filled buffer when no GPU backend is available.
+/// Renders the scene to RGBA8 bytes.
 pub(super) fn render_to_bytes(
   context: &OffscreenCanvasRenderingContext2D,
 ) -> Result<Vec<u8>, Canvas2DError> {
@@ -328,10 +326,7 @@ pub(super) fn render_to_bytes(
   result
 }
 
-/// Renders the accumulated scene directly to an external TextureView.
-///
-/// The view must be created from a texture belonging to the same wgpu device
-/// as this context's renderer. Does nothing when no backend is available.
+/// Renders the scene into a TextureView owned by this renderer's device.
 pub(super) fn render_to_texture_view(
   context: &OffscreenCanvasRenderingContext2D,
   view: &super::renderer::wgpu::TextureView,
@@ -351,9 +346,7 @@ pub(super) fn render_to_texture_view(
       }
       Ok(())
     }
-    // VelloCpu is never used with UnsafeWindowSurface: getContext("2d") on a
-    // surface always calls init_canvas2d_present_state which requires a GPU
-    // adapter, so context creation fails before reaching here.
+    // Surface-backed 2D contexts require a GPU backend.
     DrawingBackend::VelloCpu(_, _) => {
       unreachable!("render_to_texture_view called on Cpu backend")
     }
@@ -764,9 +757,7 @@ pub(super) fn push_compositing_layer(
   true
 }
 
-/// Unconditionally pushes a full-canvas-rect compositing layer with the
-/// given blend mode/alpha (unlike push_compositing_layer, which skips
-/// pushing anything for the common source-over/alpha=1 case).
+/// Pushes a full-canvas compositing layer.
 pub(super) fn push_full_canvas_layer(
   drawing: &mut DrawingBackend,
   blend: peniko::BlendMode,
@@ -798,12 +789,7 @@ pub(super) fn pop_compositing_layer(drawing: &mut DrawingBackend) {
   }
 }
 
-/// Draws a shadow whose alpha follows the source content's own per-pixel
-/// alpha, per spec (shadow alpha = source alpha * shadowColor alpha),
-/// rather than a solid silhouette of the shape. `draw_source` renders the
-/// real content (with its real brush/image) offset by the shadow
-/// transform; the result is then tinted with the solid shadow color via
-/// a SrcIn layer.
+/// Draws a shadow using the source content's alpha mask.
 pub(super) fn draw_shadow(
   drawing: &mut DrawingBackend,
   width: u32,
@@ -839,11 +825,7 @@ pub(super) fn draw_shadow(
   pop_compositing_layer(drawing); // pop the SrcOver isolation layer
 }
 
-/// Pushes a single clip layer with the given fill rule and transform. The
-/// CPU backend's `push_clip_layer` has no fill-rule/transform parameters
-/// of its own -- it uses whatever was last set via `set_fill_rule()` /
-/// `set_transform()` -- so those must be applied first to keep it in sync
-/// with the GPU backend.
+/// Pushes a clip layer after syncing fill rule and transform.
 pub(super) fn push_clip(
   drawing: &mut DrawingBackend,
   fill: peniko::Fill,
@@ -866,10 +848,7 @@ pub(super) fn push_clip(
   }
 }
 
-/// Builds a Stroke reflecting the current line style state
-/// (width, cap, join, miter limit, dash pattern). Shared by actual
-/// stroke rendering and isPointInStroke() hit-testing so the two stay in
-/// sync.
+/// Builds the stroke style shared by rendering and hit-testing.
 #[inline]
 pub(super) fn build_stroke(state: &DrawingState) -> Stroke {
   let mut stroke =

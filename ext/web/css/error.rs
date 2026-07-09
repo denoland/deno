@@ -26,9 +26,7 @@ pub enum CSSCustomError {
 
 pub type CSSParseError<'i> = cssparser::ParseError<'i, CSSCustomError>;
 
-/// Convert a CSS parse error to a user-friendly string.
-///
-/// Avoids verbose `Token` debug output for `UnexpectedToken` errors.
+/// Converts a CSS parse error to a concise string.
 pub fn css_parse_error_to_string(error: CSSParseError<'_>) -> String {
   match error.kind {
     ParseErrorKind::Basic(BasicParseErrorKind::UnexpectedToken(_)) => {

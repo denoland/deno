@@ -23,8 +23,7 @@ pub struct Path2D {
   pub(super) path: RefCell<BezPath>,
 }
 
-/// `ToNumber(v)` guarded by a `TryCatch`: a user `valueOf` may throw, and an
-/// unguarded `number_value` would leave that exception pending on the isolate.
+/// `ToNumber(v)` guarded by a `TryCatch`.
 fn to_number_guarded(
   scope: &mut v8::PinScope<'_, '_>,
   value: v8::Local<'_, v8::Value>,
@@ -490,11 +489,7 @@ fn parse_single_radius(
   }
 }
 
-/// Reads a `DOMPointInit` member: a missing or `undefined` member falls back
-/// to its default (0), while a value that cannot be converted to a number
-/// (e.g. a BigInt) throws a TypeError. Note this is distinct from
-/// `Canvas2DError::NonFinite`, which per spec is silently ignored by
-/// `roundRect()` rather than thrown.
+/// Reads a `DOMPointInit` member with default fallback.
 fn dom_point_init_member(
   scope: &mut v8::PinScope<'_, '_>,
   obj: v8::Local<'_, v8::Object>,
@@ -572,7 +567,7 @@ pub(super) fn parse_round_rect_radii(
   }
 }
 
-/// Build a roundRect path per the spec algorithm.
+/// Builds a roundRect path.
 /// https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-roundrect
 pub(super) fn build_round_rect_path(
   path: &mut BezPath,
@@ -703,7 +698,7 @@ pub(super) fn build_round_rect_path(
   path.close_path();
 }
 
-/// Add an elliptical arc from start_quarter to end_quarter (in quarter-turns from 3 o'clock).
+/// Adds an elliptical arc over quarter-turn bounds.
 fn add_elliptical_arc(
   path: &mut BezPath,
   cx: f64,

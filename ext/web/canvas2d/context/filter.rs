@@ -86,10 +86,8 @@ pub(super) enum CanvasLayerTurbulenceKind {
   Turbulence,
 }
 
-/// Parses the object-form `beginLayer({ filter })` value implemented by the
-/// tentative layer API. Unknown filter names are tolerated per WPT
-/// beginLayer-options expectations, but recognized primitives are validated
-/// and retained for future rendering support.
+/// Parses the object-form `beginLayer({ filter })` value.
+/// https://github.com/whatwg/html/pull/9537
 #[inline]
 pub(super) fn parse_filter_input<'a>(
   scope: &mut v8::PinScope<'a, 'a>,
@@ -631,7 +629,7 @@ fn to_number_guarded<'a>(
   n
 }
 
-/// `ToString(v)` guarded by a `TryCatch`, see [`to_number_guarded`].
+/// `ToString(v)` guarded by a `TryCatch`.
 #[inline]
 fn to_string_guarded<'a>(
   scope: &mut v8::PinScope<'a, 'a>,

@@ -14,7 +14,6 @@ pub(crate) use context::DenoCanvasBackend;
 pub use context::OffscreenCanvasRenderingContext2D;
 pub use context::UNSTABLE_FEATURE_NAME;
 pub use context::create_context;
-pub use context::op_canvas2d_init;
 pub use error::Canvas2DError;
 pub use gradient::CanvasGradient;
 pub use image::set_offscreen_canvas_pixel_sync;
