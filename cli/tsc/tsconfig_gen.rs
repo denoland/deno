@@ -224,6 +224,8 @@ fn build_tsconfig(
   specifier_paths.extend(jsr_paths);
   let local_paths = generate_local_alias_paths(deno_imports);
   specifier_paths.extend(local_paths);
+  let http_alias_paths = generate_http_alias_paths(deno_imports, http_modules);
+  specifier_paths.extend(http_alias_paths);
   let http_paths = generate_http_paths(http_modules);
   specifier_paths.extend(http_paths);
 
@@ -283,6 +285,34 @@ fn build_tsconfig(
 /// `"@/": "./"`, `"utils": "./src/utils.ts"`) to project-relative paths. The
 /// generated tsconfig lives in `.deno/`, so a project-root path `./x` becomes
 /// `../x`. Trailing-slash prefix aliases become `<alias>*` -> `../<base>*`.
+/// Map import-map aliases whose target is a mirrored http(s) URL to the local
+/// mirror file, so code (and `jsxImportSource`) that imports the *alias* — e.g.
+/// `lume/jsx-runtime` -> `https://.../jsx-runtime.ts` — resolves. Without this
+/// only the raw URL is mapped, not the alias the source actually uses.
+fn generate_http_alias_paths(
+  deno_imports: Option<&Value>,
+  http_modules: &BTreeMap<Url, String>,
+) -> Map<String, Value> {
+  let mut paths = Map::new();
+  let Some(imports) = deno_imports.and_then(|v| v.as_object()) else {
+    return paths;
+  };
+  for (alias, target) in imports {
+    let Some(target) = target.as_str() else {
+      continue;
+    };
+    if !(target.starts_with("http://") || target.starts_with("https://")) {
+      continue;
+    }
+    if let Ok(url) = Url::parse(target)
+      && let Some(mirrored) = http_modules.get(&url)
+    {
+      paths.insert(alias.clone(), json!([mirrored]));
+    }
+  }
+  paths
+}
+
 fn generate_local_alias_paths(
   deno_imports: Option<&Value>,
 ) -> Map<String, Value> {
