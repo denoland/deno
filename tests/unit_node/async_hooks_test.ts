@@ -304,3 +304,69 @@ Deno.test(async function asyncLocalStoragePreservedInNetCallbacks() {
     clientConnect: "client-context",
   });
 });
+
+// The async context snapshot is stored on the socket's handle, but
+// `autoSelectFamily` attempts every address after the first on a freshly
+// allocated handle. Without carrying the snapshot across that reinitialization,
+// `AsyncLocalStorage.getStore()` is `undefined` inside the `connect` handler
+// whenever the connection is established on anything but the first address.
+Deno.test(async function asyncLocalStoragePreservedOnFamilyFallback() {
+  const net = await import("node:net");
+  const als = new AsyncLocalStorage();
+  let observed: unknown = null;
+  let attemptedAddresses: string[] | undefined;
+
+  const server = net.createServer((socket) => {
+    socket.end("ok");
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as { port: number };
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      als.run("client-context", () => {
+        const client = net.connect({
+          host: "localhost",
+          port,
+          autoSelectFamily: true,
+          // The server is bound to 127.0.0.1 only, so the first address never
+          // accepts a connection: the socket always falls back to the second
+          // one, which is what makes `kReinitializeHandle` run.
+          lookup: (
+            _hostname: string,
+            _options: unknown,
+            cb: (
+              err: Error | null,
+              addresses: { address: string; family: number }[],
+            ) => void,
+          ) => {
+            cb(null, [
+              { address: "::1", family: 6 },
+              { address: "127.0.0.1", family: 4 },
+            ]);
+          },
+        }, () => {
+          observed = als.getStore() ?? null;
+          attemptedAddresses = client.autoSelectFamilyAttemptedAddresses;
+        });
+
+        client.once("error", reject);
+        client.once("data", () => {
+          client.destroy();
+          resolve();
+        });
+      });
+    });
+  } finally {
+    server.close();
+  }
+
+  // Guard against the test silently passing via the first-address fast path,
+  // which would not exercise the handle reinitialization at all.
+  assert(
+    attemptedAddresses !== undefined && attemptedAddresses.length >= 2,
+    `expected a fallback attempt, got ${Deno.inspect(attemptedAddresses)}`,
+  );
+  assertEquals(observed, "client-context");
+});

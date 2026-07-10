@@ -2262,6 +2262,14 @@ ObjectDefineProperty(Socket.prototype, "_handle", {
 });
 
 Socket.prototype[kReinitializeHandle] = function (handle) {
+  // The async context snapshot lives on the handle, and the connect completion
+  // callbacks read it off the handle they were registered on. Capture it before
+  // the old handle goes away: `autoSelectFamily` attempts every address after
+  // the first on a fresh handle, and without carrying the snapshot over,
+  // `AsyncLocalStorage.getStore()` is `undefined` inside the `connect` handler
+  // whenever the connection is established on anything but the first address.
+  const asyncContext = this._handle?.[kAsyncContext];
+
   this._handle?.close();
 
   // Make sure TLS wrap works after reinitialize.
@@ -2277,6 +2285,10 @@ Socket.prototype[kReinitializeHandle] = function (handle) {
 
   this._handle = handle;
   this._handle[ownerSymbol] = this;
+
+  if (asyncContext !== undefined) {
+    this._handle[kAsyncContext] = asyncContext;
+  }
 
   // Carry the NetPermToken over to the new handle, otherwise the next
   // `autoSelectFamily` connection attempt is permission-checked against the
