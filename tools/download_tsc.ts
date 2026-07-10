@@ -13,6 +13,10 @@
 //
 //   deno run -A tools/download_tsc.ts [cache_deno_dir]
 //
+// For local `cargo test` runs of the `deno check` tests, export the path first:
+//
+//   export DENO_TSC_BIN=$(deno run -A tools/download_tsc.ts)
+//
 // The `deno` binary to use is taken from the `DENO_BIN` env var, else the first
 // of `./target/release/deno` or `./target/debug/deno` that exists.
 

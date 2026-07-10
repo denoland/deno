@@ -277,63 +277,6 @@ pub fn denort_exe_path() -> PathRef {
   PathRef::new(p)
 }
 
-/// Path to a native `tsc` binary suitable for `DENO_TSC_BIN`.
-///
-/// `deno check` downloads the native TypeScript compiler on demand into its
-/// `DENO_DIR`. Every `TestContext` uses a fresh temp `DENO_DIR`, so without
-/// this each `deno check` test would re-download the compiler (and emit
-/// `Download` lines that pollute the checked output). We download it once into
-/// a shared directory under `target/` and point every test at it.
-///
-/// Best effort: returns `None` if the compiler can't be obtained (e.g. no
-/// network), in which case check tests fall back to downloading it themselves.
-pub fn native_tsc_bin_path() -> Option<PathRef> {
-  static TSC_BIN: Lazy<Option<PathRef>> = Lazy::new(|| {
-    let base = target_dir().join(".native_tsc");
-    let deno_dir = base.join("deno_dir");
-    if let Some(bin) = find_native_tsc_bin(&deno_dir) {
-      return Some(bin);
-    }
-    // Warm the shared cache once by type-checking a trivial file, which
-    // downloads the pinned compiler into `deno_dir`.
-    let warm = base.join("warm");
-    warm.create_dir_all();
-    warm.join("mod.ts").write("export {};\n");
-    let result = Command::new(deno_exe_path().as_path())
-      .arg("check")
-      .arg("mod.ts")
-      .current_dir(warm.as_path())
-      .env("DENO_DIR", deno_dir.as_path())
-      .env_remove("DENO_TSC_BIN")
-      .stdout(Stdio::null())
-      .stderr(Stdio::null())
-      .status();
-    if result.is_err() {
-      return None;
-    }
-    find_native_tsc_bin(&deno_dir)
-  });
-  TSC_BIN.clone()
-}
-
-fn find_native_tsc_bin(deno_dir: &PathRef) -> Option<PathRef> {
-  let bin_name = if cfg!(windows) { "tsc.exe" } else { "tsc" };
-  // Layout: `$DENO_DIR/tsc/<version>/<platform>/lib/tsc`.
-  let tsc_root = deno_dir.join("tsc");
-  if !tsc_root.exists() {
-    return None;
-  }
-  for version in tsc_root.read_dir().flatten() {
-    for platform in PathRef::new(version.path()).read_dir().flatten() {
-      let bin = PathRef::new(platform.path()).join("lib").join(bin_name);
-      if bin.exists() {
-        return Some(bin);
-      }
-    }
-  }
-  None
-}
-
 pub fn prebuilt_tool_path(tool: &str) -> PathRef {
   let mut exe = tool.to_string();
   exe.push_str(if cfg!(windows) { ".exe" } else { "" });
