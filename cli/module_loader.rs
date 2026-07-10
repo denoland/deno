@@ -364,6 +364,11 @@ struct SharedCliModuleLoaderState {
   in_flight_loads_tracker: InFlightModuleLoadsTracker,
   maybe_eszip_loader: Option<Arc<EszipModuleLoader>>,
   watcher_communicator: Option<Arc<WatcherCommunicator>>,
+  /// Whether the unstable relaxed default permission profile is active. When
+  /// set, loading a module that lives in an npm package grants read on that
+  /// package's folder so the package can read its own bundled data files at
+  /// runtime without a prompt (see `maybe_grant_npm_package_read`).
+  relaxed_default_permissions: bool,
 }
 
 struct InFlightModuleLoadsTracker {
@@ -462,6 +467,8 @@ impl CliModuleLoaderFactory {
         },
         maybe_eszip_loader,
         watcher_communicator,
+        relaxed_default_permissions: options
+          .relaxed_default_permissions_applied(),
       }),
     }
   }
@@ -487,6 +494,7 @@ impl CliModuleLoaderFactory {
         graph_container: graph_container.clone(),
         shared: self.shared.clone(),
         loaded_files: Default::default(),
+        granted_npm_folders: Default::default(),
         hook_registry: hook_registry.clone(),
         maybe_main_module_blob,
       })));
@@ -579,6 +587,9 @@ struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   shared: Arc<SharedCliModuleLoaderState>,
   graph_container: TGraphContainer,
   loaded_files: RefCell<HashSet<ModuleSpecifier>>,
+  /// npm package folders already granted read under the relaxed default
+  /// permission profile, to avoid re-locking permissions on every load.
+  granted_npm_folders: RefCell<HashSet<PathBuf>>,
   hook_registry: deno_runtime::deno_node::ops::module_hooks::LoaderHookRegistry,
   /// For blob/object-URL module workers, the captured root blob and its
   /// specifier. Captured synchronously at worker construction so that a
@@ -835,6 +846,59 @@ impl<TGraphContainer: ModuleGraphContainer>
     )))
   }
 
+  /// When the relaxed default permission profile is active and `specifier`
+  /// resolves into a managed (global cache) npm package, grants read on that
+  /// package's folder to this worker's own permissions. Byonm packages live in
+  /// the cwd `node_modules`, already covered by the cwd read grant, so only the
+  /// managed resolver is consulted. Grants target `self.permissions` (the
+  /// worker's own container, which the runtime `fs` ops check) to preserve
+  /// worker isolation, and are deduplicated per folder. Best-effort: failures
+  /// to resolve or grant are logged and skipped rather than aborting the load.
+  fn maybe_grant_npm_package_read(&self, specifier: &ModuleSpecifier) {
+    if !self.shared.relaxed_default_permissions {
+      return;
+    }
+    if !self.shared.in_npm_pkg_checker.in_npm_package(specifier) {
+      return;
+    }
+    let Some(managed) = self.shared.npm_resolver.as_managed() else {
+      return;
+    };
+    let pkg_id = match managed.resolve_pkg_id_from_specifier(specifier) {
+      Ok(Some(pkg_id)) => pkg_id,
+      Ok(None) => return,
+      Err(err) => {
+        log::debug!(
+          "Failed to resolve npm package id for {}: {}",
+          specifier,
+          err
+        );
+        return;
+      }
+    };
+    let folder = match managed.resolve_pkg_folder_from_pkg_id(&pkg_id) {
+      Ok(folder) => folder,
+      Err(err) => {
+        log::debug!(
+          "Failed to resolve npm package folder for {}: {}",
+          pkg_id.as_serialized(),
+          err
+        );
+        return;
+      }
+    };
+    if !self.granted_npm_folders.borrow_mut().insert(folder.clone()) {
+      return;
+    }
+    if let Err(err) = self.permissions.grant_read_path(&folder) {
+      log::debug!(
+        "Failed to grant read for npm package folder {}: {}",
+        folder.display(),
+        err
+      );
+    }
+  }
+
   async fn load_code_source(
     &self,
     specifier: &ModuleSpecifier,
@@ -870,6 +934,16 @@ impl<TGraphContainer: ModuleGraphContainer>
     } else {
       Cow::Borrowed(specifier)
     };
+
+    // Under the relaxed default permission profile, read is confined to the cwd
+    // and temp dir. When a module that lives in an npm package is loaded, grant
+    // read on that package's folder so the package can read its own bundled
+    // data files at runtime (for example cowsay reading its `.cow` files)
+    // without a prompt. Scoped to packages this program actually imports, so
+    // other cached packages stay unreadable. The grant happens here, before the
+    // module executes its runtime `fs.readFileSync`, so the folder is readable
+    // by the time the data file is read.
+    self.maybe_grant_npm_package_read(&specifier);
 
     let graph = self.graph_container.graph();
     let deno_resolver_requested_module_type =
