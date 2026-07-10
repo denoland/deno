@@ -1602,7 +1602,7 @@ Deno.test(
         assertIsError(serverError, TypeError);
         assertStringIncludes(
           serverError.message,
-          "expected typed ArrayBufferView",
+          "Expected a Uint8Array chunk, but got: string",
         );
       } finally {
         clearTimeout(timeoutId);
