@@ -391,10 +391,6 @@ pub static UNSTABLE_ARGS: &[ArgDef] = &[
     .long("unstable-temporal")
     .set_true()
     .hidden(),
-  ArgDef::new("unstable-tsgo")
-    .long("unstable-tsgo")
-    .set_true()
-    .hidden(),
   ArgDef::new("unstable-unsafe-proto")
     .long("unstable-unsafe-proto")
     .set_true()
