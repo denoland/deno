@@ -9342,3 +9342,51 @@ fn tier3_requires() {
     .is_ok()
   );
 }
+
+// ---------------------------------------------------------------------------
+// PR5 cutover: link / unlink subcommands (newly wired into the parser).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn link_subcommand() {
+  let flags =
+    flags_from_vec(svec!["deno", "link", "../a", "../b", "--lockfile-only"])
+      .unwrap();
+  assert_eq!(
+    flags.subcommand,
+    DenoSubcommand::Link(LinkFlags {
+      paths: svec!["../a", "../b"],
+      lockfile_only: true,
+    })
+  );
+
+  // lock args flow through to the top-level flags.
+  let flags =
+    flags_from_vec(svec!["deno", "link", "../a", "--frozen"]).unwrap();
+  assert_eq!(flags.frozen_lockfile, Some(true));
+  assert!(matches!(
+    flags.subcommand,
+    DenoSubcommand::Link(LinkFlags {
+      lockfile_only: false,
+      ..
+    })
+  ));
+
+  // at least one path is required.
+  assert!(flags_from_vec(svec!["deno", "link"]).is_err());
+}
+
+#[test]
+fn unlink_subcommand() {
+  let flags =
+    flags_from_vec(svec!["deno", "unlink", "@scope/name", "../c"]).unwrap();
+  assert_eq!(
+    flags.subcommand,
+    DenoSubcommand::Unlink(UnlinkFlags {
+      names_or_paths: svec!["@scope/name", "../c"],
+      lockfile_only: false,
+    })
+  );
+
+  assert!(flags_from_vec(svec!["deno", "unlink"]).is_err());
+}

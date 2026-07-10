@@ -151,6 +151,8 @@ pub fn convert(result: ParseResult) -> Result<Flags, CliError> {
     Some("update") => outdated_parse(&result, &mut flags, true),
     Some("clean") => clean_parse(&result, &mut flags),
     Some("list") => list_parse(&result, &mut flags),
+    Some("link") => link_parse(&result, &mut flags),
+    Some("unlink") => unlink_parse(&result, &mut flags),
     Some("approve-scripts" | "approve-builds") => {
       approve_scripts_parse(&result, &mut flags)
     }
@@ -2225,6 +2227,17 @@ fn install_parse(
     ));
   } else if let Some(packages) = result.get_many("cmd") {
     if !packages.is_empty() {
+      // Adding packages needs a config to write them to; `--no-config`
+      // disables that. Mirror clap's guard.
+      if matches!(flags.config_flag, ConfigFlag::Disabled) {
+        return Err(CliError::new(
+          CliErrorKind::InvalidValue,
+          "deno install can't be used to add packages if `--no-config` is passed.",
+        )
+        .with_suggestion(
+          "to cache the packages without adding to a config, pass the `--entrypoint` flag",
+        ));
+      }
       let dev = result.get_bool("dev");
       let default_registry = if result.get_bool("jsr") {
         Some(DefaultRegistry::Jsr)
@@ -2294,6 +2307,15 @@ fn completions_parse(result: &ParseResult, flags: &mut Flags) {
     .get_one("shell")
     .map(|s| s.to_string())
     .unwrap_or_else(|| "bash".to_string());
+  // Dynamic completions (bash/fish/zsh) are generated CLI-side; only record
+  // the target shell here. Other shells fall back to static generation.
+  if result.get_bool("dynamic")
+    && matches!(shell.as_str(), "bash" | "fish" | "zsh")
+  {
+    flags.subcommand =
+      DenoSubcommand::Completions(CompletionsFlags::Dynamic { shell });
+    return;
+  }
   let buf = crate::completions::generate(&shell, &crate::defs::DENO_ROOT);
   flags.subcommand = DenoSubcommand::Completions(CompletionsFlags::Static(
     buf.into_boxed_slice(),
@@ -2757,6 +2779,28 @@ fn list_parse(result: &ParseResult, flags: &mut Flags) {
     prod: result.get_bool("prod"),
     dev: result.get_bool("dev"),
     filters,
+  });
+}
+
+fn link_parse(result: &ParseResult, flags: &mut Flags) {
+  lock_args_parse(result, flags);
+  flags.subcommand = DenoSubcommand::Link(LinkFlags {
+    paths: result
+      .get_many("paths")
+      .map(|v| v.iter().map(|s| s.to_string()).collect())
+      .unwrap_or_default(),
+    lockfile_only: result.get_bool("lockfile-only"),
+  });
+}
+
+fn unlink_parse(result: &ParseResult, flags: &mut Flags) {
+  lock_args_parse(result, flags);
+  flags.subcommand = DenoSubcommand::Unlink(UnlinkFlags {
+    names_or_paths: result
+      .get_many("names_or_paths")
+      .map(|v| v.iter().map(|s| s.to_string()).collect())
+      .unwrap_or_default(),
+    lockfile_only: result.get_bool("lockfile-only"),
   });
 }
 

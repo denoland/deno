@@ -13,7 +13,6 @@ use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::Arc;
 use std::sync::LazyLock;
 
 use clap::Arg;
@@ -1049,8 +1048,81 @@ fn strip_trailing_cr(arg: OsString) -> OsString {
   }
 }
 
-/// Main entry point for parsing deno's command line flags.
+/// Main entry point for parsing deno's command line flags. Routes through the
+/// hand-written `deno_cli_parser`; the `Flags` type is shared between this
+/// crate and the parser crate (`pub use deno_cli_parser::flags::*`), so no
+/// conversion is needed. The parser's `CliError` is mapped back to a
+/// `clap::Error` at this boundary to preserve the caller's error handling.
 pub fn flags_from_vec_with_initial_cwd(
+  args: Vec<OsString>,
+  initial_cwd: Option<PathBuf>,
+) -> clap::error::Result<Flags> {
+  // dx/denox/dnx shim: rewrite the binary name into an explicit `x` subcommand
+  // before parsing (the hand-written parser doesn't special-case argv[0]).
+  let args = if !args.is_empty()
+    && (args[0].as_encoded_bytes().ends_with(b"dx")
+      || args[0].as_encoded_bytes().ends_with(b"denox")
+      || args[0].as_encoded_bytes().ends_with(b"dnx"))
+  {
+    let mut new_args = Vec::with_capacity(args.len() + 1);
+    new_args.push(args[0].clone());
+    new_args.push(OsString::from("x"));
+    new_args.extend(args.into_iter().skip(1));
+    new_args
+  } else {
+    args
+  };
+
+  // The hand-written parser works on `String`s. Args are almost always UTF-8;
+  // non-UTF-8 args (rare, e.g. odd script paths) are converted lossily, matching
+  // clap's tolerance downstream.
+  let string_args: Vec<String> = args
+    .iter()
+    .map(|a| a.to_string_lossy().into_owned())
+    .collect();
+
+  match deno_cli_parser::convert::flags_from_vec(string_args) {
+    Ok(mut flags) => {
+      // Set (and, for compile/desktop, canonicalize) the initial cwd — the
+      // parser crate has no filesystem access, so this stays on the CLI side.
+      flags.initial_cwd = match &flags.subcommand {
+        DenoSubcommand::Compile(_) | DenoSubcommand::Desktop(_) => {
+          initial_cwd.map(|cwd| canonicalize_path(&cwd).ok().unwrap_or(cwd))
+        }
+        _ => initial_cwd,
+      };
+      Ok(flags)
+    }
+    Err(e) => Err(cli_error_to_clap(e)),
+  }
+}
+
+/// Map a `deno_cli_parser::CliError` onto a `clap::Error` so the existing
+/// caller (which special-cases `DisplayVersion` and otherwise routes through
+/// `exit_for_error`) keeps working unchanged. The version text itself is
+/// rendered by the caller from `clap_root()` (see `cli/lib.rs`), so
+/// `DisplayVersion` only needs to carry the kind.
+fn cli_error_to_clap(e: deno_cli_parser::CliError) -> clap::Error {
+  match e.kind {
+    deno_cli_parser::CliErrorKind::DisplayVersion => {
+      clap::Error::raw(clap::error::ErrorKind::DisplayVersion, "")
+    }
+    _ => {
+      let mut message = e.message;
+      if let Some(suggestion) = e.suggestion {
+        message.push_str(&format!("\n\n  tip: {suggestion}"));
+      }
+      clap::Error::raw(clap::error::ErrorKind::ValueValidation, message)
+    }
+  }
+}
+
+/// Legacy clap-based flag parser. Production parsing now routes through the
+/// hand-written `deno_cli_parser` (see `flags_from_vec_with_initial_cwd`); this
+/// is retained to keep the clap parity `mod tests` exercising clap until the
+/// clap parser is removed.
+#[allow(dead_code)]
+fn clap_flags_from_vec_with_initial_cwd(
   args: Vec<OsString>,
   initial_cwd: Option<PathBuf>,
 ) -> clap::error::Result<Flags> {
@@ -7003,20 +7075,9 @@ fn completions_parse(
   let shell = matches.get_one::<String>("shell").unwrap().as_str();
 
   if dynamic && matches!(shell, "bash" | "fish" | "zsh") {
-    let shell = shell.to_string();
-    flags.subcommand = DenoSubcommand::Completions(CompletionsFlags::Dynamic(
-      Arc::new(move || {
-        // SAFETY: unavoidable
-        // Clap uses this to detect if it should generate dynamic completions, so if it isn't set, clap
-        // will just bail out instead of actually printing out the completion command.
-        unsafe {
-          std::env::set_var("COMPLETE", &shell);
-        }
-        let cwd = resolve_cwd(None)?;
-        handle_shell_completion_with_args(std::env::args_os().take(1), &cwd)?;
-        Ok(())
-      }),
-    ));
+    flags.subcommand = DenoSubcommand::Completions(CompletionsFlags::Dynamic {
+      shell: shell.to_string(),
+    });
     return;
   } else if dynamic {
     log::warn!(
@@ -7985,6 +8046,21 @@ fn task_parse(
 
 pub fn handle_shell_completion(cwd: &Path) -> Result<(), AnyError> {
   handle_shell_completion_with_args(std::env::args_os(), cwd)
+}
+
+/// Emit the dynamic shell-completion registration script for `shell`
+/// (bash/fish/zsh). The parser records only the target shell
+/// (`CompletionsFlags::Dynamic { shell }`) and defers this CLI-only generation
+/// here.
+pub fn handle_dynamic_shell_completion(shell: &str) -> Result<(), AnyError> {
+  // SAFETY: runs during single-threaded CLI startup. clap_complete reads
+  // COMPLETE to decide it should print the registration script rather than
+  // bail out.
+  unsafe {
+    std::env::set_var("COMPLETE", shell);
+  }
+  let cwd = resolve_cwd(None)?;
+  handle_shell_completion_with_args(std::env::args_os().take(1), &cwd)
 }
 
 struct ZshCompleterUnsorted;
@@ -9007,6 +9083,14 @@ mod tests {
   /// Creates vector of strings, Vec<String>
   macro_rules! svec {
     ($($x:expr),* $(,)?) => (vec![$($x.to_string().into()),*]);
+  }
+
+  // These tests are the clap parity contract. Production `flags_from_vec` now
+  // routes through the hand-written parser (whose own suite lives in
+  // `deno_cli_parser::tests_full`); shadow it here so this module keeps
+  // exercising the clap parser directly until clap is removed.
+  fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
+    clap_flags_from_vec_with_initial_cwd(args, None)
   }
 
   #[test]

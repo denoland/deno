@@ -1777,17 +1777,20 @@ pub static COMPLETIONS_SUBCOMMAND: CommandDef = CommandDef {
   name: "completions",
   about: "Generate shell completions",
   aliases: &[],
-  args: &[ArgDef::new("shell")
-    .positional()
-    .action(ArgAction::Set)
-    .num_args(NumArgs::Exact(1))
-    .value_parser(ValueParser::Choices(&[
-      "bash",
-      "fish",
-      "powershell",
-      "zsh",
-      "fig",
-    ]))],
+  args: &[
+    ArgDef::new("shell")
+      .positional()
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(&[
+        "bash",
+        "fish",
+        "powershell",
+        "zsh",
+        "fig",
+      ])),
+    ArgDef::new("dynamic").long("dynamic").set_true(),
+  ],
   arg_groups: &[UNSTABLE_ARGS],
   subcommands: &[],
   default_subcommand: None,
@@ -2763,6 +2766,48 @@ pub static WHY_SUBCOMMAND: CommandDef = CommandDef {
   passthrough: false,
 };
 
+pub static LINK_SUBCOMMAND: CommandDef = CommandDef {
+  name: "link",
+  about: "Link a local JSR package into the current project for development",
+  aliases: &[],
+  args: &[
+    ArgDef::new("paths")
+      .positional()
+      .action(ArgAction::Append)
+      .num_args(NumArgs::OneOrMore)
+      .required(),
+    ArgDef::new("lockfile-only")
+      .long("lockfile-only")
+      .set_true(),
+  ],
+  arg_groups: &[LOCK_ARGS],
+  subcommands: &[],
+  default_subcommand: None,
+  trailing_var_arg: false,
+  passthrough: false,
+};
+
+pub static UNLINK_SUBCOMMAND: CommandDef = CommandDef {
+  name: "unlink",
+  about: "Remove a linked local package from the current project",
+  aliases: &[],
+  args: &[
+    ArgDef::new("names_or_paths")
+      .positional()
+      .action(ArgAction::Append)
+      .num_args(NumArgs::OneOrMore)
+      .required(),
+    ArgDef::new("lockfile-only")
+      .long("lockfile-only")
+      .set_true(),
+  ],
+  arg_groups: &[LOCK_ARGS],
+  subcommands: &[],
+  default_subcommand: None,
+  trailing_var_arg: false,
+  passthrough: false,
+};
+
 pub static DENO_ROOT: CommandDef = CommandDef {
   name: "deno",
   about: "A modern JavaScript and TypeScript runtime",
@@ -2803,6 +2848,8 @@ pub static DENO_ROOT: CommandDef = CommandDef {
     SANDBOX_SUBCOMMAND,
     CLEAN_SUBCOMMAND,
     LIST_SUBCOMMAND,
+    LINK_SUBCOMMAND,
+    UNLINK_SUBCOMMAND,
     APPROVE_SCRIPTS_SUBCOMMAND,
     LSP_SUBCOMMAND,
     VENDOR_SUBCOMMAND,

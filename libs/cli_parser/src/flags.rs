@@ -9,11 +9,6 @@ use std::num::NonZeroU8;
 use std::num::NonZeroU32;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
-#[allow(
-  clippy::disallowed_types,
-  reason = "Arc needed for CompletionsFlags::Dynamic"
-)]
-use std::sync::Arc;
 
 pub use deno_bundle_runtime::BundleFormat;
 use deno_bundle_runtime::BundleOptions;
@@ -23,7 +18,6 @@ pub use deno_bundle_runtime::SourceMapType;
 pub use deno_config::deno_json::NewestDependencyDate;
 pub use deno_config::deno_json::NodeModulesDirMode;
 pub use deno_config::deno_json::NodeModulesLinkerMode;
-use deno_core::error::AnyError;
 pub use deno_core::url::Url;
 pub use deno_lib::args::CaData;
 pub use deno_lib::args::UnstableConfig;
@@ -243,36 +237,14 @@ pub struct DesktopFlags {
   pub exclude_unused_npm: bool,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CompletionsFlags {
+  /// Pre-rendered static completion script.
   Static(Box<[u8]>),
-  #[allow(
-    clippy::disallowed_types,
-    reason = "Arc needed for dynamic completion callback"
-  )]
-  Dynamic(Arc<dyn Fn() -> Result<(), AnyError> + Send + Sync + 'static>),
-}
-
-#[allow(clippy::disallowed_types, reason = "Arc used in Dynamic variant")]
-impl PartialEq for CompletionsFlags {
-  fn eq(&self, other: &Self) -> bool {
-    match (self, other) {
-      (Self::Static(l0), Self::Static(r0)) => l0 == r0,
-      (Self::Dynamic(l0), Self::Dynamic(r0)) => Arc::ptr_eq(l0, r0),
-      _ => false,
-    }
-  }
-}
-
-impl Eq for CompletionsFlags {}
-
-impl std::fmt::Debug for CompletionsFlags {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      Self::Static(arg0) => f.debug_tuple("Static").field(arg0).finish(),
-      Self::Dynamic(_) => f.debug_tuple("Dynamic").finish(),
-    }
-  }
+  /// Dynamic completions for the given shell. The actual generation is
+  /// performed on the CLI side (it needs the runtime's completion handler),
+  /// so this variant only records the target shell.
+  Dynamic { shell: String },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
