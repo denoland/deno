@@ -161,6 +161,7 @@ pub static COMPILE_ARGS: &[ArgDef] = &[
     .conflicts_with(&["check"]),
   ArgDef::new("import-map")
     .long("import-map")
+    .long_aliases(&["importmap"])
     .action(ArgAction::Set)
     .num_args(NumArgs::Exact(1)),
   ArgDef::new("no-remote").long("no-remote").set_true(),
@@ -429,6 +430,7 @@ pub static UNSTABLE_ARGS: &[ArgDef] = &[
     .hidden(),
   ArgDef::new("unstable-unsafe-proto")
     .long("unstable-unsafe-proto")
+    .long_aliases(&["unsafe-proto"])
     .set_true()
     .hidden(),
   ArgDef::new("unstable-vsock")
@@ -528,7 +530,8 @@ static RUN_ARGS: &[ArgDef] = &[
     .long("coverage")
     .action(ArgAction::Set)
     .num_args(NumArgs::Optional)
-    .require_equals(),
+    .require_equals()
+    .conflicts_with(&["inspect", "inspect-brk", "inspect-wait"]),
   ArgDef::new("tunnel")
     .long("tunnel")
     .long_aliases(&["connected"])
@@ -706,7 +709,11 @@ pub static FMT_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Append)
       .num_args(NumArgs::ZeroOrMore),
     ArgDef::new("check").long("check").set_true(),
-    ArgDef::new("fail-fast").long("fail-fast").set_true(),
+    ArgDef::new("fail-fast")
+      .long("fail-fast")
+      .long_aliases(&["failfast"])
+      .set_true()
+      .requires(&["check"]),
     ArgDef::new("permit-no-files")
       .long("permit-no-files")
       .set_true(),
@@ -744,33 +751,39 @@ pub static FMT_SUBCOMMAND: CommandDef = CommandDef {
       .value_delimiter(','),
     ArgDef::new("use-tabs")
       .long("use-tabs")
+      .long_aliases(&["options-use-tabs"])
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional)
       .require_equals()
       .value_parser(ValueParser::Bool),
     ArgDef::new("line-width")
       .long("line-width")
+      .long_aliases(&["options-line-width"])
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1))
       .value_parser(ValueParser::NonZeroU32),
     ArgDef::new("indent-width")
       .long("indent-width")
+      .long_aliases(&["options-indent-width"])
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1))
       .value_parser(ValueParser::NonZeroU8),
     ArgDef::new("single-quote")
       .long("single-quote")
+      .long_aliases(&["options-single-quote"])
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional)
       .require_equals()
       .value_parser(ValueParser::Bool),
     ArgDef::new("prose-wrap")
       .long("prose-wrap")
+      .long_aliases(&["options-prose-wrap"])
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1))
       .value_parser(ValueParser::Choices(&["always", "never", "preserve"])),
     ArgDef::new("no-semicolons")
       .long("no-semicolons")
+      .long_aliases(&["options-no-semicolons"])
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional)
       .require_equals()
@@ -830,15 +843,20 @@ pub static LINT_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Append)
       .num_args(NumArgs::ZeroOrMore)
       .require_equals()
-      .value_delimiter(','),
+      .value_delimiter(',')
+      .conflicts_with(&["rules"]),
     ArgDef::new("rules-exclude")
       .long("rules-exclude")
       .action(ArgAction::Append)
       .num_args(NumArgs::ZeroOrMore)
       .require_equals()
-      .value_delimiter(','),
+      .value_delimiter(',')
+      .conflicts_with(&["rules"]),
     ArgDef::new("json").long("json").set_true(),
-    ArgDef::new("compact").long("compact").set_true(),
+    ArgDef::new("compact")
+      .long("compact")
+      .set_true()
+      .conflicts_with(&["json"]),
     ArgDef::new("ignore")
       .long("ignore")
       .action(ArgAction::Append)
@@ -913,7 +931,8 @@ pub static TEST_SUBCOMMAND: CommandDef = CommandDef {
       .long("coverage")
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional)
-      .require_equals(),
+      .require_equals()
+      .conflicts_with(&["inspect", "inspect-brk", "inspect-wait"]),
     ArgDef::new("clean").long("clean").set_true(),
     ArgDef::new("fail-fast")
       .long("fail-fast")
@@ -956,7 +975,8 @@ pub static TEST_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Append)
       .num_args(NumArgs::ZeroOrMore)
       .require_equals()
-      .value_delimiter(','),
+      .value_delimiter(',')
+      .conflicts_with(&["no-run", "coverage"]),
     ArgDef::new("watch-exclude")
       .long("watch-exclude")
       .action(ArgAction::Append)
@@ -1215,7 +1235,8 @@ pub static INFO_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("location")
       .long("location")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .conflicts_with(&["file"]),
   ],
   arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS, PERMISSION_ARGS],
   subcommands: &[],
@@ -1236,7 +1257,10 @@ pub static DOC_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("json").long("json").set_true(),
     ArgDef::new("private").long("private").set_true(),
     ArgDef::new("lint").long("lint").set_true(),
-    ArgDef::new("html").long("html").set_true(),
+    ArgDef::new("html")
+      .long("html")
+      .set_true()
+      .conflicts_with(&["json"]),
     ArgDef::new("name")
       .long("name")
       .action(ArgAction::Set)
@@ -1248,22 +1272,27 @@ pub static DOC_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("category-docs")
       .long("category-docs")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .requires(&["html"]),
     ArgDef::new("symbol-redirect-map")
       .long("symbol-redirect-map")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .requires(&["html"]),
     ArgDef::new("default-symbol-map")
       .long("default-symbol-map")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .requires(&["html"]),
     ArgDef::new("strip-trailing-html")
       .long("strip-trailing-html")
-      .set_true(),
+      .set_true()
+      .requires(&["html"]),
     ArgDef::new("filter")
       .long("filter")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .conflicts_with(&["json", "lint", "html"]),
     ArgDef::new("builtin").long("builtin").set_true(),
   ],
   arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS, PERMISSION_ARGS],
@@ -1543,7 +1572,9 @@ pub static COVERAGE_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("output")
       .long("output")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .require_equals()
+      .requires(&["lcov"]),
   ],
   arg_groups: &[UNSTABLE_ARGS],
   subcommands: &[],
@@ -1601,15 +1632,26 @@ pub static INSTALL_SUBCOMMAND: CommandDef = CommandDef {
       .short('n')
       .long("name")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .requires(&["global"]),
     ArgDef::new("root")
       .long("root")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
-    ArgDef::new("force").short('f').long("force").set_true(),
-    ArgDef::new("dev").short('D').long("dev").set_true(),
+      .num_args(NumArgs::Exact(1))
+      .requires(&["global"]),
+    ArgDef::new("force")
+      .short('f')
+      .long("force")
+      .set_true()
+      .requires(&["global"]),
+    ArgDef::new("dev")
+      .short('D')
+      .long("dev")
+      .set_true()
+      .conflicts_with(&["entrypoint", "global"]),
     ArgDef::new("prod")
       .long("prod")
+      .long_aliases(&["production"])
       .set_true()
       .conflicts_with(&["global", "dev"]),
     ArgDef::new("skip-types")
@@ -1620,18 +1662,34 @@ pub static INSTALL_SUBCOMMAND: CommandDef = CommandDef {
       .short('e')
       .long("entrypoint")
       .action(ArgAction::Append)
-      .num_args(NumArgs::OneOrMore),
-    ArgDef::new("compile").long("compile").set_true(),
+      .num_args(NumArgs::OneOrMore)
+      .conflicts_with(&["global"]),
+    ArgDef::new("compile")
+      .long("compile")
+      .set_true()
+      .requires(&["global"]),
     ArgDef::new("lockfile-only")
       .long("lockfile-only")
-      .set_true(),
-    ArgDef::new("npm").long("npm").set_true(),
-    ArgDef::new("jsr").long("jsr").set_true(),
+      .set_true()
+      .conflicts_with(&["global"]),
+    ArgDef::new("npm").long("npm").set_true().conflicts_with(&[
+      "jsr",
+      "entrypoint",
+      "global",
+    ]),
+    ArgDef::new("jsr")
+      .long("jsr")
+      .set_true()
+      .conflicts_with(&["entrypoint", "global"]),
     ArgDef::new("save-exact")
       .long("save-exact")
       .long_aliases(&["exact"])
-      .set_true(),
-    ArgDef::new("package-json").long("package-json").set_true(),
+      .set_true()
+      .conflicts_with(&["entrypoint", "global"]),
+    ArgDef::new("package-json")
+      .long("package-json")
+      .set_true()
+      .conflicts_with(&["entrypoint", "global"]),
     ArgDef::new("os")
       .long("os")
       .action(ArgAction::Set)
@@ -1819,6 +1877,7 @@ pub static JUPYTER_SUBCOMMAND: CommandDef = CommandDef {
       .num_args(NumArgs::Exact(1))
       .conflicts_with(&["kernel"]),
     ArgDef::new("display")
+      .short('d')
       .long("display")
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1))
@@ -1905,7 +1964,10 @@ pub static ADD_SUBCOMMAND: CommandDef = CommandDef {
       .long("save-exact")
       .long_aliases(&["exact"])
       .set_true(),
-    ArgDef::new("npm").long("npm").set_true(),
+    ArgDef::new("npm")
+      .long("npm")
+      .set_true()
+      .conflicts_with(&["jsr"]),
     ArgDef::new("jsr").long("jsr").set_true(),
     ArgDef::new("lockfile-only")
       .long("lockfile-only")
@@ -1985,11 +2047,15 @@ pub static OUTDATED_SUBCOMMAND: CommandDef = CommandDef {
       .set_true(),
     ArgDef::new("compatible").long("compatible").set_true(),
     ArgDef::new("update").long("update").short('u').set_true(),
-    ArgDef::new("latest").long("latest").set_true(),
+    ArgDef::new("latest")
+      .long("latest")
+      .set_true()
+      .conflicts_with(&["compatible"]),
     ArgDef::new("interactive")
       .short('i')
       .long("interactive")
-      .set_true(),
+      .set_true()
+      .requires(&["update"]),
     ArgDef::new("lockfile-only")
       .long("lockfile-only")
       .set_true(),
@@ -2319,23 +2385,29 @@ pub static X_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Append)
       .num_args(NumArgs::ZeroOrMore)
       .trailing(),
-    ArgDef::new("yes").short('y').long("yes").set_true(),
+    ArgDef::new("yes")
+      .short('y')
+      .long("yes")
+      .set_true()
+      .conflicts_with(&["install-alias"]),
     ArgDef::new("package")
       .short('p')
       .long("package")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .conflicts_with(&["install-alias"]),
     ArgDef::new("ignore-scripts")
       .long("ignore-scripts")
       .action(ArgAction::Append)
       .num_args(NumArgs::ZeroOrMore)
       .require_equals()
-      .conflicts_with(&["allow-scripts"]),
+      .conflicts_with(&["allow-scripts", "install-alias"]),
     ArgDef::new("install-alias")
       .long("install-alias")
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional)
-      .default_value("dx"),
+      .default_value("dx")
+      .conflicts_with(&["script_arg"]),
     ArgDef::new("check")
       .long("check")
       .action(ArgAction::Set)
@@ -2526,6 +2598,7 @@ pub static PACK_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Append)
       .num_args(NumArgs::ZeroOrMore),
     ArgDef::new("output")
+      .short('o')
       .long("output")
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1)),
@@ -2575,7 +2648,10 @@ pub static CI_SUBCOMMAND: CommandDef = CommandDef {
   about: "Install dependencies from a lockfile in a frozen state",
   aliases: &[],
   args: &[
-    ArgDef::new("prod").long("prod").set_true(),
+    ArgDef::new("prod")
+      .long("prod")
+      .long_aliases(&["production"])
+      .set_true(),
     ArgDef::new("skip-types")
       .long("skip-types")
       .set_true()
@@ -2629,7 +2705,8 @@ pub static BUMP_VERSION_SUBCOMMAND: CommandDef = CommandDef {
       .short('c')
       .long("config")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .conflicts_with(&["workspace"]),
   ],
   arg_groups: &[],
   subcommands: &[],
@@ -2652,7 +2729,8 @@ pub static TRANSPILE_SUBCOMMAND: CommandDef = CommandDef {
       .long("output")
       .short('o')
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .conflicts_with(&["outdir"]),
     ArgDef::new("outdir")
       .long("outdir")
       .action(ArgAction::Set)

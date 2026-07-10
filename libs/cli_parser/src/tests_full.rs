@@ -9262,3 +9262,83 @@ fn tier2_location_strips_credentials() {
   assert_eq!(loc.password(), None);
   assert_eq!(loc.host_str(), Some("example.com"));
 }
+
+// ---------------------------------------------------------------------------
+// Tier-3 parity: conflicts, requires, and aliases that clap enforced/accepted.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tier3_aliases() {
+  // These previously-missing aliases/short flags now parse.
+  let ok = [
+    svec!["deno", "run", "--importmap=im.json", "x.ts"],
+    svec!["deno", "run", "--unsafe-proto", "x.ts"],
+    svec!["deno", "install", "--production", "pkg"],
+    svec!["deno", "ci", "--production"],
+    svec!["deno", "fmt", "--options-use-tabs", "x.ts"],
+    svec!["deno", "jupyter", "-d", "deno", "--install"],
+    svec!["deno", "pack", "-o", "out", "x.ts"],
+  ];
+  for args in ok {
+    assert!(
+      flags_from_vec(args.clone()).is_ok(),
+      "expected ok for {args:?}"
+    );
+  }
+}
+
+#[test]
+fn tier3_conflicts() {
+  let bad = [
+    svec!["deno", "doc", "--html", "--json", "x.ts"],
+    svec!["deno", "doc", "--filter=x", "--json", "x.ts"],
+    svec!["deno", "run", "--coverage=c", "--inspect", "x.ts"],
+    svec!["deno", "test", "--watch", "--no-run"],
+    svec!["deno", "lint", "--rules-include=x", "--rules"],
+    svec!["deno", "outdated", "--latest", "--compatible"],
+    svec!["deno", "transpile", "--output=o", "--outdir=d", "x.ts"],
+    svec!["deno", "x", "--install-alias=dx", "script.ts"],
+    svec!["deno", "install", "--npm", "--jsr", "pkg"],
+    svec!["deno", "install", "--global", "--dev", "pkg"],
+    svec!["deno", "bump-version", "-c", "cfg", "--workspace"],
+  ];
+  for args in bad {
+    assert!(
+      flags_from_vec(args.clone()).is_err(),
+      "expected conflict error for {args:?}"
+    );
+  }
+}
+
+#[test]
+fn tier3_requires() {
+  let bad = [
+    // fmt --fail-fast requires --check
+    svec!["deno", "fmt", "--fail-fast", "x.ts"],
+    // doc html-only decorations require --html
+    svec!["deno", "doc", "--category-docs=c", "x.ts"],
+    // outdated --interactive requires --update
+    svec!["deno", "outdated", "--interactive"],
+    // coverage --output requires --lcov
+    svec!["deno", "coverage", "--output=o", "cov"],
+    // install --name requires --global
+    svec!["deno", "install", "--name", "foo", "pkg"],
+  ];
+  for args in bad {
+    assert!(
+      flags_from_vec(args.clone()).is_err(),
+      "expected requires error for {args:?}"
+    );
+  }
+  // The dependency satisfied → ok.
+  assert!(
+    flags_from_vec(svec!["deno", "fmt", "--fail-fast", "--check", "x.ts"])
+      .is_ok()
+  );
+  assert!(
+    flags_from_vec(svec![
+      "deno", "install", "--global", "--name", "foo", "pkg"
+    ])
+    .is_ok()
+  );
+}
