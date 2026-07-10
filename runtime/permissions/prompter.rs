@@ -8,22 +8,43 @@ use parking_lot::Mutex;
 fn escape_control_characters(s: &str) -> std::borrow::Cow<'_, str> {
   use deno_terminal::colors;
 
-  if !s.contains(|c: char| c.is_ascii_control() || c.is_control()) {
+  if !s.contains(is_prompt_control_character) {
     return std::borrow::Cow::Borrowed(s);
   }
   let mut output = String::with_capacity(s.len() * 2);
   for c in s.chars() {
     match c {
-      c if c.is_ascii_control() => output.push_str(
-        &colors::white_bold_on_red(c.escape_debug().to_string()).to_string(),
-      ),
-      c if c.is_control() => output.push_str(
+      c if is_prompt_control_character(c) => output.push_str(
         &colors::white_bold_on_red(c.escape_debug().to_string()).to_string(),
       ),
       c => output.push(c),
     }
   }
   output.into()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn is_prompt_control_character(c: char) -> bool {
+  c.is_ascii_control()
+    || c.is_control()
+    || matches!(
+      c,
+      // Unicode bidi formatting controls. These are not `char::is_control()`
+      // (they are General_Category=Format), but terminals may interpret them
+      // and visually reorder permission prompt text.
+      '\u{061c}' // Arabic Letter Mark
+        | '\u{200e}' // Left-to-Right Mark
+        | '\u{200f}' // Right-to-Left Mark
+        | '\u{202a}' // Left-to-Right Embedding
+        | '\u{202b}' // Right-to-Left Embedding
+        | '\u{202c}' // Pop Directional Formatting
+        | '\u{202d}' // Left-to-Right Override
+        | '\u{202e}' // Right-to-Left Override
+        | '\u{2066}' // Left-to-Right Isolate
+        | '\u{2067}' // Right-to-Left Isolate
+        | '\u{2068}' // First Strong Isolate
+        | '\u{2069}' // Pop Directional Isolate
+    )
 }
 
 pub const PERMISSION_EMOJI: &str = "⚠️";
@@ -648,5 +669,23 @@ pub mod tests {
     pub fn set(&self, value: bool) {
       STUB_PROMPT_VALUE.store(value, Ordering::SeqCst);
     }
+  }
+
+  #[cfg(not(target_arch = "wasm32"))]
+  #[test]
+  fn escape_control_characters_escapes_bidi_formatting_marks() {
+    let escaped =
+      escape_control_characters("run access to \u{202e}txt.cilbup\u{202c}");
+
+    assert!(!escaped.contains('\u{202e}'));
+    assert!(!escaped.contains('\u{202c}'));
+    assert!(escaped.contains(r"\u{202e}"));
+    assert!(escaped.contains(r"\u{202c}"));
+  }
+
+  #[cfg(not(target_arch = "wasm32"))]
+  #[test]
+  fn escape_control_characters_leaves_safe_unicode_visible() {
+    assert_eq!(escape_control_characters("文件.txt"), "文件.txt");
   }
 }
