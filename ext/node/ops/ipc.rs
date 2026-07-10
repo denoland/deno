@@ -888,20 +888,16 @@ mod impl_ {
     state: &mut OpState,
     #[smi] rid: ResourceId,
     serialization_json: bool,
-  ) {
+  ) -> Result<(), deno_core::error::ResourceError> {
     if serialization_json {
-      let stream = state
-        .resource_table
-        .get::<IpcJsonStreamResource>(rid)
-        .expect("Invalid resource ID");
+      let stream = state.resource_table.get::<IpcJsonStreamResource>(rid)?;
       stream.ref_tracker.ref_();
     } else {
-      let stream = state
-        .resource_table
-        .get::<IpcAdvancedStreamResource>(rid)
-        .expect("Invalid resource ID");
+      let stream =
+        state.resource_table.get::<IpcAdvancedStreamResource>(rid)?;
       stream.ref_tracker.ref_();
     }
+    Ok(())
   }
 
   #[op2(fast)]
@@ -909,20 +905,16 @@ mod impl_ {
     state: &mut OpState,
     #[smi] rid: ResourceId,
     serialization_json: bool,
-  ) {
+  ) -> Result<(), deno_core::error::ResourceError> {
     if serialization_json {
-      let stream = state
-        .resource_table
-        .get::<IpcJsonStreamResource>(rid)
-        .expect("Invalid resource ID");
+      let stream = state.resource_table.get::<IpcJsonStreamResource>(rid)?;
       stream.ref_tracker.unref();
     } else {
-      let stream = state
-        .resource_table
-        .get::<IpcAdvancedStreamResource>(rid)
-        .expect("Invalid resource ID");
+      let stream =
+        state.resource_table.get::<IpcAdvancedStreamResource>(rid)?;
       stream.ref_tracker.unref();
     }
+    Ok(())
   }
 
   #[cfg(test)]

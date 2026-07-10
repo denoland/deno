@@ -15,3 +15,23 @@ Deno.test(function checkExposedOps() {
     );
   }
 });
+Deno.test(async function workerDoesNotExposeImportedOps() {
+  const worker = new Worker(
+    `data:application/javascript,${
+      encodeURIComponent(`
+        // @ts-ignore TS doesn't allow to index with symbol
+        const core = Deno[Deno.internal].core;
+        postMessage(typeof core.ops.op_node_ipc_ref);
+      `)
+    }`,
+    { type: "module" },
+  );
+  const result = await new Promise((resolve, reject) => {
+    worker.onmessage = (event) => resolve(event.data);
+    worker.onerror = (event) => reject(event.error);
+  });
+  worker.terminate();
+  if (result !== "undefined") {
+    throw new Error(`op_node_ipc_ref unexpectedly exposed: ${result}`);
+  }
+});
