@@ -252,7 +252,7 @@ declare namespace Deno.desktop {
   /** The application version read from `deno.json` at compile time, or
    * `null` if no version was configured. Only available in apps compiled
    * with `deno desktop`. */
-  export const desktopVersion: string | null;
+  export const appVersion: string | null;
 
   export interface AutoUpdateOptions {
     /** Base URL of the release server hosting `latest.json` and patch
@@ -292,7 +292,7 @@ declare namespace Deno.desktop {
    * library, so only the bytes that changed between versions are
    * downloaded. On each check, the manifest at `<url>/latest.json` is
    * fetched and its `version` compared against {@linkcode
-   * Deno.desktop.desktopVersion}:
+   * Deno.desktop.appVersion}:
    *
    * - If `publicKey` is set, the manifest signature is verified first and
    *   an unsigned or invalid manifest is rejected.

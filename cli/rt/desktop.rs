@@ -39,7 +39,7 @@ pub const DESKTOP_JS: &str = r#"
 
   // Namespace object holding the desktop-specific `Deno.*` APIs
   // (`Deno.desktop.BrowserWindow`, `Deno.desktop.dock`, etc.). The
-  // auto-update init script executed afterwards adds `desktopVersion`
+  // auto-update init script executed afterwards adds `appVersion`
   // and `autoUpdate` to this same object.
   const desktop = Deno.desktop ?? {};
   Object.defineProperty(Deno, "desktop", internals.core.propReadOnly(desktop));
@@ -1126,7 +1126,7 @@ pub fn desktop_auto_update_js(
   }}
 
   Object.defineProperties(Deno.desktop, {{
-    desktopVersion: propReadOnly(_version),
+    appVersion: propReadOnly(_version),
     autoUpdate: propWritable(autoUpdate),
   }});
 }})();
@@ -1313,7 +1313,7 @@ mod tests {
     );
     assert!(js.contains("const _version ="));
     assert!(js.contains("const _rolledBack = false"));
-    // `desktopVersion`/`autoUpdate` are attached to the `Deno.desktop`
+    // `appVersion`/`autoUpdate` are attached to the `Deno.desktop`
     // namespace, not `Deno` directly.
     assert!(js.contains("Object.defineProperties(Deno.desktop, {"));
   }
