@@ -1897,12 +1897,9 @@ pub static JUPYTER_SUBCOMMAND: CommandDef = CommandDef {
       .set_true()
       .requires(&["install"]),
   ],
-  arg_groups: &[
-    COMPILE_ARGS,
-    RUNTIME_MISC_ARGS,
-    PERMISSION_ARGS,
-    UNSTABLE_ARGS,
-  ],
+  // clap's `jupyter` exposes only its own flags (no runtime/permission/compile
+  // groups); `jupyter_parse` reads none of them, so they are trimmed to match.
+  arg_groups: &[UNSTABLE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
