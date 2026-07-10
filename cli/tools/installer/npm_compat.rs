@@ -2,10 +2,12 @@
 
 //! Post-install setup for stock TypeScript compatibility.
 //!
-//! After `deno install` sets up node_modules/, this module:
-//! 1. Installs jsr: packages to node_modules/@jsr/ via npm.jsr.io
+//! After dependency resolution, this module:
+//! 1. Installs jsr: compatibility packages via npm.jsr.io
 //! 2. Mirrors http(s): modules into .deno/remote/<host><path>/...
 //! 3. Generates .deno/tsconfig.json with paths mappings for npm:/jsr:/https:
+//! 4. In global-cache mode, generates per-package referenced tsconfigs so
+//!    stock TypeScript can preserve Deno's contextual npm resolution.
 //!
 //! This enables stock TypeScript tooling (tsc, tsserver, VS Code) to work
 //! with Deno projects that use jsr:, npm:, and http(s): specifiers.
@@ -28,6 +30,7 @@ use flate2::read::GzDecoder;
 
 use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClient;
+use crate::npm::CliNpmResolver;
 
 /// Installed JSR package info for reporting.
 pub struct InstalledJsrPackage {
@@ -37,10 +40,174 @@ pub struct InstalledJsrPackage {
   pub version: String,
 }
 
+#[derive(Default)]
+struct NpmCacheProjects {
+  /// Exact npm: specifier/import-map target to its resolved package folder.
+  package_paths: BTreeMap<String, PathBuf>,
+  /// Paths relative to `.deno/tsconfig.json` for the generated package
+  /// projects.
+  references: Vec<String>,
+}
+
+struct NodeTypesSetup {
+  type_root: Option<String>,
+  undici_types_dir: Option<PathBuf>,
+}
+
+fn path_for_typescript(path: &Path) -> String {
+  path.to_string_lossy().replace('\\', "/")
+}
+
+fn collect_typescript_project_files(package_folder: &Path) -> Vec<String> {
+  fn collect(dir: &Path, files: &mut Vec<String>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+      return;
+    };
+    for entry in entries.flatten() {
+      let path = entry.path();
+      let Ok(file_type) = entry.file_type() else {
+        continue;
+      };
+      if file_type.is_symlink() {
+        continue;
+      }
+      if file_type.is_dir() {
+        collect(&path, files);
+        continue;
+      }
+      let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+      if file_name.ends_with(".d.ts")
+        || file_name.ends_with(".d.mts")
+        || file_name.ends_with(".d.cts")
+      {
+        files.push(path_for_typescript(&path));
+      }
+    }
+  }
+
+  let mut files = Vec::new();
+  collect(package_folder, &mut files);
+  files.sort();
+  files
+}
+
+/// Generate a referenced TypeScript project for every resolved package copy in
+/// Deno's global npm cache.
+///
+/// A package project owns the cached package's type/source files and maps every
+/// bare dependency name to the exact cache folder selected by the npm snapshot.
+/// TypeScript uses these compiler options as a "project reference redirect"
+/// while resolving imports from the package, which gives stock tsc the same
+/// per-referrer dependency context as Deno's resolver without materializing a
+/// node_modules tree.
+fn generate_npm_cache_projects(
+  project_root: &Path,
+  deno_imports: Option<&Value>,
+  npm_resolver: &CliNpmResolver,
+) -> Result<NpmCacheProjects, AnyError> {
+  let projects_root = project_root.join(".deno/npm");
+  if projects_root.exists() {
+    std::fs::remove_dir_all(&projects_root)?;
+  }
+  let Some(managed) = npm_resolver.as_managed() else {
+    return Ok(Default::default());
+  };
+  if managed.root_node_modules_path().is_some() {
+    return Ok(Default::default());
+  }
+
+  let snapshot = managed.resolution().snapshot();
+  let mut packages = snapshot
+    .all_packages_for_every_system()
+    .filter_map(|package| {
+      let folder = managed.resolve_pkg_folder_from_pkg_id(&package.id).ok()?;
+      folder.exists().then_some((package, folder))
+    })
+    .collect::<Vec<_>>();
+  packages.sort_by_key(|(package, _)| package.id.as_serialized());
+
+  let mut result = NpmCacheProjects::default();
+  for (package, package_folder) in packages {
+    let files = collect_typescript_project_files(&package_folder);
+    if files.is_empty() {
+      continue;
+    }
+    let folder_name = deno_resolver::npm::get_package_folder_id_folder_name(
+      &package.get_package_cache_folder_id(),
+    );
+    let project_dir = projects_root.join(&folder_name);
+    std::fs::create_dir_all(&project_dir)?;
+
+    let mut paths = serde_json::Map::new();
+    let mut dependencies = package.dependencies.iter().collect::<Vec<_>>();
+    dependencies.sort_by_key(|(alias, _)| *alias);
+    for (alias, dependency_id) in dependencies {
+      let Ok(dependency_folder) =
+        managed.resolve_pkg_folder_from_pkg_id(dependency_id)
+      else {
+        continue;
+      };
+      if !dependency_folder.exists() {
+        continue;
+      }
+      let dependency_folder = path_for_typescript(&dependency_folder);
+      paths.insert(alias.to_string(), json!([dependency_folder]));
+      paths.insert(
+        format!("{alias}/*"),
+        json!([format!("{dependency_folder}/*")]),
+      );
+    }
+
+    let config = json!({
+      "_deno_generated": true,
+      "compilerOptions": {
+        "composite": true,
+        "module": "esnext",
+        "moduleResolution": "bundler",
+        "paths": paths,
+        "skipLibCheck": true,
+        "types": [],
+      },
+      // `files` is intentional rather than an `include` glob. TypeScript only
+      // applies a referenced project's resolver options to cache files it can
+      // identify as explicit project files.
+      "files": files,
+    });
+    std::fs::write(
+      project_dir.join("tsconfig.json"),
+      serde_json::to_string_pretty(&config)?,
+    )?;
+    result
+      .references
+      .push(format!("./npm/{folder_name}/tsconfig.json"));
+  }
+
+  if let Some(imports) = deno_imports.and_then(|v| v.as_object()) {
+    for target in imports.values().filter_map(|v| v.as_str()) {
+      if !target.starts_with("npm:") {
+        continue;
+      }
+      let Ok(req_ref) =
+        deno_semver::npm::NpmPackageReqReference::from_str(target)
+      else {
+        continue;
+      };
+      if let Ok(folder) =
+        managed.resolve_pkg_folder_from_deno_module_req(req_ref.req())
+        && folder.exists()
+      {
+        result.package_paths.insert(target.to_string(), folder);
+      }
+    }
+  }
+
+  Ok(result)
+}
+
 /// Run post-install setup: install jsr packages and generate tsconfig.
 ///
-/// Called after `deno install` completes npm resolution and node_modules setup.
-/// Returns the list of newly installed JSR packages for reporting.
+/// Called after the sync command builds the graph and initializes npm
+/// resolution. Returns the list of newly installed JSR packages for reporting.
 fn is_special_specifier(s: &str) -> bool {
   s.starts_with("jsr:")
     || s.starts_with("npm:")
@@ -54,6 +221,7 @@ pub async fn setup_npm_compat(
   http_client: &HttpClient,
   permissions: &PermissionsContainer,
   graph_specifiers: &[String],
+  npm_resolver: &CliNpmResolver,
 ) -> Result<Vec<InstalledJsrPackage>, AnyError> {
   let deno_json = read_deno_json(project_root)?;
   let deno_compiler_options = deno_json
@@ -127,9 +295,25 @@ pub async fn setup_npm_compat(
   let deno_imports = Some(&combined_imports);
   let deno_compiler_options = deno_compiler_options.as_ref();
 
-  // Install jsr: packages to node_modules/@jsr/
+  // Stock TypeScript has no hook into Deno's contextual global-cache npm
+  // resolver. Model that context with project references: every resolved npm
+  // package copy gets a tiny tsconfig whose `paths` point at the exact package
+  // copies selected for its dependency edges. TypeScript applies the referenced
+  // project's compiler options while resolving imports from files owned by that
+  // project, so duplicate versions and peer-dependency copies remain distinct.
+  let npm_cache_projects =
+    generate_npm_cache_projects(project_root, deno_imports, npm_resolver)?;
+  let use_global_cache_layout = npm_resolver
+    .as_managed()
+    .is_some_and(|managed| managed.root_node_modules_path().is_none());
+
+  let jsr_packages_dir = if use_global_cache_layout {
+    project_root.join(".deno/npm-compat/@jsr")
+  } else {
+    project_root.join("node_modules/@jsr")
+  };
   let installed =
-    install_jsr_packages(project_root, deno_imports, http_client).await?;
+    install_jsr_packages(&jsr_packages_dir, deno_imports, http_client).await?;
 
   // Mirror http(s): modules (and their transitive remote/relative imports)
   // into .deno/remote/<host><path>/...
@@ -148,16 +332,15 @@ pub async fn setup_npm_compat(
     }
   };
 
-  // Warn about npm packages that aren't materialized under `node_modules`. With
-  // Deno's default global-cache mode, `deno install` can resolve npm deps
-  // without a local `node_modules/<pkg>`, so their `paths` are skipped (see
-  // generate_npm_paths) and stock tsc can't resolve them.
+  // Warn about npm packages that could be resolved neither through a local
+  // node_modules directory nor through the generated global-cache projects.
   let mut unmaterialized: Vec<String> = combined_imports
     .as_object()
     .into_iter()
     .flatten()
     .filter_map(|(_k, v)| v.as_str())
     .filter(|s| s.starts_with("npm:"))
+    .filter(|s| !npm_cache_projects.package_paths.contains_key(*s))
     .filter_map(|s| deno_semver::npm::NpmPackageReqReference::from_str(s).ok())
     .map(|r| r.req().name.to_string())
     .filter(|name| !project_root.join(format!("node_modules/{name}")).exists())
@@ -177,7 +360,18 @@ pub async fn setup_npm_compat(
 
   // Ensure @types/node is available so Node globals (timers, node: builtins,
   // Buffer, URLPattern, ...) resolve under stock tooling.
-  let has_node_types = ensure_types_node(project_root, http_client).await;
+  let node_types =
+    ensure_types_node(project_root, http_client, use_global_cache_layout).await;
+  if let Some(undici_types_dir) = &node_types.undici_types_dir {
+    member_paths.insert(
+      "undici-types".to_string(),
+      json!([path_for_typescript(undici_types_dir)]),
+    );
+    member_paths.insert(
+      "undici-types/*".to_string(),
+      json!([format!("{}/*", path_for_typescript(undici_types_dir))]),
+    );
+  }
 
   // The project's own `exclude` (from deno.json) tells us which paths Deno
   // doesn't check (test fixtures, generated output); mirror it into the tsconfig
@@ -215,7 +409,10 @@ pub async fn setup_npm_compat(
     deno_imports,
     &http_modules,
     &member_paths,
-    has_node_types,
+    &jsr_packages_dir,
+    &npm_cache_projects.package_paths,
+    &npm_cache_projects.references,
+    node_types.type_root.as_deref(),
     &excludes,
   )?;
 
@@ -253,35 +450,57 @@ fn resolve_bare_against_import_map(
 }
 
 /// Ensure a stock `@types/node` (and its `undici-types` dependency) is present
-/// in `node_modules/@types` so the generated tsconfig can load Node globals
-/// (timers, `node:` builtins, `Buffer`, `URLPattern`, ...). No-op when the
-/// project already has `@types/node` installed. Returns whether it's available.
+/// in the selected compatibility directory so the generated tsconfig can load
+/// Node globals (timers, `node:` builtins, `Buffer`, `URLPattern`, ...). No-op
+/// when the project already has `@types/node` installed.
 ///
-/// This is the interim: once #35889 lands, node types come from the global
-/// cache instead of being materialized per-project here.
+/// Global-cache mode keeps these under `.deno/npm-compat`; local node_modules
+/// mode keeps the existing `node_modules/@types` layout.
 async fn ensure_types_node(
   project_root: &Path,
   http_client: &HttpClient,
-) -> bool {
-  if project_root.join("node_modules/@types/node").exists() {
-    return true;
+  use_global_cache_layout: bool,
+) -> NodeTypesSetup {
+  let modules_dir = if use_global_cache_layout {
+    project_root.join(".deno/npm-compat")
+  } else {
+    project_root.join("node_modules")
+  };
+  let type_root = if use_global_cache_layout {
+    "./npm-compat/@types".to_string()
+  } else {
+    "../node_modules/@types".to_string()
+  };
+  let node_dir = modules_dir.join("@types/node");
+  let undici_types_dir = modules_dir.join("undici-types");
+  if node_dir.exists() {
+    return NodeTypesSetup {
+      type_root: Some(type_root),
+      undici_types_dir: undici_types_dir.exists().then_some(undici_types_dir),
+    };
   }
-  match download_npm_package(project_root, "@types/node", None, http_client)
+  match download_npm_package(&modules_dir, "@types/node", None, http_client)
     .await
   {
     Ok(Some((_version, deps))) => {
       if let Some(req) = deps.get("undici-types").and_then(|v| v.as_str()) {
         let _ = download_npm_package(
-          project_root,
+          &modules_dir,
           "undici-types",
           Some(req),
           http_client,
         )
         .await;
       }
-      project_root.join("node_modules/@types/node").exists()
+      NodeTypesSetup {
+        type_root: node_dir.exists().then_some(type_root),
+        undici_types_dir: undici_types_dir.exists().then_some(undici_types_dir),
+      }
     }
-    _ => false,
+    _ => NodeTypesSetup {
+      type_root: None,
+      undici_types_dir: None,
+    },
   }
 }
 
@@ -289,7 +508,7 @@ async fn ensure_types_node(
 /// `node_modules/<pkg>` and return its resolved version + dependency map.
 /// Resolves `req` (a semver range) if given, otherwise the `latest` dist-tag.
 async fn download_npm_package(
-  project_root: &Path,
+  modules_dir: &Path,
   pkg: &str,
   req: Option<&str>,
   http_client: &HttpClient,
@@ -324,7 +543,7 @@ async fn download_npm_package(
     return Ok(None);
   };
   let tb = http_client.download(Url::parse(tarball)?).await?;
-  let dest = project_root.join("node_modules").join(pkg);
+  let dest = modules_dir.join(pkg);
   if let Err(e) = extract_tarball_gz(&tb, &dest) {
     log::debug!("Failed to extract {pkg}: {e}");
     let _ = std::fs::remove_dir_all(&dest);
@@ -532,17 +751,26 @@ fn generate_deno_tsconfig(
   deno_imports: Option<&Value>,
   http_modules: &BTreeMap<Url, String>,
   member_paths: &serde_json::Map<String, Value>,
-  has_node_types: bool,
+  jsr_packages_dir: &Path,
+  npm_package_paths: &BTreeMap<String, PathBuf>,
+  npm_project_references: &[String],
+  node_types_root: Option<&str>,
   excludes: &[String],
 ) -> Result<(), AnyError> {
   let generated = crate::tsc::tsconfig_gen::generate_tsconfig(
     project_root,
     deno_compiler_options,
     deno_imports,
+    // Command-line roots scope graph/dependency discovery only. Keep the
+    // generated project open so bundlers can consume its resolver mappings for
+    // any entrypoint they are asked to bundle.
     &[],
     http_modules,
     member_paths,
-    has_node_types,
+    jsr_packages_dir,
+    npm_package_paths,
+    npm_project_references,
+    node_types_root,
     excludes,
   )
   .map_err(|e| anyhow!("Failed to generate tsconfig: {e}"))?;
@@ -552,7 +780,7 @@ fn generate_deno_tsconfig(
   Ok(())
 }
 
-/// Install jsr: packages to node_modules/@jsr/ by downloading from npm.jsr.io.
+/// Install jsr: compatibility packages by downloading from npm.jsr.io.
 ///
 /// Uses `HttpClient::download` directly (not `CliFileFetcher`) because we
 /// don't want each registry/tarball URL surfacing as a user-visible
@@ -560,7 +788,7 @@ fn generate_deno_tsconfig(
 /// implementation detail of the stock-tsc compatibility setup. The
 /// fetcher's caching and redirect handling are unnecessary for npm.jsr.io.
 async fn install_jsr_packages(
-  project_root: &Path,
+  jsr_packages_dir: &Path,
   deno_imports: Option<&Value>,
   http_client: &HttpClient,
 ) -> Result<Vec<InstalledJsrPackage>, AnyError> {
@@ -583,10 +811,7 @@ async fn install_jsr_packages(
     };
 
     let npm_name = format!("{}__{}", scope.trim_start_matches('@'), name);
-    let pkg_dir = project_root
-      .join("node_modules")
-      .join("@jsr")
-      .join(&npm_name);
+    let pkg_dir = jsr_packages_dir.join(&npm_name);
     if pkg_dir.exists() {
       continue;
     }
