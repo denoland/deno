@@ -1314,6 +1314,7 @@ pub fn flags_from_vec_with_initial_cwd(
         "jupyter" => jupyter_parse(&mut flags, &mut m),
         "lint" => lint_parse(&mut flags, &mut m)?,
         "lsp" => lsp_parse(&mut flags, &mut m),
+        "sync-types" => sync_types_parse(&mut flags, &mut m),
         "outdated" => outdated_parse(&mut flags, &mut m, false)?,
         "repl" => repl_parse(&mut flags, &mut m)?,
         "run" => run_parse(&mut flags, &mut m, app, false, false)?,
@@ -1597,6 +1598,7 @@ pub fn clap_root() -> Command {
         .subcommand(link_subcommand())
         .subcommand(unlink_subcommand())
         .subcommand(lsp_subcommand())
+        .subcommand(sync_types_subcommand())
         .subcommand(lint_subcommand())
         .subcommand(publish_subcommand())
         .subcommand(pack_subcommand())
@@ -3789,6 +3791,18 @@ How to connect various editors and IDEs to 'deno lsp': https://docs.deno.com/go/
   )
 }
 
+fn sync_types_subcommand() -> Command {
+  command(
+    "sync-types",
+    cstr!(
+      "Generate a <c>tsconfig.json</> and type mappings so stock TypeScript tooling (tsc, tsgo, editors) can type-check the project.
+
+Run after installing dependencies; it materializes <c>jsr:</>/<c>http(s):</> types and writes <p(245)>.deno/tsconfig.json</>."
+    ),
+    UnstableArgsConfig::None,
+  )
+}
+
 fn lint_subcommand() -> Command {
   command(
     "lint",
@@ -5747,6 +5761,7 @@ fn require_arg() -> Arg {
 fn min_dep_age_arg() -> Arg {
   Arg::new("minimum-dependency-age")
     .long("minimum-dependency-age")
+    .alias("min-dep-age")
     .value_parser(minutes_duration_or_date_parser)
     .help("(Unstable) The age in minutes, ISO-8601 duration or RFC3339 absolute timestamp (e.g. '120' for two hours, 'P2D' for two days, '2025-09-16' for cutoff date, '2025-09-16T12:00:00+00:00' for cutoff time, '0' to disable)")
 }
@@ -7656,6 +7671,10 @@ fn uninstall_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
 fn lsp_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Lsp;
+}
+
+fn sync_types_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
+  flags.subcommand = DenoSubcommand::SyncTypes;
 }
 
 fn lint_parse(
@@ -12021,6 +12040,18 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn minimum_dependency_age_alias() {
+    for flag in ["--minimum-dependency-age=0", "--min-dep-age=0"] {
+      let flags =
+        flags_from_vec(svec!["deno", "run", flag, "script.ts"]).unwrap();
+      assert_eq!(
+        flags.minimum_dependency_age,
+        Some(NewestDependencyDate::Disabled)
+      );
+    }
   }
 
   #[test]

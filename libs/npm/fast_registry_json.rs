@@ -369,10 +369,9 @@ mod classify {
   pub unsafe fn classify_x86_ssse3(
     input: &simd::width_128::Simd8x64<u8>,
   ) -> JsonCharacterBlock {
+    use simd::width_128::Simd8;
     use simd::width_128::Simd8x64;
     use simd::width_128::make_u8x16;
-
-    use crate::simd::width_128::Simd8;
     // These lookups rely on the fact that anything < 127 will match the lower 4 bits, which is why
     // we can't use the generic lookup_16.
     let whitespace_table = make_u8x16(

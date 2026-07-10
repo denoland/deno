@@ -2091,9 +2091,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ast"
-version = "0.53.2"
+version = "0.53.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05792fb2b77938767ffeb0853289e86501fddc84b1cdba9e5dc860c52baa2ff7"
+checksum = "6f7c1384d87fc0a6439a065312fbef8f6ac6128689dbc2831b28b3a1d4f3a4e6"
 dependencies = [
  "base64 0.22.1",
  "capacity_builder",
@@ -3018,7 +3018,9 @@ dependencies = [
 name = "deno_npm"
 version = "0.66.0"
 dependencies = [
+ "arrayref",
  "async-trait",
+ "bytemuck",
  "capacity_builder",
  "chrono",
  "deno_error",
@@ -3026,19 +3028,21 @@ dependencies = [
  "deno_package_json",
  "deno_semver",
  "divan",
- "fast-registry-json",
  "futures",
  "hex",
  "indexmap",
  "log",
  "monch",
+ "paste",
  "pretty_assertions",
  "reqwest",
+ "rustc-hash 2.1.1",
  "serde",
  "serde_json",
  "sha2",
  "thiserror 2.0.12",
  "tokio",
+ "wide",
 ]
 
 [[package]]
@@ -3055,7 +3059,6 @@ dependencies = [
  "deno_path_util",
  "deno_semver",
  "deno_unsync",
- "fast-registry-json",
  "faster-hex",
  "flate2",
  "futures",
@@ -4589,23 +4592,6 @@ name = "fallible-streaming-iterator"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7360491ce676a36bf9bb3c56c1aa791658183a54d2744120f27285738d90465a"
-
-[[package]]
-name = "fast-registry-json"
-version = "0.2.0"
-dependencies = [
- "arrayref",
- "bytemuck",
- "deno_npm",
- "deno_semver",
- "divan",
- "paste",
- "pretty_assertions",
- "rustc-hash 2.1.1",
- "serde",
- "serde_json",
- "wide",
-]
 
 [[package]]
 name = "fast-socks5"

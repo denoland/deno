@@ -23,7 +23,6 @@ deno_npmrc.workspace = true
 deno_path_util.workspace = true
 deno_semver.workspace = true
 deno_unsync.workspace = true
-fast-registry-json.workspace = true
 faster-hex.workspace = true
 flate2 = { workspace = true, features = ["default"] }
 futures.workspace = true
