@@ -6,6 +6,7 @@
 // already matches.
 #![allow(clippy::unnecessary_cast, reason = "platform specific")]
 
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
@@ -322,13 +323,15 @@ unsafe extern "C" fn h2_read_cb(
       v8::scope!(let scope, &mut isolate);
       let context = v8::Local::new(scope, session.context.clone());
       let scope = &mut v8::ContextScope::new(scope, context);
-      let this_local = v8::Local::new(scope, &session.this);
-      let key = v8::String::new(scope, "onstreamclose").unwrap();
-      if let Some(Ok(cb)) = this_local
-        .get(scope, key.into())
-        .map(v8::Local::<v8::Function>::try_from)
-      {
-        cb.call(scope, this_local.into(), &[]);
+      if let Some(this) = session.this.as_ref() {
+        let this_local = v8::Local::new(scope, this);
+        let key = v8::String::new(scope, "onstreamclose").unwrap();
+        if let Some(Ok(cb)) = this_local
+          .get(scope, key.into())
+          .map(v8::Local::<v8::Function>::try_from)
+        {
+          cb.call(scope, this_local.into(), &[]);
+        }
       }
     }
 
@@ -938,9 +941,12 @@ fn handle_headers_frame(session: &Session, frame: *const ffi::nghttp2_frame) {
   stream_ref.clear_headers();
 
   let stream_obj = session.find_stream_obj(id).unwrap();
+  let Some(this) = session.this.as_ref() else {
+    return;
+  };
   let state = session.op_state.borrow();
   let callbacks = state.borrow::<SessionCallbacks>();
-  let recv = v8::Local::new(scope, &session.this);
+  let recv = v8::Local::new(scope, this);
   let callback = v8::Local::new(scope, &callbacks.headers_frame_cb);
   drop(state);
 
@@ -1002,9 +1008,12 @@ fn handle_settings_frame(session: &Session) {
   let context = v8::Local::new(scope, session.context.clone());
   let scope = &mut v8::ContextScope::new(scope, context);
 
+  let Some(this) = session.this.as_ref() else {
+    return;
+  };
   let state = session.op_state.borrow();
   let callbacks = state.borrow::<SessionCallbacks>();
-  let recv = v8::Local::new(scope, &session.this);
+  let recv = v8::Local::new(scope, this);
   let callback = v8::Local::new(scope, &callbacks.settings_frame_cb);
   drop(state);
 
@@ -1040,9 +1049,12 @@ fn handle_ping_frame(
   let payload =
     v8::Uint8Array::new(scope, array_buffer, 0, opaque.len()).unwrap();
 
+  let Some(this) = session.this.as_ref() else {
+    return;
+  };
   let state = session.op_state.borrow();
   let callbacks = state.borrow::<SessionCallbacks>();
-  let recv = v8::Local::new(scope, &session.this);
+  let recv = v8::Local::new(scope, this);
   let callback = v8::Local::new(scope, &callbacks.ping_frame_cb);
   drop(state);
 
@@ -1063,9 +1075,12 @@ fn handle_unsolicited_ping_ack(session: &Session) {
   let context = v8::Local::new(scope, session.context.clone());
   let scope = &mut v8::ContextScope::new(scope, context);
 
+  let Some(this) = session.this.as_ref() else {
+    return;
+  };
   let state = session.op_state.borrow();
   let callbacks = state.borrow::<SessionCallbacks>();
-  let recv = v8::Local::new(scope, &session.this);
+  let recv = v8::Local::new(scope, this);
   let callback = v8::Local::new(scope, &callbacks.session_internal_error_cb);
   drop(state);
 
@@ -1115,9 +1130,12 @@ fn handle_goaway_frame(session: &Session, frame: *const ffi::nghttp2_frame) {
     v8::undefined(scope).into()
   };
 
+  let Some(this) = session.this.as_ref() else {
+    return;
+  };
   let state = session.op_state.borrow();
   let callbacks = state.borrow::<SessionCallbacks>();
-  let recv = v8::Local::new(scope, &session.this);
+  let recv = v8::Local::new(scope, this);
   let callback = v8::Local::new(scope, &callbacks.goaway_data_cb);
   drop(state);
 
@@ -1146,9 +1164,12 @@ fn handle_priority_frame(session: &Session, frame: *const ffi::nghttp2_frame) {
   let weight = v8::Number::new(scope, spec.weight.into());
   let exclusive = v8::Boolean::new(scope, spec.exclusive != 0);
 
+  let Some(this) = session.this.as_ref() else {
+    return;
+  };
   let state = session.op_state.borrow();
   let callbacks = state.borrow::<SessionCallbacks>();
-  let recv = v8::Local::new(scope, &session.this);
+  let recv = v8::Local::new(scope, this);
   let callback = v8::Local::new(scope, &callbacks.priority_frame_cb);
   drop(state);
 
@@ -1194,9 +1215,12 @@ fn handle_alt_svc_frame(session: &Session, frame: *const ffi::nghttp2_frame) {
     .map(|s| v8::String::new(scope, s).unwrap())
     .unwrap_or_else(|_| v8::String::new(scope, "").unwrap());
 
+  let Some(this) = session.this.as_ref() else {
+    return;
+  };
   let state = session.op_state.borrow();
   let callbacks = state.borrow::<SessionCallbacks>();
-  let recv = v8::Local::new(scope, &session.this);
+  let recv = v8::Local::new(scope, this);
   let callback = v8::Local::new(scope, &callbacks.alt_svc_cb);
   drop(state);
 
@@ -1242,9 +1266,12 @@ fn handle_origin_frame(session: &Session, frame: *const ffi::nghttp2_frame) {
     }
   }
 
+  let Some(this) = session.this.as_ref() else {
+    return;
+  };
   let state = session.op_state.borrow();
   let callbacks = state.borrow::<SessionCallbacks>();
-  let recv = v8::Local::new(scope, &session.this);
+  let recv = v8::Local::new(scope, this);
   let callback = v8::Local::new(scope, &callbacks.origin_frame_cb);
   drop(state);
 
@@ -1555,9 +1582,12 @@ unsafe extern "C" fn on_frame_not_send_callback(
   let frame_type_v = v8::Integer::new_from_unsigned(scope, ftype as u32);
   let code = v8::Integer::new_from_unsigned(scope, translated);
 
+  let Some(this) = session.this.as_ref() else {
+    return 0;
+  };
   let state = session.op_state.borrow();
   let callbacks = state.borrow::<SessionCallbacks>();
-  let recv = v8::Local::new(scope, &session.this);
+  let recv = v8::Local::new(scope, this);
   let callback = v8::Local::new(scope, &callbacks.frame_error_cb);
   drop(state);
 
@@ -1720,9 +1750,12 @@ fn invoke_session_internal_error(session: &Session, lib_error_code: i32) {
   let context = v8::Local::new(scope, session.context.clone());
   let scope = &mut v8::ContextScope::new(scope, context);
 
+  let Some(this) = session.this.as_ref() else {
+    return;
+  };
   let state = session.op_state.borrow();
   let callbacks = state.borrow::<SessionCallbacks>();
-  let recv = v8::Local::new(scope, &session.this);
+  let recv = v8::Local::new(scope, this);
   let callback = v8::Local::new(scope, &callbacks.session_internal_error_cb);
   drop(state);
 
@@ -1994,7 +2027,7 @@ pub struct Session {
   pub isolate: v8::UnsafeRawIsolatePtr,
   pub context: v8::Global<v8::Context>,
   pub op_state: Rc<RefCell<OpState>>,
-  pub this: v8::Global<v8::Object>,
+  pub this: Option<v8::Global<v8::Object>>,
   pub padding_strategy: PaddingStrategy,
   pub graceful_close_initiated: bool,
   pub stream: Option<*mut deno_core::uv_compat::UvStream>,
@@ -2213,6 +2246,9 @@ impl Session {
   /// RST_STREAM while nghttp2 is processing frames can cause
   /// double-free with no_closed_streams=1.
   pub fn submit_rst_stream(&mut self, stream_id: i32, code: u32) {
+    if self.session.is_null() {
+      return;
+    }
     if self.is_sending {
       self.pending_rst_streams.push((stream_id, code));
       return;
@@ -2251,6 +2287,10 @@ impl Session {
     if self.pending_rst_streams.is_empty() {
       return;
     }
+    if self.session.is_null() {
+      self.pending_rst_streams.clear();
+      return;
+    }
     let pending: Vec<_> = std::mem::take(&mut self.pending_rst_streams);
     for (stream_id, code) in pending {
       // Check if the stream still exists.
@@ -2287,11 +2327,48 @@ impl Session {
     self.streams.len()
   }
 
+  fn detach_js_refs(&mut self) {
+    self.this.take();
+    self.pending_settings_acks.clear();
+  }
+
+  fn take_stream_for_close(
+    &mut self,
+  ) -> Option<*mut deno_core::uv_compat::UvStream> {
+    let stream = self.stream.take()?;
+    // Restore original stream.data saved by consume_stream before any pending
+    // libuv callbacks can observe a Session pointer that may be released.
+    // SAFETY: stream is a valid libuv handle owned by this session.
+    unsafe {
+      (*stream).data = self.orig_stream_data;
+    }
+    self.orig_stream_data = std::ptr::null_mut();
+    Some(stream)
+  }
+
+  fn close_stream_finalizer_safe(&mut self) {
+    let Some(stream) = self.take_stream_for_close() else {
+      return;
+    };
+    // SAFETY: stream is a valid libuv handle owned by this session. This path
+    // is used from cppgc Drop and must not call back into JS.
+    unsafe {
+      deno_core::uv_compat::uv_read_stop(stream);
+      deno_core::uv_compat::uv_close(
+        stream as *mut deno_core::uv_compat::UvHandle,
+        Some(h2_stream_close_cb),
+      );
+    }
+  }
+
   /// Check if graceful close is complete and notify JS if so.
   /// Mirrors Node.js's MaybeNotifyGracefulCloseComplete in node_http2.cc.
   /// Called after writes complete to detect when the session can be destroyed.
   pub fn maybe_notify_graceful_close_complete(&mut self) {
     if !self.graceful_close_initiated {
+      return;
+    }
+    if self.session.is_null() {
       return;
     }
 
@@ -2313,7 +2390,10 @@ impl Session {
     let context = v8::Local::new(scope, self.context.clone());
     let scope = &mut v8::ContextScope::new(scope, context);
 
-    let this_local = v8::Local::new(scope, &self.this);
+    let Some(this) = self.this.as_ref() else {
+      return;
+    };
+    let this_local = v8::Local::new(scope, this);
     let key = v8::String::new(scope, "ongracefulclosecomplete").unwrap();
     if let Some(Ok(cb)) = this_local
       .get(scope, key.into())
@@ -2329,6 +2409,9 @@ impl Session {
   }
 
   pub fn send_pending_data(&mut self) {
+    if self.session.is_null() {
+      return;
+    }
     // Prevent recursive calls. JS callbacks from nghttp2_session_mem_recv
     // can call back into send_pending_data via scheduleSendPending. Nested
     // nghttp2_session_mem_send can close/free streams that mem_recv still
@@ -2466,6 +2549,9 @@ impl Session {
     if data.is_empty() {
       return;
     }
+    if self.session.is_null() {
+      return;
+    }
     // Block re-entrant send_pending_data calls from JS callbacks during
     // mem_recv. A single mem_recv can process multiple frames (e.g.
     // END_STREAM + RST_STREAM). If a callback from frame N triggers
@@ -2494,13 +2580,7 @@ impl Session {
     // send_pending_data has had a chance to send GOAWAY etc.
     if self.pending_destroy {
       self.pending_destroy = false;
-      if let Some(stream) = self.stream.take() {
-        // Restore original stream.data that was saved in consume_stream
-        // SAFETY: stream is a valid libuv handle
-        unsafe {
-          (*stream).data = self.orig_stream_data;
-        }
-        self.orig_stream_data = std::ptr::null_mut();
+      if let Some(stream) = self.take_stream_for_close() {
         // SAFETY: stream is a valid libuv handle
         unsafe {
           deno_core::uv_compat::uv_read_stop(stream);
@@ -2541,7 +2621,10 @@ impl Session {
     let state = self.op_state.borrow();
     let callbacks = state.borrow::<SessionCallbacks>();
     let callback = v8::Local::new(scope, &callbacks.session_internal_error_cb);
-    let recv = v8::Local::new(scope, &self.this);
+    let Some(this) = self.this.as_ref() else {
+      return;
+    };
+    let recv = v8::Local::new(scope, this);
     drop(state);
 
     let errno_v = v8::Integer::new(scope, errno);
@@ -2591,10 +2674,10 @@ pub struct Http2SessionState {
 pub struct Http2Session {
   #[allow(dead_code, reason = "stored for future use")]
   type_: SessionType,
-  session: *mut ffi::nghttp2_session,
+  session: Cell<*mut ffi::nghttp2_session>,
   #[allow(dead_code, reason = "owns the allocation to prevent premature free")]
-  callbacks: *mut ffi::nghttp2_session_callbacks,
-  pub(crate) inner: *mut Session,
+  callbacks: Cell<*mut ffi::nghttp2_session_callbacks>,
+  pub(crate) inner: Cell<*mut Session>,
 }
 
 // SAFETY: Http2Session pointers are traced by cppgc
@@ -2606,7 +2689,61 @@ unsafe impl deno_core::GarbageCollected for Http2Session {
   }
 }
 
+impl Drop for Http2Session {
+  fn drop(&mut self) {
+    self.teardown();
+  }
+}
+
 impl Http2Session {
+  fn close_native_resources(&self) {
+    let inner_ptr = self.inner.get();
+    if !inner_ptr.is_null() {
+      // SAFETY: inner was allocated by Box::into_raw in Http2Session::create
+      // and remains owned by this Http2Session.
+      unsafe {
+        (*inner_ptr).detach_js_refs();
+      }
+    }
+
+    let session = self.session.replace(std::ptr::null_mut());
+    if !session.is_null() {
+      // SAFETY: session was created by nghttp2_session_*_new3 and is owned by
+      // this Http2Session.
+      unsafe {
+        ffi::nghttp2_session_del(session);
+      }
+      if !inner_ptr.is_null() {
+        // SAFETY: inner_ptr is still owned by this Http2Session. Clear the
+        // mirrored nghttp2 pointer so late no-op paths do not use it.
+        unsafe {
+          (*inner_ptr).session = std::ptr::null_mut();
+        }
+      }
+    }
+
+    let callbacks = self.callbacks.replace(std::ptr::null_mut());
+    if !callbacks.is_null() {
+      // SAFETY: callbacks was created by nghttp2_session_callbacks_new and is
+      // owned by this Http2Session.
+      unsafe {
+        ffi::nghttp2_session_callbacks_del(callbacks);
+      }
+    }
+  }
+
+  fn teardown(&self) {
+    self.close_native_resources();
+
+    let inner_ptr = self.inner.replace(std::ptr::null_mut());
+    if !inner_ptr.is_null() {
+      // SAFETY: inner was allocated by Box::into_raw in Http2Session::create
+      // and is owned by this Http2Session.
+      let mut inner = unsafe { Box::from_raw(inner_ptr) };
+      inner.close_stream_finalizer_safe();
+    }
+  }
+
   fn create(
     this: v8::Global<v8::Object>,
     isolate: &v8::Isolate,
@@ -2630,7 +2767,7 @@ impl Http2Session {
       op_state,
       context,
       isolate: isolate_ptr,
-      this,
+      this: Some(this),
       outgoing_buffers: Vec::with_capacity(32),
       outgoing_length: 0,
       padding_strategy: options.padding_strategy(),
@@ -2658,9 +2795,10 @@ impl Http2Session {
       is_client: matches!(session_type, SessionType::Client),
     }));
 
+    let callbacks;
     // SAFETY: inner is valid (just allocated); callbacks and options are valid
     unsafe {
-      let callbacks = create_callbacks();
+      callbacks = create_callbacks();
       match session_type {
         SessionType::Server => ffi::nghttp2_session_server_new3(
           &mut session,
@@ -2685,9 +2823,9 @@ impl Http2Session {
 
     Self {
       type_: session_type,
-      session,
-      callbacks: std::ptr::null_mut(),
-      inner,
+      session: Cell::new(session),
+      callbacks: Cell::new(callbacks),
+      inner: Cell::new(inner),
     }
   }
 
@@ -2714,7 +2852,7 @@ impl Http2Session {
     // SAFETY: self.session, priority, headers, and data_provider are valid
     let ret = unsafe {
       ffi::nghttp2_submit_request2(
-        self.session,
+        self.session.get(),
         &priority.spec,
         headers.data(),
         headers.len(),
@@ -2728,7 +2866,7 @@ impl Http2Session {
 
     if ret > 0 {
       // SAFETY: self.inner was allocated by Box::into_raw and is valid
-      let session = unsafe { &mut *self.inner };
+      let session = unsafe { &mut *self.inner.get() };
       let (obj, stream) =
         Http2Stream::new(session, ret, ffi::NGHTTP2_HCAT_HEADERS);
       stream.start_headers(ffi::NGHTTP2_HCAT_HEADERS);
@@ -2772,7 +2910,7 @@ impl Http2Session {
   #[fast]
   fn consume_stream(&self, #[cppgc] tcp: &crate::ops::tcp_wrap::TCPWrap) {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
-    let session = unsafe { &mut *self.inner };
+    let session = unsafe { &mut *self.inner.get() };
     // Take ownership of the underlying TCP handle away from the `TCPWrap`. The
     // session now owns the `UvTcp` allocation and is solely responsible for
     // freeing it (via `h2_stream_close_cb`). Without this transfer both the
@@ -2801,7 +2939,7 @@ impl Http2Session {
     // the read callback can access it
     // SAFETY: stream is a valid libuv handle; self.inner is a valid pointer
     unsafe {
-      (*stream).data = self.inner as *mut std::ffi::c_void;
+      (*stream).data = self.inner.get() as *mut std::ffi::c_void;
     }
 
     session.stream = Some(stream);
@@ -2821,16 +2959,22 @@ impl Http2Session {
   #[fast]
   #[reentrant]
   fn receive(&self, #[buffer] data: &[u8]) {
+    if self.inner.get().is_null() {
+      return;
+    }
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
-    let session = unsafe { &mut *self.inner };
+    let session = unsafe { &mut *self.inner.get() };
     session.receive_data(data);
   }
 
   #[fast]
   #[reentrant]
   fn send_pending(&self) {
+    if self.inner.get().is_null() {
+      return;
+    }
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
-    let session = unsafe { &mut *self.inner };
+    let session = unsafe { &mut *self.inner.get() };
     session.send_pending_data();
   }
 
@@ -2848,8 +2992,11 @@ impl Http2Session {
   #[buffer]
   #[reentrant]
   fn get_outgoing_chunk(&self) -> Box<[u8]> {
+    if self.inner.get().is_null() {
+      return Box::new([]);
+    }
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
-    let session = unsafe { &mut *self.inner };
+    let session = unsafe { &mut *self.inner.get() };
     loop {
       if let Some(chunk) = session.outgoing_chunks.pop_front() {
         return chunk.into_boxed_slice();
@@ -2890,8 +3037,11 @@ impl Http2Session {
     #[this] this: v8::Global<v8::Object>,
     scope: &mut v8::PinScope<'_, '_>,
   ) {
+    if self.inner.get().is_null() {
+      return;
+    }
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
-    let session = unsafe { &mut *self.inner };
+    let session = unsafe { &mut *self.inner.get() };
 
     if session.is_sending {
       // We're inside receive_data's mem_recv. Defer the TCP handle
@@ -2904,7 +3054,7 @@ impl Http2Session {
       // Use uv_shutdown first to send TCP FIN (graceful close) so the
       // peer can read any remaining buffered data. On Windows, calling
       // uv_close directly sends TCP RST which discards buffered data.
-      if let Some(stream) = session.stream.take() {
+      if let Some(stream) = session.take_stream_for_close() {
         // SAFETY: stream is a valid libuv handle taken via consume_stream
         unsafe {
           deno_core::uv_compat::uv_read_stop(stream);
@@ -2937,12 +3087,13 @@ impl Http2Session {
     {
       ondone_fn.call(scope, this_local.into(), &[]);
     }
+    self.teardown();
   }
 
   #[fast]
   fn settings(&self, cb: v8::Local<v8::Function>) -> bool {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
-    let session = unsafe { &mut *self.inner };
+    let session = unsafe { &mut *self.inner.get() };
     // SAFETY: session.isolate is valid for this session's lifetime
     let isolate = unsafe { v8::Isolate::from_raw_isolate_ptr(session.isolate) };
     // Enqueue BEFORE submit so the FIFO entry is in place no matter what.
@@ -2954,7 +3105,7 @@ impl Http2Session {
     session
       .pending_settings_acks
       .push_back(v8::Global::new(&isolate, cb));
-    let settings = Http2Settings::init(self.inner);
+    let settings = Http2Settings::init(self.inner.get());
     settings.send();
     session.send_pending_data();
     true
@@ -2975,7 +3126,9 @@ impl Http2Session {
     // so that in-progress streams are not refused.
     let effective_last_stream_id = if last_stream_id <= 0 {
       // SAFETY: self.session is a valid nghttp2 session pointer
-      unsafe { ffi::nghttp2_session_get_last_proc_stream_id(self.session) }
+      unsafe {
+        ffi::nghttp2_session_get_last_proc_stream_id(self.session.get())
+      }
     } else {
       last_stream_id
     };
@@ -2983,7 +3136,7 @@ impl Http2Session {
     // SAFETY: self.session is valid; data_ptr and data_len are valid
     unsafe {
       ffi::nghttp2_submit_goaway(
-        self.session,
+        self.session.get(),
         ffi::NGHTTP2_FLAG_NONE as _,
         effective_last_stream_id,
         code,
@@ -2992,7 +3145,7 @@ impl Http2Session {
       );
     }
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
-    let session = unsafe { &mut *self.inner };
+    let session = unsafe { &mut *self.inner.get() };
     // Mark this GOAWAY as user-initiated so on_frame_send_callback skips the
     // internal-protocol-error hook when nghttp2 ships it.
     session.pending_user_goaway = session.pending_user_goaway.saturating_add(1);
@@ -3002,23 +3155,23 @@ impl Http2Session {
   #[fast]
   fn set_graceful_close(&self) {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
-    let session = unsafe { &mut *self.inner };
+    let session = unsafe { &mut *self.inner.get() };
     session.graceful_close_initiated = true;
   }
 
   #[fast]
   fn is_graceful_closing(&self) -> bool {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
-    let session = unsafe { &*self.inner };
+    let session = unsafe { &*self.inner.get() };
     session.is_graceful_closing()
   }
 
   #[fast]
   fn submit_shutdown_notice(&self) {
     // SAFETY: self.session is a valid nghttp2 session pointer
-    unsafe { ffi::nghttp2_submit_shutdown_notice(self.session) };
+    unsafe { ffi::nghttp2_submit_shutdown_notice(self.session.get()) };
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
-    let session = unsafe { &mut *self.inner };
+    let session = unsafe { &mut *self.inner.get() };
     session.start_graceful_close();
     session.send_pending_data();
   }
@@ -3027,7 +3180,7 @@ impl Http2Session {
   #[smi]
   fn active_stream_count(&self) -> u32 {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
-    let session = unsafe { &*self.inner };
+    let session = unsafe { &*self.inner.get() };
     session.active_stream_count() as u32
   }
 
@@ -3035,7 +3188,7 @@ impl Http2Session {
   #[smi]
   fn frames_received(&self) -> u32 {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
-    let session = unsafe { &*self.inner };
+    let session = unsafe { &*self.inner.get() };
     session.frames_received
   }
 
@@ -3043,16 +3196,19 @@ impl Http2Session {
   #[smi]
   fn frames_sent(&self) -> u32 {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
-    let session = unsafe { &*self.inner };
+    let session = unsafe { &*self.inner.get() };
     session.frames_sent
   }
 
   #[fast]
   fn has_pending_data(&self) -> bool {
+    if self.session.get().is_null() {
+      return false;
+    }
     // SAFETY: self.session is a valid nghttp2 session pointer
     unsafe {
-      let want_write = ffi::nghttp2_session_want_write(self.session);
-      let want_read = ffi::nghttp2_session_want_read(self.session);
+      let want_write = ffi::nghttp2_session_want_write(self.session.get());
+      let want_read = ffi::nghttp2_session_want_read(self.session.get());
       want_write != 0 || want_read != 0
     }
   }
@@ -3063,7 +3219,7 @@ impl Http2Session {
   #[smi]
   fn last_sent_goaway_code(&self) -> i32 {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
-    let session = unsafe { &*self.inner };
+    let session = unsafe { &*self.inner.get() };
     match session.sent_goaway_code {
       Some(code) => code as i32,
       None => -1,
@@ -3073,42 +3229,42 @@ impl Http2Session {
   #[fast]
   fn local_settings(&self) {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
-    let session = unsafe { &*self.inner };
+    let session = unsafe { &*self.inner.get() };
     // SAFETY: self.session is a valid nghttp2 session pointer
     with_settings(|buffer| unsafe {
       buffer[SettingsIndex::HeaderTableSize as usize] =
         ffi::nghttp2_session_get_local_settings(
-          self.session,
+          self.session.get(),
           ffi::NGHTTP2_SETTINGS_HEADER_TABLE_SIZE,
         ) as u32;
       buffer[SettingsIndex::EnablePush as usize] =
         ffi::nghttp2_session_get_local_settings(
-          self.session,
+          self.session.get(),
           ffi::NGHTTP2_SETTINGS_ENABLE_PUSH,
         ) as u32;
       buffer[SettingsIndex::MaxConcurrentStreams as usize] =
         ffi::nghttp2_session_get_local_settings(
-          self.session,
+          self.session.get(),
           ffi::NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS,
         ) as u32;
       buffer[SettingsIndex::InitialWindowSize as usize] =
         ffi::nghttp2_session_get_local_settings(
-          self.session,
+          self.session.get(),
           ffi::NGHTTP2_SETTINGS_INITIAL_WINDOW_SIZE,
         ) as u32;
       buffer[SettingsIndex::MaxFrameSize as usize] =
         ffi::nghttp2_session_get_local_settings(
-          self.session,
+          self.session.get(),
           ffi::NGHTTP2_SETTINGS_MAX_FRAME_SIZE,
         ) as u32;
       buffer[SettingsIndex::MaxHeaderListSize as usize] =
         ffi::nghttp2_session_get_local_settings(
-          self.session,
+          self.session.get(),
           ffi::NGHTTP2_SETTINGS_MAX_HEADER_LIST_SIZE,
         ) as u32;
       buffer[SettingsIndex::EnableConnectProtocol as usize] =
         ffi::nghttp2_session_get_local_settings(
-          self.session,
+          self.session.get(),
           ffi::NGHTTP2_SETTINGS_ENABLE_CONNECT_PROTOCOL,
         ) as u32;
       write_custom_settings_to_buffer(buffer, &session.local_custom_settings);
@@ -3118,42 +3274,42 @@ impl Http2Session {
   #[fast]
   fn remote_settings(&self) {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
-    let session = unsafe { &*self.inner };
+    let session = unsafe { &*self.inner.get() };
     // SAFETY: self.session is a valid nghttp2 session pointer
     with_settings(|buffer| unsafe {
       buffer[SettingsIndex::HeaderTableSize as usize] =
         ffi::nghttp2_session_get_remote_settings(
-          self.session,
+          self.session.get(),
           ffi::NGHTTP2_SETTINGS_HEADER_TABLE_SIZE,
         ) as u32;
       buffer[SettingsIndex::EnablePush as usize] =
         ffi::nghttp2_session_get_remote_settings(
-          self.session,
+          self.session.get(),
           ffi::NGHTTP2_SETTINGS_ENABLE_PUSH,
         ) as u32;
       buffer[SettingsIndex::MaxConcurrentStreams as usize] =
         ffi::nghttp2_session_get_remote_settings(
-          self.session,
+          self.session.get(),
           ffi::NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS,
         ) as u32;
       buffer[SettingsIndex::InitialWindowSize as usize] =
         ffi::nghttp2_session_get_remote_settings(
-          self.session,
+          self.session.get(),
           ffi::NGHTTP2_SETTINGS_INITIAL_WINDOW_SIZE,
         ) as u32;
       buffer[SettingsIndex::MaxFrameSize as usize] =
         ffi::nghttp2_session_get_remote_settings(
-          self.session,
+          self.session.get(),
           ffi::NGHTTP2_SETTINGS_MAX_FRAME_SIZE,
         ) as u32;
       buffer[SettingsIndex::MaxHeaderListSize as usize] =
         ffi::nghttp2_session_get_remote_settings(
-          self.session,
+          self.session.get(),
           ffi::NGHTTP2_SETTINGS_MAX_HEADER_LIST_SIZE,
         ) as u32;
       buffer[SettingsIndex::EnableConnectProtocol as usize] =
         ffi::nghttp2_session_get_remote_settings(
-          self.session,
+          self.session.get(),
           ffi::NGHTTP2_SETTINGS_ENABLE_CONNECT_PROTOCOL,
         ) as u32;
       write_custom_settings_to_buffer(buffer, &session.remote_custom_settings);
@@ -3165,31 +3321,36 @@ impl Http2Session {
     unsafe {
       Http2SessionState {
         effective_local_window_size:
-          ffi::nghttp2_session_get_effective_local_window_size(self.session)
-            as f64,
+          ffi::nghttp2_session_get_effective_local_window_size(
+            self.session.get(),
+          ) as f64,
         effective_recv_data_length:
-          ffi::nghttp2_session_get_effective_recv_data_length(self.session)
-            as f64,
-        next_stream_id: ffi::nghttp2_session_get_next_stream_id(self.session)
-          as f64,
+          ffi::nghttp2_session_get_effective_recv_data_length(
+            self.session.get(),
+          ) as f64,
+        next_stream_id: ffi::nghttp2_session_get_next_stream_id(
+          self.session.get(),
+        ) as f64,
         local_window_size: ffi::nghttp2_session_get_local_window_size(
-          self.session,
+          self.session.get(),
         ) as f64,
         last_proc_stream_id: ffi::nghttp2_session_get_last_proc_stream_id(
-          self.session,
+          self.session.get(),
         ) as f64,
         remote_window_size: ffi::nghttp2_session_get_remote_window_size(
-          self.session,
+          self.session.get(),
         ) as f64,
         outbound_queue_size: ffi::nghttp2_session_get_outbound_queue_size(
-          self.session,
+          self.session.get(),
         ) as f64,
         hd_deflate_dynamic_table_size:
-          ffi::nghttp2_session_get_hd_deflate_dynamic_table_size(self.session)
-            as f64,
+          ffi::nghttp2_session_get_hd_deflate_dynamic_table_size(
+            self.session.get(),
+          ) as f64,
         hd_inflate_dynamic_table_size:
-          ffi::nghttp2_session_get_hd_inflate_dynamic_table_size(self.session)
-            as f64,
+          ffi::nghttp2_session_get_hd_inflate_dynamic_table_size(
+            self.session.get(),
+          ) as f64,
       }
     }
   }
@@ -3199,7 +3360,7 @@ impl Http2Session {
   fn set_next_stream_id(&self, id: i32) -> bool {
     let ret =
       // SAFETY: self.session is a valid nghttp2 session pointer
-      unsafe { ffi::nghttp2_session_set_next_stream_id(self.session, id) };
+      unsafe { ffi::nghttp2_session_set_next_stream_id(self.session.get(), id) };
     if ret < 0 {
       log::debug!("failed to set next stream id to {}", id);
       return false;
@@ -3211,7 +3372,7 @@ impl Http2Session {
   #[fast]
   fn set_max_invalid_frames(&self, value: u32) {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
-    let session = unsafe { &mut *self.inner };
+    let session = unsafe { &mut *self.inner.get() };
     session.max_invalid_frames = value;
   }
 
@@ -3220,7 +3381,7 @@ impl Http2Session {
     // SAFETY: self.session is a valid nghttp2 session pointer
     unsafe {
       ffi::nghttp2_session_set_local_window_size(
-        self.session,
+        self.session.get(),
         ffi::NGHTTP2_FLAG_NONE as u8,
         0,
         window_size,
@@ -3231,7 +3392,7 @@ impl Http2Session {
   #[fast]
   fn update_chunks_sent(&self) -> u32 {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
-    let session = unsafe { &*self.inner };
+    let session = unsafe { &*self.inner.get() };
     session.outgoing_buffers.len() as u32
   }
 
@@ -3260,14 +3421,14 @@ impl Http2Session {
     // SAFETY: self.session is valid; ov slice pointer and length are valid
     let ret = unsafe {
       ffi::nghttp2_submit_origin(
-        self.session,
+        self.session.get(),
         ffi::NGHTTP2_FLAG_NONE as u8,
         ov.as_ptr(),
         ov.len(),
       )
     };
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
-    let session = unsafe { &mut *self.inner };
+    let session = unsafe { &mut *self.inner.get() };
     session.send_pending_data();
     ret
   }
@@ -3295,7 +3456,7 @@ impl Http2Session {
     // SAFETY: self.session is valid; origin and value byte slices are valid
     let ret = unsafe {
       ffi::nghttp2_submit_altsvc(
-        self.session,
+        self.session.get(),
         ffi::NGHTTP2_FLAG_NONE as u8,
         stream_id,
         origin_bytes.as_ptr(),
@@ -3305,7 +3466,7 @@ impl Http2Session {
       )
     };
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
-    let session = unsafe { &mut *self.inner };
+    let session = unsafe { &mut *self.inner.get() };
     session.send_pending_data();
     ret
   }
@@ -3319,13 +3480,13 @@ impl Http2Session {
     // SAFETY: self.session is valid; payload is exactly 8 bytes (checked above)
     let ret = unsafe {
       ffi::nghttp2_submit_ping(
-        self.session,
+        self.session.get(),
         ffi::NGHTTP2_FLAG_NONE as u8,
         payload.as_ptr(),
       )
     };
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
-    let session = unsafe { &mut *self.inner };
+    let session = unsafe { &mut *self.inner.get() };
     if ret == 0 {
       // Track the outstanding ping so an inbound ACK can be matched. If
       // an ACK arrives when this counter is zero, the peer sent an
@@ -3355,7 +3516,7 @@ impl Http2Session {
     }
 
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
-    let session = unsafe { &*self.inner };
+    let session = unsafe { &*self.inner.get() };
     if let Some(stream_obj) = session.find_stream_obj(ret) {
       return v8::Local::new(scope, stream_obj).into();
     }

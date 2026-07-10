@@ -526,6 +526,7 @@ const kStreamEventEmitted = Symbol("kStreamEventEmitted");
 const kRawHeaders = Symbol("raw-headers");
 const kSentTrailers = Symbol("sent-trailers");
 const kServer = Symbol("server");
+const kSocketDataListener = Symbol("socket-data-listener");
 const kState = Symbol("state");
 const kType = Symbol("type");
 const kWriteGeneric = Symbol("write-generic");
@@ -3483,7 +3484,7 @@ function setupHandle(socket, type, options) {
 
   // Pump data from socket to session via JS events.
   // After receiving data, flush outgoing h2 frames back to the socket.
-  socket.on("data", (buf) => {
+  const socketOnData = (buf) => {
     if (!this.destroyed) {
       handle.receive(buf);
       // After receiving, nghttp2 may have generated response frames
@@ -3522,7 +3523,9 @@ function setupHandle(socket, type, options) {
         });
       }
     }
-  });
+  };
+  this[kSocketDataListener] = socketOnData;
+  socket.on("data", socketOnData);
   socket.resume();
   debug("i/o stream consumed (socket data events)");
 
@@ -3700,11 +3703,20 @@ function cleanupSession(session) {
   );
   if (handle) {
     handle.ondone = null;
+    handle.ongracefulclosecomplete = null;
+    handle.onstreamclose = null;
+    handle.sendPending = () => {};
+    handle[kOwner] = undefined;
   }
   if (socket) {
+    const socketDataListener = session[kSocketDataListener];
+    if (socketDataListener) {
+      socket.removeListener("data", socketDataListener);
+    }
     socket[kBoundSession] = undefined;
     socket[kServer] = undefined;
   }
+  session[kSocketDataListener] = undefined;
 }
 
 function finishSessionClose(session, error) {
@@ -3716,7 +3728,9 @@ function finishSessionClose(session, error) {
   cleanupSession(session);
 
   if (socket && !socket.destroyed) {
-    socket.on("close", () => {
+    socket.once("close", () => {
+      socket.removeListener("error", socketOnError);
+      socket.removeListener("close", socketOnClose);
       emitClose(session, error);
     });
     if (session.closed) {

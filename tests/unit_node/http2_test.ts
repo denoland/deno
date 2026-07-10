@@ -758,6 +758,51 @@ Deno.test("[node/http2 client] connect with pre-created socket", {
   await new Promise<void>((resolve) => server.on("close", resolve));
 });
 
+Deno.test("[node/http2] destroy cleans internal socket references", async () => {
+  const server = http2.createServer((_req, res) => {
+    res.end("ok");
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as net.AddressInfo).port;
+
+  const client = http2.connect(`http://127.0.0.1:${port}`);
+  await new Promise<void>((resolve, reject) => {
+    client.once("connect", resolve);
+    client.once("error", reject);
+  });
+
+  const clientSymbols = Object.getOwnPropertySymbols(client);
+  const socketSymbol = clientSymbols.find((symbol) =>
+    String(symbol) === "Symbol(socket)"
+  );
+  const handleSymbol = clientSymbols.find((symbol) =>
+    String(symbol) === "Symbol(kHandle)"
+  );
+  if (!socketSymbol || !handleSymbol) {
+    throw new Error("missing expected internal http2 symbols");
+  }
+
+  const clientRecord = client as unknown as Record<symbol, unknown>;
+  const socket = clientRecord[socketSymbol] as net.Socket;
+  const handle = clientRecord[handleSymbol] as Record<symbol, unknown>;
+  const ownerSymbol = Object.getOwnPropertySymbols(handle).find((symbol) =>
+    String(symbol) === "Symbol(ownerSymbol)"
+  );
+
+  client.destroy();
+  await new Promise<void>((resolve) => client.once("close", resolve));
+
+  assertEquals(clientRecord[handleSymbol], undefined);
+  if (ownerSymbol) {
+    assertEquals(handle[ownerSymbol], undefined);
+  }
+  assertEquals(socket.listenerCount("data"), 0);
+  assertEquals(socket.listenerCount("error"), 0);
+  assertEquals(socket.listenerCount("close"), 0);
+
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+});
+
 // Regression test for https://github.com/denoland/deno/issues/33317
 // `http2.createSecureServer({ allowHTTP1: true })` must handle HTTP/1.1
 // clients without throwing `ReferenceError: kIncomingMessage is not defined`.
