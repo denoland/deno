@@ -1467,6 +1467,23 @@ function emit(self, ...args) {
   ReflectApply(self.emit, self, args);
 }
 
+// Emit a client stream's first header event ('response' or push 'push'), then
+// release any read that _read() deferred while waiting for it. This guarantees
+// body 'data' is never delivered before 'response' (denoland/deno#35947).
+function emitClientResponseNT(stream, event, obj, flags, headers) {
+  stream[kState].responseEmitted = true;
+  ReflectApply(stream.emit, stream, [event, obj, flags, headers]);
+  const state = stream[kState];
+  if (state.readPending && !stream.destroyed) {
+    state.readPending = false;
+    if (!stream.pending) {
+      FunctionPrototypeCall(streamOnResume, stream);
+    } else {
+      stream.once("ready", streamOnResume);
+    }
+  }
+}
+
 // Mark the stream so onStreamClose stops deferring before user code
 // runs, then emit the 'stream' event on the session.
 function emitStreamNT(session, stream, obj, flags, headers) {
@@ -1654,12 +1671,17 @@ function onSessionHeaders(
       originSet.delete(stream[kOrigin]);
     }
     debugStream(id, type, "emitting stream '%s' event", event);
+    // The first header event ('response'/'push') releases the client read gate
+    // in _read so that body 'data' cannot be emitted before it.
+    const emitFn = (event === "response" || event === "push")
+      ? emitClientResponseNT
+      : emit;
     const reqAsync = stream[kRequestAsyncResource];
     if (reqAsync) {
       reqAsync.runInAsyncScope(
         process.nextTick,
         null,
-        emit,
+        emitFn,
         stream,
         event,
         obj,
@@ -1667,7 +1689,7 @@ function onSessionHeaders(
         headers,
       );
     } else {
-      process.nextTick(emit, stream, event, obj, flags, headers);
+      process.nextTick(emitFn, stream, event, obj, flags, headers);
     }
     if (
       (event === "response" ||
@@ -1946,6 +1968,11 @@ class Http2Stream extends Duplex {
       writeQueueSize: 0,
       trailersReady: false,
       endAfterHeaders: false,
+      // Client-only: whether the 'response' (or 'push') headers event has been
+      // emitted yet, and whether a read was requested before it fired. Used to
+      // keep body 'data' from being delivered ahead of 'response' (see _read).
+      responseEmitted: false,
+      readPending: false,
     };
 
     // Fields used by the compat API to avoid megamorphisms.
@@ -2437,6 +2464,22 @@ class Http2Stream extends Duplex {
     if (!this[kState].didRead) {
       this._readableState.readingMore = false;
       this[kState].didRead = true;
+    }
+    // On a client stream, 'response' is emitted from a process.nextTick queued
+    // in onSessionHeaders, but the native read callback pushes body data
+    // synchronously. If the consumer starts reading before 'response' fires
+    // (e.g. a 'data' listener attached right after request()), a body that
+    // arrives in the same frame batch as the response headers would emit 'data'
+    // ahead of 'response' (denoland/deno#35947). Hold off starting the read
+    // until 'response' has been emitted; emitClientResponseNT re-runs _read.
+    const session = this[kSession];
+    if (
+      session !== undefined &&
+      session[kType] === NGHTTP2_SESSION_CLIENT &&
+      !this[kState].responseEmitted
+    ) {
+      this[kState].readPending = true;
+      return;
     }
     if (!this.pending) {
       FunctionPrototypeCall(streamOnResume, this);
