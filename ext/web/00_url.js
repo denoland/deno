@@ -42,6 +42,9 @@ const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const { createFilteredInspectProxy } = core.loadExtScript(
   "ext:deno_web/01_console.js",
 );
+const { markNotSerializable } = core.loadExtScript(
+  "ext:deno_web/13_message_port.js",
+);
 
 const _list = Symbol("list");
 const _urlObject = Symbol("url object");
@@ -454,6 +457,7 @@ webidl.mixinPairIterable("URLSearchParams", URLSearchParams, _list, 0, 1);
 
 webidl.configureInterface(URLSearchParams);
 const URLSearchParamsPrototype = URLSearchParams.prototype;
+markNotSerializable(URLSearchParamsPrototype);
 
 webidl.converters["URLSearchParams"] = webidl.createInterfaceConverter(
   "URLSearchParams",
@@ -1208,6 +1212,7 @@ class URL {
 
 webidl.configureInterface(URL);
 const URLPrototype = URL.prototype;
+markNotSerializable(URLPrototype);
 
 /**
  * This function implements application/x-www-form-urlencoded parsing.

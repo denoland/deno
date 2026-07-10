@@ -6,7 +6,6 @@ use dashmap::DashMap;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use deno_core::serde_json::Value;
 use deno_npm::resolution::NpmVersionResolver;
 use deno_npmrc::NpmRc;
 use deno_npmrc::NpmRegistryUrl;
@@ -35,11 +34,15 @@ impl CliNpmSearchApi {
     file_fetcher: Arc<CliFileFetcher>,
     npm_version_resolver: Arc<NpmVersionResolver>,
   ) -> Self {
+    // The LSP is the only consumer of npm `exports` subpath keys (import
+    // specifier completion), so it opts into deserializing them; every other
+    // command discards them to avoid retaining them for the whole process.
     let resolver = NpmFetchResolver::new(
       file_fetcher.clone(),
       Arc::new(NpmRc::default().as_resolved(npm_registry_url()).unwrap()),
       npm_version_resolver,
-    );
+    )
+    .with_export_keys();
     Self {
       file_fetcher,
       resolver,
@@ -121,28 +124,12 @@ impl PackageSearchApi for CliNpmSearchApi {
     let mut exports = version_info
       .exports
       .as_ref()
-      .map(exports_from_package_json_value)
+      .map(|exports| exports.as_slice().to_vec())
       .unwrap_or_default();
     exports.sort();
     let exports = Arc::new(exports);
     self.exports_cache.insert(nv.clone(), exports.clone());
     Ok(exports)
-  }
-}
-
-fn exports_from_package_json_value(value: &Value) -> Vec<String> {
-  match value {
-    Value::String(_) => vec![".".to_string()],
-    Value::Object(obj) => obj
-      .keys()
-      .filter(|key| {
-        key.as_str() == "."
-          || (key.starts_with("./")
-            && key.chars().filter(|c| *c == '*').count() != 1)
-      })
-      .cloned()
-      .collect(),
-    _ => Vec::new(),
   }
 }
 
@@ -189,24 +176,5 @@ mod tests {
         "puppeteer-extra-plugin".to_string()
       ]
     );
-  }
-
-  #[test]
-  fn test_exports_from_package_json_value() {
-    let exports = exports_from_package_json_value(&serde_json::json!({
-      ".": "./index.js",
-      "./client": "./client.js",
-      "./server": {
-        "types": "./server.d.ts",
-        "default": "./server.js"
-      },
-      "./features/*": "./features/*.js",
-      "import": "./index.mjs"
-    }));
-    assert_eq!(exports, vec![".", "./client", "./server"]);
-
-    let exports =
-      exports_from_package_json_value(&serde_json::json!("./index.js"));
-    assert_eq!(exports, vec!["."]);
   }
 }

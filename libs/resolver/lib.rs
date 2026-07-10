@@ -42,6 +42,7 @@ use crate::workspace::MappedResolutionError;
 use crate::workspace::WorkspaceResolvePkgJsonFolderError;
 use crate::workspace::WorkspaceResolver;
 
+pub mod bun_lockfile_import;
 pub mod cache;
 pub mod cjs;
 pub mod collections;
@@ -58,10 +59,13 @@ pub mod import_map;
 pub mod loader;
 pub mod lockfile;
 pub mod npm;
+pub mod npm_lockfile_import;
 pub mod npmrc;
+pub mod pnpm_lockfile_import;
 #[cfg(feature = "sync")]
 mod rt;
 pub mod workspace;
+pub mod yarn_lockfile_import;
 
 #[allow(clippy::disallowed_types, reason = "definition")]
 pub type WorkspaceResolverRc<TSys> =

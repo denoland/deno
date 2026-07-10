@@ -903,7 +903,8 @@ impl ReplSession {
           inline_sources: false,
           remove_comments: false,
         },
-      )?
+      )
+      .map_err(deno_resolver::emit::dedupe_transpile_error)?
       .into_source();
     let transpiled_src = emitted.text;
 

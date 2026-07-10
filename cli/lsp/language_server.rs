@@ -62,6 +62,7 @@ use super::analysis::fix_ts_import_changes;
 use super::analysis::ts_changes_to_edit;
 use super::cache::LspCache;
 use super::capabilities;
+use super::capabilities::INFERRED_TYPE_CODE_ACTION_KIND;
 use super::capabilities::semantic_tokens_registration_options;
 use super::client::Client;
 use super::code_lens;
@@ -81,6 +82,7 @@ use super::jsr::CliJsrSearchApi;
 use super::logging::lsp_log;
 use super::logging::lsp_warn;
 use super::lsp_custom;
+use super::lsp_custom::INFERRED_TYPE_COMMAND;
 use super::lsp_custom::TaskDefinition;
 use super::npm::CliNpmSearchApi;
 use super::parent_process_checker;
@@ -500,6 +502,32 @@ impl LanguageServer {
     Ok(Some(self.inner.read().await.get_performance()))
   }
 
+  pub async fn inferred_type(
+    &self,
+    params: Option<Value>,
+    token: CancellationToken,
+  ) -> LspResult<Option<Value>> {
+    self.init_flag.wait_raised().await;
+    match params.map(serde_json::from_value) {
+      Some(Ok(params)) => Ok(Some(
+        serde_json::to_value(
+          self
+            .inner
+            .read()
+            .await
+            .inferred_type(params, &token)
+            .await?,
+        )
+        .map_err(|err| {
+          error!("Failed to serialize inferred_type response: {:#}", err);
+          LspError::internal_error()
+        })?,
+      )),
+      Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
+      None => Err(LspError::invalid_params("Missing parameters")),
+    }
+  }
+
   pub async fn task_definitions(
     &self,
     _token: CancellationToken,
@@ -609,6 +637,7 @@ impl Inner {
         link_packages: Default::default(),
         newest_dependency_date_options: Default::default(),
         overrides: Default::default(),
+        trust_policy: Default::default(),
       }),
     );
     let config = Config::default();
@@ -836,6 +865,7 @@ impl Inner {
         link_packages: Default::default(),
         newest_dependency_date_options: Default::default(),
         overrides: Default::default(),
+        trust_policy: Default::default(),
       }),
     );
     self.performance.measure(mark);
@@ -2187,6 +2217,63 @@ impl Inner {
     let mut deno_lint_actions = Vec::new();
     let mut deno_test_actions = Vec::new();
     let mut includes_no_cache = false;
+    if params.context.only.as_ref().is_none_or(|only| {
+      only.iter().any(|kind| {
+        INFERRED_TYPE_CODE_ACTION_KIND
+          .as_str()
+          .starts_with(kind.as_str())
+      })
+    }) {
+      let snapshot = self.snapshot();
+      let response = self
+        .ts_server
+        .provide_inferred_type(&module, params.range.start, snapshot, token)
+        .await
+        .map_err(|err| {
+          if token.is_cancelled() {
+            LspError::request_cancelled()
+          } else {
+            error!(
+              "Unable to get inferred type code action from TypeScript: {:#}",
+              err
+            );
+            LspError::internal_error()
+          }
+        })?;
+      if let Some(response) = response {
+        deno_actions.push(CodeAction {
+          title: "Copy inferred type".to_string(),
+          kind: Some(INFERRED_TYPE_CODE_ACTION_KIND.clone()),
+          command: Some(Command {
+            title: "Copy inferred type".to_string(),
+            command: INFERRED_TYPE_COMMAND.to_string(),
+            arguments: Some(vec![
+              serde_json::to_value(lsp_custom::InferredTypeParams {
+                text_document: TextDocumentIdentifier {
+                  uri: params.text_document.uri.clone(),
+                },
+                position: params.range.start,
+              })
+              .map_err(|err| {
+                error!(
+                  "Failed to serialize inferred type command params: {:#}",
+                  err
+                );
+                LspError::internal_error()
+              })?,
+              serde_json::to_value(response).map_err(|err| {
+                error!(
+                  "Failed to serialize inferred type command response: {:#}",
+                  err
+                );
+                LspError::internal_error()
+              })?,
+            ]),
+          }),
+          ..Default::default()
+        });
+      }
+    }
     if self.config.specifier_enabled_for_test(&module.specifier)
       && let Some(Ok(parsed_source)) = &module
         .open_data
@@ -4187,7 +4274,8 @@ impl Inner {
       let options = DidChangeWatchedFilesRegistrationOptions {
         watchers: vec![FileSystemWatcher {
           glob_pattern: GlobPattern::String(
-            "**/*.{json,jsonc,lock,js,mjs,cjs,jsx,ts,mts,cts,tsx}".to_string(),
+            "**/*.{json,jsonc,lock,js,mjs,cjs,jsx,ts,mts,cts,tsx,wasm}"
+              .to_string(),
           ),
           kind: None,
         }],
@@ -4448,7 +4536,11 @@ impl Inner {
       match params.map(serde_json::from_value) {
         Some(Ok(params)) => {
           testing_server
-            .run_request(params, self.config.workspace_settings().clone())
+            .run_request(
+              params,
+              self.config.workspace_settings().clone(),
+              &self.config.tree,
+            )
             .await
         }
         Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
@@ -4679,6 +4771,43 @@ impl Inner {
     };
     self.performance.measure(mark);
     Ok(contents)
+  }
+
+  async fn inferred_type(
+    &self,
+    params: lsp_custom::InferredTypeParams,
+    token: &CancellationToken,
+  ) -> LspResult<Option<lsp_custom::InferredTypeResponse>> {
+    let mark = self
+      .performance
+      .mark_with_args("lsp.inferred_type", &params);
+    let Some(document) = self.get_document(
+      &params.text_document.uri,
+      Enabled::Filter,
+      Exists::Enforce,
+      Diagnosable::Filter,
+    )?
+    else {
+      return Ok(None);
+    };
+    let Some(module) = self.get_primary_module(&document)? else {
+      return Ok(None);
+    };
+    let snapshot = self.snapshot();
+    let response = self
+      .ts_server
+      .provide_inferred_type(&module, params.position, snapshot, token)
+      .await
+      .map_err(|err| {
+        if token.is_cancelled() {
+          LspError::request_cancelled()
+        } else {
+          error!("Unable to get inferred type from TypeScript: {:#}", err);
+          LspError::internal_error()
+        }
+      })?;
+    self.performance.measure(mark);
+    Ok(response)
   }
 }
 

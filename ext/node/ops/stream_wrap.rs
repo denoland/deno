@@ -1229,6 +1229,14 @@ impl LibUvStreamWrap {
     scope: &mut v8::PinScope<'_, '_>,
     #[scoped] cb: Option<v8::Global<v8::Function>>,
   ) -> Result<(), ResourceError> {
+    // Stop any active read before clearing the JS handle so the read-callback
+    // registry drops its strong `Global<this>` and the wrapper can be GC'd
+    // after close. The stream pointer is still valid here (close_handle runs
+    // afterwards). Note: TLSWrap uses this base close op, but its own base
+    // stream is null (reads are owned by the underlying TCP/Pipe wrap), so this
+    // `read_stop_internal()` is a no-op for TLS; the TLS socket is freed
+    // transitively when its underlying `net.Socket` is destroyed.
+    self.read_stop_internal();
     self.clear_js_handle();
     self.base.close_handle(op_state, this, scope, cb)
   }
@@ -1355,6 +1363,7 @@ impl LibUvStreamWrap {
       .set(self.bytes_written.get() + byte_length as u64);
 
     let mut buf = [0; v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP];
+    let stack_base: *const u8 = buf.as_ptr();
     let data = buffer.get_contents(&mut buf);
 
     // SAFETY: stream is a valid non-null uv_stream_t (checked above).
@@ -1379,10 +1388,6 @@ impl LibUvStreamWrap {
     } else {
       (data, byte_length)
     };
-    let buf = uv_buf_t {
-      base: write_data.as_ptr() as *mut c_char,
-      len: write_len,
-    };
 
     let stream_handle = self
       .js_handle_global(scope)
@@ -1401,9 +1406,37 @@ impl LibUvStreamWrap {
     );
     let req_ptr = Box::into_raw(req);
 
-    // SAFETY: req_ptr is a valid uv_write_t and stream is a valid non-null uv_stream_t.
-    let err = unsafe {
-      uv_compat::uv_write(req_ptr, stream, &buf, 1, Some(after_uv_write))
+    // `get_contents` copies on-heap typed arrays (<= 64 bytes) into the
+    // stack `buf`, which won't outlive this op — those need an owned
+    // copy. Off-heap stores are stable while JS retains the chunk via
+    // `req.buffer = data` (handleWriteReq), the same retention contract
+    // as the writev path, so queue a zero-copy iovec pointing at the
+    // backing store instead of memcpy'ing the tail into an owned Vec
+    // (the old `uv_write` path copied via collect_bufs — up to the
+    // full payload per queued write under backpressure).
+    let on_stack = std::ptr::eq(data.as_ptr(), stack_base);
+    let err = if on_stack {
+      // SAFETY: req_ptr is a valid uv_write_t and stream is a valid non-null uv_stream_t.
+      unsafe {
+        uv_compat::uv_write_owned(
+          req_ptr,
+          stream,
+          write_data.to_vec(),
+          Some(after_uv_write),
+        )
+      }
+    } else {
+      let iov: smallvec::SmallVec<[uv_buf_t; 4]> =
+        smallvec::smallvec![uv_buf_t {
+          base: write_data.as_ptr() as *mut c_char,
+          len: write_len,
+        }];
+      // SAFETY: req_ptr is a valid uv_write_t, stream is a valid non-null
+      // uv_stream_t, and the iovec memory stays alive until the callback
+      // via the JS-side `req.buffer` retention.
+      unsafe {
+        uv_compat::uv_writev_owned(req_ptr, stream, iov, Some(after_uv_write))
+      }
     };
     if err != 0 {
       // SAFETY: `req_ptr` is still owned locally because `uv_write` failed synchronously.

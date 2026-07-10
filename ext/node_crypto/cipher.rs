@@ -396,7 +396,7 @@ impl ChaCha20Poly1305Cipher {
   }
 
   fn encrypt(&mut self, input: &[u8], output: &mut [u8]) {
-    debug_assert!(output.len() >= input.len());
+    assert!(output.len() >= input.len());
     self.flush_aad();
     // SAFETY: ctx is valid and initialized for encryption. output is
     // caller-provided with at least input.len() bytes. EVP_CipherUpdate
@@ -420,7 +420,7 @@ impl ChaCha20Poly1305Cipher {
   }
 
   fn decrypt(&mut self, input: &[u8], output: &mut [u8]) {
-    debug_assert!(output.len() >= input.len());
+    assert!(output.len() >= input.len());
     self.flush_aad();
     // SAFETY: ctx is valid and initialized for decryption. output is
     // caller-provided with at least input.len() bytes.

@@ -30,7 +30,8 @@ interface ImportMeta {
 
   /** The absolute path of the current module.
    *
-   * This property is only provided for local modules (ie. using `file://` URLs).
+   * For local modules (ie. using `file://` URLs) this is the module's path; for
+   * non-local modules (eg. `https://` or `data:`) it is an empty string.
    *
    * Example:
    * ```
@@ -41,11 +42,12 @@ interface ImportMeta {
    * console.log(import.meta.filename); // C:\alice\my_module.ts
    * ```
    */
-  filename?: string;
+  filename: string;
 
   /** The absolute path of the directory containing the current module.
    *
-   * This property is only provided for local modules (ie. using `file://` URLs).
+   * For local modules (ie. using `file://` URLs) this is the directory path; for
+   * non-local modules (eg. `https://` or `data:`) it is an empty string.
    *
    * * Example:
    * ```
@@ -56,7 +58,7 @@ interface ImportMeta {
    * console.log(import.meta.dirname); // C:\alice
    * ```
    */
-  dirname?: string;
+  dirname: string;
 
   /** A flag that indicates if the current module is the main module that was
    * called when starting the program under Deno.
@@ -774,6 +776,76 @@ declare namespace Deno {
      * ```
      */
     step(fn: (t: TestContext) => void | Promise<void>): Promise<boolean>;
+
+    /** Assert that `actual` matches a snapshot stored in a snapshot file.
+     *
+     * The snapshot is stored in `__snapshots__/<test file name>.snap` next
+     * to the test file, under a key derived from the test (and step) name.
+     * On the first run, create the snapshot file by running the tests with
+     * the `--update-snapshots` flag; commit it alongside the test. On
+     * subsequent runs the assertion fails if the serialized value no longer
+     * matches the stored snapshot. To intentionally change snapshots, run
+     * the tests with `--update-snapshots` again.
+     *
+     * No read or write permissions are needed for snapshot files in the
+     * default location; a custom `dir` or `path` requires them.
+     *
+     * The snapshot file format is compatible with
+     * `assertSnapshot` from
+     * [`@std/testing/snapshot`](https://jsr.io/@std/testing/doc/snapshot).
+     *
+     * ```ts
+     * Deno.test("matches snapshot", async (t) => {
+     *   await t.assertSnapshot({ hello: "world", example: 123 });
+     * });
+     * ```
+     */
+    assertSnapshot<T>(
+      actual: T,
+      options?: TestSnapshotOptions<T>,
+    ): Promise<void>;
+
+    /** Assert that `actual` matches a snapshot stored in a snapshot file,
+     * using `message` as the failure message if it does not.
+     *
+     * ```ts
+     * Deno.test("matches snapshot", async (t) => {
+     *   await t.assertSnapshot(2 + 3, "should be five");
+     * });
+     * ```
+     */
+    assertSnapshot<T>(actual: T, message?: string): Promise<void>;
+  }
+
+  /** Options which can be set when calling
+   * {@linkcode Deno.TestContext.assertSnapshot}.
+   *
+   * @category Testing */
+  export interface TestSnapshotOptions<T = unknown> {
+    /** Snapshot output directory, relative to the directory of the test
+     * file (or absolute). Snapshot files are written to this directory
+     * instead of the default `__snapshots__` directory. Requires read (and,
+     * with `--update-snapshots`, write) permission for the directory.
+     *
+     * If both `dir` and `path` are specified, `dir` is ignored. */
+    dir?: string;
+    /** Snapshot output path, relative to the directory of the test file (or
+     * absolute). The snapshot is stored in this file instead of the default
+     * `__snapshots__/<test file name>.snap` file. Requires read (and, with
+     * `--update-snapshots`, write) permission for the file.
+     *
+     * If both `dir` and `path` are specified, `dir` is ignored. */
+    path?: string;
+    /** Name of the snapshot to use in the snapshot file instead of the
+     * name derived from the test and step names. */
+    name?: string;
+    /** Failure message to use when the assertion fails, instead of the
+     * generated diff message. */
+    msg?: string;
+    /** Function used to serialize the value to a string before comparing it
+     * with the stored snapshot. Defaults to a `Deno.inspect()`-based
+     * serializer. */
+    serializer?: (actual: T) => string;
   }
 
   /** @category Testing */
@@ -5605,7 +5677,16 @@ declare namespace Deno {
   export interface ServeHandlerInfo<Addr extends Deno.Addr = Deno.Addr> {
     /** The remote address of the connection. */
     remoteAddr: Addr;
-    /** The completion promise */
+    /** A promise that settles when the request has been fully handled and the
+     * response has been sent.
+     *
+     * It resolves once the response (including its body) has been completely
+     * delivered to the client. It **rejects** with a
+     * {@linkcode Deno.errors.Interrupted} error if the response could not be
+     * sent successfully — for example when the client
+     * disconnects before the response body has been fully written. Attach a
+     * `.catch()` (or wrap an `await` in `try`/`catch`) if you need to observe
+     * these failures. */
     completed: Promise<void>;
   }
 
@@ -5674,6 +5755,14 @@ declare namespace Deno {
 
     /** The callback which is called when the server starts listening. */
     onListen?: (localAddr: Addr) => void;
+
+    /**
+     * Whether to automatically compress response bodies when the client accepts
+     * a supported encoding and the response is compressible.
+     *
+     * @default {false}
+     */
+    automaticCompression?: boolean;
   }
 
   /**
@@ -6790,6 +6879,11 @@ declare namespace Deno {
     allowHost?: boolean;
     /** Sets the local address where the socket will connect from. */
     localAddress?: string;
+    /** Sets the max HTTP/2 header list size (in bytes) that the client will
+     * accept. This maps to the `SETTINGS_MAX_HEADER_LIST_SIZE` HTTP/2 setting.
+     *
+     * If not set, the default value from the underlying HTTP library is used. */
+    http2MaxHeaderListSize?: number;
   }
 
   /**

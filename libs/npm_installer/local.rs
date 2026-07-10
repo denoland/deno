@@ -95,6 +95,11 @@ pub struct LocalNpmPackageInstallerOptions {
   pub node_modules_folder: PathBuf,
   pub reporter: Option<Arc<dyn crate::InstallReporter>>,
   pub system_info: NpmSystemInfo,
+  /// Whether `jsr:` dependencies are being installed into `node_modules` via
+  /// JSR's npm compatibility registry (the `jsrDepsInNodeModules` config
+  /// option). Gates the `@scope/name` alias symlinks and the `.npmrc` write
+  /// for `@jsr/*` packages.
+  pub jsr_deps_in_node_modules: bool,
 }
 
 /// Resolver that creates a local node_modules directory
@@ -117,6 +122,7 @@ pub struct LocalNpmPackageInstaller<
   root_node_modules_path: PathBuf,
   system_info: NpmSystemInfo,
   install_reporter: Option<Arc<dyn crate::InstallReporter>>,
+  jsr_deps_in_node_modules: bool,
 }
 
 impl<
@@ -184,6 +190,7 @@ impl<
       root_node_modules_path: options.node_modules_folder,
       install_reporter: options.reporter,
       system_info: options.system_info,
+      jsr_deps_in_node_modules: options.jsr_deps_in_node_modules,
     }
   }
 
@@ -802,7 +809,7 @@ impl<
         let local_registry_package_path = join_package_name(
           Cow::Owned(
             deno_local_registry_dir
-              .join(target_folder_name)
+              .join(&target_folder_name)
               .join("node_modules"),
           ),
           &id.nv.name,
@@ -817,6 +824,54 @@ impl<
           ),
         )?;
       }
+
+      // Additionally expose JSR npm-compat packages (`@jsr/scope__name`) under
+      // their original `@scope/name` so external tooling resolves them like a
+      // regular npm install (mirrors pnpm's `jsr:` alias symlink). This only
+      // covers top-level packages; transitive `jsr:` deps resolve through their
+      // `@jsr/...` name and don't need a root alias. The alias is skipped when a
+      // real package already claims that root name, so we don't clobber it.
+      // Only done when `jsrDepsInNodeModules` is enabled so projects that depend
+      // on `npm:@jsr/...` packages directly are left untouched.
+      if self.jsr_deps_in_node_modules
+        && let Some(alias) = jsr_npm_name_to_original(&id.nv.name)
+        && !newest_packages_by_name
+          .contains_key(&StackString::from(alias.as_str()))
+        && setup_cache.insert_root_symlink(&alias, &target_folder_name)
+      {
+        let local_registry_package_path = join_package_name(
+          Cow::Owned(
+            deno_local_registry_dir
+              .join(&target_folder_name)
+              .join("node_modules"),
+          ),
+          &id.nv.name,
+        );
+        symlink_package_dir(
+          sys.as_ref(),
+          &local_registry_package_path,
+          &join_package_name(
+            Cow::Borrowed(&self.root_node_modules_path),
+            &alias,
+          ),
+        )?;
+      }
+    }
+
+    // When `jsrDepsInNodeModules` is enabled and JSR packages were materialized
+    // into `node_modules` (under their `@jsr/scope__name` npm-compat name), make
+    // sure a `.npmrc` next to `node_modules` points the `@jsr` scope at JSR's
+    // npm registry so external tooling (npm, pnpm, yarn) can resolve them too.
+    // Gated on the config so we don't write into the project directory of users
+    // that merely depend on `npm:@jsr/...` packages directly.
+    if self.jsr_deps_in_node_modules
+      && let Some(project_dir) = self.root_node_modules_path.parent()
+      && package_partitions
+        .packages
+        .iter()
+        .any(|package| package.id.nv.name.starts_with("@jsr/"))
+    {
+      ensure_jsr_npmrc(sys.as_ref(), project_dir)?;
     }
 
     // 8. Create a node_modules/.deno/node_modules/<package-name> directory with
@@ -1101,6 +1156,7 @@ impl<
           init_cwd: &self.lifecycle_scripts_config.initial_cwd,
           process_state: process_state.as_str(),
           root_node_modules_dir_path: &self.root_node_modules_path,
+          resolve_pkg_folder: None,
           on_ran_pkg_scripts: &|pkg| {
             create_initialized_file(
               sys.as_ref(),
@@ -1266,24 +1322,68 @@ pub(crate) fn clone_dir_recursive_except_node_modules_child(
       )?;
     } else if file_type.is_file() {
       hard_link_file(sys.as_ref(), &new_from, &new_to).or_else(|_| {
-        sys
-          .fs_copy(&new_from, &new_to)
-          .or_else(|err| {
-            if deno_npm_cache::is_etxtbsy(&err) {
-              // The destination is a hardlink to a currently-executing
-              // binary (ETXTBSY). Remove it to break the hardlink, then
-              // retry the copy.
-              let _ = sys.fs_remove_file(&new_to);
-              sys.fs_copy(&new_from, &new_to)
-            } else {
-              Err(err)
-            }
-          })
-          .map(|_| ())
+        // Remove any existing file first so the copy writes a new inode
+        // rather than writing through a hardlinked destination, which
+        // would corrupt the file at its other paths. Removing first also
+        // breaks hardlinks to currently-executing binaries (ETXTBSY).
+        let _ = sys.fs_remove_file(&new_to);
+        sys.fs_copy(&new_from, &new_to).map(|_| ())
       })?;
     }
   }
   Ok(())
+}
+
+/// Reverse of JSR's npm-compatibility naming: `@jsr/scope__name` -> the
+/// original JSR specifier name `@scope/name`. Returns `None` when `name` is not
+/// a `@jsr/`-scoped package. Used to expose JSR packages installed via the npm
+/// registry under their original names so external tooling (type checkers,
+/// bundlers) can resolve them like pnpm/npm do.
+fn jsr_npm_name_to_original(name: &str) -> Option<String> {
+  let rest = name.strip_prefix("@jsr/")?;
+  let (scope, pkg) = rest.split_once("__")?;
+  Some(format!("@{scope}/{pkg}"))
+}
+
+/// Ensures the `.npmrc` next to the `node_modules` directory declares JSR's npm
+/// compatibility registry (`@jsr:registry=https://npm.jsr.io`). This lets
+/// external tooling (npm, pnpm, yarn) resolve the `@jsr/*` packages Deno
+/// materialized into `node_modules`. A pre-existing `@jsr:registry` entry is
+/// respected (left untouched); otherwise the line is appended to an existing
+/// `.npmrc` or a new one is created.
+fn ensure_jsr_npmrc<TSys: NpmCacheSys>(
+  sys: &TSys,
+  project_dir: &Path,
+) -> Result<(), std::io::Error> {
+  const JSR_REGISTRY_LINE: &str = "@jsr:registry=https://npm.jsr.io";
+  const NPMRC_PERM: u32 = 0o644;
+
+  let npmrc_path = project_dir.join(".npmrc");
+  let existing = match sys.fs_read_to_string(&npmrc_path) {
+    Ok(contents) => Some(contents.into_owned()),
+    Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
+    Err(err) => return Err(err),
+  };
+  if let Some(existing) = &existing
+    && existing
+      .lines()
+      .any(|line| line.trim_start().starts_with("@jsr:registry"))
+  {
+    // Respect an existing `@jsr` registry configuration.
+    return Ok(());
+  }
+  let mut contents = existing.unwrap_or_default();
+  if !contents.is_empty() && !contents.ends_with('\n') {
+    contents.push('\n');
+  }
+  contents.push_str(JSR_REGISTRY_LINE);
+  contents.push('\n');
+  atomic_write_file_with_retries(
+    sys,
+    &npmrc_path,
+    contents.as_bytes(),
+    NPMRC_PERM,
+  )
 }
 
 /// `node_modules/.deno/<package>/`
@@ -1935,9 +2035,15 @@ fn calculate_packages_hash(
 
   let mut hasher = twox_hash::XxHash64::default();
 
-  // Hash all package IDs (iter_all is deterministic)
-  for package in package_partitions.iter_all() {
-    package.id.hash(&mut hasher);
+  // the order of the packages is non-deterministic (hash map iteration
+  // during resolution traversal), so sort the ids before hashing
+  let mut package_ids = package_partitions
+    .iter_all()
+    .map(|package| &package.id)
+    .collect::<Vec<_>>();
+  package_ids.sort_unstable();
+  for package_id in package_ids {
+    package_id.hash(&mut hasher);
   }
 
   // also hash the packages expected at the root of node_modules so that
@@ -2191,6 +2297,51 @@ mod test {
   }
 
   #[test]
+  fn test_calculate_packages_hash_order_independent() {
+    fn pkg(id: &str) -> NpmResolutionPackage {
+      NpmResolutionPackage {
+        id: NpmPackageId::from_serialized(id).unwrap(),
+        copy_index: 0,
+        system: Default::default(),
+        dist: None,
+        dependencies: Default::default(),
+        optional_dependencies: Default::default(),
+        optional_peer_dependencies: Default::default(),
+        extra: None,
+        is_deprecated: false,
+        has_bin: false,
+        has_scripts: false,
+      }
+    }
+
+    let packages = vec![
+      pkg("package-a@1.0.0"),
+      pkg("package-b@2.0.0"),
+      pkg("package-c@3.0.0"),
+    ];
+    let mut reversed_packages = packages.clone();
+    reversed_packages.reverse();
+    let root_folder_names =
+      BTreeSet::from(["package-a".to_string(), "package-b".to_string()]);
+
+    let hash = calculate_packages_hash(
+      &deno_npm::resolution::NpmPackagesPartitioned {
+        packages,
+        copy_packages: Vec::new(),
+      },
+      &root_folder_names,
+    );
+    let reversed_hash = calculate_packages_hash(
+      &deno_npm::resolution::NpmPackagesPartitioned {
+        packages: reversed_packages,
+        copy_packages: Vec::new(),
+      },
+      &root_folder_names,
+    );
+    assert_eq!(hash, reversed_hash);
+  }
+
+  #[test]
   fn test_symlink_package_dir_replaces_existing_link() {
     let temp_dir = TempDir::new();
     let sys = sys_traits::impls::RealSys;
@@ -2278,6 +2429,66 @@ mod test {
       ))
       .as_deref(),
       Some("@denotest+add@1.0.0")
+    );
+  }
+
+  #[test]
+  fn test_jsr_npm_name_to_original() {
+    assert_eq!(
+      jsr_npm_name_to_original("@jsr/std__bytes").as_deref(),
+      Some("@std/bytes")
+    );
+    assert_eq!(
+      jsr_npm_name_to_original("@jsr/david__dax").as_deref(),
+      Some("@david/dax")
+    );
+    // not a `@jsr/` package
+    assert_eq!(jsr_npm_name_to_original("chalk"), None);
+    assert_eq!(jsr_npm_name_to_original("@std/bytes"), None);
+    // missing the `__` separator
+    assert_eq!(jsr_npm_name_to_original("@jsr/std"), None);
+  }
+
+  #[test]
+  fn test_ensure_jsr_npmrc() {
+    let temp_dir = TempDir::new();
+    let sys = sys_traits::impls::RealSys;
+    let dir = temp_dir.path().to_path_buf();
+    let npmrc_path = dir.join(".npmrc");
+
+    // 1. No existing `.npmrc`: it gets created with the JSR registry line.
+    ensure_jsr_npmrc(&sys, &dir).unwrap();
+    assert_eq!(
+      sys.fs_read_to_string(&npmrc_path).unwrap(),
+      "@jsr:registry=https://npm.jsr.io\n"
+    );
+
+    // 2. Running again is idempotent (the entry already exists).
+    ensure_jsr_npmrc(&sys, &dir).unwrap();
+    assert_eq!(
+      sys.fs_read_to_string(&npmrc_path).unwrap(),
+      "@jsr:registry=https://npm.jsr.io\n"
+    );
+
+    // 3. An existing `.npmrc` without the entry gets it appended (preserving the
+    // existing contents and adding a separating newline).
+    sys
+      .fs_write(&npmrc_path, "registry=https://example.com")
+      .unwrap();
+    ensure_jsr_npmrc(&sys, &dir).unwrap();
+    assert_eq!(
+      sys.fs_read_to_string(&npmrc_path).unwrap(),
+      "registry=https://example.com\n@jsr:registry=https://npm.jsr.io\n"
+    );
+
+    // 4. A pre-existing `@jsr` registry configuration is left untouched.
+    sys
+      .fs_write(&npmrc_path, "@jsr:registry=https://example.com/jsr\n")
+      .unwrap();
+    ensure_jsr_npmrc(&sys, &dir).unwrap();
+    assert_eq!(
+      sys.fs_read_to_string(&npmrc_path).unwrap(),
+      "@jsr:registry=https://example.com/jsr\n"
     );
   }
 }

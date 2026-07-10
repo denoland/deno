@@ -43,7 +43,9 @@ use deno_net::ops_tls::TlsStream;
 use deno_net::raw::NetworkStream;
 use deno_net::raw::NetworkStreamReadHalf;
 use deno_net::raw::NetworkStreamWriteHalf;
+use deno_websocket::ServerWebSocket;
 use deno_websocket::ws_create_server_stream;
+use deno_websocket::ws_create_server_stream_with_guard;
 use fly_accept_encoding::Encoding;
 use hyper::StatusCode;
 use hyper::body::Incoming;
@@ -504,6 +506,37 @@ impl RawRequestHeaders {
     }
   }
 
+  /// Builds a minimal header set containing only the `accept-encoding`
+  /// header(s). Used by the zero-arg "no request" fast path, where the full
+  /// request is never exposed to JS but the response path still needs
+  /// `accept-encoding` to decide automatic compression.
+  fn from_h1_accept_encoding(headers: &[h1::Header<'_>]) -> Self {
+    let mut bytes = Vec::new();
+    let mut entries = Vec::new();
+    for header in headers {
+      if !header.name.eq_ignore_ascii_case(b"accept-encoding") {
+        continue;
+      }
+      let name_start = bytes.len();
+      bytes.extend_from_slice(header.name);
+      let value_start = bytes.len();
+      bytes.extend_from_slice(header.value);
+      entries.push(RawRequestHeader {
+        name_start,
+        name_len: header.name.len(),
+        value_start,
+        value_len: header.value.len(),
+      });
+    }
+    Self {
+      bytes,
+      entries,
+      host_index: None,
+      authorization_index: None,
+      authorization_multiple: false,
+    }
+  }
+
   fn len(&self) -> usize {
     self.entries.len()
   }
@@ -837,11 +870,17 @@ fn raw_response_header<'a>(
     .map(|header| header.value.as_slice())
 }
 
-fn raw_response_is_compressible(inner: &RawHttpRecordInner) -> bool {
-  let Some(content_type) = inner.content_type.as_deref().or_else(|| {
-    raw_response_header(&inner.response_headers, CONTENT_TYPE.as_ref())
-  }) else {
-    return false;
+fn raw_response_metadata_is_compressible(
+  headers: &[RawHeader],
+  content_type: Option<&[u8]>,
+  default_text_content_type: bool,
+) -> bool {
+  let content_type = match content_type
+    .or_else(|| raw_response_header(headers, CONTENT_TYPE.as_ref()))
+  {
+    Some(content_type) => content_type,
+    None if default_text_content_type => b"text/plain;charset=UTF-8",
+    None => return false,
   };
 
   let Ok(content_type) = HeaderValue::from_bytes(content_type) else {
@@ -850,15 +889,13 @@ fn raw_response_is_compressible(inner: &RawHttpRecordInner) -> bool {
   if !is_content_compressible(&content_type) {
     return false;
   }
-  if raw_response_header(&inner.response_headers, CONTENT_ENCODING.as_ref())
-    .is_some()
-    || raw_response_header(&inner.response_headers, CONTENT_RANGE.as_ref())
-      .is_some()
+  if raw_response_header(headers, CONTENT_ENCODING.as_ref()).is_some()
+    || raw_response_header(headers, CONTENT_RANGE.as_ref()).is_some()
   {
     return false;
   }
   if let Some(cache_control) =
-    raw_response_header(&inner.response_headers, CACHE_CONTROL.as_ref())
+    raw_response_header(headers, CACHE_CONTROL.as_ref())
     && let Ok(cache_control) = std::str::from_utf8(cache_control)
     && let Some(no_transform) =
       crate::cache_control_has_no_transform(cache_control)
@@ -867,6 +904,33 @@ fn raw_response_is_compressible(inner: &RawHttpRecordInner) -> bool {
     return false;
   }
   true
+}
+
+fn raw_response_is_compressible(inner: &RawHttpRecordInner) -> bool {
+  raw_response_metadata_is_compressible(
+    &inner.response_headers,
+    inner.content_type.as_deref(),
+    inner.default_text_content_type,
+  )
+}
+
+fn apply_raw_response_compression_headers(
+  headers: &mut Vec<RawHeader>,
+  compression: &Compression,
+) {
+  headers.retain(|header| !header.name.eq_ignore_ascii_case(b"content-length"));
+  ensure_raw_vary_accept_encoding(headers);
+  weaken_raw_etag(headers);
+
+  let encoding = match compression {
+    Compression::Brotli => b"br".as_slice(),
+    Compression::GZip => b"gzip".as_slice(),
+    Compression::None => unreachable!(),
+  };
+  headers.push(RawHeader {
+    name: b"content-encoding".to_vec(),
+    value: encoding.to_vec(),
+  });
 }
 
 fn ensure_raw_vary_accept_encoding(headers: &mut Vec<RawHeader>) {
@@ -1049,6 +1113,17 @@ where
       Poll::Pending => Poll::Pending,
     }
   }
+
+  fn poll_flush(
+    &mut self,
+    cx: &mut Context<'_>,
+  ) -> Poll<Result<(), HttpNextError>> {
+    match self.conn.poll_flush_write_buf(cx, &mut self.scratch) {
+      Poll::Ready(Ok(())) => Poll::Ready(Ok(())),
+      Poll::Ready(Err(error)) => Poll::Ready(Err(error.into())),
+      Poll::Pending => Poll::Pending,
+    }
+  }
 }
 
 type RawH1ConnectionCell<I> = Rc<RefCell<Option<RawH1ConnectionState<I>>>>;
@@ -1065,6 +1140,14 @@ struct RawUpgrade {
 enum RawRequestBody {
   Prebuffered(Vec<u8>),
   Streaming(Rc<RawH1RequestBody<RawH1Io>>),
+}
+
+struct RawHttpRecordOptions {
+  request_body: Option<RawRequestBody>,
+  upgrade: Option<Rc<RawUpgrade>>,
+  request_size: u64,
+  automatic_compression: bool,
+  server_state: SignallingRc<HttpServerState>,
 }
 
 struct RawHttpRecordInner {
@@ -1089,19 +1172,26 @@ struct RawHttpRecordInner {
   response_body_finished: bool,
   response_body_waker: Option<std::task::Waker>,
   otel_info: Option<OtelInfo>,
+  automatic_compression: bool,
+  /// Held so the websocket upgrade op can clone the per-server lifetime
+  /// guard (and reach the [`ActiveWebSockets`] registry) when promoting
+  /// this raw H1 record into a [`ServerWebSocket`].
+  server_state: SignallingRc<HttpServerState>,
 }
 
 struct RawHttpRecord(RefCell<RawHttpRecordInner>);
 
 impl RawHttpRecord {
+  #[allow(
+    clippy::too_many_arguments,
+    reason = "Raw H1 request payload is constructed from parsed pieces plus the per-server lifetime token; bundling them adds indirection without aiding readability."
+  )]
   fn new(
     request_info: HttpConnectionProperties,
     method: RawMethod,
     path: String,
     mut headers: RawRequestHeaders,
-    request_body: Option<RawRequestBody>,
-    upgrade: Option<Rc<RawUpgrade>>,
-    request_size: u64,
+    options: RawHttpRecordOptions,
   ) -> Rc<Self> {
     let client_addr = if crate::service::trust_proxy_headers() {
       headers.remove(b"x-deno-client-address")
@@ -1115,7 +1205,7 @@ impl RawHttpRecord {
         OtelInfo::new(
           otel,
           std::time::Instant::now(),
-          request_size,
+          options.request_size,
           RawOtelInfoAttributes::new(&request_info, &method, &path, &headers)
             .into_attributes(),
         )
@@ -1126,8 +1216,8 @@ impl RawHttpRecord {
       method,
       path,
       headers,
-      request_body,
-      upgrade,
+      request_body: options.request_body,
+      upgrade: options.upgrade,
       response_status: 200,
       response_headers: Vec::new(),
       response_trailers: Vec::new(),
@@ -1142,7 +1232,13 @@ impl RawHttpRecord {
       response_body_finished: false,
       response_body_waker: None,
       otel_info,
+      automatic_compression: options.automatic_compression,
+      server_state: options.server_state,
     })))
+  }
+
+  fn server_state(&self) -> SignallingRc<HttpServerState> {
+    self.0.borrow().server_state.clone()
   }
 
   fn complete(&self) {
@@ -1272,6 +1368,10 @@ impl RawHttpRecord {
   }
 
   fn prepare_stream_compression(&self, length: Option<usize>) -> Compression {
+    if !self.0.borrow().automatic_compression {
+      return Compression::None;
+    }
+
     if let Some(length) = length
       && length < 64
     {
@@ -1285,22 +1385,10 @@ impl RawHttpRecord {
       return Compression::None;
     }
 
-    inner
-      .response_headers
-      .retain(|header| !header.name.eq_ignore_ascii_case(b"content-length"));
-    ensure_raw_vary_accept_encoding(&mut inner.response_headers);
-    weaken_raw_etag(&mut inner.response_headers);
-
-    let encoding = match compression {
-      Compression::Brotli => b"br".as_slice(),
-      Compression::GZip => b"gzip".as_slice(),
-      Compression::None => unreachable!(),
-    };
-    inner.response_headers.push(RawHeader {
-      name: b"content-encoding".to_vec(),
-      value: encoding.to_vec(),
-    });
-
+    apply_raw_response_compression_headers(
+      &mut inner.response_headers,
+      &compression,
+    );
     compression
   }
 
@@ -1672,33 +1760,67 @@ pub async fn op_http_upgrade_websocket_next(
   let http =
     // SAFETY: op is called with external.
     unsafe { clone_external!(external, "op_http_upgrade_websocket_next") };
-  if let HttpRecordExternal::Raw(record) = http {
-    let Some(upgrade) = record.0.borrow().upgrade.clone() else {
-      return Err(raw_upgrade_unavailable());
-    };
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    *upgrade.websocket_tx.borrow_mut() = Some(tx);
-    let (stream, bytes) =
-      rx.await.map_err(|_| raw_h1_connection_closed())??;
-    return Ok(ws_create_server_stream(
-      &mut state.borrow_mut(),
-      stream,
-      bytes,
-    ));
+  match http {
+    HttpRecordExternal::Raw(record) => {
+      let Some(upgrade) = record.0.borrow().upgrade.clone() else {
+        return Err(raw_upgrade_unavailable());
+      };
+      let server_state = record.server_state();
+      let (tx, rx) = tokio::sync::oneshot::channel();
+      *upgrade.websocket_tx.borrow_mut() = Some(tx);
+      let (stream, bytes) =
+        rx.await.map_err(|_| raw_h1_connection_closed())??;
+      Ok(register_server_websocket(
+        &mut state.borrow_mut(),
+        stream,
+        bytes,
+        server_state,
+      ))
+    }
+    HttpRecordExternal::Hyper(record) => {
+      let server_state = record.server_state();
+      let upgrade = record.upgrade()?;
+      let upgraded = upgrade.await?;
+      let (stream, bytes) = extract_network_stream(upgraded);
+      Ok(register_server_websocket(
+        &mut state.borrow_mut(),
+        stream,
+        bytes,
+        server_state,
+      ))
+    }
   }
-  let upgrade = {
-    let http = http.into_hyper("op_http_upgrade_websocket_next")?;
-    http.upgrade()?
-  };
+}
 
-  let upgraded = upgrade.await?;
-  let (stream, bytes) = extract_network_stream(upgraded);
-
-  Ok(ws_create_server_stream(
-    &mut state.borrow_mut(),
-    stream,
-    bytes,
-  ))
+/// Create a server-side `ServerWebSocket` resource and register it on the
+/// per-server [`ActiveWebSockets`] registry so a subsequent
+/// `op_http_close` (graceful or forceful) can close it instead of leaking
+/// it as a `serverWebSocket` resource.
+///
+/// If the server has already entered shutdown by the time we get here
+/// (because a handler called `Deno.upgradeWebSocket` while the listener
+/// was already draining), `ActiveWebSockets::register` will immediately
+/// apply the recorded shutdown mode to this new socket so it does not
+/// pin the server alive past `shutdown()`.
+fn register_server_websocket(
+  state: &mut OpState,
+  transport: NetworkStream,
+  read_buf: Bytes,
+  server_state: SignallingRc<HttpServerState>,
+) -> ResourceId {
+  let registry = server_state.active_websockets();
+  let key = registry.next_key();
+  let guard = Box::new(crate::service::WebSocketGuard {
+    registry: registry.clone(),
+    key,
+    _server_state: server_state,
+  });
+  let rid =
+    ws_create_server_stream_with_guard(state, transport, read_buf, Some(guard));
+  if let Ok(ws) = state.resource_table.get::<ServerWebSocket>(rid) {
+    registry.register(key, &ws);
+  }
+  rid
 }
 
 /// Create a server WebSocket from a TCP stream resource (e.g. taken from a
@@ -2656,8 +2778,11 @@ fn set_response(
   // The request may have been cancelled by this point and if so, there's no need for us to
   // do all of this work to send the response.
   if !http.cancelled() {
-    let compression =
-      is_request_compressible(length, &http.request_parts().headers);
+    let compression = if http.automatic_compression() {
+      is_request_compressible(length, &http.request_parts().headers)
+    } else {
+      Compression::None
+    };
     let mut response_headers =
       std::cell::RefMut::map(http.response_parts(), |this| &mut this.headers);
     let compression =
@@ -2684,10 +2809,14 @@ fn set_static_response_vec(
   if !http.cancelled() {
     match &http {
       HttpRecordExternal::Hyper(record) => {
-        let compression = is_request_compressible(
-          Some(bytes.len()),
-          &record.request_parts().headers,
-        );
+        let compression = if record.automatic_compression() {
+          is_request_compressible(
+            Some(bytes.len()),
+            &record.request_parts().headers,
+          )
+        } else {
+          Compression::None
+        };
         let mut response_headers =
           std::cell::RefMut::map(record.response_parts(), |this| {
             &mut this.headers
@@ -2733,13 +2862,25 @@ fn set_static_response_bufview(
   buffer: JsBuffer,
   status: u16,
 ) {
+  set_static_response_bufview_inner(http, BufView::from(buffer), status);
+}
+
+fn set_static_response_bufview_inner(
+  http: HttpRecordExternal,
+  buffer: BufView,
+  status: u16,
+) {
   if !http.cancelled() {
     match &http {
       HttpRecordExternal::Hyper(record) => {
-        let compression = is_request_compressible(
-          Some(buffer.len()),
-          &record.request_parts().headers,
-        );
+        let compression = if record.automatic_compression() {
+          is_request_compressible(
+            Some(buffer.len()),
+            &record.request_parts().headers,
+          )
+        } else {
+          Compression::None
+        };
         let mut response_headers =
           std::cell::RefMut::map(record.response_parts(), |this| {
             &mut this.headers
@@ -2750,7 +2891,6 @@ fn set_static_response_bufview(
         );
         drop(response_headers);
         set_response_status(&http, status);
-        let buffer = BufView::from(buffer);
         if compression == Compression::None {
           http.set_flat_response_body(FlatResponseBody::Bytes(buffer));
         } else {
@@ -2763,7 +2903,6 @@ fn set_static_response_bufview(
       HttpRecordExternal::Raw(record) => {
         let compression = record.prepare_stream_compression(Some(buffer.len()));
         set_response_status(&http, status);
-        let buffer = BufView::from(buffer);
         if compression == Compression::None {
           http.set_flat_response_body(FlatResponseBody::Bytes(buffer));
         } else {
@@ -3197,9 +3336,14 @@ fn raw_request_target_to_string(target: &[u8]) -> String {
 fn raw_request_from_h1(
   request: h1::Request<'_>,
   store_request: bool,
+  automatic_compression: bool,
 ) -> RawParsedRequest {
   let headers = if store_request {
     RawRequestHeaders::from_h1(request.headers)
+  } else if automatic_compression {
+    // The full request isn't exposed to JS on the zero-arg fast path, but the
+    // response path still needs `accept-encoding` to decide compression.
+    RawRequestHeaders::from_h1_accept_encoding(request.headers)
   } else {
     RawRequestHeaders::empty()
   };
@@ -3291,8 +3435,9 @@ impl fmt::Write for RawH1DateCache {
 }
 
 fn raw_response_from_direct_response(
+  record: &RawHttpRecord,
   response: DirectResponse,
-) -> (RawResponseParts, FlatResponseBody) {
+) -> (RawResponseParts, RawResponseBody) {
   let mut parts = RawResponseParts {
     status: response.status,
     headers: Vec::new(),
@@ -3323,7 +3468,52 @@ fn raw_response_from_direct_response(
     DirectResponseBody::Empty => FlatResponseBody::Empty,
     DirectResponseBody::Bytes(body) => FlatResponseBody::Bytes(body),
   };
+  let compression = match &body {
+    FlatResponseBody::Empty => Compression::None,
+    FlatResponseBody::Bytes(body) => {
+      raw_direct_response_compression(record, Some(body.len()), &mut parts)
+    }
+  };
+  let body = match (compression, body) {
+    (Compression::None, body) => RawResponseBody::Flat(body),
+    (compression, FlatResponseBody::Bytes(body)) => RawResponseBody::Stream(
+      ResponseBytesInner::from_bufview(compression, body),
+    ),
+    (_, FlatResponseBody::Empty) => unreachable!(),
+  };
   (parts, body)
+}
+
+fn raw_direct_response_compression(
+  record: &RawHttpRecord,
+  length: Option<usize>,
+  parts: &mut RawResponseParts,
+) -> Compression {
+  if let Some(length) = length
+    && length < 64
+  {
+    return Compression::None;
+  }
+
+  let inner = record.0.borrow();
+  if !inner.automatic_compression {
+    return Compression::None;
+  }
+  let compression = raw_request_compression(&inner.headers);
+  drop(inner);
+
+  if compression == Compression::None
+    || !raw_response_metadata_is_compressible(
+      &parts.headers,
+      parts.content_type.as_deref(),
+      parts.default_text_content_type,
+    )
+  {
+    return Compression::None;
+  }
+
+  apply_raw_response_compression_headers(&mut parts.headers, &compression);
+  compression
 }
 
 fn set_direct_response(http: HttpRecordExternal, response: DirectResponse) {
@@ -3348,7 +3538,8 @@ fn set_direct_response(http: HttpRecordExternal, response: DirectResponse) {
         http.set_flat_response_body(FlatResponseBody::Empty);
       }
       DirectResponseBody::Bytes(body) => {
-        http.set_flat_response_body(FlatResponseBody::Bytes(body));
+        set_static_response_bufview_inner(http, body, response.status);
+        return;
       }
     }
   }
@@ -3444,10 +3635,14 @@ where
 
   let headers = raw_response_headers(&parts, &date);
   let response_body = match &body {
-    _ if head => h1::ResponseBody::Head(Some(match &body {
-      FlatResponseBody::Empty => 0,
-      FlatResponseBody::Bytes(body) => body.len() as u64,
-    })),
+    // HEAD sends no body, so an explicit content-length from the handler
+    // (e.g. when proxying) takes precedence (RFC 9110 §9.3.2).
+    _ if head => h1::ResponseBody::Head(Some(
+      raw_response_content_length(&parts).unwrap_or(match &body {
+        FlatResponseBody::Empty => 0,
+        FlatResponseBody::Bytes(body) => body.len() as u64,
+      }),
+    )),
     FlatResponseBody::Empty => h1::ResponseBody::Empty,
     FlatResponseBody::Bytes(body) => h1::ResponseBody::Bytes(body.as_ref()),
   };
@@ -3653,10 +3848,14 @@ where
   }
   let headers = raw_response_headers(&parts, &date);
   let response_body = match &body {
-    _ if head => h1::ResponseBody::Head(Some(match &body {
-      FlatResponseBody::Empty => 0,
-      FlatResponseBody::Bytes(body) => body.len() as u64,
-    })),
+    // HEAD sends no body, so an explicit content-length from the handler
+    // (e.g. when proxying) takes precedence (RFC 9110 §9.3.2).
+    _ if head => h1::ResponseBody::Head(Some(
+      raw_response_content_length(&parts).unwrap_or(match &body {
+        FlatResponseBody::Empty => 0,
+        FlatResponseBody::Bytes(body) => body.len() as u64,
+      }),
+    )),
     FlatResponseBody::Empty => h1::ResponseBody::Empty,
     FlatResponseBody::Bytes(body) => h1::ResponseBody::Bytes(body.as_ref()),
   };
@@ -3898,9 +4097,20 @@ where
         Poll::Ready(Ok(false)) | Poll::Pending => {}
         Poll::Ready(Err(error)) => return Poll::Ready(Err(error.into())),
       }
-      Poll::Ready(Ok::<_, HttpNextError>(RawResponseBodyEvent::Frame(ready!(
-        poll_raw_response_body_frame(&mut body, cx)
-      ))))
+      match poll_raw_response_body_frame(&mut body, cx) {
+        Poll::Ready(frame) => Poll::Ready(Ok::<_, HttpNextError>(
+          RawResponseBodyEvent::Frame(frame),
+        )),
+        Poll::Pending => {
+          // Body source has nothing ready; flush buffered response bytes so the
+          // client isn't kept waiting (keeps incremental/SSE streams
+          // responsive). Synchronous chunk+EOF still coalesce at finish.
+          match conn.poll_flush_write_buf(cx, scratch) {
+            Poll::Ready(Err(error)) => Poll::Ready(Err(error.into())),
+            Poll::Ready(Ok(())) | Poll::Pending => Poll::Pending,
+          }
+        }
+      }
     })
     .await?;
     match event {
@@ -3941,6 +4151,10 @@ where
       }
       RawResponseBodyEvent::Frame(ResponseStreamResult::NoData) => continue,
       RawResponseBodyEvent::Frame(ResponseStreamResult::Error(error)) => {
+        // The head (and any chunks coalesced so far) may still be buffered;
+        // flush best-effort so the client receives the committed response
+        // before the connection is torn down, then surface the body error.
+        let _ = poll_fn(|cx| conn.poll_flush_write_buf(cx, scratch)).await;
         finish.finish(false);
         return Err(HttpNextError::Other(error));
       }
@@ -4037,9 +4251,24 @@ where
           Poll::Ready(Err(error)) => return Poll::Ready(Err(error)),
         }
       }
-      Poll::Ready(Ok::<_, HttpNextError>(RawResponseBodyEvent::Frame(ready!(
-        poll_raw_response_body_frame(&mut body, cx)
-      ))))
+      match poll_raw_response_body_frame(&mut body, cx) {
+        Poll::Ready(frame) => Poll::Ready(Ok::<_, HttpNextError>(
+          RawResponseBodyEvent::Frame(frame),
+        )),
+        Poll::Pending => {
+          // Body source has nothing ready; flush buffered response bytes so the
+          // client isn't kept waiting (keeps incremental/SSE streams
+          // responsive). Synchronous chunk+EOF still coalesce at finish.
+          let mut conn = conn.borrow_mut();
+          let Some(conn) = conn.as_mut() else {
+            return Poll::Ready(Err(raw_h1_connection_closed()));
+          };
+          match conn.poll_flush(cx) {
+            Poll::Ready(Err(error)) => Poll::Ready(Err(error)),
+            Poll::Ready(Ok(())) | Poll::Pending => Poll::Pending,
+          }
+        }
+      }
     })
     .await?;
     match event {
@@ -4102,6 +4331,17 @@ where
       }
       RawResponseBodyEvent::Frame(ResponseStreamResult::NoData) => continue,
       RawResponseBodyEvent::Frame(ResponseStreamResult::Error(error)) => {
+        // The head (and any chunks coalesced so far) may still be buffered;
+        // flush best-effort so the client receives the committed response
+        // before the connection is torn down, then surface the body error.
+        let _ = poll_fn(|cx| {
+          let mut conn = conn.borrow_mut();
+          let Some(conn) = conn.as_mut() else {
+            return Poll::Ready(Ok::<_, HttpNextError>(()));
+          };
+          conn.poll_flush(cx)
+        })
+        .await;
         finish.finish(false);
         return Err(HttpNextError::Other(error));
       }
@@ -4114,7 +4354,8 @@ async fn serve_http11_raw(
   request_info: HttpConnectionProperties,
   callback: Rc<ServerCallback>,
   cancel: Rc<CancelHandle>,
-  _server_state: SignallingRc<HttpServerState>,
+  server_state: SignallingRc<HttpServerState>,
+  automatic_compression: bool,
 ) -> Result<(), HttpNextError> {
   let mut conn = h1::SharedConn::new(io);
   conn.set_allow_missing_host(true);
@@ -4123,7 +4364,7 @@ async fn serve_http11_raw(
   loop {
     let next_request = poll_fn(|cx| {
       conn.poll_next_request_with(cx, &mut scratch, |request| {
-        raw_request_from_h1(request, store_request)
+        raw_request_from_h1(request, store_request, automatic_compression)
       })
     })
     .or_cancel(cancel.clone())
@@ -4173,9 +4414,13 @@ async fn serve_http11_raw(
         parsed.method,
         parsed.path,
         parsed.headers,
-        Some(RawRequestBody::Prebuffered(body)),
-        None,
-        parsed.request_size,
+        RawHttpRecordOptions {
+          request_body: Some(RawRequestBody::Prebuffered(body)),
+          upgrade: None,
+          request_size: parsed.request_size,
+          automatic_compression,
+          server_state: server_state.clone(),
+        },
       );
       let mut record_cancel_guard =
         RawHttpRecordCancelGuard::new(record.clone());
@@ -4183,18 +4428,37 @@ async fn serve_http11_raw(
         dispatch_raw_to_native_response(&callback, record.clone());
       if let Some(response) = direct_response {
         let (response_parts, body) =
-          raw_response_from_direct_response(response);
+          raw_response_from_direct_response(&record, response);
         let response_status = response_parts.status;
-        write_h1_flat_response(
-          &mut conn,
-          &mut scratch,
-          parsed.version,
-          response_parts,
-          body,
-          keep_alive,
-          head,
-        )
-        .await?;
+        match body {
+          RawResponseBody::Flat(body) => {
+            write_h1_flat_response(
+              &mut conn,
+              &mut scratch,
+              parsed.version,
+              response_parts,
+              body,
+              keep_alive,
+              head,
+            )
+            .await?;
+          }
+          RawResponseBody::Stream(body) => {
+            write_h1_stream_response(
+              &mut conn,
+              &mut scratch,
+              response_context,
+              response_parts,
+              body,
+              record.clone(),
+            )
+            .await?;
+            if parsed.version == h1::Version::Http10 {
+              record_cancel_guard.disarm();
+              return Ok(());
+            }
+          }
+        }
         record_cancel_guard.disarm();
         if response_status == StatusCode::SWITCHING_PROTOCOLS.as_u16()
           || !keep_alive
@@ -4280,9 +4544,13 @@ async fn serve_http11_raw(
         parsed.method,
         parsed.path,
         parsed.headers,
-        request_body_resource.map(RawRequestBody::Streaming),
-        upgrade.clone(),
-        parsed.request_size,
+        RawHttpRecordOptions {
+          request_body: request_body_resource.map(RawRequestBody::Streaming),
+          upgrade: upgrade.clone(),
+          request_size: parsed.request_size,
+          automatic_compression,
+          server_state: server_state.clone(),
+        },
       );
       let mut record_cancel_guard =
         RawHttpRecordCancelGuard::new(record.clone());
@@ -4294,23 +4562,47 @@ async fn serve_http11_raw(
       };
       if let Some(response) = direct_response {
         let (response_parts, body) =
-          raw_response_from_direct_response(response);
+          raw_response_from_direct_response(&record, response);
         let response_status = response_parts.status;
         let state = { body_conn.borrow_mut().take() };
         if let Some(state) = state {
           let mut local_conn = state.conn;
           let mut local_scratch = state.scratch;
           let keep_alive = keep_alive && !parsed.has_body;
-          write_h1_flat_response(
-            &mut local_conn,
-            &mut local_scratch,
-            parsed.version,
-            response_parts,
-            body,
-            keep_alive,
-            head,
-          )
-          .await?;
+          match body {
+            RawResponseBody::Flat(body) => {
+              write_h1_flat_response(
+                &mut local_conn,
+                &mut local_scratch,
+                parsed.version,
+                response_parts,
+                body,
+                keep_alive,
+                head,
+              )
+              .await?;
+            }
+            RawResponseBody::Stream(body) => {
+              let response_context = RawH1ResponseContext {
+                version: response_context.version,
+                keep_alive,
+                head: response_context.head,
+              };
+              write_h1_stream_response(
+                &mut local_conn,
+                &mut local_scratch,
+                response_context,
+                response_parts,
+                body,
+                record.clone(),
+              )
+              .await?;
+              if parsed.version == h1::Version::Http10 {
+                record_cancel_guard.disarm();
+                return Ok(());
+              }
+            }
+          }
           conn = local_conn;
           scratch = local_scratch;
           record_cancel_guard.disarm();
@@ -4444,25 +4736,49 @@ async fn serve_http11_raw(
       parsed.method,
       parsed.path,
       parsed.headers,
-      None,
-      None,
-      parsed.request_size,
+      RawHttpRecordOptions {
+        request_body: None,
+        upgrade: None,
+        request_size: parsed.request_size,
+        automatic_compression,
+        server_state: server_state.clone(),
+      },
     );
     let mut record_cancel_guard = RawHttpRecordCancelGuard::new(record.clone());
     let direct_response =
       dispatch_raw_to_native_response(&callback, record.clone());
     if let Some(response) = direct_response {
-      let (response_parts, body) = raw_response_from_direct_response(response);
-      write_h1_flat_response(
-        &mut conn,
-        &mut scratch,
-        parsed.version,
-        response_parts,
-        body,
-        keep_alive,
-        head,
-      )
-      .await?;
+      let (response_parts, body) =
+        raw_response_from_direct_response(&record, response);
+      match body {
+        RawResponseBody::Flat(body) => {
+          write_h1_flat_response(
+            &mut conn,
+            &mut scratch,
+            parsed.version,
+            response_parts,
+            body,
+            keep_alive,
+            head,
+          )
+          .await?;
+        }
+        RawResponseBody::Stream(body) => {
+          write_h1_stream_response(
+            &mut conn,
+            &mut scratch,
+            response_context,
+            response_parts,
+            body,
+            record.clone(),
+          )
+          .await?;
+          if parsed.version == h1::Version::Http10 {
+            record_cancel_guard.disarm();
+            return Ok(());
+          }
+        }
+      }
       record_cancel_guard.disarm();
       if !keep_alive || cancel.is_canceled() {
         return Ok(());
@@ -4570,7 +4886,15 @@ async fn serve_http2_autodetect(
       .await
       .map_err(HttpNextError::Hyper)
   } else {
-    serve_http11_raw(io, request_info, callback, cancel, server_state).await
+    serve_http11_raw(
+      io,
+      request_info,
+      callback,
+      cancel,
+      server_state,
+      options.automatic_compression,
+    )
+    .await
   }
 }
 
@@ -4633,6 +4957,7 @@ fn serve_https(
   } = lifetime;
 
   let legacy_abort = !options.no_legacy_abort;
+  let automatic_compression = options.automatic_compression;
   let raw_request_info = request_info.clone();
   let raw_callback = callback.clone();
   let raw_server_state = server_state.clone();
@@ -4647,6 +4972,7 @@ fn serve_https(
         server_state,
         move |record| dispatch_to_js(&callback, record),
         legacy_abort,
+        automatic_compression,
       )
       .await
     }
@@ -4674,6 +5000,7 @@ fn serve_https(
           raw_callback,
           listen_cancel_handle,
           raw_server_state,
+          options.automatic_compression,
         )
         .await
       } else {
@@ -4708,6 +5035,7 @@ fn serve_http(
   } = lifetime;
 
   let legacy_abort = !options.no_legacy_abort;
+  let automatic_compression = options.automatic_compression;
   let raw_request_info = request_info.clone();
   let raw_callback = callback.clone();
   let raw_server_state = server_state.clone();
@@ -4722,6 +5050,7 @@ fn serve_http(
         server_state,
         move |record| dispatch_to_js(&callback, record),
         legacy_abort,
+        automatic_compression,
       )
       .await
     }
@@ -4761,6 +5090,7 @@ fn serve_http(
               raw_callback,
               listen_cancel_handle,
               raw_server_state,
+              options.automatic_compression,
             )
             .await
           }
@@ -4879,6 +5209,7 @@ pub fn op_http_serve<'scope, HTTP>(
   isolate: &mut v8::Isolate,
   state: Rc<RefCell<OpState>>,
   #[smi] listener_rid: ResourceId,
+  automatic_compression: bool,
   callback: v8::Local<'scope, v8::Function>,
   raw_no_request: bool,
   native_callback: v8::Local<'scope, v8::Function>,
@@ -4920,7 +5251,9 @@ where
 
   let options = {
     let state = state.borrow();
-    *state.borrow::<Options>()
+    let mut options = *state.borrow::<Options>();
+    options.automatic_compression = automatic_compression;
+    options
   };
 
   let listen_properties_clone: HttpListenProperties = listen_properties.clone();
@@ -4961,6 +5294,7 @@ pub fn op_http_serve_on<'scope, HTTP>(
   isolate: &mut v8::Isolate,
   state: Rc<RefCell<OpState>>,
   #[smi] connection_rid: ResourceId,
+  automatic_compression: bool,
   callback: v8::Local<'scope, v8::Function>,
   raw_no_request: bool,
   native_callback: v8::Local<'scope, v8::Function>,
@@ -4999,7 +5333,9 @@ where
 
   let options = {
     let state = state.borrow();
-    *state.borrow::<Options>()
+    let mut options = *state.borrow::<Options>();
+    options.automatic_compression = automatic_compression;
+    options
   };
 
   let handle = serve_http_on::<HTTP>(
@@ -5117,11 +5453,28 @@ pub fn op_http_cancel(
 ) -> Result<(), deno_core::error::ResourceError> {
   let join_handle = state.resource_table.get::<HttpJoinHandle>(rid)?;
 
+  // `op_http_cancel` is called from the abort-signal path. Treat
+  // non-graceful cancellation as forceful: we will not wait on a Close
+  // frame that might hang if the peer's TCP send buffer is full.
+  // `begin_shutdown` also arms the registry so any websocket upgraded
+  // after this point is torn down immediately instead of holding the
+  // server alive.
+  let mode = if graceful {
+    crate::service::WsShutdownMode::Graceful
+  } else {
+    crate::service::WsShutdownMode::Forced
+  };
+  join_handle
+    .server_state
+    .active_websockets()
+    .begin_shutdown(mode);
+
   if graceful {
-    // In a graceful shutdown, we close the listener and allow all the remaining connections to drain
+    // In a graceful shutdown, we close the listener and allow all the
+    // remaining connections to drain.
     join_handle.listen_cancel_handle().cancel();
   } else {
-    // In a forceful shutdown, we close everything
+    // In a forceful shutdown, we close everything.
     join_handle.listen_cancel_handle().cancel();
     join_handle.connection_cancel_handle().cancel();
   }
@@ -5142,7 +5495,18 @@ pub async fn op_http_close(
 
   if graceful {
     http_general_trace!("graceful shutdown");
-    // In a graceful shutdown, we close the listener and allow all the remaining connections to drain
+    // Tell each upgraded server-side WebSocket to send a Close(1001 Going
+    // Away) frame and stop reading. `begin_shutdown` also arms the
+    // per-server registry, so a handler that calls
+    // `Deno.upgradeWebSocket` *after* this point — while in-flight
+    // requests are still draining — has its new websocket torn down on
+    // registration instead of holding the `poll_complete` below open
+    // forever. See deno#22387.
+    join_handle
+      .server_state
+      .active_websockets()
+      .begin_shutdown(crate::service::WsShutdownMode::Graceful);
+    // Close the listener and allow remaining connections to drain.
     join_handle.listen_cancel_handle().cancel();
     // Idle connections can still be waiting in protocol prefix detection and
     // are not represented in the active request set. Give them a turn to
@@ -5152,10 +5516,19 @@ pub async fn op_http_close(
     poll_fn(|cx| join_handle.server_state.poll_complete(cx)).await;
   } else {
     http_general_trace!("forceful shutdown");
-    // In a forceful shutdown, we close everything
+    // Force every upgraded server-side WebSocket to close synchronously
+    // (the connection-cancel handle doesn't reach websockets, since the
+    // stream was moved out of the hyper connection at upgrade time). We
+    // use the forced variant here so a peer with a full TCP send buffer
+    // can't block the shutdown by stalling our Close-frame write.
+    join_handle
+      .server_state
+      .active_websockets()
+      .begin_shutdown(crate::service::WsShutdownMode::Forced);
+    // In a forceful shutdown, we close everything.
     join_handle.listen_cancel_handle().cancel();
     join_handle.connection_cancel_handle().cancel();
-    // Give streaming responses a tick to close
+    // Give streaming responses a tick to close.
     tokio::task::yield_now().await;
   }
 

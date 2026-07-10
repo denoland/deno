@@ -193,6 +193,7 @@ async fn generate_doc_nodes_for_builtin_types(
         unstable_bytes_imports: false,
         unstable_text_imports: true,
         unstable_css_imports: false,
+        unstable_config_imports: false,
       },
     )
     .await;
@@ -714,8 +715,8 @@ fn print_docs_to_stdout(
     )
   );
 
-  display::write_to_stdout_ignore_sigpipe(details.as_bytes())
-    .map_err(AnyError::from)
+  deno_print::drop_write_stdout(details.as_bytes());
+  Ok(())
 }
 
 fn check_diagnostics(diagnostics: &[DocDiagnostic]) -> Result<(), AnyError> {

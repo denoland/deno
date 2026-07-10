@@ -1,0 +1,25 @@
+Defined in [WILDCARD]/event.ts:6:1
+
+class Conn extends EventTarget
+  A connection that fires events when its state changes.
+
+  @event open
+      Fired when the connection opens.
+
+  @event close
+      Fired when the connection closes.
+
+
+  open(): void
+    Open the connection.
+
+    @fires Conn#open
+  close(): void
+    Close the connection.
+
+    @fires Conn#close
+  subscribe(): void
+    Subscribe to the upstream feed.
+
+    @listens Conn#open
+[WILDCARD]

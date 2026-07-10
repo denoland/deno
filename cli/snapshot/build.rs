@@ -49,6 +49,8 @@ fn create_cli_snapshot(
     .map(String::as_str)
     .collect();
 
+  assert_consumed_set_unchanged(&consumed);
+
   let out_dir = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
   let residual_sources_dir = out_dir.join("residual_sources");
   std::fs::create_dir_all(&residual_sources_dir).unwrap();
@@ -86,9 +88,11 @@ fn create_cli_snapshot(
         // `&'static` external string (via `include_str!`), avoiding a per-script
         // owned source copy in the V8 heap. See `load_ext_script`.
         wrap_residual_js_source(&transpiled_path);
+        assert_residual_entry_ascii(&transpiled_path, file.specifier.as_str());
         residual_js.push((file.specifier.as_str(), transpiled_path));
       }
       LazyExtensionFileKind::Esm => {
+        assert_residual_entry_ascii(&transpiled_path, file.specifier.as_str());
         residual_esm.push((file.specifier.as_str(), transpiled_path));
       }
     }
@@ -106,6 +110,116 @@ fn create_cli_snapshot(
   // concat! literal rather than a source-tree path.
   write_residual_table(&mut f, &out_dir, "RESIDUAL_LAZY_JS", &residual_js);
   write_residual_table(&mut f, &out_dir, "RESIDUAL_LAZY_ESM", &residual_esm);
+}
+
+/// The exact set of `lazy_loaded_*` specifiers that are legitimately pulled
+/// into the eager snapshot, i.e. statically reachable from an eager `esm`
+/// module. Captured at the time PR #34450 landed. The heavy node-polyfill
+/// closure (process / stream / net / tty / require / the ~118 polyfill modules)
+/// is deliberately *absent* — it is `lazy_loaded_esm`, deserialized only on
+/// first `node:*` use, so non-node `deno run` / `eval` never pay for it.
+///
+/// Anything reaching the eager graph that is NOT in this list regresses
+/// empty/ESM startup (each leaked module adds snapshot deserialization the
+/// common path can't avoid). `assert_consumed_set_unchanged` enforces it.
+///
+/// To update: run a build, take the `consumed_lazy_specifiers` reported by
+/// `create_runtime_snapshot`, and reconcile here — but first confirm the new
+/// entry is *meant* to be eager. A node-closure module showing up almost
+/// always means an eager `esm` entry (or a static import from one) is dragging
+/// the polyfill closure into startup; fix that in `ext/node/lib.rs` rather than
+/// widening this list. See PR #34450.
+#[cfg(not(feature = "disable"))]
+const EXPECTED_CONSUMED: &[&str] = &[
+  "ext:deno_crypto/00_crypto.js",
+  "ext:deno_fetch/22_http_client.js",
+  "ext:deno_ffi/00_ffi.js",
+  "ext:deno_fs/30_fs.js",
+  "ext:deno_io/12_io.js",
+  "ext:deno_net/01_net.js",
+  "ext:deno_net/02_tls.js",
+  "ext:deno_node/02_register_cloneable.js",
+  "ext:deno_node/_util/os.ts",
+  "ext:deno_node/internal/async_hooks.ts",
+  "ext:deno_node/internal/buffer.mjs",
+  "ext:deno_node/internal/crypto/_keys.ts",
+  "ext:deno_node/internal/crypto/constants.ts",
+  "ext:deno_node/internal/error_codes.ts",
+  "ext:deno_node/internal/errors.ts",
+  "ext:deno_node/internal/hide_stack_frames.ts",
+  "ext:deno_node/internal/normalize_encoding.ts",
+  "ext:deno_node/internal/options.ts",
+  "ext:deno_node/internal/primordials.mjs",
+  "ext:deno_node/internal/timers.mjs",
+  "ext:deno_node/internal/util.mjs",
+  "ext:deno_node/internal/util/colorize.mjs",
+  "ext:deno_node/internal/util/inspect.mjs",
+  "ext:deno_node/internal/util/types.ts",
+  "ext:deno_node/internal/validators.mjs",
+  "ext:deno_node/internal_binding/_libuv_winerror.ts",
+  "ext:deno_node/internal_binding/_node.ts",
+  "ext:deno_node/internal_binding/_utils.ts",
+  "ext:deno_node/internal_binding/async_wrap.ts",
+  "ext:deno_node/internal_binding/buffer.ts",
+  "ext:deno_node/internal_binding/constants.ts",
+  "ext:deno_node/internal_binding/node_options.ts",
+  "ext:deno_node/internal_binding/string_decoder.ts",
+  "ext:deno_node/internal_binding/symbols.ts",
+  "ext:deno_node/internal_binding/types.ts",
+  "ext:deno_node/internal_binding/util.ts",
+  "ext:deno_node/internal_binding/uv.ts",
+  "ext:deno_node/timers.ts",
+  "ext:deno_os/30_os.js",
+  "ext:deno_os/40_signals.js",
+  "ext:deno_web/00_infra.js",
+  "ext:deno_web/00_url.js",
+  "ext:deno_web/01_console.js",
+  "ext:deno_web/01_dom_exception.js",
+  "ext:deno_web/02_event.js",
+  "ext:deno_web/02_timers.js",
+  "ext:deno_web/03_abort_signal.js",
+  "ext:deno_web/04_global_interfaces.js",
+  "ext:deno_web/05_base64.js",
+  "ext:deno_web/08_text_encoding.js",
+  "ext:deno_web/09_file.js",
+  "ext:deno_web/12_location.js",
+  "ext:deno_web/13_message_port.js",
+  "ext:deno_web/15_performance.js",
+  "ext:deno_webgpu/00_init.js",
+  "ext:deno_webidl/00_webidl.js",
+  "ext:runtime/01_errors.js",
+  "ext:runtime/01_version.ts",
+  "ext:runtime/06_util.js",
+  "ext:runtime/10_permissions.js",
+  "ext:runtime/11_workers.js",
+  "ext:runtime/40_fs_events.js",
+  "ext:runtime/40_tty.js",
+  "node:buffer",
+  "node:timers",
+];
+
+/// Startup guardrail (see PR #34450). Asserts the set of `lazy_loaded_*`
+/// modules consumed into the eager snapshot is exactly `EXPECTED_CONSUMED`.
+/// Catches a single lazy module silently leaking into the eager graph — the
+/// failure mode that regresses empty/ESM startup at fine granularity, well
+/// before a coarse count threshold would notice. Removals (a module becoming
+/// lazy — an improvement) are allowed; additions fail the build.
+#[cfg(not(feature = "disable"))]
+fn assert_consumed_set_unchanged(consumed: &std::collections::HashSet<&str>) {
+  let expected: std::collections::HashSet<&str> =
+    EXPECTED_CONSUMED.iter().copied().collect();
+  let mut leaked: Vec<&str> = consumed.difference(&expected).copied().collect();
+  leaked.sort_unstable();
+  assert!(
+    leaked.is_empty(),
+    "lazy module(s) newly pulled into the eager snapshot: {leaked:?}.\nEach \
+     adds snapshot deserialization to the common `deno run` / `eval` startup \
+     path. If a `node:*` / `ext:deno_node/*` module leaked, an eager `esm` \
+     entry or a static import from an eager module is dragging the node \
+     polyfill closure into startup — fix it in ext/node/lib.rs. If the entry \
+     is genuinely meant to be eager, add it to EXPECTED_CONSUMED. See \
+     PR #34450."
+  );
 }
 
 #[cfg(not(feature = "disable"))]
@@ -157,6 +271,20 @@ fn wrap_residual_js_source(path: &std::path::Path) {
 }
 
 #[cfg(not(feature = "disable"))]
+fn assert_residual_entry_ascii(path: &std::path::Path, specifier: &str) {
+  assert!(
+    specifier.is_ascii(),
+    "generated residual source specifier {specifier} contains non-ASCII bytes",
+  );
+  let source = std::fs::read(path).unwrap();
+  assert!(
+    source.is_ascii(),
+    "generated residual source for {specifier} at {} contains non-ASCII bytes",
+    path.display(),
+  );
+}
+
+#[cfg(not(feature = "disable"))]
 fn write_residual_table(
   f: &mut std::fs::File,
   out_dir: &std::path::Path,
@@ -165,6 +293,8 @@ fn write_residual_table(
 ) {
   use std::io::Write;
   writeln!(f, "pub static {name}: &[(&str, &str)] = &[").unwrap();
+  let mut entries = entries.iter().collect::<Vec<_>>();
+  entries.sort_by_key(|(specifier, _)| *specifier);
   for (specifier, transpiled_path) in entries {
     let rel = transpiled_path.strip_prefix(out_dir).unwrap();
     writeln!(
