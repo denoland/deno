@@ -60,6 +60,12 @@ use crate::args::has_trace_permissions_enabled;
 use crate::sys::DenoLibSys;
 use crate::util::checksum;
 
+const BYTES_PER_MB: usize = 1024 * 1024;
+
+fn resource_limit_mb_to_bytes(value: usize) -> usize {
+  value.saturating_mul(BYTES_PER_MB)
+}
+
 pub struct CreateModuleLoaderResult {
   pub module_loader: Rc<dyn ModuleLoader>,
   pub node_require_loader: Rc<dyn NodeRequireLoader>,
@@ -433,21 +439,23 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         if let Some(max_old) =
           limits.max_old_generation_size_mb.filter(|&v| v > 0)
         {
-          params =
-            params.set_max_old_generation_size_in_bytes(max_old * 1024 * 1024);
+          params = params.set_max_old_generation_size_in_bytes(
+            resource_limit_mb_to_bytes(max_old),
+          );
         }
         if let Some(max_young) =
           limits.max_young_generation_size_mb.filter(|&v| v > 0)
         {
-          params = params
-            .set_max_young_generation_size_in_bytes(max_young * 1024 * 1024);
+          params = params.set_max_young_generation_size_in_bytes(
+            resource_limit_mb_to_bytes(max_young),
+          );
         }
         if let Some(code_range) = limits.code_range_size_mb.filter(|&v| v > 0) {
-          params =
-            params.set_code_range_size_in_bytes(code_range * 1024 * 1024);
+          params = params.set_code_range_size_in_bytes(
+            resource_limit_mb_to_bytes(code_range),
+          );
         }
 
-        let mb = 1024 * 1024;
         // Read back resolved values (including V8 defaults for
         // unspecified fields), matching Node.js behavior.
         // Note: integer division truncates sub-MB fractions, which is fine
@@ -455,10 +463,10 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         let resolved = deno_node::ops::worker_threads::ResolvedResourceLimits {
           max_young_generation_size_mb: params
             .max_young_generation_size_in_bytes()
-            / mb,
+            / BYTES_PER_MB,
           max_old_generation_size_mb: params.max_old_generation_size_in_bytes()
-            / mb,
-          code_range_size_mb: params.code_range_size_in_bytes() / mb,
+            / BYTES_PER_MB,
+          code_range_size_mb: params.code_range_size_in_bytes() / BYTES_PER_MB,
           stack_size_mb: limits
             .stack_size_mb
             .unwrap_or(deno_node::ops::worker_threads::DEFAULT_STACK_SIZE_MB),
