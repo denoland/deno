@@ -185,6 +185,10 @@ let debug = debuglog("net", (fn) => {
 const kLastWriteQueueSize = Symbol("lastWriteQueueSize");
 const kBytesRead = Symbol("kBytesRead");
 const kBytesWritten = Symbol("kBytesWritten");
+// The NetPermToken handed to us by the built-in DNS lookup, kept on the socket
+// so it survives handle reinitialization (autoSelectFamily tries each address
+// on a fresh handle). See `_setNetPermToken`.
+const kNetPermToken = Symbol("kNetPermToken");
 // Holds the async context (AsyncLocalStorage / async_hooks) snapshot captured
 // when a connect request or listening handle is set up. The native libuv
 // callbacks in tcp_wrap/pipe_wrap invoke the completion callbacks directly,
@@ -714,6 +718,20 @@ function _connectErrorNT(socket: Socket, err: Error) {
   socket.destroy(err);
 }
 
+// Stores the permission token from the built-in DNS lookup on the socket and
+// installs it on the current handle, so connect() checks permissions against
+// the original hostname instead of the resolved IP. The token is remembered on
+// the socket because `autoSelectFamily` attempts every candidate address on a
+// freshly created handle (see `kReinitializeHandle`), and a handle without the
+// token would have its IP checked literally, failing under `--allow-net=<host>`.
+function _setNetPermToken(socket: Socket, netPermToken: object) {
+  socket[kNetPermToken] = netPermToken;
+
+  if (typeof socket._handle?.setNetPermToken === "function") {
+    socket._handle.setNetPermToken(netPermToken);
+  }
+}
+
 function _internalConnect(
   socket: Socket,
   address: string,
@@ -1199,10 +1217,8 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
       // checks permissions against the original hostname instead of the
       // resolved IP. Only honored on the default-lookup path; a custom lookup
       // never installs a token (its IPs are checked literally).
-      if (
-        usingDefaultLookup && netPermToken && self._handle?.setNetPermToken
-      ) {
-        self._handle.setNetPermToken(netPermToken);
+      if (usingDefaultLookup && netPermToken) {
+        _setNetPermToken(self, netPermToken);
       }
       self.emit("lookup", err, ip, addressType, host);
 
@@ -1275,10 +1291,10 @@ function _lookupAndConnectMultiple(
   defaultTriggerAsyncIdScope(self[asyncIdSymbol], function () {
     function emitLookup(err, addresses, _, netPermToken) {
       // Only the built-in lookup installs a token (see _lookupAndConnect).
-      if (
-        usingDefaultLookup && netPermToken && self._handle?.setNetPermToken
-      ) {
-        self._handle.setNetPermToken(netPermToken);
+      // Remember it on the socket: every address after the first is attempted
+      // on a new handle, which must be given the token as well.
+      if (usingDefaultLookup && netPermToken) {
+        _setNetPermToken(self, netPermToken);
       }
       // It's possible we were destroyed while looking this up.
       // XXX it would be great if we could cancel the promise returned by
@@ -1527,6 +1543,7 @@ function Socket(options) {
   this._host = null;
   this._parent = null;
   this.autoSelectFamilyAttemptedAddresses = undefined;
+  this[kNetPermToken] = undefined;
   this.connecting = false;
 
   if (options.blockList) {
@@ -2260,6 +2277,13 @@ Socket.prototype[kReinitializeHandle] = function (handle) {
 
   this._handle = handle;
   this._handle[ownerSymbol] = this;
+
+  // Carry the NetPermToken over to the new handle, otherwise the next
+  // `autoSelectFamily` connection attempt is permission-checked against the
+  // literal IP rather than the hostname it was resolved from.
+  if (this[kNetPermToken]) {
+    _setNetPermToken(this, this[kNetPermToken]);
+  }
 
   _initSocketHandle(this);
 };

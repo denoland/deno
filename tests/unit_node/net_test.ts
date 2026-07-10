@@ -370,3 +370,35 @@ Deno.test("[node/net] Socket.remoteFamily returns string", async () => {
   });
   await deferred.promise;
 });
+
+Deno.test({
+  name:
+    "[node/net] autoSelectFamily fallback stays authorized by the hostname permission",
+  // Only the hostname is granted, not the IPs it resolves to. Every connection
+  // attempt must therefore be checked against "localhost", including the ones
+  // made after the first address failed (each runs on a fresh handle).
+  permissions: { net: ["localhost:1"] },
+  async fn() {
+    const socket = net.createConnection({
+      host: "localhost",
+      port: 1,
+      autoSelectFamily: true,
+      autoSelectFamilyAttemptTimeout: 10,
+    });
+    const error = await new Promise<Error>((resolve) => {
+      socket.on("error", resolve);
+    });
+    socket.destroy();
+
+    // Nothing listens on port 1, so every attempt is refused. What must never
+    // happen is a permission error for the resolved IP (e.g. "127.0.0.1:1").
+    assert(
+      !/NotCapable|Requires net access/.test(error.message),
+      `unexpected permission error: ${error.message}`,
+    );
+    const errors = (error as unknown as AggregateError).errors ?? [error];
+    for (const err of errors) {
+      assertEquals((err as unknown as { code: string }).code, "ECONNREFUSED");
+    }
+  },
+});
