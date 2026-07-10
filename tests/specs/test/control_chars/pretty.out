@@ -1,0 +1,8 @@
+[WILDCARD]
+running 1 test from ./control_chars.ts
+\x1b[1F\x1b[2Kroot ...
+  \x1b]52;c;bad\x07step ... ok ([WILDCARD])
+\x1b[1F\x1b[2Kroot ... ok ([WILDCARD])
+
+ok | 1 passed (1 step) | 0 failed ([WILDCARD])
+
