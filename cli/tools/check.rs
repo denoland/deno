@@ -91,13 +91,15 @@ async fn native_check(
   // `--pretty false` yields the stable one-line-per-diagnostic grep format
   // (`path(line,col): error TS####: message`) that we parse below. The
   // generated tsconfig already sets `noEmit`; pass it too so a stray option
-  // can't trigger emit.
+  // can't trigger emit. `--diagnostics` appends a stats block (files/lines/
+  // timing/memory) that we capture but do not surface yet.
   let output = tokio::process::Command::new(&tsc_path)
     .arg("--project")
     .arg(&tsconfig_path)
     .arg("--noEmit")
     .arg("--pretty")
     .arg("false")
+    .arg("--diagnostics")
     .current_dir(&project_root)
     // The native compiler is written in Go, whose `os.Getwd` trusts the `PWD`
     // environment variable over `getcwd()`. `current_dir` calls `chdir` but
@@ -115,6 +117,10 @@ async fn native_check(
   let stdout = String::from_utf8_lossy(&output.stdout);
   let stderr = String::from_utf8_lossy(&output.stderr);
   let diagnostics = parse_tsc_diagnostics(&stdout, &project_root);
+
+  // Captured for an upcoming "Checked N files" summary; not surfaced yet.
+  let stats = parse_tsc_stats(&stdout);
+  log::debug!("native tsc {stats:?}");
 
   if diagnostics.has_diagnostic() {
     log::error!("{}\n", diagnostics);
@@ -246,6 +252,53 @@ fn parse_tsc_diagnostics(output: &str, project_root: &Path) -> Diagnostics {
   }
 
   Diagnostics::from(diagnostics)
+}
+
+/// Compiler statistics reported by `tsc --diagnostics` (how many files/lines
+/// were checked, timing, memory). Captured for an upcoming user-facing
+/// "Checked N files" summary; currently only logged at debug level.
+#[derive(Debug, Default)]
+#[allow(
+  dead_code,
+  reason = "fields consumed by a follow-up that adds a \"Checked N files\" summary"
+)]
+struct TscStats {
+  files: Option<u64>,
+  lines: Option<u64>,
+  identifiers: Option<u64>,
+  symbols: Option<u64>,
+  types: Option<u64>,
+  memory_used: Option<String>,
+  check_time: Option<String>,
+  total_time: Option<String>,
+}
+
+/// Parse the `Key:  value` stats block emitted by `tsc --diagnostics`. Lines
+/// that aren't recognized stat keys (including the diagnostics themselves) are
+/// ignored.
+fn parse_tsc_stats(output: &str) -> TscStats {
+  let mut stats = TscStats::default();
+  for line in output.lines() {
+    let Some((key, value)) = line.split_once(':') else {
+      continue;
+    };
+    let value = value.trim();
+    if value.is_empty() {
+      continue;
+    }
+    match key.trim() {
+      "Files" => stats.files = value.parse().ok(),
+      "Lines" => stats.lines = value.parse().ok(),
+      "Identifiers" => stats.identifiers = value.parse().ok(),
+      "Symbols" => stats.symbols = value.parse().ok(),
+      "Types" => stats.types = value.parse().ok(),
+      "Memory used" => stats.memory_used = Some(value.to_string()),
+      "Check time" => stats.check_time = Some(value.to_string()),
+      "Total time" => stats.total_time = Some(value.to_string()),
+      _ => {}
+    }
+  }
+  stats
 }
 
 /// Read line `line_idx` (0-based) of `path`, caching the file's lines. Returns
