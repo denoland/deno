@@ -54,7 +54,15 @@ pub async fn setup_npm_compat(
   http_client: &HttpClient,
   permissions: &PermissionsContainer,
   graph_specifiers: &[String],
+  // When set, downgrade the unmapped-package and skipped-import warnings to
+  // debug level (see `sync_types_command`).
+  quiet: bool,
 ) -> Result<Vec<InstalledJsrPackage>, AnyError> {
+  let warn_level = if quiet {
+    log::Level::Debug
+  } else {
+    log::Level::Warn
+  };
   let deno_json = read_deno_json(project_root)?;
   let deno_compiler_options = deno_json
     .as_ref()
@@ -138,12 +146,13 @@ pub async fn setup_npm_compat(
     deno_imports,
     file_fetcher,
     permissions,
+    warn_level,
   )
   .await
   {
     Ok(map) => map,
     Err(e) => {
-      log::warn!("Failed to materialize remote modules: {e}");
+      log::log!(warn_level, "Failed to materialize remote modules: {e}");
       BTreeMap::new()
     }
   };
@@ -165,7 +174,8 @@ pub async fn setup_npm_compat(
   unmaterialized.sort();
   unmaterialized.dedup();
   if !unmaterialized.is_empty() {
-    log::warn!(
+    log::log!(
+      warn_level,
       "sync-types: {} npm package(s) are not present under node_modules and \
        were left unmapped ({}). Enable a node_modules directory (e.g. set \
        \"nodeModulesDir\": \"auto\" in deno.json) so stock TypeScript can \
@@ -739,6 +749,9 @@ pub async fn install_http_modules(
   deno_imports: Option<&Value>,
   file_fetcher: &CliFileFetcher,
   permissions: &PermissionsContainer,
+  // Level for the per-URL "Skipping ..." message (downgraded to debug when
+  // invoked from `deno check`, see `sync_types_command`).
+  skip_log_level: log::Level,
 ) -> Result<HttpModulePaths, AnyError> {
   let mut paths: HttpModulePaths = BTreeMap::new();
   let mut queue: VecDeque<Url> = VecDeque::new();
@@ -782,7 +795,8 @@ pub async fn install_http_modules(
     let file = match file_fetcher.fetch(&requested_url, permissions).await {
       Ok(f) => f,
       Err(e) => {
-        log::warn!(
+        log::log!(
+          skip_log_level,
           "Skipping {requested_url}: {e} (try running `deno install --allow-import` to grant access)"
         );
         continue;

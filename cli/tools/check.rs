@@ -61,8 +61,10 @@ async fn native_check(
   }
 
   // Generate the tsconfig.json and materialize dependency types so the native
-  // compiler can resolve the project's jsr:/http(s): imports.
-  crate::tools::installer::sync_types_command(flags.clone()).await?;
+  // compiler can resolve the project's jsr:/http(s): imports. `quiet` keeps its
+  // progress/summary output at debug level so it doesn't precede the
+  // type-check diagnostics.
+  crate::tools::installer::sync_types_command(flags.clone(), true).await?;
 
   let factory = CliFactory::from_flags(flags);
   let tsc_path = ensure_native_tsc_downloaded(&factory).await?;

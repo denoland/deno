@@ -233,7 +233,18 @@ pub async fn ci_command(
 /// tooling can type-check the project. Assumes dependencies are already
 /// installed (run `deno install` first); materializes `jsr:`/`http(s):` types
 /// and writes `.deno/tsconfig.json`.
-pub async fn sync_types_command(flags: Arc<Flags>) -> Result<(), AnyError> {
+/// Generate the tsconfig and materialize dependency types.
+///
+/// When `quiet` is set, the progress/summary output (the "Synced tsconfig"
+/// line, the installed-package count, and the unmapped/skipped-import warnings)
+/// is emitted at debug level instead of info/warn. `deno check` runs this
+/// internally on every invocation and sets `quiet` so it doesn't drown out the
+/// type-check diagnostics; the standalone `deno sync-types` command leaves it
+/// unset.
+pub async fn sync_types_command(
+  flags: Arc<Flags>,
+  quiet: bool,
+) -> Result<(), AnyError> {
   use crate::graph_container::CollectSpecifiersOptions;
 
   let factory = CliFactory::from_flags(flags);
@@ -352,10 +363,17 @@ pub async fn sync_types_command(flags: Arc<Flags>) -> Result<(), AnyError> {
     &http_client,
     &permissions,
     &graph_specifiers,
+    quiet,
   )
   .await?;
 
-  log::info!(
+  let summary_level = if quiet {
+    log::Level::Debug
+  } else {
+    log::Level::Info
+  };
+  log::log!(
+    summary_level,
     "{} tsconfig for stock TypeScript at {}",
     deno_terminal::colors::green("Synced"),
     project_root.join("tsconfig.json").display(),
@@ -364,7 +382,11 @@ pub async fn sync_types_command(flags: Arc<Flags>) -> Result<(), AnyError> {
     log::debug!("  installed jsr package {}@{}", pkg.name, pkg.version);
   }
   if !installed.is_empty() {
-    log::info!("  installed {} jsr package(s)", installed.len());
+    log::log!(
+      summary_level,
+      "  installed {} jsr package(s)",
+      installed.len()
+    );
   }
   Ok(())
 }
