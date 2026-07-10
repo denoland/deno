@@ -65,6 +65,7 @@ pub use crate::message_port::serialize_transferables;
 pub use crate::timers::StartTime;
 use crate::timers::op_defer;
 use crate::timers::op_now;
+use crate::timers::op_now_ms;
 use crate::timers::op_time_origin;
 mod locks;
 
@@ -102,6 +103,7 @@ deno_core::extension!(deno_web,
     compression::op_compression_write,
     compression::op_compression_finish,
     op_now,
+    op_now_ms,
     op_time_origin,
     op_defer,
     geometry::op_geometry_get_enable_css_parser_features,

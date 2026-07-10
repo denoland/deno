@@ -2,6 +2,7 @@
 
 //! This module helps deno implement timers and performance APIs.
 
+use std::cell::Cell;
 use std::time::Duration;
 use std::time::Instant;
 use std::time::SystemTime;
@@ -10,11 +11,20 @@ use std::time::UNIX_EPOCH;
 use deno_core::OpState;
 use deno_core::op2;
 
+thread_local! {
+  /// Mirror of the isolate's `StartTime`, so that `op_now_ms` can read the
+  /// time origin without an `OpState` type-map lookup. Each isolate runs on its
+  /// own thread, so this stays in sync with the `StartTime` in its `OpState`.
+  static START_TIME: Cell<Option<Instant>> = const { Cell::new(None) };
+}
+
 pub struct StartTime(Instant);
 
 impl Default for StartTime {
   fn default() -> Self {
-    Self(Instant::now())
+    let now = Instant::now();
+    START_TIME.set(Some(now));
+    Self(now)
   }
 }
 
@@ -38,15 +48,24 @@ fn expose_time(duration: Duration, out: &mut [u8]) {
 
 #[op2(fast)]
 pub fn op_now(state: &mut OpState, #[buffer] buf: &mut [u8]) {
-  // `StartTime` is absent while building the startup snapshot, since extension
-  // `state` setup does not run then. `Event` construction during snapshot
-  // warmup reaches here, so fall back to a zero elapsed time instead of
-  // panicking.
-  let elapsed = match state.try_borrow::<StartTime>() {
+  let start_time = state.borrow::<StartTime>();
+  let elapsed = start_time.elapsed();
+  expose_time(elapsed, buf);
+}
+
+/// Like `op_now`, but returns the elapsed time directly as a
+/// `DOMHighResTimeStamp` (milliseconds). Callers that only need the number —
+/// `Event.timeStamp` — avoid the typed-array round trip this way.
+#[op2(fast)]
+pub fn op_now_ms() -> f64 {
+  // The time origin is unset while building the startup snapshot, since
+  // extension `state` setup does not run then. `Event` construction during
+  // snapshot warmup reaches here, so fall back to a zero elapsed time.
+  let elapsed = match START_TIME.get() {
     Some(start_time) => start_time.elapsed(),
     None => Duration::default(),
   };
-  expose_time(elapsed, buf);
+  elapsed.as_secs_f64() * 1000.0
 }
 
 #[op2(fast)]
