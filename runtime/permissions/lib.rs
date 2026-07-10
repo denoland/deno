@@ -983,6 +983,19 @@ impl<
       && !has_broker()
   }
 
+  /// Whether a specific (non-global) descriptor has been granted, i.e. a
+  /// partial allow-list is in effect. Querying `None` (the "all" query) reports
+  /// `Prompt` in this case even though some individual descriptors are granted,
+  /// so enumeration APIs use this to fall back to per-descriptor filtering
+  /// instead of failing.
+  pub fn has_granted_list(&self) -> bool {
+    !self.granted_global
+      && self
+        .descriptors
+        .iter()
+        .any(|desc| matches!(desc, UnaryPermissionDesc::Granted(_)))
+  }
+
   pub fn check_all_api(
     &mut self,
     api_name: Option<&str>,
@@ -4397,6 +4410,14 @@ impl PermissionsContainer {
   pub fn check_env_all(&self) -> Result<(), PermissionCheckError> {
     self.inner.lock().env.check_all()?;
     Ok(())
+  }
+
+  /// Whether a partial env allow-list is in effect (specific variables granted
+  /// without a global grant). Enumeration via `Deno.env.toObject()` uses this
+  /// to return the granted subset rather than failing the whole call.
+  #[inline(always)]
+  pub fn env_has_granted_list(&self) -> bool {
+    self.inner.lock().env.has_granted_list()
   }
 
   #[inline(always)]
