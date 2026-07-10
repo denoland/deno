@@ -1229,6 +1229,7 @@ impl CliOptions {
       &mut permissions_options,
       has_config_permissions,
     );
+    self.apply_always_on_env_vars(&mut permissions_options);
     if let DenoSubcommand::Serve(serve_flags) = &self.flags.subcommand {
       augment_permissions_with_serve_flags(
         &mut permissions_options,
@@ -1356,15 +1357,11 @@ impl CliOptions {
   ///
   /// `--deny-*` flags do not disable the profile; they compose on top since
   /// deny always wins.
-  fn maybe_apply_relaxed_default_permissions(
-    &self,
-    options: &mut PermissionsOptions,
-    has_config_permissions: bool,
-  ) {
-    // Only for subcommands that execute user code with the prompt-based
-    // defaults. `deno eval` and `deno x` already imply allow-all, and
-    // `deno compile` bakes permissions at compile time (out of scope).
-    if !matches!(
+  /// Whether the current subcommand executes user code with the prompt-based
+  /// permission defaults. `deno eval` and `deno x` already imply allow-all, and
+  /// `deno compile` bakes permissions at compile time (out of scope).
+  fn runs_user_code_with_prompt_defaults(&self) -> bool {
+    matches!(
       self.flags.subcommand,
       DenoSubcommand::Run(_)
         | DenoSubcommand::Serve(_)
@@ -1372,7 +1369,34 @@ impl CliOptions {
         | DenoSubcommand::Bench(_)
         | DenoSubcommand::Task(_)
         | DenoSubcommand::Repl(_)
-    ) {
+    )
+  }
+
+  /// Folds the always-on env variables (`ALWAYS_ON_ENV_VARS`) into the computed
+  /// `allow_env` descriptors so they remain readable without a prompt in every
+  /// profile, including the strict default. This replaces the historical
+  /// unconditional `skip_permission_check` bypass in `op_get_env`: because the
+  /// read now goes through the permission path, `--deny-env` wins over these
+  /// grants, which the bypass did not allow.
+  ///
+  /// Applied regardless of the relaxed-permissions gate. It composes on top of
+  /// whatever `allow_env` the flags, config or relaxed profile produced, and
+  /// preserves the "allow all" meaning of an empty `allow_env` list.
+  fn apply_always_on_env_vars(&self, options: &mut PermissionsOptions) {
+    if !self.runs_user_code_with_prompt_defaults() {
+      return;
+    }
+    merge_default_allow_env(&mut options.allow_env, ALWAYS_ON_ENV_VARS);
+  }
+
+  fn maybe_apply_relaxed_default_permissions(
+    &self,
+    options: &mut PermissionsOptions,
+    has_config_permissions: bool,
+  ) {
+    // Only for subcommands that execute user code with the prompt-based
+    // defaults.
+    if !self.runs_user_code_with_prompt_defaults() {
       return;
     }
 
@@ -1399,8 +1423,15 @@ impl CliOptions {
 
     // read: allowed everywhere (empty allow-list means "allow all").
     options.allow_read = Some(Vec::new());
-    // env: allowed everywhere.
-    options.allow_env = Some(Vec::new());
+    // env: allowed for the curated default-readable allowlist (see #35950).
+    // This is a deny-respecting allow-list (not an allow-all bypass), so
+    // credential-shaped variables still prompt and `--deny-env` still wins.
+    options.allow_env = Some(
+      RELAXED_DEFAULT_ENV_ALLOWLIST
+        .iter()
+        .map(|name| name.to_string())
+        .collect(),
+    );
     // write: confined to the cwd (recorded at process start) and the OS temp
     // directory.
     options.allow_write = Some(relaxed_default_write_paths(self.initial_cwd()));
@@ -1844,6 +1875,163 @@ fn relaxed_default_write_paths(initial_cwd: &Path) -> Vec<String> {
     .into_iter()
     .map(|path| path.to_string_lossy().into_owned())
     .collect()
+}
+
+/// Environment variables that Deno reads without an env permission prompt in
+/// every profile, including the strict default. These are the four Node compat
+/// variables that were historically read via an unconditional
+/// `skip_permission_check` bypass in `op_get_env` (see #15890). They are folded
+/// into the default `allow_env` descriptors here so that reads still go through
+/// the permission path and therefore honor `--deny-env` (deny always wins),
+/// while user code and the Node polyfills keep reading them without a prompt.
+///
+/// Every entry here is also part of `RELAXED_DEFAULT_ENV_ALLOWLIST`.
+const ALWAYS_ON_ENV_VARS: [&str; 4] =
+  ["FORCE_COLOR", "NODE_DEBUG", "NODE_OPTIONS", "NO_COLOR"];
+
+/// The curated default-readable environment variable allowlist applied by the
+/// relaxed default permission profile. These names are structurally
+/// non-sensitive (terminal/color, locale, standard directory paths, CI
+/// detection, common Node/runtime knobs, and the `npm_*` variables that
+/// `deno task` itself sets), so ordinary CLI tools run without env prompts
+/// while every credential-shaped variable still prompts exactly as before.
+///
+/// A trailing `*` denotes a prefix pattern (handled by `EnvDescriptor::new`).
+/// Wildcards are used only where an entire namespace is structurally
+/// non-secret. Namespaces that carry credentials, such as `npm_config_*`,
+/// `GITHUB_*`, `AWS_*` and `DENO_*`, are never wildcarded.
+///
+/// This list is intentionally curated and baked into the binary; see #35950.
+/// It must stay a superset of `ALWAYS_ON_ENV_VARS`.
+const RELAXED_DEFAULT_ENV_ALLOWLIST: &[&str] = &[
+  // Terminal / color / TTY.
+  "TERM",
+  "COLORTERM",
+  "TERM_PROGRAM",
+  "TERM_PROGRAM_VERSION",
+  "TERMINFO",
+  "COLUMNS",
+  "LINES",
+  "NO_COLOR",
+  "FORCE_COLOR",
+  "CLICOLOR",
+  "CLICOLOR_FORCE",
+  // Locale / timezone.
+  "LANG",
+  "LANGUAGE",
+  "LC_*",
+  "TZ",
+  // Shell / identity / cwd. `_` is the shell-provided path of the running
+  // executable (argv0), read by many Node CLIs such as yargs.
+  "SHELL",
+  "USER",
+  "LOGNAME",
+  "USERNAME",
+  "HOME",
+  "USERPROFILE",
+  "PWD",
+  "OLDPWD",
+  "_",
+  // Paths / XDG / Windows dirs.
+  "PATH",
+  "TMPDIR",
+  "TMP",
+  "TEMP",
+  "XDG_*",
+  "APPDATA",
+  "LOCALAPPDATA",
+  "PROGRAMDATA",
+  "PROGRAMFILES",
+  "HOMEDRIVE",
+  "HOMEPATH",
+  "SYSTEMROOT",
+  "WINDIR",
+  "PATHEXT",
+  "COMSPEC",
+  // OS / platform.
+  "OS",
+  "OSTYPE",
+  "HOSTTYPE",
+  "MACHTYPE",
+  "PROCESSOR_ARCHITECTURE",
+  // Node / runtime knobs.
+  "NODE_ENV",
+  "NODE_OPTIONS",
+  "NODE_PATH",
+  "NODE_DEBUG",
+  "NODE_NO_WARNINGS",
+  "NODE_DISABLE_COLORS",
+  "NODE_PENDING_DEPRECATION",
+  "NODE_ICU_DATA",
+  "NODE_EXTRA_CA_CERTS",
+  "NO_UPDATE_NOTIFIER",
+  // `deno task` npm_* vars (exactly what `deno task` sets; refs #35251,
+  // #35306).
+  "npm_package_name",
+  "npm_package_version",
+  "npm_package_json",
+  "npm_package_config_*",
+  "npm_execpath",
+  "npm_node_execpath",
+  "npm_command",
+  "npm_lifecycle_event",
+  "npm_lifecycle_script",
+  "npm_config_user_agent",
+  "INIT_CWD",
+  // Debug conventions.
+  "DEBUG",
+  "DEBUG_*",
+  // Editor / pager.
+  "EDITOR",
+  "VISUAL",
+  "PAGER",
+  "MANPAGER",
+  "GIT_PAGER",
+  "BROWSER",
+  // CI detection (boolean/name flags read by `ci-info` and friends; the
+  // enumerated set never includes CI secret tokens).
+  "CI",
+  "CONTINUOUS_INTEGRATION",
+  "BUILD_NUMBER",
+  "CI_NAME",
+  "GITHUB_ACTIONS",
+  "GITLAB_CI",
+  "CIRCLECI",
+  "TRAVIS",
+  "APPVEYOR",
+  "JENKINS_URL",
+  "TEAMCITY_VERSION",
+  "BUILDKITE",
+  "DRONE",
+  "TF_BUILD",
+  "NETLIFY",
+  "VERCEL",
+  "CODEBUILD_BUILD_ID",
+];
+
+/// Merges `additions` into `allow_env`, preserving the "allow all" meaning of an
+/// empty allow-list. When `allow_env` is `None` it becomes a fresh list of the
+/// additions; when it is a non-empty list the additions are appended (skipping
+/// duplicates); when it is `Some` but empty (allow all) it is left untouched.
+fn merge_default_allow_env(
+  allow_env: &mut Option<Vec<String>>,
+  additions: impl IntoIterator<Item = &'static str>,
+) {
+  match allow_env {
+    None => {
+      *allow_env = Some(additions.into_iter().map(|s| s.to_string()).collect());
+    }
+    Some(list) if list.is_empty() => {
+      // Empty list means "allow all"; adding names would narrow it. Leave it.
+    }
+    Some(list) => {
+      for addition in additions {
+        if !list.iter().any(|existing| existing == addition) {
+          list.push(addition.to_string());
+        }
+      }
+    }
+  }
 }
 
 // DO NOT make this public. People should use `cli_options.permissions_options/permissions_options_for_dir`
