@@ -1086,7 +1086,8 @@
     "parallel/test-dns-resolvens-typeerror.js": {},
     "parallel/test-dns-resolver-max-timeout.js": {
       "flaky": true,
-      "windows": false // incredibly flaky in CI
+      "windows": false, // incredibly flaky in CI
+      "darwin": false // also incredibly flaky in CI, see #35066
     },
     "parallel/test-dns-resolvesrv.js": {},
     "parallel/test-dns-resolvesrv-econnrefused.js": {},
