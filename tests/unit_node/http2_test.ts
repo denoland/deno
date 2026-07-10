@@ -758,6 +758,51 @@ Deno.test("[node/http2 client] connect with pre-created socket", {
   await new Promise<void>((resolve) => server.on("close", resolve));
 });
 
+Deno.test("[node/http2] caps native pending write data", async () => {
+  const streamError = Promise.withResolvers<Error & { code?: string }>();
+  const server = http2.createServer();
+  server.on("stream", (stream) => {
+    stream.once("error", streamError.resolve);
+    stream.respond({ ":status": 200 });
+
+    const chunk = Buffer.alloc(1024 * 1024);
+    for (let i = 0; i < 17; i++) {
+      stream.write(chunk);
+    }
+  });
+
+  const port = await new Promise<number>((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      resolve((server.address() as net.AddressInfo).port);
+    });
+  });
+
+  const client = http2.connect(`http://127.0.0.1:${port}`);
+  client.on("error", () => {});
+  const request = client.request({ ":path": "/" });
+  request.on("error", () => {});
+  request.on("response", () => request.pause());
+  request.end();
+
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeout = setTimeout(
+        () => reject(new Error("timed out waiting for stream error")),
+        5000,
+      );
+    });
+    const error = await Promise.race([streamError.promise, timeoutPromise]);
+    assertEquals(error.code, "ENOBUFS");
+  } finally {
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
+    client.destroy();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
 // Regression test for https://github.com/denoland/deno/issues/33317
 // `http2.createSecureServer({ allowHTTP1: true })` must handle HTTP/1.1
 // clients without throwing `ReferenceError: kIncomingMessage is not defined`.

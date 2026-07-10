@@ -4,6 +4,7 @@ use std::cell::RefCell;
 
 use deno_core::cppgc;
 use deno_core::op2;
+use deno_core::uv_compat::UV_ENOBUFS;
 use deno_core::v8;
 use libnghttp2 as ffi;
 use serde::Serialize;
@@ -17,6 +18,15 @@ use crate::ops::handle_wrap::AsyncWrap;
 
 /// (name bytes, value bytes, NGHTTP2 NV flags).
 pub type HeaderEntry = (Vec<u8>, Vec<u8>, u8);
+
+const MAX_PENDING_DATA_PER_STREAM: usize = 16 * 1024 * 1024;
+
+fn can_queue_pending_data(current_len: usize, incoming_len: usize) -> bool {
+  match current_len.checked_add(incoming_len) {
+    Some(next_len) => next_len <= MAX_PENDING_DATA_PER_STREAM,
+    None => false,
+  }
+}
 
 // Http2Headers
 
@@ -399,8 +409,35 @@ impl Http2Stream {
     // SAFETY: session outlives the stream
     unsafe { (*self.session).session }
   }
+
+  fn queue_pending_data(&self, data: &[u8]) -> Result<(), i32> {
+    let mut pending_data = self.pending_data.borrow_mut();
+    if !can_queue_pending_data(pending_data.len(), data.len()) {
+      return Err(UV_ENOBUFS);
+    }
+
+    pending_data.extend_from_slice(data);
+    *self.available_outbound_length.borrow_mut() += data.len();
+    Ok(())
+  }
 }
 
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn http2_pending_data_limit_allows_data_until_cap() {
+    assert!(can_queue_pending_data(0, MAX_PENDING_DATA_PER_STREAM));
+    assert!(can_queue_pending_data(MAX_PENDING_DATA_PER_STREAM - 1, 1));
+  }
+
+  #[test]
+  fn http2_pending_data_limit_rejects_over_cap_or_overflow() {
+    assert!(!can_queue_pending_data(MAX_PENDING_DATA_PER_STREAM, 1));
+    assert!(!can_queue_pending_data(usize::MAX, 1));
+  }
+}
 #[op2]
 impl Http2Stream {
   #[fast]
@@ -455,11 +492,9 @@ impl Http2Stream {
     _req: v8::Local<v8::Object>,
     #[string] data: &str,
   ) -> i32 {
-    self
-      .pending_data
-      .borrow_mut()
-      .extend_from_slice(data.as_bytes());
-    *self.available_outbound_length.borrow_mut() += data.len();
+    if let Err(err) = self.queue_pending_data(data.as_bytes()) {
+      return err;
+    }
 
     if !*self.closed_by_nghttp2.borrow() {
       let session_ptr = self.nghttp2_session();
@@ -478,8 +513,9 @@ impl Http2Stream {
     _req: v8::Local<v8::Object>,
     #[buffer] data: &[u8],
   ) -> i32 {
-    self.pending_data.borrow_mut().extend_from_slice(data);
-    *self.available_outbound_length.borrow_mut() += data.len();
+    if let Err(err) = self.queue_pending_data(data) {
+      return err;
+    }
 
     if !*self.closed_by_nghttp2.borrow() {
       let session_ptr = self.nghttp2_session();
