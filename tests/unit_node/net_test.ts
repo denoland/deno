@@ -390,15 +390,32 @@ Deno.test({
     });
     socket.destroy();
 
-    // Nothing listens on port 1, so every attempt is refused. What must never
-    // happen is a permission error for the resolved IP (e.g. "127.0.0.1:1").
+    // Nothing listens on port 1, so every attempt fails. What must never happen
+    // is a permission error for the resolved IP (e.g. "127.0.0.1:1").
     assert(
       !/NotCapable|Requires net access/.test(error.message),
       `unexpected permission error: ${error.message}`,
     );
+    // The point of the test is the *fallback*, so make sure more than the first
+    // address was actually attempted.
+    const attempted =
+      (socket as unknown as { autoSelectFamilyAttemptedAddresses: string[] })
+        .autoSelectFamilyAttemptedAddresses;
+    assert(
+      attempted.length >= 2,
+      `expected a fallback attempt, got ${JSON.stringify(attempted)}`,
+    );
     const errors = (error as unknown as AggregateError).errors ?? [error];
     for (const err of errors) {
-      assertEquals((err as unknown as { code: string }).code, "ECONNREFUSED");
+      // Normally the connection is refused outright. With the deliberately
+      // short attempt timeout above, a slow machine can hit the timeout before
+      // the refusal is delivered, which surfaces as ETIMEDOUT — Node behaves
+      // the same way. Either is fine; a permission error is not.
+      const code = (err as unknown as { code: string }).code;
+      assert(
+        code === "ECONNREFUSED" || code === "ETIMEDOUT",
+        `unexpected error code: ${code}`,
+      );
     }
   },
 });
