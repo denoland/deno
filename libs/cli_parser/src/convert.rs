@@ -1410,6 +1410,7 @@ fn lint_parse(result: &ParseResult, flags: &mut Flags) {
     .map(|v| v.iter().map(|s| s.to_string()).collect());
   let json = result.get_bool("json");
   let compact = result.get_bool("compact");
+  let no_type = result.get_bool("no-type");
 
   flags.watch = watch_arg_parse_with_paths(result);
   flags.subcommand = DenoSubcommand::Lint(LintFlags {
@@ -1425,6 +1426,7 @@ fn lint_parse(result: &ParseResult, flags: &mut Flags) {
     permit_no_files: result.get_bool("permit-no-files"),
     json,
     compact,
+    no_type,
   });
 }
 

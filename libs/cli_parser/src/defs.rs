@@ -743,6 +743,7 @@ pub static LINT_SUBCOMMAND: CommandDef = CommandDef {
       .value_delimiter(','),
     ArgDef::new("json").long("json").set_true(),
     ArgDef::new("compact").long("compact").set_true(),
+    ArgDef::new("no-type").long("no-type").set_true(),
     ArgDef::new("ignore")
       .long("ignore")
       .action(ArgAction::Append)

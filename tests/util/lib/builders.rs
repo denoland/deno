@@ -969,6 +969,12 @@ impl TestCommandBuilder {
     if !envs.contains_key("DENO_NO_UPDATE_CHECK") {
       envs.insert("DENO_NO_UPDATE_CHECK".to_string(), "1".to_string());
     }
+    // Keep `deno lint` hermetic: type-aware linting is on by default and would
+    // otherwise fetch the tsgolint binary from npm, which the mock registry
+    // does not serve. Tests that exercise type-aware linting opt back in.
+    if !envs.contains_key("DENO_NO_TYPE_LINT") {
+      envs.insert("DENO_NO_TYPE_LINT".to_string(), "1".to_string());
+    }
     if !envs.contains_key("JSR_URL") {
       envs.insert("JSR_URL".to_string(), jsr_registry_unset_url());
     }
