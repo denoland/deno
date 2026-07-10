@@ -285,10 +285,20 @@ impl TestContextBuilder {
       None => cwd,
     };
 
+    // Point `deno check` at a shared, pre-downloaded native compiler so each
+    // test's fresh temp `DENO_DIR` doesn't re-download it. Tests that set
+    // `DENO_TSC_BIN` themselves win.
+    let mut envs = self.envs.clone();
+    if !envs.contains_key("DENO_TSC_BIN")
+      && let Some(tsc_bin) = crate::native_tsc_bin_path()
+    {
+      envs.insert("DENO_TSC_BIN".to_string(), tsc_bin.to_string());
+    }
+
     TestContext {
       cwd,
       deno_exe,
-      envs: self.envs.clone(),
+      envs,
       diagnostic_logger: self.diagnostic_logger.clone(),
       _http_server_guard: http_server_guard,
       deno_dir,

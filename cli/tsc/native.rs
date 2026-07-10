@@ -63,6 +63,21 @@ pub async fn ensure_native_tsc(
   tarball_cache: &Arc<TarballCache<CliNpmCacheHttpClient, CliSys>>,
   npm_cache: &CliNpmCache,
 ) -> Result<PathBuf, AnyError> {
+  // Allow pointing at an already-available `tsc` binary instead of downloading
+  // one, mirroring `DENORT_BIN`. Used by the test harness and CI to avoid
+  // re-downloading the compiler for every run, and lets a user supply their
+  // own build.
+  if let Some(path) = std::env::var_os("DENO_TSC_BIN") {
+    let path = PathBuf::from(path);
+    if path.exists() {
+      return Ok(path);
+    }
+    log::warn!(
+      "DENO_TSC_BIN is set to {} but it does not exist; downloading the pinned compiler instead",
+      path.display()
+    );
+  }
+
   let target = typescript_platform();
   // Keep the compiler under `$DENO_DIR/tsc/<version>/<platform>` so all of a
   // given version's files live in one predictable, versioned directory.
