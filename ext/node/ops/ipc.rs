@@ -88,17 +88,19 @@ mod impl_ {
         ser.serialize_f64(num_value)
       }
     } else if value.is_string() {
-      let str = deno_core::serde_v8::to_utf8(value.try_into().unwrap(), scope);
+      let str = v8::Local::<v8::String>::try_from(value)
+        .unwrap()
+        .to_rust_string_lossy(scope);
       ser.serialize_str(&str)
     } else if value.is_string_object() {
-      let str = deno_core::serde_v8::to_utf8(
-        value.to_string(scope).ok_or_else(|| {
+      let str = value
+        .to_string(scope)
+        .ok_or_else(|| {
           S::Error::custom(deno_error::JsErrorBox::generic(
             "toString on string object failed",
           ))
-        })?,
-        scope,
-      );
+        })?
+        .to_rust_string_lossy(scope);
       ser.serialize_str(&str)
     } else if value.is_boolean() {
       ser.serialize_bool(value.is_true())
@@ -851,14 +853,68 @@ mod impl_ {
     raw_fd: Option<i32>,
   }
 
+  const MAX_SAFE_INTEGER: i64 = (1 << 53) - 1;
+  const MIN_SAFE_INTEGER: i64 = -MAX_SAFE_INTEGER;
+
+  /// Converts a `serde_json::Value` read off the IPC channel into a v8
+  /// value. This is deliberately local to the IPC json protocol rather than
+  /// a general-purpose `ToV8 for serde_json::Value` impl, since the shape
+  /// serde_json::Value should take in v8 isn't a concern shared by other
+  /// call sites.
+  fn json_value_to_v8<'a>(
+    scope: &mut v8::PinScope<'a, '_>,
+    value: serde_json::Value,
+  ) -> v8::Local<'a, v8::Value> {
+    match value {
+      serde_json::Value::Null => v8::null(scope).into(),
+      serde_json::Value::Bool(b) => v8::Boolean::new(scope, b).into(),
+      serde_json::Value::Number(n) => {
+        if let Some(v) = n.as_i64() {
+          if (MIN_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&v) {
+            v8::Number::new(scope, v as f64).into()
+          } else {
+            v8::BigInt::new_from_i64(scope, v).into()
+          }
+        } else if let Some(v) = n.as_u64() {
+          if v <= MAX_SAFE_INTEGER as u64 {
+            v8::Number::new(scope, v as f64).into()
+          } else {
+            v8::BigInt::new_from_u64(scope, v).into()
+          }
+        } else {
+          v8::Number::new(scope, n.as_f64().unwrap()).into()
+        }
+      }
+      serde_json::Value::String(s) => {
+        v8::String::new(scope, &s).expect("string too long").into()
+      }
+      serde_json::Value::Array(a) => {
+        let elements = a
+          .into_iter()
+          .map(|v| json_value_to_v8(scope, v))
+          .collect::<Vec<_>>();
+        v8::Array::new_with_elements(scope, &elements).into()
+      }
+      serde_json::Value::Object(o) => {
+        let obj = v8::Object::new(scope);
+        for (k, v) in o {
+          let key: v8::Local<v8::Value> =
+            v8::String::new(scope, &k).expect("string too long").into();
+          let v8_val = json_value_to_v8(scope, v);
+          obj.set(scope, key, v8_val);
+        }
+        obj.into()
+      }
+    }
+  }
+
   impl<'a> deno_core::ToV8<'a> for IpcJsonReadResult {
     type Error = IpcError;
     fn to_v8(
       self,
       scope: &mut v8::PinScope<'a, '_>,
     ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
-      let msg = deno_core::serde_v8::to_v8(scope, self.msg)
-        .expect("serde_json::Value to_v8");
+      let msg = json_value_to_v8(scope, self.msg);
       Ok(make_msg_with_fd_array(scope, msg, self.raw_fd))
     }
   }
