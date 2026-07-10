@@ -6,7 +6,7 @@
 // and impossible logic branches based on what Deno currently supports.
 
 (function () {
-const { core, primordials } = __bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const {
   ArrayPrototypeIncludes,
   ArrayPrototypeIndexOf,
@@ -154,8 +154,6 @@ const _path = Symbol("[[path]]");
 
 class Event {
   constructor(type, eventInitDict = { __proto__: null }) {
-    // TODO(lucacasonato): remove when this interface is spec aligned
-    this[SymbolToStringTag] = "Event";
     this[_canceledFlag] = false;
     this[_stopPropagationFlag] = false;
     this[_stopImmediatePropagationFlag] = false;
@@ -436,6 +434,14 @@ ObjectDefineProperty(Event, "BUBBLING_PHASE", {
 });
 
 const EventPrototype = Event.prototype;
+
+ObjectDefineProperty(EventPrototype, SymbolToStringTag, {
+  __proto__: null,
+  value: "Event",
+  writable: false,
+  enumerable: false,
+  configurable: true,
+});
 
 // Not spec compliant. The spec defines it as [LegacyUnforgeable]
 // but doing so has a big performance hit
@@ -1709,6 +1715,9 @@ function reportError(error) {
   webidl.requiredArguments(arguments.length, 1, prefix);
   reportException(error);
 }
+
+internals.defineEventHandler = defineEventHandler;
+internals.setEventTargetData = setEventTargetData;
 
 return {
   CloseEvent,

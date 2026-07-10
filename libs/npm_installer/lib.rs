@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -9,6 +10,7 @@ use deno_error::JsErrorBox;
 use deno_npm::NpmSystemInfo;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
+use deno_npm::resolution::UnmetPeerDepDiagnostic;
 use deno_npm_cache::NpmCache;
 use deno_npm_cache::NpmCacheHttpClient;
 use deno_resolver::lockfile::LockfileLock;
@@ -63,6 +65,7 @@ use self::package_json::NpmInstallDepsProvider;
 use self::resolution::AddPkgReqsResult;
 use self::resolution::NpmResolutionInstaller;
 use self::resolution::NpmResolutionInstallerSys;
+pub use self::resolution::format_unmet_peer_dep_warning;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PackageCaching<'a> {
@@ -156,6 +159,9 @@ pub struct NpmInstallerOptions<TSys: NpmInstallerSys> {
   pub lifecycle_scripts: Arc<LifecycleScriptsConfig>,
   pub system_info: NpmSystemInfo,
   pub workspace_link_packages: WorkspaceNpmLinkPackagesRc,
+  /// Whether `jsr:` dependencies are installed into `node_modules` via JSR's
+  /// npm compatibility registry (the `jsrDepsInNodeModules` config option).
+  pub jsr_deps_in_node_modules: bool,
 }
 
 #[derive(Debug)]
@@ -222,6 +228,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
                   system_info: options.system_info,
                   reporter: install_reporter,
                   node_modules_folder,
+                  jsr_deps_in_node_modules: options.jsr_deps_in_node_modules,
                 },
               ))
             }
@@ -241,6 +248,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
                   system_info: options.system_info,
                   reporter: install_reporter,
                   node_modules_folder,
+                  jsr_deps_in_node_modules: options.jsr_deps_in_node_modules,
                 },
               ))
             }
@@ -276,13 +284,14 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     packages: &[PackageReq],
   ) -> Result<(), JsErrorBox> {
     self.npm_resolution_initializer.ensure_initialized().await?;
-    self
+    let result = self
       .add_package_reqs_raw(
         packages,
         Some(PackageCaching::Only(packages.into())),
       )
-      .await
-      .dependencies_result
+      .await;
+    self.warn_unmet_peer_diagnostics();
+    result.dependencies_result
   }
 
   pub async fn add_package_reqs_no_cache(
@@ -290,10 +299,9 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     packages: &[PackageReq],
   ) -> Result<(), JsErrorBox> {
     self.npm_resolution_initializer.ensure_initialized().await?;
-    self
-      .add_package_reqs_raw(packages, None)
-      .await
-      .dependencies_result
+    let result = self.add_package_reqs_raw(packages, None).await;
+    self.warn_unmet_peer_diagnostics();
+    result.dependencies_result
   }
 
   pub async fn add_package_reqs(
@@ -302,10 +310,35 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     caching: PackageCaching<'_>,
   ) -> Result<(), JsErrorBox> {
     self.npm_resolution_initializer.ensure_initialized().await?;
-    self
-      .add_package_reqs_raw(packages, Some(caching))
-      .await
-      .dependencies_result
+    let result = self.add_package_reqs_raw(packages, Some(caching)).await;
+    self.warn_unmet_peer_diagnostics();
+    result.dependencies_result
+  }
+
+  /// Drains the unmet peer dependency diagnostics collected during npm
+  /// resolution. Callers that have a module graph available should render these
+  /// with [`format_unmet_peer_dep_warning`] and an importer map; otherwise see
+  /// [`Self::warn_unmet_peer_diagnostics`].
+  pub fn take_unmet_peer_diagnostics(&self) -> Vec<UnmetPeerDepDiagnostic> {
+    self.npm_resolution_installer.take_unmet_peer_diagnostics()
+  }
+
+  /// Renders any pending unmet peer dependency diagnostics without importer
+  /// information. Used by resolution entry points that don't build a module
+  /// graph (the importing module isn't known there anyway).
+  fn warn_unmet_peer_diagnostics(&self) {
+    if !log::log_enabled!(log::Level::Warn) {
+      // still drain so the diagnostics don't accumulate
+      let _ = self.take_unmet_peer_diagnostics();
+      return;
+    }
+    let diagnostics = self.take_unmet_peer_diagnostics();
+    if !diagnostics.is_empty() {
+      log::warn!(
+        "{}",
+        format_unmet_peer_dep_warning(&diagnostics, &HashMap::new())
+      );
+    }
   }
 
   pub async fn add_package_reqs_raw(
@@ -461,8 +494,12 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     }
 
     // check if something needs resolving before bothering to load all
-    // the package information (which is slow)
-    if !self.npm_resolution.is_pending()
+    // the package information (which is slow). As in the resolver fast path,
+    // when offline (`--cached-only`) prefer the existing resolution over a
+    // re-resolution that would need registry metadata not in the cache, even
+    // if the lockfile was flagged as changed for a non-npm reason.
+    if (!self.npm_resolution.is_pending()
+      || self.npm_resolution_installer.is_cached_only())
       && pkg_json_remote_pkgs.iter().all(|pkg| {
         self
           .npm_resolution
@@ -494,6 +531,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
       .install_if_pending()
       .await
       .map_err(JsErrorBox::from_err)?;
+    self.warn_unmet_peer_diagnostics();
     Ok(())
   }
 }

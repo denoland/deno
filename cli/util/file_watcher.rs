@@ -35,6 +35,7 @@ use tokio::time::sleep;
 
 use super::env::WatchEnvTracker;
 use crate::args::Flags;
+use crate::args::FlagsExt;
 use crate::colors;
 use crate::util::fs::canonicalize_path;
 
@@ -420,7 +421,14 @@ where
 
     select! {
       _ = receiver_future => {},
-      _ = deno_signals::ctrl_c() => {
+      // Watch for Ctrl+C without preventing the default signal behavior:
+      // if the program has no signal listeners, the process is terminated
+      // by the default handler right away, even while the event loop is
+      // blocked in synchronous JS code and this branch cannot be polled
+      // (https://github.com/denoland/deno/issues/35824). This branch is
+      // reached when a JS signal listener prevented the default behavior,
+      // in which case we shut down gracefully below.
+      _ = deno_signals::ctrl_c_allow_default() => {
         // Dispatch SIGINT (matching what Ctrl+C normally sends) and
         // SIGTERM to give JS code a chance for async cleanup. Some
         // libraries only listen for SIGINT, others for SIGTERM.
@@ -493,7 +501,7 @@ where
     // watched paths has changed.
     select! {
       _ = receiver_future => {},
-      _ = deno_signals::ctrl_c() => {
+      _ = deno_signals::ctrl_c_allow_default() => {
         return Ok(());
       },
       _ = restart_rx.recv() => {

@@ -2,7 +2,12 @@
 
 import vm from "node:vm";
 import { stripAnsiCode } from "@std/fmt/colors";
-import { assertStringIncludes } from "@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertFalse,
+  assertStringIncludes,
+} from "@std/assert";
 
 import { Console } from "node:console";
 import process from "node:process";
@@ -39,4 +44,29 @@ Deno.test("Console time and count methods don't throw when called with missing l
   console.timeLog();
   console.time();
   console.countReset();
+});
+
+Deno.test("global console exposes lazy Node stdio streams", () => {
+  const globalConsole = console as typeof console & {
+    _stdout: typeof process.stdout;
+    _stderr: typeof process.stderr;
+  };
+
+  assertEquals(globalConsole._stdout, process.stdout);
+  assertEquals(globalConsole._stderr, process.stderr);
+
+  const stdoutDescriptor = Object.getOwnPropertyDescriptor(
+    globalConsole,
+    "_stdout",
+  );
+  const stderrDescriptor = Object.getOwnPropertyDescriptor(
+    globalConsole,
+    "_stderr",
+  );
+  assert(stdoutDescriptor);
+  assert(stderrDescriptor);
+  assertFalse(stdoutDescriptor.enumerable);
+  assertFalse(stderrDescriptor.enumerable);
+  assertFalse(Object.keys(globalConsole).includes("_stdout"));
+  assertFalse(Object.keys(globalConsole).includes("_stderr"));
 });

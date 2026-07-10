@@ -235,7 +235,14 @@ fn op_emit_inner(state: &mut OpState, args: EmitArgs) -> bool {
   let state = state.borrow_mut::<State>();
   match args.file_name.as_ref() {
     "internal:///.tsbuildinfo" => state.maybe_tsbuildinfo = Some(args.data),
-    name if name.ends_with(".d.ts") || name.ends_with(".d.ts.map") => {
+    name
+      if name.ends_with(".d.ts")
+        || name.ends_with(".d.ts.map")
+        || name.ends_with(".d.mts")
+        || name.ends_with(".d.mts.map")
+        || name.ends_with(".d.cts")
+        || name.ends_with(".d.cts.map") =>
+    {
       if state.capture_emitted_files {
         state.emitted_files.insert(args.file_name, args.data);
       }
@@ -363,6 +370,13 @@ pub fn exec_request(
     create_params: create_isolate_create_params(&crate::sys::CliSys::default()),
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
     extension_code_cache,
+    // The TSC isolate shares CLI_SNAPSHOT, which under node-defer leaves
+    // node:process (and the rest of node's `lazy_loaded_esm` set) outside
+    // the snapshot blob. The compiler reads `process` (isNodeLikeSystem),
+    // which routes through the lazy `process` accessor and would otherwise
+    // fail with "Specifier \"node:process\" cannot be lazy-loaded".
+    residual_lazy_esm_sources: deno_snapshots::RESIDUAL_LAZY_ESM,
+    residual_lazy_js_sources: deno_snapshots::RESIDUAL_LAZY_JS,
     ..Default::default()
   });
 

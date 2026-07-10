@@ -133,6 +133,12 @@ export function read(
 
   (length as number) |= 0;
 
+  if (position == null) {
+    position = -1;
+  } else {
+    validatePosition(position, "position", length as number);
+  }
+
   if (length === 0) {
     return lazyProcess().default.nextTick(function tick() {
       callback!(null, 0, buffer);
@@ -152,12 +158,6 @@ export function read(
     length,
     getByteLength(buffer as ArrayBufferView),
   );
-
-  if (position == null) {
-    position = -1;
-  } else {
-    validatePosition(position, "position", length as number);
-  }
 
   // BigInt avoids precision loss for positions > 2^53. -1n means current pos.
   const readPos = position != null && position >= 0
@@ -231,6 +231,12 @@ export function readSync(
 
   length! |= 0;
 
+  if (position == null) {
+    position = -1;
+  } else {
+    validatePosition(position, "position", length);
+  }
+
   if (length === 0) {
     return 0;
   }
@@ -244,12 +250,6 @@ export function readSync(
   }
 
   validateOffsetLengthRead(offset, length, getByteLength(buffer));
-
-  if (position == null) {
-    position = -1;
-  } else {
-    validatePosition(position, "position", length);
-  }
 
   // BigInt avoids precision loss for positions > 2^53. -1n means current pos.
   const pos = position != null && position >= 0

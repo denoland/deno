@@ -29,7 +29,6 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::op2;
-use deno_permissions::CheckedPath;
 use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionsContainer;
 use serde::Deserialize;
@@ -38,7 +37,9 @@ use tokio::net::UnixDatagram;
 use tokio::net::UnixListener;
 pub use tokio::net::UnixStream;
 
+use crate::check_unix_socket_path;
 use crate::io::UnixStreamResource;
+use crate::is_unix_socket_abstract_path;
 use crate::ops::NetError;
 use crate::raw::NetworkListenerResource;
 
@@ -354,21 +355,6 @@ async fn send_to_unix_datagram(
   Ok(socket.send_to(buf, address_path).await?)
 }
 
-fn check_unix_socket_path<'a>(
-  permissions: &mut PermissionsContainer,
-  path: Cow<'a, Path>,
-  access_kind: OpenAccessKind,
-  api_name: Option<&str>,
-) -> Result<CheckedPath<'a>, NetError> {
-  if is_unix_socket_abstract_path(path.as_ref()) {
-    Ok(CheckedPath::unsafe_new(path))
-  } else {
-    permissions
-      .check_open(path, access_kind, api_name)
-      .map_err(NetError::Permission)
-  }
-}
-
 #[cfg(any(target_os = "android", target_os = "linux"))]
 fn unix_sockaddr_from_abstract_path(
   path: &Path,
@@ -423,17 +409,4 @@ pub fn unix_socket_addr_path(
   }
 
   Ok(None)
-}
-
-fn is_unix_socket_abstract_path(path: &Path) -> bool {
-  #[cfg(any(target_os = "android", target_os = "linux"))]
-  {
-    path.as_os_str().as_bytes().first() == Some(&0)
-  }
-
-  #[cfg(not(any(target_os = "android", target_os = "linux")))]
-  {
-    let _ = path;
-    false
-  }
 }

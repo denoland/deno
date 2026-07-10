@@ -1,5 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { assert, assertEquals } from "./test_util.ts";
+import { assert, assertEquals, assertThrows } from "./test_util.ts";
 import { assertType, IsExact } from "@std/testing/types";
 
 Deno.test(function urlPatternFromString() {
@@ -72,4 +72,42 @@ Deno.test(function urlPatternIgnoreCase() {
   const p = new URLPattern({ pathname: "/test" }, { ignoreCase: true });
   assert(p.test("/test", "http://localhost"));
   assert(p.test("/TeSt", "http://localhost"));
+});
+
+Deno.test(function urlPatternInvalidNameError() {
+  // A ":" not followed by a valid group name (e.g. file-router syntax such as
+  // `[:slug]` expanding to `::slug`) should produce an actionable error that
+  // echoes the offending component, points a caret at it, and includes a hint.
+  const err = assertThrows(
+    () => new URLPattern({ pathname: "/::slug" }),
+    TypeError,
+  ) as TypeError;
+  assert(
+    err.message.includes('Failed to parse pathname from "/::slug"'),
+    `missing component context: ${err.message}`,
+  );
+  assert(err.message.includes("^"), `missing caret: ${err.message}`);
+  assert(
+    err.message.includes('hint: ":" starts a named group'),
+    `missing hint: ${err.message}`,
+  );
+});
+
+Deno.test(function urlPatternInvalidNameErrorFromString() {
+  // For a constructor string we cannot reliably map the position back to the
+  // full input, but the input and hint should still be surfaced.
+  const err = assertThrows(
+    () => new URLPattern("https://example.com/::slug"),
+    TypeError,
+  ) as TypeError;
+  assert(
+    err.message.includes(
+      'Failed to parse URLPattern from "https://example.com/::slug"',
+    ),
+    `missing input context: ${err.message}`,
+  );
+  assert(
+    err.message.includes('hint: ":" starts a named group'),
+    `missing hint: ${err.message}`,
+  );
 });

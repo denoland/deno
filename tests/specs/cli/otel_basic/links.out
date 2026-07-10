@@ -5,7 +5,7 @@
       "spanId": "0000000000000001",
       "traceState": "",
       "parentSpanId": "",
-      "flags": 1,
+      "flags": 257,
       "name": "example span",
       "kind": 1,
       "startTimeUnixNano": "[WILDCARD]",
@@ -21,7 +21,7 @@
           "traceState": "",
           "attributes": [],
           "droppedAttributesCount": 0,
-          "flags": 1
+          "flags": 257
         }
       ],
       "droppedLinksCount": 0,
@@ -35,7 +35,7 @@
       "spanId": "0000000000000002",
       "traceState": "",
       "parentSpanId": "",
-      "flags": 1,
+      "flags": 257,
       "name": "example span",
       "kind": 1,
       "startTimeUnixNano": "[WILDCARD]",
@@ -51,7 +51,7 @@
           "traceState": "",
           "attributes": [],
           "droppedAttributesCount": 0,
-          "flags": 1
+          "flags": 257
         }
       ],
       "droppedLinksCount": 0,
@@ -65,7 +65,7 @@
       "spanId": "0000000000000003",
       "traceState": "",
       "parentSpanId": "",
-      "flags": 1,
+      "flags": 257,
       "name": "example span",
       "kind": 1,
       "startTimeUnixNano": "[WILDCARD]",
@@ -88,7 +88,7 @@
             }
           ],
           "droppedAttributesCount": 1,
-          "flags": 1
+          "flags": 257
         }
       ],
       "droppedLinksCount": 0,

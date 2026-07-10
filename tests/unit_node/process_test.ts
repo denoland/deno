@@ -17,6 +17,7 @@ import process, {
   getuid,
   pid as importedPid,
   platform as importedPlatform,
+  report as importedReport,
   setegid,
   seteuid,
   setgid,
@@ -116,7 +117,7 @@ Deno.test({
     assertEquals(typeof process.versions.nghttp2, "string");
     assertEquals(typeof process.versions.napi, "string");
     // Must match the NAPI_VERSION in ext/napi/js_native_api.rs
-    assertEquals(process.versions.napi, "9");
+    assertEquals(process.versions.napi, "10");
     assertEquals(typeof process.versions.llhttp, "string");
     assertEquals(typeof process.versions.openssl, "string");
     assertEquals(typeof process.versions.cldr, "string");
@@ -941,6 +942,71 @@ Deno.test({
 });
 
 Deno.test({
+  name:
+    "process.getActiveResourcesInfo reports net handles with Node wrap names",
+  async fn() {
+    const countOf = (type: string) =>
+      process.getActiveResourcesInfo().filter((t) => t === type).length;
+
+    const beforeServer = countOf("TCPServerWrap");
+    const beforeSocket = countOf("TCPSocketWrap");
+
+    let acceptedSocket: net.Socket | undefined;
+    const server = net.createServer((socket) => {
+      acceptedSocket = socket;
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+
+    const serverConnection = once(server, "connection");
+    const clientSocket = net.connect(
+      (server.address() as net.AddressInfo).port,
+    );
+    try {
+      await Promise.all([once(clientSocket, "connect"), serverConnection]);
+
+      assertEquals(countOf("TCPServerWrap"), beforeServer + 1);
+      // The client socket plus the server-accepted socket.
+      assertEquals(countOf("TCPSocketWrap"), beforeSocket + 2);
+    } finally {
+      clientSocket.destroy();
+      acceptedSocket?.destroy();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  },
+});
+
+Deno.test({
+  name: "process.getActiveResourcesInfo reports fs requests as FSReqCallback",
+  async fn() {
+    const tempFile = Deno.makeTempFileSync();
+    const countOf = () =>
+      process.getActiveResourcesInfo().filter((t) => t === "FSReqCallback")
+        .length;
+    try {
+      const before = countOf();
+      const promises = Array.from(
+        { length: 5 },
+        () =>
+          new Promise<number>((resolve, reject) => {
+            fs.open(tempFile, "r", (err, fd) => {
+              if (err) reject(err);
+              else resolve(fd);
+            });
+          }),
+      );
+
+      assertEquals(countOf(), before + 5);
+
+      const fds = await Promise.all(promises);
+      for (const fd of fds) fs.closeSync(fd);
+      assertEquals(countOf(), before);
+    } finally {
+      Deno.removeSync(tempFile);
+    }
+  },
+});
+
+Deno.test({
   name: "process.hrtime",
   // TODO(kt3k): Enable this test
   ignore: true,
@@ -1391,6 +1457,21 @@ Deno.test({
   },
 });
 
+// Regression test for https://github.com/denoland/deno/issues/35072
+Deno.test({
+  name: "named export { report } from node:process",
+  fn() {
+    // `import { report } from 'node:process'` must work as a named export
+    assert(importedReport !== undefined);
+    // The named export must be the same object reference as process.report
+    assert(importedReport === process.report);
+    assert(typeof importedReport.getReport === "function");
+    assert(typeof importedReport.writeReport === "function");
+    assert(typeof importedReport.directory === "string");
+    assert(typeof importedReport.filename === "string");
+  },
+});
+
 Deno.test({
   name: "process.setSourceMapsEnabled",
   fn() {
@@ -1507,6 +1588,45 @@ Deno.test("process.cpuUsage()", () => {
 
 Deno.test("importedCpuUsage", () => {
   assert(importedCpuUsage === process.cpuUsage);
+});
+
+Deno.test("process.resourceUsage()", () => {
+  const usage = process.resourceUsage();
+  // All 16 fields documented at
+  // https://nodejs.org/api/process.html#processresourceusage must be present
+  // and numeric.
+  for (
+    const field of [
+      "userCPUTime",
+      "systemCPUTime",
+      "maxRSS",
+      "sharedMemorySize",
+      "unsharedDataSize",
+      "unsharedStackSize",
+      "minorPageFault",
+      "majorPageFault",
+      "swappedOut",
+      "fsRead",
+      "fsWrite",
+      "ipcSent",
+      "ipcReceived",
+      "signalsCount",
+      "voluntaryContextSwitches",
+      "involuntaryContextSwitches",
+    ] as const
+  ) {
+    assert(typeof usage[field] === "number", `${field} should be a number`);
+    assert(usage[field] >= 0, `${field} should be non-negative`);
+  }
+  // CPU time should be monotonically non-decreasing.
+  const later = process.resourceUsage();
+  assert(later.userCPUTime >= usage.userCPUTime);
+  assert(later.systemCPUTime >= usage.systemCPUTime);
+});
+
+Deno.test("importedResourceUsage", async () => {
+  const { resourceUsage } = await import("node:process");
+  assert(resourceUsage === process.resourceUsage);
 });
 
 Deno.test("process.stdout.columns writable", () => {

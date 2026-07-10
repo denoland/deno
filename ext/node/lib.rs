@@ -44,6 +44,15 @@ pub use ops::vm::VM_CONTEXT_INDEX;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
 
+/// The Node.js version that Deno emulates. This is the single source of truth
+/// for the value reported through `process.version` / `process.versions.node`:
+/// the `__NODE_VERSION__` token in `_process/process.ts` is substituted with it
+/// at snapshot build time (see `maybe_transpile_source` in
+/// `runtime/transpile.rs`). Rust consumers can read it directly.
+///
+/// When bumping the emulated Node version, change it here only.
+pub const NODE_VERSION: &str = "26.3.0";
+
 pub fn is_builtin_node_module(module_name: &str) -> bool {
   DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
 }
@@ -261,6 +270,7 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_cp_check_paths_recursive,
     ops::fs::op_node_cp_on_file,
     ops::fs::op_node_cp_on_link,
+    ops::fs::op_node_cp_fast,
     ops::fs::op_node_cp_sync,
     ops::fs::op_node_cp_validate_and_prepare,
     ops::winerror::op_node_sys_to_uv_error,
@@ -271,6 +281,7 @@ deno_core::extension!(deno_node,
     ops::v8::op_v8_update_heap_space_statistics,
     ops::v8::op_v8_get_heap_code_statistics,
     ops::v8::op_v8_take_heap_snapshot,
+    ops::v8::op_v8_set_heap_snapshot_near_heap_limit,
     ops::v8::op_v8_query_objects_count,
     ops::v8::op_v8_get_wire_format_version,
     ops::v8::op_v8_new_deserializer,
@@ -323,6 +334,7 @@ deno_core::extension!(deno_node,
     ops::zlib::op_zlib_crc32,
     ops::zlib::op_zlib_crc32_string,
     ops::handle_wrap::op_node_new_async_id,
+    ops::http::op_node_http_check_proxy_net,
     ops::http2::op_http2_callbacks,
     // Keep the HTTP/2 error-string op wired so `internal/test/binding`
     // can mirror Node's `internalBinding('http2').nghttp2ErrorString()`
@@ -389,6 +401,7 @@ deno_core::extension!(deno_node,
     ops::process::op_node_process_setuid,
     ops::process::op_process_abort,
     ops::process::op_node_process_constrained_memory<TSys>,
+    ops::process::op_node_process_resource_usage,
     ops::node_cli_parser::op_node_translate_cli_args,
     ops::shell::op_node_parse_shell_args,
     ops::tls::op_get_root_certificates,
@@ -448,15 +461,30 @@ deno_core::extension!(deno_node,
     ops::http2::Http2Session,
     ops::http2::Http2Stream,
   ],
-  esm_entry_point = "node:module",
+  // All node polyfills are registered via `dir "polyfills"` as *available*
+  // (resolvable) modules without forcing eager evaluation. There is no
+  // explicit eager `esm` entry: the whole node process closure
+  // (module / process / stream / net / tty / ...) is moved to
+  // `lazy_loaded_esm` and only deserialized on first node:* use, so non-node
+  // `deno run` programs never pay for it in the snapshot. An explicit entry
+  // here that no eager module imports would land in the module map
+  // unevaluated and fail snapshot validation with `NonEvaluatedModules`.
   esm = [
     dir "polyfills",
-    "internal_binding/mod.ts",
-    "node:module" = "01_require.js",
-    "node:process" = "process.ts",
   ],
+  // Keep the rest of the node-polyfill closures (process / module / net /
+  // tty / 01_require) out of the eager evaluation graph: their foundational
+  // SFIs and context state are loaded only on first node:* use, so non-node
+  // `deno run` paths skip ~2 MB of node-polyfill deserialization.
+  // node:module previously had to stay eager because lazy bootstrap shifted
+  // Agent.keepSocketAlive's setUnrefTimeout(5000) into test execution where
+  // the sanitizer saw it as a leak; the timer is now marked is_system in
+  // internal/timers.mjs so the sanitizer skips it correctly and node:module
+  // can stay lazy again.
   lazy_loaded_esm = [
     dir "polyfills",
+    "node:module" = "01_require.js",
+    "node:process" = "process.ts",
     // Previously eager. Combined with the lazy stdio refactor in
     // process.ts (process.stdout/stderr/stdin are accessor properties),
     // these modules only load when a script actually touches stdio or
@@ -482,6 +510,11 @@ deno_core::extension!(deno_node,
     "internal/fs/promises.ts",
     "internal/fs/stat_utils.ts",
     "internal/event_target.mjs",
+    // node:process / node:stream statically import this ESM module; it must be
+    // registered as lazy_loaded_esm (not lazy_loaded_js, where `dir "polyfills"`
+    // would otherwise place it) so the static import resolves when those
+    // modules are deserialized on demand.
+    "internal_binding/mod.ts",
     "internal/fs/streams.mjs",
     "internal/fs/utils.mjs",
     "internal/fs/handle.ts",
@@ -557,6 +590,7 @@ deno_core::extension!(deno_node,
   ],
   lazy_loaded_js = [
     dir "polyfills",
+    "02_register_cloneable.js",
     "cluster.ts",
     "console.ts",
     "constants.ts",
@@ -604,6 +638,7 @@ deno_core::extension!(deno_node,
     "internal_binding/constants.ts",
     "internal_binding/_libuv_winerror.ts",
     "internal_binding/uv.ts",
+    "internal/util/colorize.mjs",
     "internal/util/inspect.mjs",
     "internal/errors.ts",
     "internal/errors/error_source.ts",

@@ -40,7 +40,7 @@ const windowsJob = job("promote-to-release-windows", {
     step({
       name: "Run patchver for Windows",
       run:
-        "deno run -A ./tools/release/promote_to_release_windows.ts ${{github.event.inputs.releaseKind}}",
+        "deno run -A --minimum-dependency-age=0 ./tools/release/promote_to_release_windows.ts ${{github.event.inputs.releaseKind}}",
     }),
     step({
       name: "Authenticate with Azure",
@@ -139,21 +139,6 @@ const workflow = createWorkflow({
           },
         }),
         step({
-          name: "Authenticate with Google Cloud",
-          uses: "google-github-actions/auth@v3",
-          with: {
-            project_id: "denoland",
-            credentials_json: "${{ secrets.GCP_SA_KEY }}",
-            export_environment_variables: true,
-            create_credentials_file: true,
-          },
-        }),
-        step({
-          name: "Setup gcloud",
-          uses: "google-github-actions/setup-gcloud@v3",
-          with: { project_id: "denoland" },
-        }),
-        step({
           name: "Install deno",
           uses: "denoland/setup-deno@v2",
           with: { "deno-version": "v2.x" },
@@ -172,7 +157,7 @@ const workflow = createWorkflow({
             APPLE_CODESIGN_PASSWORD: "${{ secrets.APPLE_CODESIGN_PASSWORD }}",
           },
           run:
-            "deno run -A ./tools/release/promote_to_release.ts ${{github.event.inputs.releaseKind}} ${{github.event.inputs.commitHash}}",
+            "deno run -A --minimum-dependency-age=0 ./tools/release/promote_to_release.ts ${{github.event.inputs.releaseKind}} ${{github.event.inputs.commitHash}}",
         }),
         step({
           name: "Download Windows binaries",
@@ -201,7 +186,13 @@ const workflow = createWorkflow({
             AWS_DEFAULT_REGION: "${{vars.S3_REGION }}",
           },
           run: [
-            'aws s3 sync ./ s3://dl-deno-land/release/$(cat release-${{github.event.inputs.releaseKind}}-latest.txt)/ --exclude "*" --include "*.zip"',
+            "VERSION=$(cat release-${{github.event.inputs.releaseKind}}-latest.txt)",
+            "# Upload only the promoted release archives. `aws s3 sync ./` walked",
+            "# the whole checkout (submodules included), uploading stray *.zip test",
+            "# fixtures and tripping over a broken symlink (exit 2).",
+            "for f in deno-*.zip denort-*.zip; do",
+            '  aws s3 cp "./$f" "s3://dl-deno-land/release/$VERSION/$f"',
+            "done",
             "aws s3 cp release-${{github.event.inputs.releaseKind}}-latest.txt s3://dl-deno-land/release-${{github.event.inputs.releaseKind}}-latest.txt",
           ],
         }),

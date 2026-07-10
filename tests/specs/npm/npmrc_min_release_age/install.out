@@ -2,3 +2,6 @@ Download http://localhost:4260/@denotest%2fadd
 error: Could not find npm package '@denotest/add' matching '*'.
 
 A newer matching version was found, but it was not used because it was newer than the specified minimum dependency date of [WILDLINE]
+
+hint: This version is blocked by the minimum dependency age policy, which avoids installing recently published versions to reduce supply chain risk (the default is 24 hours). To use this version now, pass the --minimum-dependency-age (or --min-dep-age) flag (for example 0 to disable it, or a shorter duration like 60 minutes) or set "minimumDependencyAge" in your deno.json, or wait until the version is old enough.
+docs: https://docs.deno.com/go/minimum-dependency-age

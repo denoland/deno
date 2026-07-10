@@ -21,13 +21,8 @@ use aws_lc_rs::aead::UnboundKey;
 use ctr::Ctr32BE;
 use ctr::Ctr64BE;
 use ctr::Ctr128BE;
-use deno_core::JsBuffer;
-use deno_core::convert::Uint8Array;
-use deno_core::op2;
-use deno_core::unsync::spawn_blocking;
 use rand::rngs::OsRng;
 use rsa::pkcs1::DecodeRsaPublicKey;
-use serde::Deserialize;
 use sha1::Sha1;
 use sha2::Sha256;
 use sha2::Sha384;
@@ -36,64 +31,7 @@ use sha3::Sha3_256;
 use sha3::Sha3_384;
 use sha3::Sha3_512;
 
-use crate::key_store::CryptoKeyHandle;
 use crate::shared::*;
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EncryptOptions {
-  #[serde(flatten)]
-  algorithm: EncryptAlgorithm,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", tag = "algorithm")]
-pub enum EncryptAlgorithm {
-  #[serde(rename = "RSA-OAEP")]
-  RsaOaep {
-    hash: ShaHash,
-    #[serde(with = "serde_bytes")]
-    label: Vec<u8>,
-  },
-  #[serde(rename = "AES-CBC", rename_all = "camelCase")]
-  AesCbc {
-    #[serde(with = "serde_bytes")]
-    iv: Vec<u8>,
-    length: usize,
-  },
-  #[serde(rename = "AES-GCM", rename_all = "camelCase")]
-  AesGcm {
-    #[serde(with = "serde_bytes")]
-    iv: Vec<u8>,
-    #[serde(with = "serde_bytes")]
-    additional_data: Option<Vec<u8>>,
-    length: usize,
-    tag_length: usize,
-  },
-  #[serde(rename = "AES-OCB", rename_all = "camelCase")]
-  AesOcb {
-    #[serde(with = "serde_bytes")]
-    iv: Vec<u8>,
-    #[serde(with = "serde_bytes")]
-    additional_data: Option<Vec<u8>>,
-    length: usize,
-    tag_length: usize,
-  },
-  #[serde(rename = "AES-CTR", rename_all = "camelCase")]
-  AesCtr {
-    #[serde(with = "serde_bytes")]
-    counter: Vec<u8>,
-    ctr_length: usize,
-    key_length: usize,
-  },
-  #[serde(rename = "ChaCha20-Poly1305", rename_all = "camelCase")]
-  ChaCha20Poly1305 {
-    #[serde(with = "serde_bytes")]
-    nonce: Vec<u8>,
-    #[serde(with = "serde_bytes")]
-    additional_data: Option<Vec<u8>>,
-  },
-}
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum EncryptError {
@@ -133,50 +71,7 @@ pub enum EncryptError {
   Failed,
 }
 
-#[op2]
-pub async fn op_crypto_encrypt(
-  #[cppgc] key: &CryptoKeyHandle,
-  #[serde] opts: EncryptOptions,
-  #[buffer] data: JsBuffer,
-) -> Result<Uint8Array, EncryptError> {
-  let key_data = key.data().clone();
-  let fun = move || {
-    let key: &RawKeyData = &key_data;
-    match opts.algorithm {
-      EncryptAlgorithm::RsaOaep { hash, label } => {
-        encrypt_rsa_oaep(key, hash, label, &data)
-      }
-      EncryptAlgorithm::AesCbc { iv, length } => {
-        encrypt_aes_cbc(key, length, iv, &data)
-      }
-      EncryptAlgorithm::AesGcm {
-        iv,
-        additional_data,
-        length,
-        tag_length,
-      } => encrypt_aes_gcm(key, length, tag_length, iv, additional_data, &data),
-      EncryptAlgorithm::AesOcb {
-        iv,
-        additional_data,
-        length,
-        tag_length,
-      } => encrypt_aes_ocb(key, length, tag_length, iv, additional_data, &data),
-      EncryptAlgorithm::AesCtr {
-        counter,
-        ctr_length,
-        key_length,
-      } => encrypt_aes_ctr(key, key_length, &counter, ctr_length, &data),
-      EncryptAlgorithm::ChaCha20Poly1305 {
-        nonce,
-        additional_data,
-      } => encrypt_chacha20_poly1305(key, &nonce, additional_data, &data),
-    }
-  };
-  let buf = spawn_blocking(fun).await.unwrap()?;
-  Ok(buf.into())
-}
-
-fn encrypt_rsa_oaep(
+pub(crate) fn encrypt_rsa_oaep(
   key: &RawKeyData,
   hash: ShaHash,
   label: Vec<u8>,
@@ -231,7 +126,7 @@ fn encrypt_rsa_oaep(
   Ok(encrypted)
 }
 
-fn encrypt_aes_cbc(
+pub(crate) fn encrypt_aes_cbc(
   key: &RawKeyData,
   length: usize,
   iv: Vec<u8>,
@@ -304,7 +199,7 @@ fn encrypt_aes_gcm_general<N: ArrayLength<u8>>(
   Ok(tag)
 }
 
-fn encrypt_aes_gcm(
+pub(crate) fn encrypt_aes_gcm(
   key: &RawKeyData,
   length: usize,
   tag_length: usize,
@@ -345,7 +240,7 @@ fn encrypt_aes_gcm(
   Ok(ciphertext)
 }
 
-fn encrypt_aes_ocb(
+pub(crate) fn encrypt_aes_ocb(
   key: &RawKeyData,
   length: usize,
   tag_length: usize,
@@ -456,7 +351,7 @@ enum OcbTagSize {
   U16,
 }
 
-fn encrypt_chacha20_poly1305(
+pub(crate) fn encrypt_chacha20_poly1305(
   key: &RawKeyData,
   nonce: &[u8],
   additional_data: Option<Vec<u8>>,
@@ -507,7 +402,7 @@ where
   Ok(ciphertext)
 }
 
-fn encrypt_aes_ctr(
+pub(crate) fn encrypt_aes_ctr(
   key: &RawKeyData,
   key_length: usize,
   counter: &[u8],

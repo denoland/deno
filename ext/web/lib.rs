@@ -5,6 +5,7 @@ mod blob;
 mod broadcast_channel;
 mod compression;
 mod console;
+mod css_stylesheet;
 mod css_value;
 mod f64;
 mod geometry;
@@ -21,6 +22,7 @@ use std::sync::Arc;
 
 pub use blob::BlobError;
 pub use compression::CompressionError;
+pub use css_stylesheet::create_css_style_sheet;
 use deno_core::U16String;
 use deno_core::convert::ByteString;
 use deno_core::convert::Uint8Array;
@@ -50,6 +52,7 @@ use crate::blob::op_blob_slice_part;
 pub use crate::broadcast_channel::InMemoryBroadcastChannel;
 pub use crate::message_port::JsMessageData;
 pub use crate::message_port::MessagePort;
+pub use crate::message_port::RecvMessageData;
 pub use crate::message_port::Transferable;
 pub use crate::message_port::create_entangled_message_port;
 pub use crate::message_port::deserialize_js_transferables;
@@ -63,6 +66,7 @@ pub use crate::timers::StartTime;
 use crate::timers::op_defer;
 use crate::timers::op_now;
 use crate::timers::op_time_origin;
+mod locks;
 
 deno_core::extension!(deno_web,
   deps = [ deno_webidl ],
@@ -111,6 +115,12 @@ deno_core::extension!(deno_web,
     stream_resource::op_readable_stream_resource_write_sync,
     stream_resource::op_readable_stream_resource_close,
     stream_resource::op_readable_stream_resource_await_close,
+    locks::op_lock_manager_request,
+    locks::op_lock_manager_await_lock,
+    locks::op_lock_manager_await_steal,
+    locks::op_lock_manager_cancel,
+    locks::op_lock_manager_release,
+    locks::op_lock_manager_query,
     url::op_url_reparse,
     url::op_url_parse,
     url::op_url_get_serialization,
@@ -120,6 +130,15 @@ deno_core::extension!(deno_web,
     urlpattern::op_urlpattern_parse,
     urlpattern::op_urlpattern_process_match_input,
     console::op_preview_entries,
+    console::op_console_inspect,
+    console::op_console_inspect_args,
+    console::op_console_format_value,
+    console::op_console_quote_string,
+    console::op_console_parse_css,
+    console::op_console_parse_css_color,
+    console::op_console_css_to_ansi,
+    console::op_console_get_string_width,
+    console::op_console_strip_vt,
     broadcast_channel::op_broadcast_subscribe,
     broadcast_channel::op_broadcast_unsubscribe,
     broadcast_channel::op_broadcast_serialize,
@@ -129,6 +148,8 @@ deno_core::extension!(deno_web,
     broadcast_channel::op_broadcast_recv,
   ],
   objects = [
+    css_stylesheet::CSSRule,
+    css_stylesheet::CSSStyleSheet,
     geometry::DOMPointReadOnly,
     geometry::DOMPoint,
     geometry::DOMRectReadOnly,
@@ -137,8 +158,10 @@ deno_core::extension!(deno_web,
     geometry::DOMMatrixReadOnly,
     geometry::DOMMatrix,
     image_data::ImageData,
+    console::Console,
   ],
   lazy_loaded_esm = [
+    "locks.js",
     "webtransport.js",
   ],
   lazy_loaded_js = [
@@ -165,6 +188,7 @@ deno_core::extension!(deno_web,
     "15_performance.js",
     "16_image_data.js",
     "17_geometry.js",
+    "18_css_stylesheet.js",
   ],
   options = {
     blob_store: Arc<dyn BlobStoreTrait>,
@@ -418,11 +442,10 @@ fn op_base64_atob(#[scoped] mut s: ByteString) -> Result<ByteString, WebError> {
     s.truncate(decoded_len);
     Ok(s)
   } else {
-    let decoded = simdutf_base64_decode_to_vec(&s)?;
-    let decoded_len = decoded.len();
-    s[..decoded_len].copy_from_slice(&decoded[..decoded_len]);
-    s.truncate(decoded_len);
-    Ok(s)
+    // Return the freshly decoded bytes directly rather than copying them back
+    // into the (larger) input string's buffer and truncating -- this saves a
+    // full-size memcpy of the output on every large `atob` call.
+    Ok(simdutf_base64_decode_to_vec(&s)?.into())
   }
 }
 

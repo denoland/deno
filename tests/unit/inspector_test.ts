@@ -10,6 +10,7 @@ const testdataPath = fromFileUrl(
 interface CDPMessage {
   id?: number;
   method?: string;
+  sessionId?: string;
   result?: unknown;
   params?: unknown;
   error?: { code: number; message: string };
@@ -303,6 +304,37 @@ class InspectorTester {
     }
 
     throw new Error(`Timeout waiting for notification method=${method}`);
+  }
+
+  async expectNotificationMatching(
+    predicate: (msg: CDPMessage) => boolean,
+    description: string,
+    options?: { timeout?: number },
+  ): Promise<CDPMessage> {
+    const timeoutMs = options?.timeout ?? this.timeout;
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+      const idx = this.notificationBuffer.findIndex(predicate);
+      if (idx !== -1) {
+        const [msg] = this.notificationBuffer.splice(idx, 1);
+        return msg;
+      }
+
+      if (this.socketClosed) {
+        throw new Error(
+          `Socket closed while waiting for notification ${description}`,
+        );
+      }
+
+      try {
+        await this.waitForMessage(Math.min(1000, deadline - Date.now()));
+      } catch {
+        // continue
+      }
+    }
+
+    throw new Error(`Timeout waiting for notification ${description}`);
   }
 
   async nextStdoutLine(): Promise<string> {
@@ -922,6 +954,533 @@ Deno.test("inspector_worker_target_discovery", async () => {
     await tester.close();
     tester.kill();
     await tester.waitForExit();
+  }
+});
+
+Deno.test("inspector_worker_target_get_targets_and_attach", async () => {
+  const script = `${testdataPath}/worker_main.js`;
+  const tester = await InspectorTester.create(
+    ["run", "-A", "--inspect-brk=0", script],
+    { notificationFilter: ignoreScriptParsed },
+  );
+
+  try {
+    await tester.assertStderrForInspectBrk();
+
+    tester.sendMany([
+      { id: 1, method: "Runtime.enable" },
+      { id: 2, method: "Debugger.enable" },
+      {
+        id: 3,
+        method: "Target.setDiscoverTargets",
+        params: { discover: true },
+      },
+      { id: 4, method: "Runtime.runIfWaitingForDebugger" },
+    ]);
+
+    await tester.expectResponse(1);
+    await tester.expectResponse(2);
+    await tester.expectResponse(3);
+    await tester.expectResponse(4);
+    await tester.expectNotification("Runtime.executionContextCreated");
+    await tester.expectNotification("Debugger.paused");
+
+    tester.send({ id: 5, method: "Debugger.resume" });
+    await tester.expectResponse(5);
+
+    const targetCreated = await tester.expectNotification(
+      "Target.targetCreated",
+    );
+    const targetCreatedParams = targetCreated.params as Record<string, unknown>;
+    const targetInfo = targetCreatedParams.targetInfo as Record<
+      string,
+      unknown
+    >;
+    const targetId = targetInfo.targetId as string;
+    assert(targetId, "targetCreated should include targetId");
+
+    tester.send({ id: 6, method: "Target.getTargets" });
+    const targetsResponse = await tester.expectResponse(6);
+    const targetsResult = targetsResponse.result as {
+      targetInfos: Array<Record<string, unknown>>;
+    };
+    assert(
+      targetsResult.targetInfos.some((info) => info.targetId === targetId),
+      "getTargets should include discovered worker target",
+    );
+
+    tester.send({
+      id: 7,
+      method: "Target.attachToTarget",
+      params: { targetId, flatten: true },
+    });
+    const attachedResponse = await tester.expectResponse(7);
+    const attachedResult = attachedResponse.result as Record<string, unknown>;
+    const sessionId = attachedResult.sessionId as string;
+    assert(sessionId, "attachToTarget should return sessionId");
+
+    tester.send({ id: 8, sessionId, method: "Runtime.enable" });
+    await tester.expectResponse(8);
+    await tester.expectNotificationMatching(
+      (msg) =>
+        msg.sessionId === sessionId &&
+        msg.method === "Runtime.executionContextCreated",
+      "worker Runtime.executionContextCreated after attachToTarget",
+    );
+  } finally {
+    await tester.close();
+    tester.kill();
+    await tester.waitForExit();
+  }
+});
+
+Deno.test("inspector_worker_debugger_statement_not_blackboxed", async () => {
+  const tempDir = await Deno.makeTempDir();
+  const mainScript = `${tempDir}/main.js`;
+  const workerScript = `${tempDir}/worker.js`;
+  await Deno.writeTextFile(
+    mainScript,
+    `
+globalThis.worker = new Worker(new URL("./worker.js", import.meta.url).href, {
+  type: "module",
+});
+globalThis.worker.onmessage = (e) => {
+  console.log("Main received:", e.data);
+};
+setInterval(() => {}, 1000);
+`,
+  );
+  await Deno.writeTextFile(
+    workerScript,
+    `
+self.onmessage = (e) => {
+  console.log("Worker received:", e.data);
+  debugger;
+  console.log("after debugger");
+};
+self.postMessage("ready");
+setInterval(() => {}, 1000);
+`,
+  );
+
+  const tester = await InspectorTester.create(
+    ["run", "-A", "--inspect-brk=0", mainScript],
+    { notificationFilter: ignoreScriptParsed },
+  );
+
+  try {
+    await tester.assertStderrForInspectBrk();
+
+    tester.sendMany([
+      { id: 1, method: "Runtime.enable" },
+      { id: 2, method: "Debugger.enable" },
+      {
+        id: 3,
+        method: "Target.setAutoAttach",
+        params: {
+          autoAttach: true,
+          waitForDebuggerOnStart: false,
+          flatten: true,
+        },
+      },
+      { id: 4, method: "Runtime.runIfWaitingForDebugger" },
+    ]);
+
+    await tester.expectResponse(1);
+    await tester.expectResponse(2);
+    await tester.expectResponse(3);
+    await tester.expectResponse(4);
+    await tester.expectNotification("Runtime.executionContextCreated");
+    await tester.expectNotification("Debugger.paused");
+
+    tester.send({ id: 5, method: "Debugger.resume" });
+    await tester.expectResponse(5);
+
+    const attached = await tester.expectNotification("Target.attachedToTarget");
+    const attachedParams = attached.params as Record<string, unknown>;
+    const sessionId = attachedParams.sessionId as string;
+    assert(sessionId, "attachedToTarget should include sessionId");
+
+    tester.sendMany([
+      { id: 6, sessionId, method: "Runtime.enable" },
+      { id: 7, sessionId, method: "Debugger.enable" },
+      {
+        id: 8,
+        sessionId,
+        method: "Debugger.setBlackboxPatterns",
+        params: { patterns: ["/node_modules/|^node:"], skipAnonymous: false },
+      },
+    ]);
+    await tester.expectResponse(6);
+    await tester.expectResponse(7);
+    await tester.expectResponse(8);
+
+    const contextCreated = await tester.expectNotificationMatching(
+      (msg) =>
+        msg.sessionId === sessionId &&
+        msg.method === "Runtime.executionContextCreated",
+      "worker Runtime.executionContextCreated",
+    );
+    const context = (contextCreated.params as {
+      context: {
+        name: string;
+        auxData: { isDefault: boolean; type: string };
+      };
+    }).context;
+    assertEquals(context.name, "worker [1]");
+    assertEquals(context.auxData, { isDefault: true, type: "worker" });
+
+    assertEquals(await tester.nextStdoutLine(), "Main received: ready");
+    tester.send({
+      id: 9,
+      method: "Runtime.evaluate",
+      params: {
+        expression: 'globalThis.worker.postMessage("go")',
+        returnByValue: true,
+      },
+    });
+    await tester.expectResponse(9);
+
+    assertEquals(await tester.nextStdoutLine(), "Worker received: go");
+    await tester.expectNotificationMatching(
+      (msg) => msg.sessionId === sessionId && msg.method === "Debugger.paused",
+      "worker Debugger.paused",
+    );
+
+    tester.send({ id: 10, sessionId, method: "Debugger.resume" });
+    await tester.expectResponse(10);
+    assertEquals(await tester.nextStdoutLine(), "after debugger");
+  } finally {
+    await tester.close();
+    tester.kill();
+    await tester.waitForExit();
+    await Deno.remove(tempDir, { recursive: true });
+  }
+});
+
+Deno.test("inspector_worker_page_wait_for_debugger", async () => {
+  const tempDir = await Deno.makeTempDir();
+  const mainScript = `${tempDir}/main.js`;
+  const workerScript = `${tempDir}/worker.js`;
+  await Deno.writeTextFile(
+    mainScript,
+    `
+new Worker(new URL("./worker.js", import.meta.url).href, {
+  type: "module",
+});
+setInterval(() => {}, 1000);
+`,
+  );
+  await Deno.writeTextFile(
+    workerScript,
+    `
+console.log("worker before debugger");
+debugger;
+console.log("worker after debugger");
+setInterval(() => {}, 1000);
+`,
+  );
+
+  const tester = await InspectorTester.create(
+    ["run", "-A", "--inspect-brk=0", mainScript],
+    { notificationFilter: ignoreScriptParsed },
+  );
+
+  try {
+    await tester.assertStderrForInspectBrk();
+
+    tester.sendMany([
+      { id: 1, method: "Runtime.enable" },
+      { id: 2, method: "Debugger.enable" },
+      {
+        id: 3,
+        method: "Target.setAutoAttach",
+        params: {
+          autoAttach: true,
+          waitForDebuggerOnStart: false,
+          flatten: true,
+        },
+      },
+      { id: 4, method: "Runtime.runIfWaitingForDebugger" },
+    ]);
+
+    await tester.expectResponse(1);
+    await tester.expectResponse(2);
+    await tester.expectResponse(3);
+    await tester.expectResponse(4);
+    await tester.expectNotification("Runtime.executionContextCreated");
+    await tester.expectNotification("Debugger.paused");
+
+    tester.send({ id: 5, method: "Debugger.resume" });
+    await tester.expectResponse(5);
+
+    const attached = await tester.expectNotification("Target.attachedToTarget");
+    const attachedParams = attached.params as Record<string, unknown>;
+    assertEquals(attachedParams.waitingForDebugger, false);
+    const sessionId = attachedParams.sessionId as string;
+    assert(sessionId, "attachedToTarget should include sessionId");
+
+    tester.sendMany([
+      { id: 6, sessionId, method: "Page.waitForDebugger" },
+      { id: 7, sessionId, method: "Runtime.enable" },
+      { id: 8, sessionId, method: "Debugger.enable" },
+    ]);
+    const waitResponse = await tester.expectResponse(6);
+    assertEquals(waitResponse.error, undefined);
+    await tester.expectResponse(7);
+    await tester.expectResponse(8);
+
+    const contextCreated = await tester.expectNotificationMatching(
+      (msg) =>
+        msg.sessionId === sessionId &&
+        msg.method === "Runtime.executionContextCreated",
+      "worker Runtime.executionContextCreated",
+    );
+    const context = (contextCreated.params as {
+      context: {
+        auxData: { isDefault: boolean; type: string };
+      };
+    }).context;
+    assertEquals(context.auxData, { isDefault: true, type: "worker" });
+
+    tester.send({
+      id: 9,
+      sessionId,
+      method: "Runtime.runIfWaitingForDebugger",
+    });
+    await tester.expectResponse(9);
+
+    assertEquals(await tester.nextStdoutLine(), "worker before debugger");
+    await tester.expectNotificationMatching(
+      (msg) => msg.sessionId === sessionId && msg.method === "Debugger.paused",
+      "worker Debugger.paused",
+    );
+
+    tester.send({ id: 10, sessionId, method: "Debugger.resume" });
+    await tester.expectResponse(10);
+    assertEquals(await tester.nextStdoutLine(), "worker after debugger");
+  } finally {
+    await tester.close();
+    tester.kill();
+    await tester.waitForExit();
+    await Deno.remove(tempDir, { recursive: true });
+  }
+});
+
+Deno.test("inspector_worker_wait_for_debugger_on_start", async () => {
+  const tempDir = await Deno.makeTempDir();
+  const mainScript = `${tempDir}/main.js`;
+  const workerScript = `${tempDir}/worker.js`;
+  await Deno.writeTextFile(
+    mainScript,
+    `
+const worker = new Worker(new URL("./worker.js", import.meta.url).href, {
+  type: "module",
+});
+worker.postMessage("start");
+setInterval(() => {}, 1000);
+`,
+  );
+  await Deno.writeTextFile(
+    workerScript,
+    `
+self.onmessage = (e) => {
+  console.log("Worker received:", e.data);
+  debugger;
+  console.log("after debugger");
+};
+setInterval(() => {}, 1000);
+`,
+  );
+
+  const tester = await InspectorTester.create(
+    ["run", "-A", "--inspect-brk=0", mainScript],
+    { notificationFilter: ignoreScriptParsed },
+  );
+
+  try {
+    await tester.assertStderrForInspectBrk();
+
+    tester.sendMany([
+      { id: 1, method: "Runtime.enable" },
+      { id: 2, method: "Debugger.enable" },
+      {
+        id: 3,
+        method: "Target.setAutoAttach",
+        params: {
+          autoAttach: true,
+          waitForDebuggerOnStart: true,
+          flatten: true,
+        },
+      },
+      { id: 4, method: "Runtime.runIfWaitingForDebugger" },
+    ]);
+
+    await tester.expectResponse(1);
+    await tester.expectResponse(2);
+    await tester.expectResponse(3);
+    await tester.expectResponse(4);
+    await tester.expectNotification("Runtime.executionContextCreated");
+    await tester.expectNotification("Debugger.paused");
+
+    tester.send({ id: 5, method: "Debugger.resume" });
+    await tester.expectResponse(5);
+
+    const attached = await tester.expectNotification("Target.attachedToTarget");
+    const attachedParams = attached.params as Record<string, unknown>;
+    assertEquals(attachedParams.waitingForDebugger, true);
+    const sessionId = attachedParams.sessionId as string;
+    assert(sessionId, "attachedToTarget should include sessionId");
+
+    tester.sendMany([
+      { id: 6, sessionId, method: "Runtime.enable" },
+      { id: 7, sessionId, method: "Debugger.enable" },
+      {
+        id: 8,
+        sessionId,
+        method: "Runtime.runIfWaitingForDebugger",
+      },
+    ]);
+    await tester.expectResponse(6);
+    await tester.expectResponse(7);
+    await tester.expectResponse(8);
+
+    const contextCreated = await tester.expectNotificationMatching(
+      (msg) =>
+        msg.sessionId === sessionId &&
+        msg.method === "Runtime.executionContextCreated",
+      "worker Runtime.executionContextCreated",
+    );
+    const context = (contextCreated.params as {
+      context: {
+        name: string;
+        auxData: { isDefault: boolean; type: string };
+      };
+    }).context;
+    assertEquals(context.auxData, { isDefault: true, type: "worker" });
+
+    assertEquals(await tester.nextStdoutLine(), "Worker received: start");
+    await tester.expectNotificationMatching(
+      (msg) => msg.sessionId === sessionId && msg.method === "Debugger.paused",
+      "worker Debugger.paused",
+    );
+
+    tester.send({ id: 9, sessionId, method: "Debugger.resume" });
+    await tester.expectResponse(9);
+    assertEquals(await tester.nextStdoutLine(), "after debugger");
+  } finally {
+    await tester.close();
+    tester.kill();
+    await tester.waitForExit();
+    await Deno.remove(tempDir, { recursive: true });
+  }
+});
+
+Deno.test("inspector_worker_step_over_creation_waits_for_debugger", async () => {
+  const tempDir = await Deno.makeTempDir();
+  const mainScript = `${tempDir}/main.js`;
+  const workerScript = `${tempDir}/worker.js`;
+  await Deno.writeTextFile(
+    mainScript,
+    `
+const worker = new Worker(new URL("./worker.js", import.meta.url).href, {
+  type: "module",
+});
+
+worker.postMessage("start");
+setInterval(() => {}, 1000);
+`,
+  );
+  await Deno.writeTextFile(
+    workerScript,
+    `
+self.onmessage = (e) => {
+  debugger;
+  console.log("Worker received:", e.data);
+  console.log("aa");
+};
+setInterval(() => {}, 1000);
+`,
+  );
+
+  const tester = await InspectorTester.create(
+    ["run", "-A", "--inspect-brk=0", mainScript],
+    { notificationFilter: ignoreScriptParsed, timeout: 5_000 },
+  );
+
+  try {
+    await tester.assertStderrForInspectBrk();
+
+    tester.sendMany([
+      { id: 1, method: "Runtime.enable" },
+      { id: 2, method: "Debugger.enable" },
+      {
+        id: 3,
+        method: "Target.setAutoAttach",
+        params: {
+          autoAttach: true,
+          waitForDebuggerOnStart: false,
+          flatten: true,
+        },
+      },
+      { id: 4, method: "Runtime.runIfWaitingForDebugger" },
+    ]);
+
+    await tester.expectResponse(1);
+    await tester.expectResponse(2);
+    await tester.expectResponse(3);
+    await tester.expectResponse(4);
+    await tester.expectNotification("Runtime.executionContextCreated");
+    await tester.expectNotification("Debugger.paused");
+
+    tester.send({ id: 5, method: "Debugger.stepOver" });
+    await tester.expectResponse(5);
+    await tester.expectNotification("Debugger.resumed");
+    await tester.expectNotification("Debugger.paused");
+
+    await new Promise((resolve) => setTimeout(resolve, 750));
+
+    tester.send({ id: 6, method: "Debugger.resume" });
+    await tester.expectResponse(6);
+    await tester.expectNotification("Debugger.resumed");
+
+    const attached = await tester.expectNotification("Target.attachedToTarget");
+    const attachedParams = attached.params as Record<string, unknown>;
+    assertEquals(attachedParams.waitingForDebugger, false);
+    const sessionId = attachedParams.sessionId as string;
+    assert(sessionId, "attachedToTarget should include sessionId");
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    tester.sendMany([
+      { id: 7, sessionId, method: "Page.waitForDebugger" },
+      { id: 8, sessionId, method: "Runtime.enable" },
+      { id: 9, sessionId, method: "Debugger.enable" },
+      {
+        id: 10,
+        sessionId,
+        method: "Runtime.runIfWaitingForDebugger",
+      },
+    ]);
+    await tester.expectResponse(7);
+    await tester.expectResponse(8);
+    await tester.expectResponse(9);
+    await tester.expectResponse(10);
+
+    await tester.expectNotificationMatching(
+      (msg) => msg.sessionId === sessionId && msg.method === "Debugger.paused",
+      "worker Debugger.paused",
+    );
+
+    tester.send({ id: 11, sessionId, method: "Debugger.resume" });
+    await tester.expectResponse(11);
+    assertEquals(await tester.nextStdoutLine(), "Worker received: start");
+    assertEquals(await tester.nextStdoutLine(), "aa");
+  } finally {
+    await tester.close();
+    tester.kill();
+    await tester.waitForExit();
+    await Deno.remove(tempDir, { recursive: true });
   }
 });
 
@@ -1643,6 +2202,106 @@ Deno.test("inspector_wait", async () => {
   }
 });
 
+Deno.test("inspector_node_wait_for_debugger_no_pause", async () => {
+  // Regression test: node:inspector waitForDebugger() must block until a
+  // session sends Runtime.runIfWaitingForDebugger and then resume WITHOUT
+  // scheduling a pause on the next statement. It used the --inspect-brk
+  // primitive, so clients received an unexpected Debugger.paused right
+  // after attaching (VS Code stopped inside js-debug's bootloader).
+  const preload = `${testdataPath}/wait_for_debugger_preload.cjs`;
+  const script = `${testdataPath}/wait_for_debugger_program.js`;
+  const tempDir = await Deno.makeTempDir();
+  const helloPath = `${tempDir}/hello.txt`;
+
+  const command = new Deno.Command(Deno.execPath(), {
+    args: ["run", "-A", "--require", preload, script],
+    stdin: "piped",
+    stdout: "piped",
+    stderr: "piped",
+    cwd: tempDir,
+  });
+
+  const child = command.spawn();
+  const stderrReader = child.stderr.pipeThrough(new TextDecoderStream())
+    .getReader();
+  const stdoutReader = child.stdout.pipeThrough(new TextDecoderStream())
+    .getReader();
+
+  try {
+    const wsUrl = await extractWsUrl(stderrReader);
+    const socket = new WebSocket(wsUrl);
+    await new Promise<void>((resolve, reject) => {
+      socket.onopen = () => resolve();
+      socket.onerror = (e) => reject(e);
+    });
+
+    let msgId = 1;
+    const send = (msg: Record<string, unknown>) => {
+      socket.send(JSON.stringify(msg));
+    };
+    let paused = false;
+    socket.onmessage = (e) => {
+      const message = JSON.parse(e.data);
+      if (message.method === "Debugger.paused") {
+        paused = true;
+        send({ id: msgId++, method: "Debugger.resume" });
+      }
+    };
+
+    send({ id: msgId++, method: "Runtime.enable" });
+    send({ id: msgId++, method: "Debugger.enable" });
+
+    // Give the child a moment: the program must NOT run before the
+    // session sends Runtime.runIfWaitingForDebugger.
+    await new Promise((r) => setTimeout(r, 500));
+
+    let fileExists = false;
+    try {
+      await Deno.stat(helloPath);
+      fileExists = true;
+    } catch {
+      // Expected - file shouldn't exist yet
+    }
+    assert(
+      !fileExists,
+      "waitForDebugger() did not block until the debugger resumed",
+    );
+
+    send({ id: msgId++, method: "Runtime.runIfWaitingForDebugger" });
+
+    // If a pause was (incorrectly) scheduled, the program stops before its
+    // first statement; the Debugger.paused handler above resumes it, so
+    // "did run" still arrives and `paused` records the regression.
+    let stderrContent = "";
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      const { value, done } = await stderrReader.read();
+      if (done || !value) break;
+      stderrContent += value;
+      if (stderrContent.includes("did run")) break;
+    }
+    assert(
+      stderrContent.includes("did run"),
+      `Expected 'did run' in stderr: ${stderrContent}`,
+    );
+
+    assert(!paused, "received an unexpected Debugger.paused after resuming");
+
+    socket.close();
+  } finally {
+    await child.stdin.close();
+    await stderrReader.cancel();
+    await stdoutReader.cancel();
+    child.kill();
+    await child.status;
+    try {
+      await Deno.remove(tempDir, { recursive: true });
+    } catch {
+      // Ignore cleanup errors
+    }
+  }
+});
+
 Deno.test("inspector_node_runtime_api_url", async () => {
   const script = `${testdataPath}/node/url.js`;
 
@@ -1724,4 +2383,130 @@ Deno.test("inspector_console_group_emits_label_log", async () => {
     tester.kill();
     await tester.waitForExit();
   }
+});
+
+// Regression test for https://github.com/denoland/deno/issues/18513
+// Piping a file stream to a WritableStream internally releases the writer,
+// rejecting its ready/closed promises. Those rejections are handled, so a
+// debugger with "pause on uncaught exceptions" enabled must not break on them.
+Deno.test("inspector_no_pause_on_handled_stream_rejection", async () => {
+  const script = `${testdataPath}/pipe_file_to_writable.js`;
+  const tester = await InspectorTester.create(
+    ["run", "-A", "--inspect-brk=0", script],
+    { notificationFilter: ignoreScriptParsed },
+  );
+
+  try {
+    await tester.assertStderrForInspectBrk();
+
+    tester.sendMany([
+      { id: 1, method: "Runtime.enable" },
+      { id: 2, method: "Debugger.enable" },
+      {
+        id: 3,
+        method: "Debugger.setPauseOnExceptions",
+        params: { state: "uncaught" },
+      },
+    ]);
+
+    await tester.expectResponse(1);
+    await tester.expectResponse(2);
+    await tester.expectResponse(3);
+    await tester.expectNotification("Runtime.executionContextCreated");
+
+    tester.send({ id: 4, method: "Runtime.runIfWaitingForDebugger" });
+    await tester.expectResponse(4);
+
+    // First pause is the --inspect-brk break on the first line.
+    const firstPause = await tester.expectNotification("Debugger.paused");
+    assert(
+      // deno-lint-ignore no-explicit-any
+      (firstPause.params as any)?.reason !== "exception" &&
+        // deno-lint-ignore no-explicit-any
+        (firstPause.params as any)?.reason !== "promiseRejection",
+      "first pause should be the inspect-brk break, not an exception",
+    );
+
+    tester.send({ id: 5, method: "Debugger.resume" });
+    await tester.expectResponse(5);
+
+    // Releasing the writer and reader during pipeTo rejects their internal
+    // ready/closed promises, but those rejections are handled. With
+    // "pause on uncaught exceptions" enabled the debugger must not break on
+    // them. If it regresses, a Debugger.paused (reason "promiseRejection")
+    // arrives here instead of the script running to completion.
+    let unexpectedPause: CDPMessage | undefined;
+    try {
+      unexpectedPause = await tester.expectNotification("Debugger.paused", {
+        timeout: 5_000,
+      });
+    } catch {
+      // No second pause within the window — this is the expected outcome.
+    }
+    if (unexpectedPause) {
+      // deno-lint-ignore no-explicit-any
+      const params = unexpectedPause.params as any;
+      throw new Error(
+        `debugger paused unexpectedly on a handled rejection: reason=${params?.reason} ${
+          params?.data?.description ?? ""
+        }`,
+      );
+    }
+
+    const scriptOutput = await tester.nextStdoutLine();
+    assertEquals(scriptOutput, "done");
+  } finally {
+    await tester.close();
+    tester.kill();
+    await tester.waitForExit();
+  }
+});
+
+Deno.test({
+  name: "inspector_starts_on_sigusr1",
+  ignore: Deno.build.os === "windows",
+  permissions: { run: true, read: true, net: true },
+  async fn() {
+    const script = testdataPath + "sigusr1.js";
+    const child = new Deno.Command(Deno.execPath(), {
+      args: ["run", script],
+      stdout: "piped",
+      stderr: "piped",
+    }).spawn();
+    const stdoutReader = child.stdout
+      .pipeThrough(new TextDecoderStream())
+      .getReader();
+    const stderrReader = child.stderr
+      .pipeThrough(new TextDecoderStream())
+      .getReader();
+    try {
+      // Wait until the SIGUSR1 listener's grace period has passed.
+      let stdoutBuffer = "";
+      while (!stdoutBuffer.includes("ready")) {
+        const { value, done } = await stdoutReader.read();
+        if (done) throw new Error("child exited before printing ready");
+        stdoutBuffer += value;
+      }
+
+      child.kill("SIGUSR1");
+      const wsUrl = await extractWsUrl(stderrReader);
+      assertStringIncludes(wsUrl, "ws://127.0.0.1:9229/");
+
+      // The /json endpoint should list the main module as a target.
+      const response = await fetch("http://127.0.0.1:9229/json");
+      const targets = await response.json();
+      assertEquals(targets.length, 1);
+      assertStringIncludes(targets[0].url, "sigusr1.js");
+
+      // A second SIGUSR1 must be a no-op, not crash the process.
+      child.kill("SIGUSR1");
+      const secondResponse = await fetch("http://127.0.0.1:9229/json");
+      assertEquals((await secondResponse.json()).length, 1);
+    } finally {
+      child.kill("SIGKILL");
+      await child.status;
+      await stdoutReader.cancel().catch(() => {});
+      await stderrReader.cancel().catch(() => {});
+    }
+  },
 });

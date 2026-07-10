@@ -228,6 +228,19 @@ impl Dep {
   pub fn alias_or_name(&self) -> &str {
     self.alias.as_deref().unwrap_or_else(|| &self.req.name)
   }
+
+  /// Whether this dependency is a development dependency. Only `package.json`
+  /// `devDependencies` are considered dev; `deno.json` imports and `catalog`
+  /// entries have no such distinction and are always treated as regular
+  /// dependencies.
+  pub fn is_dev(&self) -> bool {
+    match &self.location {
+      DepLocation::PackageJson(_, key_path) => {
+        matches!(key_path.parts.first(), Some(KeyPart::DevDependencies))
+      }
+      DepLocation::DenoJson(..) | DepLocation::Catalog { .. } => false,
+    }
+  }
 }
 
 fn import_map_entries(
@@ -749,6 +762,10 @@ impl DepManager {
             ModuleSpecifier::parse(&format!("npm:/{}/", dep.req)).unwrap(),
           ),
           DepKind::Jsr => {
+            // Note: a tagged req (e.g. `@latest`) never appears in the graph
+            // mappings because the graph build rejects jsr version tags, so
+            // the VersionReq::matches call below (which panics on tags)
+            // cannot be reached with one.
             let resolved_nv = graph.packages.mappings().get(&dep.req);
             let resolved_nv = resolved_nv
               .and_then(|nv| {
@@ -817,6 +834,7 @@ impl DepManager {
           allow_unknown_media_types: true,
           skip_graph_roots_validation: false,
           file_content_overrides: Default::default(),
+          file_header_overrides: Default::default(),
         },
       )
       .await?;

@@ -43,7 +43,7 @@ pub async fn compile(
   flags: Flags,
   compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
-  if let Some(watch_flags) = &compile_flags.watch {
+  if let Some(watch_flags) = &flags.watch {
     let no_clear_screen = watch_flags.no_clear_screen;
     file_watcher::watch_func(
       Arc::new(flags),
@@ -97,28 +97,9 @@ async fn compile_inner(
   let _framework_entrypoint_file = if let Some(dir) = source_dir {
     if let Some(detection) = super::framework::detect_framework(&dir)? {
       log::info!("Detected {} framework", detection.name);
-      // Run the framework's build step if needed.
-      if let Some(build_cmd) = &detection.build_command {
-        log::info!(
-          "{} {} project...",
-          colors::green("Building"),
-          detection.name,
-        );
-        let status = std::process::Command::new(&build_cmd[0])
-          .args(&build_cmd[1..])
-          .current_dir(&dir)
-          .status()
-          .with_context(|| {
-            format!("Failed to run build command: {}", build_cmd.join(" "))
-          })?;
-        if !status.success() {
-          bail!(
-            "{} build failed (exit code: {})",
-            detection.name,
-            status.code().unwrap_or(-1)
-          );
-        }
-      }
+      // Run the framework's build step (if any) before bundling its build
+      // output via `include_paths`.
+      super::framework::run_build_command(&detection, &dir)?;
       // Enable CJS detection for Node-based frameworks.
       flags.unstable_config.detect_cjs = true;
       // These frameworks emit a pre-built/bundled server entrypoint that is
@@ -160,7 +141,7 @@ async fn compile_inner(
     } else {
       bail!(
         "Could not detect a supported framework in '{}'.\n\
-         Supported frameworks: Next.js, Astro, Fresh, Remix, SvelteKit, Nuxt, SolidStart, TanStack Start, Vite SSR\n\
+         Supported frameworks: Next.js, Astro, Fresh, Remix, React Router, SvelteKit, Nuxt, SolidStart, TanStack Start, Vite\n\
          Provide an explicit entrypoint instead of a directory.",
         dir.display()
       );
@@ -275,12 +256,14 @@ async fn compile_inner(
   if compile_flags.eszip {
     compile_eszip(flags, compile_flags, watcher_communicator)
       .boxed_local()
-      .await
+      .await?;
   } else {
-    compile_binary(flags, compile_flags, watcher_communicator)
+    compile_binary(flags, compile_flags, false, watcher_communicator)
       .boxed_local()
-      .await
+      .await?;
   }
+
+  Ok(())
 }
 
 struct BundleForCompileResult {
@@ -650,11 +633,12 @@ function __internalResolveBundlePath(rel) {
   }
 }
 
-async fn compile_binary(
+pub async fn compile_binary(
   flags: Arc<Flags>,
   compile_flags: CompileFlags,
+  is_desktop: bool,
   watcher_communicator: Option<Arc<WatcherCommunicator>>,
-) -> Result<(), AnyError> {
+) -> Result<PathBuf, AnyError> {
   let factory = if let Some(watcher_communicator) = watcher_communicator.clone()
   {
     CliFactory::from_flags_for_watcher(flags, watcher_communicator)
@@ -663,13 +647,14 @@ async fn compile_binary(
   };
   let cli_options = factory.cli_options()?;
   let module_graph_creator = factory.module_graph_creator().await?;
-  let binary_writer = factory.create_compile_binary_writer().await?;
+  let binary_writer = factory.create_compile_binary_writer(is_desktop).await?;
   let entrypoint = cli_options.resolve_main_module()?;
   let bin_name_resolver = factory.bin_name_resolver()?;
   let output_path = resolve_compile_executable_output_path(
     &bin_name_resolver,
     &compile_flags,
     cli_options.initial_cwd(),
+    is_desktop,
   )
   .await?;
   let compile_config = cli_options.start_dir.to_compile_config()?;
@@ -724,6 +709,20 @@ async fn compile_binary(
     }
   );
   validate_output_path(&output_path)?;
+
+  // Clean up stale temp files from previous interrupted compilations.
+  if let Some(parent) = output_path.parent()
+    && let Some(stem) = output_path.file_name()
+  {
+    let prefix = format!("{}.tmp-", stem.to_string_lossy());
+    if let Ok(entries) = std::fs::read_dir(parent) {
+      for entry in entries.flatten() {
+        if entry.file_name().to_string_lossy().starts_with(&prefix) {
+          let _ = std::fs::remove_file(entry.path());
+        }
+      }
+    }
+  }
 
   let mut temp_filename = output_path.file_name().unwrap().to_owned();
   temp_filename.push(format!(
@@ -797,6 +796,107 @@ async fn compile_binary(
     return Err(err);
   }
 
+  Ok(output_path)
+}
+
+/// Convert a PNG image to macOS .icns format using `sips` and `iconutil`.
+pub fn convert_png_to_icns(
+  png_path: &Path,
+  icns_path: &Path,
+) -> Result<(), AnyError> {
+  let iconset_dir = icns_path.with_extension("iconset");
+  std::fs::create_dir_all(&iconset_dir)?;
+
+  let sizes: &[(u32, &str)] = &[
+    (16, "icon_16x16.png"),
+    (32, "icon_16x16@2x.png"),
+    (32, "icon_32x32.png"),
+    (64, "icon_32x32@2x.png"),
+    (128, "icon_128x128.png"),
+    (256, "icon_128x128@2x.png"),
+    (256, "icon_256x256.png"),
+    (512, "icon_256x256@2x.png"),
+    (512, "icon_512x512.png"),
+    (1024, "icon_512x512@2x.png"),
+  ];
+
+  for (size, name) in sizes {
+    let dest = iconset_dir.join(name);
+    let status = std::process::Command::new("sips")
+      .args([
+        "-z",
+        &size.to_string(),
+        &size.to_string(),
+        &png_path.display().to_string(),
+        "--out",
+        &dest.display().to_string(),
+      ])
+      .stdout(std::process::Stdio::null())
+      .stderr(std::process::Stdio::null())
+      .status();
+    if status.map_or(true, |s| !s.success()) {
+      std::fs::copy(png_path, &dest)?;
+    }
+  }
+
+  let status = std::process::Command::new("iconutil")
+    .args([
+      "-c",
+      "icns",
+      &iconset_dir.display().to_string(),
+      "-o",
+      &icns_path.display().to_string(),
+    ])
+    .stdout(std::process::Stdio::null())
+    .stderr(std::process::Stdio::null())
+    .status()?;
+
+  let _ = std::fs::remove_dir_all(&iconset_dir);
+
+  if !status.success() {
+    bail!(
+      "Failed to convert PNG to ICNS. Provide an .icns file directly or ensure iconutil is available."
+    );
+  }
+
+  Ok(())
+}
+
+pub fn copy_dir_all(src: &Path, dst: &Path) -> Result<(), AnyError> {
+  std::fs::create_dir_all(dst)?;
+  for entry in std::fs::read_dir(src)
+    .with_context(|| format!("Reading directory '{}'", src.display()))?
+  {
+    let entry = entry?;
+    let ty = entry.file_type()?;
+    let dest = dst.join(entry.file_name());
+    if ty.is_dir() {
+      copy_dir_all(&entry.path(), &dest)?;
+    } else if ty.is_symlink() {
+      let target = std::fs::read_link(entry.path())?;
+      #[cfg(unix)]
+      std::os::unix::fs::symlink(&target, &dest)?;
+      #[cfg(windows)]
+      {
+        if target.is_dir() {
+          std::os::windows::fs::symlink_dir(&target, &dest)?;
+        } else {
+          std::os::windows::fs::symlink_file(&target, &dest)?;
+        }
+      }
+    } else {
+      std::fs::copy(entry.path(), &dest)?;
+      // Ensure the copied file is writable (nix store files are read-only).
+      #[cfg(unix)]
+      {
+        use std::os::unix::fs::PermissionsExt;
+        let meta = std::fs::metadata(&dest)?;
+        let mut perms = meta.permissions();
+        perms.set_mode(perms.mode() | 0o200);
+        std::fs::set_permissions(&dest, perms)?;
+      }
+    }
+  }
   Ok(())
 }
 
@@ -821,6 +921,7 @@ async fn compile_eszip(
     &bin_name_resolver,
     &compile_flags,
     cli_options.initial_cwd(),
+    false,
   )
   .await?;
   output_path.set_extension("eszip");
@@ -1178,6 +1279,7 @@ async fn resolve_compile_executable_output_path(
   bin_name_resolver: &BinNameResolver<'_>,
   compile_flags: &CompileFlags,
   current_dir: &Path,
+  is_desktop: bool,
 ) -> Result<PathBuf, AnyError> {
   let module_specifier =
     resolve_url_or_path(&compile_flags.source_file, current_dir)?;
@@ -1211,8 +1313,33 @@ async fn resolve_compile_executable_output_path(
   output_path.ok_or_else(|| anyhow!(
     "An executable name was not provided. One could not be inferred from the URL. Aborting.",
   )).map(|output_path| {
-    get_os_specific_filepath(output_path, &compile_flags.target)
+    if is_desktop {
+      get_desktop_specific_filepath(output_path, &compile_flags.target)
+    } else {
+      get_os_specific_filepath(output_path, &compile_flags.target)
+    }
   })
+}
+
+fn get_desktop_specific_filepath(
+  output: PathBuf,
+  target: &Option<String>,
+) -> PathBuf {
+  let is_windows = match target {
+    Some(target) => target.contains("windows"),
+    None => cfg!(windows),
+  };
+  let is_darwin = match target {
+    Some(target) => target.contains("darwin"),
+    None => cfg!(target_os = "macos"),
+  };
+  if is_windows {
+    output.with_extension("dll")
+  } else if is_darwin {
+    output.with_extension("dylib")
+  } else {
+    output.with_extension("so")
+  }
 }
 
 fn get_os_specific_filepath(
@@ -1260,7 +1387,6 @@ mod test {
         output: None,
         args: Vec::new(),
         target: None,
-        watch: None,
         no_terminal: false,
         icon: Some("favicon.ico".to_string()),
         include: Default::default(),
@@ -1268,6 +1394,7 @@ mod test {
         eszip: false,
         self_extracting: false,
         bundle: false,
+        app_name: None,
         minify: false,
         exclude_unused_npm: false,
       },
@@ -1290,7 +1417,6 @@ mod test {
         output: Some(String::from("./file")),
         args: Vec::new(),
         target: Some("x86_64-unknown-linux-gnu".to_string()),
-        watch: None,
         no_terminal: false,
         icon: None,
         include: Default::default(),
@@ -1298,10 +1424,12 @@ mod test {
         eszip: true,
         self_extracting: false,
         bundle: false,
+        app_name: None,
         minify: false,
         exclude_unused_npm: false,
       },
       &resolve_cwd(None).unwrap(),
+      false,
     )
     .await
     .unwrap();
@@ -1326,7 +1454,6 @@ mod test {
         output: Some(String::from("./file")),
         args: Vec::new(),
         target: Some("x86_64-pc-windows-msvc".to_string()),
-        watch: None,
         include: Default::default(),
         exclude: Default::default(),
         icon: None,
@@ -1334,10 +1461,12 @@ mod test {
         eszip: true,
         self_extracting: false,
         bundle: false,
+        app_name: None,
         minify: false,
         exclude_unused_npm: false,
       },
       &resolve_cwd(None).unwrap(),
+      false,
     )
     .await
     .unwrap();

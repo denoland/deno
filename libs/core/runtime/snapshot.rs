@@ -187,6 +187,15 @@ pub fn create_snapshot(
   create_snapshot_options: CreateSnapshotOptions,
   warmup_script: Option<&'static str>,
 ) -> Result<CreateSnapshotOutput, CoreError> {
+  // Snapshot creation typically runs in build scripts, outside of any
+  // tokio runtime, but creating a `JsRuntime` requires a runtime context
+  // (delayed V8 tasks are scheduled on it). Enter a private one.
+  let tokio_runtime = tokio::runtime::Builder::new_current_thread()
+    .enable_time()
+    .build()
+    .unwrap();
+  let _tokio_guard = tokio_runtime.enter();
+
   let mut mark = Instant::now();
   #[allow(
     clippy::print_stdout,
@@ -313,7 +322,7 @@ pub(crate) struct SnapshottedData<'snapshot> {
 /// we hand it off to serde.
 #[derive(Serialize, Deserialize)]
 pub(crate) struct SerializableSnapshotSidecarData<'snapshot> {
-  data_count: u32,
+  pub(crate) data_count: u32,
   #[serde(borrow)]
   pub snapshot_data: SnapshottedData<'snapshot>,
 }
