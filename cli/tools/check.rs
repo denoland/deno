@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -182,27 +183,50 @@ static DIAGNOSTIC_NO_POS_RE: LazyLock<Regex> = LazyLock::new(|| {
 
 fn parse_tsc_diagnostics(output: &str, project_root: &Path) -> Diagnostics {
   let mut diagnostics: Vec<Diagnostic> = Vec::new();
+  // Cache of source files read to reconstruct the underlined snippet. The
+  // compiler reports positions but not the source line itself, so we read it
+  // back from the same file it referred to (which is always on disk: the
+  // project sources, or the materialized jsr:/http(s): mirrors).
+  let mut source_cache: HashMap<PathBuf, Option<Vec<String>>> = HashMap::new();
 
   for line in output.lines() {
     if let Some(caps) = DIAGNOSTIC_RE.captures(line) {
       let line_no: u64 = caps["line"].parse().unwrap_or(1);
       let col_no: u64 = caps["col"].parse().unwrap_or(1);
+      // tsc positions are 1-based; Deno's `Position` is 0-based and adds one
+      // back when rendering.
+      let start = Position {
+        line: line_no.saturating_sub(1),
+        character: col_no.saturating_sub(1),
+      };
+      let source_line = read_source_line(
+        &mut source_cache,
+        &project_root.join(&caps["file"]),
+        start.line as usize,
+      );
+      // The grep format has no end position, so underline the token that
+      // starts at the reported column (an identifier, a quoted specifier, or a
+      // single caret) as a best-effort span.
+      let end = source_line.as_deref().map(|sl| Position {
+        line: start.line,
+        character: start.character
+          + underline_len(sl, start.character as usize),
+      });
       diagnostics.push(make_diagnostic(
         &caps["cat"],
         caps["code"].parse().unwrap_or(0),
         Some(remap_path(&caps["file"], project_root)),
-        Some(Position {
-          // tsc positions are 1-based; Deno's `Position` is 0-based and adds
-          // one back when rendering.
-          line: line_no.saturating_sub(1),
-          character: col_no.saturating_sub(1),
-        }),
+        Some(start),
+        end,
+        source_line,
         caps["msg"].to_string(),
       ));
     } else if let Some(caps) = DIAGNOSTIC_NO_POS_RE.captures(line) {
       diagnostics.push(make_diagnostic(
         &caps["cat"],
         caps["code"].parse().unwrap_or(0),
+        None,
+        None,
         None,
         None,
         caps["msg"].to_string(),
@@ -222,11 +246,58 @@ fn parse_tsc_diagnostics(output: &str, project_root: &Path) -> Diagnostics {
   Diagnostics::from(diagnostics)
 }
 
+/// Read line `line_idx` (0-based) of `path`, caching the file's lines. Returns
+/// `None` if the file can't be read or the line is out of range.
+fn read_source_line(
+  cache: &mut HashMap<PathBuf, Option<Vec<String>>>,
+  path: &Path,
+  line_idx: usize,
+) -> Option<String> {
+  let lines = cache.entry(path.to_path_buf()).or_insert_with(|| {
+    std::fs::read_to_string(path)
+      .ok()
+      .map(|s| s.lines().map(str::to_string).collect())
+  });
+  lines.as_ref()?.get(line_idx).cloned()
+}
+
+/// Best-effort length (in characters) of the token to underline starting at
+/// `start_char` on `line`: a quoted string (including its quotes), an
+/// identifier run, or a single character otherwise.
+fn underline_len(line: &str, start_char: usize) -> u64 {
+  let chars: Vec<char> = line.chars().collect();
+  let Some(&first) = chars.get(start_char) else {
+    return 1;
+  };
+  if matches!(first, '\'' | '"' | '`') {
+    if let Some(offset) =
+      chars[start_char + 1..].iter().position(|&c| c == first)
+    {
+      return offset as u64 + 2; // opening quote + contents + closing quote
+    }
+    return 1;
+  }
+  if is_ident_char(first) {
+    let len = chars[start_char..]
+      .iter()
+      .take_while(|&&c| is_ident_char(c))
+      .count();
+    return len as u64;
+  }
+  1
+}
+
+fn is_ident_char(c: char) -> bool {
+  c.is_alphanumeric() || c == '_' || c == '$'
+}
+
 fn make_diagnostic(
   category: &str,
   code: u64,
   file_name: Option<String>,
   start: Option<Position>,
+  end: Option<Position>,
+  source_line: Option<String>,
   message_text: String,
 ) -> Diagnostic {
   Diagnostic {
@@ -237,12 +308,12 @@ fn make_diagnostic(
     },
     code,
     start,
-    end: None,
+    end,
     original_source_start: None,
     message_text: Some(message_text),
     message_chain: None,
     source: None,
-    source_line: None,
+    source_line,
     file_name,
     related_information: None,
     reports_deprecated: None,
