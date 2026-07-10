@@ -246,7 +246,7 @@ declare interface Navigator {
   readonly permissions: Permissions;
 }
 
-declare namespace Deno {
+declare namespace Deno.desktop {
   export {}; // stop default export type behavior
 
   /** The application version read from `deno.json` at compile time, or
@@ -292,7 +292,7 @@ declare namespace Deno {
    * library, so only the bytes that changed between versions are
    * downloaded. On each check, the manifest at `<url>/latest.json` is
    * fetched and its `version` compared against {@linkcode
-   * Deno.desktopVersion}:
+   * Deno.desktop.desktopVersion}:
    *
    * - If `publicKey` is set, the manifest signature is verified first and
    *   an unsigned or invalid manifest is rejected.
@@ -327,7 +327,7 @@ declare namespace Deno {
    * Only available in apps compiled with `deno desktop`.
    *
    * ```ts
-   * Deno.autoUpdate({
+   * Deno.desktop.autoUpdate({
    *   url: "https://releases.example.com/myapp",
    *   interval: 60 * 60 * 1000, // hourly
    *   publicKey: "b64EncodedEd25519PublicKey==",
@@ -639,7 +639,7 @@ declare namespace Deno {
      * `null` to remove any menu previously set.
      *
      * macOS only. Click events are delivered as `"menuclick"` events on
-     * {@linkcode Deno.dock}. No-op on Windows and Linux. */
+     * {@linkcode Deno.desktop.dock}. No-op on Windows and Linux. */
     setMenu(menu: MenuItem[] | null): void;
 
     /** Show or hide the app's dock icon.
@@ -780,7 +780,7 @@ declare namespace Deno {
      * `frameless` + `noActivate` {@linkcode BrowserWindow} yourself.
      *
      * ```ts
-     * const tray = new Deno.Tray();
+     * const tray = new Deno.desktop.Tray();
      * tray.setIcon(iconBytes);
      * const panel = tray.attachPanel({ url: "https://localhost:8000/panel" });
      * panel.window.bind("doThing", async () => { ... });

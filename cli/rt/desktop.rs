@@ -14,7 +14,8 @@ pub use deno_runtime::ops::desktop::AutoUpdateState;
 pub use deno_runtime::ops::desktop::DesktopApi;
 pub use deno_runtime::ops::desktop::MenuItem;
 
-/// JS code that exposes desktop APIs via `Deno.BrowserWindow` and `Deno.desktop`.
+/// JS code that exposes desktop APIs under the `Deno.desktop` namespace
+/// (`Deno.desktop.BrowserWindow`, `Deno.desktop.dock`, `Deno.desktop.Tray`, …).
 pub const DESKTOP_JS: &str = r#"
 (() => {
   const internals = Deno[Deno.internal];
@@ -35,6 +36,13 @@ pub const DESKTOP_JS: &str = r#"
   } = internals.core.ops;
   const BrowserWindowPrototype = BrowserWindow.prototype;
   Object.setPrototypeOf(BrowserWindowPrototype, EventTarget.prototype);
+
+  // Namespace object holding the desktop-specific `Deno.*` APIs
+  // (`Deno.desktop.BrowserWindow`, `Deno.desktop.dock`, etc.). The
+  // auto-update init script executed afterwards adds `desktopVersion`
+  // and `autoUpdate` to this same object.
+  const desktop = Deno.desktop ?? {};
+  Object.defineProperty(Deno, "desktop", internals.core.propReadOnly(desktop));
 
   class UIEvent extends Event {
     #detail = 0;
@@ -183,7 +191,7 @@ pub const DESKTOP_JS: &str = r#"
   };
   Object.setPrototypeOf(OrigBW, nativeConstructor);
   Object.setPrototypeOf(OrigBW.prototype, nativeConstructor.prototype);
-  Deno.BrowserWindow = OrigBW;
+  desktop.BrowserWindow = OrigBW;
 
   internals.defineEventHandler(BrowserWindowPrototype, "keydown");
   internals.defineEventHandler(BrowserWindowPrototype, "keyup");
@@ -320,13 +328,13 @@ pub const DESKTOP_JS: &str = r#"
   };
   Object.setPrototypeOf(OrigDock, nativeDockConstructor);
   Object.setPrototypeOf(OrigDock.prototype, nativeDockConstructor.prototype);
-  Deno.Dock = OrigDock;
+  desktop.Dock = OrigDock;
 
   internals.defineEventHandler(DockPrototype, "menuclick");
   internals.defineEventHandler(DockPrototype, "reopen");
 
   const dock = new OrigDock();
-  Object.defineProperty(Deno, "dock", internals.core.propReadOnly(dock));
+  Object.defineProperty(desktop, "dock", internals.core.propReadOnly(dock));
 
   const TrayPrototype = Tray.prototype;
   Object.setPrototypeOf(TrayPrototype, EventTarget.prototype);
@@ -340,7 +348,7 @@ pub const DESKTOP_JS: &str = r#"
   };
   Object.setPrototypeOf(OrigTray, nativeTrayConstructor);
   Object.setPrototypeOf(OrigTray.prototype, nativeTrayConstructor.prototype);
-  Deno.Tray = OrigTray;
+  desktop.Tray = OrigTray;
 
   const nativeTrayDestroy = TrayPrototype.destroy;
   TrayPrototype.destroy = function() {
@@ -368,7 +376,7 @@ pub const DESKTOP_JS: &str = r#"
     const positionFn = options.position;
     const tray = this;
 
-    const window = new Deno.BrowserWindow({
+    const window = new desktop.BrowserWindow({
       width,
       height,
       frameless: true,
@@ -992,22 +1000,22 @@ pub fn desktop_auto_update_js(
     if (_rolledBack && typeof onRollback === "function") {{
       queueMicrotask(() => {{
         try {{ onRollback(ROLLBACK_REASON); }} catch (e) {{
-          console.error("Deno.autoUpdate onRollback threw:", e);
+          console.error("Deno.desktop.autoUpdate onRollback threw:", e);
         }}
       }});
     }}
 
     if (!_version) {{
-      console.warn("Deno.autoUpdate: no version in deno.json, skipping");
+      console.warn("Deno.desktop.autoUpdate: no version in deno.json, skipping");
       return;
     }}
     if (typeof url !== "string" || url.length === 0) {{
-      console.warn("Deno.autoUpdate: missing 'url' option, skipping");
+      console.warn("Deno.desktop.autoUpdate: missing 'url' option, skipping");
       return;
     }}
     if (!isHttpsUrl(url)) {{
       console.error(
-        "Deno.autoUpdate: refusing non-https url (got %s); ignoring.", url,
+        "Deno.desktop.autoUpdate: refusing non-https url (got %s); ignoring.", url,
       );
       return;
     }}
@@ -1027,7 +1035,7 @@ pub fn desktop_auto_update_js(
         try {{
           manifest = JSON.parse(manifestText);
         }} catch {{
-          console.warn("Deno.autoUpdate: latest.json is not valid JSON");
+          console.warn("Deno.desktop.autoUpdate: latest.json is not valid JSON");
           return;
         }}
         if (manifest.version === _version) return;
@@ -1036,7 +1044,7 @@ pub fn desktop_auto_update_js(
           const sig = manifest.signature;
           if (typeof sig !== "string" || !sig) {{
             console.error(
-              "Deno.autoUpdate: publicKey configured but manifest has no signature",
+              "Deno.desktop.autoUpdate: publicKey configured but manifest has no signature",
             );
             return;
           }}
@@ -1048,19 +1056,19 @@ pub fn desktop_auto_update_js(
           const signed = manifest.signed;
           if (typeof signed !== "string") {{
             console.error(
-              "Deno.autoUpdate: signed manifest must include a `signed` string field",
+              "Deno.desktop.autoUpdate: signed manifest must include a `signed` string field",
             );
             return;
           }}
           if (!op_desktop_verify_ed25519(publicKey, sig, te.encode(signed))) {{
-            console.error("Deno.autoUpdate: manifest signature verification failed");
+            console.error("Deno.desktop.autoUpdate: manifest signature verification failed");
             return;
           }}
           // Re-parse the signed payload — only its contents are trusted.
           try {{
             manifest = JSON.parse(signed);
           }} catch {{
-            console.error("Deno.autoUpdate: signed payload is not valid JSON");
+            console.error("Deno.desktop.autoUpdate: signed payload is not valid JSON");
             return;
           }}
           if (manifest.version === _version) return;
@@ -1068,7 +1076,7 @@ pub fn desktop_auto_update_js(
 
         const patchEntry = manifest.patches?.[_version];
         if (!patchEntry) {{
-          console.warn("Deno.autoUpdate: no patch available for",
+          console.warn("Deno.desktop.autoUpdate: no patch available for",
             _version, "->", manifest.version);
           return;
         }}
@@ -1081,12 +1089,12 @@ pub fn desktop_auto_update_js(
           ? patchEntry?.sha256
           : undefined;
         if (!patchName) {{
-          console.error("Deno.autoUpdate: malformed patch entry");
+          console.error("Deno.desktop.autoUpdate: malformed patch entry");
           return;
         }}
         if (typeof patchSha256 !== "string" || patchSha256.length !== 64) {{
           console.error(
-            "Deno.autoUpdate: manifest patch entry must include sha256",
+            "Deno.desktop.autoUpdate: manifest patch entry must include sha256",
           );
           return;
         }}
@@ -1099,7 +1107,7 @@ pub fn desktop_auto_update_js(
         op_desktop_apply_patch(patchBytes, patchSha256);
         if (typeof onUpdateReady === "function") {{
           try {{ onUpdateReady(manifest.version); }} catch (e) {{
-            console.error("Deno.autoUpdate onUpdateReady threw:", e);
+            console.error("Deno.desktop.autoUpdate onUpdateReady threw:", e);
           }}
         }}
         if (autoUpdateTimer) {{
@@ -1107,7 +1115,7 @@ pub fn desktop_auto_update_js(
           autoUpdateTimer = null;
         }}
       }} catch (e) {{
-        console.warn("Deno.autoUpdate: check failed:", e.message);
+        console.warn("Deno.desktop.autoUpdate: check failed:", e.message);
       }}
     }};
 
@@ -1117,7 +1125,7 @@ pub fn desktop_auto_update_js(
     }}
   }}
 
-  Object.defineProperties(Deno, {{
+  Object.defineProperties(Deno.desktop, {{
     desktopVersion: propReadOnly(_version),
     autoUpdate: propWritable(autoUpdate),
   }});
@@ -1282,7 +1290,9 @@ mod tests {
 
   #[test]
   fn desktop_js_installs_browser_window_constructor() {
-    assert!(DESKTOP_JS.contains("Deno.BrowserWindow"));
+    // The desktop APIs live under the `Deno.desktop` namespace.
+    assert!(DESKTOP_JS.contains(r#"Object.defineProperty(Deno, "desktop""#));
+    assert!(DESKTOP_JS.contains("desktop.BrowserWindow = OrigBW"));
     // The original BrowserWindow is wrapped so per-window state is
     // recorded.
     assert!(DESKTOP_JS.contains("windows.set"));
@@ -1303,6 +1313,9 @@ mod tests {
     );
     assert!(js.contains("const _version ="));
     assert!(js.contains("const _rolledBack = false"));
+    // `desktopVersion`/`autoUpdate` are attached to the `Deno.desktop`
+    // namespace, not `Deno` directly.
+    assert!(js.contains("Object.defineProperties(Deno.desktop, {"));
   }
 
   #[test]
@@ -1316,7 +1329,7 @@ mod tests {
   #[test]
   fn auto_update_js_inlines_release_base_url() {
     // The configured `desktop.release.baseUrl` is baked in as the default
-    // `url` for `Deno.autoUpdate`, so a no-arg call uses it.
+    // `url` for `Deno.desktop.autoUpdate`, so a no-arg call uses it.
     let js = desktop_auto_update_js(
       Some("1.0.0"),
       false,

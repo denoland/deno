@@ -3075,7 +3075,7 @@ async fn package_macos_app_bundle(
   // a `--runtime` argument (see `macos_runtime_dylib_name`). We deliberately do
   // NOT write a shell-script launcher that execs the backend with `--runtime`:
   // under LaunchServices (open / Finder / double-click) that `exec` breaks the
-  // app's foreground-GUI registration, so an `NSStatusItem` (Deno.Tray) is
+  // app's foreground-GUI registration, so an `NSStatusItem` (Deno.desktop.Tray) is
   // created but never attaches to the menu bar. Instead the backend binary is
   // the bundle's CFBundleExecutable directly (see Info.plist below), so the
   // process LaunchServices launches IS the GUI process. See denoland/deno#35619.
