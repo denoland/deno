@@ -286,13 +286,21 @@ impl TestContextBuilder {
     };
 
     // Point `deno check` at a shared, pre-downloaded native compiler so each
-    // test's fresh temp `DENO_DIR` doesn't re-download it. Tests that set
-    // `DENO_TSC_BIN` themselves win.
+    // test's fresh temp `DENO_DIR` doesn't re-download it. CI pre-downloads the
+    // compiler (see `tools/download_tsc.ts`) and sets `DENO_TSC_BIN` in the
+    // environment; propagate it explicitly so it survives `env_clear()`.
+    // Otherwise download it once for local runs. Tests that set `DENO_TSC_BIN`
+    // themselves win.
     let mut envs = self.envs.clone();
-    if !envs.contains_key("DENO_TSC_BIN")
-      && let Some(tsc_bin) = crate::native_tsc_bin_path()
-    {
-      envs.insert("DENO_TSC_BIN".to_string(), tsc_bin.to_string());
+    if !envs.contains_key("DENO_TSC_BIN") {
+      if let Some(tsc_bin) = std::env::var_os("DENO_TSC_BIN") {
+        envs.insert(
+          "DENO_TSC_BIN".to_string(),
+          tsc_bin.to_string_lossy().into_owned(),
+        );
+      } else if let Some(tsc_bin) = crate::native_tsc_bin_path() {
+        envs.insert("DENO_TSC_BIN".to_string(), tsc_bin.to_string());
+      }
     }
 
     TestContext {
