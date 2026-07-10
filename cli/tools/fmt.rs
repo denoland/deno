@@ -609,10 +609,19 @@ fn format_embedded_css(
     ignore_file_comment_text: "deno-fmt-ignore-file".to_string(),
     single_line: false,
   };
-  let Some(formatted) =
-    lax_css::format_text(Path::new("embedded.css"), text, &lax_css_config)?
-  else {
-    return Ok(None);
+  // lax-css prints custom property values verbatim, keeping the leading
+  // whitespace on their wrapped continuation lines. the typescript formatter
+  // reindents the embedded result when it puts it back in the template, so
+  // without dedenting first that leading whitespace grows by the template's
+  // indentation on every pass and the format never reaches a fixed point.
+  let dedented = dedent_embedded(text);
+  let formatted = match lax_css::format_text(
+    Path::new("embedded.css"),
+    &dedented,
+    &lax_css_config,
+  )? {
+    Some(formatted) => formatted,
+    None => dedented,
   };
   let formatted = formatted.trim_end_matches('\n');
   Ok(if formatted == text {
