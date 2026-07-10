@@ -8899,3 +8899,263 @@ fn transpile_all_flags() {
     }
   );
 }
+
+// ---------------------------------------------------------------------------
+// Tier-1 functionality-parity tests: flags that existed in clap but were
+// missing/unreachable in the new parser (see the parity audit).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tier1_test_sanitize_and_snapshot_flags() {
+  let flags = flags_from_vec(svec![
+    "deno",
+    "test",
+    "--sanitize-ops",
+    "--sanitize-resources",
+    "--coverage=cov",
+    "--coverage-threshold=80",
+    "--update-snapshots"
+  ])
+  .unwrap();
+  let DenoSubcommand::Test(t) = flags.subcommand else {
+    unreachable!()
+  };
+  assert!(t.sanitize_ops);
+  assert!(t.sanitize_resources);
+  assert_eq!(t.coverage_threshold, Some(80));
+  assert!(t.update_snapshots);
+
+  // -u is short for --update-snapshots.
+  let flags = flags_from_vec(svec!["deno", "test", "-u"]).unwrap();
+  assert!(
+    matches!(flags.subcommand, DenoSubcommand::Test(t) if t.update_snapshots)
+  );
+
+  // --coverage-threshold requires --coverage.
+  assert!(
+    flags_from_vec(svec!["deno", "test", "--coverage-threshold=80"]).is_err()
+  );
+}
+
+#[test]
+fn tier1_compile_bundle_flags() {
+  let flags = flags_from_vec(svec![
+    "deno",
+    "compile",
+    "--bundle",
+    "--minify",
+    "--app-name=MyApp",
+    "--exclude-unused-npm",
+    "main.ts"
+  ])
+  .unwrap();
+  let DenoSubcommand::Compile(c) = flags.subcommand else {
+    unreachable!()
+  };
+  assert!(c.bundle);
+  assert!(c.minify);
+  assert_eq!(c.app_name, Some("MyApp".to_string()));
+  assert!(c.exclude_unused_npm);
+
+  // --minify requires --bundle.
+  assert!(
+    flags_from_vec(svec!["deno", "compile", "--minify", "main.ts"]).is_err()
+  );
+}
+
+#[test]
+fn tier1_install_os_arch_package_json() {
+  let flags =
+    flags_from_vec(svec!["deno", "install", "--os", "linux", "--arch", "x64"])
+      .unwrap();
+  let DenoSubcommand::Install(InstallFlags::Local(_, npm_target)) =
+    flags.subcommand
+  else {
+    unreachable!()
+  };
+  assert_eq!(npm_target.os, Some("linux".to_string()));
+  assert_eq!(npm_target.arch, Some("x64".to_string()));
+
+  let flags =
+    flags_from_vec(svec!["deno", "install", "--package-json", "npm:foo"])
+      .unwrap();
+  assert!(matches!(
+    flags.subcommand,
+    DenoSubcommand::Install(InstallFlags::Local(
+      InstallFlagsLocal::Add(a),
+      _
+    )) if a.package_json
+  ));
+
+  // --os / --arch conflict with --global.
+  assert!(
+    flags_from_vec(svec![
+      "deno", "install", "--global", "--os", "linux", "foo"
+    ])
+    .is_err()
+  );
+}
+
+#[test]
+fn tier1_uninstall_remove_package_json() {
+  let flags =
+    flags_from_vec(svec!["deno", "uninstall", "--package-json", "foo"])
+      .unwrap();
+  assert!(matches!(flags.subcommand, DenoSubcommand::Uninstall(_)));
+  let flags =
+    flags_from_vec(svec!["deno", "remove", "--package-json", "foo"]).unwrap();
+  assert!(matches!(flags.subcommand, DenoSubcommand::Remove(_)));
+}
+
+#[test]
+fn tier1_check_flags() {
+  let flags =
+    flags_from_vec(svec!["deno", "check", "--no-code-cache", "main.ts"])
+      .unwrap();
+  assert!(!flags.code_cache_enabled);
+
+  let flags =
+    flags_from_vec(svec!["deno", "check", "--watch", "main.ts"]).unwrap();
+  assert!(flags.watch.is_some());
+}
+
+#[test]
+fn tier1_serve_open_tunnel_hmr() {
+  let flags =
+    flags_from_vec(svec!["deno", "serve", "--open", "main.ts"]).unwrap();
+  assert!(matches!(&flags.subcommand, DenoSubcommand::Serve(s) if s.open_site));
+
+  let flags =
+    flags_from_vec(svec!["deno", "serve", "--tunnel", "main.ts"]).unwrap();
+  assert!(flags.tunnel);
+
+  // serve uses `--watch-hmr` (alias `--unstable-hmr`), not `--hmr`.
+  for flag in ["--watch-hmr", "--unstable-hmr"] {
+    let flags =
+      flags_from_vec(svec!["deno", "serve", flag, "main.ts"]).unwrap();
+    assert!(flags.watch.map(|w| w.hmr).unwrap_or(false));
+  }
+}
+
+#[test]
+fn tier1_bundle_check_and_declaration() {
+  let flags =
+    flags_from_vec(svec!["deno", "bundle", "--check=all", "main.ts"]).unwrap();
+  assert_eq!(flags.type_check_mode, TypeCheckMode::All);
+
+  let flags =
+    flags_from_vec(svec!["deno", "bundle", "--declaration", "main.ts"])
+      .unwrap();
+  assert!(
+    matches!(flags.subcommand, DenoSubcommand::Bundle(b) if b.declaration)
+  );
+}
+
+#[test]
+fn tier1_audit_why_lock_flags() {
+  let flags =
+    flags_from_vec(svec!["deno", "audit", "--lock=deno.lock", "--frozen"])
+      .unwrap();
+  assert!(matches!(&flags.subcommand, DenoSubcommand::Audit(_)));
+  assert_eq!(flags.lock, Some("deno.lock".to_string()));
+  assert_eq!(flags.frozen_lockfile, Some(true));
+
+  let flags = flags_from_vec(svec!["deno", "why", "--no-lock", "foo"]).unwrap();
+  assert!(matches!(&flags.subcommand, DenoSubcommand::Why(_)));
+  assert!(flags.no_lock);
+}
+
+#[test]
+fn tier1_node_modules_linker() {
+  let flags = flags_from_vec(svec![
+    "deno",
+    "run",
+    "--node-modules-linker=isolated",
+    "main.ts"
+  ])
+  .unwrap();
+  assert_eq!(
+    flags.node_modules_linker,
+    Some(NodeModulesLinkerMode::Isolated)
+  );
+
+  // `--linker` is an alias.
+  let flags =
+    flags_from_vec(svec!["deno", "run", "--linker=hoisted", "main.ts"])
+      .unwrap();
+  assert_eq!(
+    flags.node_modules_linker,
+    Some(NodeModulesLinkerMode::Hoisted)
+  );
+}
+
+#[test]
+fn tier1_upgrade_x_env_file() {
+  let flags = flags_from_vec(svec![
+    "deno",
+    "upgrade",
+    "--unsafely-ignore-certificate-errors=example.com"
+  ])
+  .unwrap();
+  assert_eq!(
+    flags.unsafely_ignore_certificate_errors,
+    Some(svec!["example.com"])
+  );
+
+  let flags =
+    flags_from_vec(svec!["deno", "x", "--package=npm:foo", "bar"]).unwrap();
+  assert!(matches!(
+    flags.subcommand,
+    DenoSubcommand::X(XFlags {
+      kind: XFlagsKind::Command(c),
+    }) if c.package == Some("npm:foo".to_string()) && c.command == "bar"
+  ));
+
+  for sub in ["outdated", "update", "publish"] {
+    let flags = flags_from_vec(svec!["deno", sub, "--env-file=.env"]).unwrap();
+    assert_eq!(flags.env_file, Some(svec![".env"]));
+  }
+}
+
+#[test]
+fn tier1_desktop_flags() {
+  let flags = flags_from_vec(svec![
+    "deno",
+    "desktop",
+    "--output=MyApp.app",
+    "--target=x86_64-unknown-linux-gnu",
+    "--icon=icon.png",
+    "--hmr",
+    "--all-targets",
+    "--backend=cef",
+    "--include=extra.ts",
+    "--exclude=skip.ts",
+    "--compress=zstd",
+    "--exclude-unused-npm",
+    "--allow-read",
+    "main.ts"
+  ])
+  .unwrap();
+  assert_eq!(flags.type_check_mode, TypeCheckMode::Local);
+  assert_eq!(flags.permissions.allow_read, Some(vec![]));
+  let DenoSubcommand::Desktop(d) = flags.subcommand else {
+    unreachable!()
+  };
+  assert_eq!(d.output, Some("MyApp.app".to_string()));
+  assert_eq!(d.target, Some("x86_64-unknown-linux-gnu".to_string()));
+  assert_eq!(d.icon, Some(IconConfig::Single("icon.png".to_string())));
+  assert!(d.hmr);
+  assert!(d.all_targets);
+  assert_eq!(d.backend, Some("cef".to_string()));
+  assert_eq!(d.compress, Some("zstd".to_string()));
+  assert!(d.exclude_unused_npm);
+  assert_eq!(d.include, svec!["extra.ts"]);
+  assert_eq!(d.exclude, svec!["skip.ts"]);
+  assert_eq!(d.source_file, "main.ts");
+
+  // Bare `deno desktop` defaults the entrypoint to ".".
+  let flags = flags_from_vec(svec!["deno", "desktop"]).unwrap();
+  assert!(
+    matches!(flags.subcommand, DenoSubcommand::Desktop(d) if d.source_file == ".")
+  );
+}

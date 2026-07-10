@@ -612,7 +612,18 @@ fn node_modules_and_vendor_dir_arg_parse(
   flags: &mut Flags,
 ) {
   node_modules_arg_parse(result, flags);
+  node_modules_linker_arg_parse(result, flags);
   vendor_dir_arg_parse(result, flags);
+}
+
+fn node_modules_linker_arg_parse(result: &ParseResult, flags: &mut Flags) {
+  flags.node_modules_linker = match result.get_one("node-modules-linker") {
+    Some("isolated") => Some(NodeModulesLinkerMode::Isolated),
+    Some("hoisted") => Some(NodeModulesLinkerMode::Hoisted),
+    // Invalid values are left as clap would reject them; validation is a
+    // separate (Tier 2) concern.
+    _ => None,
+  };
 }
 
 fn node_conditions_args_parse(result: &ParseResult, flags: &mut Flags) {
@@ -1397,7 +1408,7 @@ fn serve_parse(result: &ParseResult, flags: &mut Flags) {
     port,
     host,
     parallel,
-    open_site: false,
+    open_site: result.get_bool("open"),
   });
 }
 
@@ -2516,19 +2527,64 @@ fn pack_parse(result: &ParseResult, flags: &mut Flags) {
 }
 
 fn desktop_parse(result: &ParseResult, flags: &mut Flags) {
+  flags.type_check_mode = TypeCheckMode::Local;
+  runtime_args_parse(result, flags, true, true);
+  ext_arg_parse(result, flags);
+  flags.code_cache_enabled = !result.get_bool("no-code-cache");
+
   let mut script = result
     .get_many("script_arg")
     .map(|v| v.iter().map(|s| s.to_string()).collect::<Vec<_>>())
     .unwrap_or_default()
     .into_iter();
+  // The entrypoint is optional: bare `deno desktop` defaults to "." so
+  // framework detection runs against the current directory.
   let source_file = script.next().unwrap_or_else(|| ".".to_string());
   let args = script.collect();
+
+  // `--compress` (bare) defaults to xz; the `lzma` alias normalizes to xz.
+  let compress = if result.contains("compress") {
+    result
+      .get_one("compress")
+      .map(|c| if c == "lzma" { "xz" } else { c }.to_string())
+  } else {
+    None
+  };
+  let inspect_renderer = if result.contains("inspect-renderer") {
+    result
+      .get_one("inspect-renderer")
+      .and_then(parse_socket_addr)
+  } else {
+    None
+  };
+  let include = result
+    .get_many("include")
+    .map(|v| v.iter().map(|s| s.to_string()).collect())
+    .unwrap_or_default();
+  let exclude = result
+    .get_many("exclude")
+    .map(|v| v.iter().map(|s| s.to_string()).collect())
+    .unwrap_or_default();
+
   flags.subcommand = DenoSubcommand::Desktop(DesktopFlags {
     source_file,
+    output: result.get_one("output").map(|s| s.to_string()),
     args,
+    target: result.get_one("target").map(|s| s.to_string()),
+    icon: result
+      .get_one("icon")
+      .map(|s| IconConfig::Single(s.to_string())),
+    include,
+    exclude,
+    hmr: result.get_bool("hmr"),
     backend: result.get_one("backend").map(|s| s.to_string()),
+    all_targets: result.get_bool("all-targets"),
+    identifier: None,
+    deep_links: Vec::new(),
+    codesign_identity: None,
+    inspect_renderer,
+    compress,
     exclude_unused_npm: result.get_bool("exclude-unused-npm"),
-    ..Default::default()
   });
 }
 
@@ -2931,6 +2987,9 @@ fn node_inspect_addr(word: &str, flag: &str) -> Option<SocketAddr> {
 
 fn bundle_parse(result: &ParseResult, flags: &mut Flags) {
   compile_args_without_check_parse(result, flags);
+  // `compile_args_without_check_parse` deliberately omits `--check`; apply it
+  // here so `deno bundle --check=all` type-checks (mirrors clap, #30159).
+  check_arg_parse(result, flags);
   permission_args_parse(result, flags);
 
   let entrypoints = result

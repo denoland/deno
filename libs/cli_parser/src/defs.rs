@@ -161,6 +161,12 @@ pub static COMPILE_ARGS: &[ArgDef] = &[
     .action(ArgAction::Set)
     .num_args(NumArgs::Optional)
     .require_equals(),
+  ArgDef::new("node-modules-linker")
+    .long("node-modules-linker")
+    .long_aliases(&["linker"])
+    .action(ArgAction::Set)
+    .num_args(NumArgs::Exact(1))
+    .require_equals(),
   ArgDef::new("config")
     .short('c')
     .long("config")
@@ -424,8 +430,21 @@ pub static ALLOW_SCRIPTS_ARG: &[ArgDef] = &[ArgDef::new("allow-scripts")
   .require_equals()
   .value_delimiter(',')];
 
+// Standalone lock flags for subcommands that don't pull in COMPILE_ARGS
+// (which also defines these). Do not combine LOCK_ARGS with COMPILE_ARGS on the
+// same command or the arg names would collide.
 pub static LOCK_ARGS: &[ArgDef] = &[
-    // lock and no-lock are in COMPILE_ARGS, we reuse them via arg_groups
+  ArgDef::new("lock")
+    .long("lock")
+    .action(ArgAction::Set)
+    .num_args(NumArgs::Optional),
+  ArgDef::new("no-lock").long("no-lock").set_true(),
+  ArgDef::new("frozen-lockfile")
+    .long("frozen-lockfile")
+    .long_aliases(&["frozen"])
+    .action(ArgAction::Set)
+    .num_args(NumArgs::Optional)
+    .require_equals(),
 ];
 
 // ============================================================
@@ -545,6 +564,13 @@ pub static SERVE_SUBCOMMAND: CommandDef = CommandDef {
       .long("host")
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1)),
+    ArgDef::new("open").long("open").set_true(),
+    ArgDef::new("tunnel")
+      .short('t')
+      .long("tunnel")
+      .long_aliases(&["connected"])
+      .set_true()
+      .hidden(),
     ArgDef::new("parallel").long("parallel").set_true(),
     ArgDef::new("check")
       .long("check")
@@ -558,7 +584,8 @@ pub static SERVE_SUBCOMMAND: CommandDef = CommandDef {
       .require_equals()
       .value_delimiter(','),
     ArgDef::new("hmr")
-      .long("hmr")
+      .long("watch-hmr")
+      .long_aliases(&["unstable-hmr"])
       .action(ArgAction::Append)
       .num_args(NumArgs::ZeroOrMore)
       .require_equals()
@@ -864,6 +891,20 @@ pub static TEST_SUBCOMMAND: CommandDef = CommandDef {
       .num_args(NumArgs::Optional)
       .require_equals(),
     ArgDef::new("parallel").long("parallel").set_true(),
+    ArgDef::new("sanitize-ops").long("sanitize-ops").set_true(),
+    ArgDef::new("sanitize-resources")
+      .long("sanitize-resources")
+      .set_true(),
+    ArgDef::new("coverage-threshold")
+      .long("coverage-threshold")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .require_equals()
+      .requires(&["coverage"]),
+    ArgDef::new("update-snapshots")
+      .short('u')
+      .long("update-snapshots")
+      .set_true(),
     ArgDef::new("trace-leaks")
       .long("trace-leaks")
       .set_true()
@@ -987,6 +1028,11 @@ pub static UPGRADE_SUBCOMMAND: CommandDef = CommandDef {
       .long("cert")
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1)),
+    ArgDef::new("unsafely-ignore-certificate-errors")
+      .long("unsafely-ignore-certificate-errors")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore)
+      .value_delimiter(','),
     ArgDef::new("version-or-hash-or-channel")
       .positional()
       .action(ArgAction::Set)
@@ -1077,6 +1123,25 @@ pub static CHECK_SUBCOMMAND: CommandDef = CommandDef {
       .conflicts_with(&["doc"]),
     ArgDef::new("check-js").long("check-js").set_true().hidden(),
     ArgDef::new("desktop").long("desktop").set_true(),
+    ArgDef::new("no-code-cache")
+      .long("no-code-cache")
+      .set_true(),
+    ArgDef::new("watch")
+      .long("watch")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore)
+      .require_equals()
+      .value_delimiter(','),
+    ArgDef::new("watch-exclude")
+      .long("watch-exclude")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore)
+      .require_equals()
+      .value_delimiter(','),
+    ArgDef::new("no-clear-screen")
+      .long("no-clear-screen")
+      .set_true()
+      .requires(&["watch"]),
   ],
   arg_groups: &[
     UNSTABLE_ARGS,
@@ -1343,6 +1408,18 @@ pub static COMPILE_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("self-extracting")
       .long("self-extracting")
       .set_true(),
+    ArgDef::new("bundle").long("bundle").set_true(),
+    ArgDef::new("minify")
+      .long("minify")
+      .set_true()
+      .requires(&["bundle"]),
+    ArgDef::new("app-name")
+      .long("app-name")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("exclude-unused-npm")
+      .long("exclude-unused-npm")
+      .set_true(),
     ArgDef::new("check")
       .long("check")
       .action(ArgAction::Set)
@@ -1504,6 +1581,17 @@ pub static INSTALL_SUBCOMMAND: CommandDef = CommandDef {
       .long("save-exact")
       .long_aliases(&["exact"])
       .set_true(),
+    ArgDef::new("package-json").long("package-json").set_true(),
+    ArgDef::new("os")
+      .long("os")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .conflicts_with(&["global"]),
+    ArgDef::new("arch")
+      .long("arch")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .conflicts_with(&["global"]),
     ArgDef::new("env-file")
       .long("env-file")
       .long_aliases(&["env"])
@@ -1549,6 +1637,10 @@ pub static UNINSTALL_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("lockfile-only")
       .long("lockfile-only")
       .set_true(),
+    ArgDef::new("package-json")
+      .long("package-json")
+      .set_true()
+      .conflicts_with(&["global"]),
   ],
   arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
   subcommands: &[],
@@ -1719,6 +1811,12 @@ pub static PUBLISH_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional)
       .require_equals(),
+    ArgDef::new("env-file")
+      .long("env-file")
+      .long_aliases(&["env"])
+      .action(ArgAction::Append)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
   ],
   arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
   subcommands: &[],
@@ -1795,6 +1893,10 @@ pub static REMOVE_SUBCOMMAND: CommandDef = CommandDef {
       .long("lockfile-only")
       .set_true()
       .conflicts_with(&["global"]),
+    ArgDef::new("package-json")
+      .long("package-json")
+      .set_true()
+      .conflicts_with(&["global"]),
   ],
   arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
   subcommands: &[],
@@ -1826,6 +1928,12 @@ pub static OUTDATED_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("lockfile-only")
       .long("lockfile-only")
       .set_true(),
+    ArgDef::new("env-file")
+      .long("env-file")
+      .long_aliases(&["env"])
+      .action(ArgAction::Append)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
   ],
   arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
   subcommands: &[],
@@ -1848,6 +1956,7 @@ pub static UPDATE_SUBCOMMAND: CommandDef = CommandDef {
       .long("recursive")
       .set_true(),
     ArgDef::new("latest").long("latest").set_true(),
+    ArgDef::new("compatible").long("compatible").set_true(),
     ArgDef::new("lockfile-only")
       .long("lockfile-only")
       .set_true(),
@@ -1855,6 +1964,12 @@ pub static UPDATE_SUBCOMMAND: CommandDef = CommandDef {
       .short('i')
       .long("interactive")
       .set_true(),
+    ArgDef::new("env-file")
+      .long("env-file")
+      .long_aliases(&["env"])
+      .action(ArgAction::Append)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
   ],
   arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
   subcommands: &[],
@@ -1908,6 +2023,13 @@ pub static CLEAN_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional)
       .require_equals(),
+    ArgDef::new("node-modules-linker")
+      .long("node-modules-linker")
+      .long_aliases(&["linker"])
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .require_equals()
+      .requires(&["except"]),
   ],
   arg_groups: &[UNSTABLE_ARGS],
   subcommands: &[],
@@ -2062,6 +2184,7 @@ pub static BUNDLE_SUBCOMMAND: CommandDef = CommandDef {
       .num_args(NumArgs::Optional)
       .require_equals()
       .default_value("true"),
+    ArgDef::new("declaration").long("declaration").set_true(),
     ArgDef::new("check")
       .long("check")
       .action(ArgAction::Set)
@@ -2128,6 +2251,11 @@ pub static X_SUBCOMMAND: CommandDef = CommandDef {
       .num_args(NumArgs::ZeroOrMore)
       .trailing(),
     ArgDef::new("yes").short('y').long("yes").set_true(),
+    ArgDef::new("package")
+      .short('p')
+      .long("package")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
     ArgDef::new("ignore-scripts")
       .long("ignore-scripts")
       .action(ArgAction::Append)
@@ -2239,15 +2367,75 @@ pub static DESKTOP_SUBCOMMAND: CommandDef = CommandDef {
       .positional()
       .action(ArgAction::Append)
       .num_args(NumArgs::ZeroOrMore),
-    ArgDef::new("backend")
-      .long("backend")
+    ArgDef::new("check")
+      .long("check")
       .action(ArgAction::Set)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
+    ArgDef::new("inspect-renderer")
+      .long("inspect-renderer")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Optional)
+      .require_equals()
+      .default_value("127.0.0.1:0"),
+    ArgDef::new("include")
+      .long("include")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("exclude")
+      .long("exclude")
+      .action(ArgAction::Append)
       .num_args(NumArgs::Exact(1)),
     ArgDef::new("exclude-unused-npm")
       .long("exclude-unused-npm")
       .set_true(),
+    ArgDef::new("output")
+      .short('o')
+      .long("output")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("target")
+      .long("target")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("no-code-cache")
+      .long("no-code-cache")
+      .set_true(),
+    ArgDef::new("icon")
+      .long("icon")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("hmr").long("hmr").set_true(),
+    ArgDef::new("backend")
+      .long("backend")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("all-targets").long("all-targets").set_true(),
+    ArgDef::new("compress")
+      .long("compress")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Optional)
+      .default_value("xz"),
+    ArgDef::new("ext")
+      .long("ext")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("env-file")
+      .long("env-file")
+      .long_aliases(&["env"])
+      .action(ArgAction::Append)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
   ],
-  arg_groups: &[UNSTABLE_ARGS],
+  arg_groups: &[
+    UNSTABLE_ARGS,
+    PERMISSION_ARGS,
+    COMPILE_ARGS,
+    INSPECT_ARGS,
+    RUNTIME_MISC_ARGS,
+    CPU_PROF_ARGS,
+    ALLOW_SCRIPTS_ARG,
+  ],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: true,
