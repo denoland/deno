@@ -1,0 +1,24 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_UNSTABLE_RELAXED_PERMISSIONS": "1"
+  },
+  "tests": {
+    "read_write_confinement": {
+      "steps": [
+        {
+          // setup runs with -A (which opts out of the profile) so it can create
+          // the .git/hooks directory that the confined run then tries to write
+          "args": "run --quiet -A setup.ts",
+          "output": "setup.out"
+        },
+        {
+          // read/write confined to cwd and temp; the .git directory inside the
+          // cwd is deny-listed for write
+          "args": "run --quiet main.ts",
+          "output": "main.out"
+        }
+      ]
+    }
+  }
+}

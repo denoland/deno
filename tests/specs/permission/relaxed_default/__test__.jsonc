@@ -6,8 +6,8 @@
   },
   "tests": {
     "profile_default": {
-      // gate on, no flags: read anywhere, write under cwd and temp, env allowed,
-      // write outside both denied naming --allow-write
+      // gate on, no flags: read and write confined to cwd and temp, env
+      // allowed, read/write outside both denied naming --allow-read/--allow-write
       "args": "run --quiet profile.ts",
       "output": "profile.out"
     },
@@ -39,8 +39,8 @@
       "output": "gate_off.out"
     },
     "worker_inherits": {
-      // a worker with default permissions inherits the profile: reads anywhere
-      // but cannot fetch
+      // a worker with default permissions inherits the profile: reads inside
+      // the cwd but cannot fetch
       "args": "run --quiet worker_main.ts",
       "output": "worker.out"
     },

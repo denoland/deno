@@ -1,8 +1,8 @@
-// Inherits the relaxed profile from the parent: read is allowed everywhere but
-// net stays gated.
+// Inherits the relaxed profile from the parent: read is confined to the cwd and
+// temp directory, and net stays gated. Reading a file inside the cwd succeeds.
 let read;
 try {
-  Deno.readFileSync(Deno.execPath());
+  Deno.readTextFileSync("./worker.ts");
   read = "ok";
 } catch (err) {
   read = err.name;
