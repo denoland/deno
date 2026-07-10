@@ -510,9 +510,15 @@ pub fn op_require_try_self<
   #[string] parent_path: &str,
   #[string] request: &str,
 ) -> Result<Option<String>, RequireError> {
+  // Reading package.json by walking up from `parent_path` touches the
+  // filesystem at a caller-controlled location, so require read permission
+  // for it first, mirroring op_require_package_imports_resolve below.
+  let parent_path =
+    ensure_read_permission(state, Cow::Borrowed(Path::new(parent_path)))
+      .map_err(RequireErrorKind::Permission)?;
   let pkg_json_resolver = state.borrow::<PackageJsonResolverRc<TSys>>();
   let pkg = pkg_json_resolver
-    .get_closest_package_json(Path::new(parent_path))
+    .get_closest_package_json(&parent_path)
     .ok()
     .flatten();
   let Some(pkg) = pkg else {
