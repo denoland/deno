@@ -1,0 +1,14 @@
+✅ Project initialized
+
+Run these commands to get started
+
+  cd project
+
+  # Run the app with hot reload
+  deno task dev
+
+  # Type-check against the desktop APIs
+  deno task check
+
+  # Bundle a native app
+  deno task build

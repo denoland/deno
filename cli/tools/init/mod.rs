@@ -159,6 +159,194 @@ Deno.test(async function serverFetchStatic() {
         }
       }),
     )?;
+  } else if init_flags.desktop {
+    create_file(
+      &dir,
+      "main.ts",
+      r##"// A minimal tic-tac-toe desktop app built with Deno's webview support.
+//
+//   deno task dev     # run the app with hot reload
+//   deno task check   # type-check against the desktop APIs
+//   deno task build   # bundle a native app
+//
+// The game itself runs inside the webview (see the inline HTML below).
+// Whenever a round finishes, the page calls back into Deno through a
+// binding and we keep a running tally that we show in the native window
+// title - a tiny example of the webview <-> Deno bridge.
+
+const html = `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tic-Tac-Toe</title>
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        padding: 24px;
+        background: #1e1e2e;
+        color: #cdd6f4;
+        user-select: none;
+      }
+      h1 { margin: 0; font-size: 22px; font-weight: 600; }
+      #status { font-size: 16px; min-height: 24px; }
+      #board {
+        display: grid;
+        grid-template-columns: repeat(3, 88px);
+        grid-template-rows: repeat(3, 88px);
+        gap: 8px;
+      }
+      .cell {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 44px;
+        font-weight: 700;
+        background: #313244;
+        border: none;
+        border-radius: 12px;
+        color: #cdd6f4;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      .cell:hover { background: #45475a; }
+      .cell.x { color: #89b4fa; }
+      .cell.o { color: #f38ba8; }
+      #reset {
+        padding: 10px 20px;
+        font-size: 15px;
+        border: none;
+        border-radius: 10px;
+        background: #89b4fa;
+        color: #1e1e2e;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      #reset:hover { background: #b4befe; }
+    </style>
+  </head>
+  <body>
+    <h1>Tic-Tac-Toe</h1>
+    <div id="status"></div>
+    <div id="board"></div>
+    <button id="reset">New game</button>
+    <script>
+      const board = document.getElementById("board");
+      const status = document.getElementById("status");
+      const reset = document.getElementById("reset");
+
+      const lines = [
+        [0, 1, 2], [3, 4, 5], [6, 7, 8],
+        [0, 3, 6], [1, 4, 7], [2, 5, 8],
+        [0, 4, 8], [2, 4, 6],
+      ];
+
+      let cells = [];
+      let state;
+      let current;
+      let over;
+
+      function winner() {
+        for (const [a, b, c] of lines) {
+          if (state[a] && state[a] === state[b] && state[a] === state[c]) {
+            return state[a];
+          }
+        }
+        return state.includes("") ? null : "draw";
+      }
+
+      function report(result) {
+        // Exposed by main.ts via window.bind("recordResult", ...).
+        if (globalThis.bindings && globalThis.bindings.recordResult) {
+          globalThis.bindings.recordResult(result);
+        }
+      }
+
+      function play(i) {
+        if (over || state[i]) return;
+        state[i] = current;
+        cells[i].textContent = current;
+        cells[i].classList.add(current.toLowerCase());
+        const result = winner();
+        if (result) {
+          over = true;
+          status.textContent = result === "draw"
+            ? "It's a draw!"
+            : result + " wins!";
+          report(result);
+          return;
+        }
+        current = current === "X" ? "O" : "X";
+        status.textContent = current + "'s turn";
+      }
+
+      function newGame() {
+        state = ["", "", "", "", "", "", "", "", ""];
+        current = "X";
+        over = false;
+        status.textContent = "X's turn";
+        board.innerHTML = "";
+        cells = state.map((_, i) => {
+          const cell = document.createElement("button");
+          cell.className = "cell";
+          cell.addEventListener("click", () => play(i));
+          board.appendChild(cell);
+          return cell;
+        });
+      }
+
+      reset.addEventListener("click", newGame);
+      newGame();
+    </script>
+  </body>
+</html>`;
+
+const scores = { X: 0, O: 0, draws: 0 };
+
+const win = new Deno.BrowserWindow({
+  title: "Tic-Tac-Toe",
+  width: 360,
+  height: 480,
+  resizable: false,
+});
+
+// Called from the page whenever a round finishes. The handler argument is
+// typed as a generic webview value, so we narrow it before counting.
+win.bind("recordResult", (result) => {
+  if (result === "X") scores.X++;
+  else if (result === "O") scores.O++;
+  else scores.draws++;
+  win.setTitle(
+    `Tic-Tac-Toe  -  X: ${scores.X}  O: ${scores.O}  Draws: ${scores.draws}`,
+  );
+  return Promise.resolve(null);
+});
+
+win.navigate("data:text/html;charset=utf-8," + encodeURIComponent(html));
+"##,
+    )?;
+
+    create_json_file(
+      &dir,
+      "deno.json",
+      &json!({
+        "tasks": {
+          "dev": "deno desktop --hmr main.ts",
+          "check": "deno check main.ts",
+          "build": "deno desktop main.ts"
+        },
+        "compilerOptions": {
+          "lib": ["deno.desktop", "deno.unstable", "deno.ns"]
+        }
+      }),
+    )?;
   } else if init_flags.lib {
     // Extract the directory name to use as the project name
     let project_name = dir
@@ -292,6 +480,18 @@ Deno.test("returns json on /api", async () => {
     info!("");
     info!("  {}", colors::gray("# Run the tests"));
     info!("  deno test -R");
+  } else if init_flags.desktop {
+    info!("  {}", colors::gray("# Run the app with hot reload"));
+    info!("  deno task dev");
+    info!("");
+    info!(
+      "  {}",
+      colors::gray("# Type-check against the desktop APIs")
+    );
+    info!("  deno task check");
+    info!("");
+    info!("  {}", colors::gray("# Bundle a native app"));
+    info!("  deno task build");
   } else if init_flags.lib {
     info!("  {}", colors::gray("# Run the tests"));
     info!("  deno test");

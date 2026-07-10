@@ -1,0 +1,11 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "init --desktop project",
+    "output": "init.out"
+  }, {
+    "cwd": "project",
+    "args": "check main.ts",
+    "output": "check.out"
+  }]
+}

@@ -1468,6 +1468,7 @@ pub static INIT_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("npm").long("npm").set_true(),
     ArgDef::new("jsr").long("jsr").set_true(),
     ArgDef::new("empty").long("empty").set_true(),
+    ArgDef::new("desktop").long("desktop").set_true(),
     ArgDef::new("yes").short('y').long("yes").set_true(),
   ],
   arg_groups: &[],
