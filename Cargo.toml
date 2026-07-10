@@ -62,7 +62,6 @@ members = [
   "libs/print",
   "libs/resolver",
   "libs/serde_v8",
-  "libs/typescript_go_client",
   "runtime",
   "runtime/features",
   "runtime/permissions",
