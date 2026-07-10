@@ -11,7 +11,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     name: "bare-node-builtins",
     flag_name: "unstable-bare-node-builtins",
     help_text: "Enable unstable bare node builtins feature",
-    show_in_help: true,
+    show_in_help: false,
     id: 0,
     kind: UnstableFeatureKind::Cli,
   },
@@ -122,8 +122,8 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
   UnstableFeatureDefinition {
     name: "node-globals",
     flag_name: "unstable-node-globals",
-    help_text: "Prefer Node.js globals over Deno globals - currently this refers to `setTimeout` and `setInterval` APIs.",
-    show_in_help: true,
+    help_text: "Deprecated. Node.js `setTimeout` and `setInterval` globals are now always enabled, so this flag has no effect.",
+    show_in_help: false,
     id: 14,
     kind: UnstableFeatureKind::Runtime,
   },
@@ -184,19 +184,11 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     kind: UnstableFeatureKind::Runtime,
   },
   UnstableFeatureDefinition {
-    name: "tsgo",
-    flag_name: "unstable-tsgo",
-    help_text: "Enable unstable TypeScript Go integration",
-    show_in_help: true,
-    id: 22,
-    kind: UnstableFeatureKind::Cli,
-  },
-  UnstableFeatureDefinition {
     name: "unsafe-proto",
     flag_name: "unstable-unsafe-proto",
     help_text: "Enable unsafe __proto__ support. This is a security risk.",
     show_in_help: true,
-    id: 23,
+    id: 22,
     kind: UnstableFeatureKind::Runtime,
   },
   UnstableFeatureDefinition {
@@ -204,7 +196,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     flag_name: "unstable-vsock",
     help_text: "Enable unstable VSOCK APIs",
     show_in_help: false,
-    id: 24,
+    id: 23,
     kind: UnstableFeatureKind::Runtime,
   },
   UnstableFeatureDefinition {
@@ -212,7 +204,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     flag_name: "unstable-webgpu",
     help_text: "Enable unstable WebGPU APIs",
     show_in_help: true,
-    id: 25,
+    id: 24,
     kind: UnstableFeatureKind::Runtime,
   },
   UnstableFeatureDefinition {
@@ -220,7 +212,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     flag_name: "unstable-worker-options",
     help_text: "Enable unstable Web Worker APIs",
     show_in_help: true,
-    id: 26,
+    id: 25,
     kind: UnstableFeatureKind::Runtime,
   },
 ];
@@ -232,7 +224,6 @@ pub struct UnstableEnvVarNames {
   pub raw_imports: &'static str,
   pub sloppy_imports: &'static str,
   pub subdomain_wildcards: &'static str,
-  pub tsgo: &'static str,
 }
 pub static UNSTABLE_ENV_VAR_NAMES: UnstableEnvVarNames = UnstableEnvVarNames {
   bare_node_builtins: "DENO_UNSTABLE_BARE_NODE_BUILTINS",
@@ -242,5 +233,4 @@ pub static UNSTABLE_ENV_VAR_NAMES: UnstableEnvVarNames = UnstableEnvVarNames {
   raw_imports: "DENO_UNSTABLE_RAW_IMPORTS",
   sloppy_imports: "DENO_UNSTABLE_SLOPPY_IMPORTS",
   subdomain_wildcards: "DENO_UNSTABLE_SUBDOMAIN_WILDCARDS",
-  tsgo: "DENO_UNSTABLE_TSGO",
 };

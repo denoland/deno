@@ -7,7 +7,8 @@
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/a\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/z\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/0\"}]",
-      "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/3\"}]"
+      "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/3\"}]",
+      "Pattern: [{\"hostname\":\":domain(.*)\"}] Inputs: [{\"hostname\":\"localhost\"}]"
     ]
   },
   "urlpattern.any.worker.html": {
@@ -18,7 +19,8 @@
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/a\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/z\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/0\"}]",
-      "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/3\"}]"
+      "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/3\"}]",
+      "Pattern: [{\"hostname\":\":domain(.*)\"}] Inputs: [{\"hostname\":\"localhost\"}]"
     ]
   },
   "urlpattern.https.any.html": {
@@ -29,7 +31,8 @@
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/a\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/z\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/0\"}]",
-      "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/3\"}]"
+      "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/3\"}]",
+      "Pattern: [{\"hostname\":\":domain(.*)\"}] Inputs: [{\"hostname\":\"localhost\"}]"
     ]
   },
   "urlpattern.https.any.worker.html": {
@@ -40,7 +43,8 @@
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/a\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/z\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/0\"}]",
-      "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/3\"}]"
+      "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/3\"}]",
+      "Pattern: [{\"hostname\":\":domain(.*)\"}] Inputs: [{\"hostname\":\"localhost\"}]"
     ]
   },
   "urlpattern-hasregexpgroups.any.html": true,
@@ -159,6 +163,37 @@
       "Component: hostname Left: {\"hostname\":\"a\"} Right: {\"hostname\":\"b\"}",
       "Component: search Left: {\"search\":\"a\"} Right: {\"search\":\"b\"}",
       "Component: hash Left: {\"hash\":\"a\"} Right: {\"hash\":\"b\"}"
+    ]
+  },
+  "urlpattern-constructor.any.html": true,
+  "urlpattern-constructor.any.worker.html": true,
+  "urlpattern-empty-regexp-group.html": true,
+  "urlpattern-generate.tentative.any.html": {
+    "expectedFailures": [
+      "Pattern: {\"pathname\":\"/foo\"} Component: pathname Groups: {}",
+      "Pattern: {\"pathname\":\"/:foo\"} Component: pathname Groups: {\"foo\":\"bar\"}",
+      "Pattern: {\"pathname\":\"/:foo\"} Component: pathname Groups: {\"foo\":\"🍅\"}",
+      "Pattern: {\"hostname\":\"{:foo}.example.com\"} Component: hostname Groups: {\"foo\":\"🍅\"}",
+      "Pattern: {\"pathname\":\"/foo/:bar\"} Component: pathname Groups: {\"bar\":\"baz\"}",
+      "Pattern: {\"pathname\":\"/foo:bar\"} Component: pathname Groups: {\"bar\":\"baz\"}",
+      "Pattern: {\"pathname\":\"/:foo/:bar\"} Component: pathname Groups: {\"foo\":\"baz\",\"bar\":\"qux\"}",
+      "Pattern: \"https://example.com/:foo\" Component: pathname Groups: {\"foo\":\" \"}",
+      "Pattern: \"original-scheme://example.com/:foo\" Component: pathname Groups: {\"foo\":\" \"}",
+      "Pattern: {\"port\":\"([^\\\\:]+?)\"} Component: port Groups: {}"
+    ]
+  },
+  "urlpattern-generate.tentative.any.worker.html": {
+    "expectedFailures": [
+      "Pattern: {\"pathname\":\"/foo\"} Component: pathname Groups: {}",
+      "Pattern: {\"pathname\":\"/:foo\"} Component: pathname Groups: {\"foo\":\"bar\"}",
+      "Pattern: {\"pathname\":\"/:foo\"} Component: pathname Groups: {\"foo\":\"🍅\"}",
+      "Pattern: {\"hostname\":\"{:foo}.example.com\"} Component: hostname Groups: {\"foo\":\"🍅\"}",
+      "Pattern: {\"pathname\":\"/foo/:bar\"} Component: pathname Groups: {\"bar\":\"baz\"}",
+      "Pattern: {\"pathname\":\"/foo:bar\"} Component: pathname Groups: {\"bar\":\"baz\"}",
+      "Pattern: {\"pathname\":\"/:foo/:bar\"} Component: pathname Groups: {\"foo\":\"baz\",\"bar\":\"qux\"}",
+      "Pattern: \"https://example.com/:foo\" Component: pathname Groups: {\"foo\":\" \"}",
+      "Pattern: \"original-scheme://example.com/:foo\" Component: pathname Groups: {\"foo\":\" \"}",
+      "Pattern: {\"port\":\"([^\\\\:]+?)\"} Component: port Groups: {}"
     ]
   }
 }

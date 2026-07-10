@@ -134,6 +134,9 @@ declare interface WorkerNavigator {
 
   /** Returns an array of strings representing the languages known to the user. */
   readonly languages: string[];
+
+  /** Returns a {@linkcode NavigatorUAData} object with information about the runtime's user agent. */
+  readonly userAgentData: NavigatorUAData;
 }
 
 /**
@@ -151,7 +154,8 @@ declare var WorkerNavigator: {
  *
  * @category Platform
  */
-declare var navigator: WorkerNavigator;
+declare var navigator: typeof globalThis extends
+  { document: any; navigator: infer T } ? T : WorkerNavigator;
 
 /**
  * Event map for DedicatedWorkerGlobalScope event handlers.
@@ -340,7 +344,8 @@ declare function postMessage(
  *
  * @category Platform
  */
-declare var navigator: WorkerNavigator;
+declare var navigator: typeof globalThis extends
+  { document: any; navigator: infer T } ? T : WorkerNavigator;
 
 /**
  * Event handler for error events that occur in the worker.

@@ -401,6 +401,51 @@ impl<
     )
   }
 
+  /// Best-effort resolution of a bare specifier against the managed npm
+  /// snapshot, regardless of whether the referrer's `package.json` declares
+  /// it.
+  ///
+  /// `deno compile --bundle` follows `new Worker(new URL(...))` and similar
+  /// references into modules that can live outside the entrypoint's package
+  /// scope (e.g. a worker authored in a sibling source tree, pulled in
+  /// alongside a `dist/`-rooted entrypoint). A bare npm import from such a
+  /// referrer can fail to map even though the package is installed and
+  /// resolves fine elsewhere in the same build. This lets the bundler fall
+  /// back to the snapshot by package name, matching Node/Bun's "find it in a
+  /// reachable node_modules" behavior.
+  ///
+  /// Known limitation: the specifier carries no version constraint, so this
+  /// resolves `name@*`. If the build's snapshot holds more than one version
+  /// of the package, the snapshot picks one by name alone, which may not be
+  /// the version the referrer's own `node_modules` tree would select. Node
+  /// and Bun resolve to the nearest reachable version; this does not. For the
+  /// common single-version case the result is identical.
+  ///
+  /// Returns `None` when npm resolution isn't managed or the package isn't
+  /// present in the snapshot.
+  pub fn resolve_bare_specifier_in_npm_snapshot(
+    &self,
+    raw_specifier: &str,
+    maybe_referrer: Option<&Url>,
+    resolution_mode: node_resolver::ResolutionMode,
+    resolution_kind: node_resolver::NodeResolutionKind,
+  ) -> Option<Url> {
+    let req_ref =
+      NpmPackageReqReference::from_str(&format!("npm:{raw_specifier}")).ok()?;
+    // Bail unless npm resolution is managed; `resolve_managed_npm_req_ref`
+    // unwraps these and would otherwise panic.
+    let node_and_npm_resolver = self.resolver.node_and_npm_resolver.as_ref()?;
+    node_and_npm_resolver.npm_resolver.as_managed()?;
+    self
+      .resolve_managed_npm_req_ref(
+        &req_ref,
+        maybe_referrer,
+        resolution_mode,
+        resolution_kind,
+      )
+      .ok()
+  }
+
   pub fn resolve(
     &self,
     raw_specifier: &str,
@@ -655,15 +700,25 @@ pub fn enhance_graph_error(
   sys: &(impl sys_traits::FsMetadata + Clone),
   error: ModuleGraphError,
   mode: EnhanceGraphErrorMode,
+  // Names of packages importable by bare specifier (workspace members and
+  // packages linked via the "links" field). Used to produce a better hint
+  // when a bare import almost matches one of them.
+  bare_importable_pkg_names: &[String],
 ) -> EnhancedGraphError {
   let mut message = match &error {
     ModuleGraphError::ResolutionError(resolution_error) => {
-      enhanced_resolution_error_message(resolution_error)
+      enhanced_resolution_error_message(
+        resolution_error,
+        bare_importable_pkg_names,
+      )
     }
     ModuleGraphError::TypesResolutionError(resolution_error) => {
       format!(
         "Failed resolving types. {}",
-        enhanced_resolution_error_message(resolution_error)
+        enhanced_resolution_error_message(
+          resolution_error,
+          bare_importable_pkg_names,
+        )
       )
     }
     ModuleGraphError::ModuleError(error) => {
@@ -711,7 +766,10 @@ fn maybe_docs_url_for_graph_error(
 }
 
 /// Adds more explanatory information to a resolution error.
-pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
+pub fn enhanced_resolution_error_message(
+  error: &ResolutionError,
+  bare_importable_pkg_names: &[String],
+) -> String {
   let mut message = format_deno_graph_error(error);
 
   let maybe_hint = if let Some(specifier) =
@@ -722,7 +780,16 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
     ))
   } else {
     get_import_prefix_missing_error(error).map(|specifier| {
-      if specifier.starts_with("@std/") {
+      // If the specifier looks like a workspace member or linked package whose
+      // declared name is scoped (e.g. importing "foo" when "@scope/foo" is
+      // linked), point at the real name instead of suggesting `deno add`.
+      if let Some(name) =
+        maybe_matching_bare_pkg_name(specifier, bare_importable_pkg_names)
+      {
+        format!(
+          "\"{name}\" is available in this workspace (via a workspace member or the \"links\" field). Import it by its full name.",
+        )
+      } else if specifier.starts_with("@std/") {
         format!(
           "If you want to use the JSR package, try running `deno add jsr:{}`",
           specifier
@@ -854,7 +921,7 @@ pub fn enhanced_integrity_error_message(err: &ModuleError) -> Option<String> {
 fn enhanced_unsupported_import_attribute(err: &ModuleError) -> Option<String> {
   match err.as_kind() {
     ModuleErrorKind::UnsupportedImportAttributeType { kind, .. }
-      if kind == "bytes" =>
+      if kind == "bytes" || kind == "css" =>
     {
       let mut text = format_deno_graph_error(err);
       text.push_str(&format!(
@@ -895,6 +962,37 @@ fn get_resolution_error_bare_specifier(
   } else {
     None
   }
+}
+
+/// If `specifier` (a bare import that failed to resolve) matches the unscoped
+/// name of a known bare-importable package, returns that package's full name.
+///
+/// This catches the common mistake of importing a scoped package by its
+/// unscoped tail, e.g. importing `"my-pkg"` when `"@scope/my-pkg"` is linked.
+///
+/// If two packages share an unscoped tail (e.g. `@a/foo` and `@b/foo`), the
+/// first match wins; that's acceptable since this only produces a hint.
+fn maybe_matching_bare_pkg_name<'a>(
+  specifier: &str,
+  bare_importable_pkg_names: &'a [String],
+) -> Option<&'a str> {
+  // Compare only the package portion, ignoring any imported subpath.
+  let specifier_head = specifier.split('/').next().unwrap_or(specifier);
+  bare_importable_pkg_names
+    .iter()
+    .map(|name| name.as_str())
+    .find(|name| {
+      // The unscoped tail of `@scope/foo` is `foo`; an unscoped name is its
+      // own tail.
+      let unscoped = name
+        .strip_prefix('@')
+        .and_then(|rest| rest.split_once('/'))
+        .map(|(_scope, tail)| tail)
+        .unwrap_or(name);
+      // Only suggest when the user didn't already type the full name (that
+      // would have resolved), but the unscoped tail matches.
+      *name != specifier_head && unscoped == specifier_head
+    })
 }
 
 fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
@@ -1061,5 +1159,32 @@ mod test {
       };
       assert_eq!(get_resolution_error_bare_node_specifier(&err), output,);
     }
+  }
+
+  #[test]
+  fn matching_bare_pkg_name() {
+    let names = [
+      "@scope/my-pkg".to_string(),
+      "plain-pkg".to_string(),
+      "@org/utils".to_string(),
+    ];
+    // Unscoped tail of a scoped package matches.
+    assert_eq!(
+      maybe_matching_bare_pkg_name("my-pkg", &names),
+      Some("@scope/my-pkg")
+    );
+    // Importing a subpath still matches on the package head.
+    assert_eq!(
+      maybe_matching_bare_pkg_name("utils/helpers", &names),
+      Some("@org/utils")
+    );
+    // The full scoped name resolves on its own, so no suggestion.
+    assert_eq!(maybe_matching_bare_pkg_name("@scope/my-pkg", &names), None);
+    // An unscoped name that already matches exactly would have resolved.
+    assert_eq!(maybe_matching_bare_pkg_name("plain-pkg", &names), None);
+    // No relation at all.
+    assert_eq!(maybe_matching_bare_pkg_name("unrelated", &names), None);
+    // Nothing linked.
+    assert_eq!(maybe_matching_bare_pkg_name("my-pkg", &[]), None);
   }
 }

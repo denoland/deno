@@ -461,7 +461,8 @@ impl ModuleRegistry {
     let http_cache =
       Arc::new(GlobalHttpCache::new(CliSys::default(), location.clone()));
     let file_fetcher = create_cli_file_fetcher(
-      Default::default(),
+      Arc::new(deno_runtime::deno_web::BlobStore::default())
+        as Arc<dyn deno_runtime::deno_web::BlobStoreTrait>,
       http_cache.clone().into(),
       http_client_provider,
       MemoryFilesRc::default(),

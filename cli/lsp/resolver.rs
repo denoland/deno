@@ -120,6 +120,18 @@ fn scope_has_bundler_module_resolution(
   false
 }
 
+/// Information about how a specifier was resolved through an import map,
+/// surfaced in hover tooltips.
+#[derive(Debug, Clone)]
+pub struct ImportMapHover {
+  /// The matched key as written in the import map.
+  pub key: String,
+  /// The value the key maps to, as written in the import map.
+  pub value: String,
+  /// The location of the import map (e.g. the `deno.json`).
+  pub base_url: Url,
+}
+
 #[derive(Debug, Clone)]
 pub struct LspScopedResolver {
   resolver: Arc<CliResolver>,
@@ -333,6 +345,50 @@ impl LspScopedResolver {
     req_ref: &JsrPackageReqReference,
   ) -> Option<ModuleSpecifier> {
     self.jsr_resolver.as_ref()?.jsr_to_resource_url(req_ref)
+  }
+
+  /// If `specifier` (as written at `referrer`) was remapped by the import map
+  /// to `code`, returns the import map entry that was responsible. Used to
+  /// surface import map resolution details in hover tooltips.
+  ///
+  /// This mirrors [`import_map::ImportMap::lookup`]: an entry is responsible for
+  /// a resolution when its address equals (literal mapping) or is a prefix of
+  /// (`/`-suffixed mapping) the resolved specifier. We additionally require that
+  /// the entry reconstructs the exact specifier that was written, so we don't
+  /// report an import map for e.g. a relative import that merely happens to land
+  /// in a mapped directory.
+  pub fn import_map_hover(
+    &self,
+    specifier: &str,
+    code: &Url,
+    referrer: &Url,
+  ) -> Option<ImportMapHover> {
+    let import_map = self.workspace_resolver.maybe_import_map()?;
+    let code_str = code.as_str();
+    for entry in import_map.entries_for_referrer(referrer) {
+      let Some(address) = entry.value else {
+        continue;
+      };
+      let address_str = address.as_str();
+      let reconstructed = if address_str == code_str {
+        entry.raw_key.to_string()
+      } else if address_str.ends_with('/') && code_str.starts_with(address_str)
+      {
+        code_str.replace(address_str, entry.raw_key)
+      } else {
+        continue;
+      };
+      if reconstructed != specifier {
+        continue;
+      }
+      let value = entry.raw_value.unwrap_or(address_str).to_string();
+      return Some(ImportMapHover {
+        key: entry.raw_key.to_string(),
+        value,
+        base_url: import_map.base_url().clone(),
+      });
+    }
+    None
   }
 
   pub fn configured_auto_import_roots(&self) -> Vec<ModuleSpecifier> {
@@ -1061,6 +1117,7 @@ impl<'a> ResolverFactory<'a> {
         link_packages: link_packages.0.clone(),
         newest_dependency_date_options: Default::default(),
         overrides: Arc::new(overrides),
+        trust_policy: Default::default(),
       });
       let npm_resolution_installer = Arc::new(NpmResolutionInstaller::new(
         Default::default(),
@@ -1090,6 +1147,9 @@ impl<'a> ResolverFactory<'a> {
           lifecycle_scripts: Arc::new(LifecycleScriptsConfig::default()),
           system_info: NpmSystemInfo::default(),
           workspace_link_packages: link_packages,
+          // The LSP does not materialize packages into node_modules, so it never
+          // writes a `.npmrc` or alias symlinks.
+          jsr_deps_in_node_modules: false,
         },
       ));
       self.set_npm_installer(npm_installer);
@@ -1145,9 +1205,6 @@ impl<'a> ResolverFactory<'a> {
             _ => None,
           },
           workspace_resolver: self.workspace_resolver().clone(),
-          bare_node_builtins: self
-            .config_data
-            .is_some_and(|d| d.unstable.contains("bare-node-builtins")),
           is_byonm: self.config_data.map(|d| d.byonm).unwrap_or(false),
           maybe_vendor_dir: self
             .config_data

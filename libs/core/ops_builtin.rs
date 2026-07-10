@@ -11,6 +11,7 @@ use deno_error::JsErrorBox;
 use serde_v8::ByteString;
 
 use crate::CancelHandle;
+use crate::CancelTryFuture;
 use crate::JsBuffer;
 use crate::ModuleId;
 use crate::OpDecl;
@@ -22,9 +23,11 @@ use crate::error::ResourceError;
 use crate::error::exception_to_err;
 use crate::error::exception_to_err_result;
 use crate::io::AdaptiveBufferStrategy;
+use crate::io::AsyncResult;
 use crate::io::BufMutView;
 use crate::io::BufView;
 use crate::io::ResourceId;
+use crate::io::WriteOutcome;
 use crate::modules::ModuleMap;
 use crate::modules::recursive_load::RecursiveModuleLoad;
 use crate::op2;
@@ -44,11 +47,11 @@ macro_rules! builtin_ops {
 builtin_ops! {
   op_close,
   op_try_close,
+  op_cancel_read,
   op_print,
   op_resources,
   op_wasm_streaming_feed,
   op_wasm_streaming_set_url,
-  op_wasm_streaming_stream_feed,
   op_void_sync,
   op_error_async,
   op_error_async_deferred,
@@ -62,6 +65,7 @@ builtin_ops! {
   op_read_sync,
   op_write_sync,
   op_write_all,
+  op_pipe,
   op_write_type_error,
   op_shutdown,
   op_str_byte_length,
@@ -114,7 +118,6 @@ builtin_ops! {
   ops_builtin_v8::op_drain_pending_rejections,
   ops_builtin_v8::op_compile_function,
   ops_builtin_v8::op_eval_context,
-  ops_builtin_v8::op_queue_microtask,
   ops_builtin_v8::op_encode,
   ops_builtin_v8::op_decode,
   ops_builtin_v8::op_serialize,
@@ -217,6 +220,15 @@ pub fn op_try_close(state: Rc<RefCell<OpState>>, #[smi] rid: ResourceId) {
   }
 }
 
+/// Cancel pending read operations for a resource without removing it from the
+/// resource table.
+#[op2(fast)]
+pub fn op_cancel_read(state: Rc<RefCell<OpState>>, #[smi] rid: ResourceId) {
+  if let Ok(resource) = state.borrow().resource_table.get_any(rid) {
+    resource.cancel_read_ops();
+  }
+}
+
 /// Builtin utility to print to stdout/stderr
 #[op2(fast)]
 pub fn op_print(
@@ -251,6 +263,22 @@ pub fn op_print(
 pub struct WasmStreamingResource(pub(crate) RefCell<v8::WasmStreaming<false>>);
 
 impl Resource for WasmStreamingResource {
+  // Implementing the write side makes the resource a valid sink for `op_pipe`,
+  // which is how `WebAssembly.instantiateStreaming` pumps a response body
+  // straight into V8's streaming compiler without a JS round-trip per chunk
+  // (see `handleWasmStreaming` in ext/fetch/26_fetch.js). `on_bytes_received`
+  // is synchronous, infallible, and always consumes the whole chunk.
+  fn write(self: Rc<Self>, buf: BufView) -> AsyncResult<WriteOutcome> {
+    let nwritten = buf.len();
+    self.0.borrow_mut().on_bytes_received(&buf);
+    Box::pin(std::future::ready(Ok(WriteOutcome::Full { nwritten })))
+  }
+
+  fn write_all(self: Rc<Self>, view: BufView) -> AsyncResult<()> {
+    self.0.borrow_mut().on_bytes_received(&view);
+    Box::pin(std::future::ready(Ok(())))
+  }
+
   fn close(self: Rc<Self>) {
     // At this point there are no clones of Rc<WasmStreamingResource> on the
     // resource table, and no one should own a reference outside of the stack.
@@ -293,46 +321,6 @@ pub fn op_wasm_streaming_set_url(
     state.resource_table.get::<WasmStreamingResource>(rid)?;
 
   wasm_streaming.0.borrow_mut().set_url(url);
-
-  Ok(())
-}
-
-#[op2]
-async fn op_wasm_streaming_stream_feed(
-  state: Rc<RefCell<OpState>>,
-  #[smi] rid: ResourceId,
-  #[smi] stream_rid: ResourceId,
-  auto_close: bool,
-) -> Result<(), JsErrorBox> {
-  let wasm_streaming = state
-    .borrow_mut()
-    .resource_table
-    .get::<WasmStreamingResource>(rid)
-    .map_err(|_| JsErrorBox::type_error("stream not found"))?;
-
-  loop {
-    let resource = state
-      .borrow()
-      .resource_table
-      .get_any(stream_rid)
-      .map_err(|_| JsErrorBox::type_error("stream not found"))?;
-    let view = deno_core::BufMutView::new(65536);
-    let (bytes, view) = resource.read_byob(view).await?;
-
-    /* EOF */
-    if bytes == 0 {
-      break;
-    }
-
-    wasm_streaming
-      .0
-      .borrow_mut()
-      .on_bytes_received(&view[..bytes]);
-  }
-
-  if auto_close {
-    let _ = state.borrow_mut().resource_table.take_any(stream_rid);
-  }
 
   Ok(())
 }
@@ -463,6 +451,82 @@ async fn op_write_all(
   let view = BufView::from(buf);
   resource.write_all(view).await?;
   Ok(())
+}
+
+/// Pipe all data from a source resource to a sink resource, entirely in Rust.
+///
+/// This is the fast path for `ReadableStream#pipeTo` when both the source and
+/// the sink are backed by a `deno_core::Resource` (see
+/// `getReadableStreamResourceBacking` / `getWritableStreamResourceBacking` in
+/// `ext/web/06_streams.js`). It avoids copying every chunk into and back out of
+/// JavaScript. Close / abort / cancel semantics are handled by the JS caller.
+///
+/// Chunks are read with `read()`, which hands back the resource's own buffer
+/// (zero-copy for sources that buffer internally, like fetch response bodies
+/// and wrapped `ReadableStream`s), and passed to the sink as-is; `write_all`
+/// takes the same `BufView`, so the pump itself adds no copy. Sources that
+/// only buffer externally (files, sockets) allocate per chunk in their `read()`
+/// impl, exactly as a `read_byob` into a fresh buffer would.
+///
+/// When `cancel_rid` names a [`CancelHandle`] resource, each read and write is
+/// raced against it, so cancelling the handle (the JS caller closes it from an
+/// `AbortSignal` handler) aborts the pump promptly. The handle is consumed
+/// before returning, mirroring `op_net_connect_tcp`.
+#[op2(promise_id)]
+async fn op_pipe(
+  state: Rc<RefCell<OpState>>,
+  #[smi] promise_id: i32,
+  #[smi] src_rid: ResourceId,
+  #[smi] dst_rid: ResourceId,
+  #[smi] cancel_rid: Option<ResourceId>,
+) -> Result<(), JsErrorBox> {
+  // Unref bookkeeping is keyed off the source, since that is what we await on.
+  let src = get_resource(state.clone(), src_rid, promise_id)?;
+  let dst = state
+    .borrow()
+    .resource_table
+    .get_any(dst_rid)
+    .map_err(JsErrorBox::from_err)?;
+  let cancel_handle = cancel_rid.and_then(|rid| {
+    state.borrow().resource_table.get::<CancelHandle>(rid).ok()
+  });
+
+  // Reuse the same adaptive sizing strategy as `op_read_all`.
+  let (min, maybe_max) = src.size_hint();
+  let mut buffer_strategy =
+    AdaptiveBufferStrategy::new_from_hint_u64(min, maybe_max);
+
+  let result = async {
+    loop {
+      let read = src.clone().read(buffer_strategy.buffer_size());
+      let buf = match &cancel_handle {
+        Some(handle) => read.try_or_cancel(handle).await?,
+        None => read.await?,
+      };
+      if buf.is_empty() {
+        break; // source reached EOF
+      }
+      buffer_strategy.notify_read(buf.len());
+      let write = dst.clone().write_all(buf);
+      match &cancel_handle {
+        Some(handle) => write.try_or_cancel(handle).await?,
+        None => write.await?,
+      }
+    }
+    Ok::<(), JsErrorBox>(())
+  }
+  .await;
+
+  // Consume the cancel handle regardless of outcome so it doesn't linger in the
+  // resource table (the JS caller may also close it from its abort handler; both
+  // paths are idempotent).
+  if let Some(rid) = cancel_rid
+    && let Ok(handle) = state.borrow_mut().resource_table.take_any(rid)
+  {
+    handle.close();
+  }
+
+  result
 }
 
 #[op2]

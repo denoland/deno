@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_ffi"
-version = "0.236.0"
+version = "0.241.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -26,13 +26,12 @@ log.workspace = true
 memmap2.workspace = true
 num-bigint.workspace = true
 serde.workspace = true
-serde-value.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = ["errhandlingapi", "minwindef", "ntdef", "winbase", "winnt"] }
+windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Globalization", "Win32_System_Diagnostics_Debug"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_aarch, values("x86_64", "aarch64"))'] }

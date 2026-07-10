@@ -48,6 +48,7 @@ use crate::sys::CliSys;
 use crate::util::path::mapped_specifier_for_tsc;
 
 mod diagnostics;
+pub mod tsconfig_gen;
 
 pub use self::diagnostics::Diagnostic;
 pub use self::diagnostics::DiagnosticCategory;
@@ -213,6 +214,7 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.deno.webgpu.d.ts", "lib.deno_webgpu.d.ts"),
     maybe_compressed_lib!("lib.deno.window.d.ts"),
     maybe_compressed_lib!("lib.deno.worker.d.ts"),
+    maybe_compressed_lib!("lib.deno.desktop.d.ts"),
     maybe_compressed_lib!("lib.deno.shared_globals.d.ts"),
     maybe_compressed_lib!("lib.deno.ns.d.ts"),
     maybe_compressed_lib!("lib.deno.unstable.d.ts"),
@@ -597,12 +599,15 @@ pub static BYTES_IMPORT_SOURCE: &str =
   "const data: Uint8Array<ArrayBuffer>;\nexport default data;\n";
 pub static TEXT_IMPORT_SOURCE: &str =
   "const data: string;\nexport default data;\n";
+pub static CSS_IMPORT_SOURCE: &str =
+  "const sheet: CSSStyleSheet;\nexport default sheet;\n";
 
 pub fn load_raw_import_source(specifier: &Url) -> Option<&'static str> {
   let raw_import = get_specifier_raw_import(specifier)?;
   let source = match raw_import {
     RawImportKind::Bytes => BYTES_IMPORT_SOURCE,
     RawImportKind::Text => TEXT_IMPORT_SOURCE,
+    RawImportKind::Css => CSS_IMPORT_SOURCE,
   };
   Some(source)
 }
@@ -611,6 +616,7 @@ pub fn load_raw_import_source(specifier: &Url) -> Option<&'static str> {
 pub enum RawImportKind {
   Bytes,
   Text,
+  Css,
 }
 
 /// We store the raw import kind in the fragment of the Url
@@ -629,6 +635,8 @@ fn get_specifier_raw_import(specifier: &Url) -> Option<RawImportKind> {
     Some(RawImportKind::Text)
   } else if remaining.starts_with("bytes") {
     Some(RawImportKind::Bytes)
+  } else if remaining.starts_with("css") {
+    Some(RawImportKind::Css)
   } else {
     None
   }
@@ -844,6 +852,35 @@ fn resolve_non_graph_specifier_types(
   }
 }
 
+/// Finds an `@types/node` that is only present in the npm resolution snapshot
+/// as a transitive dependency (not resolvable from the project root) and
+/// resolves its types entry point. Picks the highest installed version for
+/// determinism when multiple copies exist.
+fn resolve_transitive_types_node(
+  npm: &RequestNpmState,
+  referrer: &ModuleSpecifier,
+) -> Option<ModuleSpecifier> {
+  let managed = npm.npm_resolver.as_managed()?;
+  let snapshot = managed.resolution().snapshot();
+  let pkg_id = snapshot
+    .all_packages_for_every_system()
+    .filter(|pkg| pkg.id.nv.name.as_str() == "@types/node")
+    .max_by(|a, b| a.id.nv.version.cmp(&b.id.nv.version))
+    .map(|pkg| pkg.id.clone())?;
+  let package_folder = managed.resolve_pkg_folder_from_pkg_id(&pkg_id).ok()?;
+  let url_or_path = npm
+    .node_resolver
+    .resolve_package_subpath_from_deno_module(
+      &package_folder,
+      None,
+      Some(referrer),
+      ResolutionMode::Import,
+      NodeResolutionKind::Types,
+    )
+    .ok()?;
+  url_or_path.into_url().ok()
+}
+
 #[derive(Debug, Error, deno_error::JsError)]
 pub enum ExecError {
   #[class(generic)]
@@ -926,12 +963,6 @@ pub fn exec(
         remapped_specifiers.insert(specifier_str.clone(), s.clone());
         specifier_str
       }
-      // "file" if tsgo => {
-      //   let specifier_str = s.to_string();
-      //   let out = specifier_str.strip_prefix("file://").unwrap().to_string();
-      //   remapped_specifiers.insert(out.to_string(), s.clone());
-      //   out
-      // }
       _ => {
         if let Some(new_specifier) = mapped_specifier_for_tsc(s, *mt) {
           root_map.insert(new_specifier.clone(), s.clone());
@@ -1146,6 +1177,50 @@ pub fn load_for_tsc<T: LoadContent, M: Mapper>(
   // handle the request for that module here.
   } else if load_specifier == MISSING_DEPENDENCY_SPECIFIER {
     None
+  } else if load_specifier == "asset:///lib.node.d.ts" {
+    // With a single global symbol table, loading both the built-in `@types/node`
+    // and a user-installed one duplicates every node declaration. If the user
+    // provides their own `@types/node`, reference that resolved file directly so
+    // exactly one copy is in the program; otherwise serve the built-in. We
+    // reference the resolved path rather than `types="npm:@types/node"` because
+    // the latter would be re-resolved relative to this asset file, which fails
+    // for cache-only / frozen installs.
+    let user_types_node = maybe_npm.and_then(|npm| {
+      let referrer =
+        deno_path_util::resolve_url_or_path("./", current_dir).ok()?;
+      let spec = match resolve_non_graph_specifier_types(
+        "npm:@types/node",
+        &referrer,
+        ResolutionMode::Import,
+        Some(npm),
+      )
+      .ok()
+      .flatten()
+      {
+        Some((spec, _)) => spec,
+        // Not a declared dependency, but a package may still pull in
+        // `@types/node` transitively, in which case tsc will load that copy
+        // through node resolution from inside the package. Serve the same
+        // copy here so only one `@types/node` ends up in the program.
+        None => resolve_transitive_types_node(npm, &referrer)?,
+      };
+      spec
+        .to_file_path()
+        .ok()
+        .filter(|p| p.exists())
+        .map(|_| spec)
+    });
+    let source: Arc<str> = match user_types_node {
+      Some(spec) => format!(
+        "/// <reference no-default-lib=\"true\"/>\n/// <reference path=\"{}\" />\n",
+        spec.as_str(),
+      )
+      .into(),
+      None => get_lazily_loaded_asset("lib.node.d.ts").unwrap_or_default().into(),
+    };
+    hash = get_maybe_hash(Some(source.as_ref()), hash_data);
+    media_type = MediaType::Dts;
+    Some(T::from_arc_str(source))
   } else if let Some(name) = load_specifier.strip_prefix("asset:///") {
     let maybe_source = get_lazily_loaded_asset(name);
     hash = get_maybe_hash(maybe_source, hash_data);
@@ -1349,6 +1424,9 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "PerformanceEntry",
   "PerformanceMark",
   "PerformanceMeasure",
+  "PerformanceObserver",
+  "PerformanceObserverEntryList",
+  "PerformanceResourceTiming",
   "QueuingStrategy",
   "QueuingStrategySize",
   "QuotaExceededError",

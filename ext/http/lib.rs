@@ -13,6 +13,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use std::task::Context;
 use std::task::Poll;
@@ -100,6 +101,7 @@ mod request_body;
 mod request_properties;
 mod response_body;
 mod service;
+mod v8_util;
 
 use fly_accept_encoding::Encoding;
 pub use http_next::HttpNextError;
@@ -109,6 +111,45 @@ pub use request_properties::HttpListenProperties;
 pub use request_properties::HttpPropertyExtractor;
 pub use request_properties::HttpRequestProperties;
 pub use service::UpgradeUnavailableError;
+
+fn preferred_supported_encoding(
+  encodings: impl Iterator<
+    Item = Result<(Option<Encoding>, f32), fly_accept_encoding::EncodingError>,
+  >,
+) -> Encoding {
+  let mut best_brotli_qval = 0.0;
+  let mut best_gzip_qval = 0.0;
+  let mut best_identity_qval = 0.0;
+
+  for encoding in encodings {
+    let Ok((encoding, qval)) = encoding else {
+      continue;
+    };
+    match encoding {
+      Some(Encoding::Brotli) if qval > best_brotli_qval => {
+        best_brotli_qval = qval;
+      }
+      Some(Encoding::Gzip) if qval > best_gzip_qval => {
+        best_gzip_qval = qval;
+      }
+      Some(Encoding::Identity) if qval > best_identity_qval => {
+        best_identity_qval = qval;
+      }
+      _ => {}
+    }
+  }
+
+  if best_brotli_qval >= best_gzip_qval
+    && best_brotli_qval >= best_identity_qval
+    && best_brotli_qval > 0.0
+  {
+    Encoding::Brotli
+  } else if best_gzip_qval >= best_identity_qval && best_gzip_qval > 0.0 {
+    Encoding::Gzip
+  } else {
+    Encoding::Identity
+  }
+}
 
 fn cache_control_has_no_transform(value: &str) -> Option<bool> {
   let mut no_transform = false;
@@ -150,16 +191,12 @@ pub struct Options {
   /// that the default configuration is subject to change in future versions.
   pub http2_builder_hook:
     Option<fn(http2::Builder<LocalExecutor>) -> http2::Builder<LocalExecutor>>,
-  /// By passing a hook function, the caller can customize various configuration
-  /// options for the HTTP/1 server.
-  /// See [`http1::Builder`] for what parameters can be customized.
-  ///
-  /// If `None`, the default configuration provided by hyper will be used. Note
-  /// that the default configuration is subject to change in future versions.
-  pub http1_builder_hook: Option<fn(http1::Builder) -> http1::Builder>,
 
   /// If `false`, the server will abort the request when the response is dropped.
   pub no_legacy_abort: bool,
+
+  /// If `true`, responses may be compressed based on request and response headers.
+  pub automatic_compression: bool,
 }
 
 #[cfg(not(feature = "default_property_extractor"))]
@@ -171,6 +208,7 @@ deno_core::extension!(
     op_http_accept,
     op_http_headers,
     op_http_serve_address_override,
+    op_http_serve_default_compression,
     op_http_shutdown,
     op_http_upgrade_websocket,
     op_http_websocket_accept_header,
@@ -181,23 +219,35 @@ deno_core::extension!(
     http_next::op_http_get_request_header,
     http_next::op_http_get_request_headers,
     http_next::op_http_request_on_cancel,
+    http_next::op_http_get_request_method<HTTP>,
+    http_next::op_http_get_request_url<HTTP>,
     http_next::op_http_get_request_method_and_url<HTTP>,
+    http_next::op_http_get_request_remote_addr<HTTP>,
     http_next::op_http_get_request_cancelled,
+    http_next::op_http_is_raw_request,
     http_next::op_http_read_request_body,
     http_next::op_http_try_take_full_request_body,
+    http_next::op_http_try_take_full_request_body_text,
     http_next::op_http_serve_on<HTTP>,
     http_next::op_http_serve<HTTP>,
     http_next::op_http_set_promise_complete,
+    http_next::op_http_drop_response_native,
+    http_next::op_http_new_response_native_headers,
+    http_next::op_http_new_response_native_static,
+    http_next::op_http_set_response_native,
     http_next::op_http_set_response_body_bytes,
+    http_next::op_http_set_response_body_bytes_with_headers,
     http_next::op_http_set_response_body_resource,
+    http_next::op_http_set_response_body_static_with_content_type,
+    http_next::op_http_set_response_body_static_with_default_header,
+    http_next::op_http_set_response_body_static_with_header,
     http_next::op_http_set_response_body_text,
+    http_next::op_http_set_response_body_text_with_headers,
     http_next::op_http_set_response_header,
     http_next::op_http_set_response_headers,
     http_next::op_http_set_response_trailers,
     http_next::op_http_upgrade_websocket_next,
     http_next::op_http_upgrade_raw,
-    http_next::op_http_upgrade_raw_connect,
-    http_next::op_http_upgrade_raw_get_head,
     http_next::op_http_ws_create_from_stream_resource,
     http_next::op_raw_write_vectored,
     http_next::op_can_write_vectored,
@@ -224,6 +274,7 @@ deno_core::extension!(
     op_http_accept,
     op_http_headers,
     op_http_serve_address_override,
+    op_http_serve_default_compression,
     op_http_shutdown,
     op_http_upgrade_websocket,
     op_http_websocket_accept_header,
@@ -235,23 +286,35 @@ deno_core::extension!(
     http_next::op_http_get_request_header,
     http_next::op_http_get_request_headers,
     http_next::op_http_request_on_cancel,
+    http_next::op_http_get_request_method<DefaultHttpPropertyExtractor>,
+    http_next::op_http_get_request_url<DefaultHttpPropertyExtractor>,
     http_next::op_http_get_request_method_and_url<DefaultHttpPropertyExtractor>,
+    http_next::op_http_get_request_remote_addr<DefaultHttpPropertyExtractor>,
     http_next::op_http_get_request_cancelled,
+    http_next::op_http_is_raw_request,
     http_next::op_http_read_request_body,
     http_next::op_http_try_take_full_request_body,
+    http_next::op_http_try_take_full_request_body_text,
     http_next::op_http_serve_on<DefaultHttpPropertyExtractor>,
     http_next::op_http_serve<DefaultHttpPropertyExtractor>,
     http_next::op_http_set_promise_complete,
+    http_next::op_http_drop_response_native,
+    http_next::op_http_new_response_native_headers,
+    http_next::op_http_new_response_native_static,
+    http_next::op_http_set_response_native,
     http_next::op_http_set_response_body_bytes,
+    http_next::op_http_set_response_body_bytes_with_headers,
     http_next::op_http_set_response_body_resource,
+    http_next::op_http_set_response_body_static_with_content_type,
+    http_next::op_http_set_response_body_static_with_default_header,
+    http_next::op_http_set_response_body_static_with_header,
     http_next::op_http_set_response_body_text,
+    http_next::op_http_set_response_body_text_with_headers,
     http_next::op_http_set_response_header,
     http_next::op_http_set_response_headers,
     http_next::op_http_set_response_trailers,
     http_next::op_http_upgrade_websocket_next,
     http_next::op_http_upgrade_raw,
-    http_next::op_http_upgrade_raw_connect,
-    http_next::op_http_upgrade_raw_get_head,
     http_next::op_http_ws_create_from_stream_resource,
     http_next::op_raw_write_vectored,
     http_next::op_can_write_vectored,
@@ -729,13 +792,16 @@ impl HttpConnResource {
     // A local task that polls the hyper connection future to completion.
     let task_fut = async move {
       let prefix = NetworkStreamPrefixCheck::new(io, HTTP2_PREFIX);
-      let (is_http2, io) = match prefix
-        .match_prefix()
-        .try_or_cancel(cancel_handle_for_prefix)
+      let Some((is_http2, io)) = (match prefix
+        .match_prefix_or_shutdown(
+          std::future::pending::<()>().or_cancel(cancel_handle_for_prefix),
+        )
         .await
       {
         Ok(result) => result,
         Err(err) => return Err(Arc::new(HttpConnError::from(err))),
+      }) else {
+        return Ok(());
       };
       let result = if is_http2 {
         serve_legacy_http2(io, service, cancel_handle_for_conn).await
@@ -784,14 +850,8 @@ impl HttpConnResource {
       let request = request_rx.await.ok()?;
       let accept_encoding = {
         let encodings =
-          fly_accept_encoding::encodings_iter_http(request.headers()).filter(
-            |r| matches!(r, Ok((Some(Encoding::Brotli | Encoding::Gzip), _))),
-          );
-
-        fly_accept_encoding::preferred(encodings)
-          .ok()
-          .flatten()
-          .unwrap_or(Encoding::Identity)
+          fly_accept_encoding::encodings_iter_http(request.headers());
+        preferred_supported_encoding(encodings)
       };
 
       let otel_info =
@@ -1787,6 +1847,14 @@ pub fn op_http_serve_address_override() -> (u8, String, u32, bool) {
   (0, String::new(), 0, false)
 }
 
+#[op2(fast)]
+pub fn op_http_serve_default_compression() -> bool {
+  match std::env::var("DENO_SERVE_AUTOMATIC_COMPRESSION") {
+    Ok(value) => !matches!(value.to_ascii_lowercase().as_str(), "0" | "false"),
+    Err(_) => false,
+  }
+}
+
 fn parse_serve_address(input: &str) -> (u8, String, u32, bool) {
   let (input, duplicate) = match input.strip_prefix("duplicate,") {
     Some(input) => (input, true),
@@ -1854,14 +1922,32 @@ fn parse_serve_address(input: &str) -> (u8, String, u32, bool) {
 
 pub static SERVE_NOTIFIER: Notify = Notify::const_new();
 
+/// Kind of server that fired the first "serving" notification, as reported
+/// by `op_http_notify_serving`. Zero until the notification fires.
+static SERVE_KIND: AtomicU32 = AtomicU32::new(0);
+
+/// Returns the kind of server that triggered [`SERVE_NOTIFIER`]:
+/// `"deno-serve"` for `Deno.serve`, `"node-http"` for a `node:http` or
+/// `node:https` server, `"node-http2"` for a `node:http2` server, or
+/// `None` when unknown.
+pub fn serving_server_kind() -> Option<&'static str> {
+  match SERVE_KIND.load(Ordering::Acquire) {
+    1 => Some("deno-serve"),
+    2 => Some("node-http"),
+    3 => Some("node-http2"),
+    _ => None,
+  }
+}
+
 #[op2(fast)]
-fn op_http_notify_serving() {
+fn op_http_notify_serving(#[smi] kind: u32) {
   static ONCE: AtomicBool = AtomicBool::new(false);
 
   if ONCE
     .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
     .is_ok()
   {
+    SERVE_KIND.store(kind, Ordering::Release);
     SERVE_NOTIFIER.notify_one();
   }
 }

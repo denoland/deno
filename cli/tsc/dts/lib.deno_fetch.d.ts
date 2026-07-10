@@ -36,12 +36,17 @@ interface FormData extends DomIterable<string, FormDataEntryValue> {
   set(name: string, value: string | Blob, fileName?: string): void;
 }
 
-/** The constructor object for {@linkcode FormData}, used to create a new,
- * empty `FormData` object that can be populated with fields and submitted with
- * {@linkcode fetch}.
+/** Provides a way to construct a set of key/value pairs representing form
+ * fields and their values, which can then be sent using the {@linkcode fetch}
+ * API. It uses the same format a form would use if the encoding type were set
+ * to `"multipart/form-data"`.
  *
- * @category Fetch */
-declare var FormData: {
+ * @see https://developer.mozilla.org/docs/Web/API/FormData
+ *
+ * @category Fetch
+ */
+declare var FormData: typeof globalThis extends
+  { document: any; FormData: infer T } ? T : {
   readonly prototype: FormData;
   new (): FormData;
 };
@@ -128,7 +133,8 @@ interface Headers extends DomIterable<string, string> {
  *
  * @category Fetch
  */
-declare var Headers: {
+declare var Headers: typeof globalThis extends
+  { document: any; Headers: infer T } ? T : {
   readonly prototype: Headers;
   new (init?: HeadersInit): Headers;
 };
@@ -149,6 +155,8 @@ type RequestCredentials = "include" | "omit" | "same-origin";
 type RequestMode = "cors" | "navigate" | "no-cors" | "same-origin";
 /** @category Fetch */
 type RequestRedirect = "error" | "follow" | "manual";
+/** @category Fetch */
+type RequestPriority = "auto" | "high" | "low";
 /** @category Fetch */
 type ReferrerPolicy =
   | ""
@@ -231,6 +239,11 @@ interface RequestInit {
    * restricted to same-origin URLs. Sets request's mode.
    */
   mode?: RequestMode;
+  /**
+   * A string indicating the relative priority of the request. Sets request's
+   * priority.
+   */
+  priority?: RequestPriority;
   /**
    * A string indicating whether request follows redirects, results in an error
    * upon encountering a redirect, or returns the redirect (in an opaque
@@ -351,7 +364,8 @@ interface Request extends Body {
  *
  * @category Fetch
  */
-declare var Request: {
+declare var Request: typeof globalThis extends
+  { document: any; Request: infer T } ? T : {
   readonly prototype: Request;
   new (input: RequestInfo | URL, init?: RequestInit): Request;
 };
@@ -391,7 +405,8 @@ interface Response extends Body {
  *
  * @category Fetch
  */
-declare var Response: {
+declare var Response: typeof globalThis extends
+  { document: any; Response: infer T } ? T : {
   readonly prototype: Response;
   new (body?: BodyInit | null, init?: ResponseInit): Response;
   json(data: unknown, init?: ResponseInit): Response;
@@ -496,13 +511,17 @@ interface EventSource extends EventTarget {
   ): void;
 }
 
-/** The constructor object for {@linkcode EventSource}, used to open a new
- * server-sent events connection to the given `url`. The object also exposes the
- * `CONNECTING`, `OPEN`, and `CLOSED` ready-state constants.
+/** The `EventSource` interface is a web content's interface to server-sent
+ * events. An `EventSource` instance opens a persistent connection to an HTTP
+ * server, which sends events in `text/event-stream` format. The connection
+ * remains open until closed by calling {@linkcode EventSource.close}.
+ *
+ * @see https://developer.mozilla.org/docs/Web/API/EventSource
  *
  * @category Fetch
  */
-declare var EventSource: {
+declare var EventSource: typeof globalThis extends
+  { document: any; EventSource: infer T } ? T : {
   prototype: EventSource;
   new (url: string | URL, eventSourceInitDict?: EventSourceInit): EventSource;
   readonly CONNECTING: 0;

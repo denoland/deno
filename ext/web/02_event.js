@@ -6,7 +6,7 @@
 // and impossible logic branches based on what Deno currently supports.
 
 (function () {
-const { core, primordials } = __bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const {
   ArrayPrototypeIncludes,
   ArrayPrototypeIndexOf,
@@ -23,6 +23,7 @@ const {
   MapPrototypeSet,
   ObjectCreate,
   ObjectDefineProperty,
+  ObjectFreeze,
   ObjectGetOwnPropertyDescriptor,
   ObjectGetPrototypeOf,
   ObjectPrototype,
@@ -140,8 +141,6 @@ const _path = Symbol("[[path]]");
 
 class Event {
   constructor(type, eventInitDict = { __proto__: null }) {
-    // TODO(lucacasonato): remove when this interface is spec aligned
-    this[SymbolToStringTag] = "Event";
     this[_canceledFlag] = false;
     this[_stopPropagationFlag] = false;
     this[_stopImmediatePropagationFlag] = false;
@@ -422,6 +421,14 @@ ObjectDefineProperty(Event, "BUBBLING_PHASE", {
 });
 
 const EventPrototype = Event.prototype;
+
+ObjectDefineProperty(EventPrototype, SymbolToStringTag, {
+  __proto__: null,
+  value: "Event",
+  writable: false,
+  enumerable: false,
+  configurable: true,
+});
 
 // Not spec compliant. The spec defines it as [LegacyUnforgeable]
 // but doing so has a big performance hit
@@ -1311,7 +1318,9 @@ class MessageEvent extends Event {
     this.data = eventInitDict?.data ?? null;
     const ports = eventInitDict?.ports;
     if (ports == null) {
-      this.ports = [];
+      // `ports` is a FrozenArray<MessagePort> per the HTML spec, so the
+      // exposed array must be read-only.
+      this.ports = ObjectFreeze([]);
     } else {
       // MessageEvent ports: iterable validation + per-element MessagePort
       // type check. Matches the messages Node asserts on so the
@@ -1348,7 +1357,8 @@ class MessageEvent extends Event {
         }
         arr[i++] = p;
       }
-      this.ports = arr;
+      // `ports` is a FrozenArray<MessagePort> per the HTML spec.
+      this.ports = ObjectFreeze(arr);
     }
     // origin and lastEventId are USVString per spec, so coerce to string
     // (Node's test passes numbers and expects string coercion).
@@ -1692,6 +1702,9 @@ function reportError(error) {
   webidl.requiredArguments(arguments.length, 1, prefix);
   reportException(error);
 }
+
+internals.defineEventHandler = defineEventHandler;
+internals.setEventTargetData = setEventTargetData;
 
 return {
   CloseEvent,

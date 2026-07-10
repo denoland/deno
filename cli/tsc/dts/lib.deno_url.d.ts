@@ -187,11 +187,17 @@ interface URLSearchParams {
   readonly size: number;
 }
 
-/** The constructor object for {@linkcode URLSearchParams}, used to create a new
- * `URLSearchParams` object for parsing and building URL query strings.
+/** The URLSearchParams interface defines utility methods to work with the
+ * query string of a URL. An object implementing URLSearchParams can directly
+ * be used in a `for...of` structure to iterate over key/value pairs in the
+ * same order as they appear in the query string.
  *
- * @category URL */
-declare var URLSearchParams: {
+ * @see https://developer.mozilla.org/docs/Web/API/URLSearchParams
+ *
+ * @category URL
+ */
+declare var URLSearchParams: typeof globalThis extends
+  { document: any; URLSearchParams: infer T } ? T : {
   readonly prototype: URLSearchParams;
   /**
    * Creates a new URLSearchParams object for parsing query strings.
@@ -490,139 +496,140 @@ interface URL {
  *
  * @category URL
  */
-declare var URL: {
-  readonly prototype: URL;
-  /**
-   * Creates a new URL object by parsing the specified URL string with an optional base URL.
-   * Throws a TypeError If the URL is invalid or if a relative URL is provided without a base.
-   *
-   * Use this to parse and validate URLs safely. Use this instead of string
-   * manipulation to ensure correct URL handling, proper encoding, and protection against
-   * security issues like path traversal attacks.
-   *
-   * @example
-   * ```ts
-   * // Creating a URL from an absolute URL string
-   * const url1 = new URL('https://example.org/foo');
-   * console.log(url1.href);  // Logs "https://example.org/foo"
-   *
-   * // Creating a URL from a relative URL string with a base URL
-   * const url2 = new URL('/bar', 'https://example.org');
-   * console.log(url2.href);  // Logs "https://example.org/bar"
-   *
-   * // Joining path segments safely (prevents path traversal)
-   * const baseUrl = 'https://api.example.com/v1';
-   * const userInput = '../secrets'; // Potentially malicious input
-   * const safeUrl = new URL(userInput, baseUrl);
-   * console.log(safeUrl.href); // Correctly resolves to "https://api.example.com/secrets"
-   *
-   * // Constructing URLs with proper encoding
-   * const search = 'query with spaces';
-   * const url3 = new URL('https://example.org/search');
-   * url3.searchParams.set('q', search); // Automatically handles URL encoding
-   * console.log(url3.href); // "https://example.org/search?q=query+with+spaces"
-   * ```
-   *
-   * @see https://developer.mozilla.org/docs/Web/API/URL/URL
-   */
-  new (url: string | URL, base?: string | URL): URL;
+declare var URL: typeof globalThis extends { document: any; URL: infer T } ? T
+  : {
+    readonly prototype: URL;
+    /**
+     * Creates a new URL object by parsing the specified URL string with an optional base URL.
+     * Throws a TypeError If the URL is invalid or if a relative URL is provided without a base.
+     *
+     * Use this to parse and validate URLs safely. Use this instead of string
+     * manipulation to ensure correct URL handling, proper encoding, and protection against
+     * security issues like path traversal attacks.
+     *
+     * @example
+     * ```ts
+     * // Creating a URL from an absolute URL string
+     * const url1 = new URL('https://example.org/foo');
+     * console.log(url1.href);  // Logs "https://example.org/foo"
+     *
+     * // Creating a URL from a relative URL string with a base URL
+     * const url2 = new URL('/bar', 'https://example.org');
+     * console.log(url2.href);  // Logs "https://example.org/bar"
+     *
+     * // Joining path segments safely (prevents path traversal)
+     * const baseUrl = 'https://api.example.com/v1';
+     * const userInput = '../secrets'; // Potentially malicious input
+     * const safeUrl = new URL(userInput, baseUrl);
+     * console.log(safeUrl.href); // Correctly resolves to "https://api.example.com/secrets"
+     *
+     * // Constructing URLs with proper encoding
+     * const search = 'query with spaces';
+     * const url3 = new URL('https://example.org/search');
+     * url3.searchParams.set('q', search); // Automatically handles URL encoding
+     * console.log(url3.href); // "https://example.org/search?q=query+with+spaces"
+     * ```
+     *
+     * @see https://developer.mozilla.org/docs/Web/API/URL/URL
+     */
+    new (url: string | URL, base?: string | URL): URL;
 
-  /**
-   * Parses a URL string or URL object and returns a URL object.
-   *
-   * @example
-   * ```ts
-   * const myURL = URL.parse('https://example.org');
-   * console.log(myURL.href);  // Logs "https://example.org/"
-   * console.log(myURL.hostname);  // Logs "example.org"
-   * console.log(myURL.pathname);  // Logs "/"
-   * console.log(myURL.protocol);  // Logs "https:"
-   *
-   * const baseURL = new URL('https://example.org');
-   * const myNewURL = URL.parse('/foo', baseURL);
-   * console.log(myNewURL.href);  // Logs "https://example.org/foo"
-   * console.log(myNewURL.hostname);  // Logs "example.org"
-   * console.log(myNewURL.pathname);  // Logs "/foo"
-   * console.log(myNewURL.protocol);  // Logs "https:"
-   * ```
-   *
-   * @see https://developer.mozilla.org/docs/Web/API/URL/parse_static
-   */
-  parse(url: string | URL, base?: string | URL): URL | null;
+    /**
+     * Parses a URL string or URL object and returns a URL object.
+     *
+     * @example
+     * ```ts
+     * const myURL = URL.parse('https://example.org');
+     * console.log(myURL.href);  // Logs "https://example.org/"
+     * console.log(myURL.hostname);  // Logs "example.org"
+     * console.log(myURL.pathname);  // Logs "/"
+     * console.log(myURL.protocol);  // Logs "https:"
+     *
+     * const baseURL = new URL('https://example.org');
+     * const myNewURL = URL.parse('/foo', baseURL);
+     * console.log(myNewURL.href);  // Logs "https://example.org/foo"
+     * console.log(myNewURL.hostname);  // Logs "example.org"
+     * console.log(myNewURL.pathname);  // Logs "/foo"
+     * console.log(myNewURL.protocol);  // Logs "https:"
+     * ```
+     *
+     * @see https://developer.mozilla.org/docs/Web/API/URL/parse_static
+     */
+    parse(url: string | URL, base?: string | URL): URL | null;
 
-  /**
-   * Returns a boolean value indicating if a URL string is valid and can be parsed.
-   *
-   * @example
-   * ```ts
-   * // Check if an absolute URL string is valid
-   * console.log(URL.canParse('https://example.org'));  // Logs true
-   * console.log(URL.canParse('https:://example.org'));  // Logs false
-   *
-   * // Check if a relative URL string with a base is valid
-   * console.log(URL.canParse('/foo', 'https://example.org'));  // Logs true
-   * console.log(URL.canParse('/foo', 'https:://example.org'));  // Logs false
-   * ```
-   *
-   * @see https://developer.mozilla.org/docs/Web/API/URL/canParse_static
-   */
-  canParse(url: string | URL, base?: string | URL): boolean;
+    /**
+     * Returns a boolean value indicating if a URL string is valid and can be parsed.
+     *
+     * @example
+     * ```ts
+     * // Check if an absolute URL string is valid
+     * console.log(URL.canParse('https://example.org'));  // Logs true
+     * console.log(URL.canParse('https:://example.org'));  // Logs false
+     *
+     * // Check if a relative URL string with a base is valid
+     * console.log(URL.canParse('/foo', 'https://example.org'));  // Logs true
+     * console.log(URL.canParse('/foo', 'https:://example.org'));  // Logs false
+     * ```
+     *
+     * @see https://developer.mozilla.org/docs/Web/API/URL/canParse_static
+     */
+    canParse(url: string | URL, base?: string | URL): boolean;
 
-  /**
-   * Creates a unique, temporary URL that represents a given Blob, File, or MediaSource object.
-   *
-   * This method is particularly useful for:
-   * - Creating URLs for dynamically generated content
-   * - Working with blobs in a browser context
-   * - Creating workers from dynamically generated code
-   * - Setting up temporary URL references for file downloads
-   *
-   * Note: Always call URL.revokeObjectURL() when you're done using the URL to prevent memory leaks.
-   *
-   * @example
-   * ```ts
-   * // Create a URL string for a Blob
-   * const blob = new Blob(["Hello, world!"], { type: "text/plain" });
-   * const url = URL.createObjectURL(blob);
-   * console.log(url);  // Logs something like "blob:null/1234-5678-9101-1121"
-   *
-   * // Dynamic web worker creation in Deno
-   * const workerCode = `
-   *   self.onmessage = (e) => {
-   *     self.postMessage(e.data.toUpperCase());
-   *   };
-   * `;
-   * const workerBlob = new Blob([workerCode], { type: "application/javascript" });
-   * const workerUrl = URL.createObjectURL(workerBlob);
-   * const worker = new Worker(workerUrl, { type: "module" });
-   *
-   * worker.onmessage = (e) => console.log(e.data);
-   * worker.postMessage("hello from deno");
-   *
-   * // Always revoke when done to prevent memory leaks
-   * URL.revokeObjectURL(workerUrl);
-   * ```
-   *
-   * @see https://developer.mozilla.org/docs/Web/API/URL/createObjectURL_static
-   */
-  createObjectURL(blob: Blob): string;
+    /**
+     * Creates a unique, temporary URL that represents a given Blob, File, or MediaSource object.
+     *
+     * This method is particularly useful for:
+     * - Creating URLs for dynamically generated content
+     * - Working with blobs in a browser context
+     * - Creating workers from dynamically generated code
+     * - Setting up temporary URL references for file downloads
+     *
+     * Note: Always call URL.revokeObjectURL() when you're done using the URL to prevent memory leaks.
+     *
+     * @example
+     * ```ts
+     * // Create a URL string for a Blob
+     * const blob = new Blob(["Hello, world!"], { type: "text/plain" });
+     * const url = URL.createObjectURL(blob);
+     * console.log(url);  // Logs something like "blob:null/1234-5678-9101-1121"
+     *
+     * // Dynamic web worker creation in Deno
+     * const workerCode = `
+     *   self.onmessage = (e) => {
+     *     self.postMessage(e.data.toUpperCase());
+     *   };
+     * `;
+     * const workerBlob = new Blob([workerCode], { type: "application/javascript" });
+     * const workerUrl = URL.createObjectURL(workerBlob);
+     * const worker = new Worker(workerUrl, { type: "module" });
+     *
+     * worker.onmessage = (e) => console.log(e.data);
+     * worker.postMessage("hello from deno");
+     *
+     * // Always revoke when done to prevent memory leaks
+     * URL.revokeObjectURL(workerUrl);
+     * ```
+     *
+     * @see https://developer.mozilla.org/docs/Web/API/URL/createObjectURL_static
+     */
+    createObjectURL(blob: Blob): string;
 
-  /**
-   * Revokes a previously created object URL, freeing the memory associated with it.
-   *
-   * Important for memory management in applications that create dynamic URLs.
-   * Once an object URL is revoked:
-   * - It can no longer be used to fetch the content it referenced
-   * - The browser/runtime is allowed to release the memory or resources associated with it
-   * - Workers created via the URL will continue to run, but the URL becomes invalid for new creations
-   *
-   * For security and performance in Deno applications, always revoke object URLs as soon as
-   * they're no longer needed, especially when processing large files or generating many URLs.
-   *
-   * @see https://developer.mozilla.org/docs/Web/API/URL/revokeObjectURL_static
-   */
-  revokeObjectURL(url: string): void;
-};
+    /**
+     * Revokes a previously created object URL, freeing the memory associated with it.
+     *
+     * Important for memory management in applications that create dynamic URLs.
+     * Once an object URL is revoked:
+     * - It can no longer be used to fetch the content it referenced
+     * - The browser/runtime is allowed to release the memory or resources associated with it
+     * - Workers created via the URL will continue to run, but the URL becomes invalid for new creations
+     *
+     * For security and performance in Deno applications, always revoke object URLs as soon as
+     * they're no longer needed, especially when processing large files or generating many URLs.
+     *
+     * @see https://developer.mozilla.org/docs/Web/API/URL/revokeObjectURL_static
+     */
+    revokeObjectURL(url: string): void;
+  };
 
 /** @category URL */
 interface URLPatternInit {
@@ -845,12 +852,11 @@ interface URLPattern {
  *
  * @category URL
  */
-declare var URLPattern: {
-  readonly prototype: URLPattern;
-  new (
-    input: URLPatternInput,
-    baseURL: string,
-    options?: URLPatternOptions,
-  ): URLPattern;
-  new (input?: URLPatternInput, options?: URLPatternOptions): URLPattern;
-};
+// NOTE: the `URLPattern` constructor value is intentionally provided by
+// `@types/node` rather than declared here. Unlike its sibling web globals,
+// `@types/node` declares `var URLPattern` *unconditionally* (no
+// `typeof globalThis extends { document: any; ... }` guard, unlike
+// `URLSearchParams`), so it cannot defer to a Deno declaration and a second
+// `declare var URLPattern` here would collide (TS2403) - this also breaks
+// stock `@types/node` + `lib.dom`. Deno keeps the `URLPattern` interface (the
+// instance type) and lets `@types/node` own the constructor.

@@ -465,12 +465,28 @@ impl ReplSession {
         .js_runtime
         .v8_isolate()
         .perform_microtask_checkpoint();
-      self.worker.js_runtime.poll_event_loop(
+      let poll_result = self.worker.js_runtime.poll_event_loop(
         cx,
         deno_core::PollEventLoopOptions {
           wait_for_inspector: true,
         },
-      )
+      );
+      // Flush inspector sessions again after the event-loop tick. A timer (or
+      // other async) callback that ran during `poll_event_loop` may have
+      // produced inspector notifications (e.g. `Runtime.exceptionThrown` from
+      // an uncaught error). These are queued on the session's outbound channel
+      // and are only delivered to the REPL's notification channel when the
+      // sessions are pumped. Without this second pump they would linger until
+      // the next evaluation, so an uncaught exception thrown from a timeout
+      // would not be printed until the user evaluated another expression (see
+      // https://github.com/denoland/deno/issues/21622). Delivering them here
+      // wakes the `notifications` stream in the REPL read loop right away.
+      self
+        .worker
+        .js_runtime
+        .inspector()
+        .poll_sessions_from_event_loop(cx);
+      poll_result
     })
     .await
   }
@@ -769,21 +785,43 @@ impl ReplSession {
     &mut self,
     expression: &str,
   ) -> Result<TsEvaluateResponse, AnyError> {
-    let parsed_source =
-      match parse_source_as(expression.to_string(), deno_ast::MediaType::Tsx) {
+    let tsx_result =
+      parse_source_as(expression.to_string(), deno_ast::MediaType::Tsx);
+    // Prefer a clean `.tsx` parse. Fall back to parsing as TypeScript when the
+    // `.tsx` parse fails outright, or when it only recovered by inserting an
+    // `Invalid` placeholder node (e.g. a TypeScript type assertion like
+    // `<string>x` is misread as JSX in `.tsx`).
+    let needs_ts_fallback = match &tsx_result {
+      Ok(parsed) => {
+        deno_resolver::emit::invalid_syntax_parse_diagnostics(parsed).is_some()
+      }
+      Err(_) => true,
+    };
+    let parsed_source = match tsx_result {
+      Ok(parsed) if !needs_ts_fallback => parsed,
+      tsx_result => match parse_source_as(
+        expression.to_string(),
+        deno_ast::MediaType::TypeScript,
+      ) {
         Ok(parsed) => parsed,
-        Err(err) => {
-          match parse_source_as(
-            expression.to_string(),
-            deno_ast::MediaType::TypeScript,
-          ) {
-            Ok(parsed) => parsed,
-            _ => {
-              return Err(err);
-            }
-          }
-        }
-      };
+        Err(ts_err) => match tsx_result {
+          // Both parses have errors; report the recovered `.tsx` diagnostics
+          // via the check below.
+          Ok(parsed) => parsed,
+          Err(_) => return Err(ts_err),
+        },
+      },
+    };
+
+    // If `swc` recovered from a syntax error by inserting an `Invalid`
+    // placeholder node, surface the precise parse diagnostic instead of
+    // transpiling to `<invalid>` and letting V8 report a misleading
+    // `Unexpected token '<'`. See denoland/deno#19457.
+    if let Some(diagnostics) =
+      deno_resolver::emit::invalid_syntax_parse_diagnostics(&parsed_source)
+    {
+      return Err(diagnostics.into());
+    }
 
     self
       .check_for_npm_or_node_imports(&parsed_source.program())
@@ -810,7 +848,8 @@ impl ReplSession {
           inline_sources: false,
           remove_comments: false,
         },
-      )?
+      )
+      .map_err(deno_resolver::emit::dedupe_transpile_error)?
       .into_source()
       .text;
 

@@ -1,21 +1,28 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
-import { core } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const { denoErrorToNodeError } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
 import {
   type Dirent,
   direntFromDeno,
-  getValidatedPath,
+  getValidatedPathToString,
 } from "ext:deno_node/internal/fs/utils.mjs";
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
-import { op_fs_read_dir_async, op_fs_read_dir_sync } from "ext:core/ops";
+import {
+  op_fs_read_dir_async,
+  op_fs_read_dir_async_next,
+  op_fs_read_dir_sync,
+} from "ext:core/ops";
 const lazyPath = core.createLazyLoader("node:path");
+
+const {
+  ArrayPrototypePush,
+  ArrayPrototypeShift,
+  Error,
+} = primordials;
 
 type readDirOptions = {
   encoding?: string;
@@ -30,6 +37,23 @@ type readDirCallbackDirent = (err: Error | null, files: Dirent[]) => void;
 type readDirBoth = (
   ...args: [Error] | [null, string[] | Dirent[] | Array<string | Dirent>]
 ) => void;
+
+async function collectReadDir(path: string): Promise<Deno.DirEntry[]> {
+  const rid = await op_fs_read_dir_async(path);
+  const entries: Deno.DirEntry[] = [];
+  try {
+    while (true) {
+      const entry = await op_fs_read_dir_async_next(rid);
+      if (entry === null) {
+        break;
+      }
+      ArrayPrototypePush(entries, entry);
+    }
+  } finally {
+    core.close(rid);
+  }
+  return entries;
+}
 
 // Mirrors Node's lib/internal/fs/utils.js getOptions(): a bare string options
 // arg is treated as { encoding: <string> }.
@@ -78,38 +102,42 @@ export function readdir(
   const options = normalizeOptions(
     typeof optionsOrCallback === "function" ? null : optionsOrCallback,
   );
-  path = getValidatedPath(path).toString();
+  path = getValidatedPathToString(path);
 
   if (!callback) throw new Error("No callback function supplied");
 
   validateEncoding(options?.encoding);
 
+  const { join, relative } = lazyPath();
   const result: Array<string | Dirent> = [];
   const dirs = [path];
   let current: string | undefined;
   (async () => {
-    while ((current = dirs.shift()) !== undefined) {
+    while ((current = ArrayPrototypeShift(dirs)) !== undefined) {
       try {
-        const entries = await op_fs_read_dir_async(current);
+        const entries = await collectReadDir(current);
 
         for (let i = 0; i < entries.length; i++) {
           const entry = entries[i];
           if (options?.recursive && entry.isDirectory) {
-            dirs.push(lazyPath().join(current, entry.name));
+            ArrayPrototypePush(dirs, join(current, entry.name));
           }
 
           if (options?.withFileTypes) {
             entry.parentPath = current;
-            result.push(applyDirentEncoding(
-              direntFromDeno(entry),
-              options?.encoding,
-            ));
+            ArrayPrototypePush(
+              result,
+              applyDirentEncoding(
+                direntFromDeno(entry),
+                options?.encoding,
+              ),
+            );
           } else {
             let name = entry.name;
             if (options?.recursive) {
-              name = lazyPath().relative(path, lazyPath().join(current, name));
+              name = relative(path, join(current, name));
             }
-            result.push(decode(name, options?.encoding));
+            ArrayPrototypePush(result, decode(name, options?.encoding));
           }
         }
       } catch (err) {
@@ -147,6 +175,8 @@ function decode(str: string, encoding?: string): string | Buffer {
   // lib/internal/fs/utils.js getDirent / readdir output.
   const buf = Buffer.from(str, "utf8");
   if (encoding === "buffer") return buf;
+  // No primordial exists for Buffer.prototype.toString with an encoding.
+  // deno-lint-ignore prefer-primordials
   return buf.toString(encoding as BufferEncoding);
 }
 
@@ -174,35 +204,39 @@ export function readdirSync(
   rawOptions?: readDirOptions | string,
 ): Array<string | Dirent> {
   const options = normalizeOptions(rawOptions);
-  path = getValidatedPath(path).toString();
+  path = getValidatedPathToString(path);
 
   validateEncoding(options?.encoding);
 
+  const { join, relative } = lazyPath();
   const result: Array<string | Dirent> = [];
   const dirs = [path];
   let current: string | undefined;
-  while ((current = dirs.shift()) !== undefined) {
+  while ((current = ArrayPrototypeShift(dirs)) !== undefined) {
     try {
       const entries = op_fs_read_dir_sync(current);
 
       for (let i = 0; i < entries.length; i++) {
         const entry = entries[i];
         if (options?.recursive && entry.isDirectory) {
-          dirs.push(lazyPath().join(current, entry.name));
+          ArrayPrototypePush(dirs, join(current, entry.name));
         }
 
         if (options?.withFileTypes) {
           entry.parentPath = current;
-          result.push(applyDirentEncoding(
-            direntFromDeno(entry),
-            options?.encoding,
-          ));
+          ArrayPrototypePush(
+            result,
+            applyDirentEncoding(
+              direntFromDeno(entry),
+              options?.encoding,
+            ),
+          );
         } else {
           let name = entry.name;
           if (options?.recursive) {
-            name = lazyPath().relative(path, lazyPath().join(current, name));
+            name = relative(path, join(current, name));
           }
-          result.push(decode(name, options?.encoding));
+          ArrayPrototypePush(result, decode(name, options?.encoding));
         }
       }
     } catch (e) {

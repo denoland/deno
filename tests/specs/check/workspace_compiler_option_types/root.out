@@ -1,5 +1,6 @@
 Check package-a[WILDCHAR]mod.ts
 Check package-c[WILDCHAR]mod.ts
+Check package-b[WILDCHAR]mod.ts
 TS2552 [ERROR]: Cannot find name 'myPackageBGlobal'. Did you mean 'myPackageAGlobal'?
 console.log(myPackageBGlobal);
             ~~~~~~~~~~~~~~~~
@@ -10,7 +11,6 @@ console.log(myPackageBGlobal);
                 ~~~~~~~~~~~~~~~~
         at file:///[WILDLINE]/package-a/globals.d.ts:1:13
 
-Check package-b[WILDCHAR]mod.ts
 TS2552 [ERROR]: Cannot find name 'myPackageAGlobal'. Did you mean 'myPackageBGlobal'?
 console.log(myPackageAGlobal);
             ~~~~~~~~~~~~~~~~

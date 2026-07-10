@@ -19,6 +19,7 @@ pub fn to_v8(item: TokenStream) -> Result<TokenStream, Error> {
   let input = parse2::<DeriveInput>(item)?;
   let span = input.span();
   let ident = input.ident;
+  let generics = input.generics;
 
   let out = match input.data {
     Data::Struct(data) => {
@@ -27,6 +28,7 @@ pub fn to_v8(item: TokenStream) -> Result<TokenStream, Error> {
 
       create_impl(
         ident,
+        &generics,
         quote! {
           let Self #fields = self;
           #body
@@ -34,7 +36,7 @@ pub fn to_v8(item: TokenStream) -> Result<TokenStream, Error> {
       )
     }
     Data::Enum(data) => {
-      create_impl(ident, r#enum::get_body(span, input.attrs, data)?)
+      create_impl(ident, &generics, r#enum::get_body(span, input.attrs, data)?)
     }
     Data::Union(_) => return Err(Error::new(span, "Unions are not supported")),
   };
@@ -98,15 +100,38 @@ fn convert_or_serde<T: quote::ToTokens>(
   }
 }
 
-fn create_impl(ident: impl ToTokens, body: TokenStream) -> TokenStream {
+fn create_impl(
+  ident: impl ToTokens,
+  generics: &syn::Generics,
+  body: TokenStream,
+) -> TokenStream {
+  let (_, ty_generics, where_clause) = generics.split_for_impl();
+
+  // The `ToV8<'a>` impl needs a lifetime for the produced `v8::Local<'a, _>`.
+  // If the type already declares a lifetime (e.g. it holds `v8::Local<'a, _>`
+  // fields), reuse the first one so the impl reads `impl<'a> ToV8<'a> for
+  // Ty<'a>`. Otherwise introduce a fresh `'a` in the impl generics.
+  let mut impl_generics = generics.clone();
+  let lifetime = match generics.lifetimes().next() {
+    Some(lifetime) => lifetime.lifetime.clone(),
+    None => {
+      let lifetime = syn::Lifetime::new("'a", proc_macro2::Span::call_site());
+      impl_generics
+        .params
+        .insert(0, syn::LifetimeParam::new(lifetime.clone()).into());
+      lifetime
+    }
+  };
+  let (impl_generics, _, _) = impl_generics.split_for_impl();
+
   quote! {
-    impl<'a> ::deno_core::convert::ToV8<'a> for #ident {
+    impl #impl_generics ::deno_core::convert::ToV8<#lifetime> for #ident #ty_generics #where_clause {
       type Error = ::deno_error::JsErrorBox;
 
       fn to_v8<'i>(
         self,
-        __scope: &mut ::deno_core::v8::PinScope<'a, 'i>,
-      ) -> Result<::deno_core::v8::Local<'a, ::deno_core::v8::Value>, Self::Error>
+        __scope: &mut ::deno_core::v8::PinScope<#lifetime, 'i>,
+      ) -> Result<::deno_core::v8::Local<#lifetime, ::deno_core::v8::Value>, Self::Error>
       {
         #body
       }

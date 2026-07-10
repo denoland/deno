@@ -1,15 +1,7 @@
 {
   "formdata": {
-    "append.any.html": {
-      "expectedFailures": [
-        "testFormDataAppendEmptyBlob"
-      ]
-    },
-    "append.any.worker.html": {
-      "expectedFailures": [
-        "testFormDataAppendEmptyBlob"
-      ]
-    },
+    "append.any.html": true,
+    "append.any.worker.html": true,
     "constructor.any.html": true,
     "constructor.any.worker.html": true,
     "delete.any.html": true,
@@ -236,6 +228,7 @@
       "XMLHttpRequestEventTarget interface: new XMLHttpRequest() must inherit property \"onload\" with the proper type",
       "XMLHttpRequestEventTarget interface: new XMLHttpRequest() must inherit property \"ontimeout\" with the proper type",
       "XMLHttpRequestEventTarget interface: new XMLHttpRequest() must inherit property \"onloadend\" with the proper type",
+      "FormData interface: existence and properties of interface object",
       "FormData interface object length",
       "FormData interface: operation append(USVString, USVString)",
       "FormData interface: operation append(USVString, Blob, optional USVString)",
@@ -356,6 +349,7 @@
       "XMLHttpRequestEventTarget interface: new XMLHttpRequest() must inherit property \"onload\" with the proper type",
       "XMLHttpRequestEventTarget interface: new XMLHttpRequest() must inherit property \"ontimeout\" with the proper type",
       "XMLHttpRequestEventTarget interface: new XMLHttpRequest() must inherit property \"onloadend\" with the proper type",
+      "FormData interface: existence and properties of interface object",
       "FormData interface object length",
       "FormData interface: operation append(USVString, USVString)",
       "FormData interface: operation append(USVString, Blob, optional USVString)",
@@ -522,13 +516,11 @@
   "security-consideration.sub.html": false,
   "send-blob-with-no-mime-type.html": false,
   "sync-xhr-and-window-onload.html": false,
-  "sync-xhr-supported-by-feature-policy.html": false,
   "template-element.html": false,
   "thrown-error-in-events.html": false,
   "timeout-multiple-fetches.html": false,
   "xmlhttprequest-sync-block-defer-scripts.html": false,
   "xmlhttprequest-sync-block-scripts.html": false,
-  "xmlhttprequest-sync-default-feature-policy.sub.html": false,
   "xmlhttprequest-sync-not-hang-scriptloader.html": false,
   "xmlhttprequest-timeout-aborted.html?aborted%20immediately%20after%20send()": false,
   "xmlhttprequest-timeout-aborted.html?call%20abort()%20after%20TIME_NORMAL_LOAD": false,

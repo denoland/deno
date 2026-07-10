@@ -905,6 +905,70 @@ dbTest("list prefix with small batch size reverse", async (db) => {
   ]);
 });
 
+dbTest("list prefix with non-integer batch size throws", async (db) => {
+  await setupData(db);
+  await assertRejects(
+    async () => await collect(db.list({ prefix: ["a"] }, { batchSize: 2.3 })),
+    Error,
+    "batchSize must be a positive integer",
+  );
+});
+
+dbTest("list prefix with non-integer limit throws", async (db) => {
+  await setupData(db);
+  await assertRejects(
+    async () => await collect(db.list({ prefix: ["a"] }, { limit: 2.3 })),
+    Error,
+    "Limit must be a positive integer",
+  );
+});
+
+dbTest("set with invalid expireIn throws", async (db) => {
+  // A non-finite expireIn (notably Infinity) used to panic the process when
+  // the native layer computed the absolute expiry; these must be rejected.
+  for (const expireIn of [-1, 1.5, NaN, Infinity]) {
+    await assertRejects(
+      () => db.set(["a"], 1, { expireIn }),
+      TypeError,
+      "expireIn must be a non-negative integer",
+    );
+    assertThrows(
+      () => db.atomic().set(["a"], 1, { expireIn }),
+      TypeError,
+      "expireIn must be a non-negative integer",
+    );
+    assertThrows(
+      () => db.atomic().mutate({ type: "set", key: ["a"], value: 1, expireIn }),
+      TypeError,
+      "expireIn must be a non-negative integer",
+    );
+  }
+  // A valid expireIn still works.
+  const res = await db.set(["a"], 1, { expireIn: 1000 });
+  assert(res.ok);
+});
+
+dbTest(
+  "set with too-large expireIn throws instead of panicking",
+  async (db) => {
+    // A large but valid integer passes the JS integer check, but computing the
+    // absolute expiry overflows in the native layer. It must surface as an
+    // error rather than panic the process.
+    await assertRejects(
+      () => db.set(["a"], 1, { expireIn: Number.MAX_SAFE_INTEGER }),
+      TypeError,
+      "expireIn is too large",
+    );
+    await assertRejects(
+      () =>
+        db.atomic().set(["a"], 1, { expireIn: Number.MAX_SAFE_INTEGER })
+          .commit(),
+      TypeError,
+      "expireIn is too large",
+    );
+  },
+);
+
 dbTest("list prefix with small batch size and limit", async (db) => {
   const versionstamp = await setupData(db);
   const entries = await collect(
@@ -2209,38 +2273,66 @@ Deno.test({
 Deno.test({
   name: "remote backend invalid format",
   async fn() {
-    const db = await Deno.openKv(
-      "http://localhost:4545/kv_remote_authorize_invalid_format",
-    );
-
+    // The connection is validated when it is opened, so an endpoint that does
+    // not return valid KV Connect metadata fails fast at `openKv` time rather
+    // than hanging or producing an opaque error on first use.
+    // See https://github.com/denoland/deno/issues/22248.
     await assertRejects(
       async () => {
-        await db.set(["some-key"], 1);
+        await Deno.openKv(
+          "http://localhost:4545/kv_remote_authorize_invalid_format",
+        );
       },
       Error,
-      "Failed to parse metadata: ",
+      "Could not open Deno KV database",
     );
-
-    db.close();
   },
 });
 
 Deno.test({
   name: "remote backend invalid version",
   async fn() {
-    const db = await Deno.openKv(
-      "http://localhost:4545/kv_remote_authorize_invalid_version",
-    );
-
     await assertRejects(
       async () => {
-        await db.set(["some-key"], 1);
+        await Deno.openKv(
+          "http://localhost:4545/kv_remote_authorize_invalid_version",
+        );
       },
       Error,
-      "Failed to parse metadata: unsupported metadata version: 1000",
+      "unsupported KV Connect metadata version 1000",
     );
+  },
+});
 
-    db.close();
+Deno.test({
+  name: "remote backend invalid url",
+  async fn() {
+    // A URL that does not point at a KV Connect endpoint at all (here a 404)
+    // should be rejected when the connection is opened. Assert on the status so
+    // the test pins the non-2xx branch rather than the prefix shared by every
+    // failure mode.
+    await assertRejects(
+      async () => {
+        await Deno.openKv("http://localhost:4545/not_a_kv_endpoint");
+      },
+      Error,
+      "responded with status 404",
+    );
+  },
+});
+
+Deno.test({
+  name: "remote backend unreachable",
+  async fn() {
+    // A host that refuses the connection should fail fast at open time via the
+    // network-error branch, rather than hanging or erroring on first use.
+    await assertRejects(
+      async () => {
+        await Deno.openKv("http://localhost:1");
+      },
+      Error,
+      "failed to connect to",
+    );
   },
 });
 

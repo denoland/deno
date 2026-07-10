@@ -20,6 +20,7 @@ const {
   op_encoding_decode,
   op_encoding_decode_single,
   op_encoding_decode_utf8,
+  op_encoding_decode_utf8_ascii_only,
   op_encoding_encode_into,
   op_encoding_encode_into_fallback,
   op_encoding_new_decoder,
@@ -211,6 +212,19 @@ class TextDecoder {
         );
       }
 
+      // Streaming UTF-8 fast path. While the decoder has no pending state
+      // (`#handle === null`), an ASCII-only chunk decodes the same way
+      // single-pass would: there are no partial codepoints to carry over,
+      // so we can hand V8 the bytes directly as a one-byte string and skip
+      // both the `Vec<u16>` allocation and the UTF-8 -> UTF-16 conversion
+      // in `op_encoding_decode`. `op_encoding_decode_utf8_ascii_only`
+      // returns `null` for any non-ASCII byte, in which case we fall
+      // through to the general streaming op (which will create the handle).
+      if (stream && this.#utf8SinglePass && this.#handle === null) {
+        const ascii = op_encoding_decode_utf8_ascii_only(input);
+        if (ascii !== null) return ascii;
+      }
+
       if (this.#handle === null) {
         this.#handle = op_encoding_new_decoder(
           this.#encoding,
@@ -357,18 +371,16 @@ class TextDecoderStream {
     this.#transform = new TransformStream({
       // The transform and flush functions need access to TextDecoderStream's
       // `this`, so they are defined as functions rather than methods.
+      // Synchronous transform: the TransformStream fast path resolves the write
+      // without a per-chunk promise or microtask hop when transform() returns
+      // undefined. Throws propagate to the stream via transformAlgorithm.
       transform: (chunk, controller) => {
-        try {
-          chunk = webidl.converters.BufferSource(chunk, prefix, "chunk", {
-            allowShared: true,
-          });
-          const decoded = this.#decoder.decode(chunk, { stream: true });
-          if (decoded) {
-            controller.enqueue(decoded);
-          }
-          return PromiseResolve();
-        } catch (err) {
-          return PromiseReject(err);
+        chunk = webidl.converters.BufferSource(chunk, prefix, "chunk", {
+          allowShared: true,
+        });
+        const decoded = this.#decoder.decode(chunk, { stream: true });
+        if (decoded) {
+          controller.enqueue(decoded);
         }
       },
       flush: (controller) => {
@@ -458,31 +470,29 @@ class TextEncoderStream {
     this.#transform = new TransformStream({
       // The transform and flush functions need access to TextEncoderStream's
       // `this`, so they are defined as functions rather than methods.
+      // Synchronous transform: the TransformStream fast path resolves the write
+      // without a per-chunk promise or microtask hop when transform() returns
+      // undefined. Throws propagate to the stream via transformAlgorithm.
       transform: (chunk, controller) => {
-        try {
-          chunk = webidl.converters.DOMString(chunk);
-          if (chunk === "") {
-            return PromiseResolve();
-          }
-          if (this.#pendingHighSurrogate !== null) {
-            chunk = this.#pendingHighSurrogate + chunk;
-          }
-          const lastCodeUnit = StringPrototypeCharCodeAt(
-            chunk,
-            chunk.length - 1,
-          );
-          if (0xD800 <= lastCodeUnit && lastCodeUnit <= 0xDBFF) {
-            this.#pendingHighSurrogate = StringPrototypeSlice(chunk, -1);
-            chunk = StringPrototypeSlice(chunk, 0, -1);
-          } else {
-            this.#pendingHighSurrogate = null;
-          }
-          if (chunk) {
-            controller.enqueue(core.encode(chunk));
-          }
-          return PromiseResolve();
-        } catch (err) {
-          return PromiseReject(err);
+        chunk = webidl.converters.DOMString(chunk);
+        if (chunk === "") {
+          return;
+        }
+        if (this.#pendingHighSurrogate !== null) {
+          chunk = this.#pendingHighSurrogate + chunk;
+        }
+        const lastCodeUnit = StringPrototypeCharCodeAt(
+          chunk,
+          chunk.length - 1,
+        );
+        if (0xD800 <= lastCodeUnit && lastCodeUnit <= 0xDBFF) {
+          this.#pendingHighSurrogate = StringPrototypeSlice(chunk, -1);
+          chunk = StringPrototypeSlice(chunk, 0, -1);
+        } else {
+          this.#pendingHighSurrogate = null;
+        }
+        if (chunk) {
+          controller.enqueue(core.encode(chunk));
         }
       },
       flush: (controller) => {

@@ -4,6 +4,7 @@
 const { core, primordials } = __bootstrap;
 const {
   op_cache_delete,
+  op_cache_keys,
   op_cache_match,
   op_cache_put,
   op_cache_storage_delete,
@@ -27,7 +28,9 @@ const {
   RequestPrototype,
   toInnerRequest,
 } = core.loadExtScript("ext:deno_fetch/23_request.js");
-const { toInnerResponse } = core.loadExtScript("ext:deno_fetch/23_response.js");
+const { toInnerResponse, wireHeaderList } = core.loadExtScript(
+  "ext:deno_fetch/23_response.js",
+);
 const { URLPrototype } = core.loadExtScript("ext:deno_web/00_url.js");
 const { getHeader } = core.loadExtScript("ext:deno_fetch/20_headers.js");
 const {
@@ -196,7 +199,7 @@ class Cache {
         cacheId: this[_id],
         // deno-lint-ignore prefer-primordials
         requestUrl: reqUrl.toString(),
-        responseHeaders: innerResponse.headerList,
+        responseHeaders: wireHeaderList(innerResponse),
         requestHeaders: innerRequest.headerList,
         responseStatus: innerResponse.status,
         responseStatusText: innerResponse.statusMessage,
@@ -251,6 +254,49 @@ class Cache {
       cacheId: this[_id],
       requestUrl: r.url,
     });
+  }
+
+  /** See https://w3c.github.io/ServiceWorker/#cache-keys */
+  async keys(request, _options) {
+    webidl.assertBranded(this, CachePrototype);
+    const prefix = "Failed to execute 'keys' on 'Cache'";
+    // Step 1-2.
+    let requestUrl = null;
+    if (request !== undefined) {
+      request = webidl.converters["RequestInfo_DOMString"](
+        request,
+        prefix,
+        "Argument 1",
+      );
+      let r = null;
+      if (ObjectPrototypeIsPrototypeOf(RequestPrototype, request)) {
+        r = request;
+        // Only GET requests are stored in the cache.
+        if (request.method !== "GET") {
+          return [];
+        }
+      } else {
+        r = new Request(request);
+      }
+      // Remove the fragment from the request URL before matching.
+      const url = new URL(r.url);
+      url.hash = "";
+      // deno-lint-ignore prefer-primordials
+      requestUrl = url.toString();
+    }
+
+    // Step 5: return the request keys in insertion order. When a request is
+    // given, the backend filters by URL so we don't fetch the whole cache.
+    const entries = await op_cache_keys({ cacheId: this[_id], requestUrl });
+    const requests = [];
+    for (let i = 0; i < entries.length; ++i) {
+      const entry = entries[i];
+      ArrayPrototypePush(
+        requests,
+        new Request(entry.requestUrl, { headers: entry.requestHeaders }),
+      );
+    }
+    return requests;
   }
 
   /** See https://w3c.github.io/ServiceWorker/#cache-matchall

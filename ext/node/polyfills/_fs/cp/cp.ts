@@ -1,8 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Adapted from Node.js. Copyright Joyent, Inc. and other Node contributors.
 
-// deno-lint-ignore-file prefer-primordials
-
 (function () {
 const { core, primordials } = __bootstrap;
 const lazyPath = core.createLazyLoader("node:path");
@@ -24,6 +22,7 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const {
   op_node_cp_check_paths_recursive,
+  op_node_cp_fast,
   op_node_cp_on_file,
   op_node_cp_on_link,
   op_node_cp_validate_and_prepare,
@@ -51,6 +50,7 @@ const CpEntryFlags = {
 const {
   Number,
   PromiseResolve,
+  SymbolAsyncIterator,
 } = primordials;
 
 function throwCpError(err) {
@@ -139,7 +139,13 @@ async function cpFn(
   opts,
 ) {
   try {
-    if (opts.filter && !(await opts.filter(src, dest))) return;
+    if (canUseNativeFastPath(opts)) {
+      await op_node_cp_fast(src, dest, opts.recursive);
+      return;
+    }
+
+    const filter = opts.filter;
+    if (filter && !(await filter(src, dest))) return;
     const statInfo = await op_node_cp_validate_and_prepare(
       src,
       dest,
@@ -157,6 +163,16 @@ async function cpFn(
 
     throwCpError(err);
   }
+}
+
+function canUseNativeFastPath(opts) {
+  return opts.filter === undefined &&
+    opts.dereference === false &&
+    opts.force === true &&
+    opts.errorOnExist === false &&
+    opts.preserveTimestamps === false &&
+    opts.verbatimSymlinks === false &&
+    opts.mode === 0;
 }
 
 function getStatsForCopy(
@@ -265,11 +281,18 @@ async function copyDir(
   dest,
   opts,
 ) {
+  const { join } = lazyPath();
+  const filter = opts.filter;
   const dir = await lazyFsPromises().opendirPromise(src);
-  for await (const { name } of dir) {
-    const srcItem = lazyPath().join(src, name);
-    const destItem = lazyPath().join(dest, name);
-    if (opts.filter && !(await opts.filter(srcItem, destItem))) continue;
+  const iterator = dir[SymbolAsyncIterator]();
+  while (true) {
+    // deno-lint-ignore prefer-primordials
+    const { done, value } = await iterator.next();
+    if (done) break;
+    const { name } = value;
+    const srcItem = join(src, name);
+    const destItem = join(dest, name);
+    if (filter && !(await filter(srcItem, destItem))) continue;
     const statInfo = await op_node_cp_check_paths_recursive(
       srcItem,
       destItem,

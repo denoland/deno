@@ -216,9 +216,13 @@ impl<
         },
         denied: match &args.allowed {
           PackagesAllowedScripts::All | PackagesAllowedScripts::Some(_) => {
-            vec![]
+            args.denied.clone()
           }
-          PackagesAllowedScripts::None => jsr_deps_to_reqs(allow_scripts.deny),
+          PackagesAllowedScripts::None => {
+            let mut denied = jsr_deps_to_reqs(allow_scripts.deny);
+            denied.extend(args.denied.clone());
+            denied
+          }
         },
         initial_cwd: args.initial_cwd.clone(),
         root_dir: args.root_dir.clone(),
@@ -394,6 +398,11 @@ impl<
               lifecycle_scripts: self.lifecycle_scripts_config()?.clone(),
               system_info: self.resolver_factory.npm_system_info().clone(),
               workspace_link_packages: workspace_npm_link_packages.clone(),
+              jsr_deps_in_node_modules: workspace_factory
+                .workspace_directory()?
+                .workspace
+                .jsr_deps_in_node_modules()
+                .unwrap_or(false),
             },
           )))
         }

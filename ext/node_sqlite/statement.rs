@@ -45,8 +45,15 @@ impl<'a> ToV8<'a> for RunStatementResult {
       v8::Number::new(scope, self.last_insert_rowid as f64).into()
     };
 
+    // create_data_property defines own data properties directly, avoiding the
+    // generic [[Set]] runtime path (property-key lookup + hidden-class
+    // transitions) that showed up as ~half the cost of a `run()` in profiles.
     obj
-      .set(scope, last_insert_row_id_str.into(), last_insert_row_id)
+      .create_data_property(
+        scope,
+        last_insert_row_id_str.into(),
+        last_insert_row_id,
+      )
       .unwrap();
 
     let changes_str = CHANGES.v8_string(scope).unwrap();
@@ -56,7 +63,9 @@ impl<'a> ToV8<'a> for RunStatementResult {
       v8::Number::new(scope, self.changes as f64).into()
     };
 
-    obj.set(scope, changes_str.into(), changes).unwrap();
+    obj
+      .create_data_property(scope, changes_str.into(), changes)
+      .unwrap();
     Ok(obj.into())
   }
 }
@@ -282,8 +291,12 @@ pub struct StatementSync {
 
 pub(crate) struct IteratorContext {
   statement: *const StatementSync,
+  statement_ref: v8::Global<v8::Value>,
   expected_generation: u64,
   finished: Cell<bool>,
+  finalized_functions: Cell<u8>,
+  next_func: RefCell<Option<v8::Weak<v8::Function>>>,
+  return_func: RefCell<Option<v8::Weak<v8::Function>>>,
 }
 
 impl Drop for StatementSync {
@@ -316,6 +329,31 @@ impl Drop for StatementSync {
         ffi::sqlite3_finalize(ptr);
       }
     }
+  }
+}
+
+fn release_iterator_context(ctx_ptr: *mut IteratorContext) {
+  // SAFETY: `ctx_ptr` was allocated with `Box::into_raw` in `iterate()` and
+  // remains valid until both callback functions have been finalized.
+  let ctx = unsafe { &*ctx_ptr };
+  let finalized_functions = ctx.finalized_functions.get() + 1;
+  ctx.finalized_functions.set(finalized_functions);
+  if finalized_functions != 2 {
+    return;
+  }
+
+  // SAFETY: `ctx.statement_ref` keeps the JS wrapper, and therefore this
+  // cppgc object, alive until the context is dropped below.
+  let statement = unsafe { &*ctx.statement };
+  statement
+    .iter_contexts
+    .borrow_mut()
+    .retain(|ptr| *ptr != ctx_ptr);
+
+  // SAFETY: Both callback functions are gone, so no `v8::External` can reach
+  // this context again.
+  unsafe {
+    drop(Box::from_raw(ctx_ptr));
   }
 }
 
@@ -668,13 +706,44 @@ impl StatementSync {
     #[varargs] params: Option<&v8::FunctionCallbackArguments>,
   ) -> Result<v8::Local<'a, v8::Array>, SqliteError> {
     self.invalidate_iter();
-    let mut arr = vec![];
 
     self.bind_params(scope, params)?;
 
     let _reset = ResetGuard(self);
-    while let Some(result) = self.read_row(scope)? {
-      arr.push(result);
+
+    // Column names are constant across every row of the result set. Build the
+    // V8 name strings once here and reuse them for all rows, instead of
+    // re-creating them per row (as the generic `read_row` does): this drops a
+    // `sqlite3_column_name` FFI call and a string allocation per column per
+    // row, and gives every row object the same shape (hidden class).
+    let num_cols = self.column_count()?;
+    let return_arrays = self.return_arrays();
+    let mut names = Vec::with_capacity(num_cols as usize);
+    if !return_arrays {
+      for i in 0..num_cols {
+        let name = self.column_name(i)?;
+        names.push(
+          v8::String::new_from_utf8(scope, name, v8::NewStringType::Normal)
+            .unwrap()
+            .into(),
+        );
+      }
+    }
+    let null = v8::null(scope).into();
+
+    let mut arr = vec![];
+    while !self.step()? {
+      let mut values = Vec::with_capacity(num_cols as usize);
+      for i in 0..num_cols {
+        values.push(self.column_value(i, scope)?);
+      }
+      let row = if return_arrays {
+        v8::Array::new_with_elements(scope, &values).into()
+      } else {
+        v8::Object::with_prototype_and_properties(scope, null, &names, &values)
+          .into()
+      };
+      arr.push(row);
     }
 
     let arr = v8::Array::new_with_elements(scope, &arr);
@@ -710,15 +779,24 @@ impl StatementSync {
 
     self.bind_params(scope, params)?;
 
-    // Capture the current generation so the iterator can detect invalidation
+    let args = params.expect("StatementSync#iterate expected callback args");
+    let statement_ref: v8::Local<v8::Value> = args.this().into();
+
+    // Capture the current generation so the iterator can detect invalidation.
+    // Store a strong handle to the JS wrapper in the callback data itself so
+    // detached `next`/`return` functions keep the native statement alive.
     let iter_ctx = Box::into_raw(Box::new(IteratorContext {
       statement: self as *const StatementSync,
+      statement_ref: v8::Global::new(scope, statement_ref),
       expected_generation: self.iter_generation.get(),
       finished: Cell::new(false),
+      finalized_functions: Cell::new(0),
+      next_func: RefCell::new(None),
+      return_func: RefCell::new(None),
     }));
 
-    // Track the allocation so it can be freed on Drop if the iterator is
-    // abandoned (i.e. `return()` is never called).
+    // Track the allocation so it can be freed on Drop if the isolate tears down
+    // before the weak function finalizers run.
     self.iter_contexts.borrow_mut().push(iter_ctx);
 
     let iterate_next = |scope: &mut v8::PinScope<'_, '_>,
@@ -727,14 +805,13 @@ impl StatementSync {
       let external = v8::Local::<v8::External>::try_from(args.data())
         .expect("Iterator#next expected external data");
       // SAFETY: `external` wraps a pointer allocated via `Box::into_raw` in
-      // `iterate()`. It remains valid because it is either freed in
-      // `iterate_return` (after which `next()` won't be called) or in
-      // `StatementSync::drop`.
+      // `iterate()`. It remains valid while this callback function is live
+      // because the context is released by weak finalizers on the generated
+      // `next` and `return` functions.
       let ctx = unsafe { &*(external.value() as *const IteratorContext) };
-      // SAFETY: The iterator object holds a reference to the statement's JS
-      // wrapper via the `__statement_ref` property, which prevents the
-      // StatementSync cppgc object from being garbage collected while the
-      // iterator is alive.
+      // SAFETY: The context holds a strong reference to the statement's JS
+      // wrapper, which prevents the StatementSync cppgc object from being
+      // garbage collected while detached callbacks are alive.
       let statement = unsafe { &*ctx.statement };
 
       let names = &[
@@ -799,15 +876,15 @@ impl StatementSync {
         .expect("Iterator#return expected external data");
       let ctx_ptr = external.value() as *const IteratorContext;
       // SAFETY: `ctx_ptr` was allocated via `Box::into_raw` in `iterate()`
-      // and the iterator object's `__statement_ref` property prevents the
-      // StatementSync from being garbage collected while this iterator exists.
+      // and remains valid while this callback function is live because the
+      // generated functions' weak finalizers release it.
       let ctx = unsafe { &*ctx_ptr };
-      // SAFETY: The statement pointer is kept alive by `__statement_ref`.
+      // SAFETY: The statement pointer is kept alive by `ctx.statement_ref`.
       let statement = unsafe { &*ctx.statement };
 
       // Note: We do NOT free the IteratorContext here because `next()` may
       // still be called after `return()` (e.g., the JS protocol allows it).
-      // All IteratorContext allocations are freed in StatementSync::drop.
+      // It will be freed after both generated callback functions are collected.
 
       ctx.finished.set(true);
       statement.is_iter_finished.set(true);
@@ -836,6 +913,23 @@ impl StatementSync {
       .build(scope)
       .expect("Failed to create Iterator#return function");
 
+    let weak_next = v8::Weak::with_finalizer(
+      scope,
+      next_func,
+      Box::new(move |_| release_iterator_context(iter_ctx)),
+    );
+    let weak_return = v8::Weak::with_finalizer(
+      scope,
+      return_func,
+      Box::new(move |_| release_iterator_context(iter_ctx)),
+    );
+    // SAFETY: `iter_ctx` was allocated above and is kept alive by the weak
+    // handles stored inside it.
+    unsafe {
+      *(*iter_ctx).next_func.borrow_mut() = Some(weak_next);
+      *(*iter_ctx).return_func.borrow_mut() = Some(weak_return);
+    }
+
     let global = scope.get_current_context().global(scope);
     let iter_str = ITERATOR.v8_string(scope).unwrap();
     let js_iterator: v8::Local<v8::Object> = {
@@ -852,25 +946,25 @@ impl StatementSync {
     let names = &[
       NEXT.v8_string(scope).unwrap().into(),
       RETURN.v8_string(scope).unwrap().into(),
-      __STATEMENT_REF.v8_string(scope).unwrap().into(),
     ];
-
-    // Get the cppgc wrapper object to keep the statement alive
-    // We store a reference to the statement object on the iterator to prevent
-    // the GC from collecting it while the iterator is still in use.
-    let statement_ref = if let Some(args) = params {
-      args.this().into()
-    } else {
-      v8::undefined(scope).into()
-    };
-
-    let values = &[next_func.into(), return_func.into(), statement_ref];
+    let values = &[next_func.into(), return_func.into()];
     let iterator = v8::Object::with_prototype_and_properties(
       scope,
       js_iterator_proto,
       names,
       values,
     );
+    // SAFETY: `iter_ctx` was allocated above and remains alive at least until
+    // both generated callback functions are finalized.
+    let statement_ref =
+      v8::Local::new(scope, unsafe { &(*iter_ctx).statement_ref });
+    let attrs = v8::PropertyAttribute::READ_ONLY
+      | v8::PropertyAttribute::DONT_ENUM
+      | v8::PropertyAttribute::DONT_DELETE;
+    let statement_ref_key = __STATEMENT_REF.v8_string(scope).unwrap().into();
+    iterator
+      .define_own_property(scope, statement_ref_key, statement_ref, attrs)
+      .unwrap();
 
     self.is_iter_finished.set(false);
 

@@ -70,6 +70,9 @@ pub fn hard_link_file<TSys: HardLinkFileSys>(
           // faster to reduce contention.
           sys.as_ref().thread_sleep(Duration::from_millis(10));
         } else {
+          // Note: on overlay filesystems (e.g. Podman's fuse-overlayfs),
+          // this can fail with ETXTBSY if the file is being executed.
+          // Callers should handle this by falling back to copy.
           return Err(err);
         }
       }
