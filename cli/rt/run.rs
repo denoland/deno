@@ -1528,7 +1528,7 @@ pub async fn run_with_options(
     CjsCodeAnalyzer::new(cjs_tracker.clone(), modules.clone(), sys.clone());
   let cjs_module_export_analyzer = Arc::new(CjsModuleExportAnalyzer::new(
     cjs_esm_code_analyzer,
-    in_npm_pkg_checker,
+    in_npm_pkg_checker.clone(),
     node_resolver.clone(),
     npm_resolver.clone(),
     pkg_json_resolver.clone(),
@@ -1619,6 +1619,7 @@ pub async fn run_with_options(
       node_resolver: node_resolver.clone(),
       npm_module_loader: Arc::new(NpmModuleLoader::new(
         cjs_tracker.clone(),
+        in_npm_pkg_checker.clone(),
         node_code_translator,
         sys.clone(),
       )),

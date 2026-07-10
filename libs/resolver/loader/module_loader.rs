@@ -10,6 +10,7 @@ use deno_graph::ModuleGraph;
 use deno_graph::WasmModule;
 use deno_media_type::MediaType;
 use node_resolver::InNpmPackageChecker;
+use node_resolver::analyze::CjsAnalysisSourceProvider;
 use node_resolver::errors::PackageJsonLoadError;
 use url::Url;
 
@@ -346,7 +347,7 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
         media_type,
         source,
       }) => self
-        .load_maybe_cjs(specifier, media_type, source)
+        .load_maybe_cjs(graph, specifier, media_type, source)
         .await
         .map(|text| {
           Some(LoadedModuleOrAsset::Module(LoadedModule {
@@ -615,6 +616,7 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
 
   async fn load_maybe_cjs(
     &self,
+    graph: &ModuleGraph,
     specifier: &Url,
     media_type: MediaType,
     original_source: &ArcStr,
@@ -630,7 +632,11 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
       .await?;
     let text = self
       .node_code_translator
-      .translate_cjs_to_esm(specifier, Some(Cow::Borrowed(js_source.as_ref())))
+      .translate_cjs_to_esm_with_source_provider(
+        specifier,
+        Some(Cow::Borrowed(js_source.as_ref())),
+        Some(&GraphCjsAnalysisSourceProvider { graph }),
+      )
       .await?;
     // Apply load-time security mitigations for known React Server Components
     // CVEs to the translated source. Opt in via `DENO_PATCH_REACT_CVE`.
@@ -648,5 +654,19 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
       Cow::Borrowed(_) => js_source.clone(),
       Cow::Owned(text) => text.into(),
     })
+  }
+}
+
+struct GraphCjsAnalysisSourceProvider<'a> {
+  graph: &'a ModuleGraph,
+}
+
+impl CjsAnalysisSourceProvider for GraphCjsAnalysisSourceProvider<'_> {
+  fn load_source(&self, specifier: &Url) -> Option<String> {
+    match self.graph.get(specifier)? {
+      deno_graph::Module::Js(module) => Some(module.source.text.to_string()),
+      deno_graph::Module::Json(module) => Some(module.source.text.to_string()),
+      _ => None,
+    }
   }
 }

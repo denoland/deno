@@ -1,0 +1,7 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "run --no-prompt --quiet --allow-read=allowed allowed/main.ts",
+    "output": "blocked\n"
+  }]
+}

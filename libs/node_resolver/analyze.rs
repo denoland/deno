@@ -97,6 +97,10 @@ pub trait CjsCodeAnalyzer {
   ) -> Result<Option<Vec<String>>, JsErrorBox>;
 }
 
+pub trait CjsAnalysisSourceProvider {
+  fn load_source(&self, specifier: &Url) -> Option<String>;
+}
+
 pub enum ResolvedCjsAnalysis<'a> {
   Esm(Cow<'a, str>),
   Cjs(BTreeSet<String>),
@@ -184,7 +188,13 @@ impl<
     &self,
     entry_specifier: &Url,
     source: Option<Cow<'a, str>>,
+    source_provider: Option<&dyn CjsAnalysisSourceProvider>,
   ) -> Result<ResolvedCjsAnalysis<'a>, TranslateCjsToEsmError> {
+    let source = source.or_else(|| {
+      source_provider
+        .and_then(|provider| provider.load_source(entry_specifier))
+        .map(Cow::Owned)
+    });
     let analysis = self
       .cjs_code_analyzer
       .analyze_cjs(entry_specifier, source, EsmAnalysisMode::SourceOnly)
@@ -209,6 +219,7 @@ impl<
           analysis.reexports,
           &mut all_exports,
           &mut errors,
+          source_provider,
         )
         .await;
 
@@ -227,6 +238,7 @@ impl<
           &analysis.member_reexports,
           &mut all_exports,
           &mut errors,
+          source_provider,
         )
         .await;
       // Members whose attached names couldn't be determined statically
@@ -238,6 +250,7 @@ impl<
             fallback_reexports,
             &mut all_exports,
             &mut errors,
+            source_provider,
           )
           .await;
       }
@@ -274,6 +287,7 @@ impl<
     member_reexports: &[CjsMemberReExport],
     all_exports: &mut BTreeSet<String>,
     errors: &mut Vec<JsErrorBox>,
+    source_provider: Option<&dyn CjsAnalysisSourceProvider>,
   ) -> Vec<String> {
     let mut fallback_reexports = Vec::new();
     for entry in member_reexports {
@@ -306,7 +320,13 @@ impl<
       };
       let props = match self
         .cjs_code_analyzer
-        .analyze_cjs_member_props(&inner_specifier, None, &entry.member)
+        .analyze_cjs_member_props(
+          &inner_specifier,
+          source_provider
+            .and_then(|provider| provider.load_source(&inner_specifier))
+            .map(Cow::Owned),
+          &entry.member,
+        )
         .await
       {
         Ok(Some(props)) => props,
@@ -343,6 +363,7 @@ impl<
     // this goes through the modules concurrently, so collect
     // the errors in order to be deterministic
     errors: &mut Vec<JsErrorBox>,
+    source_provider: Option<&dyn CjsAnalysisSourceProvider>,
   ) {
     struct Analysis {
       reexport_specifier: url::Url,
@@ -398,11 +419,14 @@ impl<
           }
 
           let referrer = referrer.clone();
+          let source = source_provider
+            .and_then(|provider| provider.load_source(&reexport_specifier))
+            .map(Cow::Owned);
           let future = async move {
             let analysis = cjs_code_analyzer
               .analyze_cjs(
                 &reexport_specifier,
-                None,
+                source,
                 EsmAnalysisMode::SourceImportsAndExports,
               )
               .await
@@ -462,6 +486,7 @@ impl<
                 &analysis.member_reexports,
                 all_exports,
                 errors,
+                source_provider,
               )
               .await;
             // Members that couldn't be narrowed statically fall back to a
@@ -765,12 +790,23 @@ impl<
     entry_specifier: &Url,
     source: Option<Cow<'a, str>>,
   ) -> Result<Cow<'a, str>, TranslateCjsToEsmError> {
+    self
+      .translate_cjs_to_esm_with_source_provider(entry_specifier, source, None)
+      .await
+  }
+
+  pub async fn translate_cjs_to_esm_with_source_provider<'a>(
+    &self,
+    entry_specifier: &Url,
+    source: Option<Cow<'a, str>>,
+    source_provider: Option<&dyn CjsAnalysisSourceProvider>,
+  ) -> Result<Cow<'a, str>, TranslateCjsToEsmError> {
     let all_exports = if matches!(self.mode, NodeCodeTranslatorMode::Disabled) {
       return Ok(source.unwrap());
     } else {
       let analysis = self
         .module_export_analyzer
-        .analyze_all_exports(entry_specifier, source)
+        .analyze_all_exports(entry_specifier, source, source_provider)
         .await?;
 
       match analysis {
