@@ -1,6 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::cell::Cell;
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::AtomicI32;
 
@@ -171,6 +173,17 @@ pub struct TsEvaluateResponse {
   pub value: cdp::EvaluateResponse,
 }
 
+/// Resets `ReplSession::track_source_maps` to `false` when dropped, so an
+/// early return (or `?`) out of `evaluate_line_with_source_map_tracking`
+/// can't leave source-map tracking armed for a later, non-Jupyter caller.
+struct SourceMapTrackingGuard(Rc<Cell<bool>>);
+
+impl Drop for SourceMapTrackingGuard {
+  fn drop(&mut self) {
+    self.0.set(false);
+  }
+}
+
 pub struct ReplSession {
   internal_object_id: Option<RemoteObjectId>,
   npm_installer: Option<Arc<CliNpmInstaller>>,
@@ -192,14 +205,16 @@ pub struct ReplSession {
   /// While set, each `evaluate_ts_expression` call produces a source map
   /// for the transpiled code and stores it in `source_maps` under the key
   /// V8 uses for evaluated scripts (`<anonymous>`). Always toggled via
-  /// `evaluate_line_with_source_map_tracking` so the set+await+clear
-  /// pair lives in one method (no caller can forget to flip it back).
+  /// `evaluate_line_with_source_map_tracking`, which arms it and hands the
+  /// reset to a `SourceMapTrackingGuard` so it can never leak — even if a
+  /// future edit propagates an error out of the inner call with `?`.
   /// Intentionally not self-clearing on the inner method —
   /// `evaluate_line_with_object_wrapping` may re-call
   /// `evaluate_ts_expression` with a `( … )` retry wrapper, and that
   /// retry needs source-map tracking too so the map matches whichever
-  /// source actually ran.
-  track_source_maps: bool,
+  /// source actually ran. `Rc<Cell<_>>` so the guard can own the reset
+  /// handle without holding a borrow of `self` across the inner `await`.
+  track_source_maps: Rc<Cell<bool>>,
   source_maps: HashMap<String, Arc<deno_core::sourcemap::SourceMap>>,
   /// Cached cell source per `source_maps` key. Populated alongside
   /// `source_maps` so `apply_source_map_to_stack` can echo the user's
@@ -401,7 +416,7 @@ impl ReplSession {
       test_event_receiver: Some(test_event_receiver),
       jsx: transpile_options.jsx.clone().unwrap_or_default(),
       decorators: transpile_options.decorators.clone(),
-      track_source_maps: false,
+      track_source_maps: Rc::new(Cell::new(false)),
       source_maps: HashMap::new(),
       cell_sources: HashMap::new(),
     };
@@ -656,16 +671,16 @@ impl ReplSession {
   /// user's original `line` as the echoed source — `( … )` retry wrappers
   /// would otherwise leave the wrapped form in `cell_sources`, bleeding
   /// parens into the snippet. Wrapping inserts no newlines, so the line
-  /// numbers stay aligned. Set+await+clear is consolidated here so the
-  /// flag can never leak out into non-Jupyter callers (and an early
-  /// return from the inner call still resets it before returning).
+  /// numbers stay aligned. The flag is armed here and reset by a
+  /// `SourceMapTrackingGuard` on scope exit, so it can never leak into
+  /// non-Jupyter callers regardless of how the inner call returns.
   pub async fn evaluate_line_with_source_map_tracking(
     &mut self,
     line: &str,
   ) -> Result<TsEvaluateResponse, AnyError> {
-    self.track_source_maps = true;
+    self.track_source_maps.set(true);
+    let _guard = SourceMapTrackingGuard(self.track_source_maps.clone());
     let result = self.evaluate_line_with_object_wrapping(line).await;
-    self.track_source_maps = false;
     if self.source_maps.contains_key("<anonymous>") {
       self
         .cell_sources
@@ -874,7 +889,7 @@ impl ReplSession {
 
     self.analyze_and_handle_jsx(&parsed_source);
 
-    let want_source_map = self.track_source_maps;
+    let want_source_map = self.track_source_maps.get();
     let original_source: Option<Arc<str>> = if want_source_map {
       Some(Arc::from(parsed_source.text().as_ref()))
     } else {
