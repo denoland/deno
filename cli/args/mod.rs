@@ -1276,9 +1276,32 @@ impl CliOptions {
   }
 
   fn augment_import_permissions(&self, options: &mut PermissionsOptions) {
-    // do not add if the user specified --allow-all or --allow-import
-    if options.allow_import.is_none() {
-      options.allow_import = Some(self.implicit_allow_import());
+    match &options.allow_import {
+      // do not add if the user specified --allow-all or --allow-import
+      None => {
+        options.allow_import = Some(self.implicit_allow_import());
+      }
+      // For `deno sync-types` the import allowlist is additive: the command
+      // only downloads type declarations to materialize them for stock
+      // TypeScript tooling and never executes them, so a user extending the
+      // allowlist (e.g. to fetch a JSON schema referenced by a source file)
+      // should not lose the built-in trusted hosts (jsr.io, esm.sh, ...) that
+      // the rest of the project's dependencies rely on.
+      Some(allowlist) => {
+        if matches!(self.sub_command(), DenoSubcommand::SyncTypes) {
+          let mut merged = self.implicit_allow_import();
+          // An empty implicit list means "allow all" (e.g. `--cached-only`);
+          // in that case there is nothing to narrow, so leave it untouched.
+          if !merged.is_empty() {
+            for host in allowlist {
+              if !merged.contains(host) {
+                merged.push(host.clone());
+              }
+            }
+            options.allow_import = Some(merged);
+          }
+        }
+      }
     }
   }
 
