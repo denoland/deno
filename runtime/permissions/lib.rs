@@ -5819,6 +5819,80 @@ mod tests {
   }
 
   #[test]
+  fn grant_read_path_scopes_to_granted_folder() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    // Baseline mirrors the relaxed default profile before any module loads:
+    // read has no allow-list, so every path is in the Prompt state and is
+    // denied non-interactively.
+    let perms =
+      Permissions::from_options(&parser, &PermissionsOptions::default())
+        .unwrap();
+    let perms = PermissionsContainer::new(Arc::new(parser), perms);
+
+    let read_query = |path: &str| {
+      TestPermissionDescriptorParser
+        .parse_path_query(Cow::Owned(PathBuf::from(path)))
+        .unwrap()
+        .into_read()
+    };
+    let query =
+      |path: &str| perms.inner.lock().read.query(Some(&read_query(path)));
+
+    // The module loader calls grant_read_path for a package's folder when that
+    // package is imported under the relaxed profile.
+    perms.grant_read_path(Path::new("/cache/pkg_a")).unwrap();
+
+    // The granted folder and everything beneath it becomes readable.
+    assert_eq!(query("/cache/pkg_a"), PermissionState::Granted);
+    assert_eq!(
+      query("/cache/pkg_a/data/file.txt"),
+      PermissionState::Granted
+    );
+
+    // A sibling package folder that was never granted stays in Prompt: the
+    // grant is scoped to the one folder and does not widen read to its parent
+    // (the whole cache) or to unrelated siblings. This is the per-package
+    // scoping security property.
+    assert_eq!(query("/cache/pkg_b"), PermissionState::Prompt);
+    assert_eq!(query("/cache/pkg_b/data/file.txt"), PermissionState::Prompt);
+    assert_eq!(query("/cache"), PermissionState::Prompt);
+  }
+
+  #[test]
+  fn grant_read_path_respects_prior_deny() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    // An explicit --deny-read on the folder is in effect before the grant.
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        deny_read: Some(svec!["/cache/pkg_a"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let perms = PermissionsContainer::new(Arc::new(parser), perms);
+
+    let read_query = |path: &str| {
+      TestPermissionDescriptorParser
+        .parse_path_query(Cow::Owned(PathBuf::from(path)))
+        .unwrap()
+        .into_read()
+    };
+    let query =
+      |path: &str| perms.inner.lock().read.query(Some(&read_query(path)));
+
+    // The loader still grants read on the folder when the package is imported.
+    perms.grant_read_path(Path::new("/cache/pkg_a")).unwrap();
+
+    // Deny always wins: the folder and its contents remain denied despite the
+    // grant, so grant_read_path cannot be used to escape a --deny-read.
+    assert_eq!(query("/cache/pkg_a"), PermissionState::Denied);
+    assert_eq!(query("/cache/pkg_a/data.txt"), PermissionState::Denied);
+  }
+
+  #[test]
   #[cfg(target_os = "macos")]
   fn check_paths_macos_unicode_normalization() {
     set_prompter(Box::new(TestPrompter));
