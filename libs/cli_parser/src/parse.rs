@@ -140,12 +140,12 @@ fn parse_args(
         // into the positional (through normal trailing -> handled below)
         i += 1;
         while i < args.len() {
-          set_arg_value(result, trail_def, args[i].clone());
+          set_arg_value(result, trail_def, args[i].clone())?;
           i += 1;
         }
         continue;
       }
-      set_arg_value(result, trail_def, arg.clone());
+      set_arg_value(result, trail_def, arg.clone())?;
       i += 1;
       continue;
     }
@@ -197,7 +197,7 @@ fn parse_args(
     } else {
       // Positional argument
       if let Some(pos_def) = positional_defs.get(positional_index) {
-        apply_value_with_delimiter(result, pos_def, arg);
+        apply_value_with_delimiter(result, pos_def, arg)?;
 
         // If this positional has trailing: true, absorb everything
         // remaining into it (including flags)
@@ -387,7 +387,7 @@ fn parse_long_flag(
         && (arg_def.num_args == NumArgs::Optional
           || arg_def.num_args == NumArgs::ZeroOrMore)
       {
-        set_arg_value(result, arg_def, val.to_string());
+        set_arg_value(result, arg_def, val.to_string())?;
       }
       Ok(pos + 1)
     }
@@ -405,12 +405,12 @@ fn parse_long_flag(
           if let Some(val) = inline_value {
             // Track occurrence for this flag appearance
             set_arg_bool(result, arg_def);
-            apply_value_with_delimiter(result, arg_def, val);
+            apply_value_with_delimiter(result, arg_def, val)?;
           } else if arg_def.require_equals {
             // Optional with require_equals and no `=`: present but no value
             set_arg_bool(result, arg_def);
           } else if pos + 1 < args.len() && !args[pos + 1].starts_with('-') {
-            set_arg_value(result, arg_def, args[pos + 1].clone());
+            set_arg_value(result, arg_def, args[pos + 1].clone())?;
             return Ok(pos + 2);
           } else {
             set_arg_bool(result, arg_def);
@@ -420,12 +420,12 @@ fn parse_long_flag(
         NumArgs::ZeroOrMore => {
           set_arg_bool(result, arg_def);
           if let Some(val) = inline_value {
-            apply_value_with_delimiter(result, arg_def, val);
+            apply_value_with_delimiter(result, arg_def, val)?;
           } else if !arg_def.require_equals {
             // Consume subsequent non-flag args
             let mut next = pos + 1;
             while next < args.len() && !args[next].starts_with('-') {
-              set_arg_value(result, arg_def, args[next].clone());
+              set_arg_value(result, arg_def, args[next].clone())?;
               next += 1;
             }
             return Ok(next);
@@ -434,10 +434,10 @@ fn parse_long_flag(
         }
         NumArgs::OneOrMore | NumArgs::Exact(_) => {
           if let Some(val) = inline_value {
-            apply_value_with_delimiter(result, arg_def, val);
+            apply_value_with_delimiter(result, arg_def, val)?;
             Ok(pos + 1)
           } else if pos + 1 < args.len() {
-            apply_value_with_delimiter(result, arg_def, &args[pos + 1]);
+            apply_value_with_delimiter(result, arg_def, &args[pos + 1])?;
             Ok(pos + 2)
           } else {
             Err(CliError::missing_value(arg))
@@ -507,7 +507,7 @@ fn parse_short_flag(
               if !next_is_flag {
                 let remaining: String = chars[ci + 1..].iter().collect();
                 let value = remaining.strip_prefix('=').unwrap_or(&remaining);
-                apply_value_with_delimiter(result, arg_def, value);
+                apply_value_with_delimiter(result, arg_def, value)?;
                 return Ok(pos + 1);
               }
             }
@@ -519,11 +519,11 @@ fn parse_short_flag(
               // Rest of the short flags string is the value: -fvalue or -f=value
               let remaining: String = chars[ci + 1..].iter().collect();
               let value = remaining.strip_prefix('=').unwrap_or(&remaining);
-              apply_value_with_delimiter(result, arg_def, value);
+              apply_value_with_delimiter(result, arg_def, value)?;
               return Ok(pos + 1);
             } else if pos + 1 < args.len() {
               // Next arg is the value
-              apply_value_with_delimiter(result, arg_def, &args[pos + 1]);
+              apply_value_with_delimiter(result, arg_def, &args[pos + 1])?;
               return Ok(pos + 2);
             } else {
               return Err(CliError::missing_value(&format!("-{short}")));
@@ -542,19 +542,20 @@ fn apply_value_with_delimiter(
   result: &mut ParseResult,
   arg_def: &ArgDef,
   value: &str,
-) {
+) -> Result<(), CliError> {
   if let Some(delim) = arg_def.value_delimiter {
     if value.is_empty() {
       // Empty value (e.g., --flag=) - preserve it as an empty string
-      set_arg_value(result, arg_def, String::new());
+      set_arg_value(result, arg_def, String::new())?;
     } else {
       for part in value.split(delim) {
-        set_arg_value(result, arg_def, part.to_string());
+        set_arg_value(result, arg_def, part.to_string())?;
       }
     }
   } else {
-    set_arg_value(result, arg_def, value.to_string());
+    set_arg_value(result, arg_def, value.to_string())?;
   }
+  Ok(())
 }
 
 /// Set a boolean flag in the parse result.
@@ -574,8 +575,20 @@ fn set_arg_bool(result: &mut ParseResult, arg_def: &ArgDef) {
   }
 }
 
-/// Add a value to an arg in the parse result.
-fn set_arg_value(result: &mut ParseResult, arg_def: &ArgDef, value: String) {
+/// Add a value to an arg in the parse result, validating it against the arg's
+/// `value_parser` first (mirrors clap rejecting invalid values at parse time).
+fn set_arg_value(
+  result: &mut ParseResult,
+  arg_def: &ArgDef,
+  value: String,
+) -> Result<(), CliError> {
+  if let Some(parser) = arg_def.value_parser {
+    let flag = arg_def
+      .long
+      .map(|l| format!("--{l}"))
+      .unwrap_or_else(|| arg_def.name.to_string());
+    parser.validate(&value, &flag)?;
+  }
   if let Some(existing) =
     result.args.iter_mut().find(|a| a.name == arg_def.name)
   {
@@ -597,6 +610,7 @@ fn set_arg_value(result: &mut ParseResult, arg_def: &ArgDef, value: String) {
       count: 1,
     });
   }
+  Ok(())
 }
 
 /// Increment the count for a Count-action arg.

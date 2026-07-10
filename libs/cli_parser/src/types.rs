@@ -1,4 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+use crate::error::CliError;
+use crate::error::CliErrorKind;
+
 /// Definition of a CLI command (root or subcommand).
 /// All fields are `const`-constructible - no heap allocation.
 #[derive(Debug, Clone, Copy)]
@@ -102,6 +105,9 @@ pub struct ArgDef {
   /// Names of args that must also be present when this one is used. If any
   /// is missing, parsing fails (mirrors clap's `requires`).
   pub requires: &'static [&'static str],
+  /// Optional declarative validation for each value (mirrors clap's
+  /// `value_parser`). Invalid values produce a parse error.
+  pub value_parser: Option<ValueParser>,
 }
 
 impl ArgDef {
@@ -126,7 +132,13 @@ impl ArgDef {
       value_name: None,
       conflicts: &[],
       requires: &[],
+      value_parser: None,
     }
+  }
+
+  pub const fn value_parser(mut self, parser: ValueParser) -> Self {
+    self.value_parser = Some(parser);
+    self
   }
 
   pub const fn conflicts_with(
@@ -256,6 +268,67 @@ pub enum NumArgs {
   ZeroOrMore,
   /// 1 or more values.
   OneOrMore,
+}
+
+/// Declarative value validation, mirroring clap's `value_parser`. Applied to
+/// each value as it is parsed; an invalid value produces a parse error instead
+/// of being silently accepted or coerced downstream.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ValueParser {
+  /// One of a fixed set of allowed strings.
+  Choices(&'static [&'static str]),
+  /// A boolean (`true`/`false`).
+  Bool,
+  /// An unsigned integer of the given width.
+  U8,
+  U16,
+  U32,
+  U64,
+  Usize,
+  /// A non-zero unsigned integer of the given width.
+  NonZeroU8,
+  NonZeroU32,
+  NonZeroUsize,
+  /// A u32 within an inclusive range (e.g. a percentage 0..=100).
+  U32Range(u32, u32),
+}
+
+impl ValueParser {
+  /// Validate `value`, returning a parse error on failure. `flag` is the
+  /// user-facing flag/arg name used in the error message.
+  pub fn validate(&self, value: &str, flag: &str) -> Result<(), CliError> {
+    let ok = match self {
+      ValueParser::Choices(choices) => choices.contains(&value),
+      ValueParser::Bool => value.parse::<bool>().is_ok(),
+      ValueParser::U8 => value.parse::<u8>().is_ok(),
+      ValueParser::U16 => value.parse::<u16>().is_ok(),
+      ValueParser::U32 => value.parse::<u32>().is_ok(),
+      ValueParser::U64 => value.parse::<u64>().is_ok(),
+      ValueParser::Usize => value.parse::<usize>().is_ok(),
+      ValueParser::NonZeroU8 => value.parse::<std::num::NonZeroU8>().is_ok(),
+      ValueParser::NonZeroU32 => value.parse::<std::num::NonZeroU32>().is_ok(),
+      ValueParser::NonZeroUsize => {
+        value.parse::<std::num::NonZeroUsize>().is_ok()
+      }
+      ValueParser::U32Range(lo, hi) => {
+        value.parse::<u32>().is_ok_and(|n| n >= *lo && n <= *hi)
+      }
+    };
+    if ok {
+      return Ok(());
+    }
+    let message = match self {
+      ValueParser::Choices(choices) => format!(
+        "invalid value '{value}' for '{flag}': possible values: {}",
+        choices.join(", ")
+      ),
+      ValueParser::U32Range(lo, hi) => format!(
+        "invalid value '{value}' for '{flag}': must be in range {lo}..={hi}"
+      ),
+      _ => format!("invalid value '{value}' for '{flag}'"),
+    };
+    Err(CliError::new(CliErrorKind::InvalidValue, message))
+  }
 }
 
 /// Result of parsing: raw parsed data before conversion to typed Flags.

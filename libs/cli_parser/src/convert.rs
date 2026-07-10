@@ -751,7 +751,12 @@ fn cached_only_arg_parse(result: &ParseResult, flags: &mut Flags) {
 
 fn location_arg_parse(result: &ParseResult, flags: &mut Flags) {
   if let Some(loc) = result.get_one("location") {
-    flags.location = deno_core::url::Url::parse(loc).ok();
+    flags.location = deno_core::url::Url::parse(loc).ok().map(|mut url| {
+      // Mirror clap's location value_parser, which strips any credentials.
+      let _ = url.set_username("");
+      let _ = url.set_password(None);
+      url
+    });
   }
 }
 

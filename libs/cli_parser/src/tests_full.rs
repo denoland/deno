@@ -9159,3 +9159,106 @@ fn tier1_desktop_flags() {
     matches!(flags.subcommand, DenoSubcommand::Desktop(d) if d.source_file == ".")
   );
 }
+
+// ---------------------------------------------------------------------------
+// Tier-2 value-validation parity: bad values now error at parse time instead
+// of being silently accepted/coerced (mirrors clap's value_parser).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tier2_choice_validation() {
+  // Each of these passes an invalid value for a choice-restricted flag.
+  let bad = [
+    svec!["deno", "test", "--reporter=bogus"],
+    svec!["deno", "fmt", "--prose-wrap=bogus", "x.md"],
+    svec!["deno", "fmt", "--ext=bogus", "x"],
+    svec!["deno", "run", "--ext=bogus", "x.ts"],
+    svec!["deno", "compile", "--target=bogus", "x.ts"],
+    svec!["deno", "desktop", "--backend=bogus", "x.ts"],
+    svec!["deno", "desktop", "--compress=bogus", "x.ts"],
+    svec!["deno", "transpile", "--source-map=bogus", "x.ts"],
+    svec!["deno", "completions", "bogus"],
+    svec!["deno", "install", "--os", "bogus"],
+    svec!["deno", "install", "--arch", "bogus"],
+    svec!["deno", "audit", "--level=bogus"],
+    svec!["deno", "--log-level=bogus", "run", "x.ts"],
+    svec!["deno", "run", "--node-modules-dir=bogus", "x.ts"],
+    svec!["deno", "run", "--node-modules-linker=bogus", "x.ts"],
+  ];
+  for args in bad {
+    assert!(
+      flags_from_vec(args.clone()).is_err(),
+      "expected error for {args:?}"
+    );
+  }
+}
+
+#[test]
+fn tier2_numeric_validation() {
+  let bad = [
+    svec!["deno", "run", "--seed=abc", "x.ts"],
+    svec!["deno", "serve", "--port=abc", "x.ts"],
+    svec!["deno", "serve", "--port=99999", "x.ts"],
+    svec!["deno", "list", "--depth=abc"],
+    svec!["deno", "test", "--retry=abc"],
+    svec!["deno", "test", "--shuffle=abc"],
+    svec!["deno", "test", "--coverage=cov", "--coverage-threshold=101"],
+    svec!["deno", "fmt", "--line-width=0", "x.ts"],
+    svec!["deno", "fmt", "--indent-width=0", "x.ts"],
+    svec!["deno", "test", "--fail-fast=0"],
+  ];
+  for args in bad {
+    assert!(
+      flags_from_vec(args.clone()).is_err(),
+      "expected error for {args:?}"
+    );
+  }
+
+  // Valid numeric values still parse.
+  assert!(
+    flags_from_vec(svec!["deno", "serve", "--port=8080", "x.ts"]).is_ok()
+  );
+  assert!(
+    flags_from_vec(svec![
+      "deno",
+      "test",
+      "--coverage=cov",
+      "--coverage-threshold=100"
+    ])
+    .is_ok()
+  );
+}
+
+#[test]
+fn tier2_bool_validation() {
+  let bad = [
+    svec!["deno", "fmt", "--use-tabs=maybe", "x.ts"],
+    svec!["deno", "fmt", "--single-quote=maybe", "x.ts"],
+    svec!["deno", "run", "--vendor=maybe", "x.ts"],
+    svec!["deno", "run", "--frozen=maybe", "x.ts"],
+  ];
+  for args in bad {
+    assert!(
+      flags_from_vec(args.clone()).is_err(),
+      "expected error for {args:?}"
+    );
+  }
+  // Bare boolean-ish flags (no value) remain valid.
+  assert!(flags_from_vec(svec!["deno", "fmt", "--use-tabs", "x.ts"]).is_ok());
+}
+
+#[test]
+fn tier2_location_strips_credentials() {
+  let flags = flags_from_vec(svec![
+    "deno",
+    "run",
+    "--location",
+    "https://u:p@example.com/",
+    "x.ts"
+  ])
+  .unwrap();
+  let loc = flags.location.unwrap();
+  assert_eq!(loc.username(), "");
+  assert_eq!(loc.password(), None);
+  assert_eq!(loc.host_str(), Some("example.com"));
+}

@@ -6,6 +6,20 @@
 
 use crate::types::*;
 
+/// Allowed values for the executable `--ext` flag (run/serve/eval/test/bench/
+/// compile/desktop/lint), mirroring clap's `executable_ext_arg`.
+const EXECUTABLE_EXTS: &[&str] =
+  &["ts", "tsx", "js", "jsx", "mts", "mjs", "cts", "cjs"];
+
+/// Supported `--target` triples for `compile`/`desktop` (clap's `SUPPORTED_OS`).
+const SUPPORTED_OS: &[&str] = &[
+  "x86_64-unknown-linux-gnu",
+  "aarch64-unknown-linux-gnu",
+  "x86_64-pc-windows-msvc",
+  "x86_64-apple-darwin",
+  "aarch64-apple-darwin",
+];
+
 // ============================================================
 // Shared arg groups
 // ============================================================
@@ -155,18 +169,23 @@ pub static COMPILE_ARGS: &[ArgDef] = &[
     .long("node-modules-dir")
     .action(ArgAction::Set)
     .num_args(NumArgs::Optional)
-    .require_equals(),
+    .require_equals()
+    .value_parser(ValueParser::Choices(&[
+      "auto", "true", "manual", "none", "false",
+    ])),
   ArgDef::new("vendor")
     .long("vendor")
     .action(ArgAction::Set)
     .num_args(NumArgs::Optional)
-    .require_equals(),
+    .require_equals()
+    .value_parser(ValueParser::Bool),
   ArgDef::new("node-modules-linker")
     .long("node-modules-linker")
     .long_aliases(&["linker"])
     .action(ArgAction::Set)
     .num_args(NumArgs::Exact(1))
-    .require_equals(),
+    .require_equals()
+    .value_parser(ValueParser::Choices(&["isolated", "hoisted"])),
   ArgDef::new("config")
     .short('c')
     .long("config")
@@ -193,7 +212,8 @@ pub static COMPILE_ARGS: &[ArgDef] = &[
     .long_aliases(&["frozen"])
     .action(ArgAction::Set)
     .num_args(NumArgs::Optional)
-    .require_equals(),
+    .require_equals()
+    .value_parser(ValueParser::Bool),
   ArgDef::new("cert")
     .long("cert")
     .action(ArgAction::Set)
@@ -248,7 +268,8 @@ pub static RUNTIME_MISC_ARGS: &[ArgDef] = &[
   ArgDef::new("seed")
     .long("seed")
     .action(ArgAction::Set)
-    .num_args(NumArgs::Exact(1)),
+    .num_args(NumArgs::Exact(1))
+    .value_parser(ValueParser::U64),
   ArgDef::new("enable-testing-features")
     .long("enable-testing-features-do-not-use")
     .long_aliases(&["enable-testing-features"])
@@ -297,6 +318,7 @@ pub static CPU_PROF_ARGS: &[ArgDef] = &[
     .long("cpu-prof-interval")
     .action(ArgAction::Set)
     .num_args(NumArgs::Exact(1))
+    .value_parser(ValueParser::U32)
     .hidden(),
   ArgDef::new("cpu-prof-md")
     .long("cpu-prof-md")
@@ -444,7 +466,8 @@ pub static LOCK_ARGS: &[ArgDef] = &[
     .long_aliases(&["frozen"])
     .action(ArgAction::Set)
     .num_args(NumArgs::Optional)
-    .require_equals(),
+    .require_equals()
+    .value_parser(ValueParser::Bool),
 ];
 
 // ============================================================
@@ -490,7 +513,8 @@ static RUN_ARGS: &[ArgDef] = &[
   ArgDef::new("ext")
     .long("ext")
     .action(ArgAction::Set)
-    .num_args(NumArgs::Exact(1)),
+    .num_args(NumArgs::Exact(1))
+    .value_parser(ValueParser::Choices(EXECUTABLE_EXTS)),
   ArgDef::new("env-file")
     .long("env-file")
     .long_aliases(&["env"])
@@ -559,7 +583,8 @@ pub static SERVE_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("port")
       .long("port")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::U16),
     ArgDef::new("host")
       .long("host")
       .action(ArgAction::Set)
@@ -604,7 +629,8 @@ pub static SERVE_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("ext")
       .long("ext")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(EXECUTABLE_EXTS)),
     ArgDef::new("env-file")
       .long("env-file")
       .action(ArgAction::Append)
@@ -642,7 +668,8 @@ pub static EVAL_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("ext")
       .long("ext")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(EXECUTABLE_EXTS)),
     ArgDef::new("env-file")
       .long("env-file")
       .long_aliases(&["env"])
@@ -703,7 +730,12 @@ pub static FMT_SUBCOMMAND: CommandDef = CommandDef {
       .long("ext")
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1))
-      .requires(&["files"]),
+      .requires(&["files"])
+      .value_parser(ValueParser::Choices(&[
+        "ts", "tsx", "js", "jsx", "mts", "mjs", "cts", "cjs", "md", "json",
+        "jsonc", "css", "scss", "less", "html", "svelte", "vue", "astro",
+        "yml", "yaml", "ipynb", "sql", "vto", "njk",
+      ])),
     ArgDef::new("ignore")
       .long("ignore")
       .action(ArgAction::Append)
@@ -714,29 +746,35 @@ pub static FMT_SUBCOMMAND: CommandDef = CommandDef {
       .long("use-tabs")
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional)
-      .require_equals(),
+      .require_equals()
+      .value_parser(ValueParser::Bool),
     ArgDef::new("line-width")
       .long("line-width")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::NonZeroU32),
     ArgDef::new("indent-width")
       .long("indent-width")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::NonZeroU8),
     ArgDef::new("single-quote")
       .long("single-quote")
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional)
-      .require_equals(),
+      .require_equals()
+      .value_parser(ValueParser::Bool),
     ArgDef::new("prose-wrap")
       .long("prose-wrap")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(&["always", "never", "preserve"])),
     ArgDef::new("no-semicolons")
       .long("no-semicolons")
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional)
-      .require_equals(),
+      .require_equals()
+      .value_parser(ValueParser::Bool),
     ArgDef::new("config")
       .short('c')
       .long("config")
@@ -835,7 +873,8 @@ pub static LINT_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("ext")
       .long("ext")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(EXECUTABLE_EXTS)),
     ArgDef::new("allow-import")
       .short('I')
       .long("allow-import")
@@ -880,7 +919,8 @@ pub static TEST_SUBCOMMAND: CommandDef = CommandDef {
       .long("fail-fast")
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional)
-      .require_equals(),
+      .require_equals()
+      .value_parser(ValueParser::NonZeroUsize),
     ArgDef::new("filter")
       .long("filter")
       .action(ArgAction::Set)
@@ -889,7 +929,8 @@ pub static TEST_SUBCOMMAND: CommandDef = CommandDef {
       .long("shuffle")
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional)
-      .require_equals(),
+      .require_equals()
+      .value_parser(ValueParser::U64),
     ArgDef::new("parallel").long("parallel").set_true(),
     ArgDef::new("sanitize-ops").long("sanitize-ops").set_true(),
     ArgDef::new("sanitize-resources")
@@ -900,7 +941,8 @@ pub static TEST_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1))
       .require_equals()
-      .requires(&["coverage"]),
+      .requires(&["coverage"])
+      .value_parser(ValueParser::U32Range(0, 100)),
     ArgDef::new("update-snapshots")
       .short('u')
       .long("update-snapshots")
@@ -928,7 +970,8 @@ pub static TEST_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("reporter")
       .long("reporter")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(&["pretty", "dot", "junit", "tap"])),
     ArgDef::new("junit-path")
       .long("junit-path")
       .action(ArgAction::Set)
@@ -939,11 +982,13 @@ pub static TEST_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("retry")
       .long("retry")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::U32),
     ArgDef::new("repeats")
       .long("repeats")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::U32),
     ArgDef::new("shard")
       .long("shard")
       .action(ArgAction::Set)
@@ -981,7 +1026,8 @@ pub static TEST_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("ext")
       .long("ext")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(EXECUTABLE_EXTS)),
     ArgDef::new("check")
       .long("check")
       .action(ArgAction::Set)
@@ -1078,7 +1124,8 @@ pub static CACHE_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("ext")
       .long("ext")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(EXECUTABLE_EXTS)),
     ArgDef::new("env-file")
       .long("env-file")
       .action(ArgAction::Append)
@@ -1346,7 +1393,8 @@ pub static BENCH_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("ext")
       .long("ext")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(EXECUTABLE_EXTS)),
   ],
   arg_groups: &[
     UNSTABLE_ARGS,
@@ -1378,7 +1426,8 @@ pub static COMPILE_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("target")
       .long("target")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(SUPPORTED_OS)),
     ArgDef::new("no-terminal").long("no-terminal").set_true(),
     ArgDef::new("icon")
       .long("icon")
@@ -1404,7 +1453,8 @@ pub static COMPILE_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("ext")
       .long("ext")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(EXECUTABLE_EXTS)),
     ArgDef::new("self-extracting")
       .long("self-extracting")
       .set_true(),
@@ -1586,12 +1636,20 @@ pub static INSTALL_SUBCOMMAND: CommandDef = CommandDef {
       .long("os")
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1))
-      .conflicts_with(&["global"]),
+      .conflicts_with(&["global"])
+      .value_parser(ValueParser::Choices(&[
+        "aix", "android", "darwin", "freebsd", "linux", "openbsd", "sunos",
+        "win32",
+      ])),
     ArgDef::new("arch")
       .long("arch")
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1))
-      .conflicts_with(&["global"]),
+      .conflicts_with(&["global"])
+      .value_parser(ValueParser::Choices(&[
+        "arm", "arm64", "ia32", "mips", "mipsel", "ppc", "ppc64", "s390",
+        "s390x", "x64",
+      ])),
     ArgDef::new("env-file")
       .long("env-file")
       .long_aliases(&["env"])
@@ -1668,7 +1726,14 @@ pub static COMPLETIONS_SUBCOMMAND: CommandDef = CommandDef {
   args: &[ArgDef::new("shell")
     .positional()
     .action(ArgAction::Set)
-    .num_args(NumArgs::Exact(1))],
+    .num_args(NumArgs::Exact(1))
+    .value_parser(ValueParser::Choices(&[
+      "bash",
+      "fish",
+      "powershell",
+      "zsh",
+      "fig",
+    ]))],
   arg_groups: &[UNSTABLE_ARGS],
   subcommands: &[],
   default_subcommand: None,
@@ -2050,7 +2115,8 @@ pub static LIST_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("depth")
       .long("depth")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::U16),
     ArgDef::new("prod")
       .long("prod")
       .set_true()
@@ -2213,7 +2279,10 @@ pub static AUDIT_SUBCOMMAND: CommandDef = CommandDef {
       .long_aliases(&["audit-level", "severity"])
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1))
-      .default_value("low"),
+      .default_value("low")
+      .value_parser(ValueParser::Choices(&[
+        "low", "moderate", "high", "critical",
+      ])),
     ArgDef::new("ignore-unfixable")
       .long("ignore-unfixable")
       .set_true(),
@@ -2350,6 +2419,7 @@ pub static GLOBAL_ARGS: &[ArgDef] = &[
     .long("log-level")
     .action(ArgAction::Set)
     .num_args(NumArgs::Exact(1))
+    .value_parser(ValueParser::Choices(&["trace", "debug", "info"]))
     .global(),
   ArgDef::new("quiet")
     .short('q')
@@ -2397,7 +2467,8 @@ pub static DESKTOP_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("target")
       .long("target")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(SUPPORTED_OS)),
     ArgDef::new("no-code-cache")
       .long("no-code-cache")
       .set_true(),
@@ -2409,17 +2480,20 @@ pub static DESKTOP_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("backend")
       .long("backend")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(&["webview", "cef", "raw"])),
     ArgDef::new("all-targets").long("all-targets").set_true(),
     ArgDef::new("compress")
       .long("compress")
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional)
-      .default_value("xz"),
+      .default_value("xz")
+      .value_parser(ValueParser::Choices(&["xz", "lzma", "zstd"])),
     ArgDef::new("ext")
       .long("ext")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(EXECUTABLE_EXTS)),
     ArgDef::new("env-file")
       .long("env-file")
       .long_aliases(&["env"])
@@ -2587,7 +2661,8 @@ pub static TRANSPILE_SUBCOMMAND: CommandDef = CommandDef {
       .long("source-map")
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1))
-      .default_value("none"),
+      .default_value("none")
+      .value_parser(ValueParser::Choices(&["none", "inline", "separate"])),
     ArgDef::new("declaration").long("declaration").set_true(),
   ],
   arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
