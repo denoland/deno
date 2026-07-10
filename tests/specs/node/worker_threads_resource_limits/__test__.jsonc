@@ -16,6 +16,10 @@
       "args": "run --allow-read oom_main.mjs",
       "output": "oom_main.out",
       "exitCode": 0
+    },
+    "resource_limits_overflow": {
+      "args": "run overflow_main.mjs",
+      "output": "overflow_main.out"
     }
   }
 }
