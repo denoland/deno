@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import {
+  assert,
   assertEquals,
   assertRejects,
   assertThrows,
@@ -239,6 +240,46 @@ Deno.test(async function readableStreamCloseWithoutRead2() {
   const rid = resourceForReadableStream(longAsyncStream(cancel.resolve));
   core.close(rid);
   assertEquals(await cancel.promise, "resource closed");
+});
+
+// Regression test for https://github.com/denoland/deno/issues/35807: teeing a
+// byte stream, reading one branch with a BYOB reader while the other branch is
+// drained by a default reader. When the source closes, the tee reads the source
+// with its BYOB reader; readableStreamClose() does not run a BYOB reader's
+// read-into close steps, so without the fix the pending BYOB read on the first
+// branch (and the default drain on the other) would hang forever.
+Deno.test(async function readableByteStreamTeeByobReadResolvesOnSourceClose() {
+  function makeByteStream(chunks: number[][]) {
+    let i = 0;
+    return new ReadableStream({
+      type: "bytes",
+      pull(c) {
+        if (i < chunks.length) c.enqueue(new Uint8Array(chunks[i++]));
+        else c.close();
+      },
+    });
+  }
+  async function collect(s: ReadableStream<Uint8Array>) {
+    const out = [];
+    for await (const c of s) out.push(c);
+    return out;
+  }
+
+  const [a, b] = makeByteStream([[1, 2, 3], [4, 5, 6]]).tee();
+  const bDone = collect(b);
+  const reader = a.getReader({ mode: "byob" });
+  assertEquals(
+    (await reader.read(new Uint8Array(3))).value,
+    new Uint8Array([1, 2, 3]),
+  );
+  assertEquals(
+    (await reader.read(new Uint8Array(3))).value,
+    new Uint8Array([4, 5, 6]),
+  );
+  // Previously this read hung ("Top-level await promise never resolved").
+  const r3 = await reader.read(new Uint8Array(3));
+  assertEquals(r3.done, true);
+  assertEquals((await bDone).length, 2);
 });
 
 Deno.test(async function readableStreamPartial() {
@@ -756,17 +797,27 @@ Deno.test(async function readableStreamEmittingManyChunks() {
       Deno.exit(1);
     }
   `;
-  const command = new Deno.Command(Deno.execPath(), {
-    args: ["run", "-N", "-"],
-    stdin: "piped",
-  });
+  // The in-process heap-growth heuristic above is sensitive to GC timing and
+  // can transiently exceed the 2x ratio on some platforms (observed on
+  // macOS aarch64 in release mode) even without a real leak. A genuine
+  // unbounded leak grows >>2x and reproduces on every run, so retry a few
+  // times and only fail if every attempt reports a leak. See #35353.
+  let codeResult = 1;
+  for (let attempt = 0; attempt < 3 && codeResult !== 0; attempt++) {
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["run", "-N", "-"],
+      stdin: "piped",
+    });
 
-  await using child = command.spawn();
-  await ReadableStream.from([code])
-    .pipeThrough(new TextEncoderStream())
-    .pipeTo(child.stdin);
+    await using child = command.spawn();
+    await ReadableStream.from([code])
+      .pipeThrough(new TextEncoderStream())
+      .pipeTo(child.stdin);
 
-  assertEquals((await child.status).code, 0, "memory leak");
+    codeResult = (await child.status).code;
+  }
+
+  assertEquals(codeResult, 0, "memory leak");
 });
 
 // Regression test for https://github.com/denoland/deno/issues/33476
@@ -931,5 +982,188 @@ Deno.test(
     // controller-error path, so the server's read returns null.
     await acceptPromise;
     listener.close();
+  },
+);
+
+// When both the source and the sink are resource-backed (here a file readable
+// piped into a file writable), `pipeTo` takes the Rust `op_pipe` fast path.
+// This exercises byte-exact transfer and the default close behavior.
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function pipeToResourceBackedFastPath() {
+    const input = await Deno.makeTempFile();
+    const output = await Deno.makeTempFile();
+    try {
+      const data = new Uint8Array(1024 * 1024);
+      for (let i = 0; i < data.length; i++) data[i] = i % 251;
+      await Deno.writeFile(input, data);
+
+      using src = await Deno.open(input, { read: true });
+      using dst = await Deno.open(output, { write: true });
+      await src.readable.pipeTo(dst.writable);
+
+      assertEquals(await Deno.readFile(output), data);
+    } finally {
+      await Deno.remove(input);
+      await Deno.remove(output);
+    }
+  },
+);
+
+// With `preventClose: true` the resource-backed sink must stay writable after
+// the fast-path pipe completes.
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function pipeToResourceBackedPreventClose() {
+    const input = await Deno.makeTempFile();
+    const output = await Deno.makeTempFile();
+    try {
+      await Deno.writeTextFile(input, "hello ");
+      using src = await Deno.open(input, { read: true });
+      const dst = await Deno.open(output, { write: true });
+      await src.readable.pipeTo(dst.writable, { preventClose: true });
+
+      const writer = dst.writable.getWriter();
+      await writer.write(new TextEncoder().encode("world"));
+      await writer.close();
+
+      assertEquals(await Deno.readTextFile(output), "hello world");
+    } finally {
+      await Deno.remove(input);
+      await Deno.remove(output);
+    }
+  },
+);
+
+// A present-but-never-aborted signal still takes the fast path (exercising the
+// cancel-handle wiring) and completes normally, byte-exact.
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function pipeToResourceBackedSignalNotAborted() {
+    const input = await Deno.makeTempFile();
+    const output = await Deno.makeTempFile();
+    try {
+      const data = new Uint8Array(128 * 1024);
+      for (let i = 0; i < data.length; i++) data[i] = i % 251;
+      await Deno.writeFile(input, data);
+
+      using src = await Deno.open(input, { read: true });
+      using dst = await Deno.open(output, { write: true });
+      const ac = new AbortController();
+      await src.readable.pipeTo(dst.writable, { signal: ac.signal });
+
+      assertEquals(await Deno.readFile(output), data);
+    } finally {
+      await Deno.remove(input);
+      await Deno.remove(output);
+    }
+  },
+);
+
+// Aborting the signal mid-pump must unblock `op_pipe` (the source never
+// produces data, so without cancellation the pipe would hang forever), reject
+// with the abort reason, and tear both ends down.
+Deno.test(
+  { permissions: { net: true, read: true, write: true } },
+  async function pipeToResourceBackedAbortSignal() {
+    const listener = Deno.listen({ port: 0 });
+    const connectPromise = Deno.connect({ port: listener.addr.port });
+    const server = await listener.accept();
+    const client = await connectPromise;
+    listener.close();
+
+    // The server never writes, so the resource-backed read blocks; only the
+    // abort signal (via op_pipe cancellation) can unblock it.
+    const outPath = await Deno.makeTempFile();
+    const out = await Deno.open(outPath, { write: true });
+
+    const ac = new AbortController();
+    const piped = client.readable.pipeTo(out.writable, { signal: ac.signal });
+    const timer = setTimeout(() => ac.abort(), 50);
+
+    const error = await assertRejects(() => piped, DOMException);
+    assertEquals(error.name, "AbortError");
+
+    clearTimeout(timer);
+    // The abort cancelled `client.readable` (closing the conn) and aborted
+    // `out.writable` (closing the file); only the server remains open.
+    server.close();
+    await Deno.remove(outPath);
+  },
+);
+
+// A real (non-abort) resource error mid-pump must surface through
+// `annotateResourceStreamError` — the bad-resource message is rewritten to a
+// stream-level one — and still tear both ends down. Here the sink's underlying
+// resource is closed out from under the pipe, so `op_pipe` fails with a
+// bad-resource error rather than an abort.
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function pipeToResourceBackedSinkError() {
+    const input = await Deno.makeTempFile();
+    const output = await Deno.makeTempFile();
+    try {
+      await Deno.writeTextFile(input, "some data to pipe");
+      using src = await Deno.open(input, { read: true });
+      const dst = await Deno.open(output, { write: true });
+      // Close the sink's underlying resource, leaving its writable stream in the
+      // "writable" state so the fast path is still taken.
+      dst.close();
+
+      const error = await assertRejects(() =>
+        src.readable.pipeTo(dst.writable)
+      );
+      assert(
+        (error as Error).message.includes(
+          "The stream's underlying resource was closed or consumed",
+        ),
+        `unexpected error message: ${(error as Error).message}`,
+      );
+    } finally {
+      await Deno.remove(input);
+      await Deno.remove(output);
+    }
+  },
+);
+
+// With `preventCancel: true`, an abort mid-pump must tear down the sink but
+// leave the source uncancelled, so its underlying connection stays open and
+// readable. This locks in the flag handling in the fast path's `catch` block.
+Deno.test(
+  { permissions: { net: true, read: true, write: true } },
+  async function pipeToResourceBackedPreventCancel() {
+    const listener = Deno.listen({ port: 0 });
+    const connectPromise = Deno.connect({ port: listener.addr.port });
+    const server = await listener.accept();
+    const client = await connectPromise;
+    listener.close();
+
+    const outPath = await Deno.makeTempFile();
+    const out = await Deno.open(outPath, { write: true });
+
+    const ac = new AbortController();
+    // The server never writes, so the pump blocks on the read; only the abort
+    // (via op_pipe cancellation) unblocks it.
+    const piped = client.readable.pipeTo(out.writable, {
+      signal: ac.signal,
+      preventCancel: true,
+    });
+    const timer = setTimeout(() => ac.abort(), 50);
+
+    const error = await assertRejects(() => piped, DOMException);
+    assertEquals(error.name, "AbortError");
+    clearTimeout(timer);
+
+    // `preventCancel` kept the source open: the server can still send bytes and
+    // the client receives them over the same connection.
+    await server.write(new TextEncoder().encode("still open"));
+    const reader = client.readable.getReader({ mode: "byob" });
+    const { value } = await reader.read(new Uint8Array(16));
+    assertEquals(new TextDecoder().decode(value), "still open");
+    reader.releaseLock();
+
+    client.close();
+    server.close();
+    await Deno.remove(outPath);
   },
 );

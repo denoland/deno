@@ -1,4 +1,4 @@
-running 32 tests from ./test.js
+running 34 tests from ./test.js
 reproducer from issue 32987 does not throw ... ok ([WILDLINE])
 setTimeout fires on tick ... ok ([WILDLINE])
 setInterval fires repeatedly on tick ... ok ([WILDLINE])
@@ -31,6 +31,8 @@ module setTimeout is untouched when its api is not enabled ... ok ([WILDLINE])
 throws ERR_INVALID_STATE when not enabled ... ok ([WILDLINE])
 throws ERR_INVALID_STATE when enabling twice ... ok ([WILDLINE])
 throws on invalid api name ... ok ([WILDLINE])
+mock.reset() resets timers - first call ... ok ([WILDLINE])
+mock.reset() resets timers - second call ... ok ([WILDLINE])
 
-ok | 32 passed | 0 failed ([WILDLINE])
+ok | 34 passed | 0 failed ([WILDLINE])
 

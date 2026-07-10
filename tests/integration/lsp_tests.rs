@@ -11356,10 +11356,17 @@ fn lsp_quick_fix_missing_import_exclude_bare_node_builtins() {
     .iter()
     .map(|a| a.title.clone())
     .collect::<Vec<_>>();
+  // The invariant is that every suggested node builtin import carries the
+  // `node:` prefix (#25775) - no bare `"assert"` / `"test"` specifiers, which
+  // do not resolve in Deno. Stock TS surfaces the additional prefixed builtins
+  // `node:assert` and `node:test` (the forked compiler only offered
+  // `node:console`); they are all valid, resolvable imports.
   assert_eq!(
     json!(titles),
     json!([
+      "Add import from \"node:assert\"",
       "Add import from \"node:console\"",
+      "Add import from \"node:test\"",
       "Add missing function declaration 'assert'",
     ]),
   );
@@ -13492,7 +13499,7 @@ fn lsp_jupyter_completions() {
       },
       "documentation": {
         "kind": "markdown",
-        "value": "Asynchronously reads and returns the entire contents of a file as an UTF-8\ndecoded string.\n\n```ts\nconst data = await Deno.readTextFile(\"hello.txt\");\nconsole.log(data);\n```\n\nThe returned promise rejects if the operation fails, for example with\n[`Deno.errors.NotFound`](deno:/asset/lib.deno.ns.d.ts#174,5-174,43) if the file does not exist,\n[`Deno.errors.IsADirectory`](deno:/asset/lib.deno.ns.d.ts#307,5-307,47) if `path` refers to a directory, or\n[`Deno.errors.PermissionDenied`](deno:/asset/lib.deno.ns.d.ts#185,5-185,51) if the required permission has not\nbeen granted.\n\nRequires `allow-read` permission.\n\n*@tags* — allow-read\n\n\n*@category* — File System\n",
+        "value": "Asynchronously reads and returns the entire contents of a file as an UTF-8\ndecoded string.\n\n```ts\nconst data = await Deno.readTextFile(\"hello.txt\");\nconsole.log(data);\n```\n\nThe returned promise rejects if the operation fails, for example with\n[`Deno.errors.NotFound`](deno:/asset/lib.deno.ns.d.ts#176,5-176,43) if the file does not exist,\n[`Deno.errors.IsADirectory`](deno:/asset/lib.deno.ns.d.ts#309,5-309,47) if `path` refers to a directory, or\n[`Deno.errors.PermissionDenied`](deno:/asset/lib.deno.ns.d.ts#187,5-187,51) if the required permission has not\nbeen granted.\n\nRequires `allow-read` permission.\n\n*@tags* — allow-read\n\n\n*@category* — File System\n",
       },
       "sortText": "11",
     }),
@@ -15483,6 +15490,69 @@ fn lsp_no_slow_types_diagnostics() {
         d.code == Some(lsp::NumberOrString::String("no-slow-types".to_string()))
       }),
     "expected no no-slow-types diagnostics on a non-export module, got: {other_diagnostics:#?}"
+  );
+
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
+fn lsp_no_slow_types_unanalyzable_exports() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+
+  // a package with a non-JS export (like CSS) shouldn't surface an
+  // internal "export not found" diagnostic, but slow types in its
+  // analyzable exports should still be reported
+  // https://github.com/denoland/deno/issues/26308
+  temp_dir.write(
+    "deno.json",
+    r#"{
+  "name": "@foo/bar",
+  "version": "1.0.0",
+  "exports": {
+    "./mod.ts": "./mod.ts",
+    "./globals.css": "./globals.css"
+  }
+}
+"#,
+  );
+  temp_dir.write(
+    "mod.ts",
+    "export function add(a: number, b: number) {\n  return a + b;\n}\n",
+  );
+  temp_dir.write("globals.css", "body {\n  color: red;\n}\n");
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": url_to_uri(&temp_dir.url().join("mod.ts").unwrap()).unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("mod.ts"),
+    }
+  }));
+  let no_slow_types_diagnostics = diagnostics
+    .all_messages()
+    .iter()
+    .flat_map(|m| m.diagnostics.iter())
+    .filter(|d| {
+      d.code == Some(lsp::NumberOrString::String("no-slow-types".to_string()))
+    })
+    .cloned()
+    .collect::<Vec<_>>();
+  assert!(
+    no_slow_types_diagnostics
+      .iter()
+      .any(|d| d.message.contains("missing explicit return type")),
+    "expected a no-slow-types diagnostic for the slow type, got: {no_slow_types_diagnostics:#?}"
+  );
+  assert!(
+    !no_slow_types_diagnostics
+      .iter()
+      .any(|d| d.message.contains("globals.css")),
+    "expected no no-slow-types diagnostics for the CSS export, got: {no_slow_types_diagnostics:#?}"
   );
 
   client.shutdown();

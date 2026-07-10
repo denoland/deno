@@ -556,6 +556,13 @@ fn test_get_module_namespace() {
 
 #[test]
 fn test_heap_limits() {
+  // The GC pressure in this test makes V8 post delayed foreground tasks
+  // (memory reducer), which require a tokio runtime context.
+  let tokio = tokio::runtime::Builder::new_current_thread()
+    .enable_time()
+    .build()
+    .unwrap();
+  let _guard = tokio.enter();
   let create_params =
     v8::Isolate::create_params().heap_limits(0, 5 * 1024 * 1024);
   let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -598,6 +605,13 @@ fn test_heap_limit_cb_remove() {
 
 #[test]
 fn test_heap_limit_cb_multiple() {
+  // The GC pressure in this test makes V8 post delayed foreground tasks
+  // (memory reducer), which require a tokio runtime context.
+  let tokio = tokio::runtime::Builder::new_current_thread()
+    .enable_time()
+    .build()
+    .unwrap();
+  let _guard = tokio.enter();
   let create_params =
     v8::Isolate::create_params().heap_limits(0, 5 * 1024 * 1024);
   let mut runtime = JsRuntime::new(RuntimeOptions {

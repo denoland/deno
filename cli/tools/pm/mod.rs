@@ -883,12 +883,21 @@ async fn find_package_and_select_version_for_req(
         package_req: req.clone(),
       });
     };
-    let range_symbol = if req.version_req.version_text().starts_with('~') {
-      "~"
-    } else if save_exact
+    let range_symbol = if save_exact
       || req.version_req.version_text() == nv.version.to_string()
     {
       ""
+    } else if !nv.version.pre.is_empty() {
+      // Pin pre-release versions exactly, regardless of any range operator the
+      // user requested. A caret or tilde range over a pre-release matches every
+      // pre-release sharing the same major.minor.patch and resolves to the
+      // lexicographically greatest one. For hash based pre-release identifiers
+      // (e.g. an npm dist-tag like `@insiders` that resolves to
+      // `0.0.0-insiders.<hash>`) that is not the newest build and not what the
+      // user asked to install. See #35577.
+      ""
+    } else if req.version_req.version_text().starts_with('~') {
+      "~"
     } else {
       "^"
     };

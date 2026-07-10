@@ -173,6 +173,7 @@ async fn run_test_client_with_resolver(
       local_address: None,
       client_builder_hook: None,
       no_delay: false,
+      http2_max_header_list_size: None,
     },
   )
   .unwrap();
@@ -299,6 +300,7 @@ async fn test_http_proxy_denies_destination_resolving_to_denied_ip() {
       local_address: None,
       client_builder_hook: None,
       no_delay: false,
+      http2_max_header_list_size: None,
     },
   )
   .unwrap();
@@ -633,6 +635,7 @@ fn create_http_test_client() -> crate::Client {
       http2: true,
       local_address: None,
       client_builder_hook: None,
+      http2_max_header_list_size: None,
       permissions: None,
       no_delay: false,
     },

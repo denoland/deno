@@ -195,6 +195,7 @@ impl DatabaseHandler for RemoteDbHandler {
         local_address: None,
         client_builder_hook: None,
         no_delay: false,
+        http2_max_header_list_size: None,
       },
     )
     .map_err(JsErrorBox::from_err)?;

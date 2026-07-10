@@ -212,6 +212,17 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
       if let Some(reporter) = &reporter {
         reporter.downloaded(&package_nv);
       }
+      // The tarball URL had no matching auth, but the package's scoped registry
+      // does have credentials. Registries signal this either with a 401, or
+      // (notably GitLab instance-level npm registries) with a 404 to avoid
+      // disclosing whether a private package exists. In both cases, point the
+      // user at npm's "No auth for URI" guidance instead of an opaque error.
+      let scoped_registry_has_auth = maybe_registry_config.is_none()
+        && tarball_cache
+          .npmrc
+          .get_registry_config(&package_nv.name)
+          .auth_token
+          .is_some();
       let maybe_bytes = match result {
         Ok(response) => match response {
           NpmCacheHttpClientResponse::NotModified => unreachable!(), // no e-tag
@@ -219,20 +230,8 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
           NpmCacheHttpClientResponse::Bytes(r) => Some(r.bytes),
         },
         Err(err) => {
-          if err.status_code == Some(401)
-            && maybe_registry_config.is_none()
-            && tarball_cache.npmrc.get_registry_config(&package_nv.name).auth_token.is_some()
-          {
-            return Err(JsErrorBox::generic(format!(
-              concat!(
-                "No auth for tarball URI, but present for scoped registry.\n\n",
-                "Tarball URI: {}\n",
-                "Scope URI: {}\n\n",
-                "More info here: https://github.com/npm/cli/wiki/%22No-auth-for-URI,-but-auth-present-for-scoped-registry%22"
-              ),
-              dist.tarball,
-              registry_url,
-            )));
+          if err.status_code == Some(401) && scoped_registry_has_auth {
+            return Err(scoped_registry_auth_error(&dist.tarball, registry_url));
           }
           return Err(JsErrorBox::from_err(err))
         },
@@ -281,6 +280,11 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
           .map_err(JsErrorBox::from_err)
         }
         None => {
+          // A 404 lands here (mapped to `NotFound`), so the 401 check above is
+          // bypassed -- surface the auth hint here too when applicable.
+          if scoped_registry_has_auth {
+            return Err(scoped_registry_auth_error(&dist.tarball, registry_url));
+          }
           Err(JsErrorBox::generic(format!("Could not find npm package tarball at: {}", dist.tarball)))
         }
       }
@@ -288,4 +292,19 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
     .map(|r| r.map_err(Arc::new))
     .boxed_local()
   }
+}
+
+fn scoped_registry_auth_error(
+  tarball_uri: &str,
+  registry_url: &Url,
+) -> JsErrorBox {
+  JsErrorBox::generic(format!(
+    concat!(
+      "No auth for tarball URI, but present for scoped registry.\n\n",
+      "Tarball URI: {}\n",
+      "Scope URI: {}\n\n",
+      "More info here: https://github.com/npm/cli/wiki/%22No-auth-for-URI,-but-auth-present-for-scoped-registry%22"
+    ),
+    tarball_uri, registry_url,
+  ))
 }
