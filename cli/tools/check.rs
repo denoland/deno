@@ -266,12 +266,11 @@ fn remap_path(raw: &str, project_root: &Path) -> String {
   }
 
   // jsr: dependencies installed under `node_modules/@jsr/<scope>__<name>/...`.
-  if let Some(rest) = normalized.split("node_modules/@jsr/").nth(1) {
-    if let Some((pkg, sub)) = rest.split_once('/') {
-      if let Some((scope, name)) = pkg.split_once("__") {
-        return format!("jsr:@{scope}/{name}/{sub}");
-      }
-    }
+  if let Some(rest) = normalized.split("node_modules/@jsr/").nth(1)
+    && let Some((pkg, sub)) = rest.split_once('/')
+    && let Some((scope, name)) = pkg.split_once("__")
+  {
+    return format!("jsr:@{scope}/{name}/{sub}");
   }
 
   // Other npm dependencies under `node_modules/<pkg>/...`.
