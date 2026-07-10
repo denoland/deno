@@ -675,7 +675,8 @@ pub static FMT_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("ext")
       .long("ext")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .requires(&["files"]),
     ArgDef::new("ignore")
       .long("ignore")
       .action(ArgAction::Append)
@@ -715,6 +716,9 @@ pub static FMT_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1)),
     ArgDef::new("no-config").long("no-config").set_true(),
+    ArgDef::new("no-editorconfig")
+      .long("no-editorconfig")
+      .set_true(),
     ArgDef::new("unstable-component")
       .long("unstable-component")
       .set_true(),
@@ -1189,6 +1193,7 @@ pub static TASK_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("no-prefix").long("no-prefix").set_true(),
     ArgDef::new("jobs")
       .long("jobs")
+      .short('j')
       .long_aliases(&["concurrency"])
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1)),
@@ -1343,6 +1348,22 @@ pub static COMPILE_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional)
       .require_equals(),
+    ArgDef::new("watch")
+      .long("watch")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore)
+      .require_equals()
+      .value_delimiter(','),
+    ArgDef::new("watch-exclude")
+      .long("watch-exclude")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore)
+      .require_equals()
+      .value_delimiter(','),
+    ArgDef::new("no-clear-screen")
+      .long("no-clear-screen")
+      .set_true()
+      .requires(&["watch"]),
   ],
   arg_groups: &[
     UNSTABLE_ARGS,
@@ -1574,10 +1595,22 @@ pub static INIT_SUBCOMMAND: CommandDef = CommandDef {
       .num_args(NumArgs::ZeroOrMore)
       .trailing(),
     ArgDef::new("lib").long("lib").set_true(),
-    ArgDef::new("serve").long("serve").set_true(),
-    ArgDef::new("npm").long("npm").set_true(),
-    ArgDef::new("jsr").long("jsr").set_true(),
-    ArgDef::new("empty").long("empty").set_true(),
+    ArgDef::new("serve")
+      .long("serve")
+      .set_true()
+      .conflicts_with(&["lib"]),
+    ArgDef::new("npm")
+      .long("npm")
+      .set_true()
+      .conflicts_with(&["lib", "serve", "empty", "jsr"]),
+    ArgDef::new("jsr")
+      .long("jsr")
+      .set_true()
+      .conflicts_with(&["lib", "serve", "empty", "npm"]),
+    ArgDef::new("empty")
+      .long("empty")
+      .set_true()
+      .conflicts_with(&["lib", "serve", "npm", "jsr"]),
     ArgDef::new("yes").short('y').long("yes").set_true(),
   ],
   arg_groups: &[],
@@ -1618,22 +1651,35 @@ pub static JUPYTER_SUBCOMMAND: CommandDef = CommandDef {
   about: "Deno kernel for Jupyter notebooks",
   aliases: &[],
   args: &[
-    ArgDef::new("install").long("install").set_true(),
+    ArgDef::new("install")
+      .long("install")
+      .set_true()
+      .conflicts_with(&["kernel"]),
     ArgDef::new("name")
       .short('n')
       .long("name")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .conflicts_with(&["kernel"]),
     ArgDef::new("display")
       .long("display")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
-    ArgDef::new("kernel").long("kernel").set_true(),
+      .num_args(NumArgs::Exact(1))
+      .requires(&["install"]),
+    ArgDef::new("kernel")
+      .long("kernel")
+      .set_true()
+      .conflicts_with(&["install"])
+      .requires(&["conn"]),
     ArgDef::new("conn")
       .long("conn")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
-    ArgDef::new("force").long("force").set_true(),
+      .num_args(NumArgs::Exact(1))
+      .conflicts_with(&["install"]),
+    ArgDef::new("force")
+      .long("force")
+      .set_true()
+      .requires(&["install"]),
   ],
   arg_groups: &[
     COMPILE_ARGS,
@@ -1689,7 +1735,8 @@ pub static ADD_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("packages")
       .positional()
       .action(ArgAction::Append)
-      .num_args(NumArgs::OneOrMore),
+      .num_args(NumArgs::OneOrMore)
+      .required(),
     ArgDef::new("dev").short('D').long("dev").set_true(),
     ArgDef::new("save-exact")
       .long("save-exact")
@@ -1700,6 +1747,26 @@ pub static ADD_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("lockfile-only")
       .long("lockfile-only")
       .set_true(),
+    ArgDef::new("allow-import")
+      .short('I')
+      .long("allow-import")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore)
+      .require_equals()
+      .value_delimiter(','),
+    ArgDef::new("deny-import")
+      .long("deny-import")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore)
+      .require_equals()
+      .value_delimiter(','),
+    ArgDef::new("package-json").long("package-json").set_true(),
+    ArgDef::new("env-file")
+      .long("env-file")
+      .long_aliases(&["env"])
+      .action(ArgAction::Append)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
   ],
   arg_groups: &[UNSTABLE_ARGS, ALLOW_SCRIPTS_ARG, COMPILE_ARGS],
   subcommands: &[],
@@ -1843,6 +1910,36 @@ pub static CLEAN_SUBCOMMAND: CommandDef = CommandDef {
       .require_equals(),
   ],
   arg_groups: &[UNSTABLE_ARGS],
+  subcommands: &[],
+  default_subcommand: None,
+  trailing_var_arg: false,
+  passthrough: false,
+};
+
+pub static LIST_SUBCOMMAND: CommandDef = CommandDef {
+  name: "list",
+  about: "List the dependencies declared in deno.json / package.json",
+  aliases: &[],
+  args: &[
+    ArgDef::new("filters")
+      .positional()
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore),
+    ArgDef::new("depth")
+      .long("depth")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("prod")
+      .long("prod")
+      .set_true()
+      .conflicts_with(&["dev"]),
+    ArgDef::new("dev").long("dev").set_true(),
+    ArgDef::new("recursive")
+      .long("recursive")
+      .short('r')
+      .set_true(),
+  ],
+  arg_groups: &[],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -2371,6 +2468,7 @@ pub static DENO_ROOT: CommandDef = CommandDef {
     DEPLOY_SUBCOMMAND,
     SANDBOX_SUBCOMMAND,
     CLEAN_SUBCOMMAND,
+    LIST_SUBCOMMAND,
     APPROVE_SCRIPTS_SUBCOMMAND,
     LSP_SUBCOMMAND,
     VENDOR_SUBCOMMAND,

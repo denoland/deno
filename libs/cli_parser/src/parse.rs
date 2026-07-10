@@ -231,11 +231,9 @@ fn parse_args(
               && positional_index >= positional_defs.len()
             {
               i += 1;
-              // Skip a `--` separator if present (consume it, don't
-              // include it in the trailing args).
-              if i < args.len() && args[i] == "--" {
-                i += 1;
-              }
+              // Keep a `--` separator in the forwarded args to match clap's
+              // trailing-var-arg behavior (e.g. `deno run script.ts -- -a`
+              // forwards `["--", "-a"]`).
               while i < args.len() {
                 result.trailing.push(args[i].clone());
                 i += 1;

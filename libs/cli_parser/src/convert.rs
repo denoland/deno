@@ -60,6 +60,18 @@ fn parse_socket_addr(s: &str) -> Option<SocketAddr> {
 /// Parse command-line arguments and convert directly to `Flags`.
 /// This is the main entry point matching Deno's `flags_from_vec`.
 pub fn flags_from_vec(args: Vec<String>) -> Result<Flags, CliError> {
+  // Strip a trailing `\r` from each argument so that a shebang in a script
+  // saved with CRLF line endings (e.g. `#!/usr/bin/env -S deno run -A\r`)
+  // doesn't poison the final shebang argument with a stray carriage return.
+  let args: Vec<String> = args
+    .into_iter()
+    .map(|mut a| {
+      if a.ends_with('\r') {
+        a.pop();
+      }
+      a
+    })
+    .collect();
   let parsed = crate::parse::parse(&crate::defs::DENO_ROOT, &args)?;
 
   // If --version was set at the root level (not as a subcommand flag like
@@ -120,7 +132,7 @@ pub fn convert(result: ParseResult) -> Result<Flags, CliError> {
     Some("cache") => cache_parse(&result, &mut flags),
     Some("check") => check_parse(&result, &mut flags),
     Some("info") => info_parse(&result, &mut flags),
-    Some("doc") => doc_parse(&result, &mut flags),
+    Some("doc") => doc_parse(&result, &mut flags)?,
     Some("task") => task_parse(&result, &mut flags)?,
     Some("bench") => bench_parse(&result, &mut flags),
     Some("compile") => compile_parse(&result, &mut flags),
@@ -129,7 +141,7 @@ pub fn convert(result: ParseResult) -> Result<Flags, CliError> {
     Some("install" | "i") => install_parse(&result, &mut flags)?,
     Some("uninstall") => uninstall_parse(&result, &mut flags),
     Some("completions") => completions_parse(&result, &mut flags),
-    Some("init") => init_parse(&result, &mut flags),
+    Some("init") => init_parse(&result, &mut flags)?,
     Some("create") => create_parse(&result, &mut flags)?,
     Some("jupyter") => jupyter_parse(&result, &mut flags),
     Some("publish") => publish_parse(&result, &mut flags),
@@ -138,6 +150,7 @@ pub fn convert(result: ParseResult) -> Result<Flags, CliError> {
     Some("outdated") => outdated_parse(&result, &mut flags, false),
     Some("update") => outdated_parse(&result, &mut flags, true),
     Some("clean") => clean_parse(&result, &mut flags),
+    Some("list") => list_parse(&result, &mut flags),
     Some("approve-scripts" | "approve-builds") => {
       approve_scripts_parse(&result, &mut flags)
     }
@@ -165,6 +178,24 @@ pub fn convert(result: ParseResult) -> Result<Flags, CliError> {
       ));
     }
   }
+
+  // Validate --location scheme (must be http/https), mirroring clap's
+  // location value_parser. No-op when `--location` was not provided.
+  if let Some(loc) = result.get_one("location") {
+    let url = deno_core::url::Url::parse(loc).map_err(|_| {
+      CliError::new(CliErrorKind::InvalidValue, "Failed to parse URL")
+    })?;
+    if !["http", "https"].contains(&url.scheme()) {
+      return Err(CliError::new(
+        CliErrorKind::InvalidValue,
+        "Expected protocol \"http\" or \"https\"",
+      ));
+    }
+  }
+
+  // Validate and apply `--allow-scripts` (no-op when the subcommand's def does
+  // not include the flag, so it is only set where it is accepted).
+  allow_scripts_arg_parse(&result, &mut flags)?;
 
   // Validate permission args
   validate_permission_args(&result, &flags)?;
@@ -299,7 +330,7 @@ fn default_parse(
     }
 
     // Bare run - same as `deno run` but with bare=true
-    runtime_args_parse(result, flags, true, true, true);
+    runtime_args_parse(result, flags, true, true);
     ext_arg_parse(result, flags);
     flags.tunnel = result.get_bool("tunnel");
     flags.code_cache_enabled = !result.get_bool("no-code-cache");
@@ -407,7 +438,6 @@ fn runtime_args_parse(
   flags: &mut Flags,
   include_perms: bool,
   include_inspector: bool,
-  include_allow_scripts: bool,
 ) {
   compile_args_parse(result, flags);
   cached_only_arg_parse(result, flags);
@@ -417,9 +447,8 @@ fn runtime_args_parse(
   if include_inspector {
     inspect_arg_parse(result, flags);
   }
-  if include_allow_scripts {
-    allow_scripts_arg_parse(result, flags);
-  }
+  // `--allow-scripts` is validated and applied centrally in `convert()` so the
+  // fallible parsing lives in one place (see `allow_scripts_arg_parse`).
   location_arg_parse(result, flags);
   v8_flags_arg_parse(result, flags);
   seed_arg_parse(result, flags);
@@ -858,25 +887,50 @@ fn unstable_args_parse(result: &ParseResult, flags: &mut Flags) {
   flags.unstable_config.features.sort();
 }
 
-fn allow_scripts_arg_parse(result: &ParseResult, flags: &mut Flags) {
-  if let Some(values) = result.get_many("allow-scripts") {
-    if values.is_empty() {
-      flags.allow_scripts = PackagesAllowedScripts::All;
-    } else {
-      flags.allow_scripts = PackagesAllowedScripts::Some(
-        values
-          .iter()
-          .filter_map(|s| {
-            let dep = JsrDepPackageReq::from_str_loose(s).ok()?;
-            if dep.kind != PackageKind::Npm {
-              return None;
-            }
-            Some(dep.req)
-          })
-          .collect(),
-      );
+fn allow_scripts_arg_parse(
+  result: &ParseResult,
+  flags: &mut Flags,
+) -> Result<(), CliError> {
+  let Some(values) = result.get_many("allow-scripts") else {
+    return Ok(());
+  };
+  if values.is_empty() {
+    flags.allow_scripts = PackagesAllowedScripts::All;
+    return Ok(());
+  }
+  let mut packages = Vec::new();
+  for value in values {
+    // The `--allow-scripts` value parser requires an explicit `npm:` prefix
+    // (unlike `--ignore-scripts`, which auto-prepends it).
+    if !value.starts_with("npm:") {
+      return Err(CliError::new(
+        CliErrorKind::InvalidValue,
+        format!(
+          "Invalid package for --allow-scripts: '{value}'. An 'npm:' specifier is required"
+        ),
+      ));
+    }
+    for value in escape_and_split_commas(value.to_string())? {
+      let dep = JsrDepPackageReq::from_str_loose(&value).map_err(|e| {
+        CliError::new(CliErrorKind::InvalidValue, e.to_string())
+      })?;
+      if dep.kind != PackageKind::Npm {
+        return Err(CliError::new(
+          CliErrorKind::InvalidValue,
+          format!("Only npm package constraints are supported: {value}"),
+        ));
+      }
+      if dep.req.version_req.tag().is_some() {
+        return Err(CliError::new(
+          CliErrorKind::InvalidValue,
+          format!("Tags are not supported in --allow-scripts: {value}"),
+        ));
+      }
+      packages.push(dep.req);
     }
   }
+  flags.allow_scripts = PackagesAllowedScripts::Some(packages);
+  Ok(())
 }
 
 fn ignore_scripts_value(result: &ParseResult) -> PackagesAllowedScripts {
@@ -889,6 +943,9 @@ fn ignore_scripts_value(result: &ParseResult) -> PackagesAllowedScripts {
     PackagesAllowedScripts::Some(
       values
         .iter()
+        .flat_map(|s| {
+          escape_and_split_commas(s.to_string()).unwrap_or_default()
+        })
         .filter_map(|s| {
           let value = if s.starts_with("npm:") || s.starts_with("jsr:") {
             s.to_string()
@@ -1194,7 +1251,6 @@ fn validate_permission_args(
 
 /// Split a comma-separated value string, where `,,` is an escaped literal comma.
 /// Returns an error if any empty values are produced.
-#[cfg(test)]
 pub fn escape_and_split_commas(s: String) -> Result<Vec<String>, CliError> {
   let mut result = vec![];
   let mut current = String::new();
@@ -1245,7 +1301,7 @@ fn run_parse(
   flags: &mut Flags,
   force_hmr: bool,
 ) -> Result<(), CliError> {
-  runtime_args_parse(result, flags, true, true, true);
+  runtime_args_parse(result, flags, true, true);
   ext_arg_parse(result, flags);
 
   flags.tunnel = result.get_bool("tunnel");
@@ -1321,7 +1377,7 @@ fn serve_parse(result: &ParseResult, flags: &mut Flags) {
     .map(|s| s.to_string())
     .unwrap_or_else(|| "0.0.0.0".to_string());
 
-  runtime_args_parse(result, flags, true, true, true);
+  runtime_args_parse(result, flags, true, true);
   flags.code_cache_enabled = !result.get_bool("no-code-cache");
   flags.tunnel = result.get_bool("tunnel");
 
@@ -1346,7 +1402,7 @@ fn serve_parse(result: &ParseResult, flags: &mut Flags) {
 }
 
 fn eval_parse(result: &ParseResult, flags: &mut Flags) {
-  runtime_args_parse(result, flags, false, true, false);
+  runtime_args_parse(result, flags, false, true);
   // eval implies allow all permissions
   flags.permissions.allow_all = true;
 
@@ -1472,7 +1528,7 @@ fn lint_parse(result: &ParseResult, flags: &mut Flags) {
 
 fn test_parse(result: &ParseResult, flags: &mut Flags) -> Result<(), CliError> {
   flags.type_check_mode = TypeCheckMode::Local;
-  runtime_args_parse(result, flags, true, true, true);
+  runtime_args_parse(result, flags, true, true);
   ext_arg_parse(result, flags);
 
   // deno test always uses --no-prompt
@@ -1601,10 +1657,16 @@ fn test_parse(result: &ParseResult, flags: &mut Flags) -> Result<(), CliError> {
     } else {
       None
     },
-    related: result
-      .get_many("related")
-      .map(|v| v.iter().map(|s| s.to_string()).collect())
-      .unwrap_or_default(),
+    related: match result.get_many("related") {
+      Some(v) => v
+        .iter()
+        .flat_map(|s| match escape_and_split_commas(s.to_string()) {
+          Ok(parts) => parts.into_iter().map(Ok).collect(),
+          Err(e) => vec![Err(e)],
+        })
+        .collect::<Result<_, _>>()?,
+      None => vec![],
+    },
     update_snapshots: result.get_bool("update-snapshots"),
   });
   Ok(())
@@ -1698,7 +1760,6 @@ fn upgrade_parse(
 
 fn cache_parse(result: &ParseResult, flags: &mut Flags) {
   compile_args_parse(result, flags);
-  allow_scripts_arg_parse(result, flags);
   allow_and_deny_import_parse(result, flags);
   env_file_arg_parse(result, flags);
   ext_arg_parse(result, flags);
@@ -1758,7 +1819,7 @@ fn info_parse(result: &ParseResult, flags: &mut Flags) {
   });
 }
 
-fn doc_parse(result: &ParseResult, flags: &mut Flags) {
+fn doc_parse(result: &ParseResult, flags: &mut Flags) -> Result<(), CliError> {
   import_map_arg_parse(result, flags);
   reload_arg_parse(result, flags);
   lock_args_parse(result, flags);
@@ -1766,7 +1827,22 @@ fn doc_parse(result: &ParseResult, flags: &mut Flags) {
   no_remote_arg_parse(result, flags);
   allow_and_deny_import_parse(result, flags);
 
-  let _has_builtin = result.get_bool("builtin");
+  let has_builtin = result.get_bool("builtin");
+
+  // clap marks `source_file` as `required_if_eq_any(html|lint)`: when either
+  // `--html` or `--lint` is set, at least one source file (or `--builtin`)
+  // must be provided.
+  let has_source_file = result
+    .get_many("source_file")
+    .map(|v| !v.is_empty())
+    .unwrap_or(false)
+    || has_builtin;
+  if (result.get_bool("html") || result.get_bool("lint")) && !has_source_file {
+    return Err(CliError::new(
+      CliErrorKind::MissingRequired,
+      "the following required arguments were not provided:\n  [source_file]...",
+    ));
+  }
   let source_files = if let Some(values) = result.get_many("source_file") {
     let paths: Vec<String> = values
       .iter()
@@ -1820,6 +1896,7 @@ fn doc_parse(result: &ParseResult, flags: &mut Flags) {
     filter,
     private,
   });
+  Ok(())
 }
 
 fn task_parse(result: &ParseResult, flags: &mut Flags) -> Result<(), CliError> {
@@ -1851,6 +1928,16 @@ fn task_parse(result: &ParseResult, flags: &mut Flags) -> Result<(), CliError> {
     ));
   }
 
+  let concurrency = match result.get_one("jobs") {
+    Some(s) => Some(s.parse::<NonZeroUsize>().map_err(|_| {
+      CliError::new(
+        CliErrorKind::InvalidValue,
+        format!("invalid value '{s}' for '--jobs <jobs>'"),
+      )
+    })?),
+    None => None,
+  };
+
   flags.subcommand = DenoSubcommand::Task(TaskFlags {
     cwd: result.get_one("cwd").map(|s| s.to_string()),
     task: task_name,
@@ -1859,7 +1946,7 @@ fn task_parse(result: &ParseResult, flags: &mut Flags) -> Result<(), CliError> {
     filter,
     eval,
     no_prefix: result.get_bool("no-prefix"),
-    concurrency: result.get_one("jobs").and_then(|s| s.parse().ok()),
+    concurrency,
     if_present: result.get_bool("if-present"),
   });
   Ok(())
@@ -1867,7 +1954,7 @@ fn task_parse(result: &ParseResult, flags: &mut Flags) -> Result<(), CliError> {
 
 fn bench_parse(result: &ParseResult, flags: &mut Flags) {
   flags.type_check_mode = TypeCheckMode::Local;
-  runtime_args_parse(result, flags, true, false, true);
+  runtime_args_parse(result, flags, true, false);
   ext_arg_parse(result, flags);
 
   // bench always uses --no-prompt
@@ -1897,7 +1984,7 @@ fn bench_parse(result: &ParseResult, flags: &mut Flags) {
 
 fn compile_parse(result: &ParseResult, flags: &mut Flags) {
   flags.type_check_mode = TypeCheckMode::Local;
-  runtime_args_parse(result, flags, true, false, true);
+  runtime_args_parse(result, flags, true, false);
 
   let source_file = result
     .get_one("source_file")
@@ -2041,10 +2128,9 @@ fn install_parse(
   result: &ParseResult,
   flags: &mut Flags,
 ) -> Result<(), CliError> {
-  runtime_args_parse(result, flags, true, true, false);
+  runtime_args_parse(result, flags, true, true);
 
   let global = result.get_bool("global");
-  allow_scripts_arg_parse(result, flags);
 
   if global {
     let root = result.get_one("root").map(|s| s.to_string());
@@ -2128,12 +2214,11 @@ fn install_parse(
   } else if let Some(packages) = result.get_many("cmd") {
     if !packages.is_empty() {
       let dev = result.get_bool("dev");
-      let default_registry = if result.get_bool("npm") {
-        Some(DefaultRegistry::Npm)
-      } else if result.get_bool("jsr") {
+      let default_registry = if result.get_bool("jsr") {
         Some(DefaultRegistry::Jsr)
       } else {
-        None
+        // Default to npm when neither --npm nor --jsr is provided.
+        Some(DefaultRegistry::Npm)
       };
       flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
         InstallFlagsLocal::Add(AddFlags {
@@ -2203,7 +2288,7 @@ fn completions_parse(result: &ParseResult, flags: &mut Flags) {
   ));
 }
 
-fn init_parse(result: &ParseResult, flags: &mut Flags) {
+fn init_parse(result: &ParseResult, flags: &mut Flags) -> Result<(), CliError> {
   let mut lib = result.get_bool("lib");
   let mut serve = result.get_bool("serve");
   let mut empty = result.get_bool("empty");
@@ -2249,6 +2334,16 @@ fn init_parse(result: &ParseResult, flags: &mut Flags) {
         }
       }
     }
+  } else if use_npm {
+    return Err(CliError::new(
+      CliErrorKind::MissingRequired,
+      "Missing package name for --npm.",
+    ));
+  } else if use_jsr {
+    return Err(CliError::new(
+      CliErrorKind::MissingRequired,
+      "Missing package name for --jsr.",
+    ));
   }
 
   flags.subcommand = DenoSubcommand::Init(InitFlags {
@@ -2260,6 +2355,7 @@ fn init_parse(result: &ParseResult, flags: &mut Flags) {
     empty,
     yes,
   });
+  Ok(())
 }
 
 fn create_parse(
@@ -2370,20 +2466,21 @@ fn publish_parse(result: &ParseResult, flags: &mut Flags) {
 }
 
 fn add_parse(result: &ParseResult, flags: &mut Flags) {
-  allow_scripts_arg_parse(result, flags);
+  allow_and_deny_import_parse(result, flags);
   lock_args_parse(result, flags);
+  env_file_arg_parse(result, flags);
 
   let packages = result
     .get_many("packages")
     .map(|v| v.iter().map(|s| s.to_string()).collect())
     .unwrap_or_default();
   let dev = result.get_bool("dev");
-  let default_registry = if result.get_bool("npm") {
-    Some(DefaultRegistry::Npm)
-  } else if result.get_bool("jsr") {
+  let default_registry = if result.get_bool("jsr") {
     Some(DefaultRegistry::Jsr)
   } else {
-    None
+    // Default to npm when neither --npm nor --jsr is provided, so
+    // `deno add express` works without requiring an `npm:` prefix.
+    Some(DefaultRegistry::Npm)
   };
 
   flags.subcommand = DenoSubcommand::Add(AddFlags {
@@ -2572,17 +2669,37 @@ fn outdated_parse(result: &ParseResult, flags: &mut Flags, is_update: bool) {
 }
 
 fn clean_parse(result: &ParseResult, flags: &mut Flags) {
-  node_modules_and_vendor_dir_arg_parse(result, flags);
-
-  let except_paths = result
-    .get_many("except-paths")
-    .map(|v| v.iter().map(|s| s.to_string()).collect())
-    .unwrap_or_default();
+  let mut except_paths = Vec::new();
+  if result.get_bool("except") {
+    except_paths = result
+      .get_many("except-paths")
+      .map(|v| v.iter().map(|s| s.to_string()).collect())
+      .unwrap_or_default();
+    flags.cached_only = true;
+    node_modules_and_vendor_dir_arg_parse(result, flags);
+  }
   let dry_run = result.get_bool("dry-run");
 
   flags.subcommand = DenoSubcommand::Clean(CleanFlags {
     except_paths,
     dry_run,
+  });
+}
+
+fn list_parse(result: &ParseResult, flags: &mut Flags) {
+  let filters = result
+    .get_many("filters")
+    .map(|v| v.iter().map(|s| s.to_string()).collect())
+    .unwrap_or_default();
+  flags.subcommand = DenoSubcommand::List(ListFlags {
+    recursive: result.get_bool("recursive"),
+    depth: result
+      .get_one("depth")
+      .and_then(|s| s.parse::<u16>().ok())
+      .unwrap_or(0),
+    prod: result.get_bool("prod"),
+    dev: result.get_bool("dev"),
+    filters,
   });
 }
 
@@ -2815,7 +2932,6 @@ fn node_inspect_addr(word: &str, flag: &str) -> Option<SocketAddr> {
 fn bundle_parse(result: &ParseResult, flags: &mut Flags) {
   compile_args_without_check_parse(result, flags);
   permission_args_parse(result, flags);
-  allow_scripts_arg_parse(result, flags);
 
   let entrypoints = result
     .get_many("file")
@@ -2929,7 +3045,7 @@ fn x_parse(result: &ParseResult, flags: &mut Flags) {
       if !args.is_empty() {
         let command = args[0].clone();
         let yes = result.get_bool("yes");
-        runtime_args_parse(result, flags, true, true, true);
+        runtime_args_parse(result, flags, true, true);
         permission_args_parse(result, flags);
         flags.argv.extend(args[1..].iter().cloned());
         XFlagsKind::Command(XCommandFlags {

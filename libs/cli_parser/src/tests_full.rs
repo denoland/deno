@@ -52,7 +52,6 @@ fn global_flags() {
 }
 
 #[test]
-#[ignore = "PORT-GAP(parse): output differs from clap; needs grinding against the cli/args/flags.rs parse fn"]
 fn crlf_shebang_arg() {
   // A script saved with CRLF line endings whose first line is
   // `#!/usr/bin/env -S deno run --allow-net` is invoked by the kernel as
@@ -856,7 +855,6 @@ fn deny_read() {
 }
 
 #[test]
-#[ignore = "PORT-GAP(--): run/task keep literal `--` in forwarded argv under clap; new parser strips it — pending keep-vs-strip decision"]
 fn double_hyphen() {
   // notice that flags passed after double dash will not
   // be parsed to Flags but instead forwarded to
@@ -888,7 +886,6 @@ fn double_hyphen() {
 }
 
 #[test]
-#[ignore = "PORT-GAP(parse): output differs from clap; needs grinding against the cli/args/flags.rs parse fn"]
 fn fmt() {
   let r = flags_from_vec(svec!["deno", "fmt", "script_1.ts", "script_2.ts"]);
   assert_eq!(
@@ -3968,7 +3965,6 @@ fn test_changed() {
 }
 
 #[test]
-#[ignore = "PORT-GAP(parse): output differs from clap; needs grinding against the cli/args/flags.rs parse fn"]
 fn test_related() {
   let r = flags_from_vec(svec!["deno", "test", "--related=src/a.ts,src/b.ts"]);
   assert_eq!(
@@ -4725,7 +4721,6 @@ fn info_with_cafile() {
 }
 
 #[test]
-#[ignore = "PORT-GAP(parse): output differs from clap; needs grinding against the cli/args/flags.rs parse fn"]
 fn doc() {
   let r = flags_from_vec(svec!["deno", "doc", "--json", "path/to/module.ts"]);
   assert_eq!(
@@ -5107,7 +5102,6 @@ fn desktop_exclude_unused_npm() {
 }
 
 #[test]
-#[ignore = "PORT-GAP(parse): output differs from clap; needs grinding against the cli/args/flags.rs parse fn"]
 fn compile_watch_with_no_clear_screen() {
   let r = flags_from_vec(svec![
     "deno",
@@ -5294,7 +5288,6 @@ fn coverage_with_default_files() {
 }
 
 #[test]
-#[ignore = "PORT-GAP(parse): output differs from clap; needs grinding against the cli/args/flags.rs parse fn"]
 fn location_with_bad_scheme() {
   #[rustfmt::skip]
     let r = flags_from_vec(svec!["deno", "run", "--location", "foo:", "mod.ts"]);
@@ -5463,7 +5456,6 @@ fn task_subcommand() {
 }
 
 #[test]
-#[ignore = "PORT-GAP(parse): output differs from clap; needs grinding against the cli/args/flags.rs parse fn"]
 fn task_subcommand_jobs() {
   // `--jobs`, its `--concurrency` alias, and the `-j` short form all parse
   // to the same value.
@@ -5501,7 +5493,6 @@ fn task_subcommand_jobs() {
 }
 
 #[test]
-#[ignore = "PORT-GAP(--): run/task keep literal `--` in forwarded argv under clap; new parser strips it — pending keep-vs-strip decision"]
 fn task_subcommand_double_hyphen() {
   let r = flags_from_vec(svec![
     "deno",
@@ -5557,7 +5548,6 @@ fn task_subcommand_double_hyphen() {
 }
 
 #[test]
-#[ignore = "PORT-GAP(--): run/task keep literal `--` in forwarded argv under clap; new parser strips it — pending keep-vs-strip decision"]
 fn task_subcommand_double_hyphen_only() {
   // edge case, but it should forward
   let r = flags_from_vec(svec!["deno", "task", "build", "--"]);
@@ -5872,6 +5862,43 @@ fn bench_watch() {
 }
 
 #[test]
+fn bench_watch_with_paths() {
+  let r = flags_from_vec(svec!["deno", "bench", "--watch=foo,bar"]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Bench(BenchFlags {
+        ..Default::default()
+      }),
+      permissions: PermissionFlags {
+        no_prompt: true,
+        ..Default::default()
+      },
+      type_check_mode: TypeCheckMode::Local,
+      watch: Some(WatchFlagsWithPaths {
+        hmr: false,
+        paths: vec![String::from("foo"), String::from("bar")],
+        no_clear_screen: false,
+        exclude: vec![],
+      }),
+      ..Flags::default()
+    }
+  );
+}
+
+#[test]
+fn minimum_dependency_age_alias() {
+  for flag in ["--minimum-dependency-age=0", "--min-dep-age=0"] {
+    let flags =
+      flags_from_vec(svec!["deno", "run", flag, "script.ts"]).unwrap();
+    assert_eq!(
+      flags.minimum_dependency_age,
+      Some(NewestDependencyDate::Disabled)
+    );
+  }
+}
+
+#[test]
 fn bench_no_files() {
   let r = flags_from_vec(svec!["deno", "bench", "--permit-no-files"]);
   assert_eq!(
@@ -5973,7 +6000,6 @@ fn no_config() {
 }
 
 #[test]
-#[ignore = "PORT-GAP(parse): output differs from clap; needs grinding against the cli/args/flags.rs parse fn"]
 fn init() {
   let r = flags_from_vec(svec!["deno", "init"]);
   assert_eq!(
@@ -6442,7 +6468,6 @@ fn create() {
 }
 
 #[test]
-#[ignore = "PORT-GAP(parse): output differs from clap; needs grinding against the cli/args/flags.rs parse fn"]
 fn jupyter() {
   let r = flags_from_vec(svec!["deno", "jupyter"]);
   assert_eq!(
@@ -6604,7 +6629,6 @@ fn publish_args() {
 }
 
 #[test]
-#[ignore = "PORT-GAP(parse): output differs from clap; needs grinding against the cli/args/flags.rs parse fn"]
 fn add_or_install_subcommand() {
   let r = flags_from_vec(svec!["deno", "add"]);
   r.unwrap_err();
@@ -6880,7 +6904,6 @@ fn run_with_frozen_lockfile() {
 }
 
 #[test]
-#[ignore = "PORT-GAP(parse): output differs from clap; needs grinding against the cli/args/flags.rs parse fn"]
 fn allow_scripts() {
   let cases = [
     (Some("--allow-scripts"), Ok(PackagesAllowedScripts::All)),
@@ -6940,7 +6963,6 @@ fn allow_scripts() {
 }
 
 #[test]
-#[ignore = "PORT-GAP(parse): output differs from clap; needs grinding against the cli/args/flags.rs parse fn"]
 fn x_ignore_scripts() {
   let flags = flags_from_vec(svec![
     "deno",
@@ -7538,7 +7560,6 @@ fn outdated_subcommand() {
 }
 
 #[test]
-#[ignore = "PORT-GAP(parse): output differs from clap; needs grinding against the cli/args/flags.rs parse fn"]
 fn list_subcommand() {
   let cases = [
     (svec![], ListFlags::default()),
@@ -7775,7 +7796,6 @@ fn approve_scripts_subcommand() {
 }
 
 #[test]
-#[ignore = "PORT-GAP(parse): output differs from clap; needs grinding against the cli/args/flags.rs parse fn"]
 fn clean_subcommand() {
   let cases = [
     (
