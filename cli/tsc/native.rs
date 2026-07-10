@@ -64,9 +64,12 @@ pub async fn ensure_native_tsc(
   npm_cache: &CliNpmCache,
 ) -> Result<PathBuf, AnyError> {
   let target = typescript_platform();
+  // Keep the compiler under `$DENO_DIR/tsc/<version>/<platform>` so all of a
+  // given version's files live in one predictable, versioned directory.
   let install_dir = deno_dir
-    .dl_folder_path()
-    .join(format!("typescript-{}", TYPESCRIPT_VERSION))
+    .root
+    .join("tsc")
+    .join(TYPESCRIPT_VERSION)
     .join(target);
   let bin_name = if cfg!(windows) { "tsc.exe" } else { "tsc" };
   let tsc_path = install_dir.join("lib").join(bin_name);

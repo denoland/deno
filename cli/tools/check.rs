@@ -113,7 +113,8 @@ async fn native_check(
 
   let stdout = String::from_utf8_lossy(&output.stdout);
   let stderr = String::from_utf8_lossy(&output.stderr);
-  let diagnostics = parse_tsc_diagnostics(&stdout, &project_root);
+  let diagnostics =
+    Diagnostics::from(parse_tsc_diagnostics(&stdout, &project_root));
 
   // Captured for an upcoming "Checked N files" summary; not surfaced yet.
   let stats = parse_tsc_stats(&stdout);
@@ -186,7 +187,7 @@ static DIAGNOSTIC_NO_POS_RE: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 
-fn parse_tsc_diagnostics(output: &str, project_root: &Path) -> Diagnostics {
+fn parse_tsc_diagnostics(output: &str, project_root: &Path) -> Vec<Diagnostic> {
   let mut diagnostics: Vec<Diagnostic> = Vec::new();
   // Cache of source files read to reconstruct the underlined snippet. The
   // compiler reports positions but not the source line itself, so we read it
@@ -248,7 +249,7 @@ fn parse_tsc_diagnostics(output: &str, project_root: &Path) -> Diagnostics {
     // ignored.
   }
 
-  Diagnostics::from(diagnostics)
+  diagnostics
 }
 
 /// Compiler statistics reported by `tsc --diagnostics` (how many files/lines
@@ -413,5 +414,122 @@ fn remap_path(raw: &str, project_root: &Path) -> String {
   match deno_path_util::url_from_file_path(&absolute) {
     Ok(url) => url.to_string(),
     Err(_) => raw.to_string(),
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn parse_diagnostics_positioned() {
+    // `project_root` doesn't exist on disk, so `source_line`/`end` stay `None`;
+    // the parse of code/category/position/message/path is what's under test.
+    let root = Path::new("/project");
+    let diags = parse_tsc_diagnostics(
+      "mod.ts(2,7): error TS2322: Type 'string' is not assignable to type 'number'.\n",
+      root,
+    );
+    assert_eq!(diags.len(), 1);
+    let d = &diags[0];
+    assert_eq!(d.category, DiagnosticCategory::Error);
+    assert_eq!(d.code, 2322);
+    // 1-based (2,7) becomes 0-based (1,6).
+    let start = d.start.as_ref().unwrap();
+    assert_eq!((start.line, start.character), (1, 6));
+    assert_eq!(
+      d.message_text.as_deref(),
+      Some("Type 'string' is not assignable to type 'number'.")
+    );
+    assert!(d.file_name.as_deref().unwrap().ends_with("/project/mod.ts"));
+  }
+
+  #[test]
+  fn parse_diagnostics_warning_and_no_position() {
+    let diags = parse_tsc_diagnostics(
+      "a.ts(1,1): warning TS6133: 'x' is declared but never used.\nerror TS18003: No inputs were found in config file.\n",
+      Path::new("/p"),
+    );
+    assert_eq!(diags.len(), 2);
+    assert_eq!(diags[0].category, DiagnosticCategory::Warning);
+    assert_eq!(diags[0].code, 6133);
+    assert_eq!(diags[1].code, 18003);
+    // The position-less form has no file or start.
+    assert!(diags[1].file_name.is_none());
+    assert!(diags[1].start.is_none());
+  }
+
+  #[test]
+  fn parse_diagnostics_folds_elaboration() {
+    let diags = parse_tsc_diagnostics(
+      "a.ts(1,1): error TS2322: Type 'A' is not assignable to type 'B'.\n  Types of property 'x' are incompatible.\n",
+      Path::new("/p"),
+    );
+    assert_eq!(diags.len(), 1);
+    assert_eq!(
+      diags[0].message_text.as_deref(),
+      Some(
+        "Type 'A' is not assignable to type 'B'.\n  Types of property 'x' are incompatible."
+      )
+    );
+  }
+
+  #[test]
+  fn parse_diagnostics_ignores_stats_and_summary() {
+    let diags = parse_tsc_diagnostics(
+      "a.ts(1,1): error TS1: boom\nFiles:             10\nFound 1 error.\n",
+      Path::new("/p"),
+    );
+    assert_eq!(diags.len(), 1);
+  }
+
+  #[test]
+  fn remap_path_variants() {
+    let root = Path::new("/project");
+    assert_eq!(
+      remap_path(".deno/remote/html.spec.whatwg.org/entities.json", root),
+      "https://html.spec.whatwg.org/entities.json"
+    );
+    assert_eq!(
+      remap_path("node_modules/@jsr/std__assert/mod.ts", root),
+      "jsr:@std/assert/mod.ts"
+    );
+    assert_eq!(
+      remap_path("node_modules/chalk/index.d.ts", root),
+      "npm:chalk/index.d.ts"
+    );
+    // A backslash-separated jsr mirror path (Windows form) still remaps.
+    assert_eq!(
+      remap_path("node_modules\\@jsr\\std__fmt/colors.ts", root),
+      "jsr:@std/fmt/colors.ts"
+    );
+    // A project-local file becomes an absolute file URL.
+    let mapped = remap_path("src/mod.ts", root);
+    assert!(mapped.starts_with("file://"), "{mapped}");
+    assert!(mapped.ends_with("/src/mod.ts"), "{mapped}");
+  }
+
+  #[test]
+  fn underline_len_tokens() {
+    // Identifier run.
+    assert_eq!(underline_len("const foo = 1;", 6), 3);
+    // Quoted specifier, including both quotes.
+    assert_eq!(underline_len("import x from \"graphviz\";", 14), 10);
+    // Single non-identifier character.
+    assert_eq!(underline_len("= 1", 0), 1);
+    // Out of range.
+    assert_eq!(underline_len("abc", 10), 1);
+  }
+
+  #[test]
+  fn parse_stats_block() {
+    let stats = parse_tsc_stats(
+      "a.ts(1,1): error TS1: boom\nFiles:             1396\nLines:           314608\nCheck time:      0.546s\nTotal time:      0.729s\nMemory used:    555106K\n",
+    );
+    assert_eq!(stats.files, Some(1396));
+    assert_eq!(stats.lines, Some(314608));
+    assert_eq!(stats.check_time.as_deref(), Some("0.546s"));
+    assert_eq!(stats.total_time.as_deref(), Some("0.729s"));
+    assert_eq!(stats.memory_used.as_deref(), Some("555106K"));
   }
 }
