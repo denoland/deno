@@ -39,9 +39,6 @@ const _headerList = Symbol("header list");
 const _lowerNames = Symbol("lowercase header names");
 const _iterableHeaders = Symbol("iterable headers");
 const _iterableHeadersCache = Symbol("iterable headers cache");
-const _iterableHeadersCacheListLength = Symbol(
-  "iterable headers cache list length",
-);
 const _guard = Symbol("guard");
 const _headerListGetter = Symbol("header list getter");
 const _headerGet = Symbol("header get");
@@ -77,8 +74,9 @@ function ensureLowerNames(headers) {
 }
 
 function invalidateIterableHeaders(headers) {
-  headers[_iterableHeadersCache] = undefined;
-  headers[_iterableHeadersCacheListLength] = undefined;
+  const cache = headers[_iterableHeadersCache];
+  cache[0] = undefined;
+  cache[1] = undefined;
 }
 
 /**
@@ -366,17 +364,23 @@ class Headers {
   [_headerListGetter] = null;
   [_headerGet] = null;
   [_headerTarget] = null;
+  /**
+   * Mutable cell so freezing Headers does not freeze its internal cache.
+   * @type {[HeaderList | undefined, number | undefined]}
+   */
+  [_iterableHeadersCache] = [undefined, undefined];
   /** @type {"immutable" | "request" | "request-no-cors" | "response" | "none"} */
   [_guard];
 
   get [_iterableHeaders]() {
     const list = headerListFromHeaders(this);
+    const cache = this[_iterableHeadersCache];
 
     if (
-      this[_iterableHeadersCache] !== undefined &&
-      this[_iterableHeadersCacheListLength] === list.length
+      cache[0] !== undefined &&
+      cache[1] === list.length
     ) {
-      return this[_iterableHeadersCache];
+      return cache[0];
     }
 
     // The order of steps are not similar to the ones suggested by the
@@ -424,8 +428,8 @@ class Headers {
       },
     );
 
-    this[_iterableHeadersCache] = entries;
-    this[_iterableHeadersCacheListLength] = list.length;
+    cache[0] = entries;
+    cache[1] = list.length;
 
     return entries;
   }
