@@ -3048,12 +3048,29 @@ console.log("Listening...")
   );
 
   wait_contains("Replaced changed module", &mut stderr_lines).await;
-  util::deno_cmd()
-    .current_dir(t.path())
-    .arg("eval")
-    .arg("await fetch('http://localhost:11111');")
-    .spawn()
-    .unwrap();
+  // Re-evaluating the module calls `Deno.serve` again, so there is a window
+  // right after the module is replaced where the listener has been closed and
+  // not yet rebound and a connection is refused. Retry until it is accepting.
+  //
+  // This used to spawn a fire-and-forget `deno eval` child that fetched once
+  // and was never awaited: a refused connection there silently dropped the
+  // request (leaving this test to hang until `wait_contains` timed out) and
+  // printed `error sending request for url (http://localhost:11111/)` onto the
+  // inherited stderr, where it got attributed to whichever test happened to be
+  // reporting at the time.
+  let client = reqwest::Client::new();
+  let start = std::time::Instant::now();
+  loop {
+    match client.get("http://localhost:11111/").send().await {
+      Ok(_) => break,
+      Err(err) => {
+        if start.elapsed() > std::time::Duration::from_secs(30) {
+          panic!("could not reach the hmr server after 30 seconds: {err}");
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+      }
+    }
+  }
   wait_contains("got request1", &mut stderr_lines).await;
 
   check_alive_then_kill(child);
