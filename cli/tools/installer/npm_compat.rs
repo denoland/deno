@@ -182,7 +182,7 @@ pub async fn setup_npm_compat(
   // The project's own `exclude` (from deno.json) tells us which paths Deno
   // doesn't check (test fixtures, generated output); mirror it into the tsconfig
   // so we don't surface diagnostics for files Deno itself skips.
-  let excludes: Vec<String> = deno_json
+  let mut excludes: Vec<String> = deno_json
     .as_ref()
     .and_then(|d| d.get("exclude"))
     .and_then(|v| v.as_array())
@@ -193,6 +193,20 @@ pub async fn setup_npm_compat(
         .collect()
     })
     .unwrap_or_default();
+
+  // Exclude Deno's vendor directory. Vendored deps are third-party code Deno
+  // doesn't type-check, and their `jsr:`/`npm:` imports resolve through Deno's
+  // vendor map (not ours), so type-checking them here just surfaces the deps'
+  // own errors. The vendor dir is `vendor/` at the project root when `vendor`
+  // is enabled in deno.json or the directory is present.
+  let vendor_enabled = deno_json
+    .as_ref()
+    .and_then(|d| d.get("vendor"))
+    .and_then(|v| v.as_bool())
+    .unwrap_or(false);
+  if vendor_enabled || project_root.join("vendor").is_dir() {
+    excludes.push("vendor".to_string());
+  }
 
   // Generate .deno/tsconfig.json and ensure root tsconfig.json extends it
   generate_deno_tsconfig(
