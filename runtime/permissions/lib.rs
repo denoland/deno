@@ -3979,6 +3979,124 @@ impl PermissionCheckError {
   }
 }
 
+// ===========================================================================
+// PROTOTYPE: per-API (capability) permissions
+// ---------------------------------------------------------------------------
+// Quick-and-dirty showcase of the "each API is a discrete permission" model:
+// every check site already threads an `api_name` (e.g. "Deno.connect()",
+// "fetch()", "node:net.listen()") that today is only used for prompt/error
+// text. Here we additionally match that `api_name` against an allowlist, so a
+// single API verb can be denied even when the coarse `--allow-net` flag would
+// otherwise permit the operation.
+//
+// Delivery in this prototype is the `DENO_ALLOW_API` env var (comma separated),
+// only so we can demo without touching flag parsing / the deno.json schema. A
+// real implementation would read a `permissions` set from deno.json and store
+// it on `Permissions`. Enforcement here is wired into the `net` check surface
+// only; the same one-line call extends to check_open / check_run / etc.
+//
+// Examples:
+//   DENO_ALLOW_API="Deno.connect,Deno.listen"
+//   DENO_ALLOW_API="fetch('*.openai.com'),WebSocket"
+// ---------------------------------------------------------------------------
+
+/// One entry in the per-API allowlist: a verb, optionally narrowed by a host
+/// filter (for net verbs like `fetch('*.openai.com')`).
+#[derive(Debug, Clone)]
+struct ApiPattern {
+  verb: String,
+  host_filter: Option<String>,
+}
+
+impl ApiPattern {
+  /// Parse `verb` or `verb('filter')` / `verb("filter")`.
+  fn parse(raw: &str) -> Option<Self> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+      return None;
+    }
+    if let Some(open) = raw.find('(') {
+      let verb = normalize_api_verb(&raw[..open]);
+      let inside = raw[open + 1..].trim_end_matches(')').trim();
+      let filter = inside.trim_matches(|c| c == '\'' || c == '"').trim();
+      Some(ApiPattern {
+        verb,
+        host_filter: (!filter.is_empty()).then(|| filter.to_string()),
+      })
+    } else {
+      Some(ApiPattern {
+        verb: normalize_api_verb(raw),
+        host_filter: None,
+      })
+    }
+  }
+
+  fn matches(&self, verb: &str, host: Option<&str>) -> bool {
+    if self.verb != verb {
+      return false;
+    }
+    match (&self.host_filter, host) {
+      (None, _) => true,
+      // A host filter is present but this call site has no host to match
+      // against; fall back to a verb-only match rather than silently denying.
+      (Some(_), None) => true,
+      (Some(pattern), Some(host)) => host_glob_match(pattern, host),
+    }
+  }
+}
+
+/// Strip a trailing `()` and surrounding whitespace so call-site names like
+/// `"Deno.connect()"` compare equal to config entries like `Deno.connect`.
+fn normalize_api_verb(v: &str) -> String {
+  v.trim().trim_end_matches("()").trim().to_string()
+}
+
+/// Minimal `*.example.com` style suffix glob (prototype only).
+fn host_glob_match(pattern: &str, host: &str) -> bool {
+  match pattern.strip_prefix("*.") {
+    Some(suffix) => host == suffix || host.ends_with(&format!(".{suffix}")),
+    None => pattern == host,
+  }
+}
+
+static API_ALLOWLIST: Lazy<Option<Vec<ApiPattern>>> = Lazy::new(|| {
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "prototype delivery via env var; real version reads deno.json"
+  )]
+  let raw = std::env::var("DENO_ALLOW_API").ok()?;
+  Some(raw.split(',').filter_map(ApiPattern::parse).collect())
+});
+
+/// Prototype per-API permission gate. No-op unless `DENO_ALLOW_API` is set.
+/// When set, `api_name` (optionally narrowed by `host`) must appear in the
+/// allowlist, otherwise the operation is denied regardless of the coarse
+/// resource flags. Consulted in addition to the normal resource check.
+fn check_api_allowed(
+  api_name: &str,
+  host: Option<&str>,
+) -> Result<(), PermissionDeniedError> {
+  let Some(allowlist) = API_ALLOWLIST.as_ref() else {
+    return Ok(());
+  };
+  let verb = normalize_api_verb(api_name);
+  if allowlist.iter().any(|p| p.matches(&verb, host)) {
+    return Ok(());
+  }
+  let access = match host {
+    Some(host) => format!("API access to \"{verb}\" (host: {host})"),
+    None => format!("API access to \"{verb}\""),
+  };
+  Err(PermissionDeniedError {
+    custom_message: Some(format!(
+      "{access} is not in the allowed API set; add it to DENO_ALLOW_API"
+    )),
+    access,
+    name: "api",
+    state: PermissionState::Denied,
+  })
+}
+
 /// Wrapper struct for `Permissions` that can be shared across threads.
 ///
 /// We need a way to have internal mutability for permissions as they might get
@@ -4591,6 +4709,8 @@ impl PermissionsContainer {
     url: &Url,
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
+    // PROTOTYPE: per-API gate, applied before the resource fast-path.
+    check_api_allowed(api_name, url.host_str())?;
     let mut inner = self.inner.lock();
     audit_and_skip_check_if_is_permission_fully_granted!(
       inner.net,
@@ -4608,6 +4728,8 @@ impl PermissionsContainer {
     host: &(T, Option<u16>),
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
+    // PROTOTYPE: per-API gate, applied before the resource fast-path.
+    check_api_allowed(api_name, Some(host.0.as_ref()))?;
     let mut inner = self.inner.lock();
     let inner = &mut inner.net;
     audit_and_skip_check_if_is_permission_fully_granted!(
@@ -4648,6 +4770,8 @@ impl PermissionsContainer {
     port: u32,
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
+    // PROTOTYPE: per-API gate, applied before the resource fast-path.
+    check_api_allowed(api_name, None)?;
     let mut inner = self.inner.lock();
     audit_and_skip_check_if_is_permission_fully_granted!(
       inner.net,
@@ -4677,6 +4801,10 @@ impl PermissionsContainer {
     path: &Path,
     api_name: Option<&str>,
   ) -> Result<(), PermissionCheckError> {
+    // PROTOTYPE: per-API gate, applied before the resource fast-path.
+    if let Some(api_name) = api_name {
+      check_api_allowed(api_name, None)?;
+    }
     let mut inner = self.inner.lock();
     audit_and_skip_check_if_is_permission_fully_granted!(
       inner.net,
