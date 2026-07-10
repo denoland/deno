@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::VecDeque;
+use std::fmt::Display;
 use std::rc::Rc;
 use std::sync::LazyLock;
 use std::sync::Mutex;
@@ -60,6 +61,14 @@ static LOCK_STATE: LazyLock<Mutex<LockState>> = LazyLock::new(|| {
 static CLIENT_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 struct LockClientId(String);
+
+pub fn worker_lock_client_id(worker_id: impl Display) -> String {
+  format!("worker-{worker_id}")
+}
+
+pub fn set_lock_client_id(state: &mut OpState, client_id: String) {
+  state.put(LockClientId(client_id));
+}
 
 fn get_client_id(state: &mut OpState) -> String {
   if let Some(id) = state.try_borrow::<LockClientId>() {
@@ -118,6 +127,39 @@ fn cancel_request(state: &mut LockState, id: u64) {
       let _ = req.tx.send(false);
       return;
     }
+  }
+}
+
+pub fn cleanup_locks_for_client_id(client_id: &str) {
+  let mut state = LOCK_STATE.lock().unwrap();
+  let mut affected_names = Vec::new();
+
+  state.held.retain(|lock| {
+    if lock.client_id == client_id {
+      affected_names.push(lock.name.clone());
+      false
+    } else {
+      true
+    }
+  });
+
+  for (name, queue) in state.queues.iter_mut() {
+    let mut index = 0;
+    while index < queue.len() {
+      if queue[index].client_id == client_id {
+        let request = queue.remove(index).unwrap();
+        let _ = request.tx.send(false);
+        affected_names.push(name.clone());
+      } else {
+        index += 1;
+      }
+    }
+  }
+
+  affected_names.sort();
+  affected_names.dedup();
+  for name in affected_names {
+    process_queue(&mut state, &name);
   }
 }
 

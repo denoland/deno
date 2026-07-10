@@ -98,6 +98,7 @@ pub struct WorkerThread {
   worker_type: WorkerThreadType,
   cancel_handle: Rc<CancelHandle>,
   cpu_thread_handle: Arc<AtomicU64>,
+  web_lock_client_id: Option<String>,
 
   // A WorkerThread that hasn't been explicitly terminated can only be removed
   // from the WorkersTable once close messages have been received for both the
@@ -122,6 +123,9 @@ impl WorkerThread {
 
 impl Drop for WorkerThread {
   fn drop(&mut self) {
+    if let Some(client_id) = &self.web_lock_client_id {
+      deno_web::locks::cleanup_locks_for_client_id(client_id);
+    }
     self.worker_handle.clone().terminate();
   }
 }
@@ -405,6 +409,8 @@ fn op_create_worker(
     worker_type: args.worker_type,
     cancel_handle: CancelHandle::new_rc(),
     cpu_thread_handle,
+    web_lock_client_id: matches!(args.worker_type, WorkerThreadType::Node)
+      .then(|| deno_web::locks::worker_lock_client_id(worker_id)),
     ctrl_closed: false,
     message_closed: false,
     termination_requested: false,
