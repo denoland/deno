@@ -9,7 +9,7 @@ import { Buffer } from "node:buffer";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import * as net from "node:net";
-import { assert, assertEquals, assertRejects } from "@std/assert";
+import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { curlRequest } from "../unit/test_util.ts";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
@@ -457,6 +457,26 @@ Deno.test("internal/http2/util exports", () => {
   assert(typeof util.kProtocol === "symbol");
   assert(typeof util.kProxySocket === "symbol");
   assert(typeof util.kRequest === "symbol");
+});
+
+Deno.test("internal/http2/util rejects NUL header values", () => {
+  const { assertValidPseudoHeader, buildNgHeaderString } = require(
+    "internal/http2/util",
+  );
+  for (
+    const headers of [
+      { "user-agent": "good\0x-injected\0bad" },
+      { "x-custom": ["good", "bad\0x-injected\0bad"] },
+      { ":path": "/ok\0x-injected\0bad" },
+    ]
+  ) {
+    const error = assertThrows(
+      () => buildNgHeaderString(headers, assertValidPseudoHeader, true),
+      TypeError,
+      "Invalid character in header content",
+    ) as Error & { code?: string };
+    assertEquals(error.code, "ERR_INVALID_CHAR");
+  }
 });
 
 Deno.test("[node/http2] Server.address() includes family property", async () => {

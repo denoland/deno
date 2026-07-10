@@ -29,9 +29,11 @@ const {
 const { op_http2_error_string, op_http2_http_state } = core.ops;
 const lazyHttpCommon = core.createLazyLoader("node:_http_common");
 const lazyProcess = core.createLazyLoader("node:process");
-const { codes, hideStackFrames } = core.loadExtScript(
-  "ext:deno_node/internal/errors.ts",
-);
+const {
+  codes,
+  ERR_INVALID_CHAR,
+  hideStackFrames,
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const {
   HTTP2_HEADER_ACCESS_CONTROL_ALLOW_CREDENTIALS,
   HTTP2_HEADER_ACCESS_CONTROL_MAX_AGE,
@@ -791,6 +793,7 @@ function buildNgHeaderString(
   strictSingleValueFields?,
 ) {
   const checkIsHttpToken = lazyHttpCommon()._checkIsHttpToken;
+  const checkInvalidHeaderChar = lazyHttpCommon()._checkInvalidHeaderChar;
   let headers = "";
   let pseudoHeaders = "";
   let count = 0;
@@ -837,6 +840,9 @@ function buildNgHeaderString(
       if (err !== undefined) {
         throw err;
       }
+      if (checkInvalidHeaderChar(value)) {
+        throw new ERR_INVALID_CHAR("header content", key);
+      }
       pseudoHeaders += `${key}\0${value}\0${flags}`;
       count++;
       return;
@@ -850,10 +856,16 @@ function buildNgHeaderString(
     if (isArray) {
       for (let j = 0; j < value.length; ++j) {
         const val = String(value[j]);
+        if (checkInvalidHeaderChar(val)) {
+          throw new ERR_INVALID_CHAR("header content", key);
+        }
         headers += `${key}\0${val}\0${flags}`;
       }
       count += value.length;
       return;
+    }
+    if (checkInvalidHeaderChar(value)) {
+      throw new ERR_INVALID_CHAR("header content", key);
     }
     headers += `${key}\0${value}\0${flags}`;
     count++;
