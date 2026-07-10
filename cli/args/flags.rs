@@ -3799,7 +3799,7 @@ fn sync_types_subcommand() -> Command {
 
 Run after installing dependencies; it materializes <c>jsr:</>/<c>http(s):</> types and writes <p(245)>.deno/tsconfig.json</>.
 
-Type declarations are fetched from the same trusted hosts as <c>deno run</> (jsr.io, esm.sh, ...). To also materialize types imported from another host, extend the allowlist with <c>--allow-import</>; unlike <c>deno run</>, the hosts you pass are added to the trusted defaults rather than replacing them, since this only downloads type declarations and never executes them:
+Remote <c>http(s):</> types are fetched under the same import permission as <c>deno run</>: only from the trusted default hosts unless you pass <c>--allow-import</>. To materialize types imported from another host, allow it explicitly:
   <p(245)>deno sync-types --allow-import=html.spec.whatwg.org</>"
     ),
     UnstableArgsConfig::None,
