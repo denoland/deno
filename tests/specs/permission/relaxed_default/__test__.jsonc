@@ -2,7 +2,7 @@
   "tempDir": true,
   "envs": {
     "DENO_UNSTABLE_RELAXED_PERMISSIONS": "1",
-    "RELAXED_TEST_VAR": "hello"
+    "TERM": "hello"
   },
   "tests": {
     "profile_default": {

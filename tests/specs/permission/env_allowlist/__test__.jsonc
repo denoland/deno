@@ -1,0 +1,76 @@
+{
+  // The default-readable environment variable allowlist (#35950). Spec tests
+  // run non-interactively, so a would-be prompt surfaces as a hard NotCapable
+  // error; a step that reads a variable successfully therefore proves there was
+  // no prompt.
+  "tests": {
+    "relaxed_allowlisted": {
+      // gate on: allowlisted vars, including the LC_*, XDG_* and
+      // npm_package_config_* prefix members, read without a prompt
+      "args": "run --quiet allowlisted.ts",
+      "envs": {
+        "DENO_UNSTABLE_RELAXED_PERMISSIONS": "1",
+        "TERM": "xterm-256color",
+        "LC_ALL": "en_US.UTF-8",
+        "XDG_CONFIG_HOME": "/home/user/.config",
+        "npm_package_name": "myapp"
+      },
+      "output": "allowlisted.out"
+    },
+    "relaxed_deny_wins": {
+      // gate on: --deny-env=TERM removes TERM from the grant (deny wins)
+      "args": "run --quiet --deny-env=TERM deny_term.ts",
+      "envs": {
+        "DENO_UNSTABLE_RELAXED_PERMISSIONS": "1",
+        "TERM": "xterm-256color"
+      },
+      "output": "deny_term.out"
+    },
+    "relaxed_secrets_still_prompt": {
+      // gate on: credential-shaped variables are not on the allowlist and still
+      // fail non-interactively naming --allow-env
+      "args": "run --quiet secrets.ts",
+      "envs": {
+        "DENO_UNSTABLE_RELAXED_PERMISSIONS": "1",
+        "AWS_SECRET_ACCESS_KEY": "shhh",
+        "npm_config__authToken": "shhh"
+      },
+      "output": "secrets.out"
+    },
+    "relaxed_to_object_filters": {
+      // gate on: toObject returns only allowlisted vars present, without a
+      // prompt; secrets are absent
+      "args": "run --quiet to_object.ts",
+      "envs": {
+        "DENO_UNSTABLE_RELAXED_PERMISSIONS": "1",
+        "TERM": "xterm-256color",
+        "LANG": "C",
+        "MY_APP_SECRET": "shhh",
+        "APP_TOKEN": "shhh"
+      },
+      "output": "to_object.out"
+    },
+    "strict_always_on_readable": {
+      // gate off (strict default): the always-on NO_COLOR stays readable
+      // without a prompt, while an unlisted var like TERM still fails
+      "args": "run --quiet strict.ts",
+      "envs": {
+        "DENO_UNSTABLE_RELAXED_PERMISSIONS": "0",
+        "NO_COLOR": "1",
+        "TERM": "xterm-256color"
+      },
+      "output": "strict.out"
+    },
+    "strict_deny_always_on": {
+      // gate off: --deny-env=NO_COLOR now makes the always-on NO_COLOR fail
+      // (deny wins), which the old skip-check bypass did not allow
+      "args": "run --quiet --deny-env=NO_COLOR strict.ts",
+      "envs": {
+        "DENO_UNSTABLE_RELAXED_PERMISSIONS": "0",
+        "NO_COLOR": "1",
+        "TERM": "xterm-256color"
+      },
+      "output": "strict_deny.out"
+    }
+  }
+}

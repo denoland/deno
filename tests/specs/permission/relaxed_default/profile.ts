@@ -27,5 +27,5 @@ try {
   console.log(`write outside: ${err.name} ${named}`);
 }
 
-// env access is allowed
-console.log(`env: ${Deno.env.get("RELAXED_TEST_VAR")}`);
+// env access is allowed for the curated default-readable allowlist
+console.log(`env: ${Deno.env.get("TERM")}`);
