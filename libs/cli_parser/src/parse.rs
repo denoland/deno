@@ -140,12 +140,12 @@ fn parse_args(
         // into the positional (through normal trailing -> handled below)
         i += 1;
         while i < args.len() {
-          set_arg_value(result, trail_def, args[i].clone());
+          set_arg_value(result, trail_def, args[i].clone())?;
           i += 1;
         }
         continue;
       }
-      set_arg_value(result, trail_def, arg.clone());
+      set_arg_value(result, trail_def, arg.clone())?;
       i += 1;
       continue;
     }
@@ -197,7 +197,7 @@ fn parse_args(
     } else {
       // Positional argument
       if let Some(pos_def) = positional_defs.get(positional_index) {
-        apply_value_with_delimiter(result, pos_def, arg);
+        apply_value_with_delimiter(result, pos_def, arg)?;
 
         // If this positional has trailing: true, absorb everything
         // remaining into it (including flags)
@@ -231,11 +231,9 @@ fn parse_args(
               && positional_index >= positional_defs.len()
             {
               i += 1;
-              // Skip a `--` separator if present (consume it, don't
-              // include it in the trailing args).
-              if i < args.len() && args[i] == "--" {
-                i += 1;
-              }
+              // Keep a `--` separator in the forwarded args to match clap's
+              // trailing-var-arg behavior (e.g. `deno run script.ts -- -a`
+              // forwards `["--", "-a"]`).
               while i < args.len() {
                 result.trailing.push(args[i].clone());
                 i += 1;
@@ -266,7 +264,88 @@ fn parse_args(
     }
   }
 
+  // `--help`/`--version` preempt validation (mirrors clap): the command is
+  // never executed, so missing/conflicting args don't matter. A value-taking
+  // `--version` (e.g. `upgrade --version 1.2.3`) is a normal arg, not the
+  // root version flag.
+  if result.contains("help")
+    || (result.contains("version") && result.get_one("version").is_none())
+  {
+    return Ok(());
+  }
+
+  // Enforce required args: every arg marked `required` must have been provided.
+  for arg_def in cmd_def.all_args() {
+    if arg_def.required && !result.contains(arg_def.name) {
+      return Err(CliError::new(
+        CliErrorKind::MissingRequired,
+        format!(
+          "the following required arguments were not provided: {}",
+          arg_def.name
+        ),
+      ));
+    }
+  }
+
+  // Enforce mutually exclusive args (clap's `conflicts_with`).
+  for arg_def in cmd_def.all_args() {
+    if result.contains(arg_def.name) {
+      for other in arg_def.conflicts {
+        if result.contains(other) {
+          return Err(CliError::new(
+            CliErrorKind::InvalidValue,
+            format!(
+              "the argument '{}' cannot be used with '{}'",
+              arg_def.name, other
+            ),
+          ));
+        }
+      }
+    }
+  }
+
+  // Enforce arg dependencies (clap's `requires`): when an arg is present,
+  // every arg it requires must be present too. A missing requirement is
+  // waived when the required arg conflicts with another present arg
+  // (mirrors clap, e.g. `--no-clear-screen` requires `--watch` but is
+  // fine with `--watch-hmr`, which conflicts with `--watch`).
+  for arg_def in cmd_def.all_args() {
+    if result.contains(arg_def.name) {
+      for required in arg_def.requires {
+        if !result.contains(required)
+          && !requirement_waived_by_conflict(cmd_def, result, required)
+        {
+          return Err(CliError::new(
+            CliErrorKind::MissingRequired,
+            format!(
+              "the following required arguments were not provided: --{required}"
+            ),
+          ));
+        }
+      }
+    }
+  }
+
   Ok(())
+}
+
+/// Whether a missing required arg conflicts with any arg that is present,
+/// which waives the requirement (clap behavior).
+fn requirement_waived_by_conflict(
+  cmd_def: &CommandDef,
+  result: &ParseResult,
+  required: &str,
+) -> bool {
+  let required_conflicts = cmd_def
+    .all_args()
+    .find(|a| a.name == required)
+    .map(|a| a.conflicts)
+    .unwrap_or(&[]);
+  cmd_def.all_args().any(|a| {
+    result.contains(a.name)
+      && (a.conflicts.contains(&required)
+        || required_conflicts.contains(&a.name))
+  })
 }
 
 /// Parse a `--long-flag` or `--long-flag=value`.
@@ -308,7 +387,7 @@ fn parse_long_flag(
         && (arg_def.num_args == NumArgs::Optional
           || arg_def.num_args == NumArgs::ZeroOrMore)
       {
-        set_arg_value(result, arg_def, val.to_string());
+        set_arg_value(result, arg_def, val.to_string())?;
       }
       Ok(pos + 1)
     }
@@ -326,12 +405,12 @@ fn parse_long_flag(
           if let Some(val) = inline_value {
             // Track occurrence for this flag appearance
             set_arg_bool(result, arg_def);
-            apply_value_with_delimiter(result, arg_def, val);
+            apply_value_with_delimiter(result, arg_def, val)?;
           } else if arg_def.require_equals {
             // Optional with require_equals and no `=`: present but no value
             set_arg_bool(result, arg_def);
           } else if pos + 1 < args.len() && !args[pos + 1].starts_with('-') {
-            set_arg_value(result, arg_def, args[pos + 1].clone());
+            set_arg_value(result, arg_def, args[pos + 1].clone())?;
             return Ok(pos + 2);
           } else {
             set_arg_bool(result, arg_def);
@@ -341,12 +420,12 @@ fn parse_long_flag(
         NumArgs::ZeroOrMore => {
           set_arg_bool(result, arg_def);
           if let Some(val) = inline_value {
-            apply_value_with_delimiter(result, arg_def, val);
+            apply_value_with_delimiter(result, arg_def, val)?;
           } else if !arg_def.require_equals {
             // Consume subsequent non-flag args
             let mut next = pos + 1;
             while next < args.len() && !args[next].starts_with('-') {
-              set_arg_value(result, arg_def, args[next].clone());
+              set_arg_value(result, arg_def, args[next].clone())?;
               next += 1;
             }
             return Ok(next);
@@ -355,10 +434,10 @@ fn parse_long_flag(
         }
         NumArgs::OneOrMore | NumArgs::Exact(_) => {
           if let Some(val) = inline_value {
-            apply_value_with_delimiter(result, arg_def, val);
+            apply_value_with_delimiter(result, arg_def, val)?;
             Ok(pos + 1)
           } else if pos + 1 < args.len() {
-            apply_value_with_delimiter(result, arg_def, &args[pos + 1]);
+            apply_value_with_delimiter(result, arg_def, &args[pos + 1])?;
             Ok(pos + 2)
           } else {
             Err(CliError::missing_value(arg))
@@ -428,7 +507,7 @@ fn parse_short_flag(
               if !next_is_flag {
                 let remaining: String = chars[ci + 1..].iter().collect();
                 let value = remaining.strip_prefix('=').unwrap_or(&remaining);
-                apply_value_with_delimiter(result, arg_def, value);
+                apply_value_with_delimiter(result, arg_def, value)?;
                 return Ok(pos + 1);
               }
             }
@@ -440,11 +519,11 @@ fn parse_short_flag(
               // Rest of the short flags string is the value: -fvalue or -f=value
               let remaining: String = chars[ci + 1..].iter().collect();
               let value = remaining.strip_prefix('=').unwrap_or(&remaining);
-              apply_value_with_delimiter(result, arg_def, value);
+              apply_value_with_delimiter(result, arg_def, value)?;
               return Ok(pos + 1);
             } else if pos + 1 < args.len() {
               // Next arg is the value
-              apply_value_with_delimiter(result, arg_def, &args[pos + 1]);
+              apply_value_with_delimiter(result, arg_def, &args[pos + 1])?;
               return Ok(pos + 2);
             } else {
               return Err(CliError::missing_value(&format!("-{short}")));
@@ -463,19 +542,20 @@ fn apply_value_with_delimiter(
   result: &mut ParseResult,
   arg_def: &ArgDef,
   value: &str,
-) {
+) -> Result<(), CliError> {
   if let Some(delim) = arg_def.value_delimiter {
     if value.is_empty() {
       // Empty value (e.g., --flag=) - preserve it as an empty string
-      set_arg_value(result, arg_def, String::new());
+      set_arg_value(result, arg_def, String::new())?;
     } else {
       for part in value.split(delim) {
-        set_arg_value(result, arg_def, part.to_string());
+        set_arg_value(result, arg_def, part.to_string())?;
       }
     }
   } else {
-    set_arg_value(result, arg_def, value.to_string());
+    set_arg_value(result, arg_def, value.to_string())?;
   }
+  Ok(())
 }
 
 /// Set a boolean flag in the parse result.
@@ -495,8 +575,20 @@ fn set_arg_bool(result: &mut ParseResult, arg_def: &ArgDef) {
   }
 }
 
-/// Add a value to an arg in the parse result.
-fn set_arg_value(result: &mut ParseResult, arg_def: &ArgDef, value: String) {
+/// Add a value to an arg in the parse result, validating it against the arg's
+/// `value_parser` first (mirrors clap rejecting invalid values at parse time).
+fn set_arg_value(
+  result: &mut ParseResult,
+  arg_def: &ArgDef,
+  value: String,
+) -> Result<(), CliError> {
+  if let Some(parser) = arg_def.value_parser {
+    let flag = arg_def
+      .long
+      .map(|l| format!("--{l}"))
+      .unwrap_or_else(|| arg_def.name.to_string());
+    parser.validate(&value, &flag)?;
+  }
   if let Some(existing) =
     result.args.iter_mut().find(|a| a.name == arg_def.name)
   {
@@ -518,6 +610,7 @@ fn set_arg_value(result: &mut ParseResult, arg_def: &ArgDef, value: String) {
       count: 1,
     });
   }
+  Ok(())
 }
 
 /// Increment the count for a Count-action arg.
