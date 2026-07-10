@@ -2760,7 +2760,7 @@ Deno.test(
     for (const [chunk, expected] of chunks) {
       const body = new ReadableStream({
         start(controller) {
-          controller.enqueue(chunk);
+          controller.enqueue(chunk as Uint8Array);
           controller.close();
         },
       }) as ReadableStream<Uint8Array>;
