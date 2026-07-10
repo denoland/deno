@@ -82,10 +82,7 @@ async fn native_check(
   log::info!(
     "{} {}",
     colors::green("Check"),
-    colors::gray(format!(
-      "(native tsc {})",
-      crate::tsc::native::TYPESCRIPT_VERSION
-    ))
+    colors::gray(format!("(tsc {})", crate::tsc::native::TYPESCRIPT_VERSION))
   );
 
   // `--pretty false` yields the stable one-line-per-diagnostic grep format
