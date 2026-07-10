@@ -1734,6 +1734,16 @@ const denoCoreTestJob = job("deno-core-test", {
     RUST_LIB_BACKTRACE: 0,
   },
   steps: step.if(isNotTag)(
+    {
+      // Frees several GB of preinstalled toolchains this job never uses
+      // (.NET, Android SDK, GHC, Boost), fixing recurring "No space left
+      // on device" failures while compiling deno_core's doctests.
+      name: "Free disk space",
+      run: [
+        'sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true',
+        "df -h",
+      ],
+    },
     cloneRepoStep,
     denoCoreTestCacheSteps.restoreCacheStep,
     installRustStep,
