@@ -2738,3 +2738,57 @@ Deno.test(
     assertEquals(await resp3.text(), "Not found");
   },
 );
+
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchRequestBodyStreamRejectsNonUint8ArrayChunks() {
+    const started = Promise.withResolvers<number>();
+    await using _server = Deno.serve({
+      port: 0,
+      onListen: ({ port }) => started.resolve(port),
+    }, async (req) => new Response(await req.arrayBuffer()));
+    const port = await started.promise;
+
+    const chunks: [unknown, string][] = [
+      ["not a Uint8Array", "string"],
+      [42, "number"],
+      [new Int8Array([1, 2]), "Int8Array"],
+      [new Uint8ClampedArray([1, 2]), "Uint8ClampedArray"],
+      [new Uint32Array([1]), "Uint32Array"],
+    ];
+
+    for (const [chunk, expected] of chunks) {
+      const body = new ReadableStream({
+        start(controller) {
+          controller.enqueue(chunk);
+          controller.close();
+        },
+      }) as ReadableStream<Uint8Array>;
+      const err = await assertRejects(
+        () => fetch(`http://localhost:${port}/`, { method: "POST", body }),
+        TypeError,
+      );
+      assertStringIncludes(
+        (err.cause as Error).message,
+        `Expected a Uint8Array chunk, but got: ${expected}`,
+      );
+    }
+
+    // Uint8Array chunks (including empty ones) still stream through.
+    const res = await fetch(`http://localhost:${port}/`, {
+      method: "POST",
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new Uint8Array([1, 2]));
+          controller.enqueue(new Uint8Array());
+          controller.enqueue(new Uint8Array([3]));
+          controller.close();
+        },
+      }),
+    });
+    assertEquals(
+      new Uint8Array(await res.arrayBuffer()),
+      new Uint8Array([1, 2, 3]),
+    );
+  },
+);

@@ -966,11 +966,20 @@ class ResourceStreamResourceSink {
  * @param {Uint8Array} chunk
  */
 async function readableStreamWriteChunkFn(reader, sink, chunk) {
+  // The stream is being drained into a byte sink, so every chunk must be a
+  // `Uint8Array`. Without this check the chunk reaches the op boundary and
+  // fails with an internal "expected typed ArrayBufferView" error instead of
+  // the `TypeError` the spec asks for.
+  // https://fetch.spec.whatwg.org/#incrementally-read-loop
+  const tag = TypedArrayPrototypeGetSymbolToStringTag(chunk);
+  if (tag !== "Uint8Array") {
+    throw new TypeError(
+      `Expected a Uint8Array chunk, but got: ${tag ?? typeof chunk}`,
+    );
+  }
+
   // Empty Uint8Array chunk. Re-read.
-  if (
-    TypedArrayPrototypeGetSymbolToStringTag(chunk) === "Uint8Array" &&
-    TypedArrayPrototypeGetByteLength(chunk) == 0
-  ) {
+  if (TypedArrayPrototypeGetByteLength(chunk) == 0) {
     return true;
   }
 
