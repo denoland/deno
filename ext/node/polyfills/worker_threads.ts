@@ -30,13 +30,14 @@ const {
   markAsUncloneable: webMarkAsUncloneable,
   MessageChannel,
   MessagePort,
-  MessagePortIdSymbol,
+  getMessagePortId,
   MessagePortPrototype,
   MessagePortReceiveMessageOnPortSymbol,
   nodeWorkerThreadCloseCb,
   refMessagePort,
   serializeJsMessageData,
   serializeMessageData,
+  setMessagePortId,
   unrefParentPort,
 } = core.loadExtScript("ext:deno_web/13_message_port.js");
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
@@ -1747,7 +1748,7 @@ function moveMessagePortToContext(
   // Node checks closed-port state before vm.Context to give a clearer
   // error when the port is detached -- order matters for tests in the
   // node_compat suite that pass an empty {} as the context.
-  const portId = port[MessagePortIdSymbol];
+  const portId = getMessagePortId(port);
   if (portId === null) {
     throw new ERR_CLOSED_MESSAGE_PORT();
   }
@@ -1757,7 +1758,7 @@ function moveMessagePortToContext(
   }
   // Take ownership of the port: clear the id on the original so it can no
   // longer be used from this context.
-  port[MessagePortIdSymbol] = null;
+  setMessagePortId(port, null);
 
   // Allocate the wrapper inside the target context so its prototype chain
   // is the target realm's (i.e., `wrapper instanceof Object` in the caller
@@ -1858,7 +1859,9 @@ function receiveMessageOnPort(port: MessagePort): object | undefined {
     throw err;
   }
   port[MessagePortReceiveMessageOnPortSymbol] = true;
-  const data = op_message_port_recv_message_sync(port[MessagePortIdSymbol]);
+  const portId = getMessagePortId(port);
+  if (portId === null) return undefined;
+  const data = op_message_port_recv_message_sync(portId);
   if (data === null) return undefined;
   const message = deserializeJsMessageData(data)[0];
   patchMessagePortIfFound(message);
@@ -2085,13 +2088,14 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
       // `active: false` after the close event has fired. The underlying
       // resource may already be closed (recv loop saw end-of-stream);
       // swallow any "bad resource id" error from a redundant core.close.
-      if (port[MessagePortIdSymbol] !== null) {
+      const portId = getMessagePortId(port);
+      if (portId !== null) {
         try {
-          core.close(port[MessagePortIdSymbol]);
+          core.close(portId);
         } catch {
           // already closed
         }
-        port[MessagePortIdSymbol] = null;
+        setMessagePortId(port, null);
       }
       port.dispatchEvent(new Event("close"));
     });
