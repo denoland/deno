@@ -1845,6 +1845,15 @@ impl NetUrlPattern {
     let (hostname, port) = split_pattern_host_port(authority)
       .ok_or_else(|| invalid("missing or invalid host in URL pattern"))?;
 
+    // A bracketed IPv6 literal (`[::1]`) contains colons, which the URLPattern
+    // hostname tokenizer would otherwise read as named-group markers. Escape
+    // them so the address is matched literally.
+    let hostname = if hostname.starts_with('[') {
+      hostname.replace(':', "\\:")
+    } else {
+      hostname
+    };
+
     let init = urlpattern::UrlPatternInit {
       protocol,
       hostname: Some(hostname),
@@ -6440,6 +6449,8 @@ mod tests {
           "https://ported.example.com:8443/*",
           // scheme-only wildcard host
           "wss://*",
+          // bracketed IPv6 literal host + port + path
+          "http://[::1]:8080/api/*",
           // a plain host entry kept working alongside patterns
           "plain.example.com"
         ]),
@@ -6478,6 +6489,11 @@ mod tests {
       // Scheme-only wildcard host.
       ("wss://anything.example.org/socket", true),
       ("ws://anything.example.org/socket", false),
+      // Bracketed IPv6 literal host is matched (scheme, port and path too).
+      ("http://[::1]:8080/api/x", true),
+      ("http://[::1]:8080/other", false),
+      ("http://[::1]:9090/api/x", false),
+      ("https://[::1]:8080/api/x", false),
       // Plain host entry still grants any path/scheme/port.
       ("https://plain.example.com/whatever", true),
       ("http://plain.example.com:1234/whatever", true),
@@ -6522,6 +6538,9 @@ mod tests {
     assert!(
       NetDescriptor::parse_for_list("https://example.com:8443/*").is_ok()
     );
+    // ...including bracketed IPv6 literal hosts.
+    assert!(NetDescriptor::parse_for_list("http://[::1]:8080/api/*").is_ok());
+    assert!(NetDescriptor::parse_for_list("http://[::1]/api/*").is_ok());
     // ...but plain host entries are not treated as patterns.
     assert!(matches!(
       NetDescriptor::parse_for_list("example.com").unwrap().0,
