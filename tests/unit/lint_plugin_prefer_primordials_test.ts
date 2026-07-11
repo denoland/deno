@@ -236,6 +236,16 @@ type p = Promise<void>;
   throw new TypeError("x");
 })();
   `);
+  // Private brand checks are the safe `in` form (deno_lint#1308).
+  assertOk(`
+class A {
+  #brand;
+
+  static is(obj) {
+    return #brand in obj;
+  }
+}
+  `);
 });
 
 Deno.test(function preferPrimordialsInvalid() {
@@ -434,6 +444,9 @@ new DataView(new ArrayBuffer(10)).byteOffset;
     { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
   ]);
   assertErr(`"a" in A`, [
+    { message: MSG.In, hint: HINT.In },
+  ]);
+  assertErr(`a in A`, [
     { message: MSG.In, hint: HINT.In },
   ]);
   assertErr(`a instanceof A`, [

@@ -437,7 +437,6 @@ class Span {
   #spanContext: SpanContext | undefined;
 
   static {
-    // deno-lint-ignore deno-internal/prefer-primordials
     getOtelSpan = (span) => (#otelSpan in span ? span.#otelSpan : undefined);
   }
 

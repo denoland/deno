@@ -949,7 +949,12 @@ const plugin: Deno.lint.Plugin = {
                 MSG.InstanceOf,
                 HINT.InstanceOf,
               );
-            } else if (node.operator === "in") {
+            } else if (
+              node.operator === "in" &&
+              // Private brand checks (`#brand in obj`) are the safe pattern
+              // and must not use ReflectHas/ObjectHasOwn.
+              node.left.type !== "PrivateIdentifier"
+            ) {
               report(
                 context,
                 node,
