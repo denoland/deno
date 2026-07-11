@@ -210,6 +210,8 @@ const METHOD_TARGETS = new Set([
   "transferToFixedLength",
   // SharedArrayBuffer
   "grow",
+  // TypedArray: avoid false positives for Map, Set, WeakMap, and WeakSet
+  // "set",
   // DataView
   "getBigInt64",
   "getBigUint64",
@@ -255,6 +257,8 @@ const GETTER_TARGETS = new Set([
   "resizable",
   // SharedArrayBuffer
   "growable",
+  // TypedArray: avoid false positives for Array
+  // "length",
 ]);
 
 export const MSG = {
