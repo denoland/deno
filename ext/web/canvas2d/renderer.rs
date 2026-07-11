@@ -17,6 +17,13 @@ pub struct GpuRenderer {
   renderer: Mutex<vello::Renderer>,
 }
 
+impl GpuRenderer {
+  /// The largest 2D texture dimension this device supports.
+  pub(crate) fn max_texture_dimension_2d(&self) -> u32 {
+    self.device.limits().max_texture_dimension_2d
+  }
+}
+
 /// Pure-CPU backend — uses vello_cpu::RenderContext with no wgpu dependency.
 /// Always available; used as the final fallback when wgpu cannot be initialized.
 pub struct CpuRenderer;

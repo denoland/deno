@@ -288,7 +288,9 @@ impl OffscreenCanvas {
             "convertToBlob called while layers are open",
           ));
         }
-        context.flush_to_image(&mut self.data.borrow_mut())
+        context.flush_to_image(&mut self.data.borrow_mut());
+        // convertToBlob counts toward the GPU->CPU readback fallback.
+        context.increment_readback_and_check_fallback();
       }
       Context::WebGPU(context) => context.bitmap_read_hook(scope)?,
     }
