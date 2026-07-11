@@ -3371,7 +3371,9 @@
         "draw-element-image": {
           "drawElementImage-returned-matrix-worker.tentative.html": false,
           "offscreenCanvas-drawElementImage-worker.tentative.html": false,
-          "offscreenCanvas-drawElementImage.tentative.html": false
+          "offscreenCanvas-drawElementImage.tentative.html": false,
+          "animated-gif-worker.tentative.html": false,
+          "video-worker.tentative.html": false
         },
         "draw-generic-family": {
           "2d.text.draw.generic.family.html": false,

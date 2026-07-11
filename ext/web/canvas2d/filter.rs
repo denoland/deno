@@ -86,41 +86,6 @@ pub(super) enum CanvasLayerTurbulenceKind {
   Turbulence,
 }
 
-/// Parses the object-form `beginLayer({ filter })` value.
-/// https://github.com/whatwg/html/pull/9537
-#[inline]
-pub(super) fn parse_filter_input<'a>(
-  scope: &mut v8::PinScope<'a, 'a>,
-  value: v8::Local<'a, v8::Value>,
-) -> Result<Vec<CanvasLayerFilterPrimitive>, Canvas2DError> {
-  if value.is_array() {
-    let arr = value.cast::<v8::Array>();
-    let len = arr.length();
-    let mut primitives = Vec::with_capacity(len as usize);
-    for i in 0..len {
-      let elem = arr.get_index(scope, i).filter(|v| v.is_object()).ok_or(
-        Canvas2DError::InvalidFilterPrimitive("filter must be an object"),
-      )?;
-      if let Some(primitive) =
-        parse_filter_primitive(scope, elem.cast::<v8::Object>())?
-      {
-        primitives.push(primitive);
-      }
-    }
-    Ok(primitives)
-  } else if value.is_object() {
-    Ok(
-      parse_filter_primitive(scope, value.cast::<v8::Object>())?
-        .into_iter()
-        .collect(),
-    )
-  } else {
-    Err(Canvas2DError::InvalidFilterPrimitive(
-      "filter input must be an object or a sequence of objects",
-    ))
-  }
-}
-
 impl From<CssFilterFunction> for CanvasLayerFilterPrimitive {
   #[inline]
   fn from(function: CssFilterFunction) -> Self {
@@ -170,6 +135,41 @@ impl From<CssFilterFunction> for CanvasLayerFilterPrimitive {
         CanvasLayerFilterPrimitive::Sepia(value)
       }
     }
+  }
+}
+
+/// Parses the object-form `beginLayer({ filter })` value.
+/// https://github.com/whatwg/html/pull/9537
+#[inline]
+pub(super) fn parse_filter_input<'a>(
+  scope: &mut v8::PinScope<'a, 'a>,
+  value: v8::Local<'a, v8::Value>,
+) -> Result<Vec<CanvasLayerFilterPrimitive>, Canvas2DError> {
+  if value.is_array() {
+    let arr = value.cast::<v8::Array>();
+    let len = arr.length();
+    let mut primitives = Vec::with_capacity(len as usize);
+    for i in 0..len {
+      let elem = arr.get_index(scope, i).filter(|v| v.is_object()).ok_or(
+        Canvas2DError::InvalidFilterPrimitive("filter must be an object"),
+      )?;
+      if let Some(primitive) =
+        parse_filter_primitive(scope, elem.cast::<v8::Object>())?
+      {
+        primitives.push(primitive);
+      }
+    }
+    Ok(primitives)
+  } else if value.is_object() {
+    Ok(
+      parse_filter_primitive(scope, value.cast::<v8::Object>())?
+        .into_iter()
+        .collect(),
+    )
+  } else {
+    Err(Canvas2DError::InvalidFilterPrimitive(
+      "filter input must be an object or a sequence of objects",
+    ))
   }
 }
 
