@@ -1266,11 +1266,20 @@ pub fn send_error_report(url: &str, body: &str) {
 }
 
 #[op2(fast)]
-fn op_desktop_send_error_report(
-  state: &mut OpState,
-  #[string] url: &str,
-  #[string] body: &str,
-) {
+fn op_desktop_send_error_report(state: &mut OpState, #[string] body: &str) {
+  // The report destination is operator config — it is baked into the app at
+  // build time (`error_reporting_url`) and stored in `ERROR_REPORT_CONFIG`.
+  // It is deliberately NOT accepted from JS: this op is exposed on
+  // `core.ops` and survives `removeImportedOps()`, so any (untrusted) code
+  // in the runtime can call it. Trusting a caller-supplied URL would turn
+  // this into an unrestricted file-append (`file://`) or network-POST
+  // (`https://`) primitive that bypasses the `--allow-write`/`--allow-net`
+  // permission checks every other fs/net op performs.
+  let Some((url, _)) = error_report_config() else {
+    // No reporting URL configured (e.g. plain `deno run`, or a desktop app
+    // that didn't set one) — there is nowhere to send, so do nothing.
+    return;
+  };
   // Make sure the panic-hook path has a client too. The OpState client is
   // the one configured with the user's TLS roots/permissions, so we share
   // it across both code paths instead of creating an ad-hoc client.

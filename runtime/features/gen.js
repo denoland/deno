@@ -22,8 +22,8 @@ export const unstableIds = {
   process: 18,
   rawImports: 19,
   temporal: 22,
-  unsafeProto: 24,
-  vsock: 25,
-  webgpu: 26,
-  workerOptions: 27,
+  unsafeProto: 23,
+  vsock: 24,
+  webgpu: 25,
+  workerOptions: 26,
 };

@@ -131,7 +131,13 @@ jobs:
           AWS_ENDPOINT_URL_S3: '${{ vars.S3_ENDPOINT }}'
           AWS_DEFAULT_REGION: '${{vars.S3_REGION }}'
         run: |-
-          aws s3 sync ./ s3://dl-deno-land/release/$(cat release-${{github.event.inputs.releaseKind}}-latest.txt)/ --exclude "*" --include "*.zip"
+          VERSION=$(cat release-${{github.event.inputs.releaseKind}}-latest.txt)
+          # Upload only the promoted release archives. `aws s3 sync ./` walked
+          # the whole checkout (submodules included), uploading stray *.zip test
+          # fixtures and tripping over a broken symlink (exit 2).
+          for f in deno-*.zip denort-*.zip; do
+            aws s3 cp "./$f" "s3://dl-deno-land/release/$VERSION/$f"
+          done
           aws s3 cp release-${{github.event.inputs.releaseKind}}-latest.txt s3://dl-deno-land/release-${{github.event.inputs.releaseKind}}-latest.txt
 
 # gagen:pin Azure/artifact-signing-action@v0 = 1d365fec12862c4aa68fcac418143d73f0cea293

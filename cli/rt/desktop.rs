@@ -1153,7 +1153,11 @@ pub fn desktop_error_reporting_js(
         platform: Deno.build.os,
         arch: Deno.build.arch,
       }});
-      op_desktop_send_error_report(_errorReportingUrl, body);
+      // The destination is not passed from JS — the op reads the
+      // operator-configured `error_reporting_url` from native state so an
+      // untrusted caller can't retarget it. `_errorReportingUrl` here only
+      // gates whether there's anything to report.
+      op_desktop_send_error_report(body);
     }}
 
     try {{

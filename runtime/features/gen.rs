@@ -192,19 +192,11 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     kind: UnstableFeatureKind::Runtime,
   },
   UnstableFeatureDefinition {
-    name: "tsgo",
-    flag_name: "unstable-tsgo",
-    help_text: "Enable unstable TypeScript Go integration",
-    show_in_help: true,
-    id: 23,
-    kind: UnstableFeatureKind::Cli,
-  },
-  UnstableFeatureDefinition {
     name: "unsafe-proto",
     flag_name: "unstable-unsafe-proto",
     help_text: "Enable unsafe __proto__ support. This is a security risk.",
     show_in_help: true,
-    id: 24,
+    id: 23,
     kind: UnstableFeatureKind::Runtime,
   },
   UnstableFeatureDefinition {
@@ -212,7 +204,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     flag_name: "unstable-vsock",
     help_text: "Enable unstable VSOCK APIs",
     show_in_help: false,
-    id: 25,
+    id: 24,
     kind: UnstableFeatureKind::Runtime,
   },
   UnstableFeatureDefinition {
@@ -220,7 +212,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     flag_name: "unstable-webgpu",
     help_text: "Enable unstable WebGPU APIs",
     show_in_help: true,
-    id: 26,
+    id: 25,
     kind: UnstableFeatureKind::Runtime,
   },
   UnstableFeatureDefinition {
@@ -228,7 +220,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     flag_name: "unstable-worker-options",
     help_text: "Enable unstable Web Worker APIs",
     show_in_help: true,
-    id: 27,
+    id: 26,
     kind: UnstableFeatureKind::Runtime,
   },
 ];
@@ -240,7 +232,6 @@ pub struct UnstableEnvVarNames {
   pub raw_imports: &'static str,
   pub sloppy_imports: &'static str,
   pub subdomain_wildcards: &'static str,
-  pub tsgo: &'static str,
 }
 pub static UNSTABLE_ENV_VAR_NAMES: UnstableEnvVarNames = UnstableEnvVarNames {
   bare_node_builtins: "DENO_UNSTABLE_BARE_NODE_BUILTINS",
@@ -250,5 +241,4 @@ pub static UNSTABLE_ENV_VAR_NAMES: UnstableEnvVarNames = UnstableEnvVarNames {
   raw_imports: "DENO_UNSTABLE_RAW_IMPORTS",
   sloppy_imports: "DENO_UNSTABLE_SLOPPY_IMPORTS",
   subdomain_wildcards: "DENO_UNSTABLE_SUBDOMAIN_WILDCARDS",
-  tsgo: "DENO_UNSTABLE_TSGO",
 };
