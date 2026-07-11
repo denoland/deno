@@ -3480,10 +3480,19 @@ class ClientHttp2Stream extends Http2Stream {
   // null EOF) until 'response'/'push' has been emitted; emitClientResponseNT
   // flushes the queue in order afterwards.
   push(chunk, encoding) {
-    if (!this[kState].responseEmitted) {
-      const pending = this[kState].pendingData ??= [];
-      ArrayPrototypePush(pending, [chunk, encoding]);
-      return true;
+    const state = this[kState];
+    if (!state.responseEmitted) {
+      // Only actual body data is pushed synchronously (by onStreamRead) and so
+      // can outrun 'response'; the trailing null EOF and the no-body case are
+      // already ordered after 'response' by the nextTick queue, so let a lone
+      // null through untouched (buffering it would delay 'end' by a tick and
+      // lose it if the peer tears the stream down first). Once data has been
+      // buffered, the null must stay queued behind it to preserve order.
+      if (chunk !== null || state.pendingData !== null) {
+        const pending = state.pendingData ??= [];
+        ArrayPrototypePush(pending, [chunk, encoding]);
+        return true;
+      }
     }
     return super.push(chunk, encoding);
   }
