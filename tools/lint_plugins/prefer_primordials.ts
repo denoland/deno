@@ -6,7 +6,6 @@
 // Source of truth for behavior:
 // https://github.com/denoland/deno_lint/blob/main/src/rules/prefer_primordials.rs
 
-
 const GLOBAL_TARGETS = new Set([
   "isFinite",
   "isNaN",
@@ -272,13 +271,11 @@ export const MSG = {
 
 export const HINT = {
   GlobalIntrinsic: "Instead use the equivalent from the `primordials` object",
-  UnsafeIntrinsic:
-    "Instead use the safe wrapper from the `primordials` object",
+  UnsafeIntrinsic: "Instead use the safe wrapper from the `primordials` object",
   NullPrototypeObjectLiteral: "Add `__proto__: null` to this object literal",
   SafeIterator: "Wrap a SafeIterator from the `primordials` object",
   SafeRegExp: "Wrap `SafeRegExp` from the `primordials` object",
-  ObjectPattern:
-    "Instead use the object pattern destructuring assignment",
+  ObjectPattern: "Instead use the object pattern destructuring assignment",
   InstanceOf:
     "Instead use `ObjectPrototypeIsPrototypeOf` from the `primordials` object",
   In:
@@ -296,7 +293,10 @@ interface Scope {
   children: Scope[];
 }
 
-function rangeContains(outer: Deno.lint.Range, inner: Deno.lint.Range): boolean {
+function rangeContains(
+  outer: Deno.lint.Range,
+  inner: Deno.lint.Range,
+): boolean {
   return outer[0] <= inner[0] && inner[1] <= outer[1];
 }
 
@@ -335,7 +335,6 @@ function addBindingPattern(scope: Scope, node: Node | null | undefined): void {
       break;
   }
 }
-
 
 function collectBindingsFromParams(
   scope: Scope,
@@ -579,7 +578,9 @@ function isNullProto(objectLit: ObjectExpression): boolean {
   return false;
 }
 
-function insideVarDeclLhsOrMemberExprOrPropOrTypeRef(ident: Identifier): boolean {
+function insideVarDeclLhsOrMemberExprOrPropOrTypeRef(
+  ident: Identifier,
+): boolean {
   let node: Node | null = ident;
   while (node) {
     const parent: Node | null = getParent(node);
@@ -716,13 +717,18 @@ const plugin: Deno.lint.Plugin = {
               );
             }
 
-            if (name === "ObjectDefineProperty" || name === "ReflectDefineProperty") {
+            if (
+              name === "ObjectDefineProperty" ||
+              name === "ReflectDefineProperty"
+            ) {
               if (
                 node.parent?.type === "CallExpression" &&
                 (node.parent as Deno.lint.CallExpression).callee === node
               ) {
                 const arg = node.parent.arguments[2];
-                if (arg && arg.type === "ObjectExpression" && !isNullProto(arg)) {
+                if (
+                  arg && arg.type === "ObjectExpression" && !isNullProto(arg)
+                ) {
                   report(
                     context,
                     arg,
@@ -742,7 +748,10 @@ const plugin: Deno.lint.Plugin = {
                 if (arg && arg.type === "ObjectExpression") {
                   for (const prop of arg.properties) {
                     if (prop.type !== "Property") continue;
-                    if (prop.value.type === "ObjectExpression" && !isNullProto(prop.value)) {
+                    if (
+                      prop.value.type === "ObjectExpression" &&
+                      !isNullProto(prop.value)
+                    ) {
                       report(
                         context,
                         prop.value,
@@ -804,8 +813,7 @@ const plugin: Deno.lint.Plugin = {
             // call (args still need getter checks). Optional calls
             // (`foo.bar?.()`) still look up methods on the receiver prototype
             // chain, so flag them for pollution resistance.
-            const isCallCallee =
-              node.parent?.type === "CallExpression" &&
+            const isCallCallee = node.parent?.type === "CallExpression" &&
               (node.parent as Deno.lint.CallExpression).callee === node;
 
             if (isCallCallee && METHOD_TARGETS.has(propName)) {
@@ -817,8 +825,7 @@ const plugin: Deno.lint.Plugin = {
               );
             }
 
-            const isAssignLeft =
-              node.parent?.type === "AssignmentExpression" &&
+            const isAssignLeft = node.parent?.type === "AssignmentExpression" &&
               (node.parent as Deno.lint.AssignmentExpression).left === node;
 
             if (
@@ -841,8 +848,8 @@ const plugin: Deno.lint.Plugin = {
             if (!parent) return;
 
             // AssignPat: `o = {}` or AssignPatProp-like: Property value AssignmentPattern
-            const isDefaultObject =
-              parent.type === "AssignmentPattern" && parent.right === node;
+            const isDefaultObject = parent.type === "AssignmentPattern" &&
+              parent.right === node;
 
             if (!isDefaultObject) return;
             if (!insideParam(node)) return;

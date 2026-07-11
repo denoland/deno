@@ -258,109 +258,145 @@ Deno.test(function preferPrimordialsInvalid() {
   assertErr(`const arr = new Array();`, [
     { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
   ]);
-  assertErr(`
+  assertErr(
+    `
 const { RegExp } = primordials;
 new RegExp("aaaa");
-  `, [
-    { message: MSG.UnsafeIntrinsic, hint: HINT.UnsafeIntrinsic },
-  ]);
-  assertErr(`
+  `,
+    [
+      { message: MSG.UnsafeIntrinsic, hint: HINT.UnsafeIntrinsic },
+    ],
+  );
+  assertErr(
+    `
 const { Map } = primordials;
 new Map();
-  `, [
-    { message: MSG.UnsafeIntrinsic, hint: HINT.UnsafeIntrinsic },
-  ]);
-  assertErr(`
+  `,
+    [
+      { message: MSG.UnsafeIntrinsic, hint: HINT.UnsafeIntrinsic },
+    ],
+  );
+  assertErr(
+    `
 const { PromiseAll, PromiseResolve } = primordials;
 PromiseAll([
   PromiseResolve(1),
   PromiseResolve(2),
 ]);
-  `, [
-    { message: MSG.UnsafeIntrinsic, hint: HINT.UnsafeIntrinsic },
-  ]);
+  `,
+    [
+      { message: MSG.UnsafeIntrinsic, hint: HINT.UnsafeIntrinsic },
+    ],
+  );
   assertErr(`JSON.parse("{}")`, [
     { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
   ]);
-  assertErr(`
+  assertErr(
+    `
 const { JSON } = primordials;
 JSON.parse("{}");
-  `, [
-    { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
-  ]);
+  `,
+    [
+      { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
+    ],
+  );
   assertErr(`Symbol.for("foo")`, [
     { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
   ]);
-  assertErr(`
+  assertErr(
+    `
 const { Symbol } = primordials;
 Symbol.for("foo");
-  `, [
-    { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
-  ]);
-  assertErr(`
+  `,
+    [
+      { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
+    ],
+  );
+  assertErr(
+    `
 const { Symbol } = primordials;
 class A {
   *[Symbol.iterator] () {
     yield "a";
   }
 }
-  `, [
-    { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
-  ]);
-  assertErr(`
+  `,
+    [
+      { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
+    ],
+  );
+  assertErr(
+    `
 const { Symbol } = primordials;
 const a = {
   *[Symbol.iterator] () {
     yield "a";
   }
 }
-  `, [
-    { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
-  ]);
-  assertErr(`
+  `,
+    [
+      { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
+    ],
+  );
+  assertErr(
+    `
 const { ObjectDefineProperty, Symbol } = primordials;
 ObjectDefineProperty(o, Symbol.toStringTag, { value: "o" });
-  `, [
-    { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
-    { message: MSG.DefineProperty, hint: HINT.NullPrototypeObjectLiteral },
-  ]);
-  assertErr(`
+  `,
+    [
+      { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
+      { message: MSG.DefineProperty, hint: HINT.NullPrototypeObjectLiteral },
+    ],
+  );
+  assertErr(
+    `
 const { ObjectDefineProperty, SymbolToStringTag } = primordials;
 ObjectDefineProperty(o, SymbolToStringTag, { value: "o" });
-  `, [
-    { message: MSG.DefineProperty, hint: HINT.NullPrototypeObjectLiteral },
-  ]);
-  assertErr(`
+  `,
+    [
+      { message: MSG.DefineProperty, hint: HINT.NullPrototypeObjectLiteral },
+    ],
+  );
+  assertErr(
+    `
 const { ObjectDefineProperties } = primordials;
 ObjectDefineProperties(o, {
   foo: { value: "o" },
   bar: { __proto__: {}, value: "o" },
   baz: { ["__proto__"]: null, value: "o" },
 });
-  `, [
-    { message: MSG.DefineProperty, hint: HINT.NullPrototypeObjectLiteral },
-    { message: MSG.DefineProperty, hint: HINT.NullPrototypeObjectLiteral },
-    { message: MSG.DefineProperty, hint: HINT.NullPrototypeObjectLiteral },
-  ]);
-  assertErr(`
+  `,
+    [
+      { message: MSG.DefineProperty, hint: HINT.NullPrototypeObjectLiteral },
+      { message: MSG.DefineProperty, hint: HINT.NullPrototypeObjectLiteral },
+      { message: MSG.DefineProperty, hint: HINT.NullPrototypeObjectLiteral },
+    ],
+  );
+  assertErr(
+    `
 function foo(o = {}) {}
 function bar({ o = {} }) {}
-  `, [
-    {
-      message: MSG.ObjectAssignInDefaultParameter,
-      hint: HINT.NullPrototypeObjectLiteral,
-    },
-    {
-      message: MSG.ObjectAssignInDefaultParameter,
-      hint: HINT.NullPrototypeObjectLiteral,
-    },
-  ]);
-  assertErr(`
+  `,
+    [
+      {
+        message: MSG.ObjectAssignInDefaultParameter,
+        hint: HINT.NullPrototypeObjectLiteral,
+      },
+      {
+        message: MSG.ObjectAssignInDefaultParameter,
+        hint: HINT.NullPrototypeObjectLiteral,
+      },
+    ],
+  );
+  assertErr(
+    `
 const { Number } = primordials;
 Number.parseInt("10");
-  `, [
-    { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
-  ]);
+  `,
+    [
+      { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
+    ],
+  );
   assertErr(`parseInt("10")`, [
     { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
   ]);
@@ -371,75 +407,108 @@ Number.parseInt("10");
     { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
     { message: MSG.UnsafeIntrinsic, hint: HINT.UnsafeIntrinsic },
   ]);
-  assertErr(`
+  assertErr(
+    `
 const { Function } = primordials;
 const noop = Function.prototype;
-  `, [
-    { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
-  ]);
+  `,
+    [
+      { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
+    ],
+  );
   assertErr(`[1, 2, 3].map(val => val * 2);`, [
     { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
   ]);
-  assertErr(`
+  assertErr(
+    `
 const obj = { foo: 1 };
 obj.hasOwnProperty("foo");
-  `, [
-    { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
-  ]);
-  assertErr(`
+  `,
+    [
+      { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
+    ],
+  );
+  assertErr(
+    `
 const fn = () => 1;
 fn.call(null);
-  `, [
-    { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
-  ]);
-  assertErr(`
+  `,
+    [
+      { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
+    ],
+  );
+  assertErr(
+    `
 const num = 123.456;
 num.toFixed(2);
-  `, [
-    { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
-  ]);
-  assertErr(`
+  `,
+    [
+      { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
+    ],
+  );
+  assertErr(
+    `
 const { Date } = primordials;
 new Date().toISOString();
-  `, [
-    { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
-  ]);
-  assertErr(`
+  `,
+    [
+      { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
+    ],
+  );
+  assertErr(
+    `
 const arr = [1, 2, 3, 4];
 arr.filter((val) => val % 2 === 0);
-  `, [
-    { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
-  ]);
-  assertErr(`
+  `,
+    [
+      { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
+    ],
+  );
+  assertErr(
+    `
 const str = "foo bar baz";
 str.split(" ");
-  `, [
-    { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
-  ]);
-  assertErr(`
+  `,
+    [
+      { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
+    ],
+  );
+  assertErr(
+    `
 const thenable = { then() {} };
 thenable.then(() => {});
-  `, [
-    { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
-  ]);
-  assertErr(`
+  `,
+    [
+      { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
+    ],
+  );
+  assertErr(
+    `
 const { Uint8Array } = primordials;
 new Uint8Array(10).buffer;
-  `, [
-    { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
-  ]);
-  assertErr(`
+  `,
+    [
+      { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
+    ],
+  );
+  assertErr(
+    `
 const { ArrayBuffer } = primordials;
 new ArrayBuffer(10).byteLength;
-  `, [
-    { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
-  ]);
-  assertErr(`
+  `,
+    [
+      { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
+    ],
+  );
+  assertErr(
+    `
 const { ArrayBuffer, DataView } = primordials;
 new DataView(new ArrayBuffer(10)).byteOffset;
-  `, [
-    { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
-  ]);
+  `,
+    [
+      { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
+    ],
+  );
   assertErr(`foo = bar.description;`, [
     { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
   ]);
@@ -482,21 +551,27 @@ new DataView(new ArrayBuffer(10)).byteOffset;
   assertErr(`const [a, b] = [1, 2];`, [
     { message: MSG.Iterator, hint: HINT.ObjectPattern },
   ]);
-  assertErr(`
+  assertErr(
+    `
 let a, b;
 [a, b] = [1, 2];
-  `, [
-    { message: MSG.Iterator, hint: HINT.ObjectPattern },
-  ]);
+  `,
+    [
+      { message: MSG.Iterator, hint: HINT.ObjectPattern },
+    ],
+  );
   assertErr(`const [a, b, ...c] = [1, 2, 3];`, [
     { message: MSG.Iterator, hint: HINT.SafeIterator },
   ]);
-  assertErr(`
+  assertErr(
+    `
 let a, b, c;
 [a, b, ...c] = [1, 2, 3];
-  `, [
-    { message: MSG.Iterator, hint: HINT.SafeIterator },
-  ]);
+  `,
+    [
+      { message: MSG.Iterator, hint: HINT.SafeIterator },
+    ],
+  );
   assertErr(`/aaa/u`, [
     { message: MSG.RegExp, hint: HINT.SafeRegExp },
   ]);
