@@ -52,27 +52,20 @@ pub fn validator(host_and_port: &str) -> Result<String, String> {
 /// expands to such paths into 3 paths with following hosts: `0.0.0.0:port`,
 /// `127.0.0.1:port` and `localhost:port`.
 pub fn parse(paths: Vec<String>) -> clap::error::Result<Vec<String>> {
-  let mut out: Vec<String> = vec![];
-  for host_and_port in paths.into_iter() {
-    if let Ok(port) = host_and_port.parse::<BarePort>() {
-      // we got bare port, let's add default hosts
-      for host in ["0.0.0.0", "127.0.0.1", "localhost"].iter() {
-        out.push(format!("{}:{}", host, port.0));
-      }
-    } else {
-      NetDescriptor::parse_for_list(&host_and_port).map_err(|e| {
-        clap::Error::raw(clap::error::ErrorKind::InvalidValue, e.to_string())
-      })?;
-      out.push(host_and_port)
-    }
-  }
-  Ok(out)
+  parse_inner(paths, false)
 }
 
 /// Like [`parse`], but rejects URL pattern entries (those carrying a scheme
 /// and/or path). Used for flags that only accept plain hosts, such as
 /// `--unsafely-ignore-certificate-errors`.
 pub fn parse_host_only(paths: Vec<String>) -> clap::error::Result<Vec<String>> {
+  parse_inner(paths, true)
+}
+
+fn parse_inner(
+  paths: Vec<String>,
+  reject_url_patterns: bool,
+) -> clap::error::Result<Vec<String>> {
   let mut out: Vec<String> = vec![];
   for host_and_port in paths.into_iter() {
     if let Ok(port) = host_and_port.parse::<BarePort>() {
@@ -85,7 +78,7 @@ pub fn parse_host_only(paths: Vec<String>) -> clap::error::Result<Vec<String>> {
         NetDescriptor::parse_for_list(&host_and_port).map_err(|e| {
           clap::Error::raw(clap::error::ErrorKind::InvalidValue, e.to_string())
         })?;
-      if desc.is_url_pattern() {
+      if reject_url_patterns && desc.is_url_pattern() {
         return Err(clap::Error::raw(
           clap::error::ErrorKind::InvalidValue,
           format!(
