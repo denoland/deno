@@ -1,10 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// Deno lint plugin port of deno_lint's `prefer-primordials` rule.
 // Internal-only: used by tools/lint.js on runtime/ and ext/ bootstrap code.
-//
-// Source of truth for behavior:
-// https://github.com/denoland/deno_lint/blob/main/src/rules/prefer_primordials.rs
 
 const GLOBAL_TARGETS = new Set([
   "isFinite",
@@ -782,21 +778,10 @@ const plugin: Deno.lint.Plugin = {
             }
 
             // Don't check non-root elements in chained member expressions
-            // e.g. `bar.baz` in `foo.bar.baz`
-            if (node.parent?.type === "MemberExpression") {
-              // still may need method/getter checks on this node when it's a call?
-              // Rust returns early only for the GLOBAL_TARGETS on object check,
-              // but method/getter checks still run... Looking at rust:
-              // first check array - return
-              // then GLOBAL_TARGETS check with early return if matched
-              // then METHOD and GETTER checks without early return from parent MemberExpr
-              // Actually the structure is:
-              // if array { report; return; }
-              // if_chain { not parent MemberExpr; obj Ident; GLOBAL } { report; return; }
-              // if_chain { parent CallExpr; METHOD } { report }
-              // if_chain { not assign left; not CallExpr; GETTER } { report }
-              // So for nested member, GLOBAL check skipped, but METHOD/GETTER still apply
-            } else if (
+            // e.g. `bar.baz` in `foo.bar.baz` — only the full chain is checked
+            // for global targets; method/getter checks still apply below.
+            if (
+              node.parent?.type !== "MemberExpression" &&
               node.object.type === "Identifier" &&
               GLOBAL_TARGETS.has(node.object.name)
             ) {
@@ -812,11 +797,10 @@ const plugin: Deno.lint.Plugin = {
             const propName = memberPropName(node);
             if (!propName) return;
 
-            // In ESTree, both `foo.bar()` and `fn(foo.bar)` have CallExpression
-            // as parent of the MemberExpression. Only treat the callee case as a
-            // call (args still need getter checks). Optional calls
-            // (`foo.bar?.()`) still look up methods on the receiver prototype
-            // chain, so flag them for pollution resistance.
+            // Both `foo.bar()` and `fn(foo.bar)` have CallExpression as parent.
+            // Only treat the callee case as a call (args still need getter
+            // checks). Optional calls (`foo.bar?.()`) still look up methods on
+            // the receiver prototype chain, so flag them for pollution resistance.
             const isCallCallee = node.parent?.type === "CallExpression" &&
               (node.parent as Deno.lint.CallExpression).callee === node;
 
@@ -851,7 +835,7 @@ const plugin: Deno.lint.Plugin = {
             const parent = node.parent;
             if (!parent) return;
 
-            // AssignPat: `o = {}` or AssignPatProp-like: Property value AssignmentPattern
+            // Default parameter object: `o = {}` or `{ o = {} }`
             const isDefaultObject = parent.type === "AssignmentPattern" &&
               parent.right === node;
 
