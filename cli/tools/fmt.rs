@@ -81,10 +81,11 @@ pub async fn format(
     );
   }
 
-  if let Some(watch_flags) = &fmt_flags.watch {
+  if let Some(watch_flags) = &flags.watch {
+    let no_clear_screen = watch_flags.no_clear_screen;
     file_watcher::watch_func(
       flags,
-      file_watcher::PrintConfig::new("Fmt", !watch_flags.no_clear_screen),
+      file_watcher::PrintConfig::new("Fmt", !no_clear_screen),
       move |flags, watcher_communicator, changed_paths| {
         let fmt_flags = fmt_flags.clone();
         watcher_communicator.show_path_changed(changed_paths.clone());
@@ -92,6 +93,7 @@ pub async fn format(
           let factory = CliFactory::from_flags(flags);
           let cli_options = factory.cli_options()?;
           let caches = factory.caches()?;
+          let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
           let mut paths_with_options_batches =
             resolve_paths_with_options_batches(cli_options, &fmt_flags)?;
 
@@ -529,6 +531,14 @@ fn format_markup_embedded(
         "ts" | "typescript" | "mts" => "ts",
         "tsx" => "tsx",
         "jsx" => "jsx",
+        // Astro treats inline `<script>` contents as TypeScript by default,
+        // so a bare script tag (which `lax_markup` reports as `js`) must be
+        // formatted as TypeScript rather than JavaScript.
+        _ if file_path.extension().and_then(|e| e.to_str())
+          == Some("astro") =>
+        {
+          "ts"
+        }
         _ => "js",
       };
       let path = file_path.with_extension(ext);
@@ -633,20 +643,21 @@ fn format_embedded_html(
   // the result, so the text must be dedented first to make the round trip a
   // fixed point
   let dedented = dedent_embedded(text);
-  let Some(formatted) = lax_markup::format_text_with_external(
+  let formatted = match lax_markup::format_text_with_external(
     Path::new("embedded.html"),
     &dedented,
     &markup_config,
     &external,
-  )?
-  else {
-    return Ok(if dedented == text {
-      None
-    } else {
-      Some(dedented)
-    });
+  )? {
+    Some(formatted) => formatted,
+    None => dedented,
   };
-  let formatted = formatted.trim_end_matches('\n');
+  // the typescript formatter frames the contents on their own lines between the
+  // opening and closing backticks, so any leading or trailing blank line would
+  // be re-added on every pass and the format would never reach a fixed point.
+  // unlike lax-css, lax-markup keeps leading blank lines verbatim, so trim both
+  // ends here.
+  let formatted = formatted.trim_matches('\n');
   Ok(if formatted == text {
     None
   } else {

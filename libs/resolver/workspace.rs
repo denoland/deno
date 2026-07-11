@@ -1963,7 +1963,10 @@ fn pkg_json_to_version_info(
     .map_err(|source| PkgJsonToVersionInfoError::VersionInvalid { source })?;
   Ok(NpmPackageVersionInfo {
     version,
-    exports: pkg_json.exports.clone().map(serde_json::Value::Object),
+    exports: pkg_json
+      .exports
+      .as_ref()
+      .map(deno_npm::registry::NpmPackageExportKeys::from_exports_object),
     dist: None,
     bin: pkg_json
       .bin
@@ -2007,6 +2010,9 @@ fn pkg_json_to_version_info(
     // not worth increasing memory for showing a deprecated
     // message for linked packages
     deprecated: None,
+    // linked/workspace packages from a package.json carry no registry
+    // trust signals
+    npm_user: None,
   })
 }
 
@@ -3894,6 +3900,7 @@ mod test {
         ]),
         // we don't bother ever setting this because we don't store it in deno_package_json
         deprecated: None,
+        npm_user: None,
       }
     );
 

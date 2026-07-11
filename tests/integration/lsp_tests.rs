@@ -11356,10 +11356,17 @@ fn lsp_quick_fix_missing_import_exclude_bare_node_builtins() {
     .iter()
     .map(|a| a.title.clone())
     .collect::<Vec<_>>();
+  // The invariant is that every suggested node builtin import carries the
+  // `node:` prefix (#25775) - no bare `"assert"` / `"test"` specifiers, which
+  // do not resolve in Deno. Stock TS surfaces the additional prefixed builtins
+  // `node:assert` and `node:test` (the forked compiler only offered
+  // `node:console`); they are all valid, resolvable imports.
   assert_eq!(
     json!(titles),
     json!([
+      "Add import from \"node:assert\"",
       "Add import from \"node:console\"",
+      "Add import from \"node:test\"",
       "Add missing function declaration 'assert'",
     ]),
   );
@@ -13492,7 +13499,7 @@ fn lsp_jupyter_completions() {
       },
       "documentation": {
         "kind": "markdown",
-        "value": "Asynchronously reads and returns the entire contents of a file as an UTF-8\ndecoded string.\n\n```ts\nconst data = await Deno.readTextFile(\"hello.txt\");\nconsole.log(data);\n```\n\nThe returned promise rejects if the operation fails, for example with\n[`Deno.errors.NotFound`](deno:/asset/lib.deno.ns.d.ts#174,5-174,43) if the file does not exist,\n[`Deno.errors.IsADirectory`](deno:/asset/lib.deno.ns.d.ts#307,5-307,47) if `path` refers to a directory, or\n[`Deno.errors.PermissionDenied`](deno:/asset/lib.deno.ns.d.ts#185,5-185,51) if the required permission has not\nbeen granted.\n\nRequires `allow-read` permission.\n\n*@tags* — allow-read\n\n\n*@category* — File System\n",
+        "value": "Asynchronously reads and returns the entire contents of a file as an UTF-8\ndecoded string.\n\n```ts\nconst data = await Deno.readTextFile(\"hello.txt\");\nconsole.log(data);\n```\n\nThe returned promise rejects if the operation fails, for example with\n[`Deno.errors.NotFound`](deno:/asset/lib.deno.ns.d.ts#176,5-176,43) if the file does not exist,\n[`Deno.errors.IsADirectory`](deno:/asset/lib.deno.ns.d.ts#309,5-309,47) if `path` refers to a directory, or\n[`Deno.errors.PermissionDenied`](deno:/asset/lib.deno.ns.d.ts#187,5-187,51) if the required permission has not\nbeen granted.\n\nRequires `allow-read` permission.\n\n*@tags* — allow-read\n\n\n*@category* — File System\n",
       },
       "sortText": "11",
     }),
@@ -15483,6 +15490,120 @@ fn lsp_no_slow_types_diagnostics() {
         d.code == Some(lsp::NumberOrString::String("no-slow-types".to_string()))
       }),
     "expected no no-slow-types diagnostics on a non-export module, got: {other_diagnostics:#?}"
+  );
+
+  client.shutdown();
+}
+
+// Regression test for https://github.com/denoland/deno/issues/35922: the LSP
+// should respect `lint.rules.exclude` for `no-slow-types` just like the CLI.
+#[test(timeout = 300)]
+fn lsp_no_slow_types_diagnostics_excluded() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+
+  // a publishable JSR package that excludes the `no-slow-types` rule
+  temp_dir.write(
+    "deno.json",
+    r#"{
+  "name": "@foo/bar",
+  "version": "1.0.0",
+  "exports": "./mod.ts",
+  "lint": {
+    "rules": {
+      "exclude": ["no-slow-types"]
+    }
+  }
+}
+"#,
+  );
+  // `add` is missing an explicit return type, which is a slow type, but the
+  // rule is excluded so it should not be reported
+  temp_dir.write(
+    "mod.ts",
+    "export function add(a: number, b: number) {\n  return a + b;\n}\n",
+  );
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": url_to_uri(&temp_dir.url().join("mod.ts").unwrap()).unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("mod.ts"),
+    }
+  }));
+  let mod_diagnostics = diagnostics.all();
+  assert!(
+    !mod_diagnostics.iter().any(|d| {
+      d.code == Some(lsp::NumberOrString::String("no-slow-types".to_string()))
+    }),
+    "expected no no-slow-types diagnostics when the rule is excluded, got: {mod_diagnostics:#?}"
+  );
+
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
+fn lsp_no_slow_types_unanalyzable_exports() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+
+  // a package with a non-JS export (like CSS) shouldn't surface an
+  // internal "export not found" diagnostic, but slow types in its
+  // analyzable exports should still be reported
+  // https://github.com/denoland/deno/issues/26308
+  temp_dir.write(
+    "deno.json",
+    r#"{
+  "name": "@foo/bar",
+  "version": "1.0.0",
+  "exports": {
+    "./mod.ts": "./mod.ts",
+    "./globals.css": "./globals.css"
+  }
+}
+"#,
+  );
+  temp_dir.write(
+    "mod.ts",
+    "export function add(a: number, b: number) {\n  return a + b;\n}\n",
+  );
+  temp_dir.write("globals.css", "body {\n  color: red;\n}\n");
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": url_to_uri(&temp_dir.url().join("mod.ts").unwrap()).unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("mod.ts"),
+    }
+  }));
+  let no_slow_types_diagnostics = diagnostics
+    .all_messages()
+    .iter()
+    .flat_map(|m| m.diagnostics.iter())
+    .filter(|d| {
+      d.code == Some(lsp::NumberOrString::String("no-slow-types".to_string()))
+    })
+    .cloned()
+    .collect::<Vec<_>>();
+  assert!(
+    no_slow_types_diagnostics
+      .iter()
+      .any(|d| d.message.contains("missing explicit return type")),
+    "expected a no-slow-types diagnostic for the slow type, got: {no_slow_types_diagnostics:#?}"
+  );
+  assert!(
+    !no_slow_types_diagnostics
+      .iter()
+      .any(|d| d.message.contains("globals.css")),
+    "expected no no-slow-types diagnostics for the CSS export, got: {no_slow_types_diagnostics:#?}"
   );
 
   client.shutdown();
@@ -21258,6 +21379,80 @@ fn lsp_wasm_module_multi_value_return() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/28334: when a
+// local `.wasm` file is recompiled on disk to export a new function, a
+// `workspace/didChangeWatchedFiles` change notification must evict the stale
+// generated types so dependents pick up the new exports without having to
+// delete and recreate the file. This relies on `.wasm` being included in the
+// file watcher glob registered in `language_server.rs`.
+#[test(timeout = 300)]
+fn lsp_wasm_module_change_watched() {
+  // A minimal wasm module exporting a single `() => i32` function. The only
+  // difference between the two is the export name (`sub` vs `add`).
+  fn wasm_exporting(name: &str) -> Vec<u8> {
+    let name = name.as_bytes();
+    let mut bytes = Vec::new();
+    // Header.
+    bytes.extend_from_slice(&[0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
+    // Type section: a single `() -> i32` signature.
+    bytes.extend_from_slice(&[0x01, 0x05, 0x01, 0x60, 0x00, 0x01, 0x7f]);
+    // Function section: function 0 has type 0.
+    bytes.extend_from_slice(&[0x03, 0x02, 0x01, 0x00]);
+    // Export section: export function 0 under `name`.
+    bytes.extend_from_slice(&[
+      0x07,
+      (name.len() + 4) as u8,
+      0x01,
+      name.len() as u8,
+    ]);
+    bytes.extend_from_slice(name);
+    bytes.extend_from_slice(&[0x00, 0x00]);
+    // Code section: the function body returns the constant 42.
+    bytes.extend_from_slice(&[0x0a, 0x06, 0x01, 0x04, 0x00, 0x41, 0x2a, 0x0b]);
+    bytes
+  }
+
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  // Initially the wasm module does not export `add`.
+  temp_dir.write("mod.wasm", wasm_exporting("sub"));
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  let main_uri = url_to_uri(&temp_dir.url().join("main.ts").unwrap()).unwrap();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": main_uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import { add } from \"./mod.wasm\";\nconsole.log(add());\n"
+    }
+  }));
+  // `add` isn't exported yet, so this is an error.
+  assert_eq!(diagnostics.all().len(), 1);
+  assert_json_subset(
+    json!(diagnostics.all()),
+    json!([{ "code": 2305, "source": "deno-ts" }]),
+  );
+
+  // Recompile the wasm file on disk so it now exports `add`, then notify the
+  // LSP of the change.
+  temp_dir.write("mod.wasm", wasm_exporting("add"));
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": url_to_uri(&temp_dir.url().join("mod.wasm").unwrap()).unwrap(),
+      "type": 2
+    }]
+  }));
+
+  // The stale types should have been evicted and the diagnostic cleared.
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(json!(diagnostics.all()), json!([]));
+
+  client.shutdown();
+}
+
 #[test(timeout = 300)]
 fn wildcard_augment() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
@@ -22370,6 +22565,48 @@ fn lsp_force_push_based_diagnostics_setting() {
       },
     ]),
   );
+}
+
+// Regression test for https://github.com/denoland/deno/issues/35225: a `.d.ts`
+// opened in the editor is an entrypoint, so its own unresolved bare imports must
+// be reported (as `deno check` does for `.d.ts` entrypoints, see #32794), even
+// under `skipLibCheck` where tsc would otherwise skip them.
+#[test(timeout = 300)]
+fn lsp_dts_entrypoint_unresolved_import() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "compilerOptions": {
+        "skipLibCheck": true,
+      }
+    })
+    .to_string(),
+  );
+  let file = temp_dir.source_file(
+    "asdf.d.ts",
+    "import Foo from \"some-non-existent-package\";\nexport type F = typeof Foo;\n",
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(
+    json!(diagnostics.messages_with_source("deno").diagnostics),
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 16 },
+          "end": { "line": 0, "character": 43 },
+        },
+        "severity": 1,
+        "code": "import-prefix-missing",
+        "source": "deno",
+        "message": "Import \"some-non-existent-package\" not a dependency\n  hint: If you want to use the npm package, try running `deno add npm:some-non-existent-package`",
+      },
+    ]),
+  );
+  client.shutdown();
 }
 
 #[test(timeout = 300)]

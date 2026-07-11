@@ -1216,6 +1216,55 @@ impl RootCertStoreProvider for StandaloneRootCertStoreProvider {
 /// Callback to initialize additional `OpState` during worker creation.
 pub type OpStateInitFn = Box<dyn FnOnce(&mut deno_core::OpState) + Send>;
 
+/// Error raised while a compiled desktop app's main module is still loading or
+/// first evaluating (e.g. a failed import, a link error, or a top-level
+/// throw/await rejection during evaluation).
+///
+/// Such failures happen before the app's own `error` / `unhandledrejection`
+/// listeners can observe them (the event loop hasn't started yet), so the
+/// desktop shell can't rely on the app to report them. It carries a
+/// pre-formatted, user-facing message so the shell can surface it in a native
+/// dialog: a GUI-launched app (Finder/Dock) has no visible stderr, so an
+/// unsurfaced startup error otherwise presents as a window that blinks open and
+/// immediately closes (deno#35544).
+///
+/// The original error is retained as the [`std::error::Error::source`] so the
+/// `{:?}` debug logs in the desktop shell still print the full cause chain.
+#[derive(Debug)]
+pub struct DesktopStartupError {
+  /// Pre-formatted, user-facing error message.
+  pub message: String,
+  /// The original error, kept so the cause chain survives in debug logs.
+  source: AnyError,
+}
+
+impl std::fmt::Display for DesktopStartupError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.write_str(&self.message)
+  }
+}
+
+impl std::error::Error for DesktopStartupError {
+  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    Some(self.source.as_ref())
+  }
+}
+
+/// Wrap a desktop main-module load/evaluation failure as a
+/// [`DesktopStartupError`], formatting JS errors the same way the runtime would
+/// print them to stderr while retaining the original error as the source.
+fn desktop_startup_error<E: Into<AnyError>>(err: E) -> AnyError {
+  let err: AnyError = err.into();
+  let message = match deno_lib::util::result::js_error_downcast_ref(&err) {
+    Some(js_error) => deno_runtime::fmt_errors::format_js_error(js_error, None),
+    None => format!("{err:?}"),
+  };
+  AnyError::new(DesktopStartupError {
+    message,
+    source: err,
+  })
+}
+
 /// Options to override default standalone runtime behavior.
 /// Used by the desktop runtime to enable auto_serve and set the port.
 #[derive(Default)]
@@ -1360,6 +1409,9 @@ pub async fn run_with_options(
         scopes: Default::default(),
         registry_configs: Default::default(),
         min_release_age_days: None,
+        trust_policy: Default::default(),
+        trust_policy_ignore_after_minutes: None,
+        trust_policy_exclude: Vec::new(),
       });
       let npm_cache_dir = Arc::new(NpmCacheDir::new(
         &sys,
@@ -1611,6 +1663,15 @@ pub async fn run_with_options(
       // can leak the string here.
       checker.enable_feature(feature.leak());
     }
+    // Mirror cli/factory.rs: force-enable the unstable KV feature when
+    // DENO_KV_REQUIRES_DISTRIBUTED_DATABASE=error so Deno.openKv() is exposed
+    // and surfaces a clear "no database attached" error.
+    if std::env::var("DENO_KV_REQUIRES_DISTRIBUTED_DATABASE").as_deref()
+      == Ok("error")
+      && !checker.check("kv")
+    {
+      checker.enable_feature("kv");
+    }
     checker
   });
   // Resolve a persistent, per-app data directory so origin-bound storage such
@@ -1771,6 +1832,18 @@ pub async fn run_with_options(
       .js_runtime()
       .execute_script("ext:deno_desktop/auto_update", js)?;
 
+    // Make the operator-configured reporting URL available to the native
+    // op (and the panic hook) via `ERROR_REPORT_CONFIG`. The op reads the
+    // destination from here rather than trusting a JS-supplied URL, so an
+    // untrusted caller can't retarget it. `OnceLock::set` is a no-op if a
+    // path that already knows the URL (e.g. `run_desktop`) set it first.
+    if let Some(url) = options.error_reporting_url.as_deref() {
+      deno_runtime::ops::desktop::set_error_report_config(
+        url.to_string(),
+        options.auto_update_version.clone(),
+      );
+    }
+
     let js = crate::desktop::desktop_error_reporting_js(
       options.error_reporting_url.as_deref(),
       options.auto_update_version.as_deref(),
@@ -1792,10 +1865,7 @@ pub async fn run_with_options(
     // This ensures scriptParsed notifications are emitted during module load.
     worker.run_event_loop(false).await?;
 
-    // Run preload modules first
-    worker.execute_preload_modules().await?;
-    worker.execute_main_module().await?;
-    worker.dispatch_load_event()?;
+    worker.execute_load_phase().await?;
 
     loop {
       let hmr_fut = hmr_runner.run();
@@ -1824,6 +1894,19 @@ pub async fn run_with_options(
     worker.dispatch_unload_event()?;
     worker.dispatch_process_exit_event()?;
     Ok(worker.exit_code())
+  } else if has_desktop {
+    // Same as `LibMainWorker::run()`, but tag any failure from the load phase
+    // (main module still loading or first evaluating) as a
+    // `DesktopStartupError` (see its docs for why these otherwise vanish). The
+    // tag lets the desktop shell surface them in a native dialog. Errors raised
+    // later, during the steady-state event loop, are left untagged: those are
+    // already reported by the app's JS listeners, and tagging them would
+    // produce a duplicate dialog.
+    worker
+      .execute_load_phase()
+      .await
+      .map_err(desktop_startup_error)?;
+    Ok(worker.run_event_loop_to_completion().await?)
   } else {
     let exit_code = worker.run().await?;
     Ok(exit_code)
@@ -1951,6 +2034,9 @@ fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
     scopes: Default::default(),
     registry_configs: Default::default(),
     min_release_age_days: None,
+    trust_policy: Default::default(),
+    trust_policy_ignore_after_minutes: None,
+    trust_policy_exclude: Vec::new(),
   })
 }
 
@@ -2037,11 +2123,38 @@ mod tests {
 
   use super::DESKTOP_ENV_KEYS;
   use super::DESKTOP_LOOPBACK_HOSTS;
+  use super::DesktopStartupError;
   use super::apply_desktop_permission_defaults;
+  use super::desktop_startup_error;
   use super::grant_vfs_read_access;
 
   fn strs(v: &[&str]) -> Vec<String> {
     v.iter().map(|s| (*s).to_string()).collect()
+  }
+
+  #[test]
+  fn desktop_startup_error_tags_and_carries_message() {
+    // A desktop main-module load/eval failure is wrapped so the shell can
+    // recognize it (downcast) and show the carried message in a dialog,
+    // instead of letting it exit silently (deno#35544).
+    let original =
+      deno_error::JsErrorBox::generic("could not load workspace member");
+    let wrapped = desktop_startup_error(original);
+    let startup = wrapped
+      .downcast_ref::<DesktopStartupError>()
+      .expect("must be tagged as a startup error");
+    assert!(startup.message.contains("could not load workspace member"));
+    // Display delegates to the carried message.
+    assert_eq!(startup.to_string(), startup.message);
+    // The original error is retained as the source so `{:?}` debug logs keep
+    // the full cause chain.
+    let source =
+      std::error::Error::source(startup).expect("source must be retained");
+    assert!(
+      source
+        .to_string()
+        .contains("could not load workspace member")
+    );
   }
 
   #[test]

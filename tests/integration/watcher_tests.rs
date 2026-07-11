@@ -752,6 +752,50 @@ async fn run_watch_no_dynamic() {
   check_alive_then_kill(child);
 }
 
+// Regression test: modules given via --preload (or --require / NODE_OPTIONS)
+// must execute under --watch, both on the initial run and again after every
+// watcher restart. They were silently skipped because the watch path never
+// called execute_preload_modules().
+#[test(flaky)]
+async fn run_watch_preload_reruns() {
+  let t = TempDir::new();
+  let preload_file = t.path().join("preload.js");
+  preload_file.write("console.log('preload ran');");
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write("console.log('main ran');");
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg("-L")
+    .arg("debug")
+    .arg("--preload")
+    .arg(&preload_file)
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  // Lines are consumed in order, so this also asserts that the preload
+  // module executes before the main module.
+  wait_contains("preload ran", &mut stdout_lines).await;
+  wait_contains("main ran", &mut stdout_lines).await;
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+
+  // Change content of the file and assert that the preload runs again
+  // before the restarted main module.
+  file_to_watch.write("console.log('main ran again');");
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("preload ran", &mut stdout_lines).await;
+  wait_contains("main ran again", &mut stdout_lines).await;
+
+  check_alive_then_kill(child);
+}
+
 #[test(flaky)]
 async fn serve_watch_all() {
   let t = TempDir::new();
@@ -2358,6 +2402,52 @@ async fn test_watch_sigint_and_sigterm_on_ctrlc() {
   assert_eq!(exit_status.code(), Some(0));
 }
 
+/// Test that Ctrl+C terminates the watcher right away while the
+/// watched program is blocked in synchronous JS code and has no
+/// signal listeners registered.
+/// Regression test for https://github.com/denoland/deno/issues/35824.
+#[cfg(unix)]
+#[test(flaky)]
+async fn test_watch_sigint_during_blocking_sync_code() {
+  use std::os::unix::process::ExitStatusExt;
+
+  use nix::sys::signal;
+  use nix::sys::signal::Signal;
+  use nix::unistd::Pid;
+
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+      console.log("looping");
+      const start = Date.now();
+      while (Date.now() - start < 60000) {}
+    "#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, _stderr_lines) = child_lines(&mut child);
+
+  wait_contains("looping", &mut stdout_lines).await;
+
+  // Send SIGINT (simulating Ctrl+C) while the program is inside the
+  // synchronous busy loop and cannot service the event loop.
+  signal::kill(Pid::from_raw(child.id() as i32), Signal::SIGINT).unwrap();
+
+  // The process must be terminated by the default SIGINT behavior
+  // without waiting for the synchronous code to finish.
+  let exit_status = child.wait().unwrap();
+  assert_eq!(exit_status.signal(), Some(Signal::SIGINT as i32));
+}
+
 #[test(flaky)]
 async fn bench_watch_basic() {
   let t = TempDir::new();
@@ -2958,12 +3048,29 @@ console.log("Listening...")
   );
 
   wait_contains("Replaced changed module", &mut stderr_lines).await;
-  util::deno_cmd()
-    .current_dir(t.path())
-    .arg("eval")
-    .arg("await fetch('http://localhost:11111');")
-    .spawn()
-    .unwrap();
+  // Re-evaluating the module calls `Deno.serve` again, so there is a window
+  // right after the module is replaced where the listener has been closed and
+  // not yet rebound and a connection is refused. Retry until it is accepting.
+  //
+  // This used to spawn a fire-and-forget `deno eval` child that fetched once
+  // and was never awaited: a refused connection there silently dropped the
+  // request (leaving this test to hang until `wait_contains` timed out) and
+  // printed `error sending request for url (http://localhost:11111/)` onto the
+  // inherited stderr, where it got attributed to whichever test happened to be
+  // reporting at the time.
+  let client = reqwest::Client::new();
+  let start = std::time::Instant::now();
+  loop {
+    match client.get("http://localhost:11111/").send().await {
+      Ok(_) => break,
+      Err(err) => {
+        if start.elapsed() > std::time::Duration::from_secs(30) {
+          panic!("could not reach the hmr server after 30 seconds: {err}");
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+      }
+    }
+  }
   wait_contains("got request1", &mut stderr_lines).await;
 
   check_alive_then_kill(child);

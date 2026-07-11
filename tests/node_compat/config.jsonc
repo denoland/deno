@@ -1381,10 +1381,7 @@
     "parallel/test-fs-fmap.js": {},
     "parallel/test-fs-fsync.js": {},
     "parallel/test-fs-glob-throw.mjs": {},
-    "parallel/test-fs-glob.mjs": {
-      "ignore": true,
-      "reason": "New Node 26 glob followSymlinks option not yet implemented"
-    },
+    "parallel/test-fs-glob.mjs": {},
     "parallel/test-fs-internal-assertencoding.js": {},
     "parallel/test-fs-lchmod.js": {},
     "parallel/test-fs-lchown-negative-one.js": {
@@ -2492,6 +2489,7 @@
     "parallel/test-microtask-queue-run.js": {},
     "parallel/test-mime-api.js": {},
     "parallel/test-mime-whatwg.js": {},
+    "parallel/test-mock-timers-abortsignal-timeout.js": {},
     "parallel/test-module-cache.js": {
       "flaky": true
     },
@@ -3181,6 +3179,7 @@
     // "parallel/test-runner-coverage-thresholds.js": {},
     "parallel/test-runner-enable-source-maps-issue.js": {},
     "parallel/test-runner-filter-warning.js": {},
+    "parallel/test-runner-mock-timers-with-timeout.js": {},
     "parallel/test-runner-root-after-with-refed-handles.js": {},
     "parallel/test-runner-snapshot-file-tests.js": {
       "ignore": true,
@@ -4986,10 +4985,7 @@
       "windows": false,
       "reason": "error: Uncaught (in promise) AssertionError: Expected values to be strictly deep"
     },
-    "parallel/test-fs-stat-date.mjs": {
-      "ignore": true,
-      "reason": "Deno's FsStat represents file timestamps as unsigned milliseconds, so pre-1970 (negative) atime/mtime values lose their sign when read back via stat"
-    },
+    "parallel/test-fs-stat-date.mjs": {},
     "parallel/test-fs-watch-close-when-destroyed.js": {
       "windows": false,
       "reason": "times out"
@@ -5206,7 +5202,11 @@
       "darwin": false,
       "reason": "process.execve is not a function"
     },
+    "parallel/test-process-getactiveresources-track-active-handles.js": {},
+    "parallel/test-process-getactiveresources-track-active-requests.js": {},
     "parallel/test-process-getactiveresources-track-interval-lifetime.js": {},
+    "parallel/test-process-getactiveresources-track-multiple-timers.js": {},
+    "parallel/test-process-getactiveresources-track-timer-lifetime.js": {},
     "parallel/test-process-initgroups.js": {
       "linux": false,
       "darwin": false,
@@ -5242,6 +5242,7 @@
       "darwin": false,
       "reason": "error: Uncaught AssertionError: ifError got unwanted exception: ifError got unwa"
     },
+    "parallel/test-runner-get-test-context.js": {},
     "parallel/test-runner-global-setup-watch-mode.mjs": {
       "linux": false,
       "darwin": false,

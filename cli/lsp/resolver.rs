@@ -1117,6 +1117,7 @@ impl<'a> ResolverFactory<'a> {
         link_packages: link_packages.0.clone(),
         newest_dependency_date_options: Default::default(),
         overrides: Arc::new(overrides),
+        trust_policy: Default::default(),
       });
       let npm_resolution_installer = Arc::new(NpmResolutionInstaller::new(
         Default::default(),

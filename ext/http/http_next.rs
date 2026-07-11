@@ -506,6 +506,37 @@ impl RawRequestHeaders {
     }
   }
 
+  /// Builds a minimal header set containing only the `accept-encoding`
+  /// header(s). Used by the zero-arg "no request" fast path, where the full
+  /// request is never exposed to JS but the response path still needs
+  /// `accept-encoding` to decide automatic compression.
+  fn from_h1_accept_encoding(headers: &[h1::Header<'_>]) -> Self {
+    let mut bytes = Vec::new();
+    let mut entries = Vec::new();
+    for header in headers {
+      if !header.name.eq_ignore_ascii_case(b"accept-encoding") {
+        continue;
+      }
+      let name_start = bytes.len();
+      bytes.extend_from_slice(header.name);
+      let value_start = bytes.len();
+      bytes.extend_from_slice(header.value);
+      entries.push(RawRequestHeader {
+        name_start,
+        name_len: header.name.len(),
+        value_start,
+        value_len: header.value.len(),
+      });
+    }
+    Self {
+      bytes,
+      entries,
+      host_index: None,
+      authorization_index: None,
+      authorization_multiple: false,
+    }
+  }
+
   fn len(&self) -> usize {
     self.entries.len()
   }
@@ -1077,6 +1108,17 @@ where
       .conn
       .poll_finish_response_with(cx, &mut self.scratch, writer)
     {
+      Poll::Ready(Ok(())) => Poll::Ready(Ok(())),
+      Poll::Ready(Err(error)) => Poll::Ready(Err(error.into())),
+      Poll::Pending => Poll::Pending,
+    }
+  }
+
+  fn poll_flush(
+    &mut self,
+    cx: &mut Context<'_>,
+  ) -> Poll<Result<(), HttpNextError>> {
+    match self.conn.poll_flush_write_buf(cx, &mut self.scratch) {
       Poll::Ready(Ok(())) => Poll::Ready(Ok(())),
       Poll::Ready(Err(error)) => Poll::Ready(Err(error.into())),
       Poll::Pending => Poll::Pending,
@@ -3294,9 +3336,14 @@ fn raw_request_target_to_string(target: &[u8]) -> String {
 fn raw_request_from_h1(
   request: h1::Request<'_>,
   store_request: bool,
+  automatic_compression: bool,
 ) -> RawParsedRequest {
   let headers = if store_request {
     RawRequestHeaders::from_h1(request.headers)
+  } else if automatic_compression {
+    // The full request isn't exposed to JS on the zero-arg fast path, but the
+    // response path still needs `accept-encoding` to decide compression.
+    RawRequestHeaders::from_h1_accept_encoding(request.headers)
   } else {
     RawRequestHeaders::empty()
   };
@@ -3588,10 +3635,14 @@ where
 
   let headers = raw_response_headers(&parts, &date);
   let response_body = match &body {
-    _ if head => h1::ResponseBody::Head(Some(match &body {
-      FlatResponseBody::Empty => 0,
-      FlatResponseBody::Bytes(body) => body.len() as u64,
-    })),
+    // HEAD sends no body, so an explicit content-length from the handler
+    // (e.g. when proxying) takes precedence (RFC 9110 §9.3.2).
+    _ if head => h1::ResponseBody::Head(Some(
+      raw_response_content_length(&parts).unwrap_or(match &body {
+        FlatResponseBody::Empty => 0,
+        FlatResponseBody::Bytes(body) => body.len() as u64,
+      }),
+    )),
     FlatResponseBody::Empty => h1::ResponseBody::Empty,
     FlatResponseBody::Bytes(body) => h1::ResponseBody::Bytes(body.as_ref()),
   };
@@ -3797,10 +3848,14 @@ where
   }
   let headers = raw_response_headers(&parts, &date);
   let response_body = match &body {
-    _ if head => h1::ResponseBody::Head(Some(match &body {
-      FlatResponseBody::Empty => 0,
-      FlatResponseBody::Bytes(body) => body.len() as u64,
-    })),
+    // HEAD sends no body, so an explicit content-length from the handler
+    // (e.g. when proxying) takes precedence (RFC 9110 §9.3.2).
+    _ if head => h1::ResponseBody::Head(Some(
+      raw_response_content_length(&parts).unwrap_or(match &body {
+        FlatResponseBody::Empty => 0,
+        FlatResponseBody::Bytes(body) => body.len() as u64,
+      }),
+    )),
     FlatResponseBody::Empty => h1::ResponseBody::Empty,
     FlatResponseBody::Bytes(body) => h1::ResponseBody::Bytes(body.as_ref()),
   };
@@ -4042,9 +4097,20 @@ where
         Poll::Ready(Ok(false)) | Poll::Pending => {}
         Poll::Ready(Err(error)) => return Poll::Ready(Err(error.into())),
       }
-      Poll::Ready(Ok::<_, HttpNextError>(RawResponseBodyEvent::Frame(ready!(
-        poll_raw_response_body_frame(&mut body, cx)
-      ))))
+      match poll_raw_response_body_frame(&mut body, cx) {
+        Poll::Ready(frame) => Poll::Ready(Ok::<_, HttpNextError>(
+          RawResponseBodyEvent::Frame(frame),
+        )),
+        Poll::Pending => {
+          // Body source has nothing ready; flush buffered response bytes so the
+          // client isn't kept waiting (keeps incremental/SSE streams
+          // responsive). Synchronous chunk+EOF still coalesce at finish.
+          match conn.poll_flush_write_buf(cx, scratch) {
+            Poll::Ready(Err(error)) => Poll::Ready(Err(error.into())),
+            Poll::Ready(Ok(())) | Poll::Pending => Poll::Pending,
+          }
+        }
+      }
     })
     .await?;
     match event {
@@ -4085,6 +4151,10 @@ where
       }
       RawResponseBodyEvent::Frame(ResponseStreamResult::NoData) => continue,
       RawResponseBodyEvent::Frame(ResponseStreamResult::Error(error)) => {
+        // The head (and any chunks coalesced so far) may still be buffered;
+        // flush best-effort so the client receives the committed response
+        // before the connection is torn down, then surface the body error.
+        let _ = poll_fn(|cx| conn.poll_flush_write_buf(cx, scratch)).await;
         finish.finish(false);
         return Err(HttpNextError::Other(error));
       }
@@ -4181,9 +4251,24 @@ where
           Poll::Ready(Err(error)) => return Poll::Ready(Err(error)),
         }
       }
-      Poll::Ready(Ok::<_, HttpNextError>(RawResponseBodyEvent::Frame(ready!(
-        poll_raw_response_body_frame(&mut body, cx)
-      ))))
+      match poll_raw_response_body_frame(&mut body, cx) {
+        Poll::Ready(frame) => Poll::Ready(Ok::<_, HttpNextError>(
+          RawResponseBodyEvent::Frame(frame),
+        )),
+        Poll::Pending => {
+          // Body source has nothing ready; flush buffered response bytes so the
+          // client isn't kept waiting (keeps incremental/SSE streams
+          // responsive). Synchronous chunk+EOF still coalesce at finish.
+          let mut conn = conn.borrow_mut();
+          let Some(conn) = conn.as_mut() else {
+            return Poll::Ready(Err(raw_h1_connection_closed()));
+          };
+          match conn.poll_flush(cx) {
+            Poll::Ready(Err(error)) => Poll::Ready(Err(error)),
+            Poll::Ready(Ok(())) | Poll::Pending => Poll::Pending,
+          }
+        }
+      }
     })
     .await?;
     match event {
@@ -4246,6 +4331,17 @@ where
       }
       RawResponseBodyEvent::Frame(ResponseStreamResult::NoData) => continue,
       RawResponseBodyEvent::Frame(ResponseStreamResult::Error(error)) => {
+        // The head (and any chunks coalesced so far) may still be buffered;
+        // flush best-effort so the client receives the committed response
+        // before the connection is torn down, then surface the body error.
+        let _ = poll_fn(|cx| {
+          let mut conn = conn.borrow_mut();
+          let Some(conn) = conn.as_mut() else {
+            return Poll::Ready(Ok::<_, HttpNextError>(()));
+          };
+          conn.poll_flush(cx)
+        })
+        .await;
         finish.finish(false);
         return Err(HttpNextError::Other(error));
       }
@@ -4268,7 +4364,7 @@ async fn serve_http11_raw(
   loop {
     let next_request = poll_fn(|cx| {
       conn.poll_next_request_with(cx, &mut scratch, |request| {
-        raw_request_from_h1(request, store_request)
+        raw_request_from_h1(request, store_request, automatic_compression)
       })
     })
     .or_cancel(cancel.clone())

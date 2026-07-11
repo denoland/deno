@@ -139,10 +139,10 @@ class Script {
     );
     this.#inner = result.value;
     referrer.value = this;
-    this.cachedDataProduced = result.cached_data_produced;
-    this.cachedDataRejected = result.cached_data_rejected;
-    this.cachedData = result.cached_data
-      ? Buffer.from(result.cached_data)
+    this.cachedDataProduced = result.cachedDataProduced;
+    this.cachedDataRejected = result.cachedDataRejected;
+    this.cachedData = result.cachedData
+      ? Buffer.from(result.cachedData)
       : undefined;
   }
 
@@ -507,10 +507,10 @@ function compileFunction(code, params, options = { __proto__: null }) {
   );
   referrer.value = result.value;
 
-  result.value.cachedDataProduced = result.cached_data_produced;
-  result.value.cachedDataRejected = result.cached_data_rejected;
-  result.value.cachedData = result.cached_data
-    ? Buffer.from(result.cached_data)
+  result.value.cachedDataProduced = result.cachedDataProduced;
+  result.value.cachedDataRejected = result.cachedDataRejected;
+  result.value.cachedData = result.cachedData
+    ? Buffer.from(result.cachedData)
     : undefined;
 
   return result.value;
@@ -727,6 +727,7 @@ class SourceTextModule extends Module {
       lineOffset = 0,
       columnOffset = 0,
       importModuleDynamically,
+      initializeImportMeta,
     } = options;
     if (context !== undefined) {
       validateContext(context);
@@ -734,6 +735,16 @@ class SourceTextModule extends Module {
     validateString(identifier, "options.identifier");
     validateInt32(lineOffset, "options.lineOffset");
     validateInt32(columnOffset, "options.columnOffset");
+    if (
+      initializeImportMeta !== undefined &&
+      typeof initializeImportMeta !== "function"
+    ) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "options.initializeImportMeta",
+        "function",
+        initializeImportMeta,
+      );
+    }
 
     const referrer = { value: undefined };
     const effectiveImportModuleDynamically =
@@ -754,6 +765,7 @@ class SourceTextModule extends Module {
       columnOffset,
       context,
       importModuleDynamicallyId,
+      initializeImportMeta,
     );
     referrer.value = this;
     this[kModuleRequests] = buildModuleRequests(this[kWrap]);

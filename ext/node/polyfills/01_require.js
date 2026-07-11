@@ -3392,6 +3392,10 @@ function initialize(args) {
       nativeModuleExports["console"],
       nativeModuleExports["process"],
     );
+    nativeModuleExports["internal/console/constructor"].bindStreamsLazy(
+      globalThis.console,
+      nativeModuleExports["process"],
+    );
   } else {
     internals.__bootstrapNodeProcess(
       undefined,
@@ -3453,15 +3457,15 @@ preEnableTraceEvents();
 
 // node-defer: node:process's own deferred trigger runs the process half of
 // the bootstrap (`__bootstrapNodeProcess`) on first node:* use. The other
-// half of `initialize` (worker_threads alias, IPC, cluster, console<->process
-// binding, trace_events) used to run unconditionally; under node-defer each
+// half of `initialize` (worker_threads alias, IPC, cluster, trace_events) used
+// to run unconditionally; under node-defer each
 // piece is now handled where it belongs:
 // - worker_threads MessageChannel/MessagePort alias: at the bottom of
 //   ext/node/polyfills/worker_threads.ts module body, so importing
 //   node:worker_threads is enough to install the globals.
 // - IPC fork bootstrap: 99_main.js runs the full eager bootstrap when
 //   `op_node_has_child_ipc_pipe()` is true (forked child path).
-// - cluster init / bindStreamsLazy / trace_events env-var pre-enable:
+// - cluster init / trace_events env-var pre-enable:
 //   still pending; only matter when those features are actively used and
 //   are tracked as follow-ups, not regressions for ordinary programs.
 
