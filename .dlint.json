@@ -8,7 +8,8 @@
       "guard-for-in"
     ],
     "exclude": [
-      "no-invalid-triple-slash-reference"
+      "no-invalid-triple-slash-reference",
+      "ban-unknown-rule-code"
     ]
   }
 }

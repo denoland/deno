@@ -124,37 +124,66 @@ async function dlint() {
 
 // `prefer-primordials` has to apply only to files related to bootstrapping,
 // which is different from other lint rules. This is why this dedicated function
-// is needed.
+// is needed. Implemented as an internal Deno lint plugin (not the public
+// deno_lint rule) — see tools/lint_plugins/prefer_primordials.ts.
 async function dlintPreferPrimordials() {
-  const execPath = await getPrebuilt("dlint");
-  const sourceFiles = await getSources(ROOT_PATH, [
-    "runtime/**/*.js",
-    "runtime/**/*.ts",
-    "ext/**/*.js",
-    "ext/**/*.ts",
-    ":!:ext/**/*.d.ts",
-    "ext/node/polyfills/*.mjs",
-    ":!:ext/node/polyfills/deps/**",
-    ":!:runtime/cpu_profiler/flamegraph.js",
-  ]);
+  const pluginPath = import.meta.resolve(
+    "./lint_plugins/prefer_primordials.ts",
+  );
 
-  if (!sourceFiles.length) {
-    return;
-  }
+  // Create a temp deno.json config that only enables our plugin.
+  const configPath = await Deno.makeTempFile({ suffix: ".json" });
+  try {
+    await Deno.writeTextFile(
+      configPath,
+      JSON.stringify({
+        lint: {
+          plugins: [pluginPath],
+          // Disable built-in rules so only the prefer-primordials plugin runs.
+          // ban-unused-ignore is still active with tags:[] unless excluded.
+          rules: {
+            tags: [],
+            exclude: ["ban-unused-ignore", "ban-unknown-rule-code"],
+          },
+        },
+      }),
+    );
 
-  const chunks = splitToChunks(sourceFiles, `${execPath} run`.length);
-  for (const chunk of chunks) {
-    const cmd = new Deno.Command(execPath, {
-      cwd: ROOT_PATH,
-      args: ["run", "--rule", "prefer-primordials", ...chunk],
-      stdout: "inherit",
-      stderr: "inherit",
-    });
-    const { code } = await cmd.output();
+    const sourceFiles = await getSources(ROOT_PATH, [
+      "runtime/**/*.js",
+      "runtime/**/*.ts",
+      "ext/**/*.js",
+      "ext/**/*.ts",
+      ":!:ext/**/*.d.ts",
+      "ext/node/polyfills/*.mjs",
+      ":!:ext/node/polyfills/deps/**",
+      ":!:runtime/cpu_profiler/flamegraph.js",
+    ]);
 
-    if (code > 0) {
-      throw new Error("prefer-primordials failed");
+    if (!sourceFiles.length) {
+      return;
     }
+
+    // Keep command lines under the OS limit.
+    const chunks = splitToChunks(
+      sourceFiles,
+      `${Deno.execPath()} lint --config=`.length + configPath.length,
+    );
+    for (const chunk of chunks) {
+      const cmd = new Deno.Command(Deno.execPath(), {
+        cwd: ROOT_PATH,
+        args: ["lint", "--config=" + configPath, ...chunk],
+        stdout: "inherit",
+        stderr: "inherit",
+      });
+      const { code } = await cmd.output();
+
+      if (code > 0) {
+        throw new Error("prefer-primordials failed");
+      }
+    }
+  } finally {
+    await Deno.remove(configPath);
   }
 }
 
