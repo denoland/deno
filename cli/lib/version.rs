@@ -29,6 +29,10 @@ pub use deno_node::NODE_VERSION;
 const IS_CANARY: bool = option_env!("DENO_CANARY").is_some();
 // TODO(bartlomieju): this is temporary, to allow Homebrew to cut RC releases as well
 const IS_RC: bool = option_env!("DENO_RC").is_some();
+// Set when building an LTS release (e.g. from the `2.9` branch). Like
+// DENO_CANARY/DENO_RC, this is read from the build environment and only used as
+// a fallback when the binary has no `denover` section.
+const IS_LTS: bool = option_env!("DENO_LTS").is_some();
 
 pub static DENO_VERSION_INFO: std::sync::LazyLock<DenoVersionInfo> =
   std::sync::LazyLock::new(|| {
@@ -47,6 +51,8 @@ pub static DENO_VERSION_INFO: std::sync::LazyLock<DenoVersionInfo> =
           ReleaseChannel::Canary
         } else if IS_RC {
           ReleaseChannel::Rc
+        } else if IS_LTS {
+          ReleaseChannel::Lts
         } else {
           release_channel_from_version_string(DENO_VERSION)
         }
@@ -57,6 +63,8 @@ pub static DENO_VERSION_INFO: std::sync::LazyLock<DenoVersionInfo> =
       ReleaseChannel::Canary
     } else if IS_RC {
       ReleaseChannel::Rc
+    } else if IS_LTS {
+      ReleaseChannel::Lts
     } else {
       release_channel_from_version_string(DENO_VERSION)
     };
