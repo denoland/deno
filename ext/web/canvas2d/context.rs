@@ -35,6 +35,7 @@ use vello::peniko;
 
 use super::filter::CanvasLayerFilterPrimitive;
 use super::filter::parse_filter_input;
+use super::renderer::CpuRenderer;
 pub(crate) use super::renderer::DenoCanvasBackend;
 use super::renderer::SharedRenderer;
 use super::renderer::render_scene;
@@ -95,6 +96,14 @@ use crate::image_data::ImageData;
 pub const CONTEXT_ID: &str = "2d";
 pub const UNSTABLE_FEATURE_NAME: &str = "canvas2d";
 
+/// Pixel readbacks (getImageData / putImageData / convertToBlob) tolerated
+/// on the GPU backend before falling back to CPU, per Chromium's heuristic.
+const GPU_READBACK_FALLBACK_THRESHOLD: u32 = 2;
+
+/// Canvases smaller than this area render on the CPU, where they beat the
+/// GPU's per-draw overhead. Matches Blink's 128 * 129 heuristic.
+const MIN_GPU_ACCELERATED_AREA: u64 = 128 * 129;
+
 pub struct OffscreenCanvasRenderingContext2D {
   canvas: v8::Global<v8::Object>,
   data: deno_webgpu::canvas::ContextData,
@@ -112,6 +121,10 @@ pub struct OffscreenCanvasRenderingContext2D {
   current_path: RefCell<BezPath>,
 
   settings: Canvas2DSettings,
+
+  /// Pixel readbacks seen so far; drives the one-way GPU -> CPU fallback
+  /// in `increment_readback_and_check_fallback`. Never reset.
+  readback_count: std::cell::Cell<u32>,
 }
 
 // SAFETY: OffscreenCanvasRenderingContext2D is only accessed from the JS thread.
@@ -1820,6 +1833,7 @@ impl OffscreenCanvasRenderingContext2D {
       return Err(Canvas2DError::ZeroSourceSize);
     }
 
+    self.increment_readback_and_check_fallback();
     let full = self.render_to_bytes()?;
     let (canvas_w, canvas_h) = self.data.dimensions();
 
@@ -1938,6 +1952,7 @@ impl OffscreenCanvasRenderingContext2D {
     let src_stride = imagedata.get_width() as usize;
 
     let (canvas_w, canvas_h) = self.data.dimensions();
+    self.increment_readback_and_check_fallback();
     let mut pixels = self.render_to_bytes()?;
 
     for row in 0..dirty_h {
@@ -1973,31 +1988,9 @@ impl OffscreenCanvasRenderingContext2D {
       }
     }
 
-    let img = image_data_from_premultiplied_pixels(pixels, canvas_w, canvas_h);
-    let image_brush = peniko::ImageBrush::new(img);
-    let brush = peniko::Brush::Image(image_brush);
-    let rect = Rect::new(0.0, 0.0, canvas_w as f64, canvas_h as f64);
-
-    let clip_depth = self.state.borrow().clip_depth;
     let mut drawing = self.drawing.borrow_mut();
     drawing.reset(canvas_w, canvas_h);
-    fill_on(
-      &mut drawing,
-      &rect,
-      peniko::Fill::NonZero,
-      Affine::IDENTITY,
-      brush,
-      None,
-    );
-    let clip_stack = self.clip_stack.borrow();
-    for clip in clip_stack.iter().take(clip_depth) {
-      let fill = if clip.rule == "evenodd" {
-        peniko::Fill::EvenOdd
-      } else {
-        peniko::Fill::NonZero
-      };
-      push_clip(&mut drawing, fill, clip.transform, &clip.path);
-    }
+    self.refill_scene_from_snapshot(&mut drawing, pixels, canvas_w, canvas_h);
     Ok(())
   }
 
@@ -2037,7 +2030,16 @@ impl OffscreenCanvasRenderingContext2D {
     self.clip_stack.borrow_mut().clear();
     self.current_path.borrow_mut().truncate(0);
     let (width, height) = self.data.dimensions();
-    self.drawing.borrow_mut().reset(width, height);
+
+    // Content is discarded per spec, so re-derive the backend: the size
+    // heuristics may pick differently for the new dimensions.
+    *self.drawing.borrow_mut() = create_drawing_backend(
+      &self.renderer,
+      self.settings.will_read_frequently,
+      self.readback_count.get(),
+      width,
+      height,
+    );
   }
 
   /// Renders the scene to RGBA8 bytes.
@@ -2091,6 +2093,69 @@ impl OffscreenCanvasRenderingContext2D {
     result
   }
 
+  /// Called whenever getImageData / putImageData / convertToBlob reads
+  /// pixels back. Readbacks are expensive on the GPU backend, so after
+  /// `GPU_READBACK_FALLBACK_THRESHOLD` of them the context switches to the
+  /// CPU backend, mirroring Chromium's heuristic.
+  pub fn increment_readback_and_check_fallback(&self) {
+    if !matches!(*self.drawing.borrow(), DrawingBackend::Vello(_)) {
+      return;
+    }
+    self.readback_count.set(self.readback_count.get() + 1);
+    if self.readback_count.get() >= GPU_READBACK_FALLBACK_THRESHOLD
+      // Can't flatten the scene while layers are open; retry next readback.
+      && self.layer_depth.get() == 0
+    {
+      self.switch_to_cpu_backend();
+    }
+  }
+
+  /// Renders the current content once, then rebuilds it on the CPU backend.
+  fn switch_to_cpu_backend(&self) {
+    let Ok(pixels) = self.render_to_bytes() else {
+      return;
+    };
+    let (width, height) = self.data.dimensions();
+    let mut drawing = self.drawing.borrow_mut();
+    *drawing =
+      DrawingBackend::new(&DenoCanvasBackend::Cpu(CpuRenderer), width, height);
+    self.refill_scene_from_snapshot(&mut drawing, pixels, width, height);
+  }
+
+  /// Rebuilds the scene from a full-canvas premultiplied RGBA8 snapshot as
+  /// a single image fill, then replays the active clip stack on top.
+  fn refill_scene_from_snapshot(
+    &self,
+    drawing: &mut DrawingBackend,
+    pixels: Vec<u8>,
+    width: u32,
+    height: u32,
+  ) {
+    let img = image_data_from_premultiplied_pixels(pixels, width, height);
+    let image_brush = peniko::ImageBrush::new(img);
+    let brush = peniko::Brush::Image(image_brush);
+    let rect = Rect::new(0.0, 0.0, width as f64, height as f64);
+    fill_on(
+      drawing,
+      &rect,
+      peniko::Fill::NonZero,
+      Affine::IDENTITY,
+      brush,
+      None,
+    );
+
+    let clip_depth = self.state.borrow().clip_depth;
+    let clip_stack = self.clip_stack.borrow();
+    for clip in clip_stack.iter().take(clip_depth) {
+      let fill = if clip.rule == "evenodd" {
+        peniko::Fill::EvenOdd
+      } else {
+        peniko::Fill::NonZero
+      };
+      push_clip(drawing, fill, clip.transform, &clip.path);
+    }
+  }
+
   /// Renders the scene into a TextureView owned by this renderer's device.
   pub fn render_to_texture_view(
     &self,
@@ -2111,7 +2176,9 @@ impl OffscreenCanvasRenderingContext2D {
         }
         Ok(())
       }
-      // Surface-backed 2D contexts require a GPU backend.
+      // Surface-backed 2D contexts require a GPU backend. If this path is
+      // ever wired up, exclude such contexts from the CPU fallback in
+      // `increment_readback_and_check_fallback`.
       DrawingBackend::VelloCpu(_, _) => {
         unreachable!("render_to_texture_view called on Cpu backend")
       }
@@ -3224,6 +3291,33 @@ fn test_point_in_path(path: BezPath, x: f64, y: f64, rule: String) -> bool {
   }
 }
 
+/// Creates a drawing backend, preferring the GPU but choosing the CPU when
+/// browser-style heuristics say so: `willReadFrequently`, repeated pixel
+/// readbacks, a canvas too small to benefit from the GPU, or one too large
+/// for a GPU texture.
+fn create_drawing_backend(
+  renderer: &SharedRenderer,
+  will_read_frequently: bool,
+  readback_count: u32,
+  width: u32,
+  height: u32,
+) -> DrawingBackend {
+  let cpu = DenoCanvasBackend::Cpu(CpuRenderer);
+  let Some(Some(backend)) = renderer.get() else {
+    return DrawingBackend::new(&cpu, width, height);
+  };
+  let use_cpu = match backend {
+    DenoCanvasBackend::Cpu(_) => true,
+    DenoCanvasBackend::Gpu(gpu) => {
+      will_read_frequently
+        || readback_count >= GPU_READBACK_FALLBACK_THRESHOLD
+        || (width as u64) * (height as u64) < MIN_GPU_ACCELERATED_AREA
+        || width.max(height) > gpu.max_texture_dimension_2d()
+    }
+  };
+  DrawingBackend::new(if use_cpu { &cpu } else { backend }, width, height)
+}
+
 /// Creates an OffscreenCanvasRenderingContext2D object.
 #[allow(
   clippy::too_many_arguments,
@@ -3276,20 +3370,13 @@ pub fn create_context<'s>(
   let ctx = OffscreenCanvasRenderingContext2D {
     canvas,
     data,
-    drawing: RefCell::new({
-      if settings.will_read_frequently {
-        DrawingBackend::new(
-          &DenoCanvasBackend::Cpu(super::renderer::CpuRenderer),
-          width,
-          height,
-        )
-      } else {
-        match renderer.get() {
-          Some(Some(backend)) => DrawingBackend::new(backend, width, height),
-          _ => DrawingBackend::Vello(vello::Scene::new()),
-        }
-      }
-    }),
+    drawing: RefCell::new(create_drawing_backend(
+      &renderer,
+      settings.will_read_frequently,
+      0,
+      width,
+      height,
+    )),
     renderer,
     font_ctx,
     layout_ctx,
@@ -3299,6 +3386,7 @@ pub fn create_context<'s>(
     clip_stack: RefCell::new(Vec::new()),
     current_path: RefCell::new(BezPath::new()),
     settings,
+    readback_count: std::cell::Cell::new(0),
   };
 
   let obj = deno_core::cppgc::make_cppgc_object(scope, ctx);

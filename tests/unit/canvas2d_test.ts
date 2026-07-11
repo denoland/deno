@@ -1457,6 +1457,181 @@ Deno.test(function canvas2dGetImageDataTooLargeThrows() {
   assertThrows(() => ctx.createImageData(2147483647, 10), TypeError);
 });
 
+// --- GPU->CPU readback fallback heuristic ---
+//
+// Repeated getImageData / putImageData / convertToBlob calls switch a
+// GPU-backed context to the CPU backend (Chromium-style heuristic). These
+// assertions are backend-agnostic: they pass on CPU-only CI and also
+// exercise the actual switch on GPU machines.
+
+Deno.test(
+  { ignore: !hasCanvasRenderer },
+  function canvas2dGetImageDataAcrossReadbackThreshold() {
+    const canvas = new OffscreenCanvas(200, 200);
+    const ctx = canvas.getContext("2d")!;
+
+    ctx.fillStyle = "rgb(255, 0, 0)";
+    ctx.fillRect(0, 0, 200, 200);
+    for (let i = 0; i < 5; i++) {
+      const result = ctx.getImageData(10, 10, 1, 1);
+      assertEquals(result.data[0], 255);
+      assertEquals(result.data[1], 0);
+      assertEquals(result.data[2], 0);
+      assertEquals(result.data[3], 255);
+    }
+
+    // Drawing after crossing the fallback threshold must still work and be
+    // visible to a subsequent readback.
+    ctx.fillStyle = "rgb(0, 255, 0)";
+    ctx.fillRect(0, 0, 200, 200);
+    const after = ctx.getImageData(10, 10, 1, 1);
+    assertEquals(after.data[0], 0);
+    assertEquals(after.data[1], 255);
+    assertEquals(after.data[2], 0);
+    assertEquals(after.data[3], 255);
+  },
+);
+
+Deno.test(
+  { ignore: !hasCanvasRenderer },
+  function canvas2dClipSurvivesReadbackFallbackMigration() {
+    const canvas = new OffscreenCanvas(200, 200);
+    const ctx = canvas.getContext("2d")!;
+
+    ctx.beginPath();
+    ctx.rect(0, 0, 100, 200);
+    ctx.clip();
+
+    // Cross the readback fallback threshold while the clip is active.
+    for (let i = 0; i < 3; i++) {
+      ctx.getImageData(10, 10, 1, 1);
+    }
+
+    // A full-canvas fill should still be masked by the clip after a
+    // migration flattens and rebuilds the scene.
+    ctx.fillStyle = "rgb(0, 0, 255)";
+    ctx.fillRect(0, 0, 200, 200);
+    const inside = ctx.getImageData(50, 100, 1, 1);
+    assertEquals(inside.data[0], 0);
+    assertEquals(inside.data[2], 255);
+    const outside = ctx.getImageData(150, 100, 1, 1);
+    assertEquals(outside.data[3], 0);
+  },
+);
+
+Deno.test(
+  { ignore: !hasCanvasRenderer },
+  function canvas2dSaveRestoreClipDepthSurvivesReadbackFallback() {
+    const canvas = new OffscreenCanvas(200, 200);
+    const ctx = canvas.getContext("2d")!;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, 100, 200);
+    ctx.clip();
+
+    for (let i = 0; i < 3; i++) {
+      ctx.getImageData(10, 10, 1, 1);
+    }
+
+    // Restoring after the migration should lift the clip on whichever
+    // backend the context now runs on.
+    ctx.restore();
+    ctx.fillStyle = "rgb(0, 0, 255)";
+    ctx.fillRect(0, 0, 200, 200);
+    const outside = ctx.getImageData(150, 100, 1, 1);
+    assertEquals(outside.data[0], 0);
+    assertEquals(outside.data[2], 255);
+    assertEquals(outside.data[3], 255);
+  },
+);
+
+Deno.test(
+  { ignore: !hasCanvasRenderer },
+  function canvas2dAlphaFalseStaysOpaqueAcrossReadbackFallback() {
+    const canvas = new OffscreenCanvas(200, 200);
+    const ctx = canvas.getContext("2d", { alpha: false })!;
+
+    ctx.clearRect(0, 0, 200, 200);
+    for (let i = 0; i < 3; i++) {
+      const result = ctx.getImageData(10, 10, 1, 1);
+      assertEquals(result.data[3], 255);
+    }
+
+    ctx.fillStyle = "rgba(255, 0, 0, 0)";
+    ctx.fillRect(0, 0, 200, 200);
+    const after = ctx.getImageData(10, 10, 1, 1);
+    assertEquals(after.data[3], 255);
+  },
+);
+
+Deno.test(
+  { ignore: !hasCanvasRenderer },
+  function canvas2dPutImageDataAcrossReadbackThreshold() {
+    const canvas = new OffscreenCanvas(200, 200);
+    const ctx = canvas.getContext("2d")!;
+
+    const imgData = ctx.createImageData(2, 2);
+    for (let i = 0; i < imgData.data.length; i += 4) {
+      imgData.data[i] = 255;
+      imgData.data[i + 3] = 255;
+    }
+
+    for (let i = 0; i < 3; i++) {
+      ctx.putImageData(imgData, 0, 0);
+      const result = ctx.getImageData(0, 0, 1, 1);
+      assertEquals(result.data[0], 255);
+      assertEquals(result.data[3], 255);
+    }
+  },
+);
+
+Deno.test(
+  { ignore: !hasCanvasRenderer },
+  function canvas2dResizeRederivesBackendAfterFallback() {
+    const canvas = new OffscreenCanvas(1, 1);
+    const ctx = canvas.getContext("2d")!;
+
+    for (let i = 0; i < 3; i++) {
+      ctx.getImageData(0, 0, 1, 1);
+    }
+
+    // Growing well past the small-canvas heuristic must still leave the
+    // context in a working state after `resize()` re-derives the backend.
+    canvas.width = 512;
+    canvas.height = 512;
+    ctx.fillStyle = "rgb(255, 0, 0)";
+    ctx.fillRect(0, 0, 512, 512);
+    const result = ctx.getImageData(256, 256, 1, 1);
+    assertEquals(result.data[0], 255);
+    assertEquals(result.data[1], 0);
+    assertEquals(result.data[2], 0);
+    assertEquals(result.data[3], 255);
+  },
+);
+
+Deno.test(
+  { ignore: !hasCanvasRenderer },
+  async function canvas2dConvertToBlobAcrossReadbackThreshold() {
+    const canvas = new OffscreenCanvas(200, 200);
+    const ctx = canvas.getContext("2d")!;
+
+    ctx.fillStyle = "rgb(255, 0, 0)";
+    ctx.fillRect(0, 0, 200, 200);
+    for (let i = 0; i < 3; i++) {
+      await canvas.convertToBlob({ type: "image/png" });
+    }
+
+    ctx.fillStyle = "rgb(0, 255, 0)";
+    ctx.fillRect(0, 0, 200, 200);
+    const result = ctx.getImageData(10, 10, 1, 1);
+    assertEquals(result.data[0], 0);
+    assertEquals(result.data[1], 255);
+    assertEquals(result.data[2], 0);
+    assertEquals(result.data[3], 255);
+  },
+);
+
 Deno.test(function canvas2dRoundRectRadiusUnionSemantics() {
   const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
   // DOMPointInit branch: missing/undefined members default to 0.

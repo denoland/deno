@@ -287,10 +287,13 @@ impl DrawingBackend {
   ) -> Self {
     match backend {
       DenoCanvasBackend::Gpu(_) => DrawingBackend::Vello(vello::Scene::new()),
-      DenoCanvasBackend::Cpu(_) => DrawingBackend::VelloCpu(
-        vello_cpu::RenderContext::new(width as u16, height as u16),
-        Box::new(vello_cpu::Resources::new()),
-      ),
+      DenoCanvasBackend::Cpu(_) => {
+        let (width, height) = clamp_to_vello_cpu_dimensions(width, height);
+        DrawingBackend::VelloCpu(
+          vello_cpu::RenderContext::new(width, height),
+          Box::new(vello_cpu::Resources::new()),
+        )
+      }
     }
   }
 
@@ -298,11 +301,21 @@ impl DrawingBackend {
     match self {
       DrawingBackend::Vello(scene) => scene.reset(),
       DrawingBackend::VelloCpu(ctx, resources) => {
-        *ctx = vello_cpu::RenderContext::new(width as u16, height as u16);
+        let (width, height) = clamp_to_vello_cpu_dimensions(width, height);
+        *ctx = vello_cpu::RenderContext::new(width, height);
         **resources = vello_cpu::Resources::new();
       }
     }
   }
+}
+
+/// vello_cpu uses `u16` dimensions, so clamp instead of letting an `as u16`
+/// cast wrap. Canvases beyond 65535 are unsupported either way.
+fn clamp_to_vello_cpu_dimensions(width: u32, height: u32) -> (u16, u16) {
+  (
+    u16::try_from(width).unwrap_or(u16::MAX),
+    u16::try_from(height).unwrap_or(u16::MAX),
+  )
 }
 
 #[derive(Clone)]
