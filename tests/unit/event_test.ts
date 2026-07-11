@@ -7,19 +7,27 @@ import {
 } from "./test_util.ts";
 
 Deno.test(function eventTimeStamp() {
-  // `timeStamp` is a DOMHighResTimeStamp (relative to the time origin) set at
-  // creation time, so it must be non-zero and monotonically non-decreasing.
-  const before = performance.now();
+  // `timeStamp` is a DOMHighResTimeStamp (relative to the time origin). It is
+  // computed lazily on first access — to keep `new Event()` cheap — so its
+  // value tracks the first read. It must be a positive number, bounded by the
+  // clock around that first read, and stable across repeated reads.
   const event = new Event("test");
+
+  const before = performance.now();
+  const ts = event.timeStamp;
   const after = performance.now();
 
-  assertEquals(typeof event.timeStamp, "number");
-  assert(event.timeStamp > 0);
-  assertGreaterOrEqual(event.timeStamp, before);
-  assertGreaterOrEqual(after, event.timeStamp);
+  assertEquals(typeof ts, "number");
+  assert(ts > 0);
+  assertGreaterOrEqual(ts, before);
+  assertGreaterOrEqual(after, ts);
 
+  // Cached: repeated reads return the same value.
+  assertEquals(event.timeStamp, ts);
+
+  // An event first read later has a non-decreasing timestamp.
   const later = new Event("test");
-  assertGreaterOrEqual(later.timeStamp, event.timeStamp);
+  assertGreaterOrEqual(later.timeStamp, ts);
 });
 
 Deno.test(function eventInitializedWithType() {
