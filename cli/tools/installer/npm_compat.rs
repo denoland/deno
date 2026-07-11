@@ -91,6 +91,59 @@ fn collect_typescript_project_files(package_folder: &Path) -> Vec<String> {
   files
 }
 
+/// Build the `paths` entries for a package project's edge to one dependency.
+///
+/// The bare `alias -> [folder]` mapping is always correct: stock tsc reads the
+/// folder's own `package.json` (`types` / `exports["."]`) to resolve the root
+/// import, so it is emitted unconditionally.
+///
+/// For subpath imports (`dep/subpath`), a literal `alias/* -> folder/*`
+/// wildcard performs a raw path substitution that ignores the dependency's
+/// `exports` map, so a transitive `import "dep/subpath"` where the dependency
+/// remaps `./subpath` via `exports` mis-resolves to a nonexistent path. When
+/// the dependency declares an `exports` map we instead emit an exact
+/// `alias/<subpath> -> [<resolved declaration>]` entry per export key,
+/// preferring the generated declaration (mirroring how the top-level
+/// `generate_npm_paths` handles subpaths). The `alias/*` wildcard is kept only
+/// as a fallback for packages without an `exports` map.
+fn dependency_project_paths(
+  alias: &str,
+  dependency_folder: &Path,
+) -> serde_json::Map<String, Value> {
+  let mut paths = serde_json::Map::new();
+  let folder = path_for_typescript(dependency_folder);
+  paths.insert(alias.to_string(), json!([folder]));
+
+  let export_keys =
+    crate::tsc::tsconfig_gen::package_export_keys(dependency_folder);
+  if export_keys.is_empty() {
+    // No `exports` map to consult: fall back to a literal subpath wildcard so
+    // `dep/subpath` still resolves to `folder/subpath`.
+    paths.insert(format!("{alias}/*"), json!([format!("{folder}/*")]));
+    return paths;
+  }
+
+  // Emit one exact mapping per declared subpath export. Export keys may
+  // themselves be wildcards (`"./features/*"`); the resolved value keeps the
+  // `*` and the emitted key is a matching wildcard, so those resolve too.
+  for exp_key in export_keys {
+    let sub = exp_key.trim_start_matches("./");
+    let Some(resolved) =
+      crate::tsc::tsconfig_gen::resolve_package_types_entry_path(
+        dependency_folder,
+        &exp_key,
+      )
+    else {
+      continue;
+    };
+    paths.insert(
+      format!("{alias}/{sub}"),
+      json!([path_for_typescript(&resolved)]),
+    );
+  }
+  paths
+}
+
 /// Generate a referenced TypeScript project for every resolved package copy in
 /// Deno's global npm cache.
 ///
@@ -150,12 +203,9 @@ fn generate_npm_cache_projects(
       if !dependency_folder.exists() {
         continue;
       }
-      let dependency_folder = path_for_typescript(&dependency_folder);
-      paths.insert(alias.to_string(), json!([dependency_folder]));
-      paths.insert(
-        format!("{alias}/*"),
-        json!([format!("{dependency_folder}/*")]),
-      );
+      for (key, value) in dependency_project_paths(alias, &dependency_folder) {
+        paths.insert(key, value);
+      }
     }
 
     let config = json!({
@@ -1355,6 +1405,66 @@ mod tests {
     );
     // non-member alias produced no new entry
     assert!(!member_paths.contains_key("chalk"));
+  }
+
+  #[test]
+  fn test_dependency_project_paths_resolves_subpath_exports() {
+    let dir = tempfile::tempdir().unwrap();
+    let pkg_dir = dir.path().join("dep");
+    std::fs::create_dir_all(pkg_dir.join("dist")).unwrap();
+    std::fs::write(
+      pkg_dir.join("package.json"),
+      serde_json::to_string(&json!({
+        "name": "dep",
+        "exports": {
+          ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+          // Remaps `dep/subpath` to a non-literal declaration path: the naive
+          // `dep/* -> folder/*` wildcard would mis-resolve this.
+          "./subpath": {
+            "types": "./dist/nested/subpath.d.ts",
+            "default": "./dist/nested/subpath.js",
+          },
+        }
+      }))
+      .unwrap(),
+    )
+    .unwrap();
+
+    let folder = path_for_typescript(&pkg_dir);
+    let paths = dependency_project_paths("dep", &pkg_dir);
+
+    // Bare alias still maps to the folder (tsc reads its package.json).
+    assert_eq!(paths.get("dep"), Some(&json!([folder])));
+    // The subpath maps to the exact declaration, not `folder/subpath`.
+    assert_eq!(
+      paths.get("dep/subpath"),
+      Some(&json!([format!("{folder}/dist/nested/subpath.d.ts")]))
+    );
+    // A package with an exports map does NOT get the literal wildcard fallback.
+    assert!(!paths.contains_key("dep/*"));
+  }
+
+  #[test]
+  fn test_dependency_project_paths_wildcard_fallback_without_exports() {
+    let dir = tempfile::tempdir().unwrap();
+    let pkg_dir = dir.path().join("dep");
+    std::fs::create_dir_all(&pkg_dir).unwrap();
+    std::fs::write(
+      pkg_dir.join("package.json"),
+      serde_json::to_string(&json!({
+        "name": "dep",
+        "types": "./index.d.ts",
+      }))
+      .unwrap(),
+    )
+    .unwrap();
+
+    let folder = path_for_typescript(&pkg_dir);
+    let paths = dependency_project_paths("dep", &pkg_dir);
+
+    // Without an exports map, keep the literal subpath wildcard fallback.
+    assert_eq!(paths.get("dep"), Some(&json!([folder])));
+    assert_eq!(paths.get("dep/*"), Some(&json!([format!("{folder}/*")])));
   }
 
   #[test]

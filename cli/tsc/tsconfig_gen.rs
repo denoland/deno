@@ -830,9 +830,10 @@ fn generate_jsr_paths(
 
         // Recover the subpath the source actually imports (everything after
         // `jsr:@scope/name[@version]`), and resolve it through the installed
-        // package's `exports` to its original TypeScript source. Mapping the
-        // source rather than the generated declaration lets stock type
-        // checkers and bundlers consume the same paths table.
+        // package's `exports`, preferring the generated `.d.ts` declaration so
+        // stock tsc consumes it under `skipLibCheck` instead of type-checking
+        // the dependency's `.ts` source. Falls back to the `.ts` source only
+        // when the package ships no declaration for the export.
         let prefix = match &version {
           Some(v) => format!("jsr:{scope}/{name}@{v}"),
           None => format!("jsr:{scope}/{name}"),
@@ -852,7 +853,7 @@ fn generate_jsr_paths(
         } else {
           format!("./{subpath}")
         };
-        let Some(source_rel) = resolve_jsr_source_entry_for_config(
+        let Some(source_rel) = resolve_jsr_types_entry_for_config(
           project_root,
           &pkg_dir,
           &export_key,
@@ -893,7 +894,7 @@ fn generate_jsr_paths(
         if subpath.is_empty() {
           for exp_key in package_export_keys(&pkg_dir) {
             let sub = exp_key.trim_start_matches("./");
-            let Some(sub_rel) = resolve_jsr_source_entry_for_config(
+            let Some(sub_rel) = resolve_jsr_types_entry_for_config(
               project_root,
               &pkg_dir,
               &exp_key,
@@ -920,16 +921,22 @@ fn generate_jsr_paths(
   paths
 }
 
-/// Resolve a JSR export to the original TypeScript source shipped in the npm
-/// compatibility package. The export's runtime target is normally `.js`; JSR
-/// packages also ship the sibling `.ts`, which preserves full type information
-/// for tsc while remaining directly consumable by bundlers.
-fn resolve_jsr_source_entry_for_config(
+/// Resolve a JSR export for the generated `paths` table, preferring the
+/// generated `.d.ts` declaration (the `types` condition / declaration entry).
+///
+/// `skipLibCheck` only skips `.d.ts` files, so mapping a jsr dependency's
+/// `paths` entry to its `.ts` *source* makes stock tsc type-check the
+/// dependency's implementation — a regression. Prefer the declaration and fall
+/// back to the `.ts` source only when the package ships no declaration for the
+/// export (in which case tsc has nothing else to consume).
+fn resolve_jsr_types_entry_for_config(
   project_root: &Path,
   pkg_dir: &Path,
   export_key: &str,
 ) -> Option<String> {
-  let resolved = resolve_package_source_entry_path(pkg_dir, export_key)?;
+  let resolved = resolve_package_types_entry_path(pkg_dir, export_key)
+    .filter(|p| p.exists())
+    .or_else(|| resolve_package_source_entry_path(pkg_dir, export_key))?;
   if pkg_dir.starts_with(project_root.join("node_modules")) {
     path_relative_to_deno_dir(pkg_dir, &resolved)
   } else {
@@ -990,7 +997,7 @@ fn path_relative_to_deno_dir(
 
 /// List a package's `exports` subpath keys (`"./foo"`), excluding the root
 /// `"."`. Used to enumerate what an import-map alias can reach by subpath.
-fn package_export_keys(pkg_dir: &Path) -> Vec<String> {
+pub fn package_export_keys(pkg_dir: &Path) -> Vec<String> {
   let Ok(content) = std::fs::read_to_string(pkg_dir.join("package.json"))
   else {
     return vec![];
@@ -1010,7 +1017,7 @@ fn resolve_jsr_types_entry(pkg_dir: &Path, export_key: &str) -> Option<String> {
   path_relative_to_deno_dir(pkg_dir, &resolved)
 }
 
-fn resolve_package_types_entry_path(
+pub fn resolve_package_types_entry_path(
   pkg_dir: &Path,
   export_key: &str,
 ) -> Option<PathBuf> {
@@ -1501,7 +1508,7 @@ interface AlsoKeep {
   }
 
   #[test]
-  fn test_generate_jsr_paths_use_typescript_sources() {
+  fn test_generate_jsr_paths_prefers_declarations() {
     let project = tempfile::tempdir().unwrap();
     let jsr_dir = project.path().join(".deno/npm-compat/@jsr");
     let pkg_dir = jsr_dir.join("std__example");
@@ -1518,6 +1525,10 @@ interface AlsoKeep {
             "types": "./_dist/subpath.d.ts",
             "default": "./subpath.js",
           },
+          // No `types` and no shipped declaration: must fall back to source.
+          "./nodecl": {
+            "default": "./nodecl.js",
+          },
         }
       }))
       .unwrap(),
@@ -1528,6 +1539,8 @@ interface AlsoKeep {
       "mod.ts",
       "subpath.js",
       "subpath.ts",
+      "nodecl.js",
+      "nodecl.ts",
       "_dist/mod.d.ts",
       "_dist/subpath.d.ts",
     ] {
@@ -1538,18 +1551,23 @@ interface AlsoKeep {
       "example": "jsr:@std/example@1",
     });
     let paths = generate_jsr_paths(project.path(), &jsr_dir, Some(&imports));
-    let mod_ts =
-      json!([pkg_dir.join("mod.ts").to_string_lossy().replace('\\', "/")]);
-    let subpath_ts = json!([pkg_dir
-      .join("subpath.ts")
-      .to_string_lossy()
-      .replace('\\', "/")]);
+    let rel =
+      |p: &str| json!([pkg_dir.join(p).to_string_lossy().replace('\\', "/")]);
+    // Root and declared subpath prefer the generated `.d.ts` declaration so
+    // stock tsc consumes it under `skipLibCheck` rather than type-checking the
+    // dependency's `.ts` source.
+    let mod_dts = rel("_dist/mod.d.ts");
+    let subpath_dts = rel("_dist/subpath.d.ts");
+    // The export without a declaration falls back to the `.ts` source.
+    let nodecl_ts = rel("nodecl.ts");
 
-    assert_eq!(paths.get("jsr:@std/example@1"), Some(&mod_ts));
-    assert_eq!(paths.get("example"), Some(&mod_ts));
-    assert_eq!(paths.get("@jsr/std__example"), Some(&mod_ts));
-    assert_eq!(paths.get("jsr:@std/example@1/subpath"), Some(&subpath_ts));
-    assert_eq!(paths.get("@jsr/std__example/subpath"), Some(&subpath_ts));
+    assert_eq!(paths.get("jsr:@std/example@1"), Some(&mod_dts));
+    assert_eq!(paths.get("example"), Some(&mod_dts));
+    assert_eq!(paths.get("@jsr/std__example"), Some(&mod_dts));
+    assert_eq!(paths.get("jsr:@std/example@1/subpath"), Some(&subpath_dts));
+    assert_eq!(paths.get("@jsr/std__example/subpath"), Some(&subpath_dts));
+    assert_eq!(paths.get("jsr:@std/example@1/nodecl"), Some(&nodecl_ts));
+    assert_eq!(paths.get("@jsr/std__example/nodecl"), Some(&nodecl_ts));
   }
 
   #[test]
