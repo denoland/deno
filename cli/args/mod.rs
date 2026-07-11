@@ -1456,9 +1456,15 @@ impl CliOptions {
     // write deny: the `.git` directory inside the cwd stays non-writable even
     // though the rest of the cwd is writable. This blocks planting a
     // `.git/hooks/pre-commit` (or similar) that would execute on the next git
-    // invocation. Deny always wins over the cwd write-allow above.
-    options.deny_write =
-      Some(relaxed_default_git_deny_write_paths(self.initial_cwd()));
+    // invocation. Deny always wins over the cwd write-allow above. Merge into
+    // any user-provided `--deny-write` rather than overwriting it, so an
+    // explicit `--deny-write` still composes (deny always wins).
+    let git_deny_write =
+      relaxed_default_git_deny_write_paths(self.initial_cwd());
+    match &mut options.deny_write {
+      Some(existing) => existing.extend(git_deny_write),
+      None => options.deny_write = Some(git_deny_write),
+    }
     // net, run, ffi and sys are intentionally left untouched so they keep
     // prompting in a TTY and denying non-interactively. import keeps its
     // existing implicit trusted-host allowance from augment_import_permissions.
