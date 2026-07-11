@@ -2,3 +2,6 @@ TERM: xterm-256color
 LC_ALL: en_US.UTF-8
 XDG_CONFIG_HOME: /home/user/.config
 npm_package_name: myapp
+DEBUG_MYAPP: 1
+GITHUB_ACTIONS: true
+_: /usr/bin/deno
