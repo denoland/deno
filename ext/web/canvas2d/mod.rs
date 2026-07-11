@@ -3,10 +3,14 @@
 mod angle;
 mod context;
 mod error;
+mod filter;
 pub mod gradient;
 mod image;
 mod path;
 pub mod pattern;
+mod renderer;
+mod state;
+mod text;
 pub mod text_metrics;
 
 pub use context::CONTEXT_ID;

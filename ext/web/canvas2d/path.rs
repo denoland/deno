@@ -9,6 +9,7 @@ use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::cppgc::Visitor;
 use deno_core::webidl::UnrestrictedDouble;
+use vello::kurbo::Affine;
 use vello::kurbo::Arc;
 use vello::kurbo::BezPath;
 use vello::kurbo::PathEl;
@@ -21,20 +22,6 @@ use crate::canvas2d::error::Canvas2DError;
 
 pub struct Path2D {
   pub(super) path: RefCell<BezPath>,
-}
-
-/// `ToNumber(v)` guarded by a `TryCatch`.
-fn to_number_guarded(
-  scope: &mut v8::PinScope<'_, '_>,
-  value: v8::Local<'_, v8::Value>,
-) -> Option<f64> {
-  v8::tc_scope!(tc, scope);
-  let n = value.number_value(tc);
-  if tc.has_caught() {
-    tc.reset();
-    return None;
-  }
-  n
 }
 
 // SAFETY: Path2D is only accessed from the JS thread (same as context).
@@ -73,7 +60,8 @@ impl Path2D {
     })
   }
 
-  // CanvasPath methods (duplicated logic from context for Path2D; can be refactored later)
+  // CanvasPath methods (shared path-construction logic lives in the free
+  // functions below, e.g. path_move_to/path_arc/etc., reused by context.rs).
   #[fast]
   #[undefined]
   fn close_path(&self) {
@@ -89,9 +77,11 @@ impl Path2D {
     #[webidl] x: UnrestrictedDouble,
     #[webidl] y: UnrestrictedDouble,
   ) {
-    if x.is_finite() && y.is_finite() {
-      self.path.borrow_mut().move_to((*x, *y));
+    if !x.is_finite() || !y.is_finite() {
+      return;
     }
+
+    path_move_to(&mut self.path.borrow_mut(), Affine::IDENTITY, *x, *y);
   }
 
   #[undefined]
@@ -100,14 +90,11 @@ impl Path2D {
     #[webidl] x: UnrestrictedDouble,
     #[webidl] y: UnrestrictedDouble,
   ) {
-    if x.is_finite() && y.is_finite() {
-      let mut path = self.path.borrow_mut();
-      if path.elements().is_empty() {
-        path.move_to((*x, *y));
-      } else {
-        path.line_to((*x, *y));
-      }
+    if !x.is_finite() || !y.is_finite() {
+      return;
     }
+
+    path_line_to(&mut self.path.borrow_mut(), Affine::IDENTITY, *x, *y);
   }
 
   #[undefined]
@@ -120,19 +107,26 @@ impl Path2D {
     #[webidl] x: UnrestrictedDouble,
     #[webidl] y: UnrestrictedDouble,
   ) {
-    if cp1x.is_finite()
-      && cp1y.is_finite()
-      && cp2x.is_finite()
-      && cp2y.is_finite()
-      && x.is_finite()
-      && y.is_finite()
+    if !cp1x.is_finite()
+      || !cp1y.is_finite()
+      || !cp2x.is_finite()
+      || !cp2y.is_finite()
+      || !x.is_finite()
+      || !y.is_finite()
     {
-      let mut path = self.path.borrow_mut();
-      if path.elements().is_empty() {
-        path.move_to((*cp1x, *cp1y));
-      }
-      path.curve_to((*cp1x, *cp1y), (*cp2x, *cp2y), (*x, *y));
+      return;
     }
+
+    path_bezier_curve_to(
+      &mut self.path.borrow_mut(),
+      Affine::IDENTITY,
+      *cp1x,
+      *cp1y,
+      *cp2x,
+      *cp2y,
+      *x,
+      *y,
+    );
   }
 
   #[undefined]
@@ -143,13 +137,19 @@ impl Path2D {
     #[webidl] x: UnrestrictedDouble,
     #[webidl] y: UnrestrictedDouble,
   ) {
-    if cpx.is_finite() && cpy.is_finite() && x.is_finite() && y.is_finite() {
-      let mut path = self.path.borrow_mut();
-      if path.elements().is_empty() {
-        path.move_to((*cpx, *cpy));
-      }
-      path.quad_to((*cpx, *cpy), (*x, *y));
+    if !cpx.is_finite() || !cpy.is_finite() || !x.is_finite() || !y.is_finite()
+    {
+      return;
     }
+
+    path_quadratic_curve_to(
+      &mut self.path.borrow_mut(),
+      Affine::IDENTITY,
+      *cpx,
+      *cpy,
+      *x,
+      *y,
+    );
   }
 
   #[undefined]
@@ -176,25 +176,17 @@ impl Path2D {
     if *radius < 0.0 {
       return Err(Canvas2DError::NegativeRadius(*radius));
     }
-    let delta = compute_arc_sweep(*start_angle, *end_angle, counterclockwise);
-    let mut path = self.path.borrow_mut();
-    let arc = Arc {
-      center: Point::new(*x, *y),
-      radii: Vec2::new(*radius, *radius),
-      start_angle: *start_angle,
-      sweep_angle: delta,
-      x_rotation: 0.0,
-    };
-    let (sin_a, cos_a) = start_angle.sin_cos();
-    let start_pt = arc.center + Vec2::new(*radius * cos_a, *radius * sin_a);
-    if path.is_empty() {
-      path.move_to(start_pt);
-    } else {
-      path.line_to(start_pt);
-    }
-    arc.to_cubic_beziers(0.1, |p1, p2, p3| {
-      path.curve_to(p1, p2, p3);
-    });
+
+    path_arc(
+      &mut self.path.borrow_mut(),
+      Affine::IDENTITY,
+      *x,
+      *y,
+      *radius,
+      *start_angle,
+      *end_angle,
+      counterclockwise,
+    );
     Ok(())
   }
 
@@ -220,12 +212,16 @@ impl Path2D {
     if *radius < 0.0 {
       return Err(Canvas2DError::NegativeRadius(*radius));
     }
-    let mut path = self.path.borrow_mut();
-    if path.is_empty() {
-      path.move_to((*x1, *y1));
-      return Ok(());
-    }
-    arc_to_impl(&mut path, *x1, *y1, *x2, *y2, *radius);
+
+    path_arc_to(
+      &mut self.path.borrow_mut(),
+      Affine::IDENTITY,
+      *x1,
+      *y1,
+      *x2,
+      *y2,
+      *radius,
+    );
     Ok(())
   }
 
@@ -260,29 +256,19 @@ impl Path2D {
     if *radius_y < 0.0 {
       return Err(Canvas2DError::NegativeRadius(*radius_y));
     }
-    let delta = compute_arc_sweep(*start_angle, *end_angle, counterclockwise);
-    let mut path = self.path.borrow_mut();
-    let arc = Arc {
-      center: Point::new(*x, *y),
-      radii: Vec2::new(*radius_x, *radius_y),
-      start_angle: *start_angle,
-      sweep_angle: delta,
-      x_rotation: *rotation,
-    };
-    let (sin_a, cos_a) = start_angle.sin_cos();
-    let dx = *radius_x * cos_a;
-    let dy = *radius_y * sin_a;
-    let (sin_r, cos_r) = rotation.sin_cos();
-    let start_pt =
-      Point::new(*x + dx * cos_r - dy * sin_r, *y + dx * sin_r + dy * cos_r);
-    if path.is_empty() {
-      path.move_to(start_pt);
-    } else {
-      path.line_to(start_pt);
-    }
-    arc.to_cubic_beziers(0.1, |p1, p2, p3| {
-      path.curve_to(p1, p2, p3);
-    });
+
+    path_ellipse(
+      &mut self.path.borrow_mut(),
+      Affine::IDENTITY,
+      *x,
+      *y,
+      *radius_x,
+      *radius_y,
+      *rotation,
+      *start_angle,
+      *end_angle,
+      counterclockwise,
+    );
     Ok(())
   }
 
@@ -297,12 +283,15 @@ impl Path2D {
     if !x.is_finite() || !y.is_finite() || !w.is_finite() || !h.is_finite() {
       return;
     }
-    let mut p = self.path.borrow_mut();
-    p.move_to((*x, *y));
-    p.line_to((*x + *w, *y));
-    p.line_to((*x + *w, *y + *h));
-    p.line_to((*x, *y + *h));
-    p.close_path();
+
+    path_rect(
+      &mut self.path.borrow_mut(),
+      Affine::IDENTITY,
+      *x,
+      *y,
+      *w,
+      *h,
+    );
   }
 
   #[reentrant]
@@ -320,9 +309,22 @@ impl Path2D {
       return Ok(());
     }
     let radii_val = radii.unwrap_or_else(|| v8::undefined(scope).into());
-    let corner_radii = parse_round_rect_radii(scope, radii_val)?;
-    let mut path = self.path.borrow_mut();
-    build_round_rect_path(&mut path, *x, *y, *w, *h, &corner_radii);
+    // Per spec, non-finite radii are silently ignored; only a negative
+    // radius throws IndexSizeError.
+    let corner_radii = match parse_round_rect_radii(scope, radii_val) {
+      Ok(radii) => radii,
+      Err(Canvas2DError::NonFinite) => return Ok(()),
+      Err(e) => return Err(e),
+    };
+    path_round_rect(
+      &mut self.path.borrow_mut(),
+      Affine::IDENTITY,
+      *x,
+      *y,
+      *w,
+      *h,
+      &corner_radii,
+    );
     Ok(())
   }
 
@@ -338,6 +340,20 @@ impl Path2D {
       self.path.borrow_mut().extend(other_path.iter());
     }
   }
+}
+
+/// `ToNumber(v)` guarded by a `TryCatch`.
+fn to_number_guarded(
+  scope: &mut v8::PinScope<'_, '_>,
+  value: v8::Local<'_, v8::Value>,
+) -> Option<f64> {
+  v8::tc_scope!(tc, scope);
+  let n = value.number_value(tc);
+  if tc.has_caught() {
+    tc.reset();
+    return None;
+  }
+  n
 }
 
 pub(super) fn compute_arc_sweep(
@@ -720,4 +736,320 @@ fn add_elliptical_arc(
   arc.to_cubic_beziers(0.1, |p1, p2, p3| {
     path.curve_to(p1, p2, p3);
   });
+}
+
+/// Applies `transform` to a point, falling back to the original point if the
+/// result is non-finite (e.g. a degenerate transform).
+pub(super) fn transform_point_or_original(
+  transform: Affine,
+  point: Point,
+) -> Point {
+  let p = transform * point;
+  if p.x.is_finite() && p.y.is_finite() {
+    p
+  } else {
+    point
+  }
+}
+
+/// Applies `transform` to every point of `path`, returning a new path.
+pub(super) fn transform_path(path: &BezPath, transform: Affine) -> BezPath {
+  if transform == Affine::IDENTITY {
+    return path.clone();
+  }
+
+  let mut transformed = BezPath::new();
+  transformed.extend(path.iter().map(|el| match el {
+    PathEl::MoveTo(p) => {
+      PathEl::MoveTo(transform_point_or_original(transform, p))
+    }
+    PathEl::LineTo(p) => {
+      PathEl::LineTo(transform_point_or_original(transform, p))
+    }
+    PathEl::QuadTo(p1, p2) => PathEl::QuadTo(
+      transform_point_or_original(transform, p1),
+      transform_point_or_original(transform, p2),
+    ),
+    PathEl::CurveTo(p1, p2, p3) => PathEl::CurveTo(
+      transform_point_or_original(transform, p1),
+      transform_point_or_original(transform, p2),
+      transform_point_or_original(transform, p3),
+    ),
+    PathEl::ClosePath => PathEl::ClosePath,
+  }));
+  transformed
+}
+
+/// Returns the current path point (the endpoint of the last path element).
+pub(super) fn last_path_point(path: &BezPath) -> Option<Point> {
+  match path.elements().last()? {
+    PathEl::MoveTo(p) => Some(*p),
+    PathEl::LineTo(p) => Some(*p),
+    PathEl::QuadTo(_, p) => Some(*p),
+    PathEl::CurveTo(_, _, p) => Some(*p),
+    PathEl::ClosePath => None,
+  }
+}
+
+/// Extends `dest` with `shape`, transformed by `transform`, preserving
+/// `shape`'s own subpath boundaries (used by rect()/roundRect(), which
+/// always start a fresh subpath regardless of `dest`'s existing content).
+pub(super) fn extend_transformed(
+  dest: &mut BezPath,
+  shape: &BezPath,
+  transform: Affine,
+) {
+  dest.extend(transform_path(shape, transform).iter());
+}
+
+/// Extends `dest` with `shape`, transformed by `transform`. If `dest` is
+/// non-empty, `shape`'s leading `MoveTo` is turned into a `LineTo` so the
+/// new segment continues `dest`'s current subpath (used by arcTo(), which
+/// connects to an existing subpath when one is present).
+pub(super) fn extend_transformed_shape(
+  dest: &mut BezPath,
+  shape: &BezPath,
+  transform: Affine,
+) {
+  let transformed = transform_path(shape, transform);
+  if dest.elements().is_empty() {
+    dest.extend(transformed.iter());
+    return;
+  }
+  let mut iter = transformed.iter();
+  if let Some(PathEl::MoveTo(p)) = iter.next() {
+    dest.push(PathEl::LineTo(p));
+  }
+  dest.extend(iter);
+}
+
+/// Shared `moveTo()` body for both the default path (canvas space, real
+/// `transform`) and `Path2D` (user space, `Affine::IDENTITY`).
+pub(super) fn path_move_to(
+  dest: &mut BezPath,
+  transform: Affine,
+  x: f64,
+  y: f64,
+) {
+  dest.move_to(transform_point_or_original(transform, Point::new(x, y)));
+}
+
+/// Shared `lineTo()` body. Per spec, if the path has no subpaths, `lineTo`
+/// behaves like `moveTo` (it does NOT also add a zero-length line).
+pub(super) fn path_line_to(
+  dest: &mut BezPath,
+  transform: Affine,
+  x: f64,
+  y: f64,
+) {
+  let p = transform_point_or_original(transform, Point::new(x, y));
+  if dest.elements().is_empty() {
+    dest.move_to(p);
+  } else {
+    dest.line_to(p);
+  }
+}
+
+/// Shared `bezierCurveTo()` body.
+#[allow(
+  clippy::too_many_arguments,
+  reason = "mirrors the bezierCurveTo() IDL parameter list"
+)]
+pub(super) fn path_bezier_curve_to(
+  dest: &mut BezPath,
+  transform: Affine,
+  cp1x: f64,
+  cp1y: f64,
+  cp2x: f64,
+  cp2y: f64,
+  x: f64,
+  y: f64,
+) {
+  let cp1 = transform_point_or_original(transform, Point::new(cp1x, cp1y));
+  let cp2 = transform_point_or_original(transform, Point::new(cp2x, cp2y));
+  let p = transform_point_or_original(transform, Point::new(x, y));
+  if dest.elements().is_empty() {
+    dest.move_to(cp1);
+  }
+  dest.curve_to(cp1, cp2, p);
+}
+
+/// Shared `quadraticCurveTo()` body.
+pub(super) fn path_quadratic_curve_to(
+  dest: &mut BezPath,
+  transform: Affine,
+  cpx: f64,
+  cpy: f64,
+  x: f64,
+  y: f64,
+) {
+  let cp = transform_point_or_original(transform, Point::new(cpx, cpy));
+  let p = transform_point_or_original(transform, Point::new(x, y));
+  if dest.elements().is_empty() {
+    dest.move_to(cp);
+  }
+  dest.quad_to(cp, p);
+}
+
+/// Shared `rect()` body. Always starts a fresh subpath.
+pub(super) fn path_rect(
+  dest: &mut BezPath,
+  transform: Affine,
+  x: f64,
+  y: f64,
+  w: f64,
+  h: f64,
+) {
+  dest.move_to(transform_point_or_original(transform, Point::new(x, y)));
+  dest.line_to(transform_point_or_original(transform, Point::new(x + w, y)));
+  dest.line_to(transform_point_or_original(
+    transform,
+    Point::new(x + w, y + h),
+  ));
+  dest.line_to(transform_point_or_original(transform, Point::new(x, y + h)));
+  dest.close_path();
+}
+
+/// Shared `roundRect()` body. `radii` must already be validated (finite,
+/// non-negative).
+pub(super) fn path_round_rect(
+  dest: &mut BezPath,
+  transform: Affine,
+  x: f64,
+  y: f64,
+  w: f64,
+  h: f64,
+  radii: &CornerRadii,
+) {
+  let mut shape = BezPath::new();
+  build_round_rect_path(&mut shape, x, y, w, h, radii);
+  extend_transformed(dest, &shape, transform);
+}
+
+/// Shared `arc()` body. `radius` must already be validated (finite,
+/// non-negative).
+#[allow(
+  clippy::too_many_arguments,
+  reason = "mirrors the arc() IDL parameter list"
+)]
+pub(super) fn path_arc(
+  dest: &mut BezPath,
+  transform: Affine,
+  x: f64,
+  y: f64,
+  radius: f64,
+  start_angle: f64,
+  end_angle: f64,
+  counterclockwise: bool,
+) {
+  let delta = compute_arc_sweep(start_angle, end_angle, counterclockwise);
+  let arc = Arc {
+    center: Point::new(x, y),
+    radii: Vec2::new(radius, radius),
+    start_angle,
+    sweep_angle: delta,
+    x_rotation: 0.0,
+  };
+  let (sin_a, cos_a) = start_angle.sin_cos();
+  let start_pt = transform_point_or_original(
+    transform,
+    arc.center + Vec2::new(radius * cos_a, radius * sin_a),
+  );
+  if dest.elements().is_empty() {
+    dest.move_to(start_pt);
+  } else {
+    dest.line_to(start_pt);
+  }
+  arc.to_cubic_beziers(0.1, |p1, p2, p3| {
+    dest.curve_to(
+      transform_point_or_original(transform, p1),
+      transform_point_or_original(transform, p2),
+      transform_point_or_original(transform, p3),
+    );
+  });
+}
+
+/// Shared `ellipse()` body. `radius_x`/`radius_y` must already be validated
+/// (finite, non-negative).
+#[allow(
+  clippy::too_many_arguments,
+  reason = "mirrors the ellipse() IDL parameter list"
+)]
+pub(super) fn path_ellipse(
+  dest: &mut BezPath,
+  transform: Affine,
+  x: f64,
+  y: f64,
+  radius_x: f64,
+  radius_y: f64,
+  rotation: f64,
+  start_angle: f64,
+  end_angle: f64,
+  counterclockwise: bool,
+) {
+  let delta = compute_arc_sweep(start_angle, end_angle, counterclockwise);
+  let arc = Arc {
+    center: Point::new(x, y),
+    radii: Vec2::new(radius_x, radius_y),
+    start_angle,
+    sweep_angle: delta,
+    x_rotation: rotation,
+  };
+  let (sin_a, cos_a) = start_angle.sin_cos();
+  let dx = radius_x * cos_a;
+  let dy = radius_y * sin_a;
+  let (sin_r, cos_r) = rotation.sin_cos();
+  let start_pt = transform_point_or_original(
+    transform,
+    Point::new(x + dx * cos_r - dy * sin_r, y + dx * sin_r + dy * cos_r),
+  );
+  if dest.elements().is_empty() {
+    dest.move_to(start_pt);
+  } else {
+    dest.line_to(start_pt);
+  }
+  arc.to_cubic_beziers(0.1, |p1, p2, p3| {
+    dest.curve_to(
+      transform_point_or_original(transform, p1),
+      transform_point_or_original(transform, p2),
+      transform_point_or_original(transform, p3),
+    );
+  });
+}
+
+/// Shared `arcTo()` body. `radius` must already be validated (finite,
+/// non-negative). `x1`/`y1`/`x2`/`y2`/`radius` are in the same space as
+/// `dest`'s *un-transformed* coordinates (i.e. the space `transform` maps
+/// from); `dest` itself accumulates points in the space `transform` maps to.
+#[allow(
+  clippy::too_many_arguments,
+  reason = "mirrors the arcTo() IDL parameter list"
+)]
+pub(super) fn path_arc_to(
+  dest: &mut BezPath,
+  transform: Affine,
+  x1: f64,
+  y1: f64,
+  x2: f64,
+  y2: f64,
+  radius: f64,
+) {
+  let inverse = if transform == Affine::IDENTITY {
+    Affine::IDENTITY
+  } else if transform.determinant() != 0.0 {
+    transform.inverse()
+  } else {
+    return;
+  };
+  let Some(current_pt) = last_path_point(dest) else {
+    let mut shape = BezPath::new();
+    shape.move_to((x1, y1));
+    extend_transformed(dest, &shape, transform);
+    return;
+  };
+  let current_pre_transform = inverse * current_pt;
+  let mut shape = BezPath::new();
+  shape.move_to(current_pre_transform);
+  arc_to_impl(&mut shape, x1, y1, x2, y2, radius);
+  extend_transformed_shape(dest, &shape, transform);
 }

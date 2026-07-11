@@ -14,6 +14,41 @@ use crate::canvas2d::angle::normalize_angle;
 use crate::canvas2d::error::Canvas2DError;
 use crate::css::color::parse_css_color;
 
+pub struct CanvasGradient {
+  pub(super) gradient: RefCell<peniko::Gradient>,
+}
+
+// SAFETY: CanvasGradient is only accessed from the JS thread.
+unsafe impl GarbageCollected for CanvasGradient {
+  fn trace(&self, _visitor: &mut Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"CanvasGradient"
+  }
+}
+
+#[op2]
+impl CanvasGradient {
+  #[constructor]
+  #[cppgc]
+  fn new() -> Result<CanvasGradient, Canvas2DError> {
+    Err(Canvas2DError::IllegalConstructor)
+  }
+
+  #[required(2)]
+  #[undefined]
+  fn add_color_stop(
+    &self,
+    #[webidl] offset: f64,
+    #[webidl] color: String,
+  ) -> Result<(), Canvas2DError> {
+    let offset = validate_color_stop_offset(offset)?;
+    let stop = parse_color_stop(offset, &color)?;
+    self.gradient.borrow_mut().stops.push(stop);
+    Ok(())
+  }
+}
+
 #[inline]
 fn canvas_gradient_base(mut gradient: peniko::Gradient) -> peniko::Gradient {
   gradient.interpolation_alpha_space = InterpolationAlphaSpace::Unpremultiplied;
@@ -86,39 +121,4 @@ pub fn parse_color_stop(
     offset,
     color: peniko::color::DynamicColor::from_alpha_color(parsed),
   })
-}
-
-pub struct CanvasGradient {
-  pub(super) gradient: RefCell<peniko::Gradient>,
-}
-
-// SAFETY: CanvasGradient is only accessed from the JS thread.
-unsafe impl GarbageCollected for CanvasGradient {
-  fn trace(&self, _visitor: &mut Visitor) {}
-
-  fn get_name(&self) -> &'static std::ffi::CStr {
-    c"CanvasGradient"
-  }
-}
-
-#[op2]
-impl CanvasGradient {
-  #[constructor]
-  #[cppgc]
-  fn new() -> Result<CanvasGradient, Canvas2DError> {
-    Err(Canvas2DError::IllegalConstructor)
-  }
-
-  #[required(2)]
-  #[undefined]
-  fn add_color_stop(
-    &self,
-    #[webidl] offset: f64,
-    #[webidl] color: String,
-  ) -> Result<(), Canvas2DError> {
-    let offset = validate_color_stop_offset(offset)?;
-    let stop = parse_color_stop(offset, &color)?;
-    self.gradient.borrow_mut().stops.push(stop);
-    Ok(())
-  }
 }

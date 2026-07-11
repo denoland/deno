@@ -1,12 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-mod draw;
-mod filter;
-mod hit_test;
-mod renderer;
-mod state;
-mod text;
-
 use std::cell::RefCell;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -20,35 +13,48 @@ use deno_core::webidl::UnrestrictedDouble;
 use deno_core::webidl::WebIdlConverter;
 use deno_error::JsErrorBox;
 use deno_image::image::DynamicImage;
+use deno_image::image::GenericImageView;
+use deno_image::image::Rgba;
+use deno_image::image::RgbaImage;
 use parley::FontContext;
 use parley::LayoutContext;
+use parley::PositionedLayoutItem;
 use vello::kurbo;
 use vello::kurbo::Affine;
 use vello::kurbo::BezPath;
+use vello::kurbo::Cap;
+use vello::kurbo::Join;
+use vello::kurbo::ParamCurveNearest;
 use vello::kurbo::PathEl;
 use vello::kurbo::Point;
 use vello::kurbo::Rect;
-use vello::kurbo::Vec2;
+use vello::kurbo::Shape;
+use vello::kurbo::Stroke;
+use vello::kurbo::StrokeOpts;
 use vello::peniko;
 
-use self::filter::CanvasLayerFilterPrimitive;
-use self::filter::parse_filter_input;
-pub(crate) use self::renderer::DenoCanvasBackend;
-use self::renderer::SharedRenderer;
-use self::state::Canvas2DSettings;
-use self::state::ClipEntry;
-use self::state::DrawingBackend;
-use self::state::DrawingState;
-use self::state::FillStrokeStyle;
-use self::state::FilterStyle;
-use self::state::GlobalCompositeOperation;
-use self::state::ImageSmoothingQuality;
-use self::state::LineCap;
-use self::state::LineJoin;
-use self::state::StateStackEntry;
-use self::state::TextAlign;
-use self::state::TextBaseline;
-use self::text::compute_text_metrics;
+use super::filter::CanvasLayerFilterPrimitive;
+use super::filter::parse_filter_input;
+pub(crate) use super::renderer::DenoCanvasBackend;
+use super::renderer::SharedRenderer;
+use super::renderer::render_scene;
+use super::renderer::render_scene_to_texture_view;
+use super::state::Canvas2DSettings;
+use super::state::ClipEntry;
+use super::state::DrawingBackend;
+use super::state::DrawingState;
+use super::state::FillStrokeStyle;
+use super::state::FilterStyle;
+use super::state::GlobalCompositeOperation;
+use super::state::ImageSmoothingQuality;
+use super::state::LineCap;
+use super::state::LineJoin;
+use super::state::StateStackEntry;
+use super::state::TextAlign;
+use super::state::TextBaseline;
+use super::text::build_text_layout;
+use super::text::compute_baseline_y;
+use super::text::compute_text_metrics;
 use crate::canvas2d::TextMetrics;
 use crate::canvas2d::error::Canvas2DError;
 use crate::canvas2d::gradient::CanvasGradient;
@@ -59,76 +65,35 @@ use crate::canvas2d::image::image_data_from_pixels;
 use crate::canvas2d::image::image_data_from_premultiplied_pixels;
 use crate::canvas2d::image::resolve_canvas_image_source;
 use crate::canvas2d::image::unpremultiply_rgba;
-use crate::canvas2d::path::arc_to_impl;
-use crate::canvas2d::path::build_round_rect_path;
-use crate::canvas2d::path::compute_arc_sweep;
+use crate::canvas2d::path::Path2D;
 use crate::canvas2d::path::parse_round_rect_radii;
+use crate::canvas2d::path::path_arc;
+use crate::canvas2d::path::path_arc_to;
+use crate::canvas2d::path::path_bezier_curve_to;
+use crate::canvas2d::path::path_ellipse;
+use crate::canvas2d::path::path_line_to;
+use crate::canvas2d::path::path_move_to;
+use crate::canvas2d::path::path_quadratic_curve_to;
+use crate::canvas2d::path::path_rect;
+use crate::canvas2d::path::path_round_rect;
+use crate::canvas2d::path::transform_path;
 use crate::canvas2d::pattern::CanvasPattern;
 use crate::canvas2d::pattern::pad_pattern_image;
 use crate::canvas2d::pattern::parse_repetition;
 use crate::css::color::Color;
 use crate::css::color::color_to_css_string;
+use crate::css::color::is_color_transparent;
 use crate::css::color::parse_css_color;
 use crate::css::filter::FilterValueListParser;
 use crate::css::filter::ParserInput as FilterParserInput;
 use crate::css::font::FontState;
+use crate::css::font::TextDirection;
 use crate::css::font::parse_css_font;
 use crate::css::font::parse_css_spacing;
 use crate::image_data::ImageData;
 
 pub const CONTEXT_ID: &str = "2d";
 pub const UNSTABLE_FEATURE_NAME: &str = "canvas2d";
-
-/// Rejects ImageData buffers too large for JS typed arrays.
-fn check_image_data_size(w: u32, h: u32) -> Result<(), Canvas2DError> {
-  const MAX_IMAGE_DATA_BYTES: u64 = i32::MAX as u64;
-  if (w as u64) * (h as u64) * 4 > MAX_IMAGE_DATA_BYTES {
-    return Err(Canvas2DError::ImageDataTooLarge);
-  }
-  Ok(())
-}
-
-/// Parses `CanvasLayerOptions` for `beginLayer()`.
-#[inline]
-fn parse_begin_layer_options<'a>(
-  scope: &mut v8::PinScope<'a, 'a>,
-  options: v8::Local<'a, v8::Value>,
-) -> Result<Vec<CanvasLayerFilterPrimitive>, Canvas2DError> {
-  if options.is_null_or_undefined() {
-    return Ok(Vec::new());
-  }
-  if !options.is_object() {
-    return Err(Canvas2DError::InvalidBeginLayerOptions);
-  }
-  let obj = options.cast::<v8::Object>();
-  let filter_key = v8::String::new(scope, "filter").unwrap();
-  let Some(filter) = obj.get(scope, filter_key.into()) else {
-    return Err(Canvas2DError::InvalidBeginLayerOptions);
-  };
-  if filter.is_null_or_undefined() {
-    return Ok(Vec::new());
-  }
-  if !filter.is_object() {
-    // The DOMString branch of the filter union: any string (or stringifiable
-    // primitive) is accepted, even when it is not a parsable CSS filter.
-    let Some(value) = filter.to_string(scope) else {
-      return Ok(Vec::new());
-    };
-    let value = value.to_rust_string_lossy(scope);
-    let mut parser_input = FilterParserInput::new(&value);
-    let result: Result<Vec<_>, _> =
-      FilterValueListParser::new(&mut parser_input).collect();
-    return Ok(
-      result
-        .ok()
-        .unwrap_or_default()
-        .into_iter()
-        .map(Into::into)
-        .collect(),
-    );
-  }
-  parse_filter_input(scope, filter)
-}
 
 pub struct OffscreenCanvasRenderingContext2D {
   canvas: v8::Global<v8::Object>,
@@ -155,102 +120,6 @@ unsafe impl GarbageCollected for OffscreenCanvasRenderingContext2D {
 
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"OffscreenCanvasRenderingContext2D"
-  }
-}
-
-impl OffscreenCanvasRenderingContext2D {
-  #[inline]
-  fn transform_path(path: &BezPath, transform: Affine) -> BezPath {
-    if transform == Affine::IDENTITY {
-      return path.clone();
-    }
-
-    let mut transformed = BezPath::new();
-    transformed.extend(path.iter().map(|el| match el {
-      PathEl::MoveTo(p) => {
-        PathEl::MoveTo(Self::transform_point_or_original(transform, p))
-      }
-      PathEl::LineTo(p) => {
-        PathEl::LineTo(Self::transform_point_or_original(transform, p))
-      }
-      PathEl::QuadTo(p1, p2) => PathEl::QuadTo(
-        Self::transform_point_or_original(transform, p1),
-        Self::transform_point_or_original(transform, p2),
-      ),
-      PathEl::CurveTo(p1, p2, p3) => PathEl::CurveTo(
-        Self::transform_point_or_original(transform, p1),
-        Self::transform_point_or_original(transform, p2),
-        Self::transform_point_or_original(transform, p3),
-      ),
-      PathEl::ClosePath => PathEl::ClosePath,
-    }));
-    transformed
-  }
-
-  #[inline]
-  fn transform_point_or_original(transform: Affine, point: Point) -> Point {
-    let p = transform * point;
-    if p.x.is_finite() && p.y.is_finite() {
-      p
-    } else {
-      point
-    }
-  }
-
-  fn append_transformed_path(&self, path: &BezPath, transform: Affine) {
-    self
-      .current_path
-      .borrow_mut()
-      .extend(Self::transform_path(path, transform).iter());
-  }
-
-  /// Appends a transformed shape to the current path.
-  fn append_shape_path(&self, path: &BezPath, transform: Affine) {
-    let transformed = Self::transform_path(path, transform);
-    let mut current = self.current_path.borrow_mut();
-    if current.elements().is_empty() {
-      current.extend(transformed.iter());
-      return;
-    }
-    let mut iter = transformed.iter();
-    if let Some(PathEl::MoveTo(p)) = iter.next() {
-      current.push(PathEl::LineTo(p));
-    }
-    current.extend(iter);
-  }
-
-  /// Returns the current path point.
-  fn last_path_point(path: &BezPath) -> Option<Point> {
-    match path.elements().last()? {
-      PathEl::MoveTo(p) => Some(*p),
-      PathEl::LineTo(p) => Some(*p),
-      PathEl::QuadTo(_, p) => Some(*p),
-      PathEl::CurveTo(_, _, p) => Some(*p),
-      PathEl::ClosePath => None,
-    }
-  }
-
-  pub fn has_open_layers(&self) -> bool {
-    draw::has_open_layers(self)
-  }
-
-  pub fn resize(&self) {
-    draw::resize(self)
-  }
-
-  pub fn render_to_bytes(&self) -> Result<Vec<u8>, Canvas2DError> {
-    draw::render_to_bytes(self)
-  }
-
-  pub fn render_to_texture_view(
-    &self,
-    view: &self::renderer::wgpu::TextureView,
-  ) -> Result<(), Canvas2DError> {
-    draw::render_to_texture_view(self, view)
-  }
-
-  pub fn flush_to_image(&self, image: &mut DynamicImage) {
-    draw::flush_to_image(self, image)
   }
 }
 
@@ -290,7 +159,7 @@ impl OffscreenCanvasRenderingContext2D {
     scope: &mut v8::PinScope<'a, 'a>,
     value: v8::Local<'a, v8::Value>,
   ) {
-    if let Some(style) = draw::parse_fill_stroke_style(scope, value) {
+    if let Some(style) = parse_fill_stroke_style(scope, value) {
       self.state.borrow_mut().fill_style = style;
     }
   }
@@ -318,7 +187,7 @@ impl OffscreenCanvasRenderingContext2D {
     scope: &mut v8::PinScope<'a, 'a>,
     value: v8::Local<'a, v8::Value>,
   ) {
-    if let Some(style) = draw::parse_fill_stroke_style(scope, value) {
+    if let Some(style) = parse_fill_stroke_style(scope, value) {
       self.state.borrow_mut().stroke_style = style;
     }
   }
@@ -330,9 +199,11 @@ impl OffscreenCanvasRenderingContext2D {
 
   #[setter]
   fn global_alpha(&self, #[webidl] value: UnrestrictedDouble) {
-    if value.is_finite() && *value >= 0.0 && *value <= 1.0 {
-      self.state.borrow_mut().global_alpha = *value as f32;
+    if !value.is_finite() || *value < 0.0 || *value > 1.0 {
+      return;
     }
+
+    self.state.borrow_mut().global_alpha = *value as f32;
   }
 
   #[getter]
@@ -549,15 +420,14 @@ impl OffscreenCanvasRenderingContext2D {
     let state = self.state.borrow();
     let op = state.global_composite_operation;
     let alpha = state.global_alpha;
-    let shadow = draw::has_shadow(&state);
+    let shadow = has_shadow(&state);
     let shadow_color = state.shadow_color_rgba;
     let shadow_xform = if shadow {
-      Some(draw::shadow_transform(&state, state.transform))
+      Some(shadow_transform(&state, state.transform))
     } else {
       None
     };
-    let (brush, brush_transform) =
-      draw::resolve_brush(scope, &state.fill_style, 1.0);
+    let (brush, brush_transform) = resolve_brush(scope, &state.fill_style, 1.0);
     let transform = state.transform;
     drop(state);
 
@@ -565,10 +435,10 @@ impl OffscreenCanvasRenderingContext2D {
     let (width, height) = self.data.dimensions();
     let mut drawing = self.drawing.borrow_mut();
     let has_layer =
-      draw::push_compositing_layer(&mut drawing, op, alpha, width, height);
+      push_compositing_layer(&mut drawing, op, alpha, width, height);
     if let Some(st) = shadow_xform {
-      draw::draw_shadow(&mut drawing, width, height, shadow_color, |d| {
-        draw::fill_on(
+      draw_shadow(&mut drawing, width, height, shadow_color, |d| {
+        fill_on(
           d,
           &rect,
           peniko::Fill::NonZero,
@@ -579,11 +449,11 @@ impl OffscreenCanvasRenderingContext2D {
       });
       // Composite shadow before the source shape.
       if has_layer {
-        draw::pop_compositing_layer(&mut drawing);
-        draw::push_compositing_layer(&mut drawing, op, alpha, width, height);
+        pop_compositing_layer(&mut drawing);
+        push_compositing_layer(&mut drawing, op, alpha, width, height);
       }
     }
-    draw::fill_on(
+    fill_on(
       &mut drawing,
       &rect,
       peniko::Fill::NonZero,
@@ -592,7 +462,7 @@ impl OffscreenCanvasRenderingContext2D {
       brush_transform,
     );
     if has_layer {
-      draw::pop_compositing_layer(&mut drawing);
+      pop_compositing_layer(&mut drawing);
     }
   }
 
@@ -614,14 +484,14 @@ impl OffscreenCanvasRenderingContext2D {
     let (width, height) = self.data.dimensions();
     let mut drawing = self.drawing.borrow_mut();
     // clearRect ignores compositing and alpha.
-    draw::push_compositing_layer(
+    push_compositing_layer(
       &mut drawing,
       GlobalCompositeOperation::DestinationOut,
       1.0,
       width,
       height,
     );
-    draw::fill_on(
+    fill_on(
       &mut drawing,
       &rect,
       peniko::Fill::NonZero,
@@ -629,7 +499,7 @@ impl OffscreenCanvasRenderingContext2D {
       peniko::Brush::Solid(peniko::Color::BLACK),
       None,
     );
-    draw::pop_compositing_layer(&mut drawing);
+    pop_compositing_layer(&mut drawing);
   }
 
   #[required(3)]
@@ -642,7 +512,12 @@ impl OffscreenCanvasRenderingContext2D {
     #[webidl] y: UnrestrictedDouble,
     #[webidl] max_width: Option<UnrestrictedDouble>,
   ) {
-    draw::draw_text(self, scope, &text, *x, *y, max_width.map(|v| *v), false);
+    // Nothing is drawn for non-finite coordinates.
+    if !x.is_finite() || !y.is_finite() {
+      return;
+    }
+
+    self.draw_text(scope, &text, *x, *y, max_width.map(|v| *v), false);
   }
 
   #[required(3)]
@@ -655,7 +530,12 @@ impl OffscreenCanvasRenderingContext2D {
     #[webidl] y: UnrestrictedDouble,
     #[webidl] max_width: Option<UnrestrictedDouble>,
   ) {
-    draw::draw_text(self, scope, &text, *x, *y, max_width.map(|v| *v), true);
+    // Nothing is drawn for non-finite coordinates.
+    if !x.is_finite() || !y.is_finite() {
+      return;
+    }
+
+    self.draw_text(scope, &text, *x, *y, max_width.map(|v| *v), true);
   }
 
   #[required(1)]
@@ -782,9 +662,11 @@ impl OffscreenCanvasRenderingContext2D {
 
   #[setter]
   fn line_width(&self, #[webidl] value: UnrestrictedDouble) {
-    if value.is_finite() && *value > 0.0 {
-      self.state.borrow_mut().line_width = *value;
+    if !value.is_finite() || *value <= 0.0 {
+      return;
     }
+
+    self.state.borrow_mut().line_width = *value;
   }
 
   #[getter]
@@ -826,9 +708,11 @@ impl OffscreenCanvasRenderingContext2D {
 
   #[setter]
   fn miter_limit(&self, #[webidl] value: UnrestrictedDouble) {
-    if value.is_finite() && *value > 0.0 {
-      self.state.borrow_mut().miter_limit = *value;
+    if !value.is_finite() || *value <= 0.0 {
+      return;
     }
+
+    self.state.borrow_mut().miter_limit = *value;
   }
 
   #[getter]
@@ -838,9 +722,11 @@ impl OffscreenCanvasRenderingContext2D {
 
   #[setter]
   fn line_dash_offset(&self, #[webidl] value: UnrestrictedDouble) {
-    if value.is_finite() {
-      self.state.borrow_mut().line_dash_offset = *value;
+    if !value.is_finite() {
+      return;
     }
+
+    self.state.borrow_mut().line_dash_offset = *value;
   }
 
   #[getter]
@@ -850,9 +736,11 @@ impl OffscreenCanvasRenderingContext2D {
 
   #[setter]
   fn shadow_blur(&self, #[webidl] value: UnrestrictedDouble) {
-    if value.is_finite() && *value >= 0.0 {
-      self.state.borrow_mut().shadow_blur = *value;
+    if !value.is_finite() || *value < 0.0 {
+      return;
     }
+
+    self.state.borrow_mut().shadow_blur = *value;
   }
 
   #[getter]
@@ -878,9 +766,11 @@ impl OffscreenCanvasRenderingContext2D {
 
   #[setter]
   fn shadow_offset_x(&self, #[webidl] value: UnrestrictedDouble) {
-    if value.is_finite() {
-      self.state.borrow_mut().shadow_offset_x = *value;
+    if !value.is_finite() {
+      return;
     }
+
+    self.state.borrow_mut().shadow_offset_x = *value;
   }
 
   #[getter]
@@ -890,9 +780,11 @@ impl OffscreenCanvasRenderingContext2D {
 
   #[setter]
   fn shadow_offset_y(&self, #[webidl] value: UnrestrictedDouble) {
-    if value.is_finite() {
-      self.state.borrow_mut().shadow_offset_y = *value;
+    if !value.is_finite() {
+      return;
     }
+
+    self.state.borrow_mut().shadow_offset_y = *value;
   }
 
   #[fast]
@@ -921,7 +813,7 @@ impl OffscreenCanvasRenderingContext2D {
           let saved_clip_depth = saved.clip_depth;
           *self.state.borrow_mut() = saved;
           for _ in saved_clip_depth..current_clip_depth {
-            draw::pop_compositing_layer(&mut self.drawing.borrow_mut());
+            pop_compositing_layer(&mut self.drawing.borrow_mut());
           }
         }
         Ok(())
@@ -972,8 +864,7 @@ impl OffscreenCanvasRenderingContext2D {
 
     let (width, height) = self.data.dimensions();
     let mut drawing = self.drawing.borrow_mut();
-    let pushed =
-      draw::push_compositing_layer(&mut drawing, op, alpha, width, height);
+    let pushed = push_compositing_layer(&mut drawing, op, alpha, width, height);
 
     self
       .state_stack
@@ -1011,7 +902,7 @@ impl OffscreenCanvasRenderingContext2D {
     *self.state.borrow_mut() = saved_state;
     self.layer_depth.set(depth - 1);
     if pushed {
-      draw::pop_compositing_layer(&mut self.drawing.borrow_mut());
+      pop_compositing_layer(&mut self.drawing.borrow_mut());
     }
     Ok(())
   }
@@ -1043,11 +934,12 @@ impl OffscreenCanvasRenderingContext2D {
     #[webidl] x: UnrestrictedDouble,
     #[webidl] y: UnrestrictedDouble,
   ) {
-    if x.is_finite() && y.is_finite() {
-      let transform = self.state.borrow().transform;
-      let mut path = self.current_path.borrow_mut();
-      path.move_to(transform * Point::new(*x, *y));
+    if !x.is_finite() || !y.is_finite() {
+      return;
     }
+
+    let transform = self.state.borrow().transform;
+    path_move_to(&mut self.current_path.borrow_mut(), transform, *x, *y);
   }
 
   #[required(2)]
@@ -1057,15 +949,12 @@ impl OffscreenCanvasRenderingContext2D {
     #[webidl] x: UnrestrictedDouble,
     #[webidl] y: UnrestrictedDouble,
   ) {
-    if x.is_finite() && y.is_finite() {
-      let transform = self.state.borrow().transform;
-      let p = Self::transform_point_or_original(transform, Point::new(*x, *y));
-      let mut path = self.current_path.borrow_mut();
-      if path.elements().is_empty() {
-        path.move_to(p);
-      }
-      path.line_to(p);
+    if !x.is_finite() || !y.is_finite() {
+      return;
     }
+
+    let transform = self.state.borrow().transform;
+    path_line_to(&mut self.current_path.borrow_mut(), transform, *x, *y);
   }
 
   #[required(6)]
@@ -1079,25 +968,27 @@ impl OffscreenCanvasRenderingContext2D {
     #[webidl] x: UnrestrictedDouble,
     #[webidl] y: UnrestrictedDouble,
   ) {
-    if cp1x.is_finite()
-      && cp1y.is_finite()
-      && cp2x.is_finite()
-      && cp2y.is_finite()
-      && x.is_finite()
-      && y.is_finite()
+    if !cp1x.is_finite()
+      || !cp1y.is_finite()
+      || !cp2x.is_finite()
+      || !cp2y.is_finite()
+      || !x.is_finite()
+      || !y.is_finite()
     {
-      let transform = self.state.borrow().transform;
-      let cp1 =
-        Self::transform_point_or_original(transform, Point::new(*cp1x, *cp1y));
-      let cp2 =
-        Self::transform_point_or_original(transform, Point::new(*cp2x, *cp2y));
-      let p = Self::transform_point_or_original(transform, Point::new(*x, *y));
-      let mut path = self.current_path.borrow_mut();
-      if path.elements().is_empty() {
-        path.move_to(cp1);
-      }
-      path.curve_to(cp1, cp2, p);
+      return;
     }
+
+    let transform = self.state.borrow().transform;
+    path_bezier_curve_to(
+      &mut self.current_path.borrow_mut(),
+      transform,
+      *cp1x,
+      *cp1y,
+      *cp2x,
+      *cp2y,
+      *x,
+      *y,
+    );
   }
 
   #[required(4)]
@@ -1109,17 +1000,20 @@ impl OffscreenCanvasRenderingContext2D {
     #[webidl] x: UnrestrictedDouble,
     #[webidl] y: UnrestrictedDouble,
   ) {
-    if cpx.is_finite() && cpy.is_finite() && x.is_finite() && y.is_finite() {
-      let transform = self.state.borrow().transform;
-      let cp =
-        Self::transform_point_or_original(transform, Point::new(*cpx, *cpy));
-      let p = Self::transform_point_or_original(transform, Point::new(*x, *y));
-      let mut path = self.current_path.borrow_mut();
-      if path.elements().is_empty() {
-        path.move_to(cp);
-      }
-      path.quad_to(cp, p);
+    if !cpx.is_finite() || !cpy.is_finite() || !x.is_finite() || !y.is_finite()
+    {
+      return;
     }
+
+    let transform = self.state.borrow().transform;
+    path_quadratic_curve_to(
+      &mut self.current_path.borrow_mut(),
+      transform,
+      *cpx,
+      *cpy,
+      *x,
+      *y,
+    );
   }
 
   #[required(5)]
@@ -1147,25 +1041,17 @@ impl OffscreenCanvasRenderingContext2D {
       return Err(Canvas2DError::NegativeRadius(*radius));
     }
 
-    let delta = compute_arc_sweep(*start_angle, *end_angle, counterclockwise);
-
     let transform = self.state.borrow().transform;
-    let mut path = BezPath::new();
-    let arc = kurbo::Arc {
-      center: Point::new(*x, *y),
-      radii: Vec2::new(*radius, *radius),
-      start_angle: *start_angle,
-      sweep_angle: delta,
-      x_rotation: 0.0,
-    };
-
-    let (sin_a, cos_a) = start_angle.sin_cos();
-    let start_pt = arc.center + Vec2::new(*radius * cos_a, *radius * sin_a);
-    path.move_to(start_pt);
-    arc.to_cubic_beziers(0.1, |p1, p2, p3| {
-      path.curve_to(p1, p2, p3);
-    });
-    self.append_shape_path(&path, transform);
+    path_arc(
+      &mut self.current_path.borrow_mut(),
+      transform,
+      *x,
+      *y,
+      *radius,
+      *start_angle,
+      *end_angle,
+      counterclockwise,
+    );
     Ok(())
   }
 
@@ -1193,25 +1079,15 @@ impl OffscreenCanvasRenderingContext2D {
     }
 
     let transform = self.state.borrow().transform;
-    // arcTo() starts at (x1, y1) when there is no current point.
-    let Some(current_canvas_pt) =
-      Self::last_path_point(&self.current_path.borrow())
-    else {
-      let mut path = BezPath::new();
-      path.move_to((*x1, *y1));
-      self.append_transformed_path(&path, transform);
-      return Ok(());
-    };
-    // arc_to_impl runs in user space, then the result is transformed back.
-    if transform.determinant() == 0.0 {
-      return Ok(());
-    }
-
-    let user_current = transform.inverse() * current_canvas_pt;
-    let mut path = BezPath::new();
-    path.move_to(user_current);
-    arc_to_impl(&mut path, *x1, *y1, *x2, *y2, *radius);
-    self.append_shape_path(&path, transform);
+    path_arc_to(
+      &mut self.current_path.borrow_mut(),
+      transform,
+      *x1,
+      *y1,
+      *x2,
+      *y2,
+      *radius,
+    );
     Ok(())
   }
 
@@ -1248,29 +1124,19 @@ impl OffscreenCanvasRenderingContext2D {
       return Err(Canvas2DError::NegativeRadius(*radius_y));
     }
 
-    let delta = compute_arc_sweep(*start_angle, *end_angle, counterclockwise);
-
     let transform = self.state.borrow().transform;
-    let mut path = BezPath::new();
-    let arc = kurbo::Arc {
-      center: Point::new(*x, *y),
-      radii: Vec2::new(*radius_x, *radius_y),
-      start_angle: *start_angle,
-      sweep_angle: delta,
-      x_rotation: *rotation,
-    };
-
-    let (sin_a, cos_a) = start_angle.sin_cos();
-    let dx = *radius_x * cos_a;
-    let dy = *radius_y * sin_a;
-    let (sin_r, cos_r) = rotation.sin_cos();
-    let start_pt =
-      Point::new(*x + dx * cos_r - dy * sin_r, *y + dx * sin_r + dy * cos_r);
-    path.move_to(start_pt);
-    arc.to_cubic_beziers(0.1, |p1, p2, p3| {
-      path.curve_to(p1, p2, p3);
-    });
-    self.append_shape_path(&path, transform);
+    path_ellipse(
+      &mut self.current_path.borrow_mut(),
+      transform,
+      *x,
+      *y,
+      *radius_x,
+      *radius_y,
+      *rotation,
+      *start_angle,
+      *end_angle,
+      counterclockwise,
+    );
     Ok(())
   }
 
@@ -1288,13 +1154,14 @@ impl OffscreenCanvasRenderingContext2D {
     }
 
     let transform = self.state.borrow().transform;
-    let mut path = BezPath::new();
-    path.move_to((*x, *y));
-    path.line_to((*x + *w, *y));
-    path.line_to((*x + *w, *y + *h));
-    path.line_to((*x, *y + *h));
-    path.close_path();
-    self.append_transformed_path(&path, transform);
+    path_rect(
+      &mut self.current_path.borrow_mut(),
+      transform,
+      *x,
+      *y,
+      *w,
+      *h,
+    );
   }
 
   #[reentrant]
@@ -1322,9 +1189,15 @@ impl OffscreenCanvasRenderingContext2D {
       Err(e) => return Err(e),
     };
     let transform = self.state.borrow().transform;
-    let mut path = BezPath::new();
-    build_round_rect_path(&mut path, *x, *y, *w, *h, &corner_radii);
-    self.append_transformed_path(&path, transform);
+    path_round_rect(
+      &mut self.current_path.borrow_mut(),
+      transform,
+      *x,
+      *y,
+      *w,
+      *h,
+      &corner_radii,
+    );
     Ok(())
   }
 
@@ -1346,25 +1219,23 @@ impl OffscreenCanvasRenderingContext2D {
     }
 
     // Stroke an explicit rect path so degenerate dimensions still render.
+    // This temporary path is built in user space (Affine::IDENTITY); the
+    // real transform is applied later by draw_path_stroke.
     let mut path = BezPath::new();
-    path.move_to((*x, *y));
-    path.line_to((*x + *w, *y));
-    path.line_to((*x + *w, *y + *h));
-    path.line_to((*x, *y + *h));
-    path.close_path();
+    path_rect(&mut path, Affine::IDENTITY, *x, *y, *w, *h);
     let transform = self.state.borrow().transform;
-    draw::draw_path_stroke(self, scope, path, transform, true);
+    self.draw_path_stroke(scope, path, transform, true);
   }
 
   #[undefined]
   fn fill(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
-    first: Option<v8::Local<'_, v8::Value>>,
-    #[string] second: Option<String>,
+    path_or_fill_rule: Option<v8::Local<'_, v8::Value>>,
+    #[string] fill_rule: Option<String>,
   ) {
     let (path, rule, is_path2d) =
-      draw::resolve_path_and_fill_rule(self, scope, first, second);
+      self.resolve_path_and_fill_rule(scope, path_or_fill_rule, fill_rule);
     if path.is_empty() {
       return;
     }
@@ -1374,7 +1245,7 @@ impl OffscreenCanvasRenderingContext2D {
     } else {
       Affine::IDENTITY
     };
-    draw::draw_path_fill(self, scope, path, rule, transform);
+    self.draw_path_fill(scope, path, rule, transform);
   }
 
   #[fast]
@@ -1384,47 +1255,53 @@ impl OffscreenCanvasRenderingContext2D {
     scope: &mut v8::PinScope<'_, '_>,
     path: Option<v8::Local<'_, v8::Value>>,
   ) {
-    let (path, is_path2d) = draw::resolve_optional_path(self, scope, path);
+    let (path, is_path2d) = self.resolve_optional_path(scope, path);
     if path.is_empty() {
       return;
     }
 
     let transform = self.state.borrow().transform;
-    draw::draw_path_stroke(self, scope, path, transform, is_path2d);
+    self.draw_path_stroke(scope, path, transform, is_path2d);
   }
 
   #[undefined]
   fn clip(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
-    first: Option<v8::Local<'_, v8::Value>>,
-    #[string] second: Option<String>,
+    path_or_fill_rule: Option<v8::Local<'_, v8::Value>>,
+    #[string] fill_rule: Option<String>,
   ) {
     let (path, rule, is_path2d) =
-      draw::resolve_path_and_fill_rule(self, scope, first, second);
+      self.resolve_path_and_fill_rule(scope, path_or_fill_rule, fill_rule);
     // Empty paths clip everything.
     let transform = if is_path2d {
       self.state.borrow().transform
     } else {
       Affine::IDENTITY
     };
-    draw::apply_clip(self, path, rule, transform);
+    self.apply_clip(path, rule, transform);
   }
 
   #[fast]
   fn is_point_in_path(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
-    a: Option<v8::Local<'_, v8::Value>>,
-    b: Option<v8::Local<'_, v8::Value>>,
-    c: v8::Local<'_, v8::Value>,
-    d: v8::Local<'_, v8::Value>,
+    path_or_x: Option<v8::Local<'_, v8::Value>>,
+    x_or_y: Option<v8::Local<'_, v8::Value>>,
+    y_or_fill_rule: v8::Local<'_, v8::Value>,
+    fill_rule: v8::Local<'_, v8::Value>,
   ) -> Result<bool, Canvas2DError> {
     // Preserve explicit null for CanvasFillRule conversion.
-    let c = (!c.is_undefined()).then_some(c);
-    let d = (!d.is_undefined()).then_some(d);
-    let (path, x, y, rule, is_path2d) =
-      hit_test::resolve_point_in_path_args(self, scope, a, b, c, d)?;
+    let y_or_fill_rule =
+      (!y_or_fill_rule.is_undefined()).then_some(y_or_fill_rule);
+    let fill_rule = (!fill_rule.is_undefined()).then_some(fill_rule);
+    let (path, x, y, rule, is_path2d) = self.resolve_point_in_path_args(
+      scope,
+      path_or_x,
+      x_or_y,
+      y_or_fill_rule,
+      fill_rule,
+    )?;
     if !x.is_finite() || !y.is_finite() {
       return Ok(false);
     }
@@ -1439,19 +1316,19 @@ impl OffscreenCanvasRenderingContext2D {
     } else {
       Point::new(x, y)
     };
-    Ok(hit_test::test_point_in_path(path, p.x, p.y, rule))
+    Ok(test_point_in_path(path, p.x, p.y, rule))
   }
 
   #[fast]
   fn is_point_in_stroke(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
-    a: Option<v8::Local<'_, v8::Value>>,
-    b: Option<v8::Local<'_, v8::Value>>,
-    c: Option<v8::Local<'_, v8::Value>>,
+    path_or_x: Option<v8::Local<'_, v8::Value>>,
+    x_or_y: Option<v8::Local<'_, v8::Value>>,
+    y: Option<v8::Local<'_, v8::Value>>,
   ) -> Result<bool, Canvas2DError> {
     let (path, x, y, is_path2d) =
-      hit_test::resolve_point_in_stroke_args(self, scope, a, b, c)?;
+      self.resolve_point_in_stroke_args(scope, path_or_x, x_or_y, y)?;
     if !x.is_finite() || !y.is_finite() {
       return Ok(false);
     }
@@ -1463,9 +1340,7 @@ impl OffscreenCanvasRenderingContext2D {
 
     // Stroke hit-testing runs in user space.
     let p = transform.inverse() * Point::new(x, y);
-    Ok(hit_test::test_point_in_stroke(
-      self, path, p.x, p.y, transform, is_path2d,
-    ))
+    Ok(self.test_point_in_stroke(path, p.x, p.y, transform, is_path2d))
   }
 
   fn get_transform<'a>(
@@ -1613,7 +1488,11 @@ impl OffscreenCanvasRenderingContext2D {
     #[webidl] x1: UnrestrictedDouble,
     #[webidl] y1: UnrestrictedDouble,
   ) -> Result<CanvasGradient, Canvas2DError> {
-    draw::require_finite(&[x0, y0, x1, y1])?;
+    if !x0.is_finite() || !y0.is_finite() || !x1.is_finite() || !y1.is_finite()
+    {
+      return Err(Canvas2DError::NonFinite);
+    }
+
     let gradient = build_linear_gradient(*x0, *y0, *x1, *y1);
     Ok(CanvasGradient {
       gradient: RefCell::new(gradient),
@@ -1631,7 +1510,15 @@ impl OffscreenCanvasRenderingContext2D {
     #[webidl] y1: UnrestrictedDouble,
     #[webidl] r1: UnrestrictedDouble,
   ) -> Result<CanvasGradient, Canvas2DError> {
-    draw::require_finite(&[x0, y0, r0, x1, y1, r1])?;
+    if !x0.is_finite()
+      || !y0.is_finite()
+      || !r0.is_finite()
+      || !x1.is_finite()
+      || !y1.is_finite()
+      || !r1.is_finite()
+    {
+      return Err(Canvas2DError::NonFinite);
+    }
     if *r0 < 0.0 {
       return Err(Canvas2DError::NegativeRadius(*r0));
     }
@@ -1653,7 +1540,10 @@ impl OffscreenCanvasRenderingContext2D {
     #[webidl] x: UnrestrictedDouble,
     #[webidl] y: UnrestrictedDouble,
   ) -> Result<CanvasGradient, Canvas2DError> {
-    draw::require_finite(&[start_angle, x, y])?;
+    if !start_angle.is_finite() || !x.is_finite() || !y.is_finite() {
+      return Err(Canvas2DError::NonFinite);
+    }
+
     let gradient = build_conic_gradient(*start_angle, *x, *y);
     Ok(CanvasGradient {
       gradient: RefCell::new(gradient),
@@ -1712,30 +1602,37 @@ impl OffscreenCanvasRenderingContext2D {
     state: &OpState,
     scope: &mut v8::PinScope<'a, 'a>,
     image: v8::Local<'a, v8::Value>,
-    #[webidl] a1: UnrestrictedDouble,
-    #[webidl] a2: UnrestrictedDouble,
-    a3: Option<v8::Local<'a, v8::Value>>,
-    a4: Option<v8::Local<'a, v8::Value>>,
-    a5: Option<v8::Local<'a, v8::Value>>,
-    a6: Option<v8::Local<'a, v8::Value>>,
-    a7: Option<v8::Local<'a, v8::Value>>,
-    a8: Option<v8::Local<'a, v8::Value>>,
+    #[webidl] sx_or_dx: UnrestrictedDouble,
+    #[webidl] sy_or_dy: UnrestrictedDouble,
+    sw_or_dw: Option<v8::Local<'a, v8::Value>>,
+    sh_or_dh: Option<v8::Local<'a, v8::Value>>,
+    dx: Option<v8::Local<'a, v8::Value>>,
+    dy: Option<v8::Local<'a, v8::Value>>,
+    dw: Option<v8::Local<'a, v8::Value>>,
+    dh: Option<v8::Local<'a, v8::Value>>,
   ) -> Result<(), Canvas2DError> {
     let resolved = resolve_canvas_image_source(state, scope, image)?;
 
-    let has_a3 = a3.as_ref().map(|v| !v.is_undefined()).unwrap_or(false);
-    let has_a5 = a5.as_ref().map(|v| !v.is_undefined()).unwrap_or(false);
+    let has_sw_or_dw = sw_or_dw
+      .as_ref()
+      .map(|v| !v.is_undefined())
+      .unwrap_or(false);
+    let has_dx = dx.as_ref().map(|v| !v.is_undefined()).unwrap_or(false);
 
-    let (sx, sy, sw, sh, dx, dy, dw, dh) = if has_a5 {
+    let (sx, sy, sw, sh, dx, dy, dw, dh) = if has_dx {
       // 9-arg: (image, sx, sy, sw, sh, dx, dy, dw, dh)
-      let sx = *a1;
-      let sy = *a2;
-      let sw = a3.and_then(|v| v.number_value(scope)).unwrap_or(f64::NAN);
-      let sh = a4.and_then(|v| v.number_value(scope)).unwrap_or(f64::NAN);
-      let dx = a5.and_then(|v| v.number_value(scope)).unwrap_or(f64::NAN);
-      let dy = a6.and_then(|v| v.number_value(scope)).unwrap_or(f64::NAN);
-      let dw = a7.and_then(|v| v.number_value(scope)).unwrap_or(f64::NAN);
-      let dh = a8.and_then(|v| v.number_value(scope)).unwrap_or(f64::NAN);
+      let sx = *sx_or_dx;
+      let sy = *sy_or_dy;
+      let sw = sw_or_dw
+        .and_then(|v| v.number_value(scope))
+        .unwrap_or(f64::NAN);
+      let sh = sh_or_dh
+        .and_then(|v| v.number_value(scope))
+        .unwrap_or(f64::NAN);
+      let dx = dx.and_then(|v| v.number_value(scope)).unwrap_or(f64::NAN);
+      let dy = dy.and_then(|v| v.number_value(scope)).unwrap_or(f64::NAN);
+      let dw = dw.and_then(|v| v.number_value(scope)).unwrap_or(f64::NAN);
+      let dh = dh.and_then(|v| v.number_value(scope)).unwrap_or(f64::NAN);
       if !sx.is_finite()
         || !sy.is_finite()
         || !sw.is_finite()
@@ -1750,13 +1647,18 @@ impl OffscreenCanvasRenderingContext2D {
       if sw == 0.0 || sh == 0.0 {
         return Ok(());
       }
+
       (sx, sy, sw, sh, dx, dy, dw, dh)
-    } else if has_a3 {
+    } else if has_sw_or_dw {
       // 5-arg: (image, dx, dy, dw, dh)
-      let dx = *a1;
-      let dy = *a2;
-      let dw = a3.and_then(|v| v.number_value(scope)).unwrap_or(f64::NAN);
-      let dh = a4.and_then(|v| v.number_value(scope)).unwrap_or(f64::NAN);
+      let dx = *sx_or_dx;
+      let dy = *sy_or_dy;
+      let dw = sw_or_dw
+        .and_then(|v| v.number_value(scope))
+        .unwrap_or(f64::NAN);
+      let dh = sh_or_dh
+        .and_then(|v| v.number_value(scope))
+        .unwrap_or(f64::NAN);
       if !dx.is_finite()
         || !dy.is_finite()
         || !dw.is_finite()
@@ -1764,16 +1666,18 @@ impl OffscreenCanvasRenderingContext2D {
       {
         return Ok(());
       }
+
       let iw = resolved.width as f64;
       let ih = resolved.height as f64;
       (0.0, 0.0, iw, ih, dx, dy, dw, dh)
     } else {
       // 3-arg: (image, dx, dy)
-      let dx = *a1;
-      let dy = *a2;
+      let dx = *sx_or_dx;
+      let dy = *sy_or_dy;
       if !dx.is_finite() || !dy.is_finite() {
         return Ok(());
       }
+
       let iw = resolved.width as f64;
       let ih = resolved.height as f64;
       (0.0, 0.0, iw, ih, dx, dy, iw, ih)
@@ -1816,10 +1720,10 @@ impl OffscreenCanvasRenderingContext2D {
 
     let op = ds.global_composite_operation;
     let alpha = ds.global_alpha;
-    let shadow = draw::has_shadow(&ds);
+    let shadow = has_shadow(&ds);
     let shadow_color = ds.shadow_color_rgba;
     let shadow_xform = if shadow {
-      Some(draw::shadow_transform(&ds, image_transform))
+      Some(shadow_transform(&ds, image_transform))
     } else {
       None
     };
@@ -1829,18 +1733,18 @@ impl OffscreenCanvasRenderingContext2D {
     let (width, height) = self.data.dimensions();
     let mut drawing = self.drawing.borrow_mut();
     let has_layer =
-      draw::push_compositing_layer(&mut drawing, op, alpha, width, height);
+      push_compositing_layer(&mut drawing, op, alpha, width, height);
     if let Some(st) = shadow_xform {
-      draw::draw_shadow(&mut drawing, width, height, shadow_color, |d| {
-        draw::fill_on(d, &rect, peniko::Fill::NonZero, st, brush.clone(), None);
+      draw_shadow(&mut drawing, width, height, shadow_color, |d| {
+        fill_on(d, &rect, peniko::Fill::NonZero, st, brush.clone(), None);
       });
       // Composite shadow before the source image.
       if has_layer {
-        draw::pop_compositing_layer(&mut drawing);
-        draw::push_compositing_layer(&mut drawing, op, alpha, width, height);
+        pop_compositing_layer(&mut drawing);
+        push_compositing_layer(&mut drawing, op, alpha, width, height);
       }
     }
-    draw::fill_on(
+    fill_on(
       &mut drawing,
       &rect,
       peniko::Fill::NonZero,
@@ -1849,7 +1753,7 @@ impl OffscreenCanvasRenderingContext2D {
       None,
     );
     if has_layer {
-      draw::pop_compositing_layer(&mut drawing);
+      pop_compositing_layer(&mut drawing);
     }
     Ok(())
   }
@@ -1859,11 +1763,12 @@ impl OffscreenCanvasRenderingContext2D {
   fn create_image_data<'a>(
     &self,
     scope: &mut v8::PinScope<'a, 'a>,
-    arg0: v8::Local<'a, v8::Value>,
-    arg1: Option<v8::Local<'a, v8::Value>>,
+    sw_or_image_data: v8::Local<'a, v8::Value>,
+    sh: Option<v8::Local<'a, v8::Value>>,
   ) -> Result<ImageData, Canvas2DError> {
-    if let Some(imagedata) =
-      deno_core::cppgc::try_unwrap_cppgc_object::<ImageData>(scope, arg0)
+    if let Some(imagedata) = deno_core::cppgc::try_unwrap_cppgc_object::<
+      ImageData,
+    >(scope, sw_or_image_data)
     {
       let w = imagedata.get_width();
       let h = imagedata.get_height();
@@ -1871,15 +1776,15 @@ impl OffscreenCanvasRenderingContext2D {
       return Ok(ImageData::new_rgba_unorm8(scope, w, h, &pixels)?);
     }
 
-    let Some(arg1) = arg1.filter(|v| !v.is_undefined()) else {
+    let Some(sh) = sh.filter(|v| !v.is_undefined()) else {
       return Err(Canvas2DError::MissingArgument {
         required: 2,
         provided: 1,
       });
     };
 
-    let sw = draw::require_long(scope, arg0)?;
-    let sh = draw::require_long(scope, arg1)?;
+    let sw = require_long(scope, sw_or_image_data)?;
+    let sh = require_long(scope, sh)?;
 
     let w = sw.unsigned_abs();
     let h = sh.unsigned_abs();
@@ -1956,10 +1861,10 @@ impl OffscreenCanvasRenderingContext2D {
     imagedata_val: v8::Local<'_, v8::Value>,
     #[webidl] dx: f64,
     #[webidl] dy: f64,
-    dirty_x_val: Option<v8::Local<'_, v8::Value>>,
-    dirty_y_val: Option<v8::Local<'_, v8::Value>>,
-    dirty_w_val: Option<v8::Local<'_, v8::Value>>,
-    dirty_h_val: Option<v8::Local<'_, v8::Value>>,
+    dirty_x_arg: Option<v8::Local<'_, v8::Value>>,
+    dirty_y_arg: Option<v8::Local<'_, v8::Value>>,
+    dirty_w_arg: Option<v8::Local<'_, v8::Value>>,
+    dirty_h_arg: Option<v8::Local<'_, v8::Value>>,
   ) -> Result<(), Canvas2DError> {
     let dx = dx as i32;
     let dy = dy as i32;
@@ -1978,24 +1883,24 @@ impl OffscreenCanvasRenderingContext2D {
     let src_w = imagedata.get_width() as i32;
     let src_h = imagedata.get_height() as i32;
 
-    let has_dirty = dirty_x_val
+    let has_dirty = dirty_x_arg
       .as_ref()
       .map(|v| !v.is_undefined())
       .unwrap_or(false);
 
     let (mut dirty_x, mut dirty_y, mut dirty_w, mut dirty_h) = if has_dirty {
-      let dirty_x = draw::require_long(scope, dirty_x_val.unwrap())?;
-      let dirty_y = draw::require_long(
+      let dirty_x = require_long(scope, dirty_x_arg.unwrap())?;
+      let dirty_y = require_long(
         scope,
-        dirty_y_val.unwrap_or_else(|| v8::undefined(scope).into()),
+        dirty_y_arg.unwrap_or_else(|| v8::undefined(scope).into()),
       )?;
-      let dirty_w = draw::require_long(
+      let dirty_w = require_long(
         scope,
-        dirty_w_val.unwrap_or_else(|| v8::undefined(scope).into()),
+        dirty_w_arg.unwrap_or_else(|| v8::undefined(scope).into()),
       )?;
-      let dirty_h = draw::require_long(
+      let dirty_h = require_long(
         scope,
-        dirty_h_val.unwrap_or_else(|| v8::undefined(scope).into()),
+        dirty_h_arg.unwrap_or_else(|| v8::undefined(scope).into()),
       )?;
       (dirty_x, dirty_y, dirty_w, dirty_h)
     } else {
@@ -2076,7 +1981,7 @@ impl OffscreenCanvasRenderingContext2D {
     let clip_depth = self.state.borrow().clip_depth;
     let mut drawing = self.drawing.borrow_mut();
     drawing.reset(canvas_w, canvas_h);
-    draw::fill_on(
+    fill_on(
       &mut drawing,
       &rect,
       peniko::Fill::NonZero,
@@ -2091,7 +1996,7 @@ impl OffscreenCanvasRenderingContext2D {
       } else {
         peniko::Fill::NonZero
       };
-      draw::push_clip(&mut drawing, fill, clip.transform, &clip.path);
+      push_clip(&mut drawing, fill, clip.transform, &clip.path);
     }
     Ok(())
   }
@@ -2105,6 +2010,7 @@ impl OffscreenCanvasRenderingContext2D {
     if segments.iter().any(|s| !s.is_finite() || **s < 0.0) {
       return;
     }
+
     let values: Vec<f64> = segments.iter().map(|s| **s).collect();
     let dash = if values.len() % 2 == 1 {
       let mut doubled = values.clone();
@@ -2114,6 +2020,1207 @@ impl OffscreenCanvasRenderingContext2D {
       values
     };
     self.state.borrow_mut().line_dash = dash;
+  }
+}
+
+impl OffscreenCanvasRenderingContext2D {
+  /// Clears the accumulated scene and updates the canvas dimensions.
+  pub fn has_open_layers(&self) -> bool {
+    self.layer_depth.get() > 0
+  }
+
+  /// Called when OffscreenCanvas.width or .height is changed.
+  pub fn resize(&self) {
+    *self.state.borrow_mut() = DrawingState::default();
+    self.state_stack.borrow_mut().clear();
+    self.layer_depth.set(0);
+    self.clip_stack.borrow_mut().clear();
+    self.current_path.borrow_mut().truncate(0);
+    let (width, height) = self.data.dimensions();
+    self.drawing.borrow_mut().reset(width, height);
+  }
+
+  /// Renders the scene to RGBA8 bytes.
+  pub fn render_to_bytes(&self) -> Result<Vec<u8>, Canvas2DError> {
+    let (width, height) = self.data.dimensions();
+    let base_color = if self.settings.alpha {
+      peniko::Color::TRANSPARENT
+    } else {
+      peniko::Color::from_rgb8(0, 0, 0)
+    };
+    let clip_depth = self.state.borrow().clip_depth;
+    let mut drawing = self.drawing.borrow_mut();
+    for _ in 0..clip_depth {
+      pop_compositing_layer(&mut drawing);
+    }
+    let result = match &mut *drawing {
+      DrawingBackend::Vello(scene) => {
+        if let Some(Some(renderer)) = self.renderer.get() {
+          Ok(render_scene(renderer, scene, width, height, base_color)?)
+        } else {
+          Ok(vec![0u8; (width * height * 4) as usize])
+        }
+      }
+      DrawingBackend::VelloCpu(ctx, resources) => {
+        let pixel_count = (width as usize) * (height as usize);
+        let mut buf = vec![0u8; pixel_count * 4];
+        ctx.render_to_buffer(
+          resources,
+          &mut buf,
+          width as u16,
+          height as u16,
+          vello_cpu::RenderMode::OptimizeSpeed,
+        );
+        if !self.settings.alpha {
+          for pixel in buf.chunks_exact_mut(4) {
+            pixel[3] = 255;
+          }
+        }
+        Ok(buf)
+      }
+    };
+    let clip_stack = self.clip_stack.borrow();
+    for clip in clip_stack.iter().take(clip_depth) {
+      let fill = if clip.rule == "evenodd" {
+        peniko::Fill::EvenOdd
+      } else {
+        peniko::Fill::NonZero
+      };
+      push_clip(&mut drawing, fill, clip.transform, &clip.path);
+    }
+    result
+  }
+
+  /// Renders the scene into a TextureView owned by this renderer's device.
+  pub fn render_to_texture_view(
+    &self,
+    view: &super::renderer::wgpu::TextureView,
+  ) -> Result<(), Canvas2DError> {
+    let (width, height) = self.data.dimensions();
+    let base_color = if self.settings.alpha {
+      peniko::Color::TRANSPARENT
+    } else {
+      peniko::Color::from_rgb8(0, 0, 0)
+    };
+    match &*self.drawing.borrow() {
+      DrawingBackend::Vello(scene) => {
+        if let Some(Some(renderer)) = self.renderer.get() {
+          render_scene_to_texture_view(
+            renderer, scene, view, width, height, base_color,
+          )?;
+        }
+        Ok(())
+      }
+      // Surface-backed 2D contexts require a GPU backend.
+      DrawingBackend::VelloCpu(_, _) => {
+        unreachable!("render_to_texture_view called on Cpu backend")
+      }
+    }
+  }
+
+  /// Renders the accumulated scene into a DynamicImage.
+  /// Called by ext/canvas when convertToBlob / transferToImageBitmap is invoked.
+  pub fn flush_to_image(&self, image: &mut DynamicImage) {
+    let (width, height) = image.dimensions();
+    let base_color = if self.settings.alpha {
+      peniko::Color::TRANSPARENT
+    } else {
+      peniko::Color::from_rgb8(0, 0, 0)
+    };
+    let clip_depth = self.state.borrow().clip_depth;
+    let mut drawing = self.drawing.borrow_mut();
+    for _ in 0..clip_depth {
+      pop_compositing_layer(&mut drawing);
+    }
+    let buf = match &mut *drawing {
+      DrawingBackend::Vello(scene) => {
+        if let Some(Some(renderer)) = self.renderer.get() {
+          render_scene(renderer, scene, width, height, base_color)
+            .map_err(|e| {
+              log::warn!("canvas2d: render error: {e}");
+            })
+            .ok()
+            .map(|mut buf| {
+              // render_scene returns premultiplied alpha; DynamicImage expects
+              // straight alpha, same as the VelloCpu branch below.
+              if self.settings.alpha {
+                unpremultiply_rgba(&mut buf);
+              } else {
+                for pixel in buf.chunks_exact_mut(4) {
+                  pixel[3] = 255;
+                }
+              }
+              buf
+            })
+        } else {
+          None
+        }
+      }
+      DrawingBackend::VelloCpu(ctx, resources) => {
+        let pixel_count = (width as usize) * (height as usize);
+        let mut buf = vec![0u8; pixel_count * 4];
+        ctx.render_to_buffer(
+          resources,
+          &mut buf,
+          width as u16,
+          height as u16,
+          vello_cpu::RenderMode::OptimizeSpeed,
+        );
+        if !self.settings.alpha {
+          for pixel in buf.chunks_exact_mut(4) {
+            pixel[3] = 255;
+          }
+        } else {
+          unpremultiply_rgba(&mut buf);
+        }
+        Some(buf)
+      }
+    };
+    let clip_stack = self.clip_stack.borrow();
+    for clip in clip_stack.iter().take(clip_depth) {
+      let fill = if clip.rule == "evenodd" {
+        peniko::Fill::EvenOdd
+      } else {
+        peniko::Fill::NonZero
+      };
+      push_clip(&mut drawing, fill, clip.transform, &clip.path);
+    }
+    let rgba = buf
+      .and_then(|b| RgbaImage::from_raw(width, height, b))
+      .unwrap_or_else(|| {
+        if self.settings.alpha {
+          RgbaImage::new(width, height)
+        } else {
+          RgbaImage::from_pixel(width, height, Rgba([0, 0, 0, 255]))
+        }
+      });
+    *image = DynamicImage::ImageRgba8(rgba);
+  }
+
+  fn resolve_optional_path(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    arg: Option<v8::Local<'_, v8::Value>>,
+  ) -> (BezPath, bool) {
+    if let Some(v) = arg
+      && let Some(p) =
+        deno_core::cppgc::try_unwrap_cppgc_object::<Path2D>(scope, v)
+    {
+      return (p.path.borrow().clone(), true);
+    }
+    (self.current_path.borrow().clone(), false)
+  }
+
+  fn resolve_path_and_fill_rule(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    path_or_fill_rule: Option<v8::Local<'_, v8::Value>>,
+    fill_rule: Option<String>,
+  ) -> (BezPath, String, bool) {
+    // path_or_fill_rule may be Path2D or fillRule string
+    if let Some(v) = path_or_fill_rule {
+      if v.is_string() {
+        let rule = v.to_rust_string_lossy(scope);
+        return (self.current_path.borrow().clone(), rule, false);
+      }
+      if let Some(p) =
+        deno_core::cppgc::try_unwrap_cppgc_object::<Path2D>(scope, v)
+      {
+        let rule = fill_rule.unwrap_or_else(|| "nonzero".to_string());
+        return (p.path.borrow().clone(), rule, true);
+      }
+    }
+    let rule = fill_rule.unwrap_or_else(|| "nonzero".to_string());
+    (self.current_path.borrow().clone(), rule, false)
+  }
+
+  fn draw_path_fill(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    path: BezPath,
+    rule: String,
+    transform: Affine,
+  ) {
+    if path.is_empty() {
+      return;
+    }
+    let state = self.state.borrow();
+    let op = state.global_composite_operation;
+    let alpha = state.global_alpha;
+    let shadow = has_shadow(&state);
+    let shadow_color = state.shadow_color_rgba;
+    let shadow_xform = if shadow {
+      Some(shadow_transform(&state, transform))
+    } else {
+      None
+    };
+    let (brush, brush_transform) = resolve_brush(scope, &state.fill_style, 1.0);
+    let fill = if rule == "evenodd" {
+      peniko::Fill::EvenOdd
+    } else {
+      peniko::Fill::NonZero
+    };
+    drop(state);
+
+    let (width, height) = self.data.dimensions();
+    let mut drawing = self.drawing.borrow_mut();
+    let has_layer =
+      push_compositing_layer(&mut drawing, op, alpha, width, height);
+    if let Some(st) = shadow_xform {
+      draw_shadow(&mut drawing, width, height, shadow_color, |d| {
+        fill_on(d, &path, fill, st, brush.clone(), brush_transform);
+      });
+      // Per spec, the shadow is composited first, then the source shape is
+      // composited on top as a separate step.
+      if has_layer {
+        pop_compositing_layer(&mut drawing);
+        push_compositing_layer(&mut drawing, op, alpha, width, height);
+      }
+    }
+    fill_on(&mut drawing, &path, fill, transform, brush, brush_transform);
+    if has_layer {
+      pop_compositing_layer(&mut drawing);
+    }
+  }
+
+  fn draw_path_stroke(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    path: BezPath,
+    transform: Affine,
+    is_path2d: bool,
+  ) {
+    if path.is_empty() {
+      return;
+    }
+    let state = self.state.borrow();
+    let op = state.global_composite_operation;
+    let alpha = state.global_alpha;
+    let shadow = has_shadow(&state);
+    let shadow_color = state.shadow_color_rgba;
+    let shadow_xform = if shadow {
+      Some(shadow_transform(&state, transform))
+    } else {
+      None
+    };
+    let (brush, brush_transform) =
+      resolve_brush(scope, &state.stroke_style, 1.0);
+    let stroke = build_stroke(&state);
+    drop(state);
+
+    let path = if is_path2d {
+      path
+    } else {
+      transform_path(&path, transform.inverse())
+    };
+
+    let (width, height) = self.data.dimensions();
+    let mut drawing = self.drawing.borrow_mut();
+    let has_layer =
+      push_compositing_layer(&mut drawing, op, alpha, width, height);
+    if let Some(st) = shadow_xform {
+      draw_shadow(&mut drawing, width, height, shadow_color, |d| {
+        stroke_on(d, &path, &stroke, st, brush.clone(), brush_transform);
+      });
+      // Per spec, the shadow is composited first, then the source shape is
+      // composited on top as a separate step.
+      if has_layer {
+        pop_compositing_layer(&mut drawing);
+        push_compositing_layer(&mut drawing, op, alpha, width, height);
+      }
+    }
+    stroke_on(
+      &mut drawing,
+      &path,
+      &stroke,
+      transform,
+      brush,
+      brush_transform,
+    );
+    if has_layer {
+      pop_compositing_layer(&mut drawing);
+    }
+  }
+
+  fn apply_clip(&self, path: BezPath, rule: String, transform: Affine) {
+    // Per spec, clipping with an empty path shrinks the clip region to
+    // nothing (rather than leaving it unchanged), so subsequent drawing is
+    // fully clipped out. Use a zero-area shape with the identity transform
+    // to represent that.
+    let (path, transform) = if path.is_empty() {
+      (Shape::to_path(&Rect::ZERO, 0.1), Affine::IDENTITY)
+    } else {
+      (path, transform)
+    };
+    let fill = if rule == "evenodd" {
+      peniko::Fill::EvenOdd
+    } else {
+      peniko::Fill::NonZero
+    };
+    push_clip(&mut self.drawing.borrow_mut(), fill, transform, &path);
+    let mut state = self.state.borrow_mut();
+    self.clip_stack.borrow_mut().truncate(state.clip_depth);
+    self.clip_stack.borrow_mut().push(ClipEntry {
+      path,
+      rule,
+      transform,
+    });
+    state.clip_depth += 1;
+  }
+
+  fn draw_text(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    text: &str,
+    x: f64,
+    y: f64,
+    max_width: Option<f64>,
+    stroke: bool,
+  ) {
+    // https://html.spec.whatwg.org/multipage/canvas.html#text-preparation-algorithm
+    // Nothing is drawn when maxWidth is present but not a positive number.
+    if let Some(max_width) = max_width
+      && (max_width.is_nan() || max_width <= 0.0)
+    {
+      return;
+    }
+
+    let fstate = self.state.borrow().font_state.clone();
+    let mut fc = self.font_ctx.lock().unwrap();
+    let mut lc = self.layout_ctx.lock().unwrap();
+    let layout = build_text_layout(&mut fc, &mut lc, text, &fstate);
+
+    let state = self.state.borrow();
+    let style = if stroke {
+      &state.stroke_style
+    } else {
+      &state.fill_style
+    };
+    let op = state.global_composite_operation;
+    let global_alpha = state.global_alpha;
+    let shadow = has_shadow(&state);
+    let shadow_color = state.shadow_color_rgba;
+    let shadow_xform = if shadow {
+      Some(shadow_transform(&state, state.transform))
+    } else {
+      None
+    };
+    let (brush, brush_transform) = resolve_brush(scope, style, 1.0);
+    let text_align = state.text_align;
+    let text_baseline = state.text_baseline;
+    let transform = state.transform;
+    drop(state);
+
+    let baseline_y = compute_baseline_y(y, &layout, text_baseline);
+
+    let layout_baseline = layout
+      .lines()
+      .next()
+      .map(|line| line.metrics().baseline)
+      .unwrap_or(0.0);
+
+    // Compute total line width for text-align adjustment.
+    let line_width: f32 = layout
+      .lines()
+      .next()
+      .map(|line| line.metrics().advance - line.metrics().trailing_whitespace)
+      .unwrap_or(0.0);
+
+    // Condense the text horizontally when it is wider than maxWidth.
+    // TODO(petamoriken): only the glyph advances are compressed for now,
+    // the glyph outlines themselves are not horizontally scaled.
+    let x_scale: f32 = match max_width {
+      Some(max_width) if (line_width as f64) > max_width => {
+        (max_width / line_width as f64) as f32
+      }
+      _ => 1.0,
+    };
+    let scaled_width = line_width * x_scale;
+
+    let rtl = fstate.direction == TextDirection::Rtl;
+    let x_offset = match text_align {
+      TextAlign::Left => 0.0,
+      TextAlign::Right => -scaled_width,
+      TextAlign::Center => -scaled_width / 2.0,
+      TextAlign::Start if rtl => -scaled_width,
+      TextAlign::Start => 0.0,
+      TextAlign::End if rtl => 0.0,
+      TextAlign::End => -scaled_width,
+    };
+    let draw_x = x as f32 + x_offset;
+
+    let (canvas_w, canvas_h) = self.data.dimensions();
+    let mut drawing = self.drawing.borrow_mut();
+    let has_layer = push_compositing_layer(
+      &mut drawing,
+      op,
+      global_alpha,
+      canvas_w,
+      canvas_h,
+    );
+    if let Some(st) = shadow_xform {
+      draw_shadow(
+        &mut drawing,
+        canvas_w,
+        canvas_h,
+        shadow_color,
+        |d| match d {
+          DrawingBackend::Vello(scene) => {
+            for line in layout.lines() {
+              for item in line.items() {
+                let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
+                  continue;
+                };
+                let font = peniko::FontData::clone(glyph_run.run().font());
+                let font_size = glyph_run.run().font_size();
+                let glyphs =
+                  glyph_run.positioned_glyphs().map(|g| vello::Glyph {
+                    id: g.id,
+                    x: draw_x + g.x * x_scale,
+                    y: baseline_y as f32 + g.y - layout_baseline,
+                  });
+                let mut glyph_draw = scene
+                  .draw_glyphs(&font)
+                  .font_size(font_size)
+                  .transform(st)
+                  .brush(&brush);
+                if let Some(bt) = brush_transform {
+                  glyph_draw = glyph_draw.brush_transform(Some(bt));
+                }
+                glyph_draw.draw(peniko::Fill::NonZero, glyphs);
+              }
+            }
+          }
+          DrawingBackend::VelloCpu(ctx, resources) => {
+            for line in layout.lines() {
+              for item in line.items() {
+                let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
+                  continue;
+                };
+                let font = peniko::FontData::clone(glyph_run.run().font());
+                let font_size = glyph_run.run().font_size();
+                apply_cpu_paint(ctx, brush.clone(), brush_transform);
+                ctx.set_transform(st);
+                ctx
+                  .glyph_run(resources, &font)
+                  .font_size(font_size)
+                  .fill_glyphs(glyph_run.positioned_glyphs().map(|g| {
+                    vello_cpu::Glyph {
+                      id: g.id,
+                      x: draw_x + g.x * x_scale,
+                      y: baseline_y as f32 + g.y - layout_baseline,
+                    }
+                  }));
+              }
+            }
+          }
+        },
+      );
+      // Per spec, the shadow is composited first, then the source text is
+      // composited on top as a separate step.
+      if has_layer {
+        pop_compositing_layer(&mut drawing);
+        push_compositing_layer(
+          &mut drawing,
+          op,
+          global_alpha,
+          canvas_w,
+          canvas_h,
+        );
+      }
+    }
+    match &mut *drawing {
+      DrawingBackend::Vello(scene) => {
+        for line in layout.lines() {
+          for item in line.items() {
+            let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
+              continue;
+            };
+            let font = peniko::FontData::clone(glyph_run.run().font());
+            let font_size = glyph_run.run().font_size();
+
+            let glyphs = glyph_run.positioned_glyphs().map(|g| vello::Glyph {
+              id: g.id,
+              x: draw_x + g.x * x_scale,
+              y: baseline_y as f32 + g.y - layout_baseline,
+            });
+
+            let mut glyph_draw = scene
+              .draw_glyphs(&font)
+              .font_size(font_size)
+              .transform(transform)
+              .brush(&brush);
+            if let Some(bt) = brush_transform {
+              glyph_draw = glyph_draw.brush_transform(Some(bt));
+            }
+            glyph_draw.draw(peniko::Fill::NonZero, glyphs);
+          }
+        }
+      }
+      DrawingBackend::VelloCpu(ctx, resources) => {
+        for line in layout.lines() {
+          for item in line.items() {
+            let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
+              continue;
+            };
+            let font = peniko::FontData::clone(glyph_run.run().font());
+            let font_size = glyph_run.run().font_size();
+
+            apply_cpu_paint(ctx, brush.clone(), brush_transform);
+            ctx.set_transform(transform);
+            ctx
+              .glyph_run(resources, &font)
+              .font_size(font_size)
+              .fill_glyphs(glyph_run.positioned_glyphs().map(|g| {
+                vello_cpu::Glyph {
+                  id: g.id,
+                  x: draw_x + g.x * x_scale,
+                  y: baseline_y as f32 + g.y - layout_baseline,
+                }
+              }));
+          }
+        }
+      }
+    }
+    if has_layer {
+      pop_compositing_layer(&mut drawing);
+    }
+  }
+
+  fn resolve_point_in_path_args(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    path_or_x: Option<v8::Local<'_, v8::Value>>,
+    x_or_y: Option<v8::Local<'_, v8::Value>>,
+    y_or_fill_rule: Option<v8::Local<'_, v8::Value>>,
+    fill_rule: Option<v8::Local<'_, v8::Value>>,
+  ) -> Result<(BezPath, f64, f64, String, bool), Canvas2DError> {
+    const PREFIX: &str = "Failed to execute 'isPointInPath' on 'OffscreenCanvasRenderingContext2D'";
+
+    let validate_fill_rule =
+      |context: &'static str, rule: &str| -> Result<(), Canvas2DError> {
+        match rule {
+          "nonzero" | "evenodd" => Ok(()),
+          _ => Err(Canvas2DError::WebIdl(deno_core::webidl::WebIdlError {
+            prefix: PREFIX.into(),
+            context: context.into(),
+            kind: deno_core::webidl::WebIdlErrorKind::InvalidEnumVariant {
+              converter: "CanvasFillRule",
+              variant: rule.to_string(),
+            },
+          })),
+        }
+      };
+
+    let Some(path_or_x) = path_or_x else {
+      if fill_rule.is_some() {
+        // 4 args: isPointInPath(path, x, y, fillRule) — null/undefined is not Path2D
+        return Err(type_error_not_path2d(PREFIX, "parameter 1"));
+      }
+      if x_or_y.is_some() {
+        // 2-3 args with null/undefined first: isPointInPath(x, y [, fillRule])
+        let y = x_or_y.map(|v| v8_to_f64(scope, v)).unwrap_or(f64::NAN);
+        let rule = y_or_fill_rule
+          .map(|v| v.to_rust_string_lossy(scope))
+          .unwrap_or_else(|| "nonzero".into());
+        validate_fill_rule("parameter 3", &rule)?;
+        return Ok((
+          self.current_path.borrow().clone(),
+          f64::NAN,
+          y,
+          rule,
+          false,
+        ));
+      }
+      // Zero arguments: neither the (x, y [, fillRule]) nor the
+      // (path, x, y [, fillRule]) overload has enough arguments.
+      return Err(Canvas2DError::MissingArgument {
+        required: 2,
+        provided: 0,
+      });
+    };
+    if let Some(p) =
+      deno_core::cppgc::try_unwrap_cppgc_object::<Path2D>(scope, path_or_x)
+    {
+      // isPointInPath(path, x, y [, fillRule])
+      let provided =
+        1 + x_or_y.is_some() as u32 + y_or_fill_rule.is_some() as u32;
+      let (Some(x_or_y), Some(y_or_fill_rule)) = (x_or_y, y_or_fill_rule)
+      else {
+        return Err(Canvas2DError::MissingArgument {
+          required: 3,
+          provided,
+        });
+      };
+      let x = v8_to_f64(scope, x_or_y);
+      let y = v8_to_f64(scope, y_or_fill_rule);
+      // CanvasFillRule is a non-nullable DOMString enum, so an explicit
+      // `null` must be stringified to "null" (an invalid enum value)
+      // rather than falling back to the "nonzero" default like an omitted
+      // argument would.
+      let rule = fill_rule
+        .map(|v| v.to_rust_string_lossy(scope))
+        .unwrap_or_else(|| "nonzero".into());
+      validate_fill_rule("parameter 4", &rule)?;
+      return Ok((p.path.borrow().clone(), x, y, rule, true));
+    }
+    if path_or_x.is_number() {
+      // isPointInPath(x, y [, fillRule])
+      let Some(x_or_y) = x_or_y else {
+        return Err(Canvas2DError::MissingArgument {
+          required: 2,
+          provided: 1,
+        });
+      };
+      let x = v8_to_f64(scope, path_or_x);
+      let y = v8_to_f64(scope, x_or_y);
+      let rule = y_or_fill_rule
+        .map(|v| v.to_rust_string_lossy(scope))
+        .unwrap_or_else(|| "nonzero".into());
+      validate_fill_rule("parameter 3", &rule)?;
+      return Ok((self.current_path.borrow().clone(), x, y, rule, false));
+    }
+    Err(type_error_not_path2d(PREFIX, "parameter 1"))
+  }
+
+  fn resolve_point_in_stroke_args(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    path_or_x: Option<v8::Local<'_, v8::Value>>,
+    x_or_y: Option<v8::Local<'_, v8::Value>>,
+    y: Option<v8::Local<'_, v8::Value>>,
+  ) -> Result<(BezPath, f64, f64, bool), Canvas2DError> {
+    const PREFIX: &str = "Failed to execute 'isPointInStroke' on 'OffscreenCanvasRenderingContext2D'";
+    let Some(path_or_x) = path_or_x else {
+      if y.is_some() {
+        // 3 args: isPointInStroke(path, x, y) — null/undefined is not Path2D
+        return Err(type_error_not_path2d(PREFIX, "parameter 1"));
+      }
+      if x_or_y.is_some() {
+        // 2 args with null/undefined first: isPointInStroke(x, y)
+        let y = x_or_y.map(|v| v8_to_f64(scope, v)).unwrap_or(f64::NAN);
+        return Ok((self.current_path.borrow().clone(), f64::NAN, y, false));
+      }
+      return Ok((
+        self.current_path.borrow().clone(),
+        f64::NAN,
+        f64::NAN,
+        false,
+      ));
+    };
+    if let Some(p) =
+      deno_core::cppgc::try_unwrap_cppgc_object::<Path2D>(scope, path_or_x)
+    {
+      // isPointInStroke(path, x, y)
+      let x = x_or_y.map(|v| v8_to_f64(scope, v)).unwrap_or(f64::NAN);
+      let y = y.map(|v| v8_to_f64(scope, v)).unwrap_or(f64::NAN);
+      return Ok((p.path.borrow().clone(), x, y, true));
+    }
+    if path_or_x.is_number() {
+      // isPointInStroke(x, y)
+      let x = v8_to_f64(scope, path_or_x);
+      let y = x_or_y.map(|v| v8_to_f64(scope, v)).unwrap_or(f64::NAN);
+      return Ok((self.current_path.borrow().clone(), x, y, false));
+    }
+    Err(type_error_not_path2d(PREFIX, "parameter 1"))
+  }
+
+  fn test_point_in_stroke(
+    &self,
+    path: BezPath,
+    x: f64,
+    y: f64,
+    transform: Affine,
+    is_path2d: bool,
+  ) -> bool {
+    if path.is_empty() {
+      return false;
+    }
+    // lineWidth/lineDash are specified in user-space units, so the stroke
+    // outline must be built in user space. The default path is stored in
+    // canvas space (see path_move_to/path_line_to/etc. in path.rs), so map
+    // it back; Path2D coordinates are already in user space.
+    let path = if is_path2d {
+      path
+    } else {
+      transform_path(&path, transform.inverse())
+    };
+    let state = self.state.borrow();
+    let stroke = build_stroke(&state);
+    drop(state);
+    let outline = kurbo::stroke(
+      path.path_elements(0.01),
+      &stroke,
+      &StrokeOpts::default(),
+      0.01,
+    );
+    outline.contains(Point::new(x, y))
+  }
+}
+
+/// Rejects ImageData buffers too large for JS typed arrays.
+#[inline]
+fn check_image_data_size(w: u32, h: u32) -> Result<(), Canvas2DError> {
+  const MAX_IMAGE_DATA_BYTES: u64 = i32::MAX as u64;
+  if (w as u64) * (h as u64) * 4 > MAX_IMAGE_DATA_BYTES {
+    return Err(Canvas2DError::ImageDataTooLarge);
+  }
+  Ok(())
+}
+
+/// Parses `CanvasLayerOptions` for `beginLayer()`.
+#[inline]
+fn parse_begin_layer_options<'a>(
+  scope: &mut v8::PinScope<'a, 'a>,
+  options: v8::Local<'a, v8::Value>,
+) -> Result<Vec<CanvasLayerFilterPrimitive>, Canvas2DError> {
+  if options.is_null_or_undefined() {
+    return Ok(Vec::new());
+  }
+  if !options.is_object() {
+    return Err(Canvas2DError::InvalidBeginLayerOptions);
+  }
+
+  let obj = options.cast::<v8::Object>();
+  let filter_key = v8::String::new(scope, "filter").unwrap();
+  let Some(filter) = obj.get(scope, filter_key.into()) else {
+    return Err(Canvas2DError::InvalidBeginLayerOptions);
+  };
+  if filter.is_null_or_undefined() {
+    return Ok(Vec::new());
+  }
+  if !filter.is_object() {
+    // The DOMString branch of the filter union: any string (or stringifiable
+    // primitive) is accepted, even when it is not a parsable CSS filter.
+    let Some(value) = filter.to_string(scope) else {
+      return Ok(Vec::new());
+    };
+    let value = value.to_rust_string_lossy(scope);
+    let mut parser_input = FilterParserInput::new(&value);
+    let result: Result<Vec<_>, _> =
+      FilterValueListParser::new(&mut parser_input).collect();
+    return Ok(
+      result
+        .ok()
+        .unwrap_or_default()
+        .into_iter()
+        .map(Into::into)
+        .collect(),
+    );
+  }
+  parse_filter_input(scope, filter)
+}
+
+fn require_long(
+  scope: &mut v8::PinScope<'_, '_>,
+  val: v8::Local<'_, v8::Value>,
+) -> Result<i32, Canvas2DError> {
+  let n = val.number_value(scope).unwrap_or(f64::NAN);
+  if !n.is_finite() {
+    return Err(Canvas2DError::NonFinite);
+  }
+  Ok(n as i32)
+}
+
+fn parse_fill_stroke_style(
+  scope: &mut v8::PinScope<'_, '_>,
+  value: v8::Local<'_, v8::Value>,
+) -> Option<FillStrokeStyle> {
+  if deno_core::cppgc::try_unwrap_cppgc_object::<CanvasGradient>(scope, value)
+    .is_some()
+  {
+    return Some(FillStrokeStyle::Gradient(v8::Global::new(
+      scope,
+      value.cast::<v8::Object>(),
+    )));
+  }
+  if deno_core::cppgc::try_unwrap_cppgc_object::<CanvasPattern>(scope, value)
+    .is_some()
+  {
+    return Some(FillStrokeStyle::Pattern(v8::Global::new(
+      scope,
+      value.cast::<v8::Object>(),
+    )));
+  }
+  // The DOMString branch of the union: ToString may invoke a user-supplied
+  // toString() (whose thrown exception is left pending to propagate); an
+  // invalid color string leaves the style unchanged.
+  let s = value.to_string(scope)?;
+  let s = s.to_rust_string_lossy(scope);
+  parse_css_color(&s).ok().map(FillStrokeStyle::Color)
+}
+
+fn resolve_brush(
+  scope: &mut v8::PinScope<'_, '_>,
+  style: &FillStrokeStyle,
+  global_alpha: f32,
+) -> (peniko::Brush, Option<Affine>) {
+  match style {
+    FillStrokeStyle::Color(c) => {
+      let rgba = c.to_rgba8();
+      let alpha = (rgba.a as f32 / 255.0 * global_alpha * 255.0).round() as u8;
+      let color = peniko::Color::from_rgba8(rgba.r, rgba.g, rgba.b, alpha);
+      (peniko::Brush::Solid(color), None)
+    }
+    FillStrokeStyle::Gradient(obj) => {
+      let local = v8::Local::new(scope, obj);
+      let gradient =
+        deno_core::cppgc::try_unwrap_cppgc_object::<CanvasGradient>(
+          scope,
+          local.into(),
+        )
+        .expect("fillStyle gradient reference must be valid");
+      let mut g = gradient.gradient.borrow().clone();
+      // Stops are pushed in addColorStop() call order, not offset order;
+      // sort (stably, so same-offset stops keep their relative order) so
+      // the ramp is built correctly.
+      g.stops.sort_by(|a, b| {
+        a.offset
+          .partial_cmp(&b.offset)
+          .unwrap_or(std::cmp::Ordering::Equal)
+      });
+      // Degenerate gradients (per spec) paint nothing: a linear gradient
+      // whose two points coincide, or a radial gradient whose two circles
+      // are identical. A solid transparent brush is used to represent
+      // "nothing" so this can be returned like any other brush.
+      let degenerate = match g.kind {
+        peniko::GradientKind::Linear(pos) => pos.start == pos.end,
+        peniko::GradientKind::Radial(pos) => {
+          pos.start_center == pos.end_center
+            && pos.start_radius == pos.end_radius
+        }
+        peniko::GradientKind::Sweep(_) => false,
+      };
+      if degenerate || g.stops.is_empty() {
+        return (peniko::Brush::Solid(peniko::Color::TRANSPARENT), None);
+      }
+      if g.stops.len() == 1 {
+        let color = g.stops[0].color.to_alpha_color::<peniko::color::Srgb>();
+        return (peniko::Brush::Solid(color), None);
+      }
+      (peniko::Brush::Gradient(g), Some(Affine::IDENTITY))
+    }
+    FillStrokeStyle::Pattern(obj) => {
+      let local = v8::Local::new(scope, obj);
+      let pattern = deno_core::cppgc::try_unwrap_cppgc_object::<CanvasPattern>(
+        scope,
+        local.into(),
+      )
+      .expect("fillStyle pattern reference must be valid");
+      let mut image_brush = peniko::ImageBrush::new(pattern.image.clone())
+        .with_x_extend(pattern.x_extend)
+        .with_y_extend(pattern.y_extend);
+      if global_alpha != 1.0 {
+        image_brush = image_brush.multiply_alpha(global_alpha);
+      }
+      // Compensate for the transparent border pad_pattern_image() may
+      // have added: shift brush-local space so the real image content
+      // still lands where an unpadded image's content would have.
+      let pattern_transform = *pattern.transform.borrow()
+        * Affine::translate(-pattern.content_offset);
+      (peniko::Brush::Image(image_brush), Some(pattern_transform))
+    }
+  }
+}
+
+fn apply_cpu_paint(
+  ctx: &mut vello_cpu::RenderContext,
+  brush: peniko::Brush,
+  brush_transform: Option<Affine>,
+) {
+  match brush {
+    peniko::Brush::Solid(color) => {
+      ctx.reset_paint_transform();
+      ctx.set_paint(color);
+    }
+    peniko::Brush::Gradient(gradient) => {
+      if let Some(t) = brush_transform {
+        ctx.set_paint_transform(t);
+      } else {
+        ctx.reset_paint_transform();
+      }
+      ctx.set_paint(vello_cpu::PaintType::Gradient(gradient));
+    }
+    peniko::Brush::Image(image_brush) => {
+      let source =
+        vello_cpu::ImageSource::from_peniko_image_data(&image_brush.image);
+      let cpu_brush = peniko::ImageBrush {
+        image: source,
+        sampler: image_brush.sampler,
+      };
+      if let Some(t) = brush_transform {
+        ctx.set_paint_transform(t);
+      } else {
+        ctx.reset_paint_transform();
+      }
+      ctx.set_paint(vello_cpu::PaintType::Image(cpu_brush));
+    }
+  }
+}
+
+fn push_compositing_layer(
+  drawing: &mut DrawingBackend,
+  op: GlobalCompositeOperation,
+  alpha: f32,
+  width: u32,
+  height: u32,
+) -> bool {
+  if op == GlobalCompositeOperation::SourceOver && alpha == 1.0 {
+    return false;
+  }
+  push_full_canvas_layer(drawing, op.to_blend_mode(), alpha, width, height);
+  true
+}
+
+/// Pushes a full-canvas compositing layer.
+fn push_full_canvas_layer(
+  drawing: &mut DrawingBackend,
+  blend: peniko::BlendMode,
+  alpha: f32,
+  width: u32,
+  height: u32,
+) {
+  match drawing {
+    DrawingBackend::Vello(scene) => {
+      let clip = Rect::new(0.0, 0.0, width as f64, height as f64);
+      scene.push_layer(
+        peniko::Fill::NonZero,
+        blend,
+        alpha,
+        Affine::IDENTITY,
+        &clip,
+      );
+    }
+    DrawingBackend::VelloCpu(ctx, _) => {
+      ctx.push_layer(None, Some(blend), Some(alpha), None, None);
+    }
+  }
+}
+
+fn pop_compositing_layer(drawing: &mut DrawingBackend) {
+  match drawing {
+    DrawingBackend::Vello(scene) => scene.pop_layer(),
+    DrawingBackend::VelloCpu(ctx, _) => ctx.pop_layer(),
+  }
+}
+
+/// Draws a shadow using the source content's alpha mask.
+fn draw_shadow(
+  drawing: &mut DrawingBackend,
+  width: u32,
+  height: u32,
+  shadow_color: peniko::Color,
+  draw_source: impl FnOnce(&mut DrawingBackend),
+) {
+  push_full_canvas_layer(
+    drawing,
+    peniko::BlendMode::new(peniko::Mix::Normal, peniko::Compose::SrcOver),
+    1.0,
+    width,
+    height,
+  );
+  draw_source(drawing);
+  push_full_canvas_layer(
+    drawing,
+    peniko::BlendMode::new(peniko::Mix::Normal, peniko::Compose::SrcIn),
+    1.0,
+    width,
+    height,
+  );
+  let canvas_rect = Rect::new(0.0, 0.0, width as f64, height as f64);
+  fill_on(
+    drawing,
+    &canvas_rect,
+    peniko::Fill::NonZero,
+    Affine::IDENTITY,
+    peniko::Brush::Solid(shadow_color),
+    None,
+  );
+  pop_compositing_layer(drawing); // pop the SrcIn tint layer
+  pop_compositing_layer(drawing); // pop the SrcOver isolation layer
+}
+
+/// Pushes a clip layer after syncing fill rule and transform.
+fn push_clip(
+  drawing: &mut DrawingBackend,
+  fill: peniko::Fill,
+  transform: Affine,
+  path: &BezPath,
+) {
+  match drawing {
+    DrawingBackend::Vello(scene) => {
+      scene.push_clip_layer(fill, transform, path);
+    }
+    DrawingBackend::VelloCpu(ctx, _) => {
+      ctx.set_fill_rule(if fill == peniko::Fill::EvenOdd {
+        vello_cpu::peniko::Fill::EvenOdd
+      } else {
+        vello_cpu::peniko::Fill::NonZero
+      });
+      ctx.set_transform(transform);
+      ctx.push_clip_layer(path);
+    }
+  }
+}
+
+fn build_stroke(state: &DrawingState) -> Stroke {
+  let mut stroke =
+    Stroke::new(state.line_width).with_miter_limit(state.miter_limit);
+  match state.line_join {
+    LineJoin::Round => {
+      stroke.join = Join::Round;
+    }
+    LineJoin::Bevel => {
+      stroke.join = Join::Bevel;
+    }
+    LineJoin::Miter => {
+      stroke.join = Join::Miter;
+    }
+  }
+  match state.line_cap {
+    LineCap::Butt => {
+      stroke.start_cap = Cap::Butt;
+      stroke.end_cap = Cap::Butt;
+    }
+    LineCap::Round => {
+      stroke.start_cap = Cap::Round;
+      stroke.end_cap = Cap::Round;
+    }
+    LineCap::Square => {
+      stroke.start_cap = Cap::Square;
+      stroke.end_cap = Cap::Square;
+    }
+  }
+  if !state.line_dash.is_empty() {
+    stroke = stroke
+      .with_dashes(state.line_dash_offset, state.line_dash.iter().copied());
+  }
+  stroke
+}
+
+fn has_shadow(state: &DrawingState) -> bool {
+  !is_color_transparent(state.shadow_color_rgba)
+    && (state.shadow_blur > 0.0
+      || state.shadow_offset_x != 0.0
+      || state.shadow_offset_y != 0.0)
+}
+
+fn shadow_transform(state: &DrawingState, transform: Affine) -> Affine {
+  // TODO(petamoriken): apply shadowBlur once Vello GPU supports filter effects
+  Affine::translate((state.shadow_offset_x, state.shadow_offset_y)) * transform
+}
+
+fn fill_on(
+  drawing: &mut DrawingBackend,
+  shape: &impl Shape,
+  fill: peniko::Fill,
+  transform: Affine,
+  brush: peniko::Brush,
+  brush_transform: Option<Affine>,
+) {
+  match drawing {
+    DrawingBackend::Vello(scene) => {
+      scene.fill(fill, transform, &brush, brush_transform, shape);
+    }
+    DrawingBackend::VelloCpu(ctx, _) => {
+      apply_cpu_paint(ctx, brush, brush_transform);
+      ctx.set_fill_rule(if fill == peniko::Fill::EvenOdd {
+        vello_cpu::peniko::Fill::EvenOdd
+      } else {
+        vello_cpu::peniko::Fill::NonZero
+      });
+      ctx.set_transform(transform);
+      let path: BezPath = shape.path_elements(0.1).collect();
+      ctx.fill_path(&path);
+    }
+  }
+}
+
+fn stroke_on(
+  drawing: &mut DrawingBackend,
+  path: &BezPath,
+  stroke: &Stroke,
+  transform: Affine,
+  brush: peniko::Brush,
+  brush_transform: Option<Affine>,
+) {
+  match drawing {
+    DrawingBackend::Vello(scene) => {
+      scene.stroke(stroke, transform, &brush, brush_transform, path);
+    }
+    DrawingBackend::VelloCpu(ctx, _) => {
+      apply_cpu_paint(ctx, brush, brush_transform);
+      ctx.set_stroke(stroke.clone());
+      ctx.set_transform(transform);
+      ctx.stroke_path(path);
+    }
+  }
+}
+
+fn v8_to_f64(
+  scope: &mut v8::PinScope<'_, '_>,
+  v: v8::Local<'_, v8::Value>,
+) -> f64 {
+  v.number_value(scope).unwrap_or(f64::NAN)
+}
+
+fn type_error_not_path2d(
+  prefix: &'static str,
+  context: &'static str,
+) -> Canvas2DError {
+  Canvas2DError::WebIdl(deno_core::webidl::WebIdlError {
+    prefix: prefix.into(),
+    context: context.into(),
+    kind: deno_core::webidl::WebIdlErrorKind::ConvertToConverterType("Path2D"),
+  })
+}
+
+/// Returns a copy of `path` with every subpath explicitly closed. Per
+/// spec, isPointInPath()/isPointInStroke() (and fill()/clip()) treat each
+/// subpath as though it had been closed, regardless of whether
+/// closePath() was actually called.
+fn close_all_subpaths(path: &BezPath) -> BezPath {
+  let mut closed = BezPath::new();
+  let mut subpath_open = false;
+  for el in path.iter() {
+    match el {
+      PathEl::MoveTo(_) => {
+        if subpath_open {
+          closed.push(PathEl::ClosePath);
+        }
+        subpath_open = true;
+      }
+      PathEl::ClosePath => subpath_open = false,
+      _ => {}
+    }
+    closed.push(el);
+  }
+  if subpath_open {
+    closed.push(PathEl::ClosePath);
+  }
+  closed
+}
+
+/// Returns whether `pt` lies on (within floating-point tolerance of) any
+/// segment of `path`. Per spec, points exactly on the path's boundary
+/// count as inside for isPointInPath().
+fn point_on_path_boundary(path: &BezPath, pt: Point) -> bool {
+  const EPSILON_SQ: f64 = 1e-9;
+  path
+    .segments()
+    .any(|seg| seg.nearest(pt, 1e-6).distance_sq <= EPSILON_SQ)
+}
+
+fn test_point_in_path(path: BezPath, x: f64, y: f64, rule: String) -> bool {
+  let path = close_all_subpaths(&path);
+  let pt = Point::new(x, y);
+  if point_on_path_boundary(&path, pt) {
+    return true;
+  }
+  let w = path.winding(pt);
+  match rule.as_str() {
+    "evenodd" => w % 2 != 0,
+    _ => w != 0,
   }
 }
 
@@ -2164,7 +3271,7 @@ pub fn create_context<'s>(
     &(),
   )
   .map_err(Canvas2DError::from)?;
-  renderer.get_or_init(renderer::init_canvas_renderer);
+  renderer.get_or_init(super::renderer::init_canvas_renderer);
 
   let ctx = OffscreenCanvasRenderingContext2D {
     canvas,
@@ -2172,7 +3279,7 @@ pub fn create_context<'s>(
     drawing: RefCell::new({
       if settings.will_read_frequently {
         DrawingBackend::new(
-          &DenoCanvasBackend::Cpu(self::renderer::CpuRenderer),
+          &DenoCanvasBackend::Cpu(super::renderer::CpuRenderer),
           width,
           height,
         )
