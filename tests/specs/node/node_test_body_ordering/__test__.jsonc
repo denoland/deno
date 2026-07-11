@@ -1,4 +1,5 @@
 {
-  "args": "test test.js",
+  "args": "run -A test.js",
+  "envs": { "NODE_TEST_REPORTER": "tap" },
   "output": "test.out"
 }

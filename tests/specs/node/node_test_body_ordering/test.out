@@ -1,4 +1,16 @@
-running 1 test from ./test.js
-body runs before post-declaration nextTick/setImmediate ... ok ([WILDLINE])
-
-ok | 1 passed | 0 failed ([WILDLINE])
+TAP version 13
+# Subtest: body runs before post-declaration nextTick/setImmediate
+ok 1 - body runs before post-declaration nextTick/setImmediate
+  ---
+  duration_ms: [WILDLINE]
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms [WILDLINE]
