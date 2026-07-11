@@ -31,23 +31,57 @@ pub fn get_body(span: Span, data: DataStruct) -> Result<TokenStream, Error> {
         .map(TryInto::try_into)
         .collect::<Result<Vec<StructField>, Error>>()?;
 
-      // A `skip_if = <predicate>` field is conditionally present, so its key set
-      // is only known at runtime. The fixed `with_prototype_and_properties` fast
-      // path can't express that, so fall back to pushing keys/values into vectors
-      // (preserving declaration order) when any field opts in. Otherwise keep the
-      // cheaper fixed-array path.
-      let any_skip_if = fields.iter().any(|field| field.skip_if.is_some());
+      // A `skip_if = <predicate>` field is conditionally present, and a
+      // `flatten` field contributes a runtime-determined number of keys, so
+      // either makes the key set only known at runtime. The fixed
+      // `with_prototype_and_properties` fast path can't express that, so fall
+      // back to pushing keys/values into vectors (preserving declaration
+      // order) when any field opts into either. Otherwise keep the cheaper
+      // fixed-array path.
+      let any_dynamic = fields
+        .iter()
+        .any(|field| field.skip_if.is_some() || field.flatten);
 
-      if any_skip_if {
+      if any_dynamic {
         let len = fields.len();
         let pushes = fields
           .into_iter()
           .map(|field| {
-            let key = crate::get_internalized_string(field.js_name)?;
             let name = field.name.clone();
-            let skip_if = field.skip_if.clone();
             let converter =
               convert_or_serde(field.serde, field.ty.span(), field.name);
+
+            if field.flatten {
+              // Convert the field to v8, then splice its own enumerable
+              // properties into the parent's key/value vectors at this
+              // field's position — matching serde's `#[serde(flatten)]`.
+              return Ok(quote! {
+                let __flat: ::deno_core::v8::Local<::deno_core::v8::Object> =
+                  (#converter).try_into().map_err(|_| {
+                    ::deno_error::JsErrorBox::generic(
+                      "flatten field did not produce an object",
+                    )
+                  })?;
+                let __flat_names = __flat
+                  .get_own_property_names(
+                    __scope,
+                    ::deno_core::v8::GetPropertyNamesArgs::default(),
+                  )
+                  .ok_or_else(|| {
+                    ::deno_error::JsErrorBox::generic(
+                      "failed to get flatten field's own property names",
+                    )
+                  })?;
+                for __i in 0..__flat_names.length() {
+                  let __flat_key = __flat_names.get_index(__scope, __i).unwrap();
+                  let __flat_value = __flat.get(__scope, __flat_key).unwrap();
+                  __keys.push(__flat_key.try_into().unwrap());
+                  __values.push(__flat_value);
+                }
+              });
+            }
+
+            let key = crate::get_internalized_string(field.js_name)?;
             let push = quote! {
               __keys.push(#key);
               __values.push(#converter);
@@ -55,7 +89,7 @@ pub fn get_body(span: Span, data: DataStruct) -> Result<TokenStream, Error> {
             // Mirrors serde's `skip_serializing_if`: the predicate is called on
             // a reference to the field and the field is skipped when it returns
             // true.
-            Ok(if let Some(skip_if) = skip_if {
+            Ok(if let Some(skip_if) = field.skip_if.clone() {
               quote! {
                 if !#skip_if(&#name) {
                   #push
@@ -156,6 +190,7 @@ pub struct StructField {
   pub name: Ident,
   serde: bool,
   skip_if: Option<Path>,
+  flatten: bool,
   ty: Type,
   pub js_name: Ident,
 }
@@ -169,6 +204,7 @@ impl TryFrom<Field> for StructField {
       mut serde,
     } = crate::conversion::StructFieldArgumentShared::parse(&value.attrs)?;
     let mut skip_if = None;
+    let mut flatten = false;
 
     for attr in value.attrs {
       if attr.path().is_ident("to_v8") {
@@ -184,7 +220,23 @@ impl TryFrom<Field> for StructField {
             }
             StructFieldArgument::Serde { .. } => serde = true,
             StructFieldArgument::SkipIf { value, .. } => skip_if = Some(value),
+            StructFieldArgument::Flatten { name_token } => {
+              if skip_if.is_some() {
+                return Err(Error::new(
+                  name_token.span,
+                  "`flatten` cannot be combined with `skip_if`",
+                ));
+              }
+              flatten = true;
+            }
           }
+        }
+
+        if flatten && skip_if.is_some() {
+          return Err(Error::new(
+            span,
+            "`flatten` cannot be combined with `skip_if`",
+          ));
         }
       }
     }
@@ -199,6 +251,7 @@ impl TryFrom<Field> for StructField {
       name,
       serde,
       skip_if,
+      flatten,
       ty: value.ty,
     })
   }
@@ -221,6 +274,13 @@ pub(crate) enum StructFieldArgument {
     eq_token: Token![=],
     value: Path,
   },
+  // `flatten` — mirrors serde's `#[serde(flatten)]`: the field's own ToV8
+  // conversion must produce an object, and that object's own enumerable
+  // properties are merged into the parent object at this field's position,
+  // instead of being nested under a key of their own.
+  Flatten {
+    name_token: shared_kw::flatten,
+  },
 }
 
 impl Parse for StructFieldArgument {
@@ -241,6 +301,10 @@ impl Parse for StructFieldArgument {
         name_token: input.parse()?,
         eq_token: input.parse()?,
         value: input.parse()?,
+      })
+    } else if lookahead.peek(shared_kw::flatten) {
+      Ok(StructFieldArgument::Flatten {
+        name_token: input.parse()?,
       })
     } else {
       Err(lookahead.error())

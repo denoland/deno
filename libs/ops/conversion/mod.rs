@@ -18,6 +18,7 @@ mod kw {
   syn::custom_keyword!(untagged);
   syn::custom_keyword!(content);
   syn::custom_keyword!(skip_if);
+  syn::custom_keyword!(flatten);
 }
 
 #[allow(dead_code, reason = "unused properties")]

@@ -30,3 +30,17 @@ pub struct SkipIfStruct {
   e: Vec<u32>,
   d: bool,
 }
+
+#[derive(ToV8)]
+pub struct Inner {
+  b: u8,
+  c: u16,
+}
+
+#[derive(ToV8)]
+pub struct FlattenStruct {
+  a: u8,
+  #[to_v8(flatten)]
+  inner: Inner,
+  d: bool,
+}
