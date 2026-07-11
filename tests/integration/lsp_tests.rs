@@ -15495,6 +15495,57 @@ fn lsp_no_slow_types_diagnostics() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/35922: the LSP
+// should respect `lint.rules.exclude` for `no-slow-types` just like the CLI.
+#[test(timeout = 300)]
+fn lsp_no_slow_types_diagnostics_excluded() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+
+  // a publishable JSR package that excludes the `no-slow-types` rule
+  temp_dir.write(
+    "deno.json",
+    r#"{
+  "name": "@foo/bar",
+  "version": "1.0.0",
+  "exports": "./mod.ts",
+  "lint": {
+    "rules": {
+      "exclude": ["no-slow-types"]
+    }
+  }
+}
+"#,
+  );
+  // `add` is missing an explicit return type, which is a slow type, but the
+  // rule is excluded so it should not be reported
+  temp_dir.write(
+    "mod.ts",
+    "export function add(a: number, b: number) {\n  return a + b;\n}\n",
+  );
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": url_to_uri(&temp_dir.url().join("mod.ts").unwrap()).unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("mod.ts"),
+    }
+  }));
+  let mod_diagnostics = diagnostics.all();
+  assert!(
+    !mod_diagnostics.iter().any(|d| {
+      d.code == Some(lsp::NumberOrString::String("no-slow-types".to_string()))
+    }),
+    "expected no no-slow-types diagnostics when the rule is excluded, got: {mod_diagnostics:#?}"
+  );
+
+  client.shutdown();
+}
+
 #[test(timeout = 300)]
 fn lsp_no_slow_types_unanalyzable_exports() {
   let context = TestContextBuilder::new().use_temp_cwd().build();

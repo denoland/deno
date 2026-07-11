@@ -1314,7 +1314,7 @@ pub fn flags_from_vec_with_initial_cwd(
         "jupyter" => jupyter_parse(&mut flags, &mut m),
         "lint" => lint_parse(&mut flags, &mut m)?,
         "lsp" => lsp_parse(&mut flags, &mut m),
-        "sync-types" => sync_types_parse(&mut flags, &mut m),
+        "sync-types" => sync_types_parse(&mut flags, &mut m)?,
         "outdated" => outdated_parse(&mut flags, &mut m, false)?,
         "repl" => repl_parse(&mut flags, &mut m)?,
         "run" => run_parse(&mut flags, &mut m, app, false, false)?,
@@ -3797,10 +3797,15 @@ fn sync_types_subcommand() -> Command {
     cstr!(
       "Generate a <c>tsconfig.json</> and type mappings so stock TypeScript tooling (tsc, tsgo, editors) can type-check the project.
 
-Run after installing dependencies; it materializes <c>jsr:</>/<c>http(s):</> types and writes <p(245)>.deno/tsconfig.json</>."
+Run after installing dependencies; it materializes <c>jsr:</>/<c>http(s):</> types and writes <p(245)>.deno/tsconfig.json</>.
+
+Remote <c>http(s):</> types are fetched under the same import permission as <c>deno run</>: only from the trusted default hosts unless you pass <c>--allow-import</>. To materialize types imported from another host, allow it explicitly:
+  <p(245)>deno sync-types --allow-import=html.spec.whatwg.org</>"
     ),
     UnstableArgsConfig::None,
   )
+  .arg(allow_import_arg())
+  .arg(deny_import_arg())
 }
 
 fn lint_subcommand() -> Command {
@@ -7673,8 +7678,13 @@ fn lsp_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Lsp;
 }
 
-fn sync_types_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
+fn sync_types_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   flags.subcommand = DenoSubcommand::SyncTypes;
+  allow_and_deny_import_parse(flags, matches)?;
+  Ok(())
 }
 
 fn lint_parse(
@@ -8955,7 +8965,6 @@ fn unstable_args_parse(
     matches.get_flag("unstable-sloppy-imports");
   flags.unstable_config.npm_lazy_caching =
     matches.get_flag("unstable-npm-lazy-caching");
-  flags.unstable_config.tsgo = matches.get_flag("unstable-tsgo");
 
   if matches!(cfg, UnstableArgsConfig::ResolutionAndRuntime) {
     for feature in deno_runtime::UNSTABLE_FEATURES {
@@ -16721,6 +16730,35 @@ Usage: deno lint [OPTIONS] [files]...\n"
     assert_eq!(
       r.unwrap_err().to_string(),
       "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+    );
+  }
+
+  #[test]
+  fn sync_types_subcommand() {
+    let r = flags_from_vec(svec!["deno", "sync-types"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::SyncTypes,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "sync-types",
+      "--allow-import=html.spec.whatwg.org"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::SyncTypes,
+        permissions: PermissionFlags {
+          allow_import: Some(svec!["html.spec.whatwg.org"]),
+          ..Default::default()
+        },
+        ..Flags::default()
+      }
     );
   }
 
