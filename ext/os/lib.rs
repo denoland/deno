@@ -23,11 +23,6 @@ pub mod sys_info;
 
 pub use ops::signal::SignalError;
 
-// The full list of environment variables supported by Node.js is available
-// at https://nodejs.org/api/cli.html#environment-variables
-const SORTED_NODE_ENV_VAR_ALLOWLIST: [&str; 4] =
-  ["FORCE_COLOR", "NODE_DEBUG", "NODE_OPTIONS", "NO_COLOR"];
-
 #[derive(Clone, Default)]
 pub struct ExitCode(Arc<AtomicI32>);
 
@@ -253,12 +248,23 @@ fn op_env(
   let grant_all = match permissions_container.check_env_all() {
     Ok(()) => true,
     Err(PermissionCheckError::PermissionDenied(err)) => match err.state {
-      PermissionState::Granted
-      | PermissionState::Prompt
-      | PermissionState::Denied => return Err(err.into()),
       PermissionState::GrantedPartial
       | PermissionState::DeniedPartial
       | PermissionState::Ignored => false,
+      // A partial allow-list (specific variables granted without a global
+      // grant) reports the "all" query as denied non-interactively, but
+      // enumeration should still return the granted subset rather than failing
+      // the whole call. Fall through to per-variable filtering when such a
+      // grant exists; genuine no-access keeps failing as before.
+      PermissionState::Granted
+      | PermissionState::Prompt
+      | PermissionState::Denied => {
+        if permissions_container.env_has_granted_list() {
+          false
+        } else {
+          return Err(err.into());
+        }
+      }
     },
     Err(err) => return Err(err),
   };
@@ -315,11 +321,7 @@ fn op_get_env(
   state: &mut OpState,
   #[string] key: &str,
 ) -> Result<Option<String>, OsError> {
-  let skip_permission_check =
-    SORTED_NODE_ENV_VAR_ALLOWLIST.binary_search(&key).is_ok();
-
-  if !skip_permission_check && check_env_with_maybe_exit(state, key)?.is_break()
-  {
+  if check_env_with_maybe_exit(state, key)?.is_break() {
     return Ok(None);
   }
 
@@ -818,17 +820,4 @@ fn os_uptime(state: &mut OpState) -> Result<u64, PermissionCheckError> {
 #[number]
 fn op_os_uptime(state: &mut OpState) -> Result<u64, PermissionCheckError> {
   os_uptime(state)
-}
-
-#[cfg(test)]
-mod test {
-  use crate::SORTED_NODE_ENV_VAR_ALLOWLIST;
-
-  #[test]
-  fn ensure_node_env_var_list_sorted() {
-    // ensure this is sorted for binary search
-    let mut items = SORTED_NODE_ENV_VAR_ALLOWLIST.to_vec();
-    items.sort();
-    assert_eq!(items, SORTED_NODE_ENV_VAR_ALLOWLIST);
-  }
 }

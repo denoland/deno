@@ -1,0 +1,80 @@
+{
+  // The default-readable environment variable allowlist (#35950). The
+  // allowlist is applied unconditionally (no flag, no gate). Spec tests run
+  // non-interactively, so a would-be prompt surfaces as a hard NotCapable
+  // error; a step that reads a variable successfully therefore proves there
+  // was no prompt.
+  "tests": {
+    "allowlisted": {
+      // Allowlisted vars, including the LC_*, XDG_* and npm_package_config_*
+      // prefix members, read without a prompt and without any --allow-env.
+      "args": "run --quiet allowlisted.ts",
+      "envs": {
+        "TERM": "xterm-256color",
+        "LC_ALL": "en_US.UTF-8",
+        "XDG_CONFIG_HOME": "/home/user/.config",
+        "npm_package_name": "myapp"
+      },
+      "output": "allowlisted.out"
+    },
+    "deny_wins": {
+      // --deny-env=TERM removes TERM from the default grant (deny wins).
+      "args": "run --quiet --deny-env=TERM deny_term.ts",
+      "envs": {
+        "TERM": "xterm-256color"
+      },
+      "output": "deny_term.out"
+    },
+    "node_compat_readable": {
+      // The historical always-on Node compat vars (NO_COLOR here) stay readable
+      // without a prompt, now routed through the permission path.
+      "args": "run --quiet node_compat.ts",
+      "envs": {
+        "NO_COLOR": "1"
+      },
+      "output": "node_compat.out"
+    },
+    "node_compat_deny_wins": {
+      // --deny-env=NO_COLOR now makes the always-on NO_COLOR fail (deny wins),
+      // which the old skip-check bypass in op_get_env did not allow.
+      "args": "run --quiet --deny-env=NO_COLOR node_compat.ts",
+      "envs": {
+        "NO_COLOR": "1"
+      },
+      "output": "node_compat_deny.out"
+    },
+    "additive_with_allow_env": {
+      // --allow-env=APP_SECRET is additive: both APP_SECRET and the allowlisted
+      // TERM read without a prompt.
+      "args": "run --quiet --allow-env=APP_SECRET additive.ts",
+      "envs": {
+        "TERM": "xterm-256color",
+        "APP_SECRET": "shhh"
+      },
+      "output": "additive.out"
+    },
+    "secrets_still_prompt": {
+      // Credential-shaped variables are not on the allowlist and still fail
+      // non-interactively naming --allow-env. npm_config__authToken shows the
+      // npm_config_* namespace is not wildcarded.
+      "args": "run --quiet secrets.ts",
+      "envs": {
+        "AWS_SECRET_ACCESS_KEY": "shhh",
+        "npm_config__authToken": "shhh"
+      },
+      "output": "secrets.out"
+    },
+    "to_object_filters": {
+      // toObject returns only allowlisted vars present, without a prompt;
+      // secrets are absent.
+      "args": "run --quiet to_object.ts",
+      "envs": {
+        "TERM": "xterm-256color",
+        "LANG": "C",
+        "MY_APP_SECRET": "shhh",
+        "APP_TOKEN": "shhh"
+      },
+      "output": "to_object.out"
+    }
+  }
+}
