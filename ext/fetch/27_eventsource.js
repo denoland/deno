@@ -256,7 +256,7 @@ class EventSource extends EventTarget {
 
     try {
       for await (
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         const chunk of res.body.stream
           .pipeThrough(new TextDecoderStream())
           .pipeThrough(new TextLineStream({ allowCR: true }))

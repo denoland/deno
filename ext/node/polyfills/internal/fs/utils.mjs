@@ -255,22 +255,22 @@ function join(path, name) {
 
   if (typeof path === "string" && isUint8Array(name)) {
     const pathBuffer = Buffer.from(
-      // deno-lint-ignore prefer-primordials `join` is a `node:path` function
+      // deno-lint-ignore deno-internal/prefer-primordials `join` is a `node:path` function
       lazyPath().default.join(path, lazyPath().default.sep),
     );
     // Ignore lint. `concat` is a 'node:buffer' static method on `Buffer`
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     return Buffer.concat([pathBuffer, name]);
   }
 
   if (typeof path === "string" && typeof name === "string") {
-    // deno-lint-ignore prefer-primordials `join` is a `node:path` function
+    // deno-lint-ignore deno-internal/prefer-primordials `join` is a `node:path` function
     return lazyPath().default.join(path, name);
   }
 
   if (isUint8Array(path) && isUint8Array(name)) {
     // Ignore lint. `concat` is a 'node:buffer' static method on `Buffer`
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     return Buffer.concat([path, bufferSep, name]);
   }
 
@@ -915,7 +915,7 @@ export const getValidatedPathToString = (fileURLOrPath, propName) => {
     return new TextDecoder().decode(path);
   }
   if (Buffer.isBuffer(path)) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     return path.toString();
   }
   return path;

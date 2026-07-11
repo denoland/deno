@@ -298,7 +298,7 @@ function _from(value, encodingOrOffset, length) {
       return fromArrayBuffer(value, encodingOrOffset, length);
     }
 
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     const valueOf = value.valueOf && value.valueOf();
     if (
       valueOf != null &&
@@ -418,7 +418,7 @@ function _alloc(size, fill, encoding) {
         encoding,
       );
     }
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     return buffer.fill(fill, encoding);
   }
   return buffer;
@@ -477,7 +477,7 @@ function fromString(string, encoding) {
     let buf = createBuffer(length);
     const actual = buf.write(string, encoding);
     if (actual !== length) {
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       buf = buf.slice(0, actual);
     }
     return buf;
@@ -504,7 +504,7 @@ function fromArrayLike(obj) {
 }
 
 function fromObject(obj) {
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   if (obj.length !== undefined || isAnyArrayBuffer(obj.buffer)) {
     if (typeof obj.length !== "number") {
       return createBuffer(0);
@@ -633,7 +633,7 @@ function byteLength(string, encoding) {
     }
     if (isSharedArrayBuffer(string)) {
       // TODO(petamoriken): add SharedArayBuffer to primordials
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       return string.byteLength;
     }
 
@@ -806,7 +806,7 @@ Buffer.prototype.toString = function toString(encoding, start, end) {
     throw new codes.ERR_UNKNOWN_ENCODING(encoding);
   }
 
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   return ops.slice(this, start, end);
 };
 
@@ -973,7 +973,7 @@ function bidirectionalIndexOf(buffer, val, byteOffset, encoding, dir) {
   }
   byteOffset = +byteOffset;
   if (NumberIsNaN(byteOffset)) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     byteOffset = dir ? 0 : (buffer.length || buffer.byteLength);
   }
   dir = !!dir;
@@ -993,7 +993,7 @@ function bidirectionalIndexOf(buffer, val, byteOffset, encoding, dir) {
     if (ops === undefined) {
       throw new codes.ERR_UNKNOWN_ENCODING(encoding);
     }
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     return ops.indexOf(buffer, val, byteOffset, dir);
   }
 
@@ -1033,11 +1033,11 @@ Buffer.prototype.asciiSlice = function asciiSlice(offset, length) {
 };
 
 Buffer.prototype.asciiWrite = function asciiWrite(string, offset, length) {
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   if (offset < 0 || offset > this.byteLength) {
     throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
   }
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   if (length < 0 || length > this.byteLength - offset) {
     throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("length");
   }
@@ -1124,11 +1124,11 @@ Buffer.prototype.latin1Write = function latin1Write(
   offset,
   length,
 ) {
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   if (offset < 0 || offset > this.byteLength) {
     throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
   }
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   if (length < 0 || length > this.byteLength - offset) {
     throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("length");
   }
@@ -1160,11 +1160,11 @@ function utf8Slice(start, end) {
 }
 
 Buffer.prototype.utf8Write = function utf8Write(string, offset, length) {
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   if (offset < 0 || offset > this.byteLength) {
     throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
   }
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   if (length < 0 || length > this.byteLength - offset) {
     throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("length");
   }
@@ -1255,7 +1255,7 @@ function fromArrayBuffer(obj, byteOffset, length) {
     }
   }
 
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   const maxLength = obj.byteLength - byteOffset;
 
   if (maxLength < 0) {
@@ -2781,7 +2781,7 @@ function _copyActual(
   }
 
   if (sourceStart !== 0 || sourceEnd < source.length) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     source = new Uint8Array(source.buffer, source.byteOffset + sourceStart, nb);
   }
 

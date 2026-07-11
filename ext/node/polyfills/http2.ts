@@ -941,7 +941,7 @@ function doStreamClose(stream, code) {
     stream.on("end", stream[kMaybeDestroy]);
     // Push a null so the stream can end whenever the client consumes
     // it completely.
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     stream.push(null);
 
     // If the user hasn't tried to consume the stream (and this is a server
@@ -1590,7 +1590,7 @@ function onSessionHeaders(
         });
       }
       if (endOfStream) {
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         stream.push(null);
       }
       if (obj[HTTP2_HEADER_METHOD] === HTTP2_METHOD_HEAD) {
@@ -1615,7 +1615,7 @@ function onSessionHeaders(
         });
       }
       if (endOfStream) {
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         stream.push(null);
       }
       stream.end();
@@ -1692,7 +1692,7 @@ function onSessionHeaders(
     }
   }
   if (endOfStream) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     stream.push(null);
   }
 }
@@ -1908,7 +1908,7 @@ function finishCloseStream(code) {
   // ensure that the RST_STREAM frame is sent after the stream ID has
   // been determined.
   if (this.pending) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     this.push(null);
     this.once("ready", rstStreamFn);
     return;
@@ -2049,7 +2049,7 @@ class Http2Stream extends Duplex {
     };
     handle.writev = function (req, chunks, allBuffers) {
       const count = allBuffers ? chunks.length : chunks.length >> 1;
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       const buffers = new Array(count);
       if (!allBuffers) {
         for (let i = 0; i < count; i++) {
@@ -2066,7 +2066,7 @@ class Http2Stream extends Duplex {
           buffers[i] = chunks[i];
         }
       }
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       return handle.writeBuffer(req, Buffer.concat(buffers));
     };
     handle.writeLatin1String = function (req, data) {
@@ -2430,7 +2430,7 @@ class Http2Stream extends Duplex {
 
   _read(nread) {
     if (this.destroyed) {
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       this.push(null);
       return;
     }
@@ -2547,7 +2547,7 @@ class Http2Stream extends Duplex {
     if (!this.closed) {
       closeStream(this, code, hasHandle ? kForceRstStream : kNoRstStream);
     }
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     this.push(null);
 
     if (hasHandle) {
@@ -2832,7 +2832,7 @@ function processRespondWithFD(
         return;
       }
       if (seekable) pos += bytesRead;
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       const chunk = buf.slice(0, bytesRead);
       self.write(chunk, readAndWrite);
     });
@@ -3104,7 +3104,7 @@ class ServerHttp2Stream extends Http2Stream {
     const stream = new ServerHttp2Stream(session, ret, id, options, headers);
     stream[kSentHeaders] = headers;
 
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     stream.push(null);
 
     if (options.endStream) {
@@ -3601,9 +3601,9 @@ function setupHandle(socket, type, options) {
       const closeCode = goawayCode === NGHTTP2_FLOW_CONTROL_ERROR
         ? NGHTTP2_FLOW_CONTROL_ERROR
         : NGHTTP2_CANCEL;
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       state.streams.forEach((stream) => stream.close(closeCode));
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       state.pendingStreams.forEach((stream) => stream.close(NGHTTP2_CANCEL));
       if (!session.closed) {
         session.close();
@@ -3809,9 +3809,9 @@ function closeSession(session, code, error) {
   // the GOAWAY above to preserve wire order.
   if (state.pendingStreams.size > 0 || state.streams.size > 0) {
     const cancel = new ERR_HTTP2_STREAM_CANCEL(error);
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     state.pendingStreams.forEach((stream) => stream.destroy(cancel));
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     state.streams.forEach((stream) => stream.destroy(error));
   }
 
@@ -3856,9 +3856,9 @@ function socketOnClose() {
     debugSessionObj(session, "socket closed");
     const err = session.connecting ? new ERR_SOCKET_CLOSED() : null;
     const state = session[kState];
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     state.streams.forEach((stream) => stream.close(NGHTTP2_CANCEL));
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     state.pendingStreams.forEach((stream) => stream.close(NGHTTP2_CANCEL));
     session.close();
     // Route through kMaybeDestroy -> destroy(err) so the `if (this.destroyed)`
@@ -5052,7 +5052,7 @@ function onErrorSecureServerSession(err, socket) {
 function closeAllSessions(server) {
   const sessions = server[kSessions];
   if (sessions.size > 0) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     for (const session of sessions) {
       session.close();
     }
@@ -5441,7 +5441,7 @@ const SETTING_ID_TO_NAME = new SafeMap([
 
 function getUnpackedSettings(buf) {
   if (
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     !Buffer.isBuffer(buf) &&
     !(ArrayBufferIsView(buf) && !(buf instanceof DataView))
   ) {
@@ -5451,7 +5451,7 @@ function getUnpackedSettings(buf) {
     ], buf);
   }
   if (!Buffer.isBuffer(buf)) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     buf = Buffer.from(buf);
   }
   if (buf.length % 6 !== 0) {

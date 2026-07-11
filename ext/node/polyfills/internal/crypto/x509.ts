@@ -290,7 +290,7 @@ class X509Certificate {
   }
 
   toJSON(): string {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     return this.toString();
   }
 

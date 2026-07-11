@@ -1043,7 +1043,7 @@ function createAsyncIterableConverter(converter) {
           asyncIterator = {
             // deno-lint-ignore require-await
             async next() {
-              // deno-lint-ignore prefer-primordials
+              // deno-lint-ignore deno-internal/prefer-primordials
               return iter.next();
             },
           };
@@ -1051,7 +1051,7 @@ function createAsyncIterableConverter(converter) {
 
         return {
           async next() {
-            // deno-lint-ignore prefer-primordials
+            // deno-lint-ignore deno-internal/prefer-primordials
             const iterResult = await asyncIterator.next();
             if (type(iterResult) !== "Object") {
               throw TypeError(
@@ -1079,7 +1079,7 @@ function createAsyncIterableConverter(converter) {
               return undefined;
             }
 
-            // deno-lint-ignore prefer-primordials
+            // deno-lint-ignore deno-internal/prefer-primordials
             const returnPromiseResult = await asyncIterator.return(reason);
             if (type(returnPromiseResult) !== "Object") {
               throw TypeError(

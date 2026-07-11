@@ -25,7 +25,7 @@ const { isNativeError } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );
 
-// deno-lint-ignore prefer-primordials
+// deno-lint-ignore deno-internal/prefer-primordials
 const AtomicsWait = Atomics.wait;
 
 const {
@@ -275,9 +275,9 @@ let _sleepView;
 
 function sleep(msec) {
   if (_sleepView === undefined) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     const buffer = new SharedArrayBuffer(4);
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     _sleepView = new Int32Array(buffer);
   }
   AtomicsWait(_sleepView, 0, 0, msec);

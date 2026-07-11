@@ -76,7 +76,7 @@ function _construct(callback) {
     stream.open();
   } else {
     const streamPath = Buffer.isBuffer(stream.path)
-      // deno-lint-ignore prefer-primordials uses `toString` method from `node:buffer`
+      // deno-lint-ignore deno-internal/prefer-primordials uses `toString` method from `node:buffer`
       ? stream.path.toString()
       : StringPrototypeToString(stream.path);
     stream[kFs].open(
@@ -114,7 +114,7 @@ const FileHandleOperations = (handle) => {
     read: (_fd, buf, offset, length, pos, cb) => {
       PromisePrototypeThen(
         handle.read(buf, offset, length, pos),
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         (r) => cb(null, r.bytesRead, r.buffer),
         (err) => cb(err, 0, buf),
       );
@@ -122,7 +122,7 @@ const FileHandleOperations = (handle) => {
     write: (_fd, buf, offset, length, pos, cb) => {
       PromisePrototypeThen(
         handle.write(buf, offset, length, pos),
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         (r) => cb(null, r.bytesWritten, r.buffer),
         (err) => cb(err, 0, buf),
       );
@@ -277,7 +277,7 @@ ReadStream.prototype._read = async function (n) {
 
   if (n <= 0) {
     // Ignore lint. The `push` method is inherited from the `stream.Readable` class.
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     this.push(null);
     return;
   }
@@ -337,11 +337,11 @@ ReadStream.prototype._read = async function (n) {
     }
 
     // Ignore lint. The `push` method is inherited from the `stream.Readable` class.
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     this.push(buffer);
   } else {
     // Ignore lint. The `push` method is inherited from the `stream.Readable` class.
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     this.push(null);
   }
 };

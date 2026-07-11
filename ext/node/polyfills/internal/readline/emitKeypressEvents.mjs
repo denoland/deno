@@ -62,11 +62,11 @@ function emitKeypressEvents(stream, iface = { __proto__: null }) {
   stream[KEYPRESS_DECODER] = new StringDecoder("utf8");
 
   stream[ESCAPE_DECODER] = emitKeys(stream);
-  // deno-lint-ignore prefer-primordials -- generator object, not an array
+  // deno-lint-ignore deno-internal/prefer-primordials -- generator object, not an array
   stream[ESCAPE_DECODER].next();
 
   const triggerEscape = () =>
-    // deno-lint-ignore prefer-primordials -- generator object, not an array
+    // deno-lint-ignore deno-internal/prefer-primordials -- generator object, not an array
     stream[ESCAPE_DECODER].next("");
   const { escapeCodeTimeout = ESCAPE_CODE_TIMEOUT } = iface;
   let timeoutId;
@@ -89,7 +89,7 @@ function emitKeypressEvents(stream, iface = { __proto__: null }) {
           }
 
           try {
-            // deno-lint-ignore prefer-primordials -- generator object, not an array
+            // deno-lint-ignore deno-internal/prefer-primordials -- generator object, not an array
             stream[ESCAPE_DECODER].next(character);
             // Escape letter at the tail position
             if (length === string.length && character === kEscape) {
@@ -102,7 +102,7 @@ function emitKeypressEvents(stream, iface = { __proto__: null }) {
             // If the generator throws (it could happen in the `keypress`
             // event), we need to restart it.
             stream[ESCAPE_DECODER] = emitKeys(stream);
-            // deno-lint-ignore prefer-primordials -- generator object, not an array
+            // deno-lint-ignore deno-internal/prefer-primordials -- generator object, not an array
             stream[ESCAPE_DECODER].next();
             throw err;
           }
