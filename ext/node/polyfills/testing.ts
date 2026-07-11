@@ -848,14 +848,29 @@ class TapContext {
   }
 }
 
+// Lazily pull in `nextTick` so we schedule the top-level run the same way Node
+// does. Loaded on first use to avoid circular init during snapshot build.
+let _nextTick = null;
+function getNextTick() {
+  if (_nextTick === null) {
+    _nextTick = core.loadExtScript("ext:deno_node/_next_tick.ts").nextTick;
+  }
+  return _nextTick;
+}
+
 function scheduleTapRun() {
   if (tapRunScheduled) return;
   tapRunScheduled = true;
-  // Defer to the macrotask queue so synchronous top-level test() calls finish
-  // queueing before we start running.
-  setTimeout(() => {
+  // Defer to a process.nextTick so synchronous top-level test() calls finish
+  // queueing before we start running, while still starting before any
+  // process.nextTick / setImmediate callbacks that synchronous code queues
+  // *after* the test() declaration — matching Node, where a top-level test
+  // body runs before those (denoland/deno#35608). A macrotask (setTimeout)
+  // would run after them; a microtask would run too early and miss tests
+  // registered from an awaited top-level. nextTick lands in between.
+  getNextTick()(() => {
     runTapTop();
-  }, 0);
+  });
 }
 
 async function runTapTop() {
