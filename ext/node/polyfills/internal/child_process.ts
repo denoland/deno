@@ -2783,8 +2783,9 @@ function setupChannel(
         ObjectPrototypeIsPrototypeOf(Deno.errors.ConnectionReset.prototype, err)
       ) {
         // Channel torn down from under us; release any handles awaiting an
-        // ACK that will now never arrive so they don't keep us alive.
-        cleanupPendingHandles();
+        // ACK that will now never arrive so they don't keep us alive, and
+        // surface the teardown as a `disconnect` the way Node does.
+        destroyChannel();
         return;
       }
       nextTick(() => target.emit("error", err));
@@ -2930,6 +2931,38 @@ function setupChannel(
       target.emit("disconnect");
     });
   };
+
+  // The IPC channel was torn down from under us (the peer exited or was
+  // killed) rather than closed via an explicit `disconnect()`/CLOSE handshake.
+  // Node still surfaces this as a `disconnect` on the ChildProcess, so emit it
+  // here instead of silently returning -- otherwise consumers like cluster,
+  // whose primary emits its own `disconnect` in response to the child
+  // process's, never learn the worker went away (e.g. a worker that calls
+  // `.destroy()` on itself). Guarded against `connected` so a teardown that
+  // races an explicit `disconnect()` does not double-emit, and defensive
+  // around the ops since the underlying channel/fd is already dead.
+  function destroyChannel() {
+    cleanupPendingHandles();
+    if (!target.connected) {
+      return;
+    }
+    target.connected = false;
+    target[kCanDisconnect] = false;
+    try {
+      control[kControlDisconnect]();
+    } catch {
+      // Channel already gone; nothing to unref.
+    }
+    nextTick(() => {
+      target.channel = null;
+      try {
+        core.close(ipc);
+      } catch {
+        // The underlying fd is already closed.
+      }
+      target.emit("disconnect");
+    });
+  }
   target[kCanDisconnect] = true;
 
   // Start reading messages from the channel.
