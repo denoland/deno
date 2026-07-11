@@ -2736,14 +2736,26 @@ function setupChannel(
             // Channel closed.
             target.disconnect();
             return;
-          } else if (cmd === "HANDLE" && typeof rawFd === "number") {
+          } else if (cmd === "HANDLE") {
             if (serialization === "json") {
               restorePrototype(msg);
             }
-            // Acknowledge receipt so the sender can close its local copy.
+            // Acknowledge receipt so the sender can close its local copy and
+            // drain its send queue. Node ACKs *every* NODE_HANDLE message; we
+            // must too, even when the descriptor did not come across (rawFd is
+            // not a number). Otherwise the sender waits forever for an ACK that
+            // never arrives -- and any message queued behind that handle (e.g.
+            // cluster's `exitedAfterDisconnect`, whose callback triggers
+            // `process.disconnect()`) is stranded, deadlocking teardown. This
+            // is what hung `test-cluster-send-deadlock`: a worker forwards a
+            // received socket back to the primary, and on that second hop the
+            // fd does not transfer, so the message arrived here with no fd.
             sendHandleAck();
-            const handle = createIpcHandle(msg, rawFd);
+            const handle = typeof rawFd === "number"
+              ? createIpcHandle(msg, rawFd)
+              : null;
             if (
+              handle !== null &&
               msg.socketListKey &&
               ObjectPrototypeIsPrototypeOf(Socket.prototype, handle)
             ) {
