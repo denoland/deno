@@ -864,7 +864,7 @@ function scheduleTapRun() {
   // Defer to a process.nextTick so synchronous top-level test() calls finish
   // queueing before we start running, while still starting before any
   // process.nextTick / setImmediate callbacks that synchronous code queues
-  // *after* the test() declaration — matching Node, where a top-level test
+  // *after* the test() declaration, matching Node, where a top-level test
   // body runs before those (denoland/deno#35608). A macrotask (setTimeout)
   // would run after them; a microtask would run too early and miss tests
   // registered from an awaited top-level. nextTick lands in between.
