@@ -113,6 +113,12 @@ pub struct OpenDevtoolsOptions {
   pub deno: Option<bool>,
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrintToPdfOptions {
+  pub path: Option<String>,
+}
+
 /// A single event type that flows from the laufey backend to the Deno runtime.
 #[derive(Debug, serde::Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -321,6 +327,10 @@ pub trait DesktopApi: Send + Sync + 'static {
   /// `transparent` gives the window a transparent background so the page's own
   /// alpha composites against whatever is behind the window. These are all
   /// creation-time properties and cannot be changed afterwards.
+  /// `hidden` creates the window without showing it, so an app can drive a
+  /// window off-screen (e.g. a headless print-to-PDF flow) and reveal it
+  /// later with `show`, or never at all.
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   fn create_window(
     &self,
     width: i32,
@@ -329,6 +339,7 @@ pub trait DesktopApi: Send + Sync + 'static {
     no_activate: bool,
     transparent_titlebar: bool,
     transparent: bool,
+    hidden: bool,
   ) -> u32;
   /// Close a specific window.
   fn close_window(&self, window_id: u32);
@@ -400,6 +411,18 @@ pub trait DesktopApi: Send + Sync + 'static {
     callback: Box<
       dyn FnOnce(Result<DesktopValue, DesktopValue>) + Send + 'static,
     >,
+  );
+
+  /// Render the window's current page to a PDF. Always resolves the PDF
+  /// bytes; when `path` is `Some`, those same bytes are additionally written
+  /// to that file before the callback fires. Errors — including "unsupported
+  /// by this backend" — flow through the callback's `Err`. Async like
+  /// `execute_js`: the callback runs once the backend completes.
+  fn print_to_pdf(
+    &self,
+    window_id: u32,
+    path: Option<String>,
+    callback: Box<dyn FnOnce(Result<Vec<u8>, String>) + Send + 'static>,
   );
 
   fn alert(&self, title: &str, message: &str);
@@ -554,12 +577,25 @@ impl BrowserWindow {
       .expect("desktop mode enabled")
       .clone();
 
+    let visible = options.as_ref().and_then(|o| o.visible).unwrap_or(true);
+
     // Use the initial window if this is the first BrowserWindow,
     // otherwise create a new one.
-    let window_id = state
+    let window_id = match state
       .try_borrow::<InitialWindowId>()
       .and_then(|iw| iw.0.lock().unwrap().take())
-      .unwrap_or_else(|| {
+    {
+      // First BrowserWindow: reuse the pre-created initial window. That window
+      // is created hidden and auto-revealed once its first navigation paints;
+      // honor `{ visible: false }` by hiding it now, which also flags it so the
+      // deferred reveal does not override the app's intent.
+      Some(id) => {
+        if !visible {
+          api.hide(id);
+        }
+        id
+      }
+      None => {
         let width = options.as_ref().and_then(|o| o.width).unwrap_or(800);
         let height = options.as_ref().and_then(|o| o.height).unwrap_or(600);
         let frameless =
@@ -583,8 +619,10 @@ impl BrowserWindow {
           no_activate,
           transparent_titlebar,
           transparent,
+          !visible,
         )
-      });
+      }
+    };
 
     // Default the window title to the app name when the app doesn't set one,
     // so the window shows e.g. "MyApp" instead of the backend's internal
@@ -800,6 +838,28 @@ impl BrowserWindow {
     Ok(ExecuteJsResult(result))
   }
 
+  async fn print_to_pdf(
+    &self,
+    #[serde] options: Option<PrintToPdfOptions>,
+  ) -> Result<DesktopValue, deno_error::JsErrorBox> {
+    let path = options.and_then(|o| o.path);
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    self.api.print_to_pdf(
+      self.window_id,
+      path,
+      Box::new(move |result| {
+        let _ = tx.send(result);
+      }),
+    );
+    let result = rx.await.map_err(|_| {
+      deno_error::JsErrorBox::generic("print_to_pdf callback dropped")
+    })?;
+    match result {
+      Ok(bytes) => Ok(DesktopValue::Binary(bytes)),
+      Err(message) => Err(deno_error::JsErrorBox::generic(message)),
+    }
+  }
+
   fn set_application_menu(&self, #[serde] menu: Vec<MenuItem>) {
     self.api.set_application_menu(self.window_id, menu);
   }
@@ -885,6 +945,7 @@ struct BrowserWindowOptions {
   no_activate: Option<bool>,
   transparent_titlebar: Option<bool>,
   transparent: Option<bool>,
+  visible: Option<bool>,
 }
 
 #[derive(Clone, Debug, serde::Deserialize)]

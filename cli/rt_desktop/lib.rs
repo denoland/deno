@@ -57,6 +57,11 @@ struct WefDesktopApi {
   /// IDs of every window currently displayed. Shared with the HMR reload
   /// callback so it can refresh all windows, not just the initial one.
   open_windows: Arc<Mutex<HashSet<u32>>>,
+  /// Windows the app has explicitly hidden (via `hide` or `{ visible: false }`)
+  /// and not re-shown. The initial window's deferred first-paint reveal
+  /// consults this so it never overrides an app-requested hide. Shared with the
+  /// navigate fallback for the same reason.
+  hidden_by_app: Arc<Mutex<HashSet<u32>>>,
   trays: Arc<Mutex<HashMap<u32, laufey::TrayIcon>>>,
   notifications: Arc<Mutex<HashMap<u32, laufey::NotificationHandle>>>,
   /// Singleton for the unified-mux DevTools window. Without this, every
@@ -237,9 +242,14 @@ impl WefDesktopApi {
     // Reveal the window once content has painted. `on_page_load` fires for
     // every completed navigation, but we only want to show it the first time;
     // later in-app navigations must not re-show a window the app has hidden.
+    // Skip the reveal entirely when the app requested `{ visible: false }`
+    // (recorded in `hidden_by_app`), so a start-hidden window stays hidden.
     let shown = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let hidden_by_app = self.hidden_by_app.clone();
     window.on_page_load(move |ev| {
-      if !shown.swap(true, Ordering::AcqRel) {
+      if !shown.swap(true, Ordering::AcqRel)
+        && !hidden_by_app.lock().unwrap().contains(&ev.window_id)
+      {
         laufey::Window::from_id(ev.window_id).show();
       }
     });
@@ -258,6 +268,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     no_activate: bool,
     transparent_titlebar: bool,
     transparent: bool,
+    hidden: bool,
   ) -> u32 {
     let window = laufey::Window::new_with_options(
       width,
@@ -266,13 +277,18 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
         frameless,
         no_activate,
         transparent_titlebar,
-        hidden: false,
+        hidden,
         transparent,
       },
     );
     let window = self.setup_window_events(window);
     let id = window.id();
     self.open_windows.lock().unwrap().insert(id);
+    // A window created with `{ visible: false }` must stay hidden: record it so
+    // the deferred first-paint reveal in `setup_window_events` does not show it.
+    if hidden {
+      self.hidden_by_app.lock().unwrap().insert(id);
+    }
     id
   }
 
@@ -335,10 +351,12 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
   }
 
   fn show(&self, window_id: u32) {
+    self.hidden_by_app.lock().unwrap().remove(&window_id);
     laufey::Window::from_id(window_id).show();
   }
 
   fn hide(&self, window_id: u32) {
+    self.hidden_by_app.lock().unwrap().insert(window_id);
     laufey::Window::from_id(window_id).hide();
   }
 
@@ -403,6 +421,15 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
         });
       }),
     );
+  }
+
+  fn print_to_pdf(
+    &self,
+    window_id: u32,
+    path: Option<String>,
+    callback: Box<dyn FnOnce(Result<Vec<u8>, String>) + Send + 'static>,
+  ) {
+    laufey::Window::from_id(window_id).print_to_pdf(path.as_deref(), callback);
   }
 
   fn bind(&self, window_id: u32, name: &str) {
@@ -1702,6 +1729,14 @@ async fn run_desktop(
   let open_windows_for_api = open_windows.clone();
   let open_windows_for_hmr = open_windows.clone();
 
+  // Windows the app hid via `hide` / `{ visible: false }`. Shared with the
+  // WefDesktopApi below and the navigate fallback so neither the deferred
+  // first-paint reveal nor the fallback show override an app-hidden window.
+  let hidden_by_app: Arc<Mutex<HashSet<u32>>> =
+    Arc::new(Mutex::new(HashSet::new()));
+  let hidden_by_app_for_api = hidden_by_app.clone();
+  let hidden_by_app_for_navigate = hidden_by_app.clone();
+
   let hmr_on_reload: Option<denort::hmr::HmrReloadCallback> =
     if hmr_watch_dir.is_some() && !is_framework_dev {
       Some(Box::new(move || {
@@ -1769,6 +1804,7 @@ async fn run_desktop(
         pending_responses: pending_responses.clone(),
         closed_windows: Arc::new(Mutex::new(HashSet::new())),
         open_windows: open_windows_for_api.clone(),
+        hidden_by_app: hidden_by_app_for_api.clone(),
         trays: Arc::new(Mutex::new(HashMap::new())),
         notifications: Arc::new(Mutex::new(HashMap::new())),
         devtools_window: Mutex::new(None),
@@ -1920,9 +1956,13 @@ async fn run_desktop(
     // `on_page_load` handler the moment content paints. If that load never
     // finishes (e.g. the initial navigation errors), fall back to showing it
     // anyway so the user isn't left with no window at all. `show()` is
-    // idempotent, so racing the on_page_load reveal is harmless.
+    // idempotent, so racing the on_page_load reveal is harmless. Skip the
+    // fallback when the app requested `{ visible: false }` so a start-hidden
+    // window is never force-shown.
     tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-    laufey::Window::from_id(id).show();
+    if !hidden_by_app_for_navigate.lock().unwrap().contains(&id) {
+      laufey::Window::from_id(id).show();
+    }
   };
 
   // Hold the JoinHandle so we can abort it when the runtime / Laufey
