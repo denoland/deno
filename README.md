@@ -12,6 +12,8 @@
 defaults and a great developer experience. It's built on [V8](https://v8.dev/),
 [Rust](https://www.rust-lang.org/), and [Tokio](https://tokio.rs/).
 
+> **Tip:** Deno supports [90% of Node.js modules](https://docs.deno.com/runtime/manual/nodejs/compatibility) and npm packages out of the box.
+
 Learn more about the Deno runtime
 [in the documentation](https://docs.deno.com/runtime/manual).
 
