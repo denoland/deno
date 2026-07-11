@@ -1,0 +1,37 @@
+{
+  // The per-package npm read scoping property of the relaxed default profile.
+  // Under the profile, read is confined to the cwd and the OS temp dir, and a
+  // managed npm package's folder becomes readable only once the program imports
+  // that package. This proves a cached-but-unimported sibling package stays
+  // unreadable.
+  //
+  // Unix only: the test moves the temp read grant off DENO_DIR by redirecting
+  // TMPDIR, and `std::env::temp_dir` honors TMPDIR on unix but TMP/TEMP on
+  // Windows.
+  "tempDir": true,
+  "envs": {
+    "DENO_UNSTABLE_RELAXED_PERMISSIONS": "1"
+  },
+  "tests": {
+    "npm_read_scoped_to_imported_package": {
+      "if": "unix",
+      "steps": [
+        {
+          // setup runs with -A (profile off) to cache both packages into
+          // DENO_DIR and record B's bundled data-file path. DENO_DIR is a
+          // sibling of the cwd under the OS temp root.
+          "args": "run --quiet -A setup.ts",
+          "output": "setup.out"
+        },
+        {
+          // TMPDIR is redirected to a subdir of the cwd so the temp read grant
+          // cannot cover DENO_DIR. Importing A grants read on A's folder; B
+          // stays cached but ungranted, so reading B's bundled file is denied.
+          "args": "run --quiet --cached-only main.ts",
+          "envs": { "TMPDIR": "$PWD/tmpgrant" },
+          "output": "main.out"
+        }
+      ]
+    }
+  }
+}

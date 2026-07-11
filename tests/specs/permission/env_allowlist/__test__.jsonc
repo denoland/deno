@@ -13,7 +13,10 @@
         "TERM": "xterm-256color",
         "LC_ALL": "en_US.UTF-8",
         "XDG_CONFIG_HOME": "/home/user/.config",
-        "npm_package_name": "myapp"
+        "npm_package_name": "myapp",
+        "DEBUG_MYAPP": "1",
+        "GITHUB_ACTIONS": "true",
+        "_": "/usr/bin/deno"
       },
       "output": "allowlisted.out"
     },
@@ -33,7 +36,9 @@
       "envs": {
         "DENO_UNSTABLE_RELAXED_PERMISSIONS": "1",
         "AWS_SECRET_ACCESS_KEY": "shhh",
-        "npm_config__authToken": "shhh"
+        "npm_config__authToken": "shhh",
+        "GITHUB_TOKEN": "shhh",
+        "APP_SECRET": "shhh"
       },
       "output": "secrets.out"
     },
@@ -49,6 +54,19 @@
         "APP_TOKEN": "shhh"
       },
       "output": "to_object.out"
+    },
+    "strict_always_on_four": {
+      // gate off (strict default): all four always-on Node compat variables
+      // (FORCE_COLOR, NODE_DEBUG, NODE_OPTIONS, NO_COLOR) read without a prompt
+      "args": "run --quiet always_on.ts",
+      "envs": {
+        "DENO_UNSTABLE_RELAXED_PERMISSIONS": "0",
+        "FORCE_COLOR": "",
+        "NODE_DEBUG": "",
+        "NODE_OPTIONS": "",
+        "NO_COLOR": "1"
+      },
+      "output": "always_on.out"
     },
     "strict_always_on_readable": {
       // gate off (strict default): the always-on NO_COLOR stays readable

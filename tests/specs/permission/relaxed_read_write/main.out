@@ -1,6 +1,8 @@
 read cwd: ok
+read/write nested cwd: ok
 read temp: ok
 read outside: NotCapable --allow-read
 write cwd: ok
 write .git: NotCapable --allow-write
+write .git config: NotCapable --allow-write
 write elsewhere: ok

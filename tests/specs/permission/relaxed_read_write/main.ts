@@ -7,6 +7,12 @@ Deno.writeTextFileSync("./inside.txt", "data");
 Deno.readTextFileSync("./inside.txt");
 console.log("read cwd: ok");
 
+// read/write: a nested subdirectory of the cwd is covered by the cwd grant
+Deno.mkdirSync("./nested/deep", { recursive: true });
+Deno.writeTextFileSync("./nested/deep/file.txt", "data");
+Deno.readTextFileSync("./nested/deep/file.txt");
+console.log("read/write nested cwd: ok");
+
 // read: a file inside the OS temp directory is readable
 const tempFile = Deno.makeTempFileSync();
 Deno.readTextFileSync(tempFile);
@@ -34,6 +40,15 @@ try {
 } catch (err) {
   const named = err.message.includes("--allow-write") ? "--allow-write" : "?";
   console.log(`write .git: ${err.name} ${named}`);
+}
+
+// write: a direct .git/config write is denied by the same lexical .git deny
+try {
+  Deno.writeTextFileSync("./.git/config", "[core]\n");
+  console.log("write .git config: UNEXPECTEDLY ALLOWED");
+} catch (err) {
+  const named = err.message.includes("--allow-write") ? "--allow-write" : "?";
+  console.log(`write .git config: ${err.name} ${named}`);
 }
 
 // write: a file elsewhere in the cwd still succeeds

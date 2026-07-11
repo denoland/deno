@@ -1,0 +1,2 @@
+A read own data: package A bundled data
+B read: NotCapable --allow-read

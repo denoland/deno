@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "@denotest/relaxed-pkg-a": "npm:@denotest/relaxed-pkg-a@1.0.0",
+    "@denotest/relaxed-pkg-b": "npm:@denotest/relaxed-pkg-b@1.0.0"
+  }
+}

@@ -1,1 +1,1 @@
-worker read: ok, worker fetch: NotCapable
+worker read: ok, worker read outside: NotCapable, worker env: ok, worker fetch: NotCapable

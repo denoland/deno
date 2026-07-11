@@ -1,0 +1,4 @@
+FORCE_COLOR: readable
+NODE_DEBUG: readable
+NODE_OPTIONS: readable
+NO_COLOR: readable
