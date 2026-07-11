@@ -944,7 +944,7 @@ fn resolve_jsr_types_entry_for_config(
   }
 }
 
-fn resolve_package_source_entry_path(
+pub fn resolve_package_source_entry_path(
   pkg_dir: &Path,
   export_key: &str,
 ) -> Option<PathBuf> {

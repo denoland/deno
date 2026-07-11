@@ -117,8 +117,9 @@ fn dependency_project_paths(
   let export_keys =
     crate::tsc::tsconfig_gen::package_export_keys(dependency_folder);
   if export_keys.is_empty() {
-    // No `exports` map to consult: fall back to a literal subpath wildcard so
-    // `dep/subpath` still resolves to `folder/subpath`.
+    // No subpath exports to consult (root-only or no `exports` map): fall back
+    // to a literal subpath wildcard so `dep/subpath` still resolves to
+    // `folder/subpath`.
     paths.insert(format!("{alias}/*"), json!([format!("{folder}/*")]));
     return paths;
   }
@@ -133,6 +134,13 @@ fn dependency_project_paths(
         dependency_folder,
         &exp_key,
       )
+      .filter(|p| p.exists())
+      .or_else(|| {
+        crate::tsc::tsconfig_gen::resolve_package_source_entry_path(
+          dependency_folder,
+          &exp_key,
+        )
+      })
     else {
       continue;
     };
@@ -1411,7 +1419,11 @@ mod tests {
   fn test_dependency_project_paths_resolves_subpath_exports() {
     let dir = tempfile::tempdir().unwrap();
     let pkg_dir = dir.path().join("dep");
-    std::fs::create_dir_all(pkg_dir.join("dist")).unwrap();
+    std::fs::create_dir_all(pkg_dir.join("dist/nested")).unwrap();
+    // The resolved declaration must exist on disk (dependency_project_paths
+    // verifies existence before mapping, falling back to source otherwise).
+    std::fs::write(pkg_dir.join("dist/index.d.ts"), "").unwrap();
+    std::fs::write(pkg_dir.join("dist/nested/subpath.d.ts"), "").unwrap();
     std::fs::write(
       pkg_dir.join("package.json"),
       serde_json::to_string(&json!({
