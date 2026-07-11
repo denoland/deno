@@ -1,10 +1,26 @@
-// Relaxed default permission profile (gate on, no flags): read is allowed
-// everywhere, write is allowed under the cwd and the OS temp directory, and
-// env is allowed. net stays gated (see net.ts).
+// Relaxed default permission profile (gate on, no flags): read and write are
+// both confined to the cwd and the OS temp directory, and env is allowed. net
+// stays gated (see net.ts).
 
-// read a file outside the cwd (the deno executable)
-Deno.readFileSync(Deno.execPath());
-console.log("read outside cwd: ok");
+// read a file inside the cwd
+Deno.writeTextFileSync("./readable.txt", "data");
+Deno.readTextFileSync("./readable.txt");
+console.log("read cwd: ok");
+
+// read a file inside the OS temp directory
+const tempRead = Deno.makeTempFileSync();
+Deno.readTextFileSync(tempRead);
+console.log("read temp: ok");
+
+// read a file outside the cwd and the temp directory (the deno executable) is
+// denied
+try {
+  Deno.readFileSync(Deno.execPath());
+  console.log("read outside: UNEXPECTEDLY ALLOWED");
+} catch (err) {
+  const named = err.message.includes("--allow-read") ? "--allow-read" : "?";
+  console.log(`read outside: ${err.name} ${named}`);
+}
 
 // write inside the cwd
 Deno.writeTextFileSync("./in_cwd.txt", "data");

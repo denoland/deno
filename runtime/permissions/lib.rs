@@ -4022,6 +4022,25 @@ impl PermissionsContainer {
     }
   }
 
+  /// Grants read access to `path` and everything beneath it by inserting a
+  /// granted read descriptor built with the container's descriptor parser.
+  /// Used by the unstable relaxed default permission profile to widen read to
+  /// this program's own resolved npm package folders without opening the whole
+  /// global cache. This is a real grant, so existing deny descriptors still
+  /// take precedence over it.
+  pub fn grant_read_path(&self, path: &Path) -> Result<(), PathResolveError> {
+    let desc = self
+      .descriptor_parser
+      .parse_read_descriptor(&path.to_string_lossy())?;
+    self
+      .inner
+      .lock()
+      .read
+      .descriptors
+      .insert(UnaryPermissionDesc::Granted(desc));
+    Ok(())
+  }
+
   pub fn allow_all(
     descriptor_parser: Arc<dyn PermissionDescriptorParser>,
   ) -> Self {
