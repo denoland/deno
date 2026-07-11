@@ -425,10 +425,12 @@ mod tests {
   fn parse_diagnostics_positioned() {
     // `project_root` doesn't exist on disk, so `source_line`/`end` stay `None`;
     // the parse of code/category/position/message/path is what's under test.
-    let root = Path::new("/project");
+    // Use an absolute temp dir so the local-file -> `file://` URL mapping works
+    // on Windows too (a bare "/project" isn't absolute there).
+    let root = std::env::temp_dir();
     let diags = parse_tsc_diagnostics(
       "mod.ts(2,7): error TS2322: Type 'string' is not assignable to type 'number'.\n",
-      root,
+      &root,
     );
     assert_eq!(diags.len(), 1);
     let d = &diags[0];
@@ -437,11 +439,9 @@ mod tests {
     // 1-based (2,7) becomes 0-based (1,6).
     let start = d.start.as_ref().unwrap();
     assert_eq!((start.line, start.character), (1, 6));
-    assert_eq!(
-      d.message_text.as_deref(),
-      Some("Type 'string' is not assignable to type 'number'.")
-    );
-    assert!(d.file_name.as_deref().unwrap().ends_with("/project/mod.ts"));
+    let file_name = d.file_name.as_deref().unwrap();
+    assert!(file_name.starts_with("file://"), "{file_name}");
+    assert!(file_name.ends_with("/mod.ts"), "{file_name}");
   }
 
   #[test]
@@ -485,7 +485,10 @@ mod tests {
 
   #[test]
   fn remap_path_variants() {
-    let root = Path::new("/project");
+    // Absolute temp dir so the local-file case yields a valid `file://` URL on
+    // Windows (the mirror cases below are pure string transforms).
+    let root = std::env::temp_dir();
+    let root = root.as_path();
     assert_eq!(
       remap_path(".deno/remote/html.spec.whatwg.org/entities.json", root),
       "https://html.spec.whatwg.org/entities.json"

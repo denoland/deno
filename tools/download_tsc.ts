@@ -1,5 +1,6 @@
 #!/usr/bin/env -S deno run --allow-read --allow-write --allow-env --allow-run
 // Copyright 2018-2026 the Deno authors. MIT license.
+// deno-lint-ignore-file no-console
 
 // Pre-downloads the pinned native TypeScript compiler that `deno check` uses,
 // into a cache directory, so CI (and local test runs) don't re-download the

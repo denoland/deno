@@ -608,7 +608,12 @@ jobs:
           key: 'tsc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cli/tsc/native.rs'') }}'
       - name: Pre-download native tsc
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
-        run: deno run -A ./tools/download_tsc.ts
+        run: |-
+          DENO_BIN=""
+          for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do
+            [ -f "$c" ] && DENO_BIN="$c" && break
+          done
+          "$DENO_BIN" run -A ./tools/download_tsc.ts
       - name: Build ffi (debug)
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build -p test_ffi
@@ -1143,7 +1148,12 @@ jobs:
           key: 'tsc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cli/tsc/native.rs'') }}'
       - name: Pre-download native tsc
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
-        run: deno run -A ./tools/download_tsc.ts
+        run: |-
+          DENO_BIN=""
+          for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do
+            [ -f "$c" ] && DENO_BIN="$c" && break
+          done
+          "$DENO_BIN" run -A ./tools/download_tsc.ts
       - name: Build ffi (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build --release -p test_ffi
@@ -1527,7 +1537,12 @@ jobs:
           key: 'tsc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cli/tsc/native.rs'') }}'
       - name: Pre-download native tsc
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
-        run: deno run -A ./tools/download_tsc.ts
+        run: |-
+          DENO_BIN=""
+          for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do
+            [ -f "$c" ] && DENO_BIN="$c" && break
+          done
+          "$DENO_BIN" run -A ./tools/download_tsc.ts
       - name: Build ffi (debug)
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build -p test_ffi
@@ -2223,7 +2238,12 @@ jobs:
           key: 'tsc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cli/tsc/native.rs'') }}'
       - name: Pre-download native tsc
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
-        run: deno run -A ./tools/download_tsc.ts
+        run: |-
+          DENO_BIN=""
+          for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do
+            [ -f "$c" ] && DENO_BIN="$c" && break
+          done
+          "$DENO_BIN" run -A ./tools/download_tsc.ts
       - name: Build ffi (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build --release -p test_ffi
@@ -2567,7 +2587,12 @@ jobs:
           key: 'tsc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cli/tsc/native.rs'') }}'
       - name: Pre-download native tsc
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
-        run: deno run -A ./tools/download_tsc.ts
+        run: |-
+          DENO_BIN=""
+          for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do
+            [ -f "$c" ] && DENO_BIN="$c" && break
+          done
+          "$DENO_BIN" run -A ./tools/download_tsc.ts
       - name: Build ffi (debug)
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build -p test_ffi
@@ -3225,7 +3250,12 @@ jobs:
           key: 'tsc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cli/tsc/native.rs'') }}'
       - name: Pre-download native tsc
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
-        run: deno run -A ./tools/download_tsc.ts
+        run: |-
+          DENO_BIN=""
+          for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do
+            [ -f "$c" ] && DENO_BIN="$c" && break
+          done
+          "$DENO_BIN" run -A ./tools/download_tsc.ts
       - name: Build ffi (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build --release -p test_ffi
@@ -3569,7 +3599,12 @@ jobs:
           key: 'tsc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cli/tsc/native.rs'') }}'
       - name: Pre-download native tsc
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
-        run: deno run -A ./tools/download_tsc.ts
+        run: |-
+          DENO_BIN=""
+          for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do
+            [ -f "$c" ] && DENO_BIN="$c" && break
+          done
+          "$DENO_BIN" run -A ./tools/download_tsc.ts
       - name: Build ffi (debug)
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build -p test_ffi
@@ -4108,7 +4143,12 @@ jobs:
           key: 'tsc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cli/tsc/native.rs'') }}'
       - name: Pre-download native tsc
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
-        run: deno run -A ./tools/download_tsc.ts
+        run: |-
+          DENO_BIN=""
+          for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do
+            [ -f "$c" ] && DENO_BIN="$c" && break
+          done
+          "$DENO_BIN" run -A ./tools/download_tsc.ts
       - name: Build ffi (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build --release -p test_ffi
@@ -4819,7 +4859,12 @@ jobs:
           key: 'tsc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cli/tsc/native.rs'') }}'
       - name: Pre-download native tsc
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
-        run: deno run -A ./tools/download_tsc.ts
+        run: |-
+          DENO_BIN=""
+          for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do
+            [ -f "$c" ] && DENO_BIN="$c" && break
+          done
+          "$DENO_BIN" run -A ./tools/download_tsc.ts
       - name: Build ffi (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build --release -p test_ffi
@@ -5495,7 +5540,12 @@ jobs:
           key: 'tsc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cli/tsc/native.rs'') }}'
       - name: Pre-download native tsc
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
-        run: deno run -A ./tools/download_tsc.ts
+        run: |-
+          DENO_BIN=""
+          for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do
+            [ -f "$c" ] && DENO_BIN="$c" && break
+          done
+          "$DENO_BIN" run -A ./tools/download_tsc.ts
       - name: Build ffi (debug)
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build -p test_ffi
@@ -5988,7 +6038,12 @@ jobs:
           key: 'tsc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cli/tsc/native.rs'') }}'
       - name: Pre-download native tsc
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
-        run: deno run -A ./tools/download_tsc.ts
+        run: |-
+          DENO_BIN=""
+          for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do
+            [ -f "$c" ] && DENO_BIN="$c" && break
+          done
+          "$DENO_BIN" run -A ./tools/download_tsc.ts
       - name: Load 'vsock_loopback; kernel module
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: sudo modprobe vsock_loopback
@@ -6840,7 +6895,12 @@ jobs:
           key: 'tsc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cli/tsc/native.rs'') }}'
       - name: Pre-download native tsc
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
-        run: deno run -A ./tools/download_tsc.ts
+        run: |-
+          DENO_BIN=""
+          for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do
+            [ -f "$c" ] && DENO_BIN="$c" && break
+          done
+          "$DENO_BIN" run -A ./tools/download_tsc.ts
       - name: Load 'vsock_loopback; kernel module
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: sudo modprobe vsock_loopback
