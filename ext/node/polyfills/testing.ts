@@ -858,6 +858,7 @@ function getNextTick() {
   return _nextTick;
 }
 
+let tapScheduleKeepAlive = null;
 function scheduleTapRun() {
   if (tapRunScheduled) return;
   tapRunScheduled = true;
@@ -868,12 +869,22 @@ function scheduleTapRun() {
   // body runs before those (denoland/deno#35608). A macrotask (setTimeout)
   // would run after them; a microtask would run too early and miss tests
   // registered from an awaited top-level. nextTick lands in between.
+  //
+  // A pending macrotask keeps the event loop alive until the deferred run
+  // fires; a bare nextTick does not, so hold the loop open here (until
+  // runTapTop takes over its own keep-alive) or `deno run` can exit after
+  // module evaluation before the run starts.
+  tapScheduleKeepAlive = setInterval(() => {}, 1 << 30);
   getNextTick()(() => {
     runTapTop();
   });
 }
 
 async function runTapTop() {
+  if (tapScheduleKeepAlive !== null) {
+    clearInterval(tapScheduleKeepAlive);
+    tapScheduleKeepAlive = null;
+  }
   // Hold the event loop open while tests run so that fixtures using
   // unref'd timers (Node's runner keeps itself alive internally) don't cause
   // Deno to exit before subtests complete.
