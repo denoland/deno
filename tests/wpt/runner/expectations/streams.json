@@ -117,13 +117,11 @@
     "cross-realm-crash.window.html": false,
     "from.any.html": {
       "expectedFailures": [
-        "ReadableStream.from ignores a null @@asyncIterator",
         "ReadableStream.from accepts a string"
       ]
     },
     "from.any.worker.html": {
       "expectedFailures": [
-        "ReadableStream.from ignores a null @@asyncIterator",
         "ReadableStream.from accepts a string"
       ]
     },

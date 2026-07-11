@@ -539,7 +539,7 @@ function extractBody(object) {
       stream = object;
       length = knownLength ?? null;
     }
-  } else if (object[webidl.AsyncIterable] === webidl.AsyncIterable) {
+  } else if (object[webidl.AsyncSequence] === webidl.AsyncSequence) {
     // If the underlying body is a Node `Readable` running in binary mode
     // (e.g. `http.IncomingMessage`), build a byte `ReadableStream` so that
     // consumers can acquire a BYOB reader. This matches undici's behavior in
@@ -591,8 +591,8 @@ function extractBody(object) {
   return { body, contentType };
 }
 
-webidl.converters["async iterable<Uint8Array>"] = webidl
-  .createAsyncIterableConverter(webidl.converters.Uint8Array);
+webidl.converters["async_sequence<Uint8Array>"] = webidl
+  .createAsyncSequenceConverter(webidl.converters.Uint8Array);
 
 webidl.converters["BodyInit_DOMString"] = (V, prefix, context, opts) => {
   // Fast path: a plain string is by far the most common shape for Response
@@ -617,8 +617,8 @@ webidl.converters["BodyInit_DOMString"] = (V, prefix, context, opts) => {
     if (ArrayBufferIsView(V)) {
       return webidl.converters["ArrayBufferView"](V, prefix, context, opts);
     }
-    if (webidl.isAsyncIterable(V) && !isStringObject(V)) {
-      return webidl.converters["async iterable<Uint8Array>"](
+    if (webidl.isAsyncSequence(V) && !isStringObject(V)) {
+      return webidl.converters["async_sequence<Uint8Array>"](
         V,
         prefix,
         context,

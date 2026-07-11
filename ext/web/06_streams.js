@@ -6059,25 +6059,33 @@ class ReadableStream {
       1,
       prefix,
     );
-    asyncIterable = webidl.converters["async iterable<any>"](
+    // https://streams.spec.whatwg.org/#rs-from
+    // IDL: static ReadableStream from(async_sequence<any> asyncIterable);
+    asyncIterable = webidl.converters["async_sequence<any>"](
       asyncIterable,
       prefix,
       "Argument 1",
     );
+    // Let iterator be the result of opening an async sequence asyncIterable.
     const iter = asyncIterable.open();
 
     const stream = createReadableStream(noop, async () => {
+      // Let nextPromise be the result of getting the next value of iterator.
       // deno-lint-ignore prefer-primordials
       const res = await iter.next();
       if (res.done) {
+        // end of iteration
         readableStreamDefaultControllerClose(stream[_controller]);
       } else {
+        // CreateAsyncFromSyncIterator (used for sync sources) already awaits
+        // yielded promises; do not await again here.
         readableStreamDefaultControllerEnqueue(
           stream[_controller],
-          await res.value,
+          res.value,
         );
       }
     }, async (reason) => {
+      // Return the result of closing iterator with reason.
       // deno-lint-ignore prefer-primordials
       await iter.return(reason);
     }, 0);
@@ -8117,7 +8125,7 @@ webidl.converters.StreamPipeOptions = webidl
     { key: "signal", converter: webidl.converters.AbortSignal },
   ]);
 
-webidl.converters["async iterable<any>"] = webidl.createAsyncIterableConverter(
+webidl.converters["async_sequence<any>"] = webidl.createAsyncSequenceConverter(
   webidl.converters.any,
 );
 
