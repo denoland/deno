@@ -172,8 +172,8 @@ class Event {
       eventPhase: Event.NONE,
       target: null,
       // `timeStamp` is computed lazily on first access (see the getter) to keep
-      // `new Event()` as cheap as it was before this attribute was populated —
-      // reading the monotonic clock eagerly here roughly doubled construction
+      // `new Event()` as cheap as it was before this attribute was populated.
+      // Reading the monotonic clock eagerly here roughly doubled construction
       // cost. `null` is the "not yet computed" sentinel; `op_now_ms()` only ever
       // yields a non-negative number.
       timeStamp: null,

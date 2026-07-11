@@ -8,7 +8,7 @@ import {
 
 Deno.test(function eventTimeStamp() {
   // `timeStamp` is a DOMHighResTimeStamp (relative to the time origin). It is
-  // computed lazily on first access — to keep `new Event()` cheap — so its
+  // computed lazily on first access (to keep `new Event()` cheap), so its
   // value tracks the first read. It must be a positive number, bounded by the
   // clock around that first read, and stable across repeated reads.
   const event = new Event("test");
