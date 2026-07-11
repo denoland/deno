@@ -89,6 +89,7 @@ use node_resolver::NodeResolver;
 use node_resolver::PackageJsonResolver;
 use node_resolver::PackageJsonThreadLocalCache;
 use node_resolver::ResolutionMode;
+use node_resolver::analyze::CjsAnalysisSourceProvider;
 use node_resolver::analyze::CjsModuleExportAnalyzer;
 use node_resolver::analyze::NodeCodeTranslator;
 use node_resolver::cache::NodeResolutionSys;
@@ -155,6 +156,7 @@ impl SharedModuleLoaderState {
 struct EmbeddedModuleLoader {
   shared: Arc<SharedModuleLoaderState>,
   hook_registry: LoaderHookRegistry,
+  permissions: PermissionsContainer,
   sys: DenoRtSys,
   /// For blob/object-URL module workers, the captured root blob and its
   /// specifier. Used so the worker's root module load resolves from the
@@ -166,6 +168,36 @@ struct EmbeddedModuleLoader {
 impl std::fmt::Debug for EmbeddedModuleLoader {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("EmbeddedModuleLoader").finish()
+  }
+}
+
+struct StandaloneCjsAnalysisSourceProvider<'a> {
+  loader: &'a EmbeddedModuleLoader,
+  permissions: PermissionsContainer,
+}
+
+impl<'a> StandaloneCjsAnalysisSourceProvider<'a> {
+  fn new(loader: &'a EmbeddedModuleLoader) -> Self {
+    Self {
+      loader,
+      permissions: loader.permissions.deep_clone_without_prompt(),
+    }
+  }
+}
+
+impl CjsAnalysisSourceProvider for StandaloneCjsAnalysisSourceProvider<'_> {
+  fn load_source(&self, specifier: &Url) -> Option<String> {
+    let path = deno_path_util::url_to_file_path(specifier).ok()?;
+    let mut permissions = self.permissions.clone();
+    let path = self
+      .loader
+      .ensure_read_permission(&mut permissions, Cow::Owned(path))
+      .ok()?;
+    self
+      .loader
+      .load_text_file_lossy(&path)
+      .ok()
+      .map(|source| source.to_string())
   }
 }
 
@@ -510,6 +542,7 @@ impl EmbeddedModuleLoader {
         if is_maybe_cjs {
           let original_specifier = original_specifier.clone();
           let module_specifier = module_specifier.clone();
+          let loader = self.clone();
           let shared = self.shared.clone();
           deno_core::ModuleLoadResponse::Async(
             async move {
@@ -526,9 +559,15 @@ impl EmbeddedModuleLoader {
                   }
                 }
               };
+              let source_provider =
+                StandaloneCjsAnalysisSourceProvider::new(&loader);
               let source = shared
                 .node_code_translator
-                .translate_cjs_to_esm(&module_specifier, Some(source))
+                .translate_cjs_to_esm_with_source_provider(
+                  &module_specifier,
+                  Some(source),
+                  Some(&source_provider),
+                )
                 .await
                 .map_err(JsErrorBox::from_err)?;
               let module_source = match source {
@@ -1142,12 +1181,14 @@ struct StandaloneModuleLoaderFactory {
 impl StandaloneModuleLoaderFactory {
   pub fn create_result(
     &self,
+    permissions: PermissionsContainer,
     maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
   ) -> CreateModuleLoaderResult {
     let hook_registry = LoaderHookRegistry::default();
     let loader = Rc::new(EmbeddedModuleLoader {
       shared: self.shared.clone(),
       hook_registry: hook_registry.clone(),
+      permissions,
       sys: self.sys.clone(),
       maybe_main_module_blob,
     });
@@ -1173,18 +1214,18 @@ impl StandaloneModuleLoaderFactory {
 impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
   fn create_for_main(
     &self,
-    _root_permissions: PermissionsContainer,
+    root_permissions: PermissionsContainer,
   ) -> CreateModuleLoaderResult {
-    self.create_result(None)
+    self.create_result(root_permissions, None)
   }
 
   fn create_for_worker(
     &self,
     _parent_permissions: PermissionsContainer,
-    _permissions: PermissionsContainer,
+    permissions: PermissionsContainer,
     maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
   ) -> CreateModuleLoaderResult {
-    self.create_result(maybe_main_module_blob)
+    self.create_result(permissions, maybe_main_module_blob)
   }
 }
 

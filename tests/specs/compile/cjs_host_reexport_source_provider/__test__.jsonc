@@ -1,0 +1,40 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "if": "unix",
+    "args": "compile --no-prompt --allow-read=allowed --output main main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "unix",
+    "args": "run -A setup.ts",
+    "output": ""
+  }, {
+    "if": "unix",
+    "commandName": "./main",
+    "args": ["reexport"],
+    "output": "from-inner\n"
+  }, {
+    "if": "unix",
+    "commandName": "./main",
+    "args": ["denied"],
+    "output": "blocked\n"
+  }, {
+    "if": "windows",
+    "args": "compile --no-prompt --allow-read=allowed --output main.exe main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "windows",
+    "args": "run -A setup.ts",
+    "output": ""
+  }, {
+    "if": "windows",
+    "commandName": "./main.exe",
+    "args": ["reexport"],
+    "output": "from-inner\n"
+  }, {
+    "if": "windows",
+    "commandName": "./main.exe",
+    "args": ["denied"],
+    "output": "blocked\n"
+  }]
+}

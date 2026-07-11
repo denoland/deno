@@ -3580,6 +3580,17 @@ impl Permissions {
       && self.ffi.is_allow_all()
       && self.import.is_allow_all()
   }
+
+  fn disable_prompting(&mut self) {
+    self.read.prompt = false;
+    self.write.prompt = false;
+    self.net.prompt = false;
+    self.env.prompt = false;
+    self.sys.prompt = false;
+    self.run.prompt = false;
+    self.ffi.prompt = false;
+    self.import.prompt = false;
+  }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
@@ -4006,6 +4017,20 @@ impl PermissionsContainer {
     Self {
       descriptor_parser: self.descriptor_parser.clone(),
       inner: Arc::new(Mutex::new(self.inner.lock().clone())),
+    }
+  }
+
+  /// Creates an independent snapshot with user prompting disabled.
+  ///
+  /// Existing grants and denials are preserved, but the snapshot does not
+  /// observe later permission changes. Permission brokers are still consulted
+  /// when the snapshot is checked.
+  pub fn deep_clone_without_prompt(&self) -> PermissionsContainer {
+    let mut permissions = self.inner.lock().clone();
+    permissions.disable_prompting();
+    Self {
+      descriptor_parser: self.descriptor_parser.clone(),
+      inner: Arc::new(Mutex::new(permissions)),
     }
   }
 
@@ -5709,6 +5734,73 @@ mod tests {
         canonicalized: false,
       })
     }
+  }
+
+  #[test]
+  fn deep_clone_without_prompt_preserves_state_without_prompting() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let permissions = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(svec!["/allowed"]),
+        deny_read: Some(svec!["/denied"]),
+        prompt: true,
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let permissions = PermissionsContainer::new(Arc::new(parser), permissions);
+    let snapshot = permissions.deep_clone_without_prompt();
+
+    let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
+    prompt_value.set(true);
+
+    assert!(
+      snapshot
+        .check_open(
+          Cow::Borrowed(Path::new("/unresolved")),
+          OpenAccessKind::Read,
+          None,
+        )
+        .is_err()
+    );
+    assert!(
+      snapshot
+        .check_open(
+          Cow::Borrowed(Path::new("/allowed/file")),
+          OpenAccessKind::Read,
+          None,
+        )
+        .is_ok()
+    );
+    assert!(
+      snapshot
+        .check_open(
+          Cow::Borrowed(Path::new("/denied/file")),
+          OpenAccessKind::Read,
+          None,
+        )
+        .is_err()
+    );
+
+    assert_eq!(
+      permissions.query_read(Some("/unresolved")).unwrap(),
+      PermissionState::Prompt
+    );
+    assert!(
+      permissions
+        .check_open(
+          Cow::Borrowed(Path::new("/unresolved")),
+          OpenAccessKind::Read,
+          None,
+        )
+        .is_ok()
+    );
+    assert_eq!(
+      snapshot.query_read(Some("/unresolved")).unwrap(),
+      PermissionState::Prompt
+    );
   }
 
   #[test]

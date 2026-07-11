@@ -1,1 +1,1 @@
-module.exports = require("../secret.txt");
+module.exports = require("../secret.cjs");
