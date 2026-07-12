@@ -114,6 +114,15 @@ pub struct Metadata {
   /// Auto-update release base URL from deno.json `desktop.release.baseUrl`.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub release_base_url: Option<String>,
+  /// Maximum V8 heap size for the main isolate, in megabytes (`--max-memory`).
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub max_memory: Option<u64>,
+  /// Maximum process CPU time budget, in seconds (`--max-cpu-time`).
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub max_cpu_time: Option<u64>,
+  /// Maximum wall-clock run time, in seconds (`--max-time`).
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub max_time: Option<u64>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]

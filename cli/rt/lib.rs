@@ -45,6 +45,19 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   match result {
     Ok(value) => value,
     Err(error) => {
+      // When a resource limit watchdog terminated the isolate, the surfaced
+      // error is a generic "execution terminated" — report the real cause.
+      use std::sync::atomic::Ordering::SeqCst;
+      if deno_lib::worker::MEMORY_LIMIT_EXCEEDED.load(SeqCst) {
+        exit_with_message("Memory limit exceeded (--max-memory)", 1);
+      }
+      if deno_lib::worker::CPU_TIME_LIMIT_EXCEEDED.load(SeqCst) {
+        exit_with_message("CPU time limit exceeded (--max-cpu-time)", 1);
+      }
+      if deno_lib::worker::TIME_LIMIT_EXCEEDED.load(SeqCst) {
+        exit_with_message("Time limit exceeded (--max-time)", 1);
+      }
+
       let error_string = match js_error_downcast_ref(&error) {
         Some(js_error) => format_js_error(js_error, None),
         None => format!("{:?}", error),
