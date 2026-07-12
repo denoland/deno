@@ -1,6 +1,6 @@
-TS25[WILDLINE] [ERROR]: Cannot find name '$'. Did you mean to import jQuery? Try adding `import $ from "npm:jquery";`.
+TS2592 [ERROR]: Cannot find name '$'. Do you need to install type definitions for jQuery? Try `npm i --save-dev @types/jquery` and then add 'jquery' to the types field in your tsconfig.
 $;
 ^
-    at file:///[WILDCARD]/main.ts:1:1
+    at file://[WILDCARD]/main.ts:1:1
 
 error: Type checking failed.

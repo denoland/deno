@@ -1,12 +1,8 @@
-Check [WILDCARD]main.ts
-TS9007 [ERROR]: Function must have an explicit return type annotation with --isolatedDeclarations.
-export function add(a: number, b: number) {
-                ~~~
-    at file:///[WILDLINE]/main.ts:1:17
+Check (tsc [WILDLINE])
+TS5053 [ERROR]: Option 'allowJs' cannot be specified with option 'isolatedDeclarations'.
 
-TS9031 [ERROR]:     Add a return type to the function declaration.
-    export function add(a: number, b: number) {
-                    ~~~
-        at file:///[WILDLINE]/main.ts:1:17
+TS5069 [ERROR]: Option 'isolatedDeclarations' cannot be specified without specifying option 'declaration' or option 'composite'.
+
+Found 2 errors.
 
 error: Type checking failed.

@@ -1,48 +1,48 @@
-Check [WILDCARD]main.ts
-TS2322 [ERROR]: Type 'Uint8Array<ArrayBuffer>' is not assignable to type 'number'.
-invalid = helloBytes;
-~~~~~~~
-    at file:///[WILDLINE]/main.ts[WILDLINE]
+Check (tsc [WILDLINE])
+TS1192 [ERROR]: Module '"[WILDCARD]/hello"' has no default export.
+import helloBytes from "./hello.ts" with { type: "bytes" };
+       ~~~~~~~~~~
+    at file://[WILDCARD]/main.ts:2:8
 
-TS2322 [ERROR]: Type 'Uint8Array<ArrayBuffer>' is not assignable to type 'number'.
-invalid = dataBytes;
-~~~~~~~
-    at file:///[WILDLINE]/main.ts[WILDLINE]
+TS1192 [ERROR]: Module '"[WILDCARD]/hello"' has no default export.
+import helloText from "./hello.ts" with { type: "text" };
+       ~~~~~~~~~
+    at file://[WILDCARD]/main.ts:3:8
 
-TS2322 [ERROR]: Type 'Uint8Array<ArrayBuffer>' is not assignable to type 'number'.
-invalid = dynamicHelloBytes;
-~~~~~~~
-    at file:///[WILDLINE]/main.ts[WILDLINE]
+TS2307 [ERROR]: Cannot find module './data.txt' or its corresponding type declarations.
+import dataBytes from "./data.txt" with { type: "bytes" };
+                      ~~~~~~~~~~~~
+    at file://[WILDCARD]/main.ts:4:23
 
-TS2322 [ERROR]: Type 'Uint8Array<ArrayBuffer>' is not assignable to type 'number'.
-invalid = dynamicDataBytes;
-~~~~~~~
-    at file:///[WILDLINE]/main.ts[WILDLINE]
+TS2307 [ERROR]: Cannot find module './data.txt' or its corresponding type declarations.
+import dataText from "./data.txt" with { type: "text" };
+                     ~~~~~~~~~~~~
+    at file://[WILDCARD]/main.ts:5:22
 
-TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
-invalid = helloText;
-~~~~~~~
-    at file:///[WILDLINE]/main.ts[WILDLINE]
+TS2339 [ERROR]: Property 'default' does not exist on type 'typeof import("[WILDCARD]/hello")'.
+const { default: dynamicHelloBytes } = await import("./hello.ts", {
+        ~~~~~~~
+    at file://[WILDCARD]/main.ts:7:9
+
+TS2339 [ERROR]: Property 'default' does not exist on type 'typeof import("[WILDCARD]/hello")'.
+const { default: dynamicHelloText } = await import("./hello.ts", {
+        ~~~~~~~
+    at file://[WILDCARD]/main.ts:10:9
+
+TS2307 [ERROR]: Cannot find module './data.txt' or its corresponding type declarations.
+const { default: dynamicDataBytes } = await import("./data.txt", {
+                                                   ~~~~~~~~~~~~
+    at file://[WILDCARD]/main.ts:13:52
+
+TS2307 [ERROR]: Cannot find module './data.txt' or its corresponding type declarations.
+const { default: dynamicDataText } = await import("./data.txt", {
+                                                  ~~~~~~~~~~~~
+    at file://[WILDCARD]/main.ts:16:51
 
 TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
 invalid = hello();
 ~~~~~~~
-    at file:///[WILDLINE]/main.ts[WILDLINE]
-
-TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
-invalid = dataText;
-~~~~~~~
-    at file:///[WILDLINE]/main.ts[WILDLINE]
-
-TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
-invalid = dynamicHelloText;
-~~~~~~~
-    at file:///[WILDLINE]/main.ts[WILDLINE]
-
-TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
-invalid = dynamicDataText;
-~~~~~~~
-    at file:///[WILDLINE]/main.ts[WILDLINE]
+    at file://[WILDCARD]/main.ts:40:1
 
 Found 9 errors.
 

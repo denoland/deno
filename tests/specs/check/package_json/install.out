@@ -8,5 +8,5 @@ Downloaded 1 package from npm
 +
 
 Dependencies:
-[WILDCARD]
++ npm:@denotest/esm-basic 1.0.0
 

@@ -1,18 +1,28 @@
-Check [WILDCARD]main.ts
-TS2307 [ERROR]: [ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './package.json' is not defined by "exports" in '[WILDLINE]package.json'
-    at file:///[WILDLINE]/main.ts:1:23
+Check (tsc [WILDLINE])
+TS2307 [ERROR]: Cannot find module 'package/package.json' or its corresponding type declarations.
+import * as test from "package/package.json";
+                      ~~~~~~~~~~~~~~~~~~~~~~
+    at file://[WILDCARD]/main.ts:1:23
 
-TS2307 [ERROR]: [ERR_PACKAGE_IMPORT_NOT_DEFINED] Package import specifier "#not-an-import" is not defined in package [WILDLINE]package.json
-    at file:///[WILDLINE]/main.ts:2:24
+TS2307 [ERROR]: Cannot find module '#not-an-import' or its corresponding type declarations.
+import * as test2 from "#not-an-import";
+                       ~~~~~~~~~~~~~~~~
+    at file://[WILDCARD]/main.ts:2:24
 
-TS2307 [ERROR]: [ERR_UNSUPPORTED_DIR_IMPORT] Directory import '[WILDLINE]package2/dir' is not supported resolving ES modules
-    at file:///[WILDLINE]/main.ts:4:24
+TS2307 [ERROR]: Cannot find module '#non-existent' or its corresponding type declarations.
+import * as test3 from "#non-existent";
+                       ~~~~~~~~~~~~~~~
+    at file://[WILDCARD]/main.ts:3:24
 
-TS2307 [ERROR]: [ERR_INVALID_PACKAGE_TARGET] Invalid "exports" main target index.js defined in the package config [WILDLINE]package.json; target must start with "./"
-    at file:///[WILDLINE]/main.ts:5:24
+TS7016 [ERROR]: Could not find a declaration file for module 'package2/dir'. '[WILDCARD]/node_modules/package2/dir/index.js' implicitly has an 'any' type.
+import * as test4 from "package2/dir"; // not allowed dir import
+                       ~~~~~~~~~~~~~~
+    at file://[WILDCARD]/main.ts:4:24
 
-TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/non-existent.ts'.
-    at file:///[WILDLINE]/main.ts:3:24
+TS2307 [ERROR]: Cannot find module 'package3' or its corresponding type declarations.
+import * as test5 from "package3"; // invalid package target
+                       ~~~~~~~~~~
+    at file://[WILDCARD]/main.ts:5:24
 
 Found 5 errors.
 

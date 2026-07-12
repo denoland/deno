@@ -1,5 +1,7 @@
-[WILDCARD]TS2307 [ERROR]: Import "@scope/BAZ" not a dependency
-  hint: If you want to use a JSR or npm package, try running `deno add jsr:@scope/BAZ` or `deno add npm:@scope/BAZ`
-    at file:///[WILDLINE]
+Check (tsc [WILDLINE])
+TS2307 [ERROR]: Cannot find module '@scope/BAZ' or its corresponding type declarations.
+import { bar } from "@scope/BAZ"; // => doesn't exist
+                    ~~~~~~~~~~~~
+    at file://[WILDCARD]/main.ts:1:21
 
 error: Type checking failed.
