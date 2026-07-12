@@ -9429,3 +9429,17 @@ fn sync_types_subcommand() {
       .unwrap();
   assert_eq!(flags.permissions.allow_import, Some(svec!["example.com"]));
 }
+
+#[test]
+fn serve_compile_keep_double_dash() {
+  // serve/compile use clap's trailing_var_arg (like run), so they keep `--`.
+  let flags =
+    flags_from_vec(svec!["deno", "serve", "x.ts", "--", "-a"]).unwrap();
+  assert_eq!(flags.argv, svec!["--", "-a"]);
+
+  let flags =
+    flags_from_vec(svec!["deno", "compile", "x.ts", "--", "-a"]).unwrap();
+  assert!(
+    matches!(flags.subcommand, DenoSubcommand::Compile(c) if c.args == svec!["--", "-a"])
+  );
+}

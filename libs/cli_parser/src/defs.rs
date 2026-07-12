@@ -654,7 +654,7 @@ pub static SERVE_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: true,
   passthrough: false,
-  keep_double_dash: false,
+  keep_double_dash: true,
 };
 
 pub static EVAL_SUBCOMMAND: CommandDef = CommandDef {
@@ -1542,7 +1542,7 @@ pub static COMPILE_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: true,
   passthrough: false,
-  keep_double_dash: false,
+  keep_double_dash: true,
 };
 
 pub static COVERAGE_SUBCOMMAND: CommandDef = CommandDef {
@@ -2622,7 +2622,7 @@ pub static DESKTOP_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: true,
   passthrough: false,
-  keep_double_dash: false,
+  keep_double_dash: true,
 };
 
 pub static PACK_SUBCOMMAND: CommandDef = CommandDef {
