@@ -9405,3 +9405,27 @@ fn eval_double_dash_stripped() {
     flags_from_vec(svec!["deno", "run", "x.ts", "--", "a&b"]).unwrap();
   assert_eq!(flags.argv, svec!["--", "a&b"]);
 }
+
+#[test]
+fn sync_types_subcommand() {
+  let flags = flags_from_vec(svec!["deno", "sync-types"]).unwrap();
+  assert_eq!(
+    flags.subcommand,
+    DenoSubcommand::SyncTypes(SyncTypesFlags::default())
+  );
+
+  let flags =
+    flags_from_vec(svec!["deno", "sync-types", "a.ts", "tools/"]).unwrap();
+  assert_eq!(
+    flags.subcommand,
+    DenoSubcommand::SyncTypes(SyncTypesFlags {
+      roots: svec!["a.ts", "tools/"],
+    })
+  );
+
+  // --allow-import flows into permissions.
+  let flags =
+    flags_from_vec(svec!["deno", "sync-types", "--allow-import=example.com"])
+      .unwrap();
+  assert_eq!(flags.permissions.allow_import, Some(svec!["example.com"]));
+}

@@ -153,6 +153,7 @@ pub fn convert(result: ParseResult) -> Result<Flags, CliError> {
     Some("list") => list_parse(&result, &mut flags),
     Some("link") => link_parse(&result, &mut flags),
     Some("unlink") => unlink_parse(&result, &mut flags),
+    Some("sync-types") => sync_types_parse(&result, &mut flags),
     Some("approve-scripts" | "approve-builds") => {
       approve_scripts_parse(&result, &mut flags)
     }
@@ -2789,6 +2790,16 @@ fn link_parse(result: &ParseResult, flags: &mut Flags) {
       .map(|v| v.iter().map(|s| s.to_string()).collect())
       .unwrap_or_default(),
     lockfile_only: result.get_bool("lockfile-only"),
+  });
+}
+
+fn sync_types_parse(result: &ParseResult, flags: &mut Flags) {
+  allow_and_deny_import_parse(result, flags);
+  flags.subcommand = DenoSubcommand::SyncTypes(SyncTypesFlags {
+    roots: result
+      .get_many("roots")
+      .map(|v| v.iter().map(|s| s.to_string()).collect())
+      .unwrap_or_default(),
   });
 }
 
