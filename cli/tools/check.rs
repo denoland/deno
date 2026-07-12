@@ -73,12 +73,13 @@ async fn native_check(
     SyncTypesFlags {
       roots: check_flags.files.clone(),
     },
+    crate::tools::installer::RootTsConfigMode::CheckMode,
   )
   .await;
   log::set_max_level(prev_level);
   sync_result?;
 
-  let factory = CliFactory::from_flags(flags);
+  let factory = CliFactory::from_flags(flags.clone());
   let tsc_path = ensure_native_tsc_downloaded(&factory).await?;
 
   let cli_options = factory.cli_options()?;
@@ -89,7 +90,24 @@ async fn native_check(
     .map_err(|_| {
       deno_core::anyhow::anyhow!("workspace root is not a local directory")
     })?;
-  let tsconfig_path = project_root.join("tsconfig.json");
+
+  // Point tsc at the user's root `tsconfig.json` (which now extends
+  // `.deno/tsconfig.json`) only when Deno is honoring it; otherwise use the
+  // generated config directly so a tsconfig Deno ignores can't leak its options
+  // in (and so we never had to rewrite it). See `sync_types_command`.
+  let config_disabled =
+    matches!(flags.config_flag, crate::args::ConfigFlag::Disabled);
+  let honor_user_tsconfig =
+    crate::tsc::tsconfig_gen::should_honor_user_tsconfig(
+      &project_root,
+      config_disabled,
+    );
+  let root_tsconfig = project_root.join("tsconfig.json");
+  let tsconfig_path = if honor_user_tsconfig && root_tsconfig.exists() {
+    root_tsconfig
+  } else {
+    project_root.join(".deno").join("tsconfig.json")
+  };
 
   log::info!(
     "{} {}",

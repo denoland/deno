@@ -1,4 +1,7 @@
-Check [WILDCARD]main.js
+Check (tsc [WILDLINE])
 TS2554 [ERROR]: Expected 2 arguments, but got 1.
-[WILDCARD]
+console.log(Math.pow(""));
+                 ~~~
+    at file://[WILDCARD]/main.js:1:18
+
 error: Type checking failed.

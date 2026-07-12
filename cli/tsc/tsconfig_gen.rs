@@ -20,6 +20,25 @@ use deno_core::url::Url;
 
 use super::get_types_declaration_file_text;
 
+/// Whether Deno should honor a user's `tsconfig.json` at `project_root`.
+///
+/// Mirrors Deno's own config resolution (see #29925): a `tsconfig.json` is only
+/// picked up when there's a sibling `deno.json`/`deno.jsonc`/`package.json` and
+/// config discovery isn't disabled (`--no-config`). Otherwise the file is
+/// ignored — `deno check` type-checks with Deno's own defaults and must not read
+/// (or rewrite) the stray tsconfig.
+pub fn should_honor_user_tsconfig(
+  project_root: &Path,
+  config_disabled: bool,
+) -> bool {
+  if config_disabled {
+    return false;
+  }
+  ["deno.json", "deno.jsonc", "package.json"]
+    .iter()
+    .any(|f| project_root.join(f).exists())
+}
+
 /// Result of generating a tsconfig for stock TypeScript.
 #[derive(Debug)]
 pub struct GeneratedTsConfig {
@@ -49,6 +68,7 @@ pub struct GeneratedTsConfig {
 pub fn generate_tsconfig(
   project_root: &Path,
   deno_compiler_options: Option<&Value>,
+  resolved_compiler_options: Option<&Value>,
   deno_imports: Option<&Value>,
   files: &[String],
   http_modules: &BTreeMap<Url, String>,
@@ -58,6 +78,7 @@ pub fn generate_tsconfig(
   npm_project_references: &[String],
   node_types_root: Option<&str>,
   excludes: &[String],
+  manage_root_tsconfig: bool,
 ) -> Result<GeneratedTsConfig, std::io::Error> {
   // Write Deno type definitions to .deno/types/deno/ (private typeRoot).
   let types_dir = project_root.join(".deno/types/deno");
@@ -80,6 +101,7 @@ pub fn generate_tsconfig(
   let tsconfig = build_tsconfig(
     project_root,
     deno_compiler_options,
+    resolved_compiler_options,
     deno_imports,
     files,
     http_modules,
@@ -99,8 +121,12 @@ pub fn generate_tsconfig(
     .expect("failed to serialize tsconfig");
   std::fs::write(&tsconfig_path, &content)?;
 
-  // Ensure root tsconfig.json exists and extends .deno/tsconfig.json
-  ensure_root_tsconfig(project_root, npm_project_references)?;
+  // Ensure root tsconfig.json exists and extends .deno/tsconfig.json. `deno
+  // check` skips this when it will point tsc at `.deno/tsconfig.json` directly,
+  // so it never rewrites a user's committed tsconfig that Deno isn't honoring.
+  if manage_root_tsconfig {
+    ensure_root_tsconfig(project_root, npm_project_references)?;
+  }
 
   Ok(GeneratedTsConfig { tsconfig_path })
 }
@@ -127,7 +153,8 @@ fn ensure_root_tsconfig(
   let extends_path = "./.deno/tsconfig.json";
 
   if !root_tsconfig_path.exists() {
-    let mut tsconfig = json!({ "extends": extends_path });
+    let mut tsconfig =
+      json!({ "_deno_generated": true, "extends": extends_path });
     set_root_npm_references(&mut tsconfig, npm_project_references);
     let content = serde_json::to_string_pretty(&tsconfig)
       .expect("failed to serialize tsconfig");
@@ -135,6 +162,21 @@ fn ensure_root_tsconfig(
   }
 
   let content = std::fs::read_to_string(&root_tsconfig_path)?;
+
+  // A `_deno_generated: true` sentinel marks a root tsconfig that WE created (as
+  // opposed to a user-authored one). Ours is safe to regenerate wholesale; a
+  // user's is only ever augmented (see the byte-splice below) so we never lose
+  // their compiler options or comments. This also makes `deno check` idempotent:
+  // on the second run the root tsconfig is always the one we wrote, and without
+  // the sentinel we'd have no way to tell it apart from a committed config.
+  if is_deno_generated_tsconfig(&content) {
+    let mut tsconfig =
+      json!({ "_deno_generated": true, "extends": extends_path });
+    set_root_npm_references(&mut tsconfig, npm_project_references);
+    let content = serde_json::to_string_pretty(&tsconfig)
+      .expect("failed to serialize tsconfig");
+    return std::fs::write(&root_tsconfig_path, &content);
+  }
 
   // Parse as JSONC and edit the raw text by byte range (rather than
   // re-serializing) so the user's comments and formatting are preserved. An
@@ -220,6 +262,19 @@ fn ensure_root_tsconfig(
     std::fs::write(&root_tsconfig_path, &new_content)?;
   }
   ensure_root_npm_references(&root_tsconfig_path, npm_project_references)
+}
+
+/// Whether a root `tsconfig.json`'s text carries the `_deno_generated: true`
+/// sentinel, i.e. we created it (rather than the user). Parsed as JSONC since
+/// tsconfig commonly has comments; an unparseable file is treated as not ours.
+fn is_deno_generated_tsconfig(content: &str) -> bool {
+  jsonc_parser::parse_to_serde_value::<Value>(
+    content,
+    &jsonc_parser::ParseOptions::default(),
+  )
+  .ok()
+  .and_then(|v| v.get("_deno_generated").and_then(|s| s.as_bool()))
+  .unwrap_or(false)
 }
 
 fn root_npm_reference_path(path: &str) -> String {
@@ -472,6 +527,7 @@ fn rebase_onto_deno_dir(path: &str) -> String {
 fn build_tsconfig(
   project_root: &Path,
   deno_compiler_options: Option<&Value>,
+  resolved_compiler_options: Option<&Value>,
   deno_imports: Option<&Value>,
   check_files: &[String],
   http_modules: &BTreeMap<Url, String>,
@@ -497,6 +553,14 @@ fn build_tsconfig(
   // options only)
   if let Some(user_opts) = deno_compiler_options {
     merge_deno_options(&mut compiler_options, user_opts);
+  }
+
+  // Overlay Deno's *resolved* compiler options (when available). Unlike the raw
+  // deno.json above, these fold in Deno's source-kind defaults (e.g. `strict`
+  // and `noImplicitOverride` default off when a user `tsconfig.json` is in play,
+  // but on for deno.json) and CLI overrides like `--check-js`, so they win.
+  if let Some(resolved) = resolved_compiler_options {
+    merge_resolved_options(&mut compiler_options, resolved);
   }
 
   // Generate "paths" for npm: and jsr: specifiers only
@@ -551,6 +615,24 @@ fn build_tsconfig(
   {
     compiler_options
       .insert("baseUrl".to_string(), json!(rebase_onto_deno_dir(base_url)));
+  }
+
+  // Rebase the user's `rootDirs` onto `.deno/` too. Like `paths`/`baseUrl` these
+  // hold project-root-relative directories that stock tsc would otherwise
+  // resolve relative to the generated tsconfig (one level down), pointing them
+  // at the wrong place.
+  if let Some(root_dirs) = deno_compiler_options
+    .and_then(|co| co.get("rootDirs"))
+    .and_then(|r| r.as_array())
+  {
+    let rebased: Vec<Value> = root_dirs
+      .iter()
+      .map(|v| match v.as_str() {
+        Some(s) => Value::String(rebase_onto_deno_dir(s)),
+        None => v.clone(),
+      })
+      .collect();
+    compiler_options.insert("rootDirs".to_string(), Value::Array(rebased));
   }
 
   // Merge the user's bare-package `compilerOptions.types` with the deno/node
@@ -1177,12 +1259,10 @@ fn merge_deno_options(base: &mut Map<String, Value>, user_opts: &Value) {
     "noUncheckedIndexedAccess",
     "noUnusedLocals",
     "noUnusedParameters",
-    // NOTE: `paths`, `baseUrl` are deliberately NOT passed through here — they
-    // hold project-root-relative paths that must be rebased onto `.deno/` (the
-    // generated tsconfig lives one level down). They're handled in
-    // `build_tsconfig`. (`rootDirs` has the same hazard but is passed through
-    // for now; rebase it too if it ever matters.)
-    "rootDirs",
+    // NOTE: `paths`, `baseUrl`, `rootDirs` are deliberately NOT passed through
+    // here — they hold project-root-relative paths that must be rebased onto
+    // `.deno/` (the generated tsconfig lives one level down). They're handled in
+    // `build_tsconfig`.
     "skipLibCheck",
     "strict",
     "strictBindCallApply",
@@ -1209,17 +1289,91 @@ fn merge_deno_options(base: &mut Map<String, Value>, user_opts: &Value) {
 
   // Handle lib: merge with our base lib
   if let Some(user_lib) = user_map.get("lib").and_then(|v| v.as_array()) {
-    let mut libs: Vec<Value> = vec![json!("esnext")];
-    for lib in user_lib {
-      if let Some(s) = lib.as_str() {
-        // Skip Deno-specific libs that stock tsc doesn't know
-        if !s.starts_with("deno.") && s != "esnext" {
-          libs.push(lib.clone());
-        }
-      }
-    }
-    base.insert("lib".to_string(), Value::Array(libs));
+    base.insert("lib".to_string(), filter_stock_libs(user_lib));
   }
+}
+
+/// Type-checking options taken from Deno's *resolved* compiler options rather
+/// than the raw deno.json. These fold in Deno's source-kind defaults and CLI
+/// overrides (e.g. `--check-js`), so they win over the base and the raw pass.
+///
+/// Deliberately excludes `skipLibCheck` (we always keep it on for speed) and the
+/// path-like options (`paths`/`baseUrl`/`rootDirs`), which come from the raw
+/// config so `build_tsconfig` can rebase them onto `.deno/`.
+const RESOLVED_OPTION_KEYS: &[&str] = &[
+  "allowUnreachableCode",
+  "allowUnusedLabels",
+  "checkJs",
+  "emitDecoratorMetadata",
+  "erasableSyntaxOnly",
+  "exactOptionalPropertyTypes",
+  "experimentalDecorators",
+  "isolatedDeclarations",
+  "jsxFactory",
+  "jsxFragmentFactory",
+  "jsxImportSource",
+  "noErrorTruncation",
+  "noFallthroughCasesInSwitch",
+  "noImplicitAny",
+  "noImplicitOverride",
+  "noImplicitReturns",
+  "noImplicitThis",
+  "noPropertyAccessFromIndexSignature",
+  "noUncheckedIndexedAccess",
+  "noUnusedLocals",
+  "noUnusedParameters",
+  "strict",
+  "strictBindCallApply",
+  "strictBuiltinIteratorReturn",
+  "strictFunctionTypes",
+  "strictNullChecks",
+  "strictPropertyInitialization",
+  "useUnknownInCatchVariables",
+  "verbatimModuleSyntax",
+];
+
+/// Overlay Deno's resolved compiler options (see `RESOLVED_OPTION_KEYS`) onto
+/// the base. `jsx` and `lib` need translation for stock tsc, so they're handled
+/// specially rather than copied verbatim.
+fn merge_resolved_options(base: &mut Map<String, Value>, resolved: &Value) {
+  let Some(map) = resolved.as_object() else {
+    return;
+  };
+  for &key in RESOLVED_OPTION_KEYS {
+    if let Some(value) = map.get(key) {
+      base.insert(key.to_string(), value.clone());
+    }
+  }
+  // stock tsc doesn't know Deno's `precompile`; treat it as `react-jsx`.
+  match map.get("jsx").and_then(|v| v.as_str()) {
+    Some("precompile") => {
+      base.insert("jsx".to_string(), json!("react-jsx"));
+    }
+    Some(jsx) => {
+      base.insert("jsx".to_string(), json!(jsx));
+    }
+    None => {}
+  }
+  if let Some(resolved_lib) = map.get("lib").and_then(|v| v.as_array()) {
+    base.insert("lib".to_string(), filter_stock_libs(resolved_lib));
+  }
+}
+
+/// Keep only libs stock tsc recognizes, always including `esnext`. Deno-specific
+/// libs (`deno.*`) and the `node` pseudo-lib (provided instead via `@types/node`)
+/// would make stock tsc error (TS6046), so they're dropped.
+fn filter_stock_libs(libs: &[Value]) -> Value {
+  let mut out: Vec<Value> = vec![json!("esnext")];
+  for lib in libs {
+    if let Some(s) = lib.as_str()
+      && !s.starts_with("deno.")
+      && s != "esnext"
+      && s != "node"
+    {
+      out.push(lib.clone());
+    }
+  }
+  Value::Array(out)
 }
 
 /// Merge the user's `compilerOptions.types` into `base_types`, keeping only the
@@ -1592,6 +1746,7 @@ interface AlsoKeep {
       project_root,
       None,
       None,
+      None,
       &[],
       &BTreeMap::new(),
       &Map::new(),
@@ -1615,6 +1770,7 @@ interface AlsoKeep {
     let excludes = vec!["jsonc/testdata".to_string(), "./_site".to_string()];
     let tsconfig = build_tsconfig(
       project_root,
+      None,
       None,
       None,
       &[],
@@ -1646,6 +1802,7 @@ interface AlsoKeep {
       project_root,
       None,
       None,
+      None,
       &files,
       &BTreeMap::new(),
       &Map::new(),
@@ -1671,6 +1828,7 @@ interface AlsoKeep {
     ];
     let tsconfig = build_tsconfig(
       Path::new("/tmp/project"),
+      None,
       None,
       None,
       &[],
@@ -1707,6 +1865,7 @@ interface AlsoKeep {
     let tsconfig = build_tsconfig(
       project_root,
       Some(&compiler_options),
+      None,
       Some(&imports),
       &[],
       &BTreeMap::new(),

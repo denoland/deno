@@ -273,6 +273,10 @@ fn is_special_specifier(s: &str) -> bool {
     || s.starts_with("https://")
 }
 
+#[allow(
+  clippy::too_many_arguments,
+  reason = "threads the independent inputs needed to set up stock-tsc compat"
+)]
 pub async fn setup_npm_compat(
   project_root: &Path,
   file_fetcher: &CliFileFetcher,
@@ -280,6 +284,8 @@ pub async fn setup_npm_compat(
   permissions: &PermissionsContainer,
   graph_specifiers: &[String],
   npm_resolver: &CliNpmResolver,
+  resolved_compiler_options: Option<&Value>,
+  manage_root_tsconfig: bool,
 ) -> Result<Vec<InstalledJsrPackage>, AnyError> {
   let deno_json = read_deno_json(project_root)?;
   let deno_compiler_options = deno_json
@@ -464,6 +470,7 @@ pub async fn setup_npm_compat(
   generate_deno_tsconfig(
     project_root,
     deno_compiler_options,
+    resolved_compiler_options,
     deno_imports,
     &http_modules,
     &member_paths,
@@ -472,6 +479,7 @@ pub async fn setup_npm_compat(
     &npm_cache_projects.references,
     node_types.type_root.as_deref(),
     &excludes,
+    manage_root_tsconfig,
   )?;
 
   Ok(installed)
@@ -806,6 +814,7 @@ fn read_deno_json(project_root: &Path) -> Result<Option<Value>, AnyError> {
 fn generate_deno_tsconfig(
   project_root: &Path,
   deno_compiler_options: Option<&Value>,
+  resolved_compiler_options: Option<&Value>,
   deno_imports: Option<&Value>,
   http_modules: &BTreeMap<Url, String>,
   member_paths: &serde_json::Map<String, Value>,
@@ -814,10 +823,12 @@ fn generate_deno_tsconfig(
   npm_project_references: &[String],
   node_types_root: Option<&str>,
   excludes: &[String],
+  manage_root_tsconfig: bool,
 ) -> Result<(), AnyError> {
   let generated = crate::tsc::tsconfig_gen::generate_tsconfig(
     project_root,
     deno_compiler_options,
+    resolved_compiler_options,
     deno_imports,
     // Command-line roots scope graph/dependency discovery only. Keep the
     // generated project open so bundlers can consume its resolver mappings for
@@ -830,6 +841,7 @@ fn generate_deno_tsconfig(
     npm_project_references,
     node_types_root,
     excludes,
+    manage_root_tsconfig,
   )
   .map_err(|e| anyhow!("Failed to generate tsconfig: {e}"))?;
 

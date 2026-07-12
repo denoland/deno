@@ -234,12 +234,29 @@ pub async fn ci_command(
 /// tooling can type-check the project. Assumes dependencies are already
 /// installed (run `deno install` first); materializes `jsr:`/`http(s):` types
 /// and writes `.deno/tsconfig.json`.
+/// How `sync_types_command` should treat the root `tsconfig.json`.
+#[derive(Debug, Clone, Copy)]
+pub enum RootTsConfigMode {
+  /// Always create/update a root `tsconfig.json` extending `.deno/tsconfig.json`
+  /// (used by the standalone `deno sync-types` command, for IDE setup).
+  Always,
+  /// Only manage the root `tsconfig.json` when Deno is honoring a user's
+  /// tsconfig (a deno.json/package.json is present and config isn't disabled).
+  /// Used by `deno check`, which otherwise points tsc at `.deno/tsconfig.json`
+  /// directly and must not rewrite a tsconfig Deno is ignoring.
+  CheckMode,
+}
+
 pub async fn sync_types_command(
   flags: Arc<Flags>,
   sync_types_flags: SyncTypesFlags,
+  root_tsconfig_mode: RootTsConfigMode,
 ) -> Result<(), AnyError> {
+  use crate::args::TsTypeLib;
   use crate::graph_container::CollectSpecifiersOptions;
 
+  let config_disabled =
+    matches!(flags.config_flag, crate::args::ConfigFlag::Disabled);
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
   let file_fetcher = factory.file_fetcher()?.clone();
@@ -374,6 +391,42 @@ pub async fn sync_types_command(
   // would normally provide.
   let npm_resolver = factory.npm_resolver().await?.clone();
 
+  // Deno's *resolved* compiler options for the project root. These fold in
+  // Deno's source-kind defaults (deno.json vs tsconfig.json) and CLI overrides
+  // like `--check-js`, which the raw deno.json read inside `setup_npm_compat`
+  // can't see. Resolve against a representative file under the root so any
+  // detected tsconfig `include`/`files` filter matches.
+  let root_specifier = cli_options
+    .workspace()
+    .root_dir_url()
+    .join("__deno_root__.ts")
+    .ok();
+  let resolved_compiler_options = root_specifier.as_ref().and_then(|spec| {
+    factory
+      .compiler_options_resolver()
+      .ok()
+      .and_then(|resolver| {
+        resolver
+          .for_specifier(spec)
+          .compiler_options_for_lib(TsTypeLib::DenoWindow)
+          .ok()
+      })
+      .map(|opts| opts.0.clone())
+  });
+
+  // Whether to manage the root `tsconfig.json`. In check mode we only touch it
+  // when Deno is honoring a user tsconfig; otherwise the caller points tsc at
+  // `.deno/tsconfig.json` and we leave the user's tree alone.
+  let manage_root_tsconfig = match root_tsconfig_mode {
+    RootTsConfigMode::Always => true,
+    RootTsConfigMode::CheckMode => {
+      crate::tsc::tsconfig_gen::should_honor_user_tsconfig(
+        &project_root,
+        config_disabled,
+      )
+    }
+  };
+
   let installed = super::npm_compat::setup_npm_compat(
     &project_root,
     &file_fetcher,
@@ -381,6 +434,8 @@ pub async fn sync_types_command(
     &permissions,
     &graph_specifiers,
     &npm_resolver,
+    resolved_compiler_options.as_ref(),
+    manage_root_tsconfig,
   )
   .await?;
 
