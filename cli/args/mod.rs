@@ -34,6 +34,7 @@ use deno_config::workspace::WorkspaceDirLintConfig;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDirectoryRc;
 use deno_config::workspace::WorkspaceLintConfig;
+use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
@@ -1159,21 +1160,7 @@ impl CliOptions {
   }
 
   pub fn has_hmr(&self) -> bool {
-    if let DenoSubcommand::Run(RunFlags {
-      watch: Some(WatchFlagsWithPaths { hmr, .. }),
-      ..
-    }) = &self.flags.subcommand
-    {
-      *hmr
-    } else if let DenoSubcommand::Serve(ServeFlags {
-      watch: Some(WatchFlagsWithPaths { hmr, .. }),
-      ..
-    }) = &self.flags.subcommand
-    {
-      *hmr
-    } else {
-      false
-    }
+    self.flags.watch.as_ref().is_some_and(|watch| watch.hmr)
   }
 
   /// If the --inspect or --inspect-brk flags are used.
@@ -1424,10 +1411,6 @@ impl CliOptions {
     self.flags.type_check_mode
   }
 
-  pub fn unstable_tsgo(&self) -> bool {
-    self.flags.unstable_config.tsgo || self.workspace().has_unstable("tsgo")
-  }
-
   pub fn unsafely_ignore_certificate_errors(&self) -> &Option<Vec<String>> {
     &self.flags.unsafely_ignore_certificate_errors
   }
@@ -1528,19 +1511,7 @@ impl CliOptions {
 
   pub fn watch_paths(&self) -> Vec<PathBuf> {
     let mut full_paths = Vec::new();
-    if let DenoSubcommand::Run(RunFlags {
-      watch: Some(WatchFlagsWithPaths { paths, .. }),
-      ..
-    })
-    | DenoSubcommand::Serve(ServeFlags {
-      watch: Some(WatchFlagsWithPaths { paths, .. }),
-      ..
-    })
-    | DenoSubcommand::Test(TestFlags {
-      watch: Some(WatchFlagsWithPaths { paths, .. }),
-      ..
-    }) = &self.flags.subcommand
-    {
+    if let Some(WatchFlagsWithPaths { paths, .. }) = &self.flags.watch {
       full_paths.extend(paths.iter().map(|path| self.initial_cwd.join(path)));
     }
 
@@ -1693,7 +1664,11 @@ pub fn config_to_deno_graph_workspace_member(
     None => bail!("Missing 'name' field in config file."),
   };
   let version = match &config.json.version {
-    Some(name) => Some(deno_semver::Version::parse_standard(name)?),
+    Some(version) => {
+      Some(deno_semver::Version::parse_standard(version).with_context(
+        || format!("Invalid 'version' field in '{}'", config.specifier),
+      )?)
+    }
     None => None,
   };
   Ok(deno_graph::WorkspaceMember {

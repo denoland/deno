@@ -18,7 +18,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 119;
+const cacheVersion = 120;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
@@ -1116,6 +1116,9 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               ].join("\n"),
               body_path: "target/release/release-notes.md",
               draft: true,
+              // Flag pre-release tags (e.g. -alpha./-beta./-rc.) as pre-releases
+              // so they are not marked "Latest" when the draft is published.
+              prerelease: "${{ contains(github.ref_name, '-') }}",
             },
           },
         );

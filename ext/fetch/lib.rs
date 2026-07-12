@@ -349,6 +349,7 @@ pub fn create_client_from_options(
       http2: true,
       local_address: None,
       client_builder_hook: options.client_builder_hook,
+      http2_max_header_list_size: None,
     },
   )
 }
@@ -630,18 +631,27 @@ pub async fn op_fetch_send(
   let res = match request.future.await {
     Ok(Ok(res)) => res,
     Ok(Err(err)) => {
-      // We're going to try and rescue the error cause from a stream and return it from this fetch.
-      // If any error in the chain is a hyper body error, return that as a special result we can use to
-      // reconstruct an error chain (eg: `new TypeError(..., { cause: new Error(...) })`).
+      // Mirror Node/undici's fetch error shape for transport failures: surface
+      // them to JS as a `TypeError: "fetch failed"` whose `.cause` carries the
+      // low-level detail, instead of leaking the raw reqwest message into
+      // `.message` with an empty `.cause`. We pass the detail back as
+      // `error: Some((detail, cause))` so JS can reconstruct the error chain
+      // (`new TypeError("fetch failed", { cause: new Error(cause) })`).
+      // Only `ClientSend` (connection refused, DNS failure, connection reset,
+      // connection closed mid-response, request body stream errors, ...) is
+      // remapped here; other errors (e.g. permission errors) keep their type.
       // TODO(mmastrac): it would be a lot easier if we just passed a v8::Global through here instead
-
-      if let FetchError::ClientSend(err_src) = &err
-        && let Some(client_err) = std::error::Error::source(&err_src.source)
-        && let Some(err_src) = client_err.downcast_ref::<hyper::Error>()
-        && let Some(err_src) = std::error::Error::source(err_src)
-      {
+      if let FetchError::ClientSend(err_src) = &err {
+        // Prefer the innermost cause (e.g. a user body-stream error, or hyper's
+        // "connection closed before message completed") for `.cause`, falling
+        // back to the full reqwest message when there's no deeper source.
+        let cause = std::error::Error::source(&err_src.source)
+          .and_then(|client_err| client_err.downcast_ref::<hyper::Error>())
+          .and_then(std::error::Error::source)
+          .map(|src| src.to_string())
+          .unwrap_or_else(|| err.to_string());
         return Ok(FetchResponse {
-          error: Some((err.to_string(), err_src.to_string())),
+          error: Some((err.to_string(), cause)),
           ..Default::default()
         });
       }
@@ -845,6 +855,7 @@ pub struct CreateHttpClientArgs {
   #[from_v8(default)]
   allow_host: bool,
   local_address: Option<String>,
+  http2_max_header_list_size: Option<u32>,
 }
 
 #[op2(stack_trace)]
@@ -932,6 +943,7 @@ pub fn op_fetch_custom_client(
       http2: args.http2,
       local_address: args.local_address,
       client_builder_hook: options.client_builder_hook,
+      http2_max_header_list_size: args.http2_max_header_list_size,
     },
   )?;
 
@@ -958,6 +970,7 @@ pub struct CreateHttpClientOptions {
   pub http2: bool,
   pub local_address: Option<String>,
   pub client_builder_hook: Option<fn(HyperClientBuilder) -> HyperClientBuilder>,
+  pub http2_max_header_list_size: Option<u32>,
 }
 
 impl Default for CreateHttpClientOptions {
@@ -976,6 +989,7 @@ impl Default for CreateHttpClientOptions {
       http2: true,
       local_address: None,
       client_builder_hook: None,
+      http2_max_header_list_size: None,
     }
   }
 }
@@ -1127,6 +1141,10 @@ pub fn create_http_client(
     builder.pool_idle_timeout(
       pool_idle_timeout.map(std::time::Duration::from_millis),
     );
+  }
+
+  if let Some(http2_max_header_list_size) = options.http2_max_header_list_size {
+    builder.http2_max_header_list_size(http2_max_header_list_size);
   }
 
   match (options.http1, options.http2) {

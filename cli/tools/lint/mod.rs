@@ -30,6 +30,7 @@ use deno_core::unsync::future::SharedLocal;
 use deno_graph::ModuleGraph;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lint::diagnostic::LintDiagnostic;
+use deno_print::drop_println;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use log::debug;
 use reporters::LintReporter;
@@ -81,7 +82,7 @@ pub async fn lint(
   flags: Arc<Flags>,
   lint_flags: LintFlags,
 ) -> Result<(), AnyError> {
-  if lint_flags.watch.is_some() {
+  if flags.watch.is_some() {
     if lint_flags.is_stdin() {
       return Err(anyhow!("Lint watch on standard input is not supported.",));
     }
@@ -142,6 +143,7 @@ async fn lint_with_watch_inner(
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
+  let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
   let mut paths_with_options_batches =
     resolve_paths_with_options_batches(cli_options, &lint_flags)?;
   for paths_with_options in &mut paths_with_options_batches {
@@ -196,11 +198,14 @@ async fn lint_with_watch(
   flags: Arc<Flags>,
   lint_flags: LintFlags,
 ) -> Result<(), AnyError> {
-  let watch_flags = lint_flags.watch.as_ref().unwrap();
+  let no_clear_screen = flags
+    .watch
+    .as_ref()
+    .is_some_and(|watch| watch.no_clear_screen);
 
   file_watcher::watch_func(
     flags,
-    file_watcher::PrintConfig::new("Lint", !watch_flags.no_clear_screen),
+    file_watcher::PrintConfig::new("Lint", !no_clear_screen),
     move |flags, watcher_communicator, changed_paths| {
       let lint_flags = lint_flags.clone();
       watcher_communicator.show_path_changed(changed_paths.clone());
@@ -444,6 +449,7 @@ impl WorkspaceLinter {
               packages: &packages,
               build_fast_check_graph: true,
               validate_graph: false,
+              skip_unanalyzable_exports: true,
             })
             .await
             .map(Rc::new)
@@ -511,7 +517,6 @@ fn collect_lint_files(
   .collect_file_patterns(&CliSys::default(), &files)
 }
 
-#[allow(clippy::print_stdout, reason = "print method")]
 pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
   let rule_provider = LintRuleProvider::new(None);
   let mut all_rules = rule_provider.all_rules();
@@ -543,8 +548,8 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
     display::write_json_to_stdout(&json_output).unwrap();
   } else {
     // The rules should still be printed even if `--quiet` option is enabled,
-    // so use `println!` here instead of `info!`.
-    println!("Available rules:");
+    // so use `drop_println!` here instead of `info!`.
+    drop_println!("Available rules:");
     for rule in all_rules.iter() {
       // TODO(bartlomieju): this is O(n) search, fix before landing
       let enabled = if configured_rules.rules.contains(rule) {
@@ -552,15 +557,15 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
       } else {
         ""
       };
-      println!("- {} {}", rule.code(), colors::green(enabled),);
-      println!(
+      drop_println!("- {} {}", rule.code(), colors::green(enabled),);
+      drop_println!(
         "{}",
         colors::gray(format!("  help: {}", rule.help_docs_url()))
       );
       if rule.tags().is_empty() {
-        println!("  {}", colors::gray("tags:"));
+        drop_println!("  {}", colors::gray("tags:"));
       } else {
-        println!(
+        drop_println!(
           "  {}",
           colors::gray(format!(
             "tags: {}",
@@ -573,7 +578,7 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
           ))
         );
       }
-      println!();
+      drop_println!();
     }
   }
 }
