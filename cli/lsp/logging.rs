@@ -186,6 +186,4 @@ macro_rules! lsp_tracing_info {
 
 pub(super) use lsp_debug;
 pub(super) use lsp_log;
-pub(super) use lsp_tracing_info;
-pub(super) use lsp_tracing_info_span;
 pub(super) use lsp_warn;
