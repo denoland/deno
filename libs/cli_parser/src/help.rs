@@ -119,6 +119,40 @@ pub fn render_help(cmd: &CommandDef) -> String {
     }
   }
 
+  // Environment variables (root help only), mirroring clap's after-help.
+  if cmd.name == "deno" {
+    out.push_str(&render_env_vars());
+  }
+
+  out
+}
+
+/// Render the "Environment variables" section documented in `deno --help`.
+fn render_env_vars() -> String {
+  use crate::env_vars::ENV_VARS;
+  let mut out = String::from(
+    "\nEnvironment variables:\nDocs: https://docs.deno.com/go/env-vars\n\n",
+  );
+  let width = ENV_VARS.iter().map(|v| v.name.len()).max().unwrap_or(0) + 1;
+  let entries: Vec<String> = ENV_VARS
+    .iter()
+    .map(|var| {
+      let indent = " ".repeat(width);
+      let desc = var.description.replace('\n', &format!("\n  {indent}"));
+      let mut entry = format!(
+        "  {}{}{}",
+        var.name,
+        " ".repeat(width - var.name.len()),
+        desc
+      );
+      if let Some(example) = var.example {
+        entry.push_str(&format!("\n  {} {}", indent, example));
+      }
+      entry
+    })
+    .collect();
+  out.push_str(&entries.join("\n"));
+  out.push('\n');
   out
 }
 
