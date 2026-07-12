@@ -1750,6 +1750,7 @@ pub async fn run_with_options(
     // TODO(prototype): not carried into compiled binaries yet.
     max_memory_mb: None,
     max_cpu_time_secs: None,
+    max_time_secs: None,
   };
   let worker_factory = LibMainWorkerFactory::new(
     blob_store,

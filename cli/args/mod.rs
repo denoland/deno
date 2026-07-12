@@ -1378,6 +1378,11 @@ impl CliOptions {
     self.flags.max_cpu_time
   }
 
+  /// Maximum wall-clock run time in seconds (`--max-time`).
+  pub fn max_time(&self) -> Option<u64> {
+    self.flags.max_time
+  }
+
   pub fn sub_command(&self) -> &DenoSubcommand {
     &self.flags.subcommand
   }

@@ -5518,6 +5518,7 @@ fn runtime_misc_args(app: Command) -> Command {
     .arg(require_arg())
     .arg(max_memory_arg())
     .arg(max_cpu_time_arg())
+    .arg(max_time_arg())
 }
 
 fn eszip_arg() -> Arg {
@@ -5930,6 +5931,17 @@ fn max_cpu_time_arg() -> Arg {
     .help(cstr!(
       "Limit the total CPU time available to the program, in seconds, e.g. <p(245)>--max-cpu-time=30</>
   <p(245)>When the budget is exhausted the program is terminated with an error.</>"
+    ))
+    .value_parser(value_parser!(u64))
+}
+
+fn max_time_arg() -> Arg {
+  Arg::new("max-time")
+    .long("max-time")
+    .value_name("SECONDS")
+    .help(cstr!(
+      "Limit the total wall-clock run time of the program, in seconds, e.g. <p(245)>--max-time=30</>
+  <p(245)>When the deadline is reached the program is terminated with an error.</>"
     ))
     .value_parser(value_parser!(u64))
 }
@@ -8732,6 +8744,7 @@ fn runtime_args_parse(
   seed_arg_parse(flags, matches);
   max_memory_arg_parse(flags, matches);
   max_cpu_time_arg_parse(flags, matches);
+  max_time_arg_parse(flags, matches);
   enable_testing_features_arg_parse(flags, matches);
   env_file_arg_parse(flags, matches);
   trace_ops_parse(flags, matches);
@@ -8855,6 +8868,10 @@ fn max_memory_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
 fn max_cpu_time_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.max_cpu_time = matches.remove_one::<u64>("max-cpu-time");
+}
+
+fn max_time_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.max_time = matches.remove_one::<u64>("max-time");
 }
 
 fn no_check_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {

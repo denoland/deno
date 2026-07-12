@@ -190,15 +190,37 @@ pub static MEMORY_LIMIT_EXCEEDED: AtomicBool = AtomicBool::new(false);
 /// main isolate was terminated. Checked on exit to report a clear error.
 pub static CPU_TIME_LIMIT_EXCEEDED: AtomicBool = AtomicBool::new(false);
 
+/// Set when the process exceeded the `--max-time` wall-clock deadline and
+/// the main isolate was terminated. Checked on exit to report a clear error.
+pub static TIME_LIMIT_EXCEEDED: AtomicBool = AtomicBool::new(false);
+
+/// Grace period given to the main thread to unwind and report a clean error
+/// after a watchdog terminates the isolate, before the watchdog force-exits.
+const WATCHDOG_GRACE: Duration = Duration::from_secs(2);
+
+/// Terminates the main isolate after a resource limit was hit, then
+/// force-exits if the main thread did not already exit cleanly.
+///
+/// Termination only unwinds while JS is executing; if the program is idle
+/// (e.g. awaiting a never-resolving promise) or the budget was burned
+/// outside of JS (native ops, workers), the isolate won't unwind on its own,
+/// so we force-exit with a clear error after a short grace period.
+fn terminate_and_exit(
+  isolate_handle: &v8::IsolateHandle,
+  flag: &AtomicBool,
+  message: &str,
+) -> ! {
+  flag.store(true, Ordering::SeqCst);
+  isolate_handle.terminate_execution();
+  std::thread::sleep(WATCHDOG_GRACE);
+  log::error!("{}: {}", colors::red_bold("error"), message);
+  deno_runtime::exit(1);
+}
+
 /// Spawns a thread that samples the process CPU time and terminates the
 /// main isolate once `limit_secs` of CPU time (user + system) has been
-/// consumed. Termination only surfaces while JS is executing; if the
-/// budget was burned outside of JS (native ops, workers) the process is
-/// force-exited after a short grace period instead.
-fn start_cpu_time_watchdog(
-  limit_secs: u64,
-  isolate_handle: v8::IsolateHandle,
-) {
+/// consumed.
+fn start_cpu_time_watchdog(limit_secs: u64, isolate_handle: v8::IsolateHandle) {
   let limit = Duration::from_secs(limit_secs);
   std::thread::Builder::new()
     .name("deno-cpu-time-watchdog".to_string())
@@ -207,18 +229,35 @@ fn start_cpu_time_watchdog(
         std::thread::sleep(Duration::from_millis(100));
         let (sys, user) = deno_runtime::deno_os::get_cpu_usage();
         if sys + user >= limit {
-          CPU_TIME_LIMIT_EXCEEDED.store(true, Ordering::SeqCst);
-          isolate_handle.terminate_execution();
-          std::thread::sleep(Duration::from_secs(2));
-          log::error!(
-            "{}: CPU time limit exceeded (--max-cpu-time={limit_secs})",
-            colors::red_bold("error"),
+          terminate_and_exit(
+            &isolate_handle,
+            &CPU_TIME_LIMIT_EXCEEDED,
+            &format!("CPU time limit exceeded (--max-cpu-time={limit_secs})"),
           );
-          deno_runtime::exit(1);
         }
       }
     })
     .expect("failed to spawn CPU time watchdog thread");
+}
+
+/// Spawns a thread that terminates the main isolate once `limit_secs` of
+/// wall-clock time has elapsed since the program started.
+fn start_wall_time_watchdog(
+  limit_secs: u64,
+  isolate_handle: v8::IsolateHandle,
+) {
+  let limit = Duration::from_secs(limit_secs);
+  std::thread::Builder::new()
+    .name("deno-max-time-watchdog".to_string())
+    .spawn(move || {
+      std::thread::sleep(limit);
+      terminate_and_exit(
+        &isolate_handle,
+        &TIME_LIMIT_EXCEEDED,
+        &format!("Time limit exceeded (--max-time={limit_secs})"),
+      );
+    })
+    .expect("failed to spawn max-time watchdog thread");
 }
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
@@ -343,6 +382,8 @@ pub struct LibMainWorkerOptions {
   pub max_memory_mb: Option<u64>,
   /// Maximum process CPU time budget, in seconds (`--max-cpu-time`).
   pub max_cpu_time_secs: Option<u64>,
+  /// Maximum wall-clock run time, in seconds (`--max-time`).
+  pub max_time_secs: Option<u64>,
 }
 
 #[derive(Default, Clone)]
@@ -851,6 +892,13 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       let handle = worker.js_runtime.v8_isolate().thread_safe_handle();
       CPU_WATCHDOG_STARTED
         .call_once(move || start_cpu_time_watchdog(limit_secs, handle));
+    }
+
+    if let Some(limit_secs) = shared.options.max_time_secs {
+      static TIME_WATCHDOG_STARTED: std::sync::Once = std::sync::Once::new();
+      let handle = worker.js_runtime.v8_isolate().thread_safe_handle();
+      TIME_WATCHDOG_STARTED
+        .call_once(move || start_wall_time_watchdog(limit_secs, handle));
     }
 
     // Wire module hook registry into OpState so JS ops share it with the loader

@@ -1316,6 +1316,7 @@ impl CliFactory {
       ),
       max_memory_mb: cli_options.max_memory(),
       max_cpu_time_secs: cli_options.max_cpu_time(),
+      max_time_secs: cli_options.max_time(),
     })
   }
 

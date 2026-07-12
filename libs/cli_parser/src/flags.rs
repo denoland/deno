@@ -975,6 +975,8 @@ pub struct Flags {
   pub max_memory: Option<u64>,
   /// Maximum process CPU time budget, in seconds (`--max-cpu-time`).
   pub max_cpu_time: Option<u64>,
+  /// Maximum wall-clock run time, in seconds (`--max-time`).
+  pub max_time: Option<u64>,
   pub code_cache_enabled: bool,
   pub permissions: PermissionFlags,
   pub allow_scripts: PackagesAllowedScripts,

@@ -1,0 +1,34 @@
+{
+  "tests": {
+    "max_memory": {
+      "args": "run --max-memory=64m max_memory.js",
+      "output": "max_memory.out",
+      "exitCode": 1
+    },
+    "max_memory_suffix": {
+      "args": "run --max-memory=64mb max_memory.js",
+      "output": "max_memory.out",
+      "exitCode": 1
+    },
+    "max_memory_invalid": {
+      "args": "run --max-memory=nope max_memory.js",
+      "output": "max_memory_invalid.out",
+      "exitCode": 1
+    },
+    "max_cpu_time": {
+      "args": "run --max-cpu-time=1 max_cpu_time.js",
+      "output": "max_cpu_time.out",
+      "exitCode": 1
+    },
+    "max_time": {
+      "args": "run --max-time=1 max_time.js",
+      "output": "max_time.out",
+      "exitCode": 1
+    },
+    "within_limits": {
+      "args": "run --max-memory=256m --max-cpu-time=30 --max-time=30 within_limits.js",
+      "output": "within_limits.out",
+      "exitCode": 0
+    }
+  }
+}
