@@ -232,7 +232,7 @@ fn start_cpu_time_watchdog(limit_secs: u64, isolate_handle: v8::IsolateHandle) {
           terminate_and_exit(
             &isolate_handle,
             &CPU_TIME_LIMIT_EXCEEDED,
-            &format!("CPU time limit exceeded (--max-cpu-time={limit_secs})"),
+            "CPU time limit exceeded (--max-cpu-time)",
           );
         }
       }
@@ -254,7 +254,7 @@ fn start_wall_time_watchdog(
       terminate_and_exit(
         &isolate_handle,
         &TIME_LIMIT_EXCEEDED,
-        &format!("Time limit exceeded (--max-time={limit_secs})"),
+        "Time limit exceeded (--max-time)",
       );
     })
     .expect("failed to spawn max-time watchdog thread");
