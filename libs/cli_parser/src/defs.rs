@@ -6,6 +6,20 @@
 
 use crate::types::*;
 
+/// Allowed values for the executable `--ext` flag (run/serve/eval/test/bench/
+/// compile/desktop/lint), mirroring clap's `executable_ext_arg`.
+const EXECUTABLE_EXTS: &[&str] =
+  &["ts", "tsx", "js", "jsx", "mts", "mjs", "cts", "cjs"];
+
+/// Supported `--target` triples for `compile`/`desktop` (clap's `SUPPORTED_OS`).
+const SUPPORTED_OS: &[&str] = &[
+  "x86_64-unknown-linux-gnu",
+  "aarch64-unknown-linux-gnu",
+  "x86_64-pc-windows-msvc",
+  "x86_64-apple-darwin",
+  "aarch64-apple-darwin",
+];
+
 // ============================================================
 // Shared arg groups
 // ============================================================
@@ -143,9 +157,11 @@ pub static COMPILE_ARGS: &[ArgDef] = &[
     .long("no-check")
     .action(ArgAction::Set)
     .num_args(NumArgs::Optional)
-    .require_equals(),
+    .require_equals()
+    .conflicts_with(&["check"]),
   ArgDef::new("import-map")
     .long("import-map")
+    .long_aliases(&["importmap"])
     .action(ArgAction::Set)
     .num_args(NumArgs::Exact(1)),
   ArgDef::new("no-remote").long("no-remote").set_true(),
@@ -154,18 +170,32 @@ pub static COMPILE_ARGS: &[ArgDef] = &[
     .long("node-modules-dir")
     .action(ArgAction::Set)
     .num_args(NumArgs::Optional)
-    .require_equals(),
+    .require_equals()
+    .value_parser(ValueParser::Choices(&[
+      "auto", "true", "manual", "none", "false",
+    ])),
   ArgDef::new("vendor")
     .long("vendor")
     .action(ArgAction::Set)
     .num_args(NumArgs::Optional)
-    .require_equals(),
+    .require_equals()
+    .value_parser(ValueParser::Bool),
+  ArgDef::new("node-modules-linker")
+    .long("node-modules-linker")
+    .long_aliases(&["linker"])
+    .action(ArgAction::Set)
+    .num_args(NumArgs::Exact(1))
+    .require_equals()
+    .value_parser(ValueParser::Choices(&["isolated", "hoisted"])),
   ArgDef::new("config")
     .short('c')
     .long("config")
     .action(ArgAction::Set)
     .num_args(NumArgs::Exact(1)),
-  ArgDef::new("no-config").long("no-config").set_true(),
+  ArgDef::new("no-config")
+    .long("no-config")
+    .set_true()
+    .conflicts_with(&["config"]),
   ArgDef::new("reload")
     .short('r')
     .long("reload")
@@ -183,7 +213,8 @@ pub static COMPILE_ARGS: &[ArgDef] = &[
     .long_aliases(&["frozen"])
     .action(ArgAction::Set)
     .num_args(NumArgs::Optional)
-    .require_equals(),
+    .require_equals()
+    .value_parser(ValueParser::Bool),
   ArgDef::new("cert")
     .long("cert")
     .action(ArgAction::Set)
@@ -238,7 +269,8 @@ pub static RUNTIME_MISC_ARGS: &[ArgDef] = &[
   ArgDef::new("seed")
     .long("seed")
     .action(ArgAction::Set)
-    .num_args(NumArgs::Exact(1)),
+    .num_args(NumArgs::Exact(1))
+    .value_parser(ValueParser::U64),
   ArgDef::new("enable-testing-features")
     .long("enable-testing-features-do-not-use")
     .long_aliases(&["enable-testing-features"])
@@ -287,6 +319,7 @@ pub static CPU_PROF_ARGS: &[ArgDef] = &[
     .long("cpu-prof-interval")
     .action(ArgAction::Set)
     .num_args(NumArgs::Exact(1))
+    .value_parser(ValueParser::U32)
     .hidden(),
   ArgDef::new("cpu-prof-md")
     .long("cpu-prof-md")
@@ -393,6 +426,7 @@ pub static UNSTABLE_ARGS: &[ArgDef] = &[
     .hidden(),
   ArgDef::new("unstable-unsafe-proto")
     .long("unstable-unsafe-proto")
+    .long_aliases(&["unsafe-proto"])
     .set_true()
     .hidden(),
   ArgDef::new("unstable-vsock")
@@ -416,84 +450,120 @@ pub static ALLOW_SCRIPTS_ARG: &[ArgDef] = &[ArgDef::new("allow-scripts")
   .require_equals()
   .value_delimiter(',')];
 
+// Standalone lock flags for subcommands that don't pull in COMPILE_ARGS
+// (which also defines these). Do not combine LOCK_ARGS with COMPILE_ARGS on the
+// same command or the arg names would collide.
 pub static LOCK_ARGS: &[ArgDef] = &[
-    // lock and no-lock are in COMPILE_ARGS, we reuse them via arg_groups
+  ArgDef::new("lock")
+    .long("lock")
+    .action(ArgAction::Set)
+    .num_args(NumArgs::Optional),
+  ArgDef::new("no-lock").long("no-lock").set_true(),
+  ArgDef::new("frozen-lockfile")
+    .long("frozen-lockfile")
+    .long_aliases(&["frozen"])
+    .action(ArgAction::Set)
+    .num_args(NumArgs::Optional)
+    .require_equals()
+    .value_parser(ValueParser::Bool),
 ];
 
 // ============================================================
 // Subcommand definitions
 // ============================================================
 
+// Shared between `run` and its alias-like `watch` subcommand
+// (`deno watch` == `deno run --watch-hmr`).
+static RUN_ARGS: &[ArgDef] = &[
+  ArgDef::new("script_arg")
+    .positional()
+    .action(ArgAction::Set)
+    .num_args(NumArgs::Exact(1)),
+  ArgDef::new("check")
+    .long("check")
+    .action(ArgAction::Set)
+    .num_args(NumArgs::Optional)
+    .require_equals(),
+  ArgDef::new("watch")
+    .long("watch")
+    .action(ArgAction::Append)
+    .num_args(NumArgs::ZeroOrMore)
+    .require_equals()
+    .value_delimiter(','),
+  ArgDef::new("hmr")
+    .long("hmr")
+    .long_aliases(&["watch-hmr", "unstable-hmr"])
+    .action(ArgAction::Append)
+    .num_args(NumArgs::ZeroOrMore)
+    .require_equals()
+    .value_delimiter(',')
+    .conflicts_with(&["watch"]),
+  ArgDef::new("watch-exclude")
+    .long("watch-exclude")
+    .action(ArgAction::Append)
+    .num_args(NumArgs::ZeroOrMore)
+    .require_equals()
+    .value_delimiter(','),
+  ArgDef::new("no-clear-screen")
+    .long("no-clear-screen")
+    .set_true()
+    .requires(&["watch"]),
+  ArgDef::new("ext")
+    .long("ext")
+    .action(ArgAction::Set)
+    .num_args(NumArgs::Exact(1))
+    .value_parser(ValueParser::Choices(EXECUTABLE_EXTS)),
+  ArgDef::new("env-file")
+    .long("env-file")
+    .long_aliases(&["env"])
+    .action(ArgAction::Append)
+    .num_args(NumArgs::Optional)
+    .require_equals(),
+  ArgDef::new("no-code-cache")
+    .long("no-code-cache")
+    .set_true(),
+  ArgDef::new("coverage")
+    .long("coverage")
+    .action(ArgAction::Set)
+    .num_args(NumArgs::Optional)
+    .require_equals()
+    .conflicts_with(&["inspect", "inspect-brk", "inspect-wait"]),
+  ArgDef::new("tunnel")
+    .long("tunnel")
+    .long_aliases(&["connected"])
+    .set_true()
+    .hidden(),
+  // Allow --allow-scripts on run (through arg_groups, but also directly)
+];
+
+static RUN_ARG_GROUPS: &[&[ArgDef]] = &[
+  UNSTABLE_ARGS,
+  PERMISSION_ARGS,
+  COMPILE_ARGS,
+  INSPECT_ARGS,
+  RUNTIME_MISC_ARGS,
+  CPU_PROF_ARGS,
+  ALLOW_SCRIPTS_ARG,
+];
+
 pub static RUN_SUBCOMMAND: CommandDef = CommandDef {
   name: "run",
   about: "Run a JavaScript or TypeScript program, or a task",
   aliases: &[],
-  args: &[
-    ArgDef::new("script_arg")
-      .positional()
-      .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
-    ArgDef::new("check")
-      .long("check")
-      .action(ArgAction::Set)
-      .num_args(NumArgs::Optional)
-      .require_equals(),
-    ArgDef::new("watch")
-      .long("watch")
-      .action(ArgAction::Append)
-      .num_args(NumArgs::ZeroOrMore)
-      .require_equals()
-      .value_delimiter(','),
-    ArgDef::new("hmr")
-      .long("hmr")
-      .long_aliases(&["watch-hmr", "unstable-hmr"])
-      .action(ArgAction::Append)
-      .num_args(NumArgs::ZeroOrMore)
-      .require_equals()
-      .value_delimiter(','),
-    ArgDef::new("watch-exclude")
-      .long("watch-exclude")
-      .action(ArgAction::Append)
-      .num_args(NumArgs::ZeroOrMore)
-      .require_equals()
-      .value_delimiter(','),
-    ArgDef::new("no-clear-screen")
-      .long("no-clear-screen")
-      .set_true(),
-    ArgDef::new("ext")
-      .long("ext")
-      .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
-    ArgDef::new("env-file")
-      .long("env-file")
-      .long_aliases(&["env"])
-      .action(ArgAction::Append)
-      .num_args(NumArgs::Optional)
-      .require_equals(),
-    ArgDef::new("no-code-cache")
-      .long("no-code-cache")
-      .set_true(),
-    ArgDef::new("coverage")
-      .long("coverage")
-      .action(ArgAction::Set)
-      .num_args(NumArgs::Optional)
-      .require_equals(),
-    ArgDef::new("tunnel")
-      .long("tunnel")
-      .long_aliases(&["connected"])
-      .set_true()
-      .hidden(),
-    // Allow --allow-scripts on run (through arg_groups, but also directly)
-  ],
-  arg_groups: &[
-    UNSTABLE_ARGS,
-    PERMISSION_ARGS,
-    COMPILE_ARGS,
-    INSPECT_ARGS,
-    RUNTIME_MISC_ARGS,
-    CPU_PROF_ARGS,
-    ALLOW_SCRIPTS_ARG,
-  ],
+  args: RUN_ARGS,
+  arg_groups: RUN_ARG_GROUPS,
+  subcommands: &[],
+  default_subcommand: None,
+  trailing_var_arg: true,
+  passthrough: false,
+};
+
+pub static WATCH_SUBCOMMAND: CommandDef = CommandDef {
+  name: "watch",
+  about: "Run a JavaScript or TypeScript program, watching for file changes and hot-replacing modules",
+  aliases: &[],
+  args: RUN_ARGS,
+  arg_groups: RUN_ARG_GROUPS,
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: true,
@@ -512,11 +582,19 @@ pub static SERVE_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("port")
       .long("port")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::U16),
     ArgDef::new("host")
       .long("host")
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1)),
+    ArgDef::new("open").long("open").set_true(),
+    ArgDef::new("tunnel")
+      .short('t')
+      .long("tunnel")
+      .long_aliases(&["connected"])
+      .set_true()
+      .hidden(),
     ArgDef::new("parallel").long("parallel").set_true(),
     ArgDef::new("check")
       .long("check")
@@ -530,11 +608,13 @@ pub static SERVE_SUBCOMMAND: CommandDef = CommandDef {
       .require_equals()
       .value_delimiter(','),
     ArgDef::new("hmr")
-      .long("hmr")
+      .long("watch-hmr")
+      .long_aliases(&["unstable-hmr"])
       .action(ArgAction::Append)
       .num_args(NumArgs::ZeroOrMore)
       .require_equals()
-      .value_delimiter(','),
+      .value_delimiter(',')
+      .conflicts_with(&["watch"]),
     ArgDef::new("watch-exclude")
       .long("watch-exclude")
       .action(ArgAction::Append)
@@ -543,11 +623,13 @@ pub static SERVE_SUBCOMMAND: CommandDef = CommandDef {
       .value_delimiter(','),
     ArgDef::new("no-clear-screen")
       .long("no-clear-screen")
-      .set_true(),
+      .set_true()
+      .requires(&["watch"]),
     ArgDef::new("ext")
       .long("ext")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(EXECUTABLE_EXTS)),
     ArgDef::new("env-file")
       .long("env-file")
       .action(ArgAction::Append)
@@ -585,7 +667,8 @@ pub static EVAL_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("ext")
       .long("ext")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(EXECUTABLE_EXTS)),
     ArgDef::new("env-file")
       .long("env-file")
       .long_aliases(&["env"])
@@ -622,7 +705,11 @@ pub static FMT_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Append)
       .num_args(NumArgs::ZeroOrMore),
     ArgDef::new("check").long("check").set_true(),
-    ArgDef::new("fail-fast").long("fail-fast").set_true(),
+    ArgDef::new("fail-fast")
+      .long("fail-fast")
+      .long_aliases(&["failfast"])
+      .set_true()
+      .requires(&["check"]),
     ArgDef::new("permit-no-files")
       .long("permit-no-files")
       .set_true(),
@@ -640,11 +727,18 @@ pub static FMT_SUBCOMMAND: CommandDef = CommandDef {
       .value_delimiter(','),
     ArgDef::new("no-clear-screen")
       .long("no-clear-screen")
-      .set_true(),
+      .set_true()
+      .requires(&["watch"]),
     ArgDef::new("ext")
       .long("ext")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .requires(&["files"])
+      .value_parser(ValueParser::Choices(&[
+        "ts", "tsx", "js", "jsx", "mts", "mjs", "cts", "cjs", "md", "json",
+        "jsonc", "css", "scss", "less", "html", "svelte", "vue", "astro",
+        "yml", "yaml", "ipynb", "sql", "vto", "njk",
+      ])),
     ArgDef::new("ignore")
       .long("ignore")
       .action(ArgAction::Append)
@@ -653,37 +747,52 @@ pub static FMT_SUBCOMMAND: CommandDef = CommandDef {
       .value_delimiter(','),
     ArgDef::new("use-tabs")
       .long("use-tabs")
+      .long_aliases(&["options-use-tabs"])
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional)
-      .require_equals(),
+      .require_equals()
+      .value_parser(ValueParser::Bool),
     ArgDef::new("line-width")
       .long("line-width")
+      .long_aliases(&["options-line-width"])
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::NonZeroU32),
     ArgDef::new("indent-width")
       .long("indent-width")
+      .long_aliases(&["options-indent-width"])
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::NonZeroU8),
     ArgDef::new("single-quote")
       .long("single-quote")
+      .long_aliases(&["options-single-quote"])
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional)
-      .require_equals(),
+      .require_equals()
+      .value_parser(ValueParser::Bool),
     ArgDef::new("prose-wrap")
       .long("prose-wrap")
+      .long_aliases(&["options-prose-wrap"])
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(&["always", "never", "preserve"])),
     ArgDef::new("no-semicolons")
       .long("no-semicolons")
+      .long_aliases(&["options-no-semicolons"])
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional)
-      .require_equals(),
+      .require_equals()
+      .value_parser(ValueParser::Bool),
     ArgDef::new("config")
       .short('c')
       .long("config")
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1)),
     ArgDef::new("no-config").long("no-config").set_true(),
+    ArgDef::new("no-editorconfig")
+      .long("no-editorconfig")
+      .set_true(),
     ArgDef::new("unstable-component")
       .long("unstable-component")
       .set_true(),
@@ -730,15 +839,20 @@ pub static LINT_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Append)
       .num_args(NumArgs::ZeroOrMore)
       .require_equals()
-      .value_delimiter(','),
+      .value_delimiter(',')
+      .conflicts_with(&["rules"]),
     ArgDef::new("rules-exclude")
       .long("rules-exclude")
       .action(ArgAction::Append)
       .num_args(NumArgs::ZeroOrMore)
       .require_equals()
-      .value_delimiter(','),
+      .value_delimiter(',')
+      .conflicts_with(&["rules"]),
     ArgDef::new("json").long("json").set_true(),
-    ArgDef::new("compact").long("compact").set_true(),
+    ArgDef::new("compact")
+      .long("compact")
+      .set_true()
+      .conflicts_with(&["json"]),
     ArgDef::new("ignore")
       .long("ignore")
       .action(ArgAction::Append)
@@ -759,7 +873,8 @@ pub static LINT_SUBCOMMAND: CommandDef = CommandDef {
       .value_delimiter(','),
     ArgDef::new("no-clear-screen")
       .long("no-clear-screen")
-      .set_true(),
+      .set_true()
+      .requires(&["watch"]),
     ArgDef::new("permit-no-files")
       .long("permit-no-files")
       .set_true(),
@@ -772,9 +887,25 @@ pub static LINT_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("ext")
       .long("ext")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(EXECUTABLE_EXTS)),
+    ArgDef::new("allow-import")
+      .short('I')
+      .long("allow-import")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore)
+      .require_equals()
+      .value_delimiter(','),
+    ArgDef::new("deny-import")
+      .long("deny-import")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore)
+      .require_equals()
+      .value_delimiter(','),
   ],
-  arg_groups: &[UNSTABLE_ARGS, PERMISSION_ARGS],
+  // NOTE: lint takes only import permission args, no other permission
+  // args (see issue #27336).
+  arg_groups: &[UNSTABLE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -796,13 +927,15 @@ pub static TEST_SUBCOMMAND: CommandDef = CommandDef {
       .long("coverage")
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional)
-      .require_equals(),
+      .require_equals()
+      .conflicts_with(&["inspect", "inspect-brk", "inspect-wait"]),
     ArgDef::new("clean").long("clean").set_true(),
     ArgDef::new("fail-fast")
       .long("fail-fast")
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional)
-      .require_equals(),
+      .require_equals()
+      .value_parser(ValueParser::NonZeroUsize),
     ArgDef::new("filter")
       .long("filter")
       .action(ArgAction::Set)
@@ -811,8 +944,24 @@ pub static TEST_SUBCOMMAND: CommandDef = CommandDef {
       .long("shuffle")
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional)
-      .require_equals(),
+      .require_equals()
+      .value_parser(ValueParser::U64),
     ArgDef::new("parallel").long("parallel").set_true(),
+    ArgDef::new("sanitize-ops").long("sanitize-ops").set_true(),
+    ArgDef::new("sanitize-resources")
+      .long("sanitize-resources")
+      .set_true(),
+    ArgDef::new("coverage-threshold")
+      .long("coverage-threshold")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .require_equals()
+      .requires(&["coverage"])
+      .value_parser(ValueParser::U32Range(0, 100)),
+    ArgDef::new("update-snapshots")
+      .short('u')
+      .long("update-snapshots")
+      .set_true(),
     ArgDef::new("trace-leaks")
       .long("trace-leaks")
       .set_true()
@@ -822,7 +971,8 @@ pub static TEST_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Append)
       .num_args(NumArgs::ZeroOrMore)
       .require_equals()
-      .value_delimiter(','),
+      .value_delimiter(',')
+      .conflicts_with(&["no-run", "coverage"]),
     ArgDef::new("watch-exclude")
       .long("watch-exclude")
       .action(ArgAction::Append)
@@ -831,11 +981,13 @@ pub static TEST_SUBCOMMAND: CommandDef = CommandDef {
       .value_delimiter(','),
     ArgDef::new("no-clear-screen")
       .long("no-clear-screen")
-      .set_true(),
+      .set_true()
+      .requires(&["watch"]),
     ArgDef::new("reporter")
       .long("reporter")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(&["pretty", "dot", "junit", "tap"])),
     ArgDef::new("junit-path")
       .long("junit-path")
       .action(ArgAction::Set)
@@ -843,6 +995,33 @@ pub static TEST_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("hide-stacktraces")
       .long("hide-stacktraces")
       .set_true(),
+    ArgDef::new("retry")
+      .long("retry")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::U32),
+    ArgDef::new("repeats")
+      .long("repeats")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::U32),
+    ArgDef::new("shard")
+      .long("shard")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .require_equals(),
+    ArgDef::new("changed")
+      .long("changed")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Optional)
+      .require_equals()
+      .conflicts_with(&["watch"]),
+    ArgDef::new("related")
+      .long("related")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::Exact(1))
+      .require_equals()
+      .conflicts_with(&["watch"]),
     ArgDef::new("coverage-raw-data-only")
       .long("coverage-raw-data-only")
       .set_true(),
@@ -863,7 +1042,8 @@ pub static TEST_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("ext")
       .long("ext")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(EXECUTABLE_EXTS)),
     ArgDef::new("check")
       .long("check")
       .action(ArgAction::Set)
@@ -895,7 +1075,8 @@ pub static UPGRADE_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("release-candidate")
       .long("release-candidate")
       .long_aliases(&["rc"])
-      .set_true(),
+      .set_true()
+      .conflicts_with(&["canary", "version"]),
     ArgDef::new("version")
       .long("version")
       .action(ArgAction::Set)
@@ -909,6 +1090,11 @@ pub static UPGRADE_SUBCOMMAND: CommandDef = CommandDef {
       .long("cert")
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1)),
+    ArgDef::new("unsafely-ignore-certificate-errors")
+      .long("unsafely-ignore-certificate-errors")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore)
+      .value_delimiter(','),
     ArgDef::new("version-or-hash-or-channel")
       .positional()
       .action(ArgAction::Set)
@@ -954,7 +1140,8 @@ pub static CACHE_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("ext")
       .long("ext")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(EXECUTABLE_EXTS)),
     ArgDef::new("env-file")
       .long("env-file")
       .action(ArgAction::Append)
@@ -983,11 +1170,41 @@ pub static CHECK_SUBCOMMAND: CommandDef = CommandDef {
       .positional()
       .action(ArgAction::Append)
       .num_args(NumArgs::OneOrMore),
-    ArgDef::new("all").long("all").set_true(),
-    ArgDef::new("remote").long("remote").set_true(),
+    ArgDef::new("all")
+      .long("all")
+      .set_true()
+      .conflicts_with(&["no-remote"]),
+    ArgDef::new("remote")
+      .long("remote")
+      .set_true()
+      .conflicts_with(&["no-remote"])
+      .hidden(),
     ArgDef::new("doc").long("doc").set_true(),
-    ArgDef::new("doc-only").long("doc-only").set_true(),
+    ArgDef::new("doc-only")
+      .long("doc-only")
+      .set_true()
+      .conflicts_with(&["doc"]),
     ArgDef::new("check-js").long("check-js").set_true().hidden(),
+    ArgDef::new("desktop").long("desktop").set_true(),
+    ArgDef::new("no-code-cache")
+      .long("no-code-cache")
+      .set_true(),
+    ArgDef::new("watch")
+      .long("watch")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore)
+      .require_equals()
+      .value_delimiter(','),
+    ArgDef::new("watch-exclude")
+      .long("watch-exclude")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore)
+      .require_equals()
+      .value_delimiter(','),
+    ArgDef::new("no-clear-screen")
+      .long("no-clear-screen")
+      .set_true()
+      .requires(&["watch"]),
   ],
   arg_groups: &[
     UNSTABLE_ARGS,
@@ -1014,7 +1231,8 @@ pub static INFO_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("location")
       .long("location")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .conflicts_with(&["file"]),
   ],
   arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS, PERMISSION_ARGS],
   subcommands: &[],
@@ -1035,7 +1253,10 @@ pub static DOC_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("json").long("json").set_true(),
     ArgDef::new("private").long("private").set_true(),
     ArgDef::new("lint").long("lint").set_true(),
-    ArgDef::new("html").long("html").set_true(),
+    ArgDef::new("html")
+      .long("html")
+      .set_true()
+      .conflicts_with(&["json"]),
     ArgDef::new("name")
       .long("name")
       .action(ArgAction::Set)
@@ -1047,22 +1268,27 @@ pub static DOC_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("category-docs")
       .long("category-docs")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .requires(&["html"]),
     ArgDef::new("symbol-redirect-map")
       .long("symbol-redirect-map")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .requires(&["html"]),
     ArgDef::new("default-symbol-map")
       .long("default-symbol-map")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .requires(&["html"]),
     ArgDef::new("strip-trailing-html")
       .long("strip-trailing-html")
-      .set_true(),
+      .set_true()
+      .requires(&["html"]),
     ArgDef::new("filter")
       .long("filter")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .conflicts_with(&["json", "lint", "html"]),
     ArgDef::new("builtin").long("builtin").set_true(),
   ],
   arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS, PERMISSION_ARGS],
@@ -1100,6 +1326,20 @@ pub static TASK_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1)),
     ArgDef::new("eval").long("eval").set_true(),
+    ArgDef::new("if-present").long("if-present").set_true(),
+    ArgDef::new("no-prefix").long("no-prefix").set_true(),
+    ArgDef::new("jobs")
+      .long("jobs")
+      .short('j')
+      .long_aliases(&["concurrency"])
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("env-file")
+      .long("env-file")
+      .long_aliases(&["env"])
+      .action(ArgAction::Append)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
     ArgDef::new("node-modules-dir")
       .long("node-modules-dir")
       .action(ArgAction::Set)
@@ -1157,7 +1397,8 @@ pub static BENCH_SUBCOMMAND: CommandDef = CommandDef {
       .value_delimiter(','),
     ArgDef::new("no-clear-screen")
       .long("no-clear-screen")
-      .set_true(),
+      .set_true()
+      .requires(&["watch"]),
     ArgDef::new("ignore")
       .long("ignore")
       .action(ArgAction::Append)
@@ -1177,7 +1418,8 @@ pub static BENCH_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("ext")
       .long("ext")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(EXECUTABLE_EXTS)),
   ],
   arg_groups: &[
     UNSTABLE_ARGS,
@@ -1209,7 +1451,8 @@ pub static COMPILE_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("target")
       .long("target")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(SUPPORTED_OS)),
     ArgDef::new("no-terminal").long("no-terminal").set_true(),
     ArgDef::new("icon")
       .long("icon")
@@ -1235,15 +1478,44 @@ pub static COMPILE_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("ext")
       .long("ext")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(EXECUTABLE_EXTS)),
     ArgDef::new("self-extracting")
       .long("self-extracting")
+      .set_true(),
+    ArgDef::new("bundle").long("bundle").set_true(),
+    ArgDef::new("minify")
+      .long("minify")
+      .set_true()
+      .requires(&["bundle"]),
+    ArgDef::new("app-name")
+      .long("app-name")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("exclude-unused-npm")
+      .long("exclude-unused-npm")
       .set_true(),
     ArgDef::new("check")
       .long("check")
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional)
       .require_equals(),
+    ArgDef::new("watch")
+      .long("watch")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore)
+      .require_equals()
+      .value_delimiter(','),
+    ArgDef::new("watch-exclude")
+      .long("watch-exclude")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore)
+      .require_equals()
+      .value_delimiter(','),
+    ArgDef::new("no-clear-screen")
+      .long("no-clear-screen")
+      .set_true()
+      .requires(&["watch"]),
   ],
   arg_groups: &[
     UNSTABLE_ARGS,
@@ -1288,10 +1560,17 @@ pub static COVERAGE_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("lcov").long("lcov").set_true(),
     ArgDef::new("html").long("html").set_true(),
     ArgDef::new("detailed").long("detailed").set_true(),
+    ArgDef::new("threshold")
+      .long("threshold")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .require_equals(),
     ArgDef::new("output")
       .long("output")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .require_equals()
+      .requires(&["lcov"]),
   ],
   arg_groups: &[UNSTABLE_ARGS],
   subcommands: &[],
@@ -1349,28 +1628,82 @@ pub static INSTALL_SUBCOMMAND: CommandDef = CommandDef {
       .short('n')
       .long("name")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .requires(&["global"]),
     ArgDef::new("root")
       .long("root")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
-    ArgDef::new("force").short('f').long("force").set_true(),
-    ArgDef::new("dev").short('D').long("dev").set_true(),
+      .num_args(NumArgs::Exact(1))
+      .requires(&["global"]),
+    ArgDef::new("force")
+      .short('f')
+      .long("force")
+      .set_true()
+      .requires(&["global"]),
+    ArgDef::new("dev")
+      .short('D')
+      .long("dev")
+      .set_true()
+      .conflicts_with(&["entrypoint", "global"]),
+    ArgDef::new("prod")
+      .long("prod")
+      .long_aliases(&["production"])
+      .set_true()
+      .conflicts_with(&["global", "dev"]),
+    ArgDef::new("skip-types")
+      .long("skip-types")
+      .set_true()
+      .requires(&["prod"]),
     ArgDef::new("entrypoint")
       .short('e')
       .long("entrypoint")
       .action(ArgAction::Append)
-      .num_args(NumArgs::OneOrMore),
-    ArgDef::new("compile").long("compile").set_true(),
+      .num_args(NumArgs::OneOrMore)
+      .conflicts_with(&["global"]),
+    ArgDef::new("compile")
+      .long("compile")
+      .set_true()
+      .requires(&["global"]),
     ArgDef::new("lockfile-only")
       .long("lockfile-only")
-      .set_true(),
-    ArgDef::new("npm").long("npm").set_true(),
-    ArgDef::new("jsr").long("jsr").set_true(),
+      .set_true()
+      .conflicts_with(&["global"]),
+    ArgDef::new("npm").long("npm").set_true().conflicts_with(&[
+      "jsr",
+      "entrypoint",
+      "global",
+    ]),
+    ArgDef::new("jsr")
+      .long("jsr")
+      .set_true()
+      .conflicts_with(&["entrypoint", "global"]),
     ArgDef::new("save-exact")
       .long("save-exact")
       .long_aliases(&["exact"])
-      .set_true(),
+      .set_true()
+      .conflicts_with(&["entrypoint", "global"]),
+    ArgDef::new("package-json")
+      .long("package-json")
+      .set_true()
+      .conflicts_with(&["entrypoint", "global"]),
+    ArgDef::new("os")
+      .long("os")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .conflicts_with(&["global"])
+      .value_parser(ValueParser::Choices(&[
+        "aix", "android", "darwin", "freebsd", "linux", "openbsd", "sunos",
+        "win32",
+      ])),
+    ArgDef::new("arch")
+      .long("arch")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .conflicts_with(&["global"])
+      .value_parser(ValueParser::Choices(&[
+        "arm", "arm64", "ia32", "mips", "mipsel", "ppc", "ppc64", "s390",
+        "s390x", "x64",
+      ])),
     ArgDef::new("env-file")
       .long("env-file")
       .long_aliases(&["env"])
@@ -1405,15 +1738,21 @@ pub static UNINSTALL_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("packages")
       .positional()
       .action(ArgAction::Append)
-      .num_args(NumArgs::ZeroOrMore),
+      .num_args(NumArgs::OneOrMore)
+      .required(),
     ArgDef::new("global").short('g').long("global").set_true(),
     ArgDef::new("root")
       .long("root")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .requires(&["global"]),
     ArgDef::new("lockfile-only")
       .long("lockfile-only")
       .set_true(),
+    ArgDef::new("package-json")
+      .long("package-json")
+      .set_true()
+      .conflicts_with(&["global"]),
   ],
   arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
   subcommands: &[],
@@ -1441,7 +1780,14 @@ pub static COMPLETIONS_SUBCOMMAND: CommandDef = CommandDef {
   args: &[ArgDef::new("shell")
     .positional()
     .action(ArgAction::Set)
-    .num_args(NumArgs::Exact(1))],
+    .num_args(NumArgs::Exact(1))
+    .value_parser(ValueParser::Choices(&[
+      "bash",
+      "fish",
+      "powershell",
+      "zsh",
+      "fig",
+    ]))],
   arg_groups: &[UNSTABLE_ARGS],
   subcommands: &[],
   default_subcommand: None,
@@ -1460,10 +1806,22 @@ pub static INIT_SUBCOMMAND: CommandDef = CommandDef {
       .num_args(NumArgs::ZeroOrMore)
       .trailing(),
     ArgDef::new("lib").long("lib").set_true(),
-    ArgDef::new("serve").long("serve").set_true(),
-    ArgDef::new("npm").long("npm").set_true(),
-    ArgDef::new("jsr").long("jsr").set_true(),
-    ArgDef::new("empty").long("empty").set_true(),
+    ArgDef::new("serve")
+      .long("serve")
+      .set_true()
+      .conflicts_with(&["lib"]),
+    ArgDef::new("npm")
+      .long("npm")
+      .set_true()
+      .conflicts_with(&["lib", "serve", "empty", "jsr"]),
+    ArgDef::new("jsr")
+      .long("jsr")
+      .set_true()
+      .conflicts_with(&["lib", "serve", "empty", "npm"]),
+    ArgDef::new("empty")
+      .long("empty")
+      .set_true()
+      .conflicts_with(&["lib", "serve", "npm", "jsr"]),
     ArgDef::new("yes").short('y').long("yes").set_true(),
   ],
   arg_groups: &[],
@@ -1481,20 +1839,21 @@ pub static CREATE_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("package")
       .positional()
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
-    ArgDef::new("package_args")
-      .positional()
-      .action(ArgAction::Append)
-      .num_args(NumArgs::ZeroOrMore)
-      .trailing(),
-    ArgDef::new("npm").long("npm").set_true(),
+      .num_args(NumArgs::Exact(1))
+      .required(),
+    // Extra package args are only accepted after `--` (clap's `last(true)`)
+    // and land in `result.trailing`.
+    ArgDef::new("npm")
+      .long("npm")
+      .set_true()
+      .conflicts_with(&["jsr"]),
     ArgDef::new("jsr").long("jsr").set_true(),
     ArgDef::new("yes").short('y').long("yes").set_true(),
   ],
   arg_groups: &[],
   subcommands: &[],
   default_subcommand: None,
-  trailing_var_arg: true,
+  trailing_var_arg: false,
   passthrough: false,
 };
 
@@ -1503,29 +1862,40 @@ pub static JUPYTER_SUBCOMMAND: CommandDef = CommandDef {
   about: "Deno kernel for Jupyter notebooks",
   aliases: &[],
   args: &[
-    ArgDef::new("install").long("install").set_true(),
+    ArgDef::new("install")
+      .long("install")
+      .set_true()
+      .conflicts_with(&["kernel"]),
     ArgDef::new("name")
       .short('n')
       .long("name")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
+      .num_args(NumArgs::Exact(1))
+      .conflicts_with(&["kernel"]),
     ArgDef::new("display")
+      .short('d')
       .long("display")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
-    ArgDef::new("kernel").long("kernel").set_true(),
+      .num_args(NumArgs::Exact(1))
+      .requires(&["install"]),
+    ArgDef::new("kernel")
+      .long("kernel")
+      .set_true()
+      .conflicts_with(&["install"])
+      .requires(&["conn"]),
     ArgDef::new("conn")
       .long("conn")
       .action(ArgAction::Set)
-      .num_args(NumArgs::Exact(1)),
-    ArgDef::new("force").long("force").set_true(),
+      .num_args(NumArgs::Exact(1))
+      .conflicts_with(&["install"]),
+    ArgDef::new("force")
+      .long("force")
+      .set_true()
+      .requires(&["install"]),
   ],
-  arg_groups: &[
-    COMPILE_ARGS,
-    RUNTIME_MISC_ARGS,
-    PERMISSION_ARGS,
-    UNSTABLE_ARGS,
-  ],
+  // clap's `jupyter` exposes only its own flags (no runtime/permission/compile
+  // groups); `jupyter_parse` reads none of them, so they are trimmed to match.
+  arg_groups: &[UNSTABLE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -1558,6 +1928,12 @@ pub static PUBLISH_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional)
       .require_equals(),
+    ArgDef::new("env-file")
+      .long("env-file")
+      .long_aliases(&["env"])
+      .action(ArgAction::Append)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
   ],
   arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
   subcommands: &[],
@@ -1574,17 +1950,41 @@ pub static ADD_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("packages")
       .positional()
       .action(ArgAction::Append)
-      .num_args(NumArgs::OneOrMore),
+      .num_args(NumArgs::OneOrMore)
+      .required(),
     ArgDef::new("dev").short('D').long("dev").set_true(),
     ArgDef::new("save-exact")
       .long("save-exact")
       .long_aliases(&["exact"])
       .set_true(),
-    ArgDef::new("npm").long("npm").set_true(),
+    ArgDef::new("npm")
+      .long("npm")
+      .set_true()
+      .conflicts_with(&["jsr"]),
     ArgDef::new("jsr").long("jsr").set_true(),
     ArgDef::new("lockfile-only")
       .long("lockfile-only")
       .set_true(),
+    ArgDef::new("allow-import")
+      .short('I')
+      .long("allow-import")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore)
+      .require_equals()
+      .value_delimiter(','),
+    ArgDef::new("deny-import")
+      .long("deny-import")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore)
+      .require_equals()
+      .value_delimiter(','),
+    ArgDef::new("package-json").long("package-json").set_true(),
+    ArgDef::new("env-file")
+      .long("env-file")
+      .long_aliases(&["env"])
+      .action(ArgAction::Append)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
   ],
   arg_groups: &[UNSTABLE_ARGS, ALLOW_SCRIPTS_ARG, COMPILE_ARGS],
   subcommands: &[],
@@ -1601,10 +2001,22 @@ pub static REMOVE_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("packages")
       .positional()
       .action(ArgAction::Append)
-      .num_args(NumArgs::OneOrMore),
+      .num_args(NumArgs::OneOrMore)
+      .required(),
+    ArgDef::new("global").short('g').long("global").set_true(),
+    ArgDef::new("root")
+      .long("root")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .requires(&["global"]),
     ArgDef::new("lockfile-only")
       .long("lockfile-only")
-      .set_true(),
+      .set_true()
+      .conflicts_with(&["global"]),
+    ArgDef::new("package-json")
+      .long("package-json")
+      .set_true()
+      .conflicts_with(&["global"]),
   ],
   arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
   subcommands: &[],
@@ -1628,14 +2040,24 @@ pub static OUTDATED_SUBCOMMAND: CommandDef = CommandDef {
       .set_true(),
     ArgDef::new("compatible").long("compatible").set_true(),
     ArgDef::new("update").long("update").short('u').set_true(),
-    ArgDef::new("latest").long("latest").set_true(),
+    ArgDef::new("latest")
+      .long("latest")
+      .set_true()
+      .conflicts_with(&["compatible"]),
     ArgDef::new("interactive")
       .short('i')
       .long("interactive")
-      .set_true(),
+      .set_true()
+      .requires(&["update"]),
     ArgDef::new("lockfile-only")
       .long("lockfile-only")
       .set_true(),
+    ArgDef::new("env-file")
+      .long("env-file")
+      .long_aliases(&["env"])
+      .action(ArgAction::Append)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
   ],
   arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
   subcommands: &[],
@@ -1658,6 +2080,7 @@ pub static UPDATE_SUBCOMMAND: CommandDef = CommandDef {
       .long("recursive")
       .set_true(),
     ArgDef::new("latest").long("latest").set_true(),
+    ArgDef::new("compatible").long("compatible").set_true(),
     ArgDef::new("lockfile-only")
       .long("lockfile-only")
       .set_true(),
@@ -1665,6 +2088,12 @@ pub static UPDATE_SUBCOMMAND: CommandDef = CommandDef {
       .short('i')
       .long("interactive")
       .set_true(),
+    ArgDef::new("env-file")
+      .long("env-file")
+      .long_aliases(&["env"])
+      .action(ArgAction::Append)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
   ],
   arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
   subcommands: &[],
@@ -1718,8 +2147,46 @@ pub static CLEAN_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional)
       .require_equals(),
+    ArgDef::new("node-modules-linker")
+      .long("node-modules-linker")
+      .long_aliases(&["linker"])
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .require_equals()
+      .requires(&["except"]),
   ],
   arg_groups: &[UNSTABLE_ARGS],
+  subcommands: &[],
+  default_subcommand: None,
+  trailing_var_arg: false,
+  passthrough: false,
+};
+
+pub static LIST_SUBCOMMAND: CommandDef = CommandDef {
+  name: "list",
+  about: "List the dependencies declared in deno.json / package.json",
+  aliases: &[],
+  args: &[
+    ArgDef::new("filters")
+      .positional()
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore),
+    ArgDef::new("depth")
+      .long("depth")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::U16),
+    ArgDef::new("prod")
+      .long("prod")
+      .set_true()
+      .conflicts_with(&["dev"]),
+    ArgDef::new("dev").long("dev").set_true(),
+    ArgDef::new("recursive")
+      .long("recursive")
+      .short('r')
+      .set_true(),
+  ],
+  arg_groups: &[],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -1842,6 +2309,7 @@ pub static BUNDLE_SUBCOMMAND: CommandDef = CommandDef {
       .num_args(NumArgs::Optional)
       .require_equals()
       .default_value("true"),
+    ArgDef::new("declaration").long("declaration").set_true(),
     ArgDef::new("check")
       .long("check")
       .action(ArgAction::Set)
@@ -1870,7 +2338,10 @@ pub static AUDIT_SUBCOMMAND: CommandDef = CommandDef {
       .long_aliases(&["audit-level", "severity"])
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1))
-      .default_value("low"),
+      .default_value("low")
+      .value_parser(ValueParser::Choices(&[
+        "low", "moderate", "high", "critical",
+      ])),
     ArgDef::new("ignore-unfixable")
       .long("ignore-unfixable")
       .set_true(),
@@ -1878,6 +2349,11 @@ pub static AUDIT_SUBCOMMAND: CommandDef = CommandDef {
       .long("ignore-registry-errors")
       .set_true(),
     ArgDef::new("socket").long("socket").set_true(),
+    ArgDef::new("fix").long("fix").set_true(),
+    ArgDef::new("action")
+      .positional()
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Optional),
     ArgDef::new("ignore")
       .long("ignore")
       .action(ArgAction::Append)
@@ -1902,12 +2378,29 @@ pub static X_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Append)
       .num_args(NumArgs::ZeroOrMore)
       .trailing(),
-    ArgDef::new("yes").short('y').long("yes").set_true(),
+    ArgDef::new("yes")
+      .short('y')
+      .long("yes")
+      .set_true()
+      .conflicts_with(&["install-alias"]),
+    ArgDef::new("package")
+      .short('p')
+      .long("package")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .conflicts_with(&["install-alias"]),
+    ArgDef::new("ignore-scripts")
+      .long("ignore-scripts")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore)
+      .require_equals()
+      .conflicts_with(&["allow-scripts", "install-alias"]),
     ArgDef::new("install-alias")
       .long("install-alias")
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional)
-      .default_value("dx"),
+      .default_value("dx")
+      .conflicts_with(&["script_arg"]),
     ArgDef::new("check")
       .long("check")
       .action(ArgAction::Set)
@@ -1920,6 +2413,7 @@ pub static X_SUBCOMMAND: CommandDef = CommandDef {
       .require_equals(),
   ],
   arg_groups: &[
+    ALLOW_SCRIPTS_ARG,
     UNSTABLE_ARGS,
     COMPILE_ARGS,
     PERMISSION_ARGS,
@@ -1965,6 +2459,13 @@ pub static HELP_SUBCOMMAND: CommandDef = CommandDef {
 // ============================================================
 
 pub static GLOBAL_ARGS: &[ArgDef] = &[
+  ArgDef::new("env-file")
+    .long("env-file")
+    .long_aliases(&["env"])
+    .action(ArgAction::Append)
+    .num_args(NumArgs::Optional)
+    .require_equals()
+    .global(),
   ArgDef::new("help")
     .short('h')
     .long("help")
@@ -1983,6 +2484,7 @@ pub static GLOBAL_ARGS: &[ArgDef] = &[
     .long("log-level")
     .action(ArgAction::Set)
     .num_args(NumArgs::Exact(1))
+    .value_parser(ValueParser::Choices(&["trace", "debug", "info"]))
     .global(),
   ArgDef::new("quiet")
     .short('q')
@@ -1990,6 +2492,276 @@ pub static GLOBAL_ARGS: &[ArgDef] = &[
     .set_true()
     .global(),
 ];
+
+pub static DESKTOP_SUBCOMMAND: CommandDef = CommandDef {
+  name: "desktop",
+  about: "Compile a script into a desktop application",
+  aliases: &[],
+  args: &[
+    ArgDef::new("script_arg")
+      .positional()
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore),
+    ArgDef::new("check")
+      .long("check")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
+    ArgDef::new("inspect-renderer")
+      .long("inspect-renderer")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Optional)
+      .require_equals()
+      .default_value("127.0.0.1:0"),
+    ArgDef::new("include")
+      .long("include")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("exclude")
+      .long("exclude")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("exclude-unused-npm")
+      .long("exclude-unused-npm")
+      .set_true(),
+    ArgDef::new("output")
+      .short('o')
+      .long("output")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("target")
+      .long("target")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(SUPPORTED_OS)),
+    ArgDef::new("no-code-cache")
+      .long("no-code-cache")
+      .set_true(),
+    ArgDef::new("icon")
+      .long("icon")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("hmr").long("hmr").set_true(),
+    ArgDef::new("backend")
+      .long("backend")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(&["webview", "cef", "raw"])),
+    ArgDef::new("all-targets").long("all-targets").set_true(),
+    ArgDef::new("compress")
+      .long("compress")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Optional)
+      .default_value("xz")
+      .value_parser(ValueParser::Choices(&["xz", "lzma", "zstd"])),
+    ArgDef::new("ext")
+      .long("ext")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(EXECUTABLE_EXTS)),
+    ArgDef::new("env-file")
+      .long("env-file")
+      .long_aliases(&["env"])
+      .action(ArgAction::Append)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
+  ],
+  arg_groups: &[
+    UNSTABLE_ARGS,
+    PERMISSION_ARGS,
+    COMPILE_ARGS,
+    INSPECT_ARGS,
+    RUNTIME_MISC_ARGS,
+    CPU_PROF_ARGS,
+    ALLOW_SCRIPTS_ARG,
+  ],
+  subcommands: &[],
+  default_subcommand: None,
+  trailing_var_arg: true,
+  passthrough: false,
+};
+
+pub static PACK_SUBCOMMAND: CommandDef = CommandDef {
+  name: "pack",
+  about: "Create a tarball of the package",
+  aliases: &[],
+  args: &[
+    ArgDef::new("files")
+      .positional()
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore),
+    ArgDef::new("output")
+      .short('o')
+      .long("output")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("dry-run").long("dry-run").set_true(),
+    ArgDef::new("allow-slow-types")
+      .long("allow-slow-types")
+      .set_true(),
+    ArgDef::new("allow-dirty").long("allow-dirty").set_true(),
+    ArgDef::new("set-version")
+      .long("set-version")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("no-source-maps")
+      .long("no-source-maps")
+      .set_true(),
+    ArgDef::new("ignore")
+      .long("ignore")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::ZeroOrMore)
+      .require_equals()
+      .value_delimiter(','),
+    ArgDef::new("config")
+      .short('c')
+      .long("config")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("no-config")
+      .long("no-config")
+      .set_true()
+      .conflicts_with(&["config"]),
+    ArgDef::new("env-file")
+      .long("env-file")
+      .long_aliases(&["env"])
+      .action(ArgAction::Append)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
+  ],
+  arg_groups: &[UNSTABLE_ARGS],
+  subcommands: &[],
+  default_subcommand: None,
+  trailing_var_arg: false,
+  passthrough: false,
+};
+
+pub static CI_SUBCOMMAND: CommandDef = CommandDef {
+  name: "ci",
+  about: "Install dependencies from a lockfile in a frozen state",
+  aliases: &[],
+  args: &[
+    ArgDef::new("prod")
+      .long("prod")
+      .long_aliases(&["production"])
+      .set_true(),
+    ArgDef::new("skip-types")
+      .long("skip-types")
+      .set_true()
+      .requires(&["prod"]),
+    ArgDef::new("env-file")
+      .long("env-file")
+      .long_aliases(&["env"])
+      .action(ArgAction::Append)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
+  ],
+  arg_groups: &[UNSTABLE_ARGS],
+  subcommands: &[],
+  default_subcommand: None,
+  trailing_var_arg: false,
+  passthrough: false,
+};
+
+pub static BUMP_VERSION_SUBCOMMAND: CommandDef = CommandDef {
+  name: "bump-version",
+  about: "Update version in the configuration file",
+  aliases: &[],
+  args: &[
+    ArgDef::new("increment")
+      .positional()
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Optional),
+    ArgDef::new("workspace")
+      .long("workspace")
+      .short('w')
+      .set_true(),
+    ArgDef::new("no-workspace").long("no-workspace").set_true(),
+    ArgDef::new("dry-run").long("dry-run").set_true(),
+    ArgDef::new("start")
+      .long("start")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("base")
+      .long("base")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("import-map")
+      .long("import-map")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("release-notes")
+      .long("release-notes")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("config")
+      .short('c')
+      .long("config")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .conflicts_with(&["workspace"]),
+  ],
+  arg_groups: &[],
+  subcommands: &[],
+  default_subcommand: None,
+  trailing_var_arg: false,
+  passthrough: false,
+};
+
+pub static TRANSPILE_SUBCOMMAND: CommandDef = CommandDef {
+  name: "transpile",
+  about: "Transpile TypeScript/JSX/TSX files to JavaScript",
+  aliases: &[],
+  args: &[
+    ArgDef::new("file")
+      .positional()
+      .action(ArgAction::Append)
+      .num_args(NumArgs::OneOrMore)
+      .required(),
+    ArgDef::new("output")
+      .long("output")
+      .short('o')
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .conflicts_with(&["outdir"]),
+    ArgDef::new("outdir")
+      .long("outdir")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
+    ArgDef::new("source-map")
+      .long("source-map")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .default_value("none")
+      .value_parser(ValueParser::Choices(&["none", "inline", "separate"])),
+    ArgDef::new("declaration").long("declaration").set_true(),
+  ],
+  arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
+  subcommands: &[],
+  default_subcommand: None,
+  trailing_var_arg: false,
+  passthrough: false,
+};
+
+pub static WHY_SUBCOMMAND: CommandDef = CommandDef {
+  name: "why",
+  about: "Show why a package is installed",
+  aliases: &[],
+  args: &[
+    ArgDef::new("package").positional().required(),
+    ArgDef::new("env-file")
+      .long("env-file")
+      .long_aliases(&["env"])
+      .action(ArgAction::Append)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
+  ],
+  arg_groups: &[LOCK_ARGS],
+  subcommands: &[],
+  default_subcommand: None,
+  trailing_var_arg: false,
+  passthrough: false,
+};
 
 pub static DENO_ROOT: CommandDef = CommandDef {
   name: "deno",
@@ -1999,6 +2771,7 @@ pub static DENO_ROOT: CommandDef = CommandDef {
   arg_groups: &[UNSTABLE_ARGS],
   subcommands: &[
     RUN_SUBCOMMAND,
+    WATCH_SUBCOMMAND,
     SERVE_SUBCOMMAND,
     EVAL_SUBCOMMAND,
     FMT_SUBCOMMAND,
@@ -2029,11 +2802,18 @@ pub static DENO_ROOT: CommandDef = CommandDef {
     DEPLOY_SUBCOMMAND,
     SANDBOX_SUBCOMMAND,
     CLEAN_SUBCOMMAND,
+    LIST_SUBCOMMAND,
     APPROVE_SCRIPTS_SUBCOMMAND,
     LSP_SUBCOMMAND,
     VENDOR_SUBCOMMAND,
     BUNDLE_SUBCOMMAND,
     AUDIT_SUBCOMMAND,
+    WHY_SUBCOMMAND,
+    TRANSPILE_SUBCOMMAND,
+    BUMP_VERSION_SUBCOMMAND,
+    CI_SUBCOMMAND,
+    DESKTOP_SUBCOMMAND,
+    PACK_SUBCOMMAND,
     X_SUBCOMMAND,
     JSON_REFERENCE_SUBCOMMAND,
     HELP_SUBCOMMAND,
