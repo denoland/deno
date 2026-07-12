@@ -68,7 +68,7 @@
     },
     "error_output_and_outdir": {
       "args": "transpile main.ts -o out.js --outdir dist",
-      "output": "[WILDCARD]the argument '--output <output>' cannot be used with '--outdir <outdir>'\n[WILDCARD]",
+      "output": "[WILDCARD]the argument 'output' cannot be used with 'outdir'\n[WILDCARD]",
       "exitCode": 1
     },
     "error_declaration_no_output": {
