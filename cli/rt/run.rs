@@ -1646,14 +1646,14 @@ pub async fn run_with_options(
     // Confine default read access to the cwd and the OS temp dir for parity
     // with `deno run`. A compiled app always runs user code, so this is
     // unconditional (there is no prompt-default subcommand gate here). It stays
-    // deny-respecting and leaves an explicit baked-in `--allow-read` untouched;
-    // a global `--deny-read`/`--ignore-read` baked into the app skips it.
+    // deny-respecting and additive: cwd+temp are appended to any scoped
+    // baked-in `--allow-read`, only `-A` (allow all) is left untouched, and a
+    // global `--deny-read`/`--ignore-read` baked into the app skips it.
     //
-    // This runs before `grant_vfs_read_access` on purpose: that grant would
-    // otherwise turn an unset (deny-by-default) `allow_read` into a non-empty
-    // list (the VFS root), which the confinement leaves untouched. Applying the
-    // confinement first fills in cwd+temp when nothing was baked, and the VFS
-    // root is then appended onto that list.
+    // This runs before `grant_vfs_read_access` on purpose: applying the
+    // confinement first fills in / appends cwd+temp, and the VFS root is then
+    // appended onto that list (so both the embedded files and cwd+temp are
+    // readable).
     #[allow(
       clippy::disallowed_methods,
       reason = "the compiled app's process-start cwd for the default read confinement"

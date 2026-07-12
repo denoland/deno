@@ -23,9 +23,10 @@
       "args": "run --deny-read=sub main_deny.ts",
       "output": "main_deny.out"
     },
-    "explicit_allow_read_not_widened": {
-      // An explicit --allow-read is the user's own scope and is not widened by
-      // the default: another file in the cwd stays unreadable.
+    "explicit_allow_read_is_additive": {
+      // The default cwd+temp confinement is additive: it is appended to a
+      // scoped --allow-read, so another file in the cwd is readable while a
+      // path outside cwd+temp and the explicit grant still denies.
       "args": "run --allow-read=inside.txt main_explicit.ts",
       "output": "main_explicit.out"
     }

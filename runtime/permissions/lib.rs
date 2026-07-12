@@ -3642,14 +3642,40 @@ fn default_read_confinement_paths(initial_cwd: &Path) -> Vec<String> {
     .collect()
 }
 
+/// Merges `additions` into `allow_read`, preserving the "allow all" meaning of
+/// an empty allow-list. When `allow_read` is `None` it becomes a fresh list of
+/// the additions; when it is a non-empty list the additions are appended
+/// (skipping duplicates); when it is `Some` but empty (allow all) it is left
+/// untouched. Mirrors `merge_default_allow_env` for read paths.
+fn merge_default_allow_read(
+  allow_read: &mut Option<Vec<String>>,
+  additions: Vec<String>,
+) {
+  match allow_read {
+    None => {
+      *allow_read = Some(additions);
+    }
+    Some(list) if list.is_empty() => {
+      // Empty list means "allow all"; adding paths would narrow it. Leave it.
+    }
+    Some(list) => {
+      for addition in additions {
+        if !list.iter().any(|existing| existing == &addition) {
+          list.push(addition);
+        }
+      }
+    }
+  }
+}
+
 /// Confines default read access to the process-start cwd and the OS temp
-/// directory when the user provided no explicit `--allow-read`. This replaces
-/// the historical deny-by-default read behavior: instead of prompting for every
-/// read outside a granted path, ordinary programs may read their own working
-/// directory and the temp dir without a prompt, while reads elsewhere on disk
-/// still prompt in a TTY and deny non-interactively.
+/// directory. This replaces the historical deny-by-default read behavior:
+/// instead of prompting for every read outside a granted path, ordinary
+/// programs may read their own working directory and the temp dir without a
+/// prompt, while reads elsewhere on disk still prompt in a TTY and deny
+/// non-interactively.
 ///
-/// This is deny-respecting and additive:
+/// This is deny-respecting and additive (mirroring the default env allowlist):
 /// - A global read deny/ignore (bare `--deny-read` / `--ignore-read`, i.e. an
 ///   empty list meaning "deny/ignore all reads") neutralizes read entirely.
 ///   The default must not resurrect paths through it (a specific granted
@@ -3658,10 +3684,9 @@ fn default_read_confinement_paths(initial_cwd: &Path) -> Vec<String> {
 /// - `--deny-read=<path>` composes on top: it is not global, so the default
 ///   cwd+temp grant is still applied and the denied path is subtracted from it
 ///   (deny always wins).
-/// - An explicit `--allow-read` (whether `-A`/bare `--allow-read`, meaning
-///   "allow all", or a scoped `--allow-read=<path>`) means the user already
-///   chose the read scope, so the default is not applied: it must not widen an
-///   explicit `--allow-read`.
+/// - An explicit `--allow-read=<path>` composes on top too: cwd and temp are
+///   appended so `--allow-read=/data` grants cwd + temp + `/data`. Only bare
+///   `--allow-read` / `-A` (an empty "allow all" list) is left untouched.
 ///
 /// Callers that only want this for certain subcommands should guard the call;
 /// the standalone/compiled runtime applies it unconditionally since a compiled
@@ -3674,13 +3699,10 @@ pub fn apply_default_read_confinement(
   if is_global(&options.deny_read) || is_global(&options.ignore_read) {
     return;
   }
-  // Leave any explicit read allow-list untouched. `Some(empty)` is `-A` / bare
-  // `--allow-read` (allow all) and `Some(non-empty)` is a scoped
-  // `--allow-read=<path>`; both are the user's own choice of read scope.
-  if options.allow_read.is_some() {
-    return;
-  }
-  options.allow_read = Some(default_read_confinement_paths(initial_cwd));
+  merge_default_allow_read(
+    &mut options.allow_read,
+    default_read_confinement_paths(initial_cwd),
+  );
 }
 
 #[derive(Debug, thiserror::Error)]

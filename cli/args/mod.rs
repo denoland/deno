@@ -1247,7 +1247,8 @@ impl CliOptions {
   /// prompt-based defaults. The standalone/compiled runtime applies the same
   /// confinement directly (without this guard) since a compiled app always runs
   /// user code. The shared helper preserves the deny-respecting/additive
-  /// semantics and leaves an explicit `--allow-read` untouched.
+  /// semantics: cwd+temp are appended to a scoped `--allow-read=<path>`, and
+  /// only `-A`/bare `--allow-read` (allow all) is left untouched.
   ///
   /// It is also skipped when the user requested a config-file permission set
   /// (via `-P`) or one is in effect (a subcommand default set): selecting a
@@ -1272,12 +1273,18 @@ impl CliOptions {
   }
 
   /// Whether the default read confinement was applied to this invocation, i.e.
-  /// the user provided no explicit `--allow-read`, no config-file permission
-  /// set is in effect, and read is not globally denied/ignored. Mirrors
+  /// no config-file permission set is in effect, read is not globally
+  /// denied/ignored, and read is not already "allow all". Mirrors
   /// `apply_default_read_confinement` so callers outside permission construction
   /// (the module loader, which widens read to this program's resolved npm
   /// package folders) act only when the confinement is active. Must stay in
   /// sync with `apply_default_read_confinement`.
+  ///
+  /// Because the confinement is additive, this stays true even when the user
+  /// passed a scoped `--allow-read=<path>` (cwd+temp are appended to it), so the
+  /// per-imported-package grant still fires. It is only false when read is fully
+  /// allowed (`-A`/bare `--allow-read`) or globally denied/ignored, or when a
+  /// permission set overrides the default.
   pub fn default_read_confinement_applied(&self) -> bool {
     if !self.runs_user_code_with_prompt_defaults()
       || self.flags.permission_set.is_some()
@@ -1298,7 +1305,7 @@ impl CliOptions {
       return false;
     };
     let is_global = |list: &Option<Vec<String>>| matches!(list, Some(entries) if entries.is_empty());
-    options.allow_read.is_none()
+    !is_global(&options.allow_read)
       && !is_global(&options.deny_read)
       && !is_global(&options.ignore_read)
   }
