@@ -1663,8 +1663,95 @@ declare namespace Deno {
      * @experimental
      */
     export interface Rule {
-      create(ctx: RuleContext): LintVisitor;
+      create?(ctx: RuleContext): LintVisitor;
       destroy?(ctx: RuleContext): void;
+      /**
+       * Graph-aware hook. Runs **once** per `deno lint` invocation, after all
+       * per-file passes, with a read-only view of the resolved module graph.
+       * Declaring this hook is what opts the run into building the graph.
+       * Synchronous — the graph is already resolved.
+       *
+       * @experimental
+       */
+      createGraphRule?(ctx: GraphRuleContext): void;
+    }
+
+    /**
+     * The context handed to a {@linkcode Rule.createGraphRule} hook.
+     * @category Linter
+     * @experimental
+     */
+    export interface GraphRuleContext {
+      /** Read-only view of the resolved module graph. */
+      graph: LintModuleGraph;
+      /** Attribute a finding to a concrete file + span. */
+      report(data: GraphDiagnostic): void;
+    }
+
+    /**
+     * Read-only, already-resolved module graph handed to a graph rule.
+     * @category Linter
+     * @experimental
+     */
+    export interface LintModuleGraph {
+      /** All modules reachable from the lint roots, plus the roots themselves. */
+      readonly modules: ReadonlyArray<LintModule>;
+      /** Root specifiers of the graph. */
+      readonly roots: ReadonlyArray<string>;
+      /** Look up a module by its fully-resolved specifier. */
+      module(specifier: string): LintModule | undefined;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface LintModule {
+      /** Fully-resolved specifier, e.g. `"file:///…/v4.ts"`. */
+      readonly specifier: string;
+      readonly mediaType: string;
+      /** Resolved outgoing dependency edges (imports + re-exports). */
+      readonly dependencies: ReadonlyArray<LintDependency>;
+      /** Resolved static re-export edges (`export * from` / `export { x } from`). */
+      readonly exports: ReadonlyArray<LintExport>;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface LintDependency {
+      /** Specifier text as written, e.g. `"./v4.ts"`. */
+      readonly specifier: string;
+      /** Resolved target specifier, or `null` if it failed to resolve. */
+      readonly resolved: string | null;
+      readonly kind: "static" | "dynamic";
+      readonly range: Range;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface LintExport {
+      readonly name: string;
+      readonly kind: "reexport";
+      /** For a re-export, the resolved source module (or `null`). */
+      readonly from: string | null;
+      readonly range: Range;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface GraphDiagnostic {
+      /** The file the diagnostic is attributed to (required). */
+      specifier: string;
+      /** Span within that file. Omit for a whole-file finding. */
+      range?: Range;
+      message: string;
+      hint?: string;
     }
 
     /**
