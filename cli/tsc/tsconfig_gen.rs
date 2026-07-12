@@ -53,13 +53,16 @@ pub fn generate_tsconfig(
   files: &[String],
   http_modules: &BTreeMap<Url, String>,
   member_paths: &Map<String, Value>,
-  has_node_types: bool,
+  jsr_packages_dir: &Path,
+  npm_package_paths: &BTreeMap<String, PathBuf>,
+  npm_project_references: &[String],
+  node_types_root: Option<&str>,
   excludes: &[String],
 ) -> Result<GeneratedTsConfig, std::io::Error> {
   // Write Deno type definitions to .deno/types/deno/ (private typeRoot).
   let types_dir = project_root.join(".deno/types/deno");
   std::fs::create_dir_all(&types_dir)?;
-  write_deno_types(&types_dir.join("index.d.ts"), has_node_types)?;
+  write_deno_types(&types_dir.join("index.d.ts"), node_types_root.is_some())?;
 
   // Write a package.json for the @types/deno package so the typeRoots lookup
   // resolves the directory as a package.
@@ -81,7 +84,10 @@ pub fn generate_tsconfig(
     files,
     http_modules,
     member_paths,
-    has_node_types,
+    jsr_packages_dir,
+    npm_package_paths,
+    npm_project_references,
+    node_types_root,
     excludes,
   );
 
@@ -94,7 +100,7 @@ pub fn generate_tsconfig(
   std::fs::write(&tsconfig_path, &content)?;
 
   // Ensure root tsconfig.json exists and extends .deno/tsconfig.json
-  ensure_root_tsconfig(project_root)?;
+  ensure_root_tsconfig(project_root, npm_project_references)?;
 
   Ok(GeneratedTsConfig { tsconfig_path })
 }
@@ -113,12 +119,16 @@ pub fn generate_tsconfig(
 /// The existing file is parsed as JSONC (tsconfig commonly has comments and
 /// trailing commas); an unparseable file is a hard error rather than being
 /// silently overwritten, which would drop the user's compiler options.
-fn ensure_root_tsconfig(project_root: &Path) -> Result<(), std::io::Error> {
+fn ensure_root_tsconfig(
+  project_root: &Path,
+  npm_project_references: &[String],
+) -> Result<(), std::io::Error> {
   let root_tsconfig_path = project_root.join("tsconfig.json");
   let extends_path = "./.deno/tsconfig.json";
 
   if !root_tsconfig_path.exists() {
-    let tsconfig = json!({ "extends": extends_path });
+    let mut tsconfig = json!({ "extends": extends_path });
+    set_root_npm_references(&mut tsconfig, npm_project_references);
     let content = serde_json::to_string_pretty(&tsconfig)
       .expect("failed to serialize tsconfig");
     return std::fs::write(&root_tsconfig_path, &content);
@@ -201,15 +211,116 @@ fn ensure_root_tsconfig(project_root: &Path) -> Result<(), std::io::Error> {
     }
   };
 
-  let Some((start, end, replacement)) = edit else {
+  if let Some((start, end, replacement)) = edit {
+    let mut new_content =
+      String::with_capacity(content.len() + replacement.len());
+    new_content.push_str(&content[..start]);
+    new_content.push_str(&replacement);
+    new_content.push_str(&content[end..]);
+    std::fs::write(&root_tsconfig_path, &new_content)?;
+  }
+  ensure_root_npm_references(&root_tsconfig_path, npm_project_references)
+}
+
+fn root_npm_reference_path(path: &str) -> String {
+  format!("./.deno/{}", path.trim_start_matches("./"))
+}
+
+fn is_generated_npm_reference(value: &Value) -> bool {
+  value
+    .get("path")
+    .and_then(|v| v.as_str())
+    .is_some_and(|path| {
+      path.starts_with("./.deno/npm/") || path.starts_with(".deno/npm/")
+    })
+}
+
+fn set_root_npm_references(
+  tsconfig: &mut Value,
+  npm_project_references: &[String],
+) {
+  let Some(object) = tsconfig.as_object_mut() else {
+    return;
+  };
+  let mut references = object
+    .remove("references")
+    .and_then(|v| v.as_array().cloned())
+    .unwrap_or_default();
+  references.retain(|value| !is_generated_npm_reference(value));
+  references.extend(
+    npm_project_references
+      .iter()
+      .map(|path| json!({ "path": root_npm_reference_path(path) })),
+  );
+  if !references.is_empty() {
+    object.insert("references".to_string(), Value::Array(references));
+  }
+}
+
+fn ensure_root_npm_references(
+  root_tsconfig_path: &Path,
+  npm_project_references: &[String],
+) -> Result<(), std::io::Error> {
+  let content = std::fs::read_to_string(root_tsconfig_path)?;
+  let mut parsed = jsonc_parser::parse_to_serde_value::<Value>(
+    &content,
+    &jsonc_parser::ParseOptions::default(),
+  )
+  .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+  let old_references = parsed.get("references").cloned();
+  set_root_npm_references(&mut parsed, npm_project_references);
+  let new_references = parsed.get("references").cloned();
+  if old_references == new_references {
     return Ok(());
+  }
+
+  use jsonc_parser::ast::ObjectPropName;
+  use jsonc_parser::ast::Value as JsoncValue;
+  use jsonc_parser::common::Ranged;
+  let ast = jsonc_parser::parse_to_ast(
+    &content,
+    &jsonc_parser::CollectOptions {
+      comments: jsonc_parser::CommentCollectionStrategy::Off,
+      tokens: false,
+    },
+    &jsonc_parser::ParseOptions::default(),
+  )
+  .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+  let Some(JsoncValue::Object(object)) = ast.value else {
+    return Ok(());
+  };
+  let property = object.properties.iter().find(|property| {
+    let name = match &property.name {
+      ObjectPropName::String(s) => s.value.as_ref(),
+      ObjectPropName::Word(w) => w.value,
+    };
+    name == "references"
+  });
+  let replacement =
+    serde_json::to_string_pretty(new_references.as_ref().unwrap_or(&json!([])))
+      .expect("failed to serialize references");
+  let (start, end, replacement) = match property {
+    Some(property) => (
+      property.value.range().start,
+      property.value.range().end,
+      replacement,
+    ),
+    None => {
+      let at = object.range.start + 1;
+      let comma = if object.properties.is_empty() {
+        ""
+      } else {
+        ","
+      };
+      (at, at, format!("\n  \"references\": {replacement}{comma}"))
+    }
   };
   let mut new_content =
     String::with_capacity(content.len() + replacement.len());
   new_content.push_str(&content[..start]);
   new_content.push_str(&replacement);
   new_content.push_str(&content[end..]);
-  std::fs::write(&root_tsconfig_path, &new_content)
+  std::fs::write(root_tsconfig_path, new_content)
 }
 
 /// Web-global types that `@types/node` also declares (globally, via `node:url`)
@@ -352,7 +463,8 @@ fn rebase_onto_deno_dir(path: &str) -> String {
 /// Build the tsconfig JSON object.
 ///
 /// The generated tsconfig lives at `.deno/tsconfig.json`, so all paths
-/// are relative to that directory (e.g. `../node_modules/...`).
+/// are relative to that directory (e.g. `../node_modules/...` or an absolute
+/// path into Deno's global npm cache).
 #[allow(
   clippy::too_many_arguments,
   reason = "threads the independent inputs needed to generate a tsconfig"
@@ -364,19 +476,20 @@ fn build_tsconfig(
   check_files: &[String],
   http_modules: &BTreeMap<Url, String>,
   member_paths: &Map<String, Value>,
-  has_node_types: bool,
+  jsr_packages_dir: &Path,
+  npm_package_paths: &BTreeMap<String, PathBuf>,
+  npm_project_references: &[String],
+  node_types_root: Option<&str>,
   excludes: &[String],
 ) -> Value {
   let mut compiler_options = base_compiler_options();
 
   // When @types/node is available, load it alongside @types/deno so Node
-  // globals (timers, node: builtins, Buffer, URLPattern, ...) resolve. It lives
-  // in node_modules/@types, so add that typeRoot too.
-  if has_node_types {
-    compiler_options.insert(
-      "typeRoots".to_string(),
-      json!(["./types", "../node_modules/@types"]),
-    );
+  // globals (timers, node: builtins, Buffer, URLPattern, ...) resolve. Add the
+  // selected local or npm-compat type root alongside the generated Deno types.
+  if let Some(node_types_root) = node_types_root {
+    compiler_options
+      .insert("typeRoots".to_string(), json!(["./types", node_types_root]));
     compiler_options.insert("types".to_string(), json!(["deno", "node"]));
   }
 
@@ -387,8 +500,10 @@ fn build_tsconfig(
   }
 
   // Generate "paths" for npm: and jsr: specifiers only
-  let mut specifier_paths = generate_npm_paths(project_root, deno_imports);
-  let jsr_paths = generate_jsr_paths(project_root, deno_imports);
+  let mut specifier_paths =
+    generate_npm_paths(project_root, deno_imports, npm_package_paths);
+  let jsr_paths =
+    generate_jsr_paths(project_root, jsr_packages_dir, deno_imports);
   specifier_paths.extend(jsr_paths);
   let local_paths = generate_local_alias_paths(deno_imports);
   specifier_paths.extend(local_paths);
@@ -457,7 +572,7 @@ fn build_tsconfig(
   // tsconfig and exclude it from extends chains it processes — see
   // libs/resolver/deno_json.rs. Stock tsc/tsgo ignore unknown top-level
   // properties.
-  if check_files.is_empty() {
+  let mut tsconfig = if check_files.is_empty() {
     // No specific files — check entire project. Mirror the project's own
     // `exclude` (from deno.json) so we don't type-check paths Deno itself skips
     // (test fixtures, generated output, etc.); the tsconfig lives in `.deno/`,
@@ -482,16 +597,31 @@ fn build_tsconfig(
       "compilerOptions": compiler_options,
       "files": files_array,
     })
+  };
+  if !npm_project_references.is_empty()
+    && let Some(object) = tsconfig.as_object_mut()
+  {
+    object.insert(
+      "references".to_string(),
+      Value::Array(
+        npm_project_references
+          .iter()
+          .map(|path| json!({ "path": path }))
+          .collect(),
+      ),
+    );
   }
+  tsconfig
 }
 
 /// Generate tsconfig "paths" entries for npm: specifiers.
 ///
 /// Scans `deno.json` `"imports"` for entries like:
-///   `"express": "npm:express@4"` -> `{ "npm:express": ["../node_modules/express"] }`
+///   `"express": "npm:express@4"` -> `{ "npm:express": ["<resolved package>"] }`
 ///
-/// Only generates `npm:<pkg>` keys -- bare aliases are resolved by
-/// TypeScript via `node_modules` with `moduleResolution: "bundler"`.
+/// With a local `node_modules`, bare aliases continue to resolve through normal
+/// TypeScript package resolution. Without one, both aliases and npm specifiers
+/// map to the exact resolved package folders in Deno's global cache.
 /// Map import-map aliases that point at local files/directories (e.g.
 /// `"@/": "./"`, `"utils": "./src/utils.ts"`) to project-relative paths. The
 /// generated tsconfig lives in `.deno/`, so a project-root path `./x` becomes
@@ -553,6 +683,7 @@ fn generate_local_alias_paths(
 fn generate_npm_paths(
   project_root: &Path,
   deno_imports: Option<&Value>,
+  npm_package_paths: &BTreeMap<String, PathBuf>,
 ) -> Map<String, Value> {
   let mut paths = Map::new();
 
@@ -568,7 +699,12 @@ fn generate_npm_paths(
         continue;
       };
       let pkg_name = npm_ref.req().name.to_string();
-      let pkg_dir = project_root.join(format!("node_modules/{pkg_name}"));
+      let local_pkg_dir = project_root.join(format!("node_modules/{pkg_name}"));
+      let pkg_dir = npm_package_paths
+        .get(target_str)
+        .cloned()
+        .unwrap_or_else(|| local_pkg_dir.clone());
+      let is_global_cache = pkg_dir != local_pkg_dir;
       // Only map a package that is actually materialized under `node_modules`.
       // With Deno's default global-cache mode, `deno install` may resolve npm
       // deps without a local `node_modules/<pkg>`; emitting a path to a
@@ -585,7 +721,7 @@ fn generate_npm_paths(
       // writes `$prism/components/x`) has no `node_modules/$prism`, so it needs
       // an explicit mapping. `npm:`-scheme keys are always emitted since bundler
       // can't resolve the scheme on its own.
-      let alias_renamed = alias != &pkg_name;
+      let alias_needs_mapping = is_global_cache || alias != &pkg_name;
       match npm_ref.sub_path() {
         Some(sub) => {
           // `npm:preact/compat`: resolve through the package's `exports` to a
@@ -594,15 +730,22 @@ fn generate_npm_paths(
           // package isn't materialized yet). Key both the version-less scheme
           // (`npm:preact/compat`) and the exact specifier as written, plus the
           // source-written alias form when the alias is renamed.
-          let rel = resolve_jsr_types_entry(&pkg_dir, &format!("./{sub}"))
-            .unwrap_or_else(|| format!("../node_modules/{pkg_name}/{sub}"));
+          let rel = if is_global_cache {
+            resolve_package_types_entry_path(&pkg_dir, &format!("./{sub}"))
+              .unwrap_or_else(|| pkg_dir.join(sub))
+              .to_string_lossy()
+              .replace('\\', "/")
+          } else {
+            resolve_jsr_types_entry(&pkg_dir, &format!("./{sub}"))
+              .unwrap_or_else(|| format!("../node_modules/{pkg_name}/{sub}"))
+          };
           paths
             .entry(format!("npm:{pkg_name}/{sub}"))
             .or_insert_with(|| json!([&rel]));
           paths
             .entry(target_str.to_string())
             .or_insert_with(|| json!([&rel]));
-          if alias_renamed {
+          if alias_needs_mapping {
             paths.entry(alias.clone()).or_insert_with(|| json!([&rel]));
           }
         }
@@ -611,14 +754,18 @@ fn generate_npm_paths(
           // its package.json `types`/`exports["."]`. Emitted unconditionally so
           // the mapping exists even if generation runs before install. Key both
           // the version-less scheme (`npm:preact`) and the exact specifier.
-          let dir = format!("../node_modules/{pkg_name}");
+          let dir = if is_global_cache {
+            pkg_dir.to_string_lossy().replace('\\', "/")
+          } else {
+            format!("../node_modules/{pkg_name}")
+          };
           paths
             .entry(format!("npm:{pkg_name}"))
             .or_insert_with(|| json!([&dir]));
           paths
             .entry(target_str.to_string())
             .or_insert_with(|| json!([&dir]));
-          if alias_renamed {
+          if alias_needs_mapping {
             paths.entry(alias.clone()).or_insert_with(|| json!([&dir]));
           }
           // Enumerate the package's own `exports` so subpaths written in source
@@ -626,14 +773,18 @@ fn generate_npm_paths(
           // renamed-alias form (`$prism/components`) when applicable.
           for exp_key in package_export_keys(&pkg_dir) {
             let sub = exp_key.trim_start_matches("./");
-            let Some(sub_rel) = resolve_jsr_types_entry(&pkg_dir, &exp_key)
-            else {
+            let Some(sub_rel) = (if is_global_cache {
+              resolve_package_types_entry_path(&pkg_dir, &exp_key)
+                .map(|p| p.to_string_lossy().replace('\\', "/"))
+            } else {
+              resolve_jsr_types_entry(&pkg_dir, &exp_key)
+            }) else {
               continue;
             };
             paths
               .entry(format!("npm:{pkg_name}/{sub}"))
               .or_insert_with(|| json!([&sub_rel]));
-            if alias_renamed {
+            if alias_needs_mapping {
               paths
                 .entry(format!("{alias}/{sub}"))
                 .or_insert_with(|| json!([&sub_rel]));
@@ -650,11 +801,13 @@ fn generate_npm_paths(
 /// Generate tsconfig "paths" entries for jsr: specifiers.
 ///
 /// JSR packages are available via npm compatibility at `npm.jsr.io` and install
-/// to `node_modules/@jsr/<scope>__<name>`. Maps `jsr:@scope/name` to that path.
+/// into the selected compatibility directory. Maps `jsr:@scope/name` to that
+/// path.
 ///
 /// Only generates `jsr:<scope>/<name>` keys.
 fn generate_jsr_paths(
   project_root: &Path,
+  jsr_packages_dir: &Path,
   deno_imports: Option<&Value>,
 ) -> Map<String, Value> {
   let mut paths = Map::new();
@@ -667,20 +820,20 @@ fn generate_jsr_paths(
       };
 
       if let Some((scope, name, version)) = parse_jsr_specifier(target_str) {
-        // JSR npm compat installs to node_modules/@jsr/<scope>__<name>.
+        // JSR npm compat uses the flattened <scope>__<name> package name.
         let jsr_npm_name =
           format!("{}__{}", scope.trim_start_matches('@'), name);
-        let pkg_dir =
-          project_root.join(format!("node_modules/@jsr/{jsr_npm_name}"));
+        let pkg_dir = jsr_packages_dir.join(&jsr_npm_name);
         if !pkg_dir.exists() {
           continue;
         }
 
         // Recover the subpath the source actually imports (everything after
         // `jsr:@scope/name[@version]`), and resolve it through the installed
-        // package's `exports` to a concrete .d.ts. We map to that *relative*
-        // file rather than a non-relative `@jsr/*` wildcard so tsc/tsgo doesn't
-        // emit TS5090 ("non-relative paths are not allowed") - verified.
+        // package's `exports`, preferring the generated `.d.ts` declaration so
+        // stock tsc consumes it under `skipLibCheck` instead of type-checking
+        // the dependency's `.ts` source. Falls back to the `.ts` source only
+        // when the package ships no declaration for the export.
         let prefix = match &version {
           Some(v) => format!("jsr:{scope}/{name}@{v}"),
           None => format!("jsr:{scope}/{name}"),
@@ -700,9 +853,18 @@ fn generate_jsr_paths(
         } else {
           format!("./{subpath}")
         };
-        let Some(types_rel) = resolve_jsr_types_entry(&pkg_dir, &export_key)
-        else {
+        let Some(source_rel) = resolve_jsr_types_entry_for_config(
+          project_root,
+          &pkg_dir,
+          &export_key,
+        ) else {
           continue;
+        };
+        let compat_alias = format!("@jsr/{jsr_npm_name}");
+        let compat_key = if subpath.is_empty() {
+          compat_alias.clone()
+        } else {
+          format!("{compat_alias}/{subpath}")
         };
 
         // Key on the exact specifier as written in source. Also map the
@@ -712,12 +874,18 @@ fn generate_jsr_paths(
         // by the alias, not the scheme.
         paths
           .entry(target_str.to_string())
-          .or_insert_with(|| json!([&types_rel]));
+          .or_insert_with(|| json!([&source_rel]));
         if alias != target_str {
           paths
             .entry(alias.clone())
-            .or_insert_with(|| json!([&types_rel]));
+            .or_insert_with(|| json!([&source_rel]));
         }
+        // The npm-compat runtime source rewrites JSR dependencies to their
+        // flattened @jsr package names. There is no node_modules tree in global
+        // cache mode, so make those internal bare imports resolve too.
+        paths
+          .entry(compat_key)
+          .or_insert_with(|| json!([&source_rel]));
 
         // For a bare alias -> package (no subpath), enumerate the package's own
         // exports and map each under both the alias and the jsr: specifier, so
@@ -726,8 +894,11 @@ fn generate_jsr_paths(
         if subpath.is_empty() {
           for exp_key in package_export_keys(&pkg_dir) {
             let sub = exp_key.trim_start_matches("./");
-            let Some(sub_rel) = resolve_jsr_types_entry(&pkg_dir, &exp_key)
-            else {
+            let Some(sub_rel) = resolve_jsr_types_entry_for_config(
+              project_root,
+              &pkg_dir,
+              &exp_key,
+            ) else {
               continue;
             };
             paths
@@ -738,6 +909,9 @@ fn generate_jsr_paths(
                 .entry(format!("{alias}/{sub}"))
                 .or_insert_with(|| json!([&sub_rel]));
             }
+            paths
+              .entry(format!("{compat_alias}/{sub}"))
+              .or_insert_with(|| json!([&sub_rel]));
           }
         }
       }
@@ -747,9 +921,83 @@ fn generate_jsr_paths(
   paths
 }
 
+/// Resolve a JSR export for the generated `paths` table, preferring the
+/// generated `.d.ts` declaration (the `types` condition / declaration entry).
+///
+/// `skipLibCheck` only skips `.d.ts` files, so mapping a jsr dependency's
+/// `paths` entry to its `.ts` *source* makes stock tsc type-check the
+/// dependency's implementation — a regression. Prefer the declaration and fall
+/// back to the `.ts` source only when the package ships no declaration for the
+/// export (in which case tsc has nothing else to consume).
+fn resolve_jsr_types_entry_for_config(
+  project_root: &Path,
+  pkg_dir: &Path,
+  export_key: &str,
+) -> Option<String> {
+  let resolved = resolve_package_types_entry_path(pkg_dir, export_key)
+    .filter(|p| p.exists())
+    .or_else(|| resolve_package_source_entry_path(pkg_dir, export_key))?;
+  if pkg_dir.starts_with(project_root.join("node_modules")) {
+    path_relative_to_deno_dir(pkg_dir, &resolved)
+  } else {
+    Some(resolved.to_string_lossy().replace('\\', "/"))
+  }
+}
+
+pub fn resolve_package_source_entry_path(
+  pkg_dir: &Path,
+  export_key: &str,
+) -> Option<PathBuf> {
+  let content = std::fs::read_to_string(pkg_dir.join("package.json")).ok()?;
+  let pkg_json: Value = serde_json::from_str(&content).ok()?;
+  let entry = pkg_json.get("exports").and_then(|e| e.get(export_key))?;
+  let source_path = entry
+    .get("default")
+    .and_then(|v| v.as_str())
+    .or_else(|| entry.as_str())?;
+  let runtime_path =
+    pkg_dir.join(source_path.strip_prefix("./").unwrap_or(source_path));
+
+  // TypeScript extension substitution would find this sibling too, but making
+  // it explicit keeps the generated mapping useful to non-TypeScript-aware
+  // consumers that understand tsconfig paths.
+  let source_path = match runtime_path.extension().and_then(|e| e.to_str()) {
+    Some("js") => runtime_path.with_extension("ts"),
+    Some("mjs") => runtime_path.with_extension("mts"),
+    Some("cjs") => runtime_path.with_extension("cts"),
+    _ => runtime_path.clone(),
+  };
+  if source_path.exists() {
+    Some(source_path)
+  } else if runtime_path.exists() {
+    Some(runtime_path)
+  } else {
+    None
+  }
+}
+
+fn path_relative_to_deno_dir(
+  pkg_dir: &Path,
+  resolved: &Path,
+) -> Option<String> {
+  let package_path = resolved.strip_prefix(pkg_dir).ok()?.to_string_lossy();
+  let pkg_name = pkg_dir.file_name()?.to_string_lossy();
+  let parent_name = pkg_dir
+    .parent()
+    .and_then(|p| p.file_name())
+    .map(|f| f.to_string_lossy())
+    .unwrap_or_default();
+
+  if parent_name == "@jsr" {
+    Some(format!("../node_modules/@jsr/{pkg_name}/{package_path}"))
+  } else {
+    Some(format!("../node_modules/{pkg_name}/{package_path}"))
+  }
+}
+
 /// List a package's `exports` subpath keys (`"./foo"`), excluding the root
 /// `"."`. Used to enumerate what an import-map alias can reach by subpath.
-fn package_export_keys(pkg_dir: &Path) -> Vec<String> {
+pub fn package_export_keys(pkg_dir: &Path) -> Vec<String> {
   let Ok(content) = std::fs::read_to_string(pkg_dir.join("package.json"))
   else {
     return vec![];
@@ -764,11 +1012,15 @@ fn package_export_keys(pkg_dir: &Path) -> Vec<String> {
     .unwrap_or_default()
 }
 
-/// Resolve the types entry point from a JSR package's package.json.
-///
-/// Reads the `"exports"` field and looks for `"."` -> `"types"` condition.
-/// Returns a path relative to `.deno/` (e.g., `../node_modules/@jsr/std__assert/_dist/mod.d.ts`).
 fn resolve_jsr_types_entry(pkg_dir: &Path, export_key: &str) -> Option<String> {
+  let resolved = resolve_package_types_entry_path(pkg_dir, export_key)?;
+  path_relative_to_deno_dir(pkg_dir, &resolved)
+}
+
+pub fn resolve_package_types_entry_path(
+  pkg_dir: &Path,
+  export_key: &str,
+) -> Option<PathBuf> {
   let pkg_json_path = pkg_dir.join("package.json");
   let content = std::fs::read_to_string(&pkg_json_path).ok()?;
   let pkg_json: Value = serde_json::from_str(&content).ok()?;
@@ -791,21 +1043,8 @@ fn resolve_jsr_types_entry(pkg_dir: &Path, export_key: &str) -> Option<String> {
       }
     })?;
 
-  // Convert package-relative path to .deno/-relative path
-  let pkg_name = pkg_dir.file_name()?.to_string_lossy();
-  let parent_name = pkg_dir
-    .parent()
-    .and_then(|p| p.file_name())
-    .map(|f| f.to_string_lossy())
-    .unwrap_or_default();
-
   let types_path = types_path.strip_prefix("./").unwrap_or(types_path);
-
-  if parent_name == "@jsr" {
-    Some(format!("../node_modules/@jsr/{pkg_name}/{types_path}"))
-  } else {
-    Some(format!("../node_modules/{pkg_name}/{types_path}"))
-  }
+  Some(pkg_dir.join(types_path))
 }
 
 /// Generate tsconfig "paths" entries for http(s): specifiers.
@@ -1194,7 +1433,8 @@ interface AlsoKeep {
       "express": "npm:express@4",
       "@mylib/foo": "npm:@mylib/foo@1",
     });
-    let paths = generate_npm_paths(dir.path(), Some(&imports));
+    let paths =
+      generate_npm_paths(dir.path(), Some(&imports), &BTreeMap::new());
 
     // Should have npm: prefixed keys only
     assert!(paths.contains_key("npm:chalk"));
@@ -1226,8 +1466,27 @@ interface AlsoKeep {
     // No node_modules on disk -> nothing to map (avoids dangling paths).
     let dir = tempfile::tempdir().unwrap();
     let imports = json!({ "chalk": "npm:chalk@5" });
-    let paths = generate_npm_paths(dir.path(), Some(&imports));
+    let paths =
+      generate_npm_paths(dir.path(), Some(&imports), &BTreeMap::new());
     assert!(paths.is_empty());
+  }
+
+  #[test]
+  fn test_generate_npm_paths_uses_global_cache() {
+    let project = tempfile::tempdir().unwrap();
+    let cache = tempfile::tempdir().unwrap();
+    let pkg_dir = cache.path().join("chalk/5.0.0");
+    std::fs::create_dir_all(&pkg_dir).unwrap();
+    let imports = json!({ "chalk": "npm:chalk@5" });
+    let npm_package_paths =
+      BTreeMap::from([("npm:chalk@5".to_string(), pkg_dir.clone())]);
+
+    let paths =
+      generate_npm_paths(project.path(), Some(&imports), &npm_package_paths);
+    let expected = json!([pkg_dir.to_string_lossy().replace('\\', "/")]);
+    assert_eq!(paths.get("chalk"), Some(&expected));
+    assert_eq!(paths.get("npm:chalk"), Some(&expected));
+    assert_eq!(paths.get("npm:chalk@5"), Some(&expected));
   }
 
   #[test]
@@ -1238,7 +1497,8 @@ interface AlsoKeep {
       "@std/assert": "jsr:@std/assert@1",
       "chalk": "npm:chalk@5",
     });
-    let paths = generate_npm_paths(dir.path(), Some(&imports));
+    let paths =
+      generate_npm_paths(dir.path(), Some(&imports), &BTreeMap::new());
 
     assert!(paths.contains_key("npm:chalk"));
     // jsr specifiers should not appear in npm paths; every key is npm:-scheme
@@ -1248,12 +1508,80 @@ interface AlsoKeep {
   }
 
   #[test]
+  fn test_generate_jsr_paths_prefers_declarations() {
+    let project = tempfile::tempdir().unwrap();
+    let jsr_dir = project.path().join(".deno/npm-compat/@jsr");
+    let pkg_dir = jsr_dir.join("std__example");
+    std::fs::create_dir_all(pkg_dir.join("_dist")).unwrap();
+    std::fs::write(
+      pkg_dir.join("package.json"),
+      serde_json::to_string(&json!({
+        "exports": {
+          ".": {
+            "types": "./_dist/mod.d.ts",
+            "default": "./mod.js",
+          },
+          "./subpath": {
+            "types": "./_dist/subpath.d.ts",
+            "default": "./subpath.js",
+          },
+          // No `types` and no shipped declaration: must fall back to source.
+          "./nodecl": {
+            "default": "./nodecl.js",
+          },
+        }
+      }))
+      .unwrap(),
+    )
+    .unwrap();
+    for file in [
+      "mod.js",
+      "mod.ts",
+      "subpath.js",
+      "subpath.ts",
+      "nodecl.js",
+      "nodecl.ts",
+      "_dist/mod.d.ts",
+      "_dist/subpath.d.ts",
+    ] {
+      std::fs::write(pkg_dir.join(file), "").unwrap();
+    }
+
+    let imports = json!({
+      "example": "jsr:@std/example@1",
+    });
+    let paths = generate_jsr_paths(project.path(), &jsr_dir, Some(&imports));
+    let rel =
+      |p: &str| json!([pkg_dir.join(p).to_string_lossy().replace('\\', "/")]);
+    // Root and declared subpath prefer the generated `.d.ts` declaration so
+    // stock tsc consumes it under `skipLibCheck` rather than type-checking the
+    // dependency's `.ts` source.
+    let mod_dts = rel("_dist/mod.d.ts");
+    let subpath_dts = rel("_dist/subpath.d.ts");
+    // The export without a declaration falls back to the `.ts` source.
+    let nodecl_ts = rel("nodecl.ts");
+
+    assert_eq!(paths.get("jsr:@std/example@1"), Some(&mod_dts));
+    assert_eq!(paths.get("example"), Some(&mod_dts));
+    assert_eq!(paths.get("@jsr/std__example"), Some(&mod_dts));
+    assert_eq!(paths.get("jsr:@std/example@1/subpath"), Some(&subpath_dts));
+    assert_eq!(paths.get("@jsr/std__example/subpath"), Some(&subpath_dts));
+    assert_eq!(paths.get("jsr:@std/example@1/nodecl"), Some(&nodecl_ts));
+    assert_eq!(paths.get("@jsr/std__example/nodecl"), Some(&nodecl_ts));
+  }
+
+  #[test]
   fn test_generate_npm_paths_empty_imports() {
-    let paths = generate_npm_paths(Path::new("/tmp/project"), None);
+    let paths =
+      generate_npm_paths(Path::new("/tmp/project"), None, &BTreeMap::new());
     assert!(paths.is_empty());
 
     let imports = json!({});
-    let paths = generate_npm_paths(Path::new("/tmp/project"), Some(&imports));
+    let paths = generate_npm_paths(
+      Path::new("/tmp/project"),
+      Some(&imports),
+      &BTreeMap::new(),
+    );
     assert!(paths.is_empty());
   }
 
@@ -1267,7 +1595,10 @@ interface AlsoKeep {
       &[],
       &BTreeMap::new(),
       &Map::new(),
-      false,
+      Path::new("/tmp/project/node_modules/@jsr"),
+      &BTreeMap::new(),
+      &[],
+      None,
       &[],
     );
 
@@ -1289,7 +1620,10 @@ interface AlsoKeep {
       &[],
       &BTreeMap::new(),
       &Map::new(),
-      false,
+      Path::new("/tmp/project/node_modules/@jsr"),
+      &BTreeMap::new(),
+      &[],
+      None,
       &excludes,
     );
     let exclude = tsconfig.get("exclude").unwrap().as_array().unwrap();
@@ -1315,7 +1649,10 @@ interface AlsoKeep {
       &files,
       &BTreeMap::new(),
       &Map::new(),
-      false,
+      Path::new("/tmp/project/node_modules/@jsr"),
+      &BTreeMap::new(),
+      &[],
+      None,
       &[],
     );
 
@@ -1324,6 +1661,35 @@ interface AlsoKeep {
     assert!(tsconfig.get("exclude").is_none());
     let files_arr = tsconfig.get("files").unwrap().as_array().unwrap();
     assert_eq!(files_arr, &vec![json!("main.ts"), json!("lib.ts")]);
+  }
+
+  #[test]
+  fn test_build_tsconfig_with_npm_project_references() {
+    let references = vec![
+      "./npm/a/tsconfig.json".to_string(),
+      "./npm/b/tsconfig.json".to_string(),
+    ];
+    let tsconfig = build_tsconfig(
+      Path::new("/tmp/project"),
+      None,
+      None,
+      &[],
+      &BTreeMap::new(),
+      &Map::new(),
+      Path::new("/tmp/project/node_modules/@jsr"),
+      &BTreeMap::new(),
+      &references,
+      None,
+      &[],
+    );
+
+    assert_eq!(
+      tsconfig.get("references"),
+      Some(&json!([
+        { "path": "./npm/a/tsconfig.json" },
+        { "path": "./npm/b/tsconfig.json" },
+      ])),
+    );
   }
 
   #[test]
@@ -1345,7 +1711,10 @@ interface AlsoKeep {
       &[],
       &BTreeMap::new(),
       &Map::new(),
-      false,
+      Path::new("/tmp/project/node_modules/@jsr"),
+      &BTreeMap::new(),
+      &[],
+      None,
       &[],
     );
 
@@ -1381,7 +1750,7 @@ interface AlsoKeep {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
 
-    ensure_root_tsconfig(root).unwrap();
+    ensure_root_tsconfig(root, &[]).unwrap();
 
     let content = std::fs::read_to_string(root.join("tsconfig.json")).unwrap();
     let tsconfig: Value = serde_json::from_str(&content).unwrap();
@@ -1403,7 +1772,7 @@ interface AlsoKeep {
     )
     .unwrap();
 
-    ensure_root_tsconfig(root).unwrap();
+    ensure_root_tsconfig(root, &[]).unwrap();
 
     let content = std::fs::read_to_string(root.join("tsconfig.json")).unwrap();
     let tsconfig: Value = serde_json::from_str(&content).unwrap();
@@ -1434,7 +1803,7 @@ interface AlsoKeep {
     )
     .unwrap();
 
-    ensure_root_tsconfig(root).unwrap();
+    ensure_root_tsconfig(root, &[]).unwrap();
 
     let content = std::fs::read_to_string(root.join("tsconfig.json")).unwrap();
     let tsconfig: Value = serde_json::from_str(&content).unwrap();
@@ -1456,7 +1825,7 @@ interface AlsoKeep {
     )
     .unwrap();
 
-    ensure_root_tsconfig(root).unwrap();
+    ensure_root_tsconfig(root, &[]).unwrap();
 
     let content = std::fs::read_to_string(root.join("tsconfig.json")).unwrap();
     let tsconfig: Value = serde_json::from_str(&content).unwrap();
@@ -1477,7 +1846,7 @@ interface AlsoKeep {
     )
     .unwrap();
 
-    ensure_root_tsconfig(root).unwrap();
+    ensure_root_tsconfig(root, &[]).unwrap();
 
     let content = std::fs::read_to_string(root.join("tsconfig.json")).unwrap();
     // The user's comment and trailing comma are PRESERVED (text is spliced, not
@@ -1506,7 +1875,7 @@ interface AlsoKeep {
     let root = dir.path();
     std::fs::write(root.join("tsconfig.json"), "{ not valid").unwrap();
     // Fails loudly rather than silently overwriting the user's file.
-    assert!(ensure_root_tsconfig(root).is_err());
+    assert!(ensure_root_tsconfig(root, &[]).is_err());
   }
 
   #[test]
@@ -1520,7 +1889,7 @@ interface AlsoKeep {
     )
     .unwrap();
 
-    ensure_root_tsconfig(root).unwrap();
+    ensure_root_tsconfig(root, &[]).unwrap();
 
     let content = std::fs::read_to_string(root.join("tsconfig.json")).unwrap();
     let tsconfig: Value = serde_json::from_str(&content).unwrap();
@@ -1542,13 +1911,54 @@ interface AlsoKeep {
     )
     .unwrap();
 
-    ensure_root_tsconfig(root).unwrap();
+    ensure_root_tsconfig(root, &[]).unwrap();
 
     let content = std::fs::read_to_string(root.join("tsconfig.json")).unwrap();
     let tsconfig: Value = serde_json::from_str(&content).unwrap();
     assert_eq!(
       tsconfig.get("extends").unwrap(),
       &json!("./.deno/tsconfig.json")
+    );
+  }
+
+  #[test]
+  fn test_ensure_root_tsconfig_updates_generated_npm_references() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(
+      root.join("tsconfig.json"),
+      r#"{
+  // keep the user's project reference
+  "references": [
+    { "path": "./packages/app" },
+    { "path": "./.deno/npm/stale/tsconfig.json" }
+  ]
+}"#,
+    )
+    .unwrap();
+    let references = vec![
+      "./npm/a/tsconfig.json".to_string(),
+      "./npm/b/tsconfig.json".to_string(),
+    ];
+
+    ensure_root_tsconfig(root, &references).unwrap();
+    let once = std::fs::read_to_string(root.join("tsconfig.json")).unwrap();
+    ensure_root_tsconfig(root, &references).unwrap();
+    let twice = std::fs::read_to_string(root.join("tsconfig.json")).unwrap();
+    assert_eq!(once, twice);
+
+    let parsed: Value = jsonc_parser::parse_to_serde_value(
+      &once,
+      &jsonc_parser::ParseOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(
+      parsed.get("references"),
+      Some(&json!([
+        { "path": "./packages/app" },
+        { "path": "./.deno/npm/a/tsconfig.json" },
+        { "path": "./.deno/npm/b/tsconfig.json" },
+      ])),
     );
   }
 }
