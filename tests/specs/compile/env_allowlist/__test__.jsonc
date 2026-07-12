@@ -1,0 +1,53 @@
+{
+  "tempDir": true,
+  "envs": {
+    "TERM": "xterm-256color",
+    "SOME_SECRET": "shhh",
+    "DYLD_FALLBACK_LIBRARY_PATH": "",
+    "LD_LIBRARY_PATH": ""
+  },
+  "tests": {
+    "default_allowlist": {
+      "steps": [{
+        "if": "unix",
+        "args": "compile --output main main.ts",
+        "output": "[WILDCARD]"
+      }, {
+        "if": "unix",
+        "commandName": "./main",
+        "args": [],
+        "output": "main.out"
+      }, {
+        "if": "windows",
+        "args": "compile --output main.exe main.ts",
+        "output": "[WILDCARD]"
+      }, {
+        "if": "windows",
+        "commandName": "./main.exe",
+        "args": [],
+        "output": "main.out"
+      }]
+    },
+    "deny_wins": {
+      "steps": [{
+        "if": "unix",
+        "args": "compile --deny-env=TERM --output main_deny main.ts",
+        "output": "[WILDCARD]"
+      }, {
+        "if": "unix",
+        "commandName": "./main_deny",
+        "args": [],
+        "output": "deny.out"
+      }, {
+        "if": "windows",
+        "args": "compile --deny-env=TERM --output main_deny.exe main.ts",
+        "output": "[WILDCARD]"
+      }, {
+        "if": "windows",
+        "commandName": "./main_deny.exe",
+        "args": [],
+        "output": "deny.out"
+      }]
+    }
+  }
+}
