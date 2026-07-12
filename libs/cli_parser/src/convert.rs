@@ -2526,6 +2526,7 @@ fn add_parse(result: &ParseResult, flags: &mut Flags) {
 }
 
 fn pack_parse(result: &ParseResult, flags: &mut Flags) {
+  flags.type_check_mode = TypeCheckMode::Local; // local by default
   config_args_parse(result, flags);
   env_file_arg_parse(result, flags);
   let include = result
