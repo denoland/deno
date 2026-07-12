@@ -1,0 +1,39 @@
+{
+  "tempDir": true,
+  "envs": {
+    // Narrow the OS temp dir to under the cwd so the default temp read grant in
+    // the compiled app does not cover the DENO_DIR path passed as the "outside"
+    // argument (DENO_DIR sits in a sibling temp dir outside the cwd).
+    "TMPDIR": "$PWD/tmp",
+    "TMP": "$PWD/tmp",
+    "TEMP": "$PWD/tmp"
+  },
+  "tests": {
+    "read_confinement": {
+      "steps": [
+        {
+          "if": "unix",
+          "args": "compile --output read_confine_app main.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "if": "unix",
+          "commandName": "./read_confine_app",
+          "args": ["$DENO_DIR"],
+          "output": "run.out"
+        },
+        {
+          "if": "windows",
+          "args": "compile --output read_confine_app.exe main.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "if": "windows",
+          "commandName": "./read_confine_app.exe",
+          "args": ["$DENO_DIR"],
+          "output": "run.out"
+        }
+      ]
+    }
+  }
+}

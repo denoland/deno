@@ -1,7 +1,10 @@
 {
   "tests": {
     "missing_permissions": {
-      "args": "run main.ts",
+      // Deny the non-analyzable imports so they stay read-denied under the
+      // default cwd read confinement, keeping the test focused on the
+      // permission requirement for dynamic bytes/text imports.
+      "args": "run --deny-read=non_analyzable.txt,non_analyzable_utf8_bom.txt main.ts",
       "output": "main_missing_permissions.out",
       "exitCode": 1
     },

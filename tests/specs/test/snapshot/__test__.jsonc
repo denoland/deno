@@ -74,7 +74,10 @@
       ]
     },
     "custom_dir_requires_permissions": {
-      "args": "test --update-snapshots custom_dir_test.ts",
+      // Deny the custom snapshot dir so the snapshot read stays denied under
+      // the default cwd read confinement, keeping the test focused on the read
+      // permission requirement for a custom snapshot directory.
+      "args": "test --update-snapshots --deny-read=custom_snapshots custom_dir_test.ts",
       "exitCode": 1,
       "output": "custom_dir_no_permission.out"
     },

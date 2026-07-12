@@ -1,0 +1,33 @@
+{
+  "tempDir": true,
+  "tests": {
+    "read_confinement": {
+      "steps": [
+        {
+          // Runs with -A so it can create a file in the OS temp directory and
+          // record its path for the confined run below to read back.
+          "args": "run -A setup.ts",
+          "output": "setup.out"
+        },
+        {
+          // No --allow-read: read is confined to the cwd and the OS temp
+          // directory. Reads elsewhere on disk deny naming --allow-read.
+          "args": "run main.ts",
+          "output": "main.out"
+        }
+      ]
+    },
+    "deny_read_composes": {
+      // --deny-read composes on top of the default cwd+temp grant: the cwd is
+      // still readable but the denied subdirectory is not (deny wins).
+      "args": "run --deny-read=sub main_deny.ts",
+      "output": "main_deny.out"
+    },
+    "explicit_allow_read_not_widened": {
+      // An explicit --allow-read is the user's own scope and is not widened by
+      // the default: another file in the cwd stays unreadable.
+      "args": "run --allow-read=inside.txt main_explicit.ts",
+      "output": "main_explicit.out"
+    }
+  }
+}

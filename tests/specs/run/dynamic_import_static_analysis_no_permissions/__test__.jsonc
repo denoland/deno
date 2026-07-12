@@ -1,4 +1,4 @@
 {
-  "args": "run --quiet --reload --no-prompt static_analysis_no_permissions.ts",
+  "args": "run --quiet --reload --no-prompt --deny-read=empty_2.ts static_analysis_no_permissions.ts",
   "output": "static_analysis_no_permissions.ts.out"
 }

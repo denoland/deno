@@ -1,0 +1,34 @@
+{
+  "tempDir": true,
+  "envs": {
+    // Point the OS temp dir under the cwd so the default read confinement's
+    // temp grant does not cover the global npm cache (DENO_DIR sits in a
+    // sibling temp dir outside the cwd). Otherwise the cache would be readable
+    // via the temp grant and the per-package scoping would not be observable.
+    "TMPDIR": "$PWD/tmp",
+    "TMP": "$PWD/tmp",
+    "TEMP": "$PWD/tmp"
+  },
+  "tests": {
+    "npm_package_read_scope": {
+      "steps": [
+        {
+          // Populate the global npm cache with both packages so the run below
+          // is quiet. main.ts only imports read-scope-self; read-scope-other is
+          // cached but never imported, so its bundled file exists yet is only
+          // reachable via a per-package read grant.
+          "args": "cache npm:@denotest/read-scope-self npm:@denotest/read-scope-other",
+          "output": "[WILDCARD]"
+        },
+        {
+          // No --allow-read: read is confined to cwd + temp. Importing
+          // read-scope-self grants read on its own package folder (it reads its
+          // own data file), but the non-imported read-scope-other package in
+          // the same cache is denied.
+          "args": "run main.ts",
+          "output": "main.out"
+        }
+      ]
+    }
+  }
+}

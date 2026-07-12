@@ -1,0 +1,2 @@
+read cwd: ok
+read denied subdir: NotCapable

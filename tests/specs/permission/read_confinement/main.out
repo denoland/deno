@@ -1,0 +1,4 @@
+read cwd: ok
+read cwd subdir: ok
+read temp: ok
+read outside: NotCapable --allow-read
