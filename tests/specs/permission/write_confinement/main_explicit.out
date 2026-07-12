@@ -1,0 +1,4 @@
+write allowed file: ok
+write other cwd file: ok
+write temp: ok
+write outside: NotCapable --allow-write
