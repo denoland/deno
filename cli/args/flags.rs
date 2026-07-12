@@ -932,7 +932,10 @@ fn cli_error_to_clap(e: deno_cli_parser::CliError) -> clap::Error {
 /// hand-written `deno_cli_parser` (see `flags_from_vec_with_initial_cwd`); this
 /// is retained to keep the clap parity `mod tests` exercising clap until the
 /// clap parser is removed.
-#[allow(dead_code)]
+#[allow(
+  dead_code,
+  reason = "clap parser kept for its mod tests until it is removed in a follow-up"
+)]
 fn clap_flags_from_vec_with_initial_cwd(
   args: Vec<OsString>,
   initial_cwd: Option<PathBuf>,

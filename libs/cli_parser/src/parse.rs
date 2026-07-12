@@ -168,6 +168,11 @@ fn parse_args(
         continue;
       }
       trailing_mode = true;
+      // Keep the `--` in the forwarded args for subcommands that mirror clap's
+      // `.last(true)` / external-subcommand behavior; strip it otherwise.
+      if cmd_def.keep_double_dash {
+        result.trailing.push(arg.clone());
+      }
       i += 1;
       continue;
     }
@@ -231,9 +236,14 @@ fn parse_args(
               && positional_index >= positional_defs.len()
             {
               i += 1;
-              // Keep a `--` separator in the forwarded args to match clap's
-              // trailing-var-arg behavior (e.g. `deno run script.ts -- -a`
-              // forwards `["--", "-a"]`).
+              // Strip a leading `--` separator unless this subcommand keeps it
+              // in the forwarded argv (clap `.last(true)` / external behavior,
+              // e.g. `deno run x.ts -- -a` forwards `["--", "-a"]`, but
+              // `deno eval code -- a` forwards `["a"]`).
+              if !cmd_def.keep_double_dash && i < args.len() && args[i] == "--"
+              {
+                i += 1;
+              }
               while i < args.len() {
                 result.trailing.push(args[i].clone());
                 i += 1;

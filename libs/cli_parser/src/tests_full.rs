@@ -9390,3 +9390,18 @@ fn unlink_subcommand() {
 
   assert!(flags_from_vec(svec!["deno", "unlink"]).is_err());
 }
+
+#[test]
+fn eval_double_dash_stripped() {
+  // Unlike run/task, `deno eval` strips the `--` separator from argv
+  // (clap plain trailing-var-arg, not `.last(true)`).
+  let flags =
+    flags_from_vec(svec!["deno", "eval", "console.log(1)", "--", "a&b"])
+      .unwrap();
+  assert_eq!(flags.argv, svec!["a&b"]);
+
+  // run keeps it, for contrast.
+  let flags =
+    flags_from_vec(svec!["deno", "run", "x.ts", "--", "a&b"]).unwrap();
+  assert_eq!(flags.argv, svec!["--", "a&b"]);
+}

@@ -556,6 +556,7 @@ pub static RUN_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: true,
   passthrough: false,
+  keep_double_dash: true,
 };
 
 pub static WATCH_SUBCOMMAND: CommandDef = CommandDef {
@@ -568,6 +569,7 @@ pub static WATCH_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: true,
   passthrough: false,
+  keep_double_dash: true,
 };
 
 pub static SERVE_SUBCOMMAND: CommandDef = CommandDef {
@@ -652,6 +654,7 @@ pub static SERVE_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: true,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static EVAL_SUBCOMMAND: CommandDef = CommandDef {
@@ -693,6 +696,7 @@ pub static EVAL_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: true,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static FMT_SUBCOMMAND: CommandDef = CommandDef {
@@ -815,6 +819,7 @@ pub static FMT_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static LINT_SUBCOMMAND: CommandDef = CommandDef {
@@ -910,6 +915,7 @@ pub static LINT_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static TEST_SUBCOMMAND: CommandDef = CommandDef {
@@ -1062,6 +1068,7 @@ pub static TEST_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: true,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static UPGRADE_SUBCOMMAND: CommandDef = CommandDef {
@@ -1121,6 +1128,7 @@ pub static UPGRADE_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static CACHE_SUBCOMMAND: CommandDef = CommandDef {
@@ -1159,6 +1167,7 @@ pub static CACHE_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static CHECK_SUBCOMMAND: CommandDef = CommandDef {
@@ -1216,6 +1225,7 @@ pub static CHECK_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static INFO_SUBCOMMAND: CommandDef = CommandDef {
@@ -1239,6 +1249,7 @@ pub static INFO_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static DOC_SUBCOMMAND: CommandDef = CommandDef {
@@ -1296,6 +1307,7 @@ pub static DOC_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static TASK_SUBCOMMAND: CommandDef = CommandDef {
@@ -1363,6 +1375,7 @@ pub static TASK_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: true,
   passthrough: false,
+  keep_double_dash: true,
 };
 
 pub static BENCH_SUBCOMMAND: CommandDef = CommandDef {
@@ -1432,6 +1445,7 @@ pub static BENCH_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: true,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static COMPILE_SUBCOMMAND: CommandDef = CommandDef {
@@ -1528,6 +1542,7 @@ pub static COMPILE_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: true,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static COVERAGE_SUBCOMMAND: CommandDef = CommandDef {
@@ -1577,6 +1592,7 @@ pub static COVERAGE_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static REPL_SUBCOMMAND: CommandDef = CommandDef {
@@ -1612,6 +1628,7 @@ pub static REPL_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static INSTALL_SUBCOMMAND: CommandDef = CommandDef {
@@ -1657,8 +1674,7 @@ pub static INSTALL_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("entrypoint")
       .short('e')
       .long("entrypoint")
-      .action(ArgAction::Append)
-      .num_args(NumArgs::OneOrMore)
+      .set_true()
       .conflicts_with(&["global"]),
     ArgDef::new("compile")
       .long("compile")
@@ -1728,6 +1744,7 @@ pub static INSTALL_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: true,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static UNINSTALL_SUBCOMMAND: CommandDef = CommandDef {
@@ -1759,6 +1776,7 @@ pub static UNINSTALL_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static TYPES_SUBCOMMAND: CommandDef = CommandDef {
@@ -1771,6 +1789,7 @@ pub static TYPES_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static COMPLETIONS_SUBCOMMAND: CommandDef = CommandDef {
@@ -1796,6 +1815,7 @@ pub static COMPLETIONS_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static INIT_SUBCOMMAND: CommandDef = CommandDef {
@@ -1832,6 +1852,7 @@ pub static INIT_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: true,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static CREATE_SUBCOMMAND: CommandDef = CommandDef {
@@ -1858,6 +1879,7 @@ pub static CREATE_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static JUPYTER_SUBCOMMAND: CommandDef = CommandDef {
@@ -1903,6 +1925,7 @@ pub static JUPYTER_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static PUBLISH_SUBCOMMAND: CommandDef = CommandDef {
@@ -1943,6 +1966,7 @@ pub static PUBLISH_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static ADD_SUBCOMMAND: CommandDef = CommandDef {
@@ -1994,6 +2018,7 @@ pub static ADD_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static REMOVE_SUBCOMMAND: CommandDef = CommandDef {
@@ -2026,6 +2051,7 @@ pub static REMOVE_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static OUTDATED_SUBCOMMAND: CommandDef = CommandDef {
@@ -2067,6 +2093,7 @@ pub static OUTDATED_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static UPDATE_SUBCOMMAND: CommandDef = CommandDef {
@@ -2103,6 +2130,7 @@ pub static UPDATE_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static DEPLOY_SUBCOMMAND: CommandDef = CommandDef {
@@ -2115,6 +2143,7 @@ pub static DEPLOY_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: true,
+  keep_double_dash: false,
 };
 
 pub static SANDBOX_SUBCOMMAND: CommandDef = CommandDef {
@@ -2127,6 +2156,7 @@ pub static SANDBOX_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: true,
+  keep_double_dash: false,
 };
 
 pub static CLEAN_SUBCOMMAND: CommandDef = CommandDef {
@@ -2163,6 +2193,7 @@ pub static CLEAN_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static LIST_SUBCOMMAND: CommandDef = CommandDef {
@@ -2194,6 +2225,7 @@ pub static LIST_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static APPROVE_SCRIPTS_SUBCOMMAND: CommandDef = CommandDef {
@@ -2215,6 +2247,7 @@ pub static APPROVE_SCRIPTS_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static LSP_SUBCOMMAND: CommandDef = CommandDef {
@@ -2227,6 +2260,7 @@ pub static LSP_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static VENDOR_SUBCOMMAND: CommandDef = CommandDef {
@@ -2257,6 +2291,7 @@ pub static VENDOR_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static BUNDLE_SUBCOMMAND: CommandDef = CommandDef {
@@ -2329,6 +2364,7 @@ pub static BUNDLE_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static AUDIT_SUBCOMMAND: CommandDef = CommandDef {
@@ -2369,6 +2405,7 @@ pub static AUDIT_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static X_SUBCOMMAND: CommandDef = CommandDef {
@@ -2428,6 +2465,7 @@ pub static X_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: true,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static JSON_REFERENCE_SUBCOMMAND: CommandDef = CommandDef {
@@ -2440,6 +2478,7 @@ pub static JSON_REFERENCE_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static HELP_SUBCOMMAND: CommandDef = CommandDef {
@@ -2455,6 +2494,7 @@ pub static HELP_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 // ============================================================
@@ -2582,6 +2622,7 @@ pub static DESKTOP_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: true,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static PACK_SUBCOMMAND: CommandDef = CommandDef {
@@ -2637,6 +2678,7 @@ pub static PACK_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static CI_SUBCOMMAND: CommandDef = CommandDef {
@@ -2664,6 +2706,7 @@ pub static CI_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static BUMP_VERSION_SUBCOMMAND: CommandDef = CommandDef {
@@ -2709,6 +2752,7 @@ pub static BUMP_VERSION_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static TRANSPILE_SUBCOMMAND: CommandDef = CommandDef {
@@ -2744,6 +2788,7 @@ pub static TRANSPILE_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static WHY_SUBCOMMAND: CommandDef = CommandDef {
@@ -2764,6 +2809,7 @@ pub static WHY_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static LINK_SUBCOMMAND: CommandDef = CommandDef {
@@ -2785,6 +2831,7 @@ pub static LINK_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static UNLINK_SUBCOMMAND: CommandDef = CommandDef {
@@ -2806,6 +2853,7 @@ pub static UNLINK_SUBCOMMAND: CommandDef = CommandDef {
   default_subcommand: None,
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 pub static DENO_ROOT: CommandDef = CommandDef {
@@ -2868,4 +2916,5 @@ pub static DENO_ROOT: CommandDef = CommandDef {
   default_subcommand: Some("run"),
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };

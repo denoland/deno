@@ -2207,15 +2207,13 @@ fn install_parse(
     arch: result.get_one("arch").map(|s| s.to_string()),
   };
 
-  if result.contains("entrypoint") {
-    // --entrypoint takes values directly; also include any positional "cmd" args
-    let mut entrypoints: Vec<String> = result
-      .get_many("entrypoint")
+  if result.get_bool("entrypoint") {
+    // `--entrypoint` is a boolean flag; the entrypoints are the positional
+    // `cmd` args (mirrors clap).
+    let entrypoints: Vec<String> = result
+      .get_many("cmd")
       .map(|v| v.iter().map(|s| s.to_string()).collect())
       .unwrap_or_default();
-    if let Some(cmd_vals) = result.get_many("cmd") {
-      entrypoints.extend(cmd_vals.iter().map(|s| s.to_string()));
-    }
     flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
       InstallFlagsLocal::Entrypoints(InstallEntrypointsFlags {
         entrypoints,
