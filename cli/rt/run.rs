@@ -1642,6 +1642,27 @@ pub async fn run_with_options(
   let has_desktop = op_state_init.is_some();
   let permissions = {
     let mut permissions = metadata.permissions;
+
+    // Confine default write access to the cwd and the OS temp dir (minus the
+    // `.git` directory inside the cwd) for parity with `deno run`. A compiled
+    // app always runs user code, so this is unconditional (there is no
+    // prompt-default subcommand gate here). It stays deny-respecting and
+    // additive: cwd+temp are appended to any scoped baked-in `--allow-write`,
+    // the `.git` deny is merged into any baked-in `--deny-write`, only `-A`
+    // (allow all) is left untouched, and a global `--deny-write` baked into the
+    // app skips it.
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "the compiled app's process-start cwd for the default write confinement"
+    )]
+    let initial_cwd = sys.env_current_dir();
+    if let Ok(initial_cwd) = initial_cwd {
+      deno_runtime::deno_permissions::apply_default_write_confinement(
+        &mut permissions,
+        &initial_cwd,
+      );
+    }
+
     // grant read access to the vfs
     grant_vfs_read_access(&mut permissions, &root_path);
 

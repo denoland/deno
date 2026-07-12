@@ -3605,6 +3605,159 @@ pub struct PermissionsOptions {
   pub prompt: bool,
 }
 
+/// Appends `path` and, when it resolves, its canonicalized form to `paths`,
+/// skipping duplicates. Both forms are recorded so that write permission
+/// descriptors match regardless of symlinked prefixes (for example macOS's
+/// `/tmp` -> `/private/tmp` and the `/var/folders` temp dirs, which are
+/// canonicalized at permission-check time).
+fn push_write_path_with_canonicalized(paths: &mut Vec<PathBuf>, path: PathBuf) {
+  if !paths.contains(&path) {
+    paths.push(path.clone());
+  }
+  #[allow(clippy::disallowed_methods, reason = "resolving default write paths")]
+  if let Ok(canonical) = path.canonicalize() {
+    let canonical = deno_path_util::strip_unc_prefix(canonical);
+    if !paths.contains(&canonical) {
+      paths.push(canonical);
+    }
+  }
+}
+
+/// The default write-confinement allow-list: the process-start cwd and the OS
+/// temp directory. Each entry contributes its raw and canonicalized form (see
+/// `push_write_path_with_canonicalized`). The OS temp directory honors the
+/// `TMPDIR` env var via `std::env::temp_dir`.
+fn default_write_confinement_paths(initial_cwd: &Path) -> Vec<String> {
+  let mut paths: Vec<PathBuf> = Vec::with_capacity(4);
+  push_write_path_with_canonicalized(&mut paths, initial_cwd.to_path_buf());
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "resolving the OS temp dir (honors TMPDIR) for the default write confinement"
+  )]
+  let temp_dir = std::env::temp_dir();
+  push_write_path_with_canonicalized(&mut paths, temp_dir);
+  paths
+    .into_iter()
+    .map(|path| path.to_string_lossy().into_owned())
+    .collect()
+}
+
+/// The default write deny-list: the `.git` directory inside the process-start
+/// cwd. Even though the rest of the cwd is writable by default, `.git` stays
+/// non-writable so the writable cwd cannot be used to plant a
+/// `.git/hooks/pre-commit` (or similar) that runs on the next git invocation.
+/// Both the raw and canonicalized forms of the cwd are recorded so the deny
+/// matches whether the write path is expressed relative to the raw or the
+/// canonicalized cwd.
+///
+/// Note this is a lexical deny: like `--deny-write=.git`, it blocks direct
+/// writes whose path lands inside `<cwd>/.git`, but it does not defend against a
+/// symlink inside the cwd that points at `.git`, because write permission
+/// checks are not symlink-canonicalized (the target often does not exist yet).
+fn default_git_deny_write_paths(initial_cwd: &Path) -> Vec<String> {
+  let mut paths: Vec<PathBuf> = Vec::with_capacity(2);
+  push_write_path_with_canonicalized(&mut paths, initial_cwd.join(".git"));
+  paths
+    .into_iter()
+    .map(|path| path.to_string_lossy().into_owned())
+    .collect()
+}
+
+/// Merges `additions` into `allow_write`, preserving the "allow all" meaning of
+/// an empty allow-list. When `allow_write` is `None` it becomes a fresh list of
+/// the additions; when it is a non-empty list the additions are appended
+/// (skipping duplicates); when it is `Some` but empty (allow all) it is left
+/// untouched.
+fn merge_default_allow_write(
+  allow_write: &mut Option<Vec<String>>,
+  additions: Vec<String>,
+) {
+  match allow_write {
+    None => {
+      *allow_write = Some(additions);
+    }
+    Some(list) if list.is_empty() => {
+      // Empty list means "allow all"; adding paths would narrow it. Leave it.
+    }
+    Some(list) => {
+      for addition in additions {
+        if !list.iter().any(|existing| existing == &addition) {
+          list.push(addition);
+        }
+      }
+    }
+  }
+}
+
+/// Merges `additions` into `deny_write`. Unlike the allow merge there is no
+/// "deny all" special case to preserve: a bare `--deny-write` (global deny) is
+/// handled by the caller (which skips the whole default in that case), so here
+/// `deny_write` is either `None` or a specific list, and the `.git` deny paths
+/// are appended rather than overwriting the user's `--deny-write` (deny always
+/// wins and must compose).
+fn merge_default_deny_write(
+  deny_write: &mut Option<Vec<String>>,
+  additions: Vec<String>,
+) {
+  match deny_write {
+    None => {
+      *deny_write = Some(additions);
+    }
+    Some(list) => {
+      for addition in additions {
+        if !list.iter().any(|existing| existing == &addition) {
+          list.push(addition);
+        }
+      }
+    }
+  }
+}
+
+/// Confines default write access to the process-start cwd and the OS temp
+/// directory, minus the `.git` directory inside the cwd. This replaces the
+/// historical deny-by-default write behavior: instead of prompting for every
+/// write outside a granted path, ordinary programs may write to their own
+/// working directory and the temp dir without a prompt, while writes elsewhere
+/// on disk still prompt in a TTY and deny non-interactively. The `.git`
+/// directory stays non-writable so the writable cwd cannot be used to plant a
+/// `.git/hooks/pre-commit` (or similar) executed on the next git invocation.
+///
+/// This is deny-respecting and additive (mirroring the default read
+/// confinement):
+/// - A global write deny (bare `--deny-write`, i.e. an empty list meaning "deny
+///   all writes") neutralizes write entirely. The default must not resurrect
+///   paths through it (a specific granted descriptor would win over a global
+///   deny in permission resolution), so it is skipped in that case and deny
+///   still wins.
+/// - `--deny-write=<path>` composes on top: it is not global, so the default
+///   cwd+temp grant is still applied, the denied path is subtracted from it
+///   (deny always wins), and the `.git` deny is MERGED into it rather than
+///   overwriting it (so the user's `--deny-write` is preserved).
+/// - An explicit `--allow-write=<path>` composes on top too: cwd and temp are
+///   appended so `--allow-write=/data` grants cwd + temp + `/data`. Only bare
+///   `--allow-write` / `-A` (an empty "allow all" list) is left untouched.
+///
+/// Callers that only want this for certain subcommands should guard the call;
+/// the standalone/compiled runtime applies it unconditionally since a compiled
+/// app always runs user code.
+pub fn apply_default_write_confinement(
+  options: &mut PermissionsOptions,
+  initial_cwd: &Path,
+) {
+  let is_global = |list: &Option<Vec<String>>| matches!(list, Some(entries) if entries.is_empty());
+  if is_global(&options.deny_write) {
+    return;
+  }
+  merge_default_allow_write(
+    &mut options.allow_write,
+    default_write_confinement_paths(initial_cwd),
+  );
+  merge_default_deny_write(
+    &mut options.deny_write,
+    default_git_deny_write_paths(initial_cwd),
+  );
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum PermissionsFromOptionsError {
   #[error("{0}")]
