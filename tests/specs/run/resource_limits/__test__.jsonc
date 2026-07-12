@@ -1,12 +1,12 @@
 {
   "tests": {
     "max_memory": {
-      "args": "run --max-memory=64m max_memory.js",
+      "args": "run --max-memory=512m max_memory.js",
       "output": "max_memory.out",
       "exitCode": 1
     },
     "max_memory_suffix": {
-      "args": "run --max-memory=64mb max_memory.js",
+      "args": "run --max-memory=512mb max_memory.js",
       "output": "max_memory.out",
       "exitCode": 1
     },
@@ -26,7 +26,7 @@
       "exitCode": 1
     },
     "within_limits": {
-      "args": "run --max-memory=256m --max-cpu-time=30 --max-time=30 within_limits.js",
+      "args": "run --max-memory=1024m --max-cpu-time=30 --max-time=30 within_limits.js",
       "output": "within_limits.out",
       "exitCode": 0
     }

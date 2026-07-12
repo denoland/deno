@@ -657,6 +657,12 @@ fn op_runtime_memory_usage(
   out[3] = external as f64;
 }
 
+/// Returns the process resident set size (RSS) in bytes, or 0 if it can't
+/// be determined on the current platform.
+pub fn get_process_rss() -> u64 {
+  rss()
+}
+
 #[cfg(any(target_os = "android", target_os = "linux"))]
 fn rss() -> u64 {
   // Inspired by https://github.com/Arc-blroth/memory-stats/blob/5364d0d09143de2a470d33161b2330914228fde9/src/linux.rs

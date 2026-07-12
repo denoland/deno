@@ -5883,8 +5883,8 @@ fn seed_arg() -> Arg {
 }
 
 /// Parses a memory size for `--max-memory` into megabytes. A plain number
-/// is interpreted as megabytes (matching V8's `--max-old-space-size`);
-/// `k`/`kb`, `m`/`mb` and `g`/`gb` suffixes are accepted.
+/// is interpreted as megabytes; `k`/`kb`, `m`/`mb` and `g`/`gb` suffixes are
+/// accepted.
 fn parse_memory_size_mb(s: &str) -> Result<u64, String> {
   let lower = s.trim().to_ascii_lowercase();
   let (num, to_mb): (&str, fn(u64) -> u64) = if let Some(v) =
@@ -5917,7 +5917,7 @@ fn max_memory_arg() -> Arg {
     .long("max-memory")
     .value_name("SIZE")
     .help(cstr!(
-      "Limit the memory (V8 heap) available to JavaScript, e.g. <p(245)>--max-memory=512m</>
+      "Limit the total memory (resident set size) available to the program, e.g. <p(245)>--max-memory=512m</>
   <p(245)>A plain number is interpreted as megabytes; k/m/g suffixes are supported.
   When the limit is exceeded the program is terminated with an error.</>"
     ))

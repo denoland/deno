@@ -181,9 +181,9 @@ pub fn create_isolate_create_params<TSys: DenoLibSys>(
   }
 }
 
-/// Set when the main isolate hit the `--max-memory` heap limit and was
-/// terminated. Checked on exit to report a clear error instead of the
-/// generic "execution terminated".
+/// Set when the process exceeded the `--max-memory` resident-set-size limit
+/// and the main isolate was terminated. Checked on exit to report a clear
+/// error instead of the generic "execution terminated".
 pub static MEMORY_LIMIT_EXCEEDED: AtomicBool = AtomicBool::new(false);
 
 /// Set when the process exhausted the `--max-cpu-time` budget and the
@@ -215,6 +215,30 @@ fn terminate_and_exit(
   std::thread::sleep(WATCHDOG_GRACE);
   log::error!("{}: {}", colors::red_bold("error"), message);
   deno_runtime::exit(1);
+}
+
+/// Spawns a thread that samples the process resident set size (RSS) and
+/// terminates the main isolate once it exceeds `limit_bytes`. This caps the
+/// total memory of the process (V8 heap + external buffers + native
+/// allocations), not just the V8 heap. The cap is sampled, so a program that
+/// allocates faster than the sampling interval may briefly overshoot before
+/// being terminated.
+fn start_memory_watchdog(limit_bytes: u64, isolate_handle: v8::IsolateHandle) {
+  std::thread::Builder::new()
+    .name("deno-max-memory-watchdog".to_string())
+    .spawn(move || {
+      loop {
+        std::thread::sleep(Duration::from_millis(20));
+        if deno_runtime::deno_os::get_process_rss() >= limit_bytes {
+          terminate_and_exit(
+            &isolate_handle,
+            &MEMORY_LIMIT_EXCEEDED,
+            "Memory limit exceeded (--max-memory)",
+          );
+        }
+      }
+    })
+    .expect("failed to spawn max-memory watchdog thread");
 }
 
 /// Spawns a thread that samples the process CPU time and terminates the
@@ -838,15 +862,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       startup_snapshot: shared.options.startup_snapshot,
       residual_lazy_js_sources: shared.options.residual_lazy_js_sources,
       residual_lazy_esm_sources: shared.options.residual_lazy_esm_sources,
-      create_params: {
-        let mut create_params = create_isolate_create_params(&shared.sys);
-        if let Some(mb) = shared.options.max_memory_mb {
-          let max_bytes = (mb as usize) * 1024 * 1024;
-          create_params =
-            Some(create_params.unwrap_or_default().heap_limits(0, max_bytes));
-        }
-        create_params
-      },
+      create_params: create_isolate_create_params(&shared.sys),
       unsafely_ignore_certificate_errors: shared
         .options
         .unsafely_ignore_certificate_errors
@@ -872,19 +888,12 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       MainWorker::bootstrap_from_options(&main_module, services, options);
     worker.setup_memory_trim_handler();
 
-    // When `--max-memory` is set, terminate the isolate gracefully with a
-    // clear error instead of crashing the process with a V8 fatal OOM.
-    if shared.options.max_memory_mb.is_some() {
+    if let Some(mb) = shared.options.max_memory_mb {
+      static MEMORY_WATCHDOG_STARTED: std::sync::Once = std::sync::Once::new();
       let handle = worker.js_runtime.v8_isolate().thread_safe_handle();
-      worker.js_runtime.add_near_heap_limit_callback(
-        move |current_limit, _initial_limit| {
-          MEMORY_LIMIT_EXCEEDED.store(true, Ordering::SeqCst);
-          handle.terminate_execution();
-          // Raise the limit so V8 can unwind instead of aborting while
-          // the termination propagates.
-          current_limit * 2
-        },
-      );
+      let limit_bytes = mb.saturating_mul(1024 * 1024);
+      MEMORY_WATCHDOG_STARTED
+        .call_once(move || start_memory_watchdog(limit_bytes, handle));
     }
 
     if let Some(limit_secs) = shared.options.max_cpu_time_secs {
