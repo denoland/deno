@@ -6556,10 +6556,9 @@ impl TscRequest {
     // (`UserPreferences`, `FormatCodeSettings`, …) or `#[serde(flatten)]` stay
     // on `serde_v8::to_v8` until those types grow `ToV8` impls.
     let args = match self {
-      TscRequest::GetDiagnostics(args) => (
-        "$getDiagnostics",
-        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
-      ),
+      TscRequest::GetDiagnostics(args) => {
+        ("$getDiagnostics", Some(args.to_v8(scope)?))
+      }
       TscRequest::GetAmbientModules => ("$getAmbientModules", None),
       TscRequest::FindReferences((specifier, position)) => (
         "findReferences",
