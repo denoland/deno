@@ -132,8 +132,19 @@ fn parse_args(
   while i < args.len() {
     let arg = &args[i];
 
-    // Per-positional trailing mode: absorb everything into this positional
+    // Per-positional trailing mode: absorb everything into this positional.
+    //
+    // INVARIANT: this path always strips `--` and does NOT honor
+    // `cmd_def.keep_double_dash` (unlike the two command-level `--` paths
+    // below). That's correct only because every subcommand with a `.trailing()`
+    // positional (init/create/x) has `keep_double_dash: false`. If a subcommand
+    // ever needs both a `.trailing()` positional and `--` retention, this path
+    // must be taught to honor the flag.
     if let Some(trail_def) = positional_trailing_def {
+      debug_assert!(
+        !cmd_def.keep_double_dash,
+        "keep_double_dash is ignored for `.trailing()` positionals; see INVARIANT above"
+      );
       if arg == "--" {
         // `--` still transitions to command-level trailing
         // so that `deno init --npm vite -- --serve` puts --serve

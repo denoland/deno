@@ -884,9 +884,11 @@ pub fn flags_from_vec_with_initial_cwd(
     args
   };
 
-  // The hand-written parser works on `String`s. Args are almost always UTF-8;
-  // non-UTF-8 args (rare, e.g. odd script paths) are converted lossily, matching
-  // clap's tolerance downstream.
+  // The hand-written parser works on `String`s, whereas clap consumed
+  // `OsString` natively. Args are almost always UTF-8; the lossy conversion is
+  // a deliberate behavior change for the rare non-UTF-8 arg (e.g. a script path
+  // with invalid bytes), which becomes mangled (replacement chars) here instead
+  // of being carried through verbatim. Accepted as a Deno 3 simplification.
   let string_args: Vec<String> = args
     .iter()
     .map(|a| a.to_string_lossy().into_owned())

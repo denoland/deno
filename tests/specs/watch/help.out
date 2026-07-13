@@ -1,2 +1,5 @@
 Run a JavaScript or TypeScript program, watching for file changes and hot-replacing modules[WILDCARD]
-Usage: deno watch [OPTIONS] <SCRIPT_ARG>[WILDCARD]
+Usage: deno watch [OPTIONS] <SCRIPT_ARG>
+[WILDCARD]
+Options:
+[WILDCARD]--watch[WILDCARD]--hmr[WILDCARD]--allow-read[WILDCARD]

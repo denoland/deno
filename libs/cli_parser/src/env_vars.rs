@@ -118,6 +118,11 @@ pub static ENV_VARS: &[EnvVar] = &[
   },
   EnvVar {
     name: "DENO_TLS_CA_STORE",
+    // Descriptions are plain text here (this table is shared by the plain
+    // hand-written help renderer and the JSON reference). The original in
+    // clap's `flags.rs` wrapped the `(defaults to "mozilla")` clause in
+    // `cstr!` for dim coloring; that was intentionally dropped in the move —
+    // it only affected the legacy clap `--help`, which is being removed.
     description: "Comma-separated list of order dependent certificate stores.\nPossible values: \"system\", \"mozilla\" (defaults to \"mozilla\")",
     example: None,
   },
