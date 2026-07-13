@@ -276,34 +276,60 @@ impl TypeChecker {
   ///
   /// It is expected that it is determined if a check and/or emit is validated
   /// before the function is called.
+  /// Walk the module graph exactly as the in-process checker does, to collect
+  /// the tsc root set, deno's own graph diagnostics (missing modules + hints),
+  /// and the check hash — for the native (external tsc) check path in
+  /// `crate::tools::check`. The returned `TscRoots` is owned, so the borrows
+  /// only need to outlive this call.
+  pub(crate) fn walk_graph_for_native_check(
+    &self,
+    graph: &ModuleGraph,
+    compiler_options: &CompilerOptions,
+    imports: &[Url],
+    referrer: &Url,
+    roots: &[Url],
+    type_check_mode: TypeCheckMode,
+  ) -> TscRoots {
+    // Packages importable by bare specifier (workspace members + `links`),
+    // used to enhance import errors. TODO: also chain `links` packages to match
+    // `check_diagnostics` exactly.
+    let bare_importable_pkg_names: Vec<String> = self
+      .cli_options
+      .workspace()
+      .resolver_jsr_pkgs()
+      .map(|pkg| pkg.name)
+      .collect();
+    let mut walker = GraphWalker::new(
+      graph,
+      &self.sys,
+      &self.node_resolver,
+      &self.npm_resolver,
+      &self.compiler_options_resolver,
+      &bare_importable_pkg_names,
+      check_state_hash(&self.npm_resolver),
+      compiler_options,
+      type_check_mode,
+    );
+    for import in imports {
+      walker.add_config_import(import, referrer);
+    }
+    for root in roots {
+      walker.add_root(root);
+    }
+    walker.into_tsc_roots()
+  }
+
+  /// The type-check cache, used by the native check path to skip re-running the
+  /// external compiler when the graph hash is unchanged.
+  pub(crate) fn type_check_cache(&self) -> TypeCheckCache {
+    TypeCheckCache::new(self.caches.type_checking_cache_db())
+  }
+
   pub fn check_diagnostics(
     &self,
     mut graph: ModuleGraph,
     options: CheckOptions,
   ) -> Result<DiagnosticsByFolderIterator<'_>, CheckError> {
-    fn check_state_hash(resolver: &CliNpmResolver) -> Option<u64> {
-      match resolver {
-        CliNpmResolver::Byonm(_) => {
-          // not feasible and probably slower to compute
-          None
-        }
-        CliNpmResolver::Managed(resolver) => {
-          // we should probably go further and check all the individual npm packages
-          let mut package_reqs = resolver.resolution().package_reqs();
-          package_reqs.sort_by(|a, b| a.0.cmp(&b.0)); // determinism
-          let mut hasher = FastInsecureHasher::new_without_deno_version();
-          // ensure the cache gets busted when turning nodeModulesDir on or off
-          // as this could cause changes in resolution
-          hasher.write_hashable(resolver.root_node_modules_path().is_some());
-          for (pkg_req, pkg_nv) in package_reqs {
-            hasher.write_hashable(&pkg_req);
-            hasher.write_hashable(&pkg_nv);
-          }
-          Some(hasher.finish())
-        }
-      }
-    }
-
     if !options.type_check_mode.is_true() || graph.roots.is_empty() {
       return Ok(DiagnosticsByFolderIterator(
         DiagnosticsByFolderIteratorInner::Empty(Arc::new(graph)),
@@ -540,6 +566,29 @@ impl Iterator for DiagnosticsByFolderRealIterator<'_> {
 }
 
 /// Converts the list of ambient module names to regex string
+/// Hash of the npm resolution state, folded into the type-check cache key so
+/// the cache busts when npm deps (or nodeModulesDir) change. Shared by the
+/// in-process checker and the native (external tsc) check path.
+fn check_state_hash(resolver: &CliNpmResolver) -> Option<u64> {
+  match resolver {
+    // not feasible and probably slower to compute
+    CliNpmResolver::Byonm(_) => None,
+    CliNpmResolver::Managed(resolver) => {
+      let mut package_reqs = resolver.resolution().package_reqs();
+      package_reqs.sort_by(|a, b| a.0.cmp(&b.0)); // determinism
+      let mut hasher = FastInsecureHasher::new_without_deno_version();
+      // ensure the cache gets busted when turning nodeModulesDir on or off
+      // as this could cause changes in resolution
+      hasher.write_hashable(resolver.root_node_modules_path().is_some());
+      for (pkg_req, pkg_nv) in package_reqs {
+        hasher.write_hashable(&pkg_req);
+        hasher.write_hashable(&pkg_nv);
+      }
+      Some(hasher.finish())
+    }
+  }
+}
+
 pub fn ambient_modules_to_regex_string(ambient_modules: &[String]) -> String {
   let mut regex_string = String::with_capacity(ambient_modules.len() * 8);
   regex_string.push_str("^(");
@@ -845,11 +894,11 @@ impl DiagnosticsByFolderRealIterator<'_> {
   }
 }
 
-struct TscRoots {
-  roots: Vec<(ModuleSpecifier, MediaType)>,
-  missing_diagnostics: tsc::Diagnostics,
+pub(crate) struct TscRoots {
+  pub(crate) roots: Vec<(ModuleSpecifier, MediaType)>,
+  pub(crate) missing_diagnostics: tsc::Diagnostics,
   used_ts_expect_error_directives: HashSet<TsDirective>,
-  maybe_check_hash: Option<CacheDBHash>,
+  pub(crate) maybe_check_hash: Option<CacheDBHash>,
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
