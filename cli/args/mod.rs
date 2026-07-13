@@ -1368,7 +1368,7 @@ impl CliOptions {
     self.flags.seed
   }
 
-  /// Maximum V8 heap size in megabytes (`--max-memory`).
+  /// Maximum process memory (resident set size) in megabytes (`--max-memory`).
   pub fn max_memory(&self) -> Option<u64> {
     self.flags.max_memory
   }
