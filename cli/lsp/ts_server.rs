@@ -164,9 +164,7 @@ impl TsServer {
     _module: &DocumentModule,
     _range: lsp::Range,
     _context: &lsp::CodeActionContext,
-    _file_diagnostics: Shared<
-      impl Future<Output = Arc<Vec<lsp::Diagnostic>>>,
-    >,
+    _file_diagnostics: Shared<impl Future<Output = Arc<Vec<lsp::Diagnostic>>>>,
     _has_deno_code_actions: bool,
     _language_server: &language_server::Inner,
     _snapshot: Arc<StateSnapshot>,

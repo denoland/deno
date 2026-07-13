@@ -178,10 +178,6 @@ impl Utf16Map {
     self.utf8_offsets.len()
   }
 
-  pub fn line_length_utf16(&self, line: u32) -> TextSize {
-    self.utf16_offsets[(line + 1) as usize] - self.utf16_offsets[line as usize]
-  }
-
   pub fn utf16_to_utf8_col(&self, line: u32, mut col: u32) -> TextSize {
     if let Some(utf16_chars) = self.utf16_lines.get(&line) {
       for c in utf16_chars {
