@@ -3797,7 +3797,8 @@ fn sync_types_subcommand() -> Command {
     cstr!(
       "Generate a <c>tsconfig.json</> and type mappings so stock TypeScript tooling (tsc, tsgo, editors) can type-check the project.
 
-Run after installing dependencies; it materializes <c>jsr:</>/<c>http(s):</> types and writes <p(245)>.deno/tsconfig.json</>.
+Run after installing dependencies; it materializes <c>jsr:</>/<c>http(s):</> types and writes <p(245)>.deno/tsconfig.json</>. Pass files or directories to discover dependencies from only those module graph roots:
+  <p(245)>deno sync-types script.ts tools/</>
 
 Remote <c>http(s):</> types are fetched under the same import permission as <c>deno run</>: only from the trusted default hosts unless you pass <c>--allow-import</>. To materialize types imported from another host, allow it explicitly:
   <p(245)>deno sync-types --allow-import=html.spec.whatwg.org</>"
@@ -3806,6 +3807,13 @@ Remote <c>http(s):</> types are fetched under the same import permission as <c>d
   )
   .arg(allow_import_arg())
   .arg(deny_import_arg())
+  .arg(
+    Arg::new("roots")
+      .help("Module graph roots to use for dependency discovery")
+      .num_args(1..)
+      .action(ArgAction::Append)
+      .value_hint(ValueHint::AnyPath),
+  )
 }
 
 fn lint_subcommand() -> Command {
@@ -7682,7 +7690,11 @@ fn sync_types_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
-  flags.subcommand = DenoSubcommand::SyncTypes;
+  let roots = matches
+    .remove_many::<String>("roots")
+    .map(|values| values.collect())
+    .unwrap_or_default();
+  flags.subcommand = DenoSubcommand::SyncTypes(SyncTypesFlags { roots });
   allow_and_deny_import_parse(flags, matches)?;
   Ok(())
 }
@@ -16739,7 +16751,7 @@ Usage: deno lint [OPTIONS] [files]...\n"
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::SyncTypes,
+        subcommand: DenoSubcommand::SyncTypes(SyncTypesFlags::default()),
         ..Flags::default()
       }
     );
@@ -16752,11 +16764,22 @@ Usage: deno lint [OPTIONS] [files]...\n"
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::SyncTypes,
+        subcommand: DenoSubcommand::SyncTypes(SyncTypesFlags::default()),
         permissions: PermissionFlags {
           allow_import: Some(svec!["html.spec.whatwg.org"]),
           ..Default::default()
         },
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "sync-types", "script.ts", "tools/",]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::SyncTypes(SyncTypesFlags {
+          roots: svec!["script.ts", "tools/"],
+        }),
         ..Flags::default()
       }
     );
