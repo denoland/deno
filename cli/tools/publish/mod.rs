@@ -103,8 +103,9 @@ pub async fn publish(
       }
       None => {
         bail!(
-          "Couldn't find a deno.json, deno.jsonc, jsr.json or jsr.jsonc configuration file in {}.",
-          directory_path.display()
+          "Couldn't find a deno.json, deno.jsonc, jsr.json or jsr.jsonc configuration file in {}. {}",
+          directory_path.display(),
+          colors::italic_gray("Run `deno init` to create one.")
         );
       }
     }
