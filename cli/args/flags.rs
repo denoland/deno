@@ -2308,10 +2308,11 @@ Unless --reload is specified, this command will not re-download already cached d
     )
 }
 
-const SUPPORTED_OS: [&str; 5] = [
+const SUPPORTED_OS: [&str; 6] = [
   "x86_64-unknown-linux-gnu",
   "aarch64-unknown-linux-gnu",
   "x86_64-pc-windows-msvc",
+  "aarch64-pc-windows-msvc",
   "x86_64-apple-darwin",
   "aarch64-apple-darwin",
 ];
