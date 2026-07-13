@@ -3787,6 +3787,12 @@ fn merge_default_allow_env(
 /// the standalone/compiled runtime applies it unconditionally since a compiled
 /// app always runs user code.
 pub fn apply_default_env_allowlist(options: &mut PermissionsOptions) {
+  // When a permission broker is active it mediates every permission decision,
+  // including env. Skip the default allowlist so all env access is routed to
+  // the broker rather than being granted up front.
+  if has_broker() {
+    return;
+  }
   let is_global = |list: &Option<Vec<String>>| matches!(list, Some(entries) if entries.is_empty());
   if is_global(&options.deny_env) || is_global(&options.ignore_env) {
     return;
