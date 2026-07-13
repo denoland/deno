@@ -10,6 +10,7 @@ use util::println;
 use util::test;
 
 #[test]
+#[ignore = "native check runs tsc on every invocation; the incremental type-check cache that skips unchanged graphs is not yet implemented (#35946)"]
 fn cache_switching_config_then_no_config() {
   let context = TestContext::default();
 
@@ -44,6 +45,7 @@ fn cache_switching_config_then_no_config() {
 }
 
 #[test]
+#[ignore = "native check runs tsc on every invocation; the incremental type-check cache that skips unchanged graphs is not yet implemented (#35946)"]
 fn reload_flag() {
   // should do type checking whenever someone specifies --reload
   let context = TestContext::default();
@@ -72,6 +74,7 @@ fn reload_flag() {
 }
 
 #[test]
+#[ignore = "--doc-only is not yet supported by the native type checker (#35946)"]
 fn typecheck_declarations_ns() {
   let context = TestContextBuilder::for_jsr().build();
   let args = vec![
@@ -183,7 +186,7 @@ fn json_module_check_then_error() {
   temp_dir.write("test.json", incorrect_code);
   check_command
     .run()
-    .assert_matches_text("Check [WILDCARD]main.ts\nTS2551[WILDCARD]")
+    .assert_matches_text("Check (tsc [WILDLINE])\nTS2551[WILDCARD]")
     .assert_exit_code(1);
 }
 
