@@ -846,6 +846,8 @@ fn op_encoding_encode_into_fast(
   pack_encode_into_result(read, boundary)
 }
 
+pub struct Location(pub Url);
+
 #[cfg(test)]
 mod tests {
   use super::WebError;
@@ -874,5 +876,3 @@ mod tests {
     assert_eq!(out, [3, 7]);
   }
 }
-
-pub struct Location(pub Url);
