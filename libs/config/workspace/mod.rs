@@ -845,6 +845,9 @@ impl Workspace {
                         req: package_req.clone(),
                       }))
                     }
+                    // Tarball URL deps are handled during install,
+                    // not during workspace dependency analysis.
+                    PackageJsonDepValue::Tarball(_) => None,
                     PackageJsonDepValue::Workspace {
                       name,
                       version_req: workspace_req,

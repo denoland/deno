@@ -439,6 +439,10 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     }
   }
 
+  pub fn tarball_pkgs(&self) -> &[package_json::TarballUrlPkg] {
+    self.npm_install_deps_provider.tarball_pkgs()
+  }
+
   pub fn ensure_no_pkg_json_dep_errors(
     &self,
   ) -> Result<(), EnsurePackageJsonDepsError> {

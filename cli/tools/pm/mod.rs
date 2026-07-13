@@ -12,7 +12,10 @@ use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json;
+use deno_core::url::Url;
 use deno_path_util::url_to_file_path;
+use deno_runtime::deno_permissions::CheckSpecifierKind;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::StackString;
 use deno_semver::Version;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -577,7 +580,25 @@ pub async fn add(
     .with_context(|| format!("Failed to parse package: {}", entry_text))?;
 
     match req {
-      Ok(add_req) => package_reqs.push(add_req),
+      Ok(add_req) => {
+        // Handle tarball specifiers immediately (they need async I/O
+        // to fetch and extract package.json for name/version).
+        if let AddRmPackageReqValue::Tarball(ref source) = add_req.value {
+          let selected = resolve_tarball_package(
+            source,
+            &start_dir,
+            http_client.clone(),
+            cli_factory.root_permissions_container()?,
+          )
+          .await
+          .with_context(|| {
+            format!("Failed to resolve tarball: {}", entry_text)
+          })?;
+          selected_packages.push(selected);
+        } else {
+          package_reqs.push(add_req);
+        }
+      }
       // Currently unreachable: default_registry is always Some (defaults to Npm),
       // so parse() always resolves a prefix. Kept as a safety fallback in case
       // the API is called with None from elsewhere.
@@ -673,6 +694,22 @@ pub async fn add(
     }
   }
 
+  // Collect tarball lockfile info before selected_packages is consumed
+  let tarball_lockfile_entries: Vec<_> = selected_packages
+    .iter()
+    .filter_map(|p| {
+      let info = p.tarball_info.as_ref()?;
+      Some((
+        p.package_name
+          .strip_prefix("npm:")
+          .unwrap_or(&p.package_name)
+          .to_string(),
+        p.selected_version.clone(),
+        info.clone(),
+      ))
+    })
+    .collect();
+
   let dev = add_flags.dev;
   for selected_package in selected_packages {
     log::info!(
@@ -706,7 +743,7 @@ pub async fn add(
     deno.commit()?;
   }
 
-  npm_install_after_modification(
+  let cli_factory = npm_install_after_modification(
     flags,
     Some(jsr_resolver),
     CacheTopLevelDepsOptions {
@@ -715,6 +752,87 @@ pub async fn add(
   )
   .await?;
 
+  // Write tarball package entries to the lockfile
+  write_tarball_entries_to_lockfile(&cli_factory, &tarball_lockfile_entries)
+    .await?;
+
+  Ok(())
+}
+
+/// Insert tarball package entries into the lockfile (integrity, tarball
+/// source, and resolved transitive dependency ids) and persist it. Shared by
+/// `deno install <tarball>` and the bare `deno install` path that materializes
+/// tarball URL deps from package.json.
+pub async fn write_tarball_entries_to_lockfile(
+  cli_factory: &CliFactory,
+  entries: &[(String, StackString, TarballLockfileInfo)],
+) -> Result<(), AnyError> {
+  if entries.is_empty() {
+    return Ok(());
+  }
+  let Some(lockfile) = cli_factory.maybe_lockfile().await? else {
+    return Ok(());
+  };
+  {
+    let mut lockfile = lockfile.lock();
+    for (name, version, info) in entries {
+      let serialized_id =
+        StackString::from(format!("{}@{}", name, version).as_str());
+
+      // Resolve dependency names to their lockfile IDs (e.g., "is-number" -> "is-number@6.0.0")
+      // by looking up packages that were resolved during npm install.
+      let resolve_dep = |dep_name: &str| -> Option<
+        deno_lockfile::NpmPackageDependencyLockfileInfo,
+      > {
+        // Find the resolved package ID in the lockfile's npm packages
+        let prefix = format!("{}@", dep_name);
+        let resolved_id = lockfile
+          .content
+          .packages
+          .npm
+          .keys()
+          .find(|key| key.starts_with(&prefix))?;
+        Some(deno_lockfile::NpmPackageDependencyLockfileInfo {
+          name: StackString::from(dep_name),
+          id: resolved_id.clone(),
+        })
+      };
+
+      let dependencies = info
+        .dependencies
+        .iter()
+        .filter(|(dep_name, _)| {
+          !info
+            .optional_dependencies
+            .iter()
+            .any(|(opt_name, _)| opt_name == dep_name)
+        })
+        .filter_map(|(dep_name, _)| resolve_dep(dep_name))
+        .collect();
+
+      let optional_dependencies = info
+        .optional_dependencies
+        .iter()
+        .filter_map(|(dep_name, _)| resolve_dep(dep_name))
+        .collect();
+
+      lockfile.insert_npm_package(deno_lockfile::NpmPackageLockfileInfo {
+        serialized_id,
+        integrity: Some(info.integrity.clone()),
+        dependencies,
+        optional_dependencies,
+        optional_peers: Vec::new(),
+        os: Vec::new(),
+        cpu: Vec::new(),
+        tarball: Some(StackString::from(info.tarball_url.as_str())),
+        deprecated: false,
+        scripts: false,
+        bin: false,
+      });
+    }
+  }
+  // Write the updated lockfile
+  lockfile.write_if_changed()?;
   Ok(())
 }
 
@@ -723,6 +841,21 @@ struct SelectedPackage {
   package_name: String,
   version_req: String,
   selected_version: StackString,
+  /// For tarball installs: the integrity hash and tarball source
+  /// for writing to the lockfile.
+  tarball_info: Option<TarballLockfileInfo>,
+}
+
+#[derive(Clone)]
+pub struct TarballLockfileInfo {
+  /// sha512 SRI hash of the tarball bytes
+  integrity: String,
+  /// The tarball source (file: path or URL)
+  tarball_url: String,
+  /// Dependencies from the tarball's package.json (name -> version_req)
+  dependencies: Vec<(String, String)>,
+  /// Optional dependencies from the tarball's package.json (name -> version_req)
+  optional_dependencies: Vec<(String, String)>,
 }
 
 enum NotFoundHelp {
@@ -738,6 +871,288 @@ enum PackageAndVersion {
     help: Option<NotFoundHelp>,
   },
   Selected(SelectedPackage),
+}
+
+struct TarballMetadata {
+  name: String,
+  version: String,
+  dependencies: Vec<(String, String)>,
+  optional_dependencies: Vec<(String, String)>,
+}
+
+/// Decompress a tarball, read its `package/package.json`, and return the
+/// package name, version, and dependency entries. The name and version are
+/// validated against path separators and `..` so they can be safely used to
+/// build cache file names.
+fn parse_tarball_metadata(
+  tarball_bytes: &[u8],
+) -> Result<TarballMetadata, AnyError> {
+  use std::io::Read;
+
+  use flate2::read::GzDecoder;
+
+  const MAX_TARBALL_SIZE: u64 = 512 * 1024 * 1024; // 512 MB
+
+  if tarball_bytes.len() as u64 > MAX_TARBALL_SIZE {
+    bail!(
+      "Tarball is too large ({} bytes, max {} bytes)",
+      tarball_bytes.len(),
+      MAX_TARBALL_SIZE
+    );
+  }
+
+  // Decompress gzip and extract package.json from the tar
+  let decoder = GzDecoder::new(tarball_bytes);
+  let mut decompressed = Vec::new();
+  decoder
+    .take(MAX_TARBALL_SIZE)
+    .read_to_end(&mut decompressed)
+    .context(
+      "Failed to decompress tarball (not valid gzip or exceeds size limit)",
+    )?;
+
+  let mut archive = tar::Archive::new(&decompressed[..]);
+  let mut package_json: Option<deno_core::serde_json::Value> = None;
+
+  for entry in archive.entries().context("Failed to read tar entries")? {
+    let mut entry = entry.context("Failed to read tar entry")?;
+    let path = entry.path().context("Failed to read tar entry path")?;
+    let path_str = path.to_string_lossy();
+
+    // npm tarballs have entries under package/ (e.g., package/package.json)
+    if path_str == "package/package.json"
+      || path_str.ends_with("/package.json")
+        && path_str.matches('/').count() == 1
+    {
+      let mut contents = String::new();
+      entry
+        .read_to_string(&mut contents)
+        .context("Failed to read package.json from tarball")?;
+      package_json = Some(
+        deno_core::serde_json::from_str(&contents)
+          .context("Failed to parse package.json from tarball")?,
+      );
+      break;
+    }
+  }
+
+  let package_json =
+    package_json.context("No package.json found in tarball")?;
+
+  let name = package_json
+    .get("name")
+    .and_then(|v| v.as_str())
+    .context("package.json in tarball is missing \"name\" field")?
+    .to_string();
+  let version = package_json
+    .get("version")
+    .and_then(|v| v.as_str())
+    .context("package.json in tarball is missing \"version\" field")?
+    .to_string();
+
+  if name.contains('/') && !name.starts_with('@') || name.contains("..") {
+    bail!(
+      "Invalid package name in tarball: {name:?} (must be a valid npm package name)"
+    );
+  }
+  if let Some(scope_end) = name.find('/')
+    && (name[scope_end + 1..].contains('/')
+      || name[scope_end + 1..].contains(".."))
+  {
+    bail!("Invalid package name in tarball: {name:?}");
+  }
+  if version.contains('/') || version.contains('\\') || version.contains("..") {
+    bail!(
+      "Invalid package version in tarball: {version:?} (contains path separators)"
+    );
+  }
+
+  fn extract_dep_entries(
+    package_json: &deno_core::serde_json::Value,
+    field: &str,
+  ) -> Vec<(String, String)> {
+    package_json
+      .get(field)
+      .and_then(|v| v.as_object())
+      .map(|obj| {
+        obj
+          .iter()
+          .filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string())))
+          .collect()
+      })
+      .unwrap_or_default()
+  }
+
+  let dependencies = extract_dep_entries(&package_json, "dependencies");
+  let optional_dependencies =
+    extract_dep_entries(&package_json, "optionalDependencies");
+
+  Ok(TarballMetadata {
+    name,
+    version,
+    dependencies,
+    optional_dependencies,
+  })
+}
+
+/// Download a tarball declared as a URL dependency in package.json into the
+/// per-project tarball cache so the installer can extract it like a local
+/// tarball dep. The download is gated behind `--allow-import` via
+/// `check_specifier`, mirroring module import permissions (the implicit
+/// trusted hosts, e.g. the npm registry, are honored). Returns the package
+/// name, version, and lockfile info; the URL in package.json is left
+/// untouched.
+pub async fn download_tarball_url_dep(
+  url: &Url,
+  pkg_json_dir: &Path,
+  http_client: Arc<crate::http_util::HttpClientProvider>,
+  permissions: &PermissionsContainer,
+) -> Result<(String, StackString, TarballLockfileInfo), AnyError> {
+  permissions
+    .check_specifier(url, CheckSpecifierKind::Static)
+    .with_context(|| format!("Cannot download tarball: {url}"))?;
+  log::info!("Downloading {}", url);
+  let tarball_bytes = http_client
+    .get_or_create()?
+    .download(url.clone())
+    .await
+    .with_context(|| format!("Failed to download tarball: {url}"))?;
+
+  let metadata = parse_tarball_metadata(&tarball_bytes)?;
+
+  let cached_path =
+    deno_npm_installer::package_json::tarball_url_cache_path(pkg_json_dir, url);
+  if let Some(parent) = cached_path.parent() {
+    std::fs::create_dir_all(parent)
+      .context("Failed to create tarball cache directory")?;
+  }
+  std::fs::write(&cached_path, &tarball_bytes)
+    .context("Failed to cache tarball")?;
+
+  let integrity =
+    deno_npm_cache::tarball_extract::tarball_sha512_sri(&tarball_bytes);
+
+  Ok((
+    metadata.name,
+    StackString::from(metadata.version.as_str()),
+    TarballLockfileInfo {
+      integrity,
+      tarball_url: url.to_string(),
+      dependencies: metadata.dependencies,
+      optional_dependencies: metadata.optional_dependencies,
+    },
+  ))
+}
+
+/// Resolve a tarball specifier by fetching the tarball, extracting
+/// package.json, and returning a SelectedPackage.
+async fn resolve_tarball_package(
+  source: &TarballSource,
+  start_dir: &Path,
+  http_client: Arc<crate::http_util::HttpClientProvider>,
+  permissions: &PermissionsContainer,
+) -> Result<SelectedPackage, AnyError> {
+  // Step 1: Get tarball bytes
+  let tarball_bytes = match source {
+    TarballSource::Local(path) => {
+      let abs_path = if path.is_absolute() {
+        path.clone()
+      } else {
+        start_dir.join(path)
+      };
+      std::fs::read(&abs_path).with_context(|| {
+        format!("Failed to read tarball: {}", abs_path.display())
+      })?
+    }
+    TarballSource::Remote(url) => {
+      // A remote tarball is remote code, so gate the download behind
+      // --allow-import just like any other remote import. check_specifier
+      // mirrors module import permissions, honoring the implicit trusted
+      // hosts (e.g. the npm registry).
+      permissions
+        .check_specifier(url, CheckSpecifierKind::Static)
+        .with_context(|| format!("Cannot download tarball: {url}"))?;
+      log::info!("Downloading {}", url);
+      let client = http_client.get_or_create()?;
+      client
+        .download(url.clone())
+        .await
+        .with_context(|| format!("Failed to download tarball: {url}"))?
+    }
+  };
+
+  let TarballMetadata {
+    name,
+    version,
+    dependencies,
+    optional_dependencies,
+  } = parse_tarball_metadata(&tarball_bytes)?;
+
+  // The tarball is extracted to node_modules by the npm installer's
+  // local package handling (it detects .tgz/.tar.gz targets and
+  // extracts instead of symlinking).
+
+  // Compute the sha512 integrity hash (matching npm/pnpm lockfile format)
+  // and the truncated hex prefix used in the cache filename. The npm
+  // installer recomputes the hex prefix at extraction time and bails if
+  // the cached tarball was tampered with after install.
+  let hash =
+    deno_npm_cache::tarball_extract::tarball_sha512_sri(&tarball_bytes);
+  let hash_hex =
+    deno_npm_cache::tarball_extract::tarball_sha512_hex_prefix(&tarball_bytes);
+
+  // Record the dependency with a file: reference pointing to the tarball.
+  // For remote tarballs, save a local copy first so the dep can be
+  // resolved on subsequent `deno install` without re-downloading.
+  // Use a content-hash prefix in the filename to prevent cache collisions
+  // when two different tarballs declare the same name@version.
+  let tarball_ref = match source {
+    TarballSource::Local(path) => format!("file:{}", path.display()),
+    TarballSource::Remote(_url) => {
+      let cache_dir = start_dir.join(".deno_tarball_cache");
+      std::fs::create_dir_all(&cache_dir)
+        .context("Failed to create tarball cache directory")?;
+      // Scoped package names (e.g. "@denotest/esm-basic") contain a slash,
+      // which would make the filename resolve into a non-existent
+      // subdirectory. Replace path separators so the cache filename stays a
+      // single flat entry under the cache directory.
+      let safe_name = name.replace(['/', '\\'], "+");
+      let filename = format!("{}-{}-{}.tgz", safe_name, version, hash_hex);
+      let cached_path = cache_dir.join(&filename);
+      std::fs::write(&cached_path, &tarball_bytes)
+        .context("Failed to cache tarball")?;
+      // Use forward slashes in the file: reference so it stays valid when
+      // written into package.json. On Windows, path.display() emits
+      // backslashes, which are invalid JSON escapes and corrupt the file.
+      let rel_path = cached_path
+        .strip_prefix(start_dir)
+        .unwrap_or(&cached_path)
+        .to_string_lossy()
+        .replace('\\', "/");
+      format!("file:{rel_path}")
+    }
+  };
+
+  let tarball_url_for_lockfile = match source {
+    TarballSource::Local(path) => format!("file:{}", path.display()),
+    TarballSource::Remote(url) => url.to_string(),
+  };
+
+  let package_name = format!("npm:{name}");
+  let import_name = StackString::from(name.as_str());
+
+  Ok(SelectedPackage {
+    import_name,
+    package_name,
+    version_req: tarball_ref,
+    selected_version: StackString::from(version.as_str()),
+    tarball_info: Some(TarballLockfileInfo {
+      integrity: hash,
+      tarball_url: tarball_url_for_lockfile,
+      dependencies,
+      optional_dependencies,
+    }),
+  })
 }
 
 fn best_version<'a>(
@@ -822,6 +1237,9 @@ async fn find_package_and_select_version_for_req(
     let req = match &add_package_req.value {
       AddRmPackageReqValue::Jsr(req) => req,
       AddRmPackageReqValue::Npm(req) => req,
+      AddRmPackageReqValue::Tarball(_) => {
+        unreachable!("tarball packages are resolved separately")
+      }
     };
     let prefixed_name = format!("{}:{}", T::SPECIFIER_PREFIX, req.name);
     let help_if_found_in_fallback = S::HELP;
@@ -906,6 +1324,7 @@ async fn find_package_and_select_version_for_req(
       package_name: prefixed_name,
       version_req: format!("{}{}", range_symbol, &nv.version),
       selected_version: nv.version.to_custom_string::<StackString>(),
+      tarball_info: None,
     }))
   }
 
@@ -916,13 +1335,26 @@ async fn find_package_and_select_version_for_req(
     AddRmPackageReqValue::Npm(_) => {
       select(npm_resolver, jsr_resolver, add_package_req, save_exact).await
     }
+    AddRmPackageReqValue::Tarball(_) => {
+      unreachable!("tarball packages are resolved separately")
+    }
   }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TarballSource {
+  /// A local tarball file path (e.g., ./foo.tgz, ../pkg.tar.gz)
+  Local(PathBuf),
+  /// A remote tarball URL (e.g., https://example.com/pkg.tgz)
+  Remote(Url),
 }
 
 #[derive(Debug, PartialEq, Eq)]
 enum AddRmPackageReqValue {
   Jsr(PackageReq),
   Npm(PackageReq),
+  /// A tarball specifier (local path or remote URL)
+  Tarball(TarballSource),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -950,6 +1382,15 @@ impl AddRmPackageReq {
     entry_text: &str,
     default_prefix: Option<Prefix>,
   ) -> Result<Result<Self, PackageReq>, AnyError> {
+    // Check for tarball specifiers before attempting prefix parsing.
+    // Local tarballs: ./foo.tgz, ../pkg.tar.gz, /abs/path.tgz
+    // Remote tarballs: any http/https URL that isn't a git+ URL
+    //   (matching npm/pnpm/bun behavior: all http(s) URLs are assumed
+    //    to be tarballs unless they have a git+ prefix)
+    if let Some(tarball) = Self::parse_tarball(entry_text)? {
+      return Ok(Ok(tarball));
+    }
+
     fn parse_prefix(text: &str) -> (Option<Prefix>, &str) {
       if let Some(text) = text.strip_prefix("jsr:") {
         (Some(Prefix::Jsr), text)
@@ -1046,6 +1487,59 @@ impl AddRmPackageReq {
         }))
       }
     }
+  }
+
+  /// Detect tarball specifiers:
+  /// - Local: ./foo.tgz, ../pkg.tar.gz, /absolute/path.tgz
+  /// - Remote: http(s) URLs (not git+http(s))
+  fn parse_tarball(entry_text: &str) -> Result<Option<Self>, AnyError> {
+    fn is_tarball_extension(s: &str) -> bool {
+      s.ends_with(".tgz") || s.ends_with(".tar.gz")
+    }
+
+    // Local tarball: starts with ./ or ../ or / and has tarball extension
+    if (entry_text.starts_with("./")
+      || entry_text.starts_with("../")
+      || entry_text.starts_with('/'))
+      && is_tarball_extension(entry_text)
+    {
+      let path = PathBuf::from(entry_text);
+      // Use the file stem as the alias (e.g., "foo" from "foo-1.0.0.tgz")
+      let alias = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+      // Strip .tar suffix if the original was .tar.gz
+      let alias = alias.strip_suffix(".tar").unwrap_or(&alias);
+      return Ok(Some(AddRmPackageReq {
+        alias: StackString::from(alias),
+        value: AddRmPackageReqValue::Tarball(TarballSource::Local(path)),
+      }));
+    }
+
+    // Remote tarball: http(s) URL that is NOT a git+ URL.
+    // Matching npm/pnpm/bun: all http(s) URLs are treated as tarballs.
+    if (entry_text.starts_with("https://") || entry_text.starts_with("http://"))
+      && !entry_text.starts_with("git+")
+    {
+      let url = Url::parse(entry_text)
+        .with_context(|| format!("Invalid URL: {entry_text}"))?;
+      // Use the last path segment (without extension) as the alias
+      let alias = url
+        .path_segments()
+        .and_then(|mut segments| segments.next_back())
+        .unwrap_or("unknown")
+        .to_string();
+      let alias = alias.strip_suffix(".tgz").unwrap_or(&alias);
+      let alias = alias.strip_suffix(".tar.gz").unwrap_or(alias);
+      return Ok(Some(AddRmPackageReq {
+        alias: StackString::from(alias),
+        value: AddRmPackageReqValue::Tarball(TarballSource::Remote(url)),
+      }));
+    }
+
+    Ok(None)
   }
 }
 

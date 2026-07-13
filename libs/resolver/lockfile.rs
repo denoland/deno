@@ -319,6 +319,10 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
             // ignored because this will have its own separate lockfile
             None
           }
+          PackageJsonDepValue::Tarball(_) => {
+            // ignored because tarball URLs are resolved outside the registry
+            None
+          }
           PackageJsonDepValue::Req(req) => {
             Some(JsrDepPackageReq::npm(req.clone()))
           }
@@ -439,6 +443,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
                     }
                     // not supported
                     PackageJsonDepValue::File(_)
+                    | PackageJsonDepValue::Tarball(_)
                     | PackageJsonDepValue::Workspace { .. }
                     | PackageJsonDepValue::Catalog(_) => None,
                   })

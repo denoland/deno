@@ -1,0 +1,23 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      // A remote tarball URL declared as a package.json dependency is remote
+      // code, so a bare `deno install` without --allow-import is denied.
+      "args": "install",
+      "output": "denied.out",
+      "exitCode": 1
+    },
+    {
+      // Passing --allow-import for the host opens the gate: the tarball is
+      // downloaded and installed. The URL is left untouched in package.json.
+      "args": "install --allow-import=localhost:4260",
+      "output": "install.out"
+    },
+    {
+      // The tarball was extracted into node_modules and is importable.
+      "args": "run main.js",
+      "output": "run.out"
+    }
+  ]
+}

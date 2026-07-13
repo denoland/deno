@@ -95,7 +95,8 @@ pub async fn info(
           dep_result,
           ..
         } => match dep_result.as_ref().map_err(|e| e.clone())? {
-          deno_package_json::PackageJsonDepValue::File(_) => {
+          deno_package_json::PackageJsonDepValue::File(_)
+          | deno_package_json::PackageJsonDepValue::Tarball(_) => {
             return Err(
               DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
                 .into_box()
