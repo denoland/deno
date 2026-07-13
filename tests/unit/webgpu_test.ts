@@ -15,6 +15,43 @@ const isCIWithoutGPU = (Deno.build.os === "linux" ||
   (Deno.build.os === "darwin" && Deno.build.arch === "x86_64")) && isCI;
 // Skip these tests in WSL because it doesn't have good GPU support.
 const isWsl = await checkIsWsl();
+// Skip the window surface tests when there is no windowing system available
+// (e.g. headless or Wayland-only). Checked up front so those tests are
+// reported as ignored rather than silently passing.
+const hasWindowingSystem = checkWindowingSystem();
+
+function checkWindowingSystem(): boolean {
+  if (Deno.build.os === "windows") {
+    // Window creation is asserted in the test itself.
+    return true;
+  }
+  if (Deno.build.os !== "linux") {
+    return false;
+  }
+  try {
+    const x11 = Deno.dlopen(
+      "libX11.so.6",
+      {
+        XOpenDisplay: { parameters: ["pointer"], result: "pointer" },
+        XCloseDisplay: { parameters: ["pointer"], result: "i32" },
+      } as const,
+    );
+    try {
+      const display = x11.symbols.XOpenDisplay(null);
+      if (display === null) {
+        return false;
+      }
+      // Safe to close: this probe connection never backs a wgpu surface.
+      x11.symbols.XCloseDisplay(display);
+      return true;
+    } finally {
+      x11.close();
+    }
+  } catch {
+    // libX11 is not present
+    return false;
+  }
+}
 
 Deno.test({
   permissions: { read: true, env: true },
@@ -301,8 +338,7 @@ Deno.test(function webgpuWindowSurfaceNoWidthHeight() {
 
 Deno.test({
   permissions: { ffi: true },
-  ignore: isWsl || isCIWithoutGPU ||
-    (Deno.build.os !== "windows" && Deno.build.os !== "linux"),
+  ignore: isWsl || isCIWithoutGPU || !hasWindowingSystem,
 }, async function webgpuWindowSurfaceResizeAfterConfigure() {
   // Regression test for the RefCell double-borrow panic where the
   // UnsafeWindowSurface width/height setters held the SurfaceData borrow
@@ -310,10 +346,6 @@ Deno.test({
   const nativeWindow = Deno.build.os === "windows"
     ? createWin32Window()
     : createX11Window();
-  if (nativeWindow === null) {
-    // No windowing system available (e.g. headless or Wayland-only).
-    return;
-  }
   try {
     const adapter = await navigator.gpu.requestAdapter();
     assert(adapter);
@@ -359,7 +391,7 @@ interface NativeWindow {
   close(): void;
 }
 
-function createWin32Window(): NativeWindow | null {
+function createWin32Window(): NativeWindow {
   const user32 = Deno.dlopen(
     "user32.dll",
     {
@@ -420,7 +452,7 @@ function createWin32Window(): NativeWindow | null {
   };
 }
 
-function createX11Window(): NativeWindow | null {
+function createX11Window(): NativeWindow {
   const symbols = {
     XOpenDisplay: { parameters: ["pointer"], result: "pointer" },
     XDefaultRootWindow: { parameters: ["pointer"], result: "u64" },
@@ -442,17 +474,11 @@ function createX11Window(): NativeWindow | null {
     },
     XFlush: { parameters: ["pointer"], result: "i32" },
   } as const;
-  let x11: Deno.DynamicLibrary<typeof symbols>;
-  try {
-    x11 = Deno.dlopen("libX11.so.6", symbols);
-  } catch {
-    return null;
-  }
+  // The top-level windowing system check already dlopened libX11 and opened a
+  // display, so any failure here is a real error rather than a reason to skip.
+  const x11 = Deno.dlopen("libX11.so.6", symbols);
   const display = x11.symbols.XOpenDisplay(null);
-  if (display === null) {
-    x11.close();
-    return null;
-  }
+  assert(display !== null, "XOpenDisplay failed");
   const root = x11.symbols.XDefaultRootWindow(display);
   const win = x11.symbols.XCreateSimpleWindow(
     display,
