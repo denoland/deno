@@ -19,3 +19,11 @@ pub enum SerdeEnum {
   #[from_v8(serde)]
   WithSerde(Vec<u32>),
 }
+
+#[derive(FromV8)]
+#[from_v8(untagged)]
+pub enum UntaggedEnum {
+  Nothing,
+  Number(f64),
+  Text(String),
+}

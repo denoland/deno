@@ -24,13 +24,18 @@ pub fn get_body(
   attributes: Vec<Attribute>,
   data: DataEnum,
 ) -> Result<TokenStream, Error> {
-  // For now, FromV8 only supports externally-tagged enums. Other modes
-  // (internally tagged, adjacently tagged, untagged) require extra design
-  // around field-tag stripping and try-each ordering, so they are deferred
-  // until a caller needs them. Reject container-level attributes loudly
-  // instead of silently treating them as externally-tagged.
-  reject_unsupported_container_attributes(&attributes)?;
+  match EnumMode::from_attributes(&attributes)? {
+    EnumMode::ExternallyTagged => {
+      get_externally_tagged_body(ident_string, data)
+    }
+    EnumMode::Untagged => get_untagged_body(ident_string, data),
+  }
+}
 
+fn get_externally_tagged_body(
+  ident_string: String,
+  data: DataEnum,
+) -> Result<TokenStream, Error> {
   let mut unit_arms = Vec::new();
   let mut variant_arms = Vec::new();
   let mut has_non_unit = false;
@@ -139,24 +144,138 @@ pub fn get_body(
   })
 }
 
-/// FromV8 only supports externally-tagged enums, so any container-level
-/// `#[v8(...)]` / `#[from_v8(...)]` attribute (e.g. `tag`, `content`,
-/// `untagged`) is unsupported. Reject them loudly instead of silently
-/// ignoring them and falling back to externally-tagged behavior.
-fn reject_unsupported_container_attributes(
-  attributes: &[Attribute],
-) -> Result<(), Error> {
-  for attr in attributes {
-    if attr.path().is_ident("v8") || attr.path().is_ident("from_v8") {
-      return Err(Error::new_spanned(
-        attr,
-        "FromV8 enum derive does not support container-level attributes; \
-         only externally-tagged enums are supported",
-      ));
+/// `ExternallyTagged` is the only mode `FromV8` derives without an
+/// attribute. `Untagged` probes the value's own raw v8 type against each
+/// variant in declaration order and dispatches to the first match — see
+/// `get_untagged_body` for why that's a raw-type probe and not a
+/// try-each-`FromV8` loop. `FromV8`'s `internally tagged` and `adjacently
+/// tagged` modes are still unsupported: unlike untagged (a value either
+/// matches a variant's raw type or it doesn't), those need field-tag
+/// stripping before the remaining fields can be parsed, which is extra
+/// design nobody has needed yet.
+#[derive(Default)]
+enum EnumMode {
+  #[default]
+  ExternallyTagged,
+  Untagged,
+}
+
+impl EnumMode {
+  fn from_attributes(attributes: &[Attribute]) -> Result<Self, Error> {
+    let mut untagged = false;
+
+    for attr in attributes {
+      if attr.path().is_ident("v8") || attr.path().is_ident("from_v8") {
+        let list = attr.meta.require_list()?;
+        let args = list.parse_args_with(
+          Punctuated::<EnumModeArgument, Token![,]>::parse_terminated,
+        )?;
+
+        for arg in args {
+          match arg {
+            EnumModeArgument::Untagged { .. } => untagged = true,
+          }
+        }
+      }
+    }
+
+    Ok(if untagged {
+      EnumMode::Untagged
+    } else {
+      EnumMode::ExternallyTagged
+    })
+  }
+}
+
+#[allow(dead_code, reason = "unused properties")]
+enum EnumModeArgument {
+  Untagged { name_token: shared_kw::untagged },
+}
+
+impl Parse for EnumModeArgument {
+  fn parse(input: ParseStream) -> syn::Result<Self> {
+    let lookahead = input.lookahead1();
+
+    if lookahead.peek(shared_kw::untagged) {
+      Ok(Self::Untagged {
+        name_token: input.parse()?,
+      })
+    } else {
+      Err(lookahead.error())
+    }
+  }
+}
+
+/// Untagged: `__value` itself, with no wrapper, must directly be one variant's
+/// payload. Each variant is tried in declaration order — a unit variant
+/// matches `null`/`undefined`, a single-field newtype variant matches if its
+/// inner type's `deno_core::convert::UntaggedProbe` says its raw v8 type
+/// matches `__value` — and the first match wins, mirroring serde's untagged
+/// deserialization.
+///
+/// Probing is deliberately not "try each variant's `FromV8` and keep the
+/// first `Ok`": some `FromV8` impls are intentionally coercive (`String`
+/// stringifies anything via `toString()`) and would wrongly claim a value
+/// that should have matched an earlier, more specific variant. Once
+/// `UntaggedProbe` confirms the raw type, the actual conversion is expected
+/// to succeed, so its error (if any) propagates instead of falling through
+/// to the next variant.
+fn get_untagged_body(
+  ident_string: String,
+  data: DataEnum,
+) -> Result<TokenStream, Error> {
+  let mut attempts = Vec::new();
+
+  for variant in data.variants {
+    let variant_span = variant.span();
+    let variant_attrs = EnumVariantAttribute::from_variant(&variant)?;
+    let variant_ident = variant.ident.clone();
+
+    match &variant.fields {
+      Fields::Unit => {
+        attempts.push(quote! {
+          if __value.is_null_or_undefined() {
+            return Ok(Self::#variant_ident);
+          }
+        });
+      }
+      Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
+        if variant_attrs.serde {
+          return Err(Error::new(
+            variant_span,
+            "FromV8 untagged enum derive does not support `#[from_v8(serde)]` \
+             variants: untagged matching needs a non-coercive type probe \
+             before attempting conversion, and serde_v8's `from_v8` doesn't \
+             expose one",
+          ));
+        }
+        let field_ty = &fields.unnamed.first().unwrap().ty;
+        attempts.push(quote! {
+          if <#field_ty as ::deno_core::convert::UntaggedProbe>::probe(__value) {
+            return Ok(Self::#variant_ident(
+              ::deno_core::convert::FromV8::from_v8(__scope, __value)
+                .map_err(::deno_error::JsErrorBox::from_err)?,
+            ));
+          }
+        });
+      }
+      _ => {
+        return Err(Error::new(
+          variant_span,
+          "FromV8 untagged enum derive currently supports only unit and \
+           single-element newtype variants",
+        ));
+      }
     }
   }
 
-  Ok(())
+  Ok(quote! {
+    #(#attempts)*
+
+    Err(::deno_error::JsErrorBox::type_error(
+      concat!("Value did not match any variant of '", #ident_string, "'"),
+    ))
+  })
 }
 
 struct EnumVariantAttribute {

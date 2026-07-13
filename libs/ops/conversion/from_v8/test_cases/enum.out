@@ -131,3 +131,36 @@ impl<'a> ::deno_core::convert::FromV8<'a> for SerdeEnum {
         )
     }
 }
+
+impl<'a> ::deno_core::convert::FromV8<'a> for UntaggedEnum {
+    type Error = ::deno_error::JsErrorBox;
+    fn from_v8<'i>(
+        __scope: &mut ::deno_core::v8::PinScope<'a, 'i>,
+        __value: ::deno_core::v8::Local<'a, ::deno_core::v8::Value>,
+    ) -> Result<Self, Self::Error> {
+        if __value.is_null_or_undefined() {
+            return Ok(Self::Nothing);
+        }
+        if <f64 as ::deno_core::convert::UntaggedProbe>::probe(__value) {
+            return Ok(
+                Self::Number(
+                    ::deno_core::convert::FromV8::from_v8(__scope, __value)
+                        .map_err(::deno_error::JsErrorBox::from_err)?,
+                ),
+            );
+        }
+        if <String as ::deno_core::convert::UntaggedProbe>::probe(__value) {
+            return Ok(
+                Self::Text(
+                    ::deno_core::convert::FromV8::from_v8(__scope, __value)
+                        .map_err(::deno_error::JsErrorBox::from_err)?,
+                ),
+            );
+        }
+        Err(
+            ::deno_error::JsErrorBox::type_error(
+                concat!("Value did not match any variant of '", "UntaggedEnum", "'"),
+            ),
+        )
+    }
+}

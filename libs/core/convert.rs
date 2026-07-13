@@ -140,6 +140,23 @@ pub trait FromV8Scopeless<'a>: Sized + FromV8<'a> {
   fn from_v8(value: v8::Local<'a, v8::Value>) -> Result<Self, Self::Error>;
 }
 
+/// A raw, non-coercive check of a v8 value's own type, used by the
+/// `#[derive(FromV8)]` `#[from_v8(untagged)]` enum mode to pick a variant
+/// before running its (potentially lenient) [`FromV8`] conversion.
+///
+/// Untagged variant matching can't just try each variant's `FromV8` in turn
+/// and keep the first `Ok`: some impls are intentionally coercive (e.g.
+/// `String`'s stringifies anything via `toString()`) and would wrongly
+/// "match" a value that should have hit an earlier, more specific variant.
+/// `UntaggedProbe` sidesteps that by checking the value's actual v8 type
+/// tag first, mirroring how `serde_v8::AnyValue::from_v8` hand-probes with
+/// `is_string()`/`is_number()`/etc. before converting.
+pub trait UntaggedProbe<'a> {
+  /// Returns `true` if `value`'s own v8 type is the one this type expects.
+  /// Must not coerce or convert `value`.
+  fn probe(value: v8::Local<'a, v8::Value>) -> bool;
+}
+
 // impls
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -329,6 +346,13 @@ macro_rules! impl_number_types {
           Ok(v8::Number::new(scope, self as f64).into())
         }
       }
+
+      impl<'a> UntaggedProbe<'a> for $t {
+        #[inline]
+        fn probe(value: v8::Local<'a, v8::Value>) -> bool {
+          value.is_number()
+        }
+      }
     )*
   };
 }
@@ -436,6 +460,13 @@ impl<'s> FromV8Scopeless<'s> for bool {
   }
 }
 
+impl<'a> UntaggedProbe<'a> for bool {
+  #[inline]
+  fn probe(value: v8::Local<'a, v8::Value>) -> bool {
+    value.is_boolean()
+  }
+}
+
 impl<'s> FromV8<'s> for String {
   type Error = Infallible;
   #[inline]
@@ -454,6 +485,13 @@ impl<'s> ToV8<'s> for String {
     scope: &mut v8::PinScope<'s, 'i>,
   ) -> Result<v8::Local<'s, v8::Value>, Self::Error> {
     Ok(v8::String::new(scope, &self).unwrap().into()) // TODO
+  }
+}
+
+impl<'a> UntaggedProbe<'a> for String {
+  #[inline]
+  fn probe(value: v8::Local<'a, v8::Value>) -> bool {
+    value.is_string()
   }
 }
 
@@ -2301,5 +2339,55 @@ function equal(a, b) {
         assert!(!back.words.is_empty());
       }
     );
+  }
+
+  #[derive(Debug, PartialEq, crate::FromV8)]
+  #[from_v8(untagged)]
+  enum UntaggedPrimitive {
+    Nothing,
+    Flag(bool),
+    Number(f64),
+    Text(String),
+  }
+
+  #[test]
+  fn test_untagged_from_v8() {
+    let mut runtime = JsRuntime::new(Default::default());
+
+    from_v8_test!(runtime, "null", |scope, result| {
+      assert_eq!(
+        UntaggedPrimitive::from_v8(scope, result).unwrap(),
+        UntaggedPrimitive::Nothing
+      );
+    });
+    from_v8_test!(runtime, "undefined", |scope, result| {
+      assert_eq!(
+        UntaggedPrimitive::from_v8(scope, result).unwrap(),
+        UntaggedPrimitive::Nothing
+      );
+    });
+    from_v8_test!(runtime, "true", |scope, result| {
+      assert_eq!(
+        UntaggedPrimitive::from_v8(scope, result).unwrap(),
+        UntaggedPrimitive::Flag(true)
+      );
+    });
+    from_v8_test!(runtime, "42", |scope, result| {
+      assert_eq!(
+        UntaggedPrimitive::from_v8(scope, result).unwrap(),
+        UntaggedPrimitive::Number(42.0)
+      );
+    });
+    from_v8_test!(runtime, "'hello'", |scope, result| {
+      assert_eq!(
+        UntaggedPrimitive::from_v8(scope, result).unwrap(),
+        UntaggedPrimitive::Text("hello".into())
+      );
+    });
+    // No variant matches an object, so this should be a clean error, not a
+    // panic or a match against whichever variant happens to be first.
+    from_v8_test!(runtime, "({})", |scope, result| {
+      assert!(UntaggedPrimitive::from_v8(scope, result).is_err());
+    });
   }
 }
