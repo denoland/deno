@@ -348,7 +348,59 @@ fn parse_tsc_diagnostics(output: &str, project_root: &Path) -> Vec<Diagnostic> {
     // ignored.
   }
 
+  // Enrich unresolved-module diagnostics (TS2307/TS2882) with a `deno add` hint
+  // when the specifier looks like an npm/jsr package — reconciling by diagnostic
+  // code (tsc already reports it missing), so this never adds a false positive.
+  for diag in &mut diagnostics {
+    if !matches!(diag.code, 2307 | 2882) {
+      continue;
+    }
+    let Some(specifier) = diag
+      .message_text
+      .as_deref()
+      .and_then(|m| MISSING_MODULE_RE.captures(m))
+      .and_then(|c| c.get(1))
+      .map(|m| m.as_str().to_string())
+    else {
+      continue;
+    };
+    if let Some(hint) = deno_add_hint(&specifier) {
+      let message = diag.message_text.get_or_insert_with(String::new);
+      message.push('\n');
+      message.push_str(&hint);
+    }
+  }
+
   diagnostics
+}
+
+/// The specifier inside a `Cannot find module '<specifier>'` message (the first
+/// single-quoted token), shared by TS2307 and TS2882.
+static MISSING_MODULE_RE: LazyLock<Regex> =
+  LazyLock::new(|| Regex::new(r"'([^']+)'").unwrap());
+
+/// For an unresolved-module specifier that looks like an npm/jsr package,
+/// suggest adding it with `deno add`. Best-effort: `None` for relative/URL
+/// specifiers (nothing to add).
+fn deno_add_hint(specifier: &str) -> Option<String> {
+  // Only suggest `deno add` for explicitly-schemed npm:/jsr: specifiers, where
+  // it's unambiguously the right fix. A bare specifier is usually a missing
+  // import-map entry (where `deno add npm:` may be wrong advice), so it's left
+  // alone.
+  let add_target = if specifier.starts_with("npm:") {
+    let r =
+      deno_semver::npm::NpmPackageReqReference::from_str(specifier).ok()?;
+    format!("npm:{}", r.req())
+  } else if specifier.starts_with("jsr:") {
+    let r =
+      deno_semver::jsr::JsrPackageReqReference::from_str(specifier).ok()?;
+    format!("jsr:{}", r.req())
+  } else {
+    return None;
+  };
+  Some(format!(
+    "If you want to use a package, try running `deno add {add_target}`"
+  ))
 }
 
 /// Compiler statistics reported by `tsc --diagnostics` (how many files/lines
