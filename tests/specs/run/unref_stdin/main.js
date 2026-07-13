@@ -1,11 +1,9 @@
-const { core } = Deno[Deno.internal];
-const opPromise = core.read(Deno.stdin.rid, new Uint8Array(10));
-core.unrefOpPromise(opPromise);
+import process from "node:process";
 
-async function main() {
-  console.log(1);
-  await opPromise;
+process.stdin.on("data", () => {
   console.log(2);
-}
+});
+process.stdin.resume();
+process.stdin.pause();
 
-main();
+console.log(1);
