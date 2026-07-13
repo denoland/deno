@@ -377,20 +377,24 @@ impl<'a> AggregateFunctionOption<'a> {
       INVERSE_STRING = "inverse",
     }
 
+    let object = v8::Local::<v8::Object>::try_from(value).map_err(|_| {
+      Error::InvalidArgType(
+        "The \"options\" argument must be an object.".into(),
+      )
+    })?;
+
     let start_key = START_STRING.v8_string(scope).unwrap();
-    let start_value = v8::Local::<v8::Object>::try_from(value)
-      .unwrap()
+    let start_value = object
       .get(scope, start_key.into())
-      .unwrap();
+      .ok_or(Error::V8Exception)?;
     if start_value.is_undefined() {
       return Err(Error::InvalidArgType("The \"options.start\" argument must be a function or a primitive value.".into()));
     }
 
     let step_key = STEP_STRING.v8_string(scope).unwrap();
-    let step_value = v8::Local::<v8::Object>::try_from(value)
-      .unwrap()
+    let step_value = object
       .get(scope, step_key.into())
-      .unwrap();
+      .ok_or(Error::V8Exception)?;
     let step_function = v8::Local::<v8::Function>::try_from(step_value)
       .map_err(|_| {
         Error::InvalidArgType(
@@ -399,10 +403,9 @@ impl<'a> AggregateFunctionOption<'a> {
       })?;
 
     let result_key = RESULT_STRING.v8_string(scope).unwrap();
-    let result_value = v8::Local::<v8::Object>::try_from(value)
-      .unwrap()
+    let result_value = object
       .get(scope, result_key.into())
-      .unwrap();
+      .ok_or(Error::V8Exception)?;
     let result_function = if result_value.is_undefined() {
       None
     } else {
@@ -421,10 +424,9 @@ impl<'a> AggregateFunctionOption<'a> {
     let mut direct_only = false;
 
     let deterministic_key = DETERMINISTIC_STRING.v8_string(scope).unwrap();
-    let deterministic_value = v8::Local::<v8::Object>::try_from(value)
-      .unwrap()
+    let deterministic_value = object
       .get(scope, deterministic_key.into())
-      .unwrap();
+      .ok_or(Error::V8Exception)?;
     if !deterministic_value.is_undefined() {
       if !deterministic_value.is_boolean() {
         return Err(Error::InvalidArgType(
@@ -435,10 +437,9 @@ impl<'a> AggregateFunctionOption<'a> {
     }
 
     let use_bigint_key = USE_BIG_INT_ARGUMENTS_STRING.v8_string(scope).unwrap();
-    let bigint_value = v8::Local::<v8::Object>::try_from(value)
-      .unwrap()
+    let bigint_value = object
       .get(scope, use_bigint_key.into())
-      .unwrap();
+      .ok_or(Error::V8Exception)?;
     if !bigint_value.is_undefined() {
       if !bigint_value.is_boolean() {
         return Err(Error::InvalidArgType(
@@ -450,10 +451,9 @@ impl<'a> AggregateFunctionOption<'a> {
     }
 
     let varargs_key = VARARGS_STRING.v8_string(scope).unwrap();
-    let varargs_value = v8::Local::<v8::Object>::try_from(value)
-      .unwrap()
+    let varargs_value = object
       .get(scope, varargs_key.into())
-      .unwrap();
+      .ok_or(Error::V8Exception)?;
     if !varargs_value.is_undefined() {
       if !varargs_value.is_boolean() {
         return Err(Error::InvalidArgType(
@@ -464,10 +464,9 @@ impl<'a> AggregateFunctionOption<'a> {
     }
 
     let direct_only_key = DIRECT_ONLY_STRING.v8_string(scope).unwrap();
-    let direct_only_value = v8::Local::<v8::Object>::try_from(value)
-      .unwrap()
+    let direct_only_value = object
       .get(scope, direct_only_key.into())
-      .unwrap();
+      .ok_or(Error::V8Exception)?;
     if !direct_only_value.is_undefined() {
       if !direct_only_value.is_boolean() {
         return Err(Error::InvalidArgType(
@@ -478,10 +477,9 @@ impl<'a> AggregateFunctionOption<'a> {
     }
 
     let inverse_key = INVERSE_STRING.v8_string(scope).unwrap();
-    let inverse_value = v8::Local::<v8::Object>::try_from(value)
-      .unwrap()
+    let inverse_value = object
       .get(scope, inverse_key.into())
-      .unwrap();
+      .ok_or(Error::V8Exception)?;
     let inverse_function = if inverse_value.is_undefined() {
       None
     } else {
@@ -1181,7 +1179,9 @@ impl DatabaseSync {
       }
 
       let use_bigint_key = USE_BIG_INT_ARGUMENTS.v8_string(scope).unwrap();
-      let bigint_value = options.get(scope, use_bigint_key.into()).unwrap();
+      let bigint_value = options
+        .get(scope, use_bigint_key.into())
+        .ok_or(validators::Error::V8Exception)?;
       if !bigint_value.is_undefined() {
         if !bigint_value.is_boolean() {
           return Err(
@@ -1196,7 +1196,9 @@ impl DatabaseSync {
       }
 
       let varargs_key = VARARGS.v8_string(scope).unwrap();
-      let varargs_value = options.get(scope, varargs_key.into()).unwrap();
+      let varargs_value = options
+        .get(scope, varargs_key.into())
+        .ok_or(validators::Error::V8Exception)?;
       if !varargs_value.is_undefined() {
         if !varargs_value.is_boolean() {
           return Err(
@@ -1210,8 +1212,9 @@ impl DatabaseSync {
       }
 
       let deterministic_key = DETERMINISTIC.v8_string(scope).unwrap();
-      let deterministic_value =
-        options.get(scope, deterministic_key.into()).unwrap();
+      let deterministic_value = options
+        .get(scope, deterministic_key.into())
+        .ok_or(validators::Error::V8Exception)?;
       if !deterministic_value.is_undefined() {
         if !deterministic_value.is_boolean() {
           return Err(
@@ -1226,8 +1229,9 @@ impl DatabaseSync {
       }
 
       let direct_only_key = DIRECT_ONLY.v8_string(scope).unwrap();
-      let direct_only_value =
-        options.get(scope, direct_only_key.into()).unwrap();
+      let direct_only_value = options
+        .get(scope, direct_only_key.into())
+        .ok_or(validators::Error::V8Exception)?;
       if !direct_only_value.is_undefined() {
         if !direct_only_value.is_boolean() {
           return Err(
@@ -1249,8 +1253,12 @@ impl DatabaseSync {
       -1
     } else {
       let length_key = LENGTH.v8_string(scope).unwrap();
-      let length = function.get(scope, length_key.into()).unwrap();
-      length.int32_value(scope).unwrap_or(0)
+      let length = function
+        .get(scope, length_key.into())
+        .ok_or(validators::Error::V8Exception)?;
+      length
+        .int32_value(scope)
+        .ok_or(validators::Error::V8Exception)?
     };
 
     let db = self.conn.borrow();
@@ -1559,14 +1567,21 @@ impl DatabaseSync {
     // counting.
     let raw_handle = unsafe { db.handle() };
 
-    let mut raw_session = std::ptr::null_mut();
     let mut options = options;
 
     let z_db = options
       .as_mut()
       .and_then(|options| options.db.take())
-      .map(|db| CString::new(db).unwrap())
-      .unwrap_or_else(|| CString::new("main").unwrap());
+      .map(CString::new)
+      .transpose()?
+      .unwrap_or_else(|| c"main".to_owned());
+    let table = options
+      .as_mut()
+      .and_then(|options| options.table.take())
+      .map(CString::new)
+      .transpose()?;
+
+    let mut raw_session = std::ptr::null_mut();
     // SAFETY: `z_db` points to a valid c-string.
     let r = unsafe {
       libsqlite3_sys::sqlite3session_create(
@@ -1580,10 +1595,6 @@ impl DatabaseSync {
       return Err(SqliteError::SessionCreateFailed);
     }
 
-    let table = options
-      .as_mut()
-      .and_then(|options| options.table.take())
-      .map(|table| CString::new(table).unwrap());
     let z_table = table.as_ref().map(|table| table.as_ptr()).unwrap_or(null());
     let r =
       // SAFETY: `z_table` points to a valid c-string and `raw_session`
@@ -1803,9 +1814,9 @@ impl DatabaseSync {
       let step_fn_length = options
         .step
         .get(scope, length_key.into())
-        .unwrap()
+        .ok_or(validators::Error::V8Exception)?
         .int32_value(scope)
-        .unwrap();
+        .ok_or(validators::Error::V8Exception)?;
 
       // Subtract 1 because the first argument is the aggregate value.
       argc = step_fn_length - 1;
@@ -1813,9 +1824,9 @@ impl DatabaseSync {
       let inverse_fn_length = if let Some(inverse_fn) = &options.inverse {
         inverse_fn
           .get(scope, length_key.into())
-          .unwrap()
+          .ok_or(validators::Error::V8Exception)?
           .int32_value(scope)
-          .unwrap()
+          .ok_or(validators::Error::V8Exception)?
       } else {
         0
       };
@@ -2930,7 +2941,7 @@ fn throw_range_error(scope: &mut v8::PinScope<'_, '_>, message: &str) {
   let code_value = ERR_OUT_OF_RANGE.v8_string(scope).unwrap();
   let error_obj: v8::Local<v8::Object> = error.try_into().unwrap();
   error_obj
-    .set(scope, code_key.into(), code_value.into())
+    .create_data_property(scope, code_key.into(), code_value.into())
     .unwrap();
 
   scope.throw_exception(error);
@@ -2949,7 +2960,7 @@ fn throw_type_error_with_code(
   let code_value = v8::String::new(scope, code).unwrap();
   let error_obj: v8::Local<v8::Object> = error.try_into().unwrap();
   error_obj
-    .set(scope, code_key.into(), code_value.into())
+    .create_data_property(scope, code_key.into(), code_value.into())
     .unwrap();
 
   scope.throw_exception(error);
@@ -2970,7 +2981,7 @@ fn throw_error_with_code(
   let code_value = v8::String::new(scope, code).unwrap();
   let error_obj: v8::Local<v8::Object> = error.try_into().unwrap();
   error_obj
-    .set(scope, code_key.into(), code_value.into())
+    .create_data_property(scope, code_key.into(), code_value.into())
     .unwrap();
 
   scope.throw_exception(error);
