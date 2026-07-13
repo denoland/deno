@@ -19,6 +19,7 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use node_resolver::BinValue;
 
+use crate::args::ConfigFlag;
 use crate::args::DenoXShimName;
 use crate::args::Flags;
 use crate::args::FlagsExt;
@@ -52,6 +53,37 @@ fn minimum_dependency_age_flag_arg(flags: &Flags) -> Option<String> {
     NewestDependencyDate::Enabled(date) => date.to_rfc3339(),
   };
   Some(format!("--minimum-dependency-age={}", value))
+}
+
+/// Renders the user's explicit `--config`/`--no-config` selection for the re-run
+/// `deno run <target>` subprocess argv.
+///
+/// The subprocess re-resolves the target from the user's cwd, so it only
+/// auto-discovers a cwd `deno.json`. When the user selected a config that is NOT
+/// auto-discoverable (an explicit `--config=<path>` outside cwd), that policy —
+/// including any `minimumDependencyAge` — would be dropped by the subprocess,
+/// diverging from `deno run --config=<path> <target>` (issue #35991). Forward it:
+/// - `Path(p)` -> `--config=<abs>` (resolved to an absolute path so it is robust
+///   regardless of the child's cwd, matching how other tools forward it).
+/// - `Disabled` -> `--no-config`.
+/// - `Discover` -> nothing; the subprocess auto-discovers the cwd config itself.
+fn config_flag_arg(flags: &Flags, initial_cwd: &Path) -> Option<String> {
+  match &flags.config_flag {
+    ConfigFlag::Discover => None,
+    ConfigFlag::Disabled => Some("--no-config".to_string()),
+    ConfigFlag::Path(path) => {
+      let path = Path::new(path);
+      let abs = if path.is_absolute() {
+        path.to_path_buf()
+      } else {
+        initial_cwd.join(path)
+      };
+      // Prefer a canonicalized absolute path; fall back to the joined path if the
+      // file can't be canonicalized (e.g. it doesn't exist).
+      let abs = canonicalize_path(&abs).unwrap_or(abs);
+      Some(format!("--config={}", abs.display()))
+    }
+  }
 }
 
 /// Serializes the effective minimum dependency age policy (age + exclude) into
@@ -207,6 +239,11 @@ pub(crate) fn run_bin_value(
       let mut deno_args = flags.to_permission_args();
       deno_args.extend(unstable_args.iter().cloned());
       if let Some(arg) = minimum_dependency_age_flag_arg(flags) {
+        deno_args.push(arg);
+      }
+      if let Some(arg) =
+        config_flag_arg(flags, factory.cli_options()?.initial_cwd())
+      {
         deno_args.push(arg);
       }
 
@@ -631,6 +668,9 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
       if let Some(arg) = minimum_dependency_age_flag_arg(&flags) {
         deno_args.push(arg);
       }
+      if let Some(arg) = config_flag_arg(&flags, cli_options.initial_cwd()) {
+        deno_args.push(arg);
+      }
       let url =
         deno_core::url::Url::parse(&jsr_package_req_reference.to_string())?;
       run_js_file(&url, &deno_args, &flags.argv, npm_process_state, false)
@@ -639,6 +679,9 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
       let mut deno_args = flags.to_permission_args();
       deno_args.extend(unstable_args.iter().cloned());
       if let Some(arg) = minimum_dependency_age_flag_arg(&flags) {
+        deno_args.push(arg);
+      }
+      if let Some(arg) = config_flag_arg(&flags, cli_options.initial_cwd()) {
         deno_args.push(arg);
       }
       run_js_file(&url, &deno_args, &flags.argv, None, false)

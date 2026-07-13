@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_DIR": "$PWD/deno_dir"
+  },
+  "steps": [{
+    // Parity companion for `config_url`: the policy lives in an auto-discoverable
+    // cwd `deno.json` (no `--config`), so `deno x` forwards nothing and lets the
+    // re-run `deno run <url>` subprocess auto-discover the cwd config itself.
+    // For a `data:` main module, auto-discovery does NOT apply the cwd policy to
+    // the module's `npm:` import, so the newest version 2.0.0 is selected — and
+    // `deno x` must match `deno run <url>` here (verified: both 2.0.0) rather
+    // than wrongly forcing the cwd config onto the subprocess.
+    "args": "x -y data:application/javascript,import%20%22npm:@denotest/x-min-dep-age/cli.mjs%22;",
+    "output": "[WILDCARD]\n2.0.0\n"
+  }]
+}
