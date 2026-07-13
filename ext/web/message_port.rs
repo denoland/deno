@@ -215,11 +215,8 @@ pub fn op_message_port_create_entangled(
 #[serde(tag = "kind", content = "data", rename_all = "camelCase")]
 #[to_v8(tag = "kind", content = "data")]
 pub enum JsTransferable {
-  #[to_v8(rename = "arrayBuffer")]
   ArrayBuffer(u32),
-  #[to_v8(rename = "resource")]
   Resource(String, ResourceId),
-  #[to_v8(rename = "multiResource")]
   MultiResource(String, Vec<ResourceId>),
 }
 
