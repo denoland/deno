@@ -185,6 +185,24 @@
               "items": {
                 "type": "string"
               }
+            },
+            "allowWebSchemes": {
+              "type": "boolean",
+              "description": "Allow registering the reserved \"http\"/\"https\" schemes as deep links. Off by default; only enable this for a genuine default-browser-style utility. \"file\"/\"ftp\"/\"ws\"/\"wss\" remain reserved regardless.",
+              "default": false
+            },
+            "permissions": {
+              "type": "array",
+              "description": "macOS permissions the app declares in its Info.plist. Each entry emits the matching NS…UsageDescription key. When omitted, none are emitted.",
+              "items": {
+                "type": "string",
+                "enum": ["camera", "microphone", "audioCapture", "bluetooth"]
+              }
+            },
+            "agent": {
+              "type": "boolean",
+              "description": "Run as a macOS menu-bar / accessory app with no Dock icon (emits LSUIElement). Off by default.",
+              "default": false
             }
           }
         },
