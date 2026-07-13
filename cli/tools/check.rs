@@ -107,10 +107,17 @@ async fn native_check(
     })
     .await?;
 
-  // Walk the graph exactly as the in-process checker does: collect deno's own
-  // diagnostics + the combined check hash (tsc version folded in).
+  // Walk the graph exactly as the in-process checker does to obtain the combined
+  // check hash (tsc version folded in). The walk also produces deno's own graph
+  // diagnostics (missing modules + hints), but merging them additively isn't
+  // safe yet: the in-process checker filters those against tsc's reported
+  // ambient-module list to suppress false "missing module" errors for `declare
+  // module` shims (including our own `*.css`). Native tsc doesn't hand us that
+  // list, so deno would flag ambient specifiers tsc resolves fine. Use the walk
+  // only for caching for now; additive diagnostics come once ambient modules
+  // are handled.
   let type_checker = factory.type_checker().await?;
-  let (missing_diagnostics, maybe_check_hash) = type_checker
+  let (_missing_diagnostics, maybe_check_hash) = type_checker
     .walk_graph_for_native_check(
       &graph,
       cli_options.ts_type_lib_window(),
@@ -118,10 +125,10 @@ async fn native_check(
     )?;
   let type_check_cache = type_checker.type_check_cache();
 
-  // Cache hit with no deno-side errors: nothing the compiler sees has changed,
-  // so skip both the (expensive) type materialization and the tsc spawn.
+  // Cache hit: the hash is only recorded after a clean check, so a match means
+  // the project type-checked cleanly and nothing the compiler sees has changed.
+  // Skip both the (expensive) type materialization and the tsc spawn.
   if !cli_options.reload_flag()
-    && !missing_diagnostics.has_diagnostic()
     && let Some(check_hash) = maybe_check_hash
     && type_check_cache.has_check_hash(check_hash)
   {
@@ -200,17 +207,12 @@ async fn native_check(
 
   let stdout = String::from_utf8_lossy(&output.stdout);
   let stderr = String::from_utf8_lossy(&output.stderr);
-  let tsc_diagnostics =
+  let diagnostics =
     Diagnostics::from(parse_tsc_diagnostics(&stdout, &project_root));
 
   // Captured for an upcoming "Checked N files" summary; not surfaced yet.
   let stats = parse_tsc_stats(&stdout);
   log::debug!("native tsc {stats:?}");
-
-  // Additively merge deno's own graph diagnostics (missing modules + hints)
-  // with tsc's — deno adds, never hides tsc's. Deno's come first, then tsc's.
-  let mut diagnostics = missing_diagnostics;
-  diagnostics.extend(tsc_diagnostics);
 
   if diagnostics.has_diagnostic() {
     log::error!("{}\n", diagnostics);
