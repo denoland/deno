@@ -635,15 +635,31 @@ fn build_tsconfig(
     compiler_options.insert("rootDirs".to_string(), Value::Array(rebased));
   }
 
-  // Merge the user's bare-package `compilerOptions.types` with the deno/node
-  // types we inject, rather than dropping them (see `merge_user_types` for why
-  // subpath entries like `lume/types.ts` are handled via `include` instead).
+  // Merge the user's `compilerOptions.types`. Bare packages that resolve via
+  // typeRoots (`deno`/`node`/`@types/*`) stay in the `types` array; entries
+  // stock tsc can't resolve there (an imported npm package, a relative path) are
+  // materialized as concrete `.d.ts` files added to the program below. See
+  // `partition_user_types` / `merge_user_types`.
+  let mut extra_type_files: Vec<String> = Vec::new();
   if let Some(user_types) = deno_compiler_options
     .and_then(|co| co.get("types"))
     .and_then(|t| t.as_array())
-    && let Some(Value::Array(types)) = compiler_options.get_mut("types")
   {
-    merge_user_types(types, user_types);
+    let (keep, files) = partition_user_types(
+      project_root,
+      user_types,
+      deno_imports,
+      npm_package_paths,
+    );
+    extra_type_files = files;
+    if !keep.is_empty() {
+      match compiler_options.get_mut("types") {
+        Some(Value::Array(types)) => merge_user_types(types, &keep),
+        _ => {
+          compiler_options.insert("types".to_string(), Value::Array(keep));
+        }
+      }
+    }
   }
 
   if !specifier_paths.is_empty() {
@@ -680,6 +696,21 @@ fn build_tsconfig(
       "files": files_array,
     })
   };
+  // Add any declaration files materialized from `compilerOptions.types` (npm
+  // packages / relative paths stock tsc can't resolve as `types`). tsc unions an
+  // explicit `files` array with `include`, so this works in both branches.
+  if !extra_type_files.is_empty()
+    && let Some(object) = tsconfig.as_object_mut()
+  {
+    match object.get_mut("files") {
+      Some(Value::Array(files)) => {
+        files.extend(extra_type_files.iter().map(|f| json!(f)));
+      }
+      _ => {
+        object.insert("files".to_string(), json!(extra_type_files));
+      }
+    }
+  }
   if !npm_project_references.is_empty()
     && let Some(object) = tsconfig.as_object_mut()
   {
@@ -1388,6 +1419,76 @@ fn filter_stock_libs(libs: &[Value]) -> Value {
 /// stock-tooling equivalent is that the (materialized) file is pulled into the
 /// program by the tsconfig `include` glob, which carries its ambient
 /// declarations and `/// <reference lib=... />` directives just the same.
+/// Resolve the cache/node_modules directory of a `compilerOptions.types` entry
+/// that names an npm package the user imports (matched by import alias).
+fn npm_types_pkg_dir(
+  project_root: &Path,
+  name: &str,
+  deno_imports: Option<&Value>,
+  npm_package_paths: &BTreeMap<String, PathBuf>,
+) -> Option<PathBuf> {
+  let target = deno_imports?.as_object()?.get(name)?.as_str()?;
+  if !target.starts_with("npm:") {
+    return None;
+  }
+  let npm_ref =
+    deno_semver::npm::NpmPackageReqReference::from_str(target).ok()?;
+  let pkg_name = npm_ref.req().name.to_string();
+  let local = project_root.join(format!("node_modules/{pkg_name}"));
+  let dir = npm_package_paths.get(target).cloned().unwrap_or(local);
+  dir.exists().then_some(dir)
+}
+
+/// Partition a user's `compilerOptions.types` into entries stock tsc can resolve
+/// via typeRoots (kept in the `types` array) and entries it cannot — a bare npm
+/// package the user imports, or a relative path — which are materialized as
+/// concrete `.d.ts` files added to the program instead.
+///
+/// Stock tsc resolves a `types` entry only as a package under
+/// `typeRoots`/`node_modules/@types`; it never consults `paths`, and a plain
+/// (non-`@types`) npm package or a relative path can't resolve that way at all,
+/// which fails the whole build with TS2688 and masks every real diagnostic. Deno
+/// accepts these because it loads them as modules; the stock-tooling equivalent
+/// is to pull the actual declaration file into the program via `files`, which
+/// carries its ambient/global declarations just the same.
+fn partition_user_types(
+  project_root: &Path,
+  user_types: &[Value],
+  deno_imports: Option<&Value>,
+  npm_package_paths: &BTreeMap<String, PathBuf>,
+) -> (Vec<Value>, Vec<String>) {
+  let mut keep_in_types = Vec::new();
+  let mut type_files = Vec::new();
+  for entry in user_types {
+    let Some(s) = entry.as_str() else {
+      keep_in_types.push(entry.clone());
+      continue;
+    };
+    // A relative/path-like entry (`./types.d.ts`) resolves relative to the
+    // generated tsconfig in `.deno/`, pointing at the wrong place; materialize
+    // it as an absolute file instead.
+    let is_path_like =
+      s.starts_with('.') || s.starts_with('/') || s.ends_with(".ts");
+    if is_path_like {
+      let abs = project_root.join(s.trim_start_matches("./"));
+      type_files.push(abs.to_string_lossy().replace('\\', "/"));
+      continue;
+    }
+    // A bare npm package the user imports: pull in its declaration file.
+    if let Some(pkg_dir) =
+      npm_types_pkg_dir(project_root, s, deno_imports, npm_package_paths)
+      && let Some(dts) = resolve_package_types_entry_path(&pkg_dir, ".")
+      && dts.exists()
+    {
+      type_files.push(dts.to_string_lossy().replace('\\', "/"));
+      continue;
+    }
+    // `deno`, `node`, `@types/*`: resolvable via typeRoots, keep as-is.
+    keep_in_types.push(entry.clone());
+  }
+  (keep_in_types, type_files)
+}
+
 fn merge_user_types(base_types: &mut Vec<Value>, user_types: &[Value]) {
   for entry in user_types {
     let Some(s) = entry.as_str() else { continue };
