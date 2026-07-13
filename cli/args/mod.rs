@@ -1285,8 +1285,10 @@ impl CliOptions {
 
   /// Whether the current subcommand executes user code with the prompt-based
   /// permission defaults. `deno eval` and `deno x` already imply allow-all, and
-  /// `deno compile` bakes permissions at compile time (out of scope), so the
-  /// default env allowlist only applies to these subcommands.
+  /// `deno compile` bakes permissions at compile time (the standalone runtime
+  /// applies the allowlist itself), so the default env allowlist only applies
+  /// to these subcommands. `deno desktop` (dev, non-compiled) runs user code
+  /// too, matching what a compiled desktop app gets.
   fn runs_user_code_with_prompt_defaults(&self) -> bool {
     matches!(
       self.flags.subcommand,
@@ -1296,6 +1298,7 @@ impl CliOptions {
         | DenoSubcommand::Bench(_)
         | DenoSubcommand::Task(_)
         | DenoSubcommand::Repl(_)
+        | DenoSubcommand::Desktop(_)
     )
   }
 

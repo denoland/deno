@@ -3700,7 +3700,6 @@ pub const DEFAULT_ENV_ALLOWLIST: &[&str] = &[
   "npm_package_name",
   "npm_package_version",
   "npm_package_json",
-  "npm_package_config_*",
   "npm_execpath",
   "npm_node_execpath",
   "npm_command",

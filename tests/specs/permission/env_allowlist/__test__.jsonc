@@ -6,8 +6,8 @@
   // was no prompt.
   "tests": {
     "allowlisted": {
-      // Allowlisted vars, including the LC_*, XDG_* and npm_package_config_*
-      // prefix members, read without a prompt and without any --allow-env.
+      // Allowlisted vars, including the LC_* and XDG_* prefix members, read
+      // without a prompt and without any --allow-env.
       "args": "run --quiet allowlisted.ts",
       "envs": {
         "TERM": "xterm-256color",
