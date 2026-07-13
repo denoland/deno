@@ -3409,10 +3409,7 @@
     "parallel/test-stream-duplex-readable-end.js": {},
     "parallel/test-stream-duplex-readable-writable.js": {},
     "parallel/test-stream-duplex-writable-finished.js": {},
-    "parallel/test-stream-duplex.js": {
-      "ignore": true,
-      "reason": "Requires the new Node 26 DEP0201 deprecation warning for Duplex.toWeb({ type }) which Deno does not emit"
-    },
+    "parallel/test-stream-duplex.js": {},
     "parallel/test-stream-duplexpair.js": {},
     "parallel/test-stream-end-of-streams.js": {},
     "parallel/test-stream-end-paused.js": {},
