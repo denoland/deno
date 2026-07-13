@@ -39,7 +39,7 @@ fn cache_switching_config_then_no_config() {
     output.assert_exit_code(0);
 
     let stderr = output.stderr();
-    stderr.contains("Check")
+    stderr.lines().any(|line| line.starts_with("Check "))
   }
 }
 
@@ -67,7 +67,7 @@ fn reload_flag() {
     output.assert_exit_code(0);
 
     let stderr = output.stderr();
-    stderr.contains("Check")
+    stderr.lines().any(|line| line.starts_with("Check "))
   }
 }
 
@@ -154,7 +154,7 @@ fn check_error_in_dep_then_fix() {
 
   temp_dir.write("greet.ts", correct_code);
   let output = check_command.run();
-  output.assert_matches_text("Check [WILDCARD]main.ts\n");
+  output.assert_matches_text("Check [WILDCARD]main.ts\nChecked 1 file\n");
 
   temp_dir.write("greet.ts", incorrect_code);
   let output = check_command.run();

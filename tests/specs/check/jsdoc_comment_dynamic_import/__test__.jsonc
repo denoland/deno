@@ -2,12 +2,12 @@
   "tests": {
     "comment_text": {
       "args": "check main.js",
-      "output": "",
+      "output": "Checked 1 file\n",
       "exitCode": 0
     },
     "ts_nocheck": {
       "args": "check ts_nocheck.js",
-      "output": "",
+      "output": "Checked 1 file\n",
       "exitCode": 0
     }
   }

@@ -25,7 +25,7 @@
     },
     {
       "args": "check exists_dynamic_import.ts",
-      "output": "Check [WILDCARD]exists_dynamic_import.ts\n"
+      "output": "Check [WILDCARD]exists_dynamic_import.ts\nChecked 1 file\n"
     },
     {
       "args": "run --check --reload exists_dynamic_import.ts",
