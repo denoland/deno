@@ -1585,7 +1585,9 @@ async fn package_windows_app_dir(
 /// ```
 ///
 /// The backend binary is renamed to `AppName` so it auto-loads the co-located
-/// `AppName.so` runtime — no launcher shell script is needed.
+/// runtime — no launcher shell script is needed. The runtime file name is the
+/// one the launcher resolves (see [`linux_colocated_runtime_name`]), which is
+/// `AppName.so` unless the app name itself contains a dot.
 async fn package_linux_app_dir(
   dylib_path: &Path,
   desktop_flags: &DesktopFlags,
@@ -1632,18 +1634,29 @@ async fn package_linux_app_dir(
     let _ = std::fs::remove_file(&cache_file);
   }
 
-  // Copy the compiled dylib as `<app>.so` so the renamed backend binary
-  // auto-loads it: laufey's LaufeyFindColocatedRuntime resolves `<exe-base>.so`
+  // Copy the compiled dylib under the name the renamed backend binary will
+  // auto-load: laufey's LaufeyFindColocatedRuntime resolves `<exe-base>.so`
   // next to the binary. It reads the real path via `/proc/self/exe`, which
   // follows the `/usr/bin/<pkg>` -> `/usr/lib/<pkg>/<app>` symlink that
   // `.deb`/`.rpm` install (issue #35623), so no wrapper script is needed.
   validate_launcher_name(&app_name, "app name")?;
-  let dest_dylib = app_dir.join(format!("{}.so", app_name));
+  let runtime_name = linux_colocated_runtime_name(&app_name);
+  let dest_dylib = app_dir.join(&runtime_name);
+  let launcher_path = app_dir.join(&app_name);
+  // The app dir already holds the backend's own libraries (libcef.so and
+  // friends), and the launcher lands on `<app>` in a moment. An app name whose
+  // runtime library resolves onto either would clobber it and ship an app that
+  // can't start, so refuse instead of writing it.
+  if dest_dylib.exists() || dest_dylib == launcher_path {
+    bail!(
+      "app name {app_name:?} resolves its runtime library to {runtime_name}, \
+       which is already part of the app. Choose a different --output name.",
+    );
+  }
   std::fs::copy(dylib_path, &dest_dylib)?;
 
   // Rename the LAUFEY backend binary to the app name so `<app>` is the launcher
   // the user runs directly — no `--runtime` argument and no shell wrapper.
-  let launcher_path = app_dir.join(&app_name);
   let staged_backend = app_dir.join(&laufey_binary_name);
   if staged_backend != launcher_path {
     std::fs::rename(&staged_backend, &launcher_path)?;
@@ -2861,6 +2874,24 @@ fn dylib_parts(dylib_path: &Path) -> Result<DylibParts<'_>, AnyError> {
     file_name,
     app_name,
   })
+}
+
+/// The runtime library filename the Linux launcher resolves for an app named
+/// `app_name`.
+///
+/// laufey's `LaufeyFindColocatedRuntime` chops everything after the last dot of
+/// the executable's file name — an extension a Linux launcher doesn't have —
+/// and appends `.so`. So a launcher named `MyApp-2.9.2` opens `MyApp-2.9.so`,
+/// not `MyApp-2.9.2.so` (issue #35971). Mirror that here so the library we ship
+/// is the one the launcher actually opens.
+fn linux_colocated_runtime_name(app_name: &str) -> String {
+  // A dot at index 0 is part of the name (`.hidden`), not an extension — the
+  // launcher treats it that way too.
+  let base = match app_name.rfind('.') {
+    Some(dot) if dot > 0 => &app_name[..dot],
+    _ => app_name,
+  };
+  format!("{base}.so")
 }
 
 /// The runtime dylib filename each macOS LAUFEY backend resolves when the
@@ -5619,6 +5650,36 @@ def456  other.zip
     // a degenerate case that previously panicked.
     let empty = std::path::Path::new("");
     let _ = dylib_parts(empty); // not panicking is the regression test
+  }
+
+  // --- linux_colocated_runtime_name ---
+
+  #[test]
+  fn linux_colocated_runtime_name_plain() {
+    assert_eq!(linux_colocated_runtime_name("MyApp"), "MyApp.so");
+  }
+
+  #[test]
+  fn linux_colocated_runtime_name_matches_launcher_lookup() {
+    // The launcher strips everything after the last dot of its own file name
+    // and appends `.so`, so a dotted app name must ship the library under the
+    // truncated name — otherwise it starts up with "No runtime library found"
+    // (issue #35971).
+    assert_eq!(
+      linux_colocated_runtime_name("template-deno2.9.2-desktop-vue3-vite8"),
+      "template-deno2.9.so"
+    );
+    assert_eq!(
+      linux_colocated_runtime_name("myapp.v1.2.3"),
+      "myapp.v1.2.so"
+    );
+  }
+
+  #[test]
+  fn linux_colocated_runtime_name_leading_dot_is_not_an_extension() {
+    // The launcher only treats a dot past position 0 as an extension, so a
+    // dotfile name keeps its whole name.
+    assert_eq!(linux_colocated_runtime_name(".hidden"), ".hidden.so");
   }
 
   // --- appimage_runtime_for_target ---
