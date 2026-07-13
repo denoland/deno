@@ -507,6 +507,83 @@ impl Drop for ChaCha20Poly1305Cipher {
   }
 }
 
+/// Raw ChaCha20 stream cipher backed by aws-lc-sys (BoringSSL).
+///
+/// Matches OpenSSL's `EVP_chacha20` semantics used by Node.js: the 16-byte
+/// IV consists of a 32-bit little-endian block counter followed by a
+/// 96-bit nonce.
+struct ChaCha20Cipher {
+  key: [u8; 32],
+  nonce: [u8; 12],
+  counter: u32,
+  /// Number of keystream bytes consumed so far.
+  pos: u64,
+}
+
+impl ChaCha20Cipher {
+  fn new(key: &[u8], iv: &[u8]) -> Self {
+    debug_assert_eq!(key.len(), 32);
+    debug_assert_eq!(iv.len(), 16);
+    let mut key_arr = [0u8; 32];
+    key_arr.copy_from_slice(key);
+    let mut nonce = [0u8; 12];
+    nonce.copy_from_slice(&iv[4..16]);
+    let counter = u32::from_le_bytes([iv[0], iv[1], iv[2], iv[3]]);
+    Self {
+      key: key_arr,
+      nonce,
+      counter,
+      pos: 0,
+    }
+  }
+
+  /// XORs the keystream into `input`, writing to `output`. Handles calls
+  /// that are not aligned to the 64-byte ChaCha block by re-generating the
+  /// current partial block and discarding the already-consumed prefix.
+  fn apply_keystream(&mut self, input: &[u8], output: &mut [u8]) {
+    assert!(output.len() >= input.len());
+    if input.is_empty() {
+      return;
+    }
+    let offset = (self.pos % 64) as usize;
+    let counter = self.counter.wrapping_add((self.pos / 64) as u32);
+    if offset == 0 {
+      // SAFETY: input and output are valid for input.len() bytes (output
+      // length asserted above); key and nonce have the exact sizes
+      // CRYPTO_chacha_20 requires (32 and 12 bytes).
+      unsafe {
+        aws_lc_sys::CRYPTO_chacha_20(
+          output.as_mut_ptr(),
+          input.as_ptr(),
+          input.len(),
+          self.key.as_ptr(),
+          self.nonce.as_ptr(),
+          counter,
+        );
+      }
+    } else {
+      // Mid-block: prepend `offset` zero bytes so the keystream lines up
+      // with the current position, then drop that prefix.
+      let mut buf = vec![0u8; offset + input.len()];
+      buf[offset..].copy_from_slice(input);
+      // SAFETY: buf is a valid buffer for in-place encryption (in == out is
+      // allowed); key and nonce have the required sizes.
+      unsafe {
+        aws_lc_sys::CRYPTO_chacha_20(
+          buf.as_mut_ptr(),
+          buf.as_ptr(),
+          buf.len(),
+          self.key.as_ptr(),
+          self.nonce.as_ptr(),
+          counter,
+        );
+      }
+      output[..input.len()].copy_from_slice(&buf[offset..]);
+    }
+    self.pos += input.len() as u64;
+  }
+}
+
 enum Cipher {
   Aes128Cbc(Box<cbc::Encryptor<aes::Aes128>>),
   Aes128Ecb(Box<ecb::Encryptor<aes::Aes128>>),
@@ -519,6 +596,7 @@ enum Cipher {
   Aes192Ctr(Box<ctr::Ctr128BE<aes::Aes192>>),
   Aes256Ctr(Box<ctr::Ctr128BE<aes::Aes256>>),
   DesEde3Cbc(Box<cbc::Encryptor<des::TdesEde3>>),
+  ChaCha20(Box<ChaCha20Cipher>),
   ChaCha20Poly1305(Box<ChaCha20Poly1305Cipher>),
   // TODO(kt3k): add more algorithms Aes192Cbc, etc.
 }
@@ -535,6 +613,7 @@ enum Decipher {
   Aes192Ctr(Box<ctr::Ctr128BE<aes::Aes192>>),
   Aes256Ctr(Box<ctr::Ctr128BE<aes::Aes256>>),
   DesEde3Cbc(Box<cbc::Decryptor<des::TdesEde3>>),
+  ChaCha20(Box<ChaCha20Cipher>),
   ChaCha20Poly1305(Box<ChaCha20Poly1305Cipher>, Option<usize>),
   // TODO(kt3k): add more algorithms Aes192Cbc, Aes128GCM, etc.
 }
@@ -832,6 +911,15 @@ impl Cipher {
         }
         DesEde3Cbc(Box::new(cbc::Encryptor::new(key.into(), iv.into())))
       }
+      "chacha20" => {
+        if key.len() != 32 {
+          return Err(CipherError::InvalidKeyLength);
+        }
+        if iv.len() != 16 {
+          return Err(CipherError::InvalidInitializationVector);
+        }
+        ChaCha20(Box::new(ChaCha20Cipher::new(key, iv)))
+      }
       "chacha20-poly1305" => {
         if key.len() != 32 {
           return Err(CipherError::InvalidKeyLength);
@@ -931,6 +1019,9 @@ impl Cipher {
           encryptor.encrypt_block_b2b_mut(input.into(), output.into());
         }
       }
+      ChaCha20(cipher) => {
+        cipher.apply_keystream(input, output);
+      }
       ChaCha20Poly1305(cipher) => {
         cipher.encrypt(input, output);
       }
@@ -1025,7 +1116,7 @@ impl Cipher {
         );
         Ok(None)
       }
-      (Aes256Ctr(_) | Aes128Ctr(_) | Aes192Ctr(_), _) => Ok(None),
+      (Aes256Ctr(_) | Aes128Ctr(_) | Aes192Ctr(_) | ChaCha20(_), _) => Ok(None),
       (ChaCha20Poly1305(cipher), _) => {
         let tag = cipher.compute_tag();
         Ok(Some(tag))
@@ -1276,6 +1367,15 @@ impl Decipher {
         }
         DesEde3Cbc(Box::new(cbc::Decryptor::new(key.into(), iv.into())))
       }
+      "chacha20" => {
+        if key.len() != 32 {
+          return Err(DecipherError::InvalidKeyLength);
+        }
+        if iv.len() != 16 {
+          return Err(DecipherError::InvalidInitializationVector);
+        }
+        ChaCha20(Box::new(ChaCha20Cipher::new(key, iv)))
+      }
       "chacha20-poly1305" => {
         if key.len() != 32 {
           return Err(DecipherError::InvalidKeyLength);
@@ -1404,6 +1504,9 @@ impl Decipher {
         for (input, output) in input.chunks(8).zip(output.chunks_mut(8)) {
           decryptor.decrypt_block_b2b_mut(input.into(), output.into());
         }
+      }
+      ChaCha20(decipher) => {
+        decipher.apply_keystream(input, output);
       }
       ChaCha20Poly1305(decipher, _) => {
         decipher.decrypt(input, output);
@@ -1569,6 +1672,10 @@ impl Decipher {
       }
       (Aes128Ctr(mut decryptor), _) => {
         decryptor.apply_keystream_b2b(input, output).unwrap();
+        Ok(())
+      }
+      (ChaCha20(mut decipher), _) => {
+        decipher.apply_keystream(input, output);
         Ok(())
       }
       (DesEde3Cbc(decryptor), true) => {
