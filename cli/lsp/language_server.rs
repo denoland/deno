@@ -245,14 +245,12 @@ pub struct LanguageServer {
 /// Snapshot of the state used by TSC.
 #[derive(Clone, Debug, Default)]
 pub struct StateSnapshot {
-  pub project_version: usize,
   pub config: Arc<Config>,
   pub compiler_options_resolver: Arc<LspCompilerOptionsResolver>,
   pub linter_resolver: Arc<LspLinterResolver>,
   pub document_modules: DocumentModules,
   pub resolver: Arc<LspResolver>,
   pub cache: Arc<LspCache>,
-  pub client_needs_file_uris_for_virtual_documents: bool,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -743,15 +741,12 @@ impl Inner {
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub fn snapshot(&self) -> Arc<StateSnapshot> {
     Arc::new(StateSnapshot {
-      project_version: self.project_version,
       config: Arc::new(self.config.clone()),
       compiler_options_resolver: self.compiler_options_resolver.clone(),
       linter_resolver: self.linter_resolver.clone(),
       document_modules: self.document_modules.clone(),
       resolver: self.resolver.snapshot(),
       cache: Arc::new(self.cache.clone()),
-      client_needs_file_uris_for_virtual_documents: self
-        .client_needs_file_uris_for_virtual_documents,
     })
   }
 
