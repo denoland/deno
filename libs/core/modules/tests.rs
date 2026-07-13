@@ -559,6 +559,32 @@ fn test_lazy_loaded_esm() {
 }
 
 #[test]
+fn test_lazy_loaded_esm_rejects_non_lazy_cached_module() {
+  let mut runtime = JsRuntime::new(Default::default());
+
+  runtime
+    .execute_script(
+      "setup.js",
+      r#"
+      const load = Deno.core.createLazyLoader("ext:core/ops");
+      let error;
+      try {
+        load();
+      } catch (caught) {
+        error = caught;
+      }
+      if (error === undefined) {
+        throw new Error("a non-lazy cached module was loaded");
+      }
+      if (!error.message.includes("cannot be lazy-loaded")) {
+        throw error;
+      }
+      "#,
+    )
+    .unwrap();
+}
+
+#[test]
 fn test_lazy_loaded_esm_aliased_specifier() {
   deno_core::extension!(
     test_ext,

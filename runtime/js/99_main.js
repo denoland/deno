@@ -41,6 +41,7 @@ const {
   ObjectAssign,
   ObjectDefineProperties,
   ObjectDefineProperty,
+  ObjectFreeze,
   ObjectGetOwnPropertyDescriptors,
   ObjectHasOwn,
   ObjectIsExtensible,
@@ -731,10 +732,25 @@ function removeImportedOps() {
   }
 }
 
-// FIXME(bartlomieju): temporarily add whole `Deno.core` to
-// `Deno[Deno.internal]` namespace. It should be removed and only necessary
-// methods should be left there.
-ObjectAssign(internals, { core });
+// `Deno[Deno.internal]` is reachable from user code. Keep extension-loading
+// capabilities on the core object imported through `ext:core/mod.js`, and only
+// expose the subset needed by internal tooling and tests here.
+const userVisibleCore = ObjectFreeze({
+  __proto__: null,
+  callConsole: core.callConsole,
+  encodeBinaryString: core.encodeBinaryString,
+  evalContext: core.evalContext,
+  ops,
+  print: core.print,
+  propNonEnumerable: core.propNonEnumerable,
+  propReadOnly: core.propReadOnly,
+  propWritable: core.propWritable,
+  resources: core.resources,
+  setLeakTracingEnabled: core.setLeakTracingEnabled,
+  setPromiseHooks: core.setPromiseHooks,
+  unrefOpPromise: core.unrefOpPromise,
+});
+ObjectAssign(internals, { core: userVisibleCore });
 const internalSymbol = Symbol("Deno.internal");
 // `Deno.test` and its sub-methods are no-ops outside of `deno test`, kept for
 // compatibility so they don't error under `deno run`. Mirrors the surface of

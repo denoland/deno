@@ -2928,6 +2928,15 @@ impl ModuleMap {
     scope: &mut v8::PinScope,
     module_specifier: &str,
   ) -> Result<v8::Global<v8::Value>, CoreError> {
+    if !self.has_lazy_esm_source(module_specifier) {
+      return Err(
+        JsErrorBox::generic(format!(
+          "Specifier \"{module_specifier}\" cannot be lazy-loaded as it was not included in the binary."
+        ))
+        .into(),
+      );
+    }
+
     let (lazy_esm_sources, residual_lazy_esm_sources) = {
       let data = self.data.borrow();
       (

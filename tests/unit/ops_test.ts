@@ -16,22 +16,13 @@ Deno.test(function checkExposedOps() {
   }
 });
 
-Deno.test(function createLazyLoaderDoesNotExposeVirtualOpsModule() {
+Deno.test(function internalCoreDoesNotExposeExtensionLoaders() {
   // @ts-ignore TS doesn't allow to index with symbol
   const core = Deno[Deno.internal].core;
 
-  if (core.ops.op_get_env_no_permission_check !== undefined) {
-    throw new Error("op_get_env_no_permission_check should not be exposed");
-  }
-
-  try {
-    core.createLazyLoader("ext:core/ops")();
-  } catch (error) {
-    if (!(error instanceof TypeError)) {
-      throw error;
+  for (const name of ["createLazyLoader", "loadExtScript"]) {
+    if (name in core) {
+      throw new Error(`${name} should not be exposed`);
     }
-    return;
   }
-
-  throw new Error("createLazyLoader unexpectedly exposed ext:core/ops");
 });
