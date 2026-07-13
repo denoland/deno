@@ -58,22 +58,22 @@ pub fn to_v8(item: TokenStream) -> TokenStream {
   }
 }
 
+// Takes the JS-visible key as a plain `&str` + `Span` rather than a
+// `syn::Ident`: unlike a Rust identifier, a JS object key can contain
+// characters like `-` (e.g. a `kebab-case` enum tag from `#[to_v8(rename =
+// "non-relative")]`), which `syn::Ident::new` would reject outright.
 fn get_internalized_string(
-  name: syn::Ident,
+  name: &str,
+  span: proc_macro2::Span,
 ) -> Result<proc_macro2::TokenStream, syn::Error> {
-  let name_str = name.to_string();
-
-  if !name_str.is_ascii() {
-    return Err(syn::Error::new(
-      name.span(),
-      "Only ASCII keys are supported",
-    ));
+  if !name.is_ascii() {
+    return Err(syn::Error::new(span, "Only ASCII keys are supported"));
   }
 
   Ok(quote::quote! {
     ::deno_core::v8::String::new_from_one_byte(
       __scope,
-      #name_str.as_bytes(),
+      #name.as_bytes(),
       ::deno_core::v8::NewStringType::Internalized,
     )
     .unwrap()

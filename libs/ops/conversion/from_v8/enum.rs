@@ -1,6 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use proc_macro2::Ident;
 use proc_macro2::TokenStream;
 use quote::quote;
 use stringcase::camel_case;
@@ -63,10 +62,8 @@ pub fn get_body(
               .map_err(::deno_error::JsErrorBox::from_err)?
           }
         };
-        let key = crate::get_internalized_string(Ident::new(
-          &tag_name,
-          variant_ident.span(),
-        ))?;
+        let key =
+          crate::get_internalized_string(&tag_name, variant_ident.span())?;
         variant_arms.push(quote! {
           {
             let __key = #key;

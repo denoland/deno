@@ -43,7 +43,10 @@ pub fn get_body(span: Span, data: DataStruct) -> Result<TokenStream, Error> {
         let pushes = fields
           .into_iter()
           .map(|field| {
-            let key = crate::get_internalized_string(field.js_name)?;
+            let key = crate::get_internalized_string(
+              &field.js_name.to_string(),
+              field.js_name.span(),
+            )?;
             let name = field.name.clone();
             let skip_if = field.skip_if.clone();
             let converter =
@@ -91,7 +94,10 @@ pub fn get_body(span: Span, data: DataStruct) -> Result<TokenStream, Error> {
       let mut converters = Vec::with_capacity(fields.len());
 
       for field in fields {
-        names.push(crate::get_internalized_string(field.js_name)?);
+        names.push(crate::get_internalized_string(
+          &field.js_name.to_string(),
+          field.js_name.span(),
+        )?);
 
         converters.push(convert_or_serde(
           field.serde,

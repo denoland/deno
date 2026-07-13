@@ -226,10 +226,12 @@ impl From<&FmtOptionsConfig> for FormatCodeSettings {
   }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, deno_core::ToV8)]
 #[serde(rename_all = "camelCase")]
 pub enum SemicolonPreference {
+  #[to_v8(rename = "insert")]
   Insert,
+  #[to_v8(rename = "remove")]
   Remove,
 }
 
@@ -6081,22 +6083,29 @@ pub type QuotePreference = config::QuoteStyle;
 
 pub type ImportModuleSpecifierPreference = config::ImportModuleSpecifier;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, deno_core::ToV8)]
 #[serde(rename_all = "kebab-case")]
 #[allow(dead_code, reason = "unsupported")]
 pub enum ImportModuleSpecifierEnding {
+  #[to_v8(rename = "auto")]
   Auto,
+  #[to_v8(rename = "minimal")]
   Minimal,
+  #[to_v8(rename = "index")]
   Index,
+  #[to_v8(rename = "js")]
   Js,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, deno_core::ToV8)]
 #[serde(rename_all = "kebab-case")]
 #[allow(dead_code, reason = "unsupported")]
 pub enum IncludeInlayParameterNameHints {
+  #[to_v8(rename = "none")]
   None,
+  #[to_v8(rename = "literals")]
   Literals,
+  #[to_v8(rename = "all")]
   All,
 }
 
@@ -6112,12 +6121,15 @@ impl From<&config::InlayHintsParamNamesEnabled>
   }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, deno_core::ToV8)]
 #[serde(rename_all = "kebab-case")]
 #[allow(dead_code, reason = "unsupported")]
 pub enum IncludePackageJsonAutoImports {
+  #[to_v8(rename = "auto")]
   Auto,
+  #[to_v8(rename = "on")]
   On,
+  #[to_v8(rename = "off")]
   Off,
 }
 
@@ -6134,71 +6146,101 @@ struct GetCompletionsAtPositionOptions {
   pub trigger_kind: Option<CompletionTriggerKind>,
 }
 
-#[derive(Debug, Default, Clone, Serialize)]
+#[derive(Debug, Default, Clone, Serialize, deno_core::ToV8)]
 #[serde(rename_all = "camelCase")]
 pub struct UserPreferences {
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub disable_suggestions: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub quote_preference: Option<QuotePreference>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub include_completions_for_module_exports: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub include_completions_for_import_statements: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub include_completions_with_snippet_text: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub include_automatic_optional_chain_completions: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub include_completions_with_insert_text: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub include_completions_with_class_member_snippets: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub include_completions_with_object_literal_method_snippets: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub use_label_details_in_completion_entries: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub allow_incomplete_completions: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub import_module_specifier_preference:
     Option<ImportModuleSpecifierPreference>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub import_module_specifier_ending: Option<ImportModuleSpecifierEnding>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub allow_text_changes_in_new_files: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub provide_prefix_and_suffix_text_for_rename: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub include_package_json_auto_imports: Option<IncludePackageJsonAutoImports>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub provide_refactor_not_applicable_reason: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub jsx_attribute_completion_style: Option<JsxAttributeCompletionStyle>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub include_inlay_parameter_name_hints:
     Option<IncludeInlayParameterNameHints>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub include_inlay_parameter_name_hints_when_argument_matches_name:
     Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub include_inlay_function_parameter_type_hints: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub include_inlay_variable_type_hints: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub include_inlay_variable_type_hints_when_type_matches_name: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub include_inlay_property_declaration_type_hints: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub include_inlay_function_like_return_type_hints: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub include_inlay_enum_member_value_hints: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub allow_rename_of_import_path: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub auto_import_file_exclude_patterns: Option<Vec<String>>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub interactive_inlay_hints: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub prefer_type_only_auto_imports: Option<bool>,
 }
 
@@ -6550,9 +6592,11 @@ impl TscRequest {
     // Requests whose arguments are positional tuples of primitives serialize to
     // a `v8::Array` via the `ToV8` derives/impls (matching serde's tuple
     // encoding). Bare integers are wrapped in `Number` so they map to a JS
-    // `number` exactly as serde did. Requests carrying richer config structs
-    // (`UserPreferences`, `FormatCodeSettings`, …) or `#[serde(flatten)]` stay
-    // on `serde_v8::to_v8` until those types grow `ToV8` impls.
+    // `number` exactly as serde did. `UserPreferences` now has its own `ToV8`
+    // impl too, so requests carrying only it (plus already-converted types)
+    // use it directly. Requests carrying other richer config structs (e.g.
+    // `FormatCodeSettings`) or `#[serde(flatten)]` still stay on
+    // `serde_v8::to_v8` until those types grow `ToV8` impls.
     let args = match self {
       TscRequest::GetDiagnostics(args) => (
         "$getDiagnostics",
@@ -6639,10 +6683,9 @@ impl TscRequest {
         "prepareCallHierarchy",
         Some((specifier, Number(position)).to_v8(scope)?),
       ),
-      TscRequest::FindRenameLocations(args) => (
-        "findRenameLocations",
-        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
-      ),
+      TscRequest::FindRenameLocations(args) => {
+        ("findRenameLocations", Some(args.to_v8(scope)?))
+      }
       TscRequest::GetSmartSelectionRange((specifier, position)) => (
         "getSmartSelectionRange",
         Some((specifier, Number(position)).to_v8(scope)?),

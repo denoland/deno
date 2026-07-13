@@ -380,36 +380,70 @@ fn empty_string_none<'de, D: serde::Deserializer<'de>>(
 }
 
 #[derive(
-  Debug, Default, Clone, Copy, Deserialize, Serialize, PartialEq, Eq,
+  Debug,
+  Default,
+  Clone,
+  Copy,
+  Deserialize,
+  Serialize,
+  PartialEq,
+  Eq,
+  deno_core::ToV8,
 )]
 #[serde(rename_all = "kebab-case")]
 pub enum ImportModuleSpecifier {
+  #[to_v8(rename = "non-relative")]
   NonRelative,
+  #[to_v8(rename = "project-relative")]
   ProjectRelative,
+  #[to_v8(rename = "relative")]
   Relative,
   #[default]
+  #[to_v8(rename = "shortest")]
   Shortest,
 }
 
 #[derive(
-  Debug, Default, Clone, Copy, Deserialize, Serialize, PartialEq, Eq,
+  Debug,
+  Default,
+  Clone,
+  Copy,
+  Deserialize,
+  Serialize,
+  PartialEq,
+  Eq,
+  deno_core::ToV8,
 )]
 #[serde(rename_all = "kebab-case")]
 pub enum JsxAttributeCompletionStyle {
   #[default]
+  #[to_v8(rename = "auto")]
   Auto,
+  #[to_v8(rename = "braces")]
   Braces,
+  #[to_v8(rename = "none")]
   None,
 }
 
 #[derive(
-  Debug, Default, Clone, Copy, Deserialize, Serialize, PartialEq, Eq,
+  Debug,
+  Default,
+  Clone,
+  Copy,
+  Deserialize,
+  Serialize,
+  PartialEq,
+  Eq,
+  deno_core::ToV8,
 )]
 #[serde(rename_all = "kebab-case")]
 pub enum QuoteStyle {
   #[default]
+  #[to_v8(rename = "auto")]
   Auto,
+  #[to_v8(rename = "double")]
   Double,
+  #[to_v8(rename = "single")]
   Single,
 }
 

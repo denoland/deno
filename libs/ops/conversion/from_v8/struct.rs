@@ -45,7 +45,8 @@ pub fn get_body(
       let fields = fields.into_iter().map(|field| {
         let field_name = field.name;
         let js_name = field.js_name.to_string();
-        let key = crate::get_internalized_string(field.js_name)?;
+        let key =
+          crate::get_internalized_string(&js_name, field.js_name.span())?;
 
         let undefined_as_none = if field.default_value.is_some() {
           quote! {

@@ -1,6 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use proc_macro2::Ident;
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::format_ident;
@@ -40,10 +39,10 @@ pub fn get_body(
       let tag_name = variant_attrs
         .rename
         .unwrap_or_else(|| camel_case(&variant_ident.unraw().to_string()));
-      let tag_value = crate::get_internalized_string(Ident::new(
+      let tag_value = crate::get_internalized_string(
         &tag_name,
         variant_ident.span(),
-      ))?;
+      )?;
 
       if variant.fields == Fields::Unit {
         let tag = match &mode {
@@ -272,11 +271,11 @@ impl EnumMode {
     match (tag, content) {
       (None, None) => Ok(EnumMode::ExternallyTagged),
       (Some(tag), None) => Ok(EnumMode::InternallyTagged {
-        tag: crate::get_internalized_string(Ident::new(&tag, span))?,
+        tag: crate::get_internalized_string(&tag, span)?,
       }),
       (Some(tag), Some(content)) => Ok(EnumMode::AdjacentlyTagged {
-        tag: crate::get_internalized_string(Ident::new(&tag, span))?,
-        content: crate::get_internalized_string(Ident::new(&content, span))?,
+        tag: crate::get_internalized_string(&tag, span)?,
+        content: crate::get_internalized_string(&content, span)?,
       }),
       (None, Some(_)) => Err(Error::new(
         Span::call_site(),

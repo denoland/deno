@@ -56,7 +56,8 @@ pub fn get_body(
     let field_name = field.name;
     let js_name = field.js_name.to_string();
     let context_prefix = format!("'{}' of '{}'", js_name, ident_string);
-    let key = crate::get_internalized_string(field.js_name)?;
+    let key =
+      crate::get_internalized_string(&js_name, field.js_name.span())?;
 
     let options = if field.converter_options.is_empty() {
       quote!(Default::default())
