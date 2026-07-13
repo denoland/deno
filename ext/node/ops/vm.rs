@@ -41,42 +41,6 @@ fn vm_host_defined_options<'s>(
   }
 }
 
-fn sanitize_internal_scheme_resource_name(
-  resource_name: &str,
-) -> Option<String> {
-  let (scheme, _) = resource_name.split_once(':')?;
-  if !scheme.eq_ignore_ascii_case("ext")
-    && !scheme.eq_ignore_ascii_case("node")
-    && !scheme.eq_ignore_ascii_case("checkin")
-  {
-    return None;
-  }
-  Some(format!("deno-vm:{resource_name}"))
-}
-
-fn sanitize_vm_resource_name<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  resource_name: v8::Local<'s, v8::Value>,
-) -> Option<v8::Local<'s, v8::Value>> {
-  let resource_name_string = resource_name.to_string(scope)?;
-  let resource_name_rust = resource_name_string.to_rust_string_lossy(scope);
-  let Some(sanitized) =
-    sanitize_internal_scheme_resource_name(&resource_name_rust)
-  else {
-    return Some(resource_name);
-  };
-  Some(v8::String::new(scope, &sanitized)?.into())
-}
-
-fn vm_resource_name_from_str<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  resource_name: &str,
-) -> Option<v8::Local<'s, v8::Value>> {
-  let resource_name = sanitize_internal_scheme_resource_name(resource_name)
-    .unwrap_or_else(|| resource_name.to_string());
-  Some(v8::String::new(scope, &resource_name)?.into())
-}
-
 #[op2(fast)]
 pub fn op_vm_dynamic_import_callback_register(
   scope: &mut v8::PinScope<'_, '_>,
@@ -144,7 +108,6 @@ impl ContextifyScript {
     let scope = &mut v8::ContextScope::new(scope, context);
     let host_defined_options =
       vm_host_defined_options(scope, import_module_dynamically_id);
-    let filename = sanitize_vm_resource_name(scope, filename)?;
     let origin = v8::ScriptOrigin::new(
       scope,
       filename,
@@ -1553,7 +1516,6 @@ pub fn op_vm_compile_function<'s>(
   let scope = &mut v8::ContextScope::new(scope, context);
   let host_defined_options =
     vm_host_defined_options(scope, import_module_dynamically_id);
-  let filename = sanitize_vm_resource_name(scope, filename)?;
   let origin = v8::ScriptOrigin::new(
     scope,
     filename,
@@ -1823,10 +1785,10 @@ pub fn op_vm_module_create_source_text_module<'a>(
   let scope = &mut v8::ContextScope::new(scope, context);
   let host_defined_options =
     vm_host_defined_options(scope, import_module_dynamically_id);
-  let filename = vm_resource_name_from_str(scope, &identifier)?;
+  let filename = v8::String::new(scope, &identifier)?;
   let origin = v8::ScriptOrigin::new(
     scope,
-    filename,
+    filename.into(),
     line_offset,
     column_offset,
     true,
