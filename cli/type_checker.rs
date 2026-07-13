@@ -276,20 +276,19 @@ impl TypeChecker {
   ///
   /// It is expected that it is determined if a check and/or emit is validated
   /// before the function is called.
-  /// Walk the module graph exactly as the in-process checker does, to collect
-  /// the tsc root set, deno's own graph diagnostics (missing modules + hints),
-  /// and the check hash — for the native (external tsc) check path in
-  /// `crate::tools::check`. The returned `TscRoots` is owned, so the borrows
-  /// only need to outlive this call.
+  /// Walk the module graph exactly as the in-process checker does — for the
+  /// native (external tsc) check path in `crate::tools::check`. Returns deno's
+  /// own graph diagnostics (missing modules + hints) plus a combined check hash
+  /// over every compiler-options group, with the pinned tsc version folded in.
+  /// Native check runs a single external tsc over the whole generated
+  /// `tsconfig.json`, so the per-group hashes are combined into one: a hit means
+  /// nothing the compiler sees has changed, and the spawn can be skipped.
   pub(crate) fn walk_graph_for_native_check(
     &self,
     graph: &ModuleGraph,
-    compiler_options: &CompilerOptions,
-    imports: &[Url],
-    referrer: &Url,
-    roots: &[Url],
+    lib: TsTypeLib,
     type_check_mode: TypeCheckMode,
-  ) -> TscRoots {
+  ) -> Result<(tsc::Diagnostics, Option<CacheDBHash>), CheckError> {
     // Packages importable by bare specifier (workspace members + `links`),
     // used to enhance import errors. TODO: also chain `links` packages to match
     // `check_diagnostics` exactly.
@@ -299,24 +298,40 @@ impl TypeChecker {
       .resolver_jsr_pkgs()
       .map(|pkg| pkg.name)
       .collect();
-    let mut walker = GraphWalker::new(
-      graph,
-      &self.sys,
-      &self.node_resolver,
-      &self.npm_resolver,
-      &self.compiler_options_resolver,
-      &bare_importable_pkg_names,
-      check_state_hash(&self.npm_resolver),
-      compiler_options,
-      type_check_mode,
-    );
-    for import in imports {
-      walker.add_config_import(import, referrer);
+    let npm_check_state_hash = check_state_hash(&self.npm_resolver);
+    let groups = self.group_roots_by_compiler_options(graph, lib)?;
+    let mut missing_diagnostics = tsc::Diagnostics::default();
+    let mut combined = FastInsecureHasher::new_deno_versioned();
+    combined.write_hashable(crate::tsc::native::TYPESCRIPT_VERSION);
+    let mut any_hash = false;
+    for group in groups {
+      let mut walker = GraphWalker::new(
+        graph,
+        &self.sys,
+        &self.node_resolver,
+        &self.npm_resolver,
+        &self.compiler_options_resolver,
+        &bare_importable_pkg_names,
+        npm_check_state_hash,
+        group.compiler_options.as_ref(),
+        type_check_mode,
+      );
+      for import in group.imports.iter() {
+        walker.add_config_import(import, &group.referrer);
+      }
+      for root in &group.roots {
+        walker.add_root(root);
+      }
+      let tsc_roots = walker.into_tsc_roots();
+      missing_diagnostics.extend(tsc_roots.missing_diagnostics);
+      if let Some(hash) = tsc_roots.maybe_check_hash {
+        combined.write_hashable(hash);
+        any_hash = true;
+      }
     }
-    for root in roots {
-      walker.add_root(root);
-    }
-    walker.into_tsc_roots()
+    let maybe_check_hash =
+      any_hash.then(|| CacheDBHash::new(combined.finish()));
+    Ok((missing_diagnostics, maybe_check_hash))
   }
 
   /// The type-check cache, used by the native check path to skip re-running the

@@ -14,6 +14,7 @@ use regex::Regex;
 use crate::args::CheckFlags;
 use crate::args::Flags;
 use crate::args::SyncTypesFlags;
+use crate::args::TypeCheckModeExt;
 use crate::factory::CliFactory;
 use crate::tsc::Diagnostic;
 use crate::tsc::DiagnosticCategory;
@@ -61,11 +62,77 @@ async fn native_check(
     );
   }
 
-  // Generate the tsconfig.json and materialize dependency types so the native
-  // compiler can resolve the project's jsr:/npm:/http(s): imports. Scope
-  // dependency discovery to the files being checked (empty = whole project).
-  // Suppress sync-types' own progress/summary output (it's an internal step
-  // here) so it doesn't precede the type-check diagnostics.
+  let factory = CliFactory::from_flags(flags.clone());
+  let cli_options = factory.cli_options()?;
+  let project_root = cli_options
+    .workspace()
+    .root_dir_url()
+    .to_file_path()
+    .map_err(|_| {
+      deno_core::anyhow::anyhow!("workspace root is not a local directory")
+    })?;
+
+  // Build the module graph over the requested roots (or the whole project).
+  // Deno owns resolution: this drives deno's own graph diagnostics (missing
+  // modules + hints) and the incremental type-check cache, so we can skip the
+  // external compiler entirely when nothing it sees has changed.
+  let has_explicit_roots = !check_flags.files.is_empty();
+  let root_patterns = if has_explicit_roots {
+    check_flags.files.clone()
+  } else {
+    vec![".".to_string()]
+  };
+  let graph_container = factory.main_module_graph_container().await?;
+  let roots = graph_container.collect_specifiers(
+    &root_patterns,
+    crate::graph_container::CollectSpecifiersOptions {
+      include_ignored_specified: has_explicit_roots,
+    },
+  )?;
+  let graph_kind = cli_options.type_check_mode().as_graph_kind();
+  let imports = factory
+    .module_graph_builder()
+    .await?
+    .maybe_resolve_ts_config_imports(graph_kind);
+  let graph = factory
+    .module_graph_creator()
+    .await?
+    .create_graph_with_options(crate::graph_util::CreateGraphOptions {
+      is_dynamic: false,
+      graph_kind,
+      roots,
+      imports,
+      loader: None,
+      npm_caching: cli_options.default_npm_caching_strategy(),
+    })
+    .await?;
+
+  // Walk the graph exactly as the in-process checker does: collect deno's own
+  // diagnostics + the combined check hash (tsc version folded in).
+  let type_checker = factory.type_checker().await?;
+  let (missing_diagnostics, maybe_check_hash) = type_checker
+    .walk_graph_for_native_check(
+      &graph,
+      cli_options.ts_type_lib_window(),
+      cli_options.type_check_mode(),
+    )?;
+  let type_check_cache = type_checker.type_check_cache();
+
+  // Cache hit with no deno-side errors: nothing the compiler sees has changed,
+  // so skip both the (expensive) type materialization and the tsc spawn.
+  if !cli_options.reload_flag()
+    && !missing_diagnostics.has_diagnostic()
+    && let Some(check_hash) = maybe_check_hash
+    && type_check_cache.has_check_hash(check_hash)
+  {
+    log::debug!("Already type checked (native tsc)");
+    return Ok(());
+  }
+
+  // Cache miss: generate the tsconfig.json and materialize dependency types so
+  // the native compiler can resolve the project's jsr:/npm:/http(s): imports.
+  // Suppress sync-types' own progress/summary output (an internal step here) so
+  // it doesn't precede the type-check diagnostics.
   let prev_level = log::max_level();
   log::set_max_level(log::LevelFilter::Error);
   let sync_result = crate::tools::installer::sync_types_command(
@@ -79,17 +146,7 @@ async fn native_check(
   log::set_max_level(prev_level);
   sync_result?;
 
-  let factory = CliFactory::from_flags(flags.clone());
   let tsc_path = ensure_native_tsc_downloaded(&factory).await?;
-
-  let cli_options = factory.cli_options()?;
-  let project_root = cli_options
-    .workspace()
-    .root_dir_url()
-    .to_file_path()
-    .map_err(|_| {
-      deno_core::anyhow::anyhow!("workspace root is not a local directory")
-    })?;
 
   // Point tsc at the user's root `tsconfig.json` (which now extends
   // `.deno/tsconfig.json`) only when Deno is honoring it; otherwise use the
@@ -143,12 +200,17 @@ async fn native_check(
 
   let stdout = String::from_utf8_lossy(&output.stdout);
   let stderr = String::from_utf8_lossy(&output.stderr);
-  let diagnostics =
+  let tsc_diagnostics =
     Diagnostics::from(parse_tsc_diagnostics(&stdout, &project_root));
 
   // Captured for an upcoming "Checked N files" summary; not surfaced yet.
   let stats = parse_tsc_stats(&stdout);
   log::debug!("native tsc {stats:?}");
+
+  // Additively merge deno's own graph diagnostics (missing modules + hints)
+  // with tsc's — deno adds, never hides tsc's. Deno's come first, then tsc's.
+  let mut diagnostics = missing_diagnostics;
+  diagnostics.extend(tsc_diagnostics);
 
   if diagnostics.has_diagnostic() {
     log::error!("{}\n", diagnostics);
@@ -174,6 +236,11 @@ async fn native_check(
         format!(":\n{detail}")
       }
     ));
+  }
+
+  // Type-checked clean: record the hash so an unchanged re-check skips tsc.
+  if let Some(check_hash) = maybe_check_hash {
+    type_check_cache.add_check_hash(check_hash);
   }
 
   Ok(())
