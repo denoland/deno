@@ -123,6 +123,33 @@ impl deno_core::error::ErrorFormat for AnsiColors {
   }
 }
 
+fn source_line_prefix(source_line: &str, column_utf16: u64) -> Option<String> {
+  let mut current_utf16 = 0;
+  let mut prefix = String::new();
+
+  for c in source_line.chars() {
+    if current_utf16 == column_utf16 {
+      return Some(prefix);
+    }
+
+    let next_utf16 = current_utf16 + c.len_utf16() as u64;
+    if next_utf16 > column_utf16 {
+      return None;
+    }
+
+    if c == '\t' {
+      prefix.push('\t');
+    } else {
+      for _ in 0..c.len_utf16() {
+        prefix.push(' ');
+      }
+    }
+    current_utf16 = next_utf16;
+  }
+
+  (current_utf16 == column_utf16).then_some(prefix)
+}
+
 /// Take an optional source line and associated information to format it into
 /// a pretty printed version of that line.
 fn format_maybe_source_line(
@@ -145,24 +172,19 @@ fn format_maybe_source_line(
     return format!("\n{source_line}");
   }
 
-  let mut s = String::new();
   let column_number = column_number.unwrap();
-
-  if column_number as usize > source_line.len() {
+  let prefix = column_number
+    .checked_sub(1)
+    .and_then(|column| u64::try_from(column).ok())
+    .and_then(|column| source_line_prefix(source_line, column));
+  let Some(mut s) = prefix else {
     return format!(
       "\n{} Couldn't format source line: Column {} is out of bounds (source may have changed at runtime)",
       colors::yellow("Warning"),
       column_number,
     );
-  }
+  };
 
-  for _i in 0..(column_number - 1) {
-    if source_line.chars().nth(_i as usize).unwrap() == '\t' {
-      s.push('\t');
-    } else {
-      s.push(' ');
-    }
-  }
   s.push('^');
   let color_underline = if is_error {
     colors::red(&s).to_string()
@@ -701,6 +723,21 @@ mod tests {
     assert_eq!(
       strip_ansi_codes(&actual),
       "\nconsole.log(\'foo\');\n        ^"
+    );
+  }
+
+  #[test]
+  fn test_format_source_line_utf16_column() {
+    let actual = format_maybe_source_line(Some("\t😀foo();"), Some(4), true, 0);
+    assert_eq!(strip_ansi_codes(&actual), "\n\t😀foo();\n\t  ^");
+  }
+
+  #[test]
+  fn test_format_source_line_invalid_utf16_column() {
+    let actual = format_maybe_source_line(Some("😀foo();"), Some(2), true, 0);
+    assert_eq!(
+      strip_ansi_codes(&actual),
+      "\nWarning Couldn't format source line: Column 2 is out of bounds (source may have changed at runtime)"
     );
   }
 }
