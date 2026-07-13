@@ -233,11 +233,10 @@ fn get_untagged_body(
 
     match &variant.fields {
       Fields::Unit => {
-        attempts.push(quote! {
-          if __value.is_null_or_undefined() {
-            return Ok(Self::#variant_ident);
-          }
-        });
+        attempts.push((
+          quote! { __value.is_null_or_undefined() },
+          quote! { Ok(Self::#variant_ident) },
+        ));
       }
       Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
         if variant_attrs.serde {
@@ -250,14 +249,15 @@ fn get_untagged_body(
           ));
         }
         let field_ty = &fields.unnamed.first().unwrap().ty;
-        attempts.push(quote! {
-          if <#field_ty as ::deno_core::convert::UntaggedProbe>::probe(__value) {
-            return Ok(Self::#variant_ident(
+        attempts.push((
+          quote! { <#field_ty as ::deno_core::convert::UntaggedProbe>::probe(__value) },
+          quote! {
+            Ok(Self::#variant_ident(
               ::deno_core::convert::FromV8::from_v8(__scope, __value)
                 .map_err(::deno_error::JsErrorBox::from_err)?,
-            ));
-          }
-        });
+            ))
+          },
+        ));
       }
       _ => {
         return Err(Error::new(
@@ -269,13 +269,22 @@ fn get_untagged_body(
     }
   }
 
-  Ok(quote! {
-    #(#attempts)*
-
+  let no_match = quote! {
     Err(::deno_error::JsErrorBox::type_error(
       concat!("Value did not match any variant of '", #ident_string, "'"),
     ))
-  })
+  };
+
+  // `rest` starts as a braced block (valid directly after `else`) and each
+  // fold step chains `else #rest` onto the previous `if` without wrapping it
+  // in another block, so the result prints as a flat `if / else if / ... /
+  // else` chain instead of nested `else { if ... }`.
+  let mut rest = quote! { { #no_match } };
+  for (cond, body) in attempts.into_iter().rev() {
+    rest = quote! { if #cond { #body } else #rest };
+  }
+
+  Ok(rest)
 }
 
 struct EnumVariantAttribute {

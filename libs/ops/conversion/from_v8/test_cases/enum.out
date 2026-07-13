@@ -139,28 +139,27 @@ impl<'a> ::deno_core::convert::FromV8<'a> for UntaggedEnum {
         __value: ::deno_core::v8::Local<'a, ::deno_core::v8::Value>,
     ) -> Result<Self, Self::Error> {
         if __value.is_null_or_undefined() {
-            return Ok(Self::Nothing);
-        }
-        if <f64 as ::deno_core::convert::UntaggedProbe>::probe(__value) {
-            return Ok(
+            Ok(Self::Nothing)
+        } else if <f64 as ::deno_core::convert::UntaggedProbe>::probe(__value) {
+            Ok(
                 Self::Number(
                     ::deno_core::convert::FromV8::from_v8(__scope, __value)
                         .map_err(::deno_error::JsErrorBox::from_err)?,
                 ),
-            );
-        }
-        if <String as ::deno_core::convert::UntaggedProbe>::probe(__value) {
-            return Ok(
+            )
+        } else if <String as ::deno_core::convert::UntaggedProbe>::probe(__value) {
+            Ok(
                 Self::Text(
                     ::deno_core::convert::FromV8::from_v8(__scope, __value)
                         .map_err(::deno_error::JsErrorBox::from_err)?,
                 ),
-            );
+            )
+        } else {
+            Err(
+                ::deno_error::JsErrorBox::type_error(
+                    concat!("Value did not match any variant of '", "UntaggedEnum", "'"),
+                ),
+            )
         }
-        Err(
-            ::deno_error::JsErrorBox::type_error(
-                concat!("Value did not match any variant of '", "UntaggedEnum", "'"),
-            ),
-        )
     }
 }
