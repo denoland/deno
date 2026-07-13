@@ -1,11 +1,16 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 const EXPECTED_OP_COUNT = 41;
+const EXPECTED_WORKER_OP_COUNT = 19;
 
-Deno.test(function checkExposedOps() {
+function getExposedOpNames(): string[] {
   // @ts-ignore TS doesn't allow to index with symbol
   const core = Deno[Deno.internal].core;
-  const opNames = Object.keys(core.ops);
+  return Object.keys(core.ops);
+}
+
+Deno.test(function checkExposedOps() {
+  const opNames = getExposedOpNames();
 
   if (opNames.length !== EXPECTED_OP_COUNT) {
     throw new Error(
@@ -16,22 +21,32 @@ Deno.test(function checkExposedOps() {
   }
 });
 Deno.test(async function workerDoesNotExposeImportedOps() {
+  const mainOpNames = getExposedOpNames();
   const worker = new Worker(
     `data:application/javascript,${
       encodeURIComponent(`
         // @ts-ignore TS doesn't allow to index with symbol
         const core = Deno[Deno.internal].core;
-        postMessage(typeof core.ops.op_node_ipc_ref);
+        postMessage(Object.keys(core.ops));
       `)
     }`,
     { type: "module" },
   );
-  const result = await new Promise((resolve, reject) => {
-    worker.onmessage = (event) => resolve(event.data);
-    worker.onerror = (event) => reject(event.error);
-  });
-  worker.terminate();
-  if (result !== "undefined") {
-    throw new Error(`op_node_ipc_ref unexpectedly exposed: ${result}`);
+  let actualOpNames: string[];
+  try {
+    actualOpNames = await new Promise((resolve, reject) => {
+      worker.onmessage = (event) => resolve(event.data);
+      worker.onerror = (event) => reject(event.error);
+    });
+  } finally {
+    worker.terminate();
+  }
+  if (
+    actualOpNames.length !== EXPECTED_WORKER_OP_COUNT ||
+    actualOpNames.some((opName) => !mainOpNames.includes(opName))
+  ) {
+    throw new Error(
+      `Unexpected worker ops:\n${actualOpNames.join("\n")}`,
+    );
   }
 });
