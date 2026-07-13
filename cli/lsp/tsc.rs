@@ -1932,7 +1932,9 @@ impl From<ScriptElementKind> for lsp::SymbolKind {
   }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(
+  Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash, deno_core::ToV8,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct TextSpan {
   pub start: u32,
@@ -6649,7 +6651,7 @@ impl TscRequest {
       ),
       TscRequest::GetEncodedSemanticClassifications(args) => (
         "getEncodedSemanticClassifications",
-        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
+        Some(args.to_v8(scope)?),
       ),
       TscRequest::GetSignatureHelpItems((specifier, position, options)) => (
         "getSignatureHelpItems",
@@ -6659,6 +6661,8 @@ impl TscRequest {
         "getNavigateToItems",
         Some((search, max_result_count.map(Number), file).to_v8(scope)?),
       ),
+      // Blocked on `UserPreferences` growing a `ToV8` impl (in flight,
+      // separate PR): args is `(String, TextSpan, UserPreferences)`.
       TscRequest::ProvideInlayHints(args) => (
         "provideInlayHints",
         Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
