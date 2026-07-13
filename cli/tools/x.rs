@@ -86,6 +86,78 @@ fn config_flag_arg(flags: &Flags, initial_cwd: &Path) -> Option<String> {
   }
 }
 
+/// Like [`config_flag_arg`], but for the npm auto-install re-run which executes
+/// the *installed bin file* (under `deno_dir/deno_x_cache/...`).
+///
+/// That child's config auto-discovery anchors on the installed file's directory,
+/// NEVER the user's cwd, so an original `ConfigFlag::Discover` cannot see the
+/// user's cwd `deno.json` (it finds the internal temp `deno.json` instead). To
+/// match `deno run npm:<pkg>` — which discovers the cwd config and applies e.g.
+/// its permission sets — resolve `Discover` to the user's actually-discovered
+/// config path and forward it explicitly (issue #35991). Explicit `Path`/
+/// `Disabled` selections are forwarded exactly as [`config_flag_arg`] does.
+fn config_flag_arg_for_installed_bin(
+  flags: &Flags,
+  cli_options: &crate::args::CliOptions,
+) -> Option<String> {
+  if matches!(flags.config_flag, ConfigFlag::Discover) {
+    return cli_options
+      .start_dir
+      .member_or_root_deno_json()
+      .and_then(|config| {
+        deno_path_util::url_to_file_path(&config.specifier).ok()
+      })
+      .map(|path| format!("--config={}", path.display()));
+  }
+  config_flag_arg(flags, cli_options.initial_cwd())
+}
+
+/// Renders the user's explicit `-P`/`--permission-set=<name>` selection for the
+/// re-run `deno run <target>` subprocess argv.
+///
+/// A permission set is resolved from the (discovered or explicit) config file at
+/// runtime and is NOT baked into `flags.permissions`, so `to_permission_args()`
+/// does not forward it. Without forwarding the selection, the subprocess would
+/// run with no permission set and fail with `NotCapable`, diverging from
+/// `deno run --permission-set=<name> <target>` (issue #35991). A bare `-P`
+/// resolves to `Some("")` (the default set), which round-trips as
+/// `--permission-set=`.
+fn permission_set_flag_arg(flags: &Flags) -> Option<String> {
+  flags
+    .permission_set
+    .as_ref()
+    .map(|name| format!("--permission-set={}", name))
+}
+
+/// Computes the extra `deno run` arguments that carry the user's ORIGINAL CLI
+/// selections into a re-run subprocess argv: the explicit
+/// `--minimum-dependency-age` flag, the `--config`/`--no-config` selection
+/// (passed in as `config_arg`, since it differs by re-run site — see callers),
+/// and the `-P`/`--permission-set` selection.
+///
+/// These MUST be computed from the user's original `flags`/`cli_options`, never
+/// from the internal runner flags used for npm auto-install: those overwrite
+/// `config_flag` with a generated temp `deno.json` path (see
+/// `autoinstall_package::make_new_flags`), which would forward the internal
+/// config instead of the user's explicit `--config` — or forward a config at all
+/// when the user relied on auto-discovery (issue #35991).
+fn forwarded_run_args(
+  flags: &Flags,
+  config_arg: Option<String>,
+) -> Vec<String> {
+  let mut args = Vec::new();
+  if let Some(arg) = minimum_dependency_age_flag_arg(flags) {
+    args.push(arg);
+  }
+  if let Some(arg) = config_arg {
+    args.push(arg);
+  }
+  if let Some(arg) = permission_set_flag_arg(flags) {
+    args.push(arg);
+  }
+  args
+}
+
 /// Serializes the effective minimum dependency age policy (age + exclude) into
 /// the object form understood by `to_minimum_dependency_age_config`, so the
 /// full policy can be written into the generated temp `deno.json` used for
@@ -232,20 +304,19 @@ pub(crate) fn run_bin_value(
   bin_value: BinValue,
   npm_process_state: Option<String>,
   unstable_args: &[String],
+  // Extra `deno run` args carrying the user's ORIGINAL CLI selections (config,
+  // minimum-dependency-age, permission-set). Computed by the caller from the
+  // original flags/cwd via `forwarded_run_args`, NOT from `flags` here: in the
+  // npm auto-install path `flags` is the internal runner flags whose
+  // `config_flag` points at a generated temp `deno.json` (issue #35991).
+  forwarded_args: &[String],
 ) -> Result<i32, AnyError> {
   match bin_value {
     BinValue::JsFile(path_buf) => {
       let path = deno_path_util::url_from_file_path(path_buf.as_ref())?;
       let mut deno_args = flags.to_permission_args();
       deno_args.extend(unstable_args.iter().cloned());
-      if let Some(arg) = minimum_dependency_age_flag_arg(flags) {
-        deno_args.push(arg);
-      }
-      if let Some(arg) =
-        config_flag_arg(flags, factory.cli_options()?.initial_cwd())
-      {
-        deno_args.push(arg);
-      }
+      deno_args.extend(forwarded_args.iter().cloned());
 
       run_js_file(&path, &deno_args, &flags.argv, npm_process_state, true)
     }
@@ -315,6 +386,7 @@ async fn maybe_run_local_npm_bin(
   npm_resolver: &CliNpmResolver,
   command: &str,
   unstable_args: &[String],
+  forwarded_args: &[String],
 ) -> Result<Option<i32>, AnyError> {
   let mut bins =
     resolve_local_bins(node_resolver, npm_resolver, factory).await?;
@@ -334,8 +406,15 @@ async fn maybe_run_local_npm_bin(
   };
 
   let npm_process_state = get_npm_process_state(npm_resolver);
-  run_bin_value(factory, flags, bin_value, npm_process_state, unstable_args)
-    .map(Some)
+  run_bin_value(
+    factory,
+    flags,
+    bin_value,
+    npm_process_state,
+    unstable_args,
+    forwarded_args,
+  )
+  .map(Some)
 }
 
 enum XTempDir {
@@ -474,6 +553,25 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
   let unstable_args = cli_options.unstable_args();
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
+  // Extra `deno run` args forwarded to every re-run subprocess, computed ONCE
+  // from the user's ORIGINAL flags/cwd (never the internal npm-install runner
+  // flags, whose `config_flag` points at a generated temp deno.json). See
+  // `forwarded_run_args` (issue #35991). Two variants, differing only in how the
+  // `--config` selection is rendered:
+  //  - `forwarded_bin` for `run_bin_value` (executes the installed bin FILE):
+  //    resolves `Discover` to the user's discovered config path, since that
+  //    child cannot auto-discover the cwd config from the install dir.
+  //  - `forwarded_url` for the jsr/url re-run (executes a jsr:/url main module):
+  //    keeps `Discover` as "forward nothing", matching how `deno run` discovers
+  //    (or doesn't) the cwd config for those main-module types.
+  let forwarded_bin = forwarded_run_args(
+    &flags,
+    config_flag_arg_for_installed_bin(&flags, cli_options),
+  );
+  let forwarded_url = forwarded_run_args(
+    &flags,
+    config_flag_arg(&flags, cli_options.initial_cwd()),
+  );
   let result = maybe_run_local_npm_bin(
     &factory,
     &flags,
@@ -481,6 +579,7 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
     npm_resolver,
     &command_flags.command,
     &unstable_args,
+    &forwarded_bin,
   )
   .await?;
   if let Some(exit_code) = result {
@@ -568,6 +667,7 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
             bin_value,
             npm_process_state,
             &unstable_args,
+            &forwarded_bin,
           );
         }
       }
@@ -605,6 +705,7 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
         runner_npm_resolver,
         bin_name,
         &unstable_args,
+        &forwarded_bin,
       )
       .await?;
       if let Some(exit_code) = res {
@@ -631,6 +732,7 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
             runner_npm_resolver,
             fallback_name.as_ref(),
             &unstable_args,
+            &forwarded_bin,
           )
           .await?
         {
@@ -665,12 +767,7 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
 
       let mut deno_args = flags.to_permission_args();
       deno_args.extend(unstable_args.iter().cloned());
-      if let Some(arg) = minimum_dependency_age_flag_arg(&flags) {
-        deno_args.push(arg);
-      }
-      if let Some(arg) = config_flag_arg(&flags, cli_options.initial_cwd()) {
-        deno_args.push(arg);
-      }
+      deno_args.extend(forwarded_url.iter().cloned());
       let url =
         deno_core::url::Url::parse(&jsr_package_req_reference.to_string())?;
       run_js_file(&url, &deno_args, &flags.argv, npm_process_state, false)
@@ -678,12 +775,7 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
     ReqRefOrUrl::Url(url) => {
       let mut deno_args = flags.to_permission_args();
       deno_args.extend(unstable_args.iter().cloned());
-      if let Some(arg) = minimum_dependency_age_flag_arg(&flags) {
-        deno_args.push(arg);
-      }
-      if let Some(arg) = config_flag_arg(&flags, cli_options.initial_cwd()) {
-        deno_args.push(arg);
-      }
+      deno_args.extend(forwarded_url.iter().cloned());
       run_js_file(&url, &deno_args, &flags.argv, None, false)
     }
   }
