@@ -1,4 +1,4 @@
-Check [WILDCARD]mod.ts
+Check (tsc [WILDLINE])
 TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
 const test: string = add(1, 2);
       ~~~~

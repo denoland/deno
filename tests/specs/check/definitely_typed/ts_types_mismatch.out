@@ -1,4 +1,4 @@
-Check [WILDCARD]ts_types.ts
+Check (tsc [WILDLINE])
 TS2322 [ERROR]: Type 'string' is not assignable to type 'boolean'.
 const _res: boolean = foo(1, 2);
       ~~~~

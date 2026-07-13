@@ -1,4 +1,4 @@
-Check [WILDCARD]resolution_mode_import.mts
+Check (tsc [WILDLINE])
 TS2322 [ERROR]: Type '"other"' is not assignable to type '"mjs"'.
 const test: typeof kind = "other";
       ~~~~

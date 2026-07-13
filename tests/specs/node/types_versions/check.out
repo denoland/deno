@@ -1,4 +1,4 @@
-Check [WILDCARD]main.ts
+Check (tsc [WILDLINE])
 TS2322 [ERROR]: Type '"expected"' is not assignable to type '"not"'.
   const local: "not" = pkg.value;
         ~~~~~

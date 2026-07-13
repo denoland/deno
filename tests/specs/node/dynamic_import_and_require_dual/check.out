@@ -1,4 +1,4 @@
-Check [WILDCARD]index.cts
+Check (tsc [WILDLINE])
 TS2322 [ERROR]: Type '"mjs"' is not assignable to type '"value"'.
   const value: "value" = mod.kind;
         ~~~~~
