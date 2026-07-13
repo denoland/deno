@@ -859,6 +859,45 @@ fn strip_trailing_cr(arg: OsString) -> OsString {
   }
 }
 
+/// Fast path for `deno run <file> [script args...]` with no deno-level flags
+/// before the file. Building the parse tree / walking the parser costs a couple
+/// microseconds; for the overwhelmingly common bare-run case we skip it and
+/// build `RunFlags` directly. Any deno flag before the file (anything starting
+/// with `-`, or `-` itself) falls through to the full parser. `args` must be
+/// already `\r`-stripped and dx-shimmed. Returns `None` when the fast path does
+/// not apply. Must stay output-identical to the full parse (see the
+/// `fast_path_matches_full_parse` test).
+fn bare_run_fast_path(args: &[OsString]) -> Option<Flags> {
+  if args.len() >= 3
+    && args[1] == "run"
+    && args[2] != "-"
+    && args[2].as_encoded_bytes().first() != Some(&b'-')
+    && let Some(script) = args[2].to_str()
+  {
+    let argv = args[3..]
+      .iter()
+      .map(|a| a.to_string_lossy().into_owned())
+      .collect::<Vec<_>>();
+    let mut flags = Flags {
+      subcommand: DenoSubcommand::Run(RunFlags {
+        script: script.to_string(),
+        bare: false,
+        coverage_dir: None,
+        print_task_list: false,
+      }),
+      argv,
+      // Matches the full `run_parse`: no `--no-code-cache` flag before the
+      // file resolves code caching to enabled.
+      code_cache_enabled: true,
+      ..Default::default()
+    };
+    apply_node_options(&mut flags);
+    Some(flags)
+  } else {
+    None
+  }
+}
+
 /// Main entry point for parsing deno's command line flags. Routes through the
 /// hand-written `deno_cli_parser`; the `Flags` type is shared between this
 /// crate and the parser crate (`pub use deno_cli_parser::flags::*`), so no
@@ -868,6 +907,13 @@ pub fn flags_from_vec_with_initial_cwd(
   args: Vec<OsString>,
   initial_cwd: Option<PathBuf>,
 ) -> clap::error::Result<Flags> {
+  // Strip a trailing `\r` from each arg so a CRLF-shebang script isn't poisoned
+  // by a stray carriage return. The hand-written parser also does this
+  // internally; doing it here first keeps the fast path below consistent with
+  // the full parse. (`deno_cli_parser::convert::flags_from_vec` re-strips, which
+  // is a no-op on already-stripped args.)
+  let args: Vec<OsString> = args.into_iter().map(strip_trailing_cr).collect();
+
   // dx/denox/dnx shim: rewrite the binary name into an explicit `x` subcommand
   // before parsing (the hand-written parser doesn't special-case argv[0]).
   let args = if !args.is_empty()
@@ -883,6 +929,15 @@ pub fn flags_from_vec_with_initial_cwd(
   } else {
     args
   };
+
+  // Fast path for the overwhelmingly common `deno run <file> [args...]` with no
+  // deno-level flags before the file: build `RunFlags` directly and skip the
+  // parser entirely. `bare_run_fast_path` produces output identical to the full
+  // parse (asserted by `fast_path_matches_full_parse`).
+  if let Some(mut flags) = bare_run_fast_path(&args) {
+    flags.initial_cwd = initial_cwd;
+    return Ok(flags);
+  }
 
   // The hand-written parser works on `String`s, whereas clap consumed
   // `OsString` natively. Args are almost always UTF-8; the lossy conversion is
@@ -932,13 +987,14 @@ fn cli_error_to_clap(e: deno_cli_parser::CliError) -> clap::Error {
 
 /// Legacy clap-based flag parser. Production parsing now routes through the
 /// hand-written `deno_cli_parser` (see `flags_from_vec_with_initial_cwd`); this
-/// is retained to keep the clap parity `mod tests` exercising clap until the
-/// clap parser is removed.
+/// is retained to keep the clap parity `mod tests` exercising clap (and the
+/// `cli/benches/flags.rs` clap-vs-new comparison) until the clap parser is
+/// removed.
 #[allow(
   dead_code,
   reason = "clap parser kept for its mod tests until it is removed in a follow-up"
 )]
-fn clap_flags_from_vec_with_initial_cwd(
+pub fn clap_flags_from_vec_with_initial_cwd(
   args: Vec<OsString>,
   initial_cwd: Option<PathBuf>,
 ) -> clap::error::Result<Flags> {
@@ -8919,6 +8975,54 @@ mod tests {
   // exercising the clap parser directly until clap is removed.
   fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
     clap_flags_from_vec_with_initial_cwd(args, None)
+  }
+
+  /// The bare-run fast path in `flags_from_vec_with_initial_cwd` bypasses the
+  /// parser and builds `RunFlags` by hand, so it must produce output identical
+  /// to running the args through the full hand-written parser. Assert that for
+  /// every case where the fast path fires, and assert it correctly declines
+  /// (returns `None`) when any deno-level flag precedes the script.
+  #[test]
+  fn fast_path_matches_full_parse() {
+    // Cases where the fast path SHOULD fire; its output must equal the full
+    // parse (neither sets `initial_cwd`, so both default to `None`).
+    let fires: &[&[&str]] = &[
+      &["deno", "run", "script.ts"],
+      &["deno", "run", "./path/to/mod.ts"],
+      &["deno", "run", "script.ts", "a", "b"],
+      &["deno", "run", "script.ts", "--", "--foo", "-x"],
+      &["deno", "run", "https://example.com/mod.ts", "arg"],
+    ];
+    for case in fires {
+      let os_args: Vec<OsString> = case.iter().map(OsString::from).collect();
+      let fast = bare_run_fast_path(&os_args).unwrap_or_else(|| {
+        panic!("fast path should fire for {case:?}");
+      });
+      let string_args: Vec<String> =
+        case.iter().map(|s| s.to_string()).collect();
+      let full = deno_cli_parser::convert::flags_from_vec(string_args)
+        .unwrap_or_else(|e| panic!("full parse failed for {case:?}: {e:?}"));
+      assert_eq!(
+        fast, full,
+        "fast path diverged from full parse for {case:?}"
+      );
+    }
+
+    // Cases where the fast path must decline and fall through to the parser.
+    let declines: &[&[&str]] = &[
+      &["deno", "run"],                    // no script
+      &["deno", "run", "-"],               // stdin
+      &["deno", "run", "-A", "script.ts"], // flag before script
+      &["deno", "run", "--watch", "s.ts"], // flag before script
+      &["deno", "test", "script.ts"],      // not `run`
+    ];
+    for case in declines {
+      let os_args: Vec<OsString> = case.iter().map(OsString::from).collect();
+      assert!(
+        bare_run_fast_path(&os_args).is_none(),
+        "fast path should decline for {case:?}"
+      );
+    }
   }
 
   #[test]

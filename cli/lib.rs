@@ -71,7 +71,12 @@ use crate::args::CompletionsFlags;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::FlagsExt;
+// Re-exported for the clap-vs-new-parser comparison in `cli/benches/flags.rs`.
+#[doc(hidden)]
+pub use crate::args::clap_flags_from_vec_with_initial_cwd;
 use crate::args::flags_from_vec_with_initial_cwd;
+#[doc(hidden)]
+pub use crate::args::flags_from_vec_with_initial_cwd as flags_from_vec_new;
 use crate::args::get_default_v8_flags;
 use crate::util::display;
 use crate::util::env::WatchEnvTracker;

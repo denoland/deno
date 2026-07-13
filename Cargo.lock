@@ -1948,6 +1948,7 @@ dependencies = [
  "clap_complete_fig",
  "color-print",
  "console_static_text",
+ "criterion",
  "crossterm",
  "dashmap",
  "deno_ast",
@@ -2222,6 +2223,7 @@ dependencies = [
 name = "deno_cli_parser"
 version = "0.4.0"
 dependencies = [
+ "criterion",
  "deno_bundle_runtime",
  "deno_config",
  "deno_core",
