@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_DIR": "$PWD/deno_dir"
+  },
+  "steps": [{
+    // Regression guard for #35991: with a cwd deno.json age cutoff, `deno x`
+    // must resolve the SAME version as `deno run jsr:@denotest/x-min-dep-age`.
+    // A directly-run `jsr:` specifier is not subject to the deno.json age
+    // cutoff, so the newest version (2.0.0) runs. `deno x` must NOT forward the
+    // config as an explicit flag (which would wrongly filter to 1.0.0).
+    "args": "x -y jsr:@denotest/x-min-dep-age",
+    "output": "[WILDCARD]\n2.0.0\n"
+  }]
+}

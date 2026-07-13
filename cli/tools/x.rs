@@ -6,9 +6,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_cache_dir::file_fetcher::CacheSetting;
+use deno_config::deno_json::MinimumDependencyAgeConfig;
+use deno_config::deno_json::NewestDependencyDate;
 use deno_core::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
 use deno_npm_installer::PackagesAllowedScripts;
 use deno_runtime::deno_permissions::PathQueryDescriptor;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -30,6 +33,44 @@ use crate::util::console::ConfirmOptions;
 use crate::util::console::confirm;
 use crate::util::draw_thread::DrawThread;
 use crate::util::fs::canonicalize_path;
+
+/// Renders the `--minimum-dependency-age` argument for the re-run `deno run`
+/// subprocess, but only when the user passed the flag EXPLICITLY on the CLI.
+///
+/// `deno x` executes the target as a `deno run <target>` subprocess in the
+/// user's cwd, so it re-discovers the cwd `deno.json` `minimumDependencyAge`
+/// (including its `exclude`) and `.npmrc` policy exactly as a plain
+/// `deno run <target>` would. The only thing that subprocess can't observe is
+/// an explicit CLI flag, so we forward just that — rendering the EXPLICIT value
+/// (never a computed effective policy). Forwarding a config-derived scalar
+/// would override the natively-discovered policy and drop its `exclude`,
+/// diverging from `deno run` (issue #35991). An explicit flag carries
+/// empty-`exclude` semantics, same as `deno run --minimum-dependency-age=...`.
+fn minimum_dependency_age_flag_arg(flags: &Flags) -> Option<String> {
+  let value = match flags.minimum_dependency_age? {
+    NewestDependencyDate::Disabled => "0".to_string(),
+    NewestDependencyDate::Enabled(date) => date.to_rfc3339(),
+  };
+  Some(format!("--minimum-dependency-age={}", value))
+}
+
+/// Serializes the effective minimum dependency age policy (age + exclude) into
+/// the object form understood by `to_minimum_dependency_age_config`, so the
+/// full policy can be written into the generated temp `deno.json` used for
+/// installing. The temp workspace uses a config override and therefore can't
+/// see the user's cwd config, so the policy must travel with it.
+fn minimum_dependency_age_config_json(
+  config: &MinimumDependencyAgeConfig,
+) -> Option<serde_json::Value> {
+  let age = match config.age? {
+    NewestDependencyDate::Disabled => "0".to_string(),
+    NewestDependencyDate::Enabled(date) => date.to_rfc3339(),
+  };
+  Some(serde_json::json!({
+    "age": age,
+    "exclude": config.exclude,
+  }))
+}
 
 async fn resolve_local_bins(
   node_resolver: &CliNodeResolver,
@@ -165,6 +206,9 @@ pub(crate) fn run_bin_value(
       let path = deno_path_util::url_from_file_path(path_buf.as_ref())?;
       let mut deno_args = flags.to_permission_args();
       deno_args.extend(unstable_args.iter().cloned());
+      if let Some(arg) = minimum_dependency_age_flag_arg(flags) {
+        deno_args.push(arg);
+      }
 
       run_js_file(&path, &deno_args, &flags.argv, npm_process_state, true)
     }
@@ -275,6 +319,7 @@ fn create_package_temp_dir(
   package_req: &PackageReq,
   reload: bool,
   deno_dir: &Path,
+  min_dep_age_config: &MinimumDependencyAgeConfig,
 ) -> Result<XTempDir, AnyError> {
   let mut package_req_folder = String::from(prefix.unwrap_or(""));
   package_req_folder.push_str(
@@ -297,7 +342,16 @@ fn create_package_temp_dir(
   let package_json_path = temp_dir.join("package.json");
   std::fs::write(&package_json_path, "{}")?;
   let deno_json_path = temp_dir.join("deno.json");
-  std::fs::write(&deno_json_path, r#"{"nodeModulesDir": "auto"}"#)?;
+  let mut deno_json_value = serde_json::json!({"nodeModulesDir": "auto"});
+  if let Some(min_dep_age) =
+    minimum_dependency_age_config_json(min_dep_age_config)
+  {
+    deno_json_value
+      .as_object_mut()
+      .unwrap()
+      .insert("minimumDependencyAge".to_string(), min_dep_age);
+  }
+  std::fs::write(&deno_json_path, serde_json::to_string(&deno_json_value)?)?;
 
   let temp_dir = canonicalize_path(&temp_dir).unwrap_or(temp_dir);
   Ok(XTempDir::New(temp_dir))
@@ -441,6 +495,15 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
 
   let cache_setting = cli_options.cache_setting();
   let reload = matches!(cache_setting, CacheSetting::ReloadAll);
+  // Effective minimum dependency age policy (CLI flag > cwd deno.json > .npmrc
+  // > default) resolved from the ORIGINAL factory, i.e. the user's cwd config.
+  // This full config (age + exclude) is written into the generated temp
+  // deno.json used for installing, since that temp workspace can't see the
+  // user's cwd config on its own.
+  let min_dep_age_config = factory
+    .resolver_factory()?
+    .minimum_dependency_age_config()?
+    .clone();
   match thing_to_run {
     ReqRefOrUrl::Npm(npm_package_req_reference) => {
       // First try to resolve from the local project
@@ -480,6 +543,7 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
         command_flags.yes,
         &command_flags.ignore_scripts,
         &factory.deno_dir()?.root,
+        &min_dep_age_config,
       )
       .await?;
       let mut runner_flags = (*managed_flags).clone();
@@ -555,6 +619,7 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
         command_flags.yes,
         &command_flags.ignore_scripts,
         &factory.deno_dir()?.root,
+        &min_dep_age_config,
       )
       .await?;
 
@@ -563,6 +628,9 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
 
       let mut deno_args = flags.to_permission_args();
       deno_args.extend(unstable_args.iter().cloned());
+      if let Some(arg) = minimum_dependency_age_flag_arg(&flags) {
+        deno_args.push(arg);
+      }
       let url =
         deno_core::url::Url::parse(&jsr_package_req_reference.to_string())?;
       run_js_file(&url, &deno_args, &flags.argv, npm_process_state, false)
@@ -570,6 +638,9 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
     ReqRefOrUrl::Url(url) => {
       let mut deno_args = flags.to_permission_args();
       deno_args.extend(unstable_args.iter().cloned());
+      if let Some(arg) = minimum_dependency_age_flag_arg(&flags) {
+        deno_args.push(arg);
+      }
       run_js_file(&url, &deno_args, &flags.argv, None, false)
     }
   }
@@ -596,6 +667,7 @@ async fn autoinstall_package(
   yes: bool,
   ignore_scripts: &PackagesAllowedScripts,
   deno_dir: &Path,
+  min_dep_age_config: &MinimumDependencyAgeConfig,
 ) -> Result<(Arc<Flags>, CliFactory), AnyError> {
   fn make_new_flags(
     old_flags: &Flags,
@@ -637,6 +709,7 @@ async fn autoinstall_package(
     req_ref.req(),
     reload,
     deno_dir,
+    min_dep_age_config,
   )?;
 
   let new_flags = make_new_flags(old_flags, temp_dir.path(), ignore_scripts);
@@ -679,14 +752,24 @@ async fn autoinstall_package(
         }
         ReqRef::Jsr(req_ref) => {
           let deno_json = temp_dir.join("deno.json");
-          std::fs::write(
-            &deno_json,
-            format!(
-              "{{ \"nodeModulesDir\": \"manual\", \"imports\": {{ \"{}\": \"{}\" }} }}",
-              req_ref.req().name,
-              format_args!("jsr:{}", req_ref.req())
-            ),
-          )?;
+          let mut imports = serde_json::Map::new();
+          imports.insert(
+            req_ref.req().name.to_string(),
+            serde_json::Value::String(format!("jsr:{}", req_ref.req())),
+          );
+          let mut deno_json_value = serde_json::json!({
+            "nodeModulesDir": "manual",
+            "imports": imports,
+          });
+          if let Some(min_dep_age) =
+            minimum_dependency_age_config_json(min_dep_age_config)
+          {
+            deno_json_value
+              .as_object_mut()
+              .unwrap()
+              .insert("minimumDependencyAge".to_string(), min_dep_age);
+          }
+          std::fs::write(&deno_json, serde_json::to_string(&deno_json_value)?)?;
         }
       }
 
