@@ -141,11 +141,7 @@ impl UnsafeWindowSurface {
     scope: &mut v8::PinScope<'_, '_>,
     value: u32,
   ) -> Result<(), JsErrorBox> {
-    {
-      // We need to be sure to drop the borrow before using the context below
-      let mut data = self.data.borrow_mut();
-      data.height = value;
-    }
+    self.data.borrow_mut().height = value;
 
     if let Some((id, active_context)) = self.active_context.get() {
       let active_context = v8::Local::new(scope, active_context);
