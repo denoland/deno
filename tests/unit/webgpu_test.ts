@@ -263,6 +263,8 @@ Deno.test({
   const device = await adapter.requestDevice();
   assert(device);
 
+  const msgIncludes = "Invalid parameters";
+
   assertThrows(
     () => {
       new Deno.UnsafeWindowSurface({
@@ -273,12 +275,16 @@ Deno.test({
         height: 0,
       });
     },
+    TypeError,
+    msgIncludes,
   );
 
   device.destroy();
 });
 
 Deno.test(function webgpuWindowSurfaceNoWidthHeight() {
+  const msgIncludes = "expected type `v8::data::Number`, got `v8::data::Value`";
+
   assertThrows(
     () => {
       // @ts-expect-error width and height are required
@@ -288,6 +294,8 @@ Deno.test(function webgpuWindowSurfaceNoWidthHeight() {
         displayHandle: null,
       });
     },
+    TypeError,
+    msgIncludes,
   );
 });
 
