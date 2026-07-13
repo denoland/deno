@@ -1362,6 +1362,24 @@ where
   }
 }
 
+impl<'s> ToV8<'s> for crate::DetachedBuffer {
+  type Error = Infallible;
+
+  #[inline]
+  fn to_v8<'i>(
+    self,
+    scope: &mut PinScope<'s, 'i>,
+  ) -> Result<Local<'s, v8::Value>, Self::Error> {
+    Ok(
+      self
+        .into_v8slice()
+        .into_v8_local(scope)
+        .expect("DetachedBuffer's range is always within its backing store")
+        .into(),
+    )
+  }
+}
+
 #[cfg(all(test, not(miri)))]
 mod tests {
   use std::collections::HashMap;

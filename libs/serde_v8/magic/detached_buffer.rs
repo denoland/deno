@@ -20,6 +20,13 @@ impl DetachedBuffer {
   pub fn from_v8slice(slice: V8Slice<u8>) -> Self {
     DetachedBuffer(slice)
   }
+
+  /// Consumes this buffer, returning the underlying `V8Slice`. Lets callers
+  /// outside this crate (e.g. `deno_core::convert`'s `ToV8` impl) build a v8
+  /// value from it without reaching into a private field.
+  pub fn into_v8slice(self) -> V8Slice<u8> {
+    self.0
+  }
 }
 
 impl AsRef<[u8]> for DetachedBuffer {

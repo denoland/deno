@@ -211,11 +211,15 @@ pub fn op_message_port_create_entangled(
   (port1_id, port2_id)
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, deno_core::ToV8)]
 #[serde(tag = "kind", content = "data", rename_all = "camelCase")]
+#[to_v8(tag = "kind", content = "data")]
 pub enum JsTransferable {
+  #[to_v8(rename = "arrayBuffer")]
   ArrayBuffer(u32),
+  #[to_v8(rename = "resource")]
   Resource(String, ResourceId),
+  #[to_v8(rename = "multiResource")]
   MultiResource(String, Vec<ResourceId>),
 }
 
@@ -286,15 +290,15 @@ pub fn serialize_transferables(
 // directly (interned `data`/`transferables` keys + a single
 // `Object::with_prototype_and_properties` call) instead of routing the whole
 // struct through serde_v8's `Serializer`, which rebuilt an object per message.
-// The `data` buffer and the (usually empty) transferables list still use the
-// magic serde_v8 conversion via `#[to_v8(serde)]`. `Deserialize` is kept for the
-// post-message ops (which take `JsMessageData` as an input argument) and
-// `Serialize` for the one-shot worker-metadata bootstrap in `web_worker.rs`.
+// `data` and `transferables` now have their own `deno_core::convert::ToV8`
+// impls (a hand-written one for `DetachedBuffer`, a derived one for
+// `JsTransferable`), so they no longer need the `#[to_v8(serde)]` escape
+// hatch either. `Deserialize` is kept for the post-message ops (which take
+// `JsMessageData` as an input argument) and `Serialize` for the one-shot
+// worker-metadata bootstrap in `web_worker.rs`.
 #[derive(Deserialize, Serialize, deno_core::ToV8)]
 pub struct JsMessageData {
-  #[to_v8(serde)]
   pub data: DetachedBuffer,
-  #[to_v8(serde)]
   pub transferables: Vec<JsTransferable>,
 }
 
@@ -321,10 +325,9 @@ impl<'a> deno_core::ToV8<'a> for RecvMessageData {
   ) -> Result<deno_core::v8::Local<'a, deno_core::v8::Value>, Self::Error> {
     match self {
       RecvMessageData::Raw(buffer) => {
-        // Reuse serde_v8's DetachedBuffer conversion (produces a Uint8Array),
-        // matching what `JsMessageData::data` yields via `#[to_v8(serde)]`.
-        deno_core::serde_v8::to_v8(scope, buffer)
-          .map_err(|e| JsErrorBox::generic(e.to_string()))
+        // Matches what `JsMessageData::data` yields: a `Uint8Array` view
+        // over the same backing store, via `ToV8 for DetachedBuffer`.
+        Ok(buffer.to_v8(scope).unwrap())
       }
       RecvMessageData::Full(data) => data
         .to_v8(scope)
