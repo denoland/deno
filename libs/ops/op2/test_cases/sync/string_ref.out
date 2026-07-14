@@ -118,31 +118,21 @@ const fn op_string_owned() -> ::deno_core::_ops::OpDecl {
                 &<Self as deno_core::_ops::Op>::DECL,
             );
             let parts: deno_core::v8::FunctionCallbackInfoParts<'s> = info.get_parts();
+            let scope = ::std::pin::pin!(
+                unsafe { deno_core::v8::CallbackScope::new(info) }
+            );
+            let mut scope = scope.init();
             let mut rv = parts.return_value;
             let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info_parts(
                 info,
                 &parts,
             );
-            let opctx: &'s _ = unsafe {
-                &*(deno_core::v8::Local::<
-                    deno_core::v8::External,
-                >::cast_unchecked(args.data())
-                    .value() as *const deno_core::_ops::OpCtx)
-            };
-            let mut scope = unsafe {
-                deno_core::v8::Isolate::from_raw_isolate_ptr(opctx.isolate)
-            };
-            let mut scope = &mut scope;
             let result = {
                 let arg0 = args.get(0usize as i32);
                 let mut arg0_temp: [::std::mem::MaybeUninit<
                     u8,
                 >; deno_core::_ops::STRING_STACK_BUFFER_SIZE] = [::std::mem::MaybeUninit::uninit(); deno_core::_ops::STRING_STACK_BUFFER_SIZE];
                 let arg0 = if !arg0.is_string() {
-                    let scope = ::std::pin::pin!(
-                        unsafe { deno_core::v8::CallbackScope::new(info) }
-                    );
-                    let mut scope = scope.init();
                     let tc = ::std::pin::pin!(deno_core::v8::TryCatch::new(& mut scope));
                     let mut tc = tc.init();
                     match arg0.to_string(&mut tc) {
