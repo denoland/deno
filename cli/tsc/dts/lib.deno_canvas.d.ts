@@ -42,7 +42,7 @@ type ResizeQuality = "high" | "low" | "medium" | "pixelated";
  * used to create an `ImageBitmap`.
  *
  * @category Canvas */
-type ImageBitmapSource = Blob | ImageData | ImageBitmap;
+type ImageBitmapSource = Blob | ImageData | ImageBitmap | OffscreenCanvas;
 
 /**
  * The options of {@linkcode createImageBitmap}.

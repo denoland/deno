@@ -260,6 +260,18 @@ impl OffscreenCanvas {
     }
     promise
   }
+
+  /// Hidden accessor used by `createImageBitmap()` in ext/image to read the
+  /// canvas pixels as straight-alpha RGBA8.
+  #[buffer]
+  #[symbol("Deno_canvasBitmapData")]
+  fn get_bitmap_data(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+  ) -> Result<Vec<u8>, JsErrorBox> {
+    let (_width, _height, pixels) = self.sync_pixels(scope)?;
+    Ok(pixels)
+  }
 }
 
 impl OffscreenCanvas {
@@ -365,10 +377,14 @@ impl OffscreenCanvas {
     Ok(blob)
   }
 
-  /// Flushes the active context and returns RGBA8 pixels for Canvas 2D createPattern().
-  fn sync_pixels_for_pattern<'a>(
+  /// Flushes the active context and returns straight-alpha RGBA8 pixels.
+  /// Shared by Canvas 2D `createPattern()`/`drawImage()` source resolution
+  /// and `createImageBitmap()`. Deliberately does NOT count toward the
+  /// GPU->CPU readback fallback heuristic (same class as
+  /// `transferToImageBitmap`).
+  fn sync_pixels(
     &self,
-    scope: &mut v8::PinScope<'a, 'a>,
+    scope: &mut v8::PinScope<'_, '_>,
   ) -> Result<(u32, u32, Vec<u8>), JsErrorBox> {
     if let Some((id, active_context)) = self.active_context.get() {
       let active_context_local = v8::Local::new(scope, active_context);
@@ -467,7 +483,17 @@ pub(crate) fn sync_offscreen_canvas_pixels_for_pattern<'a>(
       "Failed to execute 'createPattern' on 'OffscreenCanvasRenderingContext2D': parameter 1 is not of type 'CanvasImageSource'.",
     ));
   };
-  canvas.sync_pixels_for_pattern(scope)
+  canvas.sync_pixels(scope)
+}
+
+/// Strict brand check used by `createImageBitmap()` in ext/image to detect `OffscreenCanvas` sources.
+#[op2(fast)]
+pub fn op_canvas_is_offscreen_canvas(
+  scope: &mut v8::PinScope<'_, '_>,
+  value: v8::Local<v8::Value>,
+) -> bool {
+  deno_core::cppgc::try_unwrap_cppgc_object::<OffscreenCanvas>(scope, value)
+    .is_some()
 }
 
 #[derive(WebIDL)]

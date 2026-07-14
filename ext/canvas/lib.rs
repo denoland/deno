@@ -11,7 +11,7 @@ mod canvas;
 deno_core::extension!(
   deno_canvas,
   deps = [deno_webidl, deno_web, deno_webgpu],
-  ops = [op_init_canvas],
+  ops = [op_init_canvas, canvas::op_canvas_is_offscreen_canvas],
   objects = [
     bitmaprenderer::ImageBitmapRenderingContext,
     canvas::OffscreenCanvas,

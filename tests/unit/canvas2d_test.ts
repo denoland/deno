@@ -1648,3 +1648,37 @@ Deno.test(function canvas2dRoundRectRadiusUnionSemantics() {
     TypeError,
   );
 });
+
+Deno.test(
+  { ignore: !hasCanvasRenderer },
+  async function canvas2dCreateImageBitmapFromCanvas() {
+    const canvas = new OffscreenCanvas(2, 2);
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#f00";
+    ctx.fillRect(0, 0, 2, 2);
+    const bitmap = await createImageBitmap(canvas);
+    assertEquals(bitmap.width, 2);
+    assertEquals(bitmap.height, 2);
+    // @ts-ignore: Deno[Deno.internal] allowed
+    const pixels: Uint8Array = Deno[Deno.internal].getBitmapData(bitmap);
+    assertEquals(Array.from(pixels.subarray(0, 4)), [255, 0, 0, 255]);
+    // Unlike transferToImageBitmap(), the canvas is not cleared.
+    const result = ctx.getImageData(0, 0, 1, 1);
+    assertEquals(Array.from(result.data), [255, 0, 0, 255]);
+  },
+);
+
+Deno.test(async function canvas2dCreateImageBitmapWithOpenLayerRejects() {
+  const canvas = new OffscreenCanvas(2, 2);
+  const ctx = canvas.getContext("2d")!;
+  ctx.beginLayer();
+  const err = await assertRejects(
+    () => createImageBitmap(canvas),
+    DOMException,
+  );
+  assertEquals(err.name, "InvalidStateError");
+  ctx.endLayer();
+  // Succeeds again once the layer is closed.
+  const bitmap = await createImageBitmap(canvas);
+  assertEquals(bitmap.width, 2);
+});
