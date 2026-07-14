@@ -2308,10 +2308,11 @@ Unless --reload is specified, this command will not re-download already cached d
     )
 }
 
-const SUPPORTED_OS: [&str; 5] = [
+const SUPPORTED_OS: [&str; 6] = [
   "x86_64-unknown-linux-gnu",
   "aarch64-unknown-linux-gnu",
   "x86_64-pc-windows-msvc",
+  "aarch64-pc-windows-msvc",
   "x86_64-apple-darwin",
   "aarch64-apple-darwin",
 ];
@@ -14306,6 +14307,35 @@ mod tests {
         env_file: Some(vec![".example.env".to_owned()]),
         ..Flags::default()
       }
+    );
+  }
+
+  #[test]
+  fn compile_target_aarch64_windows() {
+    // denort for Windows arm64 is built and published by CI, so
+    // `--target aarch64-pc-windows-msvc` must be accepted by the SUPPORTED_OS
+    // value parser (and an unsupported triple must still be rejected).
+    let r = flags_from_vec(svec![
+      "deno",
+      "compile",
+      "--target",
+      "aarch64-pc-windows-msvc",
+      "main.ts"
+    ]);
+    let DenoSubcommand::Compile(c) = r.unwrap().subcommand else {
+      unreachable!()
+    };
+    assert_eq!(c.target, Some("aarch64-pc-windows-msvc".to_string()));
+
+    assert!(
+      flags_from_vec(svec![
+        "deno",
+        "compile",
+        "--target",
+        "riscv64gc-unknown-linux-gnu",
+        "main.ts"
+      ])
+      .is_err()
     );
   }
 
