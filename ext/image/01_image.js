@@ -297,12 +297,12 @@ docs: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n
         TypedArrayPrototypeGetLength(data),
       );
     } else if (isOffscreenCanvas) {
+      width = image.width;
+      height = image.height;
       imageBitmapSource = 1;
       buf = new Uint8Array(
         TypedArrayPrototypeGetBuffer(image[_canvasBitmapData]()),
       );
-      width = image.width;
-      height = image.height;
     } else if (isImageBitmap) {
       width = image.width;
       height = image.height;
@@ -371,7 +371,12 @@ const _canvasBitmapData = SymbolFor("Deno_canvasBitmapData");
 function getBitmapData(imageBitmap) {
   return imageBitmap[_bitmapData]();
 }
+function getCanvasBitmapData(canvas) {
+  return canvas[_canvasBitmapData]();
+}
 
+// internals for tests
 internals.getBitmapData = getBitmapData;
+internals.getCanvasBitmapData = getCanvasBitmapData;
 
 export { createImageBitmap, ImageBitmap };
