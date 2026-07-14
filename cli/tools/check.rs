@@ -167,10 +167,49 @@ async fn native_check(
       config_disabled,
     );
   let root_tsconfig = project_root.join("tsconfig.json");
-  let tsconfig_path = if honor_user_tsconfig && root_tsconfig.exists() {
-    root_tsconfig
+  let (base_tsconfig, base_extends) =
+    if honor_user_tsconfig && root_tsconfig.exists() {
+      // `.deno/check.tsconfig.json` -> `../tsconfig.json` (the user root, which
+      // itself extends `.deno/tsconfig.json`).
+      (root_tsconfig.clone(), "../tsconfig.json")
+    } else {
+      (project_root.join(".deno").join("tsconfig.json"), "./tsconfig.json")
+    };
+  // Resolve the requested arguments to actual files. Only real files become
+  // per-file `files` targets; a bare `deno check` (no args), `check .`, or a
+  // directory argument leaves this empty and checks the whole project via the
+  // base config's `include`.
+  let initial_cwd = cli_options.initial_cwd();
+  let files: Vec<String> = check_flags
+    .files
+    .iter()
+    .map(|f| initial_cwd.join(f))
+    .filter(|p| p.is_file())
+    .map(|p| p.to_string_lossy().replace('\\', "/"))
+    .collect();
+  let tsconfig_path = if files.is_empty() {
+    base_tsconfig
   } else {
-    project_root.join(".deno").join("tsconfig.json")
+    // `deno check <files>` checks only the named files (and their imports), not
+    // the whole project. The generated `tsconfig.json` keeps an open `include`
+    // (so bundlers can consume its resolver mappings), so write a per-file
+    // config that extends it and pins `files` — `files`/`include` are not
+    // inherited through `extends`, so only these files are type-checked while
+    // compilerOptions/paths still apply.
+    let check_tsconfig =
+      project_root.join(".deno").join("check.tsconfig.json");
+    // `include: []` nullifies the base config's open `include` (which tsc would
+    // otherwise still apply alongside `files`, re-adding the whole project).
+    let content = deno_core::serde_json::json!({
+      "extends": base_extends,
+      "include": [],
+      "files": files,
+    });
+    std::fs::write(
+      &check_tsconfig,
+      deno_core::serde_json::to_string_pretty(&content)?,
+    )?;
+    check_tsconfig
   };
 
   log::info!(
