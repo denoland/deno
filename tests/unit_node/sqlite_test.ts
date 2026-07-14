@@ -136,6 +136,21 @@ Deno.test("[node/sqlite] createSession and changesets", () => {
   assertThrows(() => session.close(), Error, "database is not open");
 });
 
+Deno.test("[node/sqlite] createSession rejects null bytes in options", () => {
+  using db = new DatabaseSync(":memory:");
+
+  nodeAssert.throws(() => db.createSession({ db: "main\0" }), {
+    code: "ERR_INVALID_ARG_VALUE",
+  });
+  nodeAssert.throws(() => db.createSession({ table: "data\0" }), {
+    code: "ERR_INVALID_ARG_VALUE",
+  });
+
+  const session = db.createSession();
+  assert(session.changeset() instanceof Uint8Array);
+  session.close();
+});
+
 Deno.test("[node/sqlite] StatementSync integer too large", () => {
   const db = new DatabaseSync(":memory:");
   db.exec("CREATE TABLE data(key INTEGER PRIMARY KEY);");
@@ -279,6 +294,38 @@ Deno.test("[node/sqlite] query should handle mixed positional and named paramete
   db.close();
 });
 
+Deno.test("[node/sqlite] StatementSync handles named parameter access failures", () => {
+  using db = new DatabaseSync(":memory:");
+  const statement = db.prepare("SELECT :value AS value");
+
+  assertThrows(
+    () =>
+      statement.get(
+        new Proxy({}, {
+          ownKeys() {
+            throw new Error("ownKeys failed");
+          },
+        }),
+      ),
+    Error,
+  );
+  assertThrows(
+    () =>
+      statement.get({
+        get value(): number {
+          throw new Error("getter failed");
+        },
+      }),
+    Error,
+  );
+  assertThrows(() => statement.get({ "value\0suffix": 1 }), TypeError);
+
+  assertEquals(statement.get({ value: 1 }), {
+    value: 1,
+    __proto__: null,
+  });
+});
+
 Deno.test("[node/sqlite] StatementSync unknown named parameters should throw", () => {
   const db = new DatabaseSync(":memory:");
   db.exec(
@@ -335,6 +382,29 @@ Deno.test("[node/sqlite] StatementSync#iterate", () => {
   assertEquals(value, null);
 
   db.close();
+});
+
+Deno.test("[node/sqlite] iterator creation handles accessor failures", () => {
+  using db = new DatabaseSync(":memory:");
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "Iterator");
+  assert(descriptor);
+
+  try {
+    Object.defineProperty(globalThis, "Iterator", {
+      configurable: true,
+      get() {
+        throw new Error("Iterator getter failed");
+      },
+    });
+    assertThrows(() => db.prepare("SELECT 1").iterate(), Error);
+  } finally {
+    Object.defineProperty(globalThis, "Iterator", descriptor);
+  }
+
+  assertEquals([...db.prepare("SELECT 1 AS value").iterate()], [{
+    value: 1,
+    __proto__: null,
+  }]);
 });
 
 // https://github.com/denoland/deno/issues/28187
@@ -719,6 +789,60 @@ Deno.test("[node/sqlite] DatabaseSync.aggregate input validation", () => {
   }, {
     code: "ERR_INVALID_ARG_TYPE",
     message: /The "options\.directOnly" argument must be a boolean/,
+  });
+});
+
+Deno.test("[node/sqlite] function option access failures remain catchable", () => {
+  using db = new DatabaseSync(":memory:");
+
+  assertThrows(
+    () =>
+      db.function(
+        "scalar_option",
+        {
+          get varargs(): boolean {
+            throw new Error("option getter failed");
+          },
+        },
+        () => 0,
+      ),
+    Error,
+  );
+
+  const scalar = () => 0;
+  Object.defineProperty(scalar, "length", {
+    get() {
+      throw new Error("length getter failed");
+    },
+  });
+  assertThrows(() => db.function("scalar_length", scalar), Error);
+
+  const step = () => 0;
+  Object.defineProperty(step, "length", {
+    get() {
+      throw new Error("length getter failed");
+    },
+  });
+  assertThrows(
+    () => db.aggregate("aggregate_length", { start: 0, step }),
+    Error,
+  );
+
+  assertThrows(
+    () =>
+      db.aggregate("aggregate_option", {
+        get start(): number {
+          throw new Error("option getter failed");
+        },
+        step: () => 0,
+      }),
+    Error,
+  );
+
+  db.function("scalar", () => 1);
+  assertEquals(db.prepare("SELECT scalar() AS value").get(), {
+    value: 1,
+    __proto__: null,
   });
 });
 
@@ -1270,6 +1394,27 @@ Deno.test("sql.get retrieves a single row", () => {
   assertStrictEquals(first.text, "bob");
   assertStrictEquals(first.id, 1);
   assertStrictEquals(Object.getPrototypeOf(first), null);
+});
+
+Deno.test("SQLTagStore handles template access failures", () => {
+  using db = new DatabaseSync(":memory:");
+  // @ts-expect-error createTagStore is a valid method
+  const sql = db.createTagStore(10);
+  const strings = new Array(1) as unknown as TemplateStringsArray;
+  Object.defineProperty(strings, 0, {
+    get() {
+      throw new Error("template getter failed");
+    },
+  });
+
+  assertThrows(
+    () => sql.get(strings),
+    Error,
+  );
+  assertEquals(sql.get`SELECT 1 AS value`, {
+    value: 1,
+    __proto__: null,
+  });
 });
 
 Deno.test("sql.all retrieves all rows", () => {
