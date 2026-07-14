@@ -420,10 +420,16 @@ pub async fn sync_types_command(
   let manage_root_tsconfig = match root_tsconfig_mode {
     RootTsConfigMode::Always => true,
     RootTsConfigMode::CheckMode => {
+      // Only manage a root `tsconfig.json` that already exists (keeping its
+      // `extends` pointed at `.deno/`). Don't create one: `deno check` points
+      // tsc at `.deno/tsconfig.json` directly when there's no user tsconfig, so
+      // generating a root tsconfig would just leave an unwanted file in the
+      // project (and get picked up by `deno publish`). `deno sync-types`
+      // (RootTsConfigMode::Always) is the command that sets it up for IDEs.
       crate::tsc::tsconfig_gen::should_honor_user_tsconfig(
         &project_root,
         config_disabled,
-      )
+      ) && project_root.join("tsconfig.json").exists()
     }
   };
 
