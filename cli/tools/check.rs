@@ -171,17 +171,12 @@ async fn native_check(
       config_disabled,
     );
   let root_tsconfig = project_root.join("tsconfig.json");
-  let (base_tsconfig, base_extends) =
-    if honor_user_tsconfig && root_tsconfig.exists() {
-      // `.deno/check.tsconfig.json` -> `../tsconfig.json` (the user root, which
-      // itself extends `.deno/tsconfig.json`).
-      (root_tsconfig.clone(), "../tsconfig.json")
-    } else {
-      (
-        project_root.join(".deno").join("tsconfig.json"),
-        "./tsconfig.json",
-      )
-    };
+  let base_tsconfig = if honor_user_tsconfig && root_tsconfig.exists() {
+    // The user root, which itself extends `.deno/tsconfig.json`.
+    root_tsconfig.clone()
+  } else {
+    project_root.join(".deno").join("tsconfig.json")
+  };
   // Pin tsc to exactly the local files deno resolved as roots (glob-expanded and
   // exclude-applied above), so `deno check *.ts` checks only the matched files -
   // not the whole project - and an excluded file stays excluded. Remote roots
@@ -193,28 +188,40 @@ async fn native_check(
     .filter_map(|s| s.to_file_path().ok())
     .map(|p| p.to_string_lossy().replace('\\', "/"))
     .collect();
+  // Holds the per-file config's temp file open until tsc has run (dropping it
+  // deletes the file).
+  let _check_tsconfig_guard;
   let tsconfig_path = if files.is_empty() {
     base_tsconfig
   } else {
     // `deno check <files>` checks only the named files (and their imports), not
     // the whole project. The generated `tsconfig.json` keeps an open `include`
     // (so bundlers can consume its resolver mappings), so write a per-file
-    // config that extends it and pins `files` — `files`/`include` are not
-    // inherited through `extends`, so only these files are type-checked while
-    // compilerOptions/paths still apply.
-    let check_tsconfig = project_root.join(".deno").join("check.tsconfig.json");
-    // `include: []` nullifies the base config's open `include` (which tsc would
-    // otherwise still apply alongside `files`, re-adding the whole project).
+    // config that extends it (by absolute path) and pins `files` — `files`/
+    // `include` are not inherited through `extends`, so only these files are
+    // type-checked while compilerOptions/paths still apply. `include: []`
+    // nullifies the base's open `include` (tsc unions `files` with an inherited
+    // `include`, which would otherwise re-add the whole project).
+    //
+    // Write to a unique temp file rather than a fixed path: sibling `deno check`
+    // runs in the same directory (e.g. spec-test variants) would otherwise race
+    // on it, and a fixed path leaves an artifact behind.
     let content = deno_core::serde_json::json!({
-      "extends": base_extends,
+      "extends": base_tsconfig.to_string_lossy().replace('\\', "/"),
       "include": [],
       "files": files,
     });
-    std::fs::write(
-      &check_tsconfig,
-      deno_core::serde_json::to_string_pretty(&content)?,
+    let mut tmp = tempfile::Builder::new()
+      .prefix("deno-check-")
+      .suffix(".tsconfig.json")
+      .tempfile_in(&project_root)?;
+    std::io::Write::write_all(
+      &mut tmp,
+      deno_core::serde_json::to_string_pretty(&content)?.as_bytes(),
     )?;
-    check_tsconfig
+    let path = tmp.path().to_path_buf();
+    _check_tsconfig_guard = tmp;
+    path
   };
 
   log::info!(
