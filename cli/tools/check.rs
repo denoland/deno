@@ -195,7 +195,7 @@ async fn native_check(
   // not the whole project - and an excluded file stays excluded. Remote roots
   // (http(s):/jsr:) can't be tsc `files` entries; when every root is remote this
   // is empty and we fall back to the base config's `include`.
-  let files: Vec<String> = roots
+  let mut files: Vec<String> = roots
     .iter()
     .filter(|s| s.scheme() == "file")
     .filter_map(|s| s.to_file_path().ok())
@@ -216,6 +216,26 @@ async fn native_check(
     // nullifies the base's open `include` (tsc unions `files` with an inherited
     // `include`, which would otherwise re-add the whole project).
     //
+    // `files`/`include` are not inherited through `extends`, so the base config's
+    // own `files` - the declaration files sync-types materialized from
+    // `compilerOptions.types` (npm packages, relative paths) that provide global
+    // augmentations - would be dropped. Carry them over so those types still
+    // apply when checking specific files.
+    let generated_base = project_root.join(".deno").join("tsconfig.json");
+    if let Ok(text) = std::fs::read_to_string(&generated_base)
+      && let Ok(value) =
+        deno_core::serde_json::from_str::<deno_core::serde_json::Value>(&text)
+      && let Some(base_files) = value.get("files").and_then(|f| f.as_array())
+    {
+      for f in base_files {
+        if let Some(s) = f.as_str() {
+          let s = s.to_string();
+          if !files.contains(&s) {
+            files.push(s);
+          }
+        }
+      }
+    }
     // Write to a unique temp file rather than a fixed path: sibling `deno check`
     // runs in the same directory (e.g. spec-test variants) would otherwise race
     // on it, and a fixed path leaves an artifact behind.
