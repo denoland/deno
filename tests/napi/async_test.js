@@ -52,6 +52,20 @@ Deno.test("napi tsfn call_js_cb receives valid env after abort race", async () =
   });
 });
 
+Deno.test("napi tsfn abort with outstanding thread does not double free", async () => {
+  // With napi_tsfn_abort, a previous version freed the tsfn regardless of
+  // thread_count, leaving other reference holders with a dangling pointer.
+  // A subsequent release could then spawn a second drop of the same box,
+  // causing a use-after-free and a double free (assert in TsFn::drop). Here
+  // the tsfn is created with initial_thread_count = 2 and both threads must
+  // release before it is freed; the finalizer must run exactly once.
+  await new Promise((resolve) => {
+    asyncTask.test_tsfn_abort_outstanding(() => {
+      resolve();
+    });
+  });
+});
+
 Deno.test("napi tsfn acquire and release", async function () {
   await new Promise((resolve) => {
     asyncTask.test_tsfn_acquire_release(resolve);
