@@ -122,6 +122,10 @@ pub fn generate_tsconfig(
   // Write to .deno/tsconfig.json
   let deno_dir = project_root.join(".deno");
   std::fs::create_dir_all(&deno_dir)?;
+  // `.deno/` is a generated cache (materialized types, per-package projects).
+  // Mark it ignored so gitignore-respecting tooling - `deno publish`, git,
+  // formatters - skips it rather than treating it as project source.
+  std::fs::write(deno_dir.join(".gitignore"), "*\n")?;
   let tsconfig_path = deno_dir.join("tsconfig.json");
   let content = serde_json::to_string_pretty(&tsconfig)
     .expect("failed to serialize tsconfig");
@@ -1196,7 +1200,20 @@ fn resolve_jsr_types_entry_for_config(
 ) -> Option<String> {
   let resolved = resolve_package_types_entry_path(pkg_dir, export_key)
     .filter(|p| p.exists())
-    .or_else(|| resolve_package_source_entry_path(pkg_dir, export_key))?;
+    .or_else(|| resolve_package_source_entry_path(pkg_dir, export_key))
+    .or_else(|| {
+      // Convention fallback for the root export: jsr npm-compat packages ship a
+      // minimal package.json (no `types`/`exports`/`main`) alongside a sibling
+      // `index.d.ts`/`index.ts`/`index.js`, so resolve the root to that.
+      if export_key == "." {
+        ["index.d.ts", "index.ts", "index.js"]
+          .into_iter()
+          .map(|f| pkg_dir.join(f))
+          .find(|p| p.exists())
+      } else {
+        None
+      }
+    })?;
   if pkg_dir.starts_with(project_root.join("node_modules")) {
     path_relative_to_deno_dir(pkg_dir, &resolved)
   } else {

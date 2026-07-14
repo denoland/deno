@@ -887,7 +887,12 @@ async fn install_jsr_packages(
     }
 
     let registry_name = format!("@jsr/{npm_name}");
-    let npm_jsr_registry = std::env::var("DENO_NPM_JSR_REGISTRY")
+    // Use the same env var as the rest of Deno (`JSR_NPM_URL`, see
+    // libs/npmrc) for the npm-compat jsr registry, so a custom/test registry is
+    // honored. The previous `DENO_NPM_JSR_REGISTRY` was read by nothing else, so
+    // tests (which set `JSR_NPM_URL` to the mock registry) fell through to the
+    // real npm.jsr.io and the fetch failed -> the package was never installed.
+    let npm_jsr_registry = std::env::var("JSR_NPM_URL")
       .unwrap_or_else(|_| "https://npm.jsr.io".to_string());
     let metadata_url = format!(
       "{}/{}",
