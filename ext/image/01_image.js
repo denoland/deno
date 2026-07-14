@@ -27,6 +27,20 @@ let _imageDataMod;
 const loadImageData = () =>
   _imageDataMod ??
     (_imageDataMod = core.loadExtScript("ext:deno_web/16_image_data.js"));
+const loadCanvas = core.createLazyLoader("ext:deno_canvas/01_canvas.js");
+let _isOffscreenCanvasFn;
+const loadIsOffscreenCanvas = () => {
+  if (_isOffscreenCanvasFn === undefined) {
+    try {
+      _isOffscreenCanvasFn = loadCanvas().isOffscreenCanvas;
+    } catch {
+      // deno_canvas is not part of this embedding; OffscreenCanvas sources
+      // fall through to the invalid-source rejection.
+      _isOffscreenCanvasFn = null;
+    }
+  }
+  return _isOffscreenCanvasFn;
+};
 
 webidl.converters["ImageOrientation"] = webidl.createEnumConverter(
   "ImageOrientation",
@@ -147,6 +161,7 @@ function createImageBitmap(
     "Blob",
     "ImageData",
     "ImageBitmap",
+    "OffscreenCanvas",
   ];
 
   // Overload: createImageBitmap(image [, options ])
@@ -204,12 +219,23 @@ function createImageBitmap(
     ImageBitmapPrototype,
     image,
   );
-  if (!isBlob && !isImageData && !isImageBitmap) {
+  const isOffscreenCanvasFn = loadIsOffscreenCanvas();
+  const isOffscreenCanvas = isOffscreenCanvasFn !== null &&
+    isOffscreenCanvasFn(image);
+  if (!isBlob && !isImageData && !isImageBitmap && !isOffscreenCanvas) {
     return PromiseReject(
       new DOMException(
         `${prefix}: The provided value for 'image' is not of type '(${
           ArrayPrototypeJoin(imageBitmapSources, " or ")
         })'`,
+        "InvalidStateError",
+      ),
+    );
+  }
+  if (isOffscreenCanvas && (image.width === 0 || image.height === 0)) {
+    return PromiseReject(
+      new DOMException(
+        `${prefix}: The image argument is an OffscreenCanvas with a width or height of zero`,
         "InvalidStateError",
       ),
     );
@@ -270,6 +296,13 @@ docs: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n
         TypedArrayPrototypeGetByteOffset(data),
         TypedArrayPrototypeGetLength(data),
       );
+    } else if (isOffscreenCanvas) {
+      imageBitmapSource = 1;
+      buf = new Uint8Array(
+        TypedArrayPrototypeGetBuffer(image[_canvasBitmapData]()),
+      );
+      width = image.width;
+      height = image.height;
     } else if (isImageBitmap) {
       width = image.width;
       height = image.height;
@@ -334,6 +367,7 @@ docs: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n
 }
 
 const _bitmapData = SymbolFor("Deno_bitmapData");
+const _canvasBitmapData = SymbolFor("Deno_canvasBitmapData");
 function getBitmapData(imageBitmap) {
   return imageBitmap[_bitmapData]();
 }

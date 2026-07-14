@@ -4,6 +4,7 @@ import { core } from "ext:core/mod.js";
 import {
   ImageBitmapRenderingContext,
   OffscreenCanvas,
+  op_canvas_is_offscreen_canvas,
   op_init_canvas,
 } from "ext:core/ops";
 
@@ -15,4 +16,8 @@ op_init_canvas(Blob);
 webidl.configureInterface(ImageBitmapRenderingContext);
 webidl.configureInterface(OffscreenCanvas);
 
-export { ImageBitmapRenderingContext, OffscreenCanvas };
+function isOffscreenCanvas(value) {
+  return op_canvas_is_offscreen_canvas(value);
+}
+
+export { ImageBitmapRenderingContext, isOffscreenCanvas, OffscreenCanvas };

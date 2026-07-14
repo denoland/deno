@@ -2249,16 +2249,8 @@
         "2d.layer.invalid-calls.save-endLayer.worker.html": true,
         "2d.layer.layer-rendering-state-reset-in-layer.html": true,
         "2d.layer.layer-rendering-state-reset-in-layer.worker.html": true,
-        "2d.layer.malformed-operations-with-promises.html": {
-          "expectedFailures": [
-            "Throws if createImageBitmap is called while layers are open."
-          ]
-        },
-        "2d.layer.malformed-operations-with-promises.worker.html": {
-          "expectedFailures": [
-            "Throws if createImageBitmap is called while layers are open."
-          ]
-        },
+        "2d.layer.malformed-operations-with-promises.html": true,
+        "2d.layer.malformed-operations-with-promises.worker.html": true,
         "2d.layer.malformed-operations.html": true,
         "2d.layer.malformed-operations.worker.html": true,
         "2d.layer.valid-calls.beginLayer-endLayer.html": true,
