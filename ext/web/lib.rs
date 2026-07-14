@@ -744,6 +744,19 @@ fn pack_encode_into_result(read: usize, written: usize) -> f64 {
   (read as f64) * ENCODE_INTO_PACKED_MULTIPLIER + written as f64
 }
 
+fn write_encode_into_result(
+  out_buf: &mut [u32],
+  read: usize,
+  written: usize,
+) -> Result<(), WebError> {
+  if out_buf.len() < 2 {
+    return Err(WebError::BufferTooSmall);
+  }
+  out_buf[1] = written as u32;
+  out_buf[0] = read as u32;
+  Ok(())
+}
+
 #[op2(fast(op_encoding_encode_into_fast))]
 fn op_encoding_encode_into(
   scope: &mut v8::PinScope<'_, '_>,
@@ -787,9 +800,7 @@ fn op_encoding_encode_into_fallback(
     v8::WriteFlags::kReplaceInvalidUtf8,
     Some(&mut nchars),
   );
-  out_buf[1] = len as u32;
-  out_buf[0] = nchars as u32;
-  Ok(())
+  write_encode_into_result(out_buf, nchars, len)
 }
 
 #[op2(fast)]
@@ -836,3 +847,32 @@ fn op_encoding_encode_into_fast(
 }
 
 pub struct Location(pub Url);
+
+#[cfg(test)]
+mod tests {
+  use super::WebError;
+  use super::write_encode_into_result;
+
+  #[test]
+  fn encode_into_result_rejects_undersized_output_buffer() {
+    let mut empty: [u32; 0] = [];
+    assert!(matches!(
+      write_encode_into_result(&mut empty, 1, 1),
+      Err(WebError::BufferTooSmall)
+    ));
+
+    let mut one = [0];
+    assert!(matches!(
+      write_encode_into_result(&mut one, 1, 1),
+      Err(WebError::BufferTooSmall)
+    ));
+    assert_eq!(one, [0]);
+  }
+
+  #[test]
+  fn encode_into_result_writes_read_and_written_counts() {
+    let mut out = [0, 0];
+    write_encode_into_result(&mut out, 3, 7).unwrap();
+    assert_eq!(out, [3, 7]);
+  }
+}
