@@ -1153,6 +1153,8 @@ function bootstrapWorkerRuntime(
 
     closeOnIdle = runtimeOptions[14];
 
+    removeImportedOps();
+
     performance.setTimeOrigin();
     globalThis_ = globalThis;
 
