@@ -828,7 +828,8 @@ fn generate_local_alias_paths(
 /// An unreadable/absent `package.json` returns false so we keep the default
 /// path mapping (e.g. minimal fixtures, or generation running before install).
 fn package_ships_no_types(pkg_dir: &Path) -> bool {
-  let Ok(content) = std::fs::read_to_string(pkg_dir.join("package.json")) else {
+  let Ok(content) = std::fs::read_to_string(pkg_dir.join("package.json"))
+  else {
     return false;
   };
   let Ok(pkg_json) = serde_json::from_str::<Value>(&content) else {

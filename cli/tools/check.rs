@@ -173,7 +173,10 @@ async fn native_check(
       // itself extends `.deno/tsconfig.json`).
       (root_tsconfig.clone(), "../tsconfig.json")
     } else {
-      (project_root.join(".deno").join("tsconfig.json"), "./tsconfig.json")
+      (
+        project_root.join(".deno").join("tsconfig.json"),
+        "./tsconfig.json",
+      )
     };
   // Resolve the requested arguments to actual files. Only real files become
   // per-file `files` targets; a bare `deno check` (no args), `check .`, or a
@@ -196,8 +199,7 @@ async fn native_check(
     // config that extends it and pins `files` — `files`/`include` are not
     // inherited through `extends`, so only these files are type-checked while
     // compilerOptions/paths still apply.
-    let check_tsconfig =
-      project_root.join(".deno").join("check.tsconfig.json");
+    let check_tsconfig = project_root.join(".deno").join("check.tsconfig.json");
     // `include: []` nullifies the base config's open `include` (which tsc would
     // otherwise still apply alongside `files`, re-adding the whole project).
     let content = deno_core::serde_json::json!({
