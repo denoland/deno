@@ -263,6 +263,7 @@ async fn clean_except(
   let main_graph_container = factory.main_module_graph_container().await?;
   let roots = main_graph_container.collect_specifiers(
     entrypoints,
+    &[],
     CollectSpecifiersOptions {
       include_ignored_specified: true,
     },

@@ -107,9 +107,18 @@ impl MainModuleGraphContainer {
   pub fn collect_specifiers(
     &self,
     files: &[String],
+    ignore: &[String],
     options: CollectSpecifiersOptions,
   ) -> Result<Vec<ModuleSpecifier>, AnyError> {
-    let excludes = self.cli_options.workspace().resolve_config_excludes()?;
+    let mut excludes = self.cli_options.workspace().resolve_config_excludes()?;
+    if !ignore.is_empty() {
+      let ignore_patterns =
+        PathOrPatternSet::from_exclude_relative_path_or_patterns(
+          self.cli_options.initial_cwd(),
+          ignore,
+        )?;
+      excludes.append(ignore_patterns.into_path_or_patterns().into_iter());
+    }
     let include_patterns =
       PathOrPatternSet::from_include_relative_path_or_patterns(
         self.cli_options.initial_cwd(),

@@ -1337,7 +1337,7 @@ impl CliOptions {
           Some(files_to_urls(&cache_flags.files))
         }
         DenoSubcommand::Check(check_flags) => {
-          Some(files_to_urls(&check_flags.files))
+          Some(files_to_urls(&check_flags.files.include))
         }
         DenoSubcommand::Install(InstallFlags::Global(flags)) => flags
           .module_urls

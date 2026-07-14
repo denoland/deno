@@ -154,7 +154,7 @@ pub struct CacheFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CheckFlags {
-  pub files: Vec<String>,
+  pub files: FileFlags,
   pub doc: bool,
   pub doc_only: bool,
   pub check_js: bool,

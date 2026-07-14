@@ -213,6 +213,7 @@ pub async fn install_from_entrypoints(
   let main_graph_container = factory.main_module_graph_container().await?;
   let specifiers = main_graph_container.collect_specifiers(
     &entrypoints_flags.entrypoints,
+    &[],
     CollectSpecifiersOptions {
       include_ignored_specified: true,
     },
