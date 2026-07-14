@@ -449,10 +449,9 @@ Deno.test("imageBitmapFromOffscreenCanvas", async (t) => {
       new Uint8Array(data.buffer),
     );
     // Unlike transferToImageBitmap(), the canvas keeps its bitmap.
-    const imageBitmap2 = await createImageBitmap(canvas);
     assertEquals(
       // @ts-ignore: Deno[Deno.internal].core allowed
-      Deno[Deno.internal].getBitmapData(imageBitmap2),
+      Deno[Deno.internal].getCanvasBitmapData(canvas),
       new Uint8Array(data.buffer),
     );
   });

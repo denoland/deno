@@ -1663,8 +1663,11 @@ Deno.test(
     const pixels: Uint8Array = Deno[Deno.internal].getBitmapData(bitmap);
     assertEquals(Array.from(pixels.subarray(0, 4)), [255, 0, 0, 255]);
     // Unlike transferToImageBitmap(), the canvas is not cleared.
-    const result = ctx.getImageData(0, 0, 1, 1);
-    assertEquals(Array.from(result.data), [255, 0, 0, 255]);
+    // @ts-ignore: Deno[Deno.internal] allowed
+    const canvasPixels: Uint8Array = Deno[Deno.internal].getCanvasBitmapData(
+      canvas,
+    );
+    assertEquals(Array.from(canvasPixels.subarray(0, 4)), [255, 0, 0, 255]);
   },
 );
 
