@@ -13,6 +13,9 @@ pub enum Error {
   #[class(range)]
   #[error("{0}")]
   OutOfRange(Cow<'static, str>),
+  #[class(type)]
+  #[error("Exception during property access")]
+  V8Exception,
 }
 
 impl Error {
@@ -20,6 +23,7 @@ impl Error {
     match self {
       Self::InvalidArgType(_) => ErrorCode::ERR_INVALID_ARG_TYPE,
       Self::OutOfRange(_) => ErrorCode::ERR_OUT_OF_RANGE,
+      Self::V8Exception => ErrorCode::ERR_INVALID_ARG_TYPE,
     }
   }
 }
