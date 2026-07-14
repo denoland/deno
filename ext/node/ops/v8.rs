@@ -118,7 +118,7 @@ pub fn op_v8_update_heap_space_statistics(
   Some(stats.space_name().to_string_lossy().into_owned())
 }
 
-#[op2]
+#[op2(reentrant)]
 #[buffer]
 pub fn op_v8_take_heap_snapshot(scope: &mut v8::PinScope<'_, '_>) -> Vec<u8> {
   let mut buf = Vec::new();
