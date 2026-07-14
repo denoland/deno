@@ -827,6 +827,18 @@ fn generate_local_alias_paths(
 /// `types`/`typings`/`exports.types` AND has no `.d.ts` beside its main entry.
 /// An unreadable/absent `package.json` returns false so we keep the default
 /// path mapping (e.g. minimal fixtures, or generation running before install).
+/// Whether a package.json `exports` value declares a `types` condition
+/// anywhere in its (possibly deeply nested) conditions tree.
+fn exports_declares_types(value: &Value) -> bool {
+  match value {
+    Value::Object(map) => map.iter().any(|(k, v)| {
+      (k == "types" && v.is_string()) || exports_declares_types(v)
+    }),
+    Value::Array(arr) => arr.iter().any(exports_declares_types),
+    _ => false,
+  }
+}
+
 fn package_ships_no_types(pkg_dir: &Path) -> bool {
   let Ok(content) = std::fs::read_to_string(pkg_dir.join("package.json"))
   else {
@@ -835,9 +847,13 @@ fn package_ships_no_types(pkg_dir: &Path) -> bool {
   let Ok(pkg_json) = serde_json::from_str::<Value>(&content) else {
     return false;
   };
-  // Explicit types via `exports.types` or top-level `types`/`typings`.
+  // Explicit types via `exports.types` or top-level `types`/`typings`, or a
+  // `types` condition nested anywhere in `exports` (e.g. conditions-only
+  // `exports: { "node": { "types": "..." } }`, which has no "." key so
+  // `resolve_package_types_entry_path` doesn't see it).
   if resolve_package_types_entry_path(pkg_dir, ".").is_some()
     || pkg_json.get("typings").and_then(|t| t.as_str()).is_some()
+    || pkg_json.get("exports").is_some_and(exports_declares_types)
   {
     return false;
   }
@@ -1751,6 +1767,32 @@ interface AlsoKeep {
         json!("@types/react"),
       ]
     );
+  }
+
+  #[test]
+  fn test_exports_declares_types() {
+    // conditions-only exports with a nested `types` (no "." key) - the case
+    // resolve_package_types_entry_path(".") misses.
+    assert!(exports_declares_types(&json!({
+      "node": { "types": "./dist/main.d.ts", "import": "./dist/main.mjs" }
+    })));
+    // subpath export whose condition carries types.
+    assert!(exports_declares_types(&json!({
+      ".": { "import": { "types": "./index.d.ts", "default": "./index.mjs" } }
+    })));
+    // array form.
+    assert!(exports_declares_types(&json!({
+      ".": [{ "types": "./a.d.ts" }, "./b.js"]
+    })));
+    // genuinely no types anywhere.
+    assert!(!exports_declares_types(&json!({
+      ".": { "import": "./index.mjs", "require": "./index.cjs" }
+    })));
+    // a subpath literally named "types" is not a types condition (value is not
+    // a string pointing at a declaration - here it is an object).
+    assert!(!exports_declares_types(&json!({
+      "./types": { "import": "./types.mjs" }
+    })));
   }
 
   #[test]
