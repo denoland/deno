@@ -2032,6 +2032,13 @@ impl DatabaseSync {
     buffer_value: v8::Local<'a, v8::Value>,
     options_value: v8::Local<'a, v8::Value>,
   ) -> Result<(), SqliteError> {
+    // Refuse to replace the database while SQLite is executing a
+    // user-defined callback. deserialize() finalizes existing statements,
+    // which would invalidate the currently executing statement.
+    if self.callback_depth.get() > 0 {
+      return Err(SqliteError::ActiveCallback);
+    }
+
     if !buffer_value.is_array_buffer_view() {
       return Err(SqliteError::Validation(validators::Error::InvalidArgType(
         "The \"serialized\" argument must be a TypedArray or a DataView."

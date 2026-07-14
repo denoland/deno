@@ -670,6 +670,44 @@ Deno.test("[node/sqlite] DatabaseSync.deserialize corrupt header surfaces error 
   );
 });
 
+Deno.test("[node/sqlite] DatabaseSync.deserialize is blocked during user callback", () => {
+  using db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE test (id INTEGER)");
+  db.exec("INSERT INTO test VALUES (1), (2), (3)");
+
+  let blocked = false;
+
+  db.function("deserialize_in_callback", (id) => {
+    if (id === 2) {
+      nodeAssert.throws(
+        () => db.deserialize(new Uint8Array(0)),
+        {
+          code: "ERR_INVALID_STATE",
+          message:
+            "cannot close database while a user-defined callback is running",
+        },
+      );
+      blocked = true;
+    }
+
+    return id;
+  });
+
+  assertEquals(
+    db.prepare("SELECT deserialize_in_callback(id) AS id FROM test").all(),
+    [
+      { id: 1, __proto__: null },
+      { id: 2, __proto__: null },
+      { id: 3, __proto__: null },
+    ],
+  );
+  assertStrictEquals(blocked, true);
+  assertEquals(db.prepare("SELECT COUNT(*) AS count FROM test").get(), {
+    count: 3,
+    __proto__: null,
+  });
+});
+
 Deno.test("[node/sqlite] calling StatementSync and Session methods after connection has closed", () => {
   const errMessage = "statement has been finalized";
   const errMessageClosed = "database is not open";
