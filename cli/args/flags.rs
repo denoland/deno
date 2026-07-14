@@ -7928,25 +7928,106 @@ fn task_parse(
   Ok(())
 }
 
-pub fn handle_shell_completion(cwd: &Path) -> Result<(), AnyError> {
-  handle_shell_completion_with_args(std::env::args_os(), cwd)
+/// Handle a dynamic-completion callback: the shell invoked us with
+/// `COMPLETE=<shell>` set and the words being completed passed after a `--`
+/// separator. Candidates are computed from the hand-written command tree via
+/// `deno_cli_parser::completions` (no clap), with `deno task` names supplied by
+/// [`dynamic_task_completer`].
+pub fn handle_shell_completion(_cwd: &Path) -> Result<(), AnyError> {
+  let shell = std::env::var("COMPLETE").unwrap_or_default();
+  let words = shell_completion_words();
+  deno_cli_parser::completions::try_complete(
+    &deno_cli_parser::defs::DENO_ROOT,
+    &words,
+    &shell,
+    &dynamic_task_completer,
+  );
+  Ok(())
 }
 
 /// Emit the dynamic shell-completion registration script for `shell`
 /// (bash/fish/zsh). The parser records only the target shell
 /// (`CompletionsFlags::Dynamic { shell }`) and defers this CLI-only generation
-/// here.
+/// here. The emitted script calls back into this binary with `COMPLETE` set,
+/// where [`handle_shell_completion`] computes the candidates.
 pub fn handle_dynamic_shell_completion(shell: &str) -> Result<(), AnyError> {
-  // SAFETY: runs during single-threaded CLI startup. clap_complete reads
-  // COMPLETE to decide it should print the registration script rather than
-  // bail out.
-  unsafe {
-    std::env::set_var("COMPLETE", shell);
-  }
-  let cwd = resolve_cwd(None)?;
-  handle_shell_completion_with_args(std::env::args_os().take(1), &cwd)
+  let completer = std::env::args_os()
+    .next()
+    .map(|s| s.to_string_lossy().into_owned())
+    .unwrap_or_else(|| "deno".to_string());
+  let completer = shlex::try_quote(&completer)
+    .map(|c| c.into_owned())
+    .unwrap_or(completer);
+  let script =
+    deno_cli_parser::completions::generate_dynamic(shell, "deno", &completer);
+  deno_print::drop_write_stdout(&script);
+  Ok(())
 }
 
+/// The words being completed, extracted from the callback invocation. The
+/// registration scripts invoke `<deno> -- <typed words...>`, so everything
+/// after the first `--` is the command line (starting with the command name).
+fn shell_completion_words() -> Vec<String> {
+  let mut words = Vec::new();
+  let mut seen_sep = false;
+  for a in std::env::args_os() {
+    if seen_sep {
+      words.push(a.to_string_lossy().into_owned());
+    } else if a == "--" {
+      seen_sep = true;
+    }
+  }
+  words
+}
+
+/// Positional-argument completer injected into the parser's completion engine.
+/// Completes `deno task <TAB>` with the available task names read from the
+/// resolved config (the only dynamic completion Deno offers). Kept CLI-side
+/// because the parser crate has no config/workspace access.
+fn dynamic_task_completer(
+  active_cmd: &deno_cli_parser::CommandDef,
+  _current: &str,
+) -> Vec<(String, Option<String>)> {
+  if active_cmd.name != "task" {
+    return Vec::new();
+  }
+  let Some(flags) = task_flags_for_completion() else {
+    return Vec::new();
+  };
+  match crate::tools::task::get_available_tasks_for_completion(
+    std::sync::Arc::new(flags),
+  ) {
+    Ok(tasks) => tasks
+      .into_iter()
+      .map(|t| (t.name, t.task.description))
+      .collect(),
+    Err(e) => {
+      log::debug!("Error during available tasks completion: {e}");
+      Vec::new()
+    }
+  }
+}
+
+/// Best-effort parse of the completion command line into `Flags`, used to pick
+/// up `deno task`'s `--config`/`--recursive`/`--filter` for task resolution.
+fn task_flags_for_completion() -> Option<Flags> {
+  let words = shell_completion_words();
+  // The last word is the partial being completed; if the full line doesn't
+  // parse, retry without it (mirrors clap's `ignore_errors`).
+  let flags = deno_cli_parser::convert::flags_from_vec(words.clone())
+    .or_else(|_| {
+      let mut w = words;
+      w.pop();
+      deno_cli_parser::convert::flags_from_vec(w)
+    })
+    .ok()?;
+  matches!(flags.subcommand, DenoSubcommand::Task(_)).then_some(flags)
+}
+
+#[allow(
+  dead_code,
+  reason = "clap_complete dynamic machinery kept until clap is removed; production dynamic completions now use deno_cli_parser::completions"
+)]
 struct ZshCompleterUnsorted;
 
 // dynamic completion implementation for zsh that retains the order we give completions to zsh
@@ -8029,6 +8110,10 @@ compdef _clap_dynamic_completer_NAME BIN"#
   }
 }
 
+#[allow(
+  dead_code,
+  reason = "clap_complete dynamic machinery kept until clap is removed; production dynamic completions now use deno_cli_parser::completions"
+)]
 fn handle_shell_completion_with_args(
   args: impl IntoIterator<Item = OsString>,
   cwd: &Path,
