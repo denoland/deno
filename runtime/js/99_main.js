@@ -732,24 +732,16 @@ function removeImportedOps() {
   }
 }
 
-// `Deno[Deno.internal]` is reachable from user code. Keep extension-loading
-// capabilities on the core object imported through `ext:core/mod.js`, and only
-// expose the subset needed by internal tooling and tests here.
-const userVisibleCore = ObjectFreeze({
-  __proto__: null,
-  callConsole: core.callConsole,
-  encodeBinaryString: core.encodeBinaryString,
-  evalContext: core.evalContext,
-  ops,
-  print: core.print,
-  propNonEnumerable: core.propNonEnumerable,
-  propReadOnly: core.propReadOnly,
-  propWritable: core.propWritable,
-  resources: core.resources,
-  setLeakTracingEnabled: core.setLeakTracingEnabled,
-  setPromiseHooks: core.setPromiseHooks,
-  unrefOpPromise: core.unrefOpPromise,
-});
+// `Deno[Deno.internal]` is reachable from user code. Preserve its existing
+// internal compatibility surface, but keep extension-loading capabilities on
+// the core object imported through `ext:core/mod.js`.
+const userVisibleCoreDescriptors = ObjectGetOwnPropertyDescriptors(core);
+delete userVisibleCoreDescriptors.createLazyLoader;
+delete userVisibleCoreDescriptors.loadExtScript;
+const userVisibleCore = ObjectFreeze(ObjectDefineProperties(
+  { __proto__: null },
+  userVisibleCoreDescriptors,
+));
 ObjectAssign(internals, { core: userVisibleCore });
 const internalSymbol = Symbol("Deno.internal");
 // `Deno.test` and its sub-methods are no-ops outside of `deno test`, kept for
