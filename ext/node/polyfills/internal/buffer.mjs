@@ -1049,20 +1049,19 @@ Buffer.prototype.base64Slice = function base64Slice(
   offset,
   end,
 ) {
+  const byteLength = TypedArrayPrototypeGetByteLength(this);
   if (offset === undefined) {
     offset = 0;
   }
 
   if (end === undefined) {
-    end = this.length;
+    end = byteLength;
   }
 
-  // deno-lint-ignore prefer-primordials
-  if (offset < 0 || offset > this.byteLength) {
+  if (offset < 0 || offset > byteLength) {
     throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
   }
-  // deno-lint-ignore prefer-primordials
-  if (end < 0 || end > this.byteLength) {
+  if (end < 0 || end > byteLength) {
     throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("end");
   }
   if (end <= offset) {
@@ -1073,7 +1072,7 @@ Buffer.prototype.base64Slice = function base64Slice(
   // the lighter-weight op2 string path is faster.
   // Use op_base64_encode_from_buffer (v8::String::new_external_onebyte) for
   // large buffers where avoiding UTF-8 processing and copying matters.
-  if (offset === 0 && end === this.length && end <= 4096) {
+  if (offset === 0 && end === byteLength && end <= 4096) {
     return op_base64_encode(this);
   }
   return op_base64_encode_from_buffer(this, offset, end - offset);
@@ -1084,22 +1083,22 @@ Buffer.prototype.base64Write = function base64Write(
   offset,
   length,
 ) {
+  const byteLength = TypedArrayPrototypeGetByteLength(this);
   if (offset === undefined) {
     offset = 0;
   }
-  // deno-lint-ignore prefer-primordials
-  if (offset < 0 || offset > this.byteLength) {
+  if (offset < 0 || offset > byteLength) {
     throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
   }
 
-  const remaining = this.byteLength - offset;
+  const remaining = byteLength - offset;
   if (length === undefined || length > remaining) {
     length = remaining;
   } else if (length < 0) {
     throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("length");
   }
 
-  const target = offset === 0 && length === this.byteLength
+  const target = offset === 0 && length === byteLength
     ? this
     : TypedArrayPrototypeSubarray(this, 0, offset + length);
   try {

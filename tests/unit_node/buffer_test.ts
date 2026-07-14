@@ -707,6 +707,18 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[node/buffer] base64 operations use the actual buffer length",
+  fn() {
+    const buf = Buffer.from("abcdef");
+    Object.defineProperty(buf, "byteLength", { value: 0 });
+
+    assertEquals(buf.toString("base64", 1, 4), "YmNk");
+    assertEquals(buf.write("WFla", 1, 2, "base64"), 2);
+    assertEquals(buf.toString(), "aXYdef");
+  },
+});
+
+Deno.test({
   name: "[node/buffer] base64urlSlice allows omitting arguments",
   fn() {
     const buf = Buffer.of(1, 2, 3);
