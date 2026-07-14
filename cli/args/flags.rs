@@ -14311,6 +14311,35 @@ mod tests {
   }
 
   #[test]
+  fn compile_target_aarch64_windows() {
+    // denort for Windows arm64 is built and published by CI, so
+    // `--target aarch64-pc-windows-msvc` must be accepted by the SUPPORTED_OS
+    // value parser (and an unsupported triple must still be rejected).
+    let r = flags_from_vec(svec![
+      "deno",
+      "compile",
+      "--target",
+      "aarch64-pc-windows-msvc",
+      "main.ts"
+    ]);
+    let DenoSubcommand::Compile(c) = r.unwrap().subcommand else {
+      unreachable!()
+    };
+    assert_eq!(c.target, Some("aarch64-pc-windows-msvc".to_string()));
+
+    assert!(
+      flags_from_vec(svec![
+        "deno",
+        "compile",
+        "--target",
+        "riscv64gc-unknown-linux-gnu",
+        "main.ts"
+      ])
+      .is_err()
+    );
+  }
+
+  #[test]
   fn coverage() {
     let r = flags_from_vec(svec!["deno", "coverage", "foo.json"]);
     assert_eq!(

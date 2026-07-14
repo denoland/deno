@@ -5056,6 +5056,37 @@ fn compile() {
 }
 
 #[test]
+fn compile_target_aarch64_windows() {
+  // The denort runtime for Windows arm64 is built and published by CI, so
+  // `--target aarch64-pc-windows-msvc` must be accepted. This is the
+  // regression guard for the clap -> deno_cli_parser cutover: the new parser
+  // validates `--target` against its own SUPPORTED_OS list, so the triple has
+  // to be present here too (not just in clap's list).
+  let r = flags_from_vec(svec![
+    "deno",
+    "compile",
+    "--target=aarch64-pc-windows-msvc",
+    "main.ts"
+  ]);
+  let DenoSubcommand::Compile(c) = r.unwrap().subcommand else {
+    panic!("expected compile subcommand");
+  };
+  assert_eq!(c.target, Some("aarch64-pc-windows-msvc".to_string()));
+
+  // An unsupported triple is still rejected, proving the validator is active
+  // (and this test isn't passing just because validation was dropped).
+  assert!(
+    flags_from_vec(svec![
+      "deno",
+      "compile",
+      "--target=riscv64gc-unknown-linux-gnu",
+      "main.ts"
+    ])
+    .is_err()
+  );
+}
+
+#[test]
 fn desktop_backend_default() {
   let r = flags_from_vec(svec!["deno", "desktop", "main.tsx"]);
   let flags = r.unwrap();
