@@ -417,6 +417,14 @@ pub trait DesktopApi: Send + Sync + 'static {
     default_value: &str,
   ) -> Option<String>;
 
+  /// Read the system clipboard's plain-text content. Returns `None` if the
+  /// clipboard is empty, holds no text, or the backend has no clipboard
+  /// support.
+  fn read_clipboard_text(&self) -> Option<String>;
+  /// Replace the system clipboard's content with `text`. An empty string
+  /// clears the clipboard.
+  fn write_clipboard_text(&self, text: &str);
+
   /// Set a short text badge on the app's dock / taskbar icon. An empty
   /// string clears the badge.
   fn set_dock_badge(&self, text: &str);
@@ -645,13 +653,21 @@ impl BrowserWindow {
     self.window_id
   }
 
+  // Exposed to JS as `bindNative` / `unbindNative`, NOT `bind` / `unbind`.
+  // The public `BrowserWindow.prototype.bind`/`unbind` are defined as plain JS
+  // functions in DESKTOP_JS that capture the per-window callback and then call
+  // these. If the public method were itself a (#[fast]) op, V8 would fast-call
+  // it after warmup and bypass the JS wrapper — dropping the callback and
+  // producing "No callback bound for: <name>" for every binding after the first
+  // couple. Naming the op differently keeps `win.bind` a pure-JS function that
+  // V8 never fast-calls.
   #[fast]
-  fn bind(&self, #[string] name: &str) {
+  fn bind_native(&self, #[string] name: &str) {
     self.api.bind(self.window_id, name);
   }
 
   #[fast]
-  fn unbind(&self, #[string] name: &str) {
+  fn unbind_native(&self, #[string] name: &str) {
     self.api.unbind(self.window_id, name);
   }
 
@@ -1321,6 +1337,21 @@ fn op_desktop_prompt(
   }
 }
 
+#[op2]
+#[string]
+fn op_desktop_read_clipboard_text(state: &mut OpState) -> Option<String> {
+  state
+    .try_borrow::<Arc<dyn DesktopApi>>()
+    .and_then(|api| api.read_clipboard_text())
+}
+
+#[op2(fast)]
+fn op_desktop_write_clipboard_text(state: &mut OpState, #[string] text: &str) {
+  if let Some(api) = state.try_borrow::<Arc<dyn DesktopApi>>() {
+    api.write_clipboard_text(text);
+  }
+}
+
 fn permission_state_to_web_string(state: PermissionState) -> &'static str {
   // Web Permissions API state values; `Notification.requestPermission`
   // additionally maps `Prompt` → `"default"` per the Notifications spec.
@@ -1746,6 +1777,8 @@ deno_core::extension!(
     op_desktop_alert,
     op_desktop_confirm,
     op_desktop_prompt,
+    op_desktop_read_clipboard_text,
+    op_desktop_write_clipboard_text,
     op_desktop_send_error_report,
     op_desktop_request_notification_permission,
     op_desktop_query_notification_permission,

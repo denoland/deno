@@ -30,6 +30,8 @@ pub const DESKTOP_JS: &str = r#"
     op_desktop_alert,
     op_desktop_confirm,
     op_desktop_prompt,
+    op_desktop_read_clipboard_text,
+    op_desktop_write_clipboard_text,
     op_desktop_request_notification_permission,
     op_desktop_query_notification_permission,
   } = internals.core.ops;
@@ -225,14 +227,18 @@ pub const DESKTOP_JS: &str = r#"
     // No env access — fine, we just don't trace binding calls.
   }
 
-  const nativeBind = BrowserWindowPrototype.bind;
+  // `bind` / `unbind` are defined here as plain JS functions (the native ops
+  // are exposed as `bindNative` / `unbindNative`). They must NOT be ops
+  // themselves: a #[fast] op named `bind` would be fast-called by V8 after
+  // warmup, bypassing this wrapper and dropping `fn`, which surfaces as
+  // "No callback bound for: <name>" for every binding after the first couple.
   BrowserWindowPrototype.bind = function(name, fn) {
     const windowId = this.windowId;
     if (!windowBindCallbacks.has(windowId)) {
       windowBindCallbacks.set(windowId, new Map());
     }
     windowBindCallbacks.get(windowId).set(name, fn.bind(this));
-    nativeBind.call(this, name);
+    this.bindNative(name);
 
     // Inject a renderer-side wrapper that emits console.debug around
     // every binding call. The wrapper waits for the native binding to
@@ -276,12 +282,11 @@ pub const DESKTOP_JS: &str = r#"
     }
   };
 
-  const nativeUnbind = BrowserWindowPrototype.unbind;
   BrowserWindowPrototype.unbind = function(name) {
     const windowId = this.windowId;
     const callbacks = windowBindCallbacks.get(windowId);
     if (callbacks) callbacks.delete(name);
-    nativeUnbind.call(this, name);
+    this.unbindNative(name);
   };
 
   function alert(message = "Alert") {
@@ -691,6 +696,69 @@ pub const DESKTOP_JS: &str = r#"
     });
   } catch (e) {
     console.error("[deno desktop] failed to install navigator.permissions:", e);
+  }
+
+  // --- navigator.clipboard (text only) ---
+  //
+  // Spec surface: `navigator.clipboard` is a `Clipboard` (extends EventTarget)
+  // exposing async `readText()` / `writeText()`. The underlying laufey ops are
+  // synchronous (serviced on the UI thread); the methods are `async` so the
+  // web-facing Promise shape is preserved. The richer `read()` / `write()`
+  // (`ClipboardItem` / arbitrary MIME types) aren't backed by laufey, so
+  // they're omitted rather than stubbed. Per spec the read/write are gated on
+  // the `clipboard-read` / `clipboard-write` permissions, but laufey has no
+  // clipboard permission model, so access isn't gated here (mirroring how the
+  // desktop Notification surface degrades).
+  const webidl = internals.webidl;
+  class Clipboard extends EventTarget {
+    constructor() {
+      super();
+      webidl.illegalConstructor();
+    }
+
+    async readText() {
+      webidl.assertBranded(this, ClipboardPrototype);
+      return op_desktop_read_clipboard_text() ?? "";
+    }
+
+    async writeText(data) {
+      webidl.assertBranded(this, ClipboardPrototype);
+      const prefix = "Failed to execute 'writeText' on 'Clipboard'";
+      webidl.requiredArguments(arguments.length, 1, prefix);
+      data = webidl.converters["DOMString"](data, prefix, "Argument 1");
+      op_desktop_write_clipboard_text(data);
+    }
+  }
+  webidl.configureInterface(Clipboard);
+  const ClipboardPrototype = Clipboard.prototype;
+
+  try {
+    const clipboard = webidl.createBranded(Clipboard);
+    // createBranded skips the constructor, so initialize the EventTarget
+    // internal slots explicitly (see ext/web/02_event.js setEventTargetData).
+    internals.setEventTargetData(clipboard);
+
+    if (typeof navigator === "object" && navigator != null) {
+      // Install as a prototype getter (as in browsers) rather than an own
+      // data property, asserting the receiver is a real Navigator.
+      const NavigatorPrototype = Object.getPrototypeOf(navigator);
+      Object.defineProperty(NavigatorPrototype, "clipboard", {
+        get() {
+          webidl.assertBranded(this, NavigatorPrototype);
+          return clipboard;
+        },
+        enumerable: true,
+        configurable: true,
+      });
+    }
+    Object.defineProperty(globalThis, "Clipboard", {
+      value: Clipboard,
+      writable: true,
+      enumerable: false,
+      configurable: true,
+    });
+  } catch (e) {
+    console.error("[deno desktop] failed to install navigator.clipboard:", e);
   }
 
   // Start polling loops immediately. Use core.unrefOpPromise so these
@@ -1282,6 +1350,14 @@ mod tests {
     assert!(DESKTOP_JS.contains("navigator"));
     assert!(DESKTOP_JS.contains("permissions"));
     assert!(DESKTOP_JS.contains("PermissionStatus"));
+  }
+
+  #[test]
+  fn desktop_js_installs_navigator_clipboard() {
+    assert!(DESKTOP_JS.contains("navigator"));
+    assert!(DESKTOP_JS.contains("clipboard"));
+    assert!(DESKTOP_JS.contains("readText"));
+    assert!(DESKTOP_JS.contains("writeText"));
   }
 
   #[test]

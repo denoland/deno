@@ -711,6 +711,8 @@ const NOT_IMPORTED_OPS = [
   "op_desktop_alert",
   "op_desktop_confirm",
   "op_desktop_prompt",
+  "op_desktop_read_clipboard_text",
+  "op_desktop_write_clipboard_text",
   "op_desktop_send_error_report",
   "op_desktop_request_notification_permission",
   "op_desktop_query_notification_permission",
