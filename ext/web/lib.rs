@@ -385,7 +385,7 @@ fn op_base64_decode_into(
   #[smi] offset: u32,
 ) -> Result<u32, WebError> {
   let offset = offset as usize;
-  let target = &mut target[offset..];
+  let target = target.get_mut(offset..).ok_or(WebError::BufferTooSmall)?;
 
   // Fast path: try strict decode directly into target.
   // Works for clean padded base64 (the common case).
@@ -465,8 +465,9 @@ fn op_base64_encode_from_buffer<'a>(
 ) -> Result<v8::Local<'a, v8::String>, WebError> {
   let offset = offset as usize;
   let length = length as usize;
-  let end = (offset + length).min(s.len());
-  base64_encode_to_v8_string(scope, &s[offset..end])
+  let end = offset.checked_add(length).ok_or(WebError::BufferTooSmall)?;
+  let s = s.get(offset..end).ok_or(WebError::BufferTooSmall)?;
+  base64_encode_to_v8_string(scope, s)
 }
 
 /// Encode bytes to base64 and create a V8 one-byte string directly.
