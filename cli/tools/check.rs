@@ -76,19 +76,23 @@ async fn native_check(
   // Deno owns resolution: this drives deno's own graph diagnostics (missing
   // modules + hints) and the incremental type-check cache, so we can skip the
   // external compiler entirely when nothing it sees has changed.
-  let has_explicit_roots = !check_flags.files.is_empty();
-  let root_patterns = if has_explicit_roots {
-    check_flags.files.clone()
-  } else {
-    vec![".".to_string()]
-  };
+  // Resolve the requested roots exactly as deno's own checker does on `main`:
+  // globs are expanded, workspace `exclude` is applied, and
+  // `include_ignored_specified: false` means an explicitly-passed excluded file
+  // is skipped rather than force-checked. An empty result is not an error - it
+  // just means there's nothing to check (e.g. every match was excluded), which
+  // deno reports as a warning and a clean exit.
   let graph_container = factory.main_module_graph_container().await?;
   let roots = graph_container.collect_specifiers(
-    &root_patterns,
+    &check_flags.files,
     crate::graph_container::CollectSpecifiersOptions {
-      include_ignored_specified: has_explicit_roots,
+      include_ignored_specified: false,
     },
   )?;
+  if roots.is_empty() {
+    log::warn!("{} No matching files found.", colors::yellow("Warning"));
+    return Ok(());
+  }
   let graph_kind = cli_options.type_check_mode().as_graph_kind();
   let imports = factory
     .module_graph_builder()
@@ -100,7 +104,7 @@ async fn native_check(
     .create_graph_with_options(crate::graph_util::CreateGraphOptions {
       is_dynamic: false,
       graph_kind,
-      roots,
+      roots: roots.clone(),
       imports,
       loader: None,
       npm_caching: cli_options.default_npm_caching_strategy(),
@@ -178,16 +182,15 @@ async fn native_check(
         "./tsconfig.json",
       )
     };
-  // Resolve the requested arguments to actual files. Only real files become
-  // per-file `files` targets; a bare `deno check` (no args), `check .`, or a
-  // directory argument leaves this empty and checks the whole project via the
-  // base config's `include`.
-  let initial_cwd = cli_options.initial_cwd();
-  let files: Vec<String> = check_flags
-    .files
+  // Pin tsc to exactly the local files deno resolved as roots (glob-expanded and
+  // exclude-applied above), so `deno check *.ts` checks only the matched files -
+  // not the whole project - and an excluded file stays excluded. Remote roots
+  // (http(s):/jsr:) can't be tsc `files` entries; when every root is remote this
+  // is empty and we fall back to the base config's `include`.
+  let files: Vec<String> = roots
     .iter()
-    .map(|f| initial_cwd.join(f))
-    .filter(|p| p.is_file())
+    .filter(|s| s.scheme() == "file")
+    .filter_map(|s| s.to_file_path().ok())
     .map(|p| p.to_string_lossy().replace('\\', "/"))
     .collect();
   let tsconfig_path = if files.is_empty() {

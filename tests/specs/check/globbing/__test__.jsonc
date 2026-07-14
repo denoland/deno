@@ -2,7 +2,7 @@
   "tests": {
     "star": {
       "args": "check *.ts",
-      "output": "Check [WILDCARD]main.ts\n",
+      "output": "Check (tsc [WILDLINE])\n",
       "exitCode": 0
     },
     "star_not_found": {
@@ -12,12 +12,12 @@
     },
     "glob_star": {
       "args": "check **/*.ts",
-      "output": "Check [WILDCARD]main.ts\nTS2322[WILDCARD]",
+      "output": "Check (tsc [WILDLINE])\nTS2322[WILDCARD]",
       "exitCode": 1
     },
     "sub_dir": {
       "args": "check sub_dir",
-      "output": "Check [WILDCARD]main.ts\nTS2322[WILDCARD]",
+      "output": "Check (tsc [WILDLINE])\nTS2322[WILDCARD]",
       "exitCode": 1
     }
   }
