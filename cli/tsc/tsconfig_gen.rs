@@ -1002,12 +1002,20 @@ fn generate_npm_paths(
           if package_ships_no_types(&pkg_dir) {
             continue;
           }
-          // Bare `npm:preact`: map to the package directory, which resolves via
-          // its package.json `types`/`exports["."]`. Emitted unconditionally so
-          // the mapping exists even if generation runs before install. Key both
-          // the version-less scheme (`npm:preact`) and the exact specifier.
+          // Bare `npm:preact`: in global-cache mode map straight to the
+          // resolved types entry (`.d.ts`) so tsc doesn't have to match the
+          // package's `exports` conditions itself - its bundler conditions
+          // exclude `node`/`deno`, which deno resolves, so a
+          // `exports: { "node": { "types": ... } }` package would otherwise be
+          // TS2307. Fall back to the package directory when no types entry
+          // resolves. In local `node_modules` mode tsc resolves the package
+          // natively, so map to the directory. Key both the version-less scheme
+          // (`npm:preact`) and the exact specifier.
           let dir = if is_global_cache {
-            pkg_dir.to_string_lossy().replace('\\', "/")
+            resolve_package_types_entry_path(&pkg_dir, ".")
+              .unwrap_or_else(|| pkg_dir.clone())
+              .to_string_lossy()
+              .replace('\\', "/")
           } else {
             format!("../node_modules/{pkg_name}")
           };
@@ -1277,26 +1285,71 @@ pub fn resolve_package_types_entry_path(
   let content = std::fs::read_to_string(&pkg_json_path).ok()?;
   let pkg_json: Value = serde_json::from_str(&content).ok()?;
 
-  // Resolve `exports[export_key]` (e.g. "." or "./cookie_map"), preferring the
-  // "types" condition; the entry may be a conditions object or a bare string.
-  let entry = pkg_json.get("exports").and_then(|e| e.get(export_key));
-  let types_path = entry
-    .and_then(|v| {
-      v.get("types")
-        .and_then(|t| t.as_str())
-        .or_else(|| v.as_str())
-    })
-    .or_else(|| {
-      // Fallback: top-level "types" field, only for the root export.
-      if export_key == "." {
-        pkg_json.get("types").and_then(|t| t.as_str())
-      } else {
-        None
-      }
-    })?;
+  // Resolve `exports[export_key]` (e.g. "." or "./cookie_map"), preferring a
+  // `types` condition (possibly nested inside condition objects like
+  // `node`/`import`). The entry may be a conditions object or a bare string.
+  let exports = pkg_json.get("exports");
+  let entry = exports.and_then(|e| e.get(export_key)).or_else(|| {
+    // A conditions-only `exports` (no subpath keys, e.g.
+    // `exports: { "node": { "types": "..." } }`) is itself the "." target's
+    // conditions.
+    if export_key == "." && exports.is_some_and(is_conditions_only_exports) {
+      exports
+    } else {
+      None
+    }
+  });
+  let types_path = entry.and_then(export_types_target).or_else(|| {
+    // Fallback: top-level "types" field, only for the root export.
+    if export_key == "." {
+      pkg_json.get("types").and_then(|t| t.as_str())
+    } else {
+      None
+    }
+  })?;
 
   let types_path = types_path.strip_prefix("./").unwrap_or(types_path);
   Some(pkg_dir.join(types_path))
+}
+
+/// Whether a package.json `exports` value is conditions-only: an object whose
+/// keys are all conditions (none is a "." or "./"-prefixed subpath), in which
+/// case the whole object is the root export's conditions.
+fn is_conditions_only_exports(exports: &Value) -> bool {
+  exports
+    .as_object()
+    .is_some_and(|m| !m.is_empty() && m.keys().all(|k| !k.starts_with('.')))
+}
+
+/// The types target of a resolved export entry: a `types` condition found
+/// anywhere in the (possibly nested) conditions tree, or a bare string entry
+/// (e.g. `exports: { ".": "./index.d.ts" }`). Does not fall through to
+/// JS-only conditions (`import`/`default` without `types`), so a package that
+/// declares no types resolves to `None`.
+fn export_types_target(value: &Value) -> Option<&str> {
+  match value {
+    Value::String(s) => Some(s),
+    Value::Object(map) => find_types_condition(map),
+    Value::Array(arr) => arr.iter().find_map(export_types_target),
+    _ => None,
+  }
+}
+
+fn find_types_condition(map: &Map<String, Value>) -> Option<&str> {
+  if let Some(Value::String(s)) = map.get("types") {
+    return Some(s);
+  }
+  map
+    .iter()
+    .filter(|(k, _)| *k != "types")
+    .find_map(|(_, v)| match v {
+      Value::Object(m) => find_types_condition(m),
+      Value::Array(a) => a.iter().find_map(|x| match x {
+        Value::Object(m) => find_types_condition(m),
+        _ => None,
+      }),
+      _ => None,
+    })
 }
 
 /// Generate tsconfig "paths" entries for http(s): specifiers.
@@ -1793,6 +1846,39 @@ interface AlsoKeep {
     assert!(!exports_declares_types(&json!({
       "./types": { "import": "./types.mjs" }
     })));
+  }
+
+  #[test]
+  fn test_export_types_target() {
+    // conditions-only root export (no "." key) with nested types.
+    assert!(is_conditions_only_exports(&json!({
+      "node": { "types": "./dist/main.d.ts", "import": "./dist/main.mjs" }
+    })));
+    assert!(!is_conditions_only_exports(&json!({ ".": "./index.js" })));
+    // `types` nested inside a condition object is found.
+    assert_eq!(
+      export_types_target(&json!({
+        "node": { "types": "./dist/main.d.ts", "import": "./dist/main.mjs" }
+      })),
+      Some("./dist/main.d.ts")
+    );
+    // direct `types` condition.
+    assert_eq!(
+      export_types_target(&json!({ "types": "./i.d.ts", "import": "./i.mjs" })),
+      Some("./i.d.ts")
+    );
+    // bare string entry (e.g. exports: { ".": "./index.d.ts" }).
+    assert_eq!(
+      export_types_target(&json!("./index.d.ts")),
+      Some("./index.d.ts")
+    );
+    // no types anywhere -> None (do not fall through to JS-only conditions).
+    assert_eq!(
+      export_types_target(
+        &json!({ "import": "./i.mjs", "require": "./i.cjs" })
+      ),
+      None
+    );
   }
 
   #[test]
