@@ -19,6 +19,7 @@ const {
 } = core.ops;
 const {
   ObjectDefineProperty,
+  ObjectFreeze,
   TypeError,
   Symbol,
   SymbolFor,
@@ -116,11 +117,8 @@ class TlsListener extends Listener {
  * interfaces.
  */
 function hasTlsKeyPairOptions(options) {
-  // TODO(mmastrac): remove this temporary symbol when the API lands
-  if (options[resolverSymbol] !== undefined) {
-    return true;
-  }
-  return (options.cert !== undefined || options.key !== undefined);
+  return (options.cert !== undefined || options.key !== undefined ||
+    options.resolveCertificate !== undefined);
 }
 
 /**
@@ -131,10 +129,15 @@ function loadTlsKeyPair(api, {
   keyFormat,
   cert,
   key,
+  resolveCertificate,
 }) {
-  // TODO(mmastrac): remove this temporary symbol when the API lands
-  if (arguments[1][resolverSymbol] !== undefined) {
-    return createTlsKeyResolver(arguments[1][resolverSymbol]);
+  if (resolveCertificate !== undefined) {
+    if (typeof resolveCertificate !== "function") {
+      throw new TypeError(
+        `If \`resolveCertificate\` is specified, it must be a function for \`${api}\``,
+      );
+    }
+    return createTlsKeyResolver(resolveCertificate);
   }
 
   // Check for "pem" format
@@ -230,36 +233,46 @@ function startTlsInternal(
   return new TlsConn(rid, remoteAddr, localAddr);
 }
 
-const resolverSymbol = SymbolFor("unstableSniResolver");
 const serverNameSymbol = SymbolFor("unstableServerName");
 
+// Drives a `resolveCertificate` callback: polls the native lookup queue for
+// pending TLS handshakes, invokes the user callback with the requested server
+// name (SNI) and the client's ClientHello, and feeds the resulting
+// certificate/key pair back. Resolutions are cached by server name on the
+// native side, so the callback is invoked once per distinct name.
 function createTlsKeyResolver(callback) {
   const { 0: resolver, 1: lookup } = op_tls_cert_resolver_create();
   (async () => {
     while (true) {
-      const sni = await op_tls_cert_resolver_poll(lookup);
-      if (typeof sni !== "string") {
+      const polled = await op_tls_cert_resolver_poll(lookup);
+      if (polled === null || polled === undefined) {
         break;
       }
+      const { 0: id, 1: serverName, 2: clientHello } = polled;
       try {
-        const key = await callback(sni);
-        if (!hasTlsKeyPairOptions(key)) {
-          op_tls_cert_resolver_resolve_error(lookup, sni, "Invalid key");
+        const keyPair = await callback(serverName, ObjectFreeze(clientHello));
+        if (
+          keyPair === null || typeof keyPair !== "object" ||
+          keyPair.cert === undefined || keyPair.key === undefined
+        ) {
+          op_tls_cert_resolver_resolve_error(
+            lookup,
+            id,
+            "`resolveCertificate` must return an object with `cert` and `key`",
+          );
         } else {
-          const resolved = loadTlsKeyPair("Deno.listenTls", key);
-          op_tls_cert_resolver_resolve(lookup, sni, resolved);
+          const resolved = loadTlsKeyPair("Deno.listenTls", keyPair);
+          op_tls_cert_resolver_resolve(lookup, id, resolved);
         }
       } catch (e) {
-        op_tls_cert_resolver_resolve_error(lookup, sni, e.message);
+        op_tls_cert_resolver_resolve_error(lookup, id, e.message);
       }
     }
   })();
   return resolver;
 }
 
-internals.resolverSymbol = resolverSymbol;
 internals.serverNameSymbol = serverNameSymbol;
-internals.createTlsKeyResolver = createTlsKeyResolver;
 internals.getPeerCertificate = _getPeerCertificate;
 
 return {
