@@ -3359,6 +3359,63 @@ async fn bundle_watch() {
 }
 
 #[test(flaky)]
+async fn bundle_watch_raw_css_import() {
+  let _server = http_server();
+
+  let t = TempDir::new();
+  let main_ts = t.path().join("main.ts");
+  main_ts.write(
+    r#"import styles from "./styles.css" with { type: "css" };
+console.log(styles);
+"#,
+  );
+  let styles_css = t.path().join("styles.css");
+  styles_css.write("div { color: red; }\n");
+  let output = t.path().join("output.js");
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("bundle")
+    .arg("--watch")
+    .arg("--unstable-raw-imports")
+    .arg("--platform=browser")
+    .arg("-L")
+    .arg("debug")
+    .arg("--output")
+    .arg(&output)
+    .arg(&main_ts)
+    .env("NO_COLOR", "1")
+    .envs(env_vars_for_npm_tests())
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (_, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("Bundled 2 modules in", &mut stderr_lines).await;
+  assert_contains!(output.read_to_string(), "div { color: red; }");
+  wait_for_watcher("styles.css", &mut stderr_lines).await;
+
+  styles_css.write("div { color: blue; }\n");
+  wait_contains("File change detected", &mut stderr_lines).await;
+  wait_contains("Bundled 2 modules in", &mut stderr_lines).await;
+  let contents = output.read_to_string();
+  assert_contains!(contents, "div { color: blue; }");
+  assert_not_contains!(contents, "div { color: red; }");
+
+  wait_for_watcher("main.ts", &mut stderr_lines).await;
+  main_ts.write(
+    r#"import styles from "./styles.css" with { type: "css" };
+console.log("watch still works", styles);
+"#,
+  );
+  wait_contains("File change detected", &mut stderr_lines).await;
+  wait_contains("Bundled 2 modules in", &mut stderr_lines).await;
+  assert_contains!(output.read_to_string(), "watch still works");
+
+  check_alive_then_kill(child);
+}
+
+#[test(flaky)]
 async fn bundle_watch_html_entry() {
   let _server = http_server();
 
