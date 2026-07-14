@@ -20,6 +20,23 @@ Deno.test(function checkExposedOps() {
     );
   }
 });
+Deno.test(function internalCoreOnlyHidesExtensionLoaders() {
+  // @ts-ignore TS doesn't allow to index with symbol
+  const core = Deno[Deno.internal].core;
+
+  for (const name of ["createLazyLoader", "loadExtScript"]) {
+    if (name in core) {
+      throw new Error(`${name} should not be exposed`);
+    }
+  }
+
+  for (const name of ["close", "read", "readAll"]) {
+    if (typeof core[name] !== "function") {
+      throw new Error(`${name} should remain exposed`);
+    }
+  }
+});
+
 Deno.test(async function workerDoesNotExposeImportedOps() {
   const mainOpNames = getExposedOpNames();
   const worker = new Worker(
