@@ -1,3 +1,4 @@
+Download http://localhost:4545/remote.ts
 Check (tsc [WILDLINE])
 TS2307 [ERROR]: Cannot find module './other.js' or its corresponding type declarations.
 import { Test } from "./other.js";

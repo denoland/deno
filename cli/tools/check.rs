@@ -111,6 +111,19 @@ async fn native_check(
     })
     .await?;
 
+  // Surface deno's own graph-resolution errors before handing off to tsc:
+  // unsupported import attributes (e.g. `.css` without --unstable-raw-imports),
+  // `compilerOptions.paths` that resolve to nothing, integrity/npm-resolution
+  // failures, and invalid specifiers. Missing-module errors are deliberately
+  // *not* surfaced here (`will_type_check` defers them to tsc, which reports
+  // them as TS2307 and we enrich those with `deno add` hints below), so a
+  // missing import is never double-reported. `allow_unknown_media_types: true`
+  // matches `deno check`, letting tsc handle unknown types instead of erroring.
+  factory
+    .module_graph_builder()
+    .await?
+    .graph_roots_valid(&graph, &roots, true, false)?;
+
   // Walk the graph exactly as the in-process checker does to obtain the combined
   // check hash (tsc version folded in). The walk also produces deno's own graph
   // diagnostics (missing modules + hints), but merging them additively isn't
