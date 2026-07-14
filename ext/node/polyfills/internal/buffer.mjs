@@ -1047,24 +1047,36 @@ Buffer.prototype.asciiWrite = function asciiWrite(string, offset, length) {
 
 Buffer.prototype.base64Slice = function base64Slice(
   offset,
-  length,
+  end,
 ) {
   if (offset === undefined) {
     offset = 0;
   }
 
-  if (length === undefined) {
-    length = this.length;
+  if (end === undefined) {
+    end = this.length;
+  }
+
+  // deno-lint-ignore prefer-primordials
+  if (offset < 0 || offset > this.byteLength) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
+  }
+  // deno-lint-ignore prefer-primordials
+  if (end < 0 || end > this.byteLength) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("end");
+  }
+  if (end <= offset) {
+    return "";
   }
 
   // Use op_base64_encode (#[string] return) for small buffers where
   // the lighter-weight op2 string path is faster.
   // Use op_base64_encode_from_buffer (v8::String::new_external_onebyte) for
   // large buffers where avoiding UTF-8 processing and copying matters.
-  if (offset === 0 && length === this.length && length <= 4096) {
+  if (offset === 0 && end === this.length && end <= 4096) {
     return op_base64_encode(this);
   }
-  return op_base64_encode_from_buffer(this, offset, length - offset);
+  return op_base64_encode_from_buffer(this, offset, end - offset);
 };
 
 Buffer.prototype.base64Write = function base64Write(
@@ -1072,9 +1084,26 @@ Buffer.prototype.base64Write = function base64Write(
   offset,
   length,
 ) {
+  if (offset === undefined) {
+    offset = 0;
+  }
+  // deno-lint-ignore prefer-primordials
+  if (offset < 0 || offset > this.byteLength) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
+  }
+
+  const remaining = this.byteLength - offset;
+  if (length === undefined || length > remaining) {
+    length = remaining;
+  } else if (length < 0) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("length");
+  }
+
+  const target = offset === 0 && length === this.byteLength
+    ? this
+    : TypedArrayPrototypeSubarray(this, 0, offset + length);
   try {
-    const written = op_base64_decode_into(string, this, offset);
-    return length !== undefined ? MathMin(written, length) : written;
+    return op_base64_decode_into(string, target, offset);
   } catch {
     // Fallback for strings with base64url chars or invalid chars
     return blitBuffer(base64ToBytes(string), this, offset, length);
