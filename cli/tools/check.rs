@@ -150,22 +150,20 @@ async fn native_check(
       cli_options.type_check_mode(),
     )?;
 
-  // A root (entrypoint) that doesn't exist on disk can't be type-checked, and
-  // handing it to tsc yields a leaky "File not found. Part of 'files' list in
-  // tsconfig.json". Deno's graph walk already produced the proper "Cannot find
-  // module" diagnostic for it, so surface that and keep the phantom file out of
-  // tsc's `files`. Missing *imports* stay deferred to tsc (which reports TS2307
-  // for them), so this only owns the entrypoints.
-  let missing_root_urls: Vec<String> = roots
-    .iter()
-    .filter(|s| s.scheme() == "file")
-    .filter(|s| s.to_file_path().map(|p| !p.exists()).unwrap_or(false))
-    .map(|s| s.to_string())
-    .collect();
+  // A root (entrypoint) that deno's graph couldn't resolve - a local file that
+  // doesn't exist, or a remote URL that failed to fetch - can't be type-checked.
+  // Handing a local one to tsc yields a leaky "File not found. Part of 'files'
+  // list in tsconfig.json"; a remote one isn't a tsc `files` entry at all, so it
+  // silently falls back to checking the whole project. Deno's graph walk already
+  // produced the proper "Cannot find module" diagnostic for the root (the walk
+  // only emits one when the root failed to resolve), so surface that and keep
+  // the root out of tsc. Missing *imports* stay deferred to tsc (which reports
+  // TS2307 for them), so this only owns the entrypoints.
+  let root_urls: Vec<String> = roots.iter().map(|s| s.to_string()).collect();
   let root_diagnostics = missing_diagnostics.filter(|d| {
     d.missing_specifier
       .as_ref()
-      .is_some_and(|s| missing_root_urls.contains(s))
+      .is_some_and(|s| root_urls.contains(s))
   });
   let type_check_cache = type_checker.type_check_cache();
 
