@@ -101,6 +101,9 @@ impl NpmPackageExtraInfoProvider {
     package_path: &Path,
     expected: ExpectedExtraInfo,
   ) -> Result<NpmPackageExtraInfo, JsErrorBox> {
+    // Set when a registry fetch above already failed, so the fallbacks below
+    // don't retry it (it would fail the same way and abort the run).
+    let mut registry_unavailable = false;
     if expected.deprecated {
       // we need the registry version info to get the deprecated string, since it's not in the
       // package's package.json
@@ -118,6 +121,7 @@ impl NpmPackageExtraInfoProvider {
             package_nv,
             err
           );
+          registry_unavailable = true;
         }
       }
     }
@@ -125,7 +129,7 @@ impl NpmPackageExtraInfoProvider {
       Ok(mut extra_info) => {
         // some packages that use "directories.bin" have a "bin" entry in
         // the packument, but not in package.json (e.g. esbuild-wasm)
-        if expected.bin && extra_info.bin.is_none() {
+        if expected.bin && extra_info.bin.is_none() && !registry_unavailable {
           self.fetch_from_registry(package_nv).await
         } else {
           // When a package has a binding.gyp and no install/preinstall script,
@@ -154,7 +158,15 @@ impl NpmPackageExtraInfoProvider {
           package_path.join("package.json").display(),
           err
         );
-        self.fetch_from_registry(package_nv).await
+        if registry_unavailable {
+          // The registry already failed above and package.json couldn't be
+          // read either, so there's nothing left to try. Surface the
+          // package.json error rather than making another registry request
+          // that would fail the same way.
+          Err(err)
+        } else {
+          self.fetch_from_registry(package_nv).await
+        }
       }
     }
   }

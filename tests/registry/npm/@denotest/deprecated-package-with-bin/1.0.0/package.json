@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "type": "module",
   "main": "main.mjs",
-  "bin": {
-    "deprecated-package-with-bin": "./cli.mjs"
+  "directories": {
+    "bin": "./bins"
   },
   "deprecated": "Deprecated version"
 }
