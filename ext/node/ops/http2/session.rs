@@ -3025,6 +3025,14 @@ impl Http2Session {
     if session.session.is_null() {
       return Box::new([]);
     }
+    // A native callback may synchronously destroy the JS session while
+    // nghttp2_session_mem_recv is still on the stack. closeSession then tries
+    // to drain the queued GOAWAY through this method. Entering mem_send before
+    // mem_recv has unwound corrupts nghttp2's session state, so leave the
+    // frame queued for the outer receive_data -> send_pending_data path.
+    if session.is_sending {
+      return Box::new([]);
+    }
     loop {
       if let Some(chunk) = session.outgoing_chunks.pop_front() {
         return chunk.into_boxed_slice();
