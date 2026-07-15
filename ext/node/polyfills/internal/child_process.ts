@@ -2945,9 +2945,9 @@ function setupChannel(
   // here instead of silently returning -- otherwise consumers like cluster,
   // whose primary emits its own `disconnect` in response to the child
   // process's, never learn the worker went away (e.g. a worker that calls
-  // `.destroy()` on itself). Guarded against `connected` so a teardown that
-  // races an explicit `disconnect()` does not double-emit, and defensive
-  // around the ops since the underlying channel/fd is already dead.
+  // `.destroy()` on itself). This mirrors `target.disconnect()` but is guarded
+  // against `connected` (rather than throwing) so a teardown that races an
+  // explicit `disconnect()` returns instead of double-emitting.
   function destroyChannel() {
     cleanupPendingHandles();
     if (!target.connected) {
@@ -2955,18 +2955,10 @@ function setupChannel(
     }
     target.connected = false;
     target[kCanDisconnect] = false;
-    try {
-      control[kControlDisconnect]();
-    } catch {
-      // Channel already gone; nothing to unref.
-    }
+    control[kControlDisconnect]();
     nextTick(() => {
       target.channel = null;
-      try {
-        core.close(ipc);
-      } catch {
-        // The underlying fd is already closed.
-      }
+      core.close(ipc);
       target.emit("disconnect");
     });
   }
