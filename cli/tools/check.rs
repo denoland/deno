@@ -312,10 +312,15 @@ async fn native_check(
     return Err(deno_core::anyhow::anyhow!("Type checking failed."));
   }
 
-  // No parseable diagnostics but tsc still failed (e.g. an internal error or a
-  // malformed generated config). Surface whatever it printed so the failure
-  // isn't swallowed.
-  if !output.status.success() {
+  // tsc exited non-zero but we have nothing to show. If it printed diagnostic
+  // lines we deliberately dropped (e.g. `noImplicitOverride` in remote modules),
+  // its exit code is expected - treat the check as clean. Only when tsc produced
+  // no recognizable diagnostics at all is this a genuine failure (an internal
+  // error or a malformed generated config); surface whatever it printed then.
+  let tsc_reported_diagnostics = stdout
+    .lines()
+    .any(|l| DIAGNOSTIC_RE.is_match(l) || DIAGNOSTIC_NO_POS_RE.is_match(l));
+  if !output.status.success() && !tsc_reported_diagnostics {
     let detail = stdout.trim();
     let detail = if detail.is_empty() {
       stderr.trim()
@@ -443,6 +448,18 @@ fn parse_tsc_diagnostics(output: &str, project_root: &Path) -> Vec<Diagnostic> {
     // Any other line (blank lines, a trailing "Found N errors" summary) is
     // ignored.
   }
+
+  // `--all` type-checks remote modules for genuine type errors, but Deno doesn't
+  // apply the `noImplicitOverride` style rule to code that isn't the user's, so
+  // drop override-modifier diagnostics (the TS411x family) reported in a
+  // non-local (remote/jsr/npm) module. Local `file://` modules keep them.
+  diagnostics.retain(|d| {
+    !matches!(d.code, 4113 | 4114 | 4115 | 4116)
+      || d
+        .file_name
+        .as_deref()
+        .map_or(true, |f| f.starts_with("file:"))
+  });
 
   // Enrich unresolved-module diagnostics (TS2307/TS2882) with a `deno add` hint
   // when the specifier looks like an npm/jsr package — reconciling by diagnostic
