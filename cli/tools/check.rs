@@ -143,18 +143,38 @@ async fn native_check(
   // only for caching for now; additive diagnostics come once ambient modules
   // are handled.
   let type_checker = factory.type_checker().await?;
-  let (_missing_diagnostics, maybe_check_hash) = type_checker
+  let (missing_diagnostics, maybe_check_hash) = type_checker
     .walk_graph_for_native_check(
       &graph,
       cli_options.ts_type_lib_window(),
       cli_options.type_check_mode(),
     )?;
+
+  // A root (entrypoint) that doesn't exist on disk can't be type-checked, and
+  // handing it to tsc yields a leaky "File not found. Part of 'files' list in
+  // tsconfig.json". Deno's graph walk already produced the proper "Cannot find
+  // module" diagnostic for it, so surface that and keep the phantom file out of
+  // tsc's `files`. Missing *imports* stay deferred to tsc (which reports TS2307
+  // for them), so this only owns the entrypoints.
+  let missing_root_urls: Vec<String> = roots
+    .iter()
+    .filter(|s| s.scheme() == "file")
+    .filter(|s| s.to_file_path().map(|p| !p.exists()).unwrap_or(false))
+    .map(|s| s.to_string())
+    .collect();
+  let root_diagnostics = missing_diagnostics.filter(|d| {
+    d.missing_specifier
+      .as_ref()
+      .is_some_and(|s| missing_root_urls.contains(s))
+  });
   let type_check_cache = type_checker.type_check_cache();
 
   // Cache hit: the hash is only recorded after a clean check, so a match means
   // the project type-checked cleanly and nothing the compiler sees has changed.
-  // Skip both the (expensive) type materialization and the tsc spawn.
+  // Skip both the (expensive) type materialization and the tsc spawn. A missing
+  // root means there's a diagnostic to report, so never take the cache path.
   if !cli_options.reload_flag()
+    && !root_diagnostics.has_diagnostic()
     && let Some(check_hash) = maybe_check_hash
     && type_check_cache.has_check_hash(check_hash)
   {
@@ -208,8 +228,24 @@ async fn native_check(
     .iter()
     .filter(|s| s.scheme() == "file")
     .filter_map(|s| s.to_file_path().ok())
+    .filter(|p| p.exists())
     .map(|p| p.to_string_lossy().replace('\\', "/"))
     .collect();
+
+  // Every requested root was a missing (non-existent) local entrypoint: there's
+  // nothing for tsc to check, so report deno's graph diagnostics for them
+  // directly instead of falling back to the base config's project-wide
+  // `include` (which would check unrelated files).
+  if files.is_empty() && root_diagnostics.has_diagnostic() {
+    log::info!(
+      "{} {}",
+      colors::green("Check"),
+      colors::gray(format!("(tsc {})", crate::tsc::native::TYPESCRIPT_VERSION))
+    );
+    log::error!("{}\n", root_diagnostics);
+    return Err(deno_core::anyhow::anyhow!("Type checking failed."));
+  }
+
   // Holds the per-file config's temp file open until tsc has run (dropping it
   // deletes the file).
   let _check_tsconfig_guard;
@@ -300,8 +336,11 @@ async fn native_check(
 
   let stdout = String::from_utf8_lossy(&output.stdout);
   let stderr = String::from_utf8_lossy(&output.stderr);
-  let diagnostics =
+  let mut diagnostics =
     Diagnostics::from(parse_tsc_diagnostics(&stdout, &project_root));
+  // Fold in deno's own diagnostics for missing entrypoints (some roots existed
+  // and were type-checked by tsc above; any that didn't are reported here).
+  diagnostics.extend(root_diagnostics);
 
   // Captured for an upcoming "Checked N files" summary; not surfaced yet.
   let stats = parse_tsc_stats(&stdout);
