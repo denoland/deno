@@ -289,6 +289,36 @@ const PREBUILT_PATH = join(ROOT_PATH, "third_party", "prebuilt");
 const PREBUILT_TOOL_DIR = join(PREBUILT_PATH, platformDirName);
 const PREBUILT_MINIMUM_SIZE = 16 * 1024;
 const DOWNLOAD_TASKS = {};
+const MAX_PREBUILT_DOWNLOAD_RETRY_DELAY_MS = 60_000;
+
+function isTransientDownloadStatus(status) {
+  return status === 408 || status === 429 || status >= 500;
+}
+
+async function fetchPrebuilt(url, headers) {
+  let retryDelayMs = 1_000;
+  for (;;) {
+    try {
+      const response = await fetch(url, { headers });
+      if (response.ok || !isTransientDownloadStatus(response.status)) {
+        return response;
+      }
+      response.body?.cancel();
+      console.error(
+        `Prebuilt download returned ${response.status}; retrying in ${retryDelayMs}ms`,
+      );
+    } catch (error) {
+      console.error(
+        `Prebuilt download failed: ${error.message}; retrying in ${retryDelayMs}ms`,
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+    retryDelayMs = Math.min(
+      retryDelayMs * 2,
+      MAX_PREBUILT_DOWNLOAD_RETRY_DELAY_MS,
+    );
+  }
+}
 
 export function getPrebuiltToolPath(toolName) {
   return join(PREBUILT_TOOL_DIR, toolName + executableSuffix);
@@ -322,7 +352,7 @@ export async function downloadPrebuilt(toolName) {
       headers.append("authorization", `Bearer ${Deno.env.get("GITHUB_TOKEN")}`);
     }
 
-    const resp = await fetch(url, { headers });
+    const resp = await fetchPrebuilt(url, headers);
     if (!resp.ok) {
       throw new Error(`Non-successful response from ${url}: ${resp.status}`);
     }

@@ -3048,12 +3048,29 @@ console.log("Listening...")
   );
 
   wait_contains("Replaced changed module", &mut stderr_lines).await;
-  util::deno_cmd()
-    .current_dir(t.path())
-    .arg("eval")
-    .arg("await fetch('http://localhost:11111');")
-    .spawn()
-    .unwrap();
+  // Re-evaluating the module calls `Deno.serve` again, so there is a window
+  // right after the module is replaced where the listener has been closed and
+  // not yet rebound and a connection is refused. Retry until it is accepting.
+  //
+  // This used to spawn a fire-and-forget `deno eval` child that fetched once
+  // and was never awaited: a refused connection there silently dropped the
+  // request (leaving this test to hang until `wait_contains` timed out) and
+  // printed `error sending request for url (http://localhost:11111/)` onto the
+  // inherited stderr, where it got attributed to whichever test happened to be
+  // reporting at the time.
+  let client = reqwest::Client::new();
+  let start = std::time::Instant::now();
+  loop {
+    match client.get("http://localhost:11111/").send().await {
+      Ok(_) => break,
+      Err(err) => {
+        if start.elapsed() > std::time::Duration::from_secs(30) {
+          panic!("could not reach the hmr server after 30 seconds: {err}");
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+      }
+    }
+  }
   wait_contains("got request1", &mut stderr_lines).await;
 
   check_alive_then_kill(child);
@@ -3337,6 +3354,63 @@ async fn bundle_watch() {
   wait_contains("Bundled 1 module in", &mut stderr_lines).await;
   let contents = t.path().join("output.js").read_to_string();
   assert_contains!(contents, "console.log(\"hello world\");");
+
+  check_alive_then_kill(child);
+}
+
+#[test(flaky)]
+async fn bundle_watch_raw_css_import() {
+  let _server = http_server();
+
+  let t = TempDir::new();
+  let main_ts = t.path().join("main.ts");
+  main_ts.write(
+    r#"import styles from "./styles.css" with { type: "css" };
+console.log(styles);
+"#,
+  );
+  let styles_css = t.path().join("styles.css");
+  styles_css.write("div { color: red; }\n");
+  let output = t.path().join("output.js");
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("bundle")
+    .arg("--watch")
+    .arg("--unstable-raw-imports")
+    .arg("--platform=browser")
+    .arg("-L")
+    .arg("debug")
+    .arg("--output")
+    .arg(&output)
+    .arg(&main_ts)
+    .env("NO_COLOR", "1")
+    .envs(env_vars_for_npm_tests())
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (_, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("Bundled 2 modules in", &mut stderr_lines).await;
+  assert_contains!(output.read_to_string(), "div { color: red; }");
+  wait_for_watcher("styles.css", &mut stderr_lines).await;
+
+  styles_css.write("div { color: blue; }\n");
+  wait_contains("File change detected", &mut stderr_lines).await;
+  wait_contains("Bundled 2 modules in", &mut stderr_lines).await;
+  let contents = output.read_to_string();
+  assert_contains!(contents, "div { color: blue; }");
+  assert_not_contains!(contents, "div { color: red; }");
+
+  wait_for_watcher("main.ts", &mut stderr_lines).await;
+  main_ts.write(
+    r#"import styles from "./styles.css" with { type: "css" };
+console.log("watch still works", styles);
+"#,
+  );
+  wait_contains("File change detected", &mut stderr_lines).await;
+  wait_contains("Bundled 2 modules in", &mut stderr_lines).await;
+  assert_contains!(output.read_to_string(), "watch still works");
 
   check_alive_then_kill(child);
 }
