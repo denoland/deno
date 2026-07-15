@@ -820,13 +820,17 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             if: isWindows.and(isDenoland),
             shell: "pwsh",
             run: [
-              `Get-FileHash target/release/deno.exe -Algorithm SHA256 | Format-List > target/release/deno-${buildItem.arch}-pc-windows-msvc.sha256sum`,
+              // Emit canonical GNU `sha256sum`-style files ("<hash>  <file>")
+              // so `deno upgrade`/`deno_install` verification can consume them.
+              // PowerShell `Get-FileHash | Format-List` output is NOT canonical
+              // and cannot be parsed by GNU-style checksum readers.
+              `"$((Get-FileHash target/release/deno.exe -Algorithm SHA256).Hash.ToLower())  deno.exe" | Out-File -Encoding ascii target/release/deno-${buildItem.arch}-pc-windows-msvc.sha256sum`,
               `Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-${buildItem.arch}-pc-windows-msvc.zip`,
-              `Get-FileHash target/release/deno-${buildItem.arch}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/deno-${buildItem.arch}-pc-windows-msvc.zip.sha256sum`,
+              `"$((Get-FileHash target/release/deno-${buildItem.arch}-pc-windows-msvc.zip -Algorithm SHA256).Hash.ToLower())  deno-${buildItem.arch}-pc-windows-msvc.zip" | Out-File -Encoding ascii target/release/deno-${buildItem.arch}-pc-windows-msvc.zip.sha256sum`,
               `Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-${buildItem.arch}-pc-windows-msvc.zip`,
-              `Get-FileHash target/release/denort-${buildItem.arch}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-${buildItem.arch}-pc-windows-msvc.zip.sha256sum`,
+              `"$((Get-FileHash target/release/denort-${buildItem.arch}-pc-windows-msvc.zip -Algorithm SHA256).Hash.ToLower())  denort-${buildItem.arch}-pc-windows-msvc.zip" | Out-File -Encoding ascii target/release/denort-${buildItem.arch}-pc-windows-msvc.zip.sha256sum`,
               `Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.dll -DestinationPath target/release/libdenort-${buildItem.arch}-pc-windows-msvc.zip`,
-              `Get-FileHash target/release/libdenort-${buildItem.arch}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/libdenort-${buildItem.arch}-pc-windows-msvc.zip.sha256sum`,
+              `"$((Get-FileHash target/release/libdenort-${buildItem.arch}-pc-windows-msvc.zip -Algorithm SHA256).Hash.ToLower())  libdenort-${buildItem.arch}-pc-windows-msvc.zip" | Out-File -Encoding ascii target/release/libdenort-${buildItem.arch}-pc-windows-msvc.zip.sha256sum`,
               `target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-${buildItem.arch}-pc-windows-msvc.symcache`,
             ],
           },
@@ -878,7 +882,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               "Remove-Item -Recurse -Force prev -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Path prev | Out-Null",
               "Expand-Archive -Force -Path prev.zip -DestinationPath prev",
               '& .\\target\\release\\bsdiff_helper.exe "prev\\deno.exe" "target\\release\\deno.exe" "target\\release\\deno-$Target.from-$PrevVersion.bsdiff"',
-              'Get-FileHash "target\\release\\deno-$Target.from-$PrevVersion.bsdiff" -Algorithm SHA256 | Format-List > "target\\release\\deno-$Target.from-$PrevVersion.bsdiff.sha256sum"',
+              '"$((Get-FileHash "target\\release\\deno-$Target.from-$PrevVersion.bsdiff" -Algorithm SHA256).Hash.ToLower())  deno-$Target.from-$PrevVersion.bsdiff" | Out-File -Encoding ascii "target\\release\\deno-$Target.from-$PrevVersion.bsdiff.sha256sum"',
             ],
           },
           step({
