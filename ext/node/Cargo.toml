@@ -31,6 +31,7 @@ deno_io.workspace = true
 deno_native_certs.workspace = true
 deno_net.workspace = true
 deno_node_crypto.workspace = true
+deno_os.workspace = true
 deno_package_json.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
