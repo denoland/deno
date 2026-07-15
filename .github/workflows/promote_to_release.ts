@@ -102,8 +102,7 @@ const windowsJob = job("promote-to-release-windows", {
       uses: "actions/upload-artifact@v6",
       with: {
         name: "windows-binaries-${{ matrix.target }}",
-        path:
-          "deno-${{ matrix.target }}.zip\ndenort-${{ matrix.target }}.zip",
+        path: "deno-${{ matrix.target }}.zip\ndenort-${{ matrix.target }}.zip",
       },
     }),
   ],
