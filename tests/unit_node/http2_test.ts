@@ -800,6 +800,24 @@ Deno.test("[node/http2] destroy cleans internal socket references", async () => 
   assertEquals(socket.listenerCount("error"), 0);
   assertEquals(socket.listenerCount("close"), 0);
 
+  // A user can retain the internal handle through reflection. Late socket
+  // events or callbacks must become harmless after native teardown rather
+  // than dereferencing the released nghttp2 session.
+  const retainedHandle = handle as unknown as {
+    receive(data: Uint8Array): void;
+    getOutgoingChunk(): Uint8Array;
+    hasPendingData(): boolean;
+    settings(callback: () => void): boolean;
+    ping(payload: Uint8Array): number;
+    destroy(): void;
+  };
+  retainedHandle.receive(new Uint8Array([0]));
+  assertEquals(retainedHandle.getOutgoingChunk().byteLength, 0);
+  assertEquals(retainedHandle.hasPendingData(), false);
+  assertEquals(retainedHandle.settings(() => {}), false);
+  assertEquals(retainedHandle.ping(new Uint8Array(8)), -1);
+  retainedHandle.destroy();
+
   await new Promise<void>((resolve) => server.close(() => resolve()));
 });
 

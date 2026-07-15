@@ -1808,36 +1808,28 @@ unsafe extern "C" fn on_frame_send_callback(
       // outcome is just a misclassified error -- not a crash or hang.
       session.pending_user_goaway =
         session.pending_user_goaway.saturating_sub(1);
-    } else if session.is_client
-      && goaway.error_code != ffi::NGHTTP2_NO_ERROR as u32
+    } else if goaway.error_code != ffi::NGHTTP2_NO_ERROR as u32
       && !session.protocol_error_emitted
-      && !session.remote_settings_received
+      && ((session.is_client && !session.remote_settings_received)
+        || (!session.is_client
+          && goaway.error_code == ffi::NGHTTP2_FRAME_SIZE_ERROR as u32))
     {
-      // nghttp2 itself queued this GOAWAY before SETTINGS exchange completed
-      // (e.g. via `terminate_session_with_reason` after parsing garbage that
-      // looks like an oversize unknown frame). Surface it to JS as
-      // `NghttpError("Protocol error")` so the session is destroyed with the
-      // same error Node produces (matches `test-http2-client-http1-server`).
+      // Surface client handshake failures and server-side frame-size
+      // violations as `NghttpError("Protocol error")`, matching Node's
+      // `test-http2-client-http1-server` and
+      // `test-http2-session-cleanup-on-nghttp2-goaway` behavior.
       //
-      // Why gate on `is_client`: the only case where nghttp2's internal
-      // GOAWAY otherwise vanishes is on the client side talking to a non-h2
-      // peer (the bytes are queued but never reach a listening h2 stack). On
-      // the server side, internal GOAWAYs are already routed through the
-      // normal close path; firing onSessionInternalError there destroys the
-      // server session before the GOAWAY bytes flush to the client, breaking
-      // tests like `test-http2-max-settings` that rely on the client seeing
-      // a connection-level error.
-      //
-      // Why gate on `!remote_settings_received`: late connection-level
-      // GOAWAYs originating from peer-malformed-frame echoes are surfaced
-      // through `onGoawayData`. Firing the protocol error hook for those too
-      // produced regressions in `test-http2-timeout-large-write-file.js`
-      // (uncaught Protocol error during legitimate session shutdown).
-      // Handshake-time failures are the only case where mem_recv silently
-      // swallows the error and we have to reach in via the send-side
-      // callback to surface it.
+      // Other late server-side GOAWAYs stay on the normal close path; treating
+      // all of them as protocol errors regresses legitimate shutdowns. The
+      // deferred emission below also ensures the GOAWAY bytes are handed to
+      // the socket before JS destroys the session.
       session.protocol_error_emitted = true;
-      invoke_session_internal_error(session, ffi::NGHTTP2_ERR_PROTO);
+      // Do not call into JS from inside nghttp2_session_mem_send. The JS
+      // callback destroys the session, which would otherwise release the
+      // nghttp2 allocation while mem_send still has it on the stack. The
+      // native send path emits this after queueing the frame; the JS socket
+      // path emits it after getOutgoingChunk has returned the frame to JS.
+      session.pending_internal_error = Some(ffi::NGHTTP2_ERR_PROTO);
     }
   }
   0
@@ -2021,6 +2013,7 @@ impl NgHttp2StreamWrite {
 
 pub struct Session {
   pub session: *mut ffi::nghttp2_session,
+  native: Rc<NativeResources>,
   pub streams: HashMap<i32, (v8::Global<v8::Object>, cppgc::Ref<Http2Stream>)>,
   pub outgoing_buffers: Vec<NgHttp2StreamWrite>,
   pub outgoing_length: usize,
@@ -2046,9 +2039,6 @@ pub struct Session {
   /// double-free a stream (with no_closed_streams=1). Instead, we
   /// defer and flush them after send_pending_data completes.
   pub pending_rst_streams: Vec<(i32, u32)>,
-  /// Original stream.data pointer saved before consume_stream overwrites it.
-  /// Restored when the session releases the stream.
-  pub orig_stream_data: *mut std::ffi::c_void,
   /// Maximum number of header pairs allowed per stream. Mirrors Node.js's
   /// per-session limit derived from the `maxHeaderListPairs` option.
   /// Streams that receive more headers are reset with NGHTTP2_ENHANCE_YOUR_CALM.
@@ -2117,6 +2107,10 @@ pub struct Session {
   /// `onSessionInternalError` JS callback for every GOAWAY in a teardown
   /// sequence (e.g. a peer GOAWAY echo).
   pub protocol_error_emitted: bool,
+  /// Error discovered while serializing an outgoing frame. Emitted only
+  /// after nghttp2_session_mem_send has returned so JS teardown cannot free
+  /// the active nghttp2 session reentrantly.
+  pub pending_internal_error: Option<i32>,
   /// Number of GOAWAYs the user has submitted via the `goaway()` op that
   /// have not yet drained through `on_frame_send_callback`. Used to skip
   /// the protocol-error hook for user-initiated GOAWAYs (e.g. a normal
@@ -2132,14 +2126,9 @@ pub struct Session {
   /// tear-downs that don't go through the user `goaway()` op) flow through
   /// the normal close path instead.
   pub remote_settings_received: bool,
-  /// True if this is a client session, false for server. Used to scope the
-  /// `on_frame_send_callback` protocol-error hook to client sessions only:
-  /// the hook exists to surface "client connected to non-h2 server" as an
-  /// error (otherwise nghttp2's internal GOAWAY is silently swallowed).
-  /// On the server side, an internal GOAWAY (e.g. from maxSettings violation
-  /// in `test-http2-max-settings`) is already handled by the normal close
-  /// path — firing onSessionInternalError there destroys the session before
-  /// the GOAWAY bytes flush, preventing the client from seeing the error.
+  /// True if this is a client session, false for server. Used to distinguish
+  /// pre-SETTINGS client handshake failures from the narrow server-side
+  /// frame-size error path in `on_frame_send_callback`.
   pub is_client: bool,
 }
 
@@ -2329,21 +2318,60 @@ impl Session {
 
   fn detach_js_refs(&mut self) {
     self.this.take();
+    self.streams.clear();
     self.pending_settings_acks.clear();
+  }
+
+  fn close_native_resources(&mut self) {
+    self.detach_js_refs();
+    self.native.close();
+    self.session = std::ptr::null_mut();
   }
 
   fn take_stream_for_close(
     &mut self,
   ) -> Option<*mut deno_core::uv_compat::UvStream> {
     let stream = self.stream.take()?;
-    // Restore original stream.data saved by consume_stream before any pending
-    // libuv callbacks can observe a Session pointer that may be released.
+    // Stop pending libuv callbacks from observing the Session after native
+    // teardown or cppgc finalization. TCPWrap::detach already detached its
+    // StreamHandleData, so there is no previous owner to restore here.
     // SAFETY: stream is a valid libuv handle owned by this session.
     unsafe {
-      (*stream).data = self.orig_stream_data;
+      (*stream).data = std::ptr::null_mut();
     }
-    self.orig_stream_data = std::ptr::null_mut();
     Some(stream)
+  }
+
+  fn close_stream_gracefully(&mut self) {
+    let Some(stream) = self.take_stream_for_close() else {
+      return;
+    };
+    // SAFETY: stream is a valid libuv handle owned by this session.
+    unsafe {
+      deno_core::uv_compat::uv_read_stop(stream);
+      let req = Box::into_raw(Box::new(deno_core::uv_compat::new_shutdown()));
+      let ret =
+        deno_core::uv_compat::uv_shutdown(req, stream, Some(h2_shutdown_cb));
+      if ret != 0 {
+        let _ = Box::from_raw(req);
+        deno_core::uv_compat::uv_close(
+          stream as *mut deno_core::uv_compat::UvHandle,
+          Some(h2_stream_close_cb),
+        );
+      }
+    }
+  }
+
+  fn finish_pending_destroy(&mut self) {
+    self.pending_destroy = false;
+    self.close_stream_gracefully();
+    self.close_native_resources();
+  }
+
+  fn emit_pending_internal_error(&mut self) {
+    if let Some(errno) = self.pending_internal_error.take() {
+      self.emit_session_internal_error(errno);
+    }
   }
 
   fn close_stream_finalizer_safe(&mut self) {
@@ -2427,7 +2455,11 @@ impl Session {
         // close completion. The JS side handles data serialization via
         // getOutgoingChunk/sendPending, but the graceful close notification
         // must still fire when nghttp2 reports no more pending I/O.
+        self.emit_pending_internal_error();
         self.maybe_notify_graceful_close_complete();
+        if self.pending_destroy {
+          self.finish_pending_destroy();
+        }
         return;
       }
     };
@@ -2438,6 +2470,10 @@ impl Session {
       unsafe { (*(stream as *mut deno_core::uv_compat::UvHandle)).r#type };
     if handle_type != deno_core::uv_compat::uv_handle_type::UV_TCP {
       self.stream = None;
+      self.emit_pending_internal_error();
+      if self.pending_destroy {
+        self.finish_pending_destroy();
+      }
       return;
     }
 
@@ -2537,12 +2573,20 @@ impl Session {
       self.clear_outgoing();
     }
 
+    self.emit_pending_internal_error();
     self.maybe_notify_graceful_close_complete();
 
     // Flush any RST_STREAM submissions that were deferred during
     // mem_recv/mem_send (is_sending was true). Matches Node.js's
     // pending_rst_streams_ flush at the end of SendPendingData.
     self.flush_pending_rst_streams();
+
+    // destroy() may be called reentrantly by an nghttp2 callback above. The
+    // session and its callback table must remain alive until mem_send has
+    // completely unwound, then can be released before returning to JS.
+    if self.pending_destroy {
+      self.finish_pending_destroy();
+    }
   }
 
   pub fn receive_data(&mut self, data: &[u8]) {
@@ -2575,32 +2619,6 @@ impl Session {
       self.emit_session_internal_error(ret as i32);
     }
     self.send_pending_data();
-
-    // Complete deferred destroy: close the TCP handle now that
-    // send_pending_data has had a chance to send GOAWAY etc.
-    if self.pending_destroy {
-      self.pending_destroy = false;
-      if let Some(stream) = self.take_stream_for_close() {
-        // SAFETY: stream is a valid libuv handle
-        unsafe {
-          deno_core::uv_compat::uv_read_stop(stream);
-          let req =
-            Box::into_raw(Box::new(deno_core::uv_compat::new_shutdown()));
-          let ret = deno_core::uv_compat::uv_shutdown(
-            req,
-            stream,
-            Some(h2_shutdown_cb),
-          );
-          if ret != 0 {
-            let _ = Box::from_raw(req);
-            deno_core::uv_compat::uv_close(
-              stream as *mut deno_core::uv_compat::UvHandle,
-              Some(h2_stream_close_cb),
-            );
-          }
-        }
-      }
-    }
   }
 
   /// Invoke `onSessionInternalError(integerCode, customErrorCode)` on the
@@ -2671,12 +2689,50 @@ pub struct Http2SessionState {
   pub hd_inflate_dynamic_table_size: f64,
 }
 
+struct NativeResources {
+  session: Cell<*mut ffi::nghttp2_session>,
+  callbacks: Cell<*mut ffi::nghttp2_session_callbacks>,
+}
+
+impl NativeResources {
+  fn new() -> Self {
+    Self {
+      session: Cell::new(std::ptr::null_mut()),
+      callbacks: Cell::new(std::ptr::null_mut()),
+    }
+  }
+
+  fn close(&self) {
+    let session = self.session.replace(std::ptr::null_mut());
+    if !session.is_null() {
+      // SAFETY: session was created by nghttp2_session_*_new3 and is owned by
+      // these native resources.
+      unsafe {
+        ffi::nghttp2_session_del(session);
+      }
+    }
+
+    let callbacks = self.callbacks.replace(std::ptr::null_mut());
+    if !callbacks.is_null() {
+      // SAFETY: callbacks was created by nghttp2_session_callbacks_new and is
+      // owned by these native resources.
+      unsafe {
+        ffi::nghttp2_session_callbacks_del(callbacks);
+      }
+    }
+  }
+}
+
+impl Drop for NativeResources {
+  fn drop(&mut self) {
+    self.close();
+  }
+}
+
 pub struct Http2Session {
   #[allow(dead_code, reason = "stored for future use")]
   type_: SessionType,
-  session: Cell<*mut ffi::nghttp2_session>,
-  #[allow(dead_code, reason = "owns the allocation to prevent premature free")]
-  callbacks: Cell<*mut ffi::nghttp2_session_callbacks>,
+  native: Rc<NativeResources>,
   pub(crate) inner: Cell<*mut Session>,
 }
 
@@ -2696,50 +2752,13 @@ impl Drop for Http2Session {
 }
 
 impl Http2Session {
-  fn close_native_resources(&self) {
-    let inner_ptr = self.inner.get();
-    if !inner_ptr.is_null() {
-      // SAFETY: inner was allocated by Box::into_raw in Http2Session::create
-      // and remains owned by this Http2Session.
-      unsafe {
-        (*inner_ptr).detach_js_refs();
-      }
-    }
-
-    let session = self.session.replace(std::ptr::null_mut());
-    if !session.is_null() {
-      // SAFETY: session was created by nghttp2_session_*_new3 and is owned by
-      // this Http2Session.
-      unsafe {
-        ffi::nghttp2_session_del(session);
-      }
-      if !inner_ptr.is_null() {
-        // SAFETY: inner_ptr is still owned by this Http2Session. Clear the
-        // mirrored nghttp2 pointer so late no-op paths do not use it.
-        unsafe {
-          (*inner_ptr).session = std::ptr::null_mut();
-        }
-      }
-    }
-
-    let callbacks = self.callbacks.replace(std::ptr::null_mut());
-    if !callbacks.is_null() {
-      // SAFETY: callbacks was created by nghttp2_session_callbacks_new and is
-      // owned by this Http2Session.
-      unsafe {
-        ffi::nghttp2_session_callbacks_del(callbacks);
-      }
-    }
-  }
-
   fn teardown(&self) {
-    self.close_native_resources();
-
     let inner_ptr = self.inner.replace(std::ptr::null_mut());
     if !inner_ptr.is_null() {
       // SAFETY: inner was allocated by Box::into_raw in Http2Session::create
       // and is owned by this Http2Session.
       let mut inner = unsafe { Box::from_raw(inner_ptr) };
+      inner.close_native_resources();
       inner.close_stream_finalizer_safe();
     }
   }
@@ -2755,6 +2774,7 @@ impl Http2Session {
     let mut session: *mut ffi::nghttp2_session = std::ptr::null_mut();
     let options =
       Http2Options::new(session_type, no_strict_field_ws_validation);
+    let native = Rc::new(NativeResources::new());
 
     let context = scope.get_current_context();
     let context = v8::Global::new(scope, context);
@@ -2763,6 +2783,7 @@ impl Http2Session {
 
     let inner = Box::into_raw(Box::new(Session {
       session,
+      native: native.clone(),
       streams: HashMap::new(),
       op_state,
       context,
@@ -2776,7 +2797,6 @@ impl Http2Session {
       is_sending: false,
       pending_destroy: false,
       pending_rst_streams: Vec::new(),
-      orig_stream_data: std::ptr::null_mut(),
       max_header_pairs: options.max_header_pairs(),
       outgoing_chunks: VecDeque::new(),
       max_invalid_frames: 1000,
@@ -2790,6 +2810,7 @@ impl Http2Session {
       pending_settings_acks: VecDeque::new(),
       pending_pings: 0,
       protocol_error_emitted: false,
+      pending_internal_error: None,
       pending_user_goaway: 0,
       remote_settings_received: false,
       is_client: matches!(session_type, SessionType::Client),
@@ -2816,6 +2837,8 @@ impl Http2Session {
         ),
       };
       (*inner).session = session;
+      native.session.set(session);
+      native.callbacks.set(callbacks);
       // Import the user's remoteCustomSettings list (JS writes the IDs to
       // the shared settings buffer immediately before constructing us).
       (*inner).fetch_allowed_remote_custom_settings();
@@ -2823,8 +2846,7 @@ impl Http2Session {
 
     Self {
       type_: session_type,
-      session: Cell::new(session),
-      callbacks: Cell::new(callbacks),
+      native,
       inner: Cell::new(inner),
     }
   }
@@ -2835,6 +2857,9 @@ impl Http2Session {
     headers: Http2Headers,
     options: i32,
   ) -> i32 {
+    if self.native.session.get().is_null() {
+      return -1;
+    }
     let has_data = (options & STREAM_OPTION_EMPTY_PAYLOAD) == 0;
     let mut data_provider = ffi::nghttp2_data_provider2 {
       source: ffi::nghttp2_data_source {
@@ -2852,7 +2877,7 @@ impl Http2Session {
     // SAFETY: self.session, priority, headers, and data_provider are valid
     let ret = unsafe {
       ffi::nghttp2_submit_request2(
-        self.session.get(),
+        self.native.session.get(),
         &priority.spec,
         headers.data(),
         headers.len(),
@@ -2911,6 +2936,9 @@ impl Http2Session {
   fn consume_stream(&self, #[cppgc] tcp: &crate::ops::tcp_wrap::TCPWrap) {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &mut *self.inner.get() };
+    if session.session.is_null() {
+      return;
+    }
     // Take ownership of the underlying TCP handle away from the `TCPWrap`. The
     // session now owns the `UvTcp` allocation and is solely responsible for
     // freeing it (via `h2_stream_close_cb`). Without this transfer both the
@@ -2922,12 +2950,6 @@ impl Http2Session {
       // consume.
       return;
     }
-
-    // Save the original stream.data (LibUvStreamWrap's StreamHandleData)
-    // before overwriting it with our session pointer.
-    // SAFETY: stream is a valid libuv stream handle from TCPWrap
-    let orig_data = unsafe { (*stream).data };
-    session.orig_stream_data = orig_data;
 
     // Stop the existing read on the TCP handle
     // SAFETY: stream is a valid libuv stream handle from TCP object
@@ -2964,6 +2986,9 @@ impl Http2Session {
     }
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &mut *self.inner.get() };
+    if session.session.is_null() {
+      return;
+    }
     session.receive_data(data);
   }
 
@@ -2997,18 +3022,31 @@ impl Http2Session {
     }
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &mut *self.inner.get() };
+    if session.session.is_null() {
+      return Box::new([]);
+    }
     loop {
       if let Some(chunk) = session.outgoing_chunks.pop_front() {
         return chunk.into_boxed_slice();
       }
       let mut src = std::ptr::null();
+      // nghttp2 may invoke reentrant JS callbacks while serializing a frame.
+      // Defer native teardown until the JS send loop has written the returned
+      // chunk and calls send_pending().
+      session.is_sending = true;
       let src_len =
         // SAFETY: session.session is a valid nghttp2 session pointer
         unsafe { ffi::nghttp2_session_mem_send(session.session, &mut src) };
-      if src_len > 0 {
+      let data = if src_len > 0 {
         // SAFETY: src and src_len are valid per nghttp2_session_mem_send
         let data = unsafe { std::slice::from_raw_parts(src, src_len as usize) };
-        return data.to_vec().into_boxed_slice();
+        Some(data.to_vec())
+      } else {
+        None
+      };
+      session.is_sending = false;
+      if let Some(data) = data {
+        return data.into_boxed_slice();
       }
       if src_len < 0 {
         // SAFETY: nghttp2_strerror returns a static C string for any input
@@ -3043,39 +3081,18 @@ impl Http2Session {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &mut *self.inner.get() };
 
-    if session.is_sending {
+    let destroy_deferred = session.is_sending;
+    if destroy_deferred {
       // We're inside receive_data's mem_recv. Defer the TCP handle
-      // close so that send_pending_data (called after mem_recv) can
-      // still send pending frames (e.g. GOAWAY) before the socket
-      // closes.
+      // and native-resource close so nghttp2 and the Session remain valid
+      // until the active mem_recv/mem_send call has fully unwound.
       session.pending_destroy = true;
     } else {
       // Close the stream handle we took ownership of via consume_stream.
       // Use uv_shutdown first to send TCP FIN (graceful close) so the
       // peer can read any remaining buffered data. On Windows, calling
       // uv_close directly sends TCP RST which discards buffered data.
-      if let Some(stream) = session.take_stream_for_close() {
-        // SAFETY: stream is a valid libuv handle taken via consume_stream
-        unsafe {
-          deno_core::uv_compat::uv_read_stop(stream);
-          let req =
-            Box::into_raw(Box::new(deno_core::uv_compat::new_shutdown()));
-          let ret = deno_core::uv_compat::uv_shutdown(
-            req,
-            stream,
-            Some(h2_shutdown_cb),
-          );
-          if ret != 0 {
-            // Shutdown failed (e.g. not connected), fall back to
-            // closing the handle directly.
-            let _ = Box::from_raw(req);
-            deno_core::uv_compat::uv_close(
-              stream as *mut deno_core::uv_compat::UvHandle,
-              Some(h2_stream_close_cb),
-            );
-          }
-        }
-      }
+      session.close_stream_gracefully();
     }
 
     // Call ondone callback if set
@@ -3087,13 +3104,21 @@ impl Http2Session {
     {
       ondone_fn.call(scope, this_local.into(), &[]);
     }
-    self.teardown();
+    if !destroy_deferred {
+      // Release nghttp2 and its callback table immediately, but retain the
+      // small Rust Session allocation until cppgc finalizes this handle. That
+      // keeps late libuv callbacks and retained internal handles harmless.
+      session.close_native_resources();
+    }
   }
 
   #[fast]
   fn settings(&self, cb: v8::Local<v8::Function>) -> bool {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &mut *self.inner.get() };
+    if session.session.is_null() {
+      return false;
+    }
     // SAFETY: session.isolate is valid for this session's lifetime
     let isolate = unsafe { v8::Isolate::from_raw_isolate_ptr(session.isolate) };
     // Enqueue BEFORE submit so the FIFO entry is in place no matter what.
@@ -3118,6 +3143,9 @@ impl Http2Session {
     last_stream_id: i32,
     #[anybuffer] maybe_data: Option<&[u8]>,
   ) {
+    if self.native.session.get().is_null() {
+      return;
+    }
     let (data_ptr, data_len) = maybe_data
       .map(|d| (d.as_ptr(), d.len()))
       .unwrap_or((std::ptr::null(), 0));
@@ -3127,7 +3155,7 @@ impl Http2Session {
     let effective_last_stream_id = if last_stream_id <= 0 {
       // SAFETY: self.session is a valid nghttp2 session pointer
       unsafe {
-        ffi::nghttp2_session_get_last_proc_stream_id(self.session.get())
+        ffi::nghttp2_session_get_last_proc_stream_id(self.native.session.get())
       }
     } else {
       last_stream_id
@@ -3136,7 +3164,7 @@ impl Http2Session {
     // SAFETY: self.session is valid; data_ptr and data_len are valid
     unsafe {
       ffi::nghttp2_submit_goaway(
-        self.session.get(),
+        self.native.session.get(),
         ffi::NGHTTP2_FLAG_NONE as _,
         effective_last_stream_id,
         code,
@@ -3168,8 +3196,11 @@ impl Http2Session {
 
   #[fast]
   fn submit_shutdown_notice(&self) {
+    if self.native.session.get().is_null() {
+      return;
+    }
     // SAFETY: self.session is a valid nghttp2 session pointer
-    unsafe { ffi::nghttp2_submit_shutdown_notice(self.session.get()) };
+    unsafe { ffi::nghttp2_submit_shutdown_notice(self.native.session.get()) };
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &mut *self.inner.get() };
     session.start_graceful_close();
@@ -3202,13 +3233,14 @@ impl Http2Session {
 
   #[fast]
   fn has_pending_data(&self) -> bool {
-    if self.session.get().is_null() {
+    if self.native.session.get().is_null() {
       return false;
     }
     // SAFETY: self.session is a valid nghttp2 session pointer
     unsafe {
-      let want_write = ffi::nghttp2_session_want_write(self.session.get());
-      let want_read = ffi::nghttp2_session_want_read(self.session.get());
+      let want_write =
+        ffi::nghttp2_session_want_write(self.native.session.get());
+      let want_read = ffi::nghttp2_session_want_read(self.native.session.get());
       want_write != 0 || want_read != 0
     }
   }
@@ -3228,43 +3260,46 @@ impl Http2Session {
 
   #[fast]
   fn local_settings(&self) {
+    if self.native.session.get().is_null() {
+      return;
+    }
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &*self.inner.get() };
     // SAFETY: self.session is a valid nghttp2 session pointer
     with_settings(|buffer| unsafe {
       buffer[SettingsIndex::HeaderTableSize as usize] =
         ffi::nghttp2_session_get_local_settings(
-          self.session.get(),
+          self.native.session.get(),
           ffi::NGHTTP2_SETTINGS_HEADER_TABLE_SIZE,
         ) as u32;
       buffer[SettingsIndex::EnablePush as usize] =
         ffi::nghttp2_session_get_local_settings(
-          self.session.get(),
+          self.native.session.get(),
           ffi::NGHTTP2_SETTINGS_ENABLE_PUSH,
         ) as u32;
       buffer[SettingsIndex::MaxConcurrentStreams as usize] =
         ffi::nghttp2_session_get_local_settings(
-          self.session.get(),
+          self.native.session.get(),
           ffi::NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS,
         ) as u32;
       buffer[SettingsIndex::InitialWindowSize as usize] =
         ffi::nghttp2_session_get_local_settings(
-          self.session.get(),
+          self.native.session.get(),
           ffi::NGHTTP2_SETTINGS_INITIAL_WINDOW_SIZE,
         ) as u32;
       buffer[SettingsIndex::MaxFrameSize as usize] =
         ffi::nghttp2_session_get_local_settings(
-          self.session.get(),
+          self.native.session.get(),
           ffi::NGHTTP2_SETTINGS_MAX_FRAME_SIZE,
         ) as u32;
       buffer[SettingsIndex::MaxHeaderListSize as usize] =
         ffi::nghttp2_session_get_local_settings(
-          self.session.get(),
+          self.native.session.get(),
           ffi::NGHTTP2_SETTINGS_MAX_HEADER_LIST_SIZE,
         ) as u32;
       buffer[SettingsIndex::EnableConnectProtocol as usize] =
         ffi::nghttp2_session_get_local_settings(
-          self.session.get(),
+          self.native.session.get(),
           ffi::NGHTTP2_SETTINGS_ENABLE_CONNECT_PROTOCOL,
         ) as u32;
       write_custom_settings_to_buffer(buffer, &session.local_custom_settings);
@@ -3273,43 +3308,46 @@ impl Http2Session {
 
   #[fast]
   fn remote_settings(&self) {
+    if self.native.session.get().is_null() {
+      return;
+    }
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &*self.inner.get() };
     // SAFETY: self.session is a valid nghttp2 session pointer
     with_settings(|buffer| unsafe {
       buffer[SettingsIndex::HeaderTableSize as usize] =
         ffi::nghttp2_session_get_remote_settings(
-          self.session.get(),
+          self.native.session.get(),
           ffi::NGHTTP2_SETTINGS_HEADER_TABLE_SIZE,
         ) as u32;
       buffer[SettingsIndex::EnablePush as usize] =
         ffi::nghttp2_session_get_remote_settings(
-          self.session.get(),
+          self.native.session.get(),
           ffi::NGHTTP2_SETTINGS_ENABLE_PUSH,
         ) as u32;
       buffer[SettingsIndex::MaxConcurrentStreams as usize] =
         ffi::nghttp2_session_get_remote_settings(
-          self.session.get(),
+          self.native.session.get(),
           ffi::NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS,
         ) as u32;
       buffer[SettingsIndex::InitialWindowSize as usize] =
         ffi::nghttp2_session_get_remote_settings(
-          self.session.get(),
+          self.native.session.get(),
           ffi::NGHTTP2_SETTINGS_INITIAL_WINDOW_SIZE,
         ) as u32;
       buffer[SettingsIndex::MaxFrameSize as usize] =
         ffi::nghttp2_session_get_remote_settings(
-          self.session.get(),
+          self.native.session.get(),
           ffi::NGHTTP2_SETTINGS_MAX_FRAME_SIZE,
         ) as u32;
       buffer[SettingsIndex::MaxHeaderListSize as usize] =
         ffi::nghttp2_session_get_remote_settings(
-          self.session.get(),
+          self.native.session.get(),
           ffi::NGHTTP2_SETTINGS_MAX_HEADER_LIST_SIZE,
         ) as u32;
       buffer[SettingsIndex::EnableConnectProtocol as usize] =
         ffi::nghttp2_session_get_remote_settings(
-          self.session.get(),
+          self.native.session.get(),
           ffi::NGHTTP2_SETTINGS_ENABLE_CONNECT_PROTOCOL,
         ) as u32;
       write_custom_settings_to_buffer(buffer, &session.remote_custom_settings);
@@ -3317,39 +3355,52 @@ impl Http2Session {
   }
 
   fn get_state(&self) -> Http2SessionState {
+    if self.native.session.get().is_null() {
+      return Http2SessionState {
+        effective_local_window_size: 0.0,
+        effective_recv_data_length: 0.0,
+        next_stream_id: 0.0,
+        local_window_size: 0.0,
+        last_proc_stream_id: 0.0,
+        remote_window_size: 0.0,
+        outbound_queue_size: 0.0,
+        hd_deflate_dynamic_table_size: 0.0,
+        hd_inflate_dynamic_table_size: 0.0,
+      };
+    }
     // SAFETY: self.session is a valid nghttp2 session pointer
     unsafe {
       Http2SessionState {
         effective_local_window_size:
           ffi::nghttp2_session_get_effective_local_window_size(
-            self.session.get(),
+            self.native.session.get(),
           ) as f64,
         effective_recv_data_length:
           ffi::nghttp2_session_get_effective_recv_data_length(
-            self.session.get(),
+            self.native.session.get(),
           ) as f64,
         next_stream_id: ffi::nghttp2_session_get_next_stream_id(
-          self.session.get(),
+          self.native.session.get(),
         ) as f64,
         local_window_size: ffi::nghttp2_session_get_local_window_size(
-          self.session.get(),
+          self.native.session.get(),
         ) as f64,
         last_proc_stream_id: ffi::nghttp2_session_get_last_proc_stream_id(
-          self.session.get(),
+          self.native.session.get(),
         ) as f64,
         remote_window_size: ffi::nghttp2_session_get_remote_window_size(
-          self.session.get(),
+          self.native.session.get(),
         ) as f64,
         outbound_queue_size: ffi::nghttp2_session_get_outbound_queue_size(
-          self.session.get(),
+          self.native.session.get(),
         ) as f64,
         hd_deflate_dynamic_table_size:
           ffi::nghttp2_session_get_hd_deflate_dynamic_table_size(
-            self.session.get(),
+            self.native.session.get(),
           ) as f64,
         hd_inflate_dynamic_table_size:
           ffi::nghttp2_session_get_hd_inflate_dynamic_table_size(
-            self.session.get(),
+            self.native.session.get(),
           ) as f64,
       }
     }
@@ -3358,9 +3409,14 @@ impl Http2Session {
   #[fast]
   #[rename("setNextStreamID")]
   fn set_next_stream_id(&self, id: i32) -> bool {
+    if self.native.session.get().is_null() {
+      return false;
+    }
     let ret =
       // SAFETY: self.session is a valid nghttp2 session pointer
-      unsafe { ffi::nghttp2_session_set_next_stream_id(self.session.get(), id) };
+      unsafe {
+        ffi::nghttp2_session_set_next_stream_id(self.native.session.get(), id)
+      };
     if ret < 0 {
       log::debug!("failed to set next stream id to {}", id);
       return false;
@@ -3378,10 +3434,13 @@ impl Http2Session {
 
   #[fast]
   fn set_local_window_size(&self, window_size: i32) -> i32 {
+    if self.native.session.get().is_null() {
+      return -1;
+    }
     // SAFETY: self.session is a valid nghttp2 session pointer
     unsafe {
       ffi::nghttp2_session_set_local_window_size(
-        self.session.get(),
+        self.native.session.get(),
         ffi::NGHTTP2_FLAG_NONE as u8,
         0,
         window_size,
@@ -3398,6 +3457,9 @@ impl Http2Session {
 
   #[fast]
   fn origin(&self, #[string] origins: &str, count: i32) -> i32 {
+    if self.native.session.get().is_null() {
+      return -1;
+    }
     // Origins are concatenated and separated by NUL bytes (Node-compatible
     // serialization from JS: `arr += `${origin}\0``).
     let mut ov: Vec<ffi::nghttp2_origin_entry> =
@@ -3421,7 +3483,7 @@ impl Http2Session {
     // SAFETY: self.session is valid; ov slice pointer and length are valid
     let ret = unsafe {
       ffi::nghttp2_submit_origin(
-        self.session.get(),
+        self.native.session.get(),
         ffi::NGHTTP2_FLAG_NONE as u8,
         ov.as_ptr(),
         ov.len(),
@@ -3440,6 +3502,9 @@ impl Http2Session {
     #[string] origin: &str,
     #[string] value: &str,
   ) -> i32 {
+    if self.native.session.get().is_null() {
+      return -1;
+    }
     let origin_bytes = origin.as_bytes();
     let value_bytes = value.as_bytes();
 
@@ -3456,7 +3521,7 @@ impl Http2Session {
     // SAFETY: self.session is valid; origin and value byte slices are valid
     let ret = unsafe {
       ffi::nghttp2_submit_altsvc(
-        self.session.get(),
+        self.native.session.get(),
         ffi::NGHTTP2_FLAG_NONE as u8,
         stream_id,
         origin_bytes.as_ptr(),
@@ -3473,6 +3538,9 @@ impl Http2Session {
 
   #[fast]
   fn ping(&self, #[buffer] payload: &[u8]) -> i32 {
+    if self.native.session.get().is_null() {
+      return -1;
+    }
     if payload.len() != 8 {
       return -1;
     }
@@ -3480,7 +3548,7 @@ impl Http2Session {
     // SAFETY: self.session is valid; payload is exactly 8 bytes (checked above)
     let ret = unsafe {
       ffi::nghttp2_submit_ping(
-        self.session.get(),
+        self.native.session.get(),
         ffi::NGHTTP2_FLAG_NONE as u8,
         payload.as_ptr(),
       )

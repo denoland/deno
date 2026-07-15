@@ -2177,6 +2177,7 @@
     "parallel/test-http2-server-shutdown-redundant.js": {},
     "parallel/test-http2-server-startup.js": {},
     "parallel/test-http2-server-timeout.js": {},
+    "parallel/test-http2-session-cleanup-on-nghttp2-goaway.js": {},
     "parallel/test-http2-session-graceful-close.js": {},
     "parallel/test-http2-session-settings.js": {},
     "parallel/test-http2-session-stream-state.js": {},

@@ -842,7 +842,7 @@ const proxySocketHandler = {
 
 function onPing(payload, isAck) {
   const session = this[kOwner];
-  if (session.destroyed) {
+  if (session === undefined || session.destroyed) {
     return;
   }
   session[kUpdateTimer]();
@@ -965,7 +965,7 @@ function doStreamClose(stream, code) {
 // Resets the cached settings.
 function onSettings() {
   const session = this[kOwner];
-  if (session.destroyed) {
+  if (session === undefined || session.destroyed) {
     return;
   }
   session[kUpdateTimer]();
@@ -979,7 +979,7 @@ function onSettings() {
 // session (which may, in turn, forward it on to the server)
 function onPriority(id, parent, weight, exclusive) {
   const session = this[kOwner];
-  if (session.destroyed) {
+  if (session === undefined || session.destroyed) {
     return;
   }
   debugStream(
@@ -1001,7 +1001,7 @@ function onPriority(id, parent, weight, exclusive) {
 // frame. This should be exceedingly rare.
 function onFrameError(id, type, code) {
   const session = this[kOwner];
-  if (session.destroyed) {
+  if (session === undefined || session.destroyed) {
     return;
   }
   debugSessionObj(
@@ -1029,7 +1029,7 @@ function onFrameError(id, type, code) {
 
 function onAltSvc(stream, origin, alt) {
   const session = this[kOwner];
-  if (session.destroyed) {
+  if (session === undefined || session.destroyed) {
     return;
   }
   debugSessionObj(
@@ -1070,7 +1070,7 @@ function initOriginSet(session) {
 
 function onOrigin(origins) {
   const session = this[kOwner];
-  if (session.destroyed) {
+  if (session === undefined || session.destroyed) {
     return;
   }
   debugSessionObj(session, "origin received: %j", origins);
@@ -1093,7 +1093,7 @@ function onOrigin(origins) {
 // The goaway event will be emitted on next tick.
 function onGoawayData(code, lastStreamID, buf) {
   const session = this[kOwner];
-  if (session.destroyed) {
+  if (session === undefined || session.destroyed) {
     return;
   }
   debugSessionObj(
@@ -1509,7 +1509,7 @@ function onSessionHeaders(
   sensitiveHeaders = [],
 ) {
   const session = this[kOwner];
-  if (session.destroyed) {
+  if (session === undefined || session.destroyed) {
     return;
   }
 
@@ -1703,10 +1703,10 @@ function onSessionHeaders(
 // option is set.
 function onStreamTrailers() {
   const stream = this[kOwner];
-  stream[kState].trailersReady = true;
-  if (stream.destroyed || stream.closed) {
+  if (stream === undefined || stream.destroyed || stream.closed) {
     return;
   }
+  stream[kState].trailersReady = true;
   if (!stream.emit("wantTrailers")) {
     // There are no listeners, send empty trailing HEADERS frame and close.
     stream.sendTrailers({});
@@ -3611,7 +3611,9 @@ function setupHandle(socket, type, options) {
       if (!session.closed) {
         session.close();
       }
-      closeSession(session, NGHTTP2_NO_ERROR, err);
+      // session.close() may synchronously destroy the session when it has no
+      // streams. Route through the guarded path so EOF cannot close it twice.
+      session[kMaybeDestroy](err);
     }
   };
 
