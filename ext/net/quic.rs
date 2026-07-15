@@ -114,6 +114,9 @@ pub enum QuicError {
   #[error("Peer does not support WebTransport")]
   WebTransportPeerUnsupported,
   #[class(generic)]
+  #[error("WebTransport handshake frame exceeds the 64 KiB limit")]
+  WebTransportHandshakeFrameTooLarge,
+  #[class(generic)]
   #[error("{0}")]
   WebTransportSettingsError(#[from] web_transport_proto::SettingsError),
   #[class(generic)]
@@ -1099,6 +1102,48 @@ pub(crate) mod webtransport {
 
   use super::*;
 
+  // WebTransport setup only exchanges SETTINGS and CONNECT headers. Keep the
+  // incremental decoder bounded while allowing ample room for extensions and
+  // unusually long request URLs.
+  const MAX_HANDSHAKE_FRAME_SIZE: usize = 64 * 1024;
+
+  fn checked_handshake_buffer_len(
+    current: usize,
+    additional: usize,
+  ) -> Option<usize> {
+    current
+      .checked_add(additional)
+      .filter(|&len| len <= MAX_HANDSHAKE_FRAME_SIZE)
+  }
+
+  fn append_handshake_chunk(
+    buf: &mut Vec<u8>,
+    chunk: &[u8],
+  ) -> Result<(), QuicError> {
+    checked_handshake_buffer_len(buf.len(), chunk.len())
+      .ok_or(QuicError::WebTransportHandshakeFrameTooLarge)?;
+    buf.extend_from_slice(chunk);
+    Ok(())
+  }
+
+  async fn read_handshake_chunk(
+    rx: &mut quinn::RecvStream,
+    buf: &mut Vec<u8>,
+  ) -> Result<(), QuicError> {
+    let remaining = MAX_HANDSHAKE_FRAME_SIZE
+      .checked_sub(buf.len())
+      .ok_or(QuicError::WebTransportHandshakeFrameTooLarge)?;
+    // Read one byte beyond the remaining capacity so an oversized message is
+    // rejected without copying that byte into the accumulator.
+    let read_limit = remaining
+      .checked_add(1)
+      .ok_or(QuicError::WebTransportHandshakeFrameTooLarge)?;
+    let chunk = rx.read_chunk(read_limit, true).await?;
+    let chunk = chunk.ok_or(QuicError::WebTransportPeerUnsupported)?;
+
+    append_handshake_chunk(buf, &chunk.bytes)
+  }
+
   async fn exchange_settings(
     state: Rc<RefCell<OpState>>,
     conn: quinn::Connection,
@@ -1129,9 +1174,7 @@ pub(crate) mod webtransport {
       let mut buf = Vec::new();
 
       loop {
-        let chunk = rx.read_chunk(usize::MAX, true).await?;
-        let chunk = chunk.ok_or(QuicError::WebTransportPeerUnsupported)?;
-        buf.extend_from_slice(&chunk.bytes);
+        read_handshake_chunk(&mut rx, &mut buf).await?;
 
         let mut limit = std::io::Cursor::new(&buf);
 
@@ -1189,9 +1232,7 @@ pub(crate) mod webtransport {
 
       buf.clear();
       loop {
-        let chunk = rx.read_chunk(usize::MAX, true).await?;
-        let chunk = chunk.ok_or(QuicError::WebTransportPeerUnsupported)?;
-        buf.extend_from_slice(&chunk.bytes);
+        read_handshake_chunk(&mut rx, &mut buf).await?;
 
         let mut limit = std::io::Cursor::new(&buf);
 
@@ -1245,9 +1286,7 @@ pub(crate) mod webtransport {
       let mut buf = Vec::new();
 
       let req = loop {
-        let chunk = rx.read_chunk(usize::MAX, true).await?;
-        let chunk = chunk.ok_or(QuicError::WebTransportPeerUnsupported)?;
-        buf.extend_from_slice(&chunk.bytes);
+        read_handshake_chunk(&mut rx, &mut buf).await?;
 
         let mut limit = std::io::Cursor::new(&buf);
 
@@ -1359,6 +1398,29 @@ pub(crate) mod webtransport {
         .provider
         .signature_verification_algorithms
         .supported_schemes()
+    }
+  }
+
+  #[cfg(test)]
+  mod tests {
+    use super::*;
+
+    #[test]
+    fn handshake_buffer_length_is_bounded() {
+      let mut buf = vec![0; MAX_HANDSHAKE_FRAME_SIZE - 1];
+      append_handshake_chunk(&mut buf, &[0]).unwrap();
+      assert_eq!(buf.len(), MAX_HANDSHAKE_FRAME_SIZE);
+
+      assert!(matches!(
+        append_handshake_chunk(&mut buf, &[0]),
+        Err(QuicError::WebTransportHandshakeFrameTooLarge)
+      ));
+      assert_eq!(buf.len(), MAX_HANDSHAKE_FRAME_SIZE);
+    }
+
+    #[test]
+    fn handshake_buffer_length_rejects_overflow() {
+      assert_eq!(checked_handshake_buffer_len(usize::MAX, 1), None);
     }
   }
 }
