@@ -1120,14 +1120,43 @@ pub async fn install_http_modules(
       (final_url.clone(), file.source.clone())
     };
 
+    // wasm modules can't be type-checked as binaries: mirror the generated
+    // TypeScript (typed exports + the wasm's own imports) instead, written as a
+    // checkable `.mts` so tsc surfaces the exports' types to importers and the
+    // wasm's own import errors. Always type-checked (never `@ts-nocheck`).
+    let is_wasm = final_url.path().ends_with(".wasm");
+    let (mirror_url, mirror_bytes): (Url, std::borrow::Cow<[u8]>) = if is_wasm {
+      match deno_graph::source::wasm::wasm_module_to_dts(
+        effective_bytes.as_ref(),
+      ) {
+        Ok(dts) => {
+          let mut u = effective_url.clone();
+          u.set_path(&format!("{}.mts", u.path()));
+          (u, std::borrow::Cow::Owned(dts.into_bytes()))
+        }
+        Err(e) => {
+          log::debug!("wasm dts generation failed for {effective_url}: {e}");
+          (
+            effective_url.clone(),
+            std::borrow::Cow::Borrowed(effective_bytes.as_ref()),
+          )
+        }
+      }
+    } else {
+      (
+        effective_url.clone(),
+        std::borrow::Cow::Borrowed(effective_bytes.as_ref()),
+      )
+    };
+
     // Mirror the chosen content. We deliberately don't mirror both the JS
     // and the .d.ts: their URL paths often collide on disk (e.g.
     // `cowsay@1.6.0` as file vs `cowsay@1.6.0/index.d.ts` under a dir).
     let local = match write_mirror(
       &remote_root,
-      &effective_url,
-      effective_bytes.as_ref(),
-      type_check_remote,
+      &mirror_url,
+      &mirror_bytes,
+      type_check_remote || is_wasm,
     ) {
       Ok(p) => p,
       Err(e) => {
@@ -1145,9 +1174,10 @@ pub async fn install_http_modules(
       paths.insert(effective_url.clone(), local.clone());
     }
 
-    // Scan the effective (type-bearing) source for transitive imports.
-    let scan_source =
-      String::from_utf8_lossy(effective_bytes.as_ref()).into_owned();
+    // Scan the effective (type-bearing) source for transitive imports. For wasm
+    // this is the generated `.mts` (which carries the wasm's imports), not the
+    // binary.
+    let scan_source = String::from_utf8_lossy(&mirror_bytes).into_owned();
     for spec in scan_import_specifiers(&effective_url, &scan_source) {
       let resolved =
         if spec.starts_with("http://") || spec.starts_with("https://") {
