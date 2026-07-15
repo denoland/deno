@@ -966,7 +966,24 @@ impl TsFn {
     if self.is_closing.load(Ordering::SeqCst) {
       return napi_closing;
     }
-    self.thread_count.fetch_add(1, Ordering::Relaxed);
+    // Refuse to resurrect a tsfn whose `thread_count` already reached zero.
+    // Once at zero the tsfn is terminal (freed, or about to be by the release
+    // that observed the 1->0 transition). A plain `fetch_add` here races that
+    // final release: if `acquire` increments 0->1 after the release read zero,
+    // both this acquire's eventual release and the original one observe
+    // `Ok(1)` and each spawn a drop of the same box — a double free (the assert
+    // in TsFn::drop). A CAS that fails from zero closes that window: zero is a
+    // one-way state, so exactly one release ever sees the 1->0 transition.
+    let result = self.thread_count.fetch_update(
+      Ordering::Relaxed,
+      Ordering::Relaxed,
+      |x| {
+        if x == 0 { None } else { Some(x + 1) }
+      },
+    );
+    if result.is_err() {
+      return napi_closing;
+    }
     napi_ok
   }
 

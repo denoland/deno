@@ -103,6 +103,10 @@ fn run_test(test: &CollectedTest) -> TestResult {
     deno = deno.arg("--unstable-kv");
   }
 
+  if test.name.ends_with("::webgpu_test") {
+    deno = deno.arg("--unstable-webgpu");
+  }
+
   if test.name.ends_with("::worker_permissions_test")
     || test.name.ends_with("::worker_test")
   {

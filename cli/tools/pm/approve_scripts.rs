@@ -153,6 +153,7 @@ pub async fn approve_scripts(
     None,
     CacheTopLevelDepsOptions {
       lockfile_only: approve_flags.lockfile_only,
+      additional_roots: vec![],
     },
   )
   .await?;
