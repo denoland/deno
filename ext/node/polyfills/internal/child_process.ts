@@ -2774,13 +2774,20 @@ function setupChannel(
       // All of these mean the IPC channel went away while we were reading it.
       // ConnectionReset in particular shows up on Linux when the peer exits
       // with data still buffered: instead of a clean EOF the kernel delivers a
-      // RST, surfacing here as ECONNRESET. Node treats an IPC channel teardown
-      // as a disconnect, never as a process `error`, so we follow suit and tear
-      // down cleanly instead of emitting an uncaught error.
+      // RST, surfacing here as ECONNRESET. UnexpectedEof shows up when the peer
+      // closes mid-frame (the decoders in ext/process/ipc.rs return it when the
+      // stream ends before a length-prefixed message is complete). Node treats
+      // an IPC channel teardown as a disconnect, never as a process `error`, so
+      // we follow suit and tear down cleanly instead of emitting an uncaught
+      // error.
       if (
         ObjectPrototypeIsPrototypeOf(Deno.errors.Interrupted.prototype, err) ||
         ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, err) ||
-        ObjectPrototypeIsPrototypeOf(Deno.errors.ConnectionReset.prototype, err)
+        ObjectPrototypeIsPrototypeOf(
+          Deno.errors.ConnectionReset.prototype,
+          err,
+        ) ||
+        ObjectPrototypeIsPrototypeOf(Deno.errors.UnexpectedEof.prototype, err)
       ) {
         // Channel torn down from under us; release any handles awaiting an
         // ACK that will now never arrive so they don't keep us alive, and

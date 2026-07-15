@@ -889,17 +889,19 @@ mod impl_ {
     #[smi] rid: ResourceId,
     serialization_json: bool,
   ) {
+    // The channel may already be torn down (the peer exited or was killed),
+    // in which case the resource is gone and there is nothing to ref. Treat a
+    // missing resource as a no-op rather than panicking: JS teardown paths can
+    // reach here after the resource has been removed and a panic in a fast op
+    // cannot be caught by the surrounding `try`/`catch`.
     if serialization_json {
-      let stream = state
-        .resource_table
-        .get::<IpcJsonStreamResource>(rid)
-        .expect("Invalid resource ID");
-      stream.ref_tracker.ref_();
-    } else {
-      let stream = state
-        .resource_table
-        .get::<IpcAdvancedStreamResource>(rid)
-        .expect("Invalid resource ID");
+      if let Ok(stream) = state.resource_table.get::<IpcJsonStreamResource>(rid)
+      {
+        stream.ref_tracker.ref_();
+      }
+    } else if let Ok(stream) =
+      state.resource_table.get::<IpcAdvancedStreamResource>(rid)
+    {
       stream.ref_tracker.ref_();
     }
   }
@@ -910,17 +912,16 @@ mod impl_ {
     #[smi] rid: ResourceId,
     serialization_json: bool,
   ) {
+    // See `op_node_ipc_ref`: tolerate an already-removed resource so teardown
+    // after the channel is gone is a no-op instead of an uncatchable panic.
     if serialization_json {
-      let stream = state
-        .resource_table
-        .get::<IpcJsonStreamResource>(rid)
-        .expect("Invalid resource ID");
-      stream.ref_tracker.unref();
-    } else {
-      let stream = state
-        .resource_table
-        .get::<IpcAdvancedStreamResource>(rid)
-        .expect("Invalid resource ID");
+      if let Ok(stream) = state.resource_table.get::<IpcJsonStreamResource>(rid)
+      {
+        stream.ref_tracker.unref();
+      }
+    } else if let Ok(stream) =
+      state.resource_table.get::<IpcAdvancedStreamResource>(rid)
+    {
       stream.ref_tracker.unref();
     }
   }

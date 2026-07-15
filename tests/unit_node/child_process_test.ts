@@ -1614,3 +1614,92 @@ Deno.test({
     }
   },
 });
+
+// When the IPC channel is torn down abruptly (the peer exits/is killed or
+// closes mid-frame) rather than via an explicit `disconnect()`/CLOSE handshake,
+// Node surfaces a `disconnect` on the ChildProcess and never a process `error`.
+// Regression coverage for the abrupt-teardown paths: the decoders return
+// `UnexpectedEof` on a partial frame, and closing the live IPC resource while a
+// read is pending must not panic the underlying `op_node_ipc_unref` fast op.
+async function assertAbruptTeardownDisconnects(
+  shellCmd: string,
+  serialization: "json" | "advanced",
+  { kill = false }: { kill?: boolean } = {},
+) {
+  const deferred = withTimeout<void>();
+  const child = spawn("/bin/sh", ["-c", shellCmd], {
+    stdio: ["pipe", "pipe", "pipe", "ipc"],
+    serialization,
+    // deno-lint-ignore no-explicit-any
+  } as any);
+  let errored: Error | null = null;
+  let disconnected = false;
+  child.on("error", (err: Error) => {
+    errored = err;
+  });
+  child.on("disconnect", () => {
+    disconnected = true;
+    deferred.resolve();
+  });
+  if (kill) {
+    child.on("spawn", () => {
+      setTimeout(() => child.kill("SIGKILL"), 100);
+    });
+  }
+  try {
+    await deferred.promise;
+    assert(disconnected, "expected a 'disconnect' event");
+    assertEquals(errored, null, `unexpected 'error' event: ${errored}`);
+    assertEquals(child.connected, false);
+    assertEquals(child.channel, null);
+  } finally {
+    child.kill();
+    child.stdout?.destroy();
+    child.stderr?.destroy();
+  }
+}
+
+Deno.test({
+  name:
+    "[node/child_process ipc] partial JSON frame at teardown emits 'disconnect', not 'error'",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    // Write an unterminated JSON message (no trailing newline) then exit: the
+    // JSON decoder hits `UnexpectedEof` mid-message.
+    await assertAbruptTeardownDisconnects(
+      `printf '{"partial":' >&3; exit 0`,
+      "json",
+    );
+  },
+});
+
+Deno.test({
+  name:
+    "[node/child_process ipc] partial advanced frame at teardown emits 'disconnect', not 'error'",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    // Advanced serialization frames a message with a 4-byte big-endian length
+    // prefix; writing only 2 bytes then exiting hits `UnexpectedEof` before the
+    // length is complete.
+    await assertAbruptTeardownDisconnects(
+      `printf '\\000\\000' >&3; exit 0`,
+      "advanced",
+    );
+  },
+});
+
+Deno.test({
+  name:
+    "[node/child_process ipc] SIGKILL while the channel is live emits 'disconnect' without crashing",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    // Keep the IPC channel open and block, so a read is pending when the child
+    // is killed. The abrupt teardown must reach `disconnect` (never `error`)
+    // and must not panic `op_node_ipc_unref` on the now-removed resource.
+    await assertAbruptTeardownDisconnects(
+      `exec 3<&3; while :; do sleep 1; done`,
+      "json",
+      { kill: true },
+    );
+  },
+});
