@@ -13,7 +13,6 @@ https://github.com/denoland/deno_install
 - feat(compile): support aarch64-pc-windows-msvc target (#36004)
 - feat(ext/fetch): add `http2MaxHeaderListSize` option to
   `Deno.createHttpClient` (#33194)
-- feat(release): promote aarch64-pc-windows-msvc in promote_to_release (#36052)
 - fix(bundle): preserve raw imports in watch mode (#36040)
 - fix(canvas): don't hold SurfaceData mut borrow over window resize (#35993)
 - fix(config): reject out-of-range minimum dependency ages (#36051)
