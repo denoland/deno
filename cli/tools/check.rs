@@ -124,6 +124,15 @@ async fn native_check(
     .await?
     .graph_roots_valid(&graph, &roots, true, false)?;
 
+  // Enforce the lockfile now that the graph has resolved the project's deps:
+  // under `--frozen` this errors if the lockfile is out of date, otherwise it
+  // writes the updated lockfile. The in-process checker does this via the
+  // module loader; native check builds the graph itself, so do it here - before
+  // materializing types and spawning tsc, so `--frozen` fails fast.
+  if let Some(lockfile) = factory.maybe_lockfile().await? {
+    lockfile.write_if_changed()?;
+  }
+
   // Walk the graph exactly as the in-process checker does to obtain the combined
   // check hash (tsc version folded in). The walk also produces deno's own graph
   // diagnostics (missing modules + hints), but merging them additively isn't
