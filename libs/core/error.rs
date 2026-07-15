@@ -1032,12 +1032,6 @@ impl JsError {
     // handles below.
     v8::scope!(let scope, scope);
 
-    if let Ok(exception_object) = exception.try_cast::<v8::Object>()
-      && seen.contains(&exception_object)
-    {
-      return Some(Self::circular_error_reference());
-    }
-
     let msg = v8::Exception::create_message(scope, exception);
 
     let mut exception_message = None;
@@ -1077,8 +1071,15 @@ impl JsError {
           "Uncaught".to_string()
         }
       });
+      // A cycle terminates by converting the repeated error one final time and
+      // dropping its `cause` and aggregate members. Formatters rely on that
+      // repeat: `find_recursive_cause` matches it against the earlier
+      // occurrence by value to label a cycle `<ref *n>` / `[Circular *n]`, so
+      // it cannot be replaced with a placeholder. `seen` is path-local, so an
+      // error reachable by several distinct paths is not mistaken for a cycle.
+      let is_repeat = seen.contains(&exception);
       let cause = cause.and_then(|cause| {
-        if cause.is_undefined() {
+        if cause.is_undefined() || is_repeat {
           None
         } else {
           let mut seen = seen.clone();
@@ -1193,7 +1194,7 @@ impl JsError {
       }
 
       let mut aggregated: Option<Vec<JsError>> = None;
-      if is_aggregate_error(scope, v8_exception) {
+      if is_aggregate_error(scope, v8_exception) && !is_repeat {
         // Read an array of stored errors, this is only defined for `AggregateError`
         let (aggregated_errors, errors_getter_failed) = {
           v8::tc_scope!(let tc_scope, scope);
@@ -1329,10 +1330,6 @@ impl JsError {
         stack_is_custom: false,
       })
     }
-  }
-
-  fn circular_error_reference() -> Self {
-    Self::conversion_placeholder("[Circular]")
   }
 
   fn error_conversion_limit() -> Self {
@@ -2601,7 +2598,10 @@ mod tests {
     let error = JsError::from_v8_exception(scope, exception.into());
     let aggregated = error.aggregated.as_ref().expect("aggregate errors");
     assert_eq!(aggregated.len(), 1);
-    assert_eq!(aggregated[0].exception_message, "Uncaught [Circular]");
+    // The cycle terminates by repeating the error once with its own members
+    // dropped, rather than recursing into itself forever.
+    assert_eq!(aggregated[0].exception_message, error.exception_message);
+    assert!(aggregated[0].aggregated.is_none());
   }
 
   #[cfg(not(miri))]
@@ -2624,7 +2624,8 @@ mod tests {
     let error = JsError::from_v8_exception(scope, exception.into());
     let second = &error.aggregated.as_ref().unwrap()[0];
     let repeated_first = &second.aggregated.as_ref().unwrap()[0];
-    assert_eq!(repeated_first.exception_message, "Uncaught [Circular]");
+    assert_eq!(repeated_first.exception_message, error.exception_message);
+    assert!(repeated_first.aggregated.is_none());
   }
 
   #[cfg(not(miri))]
