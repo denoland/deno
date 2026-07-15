@@ -1,0 +1,39 @@
+# Copyright 2018-2026 the Deno authors. MIT license.
+
+[package]
+name = "deno_v8"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "JavaScript engine facade for Deno"
+
+[lib]
+path = "lib.rs"
+
+[features]
+default = ["v8"]
+v8 = ["dep:rusty_v8"]
+quickjs = ["dep:v8x_backend", "v8x_backend/quickjs"]
+simdutf = ["rusty_v8?/simdutf", "v8x_backend?/simdutf"]
+use_custom_libcxx = [
+  "rusty_v8?/use_custom_libcxx",
+  "v8x_backend?/use_custom_libcxx",
+]
+v8_enable_pointer_compression = [
+  "rusty_v8?/v8_enable_pointer_compression",
+  "v8x_backend?/v8_enable_pointer_compression",
+]
+v8_enable_sandbox = [
+  "rusty_v8?/v8_enable_sandbox",
+  "v8x_backend?/v8_enable_sandbox",
+]
+v8_enable_v8_checks = [
+  "rusty_v8?/v8_enable_v8_checks",
+  "v8x_backend?/v8_enable_v8_checks",
+]
+
+[dependencies]
+rusty_v8 = { package = "v8", version = "150.2.0", optional = true, default-features = false }
+v8x_backend = { package = "v8x", version = "149.4.0", git = "https://github.com/littledivy/v8x", rev = "c32bf2bc3ca4acde54e96e79a71fecb7b97ffe93", optional = true, default-features = false }

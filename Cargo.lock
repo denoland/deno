@@ -1897,6 +1897,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "debug-ignore"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ffe7ed1d93f4553003e20b629abe9085e1e81b1429520f897f8f8860bc6dfc21"
+
+[[package]]
 name = "debugid"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2291,6 +2297,7 @@ dependencies = [
  "deno_ops",
  "deno_path_util",
  "deno_unsync",
+ "deno_v8",
  "futures",
  "indexmap",
  "inventory",
@@ -2314,8 +2321,6 @@ dependencies = [
  "twox-hash 2.1.2",
  "unicycle",
  "url",
- "uuid",
- "v8",
  "wasm_dep_analyzer",
  "windows-sys 0.59.0",
 ]
@@ -3104,7 +3109,6 @@ dependencies = [
  "deno_lockfile",
  "deno_npm",
  "deno_npm_cache",
- "deno_npmrc",
  "deno_package_json",
  "deno_path_util",
  "deno_resolver",
@@ -3113,7 +3117,6 @@ dependencies = [
  "deno_unsync",
  "futures",
  "lazy-regex",
- "libc",
  "log",
  "once_cell",
  "parking_lot",
@@ -3595,6 +3598,14 @@ name = "deno_url"
 version = "0.222.0"
 
 [[package]]
+name = "deno_v8"
+version = "0.1.0"
+dependencies = [
+ "v8",
+ "v8x",
+]
+
+[[package]]
 name = "deno_web"
 version = "0.286.0"
 dependencies = [
@@ -3822,7 +3833,6 @@ version = "0.53.0"
 dependencies = [
  "deno_error",
  "deno_path_util",
- "libc",
  "sys_traits",
  "tempfile",
  "thiserror 2.0.12",
@@ -4358,6 +4368,19 @@ dependencies = [
  "sha3 0.11.0-rc.8",
  "signature 3.0.0-rc.10",
  "subtle",
+]
+
+[[package]]
+name = "editpe"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48cede2bb1b07dd598d269f973792c43e0cd92686d3b452bd6e01d7a8eb01211"
+dependencies = [
+ "debug-ignore",
+ "indexmap",
+ "log",
+ "thiserror 1.0.69",
+ "zerocopy 0.7.32",
 ]
 
 [[package]]
@@ -5687,6 +5710,31 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "118577bcf3a0fa7c6ac0a7d6e951814da84ee56b9b1f68fb4d8d10b08cefaf4d"
 
 [[package]]
+name = "icu_collator"
+version = "2.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8bbdf98e5e0aa827770acee171ebb568aaab975a36b56afdb5fd0e2f525750bb"
+dependencies = [
+ "icu_collator_data",
+ "icu_collections 2.2.0",
+ "icu_locale",
+ "icu_locale_core",
+ "icu_normalizer 2.2.0",
+ "icu_properties 2.2.0",
+ "icu_provider 2.2.0",
+ "smallvec",
+ "utf16_iter",
+ "utf8_iter",
+ "zerovec 0.11.6",
+]
+
+[[package]]
+name = "icu_collator_data"
+version = "2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "038ed8e5817f2059c2f3efb0945ba78d060d3d25e8f1a1bea5139f821a21a2f0"
+
+[[package]]
 name = "icu_collections"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5788,7 +5836,7 @@ checksum = "19ce3e0da2ec68599d193c93d088142efd7f9c5d6fc9b803774855747dc6a84f"
 dependencies = [
  "displaydoc",
  "icu_collections 1.5.0",
- "icu_normalizer_data",
+ "icu_normalizer_data 1.5.0",
  "icu_properties 1.5.1",
  "icu_provider 1.5.0",
  "smallvec",
@@ -5799,10 +5847,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "icu_normalizer"
+version = "2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c56e5ee99d6e3d33bd91c5d85458b6005a22140021cc324cea84dd0e72cff3b4"
+dependencies = [
+ "icu_collections 2.2.0",
+ "icu_normalizer_data 2.2.0",
+ "icu_properties 2.2.0",
+ "icu_provider 2.2.0",
+ "smallvec",
+ "utf16_iter",
+ "utf8_iter",
+ "write16",
+ "zerovec 0.11.6",
+]
+
+[[package]]
 name = "icu_normalizer_data"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8cafbf7aa791e9b22bec55a167906f9e1215fd475cd22adfcf660e03e989516"
+
+[[package]]
+name = "icu_normalizer_data"
+version = "2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da3be0ae77ea334f4da67c12f149704f19f81d1adf7c51cf482943e84a2bad38"
 
 [[package]]
 name = "icu_properties"
@@ -5919,7 +5990,7 @@ version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "daca1df1c957320b2cf139ac61e7bd64fed304c5040df000a745aa1de3b4ef71"
 dependencies = [
- "icu_normalizer",
+ "icu_normalizer 1.5.0",
  "icu_properties 1.5.1",
 ]
 
@@ -6360,9 +6431,9 @@ dependencies = [
 
 [[package]]
 name = "laufey"
-version = "0.6.1"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a9149a6c84f22c936d2b6ff1ba3392de20f9ee76eb65e5aebfdca4c8621ba3f"
+checksum = "d0560b9568c4bba38e8a9432530917e724867ca873eaf0f263c3a49d39370777"
 dependencies = [
  "bindgen 0.72.1",
  "tokio",
@@ -6604,16 +6675,15 @@ dependencies = [
 
 [[package]]
 name = "libsui"
-version = "0.16.4"
+version = "0.16.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3cd44dd0a322ec9fb05619e59067d1c767718238677369d9c5f004ea26a1184b"
+checksum = "ca68ddfd95a7422fda71830518f057cb14aa784a0feed007bc5ef9dff04818b1"
 dependencies = [
+ "editpe",
  "image",
- "indexmap",
  "libc",
  "object",
  "sha2",
- "thiserror 1.0.69",
  "windows 0.58.0",
  "zerocopy 0.7.32",
 ]
@@ -9265,6 +9335,7 @@ name = "serde_v8"
 version = "0.317.0"
 dependencies = [
  "deno_error",
+ "deno_v8",
  "num-bigint",
  "serde",
  "serde_bytes",
@@ -9272,14 +9343,13 @@ dependencies = [
  "serde_v8_utilities",
  "smallvec",
  "thiserror 2.0.12",
- "v8",
 ]
 
 [[package]]
 name = "serde_v8_utilities"
 version = "0.24.0"
 dependencies = [
- "v8",
+ "deno_v8",
 ]
 
 [[package]]
@@ -11209,6 +11279,22 @@ dependencies = [
  "serde",
  "thiserror 1.0.69",
  "wtf8",
+]
+
+[[package]]
+name = "v8x"
+version = "149.4.0"
+source = "git+https://github.com/littledivy/v8x?rev=c32bf2bc3ca4acde54e96e79a71fecb7b97ffe93#c32bf2bc3ca4acde54e96e79a71fecb7b97ffe93"
+dependencies = [
+ "bindgen 0.70.1",
+ "bitflags 2.9.3",
+ "cc",
+ "icu_collator",
+ "icu_locale",
+ "paste",
+ "temporal_capi",
+ "temporal_rs",
+ "timezone_provider",
 ]
 
 [[package]]
