@@ -286,6 +286,7 @@ pub async fn setup_npm_compat(
   npm_resolver: &CliNpmResolver,
   resolved_compiler_options: Option<&Value>,
   manage_root_tsconfig: bool,
+  type_check_remote: bool,
 ) -> Result<Vec<InstalledJsrPackage>, AnyError> {
   let deno_json = read_deno_json(project_root)?;
   let deno_compiler_options = deno_json
@@ -386,6 +387,7 @@ pub async fn setup_npm_compat(
     deno_imports,
     file_fetcher,
     permissions,
+    type_check_remote,
   )
   .await
   {
@@ -1039,6 +1041,7 @@ pub async fn install_http_modules(
   deno_imports: Option<&Value>,
   file_fetcher: &CliFileFetcher,
   permissions: &PermissionsContainer,
+  type_check_remote: bool,
 ) -> Result<HttpModulePaths, AnyError> {
   let mut paths: HttpModulePaths = BTreeMap::new();
   let mut queue: VecDeque<Url> = VecDeque::new();
@@ -1124,6 +1127,7 @@ pub async fn install_http_modules(
       &remote_root,
       &effective_url,
       effective_bytes.as_ref(),
+      type_check_remote,
     ) {
       Ok(p) => p,
       Err(e) => {
@@ -1177,6 +1181,7 @@ fn write_mirror(
   remote_root: &Path,
   url: &Url,
   bytes: &[u8],
+  type_check_remote: bool,
 ) -> Result<String, AnyError> {
   let local_path = url_to_local_path(remote_root, url)
     .ok_or_else(|| anyhow!("URL has no resolvable mirror path: {url}"))?;
@@ -1189,12 +1194,13 @@ fn write_mirror(
   // dwarfs the project's own diagnostics). `@ts-nocheck` suppresses errors in
   // the file while keeping its exported and ambient types available to
   // importers, and triple-slash directives (which may follow a leading comment)
-  // still apply.
+  // still apply. Skipped under `deno check --all`, which does type-check remote
+  // modules.
   let is_script = matches!(
     local_path.extension().and_then(|e| e.to_str()),
     Some("ts" | "tsx" | "mts" | "cts" | "js" | "jsx" | "mjs" | "cjs")
   );
-  if is_script {
+  if is_script && !type_check_remote {
     let mut content = Vec::with_capacity(bytes.len() + 16);
     content.extend_from_slice(b"// @ts-nocheck\n");
     content.extend_from_slice(bytes);

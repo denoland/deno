@@ -386,6 +386,9 @@ fn parse_tsc_diagnostics(output: &str, project_root: &Path) -> Vec<Diagnostic> {
   // back from the same file it referred to (which is always on disk: the
   // project sources, or the materialized jsr:/http(s): mirrors).
   let mut source_cache: HashMap<PathBuf, Option<Vec<String>>> = HashMap::new();
+  // Reverse map (mirror path -> original URL) so remote diagnostics render the
+  // specifier the user wrote, with the correct scheme and port.
+  let remote_map = build_remote_url_map(project_root);
 
   for line in output.lines() {
     if let Some(caps) = DIAGNOSTIC_RE.captures(line) {
@@ -413,7 +416,7 @@ fn parse_tsc_diagnostics(output: &str, project_root: &Path) -> Vec<Diagnostic> {
       diagnostics.push(make_diagnostic(
         &caps["cat"],
         caps["code"].parse().unwrap_or(0),
-        Some(remap_path(&caps["file"], project_root)),
+        Some(remap_path(&caps["file"], project_root, &remote_map)),
         Some(start),
         end,
         source_line,
@@ -620,16 +623,65 @@ fn make_diagnostic(
   }
 }
 
+/// Build a reverse map from a mirror-relative path (the part after
+/// `.deno/remote/`, i.e. `<host>__<port>/<path>`) to the original `http(s):`
+/// URL, read from the generated tsconfig's `paths`. The mirror layout doesn't
+/// encode the URL scheme, so this recovers the exact specifier (scheme + port)
+/// for diagnostic display. Returns an empty map if the config can't be read.
+fn build_remote_url_map(project_root: &Path) -> HashMap<String, String> {
+  let mut map = HashMap::new();
+  let config = project_root.join(".deno").join("tsconfig.json");
+  let Ok(text) = std::fs::read_to_string(&config) else {
+    return map;
+  };
+  let Ok(value) =
+    deno_core::serde_json::from_str::<deno_core::serde_json::Value>(&text)
+  else {
+    return map;
+  };
+  let Some(paths) = value
+    .get("compilerOptions")
+    .and_then(|c| c.get("paths"))
+    .and_then(|p| p.as_object())
+  else {
+    return map;
+  };
+  for (url, targets) in paths {
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+      continue;
+    }
+    if let Some(rel) = targets
+      .as_array()
+      .and_then(|a| a.first())
+      .and_then(|v| v.as_str())
+      .and_then(|t| t.strip_prefix("./remote/"))
+    {
+      map.insert(rel.to_string(), url.clone());
+    }
+  }
+  map
+}
+
 /// Best-effort remap of a path reported by the native compiler back onto the
 /// original module specifier. `deno check` runs tsc against a generated
 /// tsconfig whose `paths` point jsr:/http(s): dependencies into mirror
 /// directories, so the compiler reports those mirror paths rather than the
 /// specifiers the user wrote.
-fn remap_path(raw: &str, project_root: &Path) -> String {
+fn remap_path(
+  raw: &str,
+  project_root: &Path,
+  remote_map: &HashMap<String, String>,
+) -> String {
   let normalized = raw.replace('\\', "/");
 
-  // http(s): dependencies mirrored under `.deno/remote/<host>/<path>`.
+  // http(s): dependencies mirrored under `.deno/remote/<host>/<path>`. The
+  // mirror layout drops the URL scheme (and encodes `:port` as `__port`), so
+  // recover the exact original URL from the generated tsconfig's `paths`; fall
+  // back to a best-effort `https://` reconstruction when it isn't found.
   if let Some(rest) = normalized.split(".deno/remote/").nth(1) {
+    if let Some(url) = remote_map.get(rest) {
+      return url.clone();
+    }
     return format!("https://{rest}");
   }
 
@@ -733,25 +785,44 @@ mod tests {
     // Windows (the mirror cases below are pure string transforms).
     let root = std::env::temp_dir();
     let root = root.as_path();
+    let empty = HashMap::new();
     assert_eq!(
-      remap_path(".deno/remote/html.spec.whatwg.org/entities.json", root),
+      remap_path(
+        ".deno/remote/html.spec.whatwg.org/entities.json",
+        root,
+        &empty
+      ),
       "https://html.spec.whatwg.org/entities.json"
     );
+    // With a reverse map, the exact URL (scheme + port) is recovered.
+    let mut remote_map = HashMap::new();
+    remote_map.insert(
+      "localhost__4545/subdir/type_error.ts".to_string(),
+      "http://localhost:4545/subdir/type_error.ts".to_string(),
+    );
     assert_eq!(
-      remap_path("node_modules/@jsr/std__assert/mod.ts", root),
+      remap_path(
+        ".deno/remote/localhost__4545/subdir/type_error.ts",
+        root,
+        &remote_map
+      ),
+      "http://localhost:4545/subdir/type_error.ts"
+    );
+    assert_eq!(
+      remap_path("node_modules/@jsr/std__assert/mod.ts", root, &empty),
       "jsr:@std/assert/mod.ts"
     );
     assert_eq!(
-      remap_path("node_modules/chalk/index.d.ts", root),
+      remap_path("node_modules/chalk/index.d.ts", root, &empty),
       "npm:chalk/index.d.ts"
     );
     // A backslash-separated jsr mirror path (Windows form) still remaps.
     assert_eq!(
-      remap_path("node_modules\\@jsr\\std__fmt/colors.ts", root),
+      remap_path("node_modules\\@jsr\\std__fmt/colors.ts", root, &empty),
       "jsr:@std/fmt/colors.ts"
     );
     // A project-local file becomes an absolute file URL.
-    let mapped = remap_path("src/mod.ts", root);
+    let mapped = remap_path("src/mod.ts", root, &empty);
     assert!(mapped.starts_with("file://"), "{mapped}");
     assert!(mapped.ends_with("/src/mod.ts"), "{mapped}");
   }

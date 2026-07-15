@@ -433,6 +433,11 @@ pub async fn sync_types_command(
     }
   };
 
+  // `deno check --all` type-checks remote modules; otherwise mirrored remote
+  // scripts get `// @ts-nocheck` so tsc skips their internals.
+  let type_check_remote =
+    cli_options.type_check_mode() == crate::args::TypeCheckMode::All;
+
   let installed = super::npm_compat::setup_npm_compat(
     &project_root,
     &file_fetcher,
@@ -442,6 +447,7 @@ pub async fn sync_types_command(
     &npm_resolver,
     resolved_compiler_options.as_ref(),
     manage_root_tsconfig,
+    type_check_remote,
   )
   .await?;
 
