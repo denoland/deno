@@ -2240,6 +2240,8 @@ fn install_parse(
         InstallFlagsLocal::Add(AddFlags {
           packages: packages.iter().map(|s| s.to_string()).collect(),
           dev,
+          optional: result.get_bool("save-optional"),
+          no_save: result.get_bool("no-save"),
           default_registry,
           lockfile_only,
           save_exact: result.get_bool("save-exact"),
@@ -2502,6 +2504,8 @@ fn add_parse(result: &ParseResult, flags: &mut Flags) {
   flags.subcommand = DenoSubcommand::Add(AddFlags {
     packages,
     dev,
+    optional: result.get_bool("save-optional"),
+    no_save: result.get_bool("no-save"),
     default_registry,
     lockfile_only: result.get_bool("lockfile-only"),
     save_exact: result.get_bool("save-exact"),

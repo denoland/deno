@@ -58,6 +58,8 @@ pub enum DefaultRegistry {
 pub struct AddFlags {
   pub packages: Vec<String>,
   pub dev: bool,
+  pub optional: bool,
+  pub no_save: bool,
   pub default_registry: Option<DefaultRegistry>,
   pub lockfile_only: bool,
   pub save_exact: bool,
