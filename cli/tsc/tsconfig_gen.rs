@@ -410,6 +410,8 @@ const NODE_OWNED_GLOBAL_TYPES: &[&str] = &[
   "URLPatternComponentResult",
   "URLPatternResult",
   "URLPatternOptions",
+  "QuotaExceededError",
+  "QuotaExceededErrorOptions",
 ];
 
 /// Write the Deno type declarations to a `.d.ts` file.
@@ -437,6 +439,12 @@ fn write_deno_types(
   } else {
     filtered
   };
+
+  // Deno's lib bundles the `Temporal` proposal types, which tsc now ships in
+  // `lib.esnext.temporal`. Under `skipLibCheck: false` the two copies collide as
+  // duplicate identifiers, so drop Deno's and defer to the stock lib (loaded via
+  // the `esnext` lib).
+  let filtered = strip_declare_namespace(&filtered, "Temporal");
 
   // Ambient declaration so stock tsc resolves and types Deno's CSS module
   // imports. A side-effect `import "./x.css"` just needs the module to exist;
@@ -484,7 +492,14 @@ fn strip_top_level_type_decls(text: &str, names: &[&str]) -> String {
     let is_type_alias = names.iter().any(|n| {
       line.starts_with(&format!("type {n} =")) || line == format!("type {n}")
     });
-    if is_interface || is_type_alias {
+    // A global constructor `declare var X: {...};` - stripped so `@types/node`
+    // owns the constructor too (Deno's is often a `globalThis extends ...`
+    // conditional that doesn't defer to node, colliding as TS2403).
+    let is_var = names.iter().any(|n| {
+      line.starts_with(&format!("declare var {n}:"))
+        || line.starts_with(&format!("declare var {n} "))
+    });
+    if is_interface || is_type_alias || is_var {
       // Drop the leading comment block (JSDoc etc.) immediately preceding this
       // declaration. Bounded to contiguous comment-looking / blank lines so we
       // never pop real code — a `*/` that closes a non-JSDoc `/* */` block would
@@ -529,6 +544,51 @@ fn strip_top_level_type_decls(text: &str, names: &[&str]) -> String {
       continue;
     }
     out.push(line);
+    i += 1;
+  }
+  out.join("\n")
+}
+
+/// Remove a whole `declare namespace <name> { ... }` block (brace-matched) from
+/// `text`, along with the license/JSDoc comment block immediately preceding it.
+/// Used to drop types Deno's lib bundles that tsc now ships in its own libs
+/// (e.g. `Temporal` in `lib.esnext.temporal`), which collide as duplicate
+/// identifiers under `skipLibCheck: false`.
+fn strip_declare_namespace(text: &str, name: &str) -> String {
+  let open = format!("declare namespace {name} {{");
+  let lines: Vec<&str> = text.lines().collect();
+  let mut out: Vec<&str> = Vec::with_capacity(lines.len());
+  let mut i = 0;
+  while i < lines.len() {
+    if lines[i].trim() == open {
+      // Drop a contiguous leading comment/blank block (the license header).
+      while out.last().is_some_and(|l| {
+        let t = l.trim_start();
+        t.is_empty()
+          || t.starts_with('*')
+          || t.starts_with("/*")
+          || t.starts_with("//")
+      }) {
+        out.pop();
+      }
+      // Skip to the matching close brace, tracking depth.
+      let mut depth: i32 = 0;
+      while i < lines.len() {
+        for ch in lines[i].chars() {
+          match ch {
+            '{' => depth += 1,
+            '}' => depth -= 1,
+            _ => {}
+          }
+        }
+        i += 1;
+        if depth <= 0 {
+          break;
+        }
+      }
+      continue;
+    }
+    out.push(lines[i]);
     i += 1;
   }
   out.join("\n")
@@ -1459,7 +1519,12 @@ fn base_compiler_options() -> Map<String, Value> {
     "typeRoots": ["./types"],
     "types": ["deno"],
 
-    // Skip checking node_modules types for speed
+    // Skip checking node_modules types for speed. TypeScript's own default is
+    // false, but turning it off currently surfaces a raft of duplicate-identifier
+    // conflicts between Deno's bundled libs and the stock dom/node/esnext libs
+    // (Buffer/Uint8Array, FormData/DomIterable, NodeJS namespace, ...). Once
+    // Deno's core libs are stock-tsgo-clean this should flip to false to match
+    // TypeScript and check `.d.ts` entrypoints.
     "skipLibCheck": true,
   });
 
@@ -1537,9 +1602,10 @@ fn merge_deno_options(base: &mut Map<String, Value>, user_opts: &Value) {
 /// than the raw deno.json. These fold in Deno's source-kind defaults and CLI
 /// overrides (e.g. `--check-js`), so they win over the base and the raw pass.
 ///
-/// Deliberately excludes `skipLibCheck` (we always keep it on for speed) and the
-/// path-like options (`paths`/`baseUrl`/`rootDirs`), which come from the raw
-/// config so `build_tsconfig` can rebase them onto `.deno/`.
+/// Deliberately excludes `skipLibCheck` (the base default matches TypeScript's,
+/// and the raw pass honors a user override) and the path-like options
+/// (`paths`/`baseUrl`/`rootDirs`), which come from the raw config so
+/// `build_tsconfig` can rebase them onto `.deno/`.
 const RESOLVED_OPTION_KEYS: &[&str] = &[
   "allowUnreachableCode",
   "allowUnusedLabels",
