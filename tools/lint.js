@@ -376,9 +376,9 @@ async function clippy() {
     }
   }
 
-  // Run clippy for the whole workspace except deno_core with --all-features.
-  // deno_core is excluded because --all-features enables
-  // v8_enable_pointer_compression which is not available on all platforms.
+  // Run clippy for the whole workspace except crates with incompatible feature
+  // combinations. deno_core's v8_enable_pointer_compression is not available
+  // on all platforms, while deno_v8's engine features are mutually exclusive.
   {
     const cmd = [
       "clippy",
@@ -388,6 +388,8 @@ async function clippy() {
       "--workspace",
       "--exclude",
       "deno_core",
+      "--exclude",
+      "deno_v8",
     ];
 
     if (currentBuildMode != "debug") {
