@@ -237,6 +237,10 @@ async fn run_subcommand(
     DenoSubcommand::Ci(ci_flags) => spawn_subcommand(async {
       tools::installer::ci_command(Arc::new(flags), ci_flags).await
     }),
+    DenoSubcommand::SyncTypes(sync_types_flags) => spawn_subcommand(async {
+      tools::installer::sync_types_command(Arc::new(flags), sync_types_flags)
+        .await
+    }),
     DenoSubcommand::JSONReference(json_reference) => {
       spawn_subcommand(async move {
         display::write_json_to_stdout(&json_reference.json)
@@ -729,7 +733,44 @@ fn exit_for_error(error: AnyError, initial_cwd: Option<&std::path::Path>) -> ! {
     error_string.push_str(&hint);
   }
 
+  // When a package couldn't be resolved because the only matching version is
+  // newer than the configured minimum dependency age, the error doesn't
+  // mention the setting that caused it. Point the user at it.
+  if let Some(hint) = maybe_minimum_dependency_age_hint(&error_string) {
+    error_string.push_str(&hint);
+  }
+
   exit_with_message(&error_string, 1);
+}
+
+/// Substring present in every "package rejected because it is newer than the
+/// minimum dependency age" error (both the jsr and npm resolvers include it).
+const MINIMUM_DEPENDENCY_AGE_MARKER: &str = "minimum dependency date";
+
+/// If `error_string` is a resolution failure caused by the minimum dependency
+/// age safeguard, returns a note explaining the setting and how to override it.
+fn maybe_minimum_dependency_age_hint(error_string: &str) -> Option<String> {
+  if !error_string.contains(MINIMUM_DEPENDENCY_AGE_MARKER) {
+    return None;
+  }
+  Some(format!(
+    concat!(
+      "\n\n{} This version is blocked by the minimum dependency age policy, ",
+      "which avoids installing recently published versions to reduce supply ",
+      "chain risk (the default is 24 hours). To use this version now, pass the ",
+      "{} (or {}) flag (for example {} to disable it, or a shorter duration ",
+      "like {} minutes) or set {} in your deno.json, or wait until the version ",
+      "is old enough.\n{} {}"
+    ),
+    colors::yellow("hint:"),
+    colors::bold("--minimum-dependency-age"),
+    colors::bold("--min-dep-age"),
+    colors::bold("0"),
+    colors::bold("60"),
+    colors::bold("\"minimumDependencyAge\""),
+    colors::yellow("docs:"),
+    colors::cyan("https://docs.deno.com/go/minimum-dependency-age"),
+  ))
 }
 
 pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {

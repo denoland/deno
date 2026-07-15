@@ -1918,12 +1918,30 @@ impl DenoPluginHandler {
     let mut specifiers_vec = Vec::with_capacity(specifiers.len());
     for specifier in specifiers {
       let specifier = deno_path_util::url_from_file_path(specifier)?;
+      // Raw imports are represented as external assets in the module graph.
+      // Their contents are fetched by `bundle_load` instead of being stored
+      // in the graph, so reloading them as ordinary graph roots loses their
+      // requested module type (for example, `type: "css"`). Esbuild will call
+      // `on_load` again for the changed file and fetch its current contents.
+      if matches!(
+        graph.get(&specifier),
+        Some(deno_graph::Module::External(module)) if module.was_asset_load
+      ) {
+        continue;
+      }
       specifiers_vec.push(specifier);
     }
-    self
-      .module_load_preparer
-      .reload_specifiers(graph, specifiers_vec, false, self.permissions.clone())
-      .await?;
+    if !specifiers_vec.is_empty() {
+      self
+        .module_load_preparer
+        .reload_specifiers(
+          graph,
+          specifiers_vec,
+          false,
+          self.permissions.clone(),
+        )
+        .await?;
+    }
     graph_permit.commit();
     Ok(())
   }

@@ -1116,6 +1116,9 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               ].join("\n"),
               body_path: "target/release/release-notes.md",
               draft: true,
+              // Flag pre-release tags (e.g. -alpha./-beta./-rc.) as pre-releases
+              // so they are not marked "Latest" when the draft is published.
+              prerelease: "${{ contains(github.ref_name, '-') }}",
             },
           },
         );

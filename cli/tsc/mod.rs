@@ -48,6 +48,7 @@ use crate::sys::CliSys;
 use crate::util::path::mapped_specifier_for_tsc;
 
 mod diagnostics;
+pub mod tsconfig_gen;
 
 pub use self::diagnostics::Diagnostic;
 pub use self::diagnostics::DiagnosticCategory;
@@ -851,6 +852,35 @@ fn resolve_non_graph_specifier_types(
   }
 }
 
+/// Finds an `@types/node` that is only present in the npm resolution snapshot
+/// as a transitive dependency (not resolvable from the project root) and
+/// resolves its types entry point. Picks the highest installed version for
+/// determinism when multiple copies exist.
+fn resolve_transitive_types_node(
+  npm: &RequestNpmState,
+  referrer: &ModuleSpecifier,
+) -> Option<ModuleSpecifier> {
+  let managed = npm.npm_resolver.as_managed()?;
+  let snapshot = managed.resolution().snapshot();
+  let pkg_id = snapshot
+    .all_packages_for_every_system()
+    .filter(|pkg| pkg.id.nv.name.as_str() == "@types/node")
+    .max_by(|a, b| a.id.nv.version.cmp(&b.id.nv.version))
+    .map(|pkg| pkg.id.clone())?;
+  let package_folder = managed.resolve_pkg_folder_from_pkg_id(&pkg_id).ok()?;
+  let url_or_path = npm
+    .node_resolver
+    .resolve_package_subpath_from_deno_module(
+      &package_folder,
+      None,
+      Some(referrer),
+      ResolutionMode::Import,
+      NodeResolutionKind::Types,
+    )
+    .ok()?;
+  url_or_path.into_url().ok()
+}
+
 #[derive(Debug, Error, deno_error::JsError)]
 pub enum ExecError {
   #[class(generic)]
@@ -933,12 +963,6 @@ pub fn exec(
         remapped_specifiers.insert(specifier_str.clone(), s.clone());
         specifier_str
       }
-      // "file" if tsgo => {
-      //   let specifier_str = s.to_string();
-      //   let out = specifier_str.strip_prefix("file://").unwrap().to_string();
-      //   remapped_specifiers.insert(out.to_string(), s.clone());
-      //   out
-      // }
       _ => {
         if let Some(new_specifier) = mapped_specifier_for_tsc(s, *mt) {
           root_map.insert(new_specifier.clone(), s.clone());
@@ -1164,14 +1188,22 @@ pub fn load_for_tsc<T: LoadContent, M: Mapper>(
     let user_types_node = maybe_npm.and_then(|npm| {
       let referrer =
         deno_path_util::resolve_url_or_path("./", current_dir).ok()?;
-      let (spec, _) = resolve_non_graph_specifier_types(
+      let spec = match resolve_non_graph_specifier_types(
         "npm:@types/node",
         &referrer,
         ResolutionMode::Import,
         Some(npm),
       )
       .ok()
-      .flatten()?;
+      .flatten()
+      {
+        Some((spec, _)) => spec,
+        // Not a declared dependency, but a package may still pull in
+        // `@types/node` transitively, in which case tsc will load that copy
+        // through node resolution from inside the package. Serve the same
+        // copy here so only one `@types/node` ends up in the program.
+        None => resolve_transitive_types_node(npm, &referrer)?,
+      };
       spec
         .to_file_path()
         .ok()
@@ -1392,6 +1424,9 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "PerformanceEntry",
   "PerformanceMark",
   "PerformanceMeasure",
+  "PerformanceObserver",
+  "PerformanceObserverEntryList",
+  "PerformanceResourceTiming",
   "QueuingStrategy",
   "QueuingStrategySize",
   "QuotaExceededError",

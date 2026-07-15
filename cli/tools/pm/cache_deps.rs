@@ -25,6 +25,10 @@ use crate::graph_util::BuildGraphWithNpmOptions;
 
 pub struct CacheTopLevelDepsOptions {
   pub lockfile_only: bool,
+  /// Extra specifiers to resolve and cache in addition to the project's
+  /// declared dependencies. Used by `deno add --no-save` to install packages
+  /// without writing them to the configuration file.
+  pub additional_roots: Vec<Url>,
 }
 
 pub async fn cache_top_level_deps(
@@ -47,7 +51,8 @@ pub async fn cache_top_level_deps(
   let resolver = factory.workspace_resolver().await?;
 
   let mut maybe_graph_error = Ok(());
-  if let Some(import_map) = resolver.maybe_import_map() {
+  let has_import_map = resolver.maybe_import_map().is_some();
+  if has_import_map || !options.additional_roots.is_empty() {
     let jsr_resolver = if let Some(resolver) = jsr_resolver {
       resolver
     } else {
@@ -83,11 +88,22 @@ pub async fn cache_top_level_deps(
       .collect::<HashMap<_, _>>();
     let workspace_jsr_packages = resolver.jsr_packages();
 
-    for entry in import_map.imports().entries().chain(
-      import_map
-        .scopes()
-        .flat_map(|scope| scope.imports.entries()),
-    ) {
+    let import_map_entries = resolver
+      .maybe_import_map()
+      .map(|import_map| {
+        import_map
+          .imports()
+          .entries()
+          .chain(
+            import_map
+              .scopes()
+              .flat_map(|scope| scope.imports.entries()),
+          )
+          .collect::<Vec<_>>()
+      })
+      .unwrap_or_default();
+
+    for entry in import_map_entries {
       let Some(specifier) = entry.value else {
         continue;
       };
@@ -219,6 +235,9 @@ pub async fn cache_top_level_deps(
       }
     }
     drop(info_futures);
+
+    // Packages requested via `--no-save`: install them without declaring them.
+    roots.extend(options.additional_roots.iter().cloned());
 
     let graph_builder = factory.module_graph_builder().await?;
     graph_builder

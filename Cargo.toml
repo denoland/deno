@@ -45,7 +45,6 @@ members = [
   "libs/dcore",
   "libs/dotenv",
   "libs/eszip",
-  "libs/fast-registry-json",
   "libs/http_h1",
   "libs/inspector_server",
   "libs/lockfile",
@@ -63,7 +62,6 @@ members = [
   "libs/print",
   "libs/resolver",
   "libs/serde_v8",
-  "libs/typescript_go_client",
   "runtime",
   "runtime/features",
   "runtime/permissions",
@@ -93,7 +91,7 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "=0.53.2", features = ["transpiling"] }
+deno_ast = { version = "=0.53.3", features = ["transpiling"] }
 deno_core_icudata = "0.77.0"
 deno_doc = "=0.202.0"
 deno_error = "=0.7.1"
@@ -218,7 +216,6 @@ data-encoding = "2.3.3"
 data-url = "=0.3.1"
 encoding_rs = "=0.8.35"
 error_reporter = "1"
-fast-registry-json = { path = "./libs/fast-registry-json" }
 fast-socks5 = "0.9.6"
 faster-hex = "0.10.0"
 fastrand = "2"
@@ -494,7 +491,7 @@ split-debuginfo = "packed"
 debug = "line-tables-only"
 panic = "abort"
 
-[profile.bench.package.fast-registry-json]
+[profile.bench.package.deno_npm]
 opt-level = 3
 
 # Build release with debug symbols: cargo build --profile=release-with-debug
@@ -511,7 +508,7 @@ incremental = true
 codegen-units = 128
 lto = "thin"
 
-[profile.release-lite.package.fast-registry-json]
+[profile.release-lite.package.deno_npm]
 opt-level = 3
 
 # Key generation is too slow on `debug`
@@ -570,8 +567,6 @@ opt-level = 3
 [profile.release.package.deno_websocket]
 opt-level = 3
 [profile.release.package.fastwebsockets]
-opt-level = 3
-[profile.release.package.fast-registry-json]
 opt-level = 3
 [profile.release.package.flate2]
 opt-level = 3
