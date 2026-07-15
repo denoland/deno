@@ -3612,8 +3612,10 @@ function setupHandle(socket, type, options) {
         session.close();
       }
       // session.close() may synchronously destroy the session when it has no
-      // streams. Route through the guarded path so EOF cannot close it twice.
-      session[kMaybeDestroy](err);
+      // streams. Otherwise EOF must still tear down its remaining streams.
+      if (!session.destroyed) {
+        closeSession(session, NGHTTP2_NO_ERROR, err);
+      }
     }
   };
 
