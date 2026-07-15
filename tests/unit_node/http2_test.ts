@@ -6,6 +6,7 @@ import * as http2 from "node:http2";
 import * as https from "node:https";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { Buffer } from "node:buffer";
+import fs from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import * as net from "node:net";
@@ -896,6 +897,116 @@ Deno.test("[node/http2 client] connect with pre-created socket", {
   server.close();
   await new Promise<void>((resolve) => server.on("close", resolve));
 });
+
+async function testRespondWithCancellation(ownsFd: boolean) {
+  const filePath = await Deno.makeTempFile();
+  await Deno.writeFile(filePath, new Uint8Array(256 * 1024));
+
+  const originalRead = fs.read;
+  const originalClose = fs.close;
+  let streamClosed = false;
+  let readsAfterClose = 0;
+  let closeCalls = 0;
+
+  Object.defineProperty(fs, "read", {
+    configurable: true,
+    writable: true,
+    value: (...args: unknown[]) => {
+      if (streamClosed) readsAfterClose++;
+      const callbackIndex = args.length - 1;
+      const callback = args[callbackIndex] as (...args: unknown[]) => void;
+      args[callbackIndex] = (...callbackArgs: unknown[]) => {
+        setTimeout(() => callback(...callbackArgs), 3);
+      };
+      return Reflect.apply(
+        originalRead as unknown as (...args: unknown[]) => unknown,
+        fs,
+        args,
+      );
+    },
+  });
+  Object.defineProperty(fs, "close", {
+    configurable: true,
+    writable: true,
+    value: (...args: unknown[]) => {
+      closeCalls++;
+      return Reflect.apply(
+        originalClose as unknown as (...args: unknown[]) => unknown,
+        fs,
+        args,
+      );
+    },
+  });
+
+  const fd = ownsFd ? undefined : fs.openSync(filePath, "r");
+  const streamClose = Promise.withResolvers<void>();
+  const server = http2.createServer();
+  server.on("stream", (stream) => {
+    stream.on("error", () => {});
+    stream.once("close", () => {
+      streamClosed = true;
+      streamClose.resolve();
+    });
+    if (ownsFd) {
+      stream.respondWithFile(filePath);
+    } else {
+      stream.respondWithFD(fd!);
+    }
+  });
+
+  let client: http2.ClientHttp2Session | undefined;
+  try {
+    const port = await new Promise<number>((resolve) => {
+      server.listen(0, "127.0.0.1", () => {
+        resolve((server.address() as net.AddressInfo).port);
+      });
+    });
+    client = http2.connect(`http://127.0.0.1:${port}`);
+    client.on("error", () => {});
+    const request = client.request({ ":path": "/" });
+    request.on("error", () => {});
+    request.on("response", () => {
+      request.destroy();
+      client!.destroy();
+    });
+    request.end();
+
+    const timeout = setTimeout(
+      () => streamClose.reject(new Error("stream close timeout")),
+      5000,
+    );
+    await streamClose.promise.finally(() => clearTimeout(timeout));
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    assertEquals(readsAfterClose, 0);
+    assertEquals(closeCalls, ownsFd ? 1 : 0);
+  } finally {
+    client?.destroy();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    if (fd !== undefined) fs.closeSync(fd);
+    Object.defineProperty(fs, "read", {
+      configurable: true,
+      writable: true,
+      value: originalRead,
+    });
+    Object.defineProperty(fs, "close", {
+      configurable: true,
+      writable: true,
+      value: originalClose,
+    });
+    await Deno.remove(filePath);
+  }
+}
+
+Deno.test(
+  "[node/http2] respondWithFile stops reading and closes owned fd",
+  () => testRespondWithCancellation(true),
+);
+
+Deno.test(
+  "[node/http2] respondWithFD stops reading without closing caller fd",
+  () => testRespondWithCancellation(false),
+);
 
 // Regression test for https://github.com/denoland/deno/issues/33317
 // `http2.createSecureServer({ allowHTTP1: true })` must handle HTTP/1.1
