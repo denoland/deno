@@ -1737,30 +1737,13 @@ unsafe extern "C" fn on_invalid_frame_recv_callback(
     || lib_error_code == ffi::NGHTTP2_ERR_STREAM_CLOSED as i32
     || lib_error_code == ffi::NGHTTP2_ERR_FLOW_CONTROL as i32
   {
-    invoke_session_internal_error(session, lib_error_code);
+    // Do not enter JS while nghttp2_session_mem_recv is still active. The JS
+    // callback destroys the session and submits a GOAWAY, both of which may
+    // mutate nghttp2 state. send_pending_data emits this immediately after
+    // mem_recv unwinds.
+    session.pending_internal_error = Some(lib_error_code);
   }
   0
-}
-
-fn invoke_session_internal_error(session: &Session, lib_error_code: i32) {
-  let mut isolate =
-    // SAFETY: isolate pointer is valid for the session's lifetime
-    unsafe { v8::Isolate::from_raw_isolate_ptr(session.isolate) };
-  v8::scope!(let scope, &mut isolate);
-  let context = v8::Local::new(scope, session.context.clone());
-  let scope = &mut v8::ContextScope::new(scope, context);
-
-  let Some(this) = session.this.as_ref() else {
-    return;
-  };
-  let state = session.op_state.borrow();
-  let callbacks = state.borrow::<SessionCallbacks>();
-  let recv = v8::Local::new(scope, this);
-  let callback = v8::Local::new(scope, &callbacks.session_internal_error_cb);
-  drop(state);
-
-  let arg = v8::Integer::new(scope, lib_error_code);
-  callback.call(scope, recv.into(), &[arg.into()]);
 }
 
 unsafe extern "C" fn on_frame_send_callback(
