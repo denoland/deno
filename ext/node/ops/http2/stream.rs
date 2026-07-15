@@ -74,7 +74,8 @@ impl Http2Headers {
         break;
       }
 
-      let flags = bytes.get(offset).copied().unwrap_or(0);
+      let flags =
+        sanitize_header_flags(bytes.get(offset).copied().unwrap_or(0));
       offset += 1;
 
       nva.push(ffi::nghttp2_nv {
@@ -130,6 +131,10 @@ impl Http2Headers {
 
 fn find_null(slice: &[u8]) -> Option<usize> {
   slice.iter().position(|&b| b == 0)
+}
+
+fn sanitize_header_flags(flags: u8) -> u8 {
+  flags & (ffi::NGHTTP2_NV_FLAG_NO_INDEX as u8)
 }
 
 // Http2Priority
@@ -437,7 +442,43 @@ mod tests {
     assert!(!can_queue_pending_data(MAX_PENDING_DATA_PER_STREAM, 1));
     assert!(!can_queue_pending_data(usize::MAX, 1));
   }
+
+  #[test]
+  fn http2_header_parse_preserves_no_index_flag() {
+    let headers = Http2Headers::parse(b"name\0value\0\x01".to_vec(), 1);
+
+    assert_eq!(headers.nva.len(), 1);
+    assert_eq!(headers.nva[0].flags, ffi::NGHTTP2_NV_FLAG_NO_INDEX as u8);
+  }
+
+  #[test]
+  fn http2_header_parse_strips_no_copy_flags() {
+    let injected_flags = (ffi::NGHTTP2_NV_FLAG_NO_INDEX
+      | ffi::NGHTTP2_NV_FLAG_NO_COPY_NAME
+      | ffi::NGHTTP2_NV_FLAG_NO_COPY_VALUE) as u8;
+    let headers = Http2Headers::parse(
+      vec![
+        b'n',
+        b'a',
+        b'm',
+        b'e',
+        0,
+        b'v',
+        b'a',
+        b'l',
+        b'u',
+        b'e',
+        0,
+        injected_flags,
+      ],
+      1,
+    );
+
+    assert_eq!(headers.nva.len(), 1);
+    assert_eq!(headers.nva[0].flags, ffi::NGHTTP2_NV_FLAG_NO_INDEX as u8);
+  }
 }
+
 #[op2]
 impl Http2Stream {
   #[fast]

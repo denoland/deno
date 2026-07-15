@@ -57,6 +57,7 @@ async fn resolve_local_bins(
               None,
               CacheTopLevelDepsOptions {
                 lockfile_only: false,
+                additional_roots: vec![],
               },
             )
             .await?;
@@ -695,6 +696,7 @@ async fn autoinstall_package(
         None,
         CacheTopLevelDepsOptions {
           lockfile_only: false,
+          additional_roots: vec![],
         },
       )
       .await?;

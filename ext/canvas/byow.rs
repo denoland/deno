@@ -113,8 +113,7 @@ impl UnsafeWindowSurface {
     scope: &mut v8::PinScope<'_, '_>,
     value: u32,
   ) -> Result<(), JsErrorBox> {
-    let mut data = self.data.borrow_mut();
-    data.width = value;
+    self.data.borrow_mut().width = value;
 
     if let Some((id, active_context)) = self.active_context.get() {
       let active_context = v8::Local::new(scope, active_context);
@@ -138,8 +137,7 @@ impl UnsafeWindowSurface {
     scope: &mut v8::PinScope<'_, '_>,
     value: u32,
   ) -> Result<(), JsErrorBox> {
-    let mut data = self.data.borrow_mut();
-    data.height = value;
+    self.data.borrow_mut().height = value;
 
     if let Some((id, active_context)) = self.active_context.get() {
       let active_context = v8::Local::new(scope, active_context);

@@ -58,6 +58,11 @@ impl<TSys: DenoLibSys> NpmRegistryReadPermissionChecker<TSys> {
 
     match &self.mode {
       NpmRegistryReadPermissionCheckerMode::Byonm => {
+        // Normalize the path to collapse `.` and `..` components before
+        // checking for a `node_modules` ancestor. Otherwise a traversal path
+        // such as `./node_modules/../../../etc/passwd` would slip through the
+        // check and be read without `--allow-read`.
+        let path = deno_path_util::normalize_path(path);
         if path.components().any(|c| c.as_os_str() == "node_modules") {
           Ok(path)
         } else {
