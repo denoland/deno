@@ -487,6 +487,9 @@ async function ensureNoNonPermissionCapitalLetterShortFlags() {
     "L",
     // --allow-net
     "N",
+    // --save-optional flag for `deno add`/`deno install`
+    // (precedence: `npm install -O <package>`)
+    "O",
     // --permission-set
     "P",
     // --allow-read
