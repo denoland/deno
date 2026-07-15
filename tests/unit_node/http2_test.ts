@@ -9,7 +9,7 @@ import { Buffer } from "node:buffer";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import * as net from "node:net";
-import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
+import { assert, assertEquals, assertRejects } from "@std/assert";
 import { curlRequest } from "../unit/test_util.ts";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
@@ -459,24 +459,34 @@ Deno.test("internal/http2/util exports", () => {
   assert(typeof util.kRequest === "symbol");
 });
 
-Deno.test("internal/http2/util rejects NUL header values", () => {
+Deno.test("internal/http2/util escapes NUL header value bytes", () => {
   const { assertValidPseudoHeader, buildNgHeaderString } = require(
     "internal/http2/util",
   );
-  for (
-    const headers of [
+  assertEquals(
+    buildNgHeaderString(
       { "user-agent": "good\0x-injected\0bad" },
-      { "x-custom": ["good", "bad\0x-injected\0bad"] },
+      assertValidPseudoHeader,
+      true,
+    ),
+    ["user-agent\0good\x01x-injected\x01bad\0\0", 1],
+  );
+  assertEquals(
+    buildNgHeaderString(
+      { "x-custom": ["good", "bad\u0100x-injected\u0100bad"] },
+      assertValidPseudoHeader,
+      true,
+    ),
+    ["x-custom\0good\0\0x-custom\0bad\x01x-injected\x01bad\0\0", 2],
+  );
+  assertEquals(
+    buildNgHeaderString(
       { ":path": "/ok\0x-injected\0bad" },
-    ]
-  ) {
-    const error = assertThrows(
-      () => buildNgHeaderString(headers, assertValidPseudoHeader, true),
-      TypeError,
-      "Invalid character in header content",
-    ) as Error & { code?: string };
-    assertEquals(error.code, "ERR_INVALID_CHAR");
-  }
+      assertValidPseudoHeader,
+      true,
+    ),
+    [":path\0/ok\x01x-injected\x01bad\0\0", 1],
+  );
 });
 
 Deno.test("[node/http2] Server.address() includes family property", async () => {
