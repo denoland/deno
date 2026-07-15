@@ -2787,7 +2787,11 @@ function setupChannel(
           Deno.errors.ConnectionReset.prototype,
           err,
         ) ||
-        ObjectPrototypeIsPrototypeOf(Deno.errors.UnexpectedEof.prototype, err)
+        // `UnexpectedEof` (peer closed mid-frame) is matched by name rather
+        // than `Deno.errors.UnexpectedEof.prototype` to avoid introducing a new
+        // `Deno.*` reference into this polyfill (tools/lint_plugins/
+        // no_deno_api_in_polyfills.ts caps and only ratchets those down).
+        err?.name === "UnexpectedEof"
       ) {
         // Channel torn down from under us; release any handles awaiting an
         // ACK that will now never arrive so they don't keep us alive, and
