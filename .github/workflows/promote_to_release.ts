@@ -8,6 +8,12 @@ const windowsJob = job("promote-to-release-windows", {
   name: "Promote Windows to Release",
   runsOn: "windows-2022",
   if: isDenoland,
+  strategy: {
+    matrix: {
+      target: ["x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"],
+    },
+    failFast: false,
+  },
   permissions: {
     contents: "write",
     "id-token": "write",
@@ -31,8 +37,8 @@ const windowsJob = job("promote-to-release-windows", {
       name: "Download Windows binaries",
       run: [
         '$CANARY_URL="https://dl.deno.land/canary/${{github.event.inputs.commitHash}}"',
-        'Invoke-WebRequest -Uri "$CANARY_URL/deno-x86_64-pc-windows-msvc.zip" -OutFile "deno-windows.zip"',
-        'Invoke-WebRequest -Uri "$CANARY_URL/denort-x86_64-pc-windows-msvc.zip" -OutFile "denort-windows.zip"',
+        'Invoke-WebRequest -Uri "$CANARY_URL/deno-${{ matrix.target }}.zip" -OutFile "deno-windows.zip"',
+        'Invoke-WebRequest -Uri "$CANARY_URL/denort-${{ matrix.target }}.zip" -OutFile "denort-windows.zip"',
         'Expand-Archive -Path "deno-windows.zip" -DestinationPath "."',
         'Expand-Archive -Path "denort-windows.zip" -DestinationPath "."',
       ],
@@ -87,17 +93,16 @@ const windowsJob = job("promote-to-release-windows", {
     step({
       name: "Create archives",
       run: [
-        'Compress-Archive -Path "deno.exe" -DestinationPath "deno-x86_64-pc-windows-msvc.zip" -Force',
-        'Compress-Archive -Path "denort.exe" -DestinationPath "denort-x86_64-pc-windows-msvc.zip" -Force',
+        'Compress-Archive -Path "deno.exe" -DestinationPath "deno-${{ matrix.target }}.zip" -Force',
+        'Compress-Archive -Path "denort.exe" -DestinationPath "denort-${{ matrix.target }}.zip" -Force',
       ],
     }),
     step({
       name: "Upload Windows archives",
       uses: "actions/upload-artifact@v6",
       with: {
-        name: "windows-binaries",
-        path:
-          "deno-x86_64-pc-windows-msvc.zip\ndenort-x86_64-pc-windows-msvc.zip",
+        name: "windows-binaries-${{ matrix.target }}",
+        path: "deno-${{ matrix.target }}.zip\ndenort-${{ matrix.target }}.zip",
       },
     }),
   ],
@@ -178,7 +183,8 @@ const workflow = createWorkflow({
           name: "Download Windows binaries",
           uses: "actions/download-artifact@v7",
           with: {
-            name: "windows-binaries",
+            pattern: "windows-binaries-*",
+            "merge-multiple": true,
             path: ".",
           },
         }),

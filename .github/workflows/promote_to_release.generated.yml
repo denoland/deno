@@ -24,6 +24,12 @@ jobs:
       id-token: write
     environment:
       name: build
+    strategy:
+      matrix:
+        target:
+          - x86_64-pc-windows-msvc
+          - aarch64-pc-windows-msvc
+      fail-fast: false
     steps:
       - name: Clone repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -37,8 +43,8 @@ jobs:
       - name: Download Windows binaries
         run: |-
           $CANARY_URL="https://dl.deno.land/canary/${{github.event.inputs.commitHash}}"
-          Invoke-WebRequest -Uri "$CANARY_URL/deno-x86_64-pc-windows-msvc.zip" -OutFile "deno-windows.zip"
-          Invoke-WebRequest -Uri "$CANARY_URL/denort-x86_64-pc-windows-msvc.zip" -OutFile "denort-windows.zip"
+          Invoke-WebRequest -Uri "$CANARY_URL/deno-${{ matrix.target }}.zip" -OutFile "deno-windows.zip"
+          Invoke-WebRequest -Uri "$CANARY_URL/denort-${{ matrix.target }}.zip" -OutFile "denort-windows.zip"
           Expand-Archive -Path "deno-windows.zip" -DestinationPath "."
           Expand-Archive -Path "denort-windows.zip" -DestinationPath "."
       - name: Run patchver for Windows
@@ -78,15 +84,15 @@ jobs:
           & $SignToolPath verify /pa /v "deno.exe"
       - name: Create archives
         run: |-
-          Compress-Archive -Path "deno.exe" -DestinationPath "deno-x86_64-pc-windows-msvc.zip" -Force
-          Compress-Archive -Path "denort.exe" -DestinationPath "denort-x86_64-pc-windows-msvc.zip" -Force
+          Compress-Archive -Path "deno.exe" -DestinationPath "deno-${{ matrix.target }}.zip" -Force
+          Compress-Archive -Path "denort.exe" -DestinationPath "denort-${{ matrix.target }}.zip" -Force
       - name: Upload Windows archives
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: windows-binaries
+          name: 'windows-binaries-${{ matrix.target }}'
           path: |-
-            deno-x86_64-pc-windows-msvc.zip
-            denort-x86_64-pc-windows-msvc.zip
+            deno-${{ matrix.target }}.zip
+            denort-${{ matrix.target }}.zip
   promote-to-release:
     name: Promote to Release
     needs:
@@ -126,7 +132,8 @@ jobs:
       - name: Download Windows binaries
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
-          name: windows-binaries
+          pattern: windows-binaries-*
+          merge-multiple: true
           path: .
       - name: Create version file
         run: |-
