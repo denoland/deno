@@ -434,6 +434,101 @@ extern "C" fn test_tsfn_abort_race(
   ptr::null_mut()
 }
 
+// Reproduces a double free when napi_tsfn_abort is used while more than one
+// thread still holds the tsfn. A previous version freed the tsfn on abort
+// regardless of thread_count, so the still-outstanding thread was left with a
+// dangling pointer; its later release could spawn a second drop of the same
+// box (use-after-free + double free, tripping the assert in TsFn::drop). The
+// tsfn here starts with initial_thread_count = 2, so both threads must release
+// before it is freed and the finalizer must run exactly once.
+extern "C" fn test_tsfn_abort_outstanding(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 1);
+  assert_eq!(argc, 1);
+
+  let mut resource_name: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_string_utf8(
+    env,
+    c"tsfn_abort_outstanding".as_ptr(),
+    usize::MAX,
+    &mut resource_name,
+  ));
+
+  let mut func: napi_ref = ptr::null_mut();
+  assert_napi_ok!(napi_create_reference(env, args[0], 1, &mut func));
+
+  let mut tsfn: napi_threadsafe_function = ptr::null_mut();
+  assert_napi_ok!(napi_create_threadsafe_function(
+    env,
+    ptr::null_mut(),
+    ptr::null_mut(),
+    resource_name,
+    0,
+    2, // initial_thread_count: two releases are owed
+    func as *mut c_void,
+    Some(tsfn_race_finalize),
+    ptr::null_mut(),
+    Some(tsfn_race_call_js),
+    &mut tsfn,
+  ));
+
+  let tsfn_addr = tsfn as usize;
+
+  // Thread A: calls the tsfn, then aborts. With thread_count still at 2 this
+  // must not free the tsfn out from under Thread B.
+  let tsfn_a = tsfn_addr;
+  std::thread::spawn(move || {
+    let tsfn = tsfn_a as napi_threadsafe_function;
+    for _ in 0..100 {
+      let status = unsafe {
+        napi_call_threadsafe_function(
+          tsfn,
+          ptr::null_mut(),
+          ThreadsafeFunctionCallMode::nonblocking,
+        )
+      };
+      if status != napi_ok {
+        break;
+      }
+    }
+    unsafe {
+      napi_release_threadsafe_function(
+        tsfn,
+        ThreadsafeFunctionReleaseMode::abort,
+      );
+    }
+  });
+
+  // Thread B: the second reference holder. Whichever release drops the count
+  // to zero frees the tsfn exactly once.
+  let tsfn_b = tsfn_addr;
+  std::thread::spawn(move || {
+    let tsfn = tsfn_b as napi_threadsafe_function;
+    for _ in 0..100 {
+      let status = unsafe {
+        napi_call_threadsafe_function(
+          tsfn,
+          ptr::null_mut(),
+          ThreadsafeFunctionCallMode::nonblocking,
+        )
+      };
+      if status != napi_ok {
+        break;
+      }
+    }
+    unsafe {
+      napi_release_threadsafe_function(
+        tsfn,
+        ThreadsafeFunctionReleaseMode::release,
+      );
+    }
+  });
+
+  ptr::null_mut()
+}
+
 // Test napi_acquire_threadsafe_function and napi_release_threadsafe_function.
 // Creates a tsfn with initial_thread_count=1, acquires it (count=2),
 // releases twice (count drops to 1 then 0, triggering close).
@@ -685,6 +780,11 @@ pub fn init(env: napi_env, exports: napi_value) {
     ),
     napi_new_property!(env, "test_tsfn_close_race", test_tsfn_close_race),
     napi_new_property!(env, "test_tsfn_abort_race", test_tsfn_abort_race),
+    napi_new_property!(
+      env,
+      "test_tsfn_abort_outstanding",
+      test_tsfn_abort_outstanding
+    ),
     napi_new_property!(
       env,
       "test_tsfn_acquire_release",

@@ -5,7 +5,7 @@
 
 import { $ } from "jsr:@david/dax@0.41.0";
 import { gray } from "jsr:@std/fmt@1/colors";
-import { patchver } from "jsr:@deno/patchver@0.5.0";
+import { patchver } from "jsr:@deno/patchver@0.5.1";
 
 const SUPPORTED_TARGETS = [
   "aarch64-apple-darwin",
@@ -161,6 +161,31 @@ async function runRcodesign(
   await $`codesign -dv --verbose=4 ./deno`;
 }
 
+async function removeExistingSignature(target: string, binaryName: string) {
+  // Only Intel macOS needs this. patchver runs as a Wasm module: libsui's
+  // Intel Mach-O path used to strip the existing code signature by shelling
+  // out to `codesign`, which is gated to Apple hosts and so is absent from the
+  // Wasm build. Injecting the channel section then leaves stale signature data
+  // in __LINKEDIT that rcodesign rejects with "data after signature". Strip it
+  // here first with the runner's native codesign so patchver writes into an
+  // unsigned binary that can be re-signed cleanly.
+  //
+  // arm64 must NOT be stripped: its patchver path rebuilds the signature
+  // in-memory, and removing the signature first makes that output unrecognizable
+  // to rcodesign ("specified path is not of a recognized type").
+  if (target !== "x86_64-apple-darwin") {
+    return;
+  }
+  $.logStep("Remove signature", binaryName);
+  const output = await $`codesign --remove-signature ./${binaryName}`.noThrow();
+  if (output.code !== 0) {
+    $.logError(
+      `Failed to remove existing signature from ${binaryName} (error code ${output.code})`,
+    );
+    Deno.exit(1);
+  }
+}
+
 async function promoteBinaryToRc(
   binary: string,
   target: string,
@@ -182,6 +207,8 @@ async function promoteBinaryToRc(
 
   await unzipArchive(archiveName, unzippedName);
   await remove(archiveName);
+
+  await removeExistingSignature(target, unzippedName);
 
   $.logStep(
     "Patchver",
