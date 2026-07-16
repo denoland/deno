@@ -507,6 +507,123 @@ impl Drop for ChaCha20Poly1305Cipher {
   }
 }
 
+/// Raw ChaCha20 stream cipher backed by aws-lc-sys (BoringSSL).
+///
+/// Matches OpenSSL's `EVP_chacha20` semantics used by Node.js: the 16-byte
+/// IV consists of a 32-bit little-endian block counter followed by a
+/// 96-bit nonce.
+struct ChaCha20Cipher {
+  key: [u8; 32],
+  nonce: [u8; 12],
+  counter: u32,
+  /// Number of keystream bytes consumed so far.
+  pos: u64,
+  /// Keystream of the 64-byte block containing `pos`. Only meaningful
+  /// while `pos` is mid-block (`pos % 64 != 0`); the bytes from
+  /// `pos % 64` on are not yet consumed.
+  keystream_block: [u8; 64],
+}
+
+impl ChaCha20Cipher {
+  fn new(key: &[u8], iv: &[u8]) -> Self {
+    debug_assert_eq!(key.len(), 32);
+    debug_assert_eq!(iv.len(), 16);
+    let mut key_arr = [0u8; 32];
+    key_arr.copy_from_slice(key);
+    let mut nonce = [0u8; 12];
+    nonce.copy_from_slice(&iv[4..16]);
+    let counter = u32::from_le_bytes([iv[0], iv[1], iv[2], iv[3]]);
+    Self {
+      key: key_arr,
+      nonce,
+      counter,
+      pos: 0,
+      keystream_block: [0u8; 64],
+    }
+  }
+
+  /// Fills `keystream_block` with the keystream of the block containing
+  /// `pos` by encrypting 64 zero bytes.
+  fn refill_keystream_block(&mut self) {
+    debug_assert_eq!(self.pos % 64, 0);
+    let counter = self.counter.wrapping_add((self.pos / 64) as u32);
+    self.keystream_block = [0u8; 64];
+    // SAFETY: keystream_block is a valid 64-byte buffer for in-place
+    // encryption (in == out is allowed); key and nonce have the exact
+    // sizes CRYPTO_chacha_20 requires (32 and 12 bytes).
+    unsafe {
+      aws_lc_sys::CRYPTO_chacha_20(
+        self.keystream_block.as_mut_ptr(),
+        self.keystream_block.as_ptr(),
+        self.keystream_block.len(),
+        self.key.as_ptr(),
+        self.nonce.as_ptr(),
+        counter,
+      );
+    }
+  }
+
+  /// XORs the keystream into `input`, writing to `output`. First consumes
+  /// any keystream left over in `keystream_block` from a previous
+  /// mid-block call, then processes the remaining whole blocks in one
+  /// pass, and finally caches the keystream of a trailing partial block
+  /// for the next call — no per-call allocation.
+  fn apply_keystream(&mut self, input: &[u8], output: &mut [u8]) {
+    assert!(output.len() >= input.len());
+
+    // Use up the cached keystream of the current partial block.
+    let offset = (self.pos % 64) as usize;
+    let mut consumed = 0;
+    if offset != 0 {
+      consumed = input.len().min(64 - offset);
+      for ((out, inp), key) in output
+        .iter_mut()
+        .zip(input)
+        .zip(&self.keystream_block[offset..])
+      {
+        *out = inp ^ key;
+      }
+      self.pos += consumed as u64;
+    }
+    let input = &input[consumed..];
+    let output = &mut output[consumed..];
+
+    // Process all remaining whole blocks directly input -> output.
+    let whole = input.len() - input.len() % 64;
+    if whole != 0 {
+      let counter = self.counter.wrapping_add((self.pos / 64) as u32);
+      // SAFETY: input and output are valid for `whole` bytes (output
+      // length asserted above); key and nonce have the exact sizes
+      // CRYPTO_chacha_20 requires (32 and 12 bytes).
+      unsafe {
+        aws_lc_sys::CRYPTO_chacha_20(
+          output.as_mut_ptr(),
+          input.as_ptr(),
+          whole,
+          self.key.as_ptr(),
+          self.nonce.as_ptr(),
+          counter,
+        );
+      }
+      self.pos += whole as u64;
+    }
+
+    // A trailing partial block: cache its keystream and XOR from it.
+    let tail = &input[whole..];
+    if !tail.is_empty() {
+      self.refill_keystream_block();
+      for ((out, inp), key) in output[whole..]
+        .iter_mut()
+        .zip(tail)
+        .zip(&self.keystream_block)
+      {
+        *out = inp ^ key;
+      }
+      self.pos += tail.len() as u64;
+    }
+  }
+}
+
 enum Cipher {
   Aes128Cbc(Box<cbc::Encryptor<aes::Aes128>>),
   Aes128Ecb(Box<ecb::Encryptor<aes::Aes128>>),
@@ -519,6 +636,7 @@ enum Cipher {
   Aes192Ctr(Box<ctr::Ctr128BE<aes::Aes192>>),
   Aes256Ctr(Box<ctr::Ctr128BE<aes::Aes256>>),
   DesEde3Cbc(Box<cbc::Encryptor<des::TdesEde3>>),
+  ChaCha20(Box<ChaCha20Cipher>),
   ChaCha20Poly1305(Box<ChaCha20Poly1305Cipher>),
   // TODO(kt3k): add more algorithms Aes192Cbc, etc.
 }
@@ -535,6 +653,7 @@ enum Decipher {
   Aes192Ctr(Box<ctr::Ctr128BE<aes::Aes192>>),
   Aes256Ctr(Box<ctr::Ctr128BE<aes::Aes256>>),
   DesEde3Cbc(Box<cbc::Decryptor<des::TdesEde3>>),
+  ChaCha20(Box<ChaCha20Cipher>),
   ChaCha20Poly1305(Box<ChaCha20Poly1305Cipher>, Option<usize>),
   // TODO(kt3k): add more algorithms Aes192Cbc, Aes128GCM, etc.
 }
@@ -832,6 +951,15 @@ impl Cipher {
         }
         DesEde3Cbc(Box::new(cbc::Encryptor::new(key.into(), iv.into())))
       }
+      "chacha20" => {
+        if key.len() != 32 {
+          return Err(CipherError::InvalidKeyLength);
+        }
+        if iv.len() != 16 {
+          return Err(CipherError::InvalidInitializationVector);
+        }
+        ChaCha20(Box::new(ChaCha20Cipher::new(key, iv)))
+      }
       "chacha20-poly1305" => {
         if key.len() != 32 {
           return Err(CipherError::InvalidKeyLength);
@@ -931,6 +1059,9 @@ impl Cipher {
           encryptor.encrypt_block_b2b_mut(input.into(), output.into());
         }
       }
+      ChaCha20(cipher) => {
+        cipher.apply_keystream(input, output);
+      }
       ChaCha20Poly1305(cipher) => {
         cipher.encrypt(input, output);
       }
@@ -1025,7 +1156,7 @@ impl Cipher {
         );
         Ok(None)
       }
-      (Aes256Ctr(_) | Aes128Ctr(_) | Aes192Ctr(_), _) => Ok(None),
+      (Aes256Ctr(_) | Aes128Ctr(_) | Aes192Ctr(_) | ChaCha20(_), _) => Ok(None),
       (ChaCha20Poly1305(cipher), _) => {
         let tag = cipher.compute_tag();
         Ok(Some(tag))
@@ -1276,6 +1407,15 @@ impl Decipher {
         }
         DesEde3Cbc(Box::new(cbc::Decryptor::new(key.into(), iv.into())))
       }
+      "chacha20" => {
+        if key.len() != 32 {
+          return Err(DecipherError::InvalidKeyLength);
+        }
+        if iv.len() != 16 {
+          return Err(DecipherError::InvalidInitializationVector);
+        }
+        ChaCha20(Box::new(ChaCha20Cipher::new(key, iv)))
+      }
       "chacha20-poly1305" => {
         if key.len() != 32 {
           return Err(DecipherError::InvalidKeyLength);
@@ -1404,6 +1544,9 @@ impl Decipher {
         for (input, output) in input.chunks(8).zip(output.chunks_mut(8)) {
           decryptor.decrypt_block_b2b_mut(input.into(), output.into());
         }
+      }
+      ChaCha20(decipher) => {
+        decipher.apply_keystream(input, output);
       }
       ChaCha20Poly1305(decipher, _) => {
         decipher.decrypt(input, output);
@@ -1569,6 +1712,10 @@ impl Decipher {
       }
       (Aes128Ctr(mut decryptor), _) => {
         decryptor.apply_keystream_b2b(input, output).unwrap();
+        Ok(())
+      }
+      (ChaCha20(mut decipher), _) => {
+        decipher.apply_keystream(input, output);
         Ok(())
       }
       (DesEde3Cbc(decryptor), true) => {

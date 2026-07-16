@@ -731,6 +731,10 @@ fn op_host_get_worker_cpu_usage(
   #[scoped] id: WorkerId,
   #[buffer] out: &mut [f64],
 ) {
+  if out.len() < 2 {
+    return;
+  }
+
   if let Some(worker_thread) = state.borrow::<WorkersTable>().get(&id) {
     let handle = worker_thread.cpu_thread_handle.load(Ordering::Acquire);
     if handle != 0 {
@@ -746,6 +750,10 @@ fn op_host_get_worker_cpu_usage(
 
 #[op2(fast)]
 fn op_current_thread_cpu_usage(#[buffer] out: &mut [f64]) {
+  if out.len() < 2 {
+    return;
+  }
+
   let handle = capture_current_thread_handle();
   let (user, system) = get_thread_cpu_usage_by_handle(handle);
   out[0] = user;

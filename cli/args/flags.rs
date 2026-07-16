@@ -1652,6 +1652,26 @@ fn add_dev_arg() -> Arg {
     .action(ArgAction::SetTrue)
 }
 
+fn add_optional_arg() -> Arg {
+  Arg::new("save-optional")
+    .long("save-optional")
+    .short('O')
+    .help("Add the package as an optional dependency (under `optionalDependencies`). Note: this only applies when adding to a `package.json` file.")
+    .action(ArgAction::SetTrue)
+    .conflicts_with("dev")
+}
+
+fn add_no_save_arg() -> Arg {
+  Arg::new("no-save")
+    .long("no-save")
+    .help(
+      "Install the package(s) without adding them to the configuration file.",
+    )
+    .action(ArgAction::SetTrue)
+    .conflicts_with("dev")
+    .conflicts_with("save-optional")
+}
+
 fn add_subcommand() -> Command {
   command(
     "add",
@@ -1677,6 +1697,8 @@ Or multiple dependencies at once:
           .action(ArgAction::Append),
       )
       .arg(add_dev_arg())
+      .arg(add_optional_arg())
+      .arg(add_no_save_arg())
       .arg(allow_scripts_arg())
       .arg(allow_import_arg())
       .arg(deny_import_arg())
@@ -2308,10 +2330,11 @@ Unless --reload is specified, this command will not re-download already cached d
     )
 }
 
-const SUPPORTED_OS: [&str; 5] = [
+const SUPPORTED_OS: [&str; 6] = [
   "x86_64-unknown-linux-gnu",
   "aarch64-unknown-linux-gnu",
   "x86_64-pc-windows-msvc",
+  "aarch64-pc-windows-msvc",
   "x86_64-apple-darwin",
   "aarch64-apple-darwin",
 ];
@@ -3338,6 +3361,8 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
         )
         .arg(env_file_arg())
         .arg(add_dev_arg().conflicts_with("entrypoint").conflicts_with("global"))
+        .arg(add_optional_arg().conflicts_with("entrypoint").conflicts_with("global"))
+        .arg(add_no_save_arg().conflicts_with("entrypoint").conflicts_with("global"))
         .args(default_registry_args().into_iter().map(|arg| arg.conflicts_with("entrypoint").conflicts_with("global")))
         .arg(
           Arg::new("save-exact")
@@ -6554,6 +6579,8 @@ fn add_parse_inner(
   AddFlags {
     packages,
     dev,
+    optional: matches.get_flag("save-optional"),
+    no_save: matches.get_flag("no-save"),
     default_registry,
     lockfile_only: matches.get_flag("lockfile-only"),
     save_exact: matches.get_flag("save-exact"),
@@ -14310,6 +14337,35 @@ mod tests {
   }
 
   #[test]
+  fn compile_target_aarch64_windows() {
+    // denort for Windows arm64 is built and published by CI, so
+    // `--target aarch64-pc-windows-msvc` must be accepted by the SUPPORTED_OS
+    // value parser (and an unsupported triple must still be rejected).
+    let r = flags_from_vec(svec![
+      "deno",
+      "compile",
+      "--target",
+      "aarch64-pc-windows-msvc",
+      "main.ts"
+    ]);
+    let DenoSubcommand::Compile(c) = r.unwrap().subcommand else {
+      unreachable!()
+    };
+    assert_eq!(c.target, Some("aarch64-pc-windows-msvc".to_string()));
+
+    assert!(
+      flags_from_vec(svec![
+        "deno",
+        "compile",
+        "--target",
+        "riscv64gc-unknown-linux-gnu",
+        "main.ts"
+      ])
+      .is_err()
+    );
+  }
+
+  #[test]
   fn coverage() {
     let r = flags_from_vec(svec!["deno", "coverage", "foo.json"]);
     assert_eq!(
@@ -15846,6 +15902,8 @@ mod tests {
           mk_flags(AddFlags {
             packages: svec!["@david/which"],
             dev: false, // default is false
+            optional: false,
+            no_save: false,
             default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
@@ -15865,6 +15923,8 @@ mod tests {
         let mut expected_flags = mk_flags(AddFlags {
           packages: svec!["@david/which", "@luca/hello"],
           dev: false,
+          optional: false,
+          no_save: false,
           default_registry: Some(DefaultRegistry::Npm),
           lockfile_only: true,
           save_exact: false,
@@ -15880,6 +15940,8 @@ mod tests {
           mk_flags(AddFlags {
             packages: svec!["npm:chalk"],
             dev: true,
+            optional: false,
+            no_save: false,
             default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
@@ -15894,6 +15956,8 @@ mod tests {
           mk_flags(AddFlags {
             packages: svec!["chalk"],
             dev: false,
+            optional: false,
+            no_save: false,
             default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
@@ -15908,6 +15972,8 @@ mod tests {
           mk_flags(AddFlags {
             packages: svec!["@std/fs"],
             dev: false,
+            optional: false,
+            no_save: false,
             default_registry: Some(DefaultRegistry::Jsr),
             lockfile_only: false,
             save_exact: false,
@@ -15915,6 +15981,64 @@ mod tests {
           }),
         );
       }
+      for arg in ["--save-optional", "-O"] {
+        let r = flags_from_vec(svec!["deno", cmd, arg, "npm:chalk"]);
+        assert_eq!(
+          r.unwrap(),
+          mk_flags(AddFlags {
+            packages: svec!["npm:chalk"],
+            dev: false,
+            optional: true,
+            no_save: false,
+            default_registry: Some(DefaultRegistry::Npm),
+            lockfile_only: false,
+            save_exact: false,
+            package_json: false,
+          }),
+        );
+      }
+      {
+        let r = flags_from_vec(svec!["deno", cmd, "--no-save", "npm:chalk"]);
+        assert_eq!(
+          r.unwrap(),
+          mk_flags(AddFlags {
+            packages: svec!["npm:chalk"],
+            dev: false,
+            optional: false,
+            no_save: true,
+            default_registry: Some(DefaultRegistry::Npm),
+            lockfile_only: false,
+            save_exact: false,
+            package_json: false,
+          }),
+        );
+      }
+      // --save-optional conflicts with --dev
+      assert!(
+        flags_from_vec(svec![
+          "deno",
+          cmd,
+          "--save-optional",
+          "--dev",
+          "npm:chalk"
+        ])
+        .is_err()
+      );
+      // --no-save conflicts with --dev and --save-optional
+      assert!(
+        flags_from_vec(svec!["deno", cmd, "--no-save", "--dev", "npm:chalk"])
+          .is_err()
+      );
+      assert!(
+        flags_from_vec(svec![
+          "deno",
+          cmd,
+          "--no-save",
+          "--save-optional",
+          "npm:chalk"
+        ])
+        .is_err()
+      );
     }
 
     {
@@ -15930,6 +16054,8 @@ mod tests {
           subcommand: DenoSubcommand::Add(AddFlags {
             packages: svec!["@david/which"],
             dev: false,
+            optional: false,
+            no_save: false,
             default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,

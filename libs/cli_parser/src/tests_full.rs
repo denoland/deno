@@ -5056,6 +5056,37 @@ fn compile() {
 }
 
 #[test]
+fn compile_target_aarch64_windows() {
+  // The denort runtime for Windows arm64 is built and published by CI, so
+  // `--target aarch64-pc-windows-msvc` must be accepted. This is the
+  // regression guard for the clap -> deno_cli_parser cutover: the new parser
+  // validates `--target` against its own SUPPORTED_OS list, so the triple has
+  // to be present here too (not just in clap's list).
+  let r = flags_from_vec(svec![
+    "deno",
+    "compile",
+    "--target=aarch64-pc-windows-msvc",
+    "main.ts"
+  ]);
+  let DenoSubcommand::Compile(c) = r.unwrap().subcommand else {
+    panic!("expected compile subcommand");
+  };
+  assert_eq!(c.target, Some("aarch64-pc-windows-msvc".to_string()));
+
+  // An unsupported triple is still rejected, proving the validator is active
+  // (and this test isn't passing just because validation was dropped).
+  assert!(
+    flags_from_vec(svec![
+      "deno",
+      "compile",
+      "--target=riscv64gc-unknown-linux-gnu",
+      "main.ts"
+    ])
+    .is_err()
+  );
+}
+
+#[test]
 fn desktop_backend_default() {
   let r = flags_from_vec(svec!["deno", "desktop", "main.tsx"]);
   let flags = r.unwrap();
@@ -6657,6 +6688,8 @@ fn add_or_install_subcommand() {
         mk_flags(AddFlags {
           packages: svec!["@david/which"],
           dev: false, // default is false
+          optional: false,
+          no_save: false,
           default_registry: Some(DefaultRegistry::Npm),
           lockfile_only: false,
           save_exact: false,
@@ -6676,6 +6709,8 @@ fn add_or_install_subcommand() {
       let mut expected_flags = mk_flags(AddFlags {
         packages: svec!["@david/which", "@luca/hello"],
         dev: false,
+        optional: false,
+        no_save: false,
         default_registry: Some(DefaultRegistry::Npm),
         lockfile_only: true,
         save_exact: false,
@@ -6691,6 +6726,8 @@ fn add_or_install_subcommand() {
         mk_flags(AddFlags {
           packages: svec!["npm:chalk"],
           dev: true,
+          optional: false,
+          no_save: false,
           default_registry: Some(DefaultRegistry::Npm),
           lockfile_only: false,
           save_exact: false,
@@ -6705,6 +6742,8 @@ fn add_or_install_subcommand() {
         mk_flags(AddFlags {
           packages: svec!["chalk"],
           dev: false,
+          optional: false,
+          no_save: false,
           default_registry: Some(DefaultRegistry::Npm),
           lockfile_only: false,
           save_exact: false,
@@ -6719,6 +6758,8 @@ fn add_or_install_subcommand() {
         mk_flags(AddFlags {
           packages: svec!["@std/fs"],
           dev: false,
+          optional: false,
+          no_save: false,
           default_registry: Some(DefaultRegistry::Jsr),
           lockfile_only: false,
           save_exact: false,
@@ -6726,6 +6767,64 @@ fn add_or_install_subcommand() {
         }),
       );
     }
+    for arg in ["--save-optional", "-O"] {
+      let r = flags_from_vec(svec!["deno", cmd, arg, "npm:chalk"]);
+      assert_eq!(
+        r.unwrap(),
+        mk_flags(AddFlags {
+          packages: svec!["npm:chalk"],
+          dev: false,
+          optional: true,
+          no_save: false,
+          default_registry: Some(DefaultRegistry::Npm),
+          lockfile_only: false,
+          save_exact: false,
+          package_json: false,
+        }),
+      );
+    }
+    {
+      let r = flags_from_vec(svec!["deno", cmd, "--no-save", "npm:chalk"]);
+      assert_eq!(
+        r.unwrap(),
+        mk_flags(AddFlags {
+          packages: svec!["npm:chalk"],
+          dev: false,
+          optional: false,
+          no_save: true,
+          default_registry: Some(DefaultRegistry::Npm),
+          lockfile_only: false,
+          save_exact: false,
+          package_json: false,
+        }),
+      );
+    }
+    // --save-optional conflicts with --dev
+    assert!(
+      flags_from_vec(svec![
+        "deno",
+        cmd,
+        "--save-optional",
+        "--dev",
+        "npm:chalk"
+      ])
+      .is_err()
+    );
+    // --no-save conflicts with --dev and --save-optional
+    assert!(
+      flags_from_vec(svec!["deno", cmd, "--no-save", "--dev", "npm:chalk"])
+        .is_err()
+    );
+    assert!(
+      flags_from_vec(svec![
+        "deno",
+        cmd,
+        "--no-save",
+        "--save-optional",
+        "npm:chalk"
+      ])
+      .is_err()
+    );
   }
 
   {
@@ -6741,6 +6840,8 @@ fn add_or_install_subcommand() {
         subcommand: DenoSubcommand::Add(AddFlags {
           packages: svec!["@david/which"],
           dev: false,
+          optional: false,
+          no_save: false,
           default_registry: Some(DefaultRegistry::Npm),
           lockfile_only: false,
           save_exact: false,

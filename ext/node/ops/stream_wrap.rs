@@ -761,18 +761,36 @@ unsafe extern "C" fn on_uv_read(
     } else {
       // SAFETY: buf is a valid uv_buf_t allocated by on_uv_alloc per the uv_read_cb contract.
       let buf_ref = unsafe { &*buf };
-      // Create a backing store from the allocated memory.
-      // The deleter will free the alloc when the ArrayBuffer is GC'd.
-      // SAFETY: buf_ref.base points to memory allocated by on_uv_alloc with size buf_ref.len; ownership transfers to the backing store.
-      let backing_store = unsafe {
-        v8::ArrayBuffer::new_backing_store_from_ptr(
-          buf_ref.base as *mut std::ffi::c_void,
-          nread_usize,
-          backing_store_deleter,
-          buf_ref.len as *mut std::ffi::c_void,
-        )
+      let ab = if nread_usize < buf_ref.len {
+        // Partial read: copy into an exact-size backing store so the
+        // slab returns to the pool immediately and the JS `Buffer`
+        // doesn't pin the full 64KB allocation. Mirrors Node's
+        // right-sizing of any partial read in
+        // `EmitToJSStreamListener::OnStreamRead` (src/stream_base.cc).
+        // SAFETY: buf_ref.base holds at least nread_usize readable bytes
+        // per the uv_read_cb contract.
+        let data = unsafe {
+          std::slice::from_raw_parts(buf_ref.base as *const u8, nread_usize)
+        }
+        .to_vec();
+        free_uv_buf(buf);
+        let backing_store =
+          v8::ArrayBuffer::new_backing_store_from_vec(data).make_shared();
+        v8::ArrayBuffer::with_backing_store(tc, &backing_store)
+      } else {
+        // Full read: transfer slab ownership to the ArrayBuffer.
+        // The deleter will free the alloc when the ArrayBuffer is GC'd.
+        // SAFETY: buf_ref.base points to memory allocated by on_uv_alloc with size buf_ref.len; ownership transfers to the backing store.
+        let backing_store = unsafe {
+          v8::ArrayBuffer::new_backing_store_from_ptr(
+            buf_ref.base as *mut std::ffi::c_void,
+            nread_usize,
+            backing_store_deleter,
+            buf_ref.len as *mut std::ffi::c_void,
+          )
+        };
+        v8::ArrayBuffer::with_backing_store(tc, &backing_store.into())
       };
-      let ab = v8::ArrayBuffer::with_backing_store(tc, &backing_store.into());
       ab.into()
     };
     let result = onread.call(tc, recv.into(), &[arg]);
@@ -1407,12 +1425,12 @@ impl LibUvStreamWrap {
     let req_ptr = Box::into_raw(req);
 
     // `get_contents` copies on-heap typed arrays (<= 64 bytes) into the
-    // stack `buf`, which won't outlive this op — those need an owned
+    // stack `buf`, which won't outlive this op - those need an owned
     // copy. Off-heap stores are stable while JS retains the chunk via
     // `req.buffer = data` (handleWriteReq), the same retention contract
     // as the writev path, so queue a zero-copy iovec pointing at the
     // backing store instead of memcpy'ing the tail into an owned Vec
-    // (the old `uv_write` path copied via collect_bufs — up to the
+    // (the old `uv_write` path copied via collect_bufs - up to the
     // full payload per queued write under backpressure).
     let on_stack = std::ptr::eq(data.as_ptr(), stack_base);
     let err = if on_stack {
