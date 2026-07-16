@@ -518,27 +518,33 @@ fn resolve_bare_against_import_map(
 }
 
 /// Ensure a stock `@types/node` (and its `undici-types` dependency) is present
-/// in the selected compatibility directory so the generated tsconfig can load
-/// Node globals (timers, `node:` builtins, `Buffer`, `URLPattern`, ...). No-op
-/// when the project already has `@types/node` installed.
+/// so the generated tsconfig can load Node globals (timers, `node:` builtins,
+/// `Buffer`, `URLPattern`, ...).
 ///
-/// Global-cache mode keeps these under `.deno/npm-compat`; local node_modules
-/// mode keeps the existing `node_modules/@types` layout.
+/// If the project already installed `@types/node` under its `node_modules`, we
+/// reuse that in place. Otherwise we materialize a stock copy under
+/// `.deno/npm-compat` (which is gitignored) - never downloading into the
+/// project's real `node_modules`, so `deno check` doesn't mutate the user's tree
+/// (and doesn't dirty the working directory).
 async fn ensure_types_node(
   project_root: &Path,
   http_client: &HttpClient,
   use_global_cache_layout: bool,
 ) -> NodeTypesSetup {
-  let modules_dir = if use_global_cache_layout {
-    project_root.join(".deno/npm-compat")
-  } else {
-    project_root.join("node_modules")
-  };
-  let type_root = if use_global_cache_layout {
-    "./npm-compat/@types".to_string()
-  } else {
-    "../node_modules/@types".to_string()
-  };
+  // Reuse an @types/node the project already installed under node_modules.
+  if !use_global_cache_layout {
+    let node_modules = project_root.join("node_modules");
+    if node_modules.join("@types/node").exists() {
+      let undici_types_dir = node_modules.join("undici-types");
+      return NodeTypesSetup {
+        type_root: Some("../node_modules/@types".to_string()),
+        undici_types_dir: undici_types_dir.exists().then_some(undici_types_dir),
+      };
+    }
+  }
+  // Materialize under `.deno/npm-compat` (gitignored) in every other case.
+  let modules_dir = project_root.join(".deno/npm-compat");
+  let type_root = "./npm-compat/@types".to_string();
   let node_dir = modules_dir.join("@types/node");
   let undici_types_dir = modules_dir.join("undici-types");
   if node_dir.exists() {
