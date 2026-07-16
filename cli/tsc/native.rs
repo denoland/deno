@@ -1,5 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+// The native `deno check` path that consumes this module lands on top of this
+// PR, so everything here is unused until then.
+#![allow(dead_code)]
+
 use std::path::PathBuf;
 use std::sync::Arc;
 
