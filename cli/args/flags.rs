@@ -857,6 +857,11 @@ static ENV_VARS: &[EnvVar] = &[
     example: None,
   },
   EnvVar {
+    name: "DENO_TSC_BIN",
+    description: "Path to a prebuilt native TypeScript compiler (tsc/tsgo) for `deno check` to use instead of downloading the pinned one.",
+    example: None,
+  },
+  EnvVar {
     name: "DENO_USE_CGROUPS",
     description: "Use cgroups to determine V8 memory limit.",
     example: None,
