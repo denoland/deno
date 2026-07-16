@@ -1,6 +1,9 @@
 {
   "tempDir": true,
   "tests": {
+    // The packaged paths — `package/kubernetes/models/_schemas/IoK8s...js` (110 bytes)
+    // and the matching `.d.ts` (112 bytes) — are longer than the 100 byte GNU tar
+    // `name` field, so packing them requires a `././@LongLink` entry. Keep them long.
     "pack_long_file_names": {
       "steps": [{
         "args": "pack",
@@ -10,9 +13,9 @@
         "commandName": "bash",
         "args": [
           "-c",
-          "tar -xzf test-long-file-names-1.0.0.tgz && ls package/src/kubernetes/models/_schemas/"
+          "tar -xzf test-long-file-names-1.0.0.tgz && find package -name 'IoK8s*' | sort"
         ],
-        "output": "long_file_names.out"
+        "output": "long_path.out"
       }]
     }
   }
