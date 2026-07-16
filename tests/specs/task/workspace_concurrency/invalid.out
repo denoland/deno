@@ -1,2 +1,1 @@
-error: invalid value '0' for '--jobs [WILDCARD]
-[WILDCARD]
+error: invalid value '0' for '--jobs <jobs>'

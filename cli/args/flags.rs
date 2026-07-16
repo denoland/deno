@@ -13,7 +13,6 @@ use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::Arc;
 use std::sync::LazyLock;
 
 use clap::Arg;
@@ -35,6 +34,7 @@ use deno_bundle_runtime::BundleFormat;
 use deno_bundle_runtime::BundlePlatform;
 use deno_bundle_runtime::PackageHandling;
 use deno_bundle_runtime::SourceMapType;
+use deno_cli_parser::env_vars::ENV_VARS;
 pub use deno_cli_parser::flags::*;
 use deno_config::deno_json::NewestDependencyDate;
 use deno_config::deno_json::NodeModulesDirMode;
@@ -65,7 +65,6 @@ use deno_telemetry::OtelPropagators;
 use log::Level;
 use log::debug;
 use node_shim::parse_node_options_env_var;
-use serde::Serialize;
 
 use super::flags_net;
 use crate::util::env::resolve_cwd;
@@ -729,195 +728,6 @@ impl FlagsExt for Flags {
   }
 }
 
-#[derive(Serialize)]
-struct EnvVar {
-  name: &'static str,
-  description: &'static str,
-  example: Option<&'static str>,
-}
-
-static ENV_VARS: &[EnvVar] = &[
-  EnvVar {
-    name: "DENO_AUTH_TOKENS",
-    description: "A semi-colon separated list of bearer tokens and hostnames\nto use when fetching remote modules from private repositories",
-    example: Some(r#"(e.g. "abcde12345@deno.land;54321edcba@github.com")"#),
-  },
-  EnvVar {
-    name: "DENO_CACHE_DB_MODE",
-    description: "Controls whether Web cache should use disk based or in-memory database.",
-    example: None,
-  },
-  EnvVar {
-    name: "DENO_CERT",
-    description: "Load certificate authorities from PEM encoded file.",
-    example: None,
-  },
-  EnvVar {
-    name: "DENO_COMPAT",
-    description: "Enable Node.js compatibility mode - extensionless imports, built-in\nNode.js modules, CommonJS detection and more.",
-    example: None,
-  },
-  EnvVar {
-    name: "DENO_CONDITIONS",
-    description: "Comma-separated list of custom conditions to resolve npm package\nexports and imports with. Equivalent to using the --conditions flag.",
-    example: None,
-  },
-  EnvVar {
-    name: "DENO_COVERAGE_DIR",
-    description: "Set the directory for collecting code coverage profiles.\nEquivalent to using the --coverage flag.",
-    example: None,
-  },
-  EnvVar {
-    name: "DENO_DIR",
-    description: "Set the cache directory",
-    example: None,
-  },
-  EnvVar {
-    name: "DENO_INSTALL_ROOT",
-    description: "Set deno install's output directory",
-    example: Some("(defaults to $HOME/.deno/bin)"),
-  },
-  EnvVar {
-    name: "DENO_JOBS",
-    description: "Number of parallel workers used for the --parallel flag with the test\nsubcommand. Defaults to the number of available CPUs.",
-    example: None,
-  },
-  EnvVar {
-    name: "DENO_KV_DB_MODE",
-    description: "Controls whether Deno.openKv() API should use disk based or in-memory\ndatabase.",
-    example: None,
-  },
-  EnvVar {
-    name: "DENO_KV_DEFAULT_PATH",
-    description: "Set the default path for Deno.openKv() when no path is provided.",
-    example: None,
-  },
-  EnvVar {
-    name: "DENO_KV_PATH_PREFIX",
-    description: "Set a prefix to be added to all Deno.openKv() paths.",
-    example: None,
-  },
-  EnvVar {
-    name: "DENO_KV_REQUIRES_DISTRIBUTED_DATABASE",
-    description: "Require Deno.openKv() to resolve to a distributed (remote) database.\nWhen set to \"error\", Deno.openKv() is always exposed and rejects with a\nclear message unless the resolved path is remote. When set to \"warn\", a\nlocal/in-memory fallback is allowed but logs a warning. Used by Deno\nDeploy to surface a clear error when no KV database is attached.",
-    example: None,
-  },
-  EnvVar {
-    name: "DENO_EMIT_CACHE_MODE",
-    description: "Control if the transpiled sources should be cached.",
-    example: None,
-  },
-  EnvVar {
-    name: "DENO_NO_PACKAGE_JSON",
-    description: "Disables auto-resolution of package.json.",
-    example: None,
-  },
-  EnvVar {
-    name: "DENO_NO_PROMPT",
-    description: "Set to disable permission prompts on access\n(alternative to passing --no-prompt on invocation).",
-    example: None,
-  },
-  EnvVar {
-    name: "DENO_NO_UPDATE_CHECK",
-    description: "Set to disable checking if a newer Deno version is available",
-    example: None,
-  },
-  EnvVar {
-    name: "DENO_PATCH_REACT_CVE",
-    description: "Enable load-time source patches mitigating known React Server\nComponents CVEs (CVE-2025-55182, CVE-2025-55184).",
-    example: None,
-  },
-  EnvVar {
-    name: "DENO_SERVE_ADDRESS",
-    description: "Override address for Deno.serve",
-    example: Some(
-      r#"("tcp:0.0.0.0:8080", "unix:/tmp/deno.sock", or "vsock:1234:5678")"#,
-    ),
-  },
-  EnvVar {
-    name: "DENO_SERVE_AUTOMATIC_COMPRESSION",
-    description: "Set to 1 or true to enable automatic response body compression in Deno.serve by default.",
-    example: None,
-  },
-  EnvVar {
-    name: "DENO_AUTO_SERVE",
-    description: "If the entrypoint contains export default { fetch }, `deno run`\nbehaves like `deno serve`.",
-    example: None,
-  },
-  EnvVar {
-    name: "DENO_TLS_CA_STORE",
-    description: cstr!(
-      "Comma-separated list of order dependent certificate stores.\nPossible values: \"system\", \"mozilla\" <p(245)>(defaults to \"mozilla\")</>"
-    ),
-    example: None,
-  },
-  EnvVar {
-    name: "DENO_TRACE_PERMISSIONS",
-    description: "Environmental variable to enable stack traces in permission prompts.",
-    example: None,
-  },
-  EnvVar {
-    name: "DENO_USE_CGROUPS",
-    description: "Use cgroups to determine V8 memory limit.",
-    example: None,
-  },
-  EnvVar {
-    name: "DENO_V8_FLAGS",
-    description: "Set V8 command line options. Equivalent to using the --v8-flags flag;\nflags passed via --v8-flags are appended after these.",
-    example: None,
-  },
-  EnvVar {
-    name: "FORCE_COLOR",
-    description: "Set force color output even if stdout isn't a tty.",
-    example: None,
-  },
-  EnvVar {
-    name: "HTTP_PROXY",
-    description: "Proxy address for HTTP requests.",
-    example: Some("(module downloads, fetch)"),
-  },
-  EnvVar {
-    name: "HTTPS_PROXY",
-    description: "Proxy address for HTTPS requests.",
-    example: Some("(module downloads, fetch)"),
-  },
-  EnvVar {
-    name: "NO_COLOR",
-    description: "Set to disable color.",
-    example: None,
-  },
-  EnvVar {
-    name: "NO_PROXY",
-    description: "Comma-separated list of hosts which do not use a proxy.",
-    example: Some("(module downloads, fetch)"),
-  },
-  EnvVar {
-    name: "NODE_USE_ENV_PROXY",
-    description: "If set to 1, node:http and node:https honor HTTP_PROXY,\nHTTPS_PROXY, and NO_PROXY from the environment.",
-    example: None,
-  },
-  EnvVar {
-    name: "NPM_CONFIG_REGISTRY",
-    description: "URL to use for the npm registry.",
-    example: None,
-  },
-  EnvVar {
-    name: "SSLKEYLOGFILE",
-    description: "Write TLS session keys to the specified file in NSS Key Log format\nfor debugging encrypted traffic with tools like Wireshark.",
-    example: None,
-  },
-  EnvVar {
-    name: "DENO_TRUST_PROXY_HEADERS",
-    description: "If specified, removes X-deno-client-address header when serving HTTP.",
-    example: None,
-  },
-  EnvVar {
-    name: "DENO_USR2_MEMORY_TRIM",
-    description: "If specified, listen for SIGUSR2 signal to try and free memory (Linux only).",
-    example: None,
-  },
-];
-
 static ENV_VARIABLES_HELP: LazyLock<String> = LazyLock::new(|| {
   let mut out = cstr!(
     r#"<y>Environment variables:</>
@@ -1049,8 +859,142 @@ fn strip_trailing_cr(arg: OsString) -> OsString {
   }
 }
 
-/// Main entry point for parsing deno's command line flags.
+/// Fast path for `deno run <file> [script args...]` with no deno-level flags
+/// before the file. Building the parse tree / walking the parser costs a couple
+/// microseconds; for the overwhelmingly common bare-run case we skip it and
+/// build `RunFlags` directly. Any deno flag before the file (anything starting
+/// with `-`, or `-` itself) falls through to the full parser. `args` must be
+/// already `\r`-stripped and dx-shimmed. Returns `None` when the fast path does
+/// not apply. Must stay output-identical to the full parse (see the
+/// `fast_path_matches_full_parse` test).
+fn bare_run_fast_path(args: &[OsString]) -> Option<Flags> {
+  if args.len() >= 3
+    && args[1] == "run"
+    && args[2] != "-"
+    && args[2].as_encoded_bytes().first() != Some(&b'-')
+    && let Some(script) = args[2].to_str()
+  {
+    let argv = args[3..]
+      .iter()
+      .map(|a| a.to_string_lossy().into_owned())
+      .collect::<Vec<_>>();
+    let mut flags = Flags {
+      subcommand: DenoSubcommand::Run(RunFlags {
+        script: script.to_string(),
+        bare: false,
+        coverage_dir: None,
+        print_task_list: false,
+      }),
+      argv,
+      // Matches the full `run_parse`: no `--no-code-cache` flag before the
+      // file resolves code caching to enabled.
+      code_cache_enabled: true,
+      ..Default::default()
+    };
+    apply_node_options(&mut flags);
+    Some(flags)
+  } else {
+    None
+  }
+}
+
+/// Main entry point for parsing deno's command line flags. Routes through the
+/// hand-written `deno_cli_parser`; the `Flags` type is shared between this
+/// crate and the parser crate (`pub use deno_cli_parser::flags::*`), so no
+/// conversion is needed. The parser's `CliError` is mapped back to a
+/// `clap::Error` at this boundary to preserve the caller's error handling.
 pub fn flags_from_vec_with_initial_cwd(
+  args: Vec<OsString>,
+  initial_cwd: Option<PathBuf>,
+) -> clap::error::Result<Flags> {
+  // Strip a trailing `\r` from each arg so a CRLF-shebang script isn't poisoned
+  // by a stray carriage return. The hand-written parser also does this
+  // internally; doing it here first keeps the fast path below consistent with
+  // the full parse. (`deno_cli_parser::convert::flags_from_vec` re-strips, which
+  // is a no-op on already-stripped args.)
+  let args: Vec<OsString> = args.into_iter().map(strip_trailing_cr).collect();
+
+  // dx/denox/dnx shim: rewrite the binary name into an explicit `x` subcommand
+  // before parsing (the hand-written parser doesn't special-case argv[0]).
+  let args = if !args.is_empty()
+    && (args[0].as_encoded_bytes().ends_with(b"dx")
+      || args[0].as_encoded_bytes().ends_with(b"denox")
+      || args[0].as_encoded_bytes().ends_with(b"dnx"))
+  {
+    let mut new_args = Vec::with_capacity(args.len() + 1);
+    new_args.push(args[0].clone());
+    new_args.push(OsString::from("x"));
+    new_args.extend(args.into_iter().skip(1));
+    new_args
+  } else {
+    args
+  };
+
+  // Fast path for the overwhelmingly common `deno run <file> [args...]` with no
+  // deno-level flags before the file: build `RunFlags` directly and skip the
+  // parser entirely. `bare_run_fast_path` produces output identical to the full
+  // parse (asserted by `fast_path_matches_full_parse`).
+  if let Some(mut flags) = bare_run_fast_path(&args) {
+    flags.initial_cwd = initial_cwd;
+    return Ok(flags);
+  }
+
+  // The hand-written parser works on `String`s, whereas clap consumed
+  // `OsString` natively. Args are almost always UTF-8; the lossy conversion is
+  // a deliberate behavior change for the rare non-UTF-8 arg (e.g. a script path
+  // with invalid bytes), which becomes mangled (replacement chars) here instead
+  // of being carried through verbatim. Accepted as a Deno 3 simplification.
+  let string_args: Vec<String> = args
+    .iter()
+    .map(|a| a.to_string_lossy().into_owned())
+    .collect();
+
+  match deno_cli_parser::convert::flags_from_vec(string_args) {
+    Ok(mut flags) => {
+      // Set (and, for compile/desktop, canonicalize) the initial cwd — the
+      // parser crate has no filesystem access, so this stays on the CLI side.
+      flags.initial_cwd = match &flags.subcommand {
+        DenoSubcommand::Compile(_) | DenoSubcommand::Desktop(_) => {
+          initial_cwd.map(|cwd| canonicalize_path(&cwd).ok().unwrap_or(cwd))
+        }
+        _ => initial_cwd,
+      };
+      Ok(flags)
+    }
+    Err(e) => Err(cli_error_to_clap(e)),
+  }
+}
+
+/// Map a `deno_cli_parser::CliError` onto a `clap::Error` so the existing
+/// caller (which special-cases `DisplayVersion` and otherwise routes through
+/// `exit_for_error`) keeps working unchanged. The version text itself is
+/// rendered by the caller from `clap_root()` (see `cli/lib.rs`), so
+/// `DisplayVersion` only needs to carry the kind.
+fn cli_error_to_clap(e: deno_cli_parser::CliError) -> clap::Error {
+  match e.kind {
+    deno_cli_parser::CliErrorKind::DisplayVersion => {
+      clap::Error::raw(clap::error::ErrorKind::DisplayVersion, "")
+    }
+    _ => {
+      let mut message = e.message;
+      if let Some(suggestion) = e.suggestion {
+        message.push_str(&format!("\n\n  tip: {suggestion}"));
+      }
+      clap::Error::raw(clap::error::ErrorKind::ValueValidation, message)
+    }
+  }
+}
+
+/// Legacy clap-based flag parser. Production parsing now routes through the
+/// hand-written `deno_cli_parser` (see `flags_from_vec_with_initial_cwd`); this
+/// is retained to keep the clap parity `mod tests` exercising clap (and the
+/// `cli/benches/flags.rs` clap-vs-new comparison) until the clap parser is
+/// removed.
+#[allow(
+  dead_code,
+  reason = "clap parser kept for its mod tests until it is removed in a follow-up"
+)]
+pub fn clap_flags_from_vec_with_initial_cwd(
   args: Vec<OsString>,
   initial_cwd: Option<PathBuf>,
 ) -> clap::error::Result<Flags> {
@@ -7038,20 +6982,9 @@ fn completions_parse(
   let shell = matches.get_one::<String>("shell").unwrap().as_str();
 
   if dynamic && matches!(shell, "bash" | "fish" | "zsh") {
-    let shell = shell.to_string();
-    flags.subcommand = DenoSubcommand::Completions(CompletionsFlags::Dynamic(
-      Arc::new(move || {
-        // SAFETY: unavoidable
-        // Clap uses this to detect if it should generate dynamic completions, so if it isn't set, clap
-        // will just bail out instead of actually printing out the completion command.
-        unsafe {
-          std::env::set_var("COMPLETE", &shell);
-        }
-        let cwd = resolve_cwd(None)?;
-        handle_shell_completion_with_args(std::env::args_os().take(1), &cwd)?;
-        Ok(())
-      }),
-    ));
+    flags.subcommand = DenoSubcommand::Completions(CompletionsFlags::Dynamic {
+      shell: shell.to_string(),
+    });
     return;
   } else if dynamic {
     log::warn!(
@@ -8024,6 +7957,21 @@ fn task_parse(
 
 pub fn handle_shell_completion(cwd: &Path) -> Result<(), AnyError> {
   handle_shell_completion_with_args(std::env::args_os(), cwd)
+}
+
+/// Emit the dynamic shell-completion registration script for `shell`
+/// (bash/fish/zsh). The parser records only the target shell
+/// (`CompletionsFlags::Dynamic { shell }`) and defers this CLI-only generation
+/// here.
+pub fn handle_dynamic_shell_completion(shell: &str) -> Result<(), AnyError> {
+  // SAFETY: runs during single-threaded CLI startup. clap_complete reads
+  // COMPLETE to decide it should print the registration script rather than
+  // bail out.
+  unsafe {
+    std::env::set_var("COMPLETE", shell);
+  }
+  let cwd = resolve_cwd(None)?;
+  handle_shell_completion_with_args(std::env::args_os().take(1), &cwd)
 }
 
 struct ZshCompleterUnsorted;
@@ -9046,6 +8994,62 @@ mod tests {
   /// Creates vector of strings, Vec<String>
   macro_rules! svec {
     ($($x:expr),* $(,)?) => (vec![$($x.to_string().into()),*]);
+  }
+
+  // These tests are the clap parity contract. Production `flags_from_vec` now
+  // routes through the hand-written parser (whose own suite lives in
+  // `deno_cli_parser::tests_full`); shadow it here so this module keeps
+  // exercising the clap parser directly until clap is removed.
+  fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
+    clap_flags_from_vec_with_initial_cwd(args, None)
+  }
+
+  /// The bare-run fast path in `flags_from_vec_with_initial_cwd` bypasses the
+  /// parser and builds `RunFlags` by hand, so it must produce output identical
+  /// to running the args through the full hand-written parser. Assert that for
+  /// every case where the fast path fires, and assert it correctly declines
+  /// (returns `None`) when any deno-level flag precedes the script.
+  #[test]
+  fn fast_path_matches_full_parse() {
+    // Cases where the fast path SHOULD fire; its output must equal the full
+    // parse (neither sets `initial_cwd`, so both default to `None`).
+    let fires: &[&[&str]] = &[
+      &["deno", "run", "script.ts"],
+      &["deno", "run", "./path/to/mod.ts"],
+      &["deno", "run", "script.ts", "a", "b"],
+      &["deno", "run", "script.ts", "--", "--foo", "-x"],
+      &["deno", "run", "https://example.com/mod.ts", "arg"],
+    ];
+    for case in fires {
+      let os_args: Vec<OsString> = case.iter().map(OsString::from).collect();
+      let fast = bare_run_fast_path(&os_args).unwrap_or_else(|| {
+        panic!("fast path should fire for {case:?}");
+      });
+      let string_args: Vec<String> =
+        case.iter().map(|s| s.to_string()).collect();
+      let full = deno_cli_parser::convert::flags_from_vec(string_args)
+        .unwrap_or_else(|e| panic!("full parse failed for {case:?}: {e:?}"));
+      assert_eq!(
+        fast, full,
+        "fast path diverged from full parse for {case:?}"
+      );
+    }
+
+    // Cases where the fast path must decline and fall through to the parser.
+    let declines: &[&[&str]] = &[
+      &["deno", "run"],                    // no script
+      &["deno", "run", "-"],               // stdin
+      &["deno", "run", "-A", "script.ts"], // flag before script
+      &["deno", "run", "--watch", "s.ts"], // flag before script
+      &["deno", "test", "script.ts"],      // not `run`
+    ];
+    for case in declines {
+      let os_args: Vec<OsString> = case.iter().map(OsString::from).collect();
+      assert!(
+        bare_run_fast_path(&os_args).is_none(),
+        "fast path should decline for {case:?}"
+      );
+    }
   }
 
   #[test]

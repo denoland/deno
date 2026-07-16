@@ -132,8 +132,19 @@ fn parse_args(
   while i < args.len() {
     let arg = &args[i];
 
-    // Per-positional trailing mode: absorb everything into this positional
+    // Per-positional trailing mode: absorb everything into this positional.
+    //
+    // INVARIANT: this path always strips `--` and does NOT honor
+    // `cmd_def.keep_double_dash` (unlike the two command-level `--` paths
+    // below). That's correct only because every subcommand with a `.trailing()`
+    // positional (init/create/x) has `keep_double_dash: false`. If a subcommand
+    // ever needs both a `.trailing()` positional and `--` retention, this path
+    // must be taught to honor the flag.
     if let Some(trail_def) = positional_trailing_def {
+      debug_assert!(
+        !cmd_def.keep_double_dash,
+        "keep_double_dash is ignored for `.trailing()` positionals; see INVARIANT above"
+      );
       if arg == "--" {
         // `--` still transitions to command-level trailing
         // so that `deno init --npm vite -- --serve` puts --serve
@@ -168,6 +179,11 @@ fn parse_args(
         continue;
       }
       trailing_mode = true;
+      // Keep the `--` in the forwarded args for subcommands that mirror clap's
+      // `.last(true)` / external-subcommand behavior; strip it otherwise.
+      if cmd_def.keep_double_dash {
+        result.trailing.push(arg.clone());
+      }
       i += 1;
       continue;
     }
@@ -231,9 +247,14 @@ fn parse_args(
               && positional_index >= positional_defs.len()
             {
               i += 1;
-              // Keep a `--` separator in the forwarded args to match clap's
-              // trailing-var-arg behavior (e.g. `deno run script.ts -- -a`
-              // forwards `["--", "-a"]`).
+              // Strip a leading `--` separator unless this subcommand keeps it
+              // in the forwarded argv (clap `.last(true)` / external behavior,
+              // e.g. `deno run x.ts -- -a` forwards `["--", "-a"]`, but
+              // `deno eval code -- a` forwards `["a"]`).
+              if !cmd_def.keep_double_dash && i < args.len() && args[i] == "--"
+              {
+                i += 1;
+              }
               while i < args.len() {
                 result.trailing.push(args[i].clone());
                 i += 1;

@@ -9443,3 +9443,104 @@ fn tier3_requires() {
     .is_ok()
   );
 }
+
+// ---------------------------------------------------------------------------
+// PR5 cutover: link / unlink subcommands (newly wired into the parser).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn link_subcommand() {
+  let flags =
+    flags_from_vec(svec!["deno", "link", "../a", "../b", "--lockfile-only"])
+      .unwrap();
+  assert_eq!(
+    flags.subcommand,
+    DenoSubcommand::Link(LinkFlags {
+      paths: svec!["../a", "../b"],
+      lockfile_only: true,
+    })
+  );
+
+  // lock args flow through to the top-level flags.
+  let flags =
+    flags_from_vec(svec!["deno", "link", "../a", "--frozen"]).unwrap();
+  assert_eq!(flags.frozen_lockfile, Some(true));
+  assert!(matches!(
+    flags.subcommand,
+    DenoSubcommand::Link(LinkFlags {
+      lockfile_only: false,
+      ..
+    })
+  ));
+
+  // at least one path is required.
+  assert!(flags_from_vec(svec!["deno", "link"]).is_err());
+}
+
+#[test]
+fn unlink_subcommand() {
+  let flags =
+    flags_from_vec(svec!["deno", "unlink", "@scope/name", "../c"]).unwrap();
+  assert_eq!(
+    flags.subcommand,
+    DenoSubcommand::Unlink(UnlinkFlags {
+      names_or_paths: svec!["@scope/name", "../c"],
+      lockfile_only: false,
+    })
+  );
+
+  assert!(flags_from_vec(svec!["deno", "unlink"]).is_err());
+}
+
+#[test]
+fn eval_double_dash_stripped() {
+  // Unlike run/task, `deno eval` strips the `--` separator from argv
+  // (clap plain trailing-var-arg, not `.last(true)`).
+  let flags =
+    flags_from_vec(svec!["deno", "eval", "console.log(1)", "--", "a&b"])
+      .unwrap();
+  assert_eq!(flags.argv, svec!["a&b"]);
+
+  // run keeps it, for contrast.
+  let flags =
+    flags_from_vec(svec!["deno", "run", "x.ts", "--", "a&b"]).unwrap();
+  assert_eq!(flags.argv, svec!["--", "a&b"]);
+}
+
+#[test]
+fn sync_types_subcommand() {
+  let flags = flags_from_vec(svec!["deno", "sync-types"]).unwrap();
+  assert_eq!(
+    flags.subcommand,
+    DenoSubcommand::SyncTypes(SyncTypesFlags::default())
+  );
+
+  let flags =
+    flags_from_vec(svec!["deno", "sync-types", "a.ts", "tools/"]).unwrap();
+  assert_eq!(
+    flags.subcommand,
+    DenoSubcommand::SyncTypes(SyncTypesFlags {
+      roots: svec!["a.ts", "tools/"],
+    })
+  );
+
+  // --allow-import flows into permissions.
+  let flags =
+    flags_from_vec(svec!["deno", "sync-types", "--allow-import=example.com"])
+      .unwrap();
+  assert_eq!(flags.permissions.allow_import, Some(svec!["example.com"]));
+}
+
+#[test]
+fn serve_compile_keep_double_dash() {
+  // serve/compile use clap's trailing_var_arg (like run), so they keep `--`.
+  let flags =
+    flags_from_vec(svec!["deno", "serve", "x.ts", "--", "-a"]).unwrap();
+  assert_eq!(flags.argv, svec!["--", "-a"]);
+
+  let flags =
+    flags_from_vec(svec!["deno", "compile", "x.ts", "--", "-a"]).unwrap();
+  assert!(
+    matches!(flags.subcommand, DenoSubcommand::Compile(c) if c.args == svec!["--", "-a"])
+  );
+}

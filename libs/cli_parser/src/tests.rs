@@ -707,6 +707,7 @@ static TEST_ROOT: CommandDef = CommandDef {
       default_subcommand: None,
       trailing_var_arg: true,
       passthrough: false,
+      keep_double_dash: true,
     },
     CommandDef {
       name: "serve",
@@ -718,6 +719,7 @@ static TEST_ROOT: CommandDef = CommandDef {
       default_subcommand: None,
       trailing_var_arg: true,
       passthrough: false,
+      keep_double_dash: false,
     },
     CommandDef {
       name: "eval",
@@ -729,6 +731,7 @@ static TEST_ROOT: CommandDef = CommandDef {
       default_subcommand: None,
       trailing_var_arg: true,
       passthrough: false,
+      keep_double_dash: false,
     },
     CommandDef {
       name: "fmt",
@@ -740,6 +743,7 @@ static TEST_ROOT: CommandDef = CommandDef {
       default_subcommand: None,
       trailing_var_arg: false,
       passthrough: false,
+      keep_double_dash: false,
     },
     CommandDef {
       name: "lint",
@@ -751,6 +755,7 @@ static TEST_ROOT: CommandDef = CommandDef {
       default_subcommand: None,
       trailing_var_arg: false,
       passthrough: false,
+      keep_double_dash: false,
     },
     CommandDef {
       name: "test",
@@ -762,6 +767,7 @@ static TEST_ROOT: CommandDef = CommandDef {
       default_subcommand: None,
       trailing_var_arg: true,
       passthrough: false,
+      keep_double_dash: false,
     },
     CommandDef {
       name: "upgrade",
@@ -773,6 +779,7 @@ static TEST_ROOT: CommandDef = CommandDef {
       default_subcommand: None,
       trailing_var_arg: false,
       passthrough: false,
+      keep_double_dash: false,
     },
     CommandDef {
       name: "deploy",
@@ -784,11 +791,13 @@ static TEST_ROOT: CommandDef = CommandDef {
       default_subcommand: None,
       trailing_var_arg: false,
       passthrough: true,
+      keep_double_dash: false,
     },
   ],
   default_subcommand: Some("run"),
   trailing_var_arg: false,
   passthrough: false,
+  keep_double_dash: false,
 };
 
 // ---- Tests ----

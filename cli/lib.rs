@@ -71,7 +71,12 @@ use crate::args::CompletionsFlags;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::FlagsExt;
+// Re-exported for the clap-vs-new-parser comparison in `cli/benches/flags.rs`.
+#[doc(hidden)]
+pub use crate::args::clap_flags_from_vec_with_initial_cwd;
 use crate::args::flags_from_vec_with_initial_cwd;
+#[doc(hidden)]
+pub use crate::args::flags_from_vec_with_initial_cwd as flags_from_vec_new;
 use crate::args::get_default_v8_flags;
 use crate::util::display;
 use crate::util::env::WatchEnvTracker;
@@ -479,8 +484,8 @@ async fn run_subcommand(
             deno_print::drop_write_stdout(&buf);
             Ok::<_, AnyError>(())
           }
-          CompletionsFlags::Dynamic(f) => {
-            f()?;
+          CompletionsFlags::Dynamic { shell } => {
+            crate::args::handle_dynamic_shell_completion(&shell)?;
             Ok(())
           }
         }
@@ -932,6 +937,10 @@ async fn resolve_flags_and_init(
   }
 
   boot_phase("before clap parse");
+  // `--version` prints the long (multi-line) version, `-V` the short one.
+  // Determined here because the parser only signals that a version display was
+  // requested; the text is rendered from `clap_root` below.
+  let wants_long_version = args.iter().any(|a| a == "--version");
   let mut flags =
     match flags_from_vec_with_initial_cwd(args, initial_cwd.clone()) {
       Ok(flags) => {
@@ -942,8 +951,13 @@ async fn resolve_flags_and_init(
         if err.kind() == clap::error::ErrorKind::DisplayVersion =>
       {
         boot_phase("clap parse (version exit)");
-        // Ignore results to avoid BrokenPipe errors.
-        let _ = err.print();
+        let version = if wants_long_version {
+          crate::args::clap_root().render_long_version()
+        } else {
+          crate::args::clap_root().render_version()
+        };
+        // drop_write_stdout ignores BrokenPipe etc.
+        deno_print::drop_write_stdout(version.as_bytes());
         deno_runtime::exit(0);
       }
       Err(err) => exit_for_error(AnyError::from(err), initial_cwd.as_deref()),
