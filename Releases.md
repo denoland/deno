@@ -6,6 +6,64 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.9.3 / 2026.07.15
+
+- feat(cli): `deno add --no-save` and `--save-optional` (#36039)
+- feat(cli): add --min-dep-age alias (#35914)
+- feat(compile): support aarch64-pc-windows-msvc target (#36004)
+- feat(ext/fetch): add `http2MaxHeaderListSize` option to
+  `Deno.createHttpClient` (#33194)
+- fix(bundle): preserve raw imports in watch mode (#36040)
+- fix(canvas): don't hold SurfaceData mut borrow over window resize (#35993)
+- fix(config): reject out-of-range minimum dependency ages (#36051)
+- fix(core): block user ext imports after resolution (#36012)
+- fix(core): deactivate idle TTY write handles (#35886)
+- fix(core): restrict extension loaders to internal modules (#36013)
+- fix(core): root slow op string coercions (#36018)
+- fix(desktop): don't let op_desktop_send_error_report target caller-supplied
+  URLs (#35940)
+- fix(ext/http): don't panic recycling cancelled record on native response
+  (#36053)
+- fix(ext/napi): don't free threadsafe function on abort while refs remain
+  (#36032)
+- fix(ext/napi): don't resurrect a released threadsafe function in acquire
+  (#36054)
+- fix(ext/node): add deprecation warning for Duplex.toWeb({ type }) DEP0201
+  (#35972)
+- fix(ext/node): guard sqlite deserialize during callbacks (#36023)
+- fix(ext/node): handle UTF-16 assert source positions (#36029)
+- fix(ext/node): handle sqlite conversion failures (#36024)
+- fix(ext/node): respect base64 buffer ranges (#36030)
+- fix(ext/process): don't double-close extra stdio pipe handles on Windows
+  (#36005)
+- fix(lsp): respect lint rule exclusion for no-slow-types diagnostics (#35924)
+- fix(node): stop active read on stream close to avoid leaking Socket/TCPWrap
+  (#35898)
+- fix(node_http2): keep header validation enabled (#36042)
+- fix(node_http2): validate serialized headers (#36041)
+- fix(npm): don't fetch registry info for deprecated packages under
+  --cached-only (#35903)
+- fix(npm): normalize path in BYONM read permission check (#35882)
+- fix(pm): hint about minimumDependencyAge when no version is old enough
+  (#35890)
+- fix(release): only strip Mach-O signature for x86_64-apple-darwin (#35902)
+- fix(release): strip Mach-O signature before patchver on apple targets (#35897)
+- fix(runtime): guard usage op output buffers (#36020)
+- fix(serde_v8): handle deserialization exceptions (#36021)
+- fix(web): guard encodeInto fallback result buffer (#36019)
+- fix(web): support Event subclasses with readonly toStringTag (#35920)
+- fix(worker): remove imported ops during bootstrap (#36014)
+- fix: don't print duplicate parse diagnostics (#35933)
+- perf(ext/crypto): batch randomUUID generation (#35953)
+- perf(ext/fetch): remove quadratic line buffering in EventSource (#35881)
+- perf(ext/node): cache compiled glob matchers + bump bundled minimatch to
+  10.2.5 (#35873)
+- perf(ext/node): fast path fs cp (#35856)
+- perf(ext/node): right-size small socket reads instead of pinning the 64KB slab
+  (#35779)
+- perf(ext/node): speed up sqlite.StatementSync.all() and run() (#35863)
+- perf(ext/web): avoid copy-back in op_base64_atob large path (#35862)
+
 ### 2.9.2 / 2026.07.08
 
 - feat(desktop): autodetect React Router framework (#35557)

@@ -171,6 +171,7 @@ async fn install_top_level(
     None,
     crate::tools::pm::CacheTopLevelDepsOptions {
       lockfile_only: top_level_flags.lockfile_only,
+      additional_roots: vec![],
     },
   )
   .await?;

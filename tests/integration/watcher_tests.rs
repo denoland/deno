@@ -162,6 +162,41 @@ where
   })
 }
 
+async fn wait_for_server_and_watcher<R>(
+  file_name: &str,
+  stderr_lines: &mut LoggingLines<R>,
+) -> String
+where
+  R: tokio::io::AsyncBufRead + Unpin,
+{
+  let timeout = tokio::time::Duration::from_secs(60);
+
+  tokio::time::timeout(timeout, async {
+    let mut listening_line = None;
+    let mut watcher_ready = false;
+    while let Some(line) = stderr_lines.next_line().await.unwrap() {
+      if line.contains("Listening on") {
+        listening_line = Some(line.clone());
+      }
+      if line.contains("Watching paths") && line.contains(file_name) {
+        watcher_ready = true;
+      }
+      if watcher_ready && let Some(line) = listening_line.take() {
+        return line;
+      }
+    }
+    panic!("Output ended before the server and watcher were ready")
+  })
+  .await
+  .unwrap_or_else(|_| {
+    panic!(
+      "Server and watcher were not ready for file \"{}\" after {} seconds",
+      file_name,
+      timeout.as_secs()
+    )
+  })
+}
+
 fn check_alive_then_kill(mut child: DenoChild) {
   assert!(child.try_wait().unwrap().is_none());
   child.kill().unwrap();
@@ -942,6 +977,8 @@ async fn serve_watch_parallel_stops_old_workers() {
     .arg("--watch")
     .arg("--port")
     .arg("0")
+    .arg("-L")
+    .arg("debug")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
     .env("DENO_JOBS", "4")
@@ -977,7 +1014,14 @@ async fn serve_watch_parallel_stops_old_workers_inner(
   let port_regex =
     regex::Regex::new(r"Listening on https?:[^:]+:(\d+)/").unwrap();
 
-  let line = wait_contains("Listening on", &mut stderr_lines).await;
+  // "Listening on" only means that the HTTP listener is ready. Watch paths
+  // are delivered to the notify task asynchronously, so wait until the entry
+  // point is actually watched before doing the one-shot rewrite below. The
+  // readiness lines are produced by separate tasks and may arrive either way
+  // around.
+  let line =
+    wait_for_server_and_watcher("server_file_to_watch.js", &mut stderr_lines)
+      .await;
   let old_port = port_regex.captures(&line).unwrap()[1].to_string();
 
   let client = reqwest::Client::builder()
@@ -3355,6 +3399,63 @@ async fn bundle_watch() {
   wait_contains("Bundled 1 module in", &mut stderr_lines).await;
   let contents = t.path().join("output.js").read_to_string();
   assert_contains!(contents, "console.log(\"hello world\");");
+
+  check_alive_then_kill(child);
+}
+
+#[test(flaky)]
+async fn bundle_watch_raw_css_import() {
+  let _server = http_server();
+
+  let t = TempDir::new();
+  let main_ts = t.path().join("main.ts");
+  main_ts.write(
+    r#"import styles from "./styles.css" with { type: "css" };
+console.log(styles);
+"#,
+  );
+  let styles_css = t.path().join("styles.css");
+  styles_css.write("div { color: red; }\n");
+  let output = t.path().join("output.js");
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("bundle")
+    .arg("--watch")
+    .arg("--unstable-raw-imports")
+    .arg("--platform=browser")
+    .arg("-L")
+    .arg("debug")
+    .arg("--output")
+    .arg(&output)
+    .arg(&main_ts)
+    .env("NO_COLOR", "1")
+    .envs(env_vars_for_npm_tests())
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (_, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("Bundled 2 modules in", &mut stderr_lines).await;
+  assert_contains!(output.read_to_string(), "div { color: red; }");
+  wait_for_watcher("styles.css", &mut stderr_lines).await;
+
+  styles_css.write("div { color: blue; }\n");
+  wait_contains("File change detected", &mut stderr_lines).await;
+  wait_contains("Bundled 2 modules in", &mut stderr_lines).await;
+  let contents = output.read_to_string();
+  assert_contains!(contents, "div { color: blue; }");
+  assert_not_contains!(contents, "div { color: red; }");
+
+  wait_for_watcher("main.ts", &mut stderr_lines).await;
+  main_ts.write(
+    r#"import styles from "./styles.css" with { type: "css" };
+console.log("watch still works", styles);
+"#,
+  );
+  wait_contains("File change detected", &mut stderr_lines).await;
+  wait_contains("Bundled 2 modules in", &mut stderr_lines).await;
+  assert_contains!(output.read_to_string(), "watch still works");
 
   check_alive_then_kill(child);
 }

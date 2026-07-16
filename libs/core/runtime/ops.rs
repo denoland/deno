@@ -1153,6 +1153,22 @@ mod tests {
       }
     }
 
+    for op in ["op_test_string_cow", "op_test_string_ref"] {
+      run_test2(
+        JIT_SLOW_ITERATIONS,
+        op,
+        &format!(
+          r"
+          const arg = {{
+            toString() {{
+              return 'a'.repeat(1000) + 'b'.repeat(1000);
+            }},
+          }};
+          assert({op}(arg) == 2000);"
+        ),
+      )?;
+    }
+
     // Ensure that we're correctly encoding UTF-8
     run_test2(
       JIT_SLOW_ITERATIONS,

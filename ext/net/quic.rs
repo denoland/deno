@@ -119,6 +119,9 @@ pub enum QuicError {
   #[class(generic)]
   #[error("{0}")]
   WebTransportConnectError(#[from] web_transport_proto::ConnectError),
+  #[class(type)]
+  #[error("Invalid WebTransport URL: {0}")]
+  WebTransportUrlParse(#[from] url::ParseError),
   #[class(inherit)]
   #[error(transparent)]
   Other(#[from] JsErrorBox),
@@ -1173,7 +1176,7 @@ pub(crate) mod webtransport {
     use web_transport_proto::ConnectResponse;
 
     let conn = connection_resource.0.clone();
-    let url = url::Url::parse(&url).unwrap();
+    let url = url::Url::parse(&url)?;
 
     let (settings_tx_rid, settings_rx_rid) =
       exchange_settings(state.clone(), conn.clone()).await?;
