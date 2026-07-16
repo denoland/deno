@@ -697,7 +697,13 @@ class WebTransportDatagramDuplexStream {
   }
 
   async #receiveDatagrams() {
-    const { conn, sessionIdBuf } = await this.#promise;
+    let conn;
+    let sessionIdBuf;
+    try {
+      ({ conn, sessionIdBuf } = await this.#promise);
+    } catch {
+      return;
+    }
     while (true) {
       const queue = this.#incomingDatagramsQueue;
       const duration = this.#incomingMaxAge ?? Infinity;
@@ -743,9 +749,21 @@ class WebTransportDatagramDuplexStream {
   async #sendDatagrams() {
     if (this.#sending) return;
     this.#sending = true;
-    const { conn, sessionIdBuf } = await this.#promise;
 
     const queue = this.#outgoingDatagramsQueue;
+    let conn;
+    let sessionIdBuf;
+    try {
+      ({ conn, sessionIdBuf } = await this.#promise);
+    } catch (error) {
+      while (queue.length > 0) {
+        const { promise } = ArrayPrototypeShift(queue);
+        promise.reject(error);
+      }
+      this.#sending = false;
+      return;
+    }
+
     const duration = this.#outgoingMaxAge ?? Infinity;
     while (queue.length > 0) {
       const { bytes, timestamp, promise } = ArrayPrototypeShift(queue);
@@ -858,6 +876,13 @@ class WebTransportDatagramDuplexStream {
         start: (controller) => {
           PromisePrototypeThen(
             PromisePrototypeThen(this.#promise, ({ conn }) => conn.closed),
+            () => {
+              try {
+                controller.close();
+              } catch {
+                // nothing
+              }
+            },
             () => {
               try {
                 controller.close();
