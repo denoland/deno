@@ -376,15 +376,20 @@ fn parse_html_entrypoint(
 pub fn load_html_entrypoint(
   cwd: &Path,
   path: &Path,
-  permissions: &PermissionsContainer,
+  permissions: Option<&PermissionsContainer>,
 ) -> anyhow::Result<HtmlEntrypoint> {
-  let checked_path = permissions.check_open(
-    Cow::Borrowed(path),
-    OpenAccessKind::Read,
-    Some("Deno.bundle()"),
-  )?;
-  let contents = std::fs::read_to_string(&checked_path)?;
-  let canonical_path = crate::util::fs::canonicalize_path(&checked_path)?;
+  let checked_path = permissions
+    .map(|permissions| {
+      permissions.check_open(
+        Cow::Borrowed(path),
+        OpenAccessKind::Read,
+        Some("Deno.bundle()"),
+      )
+    })
+    .transpose()?;
+  let open_path = checked_path.as_deref().unwrap_or(path);
+  let contents = std::fs::read_to_string(open_path)?;
+  let canonical_path = crate::util::fs::canonicalize_path(open_path)?;
   parse_html_entrypoint(cwd, path, canonical_path, contents)
 }
 
@@ -742,7 +747,7 @@ mod tests {
     let err = load_html_entrypoint(
       temp_dir.path(),
       &html_path,
-      &no_prompt_permissions(),
+      Some(&no_prompt_permissions()),
     )
     .unwrap_err();
 
@@ -761,12 +766,24 @@ mod tests {
     let entry = load_html_entrypoint(
       temp_dir.path(),
       &html_path,
-      &allow_all_permissions(),
+      Some(&allow_all_permissions()),
     )
     .unwrap();
 
     assert_eq!(entry.path, html_path);
     assert_eq!(entry.contents, "<p>allowed</p>");
+  }
+
+  #[test]
+  fn load_html_entrypoint_without_permissions_skips_check() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let html_path = temp_dir.path().join("index.html");
+    std::fs::write(&html_path, "<p>cli</p>").unwrap();
+
+    let entry =
+      load_html_entrypoint(temp_dir.path(), &html_path, None).unwrap();
+
+    assert_eq!(entry.contents, "<p>cli</p>");
   }
 
   fn script(src: &str) -> Script {

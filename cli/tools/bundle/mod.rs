@@ -158,7 +158,7 @@ pub async fn prepare_inputs(
       let entry = html::load_html_entrypoint(
         init_cwd,
         html_path,
-        &plugin_handler.permissions,
+        plugin_handler.file_permissions.as_ref(),
       )?;
 
       let virtual_module_path =
@@ -226,11 +226,12 @@ pub async fn bundle_init(
 
   let resolver = factory.resolver().await?.clone();
   let module_load_preparer = factory.module_load_preparer().await?.clone();
-  let permissions = match caller_permissions {
-    Some(permissions) => permissions,
-    None => {
-      PermissionsContainer::allow_all(factory.permission_desc_parser()?.clone())
-    }
+  // Module loads (including remote imports) are checked against the caller's
+  // permissions when invoked via `Deno.bundle()`, and against the CLI's own
+  // permissions when invoked via `deno bundle`.
+  let permissions = match &caller_permissions {
+    Some(permissions) => permissions.clone(),
+    None => factory.root_permissions_container()?.clone(),
   };
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
@@ -252,6 +253,7 @@ pub async fn bundle_init(
     resolved_roots: Arc::new(RwLock::new(Arc::new(IndexSet::new()))),
     module_graph_container,
     permissions,
+    file_permissions: caller_permissions,
     module_loader: module_loader.clone(),
     externals_matcher: if bundle_flags.external.is_empty() {
       None
@@ -1213,7 +1215,7 @@ impl EsbuildBundler {
       let updated = html::load_html_entrypoint(
         &self.cwd,
         &page.path,
-        &self.plugin_handler.permissions,
+        self.plugin_handler.file_permissions.as_ref(),
       )?;
       let virtual_module_url =
         deno_path_util::url_from_file_path(&updated.virtual_module_path)?
@@ -1469,6 +1471,11 @@ pub struct DenoPluginHandler {
   resolved_roots: Arc<RwLock<Arc<IndexSet<ModuleSpecifier>>>>,
   module_graph_container: Arc<MainModuleGraphContainer>,
   permissions: PermissionsContainer,
+  /// Only set when bundling via `Deno.bundle()`, where reads and writes of
+  /// local files must respect the calling program's permissions. `deno bundle`
+  /// reads and writes its entrypoints and output without a check, like the
+  /// other CLI subcommands.
+  file_permissions: Option<PermissionsContainer>,
   module_loader: Arc<CliDenoResolverModuleLoader>,
   externals_matcher: Option<ExternalsMatcher>,
   on_end_tx: tokio::sync::mpsc::Sender<esbuild_client::OnEndArgs>,
