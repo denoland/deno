@@ -1420,19 +1420,42 @@ pub(crate) fn is_aggregate_error<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   value: v8::Local<'s, v8::Value>,
 ) -> bool {
+  // Prototype and property lookups can invoke arbitrary accessors or proxy
+  // traps. Keep exceptions raised while probing contained here: failure to
+  // classify an error should not interfere with converting the original
+  // exception.
+  v8::tc_scope!(let tc_scope, scope);
+
+  let result = is_aggregate_error_inner(tc_scope, value);
+  if tc_scope.has_caught() {
+    tc_scope.reset();
+    false
+  } else {
+    result
+  }
+}
+
+fn is_aggregate_error_inner<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  value: v8::Local<'s, v8::Value>,
+) -> bool {
   let mut maybe_prototype = Some(value);
   while let Some(prototype) = maybe_prototype {
     if !prototype.is_object() {
       return false;
     }
 
-    let prototype = prototype.to_object(scope).unwrap();
+    let Ok(prototype) = prototype.try_cast::<v8::Object>() else {
+      return false;
+    };
     let prototype_name =
       match get_property(scope, prototype, v8_static_strings::CONSTRUCTOR) {
         Some(constructor) => {
-          let ctor = constructor.to_object(scope).unwrap();
+          let Ok(ctor) = constructor.try_cast::<v8::Object>() else {
+            return false;
+          };
           get_property(scope, ctor, v8_static_strings::NAME)
-            .and_then(|v| v.to_string(scope))
+            .and_then(|v| v.try_cast::<v8::String>().ok())
             .map(|s| v8_to_rust_string(&s, scope))
         }
         None => return false,
@@ -2782,6 +2805,86 @@ mod tests {
     let result: v8::Local<v8::Integer> =
       JsRuntime::eval(scope, "1 + 1").expect("exception was contained");
     assert_eq!(result.value(), 2);
+  }
+
+  #[cfg(not(miri))]
+  #[test]
+  fn test_is_aggregate_error_recognizes_builtin() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let exception: v8::Local<v8::Object> = JsRuntime::eval(
+      scope,
+      "new AggregateError([new Error('first')], 'combined')",
+    )
+    .unwrap();
+    let exception = exception.into();
+
+    assert!(is_aggregate_error(scope, exception));
+    let js_error = JsError::from_v8_exception(scope, exception);
+    assert_eq!(js_error.name.as_deref(), Some("AggregateError"));
+    assert_eq!(js_error.message.as_deref(), Some("combined"));
+    assert_eq!(js_error.aggregated.as_ref().map(Vec::len), Some(1));
+  }
+
+  #[cfg(not(miri))]
+  #[test]
+  fn test_is_aggregate_error_handles_malformed_constructors() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    for constructor in ["null", "undefined", "42", "'AggregateError'"] {
+      let exception: v8::Local<v8::Object> = JsRuntime::eval(
+        scope,
+        &format!(
+          "(() => {{ const error = new Error('malformed'); Object.defineProperty(error, 'constructor', {{ value: {constructor} }}); return error; }})()"
+        ),
+      )
+      .unwrap();
+      let exception = exception.into();
+
+      {
+        v8::tc_scope!(let tc_scope, scope);
+        assert!(!is_aggregate_error(tc_scope, exception));
+        assert!(!tc_scope.has_caught());
+      }
+      let js_error = JsError::from_v8_exception(scope, exception);
+      assert_eq!(js_error.message.as_deref(), Some("malformed"));
+      assert!(js_error.aggregated.is_none());
+    }
+  }
+
+  #[cfg(not(miri))]
+  #[test]
+  fn test_is_aggregate_error_handles_throwing_accessors() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    for source in [
+      "(() => { const error = new Error('constructor getter'); Object.defineProperty(error, 'constructor', { get() { throw new Error('constructor lookup failed'); } }); return error; })()",
+      "(() => { const error = new Error('name getter'); const constructor = {}; Object.defineProperty(constructor, 'name', { get() { throw new Error('name lookup failed'); } }); Object.defineProperty(error, 'constructor', { value: constructor }); return error; })()",
+    ] {
+      let exception: v8::Local<v8::Object> =
+        JsRuntime::eval(scope, source).unwrap();
+      let exception = exception.into();
+
+      {
+        v8::tc_scope!(let tc_scope, scope);
+        assert!(!is_aggregate_error(tc_scope, exception));
+        assert!(!tc_scope.has_caught());
+      }
+      let js_error = JsError::from_v8_exception(scope, exception);
+      assert!(js_error.aggregated.is_none());
+
+      // Classification must leave the isolate ready to convert the next
+      // exception normally.
+      let next_exception: v8::Local<v8::Object> =
+        JsRuntime::eval(scope, "new TypeError('next error')").unwrap();
+      let next_exception = next_exception.into();
+      let next_error = JsError::from_v8_exception(scope, next_exception);
+      assert_eq!(next_error.name.as_deref(), Some("TypeError"));
+      assert_eq!(next_error.message.as_deref(), Some("next error"));
+    }
   }
 
   #[test]
