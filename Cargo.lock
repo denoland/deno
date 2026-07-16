@@ -3438,10 +3438,10 @@ dependencies = [
 name = "deno_subprocess_windows"
 version = "0.50.0"
 dependencies = [
- "fastrand",
  "futures-channel",
  "libc",
  "pretty_assertions",
+ "rand 0.8.5",
  "windows-sys 0.59.0",
 ]
 
