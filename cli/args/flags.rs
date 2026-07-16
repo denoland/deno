@@ -857,6 +857,11 @@ static ENV_VARS: &[EnvVar] = &[
     example: None,
   },
   EnvVar {
+    name: "DENO_TSC_BIN",
+    description: "Path to a prebuilt native TypeScript compiler (tsc/tsgo) for `deno check` to use instead of downloading the pinned one.",
+    example: None,
+  },
+  EnvVar {
     name: "DENO_USE_CGROUPS",
     description: "Use cgroups to determine V8 memory limit.",
     example: None,
@@ -1714,6 +1719,7 @@ Or multiple dependencies at once:
       )
       .arg(package_json_arg())
       .arg(env_file_arg())
+      .arg(min_dep_age_arg())
   })
 }
 
@@ -1910,6 +1916,7 @@ removes a globally installed executable script:
       .args(lock_args())
       .arg(lockfile_only_arg().conflicts_with("global"))
       .arg(package_json_arg().conflicts_with("global"))
+      .arg(min_dep_age_arg().conflicts_with("global"))
   })
 }
 
@@ -6555,6 +6562,7 @@ fn add_parse(
   allow_and_deny_import_parse(flags, matches)?;
   lock_args_parse(flags, matches);
   env_file_arg_parse(flags, matches);
+  min_dep_age_arg_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Add(add_parse_inner(matches, None));
   Ok(())
 }
@@ -6593,6 +6601,7 @@ fn remove_parse(
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
   lock_args_parse(flags, matches);
+  min_dep_age_arg_parse(flags, matches);
   let packages = matches.remove_many::<String>("packages").unwrap();
 
   // `deno remove --global <name>...` is an alias for `deno uninstall --global
@@ -12098,6 +12107,26 @@ mod tests {
       assert_eq!(
         flags.minimum_dependency_age,
         Some(NewestDependencyDate::Disabled)
+      );
+    }
+  }
+
+  #[test]
+  fn minimum_dependency_age_pm_subcommands() {
+    // The package management subcommands that resolve versions must accept the
+    // flag so users can act on the "blocked by minimum dependency age" hint.
+    let cases = [
+      svec!["deno", "add", "--min-dep-age=0", "jsr:@std/path"],
+      svec!["deno", "add", "--minimum-dependency-age=0", "jsr:@std/path"],
+      svec!["deno", "remove", "--min-dep-age=0", "@std/path"],
+    ];
+    for args in cases {
+      let flags = flags_from_vec(args.clone())
+        .unwrap_or_else(|e| panic!("failed to parse {args:?}: {e}"));
+      assert_eq!(
+        flags.minimum_dependency_age,
+        Some(NewestDependencyDate::Disabled),
+        "{args:?}"
       );
     }
   }
