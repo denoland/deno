@@ -9,6 +9,7 @@ import {
 } from "ext:deno_net/03_quic.js";
 const { assert } = core.loadExtScript("ext:deno_web/00_infra.js");
 const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
+const { URLPrototype } = core.loadExtScript("ext:deno_web/00_url.js");
 const {
   getReadableStreamResourceBacking,
   getWritableStreamResourceBacking,
@@ -36,6 +37,7 @@ const {
   DataViewPrototypeSetUint32,
   DataViewPrototypeSetBigUint64,
   DateNow,
+  FunctionPrototypeCall,
   BigInt,
   Number,
   ObjectPrototypeIsPrototypeOf,
@@ -53,6 +55,7 @@ const {
   TypeError,
   Uint8Array,
 } = primordials;
+const URLPrototypeToString = URLPrototype.toString;
 
 const MAX_PRIORITY = 2_147_483_647;
 const BI_WEBTRANSPORT = 0x41n;
@@ -225,8 +228,7 @@ class WebTransport {
         async (conn) => {
           const { connect, settingsTx, settingsRx } = await webtransportConnect(
             conn,
-            // deno-lint-ignore prefer-primordials
-            parsedURL.toString(),
+            FunctionPrototypeCall(URLPrototypeToString, parsedURL),
           );
 
           return {
