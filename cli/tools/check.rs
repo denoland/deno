@@ -497,11 +497,11 @@ fn parse_tsc_diagnostics(output: &str, project_root: &Path) -> Vec<Diagnostic> {
   // drop override-modifier diagnostics (the TS411x family) reported in a
   // non-local (remote/jsr/npm) module. Local `file://` modules keep them.
   diagnostics.retain(|d| {
-    !matches!(d.code, 4113 | 4114 | 4115 | 4116)
+    !matches!(d.code, 4113..=4116)
       || d
         .file_name
         .as_deref()
-        .map_or(true, |f| f.starts_with("file:"))
+        .is_none_or(|f| f.starts_with("file:"))
   });
 
   diagnostics
