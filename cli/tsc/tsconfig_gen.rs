@@ -18,6 +18,7 @@ use deno_core::serde_json::Value;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
 
+use super::get_deno_ns_declaration_file_text;
 use super::get_types_declaration_file_text;
 
 /// Whether Deno should honor a user's `tsconfig.json` at `project_root`.
@@ -85,9 +86,15 @@ pub fn generate_tsconfig(
   std::fs::create_dir_all(&types_dir)?;
   let no_types_shims =
     no_types_npm_shims(project_root, deno_imports, npm_package_paths);
+  // When the effective `lib` includes `dom`, the web-platform globals come from
+  // the stock `dom` lib, so emit only the `Deno` namespace to avoid colliding
+  // with it (the userland `"lib": ["deno.ns", "dom"]` pattern).
+  let has_dom =
+    effective_lib_has_dom(deno_compiler_options, resolved_compiler_options);
   write_deno_types(
     &types_dir.join("index.d.ts"),
     node_types_root.is_some(),
+    has_dom,
     &no_types_shims,
   )?;
 
@@ -414,13 +421,35 @@ const NODE_OWNED_GLOBAL_TYPES: &[&str] = &[
   "QuotaExceededErrorOptions",
 ];
 
-/// Write the Deno type declarations to a `.d.ts` file.
+/// Whether the project's effective `lib` includes the `dom` lib, from either the
+/// raw deno.json/tsconfig compiler options or Deno's resolved options.
+fn effective_lib_has_dom(
+  deno_compiler_options: Option<&Value>,
+  resolved_compiler_options: Option<&Value>,
+) -> bool {
+  [deno_compiler_options, resolved_compiler_options]
+    .into_iter()
+    .flatten()
+    .filter_map(|co| co.get("lib").and_then(|l| l.as_array()))
+    .flatten()
+    .filter_map(|v| v.as_str())
+    .any(|l| l.eq_ignore_ascii_case("dom"))
+}
+
+/// Write the Deno type declarations to a `.d.ts` file. When `has_dom` is set the
+/// project opts into the `dom` lib, so emit only the `Deno` namespace and let
+/// `dom` own the web-platform globals (they'd otherwise collide).
 fn write_deno_types(
   path: &Path,
   has_node_types: bool,
+  has_dom: bool,
   no_types_shims: &[String],
 ) -> Result<(), std::io::Error> {
-  let types_text = get_types_declaration_file_text();
+  let types_text = if has_dom {
+    get_deno_ns_declaration_file_text()
+  } else {
+    get_types_declaration_file_text()
+  };
   // Strip triple-slash reference directives that conflict with stock tsc
   let filtered: String = types_text
     .lines()
