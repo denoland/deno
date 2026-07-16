@@ -217,11 +217,12 @@ async fn native_check(
   } else {
     project_root.join(".deno").join("tsconfig.json")
   };
-  // Pin tsc to exactly the local files deno resolved as roots (glob-expanded and
-  // exclude-applied above), so `deno check *.ts` checks only the matched files -
-  // not the whole project - and an excluded file stays excluded. Remote roots
-  // (http(s):/jsr:) can't be tsc `files` entries; when every root is remote this
-  // is empty and we fall back to the base config's `include`.
+  // Pin tsc to exactly the roots deno resolved (glob-expanded and exclude-applied
+  // above), so `deno check *.ts` checks only the matched files - not the whole
+  // project - and an excluded file stays excluded. Local roots map to their
+  // `file://` path; remote roots map to their `.deno/remote/` mirror (added just
+  // below). Only an extensionless remote root - which stock tsc can't load - is
+  // left out, falling back to the base config's `include`.
   let mut files: Vec<String> = roots
     .iter()
     .filter(|s| s.scheme() == "file")
@@ -229,6 +230,11 @@ async fn native_check(
     .filter(|p| p.exists())
     .map(|p| p.to_string_lossy().replace('\\', "/"))
     .collect();
+  // A remote (`http(s):`) root is not a `file://` path, but sync-types mirrored
+  // it under `.deno/remote/`. Pin tsc to those mirror files too, so a remote
+  // entrypoint is checked as itself rather than triggering the whole-project
+  // `include` fallback below (which would check unrelated files, or nothing).
+  files.extend(remote_root_mirror_files(&project_root, &roots));
 
   // Every requested root was a missing (non-existent) local entrypoint: there's
   // nothing for tsc to check, so report deno's graph diagnostics for them
@@ -662,6 +668,70 @@ fn build_remote_url_map(project_root: &Path) -> HashMap<String, String> {
     }
   }
   map
+}
+
+/// Whether a mirror path carries an extension stock tsc can language-detect.
+/// A module Deno serves by content-type but mirrors without a code extension
+/// (`no_js_ext`) can't be loaded by stock tsc, which keys language off the
+/// extension alone.
+fn has_checkable_extension(path: &str) -> bool {
+  let lower = path.to_ascii_lowercase();
+  [
+    ".d.ts", ".d.mts", ".d.cts", ".ts", ".tsx", ".mts", ".cts", ".js", ".jsx",
+    ".mjs", ".cjs",
+  ]
+  .iter()
+  .any(|ext| lower.ends_with(ext))
+}
+
+/// Resolve remote (`http(s):`) roots to their mirrored local files under
+/// `.deno/remote/` (via the generated tsconfig's `paths`) so tsc can be pinned
+/// to exactly the requested remote entrypoint via `files`, instead of dropping
+/// them and falling back to the base config's whole-project `include`.
+/// Extensionless remote modules have no mirror stock tsc can load and are
+/// skipped (see `has_checkable_extension`).
+fn remote_root_mirror_files(
+  project_root: &Path,
+  roots: &[deno_core::ModuleSpecifier],
+) -> Vec<String> {
+  let deno_dir = project_root.join(".deno");
+  let Ok(text) = std::fs::read_to_string(deno_dir.join("tsconfig.json")) else {
+    return Vec::new();
+  };
+  let Ok(value) =
+    deno_core::serde_json::from_str::<deno_core::serde_json::Value>(&text)
+  else {
+    return Vec::new();
+  };
+  let Some(paths) = value
+    .get("compilerOptions")
+    .and_then(|c| c.get("paths"))
+    .and_then(|p| p.as_object())
+  else {
+    return Vec::new();
+  };
+  let mut files = Vec::new();
+  for root in roots.iter().filter(|s| s.scheme() != "file") {
+    let Some(rel) = paths
+      .get(root.as_str())
+      .and_then(|t| t.as_array())
+      .and_then(|a| a.first())
+      .and_then(|v| v.as_str())
+      .and_then(|t| t.strip_prefix("./"))
+    else {
+      continue;
+    };
+    if !has_checkable_extension(rel) {
+      continue;
+    }
+    // `paths` targets are relative to `.deno/` (where the generated tsconfig
+    // lives); rebase onto an absolute path for the `files` entry.
+    let local = deno_dir.join(rel);
+    if local.exists() {
+      files.push(local.to_string_lossy().replace('\\', "/"));
+    }
+  }
+  files
 }
 
 /// Best-effort remap of a path reported by the native compiler back onto the
