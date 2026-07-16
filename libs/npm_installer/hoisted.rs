@@ -589,7 +589,10 @@ impl<
         crate::local::symlink_package_dir(
           sys.as_ref(),
           &pkg.target_dir,
-          &self.root_node_modules_path.join(pkg_alias),
+          &join_package_name(
+            Cow::Borrowed(&self.root_node_modules_path),
+            pkg_alias,
+          ),
         )?;
       }
     }
@@ -671,7 +674,10 @@ impl<
                   bin_deps.push(crate::local::MemberBinDep {
                     package,
                     read_path: target_path.clone(),
-                    link_path: member_node_modules.join(alias.as_str()),
+                    link_path: join_package_name(
+                      Cow::Borrowed(&member_node_modules),
+                      alias,
+                    ),
                   });
                 }
                 (alias, target_path)
@@ -690,7 +696,7 @@ impl<
             crate::local::symlink_package_dir(
               sys.as_ref(),
               &target_path,
-              &member_node_modules.join(alias.as_str()),
+              &join_package_name(Cow::Borrowed(&member_node_modules), alias),
             )?;
           }
         }

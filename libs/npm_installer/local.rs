@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::hash_map::Entry;
 use std::io;
+use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -34,6 +35,7 @@ use deno_npm_cache::hard_link_file;
 use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_resolver::npm::get_package_folder_id_folder_name;
 use deno_resolver::npm::managed::NpmResolutionCell;
+use deno_resolver::npm::package_name_for_node_modules_path_parts;
 use deno_semver::StackString;
 use deno_semver::package::PackageNv;
 use deno_terminal::colors;
@@ -954,7 +956,10 @@ impl<
         symlink_package_dir(
           sys.as_ref(),
           &pkg.target_dir,
-          &self.root_node_modules_path.join(pkg_alias),
+          &join_package_name(
+            Cow::Borrowed(&self.root_node_modules_path),
+            pkg_alias,
+          ),
         )?;
       }
     }
@@ -1031,7 +1036,10 @@ impl<
                   bin_deps.push(MemberBinDep {
                     package,
                     read_path: local_registry_package_path.clone(),
-                    link_path: member_node_modules.join(alias.as_str()),
+                    link_path: join_package_name(
+                      Cow::Borrowed(&member_node_modules),
+                      alias,
+                    ),
                   });
                 }
                 (alias, local_registry_package_path, target_folder_name)
@@ -1053,7 +1061,7 @@ impl<
             symlink_package_dir(
               sys.as_ref(),
               &target_path,
-              &member_node_modules.join(alias.as_str()),
+              &join_package_name(Cow::Borrowed(&member_node_modules), alias),
             )?;
           }
         }
@@ -1686,6 +1694,7 @@ pub(crate) fn symlink_package_dir(
   new_path: &Path,
 ) -> Result<(), std::io::Error> {
   let sys = sys.with_paths_in_errors();
+  ensure_no_parent_dir_components(new_path)?;
   let new_parent = new_path.parent().unwrap();
   if new_parent.file_name().unwrap() != "node_modules" {
     // create the parent folder that will contain the symlink
@@ -1708,6 +1717,22 @@ pub(crate) fn symlink_package_dir(
   } else {
     symlink_dir(sys.as_ref(), &old_path_relative, new_path)
   }
+}
+
+fn ensure_no_parent_dir_components(path: &Path) -> Result<(), std::io::Error> {
+  if path
+    .components()
+    .any(|component| matches!(component, Component::ParentDir))
+  {
+    return Err(std::io::Error::new(
+      std::io::ErrorKind::InvalidInput,
+      format!(
+        "refusing to create package symlink at path with parent components: {}",
+        path.display()
+      ),
+    ));
+  }
+  Ok(())
 }
 
 fn relative_path(from: &Path, to: &Path) -> Option<PathBuf> {
@@ -2013,7 +2038,9 @@ pub(crate) fn join_package_name(
   package_name: &str,
 ) -> PathBuf {
   // ensure backslashes are used on windows
-  for part in package_name.split('/') {
+  let parts = package_name_for_node_modules_path_parts(package_name)
+    .unwrap_or_else(|_| vec![".invalid-package-name"]);
+  for part in parts {
     match path {
       Cow::Borrowed(inner) => path = Cow::Owned(inner.join(part)),
       Cow::Owned(ref mut path) => {
@@ -2367,6 +2394,58 @@ mod test {
     // removed before the new one can be created) and now resolve to target_b.
     symlink_package_dir(&sys, &target_b, &link).unwrap();
     assert_eq!(sys.fs_read_to_string(link.join("marker.txt")).unwrap(), "b");
+  }
+
+  #[test]
+  fn test_symlink_package_dir_rejects_parent_traversal_before_removing() {
+    let temp_dir = TempDir::new();
+    let sys = sys_traits::impls::RealSys;
+    let root = temp_dir.path().to_path_buf();
+
+    let target = root.join("target");
+    let outside = root.join("outside");
+    sys.fs_create_dir_all(&target).unwrap();
+    sys.fs_create_dir_all(&outside).unwrap();
+    sys.fs_write(outside.join("marker.txt"), "keep").unwrap();
+
+    let new_path = root
+      .join("node_modules")
+      .join("pkg")
+      .join("..")
+      .join("..")
+      .join("outside");
+
+    let err = symlink_package_dir(&sys, &target, &new_path).unwrap_err();
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    assert_eq!(
+      sys.fs_read_to_string(outside.join("marker.txt")).unwrap(),
+      "keep"
+    );
+  }
+
+  #[test]
+  fn test_join_package_name_falls_back_for_invalid_name() {
+    assert_eq!(
+      join_package_name(
+        Cow::Borrowed(Path::new("/project/node_modules")),
+        "pkg"
+      ),
+      PathBuf::from("/project/node_modules/pkg")
+    );
+    assert_eq!(
+      join_package_name(
+        Cow::Borrowed(Path::new("/project/node_modules")),
+        "@scope/pkg"
+      ),
+      PathBuf::from("/project/node_modules/@scope/pkg")
+    );
+    assert_eq!(
+      join_package_name(
+        Cow::Borrowed(Path::new("/project/node_modules")),
+        "../outside"
+      ),
+      PathBuf::from("/project/node_modules/.invalid-package-name")
+    );
   }
 
   #[test]
