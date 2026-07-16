@@ -10,6 +10,10 @@
       "output": "zero-limit-rejected\n"
     },
     {
+      "args": "run -A write_fail.ts",
+      "output": "[WILDCARD]write-failure-no-file\n"
+    },
+    {
       "args": "run -A runner.ts",
       "output": "[WILDCARD]oom-child-terminated\n"
     },

@@ -5,6 +5,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::io::Write as _;
+use std::path::Path;
 use std::path::PathBuf;
 use std::ptr::NonNull;
 use std::rc::Rc;
@@ -147,6 +148,11 @@ struct HeapSnapshotNearHeapLimitState {
   // Reentrancy guard: taking a snapshot can trigger GC and re-enter the
   // callback; we must not recurse into another snapshot.
   processing: bool,
+  // The single heap limit granted to the snapshot currently being written.
+  // `Some` only while `processing`. Reentrant invocations return this exact
+  // value rather than recomputing one from the (already raised) current limit,
+  // which is what previously let the heap grow without bound. See the callback.
+  granted_limit: Option<usize>,
   dir: PathBuf,
   pid: u32,
   seq: u32,
@@ -194,10 +200,50 @@ fn heap_snapshot_filename(pid: u32, seq: u32) -> String {
   )
 }
 
+// Streams a heap snapshot into `path`, returning the number of bytes written.
+//
+// Chunks go straight to disk rather than being buffered in memory: buffering a
+// whole snapshot would OOM the very process we are trying to snapshot.
+fn write_heap_snapshot(
+  isolate: &mut v8::Isolate,
+  path: &Path,
+) -> std::io::Result<u64> {
+  let file = std::fs::File::create(path)?;
+  let mut writer = std::io::BufWriter::new(file);
+  let mut written = 0u64;
+  let mut write_err = None;
+  isolate.take_heap_snapshot(|chunk| match writer.write_all(chunk) {
+    Ok(()) => {
+      written += chunk.len() as u64;
+      true
+    }
+    Err(e) => {
+      write_err = Some(e);
+      false
+    }
+  });
+  if let Some(e) = write_err {
+    return Err(e);
+  }
+  writer.flush()?;
+  // Get the bytes onto the filesystem (and close the file, which Windows needs
+  // before the rename): the process is usually killed by a V8 fatal OOM
+  // immediately after this returns.
+  let file = writer.into_inner().map_err(|e| e.into_error())?;
+  file.sync_all()?;
+  Ok(written)
+}
+
 #[allow(
   clippy::print_stderr,
   reason = "Node prints the snapshot path to stderr unconditionally; \
    mirror that so the OOM diagnostic is always visible."
+)]
+#[allow(
+  clippy::disallowed_methods,
+  reason = "requires real fs: this runs as an extern \"C\" V8 callback from \
+   inside a GC, with no access to the FileSystem trait (same reason the \
+   snapshot file itself is created with std::fs)."
 )]
 extern "C" fn near_heap_limit_snapshot_callback(
   data: *mut c_void,
@@ -235,59 +281,77 @@ extern "C" fn near_heap_limit_snapshot_callback(
   let new_limit =
     current_heap_limit.saturating_add(young_headroom.max(MIN_HEADROOM));
 
-  // Nested/reentrant call while a snapshot is being generated: give transient
-  // room so V8 can finish writing without OOMing mid-snapshot.
+  // Nested/reentrant call: generating a snapshot itself runs a full GC
+  // (`HeapSnapshotGenerator::GenerateSnapshot` calls `CollectAllAvailableGarbage`),
+  // which re-enters this callback while we are still writing. Hand back the
+  // *same* ceiling we granted when this snapshot started, never a freshly
+  // computed one: V8 raises the limit whenever the returned value exceeds the
+  // current one (`Heap::InvokeNearHeapLimitCallback`), so recomputing
+  // `current_heap_limit + headroom` on every reentry ratchets the limit up
+  // without bound and the process never OOMs -- it just eats the machine.
+  // Returning a fixed ceiling raises the limit exactly once; once the snapshot
+  // spends that budget V8 OOMs normally.
   if state.processing {
-    return new_limit;
+    return state.granted_limit.unwrap_or(current_heap_limit);
   }
   // No more snapshots allowed: remove the callback and return the *unchanged*
-  // heap limit so V8 proceeds to OOM normally. Mirrors Node, which removes its
-  // callback and returns `current_heap_limit` once the budget is exhausted;
-  // returning a raised limit here would let the heap grow unbounded and never
-  // OOM.
+  // heap limit so V8 proceeds to OOM normally. Returning a raised limit here
+  // would let the heap keep growing instead.
   if state.taken >= state.limit {
     // SAFETY: removing the near-heap-limit callback from within the callback
-    // is supported by V8 (Node does the same). Passing 0 leaves V8 to restore
-    // the minimal viable limit for the current heap size.
+    // is supported by V8 (Node does the same). The 0 limit means "don't touch
+    // the heap limit" (`Heap::RemoveNearHeapLimitCallback` only calls
+    // `RestoreHeapLimit` for a non-zero value) -- we want the current limit
+    // kept so the pending OOM actually happens.
     isolate
       .remove_near_heap_limit_callback(near_heap_limit_snapshot_callback, 0);
     return current_heap_limit;
   }
 
   state.processing = true;
+  state.granted_limit = Some(new_limit);
   state.taken += 1;
   state.seq += 1;
 
   let filename = heap_snapshot_filename(state.pid, state.seq);
   let path = state.dir.join(&filename);
+  // Generate into a temporary file and only move it into place once V8 has
+  // actually produced bytes. Creating the destination up front is what leaves
+  // the 0-byte `.heapsnapshot` files behind when generation produces nothing
+  // or the process dies partway through (#36034).
+  let tmp_path = state.dir.join(format!("{filename}.tmp"));
 
-  match std::fs::File::create(&path) {
-    Ok(file) => {
-      log::info!("Writing heap snapshot to {}", path.display());
-      let mut writer = std::io::BufWriter::new(file);
-      let mut write_ok = true;
-      // Stream chunks straight to disk instead of buffering the whole snapshot
-      // in memory (which would OOM the very process we're trying to snapshot).
-      isolate.take_heap_snapshot(|chunk| {
-        if writer.write_all(chunk).is_err() {
-          write_ok = false;
-          return false;
-        }
-        true
-      });
-      if !write_ok || writer.flush().is_err() {
-        log::error!("Failed to write heap snapshot to {}", path.display());
-      }
-    }
-    Err(e) => {
-      log::error!(
-        "Failed to create heap snapshot file {}: {e}",
+  // Printed unconditionally (not via `log`, which `--quiet` suppresses) and
+  // before generating, which can take a while and may be the last thing this
+  // process does. Mirrors Node.
+  eprintln!("Writing heap snapshot to {}", path.display());
+
+  let result = write_heap_snapshot(&mut isolate, &tmp_path);
+  match result {
+    // Treat "V8 emitted nothing" as a failure: an empty file is not a usable
+    // snapshot, and silently leaving one behind is the reported bug.
+    Ok(0) => {
+      let _ = std::fs::remove_file(&tmp_path);
+      eprintln!(
+        "Failed to write heap snapshot to {}: V8 produced an empty snapshot",
         path.display()
       );
+    }
+    Ok(_) => match std::fs::rename(&tmp_path, &path) {
+      Ok(()) => eprintln!("Wrote heap snapshot to {}", path.display()),
+      Err(e) => {
+        let _ = std::fs::remove_file(&tmp_path);
+        eprintln!("Failed to write heap snapshot to {}: {e}", path.display());
+      }
+    },
+    Err(e) => {
+      let _ = std::fs::remove_file(&tmp_path);
+      eprintln!("Failed to write heap snapshot to {}: {e}", path.display());
     }
   }
 
   state.processing = false;
+  state.granted_limit = None;
   new_limit
 }
 
@@ -311,6 +375,7 @@ pub fn op_v8_set_heap_snapshot_near_heap_limit(
     limit,
     taken: 0,
     processing: false,
+    granted_limit: None,
     dir,
     pid: std::process::id(),
     seq: 0,
