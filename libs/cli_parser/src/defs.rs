@@ -589,6 +589,18 @@ pub static SERVE_SUBCOMMAND: CommandDef = CommandDef {
       .long("host")
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1)),
+    ArgDef::new("tls-cert")
+      .long("tls-cert")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .requires(&["tls-key"])
+      .help("Load TLS certificate from PEM encoded file"),
+    ArgDef::new("tls-key")
+      .long("tls-key")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .requires(&["tls-cert"])
+      .help("Load TLS private key from PEM encoded file"),
     ArgDef::new("open").long("open").set_true(),
     ArgDef::new("tunnel")
       .short('t')

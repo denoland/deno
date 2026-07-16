@@ -593,6 +593,16 @@ const SERVE_ARGS: &[ArgDef] = &[
     .action(ArgAction::Set)
     .num_args(NumArgs::Exact(1))
     .default_value("0.0.0.0"),
+  ArgDef::new("tls-cert")
+    .long("tls-cert")
+    .action(ArgAction::Set)
+    .num_args(NumArgs::Exact(1))
+    .requires(&["tls-key"]),
+  ArgDef::new("tls-key")
+    .long("tls-key")
+    .action(ArgAction::Set)
+    .num_args(NumArgs::Exact(1))
+    .requires(&["tls-cert"]),
   ArgDef::new("parallel").long("parallel").set_true(),
   ArgDef::new("watch")
     .long("watch")
@@ -1291,6 +1301,41 @@ fn serve_with_permissions() {
   .unwrap();
   assert!(r.get_bool("allow-all"));
   assert_eq!(r.get_one("port"), Some("8080"));
+}
+
+#[test]
+fn serve_with_tls() {
+  let r = parse(
+    &TEST_ROOT,
+    &svec![
+      "deno",
+      "serve",
+      "--tls-cert",
+      "cert.pem",
+      "--tls-key",
+      "cert.key",
+      "server.ts"
+    ],
+  )
+  .unwrap();
+  assert_eq!(r.get_one("tls-cert"), Some("cert.pem"));
+  assert_eq!(r.get_one("tls-key"), Some("cert.key"));
+
+  let err = parse(
+    &TEST_ROOT,
+    &svec!["deno", "serve", "--tls-cert", "cert.pem", "server.ts"],
+  )
+  .unwrap_err();
+  assert_eq!(err.kind, CliErrorKind::MissingRequired);
+  assert!(err.message.contains("--tls-key"));
+
+  let err = parse(
+    &TEST_ROOT,
+    &svec!["deno", "serve", "--tls-key", "cert.key", "server.ts"],
+  )
+  .unwrap_err();
+  assert_eq!(err.kind, CliErrorKind::MissingRequired);
+  assert!(err.message.contains("--tls-cert"));
 }
 
 #[test]
