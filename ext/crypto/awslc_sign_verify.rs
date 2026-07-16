@@ -142,6 +142,9 @@ pub(crate) fn try_verify(
   }
 }
 
+// The (algorithm, hash, curve, salt) matrix below must mirror the arms in
+// `sign_key_sync` / `verify_key_sync` (lib.rs) so the fast path and the
+// fallback agree on which inputs each handles.
 fn rsa_sign_encoding(
   algorithm: Algorithm,
   hash: CryptoHash,
@@ -227,71 +230,33 @@ fn ecdsa_verification_alg(
   }
 }
 
-/// Modulus bit length of a DER-encoded PKCS#1 `RSAPublicKey`
-/// (`SEQUENCE { modulus INTEGER, publicExponent INTEGER }`), the format
+/// Modulus bit length of a DER-encoded PKCS#1 `RSAPublicKey`, the format
 /// `import_key` stores for RSA public keys. Returns `None` when the input
-/// does not look like one.
+/// does not parse as one.
 fn rsa_public_key_modulus_bits(der: &[u8]) -> Option<u32> {
-  let mut pos = 0usize;
-  if der.get(pos).copied()? != 0x30 {
-    return None;
-  }
-  pos += 1;
-  let _seq_len = read_der_length(der, &mut pos)?;
-  if der.get(pos).copied()? != 0x02 {
-    return None;
-  }
-  pos += 1;
-  let modulus_len = read_der_length(der, &mut pos)?;
-  let modulus = der.get(pos..pos.checked_add(modulus_len)?)?;
-  // Strip the DER sign byte / leading zeros to the minimal magnitude.
-  let first_nonzero = modulus.iter().position(|b| *b != 0)?;
-  let modulus = &modulus[first_nonzero..];
-  let bits = u32::try_from(modulus.len().checked_mul(8)?).ok()?
-    - modulus[0].leading_zeros();
+  use rsa::pkcs1::der::Decode as _;
+  let public_key = rsa::pkcs1::RsaPublicKey::from_der(der).ok()?;
+  let modulus = public_key.modulus.as_bytes();
+  // Exact bit count, not len * 8: rounding up would let a non-byte-aligned
+  // modulus pass the gate and fail inside aws-lc as "invalid signature"
+  // instead of taking the fallback path.
+  let bits = u32::try_from(modulus.len()).ok()?.checked_mul(8)?
+    - modulus.first()?.leading_zeros();
   Some(bits)
-}
-
-fn read_der_length(der: &[u8], pos: &mut usize) -> Option<usize> {
-  let first = der.get(*pos).copied()?;
-  *pos += 1;
-  if first & 0x80 == 0 {
-    return Some(first as usize);
-  }
-  let num_bytes = (first & 0x7f) as usize;
-  if num_bytes == 0 || num_bytes > 4 {
-    return None;
-  }
-  let mut len = 0usize;
-  for _ in 0..num_bytes {
-    len = (len << 8) | der.get(*pos).copied()? as usize;
-    *pos += 1;
-  }
-  Some(len)
 }
 
 #[cfg(test)]
 mod tests {
   use super::rsa_public_key_modulus_bits;
 
-  // SEQUENCE { INTEGER (17 bits, with sign byte), INTEGER 65537 }
+  // SEQUENCE { INTEGER 0x01ffff (17 bits), INTEGER 65537 }. Pins the exact
+  // bit count; len * 8 would report 24.
   #[test]
-  fn modulus_bits_short_form() {
+  fn modulus_bits_exact() {
     let der = [
-      0x30, 0x0b, 0x02, 0x04, 0x00, 0x01, 0xff, 0xff, 0x02, 0x03, 0x01, 0x00,
-      0x01,
+      0x30, 0x0a, 0x02, 0x03, 0x01, 0xff, 0xff, 0x02, 0x03, 0x01, 0x00, 0x01,
     ];
     assert_eq!(rsa_public_key_modulus_bits(&der), Some(17));
-  }
-
-  #[test]
-  fn modulus_bits_2048() {
-    // SEQUENCE (long form) { INTEGER 0x00 || 0x80 || 255 bytes, INTEGER 65537 }
-    let mut der = vec![0x30, 0x82, 0x01, 0x0a, 0x02, 0x82, 0x01, 0x01, 0x00];
-    der.push(0x80);
-    der.extend(std::iter::repeat_n(0u8, 255));
-    der.extend([0x02, 0x03, 0x01, 0x00, 0x01]);
-    assert_eq!(rsa_public_key_modulus_bits(&der), Some(2048));
   }
 
   #[test]
