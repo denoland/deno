@@ -29,20 +29,20 @@ pub const TYPESCRIPT_VERSION: &str = "7.0.2";
 /// npm platform-package suffix for the current host, matching the
 /// `@typescript/typescript-<suffix>` optional dependencies shipped by
 /// `typescript`.
-fn typescript_platform() -> &'static str {
-  match (std::env::consts::ARCH, std::env::consts::OS) {
+fn typescript_platform() -> Result<&'static str, AnyError> {
+  Ok(match (std::env::consts::ARCH, std::env::consts::OS) {
     ("x86_64", "linux") => "linux-x64",
     ("aarch64", "linux") => "linux-arm64",
     ("x86_64", "macos" | "apple") => "darwin-x64",
     ("aarch64", "macos" | "apple") => "darwin-arm64",
     ("x86_64", "windows") => "win32-x64",
     ("aarch64", "windows") => "win32-arm64",
-    _ => panic!(
+    _ => anyhow::bail!(
       "Unsupported platform for the native TypeScript compiler: {} {}",
       std::env::consts::ARCH,
       std::env::consts::OS
     ),
-  }
+  })
 }
 
 /// Ensure the pinned native `tsc` for the host platform is available and
@@ -78,7 +78,7 @@ pub async fn ensure_native_tsc(
     );
   }
 
-  let target = typescript_platform();
+  let target = typescript_platform()?;
   // Keep the compiler under `$DENO_DIR/tsc/<version>/<platform>` so all of a
   // given version's files live in one predictable, versioned directory.
   let install_dir = deno_dir
