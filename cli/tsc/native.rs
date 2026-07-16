@@ -2,7 +2,7 @@
 
 // The native `deno check` path that consumes this module lands on top of this
 // PR, so everything here is unused until then.
-#![allow(dead_code, reason = "wired into `deno check` by a later PR")]
+#![allow(dead_code, reason = "Will be used in a follow up")]
 
 use std::collections::HashMap;
 use std::path::Path;
