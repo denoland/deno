@@ -1,0 +1,8 @@
+{
+  "name": "@denotest/x-min-dep-age",
+  "version": "2.0.0",
+  "publishDate": "2025-06-01T00:00:00.000Z",
+  "bin": {
+    "x-min-dep-age": "./cli.mjs"
+  }
+}

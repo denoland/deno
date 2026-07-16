@@ -15,6 +15,43 @@ const isCIWithoutGPU = (Deno.build.os === "linux" ||
   (Deno.build.os === "darwin" && Deno.build.arch === "x86_64")) && isCI;
 // Skip these tests in WSL because it doesn't have good GPU support.
 const isWsl = await checkIsWsl();
+// Skip the window surface tests when there is no windowing system available
+// (e.g. headless or Wayland-only). Checked up front so those tests are
+// reported as ignored rather than silently passing.
+const hasWindowingSystem = checkWindowingSystem();
+
+function checkWindowingSystem(): boolean {
+  if (Deno.build.os === "windows") {
+    // Window creation is asserted in the test itself.
+    return true;
+  }
+  if (Deno.build.os !== "linux") {
+    return false;
+  }
+  try {
+    const x11 = Deno.dlopen(
+      "libX11.so.6",
+      {
+        XOpenDisplay: { parameters: ["pointer"], result: "pointer" },
+        XCloseDisplay: { parameters: ["pointer"], result: "i32" },
+      } as const,
+    );
+    try {
+      const display = x11.symbols.XOpenDisplay(null);
+      if (display === null) {
+        return false;
+      }
+      // Safe to close: this probe connection never backs a wgpu surface.
+      x11.symbols.XCloseDisplay(display);
+      return true;
+    } finally {
+      x11.close();
+    }
+  } catch {
+    // libX11 is not present
+    return false;
+  }
+}
 
 Deno.test({
   permissions: { read: true, env: true },
@@ -263,6 +300,8 @@ Deno.test({
   const device = await adapter.requestDevice();
   assert(device);
 
+  const msgIncludes = "Invalid parameters";
+
   assertThrows(
     () => {
       new Deno.UnsafeWindowSurface({
@@ -273,12 +312,16 @@ Deno.test({
         height: 0,
       });
     },
+    TypeError,
+    msgIncludes,
   );
 
   device.destroy();
 });
 
 Deno.test(function webgpuWindowSurfaceNoWidthHeight() {
+  const msgIncludes = "expected type `v8::data::Number`, got `v8::data::Value`";
+
   assertThrows(
     () => {
       // @ts-expect-error width and height are required
@@ -288,8 +331,177 @@ Deno.test(function webgpuWindowSurfaceNoWidthHeight() {
         displayHandle: null,
       });
     },
+    TypeError,
+    msgIncludes,
   );
 });
+
+Deno.test({
+  permissions: { ffi: true },
+  ignore: isWsl || isCIWithoutGPU || !hasWindowingSystem,
+}, async function webgpuWindowSurfaceResizeAfterConfigure() {
+  // Regression test for the RefCell double-borrow panic where the
+  // UnsafeWindowSurface width/height setters held the SurfaceData borrow
+  // across the canvas context resize.
+  const nativeWindow = Deno.build.os === "windows"
+    ? createWin32Window()
+    : createX11Window();
+  try {
+    const adapter = await navigator.gpu.requestAdapter();
+    assert(adapter);
+    const device = await adapter.requestDevice();
+    assert(device);
+    try {
+      const surface = new Deno.UnsafeWindowSurface({
+        system: nativeWindow.system,
+        windowHandle: nativeWindow.windowHandle,
+        displayHandle: nativeWindow.displayHandle,
+        width: 320,
+        height: 240,
+      });
+      const context = surface.getContext("webgpu") as GPUCanvasContext;
+      context.configure({
+        device,
+        format: navigator.gpu.getPreferredCanvasFormat(),
+      });
+      // Each assignment triggers a resize of the configured context, which
+      // reads the same SurfaceData the setter just mutated. The getter reads
+      // prove the setters released their borrows.
+      surface.width = 640;
+      surface.height = 480;
+      assertEquals(surface.width, 640);
+      assertEquals(surface.height, 480);
+    } finally {
+      device.destroy();
+    }
+  } finally {
+    nativeWindow.close();
+  }
+});
+
+// The native window and display are deliberately leaked: the wgpu surface
+// held by UnsafeWindowSurface is a GC-managed object that is dropped at
+// isolate teardown, after the test body has finished. Destroying the window
+// or display connection earlier makes that surface drop a use-after-free in
+// the driver. close() only releases the dlopen handle.
+interface NativeWindow {
+  system: "win32" | "x11";
+  windowHandle: Deno.PointerValue;
+  displayHandle: Deno.PointerValue;
+  close(): void;
+}
+
+function createWin32Window(): NativeWindow {
+  const user32 = Deno.dlopen(
+    "user32.dll",
+    {
+      CreateWindowExW: {
+        parameters: [
+          "u32", // dwExStyle
+          "buffer", // lpClassName
+          "buffer", // lpWindowName
+          "u32", // dwStyle
+          "i32", // X
+          "i32", // Y
+          "i32", // nWidth
+          "i32", // nHeight
+          "pointer", // hWndParent
+          "pointer", // hMenu
+          "pointer", // hInstance
+          "pointer", // lpParam
+        ],
+        result: "pointer",
+      },
+    } as const,
+  );
+
+  function wide(s: string): Uint16Array {
+    const buf = new Uint16Array(s.length + 1);
+    for (let i = 0; i < s.length; i++) {
+      buf[i] = s.charCodeAt(i);
+    }
+    return buf;
+  }
+
+  const WS_OVERLAPPEDWINDOW = 0x00CF0000;
+  // The predefined "STATIC" window class avoids needing RegisterClassW. The
+  // window is deliberately not WS_VISIBLE; surface creation works on hidden
+  // windows.
+  const hwnd = user32.symbols.CreateWindowExW(
+    0,
+    wide("STATIC"),
+    wide("deno webgpu test"),
+    WS_OVERLAPPEDWINDOW,
+    0,
+    0,
+    320,
+    240,
+    null,
+    null,
+    null,
+    null,
+  );
+  assert(hwnd !== null, "CreateWindowExW failed");
+  return {
+    system: "win32",
+    windowHandle: hwnd,
+    displayHandle: null,
+    close() {
+      user32.close();
+    },
+  };
+}
+
+function createX11Window(): NativeWindow {
+  const symbols = {
+    XOpenDisplay: { parameters: ["pointer"], result: "pointer" },
+    XDefaultRootWindow: { parameters: ["pointer"], result: "u64" },
+    XCreateSimpleWindow: {
+      // (display, parent, x, y, width, height, border_width, border,
+      // background)
+      parameters: [
+        "pointer",
+        "u64",
+        "i32",
+        "i32",
+        "u32",
+        "u32",
+        "u32",
+        "u64",
+        "u64",
+      ],
+      result: "u64",
+    },
+    XFlush: { parameters: ["pointer"], result: "i32" },
+  } as const;
+  // The top-level windowing system check already dlopened libX11 and opened a
+  // display, so any failure here is a real error rather than a reason to skip.
+  const x11 = Deno.dlopen("libX11.so.6", symbols);
+  const display = x11.symbols.XOpenDisplay(null);
+  assert(display !== null, "XOpenDisplay failed");
+  const root = x11.symbols.XDefaultRootWindow(display);
+  const win = x11.symbols.XCreateSimpleWindow(
+    display,
+    root,
+    0,
+    0,
+    320,
+    240,
+    0,
+    0n,
+    0n,
+  );
+  x11.symbols.XFlush(display);
+  return {
+    system: "x11",
+    // The windowHandle external's value is the X11 window XID itself.
+    windowHandle: Deno.UnsafePointer.create(BigInt(win)),
+    displayHandle: display,
+    close() {
+      x11.close();
+    },
+  };
+}
 
 Deno.test(function getPreferredCanvasFormat() {
   const preferredFormat = navigator.gpu.getPreferredCanvasFormat();

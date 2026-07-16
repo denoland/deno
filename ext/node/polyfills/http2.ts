@@ -2842,15 +2842,39 @@ function processRespondWithFD(
   let pos = seekable ? offset : 0;
   const end = seekable && length >= 0 ? offset + length : -1;
 
-  function readAndWrite() {
+  const ownsFd = self.ownsFd;
+  let stopped = false;
+  let fdClosed = false;
+
+  function closeOwnedFd() {
+    if (!ownsFd || fdClosed) return;
+    fdClosed = true;
+    tryClose(fd);
+  }
+
+  function stopReading() {
+    if (stopped) return;
+    stopped = true;
+    self.removeListener("close", stopReading);
+    closeOwnedFd();
+  }
+
+  self.once("close", stopReading);
+
+  function readAndWrite(err) {
+    if (err || self.destroyed || self.closed) {
+      stopReading();
+      return;
+    }
     const readLen = end >= 0 ? MathMin(buf.length, end - pos) : buf.length;
     if (readLen <= 0) {
       finish();
       return;
     }
     fs.read(fd, buf, 0, readLen, seekable ? pos : null, (err, bytesRead) => {
+      if (stopped) return;
       if (err) {
-        if (self.ownsFd) tryClose(fd);
+        stopReading();
         // Match Node: a read failure (e.g. EBADF from a bad fd) resets the
         // stream with NGHTTP2_INTERNAL_ERROR rather than leaking the
         // underlying fs error to user code.
@@ -2858,6 +2882,10 @@ function processRespondWithFD(
           closeStream(self, NGHTTP2_INTERNAL_ERROR, kForceRstStream);
         }
         self.destroy();
+        return;
+      }
+      if (self.destroyed || self.closed) {
+        stopReading();
         return;
       }
       if (bytesRead === 0) {
@@ -2872,7 +2900,10 @@ function processRespondWithFD(
   }
 
   function finish() {
-    if (self.ownsFd) tryClose(fd);
+    if (stopped) return;
+    stopped = true;
+    self.removeListener("close", stopReading);
+    closeOwnedFd();
     self.end();
   }
 
@@ -2883,7 +2914,7 @@ function processRespondWithFD(
   );
 
   if (ret < 0) {
-    if (self.ownsFd) tryClose(fd);
+    stopReading();
     self.destroy(new NghttpError(ret));
     return;
   }

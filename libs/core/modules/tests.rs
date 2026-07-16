@@ -559,6 +559,32 @@ fn test_lazy_loaded_esm() {
 }
 
 #[test]
+fn test_lazy_loaded_esm_rejects_non_lazy_cached_module() {
+  let mut runtime = JsRuntime::new(Default::default());
+
+  runtime
+    .execute_script(
+      "setup.js",
+      r#"
+      const load = Deno.core.createLazyLoader("ext:core/ops");
+      let error;
+      try {
+        load();
+      } catch (caught) {
+        error = caught;
+      }
+      if (error === undefined) {
+        throw new Error("a non-lazy cached module was loaded");
+      }
+      if (!error.message.includes("cannot be lazy-loaded")) {
+        throw error;
+      }
+      "#,
+    )
+    .unwrap();
+}
+
+#[test]
 fn test_lazy_loaded_esm_aliased_specifier() {
   deno_core::extension!(
     test_ext,
@@ -2160,6 +2186,7 @@ fn builtin_core_module() {
     module_loader: Some(Rc::new(loader)),
     ..Default::default()
   });
+  runtime.module_map().set_loading_internal_modules(true);
 
   let main_id_fut = runtime.load_main_es_module(&main_specifier).boxed_local();
   let main_id = futures::executor::block_on(main_id_fut).unwrap();
@@ -2168,6 +2195,7 @@ fn builtin_core_module() {
   let _ = runtime.mod_evaluate(main_id);
   futures::executor::block_on(runtime.run_event_loop(Default::default()))
     .unwrap();
+  runtime.module_map().set_loading_internal_modules(false);
 }
 
 #[test]
@@ -2425,6 +2453,54 @@ fn ext_module_loader_relative() {
       .resolve(specifier, referrer, ResolutionKind::Import)
       .unwrap();
     assert_eq!(result.as_str(), expected);
+  }
+}
+
+#[test]
+fn module_map_rejects_user_ext_imports_after_resolution() {
+  struct ExtResolvingLoader;
+
+  impl ModuleLoader for ExtResolvingLoader {
+    fn resolve(
+      &self,
+      specifier: &str,
+      referrer: &str,
+      _kind: ResolutionKind,
+    ) -> ModuleResolveResponse {
+      if specifier == "mapped" {
+        return Ok(ModuleSpecifier::parse("ext:core/ops").unwrap());
+      }
+      let referrer = if referrer == "." {
+        "file:///"
+      } else {
+        referrer
+      };
+      resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
+    }
+
+    fn load(
+      &self,
+      _module_specifier: &ModuleSpecifier,
+      _maybe_referrer: Option<&ModuleLoadReferrer>,
+      _options: ModuleLoadOptions,
+    ) -> ModuleLoadResponse {
+      unreachable!()
+    }
+  }
+
+  let runtime = JsRuntime::new(RuntimeOptions {
+    module_loader: Some(Rc::new(ExtResolvingLoader)),
+    ..Default::default()
+  });
+  let module_map = runtime.module_map();
+
+  for specifier in ["Ext:core/ops", "mapped"] {
+    let error = module_map
+      .resolve(specifier, "file:///main.js", ResolutionKind::DynamicImport)
+      .unwrap_err();
+    let message = error.to_string();
+    assert!(message.contains("Importing ext: modules is only allowed"));
+    assert!(message.contains("ext:core/ops"));
   }
 }
 

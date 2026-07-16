@@ -385,7 +385,7 @@ fn op_base64_decode_into(
   #[smi] offset: u32,
 ) -> Result<u32, WebError> {
   let offset = offset as usize;
-  let target = &mut target[offset..];
+  let target = target.get_mut(offset..).ok_or(WebError::BufferTooSmall)?;
 
   // Fast path: try strict decode directly into target.
   // Works for clean padded base64 (the common case).
@@ -465,8 +465,9 @@ fn op_base64_encode_from_buffer<'a>(
 ) -> Result<v8::Local<'a, v8::String>, WebError> {
   let offset = offset as usize;
   let length = length as usize;
-  let end = (offset + length).min(s.len());
-  base64_encode_to_v8_string(scope, &s[offset..end])
+  let end = offset.checked_add(length).ok_or(WebError::BufferTooSmall)?;
+  let s = s.get(offset..end).ok_or(WebError::BufferTooSmall)?;
+  base64_encode_to_v8_string(scope, s)
 }
 
 /// Encode bytes to base64 and create a V8 one-byte string directly.
@@ -744,6 +745,19 @@ fn pack_encode_into_result(read: usize, written: usize) -> f64 {
   (read as f64) * ENCODE_INTO_PACKED_MULTIPLIER + written as f64
 }
 
+fn write_encode_into_result(
+  out_buf: &mut [u32],
+  read: usize,
+  written: usize,
+) -> Result<(), WebError> {
+  if out_buf.len() < 2 {
+    return Err(WebError::BufferTooSmall);
+  }
+  out_buf[1] = written as u32;
+  out_buf[0] = read as u32;
+  Ok(())
+}
+
 #[op2(fast(op_encoding_encode_into_fast))]
 fn op_encoding_encode_into(
   scope: &mut v8::PinScope<'_, '_>,
@@ -787,9 +801,7 @@ fn op_encoding_encode_into_fallback(
     v8::WriteFlags::kReplaceInvalidUtf8,
     Some(&mut nchars),
   );
-  out_buf[1] = len as u32;
-  out_buf[0] = nchars as u32;
-  Ok(())
+  write_encode_into_result(out_buf, nchars, len)
 }
 
 #[op2(fast)]
@@ -836,3 +848,32 @@ fn op_encoding_encode_into_fast(
 }
 
 pub struct Location(pub Url);
+
+#[cfg(test)]
+mod tests {
+  use super::WebError;
+  use super::write_encode_into_result;
+
+  #[test]
+  fn encode_into_result_rejects_undersized_output_buffer() {
+    let mut empty: [u32; 0] = [];
+    assert!(matches!(
+      write_encode_into_result(&mut empty, 1, 1),
+      Err(WebError::BufferTooSmall)
+    ));
+
+    let mut one = [0];
+    assert!(matches!(
+      write_encode_into_result(&mut one, 1, 1),
+      Err(WebError::BufferTooSmall)
+    ));
+    assert_eq!(one, [0]);
+  }
+
+  #[test]
+  fn encode_into_result_writes_read_and_written_counts() {
+    let mut out = [0, 0];
+    write_encode_into_result(&mut out, 3, 7).unwrap();
+    assert_eq!(out, [3, 7]);
+  }
+}
