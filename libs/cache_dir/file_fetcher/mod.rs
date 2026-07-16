@@ -913,20 +913,6 @@ impl<TBlobStore: BlobStore, TSys: FileFetcherSys, THttpClient: HttpClient>
       .await?
     {
       SendRequestResponse::NotFound => {
-        // Cache the 404 so subsequent processes don't re-request the URL
-        // until the entry expires (see NOT_FOUND_CACHE_TTL). Skip this for
-        // authenticated requests because a 404 may then depend on the
-        // provided credentials (ex. private registries respond with 404
-        // for unauthorized requests).
-        if !is_authenticated {
-          let headers = HashMap::from([(
-            NOT_FOUND_CACHE_HEADER.to_string(),
-            "404".to_string(),
-          )]);
-          if let Err(err) = self.http_cache.set(url, headers, &[]) {
-            debug!("Failed caching 404 for '{}': {:#}", url, err);
-          }
-        }
         Err(FetchNoFollowErrorKind::NotFound(url.clone()).into_box())
       }
       SendRequestResponse::NotModified => {
