@@ -312,22 +312,26 @@ function getKeyObjectHandleFromJwk(key, ctx) {
     e: key.e,
   };
 
-  if (!isPublic) {
-    validateString(key.d, "key.d");
-    validateString(key.p, "key.p");
-    validateString(key.q, "key.q");
-    validateString(key.dp, "key.dp");
-    validateString(key.dq, "key.dq");
-    validateString(key.qi, "key.qi");
-    jwk.d = key.d;
-    jwk.p = key.p;
-    jwk.q = key.q;
-    jwk.dp = key.dp;
-    jwk.dq = key.dq;
-    jwk.qi = key.qi;
-  }
+  try {
+    if (!isPublic) {
+      validateString(key.d, "key.d");
+      validateString(key.p, "key.p");
+      validateString(key.q, "key.q");
+      validateString(key.dp, "key.dp");
+      validateString(key.dq, "key.dq");
+      validateString(key.qi, "key.qi");
+      jwk.d = key.d;
+      jwk.p = key.p;
+      jwk.q = key.q;
+      jwk.dp = key.dp;
+      jwk.dq = key.dq;
+      jwk.qi = key.qi;
+    }
 
-  return op_node_create_rsa_jwk(jwk, isPublic);
+    return op_node_create_rsa_jwk(jwk, isPublic);
+  } catch {
+    throw new ERR_CRYPTO_INVALID_JWK();
+  }
 }
 
 function isStringOrBuffer(val: unknown): boolean {
