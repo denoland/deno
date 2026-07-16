@@ -1454,8 +1454,16 @@ fn queue_external_string_finalizer(key: ExternalStringKey) {
 }
 
 /// Stop delivering non-null Env pointers for an environment being torn down.
-/// Resources already disposed by V8 are finalized immediately; still-live
-/// resources receive a null Env when V8 disposes them later.
+/// Resources already disposed by V8 are finalized immediately with the Env
+/// they were registered with; still-live resources receive a null Env when V8
+/// disposes them later.
+///
+/// Non-ready entries stay in the registry rather than being swept: their
+/// buffers still back a live V8 string, so calling their finalizers here would
+/// free memory V8 is still reading. They are reclaimed when the isolate is
+/// disposed, which fires the destructors that drain them through
+/// `queue_external_string_finalizer`. If the isolate is never disposed the
+/// entries last until the process exits.
 pub(crate) fn detach_external_string_env(env: *mut Env) {
   let ready = {
     let mut finalizers = EXTERNAL_STRING_FINALIZERS.lock().unwrap();
@@ -1464,10 +1472,17 @@ pub(crate) fn detach_external_string_env(env: *mut Env) {
       .entries
       .iter_mut()
       .filter_map(|(id, finalizer)| {
-        if finalizer.env == Some(env) {
-          finalizer.env = None;
-          finalizer.ready.then_some(*id)
+        if finalizer.env != Some(env) {
+          return None;
+        }
+        if finalizer.ready {
+          // V8 disposed this resource while the Env was still alive and its
+          // deferred completion has not drained yet. Keep the Env so this
+          // delivers what that task would have; it is removed below, so the
+          // task no-ops.
+          Some(*id)
         } else {
+          finalizer.env = None;
           None
         }
       })
@@ -1507,10 +1522,126 @@ unsafe extern "C" fn external_twobyte_destructor(data: *mut u16, len: usize) {
   });
 }
 
-#[napi_sym]
-fn node_api_create_external_string_latin1(
+/// The encoding-specific pieces of `node_api_create_external_string_*`. The
+/// finalizer handoff around them is shared, so the two encodings cannot drift
+/// apart.
+trait ExternalStringChar: Sized {
+  const ENCODING: ExternalStringEncoding;
+
+  /// Resolve `NAPI_AUTO_LENGTH` by finding the null terminator.
+  ///
+  /// # Safety
+  ///
+  /// `data` must point to a null-terminated sequence of `Self`.
+  unsafe fn auto_len(data: *const Self) -> usize;
+
+  /// Create a V8 string backed by `data` itself. V8 calls the encoding's
+  /// destructor once it collects the string.
+  ///
+  /// # Safety
+  ///
+  /// `data` must be valid for `len` code units and stay valid until the
+  /// destructor runs.
+  unsafe fn new_external<'s>(
+    scope: &v8::PinScope<'s, '_, ()>,
+    data: *mut Self,
+    len: usize,
+  ) -> Option<v8::Local<'s, v8::String>>;
+
+  /// Copy `data` into a V8-owned string.
+  ///
+  /// # Safety
+  ///
+  /// `data` must be valid for `length` code units and `result` must be
+  /// writable.
+  unsafe fn copy(
+    env: *mut Env,
+    data: *const Self,
+    length: usize,
+    result: *mut napi_value,
+  ) -> napi_status;
+}
+
+impl ExternalStringChar for c_char {
+  const ENCODING: ExternalStringEncoding = ExternalStringEncoding::OneByte;
+
+  unsafe fn auto_len(data: *const Self) -> usize {
+    unsafe { std::ffi::CStr::from_ptr(data).to_bytes().len() }
+  }
+
+  unsafe fn new_external<'s>(
+    scope: &v8::PinScope<'s, '_, ()>,
+    data: *mut Self,
+    len: usize,
+  ) -> Option<v8::Local<'s, v8::String>> {
+    unsafe {
+      v8::String::new_external_onebyte_raw(
+        scope,
+        data,
+        len,
+        external_onebyte_destructor,
+      )
+    }
+  }
+
+  unsafe fn copy(
+    env: *mut Env,
+    data: *const Self,
+    length: usize,
+    result: *mut napi_value,
+  ) -> napi_status {
+    unsafe { napi_create_string_latin1(env, data, length, result) }
+  }
+}
+
+impl ExternalStringChar for u16 {
+  const ENCODING: ExternalStringEncoding = ExternalStringEncoding::TwoByte;
+
+  unsafe fn auto_len(data: *const Self) -> usize {
+    let mut p = data;
+    unsafe {
+      while *p != 0 {
+        p = p.add(1);
+      }
+      p.offset_from(data) as usize
+    }
+  }
+
+  unsafe fn new_external<'s>(
+    scope: &v8::PinScope<'s, '_, ()>,
+    data: *mut Self,
+    len: usize,
+  ) -> Option<v8::Local<'s, v8::String>> {
+    unsafe {
+      v8::String::new_external_twobyte_raw(
+        scope,
+        data,
+        len,
+        external_twobyte_destructor,
+      )
+    }
+  }
+
+  unsafe fn copy(
+    env: *mut Env,
+    data: *const Self,
+    length: usize,
+    result: *mut napi_value,
+  ) -> napi_status {
+    unsafe { napi_create_string_utf16(env, data, length, result) }
+  }
+}
+
+/// Shared implementation of `node_api_create_external_string_latin1` and
+/// `node_api_create_external_string_utf16`.
+///
+/// # Safety
+///
+/// `string` must be valid for `length` code units, and `result` and `copied`
+/// must be writable or null.
+unsafe fn create_external_string<T: ExternalStringChar>(
   env_ptr: *mut Env,
-  string: *const c_char,
+  string: *const T,
   length: usize,
   nogc_finalize_callback: Option<napi_finalize>,
   finalize_hint: *mut c_void,
@@ -1521,9 +1652,8 @@ fn node_api_create_external_string_latin1(
   check_arg!(env, string);
   check_arg!(env, result);
 
-  let len = if length == usize::MAX {
-    // NAPI_AUTO_LENGTH: find null terminator
-    unsafe { std::ffi::CStr::from_ptr(string).to_bytes().len() }
+  let len = if length == NAPI_AUTO_LENGTH {
+    unsafe { T::auto_len(string) }
   } else {
     length
   };
@@ -1535,7 +1665,7 @@ fn node_api_create_external_string_latin1(
     let key = ExternalStringKey {
       data: string as usize,
       len,
-      encoding: ExternalStringEncoding::OneByte,
+      encoding: T::ENCODING,
     };
     let finalizer_id = register_external_string_finalizer(
       key,
@@ -1551,14 +1681,7 @@ fn node_api_create_external_string_latin1(
     if let Some(finalizer_id) = finalizer_id {
       let v8_str = {
         v8::callback_scope!(unsafe scope, env.context());
-        unsafe {
-          v8::String::new_external_onebyte_raw(
-            scope,
-            string as *mut std::ffi::c_char,
-            len,
-            external_onebyte_destructor,
-          )
-        }
+        unsafe { T::new_external(scope, string as *mut T, len) }
       };
       if let Some(v8_str) = v8_str {
         unsafe {
@@ -1576,8 +1699,7 @@ fn node_api_create_external_string_latin1(
   }
 
   // Fallback: copy the string and call finalize immediately
-  let status =
-    unsafe { napi_create_string_latin1(env_ptr, string, length, result) };
+  let status = unsafe { T::copy(env_ptr, string, length, result) };
   if status == napi_ok {
     unsafe {
       if !copied.is_null() {
@@ -1594,6 +1716,29 @@ fn node_api_create_external_string_latin1(
 }
 
 #[napi_sym]
+fn node_api_create_external_string_latin1(
+  env_ptr: *mut Env,
+  string: *const c_char,
+  length: usize,
+  nogc_finalize_callback: Option<napi_finalize>,
+  finalize_hint: *mut c_void,
+  result: *mut napi_value,
+  copied: *mut bool,
+) -> napi_status {
+  unsafe {
+    create_external_string(
+      env_ptr,
+      string,
+      length,
+      nogc_finalize_callback,
+      finalize_hint,
+      result,
+      copied,
+    )
+  }
+}
+
+#[napi_sym]
 fn node_api_create_external_string_utf16(
   env_ptr: *mut Env,
   string: *const u16,
@@ -1603,86 +1748,17 @@ fn node_api_create_external_string_utf16(
   result: *mut napi_value,
   copied: *mut bool,
 ) -> napi_status {
-  let env = check_env!(env_ptr);
-  check_arg!(env, string);
-  check_arg!(env, result);
-
-  let len = if length == usize::MAX {
-    // NAPI_AUTO_LENGTH: find null terminator
-    let mut p = string;
-    unsafe {
-      while *p != 0 {
-        p = p.add(1);
-      }
-      p.offset_from(string) as usize
-    }
-  } else {
-    length
-  };
-
-  let mut finalize_on_copy = true;
-  if let Some(finalize) = nogc_finalize_callback
-    && len > 0
-  {
-    let key = ExternalStringKey {
-      data: string as usize,
-      len,
-      encoding: ExternalStringEncoding::TwoByte,
-    };
-    let finalizer_id = register_external_string_finalizer(
-      key,
+  unsafe {
+    create_external_string(
       env_ptr,
-      finalize,
-      string as *mut c_void,
+      string,
+      length,
+      nogc_finalize_callback,
       finalize_hint,
-    );
-
-    // Try zero-copy: create a V8 external string backed by the
-    // caller's buffer. V8 will call our destructor when the string
-    // is GC'd, which in turn calls the NAPI finalize callback.
-    if let Some(finalizer_id) = finalizer_id {
-      let v8_str = {
-        v8::callback_scope!(unsafe scope, env.context());
-        unsafe {
-          v8::String::new_external_twobyte_raw(
-            scope,
-            string as *mut u16,
-            len,
-            external_twobyte_destructor,
-          )
-        }
-      };
-      if let Some(v8_str) = v8_str {
-        unsafe {
-          *result = v8::Local::<v8::Value>::from(v8_str).into();
-          if !copied.is_null() {
-            *copied = false;
-          }
-        }
-        return napi_clear_last_error(check_env!(env_ptr));
-      }
-      finalize_on_copy = cancel_external_string_finalizer(key, finalizer_id);
-    }
-    // V8 rejected the external string or an indistinguishable resource is
-    // already live. Fall through to the copy path.
+      result,
+      copied,
+    )
   }
-
-  // Fallback: copy the string and call finalize immediately
-  let status =
-    unsafe { napi_create_string_utf16(env_ptr, string, length, result) };
-  if status == napi_ok {
-    unsafe {
-      if !copied.is_null() {
-        *copied = true;
-      }
-    }
-    if finalize_on_copy && let Some(finalize) = nogc_finalize_callback {
-      unsafe {
-        finalize(env_ptr as napi_env, string as *mut c_void, finalize_hint);
-      }
-    }
-  }
-  status
 }
 
 #[napi_sym]

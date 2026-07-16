@@ -373,8 +373,11 @@ unsafe impl Send for NapiState {}
 impl Drop for NapiState {
   fn drop(&mut self) {
     // External string resources can outlive their Env until V8 disposes the
-    // isolate. Stop exposing each Env to those eventual callbacks; callbacks
-    // whose V8 resource was already disposed are completed with a null Env.
+    // isolate. Stop exposing each Env to those eventual callbacks. Callbacks
+    // whose V8 resource was already disposed are completed here with their
+    // original Env; the rest keep their registry entry, which the isolate's
+    // disposal reclaims by firing the V8 destructor with a null Env. They
+    // cannot be swept here because V8 still reads their buffers.
     for env_ptr in &self.env_ptrs {
       crate::js_native_api::detach_external_string_env(*env_ptr);
     }
