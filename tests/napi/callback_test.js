@@ -45,3 +45,19 @@ Deno.test("napi callback handles errors correctly", function () {
     });
   }, e);
 });
+
+Deno.test("napi callback info remains scoped during reentrant calls", function () {
+  let reentered = false;
+  const result = callback.test_callback_info_reentrant(() => {
+    if (!reentered) {
+      reentered = true;
+      assertEquals(
+        callback.test_callback_info_reentrant(() => {}, "inner"),
+        true,
+      );
+    }
+  }, "outer");
+
+  assertEquals(result, true);
+  assertEquals(reentered, true);
+});
