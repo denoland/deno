@@ -276,7 +276,7 @@ impl TypeChecker {
   ///
   /// It is expected that it is determined if a check and/or emit is validated
   /// before the function is called.
-  /// Walk the module graph exactly as the in-process checker does — for the
+  /// Walk the module graph exactly as the in-process checker does - for the
   /// native (external tsc) check path in `crate::tools::check`. Returns deno's
   /// own graph diagnostics (missing modules + hints) plus a combined check hash
   /// over every compiler-options group, with the pinned tsc version folded in.

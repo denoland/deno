@@ -256,8 +256,6 @@ pub async fn sync_types_command(
   use crate::args::TsTypeLib;
   use crate::graph_container::CollectSpecifiersOptions;
 
-  let config_disabled =
-    matches!(flags.config_flag, crate::args::ConfigFlag::Disabled);
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
   let file_fetcher = factory.file_fetcher()?.clone();
@@ -415,23 +413,15 @@ pub async fn sync_types_command(
       .map(|opts| opts.0.clone())
   });
 
-  // Whether to manage the root `tsconfig.json`. In check mode we only touch it
-  // when Deno is honoring a user tsconfig; otherwise the caller points tsc at
-  // `.deno/tsconfig.json` and we leave the user's tree alone.
+  // Whether to manage the root `tsconfig.json`. `deno check` (CheckMode) never
+  // rewrites a committed tsconfig (that would dirty the working tree). When it
+  // honors a user tsconfig it instead builds a throwaway overlay in a temp file
+  // (see `native_check` / `build_check_root_overlay`), leaving the user's tree
+  // untouched. `deno sync-types` (Always) still sets up the root tsconfig for
+  // IDEs.
   let manage_root_tsconfig = match root_tsconfig_mode {
     RootTsConfigMode::Always => true,
-    RootTsConfigMode::CheckMode => {
-      // Only manage a root `tsconfig.json` that already exists (keeping its
-      // `extends` pointed at `.deno/`). Don't create one: `deno check` points
-      // tsc at `.deno/tsconfig.json` directly when there's no user tsconfig, so
-      // generating a root tsconfig would just leave an unwanted file in the
-      // project (and get picked up by `deno publish`). `deno sync-types`
-      // (RootTsConfigMode::Always) is the command that sets it up for IDEs.
-      crate::tsc::tsconfig_gen::should_honor_user_tsconfig(
-        &project_root,
-        config_disabled,
-      ) && project_root.join("tsconfig.json").exists()
-    }
+    RootTsConfigMode::CheckMode => false,
   };
 
   // `deno check --all` type-checks remote modules; otherwise mirrored remote

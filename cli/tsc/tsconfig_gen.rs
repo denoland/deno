@@ -26,7 +26,7 @@ use super::get_types_declaration_file_text;
 /// Mirrors Deno's own config resolution (see #29925): a `tsconfig.json` is only
 /// picked up when there's a sibling `deno.json`/`deno.jsonc`/`package.json` and
 /// config discovery isn't disabled (`--no-config`). Otherwise the file is
-/// ignored — `deno check` type-checks with Deno's own defaults and must not read
+/// ignored - `deno check` type-checks with Deno's own defaults and must not read
 /// (or rewrite) the stray tsconfig.
 pub fn should_honor_user_tsconfig(
   project_root: &Path,
@@ -38,6 +38,67 @@ pub fn should_honor_user_tsconfig(
   ["deno.json", "deno.jsonc", "package.json"]
     .iter()
     .any(|f| project_root.join(f).exists())
+}
+
+/// Build a throwaway "root" tsconfig for `deno check` that mirrors the user's
+/// committed `tsconfig.json` but prepends our generated `.deno/tsconfig.json` to
+/// `extends` and carries the npm project `references` - WITHOUT mutating the
+/// user's file. `native_check` writes the returned value to a temp config in the
+/// project root and points tsc at it, so the user's own options (including
+/// path-based ones like `rootDirs`/`baseUrl` and any `include`/`files`) still
+/// resolve relative to the project, exactly as if tsc read their file directly.
+pub fn build_check_root_overlay(
+  project_root: &Path,
+  user_tsconfig_path: &Path,
+) -> Result<Value, std::io::Error> {
+  let content = std::fs::read_to_string(user_tsconfig_path)?;
+  let mut value = jsonc_parser::parse_to_serde_value(
+    &content,
+    &jsonc_parser::ParseOptions::default(),
+  )
+  .ok()
+  .flatten()
+  .unwrap_or_else(|| json!({}));
+  if !value.is_object() {
+    value = json!({});
+  }
+  let obj = value.as_object_mut().unwrap();
+
+  // Prepend our generated config so the user's own config overrides it, while
+  // our `paths` (which the user's config won't set) survive. TS 5.0+ resolves
+  // array `extends` left-to-right with later entries overriding earlier ones.
+  let deno_generated = "./.deno/tsconfig.json";
+  let extends = match obj.remove("extends") {
+    Some(Value::String(s)) => json!([deno_generated, s]),
+    Some(Value::Array(mut arr)) => {
+      if !arr.iter().any(|v| v.as_str() == Some(deno_generated)) {
+        arr.insert(0, json!(deno_generated));
+      }
+      Value::Array(arr)
+    }
+    _ => json!([deno_generated]),
+  };
+  obj.insert("extends".to_string(), extends);
+
+  // Carry the generated npm project `references` (not inherited through
+  // `extends`). They live in `.deno/tsconfig.json` as `.deno/`-relative paths;
+  // rebase them onto the project root, where this overlay lives.
+  let deno_tsconfig = project_root.join(".deno").join("tsconfig.json");
+  if let Ok(text) = std::fs::read_to_string(&deno_tsconfig)
+    && let Ok(deno_value) = serde_json::from_str::<Value>(&text)
+    && let Some(refs) = deno_value.get("references").and_then(|r| r.as_array())
+  {
+    let rebased: Vec<Value> = refs
+      .iter()
+      .filter_map(|r| r.get("path").and_then(|p| p.as_str()))
+      .map(|p| json!({ "path": root_npm_reference_path(p) }))
+      .collect();
+    if !rebased.is_empty() {
+      obj.insert("references".to_string(), Value::Array(rebased));
+    }
+  }
+
+  Ok(value)
 }
 
 /// Result of generating a tsconfig for stock TypeScript.
@@ -1594,7 +1655,7 @@ fn merge_deno_options(base: &mut Map<String, Value>, user_opts: &Value) {
     "noUnusedLocals",
     "noUnusedParameters",
     // NOTE: `paths`, `baseUrl`, `rootDirs` are deliberately NOT passed through
-    // here — they hold project-root-relative paths that must be rebased onto
+    // here - they hold project-root-relative paths that must be rebased onto
     // `.deno/` (the generated tsconfig lives one level down). They're handled in
     // `build_tsconfig`.
     "skipLibCheck",
@@ -1744,8 +1805,8 @@ fn npm_types_pkg_dir(
 }
 
 /// Partition a user's `compilerOptions.types` into entries stock tsc can resolve
-/// via typeRoots (kept in the `types` array) and entries it cannot — a bare npm
-/// package the user imports, or a relative path — which are materialized as
+/// via typeRoots (kept in the `types` array) and entries it cannot - a bare npm
+/// package the user imports, or a relative path - which are materialized as
 /// concrete `.d.ts` files added to the program instead.
 ///
 /// Stock tsc resolves a `types` entry only as a package under
@@ -1771,11 +1832,33 @@ fn partition_user_types(
     // A relative/path-like entry (`./types.d.ts`) resolves relative to the
     // generated tsconfig in `.deno/`, pointing at the wrong place; materialize
     // it as an absolute file instead.
-    let is_path_like =
-      s.starts_with('.') || s.starts_with('/') || s.ends_with(".ts");
-    if is_path_like {
+    // A genuine relative/absolute path (`./types.d.ts`, `/abs/x.d.ts`)
+    // resolves relative to the generated tsconfig in `.deno/`, pointing at the
+    // wrong place; materialize it as an absolute file instead. A missing one is
+    // left in so tsc reports it (TS6053), matching the user's intent.
+    if s.starts_with('.') || s.starts_with('/') {
       let abs = project_root.join(s.trim_start_matches("./"));
       type_files.push(abs.to_string_lossy().replace('\\', "/"));
+      continue;
+    }
+    // A bare specifier that merely ends in `.ts` (e.g. `lume/types.ts`, where
+    // `lume/` is import-mapped to a remote/npm target) is NOT a project-root
+    // path. Only materialize it if it happens to resolve to a local file;
+    // otherwise fall through rather than pushing `project_root/lume/types.ts`,
+    // which does not exist and would fail the whole build with TS6053, masking
+    // every real diagnostic. (Resolving such entries through the import map is
+    // tracked as a follow-up.)
+    if s.ends_with(".ts") {
+      let abs = project_root.join(s);
+      if abs.exists() {
+        type_files.push(abs.to_string_lossy().replace('\\', "/"));
+        continue;
+      }
+      log::debug!(
+        "sync-types: dropping `compilerOptions.types` entry {s:?}; it is not a \
+         local path and {} does not exist",
+        abs.display()
+      );
       continue;
     }
     // A bare npm package the user imports: pull in its declaration file.

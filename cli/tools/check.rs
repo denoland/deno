@@ -116,9 +116,11 @@ async fn native_check(
   // `compilerOptions.paths` that resolve to nothing, integrity/npm-resolution
   // failures, and invalid specifiers. Missing-module errors are deliberately
   // *not* surfaced here (`will_type_check` defers them to tsc, which reports
-  // them as TS2307 and we enrich those with `deno add` hints below), so a
-  // missing import is never double-reported. `allow_unknown_media_types: true`
-  // matches `deno check`, letting tsc handle unknown types instead of erroring.
+  // them as TS2307), so a missing import is never double-reported. Note: the
+  // richer `deno add` hint the in-process checker attached to import-level
+  // missing modules is not re-added on top of tsc's TS2307 yet; restoring it
+  // additively is a follow-up. `allow_unknown_media_types: true` matches
+  // `deno check`, letting tsc handle unknown types instead of erroring.
   factory
     .module_graph_builder()
     .await?
@@ -199,10 +201,12 @@ async fn native_check(
 
   let tsc_path = ensure_native_tsc_downloaded(&factory).await?;
 
-  // Point tsc at the user's root `tsconfig.json` (which now extends
-  // `.deno/tsconfig.json`) only when Deno is honoring it; otherwise use the
-  // generated config directly so a tsconfig Deno ignores can't leak its options
-  // in (and so we never had to rewrite it). See `sync_types_command`.
+  // When Deno honors a user `tsconfig.json`, base tsc on a throwaway overlay of
+  // it (its options + our generated `extends`/`references`) written to a temp
+  // file in the project root - so the user's path-based options (rootDirs,
+  // baseUrl, include/files) resolve relative to the project, WITHOUT us
+  // rewriting their committed file. Otherwise point tsc at the generated config
+  // directly. See `sync_types_command` / `build_check_root_overlay`.
   let config_disabled =
     matches!(flags.config_flag, crate::args::ConfigFlag::Disabled);
   let honor_user_tsconfig =
@@ -211,9 +215,25 @@ async fn native_check(
       config_disabled,
     );
   let root_tsconfig = project_root.join("tsconfig.json");
+  // Holds the root overlay temp file open until tsc has run (dropping deletes
+  // it), keeping `deno check` side-effect-free on the user's tree.
+  let _root_tsconfig_guard;
   let base_tsconfig = if honor_user_tsconfig && root_tsconfig.exists() {
-    // The user root, which itself extends `.deno/tsconfig.json`.
-    root_tsconfig.clone()
+    let overlay = crate::tsc::tsconfig_gen::build_check_root_overlay(
+      &project_root,
+      &root_tsconfig,
+    )?;
+    let mut tmp = tempfile::Builder::new()
+      .prefix("deno-check-root-")
+      .suffix(".tsconfig.json")
+      .tempfile_in(&project_root)?;
+    std::io::Write::write_all(
+      &mut tmp,
+      deno_core::serde_json::to_string_pretty(&overlay)?.as_bytes(),
+    )?;
+    let path = tmp.path().to_path_buf();
+    _root_tsconfig_guard = tmp;
+    path
   } else {
     project_root.join(".deno").join("tsconfig.json")
   };
@@ -259,7 +279,7 @@ async fn native_check(
     // `deno check <files>` checks only the named files (and their imports), not
     // the whole project. The generated `tsconfig.json` keeps an open `include`
     // (so bundlers can consume its resolver mappings), so write a per-file
-    // config that extends it (by absolute path) and pins `files` — `files`/
+    // config that extends it (by absolute path) and pins `files` - `files`/
     // `include` are not inherited through `extends`, so only these files are
     // type-checked while compilerOptions/paths still apply. `include: []`
     // nullifies the base's open `include` (tsc unions `files` with an inherited

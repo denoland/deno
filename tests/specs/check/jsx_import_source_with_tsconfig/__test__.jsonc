@@ -1,7 +1,4 @@
 {
-  // check rewrites the committed tsconfig.json to extend .deno/tsconfig.json;
-  // run in a copy so it doesn't dirty the working tree.
-  "tempDir": true,
   "args": "check main.tsx",
   "output": "main.out"
 }
