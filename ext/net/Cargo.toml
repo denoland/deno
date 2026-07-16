@@ -35,6 +35,7 @@ thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
 web-transport-proto.workspace = true
+x509-parser.workspace = true
 
 [target.'cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))'.dependencies]
 tokio-vsock.workspace = true
