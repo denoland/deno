@@ -372,18 +372,11 @@ unsafe impl Send for NapiState {}
 
 impl Drop for NapiState {
   fn drop(&mut self) {
-    // Drain external string finalizers from all tracked Envs and remove
-    // their entries from the global EXTERNAL_STRING_ENVS map. This
-    // prevents stale Env pointer dereferences if V8 GCs the external
-    // string after the Env is gone.
+    // External string resources can outlive their Env until V8 disposes the
+    // isolate. Stop exposing each Env to those eventual callbacks; callbacks
+    // whose V8 resource was already disposed are completed with a null Env.
     for env_ptr in &self.env_ptrs {
-      let env = unsafe { &mut **env_ptr };
-      let keys: Vec<usize> =
-        env.external_string_finalizers.keys().copied().collect();
-      for key in keys {
-        crate::js_native_api::remove_external_string_env_entry(key);
-      }
-      env.external_string_finalizers.clear();
+      crate::js_native_api::detach_external_string_env(*env_ptr);
     }
 
     let hooks = {
@@ -506,7 +499,6 @@ pub struct Env {
   pub async_hooks_after: v8::Global<v8::Function>,
   pub async_hooks_destroy: v8::Global<v8::Function>,
   pub next_async_id: i64,
-  pub external_string_finalizers: HashMap<usize, (napi_finalize, *mut c_void)>,
 }
 
 unsafe impl Send for Env {}
@@ -554,7 +546,6 @@ impl Env {
         error_code: Cell::new(napi_ok),
       },
       last_exception: None,
-      external_string_finalizers: HashMap::new(),
     }
   }
 

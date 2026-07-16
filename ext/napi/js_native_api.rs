@@ -1322,56 +1322,189 @@ fn napi_create_string_utf16(
   return napi_clear_last_error(env_ptr);
 }
 
-/// Metadata for an external one-byte string's finalize callback.
-/// Maps buffer address to the Env that owns its finalize callback.
-/// V8 external string destructors only receive (ptr, len), so this
-/// thin global index lets the destructor find the right Env.
-/// The actual callback + hint live on `Env::external_string_finalizers`.
-static EXTERNAL_STRING_ENVS: std::sync::LazyLock<
-  std::sync::Mutex<std::collections::HashMap<usize, usize>>,
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+enum ExternalStringEncoding {
+  OneByte,
+  TwoByte,
+}
+
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+struct ExternalStringKey {
+  data: usize,
+  len: usize,
+  encoding: ExternalStringEncoding,
+}
+
+struct ExternalStringFinalizer {
+  env: Option<usize>,
+  callback: napi_finalize,
+  data: usize,
+  hint: usize,
+  sender: deno_core::V8CrossThreadTaskSpawner,
+  ready: bool,
+}
+
+#[derive(Default)]
+struct ExternalStringFinalizers {
+  next_id: u64,
+  active: std::collections::HashMap<ExternalStringKey, u64>,
+  entries: std::collections::HashMap<u64, ExternalStringFinalizer>,
+}
+
+static EXTERNAL_STRING_FINALIZERS: std::sync::LazyLock<
+  std::sync::Mutex<ExternalStringFinalizers>,
 > = std::sync::LazyLock::new(|| {
-  std::sync::Mutex::new(std::collections::HashMap::new())
+  std::sync::Mutex::new(ExternalStringFinalizers::default())
 });
 
-/// Remove an entry from the global env map. Called during Env teardown
-/// to prevent stale pointer dereferences.
-pub fn remove_external_string_env_entry(key: usize) {
-  EXTERNAL_STRING_ENVS.lock().unwrap().remove(&key);
+fn register_external_string_finalizer(
+  key: ExternalStringKey,
+  env: *mut Env,
+  callback: napi_finalize,
+  data: *mut c_void,
+  hint: *mut c_void,
+) -> Option<u64> {
+  let mut finalizers = EXTERNAL_STRING_FINALIZERS.lock().unwrap();
+
+  // rusty_v8's raw destructor callback only identifies a resource by its
+  // data pointer and length. Copy an indistinguishable second string instead
+  // of risking delivery of the wrong callback or hint.
+  if finalizers.active.contains_key(&key) {
+    return None;
+  }
+
+  let id = finalizers.next_id;
+  finalizers.next_id = finalizers
+    .next_id
+    .checked_add(1)
+    .expect("external string finalizer id overflow");
+  finalizers.active.insert(key, id);
+  finalizers.entries.insert(
+    id,
+    ExternalStringFinalizer {
+      env: Some(env as usize),
+      callback,
+      data: data as usize,
+      hint: hint as usize,
+      sender: unsafe { &*env }.async_work_sender.clone(),
+      ready: false,
+    },
+  );
+  Some(id)
 }
 
-/// V8 destructor for external one-byte strings. Looks up the Env from
-/// the global index, then retrieves and invokes the NAPI finalize callback.
+fn cancel_external_string_finalizer(key: ExternalStringKey, id: u64) -> bool {
+  let mut finalizers = EXTERNAL_STRING_FINALIZERS.lock().unwrap();
+  if finalizers.active.get(&key) == Some(&id) {
+    finalizers.active.remove(&key);
+    finalizers.entries.remove(&id);
+    true
+  } else {
+    false
+  }
+}
+
+fn call_external_string_finalizer(finalizer: ExternalStringFinalizer) {
+  let env = finalizer
+    .env
+    .map_or(std::ptr::null_mut(), |env| env as *mut Env as napi_env);
+  unsafe {
+    (finalizer.callback)(
+      env,
+      finalizer.data as *mut c_void,
+      finalizer.hint as *mut c_void,
+    );
+  }
+}
+
+fn complete_external_string_finalizer(id: u64) {
+  let finalizer = EXTERNAL_STRING_FINALIZERS
+    .lock()
+    .unwrap()
+    .entries
+    .remove(&id);
+  if let Some(finalizer) = finalizer {
+    call_external_string_finalizer(finalizer);
+  }
+}
+
+fn queue_external_string_finalizer(key: ExternalStringKey) {
+  let (id, sender, direct) = {
+    let mut finalizers = EXTERNAL_STRING_FINALIZERS.lock().unwrap();
+    let Some(id) = finalizers.active.remove(&key) else {
+      return;
+    };
+    let Some(finalizer) = finalizers.entries.get_mut(&id) else {
+      return;
+    };
+    finalizer.ready = true;
+    if finalizer.env.is_some() {
+      (id, Some(finalizer.sender.clone()), None)
+    } else {
+      let finalizer = finalizers.entries.remove(&id).unwrap();
+      (id, None, Some(finalizer))
+    }
+  };
+
+  if let Some(finalizer) = direct {
+    call_external_string_finalizer(finalizer);
+  } else if let Some(sender) = sender {
+    sender.spawn(move |_| complete_external_string_finalizer(id));
+  }
+}
+
+/// Stop delivering non-null Env pointers for an environment being torn down.
+/// Resources already disposed by V8 are finalized immediately; still-live
+/// resources receive a null Env when V8 disposes them later.
+pub(crate) fn detach_external_string_env(env: *mut Env) {
+  let ready = {
+    let mut finalizers = EXTERNAL_STRING_FINALIZERS.lock().unwrap();
+    let env = env as usize;
+    let ready: Vec<u64> = finalizers
+      .entries
+      .iter_mut()
+      .filter_map(|(id, finalizer)| {
+        if finalizer.env == Some(env) {
+          finalizer.env = None;
+          finalizer.ready.then_some(*id)
+        } else {
+          None
+        }
+      })
+      .collect();
+    ready
+      .into_iter()
+      .filter_map(|id| finalizers.entries.remove(&id))
+      .collect::<Vec<_>>()
+  };
+
+  for finalizer in ready {
+    call_external_string_finalizer(finalizer);
+  }
+}
+
+/// V8 destructor for external one-byte strings. V8 may call this away from
+/// the runtime thread, so it only updates synchronized metadata and queues the
+/// addon callback onto the runtime task queue.
 unsafe extern "C" fn external_onebyte_destructor(
   data: *mut std::ffi::c_char,
-  _len: usize,
+  len: usize,
 ) {
-  let key = data as usize;
-  if let Some(env_addr) = EXTERNAL_STRING_ENVS.lock().unwrap().remove(&key) {
-    let env_ptr = env_addr as *mut Env;
-    let env = unsafe { &mut *env_ptr };
-    if let Some((callback, hint)) = env.external_string_finalizers.remove(&key)
-    {
-      unsafe {
-        callback(env_ptr as napi_env, data as *mut c_void, hint);
-      }
-    }
-  }
+  queue_external_string_finalizer(ExternalStringKey {
+    data: data as usize,
+    len,
+    encoding: ExternalStringEncoding::OneByte,
+  });
 }
 
-/// V8 destructor for external two-byte strings. Looks up the Env from
-/// the global index, then retrieves and invokes the NAPI finalize callback.
-unsafe extern "C" fn external_twobyte_destructor(data: *mut u16, _len: usize) {
-  let key = data as usize;
-  if let Some(env_addr) = EXTERNAL_STRING_ENVS.lock().unwrap().remove(&key) {
-    let env_ptr = env_addr as *mut Env;
-    let env = unsafe { &mut *env_ptr };
-    if let Some((callback, hint)) = env.external_string_finalizers.remove(&key)
-    {
-      unsafe {
-        callback(env_ptr as napi_env, data as *mut c_void, hint);
-      }
-    }
-  }
+/// V8 destructor for external two-byte strings. This follows the same
+/// synchronized handoff as the one-byte destructor.
+unsafe extern "C" fn external_twobyte_destructor(data: *mut u16, len: usize) {
+  queue_external_string_finalizer(ExternalStringKey {
+    data: data as usize,
+    len,
+    encoding: ExternalStringEncoding::TwoByte,
+  });
 }
 
 #[napi_sym]
@@ -1395,42 +1528,51 @@ fn node_api_create_external_string_latin1(
     length
   };
 
-  if let Some(finalize) = nogc_finalize_callback {
+  let mut finalize_on_copy = true;
+  if let Some(finalize) = nogc_finalize_callback
+    && len > 0
+  {
+    let key = ExternalStringKey {
+      data: string as usize,
+      len,
+      encoding: ExternalStringEncoding::OneByte,
+    };
+    let finalizer_id = register_external_string_finalizer(
+      key,
+      env_ptr,
+      finalize,
+      string as *mut c_void,
+      finalize_hint,
+    );
+
     // Try zero-copy: create a V8 external string backed by the
     // caller's buffer. V8 will call our destructor when the string
     // is GC'd, which in turn calls the NAPI finalize callback.
-    let v8_str = {
-      v8::callback_scope!(unsafe scope, env.context());
-      unsafe {
-        v8::String::new_external_onebyte_raw(
-          scope,
-          string as *mut std::ffi::c_char,
-          len,
-          external_onebyte_destructor,
-        )
-      }
-    };
-    if let Some(v8_str) = v8_str {
-      let key = string as usize;
-      // SAFETY: env_ptr is valid and we need a separate mutable access
-      // to external_string_finalizers while v8_str borrows the scope.
-      unsafe { &mut *env_ptr }
-        .external_string_finalizers
-        .insert(key, (finalize, finalize_hint));
-      EXTERNAL_STRING_ENVS
-        .lock()
-        .unwrap()
-        .insert(key, env_ptr as usize);
-      unsafe {
-        *result = v8::Local::<v8::Value>::from(v8_str).into();
-        if !copied.is_null() {
-          *copied = false;
+    if let Some(finalizer_id) = finalizer_id {
+      let v8_str = {
+        v8::callback_scope!(unsafe scope, env.context());
+        unsafe {
+          v8::String::new_external_onebyte_raw(
+            scope,
+            string as *mut std::ffi::c_char,
+            len,
+            external_onebyte_destructor,
+          )
         }
+      };
+      if let Some(v8_str) = v8_str {
+        unsafe {
+          *result = v8::Local::<v8::Value>::from(v8_str).into();
+          if !copied.is_null() {
+            *copied = false;
+          }
+        }
+        return napi_clear_last_error(check_env!(env_ptr));
       }
-      return napi_clear_last_error(check_env!(env_ptr));
+      finalize_on_copy = cancel_external_string_finalizer(key, finalizer_id);
     }
-    // V8 rejected the external string (e.g. too short), fall through
-    // to copy path
+    // V8 rejected the external string or an indistinguishable resource is
+    // already live. Fall through to the copy path.
   }
 
   // Fallback: copy the string and call finalize immediately
@@ -1442,7 +1584,7 @@ fn node_api_create_external_string_latin1(
         *copied = true;
       }
     }
-    if let Some(finalize) = nogc_finalize_callback {
+    if finalize_on_copy && let Some(finalize) = nogc_finalize_callback {
       unsafe {
         finalize(env_ptr as napi_env, string as *mut c_void, finalize_hint);
       }
@@ -1478,42 +1620,51 @@ fn node_api_create_external_string_utf16(
     length
   };
 
-  if let Some(finalize) = nogc_finalize_callback {
+  let mut finalize_on_copy = true;
+  if let Some(finalize) = nogc_finalize_callback
+    && len > 0
+  {
+    let key = ExternalStringKey {
+      data: string as usize,
+      len,
+      encoding: ExternalStringEncoding::TwoByte,
+    };
+    let finalizer_id = register_external_string_finalizer(
+      key,
+      env_ptr,
+      finalize,
+      string as *mut c_void,
+      finalize_hint,
+    );
+
     // Try zero-copy: create a V8 external string backed by the
     // caller's buffer. V8 will call our destructor when the string
     // is GC'd, which in turn calls the NAPI finalize callback.
-    let v8_str = {
-      v8::callback_scope!(unsafe scope, env.context());
-      unsafe {
-        v8::String::new_external_twobyte_raw(
-          scope,
-          string as *mut u16,
-          len,
-          external_twobyte_destructor,
-        )
-      }
-    };
-    if let Some(v8_str) = v8_str {
-      let key = string as usize;
-      // SAFETY: env_ptr is valid and we need a separate mutable access
-      // to external_string_finalizers while v8_str borrows the scope.
-      unsafe { &mut *env_ptr }
-        .external_string_finalizers
-        .insert(key, (finalize, finalize_hint));
-      EXTERNAL_STRING_ENVS
-        .lock()
-        .unwrap()
-        .insert(key, env_ptr as usize);
-      unsafe {
-        *result = v8::Local::<v8::Value>::from(v8_str).into();
-        if !copied.is_null() {
-          *copied = false;
+    if let Some(finalizer_id) = finalizer_id {
+      let v8_str = {
+        v8::callback_scope!(unsafe scope, env.context());
+        unsafe {
+          v8::String::new_external_twobyte_raw(
+            scope,
+            string as *mut u16,
+            len,
+            external_twobyte_destructor,
+          )
         }
+      };
+      if let Some(v8_str) = v8_str {
+        unsafe {
+          *result = v8::Local::<v8::Value>::from(v8_str).into();
+          if !copied.is_null() {
+            *copied = false;
+          }
+        }
+        return napi_clear_last_error(check_env!(env_ptr));
       }
-      return napi_clear_last_error(check_env!(env_ptr));
+      finalize_on_copy = cancel_external_string_finalizer(key, finalizer_id);
     }
-    // V8 rejected the external string (e.g. too short), fall through
-    // to copy path
+    // V8 rejected the external string or an indistinguishable resource is
+    // already live. Fall through to the copy path.
   }
 
   // Fallback: copy the string and call finalize immediately
@@ -1525,7 +1676,7 @@ fn node_api_create_external_string_utf16(
         *copied = true;
       }
     }
-    if let Some(finalize) = nogc_finalize_callback {
+    if finalize_on_copy && let Some(finalize) = nogc_finalize_callback {
       unsafe {
         finalize(env_ptr as napi_env, string as *mut c_void, finalize_hint);
       }
