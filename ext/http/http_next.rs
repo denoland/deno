@@ -166,14 +166,9 @@ impl HttpRecordExternal {
     }
   }
 
-  fn complete(self) {
+  fn complete(&self) {
     match self {
-      // Move the record into `complete()` so that when the request was
-      // cancelled (`been_dropped`) this is the last strong reference and the
-      // record can be recycled. Cloning here would leave this enum's own
-      // reference alive, breaking `HttpRecord::recycle`'s sole-ownership
-      // invariant (see #36046).
-      Self::Hyper(record) => record.complete(),
+      Self::Hyper(record) => record.clone().complete(),
       Self::Raw(record) => record.complete(),
     }
   }
