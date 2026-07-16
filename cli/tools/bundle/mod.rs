@@ -50,6 +50,7 @@ use deno_resolver::loader::LoadedModuleOrAsset;
 use deno_resolver::loader::LoadedModuleSource;
 use deno_resolver::loader::RequestedModuleType;
 use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
+use deno_runtime::deno_permissions::OpenAccessKind;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use esbuild_client::EsbuildFlagsBuilder;
@@ -105,7 +106,7 @@ pub async fn prepare_inputs(
   let mut html_paths = Vec::new();
   let mut script_entry_urls = Vec::new();
   for url in &resolved_entrypoints {
-    if url.as_str().to_lowercase().ends_with(".html") {
+    if is_html_entrypoint(url) {
       html_paths.push(url.to_file_path().unwrap());
     } else {
       script_entry_urls.push(url.clone());
@@ -154,7 +155,11 @@ pub async fn prepare_inputs(
     let virtual_modules = Arc::new(VirtualModules::new());
 
     for html_path in &html_paths {
-      let entry = html::load_html_entrypoint(init_cwd, html_path)?;
+      let entry = html::load_html_entrypoint(
+        init_cwd,
+        html_path,
+        &plugin_handler.permissions,
+      )?;
 
       let virtual_module_path =
         deno_path_util::url_from_file_path(&entry.virtual_module_path)?;
@@ -209,6 +214,7 @@ pub async fn prepare_inputs(
 pub async fn bundle_init(
   mut flags: Arc<Flags>,
   bundle_flags: &BundleFlags,
+  caller_permissions: Option<PermissionsContainer>,
 ) -> Result<EsbuildBundler, AnyError> {
   {
     let flags_mut = Arc::make_mut(&mut flags);
@@ -220,7 +226,12 @@ pub async fn bundle_init(
 
   let resolver = factory.resolver().await?.clone();
   let module_load_preparer = factory.module_load_preparer().await?.clone();
-  let root_permissions = factory.root_permissions_container()?;
+  let permissions = match caller_permissions {
+    Some(permissions) => permissions,
+    None => {
+      PermissionsContainer::allow_all(factory.permission_desc_parser()?.clone())
+    }
+  };
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
   let cli_options = factory.cli_options()?;
@@ -240,7 +251,7 @@ pub async fn bundle_init(
     module_load_preparer,
     resolved_roots: Arc::new(RwLock::new(Arc::new(IndexSet::new()))),
     module_graph_container,
-    permissions: root_permissions.clone(),
+    permissions,
     module_loader: module_loader.clone(),
     externals_matcher: if bundle_flags.external.is_empty() {
       None
@@ -334,7 +345,7 @@ pub async fn bundle(
       )
       .await?;
   }
-  let bundler = bundle_init(flags.clone(), &bundle_flags).await?;
+  let bundler = bundle_init(flags.clone(), &bundle_flags, None).await?;
   let init_cwd = bundler.cwd.clone();
   let start = std::time::Instant::now();
   let response = bundler.build().await?;
@@ -377,6 +388,7 @@ pub async fn bundle(
       bundle_flags.minify,
       bundler.input.clone(),
       bundle_flags.output_dir.as_ref().map(Path::new),
+      None,
     )?;
 
     if bundle_flags.declaration {
@@ -877,7 +889,7 @@ pub async fn bundle_for_compile(
     flags_mut.internal.force_bundle_mode = true;
   }
 
-  let bundler = bundle_init(flags, &bundle_flags).await?;
+  let bundler = bundle_init(flags, &bundle_flags, None).await?;
   let response = bundler.build().await?;
 
   handle_esbuild_errors_and_warnings(
@@ -1001,6 +1013,7 @@ async fn bundle_watch(
             minified,
             input,
             output_dir,
+            None,
           )?;
           print_finished_message(&metafile, &output_infos, start.elapsed())?;
 
@@ -1197,7 +1210,11 @@ impl EsbuildBundler {
         continue;
       }
 
-      let updated = html::load_html_entrypoint(&self.cwd, &page.path)?;
+      let updated = html::load_html_entrypoint(
+        &self.cwd,
+        &page.path,
+        &self.plugin_handler.permissions,
+      )?;
       let virtual_module_url =
         deno_path_util::url_from_file_path(&updated.virtual_module_path)?
           .to_string();
@@ -2523,6 +2540,10 @@ fn resolve_entrypoints(
   Ok(resolved)
 }
 
+fn is_html_entrypoint(url: &Url) -> bool {
+  url.path().to_ascii_lowercase().ends_with(".html")
+}
+
 fn resolve_roots(
   entrypoints: Vec<Url>,
   cwd: &Path,
@@ -2832,6 +2853,7 @@ pub fn process_result(
   minified: bool,
   input: BundlerInput,
   outdir: Option<&Path>,
+  write_permissions: Option<&PermissionsContainer>,
 ) -> Result<Vec<OutputFileInfo>, AnyError> {
   let output_files =
     collect_output_files(response.output_files.as_deref(), cwd, input, outdir)?;
@@ -2854,11 +2876,31 @@ pub fn process_result(
       continue;
     }
 
+    let checked_path = write_permissions
+      .map(|permissions| {
+        permissions.check_open(
+          Cow::Owned(path.to_path_buf()),
+          OpenAccessKind::Write,
+          Some("Deno.bundle()"),
+        )
+      })
+      .transpose()?;
+    let path = checked_path.as_deref().unwrap_or(path);
+
     if let Some(parent) = path.parent()
       && !exists_cache.contains(parent)
     {
       if !parent.exists() {
-        std::fs::create_dir_all(parent)?;
+        let checked_parent = write_permissions
+          .map(|permissions| {
+            permissions.check_open(
+              Cow::Owned(parent.to_path_buf()),
+              OpenAccessKind::WriteNoFollow,
+              Some("Deno.bundle()"),
+            )
+          })
+          .transpose()?;
+        std::fs::create_dir_all(checked_parent.as_deref().unwrap_or(parent))?;
       }
       exists_cache.insert(parent.to_path_buf());
     }
@@ -2916,6 +2958,26 @@ fn print_finished_message(
   log::info!("{}", output);
 
   Ok(())
+}
+
+#[cfg(test)]
+mod entrypoint_tests {
+  use deno_core::url::Url;
+
+  use super::is_html_entrypoint;
+
+  #[test]
+  fn html_entrypoint_detection_ignores_fragment() {
+    assert!(is_html_entrypoint(
+      &Url::parse("file:///tmp/index.html").unwrap()
+    ));
+    assert!(is_html_entrypoint(
+      &Url::parse("file:///tmp/INDEX.HTML").unwrap()
+    ));
+    assert!(!is_html_entrypoint(
+      &Url::parse("file:///tmp/secret.txt#.html").unwrap()
+    ));
+  }
 }
 
 #[cfg(test)]
