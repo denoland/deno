@@ -1399,8 +1399,9 @@ Deno.test(async function killMultipleTimesNoError() {
   child.kill();
   child.kill();
 
-  // explicitly calling disconnect after kill should throw
-  assertThrows(() => child.disconnect());
+  // kill() should not synchronously disconnect — connected stays true
+  // until the pipe closes asynchronously.
+  assert(child.connected);
 
   await timeout.promise;
 });

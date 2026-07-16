@@ -873,11 +873,6 @@ class ChildProcess extends EventEmitter {
       }
     }
 
-    /* Cancel any pending IPC I/O */
-    if (this[kCanDisconnect]) {
-      this.disconnect?.();
-    }
-
     this.killed = true;
     this.signalCode = signalName;
     return true;
