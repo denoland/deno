@@ -1,4 +1,4 @@
-Check (tsc [WILDLINE])
+Check [WILDCARD]wrong_name.ts
 TS2307 [ERROR]: Import "foo" not a dependency and not in import map from "[WILDCARD]wrong_name.ts"
   hint: "@org/foo" is available in this workspace (via a workspace member or the "links" field). Import it by its full name.
     at [WILDCARD]wrong_name.ts:1:8

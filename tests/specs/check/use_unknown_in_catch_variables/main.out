@@ -1,4 +1,4 @@
-Check (tsc [WILDLINE])
+Check [WILDCARD]main.ts
 TS18046 [ERROR]: 'e' is of type 'unknown'.
   console.log(e.message);
               ^

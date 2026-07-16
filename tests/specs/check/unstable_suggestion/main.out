@@ -1,4 +1,4 @@
-Check (tsc [WILDLINE])
+Check [WILDCARD]main.ts
 TS2726 [ERROR]: Cannot find lib definition for 'deno.ns'.
 /// <reference lib="deno.ns" />
                     ~~~~

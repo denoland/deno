@@ -1,4 +1,4 @@
-Check (tsc [WILDLINE])
+Check [WILDCARD]main.ts
 TS1192 [ERROR]: Module '"[WILDCARD]/hello"' has no default export.
 import helloBytes from "./hello.ts" with { type: "bytes" };
        ~~~~~~~~~~

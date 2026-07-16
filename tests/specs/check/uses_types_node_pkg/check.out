@@ -1,4 +1,4 @@
-Check (tsc [WILDLINE])
+Check main.ts
 TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
   const value: number = test.getValue();
         ~~~~~

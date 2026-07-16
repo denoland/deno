@@ -1,4 +1,4 @@
-Check (tsc [WILDLINE])
+Check [WILDCARD]main.ts
 TS2307 [ERROR]: Cannot find module 'package/package.json' or its corresponding type declarations.
 import * as test from "package/package.json";
                       ~~~~~~~~~~~~~~~~~~~~~~

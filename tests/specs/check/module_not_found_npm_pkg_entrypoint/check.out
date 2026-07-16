@@ -1,4 +1,4 @@
-Check (tsc [WILDLINE])
+Check [WILDCARD]main.ts
 TS7016 [ERROR]: Could not find a declaration file for module 'package'. '[WILDCARD]/node_modules/package/index.js' implicitly has an 'any' type.
 import { Test } from "package";
                      ~~~~~~~~~

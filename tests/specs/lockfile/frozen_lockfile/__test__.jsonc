@@ -193,7 +193,7 @@
         },
         {
           "args": "check --frozen=false add.ts",
-          "output": "[WILDCARD]Check (tsc [WILDLINE])\n"
+          "output": "[WILDCARD]Check [WILDLINE]\n"
         }
       ]
     }

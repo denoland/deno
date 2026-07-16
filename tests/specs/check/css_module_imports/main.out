@@ -1,4 +1,4 @@
-Check (tsc [WILDLINE])
+Check [WILDCARD]main.ts
 TS2322 [ERROR]: Type 'CSSStyleSheet' is not assignable to type 'number'.
 invalid = sheet;
 ~~~~~~~

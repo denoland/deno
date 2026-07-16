@@ -1,4 +1,4 @@
-Check (tsc [WILDLINE])
+Check [WILDCARD]main.ts
 TS2307 [ERROR]: Cannot find module './multi_value.wasm' or its corresponding type declarations.
 import { add_and_sub } from "./multi_value.wasm";
                             ~~~~~~~~~~~~~~~~~~~~

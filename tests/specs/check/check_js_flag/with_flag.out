@@ -1,4 +1,4 @@
-Check (tsc [WILDLINE])
+Check [WILDCARD]main.js
 TS2554 [ERROR]: Expected 2 arguments, but got 1.
 console.log(Math.pow(""));
                  ~~~

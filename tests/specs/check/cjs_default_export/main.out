@@ -1,5 +1,5 @@
 Download [WILDCARD]
-Check (tsc [WILDLINE])
+Check [WILDCARD]main.ts
 TS2339 [ERROR]: Property 'default' does not exist on type '() => number'.
 export const Test: string = cjsDefault.default();
                                        ~~~~~~~

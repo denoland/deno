@@ -1,4 +1,5 @@
-Check (tsc [WILDLINE])
+Check [WILDCARD]main.ts
+Check [WILDCARD]mod.ts
 TS2304 [ERROR]: Cannot find name 'WorkerGlobalScope'.
 WorkerGlobalScope;
 ~~~~~~~~~~~~~~~~~

@@ -16,7 +16,7 @@
         },
         {
           "args": "check --all ./main.ts",
-          "output": "Check (tsc [WILDLINE])\n"
+          "output": "Check [WILDLINE]\n"
         }
       ]
     },
@@ -32,7 +32,7 @@
         },
         {
           "args": "check --all ./main.ts",
-          "output": "Check (tsc [WILDLINE])\n"
+          "output": "Check [WILDLINE]\n"
         }
       ]
     },
@@ -48,7 +48,7 @@
         },
         {
           "args": "check --all ./main.ts",
-          "output": "Check (tsc [WILDLINE])\n"
+          "output": "Check [WILDLINE]\n"
         }
       ]
     }

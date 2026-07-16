@@ -1,4 +1,4 @@
-Check (tsc [WILDLINE])
+Check [WILDCARD]main.ts
 TS9013 [ERROR]: Expression type can't be inferred with --isolatedDeclarations.
   return a + b;
          ^
