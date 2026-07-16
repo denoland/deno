@@ -224,7 +224,7 @@ async function promoteBinaryToRc(
   await runRcodesign(target, unzippedName, commitHash);
   // Set executable permission
   if (!target.includes("windows")) {
-    Deno.chmod(unzippedName, 0o777);
+    await Deno.chmod(unzippedName, 0o755);
   }
 
   await createArchive(unzippedName, archiveName);
