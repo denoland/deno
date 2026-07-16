@@ -49,6 +49,7 @@ use crate::node::CliPackageJsonResolver;
 use crate::resolver::CliNpmReqResolver;
 use crate::sys::CliSys;
 use crate::tools::unfurl_utils::ImportMetaResolveCollector;
+use crate::tools::unfurl_utils::dynamic_argument_prefix_range;
 use crate::tools::unfurl_utils::to_range;
 
 #[derive(Debug, Clone)]
@@ -818,12 +819,6 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
   ) -> bool {
     match &dep.argument {
       deno_graph::analysis::DynamicArgument::String(specifier) => {
-        let range = to_range(text_info, &dep.argument_range);
-        let maybe_relative_index =
-          text_info.text_str()[range.start..range.end].find(specifier);
-        let Some(relative_index) = maybe_relative_index else {
-          return true; // always say it's analyzable for a string
-        };
         let maybe_unfurled = self.unfurl_specifier_reporting_diagnostic(
           module_url,
           specifier,
@@ -833,9 +828,15 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
           diagnostic_reporter,
         );
         if let Some(unfurled) = maybe_unfurled {
-          let start = range.start + relative_index;
+          let Some(range) = dynamic_argument_prefix_range(
+            text_info,
+            &dep.argument_range,
+            specifier,
+          ) else {
+            return false;
+          };
           text_changes.push(deno_ast::TextChange {
-            range: start..start + specifier.len(),
+            range,
             new_text: unfurled,
           });
         }
@@ -862,15 +863,15 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
             let Some(unfurled) = unfurled else {
               return true; // nothing to unfurl
             };
-            let range = to_range(text_info, &dep.argument_range);
-            let maybe_relative_index =
-              text_info.text_str()[range.start..].find(specifier);
-            let Some(relative_index) = maybe_relative_index else {
+            let Some(range) = dynamic_argument_prefix_range(
+              text_info,
+              &dep.argument_range,
+              specifier,
+            ) else {
               return false;
             };
-            let start = range.start + relative_index;
             text_changes.push(deno_ast::TextChange {
-              range: start..start + specifier.len(),
+              range,
               new_text: unfurled,
             });
             true
@@ -1322,6 +1323,49 @@ export type * from "./c.d.ts";
   }
 
   #[tokio::test]
+  async fn test_unfurling_dynamic_prefix_source_ranges() {
+    let cwd = get_cwd();
+    let memory_sys = InMemorySys::new_with_cwd(&cwd);
+    memory_sys.fs_insert_json(
+      cwd.join("deno.json"),
+      json!({
+        "imports": {
+          "lib/": "./lib/",
+        }
+      }),
+    );
+    let unfurler = build_unfurler(memory_sys, &cwd).await;
+
+    let source_code = r#"const escapedTemplate = await import(`\x6cib/${name}`);
+const interpolationDecoy = await import(`\x6cib/${"lib/"}${name}`);
+const concatenationDecoy = await import("\x6cib/" + "lib/" + name);
+const unchangedEscaped = await import("\x6eode:fs");
+const validTemplate = await import(`lib/${name}`);
+const validConcatenation = await import("lib/" + name);
+const laterUnrelatedText = "lib/";
+"#;
+    let (unfurled_source, diagnostics) =
+      unfurl_text_with_diagnostics(&cwd.join("mod.ts"), source_code, &unfurler);
+
+    assert_eq!(diagnostics.len(), 3);
+    assert!(diagnostics.iter().all(|diagnostic| matches!(
+      diagnostic,
+      SpecifierUnfurlerDiagnostic::UnanalyzableDynamicImport { .. }
+    )));
+    assert_eq!(
+      unfurled_source,
+      r#"const escapedTemplate = await import(`\x6cib/${name}`);
+const interpolationDecoy = await import(`\x6cib/${"lib/"}${name}`);
+const concatenationDecoy = await import("\x6cib/" + "lib/" + name);
+const unchangedEscaped = await import("\x6eode:fs");
+const validTemplate = await import(`./lib/${name}`);
+const validConcatenation = await import("./lib/" + name);
+const laterUnrelatedText = "lib/";
+"#
+    );
+  }
+
+  #[tokio::test]
   async fn test_unfurling_npm_dep_workspace_specifier() {
     let cwd = get_cwd();
     let memory_sys = InMemorySys::new_with_cwd(&cwd);
@@ -1712,7 +1756,10 @@ export * from "jsr:@std/semver@1";
     let workspace_factory = Arc::new(WorkspaceFactory::new(
       sys,
       cwd.to_path_buf(),
-      WorkspaceFactoryOptions::default(),
+      WorkspaceFactoryOptions {
+        maybe_custom_deno_dir_root: Some(cwd.join("deno_dir")),
+        ..Default::default()
+      },
     ));
     let resolver_factory = ResolverFactory::new(
       workspace_factory,

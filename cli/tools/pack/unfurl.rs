@@ -14,6 +14,7 @@ use deno_graph::analysis::TypeScriptReference;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 
+use crate::tools::unfurl_utils::dynamic_argument_prefix_range;
 use crate::tools::unfurl_utils::to_range;
 
 /// Result of unfurling a module's specifiers for npm compatibility.
@@ -223,13 +224,13 @@ fn unfurl_dynamic_specifier(
       }
 
       if let Some(rewritten) = rewrite_specifier(specifier) {
-        let range = to_range(text_info, &dep.argument_range);
-        // Find the specifier within the range (it may be surrounded by quotes)
-        let text_in_range = &text_info.text_str()[range.clone()];
-        if let Some(relative_index) = text_in_range.find(specifier.as_str()) {
-          let start = range.start + relative_index;
+        if let Some(range) = dynamic_argument_prefix_range(
+          text_info,
+          &dep.argument_range,
+          specifier,
+        ) {
           text_changes.push(TextChange {
-            range: start..start + specifier.len(),
+            range,
             new_text: rewritten,
           });
         }
@@ -251,13 +252,13 @@ fn unfurl_dynamic_specifier(
             {
               dependencies.insert(name, version);
             }
-            let range = to_range(text_info, &dep.argument_range);
-            let text_in_range = &text_info.text_str()[range.clone()];
-            if let Some(relative_index) = text_in_range.find(specifier.as_str())
-            {
-              let start = range.start + relative_index;
+            if let Some(range) = dynamic_argument_prefix_range(
+              text_info,
+              &dep.argument_range,
+              specifier,
+            ) {
               text_changes.push(TextChange {
-                range: start..start + specifier.len(),
+                range,
                 new_text: rewritten,
               });
             }
@@ -270,13 +271,13 @@ fn unfurl_dynamic_specifier(
             dependencies.insert(name, version);
           }
           if let Some(rewritten) = rewrite_specifier(specifier) {
-            let range = to_range(text_info, &dep.argument_range);
-            let text_in_range = &text_info.text_str()[range.start..];
-            if let Some(relative_index) = text_in_range.find(specifier.as_str())
-            {
-              let start = range.start + relative_index;
+            if let Some(range) = dynamic_argument_prefix_range(
+              text_info,
+              &dep.argument_range,
+              specifier,
+            ) {
               text_changes.push(TextChange {
-                range: start..start + specifier.len(),
+                range,
                 new_text: rewritten,
               });
             }
@@ -452,6 +453,48 @@ fn normalize_version(version: &str) -> String {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn test_dynamic_prefix_rewrites_exact_source_part() {
+    let specifier = ModuleSpecifier::parse("file:///mod.ts").unwrap();
+    let source = r#"const escapedTemplate = import(`npm:\x65xpress@4/lib/${name}`);
+const interpolationDecoy = import(`npm:\x65xpress@4/lib/${"npm:express@4/lib/"}${name}`);
+const concatenationDecoy = import("npm:\x65xpress@4/lib/" + "npm:express@4/lib/" + name);
+const validTemplate = import(`npm:express@4/lib/${name}`);
+const validConcatenation = import("npm:express@4/lib/" + name);
+const laterUnrelatedText = "npm:express@4/lib/";
+"#;
+    let parsed_source = deno_ast::parse_module(deno_ast::ParseParams {
+      specifier: specifier.clone(),
+      text: source.into(),
+      media_type: deno_ast::MediaType::TypeScript,
+      capture_tokens: false,
+      scope_analysis: false,
+      maybe_syntax: None,
+    })
+    .unwrap();
+    let result = unfurl_specifiers(
+      &parsed_source,
+      &specifier,
+      &ModuleGraph::new(deno_graph::GraphKind::All),
+    );
+    assert_eq!(
+      result.dependencies.get("express").map(String::as_str),
+      Some("^4")
+    );
+    let output = deno_ast::apply_text_changes(source, result.text_changes);
+
+    assert_eq!(
+      output,
+      r#"const escapedTemplate = import(`npm:\x65xpress@4/lib/${name}`);
+const interpolationDecoy = import(`npm:\x65xpress@4/lib/${"npm:express@4/lib/"}${name}`);
+const concatenationDecoy = import("npm:\x65xpress@4/lib/" + "npm:express@4/lib/" + name);
+const validTemplate = import(`express/lib/${name}`);
+const validConcatenation = import("express/lib/" + name);
+const laterUnrelatedText = "npm:express@4/lib/";
+"#
+    );
+  }
 
   #[test]
   fn test_rewrite_file_extension() {

@@ -13,6 +13,40 @@ use deno_ast::swc::ast::MetaPropKind;
 use deno_ast::swc::ecma_visit::Visit;
 use deno_ast::swc::ecma_visit::noop_visit_type;
 
+/// Gets the exact source range for a cooked dynamic import prefix.
+///
+/// Dynamic dependency ranges may cover an entire concatenation or template
+/// expression. Only accept prefixes that occur immediately after the opening
+/// string or template delimiter so a cooked value cannot match unrelated text
+/// later in the expression.
+pub fn dynamic_argument_prefix_range(
+  text_info: &SourceTextInfo,
+  range: &deno_graph::PositionRange,
+  prefix: &str,
+) -> Option<std::ops::Range<usize>> {
+  let range = range
+    .as_source_range(text_info)
+    .as_byte_range(text_info.range().start);
+  let text = &text_info.text_str()[range.clone()];
+  let delimiter = match text.as_bytes().first() {
+    Some(delimiter @ (b'\'' | b'"' | b'`')) => *delimiter,
+    _ => return None,
+  };
+  let start = range.start + 1;
+  let end = start.checked_add(prefix.len())?;
+  if end > range.end || text_info.text_str().get(start..end) != Some(prefix) {
+    return None;
+  }
+
+  let remaining = text_info.text_str().as_bytes().get(end..range.end)?;
+  let has_exact_boundary = match delimiter {
+    b'\'' | b'"' => remaining.first() == Some(&delimiter),
+    b'`' => remaining.starts_with(b"${") || remaining.first() == Some(&b'`'),
+    _ => unreachable!(),
+  };
+  has_exact_boundary.then_some(start..end)
+}
+
 /// Collects `import.meta.resolve("...")` call sites from a parsed AST.
 ///
 /// Used by both publish and pack unfurlers to find specifiers passed to
