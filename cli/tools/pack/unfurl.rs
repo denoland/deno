@@ -14,7 +14,9 @@ use deno_graph::analysis::TypeScriptReference;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 
+use crate::tools::unfurl_utils::SpecifierTextContext;
 use crate::tools::unfurl_utils::dynamic_argument_prefix_range;
+use crate::tools::unfurl_utils::specifier_text_change;
 use crate::tools::unfurl_utils::to_range;
 
 /// Result of unfurling a module's specifiers for npm compatibility.
@@ -85,6 +87,7 @@ pub fn unfurl_specifiers(
       &specifier_with_range.text,
       &specifier_with_range.range,
       text_info,
+      SpecifierTextContext::QuotedComment,
       &mut text_changes,
       &mut dependencies,
     );
@@ -96,6 +99,7 @@ pub fn unfurl_specifiers(
       &jsdoc.specifier.text,
       &jsdoc.specifier.range,
       text_info,
+      SpecifierTextContext::QuotedComment,
       &mut text_changes,
       &mut dependencies,
     );
@@ -107,6 +111,7 @@ pub fn unfurl_specifiers(
       &specifier_with_range.text,
       &specifier_with_range.range,
       text_info,
+      SpecifierTextContext::UnquotedComment,
       &mut text_changes,
       &mut dependencies,
     );
@@ -118,6 +123,7 @@ pub fn unfurl_specifiers(
       &specifier_with_range.text,
       &specifier_with_range.range,
       text_info,
+      SpecifierTextContext::UnquotedComment,
       &mut text_changes,
       &mut dependencies,
     );
@@ -140,10 +146,14 @@ pub fn unfurl_specifiers(
         }
 
         let byte_range = range.as_byte_range(text_info.range().start);
-        text_changes.push(TextChange {
-          range: byte_range,
-          new_text: rewritten,
-        });
+        if let Some(text_change) = specifier_text_change(
+          text_info,
+          byte_range,
+          &rewritten,
+          SpecifierTextContext::JavaScript,
+        ) {
+          text_changes.push(text_change);
+        }
       }
     }
   }
@@ -159,6 +169,7 @@ fn unfurl_specifier_with_range(
   spec: &str,
   range: &deno_graph::PositionRange,
   text_info: &SourceTextInfo,
+  context: SpecifierTextContext,
   text_changes: &mut Vec<TextChange>,
   dependencies: &mut BTreeMap<String, String>,
 ) {
@@ -168,10 +179,11 @@ fn unfurl_specifier_with_range(
 
   if let Some(rewritten) = rewrite_specifier(spec) {
     let byte_range = to_range(text_info, range);
-    text_changes.push(TextChange {
-      range: byte_range,
-      new_text: rewritten,
-    });
+    if let Some(text_change) =
+      specifier_text_change(text_info, byte_range, &rewritten, context)
+    {
+      text_changes.push(text_change);
+    }
   }
 }
 
@@ -196,10 +208,14 @@ fn unfurl_static_specifier(
 
   if let Some(rewritten) = rewrite_specifier(spec) {
     let byte_range = to_range(text_info, range);
-    text_changes.push(TextChange {
-      range: byte_range,
-      new_text: rewritten,
-    });
+    if let Some(text_change) = specifier_text_change(
+      text_info,
+      byte_range,
+      &rewritten,
+      SpecifierTextContext::JavaScript,
+    ) {
+      text_changes.push(text_change);
+    }
   }
 }
 
@@ -223,17 +239,20 @@ fn unfurl_dynamic_specifier(
         dependencies.insert(name, version);
       }
 
-      if let Some(rewritten) = rewrite_specifier(specifier) {
-        if let Some(range) = dynamic_argument_prefix_range(
+      if let Some(rewritten) = rewrite_specifier(specifier)
+        && let Some(range) = dynamic_argument_prefix_range(
           text_info,
           &dep.argument_range,
           specifier,
-        ) {
-          text_changes.push(TextChange {
-            range,
-            new_text: rewritten,
-          });
-        }
+        )
+        && let Some(text_change) = specifier_text_change(
+          text_info,
+          range,
+          &rewritten,
+          SpecifierTextContext::JavaScript,
+        )
+      {
+        text_changes.push(text_change);
       }
     }
     DynamicArgument::Template(parts) => {
@@ -256,11 +275,13 @@ fn unfurl_dynamic_specifier(
               text_info,
               &dep.argument_range,
               specifier,
+            ) && let Some(text_change) = specifier_text_change(
+              text_info,
+              range,
+              &rewritten,
+              SpecifierTextContext::JavaScript,
             ) {
-              text_changes.push(TextChange {
-                range,
-                new_text: rewritten,
-              });
+              text_changes.push(text_change);
             }
           }
           return;
@@ -270,17 +291,20 @@ fn unfurl_dynamic_specifier(
           if let Some((name, version)) = extract_package_dependency(specifier) {
             dependencies.insert(name, version);
           }
-          if let Some(rewritten) = rewrite_specifier(specifier) {
-            if let Some(range) = dynamic_argument_prefix_range(
+          if let Some(rewritten) = rewrite_specifier(specifier)
+            && let Some(range) = dynamic_argument_prefix_range(
               text_info,
               &dep.argument_range,
               specifier,
-            ) {
-              text_changes.push(TextChange {
-                range,
-                new_text: rewritten,
-              });
-            }
+            )
+            && let Some(text_change) = specifier_text_change(
+              text_info,
+              range,
+              &rewritten,
+              SpecifierTextContext::JavaScript,
+            )
+          {
+            text_changes.push(text_change);
           }
         }
       }
@@ -494,6 +518,47 @@ const validConcatenation = import("express/lib/" + name);
 const laterUnrelatedText = "npm:express@4/lib/";
 "#
     );
+  }
+
+  #[test]
+  fn test_generated_specifiers_remain_valid_literals() {
+    let specifier = ModuleSpecifier::parse("file:///mod.ts").unwrap();
+    let source = r#"import value from "npm:package/path\"double";
+export * from 'npm:package/path\'single';
+import.meta.resolve("npm:package/path\"double");
+"#;
+    let parsed_source = deno_ast::parse_module(deno_ast::ParseParams {
+      specifier: specifier.clone(),
+      text: source.into(),
+      media_type: deno_ast::MediaType::TypeScript,
+      capture_tokens: false,
+      scope_analysis: false,
+      maybe_syntax: None,
+    })
+    .unwrap();
+    let result = unfurl_specifiers(
+      &parsed_source,
+      &specifier,
+      &ModuleGraph::new(deno_graph::GraphKind::All),
+    );
+    let output = deno_ast::apply_text_changes(source, result.text_changes);
+
+    assert_eq!(
+      output,
+      r#"import value from "package/path\"double";
+export * from 'package/path\'single';
+import.meta.resolve("package/path\"double");
+"#
+    );
+    deno_ast::parse_module(deno_ast::ParseParams {
+      specifier,
+      text: output.into(),
+      media_type: deno_ast::MediaType::TypeScript,
+      capture_tokens: false,
+      scope_analysis: false,
+      maybe_syntax: None,
+    })
+    .unwrap();
   }
 
   #[test]

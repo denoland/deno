@@ -49,7 +49,9 @@ use crate::node::CliPackageJsonResolver;
 use crate::resolver::CliNpmReqResolver;
 use crate::sys::CliSys;
 use crate::tools::unfurl_utils::ImportMetaResolveCollector;
+use crate::tools::unfurl_utils::SpecifierTextContext;
 use crate::tools::unfurl_utils::dynamic_argument_prefix_range;
+use crate::tools::unfurl_utils::specifier_text_change;
 use crate::tools::unfurl_utils::to_range;
 
 #[derive(Debug, Clone)]
@@ -835,10 +837,15 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
           ) else {
             return false;
           };
-          text_changes.push(deno_ast::TextChange {
+          let Some(text_change) = specifier_text_change(
+            text_info,
             range,
-            new_text: unfurled,
-          });
+            &unfurled,
+            SpecifierTextContext::JavaScript,
+          ) else {
+            return false;
+          };
+          text_changes.push(text_change);
         }
         true
       }
@@ -870,10 +877,15 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
             ) else {
               return false;
             };
-            text_changes.push(deno_ast::TextChange {
+            let Some(text_change) = specifier_text_change(
+              text_info,
               range,
-              new_text: unfurled,
-            });
+              &unfurled,
+              SpecifierTextContext::JavaScript,
+            ) else {
+              return false;
+            };
+            text_changes.push(text_change);
             true
           }
           Some(DynamicTemplatePart::Expr) => {
@@ -903,6 +915,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
       |specifier: &str,
        range: PositionOrSourceRangeRef,
        resolution_kind: deno_resolver::workspace::ResolutionKind,
+       context: SpecifierTextContext,
        text_changes: &mut Vec<deno_ast::TextChange>,
        diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic)| {
         if let Some(unfurled) = self.unfurl_specifier_reporting_diagnostic(
@@ -913,17 +926,19 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
           range,
           diagnostic_reporter,
         ) {
-          text_changes.push(deno_ast::TextChange {
-            range: match range {
-              PositionOrSourceRangeRef::PositionRange(position_range) => {
-                to_range(text_info, position_range)
-              }
-              PositionOrSourceRangeRef::SourceRange(source_range) => {
-                source_range.as_byte_range(parsed_source.start_pos())
-              }
-            },
-            new_text: unfurled,
-          });
+          let range = match range {
+            PositionOrSourceRangeRef::PositionRange(position_range) => {
+              to_range(text_info, position_range)
+            }
+            PositionOrSourceRangeRef::SourceRange(source_range) => {
+              source_range.as_byte_range(parsed_source.start_pos())
+            }
+          };
+          if let Some(text_change) =
+            specifier_text_change(text_info, range, &unfurled, context)
+          {
+            text_changes.push(text_change);
+          }
         }
       };
     // collect import declaration start positions to correctly insert @ts-types
@@ -977,17 +992,20 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
                   text_info.line_start(dep.specifier_range.start.line);
                 line_start.as_byte_index(text_info.range().start)
               });
-            // use block comment so it works even with multiple imports on one line
-            text_changes.push(deno_ast::TextChange {
-              range: decl_start_byte_index..decl_start_byte_index,
-              new_text: format!("/* @ts-types=\"{}\" */ ", types_specifier),
-            });
+            if let Some(comment) = ts_types_comment(&types_specifier) {
+              // use block comment so it works even with multiple imports on one line
+              text_changes.push(deno_ast::TextChange {
+                range: decl_start_byte_index..decl_start_byte_index,
+                new_text: comment,
+              });
+            }
           }
 
           analyze_specifier(
             &dep.specifier,
             PositionOrSourceRangeRef::PositionRange(&dep.specifier_range),
             resolution_kind,
+            SpecifierTextContext::JavaScript,
             text_changes,
             diagnostic_reporter,
           );
@@ -1026,6 +1044,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
         &specifier_with_range.text,
         PositionOrSourceRangeRef::PositionRange(&specifier_with_range.range),
         deno_resolver::workspace::ResolutionKind::Types,
+        SpecifierTextContext::QuotedComment,
         text_changes,
         diagnostic_reporter,
       );
@@ -1035,6 +1054,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
         &jsdoc.specifier.text,
         PositionOrSourceRangeRef::PositionRange(&jsdoc.specifier.range),
         deno_resolver::workspace::ResolutionKind::Types,
+        SpecifierTextContext::QuotedComment,
         text_changes,
         diagnostic_reporter,
       );
@@ -1044,6 +1064,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
         &specifier_with_range.text,
         PositionOrSourceRangeRef::PositionRange(&specifier_with_range.range),
         deno_resolver::workspace::ResolutionKind::Execution,
+        SpecifierTextContext::UnquotedComment,
         text_changes,
         diagnostic_reporter,
       );
@@ -1053,6 +1074,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
         &specifier_with_range.text,
         PositionOrSourceRangeRef::PositionRange(&specifier_with_range.range),
         deno_resolver::workspace::ResolutionKind::Types,
+        SpecifierTextContext::UnquotedComment,
         text_changes,
         diagnostic_reporter,
       );
@@ -1065,6 +1087,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
         &specifier,
         PositionOrSourceRangeRef::SourceRange(range),
         deno_resolver::workspace::ResolutionKind::Execution,
+        SpecifierTextContext::JavaScript,
         text_changes,
         diagnostic_reporter,
       );
@@ -1078,6 +1101,18 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
         },
       );
     }
+  }
+}
+
+fn ts_types_comment(types_specifier: &str) -> Option<String> {
+  let cannot_represent = types_specifier.contains("*/")
+    || types_specifier.chars().any(|c| {
+      matches!(c, '\'' | '"' | '\u{2028}' | '\u{2029}') || c.is_control()
+    });
+  if cannot_represent {
+    None
+  } else {
+    Some(format!("/* @ts-types=\"{}\" */ ", types_specifier))
   }
 }
 
@@ -1166,6 +1201,25 @@ mod tests {
       text: source_code.into(),
     })
     .unwrap()
+  }
+
+  #[test]
+  fn test_ts_types_comment_safety() {
+    assert_eq!(
+      ts_types_comment("npm:@types/package@^1/path`with\\backslash"),
+      Some(
+        "/* @ts-types=\"npm:@types/package@^1/path`with\\backslash\" */ "
+          .to_string()
+      )
+    );
+    for value in [
+      "npm:@types/package@^1/sub*/path",
+      "npm:@types/package@^1/single'quote",
+      "npm:@types/package@^1/double\"quote",
+      "npm:@types/package@^1/line\nbreak",
+    ] {
+      assert_eq!(ts_types_comment(value), None);
+    }
   }
 
   #[tokio::test]
@@ -1366,6 +1420,43 @@ const laterUnrelatedText = "lib/";
   }
 
   #[tokio::test]
+  async fn test_unfurling_escapes_generated_specifiers() {
+    let cwd = get_cwd();
+    let memory_sys = InMemorySys::new_with_cwd(&cwd);
+    memory_sys.fs_insert_json(
+      cwd.join("deno.json"),
+      json!({
+        "imports": {
+          "double": "npm:package/path\"double",
+          "single": "npm:package/path'single",
+          "templated": "npm:package/path`tick${literal}",
+        }
+      }),
+    );
+    let unfurler = build_unfurler(memory_sys, &cwd).await;
+
+    let source_code = r#"import double from "double";
+import single from 'single';
+const templated = await import(`templated`);
+import.meta.resolve("double");
+"#;
+    let unfurled_source =
+      unfurl_text(&cwd.join("mod.ts"), source_code, &unfurler);
+    assert_eq!(
+      unfurled_source,
+      r#"import double from "npm:package/path\"double";
+import single from 'npm:package/path\'single';
+const templated = await import(`npm:package/path\`tick\${literal}`);
+import.meta.resolve("npm:package/path\"double");
+"#
+    );
+    parse_ast(
+      &ModuleSpecifier::from_file_path(cwd.join("mod.ts")).unwrap(),
+      &unfurled_source,
+    );
+  }
+
+  #[tokio::test]
   async fn test_unfurling_npm_dep_workspace_specifier() {
     let cwd = get_cwd();
     let memory_sys = InMemorySys::new_with_cwd(&cwd);
@@ -1460,12 +1551,14 @@ const laterUnrelatedText = "lib/";
           "name": "package",
           "exports": {
             ".": "./index.js",
-            "./subpath": "./subpath.js"
+            "./subpath": "./subpath.js",
+            "./*": "./*.js"
           }
         }),
       );
       memory_sys.fs_insert(cwd.join("node_modules/package/index.js"), "");
       memory_sys.fs_insert(cwd.join("node_modules/package/subpath.js"), "");
+      memory_sys.fs_insert(cwd.join("node_modules/package/sub*/path.js"), "");
       memory_sys.fs_insert_json(
         cwd.join("node_modules/@types/package/package.json"),
         json!({
@@ -1473,7 +1566,8 @@ const laterUnrelatedText = "lib/";
           "types": "./index.d.ts",
           "exports": {
             ".": "./index.d.ts",
-            "./subpath": "./subpath.d.ts"
+            "./subpath": "./subpath.d.ts",
+            "./*": "./*.d.ts"
           }
         }),
       );
@@ -1481,13 +1575,16 @@ const laterUnrelatedText = "lib/";
         .fs_insert(cwd.join("node_modules/@types/package/index.d.ts"), "");
       memory_sys
         .fs_insert(cwd.join("node_modules/@types/package/subpath.d.ts"), "");
+      memory_sys
+        .fs_insert(cwd.join("node_modules/@types/package/sub*/path.d.ts"), "");
       let unfurler = build_unfurler(memory_sys, &cwd).await;
 
       let source_code = r#"import { data } from "package"; import { a } from "package";
 import { helper } from "package/subpath";
+import { unsafe } from "package/sub*/path";
 // @ts-types="npm:@types/package@^1.0"
 import { other } from "package";
-export { a, data, helper, other };
+export { a, data, helper, other, unsafe };
 export { b } from "package"; export { c } from "package";
 import type { d } from "package"; import type { e } from "package";
 import type { f } from "@types/package";
@@ -1497,9 +1594,10 @@ export { d, e, f };
         unfurl_text(&cwd.join("mod.ts"), source_code, &unfurler);
       let expected_source = r#"/* @ts-types="npm:@types/package@^1" */ import { data } from "npm:package@^1.2.3"; /* @ts-types="npm:@types/package@^1" */ import { a } from "npm:package@^1.2.3";
 /* @ts-types="npm:@types/package@^1/subpath" */ import { helper } from "npm:package@^1.2.3/subpath";
+import { unsafe } from "npm:package@^1.2.3/sub*/path";
 // @ts-types="npm:@types/package@^1.0"
 import { other } from "npm:package@^1.2.3";
-export { a, data, helper, other };
+export { a, data, helper, other, unsafe };
 /* @ts-types="npm:@types/package@^1" */ export { b } from "npm:package@^1.2.3"; /* @ts-types="npm:@types/package@^1" */ export { c } from "npm:package@^1.2.3";
 /* @ts-types="npm:@types/package@^1" */ import type { d } from "npm:package@^1.2.3"; /* @ts-types="npm:@types/package@^1" */ import type { e } from "npm:package@^1.2.3";
 import type { f } from "npm:@types/package@^1";
@@ -1509,6 +1607,10 @@ export { d, e, f };
       // start, which is harmless, so ignore that in order to normalize to the
       // expected source
       assert_eq!(unfurled_source.replace("npm:/", "npm:"), expected_source);
+      parse_ast(
+        &ModuleSpecifier::from_file_path(cwd.join("mod.ts")).unwrap(),
+        &unfurled_source,
+      );
     }
 
     // these different scenarios should all have the same outcome
