@@ -1088,6 +1088,26 @@ Deno.test({
     }
     outputs.push(chunked.final());
     assertEquals(Buffer.concat(outputs).toString("hex"), expected);
+
+    // Single updates large enough to consume leftover keystream, cross
+    // several whole blocks, and end mid-block again, all in one call.
+    const long = Buffer.alloc(300);
+    for (let i = 0; i < long.length; i++) long[i] = i & 0xff;
+    const longOneShot = crypto.createCipheriv("chacha20", key, iv);
+    const longExpected = Buffer.concat([
+      longOneShot.update(long),
+      longOneShot.final(),
+    ]);
+    const longChunked = crypto.createCipheriv("chacha20", key, iv);
+    const longOutputs: Buffer[] = [];
+    for (const [start, end] of [[0, 1], [1, 131], [131, undefined]]) {
+      longOutputs.push(longChunked.update(long.subarray(start, end)));
+    }
+    longOutputs.push(longChunked.final());
+    assertEquals(
+      Buffer.concat(longOutputs).toString("hex"),
+      longExpected.toString("hex"),
+    );
   },
 });
 

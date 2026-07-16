@@ -518,6 +518,10 @@ struct ChaCha20Cipher {
   counter: u32,
   /// Number of keystream bytes consumed so far.
   pos: u64,
+  /// Keystream of the 64-byte block containing `pos`. Only meaningful
+  /// while `pos` is mid-block (`pos % 64 != 0`); the bytes from
+  /// `pos % 64` on are not yet consumed.
+  keystream_block: [u8; 64],
 }
 
 impl ChaCha20Cipher {
@@ -534,53 +538,89 @@ impl ChaCha20Cipher {
       nonce,
       counter,
       pos: 0,
+      keystream_block: [0u8; 64],
     }
   }
 
-  /// XORs the keystream into `input`, writing to `output`. Handles calls
-  /// that are not aligned to the 64-byte ChaCha block by re-generating the
-  /// current partial block and discarding the already-consumed prefix.
+  /// Fills `keystream_block` with the keystream of the block containing
+  /// `pos` by encrypting 64 zero bytes.
+  fn refill_keystream_block(&mut self) {
+    debug_assert_eq!(self.pos % 64, 0);
+    let counter = self.counter.wrapping_add((self.pos / 64) as u32);
+    self.keystream_block = [0u8; 64];
+    // SAFETY: keystream_block is a valid 64-byte buffer for in-place
+    // encryption (in == out is allowed); key and nonce have the exact
+    // sizes CRYPTO_chacha_20 requires (32 and 12 bytes).
+    unsafe {
+      aws_lc_sys::CRYPTO_chacha_20(
+        self.keystream_block.as_mut_ptr(),
+        self.keystream_block.as_ptr(),
+        self.keystream_block.len(),
+        self.key.as_ptr(),
+        self.nonce.as_ptr(),
+        counter,
+      );
+    }
+  }
+
+  /// XORs the keystream into `input`, writing to `output`. First consumes
+  /// any keystream left over in `keystream_block` from a previous
+  /// mid-block call, then processes the remaining whole blocks in one
+  /// pass, and finally caches the keystream of a trailing partial block
+  /// for the next call — no per-call allocation.
   fn apply_keystream(&mut self, input: &[u8], output: &mut [u8]) {
     assert!(output.len() >= input.len());
-    if input.is_empty() {
-      return;
-    }
+
+    // Use up the cached keystream of the current partial block.
     let offset = (self.pos % 64) as usize;
-    let counter = self.counter.wrapping_add((self.pos / 64) as u32);
-    if offset == 0 {
-      // SAFETY: input and output are valid for input.len() bytes (output
+    let mut consumed = 0;
+    if offset != 0 {
+      consumed = input.len().min(64 - offset);
+      for ((out, inp), key) in output
+        .iter_mut()
+        .zip(input)
+        .zip(&self.keystream_block[offset..])
+      {
+        *out = inp ^ key;
+      }
+      self.pos += consumed as u64;
+    }
+    let input = &input[consumed..];
+    let output = &mut output[consumed..];
+
+    // Process all remaining whole blocks directly input -> output.
+    let whole = input.len() - input.len() % 64;
+    if whole != 0 {
+      let counter = self.counter.wrapping_add((self.pos / 64) as u32);
+      // SAFETY: input and output are valid for `whole` bytes (output
       // length asserted above); key and nonce have the exact sizes
       // CRYPTO_chacha_20 requires (32 and 12 bytes).
       unsafe {
         aws_lc_sys::CRYPTO_chacha_20(
           output.as_mut_ptr(),
           input.as_ptr(),
-          input.len(),
+          whole,
           self.key.as_ptr(),
           self.nonce.as_ptr(),
           counter,
         );
       }
-    } else {
-      // Mid-block: prepend `offset` zero bytes so the keystream lines up
-      // with the current position, then drop that prefix.
-      let mut buf = vec![0u8; offset + input.len()];
-      buf[offset..].copy_from_slice(input);
-      // SAFETY: buf is a valid buffer for in-place encryption (in == out is
-      // allowed); key and nonce have the required sizes.
-      unsafe {
-        aws_lc_sys::CRYPTO_chacha_20(
-          buf.as_mut_ptr(),
-          buf.as_ptr(),
-          buf.len(),
-          self.key.as_ptr(),
-          self.nonce.as_ptr(),
-          counter,
-        );
-      }
-      output[..input.len()].copy_from_slice(&buf[offset..]);
+      self.pos += whole as u64;
     }
-    self.pos += input.len() as u64;
+
+    // A trailing partial block: cache its keystream and XOR from it.
+    let tail = &input[whole..];
+    if !tail.is_empty() {
+      self.refill_keystream_block();
+      for ((out, inp), key) in output[whole..]
+        .iter_mut()
+        .zip(tail)
+        .zip(&self.keystream_block)
+      {
+        *out = inp ^ key;
+      }
+      self.pos += tail.len() as u64;
+    }
   }
 }
 
