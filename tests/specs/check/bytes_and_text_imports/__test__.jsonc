@@ -1,4 +1,9 @@
 {
+  // ignored: `import ... with { type: "bytes" | "text" }` raw imports aren't
+  // type-materialized (no ambient module declaration emitted, unlike CSS), so
+  // they resolve to TS2307 instead of Uint8Array/string.
+  // https://github.com/denoland/deno/issues/36085
+  "ignore": true,
   "args": "check --unstable-raw-imports main.ts",
   "output": "main.out",
   "exitCode": 1

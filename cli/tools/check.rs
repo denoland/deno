@@ -27,6 +27,13 @@ pub async fn check(
   check_flags: CheckFlags,
 ) -> Result<(), AnyError> {
   if let Some(watch_flags) = &flags.watch {
+    // The native check path doesn't yet wire the resolved graph into the file
+    // watcher, so it runs once and never re-checks. Warn rather than appear to
+    // watch. See https://github.com/denoland/deno/issues/36089.
+    log::warn!(
+      "{} `deno check --watch` does not re-check on file changes yet; it runs once. See https://github.com/denoland/deno/issues/36089",
+      colors::yellow("Warning")
+    );
     let no_clear_screen = watch_flags.no_clear_screen;
     file_watcher::watch_func(
       flags,
@@ -517,7 +524,11 @@ fn parse_tsc_diagnostics(output: &str, project_root: &Path) -> Vec<Diagnostic> {
   // drop override-modifier diagnostics (the TS411x family) reported in a
   // non-local (remote/jsr/npm) module. Local `file://` modules keep them.
   diagnostics.retain(|d| {
-    !matches!(d.code, 4113..=4116)
+    // TS4114..=4116 are the `noImplicitOverride` family (a Deno default we don't
+    // apply to code that isn't the user's). TS4113 ("member cannot have an
+    // 'override' modifier because it is not declared in the base class") is an
+    // unconditional error and must never be dropped.
+    !matches!(d.code, 4114..=4116)
       || d
         .file_name
         .as_deref()

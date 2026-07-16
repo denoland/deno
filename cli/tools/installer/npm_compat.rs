@@ -1180,11 +1180,13 @@ pub async fn install_http_modules(
       paths.insert(effective_url.clone(), local.clone());
     }
 
-    // Scan the effective (type-bearing) source for transitive imports. For wasm
+    // Scan the mirrored (type-bearing) source for transitive imports. For wasm
     // this is the generated `.mts` (which carries the wasm's imports), not the
-    // binary.
+    // binary - so scan with `mirror_url` (`.wasm.mts`), whose media type passes
+    // the analyzer's gate; `effective_url` (`.wasm`) would be rejected as
+    // `MediaType::Wasm` and the imports would never be walked.
     let scan_source = String::from_utf8_lossy(&mirror_bytes).into_owned();
-    for spec in scan_import_specifiers(&effective_url, &scan_source) {
+    for spec in scan_import_specifiers(&mirror_url, &scan_source) {
       let resolved =
         if spec.starts_with("http://") || spec.starts_with("https://") {
           Url::parse(&spec).ok()
