@@ -59,14 +59,16 @@ fn append_reproducible(
   bytes: &[u8],
 ) -> std::io::Result<()> {
   let mut header = tar::Header::new_gnu();
-  header.set_path(to_tar_path(path))?;
   header.set_size(bytes.len() as u64);
   header.set_mode(0o644);
   header.set_mtime(0);
   header.set_uid(0);
   header.set_gid(0);
-  header.set_cksum();
-  tar.append(&header, bytes)
+  // `append_data` (not `Header::set_path`) so paths that don't fit the 100-byte
+  // tar name field transparently get a GNU `././@LongLink` entry instead of an
+  // error. The LongLink header it emits is itself fixed mode/uid/gid/mtime 0,
+  // so the tarball stays byte-reproducible.
+  tar.append_data(&mut header, to_tar_path(path), bytes)
 }
 
 #[allow(clippy::too_many_arguments, reason = "tarball assembly inputs")]
@@ -158,4 +160,45 @@ pub fn create_npm_tarball(
   tar.finish()?;
 
   Ok(filename)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  /// 114 bytes — longer than the 100-byte tar `name` field, so this only
+  /// round-trips if a GNU LongLink entry is emitted. See issue #36008.
+  const LONG_PATH: &str = "package/src/kubernetes/models/_schemas/IoK8sApiAdmissionregistrationV1beta1ValidatingAdmissionPolicyBindingList.js";
+
+  fn build_tarball(paths: &[&str]) -> Vec<u8> {
+    let mut tar = tar::Builder::new(Vec::new());
+    for path in paths {
+      append_reproducible(&mut tar, path, b"export const a = 1;\n").unwrap();
+    }
+    tar.into_inner().unwrap()
+  }
+
+  #[test]
+  fn appends_path_longer_than_tar_name_field() {
+    assert!(LONG_PATH.len() > 100);
+    let bytes = build_tarball(&["package/package.json", LONG_PATH]);
+
+    let paths: Vec<String> = tar::Archive::new(bytes.as_slice())
+      .entries()
+      .unwrap()
+      .map(|e| e.unwrap().path().unwrap().to_string_lossy().into_owned())
+      .collect();
+
+    assert_eq!(
+      paths,
+      vec!["package/package.json".to_string(), LONG_PATH.to_string()]
+    );
+  }
+
+  #[test]
+  fn tarball_is_reproducible_with_long_paths() {
+    // The LongLink extension header must carry fixed mode/uid/gid/mtime too,
+    // or long-path packages would lose byte-reproducibility.
+    assert_eq!(build_tarball(&[LONG_PATH]), build_tarball(&[LONG_PATH]));
+  }
 }
