@@ -276,7 +276,7 @@ impl TypeChecker {
   ///
   /// It is expected that it is determined if a check and/or emit is validated
   /// before the function is called.
-  /// Walk the module graph exactly as the in-process checker does - for the
+  /// Walk the module graph exactly as Deno 2.x's forked tsc did - for the
   /// native (external tsc) check path in `crate::tools::check`. Returns deno's
   /// own graph diagnostics (missing modules + hints) plus a combined check hash
   /// over every compiler-options group, with the pinned tsc version folded in.
@@ -582,8 +582,8 @@ impl Iterator for DiagnosticsByFolderRealIterator<'_> {
 
 /// Converts the list of ambient module names to regex string
 /// Hash of the npm resolution state, folded into the type-check cache key so
-/// the cache busts when npm deps (or nodeModulesDir) change. Shared by the
-/// in-process checker and the native (external tsc) check path.
+/// the cache busts when npm deps (or nodeModulesDir) change. Shared by Deno
+/// 2.x's forked tsc and the native (external tsc) check path.
 fn check_state_hash(resolver: &CliNpmResolver) -> Option<u64> {
   match resolver {
     // not feasible and probably slower to compute

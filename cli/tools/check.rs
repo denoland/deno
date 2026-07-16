@@ -54,8 +54,8 @@ async fn native_check(
   check_flags: CheckFlags,
 ) -> Result<(), AnyError> {
   if check_flags.doc || check_flags.doc_only {
-    // Doc snippet extraction was handled by the previous in-isolate checker;
-    // the native compiler does not type-check markdown/JSDoc snippets yet.
+    // Doc snippet extraction was handled by Deno 2.x's forked tsc; the native
+    // compiler does not type-check markdown/JSDoc snippets yet.
     log::warn!(
       "{} --doc/--doc-only is not yet supported by the native type checker and will be ignored",
       colors::yellow("Warning")
@@ -76,7 +76,7 @@ async fn native_check(
   // Deno owns resolution: this drives deno's own graph diagnostics (missing
   // modules + hints) and the incremental type-check cache, so we can skip the
   // external compiler entirely when nothing it sees has changed.
-  // Resolve the requested roots exactly as deno's own checker does on `main`:
+  // Resolve the requested roots the same way `deno check` always has:
   // globs are expanded, workspace `exclude` is applied, and
   // `include_ignored_specified: false` means an explicitly-passed excluded file
   // is skipped rather than force-checked. An empty result is not an error - it
@@ -117,7 +117,7 @@ async fn native_check(
   // failures, and invalid specifiers. Missing-module errors are deliberately
   // *not* surfaced here (`will_type_check` defers them to tsc, which reports
   // them as TS2307), so a missing import is never double-reported. Note: the
-  // richer `deno add` hint the in-process checker attached to import-level
+  // richer `deno add` hint Deno 2.x's forked tsc attached to import-level
   // missing modules is not re-added on top of tsc's TS2307 yet; restoring it
   // additively is a follow-up. `allow_unknown_media_types: true` matches
   // `deno check`, letting tsc handle unknown types instead of erroring.
@@ -128,17 +128,17 @@ async fn native_check(
 
   // Enforce the lockfile now that the graph has resolved the project's deps:
   // under `--frozen` this errors if the lockfile is out of date, otherwise it
-  // writes the updated lockfile. The in-process checker does this via the
+  // writes the updated lockfile. Deno 2.x's forked tsc did this via the
   // module loader; native check builds the graph itself, so do it here - before
   // materializing types and spawning tsc, so `--frozen` fails fast.
   if let Some(lockfile) = factory.maybe_lockfile().await? {
     lockfile.write_if_changed()?;
   }
 
-  // Walk the graph exactly as the in-process checker does to obtain the combined
+  // Walk the graph exactly as Deno 2.x's forked tsc did to obtain the combined
   // check hash (tsc version folded in). The walk also produces deno's own graph
   // diagnostics (missing modules + hints), but merging them additively isn't
-  // safe yet: the in-process checker filters those against tsc's reported
+  // safe yet: Deno 2.x's forked tsc filtered those against tsc's reported
   // ambient-module list to suppress false "missing module" errors for `declare
   // module` shims (including our own `*.css`). Native tsc doesn't hand us that
   // list, so deno would flag ambient specifiers tsc resolves fine. Use the walk
@@ -184,20 +184,16 @@ async fn native_check(
 
   // Cache miss: generate the tsconfig.json and materialize dependency types so
   // the native compiler can resolve the project's jsr:/npm:/http(s): imports.
-  // Suppress sync-types' own progress/summary output (an internal step here) so
-  // it doesn't precede the type-check diagnostics.
-  let prev_level = log::max_level();
-  log::set_max_level(log::LevelFilter::Error);
-  let sync_result = crate::tools::installer::sync_types_command(
+  // In CheckMode `sync_types_command` stays quiet (no summary), so its output
+  // doesn't precede the type-check diagnostics.
+  crate::tools::installer::sync_types_command(
     flags.clone(),
     SyncTypesFlags {
       roots: check_flags.files.clone(),
     },
     crate::tools::installer::RootTsConfigMode::CheckMode,
   )
-  .await;
-  log::set_max_level(prev_level);
-  sync_result?;
+  .await?;
 
   let tsc_path = ensure_native_tsc_downloaded(&factory).await?;
 
@@ -410,7 +406,7 @@ async fn ensure_native_tsc_downloaded(
 }
 
 /// Print a `Check <specifier>` line for each provided root, rendered relative
-/// to `current_dir`, matching deno's in-process type checker output.
+/// to `current_dir`, matching Deno 2.x's forked tsc output.
 fn log_check_roots(
   roots: &[deno_core::ModuleSpecifier],
   current_dir: &deno_core::ModuleSpecifier,
