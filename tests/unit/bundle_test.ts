@@ -195,6 +195,59 @@ Deno.test("bundle: write requires caller permission", async () => {
   await assertPathNotFound(output);
 });
 
+Deno.test("bundle: html entrypoint read requires caller permission", async () => {
+  using dir = new TempDir();
+  const secretDir = dir.join("secret");
+  const secretHtml = join(secretDir, "index.html");
+  const outDir = dir.join("dist");
+  const runner = dir.join("runner.ts");
+
+  await Deno.mkdir(secretDir, { recursive: true });
+  await Deno.writeTextFile(
+    secretHtml,
+    unindent`
+      <html>
+        <body><script type="module" src="./main.ts"></script></body>
+      </html>
+    `,
+  );
+  await Deno.writeTextFile(
+    join(secretDir, "main.ts"),
+    "console.log('secret');\n",
+  );
+  await Deno.writeTextFile(
+    runner,
+    unindent`
+      await Deno.bundle({
+        entrypoints: [${JSON.stringify(toFileUrl(secretHtml).href)}],
+        outputDir: ${JSON.stringify(outDir)},
+        write: false,
+      });
+    `,
+  );
+
+  // Read access to the runner only, so loading the HTML entrypoint is denied.
+  const { success, stderr } = await new Deno.Command(Deno.execPath(), {
+    args: [
+      "run",
+      "--no-config",
+      "--no-lock",
+      "--no-prompt",
+      "--quiet",
+      "--unstable-bundle",
+      `--allow-read=${runner}`,
+      runner,
+    ],
+    stderr: "piped",
+  }).output();
+
+  assertFalse(success);
+  const stderrText = new TextDecoder().decode(stderr);
+  assertStringIncludes(stderrText, "Requires read access");
+  assertStringIncludes(stderrText, "--allow-read");
+  await assertPathNotFound(outDir);
+});
+
 Deno.test("bundle: worker permissions override parent permissions", async () => {
   using dir = new TempDir();
   const sourceDir = dir.join("source");
