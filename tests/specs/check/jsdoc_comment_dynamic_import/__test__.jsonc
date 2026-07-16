@@ -2,12 +2,12 @@
   "tests": {
     "comment_text": {
       "args": "check main.js",
-      "output": "",
+      "output": "Check (tsc [WILDLINE])\n",
       "exitCode": 0
     },
     "ts_nocheck": {
       "args": "check ts_nocheck.js",
-      "output": "",
+      "output": "Check (tsc [WILDLINE])\n",
       "exitCode": 0
     }
   }

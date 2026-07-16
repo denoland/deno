@@ -1,4 +1,6 @@
 Check (tsc [WILDLINE])
-TS18003 [ERROR]: No inputs were found in config file '[WILDCARD]/sub_dir/tsconfig.json'. Specified 'include' paths were '[".deno/../**/*"]' and 'exclude' paths were '[".deno/../**/node_modules"]'.
+TS6053 [ERROR]: File '[WILDCARD]/sub_dir/a.d.ts' not found.
+  The file is in the program because:
+    Part of 'files' list in tsconfig.json
 
 error: Type checking failed.

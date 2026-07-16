@@ -1,6 +1,9 @@
 {
   "tests": {
     "check": {
+      // ignored: tsc doesn't apply sloppy-imports .d.ts resolution the way
+      // deno does. https://github.com/denoland/deno/issues/36085
+      "ignore": true,
       "args": "check --sloppy-imports main.ts",
       "output": "check.out"
     },
