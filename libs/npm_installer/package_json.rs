@@ -275,14 +275,6 @@ impl NpmInstallDepsProvider {
         let mut workspace_pkg_deps =
           Vec::with_capacity(deps.dependencies.len() + dev_deps.len());
         for (alias, dep) in deps.dependencies.iter().chain(dev_deps.iter()) {
-          if let Err(err) = package_name_for_node_modules_path_parts(alias) {
-            invalid_package_alias_errors.push(InvalidPackageAliasError {
-              location: pkg_json.specifier(),
-              alias: alias.clone(),
-              source: err,
-            });
-            continue;
-          }
           let dep = match dep {
             Ok(dep) => dep,
             Err(err) => {
@@ -296,6 +288,16 @@ impl NpmInstallDepsProvider {
               continue;
             }
           };
+          // only aliases that are actually materialized below `node_modules`
+          // need a path-safe shape
+          if let Err(err) = package_name_for_node_modules_path_parts(alias) {
+            invalid_package_alias_errors.push(InvalidPackageAliasError {
+              location: pkg_json.specifier(),
+              alias: alias.clone(),
+              source: err,
+            });
+            continue;
+          }
           match dep {
             PackageJsonDepValue::File(specifier) => {
               local_pkgs.push(InstallLocalPkg {
