@@ -13,6 +13,7 @@
     ObjectDefineProperty,
     ObjectFreeze,
     ObjectFromEntries,
+    ObjectGetOwnPropertyDescriptor,
     ObjectKeys,
     ObjectHasOwn,
     setQueueMicrotask,
@@ -930,7 +931,23 @@
         desc[lazyNameSym] = key;
       }
     }
-    ObjectDefineProperties(target, props);
+    // v82jsc: when booting from the JSC snapshot bundle the eval order differs
+    // from v8's module graph, so a few globals (crypto, performance, ...) can
+    // already be installed non-configurable before this runs. A non-configurable
+    // property can't be redefined anyway, so skip those keys instead of throwing
+    // (no-op on v8 / the normal path, where no such pre-existing global exists).
+    const own = Reflect.ownKeys(props);
+    let anySkip = false;
+    const keep = { __proto__: null };
+    for (let i = 0; i < own.length; i++) {
+      const ex = ObjectGetOwnPropertyDescriptor(target, own[i]);
+      if (ex && ex.configurable === false) {
+        anySkip = true;
+      } else {
+        keep[own[i]] = props[own[i]];
+      }
+    }
+    ObjectDefineProperties(target, anySkip ? keep : props);
   }
 
   function createLazyLoader(specifier) {

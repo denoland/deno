@@ -105,7 +105,7 @@ deno_task_shell = "=0.33.0"
 deno_terminal = "=0.2.3"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
-v8 = { version = "149.4.0", default-features = false, features = ["simdutf"] }
+v8 = { version = "149.4.0", default-features = false, features = ["simdutf", "quickjs"] }
 
 denokv_proto = "0.14.0"
 denokv_remote = "0.14.0"
@@ -634,3 +634,7 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.twox-hash]
 opt-level = 3
+
+# v82jsc: replace the real v8 crate with the JavaScriptCore-backed surface.
+[patch.crates-io]
+v8 = { path = "../v82jsc", default-features = false, features = ["simdutf", "quickjs"] }

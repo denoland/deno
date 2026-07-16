@@ -1504,7 +1504,7 @@ pub fn clap_root() -> Command {
     DENO_VERSION_INFO.release_channel.name(),
     env!("PROFILE"),
     env!("TARGET"),
-    deno_core::v8::VERSION_STRING,
+    deno_core::v8::V8::get_version(),
     DENO_VERSION_INFO.typescript
   );
 

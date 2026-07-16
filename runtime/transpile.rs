@@ -23,6 +23,65 @@ deno_error::js_error_wrapper!(
   "Error"
 );
 
+// Transpile cache (v82jsc startup acceleration).
+//
+// Without a V8 startup snapshot (the quickjs backend boots via InitMode::New),
+// deno transpiles every TypeScript extension source with swc on *every* boot —
+// ~140 ms, the dominant startup cost. Transpilation is deterministic, so we
+// persist the emitted JS keyed by a content hash and reuse it on later boots,
+// turning that ~140 ms into a handful of file reads. Disable with
+// `V82JSC_NO_TRANSPILE_CACHE=1`.
+const TRANSPILE_CACHE_VERSION: u32 = 1;
+
+fn transpile_cache_dir() -> Option<&'static std::path::PathBuf> {
+  static DIR: OnceLock<Option<std::path::PathBuf>> = OnceLock::new();
+  DIR
+    .get_or_init(|| {
+      if std::env::var_os("V82JSC_NO_TRANSPILE_CACHE").is_some() {
+        return None;
+      }
+      let base = std::env::var_os("DENO_DIR")
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+          std::env::var_os("HOME")
+            .map(|h| std::path::PathBuf::from(h).join("Library/Caches"))
+        })
+        .unwrap_or_else(std::env::temp_dir);
+      let d = base.join("v82jsc_transpile");
+      std::fs::create_dir_all(&d).ok()?;
+      Some(d)
+    })
+    .as_ref()
+}
+
+fn transpile_cache_key(name: &str, source: &str) -> u64 {
+  use std::hash::{Hash, Hasher};
+  let mut h = std::collections::hash_map::DefaultHasher::new();
+  TRANSPILE_CACHE_VERSION.hash(&mut h);
+  name.hash(&mut h);
+  source.len().hash(&mut h);
+  source.hash(&mut h);
+  h.finish()
+}
+
+fn transpile_cache_load(key: u64) -> Option<String> {
+  let p = transpile_cache_dir()?.join(format!("{key:016x}.js"));
+  std::fs::read_to_string(p).ok().filter(|s| !s.is_empty())
+}
+
+fn transpile_cache_store(key: u64, code: &str) {
+  if code.is_empty() {
+    return;
+  }
+  if let Some(dir) = transpile_cache_dir() {
+    let p = dir.join(format!("{key:016x}.js"));
+    let tmp = dir.join(format!("{key:016x}.tmp"));
+    if std::fs::write(&tmp, code).is_ok() {
+      let _ = std::fs::rename(&tmp, &p);
+    }
+  }
+}
+
 pub fn maybe_transpile_source(
   name: ModuleName,
   source: ModuleCodeString,
@@ -90,6 +149,16 @@ fn maybe_transpile_source_inner(
     ),
   }
 
+  // Bytecode-of-transpile cache: deterministic TS->JS emit, keyed by content.
+  // Only the runtime (non-minify) path is cached; the snapshot-build minify path
+  // is a one-off. Cached entries carry no source map (release emits none).
+  let cache_key = transpile_cache_key(&name_string, source.as_str());
+  if !minify {
+    if let Some(code) = transpile_cache_load(cache_key) {
+      return Ok((code.into(), None));
+    }
+  }
+
   let parsed = deno_ast::parse_module(ParseParams {
     specifier: deno_core::url::Url::parse(&name).unwrap(),
     text: source.into(),
@@ -126,6 +195,11 @@ fn maybe_transpile_source_inner(
     let source_text = minify_source_with_rolldown(&name_string, &source_text)?;
     Ok((source_text.into(), None))
   } else {
+    // Persist the emitted JS for the next boot when there's no separate source
+    // map to carry (release builds emit none).
+    if maybe_source_map.is_none() {
+      transpile_cache_store(cache_key, source_text.as_str());
+    }
     Ok((source_text.into(), maybe_source_map))
   }
 }

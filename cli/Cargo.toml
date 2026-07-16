@@ -24,7 +24,7 @@ path = "integration_tests_runner.rs"
 harness = false
 
 [features]
-default = ["upgrade", "__vendored_zlib_ng"]
+default = ["upgrade", "__vendored_zlib_ng", "deno_snapshots/disable", "deno_runtime/transpile"]
 # A feature that enables heap profiling with dhat on Linux.
 # 1. Compile with `cargo build --profile=release-with-debug --features=dhat-heap`
 # 2. Run the executable. It will output a dhat-heap.json file.

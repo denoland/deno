@@ -2070,7 +2070,7 @@ dependencies = [
  "walkdir",
  "wasm_dep_analyzer",
  "wasmparser",
- "which 8.0.0",
+ "which",
  "windows-sys 0.59.0",
  "winres",
  "yaml_parser",
@@ -3242,7 +3242,7 @@ dependencies = [
  "thiserror 2.0.12",
  "unicode-normalization",
  "url",
- "which 8.0.0",
+ "which",
  "windows-sys 0.59.0",
 ]
 
@@ -3461,7 +3461,7 @@ dependencies = [
  "sys_traits",
  "thiserror 2.0.12",
  "tokio",
- "which 8.0.0",
+ "which",
  "windows-sys 0.59.0",
 ]
 
@@ -4878,16 +4878,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fslock"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04412b8935272e3a9bae6f48c7bfff74c2911f60525404edfdd28e49884c3bfb"
-dependencies = [
- "libc",
- "winapi",
-]
-
-[[package]]
 name = "funty"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5191,15 +5181,6 @@ dependencies = [
  "ff",
  "rand_core 0.6.4",
  "subtle",
-]
-
-[[package]]
-name = "gzip-header"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95cc527b92e6029a62960ad99aa8a6660faa4555fe5f731aab13aa6a921795a2"
-dependencies = [
- "crc32fast",
 ]
 
 [[package]]
@@ -11158,18 +11139,12 @@ dependencies = [
 [[package]]
 name = "v8"
 version = "149.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ebfd8d6919bfb4b627ca778a67f85ca45e5fb442d352947ba093798bdf9b07e0"
 dependencies = [
- "bindgen 0.72.1",
+ "bindgen 0.70.1",
  "bitflags 2.9.3",
- "fslock",
- "gzip-header",
- "home",
- "miniz_oxide 0.8.8",
+ "cc",
  "paste",
  "temporal_capi",
- "which 6.0.1",
 ]
 
 [[package]]
@@ -11628,18 +11603,6 @@ dependencies = [
  "raw-window-handle",
  "serde",
  "web-sys",
-]
-
-[[package]]
-name = "which"
-version = "6.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8211e4f58a2b2805adfbefbc07bab82958fc91e3836339b1ab7ae32465dce0d7"
-dependencies = [
- "either",
- "home",
- "rustix 0.38.34",
- "winsafe",
 ]
 
 [[package]]

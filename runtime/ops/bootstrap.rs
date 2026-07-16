@@ -60,7 +60,10 @@ impl Default for SnapshotOptions {
 
     Self {
       ts_version: "n/a".to_owned(),
-      v8_version: deno_core::v8::VERSION_STRING,
+      // Runtime engine version (v82jsc shim: real quickjs-ng / JavaScriptCore
+      // version) rather than the baked-in V8 number, so `Deno.version.v8`
+      // reflects the engine actually executing.
+      v8_version: deno_core::v8::V8::get_version(),
       target,
     }
   }
