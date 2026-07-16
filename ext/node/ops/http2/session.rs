@@ -1412,6 +1412,7 @@ pub unsafe extern "C" fn on_stream_read_callback(
   let mut need_trailers = false;
   let mut is_deferred = false;
   let mut have_data = false;
+  let mut completed = Vec::new();
 
   if let Some(stream) = session.find_stream(stream_id) {
     if no_copy {
@@ -1444,13 +1445,14 @@ pub unsafe extern "C" fn on_stream_read_callback(
           unsafe {
             std::ptr::copy_nonoverlapping(data_slice.as_ptr(), buf, amt)
           };
-          *stream.available_outbound_length.borrow_mut() -= amt;
           amount = amt;
 
           if pending_data.is_empty() && *stream.writable_ended.borrow() {
             need_eof = true;
             need_trailers = stream.has_trailers();
           }
+          drop(pending_data);
+          stream.consume_outbound(amt, &mut completed);
         }
       } else if *stream.writable_ended.borrow() {
         need_eof = true;
@@ -1463,6 +1465,11 @@ pub unsafe extern "C" fn on_stream_read_callback(
   } else {
     return ffi::NGHTTP2_ERR_DEFERRED as _;
   }
+
+  // The stream borrow is released, so the session can be mutated again. The
+  // completions are only run by send_pending_data, once this mem_send pass
+  // is over.
+  session.write_completions.append(&mut completed);
 
   if is_deferred {
     return ffi::NGHTTP2_ERR_DEFERRED as _;
@@ -1652,12 +1659,14 @@ unsafe extern "C" fn on_send_data_callback(
   }
 
   if length > 0 {
+    let mut completed = Vec::new();
     let chunk_opt = session.find_stream(stream_id).and_then(|stream| {
       let mut pending = stream.pending_data.borrow_mut();
       let amt = std::cmp::min(pending.len(), length);
       if amt > 0 {
         let chunk = pending.split_to(amt);
-        *stream.available_outbound_length.borrow_mut() -= amt;
+        drop(pending);
+        stream.consume_outbound(amt, &mut completed);
         Some(chunk.to_vec())
       } else {
         None
@@ -1667,6 +1676,7 @@ unsafe extern "C" fn on_send_data_callback(
     if let Some(chunk) = chunk_opt {
       session.outgoing_chunks.push_back(chunk);
     }
+    session.write_completions.append(&mut completed);
     // If pending shrank short of `length` (shouldn't happen — read
     // callback already promised this many bytes), the wire will be
     // short by the missing amount; nghttp2 will fail the session via
@@ -1992,9 +2002,24 @@ impl NgHttp2StreamWrite {
   }
 }
 
+/// A finished stream write waiting for its JS `oncomplete` to run.
+pub struct WriteCompletion {
+  /// The JS `WriteWrap` handed to `writeBuffer` / `writeUtf8String`.
+  pub req: v8::Global<v8::Object>,
+  /// 0 once nghttp2 framed the bytes, or a negative libuv errno if the write
+  /// was cancelled before that could happen.
+  pub status: i32,
+}
+
 pub struct Session {
   pub session: *mut ffi::nghttp2_session,
   pub streams: HashMap<i32, (v8::Global<v8::Object>, cppgc::Ref<Http2Stream>)>,
+  /// Stream writes that have completed since the last flush. The nghttp2
+  /// callbacks that drain `pending_data` must not re-enter JS, so they park
+  /// completions here and `send_pending_data` runs them once `mem_send` is
+  /// done. Mirrors how Node defers write completion to
+  /// `Http2Session::ClearOutgoing` (`src/node_http2.cc`).
+  pub write_completions: Vec<WriteCompletion>,
   pub outgoing_buffers: Vec<NgHttp2StreamWrite>,
   pub outgoing_length: usize,
   pub isolate: v8::UnsafeRawIsolatePtr,
@@ -2214,6 +2239,41 @@ impl Session {
     self.outgoing_length = 0;
   }
 
+  /// Run `oncomplete` for every write that finished since the last flush,
+  /// releasing the producer that was waiting on it. Mirrors Node's
+  /// `Http2Session::ClearOutgoing` (`src/node_http2.cc`).
+  ///
+  /// Callers must be outside any nghttp2 `mem_send` / `mem_recv` pass, since
+  /// each `oncomplete` runs arbitrary JS.
+  pub fn flush_write_completions(&mut self) {
+    if self.write_completions.is_empty() {
+      return;
+    }
+
+    // Take the queue up front: an `oncomplete` can write again and re-enter
+    // send_pending_data, which must not see entries already being completed.
+    let completions = std::mem::take(&mut self.write_completions);
+
+    // SAFETY: isolate pointer is valid during session lifetime
+    let mut isolate =
+      unsafe { v8::Isolate::from_raw_isolate_ptr(self.isolate) };
+    v8::scope!(let scope, &mut isolate);
+    let context = v8::Local::new(scope, self.context.clone());
+    let scope = &mut v8::ContextScope::new(scope, context);
+    let key =
+      v8::String::new_external_onebyte_static(scope, b"oncomplete").unwrap();
+
+    for completion in completions {
+      let req = v8::Local::new(scope, completion.req);
+      if let Some(oncomplete) = req.get(scope, key.into())
+        && let Ok(oncomplete) = v8::Local::<v8::Function>::try_from(oncomplete)
+      {
+        let status = v8::Integer::new(scope, completion.status);
+        oncomplete.call(scope, req.into(), &[status.into()]);
+      }
+    }
+  }
+
   /// Submit RST_STREAM, or defer it if we're inside mem_recv/mem_send.
   /// Matches Node.js's Http2Stream::SubmitRstStream: submitting
   /// RST_STREAM while nghttp2 is processing frames can cause
@@ -2350,6 +2410,11 @@ impl Session {
         // close completion. The JS side handles data serialization via
         // getOutgoingChunk/sendPending, but the graceful close notification
         // must still fire when nghttp2 reports no more pending I/O.
+        //
+        // getOutgoingChunk drives mem_send on this path, so by the time the
+        // JS sendPending override calls through to here the writes it framed
+        // are ready to complete.
+        self.flush_write_completions();
         self.maybe_notify_graceful_close_complete();
         return;
       }
@@ -2459,6 +2524,10 @@ impl Session {
       }
       self.clear_outgoing();
     }
+
+    // mem_send is done and is_sending is clear, so it's safe to hand the
+    // writes it framed back to JS.
+    self.flush_write_completions();
 
     self.maybe_notify_graceful_close_complete();
 
@@ -2633,6 +2702,7 @@ impl Http2Session {
     let inner = Box::into_raw(Box::new(Session {
       session,
       streams: HashMap::new(),
+      write_completions: Vec::new(),
       op_state,
       context,
       isolate: isolate_ptr,
