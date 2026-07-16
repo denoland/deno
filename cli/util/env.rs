@@ -3,7 +3,6 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::env;
 use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::path::Path;
@@ -226,6 +225,10 @@ impl WatchEnvTracker {
                 continue;
               }
 
+              // Watched env reloads run between user-code isolates. Refreshing
+              // libc here is sufficient for TZ because the replacement
+              // isolate has not been created yet and has no cached timezone to
+              // invalidate.
               process_env.set_var(&key_os, &value_os);
 
               // Track this variable
@@ -252,6 +255,9 @@ impl WatchEnvTracker {
     process_env: &deno_os::ProcessEnvGuard,
   ) {
     for var_name in inner.unused_variables.iter() {
+      // As with loading watched env values, cleanup runs before the
+      // replacement isolate is created, so TZ changes do not need a V8
+      // notification here.
       if !inner.original_env.contains_key(var_name) {
         process_env.remove_var(var_name);
 
@@ -305,8 +311,14 @@ pub fn load_env_variables_from_env_files(
   env_file_names: &[String],
   flags_log_level: Option<log::Level>,
 ) {
-  let original_env_keys: HashSet<OsString> =
-    env::vars_os().map(|(key, _)| key).collect();
+  let original_env_keys: HashSet<OsString> = {
+    let process_env = deno_os::ProcessEnvGuard::lock();
+    process_env
+      .vars_os()
+      .into_iter()
+      .map(|(key, _)| key)
+      .collect()
+  };
   let mut loaded_keys = HashSet::new();
 
   for env_file_name in env_file_names.iter().rev() {
@@ -325,6 +337,9 @@ pub fn load_env_variables_from_env_files(
         continue;
       }
     };
+    // Keep substitutions and the mutations they produce consistent with each
+    // other while allowing file I/O to proceed without the process-env lock.
+    let process_env = deno_os::ProcessEnvGuard::lock();
     let iter = match deno_dotenv::from_content_sanitized_iter_with_substitution(
       &sys_traits::impls::RealSys,
       &content,
@@ -355,10 +370,7 @@ pub fn load_env_variables_from_env_files(
         continue;
       }
 
-      // SAFETY: We're setting environment variables with sanitized key/value strings from a .env file.
-      unsafe {
-        env::set_var(&key_os, value);
-      }
+      process_env.set_var(&key_os, value);
       loaded_keys.insert(key_os);
     }
   }
