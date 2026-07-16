@@ -716,28 +716,6 @@ fn wildcard_volatile_output(
     result = result.replace(&path, "[WILDCARD]");
   }
 
-  // Replace the native tsc version in the `Check (tsc <version>)` header so a
-  // compiler bump doesn't churn every `.out`.
-  result = replace_tsc_version(&result);
-  result
-}
-
-/// Replace the version inside `Check (tsc <version>)` with `[WILDLINE]`.
-fn replace_tsc_version(text: &str) -> String {
-  const PREFIX: &str = "Check (tsc ";
-  let mut result = String::with_capacity(text.len());
-  let mut rest = text;
-  while let Some(idx) = rest.find(PREFIX) {
-    let after = &rest[idx + PREFIX.len()..];
-    if let Some(close) = after.find(')') {
-      result.push_str(&rest[..idx + PREFIX.len()]);
-      result.push_str("[WILDLINE]");
-      rest = &after[close..];
-    } else {
-      break;
-    }
-  }
-  result.push_str(rest);
   result
 }
 
