@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_DIR": "$PWD/deno_dir"
+  },
+  // Regression test for issue #35991 / PR #36025 review: the `write` permission
+  // set is defined in an auto-discoverable cwd `deno.json` and selected with
+  // `-P=write`, and the target is a `data:` URL. `deno run <url>` disables config
+  // discovery for a non-file:/non-npm: entrypoint, so the child could not find
+  // the set and failed with `Could not find permission set 'write'`. `deno x`
+  // must forward the discovered cwd config so the child resolves the set and is
+  // allowed to write — matching `deno run -P=write <url>`.
+  "steps": [{
+    "args": "x -y -P=write data:application/javascript,Deno.writeTextFileSync(%22test.txt%22,%22hi%22)%3Bconsole.log(%22write%20succeeded%22)",
+    "output": "[WILDCARD]write succeeded\n"
+  }]
+}
