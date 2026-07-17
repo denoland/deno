@@ -36,9 +36,17 @@ const windowsJob = job("promote-to-release-windows", {
     step({
       name: "Download Windows binaries",
       run: [
-        '$CANARY_URL="https://dl.deno.land/canary/${{github.event.inputs.commitHash}}"',
-        'Invoke-WebRequest -Uri "$CANARY_URL/deno-${{ matrix.target }}.zip" -OutFile "deno-windows.zip"',
-        'Invoke-WebRequest -Uri "$CANARY_URL/denort-${{ matrix.target }}.zip" -OutFile "denort-windows.zip"',
+        "# LTS is cut from a release branch with no canary build, so re-stamp",
+        "# the already-published stable release binaries. RC still promotes",
+        "# canary binaries by commit hash.",
+        'if ("${{github.event.inputs.releaseKind}}" -eq "lts") {',
+        '  $Version = "${{github.event.inputs.commitHash}}" -replace "^v", ""',
+        '  $SrcUrl = "https://dl.deno.land/release/v$Version"',
+        "} else {",
+        '  $SrcUrl = "https://dl.deno.land/canary/${{github.event.inputs.commitHash}}"',
+        "}",
+        'Invoke-WebRequest -Uri "$SrcUrl/deno-${{ matrix.target }}.zip" -OutFile "deno-windows.zip"',
+        'Invoke-WebRequest -Uri "$SrcUrl/denort-${{ matrix.target }}.zip" -OutFile "denort-windows.zip"',
         'Expand-Archive -Path "deno-windows.zip" -DestinationPath "."',
         'Expand-Archive -Path "denort-windows.zip" -DestinationPath "."',
       ],
@@ -120,7 +128,8 @@ const workflow = createWorkflow({
           required: true,
         },
         commitHash: {
-          description: "Commit to promote to release",
+          description:
+            "rc: canary commit hash to promote. lts: release version to re-stamp, e.g. v2.9.3",
           required: true,
         },
       },

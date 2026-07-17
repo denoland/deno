@@ -645,12 +645,17 @@ impl BrowserWindow {
     self.window_id
   }
 
+  // Keep the native primitive separate from DESKTOP_JS's public `bind`
+  // wrapper. The deferred fast-call upgrade may replace this symbol-backed
+  // method without overwriting the wrapper.
   #[fast]
+  #[symbol("Deno_privateDesktopBind")]
   fn bind(&self, #[string] name: &str) {
     self.api.bind(self.window_id, name);
   }
 
   #[fast]
+  #[symbol("Deno_privateDesktopUnbind")]
   fn unbind(&self, #[string] name: &str) {
     self.api.unbind(self.window_id, name);
   }
@@ -1528,7 +1533,10 @@ impl Tray {
       })
   }
 
+  // DESKTOP_JS exposes the public `destroy` wrapper that also updates its tray
+  // registry. Keep the native primitive on a distinct symbol-backed slot.
   #[fast]
+  #[symbol("Deno_privateDesktopTrayDestroy")]
   fn destroy(&self) {
     self.api.destroy_tray(self.tray_id);
   }
@@ -1757,9 +1765,11 @@ mod tests {
   use deno_core::serde_json;
   use deno_core::serde_json::json;
 
+  use super::BrowserWindow;
   use super::DesktopEvent;
   use super::PendingBindResponses;
   use super::PermissionState;
+  use super::Tray;
   use super::dylib_magic_ok;
   use super::permission_state_to_web_string;
   use super::register_bind_call;
@@ -1771,6 +1781,42 @@ mod tests {
   // fail if you change a field name or remove a `#[serde(rename_all =
   // "camelCase")]` so you find out at test time, not at runtime in the
   // packaged app.
+
+  #[test]
+  fn js_wrapped_desktop_methods_use_private_symbols() {
+    for (object, methods) in [
+      (
+        BrowserWindow::DECL,
+        &["Deno_privateDesktopBind", "Deno_privateDesktopUnbind"][..],
+      ),
+      (Tray::DECL, &["Deno_privateDesktopTrayDestroy"][..]),
+    ] {
+      for name in methods {
+        let method = object
+          .methods
+          .iter()
+          .find(|method| method.name == *name)
+          .unwrap_or_else(|| panic!("missing method {name}"));
+        assert!(
+          method.symbol_for,
+          "{name} must not share a string property with its DESKTOP_JS wrapper"
+        );
+        let _ = method.fast_fn();
+      }
+    }
+
+    for (object, public_names) in [
+      (BrowserWindow::DECL, &["bind", "unbind"][..]),
+      (Tray::DECL, &["destroy"][..]),
+    ] {
+      for name in public_names {
+        assert!(
+          object.methods.iter().all(|method| method.name != *name),
+          "native method must not collide with the public {name} wrapper"
+        );
+      }
+    }
+  }
 
   #[test]
   fn app_menu_click_wire_shape() {
