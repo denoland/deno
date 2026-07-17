@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "remove @denotest/type-only-dep-consumer",
+      "output": "rm.out"
+    },
+    {
+      "args": "install --frozen=true",
+      "output": "[WILDCARD]"
+    }
+  ]
+}

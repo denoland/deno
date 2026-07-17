@@ -1,0 +1,2 @@
+[WILDCARD]Updated 1 dependency:
+ - jsr:@denotest/type-only-dep-consumer ^1.0.0 -> ^1.0.1

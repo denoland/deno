@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "outdated --update --latest @denotest/type-only-dep-consumer",
+      "output": "update.out"
+    },
+    {
+      "args": "install --frozen=true",
+      "output": "[WILDCARD]"
+    }
+  ]
+}

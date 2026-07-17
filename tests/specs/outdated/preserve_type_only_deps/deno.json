@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "@denotest/type-only-dep": "jsr:@denotest/type-only-dep@^1.0.0",
+    "@denotest/type-only-dep-consumer": "jsr:@denotest/type-only-dep-consumer@^1.0.0"
+  }
+}
