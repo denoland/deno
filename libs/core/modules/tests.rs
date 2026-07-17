@@ -1104,6 +1104,60 @@ fn test_validate_import_attributes_callback2() {
   }
 }
 
+#[tokio::test]
+async fn test_validate_import_attributes_callback_dynamic_import() {
+  fn validate_import_attributes(
+    scope: &mut v8::PinScope,
+    _attributes: &HashMap<String, String>,
+    _context: &ImportAttributesContext,
+  ) {
+    let message = v8::String::new(scope, "boom!").unwrap();
+    let exception = v8::Exception::type_error(scope, message);
+    scope.throw_exception(exception);
+  }
+
+  let loader = Rc::new(TestingModuleLoader::new(StaticModuleLoader::with(
+    Url::parse("file:///target.js").unwrap(),
+    ascii_str!("globalThis.executed = true;"),
+  )));
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    module_loader: Some(loader.clone()),
+    validate_import_attributes_cb: Some(Box::new(validate_import_attributes)),
+    ..Default::default()
+  });
+
+  runtime
+    .execute_script(
+      "file:///main.js",
+      r#"
+      globalThis.executed = false;
+      globalThis.importError = undefined;
+      import("./target.js", { with: { unsupported: "value" } })
+        .catch((error) => globalThis.importError = error);
+      "#,
+    )
+    .unwrap();
+  runtime.run_event_loop(Default::default()).await.unwrap();
+
+  assert_eq!(loader.counts(), ModuleLoadEventCounts::default());
+  runtime
+    .execute_script(
+      "file:///check.js",
+      r#"
+      if (globalThis.executed) {
+        throw new Error("rejected import was evaluated");
+      }
+      if (!(globalThis.importError instanceof TypeError)) {
+        throw new Error("expected dynamic import to reject with TypeError");
+      }
+      if (globalThis.importError.message !== "boom!") {
+        throw new Error(`unexpected rejection: ${globalThis.importError}`);
+      }
+      "#,
+    )
+    .unwrap();
+}
+
 #[test]
 fn test_custom_module_type_default() {
   let loader = Rc::new(TestingModuleLoader::new(StaticModuleLoader::default()));

@@ -1264,6 +1264,7 @@ pub fn host_import_module_with_phase_dynamically_callback<'s, 'i>(
     if tc_scope.has_caught() {
       let e = tc_scope.exception().unwrap();
       resolver.reject(tc_scope, e);
+      return Some(promise);
     }
   }
   let requested_module_type =
