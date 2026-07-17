@@ -2,7 +2,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 //
 // Axis-2 `declare class` -> `interface` + `declare var` conversion. See
-// docs/designs/deno-libs-generator.md and denoland/deno#36094.
+// denoland/deno#36094 for the two-axis model and the correctness invariant.
 //
 // Deno declares some web-platform types as `declare class X { ... }` where every
 // stock lib uses `interface X { ... }` + `declare var X: { ... }`. A class and

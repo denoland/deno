@@ -410,7 +410,8 @@ interface ProgressEvent<T extends EventTarget = EventTarget> extends Event {
  *
  * @category Events
  */
-declare var ProgressEvent: typeof globalThis extends { document: any; ProgressEvent: infer T } ? T : {
+declare var ProgressEvent: typeof globalThis extends
+  { document: any; ProgressEvent: infer T } ? T : {
   readonly prototype: ProgressEvent;
   new (type: string, eventInitDict?: ProgressEventInit): ProgressEvent;
 };
@@ -717,7 +718,8 @@ interface FileReader extends EventTarget {
  * {@linkcode File} into memory.
  *
  * @category File */
-declare var FileReader: typeof globalThis extends { document: any; FileReader: infer T } ? T : {
+declare var FileReader: typeof globalThis extends
+  { document: any; FileReader: infer T } ? T : {
   readonly prototype: FileReader;
   new (): FileReader;
   readonly EMPTY: 0;
@@ -1680,7 +1682,8 @@ interface ImageData {
  * for the given dimensions or wrapping an existing pixel array.
  *
  * @category Platform */
-declare var ImageData: typeof globalThis extends { document: any; ImageData: infer T } ? T : {
+declare var ImageData: typeof globalThis extends
+  { document: any; ImageData: infer T } ? T : {
   readonly prototype: ImageData;
   new (sw: number, sh: number, settings?: ImageDataSettings): ImageData;
   new (
@@ -1761,7 +1764,8 @@ interface WebTransport {
  * WebTransport session to the server at the given `url`.
  *
  * @category Platform */
-declare var WebTransport: typeof globalThis extends { document: any; WebTransport: infer T } ? T : {
+declare var WebTransport: typeof globalThis extends
+  { document: any; WebTransport: infer T } ? T : {
   prototype: WebTransport;
   new (url: string | URL, options?: WebTransportOptions): WebTransport;
 };
@@ -1783,7 +1787,8 @@ interface WebTransportBidirectionalStream {
  * constructed directly.
  *
  * @category Platform */
-declare var WebTransportBidirectionalStream: typeof globalThis extends { document: any; WebTransportBidirectionalStream: infer T } ? T : {
+declare var WebTransportBidirectionalStream: typeof globalThis extends
+  { document: any; WebTransportBidirectionalStream: infer T } ? T : {
   prototype: WebTransportBidirectionalStream;
   new (): WebTransportBidirectionalStream;
 };
@@ -1815,7 +1820,8 @@ interface WebTransportDatagramDuplexStream {
  * {@linkcode WebTransport.datagrams} rather than constructed directly.
  *
  * @category Platform */
-declare var WebTransportDatagramDuplexStream: typeof globalThis extends { document: any; WebTransportDatagramDuplexStream: infer T } ? T : {
+declare var WebTransportDatagramDuplexStream: typeof globalThis extends
+  { document: any; WebTransportDatagramDuplexStream: infer T } ? T : {
   prototype: WebTransportDatagramDuplexStream;
   new (): WebTransportDatagramDuplexStream;
 };
@@ -1935,7 +1941,8 @@ interface WebTransportError extends DOMException {
  * its streams.
  *
  * @category Platform */
-declare var WebTransportError: typeof globalThis extends { document: any; WebTransportError: infer T } ? T : {
+declare var WebTransportError: typeof globalThis extends
+  { document: any; WebTransportError: infer T } ? T : {
   prototype: WebTransportError;
   new (message?: string, options?: WebTransportErrorOptions): WebTransportError;
 };
@@ -2149,7 +2156,8 @@ interface DOMMatrix extends DOMMatrixReadOnly {
  * @category Geometry Interfaces Module API
  * @experimental
  */
-declare var DOMMatrix: typeof globalThis extends { document: any; DOMMatrix: infer T } ? T : {
+declare var DOMMatrix: typeof globalThis extends
+  { document: any; DOMMatrix: infer T } ? T : {
   prototype: DOMMatrix;
   new (init?: string | number[]): DOMMatrix;
   /**
@@ -2377,7 +2385,8 @@ interface DOMMatrixReadOnly {
  * @category Geometry Interfaces Module API
  * @experimental
  */
-declare var DOMMatrixReadOnly: typeof globalThis extends { document: any; DOMMatrixReadOnly: infer T } ? T : {
+declare var DOMMatrixReadOnly: typeof globalThis extends
+  { document: any; DOMMatrixReadOnly: infer T } ? T : {
   prototype: DOMMatrixReadOnly;
   new (init?: string | number[]): DOMMatrixReadOnly;
   /**
@@ -2454,7 +2463,8 @@ interface DOMPoint extends DOMPointReadOnly {
  * @category Geometry Interfaces Module API
  * @experimental
  */
-declare var DOMPoint: typeof globalThis extends { document: any; DOMPoint: infer T } ? T : {
+declare var DOMPoint: typeof globalThis extends
+  { document: any; DOMPoint: infer T } ? T : {
   prototype: DOMPoint;
   new (x?: number, y?: number, z?: number, w?: number): DOMPoint;
   /**
@@ -2520,7 +2530,8 @@ interface DOMPointReadOnly {
  * @category Geometry Interfaces Module API
  * @experimental
  */
-declare var DOMPointReadOnly: typeof globalThis extends { document: any; DOMPointReadOnly: infer T } ? T : {
+declare var DOMPointReadOnly: typeof globalThis extends
+  { document: any; DOMPointReadOnly: infer T } ? T : {
   prototype: DOMPointReadOnly;
   new (x?: number, y?: number, z?: number, w?: number): DOMPointReadOnly;
   /**
@@ -2597,7 +2608,8 @@ interface DOMQuad {
  * @category Geometry Interfaces Module API
  * @experimental
  */
-declare var DOMQuad: typeof globalThis extends { document: any; DOMQuad: infer T } ? T : {
+declare var DOMQuad: typeof globalThis extends
+  { document: any; DOMQuad: infer T } ? T : {
   prototype: DOMQuad;
   new (
     p1?: DOMPointInit,
@@ -2673,7 +2685,8 @@ interface DOMRect extends DOMRectReadOnly {
  * @category Geometry Interfaces Module API
  * @experimental
  */
-declare var DOMRect: typeof globalThis extends { document: any; DOMRect: infer T } ? T : {
+declare var DOMRect: typeof globalThis extends
+  { document: any; DOMRect: infer T } ? T : {
   prototype: DOMRect;
   new (x?: number, y?: number, width?: number, height?: number): DOMRect;
   /**
@@ -2757,7 +2770,8 @@ interface DOMRectReadOnly {
  * @category Geometry Interfaces Module API
  * @experimental
  */
-declare var DOMRectReadOnly: typeof globalThis extends { document: any; DOMRectReadOnly: infer T } ? T : {
+declare var DOMRectReadOnly: typeof globalThis extends
+  { document: any; DOMRectReadOnly: infer T } ? T : {
   prototype: DOMRectReadOnly;
   new (
     x?: number,

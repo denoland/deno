@@ -1,9 +1,8 @@
 #!/usr/bin/env -S deno run -A
 // Copyright 2018-2026 the Deno authors. MIT license.
 //
-// Axis-2 interface-shape de-fork generator. See
-// docs/designs/deno-libs-generator.md for the two-axis model and the
-// correctness invariant.
+// Axis-2 interface-shape de-fork generator. See denoland/deno#36094 for the
+// two-axis model and the correctness invariant.
 //
 // Deno ships forked web-platform lib declarations in cli/tsc/dts/lib.deno_*.d.ts
 // that fully redefine types stock TypeScript already ships in lib.dom /

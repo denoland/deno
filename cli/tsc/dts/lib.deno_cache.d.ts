@@ -10,7 +10,9 @@
  * pairs.
  *
  * @category Cache */
-declare var caches: typeof globalThis extends { document: any; caches: infer T } ? T : CacheStorage;
+declare var caches: typeof globalThis extends { document: any; caches: infer T }
+  ? T
+  : CacheStorage;
 
 /** Represents the storage for named {@linkcode Cache} objects. It provides the
  * methods used to open, enumerate, look up, and delete caches, and is accessed
@@ -95,10 +97,12 @@ interface Cache {
  * constructed directly, so calling the constructor throws.
  *
  * @category Cache */
-declare var Cache: typeof globalThis extends { document: any; Cache: infer T } ? T : {
-  readonly prototype: Cache;
-  new (): never;
-};
+declare var Cache: typeof globalThis extends { document: any; Cache: infer T }
+  ? T
+  : {
+    readonly prototype: Cache;
+    new (): never;
+  };
 
 /** The constructor object for {@linkcode CacheStorage}.
  *
@@ -106,7 +110,8 @@ declare var Cache: typeof globalThis extends { document: any; Cache: infer T } ?
  * property rather than constructed directly, so calling the constructor throws.
  *
  * @category Cache */
-declare var CacheStorage: typeof globalThis extends { document: any; CacheStorage: infer T } ? T : {
+declare var CacheStorage: typeof globalThis extends
+  { document: any; CacheStorage: infer T } ? T : {
   readonly prototype: CacheStorage;
   new (): never;
 };
