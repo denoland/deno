@@ -1,2 +1,3 @@
 Worker: bundling module
-Worker: bundle result.success: true
+Worker: bundle result.success: false
+Worker: read denied: true

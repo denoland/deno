@@ -14,7 +14,11 @@ import { basename, join, toFileUrl } from "@std/path";
 class TempDir implements AsyncDisposable, Disposable {
   #path: string;
   constructor(options?: Deno.MakeTempOptions) {
-    this.#path = Deno.makeTempDirSync(options);
+    // Resolve symlinks (e.g. macOS `/var` -> `/private/var`) up front. The
+    // bundler canonicalizes module paths, and Deno matches read/write grants
+    // by literal path, so tests that scope permissions to this directory must
+    // grant the canonical path the bundler will actually check against.
+    this.#path = Deno.realPathSync(Deno.makeTempDirSync(options));
   }
 
   async [Symbol.asyncDispose]() {
@@ -193,6 +197,66 @@ Deno.test("bundle: write requires caller permission", async () => {
   assertStringIncludes(stderrText, "--allow-write");
   await assertPathNotFound(blockedDir);
   await assertPathNotFound(output);
+});
+
+Deno.test("bundle: module read requires caller permission", async () => {
+  using dir = new TempDir();
+  const secret = dir.join("secret.ts");
+  const runner = dir.join("runner.ts");
+
+  await Deno.writeTextFile(
+    secret,
+    'export const TOKEN = "super-secret-value";\n',
+  );
+  await Deno.writeTextFile(
+    runner,
+    unindent`
+      const result = await Deno.bundle({
+        entrypoints: [${JSON.stringify(secret)}],
+        write: false,
+      });
+      const text = result.outputFiles
+        ?.map((f) => new TextDecoder().decode(f.contents))
+        .join("") ?? "";
+      console.log(JSON.stringify({
+        success: result.success,
+        leaked: text.includes("super-secret-value"),
+        outputs: result.outputFiles?.length ?? 0,
+        errors: result.errors?.map((e) => e.text) ?? [],
+      }));
+    `,
+  );
+
+  // Read access to the runner only, so reading the bundled module is denied
+  // and its (transpiled) source is never returned to the caller.
+  const { success, stdout } = await new Deno.Command(Deno.execPath(), {
+    args: [
+      "run",
+      "--no-config",
+      "--no-lock",
+      "--no-prompt",
+      "--quiet",
+      "--unstable-bundle",
+      `--allow-read=${runner}`,
+      runner,
+    ],
+    stdout: "piped",
+  }).output();
+
+  assert(success);
+  const result = JSON.parse(new TextDecoder().decode(stdout)) as {
+    success: boolean;
+    leaked: boolean;
+    outputs: number;
+    errors: string[];
+  };
+  assertFalse(result.success);
+  assertFalse(result.leaked);
+  assertEquals(result.outputs, 0);
+  assert(
+    result.errors.some((e) => e.includes("Requires read access")),
+    `expected a read-access error, got: ${JSON.stringify(result.errors)}`,
+  );
 });
 
 Deno.test("bundle: html entrypoint read requires caller permission", async () => {

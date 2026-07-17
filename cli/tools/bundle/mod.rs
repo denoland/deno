@@ -50,6 +50,7 @@ use deno_resolver::loader::LoadedModuleOrAsset;
 use deno_resolver::loader::LoadedModuleSource;
 use deno_resolver::loader::RequestedModuleType;
 use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
+use deno_runtime::deno_permissions::CheckSpecifierKind;
 use deno_runtime::deno_permissions::OpenAccessKind;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
@@ -1808,6 +1809,9 @@ pub enum BundleLoadErrorKind {
   ResolveUrlOrPath(#[from] deno_path_util::ResolveUrlOrPathError),
   #[class(inherit)]
   #[error(transparent)]
+  Permission(#[from] deno_runtime::deno_permissions::PermissionCheckError),
+  #[class(inherit)]
+  #[error(transparent)]
   ResolveWithGraph(#[from] ResolveWithGraphError),
   #[class(generic)]
   #[error("Failed to parse Wasm module: {0}")]
@@ -2110,6 +2114,28 @@ impl DenoPluginHandler {
     Ok(())
   }
 
+  /// When bundling via `Deno.bundle()`, reading a module returns its
+  /// (transpiled) source to the calling program, so it must be gated on the
+  /// caller's permissions. `deno bundle` reads its inputs unchecked like the
+  /// other CLI subcommands, in which case `file_permissions` is `None` and this
+  /// is a no-op.
+  ///
+  /// This mirrors how dynamic `import()` is gated: `check_specifier` applies a
+  /// read check to `file:` specifiers and an import check to remote ones. The
+  /// file fetcher only gates the latter for the bundler (module reads use
+  /// `Static` semantics, which exempt `file:`), so this closes the local-read
+  /// gap without canonicalizing paths in a way that would break reads scoped to
+  /// a symlinked directory (e.g. a `/var` -> `/private/var` temp dir on macOS).
+  fn check_read_permission(
+    &self,
+    specifier: &Url,
+  ) -> Result<(), BundleLoadError> {
+    if let Some(permissions) = &self.file_permissions {
+      permissions.check_specifier(specifier, CheckSpecifierKind::Dynamic)?;
+    }
+    Ok(())
+  }
+
   async fn bundle_load(
     &self,
     specifier: &str,
@@ -2155,6 +2181,11 @@ impl DenoPluginHandler {
         }
         (specifier, media_type)
       };
+
+    // `specifier` is now the concrete module we're about to read the source of
+    // (a `file:` path for local modules, including npm packages resolved into
+    // `node_modules`). Gate the read on the caller's permissions.
+    self.check_read_permission(&specifier)?;
 
     let graph = self.module_graph_container.graph();
     let module_or_asset = self
@@ -2228,13 +2259,16 @@ impl DenoPluginHandler {
       LoadedModuleOrAsset::ExternalAsset {
         specifier,
         statically_analyzable: _,
-      } => LoadedModuleSource::ArcBytes(
-        self
-          .file_fetcher
-          .fetch(&specifier, &self.permissions)
-          .await?
-          .source,
-      ),
+      } => {
+        self.check_read_permission(&specifier)?;
+        LoadedModuleSource::ArcBytes(
+          self
+            .file_fetcher
+            .fetch(&specifier, &self.permissions)
+            .await?
+            .source,
+        )
+      }
     };
 
     Ok(Some(
