@@ -266,7 +266,7 @@ interface RequestInit {
   /**
    * Can only be null. Used to disassociate request from any Window.
    */
-  window?: any;
+  window?: null;
 }
 
 /** This Fetch API interface represents a resource request.

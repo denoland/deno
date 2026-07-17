@@ -5051,7 +5051,7 @@ interface Uint8ArrayConstructor {
  * @experimental
  */
 interface CSSRule {
-  readonly cssText: string;
+  cssText: string;
 }
 
 /** **UNSTABLE**: New API, yet to be vetted.

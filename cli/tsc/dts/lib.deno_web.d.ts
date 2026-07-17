@@ -817,7 +817,7 @@ interface ReadableStreamGenericReader {
 /** @category Streams */
 interface ReadableStreamReadDoneResult<T> {
   done: true;
-  value?: T;
+  value: T | undefined;
 }
 
 /** @category Streams */
@@ -1662,8 +1662,8 @@ type ImageDataPixelFormat = "rgba-unorm8" | "rgba-float16";
 
 /** @category Platform */
 interface ImageDataSettings {
-  readonly colorSpace?: PredefinedColorSpace;
-  readonly pixelFormat?: ImageDataPixelFormat;
+  colorSpace?: PredefinedColorSpace;
+  pixelFormat?: ImageDataPixelFormat;
 }
 
 /** @category Platform */
@@ -1705,8 +1705,8 @@ interface WebTransportErrorOptions {
 
 /** @category Platform */
 interface WebTransportHash {
-  algorithm?: string;
-  value?: BufferSource;
+  algorithm: string;
+  value: BufferSource;
 }
 
 /** @category Platform */

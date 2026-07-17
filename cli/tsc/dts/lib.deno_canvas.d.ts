@@ -222,7 +222,7 @@ interface GPUCanvasConfiguration {
   format: GPUTextureFormat;
   usage?: GPUTextureUsageFlags;
   viewFormats?: GPUTextureFormat[];
-  colorSpace?: "srgb" | "display-p3";
+  colorSpace?: PredefinedColorSpace;
   alphaMode?: GPUCanvasAlphaMode;
 
   // extended from spec

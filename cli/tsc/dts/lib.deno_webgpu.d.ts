@@ -740,7 +740,7 @@ declare class GPUPipelineLayout implements GPUObjectBase {
 
 /** @category GPU */
 interface GPUPipelineLayoutDescriptor extends GPUObjectDescriptorBase {
-  bindGroupLayouts: GPUBindGroupLayout[];
+  bindGroupLayouts: (GPUBindGroupLayout | null)[];
 }
 
 /** @category GPU */

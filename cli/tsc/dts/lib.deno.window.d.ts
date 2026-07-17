@@ -62,7 +62,7 @@ interface Window extends EventTarget {
   prompt: (message?: string, defaultValue?: string) => string | null;
   Deno: typeof Deno;
   Navigator: typeof Navigator;
-  navigator: Navigator;
+  readonly navigator: Navigator;
   Location: typeof Location;
   location: Location;
   localStorage: Storage;
