@@ -1708,8 +1708,8 @@ interface WebTransportErrorOptions {
 
 /** @category Platform */
 interface WebTransportHash {
-  algorithm: string;
-  value: BufferSource;
+  algorithm?: string;
+  value?: BufferSource;
 }
 
 /** @category Platform */

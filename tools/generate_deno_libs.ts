@@ -103,19 +103,6 @@ const RECONCILE: Reconcile[] = [
     member: "bindGroupLayouts",
     stock: "dom",
   },
-  // WebTransport certificate hash: stock marks both fields required.
-  {
-    file: "lib.deno_web.d.ts",
-    iface: "WebTransportHash",
-    member: "algorithm",
-    stock: "dom",
-  },
-  {
-    file: "lib.deno_web.d.ts",
-    iface: "WebTransportHash",
-    member: "value",
-    stock: "dom",
-  },
   // `PredefinedColorSpace` is the stock alias for the same `"srgb" | "display-p3"`
   // union; Deno inlined the union.
   {
@@ -251,19 +238,16 @@ const KEEP: Array<{ iface: string; member: string; why: string }> = [
     why: "Deno accepts AllowSharedBufferSource; stock narrows to BufferSource",
   },
   {
-    iface: "GPURenderPassColorAttachment",
-    member: "view",
-    why: "Deno's WebGPU narrows view to GPUTextureView",
+    iface: "WebTransportHash",
+    member: "algorithm",
+    why:
+      "Deno's runtime webidl treats this as optional; stock/spec marks it required",
   },
   {
-    iface: "GPURenderPassColorAttachment",
-    member: "resolveTarget",
-    why: "Deno's WebGPU narrows resolveTarget to GPUTextureView",
-  },
-  {
-    iface: "GPURenderPassDepthStencilAttachment",
-    member: "view",
-    why: "Deno's WebGPU narrows view to GPUTextureView",
+    iface: "WebTransportHash",
+    member: "value",
+    why:
+      "Deno's runtime webidl treats this as optional; stock/spec marks it required",
   },
 ];
 
