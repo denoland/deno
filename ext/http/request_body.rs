@@ -67,7 +67,7 @@ impl BufferedIncoming {
     let mut cx = Context::from_waker(&waker);
     loop {
       if self.done {
-        return Some(std::mem::take(&mut self.pending).to_vec());
+        return Some(std::mem::take(&mut self.pending).into());
       }
       match Pin::new(&mut self.inner).poll_frame(&mut cx) {
         Poll::Ready(Some(Ok(frame))) => {
@@ -80,7 +80,7 @@ impl BufferedIncoming {
         Poll::Ready(Some(Err(_))) => return None,
         Poll::Ready(None) => {
           self.done = true;
-          return Some(std::mem::take(&mut self.pending).to_vec());
+          return Some(std::mem::take(&mut self.pending).into());
         }
         Poll::Pending => return None,
       }

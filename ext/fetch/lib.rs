@@ -663,7 +663,7 @@ pub async fn op_fetch_send(
 
   let status = res.status();
   let url = request.url.into();
-  let mut res_headers = Vec::new();
+  let mut res_headers = Vec::with_capacity(res.headers().len());
   for (key, val) in res.headers().iter() {
     res_headers.push((key.as_str().into(), val.as_bytes().into()));
   }
