@@ -967,6 +967,58 @@ fn test_validate_import_attributes_default() {
     .unwrap();
 }
 
+fn fs_module_loader_specifier(file_name: &str) -> ModuleSpecifier {
+  let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    .join("modules")
+    .join("testdata")
+    .join(file_name);
+  ModuleSpecifier::from_file_path(path).unwrap()
+}
+
+async fn load_fs_module(
+  file_name: &str,
+  requested_module_type: RequestedModuleType,
+) -> Result<ModuleSource, ModuleLoaderError> {
+  let specifier = fs_module_loader_specifier(file_name);
+  let response = FsModuleLoader.load(
+    &specifier,
+    None,
+    ModuleLoadOptions {
+      is_dynamic_import: false,
+      is_synchronous: false,
+      requested_module_type,
+    },
+  );
+  match response {
+    ModuleLoadResponse::Sync(result) => result,
+    ModuleLoadResponse::Async(future) => future.await,
+  }
+}
+
+#[tokio::test]
+async fn test_fs_module_loader_rejects_non_json_for_json_request() {
+  for file_name in ["fs_module_loader.js", "fs_module_loader"] {
+    let specifier = fs_module_loader_specifier(file_name);
+    let error = load_fs_module(file_name, RequestedModuleType::Json)
+      .await
+      .unwrap_err();
+
+    assert_eq!(error.get_class(), "TypeError");
+    assert_eq!(
+      error.to_string(),
+      format!(
+        "Expected a JSON module, but identified a JavaScript module.\n  Specifier: {specifier}"
+      )
+    );
+  }
+
+  let module =
+    load_fs_module("fs_module_loader.json", RequestedModuleType::Json)
+      .await
+      .unwrap();
+  assert_eq!(module.module_type, ModuleType::Json);
+}
+
 #[test]
 fn test_validate_import_attributes_callback() {
   // Verify that `validate_import_attributes_cb` is called and can deny
