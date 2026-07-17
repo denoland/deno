@@ -2,7 +2,11 @@
   "tempDir": true,
   "steps": [{
     "if": "unix",
-    "args": "compile --no-prompt --allow-read=allowed --output main main.ts",
+    "args": "compile --no-prompt --allow-read --output main-reexport main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "unix",
+    "args": "compile --no-prompt --allow-read=allowed --output main-denied main.ts",
     "output": "[WILDCARD]"
   }, {
     "if": "unix",
@@ -10,17 +14,21 @@
     "output": ""
   }, {
     "if": "unix",
-    "commandName": "./main",
+    "commandName": "./main-reexport",
     "args": ["reexport"],
     "output": "from-inner\n"
   }, {
     "if": "unix",
-    "commandName": "./main",
+    "commandName": "./main-denied",
     "args": ["denied"],
     "output": "blocked\n"
   }, {
     "if": "windows",
-    "args": "compile --no-prompt --allow-read=allowed --output main.exe main.ts",
+    "args": "compile --no-prompt --allow-read --output main-reexport.exe main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "windows",
+    "args": "compile --no-prompt --allow-read=allowed --output main-denied.exe main.ts",
     "output": "[WILDCARD]"
   }, {
     "if": "windows",
@@ -28,12 +36,12 @@
     "output": ""
   }, {
     "if": "windows",
-    "commandName": "./main.exe",
+    "commandName": "./main-reexport.exe",
     "args": ["reexport"],
     "output": "from-inner\n"
   }, {
     "if": "windows",
-    "commandName": "./main.exe",
+    "commandName": "./main-denied.exe",
     "args": ["denied"],
     "output": "blocked\n"
   }]
