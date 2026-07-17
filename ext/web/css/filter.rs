@@ -5,7 +5,7 @@ pub use cssparser::ParserInput;
 use cssparser::match_ignore_ascii_case;
 
 use super::color::Color;
-use super::color::parse_css_color;
+use super::color::parse_color_value;
 use super::error::CSSCustomError;
 use super::error::CSSParseError;
 use super::value::Angle;
@@ -189,10 +189,7 @@ fn parse_drop_shadow<'i, 't>(
   }
 
   if !args.is_exhausted() {
-    let start = args.position();
-    while args.next().is_ok() {}
-    let color_str = args.slice_from(start);
-    color = parse_css_color(color_str).map_err(|e| args.new_custom_error(e))?;
+    color = parse_color_value(args)?.to_srgb8();
   }
 
   Ok(CssFilterFunction::DropShadow {

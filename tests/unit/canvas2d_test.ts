@@ -104,6 +104,74 @@ Deno.test(function canvas2dFillStyleInvalidIgnored() {
   assertEquals(ctx.fillStyle, "#ff0000");
 });
 
+Deno.test(function canvas2dFillStyleModernSyntax() {
+  const canvas = new OffscreenCanvas(10, 10);
+  const ctx = canvas.getContext("2d")!;
+  // Modern space-separated rgb() still serializes in the legacy form.
+  ctx.fillStyle = "rgb(255 0 0)";
+  assertEquals(ctx.fillStyle, "#ff0000");
+  ctx.fillStyle = "rgb(100% 0% 0% / 50%)";
+  assertEquals(ctx.fillStyle, "rgba(255, 0, 0, 0.5)");
+  ctx.fillStyle = "hsl(120 100% 50%)";
+  assertEquals(ctx.fillStyle, "#00ff00");
+  ctx.fillStyle = "lab(50 0 0)";
+  assertEquals(ctx.fillStyle, "lab(50 0 0)");
+  ctx.fillStyle = "oklch(0.5 0.2 120 / 0.5)";
+  assertEquals(ctx.fillStyle, "oklch(0.5 0.2 120 / 0.5)");
+  ctx.fillStyle = "color(display-p3 1 0 0)";
+  assertEquals(ctx.fillStyle, "color(display-p3 1 0 0)");
+});
+
+Deno.test(function canvas2dFillStyleCalc() {
+  const canvas = new OffscreenCanvas(10, 10);
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "rgb(calc(200 + 55) 0 calc(50% * 2))";
+  assertEquals(ctx.fillStyle, "#ff00ff");
+  ctx.fillStyle = "rgba(0, 0, 255, calc(1 / 2))";
+  assertEquals(ctx.fillStyle, "rgba(0, 0, 255, 0.5)");
+});
+
+Deno.test(function canvas2dFillStyleColorMix() {
+  const canvas = new OffscreenCanvas(10, 10);
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "color-mix(in srgb, red, blue)";
+  assertEquals(ctx.fillStyle, "color(srgb 0.5 0 0.5)");
+  ctx.fillStyle = "color-mix(in srgb, red 30%, blue 30%)";
+  assertEquals(ctx.fillStyle, "color(srgb 0.5 0 0.5 / 0.6)");
+  ctx.fillStyle = "red";
+  ctx.fillStyle = "color-mix(in srgb, red 0%, blue 0%)";
+  assertEquals(ctx.fillStyle, "#ff0000");
+});
+
+Deno.test(function canvas2dFillStyleRelativeColor() {
+  const canvas = new OffscreenCanvas(10, 10);
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "rgb(from red g r b)";
+  assertEquals(ctx.fillStyle, "color(srgb 0 1 0)");
+  ctx.fillStyle = "rgb(from red calc(r / 2) g b)";
+  assertEquals(ctx.fillStyle, "color(srgb 0.5 0 0)");
+  ctx.fillStyle = "hsl(from red calc(h + 120) s l)";
+  assertEquals(ctx.fillStyle, "color(srgb 0 1 0)");
+  ctx.fillStyle =
+    "color(from color(srgb 0.25 0.5 0.75 / 0.5) srgb r g b / alpha)";
+  assertEquals(ctx.fillStyle, "color(srgb 0.25 0.5 0.75 / 0.5)");
+});
+
+Deno.test(function canvas2dFillStyleKeywordColors() {
+  const canvas = new OffscreenCanvas(10, 10);
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "grey";
+  assertEquals(ctx.fillStyle, "#808080");
+  // OffscreenCanvas has no style context; currentcolor computes to black.
+  ctx.fillStyle = "red";
+  ctx.fillStyle = "currentcolor";
+  assertEquals(ctx.fillStyle, "#000000");
+  ctx.fillStyle = "CanvasText";
+  assertEquals(ctx.fillStyle, "#000000");
+  ctx.fillStyle = "ThreeDDarkShadow";
+  assertEquals(ctx.fillStyle, "#767676");
+});
+
 // --- strokeStyle ---
 
 Deno.test(function canvas2dStrokeStyleDefault() {
@@ -1077,6 +1145,19 @@ Deno.test(function canvas2dAddColorStopValid() {
   const g = ctx.createLinearGradient(0, 0, 10, 0);
   g.addColorStop(0, "#f00");
   g.addColorStop(1, "blue");
+  g.addColorStop(0.5, "color-mix(in srgb, red, blue)");
+  g.addColorStop(0.5, "rgb(from red g r b)");
+});
+
+Deno.test(function canvas2dShadowColorRoundTrip() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  assertEquals(ctx.shadowColor, "rgba(0, 0, 0, 0)");
+  ctx.shadowColor = "rgba(255, 255, 255, 0.5)";
+  assertEquals(ctx.shadowColor, "rgba(255, 255, 255, 0.5)");
+  ctx.shadowColor = "lab(50 0 0)";
+  assertEquals(ctx.shadowColor, "lab(50 0 0)");
+  ctx.shadowColor = "not-a-color";
+  assertEquals(ctx.shadowColor, "lab(50 0 0)");
 });
 
 Deno.test(function canvas2dAddColorStopInvalidOffsetThrows() {

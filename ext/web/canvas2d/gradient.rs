@@ -117,8 +117,10 @@ pub fn parse_color_stop(
 ) -> Result<peniko::ColorStop, Canvas2DError> {
   let parsed =
     parse_css_color(color).map_err(|_| Canvas2DError::ColorStopSyntax)?;
+  // Canvas gradients interpolate in sRGB; convert while keeping f32
+  // precision instead of quantizing to 8 bits.
   Ok(peniko::ColorStop {
     offset,
-    color: peniko::color::DynamicColor::from_alpha_color(parsed),
+    color: parsed.color.convert(peniko::color::ColorSpaceTag::Srgb),
   })
 }

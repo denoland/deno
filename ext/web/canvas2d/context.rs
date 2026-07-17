@@ -81,10 +81,9 @@ use crate::canvas2d::path::transform_path;
 use crate::canvas2d::pattern::CanvasPattern;
 use crate::canvas2d::pattern::pad_pattern_image;
 use crate::canvas2d::pattern::parse_repetition;
-use crate::css::color::Color;
-use crate::css::color::color_to_css_string;
-use crate::css::color::is_color_transparent;
+use crate::css::color::ParsedColor;
 use crate::css::color::parse_css_color;
+use crate::css::color::serialize_color_for_canvas;
 use crate::css::filter::FilterValueListParser;
 use crate::css::filter::ParserInput as FilterParserInput;
 use crate::css::font::FontState;
@@ -156,7 +155,7 @@ impl OffscreenCanvasRenderingContext2D {
   ) -> v8::Local<'a, v8::Value> {
     match &self.state.borrow().fill_style {
       FillStrokeStyle::Color(c) => {
-        let s = color_to_css_string(*c);
+        let s = serialize_color_for_canvas(c);
         v8::String::new(scope, &s).unwrap().into()
       }
       FillStrokeStyle::Gradient(g) | FillStrokeStyle::Pattern(g) => {
@@ -184,7 +183,7 @@ impl OffscreenCanvasRenderingContext2D {
   ) -> v8::Local<'a, v8::Value> {
     match &self.state.borrow().stroke_style {
       FillStrokeStyle::Color(c) => {
-        let s = color_to_css_string(*c);
+        let s = serialize_color_for_canvas(c);
         v8::String::new(scope, &s).unwrap().into()
       }
       FillStrokeStyle::Gradient(g) | FillStrokeStyle::Pattern(g) => {
@@ -434,7 +433,7 @@ impl OffscreenCanvasRenderingContext2D {
     let op = state.global_composite_operation;
     let alpha = state.global_alpha;
     let shadow = has_shadow(&state);
-    let shadow_color = state.shadow_color_rgba;
+    let shadow_color = state.shadow_color.to_srgb8();
     let shadow_xform = if shadow {
       Some(shadow_transform(&state, state.transform))
     } else {
@@ -759,16 +758,13 @@ impl OffscreenCanvasRenderingContext2D {
   #[getter]
   #[string]
   fn shadow_color(&self) -> String {
-    self.state.borrow().shadow_color.clone()
+    serialize_color_for_canvas(&self.state.borrow().shadow_color)
   }
 
   #[setter]
   fn shadow_color(&self, #[webidl] value: String) {
-    if let Ok(rgba) = parse_css_color(&value) {
-      let mut state = self.state.borrow_mut();
-      // The getter must return the serialized form, not the raw input.
-      state.shadow_color = color_to_css_string(rgba);
-      state.shadow_color_rgba = rgba;
+    if let Ok(parsed) = parse_css_color(&value) {
+      self.state.borrow_mut().shadow_color = parsed;
     }
   }
 
@@ -866,8 +862,7 @@ impl OffscreenCanvasRenderingContext2D {
       let mut state = self.state.borrow_mut();
       state.global_alpha = 1.0;
       state.global_composite_operation = GlobalCompositeOperation::SourceOver;
-      state.shadow_color = String::from("rgba(0, 0, 0, 0)");
-      state.shadow_color_rgba = Color::TRANSPARENT;
+      state.shadow_color = ParsedColor::TRANSPARENT;
       state.shadow_offset_x = 0.0;
       state.shadow_offset_y = 0.0;
       state.shadow_blur = 0.0;
@@ -1734,7 +1729,7 @@ impl OffscreenCanvasRenderingContext2D {
     let op = ds.global_composite_operation;
     let alpha = ds.global_alpha;
     let shadow = has_shadow(&ds);
-    let shadow_color = ds.shadow_color_rgba;
+    let shadow_color = ds.shadow_color.to_srgb8();
     let shadow_xform = if shadow {
       Some(shadow_transform(&ds, image_transform))
     } else {
@@ -2315,7 +2310,7 @@ impl OffscreenCanvasRenderingContext2D {
     let op = state.global_composite_operation;
     let alpha = state.global_alpha;
     let shadow = has_shadow(&state);
-    let shadow_color = state.shadow_color_rgba;
+    let shadow_color = state.shadow_color.to_srgb8();
     let shadow_xform = if shadow {
       Some(shadow_transform(&state, transform))
     } else {
@@ -2364,7 +2359,7 @@ impl OffscreenCanvasRenderingContext2D {
     let op = state.global_composite_operation;
     let alpha = state.global_alpha;
     let shadow = has_shadow(&state);
-    let shadow_color = state.shadow_color_rgba;
+    let shadow_color = state.shadow_color.to_srgb8();
     let shadow_xform = if shadow {
       Some(shadow_transform(&state, transform))
     } else {
@@ -2466,7 +2461,7 @@ impl OffscreenCanvasRenderingContext2D {
     let op = state.global_composite_operation;
     let global_alpha = state.global_alpha;
     let shadow = has_shadow(&state);
-    let shadow_color = state.shadow_color_rgba;
+    let shadow_color = state.shadow_color.to_srgb8();
     let shadow_xform = if shadow {
       Some(shadow_transform(&state, state.transform))
     } else {
@@ -2924,7 +2919,7 @@ fn resolve_brush(
 ) -> (peniko::Brush, Option<Affine>) {
   match style {
     FillStrokeStyle::Color(c) => {
-      let rgba = c.to_rgba8();
+      let rgba = c.to_srgb8().to_rgba8();
       let alpha = (rgba.a as f32 / 255.0 * global_alpha * 255.0).round() as u8;
       let color = peniko::Color::from_rgba8(rgba.r, rgba.g, rgba.b, alpha);
       (peniko::Brush::Solid(color), None)
@@ -3166,7 +3161,7 @@ fn build_stroke(state: &DrawingState) -> Stroke {
 }
 
 fn has_shadow(state: &DrawingState) -> bool {
-  !is_color_transparent(state.shadow_color_rgba)
+  !state.shadow_color.is_transparent()
     && (state.shadow_blur > 0.0
       || state.shadow_offset_x != 0.0
       || state.shadow_offset_y != 0.0)

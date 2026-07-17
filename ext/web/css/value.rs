@@ -876,17 +876,45 @@ impl NumericAccumulator {
   }
 }
 
+/// Channel keyword substitutions for CSS relative color syntax
+/// (e.g. `r`, `g`, `b`, `alpha` in `rgb(from red calc(r / 2) g b)`).
+/// Keywords are resolved as plain `<number>` values, per CSS Color 5.
+/// https://www.w3.org/TR/css-color-5/#relative-colors
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ChannelKeywords {
+  entries: [Option<(&'static str, f64)>; 4],
+}
+
+impl ChannelKeywords {
+  #[inline]
+  pub fn new(entries: [Option<(&'static str, f64)>; 4]) -> Self {
+    Self { entries }
+  }
+
+  #[inline]
+  fn get(&self, ident: &str) -> Option<f64> {
+    self.entries.iter().flatten().find_map(|(name, value)| {
+      ident.eq_ignore_ascii_case(name).then_some(*value)
+    })
+  }
+}
+
 #[derive(Default)]
 pub struct ParseOptions {
   /// Base font size in pixels for resolving em/rem and percentage values.
   /// When `None`, em/rem tokens yield `ContainsRelativeLengthValues`.
   pub em_base: Option<f64>,
+  /// Channel keywords resolvable as `<number>` values, used by the CSS
+  /// relative color syntax. When `None`, bare identifiers other than calc
+  /// constants are rejected.
+  pub channel_keywords: Option<ChannelKeywords>,
 }
 
 #[derive(Debug)]
 struct ParseState {
   function_depth: u8,
   em_base: Option<f64>,
+  channel_keywords: Option<ChannelKeywords>,
 }
 
 impl ParseState {
@@ -894,6 +922,7 @@ impl ParseState {
     Self {
       function_depth: 0,
       em_base: opts.em_base,
+      channel_keywords: opts.channel_keywords,
     }
   }
 }
@@ -1521,6 +1550,13 @@ impl NumericValue {
         })
       }
       Token::Ident(ident) => {
+        // Channel keywords of the relative color syntax resolve as
+        // `<number>` values both inside and outside of math functions.
+        if let Some(channel_keywords) = &state.channel_keywords
+          && let Some(value) = channel_keywords.get(ident)
+        {
+          return Ok(NumericValue::Number(value).into());
+        }
         if state.function_depth == 0 {
           let token = token.clone();
           return Err(input.new_unexpected_token_error(token));
@@ -2390,5 +2426,98 @@ mod tests {
     let mut parser = Parser::new(&mut input);
     let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(result, Ok(NumericValue::Number(-1.0)));
+  }
+
+  #[test]
+  fn channel_keyword_bare() {
+    let mut input = ParserInput::new("g");
+    let mut parser = Parser::new(&mut input);
+    let options = ParseOptions {
+      channel_keywords: Some(ChannelKeywords::new([
+        Some(("r", 255.0)),
+        Some(("g", 128.0)),
+        Some(("b", 0.0)),
+        Some(("alpha", 1.0)),
+      ])),
+      ..Default::default()
+    };
+    let result = NumericValue::parse(&mut parser, options);
+    assert_eq!(result, Ok(NumericValue::Number(128.0)));
+  }
+
+  #[test]
+  fn channel_keyword_case_insensitive() {
+    let mut input = ParserInput::new("ALPHA");
+    let mut parser = Parser::new(&mut input);
+    let options = ParseOptions {
+      channel_keywords: Some(ChannelKeywords::new([
+        Some(("r", 255.0)),
+        Some(("g", 128.0)),
+        Some(("b", 0.0)),
+        Some(("alpha", 1.0)),
+      ])),
+      ..Default::default()
+    };
+    let result = NumericValue::parse(&mut parser, options);
+    assert_eq!(result, Ok(NumericValue::Number(1.0)));
+  }
+
+  #[test]
+  fn channel_keyword_in_calc() {
+    let mut input = ParserInput::new("calc(r / 2 + g)");
+    let mut parser = Parser::new(&mut input);
+    let options = ParseOptions {
+      channel_keywords: Some(ChannelKeywords::new([
+        Some(("r", 255.0)),
+        Some(("g", 128.0)),
+        Some(("b", 0.0)),
+        Some(("alpha", 1.0)),
+      ])),
+      ..Default::default()
+    };
+    let result = NumericValue::parse(&mut parser, options);
+    assert_eq!(result, Ok(NumericValue::Number(255.5)));
+  }
+
+  #[test]
+  fn channel_keyword_unknown_ident() {
+    let mut input = ParserInput::new("h");
+    let mut parser = Parser::new(&mut input);
+    let options = ParseOptions {
+      channel_keywords: Some(ChannelKeywords::new([
+        Some(("r", 255.0)),
+        Some(("g", 128.0)),
+        Some(("b", 0.0)),
+        Some(("alpha", 1.0)),
+      ])),
+      ..Default::default()
+    };
+    let result = NumericValue::parse(&mut parser, options);
+    assert!(result.is_err());
+  }
+
+  #[test]
+  fn channel_keyword_disabled() {
+    let mut input = ParserInput::new("r");
+    let mut parser = Parser::new(&mut input);
+    let result = NumericValue::parse(&mut parser, ParseOptions::default());
+    assert!(result.is_err());
+  }
+
+  #[test]
+  fn channel_keyword_calc_constants_still_work() {
+    let mut input = ParserInput::new("calc(pi)");
+    let mut parser = Parser::new(&mut input);
+    let options = ParseOptions {
+      channel_keywords: Some(ChannelKeywords::new([
+        Some(("r", 255.0)),
+        Some(("g", 128.0)),
+        Some(("b", 0.0)),
+        Some(("alpha", 1.0)),
+      ])),
+      ..Default::default()
+    };
+    let result = NumericValue::parse(&mut parser, options);
+    assert_eq!(result, Ok(NumericValue::Number(f64::consts::PI)));
   }
 }
