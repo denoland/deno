@@ -619,13 +619,11 @@ const buildItems = handleBuildItems([{
   libc: "musl",
   // The glibc sysroot is not usable for musl builds.
   use_sysroot: false,
-  skip_pr: true,
 }, {
   ...Runners.linuxArmMusl,
   profile: "release",
   libc: "musl",
   use_sysroot: false,
-  skip_pr: true,
 }]);
 
 const buildJobs = buildItems.map((rawBuildItem) => {
