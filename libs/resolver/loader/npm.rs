@@ -254,6 +254,9 @@ where
   TSys: NpmModuleLoaderSys,
 {
   fn load_source(&self, specifier: &Url) -> Option<String> {
+    // Recursive npm analysis must stay within npm-owned sources. Targets
+    // outside package roots are left to their active loader and runtime
+    // permission checks instead of being read ambiently here.
     if !self.in_npm_pkg_checker.in_npm_package(specifier) {
       return None;
     }

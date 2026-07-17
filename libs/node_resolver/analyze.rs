@@ -363,7 +363,7 @@ impl<
     // this goes through the modules concurrently, so collect
     // the errors in order to be deterministic
     errors: &mut Vec<JsErrorBox>,
-    source_provider: Option<&dyn CjsAnalysisSourceProvider>,
+    source_provider: Option<&'a (dyn CjsAnalysisSourceProvider + 'a)>,
   ) {
     struct Analysis {
       reexport_specifier: url::Url,
@@ -419,10 +419,10 @@ impl<
           }
 
           let referrer = referrer.clone();
-          let source = source_provider
-            .and_then(|provider| provider.load_source(&reexport_specifier))
-            .map(Cow::Owned);
           let future = async move {
+            let source = source_provider
+              .and_then(|provider| provider.load_source(&reexport_specifier))
+              .map(Cow::Owned);
             let analysis = cjs_code_analyzer
               .analyze_cjs(
                 &reexport_specifier,
