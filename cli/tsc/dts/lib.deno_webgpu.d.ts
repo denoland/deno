@@ -16,13 +16,12 @@ interface GPUObjectDescriptorBase {
 }
 
 /** @category GPU */
-declare class GPUSupportedLimits {
+interface GPUSupportedLimits {
   readonly maxTextureDimension1D: number;
   readonly maxTextureDimension2D: number;
   readonly maxTextureDimension3D: number;
   readonly maxTextureArrayLayers: number;
   readonly maxBindGroups: number;
-  // TODO(@crowlKats): support max_bind_groups_plus_vertex_buffers
   readonly maxBindGroupsPlusVertexBuffers: number;
   readonly maxBindingsPerBindGroup: number;
   readonly maxDynamicUniformBuffersPerPipelineLayout: number;
@@ -40,7 +39,6 @@ declare class GPUSupportedLimits {
   readonly maxBufferSize: number;
   readonly maxVertexAttributes: number;
   readonly maxVertexBufferArrayStride: number;
-  // TODO(@crowlKats): support max_inter_stage_shader_variables
   readonly maxInterStageShaderVariables: number;
   readonly maxColorAttachments: number;
   readonly maxColorAttachmentBytesPerSample: number;
@@ -52,8 +50,14 @@ declare class GPUSupportedLimits {
   readonly maxComputeWorkgroupsPerDimension: number;
 }
 
+declare var GPUSupportedLimits: typeof globalThis extends
+  { document: any; GPUSupportedLimits: infer T } ? T : {
+  new (): GPUSupportedLimits;
+  readonly prototype: GPUSupportedLimits;
+};
+
 /** @category GPU */
-declare class GPUSupportedFeatures {
+interface GPUSupportedFeatures {
   forEach(
     callbackfn: (
       value: GPUFeatureName,
@@ -70,8 +74,14 @@ declare class GPUSupportedFeatures {
   values(): IterableIterator<GPUFeatureName>;
 }
 
+declare var GPUSupportedFeatures: typeof globalThis extends
+  { document: any; GPUSupportedFeatures: infer T } ? T : {
+  new (): GPUSupportedFeatures;
+  readonly prototype: GPUSupportedFeatures;
+};
+
 /** @category GPU */
-declare class GPUAdapterInfo {
+interface GPUAdapterInfo {
   readonly vendor: string;
   readonly architecture: string;
   readonly device: string;
@@ -80,6 +90,12 @@ declare class GPUAdapterInfo {
   readonly subgroupMaxSize: number;
   readonly isFallbackAdapter: boolean;
 }
+
+declare var GPUAdapterInfo: typeof globalThis extends
+  { document: any; GPUAdapterInfo: infer T } ? T : {
+  new (): GPUAdapterInfo;
+  readonly prototype: GPUAdapterInfo;
+};
 
 /**
  * The entry point to WebGPU in Deno, accessed via the global navigator.gpu property.
@@ -112,12 +128,18 @@ declare class GPUAdapterInfo {
  *
  * @category GPU
  */
-declare class GPU {
+interface GPU {
   requestAdapter(
     options?: GPURequestAdapterOptions,
   ): Promise<GPUAdapter | null>;
   getPreferredCanvasFormat(): GPUTextureFormat;
 }
+
+declare var GPU: typeof globalThis extends { document: any; GPU: infer T } ? T
+  : {
+    new (): GPU;
+    readonly prototype: GPU;
+  };
 
 /** @category GPU */
 interface GPURequestAdapterOptions {
@@ -165,13 +187,18 @@ type GPUPowerPreference = "low-power" | "high-performance";
  *
  * @category GPU
  */
-declare class GPUAdapter {
+interface GPUAdapter {
   readonly features: GPUSupportedFeatures;
   readonly limits: GPUSupportedLimits;
   readonly info: GPUAdapterInfo;
-
   requestDevice(descriptor?: GPUDeviceDescriptor): Promise<GPUDevice>;
 }
+
+declare var GPUAdapter: typeof globalThis extends
+  { document: any; GPUAdapter: infer T } ? T : {
+  new (): GPUAdapter;
+  readonly prototype: GPUAdapter;
+};
 
 /** @category GPU */
 interface GPUDeviceDescriptor extends GPUObjectDescriptorBase {
@@ -250,24 +277,19 @@ type GPUFeatureName =
  *
  * @category GPU
  */
-declare class GPUDevice extends EventTarget implements GPUObjectBase {
+interface GPUDevice extends EventTarget, GPUObjectBase {
   label: string;
-
   readonly lost: Promise<GPUDeviceLostInfo>;
   pushErrorScope(filter: GPUErrorFilter): undefined;
   popErrorScope(): Promise<GPUError | null>;
-
   readonly features: GPUSupportedFeatures;
   readonly limits: GPUSupportedLimits;
   readonly adapterInfo: GPUAdapterInfo;
   readonly queue: GPUQueue;
-
   destroy(): undefined;
-
   createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer;
   createTexture(descriptor: GPUTextureDescriptor): GPUTexture;
   createSampler(descriptor?: GPUSamplerDescriptor): GPUSampler;
-
   createBindGroupLayout(
     descriptor: GPUBindGroupLayoutDescriptor,
   ): GPUBindGroupLayout;
@@ -275,7 +297,6 @@ declare class GPUDevice extends EventTarget implements GPUObjectBase {
     descriptor: GPUPipelineLayoutDescriptor,
   ): GPUPipelineLayout;
   createBindGroup(descriptor: GPUBindGroupDescriptor): GPUBindGroup;
-
   createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUShaderModule;
   createComputePipeline(
     descriptor: GPUComputePipelineDescriptor,
@@ -289,16 +310,20 @@ declare class GPUDevice extends EventTarget implements GPUObjectBase {
   createRenderPipelineAsync(
     descriptor: GPURenderPipelineDescriptor,
   ): Promise<GPURenderPipeline>;
-
   createCommandEncoder(
     descriptor?: GPUCommandEncoderDescriptor,
   ): GPUCommandEncoder;
   createRenderBundleEncoder(
     descriptor: GPURenderBundleEncoderDescriptor,
   ): GPURenderBundleEncoder;
-
   createQuerySet(descriptor: GPUQuerySetDescriptor): GPUQuerySet;
 }
+
+declare var GPUDevice: typeof globalThis extends
+  { document: any; GPUDevice: infer T } ? T : {
+  new (): GPUDevice;
+  readonly prototype: GPUDevice;
+};
 
 /**
  * Represents a block of memory allocated on the GPU.
@@ -329,13 +354,11 @@ declare class GPUDevice extends EventTarget implements GPUObjectBase {
  *
  * @category GPU
  */
-declare class GPUBuffer implements GPUObjectBase {
+interface GPUBuffer extends GPUObjectBase {
   label: string;
-
   readonly size: number;
   readonly usage: GPUFlagsConstant;
   readonly mapState: GPUBufferMapState;
-
   mapAsync(
     mode: GPUMapModeFlags,
     offset?: number,
@@ -343,9 +366,14 @@ declare class GPUBuffer implements GPUObjectBase {
   ): Promise<undefined>;
   getMappedRange(offset?: number, size?: number): ArrayBuffer;
   unmap(): undefined;
-
   destroy(): undefined;
 }
+
+declare var GPUBuffer: typeof globalThis extends
+  { document: any; GPUBuffer: infer T } ? T : {
+  new (): GPUBuffer;
+  readonly prototype: GPUBuffer;
+};
 
 /** @category GPU */
 type GPUBufferMapState = "unmapped" | "pending" | "mapped";
@@ -415,12 +443,10 @@ declare class GPUMapMode {
  *
  * @category GPU
  */
-declare class GPUTexture implements GPUObjectBase {
+interface GPUTexture extends GPUObjectBase {
   label: string;
-
   createView(descriptor?: GPUTextureViewDescriptor): GPUTextureView;
   destroy(): undefined;
-
   readonly width: number;
   readonly height: number;
   readonly depthOrArrayLayers: number;
@@ -430,6 +456,12 @@ declare class GPUTexture implements GPUObjectBase {
   readonly format: GPUTextureFormat;
   readonly usage: GPUFlagsConstant;
 }
+
+declare var GPUTexture: typeof globalThis extends
+  { document: any; GPUTexture: infer T } ? T : {
+  new (): GPUTexture;
+  readonly prototype: GPUTexture;
+};
 
 /** @category GPU */
 interface GPUTextureDescriptor extends GPUObjectDescriptorBase {
@@ -458,9 +490,15 @@ declare class GPUTextureUsage {
 }
 
 /** @category GPU */
-declare class GPUTextureView implements GPUObjectBase {
+interface GPUTextureView extends GPUObjectBase {
   label: string;
 }
+
+declare var GPUTextureView: typeof globalThis extends
+  { document: any; GPUTextureView: infer T } ? T : {
+  new (): GPUTextureView;
+  readonly prototype: GPUTextureView;
+};
 
 /** @category GPU */
 interface GPUTextureViewDescriptor extends GPUObjectDescriptorBase {
@@ -585,9 +623,15 @@ type GPUTextureFormat =
   | "astc-12x12-unorm-srgb";
 
 /** @category GPU */
-declare class GPUSampler implements GPUObjectBase {
+interface GPUSampler extends GPUObjectBase {
   label: string;
 }
+
+declare var GPUSampler: typeof globalThis extends
+  { document: any; GPUSampler: infer T } ? T : {
+  new (): GPUSampler;
+  readonly prototype: GPUSampler;
+};
 
 /** @category GPU */
 interface GPUSamplerDescriptor extends GPUObjectDescriptorBase {
@@ -624,9 +668,15 @@ type GPUCompareFunction =
   | "always";
 
 /** @category GPU */
-declare class GPUBindGroupLayout implements GPUObjectBase {
+interface GPUBindGroupLayout extends GPUObjectBase {
   label: string;
 }
+
+declare var GPUBindGroupLayout: typeof globalThis extends
+  { document: any; GPUBindGroupLayout: infer T } ? T : {
+  new (): GPUBindGroupLayout;
+  readonly prototype: GPUBindGroupLayout;
+};
 
 /** @category GPU */
 interface GPUBindGroupLayoutDescriptor extends GPUObjectDescriptorBase {
@@ -704,9 +754,15 @@ interface GPUStorageTextureBindingLayout {
 }
 
 /** @category GPU */
-declare class GPUBindGroup implements GPUObjectBase {
+interface GPUBindGroup extends GPUObjectBase {
   label: string;
 }
+
+declare var GPUBindGroup: typeof globalThis extends
+  { document: any; GPUBindGroup: infer T } ? T : {
+  new (): GPUBindGroup;
+  readonly prototype: GPUBindGroup;
+};
 
 /** @category GPU */
 interface GPUBindGroupDescriptor extends GPUObjectDescriptorBase {
@@ -734,9 +790,15 @@ interface GPUBufferBinding {
 }
 
 /** @category GPU */
-declare class GPUPipelineLayout implements GPUObjectBase {
+interface GPUPipelineLayout extends GPUObjectBase {
   label: string;
 }
+
+declare var GPUPipelineLayout: typeof globalThis extends
+  { document: any; GPUPipelineLayout: infer T } ? T : {
+  new (): GPUPipelineLayout;
+  readonly prototype: GPUPipelineLayout;
+};
 
 /** @category GPU */
 interface GPUPipelineLayoutDescriptor extends GPUObjectDescriptorBase {
@@ -747,7 +809,7 @@ interface GPUPipelineLayoutDescriptor extends GPUObjectDescriptorBase {
 type GPUCompilationMessageType = "error" | "warning" | "info";
 
 /** @category GPU */
-declare class GPUCompilationMessage {
+interface GPUCompilationMessage {
   readonly message: string;
   readonly type: GPUCompilationMessageType;
   readonly lineNum: number;
@@ -756,10 +818,22 @@ declare class GPUCompilationMessage {
   readonly length: number;
 }
 
+declare var GPUCompilationMessage: typeof globalThis extends
+  { document: any; GPUCompilationMessage: infer T } ? T : {
+  new (): GPUCompilationMessage;
+  readonly prototype: GPUCompilationMessage;
+};
+
 /** @category GPU */
-declare class GPUCompilationInfo {
+interface GPUCompilationInfo {
   readonly messages: ReadonlyArray<GPUCompilationMessage>;
 }
+
+declare var GPUCompilationInfo: typeof globalThis extends
+  { document: any; GPUCompilationInfo: infer T } ? T : {
+  new (): GPUCompilationInfo;
+  readonly prototype: GPUCompilationInfo;
+};
 
 /**
  * The **`GPUPipelineError`** interface of the WebGPU API describes a pipeline failure.
@@ -778,7 +852,8 @@ interface GPUPipelineError extends DOMException {
 }
 
 /** @category GPU */
-declare var GPUPipelineError: typeof globalThis extends { document: any; GPUPipelineError: infer T } ? T : {
+declare var GPUPipelineError: typeof globalThis extends
+  { document: any; GPUPipelineError: infer T } ? T : {
   prototype: GPUPipelineError;
   new (message: string, options: GPUPipelineErrorInit): GPUPipelineError;
 };
@@ -818,15 +893,20 @@ interface GPUPipelineErrorInit {
  *
  * @category GPU
  */
-declare class GPUShaderModule implements GPUObjectBase {
+interface GPUShaderModule extends GPUObjectBase {
   label: string;
-
   /**
    * Returns compilation messages for this shader module,
    * which can include errors, warnings and info messages.
    */
   getCompilationInfo(): Promise<GPUCompilationInfo>;
 }
+
+declare var GPUShaderModule: typeof globalThis extends
+  { document: any; GPUShaderModule: infer T } ? T : {
+  new (): GPUShaderModule;
+  readonly prototype: GPUShaderModule;
+};
 
 /** @category GPU */
 interface GPUShaderModuleDescriptor extends GPUObjectDescriptorBase {
@@ -855,11 +935,16 @@ interface GPUProgrammableStage {
 }
 
 /** @category GPU */
-declare class GPUComputePipeline implements GPUObjectBase, GPUPipelineBase {
+interface GPUComputePipeline extends GPUObjectBase, GPUPipelineBase {
   label: string;
-
   getBindGroupLayout(index: number): GPUBindGroupLayout;
 }
+
+declare var GPUComputePipeline: typeof globalThis extends
+  { document: any; GPUComputePipeline: infer T } ? T : {
+  new (): GPUComputePipeline;
+  readonly prototype: GPUComputePipeline;
+};
 
 /** @category GPU */
 interface GPUComputePipelineDescriptor extends GPUPipelineDescriptorBase {
@@ -867,11 +952,16 @@ interface GPUComputePipelineDescriptor extends GPUPipelineDescriptorBase {
 }
 
 /** @category GPU */
-declare class GPURenderPipeline implements GPUObjectBase, GPUPipelineBase {
+interface GPURenderPipeline extends GPUObjectBase, GPUPipelineBase {
   label: string;
-
   getBindGroupLayout(index: number): GPUBindGroupLayout;
 }
+
+declare var GPURenderPipeline: typeof globalThis extends
+  { document: any; GPURenderPipeline: infer T } ? T : {
+  new (): GPURenderPipeline;
+  readonly prototype: GPURenderPipeline;
+};
 
 /** @category GPU */
 interface GPURenderPipelineDescriptor extends GPUPipelineDescriptorBase {
@@ -1083,9 +1173,15 @@ interface GPUTexelCopyBufferLayout {
 }
 
 /** @category GPU */
-declare class GPUCommandBuffer implements GPUObjectBase {
+interface GPUCommandBuffer extends GPUObjectBase {
   label: string;
 }
+
+declare var GPUCommandBuffer: typeof globalThis extends
+  { document: any; GPUCommandBuffer: infer T } ? T : {
+  new (): GPUCommandBuffer;
+  readonly prototype: GPUCommandBuffer;
+};
 
 /** @category GPU */
 interface GPUCommandBufferDescriptor extends GPUObjectDescriptorBase {}
@@ -1134,14 +1230,12 @@ interface GPUCommandBufferDescriptor extends GPUObjectDescriptorBase {}
  *
  * @category GPU
  */
-declare class GPUCommandEncoder implements GPUObjectBase {
+interface GPUCommandEncoder extends GPUObjectBase {
   label: string;
-
   beginRenderPass(descriptor: GPURenderPassDescriptor): GPURenderPassEncoder;
   beginComputePass(
     descriptor?: GPUComputePassDescriptor,
   ): GPUComputePassEncoder;
-
   copyBufferToBuffer(
     source: GPUBuffer,
     sourceOffset: number,
@@ -1149,37 +1243,30 @@ declare class GPUCommandEncoder implements GPUObjectBase {
     destinationOffset: number,
     size: number,
   ): undefined;
-
   copyBufferToTexture(
     source: GPUTexelCopyBufferInfo,
     destination: GPUTexelCopyTextureInfo,
     copySize: GPUExtent3D,
   ): undefined;
-
   copyTextureToBuffer(
     source: GPUTexelCopyTextureInfo,
     destination: GPUTexelCopyBufferInfo,
     copySize: GPUExtent3D,
   ): undefined;
-
   copyTextureToTexture(
     source: GPUTexelCopyTextureInfo,
     destination: GPUTexelCopyTextureInfo,
     copySize: GPUExtent3D,
   ): undefined;
-
   clearBuffer(
     destination: GPUBuffer,
     destinationOffset?: number,
     size?: number,
   ): undefined;
-
   pushDebugGroup(groupLabel: string): undefined;
   popDebugGroup(): undefined;
   insertDebugMarker(markerLabel: string): undefined;
-
   writeTimestamp(querySet: GPUQuerySet, queryIndex: number): undefined;
-
   resolveQuerySet(
     querySet: GPUQuerySet,
     firstQuery: number,
@@ -1187,9 +1274,14 @@ declare class GPUCommandEncoder implements GPUObjectBase {
     destination: GPUBuffer,
     destinationOffset: number,
   ): undefined;
-
   finish(descriptor?: GPUCommandBufferDescriptor): GPUCommandBuffer;
 }
+
+declare var GPUCommandEncoder: typeof globalThis extends
+  { document: any; GPUCommandEncoder: infer T } ? T : {
+  new (): GPUCommandEncoder;
+  readonly prototype: GPUCommandEncoder;
+};
 
 /** @category GPU */
 interface GPUCommandEncoderDescriptor extends GPUObjectDescriptorBase {}
@@ -1229,8 +1321,8 @@ interface GPUProgrammablePassEncoder {
 }
 
 /** @category GPU */
-declare class GPUComputePassEncoder
-  implements GPUObjectBase, GPUProgrammablePassEncoder {
+interface GPUComputePassEncoder
+  extends GPUObjectBase, GPUProgrammablePassEncoder {
   label: string;
   setBindGroup(
     index: number,
@@ -1253,9 +1345,14 @@ declare class GPUComputePassEncoder
     indirectBuffer: GPUBuffer,
     indirectOffset: number,
   ): undefined;
-
   end(): undefined;
 }
+
+declare var GPUComputePassEncoder: typeof globalThis extends
+  { document: any; GPUComputePassEncoder: infer T } ? T : {
+  new (): GPUComputePassEncoder;
+  readonly prototype: GPUComputePassEncoder;
+};
 
 /** @category GPU */
 interface GPUComputePassTimestampWrites {
@@ -1308,8 +1405,8 @@ interface GPURenderEncoderBase {
 }
 
 /** @category GPU */
-declare class GPURenderPassEncoder
-  implements GPUObjectBase, GPUProgrammablePassEncoder, GPURenderEncoderBase {
+interface GPURenderPassEncoder
+  extends GPUObjectBase, GPUProgrammablePassEncoder, GPURenderEncoderBase {
   label: string;
   setBindGroup(
     index: number,
@@ -1357,7 +1454,6 @@ declare class GPURenderPassEncoder
     indirectBuffer: GPUBuffer,
     indirectOffset: number,
   ): undefined;
-
   setViewport(
     x: number,
     y: number,
@@ -1366,23 +1462,25 @@ declare class GPURenderPassEncoder
     minDepth: number,
     maxDepth: number,
   ): undefined;
-
   setScissorRect(
     x: number,
     y: number,
     width: number,
     height: number,
   ): undefined;
-
   setBlendConstant(color: GPUColor): undefined;
   setStencilReference(reference: number): undefined;
-
   beginOcclusionQuery(queryIndex: number): undefined;
   endOcclusionQuery(): undefined;
-
   executeBundles(bundles: GPURenderBundle[]): undefined;
   end(): undefined;
 }
+
+declare var GPURenderPassEncoder: typeof globalThis extends
+  { document: any; GPURenderPassEncoder: infer T } ? T : {
+  new (): GPURenderPassEncoder;
+  readonly prototype: GPURenderPassEncoder;
+};
 
 /** @category GPU */
 interface GPURenderPassTimestampWrites {
@@ -1431,16 +1529,22 @@ type GPULoadOp = "load" | "clear";
 type GPUStoreOp = "store" | "discard";
 
 /** @category GPU */
-declare class GPURenderBundle implements GPUObjectBase {
+interface GPURenderBundle extends GPUObjectBase {
   label: string;
 }
+
+declare var GPURenderBundle: typeof globalThis extends
+  { document: any; GPURenderBundle: infer T } ? T : {
+  new (): GPURenderBundle;
+  readonly prototype: GPURenderBundle;
+};
 
 /** @category GPU */
 interface GPURenderBundleDescriptor extends GPUObjectDescriptorBase {}
 
 /** @category GPU */
-declare class GPURenderBundleEncoder
-  implements GPUObjectBase, GPUProgrammablePassEncoder, GPURenderEncoderBase {
+interface GPURenderBundleEncoder
+  extends GPUObjectBase, GPUProgrammablePassEncoder, GPURenderEncoderBase {
   label: string;
   draw(
     vertexCount: number,
@@ -1488,9 +1592,14 @@ declare class GPURenderBundleEncoder
     offset?: number,
     size?: number,
   ): undefined;
-
   finish(descriptor?: GPURenderBundleDescriptor): GPURenderBundle;
 }
+
+declare var GPURenderBundleEncoder: typeof globalThis extends
+  { document: any; GPURenderBundleEncoder: infer T } ? T : {
+  new (): GPURenderBundleEncoder;
+  readonly prototype: GPURenderBundleEncoder;
+};
 
 /** @category GPU */
 interface GPURenderPassLayout extends GPUObjectDescriptorBase {
@@ -1547,13 +1656,10 @@ interface GPURenderBundleEncoderDescriptor extends GPURenderPassLayout {
  *
  * @category GPU
  */
-declare class GPUQueue implements GPUObjectBase {
+interface GPUQueue extends GPUObjectBase {
   label: string;
-
   submit(commandBuffers: GPUCommandBuffer[]): undefined;
-
   onSubmittedWorkDone(): Promise<undefined>;
-
   writeBuffer(
     buffer: GPUBuffer,
     bufferOffset: number,
@@ -1561,7 +1667,6 @@ declare class GPUQueue implements GPUObjectBase {
     dataOffset?: number,
     size?: number,
   ): undefined;
-
   writeTexture(
     destination: GPUTexelCopyTextureInfo,
     data: BufferSource,
@@ -1570,15 +1675,25 @@ declare class GPUQueue implements GPUObjectBase {
   ): undefined;
 }
 
+declare var GPUQueue: typeof globalThis extends
+  { document: any; GPUQueue: infer T } ? T : {
+  new (): GPUQueue;
+  readonly prototype: GPUQueue;
+};
+
 /** @category GPU */
-declare class GPUQuerySet implements GPUObjectBase {
+interface GPUQuerySet extends GPUObjectBase {
   label: string;
-
   destroy(): undefined;
-
   readonly type: GPUQueryType;
   readonly count: number;
 }
+
+declare var GPUQuerySet: typeof globalThis extends
+  { document: any; GPUQuerySet: infer T } ? T : {
+  new (): GPUQuerySet;
+  readonly prototype: GPUQuerySet;
+};
 
 /** @category GPU */
 interface GPUQuerySetDescriptor extends GPUObjectDescriptorBase {
@@ -1616,7 +1731,8 @@ interface GPUError {
 }
 
 /** @category GPU */
-declare var GPUError: typeof globalThis extends { document: any; GPUError: infer T } ? T : {
+declare var GPUError: typeof globalThis extends
+  { document: any; GPUError: infer T } ? T : {
   prototype: GPUError;
   new (): GPUError;
 };
@@ -1625,7 +1741,8 @@ declare var GPUError: typeof globalThis extends { document: any; GPUError: infer
 interface GPUOutOfMemoryError extends GPUError {}
 
 /** @category GPU */
-declare var GPUOutOfMemoryError: typeof globalThis extends { document: any; GPUOutOfMemoryError: infer T } ? T : {
+declare var GPUOutOfMemoryError: typeof globalThis extends
+  { document: any; GPUOutOfMemoryError: infer T } ? T : {
   prototype: GPUOutOfMemoryError;
   new (message?: string): GPUOutOfMemoryError;
 };
@@ -1634,7 +1751,8 @@ declare var GPUOutOfMemoryError: typeof globalThis extends { document: any; GPUO
 interface GPUValidationError extends GPUError {}
 
 /** @category GPU */
-declare var GPUValidationError: typeof globalThis extends { document: any; GPUValidationError: infer T } ? T : {
+declare var GPUValidationError: typeof globalThis extends
+  { document: any; GPUValidationError: infer T } ? T : {
   prototype: GPUValidationError;
   new (message?: string): GPUValidationError;
 };
@@ -1643,7 +1761,8 @@ declare var GPUValidationError: typeof globalThis extends { document: any; GPUVa
 interface GPUInternalError extends GPUError {}
 
 /** @category GPU */
-declare var GPUInternalError: typeof globalThis extends { document: any; GPUInternalError: infer T } ? T : {
+declare var GPUInternalError: typeof globalThis extends
+  { document: any; GPUInternalError: infer T } ? T : {
   prototype: GPUInternalError;
   new (message?: string): GPUInternalError;
 };
@@ -1652,14 +1771,18 @@ declare var GPUInternalError: typeof globalThis extends { document: any; GPUInte
 type GPUErrorFilter = "out-of-memory" | "validation" | "internal";
 
 /** @category GPU */
-declare class GPUUncapturedErrorEvent extends Event {
-  constructor(
-    type: string,
-    gpuUncapturedErrorEventInitDict: GPUUncapturedErrorEventInit,
-  );
-
+interface GPUUncapturedErrorEvent extends Event {
   readonly error: GPUError;
 }
+
+declare var GPUUncapturedErrorEvent: typeof globalThis extends
+  { document: any; GPUUncapturedErrorEvent: infer T } ? T : {
+  new (
+    type: string,
+    gpuUncapturedErrorEventInitDict: GPUUncapturedErrorEventInit,
+  ): GPUUncapturedErrorEvent;
+  readonly prototype: GPUUncapturedErrorEvent;
+};
 
 /** @category GPU */
 interface GPUUncapturedErrorEventInit extends EventInit {
