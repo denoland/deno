@@ -1,6 +1,6 @@
 TS2304 [ERROR]: Cannot find name 'nothing'.
 export { nothing };
          ~~~~~~~
-    at file://[WILDCARD]/exclude_option/ignored/index.ts:1:10
+    at file:///[WILDCARD]/exclude_option/ignored/index.ts:1:10
 
 error: Type checking failed.

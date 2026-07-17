@@ -2,6 +2,6 @@ Check main.ts
 TS2307 [ERROR]: Cannot find module 'node:unknown' or its corresponding type declarations.
 import * as test3 from "node:unknown";
                        ~~~~~~~~~~~~~~
-    at file://[WILDCARD]/main.ts:3:24
+    at file:///[WILDCARD]/main.ts:3:24
 
 error: Type checking failed.

@@ -4,12 +4,12 @@ TS2769 [ERROR]: No overload matches this call.
     Argument of type '123' is not assignable to parameter of type 'BufferEncoding | (ObjectEncodingOptions & { flag?: string | undefined; }) | null | undefined'.
 const _data = fs.readFileSync("./node_builtin.js", 123);
                                                    ~~~
-    at file://[WILDCARD]/mod.ts:2:52
+    at file:///[WILDCARD]/mod.ts:2:52
 
 TS4104 [ERROR]: The type 'readonly string[]' is 'readonly' and cannot be assigned to the mutable type 'number[]'.
 const _testString: number[] = builtinModules;
       ~~~~~~~~~~~
-    at file://[WILDCARD]/mod.ts:9:7
+    at file:///[WILDCARD]/mod.ts:9:7
 
 Found 2 errors.
 

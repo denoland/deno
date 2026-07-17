@@ -2,6 +2,6 @@ Check main.ts
 TS2307 [ERROR]: Cannot find module 'package' or its corresponding type declarations.
 import * as pkg from "package";
                      ~~~~~~~~~
-    at file://[WILDCARD]/main.ts:1:22
+    at file:///[WILDCARD]/main.ts:1:22
 
 error: Type checking failed.

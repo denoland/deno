@@ -1,8 +1,9 @@
-Download [WILDCARD]
+Download http://localhost:4260/@denotest%2fcjs-default-export
+Download http://localhost:4260/@denotest/cjs-default-export/1.0.0.tgz
 Check [WILDCARD]main.ts
-TS2339 [ERROR]: Property 'default' does not exist on type '() => number'.
+TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
 export const Test: string = cjsDefault.default();
-                                       ~~~~~~~
-    at file://[WILDCARD]/main.ts:4:40
+             ~~~~
+    at file:///[WILDCARD]/main.ts:4:14
 
 error: Type checking failed.

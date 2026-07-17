@@ -3,12 +3,12 @@ Check [WILDCARD]mod.ts
 TS2304 [ERROR]: Cannot find name 'WorkerGlobalScope'.
 WorkerGlobalScope;
 ~~~~~~~~~~~~~~~~~
-    at file://[WILDCARD]/main.ts:8:1
+    at file:///[WILDCARD]/main.ts:8:1
 
 TS2304 [ERROR]: Cannot find name 'WorkerGlobalScope'.
 WorkerGlobalScope;
 ~~~~~~~~~~~~~~~~~
-    at file://[WILDCARD]/member/mod.ts:5:1
+    at file:///[WILDCARD]/member/mod.ts:5:1
 
 Found 2 errors.
 

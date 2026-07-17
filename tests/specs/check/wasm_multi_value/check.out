@@ -2,6 +2,6 @@ Check [WILDCARD]main.ts
 TS2307 [ERROR]: Cannot find module './multi_value.wasm' or its corresponding type declarations.
 import { add_and_sub } from "./multi_value.wasm";
                             ~~~~~~~~~~~~~~~~~~~~
-    at file://[WILDCARD]/main.ts:1:29
+    at file:///[WILDCARD]/main.ts:1:29
 
 error: Type checking failed.

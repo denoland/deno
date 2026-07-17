@@ -2,6 +2,6 @@ Check [WILDCARD]main.ts
 TS18046 [ERROR]: 'e' is of type 'unknown'.
   console.log(e.message);
               ^
-    at file://[WILDCARD]/main.ts:4:15
+    at file:///[WILDCARD]/main.ts:4:15
 
 error: Type checking failed.

@@ -661,13 +661,7 @@ fn run_step(
   };
   if step_output.ends_with(".out") {
     let test_output_path = cwd.join(&step_output);
-    if std::env::var_os("UPDATE").is_some() {
-      let wildcarded =
-        wildcard_volatile_output(output.combined_output(), context, cwd);
-      std::fs::write(test_output_path.as_path(), wildcarded).unwrap();
-    } else {
-      output.assert_matches_file(test_output_path);
-    }
+    output.assert_matches_file(test_output_path);
   } else {
     assert!(
       step_output.len() <= 160,
@@ -676,47 +670,6 @@ fn run_step(
     output.assert_matches_text(&step_output);
   }
   output.assert_exit_code(step.exit_code);
-}
-
-/// When `UPDATE=1` is set, spec `.out` files are regenerated from the actual
-/// command output instead of being asserted against. Before writing, replace
-/// the volatile parts of the output (the per-run temp/`DENO_DIR` paths and the
-/// native tsc version) with the wildcard tokens the matcher understands, so the
-/// regenerated `.out` stays stable across runs and machines. This mode is off
-/// by default and never affects normal test runs.
-fn wildcard_volatile_output(
-  actual: &str,
-  context: &test_util::TestContext,
-  cwd: &PathRef,
-) -> String {
-  // Collect the concrete paths that vary per run. Include the canonicalized
-  // form because Deno canonicalizes paths in the `file://` URLs it prints
-  // (e.g. `/var/folders/...` becomes `/private/var/folders/...` on macOS).
-  // `cwd` is the test's source directory, which leaks into output for specs
-  // that don't run in a temp dir (its absolute location varies per machine).
-  let mut path_strings: Vec<String> = Vec::new();
-  for dir in [context.temp_dir().path(), context.deno_dir().path(), cwd] {
-    for p in [dir.clone(), dir.canonicalize()] {
-      let s = p.to_string();
-      if !s.is_empty() {
-        path_strings.push(s.clone());
-        // Also match the forward-slash form used inside `file://` URLs on
-        // Windows; on unix this is identical and the dedup below drops it.
-        path_strings.push(s.replace('\\', "/"));
-      }
-    }
-  }
-  // Replace the longest paths first so a shorter path that is a prefix of a
-  // longer one (the raw vs canonicalized case above) can't corrupt it.
-  path_strings.sort_by_key(|s| std::cmp::Reverse(s.len()));
-  path_strings.dedup();
-
-  let mut result = actual.to_string();
-  for path in path_strings {
-    result = result.replace(&path, "[WILDCARD]");
-  }
-
-  result
 }
 
 fn resolve_test_and_assertion_files(
