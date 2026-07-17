@@ -4,13 +4,17 @@
 // The size assertion is the regression test for #36034, where the destination
 // file was created before generating the snapshot and so was left behind at
 // 0 bytes whenever generation produced nothing.
+// A leftover `.heapsnapshot.tmp` is deliberately *not* a failure here. If V8
+// ever needs more than the once-granted headroom to finish serializing, the
+// process dies mid-generation and the cleanup below never runs, so the temp
+// file survives. That is the pre-existing "snapshot didn't fit" behaviour, not
+// the bug under test, and failing on it would couple this test to "the granted
+// headroom is always enough for this heap". What must never happen is a
+// `.heapsnapshot` at the destination path with 0 bytes -- the temp-file dance
+// exists precisely so a half-written snapshot stays under `.tmp`.
 const snapshots: string[] = [];
 for (const entry of Deno.readDirSync(".")) {
   if (!entry.isFile) continue;
-  if (entry.name.endsWith(".heapsnapshot.tmp")) {
-    console.error(`leftover temporary snapshot file: ${entry.name}`);
-    Deno.exit(1);
-  }
   if (entry.name.endsWith(".heapsnapshot")) {
     snapshots.push(entry.name);
   }

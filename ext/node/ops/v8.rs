@@ -337,8 +337,9 @@ extern "C" fn near_heap_limit_snapshot_callback(
         path.display()
       );
     }
+    // Node prints nothing on success beyond the "Writing ..." line above.
     Ok(_) => match std::fs::rename(&tmp_path, &path) {
-      Ok(()) => eprintln!("Wrote heap snapshot to {}", path.display()),
+      Ok(()) => {}
       Err(e) => {
         let _ = std::fs::remove_file(&tmp_path);
         eprintln!("Failed to write heap snapshot to {}: {e}", path.display());
