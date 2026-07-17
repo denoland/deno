@@ -1957,21 +1957,6 @@ fn raw_method_v8<'scope>(
   }
 }
 
-fn push_url_from_parts(
-  out: &mut String,
-  scheme_prefix: &str,
-  method: &str,
-  authority: &str,
-  path: &str,
-) {
-  out.push_str(scheme_prefix);
-  out.push_str(authority);
-  if method == "OPTIONS" && path == "*" {
-    out.push('/');
-  }
-  out.push_str(path);
-}
-
 fn raw_request_url_v8<'scope>(
   scope: &mut v8::PinScope<'scope, '_>,
   http: &RawHttpRecord,
@@ -2082,8 +2067,8 @@ where
   let http =
     // SAFETY: op is called with external.
     unsafe { clone_external!(external, "op_http_get_request_url") };
-  let url = match http {
-    HttpRecordExternal::Raw(http) => return raw_request_url_v8(scope, &http),
+  match http {
+    HttpRecordExternal::Raw(http) => raw_request_url_v8(scope, &http),
     HttpRecordExternal::Hyper(http) => {
       let request_info = http.request_info();
       let request_parts = http.request_parts();
@@ -2092,11 +2077,6 @@ where
         &request_parts.uri,
         &request_parts.headers,
       );
-      let scheme_prefix = if let Some(scheme) = request_parts.uri.scheme_str() {
-        Cow::Owned(format!("{scheme}://"))
-      } else {
-        Cow::Borrowed(request_info.scheme)
-      };
       let authority = request_parts
         .uri
         .authority()
@@ -2104,40 +2084,34 @@ where
         .or(request_properties.authority)
         .unwrap_or_else(|| Cow::Borrowed(request_info.fallback_host.as_ref()));
 
-      if request_parts.method == hyper::Method::CONNECT {
-        let mut out =
-          String::with_capacity(scheme_prefix.len() + authority.len());
-        out.push_str(&scheme_prefix);
-        out.push_str(&authority);
-        out
-      } else {
-        let path = match request_parts.uri.path_and_query() {
-          Some(path_and_query) => {
-            let path = path_and_query.as_str();
-            if matches!(path.as_bytes().first(), Some(b'/' | b'*')) {
-              Cow::Borrowed(path)
-            } else {
-              Cow::Owned(format!("/{}", path))
-            }
-          }
-          None => Cow::Borrowed(""),
-        };
-        let method = request_parts.method.as_str();
-        let mut out = String::with_capacity(
-          scheme_prefix.len() + authority.len() + path.len() + 1,
-        );
-        push_url_from_parts(
-          &mut out,
-          &scheme_prefix,
-          method,
-          &authority,
-          &path,
-        );
-        out
+      // Build the URL into a stack buffer to avoid a per-request heap
+      // allocation (and the intermediate `format!` temporaries). Mirrors the
+      // raw path in `raw_request_url_v8`.
+      let mut out = SmallVec::<[u8; 256]>::new();
+      match request_parts.uri.scheme_str() {
+        Some(scheme) => {
+          out.extend_from_slice(scheme.as_bytes());
+          out.extend_from_slice(b"://");
+        }
+        None => out.extend_from_slice(request_info.scheme.as_bytes()),
       }
+      out.extend_from_slice(authority.as_bytes());
+
+      if request_parts.method != hyper::Method::CONNECT
+        && let Some(path_and_query) = request_parts.uri.path_and_query()
+      {
+        let path = path_and_query.as_str();
+        if !matches!(path.as_bytes().first(), Some(b'/' | b'*')) {
+          out.push(b'/');
+        }
+        if request_parts.method == hyper::Method::OPTIONS && path == "*" {
+          out.push(b'/');
+        }
+        out.extend_from_slice(path.as_bytes());
+      }
+      v8_string_from_bytes(scope, &out)
     }
-  };
-  v8_string_from_bytes(scope, url.as_bytes())
+  }
 }
 
 #[op2]
