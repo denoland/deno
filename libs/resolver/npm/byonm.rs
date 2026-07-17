@@ -7,6 +7,8 @@ use std::path::PathBuf;
 use deno_package_json::PackageJson;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonRc;
+use deno_path_util::normalize_path;
+use deno_path_util::strip_unc_prefix;
 use deno_path_util::url_to_file_path;
 use deno_semver::StackString;
 use deno_semver::Version;
@@ -73,7 +75,7 @@ pub struct ByonmNpmResolver<TSys: ByonmNpmResolverSys> {
   sys: NodeResolutionSys<TSys>,
   pkg_json_resolver: PackageJsonResolverRc<TSys>,
   root_node_modules_dir: Option<PathBuf>,
-  search_stop_dir: Option<PathBuf>,
+  search_stop_dir: Option<SearchStopDir>,
 }
 
 impl<TSys: ByonmNpmResolverSys + Clone> Clone for ByonmNpmResolver<TSys> {
@@ -89,9 +91,12 @@ impl<TSys: ByonmNpmResolverSys + Clone> Clone for ByonmNpmResolver<TSys> {
 
 impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
   pub fn new(options: ByonmNpmResolverCreateOptions<TSys>) -> Self {
+    let search_stop_dir = options
+      .search_stop_dir
+      .map(|path| SearchStopDir::new(&options.sys, path));
     Self {
       root_node_modules_dir: options.root_node_modules_dir,
-      search_stop_dir: options.search_stop_dir,
+      search_stop_dir,
       sys: options.sys,
       pkg_json_resolver: options.pkg_json_resolver,
     }
@@ -107,23 +112,25 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
     dep_name: &str,
     referrer: &Url,
   ) -> Option<PackageJsonRc> {
-    let referrer_path = url_to_file_path(referrer).ok()?;
-    for result in self
-      .pkg_json_resolver
-      .get_closest_package_jsons(&referrer_path)
-    {
-      let Ok(pkg_json) = result else {
-        continue;
-      };
-      if let Some(deps) = &pkg_json.dependencies
-        && deps.contains_key(dep_name)
+    let referrer_path = self.prepare_start(url_to_file_path(referrer).ok()?)?;
+    for dir_path in referrer_path.ancestors().skip(1) {
+      if let Ok(Some(pkg_json)) = self
+        .pkg_json_resolver
+        .load_package_json(&dir_path.join("package.json"))
       {
-        return Some(pkg_json);
+        if let Some(deps) = &pkg_json.dependencies
+          && deps.contains_key(dep_name)
+        {
+          return Some(pkg_json);
+        }
+        if let Some(deps) = &pkg_json.dev_dependencies
+          && deps.contains_key(dep_name)
+        {
+          return Some(pkg_json);
+        }
       }
-      if let Some(deps) = &pkg_json.dev_dependencies
-        && deps.contains_key(dep_name)
-      {
-        return Some(pkg_json);
+      if self.is_search_stop_dir(dir_path) {
+        break;
       }
     }
     None
@@ -138,7 +145,16 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
       sys: &NodeResolutionSys<TSys>,
       alias: &str,
       start_dir: &Path,
+      search_stop_dir: Option<&SearchStopDir>,
     ) -> std::io::Result<Option<PathBuf>> {
+      let Some(start_dir) = search_stop_dir
+        .map(|search_stop_dir| {
+          search_stop_dir.prepare_start(sys, start_dir.to_path_buf())
+        })
+        .unwrap_or_else(|| Some(start_dir.to_path_buf()))
+      else {
+        return Ok(None);
+      };
       for ancestor in start_dir.ancestors() {
         let node_modules_folder = ancestor.join("node_modules");
         // When using the cache, eagerly check for the node_modules directory in order
@@ -154,6 +170,9 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
             ));
           }
         }
+        if is_search_stop_dir(ancestor, search_stop_dir) {
+          break;
+        }
       }
       Ok(None)
     }
@@ -163,9 +182,12 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
       self.resolve_pkg_json_and_alias_for_req(req, referrer)?;
     if let Some((pkg_json, alias)) = &maybe_pkg_json_and_alias {
       // now try node resolution
-      if let Some(resolved) =
-        node_resolve_dir(&self.sys, alias, pkg_json.dir_path())?
-      {
+      if let Some(resolved) = node_resolve_dir(
+        &self.sys,
+        alias,
+        pkg_json.dir_path(),
+        self.search_stop_dir.as_ref(),
+      )? {
         // Verify the resolved package version actually satisfies the
         // requirement. The package.json dep may intersect the req (e.g.,
         // dep is ^1.3.5, req is @1.3.6) but the physically installed
@@ -261,14 +283,21 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
 
     // attempt to resolve the npm specifier from the referrer's package.json,
     let maybe_referrer_path = url_to_file_path(referrer).ok();
-    if let Some(file_path) = maybe_referrer_path {
-      for result in self.pkg_json_resolver.get_closest_package_jsons(&file_path)
-      {
-        let pkg_json = result?;
-        if let Some(alias) =
-          resolve_alias_from_pkg_json(req, pkg_json.as_ref())?
+    let maybe_referrer_path =
+      maybe_referrer_path.and_then(|path| self.prepare_start(path));
+    if let Some(file_path) = &maybe_referrer_path {
+      for dir_path in file_path.as_path().ancestors().skip(1) {
+        let package_json_path = dir_path.join("package.json");
+        if let Some(pkg_json) = self
+          .pkg_json_resolver
+          .load_package_json(&package_json_path)?
+          && let Some(alias) =
+            resolve_alias_from_pkg_json(req, pkg_json.as_ref())?
         {
           return Ok(Some((pkg_json, alias)));
+        }
+        if self.is_search_stop_dir(dir_path) {
+          break;
         }
       }
     }
@@ -320,6 +349,9 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
           search_node_modules(&dir_path.join("node_modules"))
         {
           return Ok(Some(result));
+        }
+        if self.is_search_stop_dir(dir_path) {
+          break;
         }
       }
     }
@@ -444,17 +476,19 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
       sys: &NodeResolutionSys<TSys>,
       name: &str,
       referrer: &UrlOrPathRef,
-      search_stop_dir: Option<&Path>,
+      search_stop_dir: Option<&SearchStopDir>,
     ) -> Result<PathBuf, PackageFolderResolveError> {
       let maybe_referrer_file = referrer.path().ok();
       let maybe_start_folder =
         maybe_referrer_file.as_ref().and_then(|f| f.parent());
+      let maybe_start_folder = maybe_start_folder.and_then(|start_folder| {
+        search_stop_dir
+          .map(|search_stop_dir| {
+            search_stop_dir.prepare_start(sys, start_folder.to_path_buf())
+          })
+          .unwrap_or_else(|| Some(start_folder.to_path_buf()))
+      });
       if let Some(start_folder) = maybe_start_folder {
-        let start_folder = search_stop_dir
-          .is_some()
-          .then(|| sys.fs_canonicalize(start_folder).ok().map(Cow::Owned))
-          .flatten()
-          .unwrap_or(Cow::Borrowed(start_folder));
         for current_folder in start_folder.ancestors() {
           let node_modules_folder = if current_folder.ends_with("node_modules")
           {
@@ -474,7 +508,7 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
           }
 
           // prevent code like deno rt from going outside the vfs
-          if search_stop_dir == Some(current_folder) {
+          if is_search_stop_dir(current_folder, search_stop_dir) {
             break;
           }
         }
@@ -490,8 +524,7 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
       )
     }
 
-    let path =
-      inner(&self.sys, name, referrer, self.search_stop_dir.as_deref())?;
+    let path = inner(&self.sys, name, referrer, self.search_stop_dir.as_ref())?;
     self.sys.fs_canonicalize(&path).map_err(|err| {
       PackageFolderResolveIoError {
         package_name: name.to_string(),
@@ -515,6 +548,136 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
 }
 
 #[derive(Debug, Clone)]
+enum SearchStopDir {
+  Valid {
+    lexical: PathBuf,
+    canonical: PathBuf,
+  },
+  Invalid,
+}
+
+impl SearchStopDir {
+  fn new<TSys: FsCanonicalize>(
+    sys: &NodeResolutionSys<TSys>,
+    path: PathBuf,
+  ) -> Self {
+    let lexical = normalize_boundary_path(Cow::Owned(path));
+    let Ok(canonical) = canonicalize_boundary_path(sys, &lexical) else {
+      return Self::Invalid;
+    };
+    Self::Valid { lexical, canonical }
+  }
+
+  fn prepare_start<TSys: FsCanonicalize>(
+    &self,
+    sys: &NodeResolutionSys<TSys>,
+    path: PathBuf,
+  ) -> Option<PathBuf> {
+    let Self::Valid { lexical, canonical } = self else {
+      return None;
+    };
+    let lexical_start = normalize_boundary_path(Cow::Owned(path));
+    if !path_is_inside(&lexical_start, lexical) {
+      return None;
+    }
+    let canonical_start =
+      canonicalize_boundary_path(sys, &lexical_start).ok()?;
+    path_is_inside(&canonical_start, canonical).then_some(canonical_start)
+  }
+
+  fn is_search_stop_dir(&self, path: &Path) -> bool {
+    let Self::Valid { canonical, .. } = self else {
+      return false;
+    };
+    paths_equal(&normalize_boundary_path(Cow::Borrowed(path)), canonical)
+  }
+}
+
+fn canonicalize_boundary_path<TSys: FsCanonicalize>(
+  sys: &NodeResolutionSys<TSys>,
+  path: &Path,
+) -> std::io::Result<PathBuf> {
+  deno_path_util::fs::canonicalize_path_maybe_not_exists(sys, path)
+    .map(|path| normalize_boundary_path(Cow::Owned(path)))
+}
+
+fn normalize_boundary_path(path: Cow<'_, Path>) -> PathBuf {
+  strip_unc_prefix(normalize_path(path).into_owned())
+}
+
+fn is_search_stop_dir(
+  path: &Path,
+  search_stop_dir: Option<&SearchStopDir>,
+) -> bool {
+  search_stop_dir
+    .is_some_and(|search_stop_dir| search_stop_dir.is_search_stop_dir(path))
+}
+
+fn path_is_inside(path: &Path, root: &Path) -> bool {
+  path_starts_with(path, root)
+}
+
+#[cfg(not(windows))]
+fn path_starts_with(path: &Path, root: &Path) -> bool {
+  path.starts_with(root)
+}
+
+#[cfg(windows)]
+fn path_starts_with(path: &Path, root: &Path) -> bool {
+  let mut path_components = path.components();
+  for root_component in root.components() {
+    let Some(path_component) = path_components.next() else {
+      return false;
+    };
+    if !components_equal(path_component, root_component) {
+      return false;
+    }
+  }
+  true
+}
+
+#[cfg(not(windows))]
+fn paths_equal(a: &Path, b: &Path) -> bool {
+  a == b
+}
+
+#[cfg(windows)]
+fn paths_equal(a: &Path, b: &Path) -> bool {
+  let mut a_components = a.components();
+  let mut b_components = b.components();
+  loop {
+    match (a_components.next(), b_components.next()) {
+      (Some(a), Some(b)) if components_equal(a, b) => {}
+      (None, None) => return true,
+      _ => return false,
+    }
+  }
+}
+
+#[cfg(windows)]
+fn components_equal(
+  a: std::path::Component<'_>,
+  b: std::path::Component<'_>,
+) -> bool {
+  a.as_os_str()
+    .as_encoded_bytes()
+    .eq_ignore_ascii_case(b.as_os_str().as_encoded_bytes())
+}
+
+impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
+  fn prepare_start(&self, path: PathBuf) -> Option<PathBuf> {
+    match &self.search_stop_dir {
+      Some(search_stop_dir) => search_stop_dir.prepare_start(&self.sys, path),
+      None => Some(path),
+    }
+  }
+
+  fn is_search_stop_dir(&self, path: &Path) -> bool {
+    is_search_stop_dir(path, self.search_stop_dir.as_ref())
+  }
+}
+
+#[derive(Debug, Clone)]
 pub struct ByonmInNpmPackageChecker;
 
 impl InNpmPackageChecker for ByonmInNpmPackageChecker {
@@ -524,5 +687,272 @@ impl InNpmPackageChecker for ByonmInNpmPackageChecker {
         .path()
         .to_ascii_lowercase()
         .contains("/node_modules/")
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use deno_path_util::url_from_file_path;
+  use node_resolver::NpmPackageFolderResolver;
+  use node_resolver::PackageJsonResolver;
+  use node_resolver::UrlOrPathRef;
+  use sys_traits::FsCreateDirAll;
+  use sys_traits::FsWrite;
+  use sys_traits::impls::InMemorySys;
+
+  use super::*;
+
+  fn test_resolver(
+    sys: InMemorySys,
+    search_stop_dir: &str,
+  ) -> ByonmNpmResolver<InMemorySys> {
+    ByonmNpmResolver::new(ByonmNpmResolverCreateOptions {
+      root_node_modules_dir: None,
+      search_stop_dir: Some(PathBuf::from(search_stop_dir)),
+      pkg_json_resolver: deno_maybe_sync::new_rc(PackageJsonResolver::new(
+        sys.clone(),
+        None,
+      )),
+      sys: NodeResolutionSys::new(sys, None),
+    })
+  }
+
+  fn write_pkg_json(sys: &InMemorySys, path: &str, text: &str) {
+    sys.fs_write(path, text).unwrap();
+  }
+
+  fn evil_req() -> PackageReq {
+    PackageReq::from_str("evil@1.0.0").unwrap()
+  }
+
+  #[test]
+  fn deno_module_req_package_json_lookup_stops_at_search_stop_dir() {
+    let sys = InMemorySys::default();
+    sys.fs_create_dir_all("/sandbox/vfs/app").unwrap();
+    sys.fs_create_dir_all("/sandbox/node_modules/evil").unwrap();
+    write_pkg_json(
+      &sys,
+      "/sandbox/package.json",
+      r#"{"dependencies":{"evil":"1.0.0"}}"#,
+    );
+    write_pkg_json(
+      &sys,
+      "/sandbox/node_modules/evil/package.json",
+      r#"{"name":"evil","version":"1.0.0"}"#,
+    );
+
+    let resolver = test_resolver(sys, "/sandbox/vfs");
+    let referrer =
+      url_from_file_path(Path::new("/sandbox/vfs/app/main.js")).unwrap();
+    let err = resolver
+      .resolve_pkg_folder_from_deno_module_req(&evil_req(), &referrer)
+      .unwrap_err();
+
+    assert!(matches!(
+      err,
+      ByonmResolvePkgFolderFromDenoReqError::UnmatchedReq(_)
+    ));
+  }
+
+  #[test]
+  fn deno_module_req_node_modules_lookup_stops_at_search_stop_dir() {
+    let sys = InMemorySys::default();
+    sys.fs_create_dir_all("/sandbox/vfs/app").unwrap();
+    sys.fs_create_dir_all("/sandbox/node_modules/evil").unwrap();
+    write_pkg_json(
+      &sys,
+      "/sandbox/vfs/package.json",
+      r#"{"dependencies":{"evil":"1.0.0"}}"#,
+    );
+    write_pkg_json(
+      &sys,
+      "/sandbox/node_modules/evil/package.json",
+      r#"{"name":"evil","version":"1.0.0"}"#,
+    );
+
+    let resolver = test_resolver(sys, "/sandbox/vfs");
+    let referrer =
+      url_from_file_path(Path::new("/sandbox/vfs/app/main.js")).unwrap();
+    let err = resolver
+      .resolve_pkg_folder_from_deno_module_req(&evil_req(), &referrer)
+      .unwrap_err();
+
+    assert!(matches!(
+      err,
+      ByonmResolvePkgFolderFromDenoReqError::MissingAlias(alias)
+        if alias.as_str() == "evil"
+    ));
+  }
+
+  #[test]
+  fn deno_module_req_closest_node_modules_lookup_stops_at_search_stop_dir() {
+    let sys = InMemorySys::default();
+    sys.fs_create_dir_all("/sandbox/vfs/app").unwrap();
+    sys.fs_create_dir_all("/sandbox/node_modules/evil").unwrap();
+    write_pkg_json(
+      &sys,
+      "/sandbox/node_modules/evil/package.json",
+      r#"{"name":"evil","version":"1.0.0"}"#,
+    );
+
+    let resolver = test_resolver(sys, "/sandbox/vfs");
+    let referrer =
+      url_from_file_path(Path::new("/sandbox/vfs/app/main.js")).unwrap();
+    let err = resolver
+      .resolve_pkg_folder_from_deno_module_req(&evil_req(), &referrer)
+      .unwrap_err();
+
+    assert!(matches!(
+      err,
+      ByonmResolvePkgFolderFromDenoReqError::UnmatchedReq(_)
+    ));
+  }
+
+  #[test]
+  fn find_ancestor_package_json_with_dep_stops_at_search_stop_dir() {
+    let sys = InMemorySys::default();
+    sys.fs_create_dir_all("/sandbox/vfs/app").unwrap();
+    write_pkg_json(
+      &sys,
+      "/sandbox/package.json",
+      r#"{"dependencies":{"evil":"1.0.0"}}"#,
+    );
+
+    let resolver = test_resolver(sys, "/sandbox/vfs");
+    let referrer =
+      url_from_file_path(Path::new("/sandbox/vfs/app/main.js")).unwrap();
+
+    assert!(
+      resolver
+        .find_ancestor_package_json_with_dep("evil", &referrer)
+        .is_none()
+    );
+  }
+
+  #[test]
+  fn bounded_lookup_rejects_referrer_outside_search_stop_dir() {
+    let sys = InMemorySys::default();
+    sys.fs_create_dir_all("/sandbox/vfs/app").unwrap();
+    sys.fs_create_dir_all("/sandbox/node_modules/evil").unwrap();
+    write_pkg_json(
+      &sys,
+      "/sandbox/node_modules/evil/package.json",
+      r#"{"name":"evil","version":"1.0.0"}"#,
+    );
+
+    let resolver = test_resolver(sys, "/sandbox/vfs");
+    let referrer =
+      url_from_file_path(Path::new("/sandbox/app/main.js")).unwrap();
+    let err = resolver
+      .resolve_pkg_folder_from_deno_module_req(&evil_req(), &referrer)
+      .unwrap_err();
+
+    assert!(matches!(
+      err,
+      ByonmResolvePkgFolderFromDenoReqError::UnmatchedReq(_)
+    ));
+  }
+
+  #[test]
+  fn deno_module_req_allows_package_json_and_node_modules_at_search_stop_dir() {
+    let sys = InMemorySys::default();
+    sys.fs_create_dir_all("/sandbox/vfs/app").unwrap();
+    sys
+      .fs_create_dir_all("/sandbox/vfs/node_modules/evil")
+      .unwrap();
+    write_pkg_json(
+      &sys,
+      "/sandbox/vfs/package.json",
+      r#"{"dependencies":{"evil":"1.0.0"}}"#,
+    );
+    write_pkg_json(
+      &sys,
+      "/sandbox/vfs/node_modules/evil/package.json",
+      r#"{"name":"evil","version":"1.0.0"}"#,
+    );
+
+    let resolver = test_resolver(sys, "/sandbox/vfs");
+    let referrer =
+      url_from_file_path(Path::new("/sandbox/vfs/app/main.js")).unwrap();
+    let result = resolver
+      .resolve_pkg_folder_from_deno_module_req(&evil_req(), &referrer)
+      .unwrap();
+
+    assert_eq!(result, PathBuf::from("/sandbox/vfs/node_modules/evil"));
+  }
+
+  #[test]
+  fn unbounded_lookup_preserves_ancestor_node_modules_resolution() {
+    let sys = InMemorySys::default();
+    sys.fs_create_dir_all("/sandbox/vfs/app").unwrap();
+    sys.fs_create_dir_all("/sandbox/node_modules/evil").unwrap();
+    write_pkg_json(
+      &sys,
+      "/sandbox/node_modules/evil/package.json",
+      r#"{"name":"evil","version":"1.0.0"}"#,
+    );
+    let resolver = ByonmNpmResolver::new(ByonmNpmResolverCreateOptions {
+      root_node_modules_dir: None,
+      search_stop_dir: None,
+      pkg_json_resolver: deno_maybe_sync::new_rc(PackageJsonResolver::new(
+        sys.clone(),
+        None,
+      )),
+      sys: NodeResolutionSys::new(sys, None),
+    });
+
+    let referrer =
+      url_from_file_path(Path::new("/sandbox/vfs/app/main.js")).unwrap();
+    let result = resolver
+      .resolve_pkg_folder_from_deno_module_req(&evil_req(), &referrer)
+      .unwrap();
+
+    assert_eq!(result, PathBuf::from("/sandbox/node_modules/evil"));
+  }
+
+  #[test]
+  fn package_folder_lookup_stops_at_search_stop_dir() {
+    let sys = InMemorySys::default();
+    sys.fs_create_dir_all("/sandbox/vfs/app").unwrap();
+    sys.fs_create_dir_all("/sandbox/node_modules/evil").unwrap();
+    write_pkg_json(
+      &sys,
+      "/sandbox/node_modules/evil/package.json",
+      r#"{"name":"evil","version":"1.0.0"}"#,
+    );
+
+    let resolver = test_resolver(sys, "/sandbox/vfs");
+    let referrer_path = Path::new("/sandbox/vfs/app/main.js");
+    let result = resolver.resolve_package_folder_from_package(
+      "evil",
+      &UrlOrPathRef::from_path(referrer_path),
+    );
+
+    assert!(result.is_err());
+  }
+
+  #[test]
+  fn package_folder_lookup_allows_node_modules_at_search_stop_dir() {
+    let sys = InMemorySys::default();
+    sys.fs_create_dir_all("/sandbox/vfs/app").unwrap();
+    sys
+      .fs_create_dir_all("/sandbox/vfs/node_modules/evil")
+      .unwrap();
+    write_pkg_json(
+      &sys,
+      "/sandbox/vfs/node_modules/evil/package.json",
+      r#"{"name":"evil","version":"1.0.0"}"#,
+    );
+
+    let resolver = test_resolver(sys, "/sandbox/vfs");
+    let referrer_path = Path::new("/sandbox/vfs/app/main.js");
+    let result = resolver
+      .resolve_package_folder_from_package(
+        "evil",
+        &UrlOrPathRef::from_path(referrer_path),
+      )
+      .unwrap();
+
+    assert_eq!(result, PathBuf::from("/sandbox/vfs/node_modules/evil"));
   }
 }
