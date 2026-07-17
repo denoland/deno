@@ -1,0 +1,28 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_DIR": "$PWD/deno_dir"
+  },
+  "tests": {
+    "explicit_config_cutoff": {
+      // The policy config is in a subdir (NOT auto-discoverable from cwd) and is
+      // selected via `--config`. It sets a cutoff between the two publish dates.
+      // `deno x` must forward this explicit `--config` to the re-run
+      // `deno run <url>` subprocess, otherwise the subprocess re-resolves the
+      // npm import with the default policy and picks 2.0.0. With the config
+      // forwarded, 1.0.0 (2025-01-01) is selected — matching
+      // `deno run --config=configs/age.json <url>` (issue #35991).
+      "args": "x -y --config=configs/age.json data:application/javascript,import%20%22npm:@denotest/x-min-dep-age/cli.mjs%22;",
+      "output": "[WILDCARD]\n1.0.0\n"
+    },
+    "explicit_config_exclude": {
+      // The explicit `--config` carries a structured `minimumDependencyAge`
+      // with an `exclude` for the package. Because `deno x` forwards the real
+      // config file (not a collapsed age scalar), the subprocess reads the
+      // `exclude` and selects the newest version 2.0.0 — matching
+      // `deno run --config=configs/exclude.json <url>` (issue #35991).
+      "args": "x -y --config=configs/exclude.json data:application/javascript,import%20%22npm:@denotest/x-min-dep-age/cli.mjs%22;",
+      "output": "[WILDCARD]\n2.0.0\n"
+    }
+  }
+}

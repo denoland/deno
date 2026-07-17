@@ -285,20 +285,21 @@ fn make_sync_fn<'s>(
     None
   };
 
-  let c_function = turbocall.as_ref().map(|turbocall| {
-    v8::fast_api::CFunction::new(
-      turbocall.trampoline.ptr(),
-      &turbocall.c_function_info,
-    )
-  });
+  // SAFETY: the overload slice is backed by boxes owned by `turbocall`, which
+  // is moved into the cppgc `FunctionData` set as this function's data below and
+  // therefore outlives the function. V8 150.x retains the raw pointer, so the
+  // slice must be `'static`.
+  let overloads = turbocall
+    .as_ref()
+    .map(|turbocall| unsafe { turbocall.overloads() });
 
   let data = FunctionData { symbol, turbocall };
   let data = deno_core::cppgc::make_cppgc_object(scope, data);
 
   let builder = v8::FunctionTemplate::builder(sync_fn_impl).data(data.into());
 
-  let func = if let Some(c_function) = c_function {
-    builder.build_fast(scope, &[c_function])
+  let func = if let Some(overloads) = overloads {
+    builder.build_fast(scope, overloads)
   } else {
     builder.build(scope)
   };

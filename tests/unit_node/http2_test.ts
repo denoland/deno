@@ -6,6 +6,7 @@ import * as http2 from "node:http2";
 import * as https from "node:https";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { Buffer } from "node:buffer";
+import fs from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import * as net from "node:net";
@@ -228,6 +229,54 @@ Deno.test("[node/http2.createServer()]", {
   // Issue: https://github.com/denoland/deno/issues/22764
   await new Promise<void>((resolve) => server.on("close", resolve));
 });
+
+Deno.test(
+  "[node/http2.createServer()] maxSendHeaderBlockLength keeps header validation enabled",
+  {
+    ignore: Deno.build.os === "windows",
+  },
+  async () => {
+    const server = http2.createServer({ maxSendHeaderBlockLength: 10000 });
+    const portDeferred = Promise.withResolvers<number>();
+    const streamDeferred = Promise.withResolvers<void>();
+
+    server.on("stream", (stream, headers) => {
+      try {
+        assertEquals(headers["x-inject"], undefined);
+        stream.respond({ ":status": 204 });
+        stream.end();
+        streamDeferred.resolve();
+      } catch (err) {
+        streamDeferred.reject(err);
+      }
+    });
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address() as net.AddressInfo;
+      portDeferred.resolve(address.port);
+    });
+
+    const port = await portDeferred.promise;
+    const conn = await Deno.connect({ hostname: "127.0.0.1", port });
+    try {
+      await writeHttp2ClientPreface(conn);
+      await writeHttp2Headers(
+        conn,
+        [
+          [":method", "GET"],
+          [":path", "/"],
+          [":authority", `127.0.0.1:${port}`],
+          [":scheme", "http"],
+          ["x-inject", "injected\r\nset-cookie: session=hacked"],
+        ],
+        true,
+      );
+      await streamDeferred.promise;
+    } finally {
+      conn.close();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  },
+);
 
 Deno.test("[node/http2 client] write image buffer on request stream works", {
   // TODO(littledivy): h2 over TLS is not yet implemented
@@ -459,6 +508,36 @@ Deno.test("internal/http2/util exports", () => {
   assert(typeof util.kRequest === "symbol");
 });
 
+Deno.test("internal/http2/util escapes NUL header value bytes", () => {
+  const { assertValidPseudoHeader, buildNgHeaderString } = require(
+    "internal/http2/util",
+  );
+  assertEquals(
+    buildNgHeaderString(
+      { "user-agent": "good\0x-injected\0bad" },
+      assertValidPseudoHeader,
+      true,
+    ),
+    ["user-agent\0good\x01x-injected\x01bad\0\0", 1],
+  );
+  assertEquals(
+    buildNgHeaderString(
+      { "x-custom": ["good", "bad\u0100x-injected\u0100bad"] },
+      assertValidPseudoHeader,
+      true,
+    ),
+    ["x-custom\0good\0\0x-custom\0bad\x01x-injected\x01bad\0\0", 2],
+  );
+  assertEquals(
+    buildNgHeaderString(
+      { ":path": "/ok\0x-injected\0bad" },
+      assertValidPseudoHeader,
+      true,
+    ),
+    [":path\0/ok\x01x-injected\x01bad\0\0", 1],
+  );
+});
+
 Deno.test("[node/http2] Server.address() includes family property", async () => {
   // Test IPv4
   {
@@ -539,6 +618,67 @@ Deno.test("[node/http2] createSecureServer with allowHTTP1", {
 
   await promise;
 });
+
+async function writeAll(conn: Deno.Conn, bytes: Uint8Array): Promise<void> {
+  let written = 0;
+  while (written < bytes.length) {
+    written += await conn.write(bytes.subarray(written));
+  }
+}
+
+function http2LiteralHeader(name: string, value: string): number[] {
+  const encoder = new TextEncoder();
+  const encodedName = encoder.encode(name);
+  const encodedValue = encoder.encode(value);
+  return [
+    0x00,
+    encodedName.length,
+    ...encodedName,
+    encodedValue.length,
+    ...encodedValue,
+  ];
+}
+
+function http2Frame(
+  type: number,
+  flags: number,
+  streamId: number,
+  payload: number[] | Uint8Array,
+): Uint8Array {
+  const length = payload.length;
+  return new Uint8Array([
+    (length >> 16) & 0xff,
+    (length >> 8) & 0xff,
+    length & 0xff,
+    type,
+    flags,
+    (streamId >> 24) & 0x7f,
+    (streamId >> 16) & 0xff,
+    (streamId >> 8) & 0xff,
+    streamId & 0xff,
+    ...payload,
+  ]);
+}
+
+async function writeHttp2ClientPreface(conn: Deno.Conn): Promise<void> {
+  const encoder = new TextEncoder();
+  await writeAll(conn, encoder.encode("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"));
+  await writeAll(conn, http2Frame(0x04, 0, 0, []));
+}
+
+async function writeHttp2Headers(
+  conn: Deno.Conn,
+  headers: [string, string][],
+  endStream: boolean,
+): Promise<void> {
+  const block = headers.flatMap(([name, value]) =>
+    http2LiteralHeader(name, value)
+  );
+  await writeAll(
+    conn,
+    http2Frame(0x01, endStream ? 0x05 : 0x04, 1, block),
+  );
+}
 
 Deno.test("[node/http2] createSecureServer responds to client", {
   ignore: Deno.build.os === "windows",
@@ -820,6 +960,116 @@ Deno.test("[node/http2] destroy cleans internal socket references", async () => 
 
   await new Promise<void>((resolve) => server.close(() => resolve()));
 });
+
+async function testRespondWithCancellation(ownsFd: boolean) {
+  const filePath = await Deno.makeTempFile();
+  await Deno.writeFile(filePath, new Uint8Array(256 * 1024));
+
+  const originalRead = fs.read;
+  const originalClose = fs.close;
+  let streamClosed = false;
+  let readsAfterClose = 0;
+  let closeCalls = 0;
+
+  Object.defineProperty(fs, "read", {
+    configurable: true,
+    writable: true,
+    value: (...args: unknown[]) => {
+      if (streamClosed) readsAfterClose++;
+      const callbackIndex = args.length - 1;
+      const callback = args[callbackIndex] as (...args: unknown[]) => void;
+      args[callbackIndex] = (...callbackArgs: unknown[]) => {
+        setTimeout(() => callback(...callbackArgs), 3);
+      };
+      return Reflect.apply(
+        originalRead as unknown as (...args: unknown[]) => unknown,
+        fs,
+        args,
+      );
+    },
+  });
+  Object.defineProperty(fs, "close", {
+    configurable: true,
+    writable: true,
+    value: (...args: unknown[]) => {
+      closeCalls++;
+      return Reflect.apply(
+        originalClose as unknown as (...args: unknown[]) => unknown,
+        fs,
+        args,
+      );
+    },
+  });
+
+  const fd = ownsFd ? undefined : fs.openSync(filePath, "r");
+  const streamClose = Promise.withResolvers<void>();
+  const server = http2.createServer();
+  server.on("stream", (stream) => {
+    stream.on("error", () => {});
+    stream.once("close", () => {
+      streamClosed = true;
+      streamClose.resolve();
+    });
+    if (ownsFd) {
+      stream.respondWithFile(filePath);
+    } else {
+      stream.respondWithFD(fd!);
+    }
+  });
+
+  let client: http2.ClientHttp2Session | undefined;
+  try {
+    const port = await new Promise<number>((resolve) => {
+      server.listen(0, "127.0.0.1", () => {
+        resolve((server.address() as net.AddressInfo).port);
+      });
+    });
+    client = http2.connect(`http://127.0.0.1:${port}`);
+    client.on("error", () => {});
+    const request = client.request({ ":path": "/" });
+    request.on("error", () => {});
+    request.on("response", () => {
+      request.destroy();
+      client!.destroy();
+    });
+    request.end();
+
+    const timeout = setTimeout(
+      () => streamClose.reject(new Error("stream close timeout")),
+      5000,
+    );
+    await streamClose.promise.finally(() => clearTimeout(timeout));
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    assertEquals(readsAfterClose, 0);
+    assertEquals(closeCalls, ownsFd ? 1 : 0);
+  } finally {
+    client?.destroy();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    if (fd !== undefined) fs.closeSync(fd);
+    Object.defineProperty(fs, "read", {
+      configurable: true,
+      writable: true,
+      value: originalRead,
+    });
+    Object.defineProperty(fs, "close", {
+      configurable: true,
+      writable: true,
+      value: originalClose,
+    });
+    await Deno.remove(filePath);
+  }
+}
+
+Deno.test(
+  "[node/http2] respondWithFile stops reading and closes owned fd",
+  () => testRespondWithCancellation(true),
+);
+
+Deno.test(
+  "[node/http2] respondWithFD stops reading without closing caller fd",
+  () => testRespondWithCancellation(false),
+);
 
 // Regression test for https://github.com/denoland/deno/issues/33317
 // `http2.createSecureServer({ allowHTTP1: true })` must handle HTTP/1.1

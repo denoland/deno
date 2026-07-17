@@ -1646,6 +1646,15 @@ pub static INSTALL_SUBCOMMAND: CommandDef = CommandDef {
       .long("dev")
       .set_true()
       .conflicts_with(&["entrypoint", "global"]),
+    ArgDef::new("save-optional")
+      .short('O')
+      .long("save-optional")
+      .set_true()
+      .conflicts_with(&["entrypoint", "global", "dev"]),
+    ArgDef::new("no-save")
+      .long("no-save")
+      .set_true()
+      .conflicts_with(&["entrypoint", "global", "dev", "save-optional"]),
     ArgDef::new("prod")
       .long("prod")
       .long_aliases(&["production"])
@@ -1954,6 +1963,15 @@ pub static ADD_SUBCOMMAND: CommandDef = CommandDef {
       .num_args(NumArgs::OneOrMore)
       .required(),
     ArgDef::new("dev").short('D').long("dev").set_true(),
+    ArgDef::new("save-optional")
+      .short('O')
+      .long("save-optional")
+      .set_true()
+      .conflicts_with(&["dev"]),
+    ArgDef::new("no-save")
+      .long("no-save")
+      .set_true()
+      .conflicts_with(&["dev", "save-optional"]),
     ArgDef::new("save-exact")
       .long("save-exact")
       .long_aliases(&["exact"])

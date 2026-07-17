@@ -211,7 +211,8 @@ function Cipheriv(
   this._needsBlockCache = !this._isAesWrap &&
     !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
       cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
-      cipher == "aes-256-ctr" || cipher == "chacha20-poly1305");
+      cipher == "aes-256-ctr" || cipher == "chacha20" ||
+      cipher == "chacha20-poly1305");
   this._authTag = undefined;
   this._autoPadding = true;
   this._finalized = false;
@@ -511,7 +512,8 @@ function Decipheriv(
   this._needsBlockCache = !this._isAesWrap &&
     !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
       cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
-      cipher == "aes-256-ctr" || cipher == "chacha20-poly1305");
+      cipher == "aes-256-ctr" || cipher == "chacha20" ||
+      cipher == "chacha20-poly1305");
   this._isGcmMode = cipher == "aes-128-gcm" || cipher == "aes-192-gcm" ||
     cipher == "aes-256-gcm";
   this._authTagLength = authTagLength;

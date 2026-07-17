@@ -372,10 +372,11 @@ unsafe extern "C" fn h2_read_cb(
 
 // Http2Options
 
-const OPTIONS_FLAG_NO_RECV_CLIENT_MAGIC: u32 = 0x2;
-const OPTIONS_FLAG_NO_HTTP_MESSAGING: u32 = 0x4;
-
 const DEFAULT_MAX_HEADER_LIST_PAIRS: u32 = 128;
+
+fn option_present(flags: u32, index: OptionsIndex) -> bool {
+  flags & (1 << index as u32) != 0
+}
 
 struct Http2Options {
   options: *mut ffi::nghttp2_option,
@@ -396,7 +397,7 @@ impl Http2Options {
     let padding_strategy = with_options(|buffer| {
       let flags = buffer[OptionsIndex::Flags as usize];
 
-      if flags & (1 << OptionsIndex::MaxHeaderListPairs as u32) != 0 {
+      if option_present(flags, OptionsIndex::MaxHeaderListPairs) {
         max_header_pairs = buffer[OptionsIndex::MaxHeaderListPairs as usize];
       }
 
@@ -413,17 +414,11 @@ impl Http2Options {
         // sends exceed the advertised initial window.
         ffi::nghttp2_option_set_no_auto_window_update(options, 1);
 
-        if flags & OPTIONS_FLAG_NO_RECV_CLIENT_MAGIC != 0 {
-          ffi::nghttp2_option_set_no_recv_client_magic(options, 1);
-        }
-
-        if flags & OPTIONS_FLAG_NO_HTTP_MESSAGING != 0 {
-          ffi::nghttp2_option_set_no_http_messaging(options, 1);
-        }
-
         let max_deflate =
           buffer[OptionsIndex::MaxDeflateDynamicTableSize as usize];
-        if max_deflate > 0 {
+        if option_present(flags, OptionsIndex::MaxDeflateDynamicTableSize)
+          && max_deflate > 0
+        {
           ffi::nghttp2_option_set_max_deflate_dynamic_table_size(
             options,
             max_deflate as usize,
@@ -432,7 +427,9 @@ impl Http2Options {
 
         let max_reserved =
           buffer[OptionsIndex::MaxReservedRemoteStreams as usize];
-        if max_reserved > 0 {
+        if option_present(flags, OptionsIndex::MaxReservedRemoteStreams)
+          && max_reserved > 0
+        {
           ffi::nghttp2_option_set_max_reserved_remote_streams(
             options,
             max_reserved,
@@ -441,7 +438,9 @@ impl Http2Options {
 
         let max_send_header =
           buffer[OptionsIndex::MaxSendHeaderBlockLength as usize];
-        if max_send_header > 0 {
+        if option_present(flags, OptionsIndex::MaxSendHeaderBlockLength)
+          && max_send_header > 0
+        {
           ffi::nghttp2_option_set_max_send_header_block_length(
             options,
             max_send_header as usize,
@@ -450,7 +449,9 @@ impl Http2Options {
 
         let peer_max_concurrent =
           buffer[OptionsIndex::PeerMaxConcurrentStreams as usize];
-        if peer_max_concurrent > 0 {
+        if option_present(flags, OptionsIndex::PeerMaxConcurrentStreams)
+          && peer_max_concurrent > 0
+        {
           ffi::nghttp2_option_set_peer_max_concurrent_streams(
             options,
             peer_max_concurrent,
@@ -465,7 +466,7 @@ impl Http2Options {
         // didn't pass the option and could lower nghttp2's max_outbound_ack
         // (e.g. to 1), making a legitimate second concurrent ping trip
         // NGHTTP2_ERR_FLOODED.
-        if flags & (1 << OptionsIndex::MaxOutstandingPings as u32) != 0 {
+        if option_present(flags, OptionsIndex::MaxOutstandingPings) {
           let max_outstanding_pings =
             buffer[OptionsIndex::MaxOutstandingPings as usize];
           if max_outstanding_pings > 0 {
@@ -483,7 +484,8 @@ impl Http2Options {
         // on inbound SETTINGS *entries* per frame — handled below).
 
         let max_settings = buffer[OptionsIndex::MaxSettings as usize];
-        if max_settings > 0 {
+        if option_present(flags, OptionsIndex::MaxSettings) && max_settings > 0
+        {
           ffi::nghttp2_option_set_max_settings(options, max_settings as usize);
         }
 
@@ -509,7 +511,11 @@ impl Http2Options {
         }
       }
 
-      let padding = buffer[OptionsIndex::PaddingStrategy as usize];
+      let padding = if option_present(flags, OptionsIndex::PaddingStrategy) {
+        buffer[OptionsIndex::PaddingStrategy as usize]
+      } else {
+        0
+      };
       match padding {
         1 => PaddingStrategy::Aligned,
         2 => PaddingStrategy::Max,
