@@ -54,13 +54,14 @@ pub const UNSTABLE_FEATURE_NAME: &str = "worker-options";
 
 /// Default OS stack size for the thread a worker's isolate runs on.
 ///
-/// Must stay in sync with `deno_node`'s `DEFAULT_STACK_SIZE_MB`, which is what
+/// This is `deno_node`'s `DEFAULT_STACK_SIZE_MB`, which is what
 /// `resourceLimits.stackSizeMb` reports back to JS: without setting it here the
 /// thread would get Rust's 2MB default while we told the user it was 4MB. 2MB
 /// also leaves very little native headroom above V8's own JS stack limit
 /// (`--stack-size`, 1MB by default), so a raised `--stack-size` overflows the
 /// OS stack and aborts the process instead of raising `RangeError`.
-const DEFAULT_WORKER_STACK_SIZE_MB: usize = 4;
+const DEFAULT_WORKER_STACK_SIZE_MB: usize =
+  deno_node::ops::worker_threads::DEFAULT_STACK_SIZE_MB;
 
 /// V8 resource limits for worker isolates, matching Node.js `resourceLimits`.
 #[derive(FromV8, Default, Clone)]
