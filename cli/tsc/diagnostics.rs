@@ -320,12 +320,17 @@ impl Diagnostic {
         1
       };
       let mut s = String::new();
-      for i in 0..start.character {
-        s.push(if source_line.chars().nth(i as usize).unwrap() == '\t' {
-          '\t'
-        } else {
-          ' '
-        });
+      // Preserve tabs so the underline lines up under the source. Iterate the
+      // available characters and clamp to `start.character`; the reported
+      // column can occasionally sit past the end of the reconstructed line
+      // (e.g. positions that point at a virtual end-of-line token), in which
+      // case we simply pad with spaces rather than panicking.
+      for c in source_line
+        .chars()
+        .chain(std::iter::repeat(' '))
+        .take(start.character as usize)
+      {
+        s.push(if c == '\t' { '\t' } else { ' ' });
       }
       // TypeScript always uses `~` when underlining, but v8 always uses `^`.
       // We will use `^` to indicate a single point, or `~` when spanning

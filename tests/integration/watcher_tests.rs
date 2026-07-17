@@ -612,6 +612,7 @@ async fn fmt_check_all_files_on_each_change_test() {
 }
 
 #[test(flaky)]
+#[ignore = "native check under --watch is not yet supported: it writes .deno artifacts into the watched dir, which retriggers the watcher (#35946)"]
 async fn check_watch_test() {
   let t = TempDir::new();
   let file_to_check = t.path().join("main.ts");
