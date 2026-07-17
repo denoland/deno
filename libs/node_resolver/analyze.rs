@@ -499,12 +499,17 @@ impl<
     conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<Option<UrlOrPath>, JsErrorBox> {
-    if specifier.starts_with('/') {
-      todo!();
-    }
-
     let referrer = UrlOrPathRef::from_url(referrer);
     let referrer_path = referrer.path().unwrap();
+    if specifier.starts_with('/') {
+      return Ok(
+        self
+          .file_extension_probe(PathBuf::from(specifier), referrer_path)
+          .ok()
+          .map(UrlOrPath::Path),
+      );
+    }
+
     if specifier.starts_with("./") || specifier.starts_with("../") {
       if let Some(parent) = referrer_path.parent() {
         return self
@@ -622,12 +627,14 @@ impl<
   ) -> Result<PathBuf, JsErrorBox> {
     let p = p.clean();
     if self.sys.fs_exists_no_err(&p) {
-      let file_name = p.file_name().unwrap();
-      let p_js =
-        p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
-      if self.sys.fs_is_file_no_err(&p_js) {
-        return Ok(p_js);
-      } else if self.sys.fs_is_dir_no_err(&p) {
+      if let Some(file_name) = p.file_name() {
+        let p_js =
+          p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
+        if self.sys.fs_is_file_no_err(&p_js) {
+          return Ok(p_js);
+        }
+      }
+      if self.sys.fs_is_dir_no_err(&p) {
         return Ok(p.join("index.js"));
       } else {
         return Ok(p);
