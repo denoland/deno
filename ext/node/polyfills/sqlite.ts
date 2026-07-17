@@ -14,7 +14,9 @@ const { isUint8Array } = core.loadExtScript(
 const { URLPrototype } = core.loadExtScript("ext:deno_web/00_url.js");
 
 const {
+  Error,
   FunctionPrototypeCall,
+  NumberIsInteger,
   ObjectDefineProperty,
   ObjectDefineProperties,
   ObjectGetOwnPropertyDescriptor,
@@ -114,6 +116,14 @@ class InvalidURLSchemeError extends TypeError {
   }
 }
 
+class InvalidStateError extends Error {
+  code;
+  constructor(message) {
+    super(message);
+    this.code = "ERR_INVALID_STATE";
+  }
+}
+
 const parsePath = (path) => {
   let parsedPath;
   if (typeof path === "string") {
@@ -158,8 +168,43 @@ function DatabaseSync(
 ObjectSetPrototypeOf(DatabaseSync.prototype, DatabaseSyncOp.prototype);
 ObjectSetPrototypeOf(DatabaseSync, DatabaseSyncOp);
 
-// deno-lint-ignore require-await
-async function backup(
+function validateBackupOptions(options) {
+  if (options === undefined) {
+    return;
+  }
+  if (typeof options !== "object" || options === null) {
+    throw new InvalidArgTypeError(
+      'The "options" argument must be an object.',
+    );
+  }
+  if (options.source !== undefined && typeof options.source !== "string") {
+    throw new InvalidArgTypeError(
+      'The "options.source" argument must be a string.',
+    );
+  }
+  if (options.target !== undefined && typeof options.target !== "string") {
+    throw new InvalidArgTypeError(
+      'The "options.target" argument must be a string.',
+    );
+  }
+  if (options.rate !== undefined && !NumberIsInteger(options.rate)) {
+    throw new InvalidArgTypeError(
+      'The "options.rate" argument must be an integer.',
+    );
+  }
+  if (
+    options.progress !== undefined && typeof options.progress !== "function"
+  ) {
+    throw new InvalidArgTypeError(
+      'The "options.progress" argument must be a function.',
+    );
+  }
+}
+
+// Argument validation happens synchronously (mirroring Node.js, where invalid
+// arguments throw rather than reject), while the backup itself is performed by
+// `backupExec` so that runtime failures reject the returned promise.
+function backup(
   sourceDb,
   path,
   options,
@@ -169,11 +214,21 @@ async function backup(
       'The "sourceDb" argument must be an object.',
     );
   }
+  const parsedPath = parsePath(path);
+  validateBackupOptions(options);
+  if (!sourceDb.isOpen) {
+    throw new InvalidStateError("database is not open");
+  }
 
+  return backupExec(sourceDb, parsedPath, options);
+}
+
+// deno-lint-ignore require-await
+async function backupExec(sourceDb, parsedPath, options) {
   // TODO(Tango992): Implement async op
   return op_node_database_backup(
     sourceDb,
-    parsePath(path),
+    parsedPath,
     options,
   );
 }
