@@ -83,12 +83,20 @@ async fn native_check(
   // just means there's nothing to check (e.g. every match was excluded), which
   // deno reports as a warning and a clean exit.
   let graph_container = factory.main_module_graph_container().await?;
-  let roots = graph_container.collect_specifiers(
+  let mut roots = graph_container.collect_specifiers(
     &check_flags.files,
     crate::graph_container::CollectSpecifiersOptions {
       include_ignored_specified: false,
     },
   )?;
+  // `collect_specifiers` can yield the same workspace-member file more than
+  // once (resolved both by its explicit path and via the member's package
+  // `exports`), which would otherwise duplicate the `Check <specifier>` line
+  // and the tsc `files` entry. Deduplicate while preserving order.
+  {
+    let mut seen = std::collections::HashSet::new();
+    roots.retain(|s| seen.insert(s.clone()));
+  }
   if roots.is_empty() {
     log::warn!("{} No matching files found.", colors::yellow("Warning"));
     return Ok(());
