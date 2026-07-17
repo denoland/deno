@@ -5059,7 +5059,7 @@ interface CSSRule {
  * @category Platform
  * @experimental
  */
-declare var CSSRule: {
+declare var CSSRule: typeof globalThis extends { document: any; CSSRule: infer T } ? T : {
   readonly prototype: CSSRule;
   new (): never;
 };
@@ -5090,7 +5090,7 @@ interface CSSStyleSheet {
  * @category Platform
  * @experimental
  */
-declare var CSSStyleSheet: {
+declare var CSSStyleSheet: typeof globalThis extends { document: any; CSSStyleSheet: infer T } ? T : {
   readonly prototype: CSSStyleSheet;
   new (): CSSStyleSheet;
 };

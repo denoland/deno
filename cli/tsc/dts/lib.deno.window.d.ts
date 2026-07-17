@@ -335,7 +335,7 @@ declare var sessionStorage: Storage;
  *
  * @see  https://developer.mozilla.org/en-US/docs/Web/API/Window/caches
  */
-declare var caches: CacheStorage;
+declare var caches: typeof globalThis extends { document: any; caches: infer T } ? T : CacheStorage;
 
 /**
  * Provides information about the Deno runtime environment and the system

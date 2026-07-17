@@ -589,7 +589,7 @@ interface PromiseRejectionEvent extends Event {
  * and `rejectionhandled` when a promise is rejected without a handler.
  *
  * @category Events */
-declare var PromiseRejectionEvent: {
+declare var PromiseRejectionEvent: typeof globalThis extends { document: any; PromiseRejectionEvent: infer T } ? T : {
   readonly prototype: PromiseRejectionEvent;
   new (
     type: string,
@@ -756,7 +756,7 @@ interface Worker extends EventTarget {
  *
  * @category Workers
  */
-declare var Worker: {
+declare var Worker: typeof globalThis extends { document: any; Worker: infer T } ? T : {
   readonly prototype: Worker;
 
   /**

@@ -178,7 +178,7 @@ declare interface Notification extends EventTarget {
  * {@linkcode Notification.icon} property) but the OS notification is
  * shown without an icon.
  */
-declare var Notification: {
+declare var Notification: typeof globalThis extends { document: any; Notification: infer T } ? T : {
   prototype: Notification;
   new (title: string, options?: NotificationOptions): Notification;
   readonly permission: NotificationPermission;
@@ -228,7 +228,7 @@ declare interface PermissionStatus extends EventTarget {
   ): void;
 }
 
-declare var PermissionStatus: {
+declare var PermissionStatus: typeof globalThis extends { document: any; PermissionStatus: infer T } ? T : {
   prototype: PermissionStatus;
 };
 
