@@ -20,6 +20,164 @@ use deno_core::url::Url;
 
 use super::get_types_declaration_file_text;
 
+/// Whether `deno check` should honor a user's `tsconfig.json`. Deno only picks
+/// it up when there's a sibling `deno.json`/`deno.jsonc`/`package.json` and
+/// config discovery isn't disabled (`--no-config`). Otherwise the file is
+/// ignored - `deno check` type-checks with Deno's own defaults and must not
+/// read (or rewrite) the stray tsconfig.
+#[allow(
+  dead_code,
+  reason = "consumed by the native `deno check` path, landing in a follow-up"
+)]
+pub fn should_honor_user_tsconfig(
+  project_root: &Path,
+  config_disabled: bool,
+) -> bool {
+  if config_disabled {
+    return false;
+  }
+  ["deno.json", "deno.jsonc", "package.json"]
+    .iter()
+    .any(|f| project_root.join(f).exists())
+}
+
+/// Build a throwaway "root" tsconfig for `deno check` that mirrors the user's
+/// committed `tsconfig.json` but prepends our generated `.deno/tsconfig.json`
+/// to `extends` and carries the npm project `references` - WITHOUT mutating the
+/// user's file. `deno check` writes the returned value to a temp config in the
+/// project root and points tsc at it, so the user's own options (including
+/// path-based ones like `rootDirs`/`baseUrl` and any `include`/`files`) still
+/// resolve relative to the project, exactly as if tsc read their file directly.
+///
+/// This wrapper only does the IO (reading the user's tsconfig and the generated
+/// `.deno/tsconfig.json`); the merge itself is
+/// [`build_check_root_overlay_from_values`], which is pure and unit-tested.
+#[allow(
+  dead_code,
+  reason = "consumed by the native `deno check` path, landing in a follow-up"
+)]
+pub fn build_check_root_overlay(
+  project_root: &Path,
+  user_tsconfig_path: &Path,
+) -> Result<Value, std::io::Error> {
+  let content = std::fs::read_to_string(user_tsconfig_path)?;
+  // An unparseable tsconfig is a hard error rather than silently degrading to
+  // `{}` - which would check with none of the user's options and report a
+  // misleading clean.
+  let parsed: Option<Value> = jsonc_parser::parse_to_serde_value(
+    &content,
+    &jsonc_parser::ParseOptions::default(),
+  )
+  .map_err(|e| {
+    std::io::Error::new(
+      std::io::ErrorKind::InvalidData,
+      format!("failed to parse {}: {e}", user_tsconfig_path.display()),
+    )
+  })?;
+  let user_value = parsed.unwrap_or_else(|| json!({}));
+
+  // The generated config (for its `types` and `references`) is optional - a
+  // missing/unparseable one just means there's nothing to merge back.
+  let deno_tsconfig = project_root.join(".deno").join("tsconfig.json");
+  let deno_value = std::fs::read_to_string(&deno_tsconfig)
+    .ok()
+    .and_then(|t| serde_json::from_str::<Value>(&t).ok());
+
+  Ok(build_check_root_overlay_from_values(
+    user_value,
+    deno_value.as_ref(),
+  ))
+}
+
+/// Pure merge behind [`build_check_root_overlay`]: given the user's parsed
+/// `tsconfig.json` (`user_value`) and the generated `.deno/tsconfig.json`
+/// (`deno_value`), produce the overlay. Split out so it can be unit-tested
+/// without touching the filesystem.
+#[allow(
+  dead_code,
+  reason = "consumed by the native `deno check` path, landing in a follow-up"
+)]
+fn build_check_root_overlay_from_values(
+  mut user_value: Value,
+  deno_value: Option<&Value>,
+) -> Value {
+  // A non-object tsconfig (or JSON `null` from an empty file) can't carry
+  // options; start from an empty object so the generated `extends` still
+  // applies.
+  if !user_value.is_object() {
+    user_value = json!({});
+  }
+
+  {
+    let obj = user_value.as_object_mut().unwrap();
+
+    // Prepend our generated config so the user's own config overrides it, while
+    // our `paths` (which the user's config won't set) survive. TS 5.0+ resolves
+    // array `extends` left-to-right with later entries overriding earlier ones.
+    let deno_generated = "./.deno/tsconfig.json";
+    let extends = match obj.remove("extends") {
+      Some(Value::String(s)) => json!([deno_generated, s]),
+      Some(Value::Array(mut arr)) => {
+        if !arr.iter().any(|v| v.as_str() == Some(deno_generated)) {
+          arr.insert(0, json!(deno_generated));
+        }
+        Value::Array(arr)
+      }
+      _ => json!([deno_generated]),
+    };
+    obj.insert("extends".to_string(), extends);
+
+    // A user `compilerOptions.types` overrides the generated `types` through the
+    // `extends` chain, dropping our injected `deno`/`node` so every `Deno.*`
+    // reference would error TS2304. Deno always provides its own libs, so when
+    // the user set `types` explicitly, merge the generated entries back in
+    // (first, so they win) ahead of the user's.
+    if let Some(gen_types) = deno_value
+      .and_then(|d| d.pointer("/compilerOptions/types"))
+      .and_then(|t| t.as_array())
+      && obj
+        .get("compilerOptions")
+        .and_then(|c| c.get("types"))
+        .is_some()
+    {
+      let co = obj.entry("compilerOptions").or_insert_with(|| json!({}));
+      if let Some(co_obj) = co.as_object_mut() {
+        let user_types = co_obj
+          .get("types")
+          .and_then(|t| t.as_array())
+          .cloned()
+          .unwrap_or_default();
+        let mut merged = gen_types.clone();
+        for t in user_types {
+          if !merged.contains(&t) {
+            merged.push(t);
+          }
+        }
+        co_obj.insert("types".to_string(), Value::Array(merged));
+      }
+    }
+  }
+
+  // Carry the generated npm project `references` (not inherited through
+  // `extends`). Merge them into any references the user authored (rather than
+  // overwriting, which would drop a solution-style project's own references);
+  // `set_root_npm_references` retains non-generated entries and rebases the
+  // `.deno/`-relative generated paths onto the project root.
+  if let Some(refs) = deno_value
+    .and_then(|d| d.get("references"))
+    .and_then(|r| r.as_array())
+  {
+    let generated: Vec<String> = refs
+      .iter()
+      .filter_map(|r| r.get("path").and_then(|p| p.as_str()))
+      .map(|p| p.trim_start_matches("./").to_string())
+      .collect();
+    set_root_npm_references(&mut user_value, &generated);
+  }
+
+  user_value
+}
+
 /// Result of generating a tsconfig for stock TypeScript.
 #[derive(Debug)]
 pub struct GeneratedTsConfig {
@@ -1257,6 +1415,98 @@ fn merge_user_types(base_types: &mut Vec<Value>, user_types: &[Value]) {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn should_honor_user_tsconfig_gated() {
+    // `--no-config` (config_disabled) always wins, even with a deno.json next
+    // to the tsconfig.
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("deno.json"), "{}").unwrap();
+    assert!(should_honor_user_tsconfig(tmp.path(), false));
+    assert!(!should_honor_user_tsconfig(tmp.path(), true));
+    // No deno.json/package.json -> the stray tsconfig is ignored.
+    let empty = tempfile::tempdir().unwrap();
+    assert!(!should_honor_user_tsconfig(empty.path(), false));
+  }
+
+  #[test]
+  fn overlay_prepends_generated_extends() {
+    // No user `extends` -> just the generated one.
+    let overlay = build_check_root_overlay_from_values(json!({}), None);
+    assert_eq!(overlay["extends"], json!(["./.deno/tsconfig.json"]));
+
+    // String `extends` -> [generated, user].
+    let overlay = build_check_root_overlay_from_values(
+      json!({ "extends": "./base.json" }),
+      None,
+    );
+    assert_eq!(
+      overlay["extends"],
+      json!(["./.deno/tsconfig.json", "./base.json"])
+    );
+
+    // Array `extends` -> generated prepended.
+    let overlay = build_check_root_overlay_from_values(
+      json!({ "extends": ["./a.json", "./b.json"] }),
+      None,
+    );
+    assert_eq!(
+      overlay["extends"],
+      json!(["./.deno/tsconfig.json", "./a.json", "./b.json"])
+    );
+
+    // An already-present generated entry isn't duplicated.
+    let overlay = build_check_root_overlay_from_values(
+      json!({ "extends": ["./.deno/tsconfig.json", "./a.json"] }),
+      None,
+    );
+    assert_eq!(
+      overlay["extends"],
+      json!(["./.deno/tsconfig.json", "./a.json"])
+    );
+  }
+
+  #[test]
+  fn overlay_non_object_becomes_object() {
+    // A JSON `null` (empty file) still gets the generated `extends`.
+    let overlay = build_check_root_overlay_from_values(Value::Null, None);
+    assert_eq!(overlay["extends"], json!(["./.deno/tsconfig.json"]));
+  }
+
+  #[test]
+  fn overlay_merges_generated_types_back() {
+    // When the user sets `compilerOptions.types`, the generated deno/node types
+    // are merged back in first (so they win) ahead of the user's.
+    let user = json!({ "compilerOptions": { "types": ["mocha"] } });
+    let deno = json!({ "compilerOptions": { "types": ["deno", "node"] } });
+    let overlay = build_check_root_overlay_from_values(user, Some(&deno));
+    assert_eq!(
+      overlay["compilerOptions"]["types"],
+      json!(["deno", "node", "mocha"])
+    );
+  }
+
+  #[test]
+  fn overlay_leaves_types_alone_when_user_unset() {
+    // No user `types` -> the generated `types` flow through `extends`, so the
+    // overlay adds no `types` key of its own.
+    let user = json!({ "compilerOptions": { "strict": true } });
+    let deno = json!({ "compilerOptions": { "types": ["deno"] } });
+    let overlay = build_check_root_overlay_from_values(user, Some(&deno));
+    assert!(overlay["compilerOptions"].get("types").is_none());
+    assert_eq!(overlay["compilerOptions"]["strict"], json!(true));
+  }
+
+  #[test]
+  fn overlay_carries_generated_references() {
+    // Generated npm project references are rebased onto the project root.
+    let deno = json!({ "references": [{ "path": "./npm/foo" }] });
+    let overlay = build_check_root_overlay_from_values(json!({}), Some(&deno));
+    assert_eq!(
+      overlay["references"],
+      json!([{ "path": "./.deno/npm/foo" }])
+    );
+  }
 
   #[test]
   fn test_strip_top_level_type_decls() {
