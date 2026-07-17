@@ -972,7 +972,7 @@ fn fs_module_loader_specifier(file_name: &str) -> ModuleSpecifier {
     .join("modules")
     .join("testdata")
     .join(file_name);
-  ModuleSpecifier::from_file_path(path).unwrap()
+  deno_path_util::url_from_file_path(&path).unwrap()
 }
 
 async fn load_fs_module(
