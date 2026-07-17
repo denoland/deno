@@ -2135,7 +2135,7 @@ impl DenoPluginHandler {
     let graph = self.module_graph_container.graph();
     let module_or_asset = self
       .module_loader
-      .load(&graph, &specifier, None, requested_type)
+      .load(&graph, &specifier, None, requested_type, None)
       .await;
     let module_or_asset = match module_or_asset {
       Ok(module_or_asset) => module_or_asset,

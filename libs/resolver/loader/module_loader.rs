@@ -189,10 +189,16 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
     // referrer from all error messages. This should be up to deno_core to display.
     maybe_referrer: Option<&Url>,
     requested_module_type: &RequestedModuleType<'_>,
+    cjs_analysis_source_provider: Option<&dyn CjsAnalysisSourceProvider>,
   ) -> Result<LoadedModuleOrAsset<'a>, LoadCodeSourceError> {
     let source = match self
       .prepared_module_loader
-      .load_prepared_module(graph, specifier, requested_module_type)
+      .load_prepared_module(
+        graph,
+        specifier,
+        requested_module_type,
+        cjs_analysis_source_provider,
+      )
       .await
       .map_err(LoadCodeSourceError::from)?
     {
@@ -312,6 +318,7 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
     graph: &'graph ModuleGraph,
     specifier: &Url,
     requested_module_type: &RequestedModuleType<'_>,
+    cjs_analysis_source_provider: Option<&dyn CjsAnalysisSourceProvider>,
   ) -> Result<Option<LoadedModuleOrAsset<'graph>>, LoadPreparedModuleError> {
     // Note: keep this in sync with the sync version below
     match self.load_prepared_module_or_defer_emit(
@@ -347,7 +354,13 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
         media_type,
         source,
       }) => self
-        .load_maybe_cjs(graph, specifier, media_type, source)
+        .load_maybe_cjs(
+          graph,
+          specifier,
+          media_type,
+          source,
+          cjs_analysis_source_provider,
+        )
         .await
         .map(|text| {
           Some(LoadedModuleOrAsset::Module(LoadedModule {
@@ -620,6 +633,7 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
     specifier: &Url,
     media_type: MediaType,
     original_source: &ArcStr,
+    fallback_source_provider: Option<&dyn CjsAnalysisSourceProvider>,
   ) -> Result<ArcStr, LoadMaybeCjsError> {
     let js_source = self
       .emitter
@@ -635,7 +649,10 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
       .translate_cjs_to_esm_with_source_provider(
         specifier,
         Some(Cow::Borrowed(js_source.as_ref())),
-        Some(&GraphCjsAnalysisSourceProvider { graph }),
+        Some(&GraphCjsAnalysisSourceProvider {
+          graph,
+          fallback: fallback_source_provider,
+        }),
       )
       .await?;
     // Apply load-time security mitigations for known React Server Components
@@ -659,14 +676,24 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
 
 struct GraphCjsAnalysisSourceProvider<'a> {
   graph: &'a ModuleGraph,
+  fallback: Option<&'a dyn CjsAnalysisSourceProvider>,
 }
 
 impl CjsAnalysisSourceProvider for GraphCjsAnalysisSourceProvider<'_> {
   fn load_source(&self, specifier: &Url) -> Option<String> {
-    match self.graph.get(specifier)? {
-      deno_graph::Module::Js(module) => Some(module.source.text.to_string()),
-      deno_graph::Module::Json(module) => Some(module.source.text.to_string()),
-      _ => None,
+    if let Some(module) = self.graph.get(specifier) {
+      match module {
+        deno_graph::Module::Js(module) => {
+          return Some(module.source.text.to_string());
+        }
+        deno_graph::Module::Json(module) => {
+          return Some(module.source.text.to_string());
+        }
+        _ => {}
+      }
     }
+    self
+      .fallback
+      .and_then(|provider| provider.load_source(specifier))
   }
 }

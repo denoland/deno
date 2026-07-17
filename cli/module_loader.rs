@@ -83,6 +83,7 @@ use eszip::EszipV2;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
+use node_resolver::analyze::CjsAnalysisSourceProvider;
 use node_resolver::errors::PackageJsonLoadError;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
@@ -603,6 +604,30 @@ struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
 }
 
+// Recursive CJS analysis must not prompt for or acquire new read access. This
+// provider is constructed with a prompt-disabled snapshot of CLI permissions.
+struct PermissionedCjsAnalysisSourceProvider<'a> {
+  permissions: PermissionsContainer,
+  npm_registry_permission_checker: &'a NpmRegistryReadPermissionChecker<CliSys>,
+  sys: &'a CliSys,
+}
+
+impl CjsAnalysisSourceProvider for PermissionedCjsAnalysisSourceProvider<'_> {
+  fn load_source(&self, specifier: &ModuleSpecifier) -> Option<String> {
+    let path = deno_path_util::url_to_file_path(specifier).ok()?;
+    let mut permissions = self.permissions.clone();
+    let path = self
+      .npm_registry_permission_checker
+      .ensure_read_permission(&mut permissions, Cow::Owned(path))
+      .ok()?;
+    self
+      .sys
+      .fs_read_to_string_lossy(path)
+      .ok()
+      .map(Cow::into_owned)
+  }
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ResolveReferrerError {
   #[class(inherit)]
@@ -889,6 +914,13 @@ impl<TGraphContainer: ModuleGraphContainer>
     let graph = self.graph_container.graph();
     let deno_resolver_requested_module_type =
       as_deno_resolver_requested_module_type(requested_module_type);
+    let cjs_analysis_source_provider = PermissionedCjsAnalysisSourceProvider {
+      permissions: self.permissions.deep_clone_without_prompt(),
+      npm_registry_permission_checker: &self
+        .shared
+        .npm_registry_permission_checker,
+      sys: &self.shared.sys,
+    };
     match self
       .shared
       .module_loader
@@ -897,6 +929,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         &specifier,
         maybe_referrer,
         &deno_resolver_requested_module_type,
+        Some(&cjs_analysis_source_provider),
       )
       .await?
     {
