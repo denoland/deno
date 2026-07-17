@@ -766,9 +766,9 @@ impl Http2Stream {
     let session = unsafe { &mut *self.session };
 
     // Nothing will drain this stream's pending_data now, so hand every queued
-    // write back to JS as cancelled before the stream goes away. Collected
-    // into the session queue (rather than completed inline) because destroy()
-    // can be reached from JS running inside a nghttp2 callback.
+    // write back to JS as cancelled before the stream goes away. Park them on
+    // the session queue first: destroy() can be reached from JS running inside
+    // an nghttp2 callback, and the completions run arbitrary producer JS.
     let mut completed = Vec::new();
     self.cancel_pending_writes(&mut completed);
     session.write_completions.append(&mut completed);
@@ -776,6 +776,11 @@ impl Http2Stream {
     session.streams.remove(&self.id);
     log::debug!("destroyed stream {}", self.id);
 
+    // Run the cancellations so a producer waiting on a write callback isn't
+    // left hanging. `flush_write_completions` defers itself when this destroy
+    // is nested inside `get_outgoing_chunk`'s `mem_send` (draining_outgoing),
+    // so the flush can't re-enter and nest a second `mem_send`; the outer
+    // drain's trailing send pass runs them instead.
     session.flush_write_completions();
   }
 

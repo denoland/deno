@@ -2038,6 +2038,15 @@ pub struct Session {
   /// handle close is deferred until send_pending_data can run, allowing
   /// GOAWAY to be sent before the connection closes.
   pub pending_destroy: bool,
+  /// True while `get_outgoing_chunk` is inside `nghttp2_session_mem_send`
+  /// on the JS-socket transport. Unlike `send_pending_data`, that path
+  /// drives `mem_send` without setting `is_sending`, so a write completion
+  /// run here could synchronously call `stream.write()` and re-enter the
+  /// send path, nesting a second `mem_send` while the outer one is still on
+  /// the stack (double-free with `no_closed_streams=1`). While set,
+  /// `flush_write_completions` defers and `get_outgoing_chunk` refuses to
+  /// start a nested `mem_send`.
+  pub draining_outgoing: bool,
   /// RST_STREAM submissions deferred because is_sending was true.
   /// Matches Node.js's pending_rst_streams_ mechanism: submitting
   /// RST_STREAM during mem_recv/mem_send can cause nghttp2 to
@@ -2250,6 +2259,20 @@ impl Session {
       return;
     }
 
+    // An `oncomplete` runs arbitrary JS that can call `stream.write()` and
+    // re-enter the send path. On the libuv transport `send_pending_data`
+    // clears `is_sending` before flushing, so any nested send is blocked by
+    // its own guard. The JS-socket transport instead drains via
+    // `get_outgoing_chunk`, which sets `draining_outgoing` around its
+    // `mem_send`; flushing there would let the nested write start a second
+    // `mem_send` inside the outer one (double-free, `no_closed_streams=1`).
+    // Leave the completions queued — the drain's trailing send pass
+    // (`origSendPending` -> `send_pending_data`) or the session teardown
+    // flush runs them once the outer `mem_send` has unwound.
+    if self.draining_outgoing {
+      return;
+    }
+
     // Take the queue up front: an `oncomplete` can write again and re-enter
     // send_pending_data, which must not see entries already being completed.
     let completions = std::mem::take(&mut self.write_completions);
@@ -2270,6 +2293,43 @@ impl Session {
       {
         let status = v8::Integer::new(scope, completion.status);
         oncomplete.call(scope, req.into(), &[status.into()]);
+      }
+    }
+  }
+
+  /// Pull the next outgoing chunk from nghttp2's send queue. The body of the
+  /// `get_outgoing_chunk` op, split out so the op can bracket it with the
+  /// `draining_outgoing` re-entrancy guard on every return path.
+  fn drain_outgoing_chunk(&mut self) -> Box<[u8]> {
+    loop {
+      if let Some(chunk) = self.outgoing_chunks.pop_front() {
+        return chunk.into_boxed_slice();
+      }
+      let mut src = std::ptr::null();
+      let src_len =
+        // SAFETY: self.session is a valid nghttp2 session pointer
+        unsafe { ffi::nghttp2_session_mem_send(self.session, &mut src) };
+      if src_len > 0 {
+        // SAFETY: src and src_len are valid per nghttp2_session_mem_send
+        let data = unsafe { std::slice::from_raw_parts(src, src_len as usize) };
+        return data.to_vec().into_boxed_slice();
+      }
+      if src_len < 0 {
+        // SAFETY: nghttp2_strerror returns a static C string for any input
+        let msg = unsafe {
+          let p = ffi::nghttp2_strerror(src_len as i32);
+          std::ffi::CStr::from_ptr(p).to_string_lossy()
+        };
+        log::debug!("nghttp2_session_mem_send failed: {} ({})", msg, src_len);
+        return Box::new([]);
+      }
+      // src_len == 0: nghttp2 has nothing more directly, but
+      // on_send_data_callback may have just pushed chunks (NO_COPY
+      // DATA) — loop and pop them. If the queue is also empty, the
+      // next iteration's pop returns None and we hit mem_send again
+      // which returns 0, exiting via the early return below.
+      if self.outgoing_chunks.is_empty() {
+        return Box::new([]);
       }
     }
   }
@@ -2714,6 +2774,7 @@ impl Http2Session {
       stream: None,
       is_sending: false,
       pending_destroy: false,
+      draining_outgoing: false,
       pending_rst_streams: Vec::new(),
       orig_stream_data: std::ptr::null_mut(),
       max_header_pairs: options.max_header_pairs(),
@@ -2926,37 +2987,18 @@ impl Http2Session {
   fn get_outgoing_chunk(&self) -> Box<[u8]> {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &mut *self.inner };
-    loop {
-      if let Some(chunk) = session.outgoing_chunks.pop_front() {
-        return chunk.into_boxed_slice();
-      }
-      let mut src = std::ptr::null();
-      let src_len =
-        // SAFETY: session.session is a valid nghttp2 session pointer
-        unsafe { ffi::nghttp2_session_mem_send(session.session, &mut src) };
-      if src_len > 0 {
-        // SAFETY: src and src_len are valid per nghttp2_session_mem_send
-        let data = unsafe { std::slice::from_raw_parts(src, src_len as usize) };
-        return data.to_vec().into_boxed_slice();
-      }
-      if src_len < 0 {
-        // SAFETY: nghttp2_strerror returns a static C string for any input
-        let msg = unsafe {
-          let p = ffi::nghttp2_strerror(src_len as i32);
-          std::ffi::CStr::from_ptr(p).to_string_lossy()
-        };
-        log::debug!("nghttp2_session_mem_send failed: {} ({})", msg, src_len);
-        return Box::new([]);
-      }
-      // src_len == 0: nghttp2 has nothing more directly, but
-      // on_send_data_callback may have just pushed chunks (NO_COPY
-      // DATA) — loop and pop them. If the queue is also empty, the
-      // next iteration's pop returns None and we hit mem_send again
-      // which returns 0, exiting via the early return below.
-      if session.outgoing_chunks.is_empty() {
-        return Box::new([]);
-      }
+    if session.draining_outgoing {
+      // A JS callback fired inside the outer `mem_send` re-entered the send
+      // path (e.g. a stream close handler calling scheduleSendPending).
+      // Starting a nested `mem_send` here could free a stream the outer pass
+      // still references, so report "no more data" and let the outer drain
+      // loop pick up whatever this pass queued once it resumes.
+      return Box::new([]);
     }
+    session.draining_outgoing = true;
+    let chunk = session.drain_outgoing_chunk();
+    session.draining_outgoing = false;
+    chunk
   }
 
   #[fast]
@@ -2968,6 +3010,14 @@ impl Http2Session {
   ) {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &mut *self.inner };
+
+    // Flush any completions left parked on the session queue. `closeSession`
+    // frames a trailing GOAWAY through `get_outgoing_chunk` with no following
+    // send pass, so a write completed by that drain would otherwise only be
+    // run by a subsequent per-stream `destroy()`; if every stream is already
+    // gone the session queue would never drain. Deferred safely if this
+    // teardown itself runs inside an outgoing drain.
+    session.flush_write_completions();
 
     if session.is_sending {
       // We're inside receive_data's mem_recv. Defer the TCP handle

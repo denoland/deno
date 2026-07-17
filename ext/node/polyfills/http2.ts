@@ -391,9 +391,10 @@ function emitStreamPerfEntry(stream) {
   }
 }
 
-// Schedule a deferred sendPending() call on the session's native handle.
-// This is deferred via queueMicrotask to avoid re-entrancy: nghttp2's
-// send_pending_data can invoke callbacks that call back into JS ops.
+// Drive the session's native handle to flush nghttp2's pending output.
+// This runs synchronously: re-entrancy is handled on the native side
+// (`is_sending` / `draining_outgoing` guards) rather than by deferring to a
+// microtask, so callers get the frames on the wire without an extra turn.
 function scheduleSendPending(session) {
   if (!session) return;
   const handle = session[kHandle];

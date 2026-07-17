@@ -912,6 +912,11 @@ Deno.test("[node/http2] stream writes apply backpressure", async () => {
     stream.respond({ ":status": 200 });
     // The client leaves the response paused, so its flow-control window closes
     // and nghttp2 stops accepting DATA. Write until the Writable pushes back.
+    //
+    // With the pre-fix synchronous completion, write() always returns true, so
+    // this loop never breaks and the test would hang until the runner's
+    // timeout rather than failing the assertions below — that timeout is the
+    // primary regression signal here.
     while (true) {
       pending++;
       if (!stream.write(chunk, () => pending--)) {
