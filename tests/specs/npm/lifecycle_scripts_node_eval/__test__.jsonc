@@ -1,0 +1,50 @@
+{
+  "tempDir": true,
+  "tests": {
+    // Regression test for https://github.com/denoland/deno/issues/24916.
+    // A package whose `postinstall` runs `node -e "..."` must succeed even
+    // when there is no `node` binary on `PATH` (the inline script is run
+    // through Deno instead).
+    "node_eval_postinstall_without_node_binary": {
+      "steps": [
+        {
+          "envs": {
+            "PATH": ""
+          },
+          "args": "cache --allow-scripts main.js",
+          "output": "cache.out"
+        },
+        {
+          // the `node -e` script wrote this file via `require('fs')`; the
+          // "object" suffix confirms it ran under Deno (no `node` binary).
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('./node_eval_ran.txt'))"
+          ],
+          "output": "hello from node -e object\n"
+        }
+      ]
+    },
+    "node_eval_postinstall_via_install_without_node_binary": {
+      "steps": [
+        {
+          "envs": {
+            "PATH": ""
+          },
+          "args": "install --allow-scripts",
+          "output": "cache.out"
+        },
+        {
+          // Mirrors the user-reported `deno i --allow-scripts` path: the npm
+          // postinstall `node -e` script wrote this file without a real `node`
+          // binary on PATH.
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('./node_eval_ran.txt'))"
+          ],
+          "output": "hello from node -e object\n"
+        }
+      ]
+    }
+  }
+}
