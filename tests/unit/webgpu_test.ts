@@ -336,6 +336,37 @@ Deno.test(function webgpuWindowSurfaceNoWidthHeight() {
   );
 });
 
+Deno.test(
+  { permissions: { ffi: false } },
+  function webgpuWindowSurfaceFfiPermission() {
+    const response = new Response("ok", { status: 201 });
+    const nativeResponseSymbol = Object.getOwnPropertySymbols(response).find(
+      (symbol) => symbol.description === "serve native response",
+    );
+    assert(nativeResponseSymbol !== undefined);
+    const nativeResponse =
+      (response as unknown as Record<symbol, Deno.PointerValue>)[
+        nativeResponseSymbol
+      ];
+    assert(nativeResponse);
+    const system = Deno.build.os === "darwin" ? "x11" : "cocoa";
+
+    assertThrows(
+      () => {
+        new Deno.UnsafeWindowSurface({
+          system,
+          windowHandle: nativeResponse,
+          displayHandle: nativeResponse,
+          width: 1,
+          height: 1,
+        });
+      },
+      Deno.errors.NotCapable,
+      "Requires ffi access",
+    );
+  },
+);
+
 Deno.test({
   permissions: { ffi: true },
   ignore: isWsl || isCIWithoutGPU || !hasWindowingSystem,
