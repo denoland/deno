@@ -20,8 +20,8 @@ mod urlpattern;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::sync::OnceLock;
 
 pub use blob::BlobError;
@@ -221,8 +221,8 @@ deno_core::extension!(deno_web,
     state.put(options.bc);
     state.put(broadcast_channel::BroadcastSabStash::default());
     state.put(Arc::new(OnceLock::<Option<canvas2d::DenoCanvasBackend>>::new()));
-    state.put(Arc::new(Mutex::new(parley::FontContext::new())));
-    state.put(Arc::new(Mutex::new(parley::LayoutContext::<()>::new())));
+    state.put(Rc::new(RefCell::new(parley::FontContext::new())));
+    state.put(Rc::new(RefCell::new(parley::LayoutContext::<()>::new())));
     state.put(options.shared_local_font_db);
   }
 );
