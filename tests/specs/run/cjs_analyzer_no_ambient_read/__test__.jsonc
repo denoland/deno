@@ -1,7 +1,13 @@
 {
   "tempDir": true,
-  "steps": [{
-    "args": "run --no-prompt --quiet --allow-read=allowed allowed/main.ts",
-    "output": "from-inner\nblocked\n"
-  }]
+  "steps": [
+    {
+      "args": "run --no-prompt --quiet --allow-read allowed/reexport.ts",
+      "output": "from-inner\n"
+    },
+    {
+      "args": "run --no-prompt --quiet --allow-read=allowed allowed/main.ts",
+      "output": "blocked\n"
+    }
+  ]
 }

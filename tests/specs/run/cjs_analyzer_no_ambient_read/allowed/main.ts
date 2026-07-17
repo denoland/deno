@@ -1,6 +1,3 @@
-const { value } = await import("./reexport.cjs");
-console.log(value);
-
 try {
   await import("./main.cjs");
   console.log("unexpected success");
