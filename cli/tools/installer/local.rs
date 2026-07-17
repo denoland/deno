@@ -442,22 +442,16 @@ pub async fn sync_types_command(
   )
   .await?;
 
-  // Only the standalone `deno sync-types` reports a summary. When run as an
-  // internal step of `deno check` (CheckMode, `manage_root_tsconfig == false`)
-  // stay quiet so the output is just the type-check result, without globally
-  // clobbering the log level at the call site.
-  if manage_root_tsconfig {
-    log::info!(
-      "{} tsconfig for stock TypeScript at {}",
-      deno_terminal::colors::green("Synced"),
-      project_root.join("tsconfig.json").display(),
-    );
-    if !installed.is_empty() {
-      log::info!("  installed {} jsr package(s)", installed.len());
-    }
-  }
+  log::info!(
+    "{} tsconfig for stock TypeScript at {}",
+    deno_terminal::colors::green("Synced"),
+    project_root.join("tsconfig.json").display(),
+  );
   for pkg in &installed {
     log::debug!("  installed jsr package {}@{}", pkg.name, pkg.version);
+  }
+  if !installed.is_empty() {
+    log::info!("  installed {} jsr package(s)", installed.len());
   }
   Ok(())
 }

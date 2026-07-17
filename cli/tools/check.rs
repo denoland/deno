@@ -184,16 +184,23 @@ async fn native_check(
 
   // Cache miss: generate the tsconfig.json and materialize dependency types so
   // the native compiler can resolve the project's jsr:/npm:/http(s): imports.
-  // In CheckMode `sync_types_command` stays quiet (no summary), so its output
-  // doesn't precede the type-check diagnostics.
-  crate::tools::installer::sync_types_command(
+  // Suppress sync-types' own progress/summary output (an internal step here) so
+  // it doesn't precede the type-check diagnostics. This clobbers the global log
+  // level, which is not ideal; replacing it with source-level suppression (or
+  // reusing the already-built graph so sync-types doesn't re-fetch) is tracked
+  // as a follow-up.
+  let prev_level = log::max_level();
+  log::set_max_level(log::LevelFilter::Error);
+  let sync_result = crate::tools::installer::sync_types_command(
     flags.clone(),
     SyncTypesFlags {
       roots: check_flags.files.clone(),
     },
     crate::tools::installer::RootTsConfigMode::CheckMode,
   )
-  .await?;
+  .await;
+  log::set_max_level(prev_level);
+  sync_result?;
 
   let tsc_path = ensure_native_tsc_downloaded(&factory).await?;
 
