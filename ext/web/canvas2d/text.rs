@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use parley::FontContext;
 use parley::Layout;
@@ -106,11 +106,11 @@ pub(super) fn compute_text_metrics(
   text: &str,
   fstate: &FontState,
   text_align: TextAlign,
-  font_ctx: &Arc<Mutex<FontContext>>,
-  layout_ctx: &Arc<Mutex<LayoutContext<()>>>,
+  font_ctx: &Rc<RefCell<FontContext>>,
+  layout_ctx: &Rc<RefCell<LayoutContext<()>>>,
 ) -> TextMetrics {
-  let mut fc = font_ctx.lock().unwrap();
-  let mut lc = layout_ctx.lock().unwrap();
+  let mut fc = font_ctx.borrow_mut();
+  let mut lc = layout_ctx.borrow_mut();
   let layout = build_text_layout(&mut fc, &mut lc, text, fstate);
 
   let mut width = 0.0f64;

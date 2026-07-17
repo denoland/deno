@@ -1,8 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::rc::Rc;
 
 use deno_core::GarbageCollected;
 use deno_core::OpState;
@@ -110,8 +109,8 @@ pub struct OffscreenCanvasRenderingContext2D {
   drawing: RefCell<DrawingBackend>,
   renderer: SharedRenderer,
 
-  font_ctx: Arc<Mutex<FontContext>>,
-  layout_ctx: Arc<Mutex<LayoutContext<()>>>,
+  font_ctx: Rc<RefCell<FontContext>>,
+  layout_ctx: Rc<RefCell<LayoutContext<()>>>,
 
   state: RefCell<DrawingState>,
   state_stack: RefCell<Vec<StateStackEntry>>,
@@ -429,19 +428,38 @@ impl OffscreenCanvasRenderingContext2D {
       return;
     }
 
-    let state = self.state.borrow();
-    let op = state.global_composite_operation;
-    let alpha = state.global_alpha;
-    let shadow = has_shadow(&state);
-    let shadow_color = state.shadow_color.to_srgb8();
-    let shadow_xform = if shadow {
-      Some(shadow_transform(&state, state.transform))
-    } else {
-      None
+    let (
+      op,
+      alpha,
+      shadow_color,
+      shadow_xform,
+      brush,
+      brush_transform,
+      transform,
+    ) = {
+      let state = self.state.borrow();
+      let op = state.global_composite_operation;
+      let alpha = state.global_alpha;
+      let shadow = has_shadow(&state);
+      let shadow_color = state.shadow_color.to_srgb8();
+      let shadow_xform = if shadow {
+        Some(shadow_transform(&state, state.transform))
+      } else {
+        None
+      };
+      let (brush, brush_transform) =
+        resolve_brush(scope, &state.fill_style, 1.0);
+      let transform = state.transform;
+      (
+        op,
+        alpha,
+        shadow_color,
+        shadow_xform,
+        brush,
+        brush_transform,
+        transform,
+      )
     };
-    let (brush, brush_transform) = resolve_brush(scope, &state.fill_style, 1.0);
-    let transform = state.transform;
-    drop(state);
 
     let rect = Rect::new(*x, *y, *x + *w, *y + *h);
     let (width, height) = self.data.dimensions();
@@ -553,10 +571,11 @@ impl OffscreenCanvasRenderingContext2D {
   #[required(1)]
   #[cppgc]
   fn measure_text(&self, #[string] text: &str) -> TextMetrics {
+    let state = self.state.borrow();
     compute_text_metrics(
       text,
-      &self.state.borrow().font_state,
-      self.state.borrow().text_align,
+      &state.font_state,
+      state.text_align,
       &self.font_ctx,
       &self.layout_ctx,
     )
@@ -1704,38 +1723,47 @@ impl OffscreenCanvasRenderingContext2D {
     let img =
       image_data_from_pixels(resolved.pixels, resolved.width, resolved.height);
 
-    let ds = self.state.borrow();
-    let quality = if ds.image_smoothing_enabled {
-      match ds.image_smoothing_quality {
-        ImageSmoothingQuality::Low => peniko::ImageQuality::Low,
-        ImageSmoothingQuality::Medium => peniko::ImageQuality::Medium,
-        ImageSmoothingQuality::High => peniko::ImageQuality::High,
-      }
-    } else {
-      peniko::ImageQuality::Low
+    let (brush, image_transform, op, alpha, shadow_color, shadow_xform) = {
+      let ds = self.state.borrow();
+      let quality = if ds.image_smoothing_enabled {
+        match ds.image_smoothing_quality {
+          ImageSmoothingQuality::Low => peniko::ImageQuality::Low,
+          ImageSmoothingQuality::Medium => peniko::ImageQuality::Medium,
+          ImageSmoothingQuality::High => peniko::ImageQuality::High,
+        }
+      } else {
+        peniko::ImageQuality::Low
+      };
+
+      let image_brush = peniko::ImageBrush::new(img).with_quality(quality);
+      let brush = peniko::Brush::Image(image_brush);
+
+      // Sample the fractional source rect directly.
+      let scale_x = dw / sw;
+      let scale_y = dh / sh;
+      let image_transform = ds.transform
+        * Affine::translate((dx, dy))
+        * Affine::scale_non_uniform(scale_x, scale_y)
+        * Affine::translate((-sx, -sy));
+
+      let op = ds.global_composite_operation;
+      let alpha = ds.global_alpha;
+      let shadow = has_shadow(&ds);
+      let shadow_color = ds.shadow_color.to_srgb8();
+      let shadow_xform = if shadow {
+        Some(shadow_transform(&ds, image_transform))
+      } else {
+        None
+      };
+      (
+        brush,
+        image_transform,
+        op,
+        alpha,
+        shadow_color,
+        shadow_xform,
+      )
     };
-
-    let image_brush = peniko::ImageBrush::new(img).with_quality(quality);
-    let brush = peniko::Brush::Image(image_brush);
-
-    // Sample the fractional source rect directly.
-    let scale_x = dw / sw;
-    let scale_y = dh / sh;
-    let image_transform = ds.transform
-      * Affine::translate((dx, dy))
-      * Affine::scale_non_uniform(scale_x, scale_y)
-      * Affine::translate((-sx, -sy));
-
-    let op = ds.global_composite_operation;
-    let alpha = ds.global_alpha;
-    let shadow = has_shadow(&ds);
-    let shadow_color = ds.shadow_color.to_srgb8();
-    let shadow_xform = if shadow {
-      Some(shadow_transform(&ds, image_transform))
-    } else {
-      None
-    };
-    drop(ds);
 
     let rect = Rect::new(sx, sy, sx + sw, sy + sh);
     let (width, height) = self.data.dimensions();
@@ -2306,23 +2334,34 @@ impl OffscreenCanvasRenderingContext2D {
     if path.is_empty() {
       return;
     }
-    let state = self.state.borrow();
-    let op = state.global_composite_operation;
-    let alpha = state.global_alpha;
-    let shadow = has_shadow(&state);
-    let shadow_color = state.shadow_color.to_srgb8();
-    let shadow_xform = if shadow {
-      Some(shadow_transform(&state, transform))
-    } else {
-      None
+    let (op, alpha, shadow_color, shadow_xform, brush, brush_transform, fill) = {
+      let state = self.state.borrow();
+      let op = state.global_composite_operation;
+      let alpha = state.global_alpha;
+      let shadow = has_shadow(&state);
+      let shadow_color = state.shadow_color.to_srgb8();
+      let shadow_xform = if shadow {
+        Some(shadow_transform(&state, transform))
+      } else {
+        None
+      };
+      let (brush, brush_transform) =
+        resolve_brush(scope, &state.fill_style, 1.0);
+      let fill = if rule == "evenodd" {
+        peniko::Fill::EvenOdd
+      } else {
+        peniko::Fill::NonZero
+      };
+      (
+        op,
+        alpha,
+        shadow_color,
+        shadow_xform,
+        brush,
+        brush_transform,
+        fill,
+      )
     };
-    let (brush, brush_transform) = resolve_brush(scope, &state.fill_style, 1.0);
-    let fill = if rule == "evenodd" {
-      peniko::Fill::EvenOdd
-    } else {
-      peniko::Fill::NonZero
-    };
-    drop(state);
 
     let (width, height) = self.data.dimensions();
     let mut drawing = self.drawing.borrow_mut();
@@ -2355,20 +2394,30 @@ impl OffscreenCanvasRenderingContext2D {
     if path.is_empty() {
       return;
     }
-    let state = self.state.borrow();
-    let op = state.global_composite_operation;
-    let alpha = state.global_alpha;
-    let shadow = has_shadow(&state);
-    let shadow_color = state.shadow_color.to_srgb8();
-    let shadow_xform = if shadow {
-      Some(shadow_transform(&state, transform))
-    } else {
-      None
+    let (op, alpha, shadow_color, shadow_xform, brush, brush_transform, stroke) = {
+      let state = self.state.borrow();
+      let op = state.global_composite_operation;
+      let alpha = state.global_alpha;
+      let shadow = has_shadow(&state);
+      let shadow_color = state.shadow_color.to_srgb8();
+      let shadow_xform = if shadow {
+        Some(shadow_transform(&state, transform))
+      } else {
+        None
+      };
+      let (brush, brush_transform) =
+        resolve_brush(scope, &state.stroke_style, 1.0);
+      let stroke = build_stroke(&state);
+      (
+        op,
+        alpha,
+        shadow_color,
+        shadow_xform,
+        brush,
+        brush_transform,
+        stroke,
+      )
     };
-    let (brush, brush_transform) =
-      resolve_brush(scope, &state.stroke_style, 1.0);
-    let stroke = build_stroke(&state);
-    drop(state);
 
     let path = if is_path2d {
       path
@@ -2447,31 +2496,57 @@ impl OffscreenCanvasRenderingContext2D {
       return;
     }
 
-    let fstate = self.state.borrow().font_state.clone();
-    let mut fc = self.font_ctx.lock().unwrap();
-    let mut lc = self.layout_ctx.lock().unwrap();
-    let layout = build_text_layout(&mut fc, &mut lc, text, &fstate);
+    let mut fc = self.font_ctx.borrow_mut();
+    let mut lc = self.layout_ctx.borrow_mut();
+    let (
+      layout,
+      op,
+      global_alpha,
+      shadow_color,
+      shadow_xform,
+      brush,
+      brush_transform,
+      text_align,
+      text_baseline,
+      transform,
+      direction,
+    ) = {
+      let state = self.state.borrow();
+      let layout = build_text_layout(&mut fc, &mut lc, text, &state.font_state);
 
-    let state = self.state.borrow();
-    let style = if stroke {
-      &state.stroke_style
-    } else {
-      &state.fill_style
+      let style = if stroke {
+        &state.stroke_style
+      } else {
+        &state.fill_style
+      };
+      let op = state.global_composite_operation;
+      let global_alpha = state.global_alpha;
+      let shadow = has_shadow(&state);
+      let shadow_color = state.shadow_color.to_srgb8();
+      let shadow_xform = if shadow {
+        Some(shadow_transform(&state, state.transform))
+      } else {
+        None
+      };
+      let (brush, brush_transform) = resolve_brush(scope, style, 1.0);
+      let text_align = state.text_align;
+      let text_baseline = state.text_baseline;
+      let transform = state.transform;
+      let direction = state.font_state.direction;
+      (
+        layout,
+        op,
+        global_alpha,
+        shadow_color,
+        shadow_xform,
+        brush,
+        brush_transform,
+        text_align,
+        text_baseline,
+        transform,
+        direction,
+      )
     };
-    let op = state.global_composite_operation;
-    let global_alpha = state.global_alpha;
-    let shadow = has_shadow(&state);
-    let shadow_color = state.shadow_color.to_srgb8();
-    let shadow_xform = if shadow {
-      Some(shadow_transform(&state, state.transform))
-    } else {
-      None
-    };
-    let (brush, brush_transform) = resolve_brush(scope, style, 1.0);
-    let text_align = state.text_align;
-    let text_baseline = state.text_baseline;
-    let transform = state.transform;
-    drop(state);
 
     let baseline_y = compute_baseline_y(y, &layout, text_baseline);
 
@@ -2499,7 +2574,7 @@ impl OffscreenCanvasRenderingContext2D {
     };
     let scaled_width = line_width * x_scale;
 
-    let rtl = fstate.direction == TextDirection::Rtl;
+    let rtl = direction == TextDirection::Rtl;
     let x_offset = match text_align {
       TextAlign::Left => 0.0,
       TextAlign::Right => -scaled_width,
@@ -2807,9 +2882,10 @@ impl OffscreenCanvasRenderingContext2D {
     } else {
       transform_path(&path, transform.inverse())
     };
-    let state = self.state.borrow();
-    let stroke = build_stroke(&state);
-    drop(state);
+    let stroke = {
+      let state = self.state.borrow();
+      build_stroke(&state)
+    };
     let outline = kurbo::stroke(
       path.path_elements(0.01),
       &stroke,
@@ -3336,11 +3412,11 @@ pub fn create_context<'s>(
       .ok_or(Canvas2DError::NotInitialized)?
       .clone();
     let font_ctx = state
-      .try_borrow::<Arc<Mutex<FontContext>>>()
+      .try_borrow::<Rc<RefCell<FontContext>>>()
       .ok_or(Canvas2DError::NotInitialized)?
       .clone();
     let layout_ctx = state
-      .try_borrow::<Arc<Mutex<LayoutContext<()>>>>()
+      .try_borrow::<Rc<RefCell<LayoutContext<()>>>>()
       .ok_or(Canvas2DError::NotInitialized)?
       .clone();
     (renderer, font_ctx, layout_ctx)
