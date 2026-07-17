@@ -428,11 +428,13 @@ fn parse_drop_shadow<'a>(
       if is_css_system_color(&color) {
         Color::BLACK
       } else {
-        parse_css_color(&color).map_err(|_| {
-          Canvas2DError::InvalidFilterPrimitive(
-            "dropShadow floodColor must be a CSS color",
-          )
-        })?
+        parse_css_color(&color)
+          .map_err(|_| {
+            Canvas2DError::InvalidFilterPrimitive(
+              "dropShadow floodColor must be a CSS color",
+            )
+          })?
+          .to_srgb8()
       }
     } else {
       Color::BLACK

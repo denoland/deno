@@ -122,6 +122,7 @@ pub fn parse_css_spacing(s: &str) -> Option<Length> {
     &mut parser,
     ParseOptions {
       em_base: Some(EM_BASE_PX),
+      ..Default::default()
     },
   )
   .ok()?;
@@ -393,6 +394,7 @@ fn parse_css_font_inner<'i, 't>(
         p,
         ParseOptions {
           em_base: Some(EM_BASE_PX),
+          ..Default::default()
         },
       )
     })
@@ -415,6 +417,7 @@ fn parse_css_font_inner<'i, 't>(
         p,
         ParseOptions {
           em_base: Some(EM_BASE_PX),
+          ..Default::default()
         },
       )?;
       match lh_value {

@@ -8,7 +8,7 @@ use vello::peniko;
 
 use super::filter::CanvasLayerFilterPrimitive;
 use super::renderer::DenoCanvasBackend;
-use crate::css::color::Color;
+use crate::css::color::ParsedColor;
 use crate::css::font::FontState;
 
 // TODO(petamoriken): move to a shared crate when canvas2d and webgpu types need to be unified.
@@ -253,7 +253,7 @@ impl<'a> WebIdlConverter<'a> for Canvas2DSettings {
 
 #[derive(Clone)]
 pub(super) enum FillStrokeStyle {
-  Color(Color),
+  Color(ParsedColor),
   Gradient(v8::Global<v8::Object>),
   Pattern(v8::Global<v8::Object>),
 }
@@ -339,8 +339,7 @@ pub(super) struct DrawingState {
   pub(super) line_dash_offset: f64,
   pub(super) line_dash: Vec<f64>,
   pub(super) shadow_blur: f64,
-  pub(super) shadow_color: String,
-  pub(super) shadow_color_rgba: Color,
+  pub(super) shadow_color: ParsedColor,
   pub(super) shadow_offset_x: f64,
   pub(super) shadow_offset_y: f64,
   pub(super) transform: kurbo::Affine,
@@ -350,8 +349,8 @@ pub(super) struct DrawingState {
 impl Default for DrawingState {
   fn default() -> Self {
     Self {
-      fill_style: FillStrokeStyle::Color(Color::BLACK),
-      stroke_style: FillStrokeStyle::Color(Color::BLACK),
+      fill_style: FillStrokeStyle::Color(ParsedColor::BLACK),
+      stroke_style: FillStrokeStyle::Color(ParsedColor::BLACK),
       global_alpha: 1.0,
       font_state: FontState::default(),
       text_align: TextAlign::default(),
@@ -369,8 +368,7 @@ impl Default for DrawingState {
       line_dash_offset: 0.0,
       line_dash: Vec::new(),
       shadow_blur: 0.0,
-      shadow_color: String::from("rgba(0, 0, 0, 0)"),
-      shadow_color_rgba: Color::TRANSPARENT,
+      shadow_color: ParsedColor::TRANSPARENT,
       shadow_offset_x: 0.0,
       shadow_offset_y: 0.0,
       transform: kurbo::Affine::IDENTITY,
