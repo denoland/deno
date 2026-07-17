@@ -113,6 +113,35 @@ impl BufView {
       cursor,
     }
   }
+
+  /// Convert this buffer view into [`bytes::Bytes`] without copying its
+  /// contents.
+  ///
+  /// - A `Bytes`-backed view hands off its [`bytes::Bytes`] directly (slicing
+  ///   away any consumed prefix, which is itself zero-copy).
+  /// - A `JsBuffer`-backed view wraps the V8 backing store as the owner of the
+  ///   returned [`bytes::Bytes`]; the store stays alive for as long as any
+  ///   clone of the returned value does.
+  pub fn into_bytes(self) -> bytes::Bytes {
+    match self.inner {
+      BufViewInner::Empty => bytes::Bytes::new(),
+      BufViewInner::Bytes(bytes) => {
+        if self.cursor == 0 {
+          bytes
+        } else {
+          bytes.slice(self.cursor..)
+        }
+      }
+      BufViewInner::JsBuffer(slice) => {
+        let bytes = bytes::Bytes::from_owner(slice);
+        if self.cursor == 0 {
+          bytes
+        } else {
+          bytes.slice(self.cursor..)
+        }
+      }
+    }
+  }
 }
 
 impl Buf for BufView {
@@ -441,6 +470,29 @@ mod tests {
 
     buf.reset_cursor();
     assert_eq!(3, buf.len());
+  }
+
+  #[test]
+  pub fn bufview_into_bytes() {
+    // Empty.
+    assert!(BufView::empty().into_bytes().is_empty());
+
+    // Full buffer, no cursor.
+    let buf = BufView::from(vec![1, 2, 3, 4]);
+    assert_eq!(&*buf.into_bytes(), &[1, 2, 3, 4]);
+
+    // With a consumed prefix, into_bytes exposes only the remainder.
+    let mut buf = BufView::from(vec![1, 2, 3, 4]);
+    buf.advance_cursor(2);
+    assert_eq!(&*buf.into_bytes(), &[3, 4]);
+
+    // Bytes-backed view hands off the same allocation (no copy): the pointer
+    // is preserved.
+    let bytes = bytes::Bytes::from(vec![9, 8, 7, 6, 5]);
+    let ptr = bytes.as_ptr();
+    let out = BufView::from(bytes).into_bytes();
+    assert_eq!(out.as_ptr(), ptr);
+    assert_eq!(&*out, &[9, 8, 7, 6, 5]);
   }
 
   #[test]

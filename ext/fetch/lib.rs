@@ -390,7 +390,7 @@ impl Stream for ResourceToBodyAdapter {
           Ok(buf) if buf.is_empty() => Poll::Ready(None),
           Ok(buf) => {
             this.1 = Some(this.0.clone().read(64 * 1024));
-            Poll::Ready(Some(Ok(buf.to_vec().into())))
+            Poll::Ready(Some(Ok(buf.into_bytes())))
           }
           Err(err) => Poll::Ready(Some(Err(err))),
         },
