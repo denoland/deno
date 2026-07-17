@@ -48,6 +48,22 @@ console.log(
   [...probeNames].sort().join(", "),
 );
 
+// WebGPU globals overlap with stock `lib.dom` (which declares ~35 `declare var
+// GPU*`), not with @types/node, so they're absent from TYPES_NODE_IGNORABLE_NAMES
+// and stayed un-deferred - colliding (TS2300 duplicate identifier) with lib.dom
+// under a source-level `dom` co-load. Defer them the same way. These are exactly
+// the WebGPU `declare var`s that both Deno's libs and stock lib.dom declare
+// (verified against the pinned tsgo's lib.dom). See denoland/deno#36094.
+const webgpuDomOverlapNames = [
+  "GPUCanvasContext",
+  "GPUError",
+  "GPUInternalError",
+  "GPUOutOfMemoryError",
+  "GPUPipelineError",
+  "GPUValidationError",
+];
+for (const name of webgpuDomOverlapNames) probeNames.add(name);
+
 // 2. Locate the type-node span of each matching `declare var NAME` with the AST,
 // then splice the ORIGINAL file text so only the type annotation changes -
 // comments, formatting and everything else are preserved byte-for-byte.

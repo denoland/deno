@@ -778,7 +778,7 @@ interface GPUPipelineError extends DOMException {
 }
 
 /** @category GPU */
-declare var GPUPipelineError: {
+declare var GPUPipelineError: typeof globalThis extends { document: any; GPUPipelineError: infer T } ? T : {
   prototype: GPUPipelineError;
   new (message: string, options: GPUPipelineErrorInit): GPUPipelineError;
 };
@@ -1616,7 +1616,7 @@ interface GPUError {
 }
 
 /** @category GPU */
-declare var GPUError: {
+declare var GPUError: typeof globalThis extends { document: any; GPUError: infer T } ? T : {
   prototype: GPUError;
   new (): GPUError;
 };
@@ -1625,7 +1625,7 @@ declare var GPUError: {
 interface GPUOutOfMemoryError extends GPUError {}
 
 /** @category GPU */
-declare var GPUOutOfMemoryError: {
+declare var GPUOutOfMemoryError: typeof globalThis extends { document: any; GPUOutOfMemoryError: infer T } ? T : {
   prototype: GPUOutOfMemoryError;
   new (message?: string): GPUOutOfMemoryError;
 };
@@ -1634,7 +1634,7 @@ declare var GPUOutOfMemoryError: {
 interface GPUValidationError extends GPUError {}
 
 /** @category GPU */
-declare var GPUValidationError: {
+declare var GPUValidationError: typeof globalThis extends { document: any; GPUValidationError: infer T } ? T : {
   prototype: GPUValidationError;
   new (message?: string): GPUValidationError;
 };
@@ -1643,7 +1643,7 @@ declare var GPUValidationError: {
 interface GPUInternalError extends GPUError {}
 
 /** @category GPU */
-declare var GPUInternalError: {
+declare var GPUInternalError: typeof globalThis extends { document: any; GPUInternalError: infer T } ? T : {
   prototype: GPUInternalError;
   new (message?: string): GPUInternalError;
 };

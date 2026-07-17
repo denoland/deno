@@ -250,7 +250,7 @@ interface GPUCanvasContext {
  * than constructed directly.
  *
  * @category Canvas */
-declare var GPUCanvasContext: {
+declare var GPUCanvasContext: typeof globalThis extends { document: any; GPUCanvasContext: infer T } ? T : {
   prototype: GPUCanvasContext;
 };
 
