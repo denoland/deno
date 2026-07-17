@@ -177,6 +177,11 @@ function validateBackupOptions(options) {
       'The "options" argument must be an object.',
     );
   }
+  if (options.rate !== undefined && !NumberIsInteger(options.rate)) {
+    throw new InvalidArgTypeError(
+      'The "options.rate" argument must be an integer.',
+    );
+  }
   if (options.source !== undefined && typeof options.source !== "string") {
     throw new InvalidArgTypeError(
       'The "options.source" argument must be a string.',
@@ -185,11 +190,6 @@ function validateBackupOptions(options) {
   if (options.target !== undefined && typeof options.target !== "string") {
     throw new InvalidArgTypeError(
       'The "options.target" argument must be a string.',
-    );
-  }
-  if (options.rate !== undefined && !NumberIsInteger(options.rate)) {
-    throw new InvalidArgTypeError(
-      'The "options.rate" argument must be an integer.',
     );
   }
   if (
@@ -214,11 +214,11 @@ function backup(
       'The "sourceDb" argument must be an object.',
     );
   }
-  const parsedPath = parsePath(path);
-  validateBackupOptions(options);
   if (!sourceDb.isOpen) {
     throw new InvalidStateError("database is not open");
   }
+  const parsedPath = parsePath(path);
+  validateBackupOptions(options);
 
   return backupExec(sourceDb, parsedPath, options);
 }
