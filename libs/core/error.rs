@@ -511,6 +511,51 @@ pub struct JsError {
   pub stack_is_custom: bool,
 }
 
+const MAX_ERROR_CONVERSION_DEPTH: usize = 32;
+const MAX_ERROR_CONVERSION_NODES: usize = 256;
+
+struct ErrorConversionState {
+  remaining_nodes: usize,
+  limit_marker_emitted: bool,
+}
+
+enum ErrorConversionStep {
+  Convert,
+  Truncate,
+  Omit,
+}
+
+impl ErrorConversionState {
+  fn new() -> Self {
+    Self {
+      remaining_nodes: MAX_ERROR_CONVERSION_NODES,
+      limit_marker_emitted: false,
+    }
+  }
+
+  fn enter(&mut self, depth: usize) -> ErrorConversionStep {
+    if depth < MAX_ERROR_CONVERSION_DEPTH && self.remaining_nodes > 0 {
+      self.remaining_nodes -= 1;
+      ErrorConversionStep::Convert
+    } else {
+      self.truncate()
+    }
+  }
+
+  fn is_exhausted(&self) -> bool {
+    self.remaining_nodes == 0
+  }
+
+  fn truncate(&mut self) -> ErrorConversionStep {
+    if !self.limit_marker_emitted {
+      self.limit_marker_emitted = true;
+      ErrorConversionStep::Truncate
+    } else {
+      ErrorConversionStep::Omit
+    }
+  }
+}
+
 impl JsErrorClass for JsError {
   fn get_class(&self) -> Cow<'static, str> {
     if let Some(name) = &self.name {
@@ -906,11 +951,17 @@ impl JsError {
     scope: &mut v8::PinScope<'s, 'i>,
     exception: v8::Local<'s, v8::Value>,
   ) -> Box<Self> {
-    Box::new(Self::inner_from_v8_exception(
-      scope,
-      exception,
-      Default::default(),
-    ))
+    let mut state = ErrorConversionState::new();
+    Box::new(
+      Self::inner_from_v8_exception(
+        scope,
+        exception,
+        Default::default(),
+        0,
+        &mut state,
+      )
+      .expect("the conversion budget includes the root exception"),
+    )
   }
 
   pub fn from_v8_message<'s, 'i>(
@@ -965,8 +1016,18 @@ impl JsError {
   fn inner_from_v8_exception<'s, 'i>(
     scope: &mut v8::PinScope<'s, 'i>,
     exception: v8::Local<'s, v8::Value>,
-    mut seen: HashSet<v8::Local<'s, v8::Object>>,
-  ) -> Self {
+    seen: HashSet<v8::Local<'s, v8::Object>>,
+    depth: usize,
+    state: &mut ErrorConversionState,
+  ) -> Option<Self> {
+    match state.enter(depth) {
+      ErrorConversionStep::Convert => {}
+      ErrorConversionStep::Truncate => {
+        return Some(Self::error_conversion_limit());
+      }
+      ErrorConversionStep::Omit => return None,
+    }
+
     // Create a new HandleScope because we're creating a lot of new local
     // handles below.
     v8::scope!(let scope, scope);
@@ -1010,14 +1071,21 @@ impl JsError {
           "Uncaught".to_string()
         }
       });
+      // A cycle terminates by converting the repeated error one final time and
+      // dropping its `cause` and aggregate members. Formatters rely on that
+      // repeat: `find_recursive_cause` matches it against the earlier
+      // occurrence by value to label a cycle `<ref *n>` / `[Circular *n]`, so
+      // it cannot be replaced with a placeholder. `seen` is path-local, so an
+      // error reachable by several distinct paths is not mistaken for a cycle.
+      let is_repeat = seen.contains(&exception);
       let cause = cause.and_then(|cause| {
-        if cause.is_undefined() || seen.contains(&exception) {
+        if cause.is_undefined() || is_repeat {
           None
         } else {
+          let mut seen = seen.clone();
           seen.insert(exception);
-          Some(Box::new(JsError::inner_from_v8_exception(
-            scope, cause, seen,
-          )))
+          JsError::inner_from_v8_exception(scope, cause, seen, depth + 1, state)
+            .map(Box::new)
         }
       });
 
@@ -1126,23 +1194,70 @@ impl JsError {
       }
 
       let mut aggregated: Option<Vec<JsError>> = None;
-      if is_aggregate_error(scope, v8_exception) {
+      if is_aggregate_error(scope, v8_exception) && !is_repeat {
         // Read an array of stored errors, this is only defined for `AggregateError`
-        let aggregated_errors =
-          get_property(scope, exception, v8_static_strings::ERRORS);
-        let aggregated_errors: Option<v8::Local<v8::Array>> =
-          aggregated_errors.and_then(|a| a.try_into().ok());
-
-        if let Some(errors) = aggregated_errors
-          && errors.length() > 0
-        {
-          let mut agg = vec![];
-          for i in 0..errors.length() {
-            let error = errors.get_index(scope, i).unwrap();
-            let js_error = Self::from_v8_exception(scope, error);
-            agg.push(*js_error);
+        let (aggregated_errors, errors_getter_failed) = {
+          v8::tc_scope!(let tc_scope, scope);
+          let aggregated_errors =
+            get_property(tc_scope, exception, v8_static_strings::ERRORS)
+              .and_then(|value| value.try_cast::<v8::Array>().ok())
+              .map(|errors| v8::Global::new(tc_scope, errors));
+          let errors_getter_failed = tc_scope.has_caught();
+          if errors_getter_failed {
+            tc_scope.reset();
           }
-          aggregated = Some(agg);
+          (aggregated_errors, errors_getter_failed)
+        };
+
+        if errors_getter_failed {
+          aggregated = Some(vec![Self::aggregate_element_unavailable()]);
+        } else if let Some(errors) = aggregated_errors {
+          let errors = v8::Local::new(scope, errors);
+          if errors.length() > 0 {
+            let mut seen = seen.clone();
+            seen.insert(exception);
+            let mut agg = vec![];
+            for i in 0..errors.length() {
+              if state.is_exhausted() {
+                if matches!(state.truncate(), ErrorConversionStep::Truncate) {
+                  agg.push(Self::error_conversion_limit());
+                }
+                break;
+              }
+
+              let (error, element_getter_failed) = {
+                v8::tc_scope!(let tc_scope, scope);
+                let error = errors
+                  .get_index(tc_scope, i)
+                  .map(|error| v8::Global::new(tc_scope, error));
+                let element_getter_failed = tc_scope.has_caught();
+                if element_getter_failed {
+                  tc_scope.reset();
+                }
+                (error, element_getter_failed)
+              };
+              if element_getter_failed {
+                agg.push(Self::aggregate_element_unavailable());
+                break;
+              }
+              let Some(error) = error else {
+                agg.push(Self::aggregate_element_unavailable());
+                break;
+              };
+              let error = v8::Local::new(scope, error);
+              let Some(js_error) = Self::inner_from_v8_exception(
+                scope,
+                error,
+                seen.clone(),
+                depth + 1,
+                state,
+              ) else {
+                break;
+              };
+              agg.push(js_error);
+            }
+            aggregated = Some(agg);
+          }
         }
       };
 
@@ -1182,7 +1297,7 @@ impl JsError {
         vec![]
       };
 
-      Self {
+      Some(Self {
         name: e.name,
         message: e.message,
         exception_message,
@@ -1194,14 +1309,14 @@ impl JsError {
         aggregated,
         additional_properties,
         stack_is_custom,
-      }
+      })
     } else {
       let exception_message = exception_message
         .unwrap_or_else(|| v8_to_rust_string(&msg.get(scope), scope));
       // The exception is not a JS Error object.
       // Get the message given by V8::Exception::create_message(), and provide
       // empty frames.
-      Self {
+      Some(Self {
         name: None,
         message: None,
         exception_message,
@@ -1213,7 +1328,31 @@ impl JsError {
         aggregated: None,
         additional_properties: vec![],
         stack_is_custom: false,
-      }
+      })
+    }
+  }
+
+  fn error_conversion_limit() -> Self {
+    Self::conversion_placeholder("[Error details truncated]")
+  }
+
+  fn aggregate_element_unavailable() -> Self {
+    Self::conversion_placeholder("[Error details unavailable]")
+  }
+
+  fn conversion_placeholder(message: &str) -> Self {
+    Self {
+      name: None,
+      message: Some(message.to_string()),
+      exception_message: format!("Uncaught {message}"),
+      cause: None,
+      source_line: None,
+      source_line_frame_index: None,
+      frames: vec![],
+      stack: None,
+      aggregated: None,
+      additional_properties: vec![],
+      stack_is_custom: false,
     }
   }
 }
@@ -2462,6 +2601,211 @@ pub fn throw_invalid_this_error_one_byte<'s, 'i>(
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[cfg(not(miri))]
+  #[test]
+  fn test_js_error_from_v8_exception_handles_cyclic_aggregate_error() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let exception: v8::Local<v8::Object> = JsRuntime::eval(
+      scope,
+      r#"(() => {
+        const error = new AggregateError([], "boom");
+        error.errors.push(error);
+        return error;
+      })()"#,
+    )
+    .unwrap();
+
+    let error = JsError::from_v8_exception(scope, exception.into());
+    let aggregated = error.aggregated.as_ref().expect("aggregate errors");
+    assert_eq!(aggregated.len(), 1);
+    // The cycle terminates by repeating the error once with its own members
+    // dropped, rather than recursing into itself forever.
+    assert_eq!(aggregated[0].exception_message, error.exception_message);
+    assert!(aggregated[0].aggregated.is_none());
+  }
+
+  #[cfg(not(miri))]
+  #[test]
+  fn test_js_error_from_v8_exception_handles_crossed_aggregate_cycle() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let exception: v8::Local<v8::Object> = JsRuntime::eval(
+      scope,
+      r#"(() => {
+        const first = new AggregateError([], "first");
+        const second = new AggregateError([first], "second");
+        first.errors.push(second);
+        return first;
+      })()"#,
+    )
+    .unwrap();
+
+    let error = JsError::from_v8_exception(scope, exception.into());
+    let second = &error.aggregated.as_ref().unwrap()[0];
+    let repeated_first = &second.aggregated.as_ref().unwrap()[0];
+    assert_eq!(repeated_first.exception_message, error.exception_message);
+    assert!(repeated_first.aggregated.is_none());
+  }
+
+  #[cfg(not(miri))]
+  #[test]
+  fn test_js_error_from_v8_exception_truncates_deep_cause_chain() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let exception: v8::Local<v8::Object> = JsRuntime::eval(
+      scope,
+      r#"(() => {
+        let error = new Error("0");
+        for (let i = 1; i < 100; i++) {
+          error = new Error(String(i), { cause: error });
+        }
+        return error;
+      })()"#,
+    )
+    .unwrap();
+
+    let error = JsError::from_v8_exception(scope, exception.into());
+    let mut current = Some(error.as_ref());
+    let mut found_truncated = false;
+    while let Some(error) = current {
+      if error.exception_message == "Uncaught [Error details truncated]" {
+        found_truncated = true;
+        break;
+      }
+      current = error.cause.as_deref();
+    }
+    assert!(found_truncated);
+  }
+
+  #[cfg(not(miri))]
+  #[test]
+  fn test_js_error_from_v8_exception_bounds_shared_aggregate_graph() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let exception: v8::Local<v8::Object> = JsRuntime::eval(
+      scope,
+      r#"(() => {
+        globalThis.aggregateElementReads = 0;
+        let error = new Error("leaf");
+        for (let i = 0; i < 20; i++) {
+          error = new AggregateError([error, error], String(i));
+          const child = error.errors[0];
+          Object.defineProperties(error.errors, {
+            0: {
+              get() {
+                globalThis.aggregateElementReads++;
+                return child;
+              },
+            },
+            1: {
+              get() {
+                globalThis.aggregateElementReads++;
+                return child;
+              },
+            },
+          });
+        }
+        return error;
+      })()"#,
+    )
+    .unwrap();
+
+    let error = JsError::from_v8_exception(scope, exception.into());
+    let mut pending = vec![error.as_ref()];
+    let mut converted_nodes = 0;
+    let mut truncated_nodes = 0;
+    while let Some(error) = pending.pop() {
+      converted_nodes += 1;
+      if error.exception_message == "Uncaught [Error details truncated]" {
+        truncated_nodes += 1;
+      }
+      if let Some(cause) = error.cause.as_deref() {
+        pending.push(cause);
+      }
+      if let Some(aggregated) = &error.aggregated {
+        pending.extend(aggregated);
+      }
+    }
+
+    assert_eq!(truncated_nodes, 1);
+    assert!(converted_nodes <= MAX_ERROR_CONVERSION_NODES + 1);
+    let element_reads: v8::Local<v8::Integer> =
+      JsRuntime::eval(scope, "globalThis.aggregateElementReads").unwrap();
+    assert!(element_reads.value() as usize <= MAX_ERROR_CONVERSION_NODES);
+  }
+
+  #[cfg(not(miri))]
+  #[test]
+  fn test_js_error_from_v8_exception_handles_throwing_aggregate_element() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let exception: v8::Local<v8::Object> = JsRuntime::eval(
+      scope,
+      r#"(() => {
+        const error = new AggregateError([new Error("inner")], "outer");
+        Object.defineProperty(error.errors, 0, {
+          get() {
+            throw new Error("element getter failed");
+          },
+        });
+        return error;
+      })()"#,
+    )
+    .unwrap();
+
+    let error = JsError::from_v8_exception(scope, exception.into());
+    let aggregated = error.aggregated.as_ref().expect("aggregate errors");
+    assert_eq!(aggregated.len(), 1);
+    assert_eq!(
+      aggregated[0].exception_message,
+      "Uncaught [Error details unavailable]"
+    );
+
+    let result: v8::Local<v8::Integer> =
+      JsRuntime::eval(scope, "1 + 1").expect("exception was contained");
+    assert_eq!(result.value(), 2);
+  }
+
+  #[cfg(not(miri))]
+  #[test]
+  fn test_js_error_from_v8_exception_handles_throwing_aggregate_errors_getter()
+  {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let exception: v8::Local<v8::Object> = JsRuntime::eval(
+      scope,
+      r#"(() => {
+        const error = new AggregateError([], "outer");
+        Object.defineProperty(error, "errors", {
+          get() {
+            throw new Error("errors getter failed");
+          },
+        });
+        return error;
+      })()"#,
+    )
+    .unwrap();
+
+    let error = JsError::from_v8_exception(scope, exception.into());
+    let aggregated = error.aggregated.as_ref().expect("aggregate errors");
+    assert_eq!(aggregated.len(), 1);
+    assert_eq!(
+      aggregated[0].exception_message,
+      "Uncaught [Error details unavailable]"
+    );
+
+    let result: v8::Local<v8::Integer> =
+      JsRuntime::eval(scope, "1 + 1").expect("exception was contained");
+    assert_eq!(result.value(), 2);
+  }
 
   #[cfg(not(miri))]
   #[test]

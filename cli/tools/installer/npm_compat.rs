@@ -273,6 +273,10 @@ fn is_special_specifier(s: &str) -> bool {
     || s.starts_with("https://")
 }
 
+#[allow(
+  clippy::too_many_arguments,
+  reason = "threads the independent inputs needed to set up stock-tsc compat"
+)]
 pub async fn setup_npm_compat(
   project_root: &Path,
   file_fetcher: &CliFileFetcher,
@@ -280,6 +284,9 @@ pub async fn setup_npm_compat(
   permissions: &PermissionsContainer,
   graph_specifiers: &[String],
   npm_resolver: &CliNpmResolver,
+  resolved_compiler_options: Option<&Value>,
+  manage_root_tsconfig: bool,
+  type_check_remote: bool,
 ) -> Result<Vec<InstalledJsrPackage>, AnyError> {
   let deno_json = read_deno_json(project_root)?;
   let deno_compiler_options = deno_json
@@ -380,6 +387,7 @@ pub async fn setup_npm_compat(
     deno_imports,
     file_fetcher,
     permissions,
+    type_check_remote,
   )
   .await
   {
@@ -464,6 +472,7 @@ pub async fn setup_npm_compat(
   generate_deno_tsconfig(
     project_root,
     deno_compiler_options,
+    resolved_compiler_options,
     deno_imports,
     &http_modules,
     &member_paths,
@@ -472,6 +481,7 @@ pub async fn setup_npm_compat(
     &npm_cache_projects.references,
     node_types.type_root.as_deref(),
     &excludes,
+    manage_root_tsconfig,
   )?;
 
   Ok(installed)
@@ -508,27 +518,33 @@ fn resolve_bare_against_import_map(
 }
 
 /// Ensure a stock `@types/node` (and its `undici-types` dependency) is present
-/// in the selected compatibility directory so the generated tsconfig can load
-/// Node globals (timers, `node:` builtins, `Buffer`, `URLPattern`, ...). No-op
-/// when the project already has `@types/node` installed.
+/// so the generated tsconfig can load Node globals (timers, `node:` builtins,
+/// `Buffer`, `URLPattern`, ...).
 ///
-/// Global-cache mode keeps these under `.deno/npm-compat`; local node_modules
-/// mode keeps the existing `node_modules/@types` layout.
+/// If the project already installed `@types/node` under its `node_modules`, we
+/// reuse that in place. Otherwise we materialize a stock copy under
+/// `.deno/npm-compat` (which is gitignored) - never downloading into the
+/// project's real `node_modules`, so `deno check` doesn't mutate the user's tree
+/// (and doesn't dirty the working directory).
 async fn ensure_types_node(
   project_root: &Path,
   http_client: &HttpClient,
   use_global_cache_layout: bool,
 ) -> NodeTypesSetup {
-  let modules_dir = if use_global_cache_layout {
-    project_root.join(".deno/npm-compat")
-  } else {
-    project_root.join("node_modules")
-  };
-  let type_root = if use_global_cache_layout {
-    "./npm-compat/@types".to_string()
-  } else {
-    "../node_modules/@types".to_string()
-  };
+  // Reuse an @types/node the project already installed under node_modules.
+  if !use_global_cache_layout {
+    let node_modules = project_root.join("node_modules");
+    if node_modules.join("@types/node").exists() {
+      let undici_types_dir = node_modules.join("undici-types");
+      return NodeTypesSetup {
+        type_root: Some("../node_modules/@types".to_string()),
+        undici_types_dir: undici_types_dir.exists().then_some(undici_types_dir),
+      };
+    }
+  }
+  // Materialize under `.deno/npm-compat` (gitignored) in every other case.
+  let modules_dir = project_root.join(".deno/npm-compat");
+  let type_root = "./npm-compat/@types".to_string();
   let node_dir = modules_dir.join("@types/node");
   let undici_types_dir = modules_dir.join("undici-types");
   if node_dir.exists() {
@@ -806,6 +822,7 @@ fn read_deno_json(project_root: &Path) -> Result<Option<Value>, AnyError> {
 fn generate_deno_tsconfig(
   project_root: &Path,
   deno_compiler_options: Option<&Value>,
+  resolved_compiler_options: Option<&Value>,
   deno_imports: Option<&Value>,
   http_modules: &BTreeMap<Url, String>,
   member_paths: &serde_json::Map<String, Value>,
@@ -814,10 +831,12 @@ fn generate_deno_tsconfig(
   npm_project_references: &[String],
   node_types_root: Option<&str>,
   excludes: &[String],
+  manage_root_tsconfig: bool,
 ) -> Result<(), AnyError> {
   let generated = crate::tsc::tsconfig_gen::generate_tsconfig(
     project_root,
     deno_compiler_options,
+    resolved_compiler_options,
     deno_imports,
     // Command-line roots scope graph/dependency discovery only. Keep the
     // generated project open so bundlers can consume its resolver mappings for
@@ -830,6 +849,7 @@ fn generate_deno_tsconfig(
     npm_project_references,
     node_types_root,
     excludes,
+    manage_root_tsconfig,
   )
   .map_err(|e| anyhow!("Failed to generate tsconfig: {e}"))?;
 
@@ -875,7 +895,12 @@ async fn install_jsr_packages(
     }
 
     let registry_name = format!("@jsr/{npm_name}");
-    let npm_jsr_registry = std::env::var("DENO_NPM_JSR_REGISTRY")
+    // Use the same env var as the rest of Deno (`JSR_NPM_URL`, see
+    // libs/npmrc) for the npm-compat jsr registry, so a custom/test registry is
+    // honored. The previous `DENO_NPM_JSR_REGISTRY` was read by nothing else, so
+    // tests (which set `JSR_NPM_URL` to the mock registry) fell through to the
+    // real npm.jsr.io and the fetch failed -> the package was never installed.
+    let npm_jsr_registry = std::env::var("JSR_NPM_URL")
       .unwrap_or_else(|_| "https://npm.jsr.io".to_string());
     let metadata_url = format!(
       "{}/{}",
@@ -1022,6 +1047,7 @@ pub async fn install_http_modules(
   deno_imports: Option<&Value>,
   file_fetcher: &CliFileFetcher,
   permissions: &PermissionsContainer,
+  type_check_remote: bool,
 ) -> Result<HttpModulePaths, AnyError> {
   let mut paths: HttpModulePaths = BTreeMap::new();
   let mut queue: VecDeque<Url> = VecDeque::new();
@@ -1100,13 +1126,43 @@ pub async fn install_http_modules(
       (final_url.clone(), file.source.clone())
     };
 
+    // wasm modules can't be type-checked as binaries: mirror the generated
+    // TypeScript (typed exports + the wasm's own imports) instead, written as a
+    // checkable `.mts` so tsc surfaces the exports' types to importers and the
+    // wasm's own import errors. Always type-checked (never `@ts-nocheck`).
+    let is_wasm = final_url.path().ends_with(".wasm");
+    let (mirror_url, mirror_bytes): (Url, std::borrow::Cow<[u8]>) = if is_wasm {
+      match deno_graph::source::wasm::wasm_module_to_dts(
+        effective_bytes.as_ref(),
+      ) {
+        Ok(dts) => {
+          let mut u = effective_url.clone();
+          u.set_path(&format!("{}.mts", u.path()));
+          (u, std::borrow::Cow::Owned(dts.into_bytes()))
+        }
+        Err(e) => {
+          log::debug!("wasm dts generation failed for {effective_url}: {e}");
+          (
+            effective_url.clone(),
+            std::borrow::Cow::Borrowed(effective_bytes.as_ref()),
+          )
+        }
+      }
+    } else {
+      (
+        effective_url.clone(),
+        std::borrow::Cow::Borrowed(effective_bytes.as_ref()),
+      )
+    };
+
     // Mirror the chosen content. We deliberately don't mirror both the JS
     // and the .d.ts: their URL paths often collide on disk (e.g.
     // `cowsay@1.6.0` as file vs `cowsay@1.6.0/index.d.ts` under a dir).
     let local = match write_mirror(
       &remote_root,
-      &effective_url,
-      effective_bytes.as_ref(),
+      &mirror_url,
+      &mirror_bytes,
+      type_check_remote || is_wasm,
     ) {
       Ok(p) => p,
       Err(e) => {
@@ -1124,10 +1180,13 @@ pub async fn install_http_modules(
       paths.insert(effective_url.clone(), local.clone());
     }
 
-    // Scan the effective (type-bearing) source for transitive imports.
-    let scan_source =
-      String::from_utf8_lossy(effective_bytes.as_ref()).into_owned();
-    for spec in scan_import_specifiers(&effective_url, &scan_source) {
+    // Scan the mirrored (type-bearing) source for transitive imports. For wasm
+    // this is the generated `.mts` (which carries the wasm's imports), not the
+    // binary - so scan with `mirror_url` (`.wasm.mts`), whose media type passes
+    // the analyzer's gate; `effective_url` (`.wasm`) would be rejected as
+    // `MediaType::Wasm` and the imports would never be walked.
+    let scan_source = String::from_utf8_lossy(&mirror_bytes).into_owned();
+    for spec in scan_import_specifiers(&mirror_url, &scan_source) {
       let resolved =
         if spec.starts_with("http://") || spec.starts_with("https://") {
           Url::parse(&spec).ok()
@@ -1160,6 +1219,7 @@ fn write_mirror(
   remote_root: &Path,
   url: &Url,
   bytes: &[u8],
+  type_check_remote: bool,
 ) -> Result<String, AnyError> {
   let local_path = url_to_local_path(remote_root, url)
     .ok_or_else(|| anyhow!("URL has no resolvable mirror path: {url}"))?;
@@ -1172,12 +1232,13 @@ fn write_mirror(
   // dwarfs the project's own diagnostics). `@ts-nocheck` suppresses errors in
   // the file while keeping its exported and ambient types available to
   // importers, and triple-slash directives (which may follow a leading comment)
-  // still apply.
+  // still apply. Skipped under `deno check --all`, which does type-check remote
+  // modules.
   let is_script = matches!(
     local_path.extension().and_then(|e| e.to_str()),
     Some("ts" | "tsx" | "mts" | "cts" | "js" | "jsx" | "mjs" | "cjs")
   );
-  if is_script {
+  if is_script && !type_check_remote {
     let mut content = Vec::with_capacity(bytes.len() + 16);
     content.extend_from_slice(b"// @ts-nocheck\n");
     content.extend_from_slice(bytes);

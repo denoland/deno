@@ -10,6 +10,9 @@ pub enum Error {
   #[class(type)]
   #[error("{0}")]
   InvalidArgType(Cow<'static, str>),
+  #[class(type)]
+  #[error("{0}")]
+  InvalidArgValue(Cow<'static, str>),
   #[class(range)]
   #[error("{0}")]
   OutOfRange(Cow<'static, str>),
@@ -22,6 +25,7 @@ impl Error {
   pub fn code(&self) -> ErrorCode {
     match self {
       Self::InvalidArgType(_) => ErrorCode::ERR_INVALID_ARG_TYPE,
+      Self::InvalidArgValue(_) => ErrorCode::ERR_INVALID_ARG_VALUE,
       Self::OutOfRange(_) => ErrorCode::ERR_OUT_OF_RANGE,
       Self::V8Exception => ErrorCode::ERR_INVALID_ARG_TYPE,
     }
@@ -31,6 +35,7 @@ impl Error {
 #[allow(non_camel_case_types, reason = "matches Node.js error code naming")]
 pub enum ErrorCode {
   ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
   ERR_OUT_OF_RANGE,
 }
 
@@ -44,6 +49,7 @@ impl ErrorCode {
   pub fn as_str(&self) -> &str {
     match self {
       Self::ERR_INVALID_ARG_TYPE => "ERR_INVALID_ARG_TYPE",
+      Self::ERR_INVALID_ARG_VALUE => "ERR_INVALID_ARG_VALUE",
       Self::ERR_OUT_OF_RANGE => "ERR_OUT_OF_RANGE",
     }
   }

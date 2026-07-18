@@ -18,6 +18,7 @@ bytemuck.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
 deno_image.workspace = true
+deno_permissions.workspace = true
 deno_webgpu.workspace = true
 raw-window-handle.workspace = true
 thiserror.workspace = true
