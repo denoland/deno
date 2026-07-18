@@ -465,36 +465,30 @@ impl OffscreenCanvasRenderingContext2D {
     let rect = Rect::new(*x, *y, *x + *w, *y + *h);
     let (width, height) = self.data.dimensions();
     let mut drawing = self.drawing.borrow_mut();
-    let has_layer =
-      push_compositing_layer(&mut drawing, op, alpha, width, height);
-    if let Some(st) = shadow_xform {
-      draw_shadow(&mut drawing, width, height, shadow_color, |d| {
+    draw_with_shadow(
+      &mut drawing,
+      op,
+      alpha,
+      width,
+      height,
+      shadow_color,
+      shadow_xform.map(|st| {
+        let brush = brush.clone();
+        move |d: &mut DrawingBackend| {
+          fill_on(d, &rect, peniko::Fill::NonZero, st, brush, brush_transform);
+        }
+      }),
+      |d| {
         fill_on(
           d,
           &rect,
           peniko::Fill::NonZero,
-          st,
-          brush.clone(),
+          transform,
+          brush,
           brush_transform,
         );
-      });
-      // Composite shadow before the source shape.
-      if has_layer {
-        pop_compositing_layer(&mut drawing);
-        push_compositing_layer(&mut drawing, op, alpha, width, height);
-      }
-    }
-    fill_on(
-      &mut drawing,
-      &rect,
-      peniko::Fill::NonZero,
-      transform,
-      brush,
-      brush_transform,
+      },
     );
-    if has_layer {
-      pop_compositing_layer(&mut drawing);
-    }
   }
 
   #[fast]
@@ -641,8 +635,8 @@ impl OffscreenCanvasRenderingContext2D {
     scope: &mut v8::PinScope<'_, '_>,
     value: v8::Local<'_, v8::Value>,
   ) {
-    // The DOMString branch of the union: a failed ToString leaves the pending
-    // exception to propagate, and an invalid filter string is ignored.
+    // A failed ToString() leaves its exception pending; an invalid filter
+    // string is ignored.
     let Some(value) = value.to_string(scope) else {
       return;
     };
@@ -1133,8 +1127,7 @@ impl OffscreenCanvasRenderingContext2D {
     counterclockwise: Option<bool>,
   ) -> Result<(), Canvas2DError> {
     let counterclockwise = counterclockwise.unwrap_or(false);
-    // Per spec, non-finite arguments are silently ignored; only a finite
-    // negative radius throws IndexSizeError.
+    // Ignore non-finite values; reject finite negative radii.
     if !x.is_finite()
       || !y.is_finite()
       || !radius_x.is_finite()
@@ -1209,13 +1202,13 @@ impl OffscreenCanvasRenderingContext2D {
     }
 
     let radii_val = radii.unwrap_or_else(|| v8::undefined(scope).into());
-    // Per spec, a non-finite radius (unlike a negative one) is silently
-    // ignored rather than throwing, matching the x/y/w/h check above.
+    // A non-finite corner radius is ignored, matching the x/y/w/h check above.
     let corner_radii = match parse_round_rect_radii(scope, radii_val) {
       Ok(radii) => radii,
       Err(Canvas2DError::NonFinite) => return Ok(()),
       Err(e) => return Err(e),
     };
+
     let transform = self.state.borrow().transform;
     path_round_rect(
       &mut self.current_path.borrow_mut(),
@@ -1339,12 +1332,19 @@ impl OffscreenCanvasRenderingContext2D {
       return Ok(false);
     }
 
-    let p = if is_path2d {
-      transform.inverse() * Point::new(x, y)
+    // For a Path2D, the test happens in user space (both `path` and `p` are
+    // inverse-transformed), so the boundary tolerance is normalized by the
+    // CTM's linear scale to stay roughly constant in device pixels. The
+    // default path is already stored in device space, so no scaling applies.
+    let (p, scale) = if is_path2d {
+      (
+        transform.inverse() * Point::new(x, y),
+        transform.determinant().abs().sqrt(),
+      )
     } else {
-      Point::new(x, y)
+      (Point::new(x, y), 1.0)
     };
-    Ok(test_point_in_path(path, p.x, p.y, rule))
+    Ok(test_point_in_path(path, p.x, p.y, rule, scale))
   }
 
   #[fast]
@@ -1769,29 +1769,30 @@ impl OffscreenCanvasRenderingContext2D {
     let rect = Rect::new(sx, sy, sx + sw, sy + sh);
     let (width, height) = self.data.dimensions();
     let mut drawing = self.drawing.borrow_mut();
-    let has_layer =
-      push_compositing_layer(&mut drawing, op, alpha, width, height);
-    if let Some(st) = shadow_xform {
-      draw_shadow(&mut drawing, width, height, shadow_color, |d| {
-        fill_on(d, &rect, peniko::Fill::NonZero, st, brush.clone(), None);
-      });
-      // Composite shadow before the source image.
-      if has_layer {
-        pop_compositing_layer(&mut drawing);
-        push_compositing_layer(&mut drawing, op, alpha, width, height);
-      }
-    }
-    fill_on(
+    draw_with_shadow(
       &mut drawing,
-      &rect,
-      peniko::Fill::NonZero,
-      image_transform,
-      brush,
-      None,
+      op,
+      alpha,
+      width,
+      height,
+      shadow_color,
+      shadow_xform.map(|st| {
+        let brush = brush.clone();
+        move |d: &mut DrawingBackend| {
+          fill_on(d, &rect, peniko::Fill::NonZero, st, brush, None);
+        }
+      }),
+      |d| {
+        fill_on(
+          d,
+          &rect,
+          peniko::Fill::NonZero,
+          image_transform,
+          brush,
+          None,
+        );
+      },
     );
-    if has_layer {
-      pop_compositing_layer(&mut drawing);
-    }
     Ok(())
   }
 
@@ -2041,7 +2042,7 @@ impl OffscreenCanvasRenderingContext2D {
 }
 
 impl OffscreenCanvasRenderingContext2D {
-  /// Clears the accumulated scene and updates the canvas dimensions.
+  #[inline]
   pub fn has_open_layers(&self) -> bool {
     self.layer_depth.get() > 0
   }
@@ -2121,13 +2122,14 @@ impl OffscreenCanvasRenderingContext2D {
   /// pixels back. Readbacks are expensive on the GPU backend, so after
   /// `GPU_READBACK_FALLBACK_THRESHOLD` of them the context switches to the
   /// CPU backend, mirroring Chromium's heuristic.
+  #[inline]
   pub fn increment_readback_and_check_fallback(&self) {
     if !matches!(*self.drawing.borrow(), DrawingBackend::Vello(_)) {
       return;
     }
     self.readback_count.set(self.readback_count.get() + 1);
+    // Can't flatten the scene while layers are open; retry next readback.
     if self.readback_count.get() >= GPU_READBACK_FALLBACK_THRESHOLD
-      // Can't flatten the scene while layers are open; retry next readback.
       && self.layer_depth.get() == 0
     {
       self.switch_to_cpu_backend();
@@ -2210,7 +2212,6 @@ impl OffscreenCanvasRenderingContext2D {
   }
 
   /// Renders the accumulated scene into a DynamicImage.
-  /// Called by ext/canvas when convertToBlob / transferToImageBitmap is invoked.
   pub fn flush_to_image(&self, image: &mut DynamicImage) {
     let (width, height) = image.dimensions();
     let base_color = if self.settings.alpha {
@@ -2232,8 +2233,8 @@ impl OffscreenCanvasRenderingContext2D {
             })
             .ok()
             .map(|mut buf| {
-              // render_scene returns premultiplied alpha; DynamicImage expects
-              // straight alpha, same as the VelloCpu branch below.
+              // Convert premultiplied alpha (from render_scene) to straight
+              // alpha, matching the VelloCpu branch below.
               if self.settings.alpha {
                 unpremultiply_rgba(&mut buf);
               } else {
@@ -2308,7 +2309,6 @@ impl OffscreenCanvasRenderingContext2D {
     path_or_fill_rule: Option<v8::Local<'_, v8::Value>>,
     fill_rule: Option<String>,
   ) -> (BezPath, String, bool) {
-    // path_or_fill_rule may be Path2D or fillRule string
     if let Some(v) = path_or_fill_rule {
       if v.is_string() {
         let rule = v.to_rust_string_lossy(scope);
@@ -2366,23 +2366,24 @@ impl OffscreenCanvasRenderingContext2D {
 
     let (width, height) = self.data.dimensions();
     let mut drawing = self.drawing.borrow_mut();
-    let has_layer =
-      push_compositing_layer(&mut drawing, op, alpha, width, height);
-    if let Some(st) = shadow_xform {
-      draw_shadow(&mut drawing, width, height, shadow_color, |d| {
-        fill_on(d, &path, fill, st, brush.clone(), brush_transform);
-      });
-      // Per spec, the shadow is composited first, then the source shape is
-      // composited on top as a separate step.
-      if has_layer {
-        pop_compositing_layer(&mut drawing);
-        push_compositing_layer(&mut drawing, op, alpha, width, height);
-      }
-    }
-    fill_on(&mut drawing, &path, fill, transform, brush, brush_transform);
-    if has_layer {
-      pop_compositing_layer(&mut drawing);
-    }
+    draw_with_shadow(
+      &mut drawing,
+      op,
+      alpha,
+      width,
+      height,
+      shadow_color,
+      shadow_xform.map(|st| {
+        let path = &path;
+        let brush = brush.clone();
+        move |d: &mut DrawingBackend| {
+          fill_on(d, path, fill, st, brush, brush_transform);
+        }
+      }),
+      |d| {
+        fill_on(d, &path, fill, transform, brush, brush_transform);
+      },
+    );
   }
 
   fn draw_path_stroke(
@@ -2428,37 +2429,30 @@ impl OffscreenCanvasRenderingContext2D {
 
     let (width, height) = self.data.dimensions();
     let mut drawing = self.drawing.borrow_mut();
-    let has_layer =
-      push_compositing_layer(&mut drawing, op, alpha, width, height);
-    if let Some(st) = shadow_xform {
-      draw_shadow(&mut drawing, width, height, shadow_color, |d| {
-        stroke_on(d, &path, &stroke, st, brush.clone(), brush_transform);
-      });
-      // Per spec, the shadow is composited first, then the source shape is
-      // composited on top as a separate step.
-      if has_layer {
-        pop_compositing_layer(&mut drawing);
-        push_compositing_layer(&mut drawing, op, alpha, width, height);
-      }
-    }
-    stroke_on(
+    draw_with_shadow(
       &mut drawing,
-      &path,
-      &stroke,
-      transform,
-      brush,
-      brush_transform,
+      op,
+      alpha,
+      width,
+      height,
+      shadow_color,
+      shadow_xform.map(|st| {
+        let path = &path;
+        let stroke = &stroke;
+        let brush = brush.clone();
+        move |d: &mut DrawingBackend| {
+          stroke_on(d, path, stroke, st, brush, brush_transform);
+        }
+      }),
+      |d| {
+        stroke_on(d, &path, &stroke, transform, brush, brush_transform);
+      },
     );
-    if has_layer {
-      pop_compositing_layer(&mut drawing);
-    }
   }
 
   fn apply_clip(&self, path: BezPath, rule: String, transform: Affine) {
     // Per spec, clipping with an empty path shrinks the clip region to
-    // nothing (rather than leaving it unchanged), so subsequent drawing is
-    // fully clipped out. Use a zero-area shape with the identity transform
-    // to represent that.
+    // nothing; represent that with a zero-area shape at the identity transform.
     let (path, transform) = if path.is_empty() {
       (Shape::to_path(&Rect::ZERO, 0.1), Affine::IDENTITY)
     } else {
@@ -2589,20 +2583,17 @@ impl OffscreenCanvasRenderingContext2D {
 
     let (canvas_w, canvas_h) = self.data.dimensions();
     let mut drawing = self.drawing.borrow_mut();
-    let has_layer = push_compositing_layer(
+    draw_with_shadow(
       &mut drawing,
       op,
       global_alpha,
       canvas_w,
       canvas_h,
-    );
-    if let Some(st) = shadow_xform {
-      draw_shadow(
-        &mut drawing,
-        canvas_w,
-        canvas_h,
-        shadow_color,
-        |d| match d {
+      shadow_color,
+      shadow_xform.map(|st| {
+        let layout = &layout;
+        let brush = brush.clone();
+        move |d: &mut DrawingBackend| match d {
           DrawingBackend::Vello(scene) => {
             for line in layout.lines() {
               for item in line.items() {
@@ -2652,77 +2643,63 @@ impl OffscreenCanvasRenderingContext2D {
               }
             }
           }
-        },
-      );
-      // Per spec, the shadow is composited first, then the source text is
-      // composited on top as a separate step.
-      if has_layer {
-        pop_compositing_layer(&mut drawing);
-        push_compositing_layer(
-          &mut drawing,
-          op,
-          global_alpha,
-          canvas_w,
-          canvas_h,
-        );
-      }
-    }
-    match &mut *drawing {
-      DrawingBackend::Vello(scene) => {
-        for line in layout.lines() {
-          for item in line.items() {
-            let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
-              continue;
-            };
-            let font = peniko::FontData::clone(glyph_run.run().font());
-            let font_size = glyph_run.run().font_size();
-
-            let glyphs = glyph_run.positioned_glyphs().map(|g| vello::Glyph {
-              id: g.id,
-              x: draw_x + g.x * x_scale,
-              y: baseline_y as f32 + g.y - layout_baseline,
-            });
-
-            let mut glyph_draw = scene
-              .draw_glyphs(&font)
-              .font_size(font_size)
-              .transform(transform)
-              .brush(&brush);
-            if let Some(bt) = brush_transform {
-              glyph_draw = glyph_draw.brush_transform(Some(bt));
-            }
-            glyph_draw.draw(peniko::Fill::NonZero, glyphs);
-          }
         }
-      }
-      DrawingBackend::VelloCpu(ctx, resources) => {
-        for line in layout.lines() {
-          for item in line.items() {
-            let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
-              continue;
-            };
-            let font = peniko::FontData::clone(glyph_run.run().font());
-            let font_size = glyph_run.run().font_size();
+      }),
+      |d| match d {
+        DrawingBackend::Vello(scene) => {
+          for line in layout.lines() {
+            for item in line.items() {
+              let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
+                continue;
+              };
+              let font = peniko::FontData::clone(glyph_run.run().font());
+              let font_size = glyph_run.run().font_size();
 
-            apply_cpu_paint(ctx, brush.clone(), brush_transform);
-            ctx.set_transform(transform);
-            ctx
-              .glyph_run(resources, &font)
-              .font_size(font_size)
-              .fill_glyphs(glyph_run.positioned_glyphs().map(|g| {
-                vello_cpu::Glyph {
+              let glyphs =
+                glyph_run.positioned_glyphs().map(|g| vello::Glyph {
                   id: g.id,
                   x: draw_x + g.x * x_scale,
                   y: baseline_y as f32 + g.y - layout_baseline,
-                }
-              }));
+                });
+
+              let mut glyph_draw = scene
+                .draw_glyphs(&font)
+                .font_size(font_size)
+                .transform(transform)
+                .brush(&brush);
+              if let Some(bt) = brush_transform {
+                glyph_draw = glyph_draw.brush_transform(Some(bt));
+              }
+              glyph_draw.draw(peniko::Fill::NonZero, glyphs);
+            }
           }
         }
-      }
-    }
-    if has_layer {
-      pop_compositing_layer(&mut drawing);
-    }
+        DrawingBackend::VelloCpu(ctx, resources) => {
+          for line in layout.lines() {
+            for item in line.items() {
+              let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
+                continue;
+              };
+              let font = peniko::FontData::clone(glyph_run.run().font());
+              let font_size = glyph_run.run().font_size();
+
+              apply_cpu_paint(ctx, brush.clone(), brush_transform);
+              ctx.set_transform(transform);
+              ctx
+                .glyph_run(resources, &font)
+                .font_size(font_size)
+                .fill_glyphs(glyph_run.positioned_glyphs().map(|g| {
+                  vello_cpu::Glyph {
+                    id: g.id,
+                    x: draw_x + g.x * x_scale,
+                    y: baseline_y as f32 + g.y - layout_baseline,
+                  }
+                }));
+            }
+          }
+        }
+      },
+    );
   }
 
   fn resolve_point_in_path_args(
@@ -2929,8 +2906,8 @@ fn parse_begin_layer_options<'a>(
     return Ok(Vec::new());
   }
   if !filter.is_object() {
-    // The DOMString branch of the filter union: any string (or stringifiable
-    // primitive) is accepted, even when it is not a parsable CSS filter.
+    // Any (stringifiable) value is accepted here, even if not a parsable
+    // CSS filter.
     let Some(value) = filter.to_string(scope) else {
       return Ok(Vec::new());
     };
@@ -2950,6 +2927,7 @@ fn parse_begin_layer_options<'a>(
   parse_filter_input(scope, filter)
 }
 
+#[inline]
 fn require_long(
   scope: &mut v8::PinScope<'_, '_>,
   val: v8::Local<'_, v8::Value>,
@@ -2981,9 +2959,8 @@ fn parse_fill_stroke_style(
       value.cast::<v8::Object>(),
     )));
   }
-  // The DOMString branch of the union: ToString may invoke a user-supplied
-  // toString() (whose thrown exception is left pending to propagate); an
-  // invalid color string leaves the style unchanged.
+  // A thrown toString() exception is left pending to propagate; an invalid
+  // color string leaves the style unchanged.
   let s = value.to_string(scope)?;
   let s = s.to_rust_string_lossy(scope);
   parse_css_color(&s).ok().map(FillStrokeStyle::Color)
@@ -3062,6 +3039,7 @@ fn resolve_brush(
   }
 }
 
+#[inline]
 fn apply_cpu_paint(
   ctx: &mut vello_cpu::RenderContext,
   brush: peniko::Brush,
@@ -3097,6 +3075,7 @@ fn apply_cpu_paint(
   }
 }
 
+#[inline]
 fn push_compositing_layer(
   drawing: &mut DrawingBackend,
   op: GlobalCompositeOperation,
@@ -3112,6 +3091,7 @@ fn push_compositing_layer(
 }
 
 /// Pushes a full-canvas compositing layer.
+#[inline]
 fn push_full_canvas_layer(
   drawing: &mut DrawingBackend,
   blend: peniko::BlendMode,
@@ -3136,6 +3116,7 @@ fn push_full_canvas_layer(
   }
 }
 
+#[inline]
 fn pop_compositing_layer(drawing: &mut DrawingBackend) {
   match drawing {
     DrawingBackend::Vello(scene) => scene.pop_layer(),
@@ -3177,6 +3158,33 @@ fn draw_shadow(
   );
   pop_compositing_layer(drawing); // pop the SrcIn tint layer
   pop_compositing_layer(drawing); // pop the SrcOver isolation layer
+}
+
+/// Composites `draw_shadow_shape` (if any) before `draw_source`, per spec.
+#[inline]
+#[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
+fn draw_with_shadow(
+  drawing: &mut DrawingBackend,
+  op: GlobalCompositeOperation,
+  alpha: f32,
+  width: u32,
+  height: u32,
+  shadow_color: peniko::Color,
+  draw_shadow_shape: Option<impl FnOnce(&mut DrawingBackend)>,
+  draw_source: impl FnOnce(&mut DrawingBackend),
+) {
+  let has_layer = push_compositing_layer(drawing, op, alpha, width, height);
+  if let Some(shape) = draw_shadow_shape {
+    draw_shadow(drawing, width, height, shadow_color, shape);
+    if has_layer {
+      pop_compositing_layer(drawing);
+      push_compositing_layer(drawing, op, alpha, width, height);
+    }
+  }
+  draw_source(drawing);
+  if has_layer {
+    pop_compositing_layer(drawing);
+  }
 }
 
 /// Pushes a clip layer after syncing fill rule and transform.
@@ -3237,6 +3245,7 @@ fn build_stroke(state: &DrawingState) -> Stroke {
   stroke
 }
 
+#[inline]
 fn has_shadow(state: &DrawingState) -> bool {
   !state.shadow_color.is_transparent()
     && (state.shadow_blur > 0.0
@@ -3244,11 +3253,13 @@ fn has_shadow(state: &DrawingState) -> bool {
       || state.shadow_offset_y != 0.0)
 }
 
+#[inline]
 fn shadow_transform(state: &DrawingState, transform: Affine) -> Affine {
   // TODO(petamoriken): apply shadowBlur once Vello GPU supports filter effects
   Affine::translate((state.shadow_offset_x, state.shadow_offset_y)) * transform
 }
 
+#[inline]
 fn fill_on(
   drawing: &mut DrawingBackend,
   shape: &impl Shape,
@@ -3275,6 +3286,7 @@ fn fill_on(
   }
 }
 
+#[inline]
 fn stroke_on(
   drawing: &mut DrawingBackend,
   path: &BezPath,
@@ -3296,6 +3308,7 @@ fn stroke_on(
   }
 }
 
+#[inline]
 fn v8_to_f64(
   scope: &mut v8::PinScope<'_, '_>,
   v: v8::Local<'_, v8::Value>,
@@ -3318,6 +3331,7 @@ fn type_error_not_path2d(
 /// spec, isPointInPath()/isPointInStroke() (and fill()/clip()) treat each
 /// subpath as though it had been closed, regardless of whether
 /// closePath() was actually called.
+#[inline]
 fn close_all_subpaths(path: &BezPath) -> BezPath {
   let mut closed = BezPath::new();
   let mut subpath_open = false;
@@ -3340,20 +3354,29 @@ fn close_all_subpaths(path: &BezPath) -> BezPath {
   closed
 }
 
-/// Returns whether `pt` lies on (within floating-point tolerance of) any
-/// segment of `path`. Per spec, points exactly on the path's boundary
-/// count as inside for isPointInPath().
-fn point_on_path_boundary(path: &BezPath, pt: Point) -> bool {
+/// Returns whether `pt` is within tolerance of any segment of `path` (per
+/// spec, boundary points count as inside for isPointInPath()). `scale`
+/// normalizes the tolerance to a roughly constant number of device pixels,
+/// since Path2D tests happen in user space.
+#[inline]
+fn point_on_path_boundary(path: &BezPath, pt: Point, scale: f64) -> bool {
   const EPSILON_SQ: f64 = 1e-9;
+  let epsilon_sq = EPSILON_SQ / (scale * scale);
   path
     .segments()
-    .any(|seg| seg.nearest(pt, 1e-6).distance_sq <= EPSILON_SQ)
+    .any(|seg| seg.nearest(pt, 1e-6).distance_sq <= epsilon_sq)
 }
 
-fn test_point_in_path(path: BezPath, x: f64, y: f64, rule: String) -> bool {
+fn test_point_in_path(
+  path: BezPath,
+  x: f64,
+  y: f64,
+  rule: String,
+  scale: f64,
+) -> bool {
   let path = close_all_subpaths(&path);
   let pt = Point::new(x, y);
-  if point_on_path_boundary(&path, pt) {
+  if point_on_path_boundary(&path, pt, scale) {
     return true;
   }
   let w = path.winding(pt);
@@ -3363,10 +3386,8 @@ fn test_point_in_path(path: BezPath, x: f64, y: f64, rule: String) -> bool {
   }
 }
 
-/// Creates a drawing backend, preferring the GPU but choosing the CPU when
-/// browser-style heuristics say so: `willReadFrequently`, repeated pixel
-/// readbacks, a canvas too small to benefit from the GPU, or one too large
-/// for a GPU texture.
+/// Creates a drawing backend, preferring the GPU but falling back to the CPU
+/// per the browser-style heuristics below.
 fn create_drawing_backend(
   renderer: &SharedRenderer,
   will_read_frequently: bool,
