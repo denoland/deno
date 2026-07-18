@@ -320,7 +320,18 @@ to_v8!((i64, isize): |value, scope| v8::BigInt::new_from_i64(scope, value as _))
 // Strings
 //
 
-to_v8_fallible!((String, Cow<'a, str>, &'a str): |value, scope| v8::String::new(scope, &value).ok_or_else(|| serde_v8::Error::Message("failed to allocate string; buffer exceeds maximum length".into())));
+to_v8_fallible!((String, Cow<'a, str>, &'a str): |value, scope| {
+  // ASCII is the overwhelmingly common case for op string results (paths,
+  // headers, JSON). `v8::String::new` runs V8's UTF-8 decode; the one-byte
+  // constructor skips it, and Rust's `is_ascii()` is SIMD-vectorized. ASCII
+  // is a subset of Latin-1, so the bytes are valid one-byte content as-is.
+  if value.is_ascii() {
+    v8::String::new_from_one_byte(scope, value.as_bytes(), v8::NewStringType::Normal)
+  } else {
+    v8::String::new(scope, &value)
+  }
+  .ok_or_else(|| serde_v8::Error::Message("failed to allocate string; buffer exceeds maximum length".into()))
+});
 to_v8_retval_fallible!((String, Cow<'a, str>, &'a str): |value, scope, rv| {
   if value.is_empty() {
     rv.set_empty_string();

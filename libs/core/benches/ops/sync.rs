@@ -23,6 +23,9 @@ deno_core::extension!(
     op_string_bytestring,
     op_string_bytestring_no_side_effects,
     op_string_option_u32,
+    op_string_return,
+    op_string_return_large,
+    op_string_return_utf8_large,
     op_string_serde,
     op_string_owned,
     op_local,
@@ -110,6 +113,27 @@ pub fn op_string_owned(#[string] s: String) -> u32 {
 #[op2]
 pub fn op_string_option_u32(#[string] s: &str) -> Option<u32> {
   Some(s.len() as _)
+}
+
+// Realistic short ASCII result (e.g. a header name).
+#[op2]
+#[string]
+pub fn op_string_return() -> String {
+  "content-type".to_string()
+}
+
+// 1000-char ASCII result (exercises the ASCII return path at scale).
+#[op2]
+#[string]
+pub fn op_string_return_large() -> String {
+  "*".repeat(1000)
+}
+
+// 1000-char non-ASCII result (exercises the UTF-8 fallback).
+#[op2]
+#[string]
+pub fn op_string_return_utf8_large() -> String {
+  "\u{1000}".repeat(1000)
 }
 
 #[op2(fast)]
@@ -605,6 +629,39 @@ fn bench_op_arraybuffer(b: &mut Bencher) {
   );
 }
 
+/// Return a short ASCII string from Rust.
+fn bench_op_string_return(b: &mut Bencher) {
+  bench_op(
+    b,
+    BENCH_COUNT,
+    "op_string_return",
+    0,
+    "accum += op_string_return().length;",
+  );
+}
+
+/// Return a 1000-char ASCII string from Rust (exercises the ASCII return path).
+fn bench_op_string_return_large(b: &mut Bencher) {
+  bench_op(
+    b,
+    BENCH_COUNT,
+    "op_string_return_large",
+    0,
+    "accum += op_string_return_large().length;",
+  );
+}
+
+/// Return a 1000-char non-ASCII string from Rust (exercises the UTF-8 fallback).
+fn bench_op_string_return_utf8_large(b: &mut Bencher) {
+  bench_op(
+    b,
+    BENCH_COUNT,
+    "op_string_return_utf8_large",
+    0,
+    "accum += op_string_return_utf8_large().length;",
+  );
+}
+
 benchmark_group!(
   benches,
   baseline,
@@ -628,6 +685,9 @@ benchmark_group!(
   bench_op_string_large_utf8_1000,
   bench_op_string_large_utf8_1000000,
   bench_op_string_option_u32,
+  bench_op_string_return,
+  bench_op_string_return_large,
+  bench_op_string_return_utf8_large,
   bench_op_string_serde,
   bench_op_string_serde_large_1000,
   bench_op_string_serde_large_utf8_1000,
