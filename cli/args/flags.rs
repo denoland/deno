@@ -2980,7 +2980,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .help("Set content type of the supplied file")
           .value_parser([
             "ts", "tsx", "js", "jsx", "mts", "mjs", "cts", "cjs", "md", "json", "jsonc", "css", "scss",
-            "less", "html", "svelte", "vue", "astro", "yml", "yaml",
+            "less", "html", "xml", "svg", "svelte", "vue", "astro", "yml", "yaml",
             "ipynb", "sql", "vto", "njk"
           ])
           .help_heading(FMT_HEADING).requires("files"),

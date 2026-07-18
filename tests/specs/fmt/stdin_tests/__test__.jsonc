@@ -15,6 +15,16 @@
       "input": "{    \"key\":   \"value\"}",
       "output": "{ \"key\": \"value\" }\n"
     },
+    "fmt_stdin_xml": {
+      "args": "fmt --ext=xml -",
+      "input": "<?xml version=\"1.0\"?><root><item>text</item></root>",
+      "output": "<?xml version=\"1.0\"?>\n<root>\n  <item>text</item>\n</root>\n"
+    },
+    "fmt_stdin_svg": {
+      "args": "fmt --ext=svg -",
+      "input": "<svg viewBox=\"0 0 10 10\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M0 0h10v10z\"/></svg>",
+      "output": "<svg viewBox=\"0 0 10 10\" xmlns=\"http://www.w3.org/2000/svg\">\n  <path d=\"M0 0h10v10z\" />\n</svg>\n"
+    },
     "fmt_stdin_check_formatted": {
       "args": "fmt --check -",
       "input": "const a = 1;\n",
