@@ -220,7 +220,7 @@ pub async fn op_net_accept_tcp(
     .try_borrow_mut()
     .ok_or_else(|| NetError::AcceptTaskOngoing)?;
   let cancel = RcRef::map(resource, |r| &r.cancel);
-  let (tcp_stream, _socket_addr) = listener
+  let (tcp_stream, remote_addr) = listener
     .accept()
     .try_or_cancel(cancel)
     .await
@@ -234,7 +234,6 @@ pub async fn op_net_accept_tcp(
     _fd_raw = Some(fd.as_raw_fd() as u32);
   }
   let local_addr = tcp_stream.local_addr()?;
-  let remote_addr = tcp_stream.peer_addr()?;
 
   let mut state = state.borrow_mut();
   let rid = state
@@ -903,13 +902,12 @@ pub async fn op_net_accept_vsock(
     .try_borrow_mut()
     .ok_or_else(|| NetError::AcceptTaskOngoing)?;
   let cancel = RcRef::map(resource, |r| &r.cancel);
-  let (vsock_stream, _socket_addr) = listener
+  let (vsock_stream, remote_addr) = listener
     .accept()
     .try_or_cancel(cancel)
     .await
     .map_err(accept_err)?;
   let local_addr = vsock_stream.local_addr()?;
-  let remote_addr = vsock_stream.peer_addr()?;
 
   let mut state = state.borrow_mut();
   let rid = state

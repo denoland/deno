@@ -123,14 +123,13 @@ pub async fn op_net_accept_unix(
     .try_borrow_mut()
     .ok_or(NetError::ListenerBusy)?;
   let cancel = RcRef::map(resource, |r| &r.cancel);
-  let (unix_stream, _socket_addr) = listener
+  let (unix_stream, remote_addr) = listener
     .accept()
     .try_or_cancel(cancel)
     .await
     .map_err(crate::ops::accept_err)?;
 
   let local_addr = unix_stream.local_addr()?;
-  let remote_addr = unix_stream.peer_addr()?;
   let local_addr_path = unix_socket_addr_path(&local_addr)?;
   let remote_addr_path = unix_socket_addr_path(&remote_addr)?;
   let resource = UnixStreamResource::new(unix_stream.into_split());
