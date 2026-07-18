@@ -740,6 +740,7 @@ fn add_elliptical_arc(
 
 /// Applies `transform` to a point, falling back to the original point if the
 /// result is non-finite (e.g. a degenerate transform).
+#[inline]
 pub(super) fn transform_point_or_original(
   transform: Affine,
   point: Point,
@@ -781,6 +782,7 @@ pub(super) fn transform_path(path: &BezPath, transform: Affine) -> BezPath {
 }
 
 /// Returns the current path point (the endpoint of the last path element).
+#[inline]
 pub(super) fn last_path_point(path: &BezPath) -> Option<Point> {
   match path.elements().last()? {
     PathEl::MoveTo(p) => Some(*p),
