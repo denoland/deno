@@ -459,7 +459,7 @@ pub fn create<'s>(
   options: v8::Local<'s, v8::Value>,
   prefix: &'static str,
   context: &'static str,
-) -> Result<v8::Global<v8::Value>, JsErrorBox> {
+) -> Result<Option<v8::Global<v8::Value>>, JsErrorBox> {
   let settings = ImageBitmapRenderingContextSettings::convert(
     scope,
     options,
@@ -756,7 +756,7 @@ pub fn create<'s>(
       surface_only,
     },
   );
-  Ok(v8::Global::new(scope, obj.cast()))
+  Ok(Some(v8::Global::new(scope, obj.cast())))
 }
 
 #[derive(WebIDL)]

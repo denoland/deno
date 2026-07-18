@@ -49,6 +49,7 @@ use super::state::GlobalCompositeOperation;
 use super::state::ImageSmoothingQuality;
 use super::state::LineCap;
 use super::state::LineJoin;
+use super::state::MAX_CANVAS_DIMENSION;
 use super::state::StateStackEntry;
 use super::state::TextAlign;
 use super::state::TextBaseline;
@@ -3403,8 +3404,15 @@ pub fn create_context<'s>(
   options: v8::Local<'s, v8::Value>,
   prefix: &'static str,
   context: &'static str,
-) -> Result<v8::Global<v8::Value>, JsErrorBox> {
+) -> Result<Option<v8::Global<v8::Value>>, JsErrorBox> {
   let (width, height) = data.dimensions();
+  if width > MAX_CANVAS_DIMENSION || height > MAX_CANVAS_DIMENSION {
+    log::warn!(
+      "canvas2d: canvas size {width}x{height} exceeds the maximum supported \
+       dimension of {MAX_CANVAS_DIMENSION}; getContext(\"2d\") returns null"
+    );
+    return Ok(None);
+  }
   let (renderer, font_ctx, layout_ctx) = {
     let state = state.borrow();
     let renderer = state
@@ -3462,5 +3470,5 @@ pub fn create_context<'s>(
 
   let obj = deno_core::cppgc::make_cppgc_object(scope, ctx);
   let val: v8::Local<v8::Value> = obj.cast();
-  Ok(v8::Global::new(scope, val))
+  Ok(Some(v8::Global::new(scope, val)))
 }

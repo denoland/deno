@@ -246,7 +246,7 @@ impl UnsafeWindowSurface {
 
       let context = match context_id.as_str() {
         deno_web::canvas2d::CONTEXT_ID => {
-          let ctx = deno_web::canvas2d::create_context(
+          let Some(ctx) = deno_web::canvas2d::create_context(
             state.clone(),
             Some(instance.clone()),
             this,
@@ -255,7 +255,10 @@ impl UnsafeWindowSurface {
             options,
             "Failed to execute 'getContext' on 'UnsafeWindowSurface'",
             "Argument 2",
-          )?;
+          )?
+          else {
+            return Ok(None);
+          };
           // Initialize the wgpu_core device for Canvas2D surface presentation.
           let (width, height) = {
             let d = self.data.borrow();
@@ -279,7 +282,7 @@ impl UnsafeWindowSurface {
             deno_webgpu::canvas::CONTEXT_ID => deno_webgpu::canvas::create as _,
             _ => return Ok(None),
           };
-          create_context(
+          let Some(context) = create_context(
             state,
             Some(instance),
             this,
@@ -289,6 +292,10 @@ impl UnsafeWindowSurface {
             "Failed to execute 'getContext' on 'UnsafeWindowSurface'",
             "Argument 2",
           )?
+          else {
+            return Ok(None);
+          };
+          context
         }
       };
 

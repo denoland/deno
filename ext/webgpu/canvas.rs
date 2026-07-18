@@ -678,7 +678,7 @@ pub fn create<'s>(
   _options: v8::Local<'s, v8::Value>,
   _prefix: &'static str,
   _context: &'static str,
-) -> Result<v8::Global<v8::Value>, JsErrorBox> {
+) -> Result<Option<v8::Global<v8::Value>>, JsErrorBox> {
   let obj = deno_core::cppgc::make_cppgc_object(
     scope,
     GPUCanvasContext {
@@ -691,5 +691,5 @@ pub fn create<'s>(
     },
   );
 
-  Ok(v8::Global::new(scope, obj.cast()))
+  Ok(Some(v8::Global::new(scope, obj.cast())))
 }
