@@ -32,7 +32,7 @@ pub type CreateCanvasContext =
     options: v8::Local<'s, v8::Value>,
     prefix: &'static str,
     context: &'static str,
-  ) -> Result<v8::Global<v8::Value>, JsErrorBox>;
+  ) -> Result<Option<v8::Global<v8::Value>>, JsErrorBox>;
 
 /// The full set of context ids `OffscreenCanvas.getContext()` recognizes
 /// per spec (some of which -- webgl/webgl2 -- aren't actually supported by
@@ -181,6 +181,9 @@ impl OffscreenCanvas {
         "Failed to execute 'getContext' on 'OffscreenCanvas'",
         "Argument 2",
       )?;
+      let Some(context) = context else {
+        return Ok(None);
+      };
       let _ = self.active_context.set((context_id.clone(), context));
     }
 
