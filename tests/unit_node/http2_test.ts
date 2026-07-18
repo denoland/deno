@@ -898,6 +898,69 @@ Deno.test("[node/http2 client] connect with pre-created socket", {
   await new Promise<void>((resolve) => server.on("close", resolve));
 });
 
+Deno.test("[node/http2] destroy cleans internal socket references", async () => {
+  const server = http2.createServer((_req, res) => {
+    res.end("ok");
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as net.AddressInfo).port;
+
+  const client = http2.connect(`http://127.0.0.1:${port}`);
+  await new Promise<void>((resolve, reject) => {
+    client.once("connect", resolve);
+    client.once("error", reject);
+  });
+
+  const clientSymbols = Object.getOwnPropertySymbols(client);
+  const socketSymbol = clientSymbols.find((symbol) =>
+    String(symbol) === "Symbol(socket)"
+  );
+  const handleSymbol = clientSymbols.find((symbol) =>
+    String(symbol) === "Symbol(kHandle)"
+  );
+  if (!socketSymbol || !handleSymbol) {
+    throw new Error("missing expected internal http2 symbols");
+  }
+
+  const clientRecord = client as unknown as Record<symbol, unknown>;
+  const socket = clientRecord[socketSymbol] as net.Socket;
+  const handle = clientRecord[handleSymbol] as Record<symbol, unknown>;
+  const ownerSymbol = Object.getOwnPropertySymbols(handle).find((symbol) =>
+    String(symbol) === "Symbol(ownerSymbol)"
+  );
+
+  client.destroy();
+  await new Promise<void>((resolve) => client.once("close", resolve));
+
+  assertEquals(clientRecord[handleSymbol], undefined);
+  if (ownerSymbol) {
+    assertEquals(handle[ownerSymbol], undefined);
+  }
+  assertEquals(socket.listenerCount("data"), 0);
+  assertEquals(socket.listenerCount("error"), 0);
+  assertEquals(socket.listenerCount("close"), 0);
+
+  // A user can retain the internal handle through reflection. Late socket
+  // events or callbacks must become harmless after native teardown rather
+  // than dereferencing the released nghttp2 session.
+  const retainedHandle = handle as unknown as {
+    receive(data: Uint8Array): void;
+    getOutgoingChunk(): Uint8Array;
+    hasPendingData(): boolean;
+    settings(callback: () => void): boolean;
+    ping(payload: Uint8Array): number;
+    destroy(): void;
+  };
+  retainedHandle.receive(new Uint8Array([0]));
+  assertEquals(retainedHandle.getOutgoingChunk().byteLength, 0);
+  assertEquals(retainedHandle.hasPendingData(), false);
+  assertEquals(retainedHandle.settings(() => {}), false);
+  assertEquals(retainedHandle.ping(new Uint8Array(8)), -1);
+  retainedHandle.destroy();
+
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+});
+
 async function testRespondWithCancellation(ownsFd: boolean) {
   const filePath = await Deno.makeTempFile();
   await Deno.writeFile(filePath, new Uint8Array(256 * 1024));

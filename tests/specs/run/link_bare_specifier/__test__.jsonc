@@ -19,6 +19,10 @@
       "exitCode": 1
     },
     "wrong_name_hints_full_name_check": {
+      // ignored: the check path surfaces tsc's generic TS2882 instead of deno's
+      // resolver hint suggesting the full name.
+      // https://github.com/denoland/deno/issues/36085
+      "ignore": true,
       "args": "check wrong_name.ts",
       "output": "wrong_name_check.out",
       "exitCode": 1

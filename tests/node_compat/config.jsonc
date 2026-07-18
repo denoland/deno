@@ -2177,6 +2177,7 @@
     "parallel/test-http2-server-shutdown-redundant.js": {},
     "parallel/test-http2-server-startup.js": {},
     "parallel/test-http2-server-timeout.js": {},
+    "parallel/test-http2-session-cleanup-on-nghttp2-goaway.js": {},
     "parallel/test-http2-session-graceful-close.js": {},
     "parallel/test-http2-session-settings.js": {},
     "parallel/test-http2-session-stream-state.js": {},
@@ -3343,12 +3344,14 @@
     "parallel/test-socket-write-after-fin.js": {},
     "parallel/test-sqlite-aggregate-function.mjs": {},
     "parallel/test-sqlite-authz.js": {},
+    "parallel/test-sqlite-backup.mjs": {},
     "parallel/test-sqlite-config.js": {},
     "parallel/test-sqlite-custom-functions.js": {},
     "parallel/test-sqlite-data-types.js": {},
     "parallel/test-sqlite-database-sync.js": {},
     "parallel/test-sqlite-limits.js": {},
     "parallel/test-sqlite-named-parameters.js": {},
+    "parallel/test-sqlite-serialize.js": {},
     "parallel/test-sqlite-session.js": {
       "ignore": true,
       "reason": "malformed-changeset subtest crashes in the shared SQLite; Node skips it unless using its bundled SQLite session fix (node_shared_sqlite)"

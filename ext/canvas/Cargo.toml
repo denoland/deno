@@ -19,6 +19,7 @@ deno_core.workspace = true
 deno_error.workspace = true
 deno_features.workspace = true
 deno_image.workspace = true
+deno_permissions.workspace = true
 deno_web.workspace = true
 deno_webgpu.workspace = true
 raw-window-handle.workspace = true

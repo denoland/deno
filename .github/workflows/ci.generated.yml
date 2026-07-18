@@ -600,6 +600,20 @@ jobs:
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
+      - name: Set up native tsc cache
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        with:
+          path: ./target/.native_tsc
+          key: 'tsc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cli/tsc/native.rs'') }}'
+      - name: Pre-download native tsc
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        run: |-
+          DENO_BIN=""
+          for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do
+            [ -f "$c" ] && DENO_BIN="$c" && break
+          done
+          "$DENO_BIN" run -A ./tools/download_tsc.ts
       - name: Build ffi (debug)
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build -p test_ffi
@@ -1126,6 +1140,20 @@ jobs:
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
+      - name: Set up native tsc cache
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        with:
+          path: ./target/.native_tsc
+          key: 'tsc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cli/tsc/native.rs'') }}'
+      - name: Pre-download native tsc
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        run: |-
+          DENO_BIN=""
+          for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do
+            [ -f "$c" ] && DENO_BIN="$c" && break
+          done
+          "$DENO_BIN" run -A ./tools/download_tsc.ts
       - name: Build ffi (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build --release -p test_ffi
@@ -1501,6 +1529,20 @@ jobs:
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
+      - name: Set up native tsc cache
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        with:
+          path: ./target/.native_tsc
+          key: 'tsc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cli/tsc/native.rs'') }}'
+      - name: Pre-download native tsc
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        run: |-
+          DENO_BIN=""
+          for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do
+            [ -f "$c" ] && DENO_BIN="$c" && break
+          done
+          "$DENO_BIN" run -A ./tools/download_tsc.ts
       - name: Build ffi (debug)
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build -p test_ffi
@@ -2188,6 +2230,20 @@ jobs:
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
+      - name: Set up native tsc cache
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        with:
+          path: ./target/.native_tsc
+          key: 'tsc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cli/tsc/native.rs'') }}'
+      - name: Pre-download native tsc
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        run: |-
+          DENO_BIN=""
+          for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do
+            [ -f "$c" ] && DENO_BIN="$c" && break
+          done
+          "$DENO_BIN" run -A ./tools/download_tsc.ts
       - name: Build ffi (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build --release -p test_ffi
@@ -2523,6 +2579,20 @@ jobs:
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
+      - name: Set up native tsc cache
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        with:
+          path: ./target/.native_tsc
+          key: 'tsc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cli/tsc/native.rs'') }}'
+      - name: Pre-download native tsc
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        run: |-
+          DENO_BIN=""
+          for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do
+            [ -f "$c" ] && DENO_BIN="$c" && break
+          done
+          "$DENO_BIN" run -A ./tools/download_tsc.ts
       - name: Build ffi (debug)
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build -p test_ffi
@@ -3172,6 +3242,20 @@ jobs:
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
+      - name: Set up native tsc cache
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        with:
+          path: ./target/.native_tsc
+          key: 'tsc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cli/tsc/native.rs'') }}'
+      - name: Pre-download native tsc
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        run: |-
+          DENO_BIN=""
+          for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do
+            [ -f "$c" ] && DENO_BIN="$c" && break
+          done
+          "$DENO_BIN" run -A ./tools/download_tsc.ts
       - name: Build ffi (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build --release -p test_ffi
@@ -3507,6 +3591,20 @@ jobs:
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
+      - name: Set up native tsc cache
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        with:
+          path: ./target/.native_tsc
+          key: 'tsc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cli/tsc/native.rs'') }}'
+      - name: Pre-download native tsc
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        run: |-
+          DENO_BIN=""
+          for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do
+            [ -f "$c" ] && DENO_BIN="$c" && break
+          done
+          "$DENO_BIN" run -A ./tools/download_tsc.ts
       - name: Build ffi (debug)
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build -p test_ffi
@@ -4037,6 +4135,20 @@ jobs:
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
+      - name: Set up native tsc cache
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        with:
+          path: ./target/.native_tsc
+          key: 'tsc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cli/tsc/native.rs'') }}'
+      - name: Pre-download native tsc
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        run: |-
+          DENO_BIN=""
+          for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do
+            [ -f "$c" ] && DENO_BIN="$c" && break
+          done
+          "$DENO_BIN" run -A ./tools/download_tsc.ts
       - name: Build ffi (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build --release -p test_ffi
@@ -4739,6 +4851,20 @@ jobs:
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
+      - name: Set up native tsc cache
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        with:
+          path: ./target/.native_tsc
+          key: 'tsc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cli/tsc/native.rs'') }}'
+      - name: Pre-download native tsc
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        run: |-
+          DENO_BIN=""
+          for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do
+            [ -f "$c" ] && DENO_BIN="$c" && break
+          done
+          "$DENO_BIN" run -A ./tools/download_tsc.ts
       - name: Build ffi (release)
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build --release -p test_ffi
@@ -5406,6 +5532,20 @@ jobs:
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
+      - name: Set up native tsc cache
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        with:
+          path: ./target/.native_tsc
+          key: 'tsc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cli/tsc/native.rs'') }}'
+      - name: Pre-download native tsc
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        run: |-
+          DENO_BIN=""
+          for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do
+            [ -f "$c" ] && DENO_BIN="$c" && break
+          done
+          "$DENO_BIN" run -A ./tools/download_tsc.ts
       - name: Build ffi (debug)
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && matrix.test_crate == ''specs'''
         run: cargo build -p test_ffi
@@ -5890,6 +6030,20 @@ jobs:
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
+      - name: Set up native tsc cache
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        with:
+          path: ./target/.native_tsc
+          key: 'tsc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cli/tsc/native.rs'') }}'
+      - name: Pre-download native tsc
+        if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        run: |-
+          DENO_BIN=""
+          for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do
+            [ -f "$c" ] && DENO_BIN="$c" && break
+          done
+          "$DENO_BIN" run -A ./tools/download_tsc.ts
       - name: Load 'vsock_loopback; kernel module
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: sudo modprobe vsock_loopback
@@ -6733,6 +6887,20 @@ jobs:
         with:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
+      - name: Set up native tsc cache
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        with:
+          path: ./target/.native_tsc
+          key: 'tsc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cli/tsc/native.rs'') }}'
+      - name: Pre-download native tsc
+        if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'') && (matrix.test_crate == ''integration'' || matrix.test_crate == ''specs'')'
+        run: |-
+          DENO_BIN=""
+          for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do
+            [ -f "$c" ] && DENO_BIN="$c" && break
+          done
+          "$DENO_BIN" run -A ./tools/download_tsc.ts
       - name: Load 'vsock_loopback; kernel module
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
         run: sudo modprobe vsock_loopback

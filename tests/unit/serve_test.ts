@@ -137,6 +137,29 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerRequestDoesNotExposeExternal() {
+    let innerRequest: object | undefined;
+    await using server = await makeServer((req) => {
+      const requestSymbol = Object.getOwnPropertySymbols(req).find(
+        (symbol) => symbol.description === "request",
+      );
+      if (requestSymbol !== undefined) {
+        innerRequest = (req as unknown as Record<symbol, object>)[
+          requestSymbol
+        ];
+      }
+      return new Response("ok");
+    });
+    const resp = await fetch(`http://localhost:${servePort}/`);
+    await resp.text();
+    assert(innerRequest !== undefined);
+    assertEquals(Reflect.has(innerRequest, "external"), false);
+    await server.shutdown();
+  },
+);
+
 // When shutting down abruptly, we require that all in-progress connections are aborted,
 // no new connections are allowed, and no new transactions are allowed on existing connections.
 Deno.test(

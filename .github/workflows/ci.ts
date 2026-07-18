@@ -1256,6 +1256,36 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             },
           },
           {
+            name: "Set up native tsc cache",
+            if: testCrateNameExpr.equals("integration").or(
+              testCrateNameExpr.equals("specs"),
+            ),
+            uses: "actions/cache@v5",
+            with: {
+              // Keyed on native.rs so a pinned-version bump re-downloads.
+              path: "./target/.native_tsc",
+              key:
+                "tsc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('cli/tsc/native.rs') }}",
+            },
+          },
+          {
+            // Pre-download the compiler `deno check` uses and export
+            // DENO_TSC_BIN so the test step doesn't re-download it for every
+            // test's fresh DENO_DIR. See tools/download_tsc.ts. Run it with the
+            // built deno binary (the test job has no system `deno` on PATH).
+            name: "Pre-download native tsc",
+            if: testCrateNameExpr.equals("integration").or(
+              testCrateNameExpr.equals("specs"),
+            ),
+            run: [
+              'DENO_BIN=""',
+              "for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do",
+              '  [ -f "$c" ] && DENO_BIN="$c" && break',
+              "done",
+              '"$DENO_BIN" run -A ./tools/download_tsc.ts',
+            ].join("\n"),
+          },
+          {
             if: buildItem.os.equals("linux").and(
               buildItem.arch.equals("aarch64"),
             ),
