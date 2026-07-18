@@ -21,6 +21,7 @@ const {
   SafeSet,
   String,
   StringFromCharCode,
+  StringPrototypeCharCodeAt,
   StringPrototypeSlice,
   StringPrototypeToLowerCase,
   Symbol,
@@ -777,6 +778,28 @@ function prepareRequestHeadersObject(headers, session) {
 const emptyArray = [];
 const kNeverIndexFlag = StringFromCharCode(NGHTTP2_NV_FLAG_NO_INDEX);
 const kNoHeaderFlags = StringFromCharCode(NGHTTP2_NV_FLAG_NONE);
+const kInvalidHeaderValueByte = StringFromCharCode(1);
+
+// The native binding converts this serialized string to Latin-1 and uses a
+// zero byte as the field delimiter. Replace value code units whose low byte is
+// zero with another invalid HTTP/2 header byte so nghttp2 still rejects or
+// drops the header through its normal path without interpreting value data as
+// another serialized field.
+function escapeNgHeaderValueZeroBytes(value) {
+  let escaped = "";
+  let start = 0;
+  let changed = false;
+  for (let i = 0; i < value.length; ++i) {
+    if ((StringPrototypeCharCodeAt(value, i) & 0xff) !== 0) {
+      continue;
+    }
+    changed = true;
+    escaped += StringPrototypeSlice(value, start, i) +
+      kInvalidHeaderValueByte;
+    start = i + 1;
+  }
+  return changed ? escaped + StringPrototypeSlice(value, start) : value;
+}
 
 /**
  * Builds an NgHeader string + header count value, validating the header key
@@ -837,6 +860,7 @@ function buildNgHeaderString(
       if (err !== undefined) {
         throw err;
       }
+      value = escapeNgHeaderValueZeroBytes(value);
       pseudoHeaders += `${key}\0${value}\0${flags}`;
       count++;
       return;
@@ -849,12 +873,13 @@ function buildNgHeaderString(
     }
     if (isArray) {
       for (let j = 0; j < value.length; ++j) {
-        const val = String(value[j]);
+        const val = escapeNgHeaderValueZeroBytes(String(value[j]));
         headers += `${key}\0${val}\0${flags}`;
       }
       count += value.length;
       return;
     }
+    value = escapeNgHeaderValueZeroBytes(value);
     headers += `${key}\0${value}\0${flags}`;
     count++;
   }

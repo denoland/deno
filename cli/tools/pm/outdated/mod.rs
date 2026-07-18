@@ -334,7 +334,10 @@ pub async fn outdated(
         &filter_set,
         interactive,
         flags,
-        CacheTopLevelDepsOptions { lockfile_only },
+        CacheTopLevelDepsOptions {
+          lockfile_only,
+          additional_roots: vec![],
+        },
       )
       .await?;
     }

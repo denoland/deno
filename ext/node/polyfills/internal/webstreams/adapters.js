@@ -686,6 +686,8 @@ function newWritableStreamFromStreamWritable(streamWritable) {
   }, strategy);
 }
 
+let dep0201Warned = false;
+
 function newReadableWritablePairFromDuplex(
   duplex,
   options = kEmptyObject,
@@ -717,6 +719,20 @@ function newReadableWritablePairFromDuplex(
 
   if (!isWritable(duplex)) {
     writable.close();
+  }
+
+  // `option.type` is a deprecated alias for `option.readableType`
+  // matches Node's `lib/internal/webstreams/adapters.js#L655` DEP0201
+  if (options.readableType == null && options.type != null) {
+    if (!dep0201Warned) {
+      dep0201Warned = true;
+      lazyProcess().default.emitWarning(
+        "Passing 'options.type' to Duplex.toWeb() is deprecated. " +
+          "To specify the ReadableStream type, use 'options.readableType'.",
+        "DeprecationWarning",
+        "DEP0201",
+      );
+    }
   }
 
   const readableType = options?.readableType || options?.type;

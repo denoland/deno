@@ -1579,6 +1579,7 @@ impl JsRuntime {
     let ext_loader =
       Rc::new(ExtModuleLoader::new(sources, ext_code_cache.clone()));
     *module_map.loader.borrow_mut() = ext_loader.clone();
+    module_map.set_loading_internal_modules(true);
 
     // Next, load the extension modules as side modules (but do not execute them)
     for module in modules {
@@ -1642,6 +1643,7 @@ impl JsRuntime {
     }
 
     let module_map = realm.0.module_map();
+    module_map.set_loading_internal_modules(false);
     *module_map.loader.borrow_mut() = loader;
     ext_loader.finalize()?;
 
