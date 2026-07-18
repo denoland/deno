@@ -5,7 +5,11 @@
       "output": "true\ntrue\n"
     },
     "some": {
-      "args": "run --ignore-read=deno.json main.ts",
+      // data.txt is explicitly denied so it stays NotCapable (false) rather
+      // than becoming readable under the default cwd read confinement; this
+      // keeps the test's contrast between an ignored path (NotFound, true) and
+      // a non-ignored, non-readable path (NotCapable, false).
+      "args": "run --ignore-read=deno.json --deny-read=data.txt main.ts",
       "output": "true\nfalse\n"
     },
     "some_allow_env": {

@@ -3605,6 +3605,106 @@ pub struct PermissionsOptions {
   pub prompt: bool,
 }
 
+/// Appends `path` and, when it resolves, its canonicalized form to `paths`,
+/// skipping duplicates. Both forms are recorded so that read permission
+/// descriptors match regardless of symlinked prefixes (for example macOS's
+/// `/tmp` -> `/private/tmp` and the `/var/folders` temp dirs, which are
+/// canonicalized at permission-check time).
+fn push_path_with_canonicalized(paths: &mut Vec<PathBuf>, path: PathBuf) {
+  if !paths.contains(&path) {
+    paths.push(path.clone());
+  }
+  #[allow(clippy::disallowed_methods, reason = "resolving default read paths")]
+  if let Ok(canonical) = path.canonicalize() {
+    let canonical = deno_path_util::strip_unc_prefix(canonical);
+    if !paths.contains(&canonical) {
+      paths.push(canonical);
+    }
+  }
+}
+
+/// The default read-confinement allow-list: the process-start cwd and the OS
+/// temp directory. Each entry contributes its raw and canonicalized form (see
+/// `push_path_with_canonicalized`). The OS temp directory honors the `TMPDIR`
+/// env var via `std::env::temp_dir`.
+fn default_read_confinement_paths(initial_cwd: &Path) -> Vec<String> {
+  let mut paths: Vec<PathBuf> = Vec::with_capacity(4);
+  push_path_with_canonicalized(&mut paths, initial_cwd.to_path_buf());
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "resolving the OS temp dir (honors TMPDIR) for the default read confinement"
+  )]
+  let temp_dir = std::env::temp_dir();
+  push_path_with_canonicalized(&mut paths, temp_dir);
+  paths
+    .into_iter()
+    .map(|path| path.to_string_lossy().into_owned())
+    .collect()
+}
+
+/// Merges `additions` into `allow_read`, preserving the "allow all" meaning of
+/// an empty allow-list. When `allow_read` is `None` it becomes a fresh list of
+/// the additions; when it is a non-empty list the additions are appended
+/// (skipping duplicates); when it is `Some` but empty (allow all) it is left
+/// untouched. Mirrors `merge_default_allow_env` for read paths.
+fn merge_default_allow_read(
+  allow_read: &mut Option<Vec<String>>,
+  additions: Vec<String>,
+) {
+  match allow_read {
+    None => {
+      *allow_read = Some(additions);
+    }
+    Some(list) if list.is_empty() => {
+      // Empty list means "allow all"; adding paths would narrow it. Leave it.
+    }
+    Some(list) => {
+      for addition in additions {
+        if !list.iter().any(|existing| existing == &addition) {
+          list.push(addition);
+        }
+      }
+    }
+  }
+}
+
+/// Confines default read access to the process-start cwd and the OS temp
+/// directory. This replaces the historical deny-by-default read behavior:
+/// instead of prompting for every read outside a granted path, ordinary
+/// programs may read their own working directory and the temp dir without a
+/// prompt, while reads elsewhere on disk still prompt in a TTY and deny
+/// non-interactively.
+///
+/// This is deny-respecting and additive (mirroring the default env allowlist):
+/// - A global read deny/ignore (bare `--deny-read` / `--ignore-read`, i.e. an
+///   empty list meaning "deny/ignore all reads") neutralizes read entirely.
+///   The default must not resurrect paths through it (a specific granted
+///   descriptor would win over a global deny in permission resolution), so it
+///   is skipped in that case and deny still wins / ignore still ignores.
+/// - `--deny-read=<path>` composes on top: it is not global, so the default
+///   cwd+temp grant is still applied and the denied path is subtracted from it
+///   (deny always wins).
+/// - An explicit `--allow-read=<path>` composes on top too: cwd and temp are
+///   appended so `--allow-read=/data` grants cwd + temp + `/data`. Only bare
+///   `--allow-read` / `-A` (an empty "allow all" list) is left untouched.
+///
+/// Callers that only want this for certain subcommands should guard the call;
+/// the standalone/compiled runtime applies it unconditionally since a compiled
+/// app always runs user code.
+pub fn apply_default_read_confinement(
+  options: &mut PermissionsOptions,
+  initial_cwd: &Path,
+) {
+  let is_global = |list: &Option<Vec<String>>| matches!(list, Some(entries) if entries.is_empty());
+  if is_global(&options.deny_read) || is_global(&options.ignore_read) {
+    return;
+  }
+  merge_default_allow_read(
+    &mut options.allow_read,
+    default_read_confinement_paths(initial_cwd),
+  );
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum PermissionsFromOptionsError {
   #[error("{0}")]
@@ -4013,6 +4113,25 @@ impl PermissionsContainer {
     descriptor_parser: Arc<dyn PermissionDescriptorParser>,
   ) -> Self {
     Self::new(descriptor_parser, Permissions::allow_all())
+  }
+
+  /// Grants read access to `path` and everything beneath it by inserting a
+  /// granted read descriptor built with the container's descriptor parser.
+  /// Used by the default read confinement to widen read to this program's own
+  /// resolved npm package folders (the packages it actually imports) without
+  /// opening the whole global npm cache. This is a real grant, so existing deny
+  /// descriptors still take precedence over it.
+  pub fn grant_read_path(&self, path: &Path) -> Result<(), PathResolveError> {
+    let desc = self
+      .descriptor_parser
+      .parse_read_descriptor(&path.to_string_lossy())?;
+    self
+      .inner
+      .lock()
+      .read
+      .descriptors
+      .insert(UnaryPermissionDesc::Granted(desc));
+    Ok(())
   }
 
   pub fn create_child_permissions(

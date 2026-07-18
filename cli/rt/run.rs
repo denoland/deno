@@ -1642,6 +1642,30 @@ pub async fn run_with_options(
   let has_desktop = op_state_init.is_some();
   let permissions = {
     let mut permissions = metadata.permissions;
+
+    // Confine default read access to the cwd and the OS temp dir for parity
+    // with `deno run`. A compiled app always runs user code, so this is
+    // unconditional (there is no prompt-default subcommand gate here). It stays
+    // deny-respecting and additive: cwd+temp are appended to any scoped
+    // baked-in `--allow-read`, only `-A` (allow all) is left untouched, and a
+    // global `--deny-read`/`--ignore-read` baked into the app skips it.
+    //
+    // This runs before `grant_vfs_read_access` on purpose: applying the
+    // confinement first fills in / appends cwd+temp, and the VFS root is then
+    // appended onto that list (so both the embedded files and cwd+temp are
+    // readable).
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "the compiled app's process-start cwd for the default read confinement"
+    )]
+    let initial_cwd = sys.env_current_dir();
+    if let Ok(initial_cwd) = initial_cwd {
+      deno_runtime::deno_permissions::apply_default_read_confinement(
+        &mut permissions,
+        &initial_cwd,
+      );
+    }
+
     // grant read access to the vfs
     grant_vfs_read_access(&mut permissions, &root_path);
 

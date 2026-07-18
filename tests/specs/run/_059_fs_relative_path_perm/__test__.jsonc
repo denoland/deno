@@ -1,5 +1,5 @@
 {
-  "args": "run 059_fs_relative_path_perm.ts",
+  "args": "run --deny-read=non-existent 059_fs_relative_path_perm.ts",
   "output": "059_fs_relative_path_perm.ts.out",
   "exitCode": 1
 }

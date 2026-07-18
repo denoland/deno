@@ -1,0 +1,3 @@
+read allowed file: ok
+read other cwd file: ok
+read outside: NotCapable --allow-read

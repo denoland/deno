@@ -1,5 +1,8 @@
 {
-  "args": "run main.js",
+  // secret.txt is denied so the local-file import inside the npm package stays
+  // read-denied under the default cwd read confinement, keeping the test
+  // focused on the permission requirement.
+  "args": "run --deny-read=secret.txt main.js",
   "output": "error.out",
   "exitCode": 1
 }

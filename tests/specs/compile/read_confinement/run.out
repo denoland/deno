@@ -1,0 +1,2 @@
+read cwd: ok
+read outside: NotCapable --allow-read

@@ -1206,11 +1206,16 @@ impl CliOptions {
     dir: &WorkspaceDirectory,
   ) -> Result<PermissionsOptions, AnyError> {
     let config_permissions = self.resolve_config_permissions_for_dir(dir)?;
+    let has_config_permissions = config_permissions.is_some();
     let mut permissions_options = flags_to_permissions_options(
       &self.flags.permissions,
       config_permissions,
     )?;
     self.augment_import_permissions(&mut permissions_options);
+    self.apply_default_read_confinement(
+      &mut permissions_options,
+      has_config_permissions,
+    );
     if let DenoSubcommand::Serve(serve_flags) = &self.flags.subcommand {
       augment_permissions_with_serve_flags(
         &mut permissions_options,
@@ -1218,6 +1223,91 @@ impl CliOptions {
       )?;
     }
     Ok(permissions_options)
+  }
+
+  /// Whether the current subcommand executes user code with the prompt-based
+  /// permission defaults. `deno eval` and `deno x` already imply allow-all, and
+  /// `deno compile` bakes permissions at compile time (the standalone runtime
+  /// applies the read confinement directly), so the default read confinement
+  /// only applies to these subcommands from the CLI.
+  fn runs_user_code_with_prompt_defaults(&self) -> bool {
+    matches!(
+      self.flags.subcommand,
+      DenoSubcommand::Run(_)
+        | DenoSubcommand::Serve(_)
+        | DenoSubcommand::Test(_)
+        | DenoSubcommand::Bench(_)
+        | DenoSubcommand::Task(_)
+        | DenoSubcommand::Repl(_)
+    )
+  }
+
+  /// Applies the default read confinement (cwd + OS temp dir) to the computed
+  /// permission options for subcommands that execute user code with the
+  /// prompt-based defaults. The standalone/compiled runtime applies the same
+  /// confinement directly (without this guard) since a compiled app always runs
+  /// user code. The shared helper preserves the deny-respecting/additive
+  /// semantics: cwd+temp are appended to a scoped `--allow-read=<path>`, and
+  /// only `-A`/bare `--allow-read` (allow all) is left untouched.
+  ///
+  /// It is also skipped when the user requested a config-file permission set
+  /// (via `-P`) or one is in effect (a subcommand default set): selecting a
+  /// permission set is an explicit permission choice, so the default must not
+  /// inject cwd+temp read into a set that intentionally omits read, nor grant
+  /// read when a requested set does not exist.
+  fn apply_default_read_confinement(
+    &self,
+    options: &mut PermissionsOptions,
+    has_config_permissions: bool,
+  ) {
+    if !self.runs_user_code_with_prompt_defaults()
+      || has_config_permissions
+      || self.flags.permission_set.is_some()
+    {
+      return;
+    }
+    deno_runtime::deno_permissions::apply_default_read_confinement(
+      options,
+      self.initial_cwd(),
+    );
+  }
+
+  /// Whether the default read confinement was applied to this invocation, i.e.
+  /// no config-file permission set is in effect, read is not globally
+  /// denied/ignored, and read is not already "allow all". Mirrors
+  /// `apply_default_read_confinement` so callers outside permission construction
+  /// (the module loader, which widens read to this program's resolved npm
+  /// package folders) act only when the confinement is active. Must stay in
+  /// sync with `apply_default_read_confinement`.
+  ///
+  /// Because the confinement is additive, this stays true even when the user
+  /// passed a scoped `--allow-read=<path>` (cwd+temp are appended to it), so the
+  /// per-imported-package grant still fires. It is only false when read is fully
+  /// allowed (`-A`/bare `--allow-read`) or globally denied/ignored, or when a
+  /// permission set overrides the default.
+  pub fn default_read_confinement_applied(&self) -> bool {
+    if !self.runs_user_code_with_prompt_defaults()
+      || self.flags.permission_set.is_some()
+    {
+      return false;
+    }
+    let Ok(config_permissions) =
+      self.resolve_config_permissions_for_dir(&self.start_dir)
+    else {
+      return false;
+    };
+    if config_permissions.is_some() {
+      return false;
+    }
+    let Ok(options) =
+      flags_to_permissions_options(&self.flags.permissions, config_permissions)
+    else {
+      return false;
+    };
+    let is_global = |list: &Option<Vec<String>>| matches!(list, Some(entries) if entries.is_empty());
+    !is_global(&options.allow_read)
+      && !is_global(&options.deny_read)
+      && !is_global(&options.ignore_read)
   }
 
   fn resolve_config_permissions_for_dir<'a>(

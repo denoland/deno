@@ -1,0 +1,2 @@
+read own package file: self-package-data
+read other package file: NotCapable --allow-read
