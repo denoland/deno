@@ -211,7 +211,8 @@ function Cipheriv(
   this._needsBlockCache = !this._isAesWrap &&
     !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
       cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
-      cipher == "aes-256-ctr" || cipher == "chacha20-poly1305");
+      cipher == "aes-256-ctr" || cipher == "chacha20" ||
+      cipher == "chacha20-poly1305");
   this._authTag = undefined;
   this._autoPadding = true;
   this._finalized = false;
@@ -228,12 +229,12 @@ Cipheriv.prototype.final = function (
     throw new ERR_CRYPTO_INVALID_STATE("final");
   }
 
+  _lazyInitCipherDecoder(this, encoding);
+
   if (this._isAesWrap) {
     this._finalized = true;
-    return encoding === "buffer" ? Buffer.from([]) : "";
+    return encoding === "buffer" ? Buffer.from([]) : this._decoder!.end();
   }
-
-  _lazyInitCipherDecoder(this, encoding);
 
   const bs = this._blockSize;
   const buf = new FastBuffer(bs);
@@ -245,7 +246,7 @@ Cipheriv.prototype.final = function (
     const maybeTag = op_node_cipheriv_take(this._context);
     if (maybeTag) this._authTag = Buffer.from(maybeTag);
     this._finalized = true;
-    return encoding === "buffer" ? Buffer.from([]) : "";
+    return encoding === "buffer" ? Buffer.from([]) : this._decoder!.end();
   }
 
   if (
@@ -266,7 +267,7 @@ Cipheriv.prototype.final = function (
   if (maybeTag) {
     this._authTag = Buffer.from(maybeTag);
     this._finalized = true;
-    return encoding === "buffer" ? Buffer.from([]) : "";
+    return encoding === "buffer" ? Buffer.from([]) : this._decoder!.end();
   }
 
   this._finalized = true;
@@ -511,7 +512,8 @@ function Decipheriv(
   this._needsBlockCache = !this._isAesWrap &&
     !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
       cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
-      cipher == "aes-256-ctr" || cipher == "chacha20-poly1305");
+      cipher == "aes-256-ctr" || cipher == "chacha20" ||
+      cipher == "chacha20-poly1305");
   this._isGcmMode = cipher == "aes-128-gcm" || cipher == "aes-192-gcm" ||
     cipher == "aes-256-gcm";
   this._authTagLength = authTagLength;
@@ -530,12 +532,12 @@ Decipheriv.prototype.final = function (
     throw new ERR_CRYPTO_INVALID_STATE("final");
   }
 
+  _lazyInitDecipherDecoder(this, encoding);
+
   if (this._isAesWrap) {
     this._finalized = true;
-    return encoding === "buffer" ? Buffer.from([]) : "";
+    return encoding === "buffer" ? Buffer.from([]) : this._decoder!.end();
   }
-
-  _lazyInitDecipherDecoder(this, encoding);
 
   const bs = this._blockSize;
   let buf = new FastBuffer(bs);
@@ -552,7 +554,7 @@ Decipheriv.prototype.final = function (
     TypedArrayPrototypeGetByteLength(this._cache.cache) === 0
   ) {
     this._finalized = true;
-    return encoding === "buffer" ? Buffer.from([]) : "";
+    return encoding === "buffer" ? Buffer.from([]) : this._decoder!.end();
   }
   if (TypedArrayPrototypeGetByteLength(this._cache.cache) != bs) {
     throw opensslError(

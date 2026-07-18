@@ -1290,18 +1290,10 @@ impl JsRuntime {
       // them and `core.loadExtScript()` / lazy ESM imports need to find them
       // here. (When there is no snapshot, the same sources are loaded from
       // disk through `Extension.lazy_loaded_*_files` instead.)
-      for (specifier, code) in options.residual_lazy_js_sources {
-        module_map.add_lazy_loaded_script_source(
-          crate::ModuleName::from_static(specifier),
-          crate::ModuleCodeString::from_static(code),
-        );
-      }
-      for (specifier, code) in options.residual_lazy_esm_sources {
-        module_map.add_lazy_loaded_esm_source(
-          crate::ModuleName::from_static(specifier),
-          crate::ModuleCodeString::from_static(code),
-        );
-      }
+      module_map.add_residual_lazy_loaded_sources(
+        options.residual_lazy_js_sources,
+        options.residual_lazy_esm_sources,
+      );
 
       let _phase = startup_phase_begin();
       js_runtime.init_extension_js(
@@ -1587,6 +1579,7 @@ impl JsRuntime {
     let ext_loader =
       Rc::new(ExtModuleLoader::new(sources, ext_code_cache.clone()));
     *module_map.loader.borrow_mut() = ext_loader.clone();
+    module_map.set_loading_internal_modules(true);
 
     // Next, load the extension modules as side modules (but do not execute them)
     for module in modules {
@@ -1650,6 +1643,7 @@ impl JsRuntime {
     }
 
     let module_map = realm.0.module_map();
+    module_map.set_loading_internal_modules(false);
     *module_map.loader.borrow_mut() = loader;
     ext_loader.finalize()?;
 

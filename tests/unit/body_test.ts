@@ -257,6 +257,61 @@ Deno.test(
   },
 );
 
+Deno.test(async function bodyMultipartFormDataRejectsTooManyPartHeaders() {
+  const boundary = "AaB03x";
+  const partHeaders = [
+    'Content-Disposition: form-data; name="field"',
+  ];
+  for (let i = 0; i < 128; i++) {
+    partHeaders.push(`X-Deno-Test-${i}: ${i}`);
+  }
+  const payload = [
+    `--${boundary}`,
+    ...partHeaders,
+    "",
+    "value",
+    `--${boundary}--`,
+  ].join("\r\n");
+
+  const body = buildBody(
+    new TextEncoder().encode(payload),
+    new Headers({
+      "Content-Type": `multipart/form-data; boundary=${boundary}`,
+    }),
+  );
+
+  await assertRejects(
+    () => body.formData(),
+    TypeError,
+    "too many headers",
+  );
+});
+
+Deno.test(async function bodyMultipartFormDataRejectsLargePartHeaders() {
+  const boundary = "AaB03x";
+  const payload = [
+    `--${boundary}`,
+    'Content-Disposition: form-data; name="field"',
+    `X-Deno-Large: ${"a".repeat(16 * 1024)}`,
+    "",
+    "value",
+    `--${boundary}--`,
+  ].join("\r\n");
+
+  const body = buildBody(
+    new TextEncoder().encode(payload),
+    new Headers({
+      "Content-Type": `multipart/form-data; boundary=${boundary}`,
+    }),
+  );
+
+  await assertRejects(
+    () => body.formData(),
+    TypeError,
+    "headers are too large",
+  );
+});
+
 Deno.test(
   async function bodyMultipartFormDataEmbeddedBoundaryTextInFileContent() {
     const boundary = "AaB03x";

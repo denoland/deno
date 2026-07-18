@@ -916,6 +916,13 @@ struct SerializedDesktopAppConfig {
   /// AppUserModelID. Optional; when omitted a synthetic
   /// `com.deno.desktop.<slug>` is generated from the app name.
   pub identifier: Option<String>,
+  /// Custom URL schemes (deep links) the app registers with the OS, e.g.
+  /// `["acme"]` to handle `acme://...` links. Each entry is a bare scheme
+  /// (no `://`). Registered as `CFBundleURLTypes` (macOS), an
+  /// `x-scheme-handler/<scheme>` MIME type (Linux `.desktop`), and an
+  /// `HKCU\Software\Classes\<scheme>` protocol handler (Windows).
+  #[serde(rename = "deepLinks")]
+  pub deep_links: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
@@ -968,6 +975,7 @@ impl SerializedDesktopConfig {
       app: self.app.map(|a| DesktopAppConfig {
         name: a.name,
         identifier: a.identifier,
+        deep_links: a.deep_links,
         icons: a.icons.map(|i| {
           fn resolve_icon_value(
             v: SerializedDesktopIconValue,
@@ -1041,6 +1049,7 @@ pub struct DesktopAppConfig {
   pub name: Option<String>,
   pub identifier: Option<String>,
   pub icons: Option<DesktopIconsConfig>,
+  pub deep_links: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -2631,10 +2640,7 @@ impl ConfigFile {
     ) -> Result<chrono::DateTime<chrono::Utc>, MinimumDependencyAgeParseError>
     {
       match minutes.as_i64() {
-        Some(minutes) => {
-          let now = chrono::DateTime::<chrono::Utc>::from(sys.sys_time_now());
-          Ok(now - chrono::Duration::minutes(minutes))
-        }
+        Some(minutes) => Ok(crate::util::date_from_minutes(sys, minutes)?),
         None => Err(MinimumDependencyAgeParseError::InvalidNumber),
       }
     }
@@ -3300,6 +3306,21 @@ mod tests {
     assert!(matches!(
       err,
       MinimumDependencyAgeParseError::UnsupportedObject(_)
+    ));
+
+    // Out-of-range numeric values should return an error instead of panicking.
+    let specifier = Url::parse("file:///deno/deno.json").unwrap();
+    let config_file =
+      ConfigFile::new(r#"{ "minimumDependencyAge": 138939752218 }"#, specifier)
+        .unwrap();
+    let err = config_file
+      .to_minimum_dependency_age_config(&TestEnv)
+      .unwrap_err();
+    assert!(matches!(
+      err,
+      MinimumDependencyAgeParseError::ParseDateOrDuration(
+        crate::ParseDateOrDurationError::OutOfRange
+      )
     ));
   }
 

@@ -30,7 +30,8 @@ interface ImportMeta {
 
   /** The absolute path of the current module.
    *
-   * This property is only provided for local modules (ie. using `file://` URLs).
+   * For local modules (ie. using `file://` URLs) this is the module's path; for
+   * non-local modules (eg. `https://` or `data:`) it is an empty string.
    *
    * Example:
    * ```
@@ -41,11 +42,12 @@ interface ImportMeta {
    * console.log(import.meta.filename); // C:\alice\my_module.ts
    * ```
    */
-  filename?: string;
+  filename: string;
 
   /** The absolute path of the directory containing the current module.
    *
-   * This property is only provided for local modules (ie. using `file://` URLs).
+   * For local modules (ie. using `file://` URLs) this is the directory path; for
+   * non-local modules (eg. `https://` or `data:`) it is an empty string.
    *
    * * Example:
    * ```
@@ -56,7 +58,7 @@ interface ImportMeta {
    * console.log(import.meta.dirname); // C:\alice
    * ```
    */
-  dirname?: string;
+  dirname: string;
 
   /** A flag that indicates if the current module is the main module that was
    * called when starting the program under Deno.
@@ -5675,7 +5677,16 @@ declare namespace Deno {
   export interface ServeHandlerInfo<Addr extends Deno.Addr = Deno.Addr> {
     /** The remote address of the connection. */
     remoteAddr: Addr;
-    /** The completion promise */
+    /** A promise that settles when the request has been fully handled and the
+     * response has been sent.
+     *
+     * It resolves once the response (including its body) has been completely
+     * delivered to the client. It **rejects** with a
+     * {@linkcode Deno.errors.Interrupted} error if the response could not be
+     * sent successfully — for example when the client
+     * disconnects before the response body has been fully written. Attach a
+     * `.catch()` (or wrap an `await` in `try`/`catch`) if you need to observe
+     * these failures. */
     completed: Promise<void>;
   }
 
@@ -6868,6 +6879,11 @@ declare namespace Deno {
     allowHost?: boolean;
     /** Sets the local address where the socket will connect from. */
     localAddress?: string;
+    /** Sets the max HTTP/2 header list size (in bytes) that the client will
+     * accept. This maps to the `SETTINGS_MAX_HEADER_LIST_SIZE` HTTP/2 setting.
+     *
+     * If not set, the default value from the underlying HTTP library is used. */
+    http2MaxHeaderListSize?: number;
   }
 
   /**

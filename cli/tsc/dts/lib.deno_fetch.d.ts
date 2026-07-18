@@ -45,7 +45,8 @@ interface FormData extends DomIterable<string, FormDataEntryValue> {
  *
  * @category Fetch
  */
-declare var FormData: {
+declare var FormData: typeof globalThis extends
+  { document: any; FormData: infer T } ? T : {
   readonly prototype: FormData;
   new (): FormData;
 };
@@ -132,7 +133,8 @@ interface Headers extends DomIterable<string, string> {
  *
  * @category Fetch
  */
-declare var Headers: {
+declare var Headers: typeof globalThis extends
+  { document: any; Headers: infer T } ? T : {
   readonly prototype: Headers;
   new (init?: HeadersInit): Headers;
 };
@@ -362,7 +364,8 @@ interface Request extends Body {
  *
  * @category Fetch
  */
-declare var Request: {
+declare var Request: typeof globalThis extends
+  { document: any; Request: infer T } ? T : {
   readonly prototype: Request;
   new (input: RequestInfo | URL, init?: RequestInit): Request;
 };
@@ -402,7 +405,8 @@ interface Response extends Body {
  *
  * @category Fetch
  */
-declare var Response: {
+declare var Response: typeof globalThis extends
+  { document: any; Response: infer T } ? T : {
   readonly prototype: Response;
   new (body?: BodyInit | null, init?: ResponseInit): Response;
   json(data: unknown, init?: ResponseInit): Response;
@@ -516,7 +520,8 @@ interface EventSource extends EventTarget {
  *
  * @category Fetch
  */
-declare var EventSource: {
+declare var EventSource: typeof globalThis extends
+  { document: any; EventSource: infer T } ? T : {
   prototype: EventSource;
   new (url: string | URL, eventSourceInitDict?: EventSourceInit): EventSource;
   readonly CONNECTING: 0;

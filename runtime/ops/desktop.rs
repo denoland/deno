@@ -208,6 +208,10 @@ pub enum DesktopEvent {
   DockMenuClick { id: String },
   #[serde(rename_all = "camelCase")]
   DockReopen { has_visible_windows: bool },
+  /// A deep link (`<scheme>://...`) was opened and routed to this app, either
+  /// at launch (cold start) or while already running. Carries the full URL.
+  #[serde(rename_all = "camelCase")]
+  OpenUrl { url: String },
   #[serde(rename_all = "camelCase")]
   TrayClick { tray_id: u32 },
   #[serde(rename_all = "camelCase")]
@@ -313,7 +317,9 @@ pub trait DesktopApi: Send + Sync + 'static {
   /// `frameless` drops the title bar and standard window chrome.
   /// `no_activate` makes the window a floating, non-activating utility panel
   /// (used for tray / menu-bar popovers): it floats above normal windows and
-  /// does not steal key focus from the foreground app when shown. Both are
+  /// does not steal key focus from the foreground app when shown.
+  /// `transparent` gives the window a transparent background so the page's own
+  /// alpha composites against whatever is behind the window. These are all
   /// creation-time properties and cannot be changed afterwards.
   fn create_window(
     &self,
@@ -322,6 +328,7 @@ pub trait DesktopApi: Send + Sync + 'static {
     frameless: bool,
     no_activate: bool,
     transparent_titlebar: bool,
+    transparent: bool,
   ) -> u32;
   /// Close a specific window.
   fn close_window(&self, window_id: u32);
@@ -342,6 +349,13 @@ pub trait DesktopApi: Send + Sync + 'static {
 
   fn is_always_on_top(&self, window_id: u32) -> bool;
   fn set_always_on_top(&self, window_id: u32, always_on_top: bool);
+
+  /// Overall window opacity in `0.0..=1.0` (1.0 == fully opaque). Fades the
+  /// whole window uniformly (chrome included), unlike the `transparent`
+  /// creation flag which honors the page's per-pixel alpha.
+  fn get_window_opacity(&self, window_id: u32) -> f64;
+  fn set_window_opacity(&self, window_id: u32, opacity: f64);
+
   fn is_visible(&self, window_id: u32) -> bool;
   fn show(&self, window_id: u32);
   fn hide(&self, window_id: u32);
@@ -558,12 +572,17 @@ impl BrowserWindow {
           .as_ref()
           .and_then(|o| o.transparent_titlebar)
           .unwrap_or(false);
+        let transparent = options
+          .as_ref()
+          .and_then(|o| o.transparent)
+          .unwrap_or(false);
         api.create_window(
           width,
           height,
           frameless,
           no_activate,
           transparent_titlebar,
+          transparent,
         )
       });
 
@@ -596,6 +615,9 @@ impl BrowserWindow {
       if let Some(always_on_top) = options.always_on_top {
         api.set_always_on_top(window_id, always_on_top);
       }
+      if let Some(opacity) = options.opacity {
+        api.set_window_opacity(window_id, opacity);
+      }
     }
 
     let window = BrowserWindow {
@@ -623,12 +645,17 @@ impl BrowserWindow {
     self.window_id
   }
 
+  // Keep the native primitive separate from DESKTOP_JS's public `bind`
+  // wrapper. The deferred fast-call upgrade may replace this symbol-backed
+  // method without overwriting the wrapper.
   #[fast]
+  #[symbol("Deno_privateDesktopBind")]
   fn bind(&self, #[string] name: &str) {
     self.api.bind(self.window_id, name);
   }
 
   #[fast]
+  #[symbol("Deno_privateDesktopUnbind")]
   fn unbind(&self, #[string] name: &str) {
     self.api.unbind(self.window_id, name);
   }
@@ -674,6 +701,16 @@ impl BrowserWindow {
   #[fast]
   fn set_always_on_top(&self, always_on_top: bool) {
     self.api.set_always_on_top(self.window_id, always_on_top);
+  }
+
+  #[fast]
+  fn get_opacity(&self) -> f64 {
+    self.api.get_window_opacity(self.window_id)
+  }
+
+  #[fast]
+  fn set_opacity(&self, opacity: f64) {
+    self.api.set_window_opacity(self.window_id, opacity);
   }
 
   #[fast]
@@ -843,9 +880,11 @@ struct BrowserWindowOptions {
   y: Option<i32>,
   resizable: Option<bool>,
   always_on_top: Option<bool>,
+  opacity: Option<f64>,
   frameless: Option<bool>,
   no_activate: Option<bool>,
   transparent_titlebar: Option<bool>,
+  transparent: Option<bool>,
 }
 
 #[derive(Clone, Debug, serde::Deserialize)]
@@ -1233,11 +1272,20 @@ pub fn send_error_report(url: &str, body: &str) {
 }
 
 #[op2(fast)]
-fn op_desktop_send_error_report(
-  state: &mut OpState,
-  #[string] url: &str,
-  #[string] body: &str,
-) {
+fn op_desktop_send_error_report(state: &mut OpState, #[string] body: &str) {
+  // The report destination is operator config — it is baked into the app at
+  // build time (`error_reporting_url`) and stored in `ERROR_REPORT_CONFIG`.
+  // It is deliberately NOT accepted from JS: this op is exposed on
+  // `core.ops` and survives `removeImportedOps()`, so any (untrusted) code
+  // in the runtime can call it. Trusting a caller-supplied URL would turn
+  // this into an unrestricted file-append (`file://`) or network-POST
+  // (`https://`) primitive that bypasses the `--allow-write`/`--allow-net`
+  // permission checks every other fs/net op performs.
+  let Some((url, _)) = error_report_config() else {
+    // No reporting URL configured (e.g. plain `deno run`, or a desktop app
+    // that didn't set one) — there is nowhere to send, so do nothing.
+    return;
+  };
   // Make sure the panic-hook path has a client too. The OpState client is
   // the one configured with the user's TLS roots/permissions, so we share
   // it across both code paths instead of creating an ad-hoc client.
@@ -1486,7 +1534,10 @@ impl Tray {
       })
   }
 
+  // DESKTOP_JS exposes the public `destroy` wrapper that also updates its tray
+  // registry. Keep the native primitive on a distinct symbol-backed slot.
   #[fast]
+  #[symbol("Deno_privateDesktopTrayDestroy")]
   fn destroy(&self) {
     self.api.destroy_tray(self.tray_id);
   }
@@ -1715,9 +1766,11 @@ mod tests {
   use deno_core::serde_json;
   use deno_core::serde_json::json;
 
+  use super::BrowserWindow;
   use super::DesktopEvent;
   use super::PendingBindResponses;
   use super::PermissionState;
+  use super::Tray;
   use super::dylib_magic_ok;
   use super::permission_state_to_web_string;
   use super::register_bind_call;
@@ -1729,6 +1782,42 @@ mod tests {
   // fail if you change a field name or remove a `#[serde(rename_all =
   // "camelCase")]` so you find out at test time, not at runtime in the
   // packaged app.
+
+  #[test]
+  fn js_wrapped_desktop_methods_use_private_symbols() {
+    for (object, methods) in [
+      (
+        BrowserWindow::DECL,
+        &["Deno_privateDesktopBind", "Deno_privateDesktopUnbind"][..],
+      ),
+      (Tray::DECL, &["Deno_privateDesktopTrayDestroy"][..]),
+    ] {
+      for name in methods {
+        let method = object
+          .methods
+          .iter()
+          .find(|method| method.name == *name)
+          .unwrap_or_else(|| panic!("missing method {name}"));
+        assert!(
+          method.symbol_for,
+          "{name} must not share a string property with its DESKTOP_JS wrapper"
+        );
+        let _ = method.fast_fn();
+      }
+    }
+
+    for (object, public_names) in [
+      (BrowserWindow::DECL, &["bind", "unbind"][..]),
+      (Tray::DECL, &["destroy"][..]),
+    ] {
+      for name in public_names {
+        assert!(
+          object.methods.iter().all(|method| method.name != *name),
+          "native method must not collide with the public {name} wrapper"
+        );
+      }
+    }
+  }
 
   #[test]
   fn app_menu_click_wire_shape() {

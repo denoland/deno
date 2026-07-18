@@ -16,6 +16,7 @@ use deno_core::CancelHandle;
 use deno_core::DetachedBuffer;
 use deno_core::FromV8;
 use deno_core::JsBuffer;
+use deno_core::JsRuntimeInspector;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RcRef;
@@ -28,6 +29,7 @@ use deno_web::Blob;
 use deno_web::BlobStoreTrait;
 use deno_web::JsMessageData;
 use deno_web::MessagePortError;
+use deno_web::RecvMessageData;
 use deno_web::Transferable;
 use deno_web::deserialize_js_transferables;
 use deno_web::serialize_transferables;
@@ -49,6 +51,17 @@ use crate::web_worker::run_web_worker;
 use crate::worker::FormatJsErrorFn;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "worker-options";
+
+/// Default OS stack size for the thread a worker's isolate runs on.
+///
+/// This is `deno_node`'s `DEFAULT_STACK_SIZE_MB`, which is what
+/// `resourceLimits.stackSizeMb` reports back to JS: without setting it here the
+/// thread would get Rust's 2MB default while we told the user it was 4MB. 2MB
+/// also leaves very little native headroom above V8's own JS stack limit
+/// (`--stack-size`, 1MB by default), so a raised `--stack-size` overflows the
+/// OS stack and aborts the process instead of raising `RangeError`.
+const DEFAULT_WORKER_STACK_SIZE_MB: usize =
+  deno_node::ops::worker_threads::DEFAULT_STACK_SIZE_MB;
 
 /// V8 resource limits for worker isolates, matching Node.js `resourceLimits`.
 #[derive(FromV8, Default, Clone)]
@@ -73,6 +86,8 @@ pub struct CreateWebWorkerArgs {
   /// normally by their own URLs.
   pub maybe_main_module_blob: Option<Arc<Blob>>,
   pub resource_limits: Option<ResourceLimits>,
+  pub wait_for_debugger_on_start: bool,
+  pub wait_for_page_wait_for_debugger: bool,
 }
 
 pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, SendableWebWorkerHandle)
@@ -279,6 +294,16 @@ fn op_create_worker(
   let parent_permissions = parent_permissions.clone();
   let create_web_worker_cb = state.borrow::<CreateWebWorkerCbHolder>().clone();
   let format_js_error_fn = state.borrow::<FormatJsErrorFnHolder>().clone();
+  let wait_for_debugger_on_start = state
+    .try_borrow::<Rc<JsRuntimeInspector>>()
+    .map(|inspector| inspector.should_wait_for_debugger_on_worker_start())
+    .unwrap_or(false);
+  let wait_for_page_wait_for_debugger = state
+    .try_borrow::<Rc<JsRuntimeInspector>>()
+    .map(|inspector| {
+      inspector.should_wait_for_page_wait_for_debugger_on_worker_start()
+    })
+    .unwrap_or(false);
   let worker_id = WorkerId::new();
 
   let module_specifier = deno_core::resolve_url(&specifier)?;
@@ -297,15 +322,17 @@ fn op_create_worker(
   let (handle_sender, handle_receiver) =
     std::sync::mpsc::sync_channel::<SendableWebWorkerHandle>(1);
 
-  // Setup new thread. If stackSizeMb is specified in resourceLimits,
-  // set the OS thread stack size to match Node.js behavior.
-  let mut thread_builder =
-    std::thread::Builder::new().name(format!("{worker_id}"));
-  if let Some(ref limits) = args.resource_limits
-    && let Some(stack_mb) = limits.stack_size_mb.filter(|&v| v > 0)
-  {
-    thread_builder = thread_builder.stack_size(stack_mb * 1024 * 1024);
-  }
+  // Setup new thread. stackSizeMb from resourceLimits wins, matching Node.js
+  // behavior; otherwise the isolate thread gets the default above rather than
+  // Rust's smaller 2MB one.
+  let stack_size_mb = args
+    .resource_limits
+    .as_ref()
+    .and_then(|limits| limits.stack_size_mb.filter(|&v| v > 0))
+    .unwrap_or(DEFAULT_WORKER_STACK_SIZE_MB);
+  let thread_builder = std::thread::Builder::new()
+    .name(format!("{worker_id}"))
+    .stack_size(stack_size_mb * 1024 * 1024);
   let maybe_worker_metadata = if let Some(data) = maybe_worker_metadata {
     let transferables =
       deserialize_js_transferables(state, data.transferables)?;
@@ -342,6 +369,8 @@ fn op_create_worker(
           maybe_worker_metadata,
           maybe_main_module_blob,
           resource_limits: args.resource_limits,
+          wait_for_debugger_on_start,
+          wait_for_page_wait_for_debugger,
         });
 
       // Send thread safe handle from newly created worker to host thread
@@ -509,7 +538,7 @@ async fn op_host_recv_ctrl(
 async fn op_host_recv_message(
   state: Rc<RefCell<OpState>>,
   #[scoped] id: WorkerId,
-) -> Result<Option<JsMessageData>, MessagePortError> {
+) -> Result<Option<RecvMessageData>, MessagePortError> {
   let (worker_handle, cancel_handle) = {
     let s = state.borrow();
     let workers_table = s.borrow::<WorkersTable>();
@@ -715,6 +744,10 @@ fn op_host_get_worker_cpu_usage(
   #[scoped] id: WorkerId,
   #[buffer] out: &mut [f64],
 ) {
+  if out.len() < 2 {
+    return;
+  }
+
   if let Some(worker_thread) = state.borrow::<WorkersTable>().get(&id) {
     let handle = worker_thread.cpu_thread_handle.load(Ordering::Acquire);
     if handle != 0 {
@@ -730,6 +763,10 @@ fn op_host_get_worker_cpu_usage(
 
 #[op2(fast)]
 fn op_current_thread_cpu_usage(#[buffer] out: &mut [f64]) {
+  if out.len() < 2 {
+    return;
+  }
+
   let handle = capture_current_thread_handle();
   let (user, system) = get_thread_cpu_usage_by_handle(handle);
   out[0] = user;

@@ -1,0 +1,17 @@
+{
+  "tests": {
+    "without_flag": {
+      "args": "check main.ts",
+      "output": "without_flag.out",
+      "exitCode": 1
+    },
+    "with_flag": {
+      // ignored: --desktop lib (Notification type) isn't injected into tsc.
+      // https://github.com/denoland/deno/issues/36085
+      "ignore": true,
+      "args": "check --desktop main.ts",
+      "output": "with_flag.out",
+      "exitCode": 0
+    }
+  }
+}

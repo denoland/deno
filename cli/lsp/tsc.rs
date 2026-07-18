@@ -5442,7 +5442,7 @@ fn span_with_context(
     use tracing_opentelemetry::OpenTelemetrySpanExt;
 
     if let Some(context) = &_state.context {
-      span.set_parent(context.clone());
+      let _ = span.set_parent(context.clone());
     }
     span.entered()
   }
@@ -5885,6 +5885,8 @@ fn run_tsc_thread(
   enable_tracing: Arc<AtomicBool>,
 ) {
   let has_inspector_server = maybe_inspector_server.is_some();
+  let runtime = create_basic_runtime();
+  let _guard = runtime.enter();
   // Shared with the isolate's near-heap-limit callback. `op_poll_requests`
   // keeps this updated with the in-flight request's cancellation token.
   let request_cancellation: Arc<Mutex<CancellationToken>> = Default::default();
@@ -6005,7 +6007,6 @@ fn run_tsc_thread(
   }
   .boxed_local();
 
-  let runtime = create_basic_runtime();
   runtime.block_on(tsc_future)
 }
 
@@ -7419,7 +7420,10 @@ mod tests {
       .await
       .unwrap()
       .unwrap();
-    assert_eq!(info.entries.len(), 22);
+    // 23 with stock TypeScript: `@types/node`'s `console` global exposes the
+    // `Console` constructor property in addition to the 22 log methods (the
+    // forked compiler suppressed it).
+    assert_eq!(info.entries.len(), 23);
     let details = ts_server
       .get_completion_details(
         snapshot.clone(),
@@ -7515,6 +7519,34 @@ mod tests {
           {
             "text": "void",
             "kind": "keyword"
+          },
+          {
+            "text": " ",
+            "kind": "space"
+          },
+          {
+            "text": "(",
+            "kind": "punctuation"
+          },
+          {
+            "text": "+",
+            "kind": "operator"
+          },
+          {
+            "text": "1",
+            "kind": "numericLiteral"
+          },
+          {
+            "text": " ",
+            "kind": "space"
+          },
+          {
+            "text": "overload",
+            "kind": "text"
+          },
+          {
+            "text": ")",
+            "kind": "punctuation"
           }
         ],
         "documentation": [

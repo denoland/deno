@@ -525,6 +525,8 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(
           &shared.sys,
         ),
+        wait_for_debugger_on_start: args.wait_for_debugger_on_start,
+        wait_for_page_wait_for_debugger: args.wait_for_page_wait_for_debugger,
       };
 
       let has_resource_limits = args.resource_limits.is_some();
@@ -984,15 +986,30 @@ impl LibMainWorker {
     Ok(())
   }
 
-  pub async fn run(&mut self) -> Result<i32, CoreError> {
-    log::debug!("main_module {}", self.main_module);
-
+  /// The "load phase": run any preload/require modules, then load and
+  /// first-evaluate the main module and fire the `load` event. This is
+  /// everything that happens before the steady-state event loop begins.
+  ///
+  /// It is factored out of [`Self::run`] so callers that need to treat
+  /// load-phase failures differently from steady-state failures (the desktop
+  /// runtime tags them as a `DesktopStartupError`) can wrap just this call
+  /// without hand-copying the rest of `run`.
+  pub async fn execute_load_phase(&mut self) -> Result<(), CoreError> {
     // Run preload modules first if they were defined
     self.execute_preload_modules().await?;
 
     self.execute_main_module().await?;
     self.worker.dispatch_load_event()?;
 
+    Ok(())
+  }
+
+  /// The "loop phase" that follows [`Self::execute_load_phase`]: drive the
+  /// event loop until the program is done, fire the unload / exit handlers,
+  /// and return the process exit code.
+  pub async fn run_event_loop_to_completion(
+    &mut self,
+  ) -> Result<i32, CoreError> {
     loop {
       self
         .worker
@@ -1013,6 +1030,13 @@ impl LibMainWorker {
     self.worker.run_napi_ref_finalizers();
 
     Ok(self.worker.exit_code())
+  }
+
+  pub async fn run(&mut self) -> Result<i32, CoreError> {
+    log::debug!("main_module {}", self.main_module);
+
+    self.execute_load_phase().await?;
+    self.run_event_loop_to_completion().await
   }
 
   #[inline]

@@ -36,8 +36,8 @@
                 }
               }
             ],
-            "startTimeUnixNano": [WILDCARD],
-            "timeUnixNano": [WILDCARD],
+            "startTimeUnixNano": "[WILDCARD]",
+            "timeUnixNano": "[WILDCARD]",
             "exemplars": [],
             "flags": 0,
             "asDouble": 1
@@ -51,8 +51,8 @@
                 }
               }
             ],
-            "startTimeUnixNano": [WILDCARD],
-            "timeUnixNano": [WILDCARD],
+            "startTimeUnixNano": "[WILDCARD]",
+            "timeUnixNano": "[WILDCARD]",
             "exemplars": [],
             "flags": 0,
             "asDouble": 1
@@ -96,8 +96,8 @@
                 }
               }
             ],
-            "startTimeUnixNano": [WILDCARD],
-            "timeUnixNano": [WILDCARD],
+            "startTimeUnixNano": "[WILDCARD]",
+            "timeUnixNano": "[WILDCARD]",
             "exemplars": [],
             "flags": 0,
             "asDouble": 1
@@ -111,8 +111,8 @@
                 }
               }
             ],
-            "startTimeUnixNano": [WILDCARD],
-            "timeUnixNano": [WILDCARD],
+            "startTimeUnixNano": "[WILDCARD]",
+            "timeUnixNano": "[WILDCARD]",
             "exemplars": [],
             "flags": 0,
             "asDouble": 1
@@ -138,8 +138,8 @@
                 }
               }
             ],
-            "startTimeUnixNano": [WILDCARD],
-            "timeUnixNano": [WILDCARD],
+            "startTimeUnixNano": "[WILDCARD]",
+            "timeUnixNano": "[WILDCARD]",
             "exemplars": [],
             "flags": 0,
             "asDouble": 1
@@ -163,8 +163,8 @@
                 }
               }
             ],
-            "startTimeUnixNano": [WILDCARD],
-            "timeUnixNano": [WILDCARD],
+            "startTimeUnixNano": "[WILDCARD]",
+            "timeUnixNano": "[WILDCARD]",
             "exemplars": [],
             "flags": 0,
             "asDouble": 1
@@ -188,9 +188,9 @@
                 }
               }
             ],
-            "startTimeUnixNano": [WILDCARD],
-            "timeUnixNano": [WILDCARD],
-            "count": 1,
+            "startTimeUnixNano": "[WILDCARD]",
+            "timeUnixNano": "[WILDCARD]",
+            "count": "1",
             "sum": 1,
             "bucketCounts": [
               [WILDLINE],
@@ -252,9 +252,9 @@
                 }
               }
             ],
-            "startTimeUnixNano": [WILDCARD],
-            "timeUnixNano": [WILDCARD],
-            "count": 1,
+            "startTimeUnixNano": "[WILDCARD]",
+            "timeUnixNano": "[WILDCARD]",
+            "count": "1",
             "sum": 1,
             "bucketCounts": [
               [WILDLINE],
@@ -309,28 +309,8 @@
         "dataPoints": [
           {
             "attributes": [],
-            "startTimeUnixNano": [WILDCARD],
-            "timeUnixNano": [WILDCARD],
-            "exemplars": [],
-            "flags": 0,
-            "asDouble": 1
-          }
-        ],
-        "aggregationTemporality": 2,
-        "isMonotonic": true
-      }
-    },
-    {
-      "name": "observable_counter",
-      "description": "Example of a ObservableCounter",
-      "unit": "",
-      "metadata": [],
-      "sum": {
-        "dataPoints": [
-          {
-            "attributes": [],
-            "startTimeUnixNano": [WILDCARD],
-            "timeUnixNano": [WILDCARD],
+            "startTimeUnixNano": "[WILDCARD]",
+            "timeUnixNano": "[WILDCARD]",
             "exemplars": [],
             "flags": 0,
             "asDouble": 1
@@ -349,26 +329,8 @@
         "dataPoints": [
           {
             "attributes": [],
-            "startTimeUnixNano": [WILDCARD],
-            "timeUnixNano": [WILDCARD],
-            "exemplars": [],
-            "flags": 0,
-            "asDouble": 1
-          }
-        ]
-      }
-    },
-    {
-      "name": "observable_gauge",
-      "description": "Example of a ObservableGauge",
-      "unit": "",
-      "metadata": [],
-      "gauge": {
-        "dataPoints": [
-          {
-            "attributes": [],
-            "startTimeUnixNano": [WILDCARD],
-            "timeUnixNano": [WILDCARD],
+            "startTimeUnixNano": "[WILDCARD]",
+            "timeUnixNano": "[WILDCARD]",
             "exemplars": [],
             "flags": 0,
             "asDouble": 1
@@ -385,28 +347,8 @@
         "dataPoints": [
           {
             "attributes": [],
-            "startTimeUnixNano": [WILDCARD],
-            "timeUnixNano": [WILDCARD],
-            "exemplars": [],
-            "flags": 0,
-            "asDouble": 1
-          }
-        ],
-        "aggregationTemporality": 2,
-        "isMonotonic": false
-      }
-    },
-    {
-      "name": "observable_up_down_counter",
-      "description": "Example of a ObservableUpDownCounter",
-      "unit": "",
-      "metadata": [],
-      "sum": {
-        "dataPoints": [
-          {
-            "attributes": [],
-            "startTimeUnixNano": [WILDCARD],
-            "timeUnixNano": [WILDCARD],
+            "startTimeUnixNano": "[WILDCARD]",
+            "timeUnixNano": "[WILDCARD]",
             "exemplars": [],
             "flags": 0,
             "asDouble": 1
@@ -432,8 +374,8 @@
                 }
               }
             ],
-            "startTimeUnixNano": [WILDCARD],
-            "timeUnixNano": [WILDCARD],
+            "startTimeUnixNano": "[WILDCARD]",
+            "timeUnixNano": "[WILDCARD]",
             "exemplars": [],
             "flags": 0,
             "asDouble": -1
@@ -459,8 +401,8 @@
                 }
               }
             ],
-            "startTimeUnixNano": [WILDCARD],
-            "timeUnixNano": [WILDCARD],
+            "startTimeUnixNano": "[WILDCARD]",
+            "timeUnixNano": "[WILDCARD]",
             "exemplars": [],
             "flags": 0,
             "asDouble": -1

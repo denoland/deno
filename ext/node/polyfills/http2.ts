@@ -74,6 +74,7 @@ const {
   kIncomingMessage,
   kServerResponse,
   notifyAddressOverrideServing,
+  SERVER_KIND_NODE_HTTP2,
   startOverrideListener,
   Server: HttpServer,
   setupConnectionsTracking,
@@ -525,6 +526,7 @@ const kStreamEventEmitted = Symbol("kStreamEventEmitted");
 const kRawHeaders = Symbol("raw-headers");
 const kSentTrailers = Symbol("sent-trailers");
 const kServer = Symbol("server");
+const kSocketDataListener = Symbol("socket-data-listener");
 const kState = Symbol("state");
 const kType = Symbol("type");
 const kWriteGeneric = Symbol("write-generic");
@@ -840,7 +842,7 @@ const proxySocketHandler = {
 
 function onPing(payload, isAck) {
   const session = this[kOwner];
-  if (session.destroyed) {
+  if (session === undefined || session.destroyed) {
     return;
   }
   session[kUpdateTimer]();
@@ -963,7 +965,7 @@ function doStreamClose(stream, code) {
 // Resets the cached settings.
 function onSettings() {
   const session = this[kOwner];
-  if (session.destroyed) {
+  if (session === undefined || session.destroyed) {
     return;
   }
   session[kUpdateTimer]();
@@ -977,7 +979,7 @@ function onSettings() {
 // session (which may, in turn, forward it on to the server)
 function onPriority(id, parent, weight, exclusive) {
   const session = this[kOwner];
-  if (session.destroyed) {
+  if (session === undefined || session.destroyed) {
     return;
   }
   debugStream(
@@ -999,7 +1001,7 @@ function onPriority(id, parent, weight, exclusive) {
 // frame. This should be exceedingly rare.
 function onFrameError(id, type, code) {
   const session = this[kOwner];
-  if (session.destroyed) {
+  if (session === undefined || session.destroyed) {
     return;
   }
   debugSessionObj(
@@ -1027,7 +1029,7 @@ function onFrameError(id, type, code) {
 
 function onAltSvc(stream, origin, alt) {
   const session = this[kOwner];
-  if (session.destroyed) {
+  if (session === undefined || session.destroyed) {
     return;
   }
   debugSessionObj(
@@ -1068,7 +1070,7 @@ function initOriginSet(session) {
 
 function onOrigin(origins) {
   const session = this[kOwner];
-  if (session.destroyed) {
+  if (session === undefined || session.destroyed) {
     return;
   }
   debugSessionObj(session, "origin received: %j", origins);
@@ -1091,7 +1093,7 @@ function onOrigin(origins) {
 // The goaway event will be emitted on next tick.
 function onGoawayData(code, lastStreamID, buf) {
   const session = this[kOwner];
-  if (session.destroyed) {
+  if (session === undefined || session.destroyed) {
     return;
   }
   debugSessionObj(
@@ -1507,7 +1509,7 @@ function onSessionHeaders(
   sensitiveHeaders = [],
 ) {
   const session = this[kOwner];
-  if (session.destroyed) {
+  if (session === undefined || session.destroyed) {
     return;
   }
 
@@ -1701,10 +1703,10 @@ function onSessionHeaders(
 // option is set.
 function onStreamTrailers() {
   const stream = this[kOwner];
-  stream[kState].trailersReady = true;
-  if (stream.destroyed || stream.closed) {
+  if (stream === undefined || stream.destroyed || stream.closed) {
     return;
   }
+  stream[kState].trailersReady = true;
   if (!stream.emit("wantTrailers")) {
     // There are no listeners, send empty trailing HEADERS frame and close.
     stream.sendTrailers({});
@@ -2808,15 +2810,39 @@ function processRespondWithFD(
   let pos = seekable ? offset : 0;
   const end = seekable && length >= 0 ? offset + length : -1;
 
-  function readAndWrite() {
+  const ownsFd = self.ownsFd;
+  let stopped = false;
+  let fdClosed = false;
+
+  function closeOwnedFd() {
+    if (!ownsFd || fdClosed) return;
+    fdClosed = true;
+    tryClose(fd);
+  }
+
+  function stopReading() {
+    if (stopped) return;
+    stopped = true;
+    self.removeListener("close", stopReading);
+    closeOwnedFd();
+  }
+
+  self.once("close", stopReading);
+
+  function readAndWrite(err) {
+    if (err || self.destroyed || self.closed) {
+      stopReading();
+      return;
+    }
     const readLen = end >= 0 ? MathMin(buf.length, end - pos) : buf.length;
     if (readLen <= 0) {
       finish();
       return;
     }
     fs.read(fd, buf, 0, readLen, seekable ? pos : null, (err, bytesRead) => {
+      if (stopped) return;
       if (err) {
-        if (self.ownsFd) tryClose(fd);
+        stopReading();
         // Match Node: a read failure (e.g. EBADF from a bad fd) resets the
         // stream with NGHTTP2_INTERNAL_ERROR rather than leaking the
         // underlying fs error to user code.
@@ -2824,6 +2850,10 @@ function processRespondWithFD(
           closeStream(self, NGHTTP2_INTERNAL_ERROR, kForceRstStream);
         }
         self.destroy();
+        return;
+      }
+      if (self.destroyed || self.closed) {
+        stopReading();
         return;
       }
       if (bytesRead === 0) {
@@ -2838,7 +2868,10 @@ function processRespondWithFD(
   }
 
   function finish() {
-    if (self.ownsFd) tryClose(fd);
+    if (stopped) return;
+    stopped = true;
+    self.removeListener("close", stopReading);
+    closeOwnedFd();
     self.end();
   }
 
@@ -2849,7 +2882,7 @@ function processRespondWithFD(
   );
 
   if (ret < 0) {
-    if (self.ownsFd) tryClose(fd);
+    stopReading();
     self.destroy(new NghttpError(ret));
     return;
   }
@@ -3482,7 +3515,7 @@ function setupHandle(socket, type, options) {
 
   // Pump data from socket to session via JS events.
   // After receiving data, flush outgoing h2 frames back to the socket.
-  socket.on("data", (buf) => {
+  const socketOnData = (buf) => {
     if (!this.destroyed) {
       handle.receive(buf);
       // After receiving, nghttp2 may have generated response frames
@@ -3521,7 +3554,9 @@ function setupHandle(socket, type, options) {
         });
       }
     }
-  });
+  };
+  this[kSocketDataListener] = socketOnData;
+  socket.on("data", socketOnData);
   socket.resume();
   debug("i/o stream consumed (socket data events)");
 
@@ -3607,7 +3642,11 @@ function setupHandle(socket, type, options) {
       if (!session.closed) {
         session.close();
       }
-      closeSession(session, NGHTTP2_NO_ERROR, err);
+      // session.close() may synchronously destroy the session when it has no
+      // streams. Otherwise EOF must still tear down its remaining streams.
+      if (!session.destroyed) {
+        closeSession(session, NGHTTP2_NO_ERROR, err);
+      }
     }
   };
 
@@ -3699,11 +3738,20 @@ function cleanupSession(session) {
   );
   if (handle) {
     handle.ondone = null;
+    handle.ongracefulclosecomplete = null;
+    handle.onstreamclose = null;
+    handle.sendPending = () => {};
+    handle[kOwner] = undefined;
   }
   if (socket) {
+    const socketDataListener = session[kSocketDataListener];
+    if (socketDataListener) {
+      socket.removeListener("data", socketDataListener);
+    }
     socket[kBoundSession] = undefined;
     socket[kServer] = undefined;
   }
+  session[kSocketDataListener] = undefined;
 }
 
 function finishSessionClose(session, error) {
@@ -3715,7 +3763,9 @@ function finishSessionClose(session, error) {
   cleanupSession(session);
 
   if (socket && !socket.destroyed) {
-    socket.on("close", () => {
+    socket.once("close", () => {
+      socket.removeListener("error", socketOnError);
+      socket.removeListener("close", socketOnClose);
       emitClose(session, error);
     });
     if (session.closed) {
@@ -5219,7 +5269,10 @@ Http2Server.prototype.listen = function listen(...args) {
       }
       const rewritten = [{ host: applied.host, port: applied.port }];
       if (cb) ArrayPrototypePush(rewritten, cb);
-      this.once("listening", notifyAddressOverrideServing);
+      this.once(
+        "listening",
+        () => notifyAddressOverrideServing(SERVER_KIND_NODE_HTTP2),
+      );
       return FunctionPrototypeApply(
         net.Server.prototype.listen,
         this,

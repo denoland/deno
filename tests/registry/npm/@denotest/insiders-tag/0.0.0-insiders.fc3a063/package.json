@@ -1,0 +1,7 @@
+{
+  "name": "@denotest/insiders-tag",
+  "version": "0.0.0-insiders.fc3a063",
+  "publishConfig": {
+    "tag": "insiders"
+  }
+}

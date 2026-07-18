@@ -31,6 +31,8 @@ pub static PROTO_SET_ATTEMPTED: AtomicBool = AtomicBool::new(false);
 /// Written by `op_proto_get_attempted`, read by `get_suggestions_for_terminal_errors`.
 pub static PROTO_GET_ATTEMPTED: AtomicBool = AtomicBool::new(false);
 
+const MAX_FORMAT_ERROR_DEPTH: usize = 64;
+
 #[derive(Debug, Clone)]
 struct ErrorReference<'a> {
   from: &'a JsError,
@@ -176,11 +178,13 @@ fn format_maybe_source_line(
 }
 
 fn find_recursive_cause(js_error: &JsError) -> Option<ErrorReference<'_>> {
-  let mut history = Vec::<&JsError>::new();
+  let mut history = Vec::<&JsError>::with_capacity(MAX_FORMAT_ERROR_DEPTH);
 
   let mut current_error: &JsError = js_error;
 
-  while let Some(cause) = &current_error.cause {
+  while history.len() < MAX_FORMAT_ERROR_DEPTH
+    && let Some(cause) = &current_error.cause
+  {
     history.push(current_error);
 
     if let Some(seen) = history.iter().find(|&el| cause.is_same_error(el)) {
@@ -201,6 +205,7 @@ fn format_aggregated_error(
   circular_reference_index: usize,
   initial_cwd: Option<&Url>,
   filter_frames: bool,
+  depth: usize,
 ) -> String {
   let mut s = String::new();
   let mut nested_circular_reference_index = circular_reference_index;
@@ -220,6 +225,7 @@ fn format_aggregated_error(
       filter_frames,
       vec![],
       initial_cwd,
+      depth + 1,
     );
 
     for line in error_string.trim_start_matches("Uncaught ").lines() {
@@ -247,7 +253,12 @@ fn format_js_error_inner(
   filter_frames: bool,
   suggestions: Vec<FixSuggestion>,
   initial_cwd: Option<&Url>,
+  depth: usize,
 ) -> String {
+  if depth >= MAX_FORMAT_ERROR_DEPTH {
+    return colors::cyan("[Error details truncated]").to_string();
+  }
+
   let mut s = String::new();
 
   s.push_str(&js_error.exception_message);
@@ -268,6 +279,7 @@ fn format_js_error_inner(
         .unwrap_or(0),
       initial_cwd,
       filter_frames,
+      depth,
     );
     s.push_str(&aggregated_message);
   }
@@ -330,7 +342,15 @@ fn format_js_error_inner(
       colors::cyan(format!("[Circular *{}]", circular.unwrap().index))
         .to_string()
     } else {
-      format_js_error_inner(cause, circular, false, false, vec![], initial_cwd)
+      format_js_error_inner(
+        cause,
+        circular,
+        false,
+        false,
+        vec![],
+        initial_cwd,
+        depth + 1,
+      )
     };
 
     write!(
@@ -424,6 +444,17 @@ fn error_mentions_proto(e: &JsError) -> bool {
 }
 
 fn get_message_suggestions(e: &JsError) -> Vec<FixSuggestion<'_>> {
+  get_message_suggestions_inner(e, 0)
+}
+
+fn get_message_suggestions_inner(
+  e: &JsError,
+  depth: usize,
+) -> Vec<FixSuggestion<'_>> {
+  if depth >= MAX_FORMAT_ERROR_DEPTH {
+    return vec![];
+  }
+
   if let Some(msg) = &e.message {
     if msg.contains("module is not defined")
       || msg.contains("exports is not defined")
@@ -647,6 +678,14 @@ fn get_message_suggestions(e: &JsError) -> Vec<FixSuggestion<'_>> {
     }
   }
 
+  // The actionable detail may live on the cause chain rather than the
+  // top-level message — e.g. transport-level fetch failures are surfaced as
+  // `TypeError: fetch failed` with the underlying error (such as a TLS
+  // certificate failure) in `.cause`.
+  if let Some(cause) = &e.cause {
+    return get_message_suggestions_inner(cause, depth + 1);
+  }
+
   vec![]
 }
 
@@ -671,6 +710,7 @@ pub fn format_js_error(
     *SHOULD_FILTER_FRAMES,
     suggestions,
     initial_cwd,
+    0,
   )
 }
 
@@ -679,6 +719,22 @@ mod tests {
   use test_util::strip_ansi_codes;
 
   use super::*;
+
+  fn js_error_with_cause(message: String, cause: Option<JsError>) -> JsError {
+    JsError {
+      name: Some("Error".to_string()),
+      message: Some(message.clone()),
+      stack: None,
+      cause: cause.map(Box::new),
+      exception_message: format!("Uncaught Error: {message}"),
+      frames: vec![],
+      source_line: None,
+      source_line_frame_index: None,
+      aggregated: None,
+      additional_properties: vec![],
+      stack_is_custom: false,
+    }
+  }
 
   #[test]
   fn test_format_none_source_line() {
@@ -694,5 +750,17 @@ mod tests {
       strip_ansi_codes(&actual),
       "\nconsole.log(\'foo\');\n        ^"
     );
+  }
+
+  #[test]
+  fn test_format_js_error_truncates_deep_cause_chain() {
+    let mut error = js_error_with_cause("0".to_string(), None);
+    for i in 1..(MAX_FORMAT_ERROR_DEPTH + 5) {
+      error = js_error_with_cause(i.to_string(), Some(error));
+    }
+
+    let formatted = format_js_error(&error, None);
+    let formatted = strip_ansi_codes(&formatted);
+    assert!(formatted.contains("[Error details truncated]"));
   }
 }

@@ -239,10 +239,18 @@ impl TypeChecker {
     graph: ModuleGraph,
     options: CheckOptions,
   ) -> Result<Arc<ModuleGraph>, CheckError> {
-    let mut diagnostics = self.check_diagnostics(graph, options)?;
+    let mut diagnostics_iter = self.check_diagnostics(graph, options)?;
+    // Drain the iterator first so that all the "Check ..." lines (which are
+    // printed while type checking each folder) are emitted before any
+    // diagnostics. Otherwise, in a workspace with multiple folders, errors
+    // from one folder would be printed in the middle of the "Check ..." lines
+    // of the following folders.
+    let mut all_diagnostics = Vec::with_capacity(diagnostics_iter.remaining());
+    for result in diagnostics_iter.by_ref() {
+      all_diagnostics.push(result?);
+    }
     let mut failed = false;
-    for result in diagnostics.by_ref() {
-      let mut diagnostics = result?;
+    for mut diagnostics in all_diagnostics {
       diagnostics.emit_warnings();
       if diagnostics.has_diagnostic() {
         failed = true;
@@ -260,7 +268,7 @@ impl TypeChecker {
         .into(),
       )
     } else {
-      Ok(diagnostics.into_graph())
+      Ok(diagnostics_iter.into_graph())
     }
   }
 
@@ -268,34 +276,75 @@ impl TypeChecker {
   ///
   /// It is expected that it is determined if a check and/or emit is validated
   /// before the function is called.
+  /// Walk the module graph exactly as Deno 2.x's forked tsc did - for the
+  /// native (external tsc) check path in `crate::tools::check`. Returns deno's
+  /// own graph diagnostics (missing modules + hints) plus a combined check hash
+  /// over every compiler-options group, with the pinned tsc version folded in.
+  /// Native check runs a single external tsc over the whole generated
+  /// `tsconfig.json`, so the per-group hashes are combined into one: a hit means
+  /// nothing the compiler sees has changed, and the spawn can be skipped.
+  pub(crate) fn walk_graph_for_native_check(
+    &self,
+    graph: &ModuleGraph,
+    lib: TsTypeLib,
+    type_check_mode: TypeCheckMode,
+  ) -> Result<(tsc::Diagnostics, Option<CacheDBHash>), CheckError> {
+    // Packages importable by bare specifier (workspace members + `links`),
+    // used to enhance import errors. TODO: also chain `links` packages to match
+    // `check_diagnostics` exactly.
+    let bare_importable_pkg_names: Vec<String> = self
+      .cli_options
+      .workspace()
+      .resolver_jsr_pkgs()
+      .map(|pkg| pkg.name)
+      .collect();
+    let npm_check_state_hash = check_state_hash(&self.npm_resolver);
+    let groups = self.group_roots_by_compiler_options(graph, lib)?;
+    let mut missing_diagnostics = tsc::Diagnostics::default();
+    let mut combined = FastInsecureHasher::new_deno_versioned();
+    combined.write_hashable(crate::tsc::native::TYPESCRIPT_VERSION);
+    let mut any_hash = false;
+    for group in groups {
+      let mut walker = GraphWalker::new(
+        graph,
+        &self.sys,
+        &self.node_resolver,
+        &self.npm_resolver,
+        &self.compiler_options_resolver,
+        &bare_importable_pkg_names,
+        npm_check_state_hash,
+        group.compiler_options.as_ref(),
+        type_check_mode,
+      );
+      for import in group.imports.iter() {
+        walker.add_config_import(import, &group.referrer);
+      }
+      for root in &group.roots {
+        walker.add_root(root);
+      }
+      let tsc_roots = walker.into_tsc_roots();
+      missing_diagnostics.extend(tsc_roots.missing_diagnostics);
+      if let Some(hash) = tsc_roots.maybe_check_hash {
+        combined.write_hashable(hash);
+        any_hash = true;
+      }
+    }
+    let maybe_check_hash =
+      any_hash.then(|| CacheDBHash::new(combined.finish()));
+    Ok((missing_diagnostics, maybe_check_hash))
+  }
+
+  /// The type-check cache, used by the native check path to skip re-running the
+  /// external compiler when the graph hash is unchanged.
+  pub(crate) fn type_check_cache(&self) -> TypeCheckCache {
+    TypeCheckCache::new(self.caches.type_checking_cache_db())
+  }
+
   pub fn check_diagnostics(
     &self,
     mut graph: ModuleGraph,
     options: CheckOptions,
   ) -> Result<DiagnosticsByFolderIterator<'_>, CheckError> {
-    fn check_state_hash(resolver: &CliNpmResolver) -> Option<u64> {
-      match resolver {
-        CliNpmResolver::Byonm(_) => {
-          // not feasible and probably slower to compute
-          None
-        }
-        CliNpmResolver::Managed(resolver) => {
-          // we should probably go further and check all the individual npm packages
-          let mut package_reqs = resolver.resolution().package_reqs();
-          package_reqs.sort_by(|a, b| a.0.cmp(&b.0)); // determinism
-          let mut hasher = FastInsecureHasher::new_without_deno_version();
-          // ensure the cache gets busted when turning nodeModulesDir on or off
-          // as this could cause changes in resolution
-          hasher.write_hashable(resolver.root_node_modules_path().is_some());
-          for (pkg_req, pkg_nv) in package_reqs {
-            hasher.write_hashable(&pkg_req);
-            hasher.write_hashable(&pkg_nv);
-          }
-          Some(hasher.finish())
-        }
-      }
-    }
-
     if !options.type_check_mode.is_true() || graph.roots.is_empty() {
       return Ok(DiagnosticsByFolderIterator(
         DiagnosticsByFolderIteratorInner::Empty(Arc::new(graph)),
@@ -439,6 +488,17 @@ pub struct DiagnosticsByFolderIterator<'a>(
 );
 
 impl DiagnosticsByFolderIterator<'_> {
+  /// Number of folders remaining to be checked, i.e. the exact number of items
+  /// this iterator will still yield.
+  pub fn remaining(&self) -> usize {
+    match &self.0 {
+      DiagnosticsByFolderIteratorInner::Empty(_) => 0,
+      DiagnosticsByFolderIteratorInner::Real(r) => {
+        r.groups.len().saturating_sub(r.current_group_index)
+      }
+    }
+  }
+
   pub fn into_graph(self) -> Arc<ModuleGraph> {
     match self.0 {
       DiagnosticsByFolderIteratorInner::Empty(module_graph) => module_graph,
@@ -521,6 +581,29 @@ impl Iterator for DiagnosticsByFolderRealIterator<'_> {
 }
 
 /// Converts the list of ambient module names to regex string
+/// Hash of the npm resolution state, folded into the type-check cache key so
+/// the cache busts when npm deps (or nodeModulesDir) change. Shared by Deno
+/// 2.x's forked tsc and the native (external tsc) check path.
+fn check_state_hash(resolver: &CliNpmResolver) -> Option<u64> {
+  match resolver {
+    // not feasible and probably slower to compute
+    CliNpmResolver::Byonm(_) => None,
+    CliNpmResolver::Managed(resolver) => {
+      let mut package_reqs = resolver.resolution().package_reqs();
+      package_reqs.sort_by(|a, b| a.0.cmp(&b.0)); // determinism
+      let mut hasher = FastInsecureHasher::new_without_deno_version();
+      // ensure the cache gets busted when turning nodeModulesDir on or off
+      // as this could cause changes in resolution
+      hasher.write_hashable(resolver.root_node_modules_path().is_some());
+      for (pkg_req, pkg_nv) in package_reqs {
+        hasher.write_hashable(&pkg_req);
+        hasher.write_hashable(&pkg_nv);
+      }
+      Some(hasher.finish())
+    }
+  }
+}
+
 pub fn ambient_modules_to_regex_string(ambient_modules: &[String]) -> String {
   let mut regex_string = String::with_capacity(ambient_modules.len() * 8);
   regex_string.push_str("^(");
@@ -826,11 +909,11 @@ impl DiagnosticsByFolderRealIterator<'_> {
   }
 }
 
-struct TscRoots {
-  roots: Vec<(ModuleSpecifier, MediaType)>,
-  missing_diagnostics: tsc::Diagnostics,
+pub(crate) struct TscRoots {
+  pub(crate) roots: Vec<(ModuleSpecifier, MediaType)>,
+  pub(crate) missing_diagnostics: tsc::Diagnostics,
   used_ts_expect_error_directives: HashSet<TsDirective>,
-  maybe_check_hash: Option<CacheDBHash>,
+  pub(crate) maybe_check_hash: Option<CacheDBHash>,
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]

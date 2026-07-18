@@ -1,20 +1,28 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
+use std::io::Write as _;
+use std::path::Path;
+use std::path::PathBuf;
 use std::ptr::NonNull;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 use deno_core::FastString;
 use deno_core::GarbageCollected;
+use deno_core::OpState;
 use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_core::v8;
 use deno_error::JsErrorBox;
+use deno_permissions::PermissionsContainer;
 use v8::ValueDeserializerHelper;
 use v8::ValueSerializerHelper;
 
@@ -119,6 +127,264 @@ pub fn op_v8_take_heap_snapshot(scope: &mut v8::PinScope<'_, '_>) -> Vec<u8> {
     true
   });
   buf
+}
+
+// --- setHeapSnapshotNearHeapLimit -----------------------------------------
+//
+// Implements `v8.setHeapSnapshotNearHeapLimit(limit)`. Installs a V8
+// near-heap-limit callback that streams a `.heapsnapshot` file to disk (up to
+// `limit` times) right before the process would OOM, mirroring Node's
+// `Environment::NearHeapLimitCallback` (src/heap_utils.cc).
+
+// State for the near-heap-limit snapshot callback. Leaked (never freed) so it
+// outlives the isolate, which keeps the callback installed for the
+// isolate/process lifetime.
+struct HeapSnapshotNearHeapLimitState {
+  // Raw isolate pointer captured at op-call time, used to take the snapshot
+  // from within the extern "C" callback (which is not handed an isolate).
+  isolate: v8::UnsafeRawIsolatePtr,
+  limit: u32,
+  taken: u32,
+  // Reentrancy guard: taking a snapshot can trigger GC and re-enter the
+  // callback; we must not recurse into another snapshot.
+  processing: bool,
+  // The single heap limit granted to the snapshot currently being written.
+  // `Some` only while `processing`. Reentrant invocations return this exact
+  // value rather than recomputing one from the (already raised) current limit,
+  // which is what previously let the heap grow without bound. See the callback.
+  granted_limit: Option<usize>,
+  dir: PathBuf,
+  pid: u32,
+  seq: u32,
+}
+
+// Howard Hinnant's civil-from-days algorithm: converts a count of days since
+// the Unix epoch into a (year, month, day) tuple (UTC). Avoids pulling in a
+// date/time dependency just to format the snapshot filename.
+fn civil_from_days(z: i64) -> (i64, u32, u32) {
+  let z = z + 719468;
+  let era = if z >= 0 { z } else { z - 146096 } / 146097;
+  let doe = (z - era * 146097) as u64; // [0, 146096]
+  let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365; // [0, 399]
+  let y = yoe as i64 + era * 400;
+  let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
+  let mp = (5 * doy + 2) / 153; // [0, 11]
+  let d = (doy - (153 * mp + 2) / 5 + 1) as u32; // [1, 31]
+  let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32; // [1, 12]
+  let y = if m <= 2 { y + 1 } else { y };
+  (y, m, d)
+}
+
+// Builds a filename matching Deno/Node's `writeHeapSnapshot` naming scheme:
+// `Heap.<YYYYMMDD>.<HHMMSS>.<pid>.<threadId>.<seq(3 digits)>.heapsnapshot`.
+//
+// The thread id is hardcoded to 0, matching `writeHeapSnapshot` in v8.ts. In
+// Node this slot is the worker's `threadId`, which isn't readily available to
+// this native callback. As a result, two worker threads that OOM within the
+// same second (each with its own `seq` starting at 0) can produce identical
+// filenames and overwrite each other's snapshot. Plumbing the real `threadId`
+// through would disambiguate them.
+fn heap_snapshot_filename(pid: u32, seq: u32) -> String {
+  let secs = SystemTime::now()
+    .duration_since(UNIX_EPOCH)
+    .map(|d| d.as_secs())
+    .unwrap_or_default();
+  let days = (secs / 86400) as i64;
+  let secs_of_day = secs % 86400;
+  let (year, month, day) = civil_from_days(days);
+  let hours = secs_of_day / 3600;
+  let minutes = (secs_of_day % 3600) / 60;
+  let seconds = secs_of_day % 60;
+  format!(
+    "Heap.{year:04}{month:02}{day:02}.{hours:02}{minutes:02}{seconds:02}.{pid}.0.{seq:03}.heapsnapshot"
+  )
+}
+
+// Streams a heap snapshot into `path`, returning the number of bytes written.
+//
+// Chunks go straight to disk rather than being buffered in memory: buffering a
+// whole snapshot would OOM the very process we are trying to snapshot.
+fn write_heap_snapshot(
+  isolate: &mut v8::Isolate,
+  path: &Path,
+) -> std::io::Result<u64> {
+  let file = std::fs::File::create(path)?;
+  let mut writer = std::io::BufWriter::new(file);
+  let mut written = 0u64;
+  let mut write_err = None;
+  isolate.take_heap_snapshot(|chunk| match writer.write_all(chunk) {
+    Ok(()) => {
+      written += chunk.len() as u64;
+      true
+    }
+    Err(e) => {
+      write_err = Some(e);
+      false
+    }
+  });
+  if let Some(e) = write_err {
+    return Err(e);
+  }
+  writer.flush()?;
+  // Get the bytes onto the filesystem (and close the file, which Windows needs
+  // before the rename): the process is usually killed by a V8 fatal OOM
+  // immediately after this returns.
+  let file = writer.into_inner().map_err(|e| e.into_error())?;
+  file.sync_all()?;
+  Ok(written)
+}
+
+#[allow(
+  clippy::print_stderr,
+  reason = "Node prints the snapshot path to stderr unconditionally; \
+   mirror that so the OOM diagnostic is always visible."
+)]
+#[allow(
+  clippy::disallowed_methods,
+  reason = "requires real fs: this runs as an extern \"C\" V8 callback from \
+   inside a GC, with no access to the FileSystem trait (same reason the \
+   snapshot file itself is created with std::fs)."
+)]
+extern "C" fn near_heap_limit_snapshot_callback(
+  data: *mut c_void,
+  current_heap_limit: usize,
+  _initial_heap_limit: usize,
+) -> usize {
+  // SAFETY: `data` is the leaked `HeapSnapshotNearHeapLimitState` pointer
+  // installed by `op_v8_set_heap_snapshot_near_heap_limit`. It outlives the
+  // isolate, so this mutable reference is valid for the callback's duration
+  // (V8 invokes near-heap-limit callbacks synchronously and non-concurrently).
+  let state = unsafe { &mut *(data as *mut HeapSnapshotNearHeapLimitState) };
+
+  // SAFETY: `state.isolate` was captured from the live isolate scope in the op
+  // and the isolate is valid while this near-heap-limit callback runs. The
+  // reconstructed `Isolate` is a non-owning handle (no Drop), used only for the
+  // duration of this call.
+  let mut isolate =
+    unsafe { v8::Isolate::from_raw_isolate_ptr_unchecked(state.isolate) };
+
+  // Give V8 headroom so it doesn't immediately OOM while we write the snapshot.
+  // Mirrors Node returning `current_heap_limit + max_young_gen_size`: sum the
+  // used size of the young-generation spaces.
+  let mut young_headroom = 0usize;
+  let nspaces = isolate.number_of_heap_spaces();
+  for i in 0..nspaces {
+    if let Some(s) = isolate.get_heap_space_statistics(i) {
+      let name = s.space_name().to_string_lossy();
+      if matches!(name.as_ref(), "new_space" | "new_large_object_space") {
+        young_headroom = young_headroom.saturating_add(s.space_used_size());
+      }
+    }
+  }
+  // Guarantee a sane minimum floor so V8 has room to finish writing.
+  const MIN_HEADROOM: usize = 4 * 1024 * 1024;
+  let new_limit =
+    current_heap_limit.saturating_add(young_headroom.max(MIN_HEADROOM));
+
+  // Nested/reentrant call: generating a snapshot itself runs a full GC
+  // (`HeapSnapshotGenerator::GenerateSnapshot` calls `CollectAllAvailableGarbage`),
+  // which re-enters this callback while we are still writing. Hand back the
+  // *same* ceiling we granted when this snapshot started, never a freshly
+  // computed one: V8 raises the limit whenever the returned value exceeds the
+  // current one (`Heap::InvokeNearHeapLimitCallback`), so recomputing
+  // `current_heap_limit + headroom` on every reentry ratchets the limit up
+  // without bound and the process never OOMs -- it just eats the machine.
+  // Returning a fixed ceiling raises the limit exactly once; once the snapshot
+  // spends that budget V8 OOMs normally.
+  if state.processing {
+    return state.granted_limit.unwrap_or(current_heap_limit);
+  }
+  // No more snapshots allowed: remove the callback and return the *unchanged*
+  // heap limit so V8 proceeds to OOM normally. Returning a raised limit here
+  // would let the heap keep growing instead.
+  if state.taken >= state.limit {
+    // SAFETY: removing the near-heap-limit callback from within the callback
+    // is supported by V8 (Node does the same). The 0 limit means "don't touch
+    // the heap limit" (`Heap::RemoveNearHeapLimitCallback` only calls
+    // `RestoreHeapLimit` for a non-zero value) -- we want the current limit
+    // kept so the pending OOM actually happens.
+    isolate
+      .remove_near_heap_limit_callback(near_heap_limit_snapshot_callback, 0);
+    return current_heap_limit;
+  }
+
+  state.processing = true;
+  state.granted_limit = Some(new_limit);
+  state.taken += 1;
+  state.seq += 1;
+
+  let filename = heap_snapshot_filename(state.pid, state.seq);
+  let path = state.dir.join(&filename);
+  // Generate into a temporary file and only move it into place once V8 has
+  // actually produced bytes. Creating the destination up front is what leaves
+  // the 0-byte `.heapsnapshot` files behind when generation produces nothing
+  // or the process dies partway through (#36034).
+  let tmp_path = state.dir.join(format!("{filename}.tmp"));
+
+  // Printed unconditionally (not via `log`, which `--quiet` suppresses) and
+  // before generating, which can take a while and may be the last thing this
+  // process does. Mirrors Node.
+  eprintln!("Writing heap snapshot to {}", path.display());
+
+  let result = write_heap_snapshot(&mut isolate, &tmp_path);
+  match result {
+    // Treat "V8 emitted nothing" as a failure: an empty file is not a usable
+    // snapshot, and silently leaving one behind is the reported bug.
+    Ok(0) => {
+      let _ = std::fs::remove_file(&tmp_path);
+      eprintln!(
+        "Failed to write heap snapshot to {}: V8 produced an empty snapshot",
+        path.display()
+      );
+    }
+    // Node prints nothing on success beyond the "Writing ..." line above.
+    Ok(_) => match std::fs::rename(&tmp_path, &path) {
+      Ok(()) => {}
+      Err(e) => {
+        let _ = std::fs::remove_file(&tmp_path);
+        eprintln!("Failed to write heap snapshot to {}: {e}", path.display());
+      }
+    },
+    Err(e) => {
+      let _ = std::fs::remove_file(&tmp_path);
+      eprintln!("Failed to write heap snapshot to {}: {e}", path.display());
+    }
+  }
+
+  state.processing = false;
+  state.granted_limit = None;
+  new_limit
+}
+
+#[op2(nofast)]
+pub fn op_v8_set_heap_snapshot_near_heap_limit(
+  state: &mut OpState,
+  scope: &mut v8::PinScope<'_, '_>,
+  #[smi] limit: u32,
+) -> Result<(), deno_permissions::PermissionCheckError> {
+  let dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+  let dir = state
+    .borrow_mut::<PermissionsContainer>()
+    .check_write(Cow::Owned(dir), "v8.setHeapSnapshotNearHeapLimit")?
+    .into_owned_path();
+  // SAFETY: capture the raw pointer of the current isolate so the extern "C"
+  // callback (which is not passed an isolate) can take a snapshot. The isolate
+  // outlives the callback, so the pointer stays valid whenever it runs.
+  let isolate = unsafe { scope.as_raw_isolate_ptr() };
+  let state = Box::new(HeapSnapshotNearHeapLimitState {
+    isolate,
+    limit,
+    taken: 0,
+    processing: false,
+    granted_limit: None,
+    dir,
+    pid: std::process::id(),
+    seq: 0,
+  });
+  // Leak the state so it outlives the isolate (see the struct doc comment).
+  let data = Box::into_raw(state) as *mut c_void;
+  scope.add_near_heap_limit_callback(near_heap_limit_snapshot_callback, data);
+  Ok(())
 }
 
 // Walks the V8 heap snapshot and counts nodes that look like instances of a

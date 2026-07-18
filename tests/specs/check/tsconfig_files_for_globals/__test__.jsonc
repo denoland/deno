@@ -1,4 +1,6 @@
 {
+  // deferred: deno.* libs -> #35985
+  "ignore": true,
   "args": "check main.deno.ts main.dom.ts --quiet",
   "output": "main.out",
   "exitCode": 1

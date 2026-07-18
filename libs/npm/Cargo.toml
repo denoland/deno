@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_npm"
-version = "0.64.0"
+version = "0.67.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -13,10 +13,14 @@ description = "npm registry client and dependency resolver used in the Deno CLI"
 path = "./lib.rs"
 
 [features]
+default = ["simd"]
+simd = []
 tracing = []
 
 [dependencies]
+arrayref = "0.3.9"
 async-trait.workspace = true
+bytemuck = { workspace = true, features = ["aarch64_simd", "avx512_simd", "must_cast"] }
 capacity_builder.workspace = true
 chrono = { workspace = true, default-features = false, features = ["serde"] }
 deno_error.workspace = true
@@ -27,13 +31,16 @@ futures.workspace = true
 indexmap.workspace = true
 log.workspace = true
 monch.workspace = true
+rustc-hash.workspace = true
 serde = { workspace = true, features = ["derive", "rc"] }
 serde_json = { workspace = true, features = ["preserve_order"] }
 thiserror.workspace = true
+wide = "0.7.32"
 
 [dev-dependencies]
 divan = "0.1.17"
 hex = "0.4.3"
+paste.workspace = true
 pretty_assertions.workspace = true
 reqwest.workspace = true
 sha2.workspace = true
@@ -41,4 +48,8 @@ tokio = { workspace = true, features = ["full"] }
 
 [[bench]]
 name = "bench"
+harness = false
+
+[[bench]]
+name = "registry_json"
 harness = false

@@ -654,6 +654,7 @@ impl CliFactory {
             | DenoSubcommand::JSONReference { .. }
             | DenoSubcommand::Jupyter { .. }
             | DenoSubcommand::Lsp
+            | DenoSubcommand::SyncTypes { .. }
             | DenoSubcommand::Lint { .. }
             | DenoSubcommand::Repl { .. }
             | DenoSubcommand::Run { .. }
@@ -1056,6 +1057,17 @@ impl CliFactory {
         if unstable_features.contains(&feature.name) {
           checker.enable_feature(feature.name);
         }
+      }
+
+      // Deno Deploy: when DENO_KV_REQUIRES_DISTRIBUTED_DATABASE=error, force the
+      // unstable KV feature on so `Deno.openKv()` is always exposed. The open
+      // path then rejects with a clear "no database attached" error instead of
+      // the runtime hiding the API and reporting "Deno.openKv is not a function".
+      if std::env::var("DENO_KV_REQUIRES_DISTRIBUTED_DATABASE").as_deref()
+        == Ok("error")
+        && !checker.check("kv")
+      {
+        checker.enable_feature("kv");
       }
 
       Ok(Arc::new(checker))

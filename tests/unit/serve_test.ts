@@ -137,6 +137,29 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerRequestDoesNotExposeExternal() {
+    let innerRequest: object | undefined;
+    await using server = await makeServer((req) => {
+      const requestSymbol = Object.getOwnPropertySymbols(req).find(
+        (symbol) => symbol.description === "request",
+      );
+      if (requestSymbol !== undefined) {
+        innerRequest = (req as unknown as Record<symbol, object>)[
+          requestSymbol
+        ];
+      }
+      return new Response("ok");
+    });
+    const resp = await fetch(`http://localhost:${servePort}/`);
+    await resp.text();
+    assert(innerRequest !== undefined);
+    assertEquals(Reflect.has(innerRequest, "external"), false);
+    await server.shutdown();
+  },
+);
+
 // When shutting down abruptly, we require that all in-progress connections are aborted,
 // no new connections are allowed, and no new transactions are allowed on existing connections.
 Deno.test(
@@ -1550,6 +1573,67 @@ Deno.test(
     await errorDeferred.promise;
     ac.abort();
     await server.finished;
+  },
+);
+
+// https://github.com/denoland/deno/issues/27223
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerNonUint8ArrayResponseStreamDoesNotHang() {
+    for (const chunk of ["wat", ""]) {
+      const ac = new AbortController();
+      const listeningDeferred = Promise.withResolvers<void>();
+      const errorDeferred = Promise.withResolvers<unknown>();
+      await using server = Deno.serve({
+        handler: () => {
+          const body = new ReadableStream({
+            start(controller) {
+              // @ts-ignore we're testing that input is invalid
+              controller.enqueue(chunk);
+              controller.close();
+            },
+          });
+          return new Response(body);
+        },
+        port: servePort,
+        signal: ac.signal,
+        onListen: onListen(listeningDeferred.resolve),
+        onError: (err) => {
+          errorDeferred.resolve(err);
+          return new Response("Internal server error", { status: 500 });
+        },
+      });
+
+      await listeningDeferred.promise;
+      const clientAc = new AbortController();
+      const timeoutId = setTimeout(() => clientAc.abort(), 1000);
+      let serverErrorTimeoutId: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
+          signal: clientAc.signal,
+        });
+        assertEquals(resp.status, 200);
+
+        await assertRejects(() => resp.text(), TypeError);
+
+        const serverError = await Promise.race([
+          errorDeferred.promise,
+          new Promise<"timeout">((resolve) => {
+            serverErrorTimeoutId = setTimeout(() => resolve("timeout"), 1000);
+          }),
+        ]);
+        assertIsError(serverError, TypeError);
+        assertStringIncludes(
+          serverError.message,
+          "expected typed ArrayBufferView",
+        );
+      } finally {
+        clearTimeout(timeoutId);
+        clearTimeout(serverErrorTimeoutId);
+        ac.abort();
+        await server.finished;
+      }
+    }
   },
 );
 
@@ -3429,6 +3513,51 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true } },
+  async function httpServerHeadResponseRespectsExplicitContentLength() {
+    const listeningDeferred = Promise.withResolvers<void>();
+    const ac = new AbortController();
+
+    await using server = Deno.serve({
+      handler: () => new Response(null, { headers: { "content-length": "5" } }),
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listeningDeferred.resolve),
+      onError: createOnErrorCb(ac),
+    });
+
+    await listeningDeferred.promise;
+    const conn = await Deno.connect({ port: servePort });
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+
+    const request =
+      `HEAD / HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
+    const writeResult = await conn.write(encoder.encode(request));
+    assertEquals(request.length, writeResult);
+
+    let msg = "";
+    while (true) {
+      const buf = new Uint8Array(1024);
+      const readResult = await conn.read(buf);
+      if (!readResult) {
+        break;
+      }
+      msg += decoder.decode(buf.subarray(0, readResult));
+    }
+
+    assertStringIncludes(msg, "content-length: 5");
+    // A HEAD response must not carry a body, even with content-length > 0.
+    assertEquals(msg.indexOf("\r\n\r\n"), msg.length - 4);
+
+    conn.close();
+
+    ac.abort();
+    await server.finished;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
   async function httpServerUpgradeWithContentLengthRejected() {
     const ac = new AbortController();
     const listeningDeferred = Promise.withResolvers<void>();
@@ -3985,6 +4114,76 @@ Deno.test(
       assertEquals(headers["vary"], undefined);
       assertEquals(headers["content-length"], `${body.length}`);
       assertEquals(responseBody, body);
+    } finally {
+      client.close();
+      ac.abort();
+      await server.finished;
+    }
+  },
+);
+
+// Regression test for #36046: cancelling an HTTP/2 stream while the handler is
+// still pending used to panic in HttpRecord::recycle when the handler later
+// committed a native (fast-path) response, because the record was no longer the
+// sole strong reference. Requires the hyper HTTP/2 path, which is only used over
+// TLS with ALPN h2.
+Deno.test(
+  { permissions: { net: true, read: true } },
+  async function httpServerHttp2CancelBeforeNativeResponse() {
+    const listeningDeferred = Promise.withResolvers<void>();
+    const ac = new AbortController();
+    const cert = Deno.readTextFileSync("tests/testdata/tls/localhost.crt");
+    const key = Deno.readTextFileSync("tests/testdata/tls/localhost.key");
+
+    await using server = Deno.serve({
+      handler: async () => {
+        // Slow enough that the client cancels before we commit the response.
+        await new Promise((r) => setTimeout(r, 50));
+        // Native (fast-path) empty response reaches op_http_set_response_native.
+        return new Response();
+      },
+      port: servePort,
+      cert,
+      key,
+      signal: ac.signal,
+      onListen: onListen(listeningDeferred.resolve),
+      onError: createOnErrorCb(ac),
+    });
+
+    await listeningDeferred.promise;
+
+    const client = http2.connect(`https://localhost:${servePort}`, {
+      ca: cert,
+      rejectUnauthorized: false,
+    });
+    client.on("error", () => {});
+    try {
+      for (let i = 0; i < 50; i++) {
+        const req = client.request({ ":path": "/", ":method": "GET" });
+        req.on("error", () => {});
+        req.end();
+        // Cancel the stream while the handler is still pending.
+        await new Promise((r) => setTimeout(r, 2 + (i % 5)));
+        req.close(http2.constants.NGHTTP2_CANCEL);
+      }
+
+      // Give the pending handlers time to commit their (now orphaned)
+      // responses; without the fix the server would have panicked by now.
+      await new Promise((r) => setTimeout(r, 200));
+
+      // The server must still be healthy and able to serve a normal request.
+      const req = client.request({ ":path": "/", ":method": "GET" });
+      let status: number | undefined;
+      req.on("response", (headers) => {
+        status = Number(headers[":status"]);
+      });
+      req.on("data", () => {});
+      req.end();
+      await new Promise<void>((resolve, reject) => {
+        req.on("end", resolve);
+        req.on("error", reject);
+      });
+      assertEquals(status, 200);
     } finally {
       client.close();
       ac.abort();
@@ -5020,7 +5219,9 @@ Deno.test(
       fail();
     } catch (clientError) {
       assert(clientError instanceof TypeError);
-      assert(clientError.message.includes("client error"));
+      assert(clientError.message === "fetch failed");
+      assert(clientError.cause instanceof Error);
+      assert(clientError.cause.message.includes("client error"));
     } finally {
       ac.abort();
       await server.finished;
@@ -5068,7 +5269,9 @@ Deno.test({
       fail();
     } catch (clientError) {
       assert(clientError instanceof TypeError);
-      assert(clientError.message.includes("client error"));
+      assert(clientError.message === "fetch failed");
+      assert(clientError.cause instanceof Error);
+      assert(clientError.cause.message.includes("client error"));
     } finally {
       ac.abort();
       await server.finished;
