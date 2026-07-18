@@ -770,10 +770,7 @@
     "parallel/test-crypto-keygen-rfc8017-a-2-3.js": {},
     "parallel/test-crypto-keygen-rsa-pss.js": {},
     "parallel/test-crypto-keygen-sync.js": {},
-    "parallel/test-crypto-key-objects.js": {
-      "ignore": true,
-      "reason": "Deno does not validate RSA JWK modulus consistency (n == p*q) on import"
-    },
+    "parallel/test-crypto-key-objects.js": {},
     "parallel/test-crypto-scrypt.js": {},
     "parallel/test-crypto-key-objects-messageport.js": {},
     "parallel/test-crypto-key-objects-to-crypto-key.js": {
