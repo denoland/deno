@@ -535,3 +535,79 @@ pub fn hash(token: &str) -> String {
   use sha2::Digest;
   format!("{:x}", sha2::Sha256::digest(token.as_bytes()))
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_response_expires_at() {
+    fn h(name: &str, value: &str) -> (ByteString, ByteString) {
+      (ByteString::from(name), ByteString::from(value))
+    }
+    assert_eq!(response_expires_at(&[], 1000), None);
+    assert_eq!(
+      response_expires_at(&[h("content-type", "text/plain")], 1000),
+      None
+    );
+    assert_eq!(
+      response_expires_at(&[h("cache-control", "no-store")], 1000),
+      None
+    );
+    assert_eq!(
+      response_expires_at(&[h("cache-control", "max-age=600")], 1000),
+      Some(1600)
+    );
+    assert_eq!(
+      response_expires_at(&[h("Cache-Control", "public, Max-Age=600")], 1000),
+      Some(1600)
+    );
+    assert_eq!(
+      response_expires_at(&[h("cache-control", "max-age=\"600\"")], 1000),
+      Some(1600)
+    );
+    assert_eq!(
+      response_expires_at(
+        &[h("cache-control", "max-age=600, s-maxage=30")],
+        1000
+      ),
+      Some(1030)
+    );
+    assert_eq!(
+      response_expires_at(
+        &[h("cache-control", "max-age=18446744073709551615")],
+        1000
+      ),
+      Some(u64::MAX)
+    );
+    assert_eq!(
+      response_expires_at(&[h("expires", "Thu, 01 Jan 1970 00:16:40 GMT")], 0),
+      Some(1000)
+    );
+    assert_eq!(
+      response_expires_at(&[h("expires", "Thu, 01 Jan 1900 00:00:00 GMT")], 0),
+      Some(0)
+    );
+    assert_eq!(response_expires_at(&[h("expires", "0")], 1000), Some(0));
+    assert_eq!(
+      response_expires_at(
+        &[
+          h("cache-control", "max-age=600"),
+          h("expires", "Thu, 01 Jan 1970 00:16:40 GMT")
+        ],
+        1000
+      ),
+      Some(1600)
+    );
+    assert_eq!(
+      response_expires_at(
+        &[
+          h("cache-control", "public"),
+          h("expires", "Thu, 01 Jan 1970 00:16:40 GMT")
+        ],
+        1000
+      ),
+      Some(1000)
+    );
+  }
+}

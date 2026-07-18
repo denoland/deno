@@ -5,6 +5,7 @@ import {
   assertFalse,
   assertRejects,
   assertThrows,
+  delay,
 } from "./test_util.ts";
 
 Deno.test(async function cacheStorage() {
@@ -356,6 +357,81 @@ Deno.test(async function cachePutOverwrite() {
   await cache.put(request, res2);
   const res_ = await cache.match(request);
   assertEquals(await res_?.text(), "res2");
+});
+
+Deno.test(async function cacheMatchExpiredMaxAge() {
+  const cacheName = "cache-v1";
+  const cache = await caches.open(cacheName);
+
+  const request = new Request("https://example.com/expired-max-age");
+  await cache.put(
+    request,
+    new Response("expired", { headers: { "cache-control": "max-age=0" } }),
+  );
+  assertEquals(await cache.match(request), undefined);
+});
+
+Deno.test(async function cacheMatchExpiredExpires() {
+  const cacheName = "cache-v1";
+  const cache = await caches.open(cacheName);
+
+  const request = new Request("https://example.com/expired-expires");
+  await cache.put(
+    request,
+    new Response("expired", {
+      headers: { expires: new Date(Date.now() - 1000).toUTCString() },
+    }),
+  );
+  assertEquals(await cache.match(request), undefined);
+});
+
+Deno.test(async function cacheMatchFresh() {
+  const cacheName = "cache-v1";
+  const cache = await caches.open(cacheName);
+
+  const maxAge = new Request("https://example.com/fresh-max-age");
+  await cache.put(
+    maxAge,
+    new Response("fresh", { headers: { "cache-control": "max-age=3600" } }),
+  );
+  const res = await cache.match(maxAge);
+  assertEquals(await res?.text(), "fresh");
+
+  const expires = new Request("https://example.com/fresh-expires");
+  await cache.put(
+    expires,
+    new Response("fresh", {
+      headers: { expires: new Date(Date.now() + 3600_000).toUTCString() },
+    }),
+  );
+  const res_ = await cache.match(expires);
+  assertEquals(await res_?.text(), "fresh");
+
+  const noFreshness = new Request("https://example.com/fresh-no-freshness");
+  await cache.put(
+    noFreshness,
+    new Response("fresh", { headers: { "cache-control": "no-store" } }),
+  );
+  const res__ = await cache.match(noFreshness);
+  assertEquals(await res__?.text(), "fresh");
+});
+
+Deno.test(async function cacheMatchExpiresAfterTtl() {
+  const cacheName = "cache-v1";
+  const cache = await caches.open(cacheName);
+
+  const request = new Request("https://example.com/expires-after-ttl");
+  await cache.put(
+    request,
+    new Response("soon to expire", {
+      headers: { "cache-control": "max-age=4" },
+    }),
+  );
+  const res = await cache.match(request);
+  assertEquals(await res?.text(), "soon to expire");
+
+  await delay(6000);
+  assertEquals(await cache.match(request), undefined);
 });
 
 // Ensure that we can successfully put a response backed by a resource
