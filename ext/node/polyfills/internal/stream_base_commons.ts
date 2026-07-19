@@ -26,6 +26,9 @@ const { core, primordials } = __bootstrap;
 const { ownerSymbol } = core.loadExtScript(
   "ext:deno_node/internal/async_hooks.ts",
 );
+const { kReusedHandle } = core.loadExtScript(
+  "ext:deno_node/internal_binding/symbols.ts",
+);
 // deno-lint-ignore no-unused-vars
 const { HandleWrap } = core.loadExtScript(
   "ext:deno_node/internal_binding/handle_wrap.ts",
@@ -117,7 +120,7 @@ function handleWriteReq(req: any, data: any, encoding: string) {
 function onWriteComplete(this: any, status: number) {
   let stream = this.handle[ownerSymbol];
 
-  if (stream.constructor.name === "ReusedHandle") {
+  if (stream[kReusedHandle]) {
     stream = stream.handle;
   }
 
@@ -272,7 +275,7 @@ function onStreamRead(
 
   let stream = this[ownerSymbol];
 
-  if (stream.constructor.name === "ReusedHandle") {
+  if (stream[kReusedHandle]) {
     stream = stream.handle;
   }
 

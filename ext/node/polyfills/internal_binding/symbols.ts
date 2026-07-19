@@ -29,9 +29,13 @@ const { Symbol } = primordials;
 
 const asyncIdSymbol: unique symbol = Symbol("asyncIdSymbol");
 const ownerSymbol: unique symbol = Symbol("ownerSymbol");
+// Brands http agent ReusedHandle wrappers so per-chunk stream callbacks can
+// detect them without a constructor-name string comparison.
+const kReusedHandle: unique symbol = Symbol("kReusedHandle");
 
 return {
   asyncIdSymbol,
   ownerSymbol,
+  kReusedHandle,
 };
 })();

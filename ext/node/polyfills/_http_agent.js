@@ -21,6 +21,9 @@ const {
   symbols,
 } = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 const { async_id_symbol } = symbols;
+const { kReusedHandle } = core.loadExtScript(
+  "ext:deno_node/internal_binding/symbols.ts",
+);
 const { once } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const {
   validateNumber,
@@ -74,6 +77,7 @@ class ReusedHandle {
   constructor(type, handle) {
     this.type = type;
     this.handle = handle;
+    this[kReusedHandle] = true;
   }
 }
 

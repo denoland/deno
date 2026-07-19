@@ -45,10 +45,9 @@ function nextTick<T extends Array<unknown>>(
   callback: (...args: T) => void,
   ...args: T
 ): void;
-function nextTick<T extends Array<unknown>>(
+function nextTick(
   this: unknown,
-  callback: (...args: T) => void,
-  ...args: T
+  callback: (...args: unknown[]) => void,
 ) {
   // If we're snapshotting we don't want to push nextTick to be run. We'll
   // enable next ticks in "__bootstrapNodeProcess()";
@@ -62,24 +61,25 @@ function nextTick<T extends Array<unknown>>(
     return;
   }
 
-  // TODO(bartlomieju): seems superfluous if we don't depend on `arguments`
+  // Use `arguments` instead of a rest parameter so the common
+  // `nextTick(callback)` case allocates no array (matches Node).
   let args_;
-  switch (args.length) {
-    case 0:
-      break;
+  switch (arguments.length) {
     case 1:
-      args_ = [args[0]];
       break;
     case 2:
-      args_ = [args[0], args[1]];
+      args_ = [arguments[1]];
       break;
     case 3:
-      args_ = [args[0], args[1], args[2]];
+      args_ = [arguments[1], arguments[2]];
+      break;
+    case 4:
+      args_ = [arguments[1], arguments[2], arguments[3]];
       break;
     default:
-      args_ = new Array(args.length);
-      for (let i = 0; i < args.length; i++) {
-        args_[i] = args[i];
+      args_ = new Array(arguments.length - 1);
+      for (let i = 1; i < arguments.length; i++) {
+        args_[i - 1] = arguments[i];
       }
   }
 

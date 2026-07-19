@@ -50,6 +50,9 @@ const {
   newAsyncId,
   ownerSymbol,
 } = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
+const { kReusedHandle } = core.loadExtScript(
+  "ext:deno_node/internal_binding/symbols.ts",
+);
 const {
   AbortError,
   ERR_INVALID_ADDRESS_FAMILY,
@@ -508,7 +511,7 @@ function _afterConnectImpl(
 ) {
   let socket = handle[ownerSymbol];
 
-  if (socket.constructor.name === "ReusedHandle") {
+  if (socket[kReusedHandle]) {
     socket = socket.handle;
   }
 
