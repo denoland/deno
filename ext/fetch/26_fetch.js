@@ -23,8 +23,10 @@ const {
   SafeArrayIterator,
   SafePromisePrototypeFinally,
   String,
+  StringPrototypeCharCodeAt,
   StringPrototypeEndsWith,
   StringPrototypeIndexOf,
+  StringPrototypeLastIndexOf,
   StringPrototypeSlice,
   StringPrototypeSplit,
   StringPrototypeStartsWith,
@@ -192,6 +194,52 @@ const BAD_PORTS = {
   "6697": true, // ircs-u
   "10080": true, // amanda
 };
+
+/**
+ * Extract the explicit port of a serialized http(s) URL if it is a blocked
+ * port, without constructing a `URL`. Returns the blocked port string, or
+ * null when the scheme is not http(s) or the port is absent or allowed.
+ *
+ * `href` must be a serialized URL (the output of the URL parser), so the
+ * scheme is lowercased, the authority ends at the first `/` (serialized
+ * special URLs always have a path), userinfo precedes a literal `@`, IPv6
+ * hosts are bracketed, and an explicit port is decimal with no leading
+ * zeros -- exactly the key format of BAD_PORTS.
+ *
+ * @param {string} href
+ * @returns {string | null}
+ */
+function blockedPortForUrl(href) {
+  let hostStart;
+  if (StringPrototypeStartsWith(href, "http://")) {
+    hostStart = 7;
+  } else if (StringPrototypeStartsWith(href, "https://")) {
+    hostStart = 8;
+  } else {
+    return null;
+  }
+  let authorityEnd = StringPrototypeIndexOf(href, "/", hostStart);
+  if (authorityEnd === -1) authorityEnd = href.length;
+  const at = StringPrototypeLastIndexOf(href, "@", authorityEnd - 1);
+  if (at >= hostStart) hostStart = at + 1;
+  let colon = -1;
+  if (StringPrototypeCharCodeAt(href, hostStart) === 0x5b /* [ */) {
+    const bracket = StringPrototypeIndexOf(href, "]", hostStart);
+    if (bracket === -1 || bracket >= authorityEnd) return null;
+    if (
+      bracket + 1 < authorityEnd &&
+      StringPrototypeCharCodeAt(href, bracket + 1) === 0x3a /* : */
+    ) {
+      colon = bracket + 1;
+    }
+  } else {
+    colon = StringPrototypeIndexOf(href, ":", hostStart);
+    if (colon >= authorityEnd) colon = -1;
+  }
+  if (colon === -1 || colon + 1 === authorityEnd) return null;
+  const port = StringPrototypeSlice(href, colon + 1, authorityEnd);
+  return BAD_PORTS[port] === true ? port : null;
+}
 
 // ============================================================================
 // Inspector Network domain instrumentation (Chrome DevTools Protocol).
@@ -394,12 +442,9 @@ async function mainFetch(req, recursive, terminator, inspectorCtx = null) {
   // left alone. The spec's ALPN note covers *new* protocols negotiated over
   // TLS; it does not exempt https fetch from the list. This matches Node's
   // undici (`requestBadPort` gates on `urlIsHttpHttpsScheme`).
-  const url = new URL(req.currentUrl());
-  if (
-    (url.protocol === "http:" || url.protocol === "https:") &&
-    url.port !== "" && BAD_PORTS[url.port] === true
-  ) {
-    return networkError(`Requests to port ${url.port} are blocked`);
+  const blockedPort = blockedPortForUrl(req.currentUrl());
+  if (blockedPort !== null) {
+    return networkError(`Requests to port ${blockedPort} are blocked`);
   }
 
   if (req.blobUrlEntry !== null) {
