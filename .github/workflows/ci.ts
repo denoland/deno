@@ -18,7 +18,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 119;
+const cacheVersion = 121;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
@@ -1116,6 +1116,9 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               ].join("\n"),
               body_path: "target/release/release-notes.md",
               draft: true,
+              // Flag pre-release tags (e.g. -alpha./-beta./-rc.) as pre-releases
+              // so they are not marked "Latest" when the draft is published.
+              prerelease: "${{ contains(github.ref_name, '-') }}",
             },
           },
         );
@@ -1251,6 +1254,36 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               path: "./.ms-playwright",
               key: "playwright-${{ runner.os }}-${{ runner.arch }}",
             },
+          },
+          {
+            name: "Set up native tsc cache",
+            if: testCrateNameExpr.equals("integration").or(
+              testCrateNameExpr.equals("specs"),
+            ),
+            uses: "actions/cache@v5",
+            with: {
+              // Keyed on native.rs so a pinned-version bump re-downloads.
+              path: "./target/.native_tsc",
+              key:
+                "tsc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('cli/tsc/native.rs') }}",
+            },
+          },
+          {
+            // Pre-download the compiler `deno check` uses and export
+            // DENO_TSC_BIN so the test step doesn't re-download it for every
+            // test's fresh DENO_DIR. See tools/download_tsc.ts. Run it with the
+            // built deno binary (the test job has no system `deno` on PATH).
+            name: "Pre-download native tsc",
+            if: testCrateNameExpr.equals("integration").or(
+              testCrateNameExpr.equals("specs"),
+            ),
+            run: [
+              'DENO_BIN=""',
+              "for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do",
+              '  [ -f "$c" ] && DENO_BIN="$c" && break',
+              "done",
+              '"$DENO_BIN" run -A ./tools/download_tsc.ts',
+            ].join("\n"),
           },
           {
             if: buildItem.os.equals("linux").and(

@@ -908,8 +908,11 @@ async fn bundle_watch(
       let current_roots = current_roots.clone();
       let always_watch = always_watch.clone();
       Ok(async move {
-        let bundler = bundler.lock().await;
+        let mut bundler = bundler.lock().await;
         let start = std::time::Instant::now();
+        if let Some(changed_paths) = changed_paths {
+          bundler.reload_specifiers(&changed_paths).await?;
+        }
         let output = bundler.build().await?;
         handle_diagnostics(&output);
         if !has_errors(&output) {
@@ -1010,6 +1013,55 @@ impl RolldownBundler {
     })?;
 
     Ok(output)
+  }
+
+  async fn reload_specifiers(
+    &mut self,
+    changed_paths: &[PathBuf],
+  ) -> Result<(), AnyError> {
+    self.reload_html_entrypoints(changed_paths)?;
+    self.plugin.reload_specifiers(changed_paths).await?;
+    Ok(())
+  }
+
+  fn reload_html_entrypoints(
+    &mut self,
+    changed_paths: &[PathBuf],
+  ) -> Result<(), AnyError> {
+    let BundlerInput::EntrypointsWithHtml { html_pages, .. } = &mut self.input
+    else {
+      return Ok(());
+    };
+
+    if changed_paths.is_empty() {
+      return Ok(());
+    }
+
+    for page in html_pages.iter_mut() {
+      if !changed_paths
+        .iter()
+        .any(|changed| changed == &page.path || changed == &page.canonical_path)
+      {
+        continue;
+      }
+
+      let updated = html::load_html_entrypoint(&self.cwd, &page.path)?;
+      let virtual_module_url =
+        deno_path_util::url_from_file_path(&updated.virtual_module_path)?
+          .to_string();
+      if let Some(virtual_modules) = &self.plugin.virtual_modules {
+        virtual_modules.insert(
+          virtual_module_url,
+          VirtualModule::new(
+            updated.temp_module.as_bytes().to_vec(),
+            ModuleType::Js,
+          ),
+        );
+      }
+      *page = updated;
+    }
+
+    Ok(())
   }
 }
 
@@ -1657,6 +1709,44 @@ impl DenoPluginHandler {
         },
       )
       .await?;
+    graph_permit.commit();
+    Ok(())
+  }
+
+  async fn reload_specifiers(
+    &self,
+    specifiers: &[PathBuf],
+  ) -> Result<(), AnyError> {
+    let mut graph_permit =
+      self.module_graph_container.acquire_update_permit().await;
+    let graph = graph_permit.graph_mut();
+    let mut specifiers_vec = Vec::with_capacity(specifiers.len());
+    for specifier in specifiers {
+      let specifier = deno_path_util::url_from_file_path(specifier)?;
+      // Raw imports are represented as external assets in the module graph.
+      // Their contents are fetched by the `load` hook instead of being stored
+      // in the graph, so reloading them as ordinary graph roots loses their
+      // requested module type (for example, `type: "css"`). Rolldown will call
+      // `load` again for the changed file and fetch its current contents.
+      if matches!(
+        graph.get(&specifier),
+        Some(deno_graph::Module::External(module)) if module.was_asset_load
+      ) {
+        continue;
+      }
+      specifiers_vec.push(specifier);
+    }
+    if !specifiers_vec.is_empty() {
+      self
+        .module_load_preparer
+        .reload_specifiers(
+          graph,
+          specifiers_vec,
+          false,
+          self.permissions.clone(),
+        )
+        .await?;
+    }
     graph_permit.commit();
     Ok(())
   }

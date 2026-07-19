@@ -272,6 +272,27 @@ fn add_npm_latest_npmrc_min_release_age_downgrades() {
   }));
 }
 
+#[test]
+fn add_npm_minimum_dependency_age_no_matching_shows_hint() {
+  let context = pm_context_builder().build();
+
+  // 2.0.0 of this package has a publish date far in the future, so it is
+  // always newer than the minimum dependency age. Requesting it specifically
+  // leaves no installable version, and the error should point the user at the
+  // "minimumDependencyAge" setting.
+  let output = context
+    .new_command()
+    .env_remove("NPM_CONFIG_MIN_RELEASE_AGE")
+    .args("add npm:@denotest/min-release-age-latest@2.0.0")
+    .run();
+  output.assert_exit_code(1);
+  let output = output.combined_output();
+  assert_contains!(output, "minimum dependency date");
+  assert_contains!(output, "minimumDependencyAge");
+  assert_contains!(output, "--minimum-dependency-age");
+  assert_contains!(output, "--min-dep-age");
+}
+
 fn pm_context_builder() -> TestContextBuilder {
   TestContextBuilder::new()
     .use_http_server()

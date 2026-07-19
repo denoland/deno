@@ -805,16 +805,9 @@ impl Drop for HttpRecord {
 pub(crate) fn trust_proxy_headers() -> bool {
   static TRUST_PROXY_HEADERS: OnceLock<bool> = OnceLock::new();
 
-  static VAR_NAME: &str = "DENO_TRUST_PROXY_HEADERS";
-
   *TRUST_PROXY_HEADERS.get_or_init(|| {
-    if let Some(v) = std::env::var_os(VAR_NAME) {
-      // SAFETY: called once during single-threaded init via OnceLock
-      unsafe { std::env::remove_var(VAR_NAME) };
-      v == "1"
-    } else {
-      false
-    }
+    std::env::var_os("DENO_TRUST_PROXY_HEADERS")
+      .is_some_and(|value| value == "1")
   })
 }
 

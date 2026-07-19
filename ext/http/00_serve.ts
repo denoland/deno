@@ -443,10 +443,6 @@ class InnerRequest {
     return text;
   }
 
-  get external() {
-    return this.#external;
-  }
-
   onCancel(callback) {
     this.#signalAccessed = true;
     if (this.#external === null) {

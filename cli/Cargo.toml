@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.9.1"
+version = "2.9.3"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -163,10 +163,10 @@ plist = "1"
 pretty_yaml.workspace = true
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
-rolldown = { version = "=1.0.0" }
-rolldown_common = { version = "=1.0.0" }
-rolldown_error = { version = "=1.0.0" }
-rolldown_plugin = { version = "=1.0.0" }
+rolldown = { version = "=1.2.0" }
+rolldown_common = { version = "=1.2.0" }
+rolldown_error = { version = "=1.2.0" }
+rolldown_plugin = { version = "=1.2.0" }
 rpm.workspace = true
 rustc-hash.workspace = true
 rustls.workspace = true

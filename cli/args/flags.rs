@@ -857,6 +857,11 @@ static ENV_VARS: &[EnvVar] = &[
     example: None,
   },
   EnvVar {
+    name: "DENO_TSC_BIN",
+    description: "Path to a prebuilt native TypeScript compiler (tsc/tsgo) for `deno check` to use instead of downloading the pinned one.",
+    example: None,
+  },
+  EnvVar {
     name: "DENO_USE_CGROUPS",
     description: "Use cgroups to determine V8 memory limit.",
     example: None,
@@ -1314,6 +1319,7 @@ pub fn flags_from_vec_with_initial_cwd(
         "jupyter" => jupyter_parse(&mut flags, &mut m),
         "lint" => lint_parse(&mut flags, &mut m)?,
         "lsp" => lsp_parse(&mut flags, &mut m),
+        "sync-types" => sync_types_parse(&mut flags, &mut m)?,
         "outdated" => outdated_parse(&mut flags, &mut m, false)?,
         "repl" => repl_parse(&mut flags, &mut m)?,
         "run" => run_parse(&mut flags, &mut m, app, false, false)?,
@@ -1597,6 +1603,7 @@ pub fn clap_root() -> Command {
         .subcommand(link_subcommand())
         .subcommand(unlink_subcommand())
         .subcommand(lsp_subcommand())
+        .subcommand(sync_types_subcommand())
         .subcommand(lint_subcommand())
         .subcommand(publish_subcommand())
         .subcommand(pack_subcommand())
@@ -1650,6 +1657,26 @@ fn add_dev_arg() -> Arg {
     .action(ArgAction::SetTrue)
 }
 
+fn add_optional_arg() -> Arg {
+  Arg::new("save-optional")
+    .long("save-optional")
+    .short('O')
+    .help("Add the package as an optional dependency (under `optionalDependencies`). Note: this only applies when adding to a `package.json` file.")
+    .action(ArgAction::SetTrue)
+    .conflicts_with("dev")
+}
+
+fn add_no_save_arg() -> Arg {
+  Arg::new("no-save")
+    .long("no-save")
+    .help(
+      "Install the package(s) without adding them to the configuration file.",
+    )
+    .action(ArgAction::SetTrue)
+    .conflicts_with("dev")
+    .conflicts_with("save-optional")
+}
+
 fn add_subcommand() -> Command {
   command(
     "add",
@@ -1675,6 +1702,8 @@ Or multiple dependencies at once:
           .action(ArgAction::Append),
       )
       .arg(add_dev_arg())
+      .arg(add_optional_arg())
+      .arg(add_no_save_arg())
       .arg(allow_scripts_arg())
       .arg(allow_import_arg())
       .arg(deny_import_arg())
@@ -1690,6 +1719,7 @@ Or multiple dependencies at once:
       )
       .arg(package_json_arg())
       .arg(env_file_arg())
+      .arg(min_dep_age_arg())
   })
 }
 
@@ -1886,6 +1916,7 @@ removes a globally installed executable script:
       .args(lock_args())
       .arg(lockfile_only_arg().conflicts_with("global"))
       .arg(package_json_arg().conflicts_with("global"))
+      .arg(min_dep_age_arg().conflicts_with("global"))
   })
 }
 
@@ -2306,10 +2337,11 @@ Unless --reload is specified, this command will not re-download already cached d
     )
 }
 
-const SUPPORTED_OS: [&str; 5] = [
+const SUPPORTED_OS: [&str; 6] = [
   "x86_64-unknown-linux-gnu",
   "aarch64-unknown-linux-gnu",
   "x86_64-pc-windows-msvc",
+  "aarch64-pc-windows-msvc",
   "x86_64-apple-darwin",
   "aarch64-apple-darwin",
 ];
@@ -3336,6 +3368,8 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
         )
         .arg(env_file_arg())
         .arg(add_dev_arg().conflicts_with("entrypoint").conflicts_with("global"))
+        .arg(add_optional_arg().conflicts_with("entrypoint").conflicts_with("global"))
+        .arg(add_no_save_arg().conflicts_with("entrypoint").conflicts_with("global"))
         .args(default_registry_args().into_iter().map(|arg| arg.conflicts_with("entrypoint").conflicts_with("global")))
         .arg(
           Arg::new("save-exact")
@@ -3786,6 +3820,31 @@ using the Language Server Protocol. Usually humans do not use this subcommand di
 For example, 'deno lsp' can provide IDEs with go-to-definition support and automatic code formatting.
 
 How to connect various editors and IDEs to 'deno lsp': https://docs.deno.com/go/lsp",
+  )
+}
+
+fn sync_types_subcommand() -> Command {
+  command(
+    "sync-types",
+    cstr!(
+      "Generate a <c>tsconfig.json</> and type mappings so stock TypeScript tooling (tsc, tsgo, editors) can type-check the project.
+
+Run after installing dependencies; it materializes <c>jsr:</>/<c>http(s):</> types and writes <p(245)>.deno/tsconfig.json</>. Pass files or directories to discover dependencies from only those module graph roots:
+  <p(245)>deno sync-types script.ts tools/</>
+
+Remote <c>http(s):</> types are fetched under the same import permission as <c>deno run</>: only from the trusted default hosts unless you pass <c>--allow-import</>. To materialize types imported from another host, allow it explicitly:
+  <p(245)>deno sync-types --allow-import=html.spec.whatwg.org</>"
+    ),
+    UnstableArgsConfig::None,
+  )
+  .arg(allow_import_arg())
+  .arg(deny_import_arg())
+  .arg(
+    Arg::new("roots")
+      .help("Module graph roots to use for dependency discovery")
+      .num_args(1..)
+      .action(ArgAction::Append)
+      .value_hint(ValueHint::AnyPath),
   )
 }
 
@@ -5747,6 +5806,7 @@ fn require_arg() -> Arg {
 fn min_dep_age_arg() -> Arg {
   Arg::new("minimum-dependency-age")
     .long("minimum-dependency-age")
+    .alias("min-dep-age")
     .value_parser(minutes_duration_or_date_parser)
     .help("(Unstable) The age in minutes, ISO-8601 duration or RFC3339 absolute timestamp (e.g. '120' for two hours, 'P2D' for two days, '2025-09-16' for cutoff date, '2025-09-16T12:00:00+00:00' for cutoff time, '0' to disable)")
 }
@@ -6502,6 +6562,7 @@ fn add_parse(
   allow_and_deny_import_parse(flags, matches)?;
   lock_args_parse(flags, matches);
   env_file_arg_parse(flags, matches);
+  min_dep_age_arg_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Add(add_parse_inner(matches, None));
   Ok(())
 }
@@ -6526,6 +6587,8 @@ fn add_parse_inner(
   AddFlags {
     packages,
     dev,
+    optional: matches.get_flag("save-optional"),
+    no_save: matches.get_flag("no-save"),
     default_registry,
     lockfile_only: matches.get_flag("lockfile-only"),
     save_exact: matches.get_flag("save-exact"),
@@ -6538,6 +6601,7 @@ fn remove_parse(
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
   lock_args_parse(flags, matches);
+  min_dep_age_arg_parse(flags, matches);
   let packages = matches.remove_many::<String>("packages").unwrap();
 
   // `deno remove --global <name>...` is an alias for `deno uninstall --global
@@ -7656,6 +7720,19 @@ fn uninstall_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
 fn lsp_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Lsp;
+}
+
+fn sync_types_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  let roots = matches
+    .remove_many::<String>("roots")
+    .map(|values| values.collect())
+    .unwrap_or_default();
+  flags.subcommand = DenoSubcommand::SyncTypes(SyncTypesFlags { roots });
+  allow_and_deny_import_parse(flags, matches)?;
+  Ok(())
 }
 
 fn lint_parse(
@@ -8936,7 +9013,6 @@ fn unstable_args_parse(
     matches.get_flag("unstable-sloppy-imports");
   flags.unstable_config.npm_lazy_caching =
     matches.get_flag("unstable-npm-lazy-caching");
-  flags.unstable_config.tsgo = matches.get_flag("unstable-tsgo");
 
   if matches!(cfg, UnstableArgsConfig::ResolutionAndRuntime) {
     for feature in deno_runtime::UNSTABLE_FEATURES {
@@ -12024,6 +12100,38 @@ mod tests {
   }
 
   #[test]
+  fn minimum_dependency_age_alias() {
+    for flag in ["--minimum-dependency-age=0", "--min-dep-age=0"] {
+      let flags =
+        flags_from_vec(svec!["deno", "run", flag, "script.ts"]).unwrap();
+      assert_eq!(
+        flags.minimum_dependency_age,
+        Some(NewestDependencyDate::Disabled)
+      );
+    }
+  }
+
+  #[test]
+  fn minimum_dependency_age_pm_subcommands() {
+    // The package management subcommands that resolve versions must accept the
+    // flag so users can act on the "blocked by minimum dependency age" hint.
+    let cases = [
+      svec!["deno", "add", "--min-dep-age=0", "jsr:@std/path"],
+      svec!["deno", "add", "--minimum-dependency-age=0", "jsr:@std/path"],
+      svec!["deno", "remove", "--min-dep-age=0", "@std/path"],
+    ];
+    for args in cases {
+      let flags = flags_from_vec(args.clone())
+        .unwrap_or_else(|e| panic!("failed to parse {args:?}: {e}"));
+      assert_eq!(
+        flags.minimum_dependency_age,
+        Some(NewestDependencyDate::Disabled),
+        "{args:?}"
+      );
+    }
+  }
+
+  #[test]
   fn run_seed_with_v8_flags() {
     let r = flags_from_vec(svec![
       "deno",
@@ -14258,6 +14366,35 @@ mod tests {
   }
 
   #[test]
+  fn compile_target_aarch64_windows() {
+    // denort for Windows arm64 is built and published by CI, so
+    // `--target aarch64-pc-windows-msvc` must be accepted by the SUPPORTED_OS
+    // value parser (and an unsupported triple must still be rejected).
+    let r = flags_from_vec(svec![
+      "deno",
+      "compile",
+      "--target",
+      "aarch64-pc-windows-msvc",
+      "main.ts"
+    ]);
+    let DenoSubcommand::Compile(c) = r.unwrap().subcommand else {
+      unreachable!()
+    };
+    assert_eq!(c.target, Some("aarch64-pc-windows-msvc".to_string()));
+
+    assert!(
+      flags_from_vec(svec![
+        "deno",
+        "compile",
+        "--target",
+        "riscv64gc-unknown-linux-gnu",
+        "main.ts"
+      ])
+      .is_err()
+    );
+  }
+
+  #[test]
   fn coverage() {
     let r = flags_from_vec(svec!["deno", "coverage", "foo.json"]);
     assert_eq!(
@@ -15794,6 +15931,8 @@ mod tests {
           mk_flags(AddFlags {
             packages: svec!["@david/which"],
             dev: false, // default is false
+            optional: false,
+            no_save: false,
             default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
@@ -15813,6 +15952,8 @@ mod tests {
         let mut expected_flags = mk_flags(AddFlags {
           packages: svec!["@david/which", "@luca/hello"],
           dev: false,
+          optional: false,
+          no_save: false,
           default_registry: Some(DefaultRegistry::Npm),
           lockfile_only: true,
           save_exact: false,
@@ -15828,6 +15969,8 @@ mod tests {
           mk_flags(AddFlags {
             packages: svec!["npm:chalk"],
             dev: true,
+            optional: false,
+            no_save: false,
             default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
@@ -15842,6 +15985,8 @@ mod tests {
           mk_flags(AddFlags {
             packages: svec!["chalk"],
             dev: false,
+            optional: false,
+            no_save: false,
             default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
@@ -15856,6 +16001,8 @@ mod tests {
           mk_flags(AddFlags {
             packages: svec!["@std/fs"],
             dev: false,
+            optional: false,
+            no_save: false,
             default_registry: Some(DefaultRegistry::Jsr),
             lockfile_only: false,
             save_exact: false,
@@ -15863,6 +16010,64 @@ mod tests {
           }),
         );
       }
+      for arg in ["--save-optional", "-O"] {
+        let r = flags_from_vec(svec!["deno", cmd, arg, "npm:chalk"]);
+        assert_eq!(
+          r.unwrap(),
+          mk_flags(AddFlags {
+            packages: svec!["npm:chalk"],
+            dev: false,
+            optional: true,
+            no_save: false,
+            default_registry: Some(DefaultRegistry::Npm),
+            lockfile_only: false,
+            save_exact: false,
+            package_json: false,
+          }),
+        );
+      }
+      {
+        let r = flags_from_vec(svec!["deno", cmd, "--no-save", "npm:chalk"]);
+        assert_eq!(
+          r.unwrap(),
+          mk_flags(AddFlags {
+            packages: svec!["npm:chalk"],
+            dev: false,
+            optional: false,
+            no_save: true,
+            default_registry: Some(DefaultRegistry::Npm),
+            lockfile_only: false,
+            save_exact: false,
+            package_json: false,
+          }),
+        );
+      }
+      // --save-optional conflicts with --dev
+      assert!(
+        flags_from_vec(svec![
+          "deno",
+          cmd,
+          "--save-optional",
+          "--dev",
+          "npm:chalk"
+        ])
+        .is_err()
+      );
+      // --no-save conflicts with --dev and --save-optional
+      assert!(
+        flags_from_vec(svec!["deno", cmd, "--no-save", "--dev", "npm:chalk"])
+          .is_err()
+      );
+      assert!(
+        flags_from_vec(svec![
+          "deno",
+          cmd,
+          "--no-save",
+          "--save-optional",
+          "npm:chalk"
+        ])
+        .is_err()
+      );
     }
 
     {
@@ -15878,6 +16083,8 @@ mod tests {
           subcommand: DenoSubcommand::Add(AddFlags {
             packages: svec!["@david/which"],
             dev: false,
+            optional: false,
+            no_save: false,
             default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
@@ -16690,6 +16897,46 @@ Usage: deno lint [OPTIONS] [files]...\n"
     assert_eq!(
       r.unwrap_err().to_string(),
       "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+    );
+  }
+
+  #[test]
+  fn sync_types_subcommand() {
+    let r = flags_from_vec(svec!["deno", "sync-types"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::SyncTypes(SyncTypesFlags::default()),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "sync-types",
+      "--allow-import=html.spec.whatwg.org"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::SyncTypes(SyncTypesFlags::default()),
+        permissions: PermissionFlags {
+          allow_import: Some(svec!["html.spec.whatwg.org"]),
+          ..Default::default()
+        },
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "sync-types", "script.ts", "tools/",]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::SyncTypes(SyncTypesFlags {
+          roots: svec!["script.ts", "tools/"],
+        }),
+        ..Flags::default()
+      }
     );
   }
 

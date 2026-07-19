@@ -1,4 +1,7 @@
 {
+  // ignored: tsc reports TS2306 (empty .d.ts "is not a module") where deno
+  // treats it as an empty module. https://github.com/denoland/deno/issues/36085
+  "ignore": true,
   "args": "check --quiet declaration_header_file_with_no_exports.ts",
   "output": ""
 }

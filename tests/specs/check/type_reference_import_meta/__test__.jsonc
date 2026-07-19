@@ -2,6 +2,9 @@
   "tempDir": true,
   "tests": {
     "node_modules_dir_none": {
+      // ignored: with node_modules_dir "none", tsc can't resolve the ImportMeta
+      // augmentation type reference. https://github.com/denoland/deno/issues/36085
+      "ignore": true,
       "steps": [
         {
           "args": "run -A ./set_node_modules_dir.ts none",
@@ -13,7 +16,7 @@
         },
         {
           "args": "check ./main.ts",
-          "output": "Check [WILDCARD]main.ts\n"
+          "output": "Check [WILDLINE]\n"
         }
       ]
     },
@@ -29,7 +32,7 @@
         },
         {
           "args": "check ./main.ts",
-          "output": "Check [WILDCARD]main.ts\n"
+          "output": "Check [WILDLINE]\n"
         }
       ]
     },
@@ -45,7 +48,7 @@
         },
         {
           "args": "check ./main.ts",
-          "output": "Check [WILDCARD]main.ts\n"
+          "output": "Check [WILDLINE]\n"
         }
       ]
     }

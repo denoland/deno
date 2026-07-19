@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_DIR": "$PWD/deno_dir"
+  },
+  "steps": [{
+    // Companion for `config_url`: the policy lives in an auto-discoverable cwd
+    // `deno.json` (no `--config`). `deno run <url>` disables config discovery for
+    // a `data:` entrypoint, so `deno x` explicitly forwards the discovered cwd
+    // config to the re-run subprocess. Because the isolated install already
+    // honored that cwd policy, the child must apply the same cutoff to the
+    // module's `npm:` import — selecting 1.0.0 (2025-01-01), consistent with the
+    // install (the cutoff 2025-03-01 sits between the two publish dates).
+    "args": "x -y data:application/javascript,import%20%22npm:@denotest/x-min-dep-age/cli.mjs%22;",
+    "output": "[WILDCARD]\n1.0.0\n"
+  }]
+}
