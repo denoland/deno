@@ -2310,6 +2310,14 @@ pub fn format_stack_trace<'s, 'i>(
       }
       break;
     };
+    // Frames renamed with the `__node_internal_` prefix are internal
+    // validation/glue helpers that should not appear in user-visible
+    // stacks (Node's stack preparation elides them the same way).
+    if let Some(fn_name) = &frame.function_name
+      && fn_name.starts_with("__node_internal_")
+    {
+      continue;
+    }
     write!(
       result,
       "\n    at {}",
