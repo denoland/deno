@@ -343,6 +343,8 @@ class TextEncoder {
 
 const encodeIntoBuf = new Uint32Array(2);
 const encodeIntoOpts = { __proto__: null, allowShared: true };
+const allowSharedOpts = { __proto__: null, allowShared: true };
+const decodeStreamOpts = { __proto__: null, stream: true };
 const ENCODE_INTO_PACKED_SENTINEL = -1;
 const ENCODE_INTO_PACKED_MULTIPLIER = 0x100000000;
 
@@ -375,10 +377,13 @@ class TextDecoderStream {
       // without a per-chunk promise or microtask hop when transform() returns
       // undefined. Throws propagate to the stream via transformAlgorithm.
       transform: (chunk, controller) => {
-        chunk = webidl.converters.BufferSource(chunk, prefix, "chunk", {
-          allowShared: true,
-        });
-        const decoded = this.#decoder.decode(chunk, { stream: true });
+        chunk = webidl.converters.BufferSource(
+          chunk,
+          prefix,
+          "chunk",
+          allowSharedOpts,
+        );
+        const decoded = this.#decoder.decode(chunk, decodeStreamOpts);
         if (decoded) {
           controller.enqueue(decoded);
         }
@@ -474,7 +479,9 @@ class TextEncoderStream {
       // without a per-chunk promise or microtask hop when transform() returns
       // undefined. Throws propagate to the stream via transformAlgorithm.
       transform: (chunk, controller) => {
-        chunk = webidl.converters.DOMString(chunk);
+        if (typeof chunk !== "string") {
+          chunk = webidl.converters.DOMString(chunk);
+        }
         if (chunk === "") {
           return;
         }
