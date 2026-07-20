@@ -237,6 +237,14 @@ async fn run_subcommand(
     DenoSubcommand::Ci(ci_flags) => spawn_subcommand(async {
       tools::installer::ci_command(Arc::new(flags), ci_flags).await
     }),
+    DenoSubcommand::SyncTypes(sync_types_flags) => spawn_subcommand(async {
+      tools::installer::sync_types_command(
+        Arc::new(flags),
+        sync_types_flags,
+        tools::installer::RootTsConfigMode::Always,
+      )
+      .await
+    }),
     DenoSubcommand::JSONReference(json_reference) => {
       spawn_subcommand(async move {
         display::write_json_to_stdout(&json_reference.json)
@@ -754,12 +762,13 @@ fn maybe_minimum_dependency_age_hint(error_string: &str) -> Option<String> {
       "\n\n{} This version is blocked by the minimum dependency age policy, ",
       "which avoids installing recently published versions to reduce supply ",
       "chain risk (the default is 24 hours). To use this version now, pass the ",
-      "{} flag (for example {} to disable it, or a shorter duration like {} ",
-      "minutes) or set {} in your deno.json, or wait until the version is old ",
-      "enough.\n{} {}"
+      "{} (or {}) flag (for example {} to disable it, or a shorter duration ",
+      "like {} minutes) or set {} in your deno.json, or wait until the version ",
+      "is old enough.\n{} {}"
     ),
     colors::yellow("hint:"),
     colors::bold("--minimum-dependency-age"),
+    colors::bold("--min-dep-age"),
     colors::bold("0"),
     colors::bold("60"),
     colors::bold("\"minimumDependencyAge\""),

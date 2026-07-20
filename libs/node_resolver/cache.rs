@@ -2,10 +2,10 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 
+use rustc_hash::FxHashMap;
 use sys_traits::BaseFsCanonicalize;
 use sys_traits::BaseFsOpen;
 use sys_traits::BaseFsRead;
@@ -31,8 +31,8 @@ pub trait NodeResolutionCache:
 }
 
 thread_local! {
-  static CANONICALIZED_CACHE: RefCell<HashMap<PathBuf, Option<PathBuf>>> = RefCell::new(HashMap::new());
-  static FILE_TYPE_CACHE: RefCell<HashMap<PathBuf, Option<FileType>>> = RefCell::new(HashMap::new());
+  static CANONICALIZED_CACHE: RefCell<FxHashMap<PathBuf, Option<PathBuf>>> = RefCell::new(FxHashMap::default());
+  static FILE_TYPE_CACHE: RefCell<FxHashMap<PathBuf, Option<FileType>>> = RefCell::new(FxHashMap::default());
 }
 
 // We use thread local caches here because it's just more convenient
