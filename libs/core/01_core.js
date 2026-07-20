@@ -762,6 +762,12 @@
           consoleFromV8[key],
           customConsole[key],
         );
+        // Restore the original method name clobbered by the bind above
+        // ("bound callConsole"), like Node does in its `wrapConsole`.
+        ObjectDefineProperty(customConsole[key], "name", {
+          __proto__: null,
+          value: key,
+        });
       } else {
         // Add additional console APIs from the inspector
         customConsole[key] = consoleFromV8[key];
