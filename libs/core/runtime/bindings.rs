@@ -357,8 +357,13 @@ pub(crate) fn initialize_deno_core_namespace<'s, 'i>(
 
   // If we're initializing fresh context set up the console
   if init_mode == InitMode::New {
-    // Bind `call_console` to Deno.core.callConsole
-    let call_console_fn = v8::Function::new(scope, call_console).unwrap();
+    // Bind `call_console` to Deno.core.callConsole. Like Node's
+    // `consoleCall`, it must not be constructable so that the bound console
+    // methods throw when invoked with `new`.
+    let call_console_fn = v8::Function::builder(call_console)
+      .constructor_behavior(v8::ConstructorBehavior::Throw)
+      .build(scope)
+      .unwrap();
     let call_console_key = CALL_CONSOLE.v8_string(scope).unwrap();
     deno_core_obj.set(scope, call_console_key.into(), call_console_fn.into());
 
