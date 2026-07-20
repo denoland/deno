@@ -777,11 +777,15 @@ const plugin: Deno.lint.Plugin = {
               return;
             }
 
-            // Don't check non-root elements in chained member expressions
+            // Don't check non-root objects in chained member expressions
             // e.g. `bar.baz` in `foo.bar.baz` — only the full chain is checked
-            // for global targets; method/getter checks still apply below.
+            // for global targets; method/getter checks still apply below. A
+            // member expression used as a computed property is not part of the
+            // chain, though: `obj[Symbol.iterator]` must still flag `Symbol`.
+            const isChainedObject = node.parent?.type === "MemberExpression" &&
+              (node.parent as Deno.lint.MemberExpression).object === node;
             if (
-              node.parent?.type !== "MemberExpression" &&
+              !isChainedObject &&
               node.object.type === "Identifier" &&
               GLOBAL_TARGETS.has(node.object.name)
             ) {

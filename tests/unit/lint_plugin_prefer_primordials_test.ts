@@ -338,6 +338,11 @@ const a = {
       { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
     ],
   );
+  // A member expression in a computed property is not part of the outer
+  // member chain, so its global root must still be checked.
+  assertErr(`const it = obj[Symbol.iterator];`, [
+    { message: MSG.GlobalIntrinsic, hint: HINT.GlobalIntrinsic },
+  ]);
   assertErr(
     `
 const { ObjectDefineProperty, Symbol } = primordials;
