@@ -238,9 +238,7 @@ impl SqliteBackedCache {
   ) -> Result<(), CacheError> {
     let db = self.connection.clone();
     let cache_storage_dir = self.cache_storage_dir.clone();
-    let now = SystemTime::now()
-      .duration_since(UNIX_EPOCH)
-      .expect("SystemTime is before unix epoch");
+    let now = now_unix();
 
     if let Some(resource) = resource {
       let body_key = hash(&format!(
@@ -298,7 +296,7 @@ impl SqliteBackedCache {
     let (query_result, request) = spawn_blocking(move || {
       let db = db.lock();
       let result = db.query_row(
-        "SELECT response_body_key, response_headers, response_status, response_status_text, request_headers
+        "SELECT response_body_key, response_headers, response_status, response_status_text, request_headers, last_inserted_at
              FROM request_response_list
              WHERE cache_id = ?1 AND request_url = ?2",
         (request.cache_id, &request.request_url),
@@ -308,6 +306,7 @@ impl SqliteBackedCache {
           let response_status: u16 = row.get(2)?;
           let response_status_text: String = row.get(3)?;
           let request_headers: Vec<u8> = row.get(4)?;
+          let last_inserted_at: u64 = row.get(5)?;
           let response_headers: Vec<(ByteString, ByteString)> = deserialize_headers(&response_headers);
           let request_headers: Vec<(ByteString, ByteString)> = deserialize_headers(&request_headers);
           Ok((CacheMatchResponseMeta {
@@ -315,7 +314,8 @@ impl SqliteBackedCache {
             response_headers,
             response_status,
             response_status_text},
-            response_body_key
+            response_body_key,
+            last_inserted_at
           ))
         },
       );
@@ -325,7 +325,7 @@ impl SqliteBackedCache {
     .await??;
 
     match query_result {
-      Some((cache_meta, Some(response_body_key))) => {
+      Some((cache_meta, response_body_key, last_inserted_at)) => {
         // From https://w3c.github.io/ServiceWorker/#request-matches-cached-item-algorithm
         // If there's Vary header in the response, ensure all the
         // headers of the cached request match the query request.
@@ -339,29 +339,47 @@ impl SqliteBackedCache {
         {
           return Ok(None);
         }
-        let response_path =
-          get_responses_dir(cache_storage_dir, request.cache_id)
-            .join(response_body_key);
-        let file = match tokio::fs::File::open(response_path).await {
-          Ok(file) => file,
-          Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-            // Best efforts to delete the old cache item
-            _ = self
-              .delete(CacheDeleteRequest {
-                cache_id: request.cache_id,
-                request_url: request.request_url,
-              })
-              .await;
-            return Ok(None);
+        let now = now_unix().as_secs();
+        if let Some(expires_at) =
+          response_expires_at(&cache_meta.response_headers, last_inserted_at)
+          && now >= expires_at
+        {
+          // Best efforts to delete the expired cache item
+          _ = self
+            .delete(CacheDeleteRequest {
+              cache_id: request.cache_id,
+              request_url: request.request_url,
+            })
+            .await;
+          return Ok(None);
+        }
+        match response_body_key {
+          Some(response_body_key) => {
+            let response_path =
+              get_responses_dir(cache_storage_dir, request.cache_id)
+                .join(response_body_key);
+            let file = match tokio::fs::File::open(response_path).await {
+              Ok(file) => file,
+              Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                // Best efforts to delete the old cache item
+                _ = self
+                  .delete(CacheDeleteRequest {
+                    cache_id: request.cache_id,
+                    request_url: request.request_url,
+                  })
+                  .await;
+                return Ok(None);
+              }
+              Err(err) => return Err(err.into()),
+            };
+            Ok(Some((
+              cache_meta,
+              Some(CacheResponseResource::sqlite(file)),
+            )))
           }
-          Err(err) => return Err(err.into()),
-        };
-        Ok(Some((
-          cache_meta,
-          Some(CacheResponseResource::sqlite(file)),
-        )))
+          None => Ok(Some((cache_meta, None))),
+        }
       }
-      Some((cache_meta, None)) => Ok(Some((cache_meta, None))),
       None => Ok(None),
     }
   }
@@ -447,7 +465,7 @@ async fn insert_cache_asset(
           response_body_key,
           put.response_status,
           put.response_status_text,
-          SystemTime::now().duration_since(UNIX_EPOCH).expect("SystemTime is before unix epoch").as_secs(),
+          now_unix().as_secs(),
         ),
         |row| {
           let response_body_key: Option<String> = row.get(0)?;
@@ -457,6 +475,47 @@ async fn insert_cache_asset(
     };
     Ok::<Option<String>, CacheError>(maybe_response_body)
   }).await?
+}
+
+fn now_unix() -> std::time::Duration {
+  SystemTime::now()
+    .duration_since(UNIX_EPOCH)
+    .expect("SystemTime should be after unix epoch")
+}
+
+fn response_expires_at(
+  response_headers: &[(ByteString, ByteString)],
+  last_inserted_at: u64,
+) -> Option<u64> {
+  if let Some(cache_control) = get_header("cache-control", response_headers) {
+    let cache_control =
+      String::from_utf8_lossy(&cache_control).to_ascii_lowercase();
+    let mut max_age = None;
+    let mut s_maxage = None;
+    for directive in cache_control.split(',') {
+      let directive = directive.trim();
+      if let Some(value) = directive.strip_prefix("s-maxage=") {
+        s_maxage = value.trim_matches('"').parse::<u64>().ok();
+      } else if let Some(value) = directive.strip_prefix("max-age=") {
+        max_age = value.trim_matches('"').parse::<u64>().ok();
+      }
+    }
+    if let Some(max_age) = s_maxage.or(max_age) {
+      return Some(last_inserted_at.saturating_add(max_age));
+    }
+  }
+  if let Some(expires) = get_header("expires", response_headers) {
+    let expires_at = chrono::DateTime::parse_from_rfc2822(
+      String::from_utf8_lossy(&expires).trim(),
+    )
+    .map(|date| date.timestamp().max(0) as u64)
+    // https://www.rfc-editor.org/rfc/rfc9111#section-5.3: a cache
+    // recipient must interpret invalid date formats as representing
+    // a time in the past
+    .unwrap_or(0);
+    return Some(expires_at);
+  }
+  None
 }
 
 #[inline]
@@ -475,4 +534,80 @@ impl deno_core::Resource for SqliteBackedCache {
 pub fn hash(token: &str) -> String {
   use sha2::Digest;
   format!("{:x}", sha2::Sha256::digest(token.as_bytes()))
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_response_expires_at() {
+    fn h(name: &str, value: &str) -> (ByteString, ByteString) {
+      (ByteString::from(name), ByteString::from(value))
+    }
+    assert_eq!(response_expires_at(&[], 1000), None);
+    assert_eq!(
+      response_expires_at(&[h("content-type", "text/plain")], 1000),
+      None
+    );
+    assert_eq!(
+      response_expires_at(&[h("cache-control", "no-store")], 1000),
+      None
+    );
+    assert_eq!(
+      response_expires_at(&[h("cache-control", "max-age=600")], 1000),
+      Some(1600)
+    );
+    assert_eq!(
+      response_expires_at(&[h("Cache-Control", "public, Max-Age=600")], 1000),
+      Some(1600)
+    );
+    assert_eq!(
+      response_expires_at(&[h("cache-control", "max-age=\"600\"")], 1000),
+      Some(1600)
+    );
+    assert_eq!(
+      response_expires_at(
+        &[h("cache-control", "max-age=600, s-maxage=30")],
+        1000
+      ),
+      Some(1030)
+    );
+    assert_eq!(
+      response_expires_at(
+        &[h("cache-control", "max-age=18446744073709551615")],
+        1000
+      ),
+      Some(u64::MAX)
+    );
+    assert_eq!(
+      response_expires_at(&[h("expires", "Thu, 01 Jan 1970 00:16:40 GMT")], 0),
+      Some(1000)
+    );
+    assert_eq!(
+      response_expires_at(&[h("expires", "Thu, 01 Jan 1900 00:00:00 GMT")], 0),
+      Some(0)
+    );
+    assert_eq!(response_expires_at(&[h("expires", "0")], 1000), Some(0));
+    assert_eq!(
+      response_expires_at(
+        &[
+          h("cache-control", "max-age=600"),
+          h("expires", "Thu, 01 Jan 1970 00:16:40 GMT")
+        ],
+        1000
+      ),
+      Some(1600)
+    );
+    assert_eq!(
+      response_expires_at(
+        &[
+          h("cache-control", "public"),
+          h("expires", "Thu, 01 Jan 1970 00:16:40 GMT")
+        ],
+        1000
+      ),
+      Some(1000)
+    );
+  }
 }
