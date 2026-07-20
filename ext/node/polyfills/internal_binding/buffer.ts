@@ -103,8 +103,11 @@ function indexOfBuffer(
   if (Encodings[encoding] === undefined) {
     throw new Error(`Unknown encoding code ${encoding}`);
   }
-  // `end` reaches us uncoerced from JS; Node reads it as an int64 (truncating
-  // toward zero, NaN -> 0) before clamping.
+  // `byteOffset` and `end` reach us uncoerced from JS; Node reads each as an
+  // int64 at the binding boundary, truncating a fractional value toward zero
+  // (and NaN -> 0) before clamping. `byteOffset` is already NaN-resolved by the
+  // caller, so it only needs truncation.
+  byteOffset = MathTrunc(byteOffset);
   end = NumberIsNaN(end) ? 0 : MathTrunc(end);
 
   const haystackLength = TypedArrayPrototypeGetLength(targetBuffer);
@@ -144,12 +147,16 @@ function indexOfBuffer(
   }
   if (isUcs2 && (searchEnd < 2 || needleLength < 2)) return -1;
 
+  // For UCS2, Node searches the uint16 view: it aligns `offset` down to the
+  // code-unit grid (offset / 2) and drops any trailing odd needle byte
+  // (needle_length / 2). Mirror that here in byte space. The guards above still
+  // use the raw `needleLength`, matching Node.
   return searchBytes(
     targetBuffer,
     searchEnd,
     buffer,
-    needleLength,
-    offset,
+    isUcs2 ? needleLength & ~1 : needleLength,
+    isUcs2 ? offset & ~1 : offset,
     forwardDirection,
     isUcs2 ? 2 : 1,
   );
@@ -163,6 +170,10 @@ function indexOfNumber(
   forwardDirection: boolean,
   end: number,
 ) {
+  // Node reads `byteOffset`/`end` as int64 at the binding boundary, truncating
+  // a fractional value toward zero. `byteOffset` is already NaN-resolved by the
+  // caller.
+  byteOffset = MathTrunc(byteOffset);
   end = NumberIsNaN(end) ? 0 : MathTrunc(end);
   // Uses only the last byte of the number.
   // https://github.com/nodejs/node/issues/7591#issuecomment-231178104

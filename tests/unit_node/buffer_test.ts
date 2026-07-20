@@ -1039,3 +1039,45 @@ Deno.test({
     assertEquals(ucs2buf.indexOf("b", 0, 4, "ucs2"), 2);
   },
 });
+
+// A forward UCS2 search must align an odd byteOffset down to the code-unit
+// grid, matching Node's `offset / 2`. Not covered by upstream, which only
+// passes even (0) offsets for ucs2.
+Deno.test({
+  name: "[node/buffer] indexOf aligns odd ucs2 byteOffset down to code unit",
+  fn() {
+    assertEquals(Buffer.from("ab", "utf16le").indexOf("a", 1, "utf16le"), 0);
+    assertEquals(Buffer.from("ba", "utf16le").indexOf("a", 1, "utf16le"), 2);
+    assertEquals(
+      Buffer.from("ab", "utf16le").includes("a", 1, "utf16le"),
+      true,
+    );
+  },
+});
+
+// A UCS2 needle with a trailing odd byte must be truncated to whole code
+// units, matching Node's `needle_length / 2`. Not covered by upstream, whose
+// ucs2 needles are all even-length strings.
+Deno.test({
+  name: "[node/buffer] indexOf truncates odd-length ucs2 needle to code units",
+  fn() {
+    const needle = Buffer.from([0x61, 0x00, 0xff]); // "a\0" + stray byte
+    assertEquals(
+      Buffer.from("ab", "utf16le").indexOf(needle, 0, "utf16le"),
+      0,
+    );
+  },
+});
+
+// A fractional byteOffset must be truncated toward zero, matching Node reading
+// it as an int64 at the binding boundary. Not covered by upstream.
+Deno.test({
+  name: "[node/buffer] indexOf/lastIndexOf truncate fractional byteOffset",
+  fn() {
+    const buf = Buffer.from("abcabc");
+    assertEquals(Buffer.from("abc").indexOf(98, 0.5), 1);
+    assertEquals(Buffer.from("abc").indexOf("b", 0.5), 1);
+    assertEquals(buf.lastIndexOf("a", 4.9), 3);
+    assertEquals(buf.lastIndexOf(0x61, 4.9), 3);
+  },
+});
