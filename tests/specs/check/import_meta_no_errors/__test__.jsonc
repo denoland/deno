@@ -2,9 +2,6 @@
   "tempDir": true,
   "tests": {
     "node_modules_dir_none": {
-      // ignored: with node_modules_dir "none", tsc can't resolve the
-      // @types/node type reference. https://github.com/denoland/deno/issues/36085
-      "ignore": true,
       "steps": [
         {
           "args": "run -A ./set_node_modules_dir.ts none",
