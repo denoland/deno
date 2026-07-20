@@ -9,6 +9,7 @@ use vello::peniko;
 use super::filter::CanvasLayerFilterPrimitive;
 use super::renderer::DenoCanvasBackend;
 use crate::css::color::ParsedColor;
+use crate::css::filter::CssFilterFunction;
 use crate::css::font::FontState;
 
 // TODO(petamoriken): move to a shared crate when canvas2d and webgpu types need to be unified.
@@ -258,10 +259,23 @@ pub(super) enum FillStrokeStyle {
   Pattern(v8::Global<v8::Object>),
 }
 
-/// CSS filter string most recently assigned to `ctx.filter`.
+/// The filter to apply when compositing a `beginLayer()` layer, in whichever
+/// form the user supplied it (SVG-filter-primitive object, or CSS filter string).
+/// https://github.com/whatwg/html/pull/9537
+#[allow(
+  dead_code,
+  reason = "layer filter primitives are retained in state before rendering support"
+)]
 #[derive(Clone)]
-pub(super) enum FilterStyle {
-  Css(String),
+pub(super) enum LayerFilter {
+  Css(Vec<CssFilterFunction>),
+  Object(Vec<CanvasLayerFilterPrimitive>),
+}
+
+impl Default for LayerFilter {
+  fn default() -> Self {
+    Self::Css(Vec::new())
+  }
 }
 
 // `DrawingBackend` abstracts over two unrelated vello renderer families that do
@@ -334,8 +348,8 @@ pub(super) struct DrawingState {
   pub(super) text_baseline: TextBaseline,
   pub(super) lang: String,
   pub(super) global_composite_operation: GlobalCompositeOperation,
-  pub(super) filter_style: FilterStyle,
-  pub(super) filter: Vec<CanvasLayerFilterPrimitive>,
+  pub(super) filter_style: String,
+  pub(super) layer_filter: LayerFilter,
   pub(super) image_smoothing_enabled: bool,
   pub(super) image_smoothing_quality: ImageSmoothingQuality,
   pub(super) line_width: f64,
@@ -363,8 +377,8 @@ impl Default for DrawingState {
       text_baseline: TextBaseline::default(),
       lang: String::from("inherit"),
       global_composite_operation: GlobalCompositeOperation::default(),
-      filter_style: FilterStyle::Css(String::from("none")),
-      filter: Vec::new(),
+      filter_style: String::from("none"),
+      layer_filter: LayerFilter::default(),
       image_smoothing_enabled: true,
       image_smoothing_quality: ImageSmoothingQuality::default(),
       line_width: 1.0,

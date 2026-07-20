@@ -6,7 +6,6 @@ use crate::canvas2d::error::Canvas2DError;
 use crate::css::color::Color;
 use crate::css::color::is_css_system_color;
 use crate::css::color::parse_css_color;
-use crate::css::filter::CssFilterFunction;
 
 #[allow(
   dead_code,
@@ -18,8 +17,6 @@ pub(super) enum CanvasLayerFilterPrimitive {
     std_deviation_x: f64,
     std_deviation_y: f64,
   },
-  Brightness(f64),
-  Contrast(f64),
   ColorMatrix {
     values: [f64; 20],
   },
@@ -40,12 +37,6 @@ pub(super) enum CanvasLayerFilterPrimitive {
     flood_color: Color,
     flood_opacity: f64,
   },
-  Grayscale(f64),
-  HueRotate(f64),
-  Invert(f64),
-  Opacity(f64),
-  Saturate(f64),
-  Sepia(f64),
   Turbulence {
     base_frequency_x: f64,
     base_frequency_y: f64,
@@ -84,58 +75,6 @@ pub(super) enum CanvasLayerComponentTransferFunc {
 pub(super) enum CanvasLayerTurbulenceKind {
   FractalNoise,
   Turbulence,
-}
-
-impl From<CssFilterFunction> for CanvasLayerFilterPrimitive {
-  #[inline]
-  fn from(function: CssFilterFunction) -> Self {
-    match function {
-      CssFilterFunction::Blur(radius) => {
-        let radius = radius.to_pixels();
-        CanvasLayerFilterPrimitive::GaussianBlur {
-          std_deviation_x: radius,
-          std_deviation_y: radius,
-        }
-      }
-      CssFilterFunction::Brightness(value) => {
-        CanvasLayerFilterPrimitive::Brightness(value)
-      }
-      CssFilterFunction::Contrast(value) => {
-        CanvasLayerFilterPrimitive::Contrast(value)
-      }
-      CssFilterFunction::DropShadow {
-        offset_x,
-        offset_y,
-        blur_radius,
-        color,
-      } => CanvasLayerFilterPrimitive::DropShadow {
-        dx: offset_x.to_pixels(),
-        dy: offset_y.to_pixels(),
-        std_deviation_x: blur_radius.to_pixels(),
-        std_deviation_y: blur_radius.to_pixels(),
-        flood_color: color,
-        flood_opacity: 1.0,
-      },
-      CssFilterFunction::Grayscale(value) => {
-        CanvasLayerFilterPrimitive::Grayscale(value)
-      }
-      CssFilterFunction::HueRotate(angle) => {
-        CanvasLayerFilterPrimitive::HueRotate(angle.to_degrees())
-      }
-      CssFilterFunction::Invert(value) => {
-        CanvasLayerFilterPrimitive::Invert(value)
-      }
-      CssFilterFunction::Opacity(value) => {
-        CanvasLayerFilterPrimitive::Opacity(value)
-      }
-      CssFilterFunction::Saturate(value) => {
-        CanvasLayerFilterPrimitive::Saturate(value)
-      }
-      CssFilterFunction::Sepia(value) => {
-        CanvasLayerFilterPrimitive::Sepia(value)
-      }
-    }
-  }
 }
 
 /// Parses the object-form `beginLayer({ filter })` value.
