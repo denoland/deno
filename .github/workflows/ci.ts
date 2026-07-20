@@ -427,6 +427,15 @@ const installRustStep = step(
       "  if ! rustup --version 2>&1 | grep -q '1\\.29\\.0'; then exit 0; fi",
       '  echo "Detected broken rustup 1.29.0, replacing with 1.28.2"',
       "fi",
+      "# On the Alpine/musl runner the glibc rustup-init from",
+      "# static.rust-lang.org cannot run (missing __res_init), but apk",
+      "# installs a native musl rustup-init that is not the broken 1.29.0.",
+      "# Use it directly instead of downloading.",
+      "if command -v rustup-init >/dev/null 2>&1; then",
+      "  rustup-init -y --default-toolchain none --no-modify-path",
+      '  echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> "$GITHUB_PATH"',
+      "  exit 0",
+      "fi",
       'case "${RUNNER_OS}-${RUNNER_ARCH}" in',
       "  Linux-X64)     target=x86_64-unknown-linux-gnu; ext= ;;",
       "  Linux-ARM64)   target=aarch64-unknown-linux-gnu; ext= ;;",
@@ -1220,7 +1229,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             // it. actions/checkout works around this with a temporary HOME,
             // but that does not persist for later steps (e.g. submodule
             // clones), so mark the workspace as a safe directory globally.
-            "git config --global --add safe.directory \"$GITHUB_WORKSPACE\"",
+            'git config --global --add safe.directory "$GITHUB_WORKSPACE"',
           ],
         });
 
