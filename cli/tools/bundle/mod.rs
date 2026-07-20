@@ -247,6 +247,10 @@ pub async fn bundle_init(
       }
     },
     deferred_errors: Default::default(),
+    has_output: bundle_flags.output_dir.is_some()
+      || bundle_flags.output_path.is_some(),
+    collected_css: Default::default(),
+    css_module_count: Default::default(),
   };
 
   let input = prepare_inputs(
@@ -287,6 +291,16 @@ pub async fn bundle(
   {
     let flags_mut = Arc::make_mut(&mut flags);
     flags_mut.unstable_config.sloppy_imports = true;
+  }
+  // Rolldown removed CSS bundling (rolldown/rolldown#4271), so pure-CSS
+  // entrypoints go through a small dedicated pipeline instead.
+  if !bundle_flags.entrypoints.is_empty()
+    && bundle_flags
+      .entrypoints
+      .iter()
+      .all(|e| e.to_lowercase().ends_with(".css"))
+  {
+    return bundle_css_entrypoints(&bundle_flags);
   }
   // `--check[=all]` is documented in `bundle --help`; honour it before we
   // hand the graph to esbuild so type errors surface alongside (and not
@@ -351,7 +365,12 @@ pub async fn bundle(
     }
 
     if bundle_flags.output_dir.is_some() || bundle_flags.output_path.is_some() {
-      print_finished_message(&output, &output_infos, duration)?;
+      print_finished_message(
+        &output,
+        &output_infos,
+        duration,
+        bundler.plugin.css_module_count.load(std::sync::atomic::Ordering::Relaxed),
+      )?;
     }
   }
 
@@ -359,6 +378,62 @@ pub async fn bundle(
     deno_core::anyhow::bail!("bundling failed");
   }
 
+  Ok(())
+}
+
+/// Bundles CSS-only entrypoints without rolldown (which removed CSS
+/// support, see rolldown/rolldown#4271): each file is emitted with a
+/// `/* path */` provenance header, concatenated in entry order.
+fn bundle_css_entrypoints(
+  bundle_flags: &BundleFlags,
+) -> Result<(), AnyError> {
+  let cwd = std::env::current_dir()?;
+  let mut css = String::new();
+  for entry in &bundle_flags.entrypoints {
+    let path = cwd.join(entry);
+    let content = std::fs::read_to_string(&path).map_err(|e| {
+      deno_core::anyhow::anyhow!("Failed to read {}: {}", path.display(), e)
+    })?;
+    let rel = pathdiff::diff_paths(&path, &cwd)
+      .unwrap_or_else(|| path.clone())
+      .to_string_lossy()
+      .replace('\\', "/");
+    css.push_str(&format!("/* {} */\n{}", rel, content));
+    if !css.ends_with('\n') {
+      css.push('\n');
+    }
+  }
+
+  if let Some(output_path) = &bundle_flags.output_path {
+    let path = cwd.join(output_path);
+    if let Some(parent) = path.parent() {
+      std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&path, css.as_bytes())?;
+  } else if let Some(output_dir) = &bundle_flags.output_dir {
+    // With --outdir each entrypoint keeps its own file name.
+    let dir = cwd.join(output_dir);
+    std::fs::create_dir_all(&dir)?;
+    for entry in &bundle_flags.entrypoints {
+      let path = cwd.join(entry);
+      let content = std::fs::read_to_string(&path)?;
+      let rel = pathdiff::diff_paths(&path, &cwd)
+        .unwrap_or_else(|| path.clone())
+        .to_string_lossy()
+        .replace('\\', "/");
+      let mut chunk = format!("/* {} */\n{}", rel, content);
+      if !chunk.ends_with('\n') {
+        chunk.push('\n');
+      }
+      let file_name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "bundle.css".to_string());
+      std::fs::write(dir.join(file_name), chunk.as_bytes())?;
+    }
+  } else {
+    deno_print::drop_write_stdout(css.as_bytes());
+  }
   Ok(())
 }
 
@@ -943,7 +1018,12 @@ async fn bundle_watch(
             bundler.minified,
             Some(&bundler.input),
           )?;
-          print_finished_message(&output, &output_infos, start.elapsed())?;
+          print_finished_message(
+            &output,
+            &output_infos,
+            start.elapsed(),
+            bundler.plugin.css_module_count.load(std::sync::atomic::Ordering::Relaxed),
+          )?;
 
           let mut new_watched = get_input_paths_from_output(&output);
           new_watched.extend(always_watch.iter().cloned());
@@ -971,7 +1051,7 @@ fn get_input_paths_from_output(output: &BundleOutput) -> Vec<PathBuf> {
   for asset in &output.assets {
     if let Output::Chunk(chunk) = asset {
       for module_id in &chunk.module_ids {
-        let module_str: &str = module_id.as_str();
+        let module_str = strip_internal_id_suffix(module_id.as_str());
         if let Ok(url) = Url::parse(module_str) {
           if let Ok(path) = deno_path_util::url_to_file_path(&url) {
             paths.insert(path);
@@ -1025,7 +1105,7 @@ impl RolldownBundler {
         deno_core::anyhow::anyhow!("Failed to initialize bundler: {}", msg)
       })?;
 
-    let output = match bundler.generate().await {
+    let mut output = match bundler.generate().await {
       Ok(output) => output,
       Err(errs) => {
         let deferred = self.take_deferred_errors();
@@ -1036,7 +1116,69 @@ impl RolldownBundler {
       }
     };
 
+    self.append_collected_css_asset(&mut output);
+
     Ok(output)
+  }
+
+  /// Emits the CSS collected from `import "./style.css"` statements as a
+  /// single `.css` asset (rolldown itself no longer bundles CSS).
+  fn append_collected_css_asset(&self, output: &mut BundleOutput) {
+    let collected = std::mem::take(&mut *self.plugin.collected_css.lock());
+    self
+      .plugin
+      .css_module_count
+      .store(collected.len(), std::sync::atomic::Ordering::Relaxed);
+    if collected.is_empty() {
+      return;
+    }
+    let mut css = String::new();
+    for (id, content) in &collected {
+      let rel = pathdiff::diff_paths(Path::new(id), &self.cwd)
+        .unwrap_or_else(|| PathBuf::from(id))
+        .to_string_lossy()
+        .replace('\\', "/");
+      css.push_str(&format!("/* {} */\n{}", rel, content));
+      if !css.ends_with('\n') {
+        css.push('\n');
+      }
+    }
+
+    let hash = {
+      use std::hash::Hash;
+      use std::hash::Hasher;
+      let mut hasher = std::collections::hash_map::DefaultHasher::new();
+      css.hash(&mut hasher);
+      format!("{:08x}", hasher.finish() as u32)
+    };
+    let filename = match &self.input {
+      BundlerInput::EntrypointsWithHtml { entries, .. } => entries
+        .first()
+        .map(|(name, _)| format!("{name}-{hash}.css"))
+        .unwrap_or_else(|| format!("styles-{hash}.css")),
+      BundlerInput::Entrypoints(_) => {
+        // Name after the requested output file (`-o out.js` -> `out.css`)
+        // when there is one.
+        match self
+          .options
+          .file
+          .as_ref()
+          .and_then(|f| Path::new(f).file_name())
+          .map(|f| Path::new(f).with_extension("css"))
+        {
+          Some(name) => name.to_string_lossy().into_owned(),
+          None => format!("styles-{hash}.css"),
+        }
+      }
+    };
+    output.assets.push(Output::Asset(Arc::new(
+      rolldown_common::OutputAsset {
+        names: Vec::new(),
+        original_file_names: Vec::new(),
+        filename: ArcStr::from(filename),
+        source: rolldown_common::StrOrBytes::Str(css),
+      },
+    )));
   }
 
   async fn reload_specifiers(
@@ -1212,6 +1354,49 @@ impl VirtualModules {
 /// `\0` keeps it from colliding with any real filesystem path.
 const BROWSER_DISABLED_PREFIX: &str = "\0deno-browser-disabled:";
 
+/// Query suffix appended to `.cjs`/`.cts` module ids so rolldown doesn't
+/// force a script-mode parse based on the extension (script mode rejects
+/// `import.meta`, which Deno allows in CommonJS modules). The load hook and
+/// importer handling strip it before touching the filesystem.
+const CJS_ESM_PARSE_SUFFIX: &str = "?deno-cjs";
+
+fn strip_cjs_esm_parse_suffix(id: &str) -> &str {
+  id.strip_suffix(CJS_ESM_PARSE_SUFFIX).unwrap_or(id)
+}
+
+/// Query suffixes marking raw imports (`with { type: "..." }`).
+/// `RawImportsTransform` rewrites the import specifiers to carry these so
+/// the same file can exist both as a normal module and as inlined raw
+/// contents (rolldown dedups modules by id).
+const RAW_IMPORT_SUFFIXES: [(&str, &str); 3] = [
+  ("?deno-raw-text", "text"),
+  ("?deno-raw-bytes", "bytes"),
+  ("?deno-raw-css", "css"),
+];
+
+fn split_raw_import_suffix(id: &str) -> Option<(&str, &str)> {
+  RAW_IMPORT_SUFFIXES.iter().find_map(|(suffix, ty)| {
+    id.strip_suffix(suffix).map(|base| (base, *ty))
+  })
+}
+
+fn raw_import_suffix_of(specifier: &str) -> Option<&'static str> {
+  RAW_IMPORT_SUFFIXES
+    .iter()
+    .find(|(suffix, _)| specifier.ends_with(suffix))
+    .map(|(suffix, _)| *suffix)
+}
+
+/// Strips any internal query suffix (`?deno-cjs`, `?deno-raw-*`) from a
+/// module id, recovering the underlying file path.
+fn strip_internal_id_suffix(id: &str) -> &str {
+  let id = strip_cjs_esm_parse_suffix(id);
+  match split_raw_import_suffix(id) {
+    Some((base, _)) => base,
+    None => id,
+  }
+}
+
 /// A structured error recorded by the plugin's resolve/load hooks. Rolldown
 /// wraps hook failures as "plugin `deno` threw an error" and stringifies the
 /// cause away, so the plugin stores the real message (and an optional
@@ -1223,6 +1408,39 @@ pub struct DeferredBundleError {
   key: String,
   message: String,
   note: Option<String>,
+}
+
+/// Handles a CSS module reaching the load hook via a plain `import`:
+/// with an output path configured the source is collected for emission as a
+/// sibling `.css` asset and the import becomes an empty module; without one
+/// this is an error (there is nowhere to put the stylesheet).
+fn css_import_load_output(
+  has_output: bool,
+  collected_css: &deno_core::parking_lot::Mutex<IndexMap<String, String>>,
+  deferred_errors: &deno_core::parking_lot::Mutex<Vec<DeferredBundleError>>,
+  id: &str,
+  specifier: &Url,
+  source: &str,
+) -> Result<HookLoadOutput, deno_core::anyhow::Error> {
+  if !has_output {
+    let message = format!(
+      "Cannot import \"{specifier}\" into a JavaScript file without an output path configured"
+    );
+    deferred_errors.lock().push(DeferredBundleError {
+      key: id.to_string(),
+      message: message.clone(),
+      note: None,
+    });
+    return Err(deno_core::anyhow::anyhow!("{}", message));
+  }
+  collected_css
+    .lock()
+    .insert(id.to_string(), source.to_string());
+  Ok(HookLoadOutput {
+    code: ArcStr::from(""),
+    module_type: Some(ModuleType::Empty),
+    ..Default::default()
+  })
 }
 
 fn unresolved_import_note(kind: ImportKind, specifier: &str) -> Option<String> {
@@ -1259,6 +1477,19 @@ pub struct DenoPluginHandler {
   /// `module_format_package_json_path`.
   synthetic_esm_pkg_json: Option<Arc<SyntheticEsmPackageJson>>,
   deferred_errors: Arc<deno_core::parking_lot::Mutex<Vec<DeferredBundleError>>>,
+  /// Whether an output path/dir is configured; importing CSS from JS
+  /// requires one (the CSS is emitted as a sibling asset).
+  has_output: bool,
+  /// CSS sources collected from `import "./style.css"` statements, keyed by
+  /// module id in import order. Rolldown no longer bundles CSS, so the load
+  /// hook returns an empty module for these and `build()` emits their
+  /// concatenation as an asset.
+  collected_css:
+    Arc<deno_core::parking_lot::Mutex<IndexMap<String, String>>>,
+  /// How many CSS modules the last build inlined; the emptied modules get
+  /// tree-shaken out of the chunk listing, so the "Bundled N modules"
+  /// summary adds this back.
+  css_module_count: Arc<std::sync::atomic::AtomicUsize>,
 }
 
 pub struct SyntheticEsmPackageJson {
@@ -1431,6 +1662,15 @@ impl Plugin for DenoPluginHandler {
     let deferred_errors = self.deferred_errors.clone();
 
     async move {
+      // A raw import (`with { type: "..." }`, rewritten by
+      // `RawImportsTransform`): resolve the underlying specifier and carry
+      // the suffix over to the resolved id.
+      let raw_suffix = raw_import_suffix_of(&specifier);
+      let specifier = match raw_suffix {
+        Some(suffix) => specifier[..specifier.len() - suffix.len()].to_string(),
+        None => specifier,
+      };
+
       // Virtual module
       if let Some(vm) = &virtual_modules
         && vm.contains(&specifier)
@@ -1472,7 +1712,7 @@ impl Plugin for DenoPluginHandler {
 
       // Resolve using Deno's resolver
       let referrer = if let Some(imp) = &importer {
-        resolve_url_or_path(imp, Path::new(""))
+        resolve_url_or_path(strip_cjs_esm_parse_suffix(imp), Path::new(""))
           .unwrap_or_else(|_| initial_cwd.clone())
       } else {
         initial_cwd.clone()
@@ -1525,6 +1765,28 @@ impl Plugin for DenoPluginHandler {
                 &resolved_str,
               ),
             )
+          };
+
+          // Rolldown parses `.cjs`/`.cts` ids in script mode, which rejects
+          // `import.meta` (valid in Deno's CJS). When such a file actually
+          // uses `import.meta`, suffix the id so the extension check doesn't
+          // apply; the module still gets CommonJS treatment from its
+          // `module.exports`/`require` usage. Files without `import.meta`
+          // keep their plain id — the explicit Cjs format makes rolldown
+          // emit the named `__require` shim that `replace_require_shim`
+          // rewrites to `createRequire`.
+          let resolved_str = if let Some(suffix) = raw_suffix {
+            format!("{resolved_str}{suffix}")
+          } else if !is_external
+            && (resolved_str.ends_with(".cjs") || resolved_str.ends_with(".cts"))
+            && matches!(
+              tokio::fs::read_to_string(Path::new(&resolved_str)).await,
+              Ok(source) if source.contains("import.meta")
+            )
+          {
+            format!("{resolved_str}{CJS_ESM_PARSE_SUFFIX}")
+          } else {
+            resolved_str
           };
 
           Ok(Some(HookResolveIdOutput {
@@ -1604,7 +1866,7 @@ impl Plugin for DenoPluginHandler {
   ) -> impl std::future::Future<
     Output = deno_core::anyhow::Result<Option<HookLoadOutput>>,
   > + Send {
-    let id = args.id.to_string();
+    let id = strip_cjs_esm_parse_suffix(args.id).to_string();
     let virtual_modules = self.virtual_modules.clone();
     let file_fetcher = self.file_fetcher.clone();
     let resolver = self.resolver.clone();
@@ -1615,8 +1877,65 @@ impl Plugin for DenoPluginHandler {
     let emitter = self.emitter.clone();
     let resolved_roots = self.resolved_roots.clone();
     let deferred_errors = self.deferred_errors.clone();
+    let has_output = self.has_output;
+    let collected_css = self.collected_css.clone();
 
     async move {
+      // A raw import: inline the file's contents as text, bytes, or a
+      // constructed stylesheet instead of loading it as a module.
+      if let Some((base_id, raw_type)) = split_raw_import_suffix(&id) {
+        let specifier = if let Ok(url) = Url::parse(base_id) {
+          url
+        } else {
+          deno_path_util::url_from_file_path(Path::new(base_id))?
+        };
+        if specifier.scheme() != "file" {
+          return Err(deno_core::anyhow::anyhow!(
+            "Raw imports are only supported for local files: {}",
+            specifier
+          ));
+        }
+        let path = deno_path_util::url_to_file_path(&specifier)?;
+        let bytes = tokio::fs::read(&path).await.map_err(|e| {
+          let message = format!("Module not found \"{}\".", specifier);
+          deferred_errors.lock().push(DeferredBundleError {
+            key: id.clone(),
+            message: message.clone(),
+            note: None,
+          });
+          deno_core::anyhow::anyhow!("{}: {}", message, e)
+        })?;
+        let output = match raw_type {
+          // Rolldown base64-encodes the code itself for Binary modules and
+          // decodes it at runtime via `__toBinary`.
+          // TODO(bartlomieju): `HookLoadOutput.code` is a string, so
+          // non-UTF-8 contents don't round-trip losslessly here.
+          "bytes" => HookLoadOutput {
+            code: ArcStr::from(String::from_utf8_lossy(&bytes).as_ref()),
+            module_type: Some(ModuleType::Binary),
+            ..Default::default()
+          },
+          "css" => {
+            let text = String::from_utf8_lossy(&bytes);
+            let code = format!(
+              "const sheet = new CSSStyleSheet();\nsheet.replaceSync({});\nexport default sheet;\n",
+              deno_core::serde_json::to_string(text.as_ref())?
+            );
+            HookLoadOutput {
+              code: ArcStr::from(code),
+              module_type: Some(ModuleType::Js),
+              ..Default::default()
+            }
+          }
+          _ => HookLoadOutput {
+            code: ArcStr::from(String::from_utf8_lossy(&bytes).as_ref()),
+            module_type: Some(ModuleType::Text),
+            ..Default::default()
+          },
+        };
+        return Ok(Some(output));
+      }
+
       // A module disabled via a `browser` map entry of `false`: emit an
       // empty module in its place.
       if id.starts_with(BROWSER_DISABLED_PREFIX) {
@@ -1698,6 +2017,17 @@ impl Plugin for DenoPluginHandler {
                     &specifier, None,
                   );
                 let module_type = media_type_to_module_type(mt);
+
+                if matches!(module_type, ModuleType::Css) {
+                  return Ok(Some(css_import_load_output(
+                    has_output,
+                    &collected_css,
+                    &deferred_errors,
+                    &id,
+                    &specifier,
+                    &source,
+                  )?));
+                }
 
                 if needs_transpile(mt) {
                   let source_arc: Arc<str> = Arc::from(source.as_str());
@@ -1808,6 +2138,17 @@ impl Plugin for DenoPluginHandler {
       let source_bytes = source_string.as_bytes();
       let module_type = media_type_to_module_type(media_type);
 
+      if matches!(module_type, ModuleType::Css) {
+        return Ok(Some(css_import_load_output(
+          has_output,
+          &collected_css,
+          &deferred_errors,
+          &id,
+          &resolved_specifier,
+          &source_string,
+        )?));
+      }
+
       // Transpile TypeScript/JSX if needed
       if needs_transpile(media_type) {
         let source_str = std::str::from_utf8(source_bytes)?;
@@ -1826,34 +2167,44 @@ impl Plugin for DenoPluginHandler {
           .maybe_emit_parsed_source(parsed_source, module_kind)
           .await?;
 
-        // Apply import.meta.main transform for non-root modules
+        // Apply the import.meta.main and raw-import transforms
         let roots = resolved_roots.read().clone();
-        if !graph.roots.contains(&resolved_specifier)
-          && !roots.contains(&resolved_specifier)
-        {
-          let code = apply_transform(
-            &roots,
-            &module_graph_container,
-            &resolved_specifier,
-            media_type,
-            &transpiled,
-          )?;
+        let code = apply_transform(
+          &roots,
+          &module_graph_container,
+          &resolved_specifier,
+          media_type,
+          &transpiled,
+        )?;
+        return Ok(Some(HookLoadOutput {
+          code: ArcStr::from(code),
+          module_type: Some(ModuleType::Js),
+          ..Default::default()
+        }));
+      }
+
+      // Non-transpile: return source as-is. Plain JS may still carry raw
+      // imports (`with { type: "..." }`) that need rewriting; only pay for
+      // a parse when the source looks like it has an attribute clause.
+      let source_str = std::str::from_utf8(source_bytes)?;
+      if matches!(module_type, ModuleType::Js)
+        && lazy_regex::regex!(r"with\s*\{").is_match(source_str)
+      {
+        let roots = resolved_roots.read().clone();
+        if let Ok(code) = apply_transform(
+          &roots,
+          &module_graph_container,
+          &resolved_specifier,
+          media_type,
+          source_str,
+        ) {
           return Ok(Some(HookLoadOutput {
             code: ArcStr::from(code),
             module_type: Some(ModuleType::Js),
             ..Default::default()
           }));
         }
-
-        return Ok(Some(HookLoadOutput {
-          code: ArcStr::from(transpiled.as_ref()),
-          module_type: Some(ModuleType::Js),
-          ..Default::default()
-        }));
       }
-
-      // Non-transpile: return source as-is
-      let source_str = std::str::from_utf8(source_bytes)?;
       Ok(Some(HookLoadOutput {
         code: ArcStr::from(source_str),
         module_type: Some(module_type),
@@ -1946,6 +2297,7 @@ fn apply_transform(
   let mut xform = transform::BundleImportMetaMainTransform::new(
     graph.roots.contains(specifier) || resolved_roots.contains(specifier),
   );
+  let mut raw_imports_xform = transform::RawImportsTransform::default();
   // A CJS module imported from ESM reaches us as an ESM facade the module
   // loader generated (`import { createRequire } ...; export default mod;`).
   // Parsing that under `MediaType::Cjs` forces script mode (see
@@ -1969,6 +2321,7 @@ fn apply_transform(
     |mut program, _| {
       use deno_ast::swc::ecma_visit::VisitMut;
       xform.visit_mut_program(&mut program);
+      raw_imports_xform.visit_mut_program(&mut program);
       program
     },
   )?;
@@ -2409,6 +2762,7 @@ fn print_finished_message(
   output: &BundleOutput,
   output_infos: &[OutputFileInfo],
   duration: Duration,
+  extra_module_count: usize,
 ) -> Result<(), AnyError> {
   // Count unique input modules across all chunks, excluding rolldown's
   // internal synthetic modules (e.g. `\0rolldown/runtime.js`).
@@ -2423,7 +2777,7 @@ fn print_finished_message(
       }
     }
   }
-  let input_count = input_ids.len();
+  let input_count = input_ids.len() + extra_module_count;
 
   let mut msg = String::new();
   msg.push_str(&format!(
