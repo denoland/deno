@@ -230,7 +230,11 @@ class LockManager {
     }
   }
 
-  query() {
+  // `query()` returns a Promise per the Web Locks spec and Node's
+  // `LockManager`; the underlying op is synchronous, so there is nothing to
+  // await, but the method stays `async` to produce a real Promise.
+  // deno-lint-ignore require-await
+  async query() {
     webidl.assertBranded(this, LockManagerPrototype);
     const { held, pending } = op_lock_manager_query();
     for (let i = 0; i < held.length; i++) {

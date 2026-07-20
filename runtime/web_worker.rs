@@ -95,6 +95,10 @@ impl WorkerId {
     let id = WORKER_ID_COUNTER.fetch_add(1, Ordering::SeqCst);
     WorkerId(id)
   }
+
+  pub fn as_u32(&self) -> u32 {
+    self.0
+  }
 }
 impl fmt::Display for WorkerId {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -711,7 +715,7 @@ impl WebWorker {
       if options.worker_type == WorkerThreadType::Node {
         deno_web::locks::set_lock_client_id(
           &mut op_state,
-          deno_web::locks::worker_lock_client_id(options.worker_id),
+          deno_web::locks::worker_lock_client_id(options.worker_id.as_u32()),
         );
       }
       op_state.put(internal_handle.clone());

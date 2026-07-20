@@ -123,10 +123,16 @@ impl WorkerThread {
 
 impl Drop for WorkerThread {
   fn drop(&mut self) {
+    // Terminate the worker before releasing its Web Locks. `terminate()` calls
+    // `terminate_execution()` on the worker's isolate, so its JS is already
+    // being torn down and cannot start a new `op_lock_manager_request` under
+    // the same client id while (or after) we clean up — otherwise a lock
+    // granted in that window would outlive the worker and could deadlock other
+    // clients waiting on it.
+    self.worker_handle.clone().terminate();
     if let Some(client_id) = &self.web_lock_client_id {
       deno_web::locks::cleanup_locks_for_client_id(client_id);
     }
-    self.worker_handle.clone().terminate();
   }
 }
 
@@ -410,7 +416,7 @@ fn op_create_worker(
     cancel_handle: CancelHandle::new_rc(),
     cpu_thread_handle,
     web_lock_client_id: matches!(args.worker_type, WorkerThreadType::Node)
-      .then(|| deno_web::locks::worker_lock_client_id(worker_id)),
+      .then(|| deno_web::locks::worker_lock_client_id(worker_id.as_u32())),
     ctrl_closed: false,
     message_closed: false,
     termination_requested: false,

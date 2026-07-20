@@ -92,7 +92,11 @@ Deno.test({
     );
 
     assertEquals(result, 42);
-    const snapshot = await workerThreads.locks.query();
+    // `query()` must return a real Promise (matching the Web Locks spec, Node,
+    // and the type declaration) so `.then()`/`.catch()` work without `await`.
+    const queryResult = workerThreads.locks.query();
+    assert(typeof queryResult.then === "function");
+    const snapshot = await queryResult;
     assertEquals(snapshot.held.some((entry) => entry.name === lockName), false);
   },
 });
