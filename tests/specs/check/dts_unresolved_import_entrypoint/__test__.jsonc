@@ -1,24 +1,26 @@
 {
-  // ignored (entrypoint*): .d.ts entrypoints not checked under skipLibCheck:true.
-  // https://github.com/denoland/deno/issues/36085
+  // Each variant generates a `.deno/` and check cache under a different
+  // `skipLibCheck`, so isolate them in per-test temp dirs to avoid clobbering
+  // each other's generated config and type-check cache.
+  "tempDir": true,
   "tests": {
+    // Aligned with tsgo: `skipLibCheck` defaults to true, so a `.d.ts`
+    // entrypoint is not type-checked and its unresolved import does not surface.
     "entrypoint": {
-      "ignore": true,
       "args": "check --quiet foo.d.ts",
-      "output": "entrypoint.out",
-      "exitCode": 1
+      "output": ""
     },
-    // The unresolved import must surface for a `.d.ts` entrypoint whether or
-    // not `skipLibCheck` is set (the issue was reported with it off).
-    "entrypoint_skip_lib_check_false": {
-      "ignore": true,
-      "args": "check --quiet --config skip_lib_check_false.json foo.d.ts",
-      "output": "entrypoint.out",
-      "exitCode": 1
-    },
+    // Same with the base config (no deno.json): `skipLibCheck` still defaults to
+    // true, so the `.d.ts` entrypoint is skipped.
     "entrypoint_default_config": {
-      "ignore": true,
       "args": "check --quiet --no-config foo.d.ts",
+      "output": ""
+    },
+    // With `skipLibCheck: false` the `.d.ts` entrypoint IS checked, so the
+    // unresolved import surfaces. The override must be honored even when it
+    // comes from a `--config <other>` file rather than the discovered deno.json.
+    "entrypoint_skip_lib_check_false": {
+      "args": "check --quiet --config skip_lib_check_false.json foo.d.ts",
       "output": "entrypoint.out",
       "exitCode": 1
     },

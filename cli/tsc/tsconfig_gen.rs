@@ -1717,8 +1717,10 @@ fn merge_deno_options(base: &mut Map<String, Value>, user_opts: &Value) {
     // NOTE: `paths`, `baseUrl`, `rootDirs` are deliberately NOT passed through
     // here - they hold project-root-relative paths that must be rebased onto
     // `.deno/` (the generated tsconfig lives one level down). They're handled in
-    // `build_tsconfig`.
-    "skipLibCheck",
+    // `build_tsconfig`. `skipLibCheck` is likewise NOT passed through here: the
+    // raw pass reads the project-root deno.json and misses a `--config <other>`
+    // override, so it's applied from the resolved options (see
+    // `RESOLVED_OPTION_KEYS`), which honor `--config`.
     "strict",
     "strictBindCallApply",
     "strictBuiltinIteratorReturn",
@@ -1752,10 +1754,9 @@ fn merge_deno_options(base: &mut Map<String, Value>, user_opts: &Value) {
 /// than the raw deno.json. These fold in Deno's source-kind defaults and CLI
 /// overrides (e.g. `--check-js`), so they win over the base and the raw pass.
 ///
-/// Deliberately excludes `skipLibCheck` (the base default matches TypeScript's,
-/// and the raw pass honors a user override) and the path-like options
-/// (`paths`/`baseUrl`/`rootDirs`), which come from the raw config so
-/// `build_tsconfig` can rebase them onto `.deno/`.
+/// Deliberately excludes the path-like options (`paths`/`baseUrl`/`rootDirs`),
+/// which come from the raw config so `build_tsconfig` can rebase them onto
+/// `.deno/`.
 const RESOLVED_OPTION_KEYS: &[&str] = &[
   "allowUnreachableCode",
   "allowUnusedLabels",
@@ -1778,6 +1779,12 @@ const RESOLVED_OPTION_KEYS: &[&str] = &[
   "noUncheckedIndexedAccess",
   "noUnusedLocals",
   "noUnusedParameters",
+  // Applied from the resolved options (which honor `--config`) rather than the
+  // raw project-root deno.json pass. The resolved options carry the effective
+  // `skipLibCheck` (base default true, matching tsgo's `--init`; a user
+  // `skipLibCheck: false` overrides it), so it is honored regardless of how the
+  // config is provided.
+  "skipLibCheck",
   "strict",
   "strictBindCallApply",
   "strictBuiltinIteratorReturn",
