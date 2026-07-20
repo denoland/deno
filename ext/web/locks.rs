@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::fmt::Display;
 use std::rc::Rc;
@@ -131,33 +132,50 @@ fn cancel_request(state: &mut LockState, id: u64) {
 }
 
 pub fn cleanup_locks_for_client_id(client_id: &str) {
-  let mut state = LOCK_STATE.lock().unwrap();
-  let mut affected_names = Vec::new();
+  // Runs from `WorkerThread::drop`, so recover from a poisoned mutex instead
+  // of `unwrap()`ing: a panic here would be a panic during unwinding, which
+  // aborts the process.
+  let mut state = LOCK_STATE
+    .lock()
+    .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+  // Most workers never touch Web Locks; skip the held/queue scan entirely when
+  // there is nothing to clean up.
+  if state.held.is_empty() && state.queues.is_empty() {
+    return;
+  }
+
+  let mut affected_names = HashSet::new();
 
   state.held.retain(|lock| {
     if lock.client_id == client_id {
-      affected_names.push(lock.name.clone());
+      affected_names.insert(lock.name.clone());
       false
     } else {
       true
     }
   });
 
+  // Drop this client's pending requests, rejecting each (`send(false)`), and
+  // keep the rest in original order. `VecDeque::remove` is O(n), so queues that
+  // hold one of this client's requests are drained into a fresh queue in one
+  // O(n) pass rather than removed by index; queues without any are left as-is.
   for (name, queue) in state.queues.iter_mut() {
-    let mut index = 0;
-    while index < queue.len() {
-      if queue[index].client_id == client_id {
-        let request = queue.remove(index).unwrap();
+    if !queue.iter().any(|request| request.client_id == client_id) {
+      continue;
+    }
+    let mut kept = VecDeque::with_capacity(queue.len());
+    while let Some(request) = queue.pop_front() {
+      if request.client_id == client_id {
         let _ = request.tx.send(false);
-        affected_names.push(name.clone());
+        affected_names.insert(name.clone());
       } else {
-        index += 1;
+        kept.push_back(request);
       }
     }
+    *queue = kept;
   }
 
-  affected_names.sort();
-  affected_names.dedup();
   for name in affected_names {
     process_queue(&mut state, &name);
   }
@@ -361,6 +379,29 @@ pub async fn op_lock_manager_await_steal(
   // `Ok(())` means the lock was stolen; `Err(_)` means the sender was dropped
   // because the lock was released normally.
   rx.await.is_ok()
+}
+
+/// Synchronous op: reports whether a held lock has been stolen. A steal removes
+/// the lock from `held` synchronously (see `op_lock_manager_request`), while the
+/// steal notification that `op_lock_manager_await_steal` waits on is only
+/// delivered a full event-loop turn later. A fast-returning callback can
+/// therefore finish before that async notification arrives, so `request()`
+/// re-checks synchronously via this op to guarantee a stolen lock still rejects.
+#[op2(fast)]
+pub fn op_lock_manager_is_stolen(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> bool {
+  let Ok(held) = state.resource_table.get::<HeldLockResource>(rid) else {
+    return false;
+  };
+  let id = held.id;
+  let ls = LOCK_STATE
+    .lock()
+    .unwrap_or_else(|poisoned| poisoned.into_inner());
+  // Only a steal removes a still-held lock from `held` before its holder
+  // releases it, so a missing id means the lock was stolen.
+  !ls.held.iter().any(|h| h.id == id)
 }
 
 /// Cancels a pending lock request (used by AbortSignal).

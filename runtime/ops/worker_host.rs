@@ -423,6 +423,11 @@ fn op_create_worker(
     worker_type: args.worker_type,
     cancel_handle: CancelHandle::new_rc(),
     cpu_thread_handle,
+    // Only Node workers get a host-assigned `worker-N` lock client id (and thus
+    // prompt cleanup on teardown). `web_worker.rs` assigns the matching id at
+    // startup for the same worker types. Classic/module Web Workers keep the
+    // default lazily-assigned numeric client id and rely on the resource-drop
+    // backstop to release their locks when their `JsRuntime` unwinds.
     web_lock_client_id: matches!(args.worker_type, WorkerThreadType::Node)
       .then(|| deno_web::locks::worker_lock_client_id(worker_id.as_u32())),
     ctrl_closed: false,
