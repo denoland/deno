@@ -328,6 +328,14 @@ struct PluginHookRequestWire {
   kind: PluginHookRequestKind,
 }
 
+// This op is `async` even though its body doesn't await: a sync op2 with a
+// `#[scoped]` argument takes the fast-call path, where the v8 scope the
+// `BundleOptions` conversion needs isn't available. Making it async avoids
+// that path.
+#[allow(
+  clippy::unused_async,
+  reason = "async is required for the #[scoped] argument conversion; see comment above"
+)]
 #[op2]
 #[smi]
 pub async fn op_bundle_plugin_start(
