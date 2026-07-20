@@ -396,6 +396,8 @@ async function clippy() {
     const workspaceMembers = new Set(metadata.workspace_members);
     const excludedFeatures = new Set([
       "deno/quickjs",
+      "denort/quickjs",
+      "denort_desktop/quickjs",
       "deno_v8/quickjs",
       "deno_v8/v8_enable_pointer_compression",
       "deno_v8/v8_enable_sandbox",
