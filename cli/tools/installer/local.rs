@@ -400,6 +400,12 @@ pub async fn sync_types_command(
     .root_dir_url()
     .join("__deno_root__.ts")
     .ok();
+  // Honor `--desktop` (`deno check --desktop` / `deno desktop`): it maps to
+  // `TsTypeLib::DenoDesktop`, which pulls in the additive `deno.desktop` lib
+  // (declaring desktop-only globals like `Notification`). Fall back to
+  // `DenoWindow` otherwise.
+  let ts_type_lib = cli_options.ts_type_lib_window();
+  let is_desktop = ts_type_lib == TsTypeLib::DenoDesktop;
   let resolved_compiler_options = root_specifier.as_ref().and_then(|spec| {
     factory
       .compiler_options_resolver()
@@ -407,7 +413,7 @@ pub async fn sync_types_command(
       .and_then(|resolver| {
         resolver
           .for_specifier(spec)
-          .compiler_options_for_lib(TsTypeLib::DenoWindow)
+          .compiler_options_for_lib(ts_type_lib)
           .ok()
       })
       .map(|opts| opts.0.clone())
@@ -439,6 +445,7 @@ pub async fn sync_types_command(
     resolved_compiler_options.as_ref(),
     manage_root_tsconfig,
     type_check_remote,
+    is_desktop,
   )
   .await?;
 
