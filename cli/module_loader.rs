@@ -3,7 +3,6 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::future::Future;
 use std::path::Path;
 use std::path::PathBuf;
@@ -84,6 +83,7 @@ use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use node_resolver::errors::PackageJsonLoadError;
+use rustc_hash::FxHashSet;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use sys_traits::FsMetadataValue;
@@ -593,7 +593,7 @@ struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   permissions: PermissionsContainer,
   shared: Arc<SharedCliModuleLoaderState>,
   graph_container: TGraphContainer,
-  loaded_files: RefCell<HashSet<ModuleSpecifier>>,
+  loaded_files: RefCell<FxHashSet<ModuleSpecifier>>,
   hook_registry: deno_runtime::deno_node::ops::module_hooks::LoaderHookRegistry,
   /// For blob/object-URL module workers, the captured root blob and its
   /// specifier. Captured synchronously at worker construction so that a

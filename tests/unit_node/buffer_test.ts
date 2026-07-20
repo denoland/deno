@@ -658,6 +658,67 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[node/buffer] base64Slice validates its range",
+  fn() {
+    const buf = Buffer.alloc(10);
+    assertThrows(
+      () => {
+        // @ts-expect-error Buffer.prototype.base64Slice is undocumented
+        buf.base64Slice(20, 25);
+      },
+      RangeError,
+    );
+    assertThrows(
+      () => {
+        // @ts-expect-error Buffer.prototype.base64Slice is undocumented
+        buf.base64Slice(0, 20);
+      },
+      RangeError,
+    );
+    // @ts-expect-error Buffer.prototype.base64Slice is undocumented
+    assertEquals(buf.base64Slice(5, 4), "");
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] base64Write validates its offset",
+  fn() {
+    const buf = Buffer.alloc(10);
+    assertThrows(
+      () => {
+        Buffer.prototype.base64Write.call(buf, "YmFzZTY0", 100);
+      },
+      RangeError,
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] base64 write respects the length limit",
+  fn() {
+    const buf = Buffer.alloc(64);
+    buf.fill(0x61, 32);
+    const input = Buffer.from("B".repeat(48)).toString("base64");
+
+    assertEquals(buf.write(input, 0, 32, "base64"), 32);
+    assertEquals(buf.subarray(0, 32), Buffer.alloc(32, 0x42));
+    assertEquals(buf.subarray(32), Buffer.alloc(32, 0x61));
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] base64 operations use the actual buffer length",
+  fn() {
+    const buf = Buffer.from("abcdef");
+    Object.defineProperty(buf, "byteLength", { value: 0 });
+
+    assertEquals(buf.toString("base64", 1, 4), "YmNk");
+    assertEquals(buf.write("WFla", 1, 2, "base64"), 2);
+    assertEquals(buf.toString(), "aXYdef");
+  },
+});
+
+Deno.test({
   name: "[node/buffer] base64urlSlice allows omitting arguments",
   fn() {
     const buf = Buffer.of(1, 2, 3);

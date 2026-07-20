@@ -16,6 +16,7 @@ use crate::args::CiFlags;
 use crate::args::Flags;
 use crate::args::InstallFlagsLocal;
 use crate::args::InstallTopLevelFlags;
+use crate::args::SyncTypesFlags;
 use crate::factory::CliFactory;
 use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
@@ -170,6 +171,7 @@ async fn install_top_level(
     None,
     crate::tools::pm::CacheTopLevelDepsOptions {
       lockfile_only: top_level_flags.lockfile_only,
+      additional_roots: vec![],
     },
   )
   .await?;
@@ -233,7 +235,25 @@ pub async fn ci_command(
 /// tooling can type-check the project. Assumes dependencies are already
 /// installed (run `deno install` first); materializes `jsr:`/`http(s):` types
 /// and writes `.deno/tsconfig.json`.
-pub async fn sync_types_command(flags: Arc<Flags>) -> Result<(), AnyError> {
+/// How `sync_types_command` should treat the root `tsconfig.json`.
+#[derive(Debug, Clone, Copy)]
+pub enum RootTsConfigMode {
+  /// Always create/update a root `tsconfig.json` extending `.deno/tsconfig.json`
+  /// (used by the standalone `deno sync-types` command, for IDE setup).
+  Always,
+  /// Only manage the root `tsconfig.json` when Deno is honoring a user's
+  /// tsconfig (a deno.json/package.json is present and config isn't disabled).
+  /// Used by `deno check`, which otherwise points tsc at `.deno/tsconfig.json`
+  /// directly and must not rewrite a tsconfig Deno is ignoring.
+  CheckMode,
+}
+
+pub async fn sync_types_command(
+  flags: Arc<Flags>,
+  sync_types_flags: SyncTypesFlags,
+  root_tsconfig_mode: RootTsConfigMode,
+) -> Result<(), AnyError> {
+  use crate::args::TsTypeLib;
   use crate::graph_container::CollectSpecifiersOptions;
 
   let factory = CliFactory::from_flags(flags);
@@ -253,16 +273,23 @@ pub async fn sync_types_command(flags: Arc<Flags>) -> Result<(), AnyError> {
       deno_core::anyhow::anyhow!("workspace root is not a local directory")
     })?;
 
-  // Build the module graph over the whole project to discover every external
-  // (npm:/jsr:/http(s):) specifier the code actually uses — including specifiers
-  // written directly in source and across workspace members, not just the ones
-  // declared in the root deno.json import map.
+  let has_explicit_roots = !sync_types_flags.roots.is_empty();
+  let root_patterns = if has_explicit_roots {
+    sync_types_flags.roots
+  } else {
+    vec![".".to_string()]
+  };
+
+  // Build the module graph over either the requested roots or the whole
+  // project to discover every external (npm:/jsr:/http(s):) specifier the code
+  // actually uses — including specifiers written directly in source and across
+  // workspace members, not just those declared in the root import map.
   let graph_specifiers = {
     let graph_container = factory.main_module_graph_container().await?;
     let roots = graph_container.collect_specifiers(
-      &[".".to_string()],
+      &root_patterns,
       CollectSpecifiersOptions {
-        include_ignored_specified: false,
+        include_ignored_specified: has_explicit_roots,
       },
     )?;
     // `collect_specifiers` honors deno.json excludes and the vendor dir, but not
@@ -294,6 +321,9 @@ pub async fn sync_types_command(flags: Arc<Flags>) -> Result<(), AnyError> {
         })
       })
       .collect();
+    if has_explicit_roots && roots.is_empty() {
+      bail!("No matching module graph roots found.");
+    }
 
     // Build the graph error-tolerantly: `create_graph_with_options` populates
     // the graph and records unresolved modules as error entries without failing
@@ -311,7 +341,7 @@ pub async fn sync_types_command(flags: Arc<Flags>) -> Result<(), AnyError> {
     let graph_result = graph_creator
       .create_graph_with_options(crate::graph_util::CreateGraphOptions {
         graph_kind: deno_graph::GraphKind::All,
-        roots,
+        roots: roots.clone(),
         imports: vec![],
         is_dynamic: false,
         loader: None,
@@ -328,6 +358,13 @@ pub async fn sync_types_command(flags: Arc<Flags>) -> Result<(), AnyError> {
     };
 
     let mut specifiers = std::collections::BTreeSet::new();
+    // Remote graph roots do not appear as a dependency edge, but still need to
+    // be mirrored for stock TypeScript and included in its project.
+    for root in &roots {
+      if matches!(root.scheme(), "http" | "https") {
+        specifiers.insert(root.to_string());
+      }
+    }
     for module in graph.modules() {
       for (raw, _dep) in module.dependencies() {
         // Collect scheme specifiers (npm:/jsr:/http:) and bare specifiers
@@ -346,12 +383,62 @@ pub async fn sync_types_command(flags: Arc<Flags>) -> Result<(), AnyError> {
     specifiers.into_iter().collect::<Vec<_>>()
   };
 
+  // The stock TypeScript compatibility config needs the managed npm
+  // resolution snapshot in global-cache mode. It uses that snapshot to give
+  // each resolved package copy its own referenced tsconfig and dependency
+  // paths, preserving the contextual resolution that a node_modules tree
+  // would normally provide.
+  let npm_resolver = factory.npm_resolver().await?.clone();
+
+  // Deno's *resolved* compiler options for the project root. These fold in
+  // Deno's source-kind defaults (deno.json vs tsconfig.json) and CLI overrides
+  // like `--check-js`, which the raw deno.json read inside `setup_npm_compat`
+  // can't see. Resolve against a representative file under the root so any
+  // detected tsconfig `include`/`files` filter matches.
+  let root_specifier = cli_options
+    .workspace()
+    .root_dir_url()
+    .join("__deno_root__.ts")
+    .ok();
+  let resolved_compiler_options = root_specifier.as_ref().and_then(|spec| {
+    factory
+      .compiler_options_resolver()
+      .ok()
+      .and_then(|resolver| {
+        resolver
+          .for_specifier(spec)
+          .compiler_options_for_lib(TsTypeLib::DenoWindow)
+          .ok()
+      })
+      .map(|opts| opts.0.clone())
+  });
+
+  // Whether to manage the root `tsconfig.json`. `deno check` (CheckMode) never
+  // rewrites a committed tsconfig (that would dirty the working tree). When it
+  // honors a user tsconfig it instead builds a throwaway overlay in a temp file
+  // (see `native_check` / `build_check_root_overlay`), leaving the user's tree
+  // untouched. `deno sync-types` (Always) still sets up the root tsconfig for
+  // IDEs.
+  let manage_root_tsconfig = match root_tsconfig_mode {
+    RootTsConfigMode::Always => true,
+    RootTsConfigMode::CheckMode => false,
+  };
+
+  // `deno check --all` type-checks remote modules; otherwise mirrored remote
+  // scripts get `// @ts-nocheck` so tsc skips their internals.
+  let type_check_remote =
+    cli_options.type_check_mode() == crate::args::TypeCheckMode::All;
+
   let installed = super::npm_compat::setup_npm_compat(
     &project_root,
     &file_fetcher,
     &http_client,
     &permissions,
     &graph_specifiers,
+    &npm_resolver,
+    resolved_compiler_options.as_ref(),
+    manage_root_tsconfig,
+    type_check_remote,
   )
   .await?;
 

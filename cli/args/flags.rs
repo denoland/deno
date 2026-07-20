@@ -857,6 +857,11 @@ static ENV_VARS: &[EnvVar] = &[
     example: None,
   },
   EnvVar {
+    name: "DENO_TSC_BIN",
+    description: "Path to a prebuilt native TypeScript compiler (tsc/tsgo) for `deno check` to use instead of downloading the pinned one.",
+    example: None,
+  },
+  EnvVar {
     name: "DENO_USE_CGROUPS",
     description: "Use cgroups to determine V8 memory limit.",
     example: None,
@@ -1652,6 +1657,26 @@ fn add_dev_arg() -> Arg {
     .action(ArgAction::SetTrue)
 }
 
+fn add_optional_arg() -> Arg {
+  Arg::new("save-optional")
+    .long("save-optional")
+    .short('O')
+    .help("Add the package as an optional dependency (under `optionalDependencies`). Note: this only applies when adding to a `package.json` file.")
+    .action(ArgAction::SetTrue)
+    .conflicts_with("dev")
+}
+
+fn add_no_save_arg() -> Arg {
+  Arg::new("no-save")
+    .long("no-save")
+    .help(
+      "Install the package(s) without adding them to the configuration file.",
+    )
+    .action(ArgAction::SetTrue)
+    .conflicts_with("dev")
+    .conflicts_with("save-optional")
+}
+
 fn add_subcommand() -> Command {
   command(
     "add",
@@ -1677,6 +1702,8 @@ Or multiple dependencies at once:
           .action(ArgAction::Append),
       )
       .arg(add_dev_arg())
+      .arg(add_optional_arg())
+      .arg(add_no_save_arg())
       .arg(allow_scripts_arg())
       .arg(allow_import_arg())
       .arg(deny_import_arg())
@@ -1692,6 +1719,7 @@ Or multiple dependencies at once:
       )
       .arg(package_json_arg())
       .arg(env_file_arg())
+      .arg(min_dep_age_arg())
   })
 }
 
@@ -1888,6 +1916,7 @@ removes a globally installed executable script:
       .args(lock_args())
       .arg(lockfile_only_arg().conflicts_with("global"))
       .arg(package_json_arg().conflicts_with("global"))
+      .arg(min_dep_age_arg().conflicts_with("global"))
   })
 }
 
@@ -2308,10 +2337,11 @@ Unless --reload is specified, this command will not re-download already cached d
     )
 }
 
-const SUPPORTED_OS: [&str; 5] = [
+const SUPPORTED_OS: [&str; 6] = [
   "x86_64-unknown-linux-gnu",
   "aarch64-unknown-linux-gnu",
   "x86_64-pc-windows-msvc",
+  "aarch64-pc-windows-msvc",
   "x86_64-apple-darwin",
   "aarch64-apple-darwin",
 ];
@@ -3338,6 +3368,8 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
         )
         .arg(env_file_arg())
         .arg(add_dev_arg().conflicts_with("entrypoint").conflicts_with("global"))
+        .arg(add_optional_arg().conflicts_with("entrypoint").conflicts_with("global"))
+        .arg(add_no_save_arg().conflicts_with("entrypoint").conflicts_with("global"))
         .args(default_registry_args().into_iter().map(|arg| arg.conflicts_with("entrypoint").conflicts_with("global")))
         .arg(
           Arg::new("save-exact")
@@ -3797,7 +3829,8 @@ fn sync_types_subcommand() -> Command {
     cstr!(
       "Generate a <c>tsconfig.json</> and type mappings so stock TypeScript tooling (tsc, tsgo, editors) can type-check the project.
 
-Run after installing dependencies; it materializes <c>jsr:</>/<c>http(s):</> types and writes <p(245)>.deno/tsconfig.json</>.
+Run after installing dependencies; it materializes <c>jsr:</>/<c>http(s):</> types and writes <p(245)>.deno/tsconfig.json</>. Pass files or directories to discover dependencies from only those module graph roots:
+  <p(245)>deno sync-types script.ts tools/</>
 
 Remote <c>http(s):</> types are fetched under the same import permission as <c>deno run</>: only from the trusted default hosts unless you pass <c>--allow-import</>. To materialize types imported from another host, allow it explicitly:
   <p(245)>deno sync-types --allow-import=html.spec.whatwg.org</>"
@@ -3806,6 +3839,13 @@ Remote <c>http(s):</> types are fetched under the same import permission as <c>d
   )
   .arg(allow_import_arg())
   .arg(deny_import_arg())
+  .arg(
+    Arg::new("roots")
+      .help("Module graph roots to use for dependency discovery")
+      .num_args(1..)
+      .action(ArgAction::Append)
+      .value_hint(ValueHint::AnyPath),
+  )
 }
 
 fn lint_subcommand() -> Command {
@@ -6522,6 +6562,7 @@ fn add_parse(
   allow_and_deny_import_parse(flags, matches)?;
   lock_args_parse(flags, matches);
   env_file_arg_parse(flags, matches);
+  min_dep_age_arg_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Add(add_parse_inner(matches, None));
   Ok(())
 }
@@ -6546,6 +6587,8 @@ fn add_parse_inner(
   AddFlags {
     packages,
     dev,
+    optional: matches.get_flag("save-optional"),
+    no_save: matches.get_flag("no-save"),
     default_registry,
     lockfile_only: matches.get_flag("lockfile-only"),
     save_exact: matches.get_flag("save-exact"),
@@ -6558,6 +6601,7 @@ fn remove_parse(
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
   lock_args_parse(flags, matches);
+  min_dep_age_arg_parse(flags, matches);
   let packages = matches.remove_many::<String>("packages").unwrap();
 
   // `deno remove --global <name>...` is an alias for `deno uninstall --global
@@ -7682,7 +7726,11 @@ fn sync_types_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
-  flags.subcommand = DenoSubcommand::SyncTypes;
+  let roots = matches
+    .remove_many::<String>("roots")
+    .map(|values| values.collect())
+    .unwrap_or_default();
+  flags.subcommand = DenoSubcommand::SyncTypes(SyncTypesFlags { roots });
   allow_and_deny_import_parse(flags, matches)?;
   Ok(())
 }
@@ -12064,6 +12112,26 @@ mod tests {
   }
 
   #[test]
+  fn minimum_dependency_age_pm_subcommands() {
+    // The package management subcommands that resolve versions must accept the
+    // flag so users can act on the "blocked by minimum dependency age" hint.
+    let cases = [
+      svec!["deno", "add", "--min-dep-age=0", "jsr:@std/path"],
+      svec!["deno", "add", "--minimum-dependency-age=0", "jsr:@std/path"],
+      svec!["deno", "remove", "--min-dep-age=0", "@std/path"],
+    ];
+    for args in cases {
+      let flags = flags_from_vec(args.clone())
+        .unwrap_or_else(|e| panic!("failed to parse {args:?}: {e}"));
+      assert_eq!(
+        flags.minimum_dependency_age,
+        Some(NewestDependencyDate::Disabled),
+        "{args:?}"
+      );
+    }
+  }
+
+  #[test]
   fn run_seed_with_v8_flags() {
     let r = flags_from_vec(svec![
       "deno",
@@ -14298,6 +14366,35 @@ mod tests {
   }
 
   #[test]
+  fn compile_target_aarch64_windows() {
+    // denort for Windows arm64 is built and published by CI, so
+    // `--target aarch64-pc-windows-msvc` must be accepted by the SUPPORTED_OS
+    // value parser (and an unsupported triple must still be rejected).
+    let r = flags_from_vec(svec![
+      "deno",
+      "compile",
+      "--target",
+      "aarch64-pc-windows-msvc",
+      "main.ts"
+    ]);
+    let DenoSubcommand::Compile(c) = r.unwrap().subcommand else {
+      unreachable!()
+    };
+    assert_eq!(c.target, Some("aarch64-pc-windows-msvc".to_string()));
+
+    assert!(
+      flags_from_vec(svec![
+        "deno",
+        "compile",
+        "--target",
+        "riscv64gc-unknown-linux-gnu",
+        "main.ts"
+      ])
+      .is_err()
+    );
+  }
+
+  #[test]
   fn coverage() {
     let r = flags_from_vec(svec!["deno", "coverage", "foo.json"]);
     assert_eq!(
@@ -15834,6 +15931,8 @@ mod tests {
           mk_flags(AddFlags {
             packages: svec!["@david/which"],
             dev: false, // default is false
+            optional: false,
+            no_save: false,
             default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
@@ -15853,6 +15952,8 @@ mod tests {
         let mut expected_flags = mk_flags(AddFlags {
           packages: svec!["@david/which", "@luca/hello"],
           dev: false,
+          optional: false,
+          no_save: false,
           default_registry: Some(DefaultRegistry::Npm),
           lockfile_only: true,
           save_exact: false,
@@ -15868,6 +15969,8 @@ mod tests {
           mk_flags(AddFlags {
             packages: svec!["npm:chalk"],
             dev: true,
+            optional: false,
+            no_save: false,
             default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
@@ -15882,6 +15985,8 @@ mod tests {
           mk_flags(AddFlags {
             packages: svec!["chalk"],
             dev: false,
+            optional: false,
+            no_save: false,
             default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
@@ -15896,6 +16001,8 @@ mod tests {
           mk_flags(AddFlags {
             packages: svec!["@std/fs"],
             dev: false,
+            optional: false,
+            no_save: false,
             default_registry: Some(DefaultRegistry::Jsr),
             lockfile_only: false,
             save_exact: false,
@@ -15903,6 +16010,64 @@ mod tests {
           }),
         );
       }
+      for arg in ["--save-optional", "-O"] {
+        let r = flags_from_vec(svec!["deno", cmd, arg, "npm:chalk"]);
+        assert_eq!(
+          r.unwrap(),
+          mk_flags(AddFlags {
+            packages: svec!["npm:chalk"],
+            dev: false,
+            optional: true,
+            no_save: false,
+            default_registry: Some(DefaultRegistry::Npm),
+            lockfile_only: false,
+            save_exact: false,
+            package_json: false,
+          }),
+        );
+      }
+      {
+        let r = flags_from_vec(svec!["deno", cmd, "--no-save", "npm:chalk"]);
+        assert_eq!(
+          r.unwrap(),
+          mk_flags(AddFlags {
+            packages: svec!["npm:chalk"],
+            dev: false,
+            optional: false,
+            no_save: true,
+            default_registry: Some(DefaultRegistry::Npm),
+            lockfile_only: false,
+            save_exact: false,
+            package_json: false,
+          }),
+        );
+      }
+      // --save-optional conflicts with --dev
+      assert!(
+        flags_from_vec(svec![
+          "deno",
+          cmd,
+          "--save-optional",
+          "--dev",
+          "npm:chalk"
+        ])
+        .is_err()
+      );
+      // --no-save conflicts with --dev and --save-optional
+      assert!(
+        flags_from_vec(svec!["deno", cmd, "--no-save", "--dev", "npm:chalk"])
+          .is_err()
+      );
+      assert!(
+        flags_from_vec(svec![
+          "deno",
+          cmd,
+          "--no-save",
+          "--save-optional",
+          "npm:chalk"
+        ])
+        .is_err()
+      );
     }
 
     {
@@ -15918,6 +16083,8 @@ mod tests {
           subcommand: DenoSubcommand::Add(AddFlags {
             packages: svec!["@david/which"],
             dev: false,
+            optional: false,
+            no_save: false,
             default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
@@ -16739,7 +16906,7 @@ Usage: deno lint [OPTIONS] [files]...\n"
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::SyncTypes,
+        subcommand: DenoSubcommand::SyncTypes(SyncTypesFlags::default()),
         ..Flags::default()
       }
     );
@@ -16752,11 +16919,22 @@ Usage: deno lint [OPTIONS] [files]...\n"
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::SyncTypes,
+        subcommand: DenoSubcommand::SyncTypes(SyncTypesFlags::default()),
         permissions: PermissionFlags {
           allow_import: Some(svec!["html.spec.whatwg.org"]),
           ..Default::default()
         },
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "sync-types", "script.ts", "tools/",]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::SyncTypes(SyncTypesFlags {
+          roots: svec!["script.ts", "tools/"],
+        }),
         ..Flags::default()
       }
     );

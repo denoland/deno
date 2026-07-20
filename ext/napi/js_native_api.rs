@@ -21,6 +21,7 @@ use super::util::v8_name_from_property_descriptor;
 use crate::check_arg;
 use crate::check_env;
 use crate::function::CallbackInfo;
+use crate::function::CallbackInfoScope;
 use crate::function::create_function;
 use crate::function::create_function_template;
 use crate::*;
@@ -2047,7 +2048,9 @@ fn napi_get_cb_info(
   let env = check_env!(env);
   check_arg!(env, cbinfo);
 
-  let cbinfo: &CallbackInfo = unsafe { &*(cbinfo as *const CallbackInfo) };
+  let cbinfo: &CallbackInfoScope =
+    unsafe { &*(cbinfo as *const CallbackInfoScope) };
+  let function_info: &CallbackInfo = unsafe { &*cbinfo.function_info };
   let args = unsafe { &*(cbinfo.args as *const v8::FunctionCallbackArguments) };
 
   if !argv.is_null() {
@@ -2075,7 +2078,7 @@ fn napi_get_cb_info(
 
   if !data.is_null() {
     unsafe {
-      *data = cbinfo.data;
+      *data = function_info.data;
     }
   }
 
@@ -2093,7 +2096,8 @@ fn napi_get_new_target(
   check_arg!(env, cbinfo);
   check_arg!(env, result);
 
-  let cbinfo: &CallbackInfo = unsafe { &*(cbinfo as *const CallbackInfo) };
+  let cbinfo: &CallbackInfoScope =
+    unsafe { &*(cbinfo as *const CallbackInfoScope) };
   let args = unsafe { &*(cbinfo.args as *const v8::FunctionCallbackArguments) };
 
   unsafe {
