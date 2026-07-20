@@ -7406,8 +7406,8 @@ jobs:
         run: |-
           echo "RUSTFLAGS=-C target-feature=-crt-static -C linker=clang -C link-arg=-fuse-ld=lld --cfg tokio_unstable" >> $GITHUB_ENV
           echo "RUSTDOCFLAGS=-C target-feature=-crt-static -C linker=clang -C link-arg=-fuse-ld=lld --cfg tokio_unstable" >> $GITHUB_ENV
-          echo "CC=clang" >> $GITHUB_ENV
-          echo "CXX=clang++" >> $GITHUB_ENV
+          echo "CC=gcc" >> $GITHUB_ENV
+          echo "CXX=g++" >> $GITHUB_ENV
       - name: Configure canary build
         if: 'github.repository == ''denoland/deno'' && !startsWith(github.ref, ''refs/tags/'')'
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
@@ -7744,8 +7744,8 @@ jobs:
         run: |-
           echo "RUSTFLAGS=-C target-feature=-crt-static -C linker=clang -C link-arg=-fuse-ld=lld --cfg tokio_unstable" >> $GITHUB_ENV
           echo "RUSTDOCFLAGS=-C target-feature=-crt-static -C linker=clang -C link-arg=-fuse-ld=lld --cfg tokio_unstable" >> $GITHUB_ENV
-          echo "CC=clang" >> $GITHUB_ENV
-          echo "CXX=clang++" >> $GITHUB_ENV
+          echo "CC=gcc" >> $GITHUB_ENV
+          echo "CXX=g++" >> $GITHUB_ENV
       - name: Configure canary build
         if: 'github.repository == ''denoland/deno'' && !startsWith(github.ref, ''refs/tags/'')'
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV

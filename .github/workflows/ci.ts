@@ -978,8 +978,16 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               run: [
                 'echo "RUSTFLAGS=-C target-feature=-crt-static -C linker=clang -C link-arg=-fuse-ld=lld --cfg tokio_unstable" >> $GITHUB_ENV',
                 'echo "RUSTDOCFLAGS=-C target-feature=-crt-static -C linker=clang -C link-arg=-fuse-ld=lld --cfg tokio_unstable" >> $GITHUB_ENV',
-                'echo "CC=clang" >> $GITHUB_ENV',
-                'echo "CXX=clang++" >> $GITHUB_ENV',
+                // Use Alpine's native gcc/g++ for C/C++ dependencies (e.g.
+                // aws-lc-sys). They target musl directly and know where their
+                // crt objects and libgcc live; clang, invoked by the cc crate
+                // with `--target=x86_64-unknown-linux-musl`, fails to locate
+                // Alpine's `x86_64-alpine-linux-musl` gcc install and cannot
+                // find crtbeginS.o/-lgcc. The Rust link still uses clang+lld
+                // above, which works because rustc's musl target is
+                // self-contained.
+                'echo "CC=gcc" >> $GITHUB_ENV',
+                'echo "CXX=g++" >> $GITHUB_ENV',
               ],
             },
             {
