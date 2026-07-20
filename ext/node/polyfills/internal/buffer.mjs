@@ -49,7 +49,6 @@ const {
   SymbolFor,
   SymbolSpecies,
   SymbolToPrimitive,
-  TypeErrorPrototype,
   TypedArrayPrototypeCopyWithin,
   TypedArrayPrototypeFill,
   TypedArrayPrototypeGetBuffer,
@@ -76,7 +75,7 @@ const {
   op_transcode,
 } = core.ops;
 
-const { TextDecoder, TextEncoder } = core.loadExtScript(
+const { TextEncoder } = core.loadExtScript(
   "ext:deno_web/08_text_encoding.js",
 );
 const { codes } = core.loadExtScript("ext:deno_node/internal/error_codes.ts");
@@ -113,7 +112,6 @@ const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_STATE,
   genericNodeError,
-  NodeError,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { getOptionValue } = core.loadExtScript(
   "ext:deno_node/internal/options.ts",
@@ -376,10 +374,9 @@ Buffer.copyBytesFrom = function copyBytesFrom(
     ),
   );
 };
-
 const BufferPrototype = Buffer.prototype;
 
-ObjectSetPrototypeOf(Buffer.prototype, Uint8ArrayPrototype);
+ObjectSetPrototypeOf(BufferPrototype, Uint8ArrayPrototype);
 
 ObjectSetPrototypeOf(Buffer, Uint8Array);
 

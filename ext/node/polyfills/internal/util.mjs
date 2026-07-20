@@ -37,6 +37,7 @@ const {
   ObjectGetPrototypeOf,
   ObjectGetOwnPropertyDescriptor,
   ObjectGetOwnPropertyDescriptors,
+  ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   Promise,
@@ -160,7 +161,9 @@ function getSignalsToNamesMapping() {
 
   signalsToNamesMapping = ObjectCreate(null);
   for (const key in os.signals) {
-    signalsToNamesMapping[os.signals[key]] = key;
+    if (ObjectHasOwn(os.signals, key)) {
+      signalsToNamesMapping[os.signals[key]] = key;
+    }
   }
 
   return signalsToNamesMapping;

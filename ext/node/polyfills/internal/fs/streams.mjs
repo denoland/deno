@@ -76,7 +76,7 @@ function _construct(callback) {
     stream.open();
   } else {
     const streamPath = Buffer.isBuffer(stream.path)
-      // deno-lint-ignore deno-internal/prefer-primordials uses `toString` method from `node:buffer`
+      // deno-lint-ignore deno-internal/prefer-primordials -- uses `toString` method from `node:buffer`
       ? stream.path.toString()
       : StringPrototypeToString(stream.path);
     stream[kFs].open(

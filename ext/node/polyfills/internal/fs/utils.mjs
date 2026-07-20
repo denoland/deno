@@ -21,6 +21,7 @@ const {
   NumberIsInteger,
   ObjectDefineProperties,
   ObjectDefineProperty,
+  ObjectHasOwn,
   ObjectIs,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
@@ -238,7 +239,9 @@ for (const name of new SafeArrayIterator(ReflectOwnKeys(Dirent.prototype))) {
 export function copyObject(source) {
   const target = {};
   for (const key in source) {
-    target[key] = source[key];
+    if (ObjectHasOwn(source, key)) {
+      target[key] = source[key];
+    }
   }
   return target;
 }
@@ -255,7 +258,7 @@ function join(path, name) {
 
   if (typeof path === "string" && isUint8Array(name)) {
     const pathBuffer = Buffer.from(
-      // deno-lint-ignore deno-internal/prefer-primordials `join` is a `node:path` function
+      // deno-lint-ignore deno-internal/prefer-primordials -- `join` is a `node:path` function
       lazyPath().default.join(path, lazyPath().default.sep),
     );
     // Ignore lint. `concat` is a 'node:buffer' static method on `Buffer`
@@ -264,7 +267,7 @@ function join(path, name) {
   }
 
   if (typeof path === "string" && typeof name === "string") {
-    // deno-lint-ignore deno-internal/prefer-primordials `join` is a `node:path` function
+    // deno-lint-ignore deno-internal/prefer-primordials -- `join` is a `node:path` function
     return lazyPath().default.join(path, name);
   }
 
