@@ -610,6 +610,10 @@ impl CliOptions {
     &self.initial_cwd
   }
 
+  pub fn flags(&self) -> &Arc<Flags> {
+    &self.flags
+  }
+
   #[inline(always)]
   pub fn workspace(&self) -> &Arc<Workspace> {
     &self.start_dir.workspace

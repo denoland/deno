@@ -65,6 +65,19 @@ fn typescript_platform_for(
   })
 }
 
+/// Everything the native `tsc` download step needs from the CLI factory,
+/// bundled into one cloneable struct so it can be stored on `TypeChecker` and
+/// handed to [`ensure_native_tsc`] without threading six separate arguments.
+#[derive(Clone)]
+pub struct NativeTscInstallDeps {
+  pub deno_dir: DenoDir,
+  pub npmrc: Arc<ResolvedNpmRc>,
+  pub registry_info: Arc<CliNpmRegistryInfoProvider>,
+  pub npm_link_packages: WorkspaceNpmLinkPackagesRc,
+  pub tarball_cache: Arc<TarballCache<CliNpmCacheHttpClient, CliSys>>,
+  pub npm_cache: Arc<CliNpmCache>,
+}
+
 /// Ensure the pinned native `tsc` for the host platform is available and
 /// return the path to the executable, downloading the
 /// `@typescript/typescript-<platform>` npm package if it isn't cached yet.
@@ -76,13 +89,14 @@ fn typescript_platform_for(
 /// in a `lib/` directory next to the default `lib.*.d.ts` files it loads at
 /// runtime, so the whole `lib/` tree is materialized alongside it.
 pub async fn ensure_native_tsc(
-  deno_dir: &DenoDir,
-  npmrc: &ResolvedNpmRc,
-  api: &Arc<CliNpmRegistryInfoProvider>,
-  workspace_link_packages: &WorkspaceNpmLinkPackagesRc,
-  tarball_cache: &Arc<TarballCache<CliNpmCacheHttpClient, CliSys>>,
-  npm_cache: &CliNpmCache,
+  deps: &NativeTscInstallDeps,
 ) -> Result<PathBuf, AnyError> {
+  let deno_dir = &deps.deno_dir;
+  let npmrc = &deps.npmrc;
+  let api = &deps.registry_info;
+  let workspace_link_packages = &deps.npm_link_packages;
+  let tarball_cache = &deps.tarball_cache;
+  let npm_cache = &deps.npm_cache;
   // Allow pointing at an already-available `tsc` binary instead of downloading
   // one, mirroring `DENORT_BIN`. Used by the test harness and CI to avoid
   // re-downloading the compiler for every run, and lets a user supply their
@@ -232,6 +246,281 @@ pub async fn run_native_tsc(
     .output()
     .await
     .map_err(|e| anyhow::anyhow!("failed to run native tsc: {e}"))
+}
+
+/// Result of running the native compiler over a set of roots: the combined
+/// diagnostics (tsc's own plus deno's graph diagnostics for missing
+/// entrypoints). The caller decides whether these constitute a failure and
+/// whether to record the incremental check hash.
+pub struct NativeCheckOutcome {
+  pub diagnostics: crate::tsc::Diagnostics,
+}
+
+/// Build the per-check tsconfig, run the native compiler over exactly `roots`,
+/// and remap its diagnostics back onto the original module specifiers.
+///
+/// This is the "spawn tsc + build tsconfig + remap diagnostics" half of the
+/// native check pipeline, split out so it can be shared beyond `deno check`.
+/// It does not decide the incremental cache or record the check hash - the
+/// caller owns that (recording only happens on a clean check).
+///
+/// `honor_user_tsconfig_root` is `Some(<root tsconfig path>)` when Deno honors a
+/// user `tsconfig.json` (the caller makes that decision, since it needs
+/// `CliOptions`); otherwise `None` points tsc at the generated
+/// `.deno/tsconfig.json` directly.
+pub async fn run_native_check_over_roots(
+  tsc_path: &Path,
+  project_root: &Path,
+  roots: &[deno_core::ModuleSpecifier],
+  current_dir: &deno_core::ModuleSpecifier,
+  honor_user_tsconfig_root: Option<&Path>,
+  root_diagnostics: crate::tsc::Diagnostics,
+) -> Result<NativeCheckOutcome, AnyError> {
+  // When Deno honors a user `tsconfig.json`, base tsc on a throwaway overlay of
+  // it (its options + our generated `extends`/`references`) written to a temp
+  // file in the project root - so the user's path-based options (rootDirs,
+  // baseUrl, include/files) resolve relative to the project, WITHOUT us
+  // rewriting their committed file. Otherwise point tsc at the generated config
+  // directly. See `sync_types_command` / `build_check_root_overlay`.
+  //
+  // Holds the root overlay temp file open until tsc has run (dropping deletes
+  // it), keeping `deno check` side-effect-free on the user's tree.
+  let _root_tsconfig_guard;
+  let base_tsconfig = if let Some(root_tsconfig) = honor_user_tsconfig_root {
+    let overlay = crate::tsc::tsconfig_gen::build_check_root_overlay(
+      project_root,
+      root_tsconfig,
+    )?;
+    let mut tmp = tempfile::Builder::new()
+      .prefix("deno-check-root-")
+      .suffix(".tsconfig.json")
+      .tempfile_in(project_root)?;
+    std::io::Write::write_all(
+      &mut tmp,
+      deno_core::serde_json::to_string_pretty(&overlay)?.as_bytes(),
+    )?;
+    let path = tmp.path().to_path_buf();
+    _root_tsconfig_guard = tmp;
+    path
+  } else {
+    project_root.join(".deno").join("tsconfig.json")
+  };
+  // Pin tsc to exactly the roots deno resolved (glob-expanded and exclude-applied
+  // above), so `deno check *.ts` checks only the matched files - not the whole
+  // project - and an excluded file stays excluded. Local roots map to their
+  // `file://` path; remote roots map to their `.deno/remote/` mirror (added just
+  // below). Only an extensionless remote root - which stock tsc can't load - is
+  // left out, falling back to the base config's `include`.
+  let mut files: Vec<String> = roots
+    .iter()
+    .filter(|s| s.scheme() == "file")
+    .filter_map(|s| s.to_file_path().ok())
+    .filter(|p| p.exists())
+    .map(|p| p.to_string_lossy().replace('\\', "/"))
+    .collect();
+  // A remote (`http(s):`) root is not a `file://` path, but sync-types mirrored
+  // it under `.deno/remote/`. Pin tsc to those mirror files too, so a remote
+  // entrypoint is checked as itself rather than triggering the whole-project
+  // `include` fallback below (which would check unrelated files, or nothing).
+  files.extend(remote_root_mirror_files(project_root, roots));
+
+  // Every requested root was a missing (non-existent) local entrypoint: there's
+  // nothing for tsc to check, so report deno's graph diagnostics for them
+  // directly instead of falling back to the base config's project-wide
+  // `include` (which would check unrelated files).
+  if files.is_empty() && root_diagnostics.has_diagnostic() {
+    log_check_roots(roots, current_dir);
+    return Ok(NativeCheckOutcome {
+      diagnostics: root_diagnostics,
+    });
+  }
+
+  // Holds the per-file config's temp file open until tsc has run (dropping it
+  // deletes the file).
+  let _check_tsconfig_guard;
+  let tsconfig_path = if files.is_empty() {
+    base_tsconfig
+  } else {
+    // `deno check <files>` checks only the named files (and their imports), not
+    // the whole project. The generated `tsconfig.json` keeps an open `include`
+    // (so bundlers can consume its resolver mappings), so write a per-file
+    // config that extends it (by absolute path) and pins `files` - `files`/
+    // `include` are not inherited through `extends`, so only these files are
+    // type-checked while compilerOptions/paths still apply. `include: []`
+    // nullifies the base's open `include` (tsc unions `files` with an inherited
+    // `include`, which would otherwise re-add the whole project).
+    //
+    // `files`/`include` are not inherited through `extends`, so the base config's
+    // own `files` - the declaration files sync-types materialized from
+    // `compilerOptions.types` (npm packages, relative paths) that provide global
+    // augmentations - would be dropped. Carry them over so those types still
+    // apply when checking specific files.
+    let generated_base = project_root.join(".deno").join("tsconfig.json");
+    if let Ok(text) = std::fs::read_to_string(&generated_base)
+      && let Ok(value) =
+        deno_core::serde_json::from_str::<deno_core::serde_json::Value>(&text)
+      && let Some(base_files) = value.get("files").and_then(|f| f.as_array())
+    {
+      for f in base_files {
+        if let Some(s) = f.as_str() {
+          let s = s.to_string();
+          if !files.contains(&s) {
+            files.push(s);
+          }
+        }
+      }
+    }
+    // Write to the system temp dir, not the project root: this config only
+    // references absolute paths (`extends` the base config by absolute path,
+    // `files` are absolute, `include` is empty), and tsc runs with its cwd
+    // pinned to `project_root` regardless of where the config lives, so its
+    // location does not affect resolution. Keeping it out of the project tree
+    // avoids leaving an artifact behind and, more importantly, avoids racing
+    // with anything enumerating the project directory - e.g. a sibling
+    // spec-test variant that copies the directory while this ephemeral file
+    // briefly exists (and then vanishes when the guard drops).
+    let content = deno_core::serde_json::json!({
+      "extends": base_tsconfig.to_string_lossy().replace('\\', "/"),
+      "include": [],
+      "files": files,
+    });
+    let mut tmp = tempfile::Builder::new()
+      .prefix("deno-check-")
+      .suffix(".tsconfig.json")
+      .tempfile()?;
+    std::io::Write::write_all(
+      &mut tmp,
+      deno_core::serde_json::to_string_pretty(&content)?.as_bytes(),
+    )?;
+    let path = tmp.path().to_path_buf();
+    _check_tsconfig_guard = tmp;
+    path
+  };
+
+  log_check_roots(roots, current_dir);
+
+  let output = run_native_tsc(tsc_path, &tsconfig_path, project_root).await?;
+
+  let stdout = String::from_utf8_lossy(&output.stdout);
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  let mut diagnostics =
+    crate::tsc::Diagnostics::from(parse_tsc_diagnostics(&stdout, project_root));
+  // Fold in deno's own diagnostics for missing entrypoints (some roots existed
+  // and were type-checked by tsc above; any that didn't are reported here).
+  diagnostics.extend(root_diagnostics);
+
+  // Captured for an upcoming "Checked N files" summary; not surfaced yet.
+  let stats = parse_tsc_stats(&stdout);
+  log::debug!("native tsc {stats:?}");
+
+  if diagnostics.has_diagnostic() {
+    return Ok(NativeCheckOutcome { diagnostics });
+  }
+
+  // tsc exited non-zero but we have nothing to show. If it printed diagnostic
+  // lines we deliberately dropped (e.g. `noImplicitOverride` in remote modules),
+  // its exit code is expected - treat the check as clean. Only when tsc produced
+  // no recognizable diagnostics at all is this a genuine failure (an internal
+  // error or a malformed generated config); surface whatever it printed then.
+  let tsc_reported_diagnostics = output_has_diagnostics(&stdout);
+  if !output.status.success() && !tsc_reported_diagnostics {
+    let detail = stdout.trim();
+    let detail = if detail.is_empty() {
+      stderr.trim()
+    } else {
+      detail
+    };
+    return Err(anyhow::anyhow!(
+      "native tsc exited with {} without parseable diagnostics{}",
+      output.status,
+      if detail.is_empty() {
+        String::new()
+      } else {
+        format!(":\n{detail}")
+      }
+    ));
+  }
+
+  Ok(NativeCheckOutcome { diagnostics })
+}
+
+/// Print a `Check <specifier>` line for each provided root, rendered relative
+/// to `current_dir`, matching Deno 2.x's forked tsc output.
+fn log_check_roots(
+  roots: &[deno_core::ModuleSpecifier],
+  current_dir: &deno_core::ModuleSpecifier,
+) {
+  for root in roots {
+    log::info!(
+      "{} {}",
+      deno_terminal::colors::green("Check"),
+      crate::util::path::relative_specifier_path_for_display(current_dir, root),
+    );
+  }
+}
+
+/// Whether a mirror path carries an extension stock tsc can language-detect.
+/// A module Deno serves by content-type but mirrors without a code extension
+/// (`no_js_ext`) can't be loaded by stock tsc, which keys language off the
+/// extension alone.
+fn has_checkable_extension(path: &str) -> bool {
+  let lower = path.to_ascii_lowercase();
+  [
+    ".d.ts", ".d.mts", ".d.cts", ".ts", ".tsx", ".mts", ".cts", ".js", ".jsx",
+    ".mjs", ".cjs",
+  ]
+  .iter()
+  .any(|ext| lower.ends_with(ext))
+}
+
+/// Resolve remote (`http(s):`) roots to their mirrored local files under
+/// `.deno/remote/` (via the generated tsconfig's `paths`) so tsc can be pinned
+/// to exactly the requested remote entrypoint via `files`, instead of dropping
+/// them and falling back to the base config's whole-project `include`.
+/// Extensionless remote modules have no mirror stock tsc can load and are
+/// skipped (see `has_checkable_extension`).
+fn remote_root_mirror_files(
+  project_root: &Path,
+  roots: &[deno_core::ModuleSpecifier],
+) -> Vec<String> {
+  let deno_dir = project_root.join(".deno");
+  let Ok(text) = std::fs::read_to_string(deno_dir.join("tsconfig.json")) else {
+    return Vec::new();
+  };
+  let Ok(value) =
+    deno_core::serde_json::from_str::<deno_core::serde_json::Value>(&text)
+  else {
+    return Vec::new();
+  };
+  let Some(paths) = value
+    .get("compilerOptions")
+    .and_then(|c| c.get("paths"))
+    .and_then(|p| p.as_object())
+  else {
+    return Vec::new();
+  };
+  let mut files = Vec::new();
+  for root in roots.iter().filter(|s| s.scheme() != "file") {
+    let Some(rel) = paths
+      .get(root.as_str())
+      .and_then(|t| t.as_array())
+      .and_then(|a| a.first())
+      .and_then(|v| v.as_str())
+      .and_then(|t| t.strip_prefix("./"))
+    else {
+      continue;
+    };
+    if !has_checkable_extension(rel) {
+      continue;
+    }
+    // `paths` targets are relative to `.deno/` (where the generated tsconfig
+    // lives); rebase onto an absolute path for the `files` entry.
+    let local = deno_dir.join(rel);
+    if local.exists() {
+      files.push(local.to_string_lossy().replace('\\', "/"));
+    }
+  }
+  files
 }
 
 /// A single `path(line,col): error TS####: message` line from `tsc --pretty

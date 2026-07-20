@@ -257,19 +257,26 @@ impl ModuleLoadPreparer {
 
     // type check if necessary
     if self.options.type_check_mode().is_true() && !has_type_checked {
-      self.type_checker.check(
-        // todo(perf): since this is only done the first time the graph is
-        // created, we could avoid the clone of the graph here by providing
-        // the actual graph on the first run and then getting the Arc<ModuleGraph>
-        // back from the return value.
-        graph.clone(),
+      // Route run/test/cache through the native (external tsc) checker, the same
+      // pipeline `deno check` uses. It borrows the graph (no clone needed - the
+      // old in-binary path cloned only because it returned an owned graph we
+      // discarded) and does not build the fast-check graph, which run/test/cache
+      // never consume (only publish/pack do, on a separate path).
+      // Box the check future: it's large (sync-types + tsc spawn + remap), and
+      // this await sits on the module-load hot path that the install flow builds
+      // on, so embedding it inline would push those futures over clippy's
+      // `large_futures` size threshold.
+      Box::pin(self.type_checker.check_native(
+        graph,
+        roots,
         CheckOptions {
-          build_fast_check_graph: true,
+          build_fast_check_graph: false,
           lib,
           reload: self.options.reload_flag(),
           type_check_mode: self.options.type_check_mode(),
         },
-      )?;
+      ))
+      .await?;
     }
 
     // write the lockfile if there is one and do so after type checking

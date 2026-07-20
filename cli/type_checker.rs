@@ -121,6 +121,7 @@ pub struct TypeChecker {
   sys: CliSys,
   compiler_options_resolver: Arc<CompilerOptionsResolver>,
   code_cache: Option<Arc<crate::cache::CodeCache>>,
+  native_tsc_deps: crate::tsc::native::NativeTscInstallDeps,
 }
 
 impl TypeChecker {
@@ -136,6 +137,7 @@ impl TypeChecker {
     sys: CliSys,
     compiler_options_resolver: Arc<CompilerOptionsResolver>,
     code_cache: Option<Arc<crate::cache::CodeCache>>,
+    native_tsc_deps: crate::tsc::native::NativeTscInstallDeps,
   ) -> Self {
     Self {
       caches,
@@ -148,6 +150,7 @@ impl TypeChecker {
       sys,
       compiler_options_resolver,
       code_cache,
+      native_tsc_deps,
     }
   }
 
@@ -338,6 +341,158 @@ impl TypeChecker {
   /// external compiler when the graph hash is unchanged.
   pub(crate) fn type_check_cache(&self) -> TypeCheckCache {
     TypeCheckCache::new(self.caches.type_checking_cache_db())
+  }
+
+  /// Type-check `graph` with the native TypeScript compiler (`tsgo`).
+  ///
+  /// This is the graph-aware half of the native check pipeline: it walks the
+  /// graph for the incremental cache decision, materializes dependency types
+  /// (via `deno sync-types`), downloads the pinned compiler, then delegates the
+  /// tsc spawn and diagnostic remapping to
+  /// [`crate::tsc::native::run_native_check_over_roots`]. It records the check
+  /// hash only when the graph type-checks cleanly, so an unchanged re-check can
+  /// skip the compiler entirely.
+  pub async fn check_native(
+    &self,
+    graph: &ModuleGraph,
+    roots: &[ModuleSpecifier],
+    options: CheckOptions,
+  ) -> Result<(), CheckError> {
+    // Walk the graph exactly as Deno 2.x's forked tsc did to obtain the combined
+    // check hash (tsc version folded in). The walk also produces deno's own
+    // graph diagnostics (missing modules + hints), but merging them additively
+    // isn't safe yet (see `walk_graph_for_native_check`), so only the missing
+    // entrypoint diagnostics are surfaced here.
+    let (missing_diagnostics, maybe_check_hash) = self
+      .walk_graph_for_native_check(
+        graph,
+        options.lib,
+        options.type_check_mode,
+      )?;
+
+    // A root (entrypoint) that deno's graph couldn't resolve - a local file that
+    // doesn't exist, or a remote URL that failed to fetch - can't be
+    // type-checked. Handing a local one to tsc yields a leaky "File not found"
+    // error; a remote one isn't a tsc `files` entry at all, so it silently falls
+    // back to checking the whole project. Deno's graph walk already produced the
+    // proper "Cannot find module" diagnostic for the root, so surface that and
+    // keep the root out of tsc. Missing *imports* stay deferred to tsc (which
+    // reports TS2307 for them), so this only owns the entrypoints.
+    let root_urls: Vec<String> = roots.iter().map(|s| s.to_string()).collect();
+    let root_diagnostics = missing_diagnostics.filter(|d| {
+      d.missing_specifier
+        .as_ref()
+        .is_some_and(|s| root_urls.contains(s))
+    });
+
+    let project_root = self
+      .cli_options
+      .workspace()
+      .root_dir_url()
+      .to_file_path()
+      .map_err(|_| {
+        CheckErrorKind::Other(JsErrorBox::generic(
+          "workspace root is not a local directory",
+        ))
+      })?;
+
+    let type_check_cache = self.type_check_cache();
+
+    // Cache hit: the hash is only recorded after a clean check, so a match means
+    // the project type-checked cleanly and nothing the compiler sees has
+    // changed. Skip both the (expensive) type materialization and the tsc spawn.
+    // A missing root means there's a diagnostic to report, so never take the
+    // cache path.
+    if !options.reload
+      && !root_diagnostics.has_diagnostic()
+      && let Some(check_hash) = maybe_check_hash
+      && type_check_cache.has_check_hash(check_hash)
+    {
+      log::debug!("Already type checked (native tsc)");
+      return Ok(());
+    }
+
+    // Cache miss: generate the tsconfig.json and materialize dependency types so
+    // the native compiler can resolve the project's jsr:/npm:/http(s): imports.
+    // Suppress sync-types' own progress/summary output (an internal step here)
+    // so it doesn't precede the type-check diagnostics. This clobbers the global
+    // log level, which is not ideal; replacing it with source-level suppression
+    // (or reusing the already-built graph so sync-types doesn't re-fetch) is
+    // tracked as a follow-up.
+    let prev_level = log::max_level();
+    log::set_max_level(log::LevelFilter::Error);
+    let sync_result = crate::tools::installer::sync_types_command(
+      self.cli_options.flags().clone(),
+      crate::args::SyncTypesFlags { roots: root_urls },
+      crate::tools::installer::RootTsConfigMode::CheckMode,
+    )
+    .await;
+    log::set_max_level(prev_level);
+    sync_result.map_err(|e| {
+      CheckErrorKind::Other(JsErrorBox::generic(format!("{e:#}")))
+    })?;
+
+    let tsc_path = crate::tsc::native::ensure_native_tsc(&self.native_tsc_deps)
+      .await
+      .map_err(|e| {
+        CheckErrorKind::Other(JsErrorBox::generic(format!("{e:#}")))
+      })?;
+
+    // Deno honors a user `tsconfig.json` only when config discovery isn't
+    // disabled and the root is a Deno project (see `should_honor_user_tsconfig`).
+    // The decision lives here because it needs `CliOptions`; the resolved root
+    // tsconfig path (when honored and present) is handed to the native fn.
+    let config_disabled = matches!(
+      self.cli_options.flags().config_flag,
+      crate::args::ConfigFlag::Disabled
+    );
+    let honor = crate::tsc::tsconfig_gen::should_honor_user_tsconfig(
+      &project_root,
+      config_disabled,
+    );
+    let root_tsconfig = project_root.join("tsconfig.json");
+    let honor_root =
+      (honor && root_tsconfig.exists()).then_some(root_tsconfig.as_path());
+
+    // Render each root relative to the invocation directory, matching deno's own
+    // `Check <specifier>` output.
+    let current_dir = deno_path_util::url_from_directory_path(
+      self.cli_options.initial_cwd(),
+    )
+    .map_err(|e| CheckErrorKind::Other(JsErrorBox::generic(e.to_string())))?;
+
+    let outcome = crate::tsc::native::run_native_check_over_roots(
+      &tsc_path,
+      &project_root,
+      roots,
+      &current_dir,
+      honor_root,
+      root_diagnostics,
+    )
+    .await
+    .map_err(|e| {
+      CheckErrorKind::Other(JsErrorBox::generic(format!("{e:#}")))
+    })?;
+
+    if outcome.diagnostics.has_diagnostic() {
+      log::error!("{}\n", outcome.diagnostics);
+      return Err(
+        FailedTypeCheckingError {
+          can_skip: !matches!(
+            self.cli_options.sub_command(),
+            DenoSubcommand::Check(_)
+          ),
+        }
+        .into(),
+      );
+    }
+
+    // Type-checked clean: record the hash so an unchanged re-check skips tsc.
+    if let Some(check_hash) = maybe_check_hash {
+      type_check_cache.add_check_hash(check_hash);
+    }
+
+    Ok(())
   }
 
   pub fn check_diagnostics(
