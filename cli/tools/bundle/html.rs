@@ -316,16 +316,23 @@ pub struct HtmlEntrypoint {
   pub virtual_module_path: PathBuf,
 }
 
-const VIRTUAL_ENTRY_SUFFIX: &str = ".deno-bundle-html.entry";
+pub const VIRTUAL_ENTRY_SUFFIX: &str = ".deno-bundle-html.entry";
 
-// Helper to create a filesystem-friendly name based on a path
+// Helper to create an entry name based on a path. Subdirectories are
+// preserved (with `/` separators) so that multiple HTML pages with the same
+// file name in different folders produce distinct output paths.
 fn sanitize_entry_name(cwd: &Path, path: &Path) -> String {
   let rel =
     pathdiff::diff_paths(path, cwd).unwrap_or_else(|| path.to_path_buf());
   let stem = rel
     .with_extension("")
     .to_string_lossy()
-    .replace(['\\', '/', ':'], "_");
+    .replace('\\', "/")
+    .replace(':', "_");
+  // Entrypoints outside the cwd would produce `../` segments that escape the
+  // output directory; flatten those away.
+  let stem = stem.replace("../", "");
+  let stem = stem.trim_start_matches('/').to_string();
   if stem.is_empty() {
     "entry".to_string()
   } else {
@@ -355,10 +362,11 @@ fn parse_html_entrypoint(
   }
 
   let entry_name = sanitize_entry_name(cwd, path);
-  let virtual_module_path = path
-    .parent()
-    .unwrap_or(Path::new(""))
-    .join(format!("{}{}.js", entry_name, VIRTUAL_ENTRY_SUFFIX));
+  // The virtual module lives next to the HTML file, so flatten any
+  // subdirectory separators out of its file name.
+  let virtual_module_path = path.parent().unwrap_or(Path::new("")).join(
+    format!("{}{}.js", entry_name.replace('/', "_"), VIRTUAL_ENTRY_SUFFIX),
+  );
 
   Ok(HtmlEntrypoint {
     path: path.to_path_buf(),
@@ -394,12 +402,20 @@ pub struct HtmlOutputFiles<'a, 'f> {
 }
 
 impl<'a, 'f> HtmlOutputFiles<'a, 'f> {
-  pub fn new(output_files: &'f mut Vec<OutputFile<'a>>) -> Self {
+  pub fn new(output_files: &'f mut Vec<OutputFile<'a>>, outdir: &Path) -> Self {
     let re =
       lazy_regex::regex!(r"(^.+\.deno-bundle-html.entry)-([^.]+)(\..+)$");
     let mut index = std::collections::HashMap::new();
     for (i, f) in output_files.iter().enumerate() {
-      if let Some(name) = f.path.file_name().map(|s| s.to_string_lossy()) {
+      // Index by the outdir-relative path (normalized to `/` separators) so
+      // that same-named entries in different subdirectories stay distinct.
+      let rel = f
+        .path
+        .strip_prefix(outdir)
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|_| f.path.clone());
+      {
+        let name = rel.to_string_lossy().replace('\\', "/");
         let Some(captures) = re.captures(&name) else {
           continue;
         };
@@ -454,21 +470,14 @@ impl<'a, 'f> HtmlOutputFiles<'a, 'f> {
 }
 
 impl HtmlEntrypoint {
-  fn original_entry_name(&self) -> String {
-    self.path.file_stem().unwrap().to_string_lossy().to_string()
-  }
   pub fn patch_html_with_response<'a>(
     self,
     _cwd: &Path,
     outdir: &Path,
     html_output_files: &mut HtmlOutputFiles<'a, '_>,
   ) -> anyhow::Result<()> {
-    let original_entry_name = self.original_entry_name();
-
     if self.scripts.is_empty() {
-      let html_out_path =
-        // TODO(nathanwhit): not really correct
-        { outdir.join(format!("{}.html", &original_entry_name)) };
+      let html_out_path = outdir.join(format!("{}.html", &self.entry_name));
       html_output_files.output_files.push(OutputFile {
         path: html_out_path,
         contents: Cow::Owned(self.contents.into_bytes()),
@@ -479,17 +488,21 @@ impl HtmlEntrypoint {
     let entry_name = format!("{}{}", self.entry_name, VIRTUAL_ENTRY_SUFFIX);
     let js_entry_name = format!("{}.js", entry_name);
 
+    // Rename outputs by stripping the internal virtual-entry suffix
+    // (`index.deno-bundle-html.entry-HASH.js` -> `index-HASH.js`). The
+    // suffix contains no path separators, so a plain string replace is safe
+    // on absolute paths across platforms.
     let mut js_out_no_hash = None;
     let js_out = html_output_files
       .get_and_update_path(&js_entry_name, |p, f| {
         let p = p.to_string_lossy();
         js_out_no_hash = Some(
-          p.replace(entry_name.as_str(), &original_entry_name)
+          p.replace(VIRTUAL_ENTRY_SUFFIX, "")
             .replace(&format!("-{}", f.hash), "")
             .into(),
         );
 
-        p.replace(entry_name.as_str(), &original_entry_name).into()
+        p.replace(VIRTUAL_ENTRY_SUFFIX, "").into()
       })
       .ok_or_else(|| {
         anyhow::anyhow!(
@@ -513,9 +526,7 @@ impl HtmlEntrypoint {
         old_map_name = p
           .file_name()
           .map(|name| name.to_string_lossy().into_owned());
-        p.to_string_lossy()
-          .replace(entry_name.as_str(), &original_entry_name)
-          .into()
+        p.to_string_lossy().replace(VIRTUAL_ENTRY_SUFFIX, "").into()
       });
     if let Some(old_map_name) = old_map_name
       && let Some(new_map_name) = new_map_out
@@ -533,9 +544,7 @@ impl HtmlEntrypoint {
     let css_entry_name = format!("{}.css", entry_name);
     let css_out =
       html_output_files.get_and_update_path(&css_entry_name, |p, _| {
-        p.to_string_lossy()
-          .replace(entry_name.as_str(), &original_entry_name)
-          .into()
+        p.to_string_lossy().replace(VIRTUAL_ENTRY_SUFFIX, "").into()
       });
 
     let script_src = {
