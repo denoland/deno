@@ -119,15 +119,19 @@ fn create_dir_secure(path: &Path) -> std::io::Result<()> {
 #[cfg(unix)]
 fn ensure_secure_temp_dir(path: &Path) -> Result<(), AnyError> {
   use std::os::unix::fs::MetadataExt;
+  use std::os::unix::fs::OpenOptionsExt;
   use std::os::unix::fs::PermissionsExt;
 
-  let metadata = std::fs::symlink_metadata(path)?;
-  if metadata.file_type().is_symlink() || !metadata.is_dir() {
-    bail!("'{}' is not a directory", path.display());
-  }
+  // Keep the check, permission repair, and final validation tied to the same
+  // directory so replacing the path cannot redirect the chmod.
+  let dir = std::fs::OpenOptions::new()
+    .read(true)
+    .custom_flags(libc::O_NOFOLLOW | libc::O_DIRECTORY)
+    .open(path)?;
 
   // SAFETY: geteuid has no preconditions.
   let current_uid = unsafe { libc::geteuid() };
+  let metadata = dir.metadata()?;
   if metadata.uid() != current_uid {
     bail!(
       "'{}' is owned by uid {}, not current uid {}",
@@ -139,10 +143,18 @@ fn ensure_secure_temp_dir(path: &Path) -> Result<(), AnyError> {
 
   let mode = metadata.permissions().mode();
   if mode & 0o077 != 0 {
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))?;
+    dir.set_permissions(std::fs::Permissions::from_mode(0o700))?;
   }
 
-  let metadata = std::fs::symlink_metadata(path)?;
+  let metadata = dir.metadata()?;
+  if metadata.uid() != current_uid {
+    bail!(
+      "'{}' is owned by uid {}, not current uid {}",
+      path.display(),
+      metadata.uid(),
+      current_uid
+    );
+  }
   if metadata.permissions().mode() & 0o077 != 0 {
     bail!(
       "'{}' is writable or readable by other users",
