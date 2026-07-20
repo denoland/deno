@@ -124,6 +124,10 @@ pub async fn execute_script(
       let member_dir = workspace.resolve_member_dir(folder_url);
       let mut tasks_config = member_dir.to_tasks_config()?;
       if force_use_pkg_json {
+        // no node_modules special case here (see
+        // node_modules_pkg_json_tasks_config): the npm shim only rewrites a
+        // plain `npm run <script>`, never one with a filter, so this branch
+        // is unreachable for the lifecycle-script scenario
         tasks_config = tasks_config.with_only_pkg_json();
       }
 
@@ -287,6 +291,14 @@ struct ParallelInfo {
 /// Workspace discovery deliberately never descends into `node_modules`, so
 /// without this the surrounding project's config would be used and the
 /// package's scripts would never be found (#35742).
+///
+/// The check is deliberately loose — any ancestor component named
+/// `node_modules` triggers it, including a project that merely lives under a
+/// directory with that name. That is still the npm-compatible outcome: `npm
+/// run` resolves against the package.json nearest to the cwd, which is
+/// exactly what this returns, while workspace discovery would skip that same
+/// package.json precisely because of the `node_modules` component in its
+/// path.
 fn node_modules_pkg_json_tasks_config(
   cli_options: &CliOptions,
 ) -> Result<Option<WorkspaceTasksConfig>, AnyError> {
