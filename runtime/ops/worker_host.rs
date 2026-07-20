@@ -123,12 +123,20 @@ impl WorkerThread {
 
 impl Drop for WorkerThread {
   fn drop(&mut self) {
-    // Terminate the worker before releasing its Web Locks. `terminate()` calls
-    // `terminate_execution()` on the worker's isolate, so its JS is already
-    // being torn down and cannot start a new `op_lock_manager_request` under
-    // the same client id while (or after) we clean up — otherwise a lock
-    // granted in that window would outlive the worker and could deadlock other
-    // clients waiting on it.
+    // Promptly release the worker's Web Locks so other clients waiting on them
+    // don't stay blocked until the worker thread fully unwinds. This is a
+    // promptness optimization on top of the real backstop: the worker's held
+    // and pending lock resources live in its own op_state and
+    // release/cancel by id when its `JsRuntime` drops.
+    //
+    // `terminate()` only signals `terminate_execution()` and closes the
+    // channels, returning without waiting for the worker thread to stop, and it
+    // can't abort a synchronous op already in flight. So there is a narrow
+    // window in which the worker completes an in-flight `op_lock_manager_request`
+    // and inserts a held lock under the just-cleaned `worker-N` client id after
+    // `cleanup_locks_for_client_id` runs here — that lock is still released by
+    // the resource-drop backstop above. We terminate before cleaning up anyway
+    // to narrow that window.
     self.worker_handle.clone().terminate();
     if let Some(client_id) = &self.web_lock_client_id {
       deno_web::locks::cleanup_locks_for_client_id(client_id);
