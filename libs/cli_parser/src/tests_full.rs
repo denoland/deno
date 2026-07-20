@@ -7444,7 +7444,7 @@ fn net_flag_with_url() {
   ]);
   assert_eq!(
     r.unwrap_err().to_string(),
-    "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+    "error: invalid value 'https://example.com': URLs are not supported, only domains and IPs"
   );
 }
 
@@ -7521,7 +7521,7 @@ fn allow_import_with_url() {
   ]);
   assert_eq!(
     r.unwrap_err().to_string(),
-    "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+    "error: invalid value 'https://example.com': URLs are not supported, only domains and IPs"
   );
 }
 
@@ -7535,7 +7535,7 @@ fn deny_import_with_url() {
   ]);
   assert_eq!(
     r.unwrap_err().to_string(),
-    "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+    "error: invalid value 'https://example.com': URLs are not supported, only domains and IPs"
   );
 }
 

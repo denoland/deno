@@ -16812,7 +16812,7 @@ mod tests {
     ]);
     assert_eq!(
       r.unwrap_err().to_string(),
-      "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+      "error: invalid value 'https://example.com': URLs are not supported, only domains and IPs"
     );
   }
 
@@ -16890,7 +16890,7 @@ Usage: deno lint [OPTIONS] [files]...\n"
     ]);
     assert_eq!(
       r.unwrap_err().to_string(),
-      "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+      "error: invalid value 'https://example.com': URLs are not supported, only domains and IPs"
     );
   }
 
@@ -16904,7 +16904,7 @@ Usage: deno lint [OPTIONS] [files]...\n"
     ]);
     assert_eq!(
       r.unwrap_err().to_string(),
-      "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+      "error: invalid value 'https://example.com': URLs are not supported, only domains and IPs"
     );
   }
 
