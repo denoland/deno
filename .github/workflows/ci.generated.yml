@@ -7299,8 +7299,8 @@ jobs:
         run: |-
           apk add --no-cache \
             bash git curl wget xz zip unzip tar coreutils \
-            build-base musl-dev clang lld llvm cmake make perl \
-            python3 protobuf protobuf-dev rustup \
+            build-base musl-dev clang clang-dev lld llvm llvm-dev \
+            cmake make perl python3 protobuf protobuf-dev rustup \
             libstdc++ libgcc gcompat nodejs npm
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Configure git
@@ -7408,6 +7408,7 @@ jobs:
           echo "RUSTDOCFLAGS=-C target-feature=-crt-static -C linker=clang -C link-arg=-fuse-ld=lld --cfg tokio_unstable" >> $GITHUB_ENV
           echo "CC=gcc" >> $GITHUB_ENV
           echo "CXX=g++" >> $GITHUB_ENV
+          echo "LIBCLANG_PATH=/usr/lib" >> $GITHUB_ENV
       - name: Configure canary build
         if: 'github.repository == ''denoland/deno'' && !startsWith(github.ref, ''refs/tags/'')'
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
@@ -7731,14 +7732,14 @@ jobs:
       - name: Set up musl build environment
         if: github.repository == 'denoland/deno'
         run: |-
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends musl-tools musl-dev
           rustup target add aarch64-unknown-linux-musl
+          pip3 install --break-system-packages ziglang==0.13.0
+          cargo install --locked cargo-zigbuild@0.19.8
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends musl
           echo "CARGO_BUILD_TARGET=aarch64-unknown-linux-musl" >> $GITHUB_ENV
           echo "RUSTFLAGS=-C target-feature=-crt-static --cfg tokio_unstable" >> $GITHUB_ENV
           echo "RUSTDOCFLAGS=-C target-feature=-crt-static --cfg tokio_unstable" >> $GITHUB_ENV
-          echo "CC_aarch64_unknown_linux_musl=musl-gcc" >> $GITHUB_ENV
-          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc" >> $GITHUB_ENV
       - name: Configure canary build
         if: 'github.repository == ''denoland/deno'' && !startsWith(github.ref, ''refs/tags/'')'
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
@@ -7754,8 +7755,8 @@ jobs:
             grep -n fuse-ld .cargo/config.toml
           fi
           df -h
-          cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
-          cargo build --release --locked -p denort_desktop
+          cargo zigbuild --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
+          cargo zigbuild --release --locked -p denort_desktop
           df -h
       - name: Relocate cross-build artifacts
         if: github.repository == 'denoland/deno'

@@ -963,6 +963,9 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           .map((name) => `-p ${name}`).join(" ");
         const binsToBuild = ["deno", "denort", "test_server"]
           .map((name) => `--bin ${name}`).join(" ");
+        // aarch64 musl cross-compiles via cargo-zigbuild (see the musl build
+        // environment step); all other builds use plain cargo.
+        const cargoBuild = isCrossMuslBuild ? "cargo zigbuild" : "cargo build";
         const cargoBuildReleaseStep = step
           .if(
             isRelease.and(isDenoland.or(buildItem.use_sysroot)),
@@ -988,18 +991,24 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 // after the build so downstream steps find them.
                 name: "Set up musl build environment",
                 run: [
-                  // musl-tools provides musl-gcc and pulls in musl-dev and the
-                  // musl runtime loader (/lib/ld-musl-aarch64.so.1), which the
-                  // dynamically linked musl binary needs to run on this glibc
-                  // host (e.g. for the symcache step).
-                  "sudo apt-get update",
-                  "sudo apt-get install -y --no-install-recommends musl-tools musl-dev",
+                  // Cross-compiling to musl with dynamic linking (crt-static
+                  // off, needed for FFI/dlopen) requires a musl libgcc_s, which
+                  // Ubuntu's musl-tools does not provide. cargo-zigbuild uses
+                  // Zig's bundled musl toolchain + compiler-rt, which supplies
+                  // libgcc_s and compiles the C/C++ deps (aws-lc-sys etc.)
+                  // against musl. Zig is provided via the `ziglang` PyPI
+                  // package and found automatically by cargo-zigbuild.
                   "rustup target add aarch64-unknown-linux-musl",
+                  "pip3 install --break-system-packages ziglang==0.13.0",
+                  "cargo install --locked cargo-zigbuild@0.19.8",
+                  // The musl runtime loader (/lib/ld-musl-aarch64.so.1) lets the
+                  // dynamically linked binary run on this glibc host (e.g. for
+                  // the symcache step).
+                  "sudo apt-get update",
+                  "sudo apt-get install -y --no-install-recommends musl",
                   'echo "CARGO_BUILD_TARGET=aarch64-unknown-linux-musl" >> $GITHUB_ENV',
                   'echo "RUSTFLAGS=-C target-feature=-crt-static --cfg tokio_unstable" >> $GITHUB_ENV',
                   'echo "RUSTDOCFLAGS=-C target-feature=-crt-static --cfg tokio_unstable" >> $GITHUB_ENV',
-                  'echo "CC_aarch64_unknown_linux_musl=musl-gcc" >> $GITHUB_ENV',
-                  'echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc" >> $GITHUB_ENV',
                 ],
               }
               : {
@@ -1018,6 +1027,9 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                   // self-contained.
                   'echo "CC=gcc" >> $GITHUB_ENV',
                   'echo "CXX=g++" >> $GITHUB_ENV',
+                  // bindgen (libsqlite3-sys) dlopens libclang at build time;
+                  // point it at Alpine's clang-dev/llvm-dev shared library.
+                  'echo "LIBCLANG_PATH=/usr/lib" >> $GITHUB_ENV',
                 ],
               },
             {
@@ -1046,11 +1058,11 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 "fi",
                 // output fs space before and after building
                 "df -h",
-                `cargo build --release --locked ${packagesToBuild} ${binsToBuild} --features=deno/panic-trace`,
+                `${cargoBuild} --release --locked ${packagesToBuild} ${binsToBuild} --features=deno/panic-trace`,
                 // Build the desktop runtime shared library (libdenort cdylib) for
                 // laufey-based desktop apps. Separate invocation because the
                 // panic-trace feature only applies to the deno/denort binaries.
-                "cargo build --release --locked -p denort_desktop",
+                `${cargoBuild} --release --locked -p denort_desktop`,
                 "df -h",
               ],
             },
@@ -1272,8 +1284,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           run: [
             "apk add --no-cache \\",
             "  bash git curl wget xz zip unzip tar coreutils \\",
-            "  build-base musl-dev clang lld llvm cmake make perl \\",
-            "  python3 protobuf protobuf-dev rustup \\",
+            "  build-base musl-dev clang clang-dev lld llvm llvm-dev \\",
+            "  cmake make perl python3 protobuf protobuf-dev rustup \\",
             "  libstdc++ libgcc gcompat nodejs npm",
             // The workspace is created by the host runner under a different
             // uid than the container root user, so git refuses to operate on
