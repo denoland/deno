@@ -33,3 +33,6 @@ slab.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
