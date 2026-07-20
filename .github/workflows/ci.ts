@@ -1215,6 +1215,12 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             "  build-base musl-dev clang lld llvm cmake make perl \\",
             "  python3 protobuf protobuf-dev rustup \\",
             "  libstdc++ libgcc gcompat nodejs npm",
+            // The workspace is created by the host runner under a different
+            // uid than the container root user, so git refuses to operate on
+            // it. actions/checkout works around this with a temporary HOME,
+            // but that does not persist for later steps (e.g. submodule
+            // clones), so mark the workspace as a safe directory globally.
+            "git config --global --add safe.directory \"$GITHUB_WORKSPACE\"",
           ],
         });
 

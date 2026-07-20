@@ -7041,6 +7041,7 @@ jobs:
             build-base musl-dev clang lld llvm cmake make perl \
             python3 protobuf protobuf-dev rustup \
             libstdc++ libgcc gcompat nodejs npm
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Configure git
         run: |-
           git config --global core.symlinks true
@@ -7375,6 +7376,7 @@ jobs:
             build-base musl-dev clang lld llvm cmake make perl \
             python3 protobuf protobuf-dev rustup \
             libstdc++ libgcc gcompat nodejs npm
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Configure git
         run: |-
           git config --global core.symlinks true
