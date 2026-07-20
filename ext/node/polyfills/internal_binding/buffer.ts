@@ -8,10 +8,10 @@ const { Encodings } = core.loadExtScript(
 const {
   Error,
   MathMax,
-  TypedArrayFrom,
+  MathMin,
+  MathTrunc,
+  NumberIsNaN,
   TypedArrayPrototypeGetLength,
-  TypedArrayPrototypeSlice,
-  Uint8Array,
 } = primordials;
 
 function fill(
@@ -25,115 +25,73 @@ function fill(
   return buffer.fill(value, start, end);
 }
 
-function indexOfNeedle(
-  source: Uint8Array,
-  needle: Uint8Array,
-  start = 0,
-  step = 1,
-  end = TypedArrayPrototypeGetLength(source),
+// Mirror of `IndexOfOffset` (node/src/node_buffer.cc). Normalizes a raw
+// `offset` (which may be negative or out of bounds) into a start index, or -1
+// when there can be no match.
+function indexOfOffset(
+  length: number,
+  offset: number,
+  needleLength: number,
+  isForward: boolean,
 ): number {
-  const sourceLength = TypedArrayPrototypeGetLength(source);
-  const needleLength = TypedArrayPrototypeGetLength(needle);
-
-  if (start >= sourceLength) {
+  if (offset < 0) {
+    if (offset + length >= 0) {
+      // Negative offsets count backwards from the end of the buffer.
+      return length + offset;
+    } else if (isForward || needleLength === 0) {
+      // From before the start of the buffer: search the whole buffer.
+      return 0;
+    }
+    // lastIndexOf from before the start of the buffer: no match.
     return -1;
   }
-  if (start < 0) {
-    start = MathMax(0, sourceLength + start);
+  if (offset + needleLength <= length) {
+    return offset;
+  } else if (needleLength === 0) {
+    // Out of bounds, but empty needle: point to end of buffer.
+    return length;
+  } else if (isForward) {
+    // indexOf from past the end of the buffer: no match.
+    return -1;
   }
+  // lastIndexOf from past the end of the buffer: search the whole buffer.
+  return length - 1;
+}
 
-  const s = needle[0];
-  // If `end` is small/negative, this naturally yields zero iterations below.
-  // No separate "empty range" branch needed.
-  // Same as Node's implementation
-  const lastStart = end - needleLength;
-  for (let i = start; i <= lastStart; i += step) {
-    if (source[i] !== s) continue;
-    const pin = i;
-    let matched = 1;
-    let j = i;
-    while (matched < needleLength) {
-      j++;
-      if (source[j] !== needle[j - pin]) {
-        break;
-      }
-      matched++;
+// Mirror of `nbytes::SearchString`: searches `source[0, end)` for `needle`
+// (`needleLength` bytes) in `step`-byte units (2 for UCS2), returning the byte
+// index of the occurrence nearest the requested end of the range, or -1.
+function searchBytes(
+  source: Uint8Array,
+  end: number,
+  needle: Uint8Array,
+  needleLength: number,
+  offset: number,
+  isForward: boolean,
+  step: number,
+): number {
+  if (isForward) {
+    for (let i = offset; i + needleLength <= end; i += step) {
+      let j = 0;
+      while (j < needleLength && source[i + j] === needle[j]) j++;
+      if (j === needleLength) return i;
     }
-    if (matched === needleLength) {
-      return pin;
-    }
+    return -1;
+  }
+  let start = end - needleLength;
+  if (offset < start) start = offset;
+  start -= start % step; // align to the code-unit grid (UCS2 uses offset/2)
+  for (let i = start; i >= 0; i -= step) {
+    let j = 0;
+    while (j < needleLength && source[i + j] === needle[j]) j++;
+    if (j === needleLength) return i;
   }
   return -1;
 }
 
-// TODO(Soremwar)
-// Check if offset or buffer can be transform in order to just use std's lastIndexOf directly
-// This implementation differs from std's lastIndexOf in the fact that
-// it also includes items outside of the offset as long as part of the
-// set is contained inside of the offset
-// Probably way slower too
-function findLastIndex(
-  targetBuffer: Uint8Array,
-  buffer: Uint8Array,
-  offset: number,
-  end: number,
-) {
-  const targetBufferLength = TypedArrayPrototypeGetLength(targetBuffer);
-  const bufferLength = TypedArrayPrototypeGetLength(buffer);
-
-  const maxStart = end - bufferLength;
-  if (maxStart < 0) {
-    return -1;
-  }
-
-  offset = offset > targetBufferLength ? targetBufferLength : offset;
-  offset = offset > maxStart ? maxStart : offset;
-
-  const searchableBuffer = TypedArrayPrototypeSlice(
-    targetBuffer,
-    0,
-    offset + bufferLength,
-  );
-  const searchableBufferLastIndex =
-    TypedArrayPrototypeGetLength(searchableBuffer) - 1;
-  const bufferLastIndex = bufferLength - 1;
-
-  // Important to keep track of the last match index in order to backtrack after an incomplete match
-  // Not doing this will cause the search to skip all possible matches that happened in the
-  // last match range
-  let lastMatchIndex = -1;
-  let matches = 0;
-  let index = -1;
-  for (let x = 0; x <= searchableBufferLastIndex; x++) {
-    if (
-      searchableBuffer[searchableBufferLastIndex - x] ===
-        buffer[bufferLastIndex - matches]
-    ) {
-      if (lastMatchIndex === -1) {
-        lastMatchIndex = x;
-      }
-      matches++;
-    } else {
-      matches = 0;
-      if (lastMatchIndex !== -1) {
-        // Restart the search right after the last index was ignored
-        x = lastMatchIndex + 1;
-        lastMatchIndex = -1;
-      }
-      continue;
-    }
-
-    if (matches === bufferLength) {
-      index = x;
-      break;
-    }
-  }
-
-  if (index === -1) return index;
-
-  return searchableBufferLastIndex - index;
-}
-
+// Mirror of `IndexOfBuffer` (node/src/node_buffer.cc). Handles both string
+// needles (pre-encoded to bytes by the encodingOps shims) and Uint8Array
+// needles.
 function indexOfBuffer(
   targetBuffer: Uint8Array,
   buffer: Uint8Array,
@@ -145,43 +103,59 @@ function indexOfBuffer(
   if (Encodings[encoding] === undefined) {
     throw new Error(`Unknown encoding code ${encoding}`);
   }
+  // `end` reaches us uncoerced from JS; Node reads it as an int64 (truncating
+  // toward zero, NaN -> 0) before clamping.
+  end = NumberIsNaN(end) ? 0 : MathTrunc(end);
 
-  const targetBufferLength = TypedArrayPrototypeGetLength(targetBuffer);
-  const bufferLength = TypedArrayPrototypeGetLength(buffer);
+  const haystackLength = TypedArrayPrototypeGetLength(targetBuffer);
+  const needleLength = TypedArrayPrototypeGetLength(buffer);
   const isUcs2 = encoding === Encodings.UCS2;
 
-  // If the encoding is UCS2 and haystack or needle has a length less than 2, the search will always fail
-  // https://github.com/nodejs/node/blob/fbdfe9399cf6c660e67fd7d6ceabfb106e32d787/src/node_buffer.cc#L1067-L1069
-  if (isUcs2) {
-    if (bufferLength < 2 || targetBufferLength < 2) {
-      return -1;
-    }
+  // search_end is the exclusive upper bound of the search range.
+  let searchEnd = MathMin(MathMax(end, 0), haystackLength);
+  if (isUcs2) searchEnd &= ~1;
+
+  const optOffset = indexOfOffset(
+    haystackLength,
+    byteOffset,
+    needleLength,
+    forwardDirection,
+  );
+
+  if (needleLength === 0) {
+    // Empty needle: match String#indexOf behavior, clamped to search_end.
+    return MathMin(optOffset, searchEnd);
   }
+  if (haystackLength === 0) return -1;
+  if (optOffset <= -1) return -1;
 
-  end = end < targetBufferLength ? end : targetBufferLength;
-  if (end < 0) end = 0;
-  if (isUcs2) end &= ~1;
-
-  if (!forwardDirection) {
-    // If negative the offset is calculated from the end of the buffer
-    if (byteOffset < 0) {
-      byteOffset = targetBufferLength + byteOffset;
-    }
-
-    if (bufferLength === 0) {
-      return byteOffset <= end ? byteOffset : end;
-    }
-
-    return findLastIndex(targetBuffer, buffer, byteOffset, end);
+  let offset = optOffset;
+  if (!forwardDirection && offset >= searchEnd) {
+    if (searchEnd === 0) return -1;
+    offset = searchEnd - 1;
+  } else if (forwardDirection && offset >= searchEnd) {
+    return -1;
   }
-
-  if (buffer.length === 0) {
-    return byteOffset <= end ? byteOffset : end;
+  if (
+    (forwardDirection && needleLength + offset > searchEnd) ||
+    needleLength > searchEnd
+  ) {
+    return -1;
   }
+  if (isUcs2 && (searchEnd < 2 || needleLength < 2)) return -1;
 
-  return indexOfNeedle(targetBuffer, buffer, byteOffset, isUcs2 ? 2 : 1, end);
+  return searchBytes(
+    targetBuffer,
+    searchEnd,
+    buffer,
+    needleLength,
+    offset,
+    forwardDirection,
+    isUcs2 ? 2 : 1,
+  );
 }
 
+// Mirror of `IndexOfNumberImpl` (node/src/node_buffer.cc).
 function indexOfNumber(
   targetBuffer: Uint8Array,
   number: number,
@@ -189,16 +163,34 @@ function indexOfNumber(
   forwardDirection: boolean,
   end: number,
 ) {
-  return indexOfBuffer(
-    targetBuffer,
-    // Uses only the last 2 hex digits of the number
-    // https://github.com/nodejs/node/issues/7591#issuecomment-231178104
-    TypedArrayFrom(Uint8Array, [number & 255]),
+  end = NumberIsNaN(end) ? 0 : MathTrunc(end);
+  // Uses only the last byte of the number.
+  // https://github.com/nodejs/node/issues/7591#issuecomment-231178104
+  number &= 255;
+  const bufferLength = TypedArrayPrototypeGetLength(targetBuffer);
+  const optOffset = indexOfOffset(
+    bufferLength,
     byteOffset,
-    Encodings.UTF8,
+    1,
     forwardDirection,
-    end,
   );
+  if (optOffset <= -1 || bufferLength === 0) return -1;
+
+  const offset = optOffset;
+  const searchEnd = MathMin(MathMax(end, 0), bufferLength);
+  if (forwardDirection) {
+    if (offset >= searchEnd) return -1;
+    for (let i = offset; i < searchEnd; i++) {
+      if (targetBuffer[i] === number) return i;
+    }
+    return -1;
+  }
+  const backwardEnd = MathMin(offset + 1, searchEnd);
+  if (backwardEnd === 0) return -1;
+  for (let i = backwardEnd - 1; i >= 0; i--) {
+    if (targetBuffer[i] === number) return i;
+  }
+  return -1;
 }
 
 const _defaultExport = { indexOfBuffer, indexOfNumber };
@@ -207,7 +199,6 @@ return {
   indexOfBuffer,
   indexOfNumber,
   fill,
-  indexOfNeedle,
   default: _defaultExport,
 };
 })();
