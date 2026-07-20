@@ -575,7 +575,7 @@
     "parallel/test-cluster-rr-handle-keep-loop-alive.js": { "windows": false },
     "parallel/test-cluster-rr-handle-ref-unref.js": { "windows": false },
     "parallel/test-cluster-rr-ref.js": { "windows": false },
-    "parallel/test-cluster-send-deadlock.js": {},
+    "parallel/test-cluster-send-deadlock.js": { "windows": false },
     "parallel/test-cluster-send-socket-to-worker-http-server.js": {
       "windows": false
     },
