@@ -25,6 +25,16 @@ use super::unfurl::SpecifierUnfurler;
 use super::unfurl::SpecifierUnfurlerDiagnostic;
 use super::unfurl::SpecifierUnfurlerSys;
 use crate::sys::CliSys;
+use crate::tools::unfurl_utils::is_safe_unquoted_comment_value;
+
+fn jsx_pragma(name: &str, value: &str) -> Result<String, AnyError> {
+  if !is_safe_unquoted_comment_value(value) {
+    return Err(deno_core::anyhow::anyhow!(
+      "Cannot represent compiler option '{name}' as a generated JSX pragma."
+    ));
+  }
+  Ok(format!("/** @{name} {value} */"))
+}
 
 struct JsxFolderOptions<'a> {
   jsx_runtime: &'static str,
@@ -236,28 +246,22 @@ impl<TSys: ModuleContentProviderSys> ModuleContentProvider<TSys> {
     if module_info.jsx_import_source.is_none()
       && let Some(import_source) = jsx_options.jsx_import_source
     {
-      add_text_change(format!("/** @jsxImportSource {} */", import_source));
+      add_text_change(jsx_pragma("jsxImportSource", &import_source)?);
     }
     if module_info.jsx_import_source_types.is_none()
       && let Some(import_source) = jsx_options.jsx_import_source_types
     {
-      add_text_change(format!(
-        "/** @jsxImportSourceTypes {} */",
-        import_source
-      ));
+      add_text_change(jsx_pragma("jsxImportSourceTypes", &import_source)?);
     }
     if let Some(classic_options) = &jsx_options.jsx_classic {
       if !leading_comments_has_re(&JSX_FACTORY_RE) {
-        add_text_change(format!(
-          "/** @jsxFactory {} */",
-          classic_options.factory,
-        ));
+        add_text_change(jsx_pragma("jsxFactory", &classic_options.factory)?);
       }
       if !leading_comments_has_re(&JSX_FRAGMENT_FACTORY_RE) {
-        add_text_change(format!(
-          "/** @jsxFragmentFactory {} */",
-          classic_options.fragment_factory,
-        ));
+        add_text_change(jsx_pragma(
+          "jsxFragmentFactory",
+          &classic_options.fragment_factory,
+        )?);
       }
     }
     Ok(())
@@ -348,6 +352,22 @@ mod test {
   use sys_traits::impls::InMemorySys;
 
   use super::*;
+
+  #[test]
+  fn test_jsx_pragma_safety() {
+    assert_eq!(
+      jsx_pragma("jsxImportSource", "npm:react").unwrap(),
+      "/** @jsxImportSource npm:react */"
+    );
+    for value in [
+      "",
+      "npm:package/sub*/path",
+      "npm:package/with space",
+      "line\nbreak",
+    ] {
+      assert!(jsx_pragma("jsxImportSource", value).is_err());
+    }
+  }
 
   #[tokio::test]
   async fn test_module_content_jsx() {
@@ -454,6 +474,45 @@ mod test {
         ),
       ),
     ]).await;
+  }
+
+  #[tokio::test]
+  async fn test_module_content_rejects_unrepresentable_jsx_pragma() {
+    let in_memory_sys = InMemorySys::default();
+    in_memory_sys.fs_create_dir_all(get_path("/")).unwrap();
+    in_memory_sys
+      .fs_write(
+        get_path("/deno.json"),
+        r#"{
+          "compilerOptions": {
+            "jsx": "react-jsx",
+            "jsxImportSource": "npm:package/sub*/path"
+          }
+        }"#,
+      )
+      .unwrap();
+    in_memory_sys
+      .fs_write(
+        get_path("/main.tsx"),
+        "export const component = <div></div>;",
+      )
+      .unwrap();
+
+    let provider = module_content_provider(in_memory_sys).await;
+    let path = get_path("/main.tsx");
+    let error = provider
+      .resolve_content_maybe_unfurling(
+        &ModuleGraph::new(deno_graph::GraphKind::All),
+        &Default::default(),
+        &path,
+        &url_from_file_path(&path).unwrap(),
+      )
+      .unwrap_err();
+    assert!(
+      error
+        .to_string()
+        .contains("Cannot represent compiler option 'jsxImportSource'")
+    );
   }
 
   #[tokio::test]
@@ -605,7 +664,10 @@ mod test {
     let workspace_factory = Arc::new(WorkspaceFactory::new(
       sys.clone(),
       cwd.to_path_buf(),
-      WorkspaceFactoryOptions::default(),
+      WorkspaceFactoryOptions {
+        maybe_custom_deno_dir_root: Some(cwd.join("deno_dir")),
+        ..Default::default()
+      },
     ));
     let resolver_factory = ResolverFactory::new(
       workspace_factory,
