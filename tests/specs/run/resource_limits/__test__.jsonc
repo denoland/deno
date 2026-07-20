@@ -15,9 +15,24 @@
       "output": "max_memory_invalid.out",
       "exitCode": 1
     },
+    "max_memory_zero": {
+      "args": "run --max-memory=0 max_memory.js",
+      "output": "[WILDCARD]memory size must be greater than 0[WILDCARD]",
+      "exitCode": 1
+    },
+    "max_memory_too_small": {
+      "args": "run --max-memory=100k max_memory.js",
+      "output": "[WILDCARD]memory size must be at least 1mb[WILDCARD]",
+      "exitCode": 1
+    },
     "max_cpu_time": {
       "args": "run --max-cpu-time=1 max_cpu_time.js",
       "output": "max_cpu_time.out",
+      "exitCode": 1
+    },
+    "max_cpu_time_zero": {
+      "args": "run --max-cpu-time=0 max_cpu_time.js",
+      "output": "[WILDCARD]duration must be greater than 0 seconds[WILDCARD]",
       "exitCode": 1
     },
     "max_time": {
@@ -25,10 +40,20 @@
       "output": "max_time.out",
       "exitCode": 1
     },
+    "max_time_zero": {
+      "args": "run --max-time=0 max_time.js",
+      "output": "[WILDCARD]duration must be greater than 0 seconds[WILDCARD]",
+      "exitCode": 1
+    },
     "within_limits": {
       "args": "run --max-memory=1024m --max-cpu-time=30 --max-time=30 within_limits.js",
       "output": "within_limits.out",
       "exitCode": 0
+    },
+    "rejected_on_test_subcommand": {
+      "args": "test --max-cpu-time=1 within_limits.js",
+      "output": "[WILDCARD]unexpected argument '--max-cpu-time'[WILDCARD]",
+      "exitCode": 1
     }
   }
 }
