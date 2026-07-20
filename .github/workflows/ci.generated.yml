@@ -7258,18 +7258,18 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: |-
           cargo nextest run --release \
-                --features "deno_core/default deno_core/unsafe_use_unprotected_platform" \
+                --features "deno_core/default deno_core/unsafe_use_unprotected_platform deno_core/v8" \
                 --tests --examples \
-                -p deno_core -p build-your-own-js-snapshot -p dcore -p deno_ops -p deno_ops_compile_test_runner -p serde_v8 -p deno_core_testing
+                -p deno_core -p deno_v8 -p build-your-own-js-snapshot -p dcore -p deno_ops -p deno_ops_compile_test_runner -p serde_v8 -p deno_core_testing
       - name: Cargo nextest ops compile test runner (release)
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: cargo nextest run --release -p deno_ops_compile_test_runner
+        run: cargo nextest run --release -p deno_ops_compile_test_runner -p deno_v8
       - name: Cargo doc test
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: cargo test --doc --release -p deno_core -p build-your-own-js-snapshot -p deno_ops -p serde_v8 -p deno_core_testing
+        run: cargo test --doc --release -p deno_core -p deno_v8 -p build-your-own-js-snapshot -p deno_ops -p serde_v8 -p deno_core_testing
       - name: Run examples (regression tests)
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: cargo run -p deno_core --example op2
+        run: cargo run -p deno_core --example op2 --features v8
       - name: Cache cargo home
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
@@ -7330,7 +7330,7 @@ jobs:
           cargo clean
           rustup component add --toolchain nightly-2025-11-12 miri
           # This somehow prints errors in CI that don't show up locally
-          RUSTFLAGS=-Awarnings cargo +nightly-2025-11-12 miri test -p deno_core
+          RUSTFLAGS=-Awarnings cargo +nightly-2025-11-12 miri test -p deno_core --features v8
   ci-status:
     name: ci status
     needs:

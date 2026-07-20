@@ -1732,6 +1732,7 @@ const publishCanaryJob = job("publish-canary", {
 // Cargo package names for the libs/* workspace members (merged from deno_core).
 const denoCorePackageNames = [
   "deno_core",
+  "deno_v8",
   "build-your-own-js-snapshot",
   "dcore",
   "deno_ops",
@@ -1793,7 +1794,7 @@ const denoCoreTestJob = job("deno-core-test", {
       name: "Cargo nextest (release)",
       run: [
         `cargo nextest run --release`,
-        `  --features "deno_core/default deno_core/unsafe_use_unprotected_platform"`,
+        `  --features "deno_core/default deno_core/unsafe_use_unprotected_platform deno_core/v8"`,
         `  --tests --examples`,
         `  ${denoCorePackageNames.map((p) => `-p ${p}`).join(" ")}`,
       ].join(" \\\n    "),
@@ -1801,7 +1802,8 @@ const denoCoreTestJob = job("deno-core-test", {
     {
       // Ported from denoland/deno_core .github/workflows/ci-test-ops/action.yml
       name: "Cargo nextest ops compile test runner (release)",
-      run: "cargo nextest run --release -p deno_ops_compile_test_runner",
+      run:
+        "cargo nextest run --release -p deno_ops_compile_test_runner -p deno_v8",
     },
     {
       name: "Cargo doc test",
@@ -1815,7 +1817,7 @@ const denoCoreTestJob = job("deno-core-test", {
       // Regression test for https://github.com/denoland/deno/pull/19615.
       name: "Run examples (regression tests)",
       run: [
-        "cargo run -p deno_core --example op2",
+        "cargo run -p deno_core --example op2 --features v8",
       ],
     },
     denoCoreTestCacheSteps.saveCacheStep,
@@ -1858,7 +1860,7 @@ const denoCoreMiriJob = job("deno-core-miri", {
         "cargo clean",
         `rustup component add --toolchain ${miriNightlyToolchain} miri`,
         "# This somehow prints errors in CI that don't show up locally",
-        `RUSTFLAGS=-Awarnings cargo +${miriNightlyToolchain} miri test -p deno_core`,
+        `RUSTFLAGS=-Awarnings cargo +${miriNightlyToolchain} miri test -p deno_core --features v8`,
       ],
     },
   ),

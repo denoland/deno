@@ -24,7 +24,9 @@ path = "integration_tests_runner.rs"
 harness = false
 
 [features]
-default = ["upgrade", "__vendored_zlib_ng"]
+default = ["v8", "upgrade", "__vendored_zlib_ng"]
+v8 = ["v8/v8"]
+quickjs = ["v8/quickjs"]
 # A feature that enables heap profiling with dhat on Linux.
 # 1. Compile with `cargo build --profile=release-with-debug --features=dhat-heap`
 # 2. Run the executable. It will output a dhat-heap.json file.
@@ -53,6 +55,7 @@ zstd.workspace = true
 flate2 = { workspace = true, features = ["default"] }
 deno_error.workspace = true
 sha2.workspace = true
+v8.workspace = true
 
 [target.'cfg(windows)'.build-dependencies]
 winres.workspace = true
@@ -91,6 +94,7 @@ eszip.workspace = true
 libsui.workspace = true
 node_resolver = { workspace = true, features = ["graph", "sync"] }
 node_shim.workspace = true
+v8.workspace = true
 
 anstream.workspace = true
 async-trait.workspace = true
