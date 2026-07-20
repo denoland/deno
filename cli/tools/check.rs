@@ -318,9 +318,15 @@ async fn native_check(
         }
       }
     }
-    // Write to a unique temp file rather than a fixed path: sibling `deno check`
-    // runs in the same directory (e.g. spec-test variants) would otherwise race
-    // on it, and a fixed path leaves an artifact behind.
+    // Write to the system temp dir, not the project root: this config only
+    // references absolute paths (`extends` the base config by absolute path,
+    // `files` are absolute, `include` is empty), and tsc runs with its cwd
+    // pinned to `project_root` regardless of where the config lives, so its
+    // location does not affect resolution. Keeping it out of the project tree
+    // avoids leaving an artifact behind and, more importantly, avoids racing
+    // with anything enumerating the project directory - e.g. a sibling
+    // spec-test variant that copies the directory while this ephemeral file
+    // briefly exists (and then vanishes when the guard drops).
     let content = deno_core::serde_json::json!({
       "extends": base_tsconfig.to_string_lossy().replace('\\', "/"),
       "include": [],
@@ -329,7 +335,7 @@ async fn native_check(
     let mut tmp = tempfile::Builder::new()
       .prefix("deno-check-")
       .suffix(".tsconfig.json")
-      .tempfile_in(&project_root)?;
+      .tempfile()?;
     std::io::Write::write_all(
       &mut tmp,
       deno_core::serde_json::to_string_pretty(&content)?.as_bytes(),
