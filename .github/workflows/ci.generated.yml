@@ -7075,6 +7075,11 @@ jobs:
       RUST_BACKTRACE: full
       RUST_LIB_BACKTRACE: 0
     steps:
+      - name: Free disk space
+        if: '!startsWith(github.ref, ''refs/tags/'')'
+        run: |-
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          df -h
       - name: Configure git
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: |-

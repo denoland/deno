@@ -28,6 +28,7 @@ use deno_terminal::colors;
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 use regex::Regex;
+use rustc_hash::FxHashSet;
 
 use crate::args::CliOptions;
 use crate::args::CompilerOptions;
@@ -541,7 +542,7 @@ struct DiagnosticsByFolderRealIterator<'a> {
   current_group_index: usize,
   log_level: Option<log::Level>,
   npm_check_state_hash: Option<u64>,
-  seen_diagnotics: HashSet<String>,
+  seen_diagnotics: FxHashSet<String>,
   options: CheckOptions,
   code_cache: Option<Arc<crate::cache::CodeCache>>,
   initial_cwd: PathBuf,
@@ -944,7 +945,7 @@ struct GraphWalker<'a> {
   /// packages linked via the "links" field), used to enhance import errors.
   bare_importable_pkg_names: &'a [String],
   maybe_hasher: Option<FastInsecureHasher>,
-  seen: HashSet<&'a Url>,
+  seen: FxHashSet<&'a Url>,
   pending: VecDeque<PendingGraphWalkSpecifier<'a>>,
   has_seen_node_builtin: bool,
   roots: Vec<(ModuleSpecifier, MediaType)>,
@@ -991,8 +992,9 @@ impl<'a> GraphWalker<'a> {
       compiler_options_resolver,
       bare_importable_pkg_names,
       maybe_hasher,
-      seen: HashSet::with_capacity(
+      seen: FxHashSet::with_capacity_and_hasher(
         graph.imports.len() + graph.specifiers_count(),
+        Default::default(),
       ),
       pending: VecDeque::new(),
       has_seen_node_builtin: false,

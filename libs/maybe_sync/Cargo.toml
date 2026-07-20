@@ -16,3 +16,4 @@ sync = ["dashmap"]
 
 [dependencies]
 dashmap = { workspace = true, optional = true }
+rustc-hash.workspace = true

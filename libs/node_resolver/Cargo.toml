@@ -37,6 +37,7 @@ path-clean.workspace = true
 percent-encoding.workspace = true
 pretty_assertions.workspace = true
 regex.workspace = true
+rustc-hash.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sys_traits.workspace = true
