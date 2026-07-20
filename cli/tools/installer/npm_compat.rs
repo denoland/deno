@@ -283,6 +283,7 @@ pub async fn setup_npm_compat(
   http_client: &HttpClient,
   permissions: &PermissionsContainer,
   graph_specifiers: &[String],
+  local_wasm_modules: &[(Url, String)],
   npm_resolver: &CliNpmResolver,
   resolved_compiler_options: Option<&Value>,
   manage_root_tsconfig: bool,
@@ -398,6 +399,23 @@ pub async fn setup_npm_compat(
     }
   };
 
+  // Local `.wasm` imports (`import { x } from "./foo.wasm"`) can't be checked as
+  // binaries: stock tsc reports a spurious `TS2307 Cannot find module`. Mirror
+  // each wasm module's generated typed declarations into `.deno/wasm/<rel>`
+  // (renamed to `.d.wasm.ts` so `allowArbitraryExtensions` picks them up) and
+  // add `.deno/wasm` as a `rootDirs` overlay of the project root so tsc resolves
+  // the relative `./foo.wasm` specifier to the mirror. Unlike remote wasm (a
+  // non-relative specifier handled via `paths`), a relative specifier is never
+  // matched by tsconfig `paths`, hence the `rootDirs` overlay.
+  let has_local_wasm =
+    match install_local_wasm_modules(project_root, local_wasm_modules) {
+      Ok(has_wasm) => has_wasm,
+      Err(e) => {
+        log::warn!("Failed to materialize local wasm modules: {e}");
+        false
+      }
+    };
+
   // Warn about npm packages that could be resolved neither through a local
   // node_modules directory nor through the generated global-cache projects.
   let mut unmaterialized: Vec<String> = combined_imports
@@ -481,6 +499,7 @@ pub async fn setup_npm_compat(
     &npm_cache_projects.references,
     node_types.type_root.as_deref(),
     &excludes,
+    has_local_wasm,
     manage_root_tsconfig,
   )?;
 
@@ -831,6 +850,7 @@ fn generate_deno_tsconfig(
   npm_project_references: &[String],
   node_types_root: Option<&str>,
   excludes: &[String],
+  has_local_wasm: bool,
   manage_root_tsconfig: bool,
 ) -> Result<(), AnyError> {
   let generated = crate::tsc::tsconfig_gen::generate_tsconfig(
@@ -849,6 +869,7 @@ fn generate_deno_tsconfig(
     npm_project_references,
     node_types_root,
     excludes,
+    has_local_wasm,
     manage_root_tsconfig,
   )
   .map_err(|e| anyhow!("Failed to generate tsconfig: {e}"))?;
@@ -1027,6 +1048,53 @@ fn extract_tarball_gz(gz_bytes: &[u8], dest: &Path) -> Result<(), AnyError> {
 /// (whatever appears in source as `import "..."`) to the local mirror file
 /// path (relative to `.deno/`) that tsc should resolve it to.
 pub type HttpModulePaths = BTreeMap<Url, String>;
+
+/// Materialize local (`file:`) `.wasm` modules' generated typed declarations
+/// under `.deno/wasm/`, mirroring their path relative to the project root and
+/// renaming `foo.wasm` -> `foo.d.wasm.ts` so stock tsc resolves the relative
+/// `import "./foo.wasm"` via `allowArbitraryExtensions` + a `rootDirs` overlay
+/// (added by `build_tsconfig`). `dts_modules` pairs each wasm's `file:` URL with
+/// its already-generated declaration text (from deno_graph). Returns whether any
+/// wasm module was written (so the caller can enable the tsconfig options only
+/// when needed).
+///
+/// Unlike remote wasm (a non-relative specifier keyed into tsconfig `paths` by
+/// `install_http_modules`), a relative `./foo.wasm` specifier is never matched
+/// by `paths`; the `rootDirs` overlay is what makes tsc find the mirror.
+fn install_local_wasm_modules(
+  project_root: &Path,
+  dts_modules: &[(Url, String)],
+) -> Result<bool, AnyError> {
+  if dts_modules.is_empty() {
+    return Ok(false);
+  }
+  let wasm_root = project_root.join(".deno").join("wasm");
+  let mut wrote_any = false;
+  for (url, dts) in dts_modules {
+    let Ok(path) = url.to_file_path() else {
+      continue;
+    };
+    // Mirror the wasm file's location relative to the project root so the
+    // `rootDirs` overlay resolves it to the same relative specifier the source
+    // used. A wasm module outside the project root has no stable relative
+    // location under `.deno/wasm/`, so skip it (rare; tsc keeps its TS2307).
+    let Ok(rel) = path.strip_prefix(project_root) else {
+      continue;
+    };
+    // `foo.wasm` -> `foo.d.wasm.ts` (the extension `allowArbitraryExtensions`
+    // looks for when resolving `import "./foo.wasm"`).
+    let file_name = rel.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let stem = file_name.strip_suffix(".wasm").unwrap_or(file_name);
+    let dts_name = format!("{stem}.d.wasm.ts");
+    let dest = wasm_root.join(rel).with_file_name(dts_name);
+    if let Some(parent) = dest.parent() {
+      std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&dest, dts.as_bytes())?;
+    wrote_any = true;
+  }
+  Ok(wrote_any)
+}
 
 /// Materialize http(s): modules referenced from `deno.json` `imports` (and
 /// their transitive remote/relative imports) into `.deno/remote/<host><path>`.
