@@ -2229,7 +2229,7 @@ impl OffscreenCanvasRenderingContext2D {
         if let Some(Some(renderer)) = self.renderer.get() {
           render_scene(renderer, scene, width, height, base_color)
             .map_err(|e| {
-              log::warn!("canvas2d: render error: {e}");
+              log::warn!("Failed to render the canvas: {e}");
             })
             .ok()
             .map(|mut buf| {
@@ -3429,8 +3429,8 @@ pub fn create_context<'s>(
   let (width, height) = data.dimensions();
   if width > MAX_CANVAS_DIMENSION || height > MAX_CANVAS_DIMENSION {
     log::warn!(
-      "canvas2d: canvas size {width}x{height} exceeds the maximum supported \
-       dimension of {MAX_CANVAS_DIMENSION}; getContext(\"2d\") returns null"
+      "The canvas size ({width}x{height}) exceeds the maximum supported \
+       dimension of {MAX_CANVAS_DIMENSION}px; getContext(\"2d\") returns null."
     );
     return Ok(None);
   }

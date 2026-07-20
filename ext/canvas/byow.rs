@@ -363,9 +363,9 @@ impl UnsafeWindowSurface {
           ));
         };
         // Render the accumulated scene to raw RGBA8 bytes.
-        let mut bytes = context
-          .render_to_bytes()
-          .map_err(|e| JsErrorBox::generic(format!("canvas2d render: {e}")))?;
+        let mut bytes = context.render_to_bytes().map_err(|e| {
+          JsErrorBox::generic(format!("Failed to render the canvas: {e}"))
+        })?;
 
         // Convert RGBA8 to BGRA8 if the surface format requires it.
         if ps.format == wgpu_types::TextureFormat::Bgra8Unorm
@@ -383,10 +383,14 @@ impl UnsafeWindowSurface {
           .instance
           .surface_get_current_texture(data.id, None)
           .map_err(|e| {
-            JsErrorBox::generic(format!("canvas2d surface texture: {e}"))
+            JsErrorBox::generic(format!(
+              "Failed to acquire the current surface texture: {e}"
+            ))
           })?;
         let texture_id = surface_output.texture.ok_or_else(|| {
-          JsErrorBox::generic("canvas2d: no surface texture available")
+          JsErrorBox::generic(
+            "No surface texture is available for presentation",
+          )
         })?;
 
         // Upload rendered bytes directly to the surface texture.
@@ -413,7 +417,9 @@ impl UnsafeWindowSurface {
             },
           )
           .map_err(|e| {
-            JsErrorBox::generic(format!("canvas2d write texture: {e}"))
+            JsErrorBox::generic(format!(
+              "Failed to write pixel data to the surface texture: {e}"
+            ))
           })?;
 
         // Submit an empty command list to flush the write before present.
@@ -422,7 +428,7 @@ impl UnsafeWindowSurface {
           data.instance.queue_submit(ps.queue_id, no_commands)
         {
           return Err(JsErrorBox::generic(format!(
-            "canvas2d queue submit: {e:?}"
+            "Failed to submit the presentation commands: {e:?}"
           )));
         }
 
@@ -463,7 +469,9 @@ fn init_canvas2d_present_state(
       None,
     )
     .map_err(|e| {
-      JsErrorBox::generic(format!("canvas2d: no compatible adapter: {e}"))
+      JsErrorBox::generic(format!(
+        "No compatible GPU adapter is available for canvas presentation: {e}"
+      ))
     })?;
 
   // Create device and queue on the chosen adapter.
@@ -475,7 +483,9 @@ fn init_canvas2d_present_state(
       None,
     )
     .map_err(|e| {
-      JsErrorBox::generic(format!("canvas2d: device creation failed: {e}"))
+      JsErrorBox::generic(format!(
+        "Failed to create a GPU device for canvas presentation: {e}"
+      ))
     })?;
 
   // Choose Rgba8Unorm as the surface format (most portable for byte uploads).
@@ -498,7 +508,7 @@ fn init_canvas2d_present_state(
     },
   ) {
     return Err(JsErrorBox::generic(format!(
-      "canvas2d: surface configure failed: {err}"
+      "Failed to configure the window surface for canvas presentation: {err}"
     )));
   }
 
