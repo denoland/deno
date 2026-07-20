@@ -19,8 +19,33 @@ use rand::rngs::StdRng;
 use rand::thread_rng;
 
 use crate::CryptoError;
-use crate::fast_uuid_v4;
+use crate::fast_uuid_v4_bytes;
 use crate::shared::SharedError;
+
+const UUID_BYTES: usize = 16;
+const UUID_STRING_BYTES: usize = 36;
+const UUID_BATCH_SIZE: usize = 128;
+
+#[op2]
+pub fn op_crypto_random_uuid_batch<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+) -> Result<v8::Local<'s, v8::String>, CryptoError> {
+  let mut entropy = [0u8; UUID_BYTES * UUID_BATCH_SIZE];
+  let mut output = [0u8; UUID_STRING_BYTES * UUID_BATCH_SIZE];
+  thread_rng().fill(&mut entropy[..]);
+
+  for (bytes, uuid_output) in entropy
+    .chunks_exact_mut(UUID_BYTES)
+    .zip(output.chunks_exact_mut(UUID_STRING_BYTES))
+  {
+    let bytes: &mut [u8; UUID_BYTES] = bytes.try_into().unwrap();
+    let uuid = fast_uuid_v4_bytes(bytes);
+    uuid_output.copy_from_slice(&uuid);
+  }
+
+  v8::String::new_from_one_byte(scope, &output, v8::NewStringType::Normal)
+    .ok_or(CryptoError::UuidStringAllocation)
+}
 
 pub struct Crypto {
   /// The single `SubtleCrypto` instance returned by the `subtle` getter.
@@ -148,18 +173,23 @@ impl Crypto {
     crate::make_key::register_symbols(scope, webidl_brand, k_key_object)
   }
 
-  #[string]
   #[rename("randomUUID")]
   #[required(0)]
-  fn random_uuid(&self, state: &mut OpState) -> String {
+  fn random_uuid<'s>(
+    &self,
+    state: &mut OpState,
+    scope: &mut v8::PinScope<'s, '_>,
+  ) -> Result<v8::Local<'s, v8::String>, CryptoError> {
     let maybe_seeded_rng = state.try_borrow_mut::<StdRng>();
-    let mut bytes = [0u8; 16];
+    let mut bytes = [0u8; UUID_BYTES];
     if let Some(seeded_rng) = maybe_seeded_rng {
       seeded_rng.fill(&mut bytes);
     } else {
       let mut rng = thread_rng();
       rng.fill(&mut bytes);
     }
-    fast_uuid_v4(&mut bytes)
+    let uuid = fast_uuid_v4_bytes(&mut bytes);
+    v8::String::new_from_one_byte(scope, &uuid, v8::NewStringType::Normal)
+      .ok_or(CryptoError::UuidStringAllocation)
   }
 }

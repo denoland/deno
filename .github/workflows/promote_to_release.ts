@@ -8,6 +8,12 @@ const windowsJob = job("promote-to-release-windows", {
   name: "Promote Windows to Release",
   runsOn: "windows-2022",
   if: isDenoland,
+  strategy: {
+    matrix: {
+      target: ["x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"],
+    },
+    failFast: false,
+  },
   permissions: {
     contents: "write",
     "id-token": "write",
@@ -30,9 +36,17 @@ const windowsJob = job("promote-to-release-windows", {
     step({
       name: "Download Windows binaries",
       run: [
-        '$CANARY_URL="https://dl.deno.land/canary/${{github.event.inputs.commitHash}}"',
-        'Invoke-WebRequest -Uri "$CANARY_URL/deno-x86_64-pc-windows-msvc.zip" -OutFile "deno-windows.zip"',
-        'Invoke-WebRequest -Uri "$CANARY_URL/denort-x86_64-pc-windows-msvc.zip" -OutFile "denort-windows.zip"',
+        "# LTS is cut from a release branch with no canary build, so re-stamp",
+        "# the already-published stable release binaries. RC still promotes",
+        "# canary binaries by commit hash.",
+        'if ("${{github.event.inputs.releaseKind}}" -eq "lts") {',
+        '  $Version = "${{github.event.inputs.commitHash}}" -replace "^v", ""',
+        '  $SrcUrl = "https://dl.deno.land/release/v$Version"',
+        "} else {",
+        '  $SrcUrl = "https://dl.deno.land/canary/${{github.event.inputs.commitHash}}"',
+        "}",
+        'Invoke-WebRequest -Uri "$SrcUrl/deno-${{ matrix.target }}.zip" -OutFile "deno-windows.zip"',
+        'Invoke-WebRequest -Uri "$SrcUrl/denort-${{ matrix.target }}.zip" -OutFile "denort-windows.zip"',
         'Expand-Archive -Path "deno-windows.zip" -DestinationPath "."',
         'Expand-Archive -Path "denort-windows.zip" -DestinationPath "."',
       ],
@@ -40,7 +54,7 @@ const windowsJob = job("promote-to-release-windows", {
     step({
       name: "Run patchver for Windows",
       run:
-        "deno run -A ./tools/release/promote_to_release_windows.ts ${{github.event.inputs.releaseKind}}",
+        "deno run -A --minimum-dependency-age=0 ./tools/release/promote_to_release_windows.ts ${{github.event.inputs.releaseKind}}",
     }),
     step({
       name: "Authenticate with Azure",
@@ -87,17 +101,16 @@ const windowsJob = job("promote-to-release-windows", {
     step({
       name: "Create archives",
       run: [
-        'Compress-Archive -Path "deno.exe" -DestinationPath "deno-x86_64-pc-windows-msvc.zip" -Force',
-        'Compress-Archive -Path "denort.exe" -DestinationPath "denort-x86_64-pc-windows-msvc.zip" -Force',
+        'Compress-Archive -Path "deno.exe" -DestinationPath "deno-${{ matrix.target }}.zip" -Force',
+        'Compress-Archive -Path "denort.exe" -DestinationPath "denort-${{ matrix.target }}.zip" -Force',
       ],
     }),
     step({
       name: "Upload Windows archives",
       uses: "actions/upload-artifact@v6",
       with: {
-        name: "windows-binaries",
-        path:
-          "deno-x86_64-pc-windows-msvc.zip\ndenort-x86_64-pc-windows-msvc.zip",
+        name: "windows-binaries-${{ matrix.target }}",
+        path: "deno-${{ matrix.target }}.zip\ndenort-${{ matrix.target }}.zip",
       },
     }),
   ],
@@ -115,7 +128,8 @@ const workflow = createWorkflow({
           required: true,
         },
         commitHash: {
-          description: "Commit to promote to release",
+          description:
+            "rc: canary commit hash to promote. lts: release version to re-stamp, e.g. v2.9.3",
           required: true,
         },
       },
@@ -139,21 +153,6 @@ const workflow = createWorkflow({
           },
         }),
         step({
-          name: "Authenticate with Google Cloud",
-          uses: "google-github-actions/auth@v3",
-          with: {
-            project_id: "denoland",
-            credentials_json: "${{ secrets.GCP_SA_KEY }}",
-            export_environment_variables: true,
-            create_credentials_file: true,
-          },
-        }),
-        step({
-          name: "Setup gcloud",
-          uses: "google-github-actions/setup-gcloud@v3",
-          with: { project_id: "denoland" },
-        }),
-        step({
           name: "Install deno",
           uses: "denoland/setup-deno@v2",
           with: { "deno-version": "v2.x" },
@@ -172,13 +171,14 @@ const workflow = createWorkflow({
             APPLE_CODESIGN_PASSWORD: "${{ secrets.APPLE_CODESIGN_PASSWORD }}",
           },
           run:
-            "deno run -A ./tools/release/promote_to_release.ts ${{github.event.inputs.releaseKind}} ${{github.event.inputs.commitHash}}",
+            "deno run -A --minimum-dependency-age=0 ./tools/release/promote_to_release.ts ${{github.event.inputs.releaseKind}} ${{github.event.inputs.commitHash}}",
         }),
         step({
           name: "Download Windows binaries",
           uses: "actions/download-artifact@v7",
           with: {
-            name: "windows-binaries",
+            pattern: "windows-binaries-*",
+            "merge-multiple": true,
             path: ".",
           },
         }),
@@ -201,7 +201,13 @@ const workflow = createWorkflow({
             AWS_DEFAULT_REGION: "${{vars.S3_REGION }}",
           },
           run: [
-            'aws s3 sync ./ s3://dl-deno-land/release/$(cat release-${{github.event.inputs.releaseKind}}-latest.txt)/ --exclude "*" --include "*.zip"',
+            "VERSION=$(cat release-${{github.event.inputs.releaseKind}}-latest.txt)",
+            "# Upload only the promoted release archives. `aws s3 sync ./` walked",
+            "# the whole checkout (submodules included), uploading stray *.zip test",
+            "# fixtures and tripping over a broken symlink (exit 2).",
+            "for f in deno-*.zip denort-*.zip; do",
+            '  aws s3 cp "./$f" "s3://dl-deno-land/release/$VERSION/$f"',
+            "done",
             "aws s3 cp release-${{github.event.inputs.releaseKind}}-latest.txt s3://dl-deno-land/release-${{github.event.inputs.releaseKind}}-latest.txt",
           ],
         }),

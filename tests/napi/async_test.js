@@ -52,10 +52,41 @@ Deno.test("napi tsfn call_js_cb receives valid env after abort race", async () =
   });
 });
 
+Deno.test("napi tsfn abort with outstanding thread does not double free", async () => {
+  // With napi_tsfn_abort, a previous version freed the tsfn regardless of
+  // thread_count, leaving other reference holders with a dangling pointer.
+  // A subsequent release could then spawn a second drop of the same box,
+  // causing a use-after-free and a double free (assert in TsFn::drop). Here
+  // the tsfn is created with initial_thread_count = 2 and both threads must
+  // release before it is freed; the finalizer must run exactly once.
+  await new Promise((resolve) => {
+    asyncTask.test_tsfn_abort_outstanding(() => {
+      resolve();
+    });
+  });
+});
+
 Deno.test("napi tsfn acquire and release", async function () {
   await new Promise((resolve) => {
     asyncTask.test_tsfn_acquire_release(resolve);
   });
+});
+
+Deno.test("napi tsfn acquire racing final release does not double free", async () => {
+  // A previous version of `acquire` did a plain `fetch_add` after a non-atomic
+  // `is_closing` check, so it could resurrect a tsfn whose thread_count had
+  // already reached zero (racing the final release). The resurrecting thread's
+  // later release then spawned a second drop of the same box — a use-after-free
+  // and double free (assert in TsFn::drop). Each call runs one acquire-vs-final
+  // -release race; loop it to hit the narrow window. The finalizer must run
+  // exactly once per iteration, so every promise resolves and none double free.
+  for (let i = 0; i < 500; i++) {
+    await new Promise((resolve) => {
+      asyncTask.test_tsfn_acquire_release_race(() => {
+        resolve();
+      });
+    });
+  }
 });
 
 Deno.test("napi tsfn get context", function () {

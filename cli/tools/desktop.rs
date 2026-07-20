@@ -323,14 +323,21 @@ async fn compile_desktop(
   let desktop_entrypoint_file = if desktop_flags.source_file == "." {
     let cwd = &detection_cwd;
     if let Some(detection) = detected_framework.as_ref() {
-      let entrypoint_code = detection.entrypoint_code.clone();
-      let includes = detection.include_paths.clone();
+      let use_framework_hmr =
+        desktop_flags.hmr && detection.hmr_command.is_some();
+      let entrypoint_code = if use_framework_hmr {
+        NOOP_ENTRYPOINT.to_string()
+      } else {
+        detection.entrypoint_code.clone()
+      };
       log::info!("Detected {} framework", detection.name);
-      // Run the framework's build step (e.g. `deno task build`) before its
-      // build output (`dist`, `.next`, etc.) is added to the compile includes
-      // below; otherwise the include points at a directory that doesn't exist
-      // yet and the compile fails (#35535). Mirrors `deno compile .`.
-      super::framework::run_build_command(detection, cwd)?;
+      if !use_framework_hmr {
+        // Run the framework's build step (e.g. `deno task build`) before its
+        // build output (`dist`, `.next`, etc.) is added to the compile includes
+        // below; otherwise the include points at a directory that doesn't exist
+        // yet and the compile fails (#35535). Mirrors `deno compile .`.
+        super::framework::run_build_command(detection, cwd)?;
+      }
       // Enable CJS detection for Node-based frameworks.
       flags.unstable_config.detect_cjs = true;
       if detection.name == "Next.js"
@@ -382,10 +389,12 @@ async fn compile_desktop(
       {
         desktop_flags.output = Some(dir_name.to_string_lossy().into_owned());
       }
-      // Add framework build output to includes.
-      for inc in includes {
-        if !desktop_flags.include.contains(&inc) {
-          desktop_flags.include.push(inc.clone());
+      // Add framework build output to includes. Skipped in HMR mode.
+      if !use_framework_hmr {
+        for inc in &detection.include_paths {
+          if !desktop_flags.include.contains(inc) {
+            desktop_flags.include.push(inc.clone());
+          }
         }
       }
       Some(entrypoint_temp)
@@ -1149,6 +1158,71 @@ fn resolve_hmr_icon_path(
   Ok(crate::util::fs::canonicalize_path(&icon_path).unwrap_or(icon_path))
 }
 
+/// Extract the local URL from a line of dev server output.
+fn parse_dev_server_url(line: &str) -> Option<String> {
+  // Vite prints `  ➜  Local:   http://localhost:5173/`
+  regex::Regex::new(r"Local:\s+(https?://\S+)")
+    .expect("regex to parse local url failed")
+    .captures(line)
+    .and_then(|c| c.get(1))
+    .map(|m| m.as_str().to_owned())
+}
+
+/// Spawns a framework HMR dev server
+async fn spawn_framework_dev_server(
+  name: &str,
+  cmd_args: &[String],
+  cwd: &Path,
+) -> Result<(String, tokio::process::Child), AnyError> {
+  use tokio::io::AsyncBufReadExt;
+  use tokio::io::BufReader;
+
+  let mut child = tokio::process::Command::new(&cmd_args[0])
+    .args(&cmd_args[1..])
+    .current_dir(cwd)
+    .stdout(std::process::Stdio::piped())
+    .kill_on_drop(true)
+    .spawn()
+    .with_context(|| {
+      format!("failed to spawn HMR dev server: {:?}", cmd_args)
+    })?;
+
+  let stdout = child.stdout.take().ok_or_else(|| {
+    deno_core::anyhow::anyhow!("failed to capture HMR dev server stdout")
+  })?;
+  let mut lines = BufReader::new(stdout).lines();
+
+  let url = tokio::time::timeout(std::time::Duration::from_secs(15), async {
+    while let Ok(Some(line)) = lines.next_line().await {
+      let url = parse_dev_server_url(&line);
+      // Echo the dev server's own startup output (banner, URL, warnings) so
+      // it isn't swallowed while we scan for the URL.
+      log::info!("{line}");
+      if let Some(url) = url {
+        return Ok(url);
+      }
+    }
+    deno_core::anyhow::bail!("dev server exited without printing a URL")
+  })
+  .await
+  .map_err(|_| {
+    deno_core::anyhow::anyhow!(
+      "{name} dev server with HMR did not start within 15s"
+    )
+  })??;
+
+  // Keep forwarding the dev server's stdout so its HMR/compile logs stay
+  // visible after startup instead of being silently swallowed. The task ends
+  // on its own once the child is killed (on drop) and the pipe closes.
+  tokio::spawn(async move {
+    while let Ok(Some(line)) = lines.next_line().await {
+      log::info!("{line}");
+    }
+  });
+
+  Ok((url, child))
+}
+
 /// Launch the desktop app with HMR enabled after compilation.
 ///
 /// Framework dev servers provide HMR via websocket. Since they run inside
@@ -1217,8 +1291,11 @@ async fn run_desktop_hmr(
 
   if desktop_flags.hmr {
     log::info!(
-      "{} desktop app with HMR (watching {})",
+      "{} {}desktop app with HMR (watching {})",
       colors::green("Running"),
+      framework
+        .map(|f| format!("{} ", f.name))
+        .unwrap_or_default(),
       source_abs.display(),
     );
   } else {
@@ -1245,6 +1322,24 @@ async fn run_desktop_hmr(
   if desktop_flags.hmr {
     cmd.env("DENO_DESKTOP_HMR", &source_abs);
   }
+
+  let _dev_server_child = if desktop_flags.hmr
+    && let Some(fw) = framework
+    && let Some(dev_cmd) = &fw.hmr_command
+  {
+    let (dev_url, child) =
+      spawn_framework_dev_server(fw.name, dev_cmd, &source_abs).await?;
+    log::info!(
+      "{} {} HMR dev server at {}",
+      colors::green("Running"),
+      fw.name,
+      dev_url,
+    );
+    cmd.env("DENO_DESKTOP_DEV_URL", &dev_url);
+    Some(child)
+  } else {
+    None
+  };
 
   // Wire up the unified DevTools multiplexer when --inspect is set.
   // The mux runs in this (parent) process and fronts both the Deno runtime
@@ -1373,6 +1468,11 @@ async fn run_desktop_hmr(
 /// later build can recognize its own previous output and clear it, while never
 /// touching unrelated user data that happens to share the inferred app name.
 const APP_DIR_MARKER: &str = ".deno-desktop-app";
+
+/// Used for `deno desktop --hmr` when a framework runs its own HMR server.
+/// The compiled app has nothing to serve in this case.
+const NOOP_ENTRYPOINT: &str =
+  "// @ts-nocheck\nawait new Promise<void>(() => {});\n";
 
 /// Prepare `app_dir` to receive a freshly built bundle.
 ///
@@ -5484,6 +5584,46 @@ def456  other.zip
     assert_eq!(
       parse_sha256sum(contents, "other.zip").as_deref(),
       Some("def456")
+    );
+  }
+
+  // --- parse_dev_server_url ---
+
+  #[test]
+  fn dev_server_url_matches() {
+    assert_eq!(
+      parse_dev_server_url("  ➜  Local:   http://localhost:5173/").as_deref(),
+      Some("http://localhost:5173/")
+    );
+    assert_eq!(
+      parse_dev_server_url("  Local:   https://localhost:5173/").as_deref(),
+      Some("https://localhost:5173/")
+    );
+  }
+
+  #[test]
+  fn dev_server_url_matches_with_subpath() {
+    assert_eq!(
+      parse_dev_server_url("  Local:   http://localhost:5173/app").as_deref(),
+      Some("http://localhost:5173/app")
+    );
+    assert_eq!(
+      parse_dev_server_url("  Local:   http://192.168.1.1:5173").as_deref(),
+      Some("http://192.168.1.1:5173")
+    );
+    assert_eq!(
+      parse_dev_server_url("  Local:   https://localhost:5173/app").as_deref(),
+      Some("https://localhost:5173/app")
+    );
+  }
+
+  #[test]
+  fn dev_server_url_no_match() {
+    assert_eq!(parse_dev_server_url("Watching for file changes..."), None);
+    assert_eq!(parse_dev_server_url(""), None);
+    assert_eq!(
+      parse_dev_server_url("  Network:  http://192.168.1.1:5173/"),
+      None
     );
   }
 

@@ -11356,10 +11356,17 @@ fn lsp_quick_fix_missing_import_exclude_bare_node_builtins() {
     .iter()
     .map(|a| a.title.clone())
     .collect::<Vec<_>>();
+  // The invariant is that every suggested node builtin import carries the
+  // `node:` prefix (#25775) - no bare `"assert"` / `"test"` specifiers, which
+  // do not resolve in Deno. Stock TS surfaces the additional prefixed builtins
+  // `node:assert` and `node:test` (the forked compiler only offered
+  // `node:console`); they are all valid, resolvable imports.
   assert_eq!(
     json!(titles),
     json!([
+      "Add import from \"node:assert\"",
       "Add import from \"node:console\"",
+      "Add import from \"node:test\"",
       "Add missing function declaration 'assert'",
     ]),
   );
@@ -13492,7 +13499,7 @@ fn lsp_jupyter_completions() {
       },
       "documentation": {
         "kind": "markdown",
-        "value": "Asynchronously reads and returns the entire contents of a file as an UTF-8\ndecoded string.\n\n```ts\nconst data = await Deno.readTextFile(\"hello.txt\");\nconsole.log(data);\n```\n\nThe returned promise rejects if the operation fails, for example with\n[`Deno.errors.NotFound`](deno:/asset/lib.deno.ns.d.ts#174,5-174,43) if the file does not exist,\n[`Deno.errors.IsADirectory`](deno:/asset/lib.deno.ns.d.ts#307,5-307,47) if `path` refers to a directory, or\n[`Deno.errors.PermissionDenied`](deno:/asset/lib.deno.ns.d.ts#185,5-185,51) if the required permission has not\nbeen granted.\n\nRequires `allow-read` permission.\n\n*@tags* — allow-read\n\n\n*@category* — File System\n",
+        "value": "Asynchronously reads and returns the entire contents of a file as an UTF-8\ndecoded string.\n\n```ts\nconst data = await Deno.readTextFile(\"hello.txt\");\nconsole.log(data);\n```\n\nThe returned promise rejects if the operation fails, for example with\n[`Deno.errors.NotFound`](deno:/asset/lib.deno.ns.d.ts#176,5-176,43) if the file does not exist,\n[`Deno.errors.IsADirectory`](deno:/asset/lib.deno.ns.d.ts#309,5-309,47) if `path` refers to a directory, or\n[`Deno.errors.PermissionDenied`](deno:/asset/lib.deno.ns.d.ts#187,5-187,51) if the required permission has not\nbeen granted.\n\nRequires `allow-read` permission.\n\n*@tags* — allow-read\n\n\n*@category* — File System\n",
       },
       "sortText": "11",
     }),
@@ -15483,6 +15490,57 @@ fn lsp_no_slow_types_diagnostics() {
         d.code == Some(lsp::NumberOrString::String("no-slow-types".to_string()))
       }),
     "expected no no-slow-types diagnostics on a non-export module, got: {other_diagnostics:#?}"
+  );
+
+  client.shutdown();
+}
+
+// Regression test for https://github.com/denoland/deno/issues/35922: the LSP
+// should respect `lint.rules.exclude` for `no-slow-types` just like the CLI.
+#[test(timeout = 300)]
+fn lsp_no_slow_types_diagnostics_excluded() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+
+  // a publishable JSR package that excludes the `no-slow-types` rule
+  temp_dir.write(
+    "deno.json",
+    r#"{
+  "name": "@foo/bar",
+  "version": "1.0.0",
+  "exports": "./mod.ts",
+  "lint": {
+    "rules": {
+      "exclude": ["no-slow-types"]
+    }
+  }
+}
+"#,
+  );
+  // `add` is missing an explicit return type, which is a slow type, but the
+  // rule is excluded so it should not be reported
+  temp_dir.write(
+    "mod.ts",
+    "export function add(a: number, b: number) {\n  return a + b;\n}\n",
+  );
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": url_to_uri(&temp_dir.url().join("mod.ts").unwrap()).unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("mod.ts"),
+    }
+  }));
+  let mod_diagnostics = diagnostics.all();
+  assert!(
+    !mod_diagnostics.iter().any(|d| {
+      d.code == Some(lsp::NumberOrString::String("no-slow-types".to_string()))
+    }),
+    "expected no no-slow-types diagnostics when the rule is excluded, got: {mod_diagnostics:#?}"
   );
 
   client.shutdown();

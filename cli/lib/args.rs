@@ -279,7 +279,6 @@ pub struct UnstableConfig {
   pub raw_imports: bool,
   pub sloppy_imports: bool,
   pub npm_lazy_caching: bool,
-  pub tsgo: bool,
   pub features: Vec<String>, // --unstabe-kv --unstable-cron
 }
 
@@ -301,7 +300,6 @@ impl UnstableConfig {
       &mut self.npm_lazy_caching,
       UNSTABLE_ENV_VAR_NAMES.npm_lazy_caching,
     );
-    maybe_set(sys, &mut self.tsgo, UNSTABLE_ENV_VAR_NAMES.tsgo);
     maybe_set(
       sys,
       &mut self.raw_imports,
