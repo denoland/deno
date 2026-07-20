@@ -32,7 +32,6 @@ use vello::kurbo::Stroke;
 use vello::kurbo::StrokeOpts;
 use vello::peniko;
 
-use super::filter::CanvasLayerFilterPrimitive;
 use super::filter::parse_filter_input;
 use super::renderer::CpuRenderer;
 pub(crate) use super::renderer::DenoCanvasBackend;
@@ -44,9 +43,9 @@ use super::state::ClipEntry;
 use super::state::DrawingBackend;
 use super::state::DrawingState;
 use super::state::FillStrokeStyle;
-use super::state::FilterStyle;
 use super::state::GlobalCompositeOperation;
 use super::state::ImageSmoothingQuality;
+use super::state::LayerFilter;
 use super::state::LineCap;
 use super::state::LineJoin;
 use super::state::MAX_CANVAS_DIMENSION;
@@ -624,8 +623,7 @@ impl OffscreenCanvasRenderingContext2D {
     scope: &mut v8::PinScope<'a, '_>,
   ) -> v8::Local<'a, v8::Value> {
     let state = self.state.borrow();
-    let FilterStyle::Css(value) = &state.filter_style;
-    v8::String::new(scope, value).unwrap().into()
+    v8::String::new(scope, &state.filter_style).unwrap().into()
   }
 
   #[reentrant]
@@ -650,8 +648,8 @@ impl OffscreenCanvasRenderingContext2D {
     };
     if let Some(functions) = functions {
       let mut state = self.state.borrow_mut();
-      state.filter_style = FilterStyle::Css(value);
-      state.filter = functions.into_iter().map(Into::into).collect();
+      state.filter_style = value;
+      state.layer_filter = LayerFilter::Css(functions);
     }
   }
 
@@ -880,8 +878,8 @@ impl OffscreenCanvasRenderingContext2D {
       state.shadow_offset_x = 0.0;
       state.shadow_offset_y = 0.0;
       state.shadow_blur = 0.0;
-      state.filter_style = FilterStyle::Css(String::from("none"));
-      state.filter = layer_filter;
+      state.filter_style = String::from("none");
+      state.layer_filter = layer_filter;
     }
 
     let (width, height) = self.data.dimensions();
@@ -2889,9 +2887,9 @@ fn check_image_data_size(w: u32, h: u32) -> Result<(), Canvas2DError> {
 fn parse_begin_layer_options<'a>(
   scope: &mut v8::PinScope<'a, 'a>,
   options: v8::Local<'a, v8::Value>,
-) -> Result<Vec<CanvasLayerFilterPrimitive>, Canvas2DError> {
+) -> Result<LayerFilter, Canvas2DError> {
   if options.is_null_or_undefined() {
-    return Ok(Vec::new());
+    return Ok(LayerFilter::Css(Vec::new()));
   }
   if !options.is_object() {
     return Err(Canvas2DError::InvalidBeginLayerOptions);
@@ -2903,28 +2901,21 @@ fn parse_begin_layer_options<'a>(
     return Err(Canvas2DError::InvalidBeginLayerOptions);
   };
   if filter.is_null_or_undefined() {
-    return Ok(Vec::new());
+    return Ok(LayerFilter::Css(Vec::new()));
   }
   if !filter.is_object() {
     // Any (stringifiable) value is accepted here, even if not a parsable
     // CSS filter.
     let Some(value) = filter.to_string(scope) else {
-      return Ok(Vec::new());
+      return Ok(LayerFilter::Css(Vec::new()));
     };
     let value = value.to_rust_string_lossy(scope);
     let mut parser_input = FilterParserInput::new(&value);
     let result: Result<Vec<_>, _> =
       FilterValueListParser::new(&mut parser_input).collect();
-    return Ok(
-      result
-        .ok()
-        .unwrap_or_default()
-        .into_iter()
-        .map(Into::into)
-        .collect(),
-    );
+    return Ok(LayerFilter::Css(result.ok().unwrap_or_default()));
   }
-  parse_filter_input(scope, filter)
+  Ok(LayerFilter::Object(parse_filter_input(scope, filter)?))
 }
 
 #[inline]
