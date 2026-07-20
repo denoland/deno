@@ -6,7 +6,6 @@
 import {
   buildMode,
   dirname,
-  getPrebuilt,
   getSources,
   gitLsFiles,
   join,
@@ -34,8 +33,8 @@ if (rs) {
 }
 
 if (js) {
-  promises.push(dlint());
-  promises.push(dlintPreferPrimordials());
+  promises.push(lintJS());
+  promises.push(lintBootstraps());
   promises.push(lintNodePolyfillDenoApis());
   promises.push(ensureWorkflowYmlsUpToDate());
   promises.push(ensureNoUnusedOutFiles());
@@ -54,79 +53,102 @@ for (const result of results) {
   }
 }
 
-async function dlint() {
-  const configFile = join(ROOT_PATH, ".dlint.json");
-  const execPath = await getPrebuilt("dlint");
-
-  const sourceFiles = await getSources(ROOT_PATH, [
-    "*.js",
-    "*.ts",
-    ":!:.github/mtime_cache/action.js",
-    ":!:cli/bench/testdata/npm/**",
-    ":!:cli/bench/testdata/express-router.js",
-    ":!:cli/bench/testdata/react-dom.js",
-    ":!:cli/compilers/wasm_wrap.js",
-    ":!:cli/tools/coverage/script.js",
-    ":!:runtime/cpu_profiler/flamegraph.js",
-    ":!:cli/tools/doc/prism.css",
-    ":!:cli/tools/doc/prism.js",
-    ":!:cli/tsc/dts/**",
-    ":!:cli/tsc/*typescript.js",
-    ":!:cli/tsc/compiler.d.ts",
-    ":!:ext/node/polyfills/deps/**",
-    ":!:runtime/examples/",
-    ":!:libs/eszip/testdata/**",
-    ":!:target/",
-    ":!:tests/bench/testdata/npm/*",
-    ":!:tests/bench/testdata/express-router.js",
-    ":!:tests/bench/testdata/react-dom.js",
-    ":!:tests/ffi/testdata/test.js",
-    ":!:tests/registry/**",
-    ":!:tests/specs/**",
-    ":!:tests/testdata/**",
-    ":!:tests/unit_node/testdata/**",
-    ":!:tests/wpt/runner/**",
-    ":!:tests/wpt/suite/**",
-    ":!:libs/**",
-  ]);
-
-  if (!sourceFiles.length) {
-    return;
-  }
-
-  const chunks = splitToChunks(sourceFiles, `${execPath} run`.length);
-  const pending = [];
-  for (const chunk of chunks) {
-    const cmd = new Deno.Command(execPath, {
-      cwd: ROOT_PATH,
-      args: ["run", "--config=" + configFile, ...chunk],
-      // capture to not conflict with clippy output
-      stderr: "piped",
-    });
-    pending.push(
-      cmd.output().then(({ stderr, code }) => {
-        if (code > 0) {
-          const decoder = new TextDecoder();
-          console.log("\n------ dlint ------");
-          console.log(decoder.decode(stderr));
-          throw new Error("dlint failed");
-        }
+async function lintJS() {
+  const configPath = await Deno.makeTempFile({ suffix: ".json" });
+  try {
+    await Deno.writeTextFile(
+      configPath,
+      JSON.stringify({
+        lint: {
+          rules: {
+            tags: ["recommended"],
+            include: [
+              "ban-untagged-todo",
+              "camelcase",
+              "no-console",
+              "guard-for-in",
+            ],
+            exclude: [
+              "no-invalid-triple-slash-reference",
+            ],
+          },
+        },
       }),
     );
-  }
-  const results = await Promise.allSettled(pending);
-  for (const result of results) {
-    if (result.status === "rejected") {
-      throw new Error(result.reason);
+
+    const sourceFiles = await getSources(ROOT_PATH, [
+      "*.js",
+      "*.ts",
+      ":!:.github/mtime_cache/action.js",
+      ":!:cli/bench/testdata/npm/**",
+      ":!:cli/bench/testdata/express-router.js",
+      ":!:cli/bench/testdata/react-dom.js",
+      ":!:cli/compilers/wasm_wrap.js",
+      ":!:cli/tools/coverage/script.js",
+      ":!:cli/tools/doc/prism.css",
+      ":!:cli/tools/doc/prism.js",
+      ":!:cli/tsc/dts/**",
+      ":!:cli/tsc/*typescript.js",
+      ":!:cli/tsc/compiler.d.ts",
+      ":!:ext/**",
+      ":!:runtime/**",
+      ":!:libs/eszip/testdata/**",
+      ":!:target/",
+      ":!:tests/bench/testdata/npm/*",
+      ":!:tests/bench/testdata/express-router.js",
+      ":!:tests/bench/testdata/react-dom.js",
+      ":!:tests/ffi/testdata/test.js",
+      ":!:tests/registry/**",
+      ":!:tests/specs/**",
+      ":!:tests/testdata/**",
+      ":!:tests/unit_node/testdata/**",
+      ":!:tests/wpt/runner/**",
+      ":!:tests/wpt/suite/**",
+      ":!:libs/**",
+    ]);
+
+    if (!sourceFiles.length) {
+      return;
     }
+
+    const chunks = splitToChunks(
+      sourceFiles,
+      `${Deno.execPath()} lint --config=`.length + configPath.length,
+    );
+    const pending = [];
+    for (const chunk of chunks) {
+      const cmd = new Deno.Command(Deno.execPath(), {
+        cwd: ROOT_PATH,
+        args: ["lint", "--config=" + configPath, ...chunk],
+        // capture to not conflict with clippy output
+        stderr: "piped",
+      });
+      pending.push(
+        cmd.output().then(({ stderr, code }) => {
+          if (code > 0) {
+            const decoder = new TextDecoder();
+            console.log("\n------ deno lint ------");
+            console.log(decoder.decode(stderr));
+            throw new Error("deno lint failed");
+          }
+        }),
+      );
+    }
+    const results = await Promise.allSettled(pending);
+    for (const result of results) {
+      if (result.status === "rejected") {
+        throw new Error(result.reason);
+      }
+    }
+  } finally {
+    await Deno.remove(configPath);
   }
 }
 
-// `prefer-primordials` has to apply only to files related to bootstrapping,
-// which is different from other lint rules. This is why this dedicated function
-// is needed. Implemented as an internal Deno lint plugin (not the public
+// Bootstrap files need a separate lint run because prefer-primordials applies
+// only to them. Implemented as an internal Deno lint plugin (not the public
 // deno_lint rule) — see tools/lint_plugins/prefer_primordials.ts.
-async function dlintPreferPrimordials() {
+async function lintBootstraps() {
   const pluginPath = import.meta.resolve(
     "./lint_plugins/prefer_primordials.ts",
   );
@@ -139,11 +161,15 @@ async function dlintPreferPrimordials() {
       JSON.stringify({
         lint: {
           plugins: [pluginPath],
-          // Disable built-in rules so only the prefer-primordials plugin runs.
-          // ban-unused-ignore is still active with tags:[] unless excluded.
           rules: {
-            tags: [],
-            exclude: ["ban-unused-ignore", "ban-unknown-rule-code"],
+            tags: ["recommended"],
+            include: [
+              "ban-untagged-todo",
+              "camelcase",
+              "no-console",
+              "guard-for-in",
+            ],
+            exclude: ["no-invalid-triple-slash-reference"],
           },
         },
       }),
@@ -154,8 +180,8 @@ async function dlintPreferPrimordials() {
       "runtime/**/*.ts",
       "ext/**/*.js",
       "ext/**/*.ts",
-      ":!:ext/**/*.d.ts",
       "ext/node/polyfills/*.mjs",
+      ":!:ext/**/*.d.ts",
       ":!:ext/node/polyfills/deps/**",
       ":!:runtime/cpu_profiler/flamegraph.js",
     ]);
@@ -164,22 +190,33 @@ async function dlintPreferPrimordials() {
       return;
     }
 
-    // Keep command lines under the OS limit.
     const chunks = splitToChunks(
       sourceFiles,
       `${Deno.execPath()} lint --config=`.length + configPath.length,
     );
+    const pending = [];
     for (const chunk of chunks) {
       const cmd = new Deno.Command(Deno.execPath(), {
         cwd: ROOT_PATH,
         args: ["lint", "--config=" + configPath, ...chunk],
-        stdout: "inherit",
-        stderr: "inherit",
+        // capture to not conflict with clippy output
+        stderr: "piped",
       });
-      const { code } = await cmd.output();
-
-      if (code > 0) {
-        throw new Error("prefer-primordials failed");
+      pending.push(
+        cmd.output().then(({ stderr, code }) => {
+          if (code > 0) {
+            const decoder = new TextDecoder();
+            console.log("\n------ deno lint bootstraps ------");
+            console.log(decoder.decode(stderr));
+            throw new Error("deno lint bootstraps failed");
+          }
+        }),
+      );
+    }
+    const results = await Promise.allSettled(pending);
+    for (const result of results) {
+      if (result.status === "rejected") {
+        throw new Error(result.reason);
       }
     }
   } finally {
@@ -759,7 +796,6 @@ async function ensureNoNewTopLevelEntries() {
     "runtime",
     "tests",
     "tools",
-    ".dlint.json",
     ".dprint.json",
     ".editorconfig",
     ".gitattributes",
