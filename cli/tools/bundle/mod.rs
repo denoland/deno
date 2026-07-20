@@ -197,6 +197,7 @@ pub async fn prepare_inputs(
 pub async fn bundle_init(
   mut flags: Arc<Flags>,
   bundle_flags: &BundleFlags,
+  js_plugins: Option<deno_bundle_runtime::PluginHookTx>,
 ) -> Result<RolldownBundler, AnyError> {
   {
     let flags_mut = Arc::make_mut(&mut flags);
@@ -251,6 +252,7 @@ pub async fn bundle_init(
       || bundle_flags.output_path.is_some(),
     collected_css: Default::default(),
     css_module_count: Default::default(),
+    js_plugins,
   };
 
   let input = prepare_inputs(
@@ -325,10 +327,10 @@ pub async fn bundle(
       )
       .await?;
   }
-  let bundler = bundle_init(flags.clone(), &bundle_flags).await?;
+  let bundler = bundle_init(flags.clone(), &bundle_flags, None).await?;
   let init_cwd = bundler.cwd.clone();
   let start = std::time::Instant::now();
-  let output = bundler.build().await?;
+  let output = print_build_errors_and_bail(bundler.build().await)?;
   let end = std::time::Instant::now();
   let duration = end.duration_since(start);
 
@@ -369,7 +371,10 @@ pub async fn bundle(
         &output,
         &output_infos,
         duration,
-        bundler.plugin.css_module_count.load(std::sync::atomic::Ordering::Relaxed),
+        bundler
+          .plugin
+          .css_module_count
+          .load(std::sync::atomic::Ordering::Relaxed),
       )?;
     }
   }
@@ -384,10 +389,8 @@ pub async fn bundle(
 /// Bundles CSS-only entrypoints without rolldown (which removed CSS
 /// support, see rolldown/rolldown#4271): each file is emitted with a
 /// `/* path */` provenance header, concatenated in entry order.
-fn bundle_css_entrypoints(
-  bundle_flags: &BundleFlags,
-) -> Result<(), AnyError> {
-  let cwd = std::env::current_dir()?;
+fn bundle_css_entrypoints(bundle_flags: &BundleFlags) -> Result<(), AnyError> {
+  let cwd = crate::util::env::resolve_cwd(None)?.into_owned();
   let mut css = String::new();
   for entry in &bundle_flags.entrypoints {
     let path = cwd.join(entry);
@@ -919,8 +922,8 @@ pub async fn bundle_for_compile(
     flags_mut.internal.force_bundle_mode = true;
   }
 
-  let bundler = bundle_init(flags, &bundle_flags).await?;
-  let output = bundler.build().await?;
+  let bundler = bundle_init(flags, &bundle_flags, None).await?;
+  let output = print_build_errors_and_bail(bundler.build().await)?;
 
   let deferred = bundler.take_deferred_errors();
   if handle_diagnostics(&output, &deferred, &bundler.cwd) {
@@ -1006,7 +1009,24 @@ async fn bundle_watch(
         if let Some(changed_paths) = changed_paths {
           bundler.reload_specifiers(&changed_paths).await?;
         }
-        let output = bundler.build().await?;
+        // In watch mode a hard build error is printed but doesn't kill the
+        // watcher — the next file change triggers a rebuild.
+        let output = match bundler.build().await {
+          Ok(output) => output,
+          Err(err) => match err.downcast::<BundleBuildFailure>() {
+            Ok(failure) => {
+              for message in &failure.messages {
+                log::error!(
+                  "{}: {}",
+                  deno_terminal::colors::red_bold("error"),
+                  message.render()
+                );
+              }
+              return Ok(0);
+            }
+            Err(err) => return Err(err),
+          },
+        };
         let deferred = bundler.take_deferred_errors();
         if !handle_diagnostics(&output, &deferred, &bundler.cwd) {
           let output_infos = process_result(
@@ -1022,7 +1042,10 @@ async fn bundle_watch(
             &output,
             &output_infos,
             start.elapsed(),
-            bundler.plugin.css_module_count.load(std::sync::atomic::Ordering::Relaxed),
+            bundler
+              .plugin
+              .css_module_count
+              .load(std::sync::atomic::Ordering::Relaxed),
           )?;
 
           let mut new_watched = get_input_paths_from_output(&output);
@@ -1108,11 +1131,16 @@ impl RolldownBundler {
     let mut output = match bundler.generate().await {
       Ok(output) => output,
       Err(errs) => {
+        // Return the hard errors as structured data. Callers decide whether
+        // to print them (the `deno bundle` CLI) or surface them in a
+        // `Deno.bundle()` result.
         let deferred = self.take_deferred_errors();
-        for diag in errs.into_vec() {
-          render_diagnostic_error(&diag, &deferred, &self.cwd);
-        }
-        deno_core::anyhow::bail!("bundling failed");
+        let messages = errs
+          .into_vec()
+          .iter()
+          .map(|diag| diagnostic_to_message(diag, &deferred, &self.cwd))
+          .collect();
+        return Err(BundleBuildFailure { messages }.into());
       }
     };
 
@@ -1171,14 +1199,14 @@ impl RolldownBundler {
         }
       }
     };
-    output.assets.push(Output::Asset(Arc::new(
-      rolldown_common::OutputAsset {
+    output
+      .assets
+      .push(Output::Asset(Arc::new(rolldown_common::OutputAsset {
         names: Vec::new(),
         original_file_names: Vec::new(),
         filename: ArcStr::from(filename),
         source: rolldown_common::StrOrBytes::Str(css),
-      },
-    )));
+      })));
   }
 
   async fn reload_specifiers(
@@ -1375,9 +1403,9 @@ const RAW_IMPORT_SUFFIXES: [(&str, &str); 3] = [
 ];
 
 fn split_raw_import_suffix(id: &str) -> Option<(&str, &str)> {
-  RAW_IMPORT_SUFFIXES.iter().find_map(|(suffix, ty)| {
-    id.strip_suffix(suffix).map(|base| (base, *ty))
-  })
+  RAW_IMPORT_SUFFIXES
+    .iter()
+    .find_map(|(suffix, ty)| id.strip_suffix(suffix).map(|base| (base, *ty)))
 }
 
 fn raw_import_suffix_of(specifier: &str) -> Option<&'static str> {
@@ -1443,6 +1471,78 @@ fn css_import_load_output(
   })
 }
 
+/// Forwards one hook invocation to the JS plugin chain and waits for its
+/// answer. `Ok(None)` means no JS plugin handled the hook.
+async fn call_js_plugins(
+  tx: &deno_bundle_runtime::PluginHookTx,
+  kind: deno_bundle_runtime::PluginHookRequestKind,
+) -> Result<
+  Option<deno_bundle_runtime::PluginHookJsResult>,
+  deno_core::anyhow::Error,
+> {
+  let (respond, response_rx) = tokio::sync::oneshot::channel();
+  tx.send(deno_bundle_runtime::PluginHookRequest { kind, respond })
+    .await
+    .map_err(|_| {
+      deno_core::anyhow::anyhow!("bundle plugin host is no longer running")
+    })?;
+  let result = response_rx.await.map_err(|_| {
+    deno_core::anyhow::anyhow!("bundle plugin host dropped a hook request")
+  })?;
+  if let Some(error) = result.as_ref().and_then(|r| r.error.clone()) {
+    return Err(deno_core::anyhow::anyhow!("{}", error));
+  }
+  Ok(result)
+}
+
+/// Records a JS plugin hook error under `key` so the diagnostic renderer
+/// can substitute the plugin's real message for rolldown's generic
+/// "plugin `deno` threw an error" wrapper, then re-raises it.
+fn record_plugin_error<T>(
+  deferred_errors: &deno_core::parking_lot::Mutex<Vec<DeferredBundleError>>,
+  key: &str,
+  result: Result<T, deno_core::anyhow::Error>,
+) -> Result<T, deno_core::anyhow::Error> {
+  result.inspect_err(|err| {
+    deferred_errors.lock().push(DeferredBundleError {
+      key: key.to_string(),
+      message: err.to_string(),
+      note: None,
+    });
+  })
+}
+
+/// Maps a JS plugin `loader` name to the rolldown module type for code
+/// returned from a plugin `load` hook.
+fn js_plugin_loader_to_module_type(
+  loader: Option<&str>,
+) -> Result<ModuleType, deno_core::anyhow::Error> {
+  match loader.unwrap_or("js") {
+    "js" => Ok(ModuleType::Js),
+    "jsx" => Ok(ModuleType::Jsx),
+    "ts" => Ok(ModuleType::Ts),
+    "tsx" => Ok(ModuleType::Tsx),
+    "json" => Ok(ModuleType::Json),
+    "text" => Ok(ModuleType::Text),
+    "binary" => Ok(ModuleType::Binary),
+    other => Err(deno_core::anyhow::anyhow!(
+      "unknown plugin loader \"{other}\"; expected one of: js, jsx, ts, tsx, json, text, binary"
+    )),
+  }
+}
+
+fn import_kind_name(kind: ImportKind) -> &'static str {
+  match kind {
+    ImportKind::Import => "import",
+    ImportKind::DynamicImport => "dynamic-import",
+    ImportKind::Require => "require",
+    ImportKind::AtImport => "at-import",
+    ImportKind::UrlImport => "url-import",
+    ImportKind::NewUrl => "new-url",
+    ImportKind::HotAccept => "hot-accept",
+  }
+}
+
 fn unresolved_import_note(kind: ImportKind, specifier: &str) -> Option<String> {
   let remedy = match kind {
     ImportKind::DynamicImport => {
@@ -1484,12 +1584,16 @@ pub struct DenoPluginHandler {
   /// module id in import order. Rolldown no longer bundles CSS, so the load
   /// hook returns an empty module for these and `build()` emits their
   /// concatenation as an asset.
-  collected_css:
-    Arc<deno_core::parking_lot::Mutex<IndexMap<String, String>>>,
+  collected_css: Arc<deno_core::parking_lot::Mutex<IndexMap<String, String>>>,
   /// How many CSS modules the last build inlined; the emptied modules get
   /// tree-shaken out of the chunk listing, so the "Bundled N modules"
   /// summary adds this back.
   css_module_count: Arc<std::sync::atomic::AtomicUsize>,
+  /// When `Deno.bundle()` is called with `plugins`, hook requests are
+  /// forwarded over this channel to the JS runtime, which runs the user's
+  /// plugin chain (see `ext/bundle`). JS plugins run before Deno's own
+  /// resolution/loading; a `None` answer falls through to the default.
+  js_plugins: Option<deno_bundle_runtime::PluginHookTx>,
 }
 
 pub struct SyntheticEsmPackageJson {
@@ -1636,7 +1740,50 @@ impl Plugin for DenoPluginHandler {
   }
 
   fn register_hook_usage(&self) -> HookUsage {
-    HookUsage::ResolveId | HookUsage::Load
+    let mut usage = HookUsage::ResolveId | HookUsage::Load;
+    if self.js_plugins.is_some() {
+      usage |= HookUsage::Transform;
+    }
+    usage
+  }
+
+  fn transform(
+    &self,
+    _ctx: rolldown::plugin::SharedTransformPluginContext,
+    args: &rolldown::plugin::HookTransformArgs<'_>,
+  ) -> impl std::future::Future<
+    Output = deno_core::anyhow::Result<
+      Option<rolldown::plugin::HookTransformOutput>,
+    >,
+  > + Send {
+    let js_plugins = self.js_plugins.clone();
+    let id = strip_internal_id_suffix(args.id).to_string();
+    let code = args.code.to_string();
+    let deferred_errors = self.deferred_errors.clone();
+    async move {
+      let Some(tx) = &js_plugins else {
+        return Ok(None);
+      };
+      let result = record_plugin_error(
+        &deferred_errors,
+        &id,
+        call_js_plugins(
+          tx,
+          deno_bundle_runtime::PluginHookRequestKind::Transform {
+            id: id.clone(),
+            code,
+          },
+        )
+        .await,
+      )?;
+      match result.and_then(|r| r.code) {
+        Some(code) => Ok(Some(rolldown::plugin::HookTransformOutput {
+          code: Some(code),
+          ..Default::default()
+        })),
+        None => Ok(None),
+      }
+    }
   }
 
   fn resolve_id(
@@ -1660,8 +1807,33 @@ impl Plugin for DenoPluginHandler {
     let pkg_json_resolver = self.pkg_json_resolver.clone();
     let synthetic_esm_pkg_json = self.synthetic_esm_pkg_json.clone();
     let deferred_errors = self.deferred_errors.clone();
+    let js_plugins = self.js_plugins.clone();
 
     async move {
+      // JS plugins get the first chance to resolve any specifier.
+      if let Some(tx) = &js_plugins
+        && let Some(result) = record_plugin_error(
+          &deferred_errors,
+          &specifier,
+          call_js_plugins(
+            tx,
+            deno_bundle_runtime::PluginHookRequestKind::Resolve {
+              specifier: specifier.clone(),
+              importer: importer.clone(),
+              kind: import_kind_name(kind).to_string(),
+            },
+          )
+          .await,
+        )?
+        && let Some(id) = result.id
+      {
+        return Ok(Some(HookResolveIdOutput {
+          id: ArcStr::from(id),
+          external: result.external.map(ResolvedExternal::Bool),
+          ..Default::default()
+        }));
+      }
+
       // A raw import (`with { type: "..." }`, rewritten by
       // `RawImportsTransform`): resolve the underlying specifier and carry
       // the suffix over to the resolved id.
@@ -1778,7 +1950,8 @@ impl Plugin for DenoPluginHandler {
           let resolved_str = if let Some(suffix) = raw_suffix {
             format!("{resolved_str}{suffix}")
           } else if !is_external
-            && (resolved_str.ends_with(".cjs") || resolved_str.ends_with(".cts"))
+            && (resolved_str.ends_with(".cjs")
+              || resolved_str.ends_with(".cts"))
             && matches!(
               tokio::fs::read_to_string(Path::new(&resolved_str)).await,
               Ok(source) if source.contains("import.meta")
@@ -1879,8 +2052,32 @@ impl Plugin for DenoPluginHandler {
     let deferred_errors = self.deferred_errors.clone();
     let has_output = self.has_output;
     let collected_css = self.collected_css.clone();
+    let js_plugins = self.js_plugins.clone();
 
     async move {
+      // JS plugins get the first chance to load any id (including virtual
+      // ids their resolve hooks produced).
+      if let Some(tx) = &js_plugins
+        && let Some(result) = record_plugin_error(
+          &deferred_errors,
+          &id,
+          call_js_plugins(
+            tx,
+            deno_bundle_runtime::PluginHookRequestKind::Load { id: id.clone() },
+          )
+          .await,
+        )?
+        && let Some(code) = result.code
+      {
+        let module_type =
+          js_plugin_loader_to_module_type(result.loader.as_deref())?;
+        return Ok(Some(HookLoadOutput {
+          code: ArcStr::from(code),
+          module_type: Some(module_type),
+          ..Default::default()
+        }));
+      }
+
       // A raw import: inline the file's contents as text, bytes, or a
       // constructed stylesheet instead of loading it as a module.
       if let Some((base_id, raw_type)) = split_raw_import_suffix(&id) {
@@ -2496,7 +2693,12 @@ fn handle_diagnostics(
       || matches!(diag.kind(), EventKind::UnresolvedImport)
     {
       has_errors = true;
-      render_diagnostic_error(diag, deferred_errors, cwd);
+      let message = diagnostic_to_message(diag, deferred_errors, cwd);
+      log::error!(
+        "{}: {}",
+        deno_terminal::colors::red_bold("error"),
+        message.render()
+      );
     } else if severity == Severity::Warning {
       log::warn!(
         "{}: {}",
@@ -2510,36 +2712,161 @@ fn handle_diagnostics(
   has_errors
 }
 
-/// Renders a rolldown diagnostic in Deno's error style:
-///
-/// ```text
-/// error: <message>
-///     at <file>:<line>:<column>
-///     note: <remediation>
-/// ```
-///
-/// The message and note come from the matching `DeferredBundleError` the
-/// plugin recorded (rolldown stringifies hook errors into "plugin `deno`
-/// threw an error" otherwise); the source position comes from the
-/// diagnostic's primary label.
-fn render_diagnostic_error(
+/// Collects the `Severity::Error` (and unresolved-import) diagnostics from a
+/// successful build's warning list as structured messages, for callers that
+/// return them (e.g. `Deno.bundle()`) rather than printing them.
+fn collect_error_messages(
+  output: &BundleOutput,
+  deferred_errors: &[DeferredBundleError],
+  cwd: &Path,
+) -> Vec<BundleErrorMessage> {
+  output
+    .warnings
+    .iter()
+    .filter(|diag| {
+      diag.severity() == Severity::Error
+        || matches!(diag.kind(), EventKind::UnresolvedImport)
+    })
+    .map(|diag| diagnostic_to_message(diag, deferred_errors, cwd))
+    .collect()
+}
+
+/// A bundler error rendered in Deno's style, split from printing so it can
+/// be either logged (CLI) or returned (`Deno.bundle()` result).
+#[derive(Debug, Clone)]
+pub struct BundleErrorMessage {
+  pub text: String,
+  /// `(file-url, line, column)` of the primary source location, if any.
+  pub location: Option<(String, u32, u32)>,
+  pub note: Option<String>,
+}
+
+impl BundleErrorMessage {
+  /// Renders as:
+  ///
+  /// ```text
+  /// <message>
+  ///     at <file>:<line>:<column>
+  ///     note: <remediation>
+  /// ```
+  fn render(&self) -> String {
+    let mut text = self.text.clone();
+    if let Some((file, line, column)) = &self.location {
+      text.push_str(&format!("\n    at {file}:{line}:{column}"));
+    }
+    if let Some(note) = &self.note {
+      text.push_str(&format!("\n    note: {note}"));
+    }
+    text
+  }
+}
+
+/// For the `deno bundle` CLI: unwrap a `build()` result, printing a
+/// `BundleBuildFailure`'s messages in Deno's style and bailing with the
+/// short "bundling failed" summary. Other errors propagate unchanged.
+fn print_build_errors_and_bail(
+  result: Result<BundleOutput, AnyError>,
+) -> Result<BundleOutput, AnyError> {
+  match result {
+    Ok(output) => Ok(output),
+    Err(err) => match err.downcast::<BundleBuildFailure>() {
+      Ok(failure) => {
+        for message in &failure.messages {
+          log::error!(
+            "{}: {}",
+            deno_terminal::colors::red_bold("error"),
+            message.render()
+          );
+        }
+        deno_core::anyhow::bail!("bundling failed")
+      }
+      Err(err) => Err(err),
+    },
+  }
+}
+
+/// Hard bundler errors (from `bundler.generate()`), carried as structured
+/// data so callers can print or surface them. Its `Display` joins the
+/// rendered messages.
+#[derive(Debug)]
+pub struct BundleBuildFailure {
+  pub messages: Vec<BundleErrorMessage>,
+}
+
+impl std::fmt::Display for BundleBuildFailure {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    for (i, message) in self.messages.iter().enumerate() {
+      if i > 0 {
+        writeln!(f)?;
+      }
+      write!(f, "{}", message.render())?;
+    }
+    Ok(())
+  }
+}
+
+impl std::error::Error for BundleBuildFailure {}
+
+/// Converts hard bundler errors into a `Deno.bundle()` result with
+/// `success: false` and the messages in `errors`.
+pub fn build_failure_to_response(
+  failure: &BundleBuildFailure,
+) -> deno_bundle_runtime::BuildResponse {
+  deno_bundle_runtime::BuildResponse {
+    errors: failure
+      .messages
+      .iter()
+      .map(|m| deno_bundle_runtime::Message {
+        text: m.render(),
+        location: None,
+        notes: vec![],
+      })
+      .collect(),
+    warnings: vec![],
+    output_files: None,
+  }
+}
+
+/// Collects a successful build's error-level diagnostics into a
+/// `Deno.bundle()` result, matching the messages `deno bundle` prints.
+pub fn bundle_output_error_messages(
+  bundler: &RolldownBundler,
+  output: &BundleOutput,
+) -> Vec<deno_bundle_runtime::Message> {
+  let deferred = bundler.take_deferred_errors();
+  collect_error_messages(output, &deferred, &bundler.cwd)
+    .into_iter()
+    .map(|m| deno_bundle_runtime::Message {
+      text: m.render(),
+      location: None,
+      notes: vec![],
+    })
+    .collect()
+}
+
+/// Formats a rolldown diagnostic into a `BundleErrorMessage`, substituting
+/// the richer message and remediation note recorded by the plugin (rolldown
+/// stringifies hook errors into "plugin `deno` threw an error" otherwise).
+fn diagnostic_to_message(
   diag: &BuildDiagnostic,
   deferred_errors: &[DeferredBundleError],
   cwd: &Path,
-) {
+) -> BundleErrorMessage {
   let rendered = diag.to_diagnostic();
   let default_message = diag.to_string();
   // Match a recorded structured error: by the unresolved specifier for
   // resolve errors, or by the resolved id appearing in the message for
   // load errors.
+  // Rolldown escapes the `\0` virtual-module prefix as a literal backslash
+  // + `0` in its messages, so compare against a normalized key too.
+  let key_matches = |key: &str| {
+    default_message.contains(key)
+      || default_message.contains(&key.replace('\0', "\\0"))
+  };
   let deferred = deferred_errors
     .iter()
     .find(|e| diag.exporter().as_deref() == Some(e.key.as_str()))
-    .or_else(|| {
-      deferred_errors
-        .iter()
-        .find(|e| default_message.contains(&e.key))
-    })
+    .or_else(|| deferred_errors.iter().find(|e| key_matches(&e.key)))
     .or_else(|| {
       // Load failures render as "Could not load <path> (imported by ...)"
       // with the path relativized, while the plugin recorded the absolute
@@ -2547,20 +2874,20 @@ fn render_diagnostic_error(
       let loaded_path = default_message
         .strip_prefix("Could not load ")
         .and_then(|rest| rest.split(" (imported by").next())?;
-      deferred_errors
-        .iter()
-        .find(|e| e.key.ends_with(loaded_path))
+      deferred_errors.iter().find(|e| {
+        e.key.ends_with(loaded_path)
+          || e.key.replace('\0', "\\0").ends_with(loaded_path)
+      })
     });
 
-  let message = match deferred {
+  let text = match deferred {
     Some(e) => e.message.clone(),
     None => default_message,
   };
 
-  let mut text = message;
-  if let Some((file, line, column, _)) = rendered.get_primary_location() {
-    // Rolldown reports files relative to the cwd; print an absolute
-    // file:// URL like the rest of the CLI's error output.
+  let location = rendered.get_primary_location().map(|(file, line, col, _)| {
+    // Rolldown reports files relative to the cwd; emit an absolute file://
+    // URL like the rest of the CLI's error output.
     let file_path = if Path::new(&file).is_absolute() {
       PathBuf::from(&file)
     } else {
@@ -2570,12 +2897,14 @@ fn render_diagnostic_error(
       Ok(url) => url.to_string(),
       Err(_) => file,
     };
-    text.push_str(&format!("\n    at {location}:{line}:{column}"));
+    (location, line as u32, col as u32)
+  });
+
+  BundleErrorMessage {
+    text,
+    location,
+    note: deferred.and_then(|e| e.note.clone()),
   }
-  if let Some(note) = deferred.and_then(|e| e.note.as_deref()) {
-    text.push_str(&format!("\n    note: {note}"));
-  }
-  log::error!("{}: {}", deno_terminal::colors::red_bold("error"), text);
 }
 
 pub struct OutputFileInfo {
@@ -2584,7 +2913,7 @@ pub struct OutputFileInfo {
   is_js: bool,
 }
 
-fn is_js(path: &Path) -> bool {
+pub(crate) fn is_js(path: &Path) -> bool {
   if let Some(ext) = path.extension() {
     matches!(
       ext.to_string_lossy().as_ref(),
@@ -2943,7 +3272,7 @@ pub fn should_replace_require_shim(platform: BundlePlatform) -> bool {
 // Rolldown emits a `__require` shim that uses a global `require` if available,
 // or throws otherwise. When bundling for Deno (ESM, no global require), we
 // replace it with `createRequire(import.meta.url)` from `node:module`.
-fn replace_require_shim(contents: &str, minified: bool) -> String {
+pub(crate) fn replace_require_shim(contents: &str, minified: bool) -> String {
   if minified {
     // Rolldown's minified __require shim. Backticks `u` are oxc-minifier's
     // shorthand for the string "u".

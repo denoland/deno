@@ -393,3 +393,123 @@ Deno.test("bundle: html works", async () => {
   assertStringIncludes(js.text(), "innerHTML");
   assertStringIncludes(js.text(), "hello");
 });
+
+Deno.test("bundle: plugin resolves and loads a virtual module", async () => {
+  using dir = new TempDir();
+  const entry = dir.join("main.ts");
+  await Deno.writeTextFile(
+    entry,
+    unindent`
+      import { greeting } from "virtual:hello";
+      console.log(greeting);
+    `,
+  );
+
+  const result = await Deno.bundle({
+    entrypoints: [entry],
+    write: false,
+    plugins: [{
+      name: "virtual",
+      setup(build) {
+        build.onResolve({ filter: /^virtual:/ }, (args) => ({
+          id: "\0" + args.specifier,
+        }));
+        build.onLoad({ filter: /^\0virtual:/ }, () => ({
+          code: `export const greeting = "hello from a plugin";`,
+          loader: "js",
+        }));
+      },
+    }],
+  });
+
+  assert(result.success, result.errors.map((e) => e.text).join("\n"));
+  const js = result.outputFiles![0].text();
+  assertStringIncludes(js, "hello from a plugin");
+});
+
+Deno.test("bundle: plugin onLoad reads a non-JS asset as text", async () => {
+  using dir = new TempDir();
+  const entry = dir.join("main.ts");
+  const data = dir.join("data.txt");
+  await Deno.writeTextFile(data, "raw file contents");
+  await Deno.writeTextFile(
+    entry,
+    unindent`
+      import text from "./data.txt";
+      console.log(text);
+    `,
+  );
+
+  const result = await Deno.bundle({
+    entrypoints: [entry],
+    write: false,
+    plugins: [{
+      name: "text-loader",
+      setup(build) {
+        build.onLoad({ filter: /\.txt$/ }, async (args) => ({
+          code: await Deno.readTextFile(args.id),
+          loader: "text",
+        }));
+      },
+    }],
+  });
+
+  assert(result.success, result.errors.map((e) => e.text).join("\n"));
+  assertStringIncludes(result.outputFiles![0].text(), "raw file contents");
+});
+
+Deno.test("bundle: plugin onTransform rewrites source", async () => {
+  using dir = new TempDir();
+  const entry = dir.join("main.ts");
+  await Deno.writeTextFile(
+    entry,
+    `console.log(__BUILD_MESSAGE__);`,
+  );
+
+  const result = await Deno.bundle({
+    entrypoints: [entry],
+    write: false,
+    plugins: [{
+      name: "define",
+      setup(build) {
+        build.onTransform({ filter: /main\.ts$/ }, (args) => ({
+          code: args.code.replaceAll("__BUILD_MESSAGE__", '"transformed"'),
+        }));
+      },
+    }],
+  });
+
+  assert(result.success, result.errors.map((e) => e.text).join("\n"));
+  assertStringIncludes(result.outputFiles![0].text(), '"transformed"');
+});
+
+Deno.test("bundle: plugin hook error surfaces as a build error", async () => {
+  using dir = new TempDir();
+  const entry = dir.join("main.ts");
+  await Deno.writeTextFile(
+    entry,
+    `import "virtual:boom";`,
+  );
+
+  const result = await Deno.bundle({
+    entrypoints: [entry],
+    write: false,
+    plugins: [{
+      name: "boom",
+      setup(build) {
+        build.onResolve({ filter: /^virtual:boom$/ }, () => ({
+          id: "\0boom",
+        }));
+        build.onLoad({ filter: /^\0boom$/ }, () => {
+          throw new Error("plugin blew up");
+        });
+      },
+    }],
+  });
+
+  assertFalse(result.success);
+  assertStringIncludes(
+    result.errors.map((e) => e.text).join("\n"),
+    "plugin blew up",
+  );
+});

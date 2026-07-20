@@ -60,16 +60,10 @@ impl VisitMut for RawImportsTransform {
     if let Some(with) = &node.with
       && let Some(raw_type) = raw_import_type(with)
     {
-      let new_src = format!(
-        "{}?deno-raw-{}",
-        node.src.value.to_string_lossy(),
-        raw_type
-      );
-      node.src = Box::new(swc::ast::Str {
-        span: node.src.span,
-        value: new_src.into(),
-        raw: None,
-      });
+      let new_src =
+        format!("{}?deno-raw-{}", node.src.value.to_string_lossy(), raw_type);
+      node.src.value = new_src.into();
+      node.src.raw = None;
       node.with = None;
       self.rewrote_any = true;
     }

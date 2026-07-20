@@ -364,9 +364,12 @@ fn parse_html_entrypoint(
   let entry_name = sanitize_entry_name(cwd, path);
   // The virtual module lives next to the HTML file, so flatten any
   // subdirectory separators out of its file name.
-  let virtual_module_path = path.parent().unwrap_or(Path::new("")).join(
-    format!("{}{}.js", entry_name.replace('/', "_"), VIRTUAL_ENTRY_SUFFIX),
-  );
+  let virtual_module_path =
+    path.parent().unwrap_or(Path::new("")).join(format!(
+      "{}{}.js",
+      entry_name.replace('/', "_"),
+      VIRTUAL_ENTRY_SUFFIX
+    ));
 
   Ok(HtmlEntrypoint {
     path: path.to_path_buf(),
@@ -542,8 +545,8 @@ impl HtmlEntrypoint {
     }
 
     let css_entry_name = format!("{}.css", entry_name);
-    let css_out =
-      html_output_files.get_and_update_path(&css_entry_name, |p, _| {
+    let css_out = html_output_files
+      .get_and_update_path(&css_entry_name, |p, _| {
         p.to_string_lossy().replace(VIRTUAL_ENTRY_SUFFIX, "").into()
       });
 

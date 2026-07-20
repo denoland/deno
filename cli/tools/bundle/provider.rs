@@ -40,24 +40,37 @@ fn hash_contents(contents: &[u8]) -> String {
   base64::engine::general_purpose::STANDARD_NO_PAD.encode(bytes)
 }
 
-fn convert_bundle_output(output: BundleOutput) -> rt_bundle::BuildResponse {
-  let mut errors = Vec::new();
-  let mut warnings = Vec::new();
+fn convert_bundle_output(
+  bundler: &super::RolldownBundler,
+  output: BundleOutput,
+) -> rt_bundle::BuildResponse {
+  // Error-level diagnostics (including unresolved imports) are rendered with
+  // the same rich messages `deno bundle` prints.
+  let errors = super::bundle_output_error_messages(bundler, &output);
+  let warnings = output
+    .warnings
+    .iter()
+    .filter(|diag| diag.severity() == Severity::Warning)
+    .map(convert_diagnostic)
+    .collect();
 
-  for diag in &output.warnings {
-    let msg = convert_diagnostic(diag);
-    match diag.severity() {
-      Severity::Error => errors.push(msg),
-      Severity::Warning | Severity::Info => warnings.push(msg),
-    }
-  }
-
+  // Match the `deno bundle` CLI: rewrite rolldown's `require` shim to
+  // `createRequire` for JS chunks on the Deno platform. The write path does
+  // this in `process_result`; the in-memory path must do it here too.
+  let replace_require = super::should_replace_require_shim(bundler.platform);
   let output_files: Vec<rt_bundle::BuildOutputFile> = output
     .assets
     .iter()
     .map(|asset| {
       let filename = asset.filename().to_string();
-      let contents = asset.content_as_bytes().to_vec();
+      let mut contents = asset.content_as_bytes().to_vec();
+      if replace_require
+        && super::is_js(Path::new(&filename))
+        && let Ok(text) = std::str::from_utf8(&contents)
+      {
+        contents =
+          super::replace_require_shim(text, bundler.minified).into_bytes();
+      }
       let hash = hash_contents(&contents);
       rt_bundle::BuildOutputFile {
         path: filename,
@@ -79,6 +92,7 @@ impl BundleProvider for CliBundleProvider {
   async fn bundle(
     &self,
     options: RtBundleOptions,
+    plugins: Option<rt_bundle::PluginHookTx>,
   ) -> Result<rt_bundle::BuildResponse, AnyError> {
     let mut flags_clone = (*self.flags).clone();
     flags_clone.type_check_mode = crate::args::TypeCheckMode::None;
@@ -90,21 +104,32 @@ impl BundleProvider for CliBundleProvider {
     std::thread::spawn(move || {
       deno_runtime::tokio_util::create_and_run_current_thread(async move {
         let flags = Arc::new(flags_clone);
-        let bundler = match super::bundle_init(flags, &bundle_flags).await {
-          Ok(bundler) => bundler,
-          Err(e) => {
-            log::trace!("bundle_init error: {e:?}");
-            let _ = tx.send(Err(e));
-            return Ok(());
-          }
-        };
+        let bundler =
+          match super::bundle_init(flags, &bundle_flags, plugins).await {
+            Ok(bundler) => bundler,
+            Err(e) => {
+              log::trace!("bundle_init error: {e:?}");
+              let _ = tx.send(Err(e));
+              return Ok(());
+            }
+          };
         log::trace!("bundler.build");
         let output = match bundler.build().await {
           Ok(output) => output,
           Err(e) => {
-            log::trace!("bundler.build error: {e:?}");
-            let _ = tx.send(Err(e));
-            return Ok(());
+            // Hard bundler errors are returned as a structured result
+            // (`success: false` with `errors`), not as a thrown exception.
+            match e.downcast::<super::BundleBuildFailure>() {
+              Ok(failure) => {
+                let _ = tx.send(Ok(super::build_failure_to_response(&failure)));
+                return Ok(());
+              }
+              Err(e) => {
+                log::trace!("bundler.build error: {e:?}");
+                let _ = tx.send(Err(e));
+                return Ok(());
+              }
+            }
           }
         };
         log::trace!("process_result");
@@ -119,11 +144,11 @@ impl BundleProvider for CliBundleProvider {
             Some(&bundler.input),
           )?;
           // Convert with no output files since we already wrote them
-          let mut result = convert_bundle_output(output);
+          let mut result = convert_bundle_output(&bundler, output);
           result.output_files = None;
           let _ = tx.send(Ok(result));
         } else {
-          let result = convert_bundle_output(output);
+          let result = convert_bundle_output(&bundler, output);
           let _ = tx.send(Ok(result));
         }
         Ok::<_, AnyError>(())
