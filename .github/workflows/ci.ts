@@ -963,9 +963,6 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           .map((name) => `-p ${name}`).join(" ");
         const binsToBuild = ["deno", "denort", "test_server"]
           .map((name) => `--bin ${name}`).join(" ");
-        // aarch64 musl cross-compiles via cargo-zigbuild (see the musl build
-        // environment step); all other builds use plain cargo.
-        const cargoBuild = isCrossMuslBuild ? "cargo zigbuild" : "cargo build";
         const cargoBuildReleaseStep = step
           .if(
             isRelease.and(isDenoland.or(buildItem.use_sysroot)),
@@ -983,32 +980,46 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             // re-add `--cfg tokio_unstable` (required to compile) here.
             isCrossMuslBuild
               ? {
-                // Cross-compile to musl from the arm64 glibc runner. musl-gcc
-                // (musl-tools) compiles C deps and links against musl; the
-                // prebuilt rusty_v8 for the musl triple is downloaded, so V8 is
-                // not built from source. Outputs land in
-                // target/<triple>/release and are relocated to target/release
+                // Cross-compile to musl from the arm64 glibc runner. A real
+                // aarch64-linux-musl gcc toolchain compiles the C/C++ deps and
+                // links against musl; the prebuilt rusty_v8 for the musl triple
+                // is downloaded, so V8 is not built from source. Outputs land
+                // in target/<triple>/release and are relocated to target/release
                 // after the build so downstream steps find them.
                 name: "Set up musl build environment",
                 run: [
-                  // Cross-compiling to musl with dynamic linking (crt-static
-                  // off, needed for FFI/dlopen) requires a musl libgcc_s, which
-                  // Ubuntu's musl-tools does not provide. cargo-zigbuild uses
-                  // Zig's bundled musl toolchain + compiler-rt, which supplies
-                  // libgcc_s and compiles the C/C++ deps (aws-lc-sys etc.)
-                  // against musl. Zig is provided via the `ziglang` PyPI
-                  // package and found automatically by cargo-zigbuild.
                   "rustup target add aarch64-unknown-linux-musl",
-                  "pip3 install --break-system-packages ziglang==0.13.0",
-                  "cargo install --locked cargo-zigbuild@0.19.8",
+                  // The runner is arm64, so use a native (arm64-hosted) gcc
+                  // toolchain that targets aarch64-linux-musl. Unlike Ubuntu's
+                  // musl-tools it ships a musl-built libgcc_s.so.1, which
+                  // dynamic linking (crt-static off, needed for FFI/dlopen)
+                  // requires. Real gcc also avoids the codegen bugs Zig's
+                  // bundled clang hit on aarch64 crypto intrinsics.
+                  'TOOLCHAIN="$RUNNER_TEMP/aarch64-linux-musl-native"',
+                  "curl --proto '=https' --tlsv1.2 \\",
+                  "  --retry 10 --retry-all-errors --retry-delay 5 -fSL \\",
+                  "  https://musl.cc/aarch64-linux-musl-native.tgz \\",
+                  '  -o "$RUNNER_TEMP/musl-toolchain.tgz"',
+                  'tar -xzf "$RUNNER_TEMP/musl-toolchain.tgz" -C "$RUNNER_TEMP"',
                   // The musl runtime loader (/lib/ld-musl-aarch64.so.1) lets the
                   // dynamically linked binary run on this glibc host (e.g. for
-                  // the symcache step).
+                  // the symcache step); libgcc_s.so.1 comes from the toolchain.
                   "sudo apt-get update",
                   "sudo apt-get install -y --no-install-recommends musl",
+                  'echo "$TOOLCHAIN/bin" >> $GITHUB_PATH',
                   'echo "CARGO_BUILD_TARGET=aarch64-unknown-linux-musl" >> $GITHUB_ENV',
                   'echo "RUSTFLAGS=-C target-feature=-crt-static --cfg tokio_unstable" >> $GITHUB_ENV',
                   'echo "RUSTDOCFLAGS=-C target-feature=-crt-static --cfg tokio_unstable" >> $GITHUB_ENV',
+                  'echo "CC_aarch64_unknown_linux_musl=aarch64-linux-musl-gcc" >> $GITHUB_ENV',
+                  'echo "CXX_aarch64_unknown_linux_musl=aarch64-linux-musl-g++" >> $GITHUB_ENV',
+                  'echo "AR_aarch64_unknown_linux_musl=aarch64-linux-musl-ar" >> $GITHUB_ENV',
+                  'echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-musl-gcc" >> $GITHUB_ENV',
+                  // bindgen (libsqlite3-sys) parses headers for the target;
+                  // point it at the musl sysroot.
+                  'echo "BINDGEN_EXTRA_CLANG_ARGS_aarch64_unknown_linux_musl=--sysroot=$TOOLCHAIN/aarch64-linux-musl" >> $GITHUB_ENV',
+                  // The built binary loads musl libgcc_s.so.1 at runtime; make
+                  // the toolchain-provided copy discoverable for the run steps.
+                  'echo "LD_LIBRARY_PATH=$TOOLCHAIN/aarch64-linux-musl/lib" >> $GITHUB_ENV',
                 ],
               }
               : {
@@ -1058,11 +1069,11 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 "fi",
                 // output fs space before and after building
                 "df -h",
-                `${cargoBuild} --release --locked ${packagesToBuild} ${binsToBuild} --features=deno/panic-trace`,
+                `cargo build --release --locked ${packagesToBuild} ${binsToBuild} --features=deno/panic-trace`,
                 // Build the desktop runtime shared library (libdenort cdylib) for
                 // laufey-based desktop apps. Separate invocation because the
                 // panic-trace feature only applies to the deno/denort binaries.
-                `${cargoBuild} --release --locked -p denort_desktop`,
+                "cargo build --release --locked -p denort_desktop",
                 "df -h",
               ],
             },

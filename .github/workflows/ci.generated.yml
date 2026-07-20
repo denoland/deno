@@ -7733,13 +7733,24 @@ jobs:
         if: github.repository == 'denoland/deno'
         run: |-
           rustup target add aarch64-unknown-linux-musl
-          pip3 install --break-system-packages ziglang==0.13.0
-          cargo install --locked cargo-zigbuild@0.19.8
+          TOOLCHAIN="$RUNNER_TEMP/aarch64-linux-musl-native"
+          curl --proto '=https' --tlsv1.2 \
+            --retry 10 --retry-all-errors --retry-delay 5 -fSL \
+            https://musl.cc/aarch64-linux-musl-native.tgz \
+            -o "$RUNNER_TEMP/musl-toolchain.tgz"
+          tar -xzf "$RUNNER_TEMP/musl-toolchain.tgz" -C "$RUNNER_TEMP"
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends musl
+          echo "$TOOLCHAIN/bin" >> $GITHUB_PATH
           echo "CARGO_BUILD_TARGET=aarch64-unknown-linux-musl" >> $GITHUB_ENV
           echo "RUSTFLAGS=-C target-feature=-crt-static --cfg tokio_unstable" >> $GITHUB_ENV
           echo "RUSTDOCFLAGS=-C target-feature=-crt-static --cfg tokio_unstable" >> $GITHUB_ENV
+          echo "CC_aarch64_unknown_linux_musl=aarch64-linux-musl-gcc" >> $GITHUB_ENV
+          echo "CXX_aarch64_unknown_linux_musl=aarch64-linux-musl-g++" >> $GITHUB_ENV
+          echo "AR_aarch64_unknown_linux_musl=aarch64-linux-musl-ar" >> $GITHUB_ENV
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-musl-gcc" >> $GITHUB_ENV
+          echo "BINDGEN_EXTRA_CLANG_ARGS_aarch64_unknown_linux_musl=--sysroot=$TOOLCHAIN/aarch64-linux-musl" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=$TOOLCHAIN/aarch64-linux-musl/lib" >> $GITHUB_ENV
       - name: Configure canary build
         if: 'github.repository == ''denoland/deno'' && !startsWith(github.ref, ''refs/tags/'')'
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
@@ -7755,8 +7766,8 @@ jobs:
             grep -n fuse-ld .cargo/config.toml
           fi
           df -h
-          cargo zigbuild --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
-          cargo zigbuild --release --locked -p denort_desktop
+          cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
+          cargo build --release --locked -p denort_desktop
           df -h
       - name: Relocate cross-build artifacts
         if: github.repository == 'denoland/deno'
