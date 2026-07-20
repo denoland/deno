@@ -2822,6 +2822,7 @@ name = "deno_maybe_sync"
 version = "0.42.0"
 dependencies = [
  "dashmap",
+ "rustc-hash 2.1.1",
 ]
 
 [[package]]
@@ -3327,6 +3328,7 @@ dependencies = [
  "once_cell",
  "parking_lot",
  "phf 0.11.2",
+ "rustc-hash 2.1.1",
  "serde",
  "serde_json",
  "sys_traits",
@@ -7255,6 +7257,7 @@ dependencies = [
  "percent-encoding",
  "pretty_assertions",
  "regex",
+ "rustc-hash 2.1.1",
  "serde",
  "serde_json",
  "sys_traits",
