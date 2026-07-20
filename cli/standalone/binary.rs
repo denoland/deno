@@ -39,6 +39,7 @@ use deno_lib::standalone::binary::SpecifierDataStore;
 use deno_lib::standalone::binary::SpecifierId;
 use deno_lib::standalone::virtual_fs::BuiltVfs;
 use deno_lib::standalone::virtual_fs::DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME;
+use deno_lib::standalone::virtual_fs::OffsetWithLength;
 use deno_lib::standalone::virtual_fs::VfsBuilder;
 use deno_lib::standalone::virtual_fs::VfsEntry;
 use deno_lib::standalone::virtual_fs::VirtualDirectory;
@@ -60,7 +61,9 @@ use deno_resolver::file_fetcher::FetchPermissionsOptionRef;
 use deno_resolver::workspace::WorkspaceResolver;
 use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
+use node_resolver::analyze::CjsAnalysisSourceProvider;
 use node_resolver::analyze::ResolvedCjsAnalysis;
+use sys_traits::FsRead;
 
 use super::virtual_fs::output_vfs;
 use crate::args::CliOptions;
@@ -126,6 +129,80 @@ impl StandaloneRelativeFileBaseUrl<'_> {
       None => Cow::Borrowed(target.as_str()),
     }
   }
+}
+
+struct GraphCjsAnalysisSourceProvider<'a> {
+  graph: &'a ModuleGraph,
+  fallback: Option<&'a dyn CjsAnalysisSourceProvider>,
+}
+
+impl CjsAnalysisSourceProvider for GraphCjsAnalysisSourceProvider<'_> {
+  fn load_source(&self, specifier: &Url) -> Option<String> {
+    if let Some(module) = self.graph.get(specifier) {
+      match module {
+        deno_graph::Module::Js(module) => {
+          return Some(module.source.text.to_string());
+        }
+        deno_graph::Module::Json(module) => {
+          return Some(module.source.text.to_string());
+        }
+        _ => {}
+      }
+    }
+    self
+      .fallback
+      .and_then(|provider| provider.load_source(specifier))
+  }
+}
+
+struct VfsCjsAnalysisSourceProvider<'a> {
+  vfs: &'a VfsBuilder,
+  sources: &'a HashMap<Url, OffsetWithLength>,
+  fallback: Option<&'a dyn CjsAnalysisSourceProvider>,
+}
+
+impl CjsAnalysisSourceProvider for VfsCjsAnalysisSourceProvider<'_> {
+  fn load_source(&self, specifier: &Url) -> Option<String> {
+    if let Some(offset) = self.sources.get(specifier).copied()
+      && let Some(bytes) = self.vfs.file_bytes(offset)
+      && let Ok(source) = std::str::from_utf8(bytes)
+    {
+      return Some(source.to_string());
+    }
+    self
+      .fallback
+      .and_then(|provider| provider.load_source(specifier))
+  }
+}
+
+// `deno compile` is a trusted local build step, so sources absent from the
+// graph and VFS may be read directly to preserve compile-time CJS analysis.
+struct FileSystemCjsAnalysisSourceProvider<'a> {
+  sys: &'a CliSys,
+}
+
+impl CjsAnalysisSourceProvider for FileSystemCjsAnalysisSourceProvider<'_> {
+  fn load_source(&self, specifier: &Url) -> Option<String> {
+    let path = deno_path_util::url_to_file_path(specifier).ok()?;
+    self
+      .sys
+      .fs_read_to_string_lossy(path)
+      .ok()
+      .map(Cow::into_owned)
+  }
+}
+
+fn collect_vfs_cjs_analysis_sources(
+  vfs: &VfsBuilder,
+) -> HashMap<Url, OffsetWithLength> {
+  let mut sources = HashMap::new();
+  for (path, file) in vfs.iter_files() {
+    let Ok(specifier) = deno_path_util::url_from_file_path(&path) else {
+      continue;
+    };
+    sources.insert(specifier, file.offset);
+  }
+  sources
 }
 
 struct SpecifierStore<'a> {
@@ -664,6 +741,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       progress_bar.update_with_prompt(ProgressMessagePrompt::Compile, "");
     progress.set_total_size(specifiers_count as u64);
     let mut modules_done: u64 = 0;
+    let initial_vfs_sources = collect_vfs_cjs_analysis_sources(&vfs);
+    let sys = CliSys::default();
+    let file_system_source_provider =
+      FileSystemCjsAnalysisSourceProvider { sys: &sys };
     // todo(dsherret): transpile and analyze CJS in parallel
     for module in graph.modules() {
       if module.specifier().scheme() == "data" {
@@ -685,11 +766,21 @@ impl<'a> DenoCompileBinaryWriter<'a> {
               m.media_type,
               m.is_script,
             )? {
+              let vfs_source_provider = VfsCjsAnalysisSourceProvider {
+                vfs: &vfs,
+                sources: &initial_vfs_sources,
+                fallback: Some(&file_system_source_provider),
+              };
+              let graph_source_provider = GraphCjsAnalysisSourceProvider {
+                graph,
+                fallback: Some(&vfs_source_provider),
+              };
               let cjs_analysis = self
                 .cjs_module_export_analyzer
                 .analyze_all_exports(
                   module.specifier(),
                   Some(Cow::Borrowed(m.source.text.as_ref())),
+                  Some(&graph_source_provider),
                 )
                 .await?;
               maybe_cjs_analysis = Some(match cjs_analysis {
@@ -850,6 +941,12 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
     // do CJS export analysis on all the files in the VFS
     // todo(dsherret): analyze cjs in parallel
+    let vfs_sources = collect_vfs_cjs_analysis_sources(&vfs);
+    let vfs_source_provider = VfsCjsAnalysisSourceProvider {
+      vfs: &vfs,
+      sources: &vfs_sources,
+      fallback: Some(&file_system_source_provider),
+    };
     let mut to_add = Vec::new();
     for (file_path, file) in vfs.iter_files() {
       if file.cjs_export_analysis_offset.is_some() {
@@ -892,7 +989,11 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         };
         let cjs_analysis_result = self
           .cjs_module_export_analyzer
-          .analyze_all_exports(&specifier, Some(source.into()))
+          .analyze_all_exports(
+            &specifier,
+            Some(source.into()),
+            Some(&vfs_source_provider),
+          )
           .await;
         let analysis = match cjs_analysis_result {
           Ok(ResolvedCjsAnalysis::Esm(_)) => CjsExportAnalysisEntry::Esm,
