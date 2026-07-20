@@ -1,0 +1,22 @@
+{
+  // The `@denotest/tarballs-npmjs` packument points `dist.tarball` at
+  // `registry.npmjs.org` even though the package is served by the configured
+  // (test) registry. Deno should download the tarball from the configured
+  // registry instead of `registry.npmjs.org`.
+  "tempDir": true,
+  "tests": {
+    "relocates_tarball_to_configured_registry": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "install.out"
+        },
+        {
+          // ensure the package is actually cached and usable
+          "args": "run --cached-only main.js",
+          "output": "run.out"
+        }
+      ]
+    }
+  }
+}
