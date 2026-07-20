@@ -2302,6 +2302,81 @@ Deno.test("inspector_node_wait_for_debugger_no_pause", async () => {
   }
 });
 
+Deno.test("inspector_console_api_late_open", async () => {
+  // Regression test: when the inspector is activated at runtime via
+  // node:inspector open() (instead of a CLI --inspect* flag), sessions must
+  // still receive Runtime.consoleAPICalled for console calls. The console
+  // was only bridged to the V8 inspector console when an --inspect* flag
+  // was present at bootstrap, so late-opened inspectors saw no console
+  // output.
+  const preload = `${testdataPath}/console_api_late_open_preload.cjs`;
+  const script = `${testdataPath}/console_api_late_open_logger.js`;
+
+  const command = new Deno.Command(Deno.execPath(), {
+    args: ["run", "-A", "--require", preload, script],
+    stdin: "piped",
+    stdout: "piped",
+    stderr: "piped",
+  });
+
+  const child = command.spawn();
+  const stderrReader = child.stderr.pipeThrough(new TextDecoderStream())
+    .getReader();
+  const stdoutReader = child.stdout.pipeThrough(new TextDecoderStream())
+    .getReader();
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    const wsUrl = await extractWsUrl(stderrReader);
+    const socket = new WebSocket(wsUrl);
+    await new Promise<void>((resolve, reject) => {
+      socket.onopen = () => resolve();
+      socket.onerror = (e) => reject(e);
+    });
+
+    const consoleApiCalled = new Promise<void>((resolve) => {
+      socket.onmessage = (e) => {
+        const message = JSON.parse(e.data);
+        if (
+          message.method === "Runtime.consoleAPICalled" &&
+          message.params.args[0]?.value === "tick"
+        ) {
+          resolve();
+        }
+      };
+    });
+
+    socket.send(JSON.stringify({ id: 1, method: "Runtime.enable" }));
+
+    // Without the console bridged, no consoleAPICalled ever arrives; bound
+    // the wait so a regression fails with a diagnostic instead of hanging
+    // (the child logs every 100ms, so 10s leaves ample slack for slow CI).
+    await Promise.race([
+      consoleApiCalled,
+      new Promise<never>((_, reject) => {
+        deadlineTimer = setTimeout(
+          () =>
+            reject(
+              new Error(
+                "timed out waiting for Runtime.consoleAPICalled for console.log",
+              ),
+            ),
+          10_000,
+        );
+      }),
+    ]);
+
+    socket.close();
+  } finally {
+    clearTimeout(deadlineTimer);
+    await child.stdin.close();
+    await stderrReader.cancel();
+    await stdoutReader.cancel();
+    child.kill();
+    await child.status;
+  }
+});
+
 Deno.test("inspector_node_runtime_api_url", async () => {
   const script = `${testdataPath}/node/url.js`;
 
