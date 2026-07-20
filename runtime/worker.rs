@@ -80,8 +80,6 @@ pub(crate) static SIGUSR2_RX: LazyLock<tokio::sync::watch::Receiver<()>> =
         sigusr2.recv().await;
 
         // SAFETY: calling into libc, nothing relevant on the Rust side.
-        // `malloc_trim` is a glibc extension; musl has no such function.
-        #[cfg(target_env = "gnu")]
         unsafe {
           libc::malloc_trim(0);
         }
