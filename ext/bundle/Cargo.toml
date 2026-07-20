@@ -15,3 +15,4 @@ deno_core.workspace = true
 deno_error.workspace = true
 regex.workspace = true
 serde.workspace = true
+tokio.workspace = true

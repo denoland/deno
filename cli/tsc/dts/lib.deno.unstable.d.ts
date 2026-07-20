@@ -45,6 +45,175 @@ declare namespace Deno {
     export type PackageHandling = "bundle" | "external";
 
     /**
+     * How to interpret the source returned by a plugin's `onLoad` callback.
+     *
+     * @category Bundler
+     * @experimental
+     */
+    export type Loader =
+      | "js"
+      | "jsx"
+      | "ts"
+      | "tsx"
+      | "json"
+      | "text"
+      | "binary";
+
+    /**
+     * Arguments passed to a plugin's `onResolve` callback.
+     * @category Bundler
+     * @experimental
+     */
+    export interface OnResolveArgs {
+      /** The specifier as written in the importing module. */
+      specifier: string;
+      /** The resolved id of the importing module, if any. */
+      importer?: string;
+      /** The kind of import that triggered the resolution. */
+      kind: string;
+    }
+
+    /**
+     * The result of a plugin's `onResolve` callback. Returning `null` or
+     * `undefined` defers to the next plugin (and ultimately Deno's own
+     * resolution).
+     * @category Bundler
+     * @experimental
+     */
+    export interface OnResolveResult {
+      /** The resolved id. Subsequent `onLoad` hooks receive this id. */
+      id?: string;
+      /** Mark the id as external and leave it in the bundle unresolved. */
+      external?: boolean;
+    }
+
+    /**
+     * Arguments passed to a plugin's `onLoad` callback.
+     * @category Bundler
+     * @experimental
+     */
+    export interface OnLoadArgs {
+      /** The id to load (as returned by a resolve hook). */
+      id: string;
+    }
+
+    /**
+     * The result of a plugin's `onLoad` callback. Returning `null` or
+     * `undefined` defers to the next plugin (and ultimately Deno's own
+     * loading).
+     * @category Bundler
+     * @experimental
+     */
+    export interface OnLoadResult {
+      /** The module source. */
+      code: string;
+      /** How to interpret `code`. Defaults to `"js"`. */
+      loader?: Loader;
+    }
+
+    /**
+     * Arguments passed to a plugin's `onTransform` callback.
+     * @category Bundler
+     * @experimental
+     */
+    export interface OnTransformArgs {
+      /** The id of the module being transformed. */
+      id: string;
+      /** The current module source. */
+      code: string;
+    }
+
+    /**
+     * The result of a plugin's `onTransform` callback. Returning `null` or
+     * `undefined` leaves the source unchanged.
+     * @category Bundler
+     * @experimental
+     */
+    export interface OnTransformResult {
+      /** The transformed source. */
+      code: string;
+    }
+
+    /**
+     * The object passed to a plugin's `setup` function, used to register
+     * `onResolve`, `onLoad`, and `onTransform` callbacks.
+     * @category Bundler
+     * @experimental
+     */
+    export interface PluginBuild {
+      /**
+       * Register a resolve callback. `filter` is a regular expression tested
+       * against the specifier; only matching specifiers invoke `callback`.
+       */
+      onResolve(
+        options: { filter: RegExp },
+        callback: (
+          args: OnResolveArgs,
+        ) =>
+          | OnResolveResult
+          | null
+          | undefined
+          | Promise<OnResolveResult | null | undefined>,
+      ): void;
+      /**
+       * Register a load callback. `filter` is a regular expression tested
+       * against the id; only matching ids invoke `callback`.
+       */
+      onLoad(
+        options: { filter: RegExp },
+        callback: (
+          args: OnLoadArgs,
+        ) =>
+          | OnLoadResult
+          | null
+          | undefined
+          | Promise<OnLoadResult | null | undefined>,
+      ): void;
+      /**
+       * Register a transform callback. `filter` is a regular expression
+       * tested against the id; only matching ids invoke `callback`.
+       */
+      onTransform(
+        options: { filter: RegExp },
+        callback: (
+          args: OnTransformArgs,
+        ) =>
+          | OnTransformResult
+          | null
+          | undefined
+          | Promise<OnTransformResult | null | undefined>,
+      ): void;
+    }
+
+    /**
+     * A bundler plugin. Plugins run before Deno's own resolution and
+     * loading, letting you resolve virtual modules, load non-JS assets, or
+     * transform source before it is bundled.
+     *
+     * ```ts
+     * const envPlugin: Deno.bundle.Plugin = {
+     *   name: "env",
+     *   setup(build) {
+     *     build.onResolve({ filter: /^env$/ }, () => ({ id: "\0env" }));
+     *     build.onLoad({ filter: /^\0env$/ }, () => ({
+     *       code: `export default ${JSON.stringify(Deno.env.toObject())}`,
+     *       loader: "js",
+     *     }));
+     *   },
+     * };
+     * ```
+     *
+     * @category Bundler
+     * @experimental
+     */
+    export interface Plugin {
+      /** A name used in diagnostics. */
+      name: string;
+      /** Called once before bundling to register hooks. */
+      setup(build: PluginBuild): void | Promise<void>;
+    }
+
+    /**
      * Options for the bundle.
      * @category Bundler
      * @experimental
@@ -105,6 +274,16 @@ declare namespace Deno {
        * @default true if outputDir or outputPath is set, false otherwise
        */
       write?: boolean;
+
+      /**
+       * Plugins that hook into resolution, loading, and transformation.
+       *
+       * Plugins run before Deno's own resolution and loading, in the order
+       * given, and are good enough to handle many common agent workflows
+       * (virtual modules, non-JS assets, source rewriting). This is not a
+       * drop-in replacement for the Vite or esbuild plugin ecosystems.
+       */
+      plugins?: Plugin[];
     }
 
     /**

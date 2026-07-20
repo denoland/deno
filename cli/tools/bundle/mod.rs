@@ -1,6 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-mod esbuild;
 mod externals;
 mod html;
 mod provider;
@@ -8,15 +7,15 @@ mod transform;
 mod wasm;
 
 use std::borrow::Cow;
-use std::cell::RefCell;
+use std::fmt::Debug;
 use std::ops::Deref;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::LazyLock;
 use std::time::Duration;
 
+use arcstr::ArcStr;
 use deno_ast::EmitOptions;
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
@@ -29,14 +28,10 @@ use deno_config::workspace::TsTypeLib;
 use deno_core::anyhow::Context as _;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt as _;
-use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
-use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_error::JsError;
 use deno_error::JsErrorClass;
 use deno_graph::GraphKind;
-use deno_graph::ModuleErrorKind;
 use deno_graph::ModuleGraph;
 use deno_graph::Position;
 use deno_path_util::resolve_url_or_path;
@@ -44,25 +39,36 @@ use deno_resolver::cache::ParsedSourceCache;
 use deno_resolver::graph::ResolveWithGraphError;
 use deno_resolver::graph::ResolveWithGraphOptions;
 use deno_resolver::loader::LoadCodeSourceError;
-use deno_resolver::loader::LoadCodeSourceErrorKind;
-use deno_resolver::loader::LoadPreparedModuleErrorKind;
-use deno_resolver::loader::LoadedModuleOrAsset;
-use deno_resolver::loader::LoadedModuleSource;
-use deno_resolver::loader::RequestedModuleType;
-use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
-use esbuild_client::EsbuildFlagsBuilder;
-use esbuild_client::EsbuildService;
-use esbuild_client::protocol;
-use esbuild_client::protocol::BuildResponse;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use node_resolver::errors::PackageNotFoundError;
-use node_resolver::errors::PackageSubpathResolveError;
 pub use provider::CliBundleProvider;
+use rolldown::BundleOutput;
+use rolldown::BundlerBuilder;
+use rolldown::BundlerOptions;
+use rolldown::InputItem;
+use rolldown::OutputFormat;
+use rolldown::Platform;
+use rolldown::plugin::__inner::SharedPluginable;
+use rolldown::plugin::HookLoadArgs;
+use rolldown::plugin::HookLoadOutput;
+use rolldown::plugin::HookResolveIdArgs;
+use rolldown::plugin::HookResolveIdOutput;
+use rolldown::plugin::HookUsage;
+use rolldown::plugin::Plugin;
+use rolldown_common::ImportKind;
+use rolldown_common::ModuleType;
+use rolldown_common::Output;
+use rolldown_common::ResolvedExternal;
+use rolldown_common::SourceMapType as RolldownSourceMapType;
+use rolldown_common::side_effects::HookSideEffects;
+use rolldown_error::BuildDiagnostic;
+use rolldown_error::EventKind;
+use rolldown_error::Severity;
 use sys_traits::PathsInErrorsExt;
 
 use crate::args::BundleFlags;
@@ -75,7 +81,6 @@ use crate::graph_container::CollectSpecifiersOptions;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
-use crate::module_loader::CliDenoResolverModuleLoader;
 use crate::module_loader::CliEmitter;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::module_loader::PrepareModuleLoadOptions;
@@ -86,9 +91,6 @@ use crate::resolver::CliResolver;
 use crate::tools::bundle::externals::ExternalsMatcher;
 use crate::util::file_watcher::WatcherRestartMode;
 use crate::util::fs::canonicalize_path;
-
-static DISABLE_HACK: LazyLock<bool> =
-  LazyLock::new(|| std::env::var("NO_DENO_BUNDLE_HACK").is_err());
 
 pub async fn prepare_inputs(
   resolver: &CliResolver,
@@ -106,7 +108,8 @@ pub async fn prepare_inputs(
   let mut script_entry_urls = Vec::new();
   for url in &resolved_entrypoints {
     if url.as_str().to_lowercase().ends_with(".html") {
-      html_paths.push(url.to_file_path().unwrap());
+      let path = deno_path_util::url_to_file_path(url)?;
+      html_paths.push(path);
     } else {
       script_entry_urls.push(url.clone());
     }
@@ -117,12 +120,9 @@ pub async fn prepare_inputs(
       .prepare_module_load(&resolved_entrypoints)
       .await?;
 
-    let roots = resolve_roots(
-      resolved_entrypoints,
-      init_cwd,
-      npm_resolver,
-      node_resolver,
-    );
+    let roots =
+      resolve_roots(script_entry_urls, init_cwd, npm_resolver, node_resolver);
+
     plugin_handler.prepare_module_load(&roots).await?;
     let graph = plugin_handler.module_graph_container.graph();
     let mut fully_resolved_roots = IndexSet::with_capacity(graph.roots.len());
@@ -131,65 +131,53 @@ pub async fn prepare_inputs(
     }
     *plugin_handler.resolved_roots.write() = Arc::new(fully_resolved_roots);
 
-    Ok(BundlerInput::Entrypoints(
-      roots.into_iter().map(|e| ("".into(), e.into())).collect(),
-    ))
-  } else {
-    // require an outdir when any HTML is present
-    if bundle_flags.output_dir.is_none() {
-      return Err(deno_core::anyhow::anyhow!(
-        "--outdir is required when bundling HTML entrypoints",
-      ));
-    }
-    if bundle_flags.output_path.is_some() {
-      return Err(deno_core::anyhow::anyhow!(
-        "--output is not supported with HTML entrypoints; use --outdir",
-      ));
-    }
+    let entries: Vec<(String, String)> = roots
+      .iter()
+      .map(|url| {
+        let path = file_path_or_url(url.clone()).unwrap();
+        let name = entry_name_for_url(url, init_cwd);
+        (name, path)
+      })
+      .collect();
 
-    // Prepare HTML pages and temp entry modules
-    let mut html_pages = Vec::new();
-    let mut to_cache_urls = Vec::new();
-    let mut entries: Vec<(String, String)> = Vec::new();
+    Ok(BundlerInput::Entrypoints(entries))
+  } else {
     let virtual_modules = Arc::new(VirtualModules::new());
+    plugin_handler.virtual_modules = Some(virtual_modules.clone());
+    let mut html_entrypoints = Vec::new();
+    let mut all_entries = Vec::new();
 
     for html_path in &html_paths {
-      let entry = html::load_html_entrypoint(init_cwd, html_path)?;
-
-      let virtual_module_path =
-        deno_path_util::url_from_file_path(&entry.virtual_module_path)?;
-      let virtual_module_path = virtual_module_path.to_string();
+      let html_entry = html::load_html_entrypoint(init_cwd, html_path)?;
+      let virtual_module_url =
+        deno_path_util::url_from_file_path(&html_entry.virtual_module_path)?
+          .to_string();
       virtual_modules.insert(
-        virtual_module_path.clone(),
+        virtual_module_url.clone(),
         VirtualModule::new(
-          entry.temp_module.as_bytes().to_vec(),
-          esbuild_client::BuiltinLoader::Js,
+          html_entry.temp_module.as_bytes().to_vec(),
+          ModuleType::Js,
         ),
       );
-
-      for script in &entry.scripts {
-        if let Some(path) = &script.resolved_path {
-          let url = deno_path_util::url_from_file_path(path)?;
-          to_cache_urls.push(url);
-        }
-      }
-
-      entries.push(("".into(), virtual_module_path));
-      html_pages.push(entry);
+      // Name the entry after the (subdirectory-preserving) entry name so the
+      // chunk lands in the matching subfolder of the output directory.
+      all_entries.push((
+        format!("{}{}", html_entry.entry_name, html::VIRTUAL_ENTRY_SUFFIX),
+        virtual_module_url,
+      ));
+      html_entrypoints.push(html_entry);
     }
 
-    plugin_handler.virtual_modules = Some(virtual_modules);
-
-    // Prepare non-HTML entries too
     let _ = plugin_handler.prepare_module_load(&script_entry_urls).await;
+
     let roots =
       resolve_roots(script_entry_urls, init_cwd, npm_resolver, node_resolver);
     let _ = plugin_handler.prepare_module_load(&roots).await;
-    for url in roots {
-      entries.push(("".into(), url.into()));
-    }
 
-    // Pre-cache modules referenced by HTML pages
+    let to_cache_urls: Vec<Url> = all_entries
+      .iter()
+      .filter_map(|(_, url)| Url::parse(url).ok())
+      .collect();
     let _ = plugin_handler.prepare_module_load(&to_cache_urls).await;
 
     let graph = plugin_handler.module_graph_container.graph();
@@ -200,8 +188,8 @@ pub async fn prepare_inputs(
     *plugin_handler.resolved_roots.write() = Arc::new(fully_resolved_roots);
 
     Ok(BundlerInput::EntrypointsWithHtml {
-      entries,
-      html_pages,
+      entries: all_entries,
+      html_pages: html_entrypoints,
     })
   }
 }
@@ -209,14 +197,13 @@ pub async fn prepare_inputs(
 pub async fn bundle_init(
   mut flags: Arc<Flags>,
   bundle_flags: &BundleFlags,
-) -> Result<EsbuildBundler, AnyError> {
+  js_plugins: Option<deno_bundle_runtime::PluginHookTx>,
+) -> Result<RolldownBundler, AnyError> {
   {
     let flags_mut = Arc::make_mut(&mut flags);
     flags_mut.unstable_config.sloppy_imports = true;
   }
   let factory = CliFactory::from_flags(flags.clone());
-
-  let esbuild_path = ensure_esbuild_downloaded(&factory).await?;
 
   let resolver = factory.resolver().await?.clone();
   let module_load_preparer = factory.module_load_preparer().await?.clone();
@@ -224,40 +211,49 @@ pub async fn bundle_init(
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
   let cli_options = factory.cli_options()?;
-  let module_loader = factory.resolver_factory()?.module_loader()?;
   let init_cwd = cli_options.initial_cwd().to_path_buf();
   let module_graph_container =
     factory.main_module_graph_container().await?.clone();
 
-  let (on_end_tx, on_end_rx) = tokio::sync::mpsc::channel(10);
-  #[allow(
-    clippy::arc_with_non_send_sync,
-    reason = "fine because only used in output positions"
-  )]
-  let mut plugin_handler = Arc::new(DenoPluginHandler {
+  let mut plugin_handler = DenoPluginHandler {
     file_fetcher: factory.file_fetcher()?.clone(),
     resolver: resolver.clone(),
     module_load_preparer,
     resolved_roots: Arc::new(RwLock::new(Arc::new(IndexSet::new()))),
     module_graph_container,
     permissions: root_permissions.clone(),
-    module_loader: module_loader.clone(),
     externals_matcher: if bundle_flags.external.is_empty() {
       None
     } else {
-      Some(ExternalsMatcher::new(&bundle_flags.external, &init_cwd))
+      Some(Arc::new(ExternalsMatcher::new(
+        &bundle_flags.external,
+        &init_cwd,
+      )))
     },
-    on_end_tx,
     parsed_source_cache: factory.parsed_source_cache()?.clone(),
     cjs_tracker: factory.cjs_tracker()?.clone(),
     emitter: factory.emitter()?.clone(),
     pkg_json_resolver: factory.pkg_json_resolver()?.clone(),
-    deferred_resolve_errors: Default::default(),
     virtual_modules: None,
     initial_cwd: deno_path_util::url_from_directory_path(
       cli_options.initial_cwd(),
     )?,
-  });
+    synthetic_esm_pkg_json: match SyntheticEsmPackageJson::new() {
+      Ok(pkg_json) => Some(Arc::new(pkg_json)),
+      Err(err) => {
+        log::debug!(
+          "failed to create synthetic package.json for module format inference: {err}"
+        );
+        None
+      }
+    },
+    deferred_errors: Default::default(),
+    has_output: bundle_flags.output_dir.is_some()
+      || bundle_flags.output_path.is_some(),
+    collected_css: Default::default(),
+    css_module_count: Default::default(),
+    js_plugins,
+  };
 
   let input = prepare_inputs(
     &resolver,
@@ -265,40 +261,27 @@ pub async fn bundle_init(
     node_resolver,
     &init_cwd,
     bundle_flags,
-    Arc::get_mut(&mut plugin_handler).unwrap(),
+    &mut plugin_handler,
   )
   .await?;
 
-  let esbuild = EsbuildService::new(
-    esbuild_path,
-    esbuild::ESBUILD_VERSION,
-    plugin_handler.clone(),
-    Default::default(),
-  )
-  .await
-  .context("failed to start esbuild")?;
-  let client = esbuild.client().clone();
+  let entries = match &input {
+    BundlerInput::Entrypoints(entries) => entries.clone(),
+    BundlerInput::EntrypointsWithHtml { entries, .. } => entries.clone(),
+  };
 
-  tokio::spawn(async move {
-    let res = esbuild.wait_for_exit().await;
-    log::warn!("esbuild exited: {:?}", res);
-  });
-  let esbuild_flags = configure_esbuild_flags(
-    bundle_flags,
-    matches!(input, BundlerInput::EntrypointsWithHtml { .. }),
-  );
-  let bundler = EsbuildBundler::new(
-    client,
-    plugin_handler.clone(),
-    match bundle_flags.watch {
-      true => BundlingMode::Watch,
-      false => BundlingMode::OneShot,
-    },
-    on_end_rx,
-    init_cwd.clone(),
-    esbuild_flags,
-    input.clone(),
-  );
+  let is_html = matches!(input, BundlerInput::EntrypointsWithHtml { .. });
+  let rolldown_options =
+    build_rolldown_options(bundle_flags, &init_cwd, is_html, &entries);
+
+  let bundler = RolldownBundler {
+    options: rolldown_options,
+    plugin: Arc::new(plugin_handler),
+    cwd: init_cwd,
+    input,
+    minified: bundle_flags.minify,
+    platform: bundle_flags.platform,
+  };
 
   Ok(bundler)
 }
@@ -310,6 +293,16 @@ pub async fn bundle(
   {
     let flags_mut = Arc::make_mut(&mut flags);
     flags_mut.unstable_config.sloppy_imports = true;
+  }
+  // Rolldown removed CSS bundling (rolldown/rolldown#4271), so pure-CSS
+  // entrypoints go through a small dedicated pipeline instead.
+  if !bundle_flags.entrypoints.is_empty()
+    && bundle_flags
+      .entrypoints
+      .iter()
+      .all(|e| e.to_lowercase().ends_with(".css"))
+  {
+    return bundle_css_entrypoints(&bundle_flags);
   }
   // `--check[=all]` is documented in `bundle --help`; honour it before we
   // hand the graph to esbuild so type errors surface alongside (and not
@@ -334,49 +327,39 @@ pub async fn bundle(
       )
       .await?;
   }
-  let bundler = bundle_init(flags.clone(), &bundle_flags).await?;
+  let bundler = bundle_init(flags.clone(), &bundle_flags, None).await?;
   let init_cwd = bundler.cwd.clone();
   let start = std::time::Instant::now();
-  let response = bundler.build().await?;
+  let output = print_build_errors_and_bail(bundler.build().await)?;
   let end = std::time::Instant::now();
   let duration = end.duration_since(start);
 
   if bundle_flags.watch {
-    if !response.errors.is_empty() || !response.warnings.is_empty() {
-      handle_esbuild_errors_and_warnings(
-        &response,
-        &init_cwd,
-        &bundler.plugin_handler.take_deferred_resolve_errors(),
-      );
-      if !response.errors.is_empty() {
-        deno_core::anyhow::bail!("bundling failed");
-      }
+    let deferred = bundler.take_deferred_errors();
+    if handle_diagnostics(&output, &deferred, &init_cwd) {
+      deno_core::anyhow::bail!("bundling failed");
     }
     return bundle_watch(
       flags,
       bundler,
-      bundle_flags.minify,
-      bundle_flags.platform,
       bundle_flags.output_dir.as_ref().map(Path::new),
+      bundle_flags.output_path.as_ref().map(Path::new),
     )
     .await;
   }
 
-  handle_esbuild_errors_and_warnings(
-    &response,
-    &init_cwd,
-    &bundler.plugin_handler.take_deferred_resolve_errors(),
-  );
+  let deferred = bundler.take_deferred_errors();
+  let failed = handle_diagnostics(&output, &deferred, &init_cwd);
 
-  if response.errors.is_empty() {
-    let metafile = metafile_from_response(&response)?;
+  if !failed {
     let output_infos = process_result(
-      &response,
+      &output,
       &init_cwd,
+      bundle_flags.output_dir.as_ref().map(Path::new),
+      bundle_flags.output_path.as_ref().map(Path::new),
       should_replace_require_shim(bundle_flags.platform),
       bundle_flags.minify,
-      bundler.input.clone(),
-      bundle_flags.output_dir.as_ref().map(Path::new),
+      Some(&bundler.input),
     )?;
 
     if bundle_flags.declaration {
@@ -384,14 +367,76 @@ pub async fn bundle(
     }
 
     if bundle_flags.output_dir.is_some() || bundle_flags.output_path.is_some() {
-      print_finished_message(&metafile, &output_infos, duration)?;
+      print_finished_message(
+        &output,
+        &output_infos,
+        duration,
+        bundler
+          .plugin
+          .css_module_count
+          .load(std::sync::atomic::Ordering::Relaxed),
+      )?;
     }
   }
 
-  if !response.errors.is_empty() {
+  if failed {
     deno_core::anyhow::bail!("bundling failed");
   }
 
+  Ok(())
+}
+
+/// Bundles CSS-only entrypoints without rolldown (which removed CSS
+/// support, see rolldown/rolldown#4271): each file is emitted with a
+/// `/* path */` provenance header, concatenated in entry order.
+fn bundle_css_entrypoints(bundle_flags: &BundleFlags) -> Result<(), AnyError> {
+  let cwd = crate::util::env::resolve_cwd(None)?.into_owned();
+  let mut css = String::new();
+  for entry in &bundle_flags.entrypoints {
+    let path = cwd.join(entry);
+    let content = std::fs::read_to_string(&path).map_err(|e| {
+      deno_core::anyhow::anyhow!("Failed to read {}: {}", path.display(), e)
+    })?;
+    let rel = pathdiff::diff_paths(&path, &cwd)
+      .unwrap_or_else(|| path.clone())
+      .to_string_lossy()
+      .replace('\\', "/");
+    css.push_str(&format!("/* {} */\n{}", rel, content));
+    if !css.ends_with('\n') {
+      css.push('\n');
+    }
+  }
+
+  if let Some(output_path) = &bundle_flags.output_path {
+    let path = cwd.join(output_path);
+    if let Some(parent) = path.parent() {
+      std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&path, css.as_bytes())?;
+  } else if let Some(output_dir) = &bundle_flags.output_dir {
+    // With --outdir each entrypoint keeps its own file name.
+    let dir = cwd.join(output_dir);
+    std::fs::create_dir_all(&dir)?;
+    for entry in &bundle_flags.entrypoints {
+      let path = cwd.join(entry);
+      let content = std::fs::read_to_string(&path)?;
+      let rel = pathdiff::diff_paths(&path, &cwd)
+        .unwrap_or_else(|| path.clone())
+        .to_string_lossy()
+        .replace('\\', "/");
+      let mut chunk = format!("/* {} */\n{}", rel, content);
+      if !chunk.ends_with('\n') {
+        chunk.push('\n');
+      }
+      let file_name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "bundle.css".to_string());
+      std::fs::write(dir.join(file_name), chunk.as_bytes())?;
+    }
+  } else {
+    deno_print::drop_write_stdout(css.as_bytes());
+  }
   Ok(())
 }
 
@@ -877,60 +922,39 @@ pub async fn bundle_for_compile(
     flags_mut.internal.force_bundle_mode = true;
   }
 
-  let bundler = bundle_init(flags, &bundle_flags).await?;
-  let response = bundler.build().await?;
+  let bundler = bundle_init(flags, &bundle_flags, None).await?;
+  let output = print_build_errors_and_bail(bundler.build().await)?;
 
-  handle_esbuild_errors_and_warnings(
-    &response,
-    &bundler.cwd,
-    &bundler.plugin_handler.take_deferred_resolve_errors(),
-  );
-  if !response.errors.is_empty() {
+  let deferred = bundler.take_deferred_errors();
+  if handle_diagnostics(&output, &deferred, &bundler.cwd) {
     deno_core::anyhow::bail!("bundling failed");
   }
 
-  let output_files = collect_output_files(
-    response.output_files.as_deref(),
-    &bundler.cwd,
-    bundler.input.clone(),
-    None,
-  )?;
-
-  for file in &output_files {
-    let processed = maybe_process_contents(
-      file,
-      should_replace_require_shim(bundle_flags.platform),
-      bundle_flags.minify,
-    )?;
-    if !processed.is_js {
+  // Return the first JS chunk, post-processed the same way `deno bundle`
+  // output is.
+  for asset in &output.assets {
+    let path = Path::new(asset.filename());
+    if !is_js(path) {
       continue;
     }
-    return Ok(
-      processed
-        .into_contents()
-        .unwrap_or_else(|| file.contents.to_vec()),
-    );
+    let contents = asset.content_as_bytes();
+    let s = std::str::from_utf8(contents)?;
+    let s = if should_replace_require_shim(bundle_flags.platform) {
+      replace_require_shim(s, bundle_flags.minify)
+    } else {
+      s.to_string()
+    };
+    return Ok(s.into_bytes());
   }
 
-  deno_core::anyhow::bail!("esbuild produced no JavaScript output")
-}
-
-fn metafile_from_response(
-  response: &BuildResponse,
-) -> Result<esbuild_client::Metafile, AnyError> {
-  Ok(serde_json::from_str::<esbuild_client::Metafile>(
-    response.metafile.as_deref().ok_or_else(|| {
-      deno_core::anyhow::anyhow!("expected a metafile to be present")
-    })?,
-  )?)
+  deno_core::anyhow::bail!("bundler produced no JavaScript output")
 }
 
 async fn bundle_watch(
   flags: Arc<Flags>,
-  bundler: EsbuildBundler,
-  minified: bool,
-  platform: BundlePlatform,
+  bundler: RolldownBundler,
   output_dir: Option<&Path>,
+  output_path: Option<&Path>,
 ) -> Result<(), AnyError> {
   let (initial_roots, always_watch) = match &bundler.input {
     BundlerInput::Entrypoints(entries) => (
@@ -963,7 +987,7 @@ async fn bundle_watch(
     }
   };
   let always_watch = Rc::new(always_watch);
-  let current_roots = Rc::new(RefCell::new(initial_roots.clone()));
+  let current_roots = Rc::new(std::cell::RefCell::new(initial_roots.clone()));
   let bundler = Rc::new(tokio::sync::Mutex::new(bundler));
   let mut print_config =
     crate::util::file_watcher::PrintConfig::new_with_banner(
@@ -985,26 +1009,46 @@ async fn bundle_watch(
         if let Some(changed_paths) = changed_paths {
           bundler.reload_specifiers(&changed_paths).await?;
         }
-        let input = bundler.input.clone();
-        let response = bundler.rebuild().await?;
-        handle_esbuild_errors_and_warnings(
-          &response,
-          &bundler.cwd,
-          &bundler.plugin_handler.take_deferred_resolve_errors(),
-        );
-        if response.errors.is_empty() {
-          let metafile = metafile_from_response(&response)?;
+        // In watch mode a hard build error is printed but doesn't kill the
+        // watcher — the next file change triggers a rebuild.
+        let output = match bundler.build().await {
+          Ok(output) => output,
+          Err(err) => match err.downcast::<BundleBuildFailure>() {
+            Ok(failure) => {
+              for message in &failure.messages {
+                log::error!(
+                  "{}: {}",
+                  deno_terminal::colors::red_bold("error"),
+                  message.render()
+                );
+              }
+              return Ok(0);
+            }
+            Err(err) => return Err(err),
+          },
+        };
+        let deferred = bundler.take_deferred_errors();
+        if !handle_diagnostics(&output, &deferred, &bundler.cwd) {
           let output_infos = process_result(
-            &response,
+            &output,
             &bundler.cwd,
-            should_replace_require_shim(platform),
-            minified,
-            input,
             output_dir,
+            output_path,
+            should_replace_require_shim(bundler.platform),
+            bundler.minified,
+            Some(&bundler.input),
           )?;
-          print_finished_message(&metafile, &output_infos, start.elapsed())?;
+          print_finished_message(
+            &output,
+            &output_infos,
+            start.elapsed(),
+            bundler
+              .plugin
+              .css_module_count
+              .load(std::sync::atomic::Ordering::Relaxed),
+          )?;
 
-          let mut new_watched = get_input_paths_for_watch(&response);
+          let mut new_watched = get_input_paths_from_output(&output);
           new_watched.extend(always_watch.iter().cloned());
           *current_roots.borrow_mut() = new_watched.clone();
           let _ = watcher_communicator.watch_paths(new_watched);
@@ -1025,32 +1069,26 @@ async fn bundle_watch(
   Ok(())
 }
 
-pub fn should_replace_require_shim(platform: BundlePlatform) -> bool {
-  *DISABLE_HACK && matches!(platform, BundlePlatform::Deno)
+fn get_input_paths_from_output(output: &BundleOutput) -> Vec<PathBuf> {
+  let mut paths = IndexSet::new();
+  for asset in &output.assets {
+    if let Output::Chunk(chunk) = asset {
+      for module_id in &chunk.module_ids {
+        let module_str = strip_internal_id_suffix(module_id.as_str());
+        if let Ok(url) = Url::parse(module_str) {
+          if let Ok(path) = deno_path_util::url_to_file_path(&url) {
+            paths.insert(path);
+          }
+        } else if let Ok(path) = canonicalize_path(Path::new(module_str)) {
+          paths.insert(path);
+        }
+      }
+    }
+  }
+  paths.into_iter().collect()
 }
 
-fn get_input_paths_for_watch(response: &BuildResponse) -> Vec<PathBuf> {
-  let metafile = serde_json::from_str::<esbuild_client::Metafile>(
-    response
-      .metafile
-      .as_deref()
-      .expect("metafile is required for watch mode"),
-  )
-  .unwrap();
-
-  metafile
-    .inputs
-    .keys()
-    .cloned()
-    .map(PathBuf::from)
-    .collect::<Vec<_>>()
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum BundlingMode {
-  OneShot,
-  Watch,
-}
+// --- Bundler ---
 
 #[derive(Debug, Clone)]
 pub enum BundlerInput {
@@ -1061,110 +1099,114 @@ pub enum BundlerInput {
   },
 }
 
-pub type EsbuildFlags = Vec<String>;
-
-pub struct EsbuildBundler {
-  client: esbuild_client::ProtocolClient,
-  plugin_handler: Arc<DenoPluginHandler>,
-  on_end_rx: tokio::sync::mpsc::Receiver<esbuild_client::OnEndArgs>,
-  mode: BundlingMode,
-  cwd: PathBuf,
-  flags: EsbuildFlags,
-  input: BundlerInput,
+pub struct RolldownBundler {
+  options: BundlerOptions,
+  plugin: Arc<DenoPluginHandler>,
+  pub cwd: PathBuf,
+  pub input: BundlerInput,
+  pub minified: bool,
+  pub platform: BundlePlatform,
 }
 
-impl EsbuildBundler {
-  pub fn new(
-    client: esbuild_client::ProtocolClient,
-    plugin_handler: Arc<DenoPluginHandler>,
-    mode: BundlingMode,
-    on_end_rx: tokio::sync::mpsc::Receiver<esbuild_client::OnEndArgs>,
-    cwd: PathBuf,
-    flags: EsbuildFlags,
-    input: BundlerInput,
-  ) -> EsbuildBundler {
-    EsbuildBundler {
-      client,
-      plugin_handler,
-      on_end_rx,
-      mode,
-      cwd,
-      flags,
-      input,
-    }
+impl RolldownBundler {
+  pub fn take_deferred_errors(&self) -> Vec<DeferredBundleError> {
+    self.plugin.take_deferred_errors()
   }
 
-  // When doing a watch build, we're actually enabling the
-  // "context" mode of esbuild. That leaves esbuild running and
-  // waits for a rebuild to be triggered. The initial build request
-  // doesn't actually do anything, it's just registering the args/flags
-  // we're going to use for all of the rebuilds.
-  fn make_build_request(&self) -> protocol::BuildRequest {
-    let entries = match &self.input {
-      BundlerInput::Entrypoints(entries) => entries.clone(),
-      BundlerInput::EntrypointsWithHtml { entries, .. } => entries.clone(),
+  pub async fn build(&self) -> Result<BundleOutput, AnyError> {
+    let plugin: SharedPluginable = self.plugin.clone();
+    let mut bundler = BundlerBuilder::default()
+      .with_options(self.options.clone())
+      .with_plugins(vec![plugin])
+      .build()
+      .map_err(|errs| {
+        let msg = errs
+          .iter()
+          .map(|e| e.to_string())
+          .collect::<Vec<_>>()
+          .join("\n");
+        deno_core::anyhow::anyhow!("Failed to initialize bundler: {}", msg)
+      })?;
+
+    let mut output = match bundler.generate().await {
+      Ok(output) => output,
+      Err(errs) => {
+        // Return the hard errors as structured data. Callers decide whether
+        // to print them (the `deno bundle` CLI) or surface them in a
+        // `Deno.bundle()` result.
+        let deferred = self.take_deferred_errors();
+        let messages = errs
+          .into_vec()
+          .iter()
+          .map(|diag| diagnostic_to_message(diag, &deferred, &self.cwd))
+          .collect();
+        return Err(BundleBuildFailure { messages }.into());
+      }
     };
-    protocol::BuildRequest {
-      entries,
-      key: 0,
-      flags: self.flags.clone(),
-      write: false,
-      stdin_contents: None.into(),
-      stdin_resolve_dir: None.into(),
-      abs_working_dir: self.cwd.to_string_lossy().into_owned(),
-      context: matches!(self.mode, BundlingMode::Watch),
-      mangle_cache: None,
-      node_paths: vec![],
-      plugins: Some(vec![protocol::BuildPlugin {
-        name: "deno".into(),
-        on_start: false,
-        on_end: matches!(self.mode, BundlingMode::Watch),
-        on_resolve: (vec![protocol::OnResolveSetupOptions {
-          id: 0,
-          filter: ".*".into(),
-          namespace: "".into(),
-        }]),
-        on_load: vec![protocol::OnLoadSetupOptions {
-          id: 0,
-          filter: ".*".into(),
-          namespace: "".into(),
-        }],
-      }]),
-    }
+
+    self.append_collected_css_asset(&mut output);
+
+    Ok(output)
   }
 
-  async fn build(&self) -> Result<BuildResponse, AnyError> {
-    let response: BuildResponse = self
-      .client
-      .send_build_request(self.make_build_request())
-      .await
-      .context("failed to send build request to esbuild")?
-      .map_err(|e| message_to_error(&e, &self.cwd))?;
-
-    Ok(response)
-  }
-
-  async fn rebuild(&mut self) -> Result<BuildResponse, AnyError> {
-    match self.mode {
-      BundlingMode::OneShot => {
-        panic!("rebuild not supported for one-shot mode")
-      }
-      BundlingMode::Watch => {
-        log::trace!("sending rebuild request");
-        let _response = self
-          .client
-          .send_rebuild_request(0)
-          .await
-          .context("failed to send rebuild request to esbuild")?
-          .map_err(|e| message_to_error(&e, &self.cwd))?;
-        let response = self.on_end_rx.recv().await.ok_or_else(|| {
-          deno_core::anyhow::anyhow!(
-            "esbuild exited before the rebuild completed"
-          )
-        })?;
-        Ok(response.into())
+  /// Emits the CSS collected from `import "./style.css"` statements as a
+  /// single `.css` asset (rolldown itself no longer bundles CSS).
+  fn append_collected_css_asset(&self, output: &mut BundleOutput) {
+    let collected = std::mem::take(&mut *self.plugin.collected_css.lock());
+    self
+      .plugin
+      .css_module_count
+      .store(collected.len(), std::sync::atomic::Ordering::Relaxed);
+    if collected.is_empty() {
+      return;
+    }
+    let mut css = String::new();
+    for (id, content) in &collected {
+      let rel = pathdiff::diff_paths(Path::new(id), &self.cwd)
+        .unwrap_or_else(|| PathBuf::from(id))
+        .to_string_lossy()
+        .replace('\\', "/");
+      css.push_str(&format!("/* {} */\n{}", rel, content));
+      if !css.ends_with('\n') {
+        css.push('\n');
       }
     }
+
+    let hash = {
+      use std::hash::Hash;
+      use std::hash::Hasher;
+      let mut hasher = std::collections::hash_map::DefaultHasher::new();
+      css.hash(&mut hasher);
+      format!("{:08x}", hasher.finish() as u32)
+    };
+    let filename = match &self.input {
+      BundlerInput::EntrypointsWithHtml { entries, .. } => entries
+        .first()
+        .map(|(name, _)| format!("{name}-{hash}.css"))
+        .unwrap_or_else(|| format!("styles-{hash}.css")),
+      BundlerInput::Entrypoints(_) => {
+        // Name after the requested output file (`-o out.js` -> `out.css`)
+        // when there is one.
+        match self
+          .options
+          .file
+          .as_ref()
+          .and_then(|f| Path::new(f).file_name())
+          .map(|f| Path::new(f).with_extension("css"))
+        {
+          Some(name) => name.to_string_lossy().into_owned(),
+          None => format!("styles-{hash}.css"),
+        }
+      }
+    };
+    output
+      .assets
+      .push(Output::Asset(Arc::new(rolldown_common::OutputAsset {
+        names: Vec::new(),
+        original_file_names: Vec::new(),
+        filename: ArcStr::from(filename),
+        source: rolldown_common::StrOrBytes::Str(css),
+      })));
   }
 
   async fn reload_specifiers(
@@ -1172,7 +1214,7 @@ impl EsbuildBundler {
     changed_paths: &[PathBuf],
   ) -> Result<(), AnyError> {
     self.reload_html_entrypoints(changed_paths)?;
-    self.plugin_handler.reload_specifiers(changed_paths).await?;
+    self.plugin.reload_specifiers(changed_paths).await?;
     Ok(())
   }
 
@@ -1201,13 +1243,15 @@ impl EsbuildBundler {
       let virtual_module_url =
         deno_path_util::url_from_file_path(&updated.virtual_module_path)?
           .to_string();
-      self.plugin_handler.update_virtual_module(
-        &virtual_module_url,
-        VirtualModule::new(
-          updated.temp_module.as_bytes().to_vec(),
-          esbuild_client::BuiltinLoader::Js,
-        ),
-      );
+      if let Some(virtual_modules) = &self.plugin.virtual_modules {
+        virtual_modules.insert(
+          virtual_module_url,
+          VirtualModule::new(
+            updated.temp_module.as_bytes().to_vec(),
+            ModuleType::Js,
+          ),
+        );
+      }
       *page = updated;
     }
 
@@ -1215,200 +1259,98 @@ impl EsbuildBundler {
   }
 }
 
-fn message_to_error(
-  message: &esbuild_client::protocol::Message,
-  current_dir: &Path,
-) -> AnyError {
-  deno_core::anyhow::anyhow!("{}", format_message(message, current_dir))
-}
+// --- Configuration ---
 
-// TODO(nathanwhit): MASSIVE HACK
-// See tests::specs::bundle::requires_node_builtin for why this is needed.
-// Without this hack, that test would fail with "Dynamic require of "util" is not supported"
-fn replace_require_shim(contents: &str, minified: bool) -> String {
-  if minified {
-    let re = lazy_regex::regex!(
-      r#"var (\w+)\s*=\((\w+)\s*=>typeof require<"u"\?require:typeof Proxy<"u"\?new Proxy\((\w+)\,\{get:\(\w+,\w+\)=>\(typeof require<"u"\?require:\w+\)\[\w+\]\}\):(\w+)\)\(function\(\w+\)\{if\(typeof require<"u"\)return require\.apply\(this\,arguments\);throw Error\('Dynamic require of "'\+\w+\+'" is not supported'\)\}\);"#
-    );
-    re.replace(contents, |c: &regex::Captures<'_>| {
-      let var_name = c.get(1).unwrap().as_str();
-      format!("import{{createRequire as __deno_internal_createRequire}} from \"node:module\";var {var_name}=__deno_internal_createRequire(import.meta.url);")
-    }).into_owned()
-  } else {
-    let re = lazy_regex::regex!(
-      r#"var __require = (/\* @__PURE__ \*/)?\s*\(\(\w+\) => typeof require !== "undefined" \? require : typeof Proxy !== "undefined" \? new Proxy\(\w+, \{\s*  get: \(\w+, \w+\) => \(typeof require !== "undefined" \? require : \w+\)\[\w+\]\s*\}\) : \w+\)\(function\(\w+\) \{\s*  if \(typeof require !== "undefined"\) return require\.apply\(this, arguments\);\s*  throw Error\('Dynamic require of "' \+ \w+ \+ '" is not supported'\);\s*\}\);"#
-    );
-    re.replace_all(
-      contents,
-      r#"import { createRequire as __deno_internal_createRequire } from "node:module";
-var __require = __deno_internal_createRequire(import.meta.url);
-"#,
-    )
-    .into_owned()
-  }
-}
-
-// Force esbuild's CommonJS-to-ESM interop helper (`__toESM`) into "node mode"
-// for every platform.
-//
-// esbuild emits a node-mode interop call (`__toESM(require_x(), 1)`) only when
-// it can tell the importing module is *explicitly* ESM (a `.mjs`/`.mts` file or
-// a file under a `"type": "module"` package.json). It learns this while walking
-// package.json during its own resolve step. In `deno bundle` resolution and
-// loading are handled by our plugin, and esbuild's plugin protocol has no way
-// to communicate a module's type, so esbuild falls back to browser-mode interop
-// which respects the `__esModule` marker and does not synthesize `.default`.
-//
-// For packages whose ESM wrapper default-imports a CJS entry that sets
-// `module.exports.__esModule = true` (e.g. tslib's `modules/index.js`), that
-// means `import_x.default` ends up undefined and module init throws. This is a
-// property of how the source module resolves its default import (Node interop
-// semantics, which is what such packages are authored against), not of the
-// runtime target, so it applies regardless of `--platform`. We rewrite the
-// helper's `<isNodeMode> || !mod || !mod.__esModule` condition to always pick
-// the node-mode branch. See denoland/deno#34524 and denoland/deno#34837.
-//
-// The variable names differ between minified and non-minified output, but the
-// `.__esModule` access and surrounding shape are stable, so a single regex
-// covers both.
-fn force_node_cjs_interop(contents: &str) -> String {
-  let re =
-    lazy_regex::regex!(r#"\w+\s*\|\|\s*!\w+\s*\|\|\s*!\w+\.__esModule\s*\?"#);
-  re.replace(contents, "1 ?").into_owned()
-}
-
-fn format_location(
-  location: &esbuild_client::protocol::Location,
-  current_dir: &Path,
-) -> String {
-  let url =
-    deno_path_util::resolve_url_or_path(location.file.as_str(), current_dir)
-      .map(|url| deno_terminal::colors::cyan(url.into()))
-      .unwrap_or(deno_terminal::colors::cyan(location.file.clone()));
-
-  format!(
-    "{}:{}:{}",
-    url,
-    deno_terminal::colors::yellow(location.line),
-    deno_terminal::colors::yellow(location.column)
-  )
-}
-
-fn format_note(
-  note: &esbuild_client::protocol::Note,
-  current_dir: &Path,
-) -> String {
-  format!(
-    "{}: {}{}",
-    deno_terminal::colors::magenta("note"),
-    note.text,
-    if let Some(location) = &note.location {
-      format!("\n    {}", format_location(location, current_dir))
-    } else {
-      String::new()
-    }
-  )
-}
-
-// not very efficient, but it's only for error messages
-fn add_indent(s: &str, indent: &str) -> String {
-  let lines = s
-    .lines()
-    .map(|line| format!("{}{}", indent, line))
-    .collect::<Vec<_>>();
-  lines.join("\n")
-}
-
-fn format_message(
-  message: &esbuild_client::protocol::Message,
-  current_dir: &Path,
-) -> String {
-  format!(
-    "{}{}{}{}",
-    message.text,
-    if message.id.is_empty() {
-      String::new()
-    } else {
-      format!("[{}] ", message.id)
-    },
-    if let Some(location) = &message.location {
-      if !message.text.contains(" at ") {
-        format!("\n    at {}", format_location(location, current_dir))
+fn build_rolldown_options(
+  bundle_flags: &BundleFlags,
+  cwd: &Path,
+  is_html: bool,
+  entries: &[(String, String)],
+) -> BundlerOptions {
+  let input: Vec<InputItem> = entries
+    .iter()
+    .map(|(name, import)| InputItem {
+      name: if name.is_empty() {
+        None
       } else {
-        String::new()
-      }
-    } else {
-      String::new()
-    },
-    if !message.notes.is_empty() {
-      let mut s = String::new();
-      for note in &message.notes {
-        s.push('\n');
-        s.push_str(&add_indent(&format_note(note, current_dir), "    "));
-      }
-      s
-    } else {
-      String::new()
-    }
-  )
-}
-#[derive(Debug, boxed_error::Boxed, JsError)]
-struct BundleError(Box<BundleErrorKind>);
+        Some(name.clone())
+      },
+      import: import.clone(),
+    })
+    .collect();
 
-#[derive(Debug, thiserror::Error, JsError)]
-#[class(generic)]
-enum BundleErrorKind {
-  #[error(transparent)]
-  Resolver(#[from] deno_resolver::graph::ResolveWithGraphError),
-  #[error(transparent)]
-  Url(#[from] deno_core::url::ParseError),
-  #[error(transparent)]
-  ResolveNpmPkg(#[from] ResolvePkgFolderFromDenoModuleError),
-  #[error(transparent)]
-  SubpathResolve(#[from] PackageSubpathResolveError),
-  #[error(transparent)]
-  PathToUrlError(#[from] deno_path_util::PathToUrlError),
-  #[error(transparent)]
-  UrlToPathError(#[from] deno_path_util::UrlToFilePathError),
-  #[error(transparent)]
-  Io(#[from] std::io::Error),
-  #[error(transparent)]
-  ResolveUrlOrPathError(#[from] deno_path_util::ResolveUrlOrPathError),
-  #[error(transparent)]
-  PrepareModuleLoad(#[from] crate::module_loader::PrepareModuleLoadError),
-  #[error(transparent)]
-  ResolveReqWithSubPath(#[from] deno_resolver::npm::ResolveReqWithSubPathError),
-  #[error(transparent)]
-  PackageReqReferenceParse(
-    #[from] deno_semver::package::PackageReqReferenceParseError,
-  ),
-  #[allow(dead_code, reason = "not used yet")]
-  #[error("Http cache error")]
-  HttpCache,
-}
+  let format = Some(match bundle_flags.format {
+    BundleFormat::Esm => OutputFormat::Esm,
+    BundleFormat::Cjs => OutputFormat::Cjs,
+    BundleFormat::Iife => OutputFormat::Iife,
+  });
 
-fn requested_type_from_map(
-  map: &IndexMap<String, String>,
-) -> RequestedModuleType<'_> {
-  let type_ = map.get("type").map(|s| s.as_str());
-  match type_ {
-    Some("json") => RequestedModuleType::Json,
-    Some("bytes") => RequestedModuleType::Bytes,
-    Some("text") => RequestedModuleType::Text,
-    Some(other) => RequestedModuleType::Other(other),
-    None => RequestedModuleType::None,
+  let sourcemap = bundle_flags.sourcemap.map(|sm| match sm {
+    SourceMapType::Linked => RolldownSourceMapType::File,
+    SourceMapType::Inline => RolldownSourceMapType::Inline,
+    SourceMapType::External => RolldownSourceMapType::Hidden,
+  });
+
+  let platform = match bundle_flags.platform {
+    BundlePlatform::Browser => Some(Platform::Browser),
+    BundlePlatform::Deno => Some(Platform::Neutral),
+  };
+
+  let mut options = BundlerOptions {
+    input: Some(input),
+    cwd: Some(cwd.to_path_buf()),
+    format,
+    sourcemap,
+    platform,
+    experimental: Some(rolldown_common::ExperimentalOptions {
+      // Suppress the `//#region <path>` / `//#endregion` banner comments
+      // (rolldown's default "attach debug info"); they leak internal ids
+      // like `\0rolldown/runtime.js` into user-facing output.
+      attach_debug_info: Some(rolldown_common::AttachDebugInfo::None),
+      ..Default::default()
+    }),
+    ..Default::default()
+  };
+
+  if bundle_flags.minify {
+    // Enable minification — Rolldown uses Oxc minifier
+    options.minify = Some(true.into());
   }
+
+  if bundle_flags.keep_names {
+    options.keep_names = Some(true);
+  }
+
+  if let Some(outdir) = &bundle_flags.output_dir {
+    options.dir = Some(outdir.clone());
+  } else if let Some(output_path) = &bundle_flags.output_path {
+    options.file = Some(output_path.clone());
+  }
+
+  if is_html {
+    options.platform = Some(Platform::Browser);
+    options.entry_filenames = Some("[name]-[hash].js".to_string().into());
+    options.chunk_filenames = Some("[name]-[hash].js".to_string().into());
+    options.asset_filenames = Some("[name]-[hash][extname]".to_string().into());
+  }
+
+  options
 }
+
+// --- Plugin ---
 
 #[derive(Clone)]
 pub struct VirtualModule {
   contents: Vec<u8>,
-  loader: esbuild_client::BuiltinLoader,
+  module_type: ModuleType,
 }
 
 impl VirtualModule {
-  pub fn new(contents: Vec<u8>, loader: esbuild_client::BuiltinLoader) -> Self {
-    Self { contents, loader }
+  pub fn new(contents: Vec<u8>, module_type: ModuleType) -> Self {
+    Self {
+      contents,
+      module_type,
+    }
   }
 }
 
@@ -1436,14 +1378,185 @@ impl VirtualModules {
   }
 }
 
-pub struct DeferredResolveError {
-  path: String,
-  error: ResolveWithGraphError,
-}
-
 /// Path prefix used to mark modules disabled via a `browser` map (`"foo": false`).
 /// `\0` keeps it from colliding with any real filesystem path.
 const BROWSER_DISABLED_PREFIX: &str = "\0deno-browser-disabled:";
+
+/// Query suffix appended to `.cjs`/`.cts` module ids so rolldown doesn't
+/// force a script-mode parse based on the extension (script mode rejects
+/// `import.meta`, which Deno allows in CommonJS modules). The load hook and
+/// importer handling strip it before touching the filesystem.
+const CJS_ESM_PARSE_SUFFIX: &str = "?deno-cjs";
+
+fn strip_cjs_esm_parse_suffix(id: &str) -> &str {
+  id.strip_suffix(CJS_ESM_PARSE_SUFFIX).unwrap_or(id)
+}
+
+/// Query suffixes marking raw imports (`with { type: "..." }`).
+/// `RawImportsTransform` rewrites the import specifiers to carry these so
+/// the same file can exist both as a normal module and as inlined raw
+/// contents (rolldown dedups modules by id).
+const RAW_IMPORT_SUFFIXES: [(&str, &str); 3] = [
+  ("?deno-raw-text", "text"),
+  ("?deno-raw-bytes", "bytes"),
+  ("?deno-raw-css", "css"),
+];
+
+fn split_raw_import_suffix(id: &str) -> Option<(&str, &str)> {
+  RAW_IMPORT_SUFFIXES
+    .iter()
+    .find_map(|(suffix, ty)| id.strip_suffix(suffix).map(|base| (base, *ty)))
+}
+
+fn raw_import_suffix_of(specifier: &str) -> Option<&'static str> {
+  RAW_IMPORT_SUFFIXES
+    .iter()
+    .find(|(suffix, _)| specifier.ends_with(suffix))
+    .map(|(suffix, _)| *suffix)
+}
+
+/// Strips any internal query suffix (`?deno-cjs`, `?deno-raw-*`) from a
+/// module id, recovering the underlying file path.
+fn strip_internal_id_suffix(id: &str) -> &str {
+  let id = strip_cjs_esm_parse_suffix(id);
+  match split_raw_import_suffix(id) {
+    Some((base, _)) => base,
+    None => id,
+  }
+}
+
+/// A structured error recorded by the plugin's resolve/load hooks. Rolldown
+/// wraps hook failures as "plugin `deno` threw an error" and stringifies the
+/// cause away, so the plugin stores the real message (and an optional
+/// esbuild-style remediation note) here and the diagnostic renderer matches
+/// them back up by specifier/id when printing.
+pub struct DeferredBundleError {
+  /// The specifier (for resolve errors) or resolved id (for load errors)
+  /// this error is about.
+  key: String,
+  message: String,
+  note: Option<String>,
+}
+
+/// Handles a CSS module reaching the load hook via a plain `import`:
+/// with an output path configured the source is collected for emission as a
+/// sibling `.css` asset and the import becomes an empty module; without one
+/// this is an error (there is nowhere to put the stylesheet).
+fn css_import_load_output(
+  has_output: bool,
+  collected_css: &deno_core::parking_lot::Mutex<IndexMap<String, String>>,
+  deferred_errors: &deno_core::parking_lot::Mutex<Vec<DeferredBundleError>>,
+  id: &str,
+  specifier: &Url,
+  source: &str,
+) -> Result<HookLoadOutput, deno_core::anyhow::Error> {
+  if !has_output {
+    let message = format!(
+      "Cannot import \"{specifier}\" into a JavaScript file without an output path configured"
+    );
+    deferred_errors.lock().push(DeferredBundleError {
+      key: id.to_string(),
+      message: message.clone(),
+      note: None,
+    });
+    return Err(deno_core::anyhow::anyhow!("{}", message));
+  }
+  collected_css
+    .lock()
+    .insert(id.to_string(), source.to_string());
+  Ok(HookLoadOutput {
+    code: ArcStr::from(""),
+    module_type: Some(ModuleType::Empty),
+    ..Default::default()
+  })
+}
+
+/// Forwards one hook invocation to the JS plugin chain and waits for its
+/// answer. `Ok(None)` means no JS plugin handled the hook.
+async fn call_js_plugins(
+  tx: &deno_bundle_runtime::PluginHookTx,
+  kind: deno_bundle_runtime::PluginHookRequestKind,
+) -> Result<
+  Option<deno_bundle_runtime::PluginHookJsResult>,
+  deno_core::anyhow::Error,
+> {
+  let (respond, response_rx) = tokio::sync::oneshot::channel();
+  tx.send(deno_bundle_runtime::PluginHookRequest { kind, respond })
+    .await
+    .map_err(|_| {
+      deno_core::anyhow::anyhow!("bundle plugin host is no longer running")
+    })?;
+  let result = response_rx.await.map_err(|_| {
+    deno_core::anyhow::anyhow!("bundle plugin host dropped a hook request")
+  })?;
+  if let Some(error) = result.as_ref().and_then(|r| r.error.clone()) {
+    return Err(deno_core::anyhow::anyhow!("{}", error));
+  }
+  Ok(result)
+}
+
+/// Records a JS plugin hook error under `key` so the diagnostic renderer
+/// can substitute the plugin's real message for rolldown's generic
+/// "plugin `deno` threw an error" wrapper, then re-raises it.
+fn record_plugin_error<T>(
+  deferred_errors: &deno_core::parking_lot::Mutex<Vec<DeferredBundleError>>,
+  key: &str,
+  result: Result<T, deno_core::anyhow::Error>,
+) -> Result<T, deno_core::anyhow::Error> {
+  result.inspect_err(|err| {
+    deferred_errors.lock().push(DeferredBundleError {
+      key: key.to_string(),
+      message: err.to_string(),
+      note: None,
+    });
+  })
+}
+
+/// Maps a JS plugin `loader` name to the rolldown module type for code
+/// returned from a plugin `load` hook.
+fn js_plugin_loader_to_module_type(
+  loader: Option<&str>,
+) -> Result<ModuleType, deno_core::anyhow::Error> {
+  match loader.unwrap_or("js") {
+    "js" => Ok(ModuleType::Js),
+    "jsx" => Ok(ModuleType::Jsx),
+    "ts" => Ok(ModuleType::Ts),
+    "tsx" => Ok(ModuleType::Tsx),
+    "json" => Ok(ModuleType::Json),
+    "text" => Ok(ModuleType::Text),
+    "binary" => Ok(ModuleType::Binary),
+    other => Err(deno_core::anyhow::anyhow!(
+      "unknown plugin loader \"{other}\"; expected one of: js, jsx, ts, tsx, json, text, binary"
+    )),
+  }
+}
+
+fn import_kind_name(kind: ImportKind) -> &'static str {
+  match kind {
+    ImportKind::Import => "import",
+    ImportKind::DynamicImport => "dynamic-import",
+    ImportKind::Require => "require",
+    ImportKind::AtImport => "at-import",
+    ImportKind::UrlImport => "url-import",
+    ImportKind::NewUrl => "new-url",
+    ImportKind::HotAccept => "hot-accept",
+  }
+}
+
+fn unresolved_import_note(kind: ImportKind, specifier: &str) -> Option<String> {
+  let remedy = match kind {
+    ImportKind::DynamicImport => {
+      "You can also add \".catch()\" here to handle this failure at run-time instead of bundle-time."
+    }
+    ImportKind::Require => {
+      "You can also surround this \"require\" call with a try/catch block to handle this failure at run-time instead of bundle-time."
+    }
+    _ => return None,
+  };
+  Some(format!(
+    "You can mark the path \"{specifier}\" as external to exclude it from the bundle, which will remove this error and leave the unresolved path in the bundle. {remedy}"
+  ))
+}
 
 pub struct DenoPluginHandler {
   file_fetcher: Arc<CliFileFetcher>,
@@ -1452,69 +1565,145 @@ pub struct DenoPluginHandler {
   resolved_roots: Arc<RwLock<Arc<IndexSet<ModuleSpecifier>>>>,
   module_graph_container: Arc<MainModuleGraphContainer>,
   permissions: PermissionsContainer,
-  module_loader: Arc<CliDenoResolverModuleLoader>,
-  externals_matcher: Option<ExternalsMatcher>,
-  on_end_tx: tokio::sync::mpsc::Sender<esbuild_client::OnEndArgs>,
-  deferred_resolve_errors: Arc<Mutex<Vec<DeferredResolveError>>>,
+  externals_matcher: Option<Arc<ExternalsMatcher>>,
   virtual_modules: Option<Arc<VirtualModules>>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   cjs_tracker: Arc<CliCjsTracker>,
   emitter: Arc<CliEmitter>,
   pkg_json_resolver: Arc<crate::node::CliPackageJsonResolver>,
   initial_cwd: Url,
+  /// Synthetic `{"type": "module"}` package.json handed to rolldown for
+  /// Deno-land modules, plus the temp dir keeping it alive. See
+  /// `module_format_package_json_path`.
+  synthetic_esm_pkg_json: Option<Arc<SyntheticEsmPackageJson>>,
+  deferred_errors: Arc<deno_core::parking_lot::Mutex<Vec<DeferredBundleError>>>,
+  /// Whether an output path/dir is configured; importing CSS from JS
+  /// requires one (the CSS is emitted as a sibling asset).
+  has_output: bool,
+  /// CSS sources collected from `import "./style.css"` statements, keyed by
+  /// module id in import order. Rolldown no longer bundles CSS, so the load
+  /// hook returns an empty module for these and `build()` emits their
+  /// concatenation as an asset.
+  collected_css: Arc<deno_core::parking_lot::Mutex<IndexMap<String, String>>>,
+  /// How many CSS modules the last build inlined; the emptied modules get
+  /// tree-shaken out of the chunk listing, so the "Bundled N modules"
+  /// summary adds this back.
+  css_module_count: Arc<std::sync::atomic::AtomicUsize>,
+  /// When `Deno.bundle()` is called with `plugins`, hook requests are
+  /// forwarded over this channel to the JS runtime, which runs the user's
+  /// plugin chain (see `ext/bundle`). JS plugins run before Deno's own
+  /// resolution/loading; a `None` answer falls through to the default.
+  js_plugins: Option<deno_bundle_runtime::PluginHookTx>,
 }
 
-impl DenoPluginHandler {
-  fn take_deferred_resolve_errors(&self) -> Vec<DeferredResolveError> {
-    std::mem::take(&mut *self.deferred_resolve_errors.lock())
-  }
+pub struct SyntheticEsmPackageJson {
+  path: PathBuf,
+  _temp_dir: tempfile::TempDir,
+}
 
-  fn update_virtual_module(&self, path: &str, module: VirtualModule) {
-    if let Some(virtual_modules) = &self.virtual_modules {
-      virtual_modules.insert(path.to_string(), module);
-    }
+impl SyntheticEsmPackageJson {
+  pub fn new() -> std::io::Result<Self> {
+    let temp_dir = tempfile::TempDir::with_prefix("deno-bundle-pkg")?;
+    let path = temp_dir.path().join("package.json");
+    std::fs::write(&path, "{ \"type\": \"module\" }\n")?;
+    Ok(Self {
+      path,
+      _temp_dir: temp_dir,
+    })
   }
+}
 
-  /// Determines whether the resolved file has side effects by consulting
-  /// the closest `package.json`'s `sideEffects` field. Returns `Some(false)`
-  /// when the file is known to be side-effect-free (which lets esbuild
-  /// tree-shake unused exports), and `None` otherwise (esbuild's default
-  /// is to assume side effects).
-  fn resolve_side_effects(&self, resolved: &str) -> Option<bool> {
-    // Only inspect concrete local file paths. URLs (jsr:, https:, data:, etc.)
-    // are handled elsewhere and don't have a package.json context.
-    if resolved.starts_with("jsr:")
-      || resolved.starts_with("https:")
-      || resolved.starts_with("http:")
-      || resolved.starts_with("data:")
-      || resolved.starts_with("node:")
-      || resolved.starts_with("bun:")
-      || resolved.starts_with("npm:")
-    {
-      return None;
-    }
-    let file_path = std::path::Path::new(resolved);
-    if !file_path.is_absolute() {
-      return None;
-    }
-    let pkg_json = self
-      .pkg_json_resolver
-      .get_closest_package_json(file_path)
-      .ok()
-      .flatten()?;
-    match pkg_json.side_effects.as_ref()? {
-      deno_package_json::PackageJsonSideEffects::Bool(true) => None,
-      deno_package_json::PackageJsonSideEffects::Bool(false) => Some(false),
-      deno_package_json::PackageJsonSideEffects::Patterns(patterns) => {
-        let rel = file_path.strip_prefix(pkg_json.dir_path()).ok()?;
-        let rel_str = rel.to_string_lossy().replace('\\', "/");
-        for pattern in patterns {
-          if side_effects_pattern_matches(pattern, &rel_str) {
-            return None;
-          }
+impl Debug for DenoPluginHandler {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("DenoPluginHandler")
+      .field("initial_cwd", &self.initial_cwd)
+      .finish()
+  }
+}
+
+/// Returns a `package.json` path for a resolved local file so rolldown can
+/// infer the module's definition format (`type: "module"` vs
+/// `type: "commonjs"`). This drives node-style CJS default-import interop
+/// (`__toESM(mod, /* isNodeMode */ 1)`): without it a CJS module that marks
+/// itself `__esModule` (the tslib shape) gets Babel-style interop and its
+/// default import breaks. See denoland/deno#34524 and #34837.
+///
+/// Deno-land modules (outside `node_modules`) execute as ESM under `deno run`
+/// regardless of any `type` field, so when the closest real `package.json`
+/// doesn't pin a `type` we point rolldown at a synthetic
+/// `{"type": "module"}` package.json instead.
+fn module_format_package_json_path(
+  pkg_json_resolver: &crate::node::CliPackageJsonResolver,
+  synthetic_esm_pkg_json: Option<&Path>,
+  resolved: &str,
+) -> Option<String> {
+  let file_path = std::path::Path::new(resolved);
+  if !file_path.is_absolute() {
+    return None;
+  }
+  let real_pkg_json = pkg_json_resolver
+    .get_closest_package_json(file_path)
+    .ok()
+    .flatten();
+  if let Some(pkg_json) = &real_pkg_json
+    && matches!(pkg_json.typ.as_str(), "module" | "commonjs")
+  {
+    return Some(pkg_json.path.to_string_lossy().into_owned());
+  }
+  let in_node_modules = file_path
+    .components()
+    .any(|c| c.as_os_str() == "node_modules");
+  if in_node_modules {
+    // An untyped file inside node_modules keeps node's ambiguous default;
+    // rolldown classifies it from its syntax like esbuild does.
+    None
+  } else {
+    // Deno executes bare .js/.ts outside node_modules as ESM.
+    synthetic_esm_pkg_json.map(|p| p.to_string_lossy().into_owned())
+  }
+}
+
+/// Determines whether the resolved file has side effects by consulting
+/// the closest `package.json`'s `sideEffects` field. Returns `Some(false)`
+/// when the file is known to be side-effect-free (which lets the bundler
+/// tree-shake unused exports), and `None` otherwise (the default is to
+/// assume side effects).
+fn resolve_side_effects(
+  pkg_json_resolver: &crate::node::CliPackageJsonResolver,
+  resolved: &str,
+) -> Option<bool> {
+  // Only inspect concrete local file paths. URLs (jsr:, https:, data:, etc.)
+  // are handled elsewhere and don't have a package.json context.
+  if resolved.starts_with("jsr:")
+    || resolved.starts_with("https:")
+    || resolved.starts_with("http:")
+    || resolved.starts_with("data:")
+    || resolved.starts_with("node:")
+    || resolved.starts_with("bun:")
+    || resolved.starts_with("npm:")
+  {
+    return None;
+  }
+  let file_path = std::path::Path::new(resolved);
+  if !file_path.is_absolute() {
+    return None;
+  }
+  let pkg_json = pkg_json_resolver
+    .get_closest_package_json(file_path)
+    .ok()
+    .flatten()?;
+  match pkg_json.side_effects.as_ref()? {
+    deno_package_json::PackageJsonSideEffects::Bool(true) => None,
+    deno_package_json::PackageJsonSideEffects::Bool(false) => Some(false),
+    deno_package_json::PackageJsonSideEffects::Patterns(patterns) => {
+      let rel = file_path.strip_prefix(pkg_json.dir_path()).ok()?;
+      let rel_str = rel.to_string_lossy().replace('\\', "/");
+      for pattern in patterns {
+        if side_effects_pattern_matches(pattern, &rel_str) {
+          return None;
         }
-        Some(false)
       }
+      Some(false)
     }
   }
 }
@@ -1545,303 +1734,840 @@ fn side_effects_pattern_matches(pattern: &str, rel_path: &str) -> bool {
   }
 }
 
-#[async_trait::async_trait(?Send)]
-impl esbuild_client::PluginHandler for DenoPluginHandler {
-  async fn on_resolve(
+impl Plugin for DenoPluginHandler {
+  fn name(&self) -> Cow<'static, str> {
+    Cow::Borrowed("deno")
+  }
+
+  fn register_hook_usage(&self) -> HookUsage {
+    let mut usage = HookUsage::ResolveId | HookUsage::Load;
+    if self.js_plugins.is_some() {
+      usage |= HookUsage::Transform;
+    }
+    usage
+  }
+
+  fn transform(
     &self,
-    args: esbuild_client::OnResolveArgs,
-  ) -> Result<Option<esbuild_client::OnResolveResult>, AnyError> {
-    log::debug!("{}: {args:?}", deno_terminal::colors::cyan("on_resolve"));
-
-    if let Some(virtual_modules) = &self.virtual_modules
-      && virtual_modules.contains(&args.path)
-    {
-      return Ok(Some(esbuild_client::OnResolveResult {
-        path: Some(args.path),
-        plugin_name: Some("deno".to_string()),
-        namespace: Some("deno".to_string()),
-        ..Default::default()
-      }));
+    _ctx: rolldown::plugin::SharedTransformPluginContext,
+    args: &rolldown::plugin::HookTransformArgs<'_>,
+  ) -> impl std::future::Future<
+    Output = deno_core::anyhow::Result<
+      Option<rolldown::plugin::HookTransformOutput>,
+    >,
+  > + Send {
+    let js_plugins = self.js_plugins.clone();
+    let id = strip_internal_id_suffix(args.id).to_string();
+    let code = args.code.to_string();
+    let deferred_errors = self.deferred_errors.clone();
+    async move {
+      let Some(tx) = &js_plugins else {
+        return Ok(None);
+      };
+      let result = record_plugin_error(
+        &deferred_errors,
+        &id,
+        call_js_plugins(
+          tx,
+          deno_bundle_runtime::PluginHookRequestKind::Transform {
+            id: id.clone(),
+            code,
+          },
+        )
+        .await,
+      )?;
+      match result.and_then(|r| r.code) {
+        Some(code) => Ok(Some(rolldown::plugin::HookTransformOutput {
+          code: Some(code),
+          ..Default::default()
+        })),
+        None => Ok(None),
+      }
     }
+  }
 
-    if let Some(matcher) = &self.externals_matcher
-      && matcher.is_pre_resolve_match(&args.path)
-    {
-      return Ok(Some(esbuild_client::OnResolveResult {
-        external: Some(true),
-        path: Some(args.path),
-        plugin_name: Some("deno".to_string()),
-        plugin_data: None,
-        ..Default::default()
-      }));
+  fn resolve_id(
+    &self,
+    _ctx: &rolldown::plugin::PluginContext,
+    args: &HookResolveIdArgs<'_>,
+  ) -> impl std::future::Future<
+    Output = deno_core::anyhow::Result<Option<HookResolveIdOutput>>,
+  > + Send {
+    let specifier = args.specifier.to_string();
+    let importer = args.importer.map(|s| s.to_string());
+    let kind = args.kind;
+
+    // We need to capture self's fields since the future must be Send
+    let resolver = self.resolver.clone();
+    let externals_matcher = self.externals_matcher.clone();
+    let virtual_modules = self.virtual_modules.clone();
+    let module_graph_container = self.module_graph_container.clone();
+    let initial_cwd = self.initial_cwd.clone();
+
+    let pkg_json_resolver = self.pkg_json_resolver.clone();
+    let synthetic_esm_pkg_json = self.synthetic_esm_pkg_json.clone();
+    let deferred_errors = self.deferred_errors.clone();
+    let js_plugins = self.js_plugins.clone();
+
+    async move {
+      // JS plugins get the first chance to resolve any specifier.
+      if let Some(tx) = &js_plugins
+        && let Some(result) = record_plugin_error(
+          &deferred_errors,
+          &specifier,
+          call_js_plugins(
+            tx,
+            deno_bundle_runtime::PluginHookRequestKind::Resolve {
+              specifier: specifier.clone(),
+              importer: importer.clone(),
+              kind: import_kind_name(kind).to_string(),
+            },
+          )
+          .await,
+        )?
+        && let Some(id) = result.id
+      {
+        return Ok(Some(HookResolveIdOutput {
+          id: ArcStr::from(id),
+          external: result.external.map(ResolvedExternal::Bool),
+          ..Default::default()
+        }));
+      }
+
+      // A raw import (`with { type: "..." }`, rewritten by
+      // `RawImportsTransform`): resolve the underlying specifier and carry
+      // the suffix over to the resolved id.
+      let raw_suffix = raw_import_suffix_of(&specifier);
+      let specifier = match raw_suffix {
+        Some(suffix) => specifier[..specifier.len() - suffix.len()].to_string(),
+        None => specifier,
+      };
+
+      // Virtual module
+      if let Some(vm) = &virtual_modules
+        && vm.contains(&specifier)
+      {
+        return Ok(Some(HookResolveIdOutput {
+          id: ArcStr::from(specifier),
+          ..Default::default()
+        }));
+      }
+
+      // Pre-resolve external check
+      if let Some(matcher) = &externals_matcher
+        && matcher.is_pre_resolve_match(&specifier)
+      {
+        return Ok(Some(HookResolveIdOutput {
+          id: ArcStr::from(specifier),
+          external: Some(ResolvedExternal::Bool(true)),
+          ..Default::default()
+        }));
+      }
+
+      // data: URLs pass through
+      if specifier.starts_with("data:") {
+        return Ok(None);
+      }
+
+      // Same-document fragment references in CSS — `url(#default#VML)`,
+      // `url(#gradient)` for SVG paint servers, etc. — must be left as-is.
+      // See denoland/deno#32232.
+      if matches!(kind, ImportKind::UrlImport | ImportKind::AtImport)
+        && specifier.starts_with('#')
+      {
+        return Ok(Some(HookResolveIdOutput {
+          id: ArcStr::from(specifier),
+          external: Some(ResolvedExternal::Bool(true)),
+          ..Default::default()
+        }));
+      }
+
+      // Resolve using Deno's resolver
+      let referrer = if let Some(imp) = &importer {
+        resolve_url_or_path(strip_cjs_esm_parse_suffix(imp), Path::new(""))
+          .unwrap_or_else(|_| initial_cwd.clone())
+      } else {
+        initial_cwd.clone()
+      };
+
+      let resolution_mode = match kind {
+        ImportKind::Require => ResolutionMode::Require,
+        _ => ResolutionMode::Import,
+      };
+
+      let graph = module_graph_container.graph();
+      let result = resolver.resolve_with_graph(
+        &graph,
+        &specifier,
+        &referrer,
+        Position::new(0, 0),
+        ResolveWithGraphOptions {
+          mode: resolution_mode,
+          kind: NodeResolutionKind::Execution,
+          maintain_npm_specifiers: false,
+        },
+      );
+
+      match result {
+        Ok(resolved) => {
+          let resolved_str = file_path_or_url(resolved)?;
+
+          let is_post_external = externals_matcher
+            .as_ref()
+            .map(|m| m.is_post_resolve_match(&resolved_str))
+            .unwrap_or(false);
+          // Always externalize native addons regardless of `--external`.
+          // There is no loader for `.node` files, and the user-facing
+          // `*.node` pre-resolve pattern doesn't catch paths that arrive
+          // here only after `.node`-extension auto-resolution (e.g. CJS
+          // `require('./build/Release/foo')`).
+          let is_external = is_post_external
+            || resolved_str.starts_with("node:")
+            || resolved_str.starts_with("bun:")
+            || resolved_str.ends_with(".node");
+
+          let (side_effects, package_json_path) = if is_external {
+            (None, None)
+          } else {
+            (
+              resolve_side_effects(&pkg_json_resolver, &resolved_str),
+              module_format_package_json_path(
+                &pkg_json_resolver,
+                synthetic_esm_pkg_json.as_ref().map(|s| s.path.as_path()),
+                &resolved_str,
+              ),
+            )
+          };
+
+          // Rolldown parses `.cjs`/`.cts` ids in script mode, which rejects
+          // `import.meta` (valid in Deno's CJS). When such a file actually
+          // uses `import.meta`, suffix the id so the extension check doesn't
+          // apply; the module still gets CommonJS treatment from its
+          // `module.exports`/`require` usage. Files without `import.meta`
+          // keep their plain id — the explicit Cjs format makes rolldown
+          // emit the named `__require` shim that `replace_require_shim`
+          // rewrites to `createRequire`.
+          let resolved_str = if let Some(suffix) = raw_suffix {
+            format!("{resolved_str}{suffix}")
+          } else if !is_external
+            && (resolved_str.ends_with(".cjs")
+              || resolved_str.ends_with(".cts"))
+            && matches!(
+              tokio::fs::read_to_string(Path::new(&resolved_str)).await,
+              Ok(source) if source.contains("import.meta")
+            )
+          {
+            format!("{resolved_str}{CJS_ESM_PARSE_SUFFIX}")
+          } else {
+            resolved_str
+          };
+
+          Ok(Some(HookResolveIdOutput {
+            id: ArcStr::from(resolved_str),
+            external: if is_external {
+              Some(ResolvedExternal::Bool(true))
+            } else {
+              None
+            },
+            side_effects: side_effects.map(|se| {
+              if se {
+                HookSideEffects::True
+              } else {
+                HookSideEffects::False
+              }
+            }),
+            package_json_path,
+            ..Default::default()
+          }))
+        }
+        Err(e) => {
+          // The graph may record an unmapped-bare-specifier error for a
+          // referrer pulled in from outside the entrypoint's package scope
+          // (e.g. a source file reached via a `new Worker(new URL(...))`
+          // reference next to a `dist/`-rooted entrypoint). The package is
+          // still in the build's npm snapshot, so resolve it by name the way
+          // Node/Bun do before giving up.
+          if looks_like_bare_specifier(&specifier)
+            && let Some(url) = resolver.resolve_bare_specifier_in_npm_snapshot(
+              &specifier,
+              Some(&referrer),
+              resolution_mode,
+              NodeResolutionKind::Execution,
+            )
+          {
+            return Ok(Some(HookResolveIdOutput {
+              id: ArcStr::from(file_path_or_url(url)?),
+              ..Default::default()
+            }));
+          }
+          // A `browser` map entry of `false` disables the module: return a
+          // sentinel id that the load hook recognizes and turns into an
+          // empty module, rather than surfacing the resolver error.
+          if let Some(orig) = browser_map_disabled_specifier(&e) {
+            return Ok(Some(HookResolveIdOutput {
+              id: ArcStr::from(format!("{BROWSER_DISABLED_PREFIX}{orig}")),
+              ..Default::default()
+            }));
+          }
+          // Record the structured error and let rolldown classify the
+          // failure (a `require` in a try/catch block is tolerated and left
+          // external); when it surfaces as an unresolved-import diagnostic —
+          // which carries the import's source position — the renderer swaps
+          // in this richer error message. Returning `Err` here instead would
+          // lose both the position and the message (rolldown stringifies it
+          // to "plugin `deno` threw an error").
+          let note = if maybe_ignorable_resolution_error(&e).is_some() {
+            unresolved_import_note(kind, &specifier)
+          } else {
+            None
+          };
+          deferred_errors.lock().push(DeferredBundleError {
+            key: specifier.clone(),
+            message: e.to_string(),
+            note,
+          });
+          Ok(None)
+        }
+      }
     }
+  }
 
-    // Same-document fragment references in CSS — `url(#default#VML)`,
-    // `url(#gradient)` for SVG paint servers, etc. — are not file imports
-    // and must be left as-is in the output. Without this, `bundle_resolve`
-    // tries to resolve them as package import specifiers and fails (see
-    // denoland/deno#32232).
-    if matches!(
-      args.kind,
-      esbuild_client::protocol::ImportKind::UrlToken
-        | esbuild_client::protocol::ImportKind::ImportRule
-    ) && args.path.starts_with('#')
-    {
-      return Ok(Some(esbuild_client::OnResolveResult {
-        external: Some(true),
-        path: Some(args.path),
-        plugin_name: Some("deno".to_string()),
-        plugin_data: None,
-        ..Default::default()
-      }));
-    }
+  fn load(
+    &self,
+    _ctx: rolldown::plugin::SharedLoadPluginContext,
+    args: &HookLoadArgs<'_>,
+  ) -> impl std::future::Future<
+    Output = deno_core::anyhow::Result<Option<HookLoadOutput>>,
+  > + Send {
+    let id = strip_cjs_esm_parse_suffix(args.id).to_string();
+    let virtual_modules = self.virtual_modules.clone();
+    let file_fetcher = self.file_fetcher.clone();
+    let resolver = self.resolver.clone();
+    let module_graph_container = self.module_graph_container.clone();
+    let permissions = self.permissions.clone();
+    let parsed_source_cache = self.parsed_source_cache.clone();
+    let cjs_tracker = self.cjs_tracker.clone();
+    let emitter = self.emitter.clone();
+    let resolved_roots = self.resolved_roots.clone();
+    let deferred_errors = self.deferred_errors.clone();
+    let has_output = self.has_output;
+    let collected_css = self.collected_css.clone();
+    let js_plugins = self.js_plugins.clone();
 
-    let result = self.bundle_resolve(
-      &args.path,
-      args.importer.as_deref(),
-      args.resolve_dir.as_deref(),
-      args.kind,
-      args.with,
-    );
+    async move {
+      // JS plugins get the first chance to load any id (including virtual
+      // ids their resolve hooks produced).
+      if let Some(tx) = &js_plugins
+        && let Some(result) = record_plugin_error(
+          &deferred_errors,
+          &id,
+          call_js_plugins(
+            tx,
+            deno_bundle_runtime::PluginHookRequestKind::Load { id: id.clone() },
+          )
+          .await,
+        )?
+        && let Some(code) = result.code
+      {
+        let module_type =
+          js_plugin_loader_to_module_type(result.loader.as_deref())?;
+        return Ok(Some(HookLoadOutput {
+          code: ArcStr::from(code),
+          module_type: Some(module_type),
+          ..Default::default()
+        }));
+      }
 
-    let result = match result {
-      Ok(r) => r,
-      Err(e) => {
-        // A `browser` map entry of `false` disables the module: return a
-        // sentinel path that `on_load` recognizes and turns into an empty
-        // module, rather than surfacing the resolver error.
-        if let Some(orig) = browser_map_disabled_specifier(&e) {
-          return Ok(Some(esbuild_client::OnResolveResult {
-            path: Some(format!("{BROWSER_DISABLED_PREFIX}{orig}")),
-            namespace: Some("deno".into()),
-            plugin_name: Some("deno".to_string()),
+      // A raw import: inline the file's contents as text, bytes, or a
+      // constructed stylesheet instead of loading it as a module.
+      if let Some((base_id, raw_type)) = split_raw_import_suffix(&id) {
+        let specifier = if let Ok(url) = Url::parse(base_id) {
+          url
+        } else {
+          deno_path_util::url_from_file_path(Path::new(base_id))?
+        };
+        if specifier.scheme() != "file" {
+          return Err(deno_core::anyhow::anyhow!(
+            "Raw imports are only supported for local files: {}",
+            specifier
+          ));
+        }
+        let path = deno_path_util::url_to_file_path(&specifier)?;
+        let bytes = tokio::fs::read(&path).await.map_err(|e| {
+          let message = format!("Module not found \"{}\".", specifier);
+          deferred_errors.lock().push(DeferredBundleError {
+            key: id.clone(),
+            message: message.clone(),
+            note: None,
+          });
+          deno_core::anyhow::anyhow!("{}: {}", message, e)
+        })?;
+        let output = match raw_type {
+          // Rolldown base64-encodes the code itself for Binary modules and
+          // decodes it at runtime via `__toBinary`.
+          // TODO(bartlomieju): `HookLoadOutput.code` is a string, so
+          // non-UTF-8 contents don't round-trip losslessly here.
+          "bytes" => HookLoadOutput {
+            code: ArcStr::from(String::from_utf8_lossy(&bytes).as_ref()),
+            module_type: Some(ModuleType::Binary),
+            ..Default::default()
+          },
+          "css" => {
+            let text = String::from_utf8_lossy(&bytes);
+            let code = format!(
+              "const sheet = new CSSStyleSheet();\nsheet.replaceSync({});\nexport default sheet;\n",
+              deno_core::serde_json::to_string(text.as_ref())?
+            );
+            HookLoadOutput {
+              code: ArcStr::from(code),
+              module_type: Some(ModuleType::Js),
+              ..Default::default()
+            }
+          }
+          _ => HookLoadOutput {
+            code: ArcStr::from(String::from_utf8_lossy(&bytes).as_ref()),
+            module_type: Some(ModuleType::Text),
+            ..Default::default()
+          },
+        };
+        return Ok(Some(output));
+      }
+
+      // A module disabled via a `browser` map entry of `false`: emit an
+      // empty module in its place.
+      if id.starts_with(BROWSER_DISABLED_PREFIX) {
+        return Ok(Some(HookLoadOutput {
+          code: ArcStr::from("module.exports = {};\n"),
+          module_type: Some(ModuleType::Js),
+          ..Default::default()
+        }));
+      }
+
+      // Virtual module
+      if let Some(vm) = &virtual_modules
+        && let Some(module) = vm.get(&id)
+      {
+        let code = String::from_utf8(module.contents)?;
+        return Ok(Some(HookLoadOutput {
+          code: ArcStr::from(code),
+          module_type: Some(module.module_type.clone()),
+          ..Default::default()
+        }));
+      }
+
+      // Parse URL
+      let specifier = if let Ok(url) = Url::parse(&id) {
+        url
+      } else {
+        deno_path_util::url_from_file_path(Path::new(&id))?
+      };
+
+      // Look up in the module graph
+      let graph = module_graph_container.graph();
+      let module = graph.get(&specifier);
+
+      let (resolved_specifier, media_type) = match module {
+        Some(deno_graph::Module::Js(js)) => {
+          (js.specifier.clone(), js.media_type)
+        }
+        Some(deno_graph::Module::Json(json)) => {
+          (json.specifier.clone(), MediaType::Json)
+        }
+        Some(deno_graph::Module::Wasm(wasm_module)) => {
+          // Emit a JS shim that instantiates the wasm module and re-exports
+          // its exports; the wasm bytes themselves are emitted as an asset.
+          let code = wasm::render_js_wasm_module(wasm_module.source.as_ref())
+            .map_err(|e| {
+            deno_core::anyhow::anyhow!("Failed to parse Wasm module: {}", e)
+          })?;
+          return Ok(Some(HookLoadOutput {
+            code: ArcStr::from(code),
+            module_type: Some(ModuleType::Js),
             ..Default::default()
           }));
         }
-        return Ok(Some(esbuild_client::OnResolveResult {
-          errors: Some(vec![esbuild_client::protocol::PartialMessage {
-            id: "deno_error".into(),
-            plugin_name: "deno".into(),
-            text: e.to_string(),
-            ..Default::default()
-          }]),
-          ..Default::default()
-        }));
-      }
-    };
-
-    Ok(result.map(|r| {
-      // TODO(nathanwhit): remap the resolved path to be relative
-      // to the output file. It will be tricky to figure out which
-      // output file this import will end up in. We may have to use the metafile and rewrite at the end
-      let is_external = r.starts_with("node:")
-        || r.starts_with("bun:")
-        // Always externalize native addons regardless of `--external`.
-        // esbuild has no loader for `.node` files, and the user-facing
-        // `*.node` pre-resolve pattern doesn't catch paths that arrive
-        // here only after `.node`-extension auto-resolution (e.g. CJS
-        // `require('./build/Release/foo')`).
-        || r.ends_with(".node")
-        || self
-          .externals_matcher
-          .as_ref()
-          .map(|matcher| matcher.is_post_resolve_match(&r))
-          .unwrap_or(false);
-
-      let side_effects = if is_external {
-        None
-      } else {
-        self.resolve_side_effects(&r)
-      };
-
-      esbuild_client::OnResolveResult {
-        namespace: if r.starts_with("jsr:")
-          || r.starts_with("https:")
-          || r.starts_with("http:")
-          || r.starts_with("data:")
-        {
-          Some("deno".into())
-        } else {
-          None
-        },
-        external: Some(is_external),
-        path: Some(r),
-        plugin_name: Some("deno".to_string()),
-        plugin_data: None,
-        side_effects,
-        ..Default::default()
-      }
-    }))
-  }
-
-  async fn on_load(
-    &self,
-    args: esbuild_client::OnLoadArgs,
-  ) -> Result<Option<esbuild_client::OnLoadResult>, AnyError> {
-    log::debug!("{}: {args:?}", deno_terminal::colors::cyan("on_load"));
-    if args.path.starts_with(BROWSER_DISABLED_PREFIX) {
-      return Ok(Some(esbuild_client::OnLoadResult {
-        contents: Some(b"module.exports = {};\n".to_vec()),
-        loader: Some(esbuild_client::BuiltinLoader::Js),
-        ..Default::default()
-      }));
-    }
-    if let Some(virtual_modules) = &self.virtual_modules
-      && let Some(module) = virtual_modules.get(&args.path)
-    {
-      let contents = module.contents.clone();
-      let loader = module.loader;
-      return Ok(Some(esbuild_client::OnLoadResult {
-        contents: Some(contents),
-        loader: Some(loader),
-        ..Default::default()
-      }));
-    }
-    let result = self
-      .bundle_load(&args.path, &requested_type_from_map(&args.with))
-      .await;
-    let result = match result {
-      Ok(r) => r,
-      Err(e) => {
-        if e.is_unsupported_media_type() {
+        Some(deno_graph::Module::Npm(_)) => {
+          let req_ref = NpmPackageReqReference::from_specifier(&specifier)?;
+          let url = resolver.resolve_managed_npm_req_ref(
+            &req_ref,
+            None,
+            ResolutionMode::Import,
+            NodeResolutionKind::Execution,
+          )?;
+          let (mt, _) =
+            deno_media_type::resolve_media_type_and_charset_from_content_type(
+              &url, None,
+            );
+          (url, mt)
+        }
+        Some(deno_graph::Module::Node(_) | deno_graph::Module::External(_)) => {
           return Ok(None);
         }
-        return Ok(Some(esbuild_client::OnLoadResult {
-          errors: Some(vec![esbuild_client::protocol::PartialMessage {
-            plugin_name: "deno".into(),
-            text: e.to_string(),
-            ..Default::default()
-          }]),
-          plugin_name: Some("deno".to_string()),
+        None => {
+          // Not in graph — try reading directly
+          if specifier.scheme() == "file" {
+            let path = deno_path_util::url_to_file_path(&specifier)?;
+            match tokio::fs::read_to_string(&path).await {
+              Ok(source) => {
+                let (mt, _) =
+                  deno_media_type::resolve_media_type_and_charset_from_content_type(
+                    &specifier, None,
+                  );
+                let module_type = media_type_to_module_type(mt);
+
+                if matches!(module_type, ModuleType::Css) {
+                  return Ok(Some(css_import_load_output(
+                    has_output,
+                    &collected_css,
+                    &deferred_errors,
+                    &id,
+                    &specifier,
+                    &source,
+                  )?));
+                }
+
+                if needs_transpile(mt) {
+                  let source_arc: Arc<str> = Arc::from(source.as_str());
+                  let parsed_source = parsed_source_cache
+                    .remove_or_parse_module(&specifier, mt, source_arc)?;
+                  let is_cjs = cjs_tracker.is_maybe_cjs(&specifier, mt)?
+                    && parsed_source.compute_is_script();
+                  let module_kind = ModuleKind::from_is_cjs(is_cjs);
+                  let transpiled = emitter
+                    .maybe_emit_parsed_source(parsed_source, module_kind)
+                    .await?;
+                  return Ok(Some(HookLoadOutput {
+                    code: ArcStr::from(transpiled.as_ref()),
+                    module_type: Some(ModuleType::Js),
+                    ..Default::default()
+                  }));
+                }
+
+                return Ok(Some(HookLoadOutput {
+                  code: ArcStr::from(source.as_str()),
+                  module_type: Some(module_type),
+                  ..Default::default()
+                }));
+              }
+              Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                let message = format!("Module not found \"{}\".", specifier);
+                deferred_errors.lock().push(DeferredBundleError {
+                  key: id.clone(),
+                  message: message.clone(),
+                  note: None,
+                });
+                return Err(deno_core::anyhow::anyhow!("{}", message));
+              }
+              Err(_) => return Ok(None),
+            }
+          } else if matches!(specifier.scheme(), "http" | "https") {
+            // Remote module not in graph — try to fetch via Deno's file
+            // fetcher to trigger the right permission-check error message.
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            let ff = file_fetcher.clone();
+            let spec = specifier.clone();
+            let perms = permissions.clone();
+            deno_core::unsync::spawn(async move {
+              let result = ff.fetch(&spec, &perms).await;
+              let _ = tx.send(result);
+            });
+            let fetched = rx.await?.map_err(|e| {
+              deferred_errors.lock().push(DeferredBundleError {
+                key: id.clone(),
+                message: e.to_string(),
+                note: None,
+              });
+              deno_core::anyhow::anyhow!("{}", e)
+            })?;
+            let source = String::from_utf8(fetched.source.to_vec())?;
+            let (mt, _) =
+              deno_media_type::resolve_media_type_and_charset_from_content_type(
+                &specifier, None,
+              );
+            let module_type = media_type_to_module_type(mt);
+            return Ok(Some(HookLoadOutput {
+              code: ArcStr::from(source.as_str()),
+              module_type: Some(module_type),
+              ..Default::default()
+            }));
+          } else {
+            return Ok(None);
+          }
+        }
+      };
+
+      // Load module source — read file directly for Send compatibility
+      let source_string = if resolved_specifier.scheme() == "file" {
+        let path = deno_path_util::url_to_file_path(&resolved_specifier)?;
+        tokio::fs::read_to_string(&path).await.map_err(|e| {
+          let message = if e.kind() == std::io::ErrorKind::NotFound {
+            format!("Module not found \"{}\".", resolved_specifier)
+          } else {
+            format!("Failed to read {}: {}", path.display(), e)
+          };
+          deferred_errors.lock().push(DeferredBundleError {
+            key: id.clone(),
+            message: message.clone(),
+            note: None,
+          });
+          deno_core::anyhow::anyhow!("{}", message)
+        })?
+      } else {
+        // For remote modules, use a oneshot channel to bridge non-Send fetch
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let ff = file_fetcher.clone();
+        let spec = resolved_specifier.clone();
+        let perms = permissions.clone();
+        deno_core::unsync::spawn(async move {
+          let result = ff.fetch(&spec, &perms).await;
+          let _ = tx.send(result);
+        });
+        let fetched = rx.await?.map_err(|e| {
+          deferred_errors.lock().push(DeferredBundleError {
+            key: id.clone(),
+            message: e.to_string(),
+            note: None,
+          });
+          deno_core::anyhow::anyhow!("{}", e)
+        })?;
+        String::from_utf8(fetched.source.to_vec())?
+      };
+      let source_bytes = source_string.as_bytes();
+      let module_type = media_type_to_module_type(media_type);
+
+      if matches!(module_type, ModuleType::Css) {
+        return Ok(Some(css_import_load_output(
+          has_output,
+          &collected_css,
+          &deferred_errors,
+          &id,
+          &resolved_specifier,
+          &source_string,
+        )?));
+      }
+
+      // Transpile TypeScript/JSX if needed
+      if needs_transpile(media_type) {
+        let source_str = std::str::from_utf8(source_bytes)?;
+        let source_arc: Arc<str> = Arc::from(source_str);
+        let parsed_source = parsed_source_cache.remove_or_parse_module(
+          &resolved_specifier,
+          media_type,
+          source_arc.clone(),
+        )?;
+
+        let is_cjs = cjs_tracker
+          .is_maybe_cjs(&resolved_specifier, media_type)?
+          && parsed_source.compute_is_script();
+        let module_kind = ModuleKind::from_is_cjs(is_cjs);
+        let transpiled = emitter
+          .maybe_emit_parsed_source(parsed_source, module_kind)
+          .await?;
+
+        // Apply the import.meta.main and raw-import transforms
+        let roots = resolved_roots.read().clone();
+        let code = apply_transform(
+          &roots,
+          &module_graph_container,
+          &resolved_specifier,
+          media_type,
+          &transpiled,
+        )?;
+        return Ok(Some(HookLoadOutput {
+          code: ArcStr::from(code),
+          module_type: Some(ModuleType::Js),
           ..Default::default()
         }));
       }
-    };
-    log::trace!(
-      "{}: {:?}",
-      deno_terminal::colors::magenta("on_load"),
-      result.as_ref().map(|(code, loader)| format!(
-        "{}: {:?}",
-        String::from_utf8_lossy(code),
-        loader
-      ))
-    );
-    if let Some((code, loader)) = result {
-      Ok(Some(esbuild_client::OnLoadResult {
-        contents: Some(code),
-        loader: Some(loader),
+
+      // Non-transpile: return source as-is. Plain JS may still carry raw
+      // imports (`with { type: "..." }`) that need rewriting; only pay for
+      // a parse when the source looks like it has an attribute clause.
+      let source_str = std::str::from_utf8(source_bytes)?;
+      if matches!(module_type, ModuleType::Js)
+        && lazy_regex::regex!(r"with\s*\{").is_match(source_str)
+      {
+        let roots = resolved_roots.read().clone();
+        if let Ok(code) = apply_transform(
+          &roots,
+          &module_graph_container,
+          &resolved_specifier,
+          media_type,
+          source_str,
+        ) {
+          return Ok(Some(HookLoadOutput {
+            code: ArcStr::from(code),
+            module_type: Some(ModuleType::Js),
+            ..Default::default()
+          }));
+        }
+      }
+      Ok(Some(HookLoadOutput {
+        code: ArcStr::from(source_str),
+        module_type: Some(module_type),
         ..Default::default()
       }))
-    } else {
-      Ok(None)
     }
   }
+}
 
-  async fn on_start(
+impl DenoPluginHandler {
+  async fn prepare_module_load(
     &self,
-    _args: esbuild_client::OnStartArgs,
-  ) -> Result<Option<esbuild_client::OnStartResult>, AnyError> {
-    Ok(None)
-  }
-
-  async fn on_end(
-    &self,
-    _args: esbuild_client::OnEndArgs,
-  ) -> Result<Option<esbuild_client::OnEndResult>, AnyError> {
-    self.on_end_tx.send(_args).await?;
-    Ok(None)
-  }
-}
-
-fn import_kind_to_resolution_mode(
-  kind: esbuild_client::protocol::ImportKind,
-) -> ResolutionMode {
-  match kind {
-    protocol::ImportKind::EntryPoint
-    | protocol::ImportKind::ImportStatement
-    | protocol::ImportKind::ComposesFrom
-    | protocol::ImportKind::DynamicImport
-    | protocol::ImportKind::ImportRule
-    | protocol::ImportKind::UrlToken => ResolutionMode::Import,
-    protocol::ImportKind::RequireCall
-    | protocol::ImportKind::RequireResolve => ResolutionMode::Require,
-  }
-}
-
-#[derive(Debug, boxed_error::Boxed, deno_error::JsError)]
-pub struct BundleLoadError(pub Box<BundleLoadErrorKind>);
-
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum BundleLoadErrorKind {
-  #[class(inherit)]
-  #[error(transparent)]
-  Fetch(#[from] deno_resolver::file_fetcher::FetchError),
-  #[class(inherit)]
-  #[error(transparent)]
-  LoadCodeSource(#[from] LoadCodeSourceError),
-  #[class(inherit)]
-  #[error(transparent)]
-  ResolveUrlOrPath(#[from] deno_path_util::ResolveUrlOrPathError),
-  #[class(inherit)]
-  #[error(transparent)]
-  ResolveWithGraph(#[from] ResolveWithGraphError),
-  #[class(generic)]
-  #[error("Failed to parse Wasm module: {0}")]
-  WasmParse(String),
-  #[class(generic)]
-  #[error("UTF-8 conversion error")]
-  Utf8(#[from] std::str::Utf8Error),
-  #[class(generic)]
-  #[error("UTF-8 conversion error")]
-  StringUtf8(#[from] std::string::FromUtf8Error),
-  #[class(generic)]
-  #[error("Parse error")]
-  Parse(#[from] deno_ast::ParseDiagnostic),
-  #[class(generic)]
-  #[error("Emit error")]
-  Emit(#[from] deno_ast::EmitError),
-  #[class(generic)]
-  #[error("Prepare module load error")]
-  PrepareModuleLoad(#[from] crate::module_loader::PrepareModuleLoadError),
-
-  #[class(generic)]
-  #[error("Package.json load error")]
-  PackageJsonLoadError(#[from] node_resolver::errors::PackageJsonLoadError),
-
-  #[class(generic)]
-  #[error("Emit parsed source helper error")]
-  EmitParsedSourceHelperError(
-    #[from] deno_resolver::emit::EmitParsedSourceHelperError,
-  ),
-}
-
-impl BundleLoadError {
-  pub fn is_unsupported_media_type(&self) -> bool {
-    match self.as_kind() {
-      BundleLoadErrorKind::LoadCodeSource(e) => match e.as_kind() {
-        LoadCodeSourceErrorKind::LoadPreparedModule(e) => match e.as_kind() {
-          LoadPreparedModuleErrorKind::Graph(e) => matches!(
-            e.original().as_module_error_kind(),
-            Some(ModuleErrorKind::UnsupportedMediaType { .. }),
-          ),
-          _ => false,
+    specifiers: &[ModuleSpecifier],
+  ) -> Result<(), BundleLoadError> {
+    let mut graph_permit =
+      self.module_graph_container.acquire_update_permit().await;
+    let graph: &mut deno_graph::ModuleGraph = graph_permit.graph_mut();
+    self
+      .module_load_preparer
+      .prepare_module_load(
+        graph,
+        specifiers,
+        PrepareModuleLoadOptions {
+          is_dynamic: false,
+          lib: TsTypeLib::default(),
+          permissions: self.permissions.clone(),
+          ext_overwrite: None,
+          allow_unknown_media_types: true,
+          skip_graph_roots_validation: true,
+          file_content_overrides: Default::default(),
+          file_header_overrides: Default::default(),
         },
-        _ => false,
-      },
-      _ => false,
+      )
+      .await?;
+    graph_permit.commit();
+    Ok(())
+  }
+
+  fn take_deferred_errors(&self) -> Vec<DeferredBundleError> {
+    std::mem::take(&mut *self.deferred_errors.lock())
+  }
+
+  async fn reload_specifiers(
+    &self,
+    specifiers: &[PathBuf],
+  ) -> Result<(), AnyError> {
+    let mut graph_permit =
+      self.module_graph_container.acquire_update_permit().await;
+    let graph = graph_permit.graph_mut();
+    let mut specifiers_vec = Vec::with_capacity(specifiers.len());
+    for specifier in specifiers {
+      let specifier = deno_path_util::url_from_file_path(specifier)?;
+      // Raw imports are represented as external assets in the module graph.
+      // Their contents are fetched by the `load` hook instead of being stored
+      // in the graph, so reloading them as ordinary graph roots loses their
+      // requested module type (for example, `type: "css"`). Rolldown will call
+      // `load` again for the changed file and fetch its current contents.
+      if matches!(
+        graph.get(&specifier),
+        Some(deno_graph::Module::External(module)) if module.was_asset_load
+      ) {
+        continue;
+      }
+      specifiers_vec.push(specifier);
     }
+    if !specifiers_vec.is_empty() {
+      self
+        .module_load_preparer
+        .reload_specifiers(
+          graph,
+          specifiers_vec,
+          false,
+          self.permissions.clone(),
+        )
+        .await?;
+    }
+    graph_permit.commit();
+    Ok(())
   }
 }
 
-/// Walk a `BundleError` looking for a `BrowserMapDisabled` error returned
-/// by `node_resolver`. Returns the original specifier so the bundle can
-/// emit an empty-module stub in place of the resolution.
-fn browser_map_disabled_specifier(error: &BundleError) -> Option<String> {
-  let BundleErrorKind::Resolver(resolve_err) = error.as_kind() else {
-    return None;
+fn apply_transform(
+  resolved_roots: &IndexSet<ModuleSpecifier>,
+  module_graph_container: &MainModuleGraphContainer,
+  specifier: &ModuleSpecifier,
+  media_type: deno_ast::MediaType,
+  code: &str,
+) -> Result<String, BundleLoadError> {
+  let graph = module_graph_container.graph();
+  let mut xform = transform::BundleImportMetaMainTransform::new(
+    graph.roots.contains(specifier) || resolved_roots.contains(specifier),
+  );
+  let mut raw_imports_xform = transform::RawImportsTransform::default();
+  // A CJS module imported from ESM reaches us as an ESM facade the module
+  // loader generated (`import { createRequire } ...; export default mod;`).
+  // Parsing that under `MediaType::Cjs` forces script mode (see
+  // deno_ast `refine_parse_mode`), which rejects the facade's import/export
+  // statements with a parse error. Parse as JavaScript so program mode
+  // auto-detects module vs script and handles both the facade and genuine
+  // CJS scripts.
+  let media_type = match media_type {
+    deno_ast::MediaType::Cjs => deno_ast::MediaType::JavaScript,
+    other => other,
   };
+  let parsed_source = deno_ast::parse_program_with_post_process(
+    deno_ast::ParseParams {
+      specifier: specifier.clone(),
+      text: code.into(),
+      media_type,
+      capture_tokens: false,
+      scope_analysis: false,
+      maybe_syntax: None,
+    },
+    |mut program, _| {
+      use deno_ast::swc::ecma_visit::VisitMut;
+      xform.visit_mut_program(&mut program);
+      raw_imports_xform.visit_mut_program(&mut program);
+      program
+    },
+  )?;
+  let code = deno_ast::emit(
+    parsed_source.program_ref(),
+    &parsed_source.comments().as_single_threaded(),
+    &deno_ast::SourceMap::default(),
+    &EmitOptions {
+      source_map: deno_ast::SourceMapOption::None,
+      ..Default::default()
+    },
+  )?;
+  Ok(code.text)
+}
+
+fn needs_transpile(media_type: MediaType) -> bool {
+  matches!(
+    media_type,
+    MediaType::TypeScript
+      | MediaType::Mts
+      | MediaType::Cts
+      | MediaType::Jsx
+      | MediaType::Tsx
+  )
+}
+
+fn media_type_to_module_type(media_type: MediaType) -> ModuleType {
+  use deno_ast::MediaType::*;
+  match media_type {
+    JavaScript | Cjs | Mjs | Mts => ModuleType::Js,
+    TypeScript | Cts | Dts | Dmts | Dcts => ModuleType::Js, // We transpile before returning
+    Jsx | Tsx => ModuleType::Js, // We transpile before returning
+    Css => ModuleType::Css,
+    Json => ModuleType::Json,
+    Jsonc | Json5 | Markdown | SourceMap | Html | Sql => ModuleType::Text,
+    Wasm | Unknown => ModuleType::Binary,
+  }
+}
+
+// --- Error types ---
+
+/// Walk a `ResolveWithGraphError` looking for a `BrowserMapDisabled` error
+/// returned by `node_resolver`. Returns the original specifier so the bundle
+/// can emit an empty-module stub in place of the resolution.
+fn browser_map_disabled_specifier(
+  error: &ResolveWithGraphError,
+) -> Option<String> {
   let deno_resolver::graph::ResolveWithGraphErrorKind::Resolve(e) =
-    resolve_err.as_kind()
+    error.as_kind()
   else {
     return None;
   };
@@ -1907,531 +2633,550 @@ fn maybe_ignorable_resolution_error(
   }
 }
 
-impl DenoPluginHandler {
-  async fn reload_specifiers(
-    &self,
-    specifiers: &[PathBuf],
-  ) -> Result<(), AnyError> {
-    let mut graph_permit =
-      self.module_graph_container.acquire_update_permit().await;
-    let graph = graph_permit.graph_mut();
-    let mut specifiers_vec = Vec::with_capacity(specifiers.len());
-    for specifier in specifiers {
-      let specifier = deno_path_util::url_from_file_path(specifier)?;
-      // Raw imports are represented as external assets in the module graph.
-      // Their contents are fetched by `bundle_load` instead of being stored
-      // in the graph, so reloading them as ordinary graph roots loses their
-      // requested module type (for example, `type: "css"`). Esbuild will call
-      // `on_load` again for the changed file and fetch its current contents.
-      if matches!(
-        graph.get(&specifier),
-        Some(deno_graph::Module::External(module)) if module.was_asset_load
-      ) {
-        continue;
-      }
-      specifiers_vec.push(specifier);
-    }
-    if !specifiers_vec.is_empty() {
-      self
-        .module_load_preparer
-        .reload_specifiers(
-          graph,
-          specifiers_vec,
-          false,
-          self.permissions.clone(),
-        )
-        .await?;
-    }
-    graph_permit.commit();
-    Ok(())
-  }
+#[derive(Debug, boxed_error::Boxed, deno_error::JsError)]
+pub struct BundleLoadError(pub Box<BundleLoadErrorKind>);
 
-  fn bundle_resolve(
-    &self,
-    path: &str,
-    importer: Option<&str>,
-    resolve_dir: Option<&str>,
-    kind: esbuild_client::protocol::ImportKind,
-    with: IndexMap<String, String>,
-  ) -> Result<Option<String>, BundleError> {
-    log::debug!(
-      "bundle_resolve: {:?} {:?} {:?} {:?} {:?}",
-      path,
-      importer,
-      resolve_dir,
-      kind,
-      with
-    );
-    if path.starts_with("data:") {
-      return Ok(None);
-    }
-    let mut resolve_dir = resolve_dir.unwrap_or("").to_string();
-    let resolver = self.resolver.clone();
-    if !resolve_dir.ends_with(std::path::MAIN_SEPARATOR) {
-      resolve_dir.push(std::path::MAIN_SEPARATOR);
-    }
-    let resolve_dir_path = Path::new(&resolve_dir);
-    let mut referrer =
-      resolve_url_or_path(importer.unwrap_or(""), resolve_dir_path)
-        .unwrap_or_else(|_| self.initial_cwd.clone());
-    if referrer.scheme() == "file" {
-      let pth = referrer.to_file_path().unwrap();
-      if (pth.is_dir()) && !pth.ends_with(std::path::MAIN_SEPARATOR_STR) {
-        referrer.set_path(&format!(
-          "{}{}",
-          referrer.path(),
-          std::path::MAIN_SEPARATOR
-        ));
-      }
-    }
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum BundleLoadErrorKind {
+  #[class(inherit)]
+  #[error(transparent)]
+  Fetch(#[from] deno_resolver::file_fetcher::FetchError),
+  #[class(inherit)]
+  #[error(transparent)]
+  LoadCodeSource(#[from] LoadCodeSourceError),
+  #[class(inherit)]
+  #[error(transparent)]
+  ResolveUrlOrPath(#[from] deno_path_util::ResolveUrlOrPathError),
+  #[class(inherit)]
+  #[error(transparent)]
+  ResolveWithGraph(#[from] ResolveWithGraphError),
+  #[class(generic)]
+  #[error("UTF-8 conversion error")]
+  Utf8(#[from] std::str::Utf8Error),
+  #[class(generic)]
+  #[error("UTF-8 conversion error")]
+  StringUtf8(#[from] std::string::FromUtf8Error),
+  #[class(generic)]
+  #[error("Parse error")]
+  Parse(#[from] deno_ast::ParseDiagnostic),
+  #[class(generic)]
+  #[error("Emit error")]
+  Emit(#[from] deno_ast::EmitError),
+  #[class(generic)]
+  #[error("Prepare module load error")]
+  PrepareModuleLoad(#[from] crate::module_loader::PrepareModuleLoadError),
+  #[class(generic)]
+  #[error("Package.json load error")]
+  PackageJsonLoadError(#[from] node_resolver::errors::PackageJsonLoadError),
+  #[class(generic)]
+  #[error("Emit parsed source helper error")]
+  EmitParsedSourceHelperError(
+    #[from] deno_resolver::emit::EmitParsedSourceHelperError,
+  ),
+}
 
-    log::debug!(
-      "{}: {} {} {} {:?}",
-      deno_terminal::colors::magenta("op_bundle_resolve"),
-      path,
-      resolve_dir,
-      referrer,
-      import_kind_to_resolution_mode(kind)
-    );
+// --- Output processing ---
 
-    let graph = self.module_graph_container.graph();
-    let result = resolver.resolve_with_graph(
-      &graph,
-      path,
-      &referrer,
-      Position::new(0, 0),
-      ResolveWithGraphOptions {
-        mode: import_kind_to_resolution_mode(kind),
-        kind: NodeResolutionKind::Execution,
-        maintain_npm_specifiers: false,
-      },
-    );
-
-    log::debug!(
-      "{}: {:?}",
-      deno_terminal::colors::cyan("op_bundle_resolve result"),
-      result
-    );
-
-    match result {
-      Ok(specifier) => Ok(Some(file_path_or_url(specifier)?)),
-      Err(e) => {
-        log::debug!("{}: {:?}", deno_terminal::colors::red("error"), e);
-        // The graph may record an unmapped-bare-specifier error for a referrer
-        // pulled in from outside the entrypoint's package scope (e.g. a source
-        // file reached via a `new Worker(new URL(...))` reference next to a
-        // `dist/`-rooted entrypoint). The package is still in the build's npm
-        // snapshot, so resolve it by name the way Node/Bun do before giving up.
-        if looks_like_bare_specifier(path)
-          && let Some(url) = resolver.resolve_bare_specifier_in_npm_snapshot(
-            path,
-            Some(&referrer),
-            import_kind_to_resolution_mode(kind),
-            NodeResolutionKind::Execution,
-          )
-        {
-          log::debug!(
-            "{}: resolved {} via npm snapshot fallback",
-            deno_terminal::colors::cyan("op_bundle_resolve"),
-            path
-          );
-          return Ok(Some(file_path_or_url(url)?));
-        }
-        if let Some(specifier) = maybe_ignorable_resolution_error(&e) {
-          log::debug!(
-            "{}: resolution failed, but maybe ignorable",
-            deno_terminal::colors::red("warn")
-          );
-          self
-            .deferred_resolve_errors
-            .lock()
-            .push(DeferredResolveError {
-              path: specifier,
-              error: e,
-            });
-          // we return None here because this lets esbuild choose to ignore the failure
-          // for fallible imports/requires
-          return Ok(None);
-        }
-        Err(BundleErrorKind::Resolver(e).into())
-      }
-    }
-  }
-
-  async fn prepare_module_load(
-    &self,
-    specifiers: &[ModuleSpecifier],
-  ) -> Result<(), BundleLoadError> {
-    let mut graph_permit =
-      self.module_graph_container.acquire_update_permit().await;
-    let graph: &mut deno_graph::ModuleGraph = graph_permit.graph_mut();
-    self
-      .module_load_preparer
-      .prepare_module_load(
-        graph,
-        specifiers,
-        PrepareModuleLoadOptions {
-          is_dynamic: false,
-          lib: TsTypeLib::default(),
-          permissions: self.permissions.clone(),
-          ext_overwrite: None,
-          allow_unknown_media_types: true,
-          skip_graph_roots_validation: true,
-          file_content_overrides: Default::default(),
-          file_header_overrides: Default::default(),
-        },
-      )
-      .await?;
-    graph_permit.commit();
-    Ok(())
-  }
-
-  async fn bundle_load(
-    &self,
-    specifier: &str,
-    requested_type: &RequestedModuleType<'_>,
-  ) -> Result<Option<(Vec<u8>, esbuild_client::BuiltinLoader)>, BundleLoadError>
-  {
-    log::debug!(
-      "{}: {:?} {:?}",
-      deno_terminal::colors::magenta("bundle_load"),
-      specifier,
-      requested_type
-    );
-
-    let specifier = deno_path_util::resolve_url_or_path(
-      specifier,
-      Path::new(""), // should be absolute already, feels kind of hacky though
-    )?;
-    if specifier.scheme() == "data" {
-      return Ok(None);
-    }
-    let (specifier, media_type) =
-      if let RequestedModuleType::Bytes = requested_type {
-        (specifier, MediaType::Unknown)
-      } else if let RequestedModuleType::Text = requested_type {
-        (specifier, MediaType::Unknown)
-      } else if let Some((specifier, media_type, _)) =
-        self.specifier_and_type_from_graph(&specifier)?
-      {
-        (specifier, media_type)
-      } else {
-        log::debug!(
-          "{}: no specifier and type from graph for {}",
-          deno_terminal::colors::yellow("warn"),
-          specifier
-        );
-
-        let (media_type, _) =
-          deno_media_type::resolve_media_type_and_charset_from_content_type(
-            &specifier, None,
-          );
-        if media_type == deno_media_type::MediaType::Unknown {
-          return Ok(None);
-        }
-        (specifier, media_type)
-      };
-
-    let graph = self.module_graph_container.graph();
-    let module_or_asset = self
-      .module_loader
-      .load(&graph, &specifier, None, requested_type)
-      .await;
-    let module_or_asset = match module_or_asset {
-      Ok(module_or_asset) => module_or_asset,
-      Err(e) => match e.as_kind() {
-        LoadCodeSourceErrorKind::LoadUnpreparedModule(_) => {
-          let file = self
-            .file_fetcher
-            .fetch(&specifier, &self.permissions)
-            .await?;
-          let media_type = MediaType::from_specifier_and_headers(
-            &specifier,
-            file.maybe_headers.as_ref(),
-          );
-          match requested_type {
-            RequestedModuleType::Text | RequestedModuleType::Bytes => {
-              return self
-                .create_module_response(
-                  &graph,
-                  &specifier,
-                  media_type,
-                  &file.source,
-                  Some(requested_type),
-                )
-                .await
-                .map(Some);
-            }
-            RequestedModuleType::None
-            | RequestedModuleType::Json
-            | RequestedModuleType::Other(_) => {
-              if media_type.is_emittable() {
-                let str = String::from_utf8_lossy(&file.source);
-                let value = str.into();
-                let source = self
-                  .maybe_transpile(&file.url, media_type, &value, None)
-                  .await?;
-                return self
-                  .create_module_response(
-                    &graph,
-                    &file.url,
-                    media_type,
-                    source.as_bytes(),
-                    Some(requested_type),
-                  )
-                  .await
-                  .map(Some);
-              } else {
-                return self
-                  .create_module_response(
-                    &graph,
-                    &file.url,
-                    media_type,
-                    &file.source,
-                    Some(requested_type),
-                  )
-                  .await
-                  .map(Some);
-              }
-            }
-          }
-        }
-        _ => return Err(e.into()),
-      },
-    };
-    let loaded_code = match module_or_asset {
-      LoadedModuleOrAsset::Module(loaded_module) => loaded_module.source,
-      LoadedModuleOrAsset::ExternalAsset {
-        specifier,
-        statically_analyzable: _,
-      } => LoadedModuleSource::ArcBytes(
-        self
-          .file_fetcher
-          .fetch(&specifier, &self.permissions)
-          .await?
-          .source,
-      ),
-    };
-
-    Ok(Some(
-      self
-        .create_module_response(
-          &graph,
-          &specifier,
-          media_type,
-          loaded_code.as_bytes(),
-          Some(requested_type),
-        )
-        .await?,
-    ))
-  }
-
-  async fn create_module_response(
-    &self,
-    graph: &deno_graph::ModuleGraph,
-    specifier: &Url,
-    media_type: MediaType,
-    source: &[u8],
-    requested_type: Option<&RequestedModuleType<'_>>,
-  ) -> Result<(Vec<u8>, esbuild_client::BuiltinLoader), BundleLoadError> {
-    match requested_type {
-      Some(RequestedModuleType::Text) => {
-        return Ok((source.to_vec(), esbuild_client::BuiltinLoader::Text));
-      }
-      Some(RequestedModuleType::Bytes) => {
-        return Ok((source.to_vec(), esbuild_client::BuiltinLoader::Binary));
-      }
-      Some(RequestedModuleType::Json) => {
-        return Ok((source.to_vec(), esbuild_client::BuiltinLoader::Json));
-      }
-      // `import sheet from "./a.css" with { type: "css" }` evaluates to a
-      // `CSSStyleSheet` at runtime (see the custom module evaluation callback
-      // in `runtime/worker.rs`). esbuild has no builtin loader that mirrors
-      // this, so synthesize an equivalent JS module instead of routing the
-      // source through esbuild's CSS loader (which would otherwise leave the
-      // default import as an empty object).
-      Some(RequestedModuleType::Other(ty)) if *ty == "css" => {
-        let text = String::from_utf8_lossy(source);
-        return Ok((
-          render_css_module(&text).into_bytes(),
-          esbuild_client::BuiltinLoader::Js,
-        ));
-      }
-      Some(RequestedModuleType::Other(_) | RequestedModuleType::None)
-      | None => {}
-    }
-    if media_type == MediaType::Wasm {
-      let code = wasm::render_js_wasm_module(source)
-        .map_err(|e| BundleLoadErrorKind::WasmParse(e.to_string()))?;
-      return Ok((code.into_bytes(), esbuild_client::BuiltinLoader::Js));
-    }
-    if matches!(
-      media_type,
-      MediaType::JavaScript
-        | MediaType::TypeScript
-        | MediaType::Mjs
-        | MediaType::Mts
-        | MediaType::Cjs
-        | MediaType::Cts
-        | MediaType::Jsx
-        | MediaType::Tsx
-    ) && !graph.roots.contains(specifier)
+/// Prints the diagnostics collected in `output.warnings`, upgrading
+/// unresolved-import warnings (rolldown treats those as "external +
+/// warning") to hard errors to match `deno bundle`'s esbuild-era behavior.
+/// Returns `true` if any error was printed and the build should fail.
+fn handle_diagnostics(
+  output: &BundleOutput,
+  deferred_errors: &[DeferredBundleError],
+  cwd: &Path,
+) -> bool {
+  let mut has_errors = false;
+  for diag in &output.warnings {
+    let severity = diag.severity();
+    if severity == Severity::Error
+      || matches!(diag.kind(), EventKind::UnresolvedImport)
     {
-      let module_graph_container = self.module_graph_container.clone();
-      let specifier = specifier.clone();
-      let code = source.to_vec();
-      let resolved_roots = self.resolved_roots.read().clone();
-      let code = tokio::task::spawn_blocking(move || {
-        Self::apply_transform(
-          &resolved_roots,
-          &module_graph_container,
-          &specifier,
-          media_type,
-          &String::from_utf8(code)?,
-        )
-      })
-      .await
-      .unwrap()?;
-      Ok((code.into_bytes(), media_type_to_loader(media_type)))
+      has_errors = true;
+      let message = diagnostic_to_message(diag, deferred_errors, cwd);
+      log::error!(
+        "{}: {}",
+        deno_terminal::colors::red_bold("error"),
+        message.render()
+      );
+    } else if severity == Severity::Warning {
+      log::warn!(
+        "{}: {}",
+        deno_terminal::colors::yellow("bundler warning"),
+        diag
+      );
     } else {
-      Ok((source.to_vec(), media_type_to_loader(media_type)))
+      log::info!("{}", diag);
+    }
+  }
+  has_errors
+}
+
+/// Collects the `Severity::Error` (and unresolved-import) diagnostics from a
+/// successful build's warning list as structured messages, for callers that
+/// return them (e.g. `Deno.bundle()`) rather than printing them.
+fn collect_error_messages(
+  output: &BundleOutput,
+  deferred_errors: &[DeferredBundleError],
+  cwd: &Path,
+) -> Vec<BundleErrorMessage> {
+  output
+    .warnings
+    .iter()
+    .filter(|diag| {
+      diag.severity() == Severity::Error
+        || matches!(diag.kind(), EventKind::UnresolvedImport)
+    })
+    .map(|diag| diagnostic_to_message(diag, deferred_errors, cwd))
+    .collect()
+}
+
+/// A bundler error rendered in Deno's style, split from printing so it can
+/// be either logged (CLI) or returned (`Deno.bundle()` result).
+#[derive(Debug, Clone)]
+pub struct BundleErrorMessage {
+  pub text: String,
+  /// `(file-url, line, column)` of the primary source location, if any.
+  pub location: Option<(String, u32, u32)>,
+  pub note: Option<String>,
+}
+
+impl BundleErrorMessage {
+  /// Renders as:
+  ///
+  /// ```text
+  /// <message>
+  ///     at <file>:<line>:<column>
+  ///     note: <remediation>
+  /// ```
+  fn render(&self) -> String {
+    let mut text = self.text.clone();
+    if let Some((file, line, column)) = &self.location {
+      text.push_str(&format!("\n    at {file}:{line}:{column}"));
+    }
+    if let Some(note) = &self.note {
+      text.push_str(&format!("\n    note: {note}"));
+    }
+    text
+  }
+}
+
+/// For the `deno bundle` CLI: unwrap a `build()` result, printing a
+/// `BundleBuildFailure`'s messages in Deno's style and bailing with the
+/// short "bundling failed" summary. Other errors propagate unchanged.
+fn print_build_errors_and_bail(
+  result: Result<BundleOutput, AnyError>,
+) -> Result<BundleOutput, AnyError> {
+  match result {
+    Ok(output) => Ok(output),
+    Err(err) => match err.downcast::<BundleBuildFailure>() {
+      Ok(failure) => {
+        for message in &failure.messages {
+          log::error!(
+            "{}: {}",
+            deno_terminal::colors::red_bold("error"),
+            message.render()
+          );
+        }
+        deno_core::anyhow::bail!("bundling failed")
+      }
+      Err(err) => Err(err),
+    },
+  }
+}
+
+/// Hard bundler errors (from `bundler.generate()`), carried as structured
+/// data so callers can print or surface them. Its `Display` joins the
+/// rendered messages.
+#[derive(Debug)]
+pub struct BundleBuildFailure {
+  pub messages: Vec<BundleErrorMessage>,
+}
+
+impl std::fmt::Display for BundleBuildFailure {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    for (i, message) in self.messages.iter().enumerate() {
+      if i > 0 {
+        writeln!(f)?;
+      }
+      write!(f, "{}", message.render())?;
+    }
+    Ok(())
+  }
+}
+
+impl std::error::Error for BundleBuildFailure {}
+
+/// Converts hard bundler errors into a `Deno.bundle()` result with
+/// `success: false` and the messages in `errors`.
+pub fn build_failure_to_response(
+  failure: &BundleBuildFailure,
+) -> deno_bundle_runtime::BuildResponse {
+  deno_bundle_runtime::BuildResponse {
+    errors: failure
+      .messages
+      .iter()
+      .map(|m| deno_bundle_runtime::Message {
+        text: m.render(),
+        location: None,
+        notes: vec![],
+      })
+      .collect(),
+    warnings: vec![],
+    output_files: None,
+  }
+}
+
+/// Collects a successful build's error-level diagnostics into a
+/// `Deno.bundle()` result, matching the messages `deno bundle` prints.
+pub fn bundle_output_error_messages(
+  bundler: &RolldownBundler,
+  output: &BundleOutput,
+) -> Vec<deno_bundle_runtime::Message> {
+  let deferred = bundler.take_deferred_errors();
+  collect_error_messages(output, &deferred, &bundler.cwd)
+    .into_iter()
+    .map(|m| deno_bundle_runtime::Message {
+      text: m.render(),
+      location: None,
+      notes: vec![],
+    })
+    .collect()
+}
+
+/// Formats a rolldown diagnostic into a `BundleErrorMessage`, substituting
+/// the richer message and remediation note recorded by the plugin (rolldown
+/// stringifies hook errors into "plugin `deno` threw an error" otherwise).
+fn diagnostic_to_message(
+  diag: &BuildDiagnostic,
+  deferred_errors: &[DeferredBundleError],
+  cwd: &Path,
+) -> BundleErrorMessage {
+  let rendered = diag.to_diagnostic();
+  let default_message = diag.to_string();
+  // Match a recorded structured error: by the unresolved specifier for
+  // resolve errors, or by the resolved id appearing in the message for
+  // load errors.
+  // Rolldown escapes the `\0` virtual-module prefix as a literal backslash
+  // + `0` in its messages, so compare against a normalized key too.
+  let key_matches = |key: &str| {
+    default_message.contains(key)
+      || default_message.contains(&key.replace('\0', "\\0"))
+  };
+  let deferred = deferred_errors
+    .iter()
+    .find(|e| diag.exporter().as_deref() == Some(e.key.as_str()))
+    .or_else(|| deferred_errors.iter().find(|e| key_matches(&e.key)))
+    .or_else(|| {
+      // Load failures render as "Could not load <path> (imported by ...)"
+      // with the path relativized, while the plugin recorded the absolute
+      // resolved id; match on the trailing path segments.
+      let loaded_path = default_message
+        .strip_prefix("Could not load ")
+        .and_then(|rest| rest.split(" (imported by").next())?;
+      deferred_errors.iter().find(|e| {
+        e.key.ends_with(loaded_path)
+          || e.key.replace('\0', "\\0").ends_with(loaded_path)
+      })
+    });
+
+  let text = match deferred {
+    Some(e) => e.message.clone(),
+    None => default_message,
+  };
+
+  let location = rendered.get_primary_location().map(|(file, line, col, _)| {
+    // Rolldown reports files relative to the cwd; emit an absolute file://
+    // URL like the rest of the CLI's error output.
+    let file_path = if Path::new(&file).is_absolute() {
+      PathBuf::from(&file)
+    } else {
+      cwd.join(&file)
+    };
+    let location = match deno_path_util::url_from_file_path(&file_path) {
+      Ok(url) => url.to_string(),
+      Err(_) => file,
+    };
+    (location, line as u32, col as u32)
+  });
+
+  BundleErrorMessage {
+    text,
+    location,
+    note: deferred.and_then(|e| e.note.clone()),
+  }
+}
+
+pub struct OutputFileInfo {
+  relative_path: PathBuf,
+  size: usize,
+  is_js: bool,
+}
+
+pub(crate) fn is_js(path: &Path) -> bool {
+  if let Some(ext) = path.extension() {
+    matches!(
+      ext.to_string_lossy().as_ref(),
+      "js" | "mjs" | "cjs" | "jsx" | "ts" | "tsx" | "mts" | "cts" | "dts"
+    )
+  } else {
+    false
+  }
+}
+
+#[derive(Debug)]
+pub struct OutputFile<'a> {
+  pub path: PathBuf,
+  pub contents: Cow<'a, [u8]>,
+}
+
+pub fn process_result(
+  output: &BundleOutput,
+  cwd: &Path,
+  outdir: Option<&Path>,
+  output_path: Option<&Path>,
+  should_replace_require: bool,
+  minified: bool,
+  input: Option<&BundlerInput>,
+) -> Result<Vec<OutputFileInfo>, AnyError> {
+  let mut exists_cache = std::collections::HashSet::new();
+  let mut output_infos = Vec::new();
+
+  // Build list of OutputFile entries with their target paths.
+  let mut output_files: Vec<OutputFile> =
+    Vec::with_capacity(output.assets.len());
+  for asset in &output.assets {
+    let filename = asset.filename();
+    let path = if let Some(outdir) = outdir {
+      let outdir = if outdir.is_absolute() {
+        outdir.to_path_buf()
+      } else {
+        cwd.join(outdir)
+      };
+      outdir.join(filename)
+    } else if let Some(output_path) = output_path {
+      let abs_output_path = if output_path.is_absolute() {
+        output_path.to_path_buf()
+      } else {
+        cwd.join(output_path)
+      };
+      if Path::new(filename).file_name() == abs_output_path.file_name() {
+        abs_output_path
+      } else if let Some(parent) = abs_output_path.parent() {
+        parent.join(filename)
+      } else {
+        PathBuf::from(filename)
+      }
+    } else {
+      cwd.join(filename)
+    };
+    output_files.push(OutputFile {
+      path,
+      contents: Cow::Borrowed(asset.content_as_bytes()),
+    });
+  }
+
+  // For HTML entrypoints, patch each HTML page with the rolldown-generated
+  // chunk filenames and append the patched HTML files to the output set.
+  if let Some(BundlerInput::EntrypointsWithHtml { html_pages, .. }) = input {
+    let outdir_path = outdir.map(|p| {
+      if p.is_absolute() {
+        p.to_path_buf()
+      } else {
+        cwd.join(p)
+      }
+    });
+    if let Some(outdir) = outdir_path {
+      let mut html_output_files =
+        html::HtmlOutputFiles::new(&mut output_files, &outdir);
+      for page in html_pages {
+        page.clone().patch_html_with_response(
+          cwd,
+          &outdir,
+          &mut html_output_files,
+        )?;
+      }
     }
   }
 
-  async fn maybe_transpile(
-    &self,
-    specifier: &Url,
-    media_type: MediaType,
-    source: &Arc<str>,
-    is_known_script: Option<bool>,
-  ) -> Result<Arc<str>, BundleLoadError> {
-    let parsed_source = self.parsed_source_cache.remove_or_parse_module(
-      specifier,
-      media_type,
-      source.clone(),
-    )?;
-    let is_cjs = if let Some(is_known_script) = is_known_script {
-      self.cjs_tracker.is_cjs_with_known_is_script(
-        specifier,
-        media_type,
-        is_known_script,
-      )?
+  sort_output_files_for_display(output, input, &mut output_files);
+
+  for file in output_files.iter() {
+    let path = &file.path;
+    let raw_bytes: &[u8] = &file.contents;
+    let is_js_file = is_js(path);
+
+    let processed: Option<Vec<u8>> = if is_js_file && should_replace_require {
+      let s = std::str::from_utf8(raw_bytes)?;
+      Some(replace_require_shim(s, minified).into_bytes())
     } else {
-      self.cjs_tracker.is_maybe_cjs(specifier, media_type)?
-        && parsed_source.compute_is_script()
+      None
     };
-    let module_kind = ModuleKind::from_is_cjs(is_cjs);
-    let source = self
-      .emitter
-      .maybe_emit_parsed_source(parsed_source, module_kind)
-      .await?;
-    Ok(source)
-  }
+    let bytes: &[u8] = processed.as_deref().unwrap_or(raw_bytes);
 
-  fn apply_transform(
-    resolved_roots: &IndexSet<ModuleSpecifier>,
-    module_graph_container: &MainModuleGraphContainer,
-    specifier: &ModuleSpecifier,
-    media_type: deno_ast::MediaType,
-    code: &str,
-  ) -> Result<String, BundleLoadError> {
-    let graph = module_graph_container.graph();
-    let mut transform = transform::BundleImportMetaMainTransform::new(
-      graph.roots.contains(specifier) || resolved_roots.contains(specifier),
-    );
-    // A CJS module imported from ESM reaches us as an ESM facade the module
-    // loader generated (`import { createRequire } ...; export default mod;`).
-    // Parsing that under `MediaType::Cjs` forces script mode (see
-    // deno_ast `refine_parse_mode`), which rejects the facade's import/export
-    // statements with a parse error. Parse as JavaScript so program mode
-    // auto-detects module vs script and handles both the facade and genuine
-    // CJS scripts.
-    let media_type = match media_type {
-      deno_ast::MediaType::Cjs => deno_ast::MediaType::JavaScript,
-      other => other,
-    };
-    let parsed_source = deno_ast::parse_program_with_post_process(
-      deno_ast::ParseParams {
-        specifier: specifier.clone(),
-        text: code.into(),
-        media_type,
-        capture_tokens: false,
-        scope_analysis: false,
-        maybe_syntax: None,
-      },
-      |mut program, _| {
-        use deno_ast::swc::ecma_visit::VisitMut;
-        transform.visit_mut_program(&mut program);
-        program
-      },
-    )?;
-    let code = deno_ast::emit(
-      parsed_source.program_ref(),
-      &parsed_source.comments().as_single_threaded(),
-      &deno_ast::SourceMap::default(),
-      &EmitOptions {
-        source_map: deno_ast::SourceMapOption::None,
-        ..Default::default()
-      },
-    )?;
-    Ok(code.text)
-  }
+    let relative_path =
+      pathdiff::diff_paths(path, cwd).unwrap_or_else(|| path.clone());
 
-  fn specifier_and_type_from_graph(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<
-    Option<(
-      ModuleSpecifier,
-      deno_ast::MediaType,
-      esbuild_client::BuiltinLoader,
-    )>,
-    BundleLoadError,
-  > {
-    let graph = self.module_graph_container.graph();
-    let Some(module) = graph.get(specifier) else {
-      return Ok(None);
-    };
-    let (specifier, media_type, loader) = match module {
-      deno_graph::Module::Js(js_module) => (
-        js_module.specifier.clone(),
-        js_module.media_type,
-        media_type_to_loader(js_module.media_type),
-      ),
-      deno_graph::Module::Json(json_module) => (
-        json_module.specifier.clone(),
-        deno_ast::MediaType::Json,
-        esbuild_client::BuiltinLoader::Json,
-      ),
-      deno_graph::Module::Wasm(wasm_module) => (
-        wasm_module.specifier.clone(),
-        deno_ast::MediaType::Wasm,
-        esbuild_client::BuiltinLoader::Js,
-      ),
-      deno_graph::Module::Npm(_) => {
-        let req_ref =
-          NpmPackageReqReference::from_specifier(specifier).unwrap();
-        let url = self.resolver.resolve_managed_npm_req_ref(
-          &req_ref,
-          None,
-          ResolutionMode::Import,
-          NodeResolutionKind::Execution,
-        )?;
-        let (media_type, _charset) =
-          deno_media_type::resolve_media_type_and_charset_from_content_type(
-            &url, None,
-          );
-        (url, media_type, media_type_to_loader(media_type))
+    // If no output dir or path specified and single entry, write to stdout
+    if outdir.is_none() && output_path.is_none() && output_files.len() == 1 {
+      deno_print::drop_write_stdout(bytes);
+      continue;
+    }
+
+    if let Some(parent) = path.parent()
+      && !exists_cache.contains(parent)
+    {
+      if !parent.exists() {
+        std::fs::create_dir_all(parent)?;
       }
-      deno_graph::Module::Node(_) => {
-        return Ok(None);
-      }
-      deno_graph::Module::External(_) => {
-        return Ok(None);
-      }
-    };
-    Ok(Some((specifier, media_type, loader)))
+      exists_cache.insert(parent.to_path_buf());
+    }
+
+    output_infos.push(OutputFileInfo {
+      relative_path,
+      size: bytes.len(),
+      is_js: is_js_file,
+    });
+
+    std::fs::write(path, bytes)?;
   }
+  Ok(output_infos)
+}
+
+/// Orders output files for writing and display: entry chunks follow the
+/// CLI entry order (rolldown emits them in graph order), and a chunk's
+/// sourcemap is listed directly before the chunk itself, matching the
+/// esbuild-based output. Files that match no entry (assets, patched HTML
+/// pages) keep their relative order after the entries.
+fn sort_output_files_for_display(
+  output: &BundleOutput,
+  input: Option<&BundlerInput>,
+  output_files: &mut [OutputFile],
+) {
+  let entries: &[(String, String)] = match input {
+    Some(BundlerInput::Entrypoints(entries)) => entries,
+    Some(BundlerInput::EntrypointsWithHtml { entries, .. }) => entries,
+    None => &[],
+  };
+  let mut chunk_order: Vec<(String, usize)> = Vec::new();
+  for asset in &output.assets {
+    if let Output::Chunk(chunk) = asset {
+      let entry_idx = chunk
+        .facade_module_id
+        .as_ref()
+        .and_then(|id| {
+          entries.iter().position(|(_, import)| import == id.as_str())
+        })
+        .unwrap_or(usize::MAX);
+      chunk_order.push((chunk.filename.to_string(), entry_idx));
+    }
+  }
+  output_files.sort_by_key(|file| {
+    let path = file.path.to_string_lossy().replace('\\', "/");
+    let (base, is_map) = match path.strip_suffix(".map") {
+      Some(base) => (base, true),
+      None => (path.as_str(), false),
+    };
+    let entry_idx = chunk_order
+      .iter()
+      .find(|(filename, _)| base.ends_with(filename.as_str()))
+      .map(|(_, idx)| *idx)
+      .unwrap_or(usize::MAX);
+    // A sourcemap sorts directly before its chunk.
+    (entry_idx, !is_map)
+  });
+}
+
+fn print_finished_message(
+  output: &BundleOutput,
+  output_infos: &[OutputFileInfo],
+  duration: Duration,
+  extra_module_count: usize,
+) -> Result<(), AnyError> {
+  // Count unique input modules across all chunks, excluding rolldown's
+  // internal synthetic modules (e.g. `\0rolldown/runtime.js`).
+  let mut input_ids = std::collections::HashSet::new();
+  for asset in &output.assets {
+    if let Output::Chunk(c) = asset {
+      for id in &c.module_ids {
+        let s = id.as_str();
+        if !s.starts_with('\0') {
+          input_ids.insert(s.to_string());
+        }
+      }
+    }
+  }
+  let input_count = input_ids.len() + extra_module_count;
+
+  let mut msg = String::new();
+  msg.push_str(&format!(
+    "{} {} module{} in {}",
+    deno_terminal::colors::green("Bundled"),
+    input_count,
+    if input_count == 1 { "" } else { "s" },
+    crate::display::human_elapsed(duration),
+  ));
+
+  let longest = output_infos
+    .iter()
+    .map(|info| info.relative_path.to_string_lossy().len())
+    .max()
+    .unwrap_or(0);
+  for info in output_infos {
+    msg.push_str(&format!(
+      "\n  {} {}",
+      if info.is_js {
+        deno_terminal::colors::cyan(format!(
+          "{:<longest$}",
+          info.relative_path.display()
+        ))
+      } else {
+        deno_terminal::colors::magenta(format!(
+          "{:<longest$}",
+          info.relative_path.display()
+        ))
+      },
+      deno_terminal::colors::gray(
+        crate::display::human_size(info.size as f64,)
+      )
+    ));
+  }
+  msg.push('\n');
+  log::info!("{}", msg);
+
+  Ok(())
+}
+
+// --- Utility functions ---
+
+// Derives a chunk name preserving the subdirectory structure relative to cwd
+// when possible. e.g. for `src/foo/main.ts` under `cwd`, returns `foo/main`.
+// Falls back to just the basename for files outside cwd.
+fn entry_name_for_url(url: &Url, cwd: &Path) -> String {
+  if url.scheme() == "file"
+    && let Ok(path) = deno_path_util::url_to_file_path(url)
+  {
+    // Strip the cwd prefix; if not under cwd, fall back to file_stem.
+    let rel = path.strip_prefix(cwd).unwrap_or(&path);
+    let mut buf = PathBuf::new();
+    if let Some(parent) = rel.parent() {
+      for comp in parent.components() {
+        if let std::path::Component::Normal(c) = comp {
+          // Skip a leading `src` directory, matching esbuild's default
+          // behavior for common project layouts.
+          if buf.as_os_str().is_empty() && c == std::ffi::OsStr::new("src") {
+            continue;
+          }
+          buf.push(c);
+        }
+      }
+    }
+    if let Some(stem) = rel.file_stem() {
+      buf.push(stem);
+    }
+    return buf.to_string_lossy().into_owned();
+  }
+  String::new()
 }
 
 fn file_path_or_url(
@@ -2445,40 +3190,6 @@ fn file_path_or_url(
     )
   } else {
     Ok(url.into())
-  }
-}
-
-/// Renders a `with { type: "css" }` import as a JS module that constructs a
-/// constructable `CSSStyleSheet`, mirroring the runtime's custom module
-/// evaluation for CSS imports.
-fn render_css_module(text: &str) -> String {
-  // `serde_json::to_string` produces a valid JS string literal with the CSS
-  // text safely escaped.
-  let literal = serde_json::to_string(text).unwrap();
-  format!(
-    "const sheet = new CSSStyleSheet();\nsheet.replaceSync({literal});\nexport default sheet;\n"
-  )
-}
-
-fn media_type_to_loader(
-  media_type: deno_media_type::MediaType,
-) -> esbuild_client::BuiltinLoader {
-  use deno_ast::MediaType::*;
-  match media_type {
-    JavaScript | Cjs | Mjs | Mts => esbuild_client::BuiltinLoader::Js,
-    TypeScript | Cts | Dts | Dmts | Dcts => esbuild_client::BuiltinLoader::Ts,
-    Jsx | Tsx => esbuild_client::BuiltinLoader::Jsx,
-    Css => esbuild_client::BuiltinLoader::Css,
-    Json => esbuild_client::BuiltinLoader::Json,
-    Jsonc => esbuild_client::BuiltinLoader::Text,
-    Json5 => esbuild_client::BuiltinLoader::Text,
-    Markdown => esbuild_client::BuiltinLoader::Text,
-    SourceMap => esbuild_client::BuiltinLoader::Text,
-    Html => esbuild_client::BuiltinLoader::Text,
-    Sql => esbuild_client::BuiltinLoader::Text,
-    Wasm => esbuild_client::BuiltinLoader::Binary,
-    Unknown => esbuild_client::BuiltinLoader::Binary,
-    // _ => esbuild_client::BuiltinLoader::External,
   }
 }
 
@@ -2554,444 +3265,41 @@ fn resolve_roots(
   roots
 }
 
-/// Ensure that an Esbuild binary for the current os/arch is downloaded
-/// and ready to use and then return path to it.
-async fn ensure_esbuild_downloaded(
-  factory: &CliFactory,
-) -> Result<PathBuf, AnyError> {
-  let installer_factory = factory.npm_installer_factory()?;
-  let deno_dir = factory.deno_dir()?;
-  let npmrc = factory.npmrc()?;
-  let npm_registry_info = installer_factory.registry_info_provider()?;
-  let resolver_factory = factory.resolver_factory()?;
-  let workspace_factory = resolver_factory.workspace_factory();
-
-  let esbuild_path = esbuild::ensure_esbuild(
-    deno_dir,
-    npmrc,
-    npm_registry_info,
-    workspace_factory.workspace_npm_link_packages()?,
-    installer_factory.tarball_cache()?,
-    factory.npm_cache()?,
-  )
-  .await?;
-  Ok(esbuild_path)
+pub fn should_replace_require_shim(platform: BundlePlatform) -> bool {
+  matches!(platform, BundlePlatform::Deno)
 }
 
-fn configure_esbuild_flags(
-  bundle_flags: &BundleFlags,
-  is_html: bool,
-) -> Vec<String> {
-  let mut builder = EsbuildFlagsBuilder::default();
-
-  builder
-    .bundle(bundle_flags.inline_imports)
-    .minify(bundle_flags.minify)
-    .splitting(bundle_flags.code_splitting)
-    .externals(bundle_flags.external.clone())
-    .tree_shaking(true)
-    .format(match bundle_flags.format {
-      BundleFormat::Esm => esbuild_client::Format::Esm,
-      BundleFormat::Cjs => esbuild_client::Format::Cjs,
-      BundleFormat::Iife => esbuild_client::Format::Iife,
-    })
-    .packages(match bundle_flags.packages {
-      PackageHandling::External => esbuild_client::PackagesHandling::External,
-      PackageHandling::Bundle => esbuild_client::PackagesHandling::Bundle,
-    });
-
-  if bundle_flags.keep_names {
-    builder.raw_flag("--keep-names");
-  }
-
-  if let Some(sourcemap_type) = bundle_flags.sourcemap {
-    builder.sourcemap(match sourcemap_type {
-      SourceMapType::Linked => esbuild_client::Sourcemap::Linked,
-      SourceMapType::Inline => esbuild_client::Sourcemap::Inline,
-      SourceMapType::External => esbuild_client::Sourcemap::External,
-    });
-  }
-
-  if let Some(outdir) = bundle_flags.output_dir.clone() {
-    builder.outdir(outdir);
-  } else if let Some(output_path) = bundle_flags.output_path.clone() {
-    builder.outfile(output_path);
-  }
-  builder.metafile(true);
-
-  if is_html {
-    builder.platform(esbuild_client::Platform::Browser);
-    builder.splitting(true);
-    builder.entry_names("[dir]/[name]-[hash]");
-    builder.chunk_names("[dir]/[name]-[hash]");
-    builder.asset_names("[dir]/[name]-[hash]");
-    builder.metafile(true);
-  }
-  match bundle_flags.platform {
-    deno_bundle_runtime::BundlePlatform::Browser => {
-      builder.platform(esbuild_client::Platform::Browser);
-    }
-    deno_bundle_runtime::BundlePlatform::Deno => {}
-  }
-
-  builder.build()
-}
-
-// extract the path from a message like "Could not resolve "path/to/file.ts""
-fn esbuild_resolve_error_path(
-  error: &esbuild_client::protocol::Message,
-) -> Option<String> {
-  let re = lazy_regex::regex!(r#"^Could not resolve "([^"]+)"#);
-  re.captures(error.text.as_str())
-    .map(|captures| captures.get(1).unwrap().as_str().to_string())
-}
-
-fn handle_esbuild_errors_and_warnings(
-  response: &BuildResponse,
-  init_cwd: &Path,
-  deferred_resolve_errors: &[DeferredResolveError],
-) {
-  for error in &response.errors {
-    if let Some(path) = esbuild_resolve_error_path(error)
-      && let Some(deferred_resolve_error) =
-        deferred_resolve_errors.iter().find(|e| e.path == path)
-    {
-      let error = protocol::Message {
-        // use our own error message, as it has more detail
-        text: deferred_resolve_error.error.to_string(),
-        ..error.clone()
-      };
-      log::error!(
-        "{}: {}",
-        deno_terminal::colors::red_bold("error"),
-        format_message(&error, init_cwd)
-      );
-      continue;
-    }
-    log::error!(
-      "{}: {}",
-      deno_terminal::colors::red_bold("error"),
-      format_message(error, init_cwd)
+// Rolldown emits a `__require` shim that uses a global `require` if available,
+// or throws otherwise. When bundling for Deno (ESM, no global require), we
+// replace it with `createRequire(import.meta.url)` from `node:module`.
+pub(crate) fn replace_require_shim(contents: &str, minified: bool) -> String {
+  if minified {
+    // Rolldown's minified __require shim. Backticks `u` are oxc-minifier's
+    // shorthand for the string "u".
+    let re = lazy_regex::regex!(
+      r#"(?P<prefix>var |,)(?P<name>\w+)=\(\w+=>typeof require<`u`\?require:typeof Proxy<`u`\?new Proxy\(\w+,\{get:\(\w+,\w+\)=>\(typeof require<`u`\?require:\w+\)\[\w+\]\}\):\w+\)\(function\(\w+\)\{if\(typeof require<`u`\)return require\.apply\(this,arguments\);throw Error\([^}]*\)\}\)(?P<suffix>;|,)"#
     );
-  }
-
-  for warning in &response.warnings {
-    log::warn!(
-      "{}: {}",
-      deno_terminal::colors::yellow("bundler warning"),
-      format_message(warning, init_cwd)
+    re.replace(contents, |c: &regex::Captures<'_>| {
+      let prefix = c.name("prefix").unwrap().as_str();
+      let name = c.name("name").unwrap().as_str();
+      let suffix = c.name("suffix").unwrap().as_str();
+      // Close the existing var statement, inject the createRequire import,
+      // then start a new var statement.
+      let close = if prefix == "," { ";" } else { "" };
+      let open = if suffix == "," { "var " } else { "" };
+      format!(
+        "{close}import{{createRequire as __deno_internal_createRequire}}from\"node:module\";var {name}=__deno_internal_createRequire(import.meta.url);{open}"
+      )
+    }).into_owned()
+  } else {
+    let re = lazy_regex::regex!(
+      r#"var __require = (/\* @__PURE__ \*/\s*)?\(\(\w+\) => typeof require !== "undefined" \? require : typeof Proxy !== "undefined" \? new Proxy\(\w+, \{\s*get: \(\w+, \w+\) => \(typeof require !== "undefined" \? require : \w+\)\[\w+\]\s*\}\) : \w+\)\(function\(\w+\) \{\s*if \(typeof require !== "undefined"\) return require\.apply\(this, arguments\);\s*throw Error\([^}]*\);\s*\}\);"#
     );
-  }
-}
-
-pub struct OutputFileInfo {
-  relative_path: PathBuf,
-  size: usize,
-  is_js: bool,
-}
-
-pub struct ProcessedContents {
-  contents: Option<Vec<u8>>,
-  is_js: bool,
-}
-
-impl ProcessedContents {
-  pub fn into_contents(self) -> Option<Vec<u8>> {
-    self.contents
-  }
-}
-
-fn is_js(path: &Path) -> bool {
-  if let Some(ext) = path.extension() {
-    matches!(
-      ext.to_string_lossy().as_ref(),
-      "js" | "mjs" | "cjs" | "jsx" | "ts" | "tsx" | "mts" | "cts" | "dts"
+    re.replace_all(
+      contents,
+      r#"import { createRequire as __deno_internal_createRequire } from "node:module";
+var __require = __deno_internal_createRequire(import.meta.url);"#,
     )
-  } else {
-    false
-  }
-}
-
-pub fn maybe_process_contents(
-  file: &OutputFile<'_>,
-  should_replace_require_shim: bool,
-  minified: bool,
-) -> Result<ProcessedContents, AnyError> {
-  let path = &file.path;
-  let is_js = is_js(path) || path.ends_with("<stdout>");
-  if is_js {
-    let string = str::from_utf8(&file.contents)?;
-    // The `createRequire` shim is Deno-specific (it injects an import from
-    // `node:module`), so it is only applied for the Deno platform. The CJS
-    // interop fix-up below is platform-independent and always runs.
-    let string = if should_replace_require_shim {
-      replace_require_shim(string, minified)
-    } else {
-      string.to_string()
-    };
-    let string = force_node_cjs_interop(&string);
-    Ok(ProcessedContents {
-      contents: Some(string.into_bytes()),
-      is_js,
-    })
-  } else {
-    Ok(ProcessedContents {
-      contents: None,
-      is_js,
-    })
-  }
-}
-
-pub struct OutputFile<'a> {
-  pub path: PathBuf,
-  pub contents: Cow<'a, [u8]>,
-  pub hash: Option<String>,
-}
-
-impl<'a> std::fmt::Debug for OutputFile<'a> {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    f.debug_struct("OutputFile")
-      .field("path", &self.path)
-      .field("hash", &self.hash)
-      .finish()
-  }
-}
-
-impl<'a> From<&'a esbuild_client::protocol::BuildOutputFile>
-  for OutputFile<'a>
-{
-  fn from(file: &'a esbuild_client::protocol::BuildOutputFile) -> Self {
-    OutputFile {
-      path: PathBuf::from(&file.path),
-      contents: Cow::Borrowed(&file.contents),
-      hash: Some(file.hash.clone()),
-    }
-  }
-}
-
-impl<'a> From<esbuild_client::protocol::BuildOutputFile> for OutputFile<'a> {
-  fn from(file: esbuild_client::protocol::BuildOutputFile) -> Self {
-    OutputFile {
-      path: PathBuf::from(&file.path),
-      contents: Cow::Owned(file.contents),
-      hash: Some(file.hash),
-    }
-  }
-}
-
-pub fn collect_output_files<'a>(
-  response_output_files: Option<&'a [protocol::BuildOutputFile]>,
-  cwd: &Path,
-  input: BundlerInput,
-  outdir: Option<&Path>,
-) -> Result<Vec<OutputFile<'a>>, AnyError> {
-  let outdir = if let Some(outdir) = outdir {
-    if outdir.is_absolute() {
-      Some(outdir.to_path_buf())
-    } else {
-      Some(cwd.join(outdir))
-    }
-  } else {
-    None
-  };
-  let mut output_files: Vec<OutputFile> = response_output_files
-    .map(|fs| {
-      fs.iter()
-        .map(|f| OutputFile {
-          path: PathBuf::from(&f.path),
-          contents: Cow::Borrowed(&f.contents),
-          hash: Some(f.hash.clone()),
-        })
-        .collect::<Vec<_>>()
-    })
-    .unwrap_or_default();
-
-  if let BundlerInput::EntrypointsWithHtml {
-    entries: _,
-    html_pages,
-  } = input
-  {
-    let outdir = outdir.ok_or_else(|| {
-      deno_core::anyhow::anyhow!(
-        "--outdir is required when bundling HTML entrypoints",
-      )
-    })?;
-
-    let mut html_output_files = html::HtmlOutputFiles::new(&mut output_files);
-    for page in html_pages {
-      page.patch_html_with_response(cwd, &outdir, &mut html_output_files)?;
-    }
-  }
-  Ok(output_files)
-}
-
-pub fn process_result(
-  response: &BuildResponse,
-  cwd: &Path,
-  should_replace_require_shim: bool,
-  minified: bool,
-  input: BundlerInput,
-  outdir: Option<&Path>,
-) -> Result<Vec<OutputFileInfo>, AnyError> {
-  let output_files =
-    collect_output_files(response.output_files.as_deref(), cwd, input, outdir)?;
-  let mut exists_cache = std::collections::HashSet::new();
-  let mut output_infos = Vec::new();
-  for file in output_files.iter() {
-    let processed_contents =
-      maybe_process_contents(file, should_replace_require_shim, minified)?;
-    let path = Path::new(&file.path);
-    let relative_path =
-      pathdiff::diff_paths(path, cwd).unwrap_or_else(|| path.to_path_buf());
-    let is_js = processed_contents.is_js;
-    let bytes: Cow<'_, [u8]> = processed_contents
-      .contents
-      .map(Cow::Owned)
-      .unwrap_or_else(|| Cow::Borrowed(file.contents.as_ref()));
-
-    if file.path.ends_with("<stdout>") {
-      deno_print::drop_write_stdout(bytes.as_ref());
-      continue;
-    }
-
-    if let Some(parent) = path.parent()
-      && !exists_cache.contains(parent)
-    {
-      if !parent.exists() {
-        std::fs::create_dir_all(parent)?;
-      }
-      exists_cache.insert(parent.to_path_buf());
-    }
-
-    output_infos.push(OutputFileInfo {
-      relative_path,
-      size: bytes.len(),
-      is_js,
-    });
-
-    std::fs::write(path, bytes.as_ref())?;
-  }
-  Ok(output_infos)
-}
-
-fn print_finished_message(
-  metafile: &esbuild_client::Metafile,
-  output_infos: &[OutputFileInfo],
-  duration: Duration,
-) -> Result<(), AnyError> {
-  let mut output = String::new();
-  output.push_str(&format!(
-    "{} {} module{} in {}",
-    deno_terminal::colors::green("Bundled"),
-    metafile.inputs.len(),
-    if metafile.inputs.len() == 1 { "" } else { "s" },
-    crate::display::human_elapsed(duration),
-  ));
-
-  let longest = output_infos
-    .iter()
-    .map(|info| info.relative_path.to_string_lossy().len())
-    .max()
-    .unwrap_or(0);
-  for info in output_infos {
-    output.push_str(&format!(
-      "\n  {} {}",
-      if info.is_js {
-        deno_terminal::colors::cyan(format!(
-          "{:<longest$}",
-          info.relative_path.display()
-        ))
-      } else {
-        deno_terminal::colors::magenta(format!(
-          "{:<longest$}",
-          info.relative_path.display()
-        ))
-      },
-      deno_terminal::colors::gray(
-        crate::display::human_size(info.size as f64,)
-      )
-    ));
-  }
-  output.push('\n');
-  log::info!("{}", output);
-
-  Ok(())
-}
-
-#[cfg(test)]
-mod declaration_flatten_tests {
-  use std::collections::HashMap;
-  use std::path::Path;
-
-  use super::flatten_declarations;
-  use super::resolve_relative_dts_path;
-
-  fn dts_key(dir: &Path, rel: &str) -> String {
-    resolve_relative_dts_path(dir, rel)
-      .to_string_lossy()
-      .to_string()
-  }
-
-  // A re-export chain is inlined into a single self-contained file: the
-  // referenced declarations are pulled in and the now-redundant relative
-  // `import type` / re-export lines are removed.
-  #[test]
-  fn flatten_inlines_reexport_chain_and_strips_import() {
-    let entry = Path::new("/proj/mod.ts");
-    let dir = entry.parent().unwrap();
-    let mut map = HashMap::new();
-    map.insert(
-      dts_key(dir, "./lib.ts"),
-      "import type { Config } from \"./types.ts\";\n\
-       export declare class Client {\n}\n"
-        .to_string(),
-    );
-    map.insert(
-      dts_key(dir, "./types.ts"),
-      "export interface Config {\n}\n".to_string(),
-    );
-    let entry_dts = "export { Client } from \"./lib.ts\";\n\
-                     export type { Config } from \"./types.ts\";\n";
-
-    let out = flatten_declarations(entry_dts, entry, &map);
-
-    assert!(out.contains("declare class Client"));
-    assert!(out.contains("interface Config"));
-    assert!(
-      !out.contains("from \"./"),
-      "flattened output should have no relative imports:\n{out}"
-    );
-  }
-
-  // Regression for the over-strip bug: a bare `import` of an in-graph module
-  // that is emitted but never re-exported (so its declarations are NOT inlined)
-  // must be left intact. Stripping it on the mere presence of the file in the
-  // emitted set would leave the imported symbol undefined in the output.
-  #[test]
-  fn flatten_keeps_import_of_non_reexported_module() {
-    let entry = Path::new("/proj/mod.ts");
-    let dir = entry.parent().unwrap();
-    let mut map = HashMap::new();
-    map.insert(
-      dts_key(dir, "./lib.ts"),
-      "import { Widget } from \"./internal.ts\";\n\
-       export declare class Client {\n    widget(): Widget;\n}\n"
-        .to_string(),
-    );
-    // Emitted but only imported (for a return type), never re-exported.
-    map.insert(
-      dts_key(dir, "./internal.ts"),
-      "export declare class Widget {\n}\n".to_string(),
-    );
-    let entry_dts = "export { Client } from \"./lib.ts\";\n";
-
-    let out = flatten_declarations(entry_dts, entry, &map);
-
-    assert!(out.contains("declare class Client"));
-    assert!(
-      out.contains("import { Widget }"),
-      "import of a non-re-exported module must be preserved so the symbol \
-       still resolves:\n{out}"
-    );
+    .into_owned()
   }
 }
