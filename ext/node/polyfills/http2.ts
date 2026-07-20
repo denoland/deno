@@ -88,6 +88,7 @@ const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
 const dc = core.loadExtScript("ext:deno_node/diagnostics_channel.js").default;
 const { utcDate } = core.loadExtScript("ext:deno_node/internal/http.ts");
 const {
+  kBytesWritten,
   kLastWriteWasAsync,
   ShutdownWrap,
   streamBaseState,
@@ -390,9 +391,10 @@ function emitStreamPerfEntry(stream) {
   }
 }
 
-// Schedule a deferred sendPending() call on the session's native handle.
-// This is deferred via queueMicrotask to avoid re-entrancy: nghttp2's
-// send_pending_data can invoke callbacks that call back into JS ops.
+// Drive the session's native handle to flush nghttp2's pending output.
+// This runs synchronously: re-entrancy is handled on the native side
+// (`is_sending` / `draining_outgoing` guards) rather than by deferring to a
+// microtask, so callers get the frames on the wire without an extra turn.
 function scheduleSendPending(session) {
   if (!session) return;
   const handle = session[kHandle];
@@ -1999,20 +2001,6 @@ class Http2Stream extends Duplex {
     handle[kOwner] = this;
     this[kHandle] = handle;
 
-    // Wrap the native write methods to flush pending h2 frames after
-    // each write. The native writeBuffer/writeUtf8String are synchronous
-    // (they buffer data in nghttp2's pending_data), so kLastWriteWasAsync
-    // must be 0 for afterWriteDispatched to call req.callback synchronously.
-    //
-    // scheduleSendPending() may write to the underlying socket (e.g. TLS),
-    // which can set kLastWriteWasAsync = 1 on the shared streamBaseState.
-    // We must reset it to 0 after flushing so that the h2 stream's own
-    // write is still considered synchronous by afterWriteDispatched.
-    const nativeWriteUtf8String = FunctionPrototypeBind(
-      handle.writeUtf8String,
-      handle,
-    );
-    const nativeWriteBuffer = FunctionPrototypeBind(handle.writeBuffer, handle);
     // The native writeUtf8String / writeBuffer ops queue bytes into
     // nghttp2's per-stream pending_data and call resume_data. We then need
     // a mem_send pass to actually frame and emit the DATA. Defer that pass
@@ -2021,31 +2009,46 @@ class Http2Stream extends Duplex {
     // data provider runs. With writable_ended observed at frame time,
     // nghttp2 packs END_STREAM onto the trailing DATA frame instead of
     // emitting a separate empty DATA(END_STREAM) frame
-    // (test-http2-pack-end-stream-flag.js). The write completion callback
-    // still fires synchronously here (kLastWriteWasAsync = 0); only the
-    // socket flush is deferred. closeStream / submitRstStream drain
-    // pending writes synchronously before submitting RST_STREAM so the
+    // (test-http2-pack-end-stream-flag.js). closeStream / submitRstStream
+    // drain pending writes synchronously before submitting RST_STREAM so the
     // queued DATA frame still reaches the peer.
-    handle.writeUtf8String = function (req, data) {
-      const err = nativeWriteUtf8String(req, data);
+    //
+    // Both ops keep the WriteWrap and only invoke its oncomplete once nghttp2
+    // has framed the bytes, so a queued write is asynchronous (as it is in
+    // Node, whose Http2Stream::DoWrite always defers to ClearOutgoing). That
+    // is what holds writableLength up while the peer's flow-control window is
+    // closed, making Http2Stream.write() return false and stalling the
+    // producer instead of letting pending_data grow without bound.
+    const nativeWriteUtf8String = FunctionPrototypeBind(
+      handle.writeUtf8String,
+      handle,
+    );
+    const nativeWriteBuffer = FunctionPrototypeBind(handle.writeBuffer, handle);
+    const deferSendPending = () => {
       if (!session[kDeferredHttp2WritePending]) {
         session[kDeferredHttp2WritePending] = 1;
         process.nextTick(flushDeferredHttp2Writes, session);
       } else {
         session[kDeferredHttp2WritePending]++;
       }
-      streamBaseState[kLastWriteWasAsync] = 0;
+    };
+    // afterWriteDispatched reads both fields right after the op returns, and
+    // kAfterAsyncWrite later credits kBytesWritten back to the write queue
+    // accounting that trackWriteState debits, so they have to agree.
+    const setWriteState = (err, bytes) => {
+      streamBaseState[kBytesWritten] = bytes;
+      streamBaseState[kLastWriteWasAsync] = err === 0 ? 1 : 0;
+    };
+    handle.writeUtf8String = function (req, data) {
+      const err = nativeWriteUtf8String(req, data);
+      deferSendPending();
+      setWriteState(err, Buffer.byteLength(data, "utf8"));
       return err;
     };
     handle.writeBuffer = function (req, data) {
       const err = nativeWriteBuffer(req, data);
-      if (!session[kDeferredHttp2WritePending]) {
-        session[kDeferredHttp2WritePending] = 1;
-        process.nextTick(flushDeferredHttp2Writes, session);
-      } else {
-        session[kDeferredHttp2WritePending]++;
-      }
-      streamBaseState[kLastWriteWasAsync] = 0;
+      deferSendPending();
+      setWriteState(err, data.byteLength);
       return err;
     };
     handle.writev = function (req, chunks, allBuffers) {

@@ -898,6 +898,65 @@ Deno.test("[node/http2 client] connect with pre-created socket", {
   await new Promise<void>((resolve) => server.on("close", resolve));
 });
 
+// A stream write only completes once nghttp2 has framed its bytes, so a peer
+// that stops reading holds the write outstanding instead of letting it buffer
+// without bound on the native side.
+Deno.test("[node/http2] stream writes apply backpressure", async () => {
+  const chunk = Buffer.alloc(256 * 1024);
+  const backpressured = Promise.withResolvers<void>();
+  const drained = Promise.withResolvers<void>();
+  let pending = 0;
+
+  const server = http2.createServer();
+  server.on("stream", (stream) => {
+    stream.respond({ ":status": 200 });
+    // The client leaves the response paused, so its flow-control window closes
+    // and nghttp2 stops accepting DATA. Write until the Writable pushes back.
+    //
+    // With the pre-fix synchronous completion, write() always returns true, so
+    // this loop never breaks and the test would hang until the runner's
+    // timeout rather than failing the assertions below — that timeout is the
+    // primary regression signal here.
+    while (true) {
+      pending++;
+      if (!stream.write(chunk, () => pending--)) {
+        break;
+      }
+    }
+    stream.once("drain", () => drained.resolve());
+    backpressured.resolve();
+  });
+
+  const port = await new Promise<number>((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      resolve((server.address() as net.AddressInfo).port);
+    });
+  });
+
+  const client = http2.connect(`http://127.0.0.1:${port}`);
+  client.on("error", () => {});
+  const request = client.request({ ":path": "/" });
+  request.on("error", () => {});
+  request.on("response", () => request.pause());
+  request.end();
+
+  try {
+    await backpressured.promise;
+    // Nothing can drain the write while the window is shut, so its callback
+    // must stay outstanding rather than reporting a bogus instant completion.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert(pending > 0, "write completed even though the peer never read");
+
+    // Reading reopens the window, which releases the write and the producer.
+    request.resume();
+    await drained.promise;
+    assertEquals(pending, 0);
+  } finally {
+    client.destroy();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
 Deno.test("[node/http2] destroy cleans internal socket references", async () => {
   const server = http2.createServer((_req, res) => {
     res.end("ok");
