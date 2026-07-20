@@ -627,7 +627,7 @@ fn format_embedded_css(
     // fixed point and preserves any intentional formatting inside it.
     return Ok(None);
   };
-  let formatted = formatted.trim_end_matches('\n');
+  let formatted = formatted.trim_matches('\n');
   Ok(if formatted == text {
     None
   } else {
