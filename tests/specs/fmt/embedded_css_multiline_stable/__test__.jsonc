@@ -9,6 +9,11 @@
     "file_format_is_stable": {
       "args": "fmt styles.ts",
       "output": "Checked 1 file\n"
+    },
+    "ignored_block_is_idempotent": {
+      "args": "fmt -",
+      "input": "css`\n  /* deno-fmt-ignore */\n  .a{color:red;background:blue}\n`;\n",
+      "output": "css`\n  /* deno-fmt-ignore */\n  .a{color:red;background:blue}\n`;\n"
     }
   }
 }

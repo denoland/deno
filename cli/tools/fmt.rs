@@ -615,13 +615,17 @@ fn format_embedded_css(
   // without dedenting first that leading whitespace grows by the template's
   // indentation on every pass and the format never reaches a fixed point.
   let dedented = dedent_embedded(text);
-  let formatted = match lax_css::format_text(
+  let Some(formatted) = lax_css::format_text(
     Path::new("embedded.css"),
     &dedented,
     &lax_css_config,
-  )? {
-    Some(formatted) => formatted,
-    None => dedented,
+  )?
+  else {
+    // lax-css declined to reformat (an ignore directive, or content it
+    // considers already canonical). leave the block exactly as the user wrote
+    // it: the typescript formatter then emits the template verbatim, which is a
+    // fixed point and preserves any intentional formatting inside it.
+    return Ok(None);
   };
   let formatted = formatted.trim_end_matches('\n');
   Ok(if formatted == text {
