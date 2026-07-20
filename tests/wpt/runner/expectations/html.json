@@ -808,7 +808,6 @@
       "type-long-settimeout.any.html": true,
       "type-long-settimeout.any.worker.html": true,
       "setinterval-cross-realm-callback-report-exception.html": false,
-      "setinterval-settimeout-clamping.html": true,
       "settimeout-cross-realm-callback-report-exception.html": false
     },
     "microtask-queuing": {
