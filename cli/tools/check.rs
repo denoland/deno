@@ -4,6 +4,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_core::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_terminal::colors;
 
@@ -13,6 +14,7 @@ use crate::args::SyncTypesFlags;
 use crate::args::TypeCheckModeExt;
 use crate::factory::CliFactory;
 use crate::tsc::Diagnostics;
+use crate::util::extract::extract_snippet_files;
 use crate::util::file_watcher;
 
 pub async fn check(
@@ -53,15 +55,6 @@ async fn native_check(
   flags: Arc<Flags>,
   check_flags: CheckFlags,
 ) -> Result<(), AnyError> {
-  if check_flags.doc || check_flags.doc_only {
-    // Doc snippet extraction was handled by Deno 2.x's forked tsc; the native
-    // compiler does not type-check markdown/JSDoc snippets yet.
-    log::warn!(
-      "{} --doc/--doc-only is not yet supported by the native type checker and will be ignored",
-      colors::yellow("Warning")
-    );
-  }
-
   let factory = CliFactory::from_flags(flags.clone());
   let cli_options = factory.cli_options()?;
   let project_root = cli_options
@@ -101,6 +94,48 @@ async fn native_check(
     log::warn!("{} No matching files found.", colors::yellow("Warning"));
     return Ok(());
   }
+
+  // `--doc` / `--doc-only`: type-check the code snippets found in each root's
+  // JSDoc comments (and, for markdown roots, its fenced blocks). Each snippet is
+  // materialized to disk next to its source with a synthetic
+  // `<file>#<start>-<end>.<ext>` name (so relative imports and the injected
+  // import of the base module's exports still resolve), then fed into the same
+  // graph / sync-types / tsc pipeline as an additional root. For `--doc-only`
+  // the base file itself is *not* type-checked as a module (a `.md` isn't one),
+  // so only the snippets remain as roots. The materialized files are held open
+  // by `_doc_snippet_guard` and removed when it drops, keeping the user's tree
+  // clean.
+  let _doc_snippet_guard;
+  // Extra file-path arguments to feed to sync-types so it discovers any
+  // external (npm:/jsr:/http(s):) specifiers the snippets import.
+  let mut sync_types_extra_files: Vec<String> = Vec::new();
+  // Map from a materialized snippet's on-disk `file://` URL (percent-encoded
+  // `#`) to its display specifier (fragment form, literal `#`) so tsc's
+  // diagnostics render the `<file>#<start>-<end>.<ext>` name the user expects.
+  let mut doc_snippet_display: Vec<(String, String)> = Vec::new();
+  if check_flags.doc || check_flags.doc_only {
+    let doc = extract_doc_snippets(&factory, &roots).await?;
+    _doc_snippet_guard = doc.guards;
+    sync_types_extra_files = doc.file_args.clone();
+    doc_snippet_display = doc.display_map;
+    if check_flags.doc_only {
+      // Only the snippets are checked; the base files (e.g. markdown) are not
+      // modules and must not reach the graph or tsc.
+      roots = doc.roots;
+    } else {
+      roots.extend(doc.roots);
+    }
+    if roots.is_empty() {
+      log::warn!(
+        "{} No documentation code snippets found to type-check.",
+        colors::yellow("Warning")
+      );
+      return Ok(());
+    }
+  } else {
+    _doc_snippet_guard = Vec::new();
+  }
+
   let graph_kind = cli_options.type_check_mode().as_graph_kind();
   let imports = factory
     .module_graph_builder()
@@ -199,10 +234,22 @@ async fn native_check(
   // as a follow-up.
   let prev_level = log::max_level();
   log::set_max_level(log::LevelFilter::Error);
+  // Sync-types builds its own graph from these roots to discover external
+  // specifiers. For `--doc-only` the base file (e.g. a `.md`) isn't a module, so
+  // hand it only the materialized snippets; for `--doc` add the snippets
+  // alongside the original files so any specifiers they import are materialized
+  // too.
+  let sync_types_roots = if check_flags.doc_only {
+    sync_types_extra_files.clone()
+  } else {
+    let mut r = check_flags.files.clone();
+    r.extend(sync_types_extra_files.clone());
+    r
+  };
   let sync_result = crate::tools::installer::sync_types_command(
     flags.clone(),
     SyncTypesFlags {
-      roots: check_flags.files.clone(),
+      roots: sync_types_roots,
     },
     crate::tools::installer::RootTsConfigMode::CheckMode,
   )
@@ -356,9 +403,24 @@ async fn native_check(
 
   let stdout = String::from_utf8_lossy(&output.stdout);
   let stderr = String::from_utf8_lossy(&output.stderr);
-  let mut diagnostics = Diagnostics::from(
-    crate::tsc::native::parse_tsc_diagnostics(&stdout, &project_root),
-  );
+  let mut parsed_diagnostics =
+    crate::tsc::native::parse_tsc_diagnostics(&stdout, &project_root);
+  // A materialized doc snippet lives on disk with a `#` in its name, which
+  // `parse_tsc_diagnostics` renders as a percent-encoded `file://` URL. Restore
+  // the snippet's display specifier (fragment form, literal `#`) so diagnostics
+  // point at `<file>#<start>-<end>.<ext>` like Deno 2.x's forked tsc did.
+  if !doc_snippet_display.is_empty() {
+    for diagnostic in &mut parsed_diagnostics {
+      if let Some(file_name) = diagnostic.file_name.as_mut()
+        && let Some((_, display)) = doc_snippet_display
+          .iter()
+          .find(|(on_disk, _)| on_disk == file_name)
+      {
+        *file_name = display.clone();
+      }
+    }
+  }
+  let mut diagnostics = Diagnostics::from(parsed_diagnostics);
   // Fold in deno's own diagnostics for missing entrypoints (some roots existed
   // and were type-checked by tsc above; any that didn't are reported here).
   diagnostics.extend(root_diagnostics);
@@ -424,6 +486,115 @@ async fn ensure_native_tsc_downloaded(
     factory.npm_cache()?,
   )
   .await
+}
+
+/// A doc snippet materialized to disk, deleted when this guard drops so
+/// `deno check --doc` leaves no artifact behind in the user's tree.
+struct MaterializedSnippet {
+  path: PathBuf,
+}
+
+impl Drop for MaterializedSnippet {
+  fn drop(&mut self) {
+    let _ = std::fs::remove_file(&self.path);
+  }
+}
+
+/// The result of extracting and materializing doc snippets from the requested
+/// roots (see `extract_doc_snippets`).
+struct DocSnippets {
+  /// Keeps each materialized snippet file on disk until tsc has run.
+  guards: Vec<MaterializedSnippet>,
+  /// Graph roots for the snippets (on-disk `file://` URLs, percent-encoded `#`).
+  roots: Vec<ModuleSpecifier>,
+  /// On-disk snippet paths as strings, to feed sync-types as extra roots.
+  file_args: Vec<String>,
+  /// `(on-disk file:// URL, display specifier)` pairs used to render snippet
+  /// diagnostics with the `<file>#<start>-<end>.<ext>` name (literal `#`).
+  display_map: Vec<(String, String)>,
+}
+
+/// Extract the code snippets from each local root's JSDoc comments (and, for
+/// markdown roots, its fenced code blocks) and materialize them to disk next to
+/// their source so the native tsc pipeline can type-check them.
+///
+/// Each snippet is written with a synthetic `<file>#<start>-<end>.<ext>` name.
+/// The extracted source injects an absolute `file://` import of the base
+/// module's exports (so identifiers documented in the JSDoc resolve) and keeps
+/// the snippet's original relative imports; co-locating the file next to its
+/// source keeps both kinds of import resolving. Remote roots are skipped (their
+/// snippets can't be materialized next to a local source file).
+async fn extract_doc_snippets(
+  factory: &CliFactory,
+  roots: &[ModuleSpecifier],
+) -> Result<DocSnippets, AnyError> {
+  let file_fetcher = factory.file_fetcher()?.clone();
+  let mut result = DocSnippets {
+    guards: Vec::new(),
+    roots: Vec::new(),
+    file_args: Vec::new(),
+    display_map: Vec::new(),
+  };
+
+  for root in roots {
+    if root.scheme() != "file" {
+      continue;
+    }
+    let Ok(base_path) = root.to_file_path() else {
+      continue;
+    };
+    let Some(base_dir) = base_path.parent() else {
+      continue;
+    };
+    let Some(base_file_name) = base_path
+      .file_name()
+      .and_then(|n| n.to_str())
+      .map(str::to_owned)
+    else {
+      continue;
+    };
+
+    let file = file_fetcher.fetch_bypass_permissions(root).await?;
+    let snippets = extract_snippet_files(file)?;
+
+    for snippet in snippets {
+      // The snippet specifier is `<base>#<start>-<end>.<ext>`; the fragment
+      // carries the line range + extension. Reconstruct the on-disk file name
+      // as `<base file name>#<fragment>` so the diagnostic path matches the
+      // display specifier and relative imports resolve from the source's dir.
+      let Some(fragment) = snippet.url.fragment() else {
+        continue;
+      };
+      let disk_name = format!("{base_file_name}#{fragment}");
+      let disk_path = base_dir.join(&disk_name);
+      // `extract_snippet_files` injects an import of the base module's exports
+      // using the base's absolute `file://` URL. Stock tsc can't resolve a
+      // `file://` specifier, so rewrite it to a path relative to the snippet's
+      // on-disk location (co-located with the source, so `./<file>` resolves).
+      let source = String::from_utf8_lossy(snippet.source.as_ref());
+      let source = source.replace(
+        &format!("\"{}\"", root.as_str()),
+        &format!("\"./{base_file_name}\""),
+      );
+      std::fs::write(&disk_path, source.as_bytes())?;
+      let guard = MaterializedSnippet {
+        path: disk_path.clone(),
+      };
+
+      let on_disk_url = deno_path_util::url_from_file_path(&disk_path)
+        .map_err(|e| deno_core::anyhow::anyhow!("{e}"))?;
+      result
+        .display_map
+        .push((on_disk_url.to_string(), snippet.url.to_string()));
+      result.roots.push(on_disk_url);
+      result
+        .file_args
+        .push(disk_path.to_string_lossy().into_owned());
+      result.guards.push(guard);
+    }
+  }
+
+  Ok(result)
 }
 
 /// Print a `Check <specifier>` line for each provided root, rendered relative
