@@ -1,4 +1,6 @@
 {
+  // native check gap: type-only import resolution not yet supported by native tsc (see https://github.com/denoland/deno/issues/36085)
+  "ignore": true,
   "args": "run --reload --check ts_type_only_import.ts",
   "output": "ts_type_only_import.ts.out"
 }

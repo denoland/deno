@@ -1,4 +1,6 @@
 {
+  // native check gap: declaration-file (.d.ts) import not yet supported by native tsc (see https://github.com/denoland/deno/issues/36085)
+  "ignore": true,
   "args": "run --reload --check error_type_definitions.ts",
   "output": "error_type_definitions.ts.out",
   "exitCode": 1

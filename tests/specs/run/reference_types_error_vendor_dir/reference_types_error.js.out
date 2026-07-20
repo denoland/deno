@@ -1,6 +1,8 @@
 Check [WILDCARD]reference_types_error.js
-TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/nonexistent.d.ts'.
-    at file:///[WILDLINE]/reference_types_error.js:1:22
+TS2688 [ERROR]: Cannot find type definition file for './nonexistent.d.ts'.
+/// <reference types="./nonexistent.d.ts" />
+                      ^
+    at file:///[WILDLINE]/reference_types_error.js:1:23
 
 error: Type checking failed.
 

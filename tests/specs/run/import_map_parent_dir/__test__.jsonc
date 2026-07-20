@@ -1,4 +1,6 @@
 {
+  // native check gap: import-map parent-dir mapping not yet supported by native tsc (see https://github.com/denoland/deno/issues/36085)
+  "ignore": true,
   "steps": [{
     "args": "info --config=sub/deno.json sub/main.ts",
     "output": "info.out"

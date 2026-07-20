@@ -1,4 +1,6 @@
 {
+  // native check gap: @deno-types vs X-TypeScript-Types precedence not yet supported by native tsc (see https://github.com/denoland/deno/issues/36174)
+  "ignore": true,
   "args": "run --allow-import --reload --check type_headers_deno_types.ts",
   "output": "type_headers_deno_types.ts.out"
 }

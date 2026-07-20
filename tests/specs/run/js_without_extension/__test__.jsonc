@@ -1,4 +1,6 @@
 {
+  // native check gap: --ext / extensionless ScriptKind override not yet supported by native tsc (see https://github.com/denoland/deno/issues/36173)
+  "ignore": true,
   "args": "run --ext js --check js_without_extension",
   "output": "js_without_extension.out",
   "exitCode": 0

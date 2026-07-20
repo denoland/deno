@@ -1,4 +1,6 @@
 {
+  // native check gap: ReadableStream.from lib type not yet materialized by native tsc (see https://github.com/denoland/deno/issues/36085)
+  "ignore": true,
   "args": "run --check main.ts",
   "output": "main.out"
 }

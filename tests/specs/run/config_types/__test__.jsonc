@@ -1,4 +1,6 @@
 {
+  // native check gap: compilerOptions.types not yet supported by native tsc (see https://github.com/denoland/deno/issues/36085)
+  "ignore": true,
   "args": "run --reload --quiet --check --config config_types/tsconfig.json config_types/main.ts",
   "output": "config_types/main.out"
 }

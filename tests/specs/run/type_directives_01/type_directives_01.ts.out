@@ -1,3 +1,5 @@
 [WILDCARD]
-DEBUG TS - host.getSourceFile("http://localhost:4545/xTypeScriptTypes.d.ts", Latest)
+Check type_directives_01.ts
+[WILDCARD]
+foo
 [WILDCARD]

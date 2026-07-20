@@ -1,4 +1,6 @@
 {
+  // native check gap: wasm module type materialization not yet supported by native tsc (see https://github.com/denoland/deno/issues/36085)
+  "ignore": true,
   "steps": [{
     "args": "run -A setup.ts",
     "output": "[WILDCARD]"
