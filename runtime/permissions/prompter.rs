@@ -8,22 +8,58 @@ use parking_lot::Mutex;
 fn escape_control_characters(s: &str) -> std::borrow::Cow<'_, str> {
   use deno_terminal::colors;
 
-  if !s.contains(|c: char| c.is_ascii_control() || c.is_control()) {
+  if !s.contains(is_prompt_control_character) {
     return std::borrow::Cow::Borrowed(s);
   }
   let mut output = String::with_capacity(s.len() * 2);
   for c in s.chars() {
     match c {
-      c if c.is_ascii_control() => output.push_str(
-        &colors::white_bold_on_red(c.escape_debug().to_string()).to_string(),
-      ),
-      c if c.is_control() => output.push_str(
+      c if is_prompt_control_character(c) => output.push_str(
         &colors::white_bold_on_red(c.escape_debug().to_string()).to_string(),
       ),
       c => output.push(c),
     }
   }
   output.into()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn is_prompt_control_character(c: char) -> bool {
+  c.is_ascii_control()
+    || c.is_control()
+    // Unicode formatting controls that can spoof permission prompt text. These
+    // are General_Category=Format, not `char::is_control()`, so they pass
+    // through unescaped unless we handle them explicitly. A few have legitimate
+    // uses (e.g. joiners in some scripts and emoji), but in a security-sensitive
+    // prompt we prefer to render them visibly so the label can't be forged.
+    || matches!(
+      c,
+      // Bidirectional formatting controls. Terminals may interpret these and
+      // visually reorder the text (the Trojan-Source / bidi-spoofing vector).
+      '\u{061c}' // Arabic Letter Mark
+        | '\u{200e}' // Left-to-Right Mark
+        | '\u{200f}' // Right-to-Left Mark
+        | '\u{202a}' // Left-to-Right Embedding
+        | '\u{202b}' // Right-to-Left Embedding
+        | '\u{202c}' // Pop Directional Formatting
+        | '\u{202d}' // Left-to-Right Override
+        | '\u{202e}' // Right-to-Left Override
+        | '\u{2066}' // Left-to-Right Isolate
+        | '\u{2067}' // Right-to-Left Isolate
+        | '\u{2068}' // First Strong Isolate
+        | '\u{2069}' // Pop Directional Isolate
+      // Invisible / zero-width formatting controls. These render as nothing but
+      // can conceal or fake label content without reordering it.
+        | '\u{200b}' // Zero Width Space
+        | '\u{200c}' // Zero Width Non-Joiner
+        | '\u{200d}' // Zero Width Joiner
+        | '\u{2060}' // Word Joiner
+        | '\u{2061}' // Function Application
+        | '\u{2062}' // Invisible Times
+        | '\u{2063}' // Invisible Separator
+        | '\u{2064}' // Invisible Plus
+        | '\u{feff}' // Zero Width No-Break Space (byte order mark)
+    )
 }
 
 pub const PERMISSION_EMOJI: &str = "⚠️";
@@ -648,5 +684,45 @@ pub mod tests {
     pub fn set(&self, value: bool) {
       STUB_PROMPT_VALUE.store(value, Ordering::SeqCst);
     }
+  }
+
+  #[cfg(not(target_arch = "wasm32"))]
+  #[test]
+  fn escape_control_characters_escapes_bidi_formatting_marks() {
+    let escaped =
+      escape_control_characters("run access to \u{202e}txt.cilbup\u{202c}");
+
+    assert!(!escaped.contains('\u{202e}'));
+    assert!(!escaped.contains('\u{202c}'));
+    assert!(escaped.contains(r"\u{202e}"));
+    assert!(escaped.contains(r"\u{202c}"));
+  }
+
+  #[cfg(not(target_arch = "wasm32"))]
+  #[test]
+  fn escape_control_characters_escapes_invisible_formatting_marks() {
+    // Zero-width / invisible formatting characters render as nothing but can
+    // conceal or fake the displayed label.
+    for c in [
+      '\u{200b}', // Zero Width Space
+      '\u{200c}', // Zero Width Non-Joiner
+      '\u{200d}', // Zero Width Joiner
+      '\u{2060}', // Word Joiner
+      '\u{feff}', // Zero Width No-Break Space (byte order mark)
+    ] {
+      let input = format!("access to secret{c}.txt");
+      let escaped = escape_control_characters(&input);
+      assert!(!escaped.contains(c), "{c:?} should not survive unescaped");
+      assert!(
+        escaped.contains(&c.escape_debug().to_string()),
+        "{c:?} should be rendered visibly"
+      );
+    }
+  }
+
+  #[cfg(not(target_arch = "wasm32"))]
+  #[test]
+  fn escape_control_characters_leaves_safe_unicode_visible() {
+    assert_eq!(escape_control_characters("文件.txt"), "文件.txt");
   }
 }
