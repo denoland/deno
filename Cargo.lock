@@ -3106,6 +3106,7 @@ dependencies = [
  "deno_unsync",
  "futures",
  "lazy-regex",
+ "libc",
  "log",
  "once_cell",
  "parking_lot",
@@ -3814,6 +3815,7 @@ version = "0.53.0"
 dependencies = [
  "deno_error",
  "deno_path_util",
+ "libc",
  "sys_traits",
  "tempfile",
  "thiserror 2.0.12",
