@@ -989,37 +989,33 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 name: "Set up musl build environment",
                 run: [
                   "rustup target add aarch64-unknown-linux-musl",
-                  // The runner is arm64, so use a native (arm64-hosted) gcc
-                  // toolchain that targets aarch64-linux-musl. Unlike Ubuntu's
-                  // musl-tools it ships a musl-built libgcc_s.so.1, which
-                  // dynamic linking (crt-static off, needed for FFI/dlopen)
-                  // requires. Real gcc also avoids the codegen bugs Zig's
-                  // bundled clang hit on aarch64 crypto intrinsics.
-                  'TOOLCHAIN="$RUNNER_TEMP/aarch64-linux-musl-native"',
-                  "curl --proto '=https' --tlsv1.2 \\",
-                  "  --retry 10 --retry-all-errors --retry-delay 5 -fSL \\",
-                  "  https://musl.cc/aarch64-linux-musl-native.tgz \\",
-                  '  -o "$RUNNER_TEMP/musl-toolchain.tgz"',
-                  'tar -xzf "$RUNNER_TEMP/musl-toolchain.tgz" -C "$RUNNER_TEMP"',
-                  // The musl runtime loader (/lib/ld-musl-aarch64.so.1) lets the
-                  // dynamically linked binary run on this glibc host (e.g. for
-                  // the symcache step); libgcc_s.so.1 comes from the toolchain.
+                  // musl-tools provides a real musl-targeting gcc (musl-gcc)
+                  // plus musl-dev headers/libs; `musl` provides the runtime
+                  // loader so the dynamically linked binary can run on this
+                  // glibc host (e.g. the symcache step).
                   "sudo apt-get update",
-                  "sudo apt-get install -y --no-install-recommends musl",
-                  'echo "$TOOLCHAIN/bin" >> $GITHUB_PATH',
+                  "sudo apt-get install -y --no-install-recommends musl-tools musl-dev musl",
+                  // The one thing musl-tools lacks is a musl-built
+                  // libgcc_s.so.1, which dynamic linking (crt-static off,
+                  // needed for FFI/dlopen) requires. Take it from the arm64
+                  // Alpine image -- the same real musl libgcc the shipped
+                  // binary loads on Alpine at runtime -- because musl.cc is not
+                  // reliably reachable from CI. Alpine is already pulled
+                  // reliably for the x86_64 musl container.
+                  'LIBGCC="$RUNNER_TEMP/musl-libgcc"',
+                  'mkdir -p "$LIBGCC"',
+                  "docker run --rm alpine:3.22 sh -c " +
+                  "'apk add --no-cache libgcc >/dev/null 2>&1 && cat /usr/lib/libgcc_s.so.1' " +
+                  '> "$LIBGCC/libgcc_s.so.1"',
+                  'ln -sf libgcc_s.so.1 "$LIBGCC/libgcc_s.so"',
                   'echo "CARGO_BUILD_TARGET=aarch64-unknown-linux-musl" >> $GITHUB_ENV',
-                  'echo "RUSTFLAGS=-C target-feature=-crt-static --cfg tokio_unstable" >> $GITHUB_ENV',
-                  'echo "RUSTDOCFLAGS=-C target-feature=-crt-static --cfg tokio_unstable" >> $GITHUB_ENV',
-                  'echo "CC_aarch64_unknown_linux_musl=aarch64-linux-musl-gcc" >> $GITHUB_ENV',
-                  'echo "CXX_aarch64_unknown_linux_musl=aarch64-linux-musl-g++" >> $GITHUB_ENV',
-                  'echo "AR_aarch64_unknown_linux_musl=aarch64-linux-musl-ar" >> $GITHUB_ENV',
-                  'echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-musl-gcc" >> $GITHUB_ENV',
-                  // bindgen (libsqlite3-sys) parses headers for the target;
-                  // point it at the musl sysroot.
-                  'echo "BINDGEN_EXTRA_CLANG_ARGS_aarch64_unknown_linux_musl=--sysroot=$TOOLCHAIN/aarch64-linux-musl" >> $GITHUB_ENV',
+                  'echo "RUSTFLAGS=-C target-feature=-crt-static -C link-arg=-L$LIBGCC --cfg tokio_unstable" >> $GITHUB_ENV',
+                  'echo "RUSTDOCFLAGS=-C target-feature=-crt-static -C link-arg=-L$LIBGCC --cfg tokio_unstable" >> $GITHUB_ENV',
+                  'echo "CC_aarch64_unknown_linux_musl=musl-gcc" >> $GITHUB_ENV',
+                  'echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc" >> $GITHUB_ENV',
                   // The built binary loads musl libgcc_s.so.1 at runtime; make
-                  // the toolchain-provided copy discoverable for the run steps.
-                  'echo "LD_LIBRARY_PATH=$TOOLCHAIN/aarch64-linux-musl/lib" >> $GITHUB_ENV',
+                  // the extracted copy discoverable for the run steps.
+                  'echo "LD_LIBRARY_PATH=$LIBGCC" >> $GITHUB_ENV',
                 ],
               }
               : {
@@ -1051,7 +1047,13 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             },
             {
               name: "Build release",
-              env: {
+              // Snapshot source minification shells out to a `deno` binary
+              // (runtime/transpile.rs). musl builds have no runnable deno at
+              // build time: the setup-deno one is glibc (fails in the Alpine
+              // container / on the musl target) and no musl deno is published
+              // yet. Skip minification for musl; the only cost is a slightly
+              // larger snapshot.
+              env: isMuslBuild ? {} : {
                 DENO_SNAPSHOT_MINIFY_SOURCES: "1",
               },
               run: [
