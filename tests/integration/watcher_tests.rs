@@ -1046,15 +1046,32 @@ async fn serve_watch_parallel_stops_old_workers_inner(
     .unwrap();
   assert_eq!(body, "v1");
 
-  file_to_watch.write(
-    "export default {
+  // Rewrite the watched file until the watcher actually picks up the change.
+  // "Watching paths" is logged before the OS-level watch is necessarily armed:
+  // on Windows the notify backend (ReadDirectoryChangesWatcher) dispatches the
+  // add-watch to a background thread, so a single write can land in the window
+  // after the log line but before the watch arms, be missed entirely, and the
+  // restart never happens (issue #36106). Re-writing on an interval closes that
+  // window; the watcher debounces the repeated identical writes, and we abort
+  // the moment the restart begins so only one restart is triggered.
+  let v2 = "export default {
       fetch(_request) {
         return new Response(\"v2\");
       },
-    };",
-  );
+    };";
+  file_to_watch.write(v2);
+  let rewriter = {
+    let file_to_watch = file_to_watch.clone();
+    tokio::spawn(async move {
+      loop {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        file_to_watch.write(v2);
+      }
+    })
+  };
 
   wait_contains("Restarting", &mut stderr_lines).await;
+  rewriter.abort();
   let line = wait_contains("Listening on", &mut stderr_lines).await;
   let new_port = port_regex.captures(&line).unwrap()[1].to_string();
 
