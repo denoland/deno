@@ -14,6 +14,7 @@ const ALREADY_ORDERED_RATIO = 0.9;
 const ALREADY_ORDERED_TOLERANCE = 0.02;
 const SUPPORTED_TARGETS = new Set([
   "aarch64-apple-darwin",
+  "aarch64-unknown-linux-gnu",
   "x86_64-unknown-linux-gnu",
 ]);
 

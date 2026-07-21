@@ -603,11 +603,12 @@ const buildItems = handleBuildItems([{
 const buildJobs = buildItems.map((rawBuildItem) => {
   const buildItem = defineExprObj(rawBuildItem);
   const usesStartupOrder = rawBuildItem.profile === "release" &&
-    ((rawBuildItem.os === "linux" && rawBuildItem.arch === "x86_64") ||
+    ((rawBuildItem.os === "linux" &&
+      (rawBuildItem.arch === "x86_64" || rawBuildItem.arch === "aarch64")) ||
       (rawBuildItem.os === "macos" && rawBuildItem.arch === "aarch64"));
   const startupOrderTarget = rawBuildItem.os === "macos"
     ? "aarch64-apple-darwin"
-    : "x86_64-unknown-linux-gnu";
+    : `${rawBuildItem.arch}-unknown-linux-gnu`;
   const startupOrderPath =
     `target/release/startup-order-${startupOrderTarget}.order`;
   const isLinux = buildItem.os.equals("linux");

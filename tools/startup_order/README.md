@@ -7,20 +7,21 @@ during that binary's release job.
 Supported release targets:
 
 - `x86_64-unknown-linux-gnu`
+- `aarch64-unknown-linux-gnu`
 - `aarch64-apple-darwin`
 
 Other targets and non-release profiles use the standard linker configuration.
 
 ## Files
 
-| File                                   | Purpose                                                              |
-| -------------------------------------- | -------------------------------------------------------------------- |
-| `generate_linux_function_orderfile.ts` | Runs the Linux trace workloads and writes an LLD symbol order.       |
-| `orderfile_function_tracer_linux.c`    | Records exact first function entries with x86-64 `INT3` breakpoints. |
-| `generate_macos_function_orderfile.ts` | Runs the macOS trace workloads and writes a Mach-O linker order.     |
-| `orderfile_function_tracer_macos.c`    | Records exact first function entries with arm64 `BRK` instructions.  |
-| `orderfile_trace_runner.c`             | Starts each workload while suspending the generator process.         |
-| `verify_orderfile.ts`                  | Compares the baseline and ordered release binaries after linking.    |
+| File                                   | Purpose                                                             |
+| -------------------------------------- | ------------------------------------------------------------------- |
+| `generate_linux_function_orderfile.ts` | Runs the Linux trace workloads and writes an LLD symbol order.      |
+| `orderfile_function_tracer_linux.c`    | Records exact Linux function entries with `INT3` or `BRK`.          |
+| `generate_macos_function_orderfile.ts` | Runs the macOS trace workloads and writes a Mach-O linker order.    |
+| `orderfile_function_tracer_macos.c`    | Records exact first function entries with arm64 `BRK` instructions. |
+| `orderfile_trace_runner.c`             | Starts each workload while suspending the generator process.        |
+| `verify_orderfile.ts`                  | Compares the baseline and ordered release binaries after linking.   |
 
 The linker integration is implemented in `cli/build.rs`. Release-job
 orchestration is defined in `.github/workflows/ci.ts` and materialized in
@@ -62,7 +63,7 @@ names for one function.
 
 ## Platform tracing
 
-### Linux x86-64
+### Linux x86-64 and arm64
 
 The Linux generator reads defined `STT_FUNC` entries with `readelf` and
 linker-visible names with `nm`. The tracer:
@@ -70,8 +71,10 @@ linker-visible names with `nm`. The tracer:
 - copies executable `PT_LOAD` mappings into a `memfd`;
 - maps the copy read-execute at the original addresses;
 - keeps a separate read-write alias;
-- replaces each selected function's first byte with `INT3`; and
-- restores the byte and records the address on its first `SIGTRAP`.
+- replaces each selected function's first instruction with x86-64 `INT3` or
+  arm64 `BRK`;
+- restores the instruction and records the address on its first `SIGTRAP`; and
+- synchronizes arm64 data and instruction caches before resuming execution.
 
 The writable alias avoids a writable-executable mapping. Embedded V8 builtin
 blob entries are excluded because V8 copies those bytes to a separate executable
@@ -107,7 +110,8 @@ cp -p target/release/deno target/release/deno-before-startup-order
 Generate the Linux order:
 
 ```sh
-ORDER="$PWD/target/release/startup-order-x86_64-unknown-linux-gnu.order"
+TARGET="$(uname -m)-unknown-linux-gnu"
+ORDER="$PWD/target/release/startup-order-$TARGET.order"
 target/release/deno run -A \
   tools/startup_order/generate_linux_function_orderfile.ts \
   --binary "$PWD/target/release/deno-before-startup-order" \

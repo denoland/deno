@@ -1,18 +1,20 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// Exact first-entry tracer for functions in a local x86-64 ELF executable.
+// Exact first-entry tracer for functions in a local ELF executable.
 //
 // The generator supplies linker-visible STT_FUNC addresses from the
-// unstripped executable. This tracer replaces the first byte of every entry
-// with INT3, records the first trap, restores the byte through a writable
-// alias, rewinds RIP, and resumes execution.
+// unstripped executable. This tracer replaces the first instruction of every
+// entry with INT3 on x86-64 or BRK on arm64, records the first trap, restores
+// the instruction through a writable alias, rewinds the PC, and resumes
+// execution.
 //
 // The executable PT_LOAD mapping is replaced with a shared memfd copy. It is
 // mapped read+execute at the original addresses and read+write at a separate
 // alias, avoiding a writable+executable mapping in the signal handler.
 // This is an offline profiling tool, not production runtime code.
 
-#if !defined(__linux__) || !defined(__x86_64__)
-#error "orderfile_function_tracer_linux.c requires x86-64 Linux"
+#if !defined(__linux__) || \
+  (!defined(__x86_64__) && !defined(__aarch64__))
+#error "orderfile_function_tracer_linux.c requires x86-64 or arm64 Linux"
 #endif
 
 #define _GNU_SOURCE
@@ -39,8 +41,15 @@
 #define STARTS_MAGIC UINT64_C(0x44454e4f53544152)
 #define STARTS_VERSION UINT64_C(1)
 #define STARTS_HEADER_WORDS 3
-#define BREAKPOINT_INSTRUCTION UINT8_C(0xcc)
 #define MAX_EXEC_REGIONS 8
+
+#if defined(__x86_64__)
+typedef uint8_t instruction_t;
+#define BREAKPOINT_INSTRUCTION UINT8_C(0xcc)
+#elif defined(__aarch64__)
+typedef uint32_t instruction_t;
+#define BREAKPOINT_INSTRUCTION UINT32_C(0xd4200000)
+#endif
 
 typedef int (*sigaction_fn)(
   int,
@@ -59,7 +68,7 @@ static size_t region_count;
 static uintptr_t image_slide;
 static uintptr_t page_size;
 static uintptr_t *function_starts;
-static uint8_t *original_bytes;
+static instruction_t *original_instructions;
 static uint8_t *seen;
 static size_t function_count;
 static uint64_t *record;
@@ -146,6 +155,27 @@ static size_t region_for_address(uintptr_t address) {
     }
   }
   return SIZE_MAX;
+}
+
+static void synchronize_instruction_cache(
+  uintptr_t executable_address,
+  uint8_t *writable_address,
+  size_t bytes) {
+#if defined(__aarch64__)
+  // The modified memfd is visible through different writable and executable
+  // virtual addresses. Clean the data cache through the writable alias, then
+  // invalidate the instruction cache through the address execution uses.
+  __builtin___clear_cache(
+    (char *)writable_address,
+    (char *)writable_address + bytes);
+  __builtin___clear_cache(
+    (char *)executable_address,
+    (char *)executable_address + bytes);
+#else
+  (void)executable_address;
+  (void)writable_address;
+  (void)bytes;
+#endif
 }
 
 static int read_function_starts(const char *path) {
@@ -252,9 +282,11 @@ static int copy_executable_regions(void) {
 }
 
 static int install_breakpoints(void) {
-  original_bytes = calloc(function_count, sizeof(*original_bytes));
+  original_instructions = calloc(
+    function_count,
+    sizeof(*original_instructions));
   seen = calloc(function_count, sizeof(*seen));
-  if (original_bytes == NULL || seen == NULL) {
+  if (original_instructions == NULL || seen == NULL) {
     return -1;
   }
   size_t patchable_count = 0;
@@ -265,16 +297,27 @@ static int install_breakpoints(void) {
       continue;
     }
     struct exec_region *region = &regions[region_index];
-    uint8_t *instruction =
-      region->writable_alias + address - region->start;
-    uint8_t original = *instruction;
+    if (
+      address % sizeof(instruction_t) != 0 ||
+      address > region->end - sizeof(instruction_t)
+    ) {
+      continue;
+    }
+    instruction_t *instruction = (instruction_t *)(
+      region->writable_alias + address - region->start);
+    instruction_t original = __atomic_load_n(
+      instruction,
+      __ATOMIC_RELAXED);
     if (original == BREAKPOINT_INSTRUCTION) {
       continue;
     }
     function_starts[patchable_count] = address;
-    original_bytes[patchable_count] = original;
+    original_instructions[patchable_count] = original;
     patchable_count++;
-    *instruction = BREAKPOINT_INSTRUCTION;
+    __atomic_store_n(
+      instruction,
+      BREAKPOINT_INSTRUCTION,
+      __ATOMIC_RELAXED);
   }
   function_count = patchable_count;
   if (function_count == 0) {
@@ -287,6 +330,10 @@ static int replace_executable_regions(void) {
   for (size_t index = 0; index < region_count; index++) {
     struct exec_region *region = &regions[index];
     size_t bytes = region->end - region->start;
+    synchronize_instruction_cache(
+      region->start,
+      region->writable_alias,
+      bytes);
     void *mapping = mmap(
       (void *)region->start,
       bytes,
@@ -298,6 +345,10 @@ static int replace_executable_regions(void) {
       debug_errno("replace executable mapping");
       return -1;
     }
+    synchronize_instruction_cache(
+      region->start,
+      region->writable_alias,
+      bytes);
     close(region->fd);
     region->fd = -1;
   }
@@ -349,13 +400,26 @@ static void on_breakpoint(
   siginfo_t *info,
   void *context_pointer) {
   ucontext_t *context = (ucontext_t *)context_pointer;
+#if defined(__x86_64__)
   uintptr_t pc = (uintptr_t)context->uc_mcontext.gregs[REG_RIP];
+#elif defined(__aarch64__)
+  uintptr_t pc = (uintptr_t)context->uc_mcontext.pc;
+#endif
   if (pc == 0) {
     forward_sigtrap(signal_number, info, context_pointer);
     return;
   }
-  uintptr_t function_address = pc - 1;
+#if defined(__x86_64__)
+  uintptr_t function_address = pc - sizeof(instruction_t);
   size_t index = find_function(function_address);
+#elif defined(__aarch64__)
+  uintptr_t function_address = pc;
+  size_t index = find_function(function_address);
+  if (index == SIZE_MAX && pc >= sizeof(instruction_t)) {
+    function_address = pc - sizeof(instruction_t);
+    index = find_function(function_address);
+  }
+#endif
   if (index == SIZE_MAX) {
     if (debug_enabled) {
       char message[256];
@@ -383,12 +447,16 @@ static void on_breakpoint(
     return;
   }
   struct exec_region *region = &regions[region_index];
-  uint8_t *writable_instruction =
-    region->writable_alias + function_address - region->start;
+  instruction_t *writable_instruction = (instruction_t *)(
+    region->writable_alias + function_address - region->start);
   __atomic_store_n(
     writable_instruction,
-    original_bytes[index],
+    original_instructions[index],
     __ATOMIC_RELEASE);
+  synchronize_instruction_cache(
+    function_address,
+    (uint8_t *)writable_instruction,
+    sizeof(*writable_instruction));
   last_function_address = function_address;
 
   if (__atomic_exchange_n(&seen[index], 1, __ATOMIC_RELAXED) == 0) {
@@ -397,7 +465,11 @@ static void on_breakpoint(
       record[HEADER_WORDS + hit] = function_address - image_slide;
     }
   }
+#if defined(__x86_64__)
   context->uc_mcontext.gregs[REG_RIP] = (greg_t)function_address;
+#elif defined(__aarch64__)
+  context->uc_mcontext.pc = function_address;
+#endif
 }
 
 int sigaction(

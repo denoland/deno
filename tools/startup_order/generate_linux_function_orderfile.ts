@@ -2,13 +2,13 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // deno-lint-ignore-file no-console camelcase
 /**
- * Generate a Linux x86-64 linker order from exact first function entries.
+ * Generate a Linux linker order from exact first function entries.
  *
  * The unstripped ELF symbol table provides the linker-visible STT_FUNC entry
  * addresses. orderfile_function_tracer_linux.c replaces each entry's first
- * byte with INT3, restores it on first execution, and records the exact
- * address. This avoids selecting cold functions that only share a page with
- * executed code.
+ * instruction with INT3 on x86-64 or BRK on arm64, restores it on first
+ * execution, and records the exact address. This avoids selecting cold
+ * functions that only share a page with executed code.
  */
 
 import { dirname, join, resolve } from "node:path";
@@ -396,8 +396,11 @@ function intersectionSize(sets: Set<number>[]): number {
 }
 
 async function generate(options: Options) {
-  if (Deno.build.os !== "linux" || Deno.build.arch !== "x86_64") {
-    throw new Error("exact function tracing requires x86-64 Linux");
+  if (
+    Deno.build.os !== "linux" ||
+    (Deno.build.arch !== "x86_64" && Deno.build.arch !== "aarch64")
+  ) {
+    throw new Error("exact function tracing requires x86-64 or arm64 Linux");
   }
   const binary = await Deno.realPath(options.binary);
   const tracerSource = await Deno.realPath(options.tracerSource);
@@ -567,7 +570,7 @@ async function generate(options: Options) {
     );
     const report = {
       platform: "linux",
-      architecture: "x86_64",
+      architecture: Deno.build.arch,
       binary,
       order_file: options.output,
       workload_profile: options.workloadProfile,
