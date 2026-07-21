@@ -129,6 +129,8 @@ const {
 const INVALID_PATH_REGEX = new SafeRegExp(/[^\u0021-\u00ff]/);
 const kError = Symbol("kError");
 const kPath = Symbol("kPath");
+const kAuthority = Symbol("kAuthority");
+const kProxyRewrittenToAbsolute = Symbol("kProxyRewrittenToAbsolute");
 const kOtelSpan = Symbol("kOtelSpan");
 const kPerfStartTime = Symbol("kPerfStartTime");
 const kRetryData = Symbol("kRetryData");
@@ -649,6 +651,7 @@ function ClientRequest(input, options, cb) {
     this[kPath] = `http://${formattedHost}:${this[kProxyTargetPort]}${
       options.path || "/"
     }`;
+    this[kProxyRewrittenToAbsolute] = true;
   }
 
   if (cb) {
@@ -678,6 +681,7 @@ function ClientRequest(input, options, cb) {
   this.reusedSocket = false;
   this.host = host;
   this.protocol = protocol;
+  this[kProxyRewrittenToAbsolute] = this[kProxyRewrittenToAbsolute] || false;
   this[kPerfStartTime] = performance.now();
 
   if (this.agent) {
@@ -690,6 +694,26 @@ function ClientRequest(input, options, cb) {
     }
   }
 
+  let hostHeaderFromOptions = host;
+
+  {
+    const posColon = StringPrototypeIndexOf(hostHeaderFromOptions, ":");
+    if (
+      posColon !== -1 &&
+      StringPrototypeIncludes(hostHeaderFromOptions, ":", posColon + 1) &&
+      StringPrototypeCharCodeAt(hostHeaderFromOptions, 0) !== 91 /* '[' */
+    ) {
+      hostHeaderFromOptions = `[${hostHeaderFromOptions}]`;
+    }
+  }
+
+  if (port && +port !== defaultPort) {
+    hostHeaderFromOptions += ":" + port;
+  }
+  // Preserve the request authority (with the port when non-default) so that
+  // the perf_hooks entry can report a faithful URL.
+  this[kAuthority] = hostHeaderFromOptions;
+
   const headersArray = ArrayIsArray(options.headers);
   if (!headersArray) {
     if (options.headers) {
@@ -701,20 +725,7 @@ function ClientRequest(input, options, cb) {
     }
 
     if (host && !this.getHeader("host") && setHost) {
-      let hostHeader = host;
-
-      const posColon = StringPrototypeIndexOf(hostHeader, ":");
-      if (
-        posColon !== -1 &&
-        StringPrototypeIncludes(hostHeader, ":", posColon + 1) &&
-        StringPrototypeCharCodeAt(hostHeader, 0) !== 91 /* '[' */
-      ) {
-        hostHeader = `[${hostHeader}]`;
-      }
-
-      if (port && +port !== defaultPort) {
-        hostHeader += ":" + port;
-      }
+      let hostHeader = hostHeaderFromOptions;
 
       // The request target of a CONNECT is the authority being tunnelled to,
       // so Host has to name that authority rather than the proxy we dialed.
@@ -1273,7 +1284,13 @@ function parserOnIncomingClient(res, shouldKeepAlive) {
       detail: {
         req: {
           method: req.method,
-          url: `${req.protocol || "http:"}//${host}${req.path || "/"}`,
+          // If the path has been rewritten to absolute-form for proxying,
+          // it is already a full URL.
+          url: req[kProxyRewrittenToAbsolute]
+            ? req.path
+            : `${req.protocol || "http:"}//${req[kAuthority] || host}${
+              req.path || "/"
+            }`,
           headers: req.getHeaders(),
         },
         res: {
