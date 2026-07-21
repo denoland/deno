@@ -54,8 +54,7 @@ use crate::ops::stream_wrap::LibUvStreamWrap;
 
 /// Check that non-stdio file descriptors (fd > 2) have --allow-all permission.
 /// Stdio fds 0, 1, 2 are always allowed.
-#[op2(fast)]
-pub fn op_tty_check_fd_permission(
+fn check_tty_fd_permission(
   state: &mut OpState,
   fd: i32,
 ) -> Result<(), deno_permissions::PermissionCheckError> {
@@ -68,6 +67,14 @@ pub fn op_tty_check_fd_permission(
       .check_write_all("node:tty TTY()")?;
   }
   Ok(())
+}
+
+#[op2(fast)]
+pub fn op_tty_check_fd_permission(
+  state: &mut OpState,
+  fd: i32,
+) -> Result<(), deno_permissions::PermissionCheckError> {
+  check_tty_fd_permission(state, fd)
 }
 
 #[derive(CppgcInherits)]
@@ -171,8 +178,9 @@ impl TTY {
     #[this] this: v8::Global<v8::Object>,
     scope: &mut v8::PinScope,
     op_state: &mut OpState,
-  ) -> TTY {
+  ) -> Result<TTY, deno_permissions::PermissionCheckError> {
     assert!(fd >= 0);
+    check_tty_fd_permission(op_state, fd)?;
 
     let obj = v8::Local::new(scope, &this);
     let (tty, err) = TTY::new(obj, fd, op_state);
@@ -202,7 +210,7 @@ impl TTY {
         v8::String::new_external_onebyte_static(scope, b"uv_tty_init").unwrap();
       ctx_obj.set(scope, syscall_key.into(), syscall_str.into());
     }
-    tty
+    Ok(tty)
   }
 
   #[fast]
