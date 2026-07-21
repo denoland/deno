@@ -216,7 +216,6 @@ function stdioStringToArray(
 
 const kClosesNeeded = Symbol("_closesNeeded");
 const kClosesReceived = Symbol("_closesReceived");
-const kCanDisconnect = Symbol("_canDisconnect");
 const kChildStdioUsedAsInput = Symbol("childStdioUsedAsInput");
 const childStdioStreamsByFd = new SafeMap();
 let emittedShellDeprecation = false;
@@ -309,7 +308,6 @@ class ChildProcess extends EventEmitter {
   #spawned = PromiseWithResolvers();
   [kClosesNeeded] = 1;
   [kClosesReceived] = 0;
-  [kCanDisconnect] = false;
 
   constructor() {
     super();
@@ -873,11 +871,12 @@ class ChildProcess extends EventEmitter {
       }
     }
 
-    /* Cancel any pending IPC I/O */
-    if (this[kCanDisconnect]) {
-      this.disconnect?.();
-    }
-
+    // Note: unlike a manual `disconnect()`, `kill()` must NOT tear the IPC
+    // channel down synchronously. Node only delivers the signal here; the
+    // channel stays up (and `connected` stays `true`) until the child's pipe
+    // actually closes, at which point `readLoop` reads the EOF sentinel and
+    // fires `'disconnect'` asynchronously. Disconnecting here would flip
+    // `connected` to `false` a full turn early. See denoland/deno#36075.
     this.killed = true;
     this.signalCode = signalName;
     return true;
@@ -2719,7 +2718,11 @@ function setupChannel(
   async function readLoop() {
     try {
       while (true) {
-        if (!target.connected || target.killed) {
+        // Keep reading until the channel actually goes away (`connected` is
+        // cleared by `disconnect()`). A pending `kill()` must not stop the
+        // loop: the child's EOF still needs to be read so `'disconnect'` fires
+        // when the pipe closes, matching Node. See denoland/deno#36075.
+        if (!target.connected) {
           return;
         }
         // TODO(nathanwhit): maybe allow returning multiple messages in a single read? needs benchmarking.
@@ -2921,7 +2924,6 @@ function setupChannel(
     }
 
     target.connected = false;
-    target[kCanDisconnect] = false;
     cleanupPendingHandles();
     control[kControlDisconnect]();
     nextTick(() => {
@@ -2930,7 +2932,6 @@ function setupChannel(
       target.emit("disconnect");
     });
   };
-  target[kCanDisconnect] = true;
 
   // Start reading messages from the channel.
   readLoop();

@@ -80,6 +80,40 @@ Deno.test("[node/child_process disconnect] the method exists", async () => {
   }
 });
 
+Deno.test("[node/child_process kill] does not tear down the IPC channel synchronously (#36075)", async () => {
+  const deferred = withTimeout<void>();
+  const child = spawn(
+    Deno.execPath(),
+    ["eval", "setTimeout(() => {}, 10_000)"],
+    {
+      stdio: ["pipe", "pipe", "pipe", "ipc"],
+    },
+  );
+  child.on("spawn", () => {
+    assert(child.connected, "connected should be true before kill()");
+    child.kill();
+    // Node only delivers the signal in kill(); the IPC channel stays up (and
+    // `connected` stays true) until the child's pipe actually closes.
+    assert(
+      child.connected,
+      "connected should stay true synchronously after kill()",
+    );
+  });
+  child.on("disconnect", () => {
+    // Once the child exits and its pipe closes, `'disconnect'` fires and
+    // `connected` flips to false.
+    assert(!child.connected, "connected should be false once disconnect fires");
+    deferred.resolve();
+  });
+  child.on("error", (err) => deferred.reject(err));
+  try {
+    await deferred.promise;
+  } finally {
+    child.stdout?.destroy();
+    child.stderr?.destroy();
+  }
+});
+
 Deno.test({
   name: "[node/child_process spawn] Verify that stdin and stdout work",
   fn: async () => {
