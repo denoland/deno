@@ -4031,6 +4031,7 @@
     "parallel/test-webstreams-adapters-sync-write-error.js": {},
     "parallel/test-webstreams-compose.js": {},
     "parallel/test-webstreams-decompression-reject-trailing.js": {},
+    "parallel/test-webstreams-duplex-fromweb-writev-unhandled-rejection.js": {},
     "parallel/test-webstreams-finished.js": {},
     "parallel/test-webstreams-pipeline.js": {},
     "parallel/test-whatwg-encoding-custom-api-basics.js": {},
