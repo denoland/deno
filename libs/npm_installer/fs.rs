@@ -5,8 +5,6 @@ use std::io::ErrorKind;
 use std::path::Path;
 
 use sys_traits::FsDirEntry;
-use sys_traits::FsMetadata;
-use sys_traits::FsMetadataValue;
 use sys_traits::FsSymlinkDir;
 use sys_traits::PathsInErrorsExt;
 
@@ -31,7 +29,7 @@ pub fn clone_dir_recursive<TSys: CloneDirRecursiveSys>(
   to: &Path,
 ) -> Result<(), std::io::Error> {
   let sys = sys.with_paths_in_errors();
-  ensure_not_symlink(sys.as_ref(), to)?;
+  deno_npm_cache::ensure_not_symlink(sys.as_ref(), to)?;
   if cfg!(target_vendor = "apple") {
     if let Some(parent) = to.parent() {
       sys.fs_create_dir_all(parent)?;
@@ -84,7 +82,7 @@ pub fn copy_dir_recursive<TSys: CopyDirRecursiveSys>(
   to: &Path,
 ) -> Result<(), std::io::Error> {
   let sys = sys.with_paths_in_errors();
-  create_dir_all_no_symlink(sys.as_ref(), to)?;
+  deno_npm_cache::create_dir_all_no_symlink(sys.as_ref(), to)?;
   let read_dir = sys.fs_read_dir(from)?;
 
   for entry in read_dir {
@@ -108,38 +106,6 @@ pub fn copy_dir_recursive<TSys: CopyDirRecursiveSys>(
   }
 
   Ok(())
-}
-
-fn create_dir_all_no_symlink<TSys>(
-  sys: &TSys,
-  path: &Path,
-) -> Result<(), std::io::Error>
-where
-  TSys: sys_traits::FsCreateDirAll + FsMetadata,
-{
-  ensure_not_symlink(sys, path)?;
-  sys.fs_create_dir_all(path)?;
-  ensure_not_symlink(sys, path)
-}
-
-fn ensure_not_symlink<TSys>(
-  sys: &TSys,
-  path: &Path,
-) -> Result<(), std::io::Error>
-where
-  TSys: FsMetadata,
-{
-  match sys.fs_symlink_metadata(path) {
-    Ok(metadata) if metadata.file_type().is_symlink() => {
-      Err(std::io::Error::new(
-        ErrorKind::AlreadyExists,
-        "refusing to materialize package into symlinked directory",
-      ))
-    }
-    Ok(_) => Ok(()),
-    Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
-    Err(err) => Err(err),
-  }
 }
 
 pub fn symlink_dir<TSys: sys_traits::BaseFsSymlinkDir>(

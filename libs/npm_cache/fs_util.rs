@@ -48,7 +48,8 @@ pub fn hard_link_dir_recursive<TSys: HardLinkDirRecursiveSys>(
   Ok(())
 }
 
-fn create_dir_all_no_symlink<TSys>(
+/// Creates a directory and rejects a symlink at the destination.
+pub fn create_dir_all_no_symlink<TSys>(
   sys: &TSys,
   path: &Path,
 ) -> Result<(), std::io::Error>
@@ -60,7 +61,8 @@ where
   ensure_not_symlink(sys, path)
 }
 
-fn ensure_not_symlink<TSys>(
+/// Returns an error when the path is a symlink.
+pub fn ensure_not_symlink<TSys>(
   sys: &TSys,
   path: &Path,
 ) -> Result<(), std::io::Error>
