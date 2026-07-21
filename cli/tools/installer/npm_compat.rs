@@ -697,6 +697,11 @@ fn rebase_local_target_to_project_root(
     import_map_dir.join(target),
   ))
   .into_owned();
+  // `diff_paths` returns `None` only when no relative path exists at all - in
+  // practice a Windows import map on a different drive than the project. The
+  // downstream `paths` generation is inherently project-root-relative, so such a
+  // target simply can't be expressed; return `None` and leave the original
+  // (which will fail to resolve) rather than emit a confidently-wrong path.
   let relative = pathdiff::diff_paths(&absolute, project_root)?;
   let mut s = relative.to_string_lossy().replace('\\', "/");
   if !(s.starts_with("./") || s.starts_with("../")) {
