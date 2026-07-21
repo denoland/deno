@@ -172,6 +172,106 @@ Deno.test({
 });
 
 Deno.test({
+  name:
+    "[node/worker_threads] stdio messages do not collide with user messages",
+  async fn() {
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort } = require("node:worker_threads");
+      parentPort.once("message", () => {
+        parentPort.postMessage({
+          type: "WORKER_STDOUT",
+          data: { malformed: true },
+        });
+        parentPort.postMessage({
+          type: "WORKER_STDOUT",
+          data: "user stdout message",
+        });
+        parentPort.postMessage({
+          type: "WORKER_STDERR",
+          data: "user stderr message",
+        });
+        process.stdout.write("actual stdout");
+        process.stderr.write("actual stderr");
+      });
+      `,
+      { eval: true, stdout: true, stderr: true },
+    );
+
+    const messages: unknown[] = [];
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    worker.on("message", (message) => messages.push(message));
+    worker.stdout.on("data", (chunk) => stdout.push(chunk.toString()));
+    worker.stderr.on("data", (chunk) => stderr.push(chunk.toString()));
+
+    const exit = once(worker, "exit");
+    worker.postMessage("go");
+    await exit;
+
+    assertEquals(messages, [
+      { type: "WORKER_STDOUT", data: { malformed: true } },
+      { type: "WORKER_STDOUT", data: "user stdout message" },
+      { type: "WORKER_STDERR", data: "user stderr message" },
+    ]);
+    assertEquals(stdout.join(""), "actual stdout");
+    assertEquals(stderr.join(""), "actual stderr");
+  },
+});
+
+Deno.test({
+  name:
+    "[node/worker_threads] stdin messages do not collide with user messages",
+  async fn() {
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort } = require("node:worker_threads");
+      parentPort.on("message", (value) => {
+        parentPort.postMessage({ kind: "message", value });
+      });
+      process.stdin.on("data", (chunk) => {
+        parentPort.postMessage({ kind: "stdin", value: chunk.toString() });
+      });
+      process.stdin.on("end", () => {
+        parentPort.postMessage({ kind: "stdin-end" });
+      });
+      `,
+      { eval: true, stdin: true },
+    );
+
+    const messages: Array<{ kind: string; value?: unknown }> = [];
+    const received = new Promise<void>((resolve, reject) => {
+      worker.on("message", (message) => {
+        messages.push(message);
+        if (messages.length === 3) resolve();
+      });
+      worker.on("error", reject);
+    });
+
+    worker.postMessage({ type: "WORKER_STDIN", data: "user message" });
+    worker.stdin!.end("actual stdin");
+    await received;
+
+    assertEquals(
+      messages.find((message) => message.kind === "message"),
+      {
+        kind: "message",
+        value: { type: "WORKER_STDIN", data: "user message" },
+      },
+    );
+    assertEquals(
+      messages.find((message) => message.kind === "stdin"),
+      { kind: "stdin", value: "actual stdin" },
+    );
+    assertEquals(
+      messages.find((message) => message.kind === "stdin-end"),
+      { kind: "stdin-end" },
+    );
+    await worker.terminate();
+  },
+});
+
+Deno.test({
   name: "[node/worker_threads] worker thread with type module",
   async fn() {
     function p() {

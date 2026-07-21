@@ -110,12 +110,45 @@ pub struct WorkerThread {
   cancel_handle: Rc<CancelHandle>,
   cpu_thread_handle: Arc<AtomicU64>,
 
-  // A WorkerThread that hasn't been explicitly terminated can only be removed
-  // from the WorkersTable once close messages have been received for both the
-  // control and message channels. See `close_channel`.
+  channels: WorkerChannelState,
+  termination_requested: bool,
+}
+
+#[derive(Debug)]
+struct WorkerChannelState {
   ctrl_closed: bool,
   message_closed: bool,
-  termination_requested: bool,
+  // Only Node workers consume the separate stdio channel. Other workers must
+  // not wait for it before their WorkersTable entry is removed.
+  stdio_closed: bool,
+}
+
+impl WorkerChannelState {
+  fn new(worker_type: WorkerThreadType) -> Self {
+    Self {
+      ctrl_closed: false,
+      message_closed: false,
+      stdio_closed: !matches!(worker_type, WorkerThreadType::Node),
+    }
+  }
+
+  fn close(
+    &mut self,
+    channel: WorkerChannel,
+    termination_requested: bool,
+  ) -> bool {
+    match channel {
+      WorkerChannel::Ctrl => self.ctrl_closed = true,
+      WorkerChannel::Messages => self.message_closed = true,
+      WorkerChannel::Stdio => self.stdio_closed = true,
+    }
+
+    if termination_requested {
+      matches!(channel, WorkerChannel::Ctrl)
+    } else {
+      self.ctrl_closed && self.message_closed && self.stdio_closed
+    }
+  }
 }
 
 impl WorkerThread {
@@ -195,8 +228,10 @@ deno_core::extension!(
     op_host_post_message,
     op_host_recv_ctrl,
     op_host_post_message_raw,
+    op_host_post_stdio_message_raw,
     op_host_recv_message,
     op_host_recv_message_sync,
+    op_host_recv_stdio_message,
     op_host_get_worker_cpu_usage,
     op_current_thread_cpu_usage,
     op_node_worker_thread_register,
@@ -418,8 +453,7 @@ fn op_create_worker(
     worker_type: args.worker_type,
     cancel_handle: CancelHandle::new_rc(),
     cpu_thread_handle,
-    ctrl_closed: false,
-    message_closed: false,
+    channels: WorkerChannelState::new(args.worker_type),
     termination_requested: false,
   };
 
@@ -448,9 +482,11 @@ fn op_host_terminate_worker(state: &mut OpState, #[scoped] id: WorkerId) {
   }
 }
 
+#[derive(Clone, Copy)]
 enum WorkerChannel {
   Ctrl,
   Messages,
+  Stdio,
 }
 
 /// Close a worker's channel. If this results in a worker no longer needing
@@ -468,19 +504,10 @@ fn close_channel(
   // `Worker.terminate()` might have been called already, meaning that we won't
   // find the worker in the table - in that case ignore.
   if let Entry::Occupied(mut entry) = workers.entry(id) {
-    let remove = {
-      let worker_thread = entry.get_mut();
-      match channel {
-        WorkerChannel::Ctrl => {
-          worker_thread.ctrl_closed = true;
-          worker_thread.termination_requested || worker_thread.message_closed
-        }
-        WorkerChannel::Messages => {
-          worker_thread.message_closed = true;
-          !worker_thread.termination_requested && worker_thread.ctrl_closed
-        }
-      }
-    };
+    let worker_thread = entry.get_mut();
+    let remove = worker_thread
+      .channels
+      .close(channel, worker_thread.termination_requested);
 
     if remove {
       entry.remove().finish_termination();
@@ -572,6 +599,41 @@ async fn op_host_recv_message(
 }
 
 #[op2]
+async fn op_host_recv_stdio_message(
+  state: Rc<RefCell<OpState>>,
+  #[scoped] id: WorkerId,
+) -> Result<Option<RecvMessageData>, MessagePortError> {
+  let (worker_handle, cancel_handle) = {
+    let state = state.borrow();
+    let workers_table = state.borrow::<WorkersTable>();
+    let maybe_handle = workers_table.get(&id);
+    if let Some(handle) = maybe_handle {
+      (handle.worker_handle.clone(), handle.cancel_handle.clone())
+    } else {
+      return Ok(None);
+    }
+  };
+
+  let Some(stdio_port) = &worker_handle.stdio_port else {
+    return Ok(None);
+  };
+  let ret = stdio_port
+    .recv(state.clone())
+    .or_cancel(cancel_handle)
+    .await;
+  match ret {
+    Ok(Ok(ret)) => {
+      if ret.is_none() {
+        close_channel(state, id, WorkerChannel::Stdio);
+      }
+      Ok(ret)
+    }
+    Ok(Err(err)) => Err(err),
+    Err(_) => Ok(None),
+  }
+}
+
+#[op2]
 fn op_host_recv_message_sync(
   state: &mut OpState,
   #[scoped] id: WorkerId,
@@ -619,6 +681,44 @@ fn op_host_post_message_raw(
     }
   }
   Ok(())
+}
+
+#[op2]
+fn op_host_post_stdio_message_raw(
+  state: &mut OpState,
+  #[scoped] id: WorkerId,
+  #[buffer(detach)] data: JsBuffer,
+) -> Result<(), MessagePortError> {
+  if let Some(worker_thread) = state.borrow::<WorkersTable>().get(&id) {
+    let worker_handle = worker_thread.worker_handle.clone();
+    let detached = DetachedBuffer::from_v8slice(data.into_parts());
+    if let Some(stdio_port) = &worker_handle.stdio_port
+      && let Some(tx) = &*stdio_port.tx.borrow()
+    {
+      tx.send((detached, vec![])).ok();
+    }
+  }
+  Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn web_worker_natural_exit_does_not_wait_for_stdio_channel() {
+    let mut channels = WorkerChannelState::new(WorkerThreadType::Module);
+    assert!(!channels.close(WorkerChannel::Messages, false));
+    assert!(channels.close(WorkerChannel::Ctrl, false));
+  }
+
+  #[test]
+  fn node_worker_natural_exit_waits_for_stdio_channel() {
+    let mut channels = WorkerChannelState::new(WorkerThreadType::Node);
+    assert!(!channels.close(WorkerChannel::Messages, false));
+    assert!(!channels.close(WorkerChannel::Ctrl, false));
+    assert!(channels.close(WorkerChannel::Stdio, false));
+  }
 }
 
 // ============================================================

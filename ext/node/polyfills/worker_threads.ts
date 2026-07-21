@@ -8,9 +8,11 @@ const {
   op_host_get_worker_cpu_usage,
   op_host_post_message,
   op_host_post_message_raw,
+  op_host_post_stdio_message_raw,
   op_host_recv_ctrl,
   op_host_recv_message,
   op_host_recv_message_sync,
+  op_host_recv_stdio_message,
   op_host_terminate_worker,
   op_mark_as_untransferable,
   op_message_port_post_message_raw,
@@ -21,6 +23,8 @@ const {
   op_node_worker_thread_register,
   op_node_worker_thread_set_listener_count,
   op_worker_get_resource_limits,
+  op_worker_post_stdio_message_raw,
+  op_worker_recv_stdio_message,
   op_worker_threads_filename,
 } = core.ops;
 const {
@@ -163,14 +167,12 @@ function isWorkerOnlineMsg(data: unknown): data is WorkerOnlineMsg {
 
 interface WorkerStdioMsg {
   type: "WORKER_STDERR" | "WORKER_STDOUT";
-  // deno-lint-ignore no-explicit-any
-  data: any;
+  data: string | ArrayBufferView;
 }
 
 interface WorkerStdinMsg {
   type: "WORKER_STDIN";
-  // deno-lint-ignore no-explicit-any
-  data: any;
+  data: string | ArrayBufferView;
 }
 
 interface WorkerStdinEndMsg {
@@ -180,7 +182,9 @@ interface WorkerStdinEndMsg {
 function isWorkerStdinMsg(data: unknown): data is WorkerStdinMsg {
   return typeof data === "object" && data !== null &&
     ObjectHasOwn(data, "type") &&
-    (data as { "type": unknown })["type"] === "WORKER_STDIN";
+    (data as { "type": unknown })["type"] === "WORKER_STDIN" &&
+    ObjectHasOwn(data, "data") &&
+    isWorkerStdioChunk((data as { "data": unknown })["data"]);
 }
 
 function isWorkerStdinEndMsg(data: unknown): data is WorkerStdinEndMsg {
@@ -192,13 +196,21 @@ function isWorkerStdinEndMsg(data: unknown): data is WorkerStdinEndMsg {
 function isWorkerStderrMsg(data: unknown): data is WorkerStdioMsg {
   return typeof data === "object" && data !== null &&
     ObjectHasOwn(data, "type") &&
-    (data as { "type": unknown })["type"] === "WORKER_STDERR";
+    (data as { "type": unknown })["type"] === "WORKER_STDERR" &&
+    ObjectHasOwn(data, "data") &&
+    isWorkerStdioChunk((data as { "data": unknown })["data"]);
 }
 
 function isWorkerStdoutMsg(data: unknown): data is WorkerStdioMsg {
   return typeof data === "object" && data !== null &&
     ObjectHasOwn(data, "type") &&
-    (data as { "type": unknown })["type"] === "WORKER_STDOUT";
+    (data as { "type": unknown })["type"] === "WORKER_STDOUT" &&
+    ObjectHasOwn(data, "data") &&
+    isWorkerStdioChunk((data as { "data": unknown })["data"]);
+}
+
+function isWorkerStdioChunk(data: unknown): data is string | ArrayBufferView {
+  return typeof data === "string" || ArrayBufferIsView(data);
 }
 
 // Flags that are valid Node.js environment flags but not allowed in workers
@@ -265,6 +277,7 @@ class NodeWorker extends EventEmitter {
   #messagePromise = undefined;
   #controlPromise = undefined;
   #messageLoopPromise = undefined;
+  #stdioLoopPromise = undefined;
   #workerOnline = false;
   #exited = false;
   // "RUNNING" | "CLOSED" | "TERMINATED"
@@ -548,15 +561,16 @@ class NodeWorker extends EventEmitter {
     }
 
     if (options?.stdin) {
-      // deno-lint-ignore no-this-alias
-      const worker = this;
       this.stdin = new (lazyStream().Writable)({
         write(chunk, _encoding, callback) {
           try {
-            worker.postMessage({
-              type: "WORKER_STDIN",
-              data: chunk,
-            });
+            op_host_post_stdio_message_raw(
+              id,
+              serializeMessageData({
+                type: "WORKER_STDIN",
+                data: chunk,
+              }),
+            );
             callback();
           } catch (err) {
             callback(err);
@@ -564,9 +578,12 @@ class NodeWorker extends EventEmitter {
         },
         final(callback) {
           try {
-            worker.postMessage({
-              type: "WORKER_STDIN_END",
-            });
+            op_host_post_stdio_message_raw(
+              id,
+              serializeMessageData({
+                type: "WORKER_STDIN_END",
+              }),
+            );
             callback();
           } catch (err) {
             callback(err);
@@ -577,6 +594,7 @@ class NodeWorker extends EventEmitter {
 
     this.#pollControl();
     this.#messageLoopPromise = this.#pollMessages();
+    this.#stdioLoopPromise = this.#pollStdio();
     lazyProcess().default.nextTick(() =>
       lazyProcess().default.emit("worker", this)
     );
@@ -671,6 +689,7 @@ class NodeWorker extends EventEmitter {
           // we hit "stream.push() after EOF" if the Close control arrives
           // before the last stdout/stderr message (Node.js behavior).
           await this.#messageLoopPromise;
+          await this.#stdioLoopPromise;
           this.#closeStdio();
           this.resourceLimits = {};
           if (!this.#exited) {
@@ -692,6 +711,7 @@ class NodeWorker extends EventEmitter {
           // we hit "stream.push() after EOF" if the Close control arrives
           // before the last stdout/stderr message (Node.js behavior).
           await this.#messageLoopPromise;
+          await this.#stdioLoopPromise;
           this.#closeStdio();
           this.resourceLimits = {};
           if (!this.#exited) {
@@ -725,23 +745,47 @@ class NodeWorker extends EventEmitter {
     ) {
       this.#workerOnline = true;
       this.emit("online");
-    } else if (isWorkerStdoutMsg(message)) {
-      FunctionPrototypeCall(
-        lazyStream().Readable.prototype.push,
-        this.stdout,
-        message.data,
-      );
-    } else if (isWorkerStderrMsg(message)) {
-      FunctionPrototypeCall(
-        lazyStream().Readable.prototype.push,
-        this.stderr,
-        message.data,
-      );
     } else {
       this.emit("message", message);
     }
     return true;
   }
+
+  #pollStdio = async () => {
+    while (this.#status !== "TERMINATED") {
+      const promise = op_host_recv_stdio_message(this.#id);
+      core.unrefOpPromise(promise);
+      let data;
+      try {
+        data = await promise;
+      } catch {
+        return;
+      }
+      if (this.#status === "TERMINATED" || data === null) {
+        return;
+      }
+
+      let message;
+      try {
+        message = deserializeJsMessageData(data)[0];
+      } catch {
+        continue;
+      }
+      if (isWorkerStdoutMsg(message)) {
+        FunctionPrototypeCall(
+          lazyStream().Readable.prototype.push,
+          this.stdout,
+          message.data,
+        );
+      } else if (isWorkerStderrMsg(message)) {
+        FunctionPrototypeCall(
+          lazyStream().Readable.prototype.push,
+          this.stderr,
+          message.data,
+        );
+      }
+    }
+  };
 
   #pollMessages = async () => {
     while (this.#status !== "TERMINATED") {
@@ -982,6 +1026,9 @@ interface ParentPort extends NodeEventTarget {
 
 // deno-lint-ignore no-explicit-any
 let parentPort: ParentPort = null as any;
+let workerStdinPromise:
+  | ReturnType<typeof op_worker_recv_stdio_message>
+  | undefined;
 
 internals.__initWorkerThreads = (
   runningOnMainThread: boolean,
@@ -1185,23 +1232,41 @@ internals.__initWorkerThreads = (
           const workerStdin = new (lazyStream().Readable)({ read() {} });
           lazyProcess().default.stdin = workerStdin;
 
-          // Register an early listener to intercept stdin messages
-          // before any user-registered handlers. Remove the listener
-          // once stdin ends so the worker can exit cleanly.
-          const stdinHandler = (ev) => {
-            const msg = ev.data;
-            if (isWorkerStdinMsg(msg)) {
-              // deno-lint-ignore prefer-primordials
-              workerStdin.push(msg.data);
-              ev.stopImmediatePropagation();
-            } else if (isWorkerStdinEndMsg(msg)) {
-              // deno-lint-ignore prefer-primordials
-              workerStdin.push(null);
-              parentPort.removeEventListener("message", stdinHandler);
-              ev.stopImmediatePropagation();
+          (async () => {
+            while (true) {
+              let data;
+              const promise = op_worker_recv_stdio_message();
+              workerStdinPromise = promise;
+              if (parentPort[unrefParentPort]) {
+                core.unrefOpPromise(promise);
+              }
+              try {
+                data = await promise;
+              } catch {
+                return;
+              } finally {
+                if (workerStdinPromise === promise) {
+                  workerStdinPromise = undefined;
+                }
+              }
+              if (data === null) return;
+
+              let msg;
+              try {
+                msg = deserializeJsMessageData(data)[0];
+              } catch {
+                continue;
+              }
+              if (isWorkerStdinMsg(msg)) {
+                // deno-lint-ignore prefer-primordials
+                workerStdin.push(msg.data);
+              } else if (isWorkerStdinEndMsg(msg)) {
+                // deno-lint-ignore prefer-primordials
+                workerStdin.push(null);
+                return;
+              }
             }
-          };
-          parentPort.addEventListener("message", stdinHandler);
+          })();
         }
 
         // Forward stdout writes to the parent so worker.stdout
@@ -1215,10 +1280,12 @@ internals.__initWorkerThreads = (
           encoding,
           callback,
         ) {
-          parentPort.postMessage({
-            type: "WORKER_STDOUT",
-            data: chunk,
-          });
+          op_worker_post_stdio_message_raw(
+            serializeMessageData({
+              type: "WORKER_STDOUT",
+              data: chunk,
+            }),
+          );
           return FunctionPrototypeCall(
             origStdoutWrite,
             lazyProcess().default.stdout,
@@ -1239,10 +1306,12 @@ internals.__initWorkerThreads = (
           encoding,
           callback,
         ) {
-          parentPort.postMessage({
-            type: "WORKER_STDERR",
-            data: chunk,
-          });
+          op_worker_post_stdio_message_raw(
+            serializeMessageData({
+              type: "WORKER_STDERR",
+              data: chunk,
+            }),
+          );
           return FunctionPrototypeCall(
             origStderrWrite,
             lazyProcess().default.stderr,
@@ -1329,10 +1398,16 @@ internals.__initWorkerThreads = (
       // Also set on globalThis so runtime/js/99_main.js event loop
       // check (globalThis[unrefParentPort]) still works.
       globalThis[unrefParentPort] = true;
+      if (workerStdinPromise) {
+        core.unrefOpPromise(workerStdinPromise);
+      }
     };
     parentPort.ref = () => {
       parentPort[unrefParentPort] = false;
       globalThis[unrefParentPort] = false;
+      if (workerStdinPromise) {
+        core.refOpPromise(workerStdinPromise);
+      }
     };
 
     if (isWorkerThread) {
