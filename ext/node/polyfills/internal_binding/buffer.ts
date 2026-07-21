@@ -89,6 +89,15 @@ function searchBytes(
   return -1;
 }
 
+// `byteOffset`/`end` reach the search functions uncoerced from JS. Node reads
+// each as an int64 at the binding boundary, truncating a fractional value
+// toward zero and NaN to 0 before clamping. `byteOffset` is already
+// NaN-resolved by the caller, so it is truncated directly; `end` may still be
+// NaN, so it goes through this helper.
+function toInt64(value: number): number {
+  return NumberIsNaN(value) ? 0 : MathTrunc(value);
+}
+
 // Mirror of `IndexOfBuffer` (node/src/node_buffer.cc). Handles both string
 // needles (pre-encoded to bytes by the encodingOps shims) and Uint8Array
 // needles.
@@ -103,12 +112,8 @@ function indexOfBuffer(
   if (Encodings[encoding] === undefined) {
     throw new Error(`Unknown encoding code ${encoding}`);
   }
-  // `byteOffset` and `end` reach us uncoerced from JS; Node reads each as an
-  // int64 at the binding boundary, truncating a fractional value toward zero
-  // (and NaN -> 0) before clamping. `byteOffset` is already NaN-resolved by the
-  // caller, so it only needs truncation.
   byteOffset = MathTrunc(byteOffset);
-  end = NumberIsNaN(end) ? 0 : MathTrunc(end);
+  end = toInt64(end);
 
   const haystackLength = TypedArrayPrototypeGetLength(targetBuffer);
   const needleLength = TypedArrayPrototypeGetLength(buffer);
@@ -130,7 +135,7 @@ function indexOfBuffer(
     return MathMin(optOffset, searchEnd);
   }
   if (haystackLength === 0) return -1;
-  if (optOffset <= -1) return -1;
+  if (optOffset === -1) return -1;
 
   let offset = optOffset;
   if (!forwardDirection && offset >= searchEnd) {
@@ -170,11 +175,8 @@ function indexOfNumber(
   forwardDirection: boolean,
   end: number,
 ) {
-  // Node reads `byteOffset`/`end` as int64 at the binding boundary, truncating
-  // a fractional value toward zero. `byteOffset` is already NaN-resolved by the
-  // caller.
   byteOffset = MathTrunc(byteOffset);
-  end = NumberIsNaN(end) ? 0 : MathTrunc(end);
+  end = toInt64(end);
   // Uses only the last byte of the number.
   // https://github.com/nodejs/node/issues/7591#issuecomment-231178104
   number &= 255;
@@ -185,7 +187,7 @@ function indexOfNumber(
     1,
     forwardDirection,
   );
-  if (optOffset <= -1 || bufferLength === 0) return -1;
+  if (optOffset === -1 || bufferLength === 0) return -1;
 
   const offset = optOffset;
   const searchEnd = MathMin(MathMax(end, 0), bufferLength);

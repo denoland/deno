@@ -963,6 +963,15 @@ Buffer.prototype.compare = function compare(
 function bidirectionalIndexOf(buffer, val, byteOffset, end, encoding, dir) {
   validateBuffer(buffer);
 
+  if (typeof end === "string") {
+    encoding = end;
+    end = undefined;
+  }
+  if (end === undefined) {
+    // deno-lint-ignore prefer-primordials
+    end = buffer.length || buffer.byteLength;
+  }
+
   if (typeof byteOffset === "string") {
     encoding = byteOffset;
     byteOffset = undefined;
@@ -1013,23 +1022,11 @@ Buffer.prototype.includes = function includes(val, byteOffset, end, encoding) {
   // Match Node's lib/buffer.js: call bidirectionalIndexOf directly so that
   // Buffer.prototype.includes.call(uint8array, ...) works generically without
   // resolving to Uint8Array.prototype.indexOf.
-  if (typeof end === "string") {
-    encoding = end;
-    end = this.length;
-  } else if (end === undefined) {
-    end = this.length;
-  }
   return bidirectionalIndexOf(this, val, byteOffset, end, encoding, true) !==
     -1;
 };
 
 Buffer.prototype.indexOf = function indexOf(val, byteOffset, end, encoding) {
-  if (typeof end === "string") {
-    encoding = end;
-    end = this.length;
-  } else if (end === undefined) {
-    end = this.length;
-  }
   return bidirectionalIndexOf(this, val, byteOffset, end, encoding, true);
 };
 
@@ -1039,12 +1036,6 @@ Buffer.prototype.lastIndexOf = function lastIndexOf(
   end,
   encoding,
 ) {
-  if (typeof end === "string") {
-    encoding = end;
-    end = this.length;
-  } else if (end === undefined) {
-    end = this.length;
-  }
   return bidirectionalIndexOf(this, val, byteOffset, end, encoding, false);
 };
 
