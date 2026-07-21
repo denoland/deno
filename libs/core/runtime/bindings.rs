@@ -357,8 +357,13 @@ pub(crate) fn initialize_deno_core_namespace<'s, 'i>(
 
   // If we're initializing fresh context set up the console
   if init_mode == InitMode::New {
-    // Bind `call_console` to Deno.core.callConsole
-    let call_console_fn = v8::Function::new(scope, call_console).unwrap();
+    // Bind `call_console` to Deno.core.callConsole. Like Node's
+    // `consoleCall`, it must not be constructable so that the bound console
+    // methods throw when invoked with `new`.
+    let call_console_fn = v8::Function::builder(call_console)
+      .constructor_behavior(v8::ConstructorBehavior::Throw)
+      .build(scope)
+      .unwrap();
     let call_console_key = CALL_CONSOLE.v8_string(scope).unwrap();
     deno_core_obj.set(scope, call_console_key.into(), call_console_fn.into());
 
@@ -991,13 +996,10 @@ pub(crate) fn op_ctx_template<'s, 'i>(
   let op_ctx_ptr = op_ctx as *const OpCtx as *const c_void;
   let external = v8::External::new(scope, op_ctx_ptr as *mut c_void);
 
-  let (slow_fn, fast_fn) = if op_ctx.metrics_enabled() {
-    (
-      op_ctx.decl.slow_fn_with_metrics,
-      op_ctx.decl.fast_fn_with_metrics,
-    )
+  let slow_fn = if op_ctx.metrics_enabled() {
+    op_ctx.decl.slow_fn_with_metrics
   } else {
-    (op_ctx.decl.slow_fn, op_ctx.decl.fast_fn)
+    op_ctx.decl.slow_fn
   };
 
   let builder: v8::FunctionBuilder<v8::FunctionTemplate> =
@@ -1019,11 +1021,19 @@ pub(crate) fn op_ctx_template<'s, 'i>(
   // template is still wired to slow_fn; ops fall back to the slow callback
   // path until a follow-up runtime hook re-attaches the fast overloads after
   // snapshot deserialization.
-  let template = if let Some(fast_function) = fast_fn
+  let template = if let Some(overloads) = op_ctx.fast_fn_overloads.as_ref()
     && !will_snapshot
     && !op_ctx.decl.constructable
   {
-    builder.build_fast(scope, &[fast_function])
+    // SAFETY: V8 150.x stores the raw `CFunction` pointers from `overloads`
+    // directly in the `FunctionTemplateInfo`, so `build_fast` requires a
+    // `'static` slice. The backing storage lives in `op_ctx`, which outlives
+    // every `FunctionTemplate` created from it (both are torn down at isolate
+    // disposal), so extending the borrow to `'static` is sound.
+    let overloads: &'static [v8::fast_api::CFunction] = unsafe {
+      std::mem::transmute::<&[_], &'static [_]>(overloads.as_slice())
+    };
+    builder.build_fast(scope, overloads)
   } else {
     builder.build(scope)
   };
@@ -1259,6 +1269,7 @@ pub fn host_import_module_with_phase_dynamically_callback<'s, 'i>(
     if tc_scope.has_caught() {
       let e = tc_scope.exception().unwrap();
       resolver.reject(tc_scope, e);
+      return Some(promise);
     }
   }
   let requested_module_type =

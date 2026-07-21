@@ -171,6 +171,7 @@ async fn install_top_level(
     None,
     crate::tools::pm::CacheTopLevelDepsOptions {
       lockfile_only: top_level_flags.lockfile_only,
+      additional_roots: vec![],
     },
   )
   .await?;
@@ -234,10 +235,25 @@ pub async fn ci_command(
 /// tooling can type-check the project. Assumes dependencies are already
 /// installed (run `deno install` first); materializes `jsr:`/`http(s):` types
 /// and writes `.deno/tsconfig.json`.
+/// How `sync_types_command` should treat the root `tsconfig.json`.
+#[derive(Debug, Clone, Copy)]
+pub enum RootTsConfigMode {
+  /// Always create/update a root `tsconfig.json` extending `.deno/tsconfig.json`
+  /// (used by the standalone `deno sync-types` command, for IDE setup).
+  Always,
+  /// Only manage the root `tsconfig.json` when Deno is honoring a user's
+  /// tsconfig (a deno.json/package.json is present and config isn't disabled).
+  /// Used by `deno check`, which otherwise points tsc at `.deno/tsconfig.json`
+  /// directly and must not rewrite a tsconfig Deno is ignoring.
+  CheckMode,
+}
+
 pub async fn sync_types_command(
   flags: Arc<Flags>,
   sync_types_flags: SyncTypesFlags,
+  root_tsconfig_mode: RootTsConfigMode,
 ) -> Result<(), AnyError> {
+  use crate::args::TsTypeLib;
   use crate::graph_container::CollectSpecifiersOptions;
 
   let factory = CliFactory::from_flags(flags);
@@ -268,7 +284,7 @@ pub async fn sync_types_command(
   // project to discover every external (npm:/jsr:/http(s):) specifier the code
   // actually uses — including specifiers written directly in source and across
   // workspace members, not just those declared in the root import map.
-  let graph_specifiers = {
+  let (graph_specifiers, local_wasm_modules) = {
     let graph_container = factory.main_module_graph_container().await?;
     let roots = graph_container.collect_specifiers(
       &root_patterns,
@@ -349,7 +365,33 @@ pub async fn sync_types_command(
         specifiers.insert(root.to_string());
       }
     }
+    // Local `.wasm` modules (scheme `file:`) can't be type-checked as binaries:
+    // stock tsc reports a spurious `TS2307 Cannot find module './foo.wasm'`.
+    // deno_graph already materialized each wasm module's typed exports into a
+    // `.d.ts` (`source_dts`); collect them here so `setup_npm_compat` can write
+    // them out and point tsc at them (mirroring the remote-wasm treatment in
+    // `install_http_modules`).
+    let mut local_wasm_modules: Vec<(Url, String)> = Vec::new();
     for module in graph.modules() {
+      if let deno_graph::Module::Wasm(wasm) = module
+        && wasm.specifier.scheme() == "file"
+      {
+        let dts = if !wasm.source_dts.is_empty() {
+          wasm.source_dts.to_string()
+        } else {
+          match deno_graph::source::wasm::wasm_module_to_dts(&wasm.source) {
+            Ok(dts) => dts,
+            Err(e) => {
+              log::debug!(
+                "wasm dts generation failed for {}: {e}",
+                wasm.specifier
+              );
+              continue;
+            }
+          }
+        };
+        local_wasm_modules.push((wasm.specifier.clone(), dts));
+      }
       for (raw, _dep) in module.dependencies() {
         // Collect scheme specifiers (npm:/jsr:/http:) and bare specifiers
         // (import-map aliases like `@std/fmt/colors`, `fresh/runtime`). Skip
@@ -364,7 +406,10 @@ pub async fn sync_types_command(
         specifiers.insert(raw.clone());
       }
     }
-    specifiers.into_iter().collect::<Vec<_>>()
+    (
+      specifiers.into_iter().collect::<Vec<_>>(),
+      local_wasm_modules,
+    )
   };
 
   // The stock TypeScript compatibility config needs the managed npm
@@ -374,13 +419,56 @@ pub async fn sync_types_command(
   // would normally provide.
   let npm_resolver = factory.npm_resolver().await?.clone();
 
+  // Deno's *resolved* compiler options for the project root. These fold in
+  // Deno's source-kind defaults (deno.json vs tsconfig.json) and CLI overrides
+  // like `--check-js`, which the raw deno.json read inside `setup_npm_compat`
+  // can't see. Resolve against a representative file under the root so any
+  // detected tsconfig `include`/`files` filter matches.
+  let root_specifier = cli_options
+    .workspace()
+    .root_dir_url()
+    .join("__deno_root__.ts")
+    .ok();
+  let resolved_compiler_options = root_specifier.as_ref().and_then(|spec| {
+    factory
+      .compiler_options_resolver()
+      .ok()
+      .and_then(|resolver| {
+        resolver
+          .for_specifier(spec)
+          .compiler_options_for_lib(TsTypeLib::DenoWindow)
+          .ok()
+      })
+      .map(|opts| opts.0.clone())
+  });
+
+  // Whether to manage the root `tsconfig.json`. `deno check` (CheckMode) never
+  // rewrites a committed tsconfig (that would dirty the working tree). When it
+  // honors a user tsconfig it instead builds a throwaway overlay in a temp file
+  // (see `native_check` / `build_check_root_overlay`), leaving the user's tree
+  // untouched. `deno sync-types` (Always) still sets up the root tsconfig for
+  // IDEs.
+  let manage_root_tsconfig = match root_tsconfig_mode {
+    RootTsConfigMode::Always => true,
+    RootTsConfigMode::CheckMode => false,
+  };
+
+  // `deno check --all` type-checks remote modules; otherwise mirrored remote
+  // scripts get `// @ts-nocheck` so tsc skips their internals.
+  let type_check_remote =
+    cli_options.type_check_mode() == crate::args::TypeCheckMode::All;
+
   let installed = super::npm_compat::setup_npm_compat(
     &project_root,
     &file_fetcher,
     &http_client,
     &permissions,
     &graph_specifiers,
+    &local_wasm_modules,
     &npm_resolver,
+    resolved_compiler_options.as_ref(),
+    manage_root_tsconfig,
+    type_check_remote,
   )
   .await?;
 

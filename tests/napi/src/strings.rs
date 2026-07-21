@@ -2,6 +2,8 @@
 
 use std::ffi::c_char;
 use std::ffi::c_void;
+use std::sync::LazyLock;
+use std::sync::Mutex;
 
 use napi_sys::ValueType::napi_string;
 use napi_sys::*;
@@ -409,6 +411,180 @@ extern "C" fn test_external_utf16(
   ret
 }
 
+const SHARED_EXTERNAL_STRING_LEN: usize = 4096;
+static SHARED_EXTERNAL_LATIN1: [u8; SHARED_EXTERNAL_STRING_LEN] =
+  [b'x'; SHARED_EXTERNAL_STRING_LEN];
+static SHARED_EXTERNAL_UTF16: [u16; SHARED_EXTERNAL_STRING_LEN] =
+  [b'y' as u16; SHARED_EXTERNAL_STRING_LEN];
+
+#[derive(Default)]
+struct ExternalStringFinalizerProbe {
+  creator_thread: Option<std::thread::ThreadId>,
+  called: u32,
+  hints: u32,
+  wrong_thread: bool,
+  null_env: bool,
+}
+
+static EXTERNAL_STRING_FINALIZER_PROBE: LazyLock<
+  Mutex<ExternalStringFinalizerProbe>,
+> = LazyLock::new(|| Mutex::new(ExternalStringFinalizerProbe::default()));
+
+unsafe extern "C" fn record_external_string_finalizer(
+  env: napi_env,
+  _data: *mut c_void,
+  hint: *mut c_void,
+) {
+  let mut probe = EXTERNAL_STRING_FINALIZER_PROBE.lock().unwrap();
+  probe.called += 1;
+  probe.hints |= 1 << hint as usize;
+  probe.wrong_thread |=
+    probe.creator_thread.as_ref() != Some(&std::thread::current().id());
+  probe.null_env |= env.is_null();
+}
+
+extern "C" fn test_external_string_finalizer_reset(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  *EXTERNAL_STRING_FINALIZER_PROBE.lock().unwrap() =
+    ExternalStringFinalizerProbe {
+      creator_thread: Some(std::thread::current().id()),
+      ..Default::default()
+    };
+
+  let mut result = std::ptr::null_mut();
+  assert_napi_ok!(napi_get_undefined(env, &mut result));
+  result
+}
+
+/// Create two one-byte and two two-byte strings from identical backing-store
+/// addresses. The second string of each encoding must use the copy path so
+/// every resource keeps the correct finalizer identity.
+extern "C" fn test_external_string_finalizer_collisions(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  let mut strings = [std::ptr::null_mut(); 4];
+  let mut copied = [true; 4];
+
+  for index in 0..2 {
+    let status = unsafe {
+      node_api_create_external_string_latin1(
+        env,
+        SHARED_EXTERNAL_LATIN1.as_ptr() as *const c_char,
+        SHARED_EXTERNAL_LATIN1.len(),
+        Some(record_external_string_finalizer),
+        index as *mut c_void,
+        &mut strings[index],
+        &mut copied[index],
+      )
+    };
+    assert_eq!(status, 0);
+  }
+
+  for index in 2..4 {
+    let status = unsafe {
+      node_api_create_external_string_utf16(
+        env,
+        SHARED_EXTERNAL_UTF16.as_ptr(),
+        SHARED_EXTERNAL_UTF16.len(),
+        Some(record_external_string_finalizer),
+        index as *mut c_void,
+        &mut strings[index],
+        &mut copied[index],
+      )
+    };
+    assert_eq!(status, 0);
+  }
+
+  let mut result = std::ptr::null_mut();
+  assert_napi_ok!(napi_create_array_with_length(env, 8, &mut result));
+  for (index, string) in strings.into_iter().enumerate() {
+    assert_napi_ok!(napi_set_element(env, result, index as u32, string));
+  }
+  for (index, copied) in copied.into_iter().enumerate() {
+    let mut value = std::ptr::null_mut();
+    assert_napi_ok!(napi_get_boolean(env, !copied, &mut value));
+    assert_napi_ok!(napi_set_element(env, result, (index + 4) as u32, value));
+  }
+  result
+}
+
+/// V8 disposes zero-length external resources synchronously. Keep these on
+/// the copy path so their callbacks run exactly once before the API returns.
+extern "C" fn test_empty_external_string_finalizers(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  let mut strings = [std::ptr::null_mut(); 2];
+  let mut copied = [false; 2];
+
+  let latin1_status = unsafe {
+    node_api_create_external_string_latin1(
+      env,
+      SHARED_EXTERNAL_LATIN1.as_ptr() as *const c_char,
+      0,
+      Some(record_external_string_finalizer),
+      4 as *mut c_void,
+      &mut strings[0],
+      &mut copied[0],
+    )
+  };
+  assert_eq!(latin1_status, 0);
+
+  let utf16_status = unsafe {
+    node_api_create_external_string_utf16(
+      env,
+      SHARED_EXTERNAL_UTF16.as_ptr(),
+      0,
+      Some(record_external_string_finalizer),
+      5 as *mut c_void,
+      &mut strings[1],
+      &mut copied[1],
+    )
+  };
+  assert_eq!(utf16_status, 0);
+
+  let mut result = std::ptr::null_mut();
+  assert_napi_ok!(napi_create_array_with_length(env, 4, &mut result));
+  for (index, string) in strings.into_iter().enumerate() {
+    assert_napi_ok!(napi_set_element(env, result, index as u32, string));
+  }
+  for (index, copied) in copied.into_iter().enumerate() {
+    let mut value = std::ptr::null_mut();
+    assert_napi_ok!(napi_get_boolean(env, !copied, &mut value));
+    assert_napi_ok!(napi_set_element(env, result, (index + 2) as u32, value));
+  }
+  result
+}
+
+extern "C" fn test_external_string_finalizer_status(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  let probe = EXTERNAL_STRING_FINALIZER_PROBE.lock().unwrap();
+  let mut result = std::ptr::null_mut();
+  assert_napi_ok!(napi_create_array_with_length(env, 4, &mut result));
+
+  let mut called = std::ptr::null_mut();
+  assert_napi_ok!(napi_create_uint32(env, probe.called, &mut called));
+  assert_napi_ok!(napi_set_element(env, result, 0, called));
+
+  let mut wrong_thread = std::ptr::null_mut();
+  assert_napi_ok!(napi_get_boolean(env, probe.wrong_thread, &mut wrong_thread));
+  assert_napi_ok!(napi_set_element(env, result, 1, wrong_thread));
+
+  let mut null_env = std::ptr::null_mut();
+  assert_napi_ok!(napi_get_boolean(env, probe.null_env, &mut null_env));
+  assert_napi_ok!(napi_set_element(env, result, 2, null_env));
+
+  let mut hints = std::ptr::null_mut();
+  assert_napi_ok!(napi_create_uint32(env, probe.hints, &mut hints));
+  assert_napi_ok!(napi_set_element(env, result, 3, hints));
+  result
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_utf8", test_utf8),
@@ -425,6 +601,26 @@ pub fn init(env: napi_env, exports: napi_value) {
     napi_new_property!(env, "test_utf16_roundtrip", test_utf16_roundtrip),
     napi_new_property!(env, "test_external_latin1", test_external_latin1),
     napi_new_property!(env, "test_external_utf16", test_external_utf16),
+    napi_new_property!(
+      env,
+      "test_external_string_finalizer_reset",
+      test_external_string_finalizer_reset
+    ),
+    napi_new_property!(
+      env,
+      "test_external_string_finalizer_collisions",
+      test_external_string_finalizer_collisions
+    ),
+    napi_new_property!(
+      env,
+      "test_empty_external_string_finalizers",
+      test_empty_external_string_finalizers
+    ),
+    napi_new_property!(
+      env,
+      "test_external_string_finalizer_status",
+      test_external_string_finalizer_status
+    ),
   ];
 
   assert_napi_ok!(napi_define_properties(

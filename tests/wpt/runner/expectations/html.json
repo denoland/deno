@@ -967,8 +967,7 @@
           "Growable SharedArrayBuffer",
           "ImageBitmap",
           "OffscreenCanvas",
-          "Transferring a non-transferable platform object fails",
-          "Transferring OOB TypedArray throws"
+          "Transferring a non-transferable platform object fails"
         ]
       },
       "structured-clone.any.worker.html": {
@@ -976,8 +975,7 @@
           "Growable SharedArrayBuffer",
           "ImageBitmap",
           "OffscreenCanvas",
-          "Transferring a non-transferable platform object fails",
-          "Transferring OOB TypedArray throws"
+          "Transferring a non-transferable platform object fails"
         ]
       },
       "structured-clone-cross-realm-method.html": false
@@ -1042,8 +1040,39 @@
   },
   "infrastructure": {
     "safe-passing-of-structured-data": {
-      "messagechannel.any.html": false,
-      "messagechannel.any.worker.html": false,
+      "messagechannel.any.html": {
+        "expectedFailures": [
+          "FileList empty",
+          "Array FileList object, FileList empty",
+          "Object FileList object, FileList empty",
+          "ImageData 1x1 transparent black",
+          "ImageData 1x1 non-transparent non-black",
+          "Array ImageData object, ImageData 1x1 transparent black",
+          "Array ImageData object, ImageData 1x1 non-transparent non-black",
+          "Object ImageData object, ImageData 1x1 transparent black",
+          "Object ImageData object, ImageData 1x1 non-transparent non-black",
+          "ImageBitmap 1x1 transparent black",
+          "ImageBitmap 1x1 non-transparent non-black",
+          "Array ImageBitmap object, ImageBitmap 1x1 transparent black",
+          "Array ImageBitmap object, ImageBitmap 1x1 transparent non-black",
+          "Object ImageBitmap object, ImageBitmap 1x1 transparent black",
+          "Object ImageBitmap object, ImageBitmap 1x1 transparent non-black",
+          "Serializing a non-serializable platform object fails",
+          "Growable SharedArrayBuffer",
+          "ImageBitmap",
+          "OffscreenCanvas",
+          "Transferring a non-transferable platform object fails"
+        ]
+      },
+      "messagechannel.any.worker.html": {
+        "expectedFailures": [
+          "Serializing a non-serializable platform object fails",
+          "Growable SharedArrayBuffer",
+          "ImageBitmap",
+          "OffscreenCanvas",
+          "Transferring a non-transferable platform object fails"
+        ]
+      },
       "shared-array-buffers": {
         "no-coop-coep.https.any.html": false,
         "no-coop-coep.https.any.worker.html": false,

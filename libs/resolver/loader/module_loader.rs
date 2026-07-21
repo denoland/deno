@@ -20,6 +20,7 @@ use super::LoadedModuleOrAsset;
 use super::LoadedModuleSource;
 use super::NpmModuleLoadError;
 use super::RequestedModuleType;
+use super::media_type_name;
 use crate::cache::ParsedSourceCacheRc;
 use crate::cjs::CjsTrackerRc;
 use crate::emit::EmitParsedSourceHelperError;
@@ -83,6 +84,14 @@ pub enum LoadCodeSourceErrorKind {
     "Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement."
   )]
   MissingJsonAttribute,
+  #[class(type)]
+  #[error(
+    "Expected a JSON module, but identified a {actual} module.\n  Specifier: {specifier}"
+  )]
+  ExpectedJsonModule {
+    specifier: Url,
+    actual: &'static str,
+  },
   #[class(inherit)]
   #[error(transparent)]
   NpmModuleLoad(#[from] NpmModuleLoadError),
@@ -250,6 +259,16 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
           && matches!(self.allow_json_imports, AllowJsonImports::WithAttribute)
         {
           Err(LoadCodeSourceErrorKind::MissingJsonAttribute.into_box())
+        } else if matches!(requested_module_type, RequestedModuleType::Json)
+          && loaded_module.media_type != MediaType::Json
+        {
+          Err(
+            LoadCodeSourceErrorKind::ExpectedJsonModule {
+              specifier: loaded_module.specifier.clone().into_owned(),
+              actual: media_type_name(loaded_module.media_type),
+            }
+            .into_box(),
+          )
         } else {
           Ok(source)
         }
@@ -281,6 +300,17 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
       && matches!(self.allow_json_imports, AllowJsonImports::WithAttribute)
     {
       return Err(LoadCodeSourceErrorKind::MissingJsonAttribute.into_box());
+    }
+    if matches!(requested_module_type, RequestedModuleType::Json)
+      && loaded_module.media_type != MediaType::Json
+    {
+      return Err(
+        LoadCodeSourceErrorKind::ExpectedJsonModule {
+          specifier: loaded_module.specifier.clone().into_owned(),
+          actual: media_type_name(loaded_module.media_type),
+        }
+        .into_box(),
+      );
     }
 
     Ok(Some(loaded_module))
