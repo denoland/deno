@@ -27,11 +27,15 @@ fn escape_control_characters(s: &str) -> std::borrow::Cow<'_, str> {
 fn is_prompt_control_character(c: char) -> bool {
   c.is_ascii_control()
     || c.is_control()
+    // Unicode formatting controls that can spoof permission prompt text. These
+    // are General_Category=Format, not `char::is_control()`, so they pass
+    // through unescaped unless we handle them explicitly. A few have legitimate
+    // uses (e.g. joiners in some scripts and emoji), but in a security-sensitive
+    // prompt we prefer to render them visibly so the label can't be forged.
     || matches!(
       c,
-      // Unicode bidi formatting controls. These are not `char::is_control()`
-      // (they are General_Category=Format), but terminals may interpret them
-      // and visually reorder permission prompt text.
+      // Bidirectional formatting controls. Terminals may interpret these and
+      // visually reorder the text (the Trojan-Source / bidi-spoofing vector).
       '\u{061c}' // Arabic Letter Mark
         | '\u{200e}' // Left-to-Right Mark
         | '\u{200f}' // Right-to-Left Mark
@@ -44,6 +48,17 @@ fn is_prompt_control_character(c: char) -> bool {
         | '\u{2067}' // Right-to-Left Isolate
         | '\u{2068}' // First Strong Isolate
         | '\u{2069}' // Pop Directional Isolate
+      // Invisible / zero-width formatting controls. These render as nothing but
+      // can conceal or fake label content without reordering it.
+        | '\u{200b}' // Zero Width Space
+        | '\u{200c}' // Zero Width Non-Joiner
+        | '\u{200d}' // Zero Width Joiner
+        | '\u{2060}' // Word Joiner
+        | '\u{2061}' // Function Application
+        | '\u{2062}' // Invisible Times
+        | '\u{2063}' // Invisible Separator
+        | '\u{2064}' // Invisible Plus
+        | '\u{feff}' // Zero Width No-Break Space (byte order mark)
     )
 }
 
@@ -681,6 +696,28 @@ pub mod tests {
     assert!(!escaped.contains('\u{202c}'));
     assert!(escaped.contains(r"\u{202e}"));
     assert!(escaped.contains(r"\u{202c}"));
+  }
+
+  #[cfg(not(target_arch = "wasm32"))]
+  #[test]
+  fn escape_control_characters_escapes_invisible_formatting_marks() {
+    // Zero-width / invisible formatting characters render as nothing but can
+    // conceal or fake the displayed label.
+    for c in [
+      '\u{200b}', // Zero Width Space
+      '\u{200c}', // Zero Width Non-Joiner
+      '\u{200d}', // Zero Width Joiner
+      '\u{2060}', // Word Joiner
+      '\u{feff}', // Zero Width No-Break Space (byte order mark)
+    ] {
+      let input = format!("access to secret{c}.txt");
+      let escaped = escape_control_characters(&input);
+      assert!(!escaped.contains(c), "{c:?} should not survive unescaped");
+      assert!(
+        escaped.contains(&c.escape_debug().to_string()),
+        "{c:?} should be rendered visibly"
+      );
+    }
   }
 
   #[cfg(not(target_arch = "wasm32"))]
