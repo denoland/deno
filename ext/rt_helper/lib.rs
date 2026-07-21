@@ -98,6 +98,7 @@ pub trait DenoRtNativeAddonLoader: Send + Sync {
   }
 }
 
+#[allow(clippy::disallowed_methods, reason = "requires real fs")]
 fn file_matches_bytes(path: &Path, expected_bytes: &[u8]) -> bool {
   let path_metadata = match fs::symlink_metadata(path) {
     Ok(metadata) => metadata,
@@ -151,6 +152,8 @@ fn file_matches_bytes(path: &Path, expected_bytes: &[u8]) -> bool {
 
 #[cfg(unix)]
 fn current_uid() -> u32 {
+  // SAFETY: `geteuid` takes no arguments and is always safe to call; it
+  // cannot fail and has no preconditions.
   unsafe { libc::geteuid() }
 }
 
@@ -212,6 +215,7 @@ fn create_native_addon_cache_dir(temp_dir: &Path) -> std::io::Result<PathBuf> {
 }
 
 #[cfg(unix)]
+#[allow(clippy::disallowed_methods, reason = "requires real fs")]
 fn create_private_native_addon_dir(path: &Path) -> std::io::Result<()> {
   use std::os::unix::fs::DirBuilderExt;
 
@@ -225,6 +229,7 @@ fn create_private_native_addon_dir(path: &Path) -> std::io::Result<()> {
 }
 
 #[cfg(not(unix))]
+#[allow(clippy::disallowed_methods, reason = "requires real fs")]
 fn create_private_native_addon_dir(path: &Path) -> std::io::Result<()> {
   match fs::create_dir(path) {
     Ok(()) => Ok(()),
@@ -238,6 +243,7 @@ fn ensure_private_native_addon_dir(path: &Path) -> std::io::Result<()> {
   validate_private_native_addon_dir(path)
 }
 
+#[allow(clippy::disallowed_methods, reason = "requires real fs")]
 fn validate_private_native_addon_dir(path: &Path) -> std::io::Result<()> {
   let metadata = fs::symlink_metadata(path)?;
   if metadata.file_type().is_symlink() || !metadata.is_dir() {
