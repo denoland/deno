@@ -48,11 +48,6 @@ const packages: Package[] = [{
   os: "linux",
   cpu: "x64",
   libc: "musl",
-}, {
-  zipFileName: "deno-aarch64-unknown-linux-musl.zip",
-  os: "linux",
-  cpu: "arm64",
-  libc: "musl",
 }];
 
 const markdownText = `# Deno

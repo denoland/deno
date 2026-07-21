@@ -68,11 +68,6 @@ const Runners = {
     arch: "x86_64",
     runner: ubuntuX86Runner,
   },
-  linuxArmMusl: {
-    os: "linux",
-    arch: "aarch64",
-    runner: ubuntuARMRunner,
-  },
   macosX86: {
     os: "macos",
     arch: "x86_64",
@@ -628,11 +623,6 @@ const buildItems = handleBuildItems([{
   libc: "musl",
   // The glibc sysroot is not usable for musl builds.
   use_sysroot: false,
-}, {
-  ...Runners.linuxArmMusl,
-  profile: "release",
-  libc: "musl",
-  use_sysroot: false,
 }]);
 
 const buildJobs = buildItems.map((rawBuildItem) => {
@@ -644,18 +634,12 @@ const buildJobs = buildItems.map((rawBuildItem) => {
   // Statically-known variant of the above, used for decisions that must be made
   // at generation time (job id, container image, which jobs to emit).
   const isMuslBuild = rawBuildItem.libc === "musl";
-  // aarch64 musl cannot use the Alpine-container approach: GitHub only supports
-  // JavaScript actions (checkout, cache, setup-deno) in Alpine containers on x64
-  // runners, not arm64. So aarch64 musl builds run bare on the native arm64
-  // glibc runner and cross-compile to the musl target instead.
-  const isCrossMuslBuild = isMuslBuild && rawBuildItem.arch === "aarch64";
-  const isContainerMuslBuild = isMuslBuild && !isCrossMuslBuild;
   const linuxLibc = rawBuildItem.libc ?? "gnu";
   // e.g. `x86_64-unknown-linux-gnu` or `x86_64-unknown-linux-musl`.
   const linuxTriple = `${buildItem.arch}-unknown-linux-${linuxLibc}`;
-  // x86_64 musl builds run inside an Alpine container on the native runner so
-  // that host == target (no cross-compile, no qemu); glibc builds run bare.
-  const muslContainer = isContainerMuslBuild
+  // musl builds run inside an Alpine container on the native runner so that
+  // host == target (no cross-compile, no qemu); glibc builds run bare.
+  const muslContainer = isMuslBuild
     ? {
       image: "alpine:3.22",
     }
@@ -978,67 +962,27 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             // linking so `Deno.dlopen`/FFI/native-addon loading works. The
             // config-file rustflags are ignored once RUSTFLAGS is set, so
             // re-add `--cfg tokio_unstable` (required to compile) here.
-            isCrossMuslBuild
-              ? {
-                // Cross-compile to musl from the arm64 glibc runner. A real
-                // aarch64-linux-musl gcc toolchain compiles the C/C++ deps and
-                // links against musl; the prebuilt rusty_v8 for the musl triple
-                // is downloaded, so V8 is not built from source. Outputs land
-                // in target/<triple>/release and are relocated to target/release
-                // after the build so downstream steps find them.
-                name: "Set up musl build environment",
-                run: [
-                  "rustup target add aarch64-unknown-linux-musl",
-                  // musl-tools provides a real musl-targeting gcc (musl-gcc)
-                  // plus musl-dev headers/libs; `musl` provides the runtime
-                  // loader so the dynamically linked binary can run on this
-                  // glibc host (e.g. the symcache step).
-                  "sudo apt-get update",
-                  "sudo apt-get install -y --no-install-recommends musl-tools musl-dev musl",
-                  // The one thing musl-tools lacks is a musl-built
-                  // libgcc_s.so.1, which dynamic linking (crt-static off,
-                  // needed for FFI/dlopen) requires. Take it from the arm64
-                  // Alpine image -- the same real musl libgcc the shipped
-                  // binary loads on Alpine at runtime -- because musl.cc is not
-                  // reliably reachable from CI. Alpine is already pulled
-                  // reliably for the x86_64 musl container.
-                  'LIBGCC="$RUNNER_TEMP/musl-libgcc"',
-                  'mkdir -p "$LIBGCC"',
-                  "docker run --rm alpine:3.22 sh -c " +
-                  "'apk add --no-cache libgcc >/dev/null 2>&1 && cat /usr/lib/libgcc_s.so.1' " +
-                  '> "$LIBGCC/libgcc_s.so.1"',
-                  'ln -sf libgcc_s.so.1 "$LIBGCC/libgcc_s.so"',
-                  'echo "CARGO_BUILD_TARGET=aarch64-unknown-linux-musl" >> $GITHUB_ENV',
-                  'echo "RUSTFLAGS=-C target-feature=-crt-static -C link-arg=-L$LIBGCC --cfg tokio_unstable" >> $GITHUB_ENV',
-                  'echo "RUSTDOCFLAGS=-C target-feature=-crt-static -C link-arg=-L$LIBGCC --cfg tokio_unstable" >> $GITHUB_ENV',
-                  'echo "CC_aarch64_unknown_linux_musl=musl-gcc" >> $GITHUB_ENV',
-                  'echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc" >> $GITHUB_ENV',
-                  // The built binary loads musl libgcc_s.so.1 at runtime; make
-                  // the extracted copy discoverable for the run steps.
-                  'echo "LD_LIBRARY_PATH=$LIBGCC" >> $GITHUB_ENV',
-                ],
-              }
-              : {
-                name: "Set up musl build environment",
-                if: isMusl,
-                run: [
-                  'echo "RUSTFLAGS=-C target-feature=-crt-static -C linker=clang -C link-arg=-fuse-ld=lld --cfg tokio_unstable" >> $GITHUB_ENV',
-                  'echo "RUSTDOCFLAGS=-C target-feature=-crt-static -C linker=clang -C link-arg=-fuse-ld=lld --cfg tokio_unstable" >> $GITHUB_ENV',
-                  // Use Alpine's native gcc/g++ for C/C++ dependencies (e.g.
-                  // aws-lc-sys). They target musl directly and know where their
-                  // crt objects and libgcc live; clang, invoked by the cc crate
-                  // with `--target=x86_64-unknown-linux-musl`, fails to locate
-                  // Alpine's `x86_64-alpine-linux-musl` gcc install and cannot
-                  // find crtbeginS.o/-lgcc. The Rust link still uses clang+lld
-                  // above, which works because rustc's musl target is
-                  // self-contained.
-                  'echo "CC=gcc" >> $GITHUB_ENV',
-                  'echo "CXX=g++" >> $GITHUB_ENV',
-                  // bindgen (libsqlite3-sys) dlopens libclang at build time;
-                  // point it at Alpine's clang-dev/llvm-dev shared library.
-                  'echo "LIBCLANG_PATH=/usr/lib" >> $GITHUB_ENV',
-                ],
-              },
+            {
+              name: "Set up musl build environment",
+              if: isMusl,
+              run: [
+                'echo "RUSTFLAGS=-C target-feature=-crt-static -C linker=clang -C link-arg=-fuse-ld=lld --cfg tokio_unstable" >> $GITHUB_ENV',
+                'echo "RUSTDOCFLAGS=-C target-feature=-crt-static -C linker=clang -C link-arg=-fuse-ld=lld --cfg tokio_unstable" >> $GITHUB_ENV',
+                // Use Alpine's native gcc/g++ for C/C++ dependencies (e.g.
+                // aws-lc-sys). They target musl directly and know where their
+                // crt objects and libgcc live; clang, invoked by the cc crate
+                // with `--target=x86_64-unknown-linux-musl`, fails to locate
+                // Alpine's `x86_64-alpine-linux-musl` gcc install and cannot
+                // find crtbeginS.o/-lgcc. The Rust link still uses clang+lld
+                // above, which works because rustc's musl target is
+                // self-contained.
+                'echo "CC=gcc" >> $GITHUB_ENV',
+                'echo "CXX=g++" >> $GITHUB_ENV',
+                // bindgen (libsqlite3-sys) dlopens libclang at build time;
+                // point it at Alpine's clang-dev/llvm-dev shared library.
+                'echo "LIBCLANG_PATH=/usr/lib" >> $GITHUB_ENV',
+              ],
+            },
             {
               // do this on PRs as well as main so that PRs can use the cargo build cache from main
               name: "Configure canary build",
@@ -1079,19 +1023,6 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 "df -h",
               ],
             },
-            ...(isCrossMuslBuild
-              ? [{
-                // Cross builds set CARGO_BUILD_TARGET, so cargo writes the musl
-                // artifacts to target/<triple>/release. Relocate them into
-                // target/release so the many downstream steps that assume that
-                // path (snapshot check, symcache, pre-release, artifact upload)
-                // work unchanged.
-                name: "Relocate cross-build artifacts",
-                run: [
-                  "cp -a target/aarch64-unknown-linux-musl/release/. target/release/",
-                ],
-              }]
-              : []),
             {
               name: "Check release snapshot flags",
               if: isLinux,
@@ -1257,13 +1188,6 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 "target/release/denort-x86_64-unknown-linux-musl.zip.sha256sum",
                 "target/release/libdenort-x86_64-unknown-linux-musl.zip",
                 "target/release/libdenort-x86_64-unknown-linux-musl.zip.sha256sum",
-                "target/release/deno-aarch64-unknown-linux-musl.zip",
-                "target/release/deno-aarch64-unknown-linux-musl.zip.sha256sum",
-                "target/release/deno-aarch64-unknown-linux-musl.sha256sum",
-                "target/release/denort-aarch64-unknown-linux-musl.zip",
-                "target/release/denort-aarch64-unknown-linux-musl.zip.sha256sum",
-                "target/release/libdenort-aarch64-unknown-linux-musl.zip",
-                "target/release/libdenort-aarch64-unknown-linux-musl.zip.sha256sum",
                 "target/release/deno-aarch64-apple-darwin.zip",
                 "target/release/deno-aarch64-apple-darwin.zip.sha256sum",
                 "target/release/deno-aarch64-apple-darwin.sha256sum",
@@ -1310,7 +1234,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         });
 
         return step.if(buildItem.skip.not())(
-          ...(isContainerMuslBuild ? [muslSetupStep] : []),
+          ...(isMuslBuild ? [muslSetupStep] : []),
           cloneRepoStep,
           cloneStdSubmoduleStep,
           // ensure this happens right after cloning
