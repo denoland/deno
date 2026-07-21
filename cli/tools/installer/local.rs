@@ -284,7 +284,7 @@ pub async fn sync_types_command(
   // project to discover every external (npm:/jsr:/http(s):) specifier the code
   // actually uses — including specifiers written directly in source and across
   // workspace members, not just those declared in the root import map.
-  let graph_specifiers = {
+  let (graph_specifiers, local_wasm_modules) = {
     let graph_container = factory.main_module_graph_container().await?;
     let roots = graph_container.collect_specifiers(
       &root_patterns,
@@ -365,7 +365,33 @@ pub async fn sync_types_command(
         specifiers.insert(root.to_string());
       }
     }
+    // Local `.wasm` modules (scheme `file:`) can't be type-checked as binaries:
+    // stock tsc reports a spurious `TS2307 Cannot find module './foo.wasm'`.
+    // deno_graph already materialized each wasm module's typed exports into a
+    // `.d.ts` (`source_dts`); collect them here so `setup_npm_compat` can write
+    // them out and point tsc at them (mirroring the remote-wasm treatment in
+    // `install_http_modules`).
+    let mut local_wasm_modules: Vec<(Url, String)> = Vec::new();
     for module in graph.modules() {
+      if let deno_graph::Module::Wasm(wasm) = module
+        && wasm.specifier.scheme() == "file"
+      {
+        let dts = if !wasm.source_dts.is_empty() {
+          wasm.source_dts.to_string()
+        } else {
+          match deno_graph::source::wasm::wasm_module_to_dts(&wasm.source) {
+            Ok(dts) => dts,
+            Err(e) => {
+              log::debug!(
+                "wasm dts generation failed for {}: {e}",
+                wasm.specifier
+              );
+              continue;
+            }
+          }
+        };
+        local_wasm_modules.push((wasm.specifier.clone(), dts));
+      }
       for (raw, _dep) in module.dependencies() {
         // Collect scheme specifiers (npm:/jsr:/http:) and bare specifiers
         // (import-map aliases like `@std/fmt/colors`, `fresh/runtime`). Skip
@@ -380,7 +406,10 @@ pub async fn sync_types_command(
         specifiers.insert(raw.clone());
       }
     }
-    specifiers.into_iter().collect::<Vec<_>>()
+    (
+      specifiers.into_iter().collect::<Vec<_>>(),
+      local_wasm_modules,
+    )
   };
 
   // The stock TypeScript compatibility config needs the managed npm
@@ -435,6 +464,7 @@ pub async fn sync_types_command(
     &http_client,
     &permissions,
     &graph_specifiers,
+    &local_wasm_modules,
     &npm_resolver,
     resolved_compiler_options.as_ref(),
     manage_root_tsconfig,
