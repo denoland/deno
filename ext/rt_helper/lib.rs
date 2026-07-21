@@ -62,12 +62,6 @@ pub trait DenoRtNativeAddonLoader: Send + Sync {
         let cache_dir = native_addon_cache_dir().map_err(LoadError::Io)?;
         let real_path =
           resolve_temp_file_name(cache_dir, &exe_name, path, &bytes);
-        let cache_dir = real_path.parent().ok_or_else(|| {
-          LoadError::Io(std::io::Error::other(
-            "Native addon cache path had no parent",
-          ))
-        })?;
-        ensure_private_native_addon_dir(cache_dir).map_err(LoadError::Io)?;
         if let Err(err) = deno_path_util::fs::atomic_write_file(
           &sys_traits::impls::RealSys,
           &real_path,
@@ -256,6 +250,8 @@ fn validate_private_native_addon_dir(path: &Path) -> std::io::Result<()> {
     ));
   }
 
+  // Windows temp directories are normally per-user; Unix additionally
+  // enforces ownership and mode here.
   #[cfg(unix)]
   {
     use std::os::unix::fs::MetadataExt;
