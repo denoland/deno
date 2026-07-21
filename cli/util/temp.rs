@@ -136,7 +136,7 @@ fn ensure_secure_temp_parent(path: &Path) -> Result<(), AnyError> {
       );
     }
     let mode = metadata.mode();
-    if mode & 0o022 != 0 && mode & u32::from(libc::S_ISVTX) == 0 {
+    if mode & 0o022 != 0 && mode & 0o1000 == 0 {
       bail!(
         "temporary directory ancestor '{}' is writable by other users without the sticky bit",
         ancestor.display()
