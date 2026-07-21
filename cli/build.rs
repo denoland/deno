@@ -413,6 +413,25 @@ fn emit_dts_rerun_if_changed() {
 }
 
 fn main() {
+  // On musl the build script itself is a musl binary, and musl's small default
+  // stack overflows during the heavy release work below (zstd level-19
+  // compression of the multi-megabyte tsc bundle), crashing with SIGSEGV. Run
+  // it on a thread with a large explicit stack there; other targets have an
+  // ample main-thread stack and run inline.
+  #[cfg(target_env = "musl")]
+  {
+    std::thread::Builder::new()
+      .stack_size(64 * 1024 * 1024)
+      .spawn(run)
+      .unwrap()
+      .join()
+      .unwrap();
+  }
+  #[cfg(not(target_env = "musl"))]
+  run();
+}
+
+fn run() {
   // Skip building from docs.rs.
   if env::var_os("DOCS_RS").is_some() {
     return;
