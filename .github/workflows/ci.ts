@@ -18,7 +18,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 120;
+const cacheVersion = 121;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
@@ -1256,6 +1256,38 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             },
           },
           {
+            name: "Set up native tsc cache",
+            if: testCrateNameExpr.equals("integration").or(
+              testCrateNameExpr.equals("specs"),
+            ),
+            uses: "actions/cache@v5",
+            with: {
+              // Keyed on native.rs so a pinned-version bump re-downloads.
+              path: "./target/.native_tsc",
+              key:
+                "tsc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('cli/tsc/native.rs') }}",
+            },
+          },
+          {
+            // Warm the cache with the compiler `deno check` uses (into the
+            // default target/.native_tsc/deno_dir) so the test step doesn't
+            // re-download it for every test's fresh DENO_DIR. The harness
+            // resolves that path and injects DENO_TSC_BIN per-test itself (see
+            // test_util::native_tsc_bin_path); no env export needed. Run it with
+            // the built deno binary (the test job has no system `deno` on PATH).
+            name: "Pre-download native tsc",
+            if: testCrateNameExpr.equals("integration").or(
+              testCrateNameExpr.equals("specs"),
+            ),
+            run: [
+              'DENO_BIN=""',
+              "for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do",
+              '  [ -f "$c" ] && DENO_BIN="$c" && break',
+              "done",
+              '"$DENO_BIN" run -A ./tools/download_tsc.ts',
+            ].join("\n"),
+          },
+          {
             if: buildItem.os.equals("linux").and(
               buildItem.arch.equals("aarch64"),
             ),
@@ -1734,6 +1766,16 @@ const denoCoreTestJob = job("deno-core-test", {
     RUST_LIB_BACKTRACE: 0,
   },
   steps: step.if(isNotTag)(
+    {
+      // Frees several GB of preinstalled toolchains this job never uses
+      // (.NET, Android SDK, GHC, Boost), fixing recurring "No space left
+      // on device" failures while compiling deno_core's doctests.
+      name: "Free disk space",
+      run: [
+        'sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true',
+        "df -h",
+      ],
+    },
     cloneRepoStep,
     denoCoreTestCacheSteps.restoreCacheStep,
     installRustStep,

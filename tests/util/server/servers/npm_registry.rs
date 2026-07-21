@@ -607,15 +607,31 @@ fn npm_security_advisories_bulk_no_vulns()
 async fn npm_security_advisories_bulk(
   req: Request<Incoming>,
 ) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
-  let body = req.into_body().collect().await?.to_bytes();
-  let json_obj: serde_json::Value = serde_json::from_slice(&body)?;
+  // Respond with 400 for a request whose body can't be read or isn't valid
+  // JSON rather than returning `Err`. A handler error makes hyper abort the
+  // connection instead of sending a response, which surfaces to the client as
+  // `npm registry server error: hyper::Error(User(Service), expected value at
+  // line 1 column 1)` and intermittently fails unrelated npm tests on Windows
+  // (denoland/deno#35060, #36130). A real registry answers a malformed bulk
+  // request with a 4xx, so mirror that.
+  let bad_request = || {
+    Response::builder()
+      .status(StatusCode::BAD_REQUEST)
+      .body(empty_body())
+      .map_err(|e| e.into())
+  };
+
+  let Ok(collected) = req.into_body().collect().await else {
+    return bad_request();
+  };
+  let body = collected.to_bytes();
+  let Ok(json_obj) = serde_json::from_slice::<serde_json::Value>(&body) else {
+    return bad_request();
+  };
 
   let Some(resp_body) = process_npm_security_advisories_bulk_body(json_obj)
   else {
-    return Response::builder()
-      .status(StatusCode::BAD_REQUEST)
-      .body(empty_body())
-      .map_err(|e| e.into());
+    return bad_request();
   };
 
   Response::builder()

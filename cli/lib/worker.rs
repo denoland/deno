@@ -141,13 +141,18 @@ impl StorageKeyResolver {
   }
 }
 
-pub fn get_cache_storage_dir() -> PathBuf {
-  #[allow(
-    clippy::disallowed_methods,
-    reason = "ok because this won't ever be used by the js runtime"
-  )]
-  // Note: we currently use temp_dir() to avoid managing storage size.
-  std::env::temp_dir().join("deno_cache")
+/// Returns the persistent Cache API storage root beneath Deno's origin data
+/// directory. Each storage key uses a hashed child directory of this root.
+pub fn get_cache_storage_dir(origin_data_folder_path: &Path) -> PathBuf {
+  origin_data_folder_path.join("web_cache")
+}
+
+fn get_cache_storage_dir_for_key(
+  origin_data_folder_path: &Path,
+  key: &str,
+) -> PathBuf {
+  get_cache_storage_dir(origin_data_folder_path)
+    .join(checksum::r#gen(&[key.as_bytes()]))
 }
 
 /// By default V8 uses 1.4Gb heap limit which is meant for browser tabs.
@@ -377,9 +382,12 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
       let maybe_storage_key = shared
         .storage_key_resolver
         .resolve_storage_key(&args.main_module);
-      let cache_storage_dir = maybe_storage_key.map(|key| {
+      let cache_storage_dir = maybe_storage_key.as_ref().map(|key| {
         // TODO(@satyarohith): storage quota management
-        get_cache_storage_dir().join(checksum::r#gen(&[key.as_bytes()]))
+        get_cache_storage_dir_for_key(
+          shared.options.origin_data_folder_path.as_ref().unwrap(), // must be set if storage key resolver returns a value
+          key,
+        )
       });
 
       // TODO(bartlomieju): this is cruft, update FeatureChecker to spit out
@@ -680,9 +688,12 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
           .unwrap() // must be set if storage key resolver returns a value
           .join(checksum::r#gen(&[key.as_bytes()]))
       });
-    let cache_storage_dir = maybe_storage_key.map(|key| {
+    let cache_storage_dir = maybe_storage_key.as_ref().map(|key| {
       // TODO(@satyarohith): storage quota management
-      get_cache_storage_dir().join(checksum::r#gen(&[key.as_bytes()]))
+      get_cache_storage_dir_for_key(
+        shared.options.origin_data_folder_path.as_ref().unwrap(), // must be set if storage key resolver returns a value
+        key,
+      )
     });
 
     let services = WorkerServiceOptions {
@@ -1080,5 +1091,22 @@ mod test {
     // test empty
     let resolver = StorageKeyResolver::empty();
     assert_eq!(resolver.resolve_storage_key(&specifier), None);
+  }
+
+  #[test]
+  fn cache_storage_dir_is_under_origin_data() {
+    let origin_data_dir = PathBuf::from("deno_dir").join("location_data");
+    let key = "file:///project/main.ts";
+
+    assert_eq!(
+      get_cache_storage_dir(&origin_data_dir),
+      origin_data_dir.join("web_cache")
+    );
+    assert_eq!(
+      get_cache_storage_dir_for_key(&origin_data_dir, key),
+      origin_data_dir
+        .join("web_cache")
+        .join(checksum::r#gen(&[key.as_bytes()]))
+    );
   }
 }
