@@ -801,13 +801,22 @@ function innerInvokeEventListeners(
     try {
       if (typeof listener.callback === "object") {
         if (typeof listener.callback.handleEvent === "function") {
-          listener.callback.handleEvent(eventImpl);
+          // Invoke through invokeUserCallback so that a microtask
+          // checkpoint runs after the listener returns *if* no other
+          // user code is on the stack. This matches Web IDL's
+          // "call a user object operation" → "clean up after running
+          // script" pipeline (denoland/deno#11731).
+          core.invokeUserCallback(
+            listener.callback.handleEvent,
+            listener.callback,
+            [eventImpl],
+          );
         }
       } else {
-        FunctionPrototypeCall(
+        core.invokeUserCallback(
           listener.callback,
           eventImpl.currentTarget,
-          eventImpl,
+          [eventImpl],
         );
       }
     } catch (error) {

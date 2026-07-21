@@ -1159,7 +1159,13 @@ function invokeCallbackFunction(
   returnsPromise,
 ) {
   try {
-    const rv = ReflectApply(callable, thisArg, args);
+    // Route through core.invokeUserCallback so that a microtask
+    // checkpoint runs after the Web IDL callback returns when no
+    // other user code is on the stack (denoland/deno#11731). This
+    // covers all stream underlying-source/sink/size algorithms,
+    // queueing-strategy callbacks, and any other Web IDL callback
+    // entry point without requiring each call site to be updated.
+    const rv = core.invokeUserCallback(callable, thisArg, args);
     return returnValueConverter(rv, prefix, "return value");
   } catch (err) {
     if (returnsPromise === true) {
