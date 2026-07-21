@@ -250,7 +250,13 @@ impl ModuleLoadPreparer {
       .await?;
 
     if !skip_graph_roots_validation {
-      self.graph_roots_valid(graph, roots, allow_unknown_media_types, false)?;
+      self.graph_roots_valid(
+        graph,
+        roots,
+        allow_unknown_media_types,
+        false,
+        !is_dynamic,
+      )?;
     }
 
     drop(_pb_clear_guard);
@@ -329,12 +335,14 @@ impl ModuleLoadPreparer {
     roots: &[ModuleSpecifier],
     allow_unknown_media_types: bool,
     allow_unknown_jsr_exports: bool,
+    allow_sloppy_imports_hints_for_unreferenced_roots: bool,
   ) -> Result<(), JsErrorBox> {
     self.module_graph_builder.graph_roots_valid(
       graph,
       roots,
       allow_unknown_media_types,
       allow_unknown_jsr_exports,
+      allow_sloppy_imports_hints_for_unreferenced_roots,
     )
   }
 }
@@ -1620,6 +1628,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
               &[specifier],
               false,
               false,
+              false,
             )?;
           }
           return Ok(());
@@ -1699,6 +1708,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
         module_load_preparer.graph_roots_valid(
           &graph_container.graph(),
           specifiers,
+          false,
           false,
           false,
         )?;

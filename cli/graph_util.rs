@@ -92,6 +92,10 @@ pub struct GraphValidOptions<'a> {
   pub exit_integrity_errors: bool,
   pub allow_unknown_media_types: bool,
   pub allow_unknown_jsr_exports: bool,
+  /// Whether errors for graph roots without a referrer may probe the file
+  /// system for sloppy-import suggestions. Runtime-created dynamic roots set
+  /// this to false because they were not part of the prepared module graph.
+  pub allow_sloppy_imports_hints_for_unreferenced_roots: bool,
   /// Lazily collects the names of packages importable by bare specifier
   /// (workspace members and packages linked via the "links" field), used to
   /// enhance import errors. Only called when a resolution error is actually
@@ -126,6 +130,8 @@ pub fn graph_valid(
       will_type_check: options.will_type_check,
       allow_unknown_media_types: options.allow_unknown_media_types,
       allow_unknown_jsr_exports: options.allow_unknown_jsr_exports,
+      allow_sloppy_imports_hints_for_unreferenced_roots: options
+        .allow_sloppy_imports_hints_for_unreferenced_roots,
       collect_bare_importable_pkg_names: options
         .collect_bare_importable_pkg_names,
     },
@@ -152,6 +158,7 @@ pub struct GraphWalkErrorsOptions<'a> {
   pub will_type_check: bool,
   pub allow_unknown_media_types: bool,
   pub allow_unknown_jsr_exports: bool,
+  pub allow_sloppy_imports_hints_for_unreferenced_roots: bool,
   /// Lazily collects the names of packages importable by bare specifier
   /// (workspace members and packages linked via the "links" field), used to
   /// enhance import errors. Only called when a resolution error is actually
@@ -233,6 +240,14 @@ pub fn graph_walk_errors<'a>(
       {
         return None;
       }
+      let allow_sloppy_imports_hints = options
+        .allow_sloppy_imports_hints_for_unreferenced_roots
+        || !is_root
+        || matches!(
+          &error,
+          ModuleGraphError::ModuleError(error)
+            if error.maybe_referrer().is_some()
+        );
       let enhanced = enhance_graph_error(
         sys,
         error,
@@ -241,6 +256,7 @@ pub fn graph_walk_errors<'a>(
         } else {
           EnhanceGraphErrorMode::ShowRange
         },
+        allow_sloppy_imports_hints,
         bare_importable_pkg_names
           .get_or_insert_with(&collect_bare_importable_pkg_names),
       );
@@ -1213,6 +1229,7 @@ impl ModuleGraphBuilder {
       &graph.roots.iter().cloned().collect::<Vec<_>>(),
       false,
       false,
+      true,
     )
   }
 
@@ -1222,6 +1239,7 @@ impl ModuleGraphBuilder {
     roots: &[ModuleSpecifier],
     allow_unknown_media_types: bool,
     allow_unknown_jsr_exports: bool,
+    allow_sloppy_imports_hints_for_unreferenced_roots: bool,
   ) -> Result<(), JsErrorBox> {
     let will_type_check = self.cli_options.type_check_mode().is_true();
     let collect_bare_importable_pkg_names = || {
@@ -1249,6 +1267,7 @@ impl ModuleGraphBuilder {
         exit_integrity_errors: true,
         allow_unknown_media_types,
         allow_unknown_jsr_exports,
+        allow_sloppy_imports_hints_for_unreferenced_roots,
         collect_bare_importable_pkg_names: &collect_bare_importable_pkg_names,
       },
     )

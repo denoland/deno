@@ -132,7 +132,7 @@ async fn native_check(
   factory
     .module_graph_builder()
     .await?
-    .graph_roots_valid(&graph, &roots, true, false)?;
+    .graph_roots_valid(&graph, &roots, true, false, true)?;
 
   // Enforce the lockfile now that the graph has resolved the project's deps:
   // under `--frozen` this errors if the lockfile is out of date, otherwise it

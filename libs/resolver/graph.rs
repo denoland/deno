@@ -700,6 +700,7 @@ pub fn enhance_graph_error(
   sys: &(impl sys_traits::FsMetadata + Clone),
   error: ModuleGraphError,
   mode: EnhanceGraphErrorMode,
+  allow_sloppy_imports_hints: bool,
   // Names of packages importable by bare specifier (workspace members and
   // packages linked via the "links" field). Used to produce a better hint
   // when a bare import almost matches one of them.
@@ -723,7 +724,11 @@ pub fn enhance_graph_error(
     }
     ModuleGraphError::ModuleError(error) => {
       enhanced_integrity_error_message(error)
-        .or_else(|| enhanced_sloppy_imports_error_message(sys, error))
+        .or_else(|| {
+          allow_sloppy_imports_hints
+            .then(|| enhanced_sloppy_imports_error_message(sys, error))
+            .flatten()
+        })
         .or_else(|| enhanced_unsupported_import_attribute(error))
         .unwrap_or_else(|| format_deno_graph_error(error))
     }
