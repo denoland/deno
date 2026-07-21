@@ -1629,6 +1629,20 @@ Deno.test("importedResourceUsage", async () => {
   assert(resourceUsage === process.resourceUsage);
 });
 
+Deno.test({
+  name:
+    "process.constrainedMemory requires systemMemoryInfo permission on Linux",
+  ignore: Deno.build.os !== "linux" && Deno.build.os !== "android",
+  permissions: { sys: false },
+  fn() {
+    assertThrows(
+      () => process.constrainedMemory(),
+      Deno.errors.NotCapable,
+      'Requires sys access to "systemMemoryInfo"',
+    );
+  },
+});
+
 Deno.test("process.stdout.columns writable", () => {
   process.stdout.columns = 80;
   assertEquals(process.stdout.columns, 80);
