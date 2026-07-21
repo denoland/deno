@@ -22,6 +22,7 @@ use crate::factory::CliFactory;
 use crate::http_util;
 use crate::http_util::HttpClient;
 use crate::http_util::HttpClientProvider;
+use crate::util::console::escape_terminal_control_chars;
 
 struct FixableAction {
   module_name: String,
@@ -489,7 +490,22 @@ mod npm {
     ignore_unfixable: bool,
   ) {
     let stdout = &mut std::io::stdout();
+    print_report_to(
+      stdout,
+      vulns,
+      advisories,
+      minimal_severity,
+      ignore_unfixable,
+    );
+  }
 
+  fn print_report_to(
+    stdout: &mut impl Write,
+    vulns: &AuditVulnerabilities,
+    advisories: &[AuditAdvisory],
+    minimal_severity: AdvisorySeverity,
+    ignore_unfixable: bool,
+  ) {
     for adv in advisories {
       let Some(severity) = AdvisorySeverity::parse(&adv.severity) else {
         continue;
@@ -503,7 +519,15 @@ mod npm {
         continue;
       }
 
-      _ = writeln!(stdout, "╭ {}", colors::bold(adv.title.to_string()));
+      let title = escape_terminal_control_chars(&adv.title);
+      let module_name = escape_terminal_control_chars(&adv.module_name);
+      let vulnerable_versions =
+        escape_terminal_control_chars(&adv.vulnerable_versions);
+      let patched_versions =
+        escape_terminal_control_chars(&adv.patched_versions);
+      let url = escape_terminal_control_chars(&adv.url);
+
+      _ = writeln!(stdout, "╭ {}", colors::bold(title));
       _ = writeln!(
         stdout,
         "│ {}   {}",
@@ -515,35 +539,30 @@ mod npm {
           AdvisorySeverity::Critical => colors::red("critical"),
         }
       );
-      _ = writeln!(
-        stdout,
-        "│ {}    {}",
-        colors::gray("Package:"),
-        adv.module_name
-      );
+      _ = writeln!(stdout, "│ {}    {}", colors::gray("Package:"), module_name);
       _ = writeln!(
         stdout,
         "│ {} {}",
         colors::gray("Vulnerable:"),
-        adv.vulnerable_versions
+        vulnerable_versions
       );
       if has_fix {
         _ = writeln!(
           stdout,
           "│ {}    {}",
           colors::gray("Patched:"),
-          adv.patched_versions
+          patched_versions
         );
-        _ = writeln!(stdout, "│ {}       {}", colors::gray("Info:"), adv.url);
+        _ = writeln!(stdout, "│ {}       {}", colors::gray("Info:"), url);
         _ = writeln!(
           stdout,
           "╰ {}    update {} to {}",
           colors::gray("Actions:"),
-          adv.module_name,
-          adv.patched_versions
+          module_name,
+          patched_versions
         );
       } else {
-        _ = writeln!(stdout, "╰ {}       {}", colors::gray("Info:"), adv.url);
+        _ = writeln!(stdout, "╰ {}       {}", colors::gray("Info:"), url);
       }
       _ = writeln!(stdout);
     }
@@ -565,6 +584,48 @@ mod npm {
       colors::red(vulns.critical),
       colors::red("critical"),
     );
+  }
+
+  #[cfg(test)]
+  mod tests {
+    use super::*;
+
+    #[test]
+    fn print_report_escapes_advisory_controls() {
+      let vulns = AuditVulnerabilities {
+        low: 0,
+        moderate: 0,
+        high: 1,
+        critical: 0,
+      };
+      let advisories = [AuditAdvisory {
+        title: "title\x1b[2J".to_string(),
+        severity: "high".to_string(),
+        url: "https://example.com/\u{202e}info".to_string(),
+        module_name: "pkg\nname".to_string(),
+        vulnerable_versions: "<1\u{009b}31m".to_string(),
+        patched_versions: ">=2\x07".to_string(),
+        cves: vec![],
+      }];
+      let mut output = Vec::new();
+
+      print_report_to(
+        &mut output,
+        &vulns,
+        &advisories,
+        AdvisorySeverity::Low,
+        false,
+      );
+
+      let output = String::from_utf8(output).unwrap();
+      assert!(output.contains(r"title\u{1b}[2J"));
+      assert!(output.contains(r"pkg\nname"));
+      assert!(output.contains(r"<1\u{9b}31m"));
+      assert!(output.contains(r">=2\u{7}"));
+      assert!(output.contains(r"https://example.com/\u{202e}info"));
+      assert!(!output.contains("title\x1b[2J"));
+      assert!(!output.contains('\u{202e}'));
+    }
   }
 
   /// Advisory item from the bulk API response.

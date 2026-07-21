@@ -33,6 +33,42 @@ pub fn new_console_static_text() -> ConsoleStaticText {
   })
 }
 
+/// Escapes terminal control characters in text that will be embedded in
+/// Deno-owned terminal output.
+///
+/// Unlike [`filter_destructive_ansi`], this does not preserve styling from the
+/// input. Control characters are rendered visibly so surrounding text remains
+/// understandable.
+pub fn escape_terminal_control_chars(text: &str) -> Cow<'_, str> {
+  if !text.contains(is_terminal_control_char) {
+    return Cow::Borrowed(text);
+  }
+
+  let mut output = String::with_capacity(text.len());
+  for c in text.chars() {
+    if is_terminal_control_char(c) {
+      output.extend(c.escape_debug());
+    } else {
+      output.push(c);
+    }
+  }
+  Cow::Owned(output)
+}
+
+fn is_terminal_control_char(c: char) -> bool {
+  c.is_control()
+    || matches!(
+      c,
+      // Unicode bidirectional formatting characters are not covered by
+      // `char::is_control()`, but may visually reorder terminal text.
+      '\u{061c}'
+        | '\u{200e}'
+        | '\u{200f}'
+        | '\u{202a}'..='\u{202e}'
+        | '\u{2066}'..='\u{2069}'
+    )
+}
+
 /// Strips destructive ANSI escape sequences from user output while preserving
 /// SGR (color/style) sequences. Returns `Cow::Borrowed` when no filtering needed.
 pub fn filter_destructive_ansi(input: &[u8]) -> Cow<'_, [u8]> {
@@ -469,6 +505,35 @@ mod tests {
       saved.restore();
     }
     SavedTerminalMode::capture().restore();
+  }
+
+  #[test]
+  fn escape_terminal_control_chars_preserves_printable_unicode() {
+    let input = "hello 文件 😀";
+    let result = escape_terminal_control_chars(input);
+    assert!(matches!(result, Cow::Borrowed(_)));
+    assert_eq!(result, input);
+  }
+
+  #[test]
+  fn escape_terminal_control_chars_makes_controls_visible() {
+    let input = "before\x1b[2J\x07\t\n\u{009b}31mafter";
+    let result = escape_terminal_control_chars(input);
+    assert_eq!(result, r"before\u{1b}[2J\u{7}\t\n\u{9b}31mafter");
+  }
+
+  #[test]
+  fn escape_terminal_control_chars_makes_bidi_controls_visible() {
+    let controls = [
+      '\u{061c}', '\u{200e}', '\u{200f}', '\u{202a}', '\u{202b}', '\u{202c}',
+      '\u{202d}', '\u{202e}', '\u{2066}', '\u{2067}', '\u{2068}', '\u{2069}',
+    ];
+    for control in controls {
+      let input = format!("before{control}after");
+      let result = escape_terminal_control_chars(&input);
+      assert!(!result.contains(control));
+      assert!(result.contains(&format!(r"\u{{{:x}}}", control as u32)));
+    }
   }
 
   #[test]

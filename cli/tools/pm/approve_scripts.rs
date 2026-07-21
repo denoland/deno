@@ -30,6 +30,7 @@ use crate::tools::pm::ConfigKind;
 use crate::tools::pm::ConfigUpdater;
 use crate::tools::pm::create_deno_json;
 use crate::tools::pm::interactive_picker;
+use crate::util::console::escape_terminal_control_chars;
 
 struct ScriptCandidate {
   req: PackageReq,
@@ -367,11 +368,43 @@ fn render_candidate(
     candidate.specifier
   )?;
   if !candidate.scripts.is_empty() {
+    let scripts = candidate.scripts.join(", ");
+    let scripts = escape_terminal_control_chars(&scripts);
     write!(
       &mut line,
       " {}",
-      colors::gray(format!("scripts: {}", candidate.scripts.join(", ")))
+      colors::gray(format!("scripts: {scripts}"))
     )?;
   }
   Ok(TextItem::with_hanging_indent_owned(line, 2))
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn render_candidate_escapes_script_name_controls() {
+    let candidate = ScriptCandidate {
+      req: PackageReq::from_str("example@1").unwrap(),
+      specifier: "npm:example@1.0.0".to_string(),
+      scripts: vec![
+        "pre\x1b[2Jclear".to_string(),
+        "\x1b]8;;https://example.com\x07link".to_string(),
+        "\u{009b}31mcolor".to_string(),
+        "\u{202e}txt".to_string(),
+      ],
+    };
+
+    let item = render_candidate(&candidate, false, false).unwrap();
+    let TextItem::HangingText { text, .. } = item else {
+      panic!("expected hanging text");
+    };
+    assert!(text.contains(r"pre\u{1b}[2Jclear"));
+    assert!(text.contains(r"\u{1b}]8;;https://example.com\u{7}link"));
+    assert!(text.contains(r"\u{9b}31mcolor"));
+    assert!(text.contains(r"\u{202e}txt"));
+    assert!(!text.contains("pre\x1b[2Jclear"));
+    assert!(!text.contains('\u{202e}'));
+  }
 }
