@@ -3097,6 +3097,7 @@ dependencies = [
  "deno_lockfile",
  "deno_npm",
  "deno_npm_cache",
+ "deno_npmrc",
  "deno_package_json",
  "deno_path_util",
  "deno_resolver",

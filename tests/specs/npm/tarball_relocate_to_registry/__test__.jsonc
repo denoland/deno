@@ -2,18 +2,40 @@
   // The `@denotest/tarballs-npmjs` packument points `dist.tarball` at
   // `registry.npmjs.org` even though the package is served by the configured
   // (test) registry. Deno should download the tarball from the configured
-  // registry instead of `registry.npmjs.org`.
+  // registry instead of `registry.npmjs.org`, including when reconstructing an
+  // omitted canonical tarball URL from the lockfile.
   "tempDir": true,
   "tests": {
     "relocates_tarball_to_configured_registry": {
       "steps": [
         {
           "args": "install",
+          "envs": { "DENO_DIR": "$PWD/deno_dir_one" },
           "output": "install.out"
+        },
+        {
+          "args": "run -A remove_node_modules.ts",
+          "envs": { "DENO_DIR": "$PWD/deno_dir_one" },
+          "output": ""
+        },
+        {
+          // Use a fresh cache and a registry with a base path. The first install
+          // writes a lockfile without the canonical npm tarball URL, so this
+          // exercises registry-aware lockfile reconstruction.
+          "args": "install",
+          "envs": {
+            "DENO_DIR": "$PWD/deno_dir_two",
+            "NPM_CONFIG_REGISTRY": "http://localhost:4260/sub/path/"
+          },
+          "output": "install_from_lock.out"
         },
         {
           // ensure the package is actually cached and usable
           "args": "run --cached-only main.js",
+          "envs": {
+            "DENO_DIR": "$PWD/deno_dir_two",
+            "NPM_CONFIG_REGISTRY": "http://localhost:4260/sub/path/"
+          },
           "output": "run.out"
         }
       ]

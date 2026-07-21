@@ -193,16 +193,10 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
         return Err(JsErrorBox::generic("Tarball URL was empty."));
       }
 
-      // If the manifest points the tarball at the canonical public npm registry
-      // but a different registry is configured for this package (e.g. a private
-      // proxy/mirror set via `.npmrc` or `NPM_CONFIG_REGISTRY`), download the
-      // tarball from the configured registry instead. Some registries proxy npm
-      // but don't rewrite `dist.tarball` in their packuments, so without this the
-      // configured registry would be silently bypassed for the actual package
-      // bytes. This mirrors npm's `replace-registry-host=npmjs` default.
       let tarball_uri = Url::parse(&dist.tarball).map_err(JsErrorBox::from_err)?;
-      let tarball_uri =
-        maybe_relocate_npm_registry_tarball(tarball_uri, registry_url);
+      let tarball_uri = tarball_cache
+        .npmrc
+        .replace_tarball_url(tarball_uri, &package_nv.name);
 
       // IMPORTANT: npm registries may specify tarball URLs at different URLS than the
       // registry, so we MUST get the auth for the tarball URL and not the registry URL.
@@ -309,50 +303,6 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
   }
 }
 
-/// The host of the canonical public npm registry.
-const NPM_REGISTRY_HOST: &str = "registry.npmjs.org";
-
-/// npm rewrites the host of tarball URLs that point at the public npm registry
-/// to the configured registry (its `replace-registry-host` option defaults to
-/// `npmjs`). We do the same, so that a configured private registry/proxy is used
-/// to download the package bytes instead of being silently bypassed when a proxy
-/// doesn't rewrite `dist.tarball` in its packuments.
-///
-/// Unlike npm, the base path of the configured registry is preserved (e.g.
-/// Artifactory's `/api/npm/npm-remote/`), since that's where such proxies
-/// actually serve tarballs.
-fn maybe_relocate_npm_registry_tarball(
-  tarball_uri: Url,
-  registry_url: &Url,
-) -> Url {
-  // Only relocate tarballs served by the public npm registry.
-  if tarball_uri.host_str() != Some(NPM_REGISTRY_HOST) {
-    return tarball_uri;
-  }
-  // Nothing to do when the configured registry is also the public npm registry.
-  if registry_url.host_str() == Some(NPM_REGISTRY_HOST) {
-    return tarball_uri;
-  }
-  let mut base = registry_url.clone();
-  // Ensure the base path ends in a slash so joining appends the tarball path
-  // rather than replacing the registry's last path segment.
-  if !base.path().ends_with('/') {
-    let with_slash = format!("{}/", base.path());
-    base.set_path(&with_slash);
-  }
-  // Preserve the tarball's path (the npm layout `/<name>/-/<file>.tgz`),
-  // relocated under the configured registry.
-  match base.join(tarball_uri.path().trim_start_matches('/')) {
-    Ok(mut relocated) => {
-      relocated.set_query(tarball_uri.query());
-      relocated.set_fragment(tarball_uri.fragment());
-      relocated
-    }
-    // If for some reason we can't build the URL, fall back to the original.
-    Err(_) => tarball_uri,
-  }
-}
-
 fn scoped_registry_auth_error(
   tarball_uri: &str,
   registry_url: &Url,
@@ -366,82 +316,4 @@ fn scoped_registry_auth_error(
     ),
     tarball_uri, registry_url,
   ))
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  fn relocate(tarball: &str, registry: &str) -> String {
-    maybe_relocate_npm_registry_tarball(
-      Url::parse(tarball).unwrap(),
-      &Url::parse(registry).unwrap(),
-    )
-    .to_string()
-  }
-
-  #[test]
-  fn relocates_npmjs_tarball_to_configured_registry() {
-    // Registry at the domain root.
-    assert_eq!(
-      relocate(
-        "https://registry.npmjs.org/pako/-/pako-2.1.0.tgz",
-        "https://mirror.example.com/",
-      ),
-      "https://mirror.example.com/pako/-/pako-2.1.0.tgz",
-    );
-    // Scoped package.
-    assert_eq!(
-      relocate(
-        "https://registry.npmjs.org/@datadog/datadog-api-client/-/datadog-api-client-1.45.0.tgz",
-        "https://mirror.example.com/",
-      ),
-      "https://mirror.example.com/@datadog/datadog-api-client/-/datadog-api-client-1.45.0.tgz",
-    );
-  }
-
-  #[test]
-  fn relocates_and_preserves_registry_base_path() {
-    // e.g. Artifactory serves npm under a sub-path; the base path must be kept.
-    assert_eq!(
-      relocate(
-        "https://registry.npmjs.org/@datadog/datadog-api-client/-/datadog-api-client-1.45.0.tgz",
-        "https://artifactory.example.com/api/npm/npm-remote/",
-      ),
-      "https://artifactory.example.com/api/npm/npm-remote/@datadog/datadog-api-client/-/datadog-api-client-1.45.0.tgz",
-    );
-    // Also works when the configured registry URL lacks a trailing slash.
-    assert_eq!(
-      relocate(
-        "https://registry.npmjs.org/pako/-/pako-2.1.0.tgz",
-        "https://artifactory.example.com/api/npm/npm-remote",
-      ),
-      "https://artifactory.example.com/api/npm/npm-remote/pako/-/pako-2.1.0.tgz",
-    );
-  }
-
-  #[test]
-  fn does_not_relocate_when_registry_is_npmjs() {
-    let tarball = "https://registry.npmjs.org/pako/-/pako-2.1.0.tgz";
-    assert_eq!(relocate(tarball, "https://registry.npmjs.org/"), tarball,);
-  }
-
-  #[test]
-  fn does_not_relocate_non_npmjs_tarball() {
-    // The registry already rewrote the tarball to point at itself.
-    let tarball = "https://artifactory.example.com/api/npm/npm-remote/pako/-/pako-2.1.0.tgz";
-    assert_eq!(
-      relocate(
-        tarball,
-        "https://artifactory.example.com/api/npm/npm-remote/"
-      ),
-      tarball,
-    );
-    // A tarball hosted somewhere unrelated is left untouched too.
-    let other = "https://cdn.example.com/pako-2.1.0.tgz";
-    assert_eq!(
-      relocate(other, "https://artifactory.example.com/api/npm/npm-remote/"),
-      other,
-    );
-  }
 }
