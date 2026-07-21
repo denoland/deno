@@ -167,20 +167,23 @@ fn skip_str_seq_after_intro(data: &[u8], mut j: usize) -> usize {
   j
 }
 
+/// Returns the length of the leading, genuinely valid UTF-8 sequence, if any.
+///
+/// Overlong, surrogate, and out-of-range encodings are rejected (return `None`)
+/// so that the caller does not preserve them wholesale. This matters for
+/// security: an overlong encoding of a C1 control (e.g. `e0 82 9b` for U+009B /
+/// CSI) is not valid UTF-8, and treating it as a unit would let it survive the
+/// filter and be acted on by a lenient or 8-bit terminal. Rejecting it here
+/// makes those bytes fall through to the C1-stripping arms of the main loop.
 fn utf8_sequence_len(data: &[u8]) -> Option<usize> {
-  let first = *data.first()?;
-  let len = match first {
+  let len = match *data.first()? {
     0xc2..=0xdf => 2,
     0xe0..=0xef => 3,
     0xf0..=0xf4 => 4,
     _ => return None,
   };
   let seq = data.get(..len)?;
-  if seq[1..].iter().all(|b| (0x80..=0xbf).contains(b)) {
-    Some(len)
-  } else {
-    None
-  }
+  std::str::from_utf8(seq).ok().map(|_| len)
 }
 
 pub struct RawMode {
@@ -693,6 +696,24 @@ mod tests {
     let raw_c1_osc = b"before\x9d0;evil title\x07after";
     let result = filter_destructive_ansi(raw_c1_osc);
     assert_eq!(&*result, b"beforeafter");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_strips_overlong_c1_controls() {
+    // Overlong UTF-8 encodings of C1 controls are invalid UTF-8 and must not be
+    // preserved as multibyte text: a lenient or 8-bit terminal would otherwise
+    // decode `e0 82 9b` as U+009B (CSI) and act on the trailing `2J` (erase
+    // screen). The overlong lead byte is emitted as an inert invalid byte while
+    // the C1 introducer and its parameters are stripped.
+    let overlong_csi = b"before\xe0\x82\x9b2Jafter";
+    let result = filter_destructive_ansi(overlong_csi);
+    assert_eq!(&*result, b"before\xe0after");
+
+    // The 4-byte overlong form of the same control is likewise defanged (here a
+    // `CSI 6 n` cursor-position report, which would otherwise write to stdin).
+    let overlong_csi_4 = b"x\xf0\x80\x82\x9b6nend";
+    let result = filter_destructive_ansi(overlong_csi_4);
+    assert_eq!(&*result, b"x\xf0end");
   }
 
   #[test]
