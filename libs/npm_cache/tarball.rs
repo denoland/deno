@@ -216,6 +216,11 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
         reporter.download_started(&package_nv);
 
       }
+      // The URL we actually download from (post-relocation). Reported in the
+      // error paths below so they point at the registry Deno really contacted
+      // rather than the original `dist.tarball`, which may have been relocated
+      // away from `registry.npmjs.org`.
+      let fetched_tarball_url = tarball_uri.to_string();
       let result = tarball_cache.http_client
         .download_with_retries_on_any_tokio_runtime(tarball_uri, maybe_auth_header, None, maybe_registry_config.map(|c| c.as_ref()))
         .await;
@@ -241,7 +246,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
         },
         Err(err) => {
           if err.status_code == Some(401) && scoped_registry_has_auth {
-            return Err(scoped_registry_auth_error(&dist.tarball, registry_url));
+            return Err(scoped_registry_auth_error(&fetched_tarball_url, registry_url));
           }
           return Err(JsErrorBox::from_err(err))
         },
@@ -293,9 +298,9 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
           // A 404 lands here (mapped to `NotFound`), so the 401 check above is
           // bypassed -- surface the auth hint here too when applicable.
           if scoped_registry_has_auth {
-            return Err(scoped_registry_auth_error(&dist.tarball, registry_url));
+            return Err(scoped_registry_auth_error(&fetched_tarball_url, registry_url));
           }
-          Err(JsErrorBox::generic(format!("Could not find npm package tarball at: {}", dist.tarball)))
+          Err(JsErrorBox::generic(format!("Could not find npm package tarball at: {}", fetched_tarball_url)))
         }
       }
     }
