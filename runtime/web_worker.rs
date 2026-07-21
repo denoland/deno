@@ -184,6 +184,7 @@ impl Serialize for WorkerControlEvent {
 pub struct WebWorkerInternalHandle {
   sender: mpsc::Sender<WorkerControlEvent>,
   pub port: Rc<MessagePort>,
+  pub stdio_port: Option<Rc<MessagePort>>,
   pub cancel: Rc<CancelHandle>,
   termination_signal: Arc<AtomicBool>,
   has_terminated: Arc<AtomicBool>,
@@ -255,6 +256,7 @@ impl WebWorkerInternalHandle {
 
 pub struct SendableWebWorkerHandle {
   port: MessagePort,
+  stdio_port: Option<MessagePort>,
   receiver: mpsc::Receiver<WorkerControlEvent>,
   termination_signal: Arc<AtomicBool>,
   terminate_waker: Arc<AtomicWaker>,
@@ -265,6 +267,7 @@ impl From<SendableWebWorkerHandle> for WebWorkerHandle {
     WebWorkerHandle {
       receiver: Rc::new(RefCell::new(handle.receiver)),
       port: Rc::new(handle.port),
+      stdio_port: handle.stdio_port.map(Rc::new),
       termination_signal: handle.termination_signal,
       terminate_waker: handle.terminate_waker,
     }
@@ -281,6 +284,7 @@ impl From<SendableWebWorkerHandle> for WebWorkerHandle {
 #[derive(Clone)]
 pub struct WebWorkerHandle {
   pub port: Rc<MessagePort>,
+  pub stdio_port: Option<Rc<MessagePort>>,
   receiver: Rc<RefCell<mpsc::Receiver<WorkerControlEvent>>>,
   termination_signal: Arc<AtomicBool>,
   terminate_waker: Arc<AtomicWaker>,
@@ -306,6 +310,9 @@ impl WebWorkerHandle {
       !self.termination_signal.swap(true, Ordering::SeqCst);
 
     self.port.disentangle();
+    if let Some(stdio_port) = &self.stdio_port {
+      stdio_port.disentangle();
+    }
 
     if schedule_termination {
       // Wake up the worker's event loop so it can terminate.
@@ -321,6 +328,13 @@ fn create_handles(
   maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
 ) -> (WebWorkerInternalHandle, SendableWebWorkerHandle) {
   let (parent_port, worker_port) = create_entangled_message_port();
+  let (parent_stdio_port, worker_stdio_port) =
+    if matches!(worker_type, WorkerThreadType::Node) {
+      let (parent_port, worker_port) = create_entangled_message_port();
+      (Some(parent_port), Some(worker_port))
+    } else {
+      (None, None)
+    };
   let (ctrl_tx, ctrl_rx) = mpsc::channel::<WorkerControlEvent>(1);
   let termination_signal = Arc::new(AtomicBool::new(false));
   let has_terminated = Arc::new(AtomicBool::new(false));
@@ -328,6 +342,7 @@ fn create_handles(
   let internal_handle = WebWorkerInternalHandle {
     name,
     port: Rc::new(parent_port),
+    stdio_port: parent_stdio_port.map(Rc::new),
     termination_signal: termination_signal.clone(),
     has_terminated,
     terminate_waker: terminate_waker.clone(),
@@ -340,6 +355,7 @@ fn create_handles(
   let external_handle = SendableWebWorkerHandle {
     receiver: ctrl_rx,
     port: worker_port,
+    stdio_port: worker_stdio_port,
     termination_signal,
     terminate_waker,
   };
