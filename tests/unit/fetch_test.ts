@@ -2488,6 +2488,61 @@ Deno.test(
   },
 );
 
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { write: true, run: true },
+  },
+  async function fetchEnvUnixProxyRequiresUnixPermissions() {
+    const socketPath = tmpUnixSocketPath();
+    const scriptPath = Deno.makeTempFileSync({ suffix: ".js" });
+    Deno.writeTextFileSync(
+      scriptPath,
+      `
+      try {
+        await fetch("http://example.com/");
+        console.log("FETCH_OK");
+      } catch (error) {
+        console.log(error.name + ":" + error.message);
+        console.log(error.cause?.name + ":" + error.cause?.message);
+      }
+      `,
+    );
+
+    async function run(extraPermissions: string[]) {
+      const { code, stdout, stderr } = await new Deno.Command(
+        Deno.execPath(),
+        {
+          args: [
+            "run",
+            "--no-prompt",
+            "--allow-env=ALL_PROXY",
+            "--allow-net=example.com",
+            ...extraPermissions,
+            scriptPath,
+          ],
+          env: { ALL_PROXY: `unix:${socketPath}` },
+          stdout: "piped",
+          stderr: "piped",
+        },
+      ).output();
+      const output = new TextDecoder().decode(stdout) +
+        new TextDecoder().decode(stderr);
+      assertEquals(code, 0);
+      return output;
+    }
+
+    const missingFilePermissions = await run([]);
+    assertStringIncludes(missingFilePermissions, "Requires read access");
+
+    const missingUnixNetPermission = await run([
+      `--allow-read=${socketPath}`,
+      `--allow-write=${socketPath}`,
+    ]);
+    assertStringIncludes(missingUnixNetPermission, "Requires net access");
+  },
+);
+
 // Regression test for https://github.com/denoland/deno/issues/29281
 // A server advertising `Content-Encoding: gzip` (or br) while returning an
 // empty body should not fail decompression with "unexpected end of file".
@@ -2637,6 +2692,26 @@ Deno.test(
         });
       },
       TypeError,
+    );
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+    ignore: Deno.build.os === "windows",
+  },
+  function createHttpClientRejectsUnixSchemeInProxyUrl() {
+    assertThrows(
+      () => {
+        Deno.createHttpClient({
+          proxy: {
+            url: "unix://tmp/%2E%2E/tmp/deno-proxy.sock",
+          },
+        });
+      },
+      TypeError,
+      "invalid proxy url",
     );
   },
 );
