@@ -580,9 +580,24 @@ fn clean_node_modules(
     bail!("expected a node_modules directory, got: {}", dir.display());
   }
 
-  let dir_metadata = std::fs::symlink_metadata(dir).with_context(|| {
-    format!("failed to stat node_modules directory at {}", dir.display())
-  })?;
+  let dir_metadata = match std::fs::symlink_metadata(dir) {
+    Ok(metadata) => metadata,
+    // Keep the original error message when the path is simply missing or has a
+    // non-directory component, rather than surfacing a raw stat error.
+    Err(err)
+      if matches!(
+        err.kind(),
+        ErrorKind::NotFound | ErrorKind::NotADirectory
+      ) =>
+    {
+      bail!("expected a node_modules directory, got: {}", dir.display());
+    }
+    Err(err) => {
+      return Err(err).with_context(|| {
+        format!("failed to stat node_modules directory at {}", dir.display())
+      });
+    }
+  };
   if dir_metadata.file_type().is_symlink() {
     bail!(
       "refusing to clean symlinked node_modules directory at {}",
@@ -628,6 +643,9 @@ fn clean_node_modules(
   // remove the actual packages from node_modules/.deno
   let entries = match std::fs::read_dir(&base) {
     Ok(entries) => entries,
+    // `base` was confirmed to be a real directory above, so reaching this arm
+    // means it was concurrently removed (TOCTOU) between that check and here.
+    // There's nothing left to clean in that case.
     Err(err)
       if matches!(
         err.kind(),
