@@ -8,13 +8,16 @@
 //
 // It warms the cache by type-checking a trivial file with the built `deno`
 // binary (which downloads the compiler via its normal path), then locates the
-// resulting `tsc` binary. On success it prints the binary's path and, when run
-// under GitHub Actions, appends `DENO_TSC_BIN=<path>` to `$GITHUB_ENV` so the
-// subsequent test step points every `deno check` at it.
+// resulting `tsc` binary and prints its path. When run with the default cache
+// directory, the test harness resolves that same path itself and injects
+// `DENO_TSC_BIN` per-test (see `test_util::native_tsc_bin_path`), so this script
+// only needs to warm the cache - it does not export the path into the env.
 //
 //   deno run -A tools/download_tsc.ts [cache_deno_dir]
 //
-// For local `cargo test` runs of the `deno check` tests, export the path first:
+// For local `cargo test` runs, running it once with the default cache directory
+// is enough; the harness finds the compiler under `target/.native_tsc/deno_dir`.
+// To point tests at a specific binary instead, export it explicitly:
 //
 //   export DENO_TSC_BIN=$(deno run -A tools/download_tsc.ts)
 //
@@ -97,10 +100,3 @@ if (!tscBin) {
 
 tscBin = Deno.realPathSync(tscBin);
 console.log(tscBin);
-
-const githubEnv = Deno.env.get("GITHUB_ENV");
-if (githubEnv) {
-  Deno.writeTextFileSync(githubEnv, `DENO_TSC_BIN=${tscBin}\n`, {
-    append: true,
-  });
-}

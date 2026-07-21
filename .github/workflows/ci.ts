@@ -1269,10 +1269,12 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             },
           },
           {
-            // Pre-download the compiler `deno check` uses and export
-            // DENO_TSC_BIN so the test step doesn't re-download it for every
-            // test's fresh DENO_DIR. See tools/download_tsc.ts. Run it with the
-            // built deno binary (the test job has no system `deno` on PATH).
+            // Warm the cache with the compiler `deno check` uses (into the
+            // default target/.native_tsc/deno_dir) so the test step doesn't
+            // re-download it for every test's fresh DENO_DIR. The harness
+            // resolves that path and injects DENO_TSC_BIN per-test itself (see
+            // test_util::native_tsc_bin_path); no env export needed. Run it with
+            // the built deno binary (the test job has no system `deno` on PATH).
             name: "Pre-download native tsc",
             if: testCrateNameExpr.equals("integration").or(
               testCrateNameExpr.equals("specs"),
