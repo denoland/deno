@@ -38,8 +38,16 @@ impl TempNodeModulesDir {
 /// Old dated folders are automatically deleted. If the dated parent cannot be
 /// used, this falls back to a fresh directory directly beneath `<tmp-dir>`.
 pub fn create_temp_node_modules_dir() -> Result<TempNodeModulesDir, AnyError> {
-  let root_temp_folder = std::env::temp_dir().join("deno_nm");
+  let temp_folder = canonicalize_path(&std::env::temp_dir())
+    .context("Failed resolving temporary directory")?;
+  ensure_secure_temp_parent(&temp_folder)?;
   let today = chrono::Utc::now().date_naive();
+  if let Err(err) =
+    attempt_fallback_temp_dir_garbage_collection(&temp_folder, today)
+  {
+    log::debug!("Failed fallback temp folder garbage collection: {:#?}", err);
+  }
+  let root_temp_folder = temp_folder.join("deno_nm");
   let temp_node_modules_parent_dir =
     match create_secure_day_folder(&root_temp_folder, today) {
       Ok(day_folder) => tempfile::TempDir::new_in(&day_folder)?,
@@ -49,9 +57,11 @@ pub fn create_temp_node_modules_dir() -> Result<TempNodeModulesDir, AnyError> {
           root_temp_folder.display(),
           err
         );
+        let prefix =
+          format!("deno_nm_{}_", folder_name_for_date(today).to_string_lossy());
         tempfile::Builder::new()
-          .prefix("deno_nm_")
-          .tempdir_in(std::env::temp_dir())
+          .prefix(&prefix)
+          .tempdir_in(&temp_folder)
           .context("Failed creating temp node_modules folder")?
       }
     };
@@ -105,6 +115,47 @@ fn create_secure_temp_dir(path: &Path) -> Result<(), AnyError> {
 }
 
 #[cfg(unix)]
+fn ensure_secure_temp_parent(path: &Path) -> Result<(), AnyError> {
+  use std::os::unix::fs::MetadataExt;
+  use std::os::unix::fs::OpenOptionsExt;
+
+  // SAFETY: geteuid has no preconditions.
+  let current_uid = unsafe { libc::geteuid() };
+  for ancestor in path.ancestors() {
+    let dir = std::fs::OpenOptions::new()
+      .read(true)
+      .custom_flags(libc::O_NOFOLLOW | libc::O_DIRECTORY)
+      .open(ancestor)?;
+    let metadata = dir.metadata()?;
+    if metadata.uid() != current_uid && metadata.uid() != 0 {
+      bail!(
+        "temporary directory ancestor '{}' is owned by uid {}, not current uid {} or root",
+        ancestor.display(),
+        metadata.uid(),
+        current_uid
+      );
+    }
+    let mode = metadata.mode();
+    if mode & 0o022 != 0 && mode & u32::from(libc::S_ISVTX) == 0 {
+      bail!(
+        "temporary directory ancestor '{}' is writable by other users without the sticky bit",
+        ancestor.display()
+      );
+    }
+  }
+  Ok(())
+}
+
+#[cfg(not(unix))]
+fn ensure_secure_temp_parent(path: &Path) -> Result<(), AnyError> {
+  let metadata = std::fs::symlink_metadata(path)?;
+  if metadata.file_type().is_symlink() || !metadata.is_dir() {
+    bail!("'{}' is not a directory", path.display());
+  }
+  Ok(())
+}
+
+#[cfg(unix)]
 fn create_dir_secure(path: &Path) -> std::io::Result<()> {
   use std::os::unix::fs::DirBuilderExt;
 
@@ -123,7 +174,9 @@ fn ensure_secure_temp_dir(path: &Path) -> Result<(), AnyError> {
   use std::os::unix::fs::PermissionsExt;
 
   // Keep the check, permission repair, and final validation tied to the same
-  // directory so replacing the path cannot redirect the chmod.
+  // directory so replacing the path cannot redirect the chmod. The canonical
+  // temp path and its ancestors are validated separately before subsequent
+  // path-based use.
   let dir = std::fs::OpenOptions::new()
     .read(true)
     .custom_flags(libc::O_NOFOLLOW | libc::O_DIRECTORY)
@@ -218,6 +271,70 @@ fn attempt_temp_dir_garbage_collection(
   Ok(())
 }
 
+fn attempt_fallback_temp_dir_garbage_collection(
+  temp_folder: &Path,
+  utc_now: NaiveDate,
+) -> Result<(), AnyError> {
+  let previous_day = utc_now
+    .checked_sub_days(chrono::Days::new(1))
+    .unwrap_or(utc_now);
+  let next_day = utc_now
+    .checked_add_days(chrono::Days::new(1))
+    .unwrap_or(utc_now);
+  let progress_bar =
+    ProgressBar::new(crate::util::progress_bar::ProgressBarStyle::TextOnly);
+  let update_guard = progress_bar.deferred_update_with_prompt(
+    crate::util::progress_bar::ProgressMessagePrompt::Cleaning,
+    "old fallback temp node_modules folders...",
+  );
+
+  let mut cleaner = FsCleaner::new(Some(update_guard));
+  for entry in std::fs::read_dir(temp_folder)? {
+    let Ok(entry) = entry else {
+      continue;
+    };
+    let file_name = entry.file_name();
+    let Some(name) = file_name.to_str() else {
+      continue;
+    };
+    let Some(suffix) = name.strip_prefix("deno_nm_") else {
+      continue;
+    };
+    let Some((date, random)) = suffix.split_once('_') else {
+      continue;
+    };
+    let Ok(date) = NaiveDate::parse_from_str(date, "%Y-%m-%d") else {
+      continue;
+    };
+    if random.is_empty()
+      || date == previous_day
+      || date == utc_now
+      || date == next_day
+    {
+      continue;
+    }
+
+    let path = entry.path();
+    if let Err(err) = ensure_secure_temp_dir(&path) {
+      log::debug!(
+        "Skipping cleanup of untrusted fallback temp folder '{}': {:#?}",
+        path.display(),
+        err
+      );
+      continue;
+    }
+    if let Err(err) = cleaner.rm_rf(&path) {
+      log::debug!(
+        "Failed cleaning fallback temp folder '{}': {:#?}",
+        path.display(),
+        err
+      );
+    }
+  }
+
+  Ok(())
+}
+
 fn folder_name_for_date(date: chrono::NaiveDate) -> OsString {
   OsString::from(date.format("%Y-%m-%d").to_string())
 }
@@ -266,6 +383,67 @@ mod test {
         "2020-05-14".to_string()
       ]
     );
+  }
+
+  #[test]
+  fn test_attempt_fallback_temp_dir_garbage_collection() {
+    let temp_dir = TempDir::new();
+    let reference_date = chrono::NaiveDate::from_ymd_opt(2020, 5, 13).unwrap();
+    temp_dir
+      .path()
+      .join("deno_nm_2020-05-01_old/node_modules")
+      .create_dir_all();
+    temp_dir
+      .path()
+      .join("deno_nm_2020-05-12_previous")
+      .create_dir_all();
+    temp_dir
+      .path()
+      .join("deno_nm_2020-05-13_current")
+      .create_dir_all();
+    temp_dir
+      .path()
+      .join("deno_nm_2020-05-14_next")
+      .create_dir_all();
+    temp_dir.path().join("deno_nm_legacy").create_dir_all();
+    temp_dir.path().join("unrelated").create_dir_all();
+
+    attempt_fallback_temp_dir_garbage_collection(
+      temp_dir.path().as_path(),
+      reference_date,
+    )
+    .unwrap();
+
+    assert!(!temp_dir.path().join("deno_nm_2020-05-01_old").exists());
+    assert!(temp_dir.path().join("deno_nm_2020-05-12_previous").exists());
+    assert!(temp_dir.path().join("deno_nm_2020-05-13_current").exists());
+    assert!(temp_dir.path().join("deno_nm_2020-05-14_next").exists());
+    assert!(temp_dir.path().join("deno_nm_legacy").exists());
+    assert!(temp_dir.path().join("unrelated").exists());
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn test_ensure_secure_temp_parent_rejects_non_sticky_writable_dir() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp_dir = TempDir::new();
+    let child = temp_dir.path().join("private");
+    child.create_dir_all();
+    let child = canonicalize_path(child.as_path()).unwrap();
+    std::fs::set_permissions(
+      temp_dir.path(),
+      std::fs::Permissions::from_mode(0o777),
+    )
+    .unwrap();
+    assert!(ensure_secure_temp_parent(&child).is_err());
+
+    std::fs::set_permissions(
+      temp_dir.path(),
+      std::fs::Permissions::from_mode(0o1777),
+    )
+    .unwrap();
+    ensure_secure_temp_parent(&child).unwrap();
   }
 
   #[cfg(unix)]
