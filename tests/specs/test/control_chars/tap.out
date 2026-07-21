@@ -1,7 +1,7 @@
 TAP version 14
 # ./control_chars.ts
-# Subtest: \\x1b[1F\\x1b[2Kroot
-    ok 1 - \\x1b]52;c;bad\\x07step
+# Subtest: \\x1b[1F\\x1b[2Kroot\\x7f\\x9b
+    ok 1 - \\x1b]52;c;bad\\x07step\\x80
     1..1
-ok 1 - \\x1b[1F\\x1b[2Kroot
+ok 1 - \\x1b[1F\\x1b[2Kroot\\x7f\\x9b
 1..1
