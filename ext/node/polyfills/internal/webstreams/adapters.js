@@ -43,6 +43,17 @@ function isReadableStream(object) {
   return object instanceof ReadableStream;
 }
 
+// Normalize a `writev` completion value to the first real error, or `undefined`
+// when every write succeeded. `Promise.all` fulfils with an array (one slot per
+// chunk, holes for successes), while a rejection or synchronous throw settles
+// with a single scalar error.
+function firstWritevError(error) {
+  if (Array.isArray(error)) {
+    return error.find((e) => e);
+  }
+  return error == null ? undefined : error;
+}
+
 function newStreamReadableFromReadableStream(
   readableStream,
   options = kEmptyObject,
@@ -162,13 +173,8 @@ function newStreamWritableFromWritableStream(
 
     writev(chunks, callback) {
       function done(error) {
-        const errors = Array.isArray(error)
-          ? error.filter((e) => e)
-          : error == null
-          ? []
-          : [error];
         try {
-          callback(errors.length === 0 ? undefined : errors[0]);
+          callback(firstWritevError(error));
         } catch (error) {
           // In a next tick because this is happening within
           // a promise context, and if there are any errors
@@ -179,6 +185,9 @@ function newStreamWritableFromWritableStream(
         }
       }
 
+      // If the fulfillment arrow throws synchronously (e.g. `writer.write`
+      // throwing before it returns a promise), the sibling `done` rejection
+      // handler never sees it, so `.catch(done)` routes that failure too.
       writer.ready.then(
         () =>
           Promise.all(
@@ -328,13 +337,8 @@ function newStreamDuplexFromReadableWritablePair(
 
     writev(chunks, callback) {
       function done(error) {
-        const errors = Array.isArray(error)
-          ? error.filter((e) => e)
-          : error == null
-          ? []
-          : [error];
         try {
-          callback(errors.length === 0 ? undefined : errors[0]);
+          callback(firstWritevError(error));
         } catch (error) {
           // In a next tick because this is happening within
           // a promise context, and if there are any errors
@@ -345,6 +349,9 @@ function newStreamDuplexFromReadableWritablePair(
         }
       }
 
+      // If the fulfillment arrow throws synchronously (e.g. `writer.write`
+      // throwing before it returns a promise), the sibling `done` rejection
+      // handler never sees it, so `.catch(done)` routes that failure too.
       writer.ready.then(
         () =>
           Promise.all(
