@@ -33,15 +33,22 @@ pub fn new_console_static_text() -> ConsoleStaticText {
   })
 }
 
-/// Strips destructive ANSI escape sequences from user output while preserving
-/// SGR (color/style) sequences. Returns `Cow::Borrowed` when no filtering needed.
+/// Strips destructive terminal control characters from user output while
+/// preserving ordinary text, whitespace (tab and newline), and SGR (color/
+/// style) sequences.
+///
+/// This covers the full C0 control range and DEL, the C1 controls (raw and
+/// UTF-8-encoded), and ANSI escape sequences (CSI/OSC/DCS/PM/APC). Only TAB,
+/// LF, and `\r\n` line endings are kept from the control ranges; a bare `\r`
+/// (line-overwrite) is stripped. Returns `Cow::Borrowed` when no filtering is
+/// needed.
 pub fn filter_destructive_ansi(input: &[u8]) -> Cow<'_, [u8]> {
-  if !input.iter().any(|&b| {
-    matches!(
-      b,
-      0x07 | 0x08 | 0x0e | 0x0f | 0x1b | b'\r' | 0x80..=0x9f | 0xc2
-    )
-  }) {
+  // Trigger the filter for any control byte other than TAB (0x09) and LF
+  // (0x0a), plus C1 controls and the `0xc2` UTF-8 C1 lead. Everything else is
+  // copied through unchanged.
+  if !input.iter().any(
+    |&b| matches!(b, 0x00..=0x08 | 0x0b..=0x1f | 0x7f | 0x80..=0x9f | 0xc2),
+  ) {
     return Cow::Borrowed(input);
   }
 
@@ -50,7 +57,11 @@ pub fn filter_destructive_ansi(input: &[u8]) -> Cow<'_, [u8]> {
 
   while i < input.len() {
     match input[i] {
-      0x07 | 0x08 | 0x0e | 0x0f => i += 1,
+      // Strip destructive C0 controls (BEL, BS, ENQ answerback, VT, FF, SI/SO,
+      // XON/XOFF flow control, CAN, SUB, separators, ...) and DEL. TAB (0x09)
+      // and LF (0x0a) fall through to the default arm and are preserved; CR
+      // (0x0d) and ESC (0x1b) are handled by the arms just below.
+      0x00..=0x08 | 0x0b | 0x0c | 0x0e..=0x1a | 0x1c..=0x1f | 0x7f => i += 1,
       // Strip standalone \r (line-overwrite), keep \r\n
       b'\r' if i + 1 < input.len() && input[i + 1] == b'\n' => {
         out.extend_from_slice(b"\r\n");
@@ -721,6 +732,24 @@ mod tests {
     let input = b"before\x0eshifted\x0fafter";
     let result = filter_destructive_ansi(input);
     assert_eq!(&*result, b"beforeshiftedafter");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_strips_c0_controls() {
+    // ENQ (answerback -> stdin writeback), NUL, VT, FF, XON/XOFF flow control,
+    // CAN, SUB, the separators, and DEL are all stripped.
+    let input = b"a\x00b\x05c\x0bd\x0ce\x11f\x13g\x18h\x1ai\x1cj\x1fk\x7fl";
+    let result = filter_destructive_ansi(input);
+    assert_eq!(&*result, b"abcdefghijkl");
+  }
+
+  #[test]
+  fn filter_destructive_ansi_preserves_tab_and_newline_around_controls() {
+    // TAB and LF are legitimate formatting and must survive even when other
+    // control bytes force the slow path.
+    let input = b"col1\tcol2\x05\nnext\tline\n";
+    let result = filter_destructive_ansi(input);
+    assert_eq!(&*result, b"col1\tcol2\nnext\tline\n");
   }
 
   #[test]
