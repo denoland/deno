@@ -8,6 +8,10 @@
       "args": "run -A main_load.cjs",
       "output": "main_load.out"
     },
+    "load_hook_node_addon": {
+      "args": "run -A main_load_node_addon.cjs",
+      "output": "main_load_node_addon.out"
+    },
     "chained_hooks": {
       "args": "run -A main_chained.cjs",
       "output": "main_chained.out"
