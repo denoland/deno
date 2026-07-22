@@ -87,8 +87,10 @@ impl Waiter {
       #[cfg(any(target_os = "linux", target_os = "android"))]
       Waiter::Pidfd(async_fd) => {
         // A pidfd becomes readable once, and stays readable, when the process
-        // exits. Readiness alone is the signal; there is nothing to read.
-        async_fd.readable().await.map_err(ProcessError::Io)?;
+        // exits. Readiness alone is the signal; there is nothing to read, and
+        // the fd is closed right after, so the ready guard is dropped without
+        // clearing readiness.
+        let _guard = async_fd.readable().await.map_err(ProcessError::Io)?;
         Ok(())
       }
       #[cfg(any(
