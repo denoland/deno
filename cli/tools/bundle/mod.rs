@@ -2554,23 +2554,23 @@ fn resolve_url_or_path_absolute(
   } else {
     let path = current_dir.join(specifier);
     let path = deno_path_util::normalize_path(Cow::Owned(path));
-    match canonicalize_path(&path) {
-      Ok(path) => Ok(deno_path_util::url_from_file_path(&path)?),
-      Err(err) => {
-        // Canonicalizing a non-regular file entrypoint (e.g. `/dev/stdin`
-        // when stdin is a pipe) can fail on some platforms even though the
-        // path exists and can be read: on Linux `realpath` resolves it to a
-        // now-nonexistent `/proc/PID/fd/pipe:[inode]`. In that case fall back
-        // to the uncanonicalized `file:` URL. Genuinely missing paths keep
-        // erroring as before.
-        match std::fs::metadata(&path) {
-          Ok(metadata) if !metadata.is_file() && !metadata.is_dir() => {
-            Ok(deno_path_util::url_from_file_path(&path)?)
-          }
-          _ => Err(err.into()),
-        }
+    // Non-regular files (fifo/char device/socket, e.g. `/dev/stdin` when stdin
+    // is a pipe, or a symlink to a FIFO) must NOT be canonicalized: on Linux
+    // canonicalize errors (realpath -> nonexistent `/proc/PID/fd/pipe:[inode]`);
+    // on macOS it rewrites `/dev/stdin` to `/dev/fd/0`; a symlink rewrites to
+    // its target. Any of these makes the bundle flow's specifier diverge from
+    // the check flow's `collect_specifiers` specifier (which never
+    // canonicalizes), so the shared in-memory file is missed and the drained
+    // pipe is reopened (denoland/deno#36162). `metadata` follows symlinks, so
+    // it reports the FIFO for a symlink-to-FIFO alias too.
+    match std::fs::metadata(&path) {
+      Ok(metadata) if !metadata.is_file() && !metadata.is_dir() => {
+        return Ok(deno_path_util::url_from_file_path(&path)?);
       }
+      _ => {}
     }
+    let path = canonicalize_path(&path)?;
+    Ok(deno_path_util::url_from_file_path(&path)?)
   }
 }
 
