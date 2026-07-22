@@ -7374,6 +7374,7 @@ jobs:
         if: github.repository == 'denoland/deno'
         env: {}
         run: |-
+          ulimit -s 131072
           if [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ]; then
             git submodule update --init tools/lzld
             make -C tools/lzld

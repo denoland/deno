@@ -1007,6 +1007,11 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 DENO_SNAPSHOT_MINIFY_SOURCES: "1",
               },
               run: [
+                // musl's main-thread stack (governed by the stack rlimit, not
+                // the -z stacksize linker flag) is smaller than glibc's and
+                // overflows in V8-linking build scripts. Raise it for the build
+                // and its child processes (build scripts run under this shell).
+                ...(isMuslBuild ? ["ulimit -s 131072"] : []),
                 // On macOS aarch64, link through lzld so system frameworks
                 // (CoreFoundation/Foundation/Security/CoreServices/Metal/...) are
                 // dlopen'd on first use instead of loaded at launch, cutting dyld
