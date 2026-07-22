@@ -2626,6 +2626,13 @@ impl JsRuntime {
       scope.perform_microtask_checkpoint();
     }
 
+    // Timer callbacks may arm UV timers after the timer phase has run.
+    // Poll the earliest deadline here so Tokio wakes the event loop when it
+    // is time to begin the next timer phase.
+    if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
+      unsafe { (*uv_inner_ptr).poll_timer_deadline(cx) };
+    }
+
     // Evaluate pending state
     let pending_state =
       EventLoopPendingState::new(scope, context_state, modules);

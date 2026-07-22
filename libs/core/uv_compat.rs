@@ -18,9 +18,12 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::ffi::c_int;
 use std::ffi::c_void;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Waker;
+use std::time::Duration;
 use std::time::Instant;
 
 pub use pipe::*;
@@ -225,8 +228,14 @@ struct TimerKey {
   id: u64,
 }
 
+struct TimerSleep {
+  deadline_ms: u64,
+  sleep: Pin<Box<tokio::time::Sleep>>,
+}
+
 pub(crate) struct UvLoopInner {
   timers: RefCell<BTreeSet<TimerKey>>,
+  timer_sleep: RefCell<Option<TimerSleep>>,
   next_timer_id: Cell<u64>,
   timer_handles: RefCell<HashMap<u64, *mut uv_timer_t>>,
   idle_handles: RefCell<Vec<*mut uv_idle_t>>,
@@ -252,6 +261,7 @@ impl UvLoopInner {
     let origin = Instant::now();
     Self {
       timers: RefCell::new(BTreeSet::new()),
+      timer_sleep: RefCell::new(None),
       next_timer_id: Cell::new(1),
       timer_handles: RefCell::new(HashMap::with_capacity(16)),
       idle_handles: RefCell::new(Vec::with_capacity(8)),
@@ -309,6 +319,33 @@ impl UvLoopInner {
   pub(crate) fn update_time(&self) {
     let ms = Instant::now().duration_since(self.time_origin).as_millis() as u64;
     self.cached_time_ms.set(ms);
+  }
+
+  pub(crate) fn poll_timer_deadline(&self, cx: &mut Context<'_>) {
+    let Some(deadline_ms) =
+      self.timers.borrow().first().map(|timer| timer.deadline_ms)
+    else {
+      self.timer_sleep.borrow_mut().take();
+      return;
+    };
+
+    let mut timer_sleep = self.timer_sleep.borrow_mut();
+    if timer_sleep.as_ref().map(|sleep| sleep.deadline_ms) != Some(deadline_ms)
+    {
+      let elapsed_ms =
+        Instant::now().duration_since(self.time_origin).as_millis() as u64;
+      let delay = Duration::from_millis(deadline_ms.saturating_sub(elapsed_ms));
+      *timer_sleep = Some(TimerSleep {
+        deadline_ms,
+        sleep: Box::pin(tokio::time::sleep(delay)),
+      });
+    }
+
+    let sleep = timer_sleep.as_mut().unwrap();
+    if sleep.sleep.as_mut().poll(cx).is_ready() {
+      *timer_sleep = None;
+      cx.waker().wake_by_ref();
+    }
   }
 
   pub(crate) fn has_alive_handles(&self) -> bool {

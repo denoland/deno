@@ -122,6 +122,44 @@ fn test_from_snapshot() {
     .unwrap();
 }
 
+#[test]
+fn snapshot_preserves_core_module_object_identity() {
+  let snapshot = {
+    let runtime = JsRuntimeForSnapshot::new(Default::default());
+    runtime.snapshot()
+  };
+
+  let snapshot = Box::leak(snapshot);
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    startup_snapshot: Some(snapshot),
+    ..Default::default()
+  });
+  let module_map = runtime.module_map();
+  let module_id = module_map
+    .get_id("ext:core/mod.js", RequestedModuleType::None)
+    .unwrap();
+
+  deno_core::scope!(scope, runtime);
+  let namespace = module_map.get_module_namespace(scope, module_id).unwrap();
+  let namespace = v8::Local::new(scope, namespace);
+  let core_key = v8::String::new(scope, "core").unwrap();
+  let module_core = namespace.get(scope, core_key.into()).unwrap();
+
+  let global = scope.get_current_context().global(scope);
+  let deno_key = v8::String::new(scope, "Deno").unwrap();
+  let deno = global.get(scope, deno_key.into()).unwrap();
+  let deno = v8::Local::<v8::Object>::try_from(deno).unwrap();
+  let global_core = deno.get(scope, core_key.into()).unwrap();
+  assert!(module_core.strict_equals(global_core));
+
+  let module_core = v8::Local::<v8::Object>::try_from(module_core).unwrap();
+  let global_core = v8::Local::<v8::Object>::try_from(global_core).unwrap();
+  let ops_key = v8::String::new(scope, "ops").unwrap();
+  let module_ops = module_core.get(scope, ops_key.into()).unwrap();
+  let global_ops = global_core.get(scope, ops_key.into()).unwrap();
+  assert!(module_ops.strict_equals(global_ops));
+}
+
 /// Smoke test for create_snapshot.
 #[test]
 fn test_snapshot_creator() {

@@ -376,14 +376,45 @@ async function clippy() {
     }
   }
 
-  // Run clippy for the whole workspace except deno_core with --all-features.
-  // deno_core is excluded because --all-features enables
-  // v8_enable_pointer_compression which is not available on all platforms.
+  // Cargo's --all-features cannot represent mutually exclusive engine
+  // backends. Enable every workspace feature explicitly except QuickJS and
+  // platform-specific V8 modes, then check deno_core separately below.
   {
+    const metadataCommand = new Deno.Command("cargo", {
+      cwd: ROOT_PATH,
+      args: ["metadata", "--no-deps", "--format-version", "1"],
+      stdout: "piped",
+      stderr: "piped",
+    });
+    const metadataOutput = await metadataCommand.output();
+    if (!metadataOutput.success) {
+      throw new Error(new TextDecoder().decode(metadataOutput.stderr));
+    }
+    const metadata = JSON.parse(
+      new TextDecoder().decode(metadataOutput.stdout),
+    );
+    const workspaceMembers = new Set(metadata.workspace_members);
+    const excludedFeatures = new Set([
+      "deno/quickjs",
+      "denort/quickjs",
+      "denort_desktop/quickjs",
+      "deno_v8/quickjs",
+      "deno_v8/v8_enable_pointer_compression",
+      "deno_v8/v8_enable_sandbox",
+    ]);
+    const workspaceFeatures = metadata.packages
+      .filter((pkg) => workspaceMembers.has(pkg.id) && pkg.name !== "deno_core")
+      .flatMap((pkg) =>
+        Object.keys(pkg.features).map((feature) => `${pkg.name}/${feature}`)
+      )
+      .filter((feature) => !excludedFeatures.has(feature))
+      .sort();
+
     const cmd = [
       "clippy",
       "--all-targets",
-      "--all-features",
+      "--features",
+      workspaceFeatures.join(","),
       "--locked",
       "--workspace",
       "--exclude",
@@ -404,6 +435,7 @@ async function clippy() {
       "default",
       "unsafe_runtime_options",
       "unsafe_use_unprotected_platform",
+      "v8",
     ].join(",");
 
     const cmd = [

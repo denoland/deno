@@ -118,7 +118,7 @@ pub fn op_v8_update_heap_space_statistics(
   Some(stats.space_name().to_string_lossy().into_owned())
 }
 
-#[op2]
+#[op2(reentrant)]
 #[buffer]
 pub fn op_v8_take_heap_snapshot(scope: &mut v8::PinScope<'_, '_>) -> Vec<u8> {
   let mut buf = Vec::new();
@@ -395,7 +395,7 @@ pub fn op_v8_set_heap_snapshot_near_heap_limit(
 // Limitation: matches by the immediate constructor name only, so instances of
 // subclasses of `ctor` won't be counted. This is sufficient for Node's leak
 // tests (which check direct instances of `Channel`, `SourceTextModule`, ...).
-#[op2(nofast)]
+#[op2(nofast, reentrant)]
 #[smi]
 pub fn op_v8_query_objects_count(
   scope: &mut v8::PinScope<'_, '_>,

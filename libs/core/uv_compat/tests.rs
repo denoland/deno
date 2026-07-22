@@ -112,6 +112,41 @@ async fn timer_fires_callback() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn timer_wakes_event_loop_at_deadline() {
+  run_test(async |runtime, uv_loop| {
+    let fired = Rc::new(Cell::new(false));
+    let fired_ptr = Rc::into_raw(fired.clone());
+
+    unsafe extern "C" fn timer_cb(handle: *mut uv_timer_t) {
+      let fired = unsafe { Rc::from_raw((*handle).data as *const Cell<bool>) };
+      fired.set(true);
+      let _ = Rc::into_raw(fired);
+    }
+
+    let mut timer = std::mem::MaybeUninit::<uv_timer_t>::uninit();
+    unsafe {
+      uv_timer_init(uv_loop, timer.as_mut_ptr());
+      (*timer.as_mut_ptr()).data = fired_ptr as *mut c_void;
+      uv_timer_start(timer.as_mut_ptr(), timer_cb, 5, 0);
+    }
+
+    tokio::time::timeout(
+      std::time::Duration::from_secs(1),
+      runtime.run_event_loop(Default::default()),
+    )
+    .await
+    .expect("UV timer did not wake the event loop")
+    .unwrap();
+    assert!(fired.get());
+
+    unsafe {
+      Rc::from_raw(fired_ptr);
+    }
+  })
+  .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn timer_repeat() {
   run_test(async |runtime, uv_loop| {
     let count = Rc::new(Cell::new(0u32));

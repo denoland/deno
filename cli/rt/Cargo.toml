@@ -24,9 +24,15 @@ name = "integration"
 path = "integration_tests_runner.rs"
 harness = false
 
+[features]
+default = ["v8"]
+quickjs = ["v8/quickjs"]
+v8 = ["v8/v8"]
+
 [build-dependencies]
 deno_runtime.workspace = true
 deno_core.workspace = true
+v8.workspace = true
 
 [dependencies]
 async-trait.workspace = true
@@ -62,6 +68,7 @@ sys_traits = { workspace = true, features = ["getrandom", "filetime", "libc", "r
 thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
+v8.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 junction.workspace = true

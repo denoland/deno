@@ -2,5 +2,8 @@
   // Regression test for https://github.com/denoland/deno/issues/32987
   // mock.timers should be a real implementation, not notImplemented stubs.
   "args": "test test.js",
+  "envs": {
+    "TZ": "UTC"
+  },
   "output": "test.out"
 }

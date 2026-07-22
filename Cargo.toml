@@ -43,6 +43,7 @@ members = [
   "libs/core_testing",
   "libs/crypto",
   "libs/dcore",
+  "libs/deno_v8",
   "libs/dotenv",
   "libs/eszip",
   "libs/http_h1",
@@ -105,7 +106,7 @@ deno_task_shell = "=0.33.0"
 deno_terminal = "=0.2.3"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
-v8 = { version = "150.2.0", default-features = false, features = ["simdutf"] }
+v8 = { package = "deno_v8", version = "0.1.0", path = "./libs/deno_v8", default-features = false, features = ["simdutf"] }
 
 denokv_proto = "0.14.0"
 denokv_remote = "0.14.0"
