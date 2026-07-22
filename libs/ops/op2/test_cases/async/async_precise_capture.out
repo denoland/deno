@@ -76,8 +76,16 @@ pub const fn op_async_impl_use() -> ::deno_core::_ops::OpDecl {
                             unsafe { deno_core::v8::CallbackScope::new(info) }
                         );
                         let mut scope = scope.init();
-                        let exception = deno_core::error::to_v8_error(&mut scope, &err);
-                        scope.throw_exception(exception);
+                        if !deno_core::error::try_throw_js_error_class(
+                            &mut scope,
+                            &err,
+                        ) {
+                            let exception = deno_core::error::to_v8_error(
+                                &mut scope,
+                                &err,
+                            );
+                            scope.throw_exception(exception);
+                        }
                         return 1;
                     }
                 };

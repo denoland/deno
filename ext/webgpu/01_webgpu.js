@@ -105,7 +105,10 @@ class GPUValidationError extends GPUError {
     this[_message] = message;
   }
 }
-core.registerErrorClass("GPUValidationError", GPUValidationError);
+core.registerErrorBuilder(
+  "GPUValidationError",
+  (message) => new GPUValidationError(message),
+);
 
 class GPUOutOfMemoryError extends GPUError {
   constructor(message) {
@@ -117,7 +120,10 @@ class GPUOutOfMemoryError extends GPUError {
     this[_message] = message;
   }
 }
-core.registerErrorClass("GPUOutOfMemoryError", GPUOutOfMemoryError);
+core.registerErrorBuilder(
+  "GPUOutOfMemoryError",
+  (message) => new GPUOutOfMemoryError(message),
+);
 
 class GPUInternalError extends GPUError {
   constructor() {
@@ -125,7 +131,10 @@ class GPUInternalError extends GPUError {
     this[webidl.brand] = webidl.brand;
   }
 }
-core.registerErrorClass("GPUInternalError", GPUInternalError);
+core.registerErrorBuilder(
+  "GPUInternalError",
+  () => new GPUInternalError(),
+);
 
 class GPUPipelineError extends DOMException {
   #reason;

@@ -979,14 +979,10 @@ impl Foo {
                     &parts,
                 );
                 if let Err(err) = f(&mut scope, &args) {
-                    let opctx: &'s _ = unsafe {
-                        &*(deno_core::v8::Local::<
-                            deno_core::v8::External,
-                        >::cast_unchecked(args.data())
-                            .value() as *const deno_core::_ops::OpCtx)
-                    };
-                    let exception = deno_core::error::to_v8_error(&mut scope, &err);
-                    scope.throw_exception(exception);
+                    if !deno_core::error::try_throw_js_error_class(&mut scope, &err) {
+                        let exception = deno_core::error::to_v8_error(&mut scope, &err);
+                        scope.throw_exception(exception);
+                    }
                     return 1;
                 }
                 let Some(self_) = deno_core::_ops::try_unwrap_cppgc_object::<
