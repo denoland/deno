@@ -158,8 +158,14 @@ The build integration rejects an empty or implausibly small order. The verifier
 then checks:
 
 - the order has no duplicate symbol names;
-- at least 90% of its names exist in both executables; and
-- relinking improves address-order conformance.
+- at least 90% of its names exist in the baseline executable;
+- at least 1,000 names exist in both executables; and
+- relinking improves address-order conformance for those common names.
+
+The linked executable may expose fewer names because LTO and identical-code
+folding can select different aliases. Those missing names do not fail
+verification as long as enough common symbols remain for a meaningful
+comparison.
 
 When the baseline executable already follows at least 90% of the requested
 sequence, it is treated as already ordered. In that case the final executable
@@ -167,9 +173,10 @@ may remain unchanged and must not reduce conformance by more than two percentage
 points.
 
 The report records the exact symbol count, missing names, longest nondecreasing
-address sequence, and conformance ratio for both executables. Verification
-decisions use the baseline-relative comparison above; symbol counts and
-performance measurements remain telemetry.
+address sequence, and conformance ratio for both executables, plus the direct
+comparison over their common symbols. Verification decisions use that
+baseline-relative comparison; other symbol counts and performance measurements
+remain telemetry.
 
 ## Build artifacts
 

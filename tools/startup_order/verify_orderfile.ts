@@ -7,7 +7,11 @@ import { join, resolve } from "node:path";
 const decoder = new TextDecoder();
 // These compare the two binaries built from the same revision. Symbol counts
 // and performance measurements remain report telemetry.
-const MINIMUM_MATCHED_RATIO = 0.9;
+const MINIMUM_BASELINE_MATCHED_RATIO = 0.9;
+// LTO and identical-code folding may change which symbol name survives in the
+// linked binary. Keep enough common symbols for a meaningful order comparison
+// instead of requiring every requested alias to remain visible.
+const MINIMUM_COMPARABLE_SYMBOLS = 1_000;
 // If pass one already follows nearly all of the requested sequence, pass two
 // need not improve it; it only must not materially regress conformance.
 const ALREADY_ORDERED_RATIO = 0.9;
@@ -191,8 +195,15 @@ if (import.meta.main) {
   ]);
   const baseline = measureOrder(orderNames, baselineSymbols);
   const linked = measureOrder(orderNames, symbols);
-  const baselineAlreadyOrdered = baseline.orderedRatio >= ALREADY_ORDERED_RATIO;
-  const orderingImproved = linked.orderedRatio > baseline.orderedRatio;
+  const comparableNames = orderNames.filter((name) =>
+    baselineSymbols.has(name) && symbols.has(name)
+  );
+  const comparableBaseline = measureOrder(comparableNames, baselineSymbols);
+  const comparableLinked = measureOrder(comparableNames, symbols);
+  const baselineAlreadyOrdered =
+    comparableBaseline.orderedRatio >= ALREADY_ORDERED_RATIO;
+  const orderingImproved =
+    comparableLinked.orderedRatio > comparableBaseline.orderedRatio;
   const report = {
     target: options.target,
     baseline_binary: options.baselineBinary,
@@ -201,14 +212,14 @@ if (import.meta.main) {
     order_sha256: orderHash,
     requested_symbols: orderNames.length,
     duplicate_symbols: duplicateCount,
-    minimum_matched_ratio: MINIMUM_MATCHED_RATIO,
+    minimum_baseline_matched_ratio: MINIMUM_BASELINE_MATCHED_RATIO,
+    minimum_comparable_symbols: MINIMUM_COMPARABLE_SYMBOLS,
     baseline: {
       matched_symbols: baseline.matchedSymbols,
       missing_symbols: baseline.missingSymbols,
       matched_ratio: baseline.matchedRatio,
       longest_nondecreasing_symbols: baseline.orderedSymbols,
       ordered_ratio: baseline.orderedRatio,
-      already_substantially_ordered: baselineAlreadyOrdered,
     },
     linked: {
       matched_symbols: linked.matchedSymbols,
@@ -216,6 +227,14 @@ if (import.meta.main) {
       matched_ratio: linked.matchedRatio,
       longest_nondecreasing_symbols: linked.orderedSymbols,
       ordered_ratio: linked.orderedRatio,
+    },
+    comparison: {
+      comparable_symbols: comparableNames.length,
+      baseline_longest_nondecreasing_symbols: comparableBaseline.orderedSymbols,
+      baseline_ordered_ratio: comparableBaseline.orderedRatio,
+      linked_longest_nondecreasing_symbols: comparableLinked.orderedSymbols,
+      linked_ordered_ratio: comparableLinked.orderedRatio,
+      baseline_already_substantially_ordered: baselineAlreadyOrdered,
       improved_over_baseline: orderingImproved,
     },
   };
@@ -232,32 +251,34 @@ if (import.meta.main) {
   if (duplicateCount !== 0) {
     failures.push(`order file contains ${duplicateCount} duplicate symbols`);
   }
-  if (baseline.matchedRatio < MINIMUM_MATCHED_RATIO) {
+  if (baseline.matchedRatio < MINIMUM_BASELINE_MATCHED_RATIO) {
     failures.push(
       `baseline matched ratio ${baseline.matchedRatio.toFixed(4)} is below ` +
-        MINIMUM_MATCHED_RATIO.toFixed(4),
+        MINIMUM_BASELINE_MATCHED_RATIO.toFixed(4),
     );
   }
-  if (linked.matchedRatio < MINIMUM_MATCHED_RATIO) {
+  if (comparableNames.length < MINIMUM_COMPARABLE_SYMBOLS) {
     failures.push(
-      `linked matched ratio ${linked.matchedRatio.toFixed(4)} is below ` +
-        MINIMUM_MATCHED_RATIO.toFixed(4),
+      `only ${comparableNames.length} symbols are present in both binaries; ` +
+        `expected at least ${MINIMUM_COMPARABLE_SYMBOLS}`,
     );
   }
   if (
     baselineAlreadyOrdered &&
-    linked.orderedRatio <
-      baseline.orderedRatio - ALREADY_ORDERED_TOLERANCE
+    comparableLinked.orderedRatio <
+      comparableBaseline.orderedRatio - ALREADY_ORDERED_TOLERANCE
   ) {
     failures.push(
       `baseline was already substantially ordered at ` +
-        `${baseline.orderedRatio.toFixed(4)}, but relinking reduced it to ` +
-        linked.orderedRatio.toFixed(4),
+        `${
+          comparableBaseline.orderedRatio.toFixed(4)
+        }, but relinking reduced ` +
+        `it to ${comparableLinked.orderedRatio.toFixed(4)}`,
     );
   } else if (!baselineAlreadyOrdered && !orderingImproved) {
     failures.push(
       `relinking did not improve ordered ratio beyond baseline ` +
-        baseline.orderedRatio.toFixed(4),
+        comparableBaseline.orderedRatio.toFixed(4),
     );
   }
   if (failures.length > 0) {
