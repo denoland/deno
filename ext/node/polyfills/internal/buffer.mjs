@@ -965,7 +965,7 @@ function bidirectionalIndexOf(buffer, val, byteOffset, end, encoding, dir) {
     end = undefined;
   }
   if (end === undefined) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     end = buffer.length || buffer.byteLength;
   }
 
