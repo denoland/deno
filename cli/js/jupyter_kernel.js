@@ -607,12 +607,14 @@ async function startJupyterKernel() {
       implementation: "Deno kernel",
       implementation_version: op_jupyter_deno_version(),
       language_info: {
-        name: "typescript",
+        name: "typescriptreact",
         version: op_jupyter_typescript_version(),
-        mimetype: "text/x.typescript",
-        file_extension: ".ts",
+        mimetype: "text/tsx",
+        file_extension: ".tsx",
+        // Keep names pygments/CodeMirror recognize so highlighting in
+        // JupyterLab/nbconvert doesn't fall back to the unknown `name` above.
         pygments_lexer: "typescript",
-        codemirror_mode: { name: "typescript" },
+        codemirror_mode: { name: "typescript", jsx: true },
         nbconvert_exporter: "script",
       },
       banner: "Welcome to Deno kernel",

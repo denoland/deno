@@ -512,9 +512,9 @@ async fn jupyter_kernel_info() -> Result<()> {
       "status": "ok",
       "implementation": "Deno kernel",
       "language_info": {
-        "name": "typescript",
-        "mimetype": "text/x.typescript",
-        "file_extension": ".ts",
+        "name": "typescriptreact",
+        "mimetype": "text/tsx",
+        "file_extension": ".tsx",
         "pygments_lexer": "typescript",
         "nbconvert_exporter": "script"
       },
