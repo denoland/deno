@@ -83,7 +83,11 @@
     "patched-global.any.html": false,
     "patched-global.any.worker.html": false,
     "templated.any.html": true,
-    "templated.any.worker.html": true
+    "templated.any.worker.html": true,
+    "crashtests": {
+      "tee-locked-stream.any.html": true,
+      "tee-locked-stream.any.worker.html": true
+    }
   },
   "readable-streams": {
     "async-iterator.any.html": true,
@@ -115,24 +119,20 @@
     "templated.any.worker.html": true,
     "async-iterator.any.worker.html": true,
     "cross-realm-crash.window.html": false,
-    "from.any.html": {
-      "expectedFailures": [
-        "ReadableStream.from ignores a null @@asyncIterator",
-        "ReadableStream.from accepts a string"
-      ]
-    },
-    "from.any.worker.html": {
-      "expectedFailures": [
-        "ReadableStream.from ignores a null @@asyncIterator",
-        "ReadableStream.from accepts a string"
-      ]
-    },
+    "from.any.html": true,
+    "from.any.worker.html": true,
     "crashtests": {
       "garbage-collection.any.html": true,
       "garbage-collection.any.worker.html": true
     },
     "global.html": false,
-    "read-task-handling.window.html": true
+    "read-task-handling.window.html": true,
+    "owning-type-message-port.tentative.any.html": false,
+    "owning-type-message-port.tentative.any.worker.html": false,
+    "owning-type-video-frame.tentative.any.html": false,
+    "owning-type-video-frame.tentative.any.worker.html": false,
+    "owning-type.tentative.any.html": false,
+    "owning-type.tentative.any.worker.html": false
   },
   "transform-streams": {
     "backpressure.any.html": true,

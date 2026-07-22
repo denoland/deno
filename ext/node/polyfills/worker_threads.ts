@@ -2240,6 +2240,8 @@ class BroadcastChannel extends WebBroadcastChannel {
   }
 }
 
+const { locks } = core.createLazyLoader("ext:deno_web/locks.js")();
+
 // Node's `worker_threads.MessagePort` is a function (not a class) that throws
 // `ERR_CONSTRUCT_CALL_INVALID` whether called as `MessagePort()` or
 // `new MessagePort()`. Mirror that here while keeping
@@ -2289,6 +2291,7 @@ ObjectAssign(exportsObj, {
   // Node's contract (an empty resourceLimits on the main thread).
   resourceLimits: {},
   threadName: "",
+  locks,
   markAsUncloneable,
   markAsUntransferable,
   isMarkedAsUntransferable,

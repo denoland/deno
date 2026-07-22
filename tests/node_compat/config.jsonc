@@ -289,10 +289,7 @@
     "parallel/test-buffer-from.js": {},
     "parallel/test-buffer-generic-methods.js": {},
     "parallel/test-buffer-includes.js": {},
-    "parallel/test-buffer-indexof.js": {
-      "ignore": true,
-      "reason": "Node 26 added a byteLength/length parameter to Buffer.indexOf/lastIndexOf/includes not yet implemented"
-    },
+    "parallel/test-buffer-indexof.js": {},
     "parallel/test-buffer-inheritance.js": {},
     "parallel/test-buffer-inspect.js": {},
     "parallel/test-buffer-isascii.js": {},
@@ -3975,6 +3972,7 @@
     "parallel/test-warn-tls-wrap-deprecation.js": {},
     "parallel/test-wasm.mjs": {},
     "parallel/test-weakref.js": {},
+    "parallel/test-web-locks.js": {},
     "parallel/test-webcrypto-cryptokey-workers.js": {},
     "parallel/test-webcrypto-derivebits-argon2.js": {},
     "parallel/test-webcrypto-derivebits.js": {},
