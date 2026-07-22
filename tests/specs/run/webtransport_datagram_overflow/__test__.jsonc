@@ -1,4 +1,6 @@
 {
+  // native check gap: webtransport unstable lib types not yet materialized by native tsc (see https://github.com/denoland/deno/issues/36085)
+  "ignore": true,
   "args": "test --quiet --unstable-net -A main.ts",
   "output": "./main.out",
   "exitCode": 0

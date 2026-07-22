@@ -1,16 +1,3 @@
 [WILDCARD]
-DEBUG RS - [WILDCARD] - Compilation statistics:
-  Files: [WILDCARD]
-  Nodes: [WILDCARD]
-  Identifiers: [WILDCARD]
-  Symbols: [WILDCARD]
-  Types: [WILDCARD]
-  Instantiations: [WILDCARD]
-  Parse time: [WILDCARD]
-  Bind time: [WILDCARD]
-  Check time: [WILDCARD]
-  Emit time: [WILDCARD]
-  Total TS time: [WILDCARD]
-  Compile time: [WILDCARD]
-
+DEBUG RS - [WILDCARD] - native tsc TscStats { files: Some([WILDCARD]), lines: Some([WILDCARD]), identifiers: Some([WILDCARD]), symbols: Some([WILDCARD]), types: Some([WILDCARD]), memory_used: [WILDCARD], check_time: Some([WILDCARD]), total_time: Some([WILDCARD]) }
 [WILDCARD]

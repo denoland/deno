@@ -896,6 +896,18 @@ impl CliFactory {
       .get_or_try_init_async(
         async {
           let cli_options = self.cli_options()?;
+          let installer_factory = self.npm_installer_factory()?;
+          let workspace_factory = self.resolver_factory()?.workspace_factory();
+          let native_tsc_deps = crate::tsc::native::NativeTscInstallDeps {
+            deno_dir: self.deno_dir()?.clone(),
+            npmrc: self.npmrc()?.clone(),
+            registry_info: installer_factory.registry_info_provider()?.clone(),
+            npm_link_packages: workspace_factory
+              .workspace_npm_link_packages()?
+              .clone(),
+            tarball_cache: installer_factory.tarball_cache()?.clone(),
+            npm_cache: self.npm_cache()?.clone(),
+          };
           Ok(Arc::new(TypeChecker::new(
             self.caches()?.clone(),
             Arc::new(TypeCheckingCjsTracker::new(
@@ -914,6 +926,7 @@ impl CliFactory {
             } else {
               None
             },
+            native_tsc_deps,
           )))
         }
         .boxed_local(),

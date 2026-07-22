@@ -1,4 +1,6 @@
 {
+  // native check gap: import attributes type checking not yet supported by native tsc (see https://github.com/denoland/deno/issues/36124)
+  "ignore": true,
   "args": "run --allow-read --check type_check.ts",
   "output": "type_check.out",
   "exitCode": 1
