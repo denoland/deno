@@ -58,6 +58,7 @@ use serde::Deserialize;
 use tokio::process::Child as AsyncChild;
 
 pub mod ipc;
+mod wait;
 use ipc::IpcAdvancedStreamResource;
 use ipc::IpcJsonStreamResource;
 use ipc::IpcRefTracker;
@@ -250,6 +251,8 @@ deno_core::extension!(
     op_spawn_kill,
     op_spawn_child_ref,
     op_spawn_child_unref,
+    wait::op_process_wait_open,
+    wait::op_process_wait,
     deprecated::op_run,
     deprecated::op_run_status,
     deprecated::op_kill,
@@ -448,6 +451,9 @@ pub enum ProcessError {
   #[class(inherit)]
   #[error(transparent)]
   Signal(#[from] SignalError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Canceled(#[from] deno_core::Canceled),
   #[class(inherit)]
   #[error(transparent)]
   Other(#[from] JsErrorBox),

@@ -5238,6 +5238,63 @@ declare namespace Deno {
    */
   export function kill(pid: number, signo?: Signal | number): void;
 
+  /** Options for {@linkcode Deno.processExited}.
+   *
+   * @category Subprocess
+   */
+  export interface ProcessExitedOptions {
+    /** An {@linkcode AbortSignal} that, when aborted, stops waiting and
+     * rejects the returned promise with the signal's abort reason. Aborting
+     * does not affect the target process; it only abandons the wait. */
+    signal?: AbortSignal;
+  }
+
+  /** Returns a promise that resolves once the process identified by `pid` has
+   * exited.
+   *
+   * Unlike the `status` promise of a {@linkcode Deno.ChildProcess}, this works
+   * for any process, not only one this runtime spawned. It is intended for
+   * code that knows a process only by its id — for example a program that
+   * shuts down a daemon started elsewhere: send the process a signal with
+   * {@linkcode Deno.kill}, then await its exit before releasing resources the
+   * daemon held or reporting the shutdown as complete.
+   *
+   * ```ts
+   * const pid = Number(await Deno.readTextFile("daemon.pid"));
+   * Deno.kill(pid, "SIGTERM");
+   * await Deno.processExited(pid);
+   * // The daemon is now gone; safe to clean up after it.
+   * await Deno.remove("daemon.pid");
+   * ```
+   *
+   * The wait is event-driven: it is backed by `pidfd_open` on Linux, a
+   * `kqueue` process filter on macOS and the BSDs, and a process handle wait
+   * on Windows, so it reacts the instant the process exits rather than
+   * polling.
+   *
+   * If no process with the given `pid` exists — including the case where it
+   * exited between a preceding {@linkcode Deno.kill} and this call — the
+   * returned promise resolves immediately, because the process is not running.
+   *
+   * A process id identifies a process only until that process is reaped, after
+   * which the operating system may reuse the id for an unrelated process. As
+   * with {@linkcode Deno.kill}, if the target has already exited and its id has
+   * been recycled, this waits on whatever process now holds the id.
+   *
+   * The wait can be abandoned by passing an {@linkcode AbortSignal}; aborting
+   * rejects the returned promise with the signal's reason and does not affect
+   * the target process.
+   *
+   * Requires `allow-run` permission.
+   *
+   * @tags allow-run
+   * @category Subprocess
+   */
+  export function processExited(
+    pid: number,
+    options?: ProcessExitedOptions,
+  ): Promise<void>;
+
   /** The type of the resource record to resolve via DNS using
    * {@linkcode Deno.resolveDns}.
    *
