@@ -403,32 +403,88 @@ Deno.test({
     const worker = new workerThreads.Worker(
       `
       const { parentPort, locks } = require("node:worker_threads");
-      parentPort.once("message", async (lockName) => {
-        await locks.request(lockName, async (lock) => {
+      parentPort.once("message", (lockName) => {
+        // Issue the request synchronously: the underlying op registers the
+        // pending request before the first await, so posting "requested"
+        // afterwards lets the parent observe it deterministically without
+        // racing a boot-timed poll loop.
+        locks.request(lockName, async (lock) => {
           parentPort.postMessage(lock.name);
-        });
+        }).catch(() => {});
+        parentPort.postMessage("requested");
       });
       `,
       { eval: true },
     );
 
     try {
-      const acquired = once(worker, "message");
+      let granted: Promise<unknown[]>;
       await workerThreads.locks.request(lockName, async () => {
         worker.postMessage(lockName);
-        let sawPending = false;
-        for (let i = 0; i < 10; i++) {
-          const snapshot = await workerThreads.locks.query();
-          if (snapshot.pending.some((entry) => entry.name === lockName)) {
-            sawPending = true;
-            break;
-          }
-          await new Promise((resolve) => setTimeout(resolve, 0));
-        }
-        assert(sawPending);
+        assertEquals((await once(worker, "message"))[0], "requested");
+        const snapshot = await workerThreads.locks.query();
+        assert(snapshot.pending.some((entry) => entry.name === lockName));
+        // Register the grant listener before this callback returns (which
+        // releases the lock and lets the worker acquire it), so the worker's
+        // grant message cannot be missed.
+        granted = once(worker, "message");
       });
 
-      assertEquals((await acquired)[0], lockName);
+      assertEquals((await granted!)[0], lockName);
+    } finally {
+      await worker.terminate();
+    }
+  },
+  sanitizeResources: false,
+});
+
+Deno.test({
+  name:
+    "[node/worker_threads] terminating a worker halts its locked callback before handoff",
+  async fn() {
+    const lockName = "deno-worker-threads-locks-worker-halt";
+    // The worker holds an exclusive lock and mutates shared memory in a
+    // synchronous loop that never yields. When the parent terminates it, the
+    // host re-grants the held lock to the next waiter synchronously; if the
+    // worker's isolate were not halted first, it would keep mutating the buffer
+    // concurrently with the new holder, violating mutual exclusion.
+    const sab = new SharedArrayBuffer(4);
+    const counter = new Int32Array(sab);
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort, workerData, locks } = require("node:worker_threads");
+      const counter = new Int32Array(workerData);
+      locks.request(${JSON.stringify(lockName)}, () => {
+        parentPort.postMessage("held");
+        // Synchronous, never-yielding loop while holding the lock. Only
+        // terminate_execution() can break out of this.
+        for (;;) {
+          Atomics.add(counter, 0, 1);
+        }
+      }).catch(() => {});
+      `,
+      { eval: true, workerData: sab },
+    );
+
+    try {
+      assertEquals((await once(worker, "message"))[0], "held");
+      await worker.terminate();
+
+      // Acquire the same lock (proves it was released, i.e. no deadlock) and
+      // confirm the worker is no longer mutating shared memory under it.
+      await workerThreads.locks.request(lockName, async () => {
+        // Give a generous window for terminate_execution() to interrupt the
+        // worker's loop and for the thread to stop.
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        const first = Atomics.load(counter, 0);
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        const second = Atomics.load(counter, 0);
+        assertEquals(
+          first,
+          second,
+          "worker kept mutating shared memory under the lock after terminate",
+        );
+      });
     } finally {
       await worker.terminate();
     }

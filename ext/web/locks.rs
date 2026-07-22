@@ -131,6 +131,18 @@ fn cancel_request(state: &mut LockState, id: u64) {
   }
 }
 
+/// Whether `client_id` currently holds any lock. Used at worker teardown to
+/// decide whether the worker's JS must be halted before its held locks are
+/// handed off to other clients (see `WorkerThread::drop`). A worker that holds
+/// nothing needs no halt, so we avoid interrupting it — halting an arbitrary
+/// worker can abort an in-progress synthetic module instantiation during boot.
+pub fn client_holds_lock(client_id: &str) -> bool {
+  let state = LOCK_STATE
+    .lock()
+    .unwrap_or_else(|poisoned| poisoned.into_inner());
+  state.held.iter().any(|lock| lock.client_id == client_id)
+}
+
 pub fn cleanup_locks_for_client_id(client_id: &str) {
   // Runs from `WorkerThread::drop`, so recover from a poisoned mutex instead
   // of `unwrap()`ing: a panic here would be a panic during unwinding, which

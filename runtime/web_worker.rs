@@ -262,6 +262,7 @@ pub struct SendableWebWorkerHandle {
   receiver: mpsc::Receiver<WorkerControlEvent>,
   termination_signal: Arc<AtomicBool>,
   terminate_waker: Arc<AtomicWaker>,
+  isolate_handle: v8::IsolateHandle,
 }
 
 impl From<SendableWebWorkerHandle> for WebWorkerHandle {
@@ -271,6 +272,7 @@ impl From<SendableWebWorkerHandle> for WebWorkerHandle {
       port: Rc::new(handle.port),
       termination_signal: handle.termination_signal,
       terminate_waker: handle.terminate_waker,
+      isolate_handle: handle.isolate_handle,
     }
   }
 }
@@ -288,6 +290,7 @@ pub struct WebWorkerHandle {
   receiver: Rc<RefCell<mpsc::Receiver<WorkerControlEvent>>>,
   termination_signal: Arc<AtomicBool>,
   terminate_waker: Arc<AtomicWaker>,
+  isolate_handle: v8::IsolateHandle,
 }
 
 impl WebWorkerHandle {
@@ -300,6 +303,16 @@ impl WebWorkerHandle {
   pub async fn get_control_event(&self) -> Option<WorkerControlEvent> {
     let mut receiver = self.receiver.borrow_mut();
     receiver.next().await
+  }
+
+  /// Signal the worker's V8 isolate to stop executing JavaScript at the next
+  /// interrupt point. Unlike [`Self::terminate`], this reaches into a running
+  /// synchronous callback (e.g. a busy loop) instead of only waking the event
+  /// loop. It returns immediately and does not wait for the isolate to actually
+  /// stop, so it narrows — but cannot fully close — any window in which the
+  /// worker is still executing.
+  pub fn terminate_execution(&self) {
+    self.isolate_handle.terminate_execution();
   }
 
   /// Terminate the worker
@@ -335,7 +348,7 @@ fn create_handles(
     termination_signal: termination_signal.clone(),
     has_terminated,
     terminate_waker: terminate_waker.clone(),
-    isolate_handle,
+    isolate_handle: isolate_handle.clone(),
     cancel: CancelHandle::new_rc(),
     sender: ctrl_tx,
     worker_type,
@@ -346,6 +359,7 @@ fn create_handles(
     port: worker_port,
     termination_signal,
     terminate_waker,
+    isolate_handle,
   };
   (internal_handle, external_handle)
 }
