@@ -21,7 +21,6 @@ const {
   NumberIsInteger,
   ObjectDefineProperties,
   ObjectDefineProperty,
-  ObjectHasOwn,
   ObjectIs,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
@@ -238,10 +237,12 @@ for (const name of new SafeArrayIterator(ReflectOwnKeys(Dirent.prototype))) {
 
 export function copyObject(source) {
   const target = {};
+  // Intentionally copies inherited enumerable properties as well (Node parity):
+  // `options` may be passed with fields on its prototype, e.g.
+  // `{ __proto__: { start, end } }`, and those must be preserved.
+  // deno-lint-ignore guard-for-in
   for (const key in source) {
-    if (ObjectHasOwn(source, key)) {
-      target[key] = source[key];
-    }
+    target[key] = source[key];
   }
   return target;
 }
