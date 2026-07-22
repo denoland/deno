@@ -97,6 +97,13 @@ struct TestConfig {
   /// requires and that we explicitly do not want every test to inherit.
   #[serde(rename = "extraDenoArgs", default)]
   extra_deno_args: Vec<String>,
+  /// Per-test timeout in milliseconds, overriding the default (20s on macOS,
+  /// 10s elsewhere). Use for legitimately long-running stress tests (e.g.
+  /// `pummel/*`) that need more than the default cap on slower/debug runners,
+  /// where the runner's built-in flaky retry does not help because the test
+  /// consistently brushes the cap rather than failing probabilistically.
+  #[serde(rename = "timeoutMs")]
+  timeout_ms: Option<u64>,
 }
 
 /// The full config.json structure
@@ -662,11 +669,16 @@ impl TestSetup {
       }
     }
 
-    let timeout = Duration::from_millis(if cfg!(target_os = "macos") {
+    let default_timeout_ms: u64 = if cfg!(target_os = "macos") {
       20_000
     } else {
       10_000
-    });
+    };
+    let timeout = Duration::from_millis(
+      test_config
+        .and_then(|c| c.timeout_ms)
+        .unwrap_or(default_timeout_ms),
+    );
 
     TestSetup {
       test_suite_path,

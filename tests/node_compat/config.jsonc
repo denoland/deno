@@ -5406,7 +5406,10 @@
     "pummel/test-fs-watch-file-slow.js": {},
     "pummel/test-fs-watch-non-recursive.js": {},
     "pummel/test-heapsnapshot-near-heap-limit-bounded.js": {},
-    "pummel/test-http-many-keep-alive-connections.js": {},
+    "pummel/test-http-many-keep-alive-connections.js": {
+      "timeoutMs": 120000,
+      "reason": "Stress test: 10000 serial keep-alive round-trips on one connection. It consistently brushes the runner's 20s macOS cap on debug x86_64 CI runners (fails at ~20s while still making progress, so the built-in flaky retry doesn't help). Give it a generous timeout instead of disabling it. https://github.com/denoland/deno/issues/35452"
+    },
     "pummel/test-http-upload-timeout.js": {},
     "pummel/test-https-large-response.js": {},
     "pummel/test-https-no-reader.js": {

@@ -94,6 +94,11 @@
           "type": "array",
           "description": "Extra deno run/test CLI flags for this test only. Use sparingly — typically for security knobs like --unsafely-ignore-certificate-errors that one specific test requires.",
           "items": { "type": "string" }
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "description": "Per-test timeout in milliseconds, overriding the default (20000 on macOS, 10000 elsewhere). Use for legitimately long-running stress tests (e.g. pummel/*) that consistently brush the default cap on slower/debug runners, where the built-in flaky retry does not help.",
+          "minimum": 1
         }
       },
       "additionalProperties": false
