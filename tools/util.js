@@ -278,11 +278,52 @@ export async function getPrebuilt(toolName) {
     if (!versionOk) {
       throw new Error("Version mismatch");
     }
+    return toolPath;
   } catch {
-    await downloadPrebuilt(toolName);
+    try {
+      await downloadPrebuilt(toolName);
+      return toolPath;
+    } catch (e) {
+      const localPath = await findLocalTool(toolName);
+      if (localPath) {
+        console.error(
+          `Using local ${toolName} from PATH: ${localPath}`,
+        );
+        return localPath;
+      }
+      throw e;
+    }
+  }
+}
+
+async function findLocalTool(toolName) {
+  const requiredVersion = versions[toolName];
+  if (!requiredVersion) {
+    return null;
   }
 
-  return toolPath;
+  const pathEnv = Deno.env.get("PATH");
+  if (!pathEnv) {
+    return null;
+  }
+
+  const pathSeparator = Deno.build.os === "windows" ? ";" : ":";
+  const paths = pathEnv.split(pathSeparator);
+
+  for (const dir of paths) {
+    const candidatePath = join(dir, toolName + executableSuffix);
+    try {
+      await Deno.stat(candidatePath);
+      const versionOk = await verifyVersion(toolName, candidatePath);
+      if (versionOk) {
+        return candidatePath;
+      }
+    } catch {
+      // File doesn't exist, continue
+    }
+  }
+
+  return null;
 }
 
 const PREBUILT_PATH = join(ROOT_PATH, "third_party", "prebuilt");
