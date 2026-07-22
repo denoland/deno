@@ -163,14 +163,14 @@ pub type ExtensionTranspiler =
 pub(crate) struct IsolateAllocations {
   pub(crate) externalized_sources: Box<[v8::OneByteConst]>,
   pub(crate) original_sources: Box<[FastString]>,
-  /// Specifiers of the externalized `lazy_loaded_js` sources, parallel to the
+  /// Specifiers of the externalized `lazy_loaded_*` sources, parallel to the
   /// trailing entries of `original_sources` (only populated when building a
   /// snapshot). Used at serialize time to drop the bytes of *non-consumed*
-  /// lazy scripts from the snapshot sidecar — their external-reference slots
+  /// lazy sources from the snapshot sidecar — their external-reference slots
   /// must stay (for index alignment) but nothing references them, so storing
   /// empty bytes avoids duplicating residual sources (which the binary already
   /// ships via the residual table).
-  pub(crate) lazy_js_specifiers: Box<[ModuleName]>,
+  pub(crate) lazy_source_specifiers: Box<[ModuleName]>,
   pub(crate) near_heap_limit_callback_data:
     Option<(Box<RefCell<dyn Any>>, v8::NearHeapLimitCallback)>,
 }
@@ -961,7 +961,7 @@ impl JsRuntime {
     (
       isolate_allocations.externalized_sources,
       isolate_allocations.original_sources,
-      isolate_allocations.lazy_js_specifiers,
+      isolate_allocations.lazy_source_specifiers,
     ) = bindings::externalize_sources(
       &mut sources,
       snapshot_sources,
@@ -2874,24 +2874,26 @@ impl JsRuntimeForSnapshot {
     self.inner.prepare_for_cleanup();
     let original_sources =
       std::mem::take(&mut self.0.allocations.original_sources);
-    let lazy_js_specifiers =
-      std::mem::take(&mut self.0.allocations.lazy_js_specifiers);
-    // `lazy_loaded_js` sources are externalized for the snapshot (so consumed
-    // scripts bake in as clean external strings), but only the *consumed* ones
+    let lazy_source_specifiers =
+      std::mem::take(&mut self.0.allocations.lazy_source_specifiers);
+    // `lazy_loaded_*` sources are externalized for the snapshot (so consumed
+    // sources bake in as clean external strings), but only the *consumed* ones
     // are actually referenced by snapshotted code. Non-consumed (residual)
-    // scripts are already shipped via the residual table, so persisting their
+    // sources are already shipped via the residual table, so persisting their
     // bytes here would duplicate them. Store empty bytes for those slots — the
     // external-reference index is preserved (nothing references it), avoiding
     // the duplication.
     let consumed: std::collections::HashSet<String> =
       self.consumed_lazy_specifiers().into_iter().collect();
-    let lazy_js_start = original_sources.len() - lazy_js_specifiers.len();
+    let lazy_source_start =
+      original_sources.len() - lazy_source_specifiers.len();
     let external_strings = original_sources
       .iter()
       .enumerate()
       .map(|(i, s)| {
-        if i >= lazy_js_start
-          && !consumed.contains(lazy_js_specifiers[i - lazy_js_start].as_str())
+        if i >= lazy_source_start
+          && !consumed
+            .contains(lazy_source_specifiers[i - lazy_source_start].as_str())
         {
           return &[][..];
         }
