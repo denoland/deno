@@ -1433,8 +1433,11 @@ Deno.test(async function killMultipleTimesNoError() {
   child.kill();
   child.kill();
 
-  // explicitly calling disconnect after kill should throw
-  assertThrows(() => child.disconnect());
+  // kill() only signals the child; it does NOT tear down the IPC channel, so
+  // the child is still connected and an explicit disconnect() succeeds rather
+  // than throwing (matches Node). See #36075.
+  assert(child.connected);
+  child.disconnect();
 
   await timeout.promise;
 });
