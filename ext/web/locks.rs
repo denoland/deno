@@ -10,16 +10,15 @@ use std::sync::Mutex;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 
+use deno_core::FromV8;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::ToV8;
 use deno_core::op2;
 use tokio::sync::oneshot;
 
-#[derive(
-  serde::Serialize, serde::Deserialize, Debug, PartialEq, Clone, Copy,
-)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8, FromV8, Debug, PartialEq, Clone, Copy)]
 enum LockMode {
   Shared,
   Exclusive,
@@ -176,7 +175,7 @@ impl Resource for PendingLockResource {
 
 /// Result from op_lock_manager_request.
 /// status: 0 = granted, 1 = pending, 2 = not available (ifAvailable)
-#[derive(serde::Serialize)]
+#[derive(ToV8)]
 struct LockRequestResult {
   status: u8,
   rid: ResourceId,
@@ -186,11 +185,10 @@ struct LockRequestResult {
 /// Returns immediately with either a granted lock, a pending handle, or
 /// a not-available indicator.
 #[op2]
-#[serde]
 pub fn op_lock_manager_request(
   state: &mut OpState,
   #[string] name: String,
-  #[serde] mode: LockMode,
+  #[scoped] mode: LockMode,
   if_available: bool,
   steal: bool,
 ) -> LockRequestResult {
@@ -339,22 +337,20 @@ pub fn op_lock_manager_release(state: &mut OpState, #[smi] rid: ResourceId) {
   let _ = state.resource_table.take::<HeldLockResource>(rid);
 }
 
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8)]
 struct QueryLock {
   name: String,
   mode: LockMode,
   client_id: String,
 }
 
-#[derive(serde::Serialize)]
+#[derive(ToV8)]
 struct Query {
   held: Vec<QueryLock>,
   pending: Vec<QueryLock>,
 }
 
 #[op2]
-#[serde]
 pub fn op_lock_manager_query() -> Query {
   let ls = LOCK_STATE.lock().unwrap();
   let held: Vec<QueryLock> = ls
