@@ -5,6 +5,8 @@ const { core, internals, primordials } = __bootstrap;
 const {
   op_kill,
   op_node_spawn_child,
+  op_process_wait,
+  op_process_wait_open,
   op_run,
   op_run_status,
   op_spawn_child,
@@ -24,6 +26,7 @@ const {
   Uint8Array,
   TypeError,
   NumberIsFinite,
+  NumberIsInteger,
   ObjectEntries,
   SafeArrayIterator,
   String,
@@ -63,6 +66,51 @@ function opKill(pid, signo, apiName) {
 
 function kill(pid, signo = "SIGTERM") {
   opKill(pid, signo, "Deno.kill()");
+}
+
+async function processExited(pid, options = { __proto__: null }) {
+  if (typeof pid !== "number" || !NumberIsInteger(pid)) {
+    throw new TypeError(`Process ID must be an integer, received: ${pid}`);
+  }
+  const signal = options?.signal;
+  // Honor an already-aborted signal before opening the wait. `null` and
+  // `undefined` both mean "no signal", as elsewhere that AbortSignal options
+  // are accepted.
+  if (signal?.aborted) {
+    throw signal.reason;
+  }
+  const rid = op_process_wait_open(pid, "Deno.processExited()");
+  // Start the wait immediately: the op closes the resource when it settles
+  // (whether it completes or is cancelled), so once it's running the
+  // descriptor/handle can't be leaked even if the signal wiring below throws.
+  const waitPromise = op_process_wait(rid);
+  if (signal === undefined || signal === null) {
+    await waitPromise;
+    return;
+  }
+  const onAbort = () => {
+    core.tryClose(rid);
+  };
+  try {
+    // A `signal` that isn't an AbortSignal throws here; cancel the abandoned
+    // wait rather than leaving it running.
+    signal[abortSignal.add](onAbort);
+  } catch (error) {
+    core.tryClose(rid);
+    throw error;
+  }
+  try {
+    // Closing the resource on abort cancels the wait op, which rejects
+    // `waitPromise`; surface the signal's reason instead of the cancellation.
+    await waitPromise;
+  } catch (error) {
+    if (signal.aborted) {
+      throw signal.reason;
+    }
+    throw error;
+  } finally {
+    signal[abortSignal.remove](onAbort);
+  }
 }
 
 function opRunStatus(rid) {
@@ -880,6 +928,7 @@ return {
   kill,
   nodeSpawnChild,
   nodeSpawnSyncChild,
+  processExited,
   Process,
   run,
   spawn,
