@@ -253,20 +253,21 @@ interface OtelSpan {
   addEvent(
     name: string,
     startTime: number,
-  ): void;
+  ): number;
   dropEvent(): void;
   end(endTime: number): void;
 }
 
 enum SpanAttributesLocation {
   SELF = 0,
-  LAST_EVENT = 1,
-  LAST_LINK = 2,
+  EVENT = 1,
+  LINK = 2,
 }
 
 function spanAddAttributes(
   span: OtelSpan,
   attributesLocation: SpanAttributesLocation,
+  attributesTarget: number,
   attributes: Attributes,
 ) {
   const attributeKvs = ObjectEntries(attributes);
@@ -276,6 +277,7 @@ function spanAddAttributes(
       op_otel_span_attribute3(
         span,
         attributesLocation,
+        attributesTarget,
         attributeKvs[i][0],
         attributeKvs[i][1],
         attributeKvs[i + 1][0],
@@ -288,6 +290,7 @@ function spanAddAttributes(
       op_otel_span_attribute2(
         span,
         attributesLocation,
+        attributesTarget,
         attributeKvs[i][0],
         attributeKvs[i][1],
         attributeKvs[i + 1][0],
@@ -298,6 +301,7 @@ function spanAddAttributes(
       op_otel_span_attribute1(
         span,
         attributesLocation,
+        attributesTarget,
         attributeKvs[i][0],
         attributeKvs[i][1],
       );
@@ -474,14 +478,15 @@ class Span {
     }
     const startTimeMs = timeInputToMs(startTime);
 
-    this.#otelSpan.addEvent(
+    const attributesTarget = this.#otelSpan.addEvent(
       name,
       startTimeMs ?? NaN,
     );
-    if (attributes) {
+    if (attributes && attributesTarget !== 0) {
       spanAddAttributes(
         this.#otelSpan,
-        SpanAttributesLocation.LAST_EVENT,
+        SpanAttributesLocation.EVENT,
+        attributesTarget,
         attributes,
       );
     }
@@ -490,7 +495,7 @@ class Span {
 
   addLink(link: Link): this {
     if (!this.#otelSpan) return this;
-    const valid = op_otel_span_add_link(
+    const attributesTarget = op_otel_span_add_link(
       this.#otelSpan,
       link.context.traceId,
       link.context.spanId,
@@ -498,14 +503,14 @@ class Span {
       link.context.isRemote ?? false,
       link.droppedAttributesCount ?? 0,
     );
-    if (link.attributes) {
+    if (link.attributes && attributesTarget !== 0) {
       spanAddAttributes(
         this.#otelSpan,
-        SpanAttributesLocation.LAST_LINK,
+        SpanAttributesLocation.LINK,
+        attributesTarget,
         link.attributes,
       );
     }
-    if (!valid) return this;
     return this;
   }
 
@@ -558,6 +563,7 @@ class Span {
     op_otel_span_attribute1(
       this.#otelSpan,
       SpanAttributesLocation.SELF,
+      0,
       key,
       value,
     );
@@ -566,7 +572,12 @@ class Span {
 
   setAttributes(attributes: Attributes): this {
     if (!this.#otelSpan) return this;
-    spanAddAttributes(this.#otelSpan, SpanAttributesLocation.SELF, attributes);
+    spanAddAttributes(
+      this.#otelSpan,
+      SpanAttributesLocation.SELF,
+      0,
+      attributes,
+    );
     return this;
   }
 
