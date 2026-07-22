@@ -2,6 +2,8 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
+#[cfg(test)]
+use std::sync::Barrier;
 
 use socket2::Domain;
 use socket2::Protocol;
@@ -11,6 +13,37 @@ use socket2::Type;
 /// a given local address and clone its socket for us to listen on in our thread.
 static CONNS: std::sync::OnceLock<std::sync::Mutex<Connections>> =
   std::sync::OnceLock::new();
+
+#[cfg(test)]
+static DROP_BARRIER: std::sync::OnceLock<
+  std::sync::Mutex<Option<(SocketAddr, Arc<Barrier>)>>,
+> = std::sync::OnceLock::new();
+
+#[cfg(test)]
+struct DropBarrier(Option<Arc<Barrier>>);
+
+#[cfg(test)]
+impl DropBarrier {
+  fn for_key(key: SocketAddr) -> Self {
+    let barrier = DROP_BARRIER
+      .get_or_init(Default::default)
+      .lock()
+      .unwrap()
+      .as_ref()
+      .filter(|(barrier_key, _)| *barrier_key == key)
+      .map(|(_, barrier)| barrier.clone());
+    Self(barrier)
+  }
+}
+
+#[cfg(test)]
+impl Drop for DropBarrier {
+  fn drop(&mut self) {
+    if let Some(barrier) = &self.0 {
+      barrier.wait();
+    }
+  }
+}
 
 /// Maintains a map of listening address to `TcpConnection`.
 #[derive(Default)]
@@ -140,13 +173,17 @@ impl Drop for TcpListener {
   fn drop(&mut self) {
     // If we're in load-balancing mode
     if let Some(conn) = self.conn.take() {
+      #[cfg(test)]
+      // This is declared before the mutex guard so the regression test can
+      // pause after the guard is released but before an implicit `conn` drop.
+      let _drop_barrier = DropBarrier::for_key(conn.key);
       let mut tcp = CONNS.get().unwrap().lock().unwrap();
       if Arc::strong_count(&conn) == 2 {
         tcp.tcp.remove(&conn.key);
         // Close the connection
         debug_assert_eq!(Arc::strong_count(&conn), 1);
-        drop(conn);
       }
+      drop(conn);
     }
   }
 }
@@ -178,4 +215,34 @@ fn bind_socket_and_listen(
   socket.listen(backlog)?;
   let listener = socket.into();
   Ok(listener)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[tokio::test]
+  async fn concurrent_load_balanced_listener_drops_remove_connection() {
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let addr = listener.local_addr().unwrap();
+    drop(listener);
+
+    let first = TcpListener::bind_load_balanced(addr, 128).unwrap();
+    let second = TcpListener::bind_load_balanced(addr, 128).unwrap();
+
+    let barrier = Arc::new(Barrier::new(2));
+    *DROP_BARRIER.get_or_init(Default::default).lock().unwrap() =
+      Some((addr, barrier));
+
+    std::thread::scope(|scope| {
+      scope.spawn(|| drop(first));
+      scope.spawn(|| drop(second));
+    });
+
+    *DROP_BARRIER.get().unwrap().lock().unwrap() = None;
+    let retained = CONNS.get().unwrap().lock().unwrap().tcp.remove(&addr);
+    assert!(retained.is_none(), "connection remained registered");
+
+    std::net::TcpListener::bind(addr).unwrap();
+  }
 }
