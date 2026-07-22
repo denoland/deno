@@ -971,6 +971,33 @@ G1IJUv6oiGF/MvWCr84REVgc1j78xomGANJIu2hN7bnD1nEMON6em8IfnDOUtynV
 -----END CERTIFICATE-----
 `;
 
+const sanCertPem = `-----BEGIN CERTIFICATE-----
+MIIBwzCCAWmgAwIBAgIUAZF3l5HHizmYaqUZRaY3fM7TaqQwCgYIKoZIzj0EAwIw
+GjEYMBYGA1UEAwwPY24uZXhhbXBsZS50ZXN0MB4XDTI2MDcyMjE5NDMyMVoXDTM2
+MDcxOTE5NDMyMVowGjEYMBYGA1UEAwwPY24uZXhhbXBsZS50ZXN0MFkwEwYHKoZI
+zj0CAQYIKoZIzj0DAQcDQgAEdHf1iA+OMuvH9EN8W6IcTbpp/9rMl5dvdyawarmu
+SwfatSh3pPwHUfN0gJasTpZ5MD4mEKxDTWcLXbxUWSGHW6OBjDCBiTAdBgNVHQ4E
+FgQU0gM5LL6wyVEVwdSIr0Oc0hlRpoIwHwYDVR0jBBgwFoAU0gM5LL6wyVEVwdSI
+r0Oc0hlRpoIwDwYDVR0TAQH/BAUwAwEB/zA2BgNVHREELzAtghBzYW4uZXhhbXBs
+ZS50ZXN0ghMqLndpbGQuZXhhbXBsZS50ZXN0hwR/AAABMAoGCCqGSM49BAMCA0gA
+MEUCIEYSYmEPKKAIG932dtmImwEydH+bW0X1IPiSRJSaApKqAiEA7zyiMsewkZ83
+n4dxDpYQwy0m16M9/Vi8VNpVplsx6jE=
+-----END CERTIFICATE-----
+`;
+
+const ipSanCertPem = `-----BEGIN CERTIFICATE-----
+MIIBoDCCAUagAwIBAgIUA/thpHNOxdv4S0TM+/ITydpASEAwCgYIKoZIzj0EAwIw
+HTEbMBkGA1UEAwwSaXAtY24uZXhhbXBsZS50ZXN0MB4XDTI2MDcyMjE5NDY1MloX
+DTM2MDcxOTE5NDY1MlowHTEbMBkGA1UEAwwSaXAtY24uZXhhbXBsZS50ZXN0MFkw
+EwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEwrR+TUk4j6E62nekyxXugA2Ytz8gxzTu
+0vpJWTaodwAFvxkbuhRgipgDQYudYg8q3MMb4/5pJ2m3Y9SJp9YDhaNkMGIwHQYD
+VR0OBBYEFAxuEQbGQoAxsLMaEoOxwlTsQH6yMB8GA1UdIwQYMBaAFAxuEQbGQoAx
+sLMaEoOxwlTsQH6yMA8GA1UdEwEB/wQFMAMBAf8wDwYDVR0RBAgwBocEfwAAATAK
+BggqhkjOPQQDAgNIADBFAiAVfEdpBSek4dLwByCZ2Nlr0JnrWbG0o+aT183n2d/3
+RAIhALRPuXSqj6MVAWsu6rAX62D49NIvS1vu36MvJ18QhyPg
+-----END CERTIFICATE-----
+`;
+
 const x509KeyPem = `-----BEGIN RSA PRIVATE KEY-----
 MIIEpAIBAAKCAQEA1FYyCvsg04Jwk9wsQoTtBN+6vVbh3a5Snii3kM1CVtsnM0nz
 c1/9M3x6Y2Psylont/c9xwialsbYhtsMYjiPHN1qljr81ZnVgA5YehH5CJYPhO1Q
@@ -1048,6 +1075,48 @@ Deno.test("X509Certificate checkIP", function () {
   const x509 = new X509Certificate(certPem);
   assertEquals(x509.checkIP("127.0.0.1"), undefined);
   assertEquals(x509.checkIP("::"), undefined);
+});
+
+Deno.test("X509Certificate checkHost uses DNS subject alternative names", function () {
+  const x509 = new X509Certificate(sanCertPem);
+
+  // A DNS SAN takes precedence over a conflicting subject common name.
+  assertEquals(x509.checkHost("cn.example.test"), undefined);
+  assertEquals(
+    x509.checkHost("cn.example.test", { subject: "always" }),
+    "cn.example.test",
+  );
+
+  assertEquals(x509.checkHost("san.example.test"), "san.example.test");
+  assertEquals(x509.checkHost("SAN.EXAMPLE.TEST"), "san.example.test");
+  assertEquals(
+    x509.checkHost("sub.wild.example.test"),
+    "*.wild.example.test",
+  );
+  assertEquals(x509.checkHost("deep.sub.wild.example.test"), undefined);
+  assertEquals(
+    x509.checkHost("deep.sub.wild.example.test", {
+      multiLabelWildcards: true,
+    }),
+    "*.wild.example.test",
+  );
+  assertEquals(
+    x509.checkHost("sub.wild.example.test", { wildcards: false }),
+    undefined,
+  );
+
+  // IP SANs are matched by checkIP(), not checkHost().
+  assertEquals(x509.checkHost("127.0.0.1"), undefined);
+  assertEquals(x509.checkIP("127.0.0.1"), "127.0.0.1");
+
+  // A non-DNS SAN does not disable subject common-name fallback.
+  const ipSan = new X509Certificate(ipSanCertPem);
+  assertEquals(ipSan.checkHost("ip-cn.example.test"), "ip-cn.example.test");
+  assertEquals(ipSan.checkIP("127.0.0.1"), "127.0.0.1");
+
+  // With no DNS SAN, checkHost() falls back to the subject common name.
+  const commonNameOnly = new X509Certificate(certPem);
+  assertEquals(commonNameOnly.checkHost("agent1"), "agent1");
 });
 
 Deno.test("X509Certificate checkIssued", function () {
