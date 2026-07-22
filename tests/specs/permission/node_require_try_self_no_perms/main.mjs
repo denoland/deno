@@ -7,8 +7,12 @@
 // disk.
 
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 
-const parent = new URL("./selfpkg/sub/x.js", import.meta.url).pathname;
+// Use fileURLToPath rather than URL.pathname: on Windows `.pathname` yields a
+// leading-slash path like `/C:/...` that isn't a valid OS path, which makes
+// createRequire fail before it reaches op_require_try_self.
+const parent = fileURLToPath(new URL("./selfpkg/sub/x.js", import.meta.url));
 const require = createRequire(parent);
 
 try {
