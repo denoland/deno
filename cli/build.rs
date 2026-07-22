@@ -401,6 +401,25 @@ fn check_appimage_runtime_hashes() {
   }
 }
 
+fn compress_appimage_runtimes(out_dir: &Path) {
+  let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+  let output_dir = out_dir.join("appimage_runtime");
+  std::fs::create_dir_all(&output_dir).unwrap();
+
+  for (rel, _) in APPIMAGE_RUNTIME_HASHES {
+    let path = Path::new(&manifest_dir).join(rel);
+    let contents = std::fs::read(&path).unwrap();
+    let compressed = zstd::bulk::compress(&contents, 19).unwrap();
+    let mut output = Vec::with_capacity(4 + compressed.len());
+    output.extend_from_slice(&(contents.len() as u32).to_le_bytes());
+    output.extend_from_slice(&compressed);
+
+    let file_name = path.file_name().unwrap().to_string_lossy();
+    std::fs::write(output_dir.join(format!("{file_name}.zstd")), output)
+      .unwrap();
+  }
+}
+
 fn emit_dts_rerun_if_changed() {
   let dts_dir = Path::new("tsc/dts");
   for entry in std::fs::read_dir(dts_dir).unwrap() {
@@ -413,12 +432,15 @@ fn emit_dts_rerun_if_changed() {
 }
 
 fn main() {
+  let out_dir = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
+
+  check_appimage_runtime_hashes();
+  compress_appimage_runtimes(&out_dir);
+
   // Skip building from docs.rs.
   if env::var_os("DOCS_RS").is_some() {
     return;
   }
-
-  check_appimage_runtime_hashes();
 
   deno_napi::print_linker_flags("deno");
   deno_webgpu::print_linker_flags("deno");
@@ -434,8 +456,6 @@ fn main() {
 
   // To debug snapshot issues uncomment:
   // op_fetch_asset::trace_serializer();
-
-  let out_dir = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
 
   process_node_types(&out_dir);
 
