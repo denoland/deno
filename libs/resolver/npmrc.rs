@@ -136,6 +136,9 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
         project_rc.registry_configs,
         home_rc.registry_configs,
       ),
+      replace_registry_host: project_rc
+        .replace_registry_host
+        .or(home_rc.replace_registry_host),
       min_release_age_days: project_rc
         .min_release_age_days
         .or(home_rc.min_release_age_days),
@@ -259,6 +262,8 @@ pub fn create_default_npmrc(sys: &impl EnvVar) -> ResolvedNpmRc {
       },
     )]),
     registry_configs: Default::default(),
+    replace_registry_host: deno_npmrc::ReplaceRegistryHost::for_npm(sys)
+      .unwrap_or_default(),
     min_release_age_days: deno_npmrc::min_release_age_days_from_env(sys),
     trust_policy: Default::default(),
     trust_policy_ignore_after_minutes: None,
