@@ -1470,7 +1470,11 @@
     "parallel/test-fs-read-stream-file-handle.js": {},
     "parallel/test-fs-read-stream-inherit.js": {},
     "parallel/test-fs-read-stream-patch-open.js": {},
-    "parallel/test-fs-read-stream-pos.js": { "windows": false },
+    "parallel/test-fs-read-stream-pos.js": {
+      "windows": false,
+      "flaky": true,
+      "reason": "Exit is timing-probabilistic: the reader must catch the file mid-append to observe a sub-highWaterMark chunk (isLow) and then receive one more chunk before EOF. The test's own safety budget is 90s, but the node_compat runner caps each test at 10s (20s on macOS), so on a slow/loaded runner (e.g. linux-aarch64) the interleaving can fail to occur in time and the test times out (denoland/deno#36048)"
+    },
     "parallel/test-fs-read-stream-resume.js": {},
     "parallel/test-fs-read-stream-throw-type-error.js": {},
     "parallel/test-fs-read-stream.js": {},
