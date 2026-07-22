@@ -1,6 +1,27 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { assertEquals } from "./test_util.ts";
 
+// `navigator.locks` (the Web Locks API) isn't in Deno's own ambient
+// `Navigator` type yet, so type it locally rather than expanding the
+// public lib.deno.*.d.ts surface as a side effect of this test.
+declare global {
+  interface Navigator {
+    readonly locks: {
+      request<T>(
+        name: string,
+        optionsOrCallback:
+          | { mode?: "shared" | "exclusive" }
+          | ((lock: { name: string; mode: string }) => T),
+        callback?: (lock: { name: string; mode: string }) => T,
+      ): Promise<T>;
+      query(): {
+        held: Array<{ name: string; mode: string; clientId: string }>;
+        pending: Array<{ name: string; mode: string; clientId: string }>;
+      };
+    };
+  }
+}
+
 Deno.test(async function locksRequestDefaultsToExclusive() {
   const result = await navigator.locks.request(
     "web-locks-test-basic",
