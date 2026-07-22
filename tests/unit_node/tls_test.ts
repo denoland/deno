@@ -20,6 +20,9 @@ import { execCode } from "../unit/test_util.ts";
 const tlsTestdataDir = fromFileUrl(
   new URL("../testdata/tls", import.meta.url),
 );
+const nodeCompatKeysDir = fromFileUrl(
+  new URL("../node_compat/runner/suite/test/fixtures/keys", import.meta.url),
+);
 const key = Deno.readTextFileSync(join(tlsTestdataDir, "localhost.key"));
 const cert = Deno.readTextFileSync(join(tlsTestdataDir, "localhost.crt"));
 const rootCaCert = Deno.readTextFileSync(join(tlsTestdataDir, "RootCA.pem"));
@@ -798,6 +801,47 @@ Deno.test("mTLS client certificate authentication", async () => {
   assertEquals(result, "mTLS success!");
   server.close();
   await new Promise<void>((resolve) => server.on("close", resolve));
+});
+
+Deno.test("tls.connect rejects X.509v1 server certs with custom CA", async () => {
+  const v1Key = Deno.readTextFileSync(
+    join(nodeCompatKeysDir, "agent3-key.pem"),
+  );
+  const v1Cert = Deno.readTextFileSync(
+    join(nodeCompatKeysDir, "agent3-cert.pem"),
+  );
+  const v1Ca = Deno.readTextFileSync(join(nodeCompatKeysDir, "ca2-cert.pem"));
+
+  const server = tls.createServer({ key: v1Key, cert: v1Cert }, (socket) => {
+    socket.end("unexpected");
+  });
+  server.on("tlsClientError", () => {});
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  try {
+    const port = (server.address() as net.AddressInfo).port;
+    const error = await new Promise<Error>((resolve, reject) => {
+      const client = tls.connect({
+        host: "localhost",
+        servername: "agent3",
+        port,
+        ca: v1Ca,
+      });
+      client.on("secureConnect", () => {
+        client.destroy();
+        reject(new Error("unexpectedly accepted X.509v1 server cert"));
+      });
+      client.on("error", resolve);
+    });
+
+    assertEquals(
+      (error as Error & { code?: string }).code,
+      "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+    );
+  } finally {
+    server.close();
+    await new Promise<void>((resolve) => server.on("close", resolve));
+  }
 });
 
 Deno.test(

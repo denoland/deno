@@ -3347,36 +3347,12 @@ fn cipher_suite_to_names(
   }
 }
 
-/// Filter out UnsupportedCertVersion errors from signature verification.
-/// OpenSSL accepts X.509v1 certificates, but webpki/rustls rejects them.
-/// Since Node uses OpenSSL, we need to allow these through.
-fn filter_unsupported_cert_version(
-  result: Result<
-    rustls::client::danger::HandshakeSignatureValid,
-    rustls::Error,
-  >,
-) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
-  match result {
-    Err(rustls::Error::InvalidCertificate(
-      rustls::CertificateError::Other(ref other),
-    )) if other
-      .0
-      .downcast_ref::<webpki::Error>()
-      .is_some_and(|e| matches!(e, webpki::Error::UnsupportedCertVersion)) =>
-    {
-      Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
-    }
-    Err(rustls::Error::InvalidCertificate(
-      rustls::CertificateError::BadEncoding,
-    )) => Ok(rustls::client::danger::HandshakeSignatureValid::assertion()),
-    other => other,
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Minimal DER helpers for chain verification of X.509v1 certificates.
-// webpki rejects v1 certs at parse time, so we do structural chain
-// checking ourselves (issuer/subject matching).
+// These helpers are only used to produce Node/OpenSSL-like verification
+// error codes for chains webpki cannot build. They must not be used to
+// accept a chain because issuer/subject matching is not cryptographic
+// signature verification.
 // ---------------------------------------------------------------------------
 
 /// Read a DER tag-length-value element, returning (full element, remainder).
@@ -3562,6 +3538,19 @@ fn cert_error_to_node_code(err: &rustls::CertificateError) -> &'static str {
   }
 }
 
+fn is_unsupported_cert_version_or_bad_encoding(
+  cert_error: &rustls::CertificateError,
+) -> bool {
+  matches!(cert_error, rustls::CertificateError::BadEncoding)
+    || matches!(
+      cert_error,
+      rustls::CertificateError::Other(other) if other
+        .0
+        .downcast_ref::<webpki::Error>()
+        .is_some_and(|e| matches!(e, webpki::Error::UnsupportedCertVersion))
+    )
+}
+
 impl NodeServerCertVerifier {
   /// In strict mode (`rejectUnauthorized: true`), return Err so rustls
   /// aborts the handshake before any session is cached. In lenient mode,
@@ -3630,44 +3619,24 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
         ) {
           return Ok(rustls::client::danger::ServerCertVerified::assertion());
         }
-        // OpenSSL accepts X.509v1 certificates; webpki rejects them with
-        // `UnsupportedCertVersion` or sometimes `BadEncoding`. We can't
-        // simply accept: that would skip chain verification entirely.
-        // Instead, do structural chain checking (issuer/subject matching)
-        // so that v1 certs with a valid chain are accepted while broken
-        // chains still produce the correct Node/OpenSSL error.
-        let is_v1_error = matches!(
-          cert_error,
-          rustls::CertificateError::BadEncoding
-        ) || matches!(
-          cert_error,
-          rustls::CertificateError::Other(other) if other
-            .0
-            .downcast_ref::<webpki::Error>()
-            .is_some_and(|e| matches!(e, webpki::Error::UnsupportedCertVersion))
-        );
-        if is_v1_error {
-          match verify_chain_structure(
+        // OpenSSL can handle X.509v1 certificates, but webpki/rustls cannot.
+        // Issuer/subject structure alone is not enough to prove that a
+        // certificate was signed by a trusted issuer, and signature
+        // verification also cannot proceed when the certificate cannot be
+        // parsed. Record a Node-style error code, but never treat this as a
+        // verified chain.
+        if is_unsupported_cert_version_or_bad_encoding(cert_error) {
+          let code = verify_chain_structure(
             end_entity.as_ref(),
             intermediates,
             &self.root_cert_ders,
-          ) {
-            Ok(()) => {
-              // Chain is structurally valid -- accept.
-              return Ok(
-                rustls::client::danger::ServerCertVerified::assertion(),
-              );
-            }
-            Err(code) => {
-              // Chain is broken -- in strict mode fail the handshake so
-              // rustls doesn't cache a resumable session; in lenient mode
-              // store the error for JS to surface as authorizationError.
-              return self.record_or_fail(
-                rustls::Error::InvalidCertificate(cert_error.clone()),
-                code.to_string(),
-              );
-            }
-          }
+          )
+          .err()
+          .unwrap_or("UNABLE_TO_VERIFY_LEAF_SIGNATURE");
+          return self.record_or_fail(
+            rustls::Error::InvalidCertificate(cert_error.clone()),
+            code.to_string(),
+          );
         }
         if matches!(cert_error, rustls::CertificateError::UnknownIssuer) {
           let code = verify_chain_structure(
@@ -3719,9 +3688,7 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
     dss: &rustls::DigitallySignedStruct,
   ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error>
   {
-    filter_unsupported_cert_version(
-      self.inner.verify_tls12_signature(message, cert, dss),
-    )
+    self.inner.verify_tls12_signature(message, cert, dss)
   }
 
   fn verify_tls13_signature(
@@ -3731,9 +3698,7 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
     dss: &rustls::DigitallySignedStruct,
   ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error>
   {
-    filter_unsupported_cert_version(
-      self.inner.verify_tls13_signature(message, cert, dss),
-    )
+    self.inner.verify_tls13_signature(message, cert, dss)
   }
 
   fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
