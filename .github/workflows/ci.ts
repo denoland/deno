@@ -969,11 +969,11 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 // `-Wl,-z,stacksize` sets the ELF PT_GNU_STACK size, which
                 // musl uses as the default thread stack size. musl's default
                 // (128 KiB) is far smaller than glibc's (8 MiB) and overflows
-                // during V8 snapshot creation in the build scripts (SIGSEGV),
-                // so raise it to 16 MiB. Applies to the build-script binaries
-                // too, since host == target here.
-                'echo "RUSTFLAGS=-C target-feature=-crt-static -C linker=clang -C link-arg=-fuse-ld=lld -C link-arg=-Wl,-z,stacksize=16777216 --cfg tokio_unstable" >> $GITHUB_ENV',
-                'echo "RUSTDOCFLAGS=-C target-feature=-crt-static -C linker=clang -C link-arg=-fuse-ld=lld -C link-arg=-Wl,-z,stacksize=16777216 --cfg tokio_unstable" >> $GITHUB_ENV',
+                // in the V8-linking build scripts (intermittent SIGSEGV), so
+                // raise it to 128 MiB for ample margin. Applies to the
+                // build-script binaries too, since host == target here.
+                'echo "RUSTFLAGS=-C target-feature=-crt-static -C linker=clang -C link-arg=-fuse-ld=lld -C link-arg=-Wl,-z,stacksize=134217728 --cfg tokio_unstable" >> $GITHUB_ENV',
+                'echo "RUSTDOCFLAGS=-C target-feature=-crt-static -C linker=clang -C link-arg=-fuse-ld=lld -C link-arg=-Wl,-z,stacksize=134217728 --cfg tokio_unstable" >> $GITHUB_ENV',
                 // Use Alpine's native gcc/g++ for C/C++ dependencies (e.g.
                 // aws-lc-sys). They target musl directly and know where their
                 // crt objects and libgcc live; clang, invoked by the cc crate

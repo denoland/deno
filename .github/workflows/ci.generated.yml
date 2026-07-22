@@ -7362,8 +7362,8 @@ jobs:
       - name: Set up musl build environment
         if: github.repository == 'denoland/deno'
         run: |-
-          echo "RUSTFLAGS=-C target-feature=-crt-static -C linker=clang -C link-arg=-fuse-ld=lld -C link-arg=-Wl,-z,stacksize=16777216 --cfg tokio_unstable" >> $GITHUB_ENV
-          echo "RUSTDOCFLAGS=-C target-feature=-crt-static -C linker=clang -C link-arg=-fuse-ld=lld -C link-arg=-Wl,-z,stacksize=16777216 --cfg tokio_unstable" >> $GITHUB_ENV
+          echo "RUSTFLAGS=-C target-feature=-crt-static -C linker=clang -C link-arg=-fuse-ld=lld -C link-arg=-Wl,-z,stacksize=134217728 --cfg tokio_unstable" >> $GITHUB_ENV
+          echo "RUSTDOCFLAGS=-C target-feature=-crt-static -C linker=clang -C link-arg=-fuse-ld=lld -C link-arg=-Wl,-z,stacksize=134217728 --cfg tokio_unstable" >> $GITHUB_ENV
           echo "CC=gcc" >> $GITHUB_ENV
           echo "CXX=g++" >> $GITHUB_ENV
           echo "LIBCLANG_PATH=/usr/lib" >> $GITHUB_ENV
