@@ -193,12 +193,16 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
         return Err(JsErrorBox::generic("Tarball URL was empty."));
       }
 
+      let tarball_uri = Url::parse(&dist.tarball).map_err(JsErrorBox::from_err)?;
+      let tarball_uri = tarball_cache
+        .npmrc
+        .replace_tarball_url(tarball_uri, &package_nv.name);
+
       // IMPORTANT: npm registries may specify tarball URLs at different URLS than the
       // registry, so we MUST get the auth for the tarball URL and not the registry URL.
       // When the tarball path doesn't match a configured auth scope, fall back to the
       // package's scoped registry auth if the tarball is on the same origin (e.g. GitLab
       // instance-level registries serve tarballs from a different path than the registry).
-      let tarball_uri = Url::parse(&dist.tarball).map_err(JsErrorBox::from_err)?;
       let maybe_registry_config = tarball_cache.npmrc.tarball_config_for_package(&tarball_uri, &package_nv.name);
       let maybe_auth_header = maybe_registry_config.and_then(|c| maybe_auth_header_value_for_npm_registry(c).ok()?);
 
@@ -206,6 +210,11 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
         reporter.download_started(&package_nv);
 
       }
+      // The URL we actually download from (post-relocation). Reported in the
+      // error paths below so they point at the registry Deno really contacted
+      // rather than the original `dist.tarball`, which may have been relocated
+      // away from `registry.npmjs.org`.
+      let fetched_tarball_url = tarball_uri.to_string();
       let result = tarball_cache.http_client
         .download_with_retries_on_any_tokio_runtime(tarball_uri, maybe_auth_header, None, maybe_registry_config.map(|c| c.as_ref()))
         .await;
@@ -231,7 +240,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
         },
         Err(err) => {
           if err.status_code == Some(401) && scoped_registry_has_auth {
-            return Err(scoped_registry_auth_error(&dist.tarball, registry_url));
+            return Err(scoped_registry_auth_error(&fetched_tarball_url, registry_url));
           }
           return Err(JsErrorBox::from_err(err))
         },
@@ -283,9 +292,9 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
           // A 404 lands here (mapped to `NotFound`), so the 401 check above is
           // bypassed -- surface the auth hint here too when applicable.
           if scoped_registry_has_auth {
-            return Err(scoped_registry_auth_error(&dist.tarball, registry_url));
+            return Err(scoped_registry_auth_error(&fetched_tarball_url, registry_url));
           }
-          Err(JsErrorBox::generic(format!("Could not find npm package tarball at: {}", dist.tarball)))
+          Err(JsErrorBox::generic(format!("Could not find npm package tarball at: {}", fetched_tarball_url)))
         }
       }
     }

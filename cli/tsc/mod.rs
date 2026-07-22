@@ -48,6 +48,8 @@ use crate::sys::CliSys;
 use crate::util::path::mapped_specifier_for_tsc;
 
 mod diagnostics;
+pub mod native;
+pub mod tsconfig_gen;
 
 pub use self::diagnostics::Diagnostic;
 pub use self::diagnostics::DiagnosticCategory;
@@ -56,7 +58,7 @@ pub use self::diagnostics::Position;
 pub use self::js::TscConstants;
 
 pub fn get_types_declaration_file_text() -> String {
-  let lib_names = vec![
+  concat_lib_texts(&[
     "deno.ns",
     "deno.console",
     "deno.url",
@@ -74,10 +76,20 @@ pub fn get_types_declaration_file_text() -> String {
     "esnext.temporal",
     "deno.window",
     "deno.unstable",
-  ];
+  ])
+}
 
+/// The `Deno` namespace only, without Deno's web-platform globals (`fetch`,
+/// `FormData`, `console`, WebGPU, ...). For projects that opt into the `dom`
+/// lib those globals come from `dom` instead, and including Deno's copies too
+/// collides. Mirrors the userland `"lib": ["deno.ns", "dom"]` pattern.
+pub fn get_deno_ns_declaration_file_text() -> String {
+  concat_lib_texts(&["deno.ns", "deno.net"])
+}
+
+fn concat_lib_texts(lib_names: &[&str]) -> String {
   lib_names
-    .into_iter()
+    .iter()
     .map(|name| {
       let lib_name = format!("lib.{name}.d.ts");
       LAZILY_LOADED_STATIC_ASSETS
@@ -962,12 +974,6 @@ pub fn exec(
         remapped_specifiers.insert(specifier_str.clone(), s.clone());
         specifier_str
       }
-      // "file" if tsgo => {
-      //   let specifier_str = s.to_string();
-      //   let out = specifier_str.strip_prefix("file://").unwrap().to_string();
-      //   remapped_specifiers.insert(out.to_string(), s.clone());
-      //   out
-      // }
       _ => {
         if let Some(new_specifier) = mapped_specifier_for_tsc(s, *mt) {
           root_map.insert(new_specifier.clone(), s.clone());

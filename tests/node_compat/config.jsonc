@@ -289,10 +289,7 @@
     "parallel/test-buffer-from.js": {},
     "parallel/test-buffer-generic-methods.js": {},
     "parallel/test-buffer-includes.js": {},
-    "parallel/test-buffer-indexof.js": {
-      "ignore": true,
-      "reason": "Node 26 added a byteLength/length parameter to Buffer.indexOf/lastIndexOf/includes not yet implemented"
-    },
+    "parallel/test-buffer-indexof.js": {},
     "parallel/test-buffer-inheritance.js": {},
     "parallel/test-buffer-inspect.js": {},
     "parallel/test-buffer-isascii.js": {},
@@ -1085,7 +1082,6 @@
     "parallel/test-dns-resolveany-bad-ancount.js": {},
     "parallel/test-dns-resolvens-typeerror.js": {},
     "parallel/test-dns-resolver-max-timeout.js": {
-      "flaky": true,
       "windows": false // incredibly flaky in CI
     },
     "parallel/test-dns-resolvesrv.js": {},
@@ -2177,6 +2173,7 @@
     "parallel/test-http2-server-shutdown-redundant.js": {},
     "parallel/test-http2-server-startup.js": {},
     "parallel/test-http2-server-timeout.js": {},
+    "parallel/test-http2-session-cleanup-on-nghttp2-goaway.js": {},
     "parallel/test-http2-session-graceful-close.js": {},
     "parallel/test-http2-session-settings.js": {},
     "parallel/test-http2-session-stream-state.js": {},
@@ -3343,12 +3340,14 @@
     "parallel/test-socket-write-after-fin.js": {},
     "parallel/test-sqlite-aggregate-function.mjs": {},
     "parallel/test-sqlite-authz.js": {},
+    "parallel/test-sqlite-backup.mjs": {},
     "parallel/test-sqlite-config.js": {},
     "parallel/test-sqlite-custom-functions.js": {},
     "parallel/test-sqlite-data-types.js": {},
     "parallel/test-sqlite-database-sync.js": {},
     "parallel/test-sqlite-limits.js": {},
     "parallel/test-sqlite-named-parameters.js": {},
+    "parallel/test-sqlite-serialize.js": {},
     "parallel/test-sqlite-session.js": {
       "ignore": true,
       "reason": "malformed-changeset subtest crashes in the shared SQLite; Node skips it unless using its bundled SQLite session fix (node_shared_sqlite)"
@@ -3409,10 +3408,7 @@
     "parallel/test-stream-duplex-readable-end.js": {},
     "parallel/test-stream-duplex-readable-writable.js": {},
     "parallel/test-stream-duplex-writable-finished.js": {},
-    "parallel/test-stream-duplex.js": {
-      "ignore": true,
-      "reason": "Requires the new Node 26 DEP0201 deprecation warning for Duplex.toWeb({ type }) which Deno does not emit"
-    },
+    "parallel/test-stream-duplex.js": {},
     "parallel/test-stream-duplexpair.js": {},
     "parallel/test-stream-end-of-streams.js": {},
     "parallel/test-stream-end-paused.js": {},
@@ -4032,6 +4028,7 @@
     "parallel/test-webstreams-adapters-sync-write-error.js": {},
     "parallel/test-webstreams-compose.js": {},
     "parallel/test-webstreams-decompression-reject-trailing.js": {},
+    "parallel/test-webstreams-duplex-fromweb-writev-unhandled-rejection.js": {},
     "parallel/test-webstreams-finished.js": {},
     "parallel/test-webstreams-pipeline.js": {},
     "parallel/test-whatwg-encoding-custom-api-basics.js": {},

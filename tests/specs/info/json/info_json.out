@@ -7,5 +7,5 @@
   "typescriptCache": "[WILDCARD]gen",
   "registryCache": "[WILDCARD]registries",
   "originStorage": "[WILDCARD]location_data",
-  "webCacheStorage": [WILDCARD]deno_cache"
+  "webCacheStorage": [WILDCARD]location_data[WILDCARD]web_cache"
 }

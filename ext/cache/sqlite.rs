@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::future::poll_fn;
+use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -43,6 +44,49 @@ enum Mode {
   InMemory,
 }
 
+#[allow(
+  clippy::disallowed_methods,
+  reason = "cache storage manages its own directory"
+)]
+fn create_cache_storage_dir(
+  cache_storage_dir: &Path,
+) -> Result<(), CacheError> {
+  if let Ok(metadata) = std::fs::symlink_metadata(cache_storage_dir)
+    && metadata.file_type().is_symlink()
+  {
+    return Err(CacheError::CacheStorageDirectory {
+      dir: cache_storage_dir.to_path_buf(),
+      source: std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        "cache storage directory must not be a symlink",
+      ),
+    });
+  }
+
+  std::fs::create_dir_all(cache_storage_dir).map_err(|source| {
+    CacheError::CacheStorageDirectory {
+      dir: cache_storage_dir.to_path_buf(),
+      source,
+    }
+  })?;
+
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+
+    std::fs::set_permissions(
+      cache_storage_dir,
+      std::fs::Permissions::from_mode(0o700),
+    )
+    .map_err(|source| CacheError::CacheStorageDirectory {
+      dir: cache_storage_dir.to_path_buf(),
+      source,
+    })?;
+  }
+
+  Ok(())
+}
+
 impl SqliteBackedCache {
   pub fn new(cache_storage_dir: PathBuf) -> Result<Self, CacheError> {
     let mode = match std::env::var("DENO_CACHE_DB_MODE")
@@ -61,16 +105,7 @@ impl SqliteBackedCache {
       rusqlite::Connection::open_in_memory()
         .unwrap_or_else(|_| panic!("failed to open in-memory cache db"))
     } else {
-      #[allow(
-        clippy::disallowed_methods,
-        reason = "cache storage manages its own directory"
-      )]
-      std::fs::create_dir_all(&cache_storage_dir).map_err(|source| {
-        CacheError::CacheStorageDirectory {
-          dir: cache_storage_dir.clone(),
-          source,
-        }
-      })?;
+      create_cache_storage_dir(&cache_storage_dir)?;
 
       let path = cache_storage_dir.join("cache_metadata.db");
       let connection = rusqlite::Connection::open(&path).unwrap_or_else(|_| {
@@ -475,4 +510,52 @@ impl deno_core::Resource for SqliteBackedCache {
 pub fn hash(token: &str) -> String {
   use sha2::Digest;
   format!("{:x}", sha2::Sha256::digest(token.as_bytes()))
+}
+
+#[cfg(all(test, unix))]
+#[allow(
+  clippy::disallowed_methods,
+  reason = "tests control their own temporary filesystem state"
+)]
+mod tests {
+  use std::os::unix::fs::PermissionsExt;
+  use std::os::unix::fs::symlink;
+
+  use super::*;
+
+  #[test]
+  fn cache_storage_dir_rejects_symlink() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let target_dir = temp_dir.path().join("target");
+    let cache_storage_dir = temp_dir.path().join("cache");
+    std::fs::create_dir(&target_dir).unwrap();
+    symlink(&target_dir, &cache_storage_dir).unwrap();
+
+    let error = create_cache_storage_dir(&cache_storage_dir).unwrap_err();
+    let CacheError::CacheStorageDirectory { dir, source } = error else {
+      panic!("unexpected cache directory error");
+    };
+    assert_eq!(dir, cache_storage_dir);
+    assert_eq!(source.kind(), std::io::ErrorKind::InvalidInput);
+  }
+
+  #[test]
+  fn cache_storage_dir_has_private_permissions() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let cache_storage_dir = temp_dir.path().join("cache");
+    std::fs::create_dir(&cache_storage_dir).unwrap();
+    std::fs::set_permissions(
+      &cache_storage_dir,
+      std::fs::Permissions::from_mode(0o777),
+    )
+    .unwrap();
+
+    create_cache_storage_dir(&cache_storage_dir).unwrap();
+
+    let mode = std::fs::metadata(&cache_storage_dir)
+      .unwrap()
+      .permissions()
+      .mode();
+    assert_eq!(mode & 0o777, 0o700);
+  }
 }
