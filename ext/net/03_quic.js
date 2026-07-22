@@ -1,5 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 import {
   op_quic_connecting_0rtt,
   op_quic_connecting_1rtt,
@@ -53,6 +53,12 @@ const {
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
   ReflectConstruct,
+  SafeSet,
+  SetPrototypeAdd,
+  SetPrototypeClear,
+  SetPrototypeDelete,
+  SetPrototypeForEach,
+  SetPrototypeGetSize,
   Symbol,
   SymbolAsyncIterator,
 } = primordials;
@@ -61,6 +67,46 @@ let getEndpointResource;
 
 function promiseFinallyWithoutUnhandled(p, f) {
   return PromisePrototypeThen(p, f, f);
+}
+
+class QuicStreamResourceTracker {
+  #closed = false;
+  #resources = new SafeSet();
+
+  constructor(closed) {
+    // A connection owns all of its active stream resources. Keeping one
+    // connection-close handler lets completed streams release that ownership.
+    promiseFinallyWithoutUnhandled(closed, () => {
+      this.#closed = true;
+      SetPrototypeForEach(this.#resources, (rid) => core.tryClose(rid));
+      SetPrototypeClear(this.#resources);
+    });
+  }
+
+  track(rid) {
+    if (this.#closed) {
+      core.tryClose(rid);
+      return () => {};
+    }
+
+    SetPrototypeAdd(this.#resources, rid);
+    let resources = this.#resources;
+    return () => {
+      if (resources !== undefined) {
+        SetPrototypeDelete(resources, rid);
+        resources = undefined;
+      }
+    };
+  }
+
+  release(rid) {
+    SetPrototypeDelete(this.#resources, rid);
+    core.tryClose(rid);
+  }
+
+  get size() {
+    return SetPrototypeGetSize(this.#resources);
+  }
 }
 
 function transportOptions({
@@ -213,6 +259,7 @@ class QuicIncoming {
 
 let webtransportConnect;
 let webtransportAccept;
+let getQuicStreamResourceCount;
 
 class QuicConn {
   #resource;
@@ -221,6 +268,7 @@ class QuicConn {
   #closed;
   #handshake;
   #endpoint;
+  #streamResources;
 
   constructor(resource, endpoint) {
     this.#resource = resource;
@@ -228,6 +276,7 @@ class QuicConn {
 
     this.#closed = op_quic_connection_closed(this.#resource);
     core.unrefOpPromise(this.#closed);
+    this.#streamResources = new QuicStreamResourceTracker(this.#closed);
   }
 
   get endpoint() {
@@ -253,10 +302,20 @@ class QuicConn {
       this.#resource,
       waitUntilAvailable ?? false,
     );
-    if (sendOrder !== null && sendOrder !== undefined) {
-      op_quic_send_stream_set_priority(txRid, sendOrder);
+    try {
+      if (sendOrder !== null && sendOrder !== undefined) {
+        op_quic_send_stream_set_priority(txRid, sendOrder);
+      }
+      return new QuicBidirectionalStream(
+        txRid,
+        rxRid,
+        this.#streamResources,
+      );
+    } catch (error) {
+      this.#streamResources.release(txRid);
+      this.#streamResources.release(rxRid);
+      throw error;
     }
-    return new QuicBidirectionalStream(txRid, rxRid, this.#closed);
   }
 
   async createUnidirectionalStream(
@@ -266,16 +325,21 @@ class QuicConn {
       this.#resource,
       waitUntilAvailable ?? false,
     );
-    if (sendOrder !== null && sendOrder !== undefined) {
-      op_quic_send_stream_set_priority(rid, sendOrder);
+    try {
+      if (sendOrder !== null && sendOrder !== undefined) {
+        op_quic_send_stream_set_priority(rid, sendOrder);
+      }
+      return writableStream(rid, this.#streamResources);
+    } catch (error) {
+      this.#streamResources.release(rid);
+      throw error;
     }
-    return writableStream(rid, this.#closed);
   }
 
   get incomingBidirectionalStreams() {
     if (this.#bidiStream === null) {
       this.#bidiStream = ReadableStream.from(
-        bidiStream(this.#resource, this.#closed),
+        bidiStream(this.#resource, this.#streamResources),
       );
     }
     return this.#bidiStream;
@@ -284,7 +348,7 @@ class QuicConn {
   get incomingUnidirectionalStreams() {
     if (this.#uniStream === null) {
       this.#uniStream = ReadableStream.from(
-        uniStream(this.#resource, this.#closed),
+        uniStream(this.#resource, this.#streamResources),
       );
     }
     return this.#uniStream;
@@ -320,6 +384,8 @@ class QuicConn {
   }
 
   static {
+    getQuicStreamResourceCount = (conn) => conn.#streamResources.size;
+
     webtransportConnect = async function webtransportConnect(conn, url) {
       const {
         0: connectTxRid,
@@ -327,14 +393,28 @@ class QuicConn {
         2: settingsTxRid,
         3: settingsRxRid,
       } = await op_webtransport_connect(conn.#resource, url);
-      const connect = new QuicBidirectionalStream(
-        connectTxRid,
-        connectRxRid,
-        conn.closed,
-      );
-      const settingsTx = writableStream(settingsTxRid, conn.closed);
-      const settingsRx = readableStream(settingsRxRid, conn.closed);
-      return { connect, settingsTx, settingsRx };
+      try {
+        const connect = new QuicBidirectionalStream(
+          connectTxRid,
+          connectRxRid,
+          conn.#streamResources,
+        );
+        const settingsTx = writableStream(
+          settingsTxRid,
+          conn.#streamResources,
+        );
+        const settingsRx = readableStream(
+          settingsRxRid,
+          conn.#streamResources,
+        );
+        return { connect, settingsTx, settingsRx };
+      } catch (error) {
+        conn.#streamResources.release(connectTxRid);
+        conn.#streamResources.release(connectRxRid);
+        conn.#streamResources.release(settingsTxRid);
+        conn.#streamResources.release(settingsRxRid);
+        throw error;
+      }
     };
 
     webtransportAccept = async function webtransportAccept(conn) {
@@ -345,14 +425,28 @@ class QuicConn {
         3: settingsTxRid,
         4: settingsRxRid,
       } = await op_webtransport_accept(conn.#resource);
-      const connect = new QuicBidirectionalStream(
-        connectTxRid,
-        connectRxRid,
-        conn.closed,
-      );
-      const settingsTx = writableStream(settingsTxRid, conn.closed);
-      const settingsRx = readableStream(settingsRxRid, conn.closed);
-      return { url, connect, settingsTx, settingsRx };
+      try {
+        const connect = new QuicBidirectionalStream(
+          connectTxRid,
+          connectRxRid,
+          conn.#streamResources,
+        );
+        const settingsTx = writableStream(
+          settingsTxRid,
+          conn.#streamResources,
+        );
+        const settingsRx = readableStream(
+          settingsRxRid,
+          conn.#streamResources,
+        );
+        return { url, connect, settingsTx, settingsRx };
+      } catch (error) {
+        conn.#streamResources.release(connectTxRid);
+        conn.#streamResources.release(connectRxRid);
+        conn.#streamResources.release(settingsTxRid);
+        conn.#streamResources.release(settingsRxRid);
+        throw error;
+      }
     };
   }
 }
@@ -386,37 +480,50 @@ class QuicReceiveStream extends ReadableStream {
   }
 }
 
-function readableStream(rid, closed) {
-  // stream can be indirectly closed by closing connection.
-  promiseFinallyWithoutUnhandled(closed, () => {
-    core.tryClose(rid);
-  });
-  return readableStreamForRid(
-    rid,
-    true,
-    (...args) => ReflectConstruct(QuicReceiveStream, args),
-  );
+function readableStream(rid, resources) {
+  const onClose = resources.track(rid);
+  try {
+    return readableStreamForRid(
+      rid,
+      true,
+      (...args) => ReflectConstruct(QuicReceiveStream, args),
+      undefined,
+      onClose,
+    );
+  } catch (error) {
+    resources.release(rid);
+    throw error;
+  }
 }
 
-function writableStream(rid, closed) {
-  // stream can be indirectly closed by closing connection.
-  promiseFinallyWithoutUnhandled(closed, () => {
-    core.tryClose(rid);
-  });
-  return writableStreamForRid(
-    rid,
-    true,
-    (...args) => ReflectConstruct(QuicSendStream, args),
-  );
+function writableStream(rid, resources) {
+  const onClose = resources.track(rid);
+  try {
+    return writableStreamForRid(
+      rid,
+      true,
+      (...args) => ReflectConstruct(QuicSendStream, args),
+      { __proto__: null, onClose },
+    );
+  } catch (error) {
+    resources.release(rid);
+    throw error;
+  }
 }
 
 class QuicBidirectionalStream {
   #readable;
   #writable;
 
-  constructor(txRid, rxRid, closed) {
-    this.#readable = readableStream(rxRid, closed);
-    this.#writable = writableStream(txRid, closed);
+  constructor(txRid, rxRid, resources) {
+    try {
+      this.#readable = readableStream(rxRid, resources);
+      this.#writable = writableStream(txRid, resources);
+    } catch (error) {
+      resources.release(txRid);
+      resources.release(rxRid);
+      throw error;
+    }
   }
 
   get readable() {
@@ -428,11 +535,11 @@ class QuicBidirectionalStream {
   }
 }
 
-async function* bidiStream(conn, closed) {
+async function* bidiStream(conn, resources) {
   try {
     while (true) {
       const r = await op_quic_connection_accept_bi(conn);
-      yield new QuicBidirectionalStream(r[0], r[1], closed);
+      yield new QuicBidirectionalStream(r[0], r[1], resources);
     }
   } catch (error) {
     if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
@@ -442,11 +549,11 @@ async function* bidiStream(conn, closed) {
   }
 }
 
-async function* uniStream(conn, closed) {
+async function* uniStream(conn, resources) {
   try {
     while (true) {
       const uniRid = await op_quic_connection_accept_uni(conn);
-      yield readableStream(uniRid, closed);
+      yield readableStream(uniRid, resources);
     }
   } catch (error) {
     if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
@@ -493,6 +600,8 @@ function connectQuic(options) {
     (conn) => new QuicConn(conn, endpoint),
   );
 }
+
+internals.getQuicStreamResourceCount = getQuicStreamResourceCount;
 
 export {
   connectQuic,
