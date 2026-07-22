@@ -2303,6 +2303,7 @@ dependencies = [
  "twox-hash 2.1.2",
  "unicycle",
  "url",
+ "uuid",
  "v8",
  "wasm_dep_analyzer",
  "windows-sys 0.59.0",

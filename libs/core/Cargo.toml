@@ -59,6 +59,7 @@ sys_traits = { workspace = true, features = ["real"] }
 thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
+uuid.workspace = true
 v8.workspace = true
 wasm_dep_analyzer = "0.4.0"
 
