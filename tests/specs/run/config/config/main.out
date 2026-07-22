@@ -1,0 +1,4 @@
+[WILDCARD]Unsupported compiler options in "[WILDCARD]config.json".
+  The following options were ignored:
+    module, target
+Check [WILDCARD]main.ts

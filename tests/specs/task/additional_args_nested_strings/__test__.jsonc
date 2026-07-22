@@ -1,0 +1,4 @@
+{
+  "args": "task -q --config deno.json echo string \"quoted string\"",
+  "output": "task_additional_args_nested_strings.out"
+}

@@ -1,0 +1,7 @@
+error: Uncaught (in promise) TypeError: Deno.bundle is not a function
+Deno.bundle();
+     ^
+    at [WILDCARD]bundle.ts:1:6
+
+    info: Deno.bundle() is an unstable API.
+    hint: Run again with `--unstable-bundle` flag to enable this API.

@@ -1,0 +1,12 @@
+{
+  "name": "@denotest/non-existent-optional-peer",
+  "version": "1.0.0",
+  "peerDependencies": {
+    "uWebSockets.js": "*"
+  },
+  "peerDependenciesMeta": {
+    "uWebSockets.js": {
+      "optional": true
+    }
+  }
+}

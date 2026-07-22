@@ -1,0 +1,30 @@
+{
+  "tests": {
+    "not_in_deps": {
+      "steps": [{
+        "args": "run -A --quiet npm:cowsay moo",
+        "output": "not_in_deps.out"
+      }, {
+        // ensure it doesn't make any lockfile modifications and thus doesn't write to the lockfile
+        "args": [
+          "eval",
+          "try { Deno.statSync('deno.lock') } catch (e) { console.log(e instanceof Deno.errors.NotFound); }"
+        ],
+        "output": "true\n"
+      }]
+    },
+    "in_deps": {
+      "tempDir": true,
+      "steps": [{
+        "args": "install npm:cowsay",
+        "output": "[WILDCARD]"
+      }, {
+        "args": "run --allow-write overwrite.ts",
+        "output": "[WILDCARD]"
+      }, {
+        "args": "run -A npm:cowsay moo",
+        "output": "replaced\n"
+      }]
+    }
+  }
+}

@@ -1,0 +1,764 @@
+// Copyright 2018-2026 the Deno authors. MIT license.
+
+use std::io;
+use std::rc::Rc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicUsize;
+
+use deno_core::AsyncRefCell;
+use deno_core::CancelHandle;
+use deno_core::ExternalOpsTracker;
+use deno_core::RcRef;
+use deno_core::serde_json;
+use deno_io::BiPipe;
+use deno_io::BiPipeRead;
+use deno_io::BiPipeWrite;
+use memchr::memchr;
+use tokio::io::AsyncWriteExt;
+
+#[cfg(unix)]
+type ReceivedRawFd = std::os::fd::OwnedFd;
+
+#[cfg(not(unix))]
+type ReceivedRawFd = i32;
+
+#[cfg(unix)]
+fn into_raw_fd_i32(fd: ReceivedRawFd) -> i32 {
+  use std::os::fd::IntoRawFd;
+  fd.into_raw_fd()
+}
+
+#[cfg(not(unix))]
+fn into_raw_fd_i32(fd: ReceivedRawFd) -> i32 {
+  fd
+}
+
+/// Tracks whether the IPC resources is currently
+/// refed, and allows refing/unrefing it.
+pub struct IpcRefTracker {
+  refed: AtomicBool,
+  tracker: OpsTracker,
+}
+
+/// A little wrapper so we don't have to get an
+/// `ExternalOpsTracker` for tests. When we aren't
+/// cfg(test), this will get optimized out.
+enum OpsTracker {
+  External(ExternalOpsTracker),
+  #[cfg(test)]
+  Test,
+}
+
+impl OpsTracker {
+  fn ref_(&self) {
+    match self {
+      Self::External(tracker) => tracker.ref_op(),
+      #[cfg(test)]
+      Self::Test => {}
+    }
+  }
+
+  fn unref(&self) {
+    match self {
+      Self::External(tracker) => tracker.unref_op(),
+      #[cfg(test)]
+      Self::Test => {}
+    }
+  }
+}
+
+impl IpcRefTracker {
+  pub fn new(tracker: ExternalOpsTracker) -> Self {
+    Self {
+      refed: AtomicBool::new(false),
+      tracker: OpsTracker::External(tracker),
+    }
+  }
+
+  #[cfg(test)]
+  fn new_test() -> Self {
+    Self {
+      refed: AtomicBool::new(false),
+      tracker: OpsTracker::Test,
+    }
+  }
+
+  pub fn ref_(&self) {
+    if !self.refed.swap(true, std::sync::atomic::Ordering::AcqRel) {
+      self.tracker.ref_();
+    }
+  }
+
+  pub fn unref(&self) {
+    if self.refed.swap(false, std::sync::atomic::Ordering::AcqRel) {
+      self.tracker.unref();
+    }
+  }
+}
+
+async fn write_with_optional_fd(
+  write_half: &mut BiPipeWrite,
+  msg: &[u8],
+  #[cfg_attr(
+    not(unix),
+    allow(unused_variables, reason = "fd transfer is unix-only")
+  )]
+  raw_fd: Option<i32>,
+) -> Result<(), io::Error> {
+  #[cfg(unix)]
+  if let Some(raw_fd) = raw_fd {
+    use std::os::fd::AsRawFd;
+    use std::os::fd::FromRawFd;
+
+    // `raw_fd` is an owned dup created for this IPC transfer. `sendmsg` attaches
+    // it to the first bytes written, then this scope closes our local copy.
+    // SAFETY: callers pass an owned fd returned by `fdForIpc`; this function
+    // assumes ownership and closes it after the send attempt.
+    let raw_fd = unsafe { std::os::fd::OwnedFd::from_raw_fd(raw_fd) };
+    let nwritten = write_half.send_with_fd(msg, raw_fd.as_raw_fd()).await?;
+    if nwritten < msg.len() {
+      // The fd has already been delivered with the first sendmsg. If the rest
+      // of the frame fails, the reader must close the received fd while
+      // discarding the malformed message.
+      // TODO(nathanwhit): the receiver path (`IpcJsonStream::read_msg_inner`)
+      // does not currently detect a truncated frame after an fd was attached.
+      // If the writer half is dropped mid-message, the receiver will close
+      // the IPC channel without explicitly closing the orphan fd. In practice
+      // truncation here only happens on connection teardown, where the parent
+      // process exit reaps everything anyway, so the leak window is bounded.
+      write_half.write_all(&msg[nwritten..]).await?;
+    }
+    return Ok(());
+  }
+  write_half.write_all(msg).await?;
+  Ok(())
+}
+
+pub struct IpcJsonStreamResource {
+  pub read_half: AsyncRefCell<IpcJsonStream>,
+  pub write_half: AsyncRefCell<BiPipeWrite>,
+  pub cancel: Rc<CancelHandle>,
+  pub queued_bytes: AtomicUsize,
+  pub ref_tracker: IpcRefTracker,
+}
+
+impl deno_core::Resource for IpcJsonStreamResource {
+  fn close(self: Rc<Self>) {
+    self.cancel.cancel();
+  }
+}
+
+impl IpcJsonStreamResource {
+  pub fn new(
+    stream: i64,
+    ref_tracker: IpcRefTracker,
+  ) -> Result<Self, std::io::Error> {
+    let (read_half, write_half) = BiPipe::from_raw(stream as _)?.split();
+    Ok(Self {
+      read_half: AsyncRefCell::new(IpcJsonStream::new(read_half)),
+      write_half: AsyncRefCell::new(write_half),
+      cancel: Default::default(),
+      queued_bytes: Default::default(),
+      ref_tracker,
+    })
+  }
+
+  #[cfg(all(unix, test))]
+  pub fn from_stream(
+    stream: tokio::net::UnixStream,
+    ref_tracker: IpcRefTracker,
+  ) -> Self {
+    let (read_half, write_half) = stream.into_split();
+    Self {
+      read_half: AsyncRefCell::new(IpcJsonStream::new(read_half.into())),
+      write_half: AsyncRefCell::new(write_half.into()),
+      cancel: Default::default(),
+      queued_bytes: Default::default(),
+      ref_tracker,
+    }
+  }
+
+  #[cfg(all(windows, test))]
+  pub fn from_stream(
+    pipe: tokio::net::windows::named_pipe::NamedPipeClient,
+    ref_tracker: IpcRefTracker,
+  ) -> Self {
+    let (read_half, write_half) = tokio::io::split(pipe);
+    Self {
+      read_half: AsyncRefCell::new(IpcJsonStream::new(read_half.into())),
+      write_half: AsyncRefCell::new(write_half.into()),
+      cancel: Default::default(),
+      queued_bytes: Default::default(),
+      ref_tracker,
+    }
+  }
+
+  /// Writes a newline-terminated JSON message to the IPC pipe. If `raw_fd`
+  /// is `Some`, it must be an owned dup for this IPC transfer. It is sent
+  /// alongside the first byte via SCM_RIGHTS on unix, then closed locally.
+  pub async fn write_msg_bytes(
+    self: Rc<Self>,
+    msg: &[u8],
+    raw_fd: Option<i32>,
+  ) -> Result<(), io::Error> {
+    let mut write_half = RcRef::map(self, |r| &r.write_half).borrow_mut().await;
+    write_with_optional_fd(&mut write_half, msg, raw_fd).await
+  }
+}
+
+// Initial capacity of the buffered reader and the JSON backing buffer.
+//
+// This is a tradeoff between memory usage and performance on large messages.
+//
+// 64kb has been chosen after benchmarking 64 to 66536 << 6 - 1 bytes per message.
+pub const INITIAL_CAPACITY: usize = 1024 * 64;
+
+/// A buffer for reading from the IPC pipe.
+/// Similar to the internal buffer of `tokio::io::BufReader`.
+///
+/// This exists to provide buffered reading while avoiding a copy when a
+/// delimited message fits entirely in the read buffer.
+struct ReadBuffer {
+  buffer: Box<[u8]>,
+  pos: usize,
+  cap: usize,
+  #[cfg(unix)]
+  raw_fd: Option<ReceivedRawFd>,
+}
+
+impl ReadBuffer {
+  fn new() -> Self {
+    Self {
+      buffer: vec![0; INITIAL_CAPACITY].into_boxed_slice(),
+      pos: 0,
+      cap: 0,
+      #[cfg(unix)]
+      raw_fd: None,
+    }
+  }
+
+  fn get_mut(&mut self) -> &mut [u8] {
+    &mut self.buffer
+  }
+
+  fn available_mut(&mut self) -> &mut [u8] {
+    &mut self.buffer[self.pos..self.cap]
+  }
+
+  fn consume(&mut self, n: usize) {
+    self.pos = std::cmp::min(self.pos + n, self.cap);
+  }
+
+  fn needs_fill(&self) -> bool {
+    self.pos >= self.cap
+  }
+
+  async fn fill_from_pipe(
+    &mut self,
+    pipe: &mut BiPipeRead,
+  ) -> io::Result<usize> {
+    #[cfg(unix)]
+    {
+      use std::os::fd::FromRawFd;
+
+      let (nread, raw_fd) = pipe.recv_with_fd(self.get_mut()).await?;
+      self.cap = nread;
+      self.pos = 0;
+      if let Some(raw_fd) = raw_fd {
+        debug_assert!(self.raw_fd.is_none());
+        // SAFETY: `recv_with_fd` returns a newly received fd that this buffer
+        // owns until the IPC reader takes it.
+        let raw_fd = unsafe { std::os::fd::OwnedFd::from_raw_fd(raw_fd) };
+        if let Some(previous) = self.raw_fd.replace(raw_fd) {
+          drop(previous);
+        }
+      }
+      Ok(nread)
+    }
+    #[cfg(not(unix))]
+    {
+      use tokio::io::AsyncReadExt;
+      let nread = pipe.read(self.get_mut()).await?;
+      self.cap = nread;
+      self.pos = 0;
+      Ok(nread)
+    }
+  }
+
+  #[cfg(unix)]
+  fn take_raw_fd(&mut self) -> Option<ReceivedRawFd> {
+    self.raw_fd.take()
+  }
+
+  #[cfg(not(unix))]
+  fn take_raw_fd(&mut self) -> Option<i32> {
+    None
+  }
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum IpcJsonStreamError {
+  #[class(inherit)]
+  #[error("{0}")]
+  Io(#[source] std::io::Error),
+  #[class(generic)]
+  #[error("{0}")]
+  Json(#[source] serde_json::Error),
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum IpcAdvancedStreamError {
+  #[class(inherit)]
+  #[error("{0}")]
+  Io(#[source] std::io::Error),
+}
+
+pub struct IpcAdvancedStream {
+  pipe: BiPipeRead,
+  read_buffer: ReadBuffer,
+}
+
+struct MessageLengthBuffer {
+  buffer: [u8; 4],
+  pos: u8,
+  value: u32,
+}
+
+impl MessageLengthBuffer {
+  fn new() -> Self {
+    Self {
+      buffer: [0; 4],
+      pos: 0,
+      value: 0,
+    }
+  }
+
+  fn message_len(&mut self) -> Option<usize> {
+    if self.pos == 4 {
+      self.value = u32::from_be_bytes(self.buffer);
+      self.pos = 5;
+      Some(self.value as usize)
+    } else if self.pos == 5 {
+      Some(self.value as usize)
+    } else {
+      None
+    }
+  }
+
+  fn update_pos_by(&mut self, num: usize) {
+    self.pos = (self.pos + num as u8).min(4);
+  }
+
+  fn available_mut(&mut self) -> &mut [u8] {
+    &mut self.buffer[self.pos as usize..4]
+  }
+}
+
+impl IpcAdvancedStream {
+  fn new(pipe: BiPipeRead) -> Self {
+    Self {
+      pipe,
+      read_buffer: ReadBuffer::new(),
+    }
+  }
+
+  pub async fn read_msg_bytes_and_raw_fd(
+    &mut self,
+  ) -> Result<Option<(Vec<u8>, Option<i32>)>, IpcAdvancedStreamError> {
+    let mut length_buffer = MessageLengthBuffer::new();
+    let mut out_buf = Vec::with_capacity(32);
+    let mut read = 0usize;
+    let mut raw_fd = None;
+
+    loop {
+      if self.read_buffer.needs_fill() {
+        self
+          .read_buffer
+          .fill_from_pipe(&mut self.pipe)
+          .await
+          .map_err(IpcAdvancedStreamError::Io)?;
+      }
+
+      if let Some(fd) = self.read_buffer.take_raw_fd() {
+        debug_assert!(raw_fd.is_none());
+        if raw_fd.is_none() {
+          raw_fd = Some(fd);
+        }
+      }
+
+      let available = self.read_buffer.available_mut();
+      if available.is_empty() {
+        if read == 0 {
+          return Ok(None);
+        } else if length_buffer.message_len().is_some() {
+          return Err(IpcAdvancedStreamError::Io(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "ipc stream closed while reading message",
+          )));
+        } else {
+          return Err(IpcAdvancedStreamError::Io(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "ipc stream closed before message length",
+          )));
+        }
+      }
+
+      let msg_len = length_buffer.message_len();
+      let (done, used) = if let Some(msg_len) = msg_len {
+        if out_buf.len() >= msg_len {
+          (true, 0)
+        } else {
+          let remaining = msg_len - out_buf.len();
+          out_buf.reserve(remaining);
+          let to_copy = available.len().min(remaining);
+          out_buf.extend_from_slice(&available[..to_copy]);
+          (out_buf.len() == msg_len, to_copy)
+        }
+      } else {
+        let len_avail = length_buffer.available_mut();
+        let to_copy = available.len().min(len_avail.len());
+        len_avail[..to_copy].copy_from_slice(&available[..to_copy]);
+        length_buffer.update_pos_by(to_copy);
+        (false, to_copy)
+      };
+
+      self.read_buffer.consume(used);
+      read += used;
+
+      if done {
+        return Ok(Some((
+          std::mem::take(&mut out_buf),
+          raw_fd.map(into_raw_fd_i32),
+        )));
+      }
+    }
+  }
+}
+
+pub struct IpcAdvancedStreamResource {
+  pub read_half: AsyncRefCell<IpcAdvancedStream>,
+  pub write_half: AsyncRefCell<BiPipeWrite>,
+  pub cancel: Rc<CancelHandle>,
+  pub queued_bytes: AtomicUsize,
+  pub ref_tracker: IpcRefTracker,
+}
+
+impl IpcAdvancedStreamResource {
+  pub fn new(
+    stream: i64,
+    ref_tracker: IpcRefTracker,
+  ) -> Result<Self, std::io::Error> {
+    let (read_half, write_half) = BiPipe::from_raw(stream as _)?.split();
+    Ok(Self {
+      read_half: AsyncRefCell::new(IpcAdvancedStream::new(read_half)),
+      write_half: AsyncRefCell::new(write_half),
+      cancel: Default::default(),
+      queued_bytes: Default::default(),
+      ref_tracker,
+    })
+  }
+
+  /// Writes a serialized message to the IPC pipe. The first 4 bytes must be
+  /// the length of the following message. If `raw_fd` is `Some`, see
+  /// [`IpcJsonStreamResource::write_msg_bytes`] for the SCM_RIGHTS semantics.
+  pub async fn write_msg_bytes(
+    self: Rc<Self>,
+    msg: &[u8],
+    raw_fd: Option<i32>,
+  ) -> Result<(), io::Error> {
+    let mut write_half = RcRef::map(self, |r| &r.write_half).borrow_mut().await;
+    write_with_optional_fd(&mut write_half, msg, raw_fd).await
+  }
+}
+
+impl deno_core::Resource for IpcAdvancedStreamResource {
+  fn close(self: Rc<Self>) {
+    self.cancel.cancel();
+  }
+}
+
+// JSON serialization stream over IPC pipe.
+//
+// `\n` is used as a delimiter between messages.
+pub struct IpcJsonStream {
+  pipe: BiPipeRead,
+  buffer: Vec<u8>,
+  read_buffer: ReadBuffer,
+}
+
+impl IpcJsonStream {
+  fn new(pipe: BiPipeRead) -> Self {
+    Self {
+      pipe,
+      buffer: Vec::with_capacity(INITIAL_CAPACITY),
+      read_buffer: ReadBuffer::new(),
+    }
+  }
+
+  pub async fn read_msg(
+    &mut self,
+  ) -> Result<Option<serde_json::Value>, IpcJsonStreamError> {
+    Ok(self.read_msg_and_raw_fd().await?.map(|(msg, _)| msg))
+  }
+
+  pub async fn read_msg_and_raw_fd(
+    &mut self,
+  ) -> Result<Option<(serde_json::Value, Option<i32>)>, IpcJsonStreamError> {
+    let mut read = 0usize;
+    let mut raw_fd = None;
+    let mut json = None;
+
+    loop {
+      if self.read_buffer.needs_fill() {
+        self
+          .read_buffer
+          .fill_from_pipe(&mut self.pipe)
+          .await
+          .map_err(IpcJsonStreamError::Io)?;
+      }
+
+      if let Some(fd) = self.read_buffer.take_raw_fd() {
+        debug_assert!(raw_fd.is_none());
+        if raw_fd.is_none() {
+          raw_fd = Some(fd);
+        }
+      }
+
+      let available = self.read_buffer.available_mut();
+      if available.is_empty() {
+        if read == 0 {
+          return Ok(None);
+        } else {
+          return Err(IpcJsonStreamError::Io(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "ipc stream closed while reading message",
+          )));
+        }
+      }
+
+      let (done, used) = if let Some(i) = memchr(b'\n', available) {
+        if read == 0 {
+          json.replace(
+            serde_json::from_slice(&available[..i + 1])
+              .map_err(IpcJsonStreamError::Json)?,
+          );
+        } else {
+          self.buffer.extend_from_slice(&available[..=i]);
+        }
+        (true, i + 1)
+      } else {
+        self.buffer.extend_from_slice(available);
+        (false, available.len())
+      };
+
+      self.read_buffer.consume(used);
+      read += used;
+
+      if done {
+        let json = match json {
+          Some(v) => v,
+          None => serde_json::from_slice(&self.buffer[..read])
+            .map_err(IpcJsonStreamError::Json)?,
+        };
+
+        // Safety: Same as `Vec::clear` but without the `drop_in_place` for
+        // each element (nop for u8). Capacity remains the same.
+        unsafe {
+          self.buffer.set_len(0);
+        }
+
+        return Ok(Some((json, raw_fd.map(into_raw_fd_i32))));
+      }
+    }
+  }
+}
+
+#[allow(clippy::disallowed_methods, reason = "test code")]
+#[allow(clippy::print_stdout, reason = "test code")]
+#[cfg(test)]
+mod tests {
+  use std::rc::Rc;
+
+  use deno_core::RcRef;
+  use deno_core::serde_json::json;
+
+  use super::IpcJsonStreamResource;
+
+  #[allow(clippy::unused_async, reason = "async on windows")]
+  #[cfg(unix)]
+  pub async fn pair() -> (Rc<IpcJsonStreamResource>, tokio::net::UnixStream) {
+    let (a, b) = tokio::net::UnixStream::pair().unwrap();
+
+    /* Similar to how ops would use the resource */
+    let a = Rc::new(IpcJsonStreamResource::from_stream(
+      a,
+      super::IpcRefTracker::new_test(),
+    ));
+    (a, b)
+  }
+
+  #[cfg(windows)]
+  pub async fn pair() -> (
+    Rc<IpcJsonStreamResource>,
+    tokio::net::windows::named_pipe::NamedPipeServer,
+  ) {
+    use tokio::net::windows::named_pipe::ClientOptions;
+    use tokio::net::windows::named_pipe::ServerOptions;
+
+    let name =
+      format!(r"\\.\pipe\deno-named-pipe-test-{}", rand::random::<u32>());
+
+    let server = ServerOptions::new().create(name.clone()).unwrap();
+    let client = ClientOptions::new().open(name).unwrap();
+
+    server.connect().await.unwrap();
+    /* Similar to how ops would use the resource */
+    let client = Rc::new(IpcJsonStreamResource::from_stream(
+      client,
+      super::IpcRefTracker::new_test(),
+    ));
+    (client, server)
+  }
+
+  #[tokio::test]
+  async fn bench_ipc() -> Result<(), Box<dyn std::error::Error>> {
+    // A simple round trip benchmark for quick dev feedback.
+    //
+    // Only ran when the env var is set.
+    if std::env::var_os("BENCH_IPC_DENO").is_none() {
+      return Ok(());
+    }
+
+    let (ipc, mut fd2) = pair().await;
+    let child = tokio::spawn(async move {
+      use tokio::io::AsyncWriteExt;
+
+      let size = 1024 * 1024;
+
+      let stri = "x".repeat(size);
+      let data = format!("\"{}\"\n", stri);
+      for _ in 0..100 {
+        fd2.write_all(data.as_bytes()).await?;
+      }
+      Ok::<_, std::io::Error>(())
+    });
+
+    let start = std::time::Instant::now();
+    let mut bytes = 0;
+
+    let mut ipc = RcRef::map(ipc, |r| &r.read_half).borrow_mut().await;
+    loop {
+      let Some(msgs) = ipc.read_msg().await? else {
+        break;
+      };
+      bytes += msgs.as_str().unwrap().len();
+      if start.elapsed().as_secs() > 5 {
+        break;
+      }
+    }
+    let elapsed = start.elapsed();
+    let mb = bytes as f64 / 1024.0 / 1024.0;
+    println!("{} mb/s", mb / elapsed.as_secs_f64());
+
+    child.await??;
+
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn unix_ipc_json() -> Result<(), Box<dyn std::error::Error>> {
+    let (ipc, mut fd2) = pair().await;
+    let child = tokio::spawn(async move {
+      use tokio::io::AsyncReadExt;
+      use tokio::io::AsyncWriteExt;
+
+      const EXPECTED: &[u8] = b"\"hello\"\n";
+      let mut buf = [0u8; EXPECTED.len()];
+      let n = fd2.read_exact(&mut buf).await?;
+      assert_eq!(&buf[..n], EXPECTED);
+      fd2.write_all(b"\"world\"\n").await?;
+
+      Ok::<_, std::io::Error>(())
+    });
+
+    ipc
+      .clone()
+      .write_msg_bytes(&json_to_bytes(json!("hello")), None)
+      .await?;
+
+    let mut ipc = RcRef::map(ipc, |r| &r.read_half).borrow_mut().await;
+    let msgs = ipc.read_msg().await?.unwrap();
+    assert_eq!(msgs, json!("world"));
+
+    child.await??;
+
+    Ok(())
+  }
+
+  fn json_to_bytes(v: deno_core::serde_json::Value) -> Vec<u8> {
+    let mut buf = deno_core::serde_json::to_vec(&v).unwrap();
+    buf.push(b'\n');
+    buf
+  }
+
+  #[tokio::test]
+  async fn unix_ipc_json_multi() -> Result<(), Box<dyn std::error::Error>> {
+    let (ipc, mut fd2) = pair().await;
+    let child = tokio::spawn(async move {
+      use tokio::io::AsyncReadExt;
+      use tokio::io::AsyncWriteExt;
+
+      const EXPECTED: &[u8] = b"\"hello\"\n\"world\"\n";
+      let mut buf = [0u8; EXPECTED.len()];
+      let n = fd2.read_exact(&mut buf).await?;
+      assert_eq!(&buf[..n], EXPECTED);
+      fd2.write_all(b"\"foo\"\n\"bar\"\n").await?;
+      Ok::<_, std::io::Error>(())
+    });
+
+    ipc
+      .clone()
+      .write_msg_bytes(&json_to_bytes(json!("hello")), None)
+      .await?;
+    ipc
+      .clone()
+      .write_msg_bytes(&json_to_bytes(json!("world")), None)
+      .await?;
+
+    let mut ipc = RcRef::map(ipc, |r| &r.read_half).borrow_mut().await;
+    let msgs = ipc.read_msg().await?.unwrap();
+    assert_eq!(msgs, json!("foo"));
+
+    child.await??;
+
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn unix_ipc_json_invalid() -> Result<(), Box<dyn std::error::Error>> {
+    let (ipc, mut fd2) = pair().await;
+    let child = tokio::spawn(async move {
+      tokio::io::AsyncWriteExt::write_all(&mut fd2, b"\n\n").await?;
+      Ok::<_, std::io::Error>(())
+    });
+
+    let mut ipc = RcRef::map(ipc, |r| &r.read_half).borrow_mut().await;
+    let _err = ipc.read_msg().await.unwrap_err();
+
+    child.await??;
+
+    Ok(())
+  }
+
+  #[test]
+  fn memchr() {
+    let str = b"hello world";
+    assert_eq!(super::memchr(b'h', str), Some(0));
+    assert_eq!(super::memchr(b'w', str), Some(6));
+    assert_eq!(super::memchr(b'd', str), Some(10));
+    assert_eq!(super::memchr(b'x', str), None);
+
+    let empty = b"";
+    assert_eq!(super::memchr(b'\n', empty), None);
+  }
+}

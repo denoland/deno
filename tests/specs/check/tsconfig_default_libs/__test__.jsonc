@@ -1,0 +1,5 @@
+{
+  "tempDir": true,
+  "args": "check --quiet",
+  "output": ""
+}

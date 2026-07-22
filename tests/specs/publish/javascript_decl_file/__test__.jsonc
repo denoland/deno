@@ -1,0 +1,5 @@
+{
+  "args": "publish --token 'sadfasdf'",
+  "output": "javascript_decl_file.out",
+  "exitCode": 0
+}

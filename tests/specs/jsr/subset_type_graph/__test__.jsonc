@@ -1,0 +1,8 @@
+{
+  // ignored: jsr: subset-type-graph specifiers aren't resolved to their types
+  // by the generated tsconfig. https://github.com/denoland/deno/issues/36085
+  "ignore": true,
+  "args": "check --all main.ts",
+  "output": "main.check.out",
+  "exitCode": 1
+}

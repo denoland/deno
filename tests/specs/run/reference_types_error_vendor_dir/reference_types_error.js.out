@@ -1,0 +1,8 @@
+Check [WILDCARD]reference_types_error.js
+TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/nonexistent.d.ts'.
+    at file:///[WILDLINE]/reference_types_error.js:1:22
+
+error: Type checking failed.
+
+  info: The program failed type-checking, but it still might work correctly.
+  hint: Re-run with --no-check to skip type-checking.

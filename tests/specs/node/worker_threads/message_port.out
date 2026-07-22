@@ -1,0 +1,6 @@
+[UNORDERED_START]
+worker port closed
+worker: Hello from worker on parentPort!
+mainPort: Hello from worker on workerPort!
+mainPort closed
+[UNORDERED_END]

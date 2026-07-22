@@ -1,0 +1,2 @@
+[WILDCARD]error: Import "foo" not a dependency
+    at file:///[WILDCARD]/095_cache_with_bare_import.ts:[WILDCARD]

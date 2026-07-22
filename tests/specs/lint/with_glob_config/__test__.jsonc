@@ -1,0 +1,16 @@
+{
+  "steps": [
+    {
+      "if": "windows",
+      "args": "lint --config deno.glob.json",
+      "output": "with_glob_config_windows.out",
+      "exitCode": 1
+    },
+    {
+      "if": "unix",
+      "args": "lint --config deno.glob.json",
+      "output": "with_glob_config_unix.out",
+      "exitCode": 1
+    }
+  ]
+}

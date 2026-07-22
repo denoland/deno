@@ -1,0 +1,9 @@
+{
+  "name": "@test/subdir",
+  "exports": "./mod.ts",
+  "imports": {
+    "@denotest/add": "jsr:@denotest/add@^1.0.0",
+    "@denotest/esm-basic": "npm:@denotest/esm-basic@^1.0.0",
+    "@denotest/say-hello": "npm:@denotest/say-hello@^1.0.0"
+  }
+}

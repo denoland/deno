@@ -1,0 +1,25 @@
+{
+  "tests": {
+    "root": {
+      // ignored: per-member compilerOptions (package-c checkJs) aren't applied
+      // by tsc, so package-c/check.js isn't checked.
+      // https://github.com/denoland/deno/issues/36085
+      "ignore": true,
+      "args": "check package-a/mod.ts package-b/mod.ts package-c/mod.ts package-d/mod.ts",
+      "output": "root.out",
+      "exitCode": 1
+    },
+    "package_a": {
+      "args": "check mod.ts",
+      "cwd": "package-a",
+      "output": "package_a.out",
+      "exitCode": 0
+    },
+    "package_b": {
+      "args": "check mod.ts",
+      "cwd": "package-b",
+      "output": "package_b.out",
+      "exitCode": 1
+    }
+  }
+}

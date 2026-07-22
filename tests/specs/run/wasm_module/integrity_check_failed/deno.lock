@@ -1,0 +1,6 @@
+{
+  "version": "4",
+  "remote": {
+    "http://localhost:4545/wasm/math.wasm": "c4fdd49432f1517835b93274447890007947f9d30674ab7f1474091860113d95"
+  }
+}

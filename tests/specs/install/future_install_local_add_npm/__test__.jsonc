@@ -1,0 +1,22 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install npm:@denotest/esm-basic",
+      "output": "install.out"
+    },
+    {
+      // make sure the dep got cached
+      "args": "run --cached-only main.js",
+      "exitCode": 0,
+      "output": ""
+    },
+    {
+      "args": [
+        "eval",
+        "console.log(Deno.readTextFileSync('package.json').trim())"
+      ],
+      "output": "package.json.out"
+    }
+  ]
+}

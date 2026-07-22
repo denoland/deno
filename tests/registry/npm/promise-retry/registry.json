@@ -1,0 +1,70 @@
+{
+  "name": "promise-retry",
+  "description": "Retries a function that returns a promise, leveraging the power of the retry module.",
+  "dist-tags": {
+    "latest": "2.0.1"
+  },
+  "versions": {
+    "2.0.1": {
+      "name": "promise-retry",
+      "version": "2.0.1",
+      "description": "Retries a function that returns a promise, leveraging the power of the retry module.",
+      "main": "index.js",
+      "scripts": {
+        "test": "mocha --bail -t 10000"
+      },
+      "bugs": {
+        "url": "https://github.com/IndigoUnited/node-promise-retry/issues/"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/IndigoUnited/node-promise-retry.git"
+      },
+      "author": {
+        "name": "IndigoUnited",
+        "email": "hello@indigounited.com",
+        "url": "http://indigounited.com"
+      },
+      "license": "MIT",
+      "devDependencies": {
+        "expect.js": "^0.3.1",
+        "mocha": "^8.0.1",
+        "sleep-promise": "^8.0.1"
+      },
+      "dependencies": {
+        "err-code": "^2.0.2",
+        "retry": "^0.12.0"
+      },
+      "engines": {
+        "node": ">=10"
+      },
+      "gitHead": "7fb08491112cffe5a0dd11805eff20ca6b6133ac",
+      "_id": "promise-retry@2.0.1",
+      "_nodeVersion": "12.16.1",
+      "_npmVersion": "6.14.1",
+      "dist": {
+        "integrity": "sha512-y+WKFlBR8BGXnsNlIHFGPZmyDf3DFMoLhaflAnyZgV6rG6xu+JwesTo2Q9R6XwYmtmwAFCkAk3e35jEdoeh/3g==",
+        "shasum": "ff747a13620ab57ba688f5fc67855410c370da22",
+        "tarball": "http://localhost:4260/promise-retry/promise-retry-2.0.1.tgz",
+        "fileCount": 8,
+        "unpackedSize": 15556
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/IndigoUnited/node-promise-retry#readme",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/IndigoUnited/node-promise-retry.git"
+  },
+  "author": {
+    "name": "IndigoUnited",
+    "email": "hello@indigounited.com",
+    "url": "http://indigounited.com"
+  },
+  "bugs": {
+    "url": "https://github.com/IndigoUnited/node-promise-retry/issues/"
+  },
+  "license": "MIT"
+}

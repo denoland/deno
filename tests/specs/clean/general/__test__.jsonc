@@ -1,0 +1,37 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_DIR": "$PWD/deno_dir"
+  },
+  "steps": [{
+    // create deno dir
+    "args": "run http://localhost:4545/echo.ts hi",
+    "output": "[WILDCARD]"
+  }, {
+    "args": [
+      "eval",
+      "console.log(Deno.statSync('./deno_dir') != null)"
+    ],
+    "output": "true\n"
+  }, {
+    "args": "clean",
+    "output": "Removed [WILDLINE]/deno_dir ([WILDCARD]files, [WILDCARD])\n"
+  }, {
+    "envs": {
+      // use a new dir to avoid creating the old one
+      "DENO_DIR": "$PWD/other"
+    },
+    "args": "clean",
+    "output": ""
+  }, {
+    "envs": {
+      // use a new dir to avoid creating the old one
+      "DENO_DIR": "$PWD/other"
+    },
+    "args": [
+      "eval",
+      "try { Deno.statSync('./deno_dir') } catch (_) { console.log(true) }"
+    ],
+    "output": "true\n"
+  }]
+}

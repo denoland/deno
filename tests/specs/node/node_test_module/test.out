@@ -1,0 +1,157 @@
+running 69 tests from ./test.js
+sync pass todo ... ok ([WILDLINE])
+sync pass todo with message ... ok ([WILDLINE])
+sync fail todo ... ok ([WILDLINE])
+todo thrown sub test ...
+  test ... ok ([WILDLINE])
+todo thrown sub test ... ok ([WILDLINE])
+sync fail todo with message ... ok ([WILDLINE])
+sync skip pass ... ok ([WILDLINE])
+sync skip pass with message ... ok ([WILDLINE])
+skip thrown sub test ...
+  test ... ok ([WILDLINE])
+skip thrown sub test ... ok ([WILDLINE])
+sync pass ...
+------- output -------
+DIAGNOSTIC: this test should pass
+----- output end -----
+sync pass ... ok ([WILDLINE])
+sync throw fail ... FAILED ([WILDLINE])
+async skip pass ... ok ([WILDLINE])
+async pass ... ok ([WILDLINE])
+async throw fail ... FAILED ([WILDLINE])
+nested test ...
+  nested 1 ...
+    nested 2 ... ok ([WILDLINE])
+  nested 1 ... ok ([WILDLINE])
+nested test ... ok ([WILDLINE])
+async skip fail ... ok ([WILDLINE])
+async assertion fail ... FAILED ([WILDLINE])
+resolve pass ... ok ([WILDLINE])
+reject fail ... FAILED ([WILDLINE])
+suite ...
+  test 1 ... ok ([WILDLINE])
+  test 2 ... ok ([WILDLINE])
+  sub suite 1 ...
+    nested test 1 ... ok ([WILDLINE])
+    nested test 2 ... ok ([WILDLINE])
+  sub suite 1 ... ok ([WILDLINE])
+  sub suite 2 ...
+    nested test 1 ... ok ([WILDLINE])
+    nested test 2 ... ok ([WILDLINE])
+  sub suite 2 ... ok ([WILDLINE])
+suite ... ok ([WILDLINE])
+describe ...
+  test 1 ... ok ([WILDLINE])
+  test 2 ... ok ([WILDLINE])
+  sub describe 1 ...
+    nested test 1 ... ok ([WILDLINE])
+    nested test 2 ... ok ([WILDLINE])
+  sub describe 1 ... ok ([WILDLINE])
+  sub describe 2 ...
+    nested test 1 ... ok ([WILDLINE])
+    nested test 2 ... ok ([WILDLINE])
+  sub describe 2 ... ok ([WILDLINE])
+describe ... ok ([WILDLINE])
+suite ...
+  test 1 ... ok ([WILDLINE])
+  test 2 ... FAILED ([WILDLINE])
+  sub suite 1 ...
+    nested test 1 ... ok ([WILDLINE])
+    nested test 2 ... FAILED ([WILDLINE])
+  sub suite 1 ... FAILED (due to 1 failed step) ([WILDLINE])
+  sub suite 2 ...
+    nested test 1 ... FAILED ([WILDLINE])
+    nested test 2 ... ok ([WILDLINE])
+  sub suite 2 ... FAILED (due to 1 failed step) ([WILDLINE])
+suite ... FAILED (due to 3 failed steps) ([WILDLINE])
+assertions available via text context ... ok ([WILDLINE])
+unhandled rejection - passes but warns ... ok ([WILDLINE])
+async unhandled rejection - passes but warns ... ok ([WILDLINE])
+immediate throw - passes but warns ... ok ([WILDLINE])
+immediate reject - passes but warns ... ok ([WILDLINE])
+immediate resolve pass ... ok ([WILDLINE])
+subtest sync throw fail ...
+  +sync throw fail ...
+------- output -------
+DIAGNOSTIC: this subtest should make its parent test fail
+----- output end -----
+  +sync throw fail ... FAILED ([WILDLINE])
+subtest sync throw fail ... FAILED (due to 1 failed step) ([WILDLINE])
+sync throw non-error fail ... FAILED ([WILDLINE])
+level 0a ...
+[UNORDERED_START]
+  level 1a ... ok ([WILDLINE])
+  level 1b ... ok ([WILDLINE])
+  level 1c ... ok ([WILDLINE])
+  level 1d ... ok ([WILDLINE])
+[UNORDERED_END]
+level 0a ... ok ([WILDLINE])
+top level ...
+  +long running ... INCOMPLETE
+  +short running ...
+    ++short running ... INCOMPLETE
+  +short running ... INCOMPLETE
+top level ... FAILED (due to incomplete steps) ([WILDLINE])
+invalid subtest - pass but subtest fails ... ok ([WILDLINE])
+sync skip option ... ignored ([WILDLINE])
+sync skip option with message ... ignored ([WILDLINE])
+sync skip option is false fail ... FAILED ([WILDLINE])
+noop ... ok ([WILDLINE])
+functionOnly ... ok ([WILDLINE])
+<anonymous> ... ok ([WILDLINE])
+test with only a name provided ... ok ([WILDLINE])
+noop ... ok ([WILDLINE])
+noop ... ignored ([WILDLINE])
+test with a name and options provided ... ignored ([WILDLINE])
+functionAndOptions ... ignored ([WILDLINE])
+escaped skip message ... ignored ([WILDLINE])
+escaped todo message ... ignored ([WILDLINE])
+escaped diagnostic ...
+------- output -------
+DIAGNOSTIC: #diagnostic
+----- output end -----
+escaped diagnostic ... ok ([WILDLINE])
+callback pass ... ok ([WILDLINE])
+callback fail ... FAILED ([WILDLINE])
+sync t is this in test ... ok ([WILDLINE])
+async t is this in test ... ok ([WILDLINE])
+callback t is this in test ... ok ([WILDLINE])
+callback also returns a Promise ... FAILED ([WILDLINE])
+callback throw ... FAILED ([WILDLINE])
+callback called twice ... ok ([WILDLINE])
+callback called twice in different ticks ... ok ([WILDLINE])
+callback called twice in future tick ... ok ([WILDLINE])
+callback async throw ... FAILED ([WILDLINE])
+callback async throw after done ... ok ([WILDLINE])
+custom inspect symbol fail ... FAILED ([WILDLINE])
+custom inspect symbol that throws fail ... FAILED ([WILDLINE])
+subtest sync throw fails ...
+  sync throw fails at first ... FAILED ([WILDLINE])
+  sync throw fails at second ... FAILED ([WILDLINE])
+subtest sync throw fails ... FAILED (due to 2 failed steps) ([WILDLINE])
+timed out async test ... FAILED ([WILDLINE])
+timed out callback test ... FAILED ([WILDLINE])
+large timeout async test is ok ... ok ([WILDLINE])
+large timeout callback test is ok ... ok ([WILDLINE])
+successful thenable ... ok ([WILDLINE])
+rejected thenable ... FAILED ([WILDLINE])
+unfinished test with uncaughtException ... FAILED ([WILDLINE])
+unfinished test with unhandledRejection ... FAILED ([WILDLINE])
+[WILDCARD] ERRORS [WILDCARD]
+rejected thenable => ./test.js:455:1
+error: "custom error"
+
+unfinished test with uncaughtException => ./test.js:466:1
+error: Promise resolution is still pending but the event loop has already resolved.
+
+unfinished test with unhandledRejection => ./test.js:474:1
+error: Error: bar
+[WILDCARD] FAILURES [WILDCARD]
+rejected thenable => ./test.js:455:1
+unfinished test with uncaughtException => ./test.js:466:1
+unfinished test with unhandledRejection => ./test.js:474:1
+
+FAILED | 41 passed (27 steps) | 21 failed (11 steps) | 7 ignored ([WILDLINE])
+
+error: Test failed

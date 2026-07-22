@@ -1,0 +1,83 @@
+{
+  "name": "ssh2",
+  "description": "SSH2 client and server modules written in pure JavaScript for node.js",
+  "dist-tags": {
+    "latest": "1.11.0"
+  },
+  "versions": {
+    "1.11.0": {
+      "name": "ssh2",
+      "version": "1.11.0",
+      "author": {
+        "name": "Brian White",
+        "email": "mscdex@mscdex.net"
+      },
+      "description": "SSH2 client and server modules written in pure JavaScript for node.js",
+      "main": "./lib/index.js",
+      "engines": {
+        "node": ">=10.16.0"
+      },
+      "dependencies": {
+        "asn1": "^0.2.4",
+        "bcrypt-pbkdf": "^1.0.2",
+        "cpu-features": "~0.0.4",
+        "nan": "^2.16.0"
+      },
+      "devDependencies": {
+        "@mscdex/eslint-config": "^1.1.0",
+        "eslint": "^7.0.0"
+      },
+      "optionalDependencies": {
+        "cpu-features": "~0.0.4",
+        "nan": "^2.16.0"
+      },
+      "scripts": {
+        "install": "node install.js",
+        "rebuild": "node install.js",
+        "test": "node test/test.js",
+        "lint": "eslint --cache --report-unused-disable-directives --ext=.js .eslintrc.js examples lib test",
+        "lint:fix": "npm run lint -- --fix"
+      },
+      "licenses": [
+        {
+          "type": "MIT",
+          "url": "http://github.com/mscdex/ssh2/raw/master/LICENSE"
+        }
+      ],
+      "repository": {
+        "type": "git",
+        "url": "git+ssh://git@github.com/mscdex/ssh2.git"
+      },
+      "_resolved": "",
+      "_integrity": "",
+      "_from": "https://github.com/mscdex/ssh2/tarball/v1.11.0",
+      "bugs": {
+        "url": "https://github.com/mscdex/ssh2/issues"
+      },
+      "_id": "ssh2@1.11.0",
+      "_nodeVersion": "10.22.1",
+      "_npmVersion": "6.14.6",
+      "dist": {
+        "integrity": "sha512-nfg0wZWGSsfUe/IBJkXVll3PEZ//YH2guww+mP88gTpuSU4FtZN7zu9JoeTGOyCNx2dTDtT9fOpWwlzyj4uOOw==",
+        "shasum": "ce60186216971e12f6deb553dcf82322498fe2e4",
+        "tarball": "http://localhost:4260/ssh2/ssh2-1.11.0.tgz",
+        "fileCount": 159,
+        "unpackedSize": 1071730
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Brian White",
+    "email": "mscdex@mscdex.net"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/mscdex/ssh2.git"
+  },
+  "homepage": "https://github.com/mscdex/ssh2#readme",
+  "bugs": {
+    "url": "https://github.com/mscdex/ssh2/issues"
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "name": "nan",
+  "description": "Native Abstractions for Node.js: C++ header for Node 0.8 -> 14 compatibility",
+  "dist-tags": {
+    "latest": "2.16.0"
+  },
+  "versions": {
+    "2.16.0": {
+      "name": "nan",
+      "version": "2.16.0",
+      "description": "Native Abstractions for Node.js: C++ header for Node 0.8 -> 14 compatibility",
+      "main": "include_dirs.js",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/nodejs/nan.git"
+      },
+      "scripts": {
+        "test": "tap --gc --stderr test/js/*-test.js",
+        "test:worker": "node --experimental-worker test/tap-as-worker.js --gc --stderr test/js/*-test.js",
+        "rebuild-tests": "node-gyp rebuild --msvs_version=2015 --directory test",
+        "docs": "doc/.build.sh"
+      },
+      "devDependencies": {
+        "bindings": "~1.2.1",
+        "commander": "^2.8.1",
+        "glob": "^5.0.14",
+        "request": "=2.81.0",
+        "node-gyp": "~8.4.1",
+        "readable-stream": "^2.1.4",
+        "tap": "~0.7.1",
+        "xtend": "~4.0.0"
+      },
+      "license": "MIT",
+      "gitHead": "22c8ac4b6de36a66a1cfef9363d4d7c12db87cd6",
+      "bugs": {
+        "url": "https://github.com/nodejs/nan/issues"
+      },
+      "_id": "nan@2.16.0",
+      "_nodeVersion": "18.2.0",
+      "_npmVersion": "8.10.0",
+      "dist": {
+        "integrity": "sha512-UdAqHyFngu7TfQKsCBgAA6pWDkT8MAO7d0jyOecVhN5354xbLqdn8mV9Tat9gepAupm0bt2DbeaSC8vS52MuFA==",
+        "shasum": "664f43e45460fb98faf00edca0bb0d7b8dce7916",
+        "tarball": "http://localhost:4260/nan/nan-2.16.0.tgz",
+        "fileCount": 47,
+        "unpackedSize": 422414
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/nodejs/nan.git"
+  },
+  "homepage": "https://github.com/nodejs/nan#readme",
+  "bugs": {
+    "url": "https://github.com/nodejs/nan/issues"
+  },
+  "license": "MIT"
+}

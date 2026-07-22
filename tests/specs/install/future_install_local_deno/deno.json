@@ -1,0 +1,10 @@
+{
+  "imports": {
+    "@std/fs/": "https://deno.land/std@0.224.0/fs/",
+    "@denotest/esm-basic": "npm:@denotest/esm-basic@^1.0.0",
+    "@denotest/add": "jsr:@denotest/add",
+    "test-http": "http://localhost:4545/v1/extensionless",
+    "@std/testing": "jsr:@std/testing",
+    "@std/testing/": "jsr:/@std/testing/"
+  }
+}

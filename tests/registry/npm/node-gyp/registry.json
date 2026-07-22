@@ -1,0 +1,87 @@
+{
+  "name": "node-gyp",
+  "description": "Node.js native addon build tool",
+  "dist-tags": {
+    "latest": "10.1.0"
+  },
+  "versions": {
+    "10.1.0": {
+      "name": "node-gyp",
+      "description": "Node.js native addon build tool",
+      "license": "MIT",
+      "version": "10.1.0",
+      "installVersion": 11,
+      "author": {
+        "name": "Nathan Rajlich",
+        "email": "nathan@tootallnate.net",
+        "url": "http://tootallnate.net"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/nodejs/node-gyp.git"
+      },
+      "preferGlobal": true,
+      "bin": {
+        "node-gyp": "bin/node-gyp.js"
+      },
+      "main": "./lib/node-gyp.js",
+      "dependencies": {
+        "env-paths": "^2.2.0",
+        "exponential-backoff": "^3.1.1",
+        "glob": "^10.3.10",
+        "graceful-fs": "^4.2.6",
+        "make-fetch-happen": "^13.0.0",
+        "nopt": "^7.0.0",
+        "proc-log": "^3.0.0",
+        "semver": "^7.3.5",
+        "tar": "^6.1.2",
+        "which": "^4.0.0"
+      },
+      "engines": {
+        "node": "^16.14.0 || >=18.0.0"
+      },
+      "devDependencies": {
+        "bindings": "^1.5.0",
+        "cross-env": "^7.0.3",
+        "mocha": "^10.2.0",
+        "nan": "^2.14.2",
+        "require-inject": "^1.4.4",
+        "standard": "^17.0.0"
+      },
+      "scripts": {
+        "lint": "standard \"*/*.js\" \"test/**/*.js\" \".github/**/*.js\"",
+        "test": "cross-env NODE_GYP_NULL_LOGGER=true mocha --timeout 15000 test/test-download.js test/test-*"
+      },
+      "_id": "node-gyp@10.1.0",
+      "gitHead": "f90ce122fe564be68368d0c0dec5dacd9e770233",
+      "bugs": {
+        "url": "https://github.com/nodejs/node-gyp/issues"
+      },
+      "_nodeVersion": "20.7.0",
+      "_npmVersion": "10.4.0",
+      "dist": {
+        "integrity": "sha512-B4J5M1cABxPc5PwfjhbV5hoy2DP9p8lFXASnEN6hugXOa61416tnTZ29x9sSwAd0o99XNIcpvDDy1swAExsVKA==",
+        "shasum": "75e6f223f2acb4026866c26a2ead6aab75a8ca7e",
+        "tarball": "http://localhost:4260/node-gyp/node-gyp-10.1.0.tgz",
+        "fileCount": 95,
+        "unpackedSize": 1726747
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Nathan Rajlich",
+    "email": "nathan@tootallnate.net",
+    "url": "http://tootallnate.net"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/nodejs/node-gyp.git"
+  },
+  "homepage": "https://github.com/nodejs/node-gyp#readme",
+  "bugs": {
+    "url": "https://github.com/nodejs/node-gyp/issues"
+  },
+  "license": "MIT"
+}

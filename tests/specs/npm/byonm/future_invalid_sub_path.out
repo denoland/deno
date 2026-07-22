@@ -1,0 +1,2 @@
+error: [ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './test' is not defined by "exports" in '[WILDLINE]package.json' imported from '[WILDLINE]invalid_sub_path.ts'
+    at file:///[WILDLINE]/invalid_sub_path.ts:1:8

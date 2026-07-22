@@ -1,0 +1,60 @@
+{
+  "name": "@ljharb/has-package-exports-patterns",
+  "dist-tags": {
+    "latest": "0.0.2"
+  },
+  "versions": {
+    "0.0.2": {
+      "name": "@ljharb/has-package-exports-patterns",
+      "version": "0.0.2",
+      "main": "./no.js",
+      "exports": {
+        ".": "./no.js",
+        "./patterns/*": "./patterns/*ed.js",
+        "./pattern-trailers/*": "./pattern-trailers/*ed.js",
+        "./pattern-trailers/*.js": "./pattern-trailers/*ed.js"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/inspect-js/has-package-exports.git"
+      },
+      "author": {
+        "name": "Jordan Harband",
+        "email": "ljharb@gmail.com"
+      },
+      "license": "MIT",
+      "bugs": {
+        "url": "https://github.com/inspect-js/has-package-exports/issues"
+      },
+      "publishConfig": {
+        "access": "public"
+      },
+      "gitHead": "f0f693d8e03b9be35d8559df09f9d29cc93f0810",
+      "_id": "@ljharb/has-package-exports-patterns@0.0.2",
+      "_nodeVersion": "17.8.0",
+      "_npmVersion": "8.3.1",
+      "dist": {
+        "integrity": "sha512-4/RWEeXDO6bocPONheFe6gX/oQdP/bEpv0oL4HqjPP5DCenBSt0mHgahppY49N0CpsaqffdwPq+TlX9CYOq2Dw==",
+        "shasum": "c1718939b65efa1f45f53686c2fcfa992b9fb68f",
+        "tarball": "http://localhost:4260/@ljharb/has-package-exports-patterns/has-package-exports-patterns-0.0.2.tgz",
+        "fileCount": 4,
+        "unpackedSize": 770
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/inspect-js/has-package-exports#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/inspect-js/has-package-exports.git"
+  },
+  "author": {
+    "name": "Jordan Harband",
+    "email": "ljharb@gmail.com"
+  },
+  "bugs": {
+    "url": "https://github.com/inspect-js/has-package-exports/issues"
+  },
+  "license": "MIT"
+}

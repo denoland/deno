@@ -1,0 +1,26 @@
+{
+  "name": "@denotest/types-exports-subpaths",
+  "version": "1.0.0",
+  "exports": {
+    "./client": {
+      "types": {
+        "default": "./client.d.ts"
+      },
+      "import": "./dist/client.mjs"
+    },
+    "./entry-import": {
+      "import": "./entry-import.d.ts",
+      "types": "./entry-types.d.ts"
+    },
+    "./entry-types-last-no-declaration-before": {
+      "import": "./entry-js-only.js",
+      "types": "./entry-types.d.ts"
+    },
+    "./entry-a": {
+      "import": "./dist/entry-a.js"
+    },
+    "./nested/entry-b": {
+      "import": "./dist/entry-b.js"
+    }
+  }
+}

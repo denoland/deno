@@ -1,0 +1,25 @@
+Check [WILDCARD]ops_sanitizer_multiple_timeout_tests.ts
+running 2 tests from [WILDCARD]/ops_sanitizer_multiple_timeout_tests.ts
+test 1 ... FAILED ([WILDCARD])
+test 2 ... FAILED ([WILDCARD])
+
+ ERRORS 
+
+test 1 => [WILDCARD]/ops_sanitizer_multiple_timeout_tests.ts:[WILDCARD]
+error: Leaks detected:
+  - 2 timers were started in this test, but never completed. This is often caused by not calling `clearTimeout`.
+To get more details where leaks occurred, run again with the --trace-leaks flag.
+
+test 2 => [WILDCARD]/ops_sanitizer_multiple_timeout_tests.ts:[WILDCARD]
+error: Leaks detected:
+  - 2 timers were started in this test, but never completed. This is often caused by not calling `clearTimeout`.
+To get more details where leaks occurred, run again with the --trace-leaks flag.
+
+ FAILURES 
+
+test 1 => [WILDCARD]/ops_sanitizer_multiple_timeout_tests.ts:[WILDCARD]
+test 2 => [WILDCARD]/ops_sanitizer_multiple_timeout_tests.ts:[WILDCARD]
+
+FAILED | 0 passed | 2 failed ([WILDCARD])
+
+error: Test failed

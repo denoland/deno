@@ -1,0 +1,65 @@
+{
+  "name": "universalify",
+  "description": "Make a callback- or promise-based function support both promises and callbacks.",
+  "dist-tags": {
+    "latest": "2.0.0"
+  },
+  "versions": {
+    "2.0.0": {
+      "name": "universalify",
+      "version": "2.0.0",
+      "description": "Make a callback- or promise-based function support both promises and callbacks.",
+      "bugs": {
+        "url": "https://github.com/RyanZim/universalify/issues"
+      },
+      "license": "MIT",
+      "author": {
+        "name": "Ryan Zimmerman",
+        "email": "opensrc@ryanzim.com"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/RyanZim/universalify.git"
+      },
+      "scripts": {
+        "test": "standard && nyc tape test/*.js | colortape"
+      },
+      "devDependencies": {
+        "colortape": "^0.1.2",
+        "coveralls": "^3.0.1",
+        "nyc": "^15.0.0",
+        "standard": "^14.3.1",
+        "tape": "^5.0.1"
+      },
+      "engines": {
+        "node": ">= 10.0.0"
+      },
+      "gitHead": "a853a4aedc63c69fcdc62b77643d75b0d162a098",
+      "_id": "universalify@2.0.0",
+      "_nodeVersion": "14.0.0",
+      "_npmVersion": "6.14.4",
+      "dist": {
+        "integrity": "sha512-hAZsKq7Yy11Zu1DE0OzWjw7nnLZmJZYTDZZyEFHZdUhV8FkH5MCfoU1XMaxXovpyW5nq5scPqq0ZDP9Zyl04oQ==",
+        "shasum": "75a4984efedc4b08975c5aeb73f530d02df25717",
+        "tarball": "http://localhost:4260/universalify/universalify-2.0.0.tgz",
+        "fileCount": 4,
+        "unpackedSize": 4639
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/RyanZim/universalify#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RyanZim/universalify.git"
+  },
+  "author": {
+    "name": "Ryan Zimmerman",
+    "email": "opensrc@ryanzim.com"
+  },
+  "bugs": {
+    "url": "https://github.com/RyanZim/universalify/issues"
+  },
+  "license": "MIT"
+}

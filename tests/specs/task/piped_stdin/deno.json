@@ -1,0 +1,5 @@
+{
+  "tasks": {
+    "piped": "echo 12345 | (deno eval 'const b = new Uint8Array(1);Deno.stdin.readSync(b);console.log(b)' && deno eval 'const b = new Uint8Array(1);Deno.stdin.readSync(b);console.log(b)')"
+  }
+}

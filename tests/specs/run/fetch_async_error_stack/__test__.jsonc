@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet -A fetch_async_error_stack.ts",
+  "output": "fetch_async_error_stack.ts.out",
+  "exitCode": 1
+}

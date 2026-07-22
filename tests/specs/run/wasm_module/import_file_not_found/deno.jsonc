@@ -1,0 +1,9 @@
+{
+  "lock": false,
+  "scopes": {
+    "http://localhost:4545/wasm/": {
+      // file won't exist
+      "http://localhost:4545/wasm/math.ts": "./local_math.ts"
+    }
+  }
+}

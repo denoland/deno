@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "types": [
+      "./a.d.ts"
+    ]
+  },
+  "lint": {
+    "rules": {
+      "tags": []
+    }
+  }
+}

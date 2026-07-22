@@ -1,0 +1,267 @@
+// Copyright 2018-2026 the Deno authors. MIT license.
+// Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
+
+// The following are all the process APIs that don't depend on the stream module
+// They have to be split this way to prevent a circular dependency
+(function () {
+const { core, primordials } = __bootstrap;
+const {
+  Error,
+  ObjectGetOwnPropertyNames,
+  String,
+  ReflectOwnKeys,
+  ArrayPrototypeIncludes,
+  Object,
+  Proxy,
+  ObjectPrototype,
+  ObjectPrototypeIsPrototypeOf,
+  ReflectDefineProperty,
+  ReflectHas,
+  TypeError,
+  TypeErrorPrototype,
+} = primordials;
+const { build, createLazyLoader } = core;
+
+const { nextTick: _nextTick } = core.loadExtScript(
+  "ext:deno_node/_next_tick.ts",
+);
+const { _exiting } = core.loadExtScript("ext:deno_node/_process/exiting.ts");
+const fs = core.loadExtScript("ext:deno_fs/30_fs.js");
+const {
+  denoErrorToNodeError,
+  ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_OBJECT_DEFINE_PROPERTY,
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+
+const loadProcess = createLazyLoader<NodeJS.Process>("node:process");
+let nodeProcess: NodeJS.Process | undefined;
+
+/** Returns the operating system CPU architecture for which the Deno binary was compiled */
+function arch(): string {
+  if (build.arch == "x86_64") {
+    return "x64";
+  } else if (build.arch == "aarch64") {
+    return "arm64";
+  } else if (build.arch == "riscv64gc") {
+    return "riscv64";
+  } else if (build.arch == "loongarch64") {
+    return "loong64";
+  } else if (build.arch == "powerpc64le") {
+    return "ppc64";
+  } else {
+    throw new Error("unreachable");
+  }
+}
+
+/** https://nodejs.org/api/process.html#process_process_chdir_directory */
+function chdir(directory: string): void {
+  if (typeof directory !== "string") {
+    throw new ERR_INVALID_ARG_TYPE("directory", "string", directory);
+  }
+  // Node's chdir error carries `path` (the cwd before chdir), `dest` (the
+  // target), and `syscall: 'chdir'`. Snapshot the cwd before attempting the
+  // change so the error's `path` matches Node's behaviour. If the current
+  // cwd has been deleted (common in tmpdir cleanup during process exit),
+  // `fs.cwd()` itself throws -- fall back to an empty string so the wrapper
+  // still has a sensible `path`, and don't surface the cwd lookup error.
+  let fromPath = "";
+  try {
+    fromPath = fs.cwd();
+  } catch {
+    // Ignore -- chdir() below will surface a chdir-shaped error.
+  }
+  try {
+    fs.chdir(directory);
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, {
+      syscall: "chdir",
+      path: fromPath,
+      dest: directory,
+    });
+  }
+}
+
+/** https://nodejs.org/api/process.html#process_process_cwd */
+const cwd = fs.cwd;
+
+/** https://nodejs.org/api/process.html#process_process_nexttick_callback_args */
+const nextTick = _nextTick;
+
+/** Wrapper of Deno.env.get, which doesn't throw type error when
+ * the env name has "=" or "\0" in it. */
+function denoEnvGet(name: string) {
+  try {
+    return Deno.env.get(name);
+  } catch (e) {
+    if (ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, e)) {
+      return undefined;
+    }
+    throw e;
+  }
+}
+
+const OBJECT_PROTO_PROP_NAMES = ObjectGetOwnPropertyNames(ObjectPrototype);
+/**
+ * https://nodejs.org/api/process.html#process_process_env
+ * Requires env permissions
+ */
+const env:
+  & InstanceType<ObjectConstructor>
+  & Record<string | symbol, string> = new Proxy(Object(), {
+    get: (target, prop) => {
+      if (typeof prop === "symbol") {
+        return target[prop];
+      }
+
+      const envValue = denoEnvGet(prop);
+
+      if (envValue) {
+        return envValue;
+      }
+
+      if (ArrayPrototypeIncludes(OBJECT_PROTO_PROP_NAMES, prop)) {
+        return target[prop];
+      }
+
+      return envValue;
+    },
+    ownKeys: () => ReflectOwnKeys(Deno.env.toObject()),
+    getOwnPropertyDescriptor: (_target, name) => {
+      const value = denoEnvGet(String(name));
+      if (value !== undefined) {
+        return {
+          enumerable: true,
+          configurable: true,
+          value,
+        };
+      }
+    },
+    set(_target, prop, value) {
+      // Match Node: v8 ToString on a symbol key or value throws TypeError.
+      if (typeof prop === "symbol" || typeof value === "symbol") {
+        throw new TypeError("Cannot convert a Symbol value to a string");
+      }
+
+      if (typeof value !== "string") {
+        nodeProcess ??= loadProcess();
+        nodeProcess.emitWarning(
+          "Assigning any value other than a string, number, or boolean to a " +
+            "process.env property is deprecated. Please make sure to convert the value " +
+            "to a string before setting process.env with it.",
+          "DeprecationWarning",
+          "DEP0104",
+        );
+      }
+
+      Deno.env.set(String(prop), String(value));
+      return true; // success
+    },
+    has: (target, prop) => {
+      if (typeof prop === "symbol") {
+        return ReflectHas(target, prop);
+      }
+
+      return typeof denoEnvGet(prop) === "string";
+    },
+    deleteProperty(target, key) {
+      if (typeof key === "symbol") {
+        delete target[key];
+        return true;
+      }
+
+      Deno.env.delete(String(key));
+      return true;
+    },
+    defineProperty(target, property, attributes) {
+      if (attributes?.get || attributes?.set) {
+        throw new ERR_INVALID_OBJECT_DEFINE_PROPERTY(
+          "'process.env' does not accept an " +
+            "accessor(getter/setter) descriptor",
+        );
+      }
+
+      if (
+        !attributes?.configurable || !attributes?.enumerable ||
+        !attributes?.writable
+      ) {
+        throw new ERR_INVALID_OBJECT_DEFINE_PROPERTY(
+          "'process.env' only accepts a " +
+            "configurable, writable," +
+            " and enumerable data descriptor",
+        );
+      }
+
+      if (typeof property === "symbol") {
+        ReflectDefineProperty(target, property, attributes);
+        return true;
+      }
+
+      Deno.env.set(String(property), String(attributes?.value));
+      return true;
+    },
+  });
+
+/**
+ * https://nodejs.org/api/process.html#process_process_version
+ *
+ * This value tracks a stable release of Node, as some packages are
+ * checking it for compatibility. Previously it pointed to Deno version,
+ * but that led to incompability with some packages.
+ *
+ * The `__NODE_VERSION__` token is substituted at snapshot build time with
+ * `NODE_VERSION` from `ext/node/lib.rs` (see `maybe_transpile_source` in
+ * `runtime/transpile.rs`), which is the single source of truth, so the
+ * reported version can never drift from it.
+ */
+const nodeVersion = "__NODE_VERSION__";
+const version = `v${nodeVersion}`;
+
+/**
+ * https://nodejs.org/api/process.html#process_process_versions
+ *
+ * This value is hard coded to latest stable release of Node, as
+ * some packages are checking it for compatibility. Previously
+ * it contained only output of `Deno.version`, but that led to incompability
+ * with some packages. Value of `v8` field is still taken from `Deno.version`.
+ */
+const versions = {
+  node: nodeVersion,
+  uv: "1.52.1",
+  zlib: "1.3.1-e00f703",
+  brotli: "1.2.0",
+  ares: "1.34.6",
+  modules: "147",
+  nghttp2: "1.69.0",
+  // `napi` reflects the N-API version Deno actually implements, not Node's.
+  // It must match NAPI_VERSION in ext/napi/js_native_api.rs.
+  napi: "10",
+  llhttp: "9.4.1",
+  // `openssl` is intentionally NOT bumped to Node's value. Deno's crypto/TLS
+  // stack does not ship OpenSSL 3.5 behavior (e.g. no ML-DSA/ML-KEM, different
+  // TLS alert strings), and npm packages and Node's own test suite feature
+  // detect via `hasOpenSSL()` on this field. Reporting >= 3.2/3.5 here makes
+  // them take code paths Deno cannot satisfy.
+  openssl: "3.0.7+quic",
+  cldr: "48.0",
+  icu: "78.3",
+  tz: "2026b",
+  unicode: "17.0",
+  ngtcp2: "",
+  nghttp3: "",
+  sqlite: "3.53.1",
+  // Will be filled when calling "__bootstrapNodeProcess()",
+  deno: "",
+  v8: "",
+  typescript: "",
+};
+
+return {
+  arch,
+  chdir,
+  cwd,
+  nextTick,
+  env,
+  version,
+  versions,
+};
+})();

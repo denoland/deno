@@ -1,0 +1,9 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "check main.ts",
+      "output": "check.out"
+    }
+  ]
+}

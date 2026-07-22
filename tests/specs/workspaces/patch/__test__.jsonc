@@ -1,0 +1,13 @@
+{
+  "cwd": "./workspace",
+  "tests": {
+    "lint": {
+      "args": "lint",
+      "output": "Checked 2 files\n"
+    },
+    "test": {
+      "args": "test",
+      "output": "test.out"
+    }
+  }
+}

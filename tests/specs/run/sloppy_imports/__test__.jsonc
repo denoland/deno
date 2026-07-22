@@ -1,0 +1,24 @@
+{
+  "tests": {
+    "no_sloppy": {
+      "args": "run --check main.ts",
+      "output": "no_sloppy.out",
+      "exitCode": 1
+    },
+    "sloppy": {
+      "args": "run --sloppy-imports --check main.ts",
+      "output": "sloppy.out"
+    },
+    "sloppy2": {
+      "args": "run --check main.ts",
+      "envs": {
+        "DENO_COMPAT": "1"
+      },
+      "output": "sloppy.out"
+    },
+    "sloppy_env": {
+      "args": "run --env-file=env_file --check main.ts",
+      "output": "sloppy.out"
+    }
+  }
+}

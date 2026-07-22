@@ -1,0 +1,70 @@
+{
+  "name": "jsonfile",
+  "description": "Easily read/write JSON files.",
+  "dist-tags": {
+    "latest": "6.1.0"
+  },
+  "versions": {
+    "6.1.0": {
+      "name": "jsonfile",
+      "version": "6.1.0",
+      "description": "Easily read/write JSON files.",
+      "repository": {
+        "type": "git",
+        "url": "git+ssh://git@github.com/jprichardson/node-jsonfile.git"
+      },
+      "author": {
+        "name": "JP Richardson",
+        "email": "jprichardson@gmail.com"
+      },
+      "license": "MIT",
+      "dependencies": {
+        "universalify": "^2.0.0",
+        "graceful-fs": "^4.1.6"
+      },
+      "optionalDependencies": {
+        "graceful-fs": "^4.1.6"
+      },
+      "devDependencies": {
+        "mocha": "^8.2.0",
+        "rimraf": "^2.4.0",
+        "standard": "^16.0.1"
+      },
+      "main": "index.js",
+      "scripts": {
+        "lint": "standard",
+        "test": "npm run lint && npm run unit",
+        "unit": "mocha"
+      },
+      "gitHead": "9c6478a85899a9318547a6e9514b0403166d8c5c",
+      "bugs": {
+        "url": "https://github.com/jprichardson/node-jsonfile/issues"
+      },
+      "_id": "jsonfile@6.1.0",
+      "_nodeVersion": "14.10.1",
+      "_npmVersion": "6.14.8",
+      "dist": {
+        "integrity": "sha512-5dgndWOriYSm5cnYaJNhalLNDKOqFwyDB/rr1E9ZsGciGvKPs8R2xYGCacuf3z6K1YKDz182fd+fY3cn3pMqXQ==",
+        "shasum": "bc55b2634793c679ec6403094eb13698a6ec0aae",
+        "tarball": "http://localhost:4260/jsonfile/jsonfile-6.1.0.tgz",
+        "fileCount": 6,
+        "unpackedSize": 19750
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "JP Richardson",
+    "email": "jprichardson@gmail.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/jprichardson/node-jsonfile.git"
+  },
+  "homepage": "https://github.com/jprichardson/node-jsonfile#readme",
+  "bugs": {
+    "url": "https://github.com/jprichardson/node-jsonfile/issues"
+  },
+  "license": "MIT"
+}

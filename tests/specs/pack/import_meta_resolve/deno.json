@@ -1,0 +1,5 @@
+{
+  "name": "@test/import-meta-resolve",
+  "version": "1.0.0",
+  "exports": "./mod.ts"
+}

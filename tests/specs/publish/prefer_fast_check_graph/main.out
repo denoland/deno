@@ -1,0 +1,19 @@
+Checking for slow types in the public API...
+error[invalid-external-import]: invalid import to a non-JSR 'https' specifier
+ --> [WILDLINE]deps.ts:1:15
+  | 
+1 | export * from "https://deno.land/std/assert/assert.ts";
+  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the specifier
+  | 
+  = hint: replace this import with one from jsr or npm, or vendor the dependency into your package
+  | 
+1 | "jsr:@std/assert@1/assert"
+  | -------------------------- try this specifier
+  | 
+
+  info: the import was resolved to 'https://deno.land/std/assert/assert.ts'
+  info: this specifier is not allowed to be imported on jsr
+  info: jsr only supports importing `jsr:`, `npm:`, `data:`, `bun:`, and `node:` specifiers
+  docs: https://jsr.io/go/invalid-external-import
+
+error: Found 1 problem

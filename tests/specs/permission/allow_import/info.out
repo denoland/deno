@@ -1,0 +1,7 @@
+local: [WILDLINE]main.ts
+type: TypeScript
+dependencies: 0 unique
+size: [WILDLINE]
+
+file:///[WILDLINE]/main.ts ([WILDLINE])
+└── https://example.com/malicious_string (not capable, requires --allow-import)

@@ -1,0 +1,4 @@
+{
+  "args": "run --reload private_field_presence.ts",
+  "output": "private_field_presence.ts.out"
+}

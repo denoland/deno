@@ -1,0 +1,8 @@
+{
+  // ignored: tsc doesn't resolve the .d.ts/.d.mts/.d.cts subpath export types
+  // that deno provides. https://github.com/denoland/deno/issues/36085
+  "ignore": true,
+  "args": "check file_dts_dmts_dcts/main.ts",
+  "output": "file_dts_dmts_dcts/main.out",
+  "exitCode": 1
+}

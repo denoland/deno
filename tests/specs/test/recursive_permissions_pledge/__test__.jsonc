@@ -1,0 +1,8 @@
+{
+  "args": "test main.js",
+  "exitCode": 1,
+  "envs": {
+    "RUST_BACKTRACE": "0"
+  },
+  "output": "err.out"
+}

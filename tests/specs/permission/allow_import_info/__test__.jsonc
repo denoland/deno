@@ -1,0 +1,22 @@
+{
+  "envs": {
+    "JSR_URL": ""
+  },
+  "tests": {
+    "implicit": {
+      "args": "info http://localhost:4545/welcome.ts",
+      "output": "success.out",
+      "exitCode": 0
+    },
+    "via_import_not_allowed": {
+      "args": "info main.ts",
+      "output": "import_not_allowed.out",
+      "exitCode": 0
+    },
+    "via_import_allowed": {
+      "args": "info --allow-import main.ts",
+      "output": "import_allowed.out",
+      "exitCode": 0
+    }
+  }
+}

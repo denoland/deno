@@ -1,0 +1,18 @@
+Download http://localhost:4260/@denotest%2fbin-created-by-lifecycle
+Download http://localhost:4260/@denotest/bin-created-by-lifecycle/1.0.0.tgz
+Initialize @denotest/bin-created-by-lifecycle@1.0.0
+Installed [WILDLINE] package in [WILDCARD]
+Reused [WILDLINE] packages from cache
+Downloaded [WILDLINE] packages from JSR
+Downloaded [WILDLINE] package from npm
+[WILDLINE]
+
+Dependencies:
+[WILDCARD]
+╭ Warning
+│
+│  Ignored build scripts for packages:
+│  npm:@denotest/bin-created-by-lifecycle@1.0.0
+│
+│  Run "deno approve-scripts" to run build scripts.
+╰─

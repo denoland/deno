@@ -1,0 +1,14 @@
+Check [WILDCARD]
+    CPU | [WILDCARD]
+Runtime | [WILDCARD]
+
+[WILDCARD]
+
+| benchmark   | time/iter (avg) |        iter/s |      (min … max)      |      p75 |      p99 |     p995 |
+| ----------- | --------------- | ------------- | --------------------- | -------- | -------- | -------- |
+
+group G1
+| G1-B        | [WILDCARD]
+
+group G2
+| G2-B        | [WILDCARD]

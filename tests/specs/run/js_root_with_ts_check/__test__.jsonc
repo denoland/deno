@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet --check js_root_with_ts_check.js",
+  "output": "js_root_with_ts_check.js.out",
+  "exitCode": 1
+}

@@ -1,0 +1,59 @@
+{
+  "name": "@types/range-parser",
+  "dist-tags": {
+    "ts5.8": "1.2.7",
+    "ts5.7": "1.2.7",
+    "latest": "1.2.7",
+    "ts4.5": "1.2.7",
+    "ts4.6": "1.2.7",
+    "ts4.7": "1.2.7",
+    "ts4.8": "1.2.7",
+    "ts4.9": "1.2.7",
+    "ts5.0": "1.2.7",
+    "ts5.1": "1.2.7",
+    "ts5.2": "1.2.7",
+    "ts5.3": "1.2.7",
+    "ts5.4": "1.2.7",
+    "ts5.5": "1.2.7",
+    "ts5.9": "1.2.7",
+    "ts5.6": "1.2.7",
+    "ts6.0": "1.2.7"
+  },
+  "versions": {
+    "1.2.7": {
+      "name": "@types/range-parser",
+      "version": "1.2.7",
+      "license": "MIT",
+      "_id": "@types/range-parser@1.2.7",
+      "dist": {
+        "shasum": "50ae4353eaaddc04044279812f52c8c65857dbcb",
+        "tarball": "http://localhost:4260/@types/range-parser/range-parser-1.2.7.tgz",
+        "fileCount": 5,
+        "integrity": "sha512-hKormJbkJqzQGhziax5PItDUTMAM9uE2XXQmM37dyd4hVM+5aVl7oVxMVUiVQn2oCQFN/LKCZdvSM0pFRqbSmQ==",
+        "unpackedSize": 4615
+      },
+      "main": "",
+      "types": "index.d.ts",
+      "scripts": {},
+      "repository": {
+        "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+        "type": "git",
+        "directory": "types/range-parser"
+      },
+      "description": "TypeScript definitions for range-parser",
+      "directories": {},
+      "dependencies": {},
+      "_hasShrinkwrap": false,
+      "typeScriptVersion": "4.5",
+      "typesPublisherContentHash": "85ed88e3afe8da85360c400901b67e99a7c6690c6376c5ab8939ae9dee4b0a93"
+    }
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/range-parser",
+  "repository": {
+    "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+    "type": "git",
+    "directory": "types/range-parser"
+  },
+  "description": "TypeScript definitions for range-parser"
+}

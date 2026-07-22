@@ -1,0 +1,14 @@
+Current Deno version: [WILDCARD]
+Downloading https://github.com/denoland/deno/releases/download/v1.43.2/deno-[WILDCARD].zip
+Deno is upgrading to version 1.43.2
+
+Upgraded successfully to Deno v1.43.2 (stable)
+
+Release notes:
+
+  https://github.com/denoland/deno/releases/tag/v1.43.2
+
+Blog post:
+
+  https://deno.com/blog/v1.43
+

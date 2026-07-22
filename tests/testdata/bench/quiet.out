@@ -1,0 +1,11 @@
+    CPU | [WILDCARD]
+Runtime | Deno [WILDCARD] ([WILDCARD])
+
+[WILDCARD]/bench/quiet.ts
+
+benchmark       time/iter (avg)        iter/s      (min … max)           p75      p99     p995
+--------------- ----------------------------- --------------------- --------------------------
+console.log [WILDCARD] [WILDCARD] [WILDCARD] ([WILDCARD] … [WILDCARD]) [WILDCARD]
+console.error [WILDCARD] [WILDCARD] [WILDCARD] ([WILDCARD] … [WILDCARD]) [WILDCARD]
+console.info [WILDCARD] [WILDCARD] [WILDCARD] ([WILDCARD] … [WILDCARD]) [WILDCARD]
+console.warn [WILDCARD] [WILDCARD] [WILDCARD] ([WILDCARD] … [WILDCARD]) [WILDCARD]

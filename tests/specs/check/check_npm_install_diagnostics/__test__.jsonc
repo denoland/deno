@@ -1,0 +1,10 @@
+{
+  // ignored: native tsc emits the stock "install @types/jquery" hint instead
+  // of deno's remapped "did you mean to import npm:jquery" hint; restoring
+  // deno's hint additively is tracked in
+  // https://github.com/denoland/deno/issues/36091
+  "ignore": true,
+  "args": "check --quiet main.ts",
+  "output": "main.out",
+  "exitCode": 1
+}

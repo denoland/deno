@@ -1,0 +1,4 @@
+{
+  "args": "run --reload --check tsx_imports/tsx_imports.ts",
+  "output": "tsx_imports/tsx_imports.ts.out"
+}

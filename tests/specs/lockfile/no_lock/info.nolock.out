@@ -1,0 +1,8 @@
+Download http://localhost:4545/lockfile/basic/mod.ts
+local: [WILDLINE]main.ts
+type: TypeScript
+dependencies: 1 unique
+size: [WILDCARD]
+
+file:///[WILDCARD]/main.ts ([WILDLINE])
+└── http://localhost:4545/lockfile/basic/mod.ts ([WILDLINE])

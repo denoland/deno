@@ -1,0 +1,6 @@
+{
+  "version": "2",
+  "remote": {
+    "http://localhost:4545/lockfile/basic/mod.ts": "invalid"
+  }
+}

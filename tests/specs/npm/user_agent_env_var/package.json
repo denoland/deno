@@ -1,0 +1,8 @@
+{
+  "scripts": {
+    "run-via-bin": "print-npm-user-agent"
+  },
+  "dependencies": {
+    "@denotest/print-npm-user-agent": "1.0.0"
+  }
+}

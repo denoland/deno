@@ -1,0 +1,5 @@
+Defined in [WILDCARD]/deno_doc2.ts:1:1
+
+function bar(): void
+  Some JSDoc
+

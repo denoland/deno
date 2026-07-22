@@ -1,0 +1,11 @@
+{
+  "name": "@scope/my-pkg",
+  "version": "1.0.0",
+  "exports": "./mod.ts",
+  "imports": {
+    "@denotest/add": "jsr:@denotest/add@1"
+  },
+  "links": [
+    "../add"
+  ]
+}

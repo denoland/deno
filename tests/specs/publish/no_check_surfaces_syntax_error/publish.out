@@ -1,0 +1,8 @@
+Checking for slow types in the public API...
+error[syntax-error]: Expression expected
+ --> [WILDLINE]mod.ts:1:2
+  | 
+1 | +
+  |  
+
+error: Found 1 problem

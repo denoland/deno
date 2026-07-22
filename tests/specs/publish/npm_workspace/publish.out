@@ -1,0 +1,19 @@
+Publishing a workspace...
+Check [WILDCARD]index.ts
+Check [WILDCARD]index.ts
+Checking for slow types in the public API...
+Check [WILDCARD]index.ts
+Check [WILDCARD]index.ts
+[UNORDERED_START]
+Simulating publish of @scope/add@1.0.0 with files:
+   file:///[WILDLINE]/npm_workspace/add/LICENSE ([WILDLINE])
+   file:///[WILDLINE]/npm_workspace/add/index.ts ([WILDLINE])
+   file:///[WILDLINE]/npm_workspace/add/jsr.json ([WILDLINE])
+   file:///[WILDLINE]/npm_workspace/add/package.json ([WILDLINE])
+Simulating publish of @scope/subtract@1.0.0 with files:
+   file:///[WILDLINE]/npm_workspace/subtract/LICENSE ([WILDLINE])
+   file:///[WILDLINE]/npm_workspace/subtract/index.ts ([WILDLINE])
+   file:///[WILDLINE]/npm_workspace/subtract/jsr.json ([WILDLINE])
+   file:///[WILDLINE]/npm_workspace/subtract/package.json ([WILDLINE])
+[UNORDERED_END]
+Success Dry run complete

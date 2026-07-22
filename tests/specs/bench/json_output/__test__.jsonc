@@ -1,0 +1,5 @@
+{
+  "args": "bench --json pass.ts",
+  "output": "pass.json.out",
+  "exitCode": 0
+}

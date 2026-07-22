@@ -1,0 +1,183 @@
+{
+  "name": "isexe",
+  "description": "Minimal module to check if a file is executable.",
+  "dist-tags": {
+    "latest": "3.1.1"
+  },
+  "versions": {
+    "2.0.0": {
+      "name": "isexe",
+      "version": "2.0.0",
+      "description": "Minimal module to check if a file is executable.",
+      "main": "index.js",
+      "directories": {
+        "test": "test"
+      },
+      "devDependencies": {
+        "mkdirp": "^0.5.1",
+        "rimraf": "^2.5.0",
+        "tap": "^10.3.0"
+      },
+      "scripts": {
+        "test": "tap test/*.js --100",
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "postpublish": "git push origin --all; git push origin --tags"
+      },
+      "author": {
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me",
+        "url": "http://blog.izs.me/"
+      },
+      "license": "ISC",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/isaacs/isexe.git"
+      },
+      "bugs": {
+        "url": "https://github.com/isaacs/isexe/issues"
+      },
+      "gitHead": "10f8be491aab2e158c7e20df64a7f90ab5b5475c",
+      "_id": "isexe@2.0.0",
+      "_shasum": "e8fbf374dc556ff8947a10dcb0572d633f2cfa10",
+      "_from": ".",
+      "_npmVersion": "4.4.2",
+      "_nodeVersion": "8.0.0-pre",
+      "dist": {
+        "shasum": "e8fbf374dc556ff8947a10dcb0572d633f2cfa10",
+        "tarball": "http://localhost:4260/isexe/isexe-2.0.0.tgz",
+        "integrity": "sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw=="
+      }
+    },
+    "3.1.1": {
+      "name": "isexe",
+      "version": "3.1.1",
+      "description": "Minimal module to check if a file is executable.",
+      "main": "./dist/cjs/index.js",
+      "module": "./dist/mjs/index.js",
+      "types": "./dist/cjs/index.js",
+      "exports": {
+        ".": {
+          "import": {
+            "types": "./dist/mjs/index.d.ts",
+            "default": "./dist/mjs/index.js"
+          },
+          "require": {
+            "types": "./dist/cjs/index.d.ts",
+            "default": "./dist/cjs/index.js"
+          }
+        },
+        "./posix": {
+          "import": {
+            "types": "./dist/mjs/posix.d.ts",
+            "default": "./dist/mjs/posix.js"
+          },
+          "require": {
+            "types": "./dist/cjs/posix.d.ts",
+            "default": "./dist/cjs/posix.js"
+          }
+        },
+        "./win32": {
+          "import": {
+            "types": "./dist/mjs/win32.d.ts",
+            "default": "./dist/mjs/win32.js"
+          },
+          "require": {
+            "types": "./dist/cjs/win32.d.ts",
+            "default": "./dist/cjs/win32.js"
+          }
+        },
+        "./package.json": "./package.json"
+      },
+      "devDependencies": {
+        "@types/node": "^20.4.5",
+        "@types/tap": "^15.0.8",
+        "c8": "^8.0.1",
+        "mkdirp": "^0.5.1",
+        "prettier": "^2.8.8",
+        "rimraf": "^2.5.0",
+        "sync-content": "^1.0.2",
+        "tap": "^16.3.8",
+        "ts-node": "^10.9.1",
+        "typedoc": "^0.24.8",
+        "typescript": "^5.1.6"
+      },
+      "scripts": {
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "prepublishOnly": "git push origin --follow-tags",
+        "prepare": "tsc -p tsconfig/cjs.json && tsc -p tsconfig/esm.json && bash ./scripts/fixup.sh",
+        "pretest": "npm run prepare",
+        "presnap": "npm run prepare",
+        "test": "c8 tap",
+        "snap": "c8 tap",
+        "format": "prettier --write . --loglevel warn --ignore-path ../../.prettierignore --cache",
+        "typedoc": "typedoc --tsconfig tsconfig/esm.json ./src/*.ts"
+      },
+      "author": {
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me",
+        "url": "http://blog.izs.me/"
+      },
+      "license": "ISC",
+      "tap": {
+        "coverage": false,
+        "node-arg": [
+          "--enable-source-maps",
+          "--no-warnings",
+          "--loader",
+          "ts-node/esm"
+        ],
+        "ts": false
+      },
+      "prettier": {
+        "semi": false,
+        "printWidth": 75,
+        "tabWidth": 2,
+        "useTabs": false,
+        "singleQuote": true,
+        "jsxSingleQuote": false,
+        "bracketSameLine": true,
+        "arrowParens": "avoid",
+        "endOfLine": "lf"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/isaacs/isexe.git"
+      },
+      "engines": {
+        "node": ">=16"
+      },
+      "_id": "isexe@3.1.1",
+      "gitHead": "8e5d06b2f0e6d7cfe83d19eb0a9c572d2c598232",
+      "bugs": {
+        "url": "https://github.com/isaacs/isexe/issues"
+      },
+      "_nodeVersion": "18.16.0",
+      "_npmVersion": "9.8.1",
+      "dist": {
+        "integrity": "sha512-LpB/54B+/2J5hqQ7imZHfdU31OlgQqx7ZicVlkm9kzg9/w8GKLEcFfJl/t7DCEDueOyBAD6zCCwTO6Fzs0NoEQ==",
+        "shasum": "4a407e2bd78ddfb14bea0c27c6f7072dde775f0d",
+        "tarball": "http://localhost:4260/isexe/isexe-3.1.1.tgz",
+        "fileCount": 37,
+        "unpackedSize": 42976
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me/"
+  },
+  "license": "ISC",
+  "homepage": "https://github.com/isaacs/isexe#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isaacs/isexe.git"
+  },
+  "bugs": {
+    "url": "https://github.com/isaacs/isexe/issues"
+  }
+}

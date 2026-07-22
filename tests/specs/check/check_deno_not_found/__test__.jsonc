@@ -1,0 +1,8 @@
+{
+  // ignored: Deno/deno.ns types are always injected now, so 'Deno' resolves
+  // and no error is reported. https://github.com/denoland/deno/issues/36085
+  "ignore": true,
+  "args": "check --quiet deno_not_found/main.ts",
+  "output": "deno_not_found/main.out",
+  "exitCode": 1
+}

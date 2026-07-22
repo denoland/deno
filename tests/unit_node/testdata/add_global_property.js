@@ -1,0 +1,1 @@
+globalThis.foo = "Hello";

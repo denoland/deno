@@ -1,0 +1,5 @@
+{
+  "args": "test --reporter=tap ignored_steps.ts",
+  "exitCode": 0,
+  "output": "ignored_steps.tap.out"
+}

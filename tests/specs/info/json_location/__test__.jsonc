@@ -1,0 +1,4 @@
+{
+  "args": "info --json --location https://deno.land",
+  "output": "info_json_location.out"
+}

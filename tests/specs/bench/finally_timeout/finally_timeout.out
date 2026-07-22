@@ -1,0 +1,13 @@
+Check [WILDCARD]finally_timeout.ts
+    CPU | [WILDCARD]
+Runtime | Deno [WILDCARD] ([WILDCARD])
+
+[WILDCARD]/finally_timeout.ts
+
+| benchmark   | time/iter (avg) |        iter/s |      (min … max)      |      p75 |      p99 |     p995 |
+| ----------- | --------------- | ------------- | --------------------- | -------- | -------- | -------- |
+error       error: Error: fail
+[WILDCARD]
+| success     | [WILDCARD] | [WILDCARD] | ([WILDCARD] … [WILDCARD]) | [WILDCARD] | [WILDCARD] | [WILDCARD] |
+
+error: Bench failed

@@ -1,0 +1,7 @@
+local: [WILDCARD]017_import_redirect.ts
+type: TypeScript
+dependencies: 1 unique
+size: 660B
+
+file:///[WILDCARD]/017_import_redirect.ts ([WILDCARD])
+└── https://docs.deno.com/examples/scripts/hello_world.ts ([WILDCARD])

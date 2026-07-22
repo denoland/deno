@@ -1,0 +1,20 @@
+{
+  "tests": {
+    "basic": {
+      "args": "run --env=./env --allow-env env_file.ts",
+      "output": "env_file.out"
+    },
+    "missing": {
+      "args": "run --env=./missing --allow-env env_file.ts",
+      "output": "env_file_missing.out"
+    },
+    "multiple": {
+      "args": "run --env=./env --env=./env_one --env=./env_two --allow-env env_file.ts",
+      "output": "multiple_env_file.out"
+    },
+    "unparseable": {
+      "args": "run --env=./env_unparseable --allow-env env_file.ts",
+      "output": "env_unparseable.out"
+    }
+  }
+}

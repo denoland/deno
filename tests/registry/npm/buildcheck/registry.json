@@ -1,0 +1,70 @@
+{
+  "name": "buildcheck",
+  "dist-tags": {
+    "latest": "0.0.3"
+  },
+  "versions": {
+    "0.0.3": {
+      "name": "buildcheck",
+      "version": "0.0.3",
+      "author": {
+        "name": "Brian White",
+        "email": "mscdex@mscdex.net"
+      },
+      "description": "Build environment checking (a la autoconf) for node.js",
+      "main": "./lib/index.js",
+      "engines": {
+        "node": ">=10.0.0"
+      },
+      "devDependencies": {
+        "@mscdex/eslint-config": "^1.1.0",
+        "eslint": "^7.0.0"
+      },
+      "scripts": {
+        "lint": "eslint --cache --report-unused-disable-directives --ext=.js .eslintrc.js lib",
+        "lint:fix": "npm run lint -- --fix"
+      },
+      "licenses": [
+        {
+          "type": "MIT",
+          "url": "http://github.com/mscdex/buildcheck/raw/master/LICENSE"
+        }
+      ],
+      "repository": {
+        "type": "git",
+        "url": "git+ssh://git@github.com/mscdex/buildcheck.git"
+      },
+      "_resolved": "",
+      "_integrity": "",
+      "_from": "https://github.com/mscdex/buildcheck/tarball/v0.0.3",
+      "bugs": {
+        "url": "https://github.com/mscdex/buildcheck/issues"
+      },
+      "_id": "buildcheck@0.0.3",
+      "_nodeVersion": "10.22.1",
+      "_npmVersion": "6.14.6",
+      "dist": {
+        "integrity": "sha512-pziaA+p/wdVImfcbsZLNF32EiWyujlQLwolMqUQE8xpKNOH7KmZQaY8sXN7DGOEzPAElo9QTaeNRfGnf3iOJbA==",
+        "shasum": "70451897a95d80f7807e68fc412eb2e7e35ff4d5",
+        "tarball": "http://localhost:4260/buildcheck/buildcheck-0.0.3.tgz",
+        "fileCount": 14,
+        "unpackedSize": 42580
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "Build environment checking (a la autoconf) for node.js",
+  "homepage": "https://github.com/mscdex/buildcheck#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/mscdex/buildcheck.git"
+  },
+  "author": {
+    "name": "Brian White",
+    "email": "mscdex@mscdex.net"
+  },
+  "bugs": {
+    "url": "https://github.com/mscdex/buildcheck/issues"
+  }
+}

@@ -1,0 +1,5 @@
+ReadableStream {
+  locked: false,
+  state: "readable",
+  supportsBYOB: false
+}

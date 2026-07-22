@@ -1,0 +1,46 @@
+{
+  "tempDir": true,
+  "tests": {
+    "future_not_installed": {
+      "steps": [{
+        "args": "run -A not_installed.ts",
+        "output": "future_not_installed.out",
+        "exitCode": 1
+      }]
+    },
+    "future_invalid_sub_path": {
+      "steps": [{
+        "args": "install",
+        "output": "[WILDCARD]"
+      }, {
+        "args": "run -A invalid_sub_path.ts",
+        "output": "future_invalid_sub_path.out",
+        "exitCode": 1
+      }]
+    },
+    "not_installed": {
+      "envs": {
+        "DENO_UNSTABLE_BYONM": "1"
+      },
+      "steps": [{
+        "args": "run -A not_installed.ts",
+        "output": "not_installed.out",
+        "exitCode": 1
+      }]
+    },
+    "invalid_sub_path": {
+      "envs": {
+        "DENO_UNSTABLE_BYONM": "1"
+      },
+      "steps": [{
+        "args": "install",
+        "commandName": "npm",
+        "output": "[WILDCARD]"
+      }, {
+        "args": "run -A invalid_sub_path.ts",
+        "output": "invalid_sub_path.out",
+        "exitCode": 1
+      }]
+    }
+  }
+}

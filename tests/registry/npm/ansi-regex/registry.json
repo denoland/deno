@@ -1,0 +1,160 @@
+{
+  "name": "ansi-regex",
+  "description": "Regular expression for matching ANSI escape codes",
+  "dist-tags": {
+    "latest": "6.0.1"
+  },
+  "versions": {
+    "6.0.1": {
+      "name": "ansi-regex",
+      "version": "6.0.1",
+      "description": "Regular expression for matching ANSI escape codes",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/chalk/ansi-regex.git"
+      },
+      "funding": "https://github.com/chalk/ansi-regex?sponsor=1",
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "https://sindresorhus.com"
+      },
+      "type": "module",
+      "exports": "./index.js",
+      "engines": {
+        "node": ">=12"
+      },
+      "scripts": {
+        "test": "xo && ava && tsd",
+        "view-supported": "node fixtures/view-codes.js"
+      },
+      "devDependencies": {
+        "ava": "^3.15.0",
+        "tsd": "^0.14.0",
+        "xo": "^0.38.2"
+      },
+      "types": "./index.d.ts",
+      "gitHead": "d908492e0070f26552fad1b25e339aff9011ae8b",
+      "bugs": {
+        "url": "https://github.com/chalk/ansi-regex/issues"
+      },
+      "_id": "ansi-regex@6.0.1",
+      "_nodeVersion": "16.0.0",
+      "_npmVersion": "7.23.0",
+      "dist": {
+        "integrity": "sha512-n5M855fKb2SsfMIiFFoVrABHJC8QtHwVx+mHWP3QcEqBHYienj5dHSgjbxtC0WEZXYt4wcD6zrQElDPhFuZgfA==",
+        "shasum": "3183e38fae9a65d7cb5e53945cd5897d0260a06a",
+        "tarball": "http://localhost:4260/ansi-regex/ansi-regex-6.0.1.tgz",
+        "fileCount": 5,
+        "unpackedSize": 5667
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    },
+    "5.0.1": {
+      "name": "ansi-regex",
+      "version": "5.0.1",
+      "description": "Regular expression for matching ANSI escape codes",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/chalk/ansi-regex.git"
+      },
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=8"
+      },
+      "scripts": {
+        "test": "xo && ava && tsd",
+        "view-supported": "node fixtures/view-codes.js"
+      },
+      "devDependencies": {
+        "ava": "^2.4.0",
+        "tsd": "^0.9.0",
+        "xo": "^0.25.3"
+      },
+      "types": "./index.d.ts",
+      "readme": "# ansi-regex\n\n> Regular expression for matching [ANSI escape codes](https://en.wikipedia.org/wiki/ANSI_escape_code)\n\n\n## Install\n\n```\n$ npm install ansi-regex\n```\n\n\n## Usage\n\n```js\nconst ansiRegex = require('ansi-regex');\n\nansiRegex().test('\\u001B[4mcake\\u001B[0m');\n//=> true\n\nansiRegex().test('cake');\n//=> false\n\n'\\u001B[4mcake\\u001B[0m'.match(ansiRegex());\n//=> ['\\u001B[4m', '\\u001B[0m']\n\n'\\u001B[4mcake\\u001B[0m'.match(ansiRegex({onlyFirst: true}));\n//=> ['\\u001B[4m']\n\n'\\u001B]8;;https://github.com\\u0007click\\u001B]8;;\\u0007'.match(ansiRegex());\n//=> ['\\u001B]8;;https://github.com\\u0007', '\\u001B]8;;\\u0007']\n```\n\n\n## API\n\n### ansiRegex(options?)\n\nReturns a regex for matching ANSI escape codes.\n\n#### options\n\nType: `object`\n\n##### onlyFirst\n\nType: `boolean`<br>\nDefault: `false` *(Matches any ANSI escape codes in a string)*\n\nMatch only the first ANSI escape.\n\n\n## FAQ\n\n### Why do you test for codes not in the ECMA 48 standard?\n\nSome of the codes we run as a test are codes that we acquired finding various lists of non-standard or manufacturer specific codes. We test for both standard and non-standard codes, as most of them follow the same or similar format and can be safely matched in strings without the risk of removing actual string content. There are a few non-standard control codes that do not follow the traditional format (i.e. they end in numbers) thus forcing us to exclude them from the test because we cannot reliably match them.\n\nOn the historical side, those ECMA standards were established in the early 90's whereas the VT100, for example, was designed in the mid/late 70's. At that point in time, control codes were still pretty ungoverned and engineers used them for a multitude of things, namely to activate hardware ports that may have been proprietary. Somewhere else you see a similar 'anarchy' of codes is in the x86 architecture for processors; there are a ton of \"interrupts\" that can mean different things on certain brands of processors, most of which have been phased out.\n\n\n## Maintainers\n\n- [Sindre Sorhus](https://github.com/sindresorhus)\n- [Josh Junon](https://github.com/qix-)\n\n\n---\n\n<div align=\"center\">\n\t<b>\n\t\t<a href=\"https://tidelift.com/subscription/pkg/npm-ansi-regex?utm_source=npm-ansi-regex&utm_medium=referral&utm_campaign=readme\">Get professional support for this package with a Tidelift subscription</a>\n\t</b>\n\t<br>\n\t<sub>\n\t\tTidelift helps make open source sustainable for maintainers while giving companies<br>assurances about security, maintenance, and licensing for their dependencies.\n\t</sub>\n</div>\n",
+      "readmeFilename": "readme.md",
+      "gitHead": "a9babce885cf19c363cf1d1c645f834592c3f7a4",
+      "bugs": {
+        "url": "https://github.com/chalk/ansi-regex/issues"
+      },
+      "_id": "ansi-regex@5.0.1",
+      "_nodeVersion": "16.0.0",
+      "_npmVersion": "7.23.0",
+      "dist": {
+        "integrity": "sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ==",
+        "shasum": "082cb2c89c9fe8659a311a53bd6a4dc5301db304",
+        "tarball": "http://localhost:4260/ansi-regex/ansi-regex-5.0.1.tgz",
+        "fileCount": 5,
+        "unpackedSize": 5609
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    },
+    "3.0.1": {
+      "name": "ansi-regex",
+      "version": "3.0.1",
+      "description": "Regular expression for matching ANSI escape codes",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/chalk/ansi-regex.git"
+      },
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=4"
+      },
+      "scripts": {
+        "test": "xo && ava",
+        "view-supported": "node fixtures/view-codes.js"
+      },
+      "devDependencies": {
+        "ava": "*",
+        "xo": "*"
+      },
+      "readme": "# ansi-regex [![Build Status](https://travis-ci.org/chalk/ansi-regex.svg?branch=master)](https://travis-ci.org/chalk/ansi-regex)\n\n> Regular expression for matching [ANSI escape codes](https://en.wikipedia.org/wiki/ANSI_escape_code)\n\n\n## Install\n\n```\n$ npm install ansi-regex\n```\n\n\n## Usage\n\n```js\nconst ansiRegex = require('ansi-regex');\n\nansiRegex().test('\\u001B[4mcake\\u001B[0m');\n//=> true\n\nansiRegex().test('cake');\n//=> false\n\n'\\u001B[4mcake\\u001B[0m'.match(ansiRegex());\n//=> ['\\u001B[4m', '\\u001B[0m']\n```\n\n\n## FAQ\n\n### Why do you test for codes not in the ECMA 48 standard?\n\nSome of the codes we run as a test are codes that we acquired finding various lists of non-standard or manufacturer specific codes. We test for both standard and non-standard codes, as most of them follow the same or similar format and can be safely matched in strings without the risk of removing actual string content. There are a few non-standard control codes that do not follow the traditional format (i.e. they end in numbers) thus forcing us to exclude them from the test because we cannot reliably match them.\n\nOn the historical side, those ECMA standards were established in the early 90's whereas the VT100, for example, was designed in the mid/late 70's. At that point in time, control codes were still pretty ungoverned and engineers used them for a multitude of things, namely to activate hardware ports that may have been proprietary. Somewhere else you see a similar 'anarchy' of codes is in the x86 architecture for processors; there are a ton of \"interrupts\" that can mean different things on certain brands of processors, most of which have been phased out.\n\n\n## Maintainers\n\n- [Sindre Sorhus](https://github.com/sindresorhus)\n- [Josh Junon](https://github.com/qix-)\n\n\n## License\n\nMIT\n",
+      "readmeFilename": "readme.md",
+      "gitHead": "f545bdb80048f527889eddb9ac1a851c6f2a2241",
+      "bugs": {
+        "url": "https://github.com/chalk/ansi-regex/issues"
+      },
+      "_id": "ansi-regex@3.0.1",
+      "_nodeVersion": "17.3.1",
+      "_npmVersion": "8.3.0",
+      "dist": {
+        "integrity": "sha512-+O9Jct8wf++lXxxFc4hc8LsjaSq0HFzzL7cVsw8pRDIPdjKD2mT4ytDZlLuSBZ4cLKZFXIrMGO7DbQCtMJJMKw==",
+        "shasum": "123d6479e92ad45ad897d4054e3c7ca7db4944e1",
+        "tarball": "http://localhost:4260/ansi-regex/ansi-regex-3.0.1.tgz",
+        "fileCount": 4,
+        "unpackedSize": 4054
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/chalk/ansi-regex#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chalk/ansi-regex.git"
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "bugs": {
+    "url": "https://github.com/chalk/ansi-regex/issues"
+  },
+  "license": "MIT"
+}

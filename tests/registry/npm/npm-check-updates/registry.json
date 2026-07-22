@@ -1,0 +1,200 @@
+{
+  "name": "npm-check-updates",
+  "dist-tags": {
+    "latest": "17.1.13"
+  },
+  "versions": {
+    "17.1.13": {
+      "name": "npm-check-updates",
+      "version": "17.1.13",
+      "author": {
+        "name": "Tomas Junnonen",
+        "email": "tomas1@gmail.com"
+      },
+      "license": "Apache-2.0",
+      "description": "Find newer versions of dependencies than what your package.json allows",
+      "engines": {
+        "node": "^18.18.0 || >=20.0.0",
+        "npm": ">=8.12.1"
+      },
+      "main": "build/index.js",
+      "types": "build/index.d.ts",
+      "scripts": {
+        "build": "rimraf build && npm run build:options && vite build",
+        "build:options": "vite-node src/scripts/build-options.ts",
+        "build:analyze": "rimraf build && npm run build:options && ANALYZER=true vite build",
+        "lint": "cross-env FORCE_COLOR=1 npm-run-all --parallel --aggregate-output lint:*",
+        "lint:lockfile": "lockfile-lint",
+        "lint:markdown": "markdownlint \"**/*.md\" --ignore \"**/node_modules/**/*.md\" --ignore build --config .markdownlint.js",
+        "lint:src": "eslint --cache --cache-location node_modules/.cache/.eslintcache --ignore-path .gitignore --report-unused-disable-directives .",
+        "prepare": "src/scripts/install-hooks",
+        "prepublishOnly": "npm run build",
+        "prettier": "prettier . --check",
+        "test": "npm run test:unit && npm run test:e2e",
+        "test:bun": "test/bun-install.sh && mocha test/bun",
+        "test:unit": "mocha test test/package-managers/*",
+        "test:e2e": "./test/e2e.sh",
+        "ncu": "node build/cli.js"
+      },
+      "bin": {
+        "npm-check-updates": "build/cli.js",
+        "ncu": "build/cli.js"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/raineorshine/npm-check-updates.git"
+      },
+      "bugs": {
+        "url": "https://github.com/raineorshine/npm-check-updates/issues"
+      },
+      "overrides": {
+        "ip": "2.0.1",
+        "jsonparse": "https://github.com/ARitz-Cracker/jsonparse/tree/patch-1",
+        "@yarnpkg/parsers": "2.6.0"
+      },
+      "devDependencies": {
+        "@trivago/prettier-plugin-sort-imports": "^4.3.0",
+        "@types/chai": "^4.3.19",
+        "@types/chai-as-promised": "^8.0.0",
+        "@types/chai-string": "^1.4.5",
+        "@types/cli-table": "^0.3.4",
+        "@types/hosted-git-info": "^3.0.5",
+        "@types/ini": "^4.1.1",
+        "@types/js-yaml": "^4.0.9",
+        "@types/json-parse-helpfulerror": "^1.0.3",
+        "@types/jsonlines": "^0.1.5",
+        "@types/lodash": "^4.17.10",
+        "@types/mocha": "^10.0.9",
+        "@types/node": "^22.7.5",
+        "@types/npm-registry-fetch": "^8.0.7",
+        "@types/parse-github-url": "^1.0.3",
+        "@types/picomatch": "^3.0.1",
+        "@types/progress": "^2.0.7",
+        "@types/prompts": "^2.4.9",
+        "@types/remote-git-tags": "^4.0.2",
+        "@types/semver": "^7.5.8",
+        "@types/semver-utils": "^1.1.3",
+        "@types/sinon": "^17.0.3",
+        "@types/update-notifier": "^6.0.8",
+        "@typescript-eslint/eslint-plugin": "^8.9.0",
+        "@typescript-eslint/parser": "^8.9.0",
+        "camelcase": "^6.3.0",
+        "chai": "^4.3.10",
+        "chai-as-promised": "^7.1.2",
+        "chai-string": "^1.5.0",
+        "chalk": "^5.3.0",
+        "cli-table3": "^0.6.5",
+        "commander": "^12.1.0",
+        "cross-env": "^7.0.3",
+        "dequal": "^2.0.3",
+        "eslint": "^8.57.0",
+        "eslint-config-prettier": "^9.1.0",
+        "eslint-config-raine": "^0.5.0",
+        "eslint-config-standard": "^17.1.0",
+        "eslint-plugin-import": "^2.31.0",
+        "eslint-plugin-jsdoc": "^50.4.1",
+        "eslint-plugin-n": "^16.6.2",
+        "eslint-plugin-promise": "^6.6.0",
+        "fast-glob": "^3.3.2",
+        "fast-memoize": "^2.5.2",
+        "find-up": "5.0.0",
+        "fp-and-or": "^1.0.2",
+        "hosted-git-info": "^8.0.0",
+        "ini": "^5.0.0",
+        "js-yaml": "^4.1.0",
+        "json-parse-helpfulerror": "^1.0.3",
+        "jsonlines": "^0.1.1",
+        "lockfile-lint": "^4.14.0",
+        "lodash": "^4.17.21",
+        "markdownlint-cli": "^0.42.0",
+        "mocha": "^10.7.3",
+        "npm-registry-fetch": "^18.0.2",
+        "npm-run-all": "^4.1.5",
+        "p-map": "^4.0.0",
+        "parse-github-url": "^1.0.3",
+        "picomatch": "^4.0.2",
+        "prettier": "^3.3.3",
+        "progress": "^2.0.3",
+        "prompts-ncu": "^3.0.2",
+        "rc-config-loader": "^4.1.3",
+        "remote-git-tags": "^3.0.0",
+        "rfdc": "^1.4.1",
+        "rimraf": "^6.0.1",
+        "rollup-plugin-node-externals": "^7.1.3",
+        "semver": "^7.6.3",
+        "semver-utils": "^1.1.4",
+        "should": "^13.2.3",
+        "sinon": "^19.0.2",
+        "source-map-support": "^0.5.21",
+        "spawn-please": "^3.0.0",
+        "strip-ansi": "^7.1.0",
+        "strip-json-comments": "^5.0.1",
+        "ts-node": "^10.9.2",
+        "typescript": "^5.6.3",
+        "typescript-json-schema": "^0.65.1",
+        "untildify": "^4.0.0",
+        "update-notifier": "^7.3.1",
+        "verdaccio": "^6.0.1",
+        "vite": "^5.4.9",
+        "vite-bundle-analyzer": "^0.12.1",
+        "vite-node": "^2.1.3",
+        "vite-plugin-dts": "^4.2.4",
+        "yarn": "^1.22.22"
+      },
+      "lockfile-lint": {
+        "allowed-schemes": [
+          "https:",
+          "git+ssh:"
+        ],
+        "allowed-hosts": [
+          "npm",
+          "github.com"
+        ],
+        "empty-hostname": false,
+        "type": "npm ",
+        "path": "package-lock.json"
+      },
+      "mocha": {
+        "check-leaks": true,
+        "extension": [
+          "test.ts"
+        ],
+        "require": [
+          "source-map-support/register",
+          "ts-node/register"
+        ],
+        "timeout": 60000,
+        "trace-deprecation": true,
+        "trace-warnings": true,
+        "use_strict": true
+      },
+      "_id": "npm-check-updates@17.1.13",
+      "gitHead": "f514093647f1833c83653765493c694372d14fea",
+      "_nodeVersion": "22.0.0",
+      "_npmVersion": "10.9.1",
+      "dist": {
+        "integrity": "sha512-m9Woo2J5XVab0VcQpYvrQ0hx3ySI1mGbiHR595mc6Lr1/FIaTWvv+oU+T1WKSfXRiluKC/V5P6Bdk5agaYpqqg==",
+        "shasum": "93e1c5fa5b8e11bca0bd143650b14ffcf9fc6b5a",
+        "tarball": "http://localhost:4260/npm-check-updates/npm-check-updates-17.1.13.tgz",
+        "fileCount": 19,
+        "unpackedSize": 5336239
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "bugs": {
+    "url": "https://github.com/raineorshine/npm-check-updates/issues"
+  },
+  "author": {
+    "name": "Tomas Junnonen",
+    "email": "tomas1@gmail.com"
+  },
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/raineorshine/npm-check-updates",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/raineorshine/npm-check-updates.git"
+  },
+  "description": "Find newer versions of dependencies than what your package.json allows"
+}

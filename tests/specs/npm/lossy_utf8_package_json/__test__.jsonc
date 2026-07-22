@@ -1,0 +1,5 @@
+{
+  "args": "run main.mjs",
+  "output": "main.out",
+  "exitCode": 0
+}

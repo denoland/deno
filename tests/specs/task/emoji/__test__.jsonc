@@ -1,0 +1,4 @@
+{
+  "args": "task -q --cwd deno.json echo_emoji",
+  "output": "main.out"
+}

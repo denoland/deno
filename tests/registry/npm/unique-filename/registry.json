@@ -1,0 +1,81 @@
+{
+  "name": "unique-filename",
+  "description": "Generate a unique filename for use in temporary directories or caches.",
+  "dist-tags": {
+    "latest": "3.0.0"
+  },
+  "versions": {
+    "3.0.0": {
+      "name": "unique-filename",
+      "version": "3.0.0",
+      "author": {
+        "name": "GitHub Inc."
+      },
+      "license": "ISC",
+      "_id": "unique-filename@3.0.0",
+      "bugs": {
+        "url": "https://github.com/iarna/unique-filename/issues"
+      },
+      "tap": {
+        "nyc-arg": [
+          "--exclude",
+          "tap-snapshots/**"
+        ]
+      },
+      "dist": {
+        "shasum": "48ba7a5a16849f5080d26c760c86cf5cf05770ea",
+        "tarball": "http://localhost:4260/unique-filename/unique-filename-3.0.0.tgz",
+        "fileCount": 4,
+        "integrity": "sha512-afXhuC55wkAmZ0P18QsVE6kp8JaxrEokN2HGIoIVv2ijHQd419H0+6EigAFcIzXeMIkcIkNBpB3L/DXB3cTS/g==",
+        "unpackedSize": 3414
+      },
+      "main": "lib/index.js",
+      "engines": {
+        "node": "^14.17.0 || ^16.13.0 || >=18.0.0"
+      },
+      "gitHead": "49d999ed740c2455755fd19f774571e81454a75e",
+      "scripts": {
+        "lint": "eslint \"**/*.js\"",
+        "snap": "tap",
+        "test": "tap",
+        "lintfix": "npm run lint -- --fix",
+        "postlint": "template-oss-check",
+        "posttest": "npm run lint",
+        "template-oss-apply": "template-oss-apply --force"
+      },
+      "repository": {
+        "url": "git+https://github.com/npm/unique-filename.git",
+        "type": "git"
+      },
+      "_npmVersion": "8.19.2",
+      "description": "Generate a unique filename for use in temporary directories or caches.",
+      "directories": {},
+      "templateOSS": {
+        "version": "4.5.1",
+        "//@npmcli/template-oss": "This file is partially managed by @npmcli/template-oss. Edits may be overwritten."
+      },
+      "_nodeVersion": "18.10.0",
+      "dependencies": {
+        "unique-slug": "^4.0.0"
+      },
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^16.3.0",
+        "@npmcli/template-oss": "4.5.1",
+        "@npmcli/eslint-config": "^4.0.0"
+      }
+    }
+  },
+  "author": {
+    "name": "GitHub Inc."
+  },
+  "repository": {
+    "url": "git+https://github.com/npm/unique-filename.git",
+    "type": "git"
+  },
+  "license": "ISC",
+  "homepage": "https://github.com/iarna/unique-filename",
+  "bugs": {
+    "url": "https://github.com/iarna/unique-filename/issues"
+  }
+}

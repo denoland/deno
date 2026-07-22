@@ -1,0 +1,28 @@
+{
+  "name": "postcss-value-parser",
+  "dist-tags": {
+    "latest": "4.2.0"
+  },
+  "versions": {
+    "4.2.0": {
+      "name": "postcss-value-parser",
+      "version": "4.2.0",
+      "devDependencies": {
+        "eslint": "^5.16.0",
+        "husky": "^2.3.0",
+        "lint-staged": "^8.1.7",
+        "prettier": "^1.17.1",
+        "tap-spec": "^5.0.0",
+        "tape": "^4.10.2"
+      },
+      "dist": {
+        "integrity": "sha512-1NNCs6uurfkVbeXG4S8JFT9t19m45ICnif8zWLd5oPSZ50QnwMfK+H3jv408d4jw/7Bttv5axS5IiHoLaVNHeQ==",
+        "shasum": "723c09920836ba6d3e5af019f92bc0971c02e514",
+        "tarball": "http://localhost:4260/postcss-value-parser/postcss-value-parser-4.2.0.tgz",
+        "fileCount": 9,
+        "unpackedSize": 27193
+      }
+    }
+  },
+  "modified": "2022-06-24T11:09:55.679Z"
+}

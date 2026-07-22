@@ -1,0 +1,18 @@
+Check [WILDCARD]main.ts
+Checking for slow types in the public API...
+Check [WILDCARD]main.ts
+error[excluded-module]: module in package's module graph was excluded from publishing
+ --> [WILDLINE]excluded_file1.ts
+  = hint: remove the module from 'exclude' and/or 'publish.exclude' in the config file or use 'publish.exclude' with a negative glob to unexclude from gitignore
+
+  info: excluded modules referenced via a package export will error at runtime due to not existing in the package
+  docs: https://jsr.io/go/excluded-module
+
+error[excluded-module]: module in package's module graph was excluded from publishing
+ --> [WILDLINE]excluded_file2.ts
+  = hint: remove the module from 'exclude' and/or 'publish.exclude' in the config file or use 'publish.exclude' with a negative glob to unexclude from gitignore
+
+  info: excluded modules referenced via a package export will error at runtime due to not existing in the package
+  docs: https://jsr.io/go/excluded-module
+
+error: Found 2 problems

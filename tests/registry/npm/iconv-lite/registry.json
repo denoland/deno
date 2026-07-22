@@ -1,0 +1,77 @@
+{
+  "name": "iconv-lite",
+  "description": "Convert character encodings in pure javascript.",
+  "dist-tags": {
+    "latest": "0.6.3"
+  },
+  "versions": {
+    "0.6.3": {
+      "name": "iconv-lite",
+      "description": "Convert character encodings in pure javascript.",
+      "version": "0.6.3",
+      "license": "MIT",
+      "author": {
+        "name": "Alexander Shtuchkin",
+        "email": "ashtuchkin@gmail.com"
+      },
+      "main": "./lib/index.js",
+      "typings": "./lib/index.d.ts",
+      "bugs": {
+        "url": "https://github.com/ashtuchkin/iconv-lite/issues"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/ashtuchkin/iconv-lite.git"
+      },
+      "engines": {
+        "node": ">=0.10.0"
+      },
+      "scripts": {
+        "coverage": "c8 _mocha --grep .",
+        "test": "mocha --reporter spec --grep ."
+      },
+      "browser": {
+        "stream": false
+      },
+      "devDependencies": {
+        "async": "^3.2.0",
+        "c8": "^7.2.0",
+        "errto": "^0.2.1",
+        "iconv": "^2.3.5",
+        "mocha": "^3.5.3",
+        "request": "^2.88.2",
+        "semver": "^6.3.0",
+        "unorm": "^1.6.0"
+      },
+      "dependencies": {
+        "safer-buffer": ">= 2.1.2 < 3.0.0"
+      },
+      "gitHead": "d13de386c07a1574425811f8f219c181c633e88d",
+      "_id": "iconv-lite@0.6.3",
+      "_nodeVersion": "15.6.0",
+      "_npmVersion": "7.6.1",
+      "dist": {
+        "integrity": "sha512-4fCk79wshMdzMp2rH06qWrJE4iolqLhCUH+OiuIgU++RB0+94NlDL81atO7GX55uUKueo0txHNtvEyI6D7WdMw==",
+        "shasum": "a52f80bf38da1952eb5c681790719871a1a72501",
+        "tarball": "http://localhost:4260/iconv-lite/iconv-lite-0.6.3.tgz",
+        "fileCount": 33,
+        "unpackedSize": 348518
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Alexander Shtuchkin",
+    "email": "ashtuchkin@gmail.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/ashtuchkin/iconv-lite.git"
+  },
+  "homepage": "https://github.com/ashtuchkin/iconv-lite",
+  "bugs": {
+    "url": "https://github.com/ashtuchkin/iconv-lite/issues"
+  },
+  "license": "MIT"
+}

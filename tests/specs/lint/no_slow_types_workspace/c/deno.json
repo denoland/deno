@@ -1,0 +1,5 @@
+{
+  "name": "@pkg/c",
+  "version": "1.0.0",
+  "exports": "./mod_c.ts"
+}

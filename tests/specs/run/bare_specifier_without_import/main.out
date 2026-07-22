@@ -1,0 +1,3 @@
+error: Import "@std/dotenv/load" not a dependency
+  hint: If you want to use the JSR package, try running `deno add jsr:@std/dotenv/load`
+    at [WILDCARD]bare_specifier_without_import/main.ts:1:8

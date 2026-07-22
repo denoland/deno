@@ -1,0 +1,6 @@
+DANGER: TLS certificate validation is disabled for: deno.land
+error: Import 'https://localhost:5545/subdir/mod2.ts' failed.
+    0: error sending request for url (https://localhost:5545/subdir/mod2.ts): client error (Connect): invalid peer certificate: UnknownIssuer
+    1: client error (Connect)
+    2: invalid peer certificate: UnknownIssuer
+    at file:///[WILDLINE]/cafile_url_imports.ts:[WILDLINE]

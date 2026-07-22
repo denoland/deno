@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-read custom_inspect/main.ts",
+  "output": "custom_inspect/main.out"
+}

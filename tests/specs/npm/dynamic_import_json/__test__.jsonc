@@ -1,0 +1,4 @@
+{
+  "args": "run -A --quiet import_json/main.js",
+  "output": "import_json/main.out"
+}

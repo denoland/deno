@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet --reload --allow-net --unsafely-ignore-certificate-errors cafile_ts_fetch.ts",
+  "flaky": true,
+  "output": "cafile_ts_fetch_unsafe_ssl.ts.out"
+}

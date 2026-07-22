@@ -1,0 +1,10 @@
+Check [WILDCARD]bench_formatting.ts
+    CPU | [WILDCARD]
+Runtime | Deno [WILDCARD] ([WILDCARD])
+
+[WILDCARD]/bench_formatting.ts
+
+| benchmark   | time/iter (avg) |        iter/s |      (min … max)      |      p75 |      p99 |     p995 |
+| ----------- | --------------- | ------------- | --------------------- | -------- | -------- | -------- |
+| [WILDLINE] | [WILDLINE] | [WILDLINE] | ([WILDLINE] … [WILDLINE]) | [WILDLINE] | [WILDLINE] | [WILDLINE] |
+

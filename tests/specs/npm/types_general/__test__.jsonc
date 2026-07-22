@@ -1,0 +1,8 @@
+{
+  // ignored: npm subpath `exports` types aren't resolved by the generated
+  // tsconfig (spurious TS2305/TS2307). https://github.com/denoland/deno/issues/36085
+  "ignore": true,
+  "args": "check main.ts",
+  "output": "main.out",
+  "exitCode": 1
+}

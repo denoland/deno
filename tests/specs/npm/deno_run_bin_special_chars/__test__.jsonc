@@ -1,0 +1,4 @@
+{
+  "args": "run -A --quiet npm:@denotest/special-chars-in-bin-name/\\foo\" this is a test",
+  "output": "deno_run_special_chars_in_bin_name.out"
+}

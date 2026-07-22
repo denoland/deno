@@ -1,0 +1,6 @@
+Running...
+error: Uncaught (in promise) NotCapable: Requires write access to "binary[WILDLINE]", run again with the --allow-write flag
+Deno.writeTextFileSync(binaryName, "");
+     ^
+    at [WILDCARD]
+    at file:///[WILDLINE]sub.ts:3:6

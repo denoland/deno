@@ -1,0 +1,5 @@
+{
+  "args": "doc https://raw.githubusercontent.com%2Fdyedgreen%2Fdeno-sqlite%2Frework_api%2Fmod.ts",
+  "output": "invalid_url.out",
+  "exitCode": 1
+}

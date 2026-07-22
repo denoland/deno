@@ -1,0 +1,4 @@
+{
+  "args": "eval --v8-flags=--expose-gc console.log(typeof(gc))",
+  "output": "main.out"
+}

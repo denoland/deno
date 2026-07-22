@@ -1,0 +1,7 @@
+Check [WILDLINE]
+TS2882 [ERROR]: Cannot find module or type declarations for side-effect import of 'foo'.
+import "foo";
+       ~~~~~
+    at file:///[WILDCARD]/095_cache_with_bare_import.ts:1:8
+
+error: Type checking failed.

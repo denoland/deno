@@ -1,0 +1,87 @@
+{
+  "name": "@vue/compiler-sfc",
+  "dist-tags": {
+    "latest": "3.2.38"
+  },
+  "versions": {
+    "3.2.38": {
+      "name": "@vue/compiler-sfc",
+      "version": "3.2.38",
+      "description": "@vue/compiler-sfc",
+      "main": "dist/compiler-sfc.cjs.js",
+      "module": "dist/compiler-sfc.esm-browser.js",
+      "types": "dist/compiler-sfc.d.ts",
+      "buildOptions": {
+        "name": "VueCompilerSFC",
+        "formats": [
+          "cjs",
+          "esm-browser"
+        ],
+        "prod": false,
+        "enableNonBrowserBranches": true
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/vuejs/core.git",
+        "directory": "packages/compiler-sfc"
+      },
+      "author": {
+        "name": "Evan You"
+      },
+      "license": "MIT",
+      "bugs": {
+        "url": "https://github.com/vuejs/core/issues"
+      },
+      "dependencies": {
+        "@babel/parser": "^7.16.4",
+        "@vue/compiler-core": "3.2.38",
+        "@vue/compiler-dom": "3.2.38",
+        "@vue/compiler-ssr": "3.2.38",
+        "@vue/reactivity-transform": "3.2.38",
+        "@vue/shared": "3.2.38",
+        "estree-walker": "^2.0.2",
+        "magic-string": "^0.25.7",
+        "source-map": "^0.6.1",
+        "postcss": "^8.1.10"
+      },
+      "devDependencies": {
+        "@types/estree": "^0.0.48",
+        "@babel/types": "^7.16.0",
+        "@types/lru-cache": "^5.1.0",
+        "pug": "^3.0.1",
+        "sass": "^1.26.9",
+        "@vue/consolidate": "^0.17.3",
+        "hash-sum": "^2.0.0",
+        "lru-cache": "^5.1.1",
+        "merge-source-map": "^1.1.0",
+        "postcss-modules": "^4.0.0",
+        "postcss-selector-parser": "^6.0.4"
+      },
+      "licenseText": "The MIT License (MIT)\n\nCopyright (c) 2018-present, Yuxi (Evan) You\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n",
+      "_id": "@vue/compiler-sfc@3.2.38",
+      "dist": {
+        "shasum": "9e763019471a535eb1fceeaac9d4d18a83f0940f",
+        "integrity": "sha512-KZjrW32KloMYtTcHAFuw3CqsyWc5X6seb8KbkANSWt3Cz9p2qA8c1GJpSkksFP9ABb6an0FLCFl46ZFXx3kKpg==",
+        "tarball": "http://localhost:4260/@vue/compiler-sfc/compiler-sfc-3.2.38.tgz",
+        "fileCount": 8,
+        "unpackedSize": 2080509
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "@vue/compiler-sfc",
+  "homepage": "https://github.com/vuejs/core/tree/main/packages/compiler-sfc#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vuejs/core.git",
+    "directory": "packages/compiler-sfc"
+  },
+  "author": {
+    "name": "Evan You"
+  },
+  "bugs": {
+    "url": "https://github.com/vuejs/core/issues"
+  },
+  "license": "MIT"
+}

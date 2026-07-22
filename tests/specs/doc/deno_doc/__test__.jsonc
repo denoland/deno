@@ -1,0 +1,11 @@
+{
+  "steps": [{
+    "args": "doc deno_doc.ts",
+    "output": "foo.out",
+    "exitCode": 0
+  }, {
+    "args": "doc deno_doc2.ts",
+    "output": "bar.out",
+    "exitCode": 0
+  }]
+}

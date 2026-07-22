@@ -1,0 +1,7 @@
+{
+  // deferred: deno.* libs -> #35985
+  "ignore": true,
+  "args": "check --quiet",
+  "output": "main.out",
+  "exitCode": 1
+}

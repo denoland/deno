@@ -1,0 +1,7 @@
+Check [WILDCARD]main.ts
+TS2726 [ERROR]: Cannot find lib definition for 'deno.ns'.
+/// <reference lib="deno.ns" />
+                    ~~~~
+    at file:///[WILDCARD]/main.ts:2:21
+
+error: Type checking failed.

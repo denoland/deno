@@ -1,0 +1,5 @@
+{
+  "args": "task --config deno.json output some text",
+  "output": "prefers_deno.out",
+  "exitCode": 0
+}

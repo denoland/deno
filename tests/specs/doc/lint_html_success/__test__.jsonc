@@ -1,0 +1,5 @@
+{
+  "tempDir": true,
+  "args": "doc --lint --html --name=Library lint_success.ts",
+  "output": "lint_success_html.out"
+}

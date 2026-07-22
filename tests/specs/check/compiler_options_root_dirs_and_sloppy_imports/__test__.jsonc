@@ -1,0 +1,5 @@
+{
+  "tempDir": true,
+  "args": "check --quiet subdir/mod.ts",
+  "output": ""
+}

@@ -1,0 +1,9 @@
+{
+  "steps": [{
+    "args": "task help",
+    "output": "help.out"
+  }, {
+    "args": "task version",
+    "output": "version.out"
+  }]
+}

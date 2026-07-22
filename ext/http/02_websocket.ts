@@ -1,0 +1,309 @@
+// Copyright 2018-2026 the Deno authors. MIT license.
+
+(function () {
+const { core, internals, primordials } = __bootstrap;
+const {
+  op_http_websocket_accept_header,
+  op_http_ws_create_from_stream_resource,
+} = core.ops;
+const {
+  ArrayPrototypeIncludes,
+  ArrayPrototypeMap,
+  ArrayPrototypePush,
+  StringPrototypeCharCodeAt,
+  StringPrototypeSplit,
+  StringPrototypeToLowerCase,
+  StringPrototypeToUpperCase,
+  TypeError,
+  Symbol,
+  Promise,
+  Uint8Array,
+} = primordials;
+const { toInnerRequest } = core.loadExtScript("ext:deno_fetch/23_request.js");
+const {
+  fromInnerResponse,
+  newInnerResponse,
+} = core.loadExtScript("ext:deno_fetch/23_response.js");
+const { setEventTargetData } = core.loadExtScript("ext:deno_web/02_event.js");
+
+const loadWebSocket = core.createLazyLoader(
+  "ext:deno_websocket/01_websocket.js",
+);
+
+const _ws = Symbol("[[associated_ws]]");
+
+const websocketCvf = buildCaseInsensitiveCommaValueFinder("websocket");
+const upgradeCvf = buildCaseInsensitiveCommaValueFinder("upgrade");
+
+function upgradeWebSocket(request, options = { __proto__: null }) {
+  const inner = toInnerRequest(request);
+  if (inner._wantsUpgrade) {
+    inner._throwIfUpgraded();
+  }
+  const upgrade = request.headers.get("upgrade");
+  const upgradeHasWebSocketOption = upgrade !== null &&
+    websocketCvf(upgrade);
+  if (!upgradeHasWebSocketOption) {
+    throw new TypeError(
+      "Invalid Header: 'upgrade' header must contain 'websocket'",
+    );
+  }
+
+  const connection = request.headers.get("connection");
+  const connectionHasUpgradeOption = connection !== null &&
+    upgradeCvf(connection);
+  if (!connectionHasUpgradeOption) {
+    throw new TypeError(
+      "Invalid Header: 'connection' header must contain 'Upgrade'",
+    );
+  }
+
+  const websocketKey = request.headers.get("sec-websocket-key");
+  if (websocketKey === null) {
+    throw new TypeError(
+      "Invalid Header: 'sec-websocket-key' header must be set",
+    );
+  }
+
+  const accept = op_http_websocket_accept_header(websocketKey);
+
+  const r = newInnerResponse(101);
+  r.headerList = [
+    ["upgrade", "websocket"],
+    ["connection", "Upgrade"],
+    ["sec-websocket-accept", accept],
+  ];
+
+  const protocolsStr = request.headers.get("sec-websocket-protocol") || "";
+  const protocols = StringPrototypeSplit(protocolsStr, ", ");
+  if (protocols && options.protocol) {
+    if (ArrayPrototypeIncludes(protocols, options.protocol)) {
+      ArrayPrototypePush(r.headerList, [
+        "sec-websocket-protocol",
+        options.protocol,
+      ]);
+    } else {
+      throw new TypeError(
+        `Protocol '${options.protocol}' not in the request's protocol list (non negotiable)`,
+      );
+    }
+  }
+
+  const {
+    _eventLoop,
+    _idleTimeoutDuration,
+    _idleTimeoutTimeout,
+    _readyState,
+    _rid,
+    _role,
+    _serverHandleIdleTimeout,
+    createWebSocketBranded,
+    installServerInspector,
+    SERVER,
+    WebSocket,
+  } = loadWebSocket();
+
+  const socket = createWebSocketBranded(WebSocket);
+  setEventTargetData(socket);
+  socket[_role] = SERVER;
+  // Nginx timeout is 60s, so default to a lower number: https://github.com/denoland/deno/pull/23985
+  socket[_idleTimeoutDuration] = options.idleTimeout ?? 30;
+  socket[_idleTimeoutTimeout] = null;
+
+  if (inner._wantsUpgrade) {
+    const wsPromise = inner._wantsUpgrade("upgradeWebSocket");
+
+    // Start the upgrade in the background.
+    (async () => {
+      try {
+        const wsRid = await wsPromise;
+
+        socket[_rid] = wsRid;
+        socket[_readyState] = WebSocket.OPEN;
+        installServerInspector(socket, request.url);
+        const event = new Event("open");
+        socket.dispatchEvent(event);
+
+        socket[_eventLoop]();
+        if (socket[_idleTimeoutDuration]) {
+          socket.addEventListener(
+            "close",
+            () => clearTimeout(socket[_idleTimeoutTimeout]),
+          );
+        }
+        socket[_serverHandleIdleTimeout]();
+      } catch (error) {
+        const event = new ErrorEvent("error", { error });
+        socket.dispatchEvent(event);
+      }
+    })();
+  } else if (options.socket) {
+    // node:http upgrade path: the socket is a node net.Socket from the
+    // "upgrade" event. Write the 101 response, take the TCP stream from
+    // libuv, and create a WebSocket over it via ext/http.
+    const nodeSocket = options.socket;
+
+    // Build the 101 response from r.headerList so the headers stay in
+    // sync with the header-list built above (protocol negotiation, etc.).
+    let responseHead = "HTTP/1.1 101 Switching Protocols\r\n";
+    for (let i = 0; i < r.headerList.length; i++) {
+      const { 0: name, 1: value } = r.headerList[i];
+      responseHead += `${name}: ${value}\r\n`;
+    }
+    responseHead += "\r\n";
+
+    if (nodeSocket.destroyed) {
+      throw new TypeError(
+        "Socket is already destroyed - cannot upgrade to WebSocket",
+      );
+    }
+    const handle = nodeSocket._handle;
+    if (!handle) {
+      throw new TypeError("Socket has no handle - cannot upgrade");
+    }
+    if (typeof handle.takeStream !== "function") {
+      throw new TypeError(
+        "Socket is not a TCP socket - only TCP connections can be upgraded to WebSocket",
+      );
+    }
+
+    // Extra bytes that were already buffered (e.g., from the upgrade
+    // request body that arrived with the headers)
+    const extraBytes = options.head || new Uint8Array(0);
+
+    // Defer setup so the caller can attach event handlers (onopen,
+    // onmessage, etc.) before events fire.
+    (async () => {
+      try {
+        // Wait for the 101 response to fully flush before taking the
+        // stream. A fire-and-forget write could leave data in the
+        // internal_write_queue that would be orphaned once we detach
+        // the stream from libuv.
+        await new Promise((resolve, reject) => {
+          nodeSocket.write(responseHead, (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+
+        // Stop libuv from reading this socket before we take the stream
+        handle.readStop();
+
+        // Take the TCP stream from libuv into a resource, then create
+        // the WebSocket via ext/http (avoids ext/node -> deno_websocket dep).
+        const streamRid = handle.takeStream();
+        const wsRid = op_http_ws_create_from_stream_resource(
+          streamRid,
+          extraBytes,
+        );
+
+        // The stream is now owned by the WebSocket. Detach the node
+        // socket so it doesn't try to use the gutted handle.
+        nodeSocket._handle = null;
+        nodeSocket.destroyed = true;
+
+        socket[_rid] = wsRid;
+        socket[_readyState] = WebSocket.OPEN;
+        installServerInspector(socket, request.url);
+        socket.dispatchEvent(new Event("open"));
+
+        socket[_eventLoop]();
+        if (socket[_idleTimeoutDuration]) {
+          socket.addEventListener(
+            "close",
+            () => clearTimeout(socket[_idleTimeoutTimeout]),
+          );
+        }
+        socket[_serverHandleIdleTimeout]();
+      } catch (error) {
+        socket.dispatchEvent(new ErrorEvent("error", { error }));
+      }
+    })();
+  }
+
+  const response = fromInnerResponse(r, "response");
+
+  response[_ws] = socket;
+
+  return { response, socket };
+}
+
+const spaceCharCode = StringPrototypeCharCodeAt(" ", 0);
+const tabCharCode = StringPrototypeCharCodeAt("\t", 0);
+const commaCharCode = StringPrototypeCharCodeAt(",", 0);
+
+/** Builds a case function that can be used to find a case insensitive
+ * value in some text that's separated by commas.
+ *
+ * This is done because it doesn't require any allocations.
+ * @param checkText {string} - The text to find. (ex. "websocket")
+ */
+function buildCaseInsensitiveCommaValueFinder(checkText) {
+  const charCodes = ArrayPrototypeMap(
+    StringPrototypeSplit(
+      StringPrototypeToLowerCase(checkText),
+      "",
+    ),
+    (c) => [
+      StringPrototypeCharCodeAt(c, 0),
+      StringPrototypeCharCodeAt(StringPrototypeToUpperCase(c), 0),
+    ],
+  );
+  /** @type {number} */
+  let i;
+  /** @type {number} */
+  let char;
+
+  /** @param {string} value */
+  return function (value) {
+    for (i = 0; i < value.length; i++) {
+      char = StringPrototypeCharCodeAt(value, i);
+      skipWhitespace(value);
+
+      if (hasWord(value)) {
+        skipWhitespace(value);
+        if (i === value.length || char === commaCharCode) {
+          return true;
+        }
+      } else {
+        skipUntilComma(value);
+      }
+    }
+
+    return false;
+  };
+
+  /** @param value {string} */
+  function hasWord(value) {
+    for (let j = 0; j < charCodes.length; ++j) {
+      const { 0: cLower, 1: cUpper } = charCodes[j];
+      if (cLower === char || cUpper === char) {
+        char = StringPrototypeCharCodeAt(value, ++i);
+      } else {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /** @param value {string} */
+  function skipWhitespace(value) {
+    while (char === spaceCharCode || char === tabCharCode) {
+      char = StringPrototypeCharCodeAt(value, ++i);
+    }
+  }
+
+  /** @param value {string} */
+  function skipUntilComma(value) {
+    while (char !== commaCharCode && i < value.length) {
+      char = StringPrototypeCharCodeAt(value, ++i);
+    }
+  }
+}
+
+// Expose this function for unit tests
+internals.buildCaseInsensitiveCommaValueFinder =
+  buildCaseInsensitiveCommaValueFinder;
+
+return { _ws, upgradeWebSocket };
+})();

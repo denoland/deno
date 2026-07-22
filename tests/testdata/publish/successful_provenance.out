@@ -1,0 +1,7 @@
+Check mod.ts
+Checking for slow types in the public API...
+Check mod.ts
+Publishing @foo/bar@1.0.0 ...
+Provenance transparency log available at https://search.sigstore.dev/?logIndex=42069
+Successfully published @foo/bar@1.0.0
+Visit http://127.0.0.1:4250/@foo/bar@1.0.0 for details

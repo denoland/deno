@@ -1,0 +1,19 @@
+Download http://localhost:4260/@denotest%2fbin-created-by-lifecycle
+Download http://localhost:4260/@denotest/bin-created-by-lifecycle/1.0.0.tgz
+Initialize @denotest/bin-created-by-lifecycle@1.0.0
+Warning Trying to set up 'testbin' bin for "[WILDCARD]bin-created-by-lifecycle", but the entry point "[WILDCARD]testbin.js" doesn't exist.
+Installed 1 package in [WILDCARD]
+Reused 0 packages from cache
+Downloaded 0 packages from JSR
+Downloaded 1 package from npm
++
+
+Dependencies:
+[WILDCARD]
+╭ Warning
+│
+│  Ignored build scripts for packages:
+│  npm:@denotest/bin-created-by-lifecycle@1.0.0
+│
+│  Run "deno approve-scripts" to run build scripts.
+╰─

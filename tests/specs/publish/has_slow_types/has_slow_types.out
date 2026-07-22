@@ -1,0 +1,23 @@
+Check [WILDCARD]mod.ts
+Checking for slow types in the public API...
+error[missing-explicit-return-type]: missing explicit return type in the public API
+ --> [WILDCARD]mod.ts:2:17
+  | 
+2 | export function getRandom() {
+  |                 ^^^^^^^^^ this function is missing an explicit return type
+  | 
+  = hint: add an explicit return type to the function
+
+  info: all functions in the public API must have an explicit return type
+  docs: https://jsr.io/go/slow-type-missing-explicit-return-type
+
+This package contains errors for slow types. Fixing these errors will:
+
+  1. Significantly improve your package users' type checking performance.
+  2. Improve the automatic documentation generation.
+  3. Enable automatic .d.ts generation for Node.js.
+
+Don't want to bother? You can choose to skip this step by
+providing the --allow-slow-types flag.
+
+error: Found 1 problem

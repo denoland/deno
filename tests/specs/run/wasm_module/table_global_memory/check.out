@@ -1,0 +1,16 @@
+Check [WILDCARD]check.ts
+TS2322 [ERROR]: Type 'Function | null' is not assignable to type 'number'.
+  Type 'null' is not assignable to type 'number'.
+const value1: number = table.get(0);
+      ~~~~~~
+    at file:///[WILDLINE]/check.ts:2:7
+
+TS2322 [ERROR]: Type 'ArrayBuffer | SharedArrayBuffer' is not assignable to type 'number'.
+  Type 'ArrayBuffer' is not assignable to type 'number'.
+const value2: number = memory.buffer;
+      ~~~~~~
+    at file:///[WILDLINE]/check.ts:3:7
+
+Found 2 errors.
+
+error: Type checking failed.

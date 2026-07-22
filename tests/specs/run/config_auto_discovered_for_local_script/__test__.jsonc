@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet frontend_work.ts",
+  "output": "ok\n"
+}

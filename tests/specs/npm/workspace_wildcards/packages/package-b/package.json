@@ -1,0 +1,5 @@
+{
+  "name": "@denotest/b",
+  "version": "1.0.0",
+  "main": "./file.ts"
+}

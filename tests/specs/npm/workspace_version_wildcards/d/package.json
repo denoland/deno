@@ -1,0 +1,7 @@
+{
+  "name": "@denotest/d",
+  "version": "1.2.3",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

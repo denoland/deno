@@ -1,0 +1,12 @@
+Check [WILDCARD]clear_timeout.ts
+    CPU | [WILDCARD]
+Runtime | Deno [WILDCARD] ([WILDCARD])
+
+[WILDCARD]/clear_timeout.ts
+
+| benchmark   | time/iter (avg) |        iter/s |      (min … max)      |      p75 |      p99 |     p995 |
+| ----------- | --------------- | ------------- | --------------------- | -------- | -------- | -------- |
+| bench1      | [WILDLINE] | [WILDLINE] | ([WILDLINE] … [WILDLINE]) | [WILDLINE] | [WILDLINE] | [WILDLINE] |
+| bench2      | [WILDLINE] | [WILDLINE] | ([WILDLINE] … [WILDLINE]) | [WILDLINE] | [WILDLINE] | [WILDLINE] |
+| bench3      | [WILDLINE] | [WILDLINE] | ([WILDLINE] … [WILDLINE]) | [WILDLINE] | [WILDLINE] | [WILDLINE] |
+

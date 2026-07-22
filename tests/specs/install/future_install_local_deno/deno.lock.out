@@ -1,0 +1,35 @@
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@denotest/add@*": "1.0.0",
+    "jsr:@std/testing@*": "1.0.0",
+    "npm:@denotest/esm-basic@1": "1.0.0"
+  },
+  "jsr": {
+    "@denotest/add@1.0.0": {
+      "integrity": "[WILDCARD]"
+    },
+    "@std/testing@1.0.0": {
+      "integrity": "[WILDCARD]"
+    }
+  },
+  "npm": {
+    "@denotest/esm-basic@1.0.0": {
+      "integrity": "[WILDCARD]",
+      "tarball": "http://localhost:4260/@denotest/esm-basic/1.0.0.tgz"
+    }
+  },
+  "remote": {
+    "http://localhost:4545/subdir/mod1.ts": "[WILDCARD]",
+    "http://localhost:4545/subdir/print_hello.ts": "[WILDCARD]",
+    "http://localhost:4545/subdir/subdir2/mod2.ts": "[WILDCARD]",
+    "http://localhost:4545/v1/extensionless": "[WILDCARD]"
+  },
+  "workspace": {
+    "dependencies": [
+      "jsr:@denotest/add@*",
+      "jsr:@std/testing@*",
+      "npm:@denotest/esm-basic@1"
+    ]
+  }
+}

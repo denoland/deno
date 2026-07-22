@@ -1,0 +1,14 @@
+{
+  "rules": {
+    "tags": ["recommended"],
+    "include": [
+      "ban-untagged-todo",
+      "camelcase",
+      "no-console",
+      "guard-for-in"
+    ],
+    "exclude": [
+      "no-invalid-triple-slash-reference"
+    ]
+  }
+}

@@ -1,0 +1,6 @@
+Check [WILDCARD]main.ts
+TS6053 [ERROR]: File '[WILDCARD]/sub_dir/a.d.ts' not found.
+  The file is in the program because:
+    Part of 'files' list in tsconfig.json
+
+error: Type checking failed.

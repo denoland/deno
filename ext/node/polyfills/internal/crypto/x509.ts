@@ -1,0 +1,371 @@
+// Copyright 2018-2026 the Deno authors. MIT license.
+// Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file no-explicit-any
+
+(function () {
+const { core, primordials } = __bootstrap;
+const {
+  ArrayPrototypePush,
+  Date,
+  ObjectAssign,
+  ObjectFreeze,
+  ObjectPrototypeIsPrototypeOf,
+  StringPrototypeIncludes,
+} = primordials;
+const {
+  op_node_x509_ca,
+  op_node_x509_check_email,
+  op_node_x509_check_host,
+  op_node_x509_check_ip,
+  op_node_x509_check_issued,
+  op_node_x509_check_private_key,
+  op_node_x509_fingerprint,
+  op_node_x509_fingerprint256,
+  op_node_x509_fingerprint512,
+  op_node_x509_get_info_access,
+  op_node_x509_get_issuer,
+  op_node_x509_get_raw,
+  op_node_x509_get_serial_number,
+  op_node_x509_get_signature_algorithm_name,
+  op_node_x509_get_signature_algorithm_oid,
+  op_node_x509_get_subject,
+  op_node_x509_get_subject_alt_name,
+  op_node_x509_get_valid_from,
+  op_node_x509_get_valid_to,
+  op_node_x509_key_usage,
+  op_node_x509_parse,
+  op_node_x509_public_key,
+  op_node_x509_to_legacy_object,
+  op_node_x509_to_string,
+  op_node_x509_verify,
+} = core.ops;
+
+const {
+  KeyObject,
+  PublicKeyObject,
+} = core.loadExtScript("ext:deno_node/internal/crypto/keys.ts");
+const { kHandle } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/constants.ts",
+);
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const {
+  ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
+const {
+  validateBoolean,
+  validateObject,
+  validateString,
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { inspect } = core.loadExtScript("ext:deno_node/util.ts");
+const { customInspectSymbol: kInspect } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
+
+const kEmptyObject = ObjectFreeze({ __proto__: null } as any);
+
+function getFlags(options = kEmptyObject): number {
+  validateObject(options, "options");
+  const {
+    subject = "default",
+    wildcards = true,
+    partialWildcards = true,
+    multiLabelWildcards = false,
+    singleLabelSubdomains = false,
+  } = { ...options };
+  let flags = 0;
+  validateString(subject, "options.subject");
+  validateBoolean(wildcards, "options.wildcards");
+  validateBoolean(partialWildcards, "options.partialWildcards");
+  validateBoolean(multiLabelWildcards, "options.multiLabelWildcards");
+  validateBoolean(singleLabelSubdomains, "options.singleLabelSubdomains");
+  switch (subject) {
+    case "default":
+      break;
+    case "always":
+      flags |= 0x1;
+      break;
+    case "never":
+      flags |= 0x2;
+      break;
+    default:
+      throw new ERR_INVALID_ARG_VALUE("options.subject", subject);
+  }
+  if (!wildcards) flags |= 0x4;
+  if (!partialWildcards) flags |= 0x8;
+  if (multiLabelWildcards) flags |= 0x10;
+  if (singleLabelSubdomains) flags |= 0x20;
+  return flags;
+}
+
+class X509Certificate {
+  #handle: number;
+
+  constructor(buffer: any) {
+    if (typeof buffer === "string") {
+      buffer = Buffer.from(buffer);
+    }
+
+    if (!isArrayBufferView(buffer)) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "buffer",
+        ["string", "Buffer", "TypedArray", "DataView"],
+        buffer,
+      );
+    }
+
+    this.#handle = op_node_x509_parse(buffer);
+    // deno-lint-ignore no-this-alias
+    const self = this;
+    this[core.hostObjectBrand] = () => ({
+      type: "X509Certificate",
+      data: op_node_x509_get_raw(self.#handle),
+    });
+  }
+
+  [kInspect](depth: number, options: any) {
+    if (depth < 0) {
+      return this;
+    }
+
+    const opts = {
+      ...options,
+      depth: options.depth == null ? null : options.depth - 1,
+    };
+
+    return `X509Certificate ${
+      inspect({
+        subject: this.subject,
+        subjectAltName: this.subjectAltName,
+        issuer: this.issuer,
+        infoAccess: this.infoAccess,
+        validFrom: this.validFrom,
+        validTo: this.validTo,
+        validFromDate: this.validFromDate,
+        validToDate: this.validToDate,
+        fingerprint: this.fingerprint,
+        fingerprint256: this.fingerprint256,
+        fingerprint512: this.fingerprint512,
+        keyUsage: this.keyUsage,
+        serialNumber: this.serialNumber,
+      }, opts)
+    }`;
+  }
+
+  get ca(): boolean {
+    return op_node_x509_ca(this.#handle);
+  }
+
+  checkEmail(
+    email: string,
+    options?: any,
+  ): string | undefined {
+    validateString(email, "email");
+    if (StringPrototypeIncludes(email, "\0")) {
+      throw new ERR_INVALID_ARG_VALUE("email", email);
+    }
+    getFlags(options);
+    if (op_node_x509_check_email(this.#handle, email)) {
+      return email;
+    }
+  }
+
+  checkHost(name: string, options?: any): string | undefined {
+    validateString(name, "name");
+    if (StringPrototypeIncludes(name, "\0")) {
+      throw new ERR_INVALID_ARG_VALUE("name", name);
+    }
+    getFlags(options);
+    if (op_node_x509_check_host(this.#handle, name)) {
+      return name;
+    }
+  }
+
+  checkIP(ip: string, options?: unknown): string | undefined {
+    validateString(ip, "ip");
+    getFlags(options);
+    return op_node_x509_check_ip(this.#handle, ip) ?? undefined;
+  }
+
+  checkIssued(otherCert: X509Certificate): boolean {
+    if (!ObjectPrototypeIsPrototypeOf(X509Certificate.prototype, otherCert)) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "otherCert",
+        "X509Certificate",
+        otherCert,
+      );
+    }
+    return op_node_x509_check_issued(this.#handle, otherCert.#handle);
+  }
+
+  checkPrivateKey(privateKey: KeyObject): boolean {
+    if (!ObjectPrototypeIsPrototypeOf(KeyObject.prototype, privateKey)) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "privateKey",
+        "KeyObject",
+        privateKey,
+      );
+    }
+    if (privateKey.type !== "private") {
+      throw new ERR_INVALID_ARG_VALUE("privateKey", privateKey);
+    }
+    return op_node_x509_check_private_key(
+      this.#handle,
+      (privateKey as any)[kHandle],
+    );
+  }
+
+  get fingerprint(): string {
+    return op_node_x509_fingerprint(this.#handle);
+  }
+
+  get fingerprint256(): string {
+    return op_node_x509_fingerprint256(this.#handle);
+  }
+
+  get fingerprint512(): string {
+    return op_node_x509_fingerprint512(this.#handle);
+  }
+
+  get infoAccess(): string | undefined {
+    return op_node_x509_get_info_access(this.#handle) ?? undefined;
+  }
+
+  get issuer(): string {
+    return op_node_x509_get_issuer(this.#handle);
+  }
+
+  get issuerCertificate(): X509Certificate | undefined {
+    return undefined;
+  }
+
+  get keyUsage(): string[] | undefined {
+    const flags = op_node_x509_key_usage(this.#handle);
+    if (flags === 0) return undefined;
+    const result: string[] = [];
+    if (flags & 0x01) ArrayPrototypePush(result, "DigitalSignature");
+    if (flags >> 1 & 0x01) ArrayPrototypePush(result, "NonRepudiation");
+    if (flags >> 2 & 0x01) ArrayPrototypePush(result, "KeyEncipherment");
+    if (flags >> 3 & 0x01) ArrayPrototypePush(result, "DataEncipherment");
+    if (flags >> 4 & 0x01) ArrayPrototypePush(result, "KeyAgreement");
+    if (flags >> 5 & 0x01) ArrayPrototypePush(result, "KeyCertSign");
+    if (flags >> 6 & 0x01) ArrayPrototypePush(result, "CRLSign");
+    if (flags >> 7 & 0x01) ArrayPrototypePush(result, "EncipherOnly");
+    if (flags >> 8 & 0x01) ArrayPrototypePush(result, "DecipherOnly");
+    return result;
+  }
+
+  get publicKey(): PublicKeyObject {
+    const handle = op_node_x509_public_key(this.#handle);
+    return new PublicKeyObject(handle);
+  }
+
+  get raw(): Buffer {
+    return Buffer.from(op_node_x509_get_raw(this.#handle));
+  }
+
+  get serialNumber(): string {
+    return op_node_x509_get_serial_number(this.#handle);
+  }
+
+  get signatureAlgorithm(): string | undefined {
+    return op_node_x509_get_signature_algorithm_name(this.#handle) ??
+      undefined;
+  }
+
+  get signatureAlgorithmOid(): string {
+    return op_node_x509_get_signature_algorithm_oid(this.#handle);
+  }
+
+  get subject(): string {
+    return op_node_x509_get_subject(this.#handle) || undefined;
+  }
+
+  get subjectAltName(): string | undefined {
+    return op_node_x509_get_subject_alt_name(this.#handle) ?? undefined;
+  }
+
+  toJSON(): string {
+    // deno-lint-ignore prefer-primordials
+    return this.toString();
+  }
+
+  toLegacyObject(): any {
+    const obj = op_node_x509_to_legacy_object(this.#handle);
+    if (obj.raw) {
+      obj.raw = Buffer.from(obj.raw);
+    }
+    if (obj.subject) {
+      obj.subject = ObjectAssign({ __proto__: null }, obj.subject);
+    }
+    if (obj.issuer) {
+      obj.issuer = ObjectAssign({ __proto__: null }, obj.issuer);
+    }
+    if (obj.infoAccess) {
+      obj.infoAccess = ObjectAssign({ __proto__: null }, obj.infoAccess);
+    }
+    return obj;
+  }
+
+  toString(): string {
+    return op_node_x509_to_string(this.#handle);
+  }
+
+  get validFrom(): string {
+    return op_node_x509_get_valid_from(this.#handle);
+  }
+
+  get validFromDate(): Date {
+    return new Date(this.validFrom);
+  }
+
+  get validTo(): string {
+    return op_node_x509_get_valid_to(this.#handle);
+  }
+
+  get validToDate(): Date {
+    return new Date(this.validTo);
+  }
+
+  verify(publicKey: KeyObject): boolean {
+    if (!ObjectPrototypeIsPrototypeOf(KeyObject.prototype, publicKey)) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "publicKey",
+        "KeyObject",
+        publicKey,
+      );
+    }
+    if (publicKey.type !== "public") {
+      throw new ERR_INVALID_ARG_VALUE("publicKey", publicKey);
+    }
+    return op_node_x509_verify(
+      this.#handle,
+      (publicKey as any)[kHandle],
+    );
+  }
+}
+
+function isX509Certificate(value: unknown): value is X509Certificate {
+  return ObjectPrototypeIsPrototypeOf(X509Certificate.prototype, value);
+}
+
+// Registered eagerly from `02_register_cloneable.js` so workers can resurrect a
+// transferred X509Certificate before this module is loaded.
+function deserializeX509Certificate(data: { data: ArrayBuffer }) {
+  return new X509Certificate(Buffer.from(data.data));
+}
+
+return {
+  X509Certificate,
+  deserializeX509Certificate,
+  isX509Certificate,
+  default: {
+    X509Certificate,
+    isX509Certificate,
+  },
+};
+})();

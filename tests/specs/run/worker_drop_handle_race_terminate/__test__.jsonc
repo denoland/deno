@@ -1,0 +1,4 @@
+{
+  "args": "run worker_drop_handle_race_terminate.js",
+  "output": "worker_drop_handle_race_terminate.js.out"
+}

@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload fix_js_import_js.ts",
+  "output": "fix_js_import_js.ts.out"
+}

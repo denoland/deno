@@ -1,0 +1,67 @@
+{
+  "name": "shebang-command",
+  "description": "Get the command from a shebang",
+  "dist-tags": {
+    "latest": "2.0.0"
+  },
+  "versions": {
+    "2.0.0": {
+      "name": "shebang-command",
+      "version": "2.0.0",
+      "description": "Get the command from a shebang",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/kevva/shebang-command.git"
+      },
+      "author": {
+        "name": "Kevin Mårtensson",
+        "email": "kevinmartensson@gmail.com",
+        "url": "github.com/kevva"
+      },
+      "engines": {
+        "node": ">=8"
+      },
+      "scripts": {
+        "test": "xo && ava"
+      },
+      "dependencies": {
+        "shebang-regex": "^3.0.0"
+      },
+      "devDependencies": {
+        "ava": "^2.3.0",
+        "xo": "^0.24.0"
+      },
+      "gitHead": "003c4c7d6882d029aa8b3e5777716d726894d734",
+      "bugs": {
+        "url": "https://github.com/kevva/shebang-command/issues"
+      },
+      "_id": "shebang-command@2.0.0",
+      "_nodeVersion": "12.10.0",
+      "_npmVersion": "6.10.3",
+      "dist": {
+        "integrity": "sha512-kHxr2zZpYtdmrN1qDjrrX/Z1rR1kG8Dx+gkpK1G4eXmvXswmcE1hTWBWYUzlraYw1/yZp6YuDY77YtvbN0dmDA==",
+        "shasum": "ccd0af4f8835fbdc265b82461aaf0c36663f34ea",
+        "tarball": "http://localhost:4260/shebang-command/shebang-command-2.0.0.tgz",
+        "fileCount": 4,
+        "unpackedSize": 2556
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/kevva/shebang-command#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kevva/shebang-command.git"
+  },
+  "author": {
+    "name": "Kevin Mårtensson",
+    "email": "kevinmartensson@gmail.com",
+    "url": "github.com/kevva"
+  },
+  "bugs": {
+    "url": "https://github.com/kevva/shebang-command/issues"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "tests": {
+    "with_lock": {
+      "args": "run -A --quiet --lock=deno.lock main.ts",
+      "output": "main.out"
+    },
+    "without_lock": {
+      "args": "run -A --quiet main.ts",
+      "output": "main.out"
+    }
+  }
+}

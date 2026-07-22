@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "lint --config=deno_gen.json --fix",
+      "output": "fix.out"
+    },
+    {
+      "args": "lint --config=deno_arr.json --fix",
+      "output": "fix.out"
+    }
+  ]
+}

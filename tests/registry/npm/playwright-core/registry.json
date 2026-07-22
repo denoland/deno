@@ -1,0 +1,63 @@
+{
+  "name": "playwright-core",
+  "dist-tags": {
+    "latest": "1.60.0"
+  },
+  "versions": {
+    "1.60.0": {
+      "name": "playwright-core",
+      "version": "1.60.0",
+      "author": {
+        "name": "Microsoft Corporation"
+      },
+      "license": "Apache-2.0",
+      "_id": "playwright-core@1.60.0",
+      "bugs": {
+        "url": "https://github.com/microsoft/playwright/issues"
+      },
+      "bin": {
+        "playwright-core": "cli.js"
+      },
+      "dist": {
+        "shasum": "24e0d9cc4730713db5dffcace29b5e4696b1907a",
+        "tarball": "http://localhost:4260/playwright-core/playwright-core-1.60.0.tgz",
+        "fileCount": 106,
+        "integrity": "sha512-9bW6zvX/m0lEbgTKJ6YppOKx8H3VOPBMOCFh2irXFOT4BbHgrx5hPjwJYLT40Lu+4qtD36qKc/Hn56StUW57IA==",
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/playwright-core@1.60.0",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 12469960
+      },
+      "types": "types/types.d.ts",
+      "engines": {
+        "node": ">=18"
+      },
+      "exports": {
+        ".": {
+          "types": "./index.d.ts",
+          "import": "./index.mjs",
+          "default": "./index.js",
+          "require": "./index.js"
+        },
+        "./package.json": "./package.json",
+        "./lib/bootstrap": "./lib/bootstrap.js",
+        "./lib/coreBundle": "./lib/coreBundle.js",
+        "./lib/utilsBundle": "./lib/utilsBundle.js",
+        "./lib/tools/cli-client/program": "./lib/tools/cli-client/program.js"
+      },
+      "gitHead": "87bb9ddbd78f329df18c2b24847bc9409240cd07",
+      "repository": {
+        "url": "git+https://github.com/microsoft/playwright.git",
+        "type": "git"
+      },
+      "_npmVersion": "11.14.1",
+      "description": "A high-level API to automate web browsers",
+      "directories": {},
+      "_nodeVersion": "20.20.2",
+      "_hasShrinkwrap": false
+    }
+  }
+}

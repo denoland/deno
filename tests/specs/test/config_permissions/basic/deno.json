@@ -1,0 +1,7 @@
+{
+  "test": {
+    "permissions": {
+      "read": true
+    }
+  }
+}

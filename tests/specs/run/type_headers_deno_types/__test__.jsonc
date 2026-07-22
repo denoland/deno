@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-import --reload --check type_headers_deno_types.ts",
+  "output": "type_headers_deno_types.ts.out"
+}

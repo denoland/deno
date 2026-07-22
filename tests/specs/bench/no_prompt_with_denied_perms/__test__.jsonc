@@ -1,0 +1,5 @@
+{
+  "args": "bench --quiet --allow-read no_prompt_with_denied_perms.ts",
+  "output": "no_prompt_with_denied_perms.out",
+  "exitCode": 1
+}

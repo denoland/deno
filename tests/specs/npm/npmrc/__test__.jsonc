@@ -1,0 +1,22 @@
+{
+  "tempDir": true,
+  "tests": {
+    "deno_install": {
+      "steps": [{
+        "args": "install",
+        "output": "install.out"
+      }, {
+        "args": "run -A main.js",
+        "output": "main.out"
+      }]
+    },
+    "run_node_modules_dir": {
+      "args": "run --node-modules-dir=auto -A --quiet main.js",
+      "output": "main.out"
+    },
+    "info": {
+      "args": "info --node-modules-dir=auto --json main.js",
+      "output": "info.out"
+    }
+  }
+}

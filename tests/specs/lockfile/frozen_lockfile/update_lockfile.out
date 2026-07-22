@@ -1,0 +1,11 @@
+Download http://localhost:4260/@denotest/subtract/1.0.0.tgz
+Initialize @denotest/subtract@1.0.0
+Installed 1 package in [WILDLINE]
+Reused 0 packages from cache
+Downloaded 0 packages from JSR
+Downloaded 1 package from npm
++
+
+Dependencies:
++ npm:@denotest/subtract 1.0.0
+

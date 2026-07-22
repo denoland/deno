@@ -1,0 +1,6 @@
+{
+  "args": "serve --check --port 12468 main.ts",
+  "output": "main.out",
+  "tempDir": true,
+  "exitCode": 0
+}

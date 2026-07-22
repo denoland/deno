@@ -1,0 +1,6 @@
+{
+  "compilerOptions": {
+    "types": ["./lib/types.d.ts"]
+  },
+  "exclude": ["lib"]
+}

@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet aggregate_error.ts",
+  "output": "aggregate_error.out",
+  "exitCode": 1
+}

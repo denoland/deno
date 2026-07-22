@@ -1,0 +1,2 @@
+[WILDCARD]error: Import "bad-module.ts" not a dependency
+    at [WILDCARD]/error_011_bad_module_specifier.ts:1:28

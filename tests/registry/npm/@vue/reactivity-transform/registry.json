@@ -1,0 +1,69 @@
+{
+  "name": "@vue/reactivity-transform",
+  "dist-tags": {
+    "latest": "3.2.38"
+  },
+  "versions": {
+    "3.2.38": {
+      "name": "@vue/reactivity-transform",
+      "version": "3.2.38",
+      "description": "@vue/reactivity-transform",
+      "main": "dist/reactivity-transform.cjs.js",
+      "buildOptions": {
+        "formats": [
+          "cjs"
+        ],
+        "prod": false
+      },
+      "types": "dist/reactivity-transform.d.ts",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/vuejs/core.git",
+        "directory": "packages/reactivity-transform"
+      },
+      "author": {
+        "name": "Evan You"
+      },
+      "license": "MIT",
+      "bugs": {
+        "url": "https://github.com/vuejs/core/issues"
+      },
+      "dependencies": {
+        "@babel/parser": "^7.16.4",
+        "@vue/compiler-core": "3.2.38",
+        "@vue/shared": "3.2.38",
+        "estree-walker": "^2.0.2",
+        "magic-string": "^0.25.7"
+      },
+      "devDependencies": {
+        "@babel/core": "^7.16.0",
+        "@babel/types": "^7.16.0"
+      },
+      "licenseText": "The MIT License (MIT)\n\nCopyright (c) 2018-present, Yuxi (Evan) You\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n",
+      "_id": "@vue/reactivity-transform@3.2.38",
+      "dist": {
+        "shasum": "a856c217b2ead99eefb6fddb1d61119b2cb67984",
+        "integrity": "sha512-3SD3Jmi1yXrDwiNJqQ6fs1x61WsDLqVk4NyKVz78mkaIRh6d3IqtRnptgRfXn+Fzf+m6B1KxBYWq1APj6h4qeA==",
+        "tarball": "http://localhost:4260/@vue/reactivity-transform/reactivity-transform-3.2.38.tgz",
+        "fileCount": 7,
+        "unpackedSize": 27932
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "@vue/reactivity-transform",
+  "homepage": "https://github.com/vuejs/core/tree/dev/packages/reactivity-transform#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vuejs/core.git",
+    "directory": "packages/reactivity-transform"
+  },
+  "author": {
+    "name": "Evan You"
+  },
+  "bugs": {
+    "url": "https://github.com/vuejs/core/issues"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,8 @@
+Check [WILDCARD]mod.ts
+Checking for slow types in the public API...
+Check [WILDCARD]mod.ts
+Simulating publish of @scope/package@0.0.0 with files:
+   file:///[WILDLINE]/LICENSE ([WILDLINE])
+   file:///[WILDLINE]/deno.jsonc ([WILDLINE])
+   file:///[WILDLINE]/mod.ts ([WILDLINE])
+Success Dry run complete

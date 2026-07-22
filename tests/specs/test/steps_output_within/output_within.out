@@ -1,0 +1,29 @@
+[WILDCARD]
+running 1 test from [WILDCARD]output_within.ts
+description ...
+------- output -------
+1
+----- output end -----
+  step 1 ...
+------- output -------
+2
+----- output end -----
+    inner 1 ...
+------- output -------
+3
+----- output end -----
+    inner 1 ... ok ([WILDCARD]s)
+    inner 2 ...
+------- output -------
+4
+----- output end -----
+    inner 2 ... ok ([WILDCARD]s)
+------- output -------
+5
+----- output end -----
+  step 1 ... ok ([WILDCARD]s)
+------- output -------
+6
+----- output end -----
+description ... ok ([WILDCARD]s)
+[WILDCARD]

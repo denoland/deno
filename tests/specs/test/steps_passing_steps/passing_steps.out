@@ -1,0 +1,44 @@
+[WILDCARD]
+running 6 tests from [WILDCARD]passing_steps.ts
+description ...
+  step 1 ...
+    inner 1 ... ok ([WILDCARD]s)
+    inner 2 ... ok ([WILDCARD]s)
+  step 1 ... ok ([WILDCARD]s)
+description ... ok ([WILDCARD]s)
+description function as first arg ...
+  step1 ...
+    inner1 ... ok ([WILDCARD]s)
+    inner1 ... ok ([WILDCARD]s)
+  step1 ... ok ([WILDCARD]s)
+description function as first arg ... ok ([WILDCARD]s)
+parallel steps without sanitizers ...
+  step 1 ... ok ([WILDCARD])
+  step 2 ... ok ([WILDCARD])
+parallel steps without sanitizers ... ok ([WILDCARD])
+parallel steps without sanitizers due to parent ...
+  step 1 ... ok ([WILDCARD])
+  step 2 ... ok ([WILDCARD])
+parallel steps without sanitizers due to parent ... ok ([WILDCARD])
+steps with disabled sanitizers, then enabled, then parallel disabled ...
+  step 1 ...
+    step 1 ...
+      step 1 ...
+        step 1 ... ok ([WILDCARD])
+        step 1 ... ok ([WILDCARD])
+      step 1 ... ok ([WILDCARD])
+      step 2 ... ok ([WILDCARD])
+    step 1 ... ok ([WILDCARD])
+  step 1 ... ok ([WILDCARD])
+steps with disabled sanitizers, then enabled, then parallel disabled ... ok ([WILDCARD])
+steps buffered then streaming reporting ...
+  step 1 ...
+    step 1 - 1 ... ok ([WILDCARD])
+    step 1 - 2 ...
+      step 1 - 2 - 1 ... ok ([WILDCARD])
+    step 1 - 2 ... ok ([WILDCARD])
+  step 1 ... ok ([WILDCARD])
+  step 2 ... ok ([WILDCARD])
+steps buffered then streaming reporting ... ok ([WILDCARD])
+
+ok | 6 passed (21 steps) | 0 failed [WILDCARD]

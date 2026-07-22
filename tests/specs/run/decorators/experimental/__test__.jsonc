@@ -1,0 +1,16 @@
+{
+  "tests": {
+    "no_check": {
+      "args": "run --quiet --reload --no-check no_check/main.ts",
+      "output": "no_check/main.out"
+    },
+    "ts": {
+      "args": "run --reload --check ts/main.ts",
+      "output": "ts/main.out"
+    },
+    "runtime": {
+      "args": "run --quiet --reload --no-check runtime/main.ts",
+      "output": "runtime/main.out"
+    }
+  }
+}

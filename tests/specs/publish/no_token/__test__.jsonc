@@ -1,0 +1,7 @@
+{
+  // Run through a script and spawn a subprocess to clear env variables,
+  // to force absence of OIDC tokens.
+  "args": "run -A script.ts",
+  "output": "no_token.out",
+  "exitCode": 1
+}

@@ -1,0 +1,61 @@
+{
+  "name": "http-cache-semantics",
+  "description": "Parses Cache-Control and other headers. Helps building correct HTTP caches and proxies",
+  "dist-tags": {
+    "latest": "4.1.1"
+  },
+  "versions": {
+    "4.1.1": {
+      "name": "http-cache-semantics",
+      "version": "4.1.1",
+      "description": "Parses Cache-Control and other headers. Helps building correct HTTP caches and proxies",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/kornelski/http-cache-semantics.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "mocha"
+      },
+      "author": {
+        "name": "Kornel Lesiński",
+        "email": "kornel@geekhood.net",
+        "url": "https://kornel.ski/"
+      },
+      "license": "BSD-2-Clause",
+      "devDependencies": {
+        "mocha": "^10.0"
+      },
+      "gitHead": "24496504352199caf360d1b4d4a01efdc8a7249e",
+      "bugs": {
+        "url": "https://github.com/kornelski/http-cache-semantics/issues"
+      },
+      "_id": "http-cache-semantics@4.1.1",
+      "_nodeVersion": "19.4.0",
+      "_npmVersion": "9.2.0",
+      "dist": {
+        "integrity": "sha512-er295DKPVsV82j5kw1Gjt+ADA/XYHsajl82cGNQG2eyoPkvgUhX+nDIyelzhIWbbsXP39EHcI6l5tYs2FYqYXQ==",
+        "shasum": "abe02fcb2985460bf0323be664436ec3476a6d5a",
+        "tarball": "http://localhost:4260/http-cache-semantics/http-cache-semantics-4.1.1.tgz",
+        "fileCount": 4,
+        "unpackedSize": 35938
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/kornelski/http-cache-semantics#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kornelski/http-cache-semantics.git"
+  },
+  "author": {
+    "name": "Kornel Lesiński",
+    "email": "kornel@geekhood.net",
+    "url": "https://kornel.ski/"
+  },
+  "bugs": {
+    "url": "https://github.com/kornelski/http-cache-semantics/issues"
+  },
+  "license": "BSD-2-Clause"
+}

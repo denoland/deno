@@ -1,0 +1,24 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "cwd": "pkg",
+    "args": "test",
+    "output": "test_pkg.out"
+  }, {
+    // the lockfile should always go to the workspace root
+    "args": [
+      "eval",
+      "try { Deno.readTextFileSync('pkg/deno.lock'); console.log('should not run'); } catch {} console.log(Deno.readTextFileSync('deno.lock'))"
+    ],
+    "output": "expected-lock.out"
+  }, {
+    "args": "test",
+    "output": "test_root.out"
+  }, {
+    "args": [
+      "eval",
+      "try { Deno.readTextFileSync('pkg/deno.lock'); console.log('should not run'); } catch {} console.log(Deno.readTextFileSync('deno.lock'))"
+    ],
+    "output": "expected-lock.out"
+  }]
+}

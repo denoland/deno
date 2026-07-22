@@ -1,0 +1,4 @@
+{
+  "args": "doc referenced_private_types.ts",
+  "output": "referenced_private_types.out"
+}

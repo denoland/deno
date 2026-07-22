@@ -1,0 +1,10 @@
+{
+  // ignored: native tsc emits generic "Cannot find module" errors instead of
+  // deno's rich Node resolution diagnostics (ERR_PACKAGE_PATH_NOT_EXPORTED,
+  // ERR_PACKAGE_IMPORT_NOT_DEFINED, ERR_UNSUPPORTED_DIR_IMPORT, ...); remapping
+  // them additively is tracked in https://github.com/denoland/deno/issues/36091
+  "ignore": true,
+  "args": "check main.ts",
+  "output": "check.out",
+  "exitCode": 1
+}

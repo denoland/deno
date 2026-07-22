@@ -1,0 +1,10 @@
+Check [WILDCARD]mod.ts
+Checking for slow types in the public API...
+Check [WILDCARD]mod.ts
+error[missing-license]: missing license field or file
+ --> [WILDLINE]deno.json
+  = hint: add a "license" field. Alternatively, add a LICENSE file to the package and ensure it is not ignored from being published
+
+  docs: https://jsr.io/go/missing-license
+
+error: Found 1 problem

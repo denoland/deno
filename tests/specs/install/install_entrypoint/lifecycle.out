@@ -1,0 +1,13 @@
+[WILDCARD]
+Initialize @denotest/node-lifecycle-scripts@1.0.0: running 'preinstall' script
+Initialize @denotest/node-lifecycle-scripts@1.0.0: running 'install' script
+Initialize @denotest/node-lifecycle-scripts@1.0.0: running 'postinstall' script
+Installed [WILDLINE] packages in [WILDCARD]
+Reused [WILDLINE] packages from cache
+Downloaded [WILDLINE] packages from JSR
+Downloaded [WILDLINE] packages from npm
+[WILDCARD]
+
+Dependencies:
++ npm:@denotest/node-lifecycle-scripts 1.0.0
+

@@ -1,0 +1,11 @@
+cover [WILDCARD]/coverage/branch.ts ... 35.714% (5/14)
+   5 |     return false;
+   6 |   }
+-----|-----
+   9 | export function unused(condition: boolean): boolean {
+  10 |   if (condition) {
+  11 |     return false;
+  12 |   } else {
+  13 |     return true;
+  14 |   }
+  15 | }

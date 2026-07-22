@@ -1,0 +1,5 @@
+{
+  "tempDir": true,
+  "args": "compile --include folder --exclude folder/a.txt --exclude folder/sub_folder main.ts",
+  "output": "compile.out"
+}

@@ -1,0 +1,23 @@
+{
+  "version": "5",
+  "specifiers": {
+    "npm:@denotest/add@1": "1.0.0",
+    "npm:@denotest/subtract@1": "1.0.0"
+  },
+  "npm": {
+    "@denotest/add@1.0.0": {
+      "integrity": "sha512-uvNpnVPU/CC2Do/LNF3TkhoLGLLKC6jFDPiSnojuZCEwmoXJjS2+Sn+LYk7eUix4vsMKA9ctxaMhcfb6pdHQTQ==",
+      "tarball": "http://localhost:4260/@denotest/add/1.0.0.tgz"
+    },
+    "@denotest/subtract@1.0.0": {
+      "integrity": "sha512-KYvMedSXaa2fCzJbiZ9as6h34nwiOZQ5wTrRTOHJcwn7P4y/qVtbIvCdgsUwCaCPXiRd6ccEfKcZPzjt+eOmaw==",
+      "tarball": "http://localhost:4260/@denotest/subtract/1.0.0.tgz"
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "npm:@denotest/add@1",
+      "npm:@denotest/subtract@1"
+    ]
+  }
+}

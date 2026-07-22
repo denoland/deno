@@ -1,0 +1,21 @@
+Check [WILDCARD]allow_none.ts
+    CPU | [WILDLINE]
+Runtime | Deno [WILDLINE] ([WILDLINE])
+
+[WILDLINE]/allow_none.ts
+
+| benchmark   | time/iter (avg) |        iter/s |      (min … max)      |      p75 |      p99 |     p995 |
+| ----------- | --------------- | ------------- | --------------------- | -------- | -------- | -------- |
+read        error: NotCapable: Can't escalate parent thread permissions
+[WILDCARD]
+write       error: NotCapable: Can't escalate parent thread permissions
+[WILDCARD]
+net         error: NotCapable: Can't escalate parent thread permissions
+[WILDCARD]
+env         error: NotCapable: Can't escalate parent thread permissions
+[WILDCARD]
+run         error: NotCapable: Can't escalate parent thread permissions
+[WILDCARD]
+ffi         error: NotCapable: Can't escalate parent thread permissions
+[WILDCARD]
+error: Bench failed

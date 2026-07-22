@@ -1,0 +1,9 @@
+{
+  "name": "@denotest/css-export",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./dist/*": "./dist/*"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "@foo/baz",
+  "tasks": {
+    "dev": "echo '@foo/baz'"
+  },
+  "imports": {
+    "@foo/bar": "jsr:@foo/bar"
+  },
+  "exports": {}
+}

@@ -1,0 +1,11 @@
+Download http://localhost:4261/@denotest%2ftarballs-privateserver2
+Download http://localhost:4262/@denotest/tarballs-privateserver2/1.0.0.tgz
+error: Failed caching npm package '@denotest/tarballs-privateserver2@1.0.0'
+
+Caused by:
+    No auth for tarball URI, but present for scoped registry.
+    
+    Tarball URI: http://localhost:4262/@denotest/tarballs-privateserver2/1.0.0.tgz
+    Scope URI: http://localhost:4261/
+    
+    More info here: https://github.com/npm/cli/wiki/%22No-auth-for-URI,-but-auth-present-for-scoped-registry%22

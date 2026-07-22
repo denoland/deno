@@ -1,0 +1,5 @@
+{
+  "args": "check --all types_entry_value_not_exists/main.ts",
+  "output": "types_entry_value_not_exists/main.out",
+  "exitCode": 1
+}

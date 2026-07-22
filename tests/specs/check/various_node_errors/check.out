@@ -1,0 +1,19 @@
+Check [WILDCARD]main.ts
+TS2307 [ERROR]: [ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './package.json' is not defined by "exports" in '[WILDLINE]package.json'
+    at file:///[WILDLINE]/main.ts:1:23
+
+TS2307 [ERROR]: [ERR_PACKAGE_IMPORT_NOT_DEFINED] Package import specifier "#not-an-import" is not defined in package [WILDLINE]package.json
+    at file:///[WILDLINE]/main.ts:2:24
+
+TS2307 [ERROR]: [ERR_UNSUPPORTED_DIR_IMPORT] Directory import '[WILDLINE]package2/dir' is not supported resolving ES modules
+    at file:///[WILDLINE]/main.ts:4:24
+
+TS2307 [ERROR]: [ERR_INVALID_PACKAGE_TARGET] Invalid "exports" main target index.js defined in the package config [WILDLINE]package.json; target must start with "./"
+    at file:///[WILDLINE]/main.ts:5:24
+
+TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/non-existent.ts'.
+    at file:///[WILDLINE]/main.ts:3:24
+
+Found 5 errors.
+
+error: Type checking failed.

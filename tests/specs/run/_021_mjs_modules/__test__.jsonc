@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload 021_mjs_modules.ts",
+  "output": "021_mjs_modules.ts.out"
+}

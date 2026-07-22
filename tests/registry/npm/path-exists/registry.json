@@ -1,0 +1,65 @@
+{
+  "name": "path-exists",
+  "description": "Check if a path exists",
+  "dist-tags": {
+    "latest": "4.0.0"
+  },
+  "versions": {
+    "4.0.0": {
+      "name": "path-exists",
+      "version": "4.0.0",
+      "description": "Check if a path exists",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sindresorhus/path-exists.git"
+      },
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=8"
+      },
+      "scripts": {
+        "test": "xo && ava && tsd"
+      },
+      "devDependencies": {
+        "ava": "^1.4.1",
+        "tsd": "^0.7.2",
+        "xo": "^0.24.0"
+      },
+      "gitHead": "26b1adf80aa6761a7db35927a20cf59e0fd1a00d",
+      "bugs": {
+        "url": "https://github.com/sindresorhus/path-exists/issues"
+      },
+      "_id": "path-exists@4.0.0",
+      "_nodeVersion": "8.15.0",
+      "_npmVersion": "6.9.0",
+      "dist": {
+        "integrity": "sha512-ak9Qy5Q7jYb2Wwcey5Fpvg2KoAc/ZIhLSLOSBmRmygPsGwkVVt0fZa0qrtMz+m6tJTAHfZQ8FnmB4MG4LWy7/w==",
+        "shasum": "513bdbe2d3b95d7762e8c1137efa195c6c61b5b3",
+        "tarball": "http://localhost:4260/path-exists/path-exists-4.0.0.tgz",
+        "fileCount": 5,
+        "unpackedSize": 3919
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/sindresorhus/path-exists#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sindresorhus/path-exists.git"
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "bugs": {
+    "url": "https://github.com/sindresorhus/path-exists/issues"
+  },
+  "license": "MIT"
+}

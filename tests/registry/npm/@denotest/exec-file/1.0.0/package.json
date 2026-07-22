@@ -1,0 +1,5 @@
+{
+  "name": "@denotest/exec-file",
+  "version": "1.0.0",
+  "main": "index.js"
+}

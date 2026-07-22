@@ -1,0 +1,10 @@
+Current Deno version: [WILDCARD]
+Looking up canary version
+
+Found latest canary version [WILDCARD]
+
+Downloading https://dl.deno.land/canary/[WILDCARD]/deno-[WILDCARD].zip
+Deno is upgrading to version [WILDCARD]
+
+Upgraded successfully to Deno [WILDCARD] (canary)
+

@@ -1,0 +1,33 @@
+{
+  "tempDir": true,
+  "tests": {
+    "format": {
+      "args": "fmt -",
+      "input": "badly_formatted.in",
+      "output": "well_formatted.out"
+    },
+    "format_with_use_tabs": {
+      "args": "fmt --use-tabs -",
+      "input": "badly_formatted.in",
+      "output": "well_formatted_use_tabs.out"
+    },
+    "format_with_unstable_sql": {
+      "args": "fmt --unstable-sql -",
+      "input": "badly_formatted.in",
+      "output": "well_formatted_unstable_sql.out"
+    },
+    "mis_nested_html_passes_through": {
+      "args": "fmt syntax_error_in_html.js",
+      "output": "[WILDLINE]syntax_error_in_html.js\nChecked 1 file\n"
+    },
+    "invalid_css_passes_through": {
+      "args": "fmt --check syntax_error_in_css.js",
+      "output": "Checked 1 file\n"
+    },
+    "syntax_error_but_fmt_ignored": {
+      "args": "fmt syntax_error_but_fmt_ignored.js",
+      "output": "Checked 1 file\n",
+      "exitCode": 0
+    }
+  }
+}

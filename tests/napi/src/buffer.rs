@@ -1,0 +1,208 @@
+// Copyright 2018-2026 the Deno authors. MIT license.
+
+use std::ptr;
+
+use napi_sys::*;
+
+use crate::assert_napi_ok;
+use crate::napi_new_property;
+
+/// Test napi_create_buffer: creates a Buffer of given size.
+extern "C" fn test_create_buffer(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  let mut data: *mut std::ffi::c_void = ptr::null_mut();
+  let mut result: napi_value = ptr::null_mut();
+
+  assert_napi_ok!(napi_create_buffer(env, 10, &mut data, &mut result));
+
+  // Write some data into the buffer
+  unsafe {
+    let slice = std::slice::from_raw_parts_mut(data as *mut u8, 10);
+    for (i, byte) in slice.iter_mut().enumerate() {
+      *byte = i as u8;
+    }
+  }
+
+  result
+}
+
+/// Test napi_create_buffer_copy: creates a Buffer by copying data.
+extern "C" fn test_create_buffer_copy(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  let source: [u8; 5] = [10, 20, 30, 40, 50];
+  let mut result_data: *mut std::ffi::c_void = ptr::null_mut();
+  let mut result: napi_value = ptr::null_mut();
+
+  assert_napi_ok!(napi_create_buffer_copy(
+    env,
+    source.len(),
+    source.as_ptr() as *const std::ffi::c_void,
+    &mut result_data,
+    &mut result
+  ));
+
+  result
+}
+
+/// Test node_api_create_buffer_from_arraybuffer: creates a Buffer that views a
+/// slice of an existing ArrayBuffer.
+extern "C" fn test_create_buffer_from_arraybuffer(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  // Create an ArrayBuffer and fill it with 0..8.
+  let mut ab_data: *mut std::ffi::c_void = ptr::null_mut();
+  let mut arraybuffer: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_arraybuffer(
+    env,
+    8,
+    &mut ab_data,
+    &mut arraybuffer
+  ));
+  unsafe {
+    let slice = std::slice::from_raw_parts_mut(ab_data as *mut u8, 8);
+    for (i, byte) in slice.iter_mut().enumerate() {
+      *byte = i as u8;
+    }
+  }
+
+  // View bytes [2, 6) of the ArrayBuffer as a Buffer.
+  let mut result: napi_value = ptr::null_mut();
+  assert_napi_ok!(node_api_create_buffer_from_arraybuffer(
+    env,
+    arraybuffer,
+    2,
+    4,
+    &mut result
+  ));
+
+  // Mutate the ArrayBuffer's backing store *after* creating the Buffer. The
+  // Buffer must be a view over the same memory (not a copy), so the change
+  // has to be visible through it. The byte at ArrayBuffer index 2 is index 0
+  // of the [2, 6) view.
+  unsafe {
+    *(ab_data as *mut u8).add(2) = 0xFF;
+  }
+
+  result
+}
+
+/// Test node_api_create_buffer_from_arraybuffer rejects invalid arguments with
+/// napi_invalid_arg (a non-ArrayBuffer value and an out-of-range view).
+extern "C" fn test_create_buffer_from_arraybuffer_invalid(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  let mut arraybuffer: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_arraybuffer(
+    env,
+    8,
+    ptr::null_mut(),
+    &mut arraybuffer
+  ));
+
+  // [4, 4 + 8) = [4, 12) runs past the 8-byte ArrayBuffer.
+  let mut out: napi_value = ptr::null_mut();
+  let oob = unsafe {
+    node_api_create_buffer_from_arraybuffer(env, arraybuffer, 4, 8, &mut out)
+  };
+  assert_eq!(oob, napi_sys::Status::napi_invalid_arg);
+
+  // A non-ArrayBuffer argument (a plain object) must be rejected too.
+  let mut object: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_object(env, &mut object));
+  let mut out2: napi_value = ptr::null_mut();
+  let wrong_type = unsafe {
+    node_api_create_buffer_from_arraybuffer(env, object, 0, 1, &mut out2)
+  };
+  assert_eq!(wrong_type, napi_sys::Status::napi_invalid_arg);
+
+  let mut result: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_get_boolean(env, true, &mut result));
+  result
+}
+
+/// Test napi_get_buffer_info: retrieves data pointer and length.
+extern "C" fn test_get_buffer_info(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  // Create a buffer with known content
+  let source: [u8; 3] = [0xAA, 0xBB, 0xCC];
+  let mut result: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_buffer_copy(
+    env,
+    source.len(),
+    source.as_ptr() as *const std::ffi::c_void,
+    ptr::null_mut(),
+    &mut result
+  ));
+
+  // Get buffer info
+  let mut data: *mut std::ffi::c_void = ptr::null_mut();
+  let mut length: usize = 0;
+  assert_napi_ok!(napi_get_buffer_info(env, result, &mut data, &mut length));
+
+  assert_eq!(length, 3);
+  let slice = unsafe { std::slice::from_raw_parts(data as *const u8, length) };
+  assert_eq!(slice, &[0xAA, 0xBB, 0xCC]);
+
+  // Return the length as confirmation
+  let mut len_val: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_int32(env, length as i32, &mut len_val));
+  len_val
+}
+
+/// Test napi_is_buffer on a Buffer vs a non-Buffer.
+extern "C" fn test_is_buffer(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  // Create a buffer
+  let mut buf: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_buffer(env, 5, ptr::null_mut(), &mut buf));
+
+  let mut is_buf = false;
+  assert_napi_ok!(napi_is_buffer(env, buf, &mut is_buf));
+  assert!(is_buf);
+
+  // Create a plain object (not a buffer)
+  let mut obj: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_object(env, &mut obj));
+  assert_napi_ok!(napi_is_buffer(env, obj, &mut is_buf));
+  assert!(!is_buf);
+
+  let mut result: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_get_boolean(env, true, &mut result));
+  result
+}
+
+pub fn init(env: napi_env, exports: napi_value) {
+  let properties = &[
+    napi_new_property!(env, "test_create_buffer", test_create_buffer),
+    napi_new_property!(env, "test_create_buffer_copy", test_create_buffer_copy),
+    napi_new_property!(
+      env,
+      "test_create_buffer_from_arraybuffer",
+      test_create_buffer_from_arraybuffer
+    ),
+    napi_new_property!(
+      env,
+      "test_create_buffer_from_arraybuffer_invalid",
+      test_create_buffer_from_arraybuffer_invalid
+    ),
+    napi_new_property!(env, "test_get_buffer_info", test_get_buffer_info),
+    napi_new_property!(env, "test_is_buffer_check", test_is_buffer),
+  ];
+
+  assert_napi_ok!(napi_define_properties(
+    env,
+    exports,
+    properties.len(),
+    properties.as_ptr()
+  ));
+}

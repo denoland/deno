@@ -1,0 +1,14 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "install.out"
+    },
+    {
+      "args": "check --quiet fail_check.ts",
+      "output": "fail_check.out",
+      "exitCode": 1
+    }
+  ]
+}

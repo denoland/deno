@@ -1,0 +1,157 @@
+{
+  "name": "which",
+  "description": "Like which(1) unix command. Find the first instance of an executable in the PATH.",
+  "dist-tags": {
+    "latest": "4.0.0"
+  },
+  "versions": {
+    "2.0.2": {
+      "name": "which",
+      "version": "2.0.2",
+      "author": {
+        "url": "http://blog.izs.me",
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me"
+      },
+      "license": "ISC",
+      "_id": "which@2.0.2",
+      "bugs": {
+        "url": "https://github.com/isaacs/node-which/issues"
+      },
+      "bin": {
+        "node-which": "./bin/node-which"
+      },
+      "tap": {
+        "check-coverage": true
+      },
+      "dist": {
+        "shasum": "7c6a8dd0a636a0327e10b59c9286eee93f3f51b1",
+        "tarball": "http://localhost:4260/which/which-2.0.2.tgz",
+        "fileCount": 6,
+        "integrity": "sha512-BLI3Tl1TW3Pvl70l3yq3Y64i+awpwXqsGBYWkkqMtnbXgrMD+yj7rhW0kuEDxzJaYXGjEW5ogapKNMEKNMjibA==",
+        "unpackedSize": 9975
+      },
+      "main": "which.js",
+      "engines": {
+        "node": ">= 8"
+      },
+      "gitHead": "6a822d836de79f92fb3170f685a6e283fbfeff87",
+      "scripts": {
+        "test": "tap",
+        "changelog": "git add CHANGELOG.md",
+        "prepublish": "npm run changelog",
+        "preversion": "npm test",
+        "postpublish": "git push origin --follow-tags",
+        "postversion": "npm publish",
+        "prechangelog": "bash gen-changelog.sh",
+        "postchangelog": "git commit -m 'update changelog - '${npm_package_version}"
+      },
+      "repository": {
+        "url": "git://github.com/isaacs/node-which.git",
+        "type": "git"
+      },
+      "_npmVersion": "6.13.1",
+      "description": "Like which(1) unix command. Find the first instance of an executable in the PATH.",
+      "directories": {},
+      "_nodeVersion": "12.12.0",
+      "dependencies": {
+        "isexe": "^2.0.0"
+      },
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^14.6.9",
+        "mkdirp": "^0.5.0",
+        "rimraf": "^2.6.2"
+      }
+    },
+    "4.0.0": {
+      "name": "which",
+      "version": "4.0.0",
+      "author": {
+        "name": "GitHub Inc."
+      },
+      "license": "ISC",
+      "_id": "which@4.0.0",
+      "bugs": {
+        "url": "https://github.com/npm/node-which/issues"
+      },
+      "bin": {
+        "node-which": "bin/which.js"
+      },
+      "tap": {
+        "nyc-arg": [
+          "--exclude",
+          "tap-snapshots/**"
+        ],
+        "check-coverage": true
+      },
+      "dist": {
+        "shasum": "cd60b5e74503a3fbcfbf6cd6b4138a8bae644c1a",
+        "tarball": "http://localhost:4260/which/which-4.0.0.tgz",
+        "fileCount": 5,
+        "integrity": "sha512-GlaYyEb07DPxYCKhKzplCWBJtvxZcZMrL+4UkrTSJHHPyZU4mYYTv3qaOe77H7EODLSSopAUFAc6W8U4yqvscg==",
+        "attestations": {
+          "url": "http://localhost:4260/attestations/which@4.0.0",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 7505
+      },
+      "main": "lib/index.js",
+      "engines": {
+        "node": "^16.13.0 || >=18.0.0"
+      },
+      "gitHead": "3038155822c2e6f38694843ede2ca03ee841a2e8",
+      "scripts": {
+        "lint": "eslint \"**/*.js\"",
+        "snap": "tap",
+        "test": "tap",
+        "lintfix": "npm run lint -- --fix",
+        "postlint": "template-oss-check",
+        "posttest": "npm run lint",
+        "template-oss-apply": "template-oss-apply --force"
+      },
+      "repository": {
+        "url": "git+https://github.com/npm/node-which.git",
+        "type": "git"
+      },
+      "_npmVersion": "9.8.1",
+      "description": "Like which(1) unix command. Find the first instance of an executable in the PATH.",
+      "directories": {},
+      "templateOSS": {
+        "publish": "true",
+        "version": "4.18.0",
+        "ciVersions": [
+          "16.13.0",
+          "16.x",
+          "18.0.0",
+          "18.x"
+        ],
+        "//@npmcli/template-oss": "This file is partially managed by @npmcli/template-oss. Edits may be overwritten."
+      },
+      "_nodeVersion": "18.17.1",
+      "dependencies": {
+        "isexe": "^3.1.1"
+      },
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^16.3.0",
+        "@npmcli/template-oss": "4.18.0",
+        "@npmcli/eslint-config": "^4.0.0"
+      }
+    }
+  },
+  "author": {
+    "name": "GitHub Inc."
+  },
+  "repository": {
+    "url": "git+https://github.com/npm/node-which.git",
+    "type": "git"
+  },
+  "license": "ISC",
+  "homepage": "https://github.com/npm/node-which#readme",
+  "bugs": {
+    "url": "https://github.com/npm/node-which/issues"
+  }
+}

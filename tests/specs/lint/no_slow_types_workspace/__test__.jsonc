@@ -1,0 +1,5 @@
+{
+  "args": "lint",
+  "output": "output.out",
+  "exitCode": 1
+}

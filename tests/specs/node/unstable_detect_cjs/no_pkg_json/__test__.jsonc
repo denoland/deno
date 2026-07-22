@@ -1,0 +1,4 @@
+{
+  "args": "run --check --quiet --allow-read=. main.ts",
+  "output": "main.out"
+}

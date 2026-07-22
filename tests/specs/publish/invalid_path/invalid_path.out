@@ -1,0 +1,11 @@
+Check [WILDCARD]mod.ts
+Checking for slow types in the public API...
+Check [WILDCARD]mod.ts
+error[invalid-path]: package path must not contain whitespace (found ' ')
+ --> [WILDCARD]path with spaces.txt
+  = hint: rename or remove the file, or add it to 'publish.exclude' in the config file
+
+  info: to portably support all platforms, including windows, the allowed characters in package paths are limited
+  docs: https://jsr.io/go/invalid-path
+
+error: Found 1 problem

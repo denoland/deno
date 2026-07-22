@@ -1,0 +1,7 @@
+{
+  "name": "@denotest/node-addon-implicit-node-gyp",
+  "version": "1.0.0",
+  "scripts": {
+    "install": "node-gyp configure build"
+  }
+}

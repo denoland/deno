@@ -1,0 +1,67 @@
+{
+  "name": "err-code",
+  "description": "Create an error with a code",
+  "dist-tags": {
+    "latest": "2.0.3"
+  },
+  "versions": {
+    "2.0.3": {
+      "name": "err-code",
+      "version": "2.0.3",
+      "description": "Create an error with a code",
+      "main": "index.js",
+      "scripts": {
+        "lint": "eslint '{*.js,test/**/*.js}' --ignore-pattern *.umd.js",
+        "test": "mocha --bail",
+        "browserify": "browserify -s err-code index.js > index.umd.js"
+      },
+      "bugs": {
+        "url": "https://github.com/IndigoUnited/js-err-code/issues/"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/IndigoUnited/js-err-code.git"
+      },
+      "author": {
+        "name": "IndigoUnited",
+        "email": "hello@indigounited.com",
+        "url": "http://indigounited.com"
+      },
+      "license": "MIT",
+      "devDependencies": {
+        "@satazor/eslint-config": "^3.0.0",
+        "browserify": "^16.5.1",
+        "eslint": "^7.2.0",
+        "expect.js": "^0.3.1",
+        "mocha": "^8.0.1"
+      },
+      "gitHead": "92511d41a6a926c94c9d11493404867b1e92a77a",
+      "_id": "err-code@2.0.3",
+      "_nodeVersion": "12.16.1",
+      "_npmVersion": "6.14.1",
+      "dist": {
+        "integrity": "sha512-2bmlRpNKBxT/CRmPOlyISQpNj+qSeYvcym/uT0Jx2bMOlKLtSy1ZmLuVxSEKKyor/N5yhvp/ZiG1oE3DEYMSFA==",
+        "shasum": "23c2f3b756ffdfc608d30e27c9a941024807e7f9",
+        "tarball": "http://localhost:4260/err-code/err-code-2.0.3.tgz",
+        "fileCount": 10,
+        "unpackedSize": 12280
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/IndigoUnited/js-err-code#readme",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/IndigoUnited/js-err-code.git"
+  },
+  "author": {
+    "name": "IndigoUnited",
+    "email": "hello@indigounited.com",
+    "url": "http://indigounited.com"
+  },
+  "bugs": {
+    "url": "https://github.com/IndigoUnited/js-err-code/issues/"
+  },
+  "license": "MIT"
+}

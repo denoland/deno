@@ -1,0 +1,5 @@
+{
+  "args": "run --allow-import --quiet inline_js_source_map_with_contents_from_graph.js",
+  "output": "inline_js_source_map_with_contents_from_graph.js.out",
+  "exitCode": 1
+}

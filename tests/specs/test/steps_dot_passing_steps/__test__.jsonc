@@ -1,0 +1,5 @@
+{
+  "args": "test --reporter=dot passing_steps.ts",
+  "exitCode": 0,
+  "output": "passing_steps.dot.out"
+}

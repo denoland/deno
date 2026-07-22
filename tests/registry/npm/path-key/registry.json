@@ -1,0 +1,66 @@
+{
+  "name": "path-key",
+  "description": "Get the PATH environment variable key cross-platform",
+  "dist-tags": {
+    "latest": "3.1.1"
+  },
+  "versions": {
+    "3.1.1": {
+      "name": "path-key",
+      "version": "3.1.1",
+      "description": "Get the PATH environment variable key cross-platform",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sindresorhus/path-key.git"
+      },
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=8"
+      },
+      "scripts": {
+        "test": "xo && ava && tsd"
+      },
+      "devDependencies": {
+        "@types/node": "^11.13.0",
+        "ava": "^1.4.1",
+        "tsd": "^0.7.2",
+        "xo": "^0.24.0"
+      },
+      "gitHead": "caea269db3a5eb0c09c793f4be5435312971d2fa",
+      "bugs": {
+        "url": "https://github.com/sindresorhus/path-key/issues"
+      },
+      "_id": "path-key@3.1.1",
+      "_nodeVersion": "10.17.0",
+      "_npmVersion": "6.11.3",
+      "dist": {
+        "integrity": "sha512-ojmeN0qd+y0jszEtoY48r0Peq5dwMEkIlCOu6Q5f41lfkswXuKtYrhgoTpLnyIcHm24Uhqx+5Tqm2InSwLhE6Q==",
+        "shasum": "581f6ade658cbba65a0d3380de7753295054f375",
+        "tarball": "http://localhost:4260/path-key/path-key-3.1.1.tgz",
+        "fileCount": 5,
+        "unpackedSize": 4553
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/sindresorhus/path-key#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sindresorhus/path-key.git"
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "bugs": {
+    "url": "https://github.com/sindresorhus/path-key/issues"
+  },
+  "license": "MIT"
+}

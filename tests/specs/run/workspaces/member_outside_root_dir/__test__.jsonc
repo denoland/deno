@@ -1,0 +1,6 @@
+{
+  "args": "run -A sub_dir/child/main.ts",
+  "output": "main.out",
+  "tempDir": true,
+  "exitCode": 1
+}

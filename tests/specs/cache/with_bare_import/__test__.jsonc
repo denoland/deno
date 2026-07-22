@@ -1,0 +1,5 @@
+{
+  "args": "cache 095_cache_with_bare_import.ts",
+  "output": "095_cache_with_bare_import.ts.out",
+  "exitCode": 1
+}

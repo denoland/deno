@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "bytes_rejected": {
+      "args": "publish --config bytes_deno.json --dry-run",
+      "output": "bytes.out",
+      "exitCode": 1
+    },
+    "text_allowed": {
+      "args": "publish --config text_deno.json --dry-run",
+      "output": "text.out",
+      "exitCode": 0
+    }
+  }
+}

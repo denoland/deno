@@ -1,0 +1,10 @@
+{
+  "tasks": {
+    "a": "echo root-a",
+    "b": {
+      "dependencies": ["a"],
+      "command": "echo b"
+    }
+  },
+  "workspace": ["./member"]
+}

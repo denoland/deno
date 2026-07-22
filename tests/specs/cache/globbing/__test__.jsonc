@@ -1,0 +1,5 @@
+{
+  "args": "cache --allow-import *.ts",
+  "output": "Download http://localhost:4545/echo.ts\n",
+  "exitCode": 0
+}

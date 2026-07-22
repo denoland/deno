@@ -1,0 +1,4 @@
+{
+  "args": "run --enable-testing-features-do-not-use classic_workers_event_loop.js",
+  "output": "classic_workers_event_loop.js.out"
+}

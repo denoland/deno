@@ -1,0 +1,14 @@
+{
+  // packages will be automatically entered into the "jsr" tag
+  "steps": [{
+    "args": "lint",
+    "cwd": "./package",
+    "output": "package.out",
+    "exitCode": 1
+  }, {
+    "args": "lint",
+    "cwd": "./non_package",
+    "output": "non_package.out",
+    "exitCode": 0
+  }]
+}

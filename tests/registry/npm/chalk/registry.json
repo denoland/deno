@@ -1,0 +1,149 @@
+{
+  "name": "chalk",
+  "description": "Terminal string styling done right",
+  "dist-tags": {
+    "latest": "5.0.1"
+  },
+  "versions": {
+    "4.1.2": {
+      "name": "chalk",
+      "version": "4.1.2",
+      "description": "Terminal string styling done right",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/chalk/chalk.git"
+      },
+      "funding": "https://github.com/chalk/chalk?sponsor=1",
+      "main": "source",
+      "engines": {
+        "node": ">=10"
+      },
+      "scripts": {
+        "test": "xo && nyc ava && tsd",
+        "bench": "matcha benchmark.js"
+      },
+      "dependencies": {
+        "ansi-styles": "^4.1.0",
+        "supports-color": "^7.1.0"
+      },
+      "devDependencies": {
+        "ava": "^2.4.0",
+        "coveralls": "^3.0.7",
+        "execa": "^4.0.0",
+        "import-fresh": "^3.1.0",
+        "matcha": "^0.7.0",
+        "nyc": "^15.0.0",
+        "resolve-from": "^5.0.0",
+        "tsd": "^0.7.4",
+        "xo": "^0.28.2"
+      },
+      "xo": {
+        "rules": {
+          "unicorn/prefer-string-slice": "off",
+          "unicorn/prefer-includes": "off",
+          "@typescript-eslint/member-ordering": "off",
+          "no-redeclare": "off",
+          "unicorn/string-content": "off",
+          "unicorn/better-regex": "off"
+        }
+      },
+      "gitHead": "95d74cbe8d3df3674dec1445a4608d3288d8b73c",
+      "bugs": {
+        "url": "https://github.com/chalk/chalk/issues"
+      },
+      "_id": "chalk@4.1.2",
+      "_nodeVersion": "12.22.1",
+      "_npmVersion": "7.5.4",
+      "dist": {
+        "integrity": "sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA==",
+        "shasum": "aac4e2b7734a740867aeb16bf02aad556a1e7a01",
+        "tarball": "http://localhost:4260/chalk/chalk-4.1.2.tgz",
+        "fileCount": 7,
+        "unpackedSize": 35047
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    },
+    "5.0.1": {
+      "name": "chalk",
+      "version": "5.0.1",
+      "description": "Terminal string styling done right",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/chalk/chalk.git"
+      },
+      "funding": "https://github.com/chalk/chalk?sponsor=1",
+      "type": "module",
+      "main": "./source/index.js",
+      "exports": "./source/index.js",
+      "imports": {
+        "#ansi-styles": "./source/vendor/ansi-styles/index.js",
+        "#supports-color": {
+          "node": "./source/vendor/supports-color/index.js",
+          "default": "./source/vendor/supports-color/browser.js"
+        }
+      },
+      "types": "./source/index.d.ts",
+      "engines": {
+        "node": "^12.17.0 || ^14.13 || >=16.0.0"
+      },
+      "scripts": {
+        "test": "xo && c8 ava && tsd",
+        "bench": "matcha benchmark.js"
+      },
+      "devDependencies": {
+        "@types/node": "^16.11.10",
+        "ava": "^3.15.0",
+        "c8": "^7.10.0",
+        "color-convert": "^2.0.1",
+        "execa": "^6.0.0",
+        "log-update": "^5.0.0",
+        "matcha": "^0.7.0",
+        "tsd": "^0.19.0",
+        "xo": "^0.47.0",
+        "yoctodelay": "^2.0.0"
+      },
+      "xo": {
+        "rules": {
+          "unicorn/prefer-string-slice": "off"
+        }
+      },
+      "c8": {
+        "reporter": [
+          "text",
+          "lcov"
+        ],
+        "exclude": [
+          "source/vendor"
+        ]
+      },
+      "gitHead": "bccde97f8a1bb125d4fe99e8fd355182101ff4f2",
+      "bugs": {
+        "url": "https://github.com/chalk/chalk/issues"
+      },
+      "_id": "chalk@5.0.1",
+      "_nodeVersion": "16.14.0",
+      "_npmVersion": "8.3.2",
+      "dist": {
+        "integrity": "sha512-Fo07WOYGqMfCWHOzSXOt2CxDbC6skS/jO9ynEcmpANMoPrD+W1r1K6Vx7iNm+AQmETU1Xr2t+n8nzkV9t6xh3w==",
+        "shasum": "ca57d71e82bb534a296df63bbacc4a1c22b2a4b6",
+        "tarball": "http://localhost:4260/chalk/chalk-5.0.1.tgz",
+        "fileCount": 12,
+        "unpackedSize": 41336
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chalk/chalk.git"
+  },
+  "homepage": "https://github.com/chalk/chalk#readme",
+  "bugs": {
+    "url": "https://github.com/chalk/chalk/issues"
+  },
+  "license": "MIT"
+}

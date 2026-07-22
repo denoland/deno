@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-import --allow-read --allow-net --quiet dynamic_import_concurrent_non_statically_analyzable/main.ts",
+  "output": "dynamic_import_concurrent_non_statically_analyzable/main.out"
+}

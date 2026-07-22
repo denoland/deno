@@ -1,0 +1,4 @@
+{
+  "args": "run --v8-flags=--expose-gc v8_flags.js",
+  "output": "v8_flags.js.out"
+}

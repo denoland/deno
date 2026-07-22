@@ -1,0 +1,11 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "install",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "info npm:@denotest/add",
+    "output": "info.out",
+    "exitCode": 1
+  }]
+}

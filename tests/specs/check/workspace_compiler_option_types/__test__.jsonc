@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "root": {
+      // ignored: per-member compilerOptions.types globals aren't applied by
+      // tsc across a workspace. https://github.com/denoland/deno/issues/36085
+      "ignore": true,
+      "args": "check package-a/mod.ts package-b/mod.ts package-c/mod.ts",
+      "output": "root.out",
+      "exitCode": 1
+    }
+  }
+}

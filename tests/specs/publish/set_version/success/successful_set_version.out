@@ -1,0 +1,6 @@
+Check [WILDCARD]mod.ts
+Checking for slow types in the public API...
+Check [WILDCARD]mod.ts
+Publishing @foo/bar@1.1.0 ...
+Successfully published @foo/bar@1.1.0
+Visit http://127.0.0.1:4250/@foo/bar@1.1.0 for details

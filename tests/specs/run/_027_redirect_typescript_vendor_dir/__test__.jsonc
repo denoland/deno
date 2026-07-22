@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload --vendor --allow-import 027_redirect_typescript.ts",
+  "output": "027_redirect_typescript.ts.out"
+}

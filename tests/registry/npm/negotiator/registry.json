@@ -1,0 +1,59 @@
+{
+  "name": "negotiator",
+  "description": "HTTP content negotiation",
+  "dist-tags": {
+    "latest": "0.6.3"
+  },
+  "versions": {
+    "0.6.3": {
+      "name": "negotiator",
+      "description": "HTTP content negotiation",
+      "version": "0.6.3",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/jshttp/negotiator.git"
+      },
+      "devDependencies": {
+        "eslint": "7.32.0",
+        "eslint-plugin-markdown": "2.2.1",
+        "mocha": "9.1.3",
+        "nyc": "15.1.0"
+      },
+      "engines": {
+        "node": ">= 0.6"
+      },
+      "scripts": {
+        "lint": "eslint .",
+        "test": "mocha --reporter spec --check-leaks --bail test/",
+        "test-ci": "nyc --reporter=lcov --reporter=text npm test",
+        "test-cov": "nyc --reporter=html --reporter=text npm test"
+      },
+      "gitHead": "40a5acb0c878cca951bc44d1d9e2ab1f90ae813e",
+      "bugs": {
+        "url": "https://github.com/jshttp/negotiator/issues"
+      },
+      "_id": "negotiator@0.6.3",
+      "_nodeVersion": "16.13.1",
+      "_npmVersion": "8.1.2",
+      "dist": {
+        "integrity": "sha512-+EUsqGPLsM+j/zdChZjsnX51g4XrHFOIXwfnCVPGlQk/k5giakcKsuxCObBRu6DSm9opw/O6slWbJdghQM4bBg==",
+        "shasum": "58e323a72fedc0d6f9cd4d31fe49f51479590ccd",
+        "tarball": "http://localhost:4260/negotiator/negotiator-0.6.3.tgz",
+        "fileCount": 9,
+        "unpackedSize": 27375
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jshttp/negotiator.git"
+  },
+  "homepage": "https://github.com/jshttp/negotiator#readme",
+  "bugs": {
+    "url": "https://github.com/jshttp/negotiator/issues"
+  },
+  "license": "MIT"
+}

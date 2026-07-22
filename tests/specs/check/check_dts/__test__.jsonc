@@ -1,0 +1,8 @@
+{
+  // ignored: .d.ts entrypoint not checked under skipLibCheck:true.
+  // https://github.com/denoland/deno/issues/36085
+  "ignore": true,
+  "args": "check --quiet dts/check_dts.d.ts",
+  "output": "dts/check_dts.out",
+  "exitCode": 1
+}

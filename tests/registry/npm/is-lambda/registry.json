@@ -1,0 +1,65 @@
+{
+  "name": "is-lambda",
+  "description": "Detect if your code is running on an AWS Lambda server",
+  "dist-tags": {
+    "latest": "1.0.1"
+  },
+  "versions": {
+    "1.0.1": {
+      "name": "is-lambda",
+      "version": "1.0.1",
+      "description": "Detect if your code is running on an AWS Lambda server",
+      "main": "index.js",
+      "dependencies": {},
+      "devDependencies": {
+        "clear-require": "^1.0.1",
+        "standard": "^10.0.2"
+      },
+      "scripts": {
+        "test": "standard && node test.js"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/watson/is-lambda.git"
+      },
+      "author": {
+        "name": "Thomas Watson Steen",
+        "email": "w@tson.dk",
+        "url": "https://twitter.com/wa7son"
+      },
+      "license": "MIT",
+      "bugs": {
+        "url": "https://github.com/watson/is-lambda/issues"
+      },
+      "coordinates": [
+        37.3859955,
+        -122.0838831
+      ],
+      "gitHead": "9e6734e406f4f84f1f5540a8e5115d6e00f860ff",
+      "_id": "is-lambda@1.0.1",
+      "_shasum": "3d9877899e6a53efc0160504cde15f82e6f061d5",
+      "_from": ".",
+      "_npmVersion": "4.2.0",
+      "_nodeVersion": "7.10.0",
+      "dist": {
+        "shasum": "3d9877899e6a53efc0160504cde15f82e6f061d5",
+        "tarball": "http://localhost:4260/is-lambda/is-lambda-1.0.1.tgz",
+        "integrity": "sha512-z7CMFGNrENq5iFB9Bqo64Xk6Y9sg+epq1myIcdHaGnbMTYOxvzsEtdYqQUylB7LxfkvgrrjP32T6Ywciio9UIQ=="
+      }
+    }
+  },
+  "homepage": "https://github.com/watson/is-lambda",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/watson/is-lambda.git"
+  },
+  "author": {
+    "name": "Thomas Watson Steen",
+    "email": "w@tson.dk",
+    "url": "https://twitter.com/wa7son"
+  },
+  "bugs": {
+    "url": "https://github.com/watson/is-lambda/issues"
+  },
+  "license": "MIT"
+}

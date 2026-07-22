@@ -1,0 +1,6 @@
+running 2 tests from ./main.ts
+WebTransport ... ok ([WILDCARD])
+WebTransport ignores overridden URL toString ... ok ([WILDCARD])
+
+ok | 2 passed | 0 failed ([WILDCARD])
+

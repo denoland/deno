@@ -1,0 +1,58 @@
+{
+  "name": "@types/lz-string",
+  "description": "Stub TypeScript definitions entry for lz-string, which provides its own types definitions",
+  "dist-tags": {
+    "latest": "1.5.0"
+  },
+  "versions": {
+    "1.3.33": {
+      "name": "@types/lz-string",
+      "version": "1.3.33",
+      "description": "TypeScript definitions for lz-string",
+      "license": "MIT",
+      "main": "",
+      "types": "index",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git"
+      },
+      "scripts": {},
+      "dependencies": {},
+      "typesPublisherContentHash": "37e0f8cf2fb1fe08bdcc8e21278c91217d4a03d1cd6b32fc0eaec30757c6d4b1",
+      "typeScriptVersion": "2.0",
+      "_id": "@types/lz-string@1.3.33",
+      "dist": {
+        "integrity": "sha512-yWj3OnlKlwNpq9+Jh/nJkVAD3ta8Abk2kIRpjWpVkDlAD43tn6Q6xk5hurp84ndcq54jBDBGCD/WcIR0pspG0A==",
+        "shasum": "de2d6105ea7bcaf67dd1d9451d580700d30473fc",
+        "tarball": "http://localhost:4260/@types/lz-string/lz-string-1.3.33.tgz",
+        "fileCount": 4,
+        "unpackedSize": 5960
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    },
+    "1.5.0": {
+      "name": "@types/lz-string",
+      "version": "1.5.0",
+      "description": "Stub TypeScript definitions entry for lz-string, which provides its own types definitions",
+      "main": "",
+      "scripts": {},
+      "license": "MIT",
+      "dependencies": {
+        "lz-string": "*"
+      },
+      "deprecated": "This is a stub types definition. lz-string provides its own type definitions, so you do not need this installed.",
+      "_id": "@types/lz-string@1.5.0",
+      "dist": {
+        "integrity": "sha512-s84fKOrzqqNCAPljhVyC5TjAo6BH4jKHw9NRNFNiRUY5QSgZCmVm5XILlWbisiKl+0OcS7eWihmKGS5akc2iQw==",
+        "shasum": "2f15d2dd9dbfb344f3d31aee5a82cf350b037e5f",
+        "tarball": "http://localhost:4260/@types/lz-string/lz-string-1.5.0.tgz",
+        "fileCount": 4,
+        "unpackedSize": 1754
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "license": "MIT"
+}

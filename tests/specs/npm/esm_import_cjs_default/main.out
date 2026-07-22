@@ -1,0 +1,69 @@
+[UNORDERED_START]
+Download http://localhost:4260/@denotest%2fesm-import-cjs-default
+Download http://localhost:4260/@denotest%2fcjs-default-export
+Download http://localhost:4260/@denotest/cjs-default-export/1.0.0.tgz
+Download http://localhost:4260/@denotest/esm-import-cjs-default/1.0.0.tgz
+[UNORDERED_END]
+Check [WILDCARD]main.ts
+Node esm importing node cjs
+===========================
+{
+  default: [Function (anonymous)],
+  named: [Function (anonymous)],
+  MyClass: [class MyClass]
+}
+{ default: [Function (anonymous)], named: [Function (anonymous)] }
+[Module: null prototype] {
+  MyClass: [class MyClass],
+  __esModule: true,
+  default: {
+    default: [Function (anonymous)],
+    named: [Function (anonymous)],
+    MyClass: [class MyClass]
+  },
+  "module.exports": {
+    default: [Function (anonymous)],
+    named: [Function (anonymous)],
+    MyClass: [class MyClass]
+  },
+  named: [Function (anonymous)]
+}
+[Module: null prototype] {
+  __esModule: true,
+  default: { default: [Function (anonymous)], named: [Function (anonymous)] },
+  "module.exports": { default: [Function (anonymous)], named: [Function (anonymous)] },
+  named: [Function (anonymous)]
+}
+===========================
+static method
+Deno esm importing node cjs
+===========================
+{
+  default: [Function (anonymous)],
+  named: [Function (anonymous)],
+  MyClass: [class MyClass]
+}
+[Module: null prototype] {
+  MyClass: [class MyClass],
+  __esModule: true,
+  default: {
+    default: [Function (anonymous)],
+    named: [Function (anonymous)],
+    MyClass: [class MyClass]
+  },
+  "module.exports": {
+    default: [Function (anonymous)],
+    named: [Function (anonymous)],
+    MyClass: [class MyClass]
+  },
+  named: [Function (anonymous)]
+}
+===========================
+Deno esm importing node esm
+===========================
+[Function: default]
+[Module: null prototype] { default: [Function: default] }
+===========================
+1
+5
+static method

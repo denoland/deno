@@ -1,0 +1,5 @@
+{
+  // should not error
+  "args": "cache --quiet main.ts",
+  "output": "[WILDCARD]"
+}

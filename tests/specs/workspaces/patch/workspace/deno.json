@@ -1,0 +1,6 @@
+{
+  "workspace": ["./my-pkg"],
+  "links": [
+    "../add"
+  ]
+}

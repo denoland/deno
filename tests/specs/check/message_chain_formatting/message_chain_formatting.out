@@ -1,0 +1,8 @@
+TS2769 [ERROR]: No overload matches this call.
+  The last overload gave the following error.
+    Argument of type 'string' is not assignable to parameter of type 'string[]'.
+foo("hello", 42);
+    ~~~~~~~
+    at file:///[WILDCARD]/message_chain_formatting.ts:8:5
+
+error: Type checking failed.

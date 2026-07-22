@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet --reload --allow-read unstable_worker_options.js",
+  "output": "unstable_worker_options.disabled.out",
+  "exitCode": 70
+}

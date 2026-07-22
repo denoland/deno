@@ -1,0 +1,6 @@
+local: [WILDCARD]mod.ts
+type: TypeScript
+dependencies: 0 unique
+size: [WILDCARD]
+
+file://[WILDCARD]member3/mod.ts ([WILDCARD])

@@ -1,0 +1,18 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "test -A",
+      "output": "test.out",
+      "envs": {
+        "DENO_COVERAGE_DIR": "my_coverage_dir"
+      },
+      "exitCode": 0
+    },
+    {
+      "args": "coverage my_coverage_dir",
+      "output": "coverage.out",
+      "exitCode": 0
+    }
+  ]
+}

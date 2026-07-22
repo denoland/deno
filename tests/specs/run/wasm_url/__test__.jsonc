@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet --allow-net=localhost:4545 wasm_url.js",
+  "output": "wasm_url.out",
+  "exitCode": 1
+}

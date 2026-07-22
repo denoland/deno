@@ -1,0 +1,9 @@
+dependencies: 5 unique
+size: [WILDCARD]
+
+npm:/chalk@4.1.2 ([WILDCARD])
+├─┬ npm:/ansi-styles@4.3.0 ([WILDCARD])
+│ └─┬ npm:/color-convert@2.0.1 ([WILDCARD])
+│   └── npm:/color-name@1.1.4 ([WILDCARD])
+└─┬ npm:/supports-color@7.2.0 ([WILDCARD])
+  └── npm:/has-flag@4.0.0 ([WILDCARD])

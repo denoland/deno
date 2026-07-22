@@ -1,0 +1,2 @@
+Task dev (foo) echo 'foo'
+foo

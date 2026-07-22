@@ -1,0 +1,7 @@
+{
+  "lock": false,
+  "importMap": "../import_map.json",
+  "tasks": {
+    "regenerate-lockfile": "rm deno.lock.json ; deno install --lock=deno.lock.json -e release/deps.ts ../tests/wpt/wpt.ts"
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "$id": "https://deno.land/x/deno/cli/schemas/lint-tags.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "enum": ["fresh", "jsr", "jsx", "react", "recommended", "workspace"]
+}

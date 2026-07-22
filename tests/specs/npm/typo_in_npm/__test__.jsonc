@@ -1,0 +1,5 @@
+{
+  "args": "run np:cowsay",
+  "output": "main.out",
+  "exitCode": 1
+}

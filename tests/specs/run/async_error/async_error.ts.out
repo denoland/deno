@@ -1,0 +1,8 @@
+[WILDCARD]hello
+before error
+world
+error: Uncaught (in promise) Error: error
+  throw Error("error");
+        ^
+    at foo ([WILDCARD]/async_error.ts:5:9)
+    at [WILDCARD]/async_error.ts:8:1

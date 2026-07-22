@@ -1,0 +1,82 @@
+[UNORDERED_START]
+Download http://localhost:4260/@denotest%2ftypes
+Download http://localhost:4260/@denotest%2ftypes_imported
+Download http://localhost:4260/@denotest%2ftypes-exports-subpaths
+Download http://localhost:4260/@denotest/types_imported/1.0.0.tgz
+Download http://localhost:4260/@denotest/types-exports-subpaths/1.0.0.tgz
+Download http://localhost:4260/@denotest/types/1.0.0.tgz
+[UNORDERED_END]
+Check [WILDCARD]main.ts
+TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
+  bar: 1,
+  ~~~
+    at [WILDCARD]/main.ts:[WILDCARD]
+
+    The expected type comes from property 'bar' which is declared here on type 'Foobar'
+        bar: string;
+        ~~~
+        at [WILDCARD]/@denotest/types_imported/1.0.0/subpath.d.ts:3:5
+
+TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
+  prop: 1,
+  ~~~~
+    at [WILDCARD]/main.ts:[WILDCARD]
+
+    The expected type comes from property 'prop' which is declared here on type 'SomeInterface'
+        prop: string;
+        ~~~~
+        at [WILDCARD]/@denotest/types_imported/1.0.0/index.d.ts:2:5
+
+TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
+  prop2: "asdf",
+  ~~~~~
+    at [WILDCARD]/main.ts:[WILDCARD]
+
+    The expected type comes from property 'prop2' which is declared here on type 'SomeInterface'
+        prop2: number;
+        ~~~~~
+        at [WILDCARD]/@denotest/types_imported/1.0.0/index.d.ts:3:5
+
+TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
+  fizz: 1,
+  ~~~~
+    at [WILDCARD]/main.ts:[WILDCARD]
+
+    The expected type comes from property 'fizz' which is declared here on type 'Fizzbuzz'
+      fizz: string;
+      ~~~~
+        at [WILDCARD]/@denotest/types/1.0.0/index.d.ts:2:3
+
+TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
+  buzz: 2,
+  ~~~~
+    at [WILDCARD]/main.ts:[WILDCARD]
+
+    The expected type comes from property 'buzz' which is declared here on type 'Fizzbuzz'
+      buzz: string;
+      ~~~~
+        at [WILDCARD]/@denotest/types/1.0.0/index.d.ts:3:3
+
+TS2322 [ERROR]: Type '5' is not assignable to type '"test1"'.
+const valueA: "test1" = getClient();
+      ~~~~~~
+    at [WILDCARD]/main.ts:[WILDCARD]
+
+TS2322 [ERROR]: Type '"import"' is not assignable to type '"test2"'.
+const valueB: "test2" = entryImport();
+      ~~~~~~
+    at [WILDCARD]/main.ts:[WILDCARD]
+
+TS2322 [ERROR]: Type '12' is not assignable to type '"test3"'.
+const valueC: "test3" = entryA();
+      ~~~~~~
+    at [WILDCARD]/main.ts:[WILDCARD]
+
+TS2322 [ERROR]: Type '"types"' is not assignable to type '"test4"'.
+const valueD: "test4" = entryTypes();
+      ~~~~~~
+    at file:///[WILDCARD]/main.ts:[WILDCARD]
+
+Found 9 errors.
+
+error: Type checking failed.

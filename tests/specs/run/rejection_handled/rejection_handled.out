@@ -1,0 +1,5 @@
+[WILDCARD]
+unhandledrejection 1 Promise { <rejected> 1 }
+Added catch handler to the promise
+rejectionhandled 1 Promise { <rejected> 1 }
+Success

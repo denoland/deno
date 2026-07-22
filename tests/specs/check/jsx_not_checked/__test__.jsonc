@@ -1,0 +1,5 @@
+{
+  "args": "check main.jsx",
+  "output": "main.out",
+  "exitCode": 1
+}

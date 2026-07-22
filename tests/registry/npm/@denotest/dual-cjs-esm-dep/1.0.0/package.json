@@ -1,0 +1,16 @@
+{
+  "name": "@denotest/dual-cjs-esm-dep",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./index.cjs",
+  "module": "./index.mjs",
+  "dependencies": {
+    "@denotest/dual-cjs-esm": "*"
+  },
+  "exports": {
+    ".": {
+      "import": "./index.mjs",
+      "require": "./index.cjs"
+    }
+  }
+}

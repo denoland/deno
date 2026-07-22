@@ -1,0 +1,11 @@
+{
+  "name": "@denotest/mjs-reexport-cjs",
+  "version": "1.0.0",
+  "dependencies": {
+    "@denotest/conditional-exports-node": "*"
+  },
+  "exports": {
+    "node": "./index.mjs",
+    "default": "./index.js"
+  }
+}

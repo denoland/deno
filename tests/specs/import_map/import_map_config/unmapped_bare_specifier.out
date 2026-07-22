@@ -1,0 +1,6 @@
+error: Uncaught (in promise) TypeError: Import "unmapped" not a dependency and not in import map from "file://[WILDCARD]/unmapped_bare_specifier.ts"
+    at file://[WILDCARD]/unmapped_bare_specifier.ts:1:14
+
+await import("unmapped");
+^
+    at async file://[WILDCARD]/unmapped_bare_specifier.ts:1:1

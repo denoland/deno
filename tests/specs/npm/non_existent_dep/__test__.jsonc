@@ -1,0 +1,5 @@
+{
+  "args": "cache npm:@denotest/non-existent-dep",
+  "exitCode": 1,
+  "output": "err.out"
+}

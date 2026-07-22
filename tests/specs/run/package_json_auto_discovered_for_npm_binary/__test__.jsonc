@@ -1,0 +1,5 @@
+{
+  "tempDir": true,
+  "args": "run -L debug npm:@denotest/bin/cli-esm this is a test",
+  "output": "main.out"
+}

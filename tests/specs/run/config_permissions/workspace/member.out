@@ -1,0 +1,3 @@
+Warning Permissions in the config file is an experimental feature and may change in the future.
+Root: prompt
+Member: granted

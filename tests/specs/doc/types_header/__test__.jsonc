@@ -1,0 +1,4 @@
+{
+  "args": "doc --allow-import --reload types_header.ts",
+  "output": "types_header.out"
+}

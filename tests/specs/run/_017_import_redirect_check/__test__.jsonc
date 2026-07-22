@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --allow-import --reload --check 017_import_redirect.ts",
+  "output": "017_import_redirect.ts.out"
+}

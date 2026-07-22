@@ -1,0 +1,71 @@
+{
+  "name": "get-caller-file",
+  "description": "[![Build Status](https://travis-ci.org/stefanpenner/get-caller-file.svg?branch=master)](https://travis-ci.org/stefanpenner/get-caller-file) [![Build status](https://ci.appveyor.com/api/projects/status/ol2q94g1932cy14a/branch/master?svg=true)](https://ci.a",
+  "dist-tags": {
+    "latest": "2.0.5"
+  },
+  "versions": {
+    "2.0.5": {
+      "name": "get-caller-file",
+      "version": "2.0.5",
+      "description": "[![Build Status](https://travis-ci.org/stefanpenner/get-caller-file.svg?branch=master)](https://travis-ci.org/stefanpenner/get-caller-file) [![Build status](https://ci.appveyor.com/api/projects/status/ol2q94g1932cy14a/branch/master?svg=true)](https://ci.a",
+      "main": "index.js",
+      "directories": {
+        "test": "tests"
+      },
+      "scripts": {
+        "prepare": "tsc",
+        "test": "mocha test",
+        "test:debug": "mocha test"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/stefanpenner/get-caller-file.git"
+      },
+      "author": {
+        "name": "Stefan Penner"
+      },
+      "license": "ISC",
+      "bugs": {
+        "url": "https://github.com/stefanpenner/get-caller-file/issues"
+      },
+      "devDependencies": {
+        "@types/chai": "^4.1.7",
+        "@types/ensure-posix-path": "^1.0.0",
+        "@types/mocha": "^5.2.6",
+        "@types/node": "^11.10.5",
+        "chai": "^4.1.2",
+        "ensure-posix-path": "^1.0.1",
+        "mocha": "^5.2.0",
+        "typescript": "^3.3.3333"
+      },
+      "engines": {
+        "node": "6.* || 8.* || >= 10.*"
+      },
+      "gitHead": "2383bf9e98ed3c568ff69d7586cf59c0f1dcb9d3",
+      "_id": "get-caller-file@2.0.5",
+      "_npmVersion": "6.2.0",
+      "_nodeVersion": "10.9.0",
+      "dist": {
+        "integrity": "sha512-DyFP3BM/3YHTQOCUL/w0OZHR0lpKeGrxotcHWcqNEdnltqFwXVfhEBQ94eIo34AfQpo0rGki4cyIiftY06h2Fg==",
+        "shasum": "4f94412a82db32f36e3b0b9741f8a97feb031f7e",
+        "tarball": "http://localhost:4260/get-caller-file/get-caller-file-2.0.5.tgz",
+        "fileCount": 6,
+        "unpackedSize": 4719
+      },
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/stefanpenner/get-caller-file#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/stefanpenner/get-caller-file.git"
+  },
+  "author": {
+    "name": "Stefan Penner"
+  },
+  "bugs": {
+    "url": "https://github.com/stefanpenner/get-caller-file/issues"
+  },
+  "license": "ISC"
+}

@@ -1,0 +1,6 @@
+{
+  "name": "multi-b",
+  "scripts": {
+    "dev": "echo 'multi-b'"
+  }
+}

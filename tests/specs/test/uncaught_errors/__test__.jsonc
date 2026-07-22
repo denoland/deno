@@ -1,0 +1,5 @@
+{
+  "args": "test --quiet uncaught_errors_1.ts uncaught_errors_2.ts uncaught_errors_3.ts",
+  "output": "main.out",
+  "exitCode": 1
+}

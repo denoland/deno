@@ -1,0 +1,6 @@
+{
+  "tempDir": true,
+  "args": "check main.ts",
+  "output": "error.out",
+  "exitCode": 1
+}

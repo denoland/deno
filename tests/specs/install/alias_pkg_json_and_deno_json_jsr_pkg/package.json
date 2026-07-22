@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "alias": "npm:@denotest/esm-basic"
+  }
+}

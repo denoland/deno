@@ -1,0 +1,11 @@
+Warning Linked package '@denotest/add@2.0.0' was not used because it did not match '@denotest/add@1'
+    at file:///[WILDLINE]/my-pkg/mod.ts:1:21
+Download http://127.0.0.1:4250/@denotest/add/meta.json
+Download http://127.0.0.1:4250/@denotest/add/1.0.0_meta.json
+Download http://127.0.0.1:4250/@denotest/add/1.0.0/mod.ts
+Check [WILDCARD]mod.test.ts
+running 1 test from ./mod.test.ts
+add ... ok ([WILDLINE])
+
+ok | 1 passed | 0 failed ([WILDLINE])
+

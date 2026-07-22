@@ -1,0 +1,19 @@
+Add npm:ajv@8.11.0
+[UNORDERED_START]
+Download http://localhost:4260/ajv
+Download http://localhost:4260/fast-deep-equal
+Download http://localhost:4260/json-schema-traverse
+Download http://localhost:4260/require-from-string
+Download http://localhost:4260/uri-js
+Download http://localhost:4260/punycode
+Download http://localhost:4260/ajv/ajv-8.11.0.tgz
+Download http://localhost:4260/require-from-string/require-from-string-2.0.2.tgz
+Download http://localhost:4260/uri-js/uri-js-4.4.1.tgz
+Download http://localhost:4260/fast-deep-equal/fast-deep-equal-3.1.3.tgz
+Download http://localhost:4260/json-schema-traverse/json-schema-traverse-1.0.0.tgz
+Download http://localhost:4260/punycode/punycode-2.1.1.tgz
+[UNORDERED_END]
+
+Dependencies:
++ npm:ajv 8.11.0
+

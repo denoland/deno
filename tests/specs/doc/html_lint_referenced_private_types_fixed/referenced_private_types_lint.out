@@ -1,0 +1,29 @@
+error[missing-jsdoc]: exported symbol is missing JSDoc documentation
+ --> [WILDCARD]:5:1
+  | 
+5 | export class MyClass {
+  | ^
+
+
+error[private-type-ref]: public type 'MyClass.prototype.prop' references private type 'MyInterface'
+ --> [WILDCARD]:6:3
+  | 
+6 |   prop: MyInterface = {};
+  |   ^
+  = hint: make the referenced type public or remove the reference
+  | 
+1 | interface MyInterface {
+  | - this is the referenced type
+  | 
+
+  info: to ensure documentation is complete all types that are exposed in the public API must be public
+
+
+error[missing-jsdoc]: exported symbol is missing JSDoc documentation
+ --> [WILDCARD]:6:3
+  | 
+6 |   prop: MyInterface = {};
+  |   ^
+
+
+error: Found 3 documentation lint errors.

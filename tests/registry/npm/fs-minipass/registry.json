@@ -1,0 +1,141 @@
+{
+  "name": "fs-minipass",
+  "description": "fs read and write streams based on minipass",
+  "dist-tags": {
+    "latest": "3.0.3"
+  },
+  "versions": {
+    "2.1.0": {
+      "name": "fs-minipass",
+      "version": "2.1.0",
+      "main": "index.js",
+      "scripts": {
+        "test": "tap",
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "postpublish": "git push origin --follow-tags"
+      },
+      "author": {
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me",
+        "url": "http://blog.izs.me/"
+      },
+      "license": "ISC",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/npm/fs-minipass.git"
+      },
+      "bugs": {
+        "url": "https://github.com/npm/fs-minipass/issues"
+      },
+      "description": "fs read and write streams based on minipass",
+      "dependencies": {
+        "minipass": "^3.0.0"
+      },
+      "devDependencies": {
+        "mutate-fs": "^2.0.1",
+        "tap": "^14.6.4"
+      },
+      "tap": {
+        "check-coverage": true
+      },
+      "engines": {
+        "node": ">= 8"
+      },
+      "gitHead": "4995b5fd182fb95959ad5572dee5ccc2f31b5b21",
+      "_id": "fs-minipass@2.1.0",
+      "_nodeVersion": "13.4.0",
+      "_npmVersion": "6.13.6",
+      "dist": {
+        "integrity": "sha512-V/JgOLFCS+R6Vcq0slCuaeWEdNC3ouDlJMNIsacH2VtALiu9mV4LPrHc5cDl8k5aw6J8jwgWWpiTo5RYhmIzvg==",
+        "shasum": "7f5036fdbf12c63c169190cbe4199c852271f9fb",
+        "tarball": "http://localhost:4260/fs-minipass/fs-minipass-2.1.0.tgz",
+        "fileCount": 4,
+        "unpackedSize": 14089
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    },
+    "3.0.3": {
+      "name": "fs-minipass",
+      "version": "3.0.3",
+      "main": "lib/index.js",
+      "scripts": {
+        "test": "tap",
+        "lint": "eslint \"**/*.js\"",
+        "postlint": "template-oss-check",
+        "template-oss-apply": "template-oss-apply --force",
+        "lintfix": "npm run lint -- --fix",
+        "snap": "tap",
+        "posttest": "npm run lint"
+      },
+      "author": {
+        "name": "GitHub Inc."
+      },
+      "license": "ISC",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/npm/fs-minipass.git"
+      },
+      "bugs": {
+        "url": "https://github.com/npm/fs-minipass/issues"
+      },
+      "description": "fs read and write streams based on minipass",
+      "dependencies": {
+        "minipass": "^7.0.3"
+      },
+      "devDependencies": {
+        "@npmcli/eslint-config": "^4.0.1",
+        "@npmcli/template-oss": "4.18.0",
+        "mutate-fs": "^2.1.1",
+        "tap": "^16.3.2"
+      },
+      "tap": {
+        "check-coverage": true,
+        "nyc-arg": [
+          "--exclude",
+          "tap-snapshots/**"
+        ]
+      },
+      "engines": {
+        "node": "^14.17.0 || ^16.13.0 || >=18.0.0"
+      },
+      "templateOSS": {
+        "//@npmcli/template-oss": "This file is partially managed by @npmcli/template-oss. Edits may be overwritten.",
+        "version": "4.18.0",
+        "publish": "true"
+      },
+      "_id": "fs-minipass@3.0.3",
+      "gitHead": "8348d32797eadf1bad05fae1d8ba2af3da53cd44",
+      "_nodeVersion": "18.17.0",
+      "_npmVersion": "9.8.1",
+      "dist": {
+        "integrity": "sha512-XUBA9XClHbnJWSfBzjkm6RvPsyg3sryZt06BEQoXcF7EK/xpGaQYJgQKDJSUH5SGZ76Y7pFx1QBnXz09rU5Fbw==",
+        "shasum": "79a85981c4dc120065e96f62086bf6f9dc26cc54",
+        "tarball": "http://localhost:4260/fs-minipass/fs-minipass-3.0.3.tgz",
+        "fileCount": 4,
+        "unpackedSize": 14413,
+        "attestations": {
+          "url": "http://localhost:4260/attestations/fs-minipass@3.0.3",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        }
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/npm/fs-minipass#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/npm/fs-minipass.git"
+  },
+  "author": {
+    "name": "GitHub Inc."
+  },
+  "bugs": {
+    "url": "https://github.com/npm/fs-minipass/issues"
+  },
+  "license": "ISC"
+}

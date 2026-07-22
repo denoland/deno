@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet error_with_errors_prop.js",
+  "output": "error_with_errors_prop.js.out",
+  "exitCode": 1
+}

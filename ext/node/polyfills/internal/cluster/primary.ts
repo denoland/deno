@@ -1,0 +1,414 @@
+// Copyright 2018-2026 the Deno authors. MIT license.
+// Copyright Joyent and Node contributors. All rights reserved. MIT license.
+
+// Ports lib/internal/cluster/primary.js. The primary-side state is wired
+// onto the cluster EventEmitter passed in by `cluster.ts`. Only one of
+// `primary.init` or `child.init` runs in a given process; the choice is
+// driven by NODE_UNIQUE_ID through `cluster.ts`'s dispatch.
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file no-explicit-any prefer-primordials
+
+(function () {
+const { core, primordials } = __bootstrap;
+const { op_get_env_no_permission_check } = core.ops;
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
+const lazyChildProcess = core.createLazyLoader("node:child_process");
+const lazyPath = core.createLazyLoader("node:path");
+const lazyProcess = core.createLazyLoader("node:process");
+const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
+
+const { Worker } = core.loadExtScript(
+  "ext:deno_node/internal/cluster/worker.ts",
+);
+const { internal, sendHelper } = core.loadExtScript(
+  "ext:deno_node/internal/cluster/utils.ts",
+);
+const { RoundRobinHandle } = core.loadExtScript(
+  "ext:deno_node/internal/cluster/round_robin_handle.ts",
+);
+const { SharedHandle } = core.loadExtScript(
+  "ext:deno_node/internal/cluster/shared_handle.ts",
+);
+
+const {
+  ArrayPrototypeSlice,
+  ObjectKeys,
+  ObjectValues,
+  SafeMap,
+} = primordials;
+
+const SCHED_NONE = 1;
+const SCHED_RR = 2;
+
+// Inspector port range and per-worker offset, mirroring
+// lib/internal/cluster/primary.js. When the inspector is activated, each
+// worker needs a distinct port so they don't collide on the default (9229).
+const minPort = 1024;
+const maxPort = 65535;
+// Matches the inspector activation/port flags Node looks for. Mirrors the
+// `debugArgRegex` in lib/internal/cluster/primary.js, which also matches
+// `--inspect-wait` via its `--inspect` prefix.
+const debugArgRegex = /--inspect(?:-brk|-port|-wait)?|--debug-port/;
+let debugPortOffset = 1;
+
+let initialized = false;
+
+// Initialize primary-side state and methods on the shared cluster object.
+// Mirrors lib/internal/cluster/primary.js's top-level setup.
+function init(cluster: any) {
+  if (initialized) return;
+  initialized = true;
+
+  const process = lazyProcess().default;
+  const path = lazyPath();
+
+  const intercom = new EventEmitter();
+  const handles = new SafeMap();
+
+  cluster.isWorker = false;
+  cluster.isMaster = true;
+  cluster.isPrimary = true;
+  cluster.Worker = Worker;
+  cluster.workers = {};
+  cluster.settings = {};
+  cluster.SCHED_NONE = SCHED_NONE;
+  cluster.SCHED_RR = SCHED_RR;
+
+  let ids = 0;
+  let setupCalled = false;
+
+  // Read the policy from env, mirroring lib/internal/cluster/primary.js.
+  // Use the no-permission-check op (Node reads this unconditionally at
+  // cluster init): the now-lazy node bootstrap can run this in the worker
+  // path where `process.env` access would otherwise require `--allow-env`.
+  let schedulingPolicy: number;
+  const env = op_get_env_no_permission_check("NODE_CLUSTER_SCHED_POLICY");
+  if (env === "rr") {
+    schedulingPolicy = SCHED_RR;
+  } else if (env === "none") {
+    schedulingPolicy = SCHED_NONE;
+  } else if (isWindows) {
+    schedulingPolicy = SCHED_NONE;
+  } else {
+    schedulingPolicy = SCHED_RR;
+  }
+  cluster.schedulingPolicy = schedulingPolicy;
+
+  cluster.setupPrimary = function (options?: any) {
+    const settings = {
+      args: ArrayPrototypeSlice(process.argv, 2),
+      exec: process.argv[1],
+      execArgv: process.execArgv,
+      silent: false,
+      ...cluster.settings,
+      ...options,
+    };
+
+    cluster.settings = settings;
+
+    if (setupCalled === true) {
+      return process.nextTick(setupSettingsNT, settings);
+    }
+
+    setupCalled = true;
+    schedulingPolicy = cluster.schedulingPolicy;
+    if (schedulingPolicy !== SCHED_NONE && schedulingPolicy !== SCHED_RR) {
+      throw new Error(`Bad cluster.schedulingPolicy: ${schedulingPolicy}`);
+    }
+
+    process.nextTick(setupSettingsNT, settings);
+  };
+  cluster.setupMaster = cluster.setupPrimary;
+
+  function setupSettingsNT(settings: any) {
+    cluster.emit("setup", settings);
+  }
+
+  function createWorkerProcess(id: number, env: any) {
+    const workerEnv: any = {
+      ...(process as any).env,
+      ...env,
+      NODE_UNIQUE_ID: `${id}`,
+    };
+    if (schedulingPolicy === SCHED_RR) {
+      workerEnv.NODE_CLUSTER_SCHED_POLICY = "rr";
+    } else if (schedulingPolicy === SCHED_NONE) {
+      workerEnv.NODE_CLUSTER_SCHED_POLICY = "none";
+    }
+
+    const execArgv = [...(cluster.settings.execArgv || [])];
+
+    // If the inspector is activated (via execArgv or the inherited
+    // NODE_OPTIONS), give each worker its own port so they don't all try to
+    // bind the default 9229. Node appends `--inspect-port=<port>` to execArgv
+    // and lets it combine with the NODE_OPTIONS activation flag. Deno doesn't
+    // carry `--inspect-port` as a runtime flag, so we instead append an
+    // activating `--inspect[-brk|-wait]=host:port`; an explicit CLI inspector
+    // flag takes precedence over the inherited NODE_OPTIONS one, so the worker
+    // ends up bound to the unique port.
+    const nodeOptions = (process as any).env.NODE_OPTIONS ?? "";
+    const inspectSource =
+      execArgv.find((arg: string) => debugArgRegex.test(arg)) ??
+        (debugArgRegex.test(nodeOptions) ? nodeOptions : undefined);
+    if (inspectSource !== undefined) {
+      let inspectPort;
+      if ("inspectPort" in cluster.settings) {
+        inspectPort = typeof cluster.settings.inspectPort === "function"
+          ? cluster.settings.inspectPort()
+          : cluster.settings.inspectPort;
+      } else {
+        inspectPort = (process as any).debugPort + debugPortOffset;
+        if (inspectPort > maxPort) {
+          inspectPort = inspectPort - maxPort + minPort - 1;
+        }
+        debugPortOffset++;
+      }
+      // A falsy port (e.g. 0) means "pick a free port"; leave it to the worker.
+      if (inspectPort) {
+        const flag = /--inspect-brk\b/.test(inspectSource)
+          ? "--inspect-brk"
+          : /--inspect-wait\b/.test(inspectSource)
+          ? "--inspect-wait"
+          : "--inspect";
+        execArgv.push(`${flag}=127.0.0.1:${inspectPort}`);
+      }
+    }
+
+    return lazyChildProcess().fork(
+      cluster.settings.exec,
+      cluster.settings.args,
+      {
+        cwd: cluster.settings.cwd,
+        env: workerEnv,
+        serialization: cluster.settings.serialization,
+        silent: cluster.settings.silent,
+        windowsHide: cluster.settings.windowsHide,
+        execArgv,
+        stdio: cluster.settings.stdio,
+        gid: cluster.settings.gid,
+        uid: cluster.settings.uid,
+      },
+    );
+  }
+
+  function removeWorker(worker: any) {
+    if (!worker) return;
+    delete cluster.workers[worker.id];
+
+    if (ObjectKeys(cluster.workers).length === 0) {
+      intercom.emit("disconnect");
+    }
+  }
+
+  function removeHandlesForWorker(worker: any) {
+    if (!worker) return;
+
+    for (const [key, handle] of handles) {
+      if (handle.remove(worker)) {
+        handles.delete(key);
+      }
+    }
+  }
+
+  cluster.fork = function (env?: any) {
+    cluster.setupPrimary();
+    const id = ++ids;
+    const workerProcess = createWorkerProcess(id, env);
+    const worker = new (Worker as any)({
+      id,
+      process: workerProcess,
+    });
+
+    worker.on("message", function (this: any, message: any, handle: any) {
+      cluster.emit("message", this, message, handle);
+    });
+
+    worker.process.once("exit", (exitCode: any, signalCode: any) => {
+      if (!worker.isConnected()) {
+        removeHandlesForWorker(worker);
+        removeWorker(worker);
+      }
+
+      worker.exitedAfterDisconnect = !!worker.exitedAfterDisconnect;
+      worker.state = "dead";
+      worker.emit("exit", exitCode, signalCode);
+      cluster.emit("exit", worker, exitCode, signalCode);
+    });
+
+    worker.process.once("disconnect", () => {
+      removeHandlesForWorker(worker);
+
+      if (worker.isDead()) {
+        removeWorker(worker);
+      }
+
+      worker.exitedAfterDisconnect = !!worker.exitedAfterDisconnect;
+      worker.state = "disconnected";
+      worker.emit("disconnect");
+      cluster.emit("disconnect", worker);
+    });
+
+    worker.process.on("internalMessage", internal(worker, onmessage));
+    process.nextTick(emitForkNT, worker);
+    cluster.workers[worker.id] = worker;
+    return worker;
+  };
+
+  function emitForkNT(worker: any) {
+    cluster.emit("fork", worker);
+  }
+
+  cluster.disconnect = function (cb?: () => void) {
+    const workers = ObjectValues(cluster.workers);
+
+    if (workers.length === 0) {
+      process.nextTick(() => intercom.emit("disconnect"));
+    } else {
+      for (const worker of workers) {
+        if ((worker as any).isConnected()) {
+          (worker as any).disconnect();
+        }
+      }
+    }
+
+    if (typeof cb === "function") {
+      intercom.once("disconnect", cb);
+    }
+  };
+
+  const methodMessageMapping: Record<
+    string,
+    (worker: any, message: any) => void
+  > = {
+    close,
+    exitedAfterDisconnect,
+    listening,
+    online,
+    queryServer,
+  };
+
+  function onmessage(this: any, message: any, _handle?: any) {
+    const fn = methodMessageMapping[message.act];
+
+    if (typeof fn === "function") {
+      fn(this, message);
+    }
+  }
+
+  function online(worker: any) {
+    worker.state = "online";
+    worker.emit("online");
+    cluster.emit("online", worker);
+  }
+
+  function exitedAfterDisconnect(worker: any, message: any) {
+    worker.exitedAfterDisconnect = true;
+    send(worker, { ack: message.seq });
+  }
+
+  function queryServer(worker: any, message: any) {
+    if (worker.exitedAfterDisconnect) {
+      return;
+    }
+
+    const key = `${message.address}:${message.port}:${message.addressType}:` +
+      `${message.fd}` + (message.port === 0 ? `:${message.index}` : "");
+    const cachedHandle = handles.get(key);
+    let handle: any;
+    if (cachedHandle && !cachedHandle.has(worker)) {
+      handle = cachedHandle;
+    }
+
+    if (handle === undefined) {
+      let address = message.address;
+
+      if (
+        message.port < 0 && typeof address === "string" && !isWindows
+      ) {
+        address = path.relative(process.cwd(), address);
+        if (message.address.length < address.length) {
+          address = message.address;
+        }
+      }
+
+      if (
+        schedulingPolicy !== SCHED_RR ||
+        message.addressType === "udp4" ||
+        message.addressType === "udp6"
+      ) {
+        handle = new (SharedHandle as any)(key, address, message);
+      } else {
+        handle = new (RoundRobinHandle as any)(key, address, message);
+      }
+
+      if (!cachedHandle) {
+        handles.set(key, handle);
+      }
+    }
+
+    handle.data ||= message.data;
+
+    handle.add(worker, (errno: any, reply: any, serverHandle: any) => {
+      if (!errno) {
+        handles.set(key, handle);
+      }
+      const cur = handles.get(key);
+      const data = cur ? cur.data : undefined;
+      if (!cachedHandle && errno) {
+        handles.delete(key);
+      }
+
+      send(worker, {
+        errno,
+        key,
+        ack: message.seq,
+        data,
+        ...reply,
+      }, serverHandle);
+    });
+  }
+
+  function listening(worker: any, message: any) {
+    const info = {
+      addressType: message.addressType,
+      address: message.address,
+      port: message.port,
+      fd: message.fd,
+    };
+
+    worker.state = "listening";
+    worker.emit("listening", info);
+    cluster.emit("listening", worker, info);
+  }
+
+  function close(worker: any, message: any) {
+    const key = message.key;
+    const handle = handles.get(key);
+
+    if (handle && handle.remove(worker)) {
+      handles.delete(key);
+    }
+  }
+
+  function send(worker: any, message: any, handle?: any, cb?: any) {
+    return sendHelper(worker.process, message, handle, cb);
+  }
+
+  // Extend generic Worker with primary-specific methods.
+  (Worker as any).prototype.disconnect = function (this: any) {
+    this.exitedAfterDisconnect = true;
+    send(this, { act: "disconnect" });
+    removeHandlesForWorker(this);
+    removeWorker(this);
+    return this;
+  };
+
+  (Worker as any).prototype.destroy = function (this: any, signo?: string) {
+    const signal = signo || "SIGTERM";
+    this.process.kill(signal);
+  };
+}
+
+return { init, default: init };
+})();

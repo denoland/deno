@@ -1,0 +1,5 @@
+{
+  "args": "check --quiet --config exclude_option/deno.exclude_dir.json exclude_option/index.ts",
+  "output": "exclude_option/exclude_option.ts.error.out",
+  "exitCode": 1
+}

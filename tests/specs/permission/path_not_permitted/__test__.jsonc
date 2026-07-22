@@ -1,0 +1,10 @@
+{
+  "tempDir": true,
+  "envs": {
+    "LD_LIBRARY_PATH": "",
+    "LD_PRELOAD": "",
+    "DYLD_FALLBACK_LIBRARY_PATH": ""
+  },
+  "args": "run -A main.ts",
+  "output": "main.out"
+}

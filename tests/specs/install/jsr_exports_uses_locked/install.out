@@ -1,0 +1,13 @@
+[UNORDERED_START]
+Download http://127.0.0.1:4250/@denotest/multiple-exports/0.7.0_meta.json
+Download http://127.0.0.1:4250/@denotest/multiple-exports/meta.json
+Download http://127.0.0.1:4250/@denotest/multiple-exports/0.7.0/add.ts
+Download http://127.0.0.1:4250/@denotest/multiple-exports/0.7.0/subtract.ts
+Download http://127.0.0.1:4250/@denotest/multiple-exports/0.7.0/data.json
+Download http://127.0.0.1:4250/@denotest/add/meta.json
+Download http://127.0.0.1:4250/@denotest/subtract/meta.json
+Download http://127.0.0.1:4250/@denotest/add/1.0.0_meta.json
+Download http://127.0.0.1:4250/@denotest/subtract/1.0.0_meta.json
+Download http://127.0.0.1:4250/@denotest/add/1.0.0/mod.ts
+Download http://127.0.0.1:4250/@denotest/subtract/1.0.0/mod.ts
+[UNORDERED_END]

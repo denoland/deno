@@ -1,0 +1,10 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install --no-config npm:chalk",
+      "output": "err.out",
+      "exitCode": 1
+    }
+  ]
+}

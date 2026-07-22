@@ -1,0 +1,83 @@
+{
+  "name": "@npmcli/fs",
+  "description": "filesystem utilities for the npm cli",
+  "dist-tags": {
+    "latest": "3.1.1"
+  },
+  "versions": {
+    "3.1.1": {
+      "name": "@npmcli/fs",
+      "version": "3.1.1",
+      "author": {
+        "name": "GitHub Inc."
+      },
+      "license": "ISC",
+      "_id": "@npmcli/fs@3.1.1",
+      "bugs": {
+        "url": "https://github.com/npm/fs/issues"
+      },
+      "tap": {
+        "nyc-arg": [
+          "--exclude",
+          "tap-snapshots/**"
+        ]
+      },
+      "dist": {
+        "shasum": "59cdaa5adca95d135fc00f2bb53f5771575ce726",
+        "tarball": "http://localhost:4260/@npmcli/fs/fs-3.1.1.tgz",
+        "fileCount": 13,
+        "integrity": "sha512-q9CRWjpHCMIh5sVyefoD1cA7PkvILqCZsnSOEUUivORLjxCO/Irmue2DprETiNgEqktDBZaM1Bi+jrarx1XdCg==",
+        "unpackedSize": 26547
+      },
+      "main": "lib/index.js",
+      "engines": {
+        "node": "^14.17.0 || ^16.13.0 || >=18.0.0"
+      },
+      "gitHead": "6f51359dd52cd06bd4cb2c36202163f330c528c4",
+      "scripts": {
+        "lint": "eslint \"**/*.{js,cjs,ts,mjs,jsx,tsx}\"",
+        "snap": "tap",
+        "test": "tap",
+        "lintfix": "npm run lint -- --fix",
+        "postlint": "template-oss-check",
+        "postsnap": "npm run lintfix --",
+        "posttest": "npm run lint",
+        "npmclilint": "npmcli-lint",
+        "template-oss-apply": "template-oss-apply --force"
+      },
+      "repository": {
+        "url": "git+https://github.com/npm/fs.git",
+        "type": "git"
+      },
+      "_npmVersion": "10.7.0",
+      "description": "filesystem utilities for the npm cli",
+      "directories": {},
+      "templateOSS": {
+        "version": "4.22.0",
+        "//@npmcli/template-oss": "This file is partially managed by @npmcli/template-oss. Edits may be overwritten."
+      },
+      "_nodeVersion": "20.7.0",
+      "dependencies": {
+        "semver": "^7.3.5"
+      },
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^16.0.1",
+        "@npmcli/template-oss": "4.22.0",
+        "@npmcli/eslint-config": "^4.0.0"
+      }
+    }
+  },
+  "author": {
+    "name": "GitHub Inc."
+  },
+  "repository": {
+    "url": "git+https://github.com/npm/fs.git",
+    "type": "git"
+  },
+  "license": "ISC",
+  "homepage": "https://github.com/npm/fs#readme",
+  "bugs": {
+    "url": "https://github.com/npm/fs/issues"
+  }
+}

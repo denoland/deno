@@ -1,0 +1,18 @@
+[UNORDERED_START]
+Download http://localhost:4260/@denotest%2ftransitive-bin
+Download http://localhost:4260/@denotest%2fbin
+Download http://localhost:4260/@denotest/bin/1.0.0.tgz
+Download http://localhost:4260/@denotest/transitive-bin/1.0.0.tgz
+Download http://localhost:4260/@denotest/bin/0.7.0.tgz
+Initialize @denotest/transitive-bin@1.0.0
+Initialize @denotest/bin@1.0.0
+Initialize @denotest/bin@0.7.0
+[UNORDERED_END]
+Installed [WILDLINE] packages in [WILDCARD]
+Reused [WILDLINE] packages from cache
+Downloaded [WILDLINE] packages from JSR
+Downloaded [WILDLINE] packages from npm
+[WILDLINE]
+
+Dependencies:
+[WILDCARD]

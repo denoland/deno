@@ -1,0 +1,64 @@
+{
+  "tempDir": true,
+  "tests": {
+    "sourcemap_linked": {
+      "steps": [
+        {
+          "args": "bundle --sourcemap=linked --output=out2.js main.ts",
+          "output": "sourcemap_linked.out"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.statSync('./out2.js.map').isFile)"
+          ],
+          "output": "true\n"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('./out2.js').includes('//# sourceMappingURL='))"
+          ],
+          "output": "true\n"
+        }
+      ]
+    },
+    "sourcemap_external": {
+      "steps": [
+        {
+          "args": "bundle --sourcemap=external --output=out3.js main.ts",
+          "output": "sourcemap_external.out"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.statSync('./out3.js.map').isFile)"
+          ],
+          "output": "true\n"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('./out3.js').includes('//# sourceMappingURL='))"
+          ],
+          "output": "false\n"
+        }
+      ]
+    },
+    "sourcemap_inline": {
+      "steps": [
+        {
+          "args": "bundle --sourcemap=inline --output=out4.js main.ts",
+          "output": "sourcemap_inline.out"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('./out4.js').includes('//# sourceMappingURL=data:'))"
+          ],
+          "output": "true\n"
+        }
+      ]
+    }
+  }
+}

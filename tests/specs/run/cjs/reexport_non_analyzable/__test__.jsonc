@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "run -A main.ts",
+      "output": ""
+    },
+    {
+      "args": "run -A absolute.ts",
+      "output": ""
+    },
+    {
+      "args": "run -A root.ts",
+      "output": ""
+    }
+  ]
+}

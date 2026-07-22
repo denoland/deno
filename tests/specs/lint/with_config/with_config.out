@@ -1,0 +1,22 @@
+error[ban-untagged-todo]: TODO should be tagged with (@username) or (#issue)
+ --> [WILDCARD]a.ts:1:1
+  | 
+1 | // TODO: foo
+  | ^^^^^^^^^^^^
+  = hint: Add a user tag or issue reference to the TODO comment, e.g. TODO(@djones), TODO(djones), TODO(#123)
+
+  docs: https://docs.deno.com/lint/rules/ban-untagged-todo
+
+
+error[no-unused-vars]: `add` is never used
+ --> [WILDCARD]a.ts:2:10
+  | 
+2 | function add(a: number, b: number): number {
+  |          ^^^
+  = hint: If this is intentional, prefix it with an underscore like `_add`
+
+  docs: https://docs.deno.com/lint/rules/no-unused-vars
+
+
+Found 2 problems
+Checked 1 file

@@ -1,0 +1,86 @@
+{
+  "name": "debug",
+  "description": "Lightweight debugging utility for Node.js and the browser",
+  "dist-tags": {
+    "latest": "4.3.5"
+  },
+  "versions": {
+    "4.3.5": {
+      "name": "debug",
+      "version": "4.3.5",
+      "author": {
+        "url": "https://github.com/qix-",
+        "name": "Josh Junon"
+      },
+      "license": "MIT",
+      "_id": "debug@4.3.5",
+      "bugs": {
+        "url": "https://github.com/debug-js/debug/issues"
+      },
+      "dist": {
+        "shasum": "e83444eceb9fedd4a1da56d671ae2446a01a6e1e",
+        "tarball": "http://localhost:4260/debug/debug-4.3.5.tgz",
+        "fileCount": 7,
+        "integrity": "sha512-pt0bNEmneDIvdL1Xsd9oDQ/wrQRkXDT4AUWlNZNPKvW5x/jyO9VFXkJUP07vQ2upmw5PlaITaPKc31jK13V+jg==",
+        "unpackedSize": 42430
+      },
+      "main": "./src/index.js",
+      "browser": "./src/browser.js",
+      "engines": {
+        "node": ">=6.0"
+      },
+      "gitHead": "5464bdddbc6f91b2aef2ad20650d3a6cfd9fcc3a",
+      "scripts": {
+        "lint": "xo",
+        "test": "npm run test:node && npm run test:browser && npm run lint",
+        "test:node": "istanbul cover _mocha -- test.js test.node.js",
+        "test:browser": "karma start --single-run",
+        "test:coverage": "cat ./coverage/lcov.info | coveralls"
+      },
+      "repository": {
+        "url": "git://github.com/debug-js/debug.git",
+        "type": "git"
+      },
+      "_npmVersion": "10.2.4",
+      "description": "Lightweight debugging utility for Node.js and the browser",
+      "directories": {},
+      "_nodeVersion": "21.3.0",
+      "dependencies": {
+        "ms": "2.1.2"
+      },
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "xo": "^0.23.0",
+        "brfs": "^2.0.1",
+        "karma": "^3.1.4",
+        "mocha": "^5.2.0",
+        "sinon": "^14.0.0",
+        "istanbul": "^0.4.5",
+        "coveralls": "^3.0.2",
+        "browserify": "^16.2.3",
+        "karma-mocha": "^1.3.0",
+        "karma-browserify": "^6.0.0",
+        "mocha-lcov-reporter": "^1.2.0",
+        "karma-chrome-launcher": "^2.2.0"
+      },
+      "peerDependenciesMeta": {
+        "supports-color": {
+          "optional": true
+        }
+      }
+    }
+  },
+  "author": {
+    "url": "https://github.com/qix-",
+    "name": "Josh Junon"
+  },
+  "repository": {
+    "url": "git://github.com/debug-js/debug.git",
+    "type": "git"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/debug-js/debug#readme",
+  "bugs": {
+    "url": "https://github.com/debug-js/debug/issues"
+  }
+}

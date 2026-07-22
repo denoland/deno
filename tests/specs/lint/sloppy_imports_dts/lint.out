@@ -1,0 +1,110 @@
+error[no-sloppy-imports]: Sloppy imports are not allowed.
+ --> [WILDLINE]main.ts:1:20
+  | 
+1 | import * as a from "./a.js";
+  |                    ^^^^^^^^
+
+  docs: https://docs.deno.com/runtime/manual/tools/unstable_flags/#--unstable-sloppy-imports
+
+
+error[no-sloppy-imports]: Sloppy imports are not allowed.
+ --> [WILDLINE]main.ts:2:20
+  | 
+2 | import * as b from "./b.js";
+  |                    ^^^^^^^^
+
+  docs: https://docs.deno.com/runtime/manual/tools/unstable_flags/#--unstable-sloppy-imports
+
+
+error[no-sloppy-imports]: Sloppy imports are not allowed.
+ --> [WILDLINE]main.ts:3:20
+  | 
+3 | import * as c from "./c.mjs";
+  |                    ^^^^^^^^^
+
+  docs: https://docs.deno.com/runtime/manual/tools/unstable_flags/#--unstable-sloppy-imports
+
+
+error[no-sloppy-imports]: Sloppy imports are not allowed.
+ --> [WILDLINE]main.ts:4:20
+  | 
+4 | import * as d from "./d.mjs";
+  |                    ^^^^^^^^^
+
+  docs: https://docs.deno.com/runtime/manual/tools/unstable_flags/#--unstable-sloppy-imports
+
+
+error[no-sloppy-imports]: Sloppy imports are not allowed.
+  --> [WILDLINE]main.ts:11:21
+   | 
+11 | import * as a2 from "./a";
+   |                     ^^^^^
+
+  docs: https://docs.deno.com/runtime/manual/tools/unstable_flags/#--unstable-sloppy-imports
+
+
+error[no-sloppy-imports]: Sloppy imports are not allowed.
+  --> [WILDLINE]main.ts:12:21
+   | 
+12 | import * as b2 from "./b";
+   |                     ^^^^^
+
+  docs: https://docs.deno.com/runtime/manual/tools/unstable_flags/#--unstable-sloppy-imports
+
+
+error[no-sloppy-imports]: Sloppy imports are not allowed.
+  --> [WILDLINE]main.ts:13:21
+   | 
+13 | import * as c2 from "./c";
+   |                     ^^^^^
+
+  docs: https://docs.deno.com/runtime/manual/tools/unstable_flags/#--unstable-sloppy-imports
+
+
+error[no-sloppy-imports]: Sloppy imports are not allowed.
+  --> [WILDLINE]main.ts:14:21
+   | 
+14 | import * as d2 from "./d";
+   |                     ^^^^^
+
+  docs: https://docs.deno.com/runtime/manual/tools/unstable_flags/#--unstable-sloppy-imports
+
+
+error[no-sloppy-imports]: Sloppy imports are not allowed.
+  --> [WILDLINE]main.ts:21:24
+   | 
+21 | import * as dirTs from "./dir_ts";
+   |                        ^^^^^^^^^^
+
+  docs: https://docs.deno.com/runtime/manual/tools/unstable_flags/#--unstable-sloppy-imports
+
+
+error[no-sloppy-imports]: Sloppy imports are not allowed.
+  --> [WILDLINE]main.ts:22:24
+   | 
+22 | import * as dirJs from "./dir_js";
+   |                        ^^^^^^^^^^
+
+  docs: https://docs.deno.com/runtime/manual/tools/unstable_flags/#--unstable-sloppy-imports
+
+
+error[no-sloppy-imports]: Sloppy imports are not allowed.
+  --> [WILDLINE]main.ts:23:25
+   | 
+23 | import * as dirMts from "./dir_mts";
+   |                         ^^^^^^^^^^^
+
+  docs: https://docs.deno.com/runtime/manual/tools/unstable_flags/#--unstable-sloppy-imports
+
+
+error[no-sloppy-imports]: Sloppy imports are not allowed.
+  --> [WILDLINE]main.ts:24:25
+   | 
+24 | import * as dirMjs from "./dir_mjs";
+   |                         ^^^^^^^^^^^
+
+  docs: https://docs.deno.com/runtime/manual/tools/unstable_flags/#--unstable-sloppy-imports
+
+
+Found 12 problems (12 fixable via --fix)
+Checked 17 files

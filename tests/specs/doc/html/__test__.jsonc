@@ -1,0 +1,21 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": [
+        "doc",
+        "--html",
+        "--name=MyLib",
+        "a.ts",
+        "b.ts"
+      ],
+      "output": "Written 24 files to \"./docs/\"\n",
+      "exitCode": 0
+    },
+    {
+      "args": "run --allow-read check_file.ts",
+      "output": "",
+      "exitCode": 0
+    }
+  ]
+}

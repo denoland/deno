@@ -1,0 +1,4 @@
+{
+  "args": "info --json 076_info_json_deps_order.ts",
+  "output": "076_info_json_deps_order.out"
+}

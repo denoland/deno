@@ -1,0 +1,13 @@
+ctx.id:
+test-plugin/my-rule
+
+ctx.filename:
+main.ts
+
+ctx.getFilename():
+main.ts
+
+ctx.getSourceCode():
+true
+
+Checked 1 file

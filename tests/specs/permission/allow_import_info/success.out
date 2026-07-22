@@ -1,0 +1,7 @@
+Download http://localhost:4545/welcome.ts
+local: [WILDLINE]
+type: TypeScript
+dependencies: [WILDLINE]
+size: [WILDLINE]
+
+http://localhost:4545/welcome.ts ([WILDLINE]B)

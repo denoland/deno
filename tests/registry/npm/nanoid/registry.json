@@ -1,0 +1,100 @@
+{
+  "name": "nanoid",
+  "description": "A tiny (116 bytes), secure URL-friendly unique string ID generator",
+  "dist-tags": {
+    "latest": "3.3.4"
+  },
+  "versions": {
+    "3.3.4": {
+      "name": "nanoid",
+      "version": "3.3.4",
+      "description": "A tiny (116 bytes), secure URL-friendly unique string ID generator",
+      "engines": {
+        "node": "^10 || ^12 || ^13.7 || ^14 || >=15.0.1"
+      },
+      "author": {
+        "name": "Andrey Sitnik",
+        "email": "andrey@sitnik.ru"
+      },
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/ai/nanoid.git"
+      },
+      "browser": {
+        "./index.js": "./index.browser.js",
+        "./async/index.js": "./async/index.browser.js",
+        "./async/index.cjs": "./async/index.browser.cjs",
+        "./index.cjs": "./index.browser.cjs"
+      },
+      "react-native": "index.js",
+      "bin": {
+        "nanoid": "bin/nanoid.cjs"
+      },
+      "sideEffects": false,
+      "types": "./index.d.ts",
+      "type": "module",
+      "main": "index.cjs",
+      "module": "index.js",
+      "exports": {
+        ".": {
+          "types": "./index.d.ts",
+          "browser": "./index.browser.js",
+          "require": "./index.cjs",
+          "import": "./index.js",
+          "default": "./index.js"
+        },
+        "./index.d.ts": "./index.d.ts",
+        "./package.json": "./package.json",
+        "./async/package.json": "./async/package.json",
+        "./async": {
+          "browser": "./async/index.browser.js",
+          "require": "./async/index.cjs",
+          "import": "./async/index.js",
+          "default": "./async/index.js"
+        },
+        "./non-secure/package.json": "./non-secure/package.json",
+        "./non-secure": {
+          "require": "./non-secure/index.cjs",
+          "import": "./non-secure/index.js",
+          "default": "./non-secure/index.js"
+        },
+        "./url-alphabet/package.json": "./url-alphabet/package.json",
+        "./url-alphabet": {
+          "require": "./url-alphabet/index.cjs",
+          "import": "./url-alphabet/index.js",
+          "default": "./url-alphabet/index.js"
+        }
+      },
+      "gitHead": "fc5bd0dbba830b1e6f3e572da8e2bc9ddc1b4b44",
+      "bugs": {
+        "url": "https://github.com/ai/nanoid/issues"
+      },
+      "_id": "nanoid@3.3.4",
+      "_nodeVersion": "18.0.0",
+      "_npmVersion": "8.6.0",
+      "dist": {
+        "integrity": "sha512-MqBkQh/OHTS2egovRtLk45wEyNXwF+cokD+1YPf9u5VfJiRdAiRwB2froX5Co9Rh20xs4siNPm8naNotSD6RBw==",
+        "shasum": "730b67e3cd09e2deacf03c027c81c9d9dbc5e8ab",
+        "tarball": "http://localhost:4260/nanoid/nanoid-3.3.4.tgz",
+        "fileCount": 24,
+        "unpackedSize": 21583
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/ai/nanoid#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ai/nanoid.git"
+  },
+  "author": {
+    "name": "Andrey Sitnik",
+    "email": "andrey@sitnik.ru"
+  },
+  "bugs": {
+    "url": "https://github.com/ai/nanoid/issues"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,5 @@
+{
+  "args": "check --quiet broadcast_channel.ts",
+  "output": "",
+  "exitCode": 0
+}

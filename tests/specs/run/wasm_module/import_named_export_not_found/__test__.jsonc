@@ -1,0 +1,17 @@
+{
+  "tests": {
+    "run": {
+      "args": "--allow-import main.js",
+      "output": "main.out",
+      "exitCode": 1
+    },
+    "check": {
+      // ignored: the import-map scope for the wasm module's imports isn't
+      // applied when feeding tsc. https://github.com/denoland/deno/issues/36085
+      "ignore": true,
+      "args": "check --all --allow-import main.js",
+      "output": "check.out",
+      "exitCode": 1
+    }
+  }
+}

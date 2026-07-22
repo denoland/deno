@@ -1,0 +1,72 @@
+{
+  "name": "source-map",
+  "description": "Generates and consumes source maps",
+  "dist-tags": {
+    "latest": "0.6.1"
+  },
+  "versions": {
+    "0.6.1": {
+      "name": "source-map",
+      "description": "Generates and consumes source maps",
+      "version": "0.6.1",
+      "author": {
+        "name": "Nick Fitzgerald",
+        "email": "nfitzgerald@mozilla.com"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+ssh://git@github.com/mozilla/source-map.git"
+      },
+      "main": "./source-map.js",
+      "files": [
+        "source-map.js",
+        "source-map.d.ts",
+        "lib/",
+        "dist/source-map.debug.js",
+        "dist/source-map.js",
+        "dist/source-map.min.js",
+        "dist/source-map.min.js.map"
+      ],
+      "engines": {
+        "node": ">=0.10.0"
+      },
+      "license": "BSD-3-Clause",
+      "scripts": {
+        "test": "npm run build && node test/run-tests.js",
+        "build": "webpack --color",
+        "toc": "doctoc --title '## Table of Contents' README.md && doctoc --title '## Table of Contents' CONTRIBUTING.md"
+      },
+      "devDependencies": {
+        "doctoc": "^0.15.0",
+        "webpack": "^1.12.0"
+      },
+      "typings": "source-map",
+      "gitHead": "ac518d2f21818146f3310557bd51c13d8cff2ba8",
+      "bugs": {
+        "url": "https://github.com/mozilla/source-map/issues"
+      },
+      "_id": "source-map@0.6.1",
+      "_npmVersion": "5.3.0",
+      "_nodeVersion": "8.4.0",
+      "dist": {
+        "integrity": "sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g==",
+        "shasum": "74722af32e9614e9c287a8d0bbde48b5e2f1a263",
+        "tarball": "http://localhost:4260/source-map/source-map-0.6.1.tgz"
+      },
+      "directories": {}
+    }
+  },
+  "author": {
+    "name": "Nick Fitzgerald",
+    "email": "nfitzgerald@mozilla.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/mozilla/source-map.git"
+  },
+  "homepage": "https://github.com/mozilla/source-map",
+  "bugs": {
+    "url": "https://github.com/mozilla/source-map/issues"
+  },
+  "license": "BSD-3-Clause"
+}

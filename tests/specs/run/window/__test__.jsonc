@@ -1,0 +1,19 @@
+{
+  "tests": {
+    "window1": {
+      "args": "run window1.js",
+      "exitCode": 1,
+      "output": "window1.out"
+    },
+    "window2": {
+      "args": "run window2.js",
+      "exitCode": 1,
+      "output": "window2.out"
+    },
+    "window3": {
+      "args": "run window3.js",
+      "exitCode": 1,
+      "output": "window3.out"
+    }
+  }
+}

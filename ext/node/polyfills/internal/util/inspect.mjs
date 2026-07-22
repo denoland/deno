@@ -1,0 +1,752 @@
+// Copyright 2018-2026 the Deno authors. MIT license.
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+(function () {
+const { core, primordials } = __bootstrap;
+const {
+  ArrayIsArray,
+  ArrayPrototypeFilter,
+  FunctionPrototypeCall,
+  JSONStringify,
+  Number,
+  NumberParseFloat,
+  NumberParseInt,
+  ObjectAssign,
+  ObjectCreate,
+  ObjectDefineProperty,
+  ObjectGetPrototypeOf,
+  ObjectGetOwnPropertyDescriptor,
+  ObjectGetOwnPropertyNames,
+  ObjectKeys,
+  ObjectPrototypeHasOwnProperty,
+  RegExpPrototypeTest,
+  SafeRegExp,
+  SafeSet,
+  SafeStringIterator,
+  SetPrototypeHas,
+  String,
+  StringPrototypeAt,
+  StringPrototypeCharCodeAt,
+  StringPrototypeCodePointAt,
+  StringPrototypeNormalize,
+  StringPrototypeIndexOf,
+  StringPrototypeReplace,
+  StringPrototypeSlice,
+  StringPrototypeSplit,
+  SymbolFor,
+} = primordials;
+const {
+  validateBoolean,
+  validateObject,
+  validateOneOf,
+  validateString,
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { codes } = core.loadExtScript("ext:deno_node/internal/error_codes.ts");
+const { shouldColorize } = core.loadExtScript(
+  "ext:deno_node/internal/util/colorize.mjs",
+);
+const {
+  colors,
+  createStylizeWithColor,
+  formatBigInt,
+  formatNumber,
+  formatValue,
+  styles,
+} = core.loadExtScript("ext:deno_web/01_console.js");
+
+// Set Graphics Rendition https://en.wikipedia.org/wiki/ANSI_escape_code#graphics
+// Each color consists of an array with the color code as first entry and the
+// reset code as second entry.
+const defaultFG = 39;
+const defaultBG = 49;
+inspect.colors = {
+  reset: [0, 0],
+  bold: [1, 22],
+  dim: [2, 22], // Alias: faint
+  italic: [3, 23],
+  underline: [4, 24],
+  blink: [5, 25],
+  // Swap foreground and background colors
+  inverse: [7, 27], // Alias: swapcolors, swapColors
+  hidden: [8, 28], // Alias: conceal
+  strikethrough: [9, 29], // Alias: strikeThrough, crossedout, crossedOut
+  doubleunderline: [21, 24], // Alias: doubleUnderline
+  black: [30, defaultFG],
+  red: [31, defaultFG],
+  green: [32, defaultFG],
+  yellow: [33, defaultFG],
+  blue: [34, defaultFG],
+  magenta: [35, defaultFG],
+  cyan: [36, defaultFG],
+  white: [37, defaultFG],
+  bgBlack: [40, defaultBG],
+  bgRed: [41, defaultBG],
+  bgGreen: [42, defaultBG],
+  bgYellow: [43, defaultBG],
+  bgBlue: [44, defaultBG],
+  bgMagenta: [45, defaultBG],
+  bgCyan: [46, defaultBG],
+  bgWhite: [47, defaultBG],
+  framed: [51, 54],
+  overlined: [53, 55],
+  gray: [90, defaultFG], // Alias: grey, blackBright
+  redBright: [91, defaultFG],
+  greenBright: [92, defaultFG],
+  yellowBright: [93, defaultFG],
+  blueBright: [94, defaultFG],
+  magentaBright: [95, defaultFG],
+  cyanBright: [96, defaultFG],
+  whiteBright: [97, defaultFG],
+  bgGray: [100, defaultBG], // Alias: bgGrey, bgBlackBright
+  bgRedBright: [101, defaultBG],
+  bgGreenBright: [102, defaultBG],
+  bgYellowBright: [103, defaultBG],
+  bgBlueBright: [104, defaultBG],
+  bgMagentaBright: [105, defaultBG],
+  bgCyanBright: [106, defaultBG],
+  bgWhiteBright: [107, defaultBG],
+};
+
+function defineColorAlias(target, alias) {
+  ObjectDefineProperty(inspect.colors, alias, {
+    __proto__: null,
+    get() {
+      return this[target];
+    },
+    set(value) {
+      this[target] = value;
+    },
+    configurable: true,
+    enumerable: false,
+  });
+}
+
+defineColorAlias("gray", "grey");
+defineColorAlias("gray", "blackBright");
+defineColorAlias("bgGray", "bgGrey");
+defineColorAlias("bgGray", "bgBlackBright");
+defineColorAlias("dim", "faint");
+defineColorAlias("strikethrough", "crossedout");
+defineColorAlias("strikethrough", "strikeThrough");
+defineColorAlias("strikethrough", "crossedOut");
+defineColorAlias("hidden", "conceal");
+defineColorAlias("inverse", "swapColors");
+defineColorAlias("inverse", "swapcolors");
+defineColorAlias("doubleunderline", "doubleUnderline");
+
+// TODO(BridgeAR): Add function style support for more complex styles.
+// Don't use 'blue' not visible on cmd.exe
+inspect.styles = ObjectAssign(ObjectCreate(null), {
+  special: "cyan",
+  number: "yellow",
+  bigint: "yellow",
+  boolean: "yellow",
+  undefined: "grey",
+  null: "bold",
+  string: "green",
+  symbol: "green",
+  date: "magenta",
+  // "name": intentionally not styling
+  // TODO(BridgeAR): Highlight regular expressions properly.
+  regexp: "red",
+  module: "underline",
+});
+
+const inspectDefaultOptions = {
+  indentationLvl: 0,
+  currentDepth: 0,
+  stylize: stylizeNoColor,
+
+  showHidden: false,
+  depth: 2,
+  colors: false,
+  showProxy: false,
+  breakLength: 80,
+  escapeSequences: true,
+  compact: 3,
+  sorted: false,
+  getters: false,
+
+  // node only
+  maxArrayLength: 100,
+  maxStringLength: 10000, // deno: strAbbreviateSize: 100
+  customInspect: true,
+
+  // deno only
+  /** You can override the quotes preference in inspectString.
+   * Used by util.inspect() */
+  // TODO(kt3k): Consider using symbol as a key to hide this from the public
+  // API.
+  quotes: ["'", '"', "`"],
+  iterableLimit: Infinity, // similar to node's maxArrayLength, but doesn't only apply to arrays
+  trailingComma: false,
+
+  inspect,
+
+  // TODO(@crowlKats): merge into indentationLvl
+  indentLevel: 0,
+};
+
+/**
+ * Echos the value of any input. Tries to print the value out
+ * in the best way possible given the different types.
+ */
+/* Legacy: value, showHidden, depth, colors */
+function inspect(value, opts) {
+  // Default options
+  const ctx = {
+    budget: {},
+    seen: [],
+    ...inspectDefaultOptions,
+  };
+  if (arguments.length > 1) {
+    // Legacy...
+    if (arguments.length > 2) {
+      if (arguments[2] !== undefined) {
+        ctx.depth = arguments[2];
+      }
+      if (arguments.length > 3 && arguments[3] !== undefined) {
+        ctx.colors = arguments[3];
+      }
+    }
+    // Set user-specified options
+    if (typeof opts === "boolean") {
+      ctx.showHidden = opts;
+    } else if (opts) {
+      const optKeys = ObjectKeys(opts);
+      for (let i = 0; i < optKeys.length; ++i) {
+        const key = optKeys[i];
+        // TODO(BridgeAR): Find a solution what to do about stylize. Either make
+        // this function public or add a new API with a similar or better
+        // functionality.
+        if (
+          ObjectPrototypeHasOwnProperty(inspectDefaultOptions, key) ||
+          key === "stylize"
+        ) {
+          ctx[key] = opts[key];
+        } else if (ctx.userOptions === undefined) {
+          // This is required to pass through the actual user input.
+          ctx.userOptions = opts;
+        }
+      }
+    }
+  }
+  if (ctx.colors) {
+    ctx.stylize = createStylizeWithColor(inspect.styles, inspect.colors);
+  }
+  if (ctx.maxArrayLength === null) ctx.maxArrayLength = Infinity;
+  if (ctx.maxStringLength === null) ctx.maxStringLength = Infinity;
+  return formatValue(ctx, value, 0);
+}
+const customInspectSymbol = SymbolFor("nodejs.util.inspect.custom");
+inspect.custom = customInspectSymbol;
+
+ObjectDefineProperty(inspect, "defaultOptions", {
+  __proto__: null,
+  get() {
+    return inspectDefaultOptions;
+  },
+  set(options) {
+    validateObject(options, "options");
+    return ObjectAssign(inspectDefaultOptions, options);
+  },
+});
+
+function stylizeNoColor(str) {
+  return str;
+}
+
+const builtInObjects = new SafeSet(
+  ArrayPrototypeFilter(
+    ObjectGetOwnPropertyNames(globalThis),
+    (e) => RegExpPrototypeTest(new SafeRegExp(/^[A-Z][a-zA-Z0-9]+$/), e),
+  ),
+);
+
+// Regex used for ansi escape code splitting
+// Adopted from https://github.com/chalk/ansi-regex/blob/HEAD/index.js
+// License: MIT, authors: @sindresorhus, Qix-, arjunmehta and LitoMore
+// Matches all ansi escape code sequences in a string
+const ansiPattern = "[\\u001B\\u009B][[\\]()#;?]*" +
+  "(?:(?:(?:(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]+)*" +
+  "|[a-zA-Z\\d]+(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)" +
+  "?(?:\\u0007|\\u001B\\u005C|\\u009C))" +
+  "|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-nq-uy=><~]))";
+const ansi = new SafeRegExp(ansiPattern, "g");
+
+const reEmojiPresentation = new SafeRegExp("^\\p{Emoji_Presentation}$", "u");
+
+/**
+ * Returns the number of columns required to display the given string.
+ */
+function getStringWidth(str, removeControlChars = true) {
+  let width = 0;
+
+  if (removeControlChars) {
+    str = stripVTControlCharacters(str);
+  }
+  str = StringPrototypeNormalize(str, "NFC");
+  for (const char of new SafeStringIterator(str)) {
+    const code = StringPrototypeCodePointAt(char, 0);
+    if (
+      isFullWidthCodePoint(code) ||
+      RegExpPrototypeTest(reEmojiPresentation, char)
+    ) {
+      width += 2;
+    } else if (!isZeroWidthCodePoint(code)) {
+      width++;
+    }
+  }
+
+  return width;
+}
+
+/**
+ * Returns true if the character represented by a given
+ * Unicode code point is full-width. Otherwise returns false.
+ */
+const isFullWidthCodePoint = (code) => {
+  // Code points are partially derived from:
+  // https://www.unicode.org/Public/UNIDATA/EastAsianWidth.txt
+  return code >= 0x1100 && (
+    code <= 0x115f || // Hangul Jamo
+    code === 0x2329 || // LEFT-POINTING ANGLE BRACKET
+    code === 0x232a || // RIGHT-POINTING ANGLE BRACKET
+    // CJK Radicals Supplement .. Enclosed CJK Letters and Months
+    (code >= 0x2e80 && code <= 0x3247 && code !== 0x303f) ||
+    // Enclosed CJK Letters and Months .. CJK Unified Ideographs Extension A
+    (code >= 0x3250 && code <= 0x4dbf) ||
+    // CJK Unified Ideographs .. Yi Radicals
+    (code >= 0x4e00 && code <= 0xa4c6) ||
+    // Hangul Jamo Extended-A
+    (code >= 0xa960 && code <= 0xa97c) ||
+    // Hangul Syllables
+    (code >= 0xac00 && code <= 0xd7a3) ||
+    // CJK Compatibility Ideographs
+    (code >= 0xf900 && code <= 0xfaff) ||
+    // Vertical Forms
+    (code >= 0xfe10 && code <= 0xfe19) ||
+    // CJK Compatibility Forms .. Small Form Variants
+    (code >= 0xfe30 && code <= 0xfe6b) ||
+    // Halfwidth and Fullwidth Forms
+    (code >= 0xff01 && code <= 0xff60) ||
+    (code >= 0xffe0 && code <= 0xffe6) ||
+    // Kana Supplement
+    (code >= 0x1b000 && code <= 0x1b001) ||
+    // Enclosed Ideographic Supplement
+    (code >= 0x1f200 && code <= 0x1f251) ||
+    // Miscellaneous Symbols and Pictographs 0x1f300 - 0x1f5ff
+    // Emoticons 0x1f600 - 0x1f64f
+    (code >= 0x1f300 && code <= 0x1f64f) ||
+    // Transport and Map Symbols
+    (code >= 0x1f680 && code <= 0x1f6ff) ||
+    // Supplemental Symbols and Pictographs
+    (code >= 0x1f900 && code <= 0x1f9ff) ||
+    // Chess Symbols
+    (code >= 0x1fa00 && code <= 0x1fa6f) ||
+    // Symbols and Pictographs Extended-A
+    (code >= 0x1fa70 && code <= 0x1faff) ||
+    // CJK Unified Ideographs Extension B .. Tertiary Ideographic Plane
+    (code >= 0x20000 && code <= 0x3fffd)
+  );
+};
+
+const isZeroWidthCodePoint = (code) => {
+  return code <= 0x1F || // C0 control codes
+    (code >= 0x7F && code <= 0x9F) || // C1 control codes
+    (code >= 0x300 && code <= 0x36F) || // Combining Diacritical Marks
+    (code >= 0x200B && code <= 0x200F) || // Modifying Invisible Characters
+    // Combining Diacritical Marks for Symbols
+    (code >= 0x20D0 && code <= 0x20FF) ||
+    (code >= 0xFE00 && code <= 0xFE0F) || // Variation Selectors
+    (code >= 0xFE20 && code <= 0xFE2F) || // Combining Half Marks
+    (code >= 0xE0100 && code <= 0xE01EF); // Variation Selectors
+};
+
+function hasBuiltInToString(value) {
+  // TODO(wafuwafu13): Implement
+  // // Prevent triggering proxy traps.
+  // const getFullProxy = false;
+  // const proxyTarget = getProxyDetails(value, getFullProxy);
+  const proxyTarget = undefined;
+  if (proxyTarget !== undefined) {
+    value = proxyTarget;
+  }
+
+  // Count objects that have no `toString` function as built-in.
+  if (typeof value.toString !== "function") {
+    return true;
+  }
+
+  // The object has a own `toString` property. Thus it's not a built-in one.
+  if (
+    FunctionPrototypeCall(Object.prototype.hasOwnProperty, value, "toString")
+  ) {
+    return false;
+  }
+
+  // Find the object that has the `toString` property as own property in the
+  // prototype chain.
+  let pointer = value;
+  do {
+    pointer = ObjectGetPrototypeOf(pointer);
+  } while (
+    !FunctionPrototypeCall(Object.prototype.hasOwnProperty, pointer, "toString")
+  );
+
+  // Check closer if the object is a built-in.
+  const descriptor = ObjectGetOwnPropertyDescriptor(pointer, "constructor");
+  return descriptor !== undefined &&
+    typeof descriptor.value === "function" &&
+    SetPrototypeHas(builtInObjects, descriptor.value.name);
+}
+
+const firstErrorLine = (error) =>
+  StringPrototypeAt(StringPrototypeSplit(error.message, "\n", 1), 0);
+let CIRCULAR_ERROR_MESSAGE;
+function tryStringify(arg) {
+  try {
+    return JSONStringify(arg);
+  } catch (err) {
+    // Populate the circular error message lazily
+    if (!CIRCULAR_ERROR_MESSAGE) {
+      try {
+        const a = {};
+        a.a = a;
+        JSONStringify(a);
+      } catch (circularError) {
+        CIRCULAR_ERROR_MESSAGE = firstErrorLine(circularError);
+      }
+    }
+    if (
+      err.name === "TypeError" &&
+      firstErrorLine(err) === CIRCULAR_ERROR_MESSAGE
+    ) {
+      return "[Circular]";
+    }
+    throw err;
+  }
+}
+
+function format(...args) {
+  return formatWithOptionsInternal(undefined, args);
+}
+
+function formatWithOptions(inspectOptions, ...args) {
+  if (typeof inspectOptions !== "object" || inspectOptions === null) {
+    throw new codes.ERR_INVALID_ARG_TYPE(
+      "inspectOptions",
+      "object",
+      inspectOptions,
+    );
+  }
+  return formatWithOptionsInternal(inspectOptions, args);
+}
+
+function formatNumberNoColor(number, options) {
+  return formatNumber(
+    stylizeNoColor,
+    number,
+    options?.numericSeparator ?? inspectDefaultOptions.numericSeparator,
+  );
+}
+
+function formatBigIntNoColor(bigint, options) {
+  return formatBigInt(
+    stylizeNoColor,
+    bigint,
+    options?.numericSeparator ?? inspectDefaultOptions.numericSeparator,
+  );
+}
+
+function formatWithOptionsInternal(inspectOptions, args) {
+  const first = args[0];
+  let a = 0;
+  let str = "";
+  let join = "";
+
+  if (typeof first === "string") {
+    if (args.length === 1) {
+      return first;
+    }
+    let tempStr;
+    let lastPos = 0;
+
+    for (let i = 0; i < first.length - 1; i++) {
+      if (StringPrototypeCharCodeAt(first, i) === 37) { // '%'
+        const nextChar = StringPrototypeCharCodeAt(first, ++i);
+        if (a + 1 !== args.length) {
+          switch (nextChar) {
+            // deno-lint-ignore no-case-declarations
+            case 115: // 's'
+              const tempArg = args[++a];
+              if (typeof tempArg === "number") {
+                tempStr = formatNumberNoColor(tempArg, inspectOptions);
+              } else if (typeof tempArg === "bigint") {
+                tempStr = formatBigIntNoColor(tempArg, inspectOptions);
+              } else if (
+                typeof tempArg !== "object" ||
+                tempArg === null ||
+                !hasBuiltInToString(tempArg)
+              ) {
+                tempStr = String(tempArg);
+              } else {
+                tempStr = inspect(tempArg, {
+                  ...inspectOptions,
+                  compact: 3,
+                  colors: false,
+                  depth: 0,
+                });
+              }
+              break;
+            case 106: // 'j'
+              tempStr = tryStringify(args[++a]);
+              break;
+            // deno-lint-ignore no-case-declarations
+            case 100: // 'd'
+              const tempNum = args[++a];
+              if (typeof tempNum === "bigint") {
+                tempStr = formatBigIntNoColor(tempNum, inspectOptions);
+              } else if (typeof tempNum === "symbol") {
+                tempStr = "NaN";
+              } else {
+                tempStr = formatNumberNoColor(Number(tempNum), inspectOptions);
+              }
+              break;
+            case 79: // 'O'
+              tempStr = inspect(args[++a], inspectOptions);
+              break;
+            case 111: // 'o'
+              tempStr = inspect(args[++a], {
+                ...inspectOptions,
+                showHidden: true,
+                showProxy: true,
+                depth: 4,
+              });
+              break;
+            // deno-lint-ignore no-case-declarations
+            case 105: // 'i'
+              const tempInteger = args[++a];
+              if (typeof tempInteger === "bigint") {
+                tempStr = formatBigIntNoColor(tempInteger, inspectOptions);
+              } else if (typeof tempInteger === "symbol") {
+                tempStr = "NaN";
+              } else {
+                tempStr = formatNumberNoColor(
+                  NumberParseInt(tempInteger),
+                  inspectOptions,
+                );
+              }
+              break;
+            // deno-lint-ignore no-case-declarations
+            case 102: // 'f'
+              const tempFloat = args[++a];
+              if (typeof tempFloat === "symbol") {
+                tempStr = "NaN";
+              } else {
+                tempStr = formatNumberNoColor(
+                  NumberParseFloat(tempFloat),
+                  inspectOptions,
+                );
+              }
+              break;
+            case 99: // 'c'
+              a += 1;
+              tempStr = "";
+              break;
+            case 37: // '%'
+              str += StringPrototypeSlice(first, lastPos, i);
+              lastPos = i + 1;
+              continue;
+            default: // Any other character is not a correct placeholder
+              continue;
+          }
+          if (lastPos !== i - 1) {
+            str += StringPrototypeSlice(first, lastPos, i - 1);
+          }
+          str += tempStr;
+          lastPos = i + 1;
+        } else if (nextChar === 37) {
+          str += StringPrototypeSlice(first, lastPos, i);
+          lastPos = i + 1;
+        }
+      }
+    }
+    if (lastPos !== 0) {
+      a++;
+      join = " ";
+      if (lastPos < first.length) {
+        str += StringPrototypeSlice(first, lastPos);
+      }
+    }
+  }
+
+  while (a < args.length) {
+    const value = args[a];
+    str += join;
+    str += typeof value !== "string" ? inspect(value, inspectOptions) : value;
+    join = " ";
+    a++;
+  }
+  return str;
+}
+
+/**
+ * Remove all VT control characters. Use to estimate displayed string width.
+ */
+function stripVTControlCharacters(str) {
+  validateString(str, "str");
+
+  return StringPrototypeReplace(str, ansi, "");
+}
+
+// Mirrors Node's lib/util.js styleText(): build openCodes by appending and
+// closeCodes by prepending so an array like ['bold', 'red'] wraps as
+// bold(red(text)) rather than red(bold(text)). Inner close sequences inside
+// `text` are rewritten so subsequent text keeps the outer style ("dim" and
+// "bold" share close 22, so those close sequences are kept and the outer
+// style is re-opened immediately afterward).
+const kStyleTextEscape = "\x1b[";
+const kStyleTextEscapeEnd = "m";
+const kStyleTextDimCode = 2;
+const kStyleTextBoldCode = 1;
+
+function replaceCloseCode(str, closeSeq, openSeq, keepClose) {
+  const closeLen = closeSeq.length;
+  let index = StringPrototypeIndexOf(str, closeSeq);
+  if (index === -1) return str;
+
+  let result = "";
+  let lastIndex = 0;
+  const replacement = keepClose ? closeSeq + openSeq : openSeq;
+
+  do {
+    const afterClose = index + closeLen;
+    if (afterClose < str.length) {
+      result += StringPrototypeSlice(str, lastIndex, index) + replacement;
+      lastIndex = afterClose;
+    } else {
+      break;
+    }
+    index = StringPrototypeIndexOf(str, closeSeq, lastIndex);
+  } while (index !== -1);
+
+  return result + StringPrototypeSlice(str, lastIndex);
+}
+
+function styleText(format, text, options) {
+  validateString(text, "text");
+  if (options !== undefined) {
+    validateObject(options, "options");
+  }
+  const validateStream = options?.validateStream ?? true;
+  validateBoolean(validateStream, "options.validateStream");
+
+  // Match node: validate stream before any format validation, so any
+  // ERR_INVALID_ARG_TYPE always gets throws regardless of
+  // `ERR_INVALID_ARG_VALUE` errors.
+  if (validateStream) {
+    const stream = options?.stream;
+    if (stream !== undefined && stream !== null) {
+      // Match Node: bail when `stream` is not a Readable/Writable/Node Stream.
+      // Approximate the duck-type used in those checks.
+      if (
+        !(typeof stream === "object" && (
+          typeof stream.read === "function" ||
+          typeof stream.write === "function" ||
+          typeof stream.pipe === "function"
+        ))
+      ) {
+        throw new codes.ERR_INVALID_ARG_TYPE(
+          "stream",
+          ["ReadableStream", "WritableStream", "Stream"],
+          stream,
+        );
+      }
+    }
+  }
+
+  // Match Node: validate format even when colorizing is skipped, so
+  // ERR_INVALID_ARG_VALUE is always thrown regardless of TTY state.
+  const formatArray = ArrayIsArray(format) ? format : [format];
+  for (let i = 0; i < formatArray.length; i++) {
+    const key = formatArray[i];
+    if (key === "none") continue;
+    if (inspect.colors[key] == null) {
+      validateOneOf(key, "format", ObjectKeys(inspect.colors));
+    }
+  }
+
+  if (validateStream) {
+    // Match Node defaulting stream to process.stdout: when no stream is
+    // provided the colorize check still runs against stdout.
+    const effectiveStream = options?.stream ?? globalThis.process?.stdout;
+    if (!shouldColorize(effectiveStream)) {
+      return text;
+    }
+  }
+
+  let openCodes = "";
+  let closeCodes = "";
+  let processedText = text;
+
+  for (let i = 0; i < formatArray.length; i++) {
+    const key = formatArray[i];
+    if (key === "none") continue;
+
+    const formatCodes = inspect.colors[key];
+    const openNum = formatCodes[0];
+    const closeNum = formatCodes[1];
+    const openSeq = kStyleTextEscape + openNum + kStyleTextEscapeEnd;
+    const closeSeq = kStyleTextEscape + closeNum + kStyleTextEscapeEnd;
+    const keepClose = openNum === kStyleTextDimCode ||
+      openNum === kStyleTextBoldCode;
+    openCodes += openSeq;
+    closeCodes = closeSeq + closeCodes;
+    processedText = replaceCloseCode(
+      processedText,
+      closeSeq,
+      openSeq,
+      keepClose,
+    );
+  }
+
+  return `${openCodes}${processedText}${closeCodes}`;
+}
+
+return {
+  format,
+  getStringWidth,
+  inspect,
+  stripVTControlCharacters,
+  formatWithOptions,
+  styleText,
+  default: {
+    format,
+    getStringWidth,
+    inspect,
+    stripVTControlCharacters,
+    formatWithOptions,
+    styleText,
+  },
+};
+})();

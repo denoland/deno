@@ -1,0 +1,4 @@
+{
+  "args": "bundle --quiet main.mjs",
+  "output": "bundle.out"
+}

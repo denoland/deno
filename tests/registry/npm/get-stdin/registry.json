@@ -1,0 +1,68 @@
+{
+  "name": "get-stdin",
+  "description": "Get stdin as a string or buffer",
+  "dist-tags": {
+    "latest": "8.0.0"
+  },
+  "versions": {
+    "8.0.0": {
+      "name": "get-stdin",
+      "version": "8.0.0",
+      "description": "Get stdin as a string or buffer",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sindresorhus/get-stdin.git"
+      },
+      "funding": "https://github.com/sponsors/sindresorhus",
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "https://sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=10"
+      },
+      "scripts": {
+        "test": "xo && ava test.js test-buffer.js && echo unicorns | node test-real.js && tsd"
+      },
+      "devDependencies": {
+        "@types/node": "^13.13.5",
+        "ava": "^2.4.0",
+        "delay": "^4.2.0",
+        "tsd": "^0.11.0",
+        "xo": "^0.24.0"
+      },
+      "gitHead": "07288e101242054df3c197abc5559458af6c78ba",
+      "bugs": {
+        "url": "https://github.com/sindresorhus/get-stdin/issues"
+      },
+      "_id": "get-stdin@8.0.0",
+      "_nodeVersion": "10.20.1",
+      "_npmVersion": "6.14.5",
+      "dist": {
+        "integrity": "sha512-sY22aA6xchAzprjyqmSEQv4UbAAzRN0L2dQB0NlN5acTTK9Don6nhoc3eAbUnpZiCANAMfd/+40kVdKfFygohg==",
+        "shasum": "cbad6a73feb75f6eeb22ba9e01f89aa28aa97a53",
+        "tarball": "http://localhost:4260/get-stdin/get-stdin-8.0.0.tgz",
+        "fileCount": 5,
+        "unpackedSize": 4706
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/sindresorhus/get-stdin#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sindresorhus/get-stdin.git"
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "bugs": {
+    "url": "https://github.com/sindresorhus/get-stdin/issues"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,10 @@
+running 1 test from [WILDCARD]/hanging_test.ts
+test ...
+  step 1 ...
+    step 2 ...
+SIGINT The following tests were pending:
+
+test => [WILDCARD]/hanging_test.ts:3:6
+test ... step 1 => [WILDCARD]/hanging_test.ts:9:13
+test ... step 1 ... step 2 => [WILDCARD]/hanging_test.ts:10:15
+

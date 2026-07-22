@@ -1,0 +1,5 @@
+{
+  "args": "run --reload --allow-read create_require/main.ts",
+  "output": "create_require/main.out",
+  "exitCode": 0
+}

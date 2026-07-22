@@ -1,0 +1,4 @@
+{
+  "args": "run --check main.ts",
+  "output": "main.out"
+}

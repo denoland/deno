@@ -1,0 +1,10 @@
+Download http://localhost:4260/@denotest%2fprint-npm-user-agent
+Download http://localhost:4260/@denotest/print-npm-user-agent/1.0.0.tgz
+Initialize @denotest/print-npm-user-agent@1.0.0
+Initialize @denotest/print-npm-user-agent@1.0.0: running 'postinstall' script
+error: script 'postinstall' in '@denotest/print-npm-user-agent@1.0.0' failed with exit code 1
+stdout:
+postinstall
+npm_config_user_agent: deno/[WILDCARD] npm/? deno/[WILDCARD] [WILDCARD] [WILDCARD]
+
+error: failed to run scripts for packages: @denotest/print-npm-user-agent@1.0.0

@@ -1,0 +1,23 @@
+{
+  "tempDir": true,
+  "tests": {
+    "default_lib": {
+      "args": "check --quiet default.ts",
+      "output": ""
+    },
+    "dom_lib": {
+      // deferred: stock lib.dom.d.ts lacks Deno's `brotli` CompressionFormat
+      // (needs the deno.* lib migration) -> #35985
+      "ignore": true,
+      "args": "check --quiet --config dom.json default.ts",
+      "output": ""
+    },
+    "webworker_lib": {
+      // deferred: stock lib.webworker.d.ts lacks Deno's `brotli`
+      // CompressionFormat (needs the deno.* lib migration) -> #35985
+      "ignore": true,
+      "args": "check --quiet --config webworker.json default.ts",
+      "output": ""
+    }
+  }
+}

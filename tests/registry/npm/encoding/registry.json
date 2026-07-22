@@ -1,0 +1,60 @@
+{
+  "name": "encoding",
+  "description": "Convert encodings, uses iconv-lite",
+  "dist-tags": {
+    "latest": "0.1.13"
+  },
+  "versions": {
+    "0.1.13": {
+      "name": "encoding",
+      "version": "0.1.13",
+      "description": "Convert encodings, uses iconv-lite",
+      "main": "lib/encoding.js",
+      "scripts": {
+        "test": "nodeunit test"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/andris9/encoding.git"
+      },
+      "author": {
+        "name": "Andris Reinman"
+      },
+      "license": "MIT",
+      "dependencies": {
+        "iconv-lite": "^0.6.2"
+      },
+      "devDependencies": {
+        "nodeunit": "0.11.3"
+      },
+      "gitHead": "a7554ca9083bab4847705d562d02f0924271cbaa",
+      "bugs": {
+        "url": "https://github.com/andris9/encoding/issues"
+      },
+      "_id": "encoding@0.1.13",
+      "_nodeVersion": "14.5.0",
+      "_npmVersion": "6.14.5",
+      "dist": {
+        "integrity": "sha512-ETBauow1T35Y/WZMkio9jiM0Z5xjHHmJ4XmjZOq1l/dXz3lr2sRn87nJy20RupqSh1F2m3HHPSp8ShIPQJrJ3A==",
+        "shasum": "56574afdd791f54a8e9b2785c0582a2d26210fa9",
+        "tarball": "http://localhost:4260/encoding/encoding-0.1.13.tgz",
+        "fileCount": 7,
+        "unpackedSize": 7123
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Andris Reinman"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/andris9/encoding.git"
+  },
+  "homepage": "https://github.com/andris9/encoding#readme",
+  "bugs": {
+    "url": "https://github.com/andris9/encoding/issues"
+  },
+  "license": "MIT"
+}

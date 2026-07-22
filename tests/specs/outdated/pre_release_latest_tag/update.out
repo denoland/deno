@@ -1,0 +1,3 @@
+[WILDCARD]Download http://localhost:4260/@denotest/pre-release-with-nightlies/1.0.0-beta.32.tgz
+Updated 1 dependency:
+ - npm:@denotest/pre-release-with-nightlies ^1.0.0-beta.13 -> ^1.0.0-beta.32

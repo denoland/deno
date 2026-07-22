@@ -1,0 +1,56 @@
+[UNORDERED_START]
+Download http://127.0.0.1:4250/@denotest/add/meta.json
+Download http://127.0.0.1:4250/@denotest/deps/meta.json
+Download http://localhost:4260/@denotest%2fesm-basic
+Download http://127.0.0.1:4250/@denotest/add/1.0.0_meta.json
+Download http://127.0.0.1:4250/@denotest/deps/1.0.0_meta.json
+Download http://127.0.0.1:4250/@denotest/module-graph/meta.json
+Download http://127.0.0.1:4250/@denotest/no-module-graph/meta.json
+Download http://127.0.0.1:4250/@denotest/module-graph/1.4.0_meta.json
+Download http://127.0.0.1:4250/@denotest/no-module-graph/0.1.1_meta.json
+Download http://127.0.0.1:4250/@denotest/no-module-graph/0.1.1/mod.ts
+Download http://127.0.0.1:4250/@denotest/no-module-graph/0.1.1/TestClass.ts
+Download http://127.0.0.1:4250/@denotest/add/1.0.0/mod.ts
+Download http://127.0.0.1:4250/@denotest/deps/1.0.0/mod.ts
+Download http://127.0.0.1:4250/@denotest/module-graph/1.4.0/other.ts
+Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz
+[UNORDERED_END]
+Check [WILDCARD]mod.ts
+Checking for slow types in the public API...
+error[missing-constraint]: specifier 'jsr:@denotest/add' is missing a version constraint
+ --> [WILDLINE]mod.ts:[WILDLINE]
+  | 
+1 | import { add } from "add";
+  |                     ^^^^^ the specifier
+  | 
+  = hint: specify a version constraint for the specifier in the import map
+
+  info: the specifier resolved to version 1.0.0 today, but will resolve to a different
+  info: major version if one is published in the future and potentially break
+  docs: https://jsr.io/go/missing-constraint
+
+error[missing-constraint]: specifier 'npm:@denotest/esm-basic' is missing a version constraint
+ --> [WILDLINE]mod.ts:[WILDLINE]
+  | 
+2 | import * as basic from "basic";
+  |                        ^^^^^^^ the specifier
+  | 
+  = hint: specify a version constraint for the specifier in the import map
+
+  info: the specifier resolved to version 1.0.0 today, but will resolve to a different
+  info: major version if one is published in the future and potentially break
+  docs: https://jsr.io/go/missing-constraint
+
+error[missing-constraint]: specifier 'jsr:@denotest/deps' is missing a version constraint
+ --> [WILDLINE]mod.ts:[WILDLINE]
+  | 
+3 | import * as deps from "jsr:@denotest/deps";
+  |                       ^^^^^^^^^^^^^^^^^^^^ the specifier
+  | 
+  = hint: specify a version constraint for the specifier
+
+  info: the specifier resolved to version 1.0.0 today, but will resolve to a different
+  info: major version if one is published in the future and potentially break
+  docs: https://jsr.io/go/missing-constraint
+
+error: Found 3 problems

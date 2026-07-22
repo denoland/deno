@@ -1,0 +1,69 @@
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static", "-C", "symbol-mangling-version=v0"]
+
+# Cargo evaluates `target.'cfg(...)'` specs against `rustc --print cfg --target
+# <triple>`, whose output always contains `debug_assertions` no matter which
+# profile is being built. So `cfg(all(windows, debug_assertions))` matches every
+# Windows build and `cfg(all(windows, not(debug_assertions)))` matches none of
+# them, with no warning either way. Don't try to gate rustflags on the profile
+# here — there is no stable way to do it.
+#
+# This section was previously spelled cfg(all(windows, debug_assertions)) with a
+# debug-only intent, so per the above it has always applied to release builds
+# too. That's what we want (see below); cfg(windows) just says so honestly.
+# A cfg(all(windows, not(debug_assertions))) section setting link-arg=/OPT:ICF
+# was removed: it never matched, and it was redundant anyway because rustc
+# already passes /OPT:REF,ICF whenever optimizations are enabled.
+[target.'cfg(windows)']
+rustflags = [
+  "-C",
+  "target-feature=+crt-static",
+  "-C",
+  # On Windows a thread created without an explicit stack size — including the
+  # process main thread — gets the PE header's reserve, and MSVC defaults that
+  # to 1MB. The main V8 isolate runs on the main thread (deno::main ->
+  # create_and_run_current_thread -> a tokio current_thread runtime runs its
+  # spawned task on the thread that calls block_on), and 1MB is not enough for
+  # it: it overflows when launching sub commands, and it leaves no headroom
+  # below V8's own JS stack limit (--stack-size, 1MB by default), so deep JS
+  # would abort the process instead of raising RangeError. Reserve 4MB. This is
+  # address space only; pages are committed on demand.
+  "link-arg=/STACK:4194304",
+]
+
+# Emit the modern chained-fixups format (LC_DYLD_CHAINED_FIXUPS) via -fixup_chains
+# instead of the legacy LC_DYLD_INFO_ONLY rebase/bind opcode stream. dyld applies
+# chained fixups lazily per-page instead of eagerly walking every relocation at
+# launch, cutting pre-main startup (~0.8ms on the ~116MB binary). Requires a
+# macOS 12 deployment target (older dyld can't parse the format) and the bundled
+# ld64.lld bumped to LLD 20 (LLD 17 segfaults on -fixup_chains; see tools/util.js).
+[env]
+MACOSX_DEPLOYMENT_TARGET = "12.0"
+
+[target.x86_64-apple-darwin]
+rustflags = [
+  "-C",
+  "link-args=-Wl,-fixup_chains -weak_framework Metal -weak_framework MetalPerformanceShaders -weak_framework QuartzCore -weak_framework CoreGraphics",
+]
+
+[target.aarch64-apple-darwin]
+rustflags = [
+  "-C",
+  # --icf=safe folds identical (address-insignificant) functions; ~6MB (~10%) idle RSS win, measured on release.
+  # -fixup_chains: see [env] note above (chained fixups -> faster pre-main launch).
+  "link-args=-fuse-ld=lld -Wl,--icf=safe -Wl,-fixup_chains -weak_framework Metal -weak_framework MetalPerformanceShaders -weak_framework QuartzCore -weak_framework CoreGraphics",
+]
+
+[target.'cfg(all())']
+rustflags = [
+  "-D",
+  "clippy::all",
+  "-D",
+  "clippy::await_holding_refcell_ref",
+  "-D",
+  "clippy::missing_safety_doc",
+  "-D",
+  "clippy::undocumented_unsafe_blocks",
+  "--cfg",
+  "tokio_unstable",
+]

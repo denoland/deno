@@ -1,0 +1,4 @@
+{
+  "args": "run --reload --quiet reference_types.ts",
+  "output": "reference_types.ts.out"
+}

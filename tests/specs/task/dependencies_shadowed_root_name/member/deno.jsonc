@@ -1,0 +1,12 @@
+{
+  "tasks": {
+    "build": "echo member",
+    "member-dependending-root-and-member": {
+      "dependencies": [
+        "build",
+        "root-depending-root"
+      ],
+      "command": "echo member-test"
+    }
+  }
+}

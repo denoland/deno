@@ -1,0 +1,65 @@
+{
+  "name": "has-flag",
+  "description": "Check if argv has a specific flag",
+  "dist-tags": {
+    "latest": "4.0.0"
+  },
+  "versions": {
+    "4.0.0": {
+      "name": "has-flag",
+      "version": "4.0.0",
+      "description": "Check if argv has a specific flag",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sindresorhus/has-flag.git"
+      },
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=8"
+      },
+      "scripts": {
+        "test": "xo && ava && tsd"
+      },
+      "devDependencies": {
+        "ava": "^1.4.1",
+        "tsd": "^0.7.2",
+        "xo": "^0.24.0"
+      },
+      "gitHead": "474aa39afca7333d356c022fc5be4d31732bbba3",
+      "bugs": {
+        "url": "https://github.com/sindresorhus/has-flag/issues"
+      },
+      "_id": "has-flag@4.0.0",
+      "_npmVersion": "6.4.1",
+      "_nodeVersion": "10.15.1",
+      "dist": {
+        "integrity": "sha512-EykJT/Q1KjTWctppgIAgfSO0tKVuZUjhgMr17kqTumMl6Afv3EISleU7qZUzoXDFTAHTDC4NOoG/ZxU3EvlMPQ==",
+        "shasum": "944771fd9c81c81265c4d6941860da06bb59479b",
+        "tarball": "http://localhost:4260/has-flag/has-flag-4.0.0.tgz",
+        "fileCount": 5,
+        "unpackedSize": 4419
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/sindresorhus/has-flag#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sindresorhus/has-flag.git"
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "bugs": {
+    "url": "https://github.com/sindresorhus/has-flag/issues"
+  },
+  "license": "MIT"
+}

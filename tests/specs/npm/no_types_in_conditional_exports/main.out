@@ -1,0 +1,4 @@
+Download http://localhost:4260/@denotest%2fno-types-in-conditional-exports
+Download http://localhost:4260/@denotest/no-types-in-conditional-exports/1.0.0.tgz
+Check [WILDCARD]main.ts
+{ foo: "bar" }

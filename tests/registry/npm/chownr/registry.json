@@ -1,0 +1,72 @@
+{
+  "name": "chownr",
+  "description": "like `chown -R`",
+  "dist-tags": {
+    "latest": "2.0.0"
+  },
+  "versions": {
+    "2.0.0": {
+      "author": {
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me",
+        "url": "http://blog.izs.me/"
+      },
+      "name": "chownr",
+      "description": "like `chown -R`",
+      "version": "2.0.0",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/isaacs/chownr.git"
+      },
+      "main": "chownr.js",
+      "devDependencies": {
+        "mkdirp": "0.3",
+        "rimraf": "^2.7.1",
+        "tap": "^14.10.6"
+      },
+      "tap": {
+        "check-coverage": true
+      },
+      "scripts": {
+        "test": "tap",
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "prepublishOnly": "git push origin --follow-tags"
+      },
+      "license": "ISC",
+      "engines": {
+        "node": ">=10"
+      },
+      "gitHead": "f9f9d866bebb2f9ff8efc93b78305f9d999c6f17",
+      "bugs": {
+        "url": "https://github.com/isaacs/chownr/issues"
+      },
+      "_id": "chownr@2.0.0",
+      "_nodeVersion": "13.7.0",
+      "_npmVersion": "6.13.7",
+      "dist": {
+        "integrity": "sha512-bIomtDF5KGpdogkLd9VspvFzk9KfpyyGlS8YFVZl7TGPBHL5snIOnxeshwVgPteQ9b4Eydl+pVbIyE1DcvCWgQ==",
+        "shasum": "15bfbe53d2eab4cf70f18a8cd68ebe5b3cb1dece",
+        "tarball": "http://localhost:4260/chownr/chownr-2.0.0.tgz",
+        "fileCount": 4,
+        "unpackedSize": 5748
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/isaacs/chownr.git"
+  },
+  "homepage": "https://github.com/isaacs/chownr#readme",
+  "bugs": {
+    "url": "https://github.com/isaacs/chownr/issues"
+  },
+  "license": "BlueOak-1.0.0"
+}

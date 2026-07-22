@@ -1,0 +1,11 @@
+Check [WILDCARD]mod.ts
+Checking for slow types in the public API...
+Check [WILDCARD]mod.ts
+error[excluded-module]: module in package's module graph was excluded from publishing
+ --> [WILDLINE]gitignored.ts
+  = hint: remove the module from 'exclude' and/or 'publish.exclude' in the config file or use 'publish.exclude' with a negative glob to unexclude from gitignore
+
+  info: excluded modules referenced via a package export will error at runtime due to not existing in the package
+  docs: https://jsr.io/go/excluded-module
+
+error: Found 1 problem

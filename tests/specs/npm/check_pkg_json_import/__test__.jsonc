@@ -1,0 +1,8 @@
+{
+  // ignored: tsc doesn't resolve the package.json subpath import (/hooks) types
+  // consistently, producing a spurious error.
+  // https://github.com/denoland/deno/issues/36085
+  "ignore": true,
+  "args": "check --all main.ts",
+  "output": "main.out"
+}

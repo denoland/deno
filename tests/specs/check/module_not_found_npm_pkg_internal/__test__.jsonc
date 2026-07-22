@@ -1,0 +1,8 @@
+{
+  // ignored: `/// <reference path>` in a .d.ts not checked under skipLibCheck:true.
+  // https://github.com/denoland/deno/issues/36085
+  "ignore": true,
+  "args": "check --all main.ts",
+  "output": "check.out",
+  "exitCode": 1
+}

@@ -1,0 +1,1501 @@
+// Copyright 2018-2026 the Deno authors. MIT license.
+
+import {
+  assert,
+  assertEquals,
+  assertObjectMatch,
+  assertRejects,
+  assertStrictEquals,
+  assertThrows,
+  fail,
+} from "@std/assert";
+import { fromFileUrl, relative, SEPARATOR } from "@std/path";
+import * as workerThreads from "node:worker_threads";
+import { isInternalThread } from "node:worker_threads";
+import { EventEmitter, once } from "node:events";
+import process from "node:process";
+
+Deno.test("[node/worker_threads] BroadcastChannel is exported", () => {
+  const bc = new workerThreads.BroadcastChannel("test");
+  assert(bc instanceof BroadcastChannel);
+  assert(typeof bc.ref === "function");
+  assert(typeof bc.unref === "function");
+  bc.close();
+});
+
+Deno.test("[node/worker_threads] MessageChannel are MessagePort are exported", () => {
+  assert(workerThreads.MessageChannel);
+  assertEquals<unknown>(workerThreads.MessagePort, MessagePort);
+});
+
+Deno.test({
+  name: "[node/worker_threads] isMainThread",
+  fn() {
+    assertEquals(workerThreads.isMainThread, true);
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] isInternalThread",
+  fn() {
+    // Both the named export and the property on the module object must
+    // resolve, and be false in the main thread (Deno has no internal
+    // Node worker threads). Regression test for #35149.
+    assertEquals(isInternalThread, false);
+    assertEquals(workerThreads.isInternalThread, false);
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] threadId",
+  fn() {
+    assertEquals(workerThreads.threadId, 0);
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] resourceLimits",
+  fn() {
+    assertObjectMatch(workerThreads.resourceLimits, {});
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] locks reuses Web Locks",
+  fn() {
+    const webLocks =
+      (navigator as typeof navigator & { locks: typeof workerThreads.locks })
+        .locks;
+    assertStrictEquals(workerThreads.locks, webLocks);
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] locks request and query",
+  async fn() {
+    const lockName = "deno-worker-threads-locks-basic";
+    const result = await workerThreads.locks.request(
+      lockName,
+      async (lock) => {
+        assert(lock);
+        assertEquals(lock.name, lockName);
+        assertEquals(lock.mode, "exclusive");
+
+        const snapshot = await workerThreads.locks.query();
+        assert(snapshot.held.some((entry) => entry.name === lockName));
+        assertEquals(
+          snapshot.held.find((entry) => entry.name === lockName)?.mode,
+          "exclusive",
+        );
+        return 42;
+      },
+    );
+
+    assertEquals(result, 42);
+    // `query()` must return a real Promise (matching the Web Locks spec, Node,
+    // and the type declaration) so `.then()`/`.catch()` work without `await`.
+    const queryResult = workerThreads.locks.query();
+    assert(typeof queryResult.then === "function");
+    const snapshot = await queryResult;
+    assertEquals(snapshot.held.some((entry) => entry.name === lockName), false);
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] locks request can be aborted while pending",
+  async fn() {
+    const lockName = "deno-worker-threads-locks-abort";
+    await workerThreads.locks.request(lockName, async () => {
+      const ac = new AbortController();
+      const pending = workerThreads.locks.request(
+        lockName,
+        { signal: ac.signal },
+        () => fail("aborted lock request should not be granted"),
+      );
+
+      let sawPending = false;
+      for (let i = 0; i < 10; i++) {
+        const snapshot = await workerThreads.locks.query();
+        if (snapshot.pending.some((entry) => entry.name === lockName)) {
+          sawPending = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      assert(sawPending);
+
+      ac.abort();
+      const error = await assertRejects(() => pending);
+      assertEquals((error as Error).name, "AbortError");
+    });
+
+    const snapshot = await workerThreads.locks.query();
+    assertEquals(
+      snapshot.pending.some((entry) => entry.name === lockName),
+      false,
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] locks ifAvailable and option validation",
+  async fn() {
+    const lockName = "deno-worker-threads-locks-if-available";
+    await workerThreads.locks.request(lockName, async () => {
+      const unavailable = await workerThreads.locks.request(
+        lockName,
+        { ifAvailable: true },
+        (lock) => lock === null,
+      );
+      assertEquals(unavailable, true);
+    });
+
+    const error = await assertRejects(() =>
+      workerThreads.locks.request(
+        lockName,
+        { ifAvailable: true, steal: true },
+        () => fail("invalid lock options should reject before callback"),
+      )
+    );
+    assertEquals((error as Error).name, "NotSupportedError");
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] locks shared mode allows concurrent holders",
+  async fn() {
+    const lockName = "deno-worker-threads-locks-shared";
+    await workerThreads.locks.request(
+      lockName,
+      { mode: "shared" },
+      async (firstLock) => {
+        assert(firstLock !== null);
+        assertEquals(firstLock.mode, "shared");
+
+        const second = await workerThreads.locks.request(
+          lockName,
+          { mode: "shared" },
+          (secondLock) => secondLock?.mode,
+        );
+        assertEquals(second, "shared");
+
+        const exclusiveUnavailable = await workerThreads.locks.request(
+          lockName,
+          { ifAvailable: true },
+          (exclusiveLock) => exclusiveLock === null,
+        );
+        assertEquals(exclusiveUnavailable, true);
+      },
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] parentPort",
+  fn() {
+    assertEquals(workerThreads.parentPort, null);
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] workerData",
+  fn() {
+    assertEquals(workerThreads.workerData, null);
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] setEnvironmentData / getEnvironmentData",
+  fn() {
+    workerThreads.setEnvironmentData("test", "test");
+    assertEquals(workerThreads.getEnvironmentData("test"), "test");
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] Worker threadId",
+  async fn() {
+    const worker = new workerThreads.Worker(
+      new URL("./testdata/worker_threads.mjs", import.meta.url),
+    );
+    worker.postMessage("Hello, how are you my thread?");
+    await once(worker, "message");
+    const message = await once(worker, "message");
+    assertEquals(message[0].threadId, 1);
+    worker.terminate();
+
+    const worker1 = new workerThreads.Worker(
+      new URL("./testdata/worker_threads.mjs", import.meta.url),
+    );
+    worker1.postMessage("Hello, how are you my thread?");
+    await once(worker1, "message");
+    assertEquals((await once(worker1, "message"))[0].threadId, 2);
+    worker1.terminate();
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] Worker basics",
+  async fn() {
+    workerThreads.setEnvironmentData("test", "test");
+    workerThreads.setEnvironmentData(1, {
+      test: "random",
+      random: "test",
+    });
+    const { port1 } = new MessageChannel();
+    const worker = new workerThreads.Worker(
+      new URL("./testdata/worker_threads.mjs", import.meta.url),
+      {
+        workerData: ["hey", true, false, 2, port1],
+        // deno-lint-ignore no-explicit-any
+        transferList: [port1 as any],
+      },
+    );
+    worker.postMessage("Hello, how are you my thread?");
+    assertEquals((await once(worker, "message"))[0], "I'm fine!");
+    const data = (await once(worker, "message"))[0];
+    // data.threadId can be 1 when this test is run individually
+    if (data.threadId === 1) data.threadId = 3;
+    assertObjectMatch(data, {
+      isMainThread: false,
+      threadId: 3,
+      workerData: ["hey", true, false, 2],
+      envData: ["test", { test: "random", random: "test" }],
+    });
+    worker.terminate();
+  },
+  sanitizeResources: false,
+});
+
+Deno.test({
+  name: "[node/worker_threads] Worker eval",
+  async fn() {
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort } = require("node:worker_threads");
+      parentPort.postMessage("It works!");
+      `,
+      {
+        eval: true,
+      },
+    );
+    assertEquals((await once(worker, "message"))[0], "It works!");
+    worker.terminate();
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] locks are shared with workers",
+  async fn() {
+    const lockName = "deno-worker-threads-locks-cross-worker";
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort, locks } = require("node:worker_threads");
+      parentPort.once("message", async (lockName) => {
+        try {
+          const unavailable = await locks.request(
+            lockName,
+            { ifAvailable: true },
+            (lock) => lock === null,
+          );
+          parentPort.postMessage(unavailable);
+        } catch (error) {
+          parentPort.postMessage({ error: error.message });
+        }
+      });
+      `,
+      { eval: true },
+    );
+
+    try {
+      await workerThreads.locks.request(lockName, async () => {
+        worker.postMessage(lockName);
+        const message = (await once(worker, "message"))[0];
+        assertEquals(message, true);
+      });
+    } finally {
+      await worker.terminate();
+    }
+  },
+  sanitizeResources: false,
+});
+
+Deno.test({
+  name: "[node/worker_threads] locks are released when worker exits",
+  async fn() {
+    const lockName = "deno-worker-threads-locks-worker-exit";
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort, locks } = require("node:worker_threads");
+      locks.request(${JSON.stringify(lockName)}, async () => {
+        parentPort.postMessage("held");
+        await new Promise(() => {});
+      });
+      `,
+      { eval: true },
+    );
+
+    assertEquals((await once(worker, "message"))[0], "held");
+    await worker.terminate();
+
+    const available = await workerThreads.locks.request(
+      lockName,
+      { ifAvailable: true },
+      (lock) => lock !== null,
+    );
+    assertEquals(available, true);
+  },
+  sanitizeResources: false,
+});
+
+Deno.test({
+  name:
+    "[node/worker_threads] pending worker locks are cleaned up on terminate",
+  async fn() {
+    const lockName = "deno-worker-threads-locks-pending-worker-exit";
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort, locks } = require("node:worker_threads");
+      parentPort.once("message", (lockName) => {
+        locks.request(lockName, async () => {
+          parentPort.postMessage("unexpected");
+        }).catch(() => {});
+        parentPort.postMessage("pending");
+      });
+      `,
+      { eval: true },
+    );
+
+    try {
+      await workerThreads.locks.request(lockName, async () => {
+        worker.postMessage(lockName);
+        assertEquals((await once(worker, "message"))[0], "pending");
+
+        let sawPending = false;
+        for (let i = 0; i < 10; i++) {
+          const snapshot = await workerThreads.locks.query();
+          if (snapshot.pending.some((entry) => entry.name === lockName)) {
+            sawPending = true;
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+        assert(sawPending);
+
+        await worker.terminate();
+        const snapshot = await workerThreads.locks.query();
+        assertEquals(
+          snapshot.pending.some((entry) => entry.name === lockName),
+          false,
+        );
+      });
+    } finally {
+      await worker.terminate();
+    }
+  },
+  sanitizeResources: false,
+});
+
+Deno.test({
+  name: "[node/worker_threads] exclusive locks are handed off to workers",
+  async fn() {
+    const lockName = "deno-worker-threads-locks-worker-handoff";
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort, locks } = require("node:worker_threads");
+      parentPort.once("message", (lockName) => {
+        // Issue the request synchronously: the underlying op registers the
+        // pending request before the first await, so posting "requested"
+        // afterwards lets the parent observe it deterministically without
+        // racing a boot-timed poll loop.
+        locks.request(lockName, async (lock) => {
+          parentPort.postMessage(lock.name);
+        }).catch(() => {});
+        parentPort.postMessage("requested");
+      });
+      `,
+      { eval: true },
+    );
+
+    try {
+      let granted: Promise<unknown[]>;
+      await workerThreads.locks.request(lockName, async () => {
+        worker.postMessage(lockName);
+        assertEquals((await once(worker, "message"))[0], "requested");
+        const snapshot = await workerThreads.locks.query();
+        assert(snapshot.pending.some((entry) => entry.name === lockName));
+        // Register the grant listener before this callback returns (which
+        // releases the lock and lets the worker acquire it), so the worker's
+        // grant message cannot be missed.
+        granted = once(worker, "message");
+      });
+
+      assertEquals((await granted!)[0], lockName);
+    } finally {
+      await worker.terminate();
+    }
+  },
+  sanitizeResources: false,
+});
+
+Deno.test({
+  name:
+    "[node/worker_threads] terminating a worker halts its locked callback before handoff",
+  async fn() {
+    const lockName = "deno-worker-threads-locks-worker-halt";
+    // The worker holds an exclusive lock and mutates shared memory in a
+    // synchronous loop that never yields. When the parent terminates it, the
+    // host re-grants the held lock to the next waiter synchronously; if the
+    // worker's isolate were not halted first, it would keep mutating the buffer
+    // concurrently with the new holder, violating mutual exclusion.
+    const sab = new SharedArrayBuffer(4);
+    const counter = new Int32Array(sab);
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort, workerData, locks } = require("node:worker_threads");
+      const counter = new Int32Array(workerData);
+      locks.request(${JSON.stringify(lockName)}, () => {
+        parentPort.postMessage("held");
+        // Synchronous, never-yielding loop while holding the lock. Only
+        // terminate_execution() can break out of this.
+        for (;;) {
+          Atomics.add(counter, 0, 1);
+        }
+      }).catch(() => {});
+      `,
+      { eval: true, workerData: sab },
+    );
+
+    try {
+      assertEquals((await once(worker, "message"))[0], "held");
+      await worker.terminate();
+
+      // Acquire the same lock (proves it was released, i.e. no deadlock) and
+      // confirm the worker is no longer mutating shared memory under it.
+      await workerThreads.locks.request(lockName, async () => {
+        // Give a generous window for terminate_execution() to interrupt the
+        // worker's loop and for the thread to stop.
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        const first = Atomics.load(counter, 0);
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        const second = Atomics.load(counter, 0);
+        assertEquals(
+          first,
+          second,
+          "worker kept mutating shared memory under the lock after terminate",
+        );
+      });
+    } finally {
+      await worker.terminate();
+    }
+  },
+  sanitizeResources: false,
+});
+
+Deno.test({
+  name: "[node/worker_threads] Worker eval",
+  async fn() {
+    // Check that newlines are encoded properly
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort } = require("node:worker_threads");
+      console.log("hey, foo") // comment
+      parentPort.postMessage("It works!");
+      `,
+      {
+        eval: true,
+      },
+    );
+    assertEquals((await once(worker, "message"))[0], "It works!");
+    worker.terminate();
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] worker thread with type module",
+  async fn() {
+    function p() {
+      return new Promise<workerThreads.Worker>((resolve, reject) => {
+        const worker = new workerThreads.Worker(
+          new URL("./testdata/worker_module/index.js", import.meta.url),
+        );
+        worker.on("error", (e) => reject(e.message));
+        worker.on("message", () => resolve(worker));
+      });
+    }
+    await p();
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] worker thread in nested module",
+  async fn() {
+    function p() {
+      return new Promise<workerThreads.Worker>((resolve, reject) => {
+        const worker = new workerThreads.Worker(
+          new URL("./testdata/worker_module/nested/index.js", import.meta.url),
+        );
+        worker.on("error", (e) => reject(e.message));
+        worker.on("message", () => resolve(worker));
+      });
+    }
+    await p();
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] .cjs worker file within module",
+  async fn() {
+    function p() {
+      return new Promise<workerThreads.Worker>((resolve, reject) => {
+        const worker = new workerThreads.Worker(
+          new URL("./testdata/worker_module/cjs-file.cjs", import.meta.url),
+        );
+        worker.on("error", (e) => reject(e.message));
+        worker.on("message", () => resolve(worker));
+      });
+    }
+    await p();
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] relativ path string",
+  async fn() {
+    function p() {
+      return new Promise<workerThreads.Worker>((resolve, reject) => {
+        const worker = new workerThreads.Worker(
+          "./tests/unit_node/testdata/worker_module/index.js",
+        );
+        worker.on("error", (e) => reject(e.message));
+        worker.on("message", () => resolve(worker));
+      });
+    }
+    await p();
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] utf-8 path string",
+  async fn() {
+    function p() {
+      return new Promise<workerThreads.Worker>((resolve, reject) => {
+        const worker = new workerThreads.Worker(
+          "./tests/unit_node/testdata/worker_module/βάρβαροι.js",
+        );
+        worker.on("error", (e) => reject(e.message));
+        worker.on("message", () => resolve(worker));
+      });
+    }
+    await p();
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] utf-8 path URL",
+  async fn() {
+    function p() {
+      return new Promise<workerThreads.Worker>((resolve, reject) => {
+        const worker = new workerThreads.Worker(
+          new URL(
+            "./testdata/worker_module/βάρβαροι.js",
+            import.meta.url,
+          ),
+        );
+        worker.on("error", (e) => reject(e.message));
+        worker.on("message", () => resolve(worker));
+      });
+    }
+    await p();
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] throws on relativ path without leading dot",
+  fn() {
+    assertThrows(
+      () => {
+        new workerThreads.Worker(
+          "tests/unit_node/testdata/worker_module/index.js",
+        );
+      },
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] throws on unsupported URL protcol",
+  fn() {
+    assertThrows(
+      () => {
+        new workerThreads.Worker(new URL("https://example.com"));
+      },
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] inheritances",
+  async fn() {
+    const worker = new workerThreads.Worker(
+      `
+      const { EventEmitter } = require("node:events");
+      const { parentPort } = require("node:worker_threads");
+      parentPort.postMessage(parentPort instanceof EventTarget);
+      setTimeout(() => {
+        parentPort.postMessage(parentPort instanceof EventEmitter);
+      }, 100);
+      `,
+      {
+        eval: true,
+      },
+    );
+    // parentPort is a delegate object that forwards to globalThis,
+    // so it is not an instance of EventTarget or EventEmitter.
+    assertEquals((await once(worker, "message"))[0], false);
+    assertEquals((await once(worker, "message"))[0], false);
+    assert(worker instanceof EventEmitter);
+    assert(!(worker instanceof EventTarget));
+    worker.terminate();
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] Worker workerData",
+  async fn() {
+    const worker = new workerThreads.Worker(
+      new URL("./testdata/worker_threads.mjs", import.meta.url),
+      {
+        workerData: null,
+      },
+    );
+    worker.postMessage("Hello, how are you my thread?");
+    await once(worker, "message");
+    assertEquals((await once(worker, "message"))[0].workerData, null);
+    worker.terminate();
+
+    const worker1 = new workerThreads.Worker(
+      new URL("./testdata/worker_threads.mjs", import.meta.url),
+    );
+    worker1.postMessage("Hello, how are you my thread?");
+    await once(worker1, "message");
+    assertEquals((await once(worker1, "message"))[0].workerData, undefined);
+    worker1.terminate();
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] Worker with relative path",
+  async fn() {
+    const worker = new workerThreads.Worker(
+      `.${SEPARATOR}` + relative(
+        Deno.cwd(),
+        fromFileUrl(new URL("./testdata/worker_threads.mjs", import.meta.url)),
+      ),
+    );
+    worker.postMessage("Hello, how are you my thread?");
+    assertEquals((await once(worker, "message"))[0], "I'm fine!");
+    worker.terminate();
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] unref",
+  async fn() {
+    const timeout = setTimeout(() => fail("Test timed out"), 60_000);
+    const child = new Deno.Command(Deno.execPath(), {
+      args: [
+        "eval",
+        "import { Worker } from 'node:worker_threads'; new Worker('setTimeout(() => {}, 1_000_000)', {eval:true}).unref();",
+      ],
+    }).spawn();
+    await child.status;
+    clearTimeout(timeout);
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] SharedArrayBuffer",
+  async fn() {
+    const sab = new SharedArrayBuffer(Uint8Array.BYTES_PER_ELEMENT);
+    const uint = new Uint8Array(sab);
+    const worker = new workerThreads.Worker(
+      new URL("./testdata/worker_threads2.mjs", import.meta.url),
+      {
+        workerData: { sharedArrayBuffer: sab },
+      },
+    );
+    worker.postMessage("Hello");
+    if ((await once(worker, "message"))[0] != "Hello") throw new Error();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    worker.terminate();
+    if (uint[0] != 1) throw new Error();
+  },
+  sanitizeResources: false,
+});
+
+Deno.test({
+  name: "[node/worker_threads] Worker workerData with MessagePort",
+  async fn() {
+    const { port1: mainPort, port2: workerPort } = new workerThreads
+      .MessageChannel();
+    const deferred = Promise.withResolvers<void>();
+    const worker = new workerThreads.Worker(
+      `
+      const {
+        isMainThread,
+        MessageChannel,
+        parentPort,
+        receiveMessageOnPort,
+        Worker,
+        workerData,
+      } = require("node:worker_threads");
+      parentPort.on("message", (msg) => {
+        /* console.log("message from main", msg); */
+        parentPort.postMessage("Hello from worker on parentPort!");
+        workerData.workerPort.postMessage("Hello from worker on workerPort!");
+      });
+      `,
+      {
+        eval: true,
+        workerData: { workerPort },
+        transferList: [workerPort],
+      },
+    );
+
+    worker.on("message", (data) => {
+      assertEquals(data, "Hello from worker on parentPort!");
+      // TODO(bartlomieju): it would be better to use `mainPort.on("message")`,
+      // but we currently don't support it.
+      // https://github.com/denoland/deno/issues/22951
+      // Wait a bit so the message can arrive.
+      setTimeout(() => {
+        const msg = workerThreads.receiveMessageOnPort(mainPort)!.message;
+        assertEquals(msg, "Hello from worker on workerPort!");
+        deferred.resolve();
+      }, 500);
+    });
+
+    worker.postMessage("Hello from parent");
+    await deferred.promise;
+    await worker.terminate();
+    mainPort.close();
+  },
+});
+
+// Regression test for https://github.com/denoland/deno/issues/23362
+Deno.test("[node/worker_threads] receiveMessageOnPort works if there's pending read", function () {
+  const { port1, port2 } = new workerThreads.MessageChannel();
+  const { port1: port3, port2: port4 } = new workerThreads.MessageChannel();
+  const { port1: port5, port2: port6 } = new workerThreads.MessageChannel();
+
+  const message1 = { hello: "world" };
+  const message2 = { foo: "bar" };
+
+  assertEquals(workerThreads.receiveMessageOnPort(port2), undefined);
+  port2.start();
+  port4.start();
+  port6.start();
+
+  port1.postMessage(message1);
+  port1.postMessage(message2);
+  port3.postMessage(message1);
+  port3.postMessage(message2);
+  port5.postMessage(message1);
+  port5.postMessage(message2);
+  assertEquals(workerThreads.receiveMessageOnPort(port2), {
+    message: message1,
+  });
+  assertEquals(workerThreads.receiveMessageOnPort(port2), {
+    message: message2,
+  });
+  assertEquals(workerThreads.receiveMessageOnPort(port4), {
+    message: message1,
+  });
+  assertEquals(workerThreads.receiveMessageOnPort(port4), {
+    message: message2,
+  });
+  assertEquals(workerThreads.receiveMessageOnPort(port6), {
+    message: message1,
+  });
+  assertEquals(workerThreads.receiveMessageOnPort(port6), {
+    message: message2,
+  });
+  port1.close();
+  port2.close();
+  port3.close();
+  port4.close();
+  port5.close();
+  port6.close();
+});
+
+Deno.test({
+  name: "[node/worker_threads] Worker env",
+  async fn() {
+    const deferred = Promise.withResolvers<void>();
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort } = require("node:worker_threads");
+      const process = require("node:process");
+      parentPort.postMessage(process.env.TEST_ENV);
+      `,
+      {
+        eval: true,
+        env: { TEST_ENV: "test" },
+      },
+    );
+
+    worker.on("message", (data) => {
+      assertEquals(data, "test");
+      deferred.resolve();
+    });
+
+    await deferred.promise;
+    await worker.terminate();
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] Worker env using process.env",
+  async fn() {
+    const deferred = Promise.withResolvers<void>();
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort } = require("node:worker_threads");
+      const process = require("node:process");
+      parentPort.postMessage("ok");
+      `,
+      {
+        eval: true,
+        // Make sure this doesn't throw `DataCloneError`.
+        // See https://github.com/denoland/deno/issues/23522.
+        env: process.env,
+      },
+    );
+
+    worker.on("message", (data) => {
+      assertEquals(data, "ok");
+      deferred.resolve();
+    });
+
+    await deferred.promise;
+    await worker.terminate();
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] Returns terminate promise with exit code",
+  async fn() {
+    const deferred = Promise.withResolvers<void>();
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort } = require("node:worker_threads");
+      parentPort.postMessage("ok");
+      `,
+      {
+        eval: true,
+      },
+    );
+
+    worker.on("message", (data) => {
+      assertEquals(data, "ok");
+      deferred.resolve();
+    });
+
+    await deferred.promise;
+    const promise = worker.terminate();
+    assertEquals(typeof promise.then, "function");
+    assertEquals(await promise, 1);
+  },
+});
+
+Deno.test({
+  name:
+    "[node/worker_threads] MessagePort.on all message listeners are invoked",
+  async fn() {
+    const output: string[] = [];
+    const deferred = Promise.withResolvers<void>();
+    const { port1, port2 } = new workerThreads.MessageChannel();
+    port1.on("message", (msg) => output.push(msg));
+    port1.on("message", (msg) => output.push(msg + 2));
+    port1.on("message", (msg) => {
+      output.push(msg + 3);
+      deferred.resolve();
+    });
+    port2.postMessage("hi!");
+    await deferred.promise;
+    assertEquals(output, ["hi!", "hi!2", "hi!3"]);
+    port2.close();
+    port1.close();
+  },
+});
+
+// Regression test for https://github.com/denoland/deno/issues/33373
+// Node's MessagePort.on('message', fn) deduplicates by listener
+// reference. Registering the same function multiple times must
+// deliver only once, and `.off` must clean up the listener fully.
+Deno.test({
+  name: "[node/worker_threads] MessagePort.on deduplicates listeners",
+  async fn() {
+    const output: string[] = [];
+    const { port1, port2 } = new workerThreads.MessageChannel();
+    const onMessage = (msg: string) => output.push(msg);
+
+    port1.on("message", onMessage);
+    port1.on("message", onMessage);
+    port1.on("message", onMessage);
+
+    const first = Promise.withResolvers<void>();
+    port1.on("message", () => first.resolve());
+    port2.postMessage("hi");
+    await first.promise;
+    assertEquals(output, ["hi"]);
+
+    port1.off("message", onMessage);
+    const second = Promise.withResolvers<void>();
+    port1.on("message", () => second.resolve());
+    port2.postMessage("again");
+    await second.promise;
+    assertEquals(output, ["hi"]);
+
+    port1.close();
+    port2.close();
+  },
+});
+
+Deno.test({
+  name:
+    "[node/worker_threads] MessagePort.on dedup is per-event-name and per-port",
+  async fn() {
+    const events: string[] = [];
+    const { port1, port2 } = new workerThreads.MessageChannel();
+    const handler = (_: unknown) => events.push("hit");
+
+    // Same fn for different event names registers independently.
+    port1.on("message", handler);
+    port1.on("message", handler);
+    port1.on("close", handler);
+    port1.on("close", handler);
+
+    const messageDone = Promise.withResolvers<void>();
+    port1.on("message", () => messageDone.resolve());
+    port2.postMessage("m");
+    await messageDone.promise;
+    assertEquals(events, ["hit"]);
+
+    // off("message", handler) must not remove the "close" registration.
+    port1.off("message", handler);
+
+    const closeDone = Promise.withResolvers<void>();
+    port1.on("close", () => closeDone.resolve());
+    port1.close();
+    port2.close();
+    await closeDone.promise;
+    // One delivery for "message", one for "close".
+    assertEquals(events, ["hit", "hit"]);
+  },
+});
+
+// Test for https://github.com/denoland/deno/issues/23854
+Deno.test({
+  name: "[node/worker_threads] MessagePort.addListener is present",
+  async fn() {
+    const channel = new workerThreads.MessageChannel();
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort } = require("node:worker_threads");
+      parentPort.addListener("message", message => {
+        if (message.foo) {
+          const success = typeof message.foo.bar.addListener === "function";
+          parentPort.postMessage(success ? "it works" : "it doesn't work")
+        }
+      })
+      `,
+      {
+        eval: true,
+      },
+    );
+    worker.postMessage({ foo: { bar: channel.port1 } }, [channel.port1]);
+
+    assertEquals((await once(worker, "message"))[0], "it works");
+    worker.terminate();
+    channel.port1.close();
+    channel.port2.close();
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] Emits online event",
+  async fn() {
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort } = require("node:worker_threads");
+      let ok = false;
+      parentPort.on("message", () => {
+        ok = true;
+        parentPort.postMessage("ok");
+      });
+      setTimeout(() => {
+        if (!ok) {
+          parentPort.postMessage("timed out");
+        }
+      }, 20000);
+      `,
+      {
+        eval: true,
+      },
+    );
+    worker.on("online", () => {
+      worker.postMessage("ok");
+    });
+    assertEquals((await once(worker, "message"))[0], "ok");
+    worker.terminate();
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] receiveMessageOnPort doesn't exit receive loop",
+  async fn() {
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort, receiveMessageOnPort } = require("node:worker_threads");
+      parentPort.on("message", (msg) => {
+        const port = msg.port;
+        port.on("message", (msg2) => {
+          if (msg2 === "c") {
+            port.postMessage("done");
+            port.unref();
+            parentPort.unref();
+          }
+        });
+        parentPort.postMessage("ready");
+        const msg2 = receiveMessageOnPort(port);
+      });
+      `,
+      { eval: true },
+    );
+
+    const { port1, port2 } = new workerThreads.MessageChannel();
+
+    worker.postMessage({ port: port2 }, [port2]);
+
+    const done = Promise.withResolvers<boolean>();
+
+    port1.on("message", (msg) => {
+      assertEquals(msg, "done");
+      worker.unref();
+      port1.close();
+      done.resolve(true);
+    });
+    worker.on("message", (msg) => {
+      assertEquals(msg, "ready");
+      port1.postMessage("a");
+      port1.postMessage("b");
+      port1.postMessage("c");
+    });
+
+    const timeout = setTimeout(() => {
+      fail("Test timed out");
+    }, 20_000);
+    try {
+      const result = await done.promise;
+      assertEquals(result, true);
+    } finally {
+      clearTimeout(timeout);
+    }
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] MessagePort.unref doesn't exit receive loop",
+  async fn() {
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort } = require("node:worker_threads");
+      const assertEquals = (a, b) => {
+        if (a !== b) {
+          throw new Error();
+        }
+      };
+      let state = 0;
+      parentPort.on("message", (msg) => {
+        const port = msg.port;
+        const expect = ["a", "b", "c"];
+        port.on("message", (msg2) => {
+          assertEquals(msg2, expect[state++]);
+          if (msg2 === "c") {
+            port.postMessage({ type: "done", got: msg2 });
+            parentPort.unref();
+          }
+        });
+        port.unref();
+        parentPort.postMessage("ready");
+      });
+      `,
+      { eval: true },
+    );
+
+    const { port1, port2 } = new workerThreads.MessageChannel();
+
+    const done = Promise.withResolvers<boolean>();
+
+    port1.on("message", (msg) => {
+      assertEquals(msg.type, "done");
+      assertEquals(msg.got, "c");
+      worker.unref();
+      port1.close();
+      done.resolve(true);
+    });
+    worker.on("message", (msg) => {
+      assertEquals(msg, "ready");
+      port1.postMessage("a");
+      port1.postMessage("b");
+      port1.postMessage("c");
+    });
+    worker.postMessage({ port: port2 }, [port2]);
+
+    const timeout = setTimeout(() => {
+      fail("Test timed out");
+    }, 20_000);
+    try {
+      const result = await done.promise;
+      assertEquals(result, true);
+    } finally {
+      clearTimeout(timeout);
+    }
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] npm:piscina wait loop hang regression",
+  async fn() {
+    const worker = new workerThreads.Worker(
+      `
+      const assert = require("node:assert");
+      const { parentPort, receiveMessageOnPort } = require("node:worker_threads");
+
+      assert(parentPort !== null);
+
+      let currentTasks = 0;
+      let lastSeen = 0;
+
+      parentPort.on("message", (msg) => {
+        (async () => {
+          assert(typeof msg === "object" && msg !== null);
+          assert(msg.buf !== undefined);
+          assert(msg.port !== undefined);
+          const { buf, port } = msg;
+          port.postMessage("ready");
+          port.on("message", (msg) => onMessage(msg, buf, port));
+          atomicsWaitLoop(buf, port);
+        })();
+      });
+
+      function onMessage(msg, buf, port) {
+        currentTasks++;
+        (async () => {
+          assert(msg.taskName !== undefined);
+          port.postMessage({ type: "response", taskName: msg.taskName });
+          currentTasks--;
+          atomicsWaitLoop(buf, port);
+        })();
+      }
+
+      function atomicsWaitLoop(buf, port) {
+        while (currentTasks === 0) {
+          Atomics.wait(buf, 0, lastSeen);
+          lastSeen = Atomics.load(buf, 0);
+          let task;
+          while ((task = receiveMessageOnPort(port)) !== undefined) {
+            onMessage(task.message, buf, port);
+          }
+        }
+      }
+      `,
+      { eval: true },
+    );
+
+    const sab = new SharedArrayBuffer(4);
+    const buf = new Int32Array(sab);
+    const { port1, port2 } = new workerThreads.MessageChannel();
+
+    const done = Promise.withResolvers<boolean>();
+
+    port1.unref();
+
+    worker.postMessage({
+      type: "init",
+      buf,
+      port: port2,
+    }, [port2]);
+
+    let count = 0;
+    port1.on("message", (msg) => {
+      if (count++ === 0) {
+        assertEquals(msg, "ready");
+      } else {
+        assertEquals(msg.type, "response");
+        port1.close();
+        done.resolve(true);
+      }
+    });
+
+    port1.postMessage({
+      taskName: "doThing",
+    });
+
+    Atomics.add(buf, 0, 1);
+    Atomics.notify(buf, 0, 1);
+
+    worker.unref();
+
+    const result = await done.promise;
+    assertEquals(result, true);
+  },
+});
+
+Deno.test("[node/worker_threads] Worker runs async ops correctly", async () => {
+  const recvMessage = Promise.withResolvers<void>();
+  const timer = setTimeout(() => recvMessage.reject(), 1000);
+  const worker = new workerThreads.Worker(
+    `
+    const { parentPort } = require("node:worker_threads");
+    setTimeout(() => {
+      parentPort.postMessage("Hello from worker");
+    }, 10);
+    `,
+    { eval: true },
+  );
+
+  worker.on("message", (msg) => {
+    assertEquals(msg, "Hello from worker");
+    worker.terminate();
+    recvMessage.resolve();
+    clearTimeout(timer);
+  });
+
+  await recvMessage.promise;
+});
+
+Deno.test("[node/worker_threads] Worker works with CJS require", async () => {
+  const recvMessage = Promise.withResolvers<void>();
+  const worker = new workerThreads.Worker(
+    `
+    const assert = require("assert");
+    require("worker_threads").parentPort.on("message", ({ port }) => {
+      assert(port instanceof MessagePort);
+
+      port.postMessage("Hello from worker");
+    });
+    `,
+    { eval: true },
+  );
+
+  const channel = new workerThreads.MessageChannel();
+  worker.postMessage({ port: channel.port2 }, [channel.port2]);
+  channel.port1.on("message", (msg) => {
+    assertEquals(msg, "Hello from worker");
+    channel.port1.close();
+    channel.port2.close();
+    worker.terminate();
+    recvMessage.resolve();
+  });
+
+  await recvMessage.promise;
+});
+
+Deno.test({
+  name: "[node/worker_threads] terminate emits 'exit' and stops receiving",
+  async fn() {
+    const recv: string[] = [];
+    const done = Promise.withResolvers<void>();
+
+    const worker = new (await import("node:worker_threads")).Worker(
+      `
+      const { parentPort } = require("node:worker_threads");
+      // Periodically send messages to simulate ongoing work.
+      const id = setInterval(() => {
+        parentPort.postMessage("tick");
+      }, 10);
+
+      parentPort.on("message", (m) => {
+        if (m === "stop") {
+          clearInterval(id);
+          // Attempt to send one more message after stop;
+          // the main thread should not receive it after terminate().
+          parentPort.postMessage("last");
+        }
+      });
+      `,
+      { eval: true },
+    );
+
+    const first = await once(worker, "message");
+    recv.push(first[0]);
+
+    const exitP = new Promise<number>((resolve) =>
+      worker.once("exit", (code) => resolve(code))
+    );
+
+    worker.postMessage("stop");
+
+    const termRet = worker.terminate();
+    const code = await exitP;
+
+    if (typeof termRet.then === "function") {
+      const v = await termRet;
+      assertEquals(v, 1);
+    }
+    assertEquals(code, 1);
+
+    setTimeout(() => done.resolve(), 50);
+    await done.promise;
+
+    assertEquals(recv[0], "tick");
+    assertEquals(recv.length, 1);
+  },
+  sanitizeResources: false,
+});
+
+Deno.test({
+  name:
+    "[node/worker_threads] 'online' fires before first user message (pollMessages)",
+  async fn() {
+    const wt = await import("node:worker_threads");
+    let gotOnline = false;
+
+    const worker = new wt.Worker(
+      `
+      const { parentPort } = require("node:worker_threads");
+      // When the worker becomes ready, it will receive 'ping' and respond with 'pong'.
+      parentPort.on("message", (m) => {
+        if (m === "ping") parentPort.postMessage("pong");
+      });
+      `,
+      { eval: true },
+    );
+
+    worker.on("online", () => {
+      gotOnline = true;
+      worker.postMessage("ping");
+    });
+
+    const msg = await once(worker, "message");
+    assertEquals(msg[0], "pong");
+    assertEquals(gotOnline, true);
+
+    await worker.terminate();
+  },
+});
+
+Deno.test({
+  name:
+    "[node/worker_threads] V8 profiling flags in execArgv are accepted and ignored",
+  async fn() {
+    const profilingFlags = [
+      "--heap-prof",
+      "--heap-prof-interval=1000",
+      "--heap-prof-name=foo.heapprofile",
+      "--heap-prof-dir=/tmp",
+      "--cpu-prof",
+      "--cpu-prof-interval=1000",
+      "--cpu-prof-name=foo.cpuprofile",
+      "--cpu-prof-dir=/tmp",
+    ];
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort } = require("node:worker_threads");
+      parentPort.postMessage("ok");
+      `,
+      { eval: true, execArgv: profilingFlags },
+    );
+    const msg = await once(worker, "message");
+    assertEquals(msg[0], "ok");
+    await worker.terminate();
+  },
+});
+
+Deno.test({
+  name:
+    "[node/worker_threads] V8 profiling flags in NODE_OPTIONS env are accepted",
+  async fn() {
+    const worker = new workerThreads.Worker(
+      `
+      const { parentPort } = require("node:worker_threads");
+      parentPort.postMessage("ok");
+      `,
+      {
+        eval: true,
+        env: { NODE_OPTIONS: "--heap-prof --cpu-prof-interval=1000" },
+      },
+    );
+    const msg = await once(worker, "message");
+    assertEquals(msg[0], "ok");
+    await worker.terminate();
+  },
+});
+
+Deno.test({
+  name:
+    "[node/worker_threads] unknown execArgv flags still throw ERR_WORKER_INVALID_EXEC_ARGV",
+  fn() {
+    assertThrows(
+      () =>
+        new workerThreads.Worker("/*noop*/", {
+          eval: true,
+          execArgv: ["--this-flag-does-not-exist"],
+        }),
+      Error,
+      "Initiated Worker with invalid execArgv flags",
+    );
+  },
+});
+
+Deno.test({
+  name:
+    "[node/worker_threads] disallowed NODE_OPTIONS flag with =value is still rejected",
+  fn() {
+    assertThrows(
+      () =>
+        new workerThreads.Worker("/*noop*/", {
+          eval: true,
+          env: { NODE_OPTIONS: "--title=foo" },
+        }),
+      Error,
+      "invalid NODE_OPTIONS env variable",
+    );
+  },
+});
+
+// Placed last: creating a Worker bumps the process-global threadId counter,
+// which the "Worker threadId" test above asserts absolute values for.
+Deno.test("[node/worker_threads] postMessage of non-serializable value throws", async () => {
+  // URL is not [Serializable] per the WHATWG/HTML spec; posting it must throw
+  // a DataCloneError instead of silently delivering `{}`. Regression test for
+  // denoland/deno#35401.
+  const { port1, port2 } = new workerThreads.MessageChannel();
+  try {
+    assertThrows(
+      () => port2.postMessage(new URL("https://example.org/")),
+      DOMException,
+      "Cannot clone object of unsupported type.",
+    );
+  } finally {
+    port1.close();
+    port2.close();
+  }
+
+  // Same must hold for the Worker.postMessage (main thread -> worker) path.
+  const worker = new workerThreads.Worker(
+    new URL("./testdata/worker_threads.mjs", import.meta.url),
+  );
+  try {
+    assertThrows(
+      () => worker.postMessage(new URL("https://example.org/")),
+      DOMException,
+      "Cannot clone object of unsupported type.",
+    );
+  } finally {
+    await worker.terminate();
+  }
+});

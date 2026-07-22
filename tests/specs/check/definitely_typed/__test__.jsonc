@@ -1,0 +1,79 @@
+{
+  "tempDir": true,
+  "tests": {
+    "node_modules_dir_auto": {
+      "steps": [
+        {
+          "args": "run -A ./set_node_modules_dir.ts auto",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "i",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "check main.ts",
+          "output": "type_mismatch.out",
+          "exitCode": 1
+        }
+      ]
+    },
+    "node_modules_dir_none": {
+      // ignored: with node_modules_dir "none", tsc can't resolve the npm pkg
+      // and its @types (TS2307). https://github.com/denoland/deno/issues/36085
+      "ignore": true,
+      "steps": [
+        {
+          "args": "run -A ./set_node_modules_dir.ts none",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "i",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "check main.ts",
+          "output": "type_mismatch.out",
+          "exitCode": 1
+        }
+      ]
+    },
+    "node_modules_dir_manual": {
+      "steps": [
+        {
+          "args": "run -A ./set_node_modules_dir.ts manual",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "i",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "check main.ts",
+          "output": "type_mismatch.out",
+          "exitCode": 1
+        }
+      ]
+    },
+    "respects_ts_types": {
+      // ignored: tsc resolves the .d.ts types (number) instead of respecting
+      // the ts_types field (string). https://github.com/denoland/deno/issues/36085
+      "ignore": true,
+      "steps": [
+        {
+          "args": "run -A ./set_node_modules_dir.ts auto",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "i",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "check ts_types.ts",
+          "output": "ts_types_mismatch.out",
+          "exitCode": 1
+        }
+      ]
+    }
+  }
+}

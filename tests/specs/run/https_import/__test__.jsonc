@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-import --quiet --reload --cert RootCA.pem https_import.ts",
+  "output": "https_import.ts.out"
+}

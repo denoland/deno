@@ -1,0 +1,64 @@
+{
+  "name": "assertion-error",
+  "description": "Error constructor for test and validation frameworks that implements standardized AssertionError specification.",
+  "dist-tags": {
+    "latest": "1.1.0"
+  },
+  "versions": {
+    "1.1.0": {
+      "name": "assertion-error",
+      "version": "1.1.0",
+      "description": "Error constructor for test and validation frameworks that implements standardized AssertionError specification.",
+      "author": {
+        "name": "Jake Luer",
+        "email": "jake@qualiancy.com",
+        "url": "http://qualiancy.com"
+      },
+      "license": "MIT",
+      "types": "./index.d.ts",
+      "repository": {
+        "type": "git",
+        "url": "git+ssh://git@github.com/chaijs/assertion-error.git"
+      },
+      "engines": {
+        "node": "*"
+      },
+      "main": "./index",
+      "scripts": {
+        "test": "make test"
+      },
+      "dependencies": {},
+      "devDependencies": {
+        "component": "*",
+        "typescript": "^2.6.1"
+      },
+      "gitHead": "faa3f8cbbdba74d2760f9d2e95c008ba9ce4812e",
+      "bugs": {
+        "url": "https://github.com/chaijs/assertion-error/issues"
+      },
+      "_id": "assertion-error@1.1.0",
+      "_npmVersion": "5.6.0",
+      "_nodeVersion": "8.8.0",
+      "dist": {
+        "integrity": "sha512-jgsaNduz+ndvGyFt3uSuWqvy4lCnIJiovtouQN5JZHOKCS2QuhEdbcQHFhVksz2N2U9hXJo8odG7ETyWlEeuDw==",
+        "shasum": "e60b6b0e8f301bd97e5375215bda406c85118c0b",
+        "tarball": "http://localhost:4260/assertion-error/assertion-error-1.1.0.tgz"
+      },
+      "directories": {}
+    }
+  },
+  "author": {
+    "name": "Jake Luer",
+    "email": "jake@qualiancy.com",
+    "url": "http://qualiancy.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/chaijs/assertion-error.git"
+  },
+  "homepage": "https://github.com/chaijs/assertion-error#readme",
+  "bugs": {
+    "url": "https://github.com/chaijs/assertion-error/issues"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,65 @@
+{
+  "name": "@pkgjs/parseargs",
+  "dist-tags": {
+    "latest": "0.11.0"
+  },
+  "versions": {
+    "0.11.0": {
+      "name": "@pkgjs/parseargs",
+      "version": "0.11.0",
+      "description": "Polyfill of future proposal for `util.parseArgs()`",
+      "engines": {
+        "node": ">=14"
+      },
+      "main": "index.js",
+      "exports": {
+        ".": "./index.js",
+        "./package.json": "./package.json"
+      },
+      "scripts": {
+        "coverage": "c8 --check-coverage tape 'test/*.js'",
+        "test": "c8 tape 'test/*.js'",
+        "posttest": "eslint .",
+        "fix": "npm run posttest -- --fix"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+ssh://git@github.com/pkgjs/parseargs.git"
+      },
+      "author": "",
+      "license": "MIT",
+      "bugs": {
+        "url": "https://github.com/pkgjs/parseargs/issues"
+      },
+      "devDependencies": {
+        "c8": "^7.10.0",
+        "eslint": "^8.2.0",
+        "eslint-plugin-node-core": "github:iansu/eslint-plugin-node-core",
+        "tape": "^5.2.2"
+      },
+      "gitHead": "1e3a94a5f8fd42e7b56ac4a672adcb224ee3c9ff",
+      "_id": "@pkgjs/parseargs@0.11.0",
+      "_nodeVersion": "16.17.1",
+      "_npmVersion": "8.15.0",
+      "dist": {
+        "integrity": "sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg==",
+        "shasum": "a77ea742fab25775145434eb1d2328cf5013ac33",
+        "tarball": "http://localhost:4260/@pkgjs/parseargs/parseargs-0.11.0.tgz",
+        "fileCount": 17,
+        "unpackedSize": 74173
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "Polyfill of future proposal for `util.parseArgs()`",
+  "homepage": "https://github.com/pkgjs/parseargs#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/pkgjs/parseargs.git"
+  },
+  "bugs": {
+    "url": "https://github.com/pkgjs/parseargs/issues"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,9 @@
+Check mod.js
+TS2769 [ERROR]: No overload matches this call.
+  The last overload gave the following error.
+    Argument of type '123' is not assignable to parameter of type 'BufferEncoding | (ObjectEncodingOptions & { flag?: string | undefined; }) | null | undefined'.
+const _data = fs.readFileSync("./node_builtin.js", 123);
+                                                   ~~~
+    at file:///[WILDCARD]/mod.js:3:52
+
+error: Type checking failed.

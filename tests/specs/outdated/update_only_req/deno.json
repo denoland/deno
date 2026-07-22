@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "@denotest/update-latest-semver": "npm:@denotest/update-latest-semver@^1.0.0"
+  }
+}

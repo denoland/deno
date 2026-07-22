@@ -1,0 +1,3 @@
+[WILDCARD]error: Import "foo" not a dependency
+  hint: If you want to use the npm package, try running `deno add npm:foo`
+    at file:///[WILDCARD]/095_cache_with_bare_import.ts:[WILDCARD]

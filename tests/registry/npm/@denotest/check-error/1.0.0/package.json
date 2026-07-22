@@ -1,0 +1,5 @@
+{
+  "name": "@denotest/check-error",
+  "version": "1.0.0",
+  "types": "./index.d.ts"
+}

@@ -1,0 +1,27 @@
+{
+  "tests": {
+    "root": {
+      "args": "lint",
+      "exitCode": 1,
+      "output": "root.out"
+    },
+    "package_a": {
+      "args": "lint",
+      "cwd": "a",
+      "exitCode": 1,
+      "output": "a.out"
+    },
+    "package_b": {
+      "args": "lint",
+      "cwd": "b",
+      "exitCode": 1,
+      "output": "b.out"
+    },
+    "package_c": {
+      "args": "lint",
+      "cwd": "c",
+      "exitCode": 0,
+      "output": "Checked 1 file\n"
+    }
+  }
+}

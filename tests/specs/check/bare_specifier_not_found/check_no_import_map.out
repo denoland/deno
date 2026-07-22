@@ -1,0 +1,7 @@
+Check [WILDLINE]
+TS2307 [ERROR]: Cannot find module '@scope/BAZ' or its corresponding type declarations.
+import { bar } from "@scope/BAZ"; // => doesn't exist
+                    ~~~~~~~~~~~~
+    at file:///[WILDCARD]/main.ts:1:21
+
+error: Type checking failed.

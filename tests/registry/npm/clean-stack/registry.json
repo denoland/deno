@@ -1,0 +1,68 @@
+{
+  "name": "clean-stack",
+  "description": "Clean up error stack traces",
+  "dist-tags": {
+    "latest": "2.2.0"
+  },
+  "versions": {
+    "2.2.0": {
+      "name": "clean-stack",
+      "version": "2.2.0",
+      "description": "Clean up error stack traces",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sindresorhus/clean-stack.git"
+      },
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=6"
+      },
+      "scripts": {
+        "test": "xo && ava && tsd"
+      },
+      "devDependencies": {
+        "ava": "^1.4.1",
+        "tsd": "^0.7.2",
+        "xo": "^0.24.0"
+      },
+      "browser": {
+        "os": false
+      },
+      "gitHead": "91440c5a1615354fb9419354650937c434eb9f49",
+      "bugs": {
+        "url": "https://github.com/sindresorhus/clean-stack/issues"
+      },
+      "_id": "clean-stack@2.2.0",
+      "_nodeVersion": "10.16.0",
+      "_npmVersion": "6.9.0",
+      "dist": {
+        "integrity": "sha512-4diC9HaTE+KRAMWhDhrGOECgWZxoevMc5TlkObMqNSsVU62PYzXZ/SMTjzyGAFF1YusgxGcSWTEXBhp0CPwQ1A==",
+        "shasum": "ee8472dbb129e727b31e8a10a427dee9dfe4008b",
+        "tarball": "http://localhost:4260/clean-stack/clean-stack-2.2.0.tgz",
+        "fileCount": 5,
+        "unpackedSize": 5508
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/sindresorhus/clean-stack#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sindresorhus/clean-stack.git"
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "bugs": {
+    "url": "https://github.com/sindresorhus/clean-stack/issues"
+  },
+  "license": "MIT"
+}

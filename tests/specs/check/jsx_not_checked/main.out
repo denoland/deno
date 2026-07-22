@@ -1,0 +1,8 @@
+Download [WILDCARD]
+Check [WILDCARD]main.jsx
+TS2345 [ERROR]: Argument of type 'string' is not assignable to parameter of type 'number'.
+console.log(add("1", "2"));
+                ~~~
+    at file:///[WILDCARD]/other.ts:5:17
+
+error: Type checking failed.

@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "browser": {
+      "args": "bundle --quiet --platform=browser main.ts",
+      "output": "browser.out"
+    },
+    "node": {
+      "args": "bundle --quiet main.ts",
+      "output": "node.out"
+    }
+  }
+}

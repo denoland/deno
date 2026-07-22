@@ -1,0 +1,16 @@
+{
+  "tests": {
+    "run": {
+      "args": "run main.js",
+      "output": "main.out"
+    },
+    "check": {
+      // ignored: tsc doesn't resolve the synthesized types for the imported
+      // .wasm module. https://github.com/denoland/deno/issues/36085
+      "ignore": true,
+      "args": "check check.ts",
+      "output": "check.out",
+      "exitCode": 1
+    }
+  }
+}

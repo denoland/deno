@@ -1,0 +1,60 @@
+{
+  "name": "graceful-fs",
+  "description": "A drop-in replacement for fs, making various improvements.",
+  "dist-tags": {
+    "latest": "4.2.10"
+  },
+  "versions": {
+    "4.2.10": {
+      "name": "graceful-fs",
+      "description": "A drop-in replacement for fs, making various improvements.",
+      "version": "4.2.10",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/isaacs/node-graceful-fs.git"
+      },
+      "main": "graceful-fs.js",
+      "directories": {
+        "test": "test"
+      },
+      "scripts": {
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "postpublish": "git push origin --follow-tags",
+        "test": "nyc --silent node test.js | tap -c -",
+        "posttest": "nyc report"
+      },
+      "license": "ISC",
+      "devDependencies": {
+        "import-fresh": "^2.0.0",
+        "mkdirp": "^0.5.0",
+        "rimraf": "^2.2.8",
+        "tap": "^12.7.0"
+      },
+      "gitHead": "1f19b0b467e4144260b397343cd60f37c5bdcfda",
+      "bugs": {
+        "url": "https://github.com/isaacs/node-graceful-fs/issues"
+      },
+      "_id": "graceful-fs@4.2.10",
+      "_nodeVersion": "17.6.0",
+      "_npmVersion": "8.5.3",
+      "dist": {
+        "integrity": "sha512-9ByhssR2fPVsNZj478qUUbKfmL0+t5BDVyjShtyZZLiK7ZDAArFFfopyOTj0M05wE2tJPisA4iTnnXl2YoPvOA==",
+        "shasum": "147d3a006da4ca3ce14728c7aefc287c367d7a6c",
+        "tarball": "http://localhost:4260/graceful-fs/graceful-fs-4.2.10.tgz",
+        "fileCount": 7,
+        "unpackedSize": 32470
+      },
+      "_hasShrinkwrap": false
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isaacs/node-graceful-fs.git"
+  },
+  "homepage": "https://github.com/isaacs/node-graceful-fs#readme",
+  "bugs": {
+    "url": "https://github.com/isaacs/node-graceful-fs/issues"
+  },
+  "license": "ISC"
+}

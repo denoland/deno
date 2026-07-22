@@ -1,0 +1,49 @@
+[UNORDERED_START]
+Download http://127.0.0.1:4250/@denotest/subset-type-graph/meta.json
+Download http://127.0.0.1:4250/@denotest/subset-type-graph-invalid/meta.json
+Download http://127.0.0.1:4250/@denotest/subset-type-graph/0.1.0_meta.json
+Download http://127.0.0.1:4250/@denotest/subset-type-graph-invalid/0.1.0_meta.json
+[UNORDERED_END]
+[UNORDERED_START]
+Download http://127.0.0.1:4250/@denotest/subset-type-graph/0.1.0/mod.ts
+Download http://127.0.0.1:4250/@denotest/subset-type-graph-invalid/0.1.0/mod.ts
+[UNORDERED_END]
+Check [WILDCARD]main.ts
+TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
+const invalidTypeCheck: number = "";
+      ~~~~~~~~~~~~~~~~
+    at http://127.0.0.1:4250/@denotest/subset-type-graph-invalid/0.1.0/mod.ts:11:7
+
+TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
+const error1: string = new Foo1().method();
+      ~~~~~~
+    at file:///[WILDCARD]/subset_type_graph/main.ts:5:7
+
+TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
+const error2: string = new Foo2().method();
+      ~~~~~~
+    at file:///[WILDCARD]/subset_type_graph/main.ts:6:7
+
+TS2551 [ERROR]: Property 'method2' does not exist on type 'Foo'. Did you mean 'method'?
+new Foo1().method2();
+           ~~~~~~~
+    at file:///[WILDCARD]/subset_type_graph/main.ts:12:12
+
+    'method' is declared here.
+      method(): number {
+      ~~~~~~
+        at http://127.0.0.1:4250/@denotest/subset-type-graph/0.1.0/mod.ts:8:3
+
+TS2551 [ERROR]: Property 'method2' does not exist on type 'Foo'. Did you mean 'method'?
+new Foo2().method2();
+           ~~~~~~~
+    at file:///[WILDCARD]/subset_type_graph/main.ts:13:12
+
+    'method' is declared here.
+      method() {
+      ~~~~~~
+        at http://127.0.0.1:4250/@denotest/subset-type-graph-invalid/0.1.0/mod.ts:2:3
+
+Found 5 errors.
+
+error: Type checking failed.

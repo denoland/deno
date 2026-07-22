@@ -1,0 +1,589 @@
+// Copyright 2018-2026 the Deno authors. MIT license.
+
+use std::cell::RefCell;
+use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::rc::Rc;
+use std::sync::Arc;
+
+use capacity_builder::StringBuilder;
+use deno_error::JsErrorBox;
+use deno_lockfile::NpmPackageDependencyLockfileInfo;
+use deno_lockfile::NpmPackageLockfileInfo;
+use deno_npm::NpmResolutionPackage;
+use deno_npm::registry::NpmPackageInfo;
+use deno_npm::registry::NpmRegistryApi;
+use deno_npm::registry::NpmRegistryPackageInfoLoadError;
+use deno_npm::resolution::AddPkgReqsOptions;
+use deno_npm::resolution::DefaultTarballUrlProvider;
+use deno_npm::resolution::NpmResolutionError;
+use deno_npm::resolution::NpmResolutionSnapshot;
+use deno_npm::resolution::UnmetPeerDepDiagnostic;
+use deno_npm_cache::NpmCacheHttpClient;
+use deno_npm_cache::NpmCacheSys;
+use deno_npm_cache::RegistryInfoProvider;
+use deno_resolver::display::DisplayTreeNode;
+use deno_resolver::factory::NpmVersionResolverRc;
+use deno_resolver::lockfile::LockfileLock;
+use deno_resolver::lockfile::LockfileSys;
+use deno_resolver::npm::managed::NpmResolutionCell;
+use deno_semver::SmallStackString;
+use deno_semver::StackString;
+use deno_semver::jsr::JsrDepPackageReq;
+use deno_semver::package::PackageKind;
+use deno_semver::package::PackageNv;
+use deno_semver::package::PackageReq;
+use deno_terminal::colors;
+use deno_unsync::sync::AtomicFlag;
+use deno_unsync::sync::TaskQueue;
+use parking_lot::Mutex;
+
+pub struct AddPkgReqsResult {
+  /// Results from adding the individual packages.
+  ///
+  /// The indexes of the results correspond to the indexes of the provided
+  /// package requirements.
+  pub results: Vec<Result<PackageNv, NpmResolutionError>>,
+  /// The final result of resolving and caching all the package requirements.
+  pub dependencies_result: Result<(), JsErrorBox>,
+}
+
+pub type HasJsExecutionStartedFlagRc = Arc<HasJsExecutionStartedFlag>;
+
+/// A flag that indicates if JS execution has started, which
+/// will tell the npm resolution to not do a deduplication pass
+/// and instead npm resolution should only be additive.
+#[derive(Debug, Default)]
+pub struct HasJsExecutionStartedFlag(AtomicFlag);
+
+impl HasJsExecutionStartedFlag {
+  #[inline(always)]
+  pub fn raise(&self) -> bool {
+    self.0.raise()
+  }
+
+  #[inline(always)]
+  pub fn is_raised(&self) -> bool {
+    self.0.is_raised()
+  }
+}
+
+#[sys_traits::auto_impl]
+pub trait NpmResolutionInstallerSys: LockfileSys + NpmCacheSys {}
+
+/// Accumulates unmet peer dependency diagnostics produced during npm
+/// resolution so they can be rendered once, after the module graph (and thus
+/// the importing modules) is known. See `take_unmet_peer_diagnostics`.
+#[derive(Debug, Default)]
+struct UnmetPeerDiagnosticsState {
+  /// Diagnostics that have been collected but not yet drained for display.
+  pending: Vec<UnmetPeerDepDiagnostic>,
+  /// Every diagnostic ever collected, used to avoid reporting the same issue
+  /// more than once across the multiple resolution passes that happen while a
+  /// graph is built (each pass re-reports the full set).
+  seen: HashSet<UnmetPeerDepDiagnostic>,
+}
+
+/// Updates the npm resolution with the provided package requirements.
+#[derive(Debug)]
+pub struct NpmResolutionInstaller<
+  TNpmCacheHttpClient: NpmCacheHttpClient,
+  TSys: NpmResolutionInstallerSys,
+> {
+  has_js_execution_started_flag: HasJsExecutionStartedFlagRc,
+  npm_version_resolver: NpmVersionResolverRc,
+  registry_info_provider: Arc<RegistryInfoProvider<TNpmCacheHttpClient, TSys>>,
+  reporter: Option<Arc<dyn deno_npm::resolution::Reporter>>,
+  resolution: Arc<NpmResolutionCell>,
+  maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
+  update_queue: TaskQueue,
+  unmet_peer_diagnostics: Mutex<UnmetPeerDiagnosticsState>,
+}
+
+impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
+  NpmResolutionInstaller<TNpmCacheHttpClient, TSys>
+{
+  pub fn new(
+    has_js_execution_started_flag: HasJsExecutionStartedFlagRc,
+    npm_version_resolver: NpmVersionResolverRc,
+    registry_info_provider: Arc<
+      RegistryInfoProvider<TNpmCacheHttpClient, TSys>,
+    >,
+    reporter: Option<Arc<dyn deno_npm::resolution::Reporter>>,
+    resolution: Arc<NpmResolutionCell>,
+    maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
+  ) -> Self {
+    Self {
+      has_js_execution_started_flag,
+      npm_version_resolver,
+      registry_info_provider,
+      reporter,
+      resolution,
+      maybe_lockfile,
+      update_queue: Default::default(),
+      unmet_peer_diagnostics: Default::default(),
+    }
+  }
+
+  /// Drains and returns the unmet peer dependency diagnostics collected since
+  /// the last call. Callers are expected to render these (see
+  /// [`format_unmet_peer_dep_warning`]); the diagnostics are deduplicated so a
+  /// given issue is only ever returned once for the lifetime of the installer.
+  pub fn take_unmet_peer_diagnostics(&self) -> Vec<UnmetPeerDepDiagnostic> {
+    std::mem::take(&mut self.unmet_peer_diagnostics.lock().pending)
+  }
+
+  pub async fn cache_package_info(
+    &self,
+    package_name: &str,
+  ) -> Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError> {
+    // this will internally cache the package information
+    self.registry_info_provider.package_info(package_name).await
+  }
+
+  /// Whether only cached registry data may be used (`--cached-only`).
+  pub fn is_cached_only(&self) -> bool {
+    self.registry_info_provider.is_cached_only()
+  }
+
+  /// Run a resolution install if the npm snapshot is in a pending state
+  /// due to a config file change.
+  pub async fn install_if_pending(&self) -> Result<(), NpmResolutionError> {
+    self.add_package_reqs_inner(&[]).await.1
+  }
+
+  pub async fn add_package_reqs(
+    &self,
+    package_reqs: &[PackageReq],
+  ) -> AddPkgReqsResult {
+    let (results, dependencies_result) =
+      self.add_package_reqs_inner(package_reqs).await;
+    AddPkgReqsResult {
+      results,
+      dependencies_result: dependencies_result.map_err(JsErrorBox::from_err),
+    }
+  }
+
+  async fn add_package_reqs_inner(
+    &self,
+    package_reqs: &[PackageReq],
+  ) -> (
+    Vec<Result<PackageNv, NpmResolutionError>>,
+    Result<(), NpmResolutionError>,
+  ) {
+    // only allow one thread in here at a time
+    let _snapshot_lock = self.update_queue.acquire().await;
+    let result = self.add_package_reqs_to_snapshot(package_reqs).await;
+
+    (
+      result.results,
+      result.dep_graph_result.map(|snapshot| {
+        self.resolution.mark_not_pending();
+        self.resolution.set_snapshot(snapshot);
+      }),
+    )
+  }
+
+  async fn add_package_reqs_to_snapshot(
+    &self,
+    package_reqs: &[PackageReq],
+  ) -> deno_npm::resolution::AddPkgReqsResult {
+    let snapshot = self.resolution.snapshot();
+    // Skip npm resolution when the lockfile snapshot already resolves every
+    // requirement and either the lockfile is unchanged, or we are offline
+    // (`--cached-only`). The offline case is important: a lockfile can be
+    // flagged as changed for reasons unrelated to npm — most notably a `links`
+    // section that older deno versions did not write and is re-derived from the
+    // workspace config on load. Re-resolving then would need to fetch registry
+    // metadata that an offline cache does not contain, failing the run even
+    // though the lockfile's npm section is already complete. Online, the
+    // re-resolution still runs so the lockfile is brought up to date.
+    if (!self.resolution.is_pending()
+      || self.registry_info_provider.is_cached_only())
+      && package_reqs
+        .iter()
+        .all(|req| snapshot.package_reqs().contains_key(req))
+    {
+      log::debug!("Snapshot already up to date. Skipping npm resolution.");
+      return deno_npm::resolution::AddPkgReqsResult {
+        results: package_reqs
+          .iter()
+          .map(|req| Ok(snapshot.package_reqs().get(req).unwrap().clone()))
+          .collect(),
+        dep_graph_result: Ok(snapshot),
+        unmet_peer_diagnostics: Default::default(),
+      };
+    }
+    log::debug!(
+      /* this string is used in tests */
+      "Running npm resolution."
+    );
+    let should_dedup = !self.has_js_execution_started_flag.is_raised();
+    let result = snapshot
+      .add_pkg_reqs(
+        self.registry_info_provider.as_ref(),
+        AddPkgReqsOptions {
+          package_reqs,
+          should_dedup,
+          version_resolver: &self.npm_version_resolver,
+        },
+        self.reporter.as_deref(),
+      )
+      .await;
+    let result = match &result.dep_graph_result {
+      Err(NpmResolutionError::Resolution(err))
+        if self.registry_info_provider.mark_force_reload() =>
+      {
+        log::debug!("{err:#}");
+        log::debug!("npm resolution failed. Trying again...");
+
+        // try again with forced reloading
+        let snapshot = self.resolution.snapshot();
+        snapshot
+          .add_pkg_reqs(
+            self.registry_info_provider.as_ref(),
+            AddPkgReqsOptions {
+              package_reqs,
+              should_dedup,
+              version_resolver: &self.npm_version_resolver,
+            },
+            self.reporter.as_deref(),
+          )
+          .await
+      }
+      _ => result,
+    };
+
+    self.registry_info_provider.clear_memory_cache();
+
+    // Suppress peer dependency warnings for packages that the user has
+    // explicitly overridden in the root package.json "overrides" field. An
+    // override is an authoritative resolution directive, so a peer mismatch
+    // against an overridden version is intentional and shouldn't be reported.
+    // See https://github.com/denoland/deno/issues/32801.
+    let overrides = &self.npm_version_resolver.overrides;
+    // Only allocate when there are overrides to filter against; otherwise
+    // display the diagnostics directly without copying them.
+    let filtered: Vec<UnmetPeerDepDiagnostic>;
+    let diagnostics: &[UnmetPeerDepDiagnostic] = if overrides.is_empty() {
+      &result.unmet_peer_diagnostics
+    } else {
+      filtered = result
+        .unmet_peer_diagnostics
+        .iter()
+        .filter(|d| {
+          overrides
+            .get_override_for(&d.dependency.name, Some(&d.resolved))
+            .is_none()
+        })
+        .cloned()
+        .collect();
+      &filtered
+    };
+
+    // Stash the diagnostics rather than printing them here. npm resolution
+    // happens deep inside the graph build and is re-run multiple times, and at
+    // this point we don't yet know which user module imported the offending
+    // package. The diagnostics are drained and rendered later, once the graph
+    // is available. See `take_unmet_peer_diagnostics`.
+    if !diagnostics.is_empty() {
+      let mut state = self.unmet_peer_diagnostics.lock();
+      for diagnostic in diagnostics {
+        if state.seen.insert(diagnostic.clone()) {
+          state.pending.push(diagnostic.clone());
+        }
+      }
+    }
+
+    if let Ok(snapshot) = &result.dep_graph_result {
+      self.populate_lockfile_from_snapshot(snapshot);
+    }
+
+    result
+  }
+
+  fn populate_lockfile_from_snapshot(&self, snapshot: &NpmResolutionSnapshot) {
+    fn npm_package_to_lockfile_info(
+      pkg: &NpmResolutionPackage,
+    ) -> NpmPackageLockfileInfo {
+      let dependencies = pkg
+        .dependencies
+        .iter()
+        .filter_map(|(name, id)| {
+          if pkg.optional_dependencies.contains(name) {
+            None
+          } else {
+            Some(NpmPackageDependencyLockfileInfo {
+              name: name.clone(),
+              id: id.as_serialized(),
+            })
+          }
+        })
+        .collect();
+
+      let optional_dependencies = pkg
+        .optional_dependencies
+        .iter()
+        .filter_map(|name| {
+          let id = pkg.dependencies.get(name)?;
+          Some(NpmPackageDependencyLockfileInfo {
+            name: name.clone(),
+            id: id.as_serialized(),
+          })
+        })
+        .collect();
+
+      let optional_peers = pkg
+        .optional_peer_dependencies
+        .iter()
+        .filter_map(|name| {
+          let id = pkg.dependencies.get(name)?;
+          Some(NpmPackageDependencyLockfileInfo {
+            name: name.clone(),
+            id: id.as_serialized(),
+          })
+        })
+        .collect();
+      NpmPackageLockfileInfo {
+        serialized_id: pkg.id.as_serialized(),
+        integrity: pkg.dist.as_ref().and_then(|dist| {
+          dist.integrity().for_lockfile().map(|s| s.into_owned())
+        }),
+        dependencies,
+        optional_dependencies,
+        os: pkg.system.os.clone(),
+        cpu: pkg.system.cpu.clone(),
+        tarball: pkg.dist.as_ref().and_then(|dist| {
+          // Omit the tarball URL if it's the standard NPM registry URL
+          let tarbal_url_provider =
+            deno_npm::resolution::NpmRegistryDefaultTarballUrlProvider;
+          if dist.tarball == tarbal_url_provider.default_tarball_url(&pkg.id.nv)
+          {
+            None
+          } else {
+            Some(StackString::from_str(&dist.tarball))
+          }
+        }),
+        deprecated: pkg.is_deprecated,
+        bin: pkg.has_bin,
+        scripts: pkg.has_scripts,
+        optional_peers,
+      }
+    }
+
+    let Some(lockfile) = &self.maybe_lockfile else {
+      return;
+    };
+
+    let mut lockfile = lockfile.lock();
+    lockfile.content.packages.npm.clear();
+    lockfile
+      .content
+      .packages
+      .specifiers
+      .retain(|req, _| match req.kind {
+        PackageKind::Npm => false,
+        PackageKind::Jsr => true,
+      });
+    for (package_req, nv) in snapshot.package_reqs() {
+      let id = &snapshot.resolve_package_from_deno_module(nv).unwrap().id;
+      lockfile.insert_package_specifier(
+        JsrDepPackageReq::npm(package_req.clone()),
+        {
+          StringBuilder::<SmallStackString>::build(|builder| {
+            builder.append(&id.nv.version);
+            builder.append(&id.peer_dependencies);
+          })
+          .unwrap()
+        },
+      );
+    }
+    for package in snapshot.all_packages_for_every_system() {
+      lockfile.insert_npm_package(npm_package_to_lockfile_info(package));
+    }
+  }
+}
+
+/// Formats the unmet peer dependency diagnostics into a warning message ready
+/// to be logged.
+///
+/// `importers` optionally maps a top-level package (its `name@version` string)
+/// to the user modules that import it, so the warning can point at the source
+/// of a transitively introduced package. Pass an empty map when the importing
+/// modules are not known (e.g. when resolving `package.json` dependencies).
+pub fn format_unmet_peer_dep_warning(
+  diagnostics: &[UnmetPeerDepDiagnostic],
+  importers: &HashMap<String, Vec<String>>,
+) -> String {
+  let root_node = peer_dep_diagnostics_to_display_tree(diagnostics, importers);
+  let mut text = String::new();
+  _ = root_node.print(&mut text);
+  // Append a short, actionable explanation. The fix (an "overrides" entry) is
+  // otherwise undocumented from the warning itself. See
+  // https://github.com/denoland/deno/issues/35196.
+  text.push_str(
+    "\nThese packages were resolved to a version that does not satisfy a peer \
+     dependency constraint, which can cause runtime errors. To silence this \
+     warning, install a compatible version or add an \"overrides\" entry to \
+     your package.json or deno.json.\n",
+  );
+  text.push_str("Learn more: https://docs.deno.com/go/peer-deps");
+  text
+}
+
+fn peer_dep_diagnostics_to_display_tree(
+  diagnostics: &[UnmetPeerDepDiagnostic],
+  importers: &HashMap<String, Vec<String>>,
+) -> DisplayTreeNode {
+  struct MergedNode {
+    text: Rc<String>,
+    children: RefCell<Vec<Rc<MergedNode>>>,
+  }
+
+  // combine the nodes into a unified tree
+  let mut nodes: BTreeMap<Rc<String>, Rc<MergedNode>> = BTreeMap::new();
+  let mut top_level_nodes = Vec::new();
+
+  for diagnostic in diagnostics {
+    let text = Rc::new(format!(
+      "peer {}: resolved to {}",
+      diagnostic.dependency, diagnostic.resolved
+    ));
+    let mut node = Rc::new(MergedNode {
+      text: text.clone(),
+      children: Default::default(),
+    });
+    let mut found_ancestor = false;
+    for ancestor in &diagnostic.ancestors {
+      let nv_string = Rc::new(ancestor.to_string());
+      if let Some(current_node) = nodes.get(&nv_string) {
+        {
+          let mut children = current_node.children.borrow_mut();
+          if let Err(insert_index) =
+            children.binary_search_by(|n| n.text.cmp(&node.text))
+          {
+            children.insert(insert_index, node);
+          }
+        }
+        node = current_node.clone();
+        found_ancestor = true;
+        break;
+      } else {
+        let current_node = Rc::new(MergedNode {
+          text: nv_string.clone(),
+          children: RefCell::new(vec![node]),
+        });
+        nodes.insert(nv_string.clone(), current_node.clone());
+        node = current_node;
+      }
+    }
+    if !found_ancestor {
+      top_level_nodes.push(node);
+    }
+  }
+
+  // now output it
+  let mut root_node = DisplayTreeNode {
+    text: format!(
+      "{} The following peer dependency issues were found:",
+      colors::yellow("Warning")
+    ),
+    children: Vec::new(),
+  };
+
+  fn convert_node(node: &Rc<MergedNode>) -> DisplayTreeNode {
+    DisplayTreeNode {
+      text: node.text.to_string(),
+      children: node.children.borrow().iter().map(convert_node).collect(),
+    }
+  }
+
+  for top_level_node in top_level_nodes {
+    let mut node = convert_node(&top_level_node);
+    // Annotate the top-level package with the user module(s) that import it,
+    // which is the part the warning otherwise omits.
+    if let Some(referrers) = importers.get(top_level_node.text.as_str()) {
+      node.text = format!("{} ({})", node.text, format_importers(referrers));
+    }
+    root_node.children.push(node);
+  }
+
+  root_node
+}
+
+/// Renders the list of importing modules for a package, capping the number
+/// shown so the warning stays readable.
+fn format_importers(referrers: &[String]) -> String {
+  const MAX_SHOWN: usize = 2;
+  let shown = referrers
+    .iter()
+    .take(MAX_SHOWN)
+    .cloned()
+    .collect::<Vec<_>>()
+    .join(", ");
+  if referrers.len() > MAX_SHOWN {
+    format!(
+      "imported by {} and {} other{}",
+      shown,
+      referrers.len() - MAX_SHOWN,
+      if referrers.len() - MAX_SHOWN == 1 {
+        ""
+      } else {
+        "s"
+      }
+    )
+  } else {
+    format!("imported by {}", shown)
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use deno_semver::Version;
+  use deno_semver::package::PackageNv;
+
+  use super::*;
+
+  #[test]
+  fn same_ancestor_peer_dep_message() {
+    let peer_deps = Vec::from([
+      UnmetPeerDepDiagnostic {
+        ancestors: vec![PackageNv::from_str("a@1.0.0").unwrap()],
+        dependency: PackageReq::from_str("b@*").unwrap(),
+        resolved: Version::parse_standard("1.0.0").unwrap(),
+      },
+      UnmetPeerDepDiagnostic {
+        // same ancestor as above
+        ancestors: vec![PackageNv::from_str("a@1.0.0").unwrap()],
+        dependency: PackageReq::from_str("c@*").unwrap(),
+        resolved: Version::parse_standard("1.0.0").unwrap(),
+      },
+    ]);
+    let display_tree =
+      peer_dep_diagnostics_to_display_tree(&peer_deps, &HashMap::new());
+    assert_eq!(display_tree.children.len(), 1);
+    assert_eq!(display_tree.children[0].children.len(), 2);
+  }
+
+  #[test]
+  fn annotates_top_level_importers() {
+    let peer_deps = Vec::from([UnmetPeerDepDiagnostic {
+      ancestors: vec![PackageNv::from_str("a@1.0.0").unwrap()],
+      dependency: PackageReq::from_str("b@*").unwrap(),
+      resolved: Version::parse_standard("1.0.0").unwrap(),
+    }]);
+    let mut importers = HashMap::new();
+    importers.insert(
+      "a@1.0.0".to_string(),
+      vec!["https://deno.land/x/dev/mod.js".to_string()],
+    );
+    let display_tree =
+      peer_dep_diagnostics_to_display_tree(&peer_deps, &importers);
+    assert_eq!(display_tree.children.len(), 1);
+    assert_eq!(
+      display_tree.children[0].text,
+      "a@1.0.0 (imported by https://deno.land/x/dev/mod.js)"
+    );
+  }
+}

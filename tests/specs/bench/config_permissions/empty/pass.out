@@ -1,0 +1,10 @@
+Check [WILDCARD]main.ts
+    CPU | [WILDCARD]
+Runtime | Deno [WILDCARD] ([WILDCARD])
+
+[WILDCARD]/main.ts
+
+| benchmark                 | time/iter (avg) |        iter/s |      (min … max)      |      p75 |      p99 |     p995 |
+| ------------------------- | --------------- | ------------- | --------------------- | -------- | -------- | -------- |
+| empty permissions bench   | [WILDCARD] | [WILDCARD] | ([WILDCARD] … [WILDCARD]) | [WILDCARD] | [WILDCARD] | [WILDCARD] |
+

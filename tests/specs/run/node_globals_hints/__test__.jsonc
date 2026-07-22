@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "__dirname": {
+      "args": "run dirname.js",
+      "output": "dirname.out",
+      "exitCode": 1
+    },
+    "__filename": {
+      "args": "run filename.js",
+      "output": "filename.out",
+      "exitCode": 1
+    }
+  }
+}

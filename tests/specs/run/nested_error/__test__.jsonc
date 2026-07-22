@@ -1,0 +1,5 @@
+{
+  "args": "run nested_error/main.ts",
+  "output": "nested_error/main.ts.out",
+  "exitCode": 1
+}

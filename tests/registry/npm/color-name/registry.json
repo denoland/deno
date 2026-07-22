@@ -1,0 +1,56 @@
+{
+  "name": "color-name",
+  "description": "A list of color names and its values",
+  "dist-tags": {
+    "latest": "1.1.4"
+  },
+  "versions": {
+    "1.1.4": {
+      "name": "color-name",
+      "version": "1.1.4",
+      "description": "A list of color names and its values",
+      "main": "index.js",
+      "scripts": {
+        "test": "node test.js"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+ssh://git@github.com/colorjs/color-name.git"
+      },
+      "author": {
+        "name": "DY",
+        "email": "dfcreative@gmail.com"
+      },
+      "license": "MIT",
+      "bugs": {
+        "url": "https://github.com/colorjs/color-name/issues"
+      },
+      "gitHead": "4536ce5944f56659a2dfb2198eaf81b5ad5f2ad9",
+      "_id": "color-name@1.1.4",
+      "_npmVersion": "6.4.1",
+      "_nodeVersion": "8.11.1",
+      "dist": {
+        "integrity": "sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA==",
+        "shasum": "c2a09a87acbde69543de6f63fa3995c826c536a2",
+        "tarball": "http://localhost:4260/color-name/color-name-1.1.4.tgz",
+        "fileCount": 4,
+        "unpackedSize": 6693
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/colorjs/color-name",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/colorjs/color-name.git"
+  },
+  "author": {
+    "name": "DY",
+    "email": "dfcreative@gmail.com"
+  },
+  "bugs": {
+    "url": "https://github.com/colorjs/color-name/issues"
+  },
+  "license": "MIT"
+}

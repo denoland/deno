@@ -1,0 +1,5 @@
+// Regression test for https://github.com/denoland/deno/issues/23041
+{
+  "args": "test main.js",
+  "output": "main.out"
+}

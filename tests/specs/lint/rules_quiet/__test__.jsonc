@@ -1,0 +1,5 @@
+{
+  "args": "lint --rules -q",
+  "output": "expected_rules.out",
+  "exitCode": 0
+}

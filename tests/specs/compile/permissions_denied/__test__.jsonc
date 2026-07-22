@@ -1,0 +1,28 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DYLD_FALLBACK_LIBRARY_PATH": "",
+    "LD_LIBRARY_PATH": ""
+  },
+  "steps": [{
+    "if": "unix",
+    "args": "compile --output main main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "unix",
+    "commandName": "./main",
+    "args": [],
+    "exitCode": 1,
+    "output": "main.out"
+  }, {
+    "if": "windows",
+    "args": "compile --output main.exe main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "windows",
+    "commandName": "./main.exe",
+    "args": [],
+    "exitCode": 1,
+    "output": "main.out"
+  }]
+}

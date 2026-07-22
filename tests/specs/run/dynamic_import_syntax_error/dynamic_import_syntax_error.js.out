@@ -1,0 +1,4 @@
+error: Uncaught (in promise) SyntaxError: Unexpected reserved word at [WILDCARD]/dynamic_import_syntax_error_import.js:3:3
+await import("./dynamic_import_syntax_error_import.js");
+^
+    at async [WILDCARD]/dynamic_import_syntax_error.js:1:1

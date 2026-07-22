@@ -1,0 +1,6 @@
+error: Uncaught (in promise) AggregateError: boom
+    AggregateError: boom
+        at file:///[WILDCARD]/error_cause_recursive_aggregate_self.ts:3:15
+const error = new AggregateError([], "boom");
+              ^
+    at file:///[WILDCARD]/error_cause_recursive_aggregate_self.ts:3:15

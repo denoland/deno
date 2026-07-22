@@ -1,0 +1,5 @@
+{
+  "args": "bench clear_timeout.ts",
+  "output": "clear_timeout.out",
+  "exitCode": 0
+}

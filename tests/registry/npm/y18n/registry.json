@@ -1,0 +1,71 @@
+{
+  "name": "y18n",
+  "description": "the bare-bones internationalization library used by yargs",
+  "dist-tags": {
+    "latest": "4.0.3",
+    "latest-4": "4.0.3"
+  },
+  "versions": {
+    "4.0.3": {
+      "name": "y18n",
+      "version": "4.0.3",
+      "description": "the bare-bones internationalization library used by yargs",
+      "main": "index.js",
+      "scripts": {
+        "pretest": "standard",
+        "test": "nyc mocha",
+        "coverage": "nyc report --reporter=text-lcov | coveralls",
+        "release": "standard-version"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+ssh://git@github.com/yargs/y18n.git"
+      },
+      "author": {
+        "name": "Ben Coe",
+        "email": "ben@npmjs.com"
+      },
+      "license": "ISC",
+      "bugs": {
+        "url": "https://github.com/yargs/y18n/issues"
+      },
+      "devDependencies": {
+        "chai": "^4.0.1",
+        "coveralls": "^3.0.0",
+        "mocha": "^4.0.1",
+        "nyc": "^11.0.1",
+        "rimraf": "^2.5.0",
+        "standard": "^10.0.0-beta.0",
+        "standard-version": "^4.2.0"
+      },
+      "readme": "# y18n\n\n[![Build Status][travis-image]][travis-url]\n[![Coverage Status][coveralls-image]][coveralls-url]\n[![NPM version][npm-image]][npm-url]\n[![js-standard-style][standard-image]][standard-url]\n[![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg)](https://conventionalcommits.org)\n\nThe bare-bones internationalization library used by yargs.\n\nInspired by [i18n](https://www.npmjs.com/package/i18n).\n\n## Examples\n\n_simple string translation:_\n\n```js\nvar __ = require('y18n').__\n\nconsole.log(__('my awesome string %s', 'foo'))\n```\n\noutput:\n\n`my awesome string foo`\n\n_using tagged template literals_\n\n```js\nvar __ = require('y18n').__\nvar str = 'foo'\n\nconsole.log(__`my awesome string ${str}`)\n```\n\noutput:\n\n`my awesome string foo`\n\n_pluralization support:_\n\n```js\nvar __n = require('y18n').__n\n\nconsole.log(__n('one fish %s', '%d fishes %s', 2, 'foo'))\n```\n\noutput:\n\n`2 fishes foo`\n\n## JSON Language Files\n\nThe JSON language files should be stored in a `./locales` folder.\nFile names correspond to locales, e.g., `en.json`, `pirate.json`.\n\nWhen strings are observed for the first time they will be\nadded to the JSON file corresponding to the current locale.\n\n## Methods\n\n### require('y18n')(config)\n\nCreate an instance of y18n with the config provided, options include:\n\n* `directory`: the locale directory, default `./locales`.\n* `updateFiles`: should newly observed strings be updated in file, default `true`.\n* `locale`: what locale should be used.\n* `fallbackToLanguage`: should fallback to a language-only file (e.g. `en.json`)\n  be allowed if a file matching the locale does not exist (e.g. `en_US.json`),\n  default `true`.\n\n### y18n.\\_\\_(str, arg, arg, arg)\n\nPrint a localized string, `%s` will be replaced with `arg`s.\n\nThis function can also be used as a tag for a template literal. You can use it\nlike this: <code>__&#96;hello ${'world'}&#96;</code>. This will be equivalent to\n`__('hello %s', 'world')`.\n\n### y18n.\\_\\_n(singularString, pluralString, count, arg, arg, arg)\n\nPrint a localized string with appropriate pluralization. If `%d` is provided\nin the string, the `count` will replace this placeholder.\n\n### y18n.setLocale(str)\n\nSet the current locale being used.\n\n### y18n.getLocale()\n\nWhat locale is currently being used?\n\n### y18n.updateLocale(obj)\n\nUpdate the current locale with the key value pairs in `obj`.\n\n## License\n\nISC\n\n[travis-url]: https://travis-ci.org/yargs/y18n\n[travis-image]: https://img.shields.io/travis/yargs/y18n.svg\n[coveralls-url]: https://coveralls.io/github/yargs/y18n\n[coveralls-image]: https://img.shields.io/coveralls/yargs/y18n.svg\n[npm-url]: https://npmjs.org/package/y18n\n[npm-image]: https://img.shields.io/npm/v/y18n.svg\n[standard-image]: https://img.shields.io/badge/code%20style-standard-brightgreen.svg\n[standard-url]: https://github.com/feross/standard\n",
+      "readmeFilename": "README.md",
+      "gitHead": "0aa97c508ea31efadd2a27f98fed6873eefc963e",
+      "_id": "y18n@4.0.3",
+      "_nodeVersion": "12.21.0",
+      "_npmVersion": "6.14.11",
+      "dist": {
+        "integrity": "sha512-JKhqTOwSrqNA1NY5lSztJ1GrBiUodLMmIZuLiDaMRJ+itFd+ABVE8XBjOvIWL+rSqNDC74LCSFmlb/U4UZ4hJQ==",
+        "shasum": "b5f259c82cd6e336921efd7bfd8bf560de9eeedf",
+        "tarball": "http://localhost:4260/y18n/y18n-4.0.3.tgz",
+        "fileCount": 5,
+        "unpackedSize": 10991
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/yargs/y18n",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yargs/y18n.git"
+  },
+  "author": {
+    "name": "Ben Coe",
+    "email": "bencoe@gmail.com"
+  },
+  "bugs": {
+    "url": "https://github.com/yargs/y18n/issues"
+  },
+  "license": "ISC"
+}

@@ -1,0 +1,38 @@
+Check [WILDCARD]exit_sanitizer.ts
+running 3 tests from [WILDCARD]/exit_sanitizer.ts
+exit(0) ... FAILED ([WILDCARD])
+exit(1) ... FAILED ([WILDCARD])
+exit(2) ... FAILED ([WILDCARD])
+
+ ERRORS 
+
+exit(0) => [WILDCARD]/exit_sanitizer.ts:[WILDCARD]
+error: Error: Test case attempted to exit with exit code: 0
+  Deno.exit(0);
+       ^
+    at [WILDCARD]
+    at [WILDCARD]/exit_sanitizer.ts:2:8
+
+exit(1) => [WILDCARD]/exit_sanitizer.ts:[WILDCARD]
+error: Error: Test case attempted to exit with exit code: 1
+  Deno.exit(1);
+       ^
+    at [WILDCARD]
+    at [WILDCARD]/exit_sanitizer.ts:6:8
+
+exit(2) => [WILDCARD]/exit_sanitizer.ts:[WILDCARD]
+error: Error: Test case attempted to exit with exit code: 2
+  Deno.exit(2);
+       ^
+    at [WILDCARD]
+    at [WILDCARD]/exit_sanitizer.ts:10:8
+
+ FAILURES 
+
+exit(0) => [WILDCARD]/exit_sanitizer.ts:[WILDCARD]
+exit(1) => [WILDCARD]/exit_sanitizer.ts:[WILDCARD]
+exit(2) => [WILDCARD]/exit_sanitizer.ts:[WILDCARD]
+
+FAILED | 0 passed | 3 failed ([WILDCARD])
+
+error: Test failed

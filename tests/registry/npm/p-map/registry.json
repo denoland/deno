@@ -1,0 +1,73 @@
+{
+  "name": "p-map",
+  "description": "Map over promises concurrently",
+  "dist-tags": {
+    "latest": "4.0.0"
+  },
+  "versions": {
+    "4.0.0": {
+      "name": "p-map",
+      "version": "4.0.0",
+      "description": "Map over promises concurrently",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sindresorhus/p-map.git"
+      },
+      "funding": "https://github.com/sponsors/sindresorhus",
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "https://sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=10"
+      },
+      "scripts": {
+        "test": "xo && ava && tsd"
+      },
+      "dependencies": {
+        "aggregate-error": "^3.0.0"
+      },
+      "devDependencies": {
+        "ava": "^2.2.0",
+        "delay": "^4.1.0",
+        "in-range": "^2.0.0",
+        "random-int": "^2.0.0",
+        "time-span": "^3.1.0",
+        "tsd": "^0.7.4",
+        "xo": "^0.27.2"
+      },
+      "gitHead": "a4b4dec459544d98880bc53a580e53691aff9fa9",
+      "bugs": {
+        "url": "https://github.com/sindresorhus/p-map/issues"
+      },
+      "_id": "p-map@4.0.0",
+      "_nodeVersion": "10.18.1",
+      "_npmVersion": "6.14.0",
+      "dist": {
+        "integrity": "sha512-/bjOqmgETBYB5BoEeGVea8dmvHb2m9GLy1E9W43yeyfP6QQCZGFNa+XRceJEuDB6zqr+gKpIAmlLebMpykw/MQ==",
+        "shasum": "bb2f95a5eda2ec168ec9274e06a747c3e2904d2b",
+        "tarball": "http://localhost:4260/p-map/p-map-4.0.0.tgz",
+        "fileCount": 5,
+        "unpackedSize": 8687
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/sindresorhus/p-map#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sindresorhus/p-map.git"
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "bugs": {
+    "url": "https://github.com/sindresorhus/p-map/issues"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,68 @@
+{
+  "name": "locate-path",
+  "description": "Get the first path that exists on disk of multiple paths",
+  "dist-tags": {
+    "latest": "5.0.0"
+  },
+  "versions": {
+    "5.0.0": {
+      "name": "locate-path",
+      "version": "5.0.0",
+      "description": "Get the first path that exists on disk of multiple paths",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sindresorhus/locate-path.git"
+      },
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=8"
+      },
+      "scripts": {
+        "test": "xo && ava && tsd"
+      },
+      "dependencies": {
+        "p-locate": "^4.1.0"
+      },
+      "devDependencies": {
+        "ava": "^1.4.1",
+        "tsd": "^0.7.2",
+        "xo": "^0.24.0"
+      },
+      "gitHead": "630c0bbd609055c1895089c715649e21000a1ab7",
+      "bugs": {
+        "url": "https://github.com/sindresorhus/locate-path/issues"
+      },
+      "_id": "locate-path@5.0.0",
+      "_nodeVersion": "8.16.0",
+      "_npmVersion": "6.9.0",
+      "dist": {
+        "integrity": "sha512-t7hw9pI+WvuwNJXwk5zVHpyhIqzg2qTlklJOf0mVxGSbe3Fp2VieZcduNYjaLDoy6p9uGpQEGWG87WpMKlNq8g==",
+        "shasum": "1afba396afd676a6d42504d0a67a3a7eb9f62aa0",
+        "tarball": "http://localhost:4260/locate-path/locate-path-5.0.0.tgz",
+        "fileCount": 5,
+        "unpackedSize": 6584
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/sindresorhus/locate-path#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sindresorhus/locate-path.git"
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "bugs": {
+    "url": "https://github.com/sindresorhus/locate-path/issues"
+  },
+  "license": "MIT"
+}

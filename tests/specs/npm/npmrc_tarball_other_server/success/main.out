@@ -1,0 +1,10 @@
+Download http://localhost:4261/@denotest%2ftarballs-privateserver2
+Download http://localhost:4262/@denotest/tarballs-privateserver2/1.0.0.tgz
+[# This fails on a checksum issue, because the test server isn't smart enough]
+[# to serve proper checksums for a package at another registry. That's fine]
+[# though because this shows us that we're making it to this step instead of]
+[# failing sooner on an auth issue.]
+error: Failed caching npm package '@denotest/tarballs-privateserver2@1.0.0'
+
+Caused by:
+    Tarball checksum did not match [WILDCARD]

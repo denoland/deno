@@ -1,0 +1,115 @@
+{
+  "name": "check-error",
+  "description": "Error comparison and information related utility for node and the browser",
+  "dist-tags": {
+    "latest": "1.0.2"
+  },
+  "versions": {
+    "1.0.2": {
+      "name": "check-error",
+      "description": "Error comparison and information related utility for node and the browser",
+      "license": "MIT",
+      "author": {
+        "name": "Jake Luer",
+        "email": "jake@alogicalparadox.com",
+        "url": "http://alogicalparadox.com"
+      },
+      "files": [
+        "index.js",
+        "check-error.js"
+      ],
+      "main": "./index.js",
+      "repository": {
+        "type": "git",
+        "url": "git+ssh://git@github.com/chaijs/check-error.git"
+      },
+      "scripts": {
+        "build": "browserify --bare $npm_package_main --standalone checkError -o check-error.js",
+        "lint": "eslint --ignore-path .gitignore .",
+        "prepublish": "npm run build",
+        "semantic-release": "semantic-release pre && npm publish && semantic-release post",
+        "pretest": "npm run lint",
+        "test": "npm run test:node && npm run test:browser && npm run upload-coverage",
+        "test:browser": "karma start --singleRun=true",
+        "test:node": "istanbul cover _mocha",
+        "upload-coverage": "lcov-result-merger 'coverage/**/lcov.info' | coveralls; exit 0"
+      },
+      "config": {
+        "ghooks": {
+          "commit-msg": "validate-commit-msg"
+        }
+      },
+      "eslintConfig": {
+        "extends": [
+          "strict/es5"
+        ],
+        "env": {
+          "es6": true
+        },
+        "globals": {
+          "HTMLElement": false
+        },
+        "rules": {
+          "complexity": 0,
+          "max-statements": 0
+        }
+      },
+      "dependencies": {},
+      "devDependencies": {
+        "browserify": "^13.0.0",
+        "browserify-istanbul": "^1.0.0",
+        "coveralls": "2.11.9",
+        "eslint": "^2.4.0",
+        "eslint-config-strict": "^8.5.0",
+        "eslint-plugin-filenames": "^0.2.0",
+        "ghooks": "^1.0.1",
+        "istanbul": "^0.4.2",
+        "karma": "^0.13.22",
+        "karma-browserify": "^5.0.2",
+        "karma-coverage": "^0.5.5",
+        "karma-mocha": "^0.2.2",
+        "karma-phantomjs-launcher": "^1.0.0",
+        "karma-sauce-launcher": "^0.3.1",
+        "lcov-result-merger": "^1.0.2",
+        "mocha": "^2.4.5",
+        "phantomjs-prebuilt": "^2.1.5",
+        "semantic-release": "^4.3.5",
+        "simple-assert": "^1.0.0",
+        "travis-after-all": "^1.4.4",
+        "validate-commit-msg": "^2.3.1"
+      },
+      "engines": {
+        "node": "*"
+      },
+      "version": "1.0.2",
+      "gitHead": "22a3985d2ec528015774206703332790aec4dea7",
+      "bugs": {
+        "url": "https://github.com/chaijs/check-error/issues"
+      },
+      "_id": "check-error@1.0.2",
+      "_shasum": "574d312edd88bb5dd8912e9286dd6c0aed4aac82",
+      "_from": ".",
+      "_npmVersion": "3.10.2",
+      "_nodeVersion": "0.10.46",
+      "dist": {
+        "shasum": "574d312edd88bb5dd8912e9286dd6c0aed4aac82",
+        "tarball": "http://localhost:4260/check-error/check-error-1.0.2.tgz",
+        "integrity": "sha512-BrgHpW9NURQgzoNyjfq0Wu6VFO6D7IZEmJNdtgNqpzGG8RuNFHt2jQxWlAs4HMe119chBnv+34syEZtc6IhLtA=="
+      }
+    }
+  },
+  "homepage": "https://github.com/chaijs/check-error#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/chaijs/check-error.git"
+  },
+  "author": {
+    "name": "Jake Luer",
+    "email": "jake@alogicalparadox.com",
+    "url": "http://alogicalparadox.com"
+  },
+  "bugs": {
+    "url": "https://github.com/chaijs/check-error/issues"
+  },
+  "license": "MIT"
+}

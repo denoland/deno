@@ -1,0 +1,20 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "test --coverage --doc",
+      "output": "main.out",
+      "exitCode": 0
+    },
+    {
+      "args": "run -A cat.ts coverage/lcov.info",
+      "output": "lcov_info.out",
+      "exitCode": 0
+    },
+    {
+      "args": "run -A cat.ts coverage/html/index.html",
+      "output": "html_index_html.out",
+      "exitCode": 0
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+Created deno.json configuration file.
+[UNORDERED_START]
+Add jsr:@std/http@1.0.0
+Add jsr:@std/assert@1.0.0
+[UNORDERED_END]
+[UNORDERED_START]
+Download http://127.0.0.1:4250/@std/http/1.0.0/mod.ts
+Download http://127.0.0.1:4250/@std/assert/1.0.0/mod.ts
+Download http://127.0.0.1:4250/@std/assert/1.0.0/assert_equals.ts
+Download http://127.0.0.1:4250/@std/assert/1.0.0/assert.ts
+Download http://127.0.0.1:4250/@std/assert/1.0.0/fail.ts
+[UNORDERED_END]

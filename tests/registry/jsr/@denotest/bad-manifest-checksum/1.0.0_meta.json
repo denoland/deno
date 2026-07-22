@@ -1,0 +1,11 @@
+{
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "manifest": {
+    "/mod.ts": {
+      "size": 0,
+      "checksum": "sha256-bad-checksum"
+    }
+  }
+}

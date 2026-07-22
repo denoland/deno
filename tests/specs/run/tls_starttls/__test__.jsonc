@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload --allow-net --allow-read --cert RootCA.pem --config deno.json tls_starttls.js",
+  "output": "tls.out"
+}

@@ -1,0 +1,26 @@
+# Copyright 2018-2026 the Deno authors. MIT license.
+
+[package]
+name = "deno_http_h1"
+version = "0.6.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "HTTP/1 protocol pieces for Deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+httparse.workspace = true
+memchr.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "time"] }
+
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "h1"
+harness = false

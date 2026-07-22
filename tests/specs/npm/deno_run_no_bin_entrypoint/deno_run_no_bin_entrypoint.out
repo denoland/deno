@@ -1,0 +1,1 @@
+error: Failed resolving binary export. '[WILDCARD]@denotest[WILDCARD]esm-basic[WILDCARD]package.json' did not have a bin property with a string or non-empty object value

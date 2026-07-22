@@ -1,0 +1,83 @@
+{
+  "name": "brace-expansion",
+  "description": "Brace expansion as known from sh/bash",
+  "dist-tags": {
+    "latest": "2.0.1"
+  },
+  "versions": {
+    "2.0.1": {
+      "name": "brace-expansion",
+      "description": "Brace expansion as known from sh/bash",
+      "version": "2.0.1",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/juliangruber/brace-expansion.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "tape test/*.js",
+        "gentest": "bash test/generate.sh",
+        "bench": "matcha test/perf/bench.js"
+      },
+      "dependencies": {
+        "balanced-match": "^1.0.0"
+      },
+      "devDependencies": {
+        "@c4312/matcha": "^1.3.1",
+        "tape": "^4.6.0"
+      },
+      "author": {
+        "name": "Julian Gruber",
+        "email": "mail@juliangruber.com",
+        "url": "http://juliangruber.com"
+      },
+      "license": "MIT",
+      "testling": {
+        "files": "test/*.js",
+        "browsers": [
+          "ie/8..latest",
+          "firefox/20..latest",
+          "firefox/nightly",
+          "chrome/25..latest",
+          "chrome/canary",
+          "opera/12..latest",
+          "opera/next",
+          "safari/5.1..latest",
+          "ipad/6.0..latest",
+          "iphone/6.0..latest",
+          "android-browser/4.2..latest"
+        ]
+      },
+      "gitHead": "b9c0e57027317a8d0a56a7ccee28fc478d847da2",
+      "bugs": {
+        "url": "https://github.com/juliangruber/brace-expansion/issues"
+      },
+      "_id": "brace-expansion@2.0.1",
+      "_nodeVersion": "14.15.5",
+      "_npmVersion": "6.14.11",
+      "dist": {
+        "integrity": "sha512-XnAIvQ8eM+kC6aULx6wuQiwVsnzsi9d3WxzV3FpWTGA19F621kwdbsAcFKXgKUHZWsy+mY6iL1sHTxWEFCytDA==",
+        "shasum": "1edc459e0f0c548486ecf9fc99f2221364b9a0ae",
+        "tarball": "http://localhost:4260/brace-expansion/brace-expansion-2.0.1.tgz",
+        "fileCount": 5,
+        "unpackedSize": 11486
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Julian Gruber",
+    "email": "mail@juliangruber.com",
+    "url": "http://juliangruber.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/juliangruber/brace-expansion.git"
+  },
+  "homepage": "https://github.com/juliangruber/brace-expansion",
+  "bugs": {
+    "url": "https://github.com/juliangruber/brace-expansion/issues"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,5 @@
+Check [WILDCARD]mod.ts
+Warning Publishing a library with slow types is not recommended. This may lead to poor type checking performance for users of your package, may affect the quality of automatic documentation generation, and your package will not be shipped with a .d.ts file for Node.js users.
+Publishing @foo/bar@1.1.0 ...
+Successfully published @foo/bar@1.1.0
+Visit http://127.0.0.1:4250/@foo/bar@1.1.0 for details

@@ -1,0 +1,325 @@
+// Copyright 2018-2026 the Deno authors. MIT license.
+// Copyright Joyent and Node contributors. All rights reserved. MIT license.
+
+(function () {
+const { core, primordials } = __bootstrap;
+const {
+  validateFunction,
+  validateObject,
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const {
+  AsyncHook,
+  emitAfter,
+  emitBefore,
+  emitDestroy: emitDestroyHook,
+  emitInit,
+  enterAsyncResource,
+  exitAsyncResource,
+  executionAsyncId: internalExecutionAsyncId,
+  executionAsyncResource: internalExecutionAsyncResource,
+  newAsyncId,
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
+
+const {
+  ObjectDefineProperties,
+  ReflectApply,
+  FunctionPrototypeBind,
+  ArrayPrototypeUnshift,
+  ObjectFreeze,
+  SafeFinalizationRegistry,
+  SafeArrayIterator,
+} = primordials;
+
+const {
+  AsyncVariable,
+  getAsyncContext,
+  setAsyncContext,
+} = core;
+
+// FinalizationRegistry to emit the async hook destroy callback when an
+// AsyncResource is garbage collected, matching Node.js behaviour.
+const asyncResourceRegistry = new SafeFinalizationRegistry(
+  (asyncId: number) => emitDestroyHook(asyncId),
+);
+
+class AsyncResource {
+  type: string;
+  #snapshot: unknown;
+  #asyncId: number;
+
+  constructor(type: string) {
+    this.type = type;
+    this.#snapshot = getAsyncContext();
+    this.#asyncId = newAsyncId();
+    // Fire the init hook so that async_hooks.createHook({ init }) callbacks
+    // receive this resource, matching Node.js behaviour.
+    emitInit(this.#asyncId, type, internalExecutionAsyncId(), this);
+    // Register with the FinalizationRegistry so emitDestroy is called when
+    // this object is garbage collected. Pass `this` as the unregister token so
+    // emitDestroy() can cancel the finalizer.
+    asyncResourceRegistry.register(this, this.#asyncId, this);
+  }
+
+  asyncId() {
+    return this.#asyncId;
+  }
+
+  runInAsyncScope(
+    fn: (...args: unknown[]) => unknown,
+    thisArg: unknown,
+    ...args: unknown[]
+  ) {
+    const previousContext = getAsyncContext();
+    emitBefore(this.#asyncId);
+    try {
+      setAsyncContext(this.#snapshot);
+      // Enter this resource as the current executionAsyncResource() so that
+      // user code inside the scope observes `this` as the active resource.
+      const prevResource = enterAsyncResource(this);
+      try {
+        return ReflectApply(fn, thisArg, args);
+      } finally {
+        exitAsyncResource(prevResource);
+      }
+    } finally {
+      setAsyncContext(previousContext);
+      emitAfter(this.#asyncId);
+    }
+  }
+
+  emitDestroy() {
+    asyncResourceRegistry.unregister(this);
+    emitDestroyHook(this.#asyncId);
+    return this;
+  }
+
+  bind(fn: (...args: unknown[]) => unknown, thisArg) {
+    validateFunction(fn, "fn");
+    let bound;
+    if (thisArg === undefined) {
+      // deno-lint-ignore no-this-alias
+      const resource = this;
+      bound = function (...args) {
+        ArrayPrototypeUnshift(args, fn, this);
+        return ReflectApply(resource.runInAsyncScope, resource, args);
+      };
+    } else {
+      bound = FunctionPrototypeBind(this.runInAsyncScope, this, fn, thisArg);
+    }
+    ObjectDefineProperties(bound, {
+      "length": {
+        __proto__: null,
+        configurable: true,
+        enumerable: false,
+        value: fn.length,
+        writable: false,
+      },
+    });
+    return bound;
+  }
+
+  static bind(
+    fn: (...args: unknown[]) => unknown,
+    type?: string,
+    thisArg?: AsyncResource,
+  ) {
+    type = type || fn.name || "bound-anonymous-fn";
+    // deno-lint-ignore prefer-primordials -- `bind` is AsyncResource's own method, not Function.prototype.bind
+    return (new AsyncResource(type)).bind(fn, thisArg);
+  }
+}
+
+class AsyncLocalStorage {
+  #variable = new AsyncVariable();
+  // deno-lint-ignore no-explicit-any
+  #defaultValue: any = undefined;
+  #name = "";
+  enabled = false;
+
+  constructor(
+    options: { defaultValue?: unknown; name?: string } = { __proto__: null },
+  ) {
+    validateObject(options, "options");
+    this.#defaultValue = options.defaultValue;
+    if (options.name !== undefined) {
+      this.#name = `${options.name}`;
+    }
+  }
+
+  get name() {
+    return this.#name;
+  }
+
+  // deno-lint-ignore no-explicit-any
+  run(store: any, callback: any, ...args: any[]): any {
+    this.enabled = true;
+    const previous = this.#variable.enter(store);
+    try {
+      return ReflectApply(callback, null, args);
+    } finally {
+      setAsyncContext(previous);
+    }
+  }
+
+  // deno-lint-ignore no-explicit-any
+  exit(callback: (...args: unknown[]) => any, ...args: any[]): any {
+    if (!this.enabled) {
+      return ReflectApply(callback, null, args);
+    }
+    this.enabled = false;
+    try {
+      return ReflectApply(callback, null, args);
+    } finally {
+      this.enabled = true;
+    }
+  }
+
+  // deno-lint-ignore no-explicit-any
+  getStore(): any {
+    if (!this.enabled) {
+      return this.#defaultValue;
+    }
+    const value = this.#variable.get();
+    return value === undefined ? this.#defaultValue : value;
+  }
+
+  enterWith(store: unknown) {
+    this.enabled = true;
+    this.#variable.enter(store);
+  }
+
+  disable() {
+    this.enabled = false;
+  }
+
+  static bind(fn: (...args: unknown[]) => unknown) {
+    // deno-lint-ignore prefer-primordials -- `bind` is AsyncResource's own static method, not Function.prototype.bind
+    return AsyncResource.bind(fn);
+  }
+
+  static snapshot() {
+    const resource = new AsyncResource("AsyncLocalStorage.snapshot");
+    return function (
+      cb: (...args: unknown[]) => unknown,
+      ...args: unknown[]
+    ) {
+      return resource.runInAsyncScope(
+        cb,
+        null,
+        ...new SafeArrayIterator(args),
+      );
+    };
+  }
+}
+
+// Re-export executionAsyncId from internal
+const executionAsyncId = internalExecutionAsyncId;
+
+function triggerAsyncId() {
+  return 0;
+}
+
+const executionAsyncResource = internalExecutionAsyncResource;
+
+const asyncWrapProviders = ObjectFreeze({
+  __proto__: null,
+  NONE: 0,
+  DIRHANDLE: 1,
+  DNSCHANNEL: 2,
+  ELDHISTOGRAM: 3,
+  FILEHANDLE: 4,
+  FILEHANDLECLOSEREQ: 5,
+  BLOBREADER: 6,
+  FSEVENTWRAP: 7,
+  FSREQCALLBACK: 8,
+  FSREQPROMISE: 9,
+  GETADDRINFOREQWRAP: 10,
+  GETNAMEINFOREQWRAP: 11,
+  HEAPSNAPSHOT: 12,
+  HTTP2SESSION: 13,
+  HTTP2STREAM: 14,
+  HTTP2PING: 15,
+  HTTP2SETTINGS: 16,
+  HTTPINCOMINGMESSAGE: 17,
+  HTTPCLIENTREQUEST: 18,
+  JSSTREAM: 19,
+  JSUDPWRAP: 20,
+  MESSAGEPORT: 21,
+  PIPECONNECTWRAP: 22,
+  PIPESERVERWRAP: 23,
+  PIPEWRAP: 24,
+  PROCESSWRAP: 25,
+  PROMISE: 26,
+  QUERYWRAP: 27,
+  QUIC_ENDPOINT: 28,
+  QUIC_LOGSTREAM: 29,
+  QUIC_PACKET: 30,
+  QUIC_SESSION: 31,
+  QUIC_STREAM: 32,
+  QUIC_UDP: 33,
+  SHUTDOWNWRAP: 34,
+  SIGNALWRAP: 35,
+  STATWATCHER: 36,
+  STREAMPIPE: 37,
+  TCPCONNECTWRAP: 38,
+  TCPSERVERWRAP: 39,
+  TCPWRAP: 40,
+  TTYWRAP: 41,
+  UDPSENDWRAP: 42,
+  UDPWRAP: 43,
+  SIGINTWATCHDOG: 44,
+  WORKER: 45,
+  WORKERHEAPSNAPSHOT: 46,
+  WRITEWRAP: 47,
+  ZLIB: 48,
+  CHECKPRIMEREQUEST: 49,
+  PBKDF2REQUEST: 50,
+  KEYPAIRGENREQUEST: 51,
+  KEYGENREQUEST: 52,
+  KEYEXPORTREQUEST: 53,
+  CIPHERREQUEST: 54,
+  DERIVEBITSREQUEST: 55,
+  HASHREQUEST: 56,
+  RANDOMBYTESREQUEST: 57,
+  RANDOMPRIMEREQUEST: 58,
+  SCRYPTREQUEST: 59,
+  SIGNREQUEST: 60,
+  TLSWRAP: 61,
+  VERIFYREQUEST: 62,
+});
+
+// Use the AsyncHook from the internal module
+function createHook(callbacks: {
+  init?: (
+    asyncId: number,
+    type: string,
+    triggerAsyncId: number,
+    resource: unknown,
+  ) => void;
+  before?: (asyncId: number) => void;
+  after?: (asyncId: number) => void;
+  destroy?: (asyncId: number) => void;
+  promiseResolve?: (asyncId: number) => void;
+}) {
+  return new AsyncHook(callbacks);
+}
+
+return {
+  default: {
+    AsyncLocalStorage,
+    createHook,
+    executionAsyncId,
+    triggerAsyncId,
+    executionAsyncResource,
+    asyncWrapProviders,
+    AsyncResource,
+  },
+  AsyncLocalStorage,
+  AsyncResource,
+  createHook,
+  executionAsyncId,
+  triggerAsyncId,
+  executionAsyncResource,
+  asyncWrapProviders,
+};
+})();

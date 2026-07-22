@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload fix_worker_dispatchevent.ts",
+  "output": "fix_worker_dispatchevent.ts.out"
+}

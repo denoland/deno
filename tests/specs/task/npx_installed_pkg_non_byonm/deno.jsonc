@@ -1,0 +1,7 @@
+{
+  // not byonm
+  "nodeModules": "local-auto",
+  "tasks": {
+    "say": "npx cowsay moo"
+  }
+}

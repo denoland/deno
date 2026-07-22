@@ -1,0 +1,7 @@
+Check [WILDCARD]main.ts
+TS1192 [ERROR]: Module '"file:///[WILDLINE]/other.d.ts"' has no default export.
+import Test, { type Attributes } from "./other.js";
+       ~~~~
+    at file:///[WILDLINE]/main.ts:2:8
+
+error: Type checking failed.

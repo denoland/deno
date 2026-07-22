@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "check": {
+      // ignored: Deno's ReadableStream(BYOBReader) shape doesn't satisfy
+      // @types/node's NonSharedArrayBufferView constraint (Axis-3 @types/node
+      // alignment). https://github.com/denoland/deno/issues/36085
+      "ignore": true,
+      "args": "check --quiet main.ts",
+      "output": ""
+    }
+  }
+}

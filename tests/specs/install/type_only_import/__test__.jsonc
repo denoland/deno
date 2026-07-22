@@ -1,0 +1,10 @@
+{
+  "tempDir": true,
+  "steps": [
+    { "args": "install -e main.ts", "output": "install.out" },
+    {
+      "args": "run --check --cached-only main.ts",
+      "output": "run.out"
+    }
+  ]
+}

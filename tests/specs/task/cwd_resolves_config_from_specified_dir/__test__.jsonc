@@ -1,0 +1,5 @@
+{
+  "args": "task -q --cwd deno.json",
+  "output": "task_no_args.out",
+  "exitCode": 0
+}

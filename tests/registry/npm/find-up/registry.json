@@ -1,0 +1,71 @@
+{
+  "name": "find-up",
+  "description": "Find a file or directory by walking up parent directories",
+  "dist-tags": {
+    "latest": "4.1.0"
+  },
+  "versions": {
+    "4.1.0": {
+      "name": "find-up",
+      "version": "4.1.0",
+      "description": "Find a file or directory by walking up parent directories",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sindresorhus/find-up.git"
+      },
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=8"
+      },
+      "scripts": {
+        "test": "xo && ava && tsd"
+      },
+      "dependencies": {
+        "locate-path": "^5.0.0",
+        "path-exists": "^4.0.0"
+      },
+      "devDependencies": {
+        "ava": "^2.1.0",
+        "is-path-inside": "^2.1.0",
+        "tempy": "^0.3.0",
+        "tsd": "^0.7.3",
+        "xo": "^0.24.0"
+      },
+      "gitHead": "6c32f0caed1684ef778053b6f79b13a772e22ba4",
+      "bugs": {
+        "url": "https://github.com/sindresorhus/find-up/issues"
+      },
+      "_id": "find-up@4.1.0",
+      "_nodeVersion": "8.16.0",
+      "_npmVersion": "6.9.0",
+      "dist": {
+        "integrity": "sha512-PpOwAdQ/YlXQ2vj8a3h8IipDuYRi3wceVQQGYWxNINccq40Anw7BlsEXCMbt1Zt+OLA6Fq9suIpIWD0OsnISlw==",
+        "shasum": "97afe7d6cdc0bc5928584b7c8d7b16e8a9aa5d19",
+        "tarball": "http://localhost:4260/find-up/find-up-4.1.0.tgz",
+        "fileCount": 5,
+        "unpackedSize": 11611
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/sindresorhus/find-up#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sindresorhus/find-up.git"
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "bugs": {
+    "url": "https://github.com/sindresorhus/find-up/issues"
+  },
+  "license": "MIT"
+}

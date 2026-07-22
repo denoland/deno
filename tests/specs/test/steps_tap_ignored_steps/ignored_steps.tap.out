@@ -1,0 +1,8 @@
+TAP version 14
+# [WILDCARD]ignored_steps.ts
+# Subtest: ignored step
+    ok 1 - step 1 # SKIP
+    ok 2 - step 2
+    1..2
+ok 1 - ignored step
+1..1

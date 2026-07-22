@@ -1,0 +1,17 @@
+Check [WILDCARD]mod.ts
+Checking for slow types in the public API...
+Check [WILDCARD]mod.ts
+warning[unanalyzable-dynamic-import]: unable to analyze dynamic import
+ --> [WILDCARD]mod.ts:2:14
+  | 
+2 | await import("asd " + asd);
+  |              ^^^^^^^^^^^^ the unanalyzable dynamic import
+  | 
+
+  info: after publishing this package, imports from the local import map / package.json do not work
+  info: dynamic imports that can not be analyzed at publish time will not be rewritten automatically
+  info: make sure the dynamic import is resolvable at runtime without an import map / package.json
+
+Publishing @foo/bar@1.0.0 ...
+Successfully published @foo/bar@1.0.0
+Visit http://127.0.0.1:4250/@foo/bar@1.0.0 for details

@@ -1,0 +1,12 @@
+Download http://localhost:4260/@denotest%2finstall-launch-cjs-temp-dir
+Download http://localhost:4260/@denotest/install-launch-cjs-temp-dir/1.0.0.tgz
+Initialize @denotest/install-launch-cjs-temp-dir@1.0.0
+Initialize @denotest/install-launch-cjs-temp-dir@1.0.0: running 'install' script
+Installed 1 package in [WILDCARD]
+Reused 0 packages from cache
+Downloaded 0 packages from JSR
+Downloaded 1 package from npm
++
+
+Dependencies:
+[WILDCARD]

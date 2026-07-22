@@ -1,0 +1,19 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": ["add", "jsr:@std/assert", "jsr:@std/http"],
+    "output": "add.out"
+  }, {
+    "args": ["eval", "console.log(Deno.readTextFileSync('deno.lock').trim())"],
+    "output": "add_lock.out"
+  }, {
+    "args": ["remove", "jsr:@std/assert", "@std/http"],
+    "output": "rm.out"
+  }, {
+    "args": ["eval", "console.log(Deno.readTextFileSync('deno.lock').trim())"],
+    "output": "remove_lock.out"
+  }, {
+    "args": ["eval", "console.log(Deno.readTextFileSync('deno.json').trim())"],
+    "output": "{\n}\n"
+  }]
+}

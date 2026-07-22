@@ -1,0 +1,276 @@
+{
+  "name": "minipass",
+  "description": "minimal implementation of a PassThrough stream",
+  "dist-tags": {
+    "latest": "7.1.2"
+  },
+  "versions": {
+    "3.3.6": {
+      "name": "minipass",
+      "version": "3.3.6",
+      "description": "minimal implementation of a PassThrough stream",
+      "main": "index.js",
+      "types": "index.d.ts",
+      "dependencies": {
+        "yallist": "^4.0.0"
+      },
+      "devDependencies": {
+        "@types/node": "^17.0.41",
+        "end-of-stream": "^1.4.0",
+        "prettier": "^2.6.2",
+        "tap": "^16.2.0",
+        "through2": "^2.0.3",
+        "ts-node": "^10.8.1",
+        "typescript": "^4.7.3"
+      },
+      "scripts": {
+        "test": "tap",
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "postpublish": "git push origin --follow-tags"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/isaacs/minipass.git"
+      },
+      "author": {
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me",
+        "url": "http://blog.izs.me/"
+      },
+      "license": "ISC",
+      "tap": {
+        "check-coverage": true
+      },
+      "engines": {
+        "node": ">=8"
+      },
+      "prettier": {
+        "semi": false,
+        "printWidth": 80,
+        "tabWidth": 2,
+        "useTabs": false,
+        "singleQuote": true,
+        "jsxSingleQuote": false,
+        "bracketSameLine": true,
+        "arrowParens": "avoid",
+        "endOfLine": "lf"
+      },
+      "gitHead": "52ab642fa447419dca139ce29fad780dd61a27af",
+      "bugs": {
+        "url": "https://github.com/isaacs/minipass/issues"
+      },
+      "_id": "minipass@3.3.6",
+      "_nodeVersion": "18.12.0",
+      "_npmVersion": "9.1.1",
+      "dist": {
+        "integrity": "sha512-DxiNidxSEK+tHG6zOIklvNOwm3hvCrbUrdtzY74U6HKTJxvIDfOUL5W5P2Ghd3DTkhhKPYGqeNUIh5qcM4YBfw==",
+        "shasum": "7bba384db3a1520d18c9c0e5251c3444e95dd94a",
+        "tarball": "http://localhost:4260/minipass/minipass-3.3.6.tgz",
+        "fileCount": 5,
+        "unpackedSize": 48090
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    },
+    "5.0.0": {
+      "name": "minipass",
+      "version": "5.0.0",
+      "description": "minimal implementation of a PassThrough stream",
+      "main": "./index.js",
+      "module": "./index.mjs",
+      "types": "./index.d.ts",
+      "exports": {
+        ".": {
+          "import": {
+            "types": "./index.d.ts",
+            "default": "./index.mjs"
+          },
+          "require": {
+            "types": "./index.d.ts",
+            "default": "./index.js"
+          }
+        },
+        "./package.json": "./package.json"
+      },
+      "devDependencies": {
+        "@types/node": "^17.0.41",
+        "end-of-stream": "^1.4.0",
+        "node-abort-controller": "^3.1.1",
+        "prettier": "^2.6.2",
+        "tap": "^16.2.0",
+        "through2": "^2.0.3",
+        "ts-node": "^10.8.1",
+        "typedoc": "^0.23.24",
+        "typescript": "^4.7.3"
+      },
+      "scripts": {
+        "pretest": "npm run prepare",
+        "presnap": "npm run prepare",
+        "prepare": "node ./scripts/transpile-to-esm.js",
+        "snap": "tap",
+        "test": "tap",
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "postpublish": "git push origin --follow-tags",
+        "typedoc": "typedoc ./index.d.ts",
+        "format": "prettier --write . --loglevel warn"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/isaacs/minipass.git"
+      },
+      "author": {
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me",
+        "url": "http://blog.izs.me/"
+      },
+      "license": "ISC",
+      "tap": {
+        "check-coverage": true
+      },
+      "engines": {
+        "node": ">=8"
+      },
+      "prettier": {
+        "semi": false,
+        "printWidth": 80,
+        "tabWidth": 2,
+        "useTabs": false,
+        "singleQuote": true,
+        "jsxSingleQuote": false,
+        "bracketSameLine": true,
+        "arrowParens": "avoid",
+        "endOfLine": "lf"
+      },
+      "gitHead": "3066600b811753bd9c85831a8ecd5c6ca248f2aa",
+      "bugs": {
+        "url": "https://github.com/isaacs/minipass/issues"
+      },
+      "_id": "minipass@5.0.0",
+      "_nodeVersion": "18.14.0",
+      "_npmVersion": "9.6.3",
+      "dist": {
+        "integrity": "sha512-3FnjYuehv9k6ovOEbyOswadCDPX1piCfhV8ncmYtHOjuPwylVWsghTLo7rabjC3Rx5xD4HDx8Wm1xnMF7S5qFQ==",
+        "shasum": "3e9788ffb90b694a5d0ec94479a45b5d8738133d",
+        "tarball": "http://localhost:4260/minipass/minipass-5.0.0.tgz",
+        "fileCount": 6,
+        "unpackedSize": 69475
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    },
+    "7.1.2": {
+      "name": "minipass",
+      "version": "7.1.2",
+      "description": "minimal implementation of a PassThrough stream",
+      "main": "./dist/commonjs/index.js",
+      "types": "./dist/commonjs/index.d.ts",
+      "type": "module",
+      "tshy": {
+        "selfLink": false,
+        "main": true,
+        "exports": {
+          "./package.json": "./package.json",
+          ".": "./src/index.ts"
+        }
+      },
+      "exports": {
+        "./package.json": "./package.json",
+        ".": {
+          "import": {
+            "types": "./dist/esm/index.d.ts",
+            "default": "./dist/esm/index.js"
+          },
+          "require": {
+            "types": "./dist/commonjs/index.d.ts",
+            "default": "./dist/commonjs/index.js"
+          }
+        }
+      },
+      "scripts": {
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "prepublishOnly": "git push origin --follow-tags",
+        "prepare": "tshy",
+        "pretest": "npm run prepare",
+        "presnap": "npm run prepare",
+        "test": "tap",
+        "snap": "tap",
+        "format": "prettier --write . --loglevel warn",
+        "typedoc": "typedoc --tsconfig .tshy/esm.json ./src/*.ts"
+      },
+      "prettier": {
+        "semi": false,
+        "printWidth": 75,
+        "tabWidth": 2,
+        "useTabs": false,
+        "singleQuote": true,
+        "jsxSingleQuote": false,
+        "bracketSameLine": true,
+        "arrowParens": "avoid",
+        "endOfLine": "lf"
+      },
+      "devDependencies": {
+        "@types/end-of-stream": "^1.4.2",
+        "@types/node": "^20.1.2",
+        "end-of-stream": "^1.4.0",
+        "node-abort-controller": "^3.1.1",
+        "prettier": "^2.6.2",
+        "tap": "^19.0.0",
+        "through2": "^2.0.3",
+        "tshy": "^1.14.0",
+        "typedoc": "^0.25.1"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/isaacs/minipass.git"
+      },
+      "author": {
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me",
+        "url": "http://blog.izs.me/"
+      },
+      "license": "ISC",
+      "engines": {
+        "node": ">=16 || 14 >=14.17"
+      },
+      "tap": {
+        "typecheck": true,
+        "include": [
+          "test/*.ts"
+        ]
+      },
+      "_id": "minipass@7.1.2",
+      "gitHead": "1fc7b914533c367ac00a982051849add2169f641",
+      "bugs": {
+        "url": "https://github.com/isaacs/minipass/issues"
+      },
+      "_nodeVersion": "20.13.1",
+      "_npmVersion": "10.7.0",
+      "dist": {
+        "integrity": "sha512-qOOzS1cBTWYF4BH8fVePDBOO9iptMnGUEZwNc/cMWnTV2nVLZ7VoNWEPHkYczZA0pdoA7dl6e7FL659nX9S2aw==",
+        "shasum": "93a9626ce5e5e66bd4db86849e7515e92340a707",
+        "tarball": "http://localhost:4260/minipass/minipass-7.1.2.tgz",
+        "fileCount": 13,
+        "unpackedSize": 286202
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/isaacs/minipass#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isaacs/minipass.git"
+  },
+  "author": {
+    "name": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me/"
+  },
+  "bugs": {
+    "url": "https://github.com/isaacs/minipass/issues"
+  },
+  "license": "ISC"
+}

@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "@types/node": "npm:@types/node@*"
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "name": "supports-color",
+  "description": "Detect whether a terminal supports color",
+  "dist-tags": {
+    "latest": "7.2.0"
+  },
+  "versions": {
+    "7.2.0": {
+      "name": "supports-color",
+      "version": "7.2.0",
+      "description": "Detect whether a terminal supports color",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/chalk/supports-color.git"
+      },
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=8"
+      },
+      "scripts": {
+        "test": "xo && ava"
+      },
+      "dependencies": {
+        "has-flag": "^4.0.0"
+      },
+      "devDependencies": {
+        "ava": "^1.4.1",
+        "import-fresh": "^3.0.0",
+        "xo": "^0.24.0"
+      },
+      "browser": "browser.js",
+      "gitHead": "c5edf46896d1fc1826cb1183a60d61eecb65d749",
+      "bugs": {
+        "url": "https://github.com/chalk/supports-color/issues"
+      },
+      "_id": "supports-color@7.2.0",
+      "_nodeVersion": "12.18.2",
+      "_npmVersion": "6.14.7",
+      "dist": {
+        "integrity": "sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw==",
+        "shasum": "1b7dcdcb32b8138801b3e478ba6a51caa89648da",
+        "tarball": "http://localhost:4260/supports-color/supports-color-7.2.0.tgz",
+        "fileCount": 5,
+        "unpackedSize": 7035
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/chalk/supports-color#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chalk/supports-color.git"
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "bugs": {
+    "url": "https://github.com/chalk/supports-color/issues"
+  },
+  "license": "MIT"
+}

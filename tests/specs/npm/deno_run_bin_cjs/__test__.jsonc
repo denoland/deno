@@ -1,0 +1,4 @@
+{
+  "args": "run -A --quiet npm:@denotest/bin/cli-cjs this is a test",
+  "output": "deno_run_cjs.out"
+}

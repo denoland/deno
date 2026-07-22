@@ -1,0 +1,5 @@
+{
+  "args": "run process_beforeexit_exit_events.ts",
+  "output": "process_beforeexit_exit_events.out",
+  "exitCode": 0
+}

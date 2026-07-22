@@ -1,0 +1,14 @@
+Download http://localhost:4545/remote.ts
+Check main.ts
+TS2307 [ERROR]: Cannot find module 'file:///[WILDCARD]/other.js'.
+    at file:///[WILDCARD]/main.ts:1:22
+
+TS2307 [ERROR]: Cannot find module 'http://localhost:4545/remote.ts'.
+    at file:///[WILDCARD]/main.ts:2:24
+
+Found 2 errors.
+
+error: Type checking failed.
+
+  info: The program failed type-checking, but it still might work correctly.
+  hint: Re-run with --no-check to skip type-checking.

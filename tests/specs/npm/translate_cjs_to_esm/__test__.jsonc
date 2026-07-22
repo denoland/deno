@@ -1,0 +1,4 @@
+{
+  "args": "run -A --quiet translate_cjs_to_esm/main.js",
+  "output": "translate_cjs_to_esm/main.out"
+}

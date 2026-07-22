@@ -1,0 +1,18 @@
+{
+  "tempDir": true,
+  "tests": {
+    "check": {
+      // ignored: tsc treats the type:commonjs .ts referrer as targeting ES
+      // modules and spuriously reports TS1202 for `import = require()`.
+      // https://github.com/denoland/deno/issues/36085
+      "ignore": true,
+      "args": "check --node-modules-dir=auto main.ts",
+      "output": "check.out",
+      "exitCode": 1
+    },
+    "run": {
+      "args": "run --node-modules-dir=auto --allow-read main.ts",
+      "output": "main.out"
+    }
+  }
+}

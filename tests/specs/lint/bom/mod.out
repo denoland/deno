@@ -1,0 +1,12 @@
+error[no-unused-vars]: `t` is never used
+ --> [WILDLINE]
+  | 
+4 | const t = 5;
+  |       ^
+  = hint: If this is intentional, prefix it with an underscore like `_t`
+
+  docs: https://docs.deno.com/lint/rules/no-unused-vars
+
+
+Found 1 problem
+Checked 1 file

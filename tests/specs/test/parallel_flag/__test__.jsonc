@@ -1,0 +1,5 @@
+{
+  "args": "test main.ts --parallel",
+  "exitCode": 0,
+  "output": "main.out"
+}

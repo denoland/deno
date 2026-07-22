@@ -1,0 +1,18 @@
+{
+  "tests": {
+    "imports_package_json": {
+      "args": "run --no-lock --node-modules-dir=none main.js",
+      "output": "main.out"
+    },
+    "imports_package_json_import_not_defined": {
+      "args": "run --no-lock --node-modules-dir=none import_not_defined.js",
+      "output": "import_not_defined.out",
+      "exitCode": 1
+    },
+    "imports_package_json_sub_path_import_not_defined": {
+      "args": "run --no-lock --node-modules-dir=none sub_path_import_not_defined.js",
+      "output": "sub_path_import_not_defined.out",
+      "exitCode": 1
+    }
+  }
+}

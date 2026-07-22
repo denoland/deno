@@ -1,0 +1,31 @@
+Check [WILDCARD]main.ts
+TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/a.js'. Maybe change the extension to '.ts' or run with --sloppy-imports
+    at file:///[WILDLINE]/main.ts:1:20
+
+TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/b'. Maybe add a '.js' extension or run with --sloppy-imports
+    at file:///[WILDLINE]/main.ts:2:20
+
+TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/c'. Maybe add a '.mts' extension or run with --sloppy-imports
+    at file:///[WILDLINE]/main.ts:3:20
+
+TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/d'. Maybe add a '.mjs' extension or run with --sloppy-imports
+    at file:///[WILDLINE]/main.ts:4:20
+
+TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/e'. Maybe add a '.tsx' extension or run with --sloppy-imports
+    at file:///[WILDLINE]/main.ts:5:20
+
+TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/e.js'. Maybe change the extension to '.tsx' or run with --sloppy-imports
+    at file:///[WILDLINE]/main.ts:6:21
+
+TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/f'. Maybe add a '.jsx' extension or run with --sloppy-imports
+    at file:///[WILDLINE]/main.ts:7:20
+
+TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/dir'. Maybe specify path to 'index.tsx' file in directory instead or run with --sloppy-imports
+    at file:///[WILDLINE]/main.ts:8:20
+
+Found 8 errors.
+
+error: Type checking failed.
+
+  info: The program failed type-checking, but it still might work correctly.
+  hint: Re-run with --no-check to skip type-checking.

@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-read --quiet builtin_module_module/main.js",
+  "output": "builtin_module_module/main.out"
+}

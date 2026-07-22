@@ -1,0 +1,114 @@
+{
+  "name": "emoji-regex",
+  "description": "A regular expression to match all Emoji-only symbols as per the Unicode Standard.",
+  "dist-tags": {
+    "latest": "9.2.2"
+  },
+  "versions": {
+    "8.0.0": {
+      "name": "emoji-regex",
+      "version": "8.0.0",
+      "description": "A regular expression to match all Emoji-only symbols as per the Unicode Standard.",
+      "main": "index.js",
+      "types": "index.d.ts",
+      "license": "MIT",
+      "author": {
+        "name": "Mathias Bynens",
+        "url": "https://mathiasbynens.be/"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/mathiasbynens/emoji-regex.git"
+      },
+      "bugs": {
+        "url": "https://github.com/mathiasbynens/emoji-regex/issues"
+      },
+      "scripts": {
+        "build": "rm -rf -- es2015; babel src -d .; NODE_ENV=es2015 babel src -d ./es2015; node script/inject-sequences.js",
+        "test": "mocha",
+        "test:watch": "npm run test -- --watch"
+      },
+      "devDependencies": {
+        "@babel/cli": "^7.2.3",
+        "@babel/core": "^7.3.4",
+        "@babel/plugin-proposal-unicode-property-regex": "^7.2.0",
+        "@babel/preset-env": "^7.3.4",
+        "mocha": "^6.0.2",
+        "regexgen": "^1.3.0",
+        "unicode-12.0.0": "^0.7.9"
+      },
+      "gitHead": "a9f2e514523d4c0931974aff5059052da10c52c5",
+      "_id": "emoji-regex@8.0.0",
+      "_npmVersion": "6.4.1",
+      "_nodeVersion": "10.14.1",
+      "dist": {
+        "integrity": "sha512-MSjYzcWNOA0ewAHpz0MxpYFvwg6yjy1NG3xteoqz644VCo/RPgnr1/GGt+ic3iJTzQ8Eu3TdM14SawnVUmGE6A==",
+        "shasum": "e818fd69ce5ccfcb404594f842963bf53164cc37",
+        "tarball": "http://localhost:4260/emoji-regex/emoji-regex-8.0.0.tgz",
+        "fileCount": 8,
+        "unpackedSize": 48255
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    },
+    "9.2.2": {
+      "name": "emoji-regex",
+      "version": "9.2.2",
+      "description": "A regular expression to match all Emoji-only symbols as per the Unicode Standard.",
+      "main": "index.js",
+      "types": "index.d.ts",
+      "license": "MIT",
+      "author": {
+        "name": "Mathias Bynens",
+        "url": "https://mathiasbynens.be/"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/mathiasbynens/emoji-regex.git"
+      },
+      "bugs": {
+        "url": "https://github.com/mathiasbynens/emoji-regex/issues"
+      },
+      "scripts": {
+        "build": "rm -rf -- es2015; babel src -d .; NODE_ENV=es2015 babel src es2015_types -D -d ./es2015; node script/inject-sequences.js",
+        "test": "mocha",
+        "test:watch": "npm run test -- --watch"
+      },
+      "devDependencies": {
+        "@babel/cli": "^7.4.4",
+        "@babel/core": "^7.4.4",
+        "@babel/plugin-proposal-unicode-property-regex": "^7.4.4",
+        "@babel/preset-env": "^7.4.4",
+        "@unicode/unicode-13.0.0": "^1.0.3",
+        "mocha": "^6.1.4",
+        "regexgen": "^1.3.0"
+      },
+      "gitHead": "0ffa466d7ab65af304d03dddd3a92a2d8268e7ce",
+      "_id": "emoji-regex@9.2.2",
+      "_nodeVersion": "14.15.5",
+      "_npmVersion": "6.14.11",
+      "dist": {
+        "integrity": "sha512-L18DaJsXSUk2+42pv8mLs5jJT2hqFkFE4j21wOmgbUqsZ2hL72NsUU785g9RXgo3s0ZNgVl42TiHp3ZtOv/Vyg==",
+        "shasum": "840c8803b0d8047f4ff0cf963176b32d4ef3ed72",
+        "tarball": "http://localhost:4260/emoji-regex/emoji-regex-9.2.2.tgz",
+        "fileCount": 15,
+        "unpackedSize": 97916
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://mths.be/emoji-regex",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mathiasbynens/emoji-regex.git"
+  },
+  "author": {
+    "name": "Mathias Bynens",
+    "url": "https://mathiasbynens.be/"
+  },
+  "bugs": {
+    "url": "https://github.com/mathiasbynens/emoji-regex/issues"
+  },
+  "license": "MIT"
+}

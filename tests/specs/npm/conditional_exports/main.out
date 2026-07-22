@@ -1,0 +1,19 @@
+[UNORDERED_START]
+Download http://localhost:4260/@denotest%2fconditional-exports
+Download http://localhost:4260/supports-esm
+Download http://localhost:4260/has-package-exports
+Download http://localhost:4260/@ljharb%2fhas-package-exports-patterns
+[UNORDERED_END]
+[UNORDERED_START]
+Download http://localhost:4260/@denotest/conditional-exports/1.0.0.tgz
+Download http://localhost:4260/@ljharb/has-package-exports-patterns/has-package-exports-patterns-0.0.2.tgz
+Download http://localhost:4260/has-package-exports/has-package-exports-1.3.0.tgz
+Download http://localhost:4260/supports-esm/supports-esm-1.0.0.tgz
+[UNORDERED_END]
+{ hello: "from esm" }
+{ hello: "from foo" }
+{ hello: "from esm client" }
+{ hello: "from esm client foo" }
+{ hello: "from esm client bar" }
+{ hello: "from esm client m" }
+true

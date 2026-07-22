@@ -1,0 +1,6 @@
+{
+  "workspace": ["member"],
+  "compilerOptions": {
+    "rootDirs": ["member", "non_member", "non_member_types"]
+  }
+}

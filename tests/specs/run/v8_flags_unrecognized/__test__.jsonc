@@ -1,0 +1,5 @@
+{
+  "args": "repl --v8-flags=--foo,bar,--trace-gc,-baz",
+  "output": "v8_flags_unrecognized.out",
+  "exitCode": 1
+}

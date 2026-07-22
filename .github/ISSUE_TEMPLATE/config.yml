@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 🦕 Deploy Feedback
+    url: https://github.com/denoland/deploy_feedback/
+    about: Provide feature requests or bug reports for the Deno Deploy edge runtime.
+  - name: 💬 Discord
+    url: https://discord.gg/deno
+    about: Join our community on Discord.

@@ -1,0 +1,4 @@
+error: Uncaught SyntaxError: Unexpected token '='
+import mod = require("./add.ts");
+       ^
+    at <anonymous> (file:///[WILDLINE]/main.ts:1:8)

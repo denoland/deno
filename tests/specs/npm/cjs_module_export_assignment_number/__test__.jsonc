@@ -1,0 +1,4 @@
+{
+  "args": "run -A --quiet --check=all main.ts",
+  "output": "main.out"
+}

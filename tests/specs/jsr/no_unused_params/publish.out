@@ -1,0 +1,11 @@
+Check [WILDCARD]main.ts
+Checking for slow types in the public API...
+Check [WILDCARD]main.ts
+Simulating publish of @scope/package@0.0.0 with files:
+   file:///[WILDLINE]/LICENSE ([WILDLINE])
+   file:///[WILDLINE]/__test__.jsonc ([WILDLINE])
+   file:///[WILDLINE]/deno.json ([WILDLINE])
+   file:///[WILDLINE]/main.out ([WILDLINE])
+   file:///[WILDLINE]/main.ts ([WILDLINE])
+   file:///[WILDLINE]/publish.out ([WILDLINE])
+Success Dry run complete

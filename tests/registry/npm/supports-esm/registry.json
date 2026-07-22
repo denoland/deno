@@ -1,0 +1,63 @@
+{
+  "name": "supports-esm",
+  "dist-tags": {
+    "latest": "1.0.0"
+  },
+  "versions": {
+    "1.0.0": {
+      "name": "supports-esm",
+      "version": "1.0.0",
+      "description": "Detect at runtime if Node.js supports ECMAScript modules",
+      "main": "index.js",
+      "exports": "./index.js",
+      "dependencies": {
+        "has-package-exports": "^1.1.0"
+      },
+      "devDependencies": {
+        "semver": "^7.3.2"
+      },
+      "scripts": {
+        "test": "node test.js"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/targos/supports-esm.git"
+      },
+      "author": {
+        "name": "Michaël Zasso",
+        "email": "targos@protonmail.com"
+      },
+      "license": "MIT",
+      "bugs": {
+        "url": "https://github.com/targos/supports-esm/issues"
+      },
+      "gitHead": "433e6107ae208a642fdf27dc0862d79a7c8b9145",
+      "_id": "supports-esm@1.0.0",
+      "_nodeVersion": "14.2.0",
+      "_npmVersion": "6.14.4",
+      "dist": {
+        "integrity": "sha512-96Am8CDqUaC0I2+C/swJ0yEvM8ZnGn4unoers/LSdE4umhX7mELzqyLzx3HnZAluq5PXIsGMKqa7NkqaeHMPcg==",
+        "shasum": "7cc567747d0745e2b77b331c9b9cae13cf4dc60e",
+        "tarball": "http://localhost:4260/supports-esm/supports-esm-1.0.0.tgz",
+        "fileCount": 4,
+        "unpackedSize": 3489
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "Detect at runtime if Node.js supports ECMAScript modules",
+  "homepage": "https://github.com/targos/supports-esm#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/targos/supports-esm.git"
+  },
+  "author": {
+    "name": "Michaël Zasso",
+    "email": "targos@protonmail.com"
+  },
+  "bugs": {
+    "url": "https://github.com/targos/supports-esm/issues"
+  },
+  "license": "MIT"
+}

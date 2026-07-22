@@ -1,0 +1,69 @@
+{
+  "name": "aggregate-error",
+  "description": "Create an error from multiple errors",
+  "dist-tags": {
+    "latest": "3.1.0"
+  },
+  "versions": {
+    "3.1.0": {
+      "name": "aggregate-error",
+      "version": "3.1.0",
+      "description": "Create an error from multiple errors",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sindresorhus/aggregate-error.git"
+      },
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=8"
+      },
+      "scripts": {
+        "test": "xo && ava && tsd"
+      },
+      "dependencies": {
+        "clean-stack": "^2.0.0",
+        "indent-string": "^4.0.0"
+      },
+      "devDependencies": {
+        "ava": "^2.4.0",
+        "tsd": "^0.7.1",
+        "xo": "^0.25.3"
+      },
+      "gitHead": "d5bb4ac02a43f005ec7ad45f6e62919d7ebed0e5",
+      "bugs": {
+        "url": "https://github.com/sindresorhus/aggregate-error/issues"
+      },
+      "_id": "aggregate-error@3.1.0",
+      "_nodeVersion": "12.18.2",
+      "_npmVersion": "6.14.7",
+      "dist": {
+        "integrity": "sha512-4I7Td01quW/RpocfNayFdFVk1qSuoh0E7JrbRJ16nH01HhKFQ88INq9Sd+nd72zqRySlr9BmDA8xlEJ6vJMrYA==",
+        "shasum": "92670ff50f5359bdb7a3e0d40d0ec30c5737687a",
+        "tarball": "http://localhost:4260/aggregate-error/aggregate-error-3.1.0.tgz",
+        "fileCount": 5,
+        "unpackedSize": 6690
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/sindresorhus/aggregate-error#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sindresorhus/aggregate-error.git"
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "bugs": {
+    "url": "https://github.com/sindresorhus/aggregate-error/issues"
+  },
+  "license": "MIT"
+}

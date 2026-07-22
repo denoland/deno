@@ -1,0 +1,17 @@
+{
+  "tests": {
+    "run": {
+      "args": "run main.ts",
+      "output": "run.out"
+    },
+    "check": {
+      // ignored: tsc resolves the transitive dual package to the esm condition
+      // instead of cjs (runtime yields "cjs"), so the expected type error is
+      // missed. https://github.com/denoland/deno/issues/36085
+      "ignore": true,
+      "args": "check --all main.ts",
+      "exitCode": 1,
+      "output": "check.out"
+    }
+  }
+}

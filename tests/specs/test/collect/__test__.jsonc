@@ -1,0 +1,5 @@
+{
+  "args": "test --ignore=collect/ignore collect",
+  "exitCode": 0,
+  "output": "main.out"
+}

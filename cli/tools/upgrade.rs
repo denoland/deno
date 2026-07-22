@@ -1,0 +1,3559 @@
+// Copyright 2018-2026 the Deno authors. MIT license.
+
+//! This module provides feature to upgrade deno executable
+
+use std::borrow::Cow;
+use std::env;
+use std::fs;
+use std::io::IsTerminal;
+use std::ops::Sub;
+use std::path::Path;
+use std::path::PathBuf;
+use std::process::Command;
+use std::sync::Arc;
+use std::time::Duration;
+
+use async_trait::async_trait;
+use deno_core::anyhow::Context;
+use deno_core::anyhow::bail;
+use deno_core::error::AnyError;
+use deno_core::unsync::spawn;
+use deno_core::url::Url;
+use deno_lib::shared::ReleaseChannel;
+use deno_lib::version;
+use deno_semver::SmallStackString;
+use deno_semver::Version;
+use once_cell::sync::Lazy;
+use sha2::Digest;
+use sys_traits::FsDirEntry;
+use sys_traits::FsMetadataValue;
+
+use crate::args::Flags;
+use crate::args::UPGRADE_USAGE;
+use crate::args::UpgradeFlags;
+use crate::colors;
+use crate::factory::CliFactory;
+use crate::http_util::HttpClient;
+use crate::http_util::HttpClientProvider;
+use crate::util::archive;
+use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressBarStyle;
+
+static RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
+static CANARY_URL: &str = "https://dl.deno.land/canary";
+static DL_RELEASE_URL: &str = "https://dl.deno.land/release";
+
+pub static ARCHIVE_NAME: Lazy<String> =
+  Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
+
+static DELTA_TARGET_NAME: Lazy<String> =
+  Lazy::new(|| format!("deno-{}", env!("TARGET")));
+
+// How often query server for new version. In hours.
+const UPGRADE_CHECK_INTERVAL: i64 = 24;
+
+const UPGRADE_CHECK_FETCH_DELAY: Duration = Duration::from_millis(500);
+
+/// Environment necessary for doing the update checker.
+/// An alternate trait implementation can be provided for testing purposes.
+trait UpdateCheckerEnvironment: Clone {
+  fn read_check_file(&self) -> String;
+  fn write_check_file(&self, text: &str);
+  fn current_time(&self) -> chrono::DateTime<chrono::Utc>;
+}
+
+#[derive(Clone)]
+struct RealUpdateCheckerEnvironment {
+  cache_file_path: PathBuf,
+  current_time: chrono::DateTime<chrono::Utc>,
+}
+
+impl RealUpdateCheckerEnvironment {
+  pub fn new(cache_file_path: PathBuf) -> Self {
+    Self {
+      cache_file_path,
+      // cache the current time
+      current_time: chrono::Utc::now(),
+    }
+  }
+}
+
+impl UpdateCheckerEnvironment for RealUpdateCheckerEnvironment {
+  fn read_check_file(&self) -> String {
+    std::fs::read_to_string(&self.cache_file_path).unwrap_or_default()
+  }
+
+  fn write_check_file(&self, text: &str) {
+    let _ = std::fs::write(&self.cache_file_path, text);
+  }
+
+  fn current_time(&self) -> chrono::DateTime<chrono::Utc> {
+    self.current_time
+  }
+}
+
+#[derive(Debug, Copy, Clone)]
+enum UpgradeCheckKind {
+  Execution,
+  Lsp,
+}
+
+#[async_trait(?Send)]
+trait VersionProvider: Clone {
+  /// Fetch latest available version for the given release channel
+  async fn latest_version(
+    &self,
+    release_channel: ReleaseChannel,
+  ) -> Result<AvailableVersion, AnyError>;
+
+  /// Returns either a semver or git hash. It's up to implementor to
+  /// decide which one is appropriate, but in general only "stable"
+  /// and "lts" versions use semver.
+  fn current_version(&self) -> Cow<'_, str>;
+
+  fn get_current_exe_release_channel(&self) -> ReleaseChannel;
+}
+
+#[derive(Clone)]
+struct RealVersionProvider {
+  http_client_provider: Arc<HttpClientProvider>,
+  check_kind: UpgradeCheckKind,
+}
+
+impl RealVersionProvider {
+  pub fn new(
+    http_client_provider: Arc<HttpClientProvider>,
+    check_kind: UpgradeCheckKind,
+  ) -> Self {
+    Self {
+      http_client_provider,
+      check_kind,
+    }
+  }
+}
+
+#[async_trait(?Send)]
+impl VersionProvider for RealVersionProvider {
+  async fn latest_version(
+    &self,
+    release_channel: ReleaseChannel,
+  ) -> Result<AvailableVersion, AnyError> {
+    fetch_latest_version(
+      &self.http_client_provider.get_or_create()?,
+      release_channel,
+      self.check_kind,
+    )
+    .await
+  }
+
+  fn current_version(&self) -> Cow<'_, str> {
+    Cow::Borrowed(version::DENO_VERSION_INFO.version_or_git_hash())
+  }
+
+  fn get_current_exe_release_channel(&self) -> ReleaseChannel {
+    version::DENO_VERSION_INFO.release_channel
+  }
+}
+
+struct UpdateChecker<
+  TEnvironment: UpdateCheckerEnvironment,
+  TVersionProvider: VersionProvider,
+> {
+  env: TEnvironment,
+  version_provider: TVersionProvider,
+  maybe_file: Option<CheckVersionFile>,
+}
+
+impl<TEnvironment: UpdateCheckerEnvironment, TVersionProvider: VersionProvider>
+  UpdateChecker<TEnvironment, TVersionProvider>
+{
+  pub fn new(env: TEnvironment, version_provider: TVersionProvider) -> Self {
+    let maybe_file = CheckVersionFile::parse(env.read_check_file());
+    Self {
+      env,
+      version_provider,
+      maybe_file,
+    }
+  }
+
+  pub fn should_check_for_new_version(&self) -> bool {
+    let Some(file) = &self.maybe_file else {
+      return true;
+    };
+
+    let last_check_age = self
+      .env
+      .current_time()
+      .signed_duration_since(file.last_checked);
+    last_check_age > chrono::Duration::hours(UPGRADE_CHECK_INTERVAL)
+  }
+
+  /// Returns the current exe release channel and a version if a new one is available and it should be prompted about.
+  pub fn should_prompt(&self) -> Option<(ReleaseChannel, String)> {
+    let file = self.maybe_file.as_ref()?;
+    // If the current version saved is not the actually current version of the binary
+    // It means
+    // - We already check for a new version today
+    // - The user have probably upgraded today
+    // So we should not prompt and wait for tomorrow for the latest version to be updated again
+    let current_version = self.version_provider.current_version();
+    if file.current_version != current_version {
+      return None;
+    }
+    if file.latest_version == current_version {
+      return None;
+    }
+
+    if let Ok(current) = Version::parse_standard(&current_version)
+      && let Ok(latest) = Version::parse_standard(&file.latest_version)
+      && current >= latest
+    {
+      return None;
+    }
+
+    let last_prompt_age = self
+      .env
+      .current_time()
+      .signed_duration_since(file.last_prompt);
+    if last_prompt_age > chrono::Duration::hours(UPGRADE_CHECK_INTERVAL) {
+      Some((file.current_release_channel, file.latest_version.clone()))
+    } else {
+      None
+    }
+  }
+
+  /// Store that we showed the update message to the user.
+  pub fn store_prompted(self) {
+    if let Some(file) = self.maybe_file {
+      self.env.write_check_file(
+        &file.with_last_prompt(self.env.current_time()).serialize(),
+      );
+    }
+  }
+}
+
+fn get_minor_version_blog_post_url(semver: &Version) -> String {
+  format!("https://deno.com/blog/v{}.{}", semver.major, semver.minor)
+}
+
+fn get_rc_version_blog_post_url(semver: &Version) -> String {
+  format!(
+    "https://deno.com/blog/v{}.{}-rc-{}",
+    semver.major, semver.minor, semver.pre[1]
+  )
+}
+
+async fn print_release_notes(
+  current_version: &str,
+  new_version: &str,
+  client: &HttpClient,
+) {
+  let Ok(current_semver) = Version::parse_standard(current_version) else {
+    return;
+  };
+  let Ok(new_semver) = Version::parse_standard(new_version) else {
+    return;
+  };
+
+  let is_switching_from_deno1_to_deno2 =
+    new_semver.major == 2 && current_semver.major == 1;
+  let is_deno_2_rc = new_semver.major == 2
+    && new_semver.minor == 0
+    && new_semver.patch == 0
+    && new_semver.pre.first().map(|s| s.as_str()) == Some("rc");
+
+  if is_deno_2_rc || is_switching_from_deno1_to_deno2 {
+    log::info!(
+      "{}\n\n  {}\n",
+      colors::gray("Migration guide:"),
+      colors::bold(
+        "https://docs.deno.com/runtime/manual/advanced/migrate_deprecations"
+      )
+    );
+  }
+
+  if is_deno_2_rc {
+    log::info!(
+      "{}\n\n  {}\n",
+      colors::gray("If you find a bug, please report to:"),
+      colors::bold("https://github.com/denoland/deno/issues/new")
+    );
+
+    // Check if there's blog post entry for this release
+    let blog_url_str = get_rc_version_blog_post_url(&new_semver);
+    let blog_url = Url::parse(&blog_url_str).unwrap();
+    if client.download(blog_url).await.is_ok() {
+      log::info!(
+        "{}\n\n  {}\n",
+        colors::gray("Blog post:"),
+        colors::bold(blog_url_str)
+      );
+    }
+    return;
+  }
+
+  let should_print = current_semver.major != new_semver.major
+    || current_semver.minor != new_semver.minor;
+
+  if !should_print {
+    return;
+  }
+
+  log::info!(
+    "{}\n\n  {}\n",
+    colors::gray("Release notes:"),
+    colors::bold(format!(
+      "https://github.com/denoland/deno/releases/tag/v{}",
+      &new_version,
+    ))
+  );
+  log::info!(
+    "{}\n\n  {}\n",
+    colors::gray("Blog post:"),
+    colors::bold(get_minor_version_blog_post_url(&new_semver))
+  );
+}
+
+pub fn upgrade_check_enabled() -> bool {
+  matches!(
+    env::var("DENO_NO_UPDATE_CHECK"),
+    Err(env::VarError::NotPresent)
+  )
+}
+
+pub fn check_for_upgrades(
+  http_client_provider: Arc<HttpClientProvider>,
+  cache_file_path: PathBuf,
+) {
+  if !upgrade_check_enabled() {
+    return;
+  }
+
+  let env = RealUpdateCheckerEnvironment::new(cache_file_path);
+  let version_provider = RealVersionProvider::new(
+    http_client_provider.clone(),
+    UpgradeCheckKind::Execution,
+  );
+  let update_checker = UpdateChecker::new(env, version_provider);
+
+  if update_checker.should_check_for_new_version() {
+    let env = update_checker.env.clone();
+    let version_provider = update_checker.version_provider.clone();
+    // do this asynchronously on a separate task
+    spawn(async move {
+      // Sleep for a small amount of time to not unnecessarily impact startup
+      // time.
+      tokio::time::sleep(UPGRADE_CHECK_FETCH_DELAY).await;
+
+      fetch_and_store_latest_version(&env, &version_provider).await;
+
+      // text is used by the test suite
+      log::debug!("Finished upgrade checker.")
+    });
+  }
+
+  // Don't bother doing any more computation if we're not in TTY environment.
+  let should_prompt =
+    log::log_enabled!(log::Level::Info) && std::io::stderr().is_terminal();
+
+  if !should_prompt {
+    return;
+  }
+
+  // Print a message if an update is available
+  if let Some((release_channel, upgrade_version)) =
+    update_checker.should_prompt()
+  {
+    match release_channel {
+      ReleaseChannel::Stable => {
+        log::info!(
+          "{} {} → {} {}",
+          colors::green("A new release of Deno is available:"),
+          colors::cyan(version::DENO_VERSION_INFO.deno),
+          colors::cyan(&upgrade_version),
+          colors::italic_gray("Run `deno upgrade` to install it.")
+        );
+      }
+      ReleaseChannel::Canary => {
+        log::info!(
+          "{} {}",
+          colors::green("A new canary release of Deno is available."),
+          colors::italic_gray("Run `deno upgrade canary` to install it.")
+        );
+      }
+      ReleaseChannel::Rc => {
+        log::info!(
+          "{} {}",
+          colors::green("A new release candidate of Deno is available."),
+          colors::italic_gray("Run `deno upgrade rc` to install it.")
+        );
+      }
+      ReleaseChannel::Lts => {
+        log::info!(
+          "{} {} → {} {}",
+          colors::green("A new LTS release of Deno is available:"),
+          colors::cyan(version::DENO_VERSION_INFO.deno),
+          colors::cyan(&upgrade_version),
+          colors::italic_gray("Run `deno upgrade lts` to install it.")
+        );
+      }
+      ReleaseChannel::Alpha => {
+        log::info!(
+          "{} {} → {} {}",
+          colors::green("A new alpha release of Deno is available:"),
+          colors::cyan(version::DENO_VERSION_INFO.deno),
+          colors::cyan(&upgrade_version),
+          colors::italic_gray("Run `deno upgrade alpha` to install it.")
+        );
+      }
+      ReleaseChannel::Beta => {
+        log::info!(
+          "{} {} → {} {}",
+          colors::green("A new beta release of Deno is available:"),
+          colors::cyan(version::DENO_VERSION_INFO.deno),
+          colors::cyan(&upgrade_version),
+          colors::italic_gray("Run `deno upgrade beta` to install it.")
+        );
+      }
+    }
+
+    update_checker.store_prompted();
+  }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LspVersionUpgradeInfo {
+  pub latest_version: String,
+  pub is_canary: bool,
+}
+
+pub async fn check_for_upgrades_for_lsp(
+  http_client_provider: Arc<HttpClientProvider>,
+) -> Result<Option<LspVersionUpgradeInfo>, AnyError> {
+  if !upgrade_check_enabled() {
+    return Ok(None);
+  }
+
+  let version_provider =
+    RealVersionProvider::new(http_client_provider, UpgradeCheckKind::Lsp);
+  check_for_upgrades_for_lsp_with_provider(&version_provider).await
+}
+
+async fn check_for_upgrades_for_lsp_with_provider(
+  version_provider: &impl VersionProvider,
+) -> Result<Option<LspVersionUpgradeInfo>, AnyError> {
+  let release_channel = version_provider.get_current_exe_release_channel();
+  let latest_version = version_provider.latest_version(release_channel).await?;
+  let current_version = version_provider.current_version();
+
+  // Nothing to upgrade
+  if current_version == latest_version.version_or_hash {
+    return Ok(None);
+  }
+
+  match release_channel {
+    ReleaseChannel::Stable
+    | ReleaseChannel::Rc
+    | ReleaseChannel::Lts
+    | ReleaseChannel::Alpha
+    | ReleaseChannel::Beta => {
+      if let Ok(current) = Version::parse_standard(&current_version)
+        && let Ok(latest) =
+          Version::parse_standard(&latest_version.version_or_hash)
+        && current >= latest
+      {
+        return Ok(None); // nothing to upgrade
+      }
+      Ok(Some(LspVersionUpgradeInfo {
+        latest_version: latest_version.version_or_hash,
+        is_canary: false,
+      }))
+    }
+
+    ReleaseChannel::Canary => Ok(Some(LspVersionUpgradeInfo {
+      latest_version: latest_version.version_or_hash,
+      is_canary: true,
+    })),
+  }
+}
+
+async fn fetch_and_store_latest_version<
+  TEnvironment: UpdateCheckerEnvironment,
+  TVersionProvider: VersionProvider,
+>(
+  env: &TEnvironment,
+  version_provider: &TVersionProvider,
+) {
+  let release_channel = version_provider.get_current_exe_release_channel();
+  let Ok(latest_version) =
+    version_provider.latest_version(release_channel).await
+  else {
+    return;
+  };
+
+  let version_file = CheckVersionFile {
+    // put a date in the past here so that prompt can be shown on next run
+    last_prompt: env
+      .current_time()
+      .sub(chrono::Duration::hours(UPGRADE_CHECK_INTERVAL + 1)),
+    last_checked: env.current_time(),
+    current_version: version_provider.current_version().to_string(),
+    latest_version: latest_version.version_or_hash,
+    current_release_channel: release_channel,
+  };
+
+  env.write_check_file(&version_file.serialize());
+}
+
+fn get_binary_cache_path(
+  dl_dir: &Path,
+  version: &str,
+  release_channel: ReleaseChannel,
+) -> PathBuf {
+  let binary_path_suffix = match release_channel {
+    ReleaseChannel::Canary => {
+      format!("canary/{}/{}", version, *ARCHIVE_NAME)
+    }
+    _ => {
+      format!("release/v{}/{}", version, *ARCHIVE_NAME)
+    }
+  };
+  dl_dir.join(binary_path_suffix)
+}
+
+fn prune_canary_cache<
+  Sys: sys_traits::FsReadDir + sys_traits::FsRemoveDirAll,
+>(
+  sys: &Sys,
+  dl_dir: &Path,
+  max_entries: usize,
+) {
+  let canary_dir = dl_dir.join("canary");
+  let Ok(entries) = sys.fs_read_dir(&canary_dir) else {
+    return;
+  };
+
+  let mut dirs: Vec<(PathBuf, std::time::SystemTime)> = entries
+    .filter_map(|e| e.ok())
+    .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+    .filter_map(|e| {
+      let modified = e.metadata().ok()?.modified().ok()?;
+      Some((e.path().into_owned(), modified))
+    })
+    .collect();
+
+  if dirs.len() <= max_entries {
+    return;
+  }
+
+  // Sort by modification time, most recent first
+  dirs.sort_by_key(|b| std::cmp::Reverse(b.1));
+
+  for (path, _) in dirs.into_iter().skip(max_entries) {
+    let _ = sys.fs_remove_dir_all(&path);
+  }
+}
+
+fn try_read_cached_binary(
+  sys: &impl sys_traits::FsRead,
+  cache_path: &Path,
+) -> Option<Vec<u8>> {
+  match sys.fs_read(cache_path) {
+    Ok(data) => Some(data.into_owned()),
+    Err(_) => None,
+  }
+}
+
+fn store_cached_binary(
+  sys: &impl deno_path_util::fs::AtomicWriteFileSys,
+  cache_path: &Path,
+  data: &[u8],
+) {
+  if let Err(err) =
+    deno_path_util::fs::atomic_write_file(sys, cache_path, data, 0o644)
+  {
+    log::debug!("Failed to cache binary: {}", err);
+  }
+}
+
+/// Get the artifact name for the current platform.
+/// CI artifacts are named like `{profile}-{os}-{arch}-deno`.
+fn get_pr_artifact_name() -> Result<String, AnyError> {
+  let target = env!("TARGET");
+
+  let (os, arch) = if target.contains("linux") && target.contains("x86_64") {
+    ("linux", "x86_64")
+  } else if target.contains("linux") && target.contains("aarch64") {
+    ("linux", "aarch64")
+  } else if target.contains("apple") && target.contains("x86_64") {
+    ("macos", "x86_64")
+  } else if target.contains("apple") && target.contains("aarch64") {
+    ("macos", "aarch64")
+  } else if target.contains("windows") && target.contains("x86_64") {
+    ("windows", "x86_64")
+  } else if target.contains("windows") && target.contains("aarch64") {
+    ("windows", "aarch64")
+  } else {
+    bail!("Unsupported platform for PR builds: {}", target)
+  };
+
+  // Prefer release builds, fall back to debug
+  Ok(format!("release-{os}-{arch}-deno"))
+}
+
+fn get_pr_debug_artifact_name() -> Result<String, AnyError> {
+  let release_name = get_pr_artifact_name()?;
+  Ok(release_name.replacen("release-", "debug-", 1))
+}
+
+fn upgrade_from_pr(
+  pr_number: u64,
+  upgrade_flags: &UpgradeFlags,
+) -> Result<(), AnyError> {
+  // Check that `gh` CLI is available
+  let gh_version = Command::new("gh").arg("--version").output();
+  if gh_version.is_err() {
+    bail!(
+      "The `gh` CLI is required for installing from a PR.\n\
+       Install it from https://cli.github.com/ and run `gh auth login`."
+    );
+  }
+
+  log::info!("{}", colors::gray(format!("Looking up PR #{pr_number}...")));
+
+  // Verify the PR exists and get its title/state/branch
+  let pr_info = Command::new("gh")
+    .args([
+      "pr",
+      "view",
+      &pr_number.to_string(),
+      "--repo",
+      "denoland/deno",
+      "--json",
+      "title,state,headRefName,headRefOid",
+      "-q",
+      r#"[.title, .state, .headRefName, .headRefOid] | @tsv"#,
+    ])
+    .output()
+    .context("failed to run `gh pr view`")?;
+
+  if !pr_info.status.success() {
+    let stderr = String::from_utf8_lossy(&pr_info.stderr);
+    bail!("Failed to find PR #{pr_number}: {stderr}");
+  }
+
+  let pr_info_str = String::from_utf8_lossy(&pr_info.stdout);
+  let pr_fields: Vec<&str> = pr_info_str.trim().splitn(4, '\t').collect();
+  let pr_title = pr_fields.first().unwrap_or(&"unknown");
+  let pr_state = pr_fields.get(1).unwrap_or(&"unknown");
+  let pr_branch = pr_fields.get(2).unwrap_or(&"");
+  let pr_head_sha = pr_fields.get(3).unwrap_or(&"");
+
+  log::info!(
+    "PR #{}: {} ({})",
+    pr_number,
+    colors::bold(pr_title),
+    pr_state
+  );
+
+  let artifact_name = get_pr_artifact_name()?;
+  let debug_artifact_name = get_pr_debug_artifact_name()?;
+
+  // Find CI runs for this PR by branch name
+  log::info!("{}", colors::gray("Finding CI artifacts..."));
+
+  let mut all_run_ids = Vec::new();
+
+  if !pr_branch.is_empty() {
+    // Filter by headSha to ensure we only get runs for the PR's current commit
+    let jq_filter = if pr_head_sha.is_empty() {
+      ".[].databaseId".to_string()
+    } else {
+      format!(
+        r#"[.[] | select(.headSha == "{}")] | .[].databaseId"#,
+        pr_head_sha
+      )
+    };
+    let branch_runs = Command::new("gh")
+      .args([
+        "run",
+        "list",
+        "--repo",
+        "denoland/deno",
+        "--branch",
+        pr_branch,
+        "--workflow",
+        "ci",
+        "--limit",
+        "5",
+        "--json",
+        "databaseId,headSha",
+        "-q",
+        &jq_filter,
+      ])
+      .output()
+      .context("failed to query CI runs by branch")?;
+
+    if branch_runs.status.success() {
+      let ids = String::from_utf8_lossy(&branch_runs.stdout);
+      for id in ids.trim().lines() {
+        if !id.is_empty() {
+          all_run_ids.push(id.to_string());
+        }
+      }
+    }
+  }
+
+  if all_run_ids.is_empty() {
+    bail!(
+      "No CI runs found for PR #{pr_number}. \
+       The PR may not have been pushed yet, CI hasn't started, \
+       or CI hasn't run on the latest commit yet."
+    );
+  }
+
+  // Try each run to find one with our artifact
+  let temp_dir =
+    tempfile::TempDir::new().context("failed to create temporary directory")?;
+  let download_dir = temp_dir.path();
+
+  let mut downloaded = false;
+  for run_id in &all_run_ids {
+    // Try release build first, then debug
+    for name in [&artifact_name, &debug_artifact_name] {
+      log::info!(
+        "{}",
+        colors::gray(format!("Trying run {run_id}, artifact \"{name}\"..."))
+      );
+
+      let dl_result = Command::new("gh")
+        .args([
+          "run",
+          "download",
+          run_id,
+          "--repo",
+          "denoland/deno",
+          "--name",
+          name,
+          "--dir",
+          &download_dir.to_string_lossy(),
+        ])
+        .output()
+        .context("failed to run `gh run download`")?;
+
+      if dl_result.status.success() {
+        log::info!(
+          "Downloaded artifact \"{}\" from run {}",
+          colors::green(name),
+          run_id
+        );
+        downloaded = true;
+        break;
+      }
+    }
+    if downloaded {
+      break;
+    }
+  }
+
+  if !downloaded {
+    bail!(
+      "Could not find a \"{}\" artifact for PR #{pr_number}.\n\
+       Available artifacts may have expired or CI may not have completed.\n\
+       Only release builds on linux-x86_64 and debug builds are typically available for PRs.",
+      artifact_name
+    );
+  }
+
+  // Find the downloaded binary
+  let exe_name = if cfg!(windows) { "deno.exe" } else { "deno" };
+  let new_exe_path = download_dir.join(exe_name);
+
+  if !new_exe_path.exists() {
+    bail!(
+      "Downloaded artifact does not contain '{}'. Contents: {:?}",
+      exe_name,
+      fs::read_dir(download_dir)?
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .collect::<Vec<_>>()
+    );
+  }
+
+  // Set executable permissions
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(&new_exe_path, std::fs::Permissions::from_mode(0o755))?;
+  }
+
+  // Verify the binary works
+  check_exe(&new_exe_path)?;
+
+  if upgrade_flags.dry_run {
+    log::info!("Upgraded successfully (dry run)");
+    drop(temp_dir);
+    return Ok(());
+  }
+
+  let current_exe_path = std::env::current_exe()
+    .context("failed to get the path of the current executable")?;
+  let output_exe_path = if let Some(output) = &upgrade_flags.output {
+    Cow::Owned(PathBuf::from(output))
+  } else {
+    Cow::Borrowed(&current_exe_path)
+  };
+
+  #[cfg(windows)]
+  kill_running_deno_lsp_processes();
+
+  let output_result = if *output_exe_path == current_exe_path {
+    replace_exe(&new_exe_path, &output_exe_path)
+  } else {
+    fs::rename(&new_exe_path, &*output_exe_path)
+      .or_else(|_| fs::copy(&new_exe_path, &*output_exe_path).map(|_| ()))
+  };
+  check_windows_access_denied_error(output_result, &output_exe_path)?;
+
+  log::info!(
+    "\nUpgraded successfully from PR #{} {}\n",
+    colors::green(&pr_number.to_string()),
+    colors::gray(&format!("({})", pr_title))
+  );
+
+  drop(temp_dir);
+  Ok(())
+}
+
+fn upgrade_from_branch(
+  branch: &str,
+  upgrade_flags: &UpgradeFlags,
+) -> Result<(), AnyError> {
+  let gh_version = Command::new("gh").arg("--version").output();
+  if gh_version.is_err() {
+    bail!(
+      "The `gh` CLI is required for installing from a branch.\n\
+       Install it from https://cli.github.com/ and run `gh auth login`."
+    );
+  }
+
+  log::info!(
+    "{}",
+    colors::gray(format!("Finding CI artifacts for branch '{branch}'..."))
+  );
+
+  let artifact_name = get_pr_artifact_name()?;
+  let debug_artifact_name = get_pr_debug_artifact_name()?;
+
+  let runs_output = Command::new("gh")
+    .args([
+      "run",
+      "list",
+      "--repo",
+      "denoland/deno",
+      "--branch",
+      branch,
+      "--workflow",
+      "ci",
+      "--limit",
+      "5",
+      "--json",
+      "databaseId",
+      "-q",
+      ".[].databaseId",
+    ])
+    .output()
+    .context("failed to query CI runs")?;
+
+  if !runs_output.status.success() {
+    let stderr = String::from_utf8_lossy(&runs_output.stderr);
+    bail!("Failed to find CI runs for branch '{branch}': {stderr}");
+  }
+
+  let run_ids: Vec<String> = String::from_utf8_lossy(&runs_output.stdout)
+    .trim()
+    .lines()
+    .filter(|l| !l.is_empty())
+    .map(|s| s.to_string())
+    .collect();
+
+  if run_ids.is_empty() {
+    bail!(
+      "No CI runs found for branch '{branch}'. \
+       CI may not have run yet."
+    );
+  }
+
+  let temp_dir =
+    tempfile::TempDir::new().context("failed to create temporary directory")?;
+  let download_dir = temp_dir.path();
+
+  let mut downloaded = false;
+  for run_id in &run_ids {
+    for name in [&artifact_name, &debug_artifact_name] {
+      log::info!(
+        "{}",
+        colors::gray(format!("Trying run {run_id}, artifact \"{name}\"..."))
+      );
+
+      let dl_result = Command::new("gh")
+        .args([
+          "run",
+          "download",
+          run_id,
+          "--repo",
+          "denoland/deno",
+          "--name",
+          name,
+          "--dir",
+          &download_dir.to_string_lossy(),
+        ])
+        .output()
+        .context("failed to run `gh run download`")?;
+
+      if dl_result.status.success() {
+        log::info!(
+          "Downloaded artifact \"{}\" from run {}",
+          colors::green(name),
+          run_id
+        );
+        downloaded = true;
+        break;
+      }
+    }
+    if downloaded {
+      break;
+    }
+  }
+
+  if !downloaded {
+    bail!(
+      "Could not find a \"{artifact_name}\" artifact for branch '{branch}'.\n\
+       Artifacts may have expired or CI may not have completed."
+    );
+  }
+
+  let exe_name = if cfg!(windows) { "deno.exe" } else { "deno" };
+  let new_exe_path = download_dir.join(exe_name);
+
+  if !new_exe_path.exists() {
+    bail!("Downloaded artifact does not contain '{exe_name}'.");
+  }
+
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(&new_exe_path, std::fs::Permissions::from_mode(0o755))?;
+  }
+
+  check_exe(&new_exe_path)?;
+
+  if upgrade_flags.dry_run {
+    log::info!("Upgraded successfully (dry run)");
+    drop(temp_dir);
+    return Ok(());
+  }
+
+  let current_exe_path = std::env::current_exe()
+    .context("failed to get the path of the current executable")?;
+  let output_exe_path = if let Some(output) = &upgrade_flags.output {
+    Cow::Owned(PathBuf::from(output))
+  } else {
+    Cow::Borrowed(&current_exe_path)
+  };
+
+  #[cfg(windows)]
+  kill_running_deno_lsp_processes();
+
+  let output_result = if *output_exe_path == current_exe_path {
+    replace_exe(&new_exe_path, &output_exe_path)
+  } else {
+    fs::rename(&new_exe_path, &*output_exe_path)
+      .or_else(|_| fs::copy(&new_exe_path, &*output_exe_path).map(|_| ()))
+  };
+  check_windows_access_denied_error(output_result, &output_exe_path)?;
+
+  log::info!(
+    "\nUpgraded successfully from branch '{}'\n",
+    colors::green(branch),
+  );
+
+  drop(temp_dir);
+  Ok(())
+}
+
+pub async fn upgrade(
+  flags: Arc<Flags>,
+  upgrade_flags: UpgradeFlags,
+) -> Result<(), AnyError> {
+  if let Some(pr_number) = upgrade_flags.pr {
+    return upgrade_from_pr(pr_number, &upgrade_flags);
+  }
+  if let Some(ref branch) = upgrade_flags.branch {
+    return upgrade_from_branch(branch, &upgrade_flags);
+  }
+
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
+  let http_client_provider = factory.http_client_provider();
+  let client = http_client_provider.get_or_create()?;
+  let current_exe_path = std::env::current_exe()
+    .context("failed to get the path of the current executable")?;
+  let full_path_output_flag = upgrade_flags
+    .output
+    .as_ref()
+    .map(|output| cli_options.initial_cwd().join(output));
+  let output_exe_path =
+    full_path_output_flag.as_ref().unwrap_or(&current_exe_path);
+
+  let permissions = set_exe_permissions(&current_exe_path, output_exe_path)?;
+
+  let force_selection_of_new_version =
+    upgrade_flags.force || full_path_output_flag.is_some();
+
+  let requested_version =
+    RequestedVersion::from_upgrade_flags(upgrade_flags.clone())?;
+
+  log::info!("Current Deno version: v{}", version::DENO_VERSION_INFO.deno);
+
+  let maybe_selected_version_to_upgrade = match &requested_version {
+    RequestedVersion::Latest(channel) => {
+      find_latest_version_to_upgrade(
+        http_client_provider.clone(),
+        *channel,
+        force_selection_of_new_version,
+      )
+      .await?
+    }
+    RequestedVersion::SpecificVersion(channel, version) => {
+      select_specific_version_for_upgrade(
+        *channel,
+        version.clone(),
+        force_selection_of_new_version,
+      )?
+    }
+  };
+
+  let Some(selected_version_to_upgrade) = maybe_selected_version_to_upgrade
+  else {
+    return Ok(());
+  };
+
+  let banner_handle = spawn_banner_task(
+    &selected_version_to_upgrade.version_or_hash,
+    selected_version_to_upgrade.release_channel,
+    http_client_provider.get_or_create()?,
+  );
+
+  let dl_dir = factory.deno_dir()?.dl_folder_path();
+  let cache_path = get_binary_cache_path(
+    &dl_dir,
+    &selected_version_to_upgrade.version_or_hash,
+    requested_version.release_channel(),
+  );
+
+  let sys = &sys_traits::impls::RealSys;
+
+  // Try delta upgrade for stable releases when not disabled
+  let maybe_delta_binary = if !upgrade_flags.no_delta
+    && requested_version.release_channel() == ReleaseChannel::Stable
+    && try_read_cached_binary(sys, &cache_path).is_none()
+  {
+    try_delta_upgrade(
+      &client,
+      &current_exe_path,
+      version::DENO_VERSION_INFO.deno,
+      &selected_version_to_upgrade.version_or_hash,
+    )
+    .await
+  } else {
+    None
+  };
+
+  let temp_dir =
+    tempfile::TempDir::new().context("failed to create temporary directory")?;
+
+  let new_exe_path = if let Some(delta_binary) = maybe_delta_binary {
+    // Delta upgrade succeeded -- write the patched binary directly
+    log::info!(
+      "{}",
+      colors::gray(format!(
+        "Deno is upgrading to version {}",
+        &selected_version_to_upgrade.version_or_hash
+      ))
+    );
+
+    let exe_name = if cfg!(windows) { "deno.exe" } else { "deno" };
+    let new_exe_path = temp_dir.path().join(exe_name);
+    std::fs::write(&new_exe_path, &delta_binary).with_context(|| {
+      format!(
+        "failed to write patched binary to '{}'",
+        new_exe_path.display()
+      )
+    })?;
+    new_exe_path
+  } else {
+    // Full download path (existing behavior)
+    let archive_data = if let Some(data) =
+      try_read_cached_binary(sys, &cache_path)
+    {
+      log::info!(
+        "{}",
+        colors::gray(format!(
+          "Using cached binary from {}",
+          cache_path.display()
+        ))
+      );
+      data
+    } else {
+      let download_url = get_download_url(
+        &selected_version_to_upgrade.version_or_hash,
+        requested_version.release_channel(),
+      )?;
+      log::info!("{}", colors::gray(format!("Downloading {}", &download_url)));
+      let Some(data) = download_package(&client, download_url).await? else {
+        log::error!("Download could not be found, aborting");
+        if requested_version.release_channel() == ReleaseChannel::Canary {
+          log::error!("Note: canary releases are only kept for 30 days.");
+        }
+        deno_runtime::exit(1)
+      };
+
+      store_cached_binary(sys, &cache_path, &data);
+
+      data
+    };
+
+    // verify checksum if provided
+    if let Some(expected_checksum) = &upgrade_flags.checksum {
+      verify_checksum(&archive_data, expected_checksum)?;
+    }
+
+    log::info!(
+      "{}",
+      colors::gray(format!(
+        "Deno is upgrading to version {}",
+        &selected_version_to_upgrade.version_or_hash
+      ))
+    );
+
+    archive::unpack_into_dir(archive::UnpackArgs {
+      exe_name: if cfg!(windows) { "deno.exe" } else { "deno" },
+      archive_name: &ARCHIVE_NAME,
+      archive_data: &archive_data,
+      dest_path: temp_dir.path(),
+    })
+    .context("failed to extract archive")?
+  };
+  fs::set_permissions(&new_exe_path, permissions).with_context(|| {
+    format!("failed to set permissions on '{}'", new_exe_path.display())
+  })?;
+  check_exe(&new_exe_path)?;
+
+  if upgrade_flags.dry_run {
+    fs::remove_file(&new_exe_path).with_context(|| {
+      format!("failed to remove '{}'", new_exe_path.display())
+    })?;
+    log::info!("Upgraded successfully (dry run)");
+    if requested_version.release_channel() == ReleaseChannel::Stable {
+      print_release_notes(
+        version::DENO_VERSION_INFO.deno,
+        &selected_version_to_upgrade.version_or_hash,
+        &client,
+      )
+      .await;
+    }
+    drop(temp_dir);
+    return Ok(());
+  }
+
+  let output_exe_path =
+    full_path_output_flag.as_ref().unwrap_or(&current_exe_path);
+
+  #[cfg(windows)]
+  kill_running_deno_lsp_processes();
+
+  let output_result = if *output_exe_path == current_exe_path {
+    replace_exe(&new_exe_path, output_exe_path)
+  } else {
+    fs::rename(&new_exe_path, output_exe_path)
+      .or_else(|_| fs::copy(&new_exe_path, output_exe_path).map(|_| ()))
+  };
+  check_windows_access_denied_error(output_result, output_exe_path)?;
+
+  log::info!(
+    "\nUpgraded successfully to Deno {} {}\n",
+    colors::green(selected_version_to_upgrade.display()),
+    colors::gray(&format!(
+      "({})",
+      selected_version_to_upgrade.release_channel.name()
+    ))
+  );
+  if requested_version.release_channel() == ReleaseChannel::Stable {
+    print_release_notes(
+      version::DENO_VERSION_INFO.deno,
+      &selected_version_to_upgrade.version_or_hash,
+      &client,
+    )
+    .await;
+  }
+
+  if let Ok(Some(text)) = banner_handle.await {
+    log::info!("\n{}\n", text);
+  }
+
+  drop(temp_dir); // delete the temp dir
+
+  // Prune old canary cache entries to avoid unbounded growth
+  if requested_version.release_channel() == ReleaseChannel::Canary {
+    prune_canary_cache(sys, &dl_dir, 10);
+  }
+
+  Ok(())
+}
+
+#[derive(Debug, PartialEq)]
+enum RequestedVersion {
+  Latest(ReleaseChannel),
+  SpecificVersion(ReleaseChannel, String),
+}
+
+impl RequestedVersion {
+  fn from_upgrade_flags(upgrade_flags: UpgradeFlags) -> Result<Self, AnyError> {
+    let is_canary = upgrade_flags.canary;
+    let re_hash = lazy_regex::regex!("^[0-9a-f]{40}$");
+    let channel = if is_canary {
+      ReleaseChannel::Canary
+    } else if upgrade_flags.release_candidate {
+      ReleaseChannel::Rc
+    } else {
+      ReleaseChannel::Stable
+    };
+    let mut maybe_passed_version = upgrade_flags.version.clone();
+
+    // TODO(bartlomieju): prefer flags first? This whole logic could be cleaned up...
+    if let Some(val) = &upgrade_flags.version_or_hash_or_channel {
+      if let Ok(channel) = ReleaseChannel::deserialize(&val.to_lowercase()) {
+        // TODO(bartlomieju): print error if any other flags passed?
+        return Ok(Self::Latest(channel));
+      } else if re_hash.is_match(val) {
+        return Ok(Self::SpecificVersion(
+          ReleaseChannel::Canary,
+          val.to_string(),
+        ));
+      } else {
+        maybe_passed_version = Some(val.to_string());
+      }
+    }
+
+    let Some(passed_version) = maybe_passed_version else {
+      return Ok(Self::Latest(channel));
+    };
+
+    let passed_version = passed_version
+      .strip_prefix('v')
+      .unwrap_or(&passed_version)
+      .to_string();
+
+    let (channel, passed_version) = if is_canary {
+      if !re_hash.is_match(&passed_version) {
+        bail!(
+          "Invalid commit hash passed ({})\n\nPass a semver, or a full 40 character git commit hash, or a release channel name.\n\nUsage:\n{}",
+          colors::gray(passed_version),
+          UPGRADE_USAGE
+        );
+      }
+
+      (ReleaseChannel::Canary, passed_version)
+    } else {
+      let Ok(semver) = Version::parse_standard(&passed_version) else {
+        bail!(
+          "Invalid version passed ({})\n\nPass a semver, or a full 40 character git commit hash, or a release channel name.\n\nUsage:\n{}",
+          colors::gray(passed_version),
+          UPGRADE_USAGE
+        );
+      };
+
+      if semver.pre.contains(&SmallStackString::from_static("alpha")) {
+        (ReleaseChannel::Alpha, passed_version)
+      } else if semver.pre.contains(&SmallStackString::from_static("beta")) {
+        (ReleaseChannel::Beta, passed_version)
+      } else if semver.pre.contains(&SmallStackString::from_static("rc")) {
+        (ReleaseChannel::Rc, passed_version)
+      } else {
+        (ReleaseChannel::Stable, passed_version)
+      }
+    };
+
+    Ok(RequestedVersion::SpecificVersion(channel, passed_version))
+  }
+
+  /// Channels that use Git hashes as versions are considered canary.
+  pub fn release_channel(&self) -> ReleaseChannel {
+    match self {
+      Self::Latest(channel) => *channel,
+      Self::SpecificVersion(channel, _) => *channel,
+    }
+  }
+}
+
+fn select_specific_version_for_upgrade(
+  release_channel: ReleaseChannel,
+  version: String,
+  force: bool,
+) -> Result<Option<AvailableVersion>, AnyError> {
+  let current_is_passed = match release_channel {
+    ReleaseChannel::Stable
+    | ReleaseChannel::Rc
+    | ReleaseChannel::Lts
+    | ReleaseChannel::Alpha
+    | ReleaseChannel::Beta => {
+      version::DENO_VERSION_INFO.release_channel == release_channel
+        && version::DENO_VERSION_INFO.deno == version
+    }
+    ReleaseChannel::Canary => version::DENO_VERSION_INFO.git_hash == version,
+  };
+
+  if !force && current_is_passed {
+    log::info!(
+      "Version {} is already installed",
+      version::DENO_VERSION_INFO.deno
+    );
+    return Ok(None);
+  }
+
+  Ok(Some(AvailableVersion {
+    version_or_hash: version,
+    release_channel,
+  }))
+}
+
+async fn find_latest_version_to_upgrade(
+  http_client_provider: Arc<HttpClientProvider>,
+  release_channel: ReleaseChannel,
+  force: bool,
+) -> Result<Option<AvailableVersion>, AnyError> {
+  log::info!(
+    "{}",
+    colors::gray(&format!("Looking up {} version", release_channel.name()))
+  );
+
+  let client = http_client_provider.get_or_create()?;
+
+  let latest_version_found = match fetch_latest_version(
+    &client,
+    release_channel,
+    UpgradeCheckKind::Execution,
+  )
+  .await
+  {
+    Ok(v) => v,
+    Err(err) => {
+      if err.to_string().contains("Not found") {
+        bail!(
+          "No {} release available at the moment.",
+          release_channel.name()
+        );
+      } else {
+        return Err(err);
+      }
+    }
+  };
+
+  let current_version = match release_channel {
+    ReleaseChannel::Canary => version::DENO_VERSION_INFO.git_hash,
+    ReleaseChannel::Stable
+    | ReleaseChannel::Lts
+    | ReleaseChannel::Rc
+    | ReleaseChannel::Alpha
+    | ReleaseChannel::Beta => version::DENO_VERSION_INFO.deno,
+  };
+  let should_upgrade = force
+    || current_version != latest_version_found.version_or_hash
+    || version::DENO_VERSION_INFO.release_channel != release_channel;
+
+  log::info!("");
+  if should_upgrade {
+    log::info!(
+      "Found latest {} version {}",
+      latest_version_found.release_channel.name(),
+      color_print::cformat!("<g>{}</>", latest_version_found.display())
+    );
+  } else {
+    log::info!(
+      "Local deno version {} is the most recent release",
+      color_print::cformat!("<g>{}</>", current_version)
+    );
+  }
+  log::info!("");
+
+  Ok(should_upgrade.then_some(latest_version_found))
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct AvailableVersion {
+  version_or_hash: String,
+  release_channel: ReleaseChannel,
+}
+
+impl AvailableVersion {
+  /// Format display version, appending `v` before version number
+  /// for non-canary releases.
+  fn display(&self) -> Cow<'_, str> {
+    match self.release_channel {
+      ReleaseChannel::Canary => Cow::Borrowed(&self.version_or_hash),
+      _ => Cow::Owned(format!("v{}", self.version_or_hash)),
+    }
+  }
+}
+
+async fn fetch_latest_version(
+  client: &HttpClient,
+  release_channel: ReleaseChannel,
+  check_kind: UpgradeCheckKind,
+) -> Result<AvailableVersion, AnyError> {
+  let url = get_latest_version_url(release_channel, env!("TARGET"), check_kind);
+  let text = client.download_text(url.parse()?).await?;
+  let version = normalize_version_from_server(release_channel, &text)?;
+  Ok(version)
+}
+
+fn normalize_version_from_server(
+  release_channel: ReleaseChannel,
+  text: &str,
+) -> Result<AvailableVersion, AnyError> {
+  let text = text.trim();
+  match release_channel {
+    ReleaseChannel::Stable
+    | ReleaseChannel::Rc
+    | ReleaseChannel::Lts
+    | ReleaseChannel::Alpha
+    | ReleaseChannel::Beta => {
+      let v = text.trim_start_matches('v').to_string();
+      Ok(AvailableVersion {
+        version_or_hash: v.to_string(),
+        release_channel,
+      })
+    }
+    ReleaseChannel::Canary => Ok(AvailableVersion {
+      version_or_hash: text.to_string(),
+      release_channel,
+    }),
+  }
+}
+
+fn get_latest_version_url(
+  release_channel: ReleaseChannel,
+  target_tuple: &str,
+  check_kind: UpgradeCheckKind,
+) -> String {
+  let file_name = match release_channel {
+    ReleaseChannel::Stable => Cow::Borrowed("release-latest.txt"),
+    ReleaseChannel::Canary => {
+      Cow::Owned(format!("canary-{target_tuple}-latest.txt"))
+    }
+    ReleaseChannel::Rc => Cow::Borrowed("release-rc-latest.txt"),
+    ReleaseChannel::Lts => Cow::Borrowed("release-lts-latest.txt"),
+    ReleaseChannel::Alpha => Cow::Borrowed("release-alpha-latest.txt"),
+    ReleaseChannel::Beta => Cow::Borrowed("release-beta-latest.txt"),
+  };
+  let query_param = match check_kind {
+    UpgradeCheckKind::Execution => "",
+    UpgradeCheckKind::Lsp => "?lsp",
+  };
+  format!("{}/{}{}", base_upgrade_url(), file_name, query_param)
+}
+
+fn base_upgrade_url() -> Cow<'static, str> {
+  // this is used by the test suite
+  if let Ok(url) = env::var("DENO_DONT_USE_INTERNAL_BASE_UPGRADE_URL") {
+    Cow::Owned(url)
+  } else {
+    Cow::Borrowed("https://dl.deno.land")
+  }
+}
+
+fn get_download_url(
+  version: &str,
+  release_channel: ReleaseChannel,
+) -> Result<Url, AnyError> {
+  let download_url = match release_channel {
+    ReleaseChannel::Stable | ReleaseChannel::Alpha | ReleaseChannel::Beta => {
+      let release_url = if std::env::var_os("DENO_TESTING_UPGRADE").is_some() {
+        "http://localhost:4545/deno-upgrade"
+      } else {
+        RELEASE_URL
+      };
+      format!("{}/download/v{}/{}", release_url, version, *ARCHIVE_NAME)
+    }
+    ReleaseChannel::Rc => {
+      format!("{}/v{}/{}", DL_RELEASE_URL, version, *ARCHIVE_NAME)
+    }
+    ReleaseChannel::Canary => {
+      format!("{}/{}/{}", CANARY_URL, version, *ARCHIVE_NAME)
+    }
+    ReleaseChannel::Lts => {
+      format!("{}/v{}/{}", DL_RELEASE_URL, version, *ARCHIVE_NAME)
+    }
+  };
+
+  Url::parse(&download_url).with_context(|| {
+    format!(
+      "Failed to parse URL to download new release: {}",
+      download_url
+    )
+  })
+}
+
+/// Build the chain of consecutive versions from current to target.
+/// Each release only has a delta from its immediate predecessor, so
+/// multi-step upgrades (e.g. 2.7.10 -> 2.7.12) require chaining:
+///   download 2.7.11's delta from 2.7.10, apply,
+///   download 2.7.12's delta from 2.7.11, apply.
+///
+/// Supports:
+/// - Same-minor patch upgrades (e.g. 2.7.10 -> 2.7.12)
+/// - Cross-minor upgrades (e.g. 2.7.13 -> 2.8.0 -> 2.8.1): the first
+///   step crosses the minor boundary, remaining steps are same-minor.
+///
+/// Total chain length is capped at 3 steps. Returns empty if the
+/// versions are not eligible for delta upgrade.
+fn build_delta_chain(
+  current_version: &str,
+  target_version: &str,
+) -> Vec<(String, String)> {
+  let Ok(current) = Version::parse_standard(current_version) else {
+    return vec![];
+  };
+  let Ok(target) = Version::parse_standard(target_version) else {
+    return vec![];
+  };
+  if !current.pre.is_empty()
+    || !target.pre.is_empty()
+    || current.major != target.major
+  {
+    return vec![];
+  }
+
+  let mut chain = Vec::new();
+
+  if current.minor == target.minor {
+    // Same minor: chain through consecutive patches
+    let diff = target.patch.saturating_sub(current.patch);
+    if diff == 0 || diff > 3 {
+      return vec![];
+    }
+    for i in 0..diff {
+      chain.push((
+        format!("{}.{}.{}", current.major, current.minor, current.patch + i),
+        format!(
+          "{}.{}.{}",
+          current.major,
+          current.minor,
+          current.patch + i + 1
+        ),
+      ));
+    }
+  } else if target.minor == current.minor + 1 {
+    // Cross-minor: first step jumps to target_minor.0, then chain patches
+    let minor_zero = format!("{}.{}.0", target.major, target.minor);
+    chain.push((current_version.to_string(), minor_zero));
+    for i in 0..target.patch {
+      chain.push((
+        format!("{}.{}.{}", target.major, target.minor, i),
+        format!("{}.{}.{}", target.major, target.minor, i + 1),
+      ));
+    }
+    if chain.len() > 3 {
+      return vec![];
+    }
+  } else {
+    // Too many minor versions apart
+    return vec![];
+  }
+
+  chain
+}
+
+/// Construct the delta patch download URL for a stable release.
+fn get_delta_download_url(
+  current_version: &str,
+  target_version: &str,
+) -> Result<Url, AnyError> {
+  let release_url = if std::env::var_os("DENO_TESTING_UPGRADE").is_some() {
+    "http://localhost:4545/deno-upgrade"
+  } else {
+    RELEASE_URL
+  };
+  let url = format!(
+    "{}/download/v{}/{}.from-{}.bsdiff",
+    release_url, target_version, *DELTA_TARGET_NAME, current_version
+  );
+  Url::parse(&url)
+    .with_context(|| format!("Failed to parse delta download URL: {}", url))
+}
+
+/// Construct the URL for the delta patch's SHA-256 checksum file.
+fn get_delta_checksum_url(
+  current_version: &str,
+  target_version: &str,
+) -> Result<Url, AnyError> {
+  let release_url = if std::env::var_os("DENO_TESTING_UPGRADE").is_some() {
+    "http://localhost:4545/deno-upgrade"
+  } else {
+    RELEASE_URL
+  };
+  let url = format!(
+    "{}/download/v{}/{}.from-{}.bsdiff.sha256sum",
+    release_url, target_version, *DELTA_TARGET_NAME, current_version
+  );
+  Url::parse(&url)
+    .with_context(|| format!("Failed to parse delta checksum URL: {}", url))
+}
+
+/// Construct the URL for the uncompressed binary's SHA-256 checksum file.
+fn get_binary_checksum_url(target_version: &str) -> Result<Url, AnyError> {
+  let release_url = if std::env::var_os("DENO_TESTING_UPGRADE").is_some() {
+    "http://localhost:4545/deno-upgrade"
+  } else {
+    RELEASE_URL
+  };
+  let url = format!(
+    "{}/download/v{}/{}.sha256sum",
+    release_url, target_version, *DELTA_TARGET_NAME
+  );
+  Url::parse(&url)
+    .with_context(|| format!("Failed to parse binary checksum URL: {}", url))
+}
+
+/// Fetch a SHA-256 hash from a .sha256sum file hosted as a release asset.
+/// The file format is expected to be: `<hex_hash>  <filename>\n`
+async fn fetch_sha256_from_url(
+  client: &HttpClient,
+  url: Url,
+) -> Option<String> {
+  let text = client.download_text(url).await.ok()?;
+  // sha256sum files are formatted as "<hash>  <filename>" or just "<hash>"
+  let hash = text.split_whitespace().next()?;
+  if hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit()) {
+    Some(hash.to_lowercase())
+  } else {
+    None
+  }
+}
+
+/// Compute the SHA-256 hash of the given data, returning it as a lowercase
+/// hex string.
+fn compute_sha256(data: &[u8]) -> String {
+  let digest = sha2::Sha256::digest(data);
+  faster_hex::hex_string(&digest)
+}
+
+/// Attempt a delta upgrade by chaining consecutive bsdiff patches.
+/// For a single-step upgrade (e.g. 2.7.11 -> 2.7.12), downloads and
+/// applies one patch. For multi-step (e.g. 2.7.10 -> 2.7.12), chains
+/// patches: downloads the 2.7.10->2.7.11 patch from the 2.7.11 release,
+/// applies it, then downloads the 2.7.11->2.7.12 patch from the 2.7.12
+/// release, applies that. Returns `Some(final_binary)` on success, or
+/// `None` on any failure (triggering full download fallback).
+async fn try_delta_upgrade(
+  client: &HttpClient,
+  current_exe: &Path,
+  current_version: &str,
+  target_version: &str,
+) -> Option<Vec<u8>> {
+  let chain = build_delta_chain(current_version, target_version);
+  if chain.is_empty() {
+    log::debug!(
+      "No delta chain from {} to {}, skipping delta upgrade",
+      current_version,
+      target_version
+    );
+    return None;
+  }
+
+  let steps = chain.len();
+  log::info!(
+    "{}",
+    colors::gray(format!(
+      "Attempting delta upgrade ({} step{})",
+      steps,
+      if steps > 1 { "s" } else { "" }
+    ))
+  );
+
+  // Read the current binary
+  let mut binary = match std::fs::read(current_exe) {
+    Ok(data) => data,
+    Err(e) => {
+      log::debug!("Failed to read current binary: {}", e);
+      return None;
+    }
+  };
+
+  // Verify the current binary's integrity
+  let current_checksum_url = get_binary_checksum_url(current_version).ok()?;
+  if let Some(expected_hash) =
+    fetch_sha256_from_url(client, current_checksum_url).await
+  {
+    let actual_hash = compute_sha256(&binary);
+    if actual_hash != expected_hash {
+      log::debug!("Current binary checksum mismatch, skipping delta");
+      return None;
+    }
+  } else {
+    log::debug!(
+      "Could not fetch checksum for current binary v{}, skipping delta",
+      current_version,
+    );
+    return None;
+  }
+
+  // Apply each step in the chain
+  for (i, (src, dst)) in chain.iter().enumerate() {
+    if steps > 1 {
+      log::info!(
+        "{}",
+        colors::gray(format!("Step {}/{}: {} -> {}", i + 1, steps, src, dst))
+      );
+    }
+
+    // Download the delta patch (from the DST version's release)
+    let delta_url = get_delta_download_url(src, dst).ok()?;
+    log::info!(
+      "{}",
+      colors::gray(format!("Downloading delta patch {}", &delta_url))
+    );
+    let delta_data = match download_package(client, delta_url).await {
+      Ok(Some(data)) => data,
+      Ok(None) => {
+        log::debug!("Delta patch not found for {} -> {}", src, dst);
+        return None;
+      }
+      Err(e) => {
+        log::debug!("Failed to download delta patch: {}", e);
+        return None;
+      }
+    };
+
+    // Verify the delta patch's own checksum
+    let delta_checksum_url = get_delta_checksum_url(src, dst).ok()?;
+    if let Some(expected_delta_hash) =
+      fetch_sha256_from_url(client, delta_checksum_url).await
+    {
+      let actual_delta_hash = compute_sha256(&delta_data);
+      if actual_delta_hash != expected_delta_hash {
+        log::warn!("Delta patch checksum mismatch for {} -> {}", src, dst);
+        return None;
+      }
+    } else {
+      log::debug!(
+        "Could not fetch delta patch checksum for {} -> {}",
+        src,
+        dst
+      );
+      return None;
+    }
+
+    // Apply the bsdiff patch
+    binary = match apply_bsdiff_patch(&binary, &delta_data) {
+      Ok(data) => data,
+      Err(e) => {
+        log::warn!("Failed to apply delta patch {} -> {}: {}", src, dst, e);
+        return None;
+      }
+    };
+
+    // Verify the intermediate/final binary
+    let checksum_url = get_binary_checksum_url(dst).ok()?;
+    if let Some(expected_hash) =
+      fetch_sha256_from_url(client, checksum_url).await
+    {
+      let actual_hash = compute_sha256(&binary);
+      if actual_hash != expected_hash {
+        log::warn!(
+          "Patched binary checksum mismatch after step {} -> {}",
+          src,
+          dst
+        );
+        return None;
+      }
+    } else {
+      log::debug!(
+        "Could not fetch binary checksum for v{}, skipping delta",
+        dst
+      );
+      return None;
+    }
+  }
+
+  log::info!("{}", colors::gray("Delta upgrade checksum verified"));
+
+  log::info!(
+    "{}",
+    colors::gray(format!(
+      "Delta upgrade applied successfully ({:.1} MB binary)",
+      binary.len() as f64 / 1_000_000.0
+    ))
+  );
+
+  Some(binary)
+}
+
+/// zstd magic number — published patches generated by `tools/bsdiff_helper`
+/// are zstd-wrapped. Detected here so we can fall through to legacy raw
+/// bsdiff for patches uploaded before that change (e.g. v2.8.0's
+/// `from-2.7.14.bsdiff`).
+const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
+
+/// Apply a bsdiff patch to produce a new binary.
+///
+/// Accepts both zstd-wrapped patches (current format) and raw bsdiff patches
+/// (legacy format, pre-zstd-wrapping).
+fn apply_bsdiff_patch(
+  old: &[u8],
+  patch_data: &[u8],
+) -> Result<Vec<u8>, AnyError> {
+  let decoded;
+  let raw_patch = if patch_data.starts_with(&ZSTD_MAGIC) {
+    // Stream the decompression so the output buffer grows incrementally
+    // instead of pre-allocating MAX_PATCH_SIZE up front (which OOMs on
+    // low-memory devices). `.take(MAX_PATCH_SIZE)` keeps the anti-DoS cap.
+    use std::io::Read;
+    let decoder = zstd::stream::Decoder::new(patch_data)
+      .context("failed to zstd-decompress delta patch")?;
+    let mut buf = Vec::new();
+    decoder
+      .take(MAX_PATCH_SIZE as u64)
+      .read_to_end(&mut buf)
+      .context("failed to zstd-decompress delta patch")?;
+    decoded = buf;
+    decoded.as_slice()
+  } else {
+    patch_data
+  };
+  let mut cursor = std::io::Cursor::new(raw_patch);
+  let mut new = Vec::new();
+  bsdiff::patch(old, &mut cursor, &mut new)
+    .context("bspatch failed to apply delta patch")?;
+  Ok(new)
+}
+
+/// Upper bound on the decompressed bsdiff patch size. Generous (2 GiB) since
+/// the raw bsdiff stream can exceed the new binary's size; we only need to
+/// reject pathological/malicious inputs, not enforce a tight budget.
+const MAX_PATCH_SIZE: usize = 2 * 1024 * 1024 * 1024;
+
+fn spawn_banner_task(
+  version: &str,
+  release_channel: ReleaseChannel,
+  client: HttpClient,
+) -> deno_core::unsync::JoinHandle<Option<String>> {
+  let banner_url = get_banner_url(version, release_channel);
+  deno_core::unsync::spawn(async move {
+    let banner_url = banner_url?;
+    tokio::select! {
+      result = client.download_text(banner_url) => {
+        result.ok()
+      }
+      _ = tokio::time::sleep(Duration::from_secs(5)) => {
+        None
+      }
+    }
+  })
+}
+
+fn get_banner_url(
+  version: &str,
+  release_channel: ReleaseChannel,
+) -> Option<Url> {
+  let download_url = match release_channel {
+    ReleaseChannel::Stable => {
+      format!("{}/v{}/banner.txt", DL_RELEASE_URL, version)
+    }
+    ReleaseChannel::Rc
+    | ReleaseChannel::Lts
+    | ReleaseChannel::Canary
+    | ReleaseChannel::Alpha
+    | ReleaseChannel::Beta => {
+      return None;
+    }
+  };
+
+  Url::parse(&download_url).ok()
+}
+
+async fn download_package(
+  client: &HttpClient,
+  download_url: Url,
+) -> Result<Option<Vec<u8>>, AnyError> {
+  let progress_bar = ProgressBar::new(ProgressBarStyle::DownloadBars);
+  // provide an empty string here in order to prefer the downloading
+  // text above which will stay alive after the progress bars are complete
+  let progress = progress_bar.update("");
+  let response = client
+    .download_with_progress_and_retries(download_url.clone(), &Default::default(), &progress)
+    .await
+    .with_context(|| format!("Failed downloading {download_url}. The version you requested may not have been built for the current architecture."))?;
+  Ok(response.into_maybe_bytes()?)
+}
+
+fn verify_checksum(
+  data: &[u8],
+  expected_checksum: &str,
+) -> Result<(), AnyError> {
+  let computed = sha2::Sha256::digest(data);
+  let computed_hex = faster_hex::hex_string(&computed);
+
+  let expected_checksum = expected_checksum.trim().to_lowercase();
+  if computed_hex != expected_checksum {
+    bail!(
+      "Checksum verification failed.\n  Actual:   {}\n  Expected: {}",
+      expected_checksum,
+      computed_hex
+    );
+  }
+
+  log::info!("{}", colors::gray("Checksum verified"));
+  Ok(())
+}
+
+fn replace_exe(from: &Path, to: &Path) -> Result<(), std::io::Error> {
+  if cfg!(windows) {
+    // On windows you cannot replace the currently running executable.
+    // so first we rename it to deno.old.exe
+    fs::rename(to, to.with_extension("old.exe"))?;
+  } else {
+    fs::remove_file(to)?;
+  }
+  // Windows cannot rename files across device boundaries, so if rename fails,
+  // we try again with copy.
+  fs::rename(from, to).or_else(|_| fs::copy(from, to).map(|_| ()))?;
+  Ok(())
+}
+
+fn check_windows_access_denied_error(
+  output_result: Result<(), std::io::Error>,
+  output_exe_path: &Path,
+) -> Result<(), AnyError> {
+  let Err(err) = output_result else {
+    return Ok(());
+  };
+
+  if !cfg!(windows) {
+    return Err(err).with_context(|| {
+      format!(
+        "failed to replace the executable at '{}'",
+        output_exe_path.display()
+      )
+    });
+  }
+
+  const WIN_ERROR_ACCESS_DENIED: i32 = 5;
+  if err.raw_os_error() != Some(WIN_ERROR_ACCESS_DENIED) {
+    return Err(err.into());
+  };
+
+  Err(err).with_context(|| {
+    format!(
+      concat!(
+        "Could not replace the deno executable. This may be because an ",
+        "existing deno process is running. Please ensure there are no ",
+        "running deno processes (ex. Stop-Process -Name deno ; deno {}), ",
+        "close any editors before upgrading, and ensure you have ",
+        "sufficient permission to '{}'."
+      ),
+      // skip the first argument, which is the executable path
+      std::env::args().skip(1).collect::<Vec<_>>().join(" "),
+      output_exe_path.display(),
+    )
+  })
+}
+
+#[cfg(windows)]
+fn kill_running_deno_lsp_processes() {
+  // limit this to `deno lsp` invocations to avoid killing important programs someone might be running
+  let is_debug = log::log_enabled!(log::Level::Debug);
+  let get_pipe = || {
+    if is_debug {
+      std::process::Stdio::inherit()
+    } else {
+      std::process::Stdio::null()
+    }
+  };
+  let _ = Command::new("powershell.exe")
+    .args([
+      "-Command",
+      r#"Get-WmiObject Win32_Process | Where-Object {
+    $_.Name -eq 'deno.exe' -and
+    $_.CommandLine -match '^(?:\"[^\"]+\"|\S+)\s+lsp\b'
+} | ForEach-Object {
+  if ($_.Terminate()) {
+    Write-Host 'Terminated:' $_.ProcessId
+  }
+}"#,
+    ])
+    .stdout(get_pipe())
+    .stderr(get_pipe())
+    .output();
+}
+
+fn set_exe_permissions(
+  current_exe_path: &Path,
+  output_exe_path: &Path,
+) -> Result<std::fs::Permissions, AnyError> {
+  let Ok(metadata) = fs::metadata(output_exe_path) else {
+    let metadata = fs::metadata(current_exe_path).with_context(|| {
+      format!(
+        "failed to get metadata of the current executable at '{}'",
+        current_exe_path.display()
+      )
+    })?;
+    return Ok(metadata.permissions());
+  };
+
+  let permissions = metadata.permissions();
+  if permissions.readonly() {
+    bail!(
+      "You do not have write permission to {}",
+      output_exe_path.display()
+    );
+  }
+  #[cfg(unix)]
+  if std::os::unix::fs::MetadataExt::uid(&metadata) == 0
+    && !nix::unistd::Uid::effective().is_root()
+  {
+    bail!(
+      concat!(
+        "You don't have write permission to {} because it's owned by root.\n",
+        "Consider updating deno through your package manager if its installed from it.\n",
+        "Otherwise run `deno upgrade` as root.",
+      ),
+      output_exe_path.display()
+    );
+  }
+  Ok(permissions)
+}
+
+fn check_exe(exe_path: &Path) -> Result<(), AnyError> {
+  let output = Command::new(exe_path)
+    .arg("-V")
+    .stderr(std::process::Stdio::inherit())
+    .output()
+    .with_context(|| format!("failed to run '{}'", exe_path.display()))?;
+  if !output.status.success() {
+    bail!(
+      "Failed to validate Deno executable. This may be because your OS is unsupported or the executable is corrupted"
+    )
+  } else {
+    Ok(())
+  }
+}
+
+#[derive(Debug)]
+struct CheckVersionFile {
+  pub last_prompt: chrono::DateTime<chrono::Utc>,
+  pub last_checked: chrono::DateTime<chrono::Utc>,
+  pub current_version: String,
+  pub latest_version: String,
+  pub current_release_channel: ReleaseChannel,
+}
+
+impl CheckVersionFile {
+  pub fn parse(content: String) -> Option<Self> {
+    let split_content = content.split('!').collect::<Vec<_>>();
+
+    if split_content.len() != 5 {
+      return None;
+    }
+
+    let latest_version = split_content[2].trim().to_owned();
+    if latest_version.is_empty() {
+      return None;
+    }
+    let current_version = split_content[3].trim().to_owned();
+    if current_version.is_empty() {
+      return None;
+    }
+    let current_release_channel = split_content[4].trim().to_owned();
+    if current_release_channel.is_empty() {
+      return None;
+    }
+    let Ok(current_release_channel) =
+      ReleaseChannel::deserialize(&current_release_channel)
+    else {
+      return None;
+    };
+
+    let last_prompt = chrono::DateTime::parse_from_rfc3339(split_content[0])
+      .map(|dt| dt.with_timezone(&chrono::Utc))
+      .ok()?;
+    let last_checked = chrono::DateTime::parse_from_rfc3339(split_content[1])
+      .map(|dt| dt.with_timezone(&chrono::Utc))
+      .ok()?;
+
+    Some(CheckVersionFile {
+      last_prompt,
+      last_checked,
+      current_version,
+      latest_version,
+      current_release_channel,
+    })
+  }
+
+  fn serialize(&self) -> String {
+    format!(
+      "{}!{}!{}!{}!{}",
+      self.last_prompt.to_rfc3339(),
+      self.last_checked.to_rfc3339(),
+      self.latest_version,
+      self.current_version,
+      self.current_release_channel.serialize()
+    )
+  }
+
+  fn with_last_prompt(self, dt: chrono::DateTime<chrono::Utc>) -> Self {
+    Self {
+      last_prompt: dt,
+      ..self
+    }
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use std::cell::RefCell;
+  use std::rc::Rc;
+
+  use test_util::assert_contains;
+
+  use super::*;
+
+  #[test]
+  fn test_get_pr_artifact_name() {
+    let name = get_pr_artifact_name().unwrap();
+    // Should match the pattern "release-{os}-{arch}-deno"
+    assert!(
+      name.starts_with("release-"),
+      "artifact name should start with 'release-': {name}"
+    );
+    assert!(
+      name.ends_with("-deno"),
+      "artifact name should end with '-deno': {name}"
+    );
+    // Should contain a valid os
+    assert!(
+      name.contains("linux")
+        || name.contains("macos")
+        || name.contains("windows"),
+      "artifact name should contain os: {name}"
+    );
+    // Should contain a valid arch
+    assert!(
+      name.contains("x86_64") || name.contains("aarch64"),
+      "artifact name should contain arch: {name}"
+    );
+  }
+
+  #[test]
+  fn test_get_pr_debug_artifact_name() {
+    let release_name = get_pr_artifact_name().unwrap();
+    let debug_name = get_pr_debug_artifact_name().unwrap();
+    assert!(
+      debug_name.starts_with("debug-"),
+      "debug artifact name should start with 'debug-': {debug_name}"
+    );
+    // The rest should match
+    assert_eq!(
+      release_name.strip_prefix("release-"),
+      debug_name.strip_prefix("debug-"),
+    );
+  }
+
+  #[test]
+  fn test_requested_version() {
+    let mut upgrade_flags = UpgradeFlags {
+      dry_run: false,
+      force: false,
+      release_candidate: false,
+      canary: false,
+      no_delta: false,
+      version: None,
+      output: None,
+      version_or_hash_or_channel: None,
+      checksum: None,
+      pr: None,
+      branch: None,
+    };
+
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Stable));
+
+    upgrade_flags.version = Some("1.46.0".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(
+      req_ver,
+      RequestedVersion::SpecificVersion(
+        ReleaseChannel::Stable,
+        "1.46.0".to_string()
+      )
+    );
+
+    upgrade_flags.version = None;
+    upgrade_flags.canary = true;
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Canary));
+
+    upgrade_flags.version =
+      Some("5c69b4861b52ab406e73b9cd85c254f0505cb20f".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(
+      req_ver,
+      RequestedVersion::SpecificVersion(
+        ReleaseChannel::Canary,
+        "5c69b4861b52ab406e73b9cd85c254f0505cb20f".to_string()
+      )
+    );
+
+    upgrade_flags.version = None;
+    upgrade_flags.canary = false;
+    upgrade_flags.release_candidate = true;
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Rc));
+
+    upgrade_flags.release_candidate = false;
+    upgrade_flags.version_or_hash_or_channel = Some("v1.46.5".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(
+      req_ver,
+      RequestedVersion::SpecificVersion(
+        ReleaseChannel::Stable,
+        "1.46.5".to_string()
+      )
+    );
+
+    upgrade_flags.version_or_hash_or_channel = Some("2.0.0-rc.0".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(
+      req_ver,
+      RequestedVersion::SpecificVersion(
+        ReleaseChannel::Rc,
+        "2.0.0-rc.0".to_string()
+      )
+    );
+
+    upgrade_flags.version_or_hash_or_channel = Some("canary".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Canary,));
+
+    upgrade_flags.version_or_hash_or_channel = Some("rc".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Rc,));
+
+    upgrade_flags.version_or_hash_or_channel = Some("alpha".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Alpha));
+
+    upgrade_flags.version_or_hash_or_channel = Some("beta".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Beta));
+
+    upgrade_flags.version_or_hash_or_channel =
+      Some("2.8.0-alpha.0".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(
+      req_ver,
+      RequestedVersion::SpecificVersion(
+        ReleaseChannel::Alpha,
+        "2.8.0-alpha.0".to_string()
+      )
+    );
+
+    upgrade_flags.version_or_hash_or_channel = Some("2.8.0-beta.1".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(
+      req_ver,
+      RequestedVersion::SpecificVersion(
+        ReleaseChannel::Beta,
+        "2.8.0-beta.1".to_string()
+      )
+    );
+
+    upgrade_flags.version_or_hash_or_channel =
+      Some("5c69b4861b52ab406e73b9cd85c254f0505cb20f".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(
+      req_ver,
+      RequestedVersion::SpecificVersion(
+        ReleaseChannel::Canary,
+        "5c69b4861b52ab406e73b9cd85c254f0505cb20f".to_string()
+      )
+    );
+
+    upgrade_flags.version_or_hash_or_channel =
+      Some("5c69b4861b52a".to_string());
+    let err = RequestedVersion::from_upgrade_flags(upgrade_flags.clone())
+      .unwrap_err()
+      .to_string();
+    assert_contains!(err, "Invalid version passed");
+    assert_contains!(
+      err,
+      "Pass a semver, or a full 40 character git commit hash, or a release channel name."
+    );
+
+    upgrade_flags.version_or_hash_or_channel = Some("11.asd.1324".to_string());
+    let err = RequestedVersion::from_upgrade_flags(upgrade_flags.clone())
+      .unwrap_err()
+      .to_string();
+    assert_contains!(err, "Invalid version passed");
+    assert_contains!(
+      err,
+      "Pass a semver, or a full 40 character git commit hash, or a release channel name."
+    );
+  }
+
+  #[test]
+  fn test_parse_upgrade_check_file() {
+    // NOTE(bartlomieju): pre-1.46 format
+    let maybe_file = CheckVersionFile::parse(
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2"
+        .to_string(),
+    );
+    assert!(maybe_file.is_none());
+    // NOTE(bartlomieju): post-1.46 format
+    let file = CheckVersionFile::parse(
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!stable"
+        .to_string(),
+    )
+    .unwrap();
+    assert_eq!(
+      file.last_prompt.to_rfc3339(),
+      "2020-01-01T00:00:00+00:00".to_string()
+    );
+    assert_eq!(
+      file.last_checked.to_rfc3339(),
+      "2020-01-01T00:00:00+00:00".to_string()
+    );
+    assert_eq!(file.latest_version, "1.2.3".to_string());
+    assert_eq!(file.current_version, "1.2.2".to_string());
+    assert_eq!(file.current_release_channel, ReleaseChannel::Stable);
+
+    let result =
+      CheckVersionFile::parse("2020-01-01T00:00:00+00:00!".to_string());
+    assert!(result.is_none());
+
+    let result = CheckVersionFile::parse("garbage!test".to_string());
+    assert!(result.is_none());
+
+    let result = CheckVersionFile::parse("test".to_string());
+    assert!(result.is_none());
+  }
+
+  #[test]
+  fn test_serialize_upgrade_check_file() {
+    let mut file = CheckVersionFile {
+      last_prompt: chrono::DateTime::parse_from_rfc3339("2020-01-01T00:00:00Z")
+        .unwrap()
+        .with_timezone(&chrono::Utc),
+      last_checked: chrono::DateTime::parse_from_rfc3339(
+        "2020-01-01T00:00:00Z",
+      )
+      .unwrap()
+      .with_timezone(&chrono::Utc),
+      latest_version: "1.2.3".to_string(),
+      current_version: "1.2.2".to_string(),
+      current_release_channel: ReleaseChannel::Stable,
+    };
+    assert_eq!(
+      file.serialize(),
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!stable"
+    );
+    file.current_release_channel = ReleaseChannel::Canary;
+    assert_eq!(
+      file.serialize(),
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!canary"
+    );
+    file.current_release_channel = ReleaseChannel::Rc;
+    assert_eq!(
+      file.serialize(),
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!rc"
+    );
+    file.current_release_channel = ReleaseChannel::Lts;
+    assert_eq!(
+      file.serialize(),
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!lts"
+    );
+    file.current_release_channel = ReleaseChannel::Alpha;
+    assert_eq!(
+      file.serialize(),
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!alpha"
+    );
+    file.current_release_channel = ReleaseChannel::Beta;
+    assert_eq!(
+      file.serialize(),
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!beta"
+    );
+  }
+
+  #[derive(Clone)]
+  struct TestUpdateCheckerEnvironment {
+    file_text: Rc<RefCell<String>>,
+    release_channel: Rc<RefCell<ReleaseChannel>>,
+    current_version: Rc<RefCell<String>>,
+    latest_version: Rc<RefCell<Result<AvailableVersion, String>>>,
+    time: Rc<RefCell<chrono::DateTime<chrono::Utc>>>,
+  }
+
+  impl TestUpdateCheckerEnvironment {
+    pub fn new() -> Self {
+      Self {
+        file_text: Default::default(),
+        current_version: Default::default(),
+        release_channel: Rc::new(RefCell::new(ReleaseChannel::Stable)),
+        latest_version: Rc::new(RefCell::new(Ok(AvailableVersion {
+          version_or_hash: "".to_string(),
+          release_channel: ReleaseChannel::Stable,
+        }))),
+        time: Rc::new(RefCell::new(chrono::Utc::now())),
+      }
+    }
+
+    pub fn add_hours(&self, hours: i64) {
+      let mut time = self.time.borrow_mut();
+      *time = time
+        .checked_add_signed(chrono::Duration::hours(hours))
+        .unwrap();
+    }
+
+    pub fn set_file_text(&self, text: &str) {
+      *self.file_text.borrow_mut() = text.to_string();
+    }
+
+    pub fn set_current_version(&self, version: &str) {
+      *self.current_version.borrow_mut() = version.to_string();
+    }
+
+    pub fn set_latest_version(
+      &self,
+      version: &str,
+      release_channel: ReleaseChannel,
+    ) {
+      *self.latest_version.borrow_mut() = Ok(AvailableVersion {
+        version_or_hash: version.to_string(),
+        release_channel,
+      });
+    }
+
+    pub fn set_latest_version_err(&self, err: &str) {
+      *self.latest_version.borrow_mut() = Err(err.to_string());
+    }
+
+    pub fn set_release_channel(&self, channel: ReleaseChannel) {
+      *self.release_channel.borrow_mut() = channel;
+    }
+  }
+
+  #[async_trait(?Send)]
+  impl VersionProvider for TestUpdateCheckerEnvironment {
+    // TODO(bartlomieju): update to handle `Lts` and `Rc` channels
+    async fn latest_version(
+      &self,
+      _release_channel: ReleaseChannel,
+    ) -> Result<AvailableVersion, AnyError> {
+      match self.latest_version.borrow().clone() {
+        Ok(result) => Ok(result),
+        Err(err) => bail!("{}", err),
+      }
+    }
+
+    fn current_version(&self) -> Cow<'_, str> {
+      Cow::Owned(self.current_version.borrow().clone())
+    }
+
+    fn get_current_exe_release_channel(&self) -> ReleaseChannel {
+      *self.release_channel.borrow()
+    }
+  }
+
+  impl UpdateCheckerEnvironment for TestUpdateCheckerEnvironment {
+    fn read_check_file(&self) -> String {
+      self.file_text.borrow().clone()
+    }
+
+    fn write_check_file(&self, text: &str) {
+      self.set_file_text(text);
+    }
+
+    fn current_time(&self) -> chrono::DateTime<chrono::Utc> {
+      *self.time.borrow()
+    }
+  }
+
+  #[tokio::test]
+  async fn test_update_checker() {
+    let env = TestUpdateCheckerEnvironment::new();
+    env.set_current_version("1.0.0");
+    env.set_latest_version("1.1.0", ReleaseChannel::Stable);
+    let checker = UpdateChecker::new(env.clone(), env.clone());
+
+    // no version, so we should check, but not prompt
+    assert!(checker.should_check_for_new_version());
+    assert_eq!(checker.should_prompt(), None);
+
+    // store the latest version
+    fetch_and_store_latest_version(&env, &env).await;
+
+    // reload
+    let checker = UpdateChecker::new(env.clone(), env.clone());
+
+    // should not check for latest version because we just did
+    assert!(!checker.should_check_for_new_version());
+    // but should prompt
+    assert_eq!(
+      checker.should_prompt(),
+      Some((ReleaseChannel::Stable, "1.1.0".to_string()))
+    );
+
+    // fast forward an hour and bump the latest version
+    env.add_hours(1);
+    env.set_latest_version("1.2.0", ReleaseChannel::Stable);
+    assert!(!checker.should_check_for_new_version());
+    assert_eq!(
+      checker.should_prompt(),
+      Some((ReleaseChannel::Stable, "1.1.0".to_string()))
+    );
+
+    // fast forward again and it should check for a newer version
+    env.add_hours(UPGRADE_CHECK_INTERVAL);
+    assert!(checker.should_check_for_new_version());
+    assert_eq!(
+      checker.should_prompt(),
+      Some((ReleaseChannel::Stable, "1.1.0".to_string()))
+    );
+
+    fetch_and_store_latest_version(&env, &env).await;
+
+    // reload and store that we prompted
+    let checker = UpdateChecker::new(env.clone(), env.clone());
+    assert!(!checker.should_check_for_new_version());
+    assert_eq!(
+      checker.should_prompt(),
+      Some((ReleaseChannel::Stable, "1.2.0".to_string()))
+    );
+    checker.store_prompted();
+
+    // reload and it should now say not to prompt
+    let checker = UpdateChecker::new(env.clone(), env.clone());
+    assert!(!checker.should_check_for_new_version());
+    assert_eq!(checker.should_prompt(), None);
+
+    // but if we fast forward past the upgrade interval it should prompt again
+    env.add_hours(UPGRADE_CHECK_INTERVAL + 1);
+    assert!(checker.should_check_for_new_version());
+    assert_eq!(
+      checker.should_prompt(),
+      Some((ReleaseChannel::Stable, "1.2.0".to_string()))
+    );
+
+    // upgrade the version and it should stop prompting
+    env.set_current_version("1.2.0");
+    assert!(checker.should_check_for_new_version());
+    assert_eq!(checker.should_prompt(), None);
+
+    // now try failing when fetching the latest version
+    env.add_hours(UPGRADE_CHECK_INTERVAL + 1);
+    env.set_latest_version_err("Failed");
+    env.set_latest_version("1.3.0", ReleaseChannel::Stable);
+
+    // this will silently fail
+    fetch_and_store_latest_version(&env, &env).await;
+    assert!(checker.should_check_for_new_version());
+    assert_eq!(checker.should_prompt(), None);
+
+    // now switch to RC release
+    env.set_release_channel(ReleaseChannel::Rc);
+    env.set_current_version("1.46.0-rc.0");
+    env.set_latest_version("1.46.0-rc.1", ReleaseChannel::Rc);
+    fetch_and_store_latest_version(&env, &env).await;
+    env.add_hours(UPGRADE_CHECK_INTERVAL + 1);
+
+    // We should check for new version and prompt
+    let checker = UpdateChecker::new(env.clone(), env.clone());
+    assert!(checker.should_check_for_new_version());
+    assert_eq!(
+      checker.should_prompt(),
+      Some((ReleaseChannel::Rc, "1.46.0-rc.1".to_string()))
+    );
+
+    // now switch to Alpha release
+    env.set_release_channel(ReleaseChannel::Alpha);
+    env.set_current_version("2.8.0-alpha.0");
+    env.set_latest_version("2.8.0-alpha.1", ReleaseChannel::Alpha);
+    fetch_and_store_latest_version(&env, &env).await;
+    env.add_hours(UPGRADE_CHECK_INTERVAL + 1);
+
+    let checker = UpdateChecker::new(env.clone(), env.clone());
+    assert!(checker.should_check_for_new_version());
+    assert_eq!(
+      checker.should_prompt(),
+      Some((ReleaseChannel::Alpha, "2.8.0-alpha.1".to_string()))
+    );
+
+    // now switch to Beta release
+    env.set_release_channel(ReleaseChannel::Beta);
+    env.set_current_version("2.8.0-beta.0");
+    env.set_latest_version("2.8.0-beta.1", ReleaseChannel::Beta);
+    fetch_and_store_latest_version(&env, &env).await;
+    env.add_hours(UPGRADE_CHECK_INTERVAL + 1);
+
+    let checker = UpdateChecker::new(env.clone(), env.clone());
+    assert!(checker.should_check_for_new_version());
+    assert_eq!(
+      checker.should_prompt(),
+      Some((ReleaseChannel::Beta, "2.8.0-beta.1".to_string()))
+    );
+  }
+
+  #[tokio::test]
+  async fn test_update_checker_current_newer_than_latest() {
+    let env = TestUpdateCheckerEnvironment::new();
+    let file_content = CheckVersionFile {
+      last_prompt: env
+        .current_time()
+        .sub(chrono::Duration::hours(UPGRADE_CHECK_INTERVAL + 1)),
+      last_checked: env.current_time(),
+      latest_version: "1.26.2".to_string(),
+      current_version: "1.27.0".to_string(),
+      current_release_channel: ReleaseChannel::Stable,
+    }
+    .serialize();
+    env.write_check_file(&file_content);
+    env.set_current_version("1.27.0");
+    env.set_latest_version("1.26.2", ReleaseChannel::Stable);
+    let checker = UpdateChecker::new(env.clone(), env);
+
+    // since currently running version is newer than latest available (eg. CDN
+    // propagation might be delated) we should not prompt
+    assert_eq!(checker.should_prompt(), None);
+  }
+
+  #[tokio::test]
+  async fn test_should_not_prompt_if_current_cli_version_has_changed() {
+    let env = TestUpdateCheckerEnvironment::new();
+    let file_content = CheckVersionFile {
+      last_prompt: env
+        .current_time()
+        .sub(chrono::Duration::hours(UPGRADE_CHECK_INTERVAL + 1)),
+      last_checked: env.current_time(),
+      latest_version: "1.26.2".to_string(),
+      current_version: "1.25.0".to_string(),
+      current_release_channel: ReleaseChannel::Stable,
+    }
+    .serialize();
+    env.write_check_file(&file_content);
+    // simulate an upgrade done to a canary version
+    env.set_current_version("61fbfabe440f1cfffa7b8d17426ffdece4d430d0");
+    let checker = UpdateChecker::new(env.clone(), env);
+    assert_eq!(checker.should_prompt(), None);
+  }
+
+  #[test]
+  fn test_get_latest_version_url() {
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Canary,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/canary-aarch64-apple-darwin-latest.txt"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Canary,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/canary-aarch64-apple-darwin-latest.txt?lsp"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Canary,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/canary-x86_64-pc-windows-msvc-latest.txt"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Canary,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/canary-x86_64-pc-windows-msvc-latest.txt?lsp"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Stable,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/release-latest.txt"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Stable,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/release-latest.txt?lsp"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Stable,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/release-latest.txt"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Rc,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/release-rc-latest.txt?lsp"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Rc,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/release-rc-latest.txt"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Rc,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/release-rc-latest.txt?lsp"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Rc,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/release-rc-latest.txt"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Rc,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/release-rc-latest.txt?lsp"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Lts,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/release-lts-latest.txt?lsp"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Lts,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/release-lts-latest.txt"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Lts,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/release-lts-latest.txt?lsp"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Lts,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/release-lts-latest.txt"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Lts,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/release-lts-latest.txt?lsp"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Alpha,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/release-alpha-latest.txt"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Alpha,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/release-alpha-latest.txt?lsp"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Beta,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/release-beta-latest.txt"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Beta,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/release-beta-latest.txt?lsp"
+    );
+  }
+
+  #[test]
+  fn test_normalize_version_server() {
+    // should strip v for stable
+    assert_eq!(
+      normalize_version_from_server(ReleaseChannel::Stable, "v1.0.0").unwrap(),
+      AvailableVersion {
+        version_or_hash: "1.0.0".to_string(),
+        release_channel: ReleaseChannel::Stable,
+      },
+    );
+    // should not replace v after start
+    assert_eq!(
+      normalize_version_from_server(
+        ReleaseChannel::Stable,
+        "  v1.0.0-test-v\n\n  "
+      )
+      .unwrap(),
+      AvailableVersion {
+        version_or_hash: "1.0.0-test-v".to_string(),
+        release_channel: ReleaseChannel::Stable,
+      }
+    );
+    // should not strip v for canary
+    assert_eq!(
+      normalize_version_from_server(
+        ReleaseChannel::Canary,
+        "  v1452345asdf   \n\n   "
+      )
+      .unwrap(),
+      AvailableVersion {
+        version_or_hash: "v1452345asdf".to_string(),
+        release_channel: ReleaseChannel::Canary,
+      }
+    );
+    assert_eq!(
+      normalize_version_from_server(ReleaseChannel::Rc, "v1.46.0-rc.0\n\n")
+        .unwrap(),
+      AvailableVersion {
+        version_or_hash: "1.46.0-rc.0".to_string(),
+        release_channel: ReleaseChannel::Rc,
+      },
+    );
+    assert_eq!(
+      normalize_version_from_server(
+        ReleaseChannel::Alpha,
+        "v2.8.0-alpha.0\n\n"
+      )
+      .unwrap(),
+      AvailableVersion {
+        version_or_hash: "2.8.0-alpha.0".to_string(),
+        release_channel: ReleaseChannel::Alpha,
+      },
+    );
+    assert_eq!(
+      normalize_version_from_server(ReleaseChannel::Beta, "v2.8.0-beta.1\n\n")
+        .unwrap(),
+      AvailableVersion {
+        version_or_hash: "2.8.0-beta.1".to_string(),
+        release_channel: ReleaseChannel::Beta,
+      },
+    );
+  }
+
+  #[tokio::test]
+  async fn test_upgrades_lsp() {
+    let env = TestUpdateCheckerEnvironment::new();
+    env.set_current_version("1.0.0");
+    env.set_latest_version("2.0.0", ReleaseChannel::Stable);
+
+    // greater
+    {
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(
+        maybe_info,
+        Some(LspVersionUpgradeInfo {
+          latest_version: "2.0.0".to_string(),
+          is_canary: false,
+        })
+      );
+    }
+    // equal
+    {
+      env.set_latest_version("1.0.0", ReleaseChannel::Stable);
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(maybe_info, None);
+    }
+    // less
+    {
+      env.set_latest_version("0.9.0", ReleaseChannel::Stable);
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(maybe_info, None);
+    }
+    // canary equal
+    {
+      env.set_current_version("123");
+      env.set_latest_version("123", ReleaseChannel::Stable);
+      env.set_release_channel(ReleaseChannel::Canary);
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(maybe_info, None);
+    }
+    // canary different
+    {
+      env.set_latest_version("1234", ReleaseChannel::Stable);
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(
+        maybe_info,
+        Some(LspVersionUpgradeInfo {
+          latest_version: "1234".to_string(),
+          is_canary: true,
+        })
+      );
+    }
+    // rc equal
+    {
+      env.set_release_channel(ReleaseChannel::Rc);
+      env.set_current_version("1.2.3-rc.0");
+      env.set_latest_version("1.2.3-rc.0", ReleaseChannel::Rc);
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(maybe_info, None);
+    }
+    // rc different
+    {
+      env.set_latest_version("1.2.3-rc.0", ReleaseChannel::Rc);
+      env.set_latest_version("1.2.3-rc.1", ReleaseChannel::Rc);
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(
+        maybe_info,
+        Some(LspVersionUpgradeInfo {
+          latest_version: "1.2.3-rc.1".to_string(),
+          is_canary: false,
+        })
+      );
+    }
+    // alpha equal
+    {
+      env.set_release_channel(ReleaseChannel::Alpha);
+      env.set_current_version("2.8.0-alpha.0");
+      env.set_latest_version("2.8.0-alpha.0", ReleaseChannel::Alpha);
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(maybe_info, None);
+    }
+    // alpha newer available
+    {
+      env.set_latest_version("2.8.0-alpha.1", ReleaseChannel::Alpha);
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(
+        maybe_info,
+        Some(LspVersionUpgradeInfo {
+          latest_version: "2.8.0-alpha.1".to_string(),
+          is_canary: false,
+        })
+      );
+    }
+    // beta equal
+    {
+      env.set_release_channel(ReleaseChannel::Beta);
+      env.set_current_version("2.8.0-beta.0");
+      env.set_latest_version("2.8.0-beta.0", ReleaseChannel::Beta);
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(maybe_info, None);
+    }
+    // beta newer available
+    {
+      env.set_latest_version("2.8.0-beta.1", ReleaseChannel::Beta);
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(
+        maybe_info,
+        Some(LspVersionUpgradeInfo {
+          latest_version: "2.8.0-beta.1".to_string(),
+          is_canary: false,
+        })
+      );
+    }
+  }
+
+  #[test]
+  fn blog_post_links() {
+    let version = Version::parse_standard("1.46.0").unwrap();
+    assert_eq!(
+      get_minor_version_blog_post_url(&version),
+      "https://deno.com/blog/v1.46"
+    );
+
+    let version = Version::parse_standard("2.1.1").unwrap();
+    assert_eq!(
+      get_minor_version_blog_post_url(&version),
+      "https://deno.com/blog/v2.1"
+    );
+
+    let version = Version::parse_standard("2.0.0-rc.0").unwrap();
+    assert_eq!(
+      get_rc_version_blog_post_url(&version),
+      "https://deno.com/blog/v2.0-rc-0"
+    );
+
+    let version = Version::parse_standard("2.0.0-rc.2").unwrap();
+    assert_eq!(
+      get_rc_version_blog_post_url(&version),
+      "https://deno.com/blog/v2.0-rc-2"
+    );
+  }
+
+  #[test]
+  fn test_get_binary_cache_path() {
+    let dl_dir = Path::new("/dl");
+
+    let path = get_binary_cache_path(dl_dir, "1.46.0", ReleaseChannel::Stable);
+    assert_eq!(
+      path,
+      dl_dir.join(format!("release/v1.46.0/{}", *ARCHIVE_NAME))
+    );
+
+    let path = get_binary_cache_path(dl_dir, "1.46.0-rc.0", ReleaseChannel::Rc);
+    assert_eq!(
+      path,
+      dl_dir.join(format!("release/v1.46.0-rc.0/{}", *ARCHIVE_NAME))
+    );
+
+    let path = get_binary_cache_path(dl_dir, "1.0.0", ReleaseChannel::Lts);
+    assert_eq!(
+      path,
+      dl_dir.join(format!("release/v1.0.0/{}", *ARCHIVE_NAME))
+    );
+
+    let path =
+      get_binary_cache_path(dl_dir, "abc123def456", ReleaseChannel::Canary);
+    assert_eq!(
+      path,
+      dl_dir.join(format!("canary/abc123def456/{}", *ARCHIVE_NAME))
+    );
+
+    let path =
+      get_binary_cache_path(dl_dir, "2.8.0-alpha.0", ReleaseChannel::Alpha);
+    assert_eq!(
+      path,
+      dl_dir.join(format!("release/v2.8.0-alpha.0/{}", *ARCHIVE_NAME))
+    );
+
+    let path =
+      get_binary_cache_path(dl_dir, "2.8.0-beta.1", ReleaseChannel::Beta);
+    assert_eq!(
+      path,
+      dl_dir.join(format!("release/v2.8.0-beta.1/{}", *ARCHIVE_NAME))
+    );
+  }
+
+  #[test]
+  fn test_try_read_cached_binary() {
+    use sys_traits::FsCreateDirAll;
+    use sys_traits::FsWrite;
+    use sys_traits::impls::InMemorySys;
+
+    let sys = InMemorySys::default();
+
+    // Returns None when file doesn't exist
+    let result =
+      try_read_cached_binary(&sys, Path::new("/dl/release/v1.0.0/deno.zip"));
+    assert!(result.is_none());
+
+    // Returns data when file exists
+    let cache_path = Path::new("/dl/release/v1.0.0/deno.zip");
+    sys.fs_create_dir_all(cache_path.parent().unwrap()).unwrap();
+    sys.fs_write(cache_path, b"archive-data").unwrap();
+
+    let result = try_read_cached_binary(&sys, cache_path);
+    assert_eq!(result.unwrap(), b"archive-data");
+  }
+
+  #[test]
+  fn test_store_cached_binary() {
+    use sys_traits::FsRead;
+    use sys_traits::impls::InMemorySys;
+
+    let sys = InMemorySys::default();
+    sys.set_seed(Some(42));
+
+    let cache_path = Path::new("/dl/release/v1.0.0/deno.zip");
+
+    // Should create parent dirs and write the file
+    store_cached_binary(&sys, cache_path, b"archive-data");
+
+    let data = sys.fs_read(cache_path).unwrap();
+    assert_eq!(data.as_ref(), b"archive-data");
+  }
+
+  #[test]
+  fn test_store_and_read_cached_binary_roundtrip() {
+    use sys_traits::impls::InMemorySys;
+
+    let sys = InMemorySys::default();
+    sys.set_seed(Some(42));
+
+    let cache_path = Path::new("/dl/canary/abc123/deno.zip");
+
+    // Initially no cache
+    assert!(try_read_cached_binary(&sys, cache_path).is_none());
+
+    // Store it
+    let original_data = b"test-archive-contents";
+    store_cached_binary(&sys, cache_path, original_data);
+
+    // Read it back
+    let cached = try_read_cached_binary(&sys, cache_path).unwrap();
+    assert_eq!(cached, original_data);
+  }
+
+  #[test]
+  fn test_prune_canary_cache_no_dir() {
+    use sys_traits::impls::InMemorySys;
+
+    let sys = InMemorySys::default();
+
+    // Should not panic when directory doesn't exist
+    prune_canary_cache(&sys, Path::new("/dl"), 10);
+  }
+
+  #[test]
+  fn test_prune_canary_cache_under_limit() {
+    use sys_traits::FsCreateDirAll;
+    use sys_traits::FsMetadata;
+    use sys_traits::impls::InMemorySys;
+
+    let sys = InMemorySys::default();
+    let dl_dir = Path::new("/dl");
+
+    sys.fs_create_dir_all(dl_dir.join("canary/hash1")).unwrap();
+    sys.fs_create_dir_all(dl_dir.join("canary/hash2")).unwrap();
+
+    prune_canary_cache(&sys, dl_dir, 5);
+
+    // Both should still exist
+    assert!(sys.fs_exists(dl_dir.join("canary/hash1")).unwrap());
+    assert!(sys.fs_exists(dl_dir.join("canary/hash2")).unwrap());
+  }
+
+  #[test]
+  fn test_prune_canary_cache_over_limit() {
+    use std::time::Duration;
+    use std::time::SystemTime;
+
+    use sys_traits::FsCreateDirAll;
+    use sys_traits::FsMetadata;
+    use sys_traits::FsSetFileTimes;
+    use sys_traits::impls::InMemorySys;
+
+    let sys = InMemorySys::default();
+    let dl_dir = Path::new("/dl");
+
+    let base_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+
+    // Create 4 canary dirs with different modification times
+    for (i, name) in ["oldest", "old", "new", "newest"].iter().enumerate() {
+      let dir = dl_dir.join(format!("canary/{}", name));
+      sys.fs_create_dir_all(&dir).unwrap();
+      let time = base_time + Duration::from_secs(i as u64 * 100);
+      sys.fs_set_file_times(&dir, time, time).unwrap();
+    }
+
+    // Prune to keep only 2
+    prune_canary_cache(&sys, dl_dir, 2);
+
+    // Newest 2 should remain
+    assert!(sys.fs_exists(dl_dir.join("canary/newest")).unwrap());
+    assert!(sys.fs_exists(dl_dir.join("canary/new")).unwrap());
+    // Oldest 2 should be pruned
+    assert!(!sys.fs_exists(dl_dir.join("canary/oldest")).unwrap());
+    assert!(!sys.fs_exists(dl_dir.join("canary/old")).unwrap());
+  }
+
+  #[test]
+  fn test_build_delta_chain() {
+    // Single step
+    assert_eq!(
+      build_delta_chain("2.7.11", "2.7.12"),
+      vec![("2.7.11".to_string(), "2.7.12".to_string())]
+    );
+
+    // Multi-step (2 steps)
+    assert_eq!(
+      build_delta_chain("2.7.10", "2.7.12"),
+      vec![
+        ("2.7.10".to_string(), "2.7.11".to_string()),
+        ("2.7.11".to_string(), "2.7.12".to_string()),
+      ]
+    );
+
+    // Multi-step (3 steps, max)
+    assert_eq!(
+      build_delta_chain("2.7.9", "2.7.12"),
+      vec![
+        ("2.7.9".to_string(), "2.7.10".to_string()),
+        ("2.7.10".to_string(), "2.7.11".to_string()),
+        ("2.7.11".to_string(), "2.7.12".to_string()),
+      ]
+    );
+
+    // Too far apart (> 3 steps, same minor)
+    assert!(build_delta_chain("2.7.0", "2.7.5").is_empty());
+    assert!(build_delta_chain("2.7.8", "2.7.12").is_empty());
+
+    // Cross-minor: direct jump to .0
+    assert_eq!(
+      build_delta_chain("2.7.13", "2.8.0"),
+      vec![("2.7.13".to_string(), "2.8.0".to_string())]
+    );
+
+    // Cross-minor: jump to .0 then one patch
+    assert_eq!(
+      build_delta_chain("2.7.13", "2.8.1"),
+      vec![
+        ("2.7.13".to_string(), "2.8.0".to_string()),
+        ("2.8.0".to_string(), "2.8.1".to_string()),
+      ]
+    );
+
+    // Cross-minor: jump to .0 then two patches (3 steps total, max)
+    assert_eq!(
+      build_delta_chain("2.7.13", "2.8.2"),
+      vec![
+        ("2.7.13".to_string(), "2.8.0".to_string()),
+        ("2.8.0".to_string(), "2.8.1".to_string()),
+        ("2.8.1".to_string(), "2.8.2".to_string()),
+      ]
+    );
+
+    // Cross-minor: too many steps (> 3)
+    assert!(build_delta_chain("2.7.13", "2.8.3").is_empty());
+
+    // Cross-minor: too many minors apart
+    assert!(build_delta_chain("2.6.10", "2.8.0").is_empty());
+
+    // Different major
+    assert!(build_delta_chain("1.46.3", "2.0.0").is_empty());
+
+    // Downgrade
+    assert!(build_delta_chain("2.7.12", "2.7.11").is_empty());
+
+    // Same version
+    assert!(build_delta_chain("2.7.12", "2.7.12").is_empty());
+
+    // Pre-release
+    assert!(build_delta_chain("2.7.11-rc.0", "2.7.12").is_empty());
+
+    // Invalid
+    assert!(build_delta_chain("invalid", "2.7.12").is_empty());
+  }
+
+  #[test]
+  fn test_get_delta_download_url() {
+    let url = get_delta_download_url("2.7.11", "2.7.12").unwrap();
+    let url_str = url.to_string();
+    assert!(
+      url_str.contains("/download/v2.7.12/"),
+      "URL should contain target version: {url_str}"
+    );
+    assert!(
+      url_str.contains(".from-2.7.11.bsdiff"),
+      "URL should contain source version and bsdiff extension: {url_str}"
+    );
+    assert!(
+      url_str.contains("deno-"),
+      "URL should contain target name: {url_str}"
+    );
+  }
+
+  #[test]
+  fn test_apply_bsdiff_patch_raw() {
+    // Legacy format: bsdiff output written straight to disk. Must keep
+    // working so clients on the current release can still apply the
+    // uncompressed patches already published (e.g. v2.8.0's
+    // `from-2.7.14.bsdiff`).
+    let old_data = b"Hello, World!";
+    let new_data = b"Hello, Deno!";
+    let mut patch = Vec::new();
+    bsdiff::diff(old_data, new_data, &mut patch).unwrap();
+    assert!(
+      !patch.starts_with(&ZSTD_MAGIC),
+      "raw bsdiff output should not look like a zstd stream"
+    );
+
+    let result = apply_bsdiff_patch(old_data, &patch).unwrap();
+    assert_eq!(result, new_data);
+  }
+
+  #[test]
+  fn test_apply_bsdiff_patch_zstd_wrapped() {
+    // Current format produced by `tools/bsdiff_helper`: bsdiff output wrapped
+    // in zstd. Must round-trip identically to the raw form.
+    let old_data = b"Hello, World!";
+    let new_data = b"Hello, Deno!";
+    let mut raw_patch = Vec::new();
+    bsdiff::diff(old_data, new_data, &mut raw_patch).unwrap();
+    let wrapped = zstd::bulk::compress(&raw_patch, 19).unwrap();
+    assert!(
+      wrapped.starts_with(&ZSTD_MAGIC),
+      "zstd-compressed patch should start with the zstd magic number"
+    );
+
+    let result = apply_bsdiff_patch(old_data, &wrapped).unwrap();
+    assert_eq!(result, new_data);
+  }
+
+  #[test]
+  fn test_apply_bsdiff_patch_zstd_streamed() {
+    // Regression for the OOM in #34809: a zstd frame written by a streaming
+    // encoder carries no content-size header, so the decoder cannot know the
+    // output size ahead of time. The fix decompresses incrementally instead of
+    // pre-allocating MAX_PATCH_SIZE, so this must still round-trip.
+    use std::io::Write;
+    let old_data = b"Hello, World!";
+    let new_data = b"Hello, Deno!";
+    let mut raw_patch = Vec::new();
+    bsdiff::diff(old_data, new_data, &mut raw_patch).unwrap();
+
+    let mut encoder = zstd::stream::Encoder::new(Vec::new(), 19).unwrap();
+    encoder.write_all(&raw_patch).unwrap();
+    let wrapped = encoder.finish().unwrap();
+    assert!(wrapped.starts_with(&ZSTD_MAGIC));
+
+    let result = apply_bsdiff_patch(old_data, &wrapped).unwrap();
+    assert_eq!(result, new_data);
+  }
+
+  #[test]
+  fn test_bsdiff_patch_is_compressed() {
+    // Regression test for #34312: the raw `bsdiff` crate emits uncompressed
+    // control/diff/extra streams that are routinely larger than the new
+    // binary itself. The release helper (`tools/bsdiff_helper`) wraps the
+    // output in zstd. This test asserts that wrapping is effective — the
+    // compressed patch between two near-identical "binaries" must be much
+    // smaller than either side.
+    //
+    // We use a 256 KiB pseudo-binary that differs by ~64 bytes between
+    // versions. The raw bsdiff output for this is dominated by the
+    // unchanged "extra" stream and balloons close to the binary size;
+    // zstd squashes that runs-of-zeros payload to a few hundred bytes.
+    let mut binary_v1 = Vec::with_capacity(256 * 1024);
+    for i in 0..(256 * 1024) {
+      binary_v1.push((i % 251) as u8);
+    }
+    let mut binary_v2 = binary_v1.clone();
+    for byte in binary_v2.iter_mut().skip(100_000).take(64) {
+      *byte = byte.wrapping_add(1);
+    }
+
+    let mut raw_patch = Vec::new();
+    bsdiff::diff(&binary_v1, &binary_v2, &mut raw_patch).unwrap();
+    let wrapped = zstd::bulk::compress(&raw_patch, 19).unwrap();
+
+    // The patch is what users actually download; it must be substantially
+    // smaller than the binary, otherwise delta upgrade is a pessimization.
+    assert!(
+      wrapped.len() < binary_v2.len() / 4,
+      "compressed patch ({} bytes) should be far smaller than the new \
+       binary ({} bytes); raw bsdiff was {} bytes",
+      wrapped.len(),
+      binary_v2.len(),
+      raw_patch.len(),
+    );
+
+    // And it must still apply.
+    let result = apply_bsdiff_patch(&binary_v1, &wrapped).unwrap();
+    assert_eq!(result, binary_v2);
+  }
+
+  #[test]
+  fn test_compute_sha256() {
+    let data = b"test data";
+    let hash = compute_sha256(data);
+    assert_eq!(hash.len(), 64);
+    assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+    // Known SHA-256 of "test data"
+    assert_eq!(
+      hash,
+      "916f0027a575074ce72a331777c3478d6513f786a591bd892da1a577bf2335f9"
+    );
+  }
+
+  #[test]
+  fn test_chained_bsdiff_patches() {
+    // Simulate a 3-step upgrade: 2.7.10 -> 2.7.11 -> 2.7.12 -> 2.7.13
+    // Use realistic-ish binary content that differs slightly per version
+    let base = b"DENO_BINARY_v2.7.10_padding_to_simulate_real_binary_size_";
+    let mut binary_v10 = base.to_vec();
+    binary_v10.extend_from_slice(&[0u8; 1024]);
+
+    let mut binary_v11 = binary_v10.clone();
+    // Simulate code changes: modify some bytes
+    binary_v11[20..26].copy_from_slice(b"2.7.11");
+    binary_v11[500..510].copy_from_slice(b"new_code_1");
+
+    let mut binary_v12 = binary_v11.clone();
+    binary_v12[20..26].copy_from_slice(b"2.7.12");
+    binary_v12[700..710].copy_from_slice(b"new_code_2");
+
+    let mut binary_v13 = binary_v12.clone();
+    binary_v13[20..26].copy_from_slice(b"2.7.13");
+    binary_v13[900..910].copy_from_slice(b"new_code_3");
+
+    // Generate consecutive delta patches
+    let mut patch_10_11 = Vec::new();
+    bsdiff::diff(&binary_v10, &binary_v11, &mut patch_10_11).unwrap();
+    let mut patch_11_12 = Vec::new();
+    bsdiff::diff(&binary_v11, &binary_v12, &mut patch_11_12).unwrap();
+    let mut patch_12_13 = Vec::new();
+    bsdiff::diff(&binary_v12, &binary_v13, &mut patch_12_13).unwrap();
+
+    // Chain: apply patches sequentially starting from v10
+    let result_v11 = apply_bsdiff_patch(&binary_v10, &patch_10_11).unwrap();
+    assert_eq!(result_v11, binary_v11, "v10 -> v11 patch failed");
+
+    let result_v12 = apply_bsdiff_patch(&result_v11, &patch_11_12).unwrap();
+    assert_eq!(result_v12, binary_v12, "v11 -> v12 patch failed");
+
+    let result_v13 = apply_bsdiff_patch(&result_v12, &patch_12_13).unwrap();
+    assert_eq!(result_v13, binary_v13, "v12 -> v13 patch failed");
+
+    // Verify patches are reasonable size (bsdiff has overhead for small
+    // inputs, so just check they're not wildly larger)
+    assert!(
+      patch_10_11.len() < binary_v10.len() * 2,
+      "patch should not be much larger than binary: {} vs {}",
+      patch_10_11.len(),
+      binary_v10.len()
+    );
+  }
+
+  #[test]
+  fn test_chained_patches_checksum_verification() {
+    // Verify that applying a wrong patch produces a different checksum,
+    // which would be caught by the per-step verification in
+    // try_delta_upgrade
+    let binary_a = b"binary_version_a_content_here_padding";
+    let binary_b = b"binary_version_b_content_here_padding";
+    let binary_c = b"binary_version_c_content_here_padding";
+
+    let mut patch_ab = Vec::new();
+    bsdiff::diff(binary_a, binary_b, &mut patch_ab).unwrap();
+    let mut patch_bc = Vec::new();
+    bsdiff::diff(binary_b, binary_c, &mut patch_bc).unwrap();
+
+    // Correct chain: A -> B -> C
+    let result_b = apply_bsdiff_patch(binary_a, &patch_ab).unwrap();
+    let hash_b = compute_sha256(&result_b);
+    let expected_hash_b = compute_sha256(binary_b);
+    assert_eq!(hash_b, expected_hash_b, "intermediate hash should match");
+
+    let result_c = apply_bsdiff_patch(&result_b, &patch_bc).unwrap();
+    let hash_c = compute_sha256(&result_c);
+    let expected_hash_c = compute_sha256(binary_c);
+    assert_eq!(hash_c, expected_hash_c, "final hash should match");
+
+    // Wrong order: applying B->C patch to A should produce wrong result
+    // (bsdiff will produce SOMETHING but it won't match)
+    let wrong_result = apply_bsdiff_patch(binary_a, &patch_bc).unwrap();
+    let wrong_hash = compute_sha256(&wrong_result);
+    assert_ne!(
+      wrong_hash, expected_hash_c,
+      "wrong patch order should produce different hash"
+    );
+  }
+
+  #[test]
+  fn test_delta_url_uses_target_release() {
+    // Verify that the delta URL downloads from the TARGET version's
+    // release (not the source), since patches live on the new release
+    let url = get_delta_download_url("2.7.10", "2.7.11").unwrap();
+    assert!(
+      url.to_string().contains("/download/v2.7.11/"),
+      "delta should be fetched from target release: {url}"
+    );
+    assert!(
+      url.to_string().contains(".from-2.7.10.bsdiff"),
+      "delta filename should reference source version: {url}"
+    );
+
+    // For a chain 2.7.10 -> 2.7.12, the intermediate step should
+    // fetch from v2.7.11's release
+    let chain = build_delta_chain("2.7.10", "2.7.12");
+    assert_eq!(chain.len(), 2);
+    let url_step1 = get_delta_download_url(&chain[0].0, &chain[0].1).unwrap();
+    assert!(
+      url_step1.to_string().contains("/download/v2.7.11/"),
+      "step 1 should fetch from v2.7.11 release"
+    );
+    let url_step2 = get_delta_download_url(&chain[1].0, &chain[1].1).unwrap();
+    assert!(
+      url_step2.to_string().contains("/download/v2.7.12/"),
+      "step 2 should fetch from v2.7.12 release"
+    );
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "name": "strip-final-newline",
+  "dist-tags": {
+    "latest": "2.0.0"
+  },
+  "versions": {
+    "2.0.0": {
+      "name": "strip-final-newline",
+      "version": "2.0.0",
+      "description": "Strip the final newline character from a string/buffer",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sindresorhus/strip-final-newline.git"
+      },
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=6"
+      },
+      "scripts": {
+        "test": "xo && ava"
+      },
+      "devDependencies": {
+        "ava": "^0.25.0",
+        "xo": "^0.23.0"
+      },
+      "gitHead": "51c93d6c8683d9fd1cacdb32f2afebac9a1155a1",
+      "bugs": {
+        "url": "https://github.com/sindresorhus/strip-final-newline/issues"
+      },
+      "_id": "strip-final-newline@2.0.0",
+      "_npmVersion": "6.4.1",
+      "_nodeVersion": "10.12.0",
+      "dist": {
+        "integrity": "sha512-BrpvfNAE3dcvq7ll3xVumzjKjZQ5tI1sEUIKr3Uoks0XUl45St3FlatVqef9prk4jRDzhW6WZg+3bk93y6pLjA==",
+        "shasum": "89b852fb2fcbe936f6f4b3187afb0a12c1ab58ad",
+        "tarball": "http://localhost:4260/strip-final-newline/strip-final-newline-2.0.0.tgz",
+        "fileCount": 4,
+        "unpackedSize": 3046
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "description": "Strip the final newline character from a string/buffer",
+  "homepage": "https://github.com/sindresorhus/strip-final-newline#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sindresorhus/strip-final-newline.git"
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "bugs": {
+    "url": "https://github.com/sindresorhus/strip-final-newline/issues"
+  },
+  "license": "MIT"
+}

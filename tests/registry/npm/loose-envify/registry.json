@@ -1,0 +1,67 @@
+{
+  "name": "loose-envify",
+  "description": "Fast (and loose) selective `process.env` replacer using js-tokens instead of an AST",
+  "dist-tags": {
+    "latest": "1.4.0"
+  },
+  "versions": {
+    "1.4.0": {
+      "name": "loose-envify",
+      "version": "1.4.0",
+      "description": "Fast (and loose) selective `process.env` replacer using js-tokens instead of an AST",
+      "license": "MIT",
+      "author": {
+        "name": "Andres Suarez",
+        "email": "zertosh@gmail.com"
+      },
+      "main": "index.js",
+      "bin": {
+        "loose-envify": "cli.js"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/zertosh/loose-envify.git"
+      },
+      "scripts": {
+        "test": "tap test/*.js"
+      },
+      "dependencies": {
+        "js-tokens": "^3.0.0 || ^4.0.0"
+      },
+      "devDependencies": {
+        "browserify": "^13.1.1",
+        "envify": "^3.4.0",
+        "tap": "^8.0.0"
+      },
+      "gitHead": "a8fdd02e3a435195f526053882d64537d627b3e6",
+      "bugs": {
+        "url": "https://github.com/zertosh/loose-envify/issues"
+      },
+      "_id": "loose-envify@1.4.0",
+      "_npmVersion": "6.1.0",
+      "_nodeVersion": "10.6.0",
+      "dist": {
+        "integrity": "sha512-lyuxPGr/Wfhrlem2CL/UcnUc1zcqKAImBDzukY7Y5F/yQiNdko6+fRLevlw1HgMySw7f611UIY408EtxRSoK3Q==",
+        "shasum": "71ee51fa7be4caec1a63839f7e682d8132d30caf",
+        "tarball": "http://localhost:4260/loose-envify/loose-envify-1.4.0.tgz",
+        "fileCount": 8,
+        "unpackedSize": 5814
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/zertosh/loose-envify",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/zertosh/loose-envify.git"
+  },
+  "author": {
+    "name": "Andres Suarez",
+    "email": "zertosh@gmail.com"
+  },
+  "bugs": {
+    "url": "https://github.com/zertosh/loose-envify/issues"
+  },
+  "license": "MIT"
+}

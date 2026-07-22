@@ -1,0 +1,10 @@
+RuntimeError: unreachable
+    at main (wasm://wasm/[WILDCARD]:wasm-function[0]:0x[WILDCARD])
+    at [WILDCARD]wasm_stack_trace.js:7:20
+Error: from JS
+    at js_func ([WILDCARD]wasm_stack_trace.js:17:15)
+    at call_js (wasm://wasm/[WILDCARD]:wasm-function[WILDCARD]:0x[WILDCARD])
+    at entry (wasm://wasm/[WILDCARD]:wasm-function[WILDCARD]:0x[WILDCARD])
+    at [WILDCARD]wasm_stack_trace.js:21:20
+main (wasm://wasm/[WILDCARD]:wasm-function[0]:0x[WILDCARD])
+[WILDCARD]wasm_stack_trace.js:35:20

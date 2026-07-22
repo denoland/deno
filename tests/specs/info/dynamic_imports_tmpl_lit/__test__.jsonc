@@ -1,0 +1,5 @@
+{
+  "args": "info dynamic_imports_tmp_lit/main.js",
+  "output": "dynamic_imports_tmp_lit/main.info.out",
+  "exitCode": 0
+}

@@ -1,0 +1,7 @@
+1
+1
+error: Uncaught (in promise) TypeError: this.otherMethod is not a function
+    return this.otherMethod();
+                ^
+    at getValue (file://[WILDCARD]/@denotest/cjs-this-in-exports/1.0.0/index.js:3:17)
+    at file://[WILDCARD]/main.js:11:1

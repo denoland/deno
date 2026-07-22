@@ -1,0 +1,9 @@
+Download http://localhost:4260/@denotest%2fesm-basic
+Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz
+Initialize @denotest/esm-basic@1.0.0
+Check [WILDCARD]lib.test.ts
+running 1 test from [WILDCARD]lib.test.ts
+should add ... ok ([WILDCARD])
+
+ok | 1 passed | 0 failed ([WILDCARD])
+

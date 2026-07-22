@@ -1,0 +1,129 @@
+{
+  "name": "path-scurry",
+  "dist-tags": {
+    "latest": "1.11.1"
+  },
+  "versions": {
+    "1.11.1": {
+      "name": "path-scurry",
+      "version": "1.11.1",
+      "author": {
+        "url": "https://blog.izs.me",
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me"
+      },
+      "license": "BlueOak-1.0.0",
+      "_id": "path-scurry@1.11.1",
+      "bugs": {
+        "url": "https://github.com/isaacs/path-scurry/issues"
+      },
+      "tap": {
+        "typecheck": true
+      },
+      "dist": {
+        "shasum": "7960a668888594a0720b12a911d1a742ab9f11d2",
+        "tarball": "http://localhost:4260/path-scurry/path-scurry-1.11.1.tgz",
+        "fileCount": 13,
+        "integrity": "sha512-Xa4Nw17FS9ApQFJ9umLiJS4orGjm7ZzwUrwamcGQuHSzDyth9boKDaycYdDcZDuqYATXw4HFXgaqWTctW/v1HA==",
+        "unpackedSize": 535479
+      },
+      "main": "./dist/commonjs/index.js",
+      "tshy": {
+        "exports": {
+          ".": "./src/index.ts",
+          "./package.json": "./package.json"
+        },
+        "selfLink": false
+      },
+      "type": "module",
+      "types": "./dist/commonjs/index.d.ts",
+      "engines": {
+        "node": ">=16 || 14 >=14.18"
+      },
+      "exports": {
+        ".": {
+          "import": {
+            "types": "./dist/esm/index.d.ts",
+            "default": "./dist/esm/index.js"
+          },
+          "require": {
+            "types": "./dist/commonjs/index.d.ts",
+            "default": "./dist/commonjs/index.js"
+          }
+        },
+        "./package.json": "./package.json"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/isaacs"
+      },
+      "gitHead": "766c9b06aacef86b43c9999cabc5eb824b5958d6",
+      "scripts": {
+        "snap": "tap",
+        "test": "tap",
+        "bench": "bash ./scripts/bench.sh",
+        "format": "prettier --write . --loglevel warn",
+        "prepare": "tshy",
+        "presnap": "npm run prepare",
+        "pretest": "npm run prepare",
+        "typedoc": "typedoc --tsconfig tsconfig-esm.json ./src/*.ts",
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "prepublishOnly": "git push origin --follow-tags"
+      },
+      "prettier": {
+        "semi": false,
+        "useTabs": false,
+        "tabWidth": 2,
+        "endOfLine": "lf",
+        "printWidth": 75,
+        "arrowParens": "avoid",
+        "singleQuote": true,
+        "jsxSingleQuote": false,
+        "bracketSameLine": true,
+        "experimentalTernaries": true
+      },
+      "repository": {
+        "url": "git+https://github.com/isaacs/path-scurry.git",
+        "type": "git"
+      },
+      "_npmVersion": "10.7.0",
+      "description": "walk paths fast and efficiently",
+      "directories": {},
+      "_nodeVersion": "20.11.0",
+      "dependencies": {
+        "minipass": "^5.0.0 || ^6.0.2 || ^7.0.0",
+        "lru-cache": "^10.2.0"
+      },
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "c8": "^7.12.0",
+        "tap": "^18.7.2",
+        "tshy": "^1.14.0",
+        "mkdirp": "^3.0.0",
+        "rimraf": "^5.0.1",
+        "ts-node": "^10.9.2",
+        "typedoc": "^0.25.12",
+        "prettier": "^3.2.5",
+        "typescript": "^5.4.3",
+        "@types/node": "^20.12.11",
+        "@nodelib/fs.walk": "^1.2.8",
+        "eslint-config-prettier": "^8.6.0"
+      }
+    }
+  },
+  "bugs": {
+    "url": "https://github.com/isaacs/path-scurry/issues"
+  },
+  "author": {
+    "name": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "https://blog.izs.me"
+  },
+  "license": "BlueOak-1.0.0",
+  "homepage": "https://github.com/isaacs/path-scurry#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isaacs/path-scurry.git"
+  },
+  "description": "walk paths fast and efficiently"
+}

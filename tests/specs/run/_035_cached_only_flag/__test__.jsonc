@@ -1,0 +1,5 @@
+{
+  "args": "run --reload --check --allow-import --cached-only http://127.0.0.1:4545/019_media_types.ts",
+  "output": "035_cached_only_flag.out",
+  "exitCode": 1
+}

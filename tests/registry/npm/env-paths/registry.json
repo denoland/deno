@@ -1,0 +1,65 @@
+{
+  "name": "env-paths",
+  "description": "Get paths for storing things like data, config, cache, etc",
+  "dist-tags": {
+    "latest": "2.2.1"
+  },
+  "versions": {
+    "2.2.1": {
+      "name": "env-paths",
+      "version": "2.2.1",
+      "description": "Get paths for storing things like data, config, cache, etc",
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sindresorhus/env-paths.git"
+      },
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com",
+        "url": "sindresorhus.com"
+      },
+      "engines": {
+        "node": ">=6"
+      },
+      "scripts": {
+        "test": "xo && ava && tsd"
+      },
+      "devDependencies": {
+        "ava": "^1.4.1",
+        "tsd": "^0.7.1",
+        "xo": "^0.24.0"
+      },
+      "gitHead": "62d4ec8cd42f1a419e00856fab949ca8286773f6",
+      "bugs": {
+        "url": "https://github.com/sindresorhus/env-paths/issues"
+      },
+      "_id": "env-paths@2.2.1",
+      "_nodeVersion": "14.16.0",
+      "_npmVersion": "6.14.10",
+      "dist": {
+        "integrity": "sha512-+h1lkLKhZMTYjog1VEpJNG7NZJWcuc2DDk/qsqSTRRCOXiLjeQ1d1/udrUGhqMxUgAlwKNZ0cf2uqan5GLuS2A==",
+        "shasum": "420399d416ce1fbe9bc0a07c62fa68d67fd0f8f2",
+        "tarball": "http://localhost:4260/env-paths/env-paths-2.2.1.tgz",
+        "fileCount": 5,
+        "unpackedSize": 10163
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/sindresorhus/env-paths#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sindresorhus/env-paths.git"
+  },
+  "author": {
+    "name": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com"
+  },
+  "bugs": {
+    "url": "https://github.com/sindresorhus/env-paths/issues"
+  },
+  "license": "MIT"
+}

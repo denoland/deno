@@ -1,0 +1,5 @@
+{
+  "args": "run --reload --check type_definitions_for_export.ts",
+  "output": "type_definitions_for_export.ts.out",
+  "exitCode": 1
+}

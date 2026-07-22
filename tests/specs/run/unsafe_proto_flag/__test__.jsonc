@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "unstable_flag": {
+      "args": "run -A --unstable-unsafe-proto main.js",
+      "output": "main_with_unsafe_proto_flag.out",
+      "exitCode": 0
+    },
+    "stable_flag": {
+      "args": "run -A --unsafe-proto main.js",
+      "output": "main_with_unsafe_proto_flag.out",
+      "exitCode": 0
+    }
+  }
+}

@@ -1,0 +1,5 @@
+error: Uncaught (in promise) TypeError: Requires read access to "[WILDCARD]local_file.ts", run again with the --allow-read flag
+    at data:application/javascript;base64,[WILDCARD]:1:8
+await import(`data:application/javascript;base64,${btoa(code)}`);
+^
+    at async file:///[WILDCARD]/dynamic_import/permissions_data_local.ts:5:1

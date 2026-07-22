@@ -1,0 +1,6 @@
+{
+  "tempDir": true,
+  "flaky": true,
+  "args": "run --node-modules-dir=auto main.ts",
+  "output": "warn.out"
+}

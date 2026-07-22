@@ -1,0 +1,5 @@
+{
+  "args": "lint --quiet ",
+  "output": "expected_quiet.out",
+  "exitCode": 1
+}

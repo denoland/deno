@@ -1,0 +1,6 @@
+{
+  "exports": {
+    "./add": "./add.ts",
+    "./subtract": "./subtract.ts"
+  }
+}

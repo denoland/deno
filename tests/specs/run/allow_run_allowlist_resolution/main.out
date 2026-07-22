@@ -1,0 +1,15 @@
+PermissionStatus { state: "granted", onchange: null }
+PermissionStatus { state: "granted", onchange: null }
+PermissionStatus { state: "prompt", onchange: null }
+PermissionStatus { state: "granted", onchange: null }
+---
+Info Failed to resolve 'binary' for allow-run: cannot find binary path
+PermissionStatus { state: "prompt", onchange: null }
+PermissionStatus { state: "prompt", onchange: null }
+PermissionStatus { state: "prompt", onchange: null }
+PermissionStatus { state: "prompt", onchange: null }
+---
+PermissionStatus { state: "granted", onchange: null }
+PermissionStatus { state: "granted", onchange: null }
+PermissionStatus { state: "prompt", onchange: null }
+PermissionStatus { state: "granted", onchange: null }

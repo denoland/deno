@@ -1,0 +1,1964 @@
+// Copyright 2018-2026 the Deno authors. MIT license.
+
+use std::borrow::Cow;
+use std::marker::PhantomData;
+use std::mem::MaybeUninit;
+use std::ops::Deref;
+
+use deno_error::JsError;
+use deno_error::JsErrorBox;
+use indexmap::IndexMap;
+use v8::Local;
+use v8::Value;
+
+use crate::FastStaticString;
+use crate::error::exception_to_err;
+
+#[derive(Debug, JsError)]
+#[class(type)]
+pub struct WebIdlError {
+  pub prefix: Cow<'static, str>,
+  pub context: Cow<'static, str>,
+  pub kind: WebIdlErrorKind,
+}
+
+type DynContextFn<'a> = dyn Fn() -> Cow<'static, str> + 'a;
+
+enum ContextFnInner<'a> {
+  Borrowed(&'a DynContextFn<'a>),
+  Owned(Box<DynContextFn<'a>>),
+}
+
+/// A function that returns a context string for an error.
+///
+/// When possible, prefer to use `ContextFn::new_borrowed` when creating a new context function
+/// to avoid unnecessary allocations.
+///
+/// To pass a borrow of the context function, use `ContextFn::borrowed`.
+pub struct ContextFn<'a>(ContextFnInner<'a>);
+
+impl<'a, T> From<T> for ContextFn<'a>
+where
+  T: Fn() -> Cow<'static, str> + 'a,
+{
+  fn from(f: T) -> Self {
+    Self(ContextFnInner::Owned(Box::new(f)))
+  }
+}
+
+impl<'a> ContextFn<'a> {
+  pub fn call(&self) -> Cow<'static, str> {
+    match &self.0 {
+      ContextFnInner::Borrowed(b) => b(),
+      ContextFnInner::Owned(b) => b(),
+    }
+  }
+
+  pub fn new(f: impl Fn() -> Cow<'static, str> + 'a) -> Self {
+    Self(ContextFnInner::Owned(Box::new(f)))
+  }
+
+  pub fn new_borrowed(b: &'a DynContextFn<'a>) -> Self {
+    Self(ContextFnInner::Borrowed(b))
+  }
+}
+
+impl<'a> ContextFn<'a> {
+  pub fn borrowed(&'a self) -> ContextFn<'a> {
+    match self {
+      Self(ContextFnInner::Borrowed(b)) => Self(ContextFnInner::Borrowed(*b)),
+      Self(ContextFnInner::Owned(b)) => Self(ContextFnInner::Borrowed(&**b)),
+    }
+  }
+}
+
+impl WebIdlError {
+  pub fn new(
+    prefix: Cow<'static, str>,
+    context: ContextFn<'_>,
+    kind: WebIdlErrorKind,
+  ) -> Self {
+    Self {
+      prefix,
+      context: context.call(),
+      kind,
+    }
+  }
+
+  pub fn other<T: std::error::Error + Send + Sync + 'static>(
+    prefix: Cow<'static, str>,
+    context: ContextFn<'_>,
+    other: T,
+  ) -> Self {
+    Self::new(prefix, context, WebIdlErrorKind::Other(Box::new(other)))
+  }
+}
+
+impl std::fmt::Display for WebIdlError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}: {} ", self.prefix, self.context)?;
+
+    match &self.kind {
+      WebIdlErrorKind::ConvertToConverterType(kind) => {
+        write!(f, "can not be converted to a {kind}")
+      }
+      WebIdlErrorKind::DictionaryCannotConvertKey { converter, key } => {
+        write!(
+          f,
+          "can not be converted to '{converter}' because '{key}' is required in '{converter}'",
+        )
+      }
+      WebIdlErrorKind::NotFinite => write!(f, "is not a finite number"),
+      WebIdlErrorKind::IntRange {
+        lower_bound,
+        upper_bound,
+      } => write!(
+        f,
+        "is outside the accepted range of ${lower_bound} to ${upper_bound}, inclusive"
+      ),
+      WebIdlErrorKind::InvalidByteString => {
+        write!(f, "is not a valid ByteString")
+      }
+      WebIdlErrorKind::Precision => write!(
+        f,
+        "is outside the range of a single-precision floating-point value"
+      ),
+      WebIdlErrorKind::InvalidEnumVariant { converter, variant } => write!(
+        f,
+        "can not be converted to '{converter}' because '{variant}' is not a valid enum value"
+      ),
+      WebIdlErrorKind::InvalidSequenceLength { expected, actual } => {
+        write!(f, "must have {expected}, received {actual}")
+      }
+      WebIdlErrorKind::Other(other) => std::fmt::Display::fmt(other, f),
+    }
+  }
+}
+
+impl std::error::Error for WebIdlError {}
+
+#[derive(Debug)]
+pub struct SequenceLengthExpectation {
+  first: usize,
+  second: usize,
+}
+
+impl std::fmt::Display for SequenceLengthExpectation {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "exactly {} or {} elements", self.first, self.second)
+  }
+}
+
+#[derive(Debug)]
+pub enum WebIdlErrorKind {
+  ConvertToConverterType(&'static str),
+  DictionaryCannotConvertKey {
+    converter: &'static str,
+    key: &'static str,
+  },
+  NotFinite,
+  IntRange {
+    lower_bound: f64,
+    upper_bound: f64,
+  },
+  Precision,
+  InvalidByteString,
+  InvalidEnumVariant {
+    converter: &'static str,
+    variant: String,
+  },
+  InvalidSequenceLength {
+    expected: SequenceLengthExpectation,
+    actual: usize,
+  },
+  Other(Box<dyn std::error::Error + Send + Sync + 'static>),
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum Type {
+  Null,
+  Undefined,
+  Boolean,
+  Number,
+  String,
+  Symbol,
+  BigInt,
+  Object,
+}
+
+pub fn type_of<'a, 'i>(
+  _scope: &mut v8::PinScope<'a, 'i>,
+  value: Local<'a, Value>,
+) -> Type {
+  if value.is_null() {
+    return Type::Null;
+  }
+
+  if value.is_undefined() {
+    Type::Undefined
+  } else if value.is_boolean() {
+    Type::Boolean
+  } else if value.is_number() {
+    Type::Number
+  } else if value.is_string() {
+    Type::String
+  } else if value.is_symbol() {
+    Type::Symbol
+  } else if value.is_big_int() {
+    Type::BigInt
+  } else {
+    Type::Object
+  }
+}
+
+pub trait WebIdlConverter<'a>: Sized {
+  type Options: Default;
+
+  fn convert<'b, 'i>(
+    scope: &mut v8::PinScope<'a, 'i>,
+    value: Local<'a, Value>,
+    prefix: Cow<'static, str>,
+    context: ContextFn<'b>,
+    options: &Self::Options,
+  ) -> Result<Self, WebIdlError>;
+  // where
+  // C: Fn() -> Cow<'static, str>;
+}
+
+// Option's None is treated as undefined. this behaviour differs from a nullable
+// converter, as it doesn't treat null as None.
+impl<'a, T: WebIdlConverter<'a>> WebIdlConverter<'a> for Option<T> {
+  type Options = T::Options;
+
+  fn convert<'b, 'i>(
+    scope: &mut v8::PinScope<'a, 'i>,
+    value: Local<'a, Value>,
+    prefix: Cow<'static, str>,
+    context: ContextFn<'b>,
+    options: &Self::Options,
+  ) -> Result<Self, WebIdlError> {
+    if value.is_undefined() {
+      Ok(None)
+    } else {
+      Ok(Some(WebIdlConverter::convert(
+        scope, value, prefix, context, options,
+      )?))
+    }
+  }
+}
+
+// any converter
+impl<'a> WebIdlConverter<'a> for Local<'a, Value> {
+  type Options = ();
+
+  fn convert<'b, 'i>(
+    _scope: &mut v8::PinScope<'a, 'i>,
+    value: Local<'a, Value>,
+    _prefix: Cow<'static, str>,
+    _context: ContextFn<'b>,
+    _options: &Self::Options,
+  ) -> Result<Self, WebIdlError> {
+    Ok(value)
+  }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum Nullable<T> {
+  Value(T),
+  Null,
+}
+impl<T> Nullable<T> {
+  pub fn into_option(self) -> Option<T> {
+    match self {
+      Nullable::Value(v) => Some(v),
+      Nullable::Null => None,
+    }
+  }
+}
+
+impl<'a, T: WebIdlConverter<'a>> WebIdlConverter<'a> for Nullable<T> {
+  type Options = T::Options;
+
+  fn convert<'b, 'i>(
+    scope: &mut v8::PinScope<'a, 'i>,
+    value: Local<'a, Value>,
+    prefix: Cow<'static, str>,
+    context: ContextFn<'b>,
+    options: &Self::Options,
+  ) -> Result<Self, WebIdlError> {
+    if value.is_null_or_undefined() {
+      Ok(Self::Null)
+    } else {
+      Ok(Self::Value(WebIdlConverter::convert(
+        scope, value, prefix, context, options,
+      )?))
+    }
+  }
+}
+
+crate::v8_static_strings! {
+  NEXT = "next",
+  DONE = "done",
+  VALUE = "value",
+}
+
+/// Per-context cache of the `"next"`, `"done"`, and `"value"` property-name
+/// strings used by the sequence iterator protocol.
+///
+/// These are cached per-context (in [`crate::runtime::ContextState`]) rather
+/// than in a `thread_local`, because `v8` string handles are bound to the
+/// isolate that created them. `deno test` runs each test file in its own
+/// isolate on reused thread-pool threads, so a thread-local handle would
+/// dangle into a disposed isolate once a thread was reused, producing spurious
+/// "can not be converted to a sequence" errors and intermittent SIGSEGV. This
+/// mirrors how Blink keeps these strings per-isolate. See
+/// <https://github.com/denoland/deno/issues/35460>.
+pub(crate) struct WebIdlSequenceKeys {
+  pub(crate) next: v8::Global<v8::String>,
+  pub(crate) done: v8::Global<v8::String>,
+  pub(crate) value: v8::Global<v8::String>,
+}
+
+// helper for iterating over a sequence
+fn for_each_in_sequence<'a, 'b, 'i>(
+  scope: &mut v8::PinScope<'a, 'i>,
+  value: Local<'a, Value>,
+  prefix: Cow<'static, str>,
+  context: ContextFn<'b>,
+  mut cb: impl FnMut(
+    &mut v8::PinScope<'a, 'i>,
+    usize,
+    Local<'a, Value>,
+    Cow<'static, str>,
+    ContextFn<'_>,
+  ) -> Result<(), WebIdlError>,
+) -> Result<usize, WebIdlError> {
+  let Some(obj) = value.to_object(scope) else {
+    return Err(WebIdlError::new(
+      prefix,
+      context.borrowed(),
+      WebIdlErrorKind::ConvertToConverterType("sequence"),
+    ));
+  };
+
+  let iter_key = v8::Symbol::get_iterator(scope);
+  let Some(iter) = obj
+    .get(scope, iter_key.into())
+    .and_then(|iter| iter.try_cast::<v8::Function>().ok())
+    .and_then(|iter| iter.call(scope, obj.cast(), &[]))
+    .and_then(|iter| iter.to_object(scope))
+  else {
+    return Err(WebIdlError::new(
+      prefix,
+      context.borrowed(),
+      WebIdlErrorKind::ConvertToConverterType("sequence"),
+    ));
+  };
+
+  // The "next"/"done"/"value" iterator keys are cached per-context. They must
+  // not be cached in a `thread_local`, because the `v8::String` handles are
+  // bound to the isolate that created them: `deno test` reuses thread-pool
+  // threads across per-file isolates, so a thread-local handle would dangle
+  // into a disposed isolate (see `WebIdlSequenceKeys`). Materialize them lazily
+  // on the first sequence conversion in this context and reuse them afterwards.
+  let context_state = crate::runtime::JsRealm::state_from_scope(scope);
+  if context_state.webidl_sequence_keys.borrow().is_none() {
+    let make = |scope: &mut v8::PinScope<'a, 'i>, s: &FastStaticString| {
+      s.v8_string(scope)
+        .map(|str| v8::Global::new(scope, str))
+        .map_err(|e| WebIdlError::other(prefix.clone(), context.borrowed(), e))
+    };
+    let keys = WebIdlSequenceKeys {
+      next: make(scope, &NEXT)?,
+      done: make(scope, &DONE)?,
+      value: make(scope, &VALUE)?,
+    };
+    *context_state.webidl_sequence_keys.borrow_mut() = Some(keys);
+  }
+  let keys = context_state.webidl_sequence_keys.borrow();
+  let keys = keys.as_ref().unwrap();
+  let next_key = v8::Local::new(scope, &keys.next).into();
+  let done_key = v8::Local::new(scope, &keys.done).into();
+  let value_key = v8::Local::new(scope, &keys.value).into();
+
+  // Match GetIteratorFromMethod's Iterator Record by reading `next` once and
+  // reusing that nextMethod for the rest of the iteration.
+  // https://tc39.es/ecma262/#sec-getiteratorfrommethod
+  let next_method = {
+    // Read `iterator.next` under `TryCatch` so an exception thrown by a getter
+    // is preserved and converted into the original JS error.
+    v8::tc_scope!(let tc_scope, scope);
+    match iter.get(tc_scope, next_key) {
+      Some(next_method) => Ok(v8::Global::new(tc_scope, next_method)),
+      None => {
+        if tc_scope.has_caught() {
+          let exception = tc_scope.exception().unwrap();
+          Err(WebIdlError::other(
+            prefix.clone(),
+            context.borrowed(),
+            exception_to_err(tc_scope, exception, false, false),
+          ))
+        } else {
+          // This fallback is only kept for the unlikely case where V8 returns
+          // an empty `MaybeLocal` without surfacing an exception.
+          Err(WebIdlError::other(
+            prefix.clone(),
+            context.borrowed(),
+            JsErrorBox::type_error("Failed to read iterator.next."),
+          ))
+        }
+      }
+    }
+  }?;
+  // The `TryCatch` scope above cannot outlive this block, so keep the value in
+  // a `Global` and reopen it in the outer scope before validating/calling it.
+  let next_method = v8::Local::new(scope, next_method);
+  // TODO: Keep this as a `v8::Value` like an ECMAScript
+  // Iterator Record's [[NextMethod]], and defer the callable check to the call
+  // site so `for_each_in_sequence()` can mirror IteratorNext more closely.
+  let next_method = next_method.try_cast::<v8::Function>().map_err(|_| {
+    WebIdlError::other(
+      prefix.clone(),
+      context.borrowed(),
+      JsErrorBox::type_error("Expected next() function on iterator."),
+    )
+  })?;
+
+  let mut len = 0;
+
+  loop {
+    let Some(res) = next_method
+      .call(scope, iter.cast(), &[])
+      .and_then(|res| res.to_object(scope))
+    else {
+      return Err(WebIdlError::new(
+        prefix,
+        context.borrowed(),
+        WebIdlErrorKind::ConvertToConverterType("sequence"),
+      ));
+    };
+
+    if res.get(scope, done_key).is_some_and(|val| val.is_true()) {
+      break;
+    }
+
+    let Some(iter_val) = res.get(scope, value_key) else {
+      return Err(WebIdlError::new(
+        prefix,
+        context.borrowed(),
+        WebIdlErrorKind::ConvertToConverterType("sequence"),
+      ));
+    };
+
+    cb(
+      scope,
+      len,
+      iter_val,
+      prefix.clone(),
+      ContextFn::new_borrowed(&|| {
+        format!("{}, index {len}", context.call()).into()
+      }),
+    )?;
+    len += 1;
+  }
+
+  Ok(len)
+}
+
+// TODO: WebGPU API like `GPUExtent3D`, `GPUOrigin3D`
+// or `GPUColor` could be statically allocated sequence
+// due to its size being known at compile time.
+// Extend this helper with additional fixed-size/size-bounded policies
+// like `SequenceLengthExact<N>`, `SequenceLengthAtMost<N>`, or
+// `SequenceLengthRange<MIN, MAX>` when we need.
+pub trait SequenceLengthPolicy {
+  fn accepts(len: usize) -> bool;
+  fn expectation() -> SequenceLengthExpectation;
+}
+
+pub struct SequenceLengthOneOf<const A: usize, const B: usize>;
+
+impl<const A: usize, const B: usize> SequenceLengthPolicy
+  for SequenceLengthOneOf<A, B>
+{
+  fn accepts(len: usize) -> bool {
+    len == A || len == B
+  }
+
+  fn expectation() -> SequenceLengthExpectation {
+    SequenceLengthExpectation {
+      first: A,
+      second: B,
+    }
+  }
+}
+
+pub struct ConstrainedSequence<T, P, const MAX: usize>
+where
+  P: SequenceLengthPolicy,
+{
+  len: usize,
+  data: [MaybeUninit<T>; MAX],
+  _policy: PhantomData<P>,
+}
+
+impl<T, P, const MAX: usize> Deref for ConstrainedSequence<T, P, MAX>
+where
+  P: SequenceLengthPolicy,
+{
+  type Target = [T];
+
+  fn deref(&self) -> &Self::Target {
+    unsafe {
+      std::slice::from_raw_parts(self.data.as_ptr().cast::<T>(), self.len)
+    }
+  }
+}
+
+impl<T, P, const MAX: usize> Drop for ConstrainedSequence<T, P, MAX>
+where
+  P: SequenceLengthPolicy,
+{
+  fn drop(&mut self) {
+    for value in self.data.iter_mut().take(self.len) {
+      unsafe {
+        value.assume_init_drop();
+      }
+    }
+  }
+}
+
+/// Some APIs accept a sequence form as just one branch of a larger conversion.
+/// This helper lets callers distinguish "not a sequence" from actual sequence
+/// conversion failures such as invalid element values or invalid sequence length.
+///
+/// Example:
+/// ```ignore
+/// if let Some(seq) = try_convert_sequence_with_policy::<
+///   MyStruct,
+///   SequenceLengthOneOf<1, 3>,
+///   3,
+/// >(scope, value, prefix, context, &Default::default())? {
+///   // Handle the sequence form here.
+/// } else {
+///   // Fall through to another accepted representation.
+/// }
+/// ```
+pub fn try_convert_sequence_with_policy<'a, 'b, 'i, T, P, const MAX: usize>(
+  scope: &mut v8::PinScope<'a, 'i>,
+  value: Local<'a, Value>,
+  prefix: Cow<'static, str>,
+  context: ContextFn<'b>,
+  options: &T::Options,
+) -> Result<Option<ConstrainedSequence<T, P, MAX>>, WebIdlError>
+where
+  T: WebIdlConverter<'a>,
+  P: SequenceLengthPolicy,
+{
+  match ConstrainedSequence::<T, P, MAX>::convert(
+    scope, value, prefix, context, options,
+  ) {
+    Ok(sequence) => Ok(Some(sequence)),
+    Err(err)
+      if matches!(
+        &err.kind,
+        WebIdlErrorKind::ConvertToConverterType("sequence")
+      ) =>
+    {
+      Ok(None)
+    }
+    Err(err) => Err(err),
+  }
+}
+
+impl<'a, T, P, const MAX: usize> WebIdlConverter<'a>
+  for ConstrainedSequence<T, P, MAX>
+where
+  T: WebIdlConverter<'a>,
+  P: SequenceLengthPolicy,
+{
+  type Options = T::Options;
+
+  fn convert<'b, 'i>(
+    scope: &mut v8::PinScope<'a, 'i>,
+    value: Local<'a, Value>,
+    prefix: Cow<'static, str>,
+    context: ContextFn<'b>,
+    options: &Self::Options,
+  ) -> Result<Self, WebIdlError> {
+    // TODO: Once the toolchain is >= 1.93, consider using `[MaybeUninit<T>]`
+    // helpers like `assume_init_drop` / `assume_init_ref` to simplify this.
+    let mut out: [MaybeUninit<T>; MAX] =
+      std::array::from_fn(|_| MaybeUninit::uninit());
+    let mut len = 0;
+
+    let result = for_each_in_sequence(
+      scope,
+      value,
+      prefix.clone(),
+      context.borrowed(),
+      |scope, idx, iter_val, prefix, context| {
+        if idx == MAX {
+          return Err(WebIdlError::new(
+            prefix,
+            context,
+            WebIdlErrorKind::InvalidSequenceLength {
+              expected: P::expectation(),
+              actual: idx + 1,
+            },
+          ));
+        }
+
+        out[idx].write(T::convert(scope, iter_val, prefix, context, options)?);
+        len += 1;
+        Ok(())
+      },
+    );
+
+    if let Err(err) = result {
+      for value in out.iter_mut().take(len) {
+        // SAFETY: only the first `len` elements are initialized, and they must
+        // be dropped manually here to avoid leaking them on early return.
+        unsafe {
+          value.assume_init_drop();
+        }
+      }
+      return Err(err);
+    }
+
+    if !P::accepts(len) {
+      for value in out.iter_mut().take(len) {
+        // SAFETY: same as above
+        unsafe {
+          value.assume_init_drop();
+        }
+      }
+      return Err(WebIdlError::new(
+        prefix,
+        context,
+        WebIdlErrorKind::InvalidSequenceLength {
+          expected: P::expectation(),
+          actual: len,
+        },
+      ));
+    }
+
+    Ok(Self {
+      len,
+      data: out,
+      _policy: PhantomData,
+    })
+  }
+}
+
+// sequence converter
+impl<'a, T: WebIdlConverter<'a>> WebIdlConverter<'a> for Vec<T> {
+  type Options = T::Options;
+
+  fn convert<'b, 'i>(
+    scope: &mut v8::PinScope<'a, 'i>,
+    value: Local<'a, Value>,
+    prefix: Cow<'static, str>,
+    context: ContextFn<'b>,
+    options: &Self::Options,
+  ) -> Result<Self, WebIdlError> {
+    let mut out = vec![];
+    for_each_in_sequence(
+      scope,
+      value,
+      prefix,
+      context,
+      |scope, _idx, iter_val, prefix, context| {
+        out.push(WebIdlConverter::convert(
+          scope, iter_val, prefix, context, options,
+        )?);
+        Ok(())
+      },
+    )?;
+
+    Ok(out)
+  }
+}
+
+// record converter
+// the Options only apply to the value, not the key
+impl<'a, K: WebIdlConverter<'a> + Eq + std::hash::Hash, V: WebIdlConverter<'a>>
+  WebIdlConverter<'a> for IndexMap<K, V>
+{
+  type Options = V::Options;
+
+  fn convert<'b, 'i>(
+    scope: &mut v8::PinScope<'a, 'i>,
+    value: Local<'a, Value>,
+    prefix: Cow<'static, str>,
+    context: ContextFn<'b>,
+    options: &Self::Options,
+  ) -> Result<Self, WebIdlError> {
+    let Ok(obj) = value.try_cast::<v8::Object>() else {
+      return Err(WebIdlError::new(
+        prefix,
+        context.borrowed(),
+        WebIdlErrorKind::ConvertToConverterType("record"),
+      ));
+    };
+
+    let obj = if let Ok(proxy) = obj.try_cast::<v8::Proxy>() {
+      if let Ok(obj) = proxy.get_target(scope).try_cast() {
+        obj
+      } else {
+        return Ok(Default::default());
+      }
+    } else {
+      obj
+    };
+
+    let Some(keys) = obj.get_own_property_names(
+      scope,
+      v8::GetPropertyNamesArgs {
+        mode: v8::KeyCollectionMode::OwnOnly,
+        property_filter: Default::default(),
+        index_filter: v8::IndexFilter::IncludeIndices,
+        key_conversion: v8::KeyConversionMode::ConvertToString,
+      },
+    ) else {
+      return Ok(Default::default());
+    };
+
+    let mut out = IndexMap::with_capacity(keys.length() as _);
+
+    for i in 0..keys.length() {
+      let key = keys.get_index(scope, i).unwrap();
+      let value = obj.get(scope, key).unwrap();
+
+      let key = WebIdlConverter::convert(
+        scope,
+        key,
+        prefix.clone(),
+        context.borrowed(),
+        &Default::default(),
+      )?;
+      let value = WebIdlConverter::convert(
+        scope,
+        value,
+        prefix.clone(),
+        context.borrowed(),
+        options,
+      )?;
+
+      out.insert(key, value);
+    }
+
+    Ok(out)
+  }
+}
+
+#[derive(Debug, Default)]
+pub struct IntOptions {
+  pub clamp: bool,
+  pub enforce_range: bool,
+}
+
+// https://webidl.spec.whatwg.org/#abstract-opdef-converttoint
+macro_rules! impl_ints {
+  ($($t:ty: $unsigned:tt = $name:literal: $min:expr_2021 => $max:expr_2021),*) => {
+    $(
+      impl<'a> WebIdlConverter<'a> for $t {
+        type Options = IntOptions;
+
+        fn convert<'b, 'i>(
+          scope: &mut v8::PinScope<'a, 'i>,
+          value: Local<'a, Value>,
+          prefix: Cow<'static, str>,
+          context: ContextFn<'b>,
+          options: &Self::Options,
+        ) -> Result<Self, WebIdlError>
+        {
+          const MIN: f64 = $min as f64;
+          const MAX: f64 = $max as f64;
+
+          if value.is_big_int() {
+            return Err(WebIdlError::new(prefix, context.borrowed(), WebIdlErrorKind::ConvertToConverterType($name)));
+          }
+
+          let Some(mut n) = value.number_value(scope) else {
+            return Err(WebIdlError::new(prefix, context.borrowed(), WebIdlErrorKind::ConvertToConverterType($name)));
+          };
+          if n == -0.0 {
+            n = 0.0;
+          }
+
+          if options.enforce_range {
+            if !n.is_finite() {
+              return Err(WebIdlError::new(prefix, context.borrowed(), WebIdlErrorKind::NotFinite));
+            }
+
+            n = n.trunc();
+            if n == -0.0 {
+              n = 0.0;
+            }
+
+            if !(MIN..=MAX).contains(&n) {
+              return Err(WebIdlError::new(prefix, context.borrowed(), WebIdlErrorKind::IntRange {
+                lower_bound: MIN,
+                upper_bound: MAX,
+              }));
+            }
+
+            return Ok(n as Self);
+          }
+
+          if !n.is_nan() && options.clamp {
+            return Ok(
+              n.clamp(MIN, MAX)
+              .round_ties_even() as Self
+            );
+          }
+
+          if !n.is_finite() || n == 0.0 {
+            return Ok(0);
+          }
+
+          n = n.trunc();
+          if n == -0.0 {
+            n = 0.0;
+          }
+
+          if (MIN..=MAX).contains(&n) {
+            return Ok(n as Self);
+          }
+
+          let bit_len_num = 2.0f64.powi(Self::BITS as i32);
+
+          n = {
+            let sign_might_not_match = n % bit_len_num;
+            if n.is_sign_positive() != bit_len_num.is_sign_positive() {
+              sign_might_not_match + bit_len_num
+            } else {
+              sign_might_not_match
+            }
+          };
+
+          impl_ints!(@handle_unsigned $unsigned n bit_len_num);
+
+          Ok(n as Self)
+        }
+      }
+    )*
+  };
+
+  (@handle_unsigned false $n:ident $bit_len_num:ident) => {
+    if $n >= MAX {
+      return Ok(($n - $bit_len_num) as Self);
+    }
+  };
+
+  (@handle_unsigned true $n:ident $bit_len_num:ident) => {};
+}
+
+// https://webidl.spec.whatwg.org/#js-integer-types
+impl_ints!(
+  i8:  false = "byte":               i8::MIN => i8::MAX,
+  u8:  true  = "octet":              u8::MIN => u8::MAX,
+  i16: false = "short":              i16::MIN => i16::MAX,
+  u16: true  = "unsigned short":     u16::MIN => u16::MAX,
+  i32: false = "long":               i32::MIN => i32::MAX,
+  u32: true  = "unsigned long":      u32::MIN => u32::MAX,
+  i64: false = "long long":          ((-2i64).pow(53) + 1) => (2i64.pow(53) - 1),
+  u64: true  = "unsigned long long": u64::MIN => (2u64.pow(53) - 1)
+);
+
+// float
+impl<'a> WebIdlConverter<'a> for f32 {
+  type Options = ();
+
+  fn convert<'b, 'i>(
+    scope: &mut v8::PinScope<'a, 'i>,
+    value: Local<'a, Value>,
+    prefix: Cow<'static, str>,
+    context: ContextFn<'b>,
+    _options: &Self::Options,
+  ) -> Result<Self, WebIdlError> {
+    let Some(n) = value.number_value(scope) else {
+      return Err(WebIdlError::new(
+        prefix,
+        context.borrowed(),
+        WebIdlErrorKind::ConvertToConverterType("float"),
+      ));
+    };
+
+    if !n.is_finite() {
+      return Err(WebIdlError::new(
+        prefix,
+        context.borrowed(),
+        WebIdlErrorKind::NotFinite,
+      ));
+    }
+
+    let n = n as f32;
+
+    if !n.is_finite() {
+      return Err(WebIdlError::new(
+        prefix,
+        context.borrowed(),
+        WebIdlErrorKind::Precision,
+      ));
+    }
+
+    Ok(n)
+  }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct UnrestrictedFloat(pub f32);
+impl std::ops::Deref for UnrestrictedFloat {
+  type Target = f32;
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
+
+impl<'a> WebIdlConverter<'a> for UnrestrictedFloat {
+  type Options = ();
+
+  fn convert<'b, 'i>(
+    scope: &mut v8::PinScope<'a, 'i>,
+    value: Local<'a, Value>,
+    prefix: Cow<'static, str>,
+    context: ContextFn<'b>,
+    _options: &Self::Options,
+  ) -> Result<Self, WebIdlError> {
+    let Some(n) = value.number_value(scope) else {
+      return Err(WebIdlError::new(
+        prefix,
+        context.borrowed(),
+        WebIdlErrorKind::ConvertToConverterType("float"),
+      ));
+    };
+
+    Ok(UnrestrictedFloat(n as f32))
+  }
+}
+
+// double
+impl<'a> WebIdlConverter<'a> for f64 {
+  type Options = ();
+
+  fn convert<'b, 'i>(
+    scope: &mut v8::PinScope<'a, 'i>,
+    value: Local<'a, Value>,
+    prefix: Cow<'static, str>,
+    context: ContextFn<'b>,
+    _options: &Self::Options,
+  ) -> Result<Self, WebIdlError> {
+    let Some(n) = value.number_value(scope) else {
+      return Err(WebIdlError::new(
+        prefix,
+        context.borrowed(),
+        WebIdlErrorKind::ConvertToConverterType("float"),
+      ));
+    };
+
+    if !n.is_finite() {
+      return Err(WebIdlError::new(
+        prefix,
+        context.borrowed(),
+        WebIdlErrorKind::NotFinite,
+      ));
+    }
+
+    Ok(n)
+  }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct UnrestrictedDouble(pub f64);
+impl std::ops::Deref for UnrestrictedDouble {
+  type Target = f64;
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
+
+impl<'a> WebIdlConverter<'a> for UnrestrictedDouble {
+  type Options = ();
+
+  fn convert<'b, 'i>(
+    scope: &mut v8::PinScope<'a, 'i>,
+    value: Local<'a, Value>,
+    prefix: Cow<'static, str>,
+    context: ContextFn<'b>,
+    _options: &Self::Options,
+  ) -> Result<Self, WebIdlError> {
+    let Some(n) = value.number_value(scope) else {
+      return Err(WebIdlError::new(
+        prefix,
+        context.borrowed(),
+        WebIdlErrorKind::ConvertToConverterType("float"),
+      ));
+    };
+
+    Ok(UnrestrictedDouble(n))
+  }
+}
+
+#[derive(Debug)]
+pub struct BigInt {
+  pub sign: bool,
+  pub words: Vec<u64>,
+}
+
+impl<'a> WebIdlConverter<'a> for BigInt {
+  type Options = ();
+
+  fn convert<'b, 'i>(
+    scope: &mut v8::PinScope<'a, 'i>,
+    value: Local<'a, Value>,
+    prefix: Cow<'static, str>,
+    context: ContextFn<'b>,
+    _options: &Self::Options,
+  ) -> Result<Self, WebIdlError> {
+    let Some(bigint) = value.to_big_int(scope) else {
+      return Err(WebIdlError::new(
+        prefix,
+        context.borrowed(),
+        WebIdlErrorKind::ConvertToConverterType("bigint"),
+      ));
+    };
+
+    let mut words = vec![];
+    let (sign, _) = bigint.to_words_array(&mut words);
+    Ok(Self { sign, words })
+  }
+}
+
+impl<'a> WebIdlConverter<'a> for bool {
+  type Options = ();
+
+  fn convert<'b, 'i>(
+    scope: &mut v8::PinScope<'a, 'i>,
+    value: Local<'a, Value>,
+    _prefix: Cow<'static, str>,
+    _context: ContextFn<'b>,
+    _options: &Self::Options,
+  ) -> Result<Self, WebIdlError> {
+    Ok(value.to_boolean(scope).is_true())
+  }
+}
+
+#[derive(Debug, Default)]
+pub struct StringOptions {
+  treat_null_as_empty_string: bool,
+}
+
+// DOMString and USVString, since we treat them the same
+impl<'a> WebIdlConverter<'a> for String {
+  type Options = StringOptions;
+
+  fn convert<'b, 'i>(
+    scope: &mut v8::PinScope<'a, 'i>,
+    value: Local<'a, Value>,
+    prefix: Cow<'static, str>,
+    context: ContextFn<'b>,
+    options: &Self::Options,
+  ) -> Result<Self, WebIdlError> {
+    let str = if value.is_string() {
+      value.try_cast::<v8::String>().unwrap()
+    } else if value.is_null() && options.treat_null_as_empty_string {
+      return Ok(String::new());
+    } else if value.is_symbol() {
+      return Err(WebIdlError::new(
+        prefix,
+        context.borrowed(),
+        WebIdlErrorKind::ConvertToConverterType("string"),
+      ));
+    } else if let Some(str) = value.to_string(scope) {
+      str
+    } else {
+      return Err(WebIdlError::new(
+        prefix,
+        context.borrowed(),
+        WebIdlErrorKind::ConvertToConverterType("string"),
+      ));
+    };
+
+    Ok(str.to_rust_string_lossy(scope))
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct ByteString(pub String);
+impl std::ops::Deref for ByteString {
+  type Target = String;
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
+impl<'a> WebIdlConverter<'a> for ByteString {
+  type Options = StringOptions;
+
+  fn convert<'b, 'i>(
+    scope: &mut v8::PinScope<'a, 'i>,
+    value: Local<'a, Value>,
+    prefix: Cow<'static, str>,
+    context: ContextFn<'b>,
+    options: &Self::Options,
+  ) -> Result<Self, WebIdlError> {
+    let str = if value.is_string() {
+      value.try_cast::<v8::String>().unwrap()
+    } else if value.is_null() && options.treat_null_as_empty_string {
+      return Ok(Self(String::new()));
+    } else if value.is_symbol() {
+      return Err(WebIdlError::new(
+        prefix,
+        context.borrowed(),
+        WebIdlErrorKind::ConvertToConverterType("string"),
+      ));
+    } else if let Some(str) = value.to_string(scope) {
+      str
+    } else {
+      return Err(WebIdlError::new(
+        prefix,
+        context.borrowed(),
+        WebIdlErrorKind::ConvertToConverterType("string"),
+      ));
+    };
+
+    if !str.contains_only_onebyte() {
+      return Err(WebIdlError::new(
+        prefix,
+        context.borrowed(),
+        WebIdlErrorKind::InvalidByteString,
+      ));
+    }
+
+    Ok(Self(str.to_rust_string_lossy(scope)))
+  }
+}
+
+pub trait WebIdlInterfaceConverter:
+  v8::cppgc::GarbageCollected + 'static
+{
+  const NAME: &'static str;
+}
+
+impl<'a, T: WebIdlInterfaceConverter> WebIdlConverter<'a>
+  for crate::cppgc::Ref<T>
+{
+  type Options = ();
+
+  fn convert<'b, 'i>(
+    scope: &mut v8::PinScope<'a, 'i>,
+    value: Local<'a, Value>,
+    prefix: Cow<'static, str>,
+    context: ContextFn<'b>,
+    _options: &Self::Options,
+  ) -> Result<Self, WebIdlError> {
+    match crate::cppgc::try_unwrap_cppgc_persistent_object::<T>(scope, value) {
+      Some(persistent) => Ok(persistent),
+      _ => Err(WebIdlError::new(
+        prefix,
+        context,
+        WebIdlErrorKind::ConvertToConverterType(T::NAME),
+      )),
+    }
+  }
+}
+
+// TODO:
+//  object
+//  ArrayBuffer
+//  DataView
+//  Array buffer types
+//  ArrayBufferView
+
+#[cfg(all(test, not(miri)))]
+mod tests {
+  use super::*;
+  use crate::JsRuntime;
+
+  #[test]
+  fn integers() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    macro_rules! test_integer {
+      ($t:ty: $($val:expr_2021 => $expected:literal$(, $opts:expr_2021)?);+;) => {
+        $(
+          let val = v8::Number::new(scope, $val as f64);
+          let converted = <$t>::convert(
+            scope,
+            val.into(),
+            "prefix".into(),
+            ContextFn::from(|| "context".into()),
+            &test_integer!(@opts $($opts)?),
+          );
+          assert_eq!(converted.unwrap(), $expected);
+        )+
+      };
+
+      ($t:ty: $($val:expr_2021 => ERR$(, $opts:expr_2021)?);+;) => {
+        $(
+          let val = v8::Number::new(scope, $val as f64);
+          let converted = <$t>::convert(
+            scope,
+            val.into(),
+            "prefix".into(),
+            ContextFn::from(|| "context".into()),
+            &test_integer!(@opts $($opts)?),
+          );
+          assert!(converted.is_err());
+        )+
+      };
+
+      (@opts $opts:expr_2021) => { $opts };
+      (@opts) => { Default::default() };
+    }
+
+    test_integer!(
+      i8:
+      50 => 50;
+      -10 => -10;
+      130 => -126;
+      -130 => 126;
+      130 => 127, IntOptions { clamp: true, enforce_range: false };
+    );
+    test_integer!(
+      i8:
+      f64::INFINITY => ERR, IntOptions { clamp: false, enforce_range: true };
+      -f64::INFINITY => ERR, IntOptions { clamp: false, enforce_range: true };
+      f64::NAN => ERR, IntOptions { clamp: false, enforce_range: true };
+      130 => ERR, IntOptions { clamp: false, enforce_range: true };
+    );
+
+    test_integer!(
+      u8:
+      50 => 50;
+      -10 => 246;
+      260 => 4;
+      260 => 255, IntOptions { clamp: true, enforce_range: false };
+    );
+    test_integer!(
+      u8:
+      f64::INFINITY => ERR, IntOptions { clamp: false, enforce_range: true };
+      f64::NAN => ERR, IntOptions { clamp: false, enforce_range: true };
+      260 => ERR, IntOptions { clamp: false, enforce_range: true };
+    );
+
+    let val = v8::String::new(scope, "3").unwrap();
+    let converted = u8::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert_eq!(converted.unwrap(), 3);
+
+    let val = v8::String::new(scope, "test").unwrap();
+    let converted = u8::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert_eq!(converted.unwrap(), 0);
+
+    let val = v8::BigInt::new_from_i64(scope, 0);
+    let converted = u8::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert!(converted.is_err());
+
+    let val = v8::Symbol::new(scope, None);
+    let converted = u8::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert!(converted.is_err());
+
+    let val = v8::undefined(scope);
+    let converted = u8::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert_eq!(converted.unwrap(), 0);
+  }
+
+  #[test]
+  fn float() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let val = v8::Number::new(scope, 3.0);
+    let converted = f32::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert_eq!(converted.unwrap(), 3.0);
+
+    let val = v8::Number::new(scope, f64::INFINITY);
+    let converted = f32::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert!(converted.is_err());
+
+    let val = v8::Number::new(scope, f64::MAX);
+    let converted = f32::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert!(converted.is_err());
+  }
+
+  #[test]
+  fn unrestricted_float() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let val = v8::Number::new(scope, 3.0);
+    let converted = UnrestrictedFloat::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert_eq!(*converted.unwrap(), 3.0);
+
+    let val = v8::Number::new(scope, f32::INFINITY as f64);
+    let converted = UnrestrictedFloat::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert_eq!(*converted.unwrap(), f32::INFINITY);
+
+    let val = v8::Number::new(scope, f64::NAN);
+    let converted = UnrestrictedFloat::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+
+    assert!(converted.unwrap().is_nan());
+
+    let val = v8::Number::new(scope, f64::MAX);
+    let converted = UnrestrictedFloat::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert!(converted.unwrap().is_infinite());
+  }
+
+  #[test]
+  fn double() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let val = v8::Number::new(scope, 3.0);
+    let converted = f64::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert_eq!(converted.unwrap(), 3.0);
+
+    let val = v8::Number::new(scope, f64::INFINITY);
+    let converted = f64::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert!(converted.is_err());
+
+    let val = v8::Number::new(scope, f64::MAX);
+    let converted = f64::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert_eq!(converted.unwrap(), f64::MAX);
+  }
+
+  #[test]
+  fn unrestricted_double() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let val = v8::Number::new(scope, 3.0);
+    let converted = UnrestrictedDouble::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert_eq!(*converted.unwrap(), 3.0);
+
+    let val = v8::Number::new(scope, f64::INFINITY);
+    let converted = UnrestrictedDouble::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert_eq!(*converted.unwrap(), f64::INFINITY);
+
+    let val = v8::Number::new(scope, f64::NAN);
+    let converted = UnrestrictedDouble::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+
+    assert!(converted.unwrap().is_nan());
+
+    let val = v8::Number::new(scope, f64::MAX);
+    let converted = UnrestrictedDouble::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert_eq!(*converted.unwrap(), f64::MAX);
+  }
+
+  #[test]
+  fn string() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let val = v8::String::new(scope, "foo").unwrap();
+    let converted = String::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert_eq!(converted.unwrap(), "foo");
+
+    let val = v8::Number::new(scope, 1.0);
+    let converted = String::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert_eq!(converted.unwrap(), "1");
+
+    let val = v8::Symbol::new(scope, None);
+    let converted = String::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert!(converted.is_err());
+
+    let val = v8::null(scope);
+    let converted = String::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert_eq!(converted.unwrap(), "null");
+
+    let val = v8::null(scope);
+    let converted = String::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &StringOptions {
+        treat_null_as_empty_string: true,
+      },
+    );
+    assert_eq!(converted.unwrap(), "");
+
+    let val = v8::Object::new(scope);
+    let converted = String::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &StringOptions {
+        treat_null_as_empty_string: true,
+      },
+    );
+    assert_eq!(converted.unwrap(), "[object Object]");
+
+    let val = v8::String::new(scope, "生").unwrap();
+    let converted = String::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert_eq!(converted.unwrap(), "生");
+  }
+
+  #[test]
+  fn byte_string() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let val = v8::String::new(scope, "foo").unwrap();
+    let converted = ByteString::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert_eq!(*converted.unwrap(), "foo");
+
+    let val = v8::Number::new(scope, 1.0);
+    let converted = ByteString::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert_eq!(*converted.unwrap(), "1");
+
+    let val = v8::Symbol::new(scope, None);
+    let converted = ByteString::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert!(converted.is_err());
+
+    let val = v8::null(scope);
+    let converted = ByteString::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert_eq!(*converted.unwrap(), "null");
+
+    let val = v8::null(scope);
+    let converted = ByteString::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &StringOptions {
+        treat_null_as_empty_string: true,
+      },
+    );
+    assert_eq!(*converted.unwrap(), "");
+
+    let val = v8::Object::new(scope);
+    let converted = ByteString::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &StringOptions {
+        treat_null_as_empty_string: true,
+      },
+    );
+    assert_eq!(*converted.unwrap(), "[object Object]");
+
+    let val = v8::String::new(scope, "生").unwrap();
+    let converted = ByteString::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert!(converted.is_err());
+  }
+
+  #[test]
+  fn any() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let val = v8::Object::new(scope);
+    let converted = v8::Local::<Value>::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert!(converted.unwrap().is_object());
+  }
+
+  #[test]
+  fn sequence() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let a = v8::Number::new(scope, 1.0);
+    let b = v8::String::new(scope, "2").unwrap();
+    let val = v8::Array::new_with_elements(scope, &[a.into(), b.into()]);
+    let converted = Vec::<u8>::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert_eq!(converted.unwrap(), vec![1, 2]);
+  }
+
+  #[test]
+  fn sequence_next_method_must_be_callable() {
+    let mut runtime = JsRuntime::new(Default::default());
+    let val = runtime
+      .execute_script(
+        "",
+        r#"
+        ({
+          [Symbol.iterator]() {
+            return { next: 1 };
+          },
+        })
+        "#,
+      )
+      .unwrap();
+
+    deno_core::scope!(scope, runtime);
+    let val = Local::new(scope, val);
+    let err = Vec::<u8>::convert(
+      scope,
+      val,
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    )
+    .unwrap_err();
+    assert!(
+      err
+        .to_string()
+        .contains("Expected next() function on iterator.")
+    );
+  }
+
+  #[test]
+  fn sequence_propagates_next_getter_exception() {
+    let mut runtime = JsRuntime::new(Default::default());
+    let val = runtime
+      .execute_script(
+        "",
+        r#"
+        ({
+          [Symbol.iterator]() {
+            return {
+              get next() {
+                throw new TypeError("boom");
+              },
+            };
+          },
+        })
+        "#,
+      )
+      .unwrap();
+
+    let err = {
+      deno_core::scope!(scope, runtime);
+      let val = Local::new(scope, val);
+      Vec::<u8>::convert(
+        scope,
+        val,
+        "prefix".into(),
+        (|| "context".into()).into(),
+        &Default::default(),
+      )
+      .unwrap_err()
+    };
+    assert!(err.to_string().contains("boom"));
+  }
+
+  #[test]
+  fn sequence_check_next_method_once() {
+    let mut runtime = JsRuntime::new(Default::default());
+    let val = runtime
+      .execute_script(
+        "",
+        r#"
+        globalThis.nextReads = 0;
+        ({
+          [Symbol.iterator]() {
+            let index = 0;
+            return {
+              get next() {
+                // Regression guard: old behavior re-read `next` on each loop.
+                if (++globalThis.nextReads > 1) {
+                  throw new Error("next getter called twice");
+                }
+                return () => {
+                  index++;
+                  if (index === 1) {
+                    return { done: false, value: 1 };
+                  }
+                  if (index === 2) {
+                    return { done: false, value: 2 };
+                  }
+                  return { done: true, value: undefined };
+                };
+              },
+            };
+          },
+        })
+        "#,
+      )
+      .unwrap();
+
+    let converted = {
+      deno_core::scope!(scope, runtime);
+      let val = Local::new(scope, val);
+      Vec::<u8>::convert(
+        scope,
+        val,
+        "prefix".into(),
+        (|| "context".into()).into(),
+        &Default::default(),
+      )
+      .unwrap()
+    };
+    assert_eq!(converted, vec![1, 2]);
+
+    let next_reads =
+      runtime.execute_script("", "globalThis.nextReads").unwrap();
+    deno_core::scope!(scope, runtime);
+    let next_reads = Local::new(scope, next_reads);
+    assert_eq!(next_reads.uint32_value(scope).unwrap(), 1);
+  }
+
+  #[test]
+  fn constrained_sequence_one_of() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let values = [
+      v8::Number::new(scope, 1.0).into(),
+      v8::Number::new(scope, 2.0).into(),
+      v8::Number::new(scope, 3.0).into(),
+      v8::Number::new(scope, 4.0).into(),
+    ];
+    let val = v8::Array::new_with_elements(scope, &values);
+    let converted =
+      ConstrainedSequence::<u8, SequenceLengthOneOf<2, 4>, 4>::convert(
+        scope,
+        val.into(),
+        "prefix".into(),
+        (|| "context".into()).into(),
+        &Default::default(),
+      );
+    assert_eq!(&*converted.unwrap(), &[1, 2, 3, 4]);
+  }
+
+  #[test]
+  fn nullable() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let val = v8::undefined(scope);
+    let converted = Nullable::<u8>::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert_eq!(converted.unwrap(), Nullable::Null);
+
+    let val = v8::Number::new(scope, 1.0);
+    let converted = Nullable::<u8>::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert_eq!(converted.unwrap(), Nullable::Value(1));
+  }
+
+  #[test]
+  fn record() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let obj = v8::Object::new(scope);
+    let key = v8::String::new(scope, "foo").unwrap();
+    let val = v8::Number::new(scope, 1.0);
+    obj.set(scope, key.into(), val.into());
+    let key = v8::String::new(scope, "bar").unwrap();
+    let val = v8::Number::new(scope, 2.0);
+    obj.set(scope, key.into(), val.into());
+
+    let converted = IndexMap::<String, u8>::convert(
+      scope,
+      obj.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    )
+    .unwrap();
+    assert_eq!(converted.get_index(0).unwrap(), (&String::from("foo"), &1));
+    assert_eq!(converted.get_index(1).unwrap(), (&String::from("bar"), &2));
+  }
+
+  #[test]
+  fn dictionary() {
+    #[derive(deno_ops::WebIDL, Debug, Eq, PartialEq)]
+    #[webidl(dictionary)]
+    pub struct Dict {
+      a: u8,
+      #[options(clamp = true)]
+      b: Vec<u16>,
+      #[webidl(default = Some(3))]
+      c: Option<u32>,
+      #[webidl(rename = "e")]
+      d: u16,
+      f: IndexMap<String, u32>,
+      g: Option<u32>,
+    }
+
+    let mut runtime = JsRuntime::new(Default::default());
+    let val = runtime
+      .execute_script(
+        "",
+        "({ a: 1, b: [70000], e: 70000, f: { 'foo': 1 }, g: undefined })",
+      )
+      .unwrap();
+
+    deno_core::scope!(scope, runtime);
+    let val = Local::new(scope, val);
+
+    let converted = Dict::convert(
+      scope,
+      val,
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+
+    assert_eq!(
+      converted.unwrap(),
+      Dict {
+        a: 1,
+        b: vec![65535],
+        c: Some(3),
+        d: 4464,
+        f: IndexMap::from([(String::from("foo"), 1)]),
+        g: None,
+      }
+    );
+  }
+
+  #[test]
+  fn r#enum() {
+    #[derive(deno_ops::WebIDL, Debug, Eq, PartialEq)]
+    #[webidl(enum)]
+    pub enum Enumeration {
+      FooBar,
+      Baz,
+      #[webidl(rename = "hello")]
+      World,
+    }
+
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let val = v8::String::new(scope, "foo-bar").unwrap();
+    let converted = Enumeration::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    )
+    .unwrap();
+    assert_eq!(converted, Enumeration::FooBar);
+    assert_eq!(converted.as_str(), "foo-bar");
+
+    let val = v8::String::new(scope, "baz").unwrap();
+    let converted = Enumeration::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    )
+    .unwrap();
+    assert_eq!(converted, Enumeration::Baz);
+    assert_eq!(converted.as_str(), "baz");
+
+    let val = v8::String::new(scope, "hello").unwrap();
+    let converted = Enumeration::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    )
+    .unwrap();
+    assert_eq!(converted, Enumeration::World);
+    assert_eq!(converted.as_str(), "hello");
+
+    let val = v8::String::new(scope, "unknown").unwrap();
+    let converted = Enumeration::convert(
+      scope,
+      val.into(),
+      "prefix".into(),
+      (|| "context".into()).into(),
+      &Default::default(),
+    );
+    assert!(converted.is_err());
+  }
+}

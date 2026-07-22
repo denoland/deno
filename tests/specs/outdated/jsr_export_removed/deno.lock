@@ -1,0 +1,36 @@
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@denotest/add@1": "1.0.0",
+    "jsr:@denotest/multiple-exports@0.7": "0.7.0",
+    "jsr:@denotest/multiple-exports@0.7.1": "0.7.1",
+    "jsr:@denotest/subtract@1": "1.0.0"
+  },
+  "jsr": {
+    "@denotest/add@1.0.0": {
+      "integrity": "3b2e675c1ad7fba2a45bc251992e01aff08a3c974ac09079b11e6a5b95d4bfcb"
+    },
+    "@denotest/multiple-exports@0.7.0": {
+      "integrity": "e2dff9c6b3b083d80b869f14e12be35178baeb065e08a1fb48d30dc6afbd43a8",
+      "dependencies": [
+        "jsr:@denotest/add",
+        "jsr:@denotest/subtract"
+      ]
+    },
+    "@denotest/multiple-exports@0.7.1": {
+      "integrity": "1554a62f7434dbbeebc5dfc8eb0c690fb1eddb721579a12e918b4c4027b77f02",
+      "dependencies": [
+        "jsr:@denotest/add",
+        "jsr:@denotest/subtract"
+      ]
+    },
+    "@denotest/subtract@1.0.0": {
+      "integrity": "e178a7101c073e93d9efa6833d5cbf83bc1bc8d509b7c2a5ecbf74265e917597"
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "jsr:@denotest/multiple-exports@0.7"
+    ]
+  }
+}

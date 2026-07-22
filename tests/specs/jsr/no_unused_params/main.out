@@ -1,0 +1,4 @@
+Download http://127.0.0.1:4250/@denotest/add/meta.json
+Download http://127.0.0.1:4250/@denotest/add/1.0.0_meta.json
+Download http://127.0.0.1:4250/@denotest/add/1.0.0/mod.ts
+Check [WILDCARD]main.ts

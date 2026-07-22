@@ -1,0 +1,121 @@
+{
+  "name": "jackspeak",
+  "dist-tags": {
+    "latest": "3.4.2"
+  },
+  "versions": {
+    "3.4.2": {
+      "name": "jackspeak",
+      "version": "3.4.2",
+      "author": {
+        "name": "Isaac Z. Schlueter",
+        "email": "i@izs.me"
+      },
+      "license": "BlueOak-1.0.0",
+      "_id": "jackspeak@3.4.2",
+      "bugs": {
+        "url": "https://github.com/isaacs/jackspeak/issues"
+      },
+      "dist": {
+        "shasum": "c3d1e00071d52dba8b0dac17cd2a12d0187d2989",
+        "tarball": "http://localhost:4260/jackspeak/jackspeak-3.4.2.tgz",
+        "fileCount": 21,
+        "integrity": "sha512-qH3nOSj8q/8+Eg8LUPOq3C+6HWkpUioIjDsq1+D4zY91oZvpPttw8GwtF1nReRYKXl+1AORyFqtm2f5Q1SB6/Q==",
+        "unpackedSize": 297035
+      },
+      "main": "./dist/commonjs/index.js",
+      "tshy": {
+        "main": true,
+        "exports": {
+          ".": "./src/index.js",
+          "./package.json": "./package.json"
+        }
+      },
+      "type": "module",
+      "types": "./dist/commonjs/index.d.ts",
+      "engines": {
+        "node": "14 >=14.21 || 16 >=16.20 || >=18"
+      },
+      "exports": {
+        ".": {
+          "import": {
+            "types": "./dist/esm/index.d.ts",
+            "default": "./dist/esm/index.js"
+          },
+          "require": {
+            "types": "./dist/commonjs/index.d.ts",
+            "default": "./dist/commonjs/index.js"
+          }
+        },
+        "./package.json": "./package.json"
+      },
+      "funding": {
+        "url": "https://github.com/sponsors/isaacs"
+      },
+      "gitHead": "82d3614e0715078b922819785abd1e534121b51c",
+      "scripts": {
+        "snap": "tap",
+        "test": "tap",
+        "format": "prettier --write . --log-level warn",
+        "prepare": "tshy",
+        "presnap": "npm run prepare",
+        "pretest": "npm run prepare",
+        "typedoc": "typedoc --tsconfig .tshy/esm.json ./src/*.ts",
+        "preversion": "npm test",
+        "postversion": "npm publish",
+        "build-examples": "for i in examples/*.js ; do node $i -h > ${i/.js/.txt}; done",
+        "prepublishOnly": "git push origin --follow-tags"
+      },
+      "prettier": {
+        "semi": false,
+        "useTabs": false,
+        "tabWidth": 2,
+        "endOfLine": "lf",
+        "printWidth": 75,
+        "arrowParens": "avoid",
+        "singleQuote": true,
+        "jsxSingleQuote": false,
+        "bracketSameLine": true,
+        "experimentalTernaries": true
+      },
+      "repository": {
+        "url": "git+https://github.com/isaacs/jackspeak.git",
+        "type": "git"
+      },
+      "_npmVersion": "10.7.0",
+      "description": "A very strict and proper argument parser.",
+      "directories": {},
+      "_nodeVersion": "20.13.1",
+      "dependencies": {
+        "@isaacs/cliui": "^8.0.2"
+      },
+      "_hasShrinkwrap": false,
+      "devDependencies": {
+        "tap": "^18.8.0",
+        "tshy": "^1.14.0",
+        "typedoc": "^0.25.1",
+        "prettier": "^3.2.5",
+        "typescript": "^5.2.2",
+        "@types/node": "^20.7.0",
+        "@types/pkgjs__parseargs": "^0.10.1"
+      },
+      "optionalDependencies": {
+        "@pkgjs/parseargs": "^0.11.0"
+      }
+    }
+  },
+  "bugs": {
+    "url": "https://github.com/isaacs/jackspeak/issues"
+  },
+  "author": {
+    "name": "Isaac Z. Schlueter",
+    "email": "i@izs.me"
+  },
+  "license": "BlueOak-1.0.0",
+  "homepage": "https://github.com/isaacs/jackspeak#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isaacs/jackspeak.git"
+  },
+  "description": "A very strict and proper argument parser."
+}

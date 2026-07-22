@@ -1,0 +1,6 @@
+Check [WILDCARD]
+TS2339 [ERROR]: Property 'doesNotExist' does not exist on type 'Addr'.
+  Property 'doesNotExist' does not exist on type 'NetAddr'.
+    console.log(localAddr.doesNotExist); // This will throw an error
+                          ~~~~~~~~~~~~
+    at [WILDCARD]

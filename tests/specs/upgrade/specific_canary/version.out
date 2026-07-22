@@ -1,0 +1,3 @@
+deno [WILDCARD]+[WILDCARD] (canary, release, [WILDCARD])
+[WILDCARD]
+[WILDCARD]

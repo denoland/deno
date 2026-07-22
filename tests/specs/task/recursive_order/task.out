@@ -1,0 +1,6 @@
+[UNORDERED_START]
+Task build (b) echo b
+Task build (a) echo a
+[b#build] b
+[a#build] a
+[UNORDERED_END]

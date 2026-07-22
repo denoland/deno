@@ -1,0 +1,3422 @@
+// Copyright 2018-2026 the Deno authors. MIT license.
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+// deno-lint-ignore-file no-explicit-any
+
+(function () {
+const { core, primordials } = __bootstrap;
+
+const { BlockList, SocketAddress } = core.loadExtScript(
+  "ext:deno_node/internal/blocklist.mjs",
+);
+
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
+const {
+  isIP,
+  isIPv4,
+  isIPv6,
+  kReinitializeHandle,
+  kSetKeepAlive,
+  kSetKeepAliveInitialDelay,
+  kSetNoDelay,
+  normalizedArgsSymbol,
+} = core.loadExtScript("ext:deno_node/internal/net.ts");
+const { Duplex } = core.createLazyLoader("node:stream")();
+const {
+  asyncIdSymbol,
+  defaultTriggerAsyncIdScope,
+  emitDestroy,
+  emitInit,
+  executionAsyncId,
+  newAsyncId,
+  ownerSymbol,
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
+const {
+  AbortError,
+  ERR_INVALID_ADDRESS_FAMILY,
+  ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
+  ERR_INVALID_FD_TYPE,
+  ERR_INVALID_IP_ADDRESS,
+  ERR_IP_BLOCKED,
+  ERR_MISSING_ARGS,
+  ERR_SERVER_ALREADY_LISTEN,
+  ERR_SERVER_NOT_RUNNING,
+  ERR_SOCKET_CLOSED,
+  ERR_SOCKET_CLOSED_BEFORE_CONNECTION,
+  ERR_SOCKET_CONNECTION_TIMEOUT,
+  errnoException,
+  exceptionWithHostPort,
+  genericNodeError,
+  NodeAggregateError,
+  uvExceptionWithHostPort,
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+type ErrnoException = any;
+const {
+  kAfterAsyncWrite,
+  kBuffer,
+  kBufferCb,
+  kBufferGen,
+  kHandle,
+  kUpdateTimer,
+  onStreamRead,
+  setStreamTimeout,
+  writeGeneric,
+  writevGeneric,
+} = core.loadExtScript("ext:deno_node/internal/stream_base_commons.ts");
+const { kDestroy, kTimeout } = core.loadExtScript(
+  "ext:deno_node/internal/timers.mjs",
+);
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const {
+  DTRACE_NET_SERVER_CONNECTION,
+  DTRACE_NET_STREAM_END,
+} = core.loadExtScript("ext:deno_node/internal/dtrace.ts");
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+type LookupOneOptions = any;
+const {
+  constants: TCPConstants,
+  setupListenWrap,
+  TCP,
+  TCPConnectWrap,
+} = core.loadExtScript("ext:deno_node/internal_binding/tcp_wrap.ts");
+const {
+  constants: PipeConstants,
+  Pipe,
+  PipeConnectWrap,
+  setupListenWrap: setupPipeListenWrap,
+} = core.loadExtScript("ext:deno_node/internal_binding/pipe_wrap.ts");
+const { ShutdownWrap } = core.loadExtScript(
+  "ext:deno_node/internal_binding/stream_wrap.ts",
+);
+const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
+const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
+const { ADDRCONFIG, lookup: dnsLookup } = core.createLazyLoader("node:dns")()
+  .default;
+const { kPermTokenSink } = core.loadExtScript(
+  "ext:deno_node/internal_binding/cares_wrap.ts",
+);
+const {
+  codeMap,
+  UV_ECANCELED,
+  UV_ETIMEDOUT,
+} = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
+const { guessHandleType } = core.loadExtScript(
+  "ext:deno_node/internal_binding/util.ts",
+);
+const { debuglog } = core.loadExtScript(
+  "ext:deno_node/internal/util/debuglog.ts",
+);
+type DuplexOptions = any;
+type BufferEncoding = any;
+type Abortable = any;
+const { channel, tracingChannel } = core.loadExtScript(
+  "ext:deno_node/diagnostics_channel.js",
+);
+const {
+  registerActiveHandle,
+  unregisterActiveHandle,
+} = core.loadExtScript("ext:deno_node/internal/process/active_resources.ts");
+// Lazily resolved at call sites via `lazyCluster()` to break the cluster
+// <-> net cycle. Only used inside `_listenInCluster()`.
+const lazyCluster = core.createLazyLoader("node:cluster");
+const { isUint8Array } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
+const {
+  validateAbortSignal,
+  validateBoolean,
+  validateFunction,
+  validateInt32,
+  validateNumber,
+  validatePort,
+  validateString,
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+
+const {
+  ArrayIsArray,
+  ArrayPrototypeIncludes,
+  ArrayPrototypeIndexOf,
+  ArrayPrototypePush,
+  ArrayPrototypeSplice,
+  Boolean,
+  FunctionPrototypeBind,
+  FunctionPrototypeCall,
+  MathMax,
+  Number,
+  NumberIsNaN,
+  NumberParseInt,
+  ObjectDefineProperty,
+  ObjectHasOwn,
+  ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
+  Promise,
+  PromiseWithResolvers,
+  ReflectHas,
+  SafeArrayIterator,
+  StringPrototypeCharCodeAt,
+  Symbol,
+  SymbolAsyncDispose,
+} = primordials;
+
+let debug = debuglog("net", (fn) => {
+  debug = fn;
+});
+
+const kLastWriteQueueSize = Symbol("lastWriteQueueSize");
+const kBytesRead = Symbol("kBytesRead");
+const kBytesWritten = Symbol("kBytesWritten");
+// Holds the async context (AsyncLocalStorage / async_hooks) snapshot captured
+// when a connect request or listening handle is set up. The native libuv
+// callbacks in tcp_wrap/pipe_wrap invoke the completion callbacks directly,
+// outside of any microtask or nextTick, so the snapshot has to be captured at
+// registration time and restored before dispatching. Otherwise
+// `AsyncLocalStorage.getStore()` returns `undefined` inside `connect` and
+// `connection` handlers. See https://github.com/denoland/deno/issues/35154.
+const kAsyncContext = Symbol("kAsyncContext");
+
+// Runs `run` with the async context snapshot that was active when the
+// operation was initiated, restoring the previous context afterwards.
+function _runInAsyncContext(snapshot: any, run: () => void) {
+  if (snapshot === undefined) {
+    run();
+    return;
+  }
+  const prior = core.getAsyncContext();
+  core.setAsyncContext(snapshot);
+  try {
+    run();
+  } finally {
+    core.setAsyncContext(prior);
+  }
+}
+
+const DEFAULT_IPV4_ADDR = "0.0.0.0";
+const DEFAULT_IPV6_ADDR = "::";
+
+let autoSelectFamilyDefault = true;
+let autoSelectFamilyAttemptTimeoutDefault = 500;
+
+type Handle = TCP | Pipe;
+
+interface HandleOptions {
+  pauseOnCreate?: boolean;
+  manualStart?: boolean;
+  handle?: Handle;
+}
+
+interface OnReadOptions {
+  buffer: Uint8Array | (() => Uint8Array);
+  /**
+   * This function is called for every chunk of incoming data.
+   *
+   * Two arguments are passed to it: the number of bytes written to buffer and
+   * a reference to buffer.
+   *
+   * Return `false` from this function to implicitly `pause()` the socket.
+   */
+  callback(bytesWritten: number, buf: Uint8Array): boolean;
+}
+
+interface ConnectOptions {
+  /**
+   * If specified, incoming data is stored in a single buffer and passed to the
+   * supplied callback when data arrives on the socket.
+   *
+   * Note: this will cause the streaming functionality to not provide any data,
+   * however events like `"error"`, `"end"`, and `"close"` will still be
+   * emitted as normal and methods like `pause()` and `resume()` will also
+   * behave as expected.
+   */
+  onread?: OnReadOptions;
+}
+
+interface SocketOptions extends ConnectOptions, HandleOptions, DuplexOptions {
+  /**
+   * If specified, wrap around an existing socket with the given file
+   * descriptor, otherwise a new socket will be created.
+   */
+  fd?: number;
+  /**
+   * If set to `false`, then the socket will automatically end the writable
+   * side when the readable side ends. See `net.createServer()` and the `"end"`
+   * event for details. Default: `false`.
+   */
+  allowHalfOpen?: boolean;
+  /**
+   * Allow reads on the socket when an fd is passed, otherwise ignored.
+   * Default: `false`.
+   */
+  readable?: boolean;
+  /**
+   * Allow writes on the socket when an fd is passed, otherwise ignored.
+   * Default: `false`.
+   */
+  writable?: boolean;
+  /** An Abort signal that may be used to destroy the socket. */
+  signal?: AbortSignal;
+}
+
+interface TcpNetConnectOptions extends TcpSocketConnectOptions, SocketOptions {
+  timeout?: number;
+}
+
+interface IpcNetConnectOptions extends IpcSocketConnectOptions, SocketOptions {
+  timeout?: number;
+}
+
+type NetConnectOptions = TcpNetConnectOptions | IpcNetConnectOptions;
+
+interface AddressInfo {
+  address: string;
+  family?: string;
+  port: number;
+}
+
+type LookupFunction = (
+  hostname: string,
+  options: LookupOneOptions,
+  callback: (
+    err: ErrnoException | null,
+    address: string,
+    family: number,
+  ) => void,
+) => void;
+
+interface TcpSocketConnectOptions extends ConnectOptions {
+  port: number;
+  host?: string;
+  localAddress?: string;
+  localPort?: number;
+  hints?: number;
+  family?: number;
+  lookup?: LookupFunction;
+  autoSelectFamily?: boolean | undefined;
+  autoSelectFamilyAttemptTimeout?: number | undefined;
+}
+
+interface IpcSocketConnectOptions extends ConnectOptions {
+  path: string;
+}
+
+type SocketConnectOptions = TcpSocketConnectOptions | IpcSocketConnectOptions;
+
+function _getNewAsyncId(handle?: Handle): number {
+  if (!handle || typeof handle.getAsyncId !== "function") {
+    return newAsyncId();
+  }
+  // Node's ASSIGN_OR_RETURN_UNWRAP in the C++ AsyncWrap::GetAsyncId returns
+  // silently if the receiver isn't a real AsyncWrap, so user-land handles that
+  // expose `getAsyncId` borrowed from a prototype (or that have been wrapped
+  // by libraries like pg/sequelize across socket reuse) don't crash on Node.
+  // Deno's op2 brand check throws `TypeError: expected AsyncWrap` in the same
+  // shape, so match Node's tolerance by falling back to a fresh async id.
+  try {
+    return handle.getAsyncId();
+  } catch {
+    return newAsyncId();
+  }
+}
+
+const providerTypeNames = [
+  "NONE",
+  "DIRHANDLE",
+  "DNSCHANNEL",
+  "ELDHISTOGRAM",
+  "FILEHANDLE",
+  "FILEHANDLECLOSEREQ",
+  "FIXEDSIZEBLOBCOPY",
+  "FSEVENTWRAP",
+  "FSREQCALLBACK",
+  "FSREQPROMISE",
+  "GETADDRINFOREQWRAP",
+  "GETNAMEINFOREQWRAP",
+  "HEAPSNAPSHOT",
+  "HTTP2SESSION",
+  "HTTP2STREAM",
+  "HTTP2PING",
+  "HTTP2SETTINGS",
+  "HTTPINCOMINGMESSAGE",
+  "HTTPCLIENTREQUEST",
+  "JSSTREAM",
+  "JSUDPWRAP",
+  "MESSAGEPORT",
+  "PIPECONNECTWRAP",
+  "PIPESERVERWRAP",
+  "PIPEWRAP",
+  "PROCESSWRAP",
+  "PROMISE",
+  "QUERYWRAP",
+  "SHUTDOWNWRAP",
+  "SIGNALWRAP",
+  "STATWATCHER",
+  "STREAMPIPE",
+  "TCPCONNECTWRAP",
+  "TCPSERVERWRAP",
+  "TCPWRAP",
+  "TLSWRAP",
+  "TTYWRAP",
+  "UDPSENDWRAP",
+  "UDPWRAP",
+  "SIGINTWATCHDOG",
+  "WORKER",
+  "WORKERHEAPSNAPSHOT",
+  "WRITEWRAP",
+  "ZLIB",
+];
+
+function _emitHandleInit(handle: Handle, asyncId: number) {
+  if (typeof (handle as any).getProviderType !== "function") {
+    return;
+  }
+  const providerType = (handle as any).getProviderType();
+  emitInit(
+    asyncId,
+    providerTypeNames[providerType] || "UNKNOWN",
+    executionAsyncId(),
+    handle,
+  );
+}
+
+interface NormalizedArgs {
+  0: Partial<NetConnectOptions | ListenOptions>;
+  1: ConnectionListener | null;
+  [normalizedArgsSymbol]?: boolean;
+}
+
+const _noop = (_arrayBuffer: Uint8Array, _nread: number): undefined => {
+  return;
+};
+
+const netClientSocketChannel = channel("net.client.socket");
+const netServerSocketChannel = channel("net.server.socket");
+const netServerListenChannel = tracingChannel("net.server.listen");
+
+function _toNumber(x: unknown): number | false {
+  return (x = Number(x)) >= 0 ? (x as number) : false;
+}
+
+function _isPipeName(s: unknown): s is string {
+  return typeof s === "string" && _toNumber(s) === false;
+}
+
+function _createHandle(fd: number, isServer: boolean): Handle {
+  validateInt32(fd, "fd", 0);
+
+  const type = guessHandleType(fd);
+
+  if (type === "PIPE") {
+    return new Pipe(isServer ? PipeConstants.SERVER : PipeConstants.SOCKET);
+  }
+
+  if (type === "TCP") {
+    return new TCP(isServer ? TCPConstants.SERVER : TCPConstants.SOCKET);
+  }
+
+  throw new ERR_INVALID_FD_TYPE(type);
+}
+
+// Returns an array [options, cb], where options is an object,
+// cb is either a function or null.
+// Used to normalize arguments of `Socket.prototype.connect()` and
+// `Server.prototype.listen()`. Possible combinations of parameters:
+// - (options[...][, cb])
+// - (path[...][, cb])
+// - ([port][, host][...][, cb])
+// For `Socket.prototype.connect()`, the [...] part is ignored
+// For `Server.prototype.listen()`, the [...] part is [, backlog]
+// but will not be handled here (handled in listen())
+function _normalizeArgs(args: unknown[]): NormalizedArgs {
+  let arr: NormalizedArgs;
+
+  if (args.length === 0) {
+    arr = [{}, null];
+    arr[normalizedArgsSymbol] = true;
+
+    return arr;
+  }
+
+  const arg0 = args[0] as Partial<NetConnectOptions> | number | string;
+  let options: Partial<SocketConnectOptions> = {};
+
+  if (typeof arg0 === "object" && arg0 !== null) {
+    // (options[...][, cb])
+    options = arg0;
+  } else if (_isPipeName(arg0)) {
+    // (path[...][, cb])
+    (options as IpcSocketConnectOptions).path = arg0;
+  } else {
+    // ([port][, host][...][, cb])
+    (options as TcpSocketConnectOptions).port = arg0;
+
+    if (args.length > 1 && typeof args[1] === "string") {
+      (options as TcpSocketConnectOptions).host = args[1];
+    }
+  }
+
+  const cb = args[args.length - 1];
+
+  if (!_isConnectionListener(cb)) {
+    arr = [options, null];
+  } else {
+    arr = [options, cb];
+  }
+
+  arr[normalizedArgsSymbol] = true;
+
+  return arr;
+}
+
+function _afterConnect(
+  status: number,
+  handle: any,
+  req: PipeConnectWrap | TCPConnectWrap,
+  readable: boolean,
+  writable: boolean,
+) {
+  _runInAsyncContext(
+    handle?.[kAsyncContext],
+    () => _afterConnectImpl(status, handle, req, readable, writable),
+  );
+}
+
+function _afterConnectImpl(
+  status: number,
+  handle: any,
+  req: PipeConnectWrap | TCPConnectWrap,
+  readable: boolean,
+  writable: boolean,
+) {
+  let socket = handle[ownerSymbol];
+
+  if (socket.constructor.name === "ReusedHandle") {
+    socket = socket.handle;
+  }
+
+  // Callback may come after call to destroy
+  if (socket.destroyed) {
+    return;
+  }
+
+  debug("afterConnect");
+
+  assert(socket.connecting);
+
+  socket.connecting = false;
+  socket._sockname = null;
+
+  if (status === 0) {
+    if (socket.readable && !readable) {
+      // deno-lint-ignore prefer-primordials -- Readable stream method, not Array.prototype.push
+      socket.push(null);
+      socket.read();
+    }
+
+    if (socket.writable && !writable) {
+      socket.end();
+    }
+
+    if (socket[kSetNoDelay] && socket._handle?.setNoDelay) {
+      socket._handle.setNoDelay(true);
+    }
+
+    if (socket[kSetKeepAlive] && socket._handle?.setKeepAlive) {
+      socket._handle.setKeepAlive(true, socket[kSetKeepAliveInitialDelay]);
+    }
+
+    socket._unrefTimer();
+
+    socket.emit("connect");
+    socket.emit("ready");
+
+    // Deno specific: run tls handshake if it's from a tls socket
+    if (typeof handle.afterConnectTls === "function") {
+      handle.afterConnectTls();
+    }
+
+    // Start the first read, or get an immediate EOF.
+    // this doesn't actually consume any bytes, because len=0.
+    if (readable && !socket.isPaused()) {
+      socket.read(0);
+    }
+  } else {
+    socket.connecting = false;
+    let details;
+
+    if (req.localAddress && req.localPort) {
+      details = req.localAddress + ":" + req.localPort;
+    }
+
+    const ex = exceptionWithHostPort(
+      status,
+      "connect",
+      req.address,
+      (req as TCPConnectWrap).port,
+      details,
+    );
+
+    if (details) {
+      ex.localAddress = req.localAddress;
+      ex.localPort = req.localPort;
+    }
+
+    socket.destroy(ex);
+  }
+}
+
+function _createConnectionError(req, status) {
+  let details;
+
+  if (req.localAddress && req.localPort) {
+    details = req.localAddress + ":" + req.localPort;
+  }
+
+  const ex = exceptionWithHostPort(
+    status,
+    "connect",
+    req.address,
+    req.port,
+    details,
+  );
+  if (details) {
+    ex.localAddress = req.localAddress;
+    ex.localPort = req.localPort;
+  }
+
+  return ex;
+}
+
+function _afterConnectMultiple(
+  context,
+  current,
+  status,
+  handle,
+  req,
+  readable,
+  writable,
+) {
+  debug(
+    "connect/multiple: connection attempt to %s:%s completed with status %s",
+    req.address,
+    req.port,
+    status,
+  );
+
+  // Make sure another connection is not spawned
+  clearTimeout(context[kTimeout]);
+
+  // One of the connection has completed and correctly dispatched but after timeout, ignore this one
+  if (status === 0 && current !== context.current - 1) {
+    debug(
+      "connect/multiple: ignoring successful but timedout connection to %s:%s",
+      req.address,
+      req.port,
+    );
+    handle.close();
+    return;
+  }
+
+  const self = context.socket;
+
+  // Some error occurred, add to the list of exceptions
+  if (status !== 0) {
+    const ex = _createConnectionError(req, status);
+    ArrayPrototypePush(context.errors, ex);
+
+    self.emit(
+      "connectionAttemptFailed",
+      req.address,
+      req.port,
+      req.addressType,
+      ex,
+    );
+
+    // Try the next address, unless we were aborted
+    if (context.socket.connecting) {
+      _internalConnectMultiple(context, status === UV_ECANCELED);
+    }
+
+    return;
+  }
+
+  _afterConnect(status, self._handle, req, readable, writable);
+}
+
+function _internalConnectMultipleTimeout(context, req, handle) {
+  debug(
+    "connect/multiple: connection to %s:%s timed out",
+    req.address,
+    req.port,
+  );
+  context.socket.emit(
+    "connectionAttemptTimeout",
+    req.address,
+    req.port,
+    req.addressType,
+  );
+
+  req.oncomplete = undefined;
+  ArrayPrototypePush(
+    context.errors,
+    _createConnectionError(req, UV_ETIMEDOUT),
+  );
+  handle.close();
+
+  // Try the next address, unless we were aborted
+  if (context.socket.connecting) {
+    _internalConnectMultiple(context);
+  }
+}
+
+function _checkBindError(err: number, port: number, handle: TCP) {
+  // EADDRINUSE may not be reported until we call `listen()` or `connect()`.
+  // To complicate matters, a failed `bind()` followed by `listen()` or `connect()`
+  // will implicitly bind to a random port. Ergo, check that the socket is
+  // bound to the expected port before calling `listen()` or `connect()`.
+  if (err === 0 && port > 0 && handle.getsockname) {
+    const out: AddressInfo | Record<string, never> = {};
+    err = handle.getsockname(out);
+
+    if (err === 0 && port !== out.port) {
+      err = codeMap.get("EADDRINUSE")!;
+    }
+  }
+
+  return err;
+}
+
+function _isPipe(
+  options: Partial<SocketConnectOptions>,
+): options is IpcSocketConnectOptions {
+  return ObjectHasOwn(options, "path") && !!options.path;
+}
+
+function _connectErrorNT(socket: Socket, err: Error) {
+  socket.destroy(err);
+}
+
+function _internalConnect(
+  socket: Socket,
+  address: string,
+  port: number,
+  addressType: number,
+  localAddress: string,
+  localPort: number | undefined,
+  flags: number = 0,
+) {
+  assert(socket.connecting);
+
+  if (
+    socket.blockList?.check(address, `ipv${addressType}`)
+  ) {
+    socket.destroy(new ERR_IP_BLOCKED(address));
+    return;
+  }
+
+  let err;
+
+  if (localAddress || localPort) {
+    localPort = (localPort ?? 0) | 0;
+    if (addressType === 4) {
+      localAddress = localAddress || DEFAULT_IPV4_ADDR;
+      // deno-lint-ignore prefer-primordials -- libuv handle.bind(), not Function.prototype.bind
+      err = (socket._handle as TCP).bind(localAddress, localPort);
+    } else {
+      // addressType === 6
+      localAddress = localAddress || DEFAULT_IPV6_ADDR;
+      err = (socket._handle as TCP).bind6(localAddress, localPort, flags);
+    }
+
+    debug(
+      "binding to localAddress: %s and localPort: %d (addressType: %d)",
+      localAddress,
+      localPort,
+      addressType,
+    );
+
+    err = _checkBindError(err, localPort, socket._handle as TCP);
+
+    if (err) {
+      const ex = exceptionWithHostPort(err, "bind", localAddress, localPort);
+      socket.destroy(ex);
+
+      return;
+    }
+  }
+
+  if (addressType === 6 || addressType === 4) {
+    const req = new TCPConnectWrap();
+    req.oncomplete = _afterConnect;
+    req.address = address;
+    req.port = port;
+    req.localAddress = localAddress;
+    req.localPort = localPort;
+
+    try {
+      if (addressType === 4) {
+        err = (socket._handle as TCP).connect(req, address, port);
+      } else {
+        err = (socket._handle as TCP).connect6(req, address, port);
+      }
+    } catch (e) {
+      socket.destroy(e);
+      return;
+    }
+  } else {
+    const req = new PipeConnectWrap();
+    req.oncomplete = _afterConnect;
+    req.address = address;
+
+    err = (socket._handle as Pipe).connect(req, address);
+  }
+
+  if (err) {
+    let details = "";
+
+    const sockname = socket._getsockname();
+
+    if (sockname) {
+      details = `${sockname.address}:${sockname.port}`;
+    }
+
+    const ex = exceptionWithHostPort(err, "connect", address, port, details);
+    socket.destroy(ex);
+  }
+}
+
+function _internalConnectMultiple(context, canceled?: boolean) {
+  clearTimeout(context[kTimeout]);
+  const self = context.socket;
+
+  // We were requested to abort. Stop all operations
+  if (self._aborted) {
+    return;
+  }
+
+  // All connections have been tried without success, destroy with error
+  if (canceled || context.current === context.addresses.length) {
+    if (context.errors.length === 0) {
+      self.destroy(new ERR_SOCKET_CONNECTION_TIMEOUT());
+      return;
+    }
+
+    self.destroy(new NodeAggregateError(context.errors));
+    return;
+  }
+
+  assert(self.connecting);
+
+  const current = context.current++;
+
+  if (current > 0) {
+    self[kReinitializeHandle](new TCP(TCPConstants.SOCKET));
+  }
+
+  const { localPort, port, flags } = context;
+  const { address, family: addressType } = context.addresses[current];
+  let localAddress;
+  let err;
+
+  if (localPort) {
+    if (addressType === 4) {
+      localAddress = DEFAULT_IPV4_ADDR;
+      // deno-lint-ignore prefer-primordials -- libuv handle.bind(), not Function.prototype.bind
+      err = self._handle.bind(localAddress, localPort);
+    } else {
+      // addressType === 6
+      localAddress = DEFAULT_IPV6_ADDR;
+      err = self._handle.bind6(localAddress, localPort, flags);
+    }
+
+    debug(
+      "connect/multiple: binding to localAddress: %s and localPort: %d (addressType: %d)",
+      localAddress,
+      localPort,
+      addressType,
+    );
+
+    err = _checkBindError(err, localPort, self._handle);
+    if (err) {
+      ArrayPrototypePush(
+        context.errors,
+        exceptionWithHostPort(err, "bind", localAddress, localPort),
+      );
+      _internalConnectMultiple(context);
+      return;
+    }
+  }
+
+  if (
+    self.blockList?.check(address, `ipv${addressType}`)
+  ) {
+    ArrayPrototypePush(
+      context.errors,
+      new ERR_IP_BLOCKED(address),
+    );
+    _internalConnectMultiple(context);
+    return;
+  }
+
+  debug(
+    "connect/multiple: attempting to connect to %s:%d (addressType: %d)",
+    address,
+    port,
+    addressType,
+  );
+  self.emit("connectionAttempt", address, port, addressType);
+
+  const req = new TCPConnectWrap();
+  req.oncomplete = FunctionPrototypeBind(
+    _afterConnectMultiple,
+    undefined,
+    context,
+    current,
+  );
+  req.address = address;
+  req.port = port;
+  req.localAddress = localAddress;
+  req.localPort = localPort;
+  req.addressType = addressType;
+
+  ArrayPrototypePush(
+    self.autoSelectFamilyAttemptedAddresses,
+    `${address}:${port}`,
+  );
+
+  if (addressType === 4) {
+    err = self._handle.connect(req, address, port);
+  } else {
+    err = self._handle.connect6(req, address, port);
+  }
+
+  if (err) {
+    const sockname = self._getsockname();
+    let details;
+
+    if (sockname) {
+      details = sockname.address + ":" + sockname.port;
+    }
+
+    const ex = exceptionWithHostPort(err, "connect", address, port, details);
+    ArrayPrototypePush(context.errors, ex);
+
+    self.emit("connectionAttemptFailed", address, port, addressType, ex);
+    _internalConnectMultiple(context);
+    return;
+  }
+
+  if (current < context.addresses.length - 1) {
+    debug(
+      "connect/multiple: setting the attempt timeout to %d ms",
+      context.timeout,
+    );
+
+    // If the attempt has not returned an error, start the connection timer
+    context[kTimeout] = setTimeout(
+      _internalConnectMultipleTimeout,
+      context.timeout,
+      context,
+      req,
+      self._handle,
+    );
+  }
+}
+
+// Provide a better error message when we call end() as a result
+// of the other side sending a FIN.  The standard "write after end"
+// is overly vague, and makes it seem like the user's code is to blame.
+function _writeAfterFIN(
+  this: Socket,
+  chunk: any,
+  encoding?:
+    | BufferEncoding
+    | null
+    | ((error: Error | null | undefined) => void),
+  cb?: (error: Error | null | undefined) => void,
+): boolean {
+  if (!this.writableEnded) {
+    return FunctionPrototypeCall(
+      Duplex.prototype.write,
+      this,
+      chunk,
+      encoding as BufferEncoding | null,
+      // @ts-expect-error Using `call` seem to be interfering with the overload for write
+      cb,
+    );
+  }
+
+  if (typeof encoding === "function") {
+    cb = encoding;
+    encoding = null;
+  }
+
+  const err = genericNodeError(
+    "This socket has been ended by the other party",
+    { code: "EPIPE" },
+  );
+
+  if (typeof cb === "function") {
+    defaultTriggerAsyncIdScope(this[asyncIdSymbol], nextTick, cb, err);
+  }
+
+  if (this._server) {
+    nextTick(() => this.destroy(err));
+  } else {
+    this.destroy(err);
+  }
+
+  return false;
+}
+
+function _tryReadStart(socket: Socket) {
+  // Not already reading, start the flow.
+  debug("Socket._handle.readStart");
+  socket._handle!.reading = true;
+  const err = socket._handle!.readStart();
+
+  if (err) {
+    socket.destroy(errnoException(err, "read"));
+  }
+}
+
+// Called when the "end" event is emitted.
+function _onReadableStreamEnd(this: Socket) {
+  if (!this.allowHalfOpen) {
+    this.write = _writeAfterFIN;
+    if (this.writable) {
+      // Defer end() to nextTick so that user 'end' handlers registered
+      // after the constructor (which registered _onReadableStreamEnd)
+      // see socket.writable === true, matching Node.js behavior where
+      // the writable getter doesn't reflect the ending state immediately.
+      // deno-lint-ignore no-this-alias
+      const socket = this;
+      nextTick(() => {
+        if (socket.writable && !socket.destroyed) socket.end();
+      });
+    }
+  }
+}
+
+// Called when creating new Socket, or when re-using a closed Socket
+function _initSocketHandle(socket: Socket) {
+  socket._undestroy();
+  socket._sockname = undefined;
+
+  // Handle creation may be deferred to bind() or connect() time.
+  if (socket._handle) {
+    (socket._handle as any)[ownerSymbol] = socket;
+    socket._handle.onread = onStreamRead;
+    socket[asyncIdSymbol] = _getNewAsyncId(socket._handle);
+    _emitHandleInit(socket._handle, socket[asyncIdSymbol]);
+
+    let userBuf = socket[kBuffer];
+
+    if (userBuf) {
+      const bufGen = socket[kBufferGen];
+
+      if (bufGen !== null) {
+        userBuf = bufGen();
+
+        if (!isUint8Array(userBuf)) {
+          return;
+        }
+
+        socket[kBuffer] = userBuf;
+      }
+
+      socket._handle.useUserBuffer(userBuf);
+    }
+  }
+}
+
+function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
+  const { localAddress, localPort } = options;
+  const host = options.host || "localhost";
+  let { port, autoSelectFamilyAttemptTimeout, autoSelectFamily } = options;
+
+  validateString(host, "options.host");
+
+  if (localAddress && !isIP(localAddress)) {
+    throw new ERR_INVALID_IP_ADDRESS(localAddress);
+  }
+
+  if (localPort) {
+    validateNumber(localPort, "options.localPort");
+  }
+
+  if (typeof port !== "undefined") {
+    if (typeof port !== "number" && typeof port !== "string") {
+      throw new ERR_INVALID_ARG_TYPE(
+        "options.port",
+        ["number", "string"],
+        port,
+      );
+    }
+
+    validatePort(port);
+  }
+
+  port |= 0;
+
+  if (autoSelectFamily != null) {
+    validateBoolean(autoSelectFamily, "options.autoSelectFamily");
+  } else {
+    autoSelectFamily = autoSelectFamilyDefault;
+  }
+
+  if (autoSelectFamilyAttemptTimeout !== undefined) {
+    validateInt32(
+      autoSelectFamilyAttemptTimeout,
+      "options.autoSelectFamilyAttemptTimeout",
+      1,
+    );
+
+    if (autoSelectFamilyAttemptTimeout < 10) {
+      autoSelectFamilyAttemptTimeout = 10;
+    }
+  } else {
+    autoSelectFamilyAttemptTimeout = autoSelectFamilyAttemptTimeoutDefault;
+  }
+
+  // If host is an IP, skip performing a lookup
+  const addressType = isIP(host);
+  if (addressType) {
+    defaultTriggerAsyncIdScope(self[asyncIdSymbol], nextTick, () => {
+      if (self.connecting) {
+        defaultTriggerAsyncIdScope(
+          self[asyncIdSymbol],
+          _internalConnect,
+          self,
+          host,
+          port,
+          addressType,
+          localAddress,
+          localPort,
+        );
+      }
+    });
+
+    return;
+  }
+
+  if (options.lookup !== undefined) {
+    validateFunction(options.lookup, "options.lookup");
+  }
+
+  const dnsOpts = {
+    family: options.family,
+    hints: options.hints || 0,
+    all: false,
+  };
+
+  if (
+    !isWindows &&
+    dnsOpts.family !== 4 &&
+    dnsOpts.family !== 6 &&
+    dnsOpts.hints === 0
+  ) {
+    dnsOpts.hints = ADDRCONFIG;
+  }
+
+  debug("connect: find host", host);
+  debug("connect: dns options", dnsOpts);
+  self._host = host;
+  // Only the built-in DNS lookup is trusted to install a NetPermToken on the
+  // handle (so `--allow-net=<host>` keeps authorizing the IPs Deno resolved
+  // for it). A custom `lookup` returns arbitrary IPs, so its result is checked
+  // against the literal IP with no hostname substitution (GHSA-fhjh-jqv7-m238).
+  // This must stay in sync with the `lookup` selection below: any falsy
+  // `options.lookup` falls back to the built-in resolver, so it is also the
+  // default-lookup path for token purposes.
+  const lookup = options.lookup || dnsLookup;
+  const usingDefaultLookup = lookup === dnsLookup;
+  const getLookupDnsOpts = () => {
+    if (usingDefaultLookup) {
+      return { ...dnsOpts, port };
+    }
+    return {
+      family: dnsOpts.family,
+      hints: dnsOpts.hints,
+      all: dnsOpts.all,
+    };
+  };
+
+  if (
+    dnsOpts.family !== 4 &&
+    dnsOpts.family !== 6 &&
+    !localAddress &&
+    autoSelectFamily
+  ) {
+    debug("connect: autodetecting");
+
+    dnsOpts.all = true;
+    defaultTriggerAsyncIdScope(self[asyncIdSymbol], function () {
+      _lookupAndConnectMultiple(
+        self,
+        asyncIdSymbol,
+        lookup,
+        host,
+        options,
+        getLookupDnsOpts(),
+        port,
+        localAddress,
+        localPort,
+        autoSelectFamilyAttemptTimeout,
+        usingDefaultLookup,
+      );
+    });
+
+    return;
+  }
+
+  defaultTriggerAsyncIdScope(self[asyncIdSymbol], function () {
+    function emitLookup(
+      err: ErrnoException | null,
+      ip: string,
+      addressType: number,
+      netPermToken,
+    ) {
+      // Store the permission token from the built-in DNS lookup so connect()
+      // checks permissions against the original hostname instead of the
+      // resolved IP. Only honored on the default-lookup path; a custom lookup
+      // never installs a token (its IPs are checked literally).
+      if (
+        usingDefaultLookup && netPermToken && self._handle?.setNetPermToken
+      ) {
+        self._handle.setNetPermToken(netPermToken);
+      }
+      self.emit("lookup", err, ip, addressType, host);
+
+      // It's possible we were destroyed while looking this up.
+      // XXX it would be great if we could cancel the promise returned by
+      // the look up.
+      if (!self.connecting) {
+        return;
+      }
+
+      if (err) {
+        // net.createConnection() creates a net.Socket object and immediately
+        // calls net.Socket.connect() on it (that's us). There are no event
+        // listeners registered yet so defer the error event to the next tick.
+        nextTick(_connectErrorNT, self, err);
+      } else if (!isIP(ip)) {
+        err = new ERR_INVALID_IP_ADDRESS(ip);
+
+        nextTick(_connectErrorNT, self, err);
+      } else if (addressType !== 4 && addressType !== 6) {
+        err = new ERR_INVALID_ADDRESS_FAMILY(
+          `${addressType}`,
+          options.host!,
+          options.port,
+        );
+
+        nextTick(_connectErrorNT, self, err);
+      } else {
+        self._unrefTimer();
+
+        defaultTriggerAsyncIdScope(self[asyncIdSymbol], nextTick, () => {
+          if (self.connecting) {
+            defaultTriggerAsyncIdScope(
+              self[asyncIdSymbol],
+              _internalConnect,
+              self,
+              ip,
+              port,
+              addressType,
+              localAddress,
+              localPort,
+            );
+          }
+        });
+      }
+    }
+
+    // Tag the trusted callback so the built-in dns.lookup hands it the
+    // NetPermToken; user-supplied lookups never receive it.
+    if (usingDefaultLookup) {
+      emitLookup[kPermTokenSink] = true;
+    }
+    lookup(host, getLookupDnsOpts(), emitLookup);
+  });
+}
+
+function _lookupAndConnectMultiple(
+  self: Socket,
+  asyncIdSymbol: number,
+  lookup: any,
+  host: string,
+  options: TcpSocketConnectOptions,
+  dnsopts,
+  port: number,
+  localAddress: string,
+  localPort: number,
+  timeout: number | undefined,
+  usingDefaultLookup: boolean,
+) {
+  defaultTriggerAsyncIdScope(self[asyncIdSymbol], function () {
+    function emitLookup(err, addresses, _, netPermToken) {
+      // Only the built-in lookup installs a token (see _lookupAndConnect).
+      if (
+        usingDefaultLookup && netPermToken && self._handle?.setNetPermToken
+      ) {
+        self._handle.setNetPermToken(netPermToken);
+      }
+      // It's possible we were destroyed while looking this up.
+      // XXX it would be great if we could cancel the promise returned by
+      // the look up.
+      if (!self.connecting) {
+        return;
+      } else if (err) {
+        self.emit("lookup", err, undefined, undefined, host);
+
+        // net.createConnection() creates a net.Socket object and immediately
+        // calls net.Socket.connect() on it (that's us). There are no event
+        // listeners registered yet so defer the error event to the next tick.
+        nextTick(_connectErrorNT, self, err);
+        return;
+      }
+
+      // Filter addresses by only keeping the one which are either IPv4 or IPV6.
+      // The first valid address determines which group has preference on the
+      // alternate family sorting which happens later.
+      const validAddresses = [[], []];
+      const validIps = [[], []];
+      let destinations;
+      for (let i = 0, l = addresses.length; i < l; i++) {
+        const address = addresses[i];
+        const { address: ip, family: addressType } = address;
+        self.emit("lookup", err, ip, addressType, host);
+        // It's possible we were destroyed while looking this up.
+        if (!self.connecting) {
+          return;
+        }
+        if (isIP(ip) && (addressType === 4 || addressType === 6)) {
+          destinations ||= addressType === 6 ? { 6: 0, 4: 1 } : { 4: 0, 6: 1 };
+
+          const destination = destinations[addressType];
+
+          // Only try an address once
+          if (!ArrayPrototypeIncludes(validIps[destination], ip)) {
+            ArrayPrototypePush(validAddresses[destination], address);
+            ArrayPrototypePush(validIps[destination], ip);
+          }
+        }
+      }
+
+      // When no AAAA or A records are available, fail on the first one
+      if (!validAddresses[0].length && !validAddresses[1].length) {
+        const { address: firstIp, family: firstAddressType } = addresses[0];
+
+        if (!isIP(firstIp)) {
+          err = new ERR_INVALID_IP_ADDRESS(firstIp);
+          nextTick(_connectErrorNT, self, err);
+        } else if (firstAddressType !== 4 && firstAddressType !== 6) {
+          err = new ERR_INVALID_ADDRESS_FAMILY(
+            firstAddressType,
+            options.host,
+            options.port,
+          );
+          nextTick(_connectErrorNT, self, err);
+        }
+
+        return;
+      }
+
+      // Sort addresses alternating families
+      const toAttempt = [];
+      for (
+        let i = 0,
+          l = MathMax(validAddresses[0].length, validAddresses[1].length);
+        i < l;
+        i++
+      ) {
+        if (ObjectHasOwn(validAddresses[0], i)) {
+          ArrayPrototypePush(toAttempt, validAddresses[0][i]);
+        }
+        if (ObjectHasOwn(validAddresses[1], i)) {
+          ArrayPrototypePush(toAttempt, validAddresses[1][i]);
+        }
+      }
+
+      if (toAttempt.length === 1) {
+        debug(
+          "connect/multiple: only one address found, switching back to single connection",
+        );
+        const { address: ip, family: addressType } = toAttempt[0];
+
+        self._unrefTimer();
+        defaultTriggerAsyncIdScope(
+          self[asyncIdSymbol],
+          _internalConnect,
+          self,
+          ip,
+          port,
+          addressType,
+          localAddress,
+          localPort,
+        );
+
+        return;
+      }
+
+      self.autoSelectFamilyAttemptedAddresses = [];
+      debug(
+        "connect/multiple: will try the following addresses",
+        toAttempt,
+      );
+
+      const context = {
+        socket: self,
+        addresses: toAttempt,
+        current: 0,
+        port,
+        localPort,
+        flags: 0,
+        timeout,
+        [kTimeout]: null,
+        errors: [],
+      };
+
+      self._unrefTimer();
+      defaultTriggerAsyncIdScope(
+        self[asyncIdSymbol],
+        _internalConnectMultiple,
+        context,
+      );
+    }
+
+    // Tag the trusted callback so the built-in dns.lookup hands it the
+    // NetPermToken; user-supplied lookups never receive it.
+    if (usingDefaultLookup) {
+      emitLookup[kPermTokenSink] = true;
+    }
+    lookup(host, dnsopts, emitLookup);
+  });
+}
+
+function _afterShutdown(this: ShutdownWrap<TCP>) {
+  const self: any = this.handle[ownerSymbol];
+
+  debug("afterShutdown destroyed=%j", self.destroyed, self._readableState);
+
+  this.callback();
+}
+
+function _emitCloseNT(s: Socket | Server) {
+  debug("SERVER: emit close");
+  s.emit("close");
+}
+
+function _addClientAbortSignalOption(socket: Socket, signal: AbortSignal) {
+  if (signal.aborted) {
+    nextTick(() => socket.destroy(new AbortError()));
+    return;
+  }
+
+  const onAbort = () => {
+    socket.destroy(new AbortError());
+  };
+  // Match Node: register on nextTick so synchronous listenerCount checks
+  // immediately after Socket construction don't double-count the listener
+  // already attached by Duplex via addAbortSignal.
+  nextTick(() => {
+    if (socket.destroyed) return;
+    signal.addEventListener("abort", onAbort, { once: true });
+    socket.once("close", () => {
+      signal.removeEventListener("abort", onAbort);
+    });
+  });
+}
+
+// The packages that need socket initialization workaround
+
+/**
+ * This class is an abstraction of a TCP socket or a streaming `IPC` endpoint
+ * (uses named pipes on Windows, and Unix domain sockets otherwise). It is also
+ * an `EventEmitter`.
+ *
+ * A `net.Socket` can be created by the user and used directly to interact with
+ * a server. For example, it is returned by `createConnection`,
+ * so the user can use it to talk to the server.
+ *
+ * It can also be created by Node.js and passed to the user when a connection
+ * is received. For example, it is passed to the listeners of a `"connection"` event emitted on a `Server`, so the user can use
+ * it to interact with the client.
+ */
+function Socket(options) {
+  if (!ObjectPrototypeIsPrototypeOf(Socket.prototype, this)) {
+    return new Socket(options);
+  }
+
+  if (typeof options === "number") {
+    // Legacy interface.
+    options = { fd: options };
+  } else {
+    options = { ...options };
+  }
+
+  if (options.objectMode) {
+    throw new ERR_INVALID_ARG_VALUE(
+      "options.objectMode",
+      options.objectMode,
+      "is not supported",
+    );
+  }
+  if (options.readableObjectMode) {
+    throw new ERR_INVALID_ARG_VALUE(
+      "options.readableObjectMode",
+      options.readableObjectMode,
+      "is not supported",
+    );
+  }
+  if (options.writableObjectMode) {
+    throw new ERR_INVALID_ARG_VALUE(
+      "options.writableObjectMode",
+      options.writableObjectMode,
+      "is not supported",
+    );
+  }
+
+  // Default to *not* allowing half open sockets.
+  options.allowHalfOpen = Boolean(options.allowHalfOpen);
+  // For backwards compat do not emit close on destroy.
+  options.emitClose = false;
+  options.autoDestroy = true;
+  // Handle strings directly.
+  options.decodeStrings = false;
+
+  FunctionPrototypeCall(Duplex, this, options);
+
+  this[asyncIdSymbol] = -1;
+  this[kHandle] = null;
+  this[kSetNoDelay] = Boolean(options.noDelay);
+  this[kSetKeepAlive] = Boolean(options.keepAlive);
+  this[kSetKeepAliveInitialDelay] = ~~(options.keepAliveInitialDelay / 1000);
+  this[kLastWriteQueueSize] = 0;
+  this[kTimeout] = null;
+  this[kBuffer] = null;
+  this[kBufferCb] = null;
+  this[kBufferGen] = null;
+  this[kBytesRead] = 0;
+  this[kBytesWritten] = 0;
+  this.server = null;
+  this._server = null;
+  this._peername = undefined;
+  this._sockname = undefined;
+  this._pendingData = null;
+  this._pendingEncoding = "";
+  this._host = null;
+  this._parent = null;
+  this.autoSelectFamilyAttemptedAddresses = undefined;
+  this.connecting = false;
+
+  if (options.blockList) {
+    this.blockList = options.blockList;
+  }
+
+  if (options.handle) {
+    this._handle = options.handle;
+    this[asyncIdSymbol] = _getNewAsyncId(this._handle);
+    _emitHandleInit(this._handle, this[asyncIdSymbol]);
+  } else if (options.fd !== undefined) {
+    const { fd } = options;
+
+    // createHandle will throw ERR_INVALID_FD_TYPE if `fd` is not
+    // a valid `PIPE` or `TCP` descriptor
+    this._handle = _createHandle(fd, false);
+
+    const err = this._handle.open(fd);
+
+    // While difficult to fabricate, in some architectures
+    // `open` may return an error code for valid file descriptors
+    // which cannot be opened.
+    if (err) {
+      throw errnoException(err, "open");
+    }
+
+    this[asyncIdSymbol] = _getNewAsyncId(this._handle);
+    _emitHandleInit(this._handle, this[asyncIdSymbol]);
+
+    if (
+      (fd === 1 || fd === 2) &&
+      ObjectPrototypeIsPrototypeOf(Pipe.prototype, this._handle) &&
+      isWindows
+    ) {
+      // Make stdout and stderr blocking on Windows
+      const blockErr = this._handle.setBlocking(true);
+      if (blockErr) {
+        throw errnoException(blockErr, "setBlocking");
+      }
+    }
+  }
+
+  const onread = options.onread;
+
+  if (
+    onread !== null &&
+    typeof onread === "object"
+  ) {
+    // deno-lint-ignore prefer-primordials -- user option object property, not TypedArray#buffer
+    const onreadBuffer = onread.buffer;
+    if (
+      (isUint8Array(onreadBuffer) || typeof onreadBuffer === "function") &&
+      typeof onread.callback === "function"
+    ) {
+      if (typeof onreadBuffer === "function") {
+        this[kBuffer] = true;
+        this[kBufferGen] = onreadBuffer;
+      } else {
+        this[kBuffer] = onreadBuffer;
+      }
+      this[kBufferCb] = onread.callback;
+    }
+  }
+
+  this.on("end", _onReadableStreamEnd);
+
+  _initSocketHandle(this);
+
+  if (this._handle && options.readable !== false) {
+    if (options.pauseOnCreate) {
+      this._handle.reading = false;
+      this._handle.readStop();
+      this.readableFlowing = false;
+    } else if (!options.manualStart) {
+      this.read(0);
+    }
+  }
+
+  if (options.signal) {
+    _addClientAbortSignalOption(this, options.signal);
+  }
+}
+ObjectSetPrototypeOf(Socket.prototype, Duplex.prototype);
+ObjectSetPrototypeOf(Socket, Duplex);
+
+Socket.prototype.connect = function (...args) {
+  let normalized;
+
+  if (ArrayIsArray(args[0]) && args[0][normalizedArgsSymbol]) {
+    normalized = args[0];
+  } else {
+    normalized = _normalizeArgs(args);
+  }
+
+  const options = normalized[0];
+  const cb = normalized[1];
+
+  if (options.port === undefined && options.path == null) {
+    throw new ERR_MISSING_ARGS(["options", "port", "path"]);
+  }
+
+  if (netClientSocketChannel.hasSubscribers) {
+    netClientSocketChannel.publish({
+      socket: this,
+    });
+  }
+
+  if (this.write !== Socket.prototype.write) {
+    this.write = Socket.prototype.write;
+  }
+
+  if (this.destroyed) {
+    this._handle = null;
+    this._peername = undefined;
+    this._sockname = undefined;
+  }
+
+  const { path } = options;
+  const pipe = _isPipe(options);
+  debug("pipe", pipe, path);
+
+  if (!this._handle) {
+    this._handle = pipe
+      ? new Pipe(PipeConstants.SOCKET)
+      : new TCP(TCPConstants.SOCKET);
+
+    _initSocketHandle(this);
+  }
+
+  // Capture the async context now, while we are still running synchronously
+  // inside the caller's context. The DNS lookup that precedes the actual
+  // connect is async and would otherwise drop it before `_afterConnect` runs.
+  this._handle[kAsyncContext] = core.getAsyncContext();
+
+  if (cb !== null) {
+    this.once("connect", cb);
+  }
+
+  this._unrefTimer();
+
+  this.connecting = true;
+
+  if (pipe) {
+    validateString(path, "options.path");
+    defaultTriggerAsyncIdScope(
+      this[asyncIdSymbol],
+      _internalConnect,
+      this,
+      path,
+    );
+  } else {
+    if (options.keepAlive !== undefined) {
+      this.setKeepAlive(
+        !!options.keepAlive,
+        options.keepAliveInitialDelay,
+      );
+    }
+    if (options.noDelay !== undefined) {
+      this.setNoDelay(options.noDelay);
+    }
+    _lookupAndConnect(this, options);
+  }
+
+  return this;
+};
+
+Socket.prototype.pause = function () {
+  if (!this.connecting && this._handle && this._handle.reading) {
+    this._handle.reading = false;
+
+    if (!this.destroyed) {
+      const err = this._handle.readStop();
+
+      if (err) {
+        this.destroy(errnoException(err, "read"));
+      }
+    }
+  }
+
+  return FunctionPrototypeCall(Duplex.prototype.pause, this);
+};
+
+Socket.prototype.resume = function () {
+  if (!this.connecting && this._handle && !this._handle.reading) {
+    _tryReadStart(this);
+  }
+
+  return FunctionPrototypeCall(Duplex.prototype.resume, this);
+};
+
+Socket.prototype.setTimeout = setStreamTimeout;
+
+Socket.prototype.setNoDelay = function (noDelay) {
+  if (!this._handle) {
+    this.once(
+      "connect",
+      noDelay ? this.setNoDelay : () => this.setNoDelay(noDelay),
+    );
+
+    return this;
+  }
+
+  const newValue = noDelay === undefined ? true : !!noDelay;
+
+  if (newValue !== this[kSetNoDelay]) {
+    this[kSetNoDelay] = newValue;
+    if (ReflectHas(this._handle, "setNoDelay") && this._handle.setNoDelay) {
+      this._handle.setNoDelay(newValue);
+    }
+  }
+
+  return this;
+};
+
+Socket.prototype.setKeepAlive = function (enable, initialDelay) {
+  if (!this._handle) {
+    this.once("connect", () => this.setKeepAlive(enable, initialDelay));
+
+    return this;
+  }
+
+  const newEnable = Boolean(enable);
+  const newDelay = ~~(initialDelay / 1000);
+
+  if (
+    newEnable !== this[kSetKeepAlive] ||
+    newDelay !== this[kSetKeepAliveInitialDelay]
+  ) {
+    this[kSetKeepAlive] = newEnable;
+    this[kSetKeepAliveInitialDelay] = newDelay;
+    if (
+      ReflectHas(this._handle, "setKeepAlive") && this._handle.setKeepAlive
+    ) {
+      this._handle.setKeepAlive(newEnable, newDelay);
+    }
+  }
+
+  return this;
+};
+
+Socket.prototype.address = function () {
+  return this._getsockname();
+};
+
+Socket.prototype.unref = function () {
+  if (!this._handle) {
+    this.once("connect", this.unref);
+
+    return this;
+  }
+
+  if (typeof this._handle.unref === "function") {
+    this._handle.unref();
+  }
+
+  return this;
+};
+
+Socket.prototype.ref = function () {
+  if (!this._handle) {
+    this.once("connect", this.ref);
+
+    return this;
+  }
+
+  if (typeof this._handle.ref === "function") {
+    this._handle.ref();
+  }
+
+  return this;
+};
+
+Socket.prototype.resetAndDestroy = function () {
+  if (this.destroyed) {
+    return this;
+  }
+
+  if (
+    !this._handle ||
+    !ObjectPrototypeIsPrototypeOf(TCP.prototype, this._handle)
+  ) {
+    this.destroy(
+      new ERR_SOCKET_CLOSED(),
+    );
+    return this;
+  }
+
+  if (this.connecting) {
+    this.once("connect", () => this._reset());
+    this.destroy();
+    return this;
+  }
+
+  this._reset();
+  return this;
+};
+
+Socket.prototype._reset = function () {
+  this._resetAndClosing = true;
+  this.destroy();
+};
+
+ObjectDefineProperty(Socket.prototype, "bufferSize", {
+  __proto__: null,
+  get: function () {
+    if (this._handle) {
+      return this.writableLength;
+    }
+    return undefined;
+  },
+});
+
+ObjectDefineProperty(Socket.prototype, "bytesRead", {
+  __proto__: null,
+  get: function () {
+    return this._handle
+      ? (this._handle.getBytesRead?.() ?? this._handle.bytesRead ?? 0)
+      : this[kBytesRead];
+  },
+});
+
+ObjectDefineProperty(Socket.prototype, "bytesWritten", {
+  __proto__: null,
+  get: function () {
+    let bytes = this._bytesDispatched;
+    const data = this._pendingData;
+    const encoding = this._pendingEncoding;
+    const writableBuffer = this.writableBuffer;
+
+    if (!writableBuffer) {
+      return undefined;
+    }
+
+    for (const el of new SafeArrayIterator(writableBuffer)) {
+      bytes += ObjectPrototypeIsPrototypeOf(Buffer.prototype, el.chunk)
+        ? el.chunk.length
+        : Buffer.byteLength(el.chunk, el.encoding);
+    }
+
+    if (ArrayIsArray(data)) {
+      for (let i = 0; i < data.length; i++) {
+        const chunk = data[i];
+
+        if (
+          data.allBuffers ||
+          ObjectPrototypeIsPrototypeOf(Buffer.prototype, chunk)
+        ) {
+          bytes += chunk.length;
+        } else {
+          bytes += Buffer.byteLength(chunk.chunk, chunk.encoding);
+        }
+      }
+    } else if (data) {
+      if (typeof data !== "string") {
+        bytes += data.length;
+      } else {
+        bytes += Buffer.byteLength(data, encoding);
+      }
+    }
+
+    return bytes;
+  },
+});
+
+ObjectDefineProperty(Socket.prototype, "localAddress", {
+  __proto__: null,
+  get: function () {
+    return this._getsockname().address;
+  },
+});
+
+ObjectDefineProperty(Socket.prototype, "localPort", {
+  __proto__: null,
+  get: function () {
+    return this._getsockname().port;
+  },
+});
+
+ObjectDefineProperty(Socket.prototype, "localFamily", {
+  __proto__: null,
+  get: function () {
+    return this._getsockname().family;
+  },
+});
+
+ObjectDefineProperty(Socket.prototype, "remoteAddress", {
+  __proto__: null,
+  get: function () {
+    return this._getpeername().address;
+  },
+});
+
+ObjectDefineProperty(Socket.prototype, "remoteFamily", {
+  __proto__: null,
+  get: function () {
+    return this._getpeername().family;
+  },
+});
+
+ObjectDefineProperty(Socket.prototype, "remotePort", {
+  __proto__: null,
+  get: function () {
+    return this._getpeername().port;
+  },
+});
+
+ObjectDefineProperty(Socket.prototype, "pending", {
+  __proto__: null,
+  get: function () {
+    return !this._handle || this.connecting;
+  },
+});
+
+ObjectDefineProperty(Socket.prototype, "readyState", {
+  __proto__: null,
+  get: function () {
+    if (this.connecting) {
+      return "opening";
+    } else if (this.readable && this.writable) {
+      return "open";
+    } else if (this.readable && !this.writable) {
+      return "readOnly";
+    } else if (!this.readable && this.writable) {
+      return "writeOnly";
+    }
+    return "closed";
+  },
+});
+
+Socket.prototype.end = function (data, encoding, cb) {
+  FunctionPrototypeCall(Duplex.prototype.end, this, data, encoding, cb);
+  DTRACE_NET_STREAM_END(this);
+
+  return this;
+};
+
+Socket.prototype.read = function (size) {
+  if (
+    this[kBuffer] &&
+    !this.connecting &&
+    this._handle &&
+    !this._handle.reading
+  ) {
+    _tryReadStart(this);
+  }
+
+  return FunctionPrototypeCall(Duplex.prototype.read, this, size);
+};
+
+Socket.prototype.destroySoon = function () {
+  if (this.writable) {
+    this.end();
+  }
+
+  if (this.writableFinished) {
+    this.destroy();
+  } else {
+    this.once("finish", this.destroy);
+  }
+};
+
+Socket.prototype._unrefTimer = function () {
+  // deno-lint-ignore no-this-alias
+  for (let s = this; s != null; s = s._parent) {
+    if (s[kTimeout]) {
+      s[kTimeout].refresh();
+    }
+  }
+};
+
+Socket.prototype._final = function (cb) {
+  if (this.connecting) {
+    debug("_final: not yet connected");
+    return this.once("connect", () => this._final(cb));
+  }
+
+  if (!this._handle) {
+    return cb();
+  }
+
+  debug("_final: not ended, call shutdown()");
+
+  const req = new ShutdownWrap();
+  req.oncomplete = _afterShutdown;
+  req.handle = this._handle;
+  req.callback = cb;
+  const err = this._handle.shutdown(req);
+
+  if (err === 1 || err === codeMap.get("ENOTCONN")) {
+    return cb();
+  } else if (err !== 0) {
+    return cb(errnoException(err, "shutdown"));
+  }
+};
+
+Socket.prototype._onTimeout = function () {
+  const handle = this._handle;
+  const lastWriteQueueSize = this[kLastWriteQueueSize];
+
+  if (lastWriteQueueSize > 0 && handle) {
+    const { writeQueueSize } = handle;
+
+    if (lastWriteQueueSize !== writeQueueSize) {
+      this[kLastWriteQueueSize] = writeQueueSize;
+      this._unrefTimer();
+
+      return;
+    }
+  }
+
+  debug("_onTimeout");
+  this.emit("timeout");
+};
+
+Socket.prototype._read = function (size) {
+  debug("_read");
+  if (this.connecting || !this._handle) {
+    debug("_read wait for connection");
+    this.once("connect", () => this._read(size));
+  } else if (!this._handle.reading) {
+    _tryReadStart(this);
+  }
+};
+
+Socket.prototype._destroy = function (exception, cb) {
+  debug("destroy");
+  this.connecting = false;
+
+  // deno-lint-ignore no-this-alias
+  for (let s = this; s != null; s = s._parent) {
+    if (s[kTimeout]) {
+      s[kTimeout][kDestroy]();
+    }
+  }
+
+  debug("close");
+  if (this._handle) {
+    debug("close handle");
+    const isException = exception ? true : false;
+    this[kBytesRead] = this._handle.getBytesRead?.() ??
+      this._handle.bytesRead ?? 0;
+    this[kBytesWritten] = this._handle.getBytesWritten?.() ??
+      this._handle.bytesWritten ?? 0;
+
+    if (this._resetAndClosing) {
+      this._resetAndClosing = false;
+      if (typeof this._handle.reset === "function") {
+        this._handle.reset();
+      }
+    }
+
+    const handle = this._handle;
+    // Call cb first so the stream's error emission (via nextTick) is
+    // scheduled before the handle close callback. This ensures 'error'
+    // fires before 'close', matching Node.js behavior.
+    this._handle = null;
+    this._sockname = undefined;
+    cb(exception);
+    handle.close(() => {
+      handle.onread = _noop;
+      if (this[asyncIdSymbol] > 0) {
+        emitDestroy(this[asyncIdSymbol]);
+      }
+
+      debug("emit close");
+      this.emit("close", isException);
+    });
+  } else {
+    cb(exception);
+    nextTick(_emitCloseNT, this);
+  }
+
+  if (this._server) {
+    debug("has server");
+    const server = this._server;
+    server._connections--;
+
+    if (server._emitCloseIfDrained) {
+      if (
+        !server._handle &&
+        server._connections === 0 &&
+        this._httpMessageDetached === true &&
+        !this._httpMessage
+      ) {
+        defaultTriggerAsyncIdScope(
+          server[asyncIdSymbol],
+          nextTick,
+          _emitCloseNT,
+          server,
+        );
+      } else {
+        server._emitCloseIfDrained();
+      }
+    }
+  }
+};
+
+Socket.prototype._getpeername = function () {
+  if (
+    !this._handle || !ReflectHas(this._handle, "getpeername") ||
+    this.connecting
+  ) {
+    return this._peername || {};
+  } else if (!this._peername) {
+    this._peername = {};
+    this._handle.getpeername(this._peername);
+  }
+
+  return this._peername;
+};
+
+Socket.prototype._getsockname = function () {
+  if (!this._handle || !ReflectHas(this._handle, "getsockname")) {
+    return {};
+  } else if (!this._sockname) {
+    this._sockname = {};
+    this._handle.getsockname(this._sockname);
+  }
+
+  return this._sockname;
+};
+
+Socket.prototype._writeGeneric = function (writev, data, encoding, cb) {
+  if (this.connecting) {
+    this._pendingData = data;
+    this._pendingEncoding = encoding;
+
+    const onClose = () => {
+      cb(new ERR_SOCKET_CLOSED_BEFORE_CONNECTION());
+    };
+    this.once("connect", function connect() {
+      this.off("close", onClose);
+      this._writeGeneric(writev, data, encoding, cb);
+    });
+    this.once("close", onClose);
+
+    return;
+  }
+
+  this._pendingData = null;
+  this._pendingEncoding = "";
+
+  if (!this._handle) {
+    cb(new ERR_SOCKET_CLOSED());
+
+    return false;
+  }
+
+  this._unrefTimer();
+
+  let req;
+
+  if (writev) {
+    req = writevGeneric(this, data, cb);
+  } else {
+    req = writeGeneric(this, data, encoding, cb);
+  }
+  if (req.async) {
+    this[kLastWriteQueueSize] = req.bytes;
+  }
+};
+
+Socket.prototype._writev = function (chunks, cb) {
+  this._writeGeneric(true, chunks, "", cb);
+};
+
+Socket.prototype._write = function (data, encoding, cb) {
+  this._writeGeneric(false, data, encoding, cb);
+};
+
+Socket.prototype[kAfterAsyncWrite] = function () {
+  this[kLastWriteQueueSize] = 0;
+};
+
+ObjectDefineProperty(Socket.prototype, kUpdateTimer, {
+  __proto__: null,
+  get: function () {
+    return this._unrefTimer;
+  },
+});
+
+ObjectDefineProperty(Socket.prototype, "_connecting", {
+  __proto__: null,
+  get: function () {
+    return this.connecting;
+  },
+});
+
+ObjectDefineProperty(Socket.prototype, "_bytesDispatched", {
+  __proto__: null,
+  get: function () {
+    return this._handle
+      ? (this._handle.getBytesWritten?.() ?? this._handle.bytesWritten ?? 0)
+      : this[kBytesWritten];
+  },
+});
+
+ObjectDefineProperty(Socket.prototype, "_handle", {
+  __proto__: null,
+  get: function () {
+    return this[kHandle];
+  },
+  set: function (v) {
+    if (this[kHandle] && !v) {
+      unregisterActiveHandle(this);
+    } else if (!this[kHandle] && v) {
+      registerActiveHandle(
+        this,
+        ObjectPrototypeIsPrototypeOf(TCP.prototype, v)
+          ? "TCPSocketWrap"
+          : "PipeWrap",
+      );
+    }
+    this[kHandle] = v;
+  },
+});
+
+Socket.prototype[kReinitializeHandle] = function (handle) {
+  this._handle?.close();
+
+  // Make sure TLS wrap works after reinitialize.
+  if (typeof this._handle?.afterConnectTls === "function") {
+    const { promise, resolve } = PromiseWithResolvers();
+    handle.afterConnectTls = this._handle.afterConnectTls;
+    handle.afterConnectTlsResolve = resolve;
+    handle.upgrading = promise;
+    handle.verifyError = this._handle.verifyError;
+    handle._parent = handle;
+    handle._parentWrap = this._handle._parentWrap;
+  }
+
+  this._handle = handle;
+  this._handle[ownerSymbol] = this;
+
+  _initSocketHandle(this);
+};
+
+const Stream = Socket;
+
+// Target API:
+//
+// let s = net.connect({port: 80, host: 'google.com'}, function() {
+//   ...
+// });
+//
+// There are various forms:
+//
+// connect(options, [cb])
+// connect(port, [host], [cb])
+// connect(path, [cb]);
+//
+function connect(
+  options: NetConnectOptions,
+  connectionListener?: () => void,
+): Socket;
+function connect(
+  port: number,
+  host?: string,
+  connectionListener?: () => void,
+): Socket;
+function connect(path: string, connectionListener?: () => void): Socket;
+function connect(...args: unknown[]) {
+  const normalized = _normalizeArgs(args);
+  const options = normalized[0] as Partial<NetConnectOptions>;
+  debug("createConnection", normalized);
+  const socket = new Socket(options);
+
+  if (options.timeout) {
+    socket.setTimeout(options.timeout);
+  }
+
+  // `Socket.prototype.connect` publishes `net.client.socket` so that all
+  // entry points (net.connect, net.createConnection, new net.Socket().connect,
+  // tls.connect via TLSSocket extending Socket) emit exactly once.
+  return socket.connect(normalized);
+}
+
+const createConnection = connect;
+
+/** https://docs.deno.com/api/node/net/#namespace_getdefaultautoselectfamily */
+function getDefaultAutoSelectFamily() {
+  return autoSelectFamilyDefault;
+}
+
+/** https://docs.deno.com/api/node/net/#namespace_setdefaultautoselectfamily */
+function setDefaultAutoSelectFamily(value: boolean) {
+  validateBoolean(value, "value");
+  autoSelectFamilyDefault = value;
+}
+
+/** https://docs.deno.com/api/node/net/#namespace_getdefaultautoselectfamilyattempttimeout */
+function getDefaultAutoSelectFamilyAttemptTimeout() {
+  return autoSelectFamilyAttemptTimeoutDefault;
+}
+
+/** https://docs.deno.com/api/node/net/#namespace_setdefaultautoselectfamilyattempttimeout */
+function setDefaultAutoSelectFamilyAttemptTimeout(value: number) {
+  validateInt32(value, "value", 1);
+
+  if (value < 10) {
+    value = 10;
+  }
+
+  autoSelectFamilyAttemptTimeoutDefault = value;
+}
+
+interface ListenOptions extends Abortable {
+  fd?: number;
+  port?: number | undefined;
+  host?: string | undefined;
+  backlog?: number | undefined;
+  path?: string | undefined;
+  exclusive?: boolean | undefined;
+  readableAll?: boolean | undefined;
+  writableAll?: boolean | undefined;
+  /**
+   * Default: `false`
+   */
+  ipv6Only?: boolean | undefined;
+}
+
+type ConnectionListener = (socket: Socket) => void;
+
+interface ServerOptions {
+  /**
+   * Indicates whether half-opened TCP connections are allowed.
+   * Default: false
+   */
+  allowHalfOpen?: boolean | undefined;
+  /**
+   * Indicates whether the socket should be paused on incoming connections.
+   * Default: false
+   */
+  pauseOnConnect?: boolean | undefined;
+  /**
+   * If set to true, it disables the use of Nagle's algorithm immediately
+   * after a new incoming connection is received.
+   * Default: false
+   */
+  noDelay?: boolean | undefined;
+}
+
+function _isServerSocketOptions(
+  options: unknown,
+): options is null | undefined | ServerOptions {
+  return (
+    options === null ||
+    typeof options === "undefined" ||
+    typeof options === "object"
+  );
+}
+
+function _isConnectionListener(
+  connectionListener: unknown,
+): connectionListener is ConnectionListener {
+  return typeof connectionListener === "function";
+}
+
+function _getFlags(ipv6Only?: boolean, reusePort?: boolean): number {
+  let flags = 0;
+  if (ipv6Only === true) {
+    flags |= TCPConstants.UV_TCP_IPV6ONLY;
+  }
+  if (reusePort === true) {
+    flags |= TCPConstants.UV_TCP_REUSEPORT;
+  }
+  return flags;
+}
+
+function _listenInCluster(
+  server: Server,
+  address: string | null,
+  port: number | null,
+  addressType: number | null,
+  backlog: number,
+  fd?: number | null,
+  exclusive?: boolean,
+  flags?: number,
+) {
+  exclusive = !!exclusive;
+
+  // Resolved lazily to break the cluster <-> net cycle; by the time a server
+  // is being listen()ed on, both modules are evaluated.
+  const cluster = lazyCluster().default;
+  if (cluster.isPrimary || exclusive) {
+    server._listen2(address, port, addressType, backlog, fd, flags);
+    return;
+  }
+
+  const serverQuery = {
+    address,
+    port,
+    addressType,
+    // Match Node: pass `undefined` (not null) when no fd was provided so
+    // the primary's `RoundRobinHandle`'s `fd >= 0` check (where `null >= 0`
+    // is `true` in JS) doesn't take the fd branch.
+    fd: fd == null ? undefined : fd,
+    flags,
+    backlog,
+  };
+  const listeningId = server._listeningId;
+  // Get the primary's server handle, and listen on it.
+  cluster._getServer(server, serverQuery, listenOnPrimaryHandle);
+
+  function listenOnPrimaryHandle(err: number, handle: Handle) {
+    if (listeningId !== server._listeningId) {
+      if (handle) handle.close();
+      return;
+    }
+    // Mirrors Node: a SharedHandle bind failure is deferred by libuv (it
+    // returns 0 from bind() and stashes EADDRINUSE for the listen syscall).
+    // Once the worker dups the fd, that delayed_error is gone -- the new
+    // wrap is a fresh tcp_t. Detect the bind failure here by comparing the
+    // expected port against what `getsockname()` actually reports (a failed
+    // bind followed by listen would have the kernel auto-bind to port 0).
+    err = _checkBindError(err, port as number, handle as TCP);
+    if (err) {
+      const ex = uvExceptionWithHostPort(err, "bind", address, port);
+      unregisterActiveHandle(server);
+      server.emit("error", ex);
+      return;
+    }
+    if (server._handle) {
+      server._handle.close();
+      unregisterActiveHandle(server);
+    }
+    server._handle = handle;
+    server._listen2(address, port, addressType, backlog, fd, flags);
+  }
+}
+
+function _lookupAndListen(
+  server: Server,
+  port: number,
+  address: string,
+  backlog: number,
+  exclusive: boolean,
+  flags: number,
+) {
+  const listeningId = server._listeningId;
+  dnsLookup(address, { port }, function doListen(err, ip, addressType) {
+    if (server._listeningId !== listeningId) {
+      return;
+    }
+    if (err) {
+      server.emit("error", err);
+    } else {
+      addressType = ip ? addressType : 4;
+
+      _listenInCluster(
+        server,
+        ip,
+        port,
+        addressType,
+        backlog,
+        null,
+        exclusive,
+        flags,
+      );
+    }
+  });
+}
+
+function _addAbortSignalOption(server: Server, options: ListenOptions) {
+  if (options?.signal === undefined) {
+    return;
+  }
+
+  validateAbortSignal(options.signal, "options.signal");
+
+  const { signal } = options;
+
+  const onAborted = () => {
+    server.close();
+  };
+
+  if (signal.aborted) {
+    nextTick(onAborted);
+  } else {
+    signal.addEventListener("abort", onAborted);
+    server.once(
+      "close",
+      () => signal.removeEventListener("abort", onAborted),
+    );
+  }
+}
+
+// Returns handle if it can be created, or error code if it can't
+function _createServerHandle(
+  address: string | null,
+  port: number | null,
+  addressType: number | null,
+  fd?: number | null,
+  flags?: number,
+): Handle | number {
+  let err = 0;
+  // Assign handle in listen, and clean up if bind or listen fails
+  let handle;
+  let isTCP = false;
+
+  if (typeof fd === "number" && fd >= 0) {
+    try {
+      handle = _createHandle(fd, true);
+    } catch (e) {
+      // Not a fd we can listen on. This will trigger an error.
+      debug("listen invalid fd=%d:", fd, (e as Error).message);
+
+      return codeMap.get("EINVAL")!;
+    }
+
+    err = handle.open(fd);
+
+    if (err) {
+      return err;
+    }
+
+    assert(!address && !port);
+  } else if (port === -1 && addressType === -1) {
+    handle = new Pipe(PipeConstants.SERVER);
+
+    if (isWindows) {
+      const instances = NumberParseInt(
+        Deno.env.get("NODE_PENDING_PIPE_INSTANCES") ?? "",
+      );
+
+      if (!NumberIsNaN(instances)) {
+        handle.setPendingInstances!(instances);
+      }
+    }
+  } else {
+    handle = new TCP(TCPConstants.SERVER);
+    isTCP = true;
+  }
+
+  if (address || port || isTCP) {
+    debug("bind to", address || "any");
+
+    if (!address) {
+      // Match Node's behavior: when no address is provided, prefer the
+      // IPv6 wildcard (which accepts IPv4 connections via dual-stack) and
+      // fall back to IPv4 if the IPv6 bind fails.
+      //
+      // Windows is kept on the IPv4-only path because the dual-stack
+      // socket option doesn't reliably accept IPv4 connections there in
+      // our environment (verified via CI: server listening on `::` rejects
+      // `127.0.0.1` clients with ECONNREFUSED).
+      //
+      // REF: https://github.com/denoland/deno/issues/10762
+      if (isWindows) {
+        return _createServerHandle(DEFAULT_IPV4_ADDR, port, 4, null, flags);
+      }
+
+      err = (handle as TCP).bind6(DEFAULT_IPV6_ADDR, port ?? 0, flags ?? 0);
+      if (err) {
+        handle.close();
+        return _createServerHandle(DEFAULT_IPV4_ADDR, port, 4, null, flags);
+      }
+    } else if (addressType === 6) {
+      err = (handle as TCP).bind6(address, port ?? 0, flags ?? 0);
+    } else if (isTCP) {
+      err = (handle as TCP).bindWithFlags(address, port ?? 0, flags ?? 0);
+    } else {
+      // deno-lint-ignore prefer-primordials -- libuv handle.bind(), not Function.prototype.bind
+      err = handle.bind(address);
+    }
+  }
+
+  if (err) {
+    handle.close();
+
+    return err;
+  }
+
+  return handle;
+}
+
+function _emitErrorNT(server: Server, err: Error) {
+  server.emit("error", err);
+}
+
+function _emitListeningNT(server: Server) {
+  // Ensure handle hasn't closed
+  if (server._handle) {
+    server.emit("listening");
+  }
+}
+
+function _onconnection(this: any, err: number, clientHandle?: Handle) {
+  // deno-lint-ignore no-this-alias
+  const handle = this;
+  _runInAsyncContext(
+    handle[kAsyncContext],
+    () => FunctionPrototypeCall(_onconnectionImpl, handle, err, clientHandle),
+  );
+}
+
+function _onconnectionImpl(this: any, err: number, clientHandle?: Handle) {
+  // deno-lint-ignore no-this-alias
+  const handle = this;
+  const self = handle[ownerSymbol];
+
+  debug("onconnection");
+
+  if (err) {
+    self.emit("error", errnoException(err, "accept"));
+
+    return;
+  }
+
+  if (self.maxConnections && self._connections >= self.maxConnections) {
+    clientHandle!.close();
+
+    return;
+  }
+
+  if (
+    self.blockList &&
+    clientHandle &&
+    typeof clientHandle.getpeername === "function"
+  ) {
+    const out = {};
+    if (clientHandle.getpeername(out) === 0) {
+      const { address, family } = out as { address: string; family: string };
+      const type = family === "IPv6" ? "ipv6" : "ipv4";
+      if (self.blockList.check(address, type)) {
+        clientHandle.close();
+        return;
+      }
+    }
+  }
+
+  const socket = self._createSocket(clientHandle);
+  self._connections++;
+  self.emit("connection", socket);
+
+  if (netServerSocketChannel.hasSubscribers) {
+    netServerSocketChannel.publish({
+      socket,
+    });
+  }
+}
+
+// The libuv-style wrap name Node reports for a server handle from
+// `process.getActiveResourcesInfo()`.
+function _serverWrapName(handle: Handle) {
+  return ObjectPrototypeIsPrototypeOf(TCP.prototype, handle)
+    ? "TCPServerWrap"
+    : "PipeWrap";
+}
+
+function _setupListenHandle(
+  this: Server,
+  address: string | null,
+  port: number | null,
+  addressType: number | null,
+  backlog: number,
+  fd?: number | null,
+  flags?: number,
+) {
+  debug("setupListenHandle", address, port, addressType, backlog, fd);
+
+  // If there is not yet a handle, we need to create one and bind.
+  // In the case of a server sent via IPC, we don't need to do this.
+  if (this._handle) {
+    debug("setupListenHandle: have a handle already");
+    registerActiveHandle(this, _serverWrapName(this._handle));
+  } else {
+    debug("setupListenHandle: create a handle");
+
+    let rval = null;
+
+    // Try to bind to the unspecified IPv6 address, see if IPv6 is available.
+    // A wildcard IPv6 socket also accepts IPv4 traffic via dual-stack,
+    // matching Node's default. Windows is kept on the IPv4-only path because
+    // the dual-stack socket option doesn't reliably accept IPv4 connections
+    // there in our environment.
+    //
+    // REF: https://github.com/denoland/deno/issues/10762
+    if (!address && typeof fd !== "number") {
+      if (isWindows) {
+        address = DEFAULT_IPV4_ADDR;
+        addressType = 4;
+      } else {
+        rval = _createServerHandle(DEFAULT_IPV6_ADDR, port, 6, fd, flags);
+
+        if (typeof rval === "number") {
+          rval = null;
+          address = DEFAULT_IPV4_ADDR;
+          addressType = 4;
+        } else {
+          address = DEFAULT_IPV6_ADDR;
+          addressType = 6;
+        }
+      }
+    }
+
+    if (rval === null) {
+      rval = _createServerHandle(address, port, addressType, fd, flags);
+    }
+
+    if (typeof rval === "number") {
+      const error = uvExceptionWithHostPort(rval, "listen", address, port);
+      // Publish to the `net.server.listen` tracingChannel synchronously
+      // (before the deferred error emit) so subscribers see the result
+      // even if a caller immediately unsubscribes after `Server.listen()`
+      // returns -- mirrors Node, which the test-diagnostics-channel-net
+      // failing-listen subscribe/unsubscribe pattern relies on.
+      if (netServerListenChannel.hasSubscribers) {
+        netServerListenChannel.error.publish({ server: this, error });
+      }
+      nextTick(_emitErrorNT, this, error);
+
+      return;
+    }
+
+    this._handle = rval;
+    registerActiveHandle(this, _serverWrapName(this._handle));
+  }
+
+  this[asyncIdSymbol] = _getNewAsyncId(this._handle);
+  this._handle.onconnection = _onconnection;
+  this._handle[kAsyncContext] = core.getAsyncContext();
+  this._handle[ownerSymbol] = this;
+
+  // For TCP and Pipe handles, wrap the onconnection callback to create
+  // client handles and call uv_accept before forwarding to
+  // _onconnection(status, clientHandle).
+  if (ObjectPrototypeIsPrototypeOf(TCP.prototype, this._handle)) {
+    setupListenWrap(this._handle);
+  } else if (ObjectPrototypeIsPrototypeOf(Pipe.prototype, this._handle)) {
+    setupPipeListenWrap(this._handle);
+  }
+
+  // Use a backlog of 512 entries. We pass 511 to the listen() call because
+  // the kernel does: backlogsize = roundup_pow_of_two(backlogsize + 1);
+  // which will thus give us a backlog of 512 entries.
+  const err = this._handle.listen(backlog || 511);
+
+  if (err) {
+    const ex = uvExceptionWithHostPort(err, "listen", address, port);
+    this._handle.close();
+    this._handle = null;
+    unregisterActiveHandle(this);
+
+    // Synchronous channel publish (see comment above on the bind/handle
+    // failure path) -- the deferred `_emitErrorNT` runs after callers have
+    // already unsubscribed.
+    if (netServerListenChannel.hasSubscribers) {
+      netServerListenChannel.error.publish({ server: this, error: ex });
+    }
+    defaultTriggerAsyncIdScope(
+      this[asyncIdSymbol],
+      nextTick,
+      _emitErrorNT,
+      this,
+      ex,
+    );
+
+    return;
+  }
+
+  // Generate connection key, this should be unique to the connection
+  this._connectionKey = addressType + ":" + address + ":" + port;
+
+  // Unref the handle if the server was unref'ed prior to listening
+  if (this._unref) {
+    this.unref();
+  }
+
+  // Synchronous asyncEnd publish so subscribers that unsubscribe right
+  // after `Server.listen()` returns still observe the success result.
+  if (netServerListenChannel.hasSubscribers) {
+    netServerListenChannel.asyncEnd.publish({ server: this });
+  }
+  defaultTriggerAsyncIdScope(
+    this[asyncIdSymbol],
+    nextTick,
+    _emitListeningNT,
+    this,
+  );
+}
+
+/**
+ * This class is used to create a TCP or IPC server.
+ *
+ * `net.Server` is an `EventEmitter` with the following events:
+ *
+ * - `"close"` - Emitted when the server closes. If connections exist, this
+ * event is not emitted until all connections are ended.
+ * - `"connection"` - Emitted when a new connection is made. `socket` is an
+ * instance of `net.Socket`.
+ * - `"error"` - Emitted when an error occurs. Unlike `net.Socket`, the
+ * `"close"` event will not be emitted directly following this event unless
+ * `server.close()` is manually called. See the example in discussion of
+ * `server.listen()`.
+ * - `"listening"` - Emitted when the server has been bound after calling
+ * `server.listen()`.
+ */
+function Server(connectionListener?: ConnectionListener);
+function Server(
+  options?: ServerOptions,
+  connectionListener?: ConnectionListener,
+);
+function Server(
+  options?: ServerOptions | ConnectionListener,
+  connectionListener?: ConnectionListener,
+) {
+  if (!ObjectPrototypeIsPrototypeOf(Server.prototype, this)) {
+    return new Server(options, connectionListener);
+  }
+
+  FunctionPrototypeCall(EventEmitter, this);
+
+  this[asyncIdSymbol] = -1;
+  this.allowHalfOpen = false;
+  this.pauseOnConnect = false;
+  this.noDelay = false;
+  this._handle = null;
+  this._connections = 0;
+  this._usingWorkers = false;
+  this._workers = [];
+  this._unref = false;
+  this._pipeName = undefined;
+  this._connectionKey = undefined;
+  this._listeningId = 1;
+
+  if (_isConnectionListener(options)) {
+    this.on("connection", options);
+  } else if (_isServerSocketOptions(options)) {
+    this.allowHalfOpen = options?.allowHalfOpen || false;
+    this.pauseOnConnect = !!options?.pauseOnConnect;
+    this.noDelay = Boolean(options?.noDelay);
+
+    if (options?.blockList) {
+      this.blockList = options.blockList;
+    }
+
+    if (_isConnectionListener(connectionListener)) {
+      this.on("connection", connectionListener);
+    }
+  } else {
+    throw new ERR_INVALID_ARG_TYPE("options", "Object", options);
+  }
+}
+ObjectSetPrototypeOf(Server.prototype, EventEmitter.prototype);
+ObjectSetPrototypeOf(Server, EventEmitter);
+
+/**
+ * Start a server listening for connections. A `net.Server` can be a TCP or
+ * an `IPC` server depending on what it listens to.
+ *
+ * Possible signatures:
+ *
+ * - `server.listen(handle[, backlog][, callback])`
+ * - `server.listen(options[, callback])`
+ * - `server.listen(path[, backlog][, callback])` for `IPC` servers
+ * - `server.listen([port[, host[, backlog]]][, callback])` for TCP servers
+ *
+ * This function is asynchronous. When the server starts listening, the `'listening'` event will be emitted. The last parameter `callback`will be added as a listener for the `'listening'`
+ * event.
+ *
+ * All `listen()` methods can take a `backlog` parameter to specify the maximum
+ * length of the queue of pending connections. The actual length will be determined
+ * by the OS through sysctl settings such as `tcp_max_syn_backlog` and `somaxconn` on Linux. The default value of this parameter is 511 (not 512).
+ *
+ * All `Socket` are set to `SO_REUSEADDR` (see [`socket(7)`](https://man7.org/linux/man-pages/man7/socket.7.html) for
+ * details).
+ *
+ * The `server.listen()` method can be called again if and only if there was an
+ * error during the first `server.listen()` call or `server.close()` has been
+ * called. Otherwise, an `ERR_SERVER_ALREADY_LISTEN` error will be thrown.
+ *
+ * One of the most common errors raised when listening is `EADDRINUSE`.
+ * This happens when another server is already listening on the requested`port`/`path`/`handle`. One way to handle this would be to retry
+ * after a certain amount of time:
+ */
+Server.prototype.listen = function (...args: unknown[]) {
+  const normalized = _normalizeArgs(args);
+  let options = normalized[0] as Partial<ListenOptions>;
+  const cb = normalized[1];
+
+  this._listeningId++;
+
+  if (this._handle) {
+    throw new ERR_SERVER_ALREADY_LISTEN();
+  }
+
+  if (cb !== null) {
+    this.once("listening", cb);
+  }
+
+  // The 'net.server.listen' tracingChannel publishes the user-visible
+  // listen() options. Doing it here (after _normalizeArgs but before any
+  // pre-existing-handle short-circuits return) lets subscribers see the same
+  // options the caller passed in (including ad-hoc fields like
+  // `customOption` used by test-diagnostics-channel-net to verify the
+  // payload is the original options object).
+  if (netServerListenChannel.hasSubscribers) {
+    netServerListenChannel.asyncStart.publish({ server: this, options });
+  }
+
+  const backlogFromArgs: number =
+    // (handle, backlog) or (path, backlog) or (port, backlog)
+    _toNumber(args.length > 1 && args[1]) ||
+    (_toNumber(args.length > 2 && args[2]) as number); // (port, host, backlog)
+
+  options = (options as any)._handle || (options as any).handle || options;
+  const flags = _getFlags(options.ipv6Only, options.reusePort);
+
+  // (handle[, backlog][, cb]) where handle is an object with a handle.
+  // A Pipe wrap exposes an `fd` getter, so it must be matched here before
+  // the `options.fd` branch below -- otherwise the already-opened fd would
+  // be re-opened and rejected (EEXIST). This is the path taken when a
+  // unix-socket server is transferred over IPC (ChildProcess.send).
+  if (
+    ObjectPrototypeIsPrototypeOf(TCP.prototype, options) ||
+    ObjectPrototypeIsPrototypeOf(Pipe.prototype, options)
+  ) {
+    this._handle = options;
+    this[asyncIdSymbol] = this._handle.getAsyncId();
+
+    _listenInCluster(this, null, -1, -1, backlogFromArgs);
+
+    return this;
+  }
+
+  _addAbortSignalOption(this, options);
+
+  // (handle[, backlog][, cb]) where handle is an object with a fd
+  if (typeof options.fd === "number" && options.fd >= 0) {
+    _listenInCluster(this, null, null, null, backlogFromArgs, options.fd);
+
+    return this;
+  }
+
+  // ([port][, host][, backlog][, cb]) where port is omitted,
+  // that is, listen(), listen(null), listen(cb), or listen(null, cb)
+  // or (options[, cb]) where options.port is explicitly set as undefined or
+  // null, bind to an arbitrary unused port
+  if (
+    args.length === 0 ||
+    typeof args[0] === "function" ||
+    (typeof options.port === "undefined" && ObjectHasOwn(options, "port")) ||
+    options.port === null
+  ) {
+    options.port = 0;
+  }
+
+  // ([port][, host][, backlog][, cb]) where port is specified
+  // or (options[, cb]) where options.port is specified
+  // or if options.port is normalized as 0 before
+  let backlog;
+
+  if (typeof options.port === "number" || typeof options.port === "string") {
+    validatePort(options.port, "options.port");
+    backlog = options.backlog || backlogFromArgs;
+
+    if (options.reusePort === true) {
+      options.exclusive = true;
+    }
+
+    // start TCP server listening on host:port
+    if (options.host) {
+      _lookupAndListen(
+        this,
+        options.port | 0,
+        options.host,
+        backlog,
+        !!options.exclusive,
+        flags,
+      );
+    } else {
+      // Undefined host, listens on unspecified address
+      // Default addressType 4 will be used to search for primary server
+      _listenInCluster(
+        this,
+        null,
+        options.port | 0,
+        4,
+        backlog,
+        undefined,
+        options.exclusive,
+        flags,
+      );
+    }
+
+    return this;
+  }
+
+  // (path[, backlog][, cb]) or (options[, cb])
+  // where path or options.path is a UNIX domain socket or Windows pipe
+  if (options.path && _isPipeName(options.path)) {
+    const pipeName = (this._pipeName = options.path);
+    backlog = options.backlog || backlogFromArgs;
+
+    // Abstract Unix sockets (path starts with \0) have no filesystem
+    // entry, so readableAll/writableAll (which use chmod) are invalid.
+    if (
+      (options.readableAll === true || options.writableAll === true) &&
+      StringPrototypeCharCodeAt(pipeName, 0) === 0
+    ) {
+      throw new ERR_INVALID_ARG_VALUE(
+        "options",
+        options,
+        "can not set readableAll or writableAllt to true when path is abstract unix socket",
+      );
+    }
+
+    _listenInCluster(
+      this,
+      pipeName,
+      -1,
+      -1,
+      backlog,
+      undefined,
+      options.exclusive,
+    );
+
+    if (!this._handle) {
+      // Failed and an error shall be emitted in the next tick.
+      // Therefore, we directly return.
+      return this;
+    }
+
+    let mode = 0;
+
+    if (options.readableAll === true) {
+      mode |= PipeConstants.UV_READABLE;
+    }
+
+    if (options.writableAll === true) {
+      mode |= PipeConstants.UV_WRITABLE;
+    }
+
+    if (mode !== 0) {
+      const err = this._handle.fchmod(mode);
+
+      if (err) {
+        this._handle.close();
+        this._handle = null;
+
+        throw errnoException(err, "uv_pipe_chmod");
+      }
+    }
+
+    return this;
+  }
+
+  if (!(ObjectHasOwn(options, "port") || ObjectHasOwn(options, "path"))) {
+    throw new ERR_INVALID_ARG_VALUE(
+      "options",
+      options,
+      'must have the property "port" or "path"',
+    );
+  }
+
+  throw new ERR_INVALID_ARG_VALUE("options", options);
+};
+
+/**
+ * Stops the server from accepting new connections and keeps existing
+ * connections. This function is asynchronous, the server is finally closed
+ * when all connections are ended and the server emits a `"close"` event.
+ * The optional `callback` will be called once the `"close"` event occurs. Unlike
+ * that event, it will be called with an `Error` as its only argument if the server
+ * was not open when it was closed.
+ *
+ * @param cb Called when the server is closed.
+ */
+Server.prototype.close = function (cb?: (err?: Error) => void) {
+  this._listeningId++;
+
+  if (typeof cb === "function") {
+    if (!this._handle) {
+      this.once("close", function close() {
+        cb(new ERR_SERVER_NOT_RUNNING());
+      });
+    } else {
+      this.once("close", cb);
+    }
+  }
+
+  if (this._handle) {
+    (this._handle as TCP).close();
+    this._handle = null;
+    unregisterActiveHandle(this);
+  }
+
+  if (this._usingWorkers) {
+    let left = this._workers.length;
+    const onWorkerClose = () => {
+      if (--left !== 0) {
+        return;
+      }
+
+      this._connections = 0;
+      this._emitCloseIfDrained();
+    };
+
+    // Increment connections to be sure that, even if all sockets will be closed
+    // during polling of workers, `close` event will be emitted only once.
+    this._connections++;
+
+    // Poll workers
+    for (let n = 0; n < this._workers.length; n++) {
+      this._workers[n].close(onWorkerClose);
+    }
+  } else {
+    this._emitCloseIfDrained();
+  }
+
+  return this;
+};
+
+Server.prototype[SymbolAsyncDispose] = function () {
+  return new Promise((resolve) => {
+    this.close(() => resolve());
+  });
+};
+
+/**
+ * Returns the bound `address`, the address `family` name, and `port` of the server
+ * as reported by the operating system if listening on an IP socket
+ * (useful to find which port was assigned when getting an OS-assigned address):`{ port: 12346, family: "IPv4", address: "127.0.0.1" }`.
+ *
+ * For a server listening on a pipe or Unix domain socket, the name is returned
+ * as a string.
+ *
+ * `server.address()` returns `null` before the `"listening"` event has been
+ * emitted or after calling `server.close()`.
+ */
+Server.prototype.address = function (): AddressInfo | string | null {
+  if (this._handle && this._handle.getsockname) {
+    const out = {};
+    const err = this._handle.getsockname(out);
+
+    if (err) {
+      throw errnoException(err, "address");
+    }
+
+    return out as AddressInfo;
+  } else if (this._pipeName) {
+    return this._pipeName;
+  }
+
+  return null;
+};
+
+/**
+ * Asynchronously get the number of concurrent connections on the server. Works
+ * when sockets were sent to forks.
+ *
+ * Callback should take two arguments `err` and `count`.
+ */
+Server.prototype.getConnections = function (
+  cb: (err: Error | null, count: number) => void,
+) {
+  // deno-lint-ignore no-this-alias
+  const server = this;
+
+  function end(err: Error | null, connections?: number) {
+    defaultTriggerAsyncIdScope(
+      server[asyncIdSymbol],
+      nextTick,
+      cb,
+      err,
+      connections,
+    );
+  }
+
+  if (!this._usingWorkers) {
+    end(null, this._connections);
+
+    return this;
+  }
+
+  // Poll workers
+  let left = this._workers.length;
+  let total = this._connections;
+
+  function oncount(err: Error, count: number) {
+    if (err) {
+      left = -1;
+
+      return end(err);
+    }
+
+    total += count;
+
+    if (--left === 0) {
+      return end(null, total);
+    }
+  }
+
+  for (let n = 0; n < this._workers.length; n++) {
+    this._workers[n].getConnections(oncount);
+  }
+
+  return this;
+};
+
+/**
+ * Calling `unref()` on a server will allow the program to exit if this is the only
+ * active server in the event system. If the server is already `unref`ed calling `unref()` again will have no effect.
+ */
+Server.prototype.unref = function () {
+  this._unref = true;
+
+  if (this._handle) {
+    this._handle.unref();
+  }
+
+  return this;
+};
+
+/**
+ * Opposite of `unref()`, calling `ref()` on a previously `unref`ed server will _not_ let the program exit if it's the only server left (the default behavior).
+ * If the server is `ref`ed calling `ref()` again will have no effect.
+ */
+Server.prototype.ref = function () {
+  this._unref = false;
+
+  if (this._handle) {
+    this._handle.ref();
+  }
+
+  return this;
+};
+
+ObjectDefineProperty(Server.prototype, "listening", {
+  __proto__: null,
+  get: function () {
+    return !!this._handle;
+  },
+});
+
+Server.prototype._createSocket = function (clientHandle) {
+  const socket = new Socket({
+    handle: clientHandle,
+    allowHalfOpen: this.allowHalfOpen,
+    pauseOnCreate: this.pauseOnConnect,
+    readable: true,
+    writable: true,
+  });
+
+  if (this.noDelay && clientHandle.setNoDelay) {
+    socket[kSetNoDelay] = true;
+    clientHandle.setNoDelay(true);
+  }
+
+  socket.server = this;
+  socket._server = this;
+
+  DTRACE_NET_SERVER_CONNECTION(socket);
+
+  return socket;
+};
+
+Server.prototype._listen2 = _setupListenHandle;
+
+Server.prototype._emitCloseIfDrained = function () {
+  debug("SERVER _emitCloseIfDrained");
+  if (this._handle || this._connections) {
+    debug(
+      `SERVER handle? ${!!this._handle}   connections? ${this._connections}`,
+    );
+    return;
+  }
+
+  // We use a deferred timer instead of nextTick here to avoid EADDRINUSE
+  // error when the same port listened immediately after the 'close' event.
+  // ref: https://github.com/denoland/deno_std/issues/2788
+  // deno-lint-ignore no-this-alias
+  const self = this;
+  // Use a system timer to avoid test sanitizer detection.
+  // Must be ref'd so the event loop waits for the close event.
+  core.createSystemTimer(
+    () => {
+      _emitCloseNT(self);
+    },
+    0,
+    true,
+  );
+};
+
+Server.prototype._setupWorker = function (socketList: EventEmitter) {
+  this._usingWorkers = true;
+  ArrayPrototypePush(this._workers, socketList);
+
+  socketList.once("exit", (socketList: any) => {
+    const index = ArrayPrototypeIndexOf(this._workers, socketList);
+    ArrayPrototypeSplice(this._workers, index, 1);
+  });
+};
+
+Server.prototype[EventEmitter.captureRejectionSymbol] = function (
+  err: Error,
+  event: string,
+  sock: Socket,
+) {
+  switch (event) {
+    case "connection": {
+      sock.destroy(err);
+      break;
+    }
+    default: {
+      this.emit("error", err);
+    }
+  }
+};
+
+/**
+ * Creates a new TCP or IPC server.
+ *
+ * Accepts an `options` object with properties `allowHalfOpen` (default `false`)
+ * and `pauseOnConnect` (default `false`).
+ *
+ * If `allowHalfOpen` is set to `false`, then the socket will
+ * automatically end the writable side when the readable side ends.
+ *
+ * If `allowHalfOpen` is set to `true`, when the other end of the socket
+ * signals the end of transmission, the server will only send back the end of
+ * transmission when `socket.end()` is explicitly called. For example, in the
+ * context of TCP, when a FIN packed is received, a FIN packed is sent back
+ * only when `socket.end()` is explicitly called. Until then the connection is
+ * half-closed (non-readable but still writable). See `"end"` event and RFC 1122
+ * (section 4.2.2.13) for more information.
+ *
+ * `pauseOnConnect` indicates whether the socket should be paused on incoming
+ * connections.
+ *
+ * If `pauseOnConnect` is set to `true`, then the socket associated with each
+ * incoming connection will be paused, and no data will be read from its
+ * handle. This allows connections to be passed between processes without any
+ * data being read by the original process. To begin reading data from a paused
+ * socket, call `socket.resume()`.
+ *
+ * The server can be a TCP server or an IPC server, depending on what it
+ * `listen()` to.
+ *
+ * Here is an example of an TCP echo server which listens for connections on
+ * port 8124:
+ *
+ * @param options Socket options.
+ * @param connectionListener Automatically set as a listener for the `"connection"` event.
+ * @return A `net.Server`.
+ */
+function createServer(
+  options?: ServerOptions,
+  connectionListener?: ConnectionListener,
+): Server {
+  return new Server(options, connectionListener);
+}
+
+return {
+  BlockList,
+  isIP,
+  isIPv4,
+  isIPv6,
+  SocketAddress,
+  _createServerHandle,
+  _normalizeArgs,
+  connect,
+  createConnection,
+  createServer,
+  getDefaultAutoSelectFamily,
+  getDefaultAutoSelectFamilyAttemptTimeout,
+  Server,
+  setDefaultAutoSelectFamily,
+  setDefaultAutoSelectFamilyAttemptTimeout,
+  Socket,
+  Stream,
+  default: {
+    _createServerHandle,
+    _normalizeArgs,
+    BlockList,
+    connect,
+    createConnection,
+    createServer,
+    getDefaultAutoSelectFamily,
+    getDefaultAutoSelectFamilyAttemptTimeout,
+    isIP,
+    isIPv4,
+    isIPv6,
+    Server,
+    setDefaultAutoSelectFamily,
+    setDefaultAutoSelectFamilyAttemptTimeout,
+    Socket,
+    SocketAddress,
+    Stream,
+  },
+};
+})();

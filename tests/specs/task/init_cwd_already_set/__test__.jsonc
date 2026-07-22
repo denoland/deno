@@ -1,0 +1,8 @@
+{
+  "args": "task -q --config deno.json echo_init_cwd",
+  "output": "task_init_cwd_already_set.out",
+  "envs": {
+    "INIT_CWD": "HELLO"
+  },
+  "exitCode": 0
+}

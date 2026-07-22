@@ -1,0 +1,1070 @@
+// Copyright 2018-2026 the Deno authors. MIT license.
+
+use std::any::Any;
+use std::borrow::Cow;
+use std::cell::Cell;
+use std::cell::RefCell;
+use std::future::Future;
+use std::rc::Rc;
+
+use bytes::Bytes;
+use deno_core::AsyncMutFuture;
+use deno_core::AsyncRefCell;
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
+use deno_core::CancelTryFuture;
+use deno_core::OpState;
+use deno_core::RcRef;
+use deno_core::Resource;
+use deno_core::ResourceId;
+use deno_core::convert::ByteString;
+use deno_core::convert::Uint8Array;
+use deno_core::futures::TryFutureExt;
+use deno_core::op2;
+use deno_core::unsync::spawn;
+use deno_core::url;
+use deno_error::JsErrorBox;
+use deno_fetch::ClientConnectError;
+use deno_fetch::CreateHttpClientOptions;
+use deno_fetch::HttpClientCreateError;
+use deno_fetch::HttpClientResource;
+use deno_fetch::Options as FetchOptions;
+use deno_fetch::create_http_client;
+use deno_fetch::get_or_create_client_from_state;
+use deno_net::raw::NetworkStream;
+use deno_permissions::PermissionCheckError;
+use deno_permissions::PermissionsContainer;
+use deno_tls::SocketUse;
+use fastwebsockets::CloseCode;
+use fastwebsockets::FragmentCollectorRead;
+use fastwebsockets::Frame;
+use fastwebsockets::OpCode;
+use fastwebsockets::Role;
+use fastwebsockets::WebSocket;
+use fastwebsockets::WebSocketWrite;
+use http::HeaderName;
+use http::HeaderValue;
+use http::Method;
+use http::Request;
+use http::StatusCode;
+use http::Uri;
+use http::header::CONNECTION;
+use http::header::HOST;
+use http::header::SEC_WEBSOCKET_KEY;
+use http::header::SEC_WEBSOCKET_PROTOCOL;
+use http::header::SEC_WEBSOCKET_VERSION;
+use http::header::UPGRADE;
+use hyper_util::client::legacy::connect::Connection;
+use once_cell::sync::Lazy;
+use tokio::io::AsyncRead;
+use tokio::io::AsyncWrite;
+use tokio::io::ReadHalf;
+use tokio::io::WriteHalf;
+
+use crate::stream::WebSocketStream;
+
+mod stream;
+
+static USE_WRITEV: Lazy<bool> = Lazy::new(|| {
+  let enable = std::env::var("DENO_USE_WRITEV").ok();
+
+  if let Some(val) = enable {
+    return !val.is_empty();
+  }
+
+  false
+});
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum WebsocketError {
+  #[class(inherit)]
+  #[error(transparent)]
+  Url(url::ParseError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Permission(#[from] PermissionCheckError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(generic)]
+  #[error(transparent)]
+  Uri(#[from] http::uri::InvalidUri),
+  #[class(inherit)]
+  #[error("{0}")]
+  Io(#[from] std::io::Error),
+  #[class(inherit)]
+  #[error(transparent)]
+  ClientCreate(#[from] HttpClientCreateError),
+  #[class(type)]
+  #[error(transparent)]
+  WebSocket(#[from] fastwebsockets::WebSocketError),
+  #[class("DOMExceptionNetworkError")]
+  #[error("failed to connect to WebSocket: {0}")]
+  ConnectionFailed(#[from] HandshakeError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Canceled(#[from] deno_core::Canceled),
+}
+
+pub struct WsCancelResource(Rc<CancelHandle>);
+
+impl Resource for WsCancelResource {
+  fn name(&self) -> Cow<'_, str> {
+    "webSocketCancel".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    self.0.cancel()
+  }
+}
+
+// This op is needed because creating a WS instance in JavaScript is a sync
+// operation and should throw error when permissions are not fulfilled,
+// but actual op that connects WS is async.
+#[op2(stack_trace)]
+#[smi]
+pub fn op_ws_check_permission_and_cancel_handle(
+  state: &mut OpState,
+  #[string] api_name: String,
+  #[string] url: String,
+  cancel_handle: bool,
+) -> Result<Option<ResourceId>, WebsocketError> {
+  state.borrow_mut::<PermissionsContainer>().check_net_url(
+    &url::Url::parse(&url).map_err(WebsocketError::Url)?,
+    &api_name,
+  )?;
+
+  if cancel_handle {
+    let rid = state
+      .resource_table
+      .add(WsCancelResource(CancelHandle::new_rc()));
+    Ok(Some(rid))
+  } else {
+    Ok(None)
+  }
+}
+
+#[derive(deno_core::ToV8)]
+pub struct CreateResponse {
+  rid: ResourceId,
+  protocol: String,
+  extensions: String,
+  /// HTTP status code from the handshake response (101 on success).
+  /// Exposed to JS for inspector `Network.webSocketHandshakeResponseReceived`.
+  status: u16,
+  /// HTTP status text from the handshake response.
+  status_text: String,
+  /// All handshake response headers, as a flat `[name, value]` list.
+  headers: Vec<(ByteString, ByteString)>,
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum HandshakeError {
+  #[class(type)]
+  #[error("Missing host in url")]
+  MissingHost,
+  #[class(type)]
+  #[error("Missing path in url")]
+  MissingPath,
+  #[class(type)]
+  #[error("Invalid scheme in url")]
+  InvalidScheme,
+  #[class(generic)]
+  #[error("Invalid status code {0}")]
+  InvalidStatusCode(StatusCode),
+  #[class(generic)]
+  #[error(transparent)]
+  Http(#[from] http::Error),
+  #[class(inherit)]
+  #[error(transparent)]
+  Connect(#[from] ClientConnectError),
+  #[class(type)]
+  #[error(transparent)]
+  WebSocket(#[from] fastwebsockets::WebSocketError),
+  #[class(generic)]
+  #[error("Didn't receive h2 alpn, aborting connection")]
+  NoH2Alpn,
+  #[class(generic)]
+  #[error(transparent)]
+  Rustls(#[from] deno_tls::rustls::Error),
+  #[class(inherit)]
+  #[error(transparent)]
+  Io(#[from] std::io::Error),
+  #[class(generic)]
+  #[error(transparent)]
+  H2(#[from] h2::Error),
+  #[class(type)]
+  #[error("Invalid hostname: '{0}'")]
+  InvalidHostname(String),
+  #[class(inherit)]
+  #[error(transparent)]
+  RootStoreError(JsErrorBox),
+  #[class(inherit)]
+  #[error(transparent)]
+  Tls(deno_tls::TlsError),
+  #[class(type)]
+  #[error(transparent)]
+  HeaderName(#[from] http::header::InvalidHeaderName),
+  #[class(type)]
+  #[error(transparent)]
+  HeaderValue(#[from] http::header::InvalidHeaderValue),
+}
+
+async fn handshake_websocket(
+  client: deno_fetch::Client,
+  allow_host: bool,
+  uri: Uri,
+  protocols: &str,
+  headers: Option<Vec<(ByteString, ByteString)>>,
+) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), HandshakeError> {
+  let parts = uri.into_parts();
+  let Some(authority) = parts.authority else {
+    return Err(HandshakeError::MissingHost);
+  };
+  let Some(path_and_query) = parts.path_and_query else {
+    return Err(HandshakeError::MissingPath);
+  };
+  let scheme = match parts.scheme {
+    Some(s) if s.as_str() == "ws" => "http",
+    Some(s) if s.as_str() == "wss" => "https",
+    _ => return Err(HandshakeError::InvalidScheme),
+  };
+
+  let h1res = handshake_http1(
+    client.clone(),
+    allow_host,
+    scheme,
+    &authority,
+    &path_and_query,
+    protocols,
+    &headers,
+  )
+  .await;
+
+  match h1res {
+    Ok(res) => Ok(res),
+    Err(_) if scheme == "https" => {
+      let uri = Uri::builder()
+        .scheme(scheme)
+        .authority(authority)
+        .path_and_query(path_and_query)
+        .build()?;
+      handshake_http2(client, allow_host, uri, protocols, &headers).await
+    }
+    Err(e) => Err(e),
+  }
+}
+
+async fn handshake_http1(
+  client: deno_fetch::Client,
+  allow_host: bool,
+  scheme: &str,
+  authority: &http::uri::Authority,
+  path_and_query: &http::uri::PathAndQuery,
+  protocols: &str,
+  headers: &Option<Vec<(ByteString, ByteString)>>,
+) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), HandshakeError> {
+  let connection_uri = Uri::builder()
+    .scheme(scheme)
+    .authority(authority.clone())
+    .path_and_query(path_and_query.clone())
+    .build()?;
+  let connection = client.connect(connection_uri, SocketUse::Http1Only).await?;
+
+  let is_proxied = connection.connected().is_proxied();
+  let host = match authority.port() {
+    Some(port) => format!("{}:{}", authority.host(), port),
+    None => authority.host().to_string(),
+  };
+
+  let req_uri = if is_proxied {
+    Uri::builder()
+      .scheme(scheme)
+      .authority(authority.clone())
+      .path_and_query(path_and_query.clone())
+      .build()?
+  } else {
+    Uri::builder()
+      .path_and_query(path_and_query.clone())
+      .build()?
+  };
+
+  let mut request = Request::builder().method(Method::GET).uri(req_uri);
+
+  client.inject_common_headers(&mut request);
+  request =
+    populate_common_request_headers(request, protocols, headers, allow_host)?;
+
+  if let Some(headers) = request.headers_ref()
+    && !headers.contains_key(HOST)
+  {
+    request = request.header(HOST, host);
+  }
+
+  request = request
+    .header(UPGRADE, "websocket")
+    .header(CONNECTION, "Upgrade")
+    .header(SEC_WEBSOCKET_KEY, fastwebsockets::handshake::generate_key());
+
+  let request = request
+    .body(http_body_util::Empty::new())
+    .map_err(HandshakeError::Http)?;
+
+  handshake_connection(request, connection).await
+}
+
+#[allow(clippy::too_many_arguments, reason = "TODO: improve")]
+async fn handshake_http2(
+  client: deno_fetch::Client,
+  allow_host: bool,
+  uri: Uri,
+  protocols: &str,
+  headers: &Option<Vec<(ByteString, ByteString)>>,
+) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), HandshakeError> {
+  let connection = client.connect(uri.clone(), SocketUse::Http2Only).await?;
+  if !connection.connected().is_negotiated_h2() {
+    return Err(HandshakeError::NoH2Alpn);
+  }
+
+  let h2 = h2::client::Builder::new();
+  let (mut send, conn) = h2.handshake::<_, Bytes>(connection).await?;
+  spawn(conn);
+  let mut request = Request::builder();
+  request = request.method(Method::CONNECT);
+  request = request.uri(uri);
+  client.inject_common_headers(&mut request);
+  request =
+    populate_common_request_headers(request, protocols, headers, allow_host)?;
+  request = request.extension(h2::ext::Protocol::from("websocket"));
+  let (resp, send) = send.send_request(request.body(())?, false)?;
+  let resp = resp.await?;
+  if resp.status() != StatusCode::OK {
+    return Err(HandshakeError::InvalidStatusCode(resp.status()));
+  }
+  let (http::response::Parts { headers, .. }, recv) = resp.into_parts();
+  let mut stream = WebSocket::after_handshake(
+    WebSocketStream::new(stream::WsStreamKind::H2(send, recv), None),
+    Role::Client,
+  );
+  // We currently don't support vectored writes in the H2 streams
+  stream.set_writev(false);
+  // TODO(mmastrac): we should be able to use a zero masking key over HTTPS
+  // stream.set_auto_apply_mask(false);
+  Ok((stream, headers))
+}
+
+async fn handshake_connection<
+  S: AsyncRead + AsyncWrite + Send + Unpin + 'static,
+>(
+  request: Request<http_body_util::Empty<Bytes>>,
+  socket: S,
+) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), HandshakeError> {
+  let (upgraded, response) =
+    fastwebsockets::handshake::client(&LocalExecutor, request, socket).await?;
+
+  let upgraded = upgraded.into_inner();
+  let stream =
+    WebSocketStream::new(stream::WsStreamKind::Upgraded(upgraded), None);
+  let stream = WebSocket::after_handshake(stream, Role::Client);
+
+  Ok((stream, response.into_parts().0.headers))
+}
+
+/// Headers common to both http/1.1 and h2 requests.
+fn populate_common_request_headers(
+  mut request: http::request::Builder,
+  protocols: &str,
+  headers: &Option<Vec<(ByteString, ByteString)>>,
+  allow_host: bool,
+) -> Result<http::request::Builder, HandshakeError> {
+  request = request.header(SEC_WEBSOCKET_VERSION, "13");
+
+  if !protocols.is_empty() {
+    request = request.header(SEC_WEBSOCKET_PROTOCOL, protocols);
+  }
+
+  if let Some(headers) = headers {
+    for (key, value) in headers {
+      let name = HeaderName::from_bytes(key)?;
+      let v = HeaderValue::from_bytes(value)?;
+
+      let is_disallowed_header = (!allow_host && name == http::header::HOST)
+        || matches!(
+          name,
+          http::header::SEC_WEBSOCKET_ACCEPT
+            | http::header::SEC_WEBSOCKET_EXTENSIONS
+            | http::header::SEC_WEBSOCKET_KEY
+            | http::header::SEC_WEBSOCKET_PROTOCOL
+            | http::header::SEC_WEBSOCKET_VERSION
+            | http::header::UPGRADE
+            | http::header::CONNECTION
+        );
+      if !is_disallowed_header {
+        request = request.header(name, v);
+      }
+    }
+  }
+  Ok(request)
+}
+
+fn create_client_from_websocket_options(
+  options: &FetchOptions,
+  permissions: PermissionsContainer,
+  ca_certs: Vec<String>,
+  unsafely_ignore_certificate_errors: bool,
+) -> Result<deno_fetch::Client, HttpClientCreateError> {
+  create_http_client(
+    &options.user_agent,
+    CreateHttpClientOptions {
+      root_cert_store: options
+        .root_cert_store()
+        .map_err(HttpClientCreateError::RootCertStore)?,
+      ca_certs: ca_certs.into_iter().map(|cert| cert.into_bytes()).collect(),
+      proxy: options.proxy.clone(),
+      dns_resolver: options.resolver.clone(),
+      permissions: Some(permissions),
+      unsafely_ignore_certificate_errors: unsafely_ignore_certificate_errors
+        .then_some(vec![]),
+      client_cert_chain_and_key: options
+        .client_cert_chain_and_key
+        .clone()
+        .try_into()
+        .unwrap_or_default(),
+      pool_max_idle_per_host: None,
+      pool_idle_timeout: None,
+      http1: true,
+      http2: true,
+      local_address: None,
+      client_builder_hook: options.client_builder_hook,
+      http2_max_header_list_size: None,
+    },
+  )
+}
+
+#[op2(stack_trace)]
+pub async fn op_ws_create(
+  state: Rc<RefCell<OpState>>,
+  #[string] api_name: String,
+  #[string] url: String,
+  #[string] protocols: String,
+  #[smi] cancel_handle: Option<ResourceId>,
+  #[scoped] headers: Option<Vec<(ByteString, ByteString)>>,
+  #[scoped] ca_certs: Option<Vec<String>>,
+  unsafely_ignore_certificate_errors: bool,
+  #[smi] client_rid: Option<u32>,
+) -> Result<CreateResponse, WebsocketError> {
+  let (client, allow_host) = {
+    let mut s = state.borrow_mut();
+    s.borrow_mut::<PermissionsContainer>()
+      .check_net_url(
+        &url::Url::parse(&url).map_err(WebsocketError::Url)?,
+        &api_name,
+      )
+      .expect(
+        "Permission check should have been done in op_ws_check_permission",
+      );
+    if let Some(rid) = client_rid {
+      let r = s.resource_table.get::<HttpClientResource>(rid)?;
+      (r.client.clone(), r.allow_host)
+    } else if ca_certs.is_some() || unsafely_ignore_certificate_errors {
+      let permissions = s.borrow::<PermissionsContainer>().clone();
+      let options = s.borrow::<FetchOptions>().clone();
+      (
+        create_client_from_websocket_options(
+          &options,
+          permissions,
+          ca_certs.unwrap_or_default(),
+          unsafely_ignore_certificate_errors,
+        )?,
+        false,
+      )
+    } else {
+      (get_or_create_client_from_state(&mut s)?, false)
+    }
+  };
+
+  let cancel_resource = if let Some(cancel_rid) = cancel_handle {
+    let r = state
+      .borrow_mut()
+      .resource_table
+      .get::<WsCancelResource>(cancel_rid)?;
+    Some(r.0.clone())
+  } else {
+    None
+  };
+
+  let uri: Uri = url.parse()?;
+
+  let handshake =
+    handshake_websocket(client, allow_host, uri, &protocols, headers)
+      .map_err(WebsocketError::ConnectionFailed);
+  let (stream, response) = match cancel_resource {
+    Some(rc) => handshake.try_or_cancel(rc).await?,
+    None => handshake.await?,
+  };
+
+  if let Some(cancel_rid) = cancel_handle
+    && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid)
+  {
+    res.close();
+  }
+
+  // `handshake_websocket` only resolves on a successful Upgrade response, so
+  // the status is implicitly 101 Switching Protocols. We surface it (plus
+  // the response headers) for the inspector's
+  // `Network.webSocketHandshakeResponseReceived` event.
+  //
+  // Failed handshakes (non-101) bail earlier via
+  // `HandshakeError::InvalidStatusCode` and never reach this point, so
+  // DevTools won't see a `webSocketHandshakeResponseReceived` for them —
+  // only the eventual `webSocketClosed`. This matches Chrome's behavior.
+  let response_headers: Vec<(ByteString, ByteString)> = response
+    .iter()
+    .map(|(name, value)| {
+      (
+        ByteString::from(name.as_str().as_bytes()),
+        ByteString::from(value.as_bytes()),
+      )
+    })
+    .collect();
+
+  let mut state = state.borrow_mut();
+  let rid = state.resource_table.add(ServerWebSocket::new(stream));
+
+  let protocol = response
+    .get("Sec-WebSocket-Protocol")
+    .and_then(|header| header.to_str().ok())
+    .unwrap_or("");
+  let extensions = response
+    .get_all("Sec-WebSocket-Extensions")
+    .iter()
+    .filter_map(|header| header.to_str().ok())
+    .collect::<String>();
+  Ok(CreateResponse {
+    rid,
+    protocol: protocol.to_string(),
+    extensions,
+    status: 101,
+    status_text: "Switching Protocols".to_string(),
+    headers: response_headers,
+  })
+}
+
+#[repr(u16)]
+pub enum MessageKind {
+  Text = 0,
+  Binary = 1,
+  Pong = 2,
+  Error = 3,
+  ClosedDefault = 1005,
+}
+
+/// To avoid locks, we keep as much as we can inside of [`Cell`]s.
+pub struct ServerWebSocket {
+  buffered: Cell<usize>,
+  error: Cell<Option<String>>,
+  errored: Cell<bool>,
+  closed: Cell<bool>,
+  buffer: Cell<Option<Vec<u8>>>,
+  string: Cell<Option<String>>,
+  ws_read: AsyncRefCell<FragmentCollectorRead<ReadHalf<WebSocketStream>>>,
+  ws_write: AsyncRefCell<WebSocketWrite<WriteHalf<WebSocketStream>>>,
+  /// Cancel handle for the pending [`op_ws_next_event`] read. Triggered when
+  /// the embedder (e.g. the HTTP server) needs to interrupt the read half
+  /// during a server-initiated shutdown after a close frame has been sent.
+  read_cancel: Rc<CancelHandle>,
+  /// Opaque lifetime token attached by the embedder when the websocket was
+  /// created. Holding it keeps the embedder's shutdown coordination alive
+  /// (e.g. the HTTP server's `SignallingRc<HttpServerState>`); dropping it
+  /// when the websocket resource is dropped lets a graceful shutdown
+  /// observe that this websocket is gone.
+  lifetime_guard: Cell<Option<Box<dyn Any>>>,
+}
+
+impl ServerWebSocket {
+  fn new(ws: WebSocket<WebSocketStream>) -> Self {
+    Self::new_with_guard(ws, None)
+  }
+
+  fn new_with_guard(
+    ws: WebSocket<WebSocketStream>,
+    lifetime_guard: Option<Box<dyn Any>>,
+  ) -> Self {
+    let (ws_read, ws_write) = ws.split(tokio::io::split);
+    Self {
+      buffered: Cell::new(0),
+      error: Cell::new(None),
+      errored: Cell::new(false),
+      closed: Cell::new(false),
+      buffer: Cell::new(None),
+      string: Cell::new(None),
+      ws_read: AsyncRefCell::new(FragmentCollectorRead::new(ws_read)),
+      ws_write: AsyncRefCell::new(ws_write),
+      read_cancel: CancelHandle::new_rc(),
+      lifetime_guard: Cell::new(lifetime_guard),
+    }
+  }
+
+  /// Initiate a server-side graceful shutdown of this websocket. Cancels the
+  /// pending [`op_ws_next_event`] read immediately so the JS event loop
+  /// observes the close and drops the resource, and spawns a best-effort
+  /// background task that writes a `Close(1001 Going Away)` frame on the
+  /// write half. The spawned task keeps its own `Rc<Self>`, so the write
+  /// half stays alive long enough to flush on cooperative peers.
+  ///
+  /// The read is cancelled *concurrently* with the write rather than after
+  /// it: if the peer stops draining and our TCP send buffer fills,
+  /// `write_frame` blocks indefinitely. Awaiting it before cancelling would
+  /// hang `Deno.serve` shutdown (the resource never drops → the
+  /// `HttpServerState` poll-complete future never fires). Cancelling first
+  /// lets the resource drain even on a stuck peer; the close frame still
+  /// goes out when (and if) the write unblocks.
+  ///
+  /// If the socket is already in the middle of the close handshake (because
+  /// JS called `socket.close()` via [`op_ws_close`]) we skip the duplicate
+  /// Close frame but still cancel the pending read, so a peer that never
+  /// sends its close ack does not block graceful server shutdown.
+  ///
+  /// Safe to call multiple times.
+  pub fn server_shutdown(self: &Rc<Self>) {
+    let already_closing = self.closed.replace(true);
+    if already_closing {
+      // JS already sent its own Close frame (or another shutdown is already
+      // in flight). Just unblock the pending read so the resource can drop.
+      self.read_cancel.cancel();
+      return;
+    }
+    let ws = self.clone();
+    let lock = self.reserve_lock();
+    deno_core::unsync::spawn(async move {
+      const GOING_AWAY: &[u8] = b"Server shutting down";
+      let frame = Frame::close(1001, GOING_AWAY);
+      let _ = ws.write_frame(lock, frame).await;
+    });
+    self.read_cancel.cancel();
+  }
+
+  /// Forcefully tear down this websocket without waiting on the write half.
+  /// Used by the forceful `op_http_close` / `op_http_cancel` paths where a
+  /// graceful Close frame could hang indefinitely if the peer's TCP send
+  /// buffer is full.
+  ///
+  /// The pending [`op_ws_next_event`] read is cancelled synchronously so the
+  /// JS event loop drops the resource promptly. Safe to call repeatedly and
+  /// safe to call after `server_shutdown`.
+  pub fn server_force_close(self: &Rc<Self>) {
+    self.closed.set(true);
+    self.read_cancel.cancel();
+  }
+
+  fn set_error(&self, error: Option<String>) {
+    if let Some(error) = error {
+      self.error.set(Some(error));
+      self.errored.set(true);
+    } else {
+      self.error.set(None);
+      self.errored.set(false);
+    }
+  }
+
+  /// Reserve a lock, but don't wait on it. This gets us our place in line.
+  fn reserve_lock(
+    self: &Rc<Self>,
+  ) -> AsyncMutFuture<WebSocketWrite<WriteHalf<WebSocketStream>>> {
+    RcRef::map(self, |r| &r.ws_write).borrow_mut()
+  }
+
+  #[inline]
+  async fn write_frame(
+    self: &Rc<Self>,
+    lock: AsyncMutFuture<WebSocketWrite<WriteHalf<WebSocketStream>>>,
+    frame: Frame<'_>,
+  ) -> Result<(), WebsocketError> {
+    let mut ws = lock.await;
+    if ws.is_closed() {
+      return Ok(());
+    }
+    ws.write_frame(frame).await?;
+    Ok(())
+  }
+}
+
+impl Resource for ServerWebSocket {
+  fn name(&self) -> Cow<'_, str> {
+    "serverWebSocket".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    // Cancel any pending read so the JS event loop observes the close and
+    // drops this resource even if op_ws_next_event was already in flight.
+    self.read_cancel.cancel();
+    // Drop the embedder's lifetime guard eagerly so a graceful shutdown
+    // does not have to wait for ops still holding a strong reference.
+    self.lifetime_guard.take();
+  }
+}
+
+pub fn ws_create_server_stream(
+  state: &mut OpState,
+  transport: NetworkStream,
+  read_buf: Bytes,
+) -> ResourceId {
+  ws_create_server_stream_with_guard(state, transport, read_buf, None)
+}
+
+/// Like [`ws_create_server_stream`] but lets the embedder attach an opaque
+/// lifetime guard that lives as long as the underlying [`ServerWebSocket`]
+/// resource. The embedder can also recover an [`Rc<ServerWebSocket>`] for
+/// the new resource through the returned [`ResourceId`] in order to drive
+/// a server-initiated shutdown later via
+/// [`ServerWebSocket::server_shutdown`].
+pub fn ws_create_server_stream_with_guard(
+  state: &mut OpState,
+  transport: NetworkStream,
+  read_buf: Bytes,
+  lifetime_guard: Option<Box<dyn Any>>,
+) -> ResourceId {
+  let mut ws = WebSocket::after_handshake(
+    WebSocketStream::new(
+      stream::WsStreamKind::Network(transport),
+      Some(read_buf),
+    ),
+    Role::Server,
+  );
+  ws.set_writev(*USE_WRITEV);
+  ws.set_auto_close(true);
+  ws.set_auto_pong(true);
+
+  state
+    .resource_table
+    .add(ServerWebSocket::new_with_guard(ws, lifetime_guard))
+}
+
+fn send_binary(state: &mut OpState, rid: ResourceId, data: &[u8]) {
+  let resource = state.resource_table.get::<ServerWebSocket>(rid).unwrap();
+  let data = data.to_vec();
+  let len = data.len();
+  resource.buffered.set(resource.buffered.get() + len);
+  let lock = resource.reserve_lock();
+  deno_core::unsync::spawn(async move {
+    match resource
+      .write_frame(lock, Frame::new(true, OpCode::Binary, None, data.into()))
+      .await
+    {
+      Err(err) => {
+        resource.set_error(Some(err.to_string()));
+      }
+      _ => {
+        resource.buffered.set(resource.buffered.get() - len);
+      }
+    }
+  });
+}
+
+#[op2]
+pub fn op_ws_send_binary(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  #[anybuffer] data: &[u8],
+) {
+  send_binary(state, rid, data)
+}
+
+#[op2(fast)]
+pub fn op_ws_send_binary_ab(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  #[arraybuffer] data: &[u8],
+) {
+  send_binary(state, rid, data)
+}
+
+#[op2(fast)]
+pub fn op_ws_send_text(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  #[string] data: String,
+) {
+  let resource = state.resource_table.get::<ServerWebSocket>(rid).unwrap();
+  let len = data.len();
+  resource.buffered.set(resource.buffered.get() + len);
+  let lock = resource.reserve_lock();
+  deno_core::unsync::spawn(async move {
+    match resource
+      .write_frame(
+        lock,
+        Frame::new(true, OpCode::Text, None, data.into_bytes().into()),
+      )
+      .await
+    {
+      Err(err) => {
+        resource.set_error(Some(err.to_string()));
+      }
+      _ => {
+        resource.buffered.set(resource.buffered.get() - len);
+      }
+    }
+  });
+}
+
+/// Async version of send. Does not update buffered amount as we rely on the socket itself for backpressure.
+#[op2]
+pub async fn op_ws_send_binary_async(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+  data: Uint8Array,
+) -> Result<(), WebsocketError> {
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<ServerWebSocket>(rid)?;
+  let data = data.0;
+  let lock = resource.reserve_lock();
+  resource
+    .write_frame(
+      lock,
+      Frame::new(true, OpCode::Binary, None, (&*data).into()),
+    )
+    .await
+}
+
+/// Async version of send. Does not update buffered amount as we rely on the socket itself for backpressure.
+#[op2]
+pub async fn op_ws_send_text_async(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+  #[string] data: String,
+) -> Result<(), WebsocketError> {
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<ServerWebSocket>(rid)?;
+  let lock = resource.reserve_lock();
+  resource
+    .write_frame(
+      lock,
+      Frame::new(true, OpCode::Text, None, data.into_bytes().into()),
+    )
+    .await
+}
+
+const EMPTY_PAYLOAD: &[u8] = &[];
+
+#[op2(fast)]
+#[smi]
+pub fn op_ws_get_buffered_amount(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> u32 {
+  state
+    .resource_table
+    .get::<ServerWebSocket>(rid)
+    .unwrap()
+    .buffered
+    .get() as u32
+}
+
+#[op2]
+pub async fn op_ws_send_ping(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Result<(), WebsocketError> {
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<ServerWebSocket>(rid)?;
+  let lock = resource.reserve_lock();
+  resource
+    .write_frame(
+      lock,
+      Frame::new(true, OpCode::Ping, None, EMPTY_PAYLOAD.into()),
+    )
+    .await
+}
+
+#[op2(async(lazy))]
+pub async fn op_ws_close(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+  #[smi] code: Option<u16>,
+  #[string] reason: Option<String>,
+) -> Result<(), WebsocketError> {
+  let Ok(resource) = state
+    .borrow_mut()
+    .resource_table
+    .get::<ServerWebSocket>(rid)
+  else {
+    return Ok(());
+  };
+
+  const EMPTY_PAYLOAD: &[u8] = &[];
+
+  let frame = reason
+    .map(|reason| match code {
+      Some(code) => Frame::close(code, &reason.into_bytes()),
+      _ => Frame::close_raw(reason.into_bytes().into()),
+    })
+    .unwrap_or_else(|| match code {
+      Some(code) => Frame::close(code, EMPTY_PAYLOAD),
+      _ => Frame::close_raw(EMPTY_PAYLOAD.into()),
+    });
+
+  resource.closed.set(true);
+  let lock = resource.reserve_lock();
+  resource.write_frame(lock, frame).await
+}
+
+#[op2]
+pub fn op_ws_get_buffer(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> Option<Uint8Array> {
+  let Ok(resource) = state.resource_table.get::<ServerWebSocket>(rid) else {
+    return None;
+  };
+  resource.buffer.take().map(Uint8Array::from)
+}
+
+#[op2]
+#[string]
+pub fn op_ws_get_buffer_as_string(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> Option<String> {
+  let Ok(resource) = state.resource_table.get::<ServerWebSocket>(rid) else {
+    return None;
+  };
+  resource.string.take()
+}
+
+#[op2]
+#[string]
+pub fn op_ws_get_error(state: &mut OpState, #[smi] rid: ResourceId) -> String {
+  let Ok(resource) = state.resource_table.get::<ServerWebSocket>(rid) else {
+    return "Bad resource".into();
+  };
+  resource.errored.set(false);
+  resource.error.take().unwrap_or_default()
+}
+
+#[op2]
+pub async fn op_ws_next_event(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> u16 {
+  let Ok(resource) = state
+    .borrow_mut()
+    .resource_table
+    .get::<ServerWebSocket>(rid)
+  else {
+    // op_ws_get_error will correctly handle a bad resource
+    return MessageKind::Error as u16;
+  };
+
+  // If there's a pending error, this always returns error
+  if resource.errored.get() {
+    return MessageKind::Error as u16;
+  }
+
+  let mut ws = RcRef::map(&resource, |r| &r.ws_read).borrow_mut().await;
+  let writer = RcRef::map(&resource, |r| &r.ws_write);
+  let mut sender = move |frame| {
+    let writer = writer.clone();
+    async move { writer.borrow_mut().await.write_frame(frame).await }
+  };
+  let cancel = resource.read_cancel.clone();
+  loop {
+    let res = ws.read_frame(&mut sender).or_cancel(&cancel).await;
+    let val = match res {
+      Ok(Ok(val)) => val,
+      Ok(Err(err)) => {
+        // No message was received, socket closed while we waited.
+        // Report closed status to JavaScript.
+        if resource.closed.get() {
+          return MessageKind::ClosedDefault as u16;
+        }
+
+        resource.set_error(Some(err.to_string()));
+        return MessageKind::Error as u16;
+      }
+      Err(_) => {
+        // Read was cancelled by the embedder (e.g. a server-initiated
+        // graceful shutdown). Report ClosedDefault so the JS event loop
+        // tears down this resource without surfacing a spurious error.
+        return MessageKind::ClosedDefault as u16;
+      }
+    };
+
+    break match val.opcode {
+      OpCode::Text => match String::from_utf8(val.payload.to_vec()) {
+        Ok(s) => {
+          resource.string.set(Some(s));
+          MessageKind::Text as u16
+        }
+        Err(_) => {
+          resource.set_error(Some("Invalid string data".into()));
+          MessageKind::Error as u16
+        }
+      },
+      OpCode::Binary => {
+        resource.buffer.set(Some(val.payload.to_vec()));
+        MessageKind::Binary as u16
+      }
+      OpCode::Close => {
+        // Close reason is returned through error
+        if val.payload.len() < 2 {
+          resource.set_error(None);
+          MessageKind::ClosedDefault as u16
+        } else {
+          let close_code = CloseCode::from(u16::from_be_bytes([
+            val.payload[0],
+            val.payload[1],
+          ]));
+          let reason = String::from_utf8(val.payload[2..].to_vec()).ok();
+          resource.set_error(reason);
+          close_code.into()
+        }
+      }
+      OpCode::Pong => MessageKind::Pong as u16,
+      OpCode::Continuation | OpCode::Ping => {
+        continue;
+      }
+    };
+  }
+}
+
+deno_core::extension!(
+  deno_websocket,
+  deps = [deno_web, deno_webidl],
+  ops = [
+    op_ws_check_permission_and_cancel_handle,
+    op_ws_create,
+    op_ws_close,
+    op_ws_next_event,
+    op_ws_get_buffer,
+    op_ws_get_buffer_as_string,
+    op_ws_get_error,
+    op_ws_send_binary,
+    op_ws_send_binary_ab,
+    op_ws_send_text,
+    op_ws_send_binary_async,
+    op_ws_send_text_async,
+    op_ws_send_ping,
+    op_ws_get_buffered_amount,
+  ],
+  lazy_loaded_esm = ["01_websocket.js", "02_websocketstream.js"],
+);
+
+// Needed so hyper can use non Send futures
+#[derive(Clone)]
+struct LocalExecutor;
+
+impl<Fut> hyper::rt::Executor<Fut> for LocalExecutor
+where
+  Fut: Future + 'static,
+  Fut::Output: 'static,
+{
+  fn execute(&self, fut: Fut) {
+    deno_core::unsync::spawn(fut);
+  }
+}
