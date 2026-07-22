@@ -9,7 +9,7 @@ ensuring compatibility.
 ## Adding a new function
 
 Add the symbol name to
-[`cli/napi_sym/symbol_exports.json`](../napi_sym/symbol_exports.json).
+[`cli/napi_sym/symbol_exports.json`](./sym/symbol_exports.json).
 
 ```diff
 {
@@ -27,7 +27,7 @@ Determine where to place the implementation. `napi_get_boolean` is related to JS
 values so we will place it in `js_native_api.rs`. If something is not clear,
 just create a new file module.
 
-See [`napi_sym`](../napi_sym/) for writing the implementation:
+See [`napi_sym`](./sym/) for writing the implementation:
 
 ```rust
 #[napi_sym::napi_sym]
