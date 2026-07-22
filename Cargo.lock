@@ -3198,9 +3198,8 @@ dependencies = [
 
 [[package]]
 name = "deno_panic"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b242278a1badded56ae1ae12696680309988d585e36b1badad337ff4160613e0"
+version = "0.2.1"
+source = "git+https://github.com/denoland/panic?branch=frame-pointer#4ce17fe3cc2dc9557e53013620132e997fdda06b"
 dependencies = [
  "libc",
 ]
