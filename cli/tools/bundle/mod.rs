@@ -25,6 +25,7 @@ use deno_bundle_runtime::BundleFormat;
 use deno_bundle_runtime::BundlePlatform;
 use deno_bundle_runtime::PackageHandling;
 use deno_bundle_runtime::SourceMapType;
+use deno_cache_dir::file_fetcher::File;
 use deno_config::workspace::TsTypeLib;
 use deno_core::anyhow::Context as _;
 use deno_core::error::AnyError;
@@ -209,12 +210,20 @@ pub async fn prepare_inputs(
 pub async fn bundle_init(
   mut flags: Arc<Flags>,
   bundle_flags: &BundleFlags,
+  memory_files: &[File],
 ) -> Result<EsbuildBundler, AnyError> {
   {
     let flags_mut = Arc::make_mut(&mut flags);
     flags_mut.unstable_config.sloppy_imports = true;
   }
   let factory = CliFactory::from_flags(flags.clone());
+
+  // Register any entrypoints that were pre-read into memory (e.g. `/dev/stdin`)
+  // so esbuild's loader doesn't re-read (and drain) the underlying pipe.
+  let file_fetcher = factory.file_fetcher()?;
+  for file in memory_files {
+    file_fetcher.insert_memory_files(file.clone());
+  }
 
   let esbuild_path = ensure_esbuild_downloaded(&factory).await?;
 
@@ -235,7 +244,7 @@ pub async fn bundle_init(
     reason = "fine because only used in output positions"
   )]
   let mut plugin_handler = Arc::new(DenoPluginHandler {
-    file_fetcher: factory.file_fetcher()?.clone(),
+    file_fetcher: file_fetcher.clone(),
     resolver: resolver.clone(),
     module_load_preparer,
     resolved_roots: Arc::new(RwLock::new(Arc::new(IndexSet::new()))),
@@ -314,8 +323,20 @@ pub async fn bundle(
   // `--check[=all]` is documented in `bundle --help`; honour it before we
   // hand the graph to esbuild so type errors surface alongside (and not
   // after) the bundle output (denoland/deno#30159).
+  let mut memory_files = Vec::new();
   if !matches!(flags.type_check_mode, TypeCheckMode::None) {
     let check_factory = CliFactory::from_flags(flags.clone());
+    // Read non-regular entrypoints (e.g. `/dev/stdin`) exactly once and share
+    // the content with both the type-check factory here and the bundle factory
+    // below, so the pipe isn't read twice (denoland/deno#36162).
+    memory_files = read_nonregular_entrypoints(
+      &bundle_flags,
+      check_factory.cli_options()?.initial_cwd(),
+    )?;
+    let file_fetcher = check_factory.file_fetcher()?;
+    for file in &memory_files {
+      file_fetcher.insert_memory_files(file.clone());
+    }
     let main_graph_container =
       check_factory.main_module_graph_container().await?;
     let specifiers = main_graph_container.collect_specifiers(
@@ -334,7 +355,8 @@ pub async fn bundle(
       )
       .await?;
   }
-  let bundler = bundle_init(flags.clone(), &bundle_flags).await?;
+  let bundler =
+    bundle_init(flags.clone(), &bundle_flags, &memory_files).await?;
   let init_cwd = bundler.cwd.clone();
   let start = std::time::Instant::now();
   let response = bundler.build().await?;
@@ -877,7 +899,7 @@ pub async fn bundle_for_compile(
     flags_mut.internal.force_bundle_mode = true;
   }
 
-  let bundler = bundle_init(flags, &bundle_flags).await?;
+  let bundler = bundle_init(flags, &bundle_flags, &[]).await?;
   let response = bundler.build().await?;
 
   handle_esbuild_errors_and_warnings(
@@ -2482,6 +2504,47 @@ fn media_type_to_loader(
   }
 }
 
+/// Read entrypoints that resolve to a non-regular local file (e.g. `/dev/stdin`
+/// when stdin is a pipe) into memory once.
+///
+/// A pipe can be read only once, but `deno bundle --check` would otherwise read
+/// the entrypoint twice — once for the type-check module graph and once for
+/// esbuild — using two independent `CliFactory` instances. The second read hits
+/// EOF and esbuild silently emits nothing (denoland/deno#36162). We read such
+/// entrypoints exactly once here and register the resulting `File`s in every
+/// factory's file fetcher (which consults its in-memory files before touching
+/// the filesystem), so neither path re-reads the drained pipe.
+fn read_nonregular_entrypoints(
+  bundle_flags: &BundleFlags,
+  init_cwd: &Path,
+) -> Result<Vec<File>, AnyError> {
+  let mut files = Vec::new();
+  for entrypoint in &bundle_flags.entrypoints {
+    let url = resolve_url_or_path_absolute(entrypoint, init_cwd)?;
+    if url.scheme() != "file" {
+      continue;
+    }
+    let Ok(path) = url.to_file_path() else {
+      continue;
+    };
+    match std::fs::metadata(&path) {
+      Ok(metadata) if !metadata.is_file() && !metadata.is_dir() => {
+        let source = std::fs::read(&path)
+          .with_context(|| format!("Reading {}", path.display()))?;
+        files.push(File {
+          url,
+          mtime: None,
+          maybe_headers: None,
+          source: source.into(),
+          loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
+        });
+      }
+      _ => {}
+    }
+  }
+  Ok(files)
+}
+
 fn resolve_url_or_path_absolute(
   specifier: &str,
   current_dir: &Path,
@@ -2491,8 +2554,23 @@ fn resolve_url_or_path_absolute(
   } else {
     let path = current_dir.join(specifier);
     let path = deno_path_util::normalize_path(Cow::Owned(path));
-    let path = canonicalize_path(&path)?;
-    Ok(deno_path_util::url_from_file_path(&path)?)
+    match canonicalize_path(&path) {
+      Ok(path) => Ok(deno_path_util::url_from_file_path(&path)?),
+      Err(err) => {
+        // Canonicalizing a non-regular file entrypoint (e.g. `/dev/stdin`
+        // when stdin is a pipe) can fail on some platforms even though the
+        // path exists and can be read: on Linux `realpath` resolves it to a
+        // now-nonexistent `/proc/PID/fd/pipe:[inode]`. In that case fall back
+        // to the uncanonicalized `file:` URL. Genuinely missing paths keep
+        // erroring as before.
+        match std::fs::metadata(&path) {
+          Ok(metadata) if !metadata.is_file() && !metadata.is_dir() => {
+            Ok(deno_path_util::url_from_file_path(&path)?)
+          }
+          _ => Err(err.into()),
+        }
+      }
+    }
   }
 }
 

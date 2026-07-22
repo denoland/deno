@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "tests": {
+    "check_stdin": {
+      "if": "unix",
+      "args": "bundle --check /dev/stdin",
+      "input": "const x = 5;\nconsole.log(x);\n",
+      "output": "stdin.out"
+    },
+    "no_check_stdin": {
+      "if": "unix",
+      "args": "bundle /dev/stdin",
+      "input": "const x = 5;\nconsole.log(x);\n",
+      "output": "stdin.out"
+    }
+  }
+}
