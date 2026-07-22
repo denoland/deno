@@ -2693,7 +2693,27 @@ function setupChannel(
           }
         }
         if (
-          ObjectPrototypeIsPrototypeOf(Deno.errors.Interrupted.prototype, err)
+          ObjectPrototypeIsPrototypeOf(Deno.errors.Interrupted.prototype, err) ||
+          // A send() that races with the child's death tears the pipe down
+          // before the write lands. Node does not surface this to the send
+          // callback (see test-child-process-send-returns-boolean), so once
+          // we've signalled the child via kill() a teardown error is treated
+          // as a benign disconnect -- mirroring readLoop's handling. Writes
+          // racing a plain disconnect() (killed === false) still surface with
+          // syscall:"write" for test-cluster-concurrent-disconnect.
+          (target.killed &&
+            (ObjectPrototypeIsPrototypeOf(
+              Deno.errors.BrokenPipe.prototype,
+              err,
+            ) ||
+              ObjectPrototypeIsPrototypeOf(
+                Deno.errors.ConnectionReset.prototype,
+                err,
+              ) ||
+              ObjectPrototypeIsPrototypeOf(
+                Deno.errors.BadResource.prototype,
+                err,
+              )))
         ) {
           // Channel closed on us mid-write.
         } else {
