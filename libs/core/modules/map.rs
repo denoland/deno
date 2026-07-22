@@ -2952,28 +2952,29 @@ impl ModuleMap {
     module_specifier: &str,
   ) -> Result<v8::Global<v8::Value>, CoreError> {
     // Use existing module if already constructed.
-    {
+    let cached_handle = {
       let data = self.data.borrow();
-      if let Some(id) = data.get_id(module_specifier, RequestedModuleType::None)
-      {
-        let handle = data.get_handle(id).unwrap();
-        let handle_local = v8::Local::new(scope, handle);
-        if handle_local.get_status() == v8::ModuleStatus::Instantiated {
-          let value = handle_local.evaluate(scope).unwrap();
-          if !self.evaluating_top_level.get() {
-            scope.perform_microtask_checkpoint();
-          }
-          let promise = v8::Local::<v8::Promise>::try_from(value).unwrap();
-          let result = promise.result(scope);
-          if !result.is_undefined() {
-            return Err(
-              CoreErrorKind::Js(exception_to_err(scope, result, false, true))
-                .into_box(),
-            );
-          }
+      data
+        .get_id(module_specifier, RequestedModuleType::None)
+        .and_then(|id| data.get_handle(id))
+    };
+    if let Some(handle) = cached_handle {
+      let handle_local = v8::Local::new(scope, handle);
+      if handle_local.get_status() == v8::ModuleStatus::Instantiated {
+        let value = handle_local.evaluate(scope).unwrap();
+        if !self.evaluating_top_level.get() {
+          scope.perform_microtask_checkpoint();
         }
-        return Ok(v8::Global::new(scope, handle_local.get_module_namespace()));
+        let promise = v8::Local::<v8::Promise>::try_from(value).unwrap();
+        let result = promise.result(scope);
+        if !result.is_undefined() {
+          return Err(
+            CoreErrorKind::Js(exception_to_err(scope, result, false, true))
+              .into_box(),
+          );
+        }
       }
+      return Ok(v8::Global::new(scope, handle_local.get_module_namespace()));
     }
 
     let module_id = self.build_synthetic_esm_module(scope, module_specifier)?;
