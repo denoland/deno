@@ -150,6 +150,20 @@ jobs:
           DENO_VERSION=$(./deno -V | cut -d ' ' -f 2 | cut -d '+' -f 1)
           echo "v${DENO_VERSION}" > release-${{github.event.inputs.releaseKind}}-latest.txt
           rm -f ./deno
+      - name: Generate checksums
+        run: |-
+          # Re-stamping (patchver + re-sign) produces binaries that differ
+          # byte-for-byte from the stable/canary artifacts they were promoted
+          # from, so the checksums change too. Regenerate the sidecars here;
+          # otherwise the source release's stale *.sha256sum stays in the
+          # bucket and no longer matches the promoted zip (see #36235).
+          for f in deno-*.zip denort-*.zip; do
+            shasum -a 256 "$f" > "$f.sha256sum"
+            tmp="$(mktemp -d)"
+            unzip -o -q "$f" -d "$tmp"
+            ( cd "$tmp" && shasum -a 256 deno* ) > "${f%.zip}.sha256sum"
+            rm -rf "$tmp"
+          done
       - name: Upload archives to dl.deno.land
         env:
           AWS_ACCESS_KEY_ID: '${{ vars.S3_ACCESS_KEY_ID }}'
@@ -158,11 +172,14 @@ jobs:
           AWS_DEFAULT_REGION: '${{vars.S3_REGION }}'
         run: |-
           VERSION=$(cat release-${{github.event.inputs.releaseKind}}-latest.txt)
-          # Upload only the promoted release archives. `aws s3 sync ./` walked
-          # the whole checkout (submodules included), uploading stray *.zip test
-          # fixtures and tripping over a broken symlink (exit 2).
+          # Upload only the promoted release archives and their freshly
+          # regenerated checksums. `aws s3 sync ./` walked the whole checkout
+          # (submodules included), uploading stray *.zip test fixtures and
+          # tripping over a broken symlink (exit 2).
           for f in deno-*.zip denort-*.zip; do
             aws s3 cp "./$f" "s3://dl-deno-land/release/$VERSION/$f"
+            aws s3 cp "./$f.sha256sum" "s3://dl-deno-land/release/$VERSION/$f.sha256sum"
+            aws s3 cp "./${f%.zip}.sha256sum" "s3://dl-deno-land/release/$VERSION/${f%.zip}.sha256sum"
           done
           aws s3 cp release-${{github.event.inputs.releaseKind}}-latest.txt s3://dl-deno-land/release-${{github.event.inputs.releaseKind}}-latest.txt
 
