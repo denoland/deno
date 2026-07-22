@@ -1098,6 +1098,41 @@ Deno.test("X509Certificate toLegacyObject", function () {
   assert(legacy.issuer !== undefined);
 });
 
+Deno.test("X509Certificate decodes name string types", async function () {
+  const x509 = new X509Certificate(
+    await Deno.readTextFile(
+      new URL("../testdata/x509-name-string-types.pem", import.meta.url),
+    ),
+  );
+
+  assertEquals(x509.subject, "C=US\nCN=BMP Testé");
+  assertEquals(x509.issuer, "C=US\nCN=T61 Testé");
+  assertEquals(x509.toLegacyObject().subject, {
+    C: "US",
+    CN: "BMP Testé",
+  });
+  assertEquals(x509.toLegacyObject().issuer, {
+    C: "US",
+    CN: "T61 Testé",
+  });
+
+  const utf8 = new X509Certificate(pemBuffer);
+  assertEquals(
+    utf8.subject,
+    "C=US\nST=CA\nL=SF\nO=Joyent\nOU=Node.js\nCN=agent1\n" +
+      "emailAddress=ry@tinyclouds.org",
+  );
+  assertEquals(utf8.toLegacyObject().subject, {
+    C: "US",
+    ST: "CA",
+    L: "SF",
+    O: "Joyent",
+    OU: "Node.js",
+    CN: "agent1",
+    emailAddress: "ry@tinyclouds.org",
+  });
+});
+
 // https://github.com/denoland/deno/issues/27972
 Deno.test("curve25519 generate valid private jwk", function () {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519", {
