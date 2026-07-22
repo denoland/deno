@@ -3972,6 +3972,7 @@
     "parallel/test-warn-tls-wrap-deprecation.js": {},
     "parallel/test-wasm.mjs": {},
     "parallel/test-weakref.js": {},
+    "parallel/test-web-locks.js": {},
     "parallel/test-webcrypto-cryptokey-workers.js": {},
     "parallel/test-webcrypto-derivebits-argon2.js": {},
     "parallel/test-webcrypto-derivebits.js": {},
