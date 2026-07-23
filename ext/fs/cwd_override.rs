@@ -48,7 +48,9 @@ impl CwdOverrideGuard {
       current_dir()?.join(path)
     };
     #[allow(clippy::disallowed_methods)]
-    let absolute = std::fs::canonicalize(&absolute).unwrap_or(absolute);
+    let absolute = deno_path_util::strip_unc_prefix(
+      std::fs::canonicalize(&absolute).unwrap_or(absolute),
+    );
     if !absolute.is_dir() {
       return Err(io::Error::new(
         io::ErrorKind::NotADirectory,
@@ -102,7 +104,9 @@ pub fn set_current_dir(path: impl AsRef<Path>) -> io::Result<()> {
     current_dir()?.join(path)
   };
   #[allow(clippy::disallowed_methods)]
-  let absolute = std::fs::canonicalize(&absolute).unwrap_or(absolute);
+  let absolute = deno_path_util::strip_unc_prefix(
+    std::fs::canonicalize(&absolute).unwrap_or(absolute),
+  );
   if !absolute.is_dir() {
     return Err(io::Error::new(
       io::ErrorKind::NotADirectory,
@@ -152,12 +156,16 @@ mod tests {
     path
   }
 
+  fn canonicalize(path: impl AsRef<Path>) -> PathBuf {
+    deno_path_util::strip_unc_prefix(std::fs::canonicalize(path).unwrap())
+  }
+
   #[test]
   fn override_does_not_mutate_process_cwd() {
     let _lock = LOCK.lock().unwrap();
     let previous = std::env::current_dir().unwrap();
     let temp = temp_subdir("primary");
-    let temp = std::fs::canonicalize(&temp).unwrap();
+    let temp = canonicalize(&temp);
 
     {
       let _guard = CwdOverrideGuard::new(&temp).unwrap();
@@ -174,8 +182,8 @@ mod tests {
   fn set_current_dir_updates_override_only() {
     let _lock = LOCK.lock().unwrap();
     let previous = std::env::current_dir().unwrap();
-    let first = std::fs::canonicalize(temp_subdir("first")).unwrap();
-    let second = std::fs::canonicalize(temp_subdir("second")).unwrap();
+    let first = canonicalize(temp_subdir("first"));
+    let second = canonicalize(temp_subdir("second"));
 
     {
       let _guard = CwdOverrideGuard::new(&first).unwrap();
@@ -193,8 +201,8 @@ mod tests {
   fn nested_override_restores_previous_override() {
     let _lock = LOCK.lock().unwrap();
     let previous = std::env::current_dir().unwrap();
-    let first = std::fs::canonicalize(temp_subdir("outer")).unwrap();
-    let second = std::fs::canonicalize(temp_subdir("inner")).unwrap();
+    let first = canonicalize(temp_subdir("outer"));
+    let second = canonicalize(temp_subdir("inner"));
 
     {
       let _outer = CwdOverrideGuard::new(&first).unwrap();
@@ -217,7 +225,7 @@ mod tests {
   #[test]
   fn relative_real_fs_writes_use_override() {
     let _lock = LOCK.lock().unwrap();
-    let temp = std::fs::canonicalize(temp_subdir("relative-write")).unwrap();
+    let temp = canonicalize(temp_subdir("relative-write"));
     let path =
       CheckedPath::unsafe_new(Cow::Borrowed(Path::new("relative.txt")));
 
@@ -244,7 +252,7 @@ mod tests {
   #[test]
   fn empty_real_fs_path_does_not_resolve_to_override() {
     let _lock = LOCK.lock().unwrap();
-    let temp = std::fs::canonicalize(temp_subdir("empty-path")).unwrap();
+    let temp = canonicalize(temp_subdir("empty-path"));
     let path = CheckedPath::unsafe_new(Cow::Borrowed(Path::new("")));
 
     {
@@ -259,7 +267,7 @@ mod tests {
   #[test]
   fn empty_cwd_path_remains_invalid() {
     let _lock = LOCK.lock().unwrap();
-    let temp = std::fs::canonicalize(temp_subdir("empty-cwd")).unwrap();
+    let temp = canonicalize(temp_subdir("empty-cwd"));
 
     let Err(error) = CwdOverrideGuard::new("") else {
       panic!("empty cwd override should fail");
