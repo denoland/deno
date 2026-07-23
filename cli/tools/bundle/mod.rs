@@ -2519,9 +2519,18 @@ fn read_nonregular_entrypoints(
   init_cwd: &Path,
 ) -> Result<Vec<File>, AnyError> {
   let mut files = Vec::new();
+  // The same entrypoint may be passed more than once (duplicate CLI args are
+  // valid — they collapse to one bundle). Reading a non-regular entrypoint more
+  // than once would drain the pipe/FIFO a second time (EOF overwrites the first
+  // source, or a symlink-to-FIFO blocks forever on the second open), so track
+  // resolved URLs and read each distinct one only once.
+  let mut seen = std::collections::HashSet::new();
   for entrypoint in &bundle_flags.entrypoints {
     let url = resolve_url_or_path_absolute(entrypoint, init_cwd)?;
     if url.scheme() != "file" {
+      continue;
+    }
+    if !seen.insert(url.clone()) {
       continue;
     }
     let Ok(path) = url.to_file_path() else {
