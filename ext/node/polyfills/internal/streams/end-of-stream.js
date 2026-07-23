@@ -337,6 +337,9 @@ function eosWeb(stream, options, callback) {
     resolverFn,
     resolverFn,
   );
+  // Deno diverges from upstream, which returns `nop`, to honor the returned
+  // cleanup function contract.
+  // https://github.com/nodejs/node/pull/46205
   return cleanup;
 }
 

@@ -99,6 +99,19 @@ Deno.test("finished cleanup removes web stream abort listener", async () => {
 });
 
 Deno.test("finished promise cleanup works for web streams", async () => {
+  let abortListener: EventListener | undefined;
+  let removeCount = 0;
+  const signal = {
+    aborted: false,
+    reason: undefined,
+    addEventListener(_type: string, listener: EventListener) {
+      abortListener = listener;
+    },
+    removeEventListener(_type: string, listener: EventListener) {
+      assertEquals(listener, abortListener);
+      removeCount++;
+    },
+  } as unknown as AbortSignal;
   let streamController!: ReadableStreamDefaultController;
   const stream = new ReadableStream({
     start(controller) {
@@ -107,11 +120,12 @@ Deno.test("finished promise cleanup works for web streams", async () => {
   });
   const completion = finished(
     stream as unknown as NodeJS.ReadableStream,
-    { cleanup: true, signal: new AbortController().signal },
+    { cleanup: true, signal },
   );
 
   streamController.close();
   await completion;
+  assertEquals(removeCount, 1);
 });
 
 // https://github.com/denoland/deno/issues/28905
