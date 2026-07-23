@@ -37,7 +37,7 @@ pub struct RealFs;
 #[async_trait::async_trait(?Send)]
 impl FileSystem for RealFs {
   fn cwd(&self) -> FsResult<PathBuf> {
-    std::env::current_dir().map_err(Into::into)
+    crate::cwd_override::current_dir().map_err(Into::into)
   }
 
   fn tmp_dir(&self) -> FsResult<PathBuf> {
@@ -45,7 +45,7 @@ impl FileSystem for RealFs {
   }
 
   fn chdir(&self, path: &CheckedPath) -> FsResult<()> {
-    std::env::set_current_dir(path).map_err(Into::into)
+    crate::cwd_override::set_current_dir(path).map_err(Into::into)
   }
 
   #[cfg(windows)]

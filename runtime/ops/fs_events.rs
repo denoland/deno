@@ -471,11 +471,7 @@ fn normalize_watch_path(path: PathBuf) -> PathBuf {
   if path.is_absolute() {
     return deno_path_util::normalize_path(Cow::Owned(path)).into_owned();
   }
-  #[allow(
-    clippy::disallowed_methods,
-    reason = "fs watcher needs the real cwd to absolutize the watch path"
-  )]
-  let cwd = std::env::current_dir();
+  let cwd = deno_fs::override_aware_current_dir();
   match cwd {
     Ok(cwd) => {
       deno_path_util::normalize_path(Cow::Owned(cwd.join(&path))).into_owned()
@@ -656,6 +652,9 @@ async fn op_fs_events_poll(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use deno_fs::CwdOverrideGuard;
+  use std::fs;
+  use std::time::SystemTime;
 
   fn notify_event(kind: EventKind) -> NotifyEvent {
     NotifyEvent {
@@ -702,5 +701,26 @@ mod tests {
       }
       kind => panic!("expected Io error, got {kind:?}"),
     }
+  }
+
+  #[test]
+  fn normalizes_relative_watch_path_against_cwd_override() {
+    let host_cwd = std::env::current_dir().unwrap();
+    let unique = SystemTime::now()
+      .duration_since(SystemTime::UNIX_EPOCH)
+      .unwrap()
+      .as_nanos();
+    let override_cwd =
+      std::env::temp_dir().join(format!("deno-watch-cwd-{unique}"));
+    fs::create_dir_all(&override_cwd).unwrap();
+    let override_cwd = override_cwd.canonicalize().unwrap();
+    let _guard = CwdOverrideGuard::new(&override_cwd).unwrap();
+
+    assert_eq!(
+      normalize_watch_path(PathBuf::from("watched/../file.txt")),
+      override_cwd.join("file.txt")
+    );
+    assert_eq!(std::env::current_dir().unwrap(), host_cwd);
+    fs::remove_dir_all(override_cwd).unwrap();
   }
 }
