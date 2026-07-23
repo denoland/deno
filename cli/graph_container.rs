@@ -94,6 +94,7 @@ impl MainModuleGraphContainer {
           permissions: self.root_permissions.clone(),
           ext_overwrite: options.ext_overwrite,
           allow_unknown_media_types: options.allow_unknown_media_types,
+          allow_sloppy_imports_hints_for_unreferenced_roots: true,
           skip_graph_roots_validation: false,
           file_content_overrides: Default::default(),
           file_header_overrides: Default::default(),

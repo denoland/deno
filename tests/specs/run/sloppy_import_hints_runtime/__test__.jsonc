@@ -12,10 +12,18 @@
       "args": "run --no-prompt source/literal.ts",
       "output": "extension suggestion\ndirectory suggestion\n"
     },
+    "prepared_literal_dynamic_lazy": {
+      "args": "run --no-prompt --unstable-lazy-dynamic-imports source/literal.ts",
+      "output": "extension suggestion\ndirectory suggestion\n"
+    },
     "root": {
       "args": "run computed_target.js",
       "output": "root.out",
       "exitCode": 1
+    },
+    "worker_root": {
+      "args": "run --no-prompt --allow-read=./worker_target.js worker.ts",
+      "output": "worker.out"
     }
   }
 }

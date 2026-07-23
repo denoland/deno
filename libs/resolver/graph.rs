@@ -725,9 +725,11 @@ pub fn enhance_graph_error(
     ModuleGraphError::ModuleError(error) => {
       enhanced_integrity_error_message(error)
         .or_else(|| {
-          allow_sloppy_imports_hints
-            .then(|| enhanced_sloppy_imports_error_message(sys, error))
-            .flatten()
+          if allow_sloppy_imports_hints {
+            enhanced_sloppy_imports_error_message(sys, error)
+          } else {
+            None
+          }
         })
         .or_else(|| enhanced_unsupported_import_attribute(error))
         .unwrap_or_else(|| format_deno_graph_error(error))

@@ -166,6 +166,13 @@ pub struct GraphWalkErrorsOptions<'a> {
   pub collect_bare_importable_pkg_names: &'a dyn Fn() -> Vec<String>,
 }
 
+#[derive(Clone, Copy)]
+pub struct GraphRootsValidOptions {
+  pub allow_unknown_media_types: bool,
+  pub allow_unknown_jsr_exports: bool,
+  pub allow_sloppy_imports_hints_for_unreferenced_roots: bool,
+}
+
 /// Walks the errors found in the module graph that should be surfaced to users
 /// and enhances them with CLI information.
 pub fn graph_walk_errors<'a>(
@@ -240,14 +247,17 @@ pub fn graph_walk_errors<'a>(
       {
         return None;
       }
-      let allow_sloppy_imports_hints = options
-        .allow_sloppy_imports_hints_for_unreferenced_roots
-        || !is_root
-        || matches!(
+      // Roots with no referrer are gated by the flag; everything else always
+      // gets sloppy-import hints.
+      let is_unreferenced_root = is_root
+        && !matches!(
           &error,
           ModuleGraphError::ModuleError(error)
             if error.maybe_referrer().is_some()
         );
+      let allow_sloppy_imports_hints = options
+        .allow_sloppy_imports_hints_for_unreferenced_roots
+        || !is_unreferenced_root;
       let enhanced = enhance_graph_error(
         sys,
         error,
@@ -1227,9 +1237,11 @@ impl ModuleGraphBuilder {
     self.graph_roots_valid(
       graph,
       &graph.roots.iter().cloned().collect::<Vec<_>>(),
-      false,
-      false,
-      true,
+      GraphRootsValidOptions {
+        allow_unknown_media_types: false,
+        allow_unknown_jsr_exports: false,
+        allow_sloppy_imports_hints_for_unreferenced_roots: true,
+      },
     )
   }
 
@@ -1237,9 +1249,7 @@ impl ModuleGraphBuilder {
     &self,
     graph: &ModuleGraph,
     roots: &[ModuleSpecifier],
-    allow_unknown_media_types: bool,
-    allow_unknown_jsr_exports: bool,
-    allow_sloppy_imports_hints_for_unreferenced_roots: bool,
+    options: GraphRootsValidOptions,
   ) -> Result<(), JsErrorBox> {
     let will_type_check = self.cli_options.type_check_mode().is_true();
     let collect_bare_importable_pkg_names = || {
@@ -1265,9 +1275,10 @@ impl ModuleGraphBuilder {
           self.compiler_options_resolver.as_ref(),
         ),
         exit_integrity_errors: true,
-        allow_unknown_media_types,
-        allow_unknown_jsr_exports,
-        allow_sloppy_imports_hints_for_unreferenced_roots,
+        allow_unknown_media_types: options.allow_unknown_media_types,
+        allow_unknown_jsr_exports: options.allow_unknown_jsr_exports,
+        allow_sloppy_imports_hints_for_unreferenced_roots: options
+          .allow_sloppy_imports_hints_for_unreferenced_roots,
         collect_bare_importable_pkg_names: &collect_bare_importable_pkg_names,
       },
     )
