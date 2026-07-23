@@ -3230,6 +3230,7 @@ dependencies = [
  "deno_unsync",
  "dunce",
  "fqdn",
+ "glob",
  "ipnet",
  "libc",
  "log",

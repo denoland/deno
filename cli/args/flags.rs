@@ -5139,10 +5139,10 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
   <g>-P, --permission-set[=<<NAME>]</>            Loads the permission set from the config file.
   <g>--no-prompt</>                               Always throw if required permission wasn't passed.
                                              <p(245)>Can also be set via the DENO_NO_PROMPT environment variable.</>
-  <g>-R, --allow-read[=<<PATH>...]</>             Allow file system read access. Optionally specify allowed paths.
-                                             <p(245)>--allow-read  |  --allow-read="/etc,/var/log.txt"</>
-  <g>-W, --allow-write[=<<PATH>...]</>            Allow file system write access. Optionally specify allowed paths.
-                                             <p(245)>--allow-write  |  --allow-write="/etc,/var/log.txt"</>
+  <g>-R, --allow-read[=<<PATH>...]</>             Allow file system read access. Optionally specify allowed paths. Glob patterns (with <p(245)>*</>, <p(245)>**</> or <p(245)>?</>) restrict access to matching files.
+                                             <p(245)>--allow-read  |  --allow-read="/etc,/var/log.txt"  |  --allow-read="/data/**/*.json"</>
+  <g>-W, --allow-write[=<<PATH>...]</>            Allow file system write access. Optionally specify allowed paths. Glob patterns (with <p(245)>*</>, <p(245)>**</> or <p(245)>?</>) restrict access to matching files.
+                                             <p(245)>--allow-write  |  --allow-write="/etc,/var/log.txt"  |  --allow-write="/tmp/*.log"</>
   <g>-I, --allow-import[=<<IP_OR_HOSTNAME>...]</> Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary.
                                             Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,raw.esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,gist.githubusercontent.com:443</>
                                              <p(245)>--allow-import  |  --allow-import="example.com,github.com"</>

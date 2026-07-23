@@ -1441,6 +1441,11 @@ impl<'a> PathQueryDescriptor<'a> {
   }
 
   pub fn starts_with(&self, base: &PathDescriptor) -> bool {
+    // When the list entry is a glob pattern, it grants exactly the paths it
+    // matches rather than a whole subtree by prefix.
+    if let Some(pattern) = &base.pattern {
+      return pattern.matches(&self.path);
+    }
     self.cmp_path.starts_with(&base.cmp_path)
   }
 
@@ -1457,6 +1462,8 @@ impl<'a> PathQueryDescriptor<'a> {
       cmp_path: self.cmp_path.clone(),
       requested: self.requested.clone(),
       is_windows_device_path: self.is_windows_device_path,
+      // A query is always a concrete path, never a glob.
+      pattern: None,
     }
   }
 
@@ -1466,6 +1473,8 @@ impl<'a> PathQueryDescriptor<'a> {
       cmp_path: self.cmp_path,
       requested: self.requested,
       is_windows_device_path: self.is_windows_device_path,
+      // A query is always a concrete path, never a glob.
+      pattern: None,
     }
   }
 
@@ -1543,20 +1552,174 @@ impl QueryDescriptor for ReadQueryDescriptor<'_> {
   }
 }
 
+/// Whether a read/write list entry should be parsed as a glob pattern rather
+/// than a literal path. True when it contains a `*` or `?` glob character.
+///
+/// `[`/`]` are deliberately *not* treated as glob characters, so paths such as
+/// `pages/[id].ts` keep matching literally (mirrors `deno_config`'s globs).
+fn is_glob_pattern_entry(entry: &str) -> bool {
+  entry.chars().any(|c| matches!(c, '*' | '?'))
+}
+
+/// Escape `[`/`]` in a glob pattern so they are matched literally. We don't
+/// support character classes in permission entries (a path like `[id].ts`
+/// should keep working), and `glob::Pattern` would otherwise interpret them.
+///
+/// This is a single pass so the two escapes can't interfere: a naive
+/// `.replace('[', "[[]").replace(']', "[]]")` corrupts the `]` introduced by
+/// the first replacement. (`deno_config` gets away with the naive form only
+/// because its brackets always land in the literal base it strips before
+/// matching, never in the glob itself.)
+fn escape_glob_brackets(pattern: &str) -> String {
+  let mut out = String::with_capacity(pattern.len());
+  for c in pattern.chars() {
+    match c {
+      '[' => out.push_str("[[]"),
+      ']' => out.push_str("[]]"),
+      _ => out.push(c),
+    }
+  }
+  out
+}
+
+/// Split a normalized (forward-slash) glob pattern into its literal directory
+/// prefix (everything before the first segment containing a glob character) and
+/// the remaining pattern. The prefix anchors the entry in the specificity
+/// ordering used by the permission list.
+fn split_glob_base(pattern: &str) -> PathBuf {
+  let mut base_parts = Vec::new();
+  for part in pattern.split('/') {
+    if is_glob_pattern_entry(part) {
+      break;
+    }
+    base_parts.push(part);
+  }
+  PathBuf::from(base_parts.join(std::path::MAIN_SEPARATOR_STR))
+}
+
+/// Match options used when testing a concrete path against a permission glob.
+fn glob_match_options() -> glob::MatchOptions {
+  glob::MatchOptions {
+    // Mirror the permission system's path comparison: case-sensitive on Linux,
+    // case-insensitive on Windows and macOS (see `comparison_path`).
+    case_sensitive: cfg!(not(any(windows, target_os = "macos"))),
+    // `*` stays within a path segment; `**` is required to cross directories.
+    require_literal_separator: true,
+    // `*` matches dotfiles too, so `--allow-read=/dir/*` grants everything in
+    // the directory as users expect.
+    require_literal_leading_dot: false,
+  }
+}
+
+/// A glob pattern entry in a read/write allow/deny list, e.g.
+/// `/home/user/*.ts` or `/data/**/*.json`.
+///
+/// Unlike a literal path entry (which grants a whole subtree by prefix), a glob
+/// only grants the concrete paths it matches. It is anchored in the list's
+/// specificity ordering by its literal `base_path` (the directory prefix before
+/// the first glob character).
+///
+/// Equality, hashing and ordering are based on the canonical (normalized,
+/// absolute) textual form of the pattern.
+#[derive(Clone)]
+pub struct PathPattern {
+  pattern: glob::Pattern,
+  /// Literal absolute directory prefix before the first glob character, used to
+  /// anchor the entry in the specificity ordering (stored as the descriptor's
+  /// `cmp_path`).
+  base_path: PathBuf,
+  /// Canonical (normalized, absolute) textual form, used for display, equality,
+  /// hashing and ordering.
+  canonical: String,
+}
+
+impl PathPattern {
+  /// Parse a list entry such as `/data/**/*.ts` (or a relative `src/*.ts`,
+  /// resolved against `cwd`) into a glob pattern.
+  fn parse(entry: &str, cwd: &Path) -> Result<Self, PathResolveError> {
+    if let Some(stripped) = entry.strip_prefix('!') {
+      // Negated globs aren't supported: the deny list is the way to exclude
+      // paths. Reject rather than silently treat `!` as a literal.
+      let _ = stripped;
+      return Err(PathResolveError::GlobPattern {
+        pattern: entry.to_string(),
+        message:
+          "negated glob patterns ('!') are not supported; use --deny-* instead"
+            .to_string(),
+      });
+    }
+
+    let joined = if Path::new(entry).is_absolute() {
+      Cow::Borrowed(Path::new(entry))
+    } else {
+      Cow::Owned(cwd.join(entry))
+    };
+    // Resolve `.`/`..` lexically; glob segments (`*`, `**`) are ordinary
+    // components and are preserved.
+    let normalized = normalize_path(joined);
+    let pattern_text = normalized.to_string_lossy().replace('\\', "/");
+    let escaped = escape_glob_brackets(&pattern_text);
+    let pattern = glob::Pattern::new(&escaped).map_err(|source| {
+      PathResolveError::GlobPattern {
+        pattern: entry.to_string(),
+        message: source.to_string(),
+      }
+    })?;
+    let base_path = split_glob_base(&pattern_text);
+    Ok(PathPattern {
+      pattern,
+      base_path,
+      canonical: pattern_text,
+    })
+  }
+
+  /// Test whether a concrete absolute path matches this pattern.
+  fn matches(&self, path: &Path) -> bool {
+    self.pattern.matches_path_with(path, glob_match_options())
+  }
+}
+
+impl PartialEq for PathPattern {
+  fn eq(&self, other: &Self) -> bool {
+    self.canonical == other.canonical
+  }
+}
+
+impl Eq for PathPattern {}
+
+impl Hash for PathPattern {
+  fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    self.canonical.hash(state);
+  }
+}
+
+impl fmt::Debug for PathPattern {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.debug_tuple("PathPattern").field(&self.canonical).finish()
+  }
+}
+
 #[derive(Clone, Debug)]
 pub struct PathDescriptor {
   path: PathBuf,
   /// Lowercased on Windows for case-insensitive comparison; same as `path` on
-  /// other platforms. Used by PartialEq, Hash, starts_with, cmp_*.
+  /// other platforms. Used by PartialEq, Hash, starts_with, cmp_*. For a glob
+  /// entry this is the pattern's literal `base_path`, which anchors it in the
+  /// specificity ordering.
   cmp_path: PathBuf,
   /// Custom requested display name when differs from resolved.
   requested: Option<String>,
   is_windows_device_path: bool,
+  /// `Some` when this entry is a glob pattern (only ever set for allow/deny
+  /// list entries, never for a concrete query). Boxed to keep the common
+  /// literal-path descriptor small.
+  pattern: Option<Box<PathPattern>>,
 }
 
 impl PartialEq for PathDescriptor {
   fn eq(&self, other: &Self) -> bool {
     self.cmp_path == other.cmp_path
+      && self.pattern.as_deref() == other.pattern.as_deref()
   }
 }
 
@@ -1565,6 +1728,7 @@ impl Eq for PathDescriptor {}
 impl Hash for PathDescriptor {
   fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
     self.cmp_path.hash(state);
+    self.pattern.as_deref().hash(state);
   }
 }
 
@@ -1574,6 +1738,39 @@ impl PathDescriptor {
     path: Cow<'_, Path>,
   ) -> Result<Self, PathResolveError> {
     PathQueryDescriptor::new(sys, path).map(|p| p.into_descriptor())
+  }
+
+  /// Parse a read/write list entry that may be a glob pattern (contains `*` or
+  /// `?`). Entries without glob characters are parsed as literal paths exactly
+  /// as before.
+  pub fn new_maybe_glob(
+    sys: &impl sys_traits::EnvCurrentDir,
+    text: &str,
+  ) -> Result<Self, PathResolveError> {
+    if is_glob_pattern_entry(text) {
+      let cwd = sys
+        .env_current_dir()
+        .map_err(PathResolveError::CwdResolve)?;
+      Self::from_glob(text, &cwd)
+    } else {
+      Self::new(sys, Cow::Borrowed(Path::new(text)))
+    }
+  }
+
+  /// Build a glob-pattern descriptor from a list entry, resolving a relative
+  /// pattern against `cwd`. The descriptor is anchored on the pattern's literal
+  /// `base_path` for ordering purposes.
+  pub fn from_glob(entry: &str, cwd: &Path) -> Result<Self, PathResolveError> {
+    let pattern = PathPattern::parse(entry, cwd)?;
+    let base_path = pattern.base_path.clone();
+    let cmp_path = comparison_path(&base_path);
+    Ok(Self {
+      path: base_path,
+      cmp_path,
+      requested: None,
+      is_windows_device_path: false,
+      pattern: Some(Box::new(pattern)),
+    })
   }
 
   pub fn new_known_cwd(path: Cow<'_, Path>, cwd: &Path) -> Self {
@@ -1600,6 +1797,7 @@ impl PathDescriptor {
       cmp_path,
       requested: display,
       is_windows_device_path,
+      pattern: None,
     }
   }
 
@@ -1608,10 +1806,19 @@ impl PathDescriptor {
   }
 
   pub fn starts_with(&self, base: &PathQueryDescriptor) -> bool {
+    // A glob entry has no prefix/subtree relationship to a concrete path, so it
+    // never yields the "partial" (ancestor-of-a-denied-path) states that the
+    // literal-path model relies on. Treat it as non-partial.
+    if self.pattern.is_some() {
+      return false;
+    }
     self.cmp_path.starts_with(&base.cmp_path)
   }
 
   pub fn display_name(&self) -> Cow<'_, str> {
+    if let Some(pattern) = &self.pattern {
+      return Cow::Borrowed(pattern.canonical.as_str());
+    }
     match &self.requested {
       Some(requested) => Cow::Borrowed(requested.as_str()),
       None => self.path.to_string_lossy(),
@@ -1643,9 +1850,17 @@ impl PathDescriptor {
     self.path
   }
 
+  /// Pattern key used to break ordering ties between entries that share the
+  /// same `cmp_path`. A literal path (`None`) sorts before a glob (`Some`) with
+  /// the same base, and two distinct globs are ordered by their canonical text
+  /// so they aren't collapsed into one entry.
+  fn pattern_key(&self) -> Option<&str> {
+    self.pattern.as_deref().map(|p| p.canonical.as_str())
+  }
+
   fn cmp_allow_allow(&self, other: &PathDescriptor) -> Ordering {
     if self.cmp_path == other.cmp_path {
-      Ordering::Equal
+      self.pattern_key().cmp(&other.pattern_key())
     } else if other.cmp_path.starts_with(&self.cmp_path) {
       Ordering::Greater
     } else if self.cmp_path.starts_with(&other.cmp_path) {
@@ -2563,6 +2778,9 @@ pub enum PathResolveError {
   #[class(generic)]
   #[error("Empty path is not allowed")]
   EmptyPath,
+  #[class(generic)]
+  #[error("invalid glob pattern '{pattern}': {message}")]
+  GlobPattern { pattern: String, message: String },
 }
 
 impl PathResolveError {
@@ -2571,14 +2789,16 @@ impl PathResolveError {
       Self::CwdResolve(e) | Self::Canonicalize(e) | Self::NotFound(e) => {
         e.kind()
       }
-      Self::EmptyPath => std::io::ErrorKind::InvalidData,
+      Self::EmptyPath | Self::GlobPattern { .. } => {
+        std::io::ErrorKind::InvalidData
+      }
     }
   }
 
   pub fn into_io_error(self) -> std::io::Error {
     match self {
       Self::CwdResolve(e) | Self::Canonicalize(e) | Self::NotFound(e) => e,
-      PathResolveError::EmptyPath => {
+      PathResolveError::EmptyPath | PathResolveError::GlobPattern { .. } => {
         std::io::Error::new(self.kind(), format!("{}", self))
       }
     }
@@ -5596,6 +5816,24 @@ mod tests {
         cmp_path,
         requested: None,
         is_windows_device_path: false,
+        pattern: None,
+      }
+    }
+
+    /// Like [`join_path_with_root`], but parses glob entries (for read/write).
+    fn join_path_or_glob_with_root(
+      &self,
+      path: &str,
+    ) -> Result<PathDescriptor, PathResolveError> {
+      if is_glob_pattern_entry(path) {
+        let root = if path.starts_with("C:\\") {
+          PathBuf::from("C:\\")
+        } else {
+          PathBuf::from("/")
+        };
+        PathDescriptor::from_glob(path, &root)
+      } else {
+        Ok(self.join_path_with_root(path))
       }
     }
   }
@@ -5605,14 +5843,14 @@ mod tests {
       &self,
       text: &str,
     ) -> Result<ReadDescriptor, PathResolveError> {
-      Ok(ReadDescriptor(self.join_path_with_root(text)))
+      Ok(ReadDescriptor(self.join_path_or_glob_with_root(text)?))
     }
 
     fn parse_write_descriptor(
       &self,
       text: &str,
     ) -> Result<WriteDescriptor, PathResolveError> {
-      Ok(WriteDescriptor(self.join_path_with_root(text)))
+      Ok(WriteDescriptor(self.join_path_or_glob_with_root(text)?))
     }
 
     fn parse_net_descriptor(
@@ -5775,6 +6013,97 @@ mod tests {
         is_ok
       );
     }
+  }
+
+  #[test]
+  fn test_check_read_write_glob() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(svec![
+          // single-segment wildcard: only direct children ending in .ts
+          "/project/src/*.ts",
+          // recursive wildcard across directories
+          "/project/data/**/*.json",
+          // brackets are matched literally, not as character classes
+          "/project/[id]/*.ts",
+          // a plain literal path entry kept working alongside globs
+          "/project/literal"
+        ]),
+        // a glob in the deny list blocks matching paths...
+        deny_read: Some(svec!["/project/src/secret*.ts"]),
+        allow_write: Some(svec!["/project/out/*.log"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let perms = PermissionsContainer::new(Arc::new(parser), perms);
+
+    let read = |p: &str| {
+      perms
+        .check_open(
+          Cow::Borrowed(Path::new(p)),
+          OpenAccessKind::Read,
+          Some("api"),
+        )
+        .is_ok()
+    };
+    let write = |p: &str| {
+      perms
+        .check_open(
+          Cow::Borrowed(Path::new(p)),
+          OpenAccessKind::Write,
+          Some("api"),
+        )
+        .is_ok()
+    };
+
+    // `*.ts` matches direct children only, not nested dirs or other extensions.
+    assert!(read("/project/src/main.ts"));
+    assert!(!read("/project/src/main.js"));
+    assert!(!read("/project/src/nested/main.ts"));
+    // Deny glob wins over the allow glob for matching files.
+    assert!(!read("/project/src/secret.ts"));
+    assert!(!read("/project/src/secret_key.ts"));
+    // `**` crosses directories.
+    assert!(read("/project/data/a.json"));
+    assert!(read("/project/data/nested/deep/b.json"));
+    assert!(!read("/project/data/nested/b.txt"));
+    // Brackets in a glob entry match literally, not as a character class.
+    assert!(read("/project/[id]/main.ts"));
+    assert!(!read("/project/i/main.ts"));
+    // A literal entry still grants its whole subtree by prefix.
+    assert!(read("/project/literal"));
+    assert!(read("/project/literal/child/file.txt"));
+    // Paths outside every entry are denied.
+    assert!(!read("/project/other/x.ts"));
+    // Write globs are independent of read globs.
+    assert!(write("/project/out/run.log"));
+    assert!(!write("/project/out/run.txt"));
+    assert!(!write("/project/src/main.ts"));
+  }
+
+  #[test]
+  fn test_read_write_descriptor_glob_parse() {
+    let parser = TestPermissionDescriptorParser;
+    // Glob entries parse and are typed as patterns; the display form is the
+    // canonical (normalized, absolute) pattern text.
+    let d = parser.parse_read_descriptor("/a/b/*.ts").unwrap();
+    assert!(d.0.pattern.is_some());
+    assert_eq!(d.0.display_name(), "/a/b/*.ts");
+    // Entries without glob characters stay literal.
+    let d = parser.parse_read_descriptor("/a/b/c.ts").unwrap();
+    assert!(d.0.pattern.is_none());
+    // `.`/`..` are normalized inside a glob entry.
+    let d = parser.parse_write_descriptor("/a/./x/../*.log").unwrap();
+    assert_eq!(d.0.display_name(), "/a/*.log");
+    // Negated patterns are rejected.
+    assert!(parser.parse_read_descriptor("!/a/*.ts").is_err());
+    // Brackets are matched literally, not as character classes.
+    let d = parser.parse_read_descriptor("/pages/[id]/*.ts").unwrap();
+    assert!(d.0.pattern.is_some());
   }
 
   #[test]

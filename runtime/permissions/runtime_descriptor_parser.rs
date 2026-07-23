@@ -65,18 +65,18 @@ impl<TSys: RuntimePermissionDescriptorParserSys + std::fmt::Debug>
     &self,
     text: &str,
   ) -> Result<ReadDescriptor, PathResolveError> {
-    Ok(ReadDescriptor(
-      self.parse_path_descriptor(Cow::Borrowed(Path::new(text)))?,
-    ))
+    Ok(ReadDescriptor(PathDescriptor::new_maybe_glob(
+      &self.sys, text,
+    )?))
   }
 
   fn parse_write_descriptor(
     &self,
     text: &str,
   ) -> Result<WriteDescriptor, PathResolveError> {
-    Ok(WriteDescriptor(
-      self.parse_path_descriptor(Cow::Borrowed(Path::new(text)))?,
-    ))
+    Ok(WriteDescriptor(PathDescriptor::new_maybe_glob(
+      &self.sys, text,
+    )?))
   }
 
   fn parse_net_descriptor(
@@ -198,5 +198,16 @@ mod test {
     );
     assert!(parser.parse_net_query("").is_err());
     assert!(parser.parse_run_query("").is_err());
+  }
+
+  #[test]
+  fn parse_read_write_glob_descriptor() {
+    let parser =
+      RuntimePermissionDescriptorParser::new(sys_traits::impls::RealSys);
+    // Absolute glob entries parse as patterns.
+    assert!(parser.parse_read_descriptor("/a/b/*.ts").is_ok());
+    assert!(parser.parse_write_descriptor("/a/**/*.log").is_ok());
+    // Negated patterns are rejected.
+    assert!(parser.parse_read_descriptor("!/a/*.ts").is_err());
   }
 }
