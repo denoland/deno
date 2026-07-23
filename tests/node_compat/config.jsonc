@@ -5210,11 +5210,7 @@
       "darwin": false,
       "reason": "process.initgroups is not a function"
     },
-    "parallel/test-process-setgroups.js": {
-      "linux": false,
-      "darwin": false,
-      "reason": "process.setgroups is not a function"
-    },
+    "parallel/test-process-setgroups.js": {},
     "parallel/test-process-uid-gid.js": {
       "linux": false,
       "darwin": false,

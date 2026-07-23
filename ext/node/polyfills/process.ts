@@ -29,6 +29,7 @@ import {
   op_node_process_setegid,
   op_node_process_seteuid,
   op_node_process_setgid,
+  op_node_process_setgroups,
   op_node_process_setuid,
   op_process_abort,
   op_stream_base_register_state,
@@ -629,7 +630,15 @@ export function kill(pid: number, sig: string | number = "SIGTERM") {
   return true;
 }
 
-let getgid, getuid, getegid, geteuid, setegid, seteuid, setgid, setuid;
+let getgid,
+  getuid,
+  getegid,
+  geteuid,
+  setegid,
+  seteuid,
+  setgid,
+  setgroups,
+  setuid;
 
 function wrapIdSetter(
   syscall: string,
@@ -662,6 +671,33 @@ if (!isWindows) {
     seteuid = wrapIdSetter("seteuid", op_node_process_seteuid);
     setgid = wrapIdSetter("setgid", op_node_process_setgid);
     setuid = wrapIdSetter("setuid", op_node_process_setuid);
+
+    // https://nodejs.org/api/process.html#processsetgroupsgroups
+    setgroups = (groups: (number | string)[]): void => {
+      if (!ArrayIsArray(groups)) {
+        throw new ERR_INVALID_ARG_TYPE("groups", "Array", groups);
+      }
+      // Validate elements here, not in the op, so errors match Node: an
+      // out-of-range number must throw ERR_OUT_OF_RANGE instead of wrapping
+      // to a garbage gid.
+      for (let i = 0; i < groups.length; i++) {
+        const id = groups[i];
+        if (typeof id === "number") {
+          validateUint32(id, `groups[${i}]`);
+        } else if (typeof id !== "string") {
+          throw new ERR_INVALID_ARG_TYPE(
+            `groups[${i}]`,
+            ["number", "string"],
+            id,
+          );
+        }
+      }
+      try {
+        op_node_process_setgroups(groups);
+      } catch (err) {
+        throw denoErrorToNodeError(err as Error, { syscall: "setgroups" });
+      }
+    };
   }
 }
 
@@ -674,6 +710,7 @@ export {
   setegid,
   seteuid,
   setgid,
+  setgroups,
   setuid,
 };
 
@@ -1477,6 +1514,9 @@ process.setgid = setgid;
 /** This method is removed on Windows */
 process.setuid = setuid;
 
+/** This method is removed on Windows */
+process.setgroups = setgroups;
+
 // `getBuiltinModule` is also a named export of node:process (Node 22+).
 // Resolve node:module lazily so node:process stays out of the eager snapshot.
 export function getBuiltinModule(id) {
@@ -1604,6 +1644,7 @@ if (isWindows) {
   delete process.getegid;
   delete process.geteuid;
   delete process.getgroups;
+  delete process.setgroups;
 }
 
 ObjectDefineProperty(process, SymbolToStringTag, {

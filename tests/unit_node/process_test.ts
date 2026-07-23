@@ -21,6 +21,7 @@ import process, {
   setegid,
   seteuid,
   setgid,
+  setgroups,
   setuid,
 } from "node:process";
 
@@ -1818,6 +1819,99 @@ Deno.test({
   ignore: Deno.build.os !== "windows" && Deno.build.os !== "android",
   fn() {
     assertEquals(process.setuid, undefined);
+  },
+});
+
+// Regression tests for https://github.com/denoland/deno/issues/35073
+Deno.test({
+  name: "process.setgroups is a function on supported platforms",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  fn() {
+    // setgroups must exist and be a function (non-root can't call it, but
+    // the API must be present and importable as a named export)
+    assert(typeof process.setgroups === "function");
+    assert(typeof setgroups === "function");
+    assert(setgroups === process.setgroups);
+  },
+});
+
+Deno.test({
+  name: "process.setgroups should be undefined on unsupported platforms",
+  ignore: Deno.build.os !== "windows" && Deno.build.os !== "android",
+  fn() {
+    assertEquals(process.setgroups, undefined);
+    assertEquals(setgroups, undefined);
+  },
+});
+
+Deno.test({
+  name: "process.setgroups validates its argument like Node",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  fn() {
+    // Non-array argument -> ERR_INVALID_ARG_TYPE (Array).
+    const nonArray = assertThrows(
+      () =>
+        process.setgroups!("not-an-array" as unknown as (number | string)[]),
+      TypeError,
+    ) as Error & { code?: string };
+    assertEquals(nonArray.code, "ERR_INVALID_ARG_TYPE");
+
+    // Out-of-range numeric gid -> ERR_OUT_OF_RANGE (must not wrap around).
+    const outOfRange = assertThrows(
+      () => process.setgroups!([1, -1]),
+      RangeError,
+    ) as Error & { code?: string };
+    assertEquals(outOfRange.code, "ERR_OUT_OF_RANGE");
+
+    // Invalid element type -> ERR_INVALID_ARG_TYPE with the element index.
+    const invalidElements: unknown[] = [
+      undefined,
+      null,
+      true,
+      {},
+      [],
+      () => {},
+    ];
+    for (const val of invalidElements) {
+      const badElem = assertThrows(
+        () => process.setgroups!([val] as (number | string)[]),
+        TypeError,
+        'The "groups[0]" argument must be one of type number or string',
+      ) as Error & { code?: string };
+      assertEquals(badElem.code, "ERR_INVALID_ARG_TYPE");
+    }
+  },
+});
+
+Deno.test({
+  name: "process.setgroups is denied without --allow-sys=setgroups",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  permissions: { sys: [] },
+  fn() {
+    // With no --allow-sys the op's permission check must fail before any
+    // syscall. `[0]` is a valid argument, so a NotCapable error here proves
+    // the permission is actually enforced (not just that the export exists).
+    assertThrows(
+      () => process.setgroups!([0]),
+      Deno.errors.NotCapable,
+    );
+  },
+});
+
+Deno.test({
+  name: "process.setgroups is allowed with --allow-sys=setgroups",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  permissions: { sys: ["setgroups"] },
+  fn() {
+    // With the permission granted the call gets past the permission check and
+    // into group resolution: an unknown group name surfaces as
+    // ERR_UNKNOWN_CREDENTIAL (a resolution error), not NotCapable. This proves
+    // the grant is honored without needing root to complete the syscall.
+    const err = assertThrows(
+      () => process.setgroups!(["deno-nonexistent-group-name-xyz"]),
+    ) as Error & { code?: string };
+    assert(!(err instanceof Deno.errors.NotCapable));
+    assertEquals(err.code, "ERR_UNKNOWN_CREDENTIAL");
   },
 });
 
