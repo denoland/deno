@@ -1,4 +1,8 @@
 {
+  // NOTE: `all` and `local` currently produce identical output because the only
+  // difference was the package's own index.d.ts errors (TS2506), which
+  // skipLibCheck:true suppresses for both. The --all/local distinction returns
+  // once skipLibCheck flips to false. https://github.com/denoland/deno/issues/36094
   "tests": {
     "all": {
       "args": "check --all main.ts",

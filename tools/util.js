@@ -19,11 +19,6 @@ export { delay } from "@std/async/delay";
 export { parse as parseJSONC } from "@std/jsonc/parse";
 import { createHash } from "node:crypto";
 
-// [toolName] --version output
-const versions = {
-  "dlint": "dlint 0.73.0",
-};
-
 const compressed = new Set(["ld64.lld", "rcodesign"]);
 
 export const ROOT_PATH = dirname(dirname(fromFileUrl(import.meta.url)));
@@ -274,10 +269,6 @@ export async function getPrebuilt(toolName) {
   const toolPath = getPrebuiltToolPath(toolName);
   try {
     await sanityCheckPrebuiltFile(toolPath);
-    const versionOk = await verifyVersion(toolName, toolPath);
-    if (!versionOk) {
-      throw new Error("Version mismatch");
-    }
   } catch {
     await downloadPrebuilt(toolName);
   }
@@ -289,6 +280,36 @@ const PREBUILT_PATH = join(ROOT_PATH, "third_party", "prebuilt");
 const PREBUILT_TOOL_DIR = join(PREBUILT_PATH, platformDirName);
 const PREBUILT_MINIMUM_SIZE = 16 * 1024;
 const DOWNLOAD_TASKS = {};
+const MAX_PREBUILT_DOWNLOAD_RETRY_DELAY_MS = 60_000;
+
+function isTransientDownloadStatus(status) {
+  return status === 408 || status === 429 || status >= 500;
+}
+
+async function fetchPrebuilt(url, headers) {
+  let retryDelayMs = 1_000;
+  for (;;) {
+    try {
+      const response = await fetch(url, { headers });
+      if (response.ok || !isTransientDownloadStatus(response.status)) {
+        return response;
+      }
+      response.body?.cancel();
+      console.error(
+        `Prebuilt download returned ${response.status}; retrying in ${retryDelayMs}ms`,
+      );
+    } catch (error) {
+      console.error(
+        `Prebuilt download failed: ${error.message}; retrying in ${retryDelayMs}ms`,
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+    retryDelayMs = Math.min(
+      retryDelayMs * 2,
+      MAX_PREBUILT_DOWNLOAD_RETRY_DELAY_MS,
+    );
+  }
+}
 
 export function getPrebuiltToolPath(toolName) {
   return join(PREBUILT_TOOL_DIR, toolName + executableSuffix);
@@ -322,7 +343,7 @@ export async function downloadPrebuilt(toolName) {
       headers.append("authorization", `Bearer ${Deno.env.get("GITHUB_TOKEN")}`);
     }
 
-    const resp = await fetch(url, { headers });
+    const resp = await fetchPrebuilt(url, headers);
     if (!resp.ok) {
       throw new Error(`Non-successful response from ${url}: ${resp.status}`);
     }
@@ -342,11 +363,6 @@ export async function downloadPrebuilt(toolName) {
     }
     console.error("Checking prebuilt tool:", toolName);
     await sanityCheckPrebuiltFile(tempFile);
-    if (!await verifyVersion(toolName, tempFile)) {
-      throw new Error(
-        "Didn't get the correct version of the tool after downloading.",
-      );
-    }
     console.error("Successfully downloaded:", toolName);
     try {
       // necessary on Windows it seems
@@ -361,27 +377,6 @@ export async function downloadPrebuilt(toolName) {
   }
 
   downloadDeferred.resolve(null);
-}
-
-export async function verifyVersion(toolName, toolPath) {
-  const requiredVersion = versions[toolName];
-  if (!requiredVersion) {
-    return true;
-  }
-
-  try {
-    const cmd = new Deno.Command(toolPath, {
-      args: ["--version"],
-      stdout: "piped",
-      stderr: "inherit",
-    });
-    const output = await cmd.output();
-    const version = new TextDecoder().decode(output.stdout).trim();
-    return version == requiredVersion;
-  } catch (e) {
-    console.error(e);
-    return false;
-  }
 }
 
 /// INPUT HASHING

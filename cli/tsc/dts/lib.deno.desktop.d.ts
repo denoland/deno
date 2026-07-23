@@ -257,34 +257,89 @@ declare namespace Deno {
   export interface AutoUpdateOptions {
     /** Base URL of the release server hosting `latest.json` and patch
      * files. Defaults to `desktop.release.baseUrl` from `deno.json` when
-     * configured; required otherwise. */
+     * configured; required otherwise.
+     *
+     * Must be an `https:` URL — non-HTTPS URLs are refused. */
     url?: string;
     /** Poll interval in milliseconds. If omitted, only a single check is
-     * performed ~1s after the call. */
+     * performed ~1s after the call; pass an interval to keep checking for
+     * the lifetime of the process. */
     interval?: number;
-    /** Called once an update has been downloaded and staged for the next
-     * launch. */
+    /** Base64-encoded 32-byte Ed25519 public key used to verify the
+     * release manifest.
+     *
+     * When set, `latest.json` must carry a top-level `signature` (base64
+     * Ed25519 signature) over a `signed` field holding the manifest JSON
+     * as a string. The signature is verified before any patch is fetched,
+     * and only the contents of the verified `signed` payload are trusted.
+     * A manifest that is unsigned or fails verification is rejected.
+     *
+     * Strongly recommended for production: without it, update integrity
+     * rests solely on TLS and the per-patch SHA-256 in the manifest. */
+    publicKey?: string;
+    /** Called once an update has been downloaded, verified, and staged for
+     * the next launch. Receives the version string being staged. */
     onUpdateReady?: (version: string) => void;
     /** Called if the previous launch's update failed to start and was
-     * rolled back. */
+     * automatically rolled back to the prior version. Receives a
+     * human-readable reason. */
     onRollback?: (reason: string) => void;
   }
 
-  /** Start polling a release server for binary-diff updates.
+  /** Start checking a release server for over-the-air updates.
    *
-   * The manifest at `<url>/latest.json` is fetched and compared against
-   * {@linkcode Deno.desktopVersion}. If a newer version is available and
-   * a patch from the current version exists, the patch is downloaded and
-   * staged for the next launch, and `onUpdateReady` is invoked.
+   * Updates are delivered as binary diffs against the app's native
+   * library, so only the bytes that changed between versions are
+   * downloaded. On each check, the manifest at `<url>/latest.json` is
+   * fetched and its `version` compared against {@linkcode
+   * Deno.desktopVersion}:
    *
-   * If the previous launch's update failed and was rolled back,
-   * `onRollback` is invoked shortly after this call.
+   * - If `publicKey` is set, the manifest signature is verified first and
+   *   an unsigned or invalid manifest is rejected.
+   * - If the manifest advertises a newer version and lists a patch from
+   *   the currently running version (under `patches[<currentVersion>]`,
+   *   as `{ name, sha256 }`), that patch is downloaded, checked against
+   *   its declared SHA-256, applied, and staged for the next launch.
+   * - `onUpdateReady` is then invoked. The new version takes effect the
+   *   next time the app starts.
    *
-   * Only available in apps compiled with `deno desktop`.
+   * The staged update is swapped in atomically on the next launch, with
+   * the previous version kept as a backup. If the updated app fails to
+   * start, it is automatically rolled back to the backup and `onRollback`
+   * is invoked shortly after the next `autoUpdate` call.
    *
    * The release server URL may be passed directly, supplied via
    * {@linkcode AutoUpdateOptions.url}, or configured once in `deno.json`
-   * under `desktop.release.baseUrl` (in which case it can be omitted). */
+   * under `desktop.release.baseUrl` (in which case it can be omitted).
+   * A single check runs ~1s after the call; pass `interval` to keep
+   * polling.
+   *
+   * Because updates rewrite the app's own library file in place, they only
+   * apply where the running process can write to its installed files. This
+   * works for self-contained, user-writable installs (a `.app` bundle or a
+   * loose binary in the user's home directory, a writable AppImage next to
+   * its data). It does **not** work for read-only or system-owned installs
+   * — an AppImage mounted read-only, or an app installed under `/usr` from
+   * an `rpm`/`deb` package owned by `root`. In those cases the write fails,
+   * the failure is logged, and the update is skipped; distribute updates
+   * through the system package manager instead.
+   *
+   * Only available in apps compiled with `deno desktop`.
+   *
+   * ```ts
+   * Deno.autoUpdate({
+   *   url: "https://releases.example.com/myapp",
+   *   interval: 60 * 60 * 1000, // hourly
+   *   publicKey: "b64EncodedEd25519PublicKey==",
+   *   onUpdateReady(version) {
+   *     console.log(`v${version} staged; restart to apply`);
+   *   },
+   *   onRollback(reason) {
+   *     console.warn(`update rolled back: ${reason}`);
+   *   },
+   * });
+   * ```
+   */
   export function autoUpdate(url: string): void;
   export function autoUpdate(options?: AutoUpdateOptions): void;
 
@@ -359,39 +414,80 @@ declare namespace Deno {
     | BrowserWindowValue[]
     | Uint8Array;
 
-  /** The value a {@linkcode BrowserWindow.bind} handler may resolve with.
-   *
-   * Handler results are serialized to JSON before crossing into the
-   * webview, so this is intentionally more permissive than
-   * {@linkcode BrowserWindowValue}: `undefined` (and optional) properties
-   * are dropped during serialization, and nested objects need not be typed
-   * as {@linkcode BrowserWindowValue}. This lets handlers return ordinary
-   * discriminated unions and `Record<string, unknown>` shapes without
-   * casting. */
-  type BrowserWindowReturn =
+  /** The leaf types that survive the trip across the webview boundary. */
+  type BrowserWindowLeaf =
     | null
     | undefined
+    | void
     | boolean
     | number
     | string
-    | Uint8Array
-    | readonly BrowserWindowReturn[]
-    | { readonly [key: string]: unknown };
+    | Uint8Array;
 
+  /** Maps `T` to itself if every value it can hold survives the trip across
+   * the webview boundary, and to `never` at the first member that does not.
+   * `T` is serializable when `[T] extends [BrowserWindowSerializable<T>]`.
+   *
+   * This is a structural walk rather than a plain union because TypeScript
+   * never gives an `interface` an implicit index signature: a union arm of
+   * `{ [key: string]: unknown }` would reject every user-declared interface,
+   * including `Deno.FileInfo`. Recursing through properties instead accepts
+   * interfaces, and rejects the values that silently serialize to `{}` —
+   * `Date`, `Map`, `Set`, class instances with methods, and functions.
+   *
+   * `unknown extends T` holds only for `unknown` and `any`. Both are let
+   * through: nothing can be proven about them, and rejecting them would
+   * break `Record<string, unknown>` payloads.
+   *
+   * `undefined` (and optional) properties are dropped during serialization,
+   * and a handler that returns nothing resolves as `null` in the webview. */
+  type BrowserWindowSerializable<T> = unknown extends T ? T
+    : T extends BrowserWindowLeaf ? T
+    : T extends (...args: any[]) => any ? never
+    : T extends readonly (infer U)[] ? readonly BrowserWindowSerializable<U>[]
+    : T extends object ? { [K in keyof T]: BrowserWindowSerializable<T[K]> }
+    : never;
+
+  /** The default bindings type: any set of async handlers.
+   *
+   * Handler parameters are `any[]` because the webview may call a binding
+   * with arbitrary arguments — nothing checks them at runtime. Supply an
+   * explicit type argument to {@linkcode BrowserWindow} to have the
+   * arguments of {@linkcode BrowserWindow.bind} handlers checked and
+   * inferred. Handler return values are checked either way. */
   export type WindowBindings = Record<
     string,
-    (
-      this: BrowserWindow,
-      ...args: BrowserWindowValue[]
-    ) => Promise<BrowserWindowReturn>
+    (this: BrowserWindow, ...args: any[]) => Promise<unknown>
   >;
 
-  /** Constrains T to a record of async binding functions. */
+  /** Intersected with a handler's own type to reject non-serializable return
+   * values at the call site of {@linkcode BrowserWindow.bind}.
+   *
+   * The check lives here, in parameter position, rather than as an
+   * `R extends BrowserWindowSerializable<R>` type-parameter constraint,
+   * because a type parameter constrained by a conditional type over itself
+   * is circular (TS2313). Intersecting the string makes the mismatch print
+   * the reason. */
+  type BrowserWindowSerializableCheck<F> = F extends
+    (...args: any[]) => Promise<infer P>
+    ? [P] extends [BrowserWindowSerializable<P>] ? unknown
+    : "binding handler must resolve with a serializable value"
+    : unknown;
+
+  /** Constrains T to a record of async binding functions taking and
+   * resolving with serializable values.
+   *
+   * Each handler is validated and then passed through unchanged, so that
+   * {@linkcode BrowserWindow.bind} keeps the caller's own parameter types.
+   * Replacing `T[K]` with a common supertype here would instead force every
+   * handler's parameters to be checked contravariantly against that
+   * supertype, rejecting any handler that narrows them. */
   type ValidBindings<T> = {
-    [K in keyof T]: (
-      this: BrowserWindow,
-      ...args: BrowserWindowValue[]
-    ) => Promise<BrowserWindowReturn>;
+    [K in keyof T]: T[K] extends (...args: infer A) => Promise<infer P>
+      ? [A, P] extends
+        [BrowserWindowSerializable<A>, BrowserWindowSerializable<P>] ? T[K]
+      : never
+      : never;
   };
 
   export type MenuItem =
@@ -468,7 +564,16 @@ declare namespace Deno {
 
     readonly windowId: number;
 
-    bind<N extends keyof T>(name: N, fn: T[N]): void;
+    /** Expose `fn` to the webview under `name`.
+     *
+     * The resolved value must be serializable; see
+     * {@linkcode BrowserWindowSerializable}. This is checked even when `T` is
+     * left to its default, so returning e.g. a `Date` is a type error rather
+     * than an empty object at runtime. */
+    bind<N extends keyof T, F extends T[N]>(
+      name: N,
+      fn: F & BrowserWindowSerializableCheck<F>,
+    ): void;
     unbind<N extends keyof T>(name: N): void;
     /** @throws {BrowserWindowValue} */
     executeJs(script: string): Promise<BrowserWindowValue>;

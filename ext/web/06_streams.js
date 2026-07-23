@@ -63,6 +63,7 @@ const {
   PromiseResolve,
   PromiseWithResolvers,
   RangeError,
+  ReflectApply,
   ReflectHas,
   SafeFinalizationRegistry,
   SafePromiseAll,
@@ -396,7 +397,7 @@ function canTransferArrayBuffer(O) {
 function getArrayBufferByteLength(O) {
   if (isSharedArrayBuffer(O)) {
     // TODO(petamoriken): use primordials
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     return O.byteLength;
   } else {
     return ArrayBufferPrototypeGetByteLength(O);
@@ -1767,7 +1768,7 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
   const transferredBuffer = ArrayBufferPrototypeTransferToFixedLength(buffer);
   if (controller[_pendingPullIntos].size !== 0) {
     const firstPendingPullInto = controller[_pendingPullIntos].peek();
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     if (isDetachedBuffer(firstPendingPullInto.buffer)) {
       throw new TypeError(
         "The BYOB request's buffer has been detached and so cannot be filled with an enqueued chunk",
@@ -1775,7 +1776,7 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
     }
     readableByteStreamControllerInvalidateBYOBRequest(controller);
     firstPendingPullInto.buffer = ArrayBufferPrototypeTransferToFixedLength(
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       firstPendingPullInto.buffer,
     );
     if (firstPendingPullInto.readerType === "none") {
@@ -1870,7 +1871,7 @@ function readableByteStreamControllerEnqueueClonedChunkToQueue(
       );
     } else {
       // TODO(lucacasonato): add SharedArrayBuffer to primordials
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       cloneResult = buffer.slice(byteOffset, byteOffset + byteLength);
     }
   } catch (e) {
@@ -1897,9 +1898,9 @@ function readableByteStreamControllerEnqueueDetachedPullIntoToQueue(
   if (pullIntoDescriptor.bytesFilled > 0) {
     readableByteStreamControllerEnqueueClonedChunkToQueue(
       controller,
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       pullIntoDescriptor.buffer,
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       pullIntoDescriptor.byteOffset,
       pullIntoDescriptor.bytesFilled,
     );
@@ -1918,11 +1919,11 @@ function readableByteStreamControllerGetBYOBRequest(controller) {
   ) {
     const firstDescriptor = controller[_pendingPullIntos].peek();
     const view = new Uint8Array(
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       firstDescriptor.buffer,
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       firstDescriptor.byteOffset + firstDescriptor.bytesFilled,
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       firstDescriptor.byteLength - firstDescriptor.bytesFilled,
     );
     const byobRequest = new ReadableStreamBYOBRequest(_brand);
@@ -2501,9 +2502,9 @@ function readableByteStreamControllerPullInto(
   }
   if (stream[_state] === "closed") {
     const emptyView = new ctor(
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       pullIntoDescriptor.buffer,
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       pullIntoDescriptor.byteOffset,
       0,
     );
@@ -2562,14 +2563,14 @@ function readableByteStreamControllerRespond(controller, bytesWritten) {
     }
     if (
       (firstDescriptor.bytesFilled + bytesWritten) >
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         firstDescriptor.byteLength
     ) {
       throw new RangeError('"bytesWritten" out of range');
     }
   }
   firstDescriptor.buffer = ArrayBufferPrototypeTransferToFixedLength(
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     firstDescriptor.buffer,
   );
   readableByteStreamControllerRespondInternal(controller, bytesWritten);
@@ -2588,7 +2589,7 @@ function readableByteStreamControllerRespondInReadableState(
 ) {
   assert(
     (pullIntoDescriptor.bytesFilled + bytesWritten) <=
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       pullIntoDescriptor.byteLength,
   );
   readableByteStreamControllerFillHeadPullIntoDescriptor(
@@ -2613,12 +2614,12 @@ function readableByteStreamControllerRespondInReadableState(
   const remainderSize = pullIntoDescriptor.bytesFilled %
     pullIntoDescriptor.elementSize;
   if (remainderSize > 0) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     const end = pullIntoDescriptor.byteOffset +
       pullIntoDescriptor.bytesFilled;
     readableByteStreamControllerEnqueueClonedChunkToQueue(
       controller,
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       pullIntoDescriptor.buffer,
       end - remainderSize,
       remainderSize,
@@ -2644,7 +2645,7 @@ function readableByteStreamControllerRespondInternal(
   bytesWritten,
 ) {
   const firstDescriptor = controller[_pendingPullIntos].peek();
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   assert(canTransferArrayBuffer(firstDescriptor.buffer));
   readableByteStreamControllerInvalidateBYOBRequest(controller);
   const state = controller[_stream][_state];
@@ -2771,7 +2772,7 @@ function readableByteStreamControllerRespondWithNewView(controller, view) {
       );
     }
   }
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   if (firstDescriptor.byteOffset + firstDescriptor.bytesFilled !== byteOffset) {
     throw new RangeError(
       "The region specified by view does not match byobRequest",
@@ -2782,7 +2783,7 @@ function readableByteStreamControllerRespondWithNewView(controller, view) {
       "The buffer of view has different capacity than byobRequest",
     );
   }
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   if (firstDescriptor.bytesFilled + byteLength > firstDescriptor.byteLength) {
     throw new RangeError(
       "The region specified by view is larger than byobRequest",
@@ -2812,7 +2813,7 @@ function readableByteStreamControllerFillPullIntoDescriptorFromQueue(
 ) {
   const maxBytesToCopy = MathMin(
     controller[_queueTotalSize],
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     pullIntoDescriptor.byteLength - pullIntoDescriptor.bytesFilled,
   );
   const maxBytesFilled = pullIntoDescriptor.bytesFilled + maxBytesToCopy;
@@ -2831,29 +2832,29 @@ function readableByteStreamControllerFillPullIntoDescriptorFromQueue(
     const headOfQueue = queue.peek();
     const bytesToCopy = MathMin(
       totalBytesToCopyRemaining,
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       headOfQueue.byteLength,
     );
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     const destStart = pullIntoDescriptor.byteOffset +
       pullIntoDescriptor.bytesFilled;
 
     const destBuffer = new Uint8Array(
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       pullIntoDescriptor.buffer,
       destStart,
       bytesToCopy,
     );
     const srcBuffer = new Uint8Array(
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       headOfQueue.buffer,
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       headOfQueue.byteOffset,
       bytesToCopy,
     );
     destBuffer.set(srcBuffer);
 
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     if (headOfQueue.byteLength === bytesToCopy) {
       queue.dequeue();
     } else {
@@ -2887,15 +2888,15 @@ function readableByteStreamControllerFillReadRequestFromQueue(
 ) {
   assert(controller[_queueTotalSize] > 0);
   const entry = controller[_queue].dequeue();
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   controller[_queueTotalSize] -= entry.byteLength;
   readableByteStreamControllerHandleQueueDrain(controller);
   const view = new Uint8Array(
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     entry.buffer,
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     entry.byteOffset,
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     entry.byteLength,
   );
   readRequest.chunkSteps(view);
@@ -2929,16 +2930,16 @@ function readableByteStreamControllerConvertPullIntoDescriptor(
 ) {
   const bytesFilled = pullIntoDescriptor.bytesFilled;
   const elementSize = pullIntoDescriptor.elementSize;
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   assert(bytesFilled <= pullIntoDescriptor.byteLength);
   assert((bytesFilled % elementSize) === 0);
   const buffer = ArrayBufferPrototypeTransferToFixedLength(
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     pullIntoDescriptor.buffer,
   );
   return new pullIntoDescriptor.viewConstructor(
     buffer,
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     pullIntoDescriptor.byteOffset,
     bytesFilled / elementSize,
   );
@@ -3317,104 +3318,106 @@ function readableStreamPipeTo(
     signal[add](abortAlgorithm);
   }
 
-  function pipeLoop() {
-    return new Promise((resolveLoop, rejectLoop) => {
-      /** @param {boolean} done */
-      function next(done) {
-        if (done) {
-          resolveLoop();
-        } else {
-          uponPromise(pipeStep(), next, rejectLoop);
-        }
+  // Persistent pump. Instead of allocating a `new Promise`, a read-request
+  // object with three closures, and an `uponPromise` chain per chunk, a single
+  // hoisted read request is re-armed in a constant-depth loop: a synchronously
+  // delivered chunk sets `syncAdvance` and the `do/while` re-arms without
+  // growing the stack (like `readableStreamCollectIntoUint8Array`), while an
+  // asynchronous delivery re-enters `pump` from `chunkSteps`. The writer-ready
+  // microtask hop is skipped whenever the writable has no backpressure (checked
+  // synchronously via `dest[_backpressure]`), so a fast sink drains at close to
+  // the raw `reader.read()` loop's rate. The identity-transform bypass from
+  // #35799 is preserved as a per-chunk branch the pump composes with.
+  const noopHandler = () => {};
+  let pumping = false;
+  let syncAdvance = false;
+
+  /** @param {any} chunk */
+  function writeChunk(chunk) {
+    if (bypassActive) {
+      try {
+        transformStreamDefaultControllerEnqueue(bypassTS[_controller], chunk);
+        return;
+      } catch {
+        // The transform errored or its readable side can no longer accept
+        // chunks; the generic write below observes the same condition through
+        // the writable's state and shuts the pipe down with the right error.
+        bypassActive = false;
       }
-      next(false);
-    });
+    }
+    // Track only the last write. A single shared rejection handler
+    // (setPromiseIsHandledToTrue) keeps the write promise from surfacing as
+    // unhandled without a per-chunk closure; the pipe surfaces write errors
+    // through the writer's closed promise, and shutdown awaits the last write
+    // via waitForWritesToFinish.
+    currentWrite = writableStreamDefaultWriterWrite(writer, chunk);
+    setPromiseIsHandledToTrue(currentWrite);
   }
 
-  /** @returns {Promise<boolean>} */
-  function pipeStep() {
-    if (shuttingDown === true) {
-      return PromiseResolve(true);
-    }
-
-    if (bypassActive) {
-      const readableController = bypassTS[_readable][_controller];
-      if (
-        dest[_state] === "writable" &&
-        writableStreamCloseQueuedOrInFlight(dest) === false &&
-        readableStreamDefaultControllerCanCloseOrEnqueue(readableController)
-      ) {
-        if (bypassTS[_backpressure] === true) {
-          // Pace on the transform's own backpressure flag, exactly like
-          // the generic sink write algorithm does: it is set by the
-          // enqueue below when the readable's desired size is exhausted
-          // and cleared (resolving this promise) by the next
-          // readable-side pull.
-          return transformPromiseWith(
-            bypassTS[_backpressureChangePromise].promise,
-            pipeStep,
-          );
-        }
-        return new Promise((resolveRead, rejectRead) => {
-          readableStreamDefaultReaderRead(
-            reader,
-            {
-              chunkSteps(chunk) {
-                if (bypassActive) {
-                  try {
-                    transformStreamDefaultControllerEnqueue(
-                      bypassTS[_controller],
-                      chunk,
-                    );
-                    resolveRead(false);
-                    return;
-                  } catch {
-                    // The transform errored or its readable side can no
-                    // longer accept chunks; the generic write below
-                    // observes the same condition through the writable's
-                    // state and shuts the pipe down with the right error.
-                    bypassActive = false;
-                  }
-                }
-                currentWrite = transformPromiseWith(
-                  writableStreamDefaultWriterWrite(writer, chunk),
-                  undefined,
-                  () => {},
-                );
-                resolveRead(false);
-              },
-              closeSteps() {
-                resolveRead(true);
-              },
-              errorSteps: rejectRead,
-            },
-          );
-        });
+  /** @type {ReadRequest} */
+  const readRequest = {
+    chunkSteps(chunk) {
+      writeChunk(chunk);
+      if (pumping) {
+        syncAdvance = true;
+      } else {
+        pump();
       }
-      bypassActive = false;
-    }
+    },
+    // Source close/error is finalized by the isOrBecomes{Closed,Errored}
+    // handlers installed below; the pump simply stops re-arming.
+    closeSteps: noopHandler,
+    errorSteps: noopHandler,
+  };
 
-    return transformPromiseWith(writer[_readyPromise].promise, () => {
-      return new Promise((resolveRead, rejectRead) => {
-        readableStreamDefaultReaderRead(
-          reader,
-          {
-            chunkSteps(chunk) {
-              currentWrite = transformPromiseWith(
-                writableStreamDefaultWriterWrite(writer, chunk),
-                undefined,
-                () => {},
-              );
-              resolveRead(false);
-            },
-            closeSteps() {
-              resolveRead(true);
-            },
-            errorSteps: rejectRead,
-          },
-        );
-      });
-    });
+  function pump() {
+    pumping = true;
+    do {
+      syncAdvance = false;
+      if (shuttingDown === true) {
+        break;
+      }
+
+      // Recompute identity-bypass eligibility each iteration; any state change
+      // on either side permanently disables the route (a later chunk then
+      // takes the generic writer path, surfacing the proper rejection).
+      if (bypassActive) {
+        const readableController = bypassTS[_readable][_controller];
+        if (
+          dest[_state] === "writable" &&
+          writableStreamCloseQueuedOrInFlight(dest) === false &&
+          readableStreamDefaultControllerCanCloseOrEnqueue(readableController)
+        ) {
+          if (bypassTS[_backpressure] === true) {
+            // Pace on the transform's own backpressure flag; resume when the
+            // next readable-side pull clears it. Rejection (transform errored)
+            // is left to the shutdown handlers.
+            uponPromise(
+              bypassTS[_backpressureChangePromise].promise,
+              pump,
+              noopHandler,
+            );
+            break;
+          }
+        } else {
+          bypassActive = false;
+        }
+      }
+
+      if (bypassActive === false && dest[_backpressure] === true) {
+        // Writable backpressure: wait for the writer-ready promise, then
+        // resume. Rejection (dest errored) is left to the shutdown handlers.
+        uponPromise(writer[_readyPromise].promise, pump, noopHandler);
+        break;
+      }
+
+      // No backpressure on the active path: read one chunk. A queued chunk is
+      // delivered synchronously (chunkSteps sets syncAdvance and the loop
+      // re-arms at constant stack depth); an empty queue delivers
+      // asynchronously and re-enters pump from chunkSteps.
+      readableStreamDefaultReaderRead(reader, readRequest);
+    } while (syncAdvance);
+    pumping = false;
   }
 
   isOrBecomesErrored(
@@ -3473,18 +3476,19 @@ function readableStreamPipeTo(
     }
   }
 
-  setPromiseIsHandledToTrue(pipeLoop());
+  pump();
 
   return promise.promise;
 
   /** @returns {Promise<void>} */
   function waitForWritesToFinish() {
     const oldCurrentWrite = currentWrite;
-    return transformPromiseWith(
-      currentWrite,
-      () =>
-        oldCurrentWrite !== currentWrite ? waitForWritesToFinish() : undefined,
-    );
+    // `currentWrite` is now the raw write promise (see writeChunk), which may
+    // reject; settle either way, since write errors are surfaced through the
+    // writer's closed promise rather than the individual write.
+    const onSettled = () =>
+      oldCurrentWrite !== currentWrite ? waitForWritesToFinish() : undefined;
+    return transformPromiseWith(currentWrite, onSettled, onSettled);
   }
 
   /**
@@ -3891,16 +3895,44 @@ function readableByteStreamTee(stream) {
    * @param {ReadableStreamBYOBReader} thisReader
    */
   function forwardReaderError(thisReader) {
-    PromisePrototypeCatch(thisReader[_closedPromise].promise, (e) => {
-      if (thisReader !== reader) {
-        return;
-      }
-      readableByteStreamControllerError(branch1[_controller], e);
-      readableByteStreamControllerError(branch2[_controller], e);
-      if (!canceled1 || !canceled2) {
-        cancelPromise.resolve(undefined);
-      }
-    });
+    PromisePrototypeThen(
+      thisReader[_closedPromise].promise,
+      () => {
+        // The source closed. If the in-flight source read was a BYOB read, its
+        // read-into request was orphaned: readableStreamClose() only runs the
+        // close steps of a default reader's read requests, not a BYOB reader's
+        // read-into requests, so the readIntoRequest close steps that propagate
+        // the close to the branches never ran and `reading` is still set. (When
+        // the close instead arrives on a default source read, readRequest's
+        // close steps already cleared `reading` and settled both branches, so
+        // this is a no-op.) Commit the source's still-pending zero-filled
+        // pull-into to run those close steps, which return the lent buffer to
+        // the BYOB branch and settle both branches with `{ done: true }`.
+        if (
+          thisReader !== reader ||
+          !reading ||
+          !isReadableStreamBYOBReader(reader) ||
+          stream[_controller][_pendingPullIntos].size === 0
+        ) {
+          return;
+        }
+        const firstDescriptor = stream[_controller][_pendingPullIntos].peek();
+        readableByteStreamControllerRespondInClosedState(
+          stream[_controller],
+          firstDescriptor,
+        );
+      },
+      (e) => {
+        if (thisReader !== reader) {
+          return;
+        }
+        readableByteStreamControllerError(branch1[_controller], e);
+        readableByteStreamControllerError(branch2[_controller], e);
+        if (!canceled1 || !canceled2) {
+          cancelPromise.resolve(undefined);
+        }
+      },
+    );
   }
 
   // The read requests, their microtask callbacks, and the pending chunk and
@@ -4511,15 +4543,27 @@ function setUpTransformStreamDefaultControllerFromTransformer(
   let flushAlgorithm = _defaultFlushAlgorithm;
   let cancelAlgorithm = _defaultCancelAlgorithm;
   if (transformerDict.transform !== undefined) {
-    transformAlgorithm = (chunk, controller) =>
-      webidl.invokeCallbackFunction(
-        transformerDict.transform,
-        [chunk, controller],
-        transformer,
-        webidl.converters["Promise<undefined>"],
-        "Failed to execute 'transformAlgorithm' on 'TransformStreamDefaultController'",
-        true,
-      );
+    const transformCallback = transformerDict.transform;
+    // Synchronous-transform fast path: a transform() that enqueues and returns
+    // undefined (or any non-thenable) completes without a wrapper promise from
+    // the Promise<undefined> converter. Returning undefined signals synchronous
+    // completion to transformStreamDefaultControllerPerformTransform, which then
+    // skips that promise and the transformPromiseWith() microtask hop -- pure
+    // per-chunk overhead on the transform hot loop. A synchronous throw becomes
+    // a rejected promise so the stream errors as before; a thenable return keeps
+    // the full async path (matching webidl.invokeCallbackFunction).
+    transformAlgorithm = (chunk, controller) => {
+      let rv;
+      try {
+        rv = ReflectApply(transformCallback, transformer, [chunk, controller]);
+      } catch (err) {
+        return PromiseReject(err);
+      }
+      if (rv === undefined || typeof rv?.then !== "function") {
+        return undefined;
+      }
+      return PromiseResolve(rv);
+    };
   }
   if (transformerDict.flush !== undefined) {
     flushAlgorithm = (controller) =>
@@ -4806,6 +4850,13 @@ function transformStreamDefaultControllerPerformTransform(controller, chunk) {
     return resolvedPromise();
   }
   const transformPromise = transformAlgorithm(chunk, controller);
+  if (transformPromise === undefined) {
+    // The transform completed synchronously (see the transformAlgorithm set up
+    // in setUpTransformStreamDefaultControllerFromTransformer): the chunk was
+    // already enqueued, so resolve the write without a per-chunk promise or a
+    // microtask hop, exactly like the identity-transform fast path above.
+    return resolvedPromise();
+  }
   return transformPromiseWith(transformPromise, undefined, (r) => {
     transformStreamError(controller[_stream], r);
     throw r;
@@ -5677,42 +5728,91 @@ class ReadableStreamAsyncIteratorReadRequest {
   }
 }
 
+/**
+ * The generic (async) path for the default async iterator's next(): allocate a
+ * Deferred + read request and hand it to the reader. Hoisted out of next() so
+ * the closure isn't allocated on every iteration, and reused by the chained
+ * (concurrent next()) path.
+ * @param {ReadableStreamDefaultReader} reader
+ * @returns {Promise<IteratorResult<unknown>>}
+ */
+function readableStreamAsyncIteratorNextSteps(reader) {
+  if (reader[_iteratorFinished]) {
+    return PromiseResolve({ value: undefined, done: true });
+  }
+
+  if (reader[_stream] === undefined) {
+    return PromiseReject(
+      new TypeError(
+        "Cannot get the next iteration result once the reader has been released.",
+      ),
+    );
+  }
+
+  /** @type {Deferred<IteratorResult<any>>} */
+  const promise = new Deferred();
+  // internal values (_iteratorNext & _iteratorFinished) are modified inside
+  // ReadableStreamAsyncIteratorReadRequest methods
+  // see: https://webidl.spec.whatwg.org/#es-default-asynchronous-iterator-object
+  const readRequest = new ReadableStreamAsyncIteratorReadRequest(
+    reader,
+    promise,
+  );
+
+  readableStreamDefaultReaderRead(reader, readRequest);
+  // The extra PromisePrototypeThen hop is load-bearing, not redundant: for a
+  // lazily-pulling source the queue is empty here, so the read triggers pull()
+  // and the controller schedules a follow-up pull a microtask later. This hop
+  // delays next()'s resolution by that one tick so the follow-up pull is
+  // observed before the consumer acts on the result (e.g. calls return() to
+  // cancel). Returning promise.promise directly resolves a tick too early and
+  // drops that pull -- see WPT streams async-iterator "next() ...; return()".
+  return PromisePrototypeThen(promise.promise);
+}
+
 /** @type {AsyncIterator<unknown>} */
 const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
   /** @returns {Promise<IteratorResult<unknown>>} */
   next() {
     /** @type {ReadableStreamDefaultReader} */
     const reader = this[_reader];
-    function nextSteps() {
-      if (reader[_iteratorFinished]) {
-        return PromiseResolve({ value: undefined, done: true });
-      }
 
-      if (reader[_stream] === undefined) {
-        return PromiseReject(
-          new TypeError(
-            "Cannot get the next iteration result once the reader has been released.",
-          ),
-        );
-      }
-
-      /** @type {Deferred<IteratorResult<any>>} */
-      const promise = new Deferred();
-      // internal values (_iteratorNext & _iteratorFinished) are modified inside
-      // ReadableStreamAsyncIteratorReadRequest methods
-      // see: https://webidl.spec.whatwg.org/#es-default-asynchronous-iterator-object
-      const readRequest = new ReadableStreamAsyncIteratorReadRequest(
-        reader,
-        promise,
+    // A prior next() is still in flight: chain after it so iteration results are
+    // delivered in call order (per the WebIDL default async iterator).
+    const ongoing = reader[_iteratorNext];
+    if (ongoing) {
+      return reader[_iteratorNext] = PromisePrototypeThen(
+        ongoing,
+        () => readableStreamAsyncIteratorNextSteps(reader),
+        () => readableStreamAsyncIteratorNextSteps(reader),
       );
-
-      readableStreamDefaultReaderRead(reader, readRequest);
-      return PromisePrototypeThen(promise.promise);
     }
 
-    return reader[_iteratorNext] = reader[_iteratorNext]
-      ? PromisePrototypeThen(reader[_iteratorNext], nextSteps, nextSteps)
-      : nextSteps();
+    // Sync fast path: nothing in flight, stream readable, default (non-byte)
+    // controller with a chunk already queued. Mirrors
+    // ReadableStreamDefaultReader.read()'s fast path, skips allocating a
+    // Deferred, a ReadRequest object, and a microtask hop, and leaves
+    // _iteratorNext null so subsequent iterations stay on this path.
+    const stream = reader[_stream];
+    if (stream !== undefined && stream[_state] === "readable") {
+      const controller = stream[_controller];
+      if (
+        controller[_pendingPullIntos] === undefined &&
+        controller[_queue].size !== 0
+      ) {
+        stream[_disturbed] = true;
+        const chunk = dequeueValue(controller);
+        if (controller[_closeRequested] && controller[_queue].size === 0) {
+          readableStreamDefaultControllerClearAlgorithms(controller);
+          readableStreamClose(stream);
+        } else {
+          readableStreamDefaultControllerCallPullIfNeeded(controller);
+        }
+        return PromiseResolve({ value: chunk, done: false });
+      }
+    }
+
+    return reader[_iteratorNext] = readableStreamAsyncIteratorNextSteps(reader);
   },
   /**
    * @param {unknown} arg
@@ -5802,7 +5902,7 @@ function initializeByteLengthSizeFunction(globalObject) {
   if (WeakMapPrototypeHas(byteSizeFunctionWeakMap, globalObject)) {
     return;
   }
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   const size = (chunk) => chunk.byteLength;
   WeakMapPrototypeSet(byteSizeFunctionWeakMap, globalObject, size);
 }
@@ -5959,26 +6059,34 @@ class ReadableStream {
       1,
       prefix,
     );
-    asyncIterable = webidl.converters["async iterable<any>"](
+    // https://streams.spec.whatwg.org/#rs-from
+    // IDL: static ReadableStream from(async_sequence<any> asyncIterable);
+    asyncIterable = webidl.converters["async_sequence<any>"](
       asyncIterable,
       prefix,
       "Argument 1",
     );
+    // Let iterator be the result of opening an async sequence asyncIterable.
     const iter = asyncIterable.open();
 
     const stream = createReadableStream(noop, async () => {
-      // deno-lint-ignore prefer-primordials
+      // Let nextPromise be the result of getting the next value of iterator.
+      // deno-lint-ignore deno-internal/prefer-primordials
       const res = await iter.next();
       if (res.done) {
+        // end of iteration
         readableStreamDefaultControllerClose(stream[_controller]);
       } else {
+        // CreateAsyncFromSyncIterator (used for sync sources) already awaits
+        // yielded promises; do not await again here.
         readableStreamDefaultControllerEnqueue(
           stream[_controller],
-          await res.value,
+          res.value,
         );
       }
     }, async (reason) => {
-      // deno-lint-ignore prefer-primordials
+      // Return the result of closing iterator with reason.
+      // deno-lint-ignore deno-internal/prefer-primordials
       await iter.return(reason);
     }, 0);
     return stream;
@@ -8017,7 +8125,7 @@ webidl.converters.StreamPipeOptions = webidl
     { key: "signal", converter: webidl.converters.AbortSignal },
   ]);
 
-webidl.converters["async iterable<any>"] = webidl.createAsyncIterableConverter(
+webidl.converters["async_sequence<any>"] = webidl.createAsyncSequenceConverter(
   webidl.converters.any,
 );
 

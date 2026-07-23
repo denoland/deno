@@ -63,7 +63,7 @@ function generateRandomBytes(size: number) {
       generated += MAX_RANDOM_VALUES
     ) {
       globalThis.crypto.getRandomValues(
-        // deno-lint-ignore prefer-primordials -- Buffer.prototype.slice (Node Buffer method, not TypedArray slice)
+        // deno-lint-ignore deno-internal/prefer-primordials -- Buffer.prototype.slice (Node Buffer method, not TypedArray slice)
         bytes.slice(generated, generated + MAX_RANDOM_VALUES),
       );
     }

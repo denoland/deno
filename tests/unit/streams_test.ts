@@ -242,6 +242,46 @@ Deno.test(async function readableStreamCloseWithoutRead2() {
   assertEquals(await cancel.promise, "resource closed");
 });
 
+// Regression test for https://github.com/denoland/deno/issues/35807: teeing a
+// byte stream, reading one branch with a BYOB reader while the other branch is
+// drained by a default reader. When the source closes, the tee reads the source
+// with its BYOB reader; readableStreamClose() does not run a BYOB reader's
+// read-into close steps, so without the fix the pending BYOB read on the first
+// branch (and the default drain on the other) would hang forever.
+Deno.test(async function readableByteStreamTeeByobReadResolvesOnSourceClose() {
+  function makeByteStream(chunks: number[][]) {
+    let i = 0;
+    return new ReadableStream({
+      type: "bytes",
+      pull(c) {
+        if (i < chunks.length) c.enqueue(new Uint8Array(chunks[i++]));
+        else c.close();
+      },
+    });
+  }
+  async function collect(s: ReadableStream<Uint8Array>) {
+    const out = [];
+    for await (const c of s) out.push(c);
+    return out;
+  }
+
+  const [a, b] = makeByteStream([[1, 2, 3], [4, 5, 6]]).tee();
+  const bDone = collect(b);
+  const reader = a.getReader({ mode: "byob" });
+  assertEquals(
+    (await reader.read(new Uint8Array(3))).value,
+    new Uint8Array([1, 2, 3]),
+  );
+  assertEquals(
+    (await reader.read(new Uint8Array(3))).value,
+    new Uint8Array([4, 5, 6]),
+  );
+  // Previously this read hung ("Top-level await promise never resolved").
+  const r3 = await reader.read(new Uint8Array(3));
+  assertEquals(r3.done, true);
+  assertEquals((await bDone).length, 2);
+});
+
 Deno.test(async function readableStreamPartial() {
   const rid = resourceForReadableStream(helloWorldStream());
   const buffer = new Uint8Array(5);
@@ -580,11 +620,14 @@ Deno.test(async function decompressionStreamInvalidGzipStillReported() {
 });
 
 Deno.test(function readableStreamFromWithStringThrows() {
+  // Per Web IDL async_sequence conversion, strings are not Objects and are
+  // rejected (they used to be accepted via GetIterator / String iteration).
+  // https://github.com/whatwg/streams/pull/1372
   assertThrows(
     // @ts-expect-error: primitives are not acceptable
     () => ReadableStream.from("string"),
     TypeError,
-    "Failed to execute 'ReadableStream.from': Argument 1 can not be converted to async iterable.",
+    "Failed to execute 'ReadableStream.from': Argument 1 can not be converted to async sequence.",
   );
 });
 

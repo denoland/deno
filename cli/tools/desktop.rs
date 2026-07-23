@@ -5,6 +5,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_config::deno_json::DesktopConfig;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
@@ -57,6 +58,50 @@ pub async fn desktop(
   let laufey_resolver = Arc::new(LaufeyBackendResolver::new(&factory)?);
   let deno_dir_root = factory.deno_dir()?.root.clone();
 
+  apply_desktop_config_to_flags(&mut desktop_flags, desktop_config);
+
+  if all_targets {
+    let targets = [
+      "x86_64-apple-darwin",
+      "aarch64-apple-darwin",
+      "x86_64-unknown-linux-gnu",
+      "aarch64-unknown-linux-gnu",
+      "x86_64-pc-windows-msvc",
+    ];
+    for target in targets {
+      log::info!("Building for target: {}", target);
+      let mut desktop_flags = desktop_flags.clone();
+      desktop_flags.target = Some(target.to_string());
+      Box::pin(compile_desktop(
+        flags.clone(),
+        desktop_flags,
+        cli_options,
+        &laufey_resolver,
+        &deno_dir_root,
+      ))
+      .await?;
+    }
+    Ok(())
+  } else {
+    Box::pin(compile_desktop(
+      flags,
+      desktop_flags,
+      cli_options,
+      &laufey_resolver,
+      &deno_dir_root,
+    ))
+    .await
+  }
+}
+
+/// Applies `deno.json`'s `desktop` config to the CLI flags. A `deno.json` field
+/// only fills in a flag that was left unset — CLI flags always win. The webview
+/// backend remains the final fallback via the `unwrap_or("webview")` call sites
+/// that consume `desktop_flags.backend`.
+fn apply_desktop_config_to_flags(
+  desktop_flags: &mut DesktopFlags,
+  desktop_config: DesktopConfig,
+) {
   if let Some(output) = desktop_config.output
     && desktop_flags.output.is_none()
   {
@@ -125,39 +170,6 @@ pub async fn desktop(
     && desktop_flags.codesign_identity.is_none()
   {
     desktop_flags.codesign_identity = Some(identity);
-  }
-
-  if all_targets {
-    let targets = [
-      "x86_64-apple-darwin",
-      "aarch64-apple-darwin",
-      "x86_64-unknown-linux-gnu",
-      "aarch64-unknown-linux-gnu",
-      "x86_64-pc-windows-msvc",
-    ];
-    for target in targets {
-      log::info!("Building for target: {}", target);
-      let mut desktop_flags = desktop_flags.clone();
-      desktop_flags.target = Some(target.to_string());
-      Box::pin(compile_desktop(
-        flags.clone(),
-        desktop_flags,
-        cli_options,
-        &laufey_resolver,
-        &deno_dir_root,
-      ))
-      .await?;
-    }
-    Ok(())
-  } else {
-    Box::pin(compile_desktop(
-      flags,
-      desktop_flags,
-      cli_options,
-      &laufey_resolver,
-      &deno_dir_root,
-    ))
-    .await
   }
 }
 
@@ -311,14 +323,21 @@ async fn compile_desktop(
   let desktop_entrypoint_file = if desktop_flags.source_file == "." {
     let cwd = &detection_cwd;
     if let Some(detection) = detected_framework.as_ref() {
-      let entrypoint_code = detection.entrypoint_code.clone();
-      let includes = detection.include_paths.clone();
+      let use_framework_hmr =
+        desktop_flags.hmr && detection.hmr_command.is_some();
+      let entrypoint_code = if use_framework_hmr {
+        NOOP_ENTRYPOINT.to_string()
+      } else {
+        detection.entrypoint_code.clone()
+      };
       log::info!("Detected {} framework", detection.name);
-      // Run the framework's build step (e.g. `deno task build`) before its
-      // build output (`dist`, `.next`, etc.) is added to the compile includes
-      // below; otherwise the include points at a directory that doesn't exist
-      // yet and the compile fails (#35535). Mirrors `deno compile .`.
-      super::framework::run_build_command(detection, cwd)?;
+      if !use_framework_hmr {
+        // Run the framework's build step (e.g. `deno task build`) before its
+        // build output (`dist`, `.next`, etc.) is added to the compile includes
+        // below; otherwise the include points at a directory that doesn't exist
+        // yet and the compile fails (#35535). Mirrors `deno compile .`.
+        super::framework::run_build_command(detection, cwd)?;
+      }
       // Enable CJS detection for Node-based frameworks.
       flags.unstable_config.detect_cjs = true;
       if detection.name == "Next.js"
@@ -370,16 +389,18 @@ async fn compile_desktop(
       {
         desktop_flags.output = Some(dir_name.to_string_lossy().into_owned());
       }
-      // Add framework build output to includes.
-      for inc in includes {
-        if !desktop_flags.include.contains(&inc) {
-          desktop_flags.include.push(inc.clone());
+      // Add framework build output to includes. Skipped in HMR mode.
+      if !use_framework_hmr {
+        for inc in &detection.include_paths {
+          if !desktop_flags.include.contains(inc) {
+            desktop_flags.include.push(inc.clone());
+          }
         }
       }
       Some(entrypoint_temp)
     } else {
       bail!(
-        "Could not detect a supported framework in the current directory.\nSupported frameworks: Next.js, Astro, Fresh, Remix, SvelteKit, Nuxt, SolidStart, TanStack Start, Vite\nProvide an explicit entrypoint instead."
+        "Could not detect a supported framework in the current directory.\nSupported frameworks: Next.js, Astro, Fresh, Remix, React Router, SvelteKit, Nuxt, SolidStart, TanStack Start, Vite\nProvide an explicit entrypoint instead."
       );
     }
   } else {
@@ -1137,6 +1158,71 @@ fn resolve_hmr_icon_path(
   Ok(crate::util::fs::canonicalize_path(&icon_path).unwrap_or(icon_path))
 }
 
+/// Extract the local URL from a line of dev server output.
+fn parse_dev_server_url(line: &str) -> Option<String> {
+  // Vite prints `  ➜  Local:   http://localhost:5173/`
+  regex::Regex::new(r"Local:\s+(https?://\S+)")
+    .expect("regex to parse local url failed")
+    .captures(line)
+    .and_then(|c| c.get(1))
+    .map(|m| m.as_str().to_owned())
+}
+
+/// Spawns a framework HMR dev server
+async fn spawn_framework_dev_server(
+  name: &str,
+  cmd_args: &[String],
+  cwd: &Path,
+) -> Result<(String, tokio::process::Child), AnyError> {
+  use tokio::io::AsyncBufReadExt;
+  use tokio::io::BufReader;
+
+  let mut child = tokio::process::Command::new(&cmd_args[0])
+    .args(&cmd_args[1..])
+    .current_dir(cwd)
+    .stdout(std::process::Stdio::piped())
+    .kill_on_drop(true)
+    .spawn()
+    .with_context(|| {
+      format!("failed to spawn HMR dev server: {:?}", cmd_args)
+    })?;
+
+  let stdout = child.stdout.take().ok_or_else(|| {
+    deno_core::anyhow::anyhow!("failed to capture HMR dev server stdout")
+  })?;
+  let mut lines = BufReader::new(stdout).lines();
+
+  let url = tokio::time::timeout(std::time::Duration::from_secs(15), async {
+    while let Ok(Some(line)) = lines.next_line().await {
+      let url = parse_dev_server_url(&line);
+      // Echo the dev server's own startup output (banner, URL, warnings) so
+      // it isn't swallowed while we scan for the URL.
+      log::info!("{line}");
+      if let Some(url) = url {
+        return Ok(url);
+      }
+    }
+    deno_core::anyhow::bail!("dev server exited without printing a URL")
+  })
+  .await
+  .map_err(|_| {
+    deno_core::anyhow::anyhow!(
+      "{name} dev server with HMR did not start within 15s"
+    )
+  })??;
+
+  // Keep forwarding the dev server's stdout so its HMR/compile logs stay
+  // visible after startup instead of being silently swallowed. The task ends
+  // on its own once the child is killed (on drop) and the pipe closes.
+  tokio::spawn(async move {
+    while let Ok(Some(line)) = lines.next_line().await {
+      log::info!("{line}");
+    }
+  });
+
+  Ok((url, child))
+}
+
 /// Launch the desktop app with HMR enabled after compilation.
 ///
 /// Framework dev servers provide HMR via websocket. Since they run inside
@@ -1205,8 +1291,11 @@ async fn run_desktop_hmr(
 
   if desktop_flags.hmr {
     log::info!(
-      "{} desktop app with HMR (watching {})",
+      "{} {}desktop app with HMR (watching {})",
       colors::green("Running"),
+      framework
+        .map(|f| format!("{} ", f.name))
+        .unwrap_or_default(),
       source_abs.display(),
     );
   } else {
@@ -1233,6 +1322,24 @@ async fn run_desktop_hmr(
   if desktop_flags.hmr {
     cmd.env("DENO_DESKTOP_HMR", &source_abs);
   }
+
+  let _dev_server_child = if desktop_flags.hmr
+    && let Some(fw) = framework
+    && let Some(dev_cmd) = &fw.hmr_command
+  {
+    let (dev_url, child) =
+      spawn_framework_dev_server(fw.name, dev_cmd, &source_abs).await?;
+    log::info!(
+      "{} {} HMR dev server at {}",
+      colors::green("Running"),
+      fw.name,
+      dev_url,
+    );
+    cmd.env("DENO_DESKTOP_DEV_URL", &dev_url);
+    Some(child)
+  } else {
+    None
+  };
 
   // Wire up the unified DevTools multiplexer when --inspect is set.
   // The mux runs in this (parent) process and fronts both the Deno runtime
@@ -1361,6 +1468,11 @@ async fn run_desktop_hmr(
 /// later build can recognize its own previous output and clear it, while never
 /// touching unrelated user data that happens to share the inferred app name.
 const APP_DIR_MARKER: &str = ".deno-desktop-app";
+
+/// Used for `deno desktop --hmr` when a framework runs its own HMR server.
+/// The compiled app has nothing to serve in this case.
+const NOOP_ENTRYPOINT: &str =
+  "// @ts-nocheck\nawait new Promise<void>(() => {});\n";
 
 /// Prepare `app_dir` to receive a freshly built bundle.
 ///
@@ -3220,13 +3332,18 @@ fn create_macos_dmg(
   Ok(())
 }
 
-/// AppImage Type-2 runtime ELF stubs, vendored from
-/// github.com/AppImage/type2-runtime at tag `20251108`. Prepended verbatim to
-/// the SquashFS payload to form the final AppImage.
-const APPIMAGE_RUNTIME_X86_64: &[u8] =
-  include_bytes!("appimage_runtime/runtime-x86_64");
-const APPIMAGE_RUNTIME_AARCH64: &[u8] =
-  include_bytes!("appimage_runtime/runtime-aarch64");
+/// Zstd-compressed AppImage Type-2 runtime ELF stubs, vendored from
+/// github.com/AppImage/type2-runtime at tag `20251108`. The selected runtime
+/// is decompressed and prepended to the SquashFS payload when creating an
+/// AppImage.
+const APPIMAGE_RUNTIME_X86_64: &[u8] = include_bytes!(concat!(
+  env!("OUT_DIR"),
+  "/appimage_runtime/runtime-x86_64.zstd"
+));
+const APPIMAGE_RUNTIME_AARCH64: &[u8] = include_bytes!(concat!(
+  env!("OUT_DIR"),
+  "/appimage_runtime/runtime-aarch64.zstd"
+));
 
 /// 1×1 transparent PNG, used when the caller didn't supply an icon.
 /// appimagetool-built AppImages expect a top-level `<Name>.png` to exist.
@@ -3244,17 +3361,23 @@ const STUB_ICON_PNG: &[u8] = &[
 /// arch (e.g. `x86_64-unknown-linux-gnu` → `x86_64`).
 fn appimage_runtime_for_target(
   target: Option<&str>,
-) -> Result<&'static [u8], AnyError> {
+) -> Result<Vec<u8>, AnyError> {
   let arch = target
     .and_then(|t| t.split('-').next())
     .unwrap_or(std::env::consts::ARCH);
-  match arch {
-    "x86_64" => Ok(APPIMAGE_RUNTIME_X86_64),
-    "aarch64" => Ok(APPIMAGE_RUNTIME_AARCH64),
+  let compressed = match arch {
+    "x86_64" => APPIMAGE_RUNTIME_X86_64,
+    "aarch64" => APPIMAGE_RUNTIME_AARCH64,
     other => bail!(
       "No bundled AppImage runtime for arch '{other}'; supported: x86_64, aarch64"
     ),
-  }
+  };
+  let uncompressed_len =
+    u32::from_le_bytes(compressed[..4].try_into().unwrap());
+  zstd::bulk::decompress(&compressed[4..], uncompressed_len as usize)
+    .with_context(|| {
+      format!("Failed to decompress AppImage runtime for {arch}")
+    })
 }
 
 /// Unix mode bits for a filesystem entry. On non-Unix hosts (cross-compiling
@@ -3405,7 +3528,7 @@ fn create_linux_appimage(
   let mut out = std::fs::File::create(appimage_path).with_context(|| {
     format!("Failed to create AppImage at {}", appimage_path.display())
   })?;
-  out.write_all(runtime_elf)?;
+  out.write_all(&runtime_elf)?;
   out.write_all(&squashfs.into_inner())?;
   drop(out);
 
@@ -5475,6 +5598,46 @@ def456  other.zip
     );
   }
 
+  // --- parse_dev_server_url ---
+
+  #[test]
+  fn dev_server_url_matches() {
+    assert_eq!(
+      parse_dev_server_url("  ➜  Local:   http://localhost:5173/").as_deref(),
+      Some("http://localhost:5173/")
+    );
+    assert_eq!(
+      parse_dev_server_url("  Local:   https://localhost:5173/").as_deref(),
+      Some("https://localhost:5173/")
+    );
+  }
+
+  #[test]
+  fn dev_server_url_matches_with_subpath() {
+    assert_eq!(
+      parse_dev_server_url("  Local:   http://localhost:5173/app").as_deref(),
+      Some("http://localhost:5173/app")
+    );
+    assert_eq!(
+      parse_dev_server_url("  Local:   http://192.168.1.1:5173").as_deref(),
+      Some("http://192.168.1.1:5173")
+    );
+    assert_eq!(
+      parse_dev_server_url("  Local:   https://localhost:5173/app").as_deref(),
+      Some("https://localhost:5173/app")
+    );
+  }
+
+  #[test]
+  fn dev_server_url_no_match() {
+    assert_eq!(parse_dev_server_url("Watching for file changes..."), None);
+    assert_eq!(parse_dev_server_url(""), None);
+    assert_eq!(
+      parse_dev_server_url("  Network:  http://192.168.1.1:5173/"),
+      None
+    );
+  }
+
   // --- validate_bundle_identifier ---
 
   #[test]
@@ -5624,12 +5787,15 @@ def456  other.zip
 
   #[test]
   fn appimage_runtime_target_arch_lookup() {
-    assert!(
-      appimage_runtime_for_target(Some("x86_64-unknown-linux-gnu")).is_ok()
-    );
-    assert!(
-      appimage_runtime_for_target(Some("aarch64-unknown-linux-gnu")).is_ok()
-    );
+    let x86_64 =
+      appimage_runtime_for_target(Some("x86_64-unknown-linux-gnu")).unwrap();
+    assert_eq!(x86_64.len(), 944_632);
+    assert_eq!(&x86_64[..4], b"\x7fELF");
+
+    let aarch64 =
+      appimage_runtime_for_target(Some("aarch64-unknown-linux-gnu")).unwrap();
+    assert_eq!(aarch64.len(), 936_456);
+    assert_eq!(&aarch64[..4], b"\x7fELF");
   }
 
   #[test]
@@ -7336,5 +7502,50 @@ def456  other.zip
     let err = reserve_app_dir(&path).unwrap_err();
     assert!(err.to_string().contains("a file with that name"));
     assert!(path.exists());
+  }
+
+  // --- desktop.backend config merge (CLI flag > deno.json > webview) ---
+
+  #[test]
+  fn backend_from_deno_json_when_flag_absent() {
+    let mut flags = DesktopFlags {
+      source_file: "main.ts".to_string(),
+      backend: None,
+      ..Default::default()
+    };
+    let config = DesktopConfig {
+      backend: Some("cef".to_string()),
+      ..Default::default()
+    };
+    apply_desktop_config_to_flags(&mut flags, config);
+    assert_eq!(flags.backend.as_deref(), Some("cef"));
+  }
+
+  #[test]
+  fn cli_flag_overrides_deno_json_backend() {
+    let mut flags = DesktopFlags {
+      source_file: "main.ts".to_string(),
+      backend: Some("webview".to_string()),
+      ..Default::default()
+    };
+    let config = DesktopConfig {
+      backend: Some("cef".to_string()),
+      ..Default::default()
+    };
+    apply_desktop_config_to_flags(&mut flags, config);
+    assert_eq!(flags.backend.as_deref(), Some("webview"));
+  }
+
+  #[test]
+  fn backend_defaults_to_none_when_unset() {
+    let mut flags = DesktopFlags {
+      source_file: "main.ts".to_string(),
+      backend: None,
+      ..Default::default()
+    };
+    let config = DesktopConfig::default();
+    apply_desktop_config_to_flags(&mut flags, config);
+    // Left unset; callers fall back to "webview" via unwrap_or("webview").
+    assert_eq!(flags.backend.as_deref(), None);
   }
 }

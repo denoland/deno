@@ -3305,8 +3305,18 @@
     "encap_decap_keys.tentative.https.any.html": true,
     "encap_decap_keys.tentative.https.any.worker.html": true
   },
-  "getPublicKey.tentative.https.any.html": true,
-  "getPublicKey.tentative.https.any.worker.html": true,
+  "getPublicKey.tentative.https.any.html": {
+    "expectedFailures": [
+      "getPublicKey works for Ed448",
+      "getPublicKey works with empty usages for Ed448"
+    ]
+  },
+  "getPublicKey.tentative.https.any.worker.html": {
+    "expectedFailures": [
+      "getPublicKey works for Ed448",
+      "getPublicKey works with empty usages for Ed448"
+    ]
+  },
   "idlharness.tentative.https.any.html": {
     "expectedFailures": [
       "Window interface: attribute crypto"

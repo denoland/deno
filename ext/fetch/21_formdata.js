@@ -20,6 +20,7 @@ const {
   ObjectFreeze,
   ObjectFromEntries,
   ObjectPrototypeIsPrototypeOf,
+  ReflectApply,
   SafeMap,
   SafeRegExp,
   Symbol,
@@ -314,7 +315,7 @@ function formDataToBlob(formData) {
   const chunks = [];
   const prefix = `--${boundary}\r\nContent-Disposition: form-data; name="`;
 
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   for (const { 0: name, 1: value } of formData) {
     if (typeof value === "string") {
       ArrayPrototypePush(
@@ -387,6 +388,16 @@ const CRLF = "\r\n";
 const LF = StringPrototypeCodePointAt(CRLF, 1);
 const CR = StringPrototypeCodePointAt(CRLF, 0);
 const DASH = StringPrototypeCodePointAt("-", 0);
+const MAX_MULTIPART_PART_HEADER_SIZE = 16 * 1024;
+const MAX_MULTIPART_PART_HEADER_COUNT = 128;
+
+/**
+ * @param {Uint8Array} bytes
+ * @returns {string}
+ */
+function decodeLatin1Bytes(bytes) {
+  return ReflectApply(StringFromCharCode, null, bytes);
+}
 
 class MultipartParser {
   /**
@@ -412,11 +423,16 @@ class MultipartParser {
   #parseHeaders(headersText) {
     const headers = new Headers();
     const rawHeaders = StringPrototypeSplit(headersText, "\r\n");
+    let headerCount = 0;
     for (let i = 0; i < rawHeaders.length; ++i) {
       const rawHeader = rawHeaders[i];
       const sepIndex = StringPrototypeIndexOf(rawHeader, ":");
       if (sepIndex < 0) {
         continue; // Skip this header
+      }
+      headerCount++;
+      if (headerCount > MAX_MULTIPART_PART_HEADER_COUNT) {
+        throw new TypeError("Multipart part has too many headers");
       }
       const key = StringPrototypeSlice(rawHeader, 0, sepIndex);
       const value = StringPrototypeSlice(rawHeader, sepIndex + 1);
@@ -476,6 +492,7 @@ class MultipartParser {
 
     const formData = new FormData();
     let headerText = "";
+    let headerStart = 0;
     let state = 0;
     let fileStart = 0;
 
@@ -484,20 +501,24 @@ class MultipartParser {
       const prevByte = this.body[i - 1];
       const isNewLine = byte === LF && prevByte === CR;
 
-      if (state === 1) {
-        headerText += StringFromCharCode(byte);
-      }
-
       if (state === 0 && isNewLine) {
         state = 1;
+        headerStart = i + 1;
       } else if (
         state === 1
       ) {
+        const headerByteLength = i - headerStart + 1;
+        if (headerByteLength > MAX_MULTIPART_PART_HEADER_SIZE) {
+          throw new TypeError("Multipart part headers are too large");
+        }
         if (
           isNewLine && this.body[i + 1] === CR &&
           this.body[i + 2] === LF
         ) {
           // end of the headers section
+          headerText = decodeLatin1Bytes(
+            TypedArrayPrototypeSubarray(this.body, headerStart, i + 1),
+          );
           state = 2;
           fileStart = i + 3; // After \r\n
         }
@@ -547,6 +568,7 @@ class MultipartParser {
 
           state = 1;
           i += this.boundaryChars.length + 2; // Skip boundary + trailing \r\n
+          headerStart = i + 1;
         }
       }
     }

@@ -65,12 +65,10 @@ const { shouldColorize } = core.loadExtScript(
   "ext:deno_node/internal/util/colorize.mjs",
 );
 const {
-  colors,
   createStylizeWithColor,
   formatBigInt,
   formatNumber,
   formatValue,
-  styles,
 } = core.loadExtScript("ext:deno_web/01_console.js");
 
 // Set Graphics Rendition https://en.wikipedia.org/wiki/ANSI_escape_code#graphics

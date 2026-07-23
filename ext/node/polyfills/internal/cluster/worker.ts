@@ -4,7 +4,7 @@
 // Ports lib/internal/cluster/worker.js.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file no-explicit-any prefer-primordials
+// deno-lint-ignore-file no-explicit-any deno-internal/prefer-primordials
 
 (function () {
 const { core, primordials } = __bootstrap;

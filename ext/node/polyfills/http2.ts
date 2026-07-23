@@ -88,6 +88,7 @@ const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
 const dc = core.loadExtScript("ext:deno_node/diagnostics_channel.js").default;
 const { utcDate } = core.loadExtScript("ext:deno_node/internal/http.ts");
 const {
+  kBytesWritten,
   kLastWriteWasAsync,
   ShutdownWrap,
   streamBaseState,
@@ -390,9 +391,10 @@ function emitStreamPerfEntry(stream) {
   }
 }
 
-// Schedule a deferred sendPending() call on the session's native handle.
-// This is deferred via queueMicrotask to avoid re-entrancy: nghttp2's
-// send_pending_data can invoke callbacks that call back into JS ops.
+// Drive the session's native handle to flush nghttp2's pending output.
+// This runs synchronously: re-entrancy is handled on the native side
+// (`is_sending` / `draining_outgoing` guards) rather than by deferring to a
+// microtask, so callers get the frames on the wire without an extra turn.
 function scheduleSendPending(session) {
   if (!session) return;
   const handle = session[kHandle];
@@ -526,6 +528,7 @@ const kStreamEventEmitted = Symbol("kStreamEventEmitted");
 const kRawHeaders = Symbol("raw-headers");
 const kSentTrailers = Symbol("sent-trailers");
 const kServer = Symbol("server");
+const kSocketDataListener = Symbol("socket-data-listener");
 const kState = Symbol("state");
 const kType = Symbol("type");
 const kWriteGeneric = Symbol("write-generic");
@@ -841,7 +844,7 @@ const proxySocketHandler = {
 
 function onPing(payload, isAck) {
   const session = this[kOwner];
-  if (session.destroyed) {
+  if (session === undefined || session.destroyed) {
     return;
   }
   session[kUpdateTimer]();
@@ -941,7 +944,7 @@ function doStreamClose(stream, code) {
     stream.on("end", stream[kMaybeDestroy]);
     // Push a null so the stream can end whenever the client consumes
     // it completely.
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     stream.push(null);
 
     // If the user hasn't tried to consume the stream (and this is a server
@@ -964,7 +967,7 @@ function doStreamClose(stream, code) {
 // Resets the cached settings.
 function onSettings() {
   const session = this[kOwner];
-  if (session.destroyed) {
+  if (session === undefined || session.destroyed) {
     return;
   }
   session[kUpdateTimer]();
@@ -978,7 +981,7 @@ function onSettings() {
 // session (which may, in turn, forward it on to the server)
 function onPriority(id, parent, weight, exclusive) {
   const session = this[kOwner];
-  if (session.destroyed) {
+  if (session === undefined || session.destroyed) {
     return;
   }
   debugStream(
@@ -1000,7 +1003,7 @@ function onPriority(id, parent, weight, exclusive) {
 // frame. This should be exceedingly rare.
 function onFrameError(id, type, code) {
   const session = this[kOwner];
-  if (session.destroyed) {
+  if (session === undefined || session.destroyed) {
     return;
   }
   debugSessionObj(
@@ -1028,7 +1031,7 @@ function onFrameError(id, type, code) {
 
 function onAltSvc(stream, origin, alt) {
   const session = this[kOwner];
-  if (session.destroyed) {
+  if (session === undefined || session.destroyed) {
     return;
   }
   debugSessionObj(
@@ -1069,7 +1072,7 @@ function initOriginSet(session) {
 
 function onOrigin(origins) {
   const session = this[kOwner];
-  if (session.destroyed) {
+  if (session === undefined || session.destroyed) {
     return;
   }
   debugSessionObj(session, "origin received: %j", origins);
@@ -1092,7 +1095,7 @@ function onOrigin(origins) {
 // The goaway event will be emitted on next tick.
 function onGoawayData(code, lastStreamID, buf) {
   const session = this[kOwner];
-  if (session.destroyed) {
+  if (session === undefined || session.destroyed) {
     return;
   }
   debugSessionObj(
@@ -1508,7 +1511,7 @@ function onSessionHeaders(
   sensitiveHeaders = [],
 ) {
   const session = this[kOwner];
-  if (session.destroyed) {
+  if (session === undefined || session.destroyed) {
     return;
   }
 
@@ -1590,7 +1593,7 @@ function onSessionHeaders(
         });
       }
       if (endOfStream) {
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         stream.push(null);
       }
       if (obj[HTTP2_HEADER_METHOD] === HTTP2_METHOD_HEAD) {
@@ -1615,7 +1618,7 @@ function onSessionHeaders(
         });
       }
       if (endOfStream) {
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         stream.push(null);
       }
       stream.end();
@@ -1692,7 +1695,7 @@ function onSessionHeaders(
     }
   }
   if (endOfStream) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     stream.push(null);
   }
 }
@@ -1702,10 +1705,10 @@ function onSessionHeaders(
 // option is set.
 function onStreamTrailers() {
   const stream = this[kOwner];
-  stream[kState].trailersReady = true;
-  if (stream.destroyed || stream.closed) {
+  if (stream === undefined || stream.destroyed || stream.closed) {
     return;
   }
+  stream[kState].trailersReady = true;
   if (!stream.emit("wantTrailers")) {
     // There are no listeners, send empty trailing HEADERS frame and close.
     stream.sendTrailers({});
@@ -1908,7 +1911,7 @@ function finishCloseStream(code) {
   // ensure that the RST_STREAM frame is sent after the stream ID has
   // been determined.
   if (this.pending) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     this.push(null);
     this.once("ready", rstStreamFn);
     return;
@@ -1998,20 +2001,6 @@ class Http2Stream extends Duplex {
     handle[kOwner] = this;
     this[kHandle] = handle;
 
-    // Wrap the native write methods to flush pending h2 frames after
-    // each write. The native writeBuffer/writeUtf8String are synchronous
-    // (they buffer data in nghttp2's pending_data), so kLastWriteWasAsync
-    // must be 0 for afterWriteDispatched to call req.callback synchronously.
-    //
-    // scheduleSendPending() may write to the underlying socket (e.g. TLS),
-    // which can set kLastWriteWasAsync = 1 on the shared streamBaseState.
-    // We must reset it to 0 after flushing so that the h2 stream's own
-    // write is still considered synchronous by afterWriteDispatched.
-    const nativeWriteUtf8String = FunctionPrototypeBind(
-      handle.writeUtf8String,
-      handle,
-    );
-    const nativeWriteBuffer = FunctionPrototypeBind(handle.writeBuffer, handle);
     // The native writeUtf8String / writeBuffer ops queue bytes into
     // nghttp2's per-stream pending_data and call resume_data. We then need
     // a mem_send pass to actually frame and emit the DATA. Defer that pass
@@ -2020,36 +2009,51 @@ class Http2Stream extends Duplex {
     // data provider runs. With writable_ended observed at frame time,
     // nghttp2 packs END_STREAM onto the trailing DATA frame instead of
     // emitting a separate empty DATA(END_STREAM) frame
-    // (test-http2-pack-end-stream-flag.js). The write completion callback
-    // still fires synchronously here (kLastWriteWasAsync = 0); only the
-    // socket flush is deferred. closeStream / submitRstStream drain
-    // pending writes synchronously before submitting RST_STREAM so the
+    // (test-http2-pack-end-stream-flag.js). closeStream / submitRstStream
+    // drain pending writes synchronously before submitting RST_STREAM so the
     // queued DATA frame still reaches the peer.
-    handle.writeUtf8String = function (req, data) {
-      const err = nativeWriteUtf8String(req, data);
+    //
+    // Both ops keep the WriteWrap and only invoke its oncomplete once nghttp2
+    // has framed the bytes, so a queued write is asynchronous (as it is in
+    // Node, whose Http2Stream::DoWrite always defers to ClearOutgoing). That
+    // is what holds writableLength up while the peer's flow-control window is
+    // closed, making Http2Stream.write() return false and stalling the
+    // producer instead of letting pending_data grow without bound.
+    const nativeWriteUtf8String = FunctionPrototypeBind(
+      handle.writeUtf8String,
+      handle,
+    );
+    const nativeWriteBuffer = FunctionPrototypeBind(handle.writeBuffer, handle);
+    const deferSendPending = () => {
       if (!session[kDeferredHttp2WritePending]) {
         session[kDeferredHttp2WritePending] = 1;
         process.nextTick(flushDeferredHttp2Writes, session);
       } else {
         session[kDeferredHttp2WritePending]++;
       }
-      streamBaseState[kLastWriteWasAsync] = 0;
+    };
+    // afterWriteDispatched reads both fields right after the op returns, and
+    // kAfterAsyncWrite later credits kBytesWritten back to the write queue
+    // accounting that trackWriteState debits, so they have to agree.
+    const setWriteState = (err, bytes) => {
+      streamBaseState[kBytesWritten] = bytes;
+      streamBaseState[kLastWriteWasAsync] = err === 0 ? 1 : 0;
+    };
+    handle.writeUtf8String = function (req, data) {
+      const err = nativeWriteUtf8String(req, data);
+      deferSendPending();
+      setWriteState(err, Buffer.byteLength(data, "utf8"));
       return err;
     };
     handle.writeBuffer = function (req, data) {
       const err = nativeWriteBuffer(req, data);
-      if (!session[kDeferredHttp2WritePending]) {
-        session[kDeferredHttp2WritePending] = 1;
-        process.nextTick(flushDeferredHttp2Writes, session);
-      } else {
-        session[kDeferredHttp2WritePending]++;
-      }
-      streamBaseState[kLastWriteWasAsync] = 0;
+      deferSendPending();
+      setWriteState(err, data.byteLength);
       return err;
     };
     handle.writev = function (req, chunks, allBuffers) {
       const count = allBuffers ? chunks.length : chunks.length >> 1;
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       const buffers = new Array(count);
       if (!allBuffers) {
         for (let i = 0; i < count; i++) {
@@ -2066,7 +2070,7 @@ class Http2Stream extends Duplex {
           buffers[i] = chunks[i];
         }
       }
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       return handle.writeBuffer(req, Buffer.concat(buffers));
     };
     handle.writeLatin1String = function (req, data) {
@@ -2430,7 +2434,7 @@ class Http2Stream extends Duplex {
 
   _read(nread) {
     if (this.destroyed) {
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       this.push(null);
       return;
     }
@@ -2547,7 +2551,7 @@ class Http2Stream extends Duplex {
     if (!this.closed) {
       closeStream(this, code, hasHandle ? kForceRstStream : kNoRstStream);
     }
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     this.push(null);
 
     if (hasHandle) {
@@ -2809,15 +2813,39 @@ function processRespondWithFD(
   let pos = seekable ? offset : 0;
   const end = seekable && length >= 0 ? offset + length : -1;
 
-  function readAndWrite() {
+  const ownsFd = self.ownsFd;
+  let stopped = false;
+  let fdClosed = false;
+
+  function closeOwnedFd() {
+    if (!ownsFd || fdClosed) return;
+    fdClosed = true;
+    tryClose(fd);
+  }
+
+  function stopReading() {
+    if (stopped) return;
+    stopped = true;
+    self.removeListener("close", stopReading);
+    closeOwnedFd();
+  }
+
+  self.once("close", stopReading);
+
+  function readAndWrite(err) {
+    if (err || self.destroyed || self.closed) {
+      stopReading();
+      return;
+    }
     const readLen = end >= 0 ? MathMin(buf.length, end - pos) : buf.length;
     if (readLen <= 0) {
       finish();
       return;
     }
     fs.read(fd, buf, 0, readLen, seekable ? pos : null, (err, bytesRead) => {
+      if (stopped) return;
       if (err) {
-        if (self.ownsFd) tryClose(fd);
+        stopReading();
         // Match Node: a read failure (e.g. EBADF from a bad fd) resets the
         // stream with NGHTTP2_INTERNAL_ERROR rather than leaking the
         // underlying fs error to user code.
@@ -2827,19 +2855,26 @@ function processRespondWithFD(
         self.destroy();
         return;
       }
+      if (self.destroyed || self.closed) {
+        stopReading();
+        return;
+      }
       if (bytesRead === 0) {
         finish();
         return;
       }
       if (seekable) pos += bytesRead;
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       const chunk = buf.slice(0, bytesRead);
       self.write(chunk, readAndWrite);
     });
   }
 
   function finish() {
-    if (self.ownsFd) tryClose(fd);
+    if (stopped) return;
+    stopped = true;
+    self.removeListener("close", stopReading);
+    closeOwnedFd();
     self.end();
   }
 
@@ -2850,7 +2885,7 @@ function processRespondWithFD(
   );
 
   if (ret < 0) {
-    if (self.ownsFd) tryClose(fd);
+    stopReading();
     self.destroy(new NghttpError(ret));
     return;
   }
@@ -3104,7 +3139,7 @@ class ServerHttp2Stream extends Http2Stream {
     const stream = new ServerHttp2Stream(session, ret, id, options, headers);
     stream[kSentHeaders] = headers;
 
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     stream.push(null);
 
     if (options.endStream) {
@@ -3483,7 +3518,7 @@ function setupHandle(socket, type, options) {
 
   // Pump data from socket to session via JS events.
   // After receiving data, flush outgoing h2 frames back to the socket.
-  socket.on("data", (buf) => {
+  const socketOnData = (buf) => {
     if (!this.destroyed) {
       handle.receive(buf);
       // After receiving, nghttp2 may have generated response frames
@@ -3522,7 +3557,9 @@ function setupHandle(socket, type, options) {
         });
       }
     }
-  });
+  };
+  this[kSocketDataListener] = socketOnData;
+  socket.on("data", socketOnData);
   socket.resume();
   debug("i/o stream consumed (socket data events)");
 
@@ -3601,14 +3638,18 @@ function setupHandle(socket, type, options) {
       const closeCode = goawayCode === NGHTTP2_FLOW_CONTROL_ERROR
         ? NGHTTP2_FLOW_CONTROL_ERROR
         : NGHTTP2_CANCEL;
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       state.streams.forEach((stream) => stream.close(closeCode));
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       state.pendingStreams.forEach((stream) => stream.close(NGHTTP2_CANCEL));
       if (!session.closed) {
         session.close();
       }
-      closeSession(session, NGHTTP2_NO_ERROR, err);
+      // session.close() may synchronously destroy the session when it has no
+      // streams. Otherwise EOF must still tear down its remaining streams.
+      if (!session.destroyed) {
+        closeSession(session, NGHTTP2_NO_ERROR, err);
+      }
     }
   };
 
@@ -3700,11 +3741,20 @@ function cleanupSession(session) {
   );
   if (handle) {
     handle.ondone = null;
+    handle.ongracefulclosecomplete = null;
+    handle.onstreamclose = null;
+    handle.sendPending = () => {};
+    handle[kOwner] = undefined;
   }
   if (socket) {
+    const socketDataListener = session[kSocketDataListener];
+    if (socketDataListener) {
+      socket.removeListener("data", socketDataListener);
+    }
     socket[kBoundSession] = undefined;
     socket[kServer] = undefined;
   }
+  session[kSocketDataListener] = undefined;
 }
 
 function finishSessionClose(session, error) {
@@ -3716,7 +3766,9 @@ function finishSessionClose(session, error) {
   cleanupSession(session);
 
   if (socket && !socket.destroyed) {
-    socket.on("close", () => {
+    socket.once("close", () => {
+      socket.removeListener("error", socketOnError);
+      socket.removeListener("close", socketOnClose);
       emitClose(session, error);
     });
     if (session.closed) {
@@ -3809,9 +3861,9 @@ function closeSession(session, code, error) {
   // the GOAWAY above to preserve wire order.
   if (state.pendingStreams.size > 0 || state.streams.size > 0) {
     const cancel = new ERR_HTTP2_STREAM_CANCEL(error);
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     state.pendingStreams.forEach((stream) => stream.destroy(cancel));
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     state.streams.forEach((stream) => stream.destroy(error));
   }
 
@@ -3856,9 +3908,9 @@ function socketOnClose() {
     debugSessionObj(session, "socket closed");
     const err = session.connecting ? new ERR_SOCKET_CLOSED() : null;
     const state = session[kState];
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     state.streams.forEach((stream) => stream.close(NGHTTP2_CANCEL));
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     state.pendingStreams.forEach((stream) => stream.close(NGHTTP2_CANCEL));
     session.close();
     // Route through kMaybeDestroy -> destroy(err) so the `if (this.destroyed)`
@@ -5052,7 +5104,7 @@ function onErrorSecureServerSession(err, socket) {
 function closeAllSessions(server) {
   const sessions = server[kSessions];
   if (sessions.size > 0) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     for (const session of sessions) {
       session.close();
     }
@@ -5441,7 +5493,7 @@ const SETTING_ID_TO_NAME = new SafeMap([
 
 function getUnpackedSettings(buf) {
   if (
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     !Buffer.isBuffer(buf) &&
     !(ArrayBufferIsView(buf) && !(buf instanceof DataView))
   ) {
@@ -5451,7 +5503,7 @@ function getUnpackedSettings(buf) {
     ], buf);
   }
   if (!Buffer.isBuffer(buf)) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     buf = Buffer.from(buf);
   }
   if (buf.length % 6 !== 0) {

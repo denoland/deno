@@ -11,6 +11,7 @@ use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_error::JsErrorBox;
 use deno_npm::NpmPackageCacheFolderId;
+use deno_npm::fast_registry_json;
 use deno_npmrc::RegistryConfig;
 use deno_npmrc::ResolvedNpmRc;
 use deno_path_util::fs::atomic_write_file_with_retries;
@@ -40,6 +41,8 @@ mod rt;
 mod tarball;
 mod tarball_extract;
 
+pub use fs_util::create_dir_all_no_symlink;
+pub use fs_util::ensure_not_symlink;
 pub use fs_util::hard_link_dir_recursive;
 pub use fs_util::hard_link_file;
 pub use registry_info::RegistryInfoProvider;
@@ -335,12 +338,16 @@ impl<TSys: NpmCacheSys> NpmCache<TSys> {
     };
 
     spawn_blocking(move || {
-      let (info, etag) =
-        deno_npm::registry::NpmPackageInfo::from_packument_bytes_with_etag(
+      let (info, cache_metadata) =
+        deno_npm::registry::NpmPackageInfo::from_packument_bytes_with_cache_info(
           file_bytes.into_owned(),
         )
         .map_err(|err| serde_json::Error::io(std::io::Error::other(err)))?;
-      Ok(Some(SerializedCachedPackageInfo { info, etag }))
+      Ok(Some(SerializedCachedPackageInfo {
+        info,
+        etag: cache_metadata.etag,
+        full_packument: cache_metadata.full_packument,
+      }))
     })
     .await
     .unwrap()
@@ -368,8 +375,13 @@ impl<TSys: NpmCacheSys> NpmCache<TSys> {
     &self,
     package_info_bytes: &[u8],
     etag: Option<&str>,
+    packument_format: NpmPackumentFormat,
   ) -> Result<Vec<u8>, JsErrorBox> {
-    slim_package_info_bytes(package_info_bytes, etag)
+    slim_package_info_bytes(
+      package_info_bytes,
+      etag,
+      packument_format == NpmPackumentFormat::Full,
+    )
   }
 
   pub fn save_package_info_bytes(
@@ -397,6 +409,7 @@ impl<TSys: NpmCacheSys> NpmCache<TSys> {
 fn slim_package_info_bytes(
   package_info_bytes: &[u8],
   etag: Option<&str>,
+  full_packument: bool,
 ) -> Result<Vec<u8>, JsErrorBox> {
   let text = std::str::from_utf8(package_info_bytes)
     .map_err(|err| JsErrorBox::generic(err.to_string()))?;
@@ -447,6 +460,15 @@ fn slim_package_info_bytes(
     write_json_property_name(&mut output, &mut first, "_deno.etag")
       .map_err(JsErrorBox::from_err)?;
     serde_json::to_writer(&mut output, etag).map_err(JsErrorBox::from_err)?;
+  }
+
+  if full_packument {
+    // Record that this cache entry came from a full packument response, so
+    // an empty `time` map means the registry provides no publish dates and
+    // there's no point re-fetching to look for them (see #35761).
+    write_json_property_name(&mut output, &mut first, "_deno.packumentFormat")
+      .map_err(JsErrorBox::from_err)?;
+    output.extend_from_slice(b"\"full\"");
   }
 
   output.push(b'}');
@@ -779,7 +801,7 @@ mod tests {
 
     let original =
       deno_npm::registry::NpmPackageInfo::from_packument_slice(input).unwrap();
-    let output = slim_package_info_bytes(input, Some("etag")).unwrap();
+    let output = slim_package_info_bytes(input, Some("etag"), true).unwrap();
     let reparsed =
       deno_npm::registry::NpmPackageInfo::from_packument_slice(&output)
         .unwrap();
@@ -798,11 +820,60 @@ mod tests {
 
     assert_eq!(value["name"], "pkg");
     assert_eq!(value["_deno.etag"], "etag");
+    assert_eq!(value["_deno.packumentFormat"], "full");
     assert_eq!(version_json["hasInstallScript"], true);
     assert_eq!(version_json["_npmUser"]["trustedPublisher"], true);
     assert!(version_json.get("exports").is_none());
     assert!(version_json.get("scripts").is_none());
     assert!(version_json["dist"].get("fileCount").is_none());
     assert!(value.get("readme").is_none());
+  }
+
+  #[test]
+  fn slim_package_info_bytes_full_packument_marker() {
+    // a registry response with no time data at all
+    let input = br#"{
+      "name":"pkg",
+      "dist-tags":{"latest":"1.0.0"},
+      "versions":{"1.0.0":{"version":"1.0.0"}}
+    }"#;
+
+    // abbreviated fetches don't write the marker
+    let output = slim_package_info_bytes(input, None, false).unwrap();
+    let value: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert!(value.get("_deno.packumentFormat").is_none());
+    let (_, cache_metadata) =
+      deno_npm::registry::NpmPackageInfo::from_packument_bytes_with_cache_info(
+        output,
+      )
+      .unwrap();
+    assert!(!cache_metadata.full_packument);
+
+    // full packument fetches record the marker even when the registry
+    // provides no `time` data, so it doesn't get re-fetched on every
+    // process start (see #35761)
+    let output = slim_package_info_bytes(input, None, true).unwrap();
+    let value: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(value["_deno.packumentFormat"], "full");
+    let (info, cache_metadata) =
+      deno_npm::registry::NpmPackageInfo::from_packument_bytes_with_cache_info(
+        output,
+      )
+      .unwrap();
+    assert!(cache_metadata.full_packument);
+    assert!(info.time.is_empty());
+
+    // a marker nested inside a version object is ignored
+    let nested = br#"{
+      "name":"pkg",
+      "dist-tags":{"latest":"1.0.0"},
+      "versions":{"1.0.0":{"version":"1.0.0","_deno.packumentFormat":"full"}}
+    }"#;
+    let (_, cache_metadata) =
+      deno_npm::registry::NpmPackageInfo::from_packument_bytes_with_cache_info(
+        nested.to_vec(),
+      )
+      .unwrap();
+    assert!(!cache_metadata.full_packument);
   }
 }

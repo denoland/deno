@@ -632,6 +632,7 @@ fn compute_document_doc_diagnostics(
       unstable_bytes_imports: false,
       unstable_text_imports: false,
       unstable_css_imports: false,
+      unstable_config_imports: false,
     },
   ));
   if token.is_cancelled() {
@@ -1971,6 +1972,13 @@ async fn generate_no_slow_types_diagnostics(
   };
   // Only publishable JSR packages have a public API to check for slow types.
   if config_data.member_dir.jsr_packages_for_publish().is_empty() {
+    return Vec::new();
+  }
+  // Respect the lint configuration: if `no-slow-types` is excluded (or not
+  // otherwise enabled) for this document, don't report its diagnostics. This
+  // keeps the LSP in sync with `deno lint`, which filters the rule out.
+  let linter = snapshot.linter_resolver.for_module(module);
+  if !linter.inner.has_package_rule("no-slow-types") {
     return Vec::new();
   }
   let scope = config_data.scope.clone();

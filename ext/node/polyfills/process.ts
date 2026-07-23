@@ -242,7 +242,8 @@ export function umask(mask?: number | string): number {
   }
   // Note: reading the umask without setting has an inherent race condition
   // (two syscalls: set to 0 then restore). Node.js has the same issue and
-  // has deprecated process.umask() with no arguments.
+  // has deprecated process.umask() with no arguments. In Deno, the underlying
+  // op requires allow-sys=umask for both reading and setting.
   return op_fs_umask(null);
 }
 
