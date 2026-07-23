@@ -16,19 +16,6 @@ fn main() {
     let o = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
     let cli_snapshot_path = o.join("CLI_SNAPSHOT.bin");
     let residual_path = o.join("EXTENSION_RESIDUAL_SOURCES.rs");
-    // On musl, pthread stack-bounds detection is unreliable for the main
-    // thread (but accurate for spawned threads). V8 reads those bounds to set
-    // its stack limit, so creating the snapshot on the main thread crashes
-    // intermittently (SIGSEGV). Run it on a spawned thread with an explicit
-    // large stack so V8 gets correct bounds and ample room.
-    #[cfg(target_env = "musl")]
-    std::thread::Builder::new()
-      .stack_size(128 * 1024 * 1024)
-      .spawn(move || create_cli_snapshot(cli_snapshot_path, residual_path))
-      .unwrap()
-      .join()
-      .unwrap();
-    #[cfg(not(target_env = "musl"))]
     create_cli_snapshot(cli_snapshot_path, residual_path);
   }
 }

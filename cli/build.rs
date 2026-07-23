@@ -224,16 +224,7 @@ fn compress_source(out_dir: &Path, file: &str) {
 
   println!("cargo:rerun-if-changed={}", path.display());
 
-  println!(
-    "cargo:warning=BUILD-MARKER: zstd compress {} ({} bytes)",
-    path.display(),
-    contents.len()
-  );
   let compressed = zstd::bulk::compress(&contents, 19).unwrap();
-  println!(
-    "cargo:warning=BUILD-MARKER: zstd compress done {}",
-    path.display()
-  );
   let mut out = out_dir.join(file.trim_start_matches("../"));
   let mut ext = out
     .extension()
@@ -427,12 +418,9 @@ fn main() {
     return;
   }
 
-  println!("cargo:warning=BUILD-MARKER: check_appimage_runtime_hashes");
   check_appimage_runtime_hashes();
 
-  println!("cargo:warning=BUILD-MARKER: print_linker_flags napi");
   deno_napi::print_linker_flags("deno");
-  println!("cargo:warning=BUILD-MARKER: print_linker_flags webgpu");
   deno_webgpu::print_linker_flags("deno");
 
   // Host snapshots won't work when cross compiling.
@@ -449,7 +437,6 @@ fn main() {
 
   let out_dir = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
 
-  println!("cargo:warning=BUILD-MARKER: process_node_types");
   process_node_types(&out_dir);
 
   // Always emit rerun-if-changed for dts files (they are included via
@@ -458,9 +445,7 @@ fn main() {
   emit_dts_rerun_if_changed();
 
   if !cfg!(debug_assertions) && std::env::var("CARGO_FEATURE_HMR").is_err() {
-    println!("cargo:warning=BUILD-MARKER: compress_sources");
     compress_sources(&out_dir);
-    println!("cargo:warning=BUILD-MARKER: compress_sources done");
   }
 
   if let Ok(c) = env::var("DENO_CANARY") {
