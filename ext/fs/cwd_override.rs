@@ -117,6 +117,11 @@ pub fn set_current_dir(path: impl AsRef<Path>) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::FileSystem;
+  use crate::OpenOptions;
+  use crate::RealFs;
+  use deno_permissions::CheckedPath;
+  use std::borrow::Cow;
   use std::fs;
   use std::sync::Mutex;
   use std::time::{SystemTime, UNIX_EPOCH};
@@ -195,5 +200,32 @@ mod tests {
     assert_eq!(std::env::current_dir().unwrap(), previous);
     let _ = fs::remove_dir_all(first);
     let _ = fs::remove_dir_all(second);
+  }
+
+  #[test]
+  fn relative_real_fs_writes_use_override() {
+    let _lock = LOCK.lock().unwrap();
+    let temp = std::fs::canonicalize(temp_subdir("relative-write")).unwrap();
+    let path =
+      CheckedPath::unsafe_new(Cow::Borrowed(Path::new("relative.txt")));
+
+    {
+      let _guard = CwdOverrideGuard::new(&temp).unwrap();
+      RealFs
+        .write_file_sync(
+          &path,
+          OpenOptions {
+            write: true,
+            create: true,
+            truncate: true,
+            ..Default::default()
+          },
+          b"override",
+        )
+        .unwrap();
+    }
+
+    assert_eq!(fs::read(temp.join("relative.txt")).unwrap(), b"override");
+    let _ = fs::remove_dir_all(temp);
   }
 }
