@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "denied": {
+      "args": "run main.ts",
+      "output": "denied.out"
+    },
+    "granted": {
+      "args": "run --allow-sys=networkInterfaces main.ts",
+      "output": "granted.out"
+    }
+  }
+}
