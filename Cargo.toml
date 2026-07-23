@@ -376,7 +376,7 @@ imara-diff = "=0.2.0"
 lax-css = "=0.2.4"
 lax-markup = "=0.2.5"
 lax-sql = "=0.2.1"
-libsui = "=0.16.3"
+libsui = "=0.16.4"
 object = { version = "0.36.3", default-features = false, features = ["read_core", "pe"] }
 open = "5.0.1"
 pathdiff = "0.2.1"

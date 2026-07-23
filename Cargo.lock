@@ -1886,12 +1886,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "debug-ignore"
-version = "1.0.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ffe7ed1d93f4553003e20b629abe9085e1e81b1429520f897f8f8860bc6dfc21"
-
-[[package]]
 name = "debugid"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2309,6 +2303,7 @@ dependencies = [
  "twox-hash 2.1.2",
  "unicycle",
  "url",
+ "uuid",
  "v8",
  "wasm_dep_analyzer",
  "windows-sys 0.59.0",
@@ -4352,19 +4347,6 @@ dependencies = [
  "sha3 0.11.0-rc.8",
  "signature 3.0.0-rc.10",
  "subtle",
-]
-
-[[package]]
-name = "editpe"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48cede2bb1b07dd598d269f973792c43e0cd92686d3b452bd6e01d7a8eb01211"
-dependencies = [
- "debug-ignore",
- "indexmap",
- "log",
- "thiserror 1.0.69",
- "zerocopy 0.7.32",
 ]
 
 [[package]]
@@ -6611,15 +6593,16 @@ dependencies = [
 
 [[package]]
 name = "libsui"
-version = "0.16.3"
+version = "0.16.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca68ddfd95a7422fda71830518f057cb14aa784a0feed007bc5ef9dff04818b1"
+checksum = "3cd44dd0a322ec9fb05619e59067d1c767718238677369d9c5f004ea26a1184b"
 dependencies = [
- "editpe",
  "image",
+ "indexmap",
  "libc",
  "object",
  "sha2",
+ "thiserror 1.0.69",
  "windows 0.58.0",
  "zerocopy 0.7.32",
 ]
