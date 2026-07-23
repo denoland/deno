@@ -88,6 +88,114 @@ fn run_bundle_check_symlink_to_fifo(
   output
 }
 
+/// Like `run_bundle_check_symlink_to_fifo`, but passes the SAME symlinked FIFO
+/// entrypoint TWICE and writes the bundle to `--outdir`. The single background
+/// writer feeds the pipe exactly once, so this proves the non-regular entrypoint
+/// is read at most once even when duplicated: after the fix
+/// `read_nonregular_entrypoints` dedupes by resolved URL and reads the pipe once
+/// (rendezvous with the one writer → EOF), so deno finishes. A regression that
+/// re-reads the drained FIFO on the second occurrence blocks on the second
+/// `open()` (the writer is already gone) and the bounded timeout fails fast
+/// instead of hanging CI. Returns (output, concatenated bundled `.js` content
+/// written to `--outdir`). The bundle is read here, before the test context's
+/// temp dir is dropped (which would delete it).
+fn run_bundle_check_dup_symlink_to_fifo(
+  source: &str,
+) -> (std::process::Output, String) {
+  use std::os::unix::fs::symlink;
+
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let fifo_path = temp_dir.path().join("source.ts");
+  let alias_path = temp_dir.path().join("alias.ts");
+  let outdir = temp_dir.path().join("out").to_path_buf();
+
+  let status = std::process::Command::new("mkfifo")
+    .arg(fifo_path.to_string())
+    .status()
+    .expect("failed to spawn mkfifo");
+  assert!(status.success(), "mkfifo failed");
+
+  symlink(fifo_path.as_path(), alias_path.as_path()).unwrap();
+
+  // Writer feeds the pipe exactly once. After the fix only one read happens, so
+  // this rendezvous with it and gives EOF. A regression opens the drained FIFO a
+  // second time (no writer left) and blocks, tripping the timeout below.
+  let fifo_for_writer = fifo_path.to_string();
+  let source = source.to_string();
+  let (writer_done_tx, writer_done_rx) = std::sync::mpsc::channel();
+  std::thread::spawn(move || {
+    let _ = std::fs::write(&fifo_for_writer, source);
+    let _ = writer_done_tx.send(());
+  });
+
+  let child = context
+    .new_command()
+    .arg("bundle")
+    .arg("--check")
+    .arg(format!("--outdir={}", outdir.to_string_lossy()))
+    // The same non-regular entrypoint passed twice — valid input that must not
+    // read the pipe twice (denoland/deno#36162 review follow-up).
+    .arg("alias.ts")
+    .arg("alias.ts")
+    .stdout_piped()
+    .stderr_piped()
+    .spawn()
+    .unwrap();
+
+  let output = child
+    .wait_with_output_and_timeout(Duration::from_secs(30))
+    .expect(
+      "`deno bundle --check alias.ts alias.ts` hung reopening the drained \
+       FIFO for the duplicate entrypoint (regression of denoland/deno#36162)",
+    );
+
+  let _ = writer_done_rx.recv_timeout(Duration::from_secs(5));
+
+  // Read the emitted bundle while the temp dir is still alive (it is deleted
+  // when `context`/`temp_dir` drop at the end of this function).
+  let mut bundled = String::new();
+  if let Ok(entries) = std::fs::read_dir(&outdir) {
+    for entry in entries.flatten() {
+      let path = entry.path();
+      if path.extension().and_then(|e| e.to_str()) == Some("js") {
+        bundled = std::fs::read_to_string(&path).unwrap();
+        break;
+      }
+    }
+  }
+
+  (output, bundled)
+}
+
+// Regression test for the denoland/deno#36162 review follow-up: passing the same
+// non-regular entrypoint twice must read the pipe only once (dedup by resolved
+// URL) and still produce a non-empty bundle, not a 0-byte file or a hang.
+#[test]
+fn bundle_check_dup_symlink_to_fifo_read_once() {
+  let (output, bundled) =
+    run_bundle_check_dup_symlink_to_fifo("const x = 5;\nconsole.log(x);\n");
+
+  let stdout =
+    util::strip_ansi_codes(std::str::from_utf8(&output.stdout).unwrap());
+  let stderr =
+    util::strip_ansi_codes(std::str::from_utf8(&output.stderr).unwrap());
+
+  assert!(
+    output.status.success(),
+    "expected success, got {:?}\nstdout:\n{stdout}\nstderr:\n{stderr}",
+    output.status.code()
+  );
+
+  // The bundled output must contain the piped source (not a 0-byte file from a
+  // second EOF read overwriting the first).
+  assert!(
+    !bundled.is_empty(),
+    "expected a non-empty bundled .js\nstdout:\n{stdout}\nstderr:\n{stderr}",
+  );
+  assert_contains!(bundled, "console.log(x)");
+}
+
 // Regression test for denoland/deno#36162: `bundle --check` of a symlink to a
 // FIFO must produce the bundle (from content read once) instead of hanging.
 #[test]
