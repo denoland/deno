@@ -94,6 +94,8 @@ struct Inner {
   /// When set, the parser reads directly from the stream handle
   /// via a ReadInterceptor, bypassing the JS readable stream.
   consumed_stream: Option<*mut uv_stream_t>,
+  /// Persistent handle to the JS stream wrapper object while consumed.
+  consumed_stream_handle: Option<v8::Global<v8::Object>>,
   /// Persistent handle to the JS wrapper object for callbacks during consume.
   consume_callbacks: Option<v8::Global<v8::Object>>,
   /// Raw isolate pointer for creating scopes in the interceptor callback.
@@ -149,6 +151,7 @@ impl HTTPParser {
         last_bytes_parsed: 0,
         last_errno: 0,
         consumed_stream: None,
+        consumed_stream_handle: None,
         consume_callbacks: None,
         consume_isolate: v8::UnsafeRawIsolatePtr::null(),
       }),
@@ -1179,6 +1182,7 @@ impl HTTPParser {
     inner.consume_callbacks = Some(v8::Global::new(scope, callbacks));
     inner.consume_isolate = unsafe { scope.as_raw_isolate_ptr() };
     inner.consumed_stream = Some(stream);
+    inner.consumed_stream_handle = Some(v8::Global::new(scope, handle));
 
     // Register the read interceptor
     let interceptor = ReadInterceptor {
@@ -1196,6 +1200,7 @@ impl HTTPParser {
     if let Some(stream) = inner.consumed_stream.take() {
       LibUvStreamWrap::set_read_interceptor_for_stream(stream, None);
     }
+    inner.consumed_stream_handle = None;
     inner.consume_callbacks = None;
     inner.consume_isolate = v8::UnsafeRawIsolatePtr::null();
   }
