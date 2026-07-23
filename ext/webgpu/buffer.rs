@@ -91,6 +91,13 @@ impl GPUBuffer {
     let mut first_error = None;
     for mapped in self.mapped_js_buffers.replace(vec![]) {
       let ab = mapped.buffer.open(scope);
+      // A zero `byte_length` means the range is already detached, which can
+      // only happen if the caller detached it themselves (e.g. by transferring
+      // it to a worker). There is nothing left to read from, so the range is
+      // skipped: any writes made through a transferred copy are not propagated
+      // to the buffer. That matches the mapping model, where the range handed
+      // out by `getMappedRange()` is the only view that stays valid until
+      // `unmap()`.
       if mapped.copy_on_unmap && mapped.size != 0 && ab.byte_length() != 0 {
         match self.instance.buffer_get_mapped_range(
           self.id,
@@ -297,6 +304,12 @@ impl GPUBuffer {
   #[nofast]
   #[undefined]
   fn unmap(&self, scope: &mut v8::PinScope<'_, '_>) -> Result<(), BufferError> {
+    // Writeback has to happen while the backend mapping is still live, so it
+    // runs before `buffer_unmap()`. If it fails we bail out and leave
+    // `map_state` as "mapped", matching the previous behavior where a failing
+    // `buffer_unmap()` left the state untouched. In practice this is
+    // unreachable: the range was validated by `getMappedRange()` and the
+    // mapping is still active here.
     self.writeback_and_detach_mapped_js_buffers(scope)?;
 
     self
