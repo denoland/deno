@@ -36,7 +36,9 @@ pub struct RealFs;
 
 fn resolve_path(path: &Path) -> Cow<'_, Path> {
   match crate::cwd_override::current_override() {
-    Some(cwd) if path.is_relative() => Cow::Owned(cwd.join(path)),
+    Some(cwd) if path.is_relative() && !path.as_os_str().is_empty() => {
+      Cow::Owned(cwd.join(path))
+    }
     _ => Cow::Borrowed(path),
   }
 }

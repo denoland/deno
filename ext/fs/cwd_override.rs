@@ -36,6 +36,12 @@ impl CwdOverrideGuard {
   /// otherwise against the real process cwd.
   pub fn new(path: impl AsRef<Path>) -> io::Result<Self> {
     let path = path.as_ref();
+    if path.as_os_str().is_empty() {
+      return Err(io::Error::new(
+        io::ErrorKind::NotFound,
+        "working directory path is empty",
+      ));
+    }
     let absolute = if path.is_absolute() {
       path.to_path_buf()
     } else {
@@ -84,6 +90,12 @@ pub fn current_dir() -> io::Result<PathBuf> {
 /// process cwd.
 pub fn set_current_dir(path: impl AsRef<Path>) -> io::Result<()> {
   let path = path.as_ref();
+  if path.as_os_str().is_empty() {
+    return Err(io::Error::new(
+      io::ErrorKind::NotFound,
+      "working directory path is empty",
+    ));
+  }
   let absolute = if path.is_absolute() {
     path.to_path_buf()
   } else {
@@ -226,6 +238,42 @@ mod tests {
     }
 
     assert_eq!(fs::read(temp.join("relative.txt")).unwrap(), b"override");
+    let _ = fs::remove_dir_all(temp);
+  }
+
+  #[test]
+  fn empty_real_fs_path_does_not_resolve_to_override() {
+    let _lock = LOCK.lock().unwrap();
+    let temp = std::fs::canonicalize(temp_subdir("empty-path")).unwrap();
+    let path = CheckedPath::unsafe_new(Cow::Borrowed(Path::new("")));
+
+    {
+      let _guard = CwdOverrideGuard::new(&temp).unwrap();
+      assert!(RealFs.remove_sync(&path, true).is_err());
+    }
+
+    assert!(temp.is_dir());
+    let _ = fs::remove_dir_all(temp);
+  }
+
+  #[test]
+  fn empty_cwd_path_remains_invalid() {
+    let _lock = LOCK.lock().unwrap();
+    let temp = std::fs::canonicalize(temp_subdir("empty-cwd")).unwrap();
+
+    let Err(error) = CwdOverrideGuard::new("") else {
+      panic!("empty cwd override should fail");
+    };
+    assert_eq!(error.kind(), io::ErrorKind::NotFound);
+    {
+      let _guard = CwdOverrideGuard::new(&temp).unwrap();
+      assert_eq!(
+        set_current_dir("").unwrap_err().kind(),
+        io::ErrorKind::NotFound
+      );
+      assert_eq!(current_dir().unwrap(), temp);
+    }
+
     let _ = fs::remove_dir_all(temp);
   }
 }
