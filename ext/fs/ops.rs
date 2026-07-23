@@ -156,6 +156,9 @@ pub fn op_fs_umask(
 ) -> Result<u32, FsOpsError>
 where
 {
+  state
+    .borrow_mut::<deno_permissions::PermissionsContainer>()
+    .check_sys("umask", "Deno.umask()")?;
   state.borrow::<FileSystemRc>().umask(mask).context("umask")
 }
 

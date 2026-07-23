@@ -109,6 +109,7 @@ fn run_test(test: &CollectedTest) -> TestResult {
 
   if test.name.ends_with("::worker_permissions_test")
     || test.name.ends_with("::worker_test")
+    || test.name.ends_with("::umask_test")
   {
     deno = deno.arg("--unstable-worker-options");
   }

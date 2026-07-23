@@ -33,7 +33,7 @@ Deno.test(
 
 Deno.test(
   {
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, sys: ["umask"] },
   },
   function openSyncMode() {
     const path = Deno.makeTempDirSync() + "/test_openSync.txt";
@@ -51,7 +51,7 @@ Deno.test(
 
 Deno.test(
   {
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, sys: ["umask"] },
   },
   async function openMode() {
     const path = (await Deno.makeTempDir()) + "/test_open.txt";
@@ -69,7 +69,7 @@ Deno.test(
 
 Deno.test(
   {
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, sys: ["umask"] },
   },
   function openSyncUrl() {
     const tempDir = Deno.makeTempDirSync();
@@ -94,7 +94,7 @@ Deno.test(
 
 Deno.test(
   {
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, sys: ["umask"] },
   },
   async function openUrl() {
     const tempDir = await Deno.makeTempDir();
