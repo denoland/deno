@@ -186,6 +186,7 @@ pub fn generate_tsconfig(
   npm_package_paths: &BTreeMap<String, PathBuf>,
   npm_project_references: &[String],
   node_types_root: Option<&str>,
+  type_ref_root: Option<&str>,
   excludes: &[String],
   has_local_wasm: bool,
   manage_root_tsconfig: bool,
@@ -232,6 +233,7 @@ pub fn generate_tsconfig(
     npm_package_paths,
     npm_project_references,
     node_types_root,
+    type_ref_root,
     excludes,
     has_local_wasm,
   );
@@ -767,6 +769,7 @@ fn build_tsconfig(
   npm_package_paths: &BTreeMap<String, PathBuf>,
   npm_project_references: &[String],
   node_types_root: Option<&str>,
+  type_ref_root: Option<&str>,
   excludes: &[String],
   has_local_wasm: bool,
 ) -> Value {
@@ -776,9 +779,25 @@ fn build_tsconfig(
   // globals (timers, node: builtins, Buffer, URLPattern, ...) resolve. Add the
   // selected local or npm-compat type root alongside the generated Deno types.
   if let Some(node_types_root) = node_types_root {
-    compiler_options
-      .insert("typeRoots".to_string(), json!(["./types", node_types_root]));
+    let mut type_roots = vec![json!("./types"), json!(node_types_root)];
+    // In global-cache mode a `type-refs` directory lays out each imported npm
+    // package under its real name so tsc can resolve type-reference directives
+    // (`/// <reference types="@types/node" />` etc.), which resolve via
+    // `typeRoots`/`node_modules` and not `paths`. It is a *reference-resolution*
+    // root only: `types: ["deno", "node"]` stays explicit so its entries aren't
+    // auto-loaded as ambient globals.
+    if let Some(type_ref_root) = type_ref_root {
+      type_roots.push(json!(type_ref_root));
+    }
+    compiler_options.insert("typeRoots".to_string(), Value::Array(type_roots));
     compiler_options.insert("types".to_string(), json!(["deno", "node"]));
+  } else if let Some(type_ref_root) = type_ref_root {
+    // No @types/node (its download failed), but there are still npm packages to
+    // expose for type-reference directives. Keep `./types` first so `@types/deno`
+    // resolves, then the type-ref root; `types` stays unset so nothing is
+    // auto-loaded as a global.
+    compiler_options
+      .insert("typeRoots".to_string(), json!(["./types", type_ref_root]));
   }
 
   // Merge user's deno.json compilerOptions (filtered to stock-tsc-compatible
@@ -2393,6 +2412,7 @@ interface AlsoKeep {
       &BTreeMap::new(),
       &[],
       None,
+      None,
       &[],
       false,
     );
@@ -2419,6 +2439,7 @@ interface AlsoKeep {
       Path::new("/tmp/project/node_modules/@jsr"),
       &BTreeMap::new(),
       &[],
+      None,
       None,
       &excludes,
       false,
@@ -2451,6 +2472,7 @@ interface AlsoKeep {
       &BTreeMap::new(),
       &[],
       None,
+      None,
       &[],
       false,
     );
@@ -2479,6 +2501,7 @@ interface AlsoKeep {
       Path::new("/tmp/project/node_modules/@jsr"),
       &BTreeMap::new(),
       &references,
+      None,
       None,
       &[],
       false,
@@ -2516,6 +2539,7 @@ interface AlsoKeep {
       Path::new("/tmp/project/node_modules/@jsr"),
       &BTreeMap::new(),
       &[],
+      None,
       None,
       &[],
       false,
