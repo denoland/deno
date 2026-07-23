@@ -2011,8 +2011,18 @@ Module.prototype.load = function (filename) {
             throw err;
           }
         } else {
-          // Default to CJS when format is unspecified
-          this._compile(source, this.filename, undefined, true);
+          // Format unspecified by hooks: honor the file's registered
+          // extension handler the way Node.js does, so native addons (.node)
+          // and JSON are routed correctly instead of always compiling as
+          // CommonJS JavaScript. Those handlers read/ignore the file
+          // themselves, so the source already fetched by the hook chain is
+          // discarded.
+          const extension = findLongestRegisteredExtension(this.filename);
+          if (extension === ".node" || extension === ".json") {
+            Module._extensions[extension](this, this.filename);
+          } else {
+            this._compile(source, this.filename, undefined, true);
+          }
         }
         this.loaded = true;
         return;

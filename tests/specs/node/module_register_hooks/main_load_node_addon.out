@@ -1,0 +1,4 @@
+--- before registerHooks ---
+TypeError
+--- after registerHooks ---
+TypeError
