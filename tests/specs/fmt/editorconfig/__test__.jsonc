@@ -56,6 +56,23 @@
       "output": "[WILDCARD]Found 1 not formatted file in 1 file\n",
       "exitCode": 1
     },
+    "stdin_infers_indent_size": {
+      // Formatting from stdin must honor .editorconfig (indent_size=4)
+      // resolved from the current directory, matching file-based formatting
+      // (https://github.com/denoland/deno/issues/36172). The input is
+      // indented with 2 spaces and should be reformatted to 4.
+      "args": "fmt -",
+      "input": "function greet(name: string) {\n  return \"hello \" + name;\n}\n",
+      "output": "function greet(name: string) {\n    return \"hello \" + name;\n}\n"
+    },
+    "stdin_no_editorconfig_flag_opts_out": {
+      // --no-editorconfig disables reading .editorconfig for stdin too, so
+      // deno's default 2-space indent applies and the already-2-space input
+      // is left unchanged.
+      "args": "fmt --no-editorconfig -",
+      "input": "function greet(name: string) {\n  return \"hello \" + name;\n}\n",
+      "output": "function greet(name: string) {\n  return \"hello \" + name;\n}\n"
+    },
     "logs_at_debug": {
       // With -L debug, fmt notes that it found and is using the .editorconfig.
       "args": "fmt --check -L debug indent_size_4.ts",
