@@ -688,6 +688,39 @@ async fn test_lazy_load_esm_evaluates_pre_instantiated_sibling() {
   result.await.unwrap();
 }
 
+/// Regression test for https://github.com/denoland/deno/issues/36216
+///
+/// Evaluating a pre-instantiated module cached under a synthetic ESM specifier
+/// can synchronously start a dynamic import. The cache-hit path must not keep
+/// `ModuleMapData` borrowed while V8 runs the module body, because starting
+/// the import allocates a new module load ID from the same map.
+#[test]
+fn test_cached_synthetic_esm_evaluation_allows_dynamic_import() {
+  let mut runtime = JsRuntime::new(Default::default());
+  let module_map = runtime.module_map().clone();
+
+  deno_core::scope!(scope, runtime);
+  module_map.add_synthetic_esm_module(
+    ascii_str!("custom:synthetic").into(),
+    ascii_str!("ext:test/backing.js").into(),
+  );
+  let module_id = module_map
+    .new_es_module(
+      scope,
+      false,
+      ascii_str!("custom:synthetic").into(),
+      ascii_str!(r#"import("file:///dynamic_import.js").catch(() => {});"#)
+        .into(),
+      false,
+      None,
+    )
+    .unwrap();
+  module_map.instantiate_module(scope, module_id).unwrap();
+  module_map
+    .lazy_load_synthetic_esm_module(scope, "custom:synthetic")
+    .unwrap();
+}
+
 /// Regression test for https://github.com/denoland/deno/issues/34307
 ///
 /// Two concurrent dynamic `import()` calls each spawn their own
@@ -965,6 +998,58 @@ fn test_validate_import_attributes_default() {
       None,
     )
     .unwrap();
+}
+
+fn fs_module_loader_specifier(file_name: &str) -> ModuleSpecifier {
+  let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    .join("modules")
+    .join("testdata")
+    .join(file_name);
+  deno_path_util::url_from_file_path(&path).unwrap()
+}
+
+async fn load_fs_module(
+  file_name: &str,
+  requested_module_type: RequestedModuleType,
+) -> Result<ModuleSource, ModuleLoaderError> {
+  let specifier = fs_module_loader_specifier(file_name);
+  let response = FsModuleLoader.load(
+    &specifier,
+    None,
+    ModuleLoadOptions {
+      is_dynamic_import: false,
+      is_synchronous: false,
+      requested_module_type,
+    },
+  );
+  match response {
+    ModuleLoadResponse::Sync(result) => result,
+    ModuleLoadResponse::Async(future) => future.await,
+  }
+}
+
+#[tokio::test]
+async fn test_fs_module_loader_rejects_non_json_for_json_request() {
+  for file_name in ["fs_module_loader.js", "fs_module_loader"] {
+    let specifier = fs_module_loader_specifier(file_name);
+    let error = load_fs_module(file_name, RequestedModuleType::Json)
+      .await
+      .unwrap_err();
+
+    assert_eq!(error.get_class(), "TypeError");
+    assert_eq!(
+      error.to_string(),
+      format!(
+        "Expected a JSON module, but identified a JavaScript module.\n  Specifier: {specifier}"
+      )
+    );
+  }
+
+  let module =
+    load_fs_module("fs_module_loader.json", RequestedModuleType::Json)
+      .await
+      .unwrap();
+  assert_eq!(module.module_type, ModuleType::Json);
 }
 
 #[test]

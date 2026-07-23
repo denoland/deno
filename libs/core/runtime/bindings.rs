@@ -183,7 +183,7 @@ pub(crate) fn create_external_references(
 
 /// Result of [`externalize_sources`]: the `v8::OneByteConst` backings, the
 /// original source strings they borrow from (kept alive), and the specifiers of
-/// the externalized `lazy_loaded_js` sources (parallel to the trailing
+/// the externalized `lazy_loaded_*` sources (parallel to the trailing
 /// `original_sources` entries).
 pub(crate) type ExternalizedSources = (
   Box<[v8::OneByteConst]>,
@@ -222,13 +222,14 @@ pub(crate) fn externalize_sources(
     } else {
       0
     };
-  // Record the externalized `lazy_loaded_js` specifiers in iteration order
+  // Record the externalized `lazy_loaded_*` specifiers in iteration order
   // (these become the trailing entries of `original_sources`). `snapshot()`
-  // uses them to drop non-consumed scripts' bytes from the sidecar.
-  let lazy_js_specifiers: Box<[ModuleName]> = if externalize_lazy_js {
+  // uses them to drop non-consumed sources' bytes from the sidecar.
+  let lazy_source_specifiers: Box<[ModuleName]> = if externalize_lazy_js {
     sources
-      .lazy_js
+      .lazy_esm
       .iter()
+      .chain(sources.lazy_js.iter())
       .map(|s| s.specifier.try_clone().unwrap())
       .collect()
   } else {
@@ -293,7 +294,7 @@ pub(crate) fn externalize_sources(
     (
       externals,
       original_sources.into_boxed_slice(),
-      lazy_js_specifiers,
+      lazy_source_specifiers,
     )
   }
 }
@@ -357,8 +358,13 @@ pub(crate) fn initialize_deno_core_namespace<'s, 'i>(
 
   // If we're initializing fresh context set up the console
   if init_mode == InitMode::New {
-    // Bind `call_console` to Deno.core.callConsole
-    let call_console_fn = v8::Function::new(scope, call_console).unwrap();
+    // Bind `call_console` to Deno.core.callConsole. Like Node's
+    // `consoleCall`, it must not be constructable so that the bound console
+    // methods throw when invoked with `new`.
+    let call_console_fn = v8::Function::builder(call_console)
+      .constructor_behavior(v8::ConstructorBehavior::Throw)
+      .build(scope)
+      .unwrap();
     let call_console_key = CALL_CONSOLE.v8_string(scope).unwrap();
     deno_core_obj.set(scope, call_console_key.into(), call_console_fn.into());
 
