@@ -219,12 +219,6 @@ interface OtelSpan {
   dropEvent(): void;
 }
 
-enum SpanAttributesLocation {
-  SELF = 0,
-  EVENT = 1,
-  LINK = 2,
-}
-
 interface TracerOptions {
   schemaUrl?: string;
 }
@@ -422,23 +416,13 @@ class Span {
 
   setAttribute(key: string, value: AttributeValue): this {
     if (!this.#otelSpan) return this;
-    op_otel_span_attribute1(
-      this.#otelSpan,
-      SpanAttributesLocation.SELF,
-      0,
-      key,
-      value,
-    );
+    op_otel_span_attribute1(this.#otelSpan, key, value);
     return this;
   }
 
   setAttributes(attributes: Attributes): this {
     if (!this.#otelSpan) return this;
-    op_otel_span_attributes(
-      this.#otelSpan,
-      SpanAttributesLocation.SELF,
-      attributes,
-    );
+    op_otel_span_attributes(this.#otelSpan, attributes);
     return this;
   }
 

@@ -1643,8 +1643,19 @@ fn parse_span_id(
   }
 }
 
+/// Convert a JS key/value pair into a `KeyValue`, or `None` if the value has no
+/// OpenTelemetry representation.
+///
+/// Reading array elements can run user getters, which may throw. When that
+/// happens the exception is left pending and the macro bails out of the
+/// enclosing function so the caller propagates it to JavaScript. The bail
+/// expression defaults to a bare `return`; pass an explicit one (e.g.
+/// `return None`) when the enclosing function does not return `()`.
 macro_rules! attr_raw {
-  ($scope:ident, $name:expr, $value:expr) => {{
+  ($scope:ident, $name:expr, $value:expr) => {
+    attr_raw!($scope, $name, $value, return)
+  };
+  ($scope:ident, $name:expr, $value:expr, $bail:expr) => {{
     let name = if let Ok(name) = $name.try_cast() {
       let view = v8::ValueView::new($scope, name);
       match view.data() {
@@ -1688,13 +1699,13 @@ macro_rules! attr_raw {
           break 'value Some(Value::Array(Array::String(vec![])));
         }
         let Some(first) = array.get_index($scope, 0) else {
-          return;
+          $bail;
         };
         if first.is_string() {
           let mut vec = Vec::with_capacity(len as usize);
           for i in 0..len {
             let Some(element) = array.get_index($scope, i) else {
-              return;
+              $bail;
             };
             if let Ok(s) = element.try_cast::<v8::String>() {
               let view = v8::ValueView::new($scope, s);
@@ -1714,7 +1725,7 @@ macro_rules! attr_raw {
           let mut vec = Vec::with_capacity(len as usize);
           for i in 0..len {
             let Some(element) = array.get_index($scope, i) else {
-              return;
+              $bail;
             };
             if let Ok(n) = element.try_cast::<v8::Number>() {
               vec.push(n.value());
@@ -1726,7 +1737,7 @@ macro_rules! attr_raw {
           let mut vec = Vec::with_capacity(len as usize);
           for i in 0..len {
             let Some(element) = array.get_index($scope, i) else {
-              return;
+              $bail;
             };
             if let Ok(b) = element.try_cast::<v8::Boolean>() {
               vec.push(b.is_true());
@@ -1738,7 +1749,7 @@ macro_rules! attr_raw {
           let mut vec = Vec::with_capacity(len as usize);
           for i in 0..len {
             let Some(element) = array.get_index($scope, i) else {
-              return;
+              $bail;
             };
             if let Ok(b) = element.try_cast::<v8::BigInt>() {
               let (i64_value, _lossless) = b.i64_value();
@@ -2383,7 +2394,10 @@ fn set_property<'s>(
 /// Append an event to a recording span, enforcing `OTEL_SPAN_EVENT_COUNT_LIMIT`.
 /// A `NaN` `start_time` means "use the current time". Extracted from the former
 /// `OtelSpan::add_event` cppgc method so it can be reused by the span ops.
-fn span_push_event(span: &OtelSpan, name: String, start_time: f64) {
+///
+/// Returns the 1-based index of the new event, to be used as the attribute
+/// target, or `0` when no event was recorded.
+fn span_push_event(span: &OtelSpan, name: String, start_time: f64) -> u32 {
   let start_time = if start_time.is_nan() {
     SystemTime::now()
   } else {
@@ -2394,18 +2408,19 @@ fn span_push_event(span: &OtelSpan, name: String, start_time: f64) {
   let limit = span_event_count_limit();
   let mut state = span.0.borrow_mut();
   let OtelSpanState::Recording(span) = &mut **state else {
-    return;
+    return 0;
   };
   // Enforce OTEL_SPAN_EVENT_COUNT_LIMIT: once the limit is reached, drop
   // further events and count them in droppedEventsCount.
   if span.events.events.len() >= limit {
     span.events.dropped_count += 1;
-    return;
+    return 0;
   }
   span
     .events
     .events
     .push(Event::new(name, start_time, vec![], 0));
+  span.events.events.len() as u32
 }
 
 /// End a recording span and dispatch it to the span processor. A `NaN`
@@ -2508,12 +2523,13 @@ fn push_span_attribute(
   }
 }
 
+/// Set a single attribute on the span itself. Events and links get their
+/// attributes through [`apply_span_attributes_object`] instead, so this op only
+/// ever targets `SpanAttributesLocation::SELF`.
 #[op2(fast, reentrant)]
 fn op_otel_span_attribute1<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   span: v8::Local<'_, v8::Value>,
-  #[smi] location: u32,
-  #[smi] target: u32,
   key: v8::Local<'s, v8::Value>,
   value: v8::Local<'s, v8::Value>,
 ) {
@@ -2524,27 +2540,18 @@ fn op_otel_span_attribute1<'s>(
   };
   let limit = attribute_count_limit();
   let value_length_limit = attribute_value_length_limit();
-  if should_parse_span_attribute(&span, location, target, limit) {
+  if should_parse_span_attribute(&span, 0, 0, limit) {
     let attr = attr_raw!(scope, key, value);
-    push_span_attribute(
-      &span,
-      location,
-      target,
-      limit,
-      value_length_limit,
-      attr,
-    );
+    push_span_attribute(&span, 0, 0, limit, value_length_limit, attr);
   }
 }
 
 /// Add every own, enumerable, string-keyed property of `attributes` to the span
-/// (or its last event/link, depending on `location`). Thin wrapper around
-/// [`apply_span_attributes_object`].
-#[op2(fast)]
+/// itself. Thin wrapper around [`apply_span_attributes_object`].
+#[op2(fast, reentrant)]
 fn op_otel_span_attributes<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   span: v8::Local<'_, v8::Value>,
-  #[smi] location: u32,
   attributes: v8::Local<'s, v8::Value>,
 ) {
   let Some(span) =
@@ -2552,18 +2559,27 @@ fn op_otel_span_attributes<'s>(
   else {
     return;
   };
-  apply_span_attributes_object(scope, &span, location, attributes);
+  // SpanAttributesLocation::SELF, which has no target index.
+  apply_span_attributes_object(scope, &span, 0, 0, attributes);
 }
 
 /// Apply every own, enumerable, string-keyed property of `attributes` to the
-/// span (or its last event/link, depending on `location`). Shared by
-/// `op_otel_span_attributes` and the combined add-event/add-link/record-exception
-/// ops so the batching, ordering and per-element attribute-count limit behave
-/// identically across all callers.
+/// span, or to the event/link identified by `target` (a 1-based index).
+/// Shared by `op_otel_span_attributes` and the combined
+/// add-event/add-link/record-exception ops so the batching, ordering and
+/// per-element attribute-count limit behave identically across all callers.
+///
+/// Attribute values are read up front (mirroring the JS `ObjectEntries` that
+/// used to run before the attribute ops), but each value is converted and
+/// pushed one at a time without holding a borrow on the span state, so a getter
+/// that re-entrantly touches the same span is safe. The `target` index — rather
+/// than "the last event/link" — keeps attributes attached to the right element
+/// even when such a getter appends further events or links.
 fn apply_span_attributes_object<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   span: &OtelSpan,
   location: u32,
+  target: u32,
   attributes: v8::Local<'s, v8::Value>,
 ) {
   let Ok(object) = attributes.try_cast::<v8::Object>() else {
@@ -2585,45 +2601,34 @@ fn apply_span_attributes_object<'s>(
   if len == 0 {
     return;
   }
-  // Read and convert keys/values before borrowing the span state. This matches
-  // the previous flow where JS `ObjectEntries` extracted the entries (running
-  // any property getters) before the attribute ops ran, and avoids re-entrant
-  // borrows if a getter touches the span. `None` marks an unconvertible value,
-  // which still counts toward `dropped_attributes_count` below.
-  let mut converted: Vec<Option<KeyValue>> = Vec::with_capacity(len as usize);
+  let mut entries = Vec::with_capacity(len as usize);
   for i in 0..len {
     let Some(key) = names.get_index(scope, i) else {
-      converted.push(None);
-      continue;
+      return;
     };
     let Some(value) = object.get(scope, key) else {
-      converted.push(None);
-      continue;
+      return;
     };
-    converted.push(attr_raw!(scope, key, value));
+    entries.push((key, value));
   }
 
   let limit = attribute_count_limit();
   let value_length_limit = attribute_value_length_limit();
-  let mut state = span.0.borrow_mut();
-  if let OtelSpanState::Recording(span) = &mut **state {
-    let Some((attributes, dropped_attributes_count)) =
-      span_attributes(span, location)
-    else {
-      return;
-    };
-    for kv in converted {
-      if attributes.len() >= limit {
-        *dropped_attributes_count += 1;
-      } else if let Some(mut kv) = kv {
-        // Enforce `OTEL_(SPAN_)ATTRIBUTE_VALUE_LENGTH_LIMIT`: string values (and
-        // string-array elements) longer than the limit are truncated.
-        truncate_attr_value(&mut kv.value, value_length_limit);
-        attributes.push(kv);
-      } else {
-        *dropped_attributes_count += 1;
-      }
+  for (key, value) in entries {
+    // Check the attribute count limit before converting, so a value whose
+    // getters would be run is skipped entirely once the limit is reached.
+    if !should_parse_span_attribute(span, location, target, limit) {
+      continue;
     }
+    let attr = attr_raw!(scope, key, value);
+    push_span_attribute(
+      span,
+      location,
+      target,
+      limit,
+      value_length_limit,
+      attr,
+    );
   }
 }
 
@@ -2650,9 +2655,9 @@ fn op_otel_span_update_name<'s>(
 
 /// Combined `Span.addEvent` path: disambiguate the
 /// `(name, attributesOrStartTime?, startTime?)` overload, convert the time input
-/// in Rust, push the event, then apply any event attributes to the new
-/// `LAST_EVENT` in a single op. Replaces the JS `addEvent` body.
-#[op2(fast)]
+/// in Rust, push the event, then apply any event attributes to that event in a
+/// single op. Replaces the JS `addEvent` body.
+#[op2(fast, reentrant)]
 fn op_otel_span_add_event<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   span: v8::Local<'s, v8::Value>,
@@ -2682,17 +2687,19 @@ fn op_otel_span_add_event<'s>(
     };
 
   let start_time_ms = time_input_to_ms(scope, start_time_value);
-  span_push_event(&span, name, start_time_ms);
-  if let Some(attributes) = attributes {
-    // SpanAttributesLocation::LAST_EVENT
-    apply_span_attributes_object(scope, &span, 1, attributes);
+  let target = span_push_event(&span, name, start_time_ms);
+  if let Some(attributes) = attributes
+    && target != 0
+  {
+    // SpanAttributesLocation::EVENT
+    apply_span_attributes_object(scope, &span, 1, target, attributes);
   }
 }
 
 /// Combined `Span.end` path: convert the time input in Rust (preserving the JS
 /// `timeInputToMs(endTime) || NaN` semantics, where a falsy result such as `0`
 /// becomes "use the current time") and end the span.
-#[op2(fast)]
+#[op2(fast, reentrant)]
 fn op_otel_span_end<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   span: v8::Local<'s, v8::Value>,
@@ -2715,7 +2722,7 @@ fn op_otel_span_end<'s>(
 /// Combined `Span.recordException` path: build the `exception.*` attribute bag in
 /// Rust (mirroring the JS string/object handling and numeric `code`
 /// stringification), add the `exception` event, then apply the attributes.
-#[op2(fast)]
+#[op2(fast, reentrant)]
 fn op_otel_span_record_exception<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   span: v8::Local<'s, v8::Value>,
@@ -2764,16 +2771,18 @@ fn op_otel_span_record_exception<'s>(
   }
 
   let time_ms = time_input_to_ms(scope, time);
-  span_push_event(&span, "exception".to_string(), time_ms);
-  // SpanAttributesLocation::LAST_EVENT
-  apply_span_attributes_object(scope, &span, 1, attributes.into());
+  let target = span_push_event(&span, "exception".to_string(), time_ms);
+  if target != 0 {
+    // SpanAttributesLocation::EVENT
+    apply_span_attributes_object(scope, &span, 1, target, attributes.into());
+  }
 }
 
 /// Combined `Span.addLink`/`addLinks` path: read the `link.context`
 /// (`traceId`/`spanId`/`traceFlags`/`isRemote`) and `droppedAttributesCount`,
-/// create the link, then apply `link.attributes` to the new `LAST_LINK`.
+/// create the link, then apply `link.attributes` to that link.
 /// Replaces the JS `addLink` body.
-#[op2(fast)]
+#[op2(fast, reentrant)]
 fn op_otel_span_add_link<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   span: v8::Local<'s, v8::Value>,
@@ -2797,8 +2806,9 @@ fn op_otel_span_add_link<'s>(
   let span_id = get_property(scope, context, "spanId");
   let span_id = parse_span_id(scope, span_id);
 
-  // Only push a link when both ids are valid. Matching the previous JS, link
-  // attributes are still applied to `LAST_LINK` afterwards regardless.
+  // Only push a link when both ids are valid; an invalid link has nowhere to
+  // put its attributes, so they are skipped (`target` stays 0).
+  let mut target = 0;
   if trace_id != TraceId::INVALID && span_id != SpanId::INVALID {
     let trace_flags =
       get_property(scope, context, "traceFlags").uint32_value(scope);
@@ -2824,13 +2834,14 @@ fn op_otel_span_add_link<'s>(
         vec![],
         dropped_attributes_count,
       ));
+      target = span.links.links.len() as u32;
     }
   }
 
   let attributes = get_property(scope, link, "attributes");
-  if attributes.boolean_value(scope) {
-    // SpanAttributesLocation::LAST_LINK
-    apply_span_attributes_object(scope, &span, 2, attributes);
+  if attributes.boolean_value(scope) && target != 0 {
+    // SpanAttributesLocation::LINK
+    apply_span_attributes_object(scope, &span, 2, target, attributes);
   }
 }
 
@@ -3312,14 +3323,23 @@ fn create_async_instrument<'a, 'b, T>(
 /// enumerable, string-keyed properties (array indices converted to strings) in
 /// the standard property order. Attribute values that cannot be converted are
 /// skipped, matching the behavior of the previous per-attribute record ops.
+///
+/// Returns `None` when reading a property (or an array element) threw. The
+/// exception stays pending so the caller can return and let it propagate to
+/// JavaScript. The conversion never holds any borrow across a getter call, so a
+/// getter that records another metric re-entrantly is safe.
+#[allow(
+  clippy::question_mark,
+  reason = "the `?` is inside the attr_raw! bail expression"
+)]
 fn metric_attributes_from_value(
   scope: &mut v8::PinScope<'_, '_>,
   attributes: v8::Local<'_, v8::Value>,
-) -> Vec<KeyValue> {
+) -> Option<Vec<KeyValue>> {
   let Ok(object) = attributes.try_cast::<v8::Object>() else {
-    return Vec::new();
+    return Some(Vec::new());
   };
-  let Some(names) = object.get_own_property_names(
+  let names = object.get_own_property_names(
     scope,
     v8::GetPropertyNamesArgs {
       mode: v8::KeyCollectionMode::OwnOnly,
@@ -3328,23 +3348,17 @@ fn metric_attributes_from_value(
       index_filter: v8::IndexFilter::IncludeIndices,
       key_conversion: v8::KeyConversionMode::ConvertToString,
     },
-  ) else {
-    return Vec::new();
-  };
+  )?;
   let len = names.length();
   let mut attributes = Vec::with_capacity(len as usize);
   for i in 0..len {
-    let Some(key) = names.get_index(scope, i) else {
-      continue;
-    };
-    let Some(value) = object.get(scope, key) else {
-      continue;
-    };
-    if let Some(kv) = attr_raw!(scope, key, value) {
+    let key = names.get_index(scope, i)?;
+    let value = object.get(scope, key)?;
+    if let Some(kv) = attr_raw!(scope, key, value, return None) {
       attributes.push(kv);
     }
   }
-  attributes
+  Some(attributes)
 }
 
 /// Record `value`/`attributes` onto a synchronous instrument, replacing the JS
@@ -3355,7 +3369,9 @@ fn record_to_instrument(
   value: f64,
   attributes: v8::Local<'_, v8::Value>,
 ) {
-  let attributes = metric_attributes_from_value(scope, attributes);
+  let Some(attributes) = metric_attributes_from_value(scope, attributes) else {
+    return;
+  };
   match instrument {
     Instrument::Counter(counter) => counter.add(value, &attributes),
     Instrument::UpDownCounter(counter) => counter.add(value, &attributes),
@@ -3402,6 +3418,7 @@ impl OtelCounter {
   }
 
   #[fast]
+  #[reentrant]
   fn add(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
@@ -3440,6 +3457,7 @@ impl OtelGauge {
   }
 
   #[fast]
+  #[reentrant]
   fn record(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
@@ -3476,6 +3494,7 @@ impl OtelHistogram {
   }
 
   #[fast]
+  #[reentrant]
   fn record(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
@@ -3570,6 +3589,7 @@ impl OtelObservableResult {
   }
 
   #[fast]
+  #[reentrant]
   fn observe(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
@@ -3578,7 +3598,10 @@ impl OtelObservableResult {
   ) -> Result<(), JsErrorBox> {
     check_observable_counter(self.is_regular_counter, value)?;
     if let Some(data_share) = &self.data_share {
-      let attributes = metric_attributes_from_value(scope, attributes);
+      let Some(attributes) = metric_attributes_from_value(scope, attributes)
+      else {
+        return Ok(());
+      };
       data_share.lock().unwrap().insert(attributes, value);
     }
     Ok(())
@@ -3771,6 +3794,7 @@ impl OtelBatchObservableResult {
   }
 
   #[fast]
+  #[reentrant]
   fn observe(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
@@ -3793,7 +3817,10 @@ impl OtelBatchObservableResult {
     };
     check_observable_counter(member.is_regular_counter, value)?;
     if let Some(data_share) = &member.data_share {
-      let attributes = metric_attributes_from_value(scope, attributes);
+      let Some(attributes) = metric_attributes_from_value(scope, attributes)
+      else {
+        return Ok(());
+      };
       data_share.lock().unwrap().insert(attributes, value);
     }
     Ok(())
