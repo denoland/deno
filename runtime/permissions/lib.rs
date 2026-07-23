@@ -2953,7 +2953,7 @@ impl SysDescriptor {
       "hostname" | "inspector" | "osRelease" | "osUptime" | "loadavg"
       | "networkInterfaces" | "systemMemoryInfo" | "uid" | "gid" | "cpus"
       | "homedir" | "getegid" | "statfs" | "getPriority" | "setPriority"
-      | "userInfo" | "setegid" | "seteuid" | "setgid" | "setgroups" 
+      | "userInfo" | "setegid" | "seteuid" | "setgid" | "setgroups"
       | "setuid" | "ca" | "umask" => Ok(Self(kind)),
 
       // the underlying permission check changed to `userInfo` to better match the API,
