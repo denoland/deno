@@ -10,8 +10,6 @@ reachable:
 - `https://dprint.dev` and `https://plugins.dprint.dev` — the formatter
   (`tools/format.js`) runs `npm:dprint` which downloads WASM plugins from
   `plugins.dprint.dev`
-- `https://raw.githubusercontent.com` — `tools/lint.js` downloads prebuilt
-  `dlint` binaries from GitHub
 
 If you are running in a sandboxed environment, you must allowlist these domains
 or the tools will fail with network errors.
@@ -94,9 +92,8 @@ The formatter (`tools/format.js`) runs `dprint` via `npm:dprint@0.47.2`. It
 formats TypeScript, JavaScript, JSON, Markdown, YAML, and Rust (via `rustfmt`).
 Configuration is in `.dprint.json`.
 
-The linter (`tools/lint.js`) runs `dlint` for JS/TS and `cargo clippy` for Rust.
-`dlint` is a prebuilt binary downloaded from GitHub on first use. Configuration
-is in `.dlint.json`.
+The linter (`tools/lint.js`) runs `deno lint` for JS/TS and `cargo clippy` for
+Rust.
 
 ## Testing
 
@@ -256,7 +253,7 @@ Prioritize these (in order):
 Do NOT comment on:
 
 - Style preferences already enforced by the project's formatter (dprint) and
-  linter (clippy + dlint)
+  linter (clippy + deno lint)
 - Suggesting longer timeouts or shorter delays in tests without evidence of
   flakiness
 - Minor documentation wording unless it is actively misleading

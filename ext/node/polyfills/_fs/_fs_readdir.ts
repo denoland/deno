@@ -176,7 +176,7 @@ function decode(str: string, encoding?: string): string | Buffer {
   const buf = Buffer.from(str, "utf8");
   if (encoding === "buffer") return buf;
   // No primordial exists for Buffer.prototype.toString with an encoding.
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   return buf.toString(encoding as BufferEncoding);
 }
 

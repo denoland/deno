@@ -76,6 +76,13 @@ use crate::source_map::SourceMapper;
 
 const DATA_PREFIX: &str = "data:";
 
+fn is_internal_module_specifier(specifier: &str) -> bool {
+  let Ok(specifier) = ModuleSpecifier::parse(specifier) else {
+    return false;
+  };
+  matches!(specifier.scheme(), "ext" | "node" | "checkin")
+}
+
 fn residual_source_from_static_table(
   entries: &'static [(&'static str, &'static str)],
   specifier: &str,
@@ -282,6 +289,7 @@ pub(crate) struct ModuleMap {
   module_waker: AtomicWaker,
   data: RefCell<ModuleMapData>,
   will_snapshot: bool,
+  loading_internal_modules: Cell<bool>,
 
   /// A counter used to delay our dynamic import deadlock detection by one spin
   /// of the event loop.
@@ -290,6 +298,26 @@ pub(crate) struct ModuleMap {
   /// Tracks module IDs currently being evaluated via `op_import_sync` to
   /// detect require() cycles that V8's module status alone cannot catch.
   pub(crate) import_sync_eval_stack: RefCell<Vec<ModuleId>>,
+}
+
+struct LoadingInternalModulesGuard<'a> {
+  module_map: &'a ModuleMap,
+  previous: bool,
+}
+
+impl<'a> LoadingInternalModulesGuard<'a> {
+  fn new(module_map: &'a ModuleMap) -> Self {
+    Self {
+      module_map,
+      previous: module_map.loading_internal_modules.replace(true),
+    }
+  }
+}
+
+impl Drop for LoadingInternalModulesGuard<'_> {
+  fn drop(&mut self) {
+    self.module_map.loading_internal_modules.set(self.previous);
+  }
 }
 
 /// Outcome of compiling a module's source.
@@ -382,8 +410,13 @@ impl ModuleMap {
       code_cache_ready_futs: Default::default(),
       module_waker: Default::default(),
       data: Default::default(),
+      loading_internal_modules: Default::default(),
       import_sync_eval_stack: Default::default(),
     }
+  }
+
+  pub(crate) fn set_loading_internal_modules(&self, value: bool) {
+    self.loading_internal_modules.set(value);
   }
 
   pub(crate) fn update_with_snapshotted_data(
@@ -936,6 +969,10 @@ impl ModuleMap {
       }
     }
 
+    let _loading_internal_modules_guard =
+      is_internal_module_specifier(name.as_str())
+        .then(|| LoadingInternalModulesGuard::new(self));
+
     let name_str = name.v8_string(scope).unwrap();
     let source_str = source.v8_string(scope).unwrap();
     let host_defined_options = self
@@ -1355,6 +1392,13 @@ impl ModuleMap {
       return Ok(());
     }
 
+    let _loading_internal_modules_guard = self
+      .data
+      .borrow()
+      .get_name_by_id(id)
+      .filter(|name| is_internal_module_specifier(name))
+      .map(|_| LoadingInternalModulesGuard::new(self));
+
     tc_scope.set_slot(self as *const _);
     let instantiate_result = module.instantiate_module2(
       tc_scope,
@@ -1505,26 +1549,10 @@ impl ModuleMap {
     referrer: &str,
     kind: ResolutionKind,
   ) -> ModuleResolveResponse {
-    if specifier.starts_with("ext:")
-      && !referrer.starts_with("ext:")
-      && !referrer.starts_with("node:")
-      && !referrer.starts_with("checkin:")
-      && referrer != "."
-      && kind != ResolutionKind::MainModule
-    {
-      let referrer = if referrer.is_empty() {
-        "(no referrer)"
-      } else {
-        referrer
-      };
-      let msg = format!(
-        "Importing ext: modules is only allowed from ext: and node: modules. Tried to import {} from {}",
-        specifier, referrer
-      );
-      return Err(JsErrorBox::type_error(msg));
-    }
-
-    self.loader.borrow().resolve(specifier, referrer, kind)
+    let resolved_specifier =
+      self.loader.borrow().resolve(specifier, referrer, kind)?;
+    self.validate_ext_module_import(&resolved_specifier, referrer)?;
+    Ok(resolved_specifier)
   }
 
   pub fn resolve_with_scope(
@@ -1535,32 +1563,53 @@ impl ModuleMap {
     kind: ResolutionKind,
     import_attributes: &HashMap<String, String>,
   ) -> ModuleResolveResponse {
-    if specifier.starts_with("ext:")
-      && !referrer.starts_with("ext:")
-      && !referrer.starts_with("node:")
-      && !referrer.starts_with("checkin:")
-      && referrer != "."
-      && kind != ResolutionKind::MainModule
-    {
-      let referrer = if referrer.is_empty() {
-        "(no referrer)"
-      } else {
-        referrer
-      };
-      let msg = format!(
-        "Importing ext: modules is only allowed from ext: and node: modules. Tried to import {} from {}",
-        specifier, referrer
-      );
-      return Err(JsErrorBox::type_error(msg));
-    }
-
-    self.loader.borrow().resolve_with_scope(
+    let resolved_specifier = self.loader.borrow().resolve_with_scope(
       scope,
       specifier,
       referrer,
       kind,
       import_attributes,
-    )
+    )?;
+    self.validate_ext_module_import(&resolved_specifier, referrer)?;
+    Ok(resolved_specifier)
+  }
+
+  fn validate_ext_module_import(
+    &self,
+    resolved_specifier: &ModuleSpecifier,
+    referrer: &str,
+  ) -> Result<(), JsErrorBox> {
+    if resolved_specifier.scheme() != "ext" {
+      return Ok(());
+    }
+
+    if (self.will_snapshot || self.loading_internal_modules.get())
+      && referrer == "."
+    {
+      return Ok(());
+    }
+
+    if self.is_internal_referrer(referrer) {
+      return Ok(());
+    }
+
+    let referrer = if referrer.is_empty() {
+      "(no referrer)"
+    } else {
+      referrer
+    };
+    let msg = format!(
+      "Importing ext: modules is only allowed from ext: and node: modules. Tried to import {} from {}",
+      resolved_specifier, referrer
+    );
+    Err(JsErrorBox::type_error(msg))
+  }
+
+  fn is_internal_referrer(&self, referrer: &str) -> bool {
+    if !is_internal_module_specifier(referrer) {
+      return false;
+    }
+    self.will_snapshot || self.loading_internal_modules.get()
   }
 
   /// Called by `module_resolve_callback` during module instantiation.
@@ -2735,6 +2784,28 @@ impl ModuleMap {
     code_cache_info: Option<CodeCacheInfo>,
   ) -> Result<v8::Global<v8::Value>, CoreError> {
     let specifier = ModuleSpecifier::parse(module_specifier)?;
+    let previous_loading_internal_modules =
+      matches!(specifier.scheme(), "ext" | "node" | "checkin")
+        .then(|| self.loading_internal_modules.replace(true));
+    let result = self.lazy_load_es_module_with_code_inner(
+      scope,
+      specifier,
+      source_code,
+      code_cache_info,
+    );
+    if let Some(previous) = previous_loading_internal_modules {
+      self.loading_internal_modules.set(previous);
+    }
+    result
+  }
+
+  fn lazy_load_es_module_with_code_inner(
+    &self,
+    scope: &mut v8::PinScope,
+    specifier: ModuleSpecifier,
+    source_code: ModuleCodeString,
+    code_cache_info: Option<CodeCacheInfo>,
+  ) -> Result<v8::Global<v8::Value>, CoreError> {
     let mod_id = self
       .new_es_module(
         scope,
@@ -2881,28 +2952,29 @@ impl ModuleMap {
     module_specifier: &str,
   ) -> Result<v8::Global<v8::Value>, CoreError> {
     // Use existing module if already constructed.
-    {
+    let cached_handle = {
       let data = self.data.borrow();
-      if let Some(id) = data.get_id(module_specifier, RequestedModuleType::None)
-      {
-        let handle = data.get_handle(id).unwrap();
-        let handle_local = v8::Local::new(scope, handle);
-        if handle_local.get_status() == v8::ModuleStatus::Instantiated {
-          let value = handle_local.evaluate(scope).unwrap();
-          if !self.evaluating_top_level.get() {
-            scope.perform_microtask_checkpoint();
-          }
-          let promise = v8::Local::<v8::Promise>::try_from(value).unwrap();
-          let result = promise.result(scope);
-          if !result.is_undefined() {
-            return Err(
-              CoreErrorKind::Js(exception_to_err(scope, result, false, true))
-                .into_box(),
-            );
-          }
+      data
+        .get_id(module_specifier, RequestedModuleType::None)
+        .and_then(|id| data.get_handle(id))
+    };
+    if let Some(handle) = cached_handle {
+      let handle_local = v8::Local::new(scope, handle);
+      if handle_local.get_status() == v8::ModuleStatus::Instantiated {
+        let value = handle_local.evaluate(scope).unwrap();
+        if !self.evaluating_top_level.get() {
+          scope.perform_microtask_checkpoint();
         }
-        return Ok(v8::Global::new(scope, handle_local.get_module_namespace()));
+        let promise = v8::Local::<v8::Promise>::try_from(value).unwrap();
+        let result = promise.result(scope);
+        if !result.is_undefined() {
+          return Err(
+            CoreErrorKind::Js(exception_to_err(scope, result, false, true))
+              .into_box(),
+          );
+        }
       }
+      return Ok(v8::Global::new(scope, handle_local.get_module_namespace()));
     }
 
     let module_id = self.build_synthetic_esm_module(scope, module_specifier)?;
@@ -2928,6 +3000,15 @@ impl ModuleMap {
     scope: &mut v8::PinScope,
     module_specifier: &str,
   ) -> Result<v8::Global<v8::Value>, CoreError> {
+    if !self.has_lazy_esm_source(module_specifier) {
+      return Err(
+        JsErrorBox::generic(format!(
+          "Specifier \"{module_specifier}\" cannot be lazy-loaded as it was not included in the binary."
+        ))
+        .into(),
+      );
+    }
+
     let (lazy_esm_sources, residual_lazy_esm_sources) = {
       let data = self.data.borrow();
       (

@@ -2471,6 +2471,7 @@ mod tests {
       },
       scopes,
       registry_configs: Default::default(),
+      replace_registry_host: Default::default(),
       min_release_age_days: None,
       trust_policy: Default::default(),
       trust_policy_ignore_after_minutes: None,

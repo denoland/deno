@@ -654,6 +654,7 @@ impl CliFactory {
             | DenoSubcommand::JSONReference { .. }
             | DenoSubcommand::Jupyter { .. }
             | DenoSubcommand::Lsp
+            | DenoSubcommand::SyncTypes { .. }
             | DenoSubcommand::Lint { .. }
             | DenoSubcommand::Repl { .. }
             | DenoSubcommand::Run { .. }

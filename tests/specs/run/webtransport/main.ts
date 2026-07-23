@@ -104,3 +104,43 @@ Deno.test("WebTransport", async () => {
     server.close();
   });
 });
+
+Deno.test("WebTransport ignores overridden URL toString", async () => {
+  const server = new Deno.QuicEndpoint({
+    hostname: "localhost",
+    port: 0,
+  });
+  const listener = server.listen({
+    cert,
+    key: Deno.readTextFileSync("../../../testdata/tls/localhost.key"),
+    alpnProtocols: ["h3"],
+  });
+  const expectedUrl = `https://localhost:${server.addr.port}/path`;
+
+  const serverDone = (async () => {
+    for await (const incoming of listener) {
+      const conn = await incoming.accept();
+      const wt = await Deno.upgradeWebTransport(conn);
+      await wt.ready;
+      assertEquals(wt.url, expectedUrl);
+      return;
+    }
+  })();
+
+  const originalToString = URL.prototype.toString;
+  URL.prototype.toString = () => "not a url";
+  try {
+    const client = new WebTransport(expectedUrl, {
+      serverCertificateHashes: [{
+        algorithm: "sha-256",
+        value: certHash,
+      }],
+    });
+    await client.ready;
+    client.close();
+    await serverDone;
+  } finally {
+    URL.prototype.toString = originalToString;
+    server.close();
+  }
+});

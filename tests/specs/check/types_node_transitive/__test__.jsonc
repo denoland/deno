@@ -1,4 +1,8 @@
 {
+  // ignored: tsc doesn't resolve the transitive @types packages, producing
+  // spurious missing-property/implicit-any errors.
+  // https://github.com/denoland/deno/issues/36085
+  "ignore": true,
   "args": "check --all main.ts",
   "output": "check.out"
 }

@@ -620,11 +620,14 @@ Deno.test(async function decompressionStreamInvalidGzipStillReported() {
 });
 
 Deno.test(function readableStreamFromWithStringThrows() {
+  // Per Web IDL async_sequence conversion, strings are not Objects and are
+  // rejected (they used to be accepted via GetIterator / String iteration).
+  // https://github.com/whatwg/streams/pull/1372
   assertThrows(
     // @ts-expect-error: primitives are not acceptable
     () => ReadableStream.from("string"),
     TypeError,
-    "Failed to execute 'ReadableStream.from': Argument 1 can not be converted to async iterable.",
+    "Failed to execute 'ReadableStream.from': Argument 1 can not be converted to async sequence.",
   );
 });
 

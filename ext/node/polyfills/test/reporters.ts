@@ -109,7 +109,7 @@ async function* tap(source) {
   yield "TAP version 13\n";
   const tapIterator = source[SymbolAsyncIterator]();
   while (true) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     const { done, value: event } = await tapIterator.next();
     if (done) break;
     const { type, data } = event;
@@ -149,7 +149,7 @@ async function* dot(source) {
   let sawTests = false;
   const dotIterator = source[SymbolAsyncIterator]();
   while (true) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     const { done, value } = await dotIterator.next();
     if (done) break;
     const { type } = value;
@@ -168,7 +168,7 @@ async function* junit(source) {
   const testcases = [];
   const junitIterator = source[SymbolAsyncIterator]();
   while (true) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     const { done, value } = await junitIterator.next();
     if (done) break;
     const { type, data } = value;
@@ -207,13 +207,13 @@ class SpecReporter extends getTransform() {
     try {
       const { type, data } = event;
       if (type === "test:pass") {
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         this.push(`${tapIndent(data.nesting)}ok ${data.name}\n`);
       } else if (type === "test:fail") {
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         this.push(`${tapIndent(data.nesting)}not ok ${data.name}\n`);
       } else if (type === "test:diagnostic") {
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         this.push(`${tapIndent(data.nesting)}# ${data.message}\n`);
       }
       callback();

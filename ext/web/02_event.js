@@ -141,8 +141,6 @@ const _path = Symbol("[[path]]");
 
 class Event {
   constructor(type, eventInitDict = { __proto__: null }) {
-    // TODO(lucacasonato): remove when this interface is spec aligned
-    this[SymbolToStringTag] = "Event";
     this[_canceledFlag] = false;
     this[_stopPropagationFlag] = false;
     this[_stopImmediatePropagationFlag] = false;
@@ -423,6 +421,14 @@ ObjectDefineProperty(Event, "BUBBLING_PHASE", {
 });
 
 const EventPrototype = Event.prototype;
+
+ObjectDefineProperty(EventPrototype, SymbolToStringTag, {
+  __proto__: null,
+  value: "Event",
+  writable: false,
+  enumerable: false,
+  configurable: true,
+});
 
 // Not spec compliant. The spec defines it as [LegacyUnforgeable]
 // but doing so has a big performance hit
@@ -1337,7 +1343,7 @@ class MessageEvent extends Event {
       // by WPT's no-regexp-special-casing test) still produce the
       // expected `ports` array. SafeArrayIterator can't be used here
       // because it walks the value as if it were an Array.
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       for (const p of ports) {
         if (
           p === null || typeof p !== "object" ||

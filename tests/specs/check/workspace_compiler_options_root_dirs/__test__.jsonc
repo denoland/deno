@@ -1,4 +1,8 @@
 {
+  // ignored: tsc doesn't apply compilerOptions.rootDirs the way deno does,
+  // so it can't resolve the cross-rootDir import.
+  // https://github.com/denoland/deno/issues/36085
+  "ignore": true,
   "args": "check --quiet member/subdir/mod.ts non_member/mod.ts",
   "output": ""
 }
