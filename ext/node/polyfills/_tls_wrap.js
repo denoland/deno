@@ -1080,7 +1080,7 @@ function syntheticSessionMatches(buf, options) {
   const sessionKey = `${options.servername ?? options.host ?? ""}:${
     options.port ?? ""
   }`;
-  // deno-lint-ignore prefer-primordials -- Buffer.prototype.toString(encoding)
+  // deno-lint-ignore deno-internal/prefer-primordials -- Buffer.prototype.toString(encoding)
   const text = buf.toString("latin1");
   for (const prefix of new SafeArrayIterator(SYNTHETIC_SESSION_PREFIXES)) {
     if (text === prefix + sessionKey) return true;

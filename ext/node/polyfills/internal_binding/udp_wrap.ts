@@ -616,14 +616,14 @@ class UDP extends HandleWrap {
     }
 
     const payload = new Uint8Array(
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       Buffer.concat(
         ArrayPrototypeMap(bufs, (buf) => {
           if (typeof buf === "string") {
             return Buffer.from(buf);
           }
 
-          // deno-lint-ignore prefer-primordials
+          // deno-lint-ignore deno-internal/prefer-primordials
           return Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength);
         }),
       ),
@@ -711,7 +711,7 @@ class UDP extends HandleWrap {
       : undefined;
 
     const buf = remoteHostname !== null
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       ? Buffer.from(p.buffer, p.byteOffset, nread)
       : Buffer.alloc(0);
 

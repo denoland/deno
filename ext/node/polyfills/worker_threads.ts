@@ -146,7 +146,7 @@ const workerCpuUsageBuffer = new Float64Array(2);
 const debugWorkerThreads = false;
 function debugWT(...args) {
   if (debugWorkerThreads) {
-    // deno-lint-ignore prefer-primordials no-console
+    // deno-lint-ignore deno-internal/prefer-primordials no-console
     console.log(...args);
   }
 }
@@ -250,7 +250,6 @@ interface WorkerOptions {
     codeRangeSizeMb?: number;
     stackSizeMb?: number;
   };
-  // deno-lint-ignore prefer-primordials
   eval?: boolean;
   transferList?: Transferable[];
   workerData?: unknown;
@@ -500,10 +499,10 @@ class NodeWorker extends EventEmitter {
       // `require` is already available from the Node worker bootstrap.
       // See: https://github.com/denoland/deno/issues/26739
       sourceCode = `var __filename = ${
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         JSON.stringify(lazyProcess().default.cwd() + "/[worker eval]")};\n` +
         `var __dirname = ${
-          // deno-lint-ignore prefer-primordials
+          // deno-lint-ignore deno-internal/prefer-primordials
           JSON.stringify(lazyProcess().default.cwd())};\n` +
         `var module = { exports: {} };\n` +
         `var exports = module.exports;\n` +
@@ -513,7 +512,7 @@ class NodeWorker extends EventEmitter {
     } else if (
       !(typeof specifier === "object" && specifier.protocol === "data:")
     ) {
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       specifier = specifier.toString();
       specifier = op_worker_threads_filename(specifier) ?? specifier;
     }
@@ -528,7 +527,7 @@ class NodeWorker extends EventEmitter {
 
     const id = op_create_worker(
       {
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         specifier: specifier.toString(),
         hasSourceCode,
         sourceCode,
@@ -1191,11 +1190,11 @@ internals.__initWorkerThreads = (
           const stdinHandler = (ev) => {
             const msg = ev.data;
             if (isWorkerStdinMsg(msg)) {
-              // deno-lint-ignore prefer-primordials
+              // deno-lint-ignore deno-internal/prefer-primordials
               workerStdin.push(msg.data);
               ev.stopImmediatePropagation();
             } else if (isWorkerStdinEndMsg(msg)) {
-              // deno-lint-ignore prefer-primordials
+              // deno-lint-ignore deno-internal/prefer-primordials
               workerStdin.push(null);
               parentPort.removeEventListener("message", stdinHandler);
               ev.stopImmediatePropagation();

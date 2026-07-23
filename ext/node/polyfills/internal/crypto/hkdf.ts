@@ -60,7 +60,7 @@ const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 function toRawBytes(x: unknown): Buffer {
   if (isArrayBufferView(x)) {
     const v = x as ArrayBufferView;
-    // deno-lint-ignore prefer-primordials -- v is ArrayBufferView (TypedArray | DataView); buffer/byteOffset/byteLength getters are polymorphic
+    // deno-lint-ignore deno-internal/prefer-primordials -- v is ArrayBufferView (TypedArray | DataView); buffer/byteOffset/byteLength getters are polymorphic
     return Buffer.from(v.buffer, v.byteOffset, v.byteLength);
   }
   if (isAnyArrayBuffer(x)) {

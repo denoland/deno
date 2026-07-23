@@ -284,7 +284,7 @@ function assertChannel(value, name) {
   // Channel defines a custom [Symbol.hasInstance] (accepting both Channel and
   // ActiveChannel prototypes), so this instanceof must stay to preserve that
   // behavior; ObjectPrototypeIsPrototypeOf would bypass it.
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   if (!(value instanceof Channel)) {
     throw new ERR_INVALID_ARG_TYPE(name, ["Channel"], value);
   }

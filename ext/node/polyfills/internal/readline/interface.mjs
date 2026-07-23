@@ -20,7 +20,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// deno-lint-ignore-file camelcase no-inner-declarations no-this-alias
+// deno-lint-ignore-file no-inner-declarations no-this-alias
 
 (function () {
 const { core, primordials } = __bootstrap;
@@ -73,7 +73,7 @@ const {
   kHistoryPrev,
   kInsertString,
   kLine,
-  kLine_buffer,
+  kLineBuffer,
   kMoveCursor,
   kNormalWrite,
   kOldPrompt,
@@ -281,10 +281,10 @@ function InterfaceConstructor(input, output, completer, terminal) {
 
   function onend() {
     if (
-      typeof self[kLine_buffer] === "string" &&
-      self[kLine_buffer].length > 0
+      typeof self[kLineBuffer] === "string" &&
+      self[kLineBuffer].length > 0
     ) {
-      self.emit("line", self[kLine_buffer]);
+      self.emit("line", self[kLineBuffer]);
     }
     self.close();
   }
@@ -634,9 +634,9 @@ class Interface extends InterfaceConstructor {
     // Run test() on the new string chunk, not on the entire line buffer.
     let newPartContainsEnding = RegExpPrototypeExec(lineEnding, string);
     if (newPartContainsEnding !== null) {
-      if (this[kLine_buffer]) {
-        string = this[kLine_buffer] + string;
-        this[kLine_buffer] = null;
+      if (this[kLineBuffer]) {
+        string = this[kLineBuffer] + string;
+        this[kLineBuffer] = null;
         lineEnding.lastIndex = 0; // Start the search from the beginning of the string.
         newPartContainsEnding = RegExpPrototypeExec(lineEnding, string);
       }
@@ -651,7 +651,7 @@ class Interface extends InterfaceConstructor {
       }
       const lastIndex = indexes.length - 1;
       // Either '' or (conceivably) the unfinished portion of the next line
-      this[kLine_buffer] = StringPrototypeSlice(string, indexes[lastIndex]);
+      this[kLineBuffer] = StringPrototypeSlice(string, indexes[lastIndex]);
       for (let i = 1; i < lastIndex; i += 2) {
         this[kOnLine](
           StringPrototypeSlice(string, indexes[i - 1], indexes[i]),
@@ -659,10 +659,10 @@ class Interface extends InterfaceConstructor {
       }
     } else if (string) {
       // No newlines this time, save what we have for next time
-      if (this[kLine_buffer]) {
-        this[kLine_buffer] += string;
+      if (this[kLineBuffer]) {
+        this[kLineBuffer] += string;
       } else {
-        this[kLine_buffer] = string;
+        this[kLineBuffer] = string;
       }
     }
   }
@@ -1418,7 +1418,7 @@ return {
   kHistoryPrev,
   kInsertString,
   kLine,
-  kLine_buffer,
+  kLineBuffer,
   kMoveCursor,
   kNormalWrite,
   kOldPrompt,

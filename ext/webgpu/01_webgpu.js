@@ -233,7 +233,7 @@ ObjectDefineProperty(GPUSupportedFeaturesPrototype, privateCustomInspect, {
   value(inspect, inspectOptions) {
     if (ObjectPrototypeIsPrototypeOf(GPUSupportedFeaturesPrototype, this)) {
       return `${this.constructor.name} ${
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         inspect([...this], inspectOptions)}`;
     } else {
       return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
@@ -248,7 +248,7 @@ ObjectDefineProperty(WGSLLanguageFeaturesPrototype, privateCustomInspect, {
   value(inspect, inspectOptions) {
     if (ObjectPrototypeIsPrototypeOf(WGSLLanguageFeaturesPrototype, this)) {
       return `${this.constructor.name} ${
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         inspect([...this], inspectOptions)}`;
     } else {
       return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
