@@ -218,7 +218,7 @@ class SignImpl {
       }
       throw err;
     }
-    // deno-lint-ignore prefer-primordials -- Buffer.prototype.toString(encoding) is not a primordial
+    // deno-lint-ignore deno-internal/prefer-primordials -- Buffer.prototype.toString(encoding) is not a primordial
     return encoding && encoding !== "buffer" ? ret.toString(encoding) : ret;
   }
 

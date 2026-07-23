@@ -830,7 +830,7 @@ function onParserExecuteCommon(server, socket, parser, state, ret, d) {
     parser.finish();
     freeParser(parser, req, socket);
 
-    // deno-lint-ignore prefer-primordials -- d is a Node Buffer; Buffer.prototype.slice returns a Buffer view
+    // deno-lint-ignore deno-internal/prefer-primordials -- d is a Node Buffer; Buffer.prototype.slice returns a Buffer view
     const bodyHead = d.slice(bytesParsed);
 
     socket.readableFlowing = null;

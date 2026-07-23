@@ -20,8 +20,6 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// deno-lint-ignore-file camelcase
-
 import { core, primordials } from "ext:core/mod.js";
 import { op_get_env_no_permission_check } from "ext:core/ops";
 

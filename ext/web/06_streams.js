@@ -397,7 +397,7 @@ function canTransferArrayBuffer(O) {
 function getArrayBufferByteLength(O) {
   if (isSharedArrayBuffer(O)) {
     // TODO(petamoriken): use primordials
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     return O.byteLength;
   } else {
     return ArrayBufferPrototypeGetByteLength(O);
@@ -1768,7 +1768,7 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
   const transferredBuffer = ArrayBufferPrototypeTransferToFixedLength(buffer);
   if (controller[_pendingPullIntos].size !== 0) {
     const firstPendingPullInto = controller[_pendingPullIntos].peek();
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     if (isDetachedBuffer(firstPendingPullInto.buffer)) {
       throw new TypeError(
         "The BYOB request's buffer has been detached and so cannot be filled with an enqueued chunk",
@@ -1776,7 +1776,7 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
     }
     readableByteStreamControllerInvalidateBYOBRequest(controller);
     firstPendingPullInto.buffer = ArrayBufferPrototypeTransferToFixedLength(
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       firstPendingPullInto.buffer,
     );
     if (firstPendingPullInto.readerType === "none") {
@@ -1871,7 +1871,7 @@ function readableByteStreamControllerEnqueueClonedChunkToQueue(
       );
     } else {
       // TODO(lucacasonato): add SharedArrayBuffer to primordials
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       cloneResult = buffer.slice(byteOffset, byteOffset + byteLength);
     }
   } catch (e) {
@@ -1898,9 +1898,9 @@ function readableByteStreamControllerEnqueueDetachedPullIntoToQueue(
   if (pullIntoDescriptor.bytesFilled > 0) {
     readableByteStreamControllerEnqueueClonedChunkToQueue(
       controller,
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       pullIntoDescriptor.buffer,
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       pullIntoDescriptor.byteOffset,
       pullIntoDescriptor.bytesFilled,
     );
@@ -1919,11 +1919,11 @@ function readableByteStreamControllerGetBYOBRequest(controller) {
   ) {
     const firstDescriptor = controller[_pendingPullIntos].peek();
     const view = new Uint8Array(
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       firstDescriptor.buffer,
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       firstDescriptor.byteOffset + firstDescriptor.bytesFilled,
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       firstDescriptor.byteLength - firstDescriptor.bytesFilled,
     );
     const byobRequest = new ReadableStreamBYOBRequest(_brand);
@@ -2502,9 +2502,9 @@ function readableByteStreamControllerPullInto(
   }
   if (stream[_state] === "closed") {
     const emptyView = new ctor(
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       pullIntoDescriptor.buffer,
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       pullIntoDescriptor.byteOffset,
       0,
     );
@@ -2563,14 +2563,14 @@ function readableByteStreamControllerRespond(controller, bytesWritten) {
     }
     if (
       (firstDescriptor.bytesFilled + bytesWritten) >
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         firstDescriptor.byteLength
     ) {
       throw new RangeError('"bytesWritten" out of range');
     }
   }
   firstDescriptor.buffer = ArrayBufferPrototypeTransferToFixedLength(
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     firstDescriptor.buffer,
   );
   readableByteStreamControllerRespondInternal(controller, bytesWritten);
@@ -2589,7 +2589,7 @@ function readableByteStreamControllerRespondInReadableState(
 ) {
   assert(
     (pullIntoDescriptor.bytesFilled + bytesWritten) <=
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       pullIntoDescriptor.byteLength,
   );
   readableByteStreamControllerFillHeadPullIntoDescriptor(
@@ -2614,12 +2614,12 @@ function readableByteStreamControllerRespondInReadableState(
   const remainderSize = pullIntoDescriptor.bytesFilled %
     pullIntoDescriptor.elementSize;
   if (remainderSize > 0) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     const end = pullIntoDescriptor.byteOffset +
       pullIntoDescriptor.bytesFilled;
     readableByteStreamControllerEnqueueClonedChunkToQueue(
       controller,
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       pullIntoDescriptor.buffer,
       end - remainderSize,
       remainderSize,
@@ -2645,7 +2645,7 @@ function readableByteStreamControllerRespondInternal(
   bytesWritten,
 ) {
   const firstDescriptor = controller[_pendingPullIntos].peek();
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   assert(canTransferArrayBuffer(firstDescriptor.buffer));
   readableByteStreamControllerInvalidateBYOBRequest(controller);
   const state = controller[_stream][_state];
@@ -2772,7 +2772,7 @@ function readableByteStreamControllerRespondWithNewView(controller, view) {
       );
     }
   }
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   if (firstDescriptor.byteOffset + firstDescriptor.bytesFilled !== byteOffset) {
     throw new RangeError(
       "The region specified by view does not match byobRequest",
@@ -2783,7 +2783,7 @@ function readableByteStreamControllerRespondWithNewView(controller, view) {
       "The buffer of view has different capacity than byobRequest",
     );
   }
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   if (firstDescriptor.bytesFilled + byteLength > firstDescriptor.byteLength) {
     throw new RangeError(
       "The region specified by view is larger than byobRequest",
@@ -2813,7 +2813,7 @@ function readableByteStreamControllerFillPullIntoDescriptorFromQueue(
 ) {
   const maxBytesToCopy = MathMin(
     controller[_queueTotalSize],
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     pullIntoDescriptor.byteLength - pullIntoDescriptor.bytesFilled,
   );
   const maxBytesFilled = pullIntoDescriptor.bytesFilled + maxBytesToCopy;
@@ -2832,29 +2832,29 @@ function readableByteStreamControllerFillPullIntoDescriptorFromQueue(
     const headOfQueue = queue.peek();
     const bytesToCopy = MathMin(
       totalBytesToCopyRemaining,
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       headOfQueue.byteLength,
     );
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     const destStart = pullIntoDescriptor.byteOffset +
       pullIntoDescriptor.bytesFilled;
 
     const destBuffer = new Uint8Array(
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       pullIntoDescriptor.buffer,
       destStart,
       bytesToCopy,
     );
     const srcBuffer = new Uint8Array(
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       headOfQueue.buffer,
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       headOfQueue.byteOffset,
       bytesToCopy,
     );
     destBuffer.set(srcBuffer);
 
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     if (headOfQueue.byteLength === bytesToCopy) {
       queue.dequeue();
     } else {
@@ -2888,15 +2888,15 @@ function readableByteStreamControllerFillReadRequestFromQueue(
 ) {
   assert(controller[_queueTotalSize] > 0);
   const entry = controller[_queue].dequeue();
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   controller[_queueTotalSize] -= entry.byteLength;
   readableByteStreamControllerHandleQueueDrain(controller);
   const view = new Uint8Array(
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     entry.buffer,
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     entry.byteOffset,
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     entry.byteLength,
   );
   readRequest.chunkSteps(view);
@@ -2930,16 +2930,16 @@ function readableByteStreamControllerConvertPullIntoDescriptor(
 ) {
   const bytesFilled = pullIntoDescriptor.bytesFilled;
   const elementSize = pullIntoDescriptor.elementSize;
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   assert(bytesFilled <= pullIntoDescriptor.byteLength);
   assert((bytesFilled % elementSize) === 0);
   const buffer = ArrayBufferPrototypeTransferToFixedLength(
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     pullIntoDescriptor.buffer,
   );
   return new pullIntoDescriptor.viewConstructor(
     buffer,
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     pullIntoDescriptor.byteOffset,
     bytesFilled / elementSize,
   );
@@ -5902,7 +5902,7 @@ function initializeByteLengthSizeFunction(globalObject) {
   if (WeakMapPrototypeHas(byteSizeFunctionWeakMap, globalObject)) {
     return;
   }
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   const size = (chunk) => chunk.byteLength;
   WeakMapPrototypeSet(byteSizeFunctionWeakMap, globalObject, size);
 }
@@ -6071,7 +6071,7 @@ class ReadableStream {
 
     const stream = createReadableStream(noop, async () => {
       // Let nextPromise be the result of getting the next value of iterator.
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       const res = await iter.next();
       if (res.done) {
         // end of iteration
@@ -6086,7 +6086,7 @@ class ReadableStream {
       }
     }, async (reason) => {
       // Return the result of closing iterator with reason.
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       await iter.return(reason);
     }, 0);
     return stream;

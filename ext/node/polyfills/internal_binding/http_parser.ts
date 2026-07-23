@@ -20,7 +20,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// deno-lint-ignore-file no-explicit-any prefer-primordials
+// deno-lint-ignore-file no-explicit-any deno-internal/prefer-primordials
 
 (function () {
 const { core } = __bootstrap;

@@ -7,7 +7,7 @@
 // driven by NODE_UNIQUE_ID through `cluster.ts`'s dispatch.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file no-explicit-any prefer-primordials
+// deno-lint-ignore-file no-explicit-any deno-internal/prefer-primordials
 
 (function () {
 const { core, primordials } = __bootstrap;
