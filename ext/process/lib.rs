@@ -1287,11 +1287,9 @@ fn compute_run_env(
   arg_clear_env: bool,
   allow_cwd_inherit: bool,
 ) -> Result<RunEnv, ProcessError> {
-  #[allow(
-    clippy::disallowed_methods,
-    reason = "ok for now because launching a sub process requires the real fs"
-  )]
-  let current_dir = std::env::current_dir();
+  // Prefer an embedder thread-local cwd override when present so in-process
+  // hosts are not forced to mutate the process-global working directory.
+  let current_dir = deno_fs::override_aware_current_dir();
   let (cwd, set_cwd_on_command) = match arg_cwd {
     Some(cwd_arg) => {
       let arg_path = Path::new(cwd_arg);
