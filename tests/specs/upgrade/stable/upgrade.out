@@ -1,10 +1,8 @@
-Current Deno version: [WILDCARD]
+Current Deno version: [WILDLINE]
 Looking up stable version
 
-Found latest stable version [WILDCARD]
+Found latest stable version v99999.99.99
 
-Downloading https://github.com/denoland/deno/releases/download/[WILDCARD]/deno-[WILDCARD].zip
-Deno is upgrading to version [WILDCARD]
-
-Upgraded successfully to Deno [WILDCARD] (stable)
+Downloading http://localhost:4545/deno-upgrade/download/v99999.99.99/deno-[WILDLINE].zip
+Deno is upgrading to version 99999.99.99
 [WILDCARD]

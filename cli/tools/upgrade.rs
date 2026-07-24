@@ -1490,7 +1490,12 @@ fn get_download_url(
       format!("{}/v{}/{}", DL_RELEASE_URL, version, *ARCHIVE_NAME)
     }
     ReleaseChannel::Canary => {
-      format!("{}/{}/{}", CANARY_URL, version, *ARCHIVE_NAME)
+      let canary_url = if std::env::var_os("DENO_TESTING_UPGRADE").is_some() {
+        "http://localhost:4545/deno-upgrade/canary"
+      } else {
+        CANARY_URL
+      };
+      format!("{}/{}/{}", canary_url, version, *ARCHIVE_NAME)
     }
     ReleaseChannel::Lts => {
       format!("{}/v{}/{}", DL_RELEASE_URL, version, *ARCHIVE_NAME)

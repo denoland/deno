@@ -1,6 +1,4 @@
-Current Deno version: [WILDCARD]
-Downloading https://dl.deno.land/canary/[WILDCARD]/deno-[WILDCARD].zip
-Deno is upgrading to version [WILDCARD]
-
-Upgraded successfully to Deno [WILDCARD] (canary)
-
+Current Deno version: [WILDLINE]
+Downloading http://localhost:4545/deno-upgrade/canary/0123456789abcdef0123456789abcdef01234567/deno-[WILDLINE].zip
+Deno is upgrading to version 0123456789abcdef0123456789abcdef01234567
+[WILDCARD]

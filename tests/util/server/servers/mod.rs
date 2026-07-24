@@ -1143,13 +1143,17 @@ console.log("imported", import.meta.url);
         .body(string_body("bda3850f84f24b71e02512c1ba2d6bf2e3daa2fd"))
         .unwrap(),
     ),
-    // for testing deno upgrade
+    // for testing deno upgrade -- stable releases live under
+    // /deno-upgrade/download/v<version>/ and canary releases under
+    // /deno-upgrade/canary/<hash>/ (see get_download_url in cli/tools/upgrade.rs)
     (&Method::GET, path)
-      if path.starts_with("/deno-upgrade/download/")
+      if (path.starts_with("/deno-upgrade/download/")
+        || path.starts_with("/deno-upgrade/canary/"))
         && path.ends_with(".zip") =>
     {
       let version = path
         .strip_prefix("/deno-upgrade/download/v")
+        .or_else(|| path.strip_prefix("/deno-upgrade/canary/"))
         .and_then(|s| s.split('/').next())
         .unwrap_or("unknown");
 

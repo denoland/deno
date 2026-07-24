@@ -1,24 +1,17 @@
+// Offline upgrade flow test. DENO_TESTING_UPGRADE and the base-url override
+// point the tool at the local test server (see cli/tools/upgrade.rs and
+// tests/util/server/servers/mod.rs) instead of the real release hosts. The mock
+// serves a placeholder, non-executable binary, so the upgrade runs through
+// version resolution and the download and then fails validation (exitCode 1);
+// we assert the resolved version and the mocked download URL, not a completed
+// install (that end-to-end coverage lives in the real-network tests).
 {
-  "if": "unix",
   "tempDir": true,
-  "steps": [
-    {
-      "args": "eval Deno.copyFileSync(Deno.execPath(),'./deno_copy');",
-      "exitCode": 0,
-      "output": ""
-    },
-    {
-      "commandName": "./deno_copy",
-      "args": "run -A upgrade.ts",
-      "output": "upgrade.out",
-      "exitCode": 0,
-      "flaky": true
-    },
-    {
-      "commandName": "./deno_copy",
-      "args": "--version",
-      "exitCode": 0,
-      "output": "version.out"
-    }
-  ]
+  "envs": {
+    "DENO_TESTING_UPGRADE": "1",
+    "DENO_DONT_USE_INTERNAL_BASE_UPGRADE_URL": "http://localhost:4545"
+  },
+  "args": "upgrade --canary --dry-run --version 0123456789abcdef0123456789abcdef01234567",
+  "output": "upgrade.out",
+  "exitCode": 1
 }
