@@ -43,7 +43,9 @@ use deno_lib::args::CaData;
 use deno_lib::args::has_flag_env_var;
 use deno_lib::args::npm_pkg_req_ref_to_binary_command;
 use deno_lib::args::npm_process_state;
+use deno_lib::version::DENO_VERSION;
 use deno_lib::version::DENO_VERSION_INFO;
+use deno_lib::version::NODE_VERSION;
 use deno_lib::worker::StorageKeyResolver;
 use deno_npm::NpmSystemInfo;
 use deno_npm_installer::LifecycleScriptsConfig;
@@ -599,6 +601,8 @@ impl CliOptions {
     for diagnostic in start_dir.workspace.diagnostics() {
       log::warn!("{} {}", colors::yellow("Warning"), diagnostic);
     }
+
+    warn_on_deno_json_engines_mismatch(&start_dir.workspace);
 
     log::debug!("Finished config loading.");
 
@@ -1644,6 +1648,29 @@ fn resolve_import_map_specifier(
     Ok(Some(specifier))
   } else {
     Ok(None)
+  }
+}
+
+/// Emit a warning for each `deno.json` in the workspace whose `engines.deno`
+/// (or `engines.node`) requirement is not satisfied by the current runtime.
+///
+/// Mirrors the `package.json` `engines` handling: this is always a warning,
+/// never an error.
+fn warn_on_deno_json_engines_mismatch(workspace: &Workspace) {
+  for deno_json in workspace.deno_jsons() {
+    let Some(engines) = deno_json.engines() else {
+      continue;
+    };
+    let mismatches =
+      crate::util::engines::check_engines(engines, DENO_VERSION, NODE_VERSION);
+    if mismatches.is_empty() {
+      continue;
+    }
+    let path = deno_json
+      .specifier
+      .to_file_path()
+      .unwrap_or_else(|()| PathBuf::from(deno_json.specifier.as_str()));
+    crate::util::engines::warn_engine_mismatches(&path, &mismatches);
   }
 }
 

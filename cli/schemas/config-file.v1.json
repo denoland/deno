@@ -1217,6 +1217,23 @@
       "type": "string",
       "description": "The version of this JSR package."
     },
+    "engines": {
+      "type": "object",
+      "description": "Version requirements for the runtime, using the same shape as the \"engines\" field of package.json. Deno emits a warning when the current version does not satisfy a requirement. Only the \"deno\" and \"node\" keys are checked; other keys are ignored.",
+      "examples": [{ "deno": ">=2.0.0" }],
+      "properties": {
+        "deno": {
+          "type": "string",
+          "description": "The Deno version range this project requires.",
+          "examples": [">=2.0.0", "^2.9.0"]
+        },
+        "node": {
+          "type": "string",
+          "description": "The Node.js version range this project requires (checked against the Node.js version Deno reports).",
+          "examples": [">=18.0.0"]
+        }
+      }
+    },
     "exports": {
       "oneOf": [
         {
