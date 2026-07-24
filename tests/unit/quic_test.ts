@@ -12,6 +12,11 @@ interface Pair {
   endpoint: Deno.QuicEndpoint;
 }
 
+function trackedStreamResourceCount(conn: Deno.QuicConn): number {
+  // @ts-ignore Deno.internal is available to the unit test suite.
+  return Deno[Deno.internal].getQuicStreamResourceCount(conn);
+}
+
 async function pair(opt?: Deno.QuicTransportOptions): Promise<Pair> {
   const endpoint = new Deno.QuicEndpoint({ hostname: "localhost" });
   const listener = endpoint.listen({
@@ -89,6 +94,29 @@ Deno.test("unidirectional stream", async () => {
 
   endpoint.close();
   client.close();
+});
+
+Deno.test("completed streams release connection cleanup state", async () => {
+  const { server, client, endpoint } = await pair();
+
+  const bi = await server.createBidirectionalStream();
+  assertEquals(trackedStreamResourceCount(server), 2);
+  await Promise.all([bi.readable.cancel(), bi.writable.close()]);
+  assertEquals(trackedStreamResourceCount(server), 0);
+
+  const uni = await server.createUnidirectionalStream();
+  assertEquals(trackedStreamResourceCount(server), 1);
+  await uni.close();
+  assertEquals(trackedStreamResourceCount(server), 0);
+
+  await server.createBidirectionalStream();
+  assertEquals(trackedStreamResourceCount(server), 2);
+  server.close();
+  await server.closed;
+  assertEquals(trackedStreamResourceCount(server), 0);
+
+  await client.closed;
+  endpoint.close();
 });
 
 Deno.test("datagrams", async () => {
