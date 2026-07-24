@@ -614,6 +614,8 @@ pub struct TaskFlags {
   pub task: Option<String>,
   pub is_run: bool,
   pub recursive: bool,
+  /// Run the task in all workspace members, but not in the workspace root.
+  pub members: bool,
   pub filter: Option<String>,
   pub eval: bool,
   pub no_prefix: bool,
