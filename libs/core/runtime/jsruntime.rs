@@ -3643,10 +3643,35 @@ impl JsRuntime {
 
   /// Drain nextTick queue and macrotask queue (no op resolution).
   /// Used when ticks are pending but no async ops completed.
+  ///
+  /// This mirrors the JS `drainTicks()` (see `01_core.js`) exactly, but keeps
+  /// the common path — no `process.nextTick` scheduled and no promise rejection
+  /// to warn about, which is every pure-Deno workload — entirely on the Rust
+  /// side. In that case `drainTicks` just runs `op_run_microtasks()` (a
+  /// `perform_microtask_checkpoint`) and returns; doing it here avoids a
+  /// Rust->JS call plus the JS->Rust op call it would otherwise make. Only when
+  /// a tick or rejection is actually pending do we cross into JS to run
+  /// `processTicksAndRejections`. The flag checks and checkpoint ordering are
+  /// byte-for-byte identical to `drainTicks`, so the nextTick-before-`.then`
+  /// and rejectionhandled-before-unhandledrejection invariants are preserved.
   fn drain_next_tick_and_macrotasks<'s, 'i>(
     scope: &mut v8::PinScope<'s, 'i>,
     context_state: &ContextState,
   ) -> Result<(), Box<JsError>> {
+    if !context_state.has_tick_scheduled()
+      && !context_state.has_rejection_to_warn()
+    {
+      scope.perform_microtask_checkpoint();
+      if !context_state.has_tick_scheduled()
+        && !context_state.has_rejection_to_warn()
+      {
+        return Ok(());
+      }
+    }
+
+    // Slow path: a nextTick or rejection is pending. Cross into JS to run
+    // `drainTicks`, which goes straight to `processTicksAndRejections` given
+    // the flags above.
     let undefined: v8::Local<v8::Value> = v8::undefined(scope).into();
 
     v8::tc_scope!(let tc_scope, scope);
