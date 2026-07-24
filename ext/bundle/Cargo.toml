@@ -13,5 +13,6 @@ description = "Bundle runtime API for Deno"
 async-trait.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
+deno_permissions.workspace = true
 regex.workspace = true
 serde.workspace = true

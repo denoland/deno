@@ -12,21 +12,29 @@ import {
 import { basename, join, toFileUrl } from "@std/path";
 
 class TempDir implements AsyncDisposable, Disposable {
-  private path: string;
+  #path: string;
   constructor(options?: Deno.MakeTempOptions) {
-    this.path = Deno.makeTempDirSync(options);
+    // Resolve symlinks (e.g. macOS `/var` -> `/private/var`) up front. The
+    // bundler canonicalizes module paths, and Deno matches read/write grants
+    // by literal path, so tests that scope permissions to this directory must
+    // grant the canonical path the bundler will actually check against.
+    this.#path = Deno.realPathSync(Deno.makeTempDirSync(options));
   }
 
   async [Symbol.asyncDispose]() {
-    await Deno.remove(this.path, { recursive: true });
+    await Deno.remove(this.#path, { recursive: true });
   }
 
   [Symbol.dispose]() {
-    Deno.removeSync(this.path, { recursive: true });
+    Deno.removeSync(this.#path, { recursive: true });
+  }
+
+  get path() {
+    return this.#path;
   }
 
   join(path: string) {
-    return join(this.path, path);
+    return join(this.#path, path);
   }
 }
 
@@ -46,6 +54,17 @@ class TempFile implements AsyncDisposable, Disposable {
 
   get path() {
     return this.#path;
+  }
+}
+
+async function assertPathNotFound(path: string) {
+  try {
+    await Deno.lstat(path);
+    throw new Error(`expected path not to exist: ${path}`);
+  } catch (err) {
+    if (!(err instanceof Deno.errors.NotFound)) {
+      throw err;
+    }
   }
 }
 
@@ -137,6 +156,269 @@ Deno.test("bundle: write to outputDir omits outputFiles and writes files", async
   const outJsPath = join(outDir, files[0]);
   const outContent = await Deno.readTextFile(outJsPath);
   assertStringIncludes(outContent, "Hello bundle write");
+});
+
+Deno.test("bundle: write requires caller permission", async () => {
+  using dir = new TempDir();
+  const entry = dir.join("main.ts");
+  const runner = dir.join("runner.ts");
+  const blockedDir = dir.join("blocked");
+  const output = join(blockedDir, "dist", "main.js");
+
+  await Deno.writeTextFile(entry, "export const value = 42;\n");
+  await Deno.writeTextFile(
+    runner,
+    unindent`
+      await Deno.bundle({
+        entrypoints: [${JSON.stringify(entry)}],
+        outputPath: ${JSON.stringify(output)},
+        write: true,
+      });
+    `,
+  );
+
+  const { success, stderr } = await new Deno.Command(Deno.execPath(), {
+    args: [
+      "run",
+      "--no-config",
+      "--no-lock",
+      "--no-prompt",
+      "--quiet",
+      "--unstable-bundle",
+      `--allow-read=${dir.path}`,
+      runner,
+    ],
+    stderr: "piped",
+  }).output();
+
+  assertFalse(success);
+  const stderrText = new TextDecoder().decode(stderr);
+  assertStringIncludes(stderrText, "Requires write access");
+  assertStringIncludes(stderrText, "--allow-write");
+  await assertPathNotFound(blockedDir);
+  await assertPathNotFound(output);
+});
+
+Deno.test("bundle: module read requires caller permission", async () => {
+  using dir = new TempDir();
+  const secret = dir.join("secret.ts");
+  const runner = dir.join("runner.ts");
+
+  await Deno.writeTextFile(
+    secret,
+    'export const TOKEN = "super-secret-value";\n',
+  );
+  await Deno.writeTextFile(
+    runner,
+    unindent`
+      const result = await Deno.bundle({
+        entrypoints: [${JSON.stringify(secret)}],
+        write: false,
+      });
+      const text = result.outputFiles
+        ?.map((f) => new TextDecoder().decode(f.contents))
+        .join("") ?? "";
+      console.log(JSON.stringify({
+        success: result.success,
+        leaked: text.includes("super-secret-value"),
+        outputs: result.outputFiles?.length ?? 0,
+        errors: result.errors?.map((e) => e.text) ?? [],
+      }));
+    `,
+  );
+
+  // Read access to the runner only, so reading the bundled module is denied
+  // and its (transpiled) source is never returned to the caller.
+  const { success, stdout } = await new Deno.Command(Deno.execPath(), {
+    args: [
+      "run",
+      "--no-config",
+      "--no-lock",
+      "--no-prompt",
+      "--quiet",
+      "--unstable-bundle",
+      `--allow-read=${runner}`,
+      runner,
+    ],
+    stdout: "piped",
+  }).output();
+
+  assert(success);
+  const result = JSON.parse(new TextDecoder().decode(stdout)) as {
+    success: boolean;
+    leaked: boolean;
+    outputs: number;
+    errors: string[];
+  };
+  assertFalse(result.success);
+  assertFalse(result.leaked);
+  assertEquals(result.outputs, 0);
+  assert(
+    result.errors.some((e) => e.includes("Requires read access")),
+    `expected a read-access error, got: ${JSON.stringify(result.errors)}`,
+  );
+});
+
+Deno.test("bundle: html entrypoint read requires caller permission", async () => {
+  using dir = new TempDir();
+  const secretDir = dir.join("secret");
+  const secretHtml = join(secretDir, "index.html");
+  const outDir = dir.join("dist");
+  const runner = dir.join("runner.ts");
+
+  await Deno.mkdir(secretDir, { recursive: true });
+  await Deno.writeTextFile(
+    secretHtml,
+    unindent`
+      <html>
+        <body><script type="module" src="./main.ts"></script></body>
+      </html>
+    `,
+  );
+  await Deno.writeTextFile(
+    join(secretDir, "main.ts"),
+    "console.log('secret');\n",
+  );
+  await Deno.writeTextFile(
+    runner,
+    unindent`
+      await Deno.bundle({
+        entrypoints: [${JSON.stringify(toFileUrl(secretHtml).href)}],
+        outputDir: ${JSON.stringify(outDir)},
+        write: false,
+      });
+    `,
+  );
+
+  // Read access to the runner only, so loading the HTML entrypoint is denied.
+  const { success, stderr } = await new Deno.Command(Deno.execPath(), {
+    args: [
+      "run",
+      "--no-config",
+      "--no-lock",
+      "--no-prompt",
+      "--quiet",
+      "--unstable-bundle",
+      `--allow-read=${runner}`,
+      runner,
+    ],
+    stderr: "piped",
+  }).output();
+
+  assertFalse(success);
+  const stderrText = new TextDecoder().decode(stderr);
+  assertStringIncludes(stderrText, "Requires read access");
+  assertStringIncludes(stderrText, "--allow-read");
+  await assertPathNotFound(outDir);
+});
+
+Deno.test("bundle: worker permissions override parent permissions", async () => {
+  using dir = new TempDir();
+  const sourceDir = dir.join("source");
+  const secretDir = dir.join("secret");
+  const blockedDir = dir.join("blocked");
+  const entry = join(sourceDir, "main.ts");
+  const secretHtml = join(secretDir, "secret.html");
+  const output = join(blockedDir, "main.js");
+  const runner = dir.join("worker_runner.ts");
+
+  await Deno.mkdir(sourceDir, { recursive: true });
+  await Deno.mkdir(secretDir, { recursive: true });
+  await Deno.writeTextFile(entry, "export const value = 42;\n");
+  await Deno.writeTextFile(secretHtml, "<p>blocked</p>\n");
+
+  await Deno.writeTextFile(
+    runner,
+    unindent`
+      const workerSource = ${
+      JSON.stringify(unindent`
+        self.onmessage = async ({ data }) => {
+          const result = {};
+
+          try {
+            await Deno.bundle({
+              entrypoints: [data.secretHtml],
+              outputDir: data.outputDir,
+              write: false,
+            });
+            result.htmlRead = "allowed";
+          } catch (err) {
+            result.htmlRead = String(err);
+          }
+
+          try {
+            await Deno.bundle({
+              entrypoints: [data.entry],
+              outputPath: data.output,
+              write: true,
+            });
+            result.write = "allowed";
+          } catch (err) {
+            result.write = String(err);
+          }
+
+          self.postMessage(result);
+        };
+      `)
+    };
+      const workerUrl = URL.createObjectURL(
+        new Blob([workerSource], { type: "text/javascript" }),
+      );
+      const worker = new Worker(workerUrl, {
+        type: "module",
+        deno: {
+          permissions: {
+            read: [${JSON.stringify(sourceDir)}],
+            write: false,
+          },
+        },
+      });
+      const result = await new Promise((resolve, reject) => {
+        worker.onmessage = (event) => resolve(event.data);
+        worker.onerror = (event) => reject(event.error ?? event.message);
+        worker.postMessage({
+          entry: ${JSON.stringify(entry)},
+          secretHtml: ${JSON.stringify(toFileUrl(secretHtml).href)},
+          outputDir: ${JSON.stringify(blockedDir)},
+          output: ${JSON.stringify(output)},
+        });
+      });
+      worker.terminate();
+      console.log(JSON.stringify(result));
+    `,
+  );
+
+  const { success, stdout, stderr } = await new Deno.Command(
+    Deno.execPath(),
+    {
+      args: [
+        "run",
+        "--no-config",
+        "--no-lock",
+        "--no-prompt",
+        "--quiet",
+        "--unstable-bundle",
+        "--unstable-worker-options",
+        `--allow-read=${dir.path}`,
+        `--allow-write=${dir.path}`,
+        runner,
+      ],
+      stdout: "piped",
+      stderr: "piped",
+    },
+  ).output();
+
+  const stdoutText = new TextDecoder().decode(stdout);
+  const stderrText = new TextDecoder().decode(stderr);
+  assert(success, stderrText);
+  const result = JSON.parse(stdoutText) as {
+    htmlRead: string;
+    write: string;
+  };
+  assertStringIncludes(result.htmlRead, "Requires read access");
+  assertStringIncludes(result.write, "Requires write access");
+  await assertPathNotFound(blockedDir);
+  await assertPathNotFound(output);
 });
 
 Deno.test("bundle: minify produces smaller output", async () => {
