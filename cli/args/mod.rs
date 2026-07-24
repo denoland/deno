@@ -1226,6 +1226,28 @@ impl CliOptions {
     Ok(permissions_options)
   }
 
+  /// Resolves the permission set the Jupyter kernel should run notebook cells
+  /// with: the `jupyter` set if present, otherwise the `default` set. Returns
+  /// `None` when neither is defined, so the kernel can fall back to allow-all
+  /// and preserve backwards compatibility with notebooks that predate
+  /// config-file permissions.
+  pub fn jupyter_permissions_options(
+    &self,
+  ) -> Result<Option<PermissionsOptions>, AnyError> {
+    let config = self.start_dir.to_permissions_config()?;
+    let Some(set) = config
+      .sets
+      .get("jupyter")
+      .or_else(|| config.sets.get("default"))
+    else {
+      return Ok(None);
+    };
+    let mut options =
+      flags_to_permissions_options(&self.flags.permissions, Some(set))?;
+    self.augment_import_permissions(&mut options);
+    Ok(Some(options))
+  }
+
   fn resolve_config_permissions_for_dir<'a>(
     &self,
     dir: &'a WorkspaceDirectory,
