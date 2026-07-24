@@ -7,7 +7,9 @@
 const { core, primordials } = __bootstrap;
 const {
   Array,
+  ArrayPrototypeIndexOf,
   ArrayPrototypePush,
+  ArrayPrototypeSplice,
   BigInt64Array,
   BigUint64Array,
   DataView,
@@ -650,6 +652,165 @@ class DefaultDeserializer extends Deserializer {
     );
   }
 }
+// ---------------------------------------------------------------------------
+// v8.promiseHooks
+// https://nodejs.org/api/v8.html#promise-hooks
+// ---------------------------------------------------------------------------
+
+type PromiseHookFn = (
+  promise: Promise<unknown>,
+  parent?: Promise<unknown>,
+) => void;
+
+function validatePlainFunction(value: unknown, name: string) {
+  // Reject non-functions as well as async functions and async generators -
+  // none of them can be used as promise hooks.
+  const ctorName = typeof value === "function"
+    ? (value as { constructor?: { name?: string } }).constructor?.name
+    : undefined;
+  if (
+    typeof value !== "function" ||
+    ctorName === "AsyncFunction" ||
+    ctorName === "AsyncGeneratorFunction"
+  ) {
+    throw new TypeError(
+      `The "${name}" argument must be of type function. Received ${typeof value}`,
+    );
+  }
+}
+
+// Track all registered hooks so we can rebuild the combined hooks
+// when individual hooks are added/removed.
+const initHooks: PromiseHookFn[] = [];
+const beforeHooks: PromiseHookFn[] = [];
+const afterHooks: PromiseHookFn[] = [];
+const resolveHooks: PromiseHookFn[] = [];
+
+// Re-entrancy guard: V8 promise hooks fire for ALL promise operations,
+// including any promises created/resolved inside the hooks themselves.
+let inPromiseHook = false;
+
+// Register dispatchers once. core.setPromiseHooks is additive (no removal),
+// so we install permanent dispatchers that check the current hook arrays.
+let hooksInstalled = false;
+
+function ensureHooksInstalled() {
+  if (hooksInstalled) return;
+  hooksInstalled = true;
+  core.setPromiseHooks(
+    (promise: Promise<unknown>, parent?: Promise<unknown>) => {
+      if (inPromiseHook || initHooks.length === 0) return;
+      inPromiseHook = true;
+      try {
+        for (let i = 0; i < initHooks.length; i++) {
+          initHooks[i](promise, parent);
+        }
+      } finally {
+        inPromiseHook = false;
+      }
+    },
+    (promise: Promise<unknown>) => {
+      if (inPromiseHook || beforeHooks.length === 0) return;
+      inPromiseHook = true;
+      try {
+        for (let i = 0; i < beforeHooks.length; i++) {
+          beforeHooks[i](promise);
+        }
+      } finally {
+        inPromiseHook = false;
+      }
+    },
+    (promise: Promise<unknown>) => {
+      if (inPromiseHook || afterHooks.length === 0) return;
+      inPromiseHook = true;
+      try {
+        for (let i = 0; i < afterHooks.length; i++) {
+          afterHooks[i](promise);
+        }
+      } finally {
+        inPromiseHook = false;
+      }
+    },
+    (promise: Promise<unknown>) => {
+      if (inPromiseHook || resolveHooks.length === 0) return;
+      inPromiseHook = true;
+      try {
+        for (let i = 0; i < resolveHooks.length; i++) {
+          resolveHooks[i](promise);
+        }
+      } finally {
+        inPromiseHook = false;
+      }
+    },
+  );
+}
+
+function removeHook(arr: PromiseHookFn[], value: PromiseHookFn) {
+  const idx = ArrayPrototypeIndexOf(arr, value);
+  if (idx !== -1) {
+    ArrayPrototypeSplice(arr, idx, 1);
+  }
+}
+
+const promiseHooks = {
+  onInit(initHook: PromiseHookFn): () => void {
+    validatePlainFunction(initHook, "initHook");
+    ArrayPrototypePush(initHooks, initHook);
+    ensureHooksInstalled();
+    return () => removeHook(initHooks, initHook);
+  },
+  onBefore(beforeHook: PromiseHookFn): () => void {
+    validatePlainFunction(beforeHook, "beforeHook");
+    ArrayPrototypePush(beforeHooks, beforeHook);
+    ensureHooksInstalled();
+    return () => removeHook(beforeHooks, beforeHook);
+  },
+  onAfter(afterHook: PromiseHookFn): () => void {
+    validatePlainFunction(afterHook, "afterHook");
+    ArrayPrototypePush(afterHooks, afterHook);
+    ensureHooksInstalled();
+    return () => removeHook(afterHooks, afterHook);
+  },
+  onSettled(settledHook: PromiseHookFn): () => void {
+    validatePlainFunction(settledHook, "settledHook");
+    ArrayPrototypePush(resolveHooks, settledHook);
+    ensureHooksInstalled();
+    return () => removeHook(resolveHooks, settledHook);
+  },
+  createHook(
+    { init, before, after, settled }: {
+      init?: PromiseHookFn;
+      before?: PromiseHookFn;
+      after?: PromiseHookFn;
+      settled?: PromiseHookFn;
+    },
+  ): () => void {
+    if (init !== undefined) {
+      validatePlainFunction(init, "initHook");
+      ArrayPrototypePush(initHooks, init);
+    }
+    if (before !== undefined) {
+      validatePlainFunction(before, "beforeHook");
+      ArrayPrototypePush(beforeHooks, before);
+    }
+    if (after !== undefined) {
+      validatePlainFunction(after, "afterHook");
+      ArrayPrototypePush(afterHooks, after);
+    }
+    if (settled !== undefined) {
+      validatePlainFunction(settled, "settledHook");
+      ArrayPrototypePush(resolveHooks, settled);
+    }
+    ensureHooksInstalled();
+    return () => {
+      if (init !== undefined) removeHook(initHooks, init);
+      if (before !== undefined) removeHook(beforeHooks, before);
+      if (after !== undefined) removeHook(afterHooks, after);
+      if (settled !== undefined) removeHook(resolveHooks, settled);
+    };
+  },
+};
+
 return {
   cachedDataVersionTag,
   getHeapCodeStatistics,
@@ -670,5 +831,6 @@ return {
   Deserializer,
   DefaultSerializer,
   DefaultDeserializer,
+  promiseHooks,
 };
 })();

@@ -3003,6 +3003,8 @@
     "parallel/test-process-uptime.js": {},
     "parallel/test-process-warning.js": {},
     "parallel/test-promise-handled-rejection-no-warning.js": {},
+    "parallel/test-promise-hook-on-before.js": {},
+    "parallel/test-promise-hook-on-init.js": {},
     "parallel/test-promise-unhandled-default.js": {},
     "parallel/test-promise-unhandled-issue-43655.js": {},
     "parallel/test-promise-unhandled-silent.js": {},
