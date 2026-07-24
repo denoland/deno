@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -19,6 +20,8 @@ use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_core::SourceCodeCacheInfo;
+use deno_core::anyhow::Context;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::error::ModuleLoaderError;
 use deno_core::futures::FutureExt;
@@ -109,6 +112,8 @@ use crate::node::DenoRtNodeResolver;
 use crate::node::DenoRtNpmModuleLoader;
 use crate::node::DenoRtNpmReqResolver;
 
+const COMPILE_CODE_CACHE_DIR_NAME: &str = "compile_code_cache";
+
 struct SharedModuleLoaderState {
   blob_store: Arc<BlobStore>,
   cjs_tracker: Arc<DenoRtCjsTracker>,
@@ -121,6 +126,129 @@ struct SharedModuleLoaderState {
   npm_req_resolver: Arc<DenoRtNpmReqResolver>,
   vfs: Arc<FileBackedVfs>,
   workspace_resolver: WorkspaceResolver<DenoRtSys>,
+}
+
+fn standalone_code_cache_path(root_path: &Path) -> Option<PathBuf> {
+  let deno_dir = match deno_cache_dir::resolve_deno_dir(
+    &sys_traits::impls::RealSys,
+    deno_cache_dir::ResolveDenoDirOptions {
+      maybe_custom_root: None,
+      maybe_initial_cwd: None,
+    },
+  ) {
+    Ok(deno_dir) => deno_dir.into_owned(),
+    Err(err) => {
+      log::debug!("Failed resolving Deno cache dir for code cache: {err}");
+      return None;
+    }
+  };
+  standalone_code_cache_path_in_deno_dir(&deno_dir, root_path)
+}
+
+fn standalone_code_cache_path_in_deno_dir(
+  deno_dir: &Path,
+  root_path: &Path,
+) -> Option<PathBuf> {
+  let code_cache_dir = deno_dir.join(COMPILE_CODE_CACHE_DIR_NAME);
+  if let Err(err) = create_secure_code_cache_dir(&code_cache_dir) {
+    log::debug!(
+      "Failed creating secure standalone code cache dir at '{}': {:#}",
+      code_cache_dir.display(),
+      err
+    );
+    return None;
+  }
+  Some(standalone_code_cache_path_in_dir(
+    &code_cache_dir,
+    root_path,
+  )?)
+}
+
+fn standalone_code_cache_path_in_dir(
+  code_cache_dir: &Path,
+  root_path: &Path,
+) -> Option<PathBuf> {
+  Some(code_cache_dir.join(format!(
+    "{}.cache",
+    root_path.file_name()?.to_string_lossy()
+  )))
+}
+
+fn create_secure_code_cache_dir(path: &Path) -> Result<(), AnyError> {
+  let parent = path.parent().context("Code cache dir has no parent")?;
+  create_dir_all_secure(parent).with_context(|| {
+    format!("Failed creating Deno cache dir '{}'", parent.display())
+  })?;
+  match create_dir_secure(path) {
+    Ok(()) => {}
+    Err(err) if err.kind() == ErrorKind::AlreadyExists => {}
+    Err(err) => return Err(err.into()),
+  }
+  ensure_secure_code_cache_dir(path)
+    .with_context(|| format!("Insecure code cache dir '{}'", path.display()))
+}
+
+#[cfg(unix)]
+fn create_dir_all_secure(path: &Path) -> std::io::Result<()> {
+  use std::os::unix::fs::DirBuilderExt;
+
+  std::fs::DirBuilder::new()
+    .recursive(true)
+    .mode(0o700)
+    .create(path)
+}
+
+#[cfg(not(unix))]
+fn create_dir_all_secure(path: &Path) -> std::io::Result<()> {
+  std::fs::create_dir_all(path)
+}
+
+#[cfg(unix)]
+fn create_dir_secure(path: &Path) -> std::io::Result<()> {
+  use std::os::unix::fs::DirBuilderExt;
+
+  std::fs::DirBuilder::new().mode(0o700).create(path)
+}
+
+#[cfg(not(unix))]
+fn create_dir_secure(path: &Path) -> std::io::Result<()> {
+  std::fs::create_dir(path)
+}
+
+#[cfg(unix)]
+fn ensure_secure_code_cache_dir(path: &Path) -> Result<(), AnyError> {
+  // SAFETY: `geteuid` has no preconditions.
+  ensure_secure_code_cache_dir_for_uid(path, unsafe { libc::geteuid() })
+}
+
+#[cfg(unix)]
+fn ensure_secure_code_cache_dir_for_uid(
+  path: &Path,
+  current_uid: u32,
+) -> Result<(), AnyError> {
+  use std::os::unix::fs::MetadataExt;
+  use std::os::unix::fs::PermissionsExt;
+
+  let metadata = std::fs::symlink_metadata(path)?;
+  if !metadata.file_type().is_dir() {
+    bail!("path is not a directory");
+  }
+  if metadata.uid() != current_uid {
+    bail!("directory is not owned by the current user");
+  }
+  let mode = metadata.permissions().mode();
+  if mode & 0o077 != 0 {
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))?;
+  }
+  Ok(())
+}
+
+#[cfg(not(unix))]
+fn ensure_secure_code_cache_dir(path: &Path) -> Result<(), AnyError> {
+  if !std::fs::symlink_metadata(path)?.file_type().is_dir() {
+    bail!("path is not a directory");
+  }
+  Ok(())
 }
 
 impl SharedModuleLoaderState {
@@ -1597,13 +1725,8 @@ pub async fn run_with_options(
     )
   };
   let code_cache = match metadata.code_cache_key {
-    Some(code_cache_key) => Some(Arc::new(DenoCompileCodeCache::new(
-      root_path.with_file_name(format!(
-        "{}.cache",
-        root_path.file_name().unwrap().to_string_lossy()
-      )),
-      code_cache_key,
-    ))),
+    Some(code_cache_key) => standalone_code_cache_path(&root_path)
+      .map(|path| Arc::new(DenoCompileCodeCache::new(path, code_cache_key))),
     None => {
       log::debug!("Code cache disabled.");
       None
@@ -2123,15 +2246,113 @@ pub(crate) fn apply_desktop_permission_defaults(
 mod tests {
   use deno_runtime::deno_permissions::PermissionsOptions;
 
+  use super::COMPILE_CODE_CACHE_DIR_NAME;
   use super::DESKTOP_ENV_KEYS;
   use super::DESKTOP_LOOPBACK_HOSTS;
   use super::DesktopStartupError;
   use super::apply_desktop_permission_defaults;
+  use super::create_secure_code_cache_dir;
   use super::desktop_startup_error;
   use super::grant_vfs_read_access;
+  use super::standalone_code_cache_path_in_deno_dir;
 
   fn strs(v: &[&str]) -> Vec<String> {
     v.iter().map(|s| (*s).to_string()).collect()
+  }
+
+  #[test]
+  fn standalone_code_cache_path_uses_deno_cache_dir() {
+    let temp_dir = test_util::TempDir::new();
+    let deno_dir = temp_dir.path().join("new").join("deno_dir");
+    let code_cache_dir = deno_dir.join(COMPILE_CODE_CACHE_DIR_NAME);
+    let root_path = std::path::Path::new("/tmp/deno-compile-example");
+    let path =
+      standalone_code_cache_path_in_deno_dir(deno_dir.as_path(), root_path)
+        .unwrap();
+    assert_eq!(
+      path,
+      code_cache_dir
+        .join("deno-compile-example.cache")
+        .to_path_buf()
+    );
+    assert!(code_cache_dir.is_dir());
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn standalone_code_cache_is_disabled_for_symlink_dir() {
+    use std::os::unix::fs::symlink;
+
+    let temp_dir = test_util::TempDir::new();
+    let deno_dir = temp_dir.path().join("deno_dir");
+    let target = temp_dir.path().join("target");
+    std::fs::create_dir(&deno_dir).unwrap();
+    std::fs::create_dir(&target).unwrap();
+    symlink(&target, deno_dir.join(COMPILE_CODE_CACHE_DIR_NAME)).unwrap();
+
+    let root_path = std::path::Path::new("/tmp/deno-compile-example");
+    assert!(
+      standalone_code_cache_path_in_deno_dir(deno_dir.as_path(), root_path)
+        .is_none()
+    );
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn secure_code_cache_dir_repairs_permissive_mode() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp_dir = test_util::TempDir::new();
+    let dir = temp_dir.path().join("cache");
+    std::fs::create_dir(&dir).unwrap();
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o777))
+      .unwrap();
+
+    create_secure_code_cache_dir(dir.as_path()).unwrap();
+
+    let mode = std::fs::metadata(&dir).unwrap().permissions().mode();
+    assert_eq!(mode & 0o777, 0o700);
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn secure_code_cache_dir_rejects_wrong_owner() {
+    use std::os::unix::fs::MetadataExt;
+
+    let temp_dir = test_util::TempDir::new();
+    let dir = temp_dir.path().join("cache");
+    std::fs::create_dir(&dir).unwrap();
+    let uid = std::fs::metadata(&dir).unwrap().uid();
+
+    let err = super::ensure_secure_code_cache_dir_for_uid(
+      dir.as_path(),
+      uid.wrapping_add(1),
+    )
+    .unwrap_err();
+    assert!(
+      err
+        .to_string()
+        .contains("directory is not owned by the current user"),
+      "{err:#}"
+    );
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn secure_code_cache_dir_rejects_symlink() {
+    use std::os::unix::fs::symlink;
+
+    let temp_dir = test_util::TempDir::new();
+    let target = temp_dir.path().join("target");
+    let link = temp_dir.path().join("cache");
+    std::fs::create_dir(&target).unwrap();
+    symlink(&target, &link).unwrap();
+
+    let err = create_secure_code_cache_dir(link.as_path()).unwrap_err();
+    assert!(
+      err.to_string().contains("Insecure code cache dir"),
+      "{err:#}"
+    );
   }
 
   #[test]

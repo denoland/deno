@@ -68,6 +68,9 @@ junction.workspace = true
 memmap2.workspace = true
 deno_subprocess_windows.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
 [dev-dependencies]
 sys_traits = { workspace = true, features = ["memory"] }
 test_util.workspace = true
