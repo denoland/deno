@@ -252,6 +252,7 @@ interface GPUCanvasContext {
  * @category Canvas */
 declare var GPUCanvasContext: {
   prototype: GPUCanvasContext;
+  new (): GPUCanvasContext;
 };
 
 /** A rendering context that displays the contents of an {@linkcode ImageBitmap}
@@ -275,6 +276,7 @@ interface ImageBitmapRenderingContext {
  * @category Canvas */
 declare var ImageBitmapRenderingContext: {
   prototype: ImageBitmapRenderingContext;
+  new (): ImageBitmapRenderingContext;
 };
 
 /** A canvas that can be rendered to off the main thread and without being

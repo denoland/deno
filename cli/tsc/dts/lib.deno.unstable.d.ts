@@ -232,6 +232,11 @@ declare namespace Deno {
     );
 
     getContext(
+      contextId: "bitmaprenderer",
+      options?: any,
+    ): ImageBitmapRenderingContext | null;
+    getContext(contextId: "webgpu", options?: any): GPUCanvasContext | null;
+    getContext(
       contextId: OffscreenRenderingContextId,
       options?: any,
     ): OffscreenRenderingContext | null;
