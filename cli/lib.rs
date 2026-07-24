@@ -301,6 +301,7 @@ async fn run_subcommand(
           filter: None,
           eval: false,
           no_prefix: false,
+          resume_from: None,
           concurrency: None,
           if_present: false,
         };
@@ -412,6 +413,7 @@ async fn run_subcommand(
                   filter: None,
                   eval: false,
                   no_prefix: false,
+                  resume_from: None,
                   concurrency: None,
                   if_present: false,
                 };
