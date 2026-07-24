@@ -789,6 +789,7 @@ async function ensureNoNewTopLevelEntries() {
     ".devcontainer",
     ".github",
     "x",
+    "x.bat",
     "cli",
     "doc",
     "ext",
