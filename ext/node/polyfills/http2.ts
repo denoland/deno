@@ -2834,6 +2834,17 @@ function processRespondWithFD(
 
   self.once("close", stopReading);
 
+  function handleReadError() {
+    stopReading();
+    // Match Node: a read failure (e.g. EBADF from a bad fd) resets the
+    // stream with NGHTTP2_INTERNAL_ERROR rather than leaking the
+    // underlying fs error to user code.
+    if (!self.destroyed && !self.closed) {
+      closeStream(self, NGHTTP2_INTERNAL_ERROR, kForceRstStream);
+    }
+    self.destroy();
+  }
+
   function readAndWrite(err) {
     if (err || self.destroyed || self.closed) {
       stopReading();
@@ -2845,32 +2856,30 @@ function processRespondWithFD(
       return;
     }
     reading = true;
-    fs.read(fd, buf, 0, readLen, seekable ? pos : null, (err, bytesRead) => {
-      reading = false;
-      if (err) {
-        stopReading();
-        // Match Node: a read failure (e.g. EBADF from a bad fd) resets the
-        // stream with NGHTTP2_INTERNAL_ERROR rather than leaking the
-        // underlying fs error to user code.
-        if (!self.destroyed && !self.closed) {
-          closeStream(self, NGHTTP2_INTERNAL_ERROR, kForceRstStream);
+    try {
+      fs.read(fd, buf, 0, readLen, seekable ? pos : null, (err, bytesRead) => {
+        reading = false;
+        if (err) {
+          handleReadError();
+          return;
         }
-        self.destroy();
-        return;
-      }
-      if (stopped || self.destroyed || self.closed) {
-        stopReading();
-        return;
-      }
-      if (bytesRead === 0) {
-        finish();
-        return;
-      }
-      if (seekable) pos += bytesRead;
-      // deno-lint-ignore deno-internal/prefer-primordials
-      const chunk = buf.slice(0, bytesRead);
-      self.write(chunk, readAndWrite);
-    });
+        if (stopped || self.destroyed || self.closed) {
+          stopReading();
+          return;
+        }
+        if (bytesRead === 0) {
+          finish();
+          return;
+        }
+        if (seekable) pos += bytesRead;
+        // deno-lint-ignore deno-internal/prefer-primordials
+        const chunk = buf.slice(0, bytesRead);
+        self.write(chunk, readAndWrite);
+      });
+    } catch {
+      reading = false;
+      handleReadError();
+    }
   }
 
   function finish() {
