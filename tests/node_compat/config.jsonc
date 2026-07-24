@@ -189,6 +189,7 @@
       "ignore": true,
       "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
     },
+    "parallel/test-abortsignal-any.mjs": {},
     "parallel/test-als-defaultvalue.js": {},
     "parallel/test-arm-math-illegal-instruction.js": {},
     "parallel/test-assert-async.js": {},
