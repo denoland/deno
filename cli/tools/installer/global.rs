@@ -918,8 +918,26 @@ fn resolve_shim_data(
     file_path = file_path.with_extension("cmd");
   }
 
+  // `npm:node-gyp` is unusable without `-A` and the Node compat flags `node`
+  // scripts get (see `NodeCommand` in `cli/task_runner.rs`). Its dependency
+  // tree calls `os.homedir()` etc. as soon as it loads, so always inject
+  // those when generating its shim. User-supplied narrower permissions would
+  // just make the resulting binary fail at startup.
+  let is_node_gyp =
+    NpmPackageReqReference::from_specifier(&bin_name_and_url.module_url)
+      .ok()
+      .is_some_and(|pkg_ref| pkg_ref.req().name == "node-gyp");
+
   let mut executable_args = vec!["run".to_string()];
-  executable_args.extend_from_slice(&flags.to_permission_args());
+  if is_node_gyp {
+    executable_args.push("-A".to_string());
+    executable_args.push("--unstable-bare-node-builtins".to_string());
+    executable_args.push("--unstable-detect-cjs".to_string());
+    executable_args.push("--unstable-sloppy-imports".to_string());
+    executable_args.push("--unstable-unsafe-proto".to_string());
+  } else {
+    executable_args.extend_from_slice(&flags.to_permission_args());
+  }
   if let Some(url) = flags.location.as_ref() {
     executable_args.push("--location".to_string());
     executable_args.push(url.to_string());
@@ -1979,6 +1997,43 @@ mod tests {
         &config_path.to_string_lossy(),
         "--no-lock",
         "npm:cowsay"
+      ]
+    );
+  }
+
+  #[tokio::test]
+  async fn install_npm_node_gyp_forces_allow_all_and_node_compat_flags() {
+    let temp_dir_str = env::temp_dir().to_string_lossy().into_owned();
+    let config_path =
+      config_dir_for(&temp_dir_str, "node-gyp").join("deno.json");
+    // With no permissions passed, npm:node-gyp should still get -A and the
+    // node-compat unstable flags so the resulting shim actually runs.
+    let (_, shim_data) = resolve_shim_data(
+      &Flags::default(),
+      &InstallFlagsGlobal {
+        module_urls: vec!["npm:node-gyp".to_string()],
+        args: vec![],
+        name: None,
+        root: Some(temp_dir_str),
+        force: false,
+        compile: false,
+      },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+      shim_data.args,
+      vec![
+        "run",
+        "-A",
+        "--unstable-bare-node-builtins",
+        "--unstable-detect-cjs",
+        "--unstable-sloppy-imports",
+        "--unstable-unsafe-proto",
+        "--config",
+        &config_path.to_string_lossy(),
+        "npm:node-gyp",
       ]
     );
   }
