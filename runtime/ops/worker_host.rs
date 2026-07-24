@@ -482,11 +482,7 @@ fn op_create_worker(
 fn op_host_terminate_worker(state: &mut OpState, #[scoped] id: WorkerId) {
   match state.borrow_mut::<WorkersTable>().entry(id) {
     std::collections::hash_map::Entry::Occupied(mut entry) => {
-      if matches!(entry.get().worker_type, WorkerThreadType::Node) {
-        entry.remove().finish_termination();
-      } else {
-        entry.get_mut().request_termination();
-      }
+      entry.get_mut().request_termination();
     }
     std::collections::hash_map::Entry::Vacant(_) => {
       debug!("tried to terminate non-existent worker {}", id);
@@ -570,8 +566,19 @@ async fn op_host_recv_ctrl(
     }
     Ok(None) => {
       // If there was no event from worker it means it has already been closed.
+      let node_worker_was_terminated = {
+        let state = state.borrow();
+        let workers_table = state.borrow::<WorkersTable>();
+        workers_table.get(&id).is_some_and(|worker| {
+          matches!(worker.worker_type, WorkerThreadType::Node)
+            && worker.termination_requested
+        })
+      };
+      // Node Worker.terminate() resolves with exit code 1 when termination
+      // tears down the worker instead of the worker closing itself.
+      let exit_code = if node_worker_was_terminated { 1 } else { 0 };
       close_channel(state, id, WorkerChannel::Ctrl);
-      WorkerControlEvent::Close(0)
+      WorkerControlEvent::Close(exit_code)
     }
     Err(_) => {
       // The worker was terminated.
