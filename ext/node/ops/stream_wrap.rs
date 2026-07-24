@@ -834,12 +834,12 @@ fn user_owned_buf(
   std::ptr::eq(base as *const u8, user_buf.ptr)
 }
 
-/// Handle uncaught exceptions from stream onread callbacks.
-/// Uses globalThis.reportError() to report the exception as uncaught,
-/// matching Node's MakeCallback behavior where unhandled exceptions
+/// Handle uncaught exceptions from native callbacks (stream onread, TLS write
+/// completion, ...). Uses globalThis.reportError() to report the exception as
+/// uncaught, matching Node's MakeCallback behavior where unhandled exceptions
 /// from native callbacks terminate the process.
-fn call_fatal_exception(
-  scope: &mut v8::ContextScope<v8::HandleScope>,
+pub(crate) fn call_fatal_exception(
+  scope: &mut v8::PinnedRef<v8::HandleScope>,
   exception: v8::Local<v8::Value>,
 ) {
   let global = scope.get_current_context().global(scope);
@@ -848,7 +848,15 @@ fn call_fatal_exception(
     && let Ok(report_fn) = v8::Local::<v8::Function>::try_from(report_fn_val)
   {
     let undef = v8::undefined(scope);
-    report_fn.call(scope, undef.into(), &[exception]);
+    // `reportError` itself can throw (e.g. user-shadowed). Contain it in a
+    // TryCatch so a pending exception can't leak into a shared event-loop
+    // HandleScope — some callers (the deferred TLS write completion) run on
+    // the V8TaskSpawner scope, whose contract forbids leaving an exception set.
+    v8::tc_scope!(tc, scope);
+    report_fn.call(tc, undef.into(), &[exception]);
+    if tc.has_caught() {
+      tc.reset();
+    }
   }
 }
 

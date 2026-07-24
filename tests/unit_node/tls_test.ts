@@ -1425,3 +1425,54 @@ Deno.test("tls.createSecureContext extracts the CA chain from a pfx", () => {
   assert(context.ca[0].includes("BEGIN CERTIFICATE"));
   assert(context.ca[0] !== context.cert);
 });
+
+// Regression test for https://github.com/denoland/deno/issues/35820
+// Writing through a TLS socket whose underlying handle was already closed
+// made the encrypted write fail synchronously inside the write op. The
+// JS write-completion callback then ran while the op still held the
+// OpState borrow, and the callback's process.nextTick panicked with
+// "RefCell already borrowed". The callback must be deferred to the event
+// loop instead, surfacing a normal error.
+Deno.test("tls write after underlying handle closed does not panic", async () => {
+  const serverSockets = new Set<tls.TLSSocket>();
+  const server = tls.createServer({ cert, key }, (socket) => {
+    serverSockets.add(socket);
+    socket.on("error", () => {});
+  });
+
+  const { promise: listening, resolve: resolveListening } = Promise
+    .withResolvers<void>();
+  server.listen(0, resolveListening);
+  await listening;
+
+  const port = (server.address() as net.AddressInfo).port;
+  const raw = net.connect(port, "127.0.0.1");
+  raw.on("error", () => {});
+
+  const { promise: errored, resolve: resolveErrored } = Promise
+    .withResolvers<void>();
+
+  const tlsSock = tls.connect({
+    socket: raw,
+    rejectUnauthorized: false,
+  }, () => {
+    // Close the raw handle out from under the TLS wrap, then write:
+    // the encrypted output write fails synchronously (EBADF).
+    // deno-lint-ignore no-explicit-any
+    (raw as any)._handle?.close(() => {});
+    tlsSock.write("hello", () => {});
+  });
+  tlsSock.on("error", () => resolveErrored());
+
+  await deadline(errored, 10_000);
+
+  tlsSock.destroy();
+  raw.destroy();
+  for (const socket of serverSockets) {
+    socket.destroy();
+  }
+  const { promise: closed, resolve: resolveClosed } = Promise
+    .withResolvers<void>();
+  server.close(() => resolveClosed());
+  await closed;
+});

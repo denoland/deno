@@ -36,6 +36,7 @@ use deno_core::CppgcInherits;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::ToJsBuffer;
+use deno_core::V8TaskSpawner;
 use deno_core::op2;
 use deno_core::uv_compat;
 use deno_core::uv_compat::UV_EBADF;
@@ -57,6 +58,7 @@ use crate::ops::handle_wrap::OwnedPtr;
 use crate::ops::handle_wrap::ProviderType;
 use crate::ops::stream_wrap::LibUvStreamWrap;
 use crate::ops::stream_wrap::StreamBaseState;
+use crate::ops::stream_wrap::call_fatal_exception;
 use crate::ops::stream_wrap::free_uv_buf;
 use crate::ops::stream_wrap_state::ReadInterceptor;
 use crate::ops::tls::NodeTlsState;
@@ -611,6 +613,46 @@ unsafe fn do_emit_client_hello(ctx: &EmitCtx) {
   }
 }
 
+/// Look up `req.oncomplete` and invoke it with `(status, handle, undefined)`,
+/// reporting any exception the callback throws as uncaught (matching Node's
+/// MakeCallback). Shared by the synchronous (`do_invoke_queued`) and deferred
+/// (`defer_invoke_queued`) completion paths so their behavior can't drift.
+fn invoke_write_oncomplete(
+  scope: &mut v8::PinnedRef<v8::HandleScope>,
+  req_obj: v8::Local<v8::Object>,
+  handle: v8::Local<v8::Object>,
+  status: i32,
+) {
+  let oncomplete_str =
+    v8::String::new_external_onebyte_static(scope, b"oncomplete").unwrap();
+  let Some(oncomplete) = req_obj.get(scope, oncomplete_str.into()) else {
+    return;
+  };
+  let Ok(func) = v8::Local::<v8::Function>::try_from(oncomplete) else {
+    return;
+  };
+  let status_val = v8::Integer::new(scope, status);
+  let undef = v8::undefined(scope);
+  let caught_exception = {
+    v8::tc_scope!(tc, scope);
+    let result = func.call(
+      tc,
+      req_obj.into(),
+      &[status_val.into(), handle.into(), undef.into()],
+    );
+    if result.is_none() && tc.has_caught() {
+      let exc = tc.exception();
+      tc.reset();
+      exc
+    } else {
+      None
+    }
+  };
+  if let Some(exception) = caught_exception {
+    call_fatal_exception(scope, exception);
+  }
+}
+
 /// Signal write completion to JS.
 ///
 /// # Safety
@@ -639,18 +681,70 @@ unsafe fn do_invoke_queued(
 
     let req_obj = v8::Local::new(scope, &write_obj);
     let handle = v8::Local::new(scope, &ctx.js_handle);
-    let oncomplete_str =
-      v8::String::new_external_onebyte_static(scope, b"oncomplete").unwrap();
-    if let Some(oncomplete) = req_obj.get(scope, oncomplete_str.into())
-      && let Ok(func) = v8::Local::<v8::Function>::try_from(oncomplete)
-    {
-      let status_val = v8::Integer::new(scope, status);
-      let undef = v8::undefined(scope);
-      func.call(
-        scope,
-        req_obj.into(),
-        &[status_val.into(), handle.into(), undef.into()],
-      );
+    invoke_write_oncomplete(scope, req_obj, handle, status);
+  }
+}
+
+/// Signal write completion to JS on the next event loop iteration.
+///
+/// The synchronous `do_invoke_queued` is only safe from a libuv callback
+/// dispatched by the event loop. The TLS write ops (`writev`, `writeBuffer`,
+/// `writeUtf8String`, ...) hold the `OpState` borrow for their entire body,
+/// so running `oncomplete` synchronously from them re-enters JS while
+/// `OpState` is borrowed, and any op the callback reaches (e.g.
+/// `op_node_new_async_id` via `process.nextTick`) panics with "RefCell
+/// already borrowed" (#35820). Deferring also matches libuv/Node semantics:
+/// write callbacks never fire synchronously from the write call itself.
+///
+/// Unlike `do_invoke_queued`, this runs on the spawner's ambient context (the
+/// main context) rather than recovering the TLSWrap's stored context via
+/// `clone_context_global(loop_ptr->data)`. Recovering it here would require
+/// reconstructing the isolate while the spawner's event-loop `HandleScope` is
+/// already live, which is not sound. For a TLSSocket used inside a secondary
+/// realm, `oncomplete` and the `reportError` lookup therefore resolve against
+/// the main global; this is correct for the common single-context case.
+fn defer_invoke_queued(
+  spawner: &V8TaskSpawner,
+  js_handle: v8::Global<v8::Object>,
+  write_obj: v8::Global<v8::Object>,
+  status: i32,
+) {
+  spawner.spawn(move |scope| {
+    let req_obj = v8::Local::new(scope, &write_obj);
+    let handle = v8::Local::new(scope, &js_handle);
+    invoke_write_oncomplete(scope, req_obj, handle, status);
+  });
+}
+
+/// Fire the queued write-completion callback, keeping the defer-vs-sync policy
+/// in one place. When `defer` is set (the call originates from a write op that
+/// still holds the `OpState` borrow) the callback is scheduled on the event
+/// loop via `defer_invoke_queued`; otherwise (a libuv callback) it runs
+/// synchronously via `do_invoke_queued`. See `defer_invoke_queued` for why
+/// write ops must defer.
+///
+/// # Safety
+/// `ptr` must be a valid, non-null pointer to a live TLSWrapInner.
+unsafe fn dispatch_invoke_queued(
+  ptr: *mut TLSWrapInner,
+  defer: bool,
+  status: i32,
+) {
+  unsafe {
+    let Some((write_obj, ctx)) = prepare_invoke_queued(ptr) else {
+      return;
+    };
+    if defer {
+      // The spawner is populated at construction (see `TLSWrap::new`), so a
+      // missing one here is a broken invariant; fail loudly rather than
+      // degrading to the synchronous reentrancy panic (#35820).
+      let spawner = (*ptr)
+        .task_spawner
+        .clone()
+        .expect("V8TaskSpawner must be present for deferred write completion");
+      defer_invoke_queued(&spawner, ctx.js_handle, write_obj, status);
+    } else {
+      do_invoke_queued(&ctx, write_obj, status);
     }
   }
 }
@@ -984,6 +1078,11 @@ struct TLSWrapInner {
   /// emitted via a fresh ArrayBuffer; the JS callback receives the same
   /// Uint8Array each time. Updated by `TLSWrap::useUserBuffer`.
   user_buffer: Option<crate::ops::stream_wrap::UserBuffer>,
+
+  /// Same-thread task spawner used to defer the JS write-completion
+  /// callback out of ops that hold the `OpState` borrow (see
+  /// `defer_invoke_queued`). Captured from `OpState` in `TLSWrap::new`.
+  task_spawner: Option<V8TaskSpawner>,
 }
 
 /// Convert a rustls error to a (message, code) pair that matches Node's
@@ -1124,6 +1223,7 @@ impl TLSWrapInner {
       client_hello_servername: None,
       client_hello_alpn: Vec::new(),
       user_buffer: None,
+      task_spawner: None,
     }
   }
 
@@ -1183,7 +1283,13 @@ impl TLSWrapInner {
       if result.tls_error.is_some() {
         return;
       }
-      TLSWrapInner::do_enc_out_action(ptr, enc_action);
+      // cycle() is only reached from ops that do NOT hold the OpState borrow
+      // (read_buffer, receive, start, ...) or from uv callbacks, so the write
+      // completion runs synchronously (defer = false). Deferring here would
+      // delay a JS-backed stream's `'finish'` by a macrotask and let a peer
+      // FIN land first, spuriously aborting in-flight requests (#35820 only
+      // affected the write op, which holds the borrow and defers on its own).
+      TLSWrapInner::do_enc_out_action(ptr, enc_action, false);
 
       // After handshake completes, the JS callback (onhandshakedone ->
       // onConnectSecure) has run. If the connection was accepted (e.g.
@@ -1195,7 +1301,8 @@ impl TLSWrapInner {
         (*ptr).clear_in();
         let enc_action2 = (*ptr).enc_out_collect();
         (*ptr).cycling = false;
-        TLSWrapInner::do_enc_out_action(ptr, enc_action2);
+        // Synchronous for the same reason as the first dispatch above.
+        TLSWrapInner::do_enc_out_action(ptr, enc_action2, false);
       }
     }
   }
@@ -1472,9 +1579,13 @@ impl TLSWrapInner {
     }
   }
 
-  /// Flush encrypted data from rustls to the underlying stream without
-  /// invoking any JS callbacks. Used in the error path of clear_out_process
-  /// to send TLS alert records before emitting the error.
+  /// Flush encrypted data from rustls to the underlying stream. Used in the
+  /// error path of clear_out_process to send TLS alert records before emitting
+  /// the error. In the common case no JS callback runs, but if a write is
+  /// pending (`write_callback_scheduled`) and the underlying write fails
+  /// synchronously, the completion fires here. That's safe: this is only
+  /// reached from `cycle`, which never holds the OpState borrow, so the
+  /// completion runs synchronously (`defer = false`) like the rest of `cycle`.
   fn enc_out_flush_only(&mut self) {
     let Some(ref mut conn) = self.tls_conn else {
       return;
@@ -1489,7 +1600,7 @@ impl TLSWrapInner {
       return;
     }
     if let UnderlyingStream::Uv { .. } = self.underlying {
-      self.enc_out_uv();
+      self.enc_out_uv(false);
     }
     // JS stream: the data stays in pending_enc_out; cycle's callback phase
     // will handle it.
@@ -1532,7 +1643,9 @@ impl TLSWrapInner {
             conn.send_close_notify();
           }
           let enc_action = (*ptr).enc_out_collect();
-          TLSWrapInner::do_enc_out_action(ptr, enc_action);
+          // Reached from cycle()'s callback phase, which never holds the
+          // OpState borrow — dispatch synchronously (see cycle()).
+          TLSWrapInner::do_enc_out_action(ptr, enc_action, false);
           (*ptr).underlying.shutdown();
         }
       }
@@ -1596,20 +1709,32 @@ impl TLSWrapInner {
   /// Execute the enc_out action determined by `enc_out_collect`.
   /// This may call JS callbacks, so it works through a raw pointer.
   ///
+  /// `defer` selects how the write-completion callback is dispatched. It is
+  /// `true` only from `write_data` — the single path that holds the `OpState`
+  /// borrow for its whole body (the writev/writeBuffer/writeUtf8String ops).
+  /// There a synchronous callback would run JS while `OpState` is borrowed and
+  /// panic with "RefCell already borrowed" the moment it reaches another op
+  /// (#35820), so the callback is scheduled on the event loop instead.
+  ///
+  /// Every other caller — libuv callbacks (`enc_write_cb`) and the `&self` ops
+  /// that drive `cycle`/`start`/`shutdown`/`finish_accept` (none of which
+  /// borrow `OpState`) — passes `false` so the completion fires synchronously.
+  /// Deferring on those paths would delay a JS-backed stream's `'finish'` by an
+  /// event-loop turn, letting a peer FIN be processed first and spuriously
+  /// aborting in-flight HTTP requests.
+  ///
   /// # Safety
   /// `ptr` must be a valid, non-null pointer to a live TLSWrapInner.
-  unsafe fn do_enc_out_action(ptr: *mut TLSWrapInner, action: EncOutAction) {
+  unsafe fn do_enc_out_action(
+    ptr: *mut TLSWrapInner,
+    action: EncOutAction,
+    defer: bool,
+  ) {
     unsafe {
       match action {
         EncOutAction::None => {}
         EncOutAction::WriteUv => {
-          (*ptr).enc_out_uv();
-          // enc_out_uv may call invoke_queued on error; those paths
-          // already work through &mut self which is fine since we
-          // don't hold any reference here. But we should also convert
-          // those paths — for now, enc_out_uv's invoke_queued calls
-          // go through the old path (acceptable since they only fire
-          // on synchronous uv_write failure, not during normal flow).
+          (*ptr).enc_out_uv(defer);
         }
         EncOutAction::WriteJs => {
           // Pull-based: leave data in pending_enc_out for JS to drain
@@ -1617,16 +1742,19 @@ impl TLSWrapInner {
           // within an op, eliminating reentrancy issues.
         }
         EncOutAction::InvokeQueued(status) => {
-          if let Some((write_obj, ctx)) = prepare_invoke_queued(ptr) {
-            do_invoke_queued(&ctx, write_obj, status);
-          }
+          dispatch_invoke_queued(ptr, defer, status);
         }
       }
     }
   }
 
   /// Write encrypted data to the underlying uv stream.
-  fn enc_out_uv(&mut self) {
+  ///
+  /// `defer` has the same meaning as in `do_enc_out_action`: it controls
+  /// whether the synchronous-write-failure completion callback is scheduled
+  /// on the event loop (`true`, from write ops) or run inline (`false`,
+  /// from libuv callbacks).
+  fn enc_out_uv(&mut self, defer: bool) {
     let enc_data = std::mem::take(&mut self.pending_enc_out);
     let self_ptr = self as *mut TLSWrapInner;
     let write_req = Box::new(EncryptedWriteReq {
@@ -1657,14 +1785,18 @@ impl TLSWrapInner {
         self.write_callback_scheduled
       };
       if should_invoke {
-        // Use raw pointer to drop the &mut self borrow before JS call
+        // A synchronous write failure (e.g. the underlying handle was
+        // already closed -> UV_EBADF). When this is reached from a write op
+        // (`defer` is true) the op still holds the OpState borrow, so
+        // running the JS `oncomplete` callback here would panic with
+        // "RefCell already borrowed" as soon as it reaches another op
+        // (#35820); dispatch_invoke_queued schedules it on the event loop.
+        // Use raw pointer to drop the &mut self borrow before the JS call.
         let ptr = self_ptr;
         // SAFETY: self_ptr is valid (points to self); prepare_invoke_queued
         // and do_invoke_queued do not hold references across JS calls.
         unsafe {
-          if let Some((write_obj, ctx)) = prepare_invoke_queued(ptr) {
-            do_invoke_queued(&ctx, write_obj, ret);
-          }
+          dispatch_invoke_queued(ptr, defer, ret);
         }
       }
     }
@@ -1820,7 +1952,10 @@ unsafe extern "C" fn enc_write_cb(req: *mut uv_write_t, status: i32) {
           (*ptr).clear_in();
         }
         let enc_action = (*ptr).enc_out_collect();
-        TLSWrapInner::do_enc_out_action(ptr, enc_action);
+        // enc_write_cb runs from the libuv event loop, not an op, so the
+        // completion callback fires synchronously (defer = false) to match
+        // Node's write-callback timing. See `do_enc_out_action`.
+        TLSWrapInner::do_enc_out_action(ptr, enc_action, false);
       } else if (*ptr).enc_writes_in_flight == 0
         && (*ptr).write_callback_scheduled
       {
@@ -1932,8 +2067,14 @@ impl TLSWrap {
     let enc_action = inner.enc_out_collect();
     inner.in_dowrite = false;
     let inner_ptr = inner as *mut TLSWrapInner;
+    // This is the one write path that holds the `OpState` borrow (write_data
+    // is the shared impl of writev/writeBuffer/writeUtf8String, all of which
+    // take `&mut OpState`), so a synchronous completion here would re-enter an
+    // op while OpState is borrowed and panic (#35820). Defer it to the event
+    // loop. Every other dispatch site runs on a non-borrowing context and
+    // passes `false`.
     // SAFETY: inner_ptr is valid; do_enc_out_action is reference-free
-    unsafe { TLSWrapInner::do_enc_out_action(inner_ptr, enc_action) };
+    unsafe { TLSWrapInner::do_enc_out_action(inner_ptr, enc_action, true) };
 
     let state_global = &op_state.borrow::<StreamBaseState>().array;
     let state_array = v8::Local::new(scope, state_global);
@@ -1981,9 +2122,17 @@ impl TLSWrap {
       std::ptr::null(),
     );
 
+    let mut inner = TLSWrapInner::new(kind);
+    // `V8TaskSpawner` is always present in `OpState` for a live runtime. Borrow
+    // (rather than `try_borrow`) so a missing spawner fails loudly here instead
+    // of silently leaving `task_spawner` as `None`, which would degrade the
+    // deferred write-completion path back to the synchronous reentrancy panic
+    // this fix avoids (#35820).
+    inner.task_spawner = Some(op_state.borrow::<V8TaskSpawner>().clone());
+
     TLSWrap {
       base,
-      inner: OwnedPtr::from_box(Box::new(TLSWrapInner::new(kind))),
+      inner: OwnedPtr::from_box(Box::new(inner)),
     }
   }
 
@@ -2134,7 +2283,11 @@ impl TLSWrap {
       if !inner.pending_enc_out.is_empty() {
         let enc_action = inner.enc_out_collect();
         let inner_ptr = inner as *mut TLSWrapInner;
-        unsafe { TLSWrapInner::do_enc_out_action(inner_ptr, enc_action) };
+        // `start` is an `&self` op that does not hold the OpState borrow, so
+        // any completion runs synchronously (defer = false).
+        unsafe {
+          TLSWrapInner::do_enc_out_action(inner_ptr, enc_action, false)
+        };
       }
       return 0;
     }
@@ -2542,7 +2695,11 @@ impl TLSWrap {
         }
         let enc_action = inner.enc_out_collect();
         let inner_ptr = inner as *mut TLSWrapInner;
-        unsafe { TLSWrapInner::do_enc_out_action(inner_ptr, enc_action) };
+        // `shutdown` is an `&self` op that does not hold the OpState borrow, so
+        // any completion runs synchronously (defer = false).
+        unsafe {
+          TLSWrapInner::do_enc_out_action(inner_ptr, enc_action, false)
+        };
 
         // Forward shutdown to underlying stream, matching Node's
         // TLSWrap::DoShutdown → underlying_stream()->DoShutdown().
@@ -2960,7 +3117,9 @@ impl TLSWrap {
           if inner.underlying.is_attached()
             && let UnderlyingStream::Uv { .. } = inner.underlying
           {
-            inner.enc_out_uv();
+            // `finish_accept` is an `&self` op that does not hold the OpState
+            // borrow, so a synchronous write failure completes synchronously.
+            inner.enc_out_uv(false);
           }
         }
         let inner_ptr = inner as *mut TLSWrapInner;
