@@ -128,6 +128,94 @@ Deno.test(function headerSetDeleteManyDuplicatesIsLinear() {
   assertEquals(count, 1);
 });
 
+// Regression tests for the iteration entries cache: every mutation must
+// invalidate it, including `set()` replacing a value in place with no
+// length change and append+delete pairs that restore the previous length.
+Deno.test(function headerIterationSeesMutationsBetweenIterations() {
+  const headers = new Headers({ "a": "1", "b": "2", "c": "3" });
+  assertEquals([...headers], [["a", "1"], ["b", "2"], ["c", "3"]]);
+
+  // Equal-length mutation: set() replaces the value of an existing name
+  // without changing the header list length.
+  headers.set("b", "changed");
+  assertEquals([...headers], [["a", "1"], ["b", "changed"], ["c", "3"]]);
+
+  // Length-restoring mutation: append then delete returns the list to its
+  // previous length with different contents.
+  headers.append("d", "4");
+  headers.delete("a");
+  assertEquals([...headers], [["b", "changed"], ["c", "3"], ["d", "4"]]);
+
+  // delete() of a missing name mutates nothing.
+  headers.delete("x-missing");
+  assertEquals([...headers], [["b", "changed"], ["c", "3"], ["d", "4"]]);
+});
+
+Deno.test(function headerIterationRepeatedWithDuplicatesAndSetCookie() {
+  const headers = new Headers([
+    ["accept", "text/html"],
+    ["set-cookie", "a=1"],
+    ["Accept", "application/json"],
+    ["set-cookie", "b=2"],
+  ]);
+  const expected = [
+    ["accept", "text/html, application/json"],
+    ["set-cookie", "a=1"],
+    ["set-cookie", "b=2"],
+  ];
+  // Iterate twice: the second run is served from the entries cache and must
+  // be identical.
+  assertEquals([...headers], expected);
+  assertEquals([...headers], expected);
+  headers.forEach((value, key) => {
+    assert(expected.some(([k, v]) => k === key && v === value));
+  });
+});
+
+Deno.test(function headerIterationObservesMutationDuringIteration() {
+  // Mirrors WPT headers-basic: the pair iterator views the live, sorted
+  // entries each step, so mutations made mid-iteration are observed.
+  {
+    // Appending a name that sorts after the cursor is reached.
+    const headers = new Headers({ "a": "1", "b": "2" });
+    const seen: string[] = [];
+    for (const [key] of headers) {
+      seen.push(key);
+      if (key === "a") headers.append("z", "26");
+    }
+    assertEquals(seen, ["a", "b", "z"]);
+  }
+  {
+    // Deleting an already-visited entry shifts the remaining entries left,
+    // skipping the next one.
+    const headers = new Headers({ "a": "1", "b": "2", "c": "3" });
+    const seen: string[] = [];
+    for (const [key] of headers) {
+      seen.push(key);
+      if (key === "a") headers.delete("a");
+    }
+    assertEquals(seen, ["a", "c"]);
+  }
+});
+
+Deno.test(function headerCopiesUnaffectedByOriginalMutation() {
+  const original = new Headers({ "a": "1", "b": "2" });
+  assertEquals([...original].length, 2); // populate the entries cache
+  // `new Headers(other)` copies via the pair iterator; `new Response(...,
+  // { headers })` copies the cached entries via the fillHeaderList fast path.
+  const clone = new Headers(original);
+  const response = new Response(null, { headers: original });
+  original.set("a", "changed");
+  original.append("c", "3");
+  assertEquals([...clone], [["a", "1"], ["b", "2"]]);
+  assertEquals([...response.headers], [["a", "1"], ["b", "2"]]);
+  assertEquals([...original], [
+    ["a", "changed"],
+    ["b", "2"],
+    ["c", "3"],
+  ]);
+});
+
 Deno.test(function headerGetSuccess() {
   const headers = new Headers(headerDict);
   for (const [name, value] of Object.entries(headerDict)) {
