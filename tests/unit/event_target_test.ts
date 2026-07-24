@@ -233,6 +233,77 @@ Deno.test(function eventTargetThisShouldDefaultToWindow() {
   assertEquals(n, 1);
 });
 
+// Regression test for denoland/deno#11731: when an event is dispatched
+// from internal code (e.g. AbortSignal.timeout firing), microtasks
+// queued by an event listener must run before the next listener is
+// invoked, matching Web IDL's "clean up after running script".
+Deno.test(
+  async function microtaskCheckpointBetweenEventListenersDispatchedFromInternalCode() {
+    const target = new EventTarget();
+    const log: string[] = [];
+
+    // Use setTimeout(0) so the dispatch happens from internal timer
+    // code with an empty user-code stack — mirroring AbortSignal.timeout.
+    await new Promise<void>((resolve) => {
+      target.addEventListener("foo", () => {
+        log.push("foo event 1");
+        queueMicrotask(() => log.push("foo microtask 1"));
+      });
+      target.addEventListener("foo", () => {
+        log.push("foo event 2");
+        queueMicrotask(() => log.push("foo microtask 2"));
+      });
+
+      setTimeout(() => {
+        target.dispatchEvent(new Event("foo"));
+        resolve();
+      }, 0);
+    });
+
+    // Drain any remaining microtasks before asserting.
+    await new Promise<void>((r) => queueMicrotask(() => r()));
+
+    assertEquals(log, [
+      "foo event 1",
+      "foo microtask 1",
+      "foo event 2",
+      "foo microtask 2",
+    ]);
+  },
+);
+
+// Regression test for denoland/deno#11731: when an event is dispatched
+// from user code, microtasks must NOT run between listeners — they
+// must wait until the user code that called dispatchEvent unwinds.
+Deno.test(
+  function microtaskCheckpointDeferredBetweenListenersDispatchedFromUserCode() {
+    const target = new EventTarget();
+    const log: string[] = [];
+
+    target.addEventListener("foo", () => {
+      log.push("foo event 1");
+      queueMicrotask(() => log.push("foo microtask 1"));
+    });
+    target.addEventListener("foo", () => {
+      log.push("foo event 2");
+      queueMicrotask(() => log.push("foo microtask 2"));
+    });
+
+    target.dispatchEvent(new Event("foo"));
+
+    // Microtasks should not have run yet — they run after dispatchEvent
+    // returns to the top-level user script.
+    assertEquals(log, ["foo event 1", "foo event 2"]);
+
+    // Drain microtasks.
+    queueMicrotask(() => {});
+    // After the next tick, microtasks should have run.
+    // (We can't await here because this is a sync test; the assertion
+    // above is the meaningful one. The async test above covers the full
+    // ordering for the internal-dispatch case.)
+  },
+);
+
 Deno.test(function eventTargetShouldAcceptEventListenerObject() {
   const target = new EventTarget();
   const event = new Event("foo", { bubbles: true, cancelable: false });

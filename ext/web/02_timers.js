@@ -64,7 +64,10 @@ function setTimeout(callback, timeout = 0, ...args) {
     try {
       setAsyncContext(asyncContext);
       timerDepth = depth + 1;
-      ReflectApply(unboundCallback, globalThis, args);
+      // Invoke through invokeUserCallback so that a microtask
+      // checkpoint runs after the timer callback returns when no
+      // other user code is on the stack (denoland/deno#11731).
+      core.invokeUserCallback(unboundCallback, globalThis, args);
     } finally {
       timerDepth = prevDepth;
       setAsyncContext(oldContext);
@@ -96,7 +99,10 @@ function setInterval(callback, timeout = 0, ...args) {
     try {
       setAsyncContext(asyncContext);
       timerDepth = depth + 1;
-      ReflectApply(unboundCallback, globalThis, args);
+      // Invoke through invokeUserCallback so that a microtask
+      // checkpoint runs after the interval callback returns when no
+      // other user code is on the stack (denoland/deno#11731).
+      core.invokeUserCallback(unboundCallback, globalThis, args);
     } finally {
       timerDepth = prevDepth;
       setAsyncContext(oldContext);

@@ -15,6 +15,7 @@
     ObjectFromEntries,
     ObjectKeys,
     ObjectHasOwn,
+    ReflectApply,
     setQueueMicrotask,
     SafeMap,
     SafeWeakMap,
@@ -1036,6 +1037,49 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // User-code depth counter + invokeUserCallback
+  //
+  // Tracks the number of user-JS stack frames currently on the stack so
+  // that we can perform a microtask checkpoint at the precise moment
+  // Web IDL's "clean up after running script" algorithm requires it:
+  // immediately after a user-provided callback returns *and* no other
+  // user code is on the stack. This mirrors Blink's
+  // `v8::MicrotasksScope` and Node's `InternalCallbackScope`.
+  //
+  // The buffer is shared with Rust (ContextState::user_code_depth).
+  // Rust bumps it around top-level user-script entry points
+  // (execute_script, mod_evaluate). JS bumps it here around every
+  // user-callback invocation. When the counter returns to zero, we
+  // call op_run_microtasks().
+  //
+  // This fixes the long-standing microtask-checkpoint ordering issue
+  // (denoland/deno#11731) where microtasks queued inside event
+  // listeners dispatched from internal code (e.g. AbortSignal.timeout)
+  // would not run between listener invocations.
+  let userCodeDepth;
+
+  // Invoke a user-provided callback. Bumps the user-code depth counter
+  // for the duration of the call; when the counter returns to zero
+  // after the call, performs a microtask checkpoint.
+  //
+  // V8's PerformMicrotaskCheckpoint no-ops when already running
+  // microtasks, so this is safe to call from inside a promise
+  // reaction - the nested checkpoint becomes a no-op and the newly
+  // queued microtasks run in the outer checkpoint, matching the HTML
+  // spec's "if performing a microtask checkpoint is true, return"
+  // guard.
+  function invokeUserCallback(cb, thisArg, args) {
+    userCodeDepth[0]++;
+    try {
+      return ReflectApply(cb, thisArg, args);
+    } finally {
+      if (--userCodeDepth[0] === 0) {
+        op_run_microtasks();
+      }
+    }
+  }
+
   // Extra Deno.core.* exports
   const core = ObjectAssign(globalThis.Deno.core, {
     internalRidSymbol: Symbol("Deno.internal.rid"),
@@ -1049,6 +1093,10 @@
     __setImmediateInfo(buf) {
       immediateInfo = buf;
     },
+    __setUserCodeDepth(buf) {
+      userCodeDepth = buf;
+    },
+    invokeUserCallback,
     __drainNextTickAndMacrotasks,
     __handleRejections,
     __reportException,

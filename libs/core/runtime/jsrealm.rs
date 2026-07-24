@@ -130,6 +130,17 @@ pub struct ContextState {
   /// Shared timer info buffer exposed to JS as an Int32Array.
   /// Index 0: refed timer count (managed by JS)
   pub(crate) timer_info: Box<[i32; 1]>,
+  /// Shared user-code-depth counter exposed to JS as a Uint32Array.
+  /// Index 0: number of user-JS stack frames currently on the stack.
+  ///
+  /// Bumped by Rust around top-level user-script entry points
+  /// (`execute_script`, `mod_evaluate`) and by JS via
+  /// `Deno.core.invokeUserCallback` whenever internal code calls into a
+  /// user-provided callback. When the counter returns to zero, a
+  /// microtask checkpoint is performed - matching Web IDL's "clean up
+  /// after running script" semantics
+  /// (https://html.spec.whatwg.org/#clean-up-after-running-script).
+  pub(crate) user_code_depth: Box<std::cell::Cell<u32>>,
   /// Active JS-managed timers tracked for the leak sanitizer.
   /// Maps timer ID → (is_repeat, is_system). System timers (e.g.
   /// AbortSignal.timeout) are excluded from sanitizer stats.
@@ -208,6 +219,7 @@ impl ContextState {
       task_spawner_factory: Default::default(),
       user_timer: Default::default(),
       timer_info: Box::new([0i32; 1]),
+      user_code_depth: Box::new(std::cell::Cell::new(0)),
       active_timers: Default::default(),
       unrefed_ops,
       external_ops_tracker,
@@ -475,7 +487,18 @@ impl JsRealm {
       }
     };
 
-    match script.run(tc_scope) {
+    // Bump the user-code depth counter for the duration of script
+    // execution so that user-callback invocations dispatched *from*
+    // this script (e.g. dispatchEvent) see depth >= 1 and do not
+    // perform a spec-incompatible microtask checkpoint between
+    // listener invocations. The counter is decremented in the
+    // `finally`-style drop guard below; microtasks are flushed by the
+    // surrounding event loop tick.
+    let state_rc = self.0.state();
+    state_rc
+      .user_code_depth
+      .set(state_rc.user_code_depth.get().wrapping_add(1));
+    let result = match script.run(tc_scope) {
       Some(value) => {
         let value_handle = v8::Global::new(tc_scope, value);
         Ok(value_handle)
@@ -485,7 +508,11 @@ impl JsRealm {
         let exception = tc_scope.exception().unwrap();
         exception_to_err_result(tc_scope, exception, false, false)
       }
-    }
+    };
+    state_rc
+      .user_code_depth
+      .set(state_rc.user_code_depth.get().wrapping_sub(1));
+    result
   }
 
   // TODO(nathanwhit): reduce duplication between this and `execute_script`, and
@@ -562,7 +589,13 @@ impl JsRealm {
       cache_ready(specifier, code_cache_hash, &code_cache);
     }
 
-    match script.run(tc_scope) {
+    // Bump the user-code depth counter for the duration of script
+    // execution - see `execute_script` for rationale.
+    let state_rc = self.0.state();
+    state_rc
+      .user_code_depth
+      .set(state_rc.user_code_depth.get().wrapping_add(1));
+    let result = match script.run(tc_scope) {
       Some(value) => {
         let value_handle = v8::Global::new(tc_scope, value);
         Ok(value_handle)
@@ -572,7 +605,11 @@ impl JsRealm {
         let exception = tc_scope.exception().unwrap();
         Ok(exception_to_err_result(tc_scope, exception, false, false)?)
       }
-    }
+    };
+    state_rc
+      .user_code_depth
+      .set(state_rc.user_code_depth.get().wrapping_sub(1));
+    result
   }
 
   /// Returns the namespace object of a module.

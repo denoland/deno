@@ -1877,6 +1877,45 @@ impl JsRuntime {
         core_obj.delete(scope, key.into());
       }
 
+      // Create a shared Uint32Array backed by ContextState::user_code_depth
+      // and pass it to JS via __setUserCodeDepth. JS bumps/decrements this
+      // counter around user-callback invocations (see
+      // `Deno.core.invokeUserCallback` in 01_core.js); Rust bumps it around
+      // top-level user-script entry points (see `execute_script` and
+      // `mod_evaluate`). When the counter returns to zero a microtask
+      // checkpoint is performed, matching Web IDL's "clean up after running
+      // script" rule.
+      {
+        let state_rc = realm.0.state();
+        let user_code_depth_ptr =
+          state_rc.user_code_depth.as_ptr() as *mut std::ffi::c_void;
+        let ucd_byte_len = std::mem::size_of::<u32>();
+        let backing_store = unsafe {
+          v8::ArrayBuffer::new_backing_store_from_ptr(
+            user_code_depth_ptr,
+            ucd_byte_len,
+            _no_op_deleter,
+            std::ptr::null_mut(),
+          )
+        };
+        let backing_store_shared = backing_store.make_shared();
+        let ab =
+          v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
+        let ucd_array = v8::Uint32Array::new(scope, ab, 0, 1).unwrap();
+        let set_ucd_fn: v8::Local<v8::Function> = {
+          let key = v8::String::new(scope, "__setUserCodeDepth").unwrap();
+          core_obj
+            .get(scope, key.into())
+            .unwrap_or_else(|| panic!("Deno.core.__setUserCodeDepth exists"))
+            .try_into()
+            .unwrap_or_else(|_| panic!("unable to convert"))
+        };
+        let undefined: v8::Local<v8::Value> = v8::undefined(scope).into();
+        set_ucd_fn.call(scope, undefined, &[ucd_array.into()]);
+        let key = v8::String::new(scope, "__setUserCodeDepth").unwrap();
+        core_obj.delete(scope, key.into());
+      }
+
       (
         v8::Global::new(scope, event_loop_tick_cb),
         v8::Global::new(scope, process_timers_cb),
@@ -3164,7 +3203,22 @@ impl JsRuntime {
     let isolate = &mut *self.inner.v8_isolate;
     let realm = &self.inner.main_realm;
     jsrealm::context_scope!(scope, realm, isolate);
-    self.inner.main_realm.0.module_map.mod_evaluate(scope, id)
+    // Bump the user-code depth counter for the duration of the
+    // synchronous portion of module evaluation. This makes
+    // `dispatchEvent`-from-top-level-user-code behave like browsers:
+    // listener invocations see depth >= 1 and do not perform a
+    // microtask checkpoint between listeners. TLA continuations run
+    // inside V8's microtask checkpoint, which no-ops nested
+    // checkpoints, so they remain correct without further bumping.
+    let context_state = realm.0.state();
+    context_state
+      .user_code_depth
+      .set(context_state.user_code_depth.get().wrapping_add(1));
+    let result = self.inner.main_realm.0.module_map.mod_evaluate(scope, id);
+    context_state
+      .user_code_depth
+      .set(context_state.user_code_depth.get().wrapping_sub(1));
+    result
   }
 
   /// Asynchronously load specified module and all of its dependencies.
