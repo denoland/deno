@@ -2076,6 +2076,7 @@ impl DenoPluginHandler {
           permissions: self.permissions.clone(),
           ext_overwrite: None,
           allow_unknown_media_types: true,
+          allow_sloppy_imports_hints_for_unreferenced_roots: true,
           skip_graph_roots_validation: true,
           file_content_overrides: Default::default(),
           file_header_overrides: Default::default(),

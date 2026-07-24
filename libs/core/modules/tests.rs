@@ -688,6 +688,39 @@ async fn test_lazy_load_esm_evaluates_pre_instantiated_sibling() {
   result.await.unwrap();
 }
 
+/// Regression test for https://github.com/denoland/deno/issues/36216
+///
+/// Evaluating a pre-instantiated module cached under a synthetic ESM specifier
+/// can synchronously start a dynamic import. The cache-hit path must not keep
+/// `ModuleMapData` borrowed while V8 runs the module body, because starting
+/// the import allocates a new module load ID from the same map.
+#[test]
+fn test_cached_synthetic_esm_evaluation_allows_dynamic_import() {
+  let mut runtime = JsRuntime::new(Default::default());
+  let module_map = runtime.module_map().clone();
+
+  deno_core::scope!(scope, runtime);
+  module_map.add_synthetic_esm_module(
+    ascii_str!("custom:synthetic").into(),
+    ascii_str!("ext:test/backing.js").into(),
+  );
+  let module_id = module_map
+    .new_es_module(
+      scope,
+      false,
+      ascii_str!("custom:synthetic").into(),
+      ascii_str!(r#"import("file:///dynamic_import.js").catch(() => {});"#)
+        .into(),
+      false,
+      None,
+    )
+    .unwrap();
+  module_map.instantiate_module(scope, module_id).unwrap();
+  module_map
+    .lazy_load_synthetic_esm_module(scope, "custom:synthetic")
+    .unwrap();
+}
+
 /// Regression test for https://github.com/denoland/deno/issues/34307
 ///
 /// Two concurrent dynamic `import()` calls each spawn their own

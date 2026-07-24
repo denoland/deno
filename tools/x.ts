@@ -352,7 +352,7 @@ Under the hood:
     "lint": {
       description: "Lint all code (JS/TS + Rust)",
       help: `Runs the full lint suite across the entire codebase, including both
-JavaScript/TypeScript linting (via deno lint and dlint) and Rust
+JavaScript/TypeScript linting (via deno lint) and Rust
 linting (via clippy).
 
 Use this when you have changed both JS/TS and Rust code. If you only

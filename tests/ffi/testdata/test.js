@@ -4,6 +4,7 @@
 // Run using cargo test or `--v8-flags=--allow-natives-syntax`
 
 import {
+  assertRejects,
   assertThrows,
   assert,
   assertNotEquals,
@@ -274,6 +275,12 @@ const dylib = Deno.dlopen(libPath, {
     parameters: [{ struct: Rect }],
     result: "void",
   },
+  print_rect_nested_async: {
+    name: "print_rect",
+    nonblocking: true,
+    parameters: [{ struct: RectNestedCached }],
+    result: "void",
+  },
   create_mixed: {
     parameters: ["u8", "f32", { struct: Rect }, "pointer", "buffer"],
     result: { struct: Mixed }
@@ -510,6 +517,36 @@ dylib.symbols.nonblocking_buffer(buffer3, buffer3.length).then(() => {
 });
 await deferred.promise;
 
+const fixedArrayBuffer = new ArrayBuffer(8);
+new Uint8Array(fixedArrayBuffer).set([1, 2, 3, 4, 5, 6, 7, 8]);
+await dylib.symbols.nonblocking_buffer(fixedArrayBuffer, 8);
+await dylib.symbols.nonblocking_buffer(
+  new Uint8Array(fixedArrayBuffer),
+  8,
+);
+
+const resizableArrayBuffer = new ArrayBuffer(8, { maxByteLength: 16 });
+new Uint8Array(resizableArrayBuffer).set([1, 2, 3, 4, 5, 6, 7, 8]);
+const growableSharedArrayBuffer = new SharedArrayBuffer(8, {
+  maxByteLength: 16,
+});
+new Uint8Array(growableSharedArrayBuffer).set([1, 2, 3, 4, 5, 6, 7, 8]);
+assertEquals(
+  dylib.symbols.hash(resizableArrayBuffer, 8),
+  dylib.symbols.hash(fixedArrayBuffer, 8),
+);
+for (const buffer of [
+  resizableArrayBuffer,
+  new Uint8Array(resizableArrayBuffer),
+  new Uint8Array(growableSharedArrayBuffer),
+]) {
+  await assertRejects(
+    () => dylib.symbols.nonblocking_buffer(buffer, 8),
+    TypeError,
+    "Resizable backing stores are not supported for nonblocking FFI calls",
+  );
+}
+
 let start = performance.now();
 dylib.symbols.sleep_blocking(100);
 assert(performance.now() - start >= 100);
@@ -680,6 +717,18 @@ const rect_sync = dylib.symbols.make_rect(10, 20, 100, 200);
 assertInstanceOf(rect_sync, Uint8Array);
 assertEquals(rect_sync.length, 4 * 8);
 assertEquals(Array.from(new Float64Array(rect_sync.buffer)), [10, 20, 100, 200]);
+const resizableRectBuffer = new ArrayBuffer(4 * 8, {
+  maxByteLength: 8 * 8,
+});
+new Float64Array(resizableRectBuffer).set([10, 20, 100, 200]);
+await assertRejects(
+  () =>
+    dylib.symbols.print_rect_nested_async(
+      new Float64Array(resizableRectBuffer),
+    ),
+  TypeError,
+  "Resizable backing stores are not supported for nonblocking FFI calls",
+);
 // Test struct passing
 dylib.symbols.print_rect(rect_sync);
 // Test struct passing asynchronously

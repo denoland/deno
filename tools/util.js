@@ -19,11 +19,6 @@ export { delay } from "@std/async/delay";
 export { parse as parseJSONC } from "@std/jsonc/parse";
 import { createHash } from "node:crypto";
 
-// [toolName] --version output
-const versions = {
-  "dlint": "dlint 0.73.0",
-};
-
 const compressed = new Set(["ld64.lld", "rcodesign"]);
 
 export const ROOT_PATH = dirname(dirname(fromFileUrl(import.meta.url)));
@@ -274,10 +269,6 @@ export async function getPrebuilt(toolName) {
   const toolPath = getPrebuiltToolPath(toolName);
   try {
     await sanityCheckPrebuiltFile(toolPath);
-    const versionOk = await verifyVersion(toolName, toolPath);
-    if (!versionOk) {
-      throw new Error("Version mismatch");
-    }
   } catch {
     await downloadPrebuilt(toolName);
   }
@@ -372,11 +363,6 @@ export async function downloadPrebuilt(toolName) {
     }
     console.error("Checking prebuilt tool:", toolName);
     await sanityCheckPrebuiltFile(tempFile);
-    if (!await verifyVersion(toolName, tempFile)) {
-      throw new Error(
-        "Didn't get the correct version of the tool after downloading.",
-      );
-    }
     console.error("Successfully downloaded:", toolName);
     try {
       // necessary on Windows it seems
@@ -391,27 +377,6 @@ export async function downloadPrebuilt(toolName) {
   }
 
   downloadDeferred.resolve(null);
-}
-
-export async function verifyVersion(toolName, toolPath) {
-  const requiredVersion = versions[toolName];
-  if (!requiredVersion) {
-    return true;
-  }
-
-  try {
-    const cmd = new Deno.Command(toolPath, {
-      args: ["--version"],
-      stdout: "piped",
-      stderr: "inherit",
-    });
-    const output = await cmd.output();
-    const version = new TextDecoder().decode(output.stdout).trim();
-    return version == requiredVersion;
-  } catch (e) {
-    console.error(e);
-    return false;
-  }
 }
 
 /// INPUT HASHING

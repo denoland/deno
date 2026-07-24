@@ -331,7 +331,7 @@ function addCustomSettingsToObj() {
   const toRet = {};
   const num = settingsBuffer[IDX_SETTINGS_FLAGS + 1];
   for (let i = 0; i < num; i++) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     toRet[settingsBuffer[IDX_SETTINGS_FLAGS + 1 + 2 * i + 1].toString()] =
       Number(settingsBuffer[IDX_SETTINGS_FLAGS + 1 + 2 * i + 2]);
   }

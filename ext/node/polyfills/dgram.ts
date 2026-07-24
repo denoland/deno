@@ -519,7 +519,7 @@ class Socket extends EventEmitter {
         return; // Handle has been closed in the mean time
       }
 
-      // deno-lint-ignore prefer-primordials -- UDP handle's bind method, not Function.prototype.bind
+      // deno-lint-ignore deno-internal/prefer-primordials -- UDP handle's bind method, not Function.prototype.bind
       const err = state.handle.bind(ip, port as number || 0, flags);
 
       if (err) {
@@ -617,7 +617,7 @@ class Socket extends EventEmitter {
     state.connectState = CONNECT_STATE_CONNECTING;
 
     if (state.bindState === BIND_STATE_UNBOUND) {
-      // deno-lint-ignore prefer-primordials -- Socket's own bind method, not Function.prototype.bind
+      // deno-lint-ignore deno-internal/prefer-primordials -- Socket's own bind method, not Function.prototype.bind
       this.bind({ port: 0, exclusive: true });
     }
 
@@ -1001,7 +1001,7 @@ class Socket extends EventEmitter {
     healthCheck(this);
 
     if (state.bindState === BIND_STATE_UNBOUND) {
-      // deno-lint-ignore prefer-primordials -- Socket's own bind method, not Function.prototype.bind
+      // deno-lint-ignore deno-internal/prefer-primordials -- Socket's own bind method, not Function.prototype.bind
       this.bind({ port: 0, exclusive: true });
     }
 
@@ -1468,17 +1468,17 @@ function sliceBuffer(buffer: MessageType, offset: number, length: number) {
   offset = offset >>> 0;
   length = length >>> 0;
 
-  // deno-lint-ignore prefer-primordials -- buffer may be a Buffer or DataView, not a plain TypedArray
+  // deno-lint-ignore deno-internal/prefer-primordials -- buffer may be a Buffer or DataView, not a plain TypedArray
   if (offset > buffer.byteLength) {
     throw new ERR_BUFFER_OUT_OF_BOUNDS("offset");
   }
 
-  // deno-lint-ignore prefer-primordials -- buffer may be a Buffer or DataView, not a plain TypedArray
+  // deno-lint-ignore deno-internal/prefer-primordials -- buffer may be a Buffer or DataView, not a plain TypedArray
   if (offset + length > buffer.byteLength) {
     throw new ERR_BUFFER_OUT_OF_BOUNDS("length");
   }
 
-  // deno-lint-ignore prefer-primordials -- Buffer is the Node Buffer class; .buffer/.byteOffset on a Buffer or DataView
+  // deno-lint-ignore deno-internal/prefer-primordials -- Buffer is the Node Buffer class; .buffer/.byteOffset on a Buffer or DataView
   return Buffer.from(buffer.buffer, buffer.byteOffset + offset, length);
 }
 
@@ -1495,7 +1495,7 @@ function fixBufferList(
     } else if (!isArrayBufferView(buf)) {
       return null;
     } else {
-      // deno-lint-ignore prefer-primordials -- Buffer is the Node Buffer class; .buffer/.byteOffset/.byteLength on a Buffer or DataView
+      // deno-lint-ignore deno-internal/prefer-primordials -- Buffer is the Node Buffer class; .buffer/.byteOffset/.byteLength on a Buffer or DataView
       newList[i] = Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength);
     }
   }

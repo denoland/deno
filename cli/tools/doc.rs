@@ -277,6 +277,7 @@ pub async fn doc(
           will_type_check: false,
           allow_unknown_media_types: false,
           allow_unknown_jsr_exports: false,
+          allow_sloppy_imports_hints_for_unreferenced_roots: true,
           collect_bare_importable_pkg_names: &collect_bare_importable_pkg_names,
         },
       );

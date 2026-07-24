@@ -414,39 +414,80 @@ declare namespace Deno {
     | BrowserWindowValue[]
     | Uint8Array;
 
-  /** The value a {@linkcode BrowserWindow.bind} handler may resolve with.
-   *
-   * Handler results are serialized to JSON before crossing into the
-   * webview, so this is intentionally more permissive than
-   * {@linkcode BrowserWindowValue}: `undefined` (and optional) properties
-   * are dropped during serialization, and nested objects need not be typed
-   * as {@linkcode BrowserWindowValue}. This lets handlers return ordinary
-   * discriminated unions and `Record<string, unknown>` shapes without
-   * casting. */
-  type BrowserWindowReturn =
+  /** The leaf types that survive the trip across the webview boundary. */
+  type BrowserWindowLeaf =
     | null
     | undefined
+    | void
     | boolean
     | number
     | string
-    | Uint8Array
-    | readonly BrowserWindowReturn[]
-    | { readonly [key: string]: unknown };
+    | Uint8Array;
 
+  /** Maps `T` to itself if every value it can hold survives the trip across
+   * the webview boundary, and to `never` at the first member that does not.
+   * `T` is serializable when `[T] extends [BrowserWindowSerializable<T>]`.
+   *
+   * This is a structural walk rather than a plain union because TypeScript
+   * never gives an `interface` an implicit index signature: a union arm of
+   * `{ [key: string]: unknown }` would reject every user-declared interface,
+   * including `Deno.FileInfo`. Recursing through properties instead accepts
+   * interfaces, and rejects the values that silently serialize to `{}` —
+   * `Date`, `Map`, `Set`, class instances with methods, and functions.
+   *
+   * `unknown extends T` holds only for `unknown` and `any`. Both are let
+   * through: nothing can be proven about them, and rejecting them would
+   * break `Record<string, unknown>` payloads.
+   *
+   * `undefined` (and optional) properties are dropped during serialization,
+   * and a handler that returns nothing resolves as `null` in the webview. */
+  type BrowserWindowSerializable<T> = unknown extends T ? T
+    : T extends BrowserWindowLeaf ? T
+    : T extends (...args: any[]) => any ? never
+    : T extends readonly (infer U)[] ? readonly BrowserWindowSerializable<U>[]
+    : T extends object ? { [K in keyof T]: BrowserWindowSerializable<T[K]> }
+    : never;
+
+  /** The default bindings type: any set of async handlers.
+   *
+   * Handler parameters are `any[]` because the webview may call a binding
+   * with arbitrary arguments — nothing checks them at runtime. Supply an
+   * explicit type argument to {@linkcode BrowserWindow} to have the
+   * arguments of {@linkcode BrowserWindow.bind} handlers checked and
+   * inferred. Handler return values are checked either way. */
   export type WindowBindings = Record<
     string,
-    (
-      this: BrowserWindow,
-      ...args: BrowserWindowValue[]
-    ) => Promise<BrowserWindowReturn>
+    (this: BrowserWindow, ...args: any[]) => Promise<unknown>
   >;
 
-  /** Constrains T to a record of async binding functions. */
+  /** Intersected with a handler's own type to reject non-serializable return
+   * values at the call site of {@linkcode BrowserWindow.bind}.
+   *
+   * The check lives here, in parameter position, rather than as an
+   * `R extends BrowserWindowSerializable<R>` type-parameter constraint,
+   * because a type parameter constrained by a conditional type over itself
+   * is circular (TS2313). Intersecting the string makes the mismatch print
+   * the reason. */
+  type BrowserWindowSerializableCheck<F> = F extends
+    (...args: any[]) => Promise<infer P>
+    ? [P] extends [BrowserWindowSerializable<P>] ? unknown
+    : "binding handler must resolve with a serializable value"
+    : unknown;
+
+  /** Constrains T to a record of async binding functions taking and
+   * resolving with serializable values.
+   *
+   * Each handler is validated and then passed through unchanged, so that
+   * {@linkcode BrowserWindow.bind} keeps the caller's own parameter types.
+   * Replacing `T[K]` with a common supertype here would instead force every
+   * handler's parameters to be checked contravariantly against that
+   * supertype, rejecting any handler that narrows them. */
   type ValidBindings<T> = {
-    [K in keyof T]: (
-      this: BrowserWindow,
-      ...args: BrowserWindowValue[]
-    ) => Promise<BrowserWindowReturn>;
+    [K in keyof T]: T[K] extends (...args: infer A) => Promise<infer P>
+      ? [A, P] extends
+        [BrowserWindowSerializable<A>, BrowserWindowSerializable<P>] ? T[K]
+      : never
+      : never;
   };
 
   export type MenuItem =
@@ -523,7 +564,16 @@ declare namespace Deno {
 
     readonly windowId: number;
 
-    bind<N extends keyof T>(name: N, fn: T[N]): void;
+    /** Expose `fn` to the webview under `name`.
+     *
+     * The resolved value must be serializable; see
+     * {@linkcode BrowserWindowSerializable}. This is checked even when `T` is
+     * left to its default, so returning e.g. a `Date` is a type error rather
+     * than an empty object at runtime. */
+    bind<N extends keyof T, F extends T[N]>(
+      name: N,
+      fn: F & BrowserWindowSerializableCheck<F>,
+    ): void;
     unbind<N extends keyof T>(name: N): void;
     /** @throws {BrowserWindowValue} */
     executeJs(script: string): Promise<BrowserWindowValue>;

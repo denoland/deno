@@ -974,7 +974,7 @@ ObjectDefineProperties(
       let cookies = null;
       const iterator = headers[SymbolIterator]();
       while (true) {
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         const { done, value: entry } = iterator.next();
         if (done) {
           break;

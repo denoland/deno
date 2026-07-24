@@ -407,7 +407,7 @@ class Deserializer {
   readRawBytes(length: number): Buffer {
     const offset = this._readRawBytes(length);
     // `this.buffer` is the Deserializer's own field, not a TypedArray getter.
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     const view = this.buffer;
     return Buffer.from(
       getViewBuffer(view),
@@ -626,7 +626,7 @@ class DefaultDeserializer extends Deserializer {
     const BYTES_PER_ELEMENT = ctor?.BYTES_PER_ELEMENT ?? 1;
 
     // `this.buffer` is the Deserializer's own field, not a TypedArray getter.
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     const view = this.buffer;
     const offset = getViewByteOffset(view) + byteOffset;
     if (offset % BYTES_PER_ELEMENT === 0) {

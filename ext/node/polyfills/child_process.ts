@@ -83,7 +83,7 @@ const INTERNAL_CHILD_ENTRYPOINT_ENV_VAR = "DENO_INTERNAL_CHILD_ENTRYPOINT";
 // `Buffer.prototype.slice` is Buffer-specific (not the Array/String primordial),
 // so the lint match on `.slice` and the spread are false positives here.
 function bufferSlice(buf: string | Buffer, ...args: number[]) {
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   return buf.slice(...args);
 }
 
@@ -646,7 +646,7 @@ function execFile(
     ) {
       stdout = ArrayPrototypeJoin(_stdout, "");
     } else {
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       stdout = Buffer.concat(_stdout as Buffer[]);
     }
     if (
@@ -658,7 +658,7 @@ function execFile(
     ) {
       stderr = ArrayPrototypeJoin(_stderr, "");
     } else {
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       stderr = Buffer.concat(_stderr as Buffer[]);
     }
 
@@ -855,7 +855,7 @@ function checkExecSyncError(
     let msg = "Command failed: ";
     msg += cmd || ArrayPrototypeJoin(args, " ");
     if (ret.stderr && ret.stderr.length > 0) {
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       msg += `\n${ret.stderr.toString()}`;
     }
     err = genericNodeError(msg, ret);
