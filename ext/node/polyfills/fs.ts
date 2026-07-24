@@ -2775,6 +2775,11 @@ function writeFile(
     signal = options.signal;
   }
 
+  const flush = (typeof options === "object" && options !== null)
+    ? ((options as WriteFileOptions).flush ?? false)
+    : false;
+  validateBoolean(flush, "options.flush");
+
   const encoding = getValidatedEncoding(options) || "utf8";
 
   if (!ArrayBufferIsView(data) && !_isCustomIterable(data)) {
@@ -2815,6 +2820,15 @@ function writeFile(
         encoding,
         signal,
       );
+
+      if (flush) {
+        await new Promise<void>((resolve, reject) => {
+          fsExports.fsync(fd, (err: Error | null) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+      }
     } catch (e) {
       error = denoWriteFileErrorToNodeError(e as Error, { syscall: "write" });
     } finally {
@@ -2841,6 +2855,11 @@ function writeFileSync(
     flag = options.flag;
     mode = options.mode;
   }
+
+  const flush = (typeof options === "object" && options !== null)
+    ? ((options as WriteFileOptions).flush ?? false)
+    : false;
+  validateBoolean(flush, "options.flush");
 
   const encoding = getValidatedEncoding(options) || "utf8";
 
@@ -2879,6 +2898,10 @@ function writeFileSync(
       data as (Exclude<WriteFileSyncData, string>),
       encoding,
     );
+
+    if (flush) {
+      fsExports.fsyncSync(fd);
+    }
   } catch (e) {
     error = denoWriteFileErrorToNodeError(e as Error, { syscall: "write" });
   } finally {
@@ -3913,7 +3936,7 @@ const DeprecatedStats = deprecate(
   "DEP0180",
 );
 
-return {
+const fsExports = {
   // For tests
   _toUnixTimestamp,
   access,
@@ -4056,4 +4079,8 @@ return {
   writev,
   writevSync,
 };
+// `writeFile`/`writeFileSync` call `fsExports.fsync`/`fsyncSync` (rather than
+// the local bindings) so the `flush` option honors monkey-patches/mocks made
+// on the `node:fs` namespace, matching Node's `lib/fs.js`.
+return fsExports;
 })();
