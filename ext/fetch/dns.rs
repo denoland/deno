@@ -174,6 +174,7 @@ pub struct PermissionedHttpConnector {
   resolver: Resolver,
   local_address: Option<IpAddr>,
   permissions: Option<PermissionsContainer>,
+  no_delay: bool,
 }
 
 impl PermissionedHttpConnector {
@@ -181,11 +182,13 @@ impl PermissionedHttpConnector {
     resolver: Resolver,
     local_address: Option<IpAddr>,
     permissions: Option<PermissionsContainer>,
+    no_delay: bool,
   ) -> Self {
     Self {
       resolver,
       local_address,
       permissions,
+      no_delay,
     }
   }
 
@@ -193,6 +196,7 @@ impl PermissionedHttpConnector {
     let mut connector = HttpConnector::new_with_resolver(resolver);
     connector.enforce_http(false);
     connector.set_local_address(self.local_address);
+    connector.set_nodelay(self.no_delay);
     connector
   }
 }

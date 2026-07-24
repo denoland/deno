@@ -194,6 +194,7 @@ impl DatabaseHandler for RemoteDbHandler {
         http2: true,
         local_address: None,
         client_builder_hook: None,
+        no_delay: false,
         http2_max_header_list_size: None,
       },
     )
