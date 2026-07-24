@@ -4208,6 +4208,20 @@ Start a server defined in server.ts, watching for changes and running on port 50
       .action(ArgAction::SetTrue)
     )
     .arg(
+      Arg::new("tls-cert")
+        .long("tls-cert")
+        .value_name("FILE")
+        .help("Load TLS certificate from PEM encoded file")
+        .value_hint(ValueHint::FilePath)
+    )
+    .arg(
+      Arg::new("tls-key")
+        .long("tls-key")
+        .value_name("FILE")
+        .help("Load TLS private key from PEM encoded file")
+        .value_hint(ValueHint::FilePath)
+    )
+    .arg(
       parallel_arg("multiple server workers")
     )
     .arg(check_arg(false))
@@ -7939,6 +7953,22 @@ fn serve_parse(
 
   flags.tunnel = matches.get_flag("tunnel");
 
+  let tls_cert = matches.remove_one::<String>("tls-cert");
+  let tls_key = matches.remove_one::<String>("tls-key");
+
+  let tls_cert_and_key = match (tls_cert, tls_key) {
+    (Some(cert), Some(key)) => Some((cert, key)),
+    (None, None) => None,
+    _ => {
+      let mut app = app;
+      let subcommand = &mut app.find_subcommand_mut("serve").unwrap();
+      return Err(subcommand.error(
+        clap::error::ErrorKind::MissingRequiredArgument,
+        "Both --tls-cert and --tls-key must be specified, or neither",
+      ));
+    }
+  };
+
   let mut script_arg =
     matches.remove_many::<String>("script_arg").ok_or_else(|| {
       let mut app = app;
@@ -7962,6 +7992,7 @@ fn serve_parse(
     host,
     parallel: matches.get_flag("parallel"),
     open_site,
+    tls_cert_and_key,
   });
 
   Ok(())
@@ -9763,6 +9794,49 @@ mod tests {
         ..Flags::default()
       }
     );
+    let r = flags_from_vec(svec![
+      "deno",
+      "serve",
+      "--tls-cert",
+      "cert.pem",
+      "--tls-key",
+      "cert.key",
+      "main.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Serve(ServeFlags {
+          tls_cert_and_key: Some((
+            "cert.pem".to_string(),
+            "cert.key".to_string()
+          )),
+          ..ServeFlags::new_default("main.ts".to_string(), 8000, "0.0.0.0")
+        }),
+        permissions: PermissionFlags {
+          allow_net: None,
+          ..Default::default()
+        },
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+    let r = flags_from_vec(svec![
+      "deno",
+      "serve",
+      "--tls-cert",
+      "cert.pem",
+      "main.ts"
+    ]);
+    assert!(r.is_err());
+    let r = flags_from_vec(svec![
+      "deno",
+      "serve",
+      "--tls-key",
+      "cert.key",
+      "main.ts"
+    ]);
+    assert!(r.is_err());
   }
 
   #[test]

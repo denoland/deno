@@ -1295,6 +1295,8 @@ impl CliFactory {
       node_ipc_init: cli_options.node_ipc_init(&self.sys())?,
       serve_port: cli_options.serve_port(),
       serve_host: cli_options.serve_host(),
+      serve_cert: cli_options.serve_cert()?,
+      serve_key: cli_options.serve_key()?,
       otel_config: cli_options.otel_config(),
       no_legacy_abort: cli_options.no_legacy_abort(),
       startup_snapshot: deno_snapshots::CLI_SNAPSHOT,

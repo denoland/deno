@@ -123,7 +123,7 @@ pub fn convert(result: ParseResult) -> Result<Flags, CliError> {
   match result.subcommand.as_deref() {
     Some("run") => run_parse(&result, &mut flags, false)?,
     Some("watch") => run_parse(&result, &mut flags, true)?,
-    Some("serve") => serve_parse(&result, &mut flags),
+    Some("serve") => serve_parse(&result, &mut flags)?,
     Some("eval") => eval_parse(&result, &mut flags),
     Some("fmt") => fmt_parse(&result, &mut flags),
     Some("lint") => lint_parse(&result, &mut flags),
@@ -1379,7 +1379,10 @@ fn run_parse(
   Ok(())
 }
 
-fn serve_parse(result: &ParseResult, flags: &mut Flags) {
+fn serve_parse(
+  result: &ParseResult,
+  flags: &mut Flags,
+) -> Result<(), CliError> {
   let port = result
     .get_one("port")
     .and_then(|s| s.parse::<u16>().ok())
@@ -1392,6 +1395,14 @@ fn serve_parse(result: &ParseResult, flags: &mut Flags) {
   runtime_args_parse(result, flags, true, true);
   flags.code_cache_enabled = !result.get_bool("no-code-cache");
   flags.tunnel = result.get_bool("tunnel");
+
+  let tls_cert = result.get_one("tls-cert");
+  let tls_key = result.get_one("tls-key");
+
+  let tls_cert_and_key = match (tls_cert, tls_key) {
+    (Some(cert), Some(key)) => Some((cert.to_owned(), key.to_owned())),
+    _ => None,
+  };
 
   let script = result
     .get_one("script_arg")
@@ -1408,9 +1419,11 @@ fn serve_parse(result: &ParseResult, flags: &mut Flags) {
     script,
     port,
     host,
+    tls_cert_and_key,
     parallel,
     open_site: result.get_bool("open"),
   });
+  Ok(())
 }
 
 fn eval_parse(result: &ParseResult, flags: &mut Flags) {
