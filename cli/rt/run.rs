@@ -1289,7 +1289,7 @@ pub struct RunOptions {
   /// Error reporting URL from deno.json `desktop.errorReporting.url`.
   pub error_reporting_url: Option<String>,
   /// Auto-update release base URL from deno.json `desktop.release.baseUrl`.
-  /// Used as the default `url` for `Deno.autoUpdate` when none is passed.
+  /// Used as the default `url` for `Deno.desktop.autoUpdate` when none is passed.
   pub release_base_url: Option<String>,
   /// Stop on the first line of user code. Mirrors `--inspect-brk`.
   pub inspect_brk: bool,

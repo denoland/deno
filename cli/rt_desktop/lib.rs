@@ -1776,7 +1776,7 @@ async fn run_desktop(
 
       // Forward macOS dock-reopen callbacks (clicking the dock icon while
       // no windows are visible) into the shared event channel so JS can
-      // observe them as `Deno.dock` "reopen" events.
+      // observe them as `Deno.desktop.dock` "reopen" events.
       {
         let reopen_tx = event_tx.0.clone();
         laufey::on_dock_reopen(move |has_visible_windows| {
