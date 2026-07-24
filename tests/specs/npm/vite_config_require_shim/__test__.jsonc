@@ -1,0 +1,5 @@
+{
+  "tempDir": true,
+  "args": "run -A --quiet --node-modules-dir=auto npm:@denotest/vite-config-require-shim",
+  "output": "main.out"
+}
