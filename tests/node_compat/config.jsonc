@@ -5310,11 +5310,7 @@
       "reason": "expression evaluated to a falsy value"
     },
     "parallel/test-util-inspect-namespace.js": {},
-    "parallel/test-util-sigint-watchdog.js": {
-      "linux": false,
-      "darwin": false,
-      "reason": "binding.startSigintWatchdog is not a function"
-    },
+    "parallel/test-util-sigint-watchdog.js": {},
     "parallel/test-v8-serialize-leak.js": {
       "ignore": true,
       "reason": "memory leak check fails on windows/darwin; also fails on linux-aarch64"

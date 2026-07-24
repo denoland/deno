@@ -2,7 +2,7 @@
 
 (function () {
 const { core, internals, primordials } = __bootstrap;
-const { op_node_call_is_from_dependency } = core.ops;
+const { op_node_call_is_from_dependency, op_node_set_trace_sigint } = core.ops;
 const {
   ArrayIsArray,
   ArrayPrototypeJoin,
@@ -371,8 +371,7 @@ function setTraceSigInt(enabled) {
   if (internals.__isWorkerThread) {
     throw new ERR_WORKER_UNSUPPORTED_OPERATION("Setting trace SIGINT");
   }
-  // No-op on the main thread: Deno does not implement Node's SIGINT trace
-  // facility, but the call should succeed so user code can opt in/out.
+  op_node_set_trace_sigint(enabled);
 }
 
 // https://nodejs.org/api/util.html#utilqueryobjectsconstructor-options
