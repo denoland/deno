@@ -62,6 +62,11 @@ struct WefDesktopApi {
   /// Singleton for the unified-mux DevTools window. Without this, every
   /// `openDevtools()` call would spawn another DevTools window.
   devtools_window: Mutex<Option<u32>>,
+  /// Shared id of the initial window, also read by `navigate_fut` / HMR. When
+  /// the first `BrowserWindow` adopts the initial window but needs creation-time
+  /// flags (frameless, etc.), `reinit_initial_window` recreates it and stores
+  /// the new id here so navigation / HMR retarget the replacement.
+  initial_window_id: Arc<AtomicU32>,
 }
 
 impl WefDesktopApi {
@@ -220,15 +225,32 @@ impl WefDesktopApi {
   /// visible frame already has content. See
   /// https://github.com/denoland/deno/issues/35530.
   fn create_initial_window(&self, width: i32, height: i32) -> u32 {
+    self.create_initial_window_ex(width, height, false, false, false, false)
+  }
+
+  /// Like [`create_initial_window`], but with explicit creation-time flags.
+  /// Used when the first `BrowserWindow` adopts the initial window and requests
+  /// flags that can only be applied at construction (see
+  /// `reinit_initial_window`), so the replacement keeps the same
+  /// hidden-until-loaded reveal behavior.
+  fn create_initial_window_ex(
+    &self,
+    width: i32,
+    height: i32,
+    frameless: bool,
+    no_activate: bool,
+    transparent_titlebar: bool,
+    transparent: bool,
+  ) -> u32 {
     let window = laufey::Window::new_with_options(
       width,
       height,
       laufey::WindowOptions {
-        frameless: false,
-        no_activate: false,
-        transparent_titlebar: false,
+        frameless,
+        no_activate,
+        transparent_titlebar,
         hidden: true,
-        transparent: false,
+        transparent,
       },
     );
     let window = self.setup_window_events(window);
@@ -273,6 +295,39 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     let window = self.setup_window_events(window);
     let id = window.id();
     self.open_windows.lock().unwrap().insert(id);
+    id
+  }
+
+  #[allow(clippy::too_many_arguments, reason = "window init flags")]
+  fn reinit_initial_window(
+    &self,
+    initial_window_id: u32,
+    width: i32,
+    height: i32,
+    frameless: bool,
+    no_activate: bool,
+    transparent_titlebar: bool,
+    transparent: bool,
+  ) -> u32 {
+    // Nothing to change: keep the eagerly-created initial window as-is.
+    if !frameless && !no_activate && !transparent_titlebar && !transparent {
+      return initial_window_id;
+    }
+    // The initial window was created with default (framed / activating / opaque)
+    // flags, and these are creation-time-only, so recreate it with the
+    // requested flags and retarget navigation / HMR at the replacement. Reuse
+    // the hidden-until-loaded initial-window path so the replacement doesn't
+    // flash an empty frame.
+    self.close_window(initial_window_id);
+    let id = self.create_initial_window_ex(
+      width,
+      height,
+      frameless,
+      no_activate,
+      transparent_titlebar,
+      transparent,
+    );
+    self.initial_window_id.store(id, Ordering::Release);
     id
   }
 
@@ -1772,6 +1827,7 @@ async fn run_desktop(
         trays: Arc::new(Mutex::new(HashMap::new())),
         notifications: Arc::new(Mutex::new(HashMap::new())),
         devtools_window: Mutex::new(None),
+        initial_window_id: initial_window_id.clone(),
       };
 
       // Forward macOS dock-reopen callbacks (clicking the dock icon while
