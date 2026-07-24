@@ -388,6 +388,7 @@ const lazyNodeModules = {
   "stream": () => core.createLazyLoader("node:stream")().default,
   "stream/consumers": () =>
     core.loadExtScript("ext:deno_node/stream/consumers.js"),
+  "stream/iter": () => core.loadExtScript("ext:deno_node/stream/iter.js"),
   "stream/promises": () =>
     core.createLazyLoader("node:stream/promises")().default,
   "tty": () => core.createLazyLoader("node:tty")().default,

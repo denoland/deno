@@ -3072,10 +3072,36 @@ class ERR_HTTP_SOCKET_ASSIGNED extends NodeError {
   }
 }
 
+class ERR_INVALID_STATE_TYPE extends NodeTypeError {
+  constructor(message: string) {
+    super("ERR_INVALID_STATE", `Invalid state: ${message}`);
+  }
+}
+class ERR_INVALID_STATE_RANGE extends NodeRangeError {
+  constructor(message: string) {
+    super("ERR_INVALID_STATE", `Invalid state: ${message}`);
+  }
+}
 class ERR_INVALID_STATE extends NodeError {
   constructor(message: string) {
     super("ERR_INVALID_STATE", `Invalid state: ${message}`);
   }
+  // Node's `E('ERR_INVALID_STATE', ..., Error, TypeError, RangeError)` exposes
+  // `.TypeError`/`.RangeError` variants of this code.
+  static TypeError = ERR_INVALID_STATE_TYPE;
+  static RangeError = ERR_INVALID_STATE_RANGE;
+}
+class ERR_OPERATION_FAILED_TYPE extends NodeTypeError {
+  constructor(message: string) {
+    super("ERR_OPERATION_FAILED", `Operation failed: ${message}`);
+  }
+}
+class ERR_OPERATION_FAILED extends NodeError {
+  constructor(message: string) {
+    super("ERR_OPERATION_FAILED", `Operation failed: ${message}`);
+  }
+  // Node's `E('ERR_OPERATION_FAILED', ..., Error, TypeError)`.
+  static TypeError = ERR_OPERATION_FAILED_TYPE;
 }
 
 interface UvExceptionContext {
@@ -3237,6 +3263,8 @@ codes.ERR_MULTIPLE_CALLBACK = ERR_MULTIPLE_CALLBACK;
 codes.ERR_STREAM_WRITE_AFTER_END = ERR_STREAM_WRITE_AFTER_END;
 codes.ERR_INVALID_ARG_TYPE = ERR_INVALID_ARG_TYPE;
 codes.ERR_INVALID_ARG_VALUE = ERR_INVALID_ARG_VALUE;
+codes.ERR_INVALID_STATE = ERR_INVALID_STATE;
+codes.ERR_OPERATION_FAILED = ERR_OPERATION_FAILED;
 codes.ERR_INVALID_HTTP_TOKEN = ERR_INVALID_HTTP_TOKEN;
 codes.ERR_UNAVAILABLE_DURING_EXIT = ERR_UNAVAILABLE_DURING_EXIT;
 codes.ERR_OUT_OF_RANGE = ERR_OUT_OF_RANGE;

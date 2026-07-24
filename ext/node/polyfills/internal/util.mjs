@@ -286,6 +286,11 @@ function sleep(msec) {
   AtomicsWait(_sleepView, 0, 0, msec);
 }
 
+// Node lazily loads the DOMException constructor; in Deno it is a global.
+function lazyDOMException(message, name) {
+  return new DOMException(message, name);
+}
+
 return {
   convertToValidSignal,
   customInspectSymbol,
@@ -296,6 +301,7 @@ return {
   kEmptyObject,
   kEnumerableProperty,
   kCustomPromisifiedSymbol,
+  lazyDOMException,
   normalizeEncoding,
   once,
   pendingDeprecate,
@@ -313,6 +319,7 @@ return {
     isError,
     kEmptyObject,
     kEnumerableProperty,
+    lazyDOMException,
     normalizeEncoding,
     once,
     pendingDeprecate,
