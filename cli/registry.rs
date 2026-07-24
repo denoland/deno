@@ -9,6 +9,7 @@ use serde::de::DeserializeOwned;
 
 use crate::http_util;
 use crate::http_util::HttpClient;
+use crate::util::console::escape_terminal_control_chars;
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -67,9 +68,18 @@ pub struct ApiError {
 
 impl std::fmt::Display for ApiError {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "{} ({})", self.message, self.code)?;
+    write!(
+      f,
+      "{} ({})",
+      escape_terminal_control_chars(&self.message),
+      escape_terminal_control_chars(&self.code)
+    )?;
     if let Some(x_deno_ray) = &self.x_deno_ray {
-      write!(f, "[x-deno-ray: {}]", x_deno_ray)?;
+      write!(
+        f,
+        "[x-deno-ray: {}]",
+        escape_terminal_control_chars(x_deno_ray)
+      )?;
     }
     Ok(())
   }
@@ -261,5 +271,23 @@ mod test {
     assert_eq!(parse_package_name("@deno/doc").unwrap(), ("deno", "doc"));
     assert!(parse_package_name("deno/doc").is_err());
     assert!(parse_package_name("@deno").is_err());
+  }
+
+  #[test]
+  fn api_error_display_escapes_terminal_controls() {
+    let err = ApiError {
+      code: "bad\u{202e}code".to_string(),
+      message: "failed\x1b[2J\nagain".to_string(),
+      data: serde_json::json!({}),
+      x_deno_ray: Some("ray\u{009b}31m".to_string()),
+    };
+
+    let display = err.to_string();
+    assert_eq!(
+      display,
+      r"failed\u{1b}[2J\nagain (bad\u{202e}code)[x-deno-ray: ray\u{9b}31m]"
+    );
+    assert_eq!(format!("{err:?}"), display);
+    assert_eq!(err.code, "bad\u{202e}code");
   }
 }
