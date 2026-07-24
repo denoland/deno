@@ -1212,11 +1212,16 @@ impl CliOptions {
     dir: &WorkspaceDirectory,
   ) -> Result<PermissionsOptions, AnyError> {
     let config_permissions = self.resolve_config_permissions_for_dir(dir)?;
+    let has_config_permissions = config_permissions.is_some();
     let mut permissions_options = flags_to_permissions_options(
       &self.flags.permissions,
       config_permissions,
     )?;
     self.augment_import_permissions(&mut permissions_options);
+    self.maybe_apply_relaxed_default_permissions(
+      &mut permissions_options,
+      has_config_permissions,
+    );
     if let DenoSubcommand::Serve(serve_flags) = &self.flags.subcommand {
       augment_permissions_with_serve_flags(
         &mut permissions_options,
@@ -1323,6 +1328,78 @@ impl CliOptions {
       }
       imports
     }
+  }
+
+  /// Applies the unstable relaxed default permission profile to the computed
+  /// permission options when the gate is on and the user provided no explicit
+  /// allow-side permission configuration.
+  ///
+  /// This is groundwork for the Deno 3 default-permissions change: instead of
+  /// denying every capability and prompting one by one, the profile grants a
+  /// pragmatic baseline that lets most CLI tools run without prompts while
+  /// still blocking exfiltration (net stays gated) and persistence outside the
+  /// project (write is confined to the cwd and the OS temp directory):
+  ///
+  /// - read: allowed everywhere on disk
+  /// - write: allowed only under the cwd (at process start) and the OS temp dir
+  /// - env: allowed
+  /// - net, run, ffi, sys: unchanged (still prompt in a TTY, deny
+  ///   non-interactively)
+  /// - import: unchanged (keeps its existing implicit trusted-host allowance)
+  ///
+  /// `--deny-*` flags do not disable the profile; they compose on top since
+  /// deny always wins.
+  fn maybe_apply_relaxed_default_permissions(
+    &self,
+    options: &mut PermissionsOptions,
+    has_config_permissions: bool,
+  ) {
+    // Only for subcommands that execute user code with the prompt-based
+    // defaults. `deno eval` and `deno x` already imply allow-all, and
+    // `deno compile` bakes permissions at compile time (out of scope).
+    if !matches!(
+      self.flags.subcommand,
+      DenoSubcommand::Run(_)
+        | DenoSubcommand::Serve(_)
+        | DenoSubcommand::Test(_)
+        | DenoSubcommand::Bench(_)
+        | DenoSubcommand::Task(_)
+        | DenoSubcommand::Repl(_)
+    ) {
+      return;
+    }
+
+    // Gated behind an unstable env var while we gather feedback.
+    if !relaxed_default_permissions_enabled() {
+      return;
+    }
+
+    // Any explicit allow-side configuration (--allow-*, -A, -P, or a
+    // permission set from the config file) opts out entirely, keeping
+    // behavior byte-for-byte identical to today. Note `--deny-*` flags are
+    // intentionally not consulted here so they compose on top of the profile.
+    if self.flags.permissions.has_allow_permission()
+      || self.flags.permission_set.is_some()
+      || has_config_permissions
+    {
+      return;
+    }
+
+    // TODO(deno3): consider also exposing this profile as a reserved built-in
+    // permission set name (e.g. `-P standard`) so it can be selected explicitly
+    // even with the gate off. Skipped here to keep the central default minimal.
+    log::debug!("Applying unstable relaxed default permission profile.");
+
+    // read: allowed everywhere (empty allow-list means "allow all").
+    options.allow_read = Some(Vec::new());
+    // env: allowed everywhere.
+    options.allow_env = Some(Vec::new());
+    // write: confined to the cwd (recorded at process start) and the OS temp
+    // directory.
+    options.allow_write = Some(relaxed_default_write_paths(self.initial_cwd()));
+    // net, run, ffi and sys are intentionally left untouched so they keep
+    // prompting in a TTY and denying non-interactively. import keeps its
+    // existing implicit trusted-host allowance from augment_import_permissions.
   }
 
   fn get_cli_arg_urls(&self) -> Vec<Cow<'_, Url>> {
@@ -1708,6 +1785,46 @@ fn allow_import_host_from_url(url: &Url) -> Option<String> {
       _ => None,
     }
   }
+}
+
+/// Env var gating the unstable relaxed default permission profile. Groundwork
+/// for the Deno 3 default-permissions change: the profile is on by default and
+/// setting the var to `0` opts back out to today's deny-by-default behavior.
+const RELAXED_PERMISSIONS_ENV_VAR: &str = "DENO_UNSTABLE_RELAXED_PERMISSIONS";
+
+fn relaxed_default_permissions_enabled() -> bool {
+  match std::env::var(RELAXED_PERMISSIONS_ENV_VAR) {
+    // On by default; only an explicit `0` disables it.
+    Ok(value) => value != "0",
+    Err(_) => true,
+  }
+}
+
+/// The write allow-list for the relaxed default profile: the process-start cwd
+/// and the OS temp directory. Both the raw and canonicalized forms of each path
+/// are included so that writes match regardless of symlinked prefixes (for
+/// example macOS's `/tmp` -> `/private/tmp` and `/var/folders` temp dirs, which
+/// are canonicalized at permission-check time). The OS temp directory honors
+/// the `TMPDIR` env var via `std::env::temp_dir`.
+fn relaxed_default_write_paths(initial_cwd: &Path) -> Vec<String> {
+  fn push_with_canonicalized(paths: &mut Vec<PathBuf>, path: PathBuf) {
+    if !paths.contains(&path) {
+      paths.push(path.clone());
+    }
+    if let Ok(canonical) = crate::util::fs::canonicalize_path(&path)
+      && !paths.contains(&canonical)
+    {
+      paths.push(canonical);
+    }
+  }
+
+  let mut paths: Vec<PathBuf> = Vec::with_capacity(4);
+  push_with_canonicalized(&mut paths, initial_cwd.to_path_buf());
+  push_with_canonicalized(&mut paths, std::env::temp_dir());
+  paths
+    .into_iter()
+    .map(|path| path.to_string_lossy().into_owned())
+    .collect()
 }
 
 // DO NOT make this public. People should use `cli_options.permissions_options/permissions_options_for_dir`
