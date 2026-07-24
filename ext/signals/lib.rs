@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::sync::OnceLock;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 
@@ -18,6 +19,26 @@ static SIGHUP: i32 = 1;
 static SIGWINCH: i32 = 28;
 
 static COUNTER: AtomicU32 = AtomicU32::new(0);
+
+// While set, an unhandled terminating signal (SIGTERM/SIGINT/SIGHUP) delivered
+// to the OS signal thread is consumed instead of running the exit callbacks and
+// the OS default action. The file watcher enables this for the duration of a
+// graceful restart, where a JS signal handler may unregister itself and re-raise
+// a real OS signal (the `signal-exit` "unload + re-raise" pattern used by Vite
+// 8 / rolldown) that would otherwise kill the watcher instead of restarting it.
+// See https://github.com/denoland/deno/issues/35942.
+static SUPPRESS_DEFAULT_EXIT: AtomicBool = AtomicBool::new(false);
+
+/// Suppress (or restore) the OS default action for an unhandled terminating
+/// signal. While suppressed, a SIGTERM/SIGINT/SIGHUP with no registered handler
+/// is consumed rather than terminating the process.
+pub fn set_suppress_default_exit(suppress: bool) {
+  SUPPRESS_DEFAULT_EXIT.store(suppress, Ordering::SeqCst);
+}
+
+fn is_terminating_signal(signal: i32) -> bool {
+  signal == SIGHUP || signal == SIGTERM || signal == SIGINT
+}
 
 type Handler = Box<dyn Fn() + Send>;
 type Handlers = HashMap<i32, Vec<(u32, bool, Handler)>>;
@@ -62,7 +83,13 @@ fn init() -> Handle {
     for signal in signals.forever() {
       let handled = handle_signal(signal);
       if !handled {
-        if signal == SIGHUP || signal == SIGTERM || signal == SIGINT {
+        if is_terminating_signal(signal) {
+          // A graceful restart (file watcher) may have unregistered the JS
+          // handler and re-raised this signal; consume it instead of killing
+          // the process. See https://github.com/denoland/deno/issues/35942.
+          if SUPPRESS_DEFAULT_EXIT.load(Ordering::SeqCst) {
+            continue;
+          }
           run_exit();
         }
         signal_hook::low_level::emulate_default_handler(signal).unwrap();
@@ -85,6 +112,14 @@ fn init() -> Handle {
       _ => return 0,
     };
     let handled = handle_signal(signal);
+    if !handled
+      && is_terminating_signal(signal)
+      && SUPPRESS_DEFAULT_EXIT.load(Ordering::SeqCst)
+    {
+      // Consume a re-raised terminating signal during a graceful restart
+      // (https://github.com/denoland/deno/issues/35942).
+      return 1;
+    }
     handled as _
   }
 

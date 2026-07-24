@@ -457,6 +457,15 @@ where
         // Dispatch SIGTERM to give JS code a chance for async cleanup
         // before restarting. If handlers are registered, wait for the
         // operation to finish gracefully before restarting.
+        //
+        // Suppress the OS default action for a terminating signal during this
+        // window: a JS handler may unregister itself and re-raise a real
+        // SIGTERM (the `signal-exit` "unload + re-raise" pattern bundled in
+        // Vite 8 / rolldown), which would otherwise terminate the watcher
+        // instead of restarting it. Set this before `raise()` because the
+        // re-raise happens synchronously inside the handler.
+        // https://github.com/denoland/deno/issues/35942
+        deno_signals::set_suppress_default_exit(true);
         if deno_signals::raise(deno_signals::SIGTERM) {
           info!(
             "{} Waiting for graceful termination...",
@@ -468,6 +477,7 @@ where
           )
           .await;
         }
+        deno_signals::set_suppress_default_exit(false);
         deno_runtime::deno_inspector_server::notify_restart();
         print_after_restart();
         continue;
