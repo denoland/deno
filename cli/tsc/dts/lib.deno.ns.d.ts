@@ -5741,6 +5741,15 @@ declare namespace Deno {
      * @category HTTP Server
      */
     onListen?: (localAddr: Deno.Addr) => void;
+    /**
+     * The handler to invoke when a {@linkcode fetch} handler throws. It is
+     * passed the thrown error and must return (or resolve to) the `Response`
+     * to send to the client. If not provided, the server responds with a
+     * default 500 "Internal Server Error".
+     *
+     * @category HTTP Server
+     */
+    onError?: (error: unknown) => Response | Promise<Response>;
   }
 
   /** Options which can be set when calling {@linkcode Deno.serve}.
