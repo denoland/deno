@@ -10,8 +10,10 @@ const {
   ArrayPrototypeIndexOf,
   ArrayPrototypeJoin,
   ArrayPrototypeLastIndexOf,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeSlice,
+  ArrayPrototypeSort,
   ArrayPrototypeSplice,
   DatePrototypeGetTime,
   DatePrototypeToString,
@@ -50,6 +52,7 @@ const {
   StringPrototypeIncludes,
   StringPrototypeIndexOf,
   StringPrototypeMatch,
+  StringPrototypeReplaceAll,
   StringPrototypeSlice,
   StringPrototypeSplit,
   StringPrototypeStartsWith,
@@ -197,6 +200,7 @@ function installErrorHandlers() {
   });
 }
 const {
+  validateArray,
   validateBoolean,
   validateFunction,
   validateInteger,
@@ -274,21 +278,16 @@ function getPathForSnapshot() {
 // once. We accept either Deno's own `--update-snapshots` flag (when running
 // under `deno test`) or Node's `--test-update-snapshots` propagated via
 // NODE_OPTIONS, so the polyfill behaves the same way the rest of the Node
-// compat surface does for reporter detection above.
-//
-// The deno_test extension's ops are registered at runtime - after this
-// polyfill's snapshot is built - so they are not on the captured `core.ops`.
-// They are however reachable via `Deno[Deno.internal].core.ops`, which the
-// test runner exposes for cli/js code; we look them up lazily through there.
-let _fileSnapshotUpdateMode = undefined;
-function isFileSnapshotUpdateMode() {
-  if (_fileSnapshotUpdateMode !== undefined) return _fileSnapshotUpdateMode;
-  const denoInternal = globalThis.Deno?.[globalThis.Deno.internal];
-  const op = denoInternal?.core?.ops?.op_test_snapshot_in_update_mode;
+// compat surface does for reporter detection above. Shared by both
+// `t.assert.snapshot` and `t.assert.fileSnapshot`.
+let _snapshotUpdateMode = undefined;
+function isSnapshotUpdateMode() {
+  if (_snapshotUpdateMode !== undefined) return _snapshotUpdateMode;
+  const op = getSnapshotOps().op_test_snapshot_in_update_mode;
   if (typeof op === "function") {
     try {
       if (op()) {
-        _fileSnapshotUpdateMode = true;
+        _snapshotUpdateMode = true;
         return true;
       }
     } catch { /* op not wired up; not running under `deno test` */ }
@@ -304,17 +303,11 @@ function isFileSnapshotUpdateMode() {
       nodeOptions,
     )
   ) {
-    _fileSnapshotUpdateMode = true;
+    _snapshotUpdateMode = true;
     return true;
   }
-  _fileSnapshotUpdateMode = false;
+  _snapshotUpdateMode = false;
   return false;
-}
-
-// Default serializer pipeline: matches Node's `t.assert.fileSnapshot` default
-// (`JSON.stringify(value, null, 2)`).
-function defaultFileSnapshotSerializer(value) {
-  return JSONStringify(value, null, 2);
 }
 
 // `t.assert.fileSnapshot(value, path[, options])`.
@@ -332,7 +325,9 @@ function fileSnapshot(actual, path, options) {
   }
   let serializers;
   if (options.serializers === undefined) {
-    serializers = [defaultFileSnapshotSerializer];
+    // Falls back to the default set by `snapshot.setDefaultSnapshotSerializers`
+    // (Node applies the same default serializers to snapshot and fileSnapshot).
+    serializers = snapshotSerializerFns;
   } else {
     if (!ArrayIsArray(options.serializers)) {
       throw new ERR_INVALID_ARG_TYPE(
@@ -374,7 +369,7 @@ function fileSnapshot(actual, path, options) {
   }
 
   const fs = getFsForSnapshot();
-  if (isFileSnapshotUpdateMode()) {
+  if (isSnapshotUpdateMode()) {
     try {
       const parent = getPathForSnapshot().dirname(path);
       fs.mkdirSync(parent, { __proto__: null, recursive: true });
@@ -427,6 +422,326 @@ function getFsWatch() {
   return _fsWatch;
 }
 const lazyProcess = core.createLazyLoader("node:process");
+
+// ---------------------------------------------------------------------------
+// `t.assert.snapshot()` and the `snapshot` module export. (`fileSnapshot` is
+// implemented above.)
+//
+// This mirrors Node's `internal/test_runner/snapshot`. Snapshots live next to
+// the test file as `<testfile>.snapshot`, written in the same
+// `exports[`name N`] = `...`;` format Node uses, so snapshot files are
+// interchangeable between the two runtimes. `deno test --update-snapshots`
+// takes the place of Node's `--test-update-snapshots` flag.
+// ---------------------------------------------------------------------------
+
+let _nodeVm = null;
+function getNodeVm() {
+  if (_nodeVm === null) {
+    _nodeVm = core.createLazyLoader("node:vm")();
+  }
+  return _nodeVm;
+}
+
+// Snapshot file I/O reuses the test runner's snapshot ops. For the default
+// `<testfile>.snapshot` location these resolve the path from the trusted test
+// origin and are exempt from permission checks (the file is managed by the
+// runner, like coverage output), matching Node's permission-free behavior.
+// The ops only exist under `deno test`; a clear error is thrown otherwise.
+//
+// The `core` captured by this ext script is a snapshot-time view whose `.ops`
+// predates the CLI's runtime-only `deno_test` ops, so reach the live core via
+// `Deno[Deno.internal]` to see them.
+let _snapshotOps;
+function getSnapshotOps() {
+  if (_snapshotOps === undefined) {
+    const D = globalThis.Deno;
+    const internal = D !== undefined ? D.internal : undefined;
+    const liveCore = internal !== undefined && D[internal] !== undefined
+      ? D[internal].core
+      : core;
+    _snapshotOps = liveCore !== undefined && liveCore !== null
+      ? liveCore.ops
+      : core.ops;
+  }
+  return _snapshotOps;
+}
+
+function requireSnapshotOps() {
+  const ops = getSnapshotOps();
+  if (
+    typeof ops.op_test_snapshot_read !== "function" ||
+    typeof ops.op_test_snapshot_write !== "function"
+  ) {
+    throw new ERR_INVALID_STATE(
+      "Snapshot testing requires running under `deno test`.",
+    );
+  }
+}
+
+const kMissingSnapshotTip = "Missing snapshots can be generated by rerunning " +
+  "the command with the --update-snapshots flag.";
+
+const defaultSnapshotSerializers = [
+  (value) => JSONStringify(value, null, 2),
+];
+
+function defaultResolveSnapshotPath(testPath) {
+  if (typeof testPath !== "string") {
+    return testPath;
+  }
+  return `${testPath}.snapshot`;
+}
+
+let resolveSnapshotPathFn = defaultResolveSnapshotPath;
+let snapshotSerializerFns = defaultSnapshotSerializers;
+
+function validateSnapshotSerializers(fns, name) {
+  validateArray(fns, name);
+  for (let i = 0; i < fns.length; ++i) {
+    validateFunction(fns[i], `${name}[${i}]`);
+  }
+}
+
+function setResolveSnapshotPath(fn) {
+  validateFunction(fn, "fn");
+  resolveSnapshotPathFn = fn;
+}
+
+function setDefaultSnapshotSerializers(serializers) {
+  validateSnapshotSerializers(serializers, "serializers");
+  snapshotSerializerFns = ArrayPrototypeSlice(serializers);
+}
+
+// Escape a value so it can be embedded verbatim inside a template literal in
+// the generated snapshot file (`\`, backtick, and `${` are the special cases).
+function snapshotTemplateEscape(str) {
+  let result = String(str);
+  result = StringPrototypeReplaceAll(result, "\\", "\\\\");
+  result = StringPrototypeReplaceAll(result, "`", "\\`");
+  result = StringPrototypeReplaceAll(result, "${", "\\${");
+  return result;
+}
+
+// Escape a snapshot key (the test's full name plus its index). JSON string
+// escaping handles quotes/newlines/etc.; the trailing replacements cover the
+// template-literal specials that JSON leaves untouched.
+function snapshotEscapeKey(str) {
+  let result = StringPrototypeSlice(JSONStringify(str, null, 2), 1, -1);
+  result = StringPrototypeReplaceAll(result, "`", "\\`");
+  result = StringPrototypeReplaceAll(result, "${", "\\${");
+  return result;
+}
+
+function snapshotSerializeValue(value, serializers) {
+  let v = value;
+  for (let i = 0; i < serializers.length; ++i) {
+    v = serializers[i](v);
+  }
+  return v;
+}
+
+function snapshotThrowSerializationError(input, err) {
+  const error = new ERR_INVALID_STATE(
+    "The provided serializers did not generate a string.",
+  );
+  error.input = input;
+  error.cause = err;
+  throw error;
+}
+
+// Convert a test origin (a `file:` URL from Deno's test context) into the
+// filesystem path Node's `resolveSnapshotPath` resolver expects. Non-file
+// origins are passed through so a custom resolver can still handle them.
+function snapshotTestPathFromOrigin(origin) {
+  if (typeof origin !== "string" || origin === "") {
+    throw new ERR_INVALID_STATE(
+      "Snapshot testing is only supported for tests loaded from a file.",
+    );
+  }
+  if (StringPrototypeStartsWith(origin, "file:")) {
+    return getNodeUrl().fileURLToPath(origin);
+  }
+  return origin;
+}
+
+// Holds the snapshots for a single test file's snapshot file. Keys are the
+// real (un-escaped) snapshot ids; escaping happens at write time so that read
+// and update modes share a consistent key space. `locationArgs` is passed to
+// the snapshot ops to locate the file on disk.
+class SnapshotFile {
+  constructor(locationArgs) {
+    this.locationArgs = locationArgs;
+    // Resolved on the first op call; only used in error messages.
+    this.path = null;
+    this.snapshots = { __proto__: null };
+    this.nameCounts = new SafeMap();
+    this.loaded = false;
+  }
+
+  getSnapshot(id) {
+    if (!ObjectPrototypeHasOwnProperty(this.snapshots, id)) {
+      const err = new ERR_INVALID_STATE(
+        `Snapshot '${id}' not found in '${this.path}.' ` + kMissingSnapshotTip,
+      );
+      err.snapshot = id;
+      err.filename = this.path;
+      throw err;
+    }
+    return this.snapshots[id];
+  }
+
+  setSnapshot(id, value) {
+    this.snapshots[id] = value;
+  }
+
+  nextId(name) {
+    const count = MapPrototypeGet(this.nameCounts, name) ?? 1;
+    MapPrototypeSet(this.nameCounts, name, count + 1);
+    return `${name} ${count}`;
+  }
+
+  readFile() {
+    if (this.loaded) {
+      return;
+    }
+    const { path, content } = getSnapshotOps().op_test_snapshot_read(
+      this.locationArgs,
+    );
+    this.path = path;
+    if (content === null || content === undefined) {
+      // The op already returns `null` (rather than throwing) for a missing
+      // file, so surface the Node-style read error directly.
+      const error = new ERR_INVALID_STATE(
+        `Cannot read snapshot file '${path}.' ${kMissingSnapshotTip}`,
+      );
+      error.filename = path;
+      throw error;
+    }
+    // The snapshot file is plain JS of `exports[...] = ...` statements;
+    // evaluate it in a throwaway context to recover the real keys/values,
+    // exactly as Node does.
+    const context = { exports: { __proto__: null } };
+    getNodeVm().runInNewContext(content, context);
+    if (context.exports === null || typeof context.exports !== "object") {
+      throw new ERR_INVALID_STATE(`Malformed snapshot file '${path}'.`);
+    }
+    const keys = ObjectKeys(context.exports);
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      this.snapshots[key] = snapshotTemplateEscape(context.exports[key]);
+    }
+    this.loaded = true;
+  }
+
+  writeFile() {
+    const keys = ArrayPrototypeSort(ObjectKeys(this.snapshots));
+    const snapshotStrings = ArrayPrototypeMap(keys, (key) => {
+      return `exports[\`${snapshotEscapeKey(key)}\`] = \`${
+        this.snapshots[key]
+      }\`;\n`;
+    });
+    const output = ArrayPrototypeJoin(snapshotStrings, "\n");
+    getSnapshotOps().op_test_snapshot_write(this.locationArgs, output);
+  }
+}
+
+class SnapshotManager {
+  constructor() {
+    this.cache = new SafeMap();
+  }
+
+  // Determine the on-disk location for a test's origin. The default resolver
+  // uses the runner-managed `<testfile>.snapshot` layout (permission exempt);
+  // a custom `setResolveSnapshotPath` produces an explicit, permission-checked
+  // path.
+  #resolveLocation(originUrl) {
+    if (resolveSnapshotPathFn === defaultResolveSnapshotPath) {
+      return {
+        cacheKey: `origin:${originUrl}`,
+        locationArgs: { __proto__: null, nodeLayout: true },
+      };
+    }
+    const testFilePath = snapshotTestPathFromOrigin(originUrl);
+    const resolved = resolveSnapshotPathFn(testFilePath);
+    if (typeof resolved !== "string") {
+      const err = new ERR_INVALID_STATE("Invalid snapshot filename.");
+      err.filename = resolved;
+      throw err;
+    }
+    return {
+      cacheKey: `path:${resolved}`,
+      locationArgs: { __proto__: null, path: resolved },
+    };
+  }
+
+  resolveSnapshotFile(originUrl) {
+    const { cacheKey, locationArgs } = this.#resolveLocation(originUrl);
+    let snapshotFile = MapPrototypeGet(this.cache, cacheKey);
+    if (snapshotFile === undefined) {
+      snapshotFile = new SnapshotFile(locationArgs);
+      // In update mode we start from an empty set and rewrite the file, so
+      // snapshots whose tests no longer run are dropped (Node parity); the old
+      // contents are never read back.
+      snapshotFile.loaded = isSnapshotUpdateMode();
+      MapPrototypeSet(this.cache, cacheKey, snapshotFile);
+    }
+    return snapshotFile;
+  }
+
+  serialize(input, serializers) {
+    try {
+      const value = snapshotSerializeValue(input, serializers);
+      return `\n${snapshotTemplateEscape(value)}\n`;
+    } catch (err) {
+      snapshotThrowSerializationError(input, err);
+    }
+  }
+
+  assertSnapshot(originUrl, fullName, actual, options = { __proto__: null }) {
+    validateObject(options, "options");
+    const { serializers = snapshotSerializerFns } = options;
+    validateSnapshotSerializers(serializers, "options.serializers");
+    requireSnapshotOps();
+    const snapshotFile = this.resolveSnapshotFile(originUrl);
+    const value = this.serialize(actual, serializers);
+    const id = snapshotFile.nextId(fullName);
+    if (isSnapshotUpdateMode()) {
+      snapshotFile.setSnapshot(id, value);
+      // The node:test polyfill has no end-of-run hook to flush pending writes,
+      // so each assertion rewrites the whole file. The in-memory set only
+      // grows, so the final write still contains every snapshot from this run.
+      snapshotFile.writeFile();
+    } else {
+      snapshotFile.readFile();
+      assert.strictEqual(value, snapshotFile.getSnapshot(id));
+    }
+  }
+}
+
+const snapshotManager = new SnapshotManager();
+
+// The `snapshot` namespace exported from `node:test`.
+const snapshot = {
+  __proto__: null,
+  setResolveSnapshotPath,
+  setDefaultSnapshotSerializers,
+};
+
+// Build the `{ snapshot }` method bound to a single test's origin and full
+// name (per-context because it needs them). `fileSnapshot` is stateless and
+// lives on the shared assert object instead.
+function makeSnapshotAssertMethods(getOriginUrl, getFullName) {
+  return {
+    snapshot(actual, options) {
+      return snapshotManager.assertSnapshot(
+        getOriginUrl(),
+        getFullName(),
+        actual,
+        options,
+      );
+    },
+  };
+}
 
 // node:test `run()` implementation.
 //
@@ -749,6 +1064,7 @@ class TapContext {
   #subtestCount = 0;
   #parentChildren;
   #abortController = new AbortController();
+  #assertObject;
   // Per-context "warning printed" flag for the `--test-only` diagnostic.
   // Mutated by `runTapEntry` when a child uses `only: true`.
   onlyWarningEmitted = false;
@@ -782,7 +1098,19 @@ class TapContext {
   }
 
   get assert() {
-    return getAssertObject();
+    if (this.#assertObject === undefined) {
+      // deno-lint-ignore no-this-alias
+      const ctx = this;
+      const methods = makeSnapshotAssertMethods(
+        () => globalThis.Deno?.mainModule,
+        () => ctx.fullName,
+      );
+      // `fileSnapshot` is inherited from the shared assert object.
+      const obj = { __proto__: getAssertObject() };
+      obj.snapshot = methods.snapshot;
+      this.#assertObject = obj;
+    }
+    return this.#assertObject;
   }
 
   get mock() {
@@ -1332,6 +1660,7 @@ class NodeTestContext {
   #abortController = new AbortController();
   #plan;
   #planAssert;
+  #assertObject;
   #beforeEachHooks = [];
   #afterEachHooks = [];
   // Guards so the once-per-test `before()`/`after()` hooks run a single time
@@ -1357,6 +1686,17 @@ class NodeTestContext {
     return this.#skipped || (this.#parent?.[skippedSymbol] ?? false);
   }
 
+  // Snapshot assertions need this test's file path and full name, so they are
+  // built per-context rather than shared like the stateless assert methods.
+  #snapshotMethods() {
+    // deno-lint-ignore no-this-alias
+    const ctx = this;
+    return makeSnapshotAssertMethods(
+      () => ctx.#denoContext?.origin,
+      () => ctx.fullName,
+    );
+  }
+
   get assert() {
     if (this.#plan) {
       if (!this.#planAssert) {
@@ -1369,6 +1709,13 @@ class NodeTestContext {
             return ReflectApply(base[method], this, args);
           };
         });
+        const snap = this.#snapshotMethods();
+        wrapped.snapshot = function (...args) {
+          plan.increment();
+          return ReflectApply(snap.snapshot, this, args);
+        };
+        // `fileSnapshot` is stateless (explicit path), so it lives on the
+        // shared assert object; the snapshot-specific `snapshot` is per-context.
         wrapped.fileSnapshot = function (...args) {
           plan.increment();
           return ReflectApply(base.fileSnapshot, this, args);
@@ -1377,7 +1724,14 @@ class NodeTestContext {
       }
       return this.#planAssert;
     }
-    return getAssertObject();
+    if (this.#assertObject === undefined) {
+      const snap = this.#snapshotMethods();
+      // `fileSnapshot` is inherited from the shared assert object.
+      const obj = { __proto__: getAssertObject() };
+      obj.snapshot = snap.snapshot;
+      this.#assertObject = obj;
+    }
+    return this.#assertObject;
   }
 
   plan(count) {
@@ -3455,6 +3809,7 @@ test.after = after;
 test.beforeEach = beforeEach;
 test.afterEach = afterEach;
 test.run = run;
+test.snapshot = snapshot;
 
 return {
   run,
@@ -3467,6 +3822,7 @@ return {
   beforeEach,
   afterEach,
   mock,
+  snapshot,
   getTestContext,
   default: test,
 };
