@@ -1751,6 +1751,26 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
         )?;
       }
 
+      // A Web Worker's own statically analyzable remote imports must be checked
+      // against the worker's own permissions, not the parent thread's to honor
+      // the specified `deno.permissions.import` and match behavior with main
+      // graph. Dynamic `import()` is already checked against the worker's
+      // permissions while the graph is built.
+      if inner.is_worker && !options.is_dynamic_import {
+        let graph = graph_container.graph();
+        for module in graph.modules() {
+          let specifier = module.specifier();
+          if matches!(specifier.scheme(), "http" | "https")
+            && !graph.roots.contains(specifier)
+            && let Err(err) = inner
+              .permissions
+              .check_specifier(specifier, CheckSpecifierKind::Static)
+          {
+            return Err(JsErrorBox::from_err(err));
+          }
+        }
+      }
+
       Ok(())
     };
 
