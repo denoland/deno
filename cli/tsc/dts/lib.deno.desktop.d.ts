@@ -350,6 +350,12 @@ declare namespace Deno {
     deno?: boolean;
   }
 
+  export interface PrintToPdfOptions {
+    /** When set, the PDF bytes are additionally written to this file path. The
+     * promise still resolves with the same bytes; the file is a side effect. */
+    path?: string;
+  }
+
   export interface BrowserWindowOptions {
     title?: string;
     /** @default {800} */
@@ -399,6 +405,13 @@ declare namespace Deno {
      *
      * @default {false} */
     transparent?: boolean;
+    /** Whether the window is shown when created. Set `false` to create a window
+     * that is never displayed — useful for headless flows such as rendering a
+     * page and calling {@linkcode BrowserWindow.printToPdf} without the window
+     * ever appearing on screen. Reveal it later with {@linkcode BrowserWindow.show}.
+     *
+     * @default {true} */
+    visible?: boolean;
   }
 
   interface BrowserWindowObject {
@@ -577,6 +590,15 @@ declare namespace Deno {
     unbind<N extends keyof T>(name: N): void;
     /** @throws {BrowserWindowValue} */
     executeJs(script: string): Promise<BrowserWindowValue>;
+
+    /** Render the window's current page to a PDF and resolve with its bytes.
+     * When {@linkcode PrintToPdfOptions.path} is provided, those same bytes are
+     * additionally written to that file before the promise resolves.
+     *
+     * Works whether or not the window is {@linkcode BrowserWindowOptions.visible},
+     * enabling headless PDF generation. Rejects if the active backend cannot
+     * produce a PDF. */
+    printToPdf(options?: PrintToPdfOptions): Promise<Uint8Array>;
 
     setTitle(title: string): void;
 
