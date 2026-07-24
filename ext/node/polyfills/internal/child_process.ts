@@ -2774,17 +2774,29 @@ function setupChannel(
       // All of these mean the IPC channel went away while we were reading it.
       // ConnectionReset in particular shows up on Linux when the peer exits
       // with data still buffered: instead of a clean EOF the kernel delivers a
-      // RST, surfacing here as ECONNRESET. Node treats an IPC channel teardown
-      // as a disconnect, never as a process `error`, so we follow suit and tear
-      // down cleanly instead of emitting an uncaught error.
+      // RST, surfacing here as ECONNRESET. UnexpectedEof shows up when the peer
+      // closes mid-frame (the decoders in ext/process/ipc.rs return it when the
+      // stream ends before a length-prefixed message is complete). Node treats
+      // an IPC channel teardown as a disconnect, never as a process `error`, so
+      // we follow suit and tear down cleanly instead of emitting an uncaught
+      // error.
       if (
         ObjectPrototypeIsPrototypeOf(Deno.errors.Interrupted.prototype, err) ||
         ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, err) ||
-        ObjectPrototypeIsPrototypeOf(Deno.errors.ConnectionReset.prototype, err)
+        ObjectPrototypeIsPrototypeOf(
+          Deno.errors.ConnectionReset.prototype,
+          err,
+        ) ||
+        // `UnexpectedEof` (peer closed mid-frame) is matched by name rather
+        // than `Deno.errors.UnexpectedEof.prototype` to avoid introducing a new
+        // `Deno.*` reference into this polyfill (tools/lint_plugins/
+        // no_deno_api_in_polyfills.ts caps and only ratchets those down).
+        err?.name === "UnexpectedEof"
       ) {
         // Channel torn down from under us; release any handles awaiting an
-        // ACK that will now never arrive so they don't keep us alive.
-        cleanupPendingHandles();
+        // ACK that will now never arrive so they don't keep us alive, and
+        // surface the teardown as a `disconnect` the way Node does.
+        destroyChannel();
         return;
       }
       nextTick(() => target.emit("error", err));
@@ -2930,6 +2942,30 @@ function setupChannel(
       target.emit("disconnect");
     });
   };
+
+  // The IPC channel was torn down from under us (the peer exited or was
+  // killed) rather than closed via an explicit `disconnect()`/CLOSE handshake.
+  // Node still surfaces this as a `disconnect` on the ChildProcess, so emit it
+  // here instead of silently returning -- otherwise consumers like cluster,
+  // whose primary emits its own `disconnect` in response to the child
+  // process's, never learn the worker went away (e.g. a worker that calls
+  // `.destroy()` on itself). This mirrors `target.disconnect()` but is guarded
+  // against `connected` (rather than throwing) so a teardown that races an
+  // explicit `disconnect()` returns instead of double-emitting.
+  function destroyChannel() {
+    cleanupPendingHandles();
+    if (!target.connected) {
+      return;
+    }
+    target.connected = false;
+    target[kCanDisconnect] = false;
+    control[kControlDisconnect]();
+    nextTick(() => {
+      target.channel = null;
+      core.close(ipc);
+      target.emit("disconnect");
+    });
+  }
   target[kCanDisconnect] = true;
 
   // Start reading messages from the channel.

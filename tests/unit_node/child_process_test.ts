@@ -1657,3 +1657,69 @@ Deno.test({
     }
   },
 });
+
+// When the IPC channel is torn down abruptly -- the peer closes it mid-frame so
+// a decoder returns `UnexpectedEof` -- rather than via an explicit
+// `disconnect()`/CLOSE handshake, Node surfaces a `disconnect` on the
+// ChildProcess and never a process `error`. Each child below writes a partial
+// frame to its IPC fd (fd 3) and exits, forcing the decoder's mid-frame EOF.
+async function assertPartialFrameDisconnects(
+  shellCmd: string,
+  serialization: "json" | "advanced",
+) {
+  const deferred = withTimeout<void>();
+  const child = spawn("/bin/sh", ["-c", shellCmd], {
+    stdio: ["pipe", "pipe", "pipe", "ipc"],
+    serialization,
+    // deno-lint-ignore no-explicit-any
+  } as any);
+  let errored: Error | null = null;
+  let disconnected = false;
+  child.on("error", (err: Error) => {
+    errored = err;
+  });
+  child.on("disconnect", () => {
+    disconnected = true;
+    deferred.resolve();
+  });
+  try {
+    await deferred.promise;
+    assert(disconnected, "expected a 'disconnect' event");
+    assertEquals(errored, null, `unexpected 'error' event: ${errored}`);
+    assertEquals(child.connected, false);
+    assertEquals(child.channel, null);
+  } finally {
+    child.kill();
+    child.stdout?.destroy();
+    child.stderr?.destroy();
+  }
+}
+
+Deno.test({
+  name:
+    "[node/child_process ipc] partial JSON frame at teardown emits 'disconnect', not 'error'",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    // Write an unterminated JSON message (no trailing newline) then exit: the
+    // JSON decoder hits `UnexpectedEof` mid-message.
+    await assertPartialFrameDisconnects(
+      `printf '{"partial":' >&3; exit 0`,
+      "json",
+    );
+  },
+});
+
+Deno.test({
+  name:
+    "[node/child_process ipc] partial advanced frame at teardown emits 'disconnect', not 'error'",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    // Advanced serialization frames a message with a 4-byte big-endian length
+    // prefix; writing only 2 bytes then exiting hits `UnexpectedEof` before the
+    // length is complete.
+    await assertPartialFrameDisconnects(
+      `printf '\\000\\000' >&3; exit 0`,
+      "advanced",
+    );
+  },
+});
