@@ -4026,6 +4026,7 @@
     "parallel/test-webstorage-without-sqlite.js": {},
     "parallel/test-webstream-string-tag.js": {},
     "parallel/test-webstream-structured-clone-no-leftovers.mjs": {},
+    "parallel/test-webstreams-abort-controller.js": {},
     "parallel/test-webstreams-adapters-sync-write-error.js": {},
     "parallel/test-webstreams-adapters-writable-buffer-sources.js": {},
     "parallel/test-webstreams-compose.js": {},

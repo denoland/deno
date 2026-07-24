@@ -484,6 +484,11 @@ function bufferSourceByteLength(O) {
 // Using SymbolFor to make globally available. This is used by `node:stream`
 // to interop with the web streams API.
 const _isClosedPromise = SymbolFor("nodejs.webstream.isClosedPromise");
+// Set on a stream to a function that errors its controller. `node:stream`'s
+// `addAbortSignal` uses this to abort a web stream from an AbortSignal.
+const _controllerErrorFunction = SymbolFor(
+  "nodejs.webstream.controllerErrorFunction",
+);
 
 const _abortAlgorithm = Symbol("[[abortAlgorithm]]");
 const _abortSteps = Symbol("[[AbortSteps]]");
@@ -4236,6 +4241,8 @@ function setUpReadableByteStreamController(
   controller[_autoAllocateChunkSize] = autoAllocateChunkSize;
   controller[_pendingPullIntos] = new Queue();
   stream[_controller] = controller;
+  stream[_controllerErrorFunction] = (error) =>
+    readableByteStreamControllerError(controller, error);
   const startResult = startAlgorithm(controller);
   const startPromise = PromiseResolve(startResult);
   uponPromise(
@@ -4400,6 +4407,8 @@ function setUpReadableStreamDefaultController(
   controller[_pullAlgorithm] = pullAlgorithm;
   controller[_cancelAlgorithm] = cancelAlgorithm;
   stream[_controller] = controller;
+  stream[_controllerErrorFunction] = (error) =>
+    readableStreamDefaultControllerError(controller, error);
   const startResult = startAlgorithm(controller);
   const startPromise = PromiseResolve(startResult);
   uponPromise(startPromise, () => {
@@ -4625,6 +4634,8 @@ function setUpWritableStreamDefaultController(
   assert(stream[_controller] === undefined);
   controller[_stream] = stream;
   stream[_controller] = controller;
+  stream[_controllerErrorFunction] = (error) =>
+    writableStreamDefaultControllerErrorIfNeeded(controller, error);
   resetQueue(controller);
   controller[_signal] = newSignal();
   controller[_started] = false;
