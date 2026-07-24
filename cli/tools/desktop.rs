@@ -157,6 +157,20 @@ fn apply_desktop_config_to_flags(
     {
       desktop_flags.deep_links = deep_links;
     }
+
+    if let Some(allow_web_schemes) = app_config.allow_web_schemes {
+      desktop_flags.allow_web_schemes = allow_web_schemes;
+    }
+
+    if let Some(permissions) = app_config.permissions
+      && desktop_flags.macos_permissions.is_empty()
+    {
+      desktop_flags.macos_permissions = permissions;
+    }
+
+    if let Some(agent) = app_config.agent {
+      desktop_flags.agent = agent;
+    }
   }
 
   if let Some(backend) = desktop_config.backend
@@ -664,8 +678,20 @@ fn make_self_extracting(
 /// common reserved schemes (`http`, `https`, `file`, `ftp`, `ws`, `wss`) since
 /// registering those as app handlers is almost never intended and would hijack
 /// normal browsing.
-fn validate_url_scheme(scheme: &str) -> Result<(), AnyError> {
-  let reserved = ["http", "https", "file", "ftp", "ws", "wss"];
+///
+/// `allow_web_schemes` (from `desktop.app.allowWebSchemes`) is an explicit
+/// opt-in that lifts the reservation on `http`/`https` only — a genuine
+/// default-browser-style utility legitimately needs to register those.
+/// `file`/`ftp`/`ws`/`wss` remain reserved regardless.
+fn validate_url_scheme(
+  scheme: &str,
+  allow_web_schemes: bool,
+) -> Result<(), AnyError> {
+  let reserved: &[&str] = if allow_web_schemes {
+    &["file", "ftp", "ws", "wss"]
+  } else {
+    &["http", "https", "file", "ftp", "ws", "wss"]
+  };
   let bail = |reason: &str| {
     Err(deno_core::anyhow::anyhow!(
       "Invalid deep-link scheme {scheme:?}: {reason}."
@@ -712,7 +738,7 @@ fn register_deep_links(
     return Ok(());
   }
   for scheme in &schemes {
-    validate_url_scheme(scheme)?;
+    validate_url_scheme(scheme, desktop_flags.allow_web_schemes)?;
   }
 
   let target_os = match desktop_flags.target.as_deref() {
@@ -3109,6 +3135,8 @@ async fn package_macos_app_bundle(
     &bundle_id,
     &laufey_executable_name,
     desktop_flags.icon.is_some(),
+    &desktop_flags.macos_permissions,
+    desktop_flags.agent,
   );
   std::fs::write(contents_dir.join("Info.plist"), info_plist)?;
 
@@ -3192,15 +3220,64 @@ async fn package_macos_app_bundle(
   Ok(app_bundle)
 }
 
-// Keep the generated bundle metadata aligned with laufey's macOS app plist,
-// while carrying the TCC usage-description keys desktop apps need for
-// microphone/camera/audio-capture prompts.
+/// Map a `desktop.app.permissions` entry to the `NS…UsageDescription` key(s)
+/// and human-readable purpose it declares in the Info.plist. Unknown entries
+/// are ignored (returns an empty slice) so a typo never silently drops a real
+/// permission without a build-time signal elsewhere.
+fn macos_permission_usage_keys(
+  permission: &str,
+) -> &'static [(&'static str, &'static str)] {
+  match permission.trim().to_ascii_lowercase().as_str() {
+    "microphone" | "mic" => {
+      &[("NSMicrophoneUsageDescription", "the microphone")]
+    }
+    "camera" => &[("NSCameraUsageDescription", "the camera")],
+    "audiocapture" | "audio-capture" | "audio_capture" => {
+      &[("NSAudioCaptureUsageDescription", "audio capture")]
+    }
+    "bluetooth" => &[
+      ("NSBluetoothAlwaysUsageDescription", "Bluetooth"),
+      ("NSBluetoothPeripheralUsageDescription", "Bluetooth"),
+    ],
+    _ => &[],
+  }
+}
+
+// Keep the generated bundle metadata aligned with laufey's macOS app plist.
+// The TCC usage-description keys (microphone/camera/audio-capture/bluetooth)
+// are emitted only for the permissions the app declares via
+// `desktop.app.permissions`; a plain browser/menu-bar utility ships none of
+// them. `agent` (from `desktop.app.agent`) emits `LSUIElement` so the app runs
+// as a menu-bar accessory with no Dock icon.
 fn render_macos_info_plist(
   app_name: &str,
   bundle_id: &str,
   executable_name: &str,
   has_icon: bool,
+  permissions: &[String],
+  agent: bool,
 ) -> String {
+  // Emit each declared usage-description key at most once, in a stable order.
+  let mut usage_descriptions = String::new();
+  let mut seen: Vec<&'static str> = Vec::new();
+  for permission in permissions {
+    for (key, purpose) in macos_permission_usage_keys(permission) {
+      if seen.contains(key) {
+        continue;
+      }
+      seen.push(key);
+      usage_descriptions.push_str(&format!(
+        "  <key>{key}</key>\n  <string>{app_name} requires access to {purpose}</string>\n"
+      ));
+    }
+  }
+
+  let lsuielement = if agent {
+    "  <key>LSUIElement</key>\n  <true/>\n"
+  } else {
+    ""
+  };
+
   format!(
     r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -3226,7 +3303,7 @@ fn render_macos_info_plist(
   <string>1.0.0</string>
   <key>LSMinimumSystemVersion</key>
   <string>10.15</string>
-  <key>NSHighResolutionCapable</key>
+{lsuielement}  <key>NSHighResolutionCapable</key>
   <true/>
   <key>NSPrincipalClass</key>
   <string>LaufeyApplication</string>
@@ -3237,23 +3314,15 @@ fn render_macos_info_plist(
     <key>NSAllowsLocalNetworking</key>
     <true/>
   </dict>
-  <key>NSMicrophoneUsageDescription</key>
-  <string>{app_name} requires access to the microphone</string>
-  <key>NSCameraUsageDescription</key>
-  <string>{app_name} requires access to the camera</string>
-  <key>NSAudioCaptureUsageDescription</key>
-  <string>{app_name} requires access to audio capture</string>
-  <key>NSBluetoothAlwaysUsageDescription</key>
-  <string>{app_name} requires access to Bluetooth</string>
-  <key>NSBluetoothPeripheralUsageDescription</key>
-  <string>{app_name} requires access to Bluetooth</string>
-</dict>
+{usage_descriptions}</dict>
 </plist>
 "#,
     app_name = app_name,
     bundle_id = bundle_id,
     executable_name = executable_name,
     icon_file = if has_icon { "AppIcon" } else { "" },
+    lsuielement = lsuielement,
+    usage_descriptions = usage_descriptions,
   )
 }
 
@@ -5465,11 +5534,19 @@ mod tests {
 
   #[test]
   fn macos_info_plist_includes_principal_class_and_tcc_usage_strings() {
+    let permissions = [
+      "microphone".to_string(),
+      "camera".to_string(),
+      "audioCapture".to_string(),
+      "bluetooth".to_string(),
+    ];
     let plist = render_macos_info_plist(
       "Deno Demo",
       "com.deno.demo",
       "laufey_webview",
       true,
+      &permissions,
+      false,
     );
     assert!(plist.contains("<string>LaufeyApplication</string>"));
     // The backend binary must be the CFBundleExecutable (not a shell-script
@@ -5495,6 +5572,65 @@ mod tests {
         && plist.contains("Deno Demo requires access to Bluetooth")
     );
     assert!(plist.contains("<string>AppIcon</string>"));
+  }
+
+  #[test]
+  fn macos_info_plist_omits_usage_keys_without_permissions() {
+    // A plain browser/menu-bar utility declares no permissions, so none of the
+    // camera/mic/audio/bluetooth usage-description keys should be emitted.
+    let plist = render_macos_info_plist(
+      "Async Link",
+      "com.async.link",
+      "laufey_webview",
+      false,
+      &[],
+      false,
+    );
+    for key in &[
+      "NSMicrophoneUsageDescription",
+      "NSCameraUsageDescription",
+      "NSAudioCaptureUsageDescription",
+      "NSBluetoothAlwaysUsageDescription",
+      "NSBluetoothPeripheralUsageDescription",
+    ] {
+      assert!(
+        !plist.contains(key),
+        "{key} should not be emitted when no permissions are declared"
+      );
+    }
+    // The loopback transport keys stay regardless.
+    assert!(plist.contains("<key>NSAllowsLocalNetworking</key>"));
+    // No permissions requested, so LSUIElement stays off.
+    assert!(!plist.contains("<key>LSUIElement</key>"));
+  }
+
+  #[test]
+  fn macos_info_plist_emits_only_declared_permissions() {
+    // Declaring only "camera" emits exactly that usage key, nothing else.
+    let plist = render_macos_info_plist(
+      "Cam App",
+      "com.cam.app",
+      "laufey_webview",
+      false,
+      &["camera".to_string()],
+      false,
+    );
+    assert!(plist.contains("<key>NSCameraUsageDescription</key>"));
+    assert!(!plist.contains("<key>NSMicrophoneUsageDescription</key>"));
+    assert!(!plist.contains("<key>NSBluetoothAlwaysUsageDescription</key>"));
+  }
+
+  #[test]
+  fn macos_info_plist_agent_emits_lsuielement() {
+    let plist = render_macos_info_plist(
+      "Menu Bar App",
+      "com.menu.app",
+      "laufey_webview",
+      false,
+      &[],
+      true,
+    );
+    assert!(plist.contains("<key>LSUIElement</key>\n  <true/>"));
   }
 
   #[test]
@@ -6742,6 +6878,9 @@ def456  other.zip
       all_targets: false,
       identifier: None,
       deep_links: Vec::new(),
+      allow_web_schemes: false,
+      macos_permissions: Vec::new(),
+      agent: false,
       codesign_identity: None,
       inspect_renderer: None,
       compress: None,
@@ -7211,7 +7350,10 @@ def456  other.zip
   #[test]
   fn validate_url_scheme_accepts_canonical() {
     for ok in &["acme", "my-app", "x", "com.acme.app", "a1+2.3-4", "App"] {
-      assert!(validate_url_scheme(ok).is_ok(), "{ok:?} should be accepted");
+      assert!(
+        validate_url_scheme(ok, false).is_ok(),
+        "{ok:?} should be accepted"
+      );
     }
   }
 
@@ -7230,7 +7372,7 @@ def456  other.zip
     ];
     for (bad, why) in cases {
       assert!(
-        validate_url_scheme(bad).is_err(),
+        validate_url_scheme(bad, false).is_err(),
         "{bad:?} should be rejected ({why})"
       );
     }
@@ -7241,8 +7383,26 @@ def456  other.zip
     // Registering these as app handlers would hijack normal browsing.
     for reserved in &["http", "https", "file", "ftp", "ws", "wss"] {
       assert!(
-        validate_url_scheme(reserved).is_err(),
+        validate_url_scheme(reserved, false).is_err(),
         "{reserved:?} must be rejected as reserved"
+      );
+    }
+  }
+
+  #[test]
+  fn validate_url_scheme_allow_web_schemes_permits_http() {
+    // With the opt-in, http/https become registerable (default-browser case).
+    for ok in &["http", "https"] {
+      assert!(
+        validate_url_scheme(ok, true).is_ok(),
+        "{ok:?} should be accepted with allow_web_schemes"
+      );
+    }
+    // The remaining reserved schemes stay reserved even with the opt-in.
+    for still_reserved in &["file", "ftp", "ws", "wss"] {
+      assert!(
+        validate_url_scheme(still_reserved, true).is_err(),
+        "{still_reserved:?} must stay reserved even with allow_web_schemes"
       );
     }
   }

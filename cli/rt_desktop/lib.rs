@@ -1335,6 +1335,16 @@ laufey::main!(|| {
     .build()
     .unwrap();
 
+  // Capture the self-extracting VFS root before `data` is moved into
+  // `run_desktop`. A runtime `Deno.readFile` (e.g. a tray icon `icon16.png`)
+  // of a file that wasn't embedded surfaces a bare NotFound at an opaque temp
+  // path under this root; we use it below to append `--include` guidance.
+  let vfs_root = data
+    .metadata
+    .self_extracting
+    .is_some()
+    .then(|| data.root_path.to_string_lossy().into_owned());
+
   rt.block_on(async {
     log::debug!("[desktop] run_desktop starting");
     match run_desktop(update_rolled_back, desktop_serve_port, data).await {
@@ -1351,6 +1361,8 @@ laufey::main!(|| {
             None => format!("{:?}", error),
           },
         };
+        let error_string =
+          augment_missing_asset_hint(error_string, vfs_root.as_deref());
         let message = error_string.trim_start_matches("error: ");
         log::error!("{}: {}", colors::red_bold("error"), message);
         let is_startup = startup.is_some();
@@ -1366,6 +1378,41 @@ laufey::main!(|| {
     }
   });
 });
+
+/// Append `--include` guidance when a runtime file read fails on a compiled
+/// (self-extracting) desktop app.
+///
+/// `deno compile` embeds files that are reachable through the static module
+/// graph, but a runtime read — `Deno.readFile("icon16.png")` for a tray icon,
+/// say — is invisible to that analysis, so the asset never makes it into the
+/// bundle. At launch the read resolves against the extracted VFS root (an
+/// opaque `…/deno-compile-<app>/…` temp dir) and fails with a bare NotFound,
+/// which is confusing precisely because the path looks like a system temp
+/// file rather than a missing project asset. When we can tell the failure came
+/// from a not-found read under that root, we spell out the fix: re-bundle with
+/// `deno desktop --include <path>` so the asset ships with the app.
+fn augment_missing_asset_hint(
+  message: String,
+  vfs_root: Option<&str>,
+) -> String {
+  let Some(vfs_root) = vfs_root else {
+    return message;
+  };
+  let looks_like_missing_read = (message.contains("NotFound")
+    || message.contains("No such file or directory")
+    || message.contains("os error 2")
+    || message.contains("cannot find the file"))
+    && (message.contains(vfs_root) || message.contains("deno-compile-"));
+  if !looks_like_missing_read {
+    return message;
+  }
+  format!(
+    "{message}\n\nhint: This is a compiled desktop app. Files read at runtime \
+     (e.g. Deno.readFile) are not embedded automatically because they aren't \
+     part of the static module graph. Re-bundle with `deno desktop --include \
+     <path>` (repeatable) to embed the missing asset."
+  )
+}
 
 /// Decide whether the desktop shell should pop a native error dialog for a
 /// failure that propagated out of the runtime.

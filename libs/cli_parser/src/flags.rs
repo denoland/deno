@@ -233,6 +233,18 @@ pub struct DesktopFlags {
   /// for `acme://...` links. Sourced from `desktop.app.deepLinks` in
   /// `deno.json`. Each entry is a bare scheme with no `://`.
   pub deep_links: Vec<String>,
+  /// Opt-in to registering the reserved `http`/`https` schemes as deep links.
+  /// Sourced from `desktop.app.allowWebSchemes`. Off by default; only a genuine
+  /// default-browser utility should enable it. `file`/`ftp`/`ws`/`wss` stay
+  /// reserved regardless.
+  pub allow_web_schemes: bool,
+  /// macOS TCC permissions to declare in the app's Info.plist. Each entry emits
+  /// the matching `NS…UsageDescription` key. Sourced from
+  /// `desktop.app.permissions`. Empty means none are emitted.
+  pub macos_permissions: Vec<String>,
+  /// Run as a macOS menu-bar / accessory app (emits `LSUIElement`, hiding the
+  /// Dock icon). Sourced from `desktop.app.agent`. Off by default.
+  pub agent: bool,
   /// macOS codesigning identity (e.g. `Developer ID Application: Acme,
   /// Inc. (TEAMID)`, or `-` for ad-hoc). When unset the bundle is left
   /// unsigned; the system will quarantine it on download.
