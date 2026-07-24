@@ -179,10 +179,8 @@ class X509Certificate {
     if (StringPrototypeIncludes(name, "\0")) {
       throw new ERR_INVALID_ARG_VALUE("name", name);
     }
-    getFlags(options);
-    if (op_node_x509_check_host(this.#handle, name)) {
-      return name;
-    }
+    const flags = getFlags(options);
+    return op_node_x509_check_host(this.#handle, name, flags) ?? undefined;
   }
 
   checkIP(ip: string, options?: unknown): string | undefined {
