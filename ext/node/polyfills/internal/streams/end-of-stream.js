@@ -98,7 +98,11 @@ function eos(stream, options, callback) {
     return eosWeb(stream, options, callback);
   }
 
-  if (isTransformStream(stream)) {
+  // Only a genuine web TransformStream (whose `.readable` is a real
+  // ReadableStream carrying `kIsClosedPromise`) is tracked here; a loosely
+  // shaped `{ readable, writable }` object falls through to the
+  // ERR_INVALID_ARG_TYPE below rather than a cryptic property-access TypeError.
+  if (isTransformStream(stream) && isReadableStream(stream.readable)) {
     // A web TransformStream has no `kIsClosedPromise` of its own; track its
     // readable side, which closes once the transform's output is fully done.
     // Used by `addAbortSignal` to clean up its abort listener.
