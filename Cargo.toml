@@ -634,3 +634,11 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.twox-hash]
 opt-level = 3
+
+# TODO(denoland/deno#17758): Temporary patch to pull in the fix for blank lines
+# being dropped between paragraphs of a list item nested in a block quote.
+# Remove once a dprint-plugin-markdown release containing
+# https://github.com/dprint/dprint-plugin-markdown/pull/189 is published and the
+# version above is bumped to it.
+[patch.crates-io]
+dprint-plugin-markdown = { git = "https://github.com/divybot/dprint-plugin-markdown.git", rev = "f2dadf78d3679b2e2e526006cb88045d4ae0a0d9" }
