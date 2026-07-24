@@ -330,6 +330,31 @@ pub trait DesktopApi: Send + Sync + 'static {
     transparent_titlebar: bool,
     transparent: bool,
   ) -> u32;
+  /// Apply creation-time flags to the pre-created initial window when it is
+  /// adopted by the first `BrowserWindow`.
+  ///
+  /// `frameless` / `no_activate` / `transparent_titlebar` / `transparent` can
+  /// only be set at OS-window construction, but the initial window is created
+  /// eagerly at startup (before user JS runs) so framework apps that never
+  /// construct a `BrowserWindow` still get a window. When the first
+  /// `BrowserWindow` requests any of these flags, the backend recreates the
+  /// initial window with them and returns the new window id (which the runtime
+  /// uses for navigation / HMR). The default implementation is a no-op
+  /// returning the original id, so backends without an eager initial window are
+  /// unaffected.
+  #[allow(clippy::too_many_arguments, reason = "window init flags")]
+  fn reinit_initial_window(
+    &self,
+    initial_window_id: u32,
+    _width: i32,
+    _height: i32,
+    _frameless: bool,
+    _no_activate: bool,
+    _transparent_titlebar: bool,
+    _transparent: bool,
+  ) -> u32 {
+    initial_window_id
+  }
   /// Close a specific window.
   fn close_window(&self, window_id: u32);
   /// Returns true if the given window has been closed (either via
@@ -554,29 +579,36 @@ impl BrowserWindow {
       .expect("desktop mode enabled")
       .clone();
 
-    // Use the initial window if this is the first BrowserWindow,
-    // otherwise create a new one.
-    let window_id = state
+    let width = options.as_ref().and_then(|o| o.width).unwrap_or(800);
+    let height = options.as_ref().and_then(|o| o.height).unwrap_or(600);
+    let frameless = options.as_ref().and_then(|o| o.frameless).unwrap_or(false);
+    let no_activate = options
+      .as_ref()
+      .and_then(|o| o.no_activate)
+      .unwrap_or(false);
+    let transparent_titlebar = options
+      .as_ref()
+      .and_then(|o| o.transparent_titlebar)
+      .unwrap_or(false);
+    let transparent = options
+      .as_ref()
+      .and_then(|o| o.transparent)
+      .unwrap_or(false);
+
+    // Use the initial window if this is the first BrowserWindow, otherwise
+    // create a new one. The initial window is created eagerly at startup with
+    // default (framed / activating) flags, so if this first window requests a
+    // creation-time flag we ask the backend to recreate it accordingly and use
+    // the (possibly new) window id.
+    let window_id = match state
       .try_borrow::<InitialWindowId>()
       .and_then(|iw| iw.0.lock().unwrap().take())
-      .unwrap_or_else(|| {
-        let width = options.as_ref().and_then(|o| o.width).unwrap_or(800);
-        let height = options.as_ref().and_then(|o| o.height).unwrap_or(600);
-        let frameless =
-          options.as_ref().and_then(|o| o.frameless).unwrap_or(false);
-        let no_activate = options
-          .as_ref()
-          .and_then(|o| o.no_activate)
-          .unwrap_or(false);
-        let transparent_titlebar = options
-          .as_ref()
-          .and_then(|o| o.transparent_titlebar)
-          .unwrap_or(false);
-        let transparent = options
-          .as_ref()
-          .and_then(|o| o.transparent)
-          .unwrap_or(false);
-        api.create_window(
+    {
+      Some(initial_window_id)
+        if frameless || no_activate || transparent_titlebar || transparent =>
+      {
+        api.reinit_initial_window(
+          initial_window_id,
           width,
           height,
           frameless,
@@ -584,7 +616,17 @@ impl BrowserWindow {
           transparent_titlebar,
           transparent,
         )
-      });
+      }
+      Some(initial_window_id) => initial_window_id,
+      None => api.create_window(
+        width,
+        height,
+        frameless,
+        no_activate,
+        transparent_titlebar,
+        transparent,
+      ),
+    };
 
     // Default the window title to the app name when the app doesn't set one,
     // so the window shows e.g. "MyApp" instead of the backend's internal
