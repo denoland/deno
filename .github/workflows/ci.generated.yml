@@ -4378,6 +4378,17 @@ jobs:
       - name: Configure canary build
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
+      - name: Configure frame-pointer panic traces
+        run: |-
+          echo "RUSTC_BOOTSTRAP=1" >> "$GITHUB_ENV"
+          {
+            echo "RUSTFLAGS<<__DENO_RUSTFLAGS"
+            echo "$RUSTFLAGS"
+            echo "-Cforce-frame-pointers=yes"
+            echo "-Cforce-unwind-tables=no"
+            echo "-C link-arg=-Wl,--no-eh-frame-hdr"
+            echo "__DENO_RUSTFLAGS"
+          } >> "$GITHUB_ENV"
       - name: Build release
         env:
           DENO_SNAPSHOT_MINIFY_SOURCES: '1'
@@ -4389,8 +4400,8 @@ jobs:
             grep -n fuse-ld .cargo/config.toml
           fi
           df -h
-          cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
-          cargo build --release --locked -p denort_desktop
+          cargo build -Zbuild-std=core,alloc,std,proc_macro,panic_abort --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace-frame-pointer
+          cargo build -Zbuild-std=core,alloc,std,proc_macro,panic_abort --release --locked -p denort_desktop
           df -h
       - name: Check release snapshot flags
         run: |-
@@ -4416,14 +4427,20 @@ jobs:
         run: |-
           cd target/release
           ./deno -A ../../tools/release/create_symcache.ts deno-x86_64-unknown-linux-gnu.symcache
-          strip ./deno
+          strip --remove-section=.eh_frame --remove-section=.eh_frame_hdr ./deno
+          if readelf -SW ./deno | grep -Eq '\.eh_frame(_hdr)?'; then echo 'unwind sections remain in deno'; exit 1; fi
+          if readelf -lW ./deno | grep -q GNU_EH_FRAME; then echo 'PT_GNU_EH_FRAME remains in deno'; exit 1; fi
           shasum -a 256 deno > deno-x86_64-unknown-linux-gnu.sha256sum
           zip -r deno-x86_64-unknown-linux-gnu.zip deno
           shasum -a 256 deno-x86_64-unknown-linux-gnu.zip > deno-x86_64-unknown-linux-gnu.zip.sha256sum
-          strip --strip-debug ./denort
+          strip --strip-debug --remove-section=.eh_frame --remove-section=.eh_frame_hdr ./denort
+          if readelf -SW ./denort | grep -Eq '\.eh_frame(_hdr)?'; then echo 'unwind sections remain in denort'; exit 1; fi
+          if readelf -lW ./denort | grep -q GNU_EH_FRAME; then echo 'PT_GNU_EH_FRAME remains in denort'; exit 1; fi
           zip -r denort-x86_64-unknown-linux-gnu.zip denort
           shasum -a 256 denort-x86_64-unknown-linux-gnu.zip > denort-x86_64-unknown-linux-gnu.zip.sha256sum
-          strip ./libdenort.so
+          strip --remove-section=.eh_frame --remove-section=.eh_frame_hdr ./libdenort.so
+          if readelf -SW ./libdenort.so | grep -Eq '\.eh_frame(_hdr)?'; then echo 'unwind sections remain in libdenort.so'; exit 1; fi
+          if readelf -lW ./libdenort.so | grep -q GNU_EH_FRAME; then echo 'PT_GNU_EH_FRAME remains in libdenort.so'; exit 1; fi
           zip -r libdenort-x86_64-unknown-linux-gnu.zip libdenort.so
           shasum -a 256 libdenort-x86_64-unknown-linux-gnu.zip > libdenort-x86_64-unknown-linux-gnu.zip.sha256sum
           ./deno types > lib.deno.d.ts
@@ -6428,6 +6445,18 @@ jobs:
       - name: Configure canary build
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
+      - name: Configure frame-pointer panic traces
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: |-
+          echo "RUSTC_BOOTSTRAP=1" >> "$GITHUB_ENV"
+          {
+            echo "RUSTFLAGS<<__DENO_RUSTFLAGS"
+            echo "$RUSTFLAGS"
+            echo "-Cforce-frame-pointers=yes"
+            echo "-Cforce-unwind-tables=no"
+            echo "-C link-arg=-Wl,--no-eh-frame-hdr"
+            echo "__DENO_RUSTFLAGS"
+          } >> "$GITHUB_ENV"
       - name: Build release
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         env:
@@ -6440,8 +6469,8 @@ jobs:
             grep -n fuse-ld .cargo/config.toml
           fi
           df -h
-          cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
-          cargo build --release --locked -p denort_desktop
+          cargo build -Zbuild-std=core,alloc,std,proc_macro,panic_abort --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace-frame-pointer
+          cargo build -Zbuild-std=core,alloc,std,proc_macro,panic_abort --release --locked -p denort_desktop
           df -h
       - name: Check release snapshot flags
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
@@ -6470,14 +6499,20 @@ jobs:
         run: |-
           cd target/release
           ./deno -A ../../tools/release/create_symcache.ts deno-aarch64-unknown-linux-gnu.symcache
-          strip ./deno
+          strip --remove-section=.eh_frame --remove-section=.eh_frame_hdr ./deno
+          if readelf -SW ./deno | grep -Eq '\.eh_frame(_hdr)?'; then echo 'unwind sections remain in deno'; exit 1; fi
+          if readelf -lW ./deno | grep -q GNU_EH_FRAME; then echo 'PT_GNU_EH_FRAME remains in deno'; exit 1; fi
           shasum -a 256 deno > deno-aarch64-unknown-linux-gnu.sha256sum
           zip -r deno-aarch64-unknown-linux-gnu.zip deno
           shasum -a 256 deno-aarch64-unknown-linux-gnu.zip > deno-aarch64-unknown-linux-gnu.zip.sha256sum
-          strip --strip-debug ./denort
+          strip --strip-debug --remove-section=.eh_frame --remove-section=.eh_frame_hdr ./denort
+          if readelf -SW ./denort | grep -Eq '\.eh_frame(_hdr)?'; then echo 'unwind sections remain in denort'; exit 1; fi
+          if readelf -lW ./denort | grep -q GNU_EH_FRAME; then echo 'PT_GNU_EH_FRAME remains in denort'; exit 1; fi
           zip -r denort-aarch64-unknown-linux-gnu.zip denort
           shasum -a 256 denort-aarch64-unknown-linux-gnu.zip > denort-aarch64-unknown-linux-gnu.zip.sha256sum
-          strip ./libdenort.so
+          strip --remove-section=.eh_frame --remove-section=.eh_frame_hdr ./libdenort.so
+          if readelf -SW ./libdenort.so | grep -Eq '\.eh_frame(_hdr)?'; then echo 'unwind sections remain in libdenort.so'; exit 1; fi
+          if readelf -lW ./libdenort.so | grep -q GNU_EH_FRAME; then echo 'PT_GNU_EH_FRAME remains in libdenort.so'; exit 1; fi
           zip -r libdenort-aarch64-unknown-linux-gnu.zip libdenort.so
           shasum -a 256 libdenort-aarch64-unknown-linux-gnu.zip > libdenort-aarch64-unknown-linux-gnu.zip.sha256sum
           ./deno types > lib.deno.d.ts
