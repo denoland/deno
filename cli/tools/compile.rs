@@ -751,11 +751,9 @@ pub async fn compile_binary(
       include_paths: &roots.include_paths,
       exclude_paths: effective_exclude
         .iter()
-        .map(|p| cli_options.initial_cwd().join(p))
-        .chain(std::iter::once(
-          cli_options.initial_cwd().join(&output_path),
-        ))
-        .chain(std::iter::once(cli_options.initial_cwd().join(&temp_path)))
+        .flat_map(|p| exclude_path_forms(cli_options.initial_cwd(), p))
+        .chain(exclude_path_forms(cli_options.initial_cwd(), &output_path))
+        .chain(exclude_path_forms(cli_options.initial_cwd(), &temp_path))
         .collect(),
       compile_flags: &compile_flags,
     })
@@ -1158,6 +1156,25 @@ fn compile_watch_paths(
   paths
 }
 
+/// Resolve an `--exclude` / config exclude entry to the forms it must match.
+///
+/// Exclusion is an equality check against the paths the VFS builder and the
+/// include walker visit, and those are canonical. A relative exclude joined
+/// onto the cwd without normalization (`pkg/../../node_modules` keeps its
+/// literal `..` components) or a cwd behind a symlink (macOS `/tmp`) would
+/// never compare equal, silently embedding the tree the user excluded. Keep
+/// both the plain join (existing behavior) and the canonical form.
+fn exclude_path_forms(
+  initial_cwd: &Path,
+  path: impl AsRef<Path>,
+) -> impl Iterator<Item = PathBuf> {
+  let joined = initial_cwd.join(path.as_ref());
+  let canonical = crate::util::fs::canonicalize_path_maybe_not_exists(&joined)
+    .ok()
+    .filter(|canonical| canonical != &joined);
+  std::iter::once(joined).chain(canonical)
+}
+
 fn get_module_roots_and_include_paths(
   entrypoint: &ModuleSpecifier,
   include: &[String],
@@ -1238,7 +1255,7 @@ fn get_module_roots_and_include_paths(
   let mut include_paths = Vec::new();
   let exclude_set = exclude
     .iter()
-    .map(|path| initial_cwd.join(path))
+    .flat_map(|path| exclude_path_forms(initial_cwd, path))
     .collect::<HashSet<_>>();
   module_roots.push(entrypoint.clone());
   for side_module in include {
