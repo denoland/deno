@@ -65,20 +65,28 @@ pub async fn format(
     let start_dir = &cli_options.start_dir;
     let fmt_config = start_dir
       .to_fmt_config(FilePatterns::new_with_base(start_dir.dir_path()))?;
-    let fmt_options = FmtOptions::resolve(
+    let mut fmt_options = FmtOptions::resolve(
       fmt_config,
       cli_options.resolve_config_unstable_fmt_options(),
       &fmt_flags,
     );
-    return format_stdin(
-      &fmt_flags,
-      fmt_options,
-      cli_options
-        .ext_flag()
-        .as_ref()
-        .map(|s| s.as_str())
-        .unwrap_or("ts"),
+    let ext = cli_options
+      .ext_flag()
+      .as_ref()
+      .map(|s| s.as_str())
+      .unwrap_or("ts")
+      .to_string();
+    // Honor `.editorconfig` for stdin the same way file-based formatting
+    // does, resolving it against a synthetic path in the current directory
+    // (https://github.com/denoland/deno/issues/36172).
+    let editorconfig_cache = EditorConfigCache::new();
+    let stdin_path = cli_options.initial_cwd().join(format!("_stdin.{ext}"));
+    fmt_options.options = resolve_per_file_options(
+      &fmt_options.options,
+      &editorconfig_cache,
+      &stdin_path,
     );
+    return format_stdin(&fmt_flags, fmt_options, &ext);
   }
 
   if let Some(watch_flags) = &flags.watch {
