@@ -1561,7 +1561,7 @@ pub fn op_fs_read_file_sync(
     .context_path("readfile", &path)?;
 
   // todo(https://github.com/denoland/deno/issues/27107): do not clone here
-  Ok(buf.into_owned().to_vec().into())
+  Ok(buf.into_owned().into())
 }
 
 #[op2(stack_trace)]
@@ -1609,7 +1609,7 @@ pub async fn op_fs_read_file_async(
   };
 
   // todo(https://github.com/denoland/deno/issues/27107): do not clone here
-  Ok(buf.into_owned().to_vec().into())
+  Ok(buf.into_owned().into())
 }
 
 #[op2(stack_trace)]
