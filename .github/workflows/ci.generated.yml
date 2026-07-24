@@ -628,9 +628,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: |-
           if [[ -n "$(git status --porcelain)" ]]; then
-          echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
+          echo "× Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
           echo ""
-          echo "📋 Status:"
+          echo " Status:"
           git status
           echo ""
           exit 1
@@ -1167,9 +1167,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: |-
           if [[ -n "$(git status --porcelain)" ]]; then
-          echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
+          echo "× Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
           echo ""
-          echo "📋 Status:"
+          echo " Status:"
           git status
           echo ""
           exit 1
@@ -1557,9 +1557,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: |-
           if [[ -n "$(git status --porcelain)" ]]; then
-          echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
+          echo "× Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
           echo ""
-          echo "📋 Status:"
+          echo " Status:"
           git status
           echo ""
           exit 1
@@ -2257,9 +2257,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: |-
           if [[ -n "$(git status --porcelain)" ]]; then
-          echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
+          echo "× Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
           echo ""
-          echo "📋 Status:"
+          echo " Status:"
           git status
           echo ""
           exit 1
@@ -2607,9 +2607,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: |-
           if [[ -n "$(git status --porcelain)" ]]; then
-          echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
+          echo "× Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
           echo ""
-          echo "📋 Status:"
+          echo " Status:"
           git status
           echo ""
           exit 1
@@ -3269,9 +3269,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: |-
           if [[ -n "$(git status --porcelain)" ]]; then
-          echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
+          echo "× Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
           echo ""
-          echo "📋 Status:"
+          echo " Status:"
           git status
           echo ""
           exit 1
@@ -3619,9 +3619,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: |-
           if [[ -n "$(git status --porcelain)" ]]; then
-          echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
+          echo "× Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
           echo ""
-          echo "📋 Status:"
+          echo " Status:"
           git status
           echo ""
           exit 1
@@ -4162,9 +4162,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: |-
           if [[ -n "$(git status --porcelain)" ]]; then
-          echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
+          echo "× Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
           echo ""
-          echo "📋 Status:"
+          echo " Status:"
           git status
           echo ""
           exit 1
@@ -4878,9 +4878,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: |-
           if [[ -n "$(git status --porcelain)" ]]; then
-          echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
+          echo "× Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
           echo ""
-          echo "📋 Status:"
+          echo " Status:"
           git status
           echo ""
           exit 1
@@ -5560,9 +5560,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: |-
           if [[ -n "$(git status --porcelain)" ]]; then
-          echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
+          echo "× Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
           echo ""
-          echo "📋 Status:"
+          echo " Status:"
           git status
           echo ""
           exit 1
@@ -6061,9 +6061,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && github.event_name == ''pull_request'''
         run: |-
           if [[ -n "$(git status --porcelain)" ]]; then
-          echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
+          echo "× Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
           echo ""
-          echo "📋 Status:"
+          echo " Status:"
           git status
           echo ""
           exit 1
@@ -6917,9 +6917,9 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.event_name == ''pull_request'''
         run: |-
           if [[ -n "$(git status --porcelain)" ]]; then
-          echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
+          echo "× Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."
           echo ""
-          echo "📋 Status:"
+          echo " Status:"
           git status
           echo ""
           exit 1

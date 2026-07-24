@@ -11,5 +11,5 @@ Downloaded 1 package from npm
 Dependencies:
 + npm:@denotest/lifecycle-scripts-simple 1.0.0
 
-✅ Successfully installed lifecycle-scripts-simple
+✓ Successfully installed lifecycle-scripts-simple
 [WILDCARD]

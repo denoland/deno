@@ -1,5 +1,5 @@
 ---
-name: 🐛 Bug Report
+name:  Bug Report
 about: Report an issue found in the Deno CLI.
 title: ''
 labels: ''

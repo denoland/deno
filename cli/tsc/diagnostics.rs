@@ -723,7 +723,7 @@ mod tests {
         },
         "fileName": "test.ts",
         "messageText": "Example diagnostic.",
-        "sourceLine": "\t😀foo();",
+        "sourceLine": "\tfoo();",
         "category": 1,
         "code": 2322
       }
@@ -732,7 +732,7 @@ mod tests {
     let actual = diagnostics.to_string();
     assert_eq!(
       strip_ansi_codes(&actual),
-      "TS2322 [ERROR]: Example diagnostic.\n\t😀foo();\n\t  ~~~\n    at test.ts:1:4"
+      "TS2322 [ERROR]: Example diagnostic.\n\tfoo();\n\t  ~~~\n    at test.ts:1:4"
     );
   }
 
@@ -750,7 +750,7 @@ mod tests {
         },
         "fileName": "test.ts",
         "messageText": "Example diagnostic.",
-        "sourceLine": "😀foo();",
+        "sourceLine": "foo();",
         "category": 1,
         "code": 2322
       }

@@ -101,7 +101,7 @@ pub fn status(maybe_name: Option<&str>) -> Result<(), AnyError> {
 
   if kernel_spec_path.exists() {
     log::info!(
-      "✅ Deno kernel already installed at {}",
+      "✓ Deno kernel already installed at {}",
       kernel_spec_dir_path.display()
     );
     Ok(())
@@ -112,7 +112,7 @@ pub fn status(maybe_name: Option<&str>) -> Result<(), AnyError> {
       install_cmd.push_str(name);
     }
     log::warn!(
-      "ℹ️ Deno kernel is not yet installed, run `{}` to set it up",
+      "ℹ Deno kernel is not yet installed, run `{}` to set it up",
       install_cmd
     );
     Ok(())
@@ -188,7 +188,7 @@ pub fn install(
     .with_context(failed_icon_fn)?;
 
   log::info!(
-    "✅ Deno kernelspec installed successfully at {}.",
+    "✓ Deno kernelspec installed successfully at {}.",
     kernel_spec_dir_path.display()
   );
   Ok(())

@@ -1,4 +1,4 @@
-const mixed = "@Ā๐😀";
+const mixed = "@Ā๐";
 
 function generateRandom(bytes) {
   let result = "";

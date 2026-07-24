@@ -318,7 +318,7 @@ pub async fn uninstall(
       log::info!("deleted {}", config_dir.display());
     }
 
-    log::info!("✅ Successfully uninstalled {}", name);
+    log::info!("✓ Successfully uninstalled {}", name);
   }
 
   Ok(())
@@ -883,7 +883,7 @@ fn create_install_shim(
 
   generate_executable_file(&shim_data)?;
 
-  log::info!("✅ Successfully installed {}", bin_name_and_url.name);
+  log::info!("✓ Successfully installed {}", bin_name_and_url.name);
   log::info!("{}", shim_data.file_path.display());
   if cfg!(windows) {
     let display_path = shim_data.file_path.with_extension("");
@@ -892,7 +892,7 @@ fn create_install_shim(
   let installation_dir_str = shim_data.installation_dir.to_string_lossy();
 
   if !is_in_path(&shim_data.installation_dir) {
-    log::info!("ℹ️  Add {} to PATH", installation_dir_str);
+    log::info!("ℹ  Add {} to PATH", installation_dir_str);
     if cfg!(windows) {
       log::info!("    set PATH=%PATH%;{}", installation_dir_str);
     } else {

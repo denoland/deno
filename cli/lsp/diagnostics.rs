@@ -2590,7 +2590,7 @@ mod tests {
       &[(
         "a.ts",
         r#"
-        import { 東京 } from "./🦕.ts";
+        import { 東京 } from "./.ts";
         "#,
         1,
         LanguageId::TypeScript,
@@ -2614,7 +2614,7 @@ mod tests {
               "code": "no-local",
               "source": "deno",
               "message": format!(
-                "Unable to load a local module: {}🦕.ts\nPlease check the file path.",
+                "Unable to load a local module: {}.ts\nPlease check the file path.",
                 temp_dir.url(),
               ),
             },

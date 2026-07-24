@@ -275,7 +275,7 @@ impl Performance {
   /// ```
   /// Don't use like this:
   /// ```rust
-  /// // ❌
+  /// // ×
   /// let _ = self.performance.measure_scope("foo");
   /// ```
   pub fn measure_scope<S: AsRef<str>>(

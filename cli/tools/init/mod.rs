@@ -263,7 +263,7 @@ Deno.test("returns json on /api", async () => {
     )?;
   }
 
-  info!("✅ {}", colors::green("Project initialized"));
+  info!("✓ {}", colors::green("Project initialized"));
   info!("");
   info!("{}", colors::gray("Run these commands to get started"));
   info!("");
@@ -441,7 +441,7 @@ fn confirm_package_trust(
   if std::io::stdin().is_terminal() {
     log::info!(
       cstr!(
-        "⚠️  Do you fully trust <y>{}</> package? Deno will invoke code from it with all permissions. Do you want to continue? <p(245)>[y/n]</>"
+        "  Do you fully trust <y>{}</> package? Deno will invoke code from it with all permissions. Do you want to continue? <p(245)>[y/n]</>"
       ),
       script_name
     );
@@ -534,7 +534,7 @@ fn create_file(
   let path = dir.join(filename);
   if path.exists() {
     info!(
-      "ℹ️ {}",
+      "ℹ {}",
       colors::gray(format!("Skipped creating {filename} as it already exists"))
     );
     Ok(())

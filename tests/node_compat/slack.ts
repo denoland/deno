@@ -49,15 +49,15 @@ function formatRatio(ratio: number) {
 
 function formatDiff(diff: number) {
   if (diff === 0) {
-    return `±0% 🟨`;
+    return `±0% `;
   }
 
   const diffStr = diff.toFixed(2);
 
   if (diff > 0) {
-    return `+${diffStr}% 🟩`;
+    return `+${diffStr}% `;
   } else {
-    return `${diffStr}% 🟥`;
+    return `${diffStr}% `;
   }
 }
 

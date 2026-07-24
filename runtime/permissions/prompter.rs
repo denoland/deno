@@ -62,7 +62,7 @@ fn is_prompt_control_character(c: char) -> bool {
     )
 }
 
-pub const PERMISSION_EMOJI: &str = "⚠️";
+pub const PERMISSION_EMOJI: &str = "";
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum PromptResponse {
@@ -445,11 +445,11 @@ impl PermissionPrompter for TtyPrompter {
       // Escape the message/name since they can contain user-controlled strings
       // (env var names, file paths) that could otherwise spoof the terminal.
       eprintln!(
-        "❌ Cannot prompt for {}: stdin is in raw mode (a library has likely called setRawMode).",
+        "× Cannot prompt for {}: stdin is in raw mode (a library has likely called setRawMode).",
         escape_control_characters(message)
       );
       eprintln!(
-        "❌ Run again with --allow-{} to grant the permission up front, or with -A to allow all permissions.",
+        "× Run again with --allow-{} to grant the permission up front, or with -A to allow all permissions.",
         escape_control_characters(name)
       );
       return PromptResponse::Deny;
@@ -458,15 +458,15 @@ impl PermissionPrompter for TtyPrompter {
     #[allow(clippy::print_stderr, reason = "actually want to print")]
     if message.len() > MAX_PERMISSION_PROMPT_LENGTH {
       eprintln!(
-        "❌ Permission prompt length ({} bytes) was larger than the configured maximum length ({} bytes): denying request.",
+        "× Permission prompt length ({} bytes) was larger than the configured maximum length ({} bytes): denying request.",
         message.len(),
         MAX_PERMISSION_PROMPT_LENGTH
       );
       eprintln!(
-        "❌ WARNING: This may indicate that code is trying to bypass or hide permission check requests."
+        "× WARNING: This may indicate that code is trying to bypass or hide permission check requests."
       );
       eprintln!(
-        "❌ Run again with --allow-{name} to bypass this check if this is really what you want to do."
+        "× Run again with --allow-{name} to bypass this check if this is really what you want to do."
       );
       return PromptResponse::Deny;
     }
@@ -589,19 +589,19 @@ impl PermissionPrompter for TtyPrompter {
         'y' | 'Y' => {
           clear_n_lines(&mut stderr_lock, clear_n);
           let msg = format!("Granted {message}.");
-          writeln!(stderr_lock, "✅ {}", colors::bold(&msg)).unwrap();
+          writeln!(stderr_lock, "✓ {}", colors::bold(&msg)).unwrap();
           break PromptResponse::Allow;
         }
         'n' | 'N' | '\x1b' => {
           clear_n_lines(&mut stderr_lock, clear_n);
           let msg = format!("Denied {message}.");
-          writeln!(stderr_lock, "❌ {}", colors::bold(&msg)).unwrap();
+          writeln!(stderr_lock, "× {}", colors::bold(&msg)).unwrap();
           break PromptResponse::Deny;
         }
         'A' if is_unary => {
           clear_n_lines(&mut stderr_lock, clear_n);
           let msg = format!("Granted all {name} access.");
-          writeln!(stderr_lock, "✅ {}", colors::bold(&msg)).unwrap();
+          writeln!(stderr_lock, "✓ {}", colors::bold(&msg)).unwrap();
           break PromptResponse::AllowAll;
         }
         _ => {

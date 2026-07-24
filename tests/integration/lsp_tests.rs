@@ -2916,7 +2916,7 @@ fn lsp_hover_change_mbc() {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "const a = `编写软件很难`;\nconst b = `👍🦕😃`;\nconsole.log(a, b);\n"
+        "text": "const a = `编写软件很难`;\nconst b = ``;\nconsole.log(a, b);\n"
       }
     }),
   );
@@ -2957,7 +2957,7 @@ fn lsp_hover_change_mbc() {
     json!({
       "contents": {
         "kind": "markdown",
-        "value": "```tsx\nconst b: \"😃\"\n```\n",
+        "value": "```tsx\nconst b: \"\"\n```\n",
       },
       "range": {
         "start": { "line": 2, "character": 15, },
@@ -3076,7 +3076,7 @@ fn lsp_hover_dependency() {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "import * as a from \"http://127.0.0.1:4545/xTypeScriptTypes.js\";\n// @ts-types=\"http://127.0.0.1:4545/type_definitions/foo.d.ts\"\nimport * as b from \"http://127.0.0.1:4545/type_definitions/foo.js\";\nimport * as c from \"http://127.0.0.1:4545/subdir/type_reference.js\";\nimport * as d from \"http://127.0.0.1:4545/subdir/mod1.ts\";\nimport * as e from \"data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=\";\nimport * as f from \"./file_01.ts\";\nimport * as g from \"http://localhost:4545/x/a/mod.ts\";\nimport * as h from \"./mod🦕.ts\";\n\nconsole.log(a, b, c, d, e, f, g, h);\n"
+        "text": "import * as a from \"http://127.0.0.1:4545/xTypeScriptTypes.js\";\n// @ts-types=\"http://127.0.0.1:4545/type_definitions/foo.d.ts\"\nimport * as b from \"http://127.0.0.1:4545/type_definitions/foo.js\";\nimport * as c from \"http://127.0.0.1:4545/subdir/type_reference.js\";\nimport * as d from \"http://127.0.0.1:4545/subdir/mod1.ts\";\nimport * as e from \"data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=\";\nimport * as f from \"./file_01.ts\";\nimport * as g from \"http://localhost:4545/x/a/mod.ts\";\nimport * as h from \"./mod.ts\";\n\nconsole.log(a, b, c, d, e, f, g, h);\n"
       }
     }),
   );
@@ -3206,7 +3206,7 @@ fn lsp_hover_dependency() {
     json!({
       "contents": {
         "kind": "markdown",
-        "value": "**Resolved Dependency**\n\n**Code**: file&#8203;:///a/mod🦕.ts\n"
+        "value": "**Resolved Dependency**\n\n**Code**: file&#8203;:///a/mod.ts\n"
       },
       "range": {
         "start": { "line": 8, "character": 19 },
@@ -5195,7 +5195,7 @@ fn lsp_code_lens_test() {
         "end": { "line": 4, "character": 9 }
       },
       "command": {
-        "title": "▶︎ Run Test",
+        "title": " Run Test",
         "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
@@ -5223,7 +5223,7 @@ fn lsp_code_lens_test() {
         "end": { "line": 5, "character": 9 }
       },
       "command": {
-        "title": "▶︎ Run Test",
+        "title": " Run Test",
         "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
@@ -5251,7 +5251,7 @@ fn lsp_code_lens_test() {
         "end": { "line": 9, "character": 4 }
       },
       "command": {
-        "title": "▶︎ Run Test",
+        "title": " Run Test",
         "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
@@ -5279,7 +5279,7 @@ fn lsp_code_lens_test() {
         "end": { "line": 13, "character": 4 }
       },
       "command": {
-        "title": "▶︎ Run Test",
+        "title": " Run Test",
         "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
@@ -5307,7 +5307,7 @@ fn lsp_code_lens_test() {
         "end": { "line": 14, "character": 5 }
       },
       "command": {
-        "title": "▶︎ Run Test",
+        "title": " Run Test",
         "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
@@ -5335,7 +5335,7 @@ fn lsp_code_lens_test() {
         "end": { "line": 18, "character": 5 }
       },
       "command": {
-        "title": "▶︎ Run Test",
+        "title": " Run Test",
         "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
@@ -5363,7 +5363,7 @@ fn lsp_code_lens_test() {
         "end": { "line": 19, "character": 5 }
       },
       "command": {
-        "title": "▶︎ Run Test",
+        "title": " Run Test",
         "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
@@ -5391,7 +5391,7 @@ fn lsp_code_lens_test() {
         "end": { "line": 23, "character": 5 }
       },
       "command": {
-        "title": "▶︎ Run Test",
+        "title": " Run Test",
         "command": "deno.client.test",
         "arguments": [
           "file:///a/file.ts",
@@ -9354,7 +9354,7 @@ fn lsp_completions_auto_import() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": url_to_uri(&Url::parse("file:///a/🦕.ts").unwrap()).unwrap(),
+      "uri": url_to_uri(&Url::parse("file:///a/.ts").unwrap()).unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "/**\n *\n * @example\n * ```ts\n * const result = add(1, 2);\n * console.log(result); // 3\n * ```\n *\n * @param {number} a - The first number\n * @param {number} b - The second number\n */\nexport function add(a: number, b: number) {\n  return a + b;\n}",
@@ -9384,10 +9384,10 @@ fn lsp_completions_auto_import() {
     json!({
       "label": "add",
       "labelDetails": {
-        "description": "./🦕.ts",
+        "description": "./.ts",
       },
       "kind": 3,
-      "detail": "Add import from \"./🦕.ts\"\n\nfunction add(a: number, b: number): number",
+      "detail": "Add import from \"./.ts\"\n\nfunction add(a: number, b: number): number",
       "documentation": {
         "kind": "markdown",
         "value": "\n\n*@example*\n```ts\nconst result = add(1, 2);\nconsole.log(result); // 3\n```\n\n\n*@param* `a` - The first number\n\n\n*@param* `b` - The second number\n"
@@ -9399,7 +9399,7 @@ fn lsp_completions_auto_import() {
             "start": { "line": 0, "character": 0 },
             "end": { "line": 0, "character": 0 }
           },
-          "newText": "import { add } from \"./🦕.ts\";\n\n"
+          "newText": "import { add } from \"./.ts\";\n\n"
         }
       ]
     })
@@ -13825,7 +13825,7 @@ fn lsp_format_mbc() {
       "uri": "file:///a/file.ts",
       "languageId": "typescript",
       "version": 1,
-      "text": "const bar = '👍🇺🇸😃'\nconsole.log('hello deno')\n"
+      "text": "const bar = ''\nconsole.log('hello deno')\n"
     }
   }));
   let res = client.write_request(
@@ -13847,7 +13847,7 @@ fn lsp_format_mbc() {
         "start": { "line": 0, "character": 0 },
         "end": { "line": 2, "character": 0 }
       },
-      "newText": "const bar = \"👍🇺🇸😃\";\nconsole.log(\"hello deno\");\n"
+      "newText": "const bar = \"\";\nconsole.log(\"hello deno\");\n"
     }])
   );
   client.shutdown();

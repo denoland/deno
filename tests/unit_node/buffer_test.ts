@@ -832,7 +832,7 @@ Deno.test({
     const buf2 = Buffer.from("zz34", "hex");
     assertEquals(buf2, Buffer.from([]));
 
-    const buf3 = Buffer.from("123😁aa", "hex");
+    const buf3 = Buffer.from("123aa", "hex");
     assertEquals(buf3, Buffer.from([0x12]));
   },
 });

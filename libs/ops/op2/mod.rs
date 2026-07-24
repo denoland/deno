@@ -657,7 +657,7 @@ mod tests {
       actual += &format!(
         "<tr>\n<td>\n\n```text\n{}\n```\n\n</td><td>\n{}\n</td><td>\n{}\n</td><td>\n{}\n</td></tr>\n",
         type_param,
-        if fast { "✅" } else { "" },
+        if fast { "✓" } else { "" },
         v8,
         notes
       );
@@ -740,8 +740,8 @@ mod tests {
       actual += &format!(
         "<tr>\n<td>\n\n```text\n{}\n```\n\n</td><td>\n{}\n</td><td>\n{}\n</td><td>\n{}\n</td><td>\n{}\n</td></tr>\n",
         type_param,
-        if fast { "✅" } else { "" },
-        if async_support { "✅" } else { "" },
+        if fast { "✓" } else { "" },
+        if async_support { "✓" } else { "" },
         v8,
         notes
       );

@@ -74,7 +74,7 @@ if (Deno.args[0] === "--check") {
       "Mismatch between pristine and updated source (wrote mismatch to /tmp/mismatch.txt)",
     );
   } else {
-    console.log("✅ Templated sections would not change");
+    console.log("✓ Templated sections would not change");
   }
 } else {
   Deno.writeTextFileSync(infraJsPath, infraOutput);

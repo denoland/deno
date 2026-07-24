@@ -31,7 +31,7 @@ fn install_basic() {
 
   output.assert_exit_code(0);
   let output_text = output.combined_output();
-  assert_contains!(output_text, "✅ Successfully installed echo_test");
+  assert_contains!(output_text, "✓ Successfully installed echo_test");
 
   // no lockfile should be created locally
   assert!(!temp_dir.path().join("deno.lock").exists());
@@ -213,7 +213,7 @@ fn install_global_from_task_with_relative_import_map() {
 
   output.assert_exit_code(0);
   let output_text = output.combined_output();
-  assert_contains!(output_text, "✅ Successfully installed test");
+  assert_contains!(output_text, "✓ Successfully installed test");
   assert_not_contains!(output_text, ".test/imports.json");
 
   let mut file_path = temp_dir.path().join("root/bin/test");
@@ -268,7 +268,7 @@ fn install_global_with_absolute_import_map() {
 
   output.assert_exit_code(0);
   let output_text = output.combined_output();
-  assert_contains!(output_text, "✅ Successfully installed test");
+  assert_contains!(output_text, "✓ Successfully installed test");
 
   let mut file_path = temp_dir.path().join("root/bin/test");
   if cfg!(windows) {

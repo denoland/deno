@@ -1616,7 +1616,7 @@ mod tests {
 
   #[test]
   fn split_utf8_works() {
-    let input = r#"{"versions":{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaa":{},"bcdefghijkabc♥♥":{}}}"#;
+    let input = r#"{"versions":{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaa":{},"bcdefghijkabc♡♡":{}}}"#;
     let builder = TokensBuilder::new();
     let expected = builder
       .op(0) // {
@@ -1626,7 +1626,7 @@ mod tests {
       .op(2) // {
       .op(0) // }
       .op(0) // ,
-      .string(1, "bcdefghijkabc♥♥")
+      .string(1, "bcdefghijkabc♡♡")
       .op(2) // {
       .op(0) // }
       .op(0) // }
@@ -1637,11 +1637,11 @@ mod tests {
 
   #[test]
   fn test_pluck_versions() {
-    let input = r#"{"versions":{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaa":{},"bcdefghijkabc♥♥":{}},"dist-tags":{"latest":"foo","bar":"baz"}}"#;
+    let input = r#"{"versions":{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaa":{},"bcdefghijkabc♡♡":{}},"dist-tags":{"latest":"foo","bar":"baz"}}"#;
     let versions = pluck_versions(input).unwrap();
     assert_eq!(
       versions.versions,
-      vec!["aaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bcdefghijkabc♥♥"]
+      vec!["aaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bcdefghijkabc♡♡"]
     );
     assert_eq!(
       versions.dist_tags,

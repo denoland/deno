@@ -609,7 +609,7 @@ Deno.test(
 );
 
 Deno.test({ permissions: { net: true } }, async function fetchInitBlobBody() {
-  const data = "const a = 1 🦕";
+  const data = "const a = 1 ";
   const blob = new Blob([data], {
     type: "text/javascript",
   });

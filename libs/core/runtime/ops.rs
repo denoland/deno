@@ -1139,13 +1139,13 @@ mod tests {
         (1000, "'a'.repeat(1000)"),
         // Latin-1
         (2000, "'\\u00a0'.repeat(1000)"),
-        // 4-byte UTF-8 emoji (1F995 = 🦕)
+        // 4-byte UTF-8 emoji (1F995 = )
         (4000, "'\\u{1F995}'.repeat(1000)"),
         // ASCII
         (10000, "'a'.repeat(10000)"),
         // Latin-1
         (20000, "'\\u00a0'.repeat(10000)"),
-        // 4-byte UTF-8 emoji (1F995 = 🦕)
+        // 4-byte UTF-8 emoji (1F995 = )
         (40000, "'\\u{1F995}'.repeat(10000)"),
       ] {
         let test = format!("assert({op}({str}) == {len})");

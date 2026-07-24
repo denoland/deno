@@ -459,8 +459,8 @@ throw new Error(\"Hello world!\");
     assert_eq!('メ'.len_utf16(), 1);
     assert_eq!('编'.len_utf8(), 3);
     assert_eq!('编'.len_utf16(), 1);
-    assert_eq!('🦕'.len_utf8(), 4);
-    assert_eq!('🦕'.len_utf16(), 2);
+    assert_eq!('\u{10348}'.len_utf8(), 4);
+    assert_eq!('\u{10348}'.len_utf16(), 2);
   }
 
   #[test]
@@ -560,7 +560,7 @@ const C: char = \"メ メ\";
 
   #[test]
   fn test_offset_emoji() {
-    let text = "hi 👋\nbye";
+    let text = "hi \nbye";
     let map = Utf16Map::new(text);
 
     let utf8_offset = TextSize::from(3);

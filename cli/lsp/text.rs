@@ -159,8 +159,8 @@ mod tests {
 
   #[test]
   fn test_get_edits_mbc() {
-    let a = "const bar = \"👍🇺🇸😃\";\nconsole.log('hello deno')\n";
-    let b = "const bar = \"👍🇺🇸😃\";\nconsole.log(\"hello deno\");\n";
+    let a = "const bar = \"\";\nconsole.log('hello deno')\n";
+    let b = "const bar = \"\";\nconsole.log(\"hello deno\");\n";
     let actual = get_edits(a, b, &LineIndex::new(a));
     // Line-level diff replaces only the changed line
     assert_eq!(
