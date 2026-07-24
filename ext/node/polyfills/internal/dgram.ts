@@ -37,6 +37,8 @@ const {
   isInt32,
   validateFunction,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const { isIP } = core.loadExtScript("ext:deno_node/internal/net.ts");
 const { FunctionPrototypeBind, MapPrototypeGet, Symbol } = primordials;
 
 type SocketType = "udp4" | "udp6";
@@ -67,12 +69,25 @@ function lookup6(
   return lookup(address || "::1", 6, callback);
 }
 
+function defaultLookup(
+  address: string,
+  family: number,
+  callback: (err: unknown, address: string, family: number) => void,
+) {
+  if (isIP(address) === family) {
+    lazyDns();
+    nextTick(callback, null, address, family);
+    return;
+  }
+  return lazyDns().default.lookup(address, family, callback);
+}
+
 function newHandle(
   type: SocketType,
   lookup?: (...args: unknown[]) => void,
 ): InstanceType<typeof UDP> {
   if (lookup === undefined) {
-    lookup = lazyDns().default.lookup;
+    lookup = defaultLookup as (...args: unknown[]) => void;
   } else {
     validateFunction(lookup, "lookup");
   }
