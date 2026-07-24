@@ -1,0 +1,3 @@
+write cwd: ok
+write denied subdir: NotCapable
+write .git config: NotCapable

@@ -1,0 +1,36 @@
+{
+  "tempDir": true,
+  "tests": {
+    "write_confinement": {
+      // No --allow-write: write is confined to the cwd and the OS temp
+      // directory, minus the `.git` directory inside the cwd. Writes elsewhere
+      // on disk deny naming --allow-write.
+      "args": "run main.ts",
+      "output": "main.out"
+    },
+    "deny_write_composes": {
+      // --deny-write=sub composes on top of the default cwd+temp grant: the cwd
+      // is still writable but the denied subdirectory is not, and the `.git`
+      // deny is still in effect alongside the user --deny-write (deny wins, and
+      // the `.git` deny is merged into the user deny rather than overwriting
+      // it).
+      "args": "run --deny-write=sub main_deny.ts",
+      "output": "main_deny.out"
+    },
+    "explicit_allow_write_is_additive": {
+      // The default cwd+temp confinement is additive: it is appended to a
+      // scoped --allow-write, so another file in the cwd and the temp dir are
+      // writable while a path outside cwd+temp and the explicit grant still
+      // denies.
+      "args": "run --allow-write=allowed.txt main_explicit.ts",
+      "output": "main_explicit.out"
+    },
+    "write_false_permission_denies": {
+      // A Deno.test with permissions: { write: false } fully denies write even
+      // though the process runs with the default cwd+temp confinement (no leak
+      // from the default into the child permissions).
+      "args": "test --quiet main_test.ts",
+      "output": "main_test.out"
+    }
+  }
+}

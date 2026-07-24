@@ -1212,11 +1212,16 @@ impl CliOptions {
     dir: &WorkspaceDirectory,
   ) -> Result<PermissionsOptions, AnyError> {
     let config_permissions = self.resolve_config_permissions_for_dir(dir)?;
+    let has_config_permissions = config_permissions.is_some();
     let mut permissions_options = flags_to_permissions_options(
       &self.flags.permissions,
       config_permissions,
     )?;
     self.augment_import_permissions(&mut permissions_options);
+    self.apply_default_write_confinement(
+      &mut permissions_options,
+      has_config_permissions,
+    );
     if let DenoSubcommand::Serve(serve_flags) = &self.flags.subcommand {
       augment_permissions_with_serve_flags(
         &mut permissions_options,
@@ -1224,6 +1229,55 @@ impl CliOptions {
       )?;
     }
     Ok(permissions_options)
+  }
+
+  /// Whether the current subcommand executes user code with the prompt-based
+  /// permission defaults. `deno eval` and `deno x` already imply allow-all, and
+  /// `deno compile` bakes permissions at compile time (the standalone runtime
+  /// applies the write confinement directly), so the default write confinement
+  /// only applies to these subcommands from the CLI.
+  fn runs_user_code_with_prompt_defaults(&self) -> bool {
+    matches!(
+      self.flags.subcommand,
+      DenoSubcommand::Run(_)
+        | DenoSubcommand::Serve(_)
+        | DenoSubcommand::Test(_)
+        | DenoSubcommand::Bench(_)
+        | DenoSubcommand::Task(_)
+        | DenoSubcommand::Repl(_)
+    )
+  }
+
+  /// Applies the default write confinement (cwd + OS temp dir, minus the `.git`
+  /// directory inside the cwd) to the computed permission options for
+  /// subcommands that execute user code with the prompt-based defaults. The
+  /// standalone/compiled runtime applies the same confinement directly (without
+  /// this guard) since a compiled app always runs user code. The shared helper
+  /// preserves the deny-respecting/additive semantics: cwd+temp are appended to
+  /// a scoped `--allow-write=<path>`, the `.git` deny is merged into any
+  /// `--deny-write` rather than overwriting it, and only `-A`/bare
+  /// `--allow-write` (allow all) is left untouched.
+  ///
+  /// It is also skipped when the user requested a config-file permission set
+  /// (via `-P`) or one is in effect (a subcommand default set): selecting a
+  /// permission set is an explicit permission choice, so the default must not
+  /// inject cwd+temp write into a set that intentionally omits write, nor grant
+  /// write when a requested set does not exist.
+  fn apply_default_write_confinement(
+    &self,
+    options: &mut PermissionsOptions,
+    has_config_permissions: bool,
+  ) {
+    if !self.runs_user_code_with_prompt_defaults()
+      || has_config_permissions
+      || self.flags.permission_set.is_some()
+    {
+      return;
+    }
+    deno_runtime::deno_permissions::apply_default_write_confinement(
+      options,
+      self.initial_cwd(),
+    );
   }
 
   fn resolve_config_permissions_for_dir<'a>(
