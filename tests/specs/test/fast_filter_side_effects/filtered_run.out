@@ -1,0 +1,7 @@
+Check [WILDCARD]match_test.ts
+Check [WILDCARD]other_test.ts
+running 1 test from ./match_test.ts
+match ... ok ([WILDCARD])
+
+ok | 1 passed | 0 failed | 1 filtered out ([WILDCARD])
+
