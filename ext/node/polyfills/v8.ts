@@ -9,6 +9,7 @@ const {
   Array,
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,
+  ArrayPrototypeSlice,
   ArrayPrototypeSplice,
   BigInt64Array,
   BigUint64Array,
@@ -702,8 +703,11 @@ function ensureHooksInstalled() {
       if (inPromiseHook || initHooks.length === 0) return;
       inPromiseHook = true;
       try {
-        for (let i = 0; i < initHooks.length; i++) {
-          initHooks[i](promise, parent);
+        // Snapshot the list: a hook that removes itself (or another) during
+        // dispatch must not shift the indices of hooks still to be called.
+        const hooks = ArrayPrototypeSlice(initHooks, 0);
+        for (let i = 0; i < hooks.length; i++) {
+          hooks[i](promise, parent);
         }
       } finally {
         inPromiseHook = false;
@@ -713,8 +717,9 @@ function ensureHooksInstalled() {
       if (inPromiseHook || beforeHooks.length === 0) return;
       inPromiseHook = true;
       try {
-        for (let i = 0; i < beforeHooks.length; i++) {
-          beforeHooks[i](promise);
+        const hooks = ArrayPrototypeSlice(beforeHooks, 0);
+        for (let i = 0; i < hooks.length; i++) {
+          hooks[i](promise);
         }
       } finally {
         inPromiseHook = false;
@@ -724,8 +729,9 @@ function ensureHooksInstalled() {
       if (inPromiseHook || afterHooks.length === 0) return;
       inPromiseHook = true;
       try {
-        for (let i = 0; i < afterHooks.length; i++) {
-          afterHooks[i](promise);
+        const hooks = ArrayPrototypeSlice(afterHooks, 0);
+        for (let i = 0; i < hooks.length; i++) {
+          hooks[i](promise);
         }
       } finally {
         inPromiseHook = false;
@@ -735,8 +741,9 @@ function ensureHooksInstalled() {
       if (inPromiseHook || resolveHooks.length === 0) return;
       inPromiseHook = true;
       try {
-        for (let i = 0; i < resolveHooks.length; i++) {
-          resolveHooks[i](promise);
+        const hooks = ArrayPrototypeSlice(resolveHooks, 0);
+        for (let i = 0; i < hooks.length; i++) {
+          hooks[i](promise);
         }
       } finally {
         inPromiseHook = false;
@@ -785,22 +792,17 @@ const promiseHooks = {
       settled?: PromiseHookFn;
     },
   ): () => void {
-    if (init !== undefined) {
-      validatePlainFunction(init, "initHook");
-      ArrayPrototypePush(initHooks, init);
-    }
-    if (before !== undefined) {
-      validatePlainFunction(before, "beforeHook");
-      ArrayPrototypePush(beforeHooks, before);
-    }
-    if (after !== undefined) {
-      validatePlainFunction(after, "afterHook");
-      ArrayPrototypePush(afterHooks, after);
-    }
-    if (settled !== undefined) {
-      validatePlainFunction(settled, "settledHook");
-      ArrayPrototypePush(resolveHooks, settled);
-    }
+    // Validate every provided callback before registering any of them, so a
+    // later validation failure can't leave earlier hooks permanently
+    // registered with no stop function to remove them.
+    if (init !== undefined) validatePlainFunction(init, "initHook");
+    if (before !== undefined) validatePlainFunction(before, "beforeHook");
+    if (after !== undefined) validatePlainFunction(after, "afterHook");
+    if (settled !== undefined) validatePlainFunction(settled, "settledHook");
+    if (init !== undefined) ArrayPrototypePush(initHooks, init);
+    if (before !== undefined) ArrayPrototypePush(beforeHooks, before);
+    if (after !== undefined) ArrayPrototypePush(afterHooks, after);
+    if (settled !== undefined) ArrayPrototypePush(resolveHooks, settled);
     ensureHooksInstalled();
     return () => {
       if (init !== undefined) removeHook(initHooks, init);
