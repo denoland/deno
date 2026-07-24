@@ -63,6 +63,11 @@ const Runners = {
     ),
     testRunner: ubuntuARMRunner,
   },
+  linuxX86Musl: {
+    os: "linux",
+    arch: "x86_64",
+    runner: ubuntuX86Runner,
+  },
   macosX86: {
     os: "macos",
     arch: "x86_64",
@@ -232,12 +237,17 @@ function handleBuildItems(items: {
   use_sysroot?: boolean;
   testRunner?: string | ExpressionValue;
   wpt?: Condition | boolean;
+  // C library variant of the target. Defaults to "gnu". "musl" builds run
+  // inside an Alpine container on the native runner (host == target) and
+  // produce dynamically linked musl binaries.
+  libc?: "gnu" | "musl";
 }[]) {
   return items.map(({ skip_pr, ...rest }) => {
     const defaultValues = {
       skip: false,
       "use_sysroot": false,
       wpt: false,
+      libc: "gnu",
     };
     if (skip_pr == null) {
       return {
@@ -411,6 +421,15 @@ const installRustStep = step(
       "if command -v rustup >/dev/null 2>&1; then",
       "  if ! rustup --version 2>&1 | grep -q '1\\.29\\.0'; then exit 0; fi",
       '  echo "Detected broken rustup 1.29.0, replacing with 1.28.2"',
+      "fi",
+      "# On the Alpine/musl runner the glibc rustup-init from",
+      "# static.rust-lang.org cannot run (missing __res_init), but apk",
+      "# installs a native musl rustup-init that is not the broken 1.29.0.",
+      "# Use it directly instead of downloading.",
+      "if command -v rustup-init >/dev/null 2>&1; then",
+      "  rustup-init -y --default-toolchain none --no-modify-path",
+      '  echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> "$GITHUB_PATH"',
+      "  exit 0",
       "fi",
       'case "${RUNNER_OS}-${RUNNER_ARCH}" in',
       "  Linux-X64)     target=x86_64-unknown-linux-gnu; ext= ;;",
@@ -598,6 +617,12 @@ const buildItems = handleBuildItems([{
   profile: "release",
   use_sysroot: true,
   skip_pr: true,
+}, {
+  ...Runners.linuxX86Musl,
+  profile: "release",
+  libc: "musl",
+  // The glibc sysroot is not usable for musl builds.
+  use_sysroot: false,
 }]);
 
 const buildJobs = buildItems.map((rawBuildItem) => {
@@ -605,10 +630,30 @@ const buildJobs = buildItems.map((rawBuildItem) => {
   const isLinux = buildItem.os.equals("linux");
   const isWindows = buildItem.os.equals("windows");
   const isMacos = buildItem.os.equals("macos");
-  const profileName = `${buildItem.profile}-${buildItem.os}-${buildItem.arch}`;
+  const isMusl = buildItem.libc.equals("musl");
+  // Statically-known variant of the above, used for decisions that must be made
+  // at generation time (job id, container image, which jobs to emit).
+  const isMuslBuild = rawBuildItem.libc === "musl";
+  const linuxLibc = rawBuildItem.libc ?? "gnu";
+  // e.g. `x86_64-unknown-linux-gnu` or `x86_64-unknown-linux-musl`.
+  const linuxTriple = `${buildItem.arch}-unknown-linux-${linuxLibc}`;
+  // musl builds run inside an Alpine container on the native runner so that
+  // host == target (no cross-compile, no qemu); glibc builds run bare.
+  const muslContainer = isMuslBuild
+    ? {
+      image: "alpine:3.22",
+    }
+    : undefined;
+  // Append `-musl` to the job id so musl items don't collide with the gnu
+  // items that share the same os/arch/profile.
+  const profileName = `${buildItem.profile}-${buildItem.os}-${buildItem.arch}${
+    isMuslBuild ? "-musl" : ""
+  }`;
   const jobIdForJob = (name: string) => `${name}-${profileName}`;
   const jobNameForJob = (name: string) =>
-    `${name} ${buildItem.profile} ${buildItem.os}-${buildItem.arch}`;
+    `${name} ${buildItem.profile} ${buildItem.os}-${buildItem.arch}${
+      isMuslBuild ? "-musl" : ""
+    }`;
   const createBinaryArtifact = (name: string) => {
     const directory = `target/${buildItem.profile}`;
     const exeExt = rawBuildItem.os === "windows" ? ".exe" : "";
@@ -680,6 +725,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       needs: [preBuildJob],
       if: preBuildJob.outputs.skip_build.notEquals("true").and(notDocsOnly),
       runsOn: buildItem.runner,
+      container: muslContainer,
       // This is required to successfully authenticate with Azure using OIDC for
       // code signing.
       environment: {
@@ -694,7 +740,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           saveCacheStep,
         } = createCacheSteps({
           ...buildItem,
-          cachePrefix: "build-main",
+          // Keep musl caches separate from gnu; they share os/arch/profile.
+          cachePrefix: isMuslBuild ? "build-main-musl" : "build-main",
         });
         const tarSourcePublishStep = step({
           name: "Create source tarballs (release, linux)",
@@ -713,11 +760,11 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             if: isLinux.and(isDenoland),
             run: [
               "cd target/release",
-              `./deno -A ../../tools/release/create_symcache.ts deno-${buildItem.arch}-unknown-linux-gnu.symcache`,
+              `./deno -A ../../tools/release/create_symcache.ts deno-${linuxTriple}.symcache`,
               "strip ./deno",
-              `shasum -a 256 deno > deno-${buildItem.arch}-unknown-linux-gnu.sha256sum`,
-              `zip -r deno-${buildItem.arch}-unknown-linux-gnu.zip deno`,
-              `shasum -a 256 deno-${buildItem.arch}-unknown-linux-gnu.zip > deno-${buildItem.arch}-unknown-linux-gnu.zip.sha256sum`,
+              `shasum -a 256 deno > deno-${linuxTriple}.sha256sum`,
+              `zip -r deno-${linuxTriple}.zip deno`,
+              `shasum -a 256 deno-${linuxTriple}.zip > deno-${linuxTriple}.zip.sha256sum`,
               // denort is the `deno compile` base binary: libsui rewrites its
               // ELF to embed user code, and that rewrite drops `.relr.dyn`
               // relative relocations when the symbol table is gone, producing a
@@ -725,11 +772,11 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               // (`__cxa_guard_acquire failed to acquire mutex`). Keep .symtab
               // (strip only debug info) so the relocations survive.
               "strip --strip-debug ./denort",
-              `zip -r denort-${buildItem.arch}-unknown-linux-gnu.zip denort`,
-              `shasum -a 256 denort-${buildItem.arch}-unknown-linux-gnu.zip > denort-${buildItem.arch}-unknown-linux-gnu.zip.sha256sum`,
+              `zip -r denort-${linuxTriple}.zip denort`,
+              `shasum -a 256 denort-${linuxTriple}.zip > denort-${linuxTriple}.zip.sha256sum`,
               "strip ./libdenort.so",
-              `zip -r libdenort-${buildItem.arch}-unknown-linux-gnu.zip libdenort.so`,
-              `shasum -a 256 libdenort-${buildItem.arch}-unknown-linux-gnu.zip > libdenort-${buildItem.arch}-unknown-linux-gnu.zip.sha256sum`,
+              `zip -r libdenort-${linuxTriple}.zip libdenort.so`,
+              `shasum -a 256 libdenort-${linuxTriple}.zip > libdenort-${linuxTriple}.zip.sha256sum`,
               "./deno types > lib.deno.d.ts",
             ],
           },
@@ -839,7 +886,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           },
           {
             name: "Generate delta patch (linux)",
-            if: isLinux.and(isDenoland).and(isTag),
+            // Skip musl for now: there is no prior musl release to diff against.
+            if: isLinux.and(isDenoland).and(isTag).and(isMusl.not()),
             run: [
               `TARGET="${buildItem.arch}-unknown-linux-gnu"`,
               'PREV_VERSION=$(curl -sf https://dl.deno.land/release-latest.txt | tr -d "v\\n") || true',
@@ -910,6 +958,31 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             installRustStep,
             sysRootStep,
           )(
+            // rustc defaults musl targets to `+crt-static`; force dynamic
+            // linking so `Deno.dlopen`/FFI/native-addon loading works. The
+            // config-file rustflags are ignored once RUSTFLAGS is set, so
+            // re-add `--cfg tokio_unstable` (required to compile) here.
+            {
+              name: "Set up musl build environment",
+              if: isMusl,
+              run: [
+                'echo "RUSTFLAGS=-C target-feature=-crt-static -C linker=clang -C link-arg=-fuse-ld=lld --cfg tokio_unstable" >> $GITHUB_ENV',
+                'echo "RUSTDOCFLAGS=-C target-feature=-crt-static -C linker=clang -C link-arg=-fuse-ld=lld --cfg tokio_unstable" >> $GITHUB_ENV',
+                // Use Alpine's native gcc/g++ for C/C++ dependencies (e.g.
+                // aws-lc-sys). They target musl directly and know where their
+                // crt objects and libgcc live; clang, invoked by the cc crate
+                // with `--target=x86_64-unknown-linux-musl`, fails to locate
+                // Alpine's `x86_64-alpine-linux-musl` gcc install and cannot
+                // find crtbeginS.o/-lgcc. The Rust link still uses clang+lld
+                // above, which works because rustc's musl target is
+                // self-contained.
+                'echo "CC=gcc" >> $GITHUB_ENV',
+                'echo "CXX=g++" >> $GITHUB_ENV',
+                // bindgen (libsqlite3-sys) dlopens libclang at build time;
+                // point it at Alpine's clang-dev/llvm-dev shared library.
+                'echo "LIBCLANG_PATH=/usr/lib" >> $GITHUB_ENV',
+              ],
+            },
             {
               // do this on PRs as well as main so that PRs can use the cargo build cache from main
               name: "Configure canary build",
@@ -918,7 +991,13 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             },
             {
               name: "Build release",
-              env: {
+              // Snapshot source minification shells out to a `deno` binary
+              // (runtime/transpile.rs). musl builds have no runnable deno at
+              // build time: the setup-deno one is glibc (fails in the Alpine
+              // container / on the musl target) and no musl deno is published
+              // yet. Skip minification for musl; the only cost is a slightly
+              // larger snapshot.
+              env: isMuslBuild ? {} : {
                 DENO_SNAPSHOT_MINIFY_SOURCES: "1",
               },
               run: [
@@ -1102,6 +1181,13 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 "target/release/denort-aarch64-unknown-linux-gnu.zip.sha256sum",
                 "target/release/libdenort-aarch64-unknown-linux-gnu.zip",
                 "target/release/libdenort-aarch64-unknown-linux-gnu.zip.sha256sum",
+                "target/release/deno-x86_64-unknown-linux-musl.zip",
+                "target/release/deno-x86_64-unknown-linux-musl.zip.sha256sum",
+                "target/release/deno-x86_64-unknown-linux-musl.sha256sum",
+                "target/release/denort-x86_64-unknown-linux-musl.zip",
+                "target/release/denort-x86_64-unknown-linux-musl.zip.sha256sum",
+                "target/release/libdenort-x86_64-unknown-linux-musl.zip",
+                "target/release/libdenort-x86_64-unknown-linux-musl.zip.sha256sum",
                 "target/release/deno-aarch64-apple-darwin.zip",
                 "target/release/deno-aarch64-apple-darwin.zip.sha256sum",
                 "target/release/deno-aarch64-apple-darwin.sha256sum",
@@ -1123,7 +1209,32 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           },
         );
 
+        // Provision the Alpine/musl container before anything else runs. The
+        // job default shell is bash, which Alpine lacks until this installs it,
+        // so this step must use `sh`. gcompat/libstdc++ let GitHub's glibc node
+        // (used by JS actions like checkout) run; rustup lets installRustStep
+        // install the pinned toolchain (musl host, no cross-compile).
+        const muslSetupStep = step({
+          name: "Install musl build dependencies",
+          if: isMusl,
+          shell: "sh",
+          run: [
+            "apk add --no-cache \\",
+            "  bash git curl wget xz zip unzip tar coreutils \\",
+            "  build-base musl-dev clang clang-dev lld llvm llvm-dev \\",
+            "  cmake make perl python3 protobuf protobuf-dev rustup \\",
+            "  libstdc++ libgcc gcompat nodejs npm",
+            // The workspace is created by the host runner under a different
+            // uid than the container root user, so git refuses to operate on
+            // it. actions/checkout works around this with a temporary HOME,
+            // but that does not persist for later steps (e.g. submodule
+            // clones), so mark the workspace as a safe directory globally.
+            'git config --global --add safe.directory "$GITHUB_WORKSPACE"',
+          ],
+        });
+
         return step.if(buildItem.skip.not())(
+          ...(isMuslBuild ? [muslSetupStep] : []),
           cloneRepoStep,
           cloneStdSubmoduleStep,
           // ensure this happens right after cloning
@@ -1171,7 +1282,9 @@ const buildJobs = buildItems.map((rawBuildItem) => {
 
   const additionalJobs = [];
 
-  {
+  // musl builds are release-only and produce artifacts that cannot run on the
+  // glibc test runners, so don't emit the per-item test job for them.
+  if (!isMuslBuild) {
     const shardedCrates = new Map([
       ["specs", 2],
       ["integration", 2],

@@ -1135,7 +1135,6 @@ console.log("imported", import.meta.url);
       | "/canary-x86_64-unknown-linux-gnu-latest.txt"
       | "/canary-aarch64-unknown-linux-gnu-latest.txt"
       | "/canary-x86_64-unknown-linux-musl-latest.txt"
-      | "/canary-aarch64-unknown-linux-musl-latest.txt"
       | "/canary-x86_64-pc-windows-msvc-latest.txt",
     ) => Ok(
       Response::builder()

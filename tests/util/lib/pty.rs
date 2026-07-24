@@ -409,7 +409,9 @@ fn run_in_pty_impl(
           return Err(std::io::Error::last_os_error());
         }
         // Set the controlling terminal
-        if libc::ioctl(fds, libc::TIOCSCTTY as libc::c_ulong, 0) == -1 {
+        // `ioctl`'s request arg is `c_ulong` on glibc but `c_int` on musl;
+        // `as _` casts to whichever the target's signature expects.
+        if libc::ioctl(fds, libc::TIOCSCTTY as _, 0) == -1 {
           return Err(std::io::Error::last_os_error());
         }
         set_winsize(fds, PTY_ROWS_COLS.0, PTY_ROWS_COLS.1)?;
