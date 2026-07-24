@@ -45,6 +45,18 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   match result {
     Ok(value) => value,
     Err(error) => {
+      // When a resource limit watchdog terminated the isolate, the surfaced
+      // error is a generic "execution terminated" - report the real cause.
+      // Claim the single report so the watchdog's force-exit doesn't print it
+      // again.
+      if let Some(message) = deno_lib::worker::exceeded_resource_limit_message()
+      {
+        if deno_lib::worker::claim_resource_limit_report() {
+          exit_with_message(message, 1);
+        }
+        deno_runtime::exit(1);
+      }
+
       let error_string = match js_error_downcast_ref(&error) {
         Some(js_error) => format_js_error(js_error, None),
         None => format!("{:?}", error),

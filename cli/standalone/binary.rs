@@ -1143,6 +1143,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         .to_desktop_config()
         .ok()
         .and_then(|c| c.release.as_ref()?.base_url.clone()),
+      max_memory: self.cli_options.max_memory(),
+      max_cpu_time: self.cli_options.max_cpu_time(),
+      max_time: self.cli_options.max_time(),
     };
 
     let (data_section_bytes, section_sizes) = serialize_binary_data_section(

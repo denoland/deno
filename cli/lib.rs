@@ -717,6 +717,16 @@ fn exit_with_message(message: &str, code: i32) -> ! {
 }
 
 fn exit_for_error(error: AnyError, initial_cwd: Option<&std::path::Path>) -> ! {
+  // When a resource limit watchdog terminated the isolate, the surfaced
+  // error is a generic "execution terminated" - report the real cause. Claim
+  // the single report so the watchdog's force-exit doesn't print it again.
+  if let Some(message) = deno_lib::worker::exceeded_resource_limit_message() {
+    if deno_lib::worker::claim_resource_limit_report() {
+      exit_with_message(message, 1);
+    }
+    deno_runtime::exit(1);
+  }
+
   let mut error_string = match js_error_downcast_ref(&error) {
     Some(e) => {
       let initial_cwd = initial_cwd

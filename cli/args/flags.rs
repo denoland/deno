@@ -2370,7 +2370,7 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
     UnstableArgsConfig::ResolutionAndRuntime,
   )
   .defer(|cmd| {
-    runtime_args(cmd, true, false, true)
+    resource_limit_args(runtime_args(cmd, true, false, true))
       .arg(check_arg(true))
       .arg(
         Arg::new("include")
@@ -4023,7 +4023,7 @@ TypeScript is supported, however it is not type-checked, only transpiled."
 
 fn run_args(command: Command, top_level: bool) -> Command {
   cpu_prof_args(
-    runtime_args(command, true, true, true)
+    resource_limit_args(runtime_args(command, true, true, true))
       .arg(check_arg(false))
       .arg(watch_arg(true))
       .arg(hmr_arg(true))
@@ -5552,6 +5552,20 @@ fn runtime_misc_args(app: Command) -> Command {
     .arg(require_arg())
 }
 
+/// Resource-limit flags (`--max-memory`, `--max-cpu-time`, `--max-time`).
+///
+/// These are intentionally exposed only on `deno run` and `deno compile`: the
+/// watchdog enforces a single main isolate, so on multi-worker subcommands
+/// (`deno test`, `deno bench`, `deno serve`) the limits would be either
+/// silently unenforced or applied process-wide across unrelated workers. See
+/// the review discussion on #35723.
+fn resource_limit_args(app: Command) -> Command {
+  app
+    .arg(max_memory_arg())
+    .arg(max_cpu_time_arg())
+    .arg(max_time_arg())
+}
+
 fn eszip_arg() -> Arg {
   Arg::new("eszip-internal-do-not-use")
     .hide(true)
@@ -5911,6 +5925,97 @@ fn seed_arg() -> Arg {
     .value_name("NUMBER")
     .help("Set the random number generator seed")
     .value_parser(value_parser!(u64))
+}
+
+/// Parses a memory size for `--max-memory` into megabytes. A plain number
+/// is interpreted as megabytes; `k`/`kb`, `m`/`mb` and `g`/`gb` suffixes are
+/// accepted.
+fn parse_memory_size_mb(s: &str) -> Result<u64, String> {
+  enum Unit {
+    Gb,
+    Mb,
+    Kb,
+  }
+  let lower = s.trim().to_ascii_lowercase();
+  let (num, unit) = if let Some(v) =
+    lower.strip_suffix("gb").or_else(|| lower.strip_suffix('g'))
+  {
+    (v, Unit::Gb)
+  } else if let Some(v) =
+    lower.strip_suffix("mb").or_else(|| lower.strip_suffix('m'))
+  {
+    (v, Unit::Mb)
+  } else if let Some(v) =
+    lower.strip_suffix("kb").or_else(|| lower.strip_suffix('k'))
+  {
+    (v, Unit::Kb)
+  } else {
+    (lower.as_str(), Unit::Mb)
+  };
+  let n = num
+    .trim()
+    .parse::<u64>()
+    .map_err(|_| format!("invalid memory size '{s}'"))?;
+  if n == 0 {
+    return Err("memory size must be greater than 0".to_string());
+  }
+  // Return the size in megabytes. Values under 1 MB are rejected rather than
+  // silently rounded up, which would hand back a cap different from what the
+  // user asked for.
+  match unit {
+    Unit::Gb => Ok(n.saturating_mul(1024)),
+    Unit::Mb => Ok(n),
+    Unit::Kb if n < 1024 => Err("memory size must be at least 1mb".to_string()),
+    Unit::Kb => Ok(n / 1024),
+  }
+}
+
+fn max_memory_arg() -> Arg {
+  Arg::new("max-memory")
+    .long("max-memory")
+    .value_name("SIZE")
+    .help(cstr!(
+      "Limit the total memory (resident set size) available to the program, e.g. <p(245)>--max-memory=512m</>
+  <p(245)>A plain number is interpreted as megabytes; k/m/g suffixes are supported.
+  When the limit is exceeded the program is terminated with an error.</>"
+    ))
+    .value_parser(parse_memory_size_mb)
+}
+
+fn max_cpu_time_arg() -> Arg {
+  Arg::new("max-cpu-time")
+    .long("max-cpu-time")
+    .value_name("SECONDS")
+    .help(cstr!(
+      "Limit the total CPU time available to the program, in seconds, e.g. <p(245)>--max-cpu-time=30</>
+  <p(245)>When the budget is exhausted the program is terminated with an error.</>"
+    ))
+    .value_parser(parse_positive_seconds)
+}
+
+fn max_time_arg() -> Arg {
+  Arg::new("max-time")
+    .long("max-time")
+    .value_name("SECONDS")
+    .help(cstr!(
+      "Limit the total wall-clock run time of the program, in seconds, e.g. <p(245)>--max-time=30</>
+  <p(245)>When the deadline is reached the program is terminated with an error.</>"
+    ))
+    .value_parser(parse_positive_seconds)
+}
+
+/// Parses a positive number of seconds for the time-based resource limits.
+/// Zero is rejected so the flags fail fast instead of terminating the program
+/// before it starts, matching how `--max-memory=0` is rejected.
+fn parse_positive_seconds(s: &str) -> Result<u64, String> {
+  let n = s
+    .trim()
+    .parse::<u64>()
+    .map_err(|_| format!("invalid duration '{s}'"))?;
+  if n == 0 {
+    return Err("duration must be greater than 0 seconds".to_string());
+  }
+  Ok(n)
 }
 
 fn hmr_arg(takes_files: bool) -> Arg {
@@ -8713,6 +8818,9 @@ fn runtime_args_parse(
   location_arg_parse(flags, matches);
   v8_flags_arg_parse(flags, matches);
   seed_arg_parse(flags, matches);
+  max_memory_arg_parse(flags, matches);
+  max_cpu_time_arg_parse(flags, matches);
+  max_time_arg_parse(flags, matches);
   enable_testing_features_arg_parse(flags, matches);
   env_file_arg_parse(flags, matches);
   trace_ops_parse(flags, matches);
@@ -8828,6 +8936,23 @@ fn seed_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
     flags.v8_flags.push(format!("--random-seed={seed}"));
   }
+}
+
+// The resource-limit args are only defined on `deno run` / `deno compile`
+// (see `resource_limit_args`), but `runtime_args_parse` is shared across every
+// runtime subcommand, so use `try_remove_one` to no-op where they're absent
+// rather than panicking on an unknown argument id.
+fn max_memory_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.max_memory = matches.try_remove_one::<u64>("max-memory").ok().flatten();
+}
+
+fn max_cpu_time_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.max_cpu_time =
+    matches.try_remove_one::<u64>("max-cpu-time").ok().flatten();
+}
+
+fn max_time_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.max_time = matches.try_remove_one::<u64>("max-time").ok().flatten();
 }
 
 fn no_check_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {

@@ -4,6 +4,9 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 use boxed_error::Boxed;
 use deno_bundle_runtime::BundleProvider;
@@ -183,6 +186,199 @@ pub fn create_isolate_create_params<TSys: DenoLibSys>(
   }
 }
 
+/// Set when the process exceeded the `--max-memory` limit and the main
+/// isolate was terminated. Checked on exit to report a clear error instead
+/// of the generic "execution terminated".
+pub static MEMORY_LIMIT_EXCEEDED: AtomicBool = AtomicBool::new(false);
+
+/// Set when the process exhausted the `--max-cpu-time` budget and the
+/// main isolate was terminated. Checked on exit to report a clear error.
+pub static CPU_TIME_LIMIT_EXCEEDED: AtomicBool = AtomicBool::new(false);
+
+/// Set when the process exceeded the `--max-time` wall-clock deadline and
+/// the main isolate was terminated. Checked on exit to report a clear error.
+pub static TIME_LIMIT_EXCEEDED: AtomicBool = AtomicBool::new(false);
+
+const MEMORY_LIMIT_MESSAGE: &str = "Memory limit exceeded (--max-memory)";
+const CPU_TIME_LIMIT_MESSAGE: &str = "CPU time limit exceeded (--max-cpu-time)";
+const TIME_LIMIT_MESSAGE: &str = "Time limit exceeded (--max-time)";
+
+/// Set once the resource-limit error has been printed, so the terminating
+/// thread and the watchdog's grace-period force-exit don't both print it.
+static RESOURCE_LIMIT_REPORTED: AtomicBool = AtomicBool::new(false);
+
+/// Converts a `--max-memory` value in megabytes to bytes, saturating rather
+/// than overflowing on absurdly large inputs.
+pub fn mb_to_bytes(mb: u64) -> u64 {
+  mb.saturating_mul(1024 * 1024)
+}
+
+/// If a resource limit was hit and its isolate terminated, returns the
+/// user-facing message for whichever limit fired. The CLI/denort exit paths
+/// use this to replace the generic "execution terminated" error V8 surfaces
+/// after `terminate_execution`.
+pub fn exceeded_resource_limit_message() -> Option<&'static str> {
+  use std::sync::atomic::Ordering::SeqCst;
+  if MEMORY_LIMIT_EXCEEDED.load(SeqCst) {
+    Some(MEMORY_LIMIT_MESSAGE)
+  } else if CPU_TIME_LIMIT_EXCEEDED.load(SeqCst) {
+    Some(CPU_TIME_LIMIT_MESSAGE)
+  } else if TIME_LIMIT_EXCEEDED.load(SeqCst) {
+    Some(TIME_LIMIT_MESSAGE)
+  } else {
+    None
+  }
+}
+
+/// Claims the right to print the resource-limit error exactly once. Returns
+/// `true` for the first caller (which should print), `false` afterwards (the
+/// caller should exit silently). Prevents the terminating main thread and the
+/// watchdog's grace-period force-exit from both printing the same error.
+pub fn claim_resource_limit_report() -> bool {
+  RESOURCE_LIMIT_REPORTED
+    .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+    .is_ok()
+}
+
+/// Handle of the currently-active main isolate, used by the resource-limit
+/// watchdog to terminate execution when a limit is hit. Updated whenever a
+/// main worker is created so the watchdog always targets the live isolate
+/// (e.g. across `deno test`'s per-file workers) rather than the first one.
+static ACTIVE_WORKER_ISOLATE: std::sync::Mutex<Option<v8::IsolateHandle>> =
+  std::sync::Mutex::new(None);
+
+/// Grace period given to the main thread to unwind and report a clean error
+/// after the watchdog terminates the isolate, before it force-exits.
+const WATCHDOG_GRACE: Duration = Duration::from_secs(2);
+
+/// Interval at which the watchdog samples resource usage. Kept short so a
+/// fast-allocating program doesn't overshoot the memory limit by much.
+const WATCHDOG_TICK: Duration = Duration::from_millis(20);
+
+/// Lower bound for the V8 heap cap derived from `--max-memory`. Below roughly
+/// this size V8 aborts while deserializing its startup snapshot, before user
+/// code runs; the RSS watchdog still enforces the real (possibly smaller)
+/// limit, so this only prevents the fatal-abort failure mode.
+const V8_MIN_HEAP_CAP_BYTES: u64 = 32 * 1024 * 1024;
+
+/// Process-wide resource limits enforced by a single watchdog thread.
+#[derive(Clone, Copy)]
+struct ResourceLimits {
+  /// Maximum resident set size (RSS) in bytes (`--max-memory`).
+  max_memory_bytes: Option<u64>,
+  /// Maximum CPU time (user + system) in seconds (`--max-cpu-time`).
+  max_cpu_time_secs: Option<u64>,
+  /// Maximum wall-clock run time in seconds (`--max-time`).
+  max_time_secs: Option<u64>,
+}
+
+impl ResourceLimits {
+  fn any(&self) -> bool {
+    self.max_memory_bytes.is_some()
+      || self.max_cpu_time_secs.is_some()
+      || self.max_time_secs.is_some()
+  }
+}
+
+/// Terminates the active main isolate after a resource limit was hit, then
+/// force-exits if the main thread did not already unwind and exit cleanly.
+///
+/// Termination only unwinds while JS is executing; if the program is idle
+/// (e.g. awaiting a never-resolving promise) or the budget was burned
+/// outside of JS (native ops, workers), the isolate won't unwind on its own,
+/// so we force-exit with a clear error after a short grace period.
+fn terminate_and_exit(flag: &AtomicBool, message: &str) -> ! {
+  flag.store(true, Ordering::SeqCst);
+  if let Ok(handle) = ACTIVE_WORKER_ISOLATE.lock()
+    && let Some(handle) = handle.as_ref()
+  {
+    handle.terminate_execution();
+  }
+  // Give the main thread a chance to unwind and print the error itself. If it
+  // does, it wins the report claim below and we exit quietly; otherwise (idle
+  // program, or budget burned outside JS) we report and force-exit here.
+  std::thread::sleep(WATCHDOG_GRACE);
+  if claim_resource_limit_report() {
+    log::error!("{}: {}", colors::red_bold("error"), message);
+  }
+  deno_runtime::exit(1);
+}
+
+/// Total process CPU time (user + system) consumed so far.
+fn process_cpu_time() -> Duration {
+  let (sys, user) = deno_runtime::deno_os::get_cpu_usage();
+  sys + user
+}
+
+/// CPU time consumed up to the point the main program starts executing (after
+/// startup, module loading and type-checking). The `--max-cpu-time` budget is
+/// measured relative to this so Deno's own overhead isn't charged to it. Set
+/// by [`note_program_start`] just before the main module is evaluated, and
+/// re-set on each run so `--watch` re-runs get a fresh budget.
+static CPU_BUDGET_BASELINE: std::sync::Mutex<Option<Duration>> =
+  std::sync::Mutex::new(None);
+
+/// Marks the point where the user program begins executing, so the
+/// `--max-cpu-time` budget starts counting from here rather than from process
+/// start. Also clears any latched limit state from a previous `--watch` run so
+/// a rescued isolate doesn't cause the next run's unrelated error to be
+/// misreported as a resource-limit hit.
+pub fn note_program_start() {
+  MEMORY_LIMIT_EXCEEDED.store(false, Ordering::SeqCst);
+  CPU_TIME_LIMIT_EXCEEDED.store(false, Ordering::SeqCst);
+  TIME_LIMIT_EXCEEDED.store(false, Ordering::SeqCst);
+  RESOURCE_LIMIT_REPORTED.store(false, Ordering::SeqCst);
+  *CPU_BUDGET_BASELINE.lock().unwrap() = Some(process_cpu_time());
+}
+
+/// Spawns the single watchdog thread that enforces all enabled resource
+/// limits (`--max-memory`, `--max-cpu-time`, `--max-time`).
+///
+/// The memory limit is a sampled RSS cap, so a program allocating faster than
+/// the tick may briefly overshoot before being terminated. The CPU budget is
+/// measured from [`note_program_start`] (excluding Deno's startup / module
+/// loading / type-checking), while the wall-clock deadline is measured from
+/// worker creation so it bounds the total run time.
+fn start_resource_limit_watchdog(limits: ResourceLimits) {
+  std::thread::Builder::new()
+    .name("deno-resource-limit-watchdog".to_string())
+    .spawn(move || {
+      let wall_deadline = limits
+        .max_time_secs
+        .map(|secs| std::time::Instant::now() + Duration::from_secs(secs));
+      loop {
+        std::thread::sleep(WATCHDOG_TICK);
+        if let Some(limit) = limits.max_memory_bytes
+          && deno_runtime::deno_os::get_process_rss() >= limit
+        {
+          terminate_and_exit(
+            &MEMORY_LIMIT_EXCEEDED,
+            "Memory limit exceeded (--max-memory)",
+          );
+        }
+        if let Some(secs) = limits.max_cpu_time_secs
+          && let Some(baseline) = *CPU_BUDGET_BASELINE.lock().unwrap()
+          && process_cpu_time().saturating_sub(baseline)
+            >= Duration::from_secs(secs)
+        {
+          terminate_and_exit(
+            &CPU_TIME_LIMIT_EXCEEDED,
+            "CPU time limit exceeded (--max-cpu-time)",
+          );
+        }
+        if let Some(deadline) = wall_deadline
+          && std::time::Instant::now() >= deadline
+        {
+          terminate_and_exit(
+            &TIME_LIMIT_EXCEEDED,
+            "Time limit exceeded (--max-time)",
+          );
+        }
+      }
+    })
+    .expect("failed to spawn resource-limit watchdog thread");
+}
+
 #[cfg(any(target_os = "android", target_os = "linux"))]
 mod linux {
   use deno_runtime::deno_node::ops::process::cgroup::CgroupVersion;
@@ -300,6 +496,14 @@ pub struct LibMainWorkerOptions {
   pub maybe_initial_cwd: Option<Url>,
   /// When true, the `OffscreenCanvas` global is removed at bootstrap.
   pub disable_offscreen_canvas: bool,
+  /// Maximum process memory (resident set size) in megabytes (`--max-memory`).
+  /// Enforced by a sampling RSS watchdog, with the same value applied as a V8
+  /// heap cap so heap growth is terminated gracefully.
+  pub max_memory_mb: Option<u64>,
+  /// Maximum process CPU time budget, in seconds (`--max-cpu-time`).
+  pub max_cpu_time_secs: Option<u64>,
+  /// Maximum wall-clock run time, in seconds (`--max-time`).
+  pub max_time_secs: Option<u64>,
 }
 
 #[derive(Default, Clone)]
@@ -760,7 +964,29 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       startup_snapshot: shared.options.startup_snapshot,
       residual_lazy_js_sources: shared.options.residual_lazy_js_sources,
       residual_lazy_esm_sources: shared.options.residual_lazy_esm_sources,
-      create_params: create_isolate_create_params(&shared.sys),
+      create_params: {
+        let mut params = create_isolate_create_params(&shared.sys);
+        // Cap the V8 heap at `--max-memory` too, so a fast heap allocation is
+        // caught precisely (and unwound gracefully via the near-heap-limit
+        // callback below) instead of tripping V8's fatal OOM abort before the
+        // RSS watchdog samples. The watchdog remains the process-wide backstop.
+        //
+        // NOTE: this cap and the callback are installed on the main isolate
+        // only. Web Workers / `worker_threads` isolates are not individually
+        // capped; they're bounded transitively by the process-wide RSS
+        // watchdog, but a single Worker can outgrow the V8 heap cap on its own.
+        if let Some(mb) = shared.options.max_memory_mb {
+          // Floor the V8 heap cap so V8 can always bootstrap: a `--max-memory`
+          // smaller than V8's startup heap would abort the process during
+          // deserialization before any user code (or the near-heap-limit
+          // callback) runs. The RSS watchdog still enforces the user's actual
+          // limit and reports the clean error, so flooring only the V8 cap
+          // doesn't loosen enforcement.
+          let max_bytes = mb_to_bytes(mb).max(V8_MIN_HEAP_CAP_BYTES) as usize;
+          params = Some(params.unwrap_or_default().heap_limits(0, max_bytes));
+        }
+        params
+      },
       unsafely_ignore_certificate_errors: shared
         .options
         .unsafely_ignore_certificate_errors
@@ -785,6 +1011,37 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     let mut worker =
       MainWorker::bootstrap_from_options(&main_module, services, options);
     worker.setup_memory_trim_handler();
+
+    // When `--max-memory` is set, terminate the isolate gracefully with a
+    // clear error when the V8 heap is exhausted, instead of crashing the
+    // process with a V8 fatal OOM abort. This complements the RSS watchdog.
+    if shared.options.max_memory_mb.is_some() {
+      let handle = worker.js_runtime.v8_isolate().thread_safe_handle();
+      worker.js_runtime.add_near_heap_limit_callback(
+        move |current_limit, _initial_limit| {
+          MEMORY_LIMIT_EXCEEDED.store(true, Ordering::SeqCst);
+          handle.terminate_execution();
+          // Raise the limit so V8 can unwind instead of aborting while the
+          // termination propagates.
+          current_limit * 2
+        },
+      );
+    }
+
+    // Arm the process-wide resource-limit watchdog against this main worker.
+    // The isolate handle is published to a shared slot so the single watchdog
+    // thread always targets the live main isolate; the thread starts once.
+    let limits = ResourceLimits {
+      max_memory_bytes: shared.options.max_memory_mb.map(mb_to_bytes),
+      max_cpu_time_secs: shared.options.max_cpu_time_secs,
+      max_time_secs: shared.options.max_time_secs,
+    };
+    if limits.any() {
+      let handle = worker.js_runtime.v8_isolate().thread_safe_handle();
+      *ACTIVE_WORKER_ISOLATE.lock().unwrap() = Some(handle);
+      static WATCHDOG_STARTED: std::sync::Once = std::sync::Once::new();
+      WATCHDOG_STARTED.call_once(move || start_resource_limit_watchdog(limits));
+    }
 
     // Wire module hook registry into OpState so JS ops share it with the loader
     if let Some(registry) = hook_registry {
@@ -949,6 +1206,9 @@ impl LibMainWorker {
 
   pub async fn execute_main_module(&mut self) -> Result<(), CoreError> {
     let id = self.worker.preload_main_module(&self.main_module).await?;
+    // Loading/compiling/type-checking is done; start the `--max-cpu-time`
+    // budget from here so it measures the program, not Deno's startup.
+    note_program_start();
     self.worker.evaluate_module(id).await?;
 
     // After loading and evaluating all modules, trim the glibc malloc arena.
