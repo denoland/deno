@@ -6,20 +6,23 @@ Runtime | Deno [WILDCARD] ([WILDCARD])
 
 [WILDCARD]/group_baseline.ts
 
-| benchmark        | time/iter (avg) |        iter/s |      (min … max)      |      p75 |      p99 |     p995 |
-| ---------------- | --------------- | ------------- | --------------------- | -------- | -------- | -------- |
-| noop             | [WILDCARD] | [WILDCARD] | ([WILDCARD] … [WILDCARD]) | [WILDCARD] | [WILDCARD] | [WILDCARD] |
-| noop2            | [WILDCARD] | [WILDCARD] | ([WILDCARD] … [WILDCARD]) | [WILDCARD] | [WILDCARD] | [WILDCARD] |
-
+benchmark[WILDLINE]
+[WILDLINE]
+noop[WILDLINE]
+[WILDCARD]
+noop2[WILDLINE]
+[WILDCARD]
 summary
   noo[WILDCARD]
    [WILDCARD]x [WILDCARD] than noo[WILDCARD]
 
 group url
-| noop3            | [WILDCARD] | [WILDCARD] | ([WILDCARD] … [WILDCARD]) | [WILDCARD] | [WILDCARD] | [WILDCARD] |
-| parse url 2x     | [WILDCARD] | [WILDCARD] | ([WILDCARD] … [WILDCARD]) | [WILDCARD] | [WILDCARD] | [WILDCARD] |
-| parse url 200x   | [WILDCARD] | [WILDCARD] | ([WILDCARD] … [WILDCARD]) | [WILDCARD] | [WILDCARD] | [WILDCARD] |
-
+noop3[WILDLINE]
+[WILDCARD]
+parse url 2x[WILDLINE]
+[WILDCARD]
+parse url 200x[WILDLINE]
+[WILDCARD]
 summary
   parse url 2x
    [WILDLINE]x slower than noop3
@@ -28,38 +31,48 @@ summary
 
 [WILDLINE]/pass.ts
 
-| benchmark   | time/iter (avg) |        iter/s |      (min … max)      |      p75 |      p99 |     p995 |
-| ----------- | --------------- | ------------- | --------------------- | -------- | -------- | -------- |
-| bench0      | [WILDCARD] | [WILDCARD] | ([WILDCARD] … [WILDCARD]) | [WILDCARD] | [WILDCARD] | [WILDCARD] |
-| bench1      | [WILDCARD] | [WILDCARD] | ([WILDCARD] … [WILDCARD]) | [WILDCARD] | [WILDCARD] | [WILDCARD] |
-| bench2      | [WILDCARD] | [WILDCARD] | ([WILDCARD] … [WILDCARD]) | [WILDCARD] | [WILDCARD] | [WILDCARD] |
-| bench3      | [WILDCARD] | [WILDCARD] | ([WILDCARD] … [WILDCARD]) | [WILDCARD] | [WILDCARD] | [WILDCARD] |
-| bench4      | [WILDCARD] | [WILDCARD] | ([WILDCARD] … [WILDCARD]) | [WILDCARD] | [WILDCARD] | [WILDCARD] |
-| bench5      | [WILDCARD] | [WILDCARD] | ([WILDCARD] … [WILDCARD]) | [WILDCARD] | [WILDCARD] | [WILDCARD] |
-| bench6      | [WILDCARD] | [WILDCARD] | ([WILDCARD] … [WILDCARD]) | [WILDCARD] | [WILDCARD] | [WILDCARD] |
-| bench7      | [WILDCARD] | [WILDCARD] | ([WILDCARD] … [WILDCARD]) | [WILDCARD] | [WILDCARD] | [WILDCARD] |
-| bench8      | [WILDCARD] | [WILDCARD] | ([WILDCARD] … [WILDCARD]) | [WILDCARD] | [WILDCARD] | [WILDCARD] |
-| bench9      | [WILDCARD] | [WILDCARD] | ([WILDCARD] … [WILDCARD]) | [WILDCARD] | [WILDCARD] | [WILDCARD] |
+benchmark[WILDLINE]
+[WILDLINE]
+bench0[WILDLINE]
+[WILDCARD]
+bench1[WILDLINE]
+[WILDCARD]
+bench2[WILDLINE]
+[WILDCARD]
+bench3[WILDLINE]
+[WILDCARD]
+bench4[WILDLINE]
+[WILDCARD]
+bench5[WILDLINE]
+[WILDCARD]
+bench6[WILDLINE]
+[WILDCARD]
+bench7[WILDLINE]
+[WILDCARD]
+bench8[WILDLINE]
+[WILDCARD]
+bench9[WILDLINE]
+[WILDCARD]/multiple_group.ts
 
-
-[WILDLINE]/multiple_group.ts
-
-| benchmark        | time/iter (avg) |        iter/s |      (min … max)      |      p75 |      p99 |     p995 |
-| ---------------- | --------------- | ------------- | --------------------- | -------- | -------- | -------- |
+benchmark[WILDLINE]
+[WILDLINE]
 
 group noop
-| noop             | [WILDCARD] | [WILDCARD] | ([WILDCARD] … [WILDCARD]) | [WILDCARD] | [WILDCARD] | [WILDCARD] |
-| noop2            | [WILDCARD] | [WILDCARD] | ([WILDCARD] … [WILDCARD]) | [WILDCARD] | [WILDCARD] | [WILDCARD] |
-
+noop[WILDLINE]
+[WILDCARD]
+noop2[WILDLINE]
+[WILDCARD]
 summary
   noo[WILDCARD]
    [WILDCARD]x [WILDCARD] than noo[WILDCARD]
 
 group url
-| noop3            | [WILDCARD] | [WILDCARD] | ([WILDCARD] … [WILDCARD]) | [WILDCARD] | [WILDCARD] | [WILDCARD] |
-| parse url 2x     | [WILDCARD] | [WILDCARD] | ([WILDCARD] … [WILDCARD]) | [WILDCARD] | [WILDCARD] | [WILDCARD] |
-| parse url 200x   | [WILDCARD] | [WILDCARD] | ([WILDCARD] … [WILDCARD]) | [WILDCARD] | [WILDCARD] | [WILDCARD] |
-
+noop3[WILDLINE]
+[WILDCARD]
+parse url 2x[WILDLINE]
+[WILDCARD]
+parse url 200x[WILDLINE]
+[WILDCARD]
 summary
   parse url 2x
    [WILDCARD]x slower than noop3
