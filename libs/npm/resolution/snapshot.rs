@@ -1370,6 +1370,7 @@ mod tests {
         .as_valid_serialized_for_system(&NpmSystemInfo {
           os: "win32".into(),
           cpu: "x64".into(),
+          libc: "".into(),
         })
         .into_serialized();
       actual.packages.sort_by(|a, b| a.id.cmp(&b.id));
@@ -1387,6 +1388,7 @@ mod tests {
         .as_valid_serialized_for_system(&NpmSystemInfo {
           os: "darwin".into(),
           cpu: "x64".into(),
+          libc: "".into(),
         })
         .into_serialized();
       actual.packages.sort_by(|a, b| a.id.cmp(&b.id));

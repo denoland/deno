@@ -1,0 +1,10 @@
+{
+  "name": "@denotest/libc-package",
+  "version": "1.0.0",
+  "main": "index.js",
+  "optionalDependencies": {
+    "@denotest/libc-package-glibc": "1.0.0",
+    "@denotest/libc-package-musl": "1.0.0",
+    "@denotest/libc-package-not-musl": "1.0.0"
+  }
+}
