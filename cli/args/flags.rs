@@ -504,10 +504,11 @@ impl FlagsExt for Flags {
   }
 
   fn no_legacy_abort(&self) -> bool {
-    self
-      .unstable_config
-      .features
-      .contains(&String::from("no-legacy-abort"))
+    // The legacy behavior (aborting `request.signal` on successfully
+    // completed requests) is no longer available;
+    // `--unstable-no-legacy-abort` is kept as a no-op for backwards
+    // compatibility.
+    true
   }
 
   fn otel_config(&self) -> OtelConfig {
