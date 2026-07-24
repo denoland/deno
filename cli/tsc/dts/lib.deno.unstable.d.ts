@@ -4652,6 +4652,18 @@ declare namespace Deno {
     export {}; // only export exports
   }
 
+  /**
+   * Loads system fonts into the font database, making them available for
+   * Canvas 2D text rendering. Requires `--allow-sys=localFonts` permission.
+   *
+   * Once called successfully in any context (main thread or worker), the
+   * system fonts become available in that context's font database.
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   * @category Canvas 2D
+   */
+  export function loadLocalFonts(): Promise<void>;
+
   export {}; // only export exports
 }
 

@@ -449,13 +449,20 @@ libloading = "0.7"
 libuv-sys-lite = { version = "=1.48.3", features = ["dyn-symbols"] }
 napi_sys = { version = "0.1.0", path = "./libs/napi_sys" }
 
-# geometry
+# canvas2d, geometry
+color = "0.3.3"
 cssparser = "0.36.0"
+fontdb = "0.23.0"
+fontique = { version = "0.11.0", features = ["fontconfig-dlopen"] }
+parley = "0.11.0"
+ttf-parser = "0.25.1"
+vello = { version = "0.9.0", default-features = false, features = ["wgpu"] }
+vello_cpu = "0.0.9"
 
 # webgpu
 raw-window-handle = "0.6.0"
-wgpu-core = "=29.0.1"
-wgpu-types = "=29.0.1"
+wgpu-core = "=29.0.3"
+wgpu-types = "=29.0.3"
 
 # macros
 quote = "1"

@@ -40,11 +40,19 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     kind: UnstableFeatureKind::Cli,
   },
   UnstableFeatureDefinition {
+    name: "canvas2d",
+    flag_name: "unstable-canvas2d",
+    help_text: "Enable unstable Canvas 2D APIs",
+    show_in_help: true,
+    id: 4,
+    kind: UnstableFeatureKind::Runtime,
+  },
+  UnstableFeatureDefinition {
     name: "cron",
     flag_name: "unstable-cron",
     help_text: "Enable unstable `Deno.cron` API",
     show_in_help: true,
-    id: 4,
+    id: 5,
     kind: UnstableFeatureKind::Runtime,
   },
   UnstableFeatureDefinition {
@@ -52,7 +60,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     flag_name: "unstable-detect-cjs",
     help_text: "Treats ambiguous .js, .jsx, .ts, .tsx files as CommonJS modules in more cases",
     show_in_help: true,
-    id: 5,
+    id: 6,
     kind: UnstableFeatureKind::Cli,
   },
   UnstableFeatureDefinition {
@@ -60,7 +68,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     flag_name: "unstable-ffi",
     help_text: "Enable unstable FFI APIs",
     show_in_help: false,
-    id: 6,
+    id: 7,
     kind: UnstableFeatureKind::Runtime,
   },
   UnstableFeatureDefinition {
@@ -68,7 +76,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     flag_name: "unstable-fs",
     help_text: "Enable unstable file system APIs",
     show_in_help: false,
-    id: 7,
+    id: 8,
     kind: UnstableFeatureKind::Runtime,
   },
   UnstableFeatureDefinition {
@@ -76,7 +84,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     flag_name: "unstable-http",
     help_text: "Enable unstable HTTP APIs",
     show_in_help: false,
-    id: 8,
+    id: 9,
     kind: UnstableFeatureKind::Runtime,
   },
   UnstableFeatureDefinition {
@@ -84,7 +92,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     flag_name: "unstable-kv",
     help_text: "Enable unstable KV APIs",
     show_in_help: true,
-    id: 9,
+    id: 10,
     kind: UnstableFeatureKind::Runtime,
   },
   UnstableFeatureDefinition {
@@ -92,7 +100,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     flag_name: "unstable-lazy-dynamic-imports",
     help_text: "Lazily loads statically analyzable dynamic imports when not running with type checking. Warning: This may change the order of semver specifier resolution.",
     show_in_help: true,
-    id: 10,
+    id: 11,
     kind: UnstableFeatureKind::Cli,
   },
   UnstableFeatureDefinition {
@@ -100,7 +108,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     flag_name: "unstable-lockfile-v5",
     help_text: "Enable unstable lockfile v5",
     show_in_help: true,
-    id: 11,
+    id: 12,
     kind: UnstableFeatureKind::Cli,
   },
   UnstableFeatureDefinition {
@@ -108,7 +116,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     flag_name: "unstable-net",
     help_text: "enable unstable net APIs",
     show_in_help: true,
-    id: 12,
+    id: 13,
     kind: UnstableFeatureKind::Runtime,
   },
   UnstableFeatureDefinition {
@@ -116,7 +124,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     flag_name: "unstable-no-legacy-abort",
     help_text: "Enable abort signal in Deno.serve without legacy behavior. This will not abort the server when the request is handled successfully.",
     show_in_help: true,
-    id: 13,
+    id: 14,
     kind: UnstableFeatureKind::Runtime,
   },
   UnstableFeatureDefinition {
@@ -124,7 +132,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     flag_name: "unstable-node-globals",
     help_text: "Deprecated. Node.js `setTimeout` and `setInterval` globals are now always enabled, so this flag has no effect.",
     show_in_help: false,
-    id: 14,
+    id: 15,
     kind: UnstableFeatureKind::Runtime,
   },
   UnstableFeatureDefinition {
@@ -132,7 +140,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     flag_name: "unstable-npm-lazy-caching",
     help_text: "Enable unstable lazy caching of npm dependencies, downloading them only as needed (disabled: all npm packages in package.json are installed on startup; enabled: only npm packages that are actually referenced in an import are installed",
     show_in_help: true,
-    id: 15,
+    id: 16,
     kind: UnstableFeatureKind::Cli,
   },
   UnstableFeatureDefinition {
@@ -140,7 +148,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     flag_name: "unstable-otel",
     help_text: "Enable unstable OpenTelemetry features",
     show_in_help: false,
-    id: 16,
+    id: 17,
     kind: UnstableFeatureKind::Runtime,
   },
   UnstableFeatureDefinition {
@@ -148,7 +156,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     flag_name: "unstable-process",
     help_text: "Enable unstable process APIs",
     show_in_help: false,
-    id: 17,
+    id: 18,
     kind: UnstableFeatureKind::Runtime,
   },
   UnstableFeatureDefinition {
@@ -156,7 +164,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     flag_name: "unstable-raw-imports",
     help_text: "Enable unstable 'bytes' imports.",
     show_in_help: true,
-    id: 18,
+    id: 19,
     kind: UnstableFeatureKind::Runtime,
   },
   UnstableFeatureDefinition {
@@ -164,7 +172,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     flag_name: "unstable-sloppy-imports",
     help_text: "Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing",
     show_in_help: true,
-    id: 19,
+    id: 20,
     kind: UnstableFeatureKind::Cli,
   },
   UnstableFeatureDefinition {
@@ -172,7 +180,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     flag_name: "unstable-subdomain-wildcards",
     help_text: "Enable subdomain wildcards support for the `--allow-net` flag",
     show_in_help: false,
-    id: 20,
+    id: 21,
     kind: UnstableFeatureKind::Cli,
   },
   UnstableFeatureDefinition {
@@ -180,7 +188,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     flag_name: "unstable-temporal",
     help_text: "Enable unstable Temporal API",
     show_in_help: false,
-    id: 21,
+    id: 22,
     kind: UnstableFeatureKind::Runtime,
   },
   UnstableFeatureDefinition {
@@ -188,7 +196,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     flag_name: "unstable-unsafe-proto",
     help_text: "Enable unsafe __proto__ support. This is a security risk.",
     show_in_help: true,
-    id: 22,
+    id: 23,
     kind: UnstableFeatureKind::Runtime,
   },
   UnstableFeatureDefinition {
@@ -196,7 +204,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     flag_name: "unstable-vsock",
     help_text: "Enable unstable VSOCK APIs",
     show_in_help: false,
-    id: 23,
+    id: 24,
     kind: UnstableFeatureKind::Runtime,
   },
   UnstableFeatureDefinition {
@@ -204,7 +212,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     flag_name: "unstable-webgpu",
     help_text: "Enable unstable WebGPU APIs",
     show_in_help: true,
-    id: 24,
+    id: 25,
     kind: UnstableFeatureKind::Runtime,
   },
   UnstableFeatureDefinition {
@@ -212,7 +220,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     flag_name: "unstable-worker-options",
     help_text: "Enable unstable Web Worker APIs",
     show_in_help: true,
-    id: 25,
+    id: 26,
     kind: UnstableFeatureKind::Runtime,
   },
 ];

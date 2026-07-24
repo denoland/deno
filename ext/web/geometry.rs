@@ -26,10 +26,11 @@ use deno_core::webidl::WebIdlError;
 use deno_core::webidl::WebIdlErrorKind;
 use deno_core::webidl::try_convert_sequence_with_policy;
 
-use crate::css_value::CSSValueError;
-use crate::css_value::ParserInput;
-use crate::css_value::Transform;
-use crate::css_value::TransformListParser;
+use crate::css::error::CSSParseError;
+use crate::css::error::css_parse_error_to_string;
+use crate::css::transform::ParserInput;
+use crate::css::transform::Transform;
+use crate::css::transform::TransformListParser;
 use crate::f64::maximum;
 use crate::f64::minimum;
 
@@ -100,19 +101,9 @@ pub enum GeometryError {
   FailedToParse(String),
 }
 
-impl<'i> From<CSSValueError<'i>> for GeometryError {
-  fn from(error: CSSValueError) -> Self {
-    use cssparser::BasicParseErrorKind;
-    use cssparser::ParseErrorKind;
-
-    // Suppress Debug output for cssparser::Token
-    let message: String = match error.kind {
-      ParseErrorKind::Basic(BasicParseErrorKind::UnexpectedToken(_)) => {
-        "unexpected token".into()
-      }
-      _ => format!("{}", error),
-    };
-    GeometryError::FailedToParse(message)
+impl<'i> From<CSSParseError<'i>> for GeometryError {
+  fn from(error: CSSParseError<'i>) -> Self {
+    GeometryError::FailedToParse(css_parse_error_to_string(error))
   }
 }
 
@@ -1198,10 +1189,72 @@ impl DOMQuad {
   }
 }
 
+#[derive(WebIDL)]
+#[webidl(dictionary)]
+pub struct DOMMatrix2DInit {
+  #[webidl(default = None)]
+  pub a: Option<UnrestrictedDouble>,
+  #[webidl(default = None)]
+  pub b: Option<UnrestrictedDouble>,
+  #[webidl(default = None)]
+  pub c: Option<UnrestrictedDouble>,
+  #[webidl(default = None)]
+  pub d: Option<UnrestrictedDouble>,
+  #[webidl(default = None)]
+  pub e: Option<UnrestrictedDouble>,
+  #[webidl(default = None)]
+  pub f: Option<UnrestrictedDouble>,
+  #[webidl(default = None)]
+  pub m11: Option<UnrestrictedDouble>,
+  #[webidl(default = None)]
+  pub m12: Option<UnrestrictedDouble>,
+  #[webidl(default = None)]
+  pub m21: Option<UnrestrictedDouble>,
+  #[webidl(default = None)]
+  pub m22: Option<UnrestrictedDouble>,
+  #[webidl(default = None)]
+  pub m41: Option<UnrestrictedDouble>,
+  #[webidl(default = None)]
+  pub m42: Option<UnrestrictedDouble>,
+}
+
+impl DOMMatrix2DInit {
+  /// Validates 2D matrix members per the spec's "validate and fixup" algorithm
+  /// and converts to a 2D affine transform matrix.
+  /// Returns an error if any aliased pair (e.g. `a`/`m11`) has conflicting values.
+  pub fn to_affine(&self) -> Result<[f64; 6], GeometryError> {
+    macro_rules! fixup {
+      ($value3d:expr, $value2d:expr, $default:expr) => {
+        if let Some(value3d) = $value3d {
+          if let Some(value2d) = $value2d {
+            let v3: f64 = **value3d;
+            let v2: f64 = **value2d;
+            if !(v3 == v2 || v3.is_nan() && v2.is_nan()) {
+              return Err(GeometryError::Inconsistent2DMatrix);
+            }
+          }
+          **value3d
+        } else if let Some(value2d) = $value2d {
+          **value2d
+        } else {
+          $default
+        }
+      };
+    }
+    let a = fixup!(self.m11.as_ref(), self.a.as_ref(), 1.0);
+    let b = fixup!(self.m12.as_ref(), self.b.as_ref(), 0.0);
+    let c = fixup!(self.m21.as_ref(), self.c.as_ref(), 0.0);
+    let d = fixup!(self.m22.as_ref(), self.d.as_ref(), 1.0);
+    let e = fixup!(self.m41.as_ref(), self.e.as_ref(), 0.0);
+    let f = fixup!(self.m42.as_ref(), self.f.as_ref(), 0.0);
+    Ok([a, b, c, d, e, f])
+  }
+}
+
 #[derive(WebIDL, Debug)]
 #[webidl(dictionary)]
 pub struct DOMMatrixInit {
-  // Need to place the inherited DOMMatrixInit2D first
+  // Need to place the inherited DOMMatrix2DInit first
   #[webidl(default = None)]
   a: Option<UnrestrictedDouble>,
   #[webidl(default = None)]
@@ -2420,6 +2473,24 @@ unsafe impl GarbageCollected for DOMMatrix {
 
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"DOMMatrix"
+  }
+}
+
+impl DOMMatrix {
+  pub fn new_2d(a: f64, b: f64, c: f64, d: f64, e: f64, f: f64) -> Self {
+    let mut m = Matrix4::identity();
+    m[(0, 0)] = a; // m11
+    m[(1, 0)] = b; // m12
+    m[(0, 1)] = c; // m21
+    m[(1, 1)] = d; // m22
+    m[(0, 3)] = e; // m41
+    m[(1, 3)] = f; // m42
+    Self {
+      base: DOMMatrixReadOnly {
+        inner: RefCell::new(m),
+        is_2d: Cell::new(true),
+      },
+    }
   }
 }
 

@@ -3,11 +3,13 @@
 mod blob;
 
 mod broadcast_channel;
+pub mod canvas2d;
 mod compression;
 mod console;
+pub mod css;
 mod css_stylesheet;
-mod css_value;
 mod f64;
+mod font;
 mod geometry;
 mod image_data;
 mod message_port;
@@ -18,7 +20,9 @@ mod urlpattern;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::OnceLock;
 
 pub use blob::BlobError;
 pub use compression::CompressionError;
@@ -50,6 +54,7 @@ use crate::blob::op_blob_remove_part;
 use crate::blob::op_blob_revoke_object_url;
 use crate::blob::op_blob_slice_part;
 pub use crate::broadcast_channel::InMemoryBroadcastChannel;
+pub use crate::font::SharedLocalFontDb;
 pub use crate::message_port::JsMessageData;
 pub use crate::message_port::MessagePort;
 pub use crate::message_port::RecvMessageData;
@@ -147,6 +152,9 @@ deno_core::extension!(deno_web,
     broadcast_channel::op_broadcast_free,
     broadcast_channel::op_broadcast_send,
     broadcast_channel::op_broadcast_recv,
+    font::op_fontdb_load_local_fonts,
+    font::op_fontdb_query_local_fonts,
+    font::op_fontdb_local_font_data,
   ],
   objects = [
     css_stylesheet::CSSRule,
@@ -160,6 +168,11 @@ deno_core::extension!(deno_web,
     geometry::DOMMatrix,
     image_data::ImageData,
     console::Console,
+    canvas2d::CanvasGradient,
+    canvas2d::CanvasPattern,
+    canvas2d::OffscreenCanvasRenderingContext2D,
+    canvas2d::Path2D,
+    canvas2d::TextMetrics,
   ],
   lazy_loaded_esm = [
     "locks.js",
@@ -190,12 +203,14 @@ deno_core::extension!(deno_web,
     "16_image_data.js",
     "17_geometry.js",
     "18_css_stylesheet.js",
+    "18_canvas2d.js",
   ],
   options = {
     blob_store: Arc<dyn BlobStoreTrait>,
     maybe_location: Option<Url>,
     enable_css_parser_features: bool,
     bc: InMemoryBroadcastChannel,
+    shared_local_font_db: font::SharedLocalFontDb,
   },
   state = |state, options| {
     state.put(options.blob_store);
@@ -206,6 +221,10 @@ deno_core::extension!(deno_web,
     state.put(geometry::State::new(options.enable_css_parser_features));
     state.put(options.bc);
     state.put(broadcast_channel::BroadcastSabStash::default());
+    state.put(Arc::new(OnceLock::<Option<canvas2d::DenoCanvasBackend>>::new()));
+    state.put(Rc::new(RefCell::new(parley::FontContext::new())));
+    state.put(Rc::new(RefCell::new(parley::LayoutContext::<()>::new())));
+    state.put(options.shared_local_font_db);
   }
 );
 

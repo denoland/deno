@@ -23,6 +23,7 @@ fn compress_decls(out_dir: &Path) {
     "lib.deno_webstorage.d.ts",
     "lib.deno_webgpu.d.ts",
     "lib.deno_canvas.d.ts",
+    "lib.deno_canvas2d.d.ts",
     "lib.deno_crypto.d.ts",
     "lib.deno_cache.d.ts",
     "lib.deno_net.d.ts",

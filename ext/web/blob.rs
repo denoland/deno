@@ -458,6 +458,7 @@ mod tests {
       None,
       Default::default(),
       Default::default(),
+      Default::default(),
     );
 
     // Run the extension's state initializer on a fresh OpState.

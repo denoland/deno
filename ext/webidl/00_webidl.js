@@ -1472,6 +1472,13 @@ function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
 function configureInterface(interface_) {
   configureProperties(interface_);
   configureProperties(interface_.prototype);
+  // Per WebIDL, the "prototype" property of an interface object is
+  // non-writable. Native (cppgc-backed) constructors come with a writable
+  // one; for regular JS classes this is a no-op.
+  ObjectDefineProperty(interface_, "prototype", {
+    __proto__: null,
+    writable: false,
+  });
   ObjectDefineProperty(interface_.prototype, SymbolToStringTag, {
     __proto__: null,
     value: interface_.name,

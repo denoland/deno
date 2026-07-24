@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { assertEquals, assertRejects } from "./test_util.ts";
+import { assert, assertEquals, assertRejects } from "./test_util.ts";
 
 const prefix = "tests/testdata/image";
 
@@ -400,4 +400,93 @@ Deno.test("imageBitmapFromBlobInvalidtype", async () => {
   const imageBitmap = await createImageBitmap(blob);
   assertEquals(imageBitmap.width, 1);
   assertEquals(imageBitmap.height, 1);
+});
+
+/**
+ * Puts pixels into an OffscreenCanvas without requiring the unstable 2D
+ * context, by round-tripping through a bitmaprenderer context.
+ */
+async function makeOffscreenCanvas(
+  data: Uint8ClampedArray<ArrayBuffer>,
+  width: number,
+  height: number,
+): Promise<OffscreenCanvas> {
+  const bitmap = await createImageBitmap(new ImageData(data, width, height));
+  const canvas = new OffscreenCanvas(width, height);
+  const ctx = canvas.getContext("bitmaprenderer");
+  assert(ctx);
+  ctx.transferFromImageBitmap(bitmap);
+  return canvas;
+}
+
+Deno.test("imageBitmapFromOffscreenCanvas", async (t) => {
+  await t.step("fresh canvas without a context", async () => {
+    const canvas = new OffscreenCanvas(2, 2);
+    const imageBitmap = await createImageBitmap(canvas);
+    assertEquals(imageBitmap.width, 2);
+    assertEquals(imageBitmap.height, 2);
+    // A canvas without a context is transparent black.
+    assertEquals(
+      // @ts-ignore: Deno[Deno.internal].core allowed
+      Deno[Deno.internal].getBitmapData(imageBitmap),
+      new Uint8Array(2 * 2 * 4),
+    );
+  });
+  await t.step("zero-sized canvas rejects with InvalidStateError", async () => {
+    const err = await assertRejects(
+      () => createImageBitmap(new OffscreenCanvas(0, 10)),
+      DOMException,
+    );
+    assertEquals(err.name, "InvalidStateError");
+  });
+  await t.step("content round-trip", async () => {
+    const data = generateNumberedData(3 * 3);
+    const canvas = await makeOffscreenCanvas(data, 3, 3);
+    const imageBitmap = await createImageBitmap(canvas);
+    assertEquals(
+      // @ts-ignore: Deno[Deno.internal].core allowed
+      Deno[Deno.internal].getBitmapData(imageBitmap),
+      new Uint8Array(data.buffer),
+    );
+    // Unlike transferToImageBitmap(), the canvas keeps its bitmap.
+    assertEquals(
+      // @ts-ignore: Deno[Deno.internal].core allowed
+      Deno[Deno.internal].getCanvasBitmapData(canvas),
+      new Uint8Array(data.buffer),
+    );
+  });
+  await t.step("crop", async () => {
+    const data = generateNumberedData(3 * 3);
+    const canvas = await makeOffscreenCanvas(data, 3, 3);
+    const imageBitmap = await createImageBitmap(canvas, 1, 1, 1, 1);
+    assertEquals(
+      // @ts-ignore: Deno[Deno.internal].core allowed
+      Deno[Deno.internal].getBitmapData(imageBitmap),
+      new Uint8Array([5, 0, 0, 1]),
+    );
+  });
+  await t.step("out-of-bounds crop fills transparent black", async () => {
+    const data = generateNumberedData(3 * 3);
+    const canvas = await makeOffscreenCanvas(data, 3, 3);
+    const imageBitmap = await createImageBitmap(canvas, -1, -1, 2, 2);
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    // deno-fmt-ignore
+    assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([
+      0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 1, 0, 0, 1
+    ]));
+  });
+  await t.step("flipY", async () => {
+    const data = generateNumberedData(2);
+    const canvas = await makeOffscreenCanvas(data, 1, 2);
+    const imageBitmap = await createImageBitmap(canvas, {
+      imageOrientation: "flipY",
+    });
+    // @ts-ignore: Deno[Deno.internal].core allowed
+    // deno-fmt-ignore
+    assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([
+      2, 0, 0, 1,
+      1, 0, 0, 1
+    ]));
+  });
 });
