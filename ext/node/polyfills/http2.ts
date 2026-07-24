@@ -1470,6 +1470,28 @@ function emit(self, ...args) {
   ReflectApply(self.emit, self, args);
 }
 
+// Emit a client stream's first header event ('response' or push 'push'), then
+// flush any body chunks that arrived before it. ClientHttp2Stream.push buffers
+// everything until now, guaranteeing body 'data' is never delivered before
+// 'response' (denoland/deno#35947).
+function emitClientResponseNT(stream, event, obj, flags, headers) {
+  const state = stream[kState];
+  state.responseEmitted = true;
+  ReflectApply(stream.emit, stream, [event, obj, flags, headers]);
+  const pending = state.pendingData;
+  if (pending !== null) {
+    state.pendingData = null;
+    for (let i = 0; i < pending.length; i++) {
+      // Now that responseEmitted is set, push() forwards straight through.
+      // deno-lint-ignore prefer-primordials
+      stream.push(pending[i][0], pending[i][1]);
+      if (stream.destroyed) {
+        break;
+      }
+    }
+  }
+}
+
 // Mark the stream so onStreamClose stops deferring before user code
 // runs, then emit the 'stream' event on the session.
 function emitStreamNT(session, stream, obj, flags, headers) {
@@ -1657,12 +1679,17 @@ function onSessionHeaders(
       originSet.delete(stream[kOrigin]);
     }
     debugStream(id, type, "emitting stream '%s' event", event);
+    // The first header event ('response'/'push') releases the client read gate
+    // in _read so that body 'data' cannot be emitted before it.
+    const emitFn = (event === "response" || event === "push")
+      ? emitClientResponseNT
+      : emit;
     const reqAsync = stream[kRequestAsyncResource];
     if (reqAsync) {
       reqAsync.runInAsyncScope(
         process.nextTick,
         null,
-        emit,
+        emitFn,
         stream,
         event,
         obj,
@@ -1670,7 +1697,7 @@ function onSessionHeaders(
         headers,
       );
     } else {
-      process.nextTick(emit, stream, event, obj, flags, headers);
+      process.nextTick(emitFn, stream, event, obj, flags, headers);
     }
     if (
       (event === "response" ||
@@ -1949,6 +1976,12 @@ class Http2Stream extends Duplex {
       writeQueueSize: 0,
       trailersReady: false,
       endAfterHeaders: false,
+      // Client-only: whether the 'response' (or 'push') headers event has been
+      // emitted yet, and a queue of chunks pushed before it was. Used to keep
+      // body 'data' from being delivered ahead of 'response' (see
+      // ClientHttp2Stream.push / emitClientResponseNT).
+      responseEmitted: false,
+      pendingData: null,
     };
 
     // Fields used by the compat API to avoid megamorphisms.
@@ -3471,6 +3504,32 @@ class ClientHttp2Stream extends Http2Stream {
       this[kInit](id, handle);
     }
     this.on("headers", handleHeaderContinue);
+  }
+
+  // Node emits a client stream's 'response' event before any body 'data'.
+  // onSessionHeaders defers 'response' to a process.nextTick, but the native
+  // read callback delivers DATA frames synchronously via onStreamRead ->
+  // push(). When a body arrives in the same frame batch as the response
+  // headers, that synchronous push would emit 'data' ahead of the still-queued
+  // 'response' (denoland/deno#35947). Buffer everything (data and the trailing
+  // null EOF) until 'response'/'push' has been emitted; emitClientResponseNT
+  // flushes the queue in order afterwards.
+  push(chunk, encoding) {
+    const state = this[kState];
+    if (!state.responseEmitted) {
+      // Only actual body data is pushed synchronously (by onStreamRead) and so
+      // can outrun 'response'; the trailing null EOF and the no-body case are
+      // already ordered after 'response' by the nextTick queue, so let a lone
+      // null through untouched (buffering it would delay 'end' by a tick and
+      // lose it if the peer tears the stream down first). Once data has been
+      // buffered, the null must stay queued behind it to preserve order.
+      if (chunk !== null || state.pendingData !== null) {
+        const pending = state.pendingData ??= [];
+        ArrayPrototypePush(pending, [chunk, encoding]);
+        return true;
+      }
+    }
+    return super.push(chunk, encoding);
   }
 }
 

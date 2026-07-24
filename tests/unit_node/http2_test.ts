@@ -824,6 +824,60 @@ Deno.test("[node/http2] AsyncLocalStorage propagates per request", {
   await done.promise;
 });
 
+// Regression test for https://github.com/denoland/deno/issues/35947 — a client
+// stream must emit 'response' before any body 'data', even when a 'data'
+// listener is attached synchronously right after request() and the body arrives
+// in the same frame batch as the response headers.
+Deno.test("[node/http2 client] 'response' is emitted before 'data'", {
+  ignore: Deno.build.os === "windows",
+  sanitizeResources: false,
+  sanitizeOps: false,
+}, async () => {
+  const server = http2.createServer();
+  server.on("stream", (stream) => {
+    stream.respond({
+      [http2.constants.HTTP2_HEADER_CONTENT_TYPE]: "text/plain; charset=utf-8",
+      [http2.constants.HTTP2_HEADER_STATUS]: 200,
+    });
+    stream.write("hello ");
+    stream.end("world");
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, resolve);
+  });
+
+  const port = (server.address() as net.AddressInfo).port;
+  const client = http2.connect(`http://localhost:${port}`);
+
+  const done = Promise.withResolvers<void>();
+  const events: string[] = [];
+
+  const req = client.request({ [http2.constants.HTTP2_HEADER_PATH]: "/" });
+  req.on("response", () => events.push("response"));
+  req.on("data", () => events.push("data"));
+  req.on("end", () => {
+    try {
+      assertEquals(events[0], "response");
+      assert(
+        events.indexOf("response") < events.indexOf("data"),
+        `expected 'response' before 'data', got: ${events.join(",")}`,
+      );
+    } catch (e) {
+      done.reject(e);
+      return;
+    }
+    client.close();
+    server.close((err) => err ? done.reject(err) : done.resolve());
+  });
+  req.on("error", done.reject);
+  client.on("error", done.reject);
+  req.end();
+
+  await done.promise;
+});
+
 Deno.test("[node/http2 client] connect without net permission", {
   permissions: { net: false },
 }, async () => {
