@@ -356,6 +356,7 @@ impl WorkspaceLinter {
         member_dir.dir_url(),
       )?,
       maybe_plugin_runner: plugin_runner,
+      write_fixes: true,
     }));
 
     let has_error = self.has_error.clone();
@@ -618,6 +619,7 @@ fn lint_stdin(
     configured_rules,
     deno_lint_config,
     maybe_plugin_runner: None,
+    write_fixes: true,
   });
 
   let r = linter.lint_file(&file_path, deno_ast::strip_bom(source_code), None);
@@ -665,7 +667,7 @@ fn handle_lint_result(
   }
 }
 
-fn resolve_lint_config(
+pub fn resolve_lint_config(
   compiler_options_resolver: &CompilerOptionsResolver,
   specifier: &ModuleSpecifier,
 ) -> Result<deno_lint::linter::LintConfig, AnyError> {

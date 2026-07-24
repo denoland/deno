@@ -119,7 +119,7 @@ impl CliLintRule {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ConfiguredRules {
   pub all_rule_codes: HashSet<Cow<'static, str>>,
   pub rules: Vec<CliLintRule>,
