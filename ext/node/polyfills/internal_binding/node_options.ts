@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 (function () {
-const { primordials } = __bootstrap;
+const { core, primordials } = __bootstrap;
+const { op_get_env_no_permission_check } = core.ops;
 const {
   SafeMap,
   ArrayPrototypeForEach,
@@ -168,7 +169,14 @@ function getOptions() {
   }
 
   const options = createDefaultOptions();
-  const nodeOptions = Deno.env.get("NODE_OPTIONS");
+  // Internal runtime bootstrap read of the process's own NODE_OPTIONS: this
+  // happens during Node process setup, is not user code, and must work in
+  // every context (including compiled binaries, whose embedded permissions do
+  // not include the default env allowlist). Read it without a permission
+  // check, matching the other internal Node config reads (NODE_EXTRA_CA_CERTS,
+  // NODE_TLS_REJECT_UNAUTHORIZED, TERM). User-facing `Deno.env.get`/process.env
+  // reads of NODE_OPTIONS still go through the permission path.
+  const nodeOptions = op_get_env_no_permission_check("NODE_OPTIONS");
   const envArgs = nodeOptions ? splitNodeOptions(nodeOptions) : [];
   const execArgv = getExecArgv();
   const args = ArrayPrototypeConcat(envArgs, execArgv);

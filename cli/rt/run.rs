@@ -1650,6 +1650,14 @@ pub async fn run_with_options(
       apply_desktop_permission_defaults(&mut permissions);
     }
 
+    // Apply the default-readable env var allowlist for parity with `deno run`.
+    // A compiled app always runs user code, so this is unconditional (there is
+    // no prompt-default subcommand gate here). It stays deny-respecting: a
+    // global `--deny-env`/`--ignore-env` baked into the app skips it.
+    deno_runtime::deno_permissions::apply_default_env_allowlist(
+      &mut permissions,
+    );
+
     let desc_parser =
       Arc::new(RuntimePermissionDescriptorParser::new(sys.clone()));
     let permissions =

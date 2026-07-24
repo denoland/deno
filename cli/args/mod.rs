@@ -1217,6 +1217,7 @@ impl CliOptions {
       config_permissions,
     )?;
     self.augment_import_permissions(&mut permissions_options);
+    self.apply_default_env_allowlist(&mut permissions_options);
     if let DenoSubcommand::Serve(serve_flags) = &self.flags.subcommand {
       augment_permissions_with_serve_flags(
         &mut permissions_options,
@@ -1286,6 +1287,54 @@ impl CliOptions {
     if options.allow_import.is_none() {
       options.allow_import = Some(self.implicit_allow_import());
     }
+  }
+
+  /// Whether the current subcommand executes user code with the prompt-based
+  /// permission defaults. `deno eval` and `deno x` already imply allow-all, and
+  /// `deno compile` bakes permissions at compile time (the standalone runtime
+  /// applies the allowlist itself), so the default env allowlist only applies
+  /// to these subcommands. `deno desktop` (dev, non-compiled) runs user code
+  /// too, matching what a compiled desktop app gets.
+  fn runs_user_code_with_prompt_defaults(&self) -> bool {
+    matches!(
+      self.flags.subcommand,
+      DenoSubcommand::Run(_)
+        | DenoSubcommand::Serve(_)
+        | DenoSubcommand::Test(_)
+        | DenoSubcommand::Bench(_)
+        | DenoSubcommand::Task(_)
+        | DenoSubcommand::Repl(_)
+        | DenoSubcommand::Desktop(_)
+    )
+  }
+
+  /// Folds the default-readable environment variable allowlist
+  /// (`DEFAULT_ENV_ALLOWLIST`) into the computed `allow_env` descriptors so that
+  /// these structurally non-sensitive variables are readable without a prompt
+  /// by default.
+  ///
+  /// This is applied unconditionally (there is no flag or gate); the expanded
+  /// allowlist is simply the default env behavior. It is deny-respecting and
+  /// additive: because the reads go through the permission path rather than a
+  /// bypass, `--deny-env` still wins over these grants, and an explicit
+  /// `--allow-env=FOO` composes on top so both `FOO` and the allowlist are
+  /// readable. An empty `allow_env` list (bare `--allow-env` or `-A`, meaning
+  /// "allow all") is left untouched.
+  ///
+  /// This also subsumes the four Node compat variables (`FORCE_COLOR`,
+  /// `NODE_DEBUG`, `NODE_OPTIONS`, `NO_COLOR`) that were historically read via
+  /// an unconditional `skip_permission_check` bypass in `op_get_env` (see
+  /// #15890); routing them through the permission path means `--deny-env` now
+  /// wins over them, which the bypass did not allow.
+  fn apply_default_env_allowlist(&self, options: &mut PermissionsOptions) {
+    // Only for subcommands that execute user code with the prompt-based
+    // defaults. The standalone/compiled runtime applies the same allowlist
+    // directly (without this guard) since a compiled app always runs user
+    // code. The shared helper preserves the deny-wins/additive semantics.
+    if !self.runs_user_code_with_prompt_defaults() {
+      return;
+    }
+    deno_runtime::deno_permissions::apply_default_env_allowlist(options);
   }
 
   fn implicit_allow_import(&self) -> Vec<String> {

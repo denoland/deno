@@ -983,6 +983,19 @@ impl<
       && !has_broker()
   }
 
+  /// Whether a specific (non-global) descriptor has been granted, i.e. a
+  /// partial allow-list is in effect. Querying `None` (the "all" query) reports
+  /// `Prompt` in this case even though some individual descriptors are granted,
+  /// so enumeration APIs use this to fall back to per-descriptor filtering
+  /// instead of failing.
+  pub fn has_granted_list(&self) -> bool {
+    !self.granted_global
+      && self
+        .descriptors
+        .iter()
+        .any(|desc| matches!(desc, UnaryPermissionDesc::Granted(_)))
+  }
+
   pub fn check_all_api(
     &mut self,
     api_name: Option<&str>,
@@ -3604,6 +3617,190 @@ pub struct PermissionsOptions {
   pub prompt: bool,
 }
 
+/// The curated default-readable environment variable allowlist. These names are
+/// structurally non-sensitive (terminal/color, locale, standard directory
+/// paths, CI detection, common Node/runtime knobs, and the `npm_*` variables
+/// that `deno task` itself sets), so ordinary CLI tools run without env prompts
+/// while every credential-shaped variable still prompts exactly as before.
+///
+/// A trailing `*` denotes a prefix pattern (handled by `EnvDescriptor::new`).
+/// Wildcards are used only where an entire namespace is structurally
+/// non-secret. Namespaces that carry credentials, such as `npm_config_*`,
+/// `GITHUB_*`, `AWS_*` and `DENO_*`, are never wildcarded.
+///
+/// This list is intentionally curated and baked into the binary; it is not
+/// user-extensible and there is no mechanism to change it at runtime (see
+/// #15890, #35950). It includes the four Node compat variables that were
+/// historically read via a `skip_permission_check` bypass in `op_get_env`.
+pub const DEFAULT_ENV_ALLOWLIST: &[&str] = &[
+  // Terminal / color / TTY.
+  "TERM",
+  "COLORTERM",
+  "TERM_PROGRAM",
+  "TERM_PROGRAM_VERSION",
+  "TERMINFO",
+  "COLUMNS",
+  "LINES",
+  "NO_COLOR",
+  "FORCE_COLOR",
+  "CLICOLOR",
+  "CLICOLOR_FORCE",
+  // Locale / timezone.
+  "LANG",
+  "LANGUAGE",
+  "LC_*",
+  "TZ",
+  // Shell / identity / cwd. `_` is the shell-provided path of the running
+  // executable (argv0), read by many Node CLIs such as yargs.
+  "SHELL",
+  "USER",
+  "LOGNAME",
+  "USERNAME",
+  "HOME",
+  "USERPROFILE",
+  "PWD",
+  "OLDPWD",
+  "_",
+  // Paths / XDG / Windows dirs.
+  "PATH",
+  "TMPDIR",
+  "TMP",
+  "TEMP",
+  "XDG_*",
+  "APPDATA",
+  "LOCALAPPDATA",
+  "PROGRAMDATA",
+  "PROGRAMFILES",
+  "HOMEDRIVE",
+  "HOMEPATH",
+  "SYSTEMROOT",
+  "WINDIR",
+  "PATHEXT",
+  "COMSPEC",
+  // OS / platform.
+  "OS",
+  "OSTYPE",
+  "HOSTTYPE",
+  "MACHTYPE",
+  "PROCESSOR_ARCHITECTURE",
+  // Node / runtime knobs.
+  "NODE_ENV",
+  "NODE_OPTIONS",
+  "NODE_PATH",
+  "NODE_DEBUG",
+  "NODE_NO_WARNINGS",
+  "NODE_DISABLE_COLORS",
+  "NODE_PENDING_DEPRECATION",
+  "NODE_ICU_DATA",
+  "NODE_EXTRA_CA_CERTS",
+  "NO_UPDATE_NOTIFIER",
+  // `deno task` npm_* vars (exactly what `deno task` sets; refs #35251,
+  // #35306).
+  "npm_package_name",
+  "npm_package_version",
+  "npm_package_json",
+  "npm_execpath",
+  "npm_node_execpath",
+  "npm_command",
+  "npm_lifecycle_event",
+  "npm_lifecycle_script",
+  "npm_config_user_agent",
+  "INIT_CWD",
+  // Debug conventions.
+  "DEBUG",
+  "DEBUG_*",
+  // Editor / pager.
+  "EDITOR",
+  "VISUAL",
+  "PAGER",
+  "MANPAGER",
+  "GIT_PAGER",
+  "BROWSER",
+  // CI detection (boolean/name flags read by `ci-info` and friends; the
+  // enumerated set never includes CI secret tokens).
+  "CI",
+  "CONTINUOUS_INTEGRATION",
+  "BUILD_NUMBER",
+  "CI_NAME",
+  "GITHUB_ACTIONS",
+  "GITLAB_CI",
+  "CIRCLECI",
+  "TRAVIS",
+  "APPVEYOR",
+  "JENKINS_URL",
+  "TEAMCITY_VERSION",
+  "BUILDKITE",
+  "DRONE",
+  "TF_BUILD",
+  "NETLIFY",
+  "VERCEL",
+  "CODEBUILD_BUILD_ID",
+];
+
+/// Merges `additions` into `allow_env`, preserving the "allow all" meaning of an
+/// empty allow-list. When `allow_env` is `None` it becomes a fresh list of the
+/// additions; when it is a non-empty list the additions are appended (skipping
+/// duplicates); when it is `Some` but empty (allow all) it is left untouched.
+fn merge_default_allow_env(
+  allow_env: &mut Option<Vec<String>>,
+  additions: impl IntoIterator<Item = &'static str>,
+) {
+  match allow_env {
+    None => {
+      *allow_env = Some(additions.into_iter().map(|s| s.to_string()).collect());
+    }
+    Some(list) if list.is_empty() => {
+      // Empty list means "allow all"; adding names would narrow it. Leave it.
+    }
+    Some(list) => {
+      for addition in additions {
+        if !list.iter().any(|existing| existing == addition) {
+          list.push(addition.to_string());
+        }
+      }
+    }
+  }
+}
+
+/// Folds the default-readable environment variable allowlist
+/// (`DEFAULT_ENV_ALLOWLIST`) into `options.allow_env` so those structurally
+/// non-sensitive variables are readable without a prompt by default.
+///
+/// This is deny-respecting and additive: because the reads go through the
+/// permission path rather than a bypass, `--deny-env=<VAR>` still wins over
+/// these grants, and an explicit `--allow-env=FOO` composes on top so both
+/// `FOO` and the allowlist are readable. An empty `allow_env` list (bare
+/// `--allow-env` or `-A`, meaning "allow all") is left untouched.
+///
+/// A global env deny or ignore (bare `--deny-env` / `--ignore-env`, or an
+/// equivalent config permission set) neutralizes env access entirely. The
+/// allowlist must not resurrect individual variables through it: a specific
+/// granted descriptor wins over a global deny/ignore in the permission
+/// resolution, so applying the allowlist here would let allowlisted variables
+/// leak past a global deny. It is therefore skipped in that case so deny still
+/// wins and ignore still ignores. Explicit `--allow-env`/`--deny-env=<VAR>`
+/// remain additive (they are not global).
+///
+/// Callers that only want this for certain subcommands should guard the call;
+/// the standalone/compiled runtime applies it unconditionally since a compiled
+/// app always runs user code.
+pub fn apply_default_env_allowlist(options: &mut PermissionsOptions) {
+  // When a permission broker is active it mediates every permission decision,
+  // including env. Skip the default allowlist so all env access is routed to
+  // the broker rather than being granted up front.
+  if has_broker() {
+    return;
+  }
+  let is_global = |list: &Option<Vec<String>>| matches!(list, Some(entries) if entries.is_empty());
+  if is_global(&options.deny_env) || is_global(&options.ignore_env) {
+    return;
+  }
+  merge_default_allow_env(
+    &mut options.allow_env,
+    DEFAULT_ENV_ALLOWLIST.iter().copied(),
+  );
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum PermissionsFromOptionsError {
   #[error("{0}")]
@@ -4396,6 +4593,14 @@ impl PermissionsContainer {
   pub fn check_env_all(&self) -> Result<(), PermissionCheckError> {
     self.inner.lock().env.check_all()?;
     Ok(())
+  }
+
+  /// Whether a partial env allow-list is in effect (specific variables granted
+  /// without a global grant). Enumeration via `Deno.env.toObject()` uses this
+  /// to return the granted subset rather than failing the whole call.
+  #[inline(always)]
+  pub fn env_has_granted_list(&self) -> bool {
+    self.inner.lock().env.has_granted_list()
   }
 
   #[inline(always)]
