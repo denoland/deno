@@ -4519,6 +4519,11 @@ function setUpTransformStreamDefaultController(
   assert(stream[_controller] === undefined);
   controller[_stream] = stream;
   stream[_controller] = controller;
+  // `node:stream`'s `addAbortSignal` treats a `TransformStream` as a web stream
+  // (see `isWebStream`) and aborts it via this function; erroring the transform
+  // errors both its readable and writable sides.
+  stream[_controllerErrorFunction] = (error) =>
+    transformStreamError(stream, error);
   controller[_transformAlgorithm] = transformAlgorithm;
   controller[_flushAlgorithm] = flushAlgorithm;
   controller[_cancelAlgorithm] = cancelAlgorithm;

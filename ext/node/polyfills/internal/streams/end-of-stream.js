@@ -23,6 +23,7 @@ const {
   isReadableFinished,
   isReadableNodeStream,
   isReadableStream,
+  isTransformStream,
   isWritable,
   isWritableErrored,
   isWritableFinished,
@@ -95,6 +96,13 @@ function eos(stream, options, callback) {
 
   if (isReadableStream(stream) || isWritableStream(stream)) {
     return eosWeb(stream, options, callback);
+  }
+
+  if (isTransformStream(stream)) {
+    // A web TransformStream has no `kIsClosedPromise` of its own; track its
+    // readable side, which closes once the transform's output is fully done.
+    // Used by `addAbortSignal` to clean up its abort listener.
+    return eosWeb(stream.readable, options, callback);
   }
 
   if (!isNodeStream(stream)) {
