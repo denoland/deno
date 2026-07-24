@@ -471,6 +471,14 @@ win32job = "=2.0.3"
 windows-sys = { version = "0.59.0", features = ["Win32_Foundation", "Win32_Media", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_WindowsProgramming", "Wdk", "Wdk_System", "Wdk_System_SystemInformation", "Win32_Security", "Win32_System_Pipes", "Wdk_Storage_FileSystem", "Win32_System_Registry", "Win32_System_Kernel", "Win32_System_Threading", "Win32_UI", "Win32_UI_Shell"] }
 winres = "=0.1.12"
 
+# Pull dprint-plugin-typescript from a fork branch that surrounds template
+# literal type unions/intersections with newlines when they don't fit on one
+# line. Tracks upstream PR https://github.com/dprint/dprint-plugin-typescript/pull/794
+# (fixes denoland/deno#29868). Remove this patch and bump the version pin once
+# the next dprint-plugin-typescript release lands.
+[patch.crates-io]
+dprint-plugin-typescript = { git = "https://github.com/divybot/dprint-plugin-typescript", branch = "fix-template-literal-type-union-surround" }
+
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.release]
 codegen-units = 1
