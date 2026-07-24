@@ -17,7 +17,6 @@
     Promise,
     PromiseReject,
     PromiseResolve,
-    PromisePrototypeCatch,
     RangeError,
     ReferenceError,
     SafeArrayIterator,
@@ -159,16 +158,8 @@
     const promise = new Promise((resolve, reject) => {
       promiseRing[idx] = [resolve, reject, promiseId];
     });
-    const wrappedPromise = PromisePrototypeCatch(
-      promise,
-      function __opRejectHandler(res) {
-        // recreate the stacktrace and strip internal event loop frames
-        ErrorCaptureStackTrace(res, __opRejectHandler);
-        throw res;
-      },
-    );
-    wrappedPromise[promiseIdSymbol] = promiseId;
-    return wrappedPromise;
+    promise[promiseIdSymbol] = promiseId;
+    return promise;
   }
 
   function __resolvePromise(promiseId, res, isOk) {
