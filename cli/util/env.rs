@@ -3,7 +3,6 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::env;
 use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::path::Path;
@@ -114,7 +113,9 @@ struct WatchEnvTrackerInner {
 impl WatchEnvTrackerInner {
   fn new() -> Self {
     // Capture the original environment state
-    let original_env: HashMap<OsString, OsString> = env::vars_os().collect();
+    let process_env = deno_os::ProcessEnvGuard::lock();
+    let original_env: HashMap<OsString, OsString> =
+      process_env.vars_os().into_iter().collect();
 
     Self {
       loaded_variables: Default::default(),
@@ -164,6 +165,9 @@ impl WatchEnvTracker {
       }
     };
 
+    // Keep substitutions and the mutations they produce consistent with each
+    // other while allowing file I/O to proceed without the process-env lock.
+    let process_env = deno_os::ProcessEnvGuard::lock();
     match deno_dotenv::from_content_sanitized_iter_with_substitution(
       &CliSys::default(),
       &content,
@@ -221,12 +225,11 @@ impl WatchEnvTracker {
                 continue;
               }
 
-              // Set the environment variable
-              // SAFETY: We're setting environment variables with valid UTF-8 strings
-              // from the .env file. Both key and value are guaranteed to be valid strings.
-              unsafe {
-                env::set_var(&key_os, &value_os);
-              }
+              // Watched env reloads run between user-code isolates. Refreshing
+              // libc here is sufficient for TZ because the replacement
+              // isolate has not been created yet and has no cached timezone to
+              // invalidate.
+              process_env.set_var(&key_os, &value_os);
 
               // Track this variable
               inner.loaded_variables.insert(key_os.clone());
@@ -249,13 +252,14 @@ impl WatchEnvTracker {
     &self,
     inner: &mut WatchEnvTrackerInner,
     log_level: Option<log::Level>,
+    process_env: &deno_os::ProcessEnvGuard,
   ) {
     for var_name in inner.unused_variables.iter() {
+      // As with loading watched env values, cleanup runs before the
+      // replacement isolate is created, so TZ changes do not need a V8
+      // notification here.
       if !inner.original_env.contains_key(var_name) {
-        // SAFETY: We're removing an environment variable that we previously set
-        unsafe {
-          env::remove_var(var_name);
-        }
+        process_env.remove_var(var_name);
 
         #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
         if log_level.map(|l| l >= log::Level::Debug).unwrap_or(false) {
@@ -267,10 +271,7 @@ impl WatchEnvTracker {
         }
       } else {
         let original_value = inner.original_env.get(var_name).unwrap();
-        // SAFETY: We're setting an environment variable to a value we control
-        unsafe {
-          env::set_var(var_name, original_value);
-        }
+        process_env.set_var(var_name, original_value);
 
         #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
         if log_level.map(|l| l >= log::Level::Debug).unwrap_or(false) {
@@ -300,7 +301,8 @@ impl WatchEnvTracker {
       self.load_env_file_inner(cwd, env_file_path, log_level, &mut inner);
     }
 
-    self._cleanup_removed_variables(&mut inner, log_level);
+    let process_env = deno_os::ProcessEnvGuard::lock();
+    self._cleanup_removed_variables(&mut inner, log_level, &process_env);
   }
 }
 
@@ -309,8 +311,14 @@ pub fn load_env_variables_from_env_files(
   env_file_names: &[String],
   flags_log_level: Option<log::Level>,
 ) {
-  let original_env_keys: HashSet<OsString> =
-    env::vars_os().map(|(key, _)| key).collect();
+  let original_env_keys: HashSet<OsString> = {
+    let process_env = deno_os::ProcessEnvGuard::lock();
+    process_env
+      .vars_os()
+      .into_iter()
+      .map(|(key, _)| key)
+      .collect()
+  };
   let mut loaded_keys = HashSet::new();
 
   for env_file_name in env_file_names.iter().rev() {
@@ -329,6 +337,9 @@ pub fn load_env_variables_from_env_files(
         continue;
       }
     };
+    // Keep substitutions and the mutations they produce consistent with each
+    // other while allowing file I/O to proceed without the process-env lock.
+    let process_env = deno_os::ProcessEnvGuard::lock();
     let iter = match deno_dotenv::from_content_sanitized_iter_with_substitution(
       &sys_traits::impls::RealSys,
       &content,
@@ -359,10 +370,7 @@ pub fn load_env_variables_from_env_files(
         continue;
       }
 
-      // SAFETY: We're setting environment variables with sanitized key/value strings from a .env file.
-      unsafe {
-        env::set_var(&key_os, value);
-      }
+      process_env.set_var(&key_os, value);
       loaded_keys.insert(key_os);
     }
   }

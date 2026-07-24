@@ -8,7 +8,6 @@
 )]
 
 use std::borrow::Cow;
-use std::env;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -140,6 +139,7 @@ enum DotEnvLoadErr {
 #[undefined]
 fn op_node_load_env_file(
   state: &mut OpState,
+  scope: &mut v8::PinScope<'_, '_>,
   #[string] path: &str,
 ) -> Result<(), DotEnvLoadErr> {
   let fs = state.borrow::<deno_fs::FileSystemRc>().clone();
@@ -156,6 +156,7 @@ fn op_node_load_env_file(
     .map_err(DotEnvLoadErr::Permission)?;
 
   let contents = fs.read_text_file_lossy_sync(&path)?;
+  let process_env = deno_os::ProcessEnvGuard::lock();
   parse_env_content_hook(&contents, &mut |key, value| {
     // Follows Node.js behavior where null bytes are stripped from env keys and values
     let key = if let Some(null_pos) = key.find('\0') {
@@ -174,10 +175,11 @@ fn op_node_load_env_file(
       value
     };
 
-    // SAFETY: called during single-threaded initialization
-    unsafe {
-      env::set_var(key, value);
-    }
+    process_env.set_var_and_notify_timezone(key, value, || {
+      scope.date_time_configuration_change_notification(
+        v8::TimeZoneDetection::Redetect,
+      );
+    });
   });
 
   Ok(())
