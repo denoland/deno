@@ -4034,8 +4034,10 @@
     "parallel/test-webstreams-pipeline.js": {},
     "parallel/test-whatwg-encoding-custom-api-basics.js": {},
     "parallel/test-whatwg-encoding-custom-fatal-streaming.js": {},
+    "parallel/test-whatwg-encoding-custom-textdecoder-api-invalid-label.js": {},
     "parallel/test-whatwg-encoding-custom-textdecoder-fatal.js": {},
     "parallel/test-whatwg-encoding-custom-textdecoder-ignorebom.js": {},
+    "parallel/test-whatwg-encoding-custom-textdecoder-invalid-arg.js": {},
     "parallel/test-whatwg-encoding-custom-textdecoder-streaming.js": {},
     "parallel/test-whatwg-encoding-custom-textdecoder-utf16-surrogates.js": {},
     "parallel/test-whatwg-encoding-singlebyte.mjs": {},
@@ -4051,6 +4053,7 @@
       "reason": "Node 26 rewrote the to-ReadableStream adapter to attach a deduplicated error listener even for already-destroyed Readables; Deno short-circuits destroyed streams"
     },
     "parallel/test-whatwg-transformstream-cancel-write-race.js": {},
+    "parallel/test-whatwg-url-canparse.js": {},
     "parallel/test-whatwg-url-custom-deepequal.js": {},
     "parallel/test-whatwg-url-custom-global.js": {},
     "parallel/test-whatwg-url-custom-href-side-effect.js": {},
