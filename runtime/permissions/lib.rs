@@ -1795,6 +1795,167 @@ fn normalize_ip(ip: IpAddr) -> IpAddr {
   }
 }
 
+/// A URL pattern entry in a net allow/deny list, e.g.
+/// `https://example.com/api/*` or `*.example.com/static/*`.
+///
+/// Unlike a plain host/port entry, a URL pattern can additionally constrain the
+/// scheme (protocol) and the path of a URL. It is therefore only matched
+/// against network access that carries a full URL (such as `fetch`, WebSocket
+/// and dynamic `import`). Raw socket access (`Deno.connect`, `Deno.listen`),
+/// which only knows a host and a port, is never granted by a URL pattern entry.
+///
+/// Equality, hashing and ordering are based on the original textual form of the
+/// entry.
+#[derive(Clone)]
+pub struct NetUrlPattern {
+  pattern: std::sync::Arc<urlpattern::UrlPattern>,
+  /// The original text of the entry, used for display, equality, hashing and
+  /// ordering.
+  canonical: String,
+}
+
+impl NetUrlPattern {
+  /// Parse a list entry such as `https://example.com/api/*` into a pattern.
+  ///
+  /// The entry is split into explicit URL pattern components (protocol,
+  /// hostname, port, pathname) rather than being handed to URLPattern's
+  /// constructor-string parser. This guarantees the host can never be silently
+  /// inferred as a wildcard, which would over-grant access.
+  fn parse(entry: &str) -> Result<Self, NetDescriptorParseError> {
+    let invalid = |message: &str| NetDescriptorParseError::InvalidUrlPattern {
+      pattern: entry.to_string(),
+      message: message.to_string(),
+    };
+
+    let (protocol, rest) = match entry.split_once("://") {
+      Some((proto, rest)) => {
+        if proto.is_empty() {
+          return Err(invalid("missing scheme before '://'"));
+        }
+        (Some(proto.to_string()), rest)
+      }
+      None => (None, entry),
+    };
+
+    let (authority, pathname) = match rest.find('/') {
+      Some(idx) => (&rest[..idx], Some(rest[idx..].to_string())),
+      None => (rest, None),
+    };
+
+    let (hostname, port) = split_pattern_host_port(authority)
+      .ok_or_else(|| invalid("missing or invalid host in URL pattern"))?;
+
+    // A bracketed IPv6 literal (`[::1]`) contains colons, which the URLPattern
+    // hostname tokenizer would otherwise read as named-group markers. Escape
+    // them so the address is matched literally.
+    let hostname = if hostname.starts_with('[') {
+      hostname.replace(':', "\\:")
+    } else {
+      hostname
+    };
+
+    let init = urlpattern::UrlPatternInit {
+      protocol,
+      hostname: Some(hostname),
+      port,
+      pathname,
+      ..Default::default()
+    };
+
+    // Use the default regex engine (`regex::Regex`).
+    let pattern: urlpattern::UrlPattern = urlpattern::UrlPattern::parse(
+      init,
+      urlpattern::UrlPatternOptions::default(),
+    )
+    .map_err(|e| invalid(&e.to_string()))?;
+
+    Ok(NetUrlPattern {
+      pattern: std::sync::Arc::new(pattern),
+      canonical: entry.to_string(),
+    })
+  }
+
+  /// Test whether a concrete URL matches this pattern.
+  fn matches_url(&self, url: &Url) -> bool {
+    self
+      .pattern
+      .test(urlpattern::UrlPatternMatchInput::Url(url.clone()))
+      .unwrap_or(false)
+  }
+}
+
+impl PartialEq for NetUrlPattern {
+  fn eq(&self, other: &Self) -> bool {
+    self.canonical == other.canonical
+  }
+}
+
+impl Eq for NetUrlPattern {}
+
+impl std::hash::Hash for NetUrlPattern {
+  fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    self.canonical.hash(state);
+  }
+}
+
+impl PartialOrd for NetUrlPattern {
+  fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    Some(self.cmp(other))
+  }
+}
+
+impl Ord for NetUrlPattern {
+  fn cmp(&self, other: &Self) -> Ordering {
+    self.canonical.cmp(&other.canonical)
+  }
+}
+
+impl fmt::Debug for NetUrlPattern {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.debug_tuple("NetUrlPattern")
+      .field(&self.canonical)
+      .finish()
+  }
+}
+
+/// Split the authority portion of a URL pattern entry (everything between the
+/// scheme and the path) into a hostname pattern and an optional port pattern,
+/// handling bracketed IPv6 literals. Returns `None` for an empty/invalid host.
+fn split_pattern_host_port(
+  authority: &str,
+) -> Option<(String, Option<String>)> {
+  if authority.is_empty() {
+    return None;
+  }
+  // Bracketed IPv6 literal: `[::1]` or `[::1]:8080`.
+  if let Some(rest) = authority.strip_prefix('[') {
+    let (ip, after) = rest.split_once(']')?;
+    if ip.is_empty() {
+      return None;
+    }
+    let host = format!("[{ip}]");
+    let port = match after {
+      "" => None,
+      p => Some(p.strip_prefix(':')?.to_string()),
+    };
+    return Some((host, port));
+  }
+  match authority.rsplit_once(':') {
+    Some(("", _)) => None,
+    Some((host, port)) => Some((host.to_string(), Some(port.to_string()))),
+    None => Some((authority.to_string(), None)),
+  }
+}
+
+/// Whether a net list entry should be parsed as a URL pattern rather than a
+/// plain host/port entry. True when the entry carries an explicit scheme
+/// (`https://...`) or a path component (`example.com/api/*`). IP subnets such
+/// as `10.0.0.0/8` are excluded because they parse as an [`IpNet`].
+fn is_url_pattern_entry(entry: &str) -> bool {
+  entry.contains("://")
+    || (entry.contains('/') && entry.parse::<IpNet>().is_err())
+}
+
 #[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord)]
 pub enum Host {
   Fqdn(FQDN),
@@ -1803,6 +1964,17 @@ pub enum Host {
   Vsock(u32),
   IpSubnet(IpNet),
   UnixSocket(PathBuf),
+  /// A URL pattern entry. Only ever appears in an allow/deny list, never as a
+  /// query.
+  Url(NetUrlPattern),
+  /// A concrete URL being checked. Carries both the parsed host (so it can be
+  /// matched against plain host/port entries) and the full URL (so it can be
+  /// matched against [`Host::Url`] pattern entries). Only produced for queries,
+  /// never stored in an allow/deny list.
+  WithUrl {
+    host: Box<Host>,
+    url: Box<Url>,
+  },
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -1927,11 +2099,13 @@ impl QueryDescriptor for NetDescriptor {
   }
 
   fn as_allow(&self) -> Option<Self::AllowDesc> {
-    Some(self.clone())
+    // Store the host/port form so a granted prompt for a URL grants the host,
+    // not the one-off URL it was prompted for.
+    Some(self.normalized_for_list())
   }
 
   fn as_deny(&self) -> Self::DenyDesc {
-    self.clone()
+    self.normalized_for_list()
   }
 
   fn check_in_permission(
@@ -1948,6 +2122,30 @@ impl QueryDescriptor for NetDescriptor {
   }
 
   fn matches_allow(&self, other: &Self::AllowDesc) -> bool {
+    // `other` is the allow/deny list entry, `self` is the access being checked.
+
+    // A URL pattern entry only matches access that carries a full URL (e.g.
+    // `fetch`). Raw host/port access (`Deno.connect`) is never granted by it.
+    if let Host::Url(pattern) = &other.0 {
+      return match &self.0 {
+        Host::WithUrl { url, .. } => pattern.matches_url(url),
+        _ => false,
+      };
+    }
+
+    // Defensive: an allow/deny entry should never itself carry a URL, but if it
+    // does (e.g. a query descriptor stored without normalization), match on its
+    // host/port.
+    if let Host::WithUrl { host, .. } = &other.0 {
+      return self.matches_allow(&NetDescriptor((**host).clone(), other.1));
+    }
+
+    // When the access carries a URL but the entry is a plain host/port entry,
+    // fall back to host/port matching using the URL's host and port.
+    if let Host::WithUrl { host, .. } = &self.0 {
+      return NetDescriptor((**host).clone(), self.1).matches_allow(other);
+    }
+
     if other.1.is_some() && self.1 != other.1 {
       return false;
     }
@@ -2018,6 +2216,24 @@ impl NetDescriptor {
   pub fn into_import(self) -> ImportDescriptor {
     ImportDescriptor(self)
   }
+
+  /// Whether this descriptor is a URL pattern entry (one that carries a scheme
+  /// and/or path), as opposed to a plain host/port entry.
+  pub fn is_url_pattern(&self) -> bool {
+    matches!(self.0, Host::Url(_))
+  }
+
+  /// Reduce a query descriptor that carries a full URL ([`Host::WithUrl`]) to a
+  /// plain host/port descriptor. Used when a query is stored in an allow/deny
+  /// list (e.g. after a permission prompt is granted), so that the stored entry
+  /// grants/denies the host and port rather than the one-off URL. Other
+  /// descriptors are returned unchanged.
+  fn normalized_for_list(&self) -> NetDescriptor {
+    match &self.0 {
+      Host::WithUrl { host, .. } => NetDescriptor((**host).clone(), self.1),
+      _ => self.clone(),
+    }
+  }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -2038,6 +2254,8 @@ pub enum NetDescriptorParseError {
   Host(#[from] HostParseError),
   #[error("invalid vsock: '{0}'")]
   InvalidVsock(String),
+  #[error("invalid URL pattern '{pattern}': {message}")]
+  InvalidUrlPattern { pattern: String, message: String },
   #[error("invalid unix socket: '{0}' (path must be absolute and non-empty)")]
   InvalidUnixSocket(String),
 }
@@ -2100,6 +2318,20 @@ impl NetDescriptor {
       // `unix:/var/run/../run/foo.sock` would silently never match.
       let path = normalize_path(Cow::Owned(path)).into_owned();
       return Ok(NetDescriptor(Host::UnixSocket(path), None));
+    }
+
+    // URL pattern entries are only recognised in list contexts (allow/deny
+    // lists, `--allow-import`), never when parsing a concrete query. An entry
+    // is treated as a URL pattern when it carries a scheme (`https://...`) or a
+    // path (`example.com/api/*`). Subnets such as `10.0.0.0/8` still parse as
+    // plain host entries because they parse as an `IpNet`.
+    if matches!(subdomain_wildcards, SubdomainWildcards::Enabled)
+      && is_url_pattern_entry(hostname)
+    {
+      return Ok(NetDescriptor(
+        Host::Url(NetUrlPattern::parse(hostname)?),
+        None,
+      ));
     }
 
     if hostname.starts_with("http://") || hostname.starts_with("https://") {
@@ -2186,9 +2418,15 @@ impl NetDescriptor {
     let host = url.host_str().ok_or_else(|| {
       NetDescriptorFromUrlParseError::MissingHost(url.clone())
     })?;
-    let host = Host::parse_for_query(host)?;
+    let parsed_host = Host::parse_for_query(host)?;
     let port = url.port_or_known_default();
-    Ok(NetDescriptor(host, port.map(Into::into)))
+    Ok(NetDescriptor(
+      Host::WithUrl {
+        host: Box::new(parsed_host),
+        url: Box::new(url.clone()),
+      },
+      port.map(Into::into),
+    ))
   }
 
   pub fn from_vsock(
@@ -2209,6 +2447,13 @@ impl fmt::Display for NetDescriptor {
       Host::Ip(IpAddr::V6(ip)) => write!(f, "[{ip}]"),
       Host::Vsock(cid) => write!(f, "vsock:{cid}"),
       Host::UnixSocket(path) => write!(f, "unix:{}", path.display()),
+      // The canonical text already includes the scheme, port and path.
+      Host::Url(pattern) => return f.write_str(&pattern.canonical),
+      // Display a URL query as its underlying host/port, preserving the
+      // existing error message format.
+      Host::WithUrl { host, .. } => {
+        return fmt::Display::fmt(&NetDescriptor((**host).clone(), self.1), f);
+      }
     }?;
     if let Some(port) = self.1 {
       write!(f, ":{}", port)?;
@@ -6181,6 +6426,175 @@ mod tests {
       let u = Url::parse(url_str).unwrap();
       assert_eq!(is_ok, perms.check_net_url(&u, "api()").is_ok(), "{}", u);
     }
+  }
+
+  #[test]
+  fn test_check_net_url_pattern() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_net: Some(svec![
+          // scheme + host + path
+          "https://example.com/api/*",
+          // subdomain wildcard host + path
+          "*.cdn.example.com/static/*",
+          // scheme + host, no path (grants any path)
+          "https://hostonly.example.com",
+          // scheme-less host + path (grants any scheme)
+          "schemeless.example.com/only/*",
+          // scheme + host + explicit non-default port + path
+          "https://ported.example.com:8443/*",
+          // scheme-only wildcard host
+          "wss://*",
+          // bracketed IPv6 literal host + port + path
+          "http://[::1]:8080/api/*",
+          // a plain host entry kept working alongside patterns
+          "plain.example.com"
+        ]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
+
+    let url_tests = vec![
+      // Path is matched for fetch-style URL access.
+      ("https://example.com/api/users", true),
+      ("https://example.com/api/", true),
+      ("https://example.com/other", false),
+      ("https://example.com/", false),
+      // Protocol is matched: only https for this entry.
+      ("http://example.com/api/users", false),
+      // Subdomain wildcard host + path.
+      ("https://foo.cdn.example.com/static/app.js", true),
+      ("https://foo.cdn.example.com/secret", false),
+      // The `*.` subdomain wildcard requires a subdomain; it does not match the
+      // apex `cdn.example.com` (consistent with plain `*.host` entries).
+      ("https://cdn.example.com/static/app.js", false),
+      // Host-only pattern grants any path (and any port).
+      ("https://hostonly.example.com/anything/at/all", true),
+      ("https://hostonly.example.com", true),
+      ("http://hostonly.example.com/anything", false),
+      // Scheme-less pattern grants any scheme on that host + path.
+      ("https://schemeless.example.com/only/x", true),
+      ("http://schemeless.example.com/only/x", true),
+      ("https://schemeless.example.com/nope", false),
+      // Explicit non-default port must match.
+      ("https://ported.example.com:8443/anything", true),
+      ("https://ported.example.com/anything", false),
+      ("https://ported.example.com:9000/anything", false),
+      // Scheme-only wildcard host.
+      ("wss://anything.example.org/socket", true),
+      ("ws://anything.example.org/socket", false),
+      // Bracketed IPv6 literal host is matched (scheme, port and path too).
+      ("http://[::1]:8080/api/x", true),
+      ("http://[::1]:8080/other", false),
+      ("http://[::1]:9090/api/x", false),
+      ("https://[::1]:8080/api/x", false),
+      // Plain host entry still grants any path/scheme/port.
+      ("https://plain.example.com/whatever", true),
+      ("http://plain.example.com:1234/whatever", true),
+    ];
+
+    for (url_str, is_ok) in url_tests {
+      let u = Url::parse(url_str).unwrap();
+      assert_eq!(
+        is_ok,
+        perms.check_net_url(&u, "api()").is_ok(),
+        "check_net_url {}",
+        u
+      );
+    }
+
+    // Raw host/port access (e.g. `Deno.connect`) is NOT granted by a URL
+    // pattern entry that constrains scheme/path, since no URL is available.
+    assert!(
+      perms
+        .check_net(&("example.com", Some(443)), "Deno.connect()")
+        .is_err()
+    );
+    assert!(
+      perms
+        .check_net(&("foo.cdn.example.com", Some(443)), "Deno.connect()")
+        .is_err()
+    );
+    // But a plain host entry continues to grant raw host/port access.
+    assert!(
+      perms
+        .check_net(&("plain.example.com", Some(443)), "Deno.connect()")
+        .is_ok()
+    );
+  }
+
+  #[test]
+  fn test_net_descriptor_parse_url_pattern() {
+    // URL pattern entries are accepted in list contexts...
+    assert!(NetDescriptor::parse_for_list("https://example.com/api/*").is_ok());
+    assert!(NetDescriptor::parse_for_list("example.com/api/*").is_ok());
+    assert!(NetDescriptor::parse_for_list("https://*").is_ok());
+    assert!(
+      NetDescriptor::parse_for_list("https://example.com:8443/*").is_ok()
+    );
+    // ...including bracketed IPv6 literal hosts.
+    assert!(NetDescriptor::parse_for_list("http://[::1]:8080/api/*").is_ok());
+    assert!(NetDescriptor::parse_for_list("http://[::1]/api/*").is_ok());
+    // ...but plain host entries are not treated as patterns.
+    assert!(matches!(
+      NetDescriptor::parse_for_list("example.com").unwrap().0,
+      Host::Fqdn(_)
+    ));
+    assert!(matches!(
+      NetDescriptor::parse_for_list("*.example.com").unwrap().0,
+      Host::FqdnWithSubdomainWildcard(_)
+    ));
+    // ...and IP subnets keep parsing as subnets, not patterns.
+    assert!(matches!(
+      NetDescriptor::parse_for_list("10.0.0.0/8").unwrap().0,
+      Host::IpSubnet(_)
+    ));
+    // URL patterns are pattern-typed.
+    assert!(matches!(
+      NetDescriptor::parse_for_list("https://example.com/api/*")
+        .unwrap()
+        .0,
+      Host::Url(_)
+    ));
+    // Query parsing never produces a URL pattern.
+    assert!(
+      NetDescriptor::parse_for_query("https://example.com/api/*").is_err()
+    );
+  }
+
+  #[test]
+  fn test_net_url_query_grant_is_host_scoped() {
+    // Simulates granting a permission prompt for a URL (e.g. a dynamic import):
+    // the stored allow descriptor must be the host/port, so that subsequent
+    // access to the same host/port is covered without re-prompting.
+    let granted = NetDescriptor::from_url(
+      &Url::parse("http://localhost:4545/run/019_media_types.ts").unwrap(),
+    )
+    .unwrap();
+    let allow = granted.as_allow().unwrap();
+    // The stored allow form is a plain host/port entry, not a URL pattern or a
+    // one-off URL.
+    assert!(!allow.is_url_pattern());
+    assert!(matches!(allow.0, Host::Fqdn(_) | Host::Ip(_)));
+
+    // A subsequent access to a different path on the same host/port matches it.
+    let q_same = NetDescriptor::from_url(
+      &Url::parse("http://localhost:4545/other/mod.ts").unwrap(),
+    )
+    .unwrap();
+    assert!(q_same.matches_allow(&allow));
+
+    // A different port is not covered by the grant.
+    let q_other_port = NetDescriptor::from_url(
+      &Url::parse("http://localhost:9999/other/mod.ts").unwrap(),
+    )
+    .unwrap();
+    assert!(!q_other_port.matches_allow(&allow));
   }
 
   #[test]
