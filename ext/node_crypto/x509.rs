@@ -201,8 +201,8 @@ impl Certificate {
     let subjectaltname = get_subject_alt_name(cert).unwrap_or_default();
     let info_access = get_info_access_object(cert);
 
-    let subject = extract_subject_or_issuer(cert.subject());
-    let issuer = extract_subject_or_issuer(cert.issuer());
+    let subject = extract_subject_or_issuer(cert.subject())?;
+    let issuer = extract_subject_or_issuer(cert.issuer())?;
 
     let KeyInfo {
       bits,
@@ -403,43 +403,53 @@ pub fn op_node_x509_public_key(
   KeyObjectHandle::new_x509_public_key(public_key)
 }
 
-fn extract_subject_or_issuer(name: &X509Name) -> SubjectOrIssuer {
+fn extract_subject_or_issuer(
+  name: &X509Name,
+) -> Result<SubjectOrIssuer, X509Error> {
   let mut result = SubjectOrIssuer::default();
 
   for rdn in name.iter_rdn() {
     for attr in rdn.iter() {
-      if let Ok(value_str) =
-        attribute_value_to_string(attr.attr_value(), attr.attr_type())
-      {
-        match attr.attr_type() {
-          oid if oid == &x509_parser::oid_registry::OID_X509_COUNTRY_NAME => {
-            result.c.push(value_str);
-          }
-          oid if oid == &x509_parser::oid_registry::OID_X509_STATE_OR_PROVINCE_NAME => {
-            result.st.push(value_str);
-          }
-          oid if oid == &x509_parser::oid_registry::OID_X509_LOCALITY_NAME => {
-            result.l.push(value_str);
-          }
-          oid if oid == &x509_parser::oid_registry::OID_X509_ORGANIZATION_NAME => {
-            result.o.push(value_str);
-          }
-          oid if oid == &x509_parser::oid_registry::OID_X509_ORGANIZATIONAL_UNIT => {
-            result.ou.push(value_str);
-          }
-          oid if oid == &x509_parser::oid_registry::OID_X509_COMMON_NAME => {
-            result.cn.push(value_str);
-          }
-          oid if oid == &x509_parser::oid_registry::OID_PKCS9_EMAIL_ADDRESS => {
-            result.email_address.push(value_str);
-          }
-          _ => {}
+      let values = match attr.attr_type() {
+        oid if oid == &x509_parser::oid_registry::OID_X509_COUNTRY_NAME => {
+          &mut result.c
         }
-      }
+        oid
+          if oid
+            == &x509_parser::oid_registry::OID_X509_STATE_OR_PROVINCE_NAME =>
+        {
+          &mut result.st
+        }
+        oid if oid == &x509_parser::oid_registry::OID_X509_LOCALITY_NAME => {
+          &mut result.l
+        }
+        oid
+          if oid == &x509_parser::oid_registry::OID_X509_ORGANIZATION_NAME =>
+        {
+          &mut result.o
+        }
+        oid
+          if oid
+            == &x509_parser::oid_registry::OID_X509_ORGANIZATIONAL_UNIT =>
+        {
+          &mut result.ou
+        }
+        oid if oid == &x509_parser::oid_registry::OID_X509_COMMON_NAME => {
+          &mut result.cn
+        }
+        oid if oid == &x509_parser::oid_registry::OID_PKCS9_EMAIL_ADDRESS => {
+          &mut result.email_address
+        }
+        _ => continue,
+      };
+      values.push(attribute_value_to_string(
+        attr.attr_value(),
+        attr.attr_type(),
+      )?);
     }
   }
 
-  result
+  Ok(result)
 }
 
 // Attempt to convert attribute to string. If type is not a string, return value is the hex
@@ -448,16 +458,46 @@ fn attribute_value_to_string(
   attr: &Any,
   _attr_type: &Oid,
 ) -> Result<String, X509Error> {
-  // TODO: replace this with helper function, when it is added to asn1-rs
   match attr.tag() {
+    Tag::BmpString => {
+      if !attr.data.len().is_multiple_of(2) {
+        return Err(X509Error::InvalidAttributes);
+      }
+      std::char::decode_utf16(
+        attr
+          .data
+          .chunks_exact(2)
+          .map(|chunk| u16::from_be_bytes([chunk[0], chunk[1]])),
+      )
+      .collect::<Result<String, _>>()
+      .map_err(|_| X509Error::InvalidAttributes)
+    }
+    Tag::UniversalString => {
+      if !attr.data.len().is_multiple_of(4) {
+        return Err(X509Error::InvalidAttributes);
+      }
+      attr
+        .data
+        .chunks_exact(4)
+        .map(|chunk| {
+          char::from_u32(u32::from_be_bytes([
+            chunk[0], chunk[1], chunk[2], chunk[3],
+          ]))
+          .ok_or(X509Error::InvalidAttributes)
+        })
+        .collect()
+    }
+    Tag::T61String => {
+      // OpenSSL treats TeletexString as one byte per character when
+      // converting X.509 names to UTF-8.
+      Ok(attr.data.iter().copied().map(char::from).collect())
+    }
     Tag::NumericString
-    | Tag::BmpString
     | Tag::VisibleString
     | Tag::PrintableString
     | Tag::GeneralString
     | Tag::ObjectDescriptor
     | Tag::GraphicString
-    | Tag::T61String
     | Tag::VideotexString
     | Tag::Utf8String
     | Tag::Ia5String => {
@@ -1358,7 +1398,7 @@ r6C3V5F4Z9y8o8i9E4j5V8O5Q7Y8Z4W8n7R8B8l8H8L4P4F8r8c8A4v3O4g8L8S6
     let cert = Certificate::from_der(&pem.contents).unwrap();
     let cert_inner = cert.inner.get().deref();
 
-    let result = extract_subject_or_issuer(cert_inner.subject());
+    let result = extract_subject_or_issuer(cert_inner.subject()).unwrap();
 
     assert_eq!(result.cn, StringOrArray(vec!["CN".to_string()]));
     assert!(result.c.is_empty());
@@ -1366,5 +1406,50 @@ r6C3V5F4Z9y8o8i9E4j5V8O5Q7Y8Z4W8n7R8B8l8H8L4P4F8r8c8A4v3O4g8L8S6
     assert!(result.l.is_empty());
     assert!(result.o.is_empty());
     assert!(result.ou.is_empty());
+  }
+
+  #[test]
+  fn test_attribute_value_to_string_encodings() {
+    let bmp =
+      Any::from_tag_and_data(Tag::BmpString, b"\0B\0M\0P\0 \0T\0e\0s\0t\0\xe9");
+    assert_eq!(
+      attribute_value_to_string(
+        &bmp,
+        &x509_parser::oid_registry::OID_X509_COMMON_NAME,
+      )
+      .unwrap(),
+      "BMP Testé"
+    );
+
+    let teletex = Any::from_tag_and_data(Tag::T61String, b"T61 Test\xe9");
+    assert_eq!(
+      attribute_value_to_string(
+        &teletex,
+        &x509_parser::oid_registry::OID_X509_COMMON_NAME,
+      )
+      .unwrap(),
+      "T61 Testé"
+    );
+
+    let universal =
+      Any::from_tag_and_data(Tag::UniversalString, b"\0\0\0U\0\x01\xf6\0");
+    assert_eq!(
+      attribute_value_to_string(
+        &universal,
+        &x509_parser::oid_registry::OID_X509_COMMON_NAME,
+      )
+      .unwrap(),
+      "U😀"
+    );
+
+    let malformed =
+      Any::from_tag_and_data(Tag::BmpString, b"\0B\0M\0P\0 \0T\0e\0s\0t\0");
+    assert!(
+      attribute_value_to_string(
+        &malformed,
+        &x509_parser::oid_registry::OID_X509_COMMON_NAME,
+      )
+      .is_err()
+    );
   }
 }
