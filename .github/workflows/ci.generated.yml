@@ -1893,7 +1893,7 @@ jobs:
           DENO_SNAPSHOT_MINIFY_SOURCES: '1'
           DENO_USE_STARTUP_ORDER: '1'
           DENO_STARTUP_ORDER_FILE: '${{ github.workspace }}/target/release/startup-order-aarch64-apple-darwin.order'
-        run: cargo build --release --locked -p deno --bin deno --features=deno/panic-trace
+        run: cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
       - name: Verify startup order
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
         env:
@@ -4446,7 +4446,7 @@ jobs:
           DENO_SNAPSHOT_MINIFY_SOURCES: '1'
           DENO_USE_STARTUP_ORDER: '1'
           DENO_STARTUP_ORDER_FILE: '${{ github.workspace }}/target/release/startup-order-x86_64-unknown-linux-gnu.order'
-        run: cargo build --release --locked -p deno --bin deno --features=deno/panic-trace
+        run: cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
       - name: Verify startup order
         env:
           NO_COLOR: 1
@@ -6536,7 +6536,7 @@ jobs:
           DENO_SNAPSHOT_MINIFY_SOURCES: '1'
           DENO_USE_STARTUP_ORDER: '1'
           DENO_STARTUP_ORDER_FILE: '${{ github.workspace }}/target/release/startup-order-aarch64-unknown-linux-gnu.order'
-        run: cargo build --release --locked -p deno --bin deno --features=deno/panic-trace
+        run: cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
       - name: Verify startup order
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         env:

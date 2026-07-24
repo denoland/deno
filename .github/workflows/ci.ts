@@ -908,6 +908,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           .map((name) => `-p ${name}`).join(" ");
         const binsToBuild = ["deno", "denort", "test_server"]
           .map((name) => `--bin ${name}`).join(" ");
+        const cargoBuildReleaseCommand =
+          `cargo build --release --locked ${packagesToBuild} ${binsToBuild} --features=deno/panic-trace`;
         const cargoBuildReleaseStep = step
           .if(
             isRelease.and(isDenoland.or(buildItem.use_sysroot)),
@@ -945,7 +947,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 "fi",
                 // output fs space before and after building
                 "df -h",
-                `cargo build --release --locked ${packagesToBuild} ${binsToBuild} --features=deno/panic-trace`,
+                cargoBuildReleaseCommand,
                 // Build the desktop runtime shared library (libdenort cdylib) for
                 // laufey-based desktop apps. Separate invocation because the
                 // panic-trace feature only applies to the deno/denort binaries.
@@ -976,8 +978,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 env: { NO_COLOR: 1 },
               }, {
                 name: "Relink release deno with startup order",
-                run:
-                  "cargo build --release --locked -p deno --bin deno --features=deno/panic-trace",
+                run: cargoBuildReleaseCommand,
                 env: {
                   DENO_SNAPSHOT_MINIFY_SOURCES: "1",
                   DENO_USE_STARTUP_ORDER: "1",
