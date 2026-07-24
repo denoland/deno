@@ -1065,7 +1065,7 @@
   //
   // V8's PerformMicrotaskCheckpoint no-ops when already running
   // microtasks, so this is safe to call from inside a promise
-  // reaction — the nested checkpoint becomes a no-op and the newly
+  // reaction - the nested checkpoint becomes a no-op and the newly
   // queued microtasks run in the outer checkpoint, matching the HTML
   // spec's "if performing a microtask checkpoint is true, return"
   // guard.

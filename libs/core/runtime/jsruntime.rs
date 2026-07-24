@@ -1906,16 +1906,13 @@ impl JsRuntime {
           let key = v8::String::new(scope, "__setUserCodeDepth").unwrap();
           core_obj
             .get(scope, key.into())
-            .unwrap_or_else(|| {
-              panic!("Deno.core.__setUserCodeDepth exists")
-            })
+            .unwrap_or_else(|| panic!("Deno.core.__setUserCodeDepth exists"))
             .try_into()
             .unwrap_or_else(|_| panic!("unable to convert"))
         };
         let undefined: v8::Local<v8::Value> = v8::undefined(scope).into();
         set_ucd_fn.call(scope, undefined, &[ucd_array.into()]);
-        let key =
-          v8::String::new(scope, "__setUserCodeDepth").unwrap();
+        let key = v8::String::new(scope, "__setUserCodeDepth").unwrap();
         core_obj.delete(scope, key.into());
       }
 
@@ -3212,12 +3209,13 @@ impl JsRuntime {
     // inside V8's microtask checkpoint, which no-ops nested
     // checkpoints, so they remain correct without further bumping.
     let context_state = realm.0.state();
-    context_state.user_code_depth[0] =
-      context_state.user_code_depth[0].wrapping_add(1);
-    let result =
-      self.inner.main_realm.0.module_map.mod_evaluate(scope, id);
-    context_state.user_code_depth[0] =
-      context_state.user_code_depth[0].wrapping_sub(1);
+    context_state
+      .user_code_depth
+      .set(context_state.user_code_depth.get().wrapping_add(1));
+    let result = self.inner.main_realm.0.module_map.mod_evaluate(scope, id);
+    context_state
+      .user_code_depth
+      .set(context_state.user_code_depth.get().wrapping_sub(1));
     result
   }
 

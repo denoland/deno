@@ -137,10 +137,10 @@ pub struct ContextState {
   /// (`execute_script`, `mod_evaluate`) and by JS via
   /// `Deno.core.invokeUserCallback` whenever internal code calls into a
   /// user-provided callback. When the counter returns to zero, a
-  /// microtask checkpoint is performed — matching Web IDL's "clean up
+  /// microtask checkpoint is performed - matching Web IDL's "clean up
   /// after running script" semantics
   /// (https://html.spec.whatwg.org/#clean-up-after-running-script).
-  pub(crate) user_code_depth: Box<[u32; 1]>,
+  pub(crate) user_code_depth: Box<std::cell::Cell<u32>>,
   /// Active JS-managed timers tracked for the leak sanitizer.
   /// Maps timer ID → (is_repeat, is_system). System timers (e.g.
   /// AbortSignal.timeout) are excluded from sanitizer stats.
@@ -219,7 +219,7 @@ impl ContextState {
       task_spawner_factory: Default::default(),
       user_timer: Default::default(),
       timer_info: Box::new([0i32; 1]),
-      user_code_depth: Box::new([0u32; 1]),
+      user_code_depth: Box::new(std::cell::Cell::new(0)),
       active_timers: Default::default(),
       unrefed_ops,
       external_ops_tracker,
@@ -495,7 +495,9 @@ impl JsRealm {
     // `finally`-style drop guard below; microtasks are flushed by the
     // surrounding event loop tick.
     let state_rc = self.0.state();
-    state_rc.user_code_depth[0] = state_rc.user_code_depth[0].wrapping_add(1);
+    state_rc
+      .user_code_depth
+      .set(state_rc.user_code_depth.get().wrapping_add(1));
     let result = match script.run(tc_scope) {
       Some(value) => {
         let value_handle = v8::Global::new(tc_scope, value);
@@ -507,8 +509,9 @@ impl JsRealm {
         exception_to_err_result(tc_scope, exception, false, false)
       }
     };
-    state_rc.user_code_depth[0] =
-      state_rc.user_code_depth[0].wrapping_sub(1);
+    state_rc
+      .user_code_depth
+      .set(state_rc.user_code_depth.get().wrapping_sub(1));
     result
   }
 
@@ -587,9 +590,11 @@ impl JsRealm {
     }
 
     // Bump the user-code depth counter for the duration of script
-    // execution — see `execute_script` for rationale.
+    // execution - see `execute_script` for rationale.
     let state_rc = self.0.state();
-    state_rc.user_code_depth[0] = state_rc.user_code_depth[0].wrapping_add(1);
+    state_rc
+      .user_code_depth
+      .set(state_rc.user_code_depth.get().wrapping_add(1));
     let result = match script.run(tc_scope) {
       Some(value) => {
         let value_handle = v8::Global::new(tc_scope, value);
@@ -601,8 +606,9 @@ impl JsRealm {
         Ok(exception_to_err_result(tc_scope, exception, false, false)?)
       }
     };
-    state_rc.user_code_depth[0] =
-      state_rc.user_code_depth[0].wrapping_sub(1);
+    state_rc
+      .user_code_depth
+      .set(state_rc.user_code_depth.get().wrapping_sub(1));
     result
   }
 

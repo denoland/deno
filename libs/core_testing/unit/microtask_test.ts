@@ -74,9 +74,13 @@ test(function testInvokeUserCallbackReturnAndExceptionSemantics() {
 
   // `this` binding works.
   const obj = { x: 10 };
-  const got = invokeUserCallback(function (this: { x: number }) {
-    return this.x;
-  }, obj, []);
+  const got = invokeUserCallback(
+    function (this: { x: number }) {
+      return this.x;
+    },
+    obj,
+    [],
+  );
   if (got !== 10) {
     throw new Error(`expected 10, got ${got}`);
   }
