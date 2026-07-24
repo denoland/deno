@@ -74,6 +74,16 @@ pub struct CoverageReport {
   output: Option<PathBuf>,
 }
 
+impl CoverageReport {
+  pub fn url(&self) -> &ModuleSpecifier {
+    &self.url
+  }
+
+  pub fn found_lines(&self) -> &[(usize, i64)] {
+    &self.found_lines
+  }
+}
+
 struct GenerateCoverageReportOptions<'a> {
   script_module_specifier: Url,
   script_media_type: MediaType,
@@ -687,16 +697,14 @@ fn filter_coverages(
 }
 
 #[allow(clippy::too_many_arguments, reason = "coverage entry point")]
-pub fn cover_files(
+pub fn collect_coverage_reports(
   flags: Arc<Flags>,
   files_include: Vec<String>,
   files_ignore: Vec<String>,
   include: Vec<String>,
   exclude: Vec<String>,
   output: Option<String>,
-  cli_threshold: Option<f64>,
-  reporters: &[&dyn CoverageReporter],
-) -> Result<(), AnyError> {
+) -> Result<(PathBuf, Vec<(CoverageReport, String)>), AnyError> {
   if files_include.is_empty() {
     return Err(anyhow!("No matching coverage profiles found"));
   }
@@ -887,12 +895,37 @@ pub fn cover_files(
     return Err(anyhow!("No covered files included in the report"));
   }
 
+  Ok((coverage_root, file_reports))
+}
+
+#[allow(clippy::too_many_arguments, reason = "coverage entry point")]
+pub fn cover_files(
+  flags: Arc<Flags>,
+  files_include: Vec<String>,
+  files_ignore: Vec<String>,
+  include: Vec<String>,
+  exclude: Vec<String>,
+  output: Option<String>,
+  cli_threshold: Option<f64>,
+  reporters: &[&dyn CoverageReporter],
+) -> Result<(), AnyError> {
+  let (coverage_root, file_reports) = collect_coverage_reports(
+    flags.clone(),
+    files_include,
+    files_ignore,
+    include,
+    exclude,
+    output,
+  )?;
+
   for reporter in reporters {
     reporter.done(&coverage_root, &file_reports);
   }
 
   // Layer the `--threshold` CLI flag over per-metric thresholds from deno.json
   // (the flag wins) and fail the command if any configured threshold is unmet.
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
   let config_thresholds = cli_options.resolve_coverage_thresholds()?;
   let thresholds = CoverageThresholds {
     lines: cli_threshold.or(config_thresholds.lines),
