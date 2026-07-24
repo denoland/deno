@@ -1147,6 +1147,7 @@ impl<'a> ResolverFactory<'a> {
           linker_mode: deno_config::deno_json::NodeModulesLinkerMode::default(),
           lifecycle_scripts: Arc::new(LifecycleScriptsConfig::default()),
           system_info: NpmSystemInfo::default(),
+          node_version: deno_lib::version::NODE_VERSION.to_string(),
           workspace_link_packages: link_packages,
           // The LSP does not materialize packages into node_modules, so it never
           // writes a `.npmrc` or alias symlinks.

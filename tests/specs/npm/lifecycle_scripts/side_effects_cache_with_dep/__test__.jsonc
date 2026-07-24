@@ -1,0 +1,41 @@
+{
+  "tempDir": true,
+  "tests": {
+    // Regression test for the npm build side-effects cache (issue #16164) when
+    // the cached package HAS dependencies. A cache hit restores the package's
+    // built output; it must NOT drop the dependency symlinks the isolated
+    // (`.deno`) linker creates next to the package, or the package can no longer
+    // resolve its deps at runtime.
+    "cache_hit_keeps_dependency_links": {
+      "steps": [
+        {
+          // First install: the `postinstall` script runs (note the
+          // "running 'postinstall' script" line) and writes `generated.js` into
+          // the package directory. That output is snapshotted into the global
+          // side-effects cache. Running `main.js` requires both `generated.js`
+          // and the `@denotest/add` dependency.
+          "args": "run --allow-scripts=npm:@denotest/lifecycle-scripts-with-dep main.js",
+          "output": "first_run.out"
+        },
+        {
+          // Wipe the local node_modules so the next install must re-link the
+          // package from scratch, simulating a second project that shares the
+          // same global cache.
+          "args": [
+            "eval",
+            "Deno.removeSync('node_modules', { recursive: true })"
+          ],
+          "output": ""
+        },
+        {
+          // Second install: the built output is restored from the global cache,
+          // so the 'postinstall' script does NOT run again. The restore must
+          // keep both the generated file (so `require('./generated.js')` works)
+          // AND the dependency link (so `require('@denotest/add')` resolves).
+          "args": "run --allow-scripts=npm:@denotest/lifecycle-scripts-with-dep main.js",
+          "output": "cached_run.out"
+        }
+      ]
+    }
+  }
+}
