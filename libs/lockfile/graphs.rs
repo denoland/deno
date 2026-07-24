@@ -79,6 +79,7 @@ struct LockfileNpmGraphPackage {
   optional_peers: BTreeMap<StackString, LockfileNpmPackageId>,
   os: Vec<SmallStackString>,
   cpu: Vec<SmallStackString>,
+  libc: Vec<SmallStackString>,
   tarball: Option<StackString>,
   deprecated: bool,
   scripts: bool,
@@ -189,6 +190,7 @@ impl LockfilePackageGraph {
             .collect(),
           cpu: package.cpu.clone(),
           os: package.os.clone(),
+          libc: package.libc.clone(),
           tarball: package.tarball.clone(),
           deprecated: package.deprecated,
           scripts: package.scripts,
@@ -366,6 +368,7 @@ impl LockfilePackageGraph {
                 .collect(),
               cpu: package.cpu,
               os: package.os,
+              libc: package.libc,
               tarball: package.tarball.clone(),
               optional_dependencies: package
                 .optional_dependencies

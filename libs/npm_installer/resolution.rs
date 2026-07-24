@@ -354,6 +354,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
         optional_dependencies,
         os: pkg.system.os.clone(),
         cpu: pkg.system.cpu.clone(),
+        libc: pkg.system.libc.clone(),
         tarball: pkg.dist.as_ref().and_then(|dist| {
           // Omit the tarball URL if it's the standard NPM registry URL
           let tarbal_url_provider =

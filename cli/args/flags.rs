@@ -209,22 +209,27 @@ impl DenoSubcommandExt for DenoSubcommand {
           "aarch64-apple-darwin" => NpmSystemInfo {
             os: "darwin".into(),
             cpu: "arm64".into(),
+            libc: "".into(),
           },
           "aarch64-unknown-linux-gnu" => NpmSystemInfo {
             os: "linux".into(),
             cpu: "arm64".into(),
+            libc: "glibc".into(),
           },
           "x86_64-apple-darwin" => NpmSystemInfo {
             os: "darwin".into(),
             cpu: "x64".into(),
+            libc: "".into(),
           },
           "x86_64-unknown-linux-gnu" => NpmSystemInfo {
             os: "linux".into(),
             cpu: "x64".into(),
+            libc: "glibc".into(),
           },
           "x86_64-pc-windows-msvc" => NpmSystemInfo {
             os: "win32".into(),
             cpu: "x64".into(),
+            libc: "".into(),
           },
           value => {
             log::warn!(
@@ -246,6 +251,7 @@ impl DenoSubcommandExt for DenoSubcommand {
         NpmSystemInfo {
           os: os.as_deref().unwrap_or(&default.os).into(),
           cpu: arch.as_deref().unwrap_or(&default.cpu).into(),
+          libc: default.libc.clone(),
         }
       }
       _ => npm_system_info_from_env(),
@@ -16594,13 +16600,9 @@ mod tests {
         },
       ))
     );
-    assert_eq!(
-      flags.subcommand.npm_system_info(),
-      NpmSystemInfo {
-        os: "linux".into(),
-        cpu: "arm64".into(),
-      }
-    );
+    let sys_info = flags.subcommand.npm_system_info();
+    assert_eq!(sys_info.os.as_str(), "linux");
+    assert_eq!(sys_info.cpu.as_str(), "arm64");
   }
 
   #[test]

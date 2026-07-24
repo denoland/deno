@@ -301,11 +301,15 @@ impl std::fmt::Display for NpmPackageCacheFolderId {
 pub struct NpmResolutionPackageSystemInfo {
   pub os: Vec<SmallStackString>,
   pub cpu: Vec<SmallStackString>,
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub libc: Vec<SmallStackString>,
 }
 
 impl NpmResolutionPackageSystemInfo {
   pub fn matches_system(&self, system_info: &NpmSystemInfo) -> bool {
-    self.matches_cpu(&system_info.cpu) && self.matches_os(&system_info.os)
+    self.matches_cpu(&system_info.cpu)
+      && self.matches_os(&system_info.os)
+      && self.matches_libc(&system_info.libc)
   }
 
   pub fn matches_cpu(&self, target: &str) -> bool {
@@ -314,6 +318,10 @@ impl NpmResolutionPackageSystemInfo {
 
   pub fn matches_os(&self, target: &str) -> bool {
     matches_os_or_cpu_vec(&self.os, target)
+  }
+
+  pub fn matches_libc(&self, target: &str) -> bool {
+    matches_os_or_cpu_vec(&self.libc, target)
   }
 }
 
@@ -411,6 +419,8 @@ pub struct NpmSystemInfo {
   pub os: SmallStackString,
   /// `process.arch` value from Node.js
   pub cpu: SmallStackString,
+  #[serde(default, skip_serializing_if = "SmallStackString::is_empty")]
+  pub libc: SmallStackString,
 }
 
 impl Default for NpmSystemInfo {
@@ -418,6 +428,7 @@ impl Default for NpmSystemInfo {
     Self {
       os: node_js_os(std::env::consts::OS).into(),
       cpu: node_js_cpu(std::env::consts::ARCH).into(),
+      libc: detect_libc().into(),
     }
   }
 }
@@ -427,6 +438,7 @@ impl NpmSystemInfo {
     Self {
       os: node_js_os(os).into(),
       cpu: node_js_cpu(cpu).into(),
+      libc: detect_libc().into(),
     }
   }
 }
@@ -483,6 +495,29 @@ fn node_js_os(rust_os: &str) -> &str {
     "windows" => "win32",
     value => value,
   }
+}
+
+fn detect_libc() -> &'static str {
+  if std::env::consts::OS != "linux" {
+    return "";
+  }
+  if std::path::Path::new("/etc/alpine-release").exists() {
+    return "musl";
+  }
+  if let Ok(output) = std::process::Command::new("ldd")
+    .arg("--version")
+    .output()
+  {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !stdout.is_empty() && stdout.contains("musl") {
+      return "musl";
+    }
+    if !stderr.is_empty() && !stderr.contains("musl") {
+      return "glibc";
+    }
+  }
+  "glibc"
 }
 
 #[cfg(test)]

@@ -2494,6 +2494,7 @@ mod tests {
           optional_peers: Default::default(),
           os: Default::default(),
           cpu: Default::default(),
+          libc: Default::default(),
           tarball: tarball.map(|t| t.into()),
           deprecated: false,
           scripts: false,

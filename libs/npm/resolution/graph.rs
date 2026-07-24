@@ -873,6 +873,7 @@ impl Graph {
         system: NpmResolutionPackageSystemInfo {
           cpu: version_info.cpu.clone(),
           os: version_info.os.clone(),
+          libc: version_info.libc.clone(),
         },
         dist: version_info.dist.clone(),
         optional_dependencies: version_info
@@ -6009,6 +6010,7 @@ mod test {
       &NpmSystemInfo {
         os: "win32".into(),
         cpu: "x86".into(),
+        libc: Default::default(),
       },
     );
     assert_eq!(
@@ -6027,6 +6029,7 @@ mod test {
       &NpmSystemInfo {
         os: "darwin".into(),
         cpu: "x86".into(),
+        libc: Default::default(),
       },
     );
     assert_eq!(
@@ -6044,6 +6047,7 @@ mod test {
       &NpmSystemInfo {
         os: "linux".into(),
         cpu: "x86".into(),
+        libc: Default::default(),
       },
     );
     assert_eq!(
@@ -6087,6 +6091,7 @@ mod test {
       &NpmSystemInfo {
         os: "darwin".into(),
         cpu: "x86".into(),
+        libc: Default::default(),
       },
     );
     assert_eq!(
@@ -6139,6 +6144,7 @@ mod test {
       &NpmSystemInfo {
         os: "darwin".into(),
         cpu: "x86_64".into(),
+        libc: Default::default(),
       },
     );
     assert_eq!(
@@ -6160,6 +6166,7 @@ mod test {
       &NpmSystemInfo {
         os: "darwin".into(),
         cpu: "x86_64".into(),
+        libc: Default::default(),
       },
     );
     assert_eq!(packages, vec!["package-a@1.0.0".to_string()]);
@@ -6182,6 +6189,7 @@ mod test {
       &NpmSystemInfo {
         os: "darwin".into(),
         cpu: "x86_64".into(),
+        libc: Default::default(),
       },
     );
     assert_eq!(

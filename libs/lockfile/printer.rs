@@ -433,7 +433,6 @@ impl Formatter<'_> {
 }
 
 // copied from serde_json::ser::PrettyFormatter
-// except for the os and cpu handling
 impl serde_json::ser::Formatter for Formatter<'_> {
   #[inline]
   fn write_string_fragment<W>(
@@ -458,7 +457,7 @@ impl serde_json::ser::Formatter for Formatter<'_> {
   {
     let mut should_indent = true;
     if let Some(last_key) = &self.last_key
-      && (last_key == "os" || last_key == "cpu")
+      && (last_key == "os" || last_key == "cpu" || last_key == "libc")
     {
       should_indent = false;
     }
@@ -476,7 +475,7 @@ impl serde_json::ser::Formatter for Formatter<'_> {
   {
     let mut should_dedent = true;
     if let Some(last_key) = &self.last_key
-      && (last_key == "os" || last_key == "cpu")
+      && (last_key == "os" || last_key == "cpu" || last_key == "libc")
     {
       should_dedent = false;
     }
@@ -502,7 +501,7 @@ impl serde_json::ser::Formatter for Formatter<'_> {
     W: ?Sized + io::Write,
   {
     if let Some(last_key) = &self.last_key
-      && (last_key == "os" || last_key == "cpu")
+      && (last_key == "os" || last_key == "cpu" || last_key == "libc")
     {
       if !first {
         writer.write_all(b", ")?;

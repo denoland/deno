@@ -875,6 +875,9 @@ pub struct NpmPackageVersionInfo {
   #[serde(default, skip_serializing_if = "Vec::is_empty")]
   #[serde(deserialize_with = "deserializers::vector")]
   pub cpu: Vec<SmallStackString>,
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  #[serde(deserialize_with = "deserializers::vector")]
+  pub libc: Vec<SmallStackString>,
   #[serde(default, skip_serializing_if = "HashMap::is_empty")]
   #[serde(deserialize_with = "deserializers::hashmap")]
   pub scripts: HashMap<SmallStackString, String>,

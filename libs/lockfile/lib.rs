@@ -76,6 +76,7 @@ pub struct NpmPackageLockfileInfo {
   pub optional_peers: Vec<NpmPackageDependencyLockfileInfo>,
   pub os: Vec<SmallStackString>,
   pub cpu: Vec<SmallStackString>,
+  pub libc: Vec<SmallStackString>,
   pub tarball: Option<StackString>,
   pub deprecated: bool,
   pub scripts: bool,
@@ -102,6 +103,8 @@ pub struct NpmPackageInfo {
   pub os: Vec<SmallStackString>,
   #[serde(default, skip_serializing_if = "Vec::is_empty")]
   pub cpu: Vec<SmallStackString>,
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub libc: Vec<SmallStackString>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub tarball: Option<StackString>,
   #[serde(default, skip_serializing_if = "is_false")]
@@ -423,6 +426,8 @@ impl LockfileContent {
       pub os: Vec<SmallStackString>,
       #[serde(default)]
       pub cpu: Vec<SmallStackString>,
+      #[serde(default)]
+      pub libc: Vec<SmallStackString>,
       #[serde(skip_serializing_if = "Option::is_none")]
       pub tarball: Option<StackString>,
       #[serde(default, skip_serializing_if = "is_false")]
@@ -514,6 +519,7 @@ impl LockfileContent {
                 dependencies,
                 cpu: value.cpu,
                 os: value.os,
+                libc: value.libc,
                 tarball: value.tarball,
                 optional_dependencies,
                 optional_peers,
@@ -1139,6 +1145,7 @@ impl Lockfile {
       optional_peers,
       os: package_info.os,
       cpu: package_info.cpu,
+      libc: package_info.libc,
       tarball: package_info.tarball,
       deprecated: package_info.deprecated,
       scripts: package_info.scripts,
@@ -1773,6 +1780,7 @@ mod tests {
       optional_peers: vec![],
       os: vec![],
       cpu: vec![],
+      libc: vec![],
       tarball: None,
       deprecated: false,
       scripts: false,
@@ -1790,6 +1798,7 @@ mod tests {
       optional_peers: vec![],
       os: vec![],
       cpu: vec![],
+      libc: vec![],
       tarball: None,
       deprecated: false,
       scripts: false,
@@ -1807,6 +1816,7 @@ mod tests {
       optional_peers: vec![],
       os: vec![],
       cpu: vec![],
+      libc: vec![],
       tarball: None,
       deprecated: false,
       scripts: false,
@@ -1829,6 +1839,7 @@ mod tests {
       optional_peers: vec![],
       os: vec![],
       cpu: vec![],
+      libc: vec![],
       tarball: None,
       deprecated: false,
       scripts: false,

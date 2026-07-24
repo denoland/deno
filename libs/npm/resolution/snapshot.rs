@@ -1191,6 +1191,7 @@ pub fn snapshot_from_lockfile(
       system: NpmResolutionPackageSystemInfo {
         cpu: package.cpu.clone(),
         os: package.os.clone(),
+        libc: package.libc.clone(),
       },
       is_deprecated: package.deprecated,
       has_bin: package.bin,
@@ -1370,6 +1371,7 @@ mod tests {
         .as_valid_serialized_for_system(&NpmSystemInfo {
           os: "win32".into(),
           cpu: "x64".into(),
+          libc: Default::default(),
         })
         .into_serialized();
       actual.packages.sort_by(|a, b| a.id.cmp(&b.id));
@@ -1387,6 +1389,7 @@ mod tests {
         .as_valid_serialized_for_system(&NpmSystemInfo {
           os: "darwin".into(),
           cpu: "x64".into(),
+          libc: Default::default(),
         })
         .into_serialized();
       actual.packages.sort_by(|a, b| a.id.cmp(&b.id));

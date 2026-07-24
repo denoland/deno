@@ -499,6 +499,7 @@ fn write_slim_version(
     "peerDependenciesMeta",
     "os",
     "cpu",
+    "libc",
     "deprecated",
   ] {
     if let Some(value) = raw_fields.get(key) {
