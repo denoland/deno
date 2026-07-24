@@ -66,9 +66,16 @@ fn macos_shared_libraries() {
 
   // path and whether its weak or not
   #[cfg(not(all(target_arch = "aarch64", not(debug_assertions))))]
-  const EXPECTED: [(&str, bool); 11] = [
+  const EXPECTED: [(&str, bool); 12] = [
     (
       "/System/Library/Frameworks/Security.framework/Versions/A/Security",
+      false,
+    ),
+    // Linked since hickory-resolver 0.26 enabled reading the macOS system DNS
+    // configuration through the SystemConfiguration framework (system-config
+    // feature, used by system_conf::read_system_conf in ext/net).
+    (
+      "/System/Library/Frameworks/SystemConfiguration.framework/Versions/A/SystemConfiguration",
       false,
     ),
     (
