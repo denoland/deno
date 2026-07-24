@@ -1,0 +1,8 @@
+{
+  "tempDir": true,
+  "args": "run --allow-net main.ts",
+  "envs": {
+    "DENO_PER_PACKAGE_PERMISSIONS": "{\"npm:webserver\": {\"net\": [\":45999\"]}, \"npm:widget\": {}}"
+  },
+  "output": "main.out"
+}

@@ -22,6 +22,7 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ToV8;
 use deno_core::op2;
+use deno_core::v8;
 use deno_permissions::PermissionsContainer;
 use hickory_proto::ProtoError;
 use hickory_proto::ProtoErrorKind;
@@ -671,14 +672,47 @@ impl Resource for UdpSocketResource {
   }
 }
 
+/// Per-package permission overlay (prototype): deny network access from
+/// packages that the policy does not grant it, before the process-wide check.
+/// See docs/proposals/per-module-permissions.md. Resolves the first user stack
+/// frame to a module specifier and consults the per-package net allow-list.
+fn check_per_package_net(
+  scope: &mut v8::PinScope<'_, '_>,
+  state: &OpState,
+  host: &str,
+  port: u16,
+) -> Result<(), NetError> {
+  let Some(perms) =
+    state.try_borrow::<deno_permissions::PerModulePermissions>()
+  else {
+    return Ok(());
+  };
+  if !perms.enabled() {
+    return Ok(());
+  }
+  let Some(specifier) = deno_core::first_user_script_name(scope) else {
+    return Ok(());
+  };
+  if perms.is_net_denied_specifier(&specifier, host, port) {
+    return Err(NetError::Permission(
+      deno_permissions::PermissionCheckError::PermissionDenied(
+        perms.net_denied_error(host, port),
+      ),
+    ));
+  }
+  Ok(())
+}
+
 #[op2(stack_trace)]
 pub fn op_net_listen_tcp(
+  scope: &mut v8::PinScope<'_, '_>,
   state: &mut OpState,
   #[scoped] addr: IpAddr,
   reuse_port: bool,
   load_balanced: bool,
   tcp_backlog: i32,
 ) -> Result<(ResourceId, IpAddr), NetError> {
+  check_per_package_net(scope, state, &addr.hostname, addr.port)?;
   if reuse_port {
     super::check_unstable(state, "Deno.listen({ reusePort: true })");
   }

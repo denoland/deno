@@ -693,6 +693,9 @@ impl MainWorker {
       state.put(js_runtime.inspector());
 
       state.put::<PermissionsContainer>(services.permissions);
+      // Prototype per-package permission table; opt-in via
+      // DENO_PER_PACKAGE_PERMISSIONS (see docs/proposals/per-module-permissions.md).
+      state.put(deno_permissions::PerModulePermissions::from_env());
       state.put(ops::TestingFeaturesEnabled(enable_testing_features));
       state.put(services.feature_checker);
     }
