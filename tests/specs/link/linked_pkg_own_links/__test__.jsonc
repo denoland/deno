@@ -1,0 +1,10 @@
+{
+  // Regression test for #35999: a linked package ("middle") that declares its
+  // own `links` field should not produce a spurious "links can only be
+  // specified in the workspace root" warning when it is consumed as a link.
+  // The root already links everything it needs, so type checking succeeds
+  // with no warning on stderr.
+  "tempDir": true,
+  "args": "check main.ts",
+  "output": "check.out"
+}
