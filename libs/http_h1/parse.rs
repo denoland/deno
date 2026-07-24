@@ -16,6 +16,11 @@ pub enum BodyKind {
   ContentLength(u64),
   Chunked,
   Upgrade,
+  // The request declares a body whose framing can't be determined (e.g. an
+  // unrecognized Transfer-Encoding like `chunkedchunked`). node:http dispatches
+  // the handler then replies 400 when the body is read; reading the body yields
+  // a parse error.
+  Indeterminate,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,7 +77,14 @@ pub fn parse_request_head_uninit<'a>(
   headers_out: &'a mut [Header<'a>],
   parse_headers: &mut [MaybeUninit<httparse::Header<'a>>],
 ) -> Result<Option<RequestHead<'a>>, ParseError> {
-  parse_request_head_uninit_with_options(buf, headers_out, parse_headers, false)
+  parse_request_head_uninit_with_options(
+    buf,
+    headers_out,
+    parse_headers,
+    false,
+    false,
+    false,
+  )
 }
 
 pub fn parse_request_head_uninit_with_options<'a>(
@@ -80,17 +92,30 @@ pub fn parse_request_head_uninit_with_options<'a>(
   headers_out: &'a mut [Header<'a>],
   parse_headers: &mut [MaybeUninit<httparse::Header<'a>>],
   allow_missing_host: bool,
+  allow_multiple_host: bool,
+  reject_bare_lf: bool,
 ) -> Result<Option<RequestHead<'a>>, ParseError> {
   let mut request = parse_with_header_scratch(buf, parse_headers)?;
   let Some(consumed) = request.0 else {
+    // Partial head: a bare CR/LF (header smuggling) can stall httparse waiting
+    // for a terminator that never arrives; reject it now. node:http only. A
+    // trailing CR (its LF may still be coming) is not yet a violation -- see
+    // `has_bare_lf`.
+    if reject_bare_lf && has_bare_lf(buf) {
+      return Err(ParseError::Invalid);
+    }
     return Ok(None);
   };
+  if reject_bare_lf && has_bare_lf(&buf[..consumed]) {
+    return Err(ParseError::Invalid);
+  }
   finish_request_head(
     buf,
     headers_out,
     &mut request.1,
     consumed,
     allow_missing_host,
+    allow_multiple_host,
   )
 }
 
@@ -104,6 +129,8 @@ pub fn parse_request_head_uninit_all<'a>(
     headers_out,
     parse_headers,
     false,
+    false,
+    false,
   )
 }
 
@@ -112,17 +139,30 @@ pub fn parse_request_head_uninit_all_with_options<'a>(
   headers_out: &'a mut [MaybeUninit<Header<'a>>],
   parse_headers: &mut [MaybeUninit<httparse::Header<'a>>],
   allow_missing_host: bool,
+  allow_multiple_host: bool,
+  reject_bare_lf: bool,
 ) -> Result<Option<RequestHead<'a>>, ParseError> {
   let mut request = parse_with_header_scratch(buf, parse_headers)?;
   let Some(consumed) = request.0 else {
+    // Partial head: a bare CR/LF (header smuggling) can stall httparse waiting
+    // for a terminator that never arrives; reject it now. node:http only. A
+    // trailing CR (its LF may still be coming) is not yet a violation -- see
+    // `has_bare_lf`.
+    if reject_bare_lf && has_bare_lf(buf) {
+      return Err(ParseError::Invalid);
+    }
     return Ok(None);
   };
+  if reject_bare_lf && has_bare_lf(&buf[..consumed]) {
+    return Err(ParseError::Invalid);
+  }
   finish_request_head_uninit(
     buf,
     headers_out,
     &mut request.1,
     consumed,
     allow_missing_host,
+    allow_multiple_host,
   )
 }
 
@@ -153,6 +193,7 @@ fn finish_request_head<'a>(
   request: &mut httparse::Request<'_, 'a>,
   consumed: usize,
   allow_missing_host: bool,
+  allow_multiple_host: bool,
 ) -> Result<Option<RequestHead<'a>>, ParseError> {
   let method = request.method.ok_or(ParseError::MissingMethod)?.as_bytes();
   let target = request.path.ok_or(ParseError::MissingTarget)?.as_bytes();
@@ -185,7 +226,12 @@ fn finish_request_head<'a>(
 
   let keep_alive = header_info.keep_alive(version);
   let body_kind = header_info.body_kind(method, version)?;
-  header_info.validate_host(version, body_kind, allow_missing_host)?;
+  header_info.validate_host(
+    version,
+    body_kind,
+    allow_missing_host,
+    allow_multiple_host,
+  )?;
   let expect_continue = header_info.expect_continue;
 
   Ok(Some(RequestHead {
@@ -206,6 +252,7 @@ fn finish_request_head_uninit<'a>(
   request: &mut httparse::Request<'_, 'a>,
   consumed: usize,
   allow_missing_host: bool,
+  allow_multiple_host: bool,
 ) -> Result<Option<RequestHead<'a>>, ParseError> {
   let method = request.method.ok_or(ParseError::MissingMethod)?.as_bytes();
   let target = request.path.ok_or(ParseError::MissingTarget)?.as_bytes();
@@ -245,7 +292,12 @@ fn finish_request_head_uninit<'a>(
 
   let keep_alive = header_info.keep_alive(version);
   let body_kind = header_info.body_kind(method, version)?;
-  header_info.validate_host(version, body_kind, allow_missing_host)?;
+  header_info.validate_host(
+    version,
+    body_kind,
+    allow_missing_host,
+    allow_multiple_host,
+  )?;
   let expect_continue = header_info.expect_continue;
 
   Ok(Some(RequestHead {
@@ -359,6 +411,7 @@ impl HeaderInfo {
     version: Version,
     body_kind: BodyKind,
     allow_missing_host: bool,
+    allow_multiple_host: bool,
   ) -> Result<(), ParseError> {
     if version != Version::Http11 {
       return Ok(());
@@ -368,6 +421,9 @@ impl HeaderInfo {
       0 if body_kind == BodyKind::Empty => Ok(()),
       0 => Err(ParseError::MissingHost),
       1 => Ok(()),
+      // node:http keeps the first Host and drops duplicates (the JS layer
+      // dedups); Deno.serve rejects per RFC 7230 (MUST 400).
+      _ if allow_multiple_host => Ok(()),
       _ => Err(ParseError::MultipleHost),
     }
   }
@@ -400,7 +456,19 @@ impl HeaderInfo {
       {
         return Ok(BodyKind::Chunked);
       }
-      return Err(ParseError::UnsupportedTransferEncoding);
+      if self.transfer_encoding_saw_chunked {
+        // `chunked` is present but isn't the sole final encoding (e.g.
+        // `chunked, gzip` or duplicated `chunked`) -- a classic request
+        // smuggling vector. Both node:http and Deno.serve reject it outright
+        // (400, handler never dispatched).
+        return Err(ParseError::UnsupportedTransferEncoding);
+      }
+      // An unrecognized Transfer-Encoding with no `chunked` token (e.g.
+      // `chunkedchunked`, `gzip`) has an indeterminate body length. node:http
+      // dispatches the handler then replies 400 when the body is read; Deno.serve
+      // rejects before dispatch. (Returned as a body kind rather than Err so the
+      // head parses and node can dispatch the handler.)
+      return Ok(BodyKind::Indeterminate);
     }
 
     if let Some(error) = self.content_length_error {
@@ -451,6 +519,22 @@ fn trim_ows(mut value: &[u8]) -> &[u8] {
     value = &value[..value.len() - 1];
   }
   value
+}
+
+// node:http only. httparse leniently treats a bare LF as a line terminator,
+// which lets a header value smuggle extra header lines (e.g.
+// `Dummy: x\nContent-Length: 0`). HTTP/1.1 requires CRLF; reject any LF not
+// preceded by CR (and any CR not followed by LF) in the completed head. Not
+// applied to Deno.serve, which keeps the lenient behavior.
+fn has_bare_lf(head: &[u8]) -> bool {
+  for i in 0..head.len() {
+    match head[i] {
+      b'\n' if i == 0 || head[i - 1] != b'\r' => return true,
+      b'\r' if i + 1 < head.len() && head[i + 1] != b'\n' => return true,
+      _ => {}
+    }
+  }
+  false
 }
 
 fn valid_header_value(value: &[u8]) -> bool {
@@ -629,17 +713,38 @@ mod tests {
     assert_eq!(request.body_kind, BodyKind::Chunked);
   }
 
+  // `chunked` present but not the final encoding is a smuggling vector ->
+  // rejected outright (no handler dispatch).
   #[test]
-  fn rejects_transfer_encoding_that_does_not_end_in_chunked() {
+  fn rejects_chunked_that_is_not_the_final_transfer_encoding() {
     for input in [
-      b"POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: gzip\r\n\r\n".as_slice(),
-      b"POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked, gzip\r\n\r\n",
+      b"POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked, gzip\r\n\r\n".as_slice(),
       b"POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\nTransfer-Encoding: gzip\r\n\r\n",
     ] {
       let mut headers = [Header::EMPTY; 8];
       assert_eq!(
         parse_request_head(input, &mut headers),
         Err(ParseError::UnsupportedTransferEncoding)
+      );
+    }
+  }
+
+  // An unrecognized Transfer-Encoding with no `chunked` token has an
+  // indeterminate body. The head parses (so node:http can dispatch the handler
+  // and then reply 400 when the body is read); reading the body errors.
+  #[test]
+  fn unrecognized_transfer_encoding_without_chunked_is_indeterminate() {
+    for input in [
+      b"POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: gzip\r\n\r\n".as_slice(),
+      b"POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunkedchunked\r\n\r\n",
+    ] {
+      let mut headers = [Header::EMPTY; 8];
+      assert_eq!(
+        parse_request_head(input, &mut headers)
+          .unwrap()
+          .unwrap()
+          .body_kind,
+        BodyKind::Indeterminate
       );
     }
   }
@@ -656,6 +761,8 @@ mod tests {
     );
   }
 
+  // Duplicate `chunked` (`chunked, chunked`) is a smuggling vector -> rejected
+  // outright (no handler dispatch), like any chunked-not-final encoding.
   #[test]
   fn rejects_duplicate_chunked_transfer_encoding() {
     let mut headers = [Header::EMPTY; 8];

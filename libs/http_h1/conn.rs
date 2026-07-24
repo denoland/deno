@@ -87,6 +87,11 @@ pub enum ResponseBody<'a> {
   Empty,
   Head(Option<u64>),
   Bytes(&'a [u8]),
+  // Like `Bytes`, but the message is close-delimited: no content-length is
+  // emitted and the body runs until the connection closes. Used by node:http
+  // when the handler removes both Content-Length and Transfer-Encoding. The
+  // caller must also close the connection (keep_alive=false / force_close).
+  CloseDelimitedBytes(&'a [u8]),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -123,12 +128,16 @@ impl<'a> SharedResponseWriter<'a> {
       ResponseBody::Empty => Some(0),
       ResponseBody::Head(content_length) => content_length,
       ResponseBody::Bytes(bytes) => Some(bytes.len() as u64),
+      // Close-delimited: no content-length header (length is implied by close).
+      ResponseBody::CloseDelimitedBytes(_) => None,
     };
     let content_length = status_allows_body(response.status)
       .then_some(body_len)
       .flatten();
     let body = match response.body {
-      ResponseBody::Bytes(bytes) if status_allows_body(response.status) => {
+      ResponseBody::Bytes(bytes) | ResponseBody::CloseDelimitedBytes(bytes)
+        if status_allows_body(response.status) =>
+      {
         bytes
       }
       _ => &[],
@@ -289,6 +298,7 @@ pub struct SharedConn<I> {
   protocol: Protocol,
   buffered: Vec<u8>,
   response_state: ResponseState,
+  node_mode: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -325,6 +335,7 @@ impl<I> SharedConn<I> {
       protocol: Protocol::new(),
       buffered: Vec::new(),
       response_state: ResponseState::Idle,
+      node_mode: false,
     }
   }
 
@@ -332,8 +343,37 @@ impl<I> SharedConn<I> {
     self.protocol.set_allow_missing_host(allow);
   }
 
+  /// node:http keeps the first of multiple Host headers (the JS layer dedups);
+  /// Deno.serve rejects per RFC 7230.
+  pub fn set_allow_multiple_host(&mut self, allow: bool) {
+    self.protocol.set_allow_multiple_host(allow);
+  }
+
+  /// node:http mode: preserve a user-set content-length on bodiless statuses
+  /// (304 etc.) when writing response heads, matching Node.
+  pub fn set_node_mode(&mut self, node_mode: bool) {
+    self.node_mode = node_mode;
+  }
+
+  /// node:http rejects a bare CR/LF in the request head (httparse is lenient and
+  /// would let it smuggle header lines); Deno.serve keeps the lenient behavior.
+  pub fn set_reject_bare_lf(&mut self, reject: bool) {
+    self.protocol.set_reject_bare_lf(reject);
+  }
+
+  /// True when no bytes of a next request are buffered. A non-empty buffer means
+  /// a request head has started arriving (e.g. a partial pipelined request),
+  /// which node:http bounds by `requestTimeout` rather than `keepAliveTimeout`.
+  pub fn buffered_is_empty(&self) -> bool {
+    self.buffered.is_empty()
+  }
+
   pub fn into_inner(self) -> I {
     self.io
+  }
+
+  pub fn get_ref(&self) -> &I {
+    &self.io
   }
 
   pub fn into_upgrade_parts(self) -> (I, Vec<u8>) {
@@ -354,7 +394,7 @@ impl<I> SharedConn<I> {
       return Ok(Some(body));
     }
 
-    let mut protocol = self.protocol;
+    let mut protocol = self.protocol.clone();
     let mut cursor = 0usize;
     let mut body_len = 0usize;
 
@@ -376,7 +416,7 @@ impl<I> SharedConn<I> {
 
     let consumed_total = cursor;
     let final_protocol = protocol;
-    let mut protocol = self.protocol;
+    let mut protocol = self.protocol.clone();
     let mut cursor = 0usize;
     let mut body = Vec::with_capacity(body_len);
 
@@ -406,6 +446,12 @@ impl<I> SharedConn<I> {
     self.protocol = final_protocol;
     self.buffered.drain(..consumed_total);
     Ok(Some(body))
+  }
+
+  // Trailers parsed from the most recent chunked request body (after the body
+  // is fully read). node:http exposes them as req.rawTrailers / req.trailers.
+  pub fn take_request_trailers(&mut self) -> Vec<(Vec<u8>, Vec<u8>)> {
+    self.protocol.take_request_trailers()
   }
 }
 
@@ -477,7 +523,11 @@ where
     self.finish_previous_request().await?;
 
     let head_end = loop {
-      if let Some(head_end) = find_double_crlf(self.read_buf.filled()) {
+      // Empty lines before the request line are skipped by the parser and
+      // must not satisfy the readiness gate (see `leading_crlf_len`).
+      let skip = leading_crlf_len(self.read_buf.filled());
+      if let Some(head_end) = find_double_crlf(&self.read_buf.filled()[skip..])
+      {
         break head_end;
       }
       if self.read_buf.len() >= MAX_HEAD_BYTES {
@@ -574,6 +624,7 @@ where
       ResponseBody::Empty => Some(0),
       ResponseBody::Head(content_length) => content_length,
       ResponseBody::Bytes(bytes) => Some(bytes.len() as u64),
+      ResponseBody::CloseDelimitedBytes(_) => None,
     };
     let content_length = status_allows_body(response.status)
       .then_some(body_len)
@@ -587,9 +638,11 @@ where
         headers: response.headers,
         content_length,
         keep_alive: response.keep_alive,
+        node_mode: false,
       },
     );
-    if let ResponseBody::Bytes(bytes) = response.body
+    if let ResponseBody::Bytes(bytes) | ResponseBody::CloseDelimitedBytes(bytes) =
+      response.body
       && status_allows_body(response.status)
     {
       self.write_buf.extend_from_slice(bytes);
@@ -614,6 +667,7 @@ where
         headers: response.headers,
         content_length: None,
         keep_alive: response.keep_alive,
+        node_mode: false,
       },
     );
     self.io.write_all(&self.write_buf).await?;
@@ -646,6 +700,7 @@ where
         headers: response.headers,
         content_length: Some(content_length),
         keep_alive: response.keep_alive,
+        node_mode: false,
       },
     );
     self.io.write_all(&self.write_buf).await?;
@@ -811,6 +866,14 @@ where
     F: for<'a> FnMut(Request<'a>) -> R,
   {
     loop {
+      // Discard empty lines before the request line like llhttp does; they
+      // must not count as head bytes, satisfy the readiness gate below, or
+      // make an idle keep-alive connection look like a partial request to
+      // `buffered_is_empty` callers.
+      let skip = leading_crlf_len(&self.buffered);
+      if skip > 0 {
+        self.buffered.drain(..skip);
+      }
       if let Some(head_end) = find_double_crlf(&self.buffered) {
         if head_end > MAX_HEAD_BYTES {
           return Poll::Ready(Err(Error::HeadTooLarge));
@@ -846,7 +909,8 @@ where
       }
 
       if self.buffered.is_empty() {
-        let scratch_head_end = find_double_crlf(&scratch.read_buf[..read]);
+        let skip = leading_crlf_len(&scratch.read_buf[..read]);
+        let scratch_head_end = find_double_crlf(&scratch.read_buf[skip..read]);
         if let Some(head_end) = scratch_head_end
           && head_end > MAX_HEAD_BYTES
         {
@@ -1036,6 +1100,14 @@ where
     }
   }
 
+  /// Shut down the write side (SHUT_WR): flushes any kernel-buffered response
+  /// bytes and queues the FIN ahead of a later `close()`, so an unread request
+  /// tail can't turn the close into an RST that discards the response.
+  pub async fn shutdown_write(&mut self) -> std::io::Result<()> {
+    use tokio::io::AsyncWriteExt;
+    self.io.shutdown().await
+  }
+
   pub async fn write_response_with_scratch(
     &mut self,
     scratch: &mut SharedScratch,
@@ -1051,6 +1123,36 @@ where
   pub async fn write_continue(&mut self) -> Result<(), Error> {
     self.io.write_all(b"HTTP/1.1 100 Continue\r\n\r\n").await?;
     Ok(())
+  }
+
+  /// Write raw 1xx interim-response bytes (e.g. `103 Early Hints`) directly to
+  /// the socket ahead of the final response.
+  pub async fn write_interim(&mut self, bytes: &[u8]) -> Result<(), Error> {
+    self.io.write_all(bytes).await?;
+    Ok(())
+  }
+
+  /// Poll-based variant of [`write_interim`] for callers that hold the
+  /// connection inside a `RefCell` and can't `.await`. `offset` tracks progress
+  /// across polls and must start at 0.
+  pub fn poll_write_interim(
+    &mut self,
+    cx: &mut Context<'_>,
+    bytes: &[u8],
+    offset: &mut usize,
+  ) -> Poll<Result<(), Error>> {
+    while *offset < bytes.len() {
+      let written =
+        ready!(Pin::new(&mut self.io).poll_write(cx, &bytes[*offset..]))?;
+      if written == 0 {
+        return Poll::Ready(Err(Error::Io(io::Error::new(
+          io::ErrorKind::WriteZero,
+          "failed to write interim response",
+        ))));
+      }
+      *offset += written;
+    }
+    Poll::Ready(Ok(()))
   }
 
   pub fn poll_write_response_with(
@@ -1072,6 +1174,7 @@ where
         headers: writer.response.headers,
         content_length: writer.content_length,
         keep_alive: writer.response.keep_alive,
+        node_mode: self.node_mode,
       },
     );
     let head_len = scratch.write_buf.len();
@@ -1158,6 +1261,7 @@ where
           headers: writer.response.headers,
           content_length: None,
           keep_alive: writer.response.keep_alive,
+          node_mode: self.node_mode,
         },
       );
     }
@@ -1231,6 +1335,7 @@ where
         headers: writer.response.headers,
         content_length: Some(writer.content_length),
         keep_alive: writer.response.keep_alive,
+        node_mode: self.node_mode,
       },
     );
     while writer.written < scratch.write_buf.len() {
@@ -1246,6 +1351,10 @@ where
       }
       writer.written += written;
     }
+    // The head was written directly to the socket above; mark `write_buf` as
+    // fully flushed so a later `poll_flush_write_buf` (the stream loop flushes
+    // buffered bytes for incremental responsiveness) doesn't re-send the head.
+    // Mirrors the chunked path's direct-write branch.
     scratch.write_flushed = scratch.write_buf.len();
     self.response_state = if status_allows_body(writer.response.status) {
       ResponseState::Fixed {
@@ -1551,6 +1660,21 @@ fn upgrade_kind_from_core(upgrade: CoreUpgradeKind) -> UpgradeKind {
     CoreUpgradeKind::Any => UpgradeKind::Any,
     CoreUpgradeKind::H2c => UpgradeKind::H2c,
   }
+}
+
+/// Complete `\r\n` pairs at the start of a request-head buffer. httparse (like
+/// llhttp) skips empty lines before the request line, so they must not satisfy
+/// the double-CRLF readiness gate: trailing CRLF junk after a pipelined request
+/// would otherwise read as a complete-but-unparseable head and become a 400
+/// instead of waiting for the next request. A trailing lone `\r` is not counted
+/// (its `\n` may still be in flight); bare `\n` empty lines are left to the
+/// parse layer, which node:http rejects (`reject_bare_lf`).
+fn leading_crlf_len(buf: &[u8]) -> usize {
+  let mut len = 0;
+  while buf.len() >= len + 2 && buf[len] == b'\r' && buf[len + 1] == b'\n' {
+    len += 2;
+  }
+  len
 }
 
 fn find_double_crlf(buf: &[u8]) -> Option<usize> {
@@ -1899,6 +2023,67 @@ mod tests {
     .await?
     .unwrap();
     assert_eq!(method, b"GET");
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn shared_conn_skips_empty_lines_between_pipelined_requests()
+  -> TestResult<()> {
+    let (mut client, server) = tokio::io::duplex(64 * 1024);
+    let mut conn = SharedConn::new(server);
+    let mut scratch = SharedScratch::default();
+    // Empty lines between (and after) pipelined requests are discarded like
+    // llhttp does: they are neither a request head nor a reason to treat the
+    // next head as complete-but-invalid (a 400).
+    client
+      .write_all(
+        b"POST / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 5\r\n\r\nhello\r\n\r\n\r\nGET /next HTTP/1.1\r\nHost: example.com\r\n\r\n\r\n\r\n\r\n",
+      )
+      .await?;
+
+    let body_kind = std::future::poll_fn(|cx| {
+      conn.poll_next_request_with(cx, &mut scratch, |request| request.body)
+    })
+    .await?
+    .unwrap();
+    assert_eq!(body_kind, BodyKind::ContentLength(5));
+    assert_eq!(conn.try_take_full_body()?.as_deref(), Some(&b"hello"[..]));
+
+    let method = std::future::poll_fn(|cx| {
+      conn.poll_next_request_with(cx, &mut scratch, |request| {
+        request.method.to_vec()
+      })
+    })
+    .await?
+    .unwrap();
+    assert_eq!(method, b"GET");
+
+    // Only the trailing empty-line junk remains: that is an idle keep-alive
+    // connection, and EOF reads as a clean close.
+    drop(client);
+    let next = std::future::poll_fn(|cx| {
+      conn.poll_next_request_with(cx, &mut scratch, |request| request.body)
+    })
+    .await?;
+    assert!(next.is_none());
+    assert!(conn.buffered_is_empty());
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn shared_conn_empty_lines_only_is_not_a_request() -> TestResult<()> {
+    let (mut client, server) = tokio::io::duplex(64 * 1024);
+    let mut conn = SharedConn::new(server);
+    let mut scratch = SharedScratch::default();
+    client.write_all(b"\r\n\r\n\r\n").await?;
+    drop(client);
+
+    let next = std::future::poll_fn(|cx| {
+      conn.poll_next_request_with(cx, &mut scratch, |request| request.body)
+    })
+    .await?;
+    assert!(next.is_none());
+    assert!(conn.buffered_is_empty());
     Ok(())
   }
 

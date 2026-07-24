@@ -2261,6 +2261,37 @@ function getIpcHandleInfo(handle, options, target) {
   const { Socket } = lazyNet();
   const { Server: NetServer } = lazyNet();
   const { Socket: DgramSocket } = lazyDgram();
+  // node:http native fast path: req.socket/res.socket is a synthetic stand-in
+  // (the HTTP engine owns the real connection, not a real net.Socket). Passing
+  // it over IPC needs the real OS fd: reclaim the live connection from the
+  // engine and adopt it into a real TCP handle so the normal net.Socket
+  // transfer path applies. Duck-typed to avoid a node:http import here.
+  if (handle != null && typeof handle._nativeReclaimFd === "function") {
+    const fd = handle._nativeReclaimFd();
+    if (typeof fd === "number" && fd >= 0) {
+      const inner = new TCP(tcpSocketType.SOCKET);
+      const err = inner.open(fd);
+      if (err) {
+        throw errnoException(codeMap.get(err), "open");
+      }
+      handle._handle = inner;
+      return {
+        rawFd: rawFdFromTcpHandle(inner),
+        message: {
+          cmd: "NODE_HANDLE",
+          type: IPC_HANDLE_NET_SOCKET,
+          nativeKind: "tcp",
+          msg: undefined,
+        },
+        closeAfterSend: options.keepOpen !== true,
+        close() {
+          handle.parser = null;
+          handle._httpMessage = null;
+          handle.destroy();
+        },
+      };
+    }
+  }
   if (ObjectPrototypeIsPrototypeOf(Socket.prototype, handle)) {
     const inner = handle._handle;
     // Match Node's handleConversion["net.Socket"].send, which returns the
@@ -2872,7 +2903,10 @@ function setupChannel(
         !ObjectPrototypeIsPrototypeOf(NetServer.prototype, handle) &&
         !ObjectPrototypeIsPrototypeOf(DgramSocket.prototype, handle) &&
         !ObjectPrototypeIsPrototypeOf(TCP.prototype, handle) &&
-        !ObjectPrototypeIsPrototypeOf(Pipe.prototype, handle)
+        !ObjectPrototypeIsPrototypeOf(Pipe.prototype, handle) &&
+        // node:http native fast path synthetic socket (reclaims a real fd in
+        // getIpcHandleInfo).
+        typeof handle._nativeReclaimFd !== "function"
       ) {
         throw new ERR_INVALID_HANDLE_TYPE();
       }

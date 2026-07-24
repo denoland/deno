@@ -34,8 +34,12 @@ const {
   Symbol,
 } = primordials;
 
+import { op_http_abort_response } from "ext:core/ops";
 import { finished, Readable } from "node:stream";
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const { kNativeExternal } = core.loadExtScript(
+  "ext:deno_node/internal/http.ts",
+);
 
 const kHeaders = Symbol("kHeaders");
 const kHeadersDistinct = Symbol("kHeadersDistinct");
@@ -214,6 +218,49 @@ IncomingMessage.prototype._read = function _read(_n) {
 };
 
 IncomingMessage.prototype._destroy = function _destroy(err, cb) {
+  // Native fast path: a streaming body read keeps the request-body resource
+  // open via a pending `core.read`. Closing it here cancels the in-flight read
+  // when the request is destroyed for any reason (client abort, user destroy);
+  // otherwise the pending op leaks and keeps the event loop alive.
+  const nativeRid = this._nativeStreamRid;
+  if (typeof nativeRid === "number" && nativeRid !== 4294967295) {
+    this._nativeStreamRid = 4294967295;
+    core.tryClose(nativeRid);
+  }
+
+  // Native fast path: the handler explicitly destroyed the request with an
+  // error before any response was committed (`req.destroy(err)`); tell the
+  // engine to drop the connection so the client sees an ECONNRESET. Gated on:
+  // - `err` truthy, to distinguish an explicit destroy from a normal
+  //   autoDestroy (which passes no error and must not abort an in-flight async
+  //   response that hasn't committed yet);
+  // - `_nativeResponded` false, since once a response op consumed the external,
+  //   touching it again is a use-after-free;
+  // - `socket` still attached: stream `destroyer()` (pipeline teardown,
+  //   Readable.toWeb cancel) detaches it first precisely because the request
+  //   teardown must NOT take the connection down (Node's connection drop flows
+  //   through socket.destroy, which the detach prevents).
+  const ext = this[kNativeExternal];
+  if (
+    err !== null && err !== undefined && ext !== undefined && ext !== null &&
+    !this._nativeResponded && !this._nativeAbortSent &&
+    this.socket !== null && this.socket !== undefined
+  ) {
+    this._nativeAbortSent = true;
+    // Defer the connection drop: a handler may still commit a response on the
+    // request's 'close' (e.g. `req.destroy(err)` then `res.end()` in a 'close'
+    // listener -- test-stream-destroy). The response (committed via the
+    // external) must win over the ECONNRESET, so only abort if nothing
+    // responded once the close handlers have run.
+    this.once("close", () => {
+      nextTick(() => {
+        if (!this._nativeResponded && this[kNativeExternal] === ext) {
+          op_http_abort_response(ext);
+        }
+      });
+    });
+  }
+
   if (!this.readableEnded || !this.complete) {
     this.aborted = true;
     this.emit("aborted");

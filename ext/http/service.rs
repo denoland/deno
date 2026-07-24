@@ -306,6 +306,22 @@ impl std::ops::Deref for HttpServerState {
 /// JavaScript when a new request arrives, instead of routing every
 /// request through an mpsc channel that the JS side has to drain in
 /// a separate task.
+/// Per-server node:http compatibility configuration for the H1 serve loop.
+///
+/// When `enabled`, the loop enforces Node's idle/headers timeouts (so idle
+/// keep-alive connections close instead of hanging a graceful `server.close()`)
+/// rather than the spec-minimal Deno.serve behavior. Timeouts are in
+/// milliseconds; 0 disables that timeout.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NodeHttpServeOptions {
+  pub enabled: bool,
+  pub keep_alive_timeout_ms: u64,
+  pub headers_timeout_ms: u64,
+  // Full-request (body) timeout: the serve loop replies 408 if the body isn't
+  // received in time (see serve_http11_raw_inner streaming-body path).
+  pub request_timeout_ms: u64,
+}
+
 pub struct ServerCallback {
   isolate_ptr: v8::UnsafeRawIsolatePtr,
   context: v8::Global<v8::Context>,
@@ -318,6 +334,7 @@ pub struct ServerCallback {
   serve_fast_content_type_key: v8::Global<v8::Value>,
   serve_fast_consumed_key: v8::Global<v8::Value>,
   raw_no_request: bool,
+  node_http: NodeHttpServeOptions,
   runtime_waker: Arc<AtomicWaker>,
 }
 
@@ -395,6 +412,7 @@ impl ServerCallback {
     serve_fast_content_type_key: v8::Global<v8::Value>,
     serve_fast_consumed_key: v8::Global<v8::Value>,
     raw_no_request: bool,
+    node_http: NodeHttpServeOptions,
     runtime_waker: Arc<AtomicWaker>,
   ) -> Self {
     let ctx = scope.get_current_context();
@@ -413,12 +431,17 @@ impl ServerCallback {
       serve_fast_content_type_key,
       serve_fast_consumed_key,
       raw_no_request,
+      node_http,
       runtime_waker,
     }
   }
 
   pub fn raw_no_request(&self) -> bool {
     self.raw_no_request
+  }
+
+  pub fn node_http(&self) -> NodeHttpServeOptions {
+    self.node_http
   }
 
   fn direct_response_body_from_v8<'s>(
@@ -517,6 +540,7 @@ impl ServerCallback {
   pub unsafe fn dispatch_native_response(
     &self,
     record_ptr: *mut std::ffi::c_void,
+    conn_id: f64,
   ) -> Option<DirectResponse> {
     // SAFETY: caller upholds isolate validity.
     unsafe {
@@ -530,8 +554,14 @@ impl ServerCallback {
         v8::tc_scope!(tc, pin_scope);
         let cb = v8::Local::new(tc, &self.native_callback);
         let arg = v8::External::new(tc, record_ptr);
+        let conn_id = v8::Number::new(tc, conn_id);
+        let is_close = v8::Boolean::new(tc, false);
         let recv = v8::undefined(tc);
-        let value = cb.call(tc, recv.into(), &[arg.into()]);
+        let value = cb.call(
+          tc,
+          recv.into(),
+          &[arg.into(), conn_id.into(), is_close.into()],
+        );
         if tc.has_caught() {
           tc.reset();
           None
@@ -565,6 +595,85 @@ impl ServerCallback {
       pin_scope.perform_microtask_checkpoint();
       self.runtime_waker.wake();
       response
+    }
+  }
+
+  /// Notify the node:http native dispatch that a connection has closed, so JS
+  /// can emit the per-connection socket's `'close'` and drop it from its map.
+  /// Calls the native callback with `(null, conn_id, /*isClose*/ true)`.
+  ///
+  /// # Safety
+  /// The isolate pointed to by `self.isolate_ptr` must still be live (upheld
+  /// the same way as [`Self::dispatch`]).
+  pub unsafe fn dispatch_connection_close(&self, conn_id: f64) {
+    // SAFETY: caller upholds isolate validity.
+    unsafe {
+      let mut isolate = v8::Isolate::from_raw_isolate_ptr(self.isolate_ptr);
+      v8::scope!(let handle_scope, &mut isolate);
+      let context = v8::Local::new(handle_scope, &self.context);
+      let scope = &mut v8::ContextScope::new(handle_scope, context);
+      let pin_scope: &mut v8::PinScope = scope;
+      {
+        v8::tc_scope!(tc, pin_scope);
+        let cb = v8::Local::new(tc, &self.native_callback);
+        let arg = v8::null(tc);
+        let conn_id = v8::Number::new(tc, conn_id);
+        let is_close = v8::Boolean::new(tc, true);
+        let recv = v8::undefined(tc);
+        let _ = cb.call(
+          tc,
+          recv.into(),
+          &[arg.into(), conn_id.into(), is_close.into()],
+        );
+        if tc.has_caught() {
+          tc.reset();
+        }
+      }
+      pin_scope.perform_microtask_checkpoint();
+      self.runtime_waker.wake();
+    }
+  }
+
+  /// Calls the native callback with `(null, conn_id, /*isClose*/ false,
+  /// /*isTimeout*/ true)` so the JS side can emit the connection's `'timeout'`
+  /// event (server keepAliveTimeout). The serve loop then closes the
+  /// connection.
+  ///
+  /// # Safety
+  /// Same invariant as [`Self::dispatch_connection_close`]: the isolate must
+  /// still be live.
+  pub unsafe fn dispatch_connection_timeout(&self, conn_id: f64) {
+    // SAFETY: caller upholds isolate validity.
+    unsafe {
+      let mut isolate = v8::Isolate::from_raw_isolate_ptr(self.isolate_ptr);
+      v8::scope!(let handle_scope, &mut isolate);
+      let context = v8::Local::new(handle_scope, &self.context);
+      let scope = &mut v8::ContextScope::new(handle_scope, context);
+      let pin_scope: &mut v8::PinScope = scope;
+      {
+        v8::tc_scope!(tc, pin_scope);
+        let cb = v8::Local::new(tc, &self.native_callback);
+        let arg = v8::null(tc);
+        let conn_id = v8::Number::new(tc, conn_id);
+        let is_close = v8::Boolean::new(tc, false);
+        let is_timeout = v8::Boolean::new(tc, true);
+        let recv = v8::undefined(tc);
+        let _ = cb.call(
+          tc,
+          recv.into(),
+          &[
+            arg.into(),
+            conn_id.into(),
+            is_close.into(),
+            is_timeout.into(),
+          ],
+        );
+        if tc.has_caught() {
+          tc.reset();
+        }
+      }
+      pin_scope.perform_microtask_checkpoint();
+      self.runtime_waker.wake();
     }
   }
 
