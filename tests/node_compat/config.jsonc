@@ -572,10 +572,7 @@
     "parallel/test-cluster-rr-handle-keep-loop-alive.js": { "windows": false },
     "parallel/test-cluster-rr-handle-ref-unref.js": { "windows": false },
     "parallel/test-cluster-rr-ref.js": { "windows": false },
-    "parallel/test-cluster-send-deadlock.js": {
-      "ignore": true,
-      "reason": "Flaky on debug Linux: times out (10s) intermittently from a mutual handle-send / disconnect race. The IPC handle fixes in this PR (eager derivation + teardown cleanup) reduce but do not eliminate it; not reproducible outside debug Linux. Tracked in denoland/deno#34180."
-    },
+    "parallel/test-cluster-send-deadlock.js": { "windows": false },
     "parallel/test-cluster-send-socket-to-worker-http-server.js": {
       "windows": false
     },

@@ -2736,14 +2736,39 @@ function setupChannel(
             // Channel closed.
             target.disconnect();
             return;
-          } else if (cmd === "HANDLE" && typeof rawFd === "number") {
+          } else if (cmd === "HANDLE") {
             if (serialization === "json") {
               restorePrototype(msg);
             }
-            // Acknowledge receipt so the sender can close its local copy.
+            // Reply so the sender can close its local copy and drain its
+            // send queue. Node distinguishes two cases (lib/internal/
+            // child_process.js): a NODE_HANDLE carrying a descriptor gets a
+            // NODE_HANDLE_ACK, while one whose handle can't be materialized
+            // gets a NODE_HANDLE_NACK and is *not* delivered. Both replies
+            // drain the sender's pending slot, so either breaks the deadlock.
+            // This polyfill has no NACK/retransmission path, and on the
+            // failing case the fd genuinely won't transfer (see below), so a
+            // resend would be futile -- hence we ACK unconditionally rather
+            // than NACK. If we replied nothing when the fd is absent, the
+            // sender would wait forever for a reply that never arrives, and
+            // any message queued behind that handle (e.g. cluster's
+            // `exitedAfterDisconnect`, whose callback triggers
+            // `process.disconnect()`) is stranded, deadlocking teardown. That
+            // is what hung `test-cluster-send-deadlock`: a worker forwards a
+            // received socket back to the primary, and on that second hop the
+            // fd does not transfer, so the message arrives here with no fd.
             sendHandleAck();
-            const handle = createIpcHandle(msg, rawFd);
+            // When the fd is absent we still deliver the message, with a
+            // `null` handle. This diverges from Node (which drops the message
+            // on a NACK); it's harmless here because the primary has no
+            // `message` listener for the worker's forwarded reply, but a
+            // consumer that assumes a non-null handle would observe `null` on
+            // a failed transfer.
+            const handle = typeof rawFd === "number"
+              ? createIpcHandle(msg, rawFd)
+              : null;
             if (
+              handle !== null &&
               msg.socketListKey &&
               ObjectPrototypeIsPrototypeOf(Socket.prototype, handle)
             ) {
