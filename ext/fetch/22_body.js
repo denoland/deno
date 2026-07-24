@@ -246,16 +246,32 @@ class InnerBody {
         this.streamOrStatic,
       ) && !this.streamOrStatic.consumed
     ) {
+      let body = this.streamOrStatic.body;
+      let source = this.source;
+      if (typeof body !== "string") {
+        body = TypedArrayPrototypeSlice(body);
+        if (
+          source !== null &&
+          TypedArrayPrototypeGetSymbolToStringTag(source) === "Uint8Array"
+        ) {
+          source = body;
+        }
+      }
       second = new InnerBody({
-        body: this.streamOrStatic.body,
+        body,
         consumed: false,
       });
+      second.source = source;
     } else {
+      const secondSource = this.source !== null &&
+          TypedArrayPrototypeGetSymbolToStringTag(this.source) === "Uint8Array"
+        ? TypedArrayPrototypeSlice(this.source)
+        : this.source;
       const { 0: out1, 1: out2 } = readableStreamTee(this.stream, true);
       this.streamOrStatic = out1;
       second = new InnerBody(out2);
+      second.source = secondSource;
     }
-    second.source = this.source;
     second.length = this.length;
     return second;
   }

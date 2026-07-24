@@ -33,6 +33,67 @@ Deno.test(async function arrayBufferFromByteArrays() {
   }
 });
 
+Deno.test(async function requestCloneStaticBodyIsIndependent() {
+  const request = new Request("http://example.com/", {
+    method: "POST",
+    body: new Uint8Array([65, 65, 65, 65]),
+  });
+  const clone = request.clone();
+
+  const cloneBytes = new Uint8Array(await clone.arrayBuffer());
+  cloneBytes.fill(66);
+
+  assertEquals(await request.text(), "AAAA");
+});
+
+Deno.test(async function responseCloneStaticBodyIsIndependent() {
+  const response = new Response(new Uint8Array([65, 65, 65, 65]));
+  const clone = response.clone();
+
+  const responseBytes = await response.bytes();
+  responseBytes.fill(66);
+
+  assertEquals(await clone.text(), "AAAA");
+});
+
+Deno.test(
+  { permissions: { net: true } },
+  async function requestCloneMaterializedStaticBodyIsIndependentAcrossRedirect() {
+    const started = Promise.withResolvers<number>();
+    let firstBody = "";
+    await using _server = Deno.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      onListen: ({ port }) => started.resolve(port),
+    }, async (request) => {
+      const body = await request.text();
+      if (new URL(request.url).pathname === "/redirect") {
+        firstBody = body;
+        return new Response(null, {
+          status: 307,
+          headers: { location: "/final" },
+        });
+      }
+      return Response.json([firstBody, body]);
+    });
+    const port = await started.promise;
+
+    const request = new Request(`http://127.0.0.1:${port}/redirect`, {
+      method: "POST",
+      body: new Uint8Array([65, 65, 65, 65]),
+    });
+    // Force clone() through the stream tee path.
+    void request.body;
+    const clone = request.clone();
+
+    const { value: requestBytes } = await request.body!.getReader().read();
+    requestBytes!.fill(66);
+
+    const response = await fetch(clone);
+    assertEquals(await response.json(), ["AAAA", "AAAA"]);
+  },
+);
+
 // Regression test: set/delete on a FormData with many entries sharing a name
 // must run in linear time. A quadratic implementation would take many seconds
 // (or minutes) at this size; the linear implementation finishes in
