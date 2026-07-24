@@ -3,6 +3,7 @@
 use std::env;
 use std::io::Write;
 use std::path::Path;
+use std::path::PathBuf;
 
 use deno_runtime::*;
 
@@ -431,6 +432,109 @@ fn emit_dts_rerun_if_changed() {
   }
 }
 
+#[allow(clippy::disallowed_methods, reason = "build code")]
+fn emit_startup_order_link_args(out_dir: &Path) {
+  const ENABLE_ENV: &str = "DENO_USE_STARTUP_ORDER";
+  const ORDER_FILE_ENV: &str = "DENO_STARTUP_ORDER_FILE";
+
+  println!("cargo:rerun-if-env-changed={ENABLE_ENV}");
+  println!("cargo:rerun-if-env-changed={ORDER_FILE_ENV}");
+
+  if env::var_os(ENABLE_ENV).is_none() {
+    return;
+  }
+  if env::var(ENABLE_ENV).ok().as_deref() != Some("1") {
+    panic!("{ENABLE_ENV} must be unset or set to 1");
+  }
+
+  let profile = env::var("PROFILE").unwrap();
+  if profile != "release" {
+    panic!("startup ordering is only supported by the release profile");
+  }
+
+  let target = env::var("TARGET").unwrap();
+  match target.as_str() {
+    "aarch64-apple-darwin"
+    | "aarch64-unknown-linux-gnu"
+    | "x86_64-unknown-linux-gnu" => {}
+    _ => return,
+  }
+
+  let source =
+    PathBuf::from(env::var_os(ORDER_FILE_ENV).unwrap_or_else(|| {
+      panic!(
+        "{ORDER_FILE_ENV} must point to an order generated from the baseline \
+       release binary using the default linker layout"
+      )
+    }));
+  let source = source.canonicalize().unwrap_or_else(|error| {
+    panic!(
+      "failed to resolve startup order {}: {error}",
+      source.display()
+    )
+  });
+  println!("cargo:rerun-if-changed={}", source.display());
+
+  let contents = if source.extension().is_some_and(|ext| ext == "zst") {
+    let compressed = std::fs::read(&source).unwrap_or_else(|error| {
+      panic!("failed to read startup order {}: {error}", source.display())
+    });
+    zstd::stream::decode_all(compressed.as_slice()).unwrap_or_else(|error| {
+      panic!(
+        "failed to decompress startup order {}: {error}",
+        source.display()
+      )
+    })
+  } else {
+    std::fs::read(&source).unwrap_or_else(|error| {
+      panic!("failed to read startup order {}: {error}", source.display())
+    })
+  };
+
+  // Always use the same linker path for generated orders. Full-LTO output can
+  // change when only the order-file path changes.
+  let order_file = out_dir.join(format!("startup-order-{target}.order"));
+  std::fs::write(&order_file, contents).unwrap_or_else(|error| {
+    panic!(
+      "failed to write startup order {}: {error}",
+      order_file.display()
+    )
+  });
+
+  let contents = std::fs::read_to_string(&order_file).unwrap_or_else(|error| {
+    panic!(
+      "failed to validate startup order {}: {error}",
+      order_file.display()
+    )
+  });
+  let symbol_count = contents
+    .lines()
+    .filter(|line| !line.is_empty() && !line.starts_with('#'))
+    .count();
+  if symbol_count < 1_000 {
+    panic!(
+      "startup order {} has only {symbol_count} symbols",
+      order_file.display()
+    );
+  }
+
+  let order_file = order_file.canonicalize().unwrap();
+  match target.as_str() {
+    "aarch64-apple-darwin" => println!(
+      "cargo:rustc-link-arg-bin=deno=-Wl,-order_file,{}",
+      order_file.display()
+    ),
+    "aarch64-unknown-linux-gnu" | "x86_64-unknown-linux-gnu" => {
+      println!(
+        "cargo:rustc-link-arg-bin=deno=-Wl,--symbol-ordering-file={}",
+        order_file.display()
+      );
+      println!("cargo:rustc-link-arg-bin=deno=-Wl,--no-warn-symbol-ordering");
+    }
+    _ => unreachable!(),
+  }
+}
+
 fn main() {
   let out_dir = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
 
@@ -457,6 +561,7 @@ fn main() {
   // To debug snapshot issues uncomment:
   // op_fetch_asset::trace_serializer();
 
+  emit_startup_order_link_args(&out_dir);
   process_node_types(&out_dir);
 
   // Always emit rerun-if-changed for dts files (they are included via
