@@ -84,11 +84,9 @@
 
   const errorMap = {};
   // Maps a registered error class name to its constructor. Unlike `errorMap`
-  // (which stores builder closures), this keeps a reference to the class itself
-  // so the Rust side can restore the exact prototype when building an exception
-  // natively (e.g. from inside a V8 fast call, where re-entering JS to call
-  // `buildCustomError` is forbidden). Null prototype so class names can't
-  // collide with `Object.prototype` members.
+  // (which stores builder closures), this lets native error construction
+  // restore the exact prototype. Null prototype and immutable entries keep
+  // lookups independent of inherited properties or later map mutations.
   const errorConstructors = { __proto__: null };
   // Builtin v8 / JS errors
   registerErrorClass("Error", Error);
@@ -132,7 +130,12 @@
 
   function registerErrorClass(className, errorClass) {
     registerErrorBuilder(className, (msg) => new errorClass(msg));
-    errorConstructors[className] = errorClass;
+    ObjectDefineProperty(errorConstructors, className, {
+      value: errorClass,
+      writable: false,
+      enumerable: true,
+      configurable: false,
+    });
   }
 
   function registerErrorBuilder(className, errorBuilder) {

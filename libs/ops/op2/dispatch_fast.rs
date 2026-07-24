@@ -395,15 +395,9 @@ pub(crate) fn generate_fast_result_early_exit(
       Err(err) => {
         let scope = ::std::pin::pin!(#create_scope);
         let mut scope = scope.init();
-        // Build and throw the exception using only native V8 APIs. Calling
-        // `to_v8_error` here would synchronously invoke the JS
-        // `Deno.core.buildCustomError` callback, which can execute
-        // attacker-controlled JS (e.g. a setter on an error prototype's
-        // `name`) *inside* the fast call. That JS can detach an `ArrayBuffer`
-        // argument, leaving the JIT to write through a now-stale backing-store
-        // pointer once the fast call returns (use-after-free,
-        // GHSA-p4r3-6jgx-4cj5). The V8 fast-call contract forbids re-entering
-        // JS, so the error must be constructed without it.
+        // Keep fast-call error construction on the native registered-class
+        // path. This preserves the expected error shape without invoking a
+        // class constructor or custom builder from the callback.
         deno_core::error::throw_js_error_class(&mut scope, &err);
         // SAFETY: All fast return types have zero as a valid value
         return unsafe { std::mem::zeroed() };

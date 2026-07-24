@@ -1258,27 +1258,15 @@ pub(crate) fn throw_exception(
     with_scope(generator_state)
   };
 
-  let maybe_opctx = if generator_state.needs_opctx {
-    quote!()
-  } else {
-    with_opctx(generator_state)
-  };
-
-  let maybe_args = if generator_state.needs_args {
-    quote!()
-  } else {
-    with_fn_args(generator_state)
-  };
-
   gs_quote!(generator_state(scope) => {
     #maybe_scope
-    #maybe_args
-    #maybe_opctx
-    let exception = deno_core::error::to_v8_error(
-      &mut #scope,
-      &err,
-    );
-    #scope.throw_exception(exception);
+    if !deno_core::error::try_throw_js_error_class(&mut #scope, &err) {
+      let exception = deno_core::error::to_v8_error(
+        &mut #scope,
+        &err,
+      );
+      #scope.throw_exception(exception);
+    }
     return 1;
   })
 }

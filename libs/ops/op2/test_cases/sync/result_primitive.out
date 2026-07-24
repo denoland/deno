@@ -128,10 +128,6 @@ pub const fn op_u32_with_result() -> ::deno_core::_ops::OpDecl {
             );
             let parts: deno_core::v8::FunctionCallbackInfoParts<'s> = info.get_parts();
             let mut rv = parts.return_value;
-            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info_parts(
-                info,
-                &parts,
-            );
             let result = { Self::call() };
             match result {
                 Ok(result) => deno_core::_ops::RustToV8RetVal::to_v8_rv(result, &mut rv),
@@ -140,14 +136,10 @@ pub const fn op_u32_with_result() -> ::deno_core::_ops::OpDecl {
                         unsafe { deno_core::v8::CallbackScope::new(info) }
                     );
                     let mut scope = scope.init();
-                    let opctx: &'s _ = unsafe {
-                        &*(deno_core::v8::Local::<
-                            deno_core::v8::External,
-                        >::cast_unchecked(args.data())
-                            .value() as *const deno_core::_ops::OpCtx)
-                    };
-                    let exception = deno_core::error::to_v8_error(&mut scope, &err);
-                    scope.throw_exception(exception);
+                    if !deno_core::error::try_throw_js_error_class(&mut scope, &err) {
+                        let exception = deno_core::error::to_v8_error(&mut scope, &err);
+                        scope.throw_exception(exception);
+                    }
                     return 1;
                 }
             };

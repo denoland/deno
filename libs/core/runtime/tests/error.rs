@@ -5,6 +5,7 @@ use std::task::Poll;
 
 use deno_error::JsErrorBox;
 
+use crate::JsBuffer;
 use crate::JsRuntime;
 use crate::RuntimeOptions;
 use crate::op2;
@@ -16,7 +17,14 @@ async fn test_error_builder() {
     Err(JsErrorBox::new("DOMExceptionOperationError", "abc"))
   }
 
-  deno_core::extension!(test_ext, ops = [op_err]);
+  #[op2]
+  fn op_registered_err(
+    #[buffer(detach)] _buffer: JsBuffer,
+  ) -> Result<(), JsErrorBox> {
+    Err(JsErrorBox::new("RegisteredError", "registered message"))
+  }
+
+  deno_core::extension!(test_ext, ops = [op_err, op_registered_err]);
   let mut runtime = JsRuntime::new(RuntimeOptions {
     extensions: vec![test_ext::init()],
     ..Default::default()
@@ -46,13 +54,11 @@ fn syntax_error() {
   assert_eq!(frame.column_number, Some(12));
 }
 
-// `throw_js_error_class` is what the op2 fast-call error path uses. Unlike the
-// slow path it cannot re-enter JS to call `buildCustomError`, so it rebuilds
-// the exception natively. This verifies that the native rebuild still restores
-// the registered error class (`instanceof`), name, message, the `code`
-// additional property, and the round-trip key symbol.
+// Native construction is shared by op dispatch paths for registered classes.
+// Verify that it restores the class and defines the expected own properties
+// without consulting inherited accessors.
 #[test]
-fn fast_call_error_preserves_class() {
+fn native_registered_error_preserves_class() {
   use std::borrow::Cow;
 
   use deno_error::JsErrorClass;
@@ -102,6 +108,20 @@ fn fast_call_error_preserves_class() {
         }
       };
       Deno.core.registerErrorClass("MyError", globalThis.MyError);
+      globalThis.nameSetterCalls = 0;
+      globalThis.codeSetterCalls = 0;
+      Object.defineProperty(globalThis.MyError.prototype, "name", {
+        configurable: true,
+        set() {
+          globalThis.nameSetterCalls++;
+        },
+      });
+      Object.defineProperty(globalThis.MyError.prototype, "code", {
+        configurable: true,
+        set() {
+          globalThis.codeSetterCalls++;
+        },
+      });
       "#,
     )
     .unwrap();
@@ -135,11 +155,23 @@ fn fast_call_error_preserves_class() {
         if (!(e instanceof globalThis.MyError)) {
           throw new Error("expected instanceof MyError, got " + e.name);
         }
+        if (globalThis.nameSetterCalls !== 0) {
+          throw new Error("name setter ran during native error construction");
+        }
+        if (globalThis.codeSetterCalls !== 0) {
+          throw new Error("code setter ran during native error construction");
+        }
+        if (!Object.hasOwn(e, "name")) {
+          throw new Error("expected own name property");
+        }
         if (e.name !== "MyError") {
           throw new Error("expected name 'MyError', got " + e.name);
         }
         if (e.message !== "custom message") {
           throw new Error("expected message 'custom message', got " + e.message);
+        }
+        if (!Object.hasOwn(e, "code")) {
+          throw new Error("expected own code property");
         }
         if (e.code !== "E_CUSTOM") {
           throw new Error("expected code 'E_CUSTOM', got " + e.code);
