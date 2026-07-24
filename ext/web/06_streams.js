@@ -7771,6 +7771,11 @@ function setUpCrossRealmTransformWritable(stream, port) {
         backpressurePromise.resolve();
         backpressurePromise = undefined;
       }
+      // The peer signalled it is done (e.g. the transferred readable was
+      // cancelled while still open). Close this port too, mirroring the
+      // readable side, so the transfer's internal MessagePort isn't leaked
+      // (https://github.com/denoland/deno/issues/36015).
+      port.close();
     }
   });
   port.addEventListener("messageerror", (event) => {
