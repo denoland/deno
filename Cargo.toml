@@ -471,6 +471,11 @@ win32job = "=2.0.3"
 windows-sys = { version = "0.59.0", features = ["Win32_Foundation", "Win32_Media", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_WindowsProgramming", "Wdk", "Wdk_System", "Wdk_System_SystemInformation", "Win32_Security", "Win32_System_Pipes", "Wdk_Storage_FileSystem", "Win32_System_Registry", "Win32_System_Kernel", "Win32_System_Threading", "Win32_UI", "Win32_UI_Shell"] }
 winres = "=0.1.12"
 
+[patch.crates-io]
+# Track the latest deno_lint main branch so we can build against in-flight
+# changes end-to-end before they are published to crates.io.
+deno_lint = { git = "https://github.com/denoland/deno_lint.git", rev = "d42bc4962b83ade9ec0035d490a39db68c3d7597" }
+
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.release]
 codegen-units = 1
