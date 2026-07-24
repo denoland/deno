@@ -3190,6 +3190,7 @@
     // "parallel/test-runner-inspect.mjs": {},
     "parallel/test-runner-source-maps-invalid-json.js": {},
     "parallel/test-runner-subtest-after-hook.js": {},
+    "parallel/test-runner-tags-validation.mjs": {},
     "parallel/test-runner-typechecking.js": {},
     "parallel/test-runner-xfail.js": {},
     "parallel/test-set-incoming-message-header.js": {},
