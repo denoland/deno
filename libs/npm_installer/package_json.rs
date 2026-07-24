@@ -7,6 +7,8 @@ use deno_config::workspace::Workspace;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
 use deno_package_json::PackageJsonDepWorkspaceReq;
+use deno_resolver::npm::InvalidPackageNamePathError;
+use deno_resolver::npm::package_name_for_node_modules_path_parts;
 use deno_semver::SmallStackString;
 use deno_semver::StackString;
 use deno_semver::Version;
@@ -107,12 +109,23 @@ impl WorkspaceMemberVersionNotSatisfiedError {
   }
 }
 
+#[derive(Debug, Error, Clone)]
+#[error("Invalid package alias '{}'\n    at {}", alias, location)]
+pub struct InvalidPackageAliasError {
+  pub location: Url,
+  pub alias: StackString,
+  #[source]
+  pub source: InvalidPackageNamePathError,
+}
+
 /// An error surfaced while reconciling a package.json's dependencies against
 /// the workspace before installing.
 #[derive(Debug, Error, Clone)]
 pub enum EnsurePackageJsonDepsError {
   #[error(transparent)]
   DepValueParse(#[from] Box<PackageJsonDepValueParseWithLocationError>),
+  #[error(transparent)]
+  InvalidPackageAlias(#[from] Box<InvalidPackageAliasError>),
   #[error(transparent)]
   WorkspaceMemberVersionNotSatisfied(
     #[from] Box<WorkspaceMemberVersionNotSatisfiedError>,
@@ -126,6 +139,7 @@ pub struct NpmInstallDepsProvider {
   patch_pkgs: Vec<InstallPatchPkg>,
   workspace_pkgs: Vec<InstallWorkspacePkg>,
   pkg_json_dep_errors: Vec<PackageJsonDepValueParseWithLocationError>,
+  invalid_package_alias_errors: Vec<InvalidPackageAliasError>,
   workspace_member_version_errors: Vec<WorkspaceMemberVersionNotSatisfiedError>,
 }
 
@@ -169,6 +183,7 @@ impl NpmInstallDepsProvider {
     let mut patch_pkgs = Vec::new();
     let mut workspace_pkgs = Vec::new();
     let mut pkg_json_dep_errors = Vec::new();
+    let mut invalid_package_alias_errors = Vec::new();
     let mut workspace_member_version_errors = Vec::new();
     let workspace_npm_pkgs = workspace.npm_packages();
 
@@ -273,6 +288,16 @@ impl NpmInstallDepsProvider {
               continue;
             }
           };
+          // only aliases that are actually materialized below `node_modules`
+          // need a path-safe shape
+          if let Err(err) = package_name_for_node_modules_path_parts(alias) {
+            invalid_package_alias_errors.push(InvalidPackageAliasError {
+              location: pkg_json.specifier(),
+              alias: alias.clone(),
+              source: err,
+            });
+            continue;
+          }
           match dep {
             PackageJsonDepValue::File(specifier) => {
               local_pkgs.push(InstallLocalPkg {
@@ -439,10 +464,19 @@ impl NpmInstallDepsProvider {
         // #25538). A non-empty `local_pkgs` also defeats the installers'
         // `has_no_packages` early-return so `node_modules` is created.
         if !is_root && let Some(name) = pkg_json.name.as_ref() {
-          local_pkgs.push(InstallLocalPkg {
-            alias: Some(StackString::from_str(name)),
-            target_dir: pkg_json.dir_path().to_path_buf(),
-          });
+          let alias = StackString::from_str(name);
+          if let Err(err) = package_name_for_node_modules_path_parts(&alias) {
+            invalid_package_alias_errors.push(InvalidPackageAliasError {
+              location: pkg_json.specifier(),
+              alias,
+              source: err,
+            });
+          } else {
+            local_pkgs.push(InstallLocalPkg {
+              alias: Some(alias),
+              target_dir: pkg_json.dir_path().to_path_buf(),
+            });
+          }
         }
       }
     }
@@ -477,6 +511,7 @@ impl NpmInstallDepsProvider {
       patch_pkgs,
       workspace_pkgs,
       pkg_json_dep_errors,
+      invalid_package_alias_errors,
       workspace_member_version_errors,
     }
   }
@@ -501,6 +536,10 @@ impl NpmInstallDepsProvider {
     &self,
   ) -> &[PackageJsonDepValueParseWithLocationError] {
     &self.pkg_json_dep_errors
+  }
+
+  pub fn invalid_package_alias_errors(&self) -> &[InvalidPackageAliasError] {
+    &self.invalid_package_alias_errors
   }
 
   pub fn workspace_member_version_errors(

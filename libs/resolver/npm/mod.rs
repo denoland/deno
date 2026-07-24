@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::fmt::Debug;
+use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -53,6 +54,93 @@ use self::managed::create_managed_in_npm_pkg_checker;
 mod byonm;
 mod local;
 pub mod managed;
+
+#[derive(Debug, Error, JsError, Clone, PartialEq, Eq)]
+#[class(type)]
+#[error("Invalid package name {package_name:?}: {reason}")]
+pub struct InvalidPackageNamePathError {
+  pub package_name: String,
+  pub reason: &'static str,
+}
+
+impl InvalidPackageNamePathError {
+  fn new(package_name: &str, reason: &'static str) -> Self {
+    Self {
+      package_name: package_name.to_string(),
+      reason,
+    }
+  }
+}
+
+/// Returns the path components for a package name or package alias when it is
+/// safe to materialize below a `node_modules` directory.
+///
+/// npm package names are either `name` or `@scope/name`. They are not general
+/// paths, so reject anything that could escape, be interpreted as a Windows
+/// path, or create extra nested directories.
+pub fn package_name_for_node_modules_path_parts(
+  package_name: &str,
+) -> Result<Vec<&str>, InvalidPackageNamePathError> {
+  if package_name.is_empty() {
+    return Err(InvalidPackageNamePathError::new(
+      package_name,
+      "package name must not be empty",
+    ));
+  }
+  if package_name.contains('\\') {
+    return Err(InvalidPackageNamePathError::new(
+      package_name,
+      "package name must not contain backslashes",
+    ));
+  }
+  if package_name.contains(':') {
+    return Err(InvalidPackageNamePathError::new(
+      package_name,
+      "package name must not contain colons",
+    ));
+  }
+  if Path::new(package_name).is_absolute() {
+    return Err(InvalidPackageNamePathError::new(
+      package_name,
+      "package name must not be an absolute path",
+    ));
+  }
+
+  let parts = package_name.split('/').collect::<Vec<_>>();
+  if parts
+    .iter()
+    .any(|part| part.is_empty() || matches!(*part, "." | ".."))
+  {
+    return Err(InvalidPackageNamePathError::new(
+      package_name,
+      "package name must not contain empty, current, or parent path components",
+    ));
+  }
+  if parts
+    .iter()
+    .any(|part| part.ends_with(' ') || part.ends_with('.'))
+  {
+    return Err(InvalidPackageNamePathError::new(
+      package_name,
+      "package name components must not end with spaces or periods",
+    ));
+  }
+  if package_name.starts_with('@') {
+    if parts.len() != 2 || parts[0].len() == 1 {
+      return Err(InvalidPackageNamePathError::new(
+        package_name,
+        "scoped package names must be in the form @scope/name",
+      ));
+    }
+  } else if parts.len() != 1 {
+    return Err(InvalidPackageNamePathError::new(
+      package_name,
+      "unscoped package names must not contain slashes",
+    ));
+  }
+
+  Ok(parts)
+}
 
 #[derive(Debug)]
 pub enum CreateInNpmPkgCheckerOptions<'a> {
@@ -678,7 +766,13 @@ pub(crate) fn join_package_name_to_path(
   package_name: &str,
 ) -> PathBuf {
   // ensure backslashes are used on windows
-  for part in package_name.split('/') {
+  let parts = package_name_for_node_modules_path_parts(package_name)
+    .unwrap_or_else(|_| vec![".invalid-package-name"]);
+  for part in parts {
+    debug_assert!(!matches!(
+      Path::new(part).components().next(),
+      Some(Component::ParentDir)
+    ));
     match path {
       Cow::Borrowed(inner) => path = Cow::Owned(inner.join(part)),
       Cow::Owned(ref mut path) => {
@@ -694,3 +788,20 @@ pub(crate) fn join_package_name_to_path(
 // `deno_config` so it can be shared with `NpmPackageConfig` matching; re-export
 // it here for the byonm and cache_deps callers.
 pub use deno_config::workspace::version_req_matches_including_pre;
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn join_package_name_to_path_does_not_traverse_for_invalid_name() {
+    let path = join_package_name_to_path(
+      Cow::Borrowed(Path::new("/project/node_modules")),
+      "../outside",
+    );
+    assert_eq!(
+      path,
+      PathBuf::from("/project/node_modules/.invalid-package-name")
+    );
+  }
+}

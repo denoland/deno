@@ -442,6 +442,13 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
   pub fn ensure_no_pkg_json_dep_errors(
     &self,
   ) -> Result<(), EnsurePackageJsonDepsError> {
+    if let Some(err) = self
+      .npm_install_deps_provider
+      .invalid_package_alias_errors()
+      .first()
+    {
+      return Err(Box::new(err.clone()).into());
+    }
     for err in self.npm_install_deps_provider.pkg_json_dep_errors() {
       match err.source.as_kind() {
         deno_package_json::PackageJsonDepValueParseErrorKind::JsrRequiresScope { .. } |
