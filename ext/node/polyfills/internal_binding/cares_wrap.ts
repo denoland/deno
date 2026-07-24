@@ -434,6 +434,14 @@ class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
           ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, e)
         ) {
           code = codeMap.get("EAI_NODATA")!;
+        } else if (
+          ObjectPrototypeIsPrototypeOf(
+            Deno.errors.ConnectionRefused.prototype,
+            e,
+          )
+        ) {
+          // The name server refused the connection.
+          code = codeMap.get("ECONNREFUSED")!;
         } else {
           // TODO(cmorten): map errors to appropriate error codes.
           code = codeMap.get("UNKNOWN")!;
