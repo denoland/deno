@@ -1,5 +1,7 @@
 Check [WILDCARD]index.js
-TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/test'.
+TS2307 [ERROR]: Cannot find module './test' or its corresponding type declarations.
+export { Test } from "./test";
+[WILDLINE]
     at file:///[WILDLINE]/index.d.ts:1:22
 
 error: Type checking failed.
