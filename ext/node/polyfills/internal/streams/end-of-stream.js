@@ -301,6 +301,12 @@ function eos(stream, options, callback) {
 function eosWeb(stream, options, callback) {
   let isAborted = false;
   let abort = nop;
+  let disposable;
+  const cleanup = () => {
+    callback = nop;
+    disposable?.[SymbolDispose]();
+    disposable = undefined;
+  };
   if (options.signal) {
     abort = () => {
       isAborted = true;
@@ -313,10 +319,10 @@ function eosWeb(stream, options, callback) {
       lazyProcess().nextTick(abort);
     } else {
       addAbortListener ??= _mod2.addAbortListener;
-      const disposable = addAbortListener(options.signal, abort);
+      disposable = addAbortListener(options.signal, abort);
       const originalCallback = callback;
       callback = once((...args) => {
-        disposable[SymbolDispose]();
+        cleanup();
         originalCallback.apply(stream, args);
       });
     }
@@ -331,7 +337,10 @@ function eosWeb(stream, options, callback) {
     resolverFn,
     resolverFn,
   );
-  return nop;
+  // Deno diverges from upstream, which returns `nop`, to honor the returned
+  // cleanup function contract.
+  // https://github.com/nodejs/node/pull/46205
+  return cleanup;
 }
 
 function finished(stream, opts) {

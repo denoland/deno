@@ -5,6 +5,7 @@ import { fromFileUrl, relative } from "@std/path";
 import { finished, pipeline } from "node:stream/promises";
 import {
   Duplex,
+  finished as finishedCallback,
   getDefaultHighWaterMark,
   promises,
   Stream,
@@ -58,6 +59,73 @@ Deno.test("finished on web streams", async () => {
     assertEquals(chunk, "asd");
   }
   await promise;
+});
+
+Deno.test("finished cleanup removes web stream abort listener", async () => {
+  let abortListener: EventListener | undefined;
+  let removeCount = 0;
+  const signal = {
+    aborted: false,
+    reason: undefined,
+    addEventListener(_type: string, listener: EventListener) {
+      abortListener = listener;
+    },
+    removeEventListener(_type: string, listener: EventListener) {
+      assertEquals(listener, abortListener);
+      removeCount++;
+    },
+  } as unknown as AbortSignal;
+  let streamController!: ReadableStreamDefaultController;
+  const stream = new ReadableStream({
+    start(controller) {
+      streamController = controller;
+    },
+  });
+  let callbackCount = 0;
+
+  const cleanup = finishedCallback(
+    stream as unknown as NodeJS.ReadableStream,
+    { signal },
+    () => callbackCount++,
+  );
+  cleanup();
+  cleanup();
+
+  assertEquals(removeCount, 1);
+  abortListener?.(new Event("abort"));
+  streamController.close();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assertEquals(callbackCount, 0);
+});
+
+Deno.test("finished promise cleanup works for web streams", async () => {
+  let abortListener: EventListener | undefined;
+  let removeCount = 0;
+  const signal = {
+    aborted: false,
+    reason: undefined,
+    addEventListener(_type: string, listener: EventListener) {
+      abortListener = listener;
+    },
+    removeEventListener(_type: string, listener: EventListener) {
+      assertEquals(listener, abortListener);
+      removeCount++;
+    },
+  } as unknown as AbortSignal;
+  let streamController!: ReadableStreamDefaultController;
+  const stream = new ReadableStream({
+    start(controller) {
+      streamController = controller;
+    },
+  });
+  const completion = finished(
+    stream as unknown as NodeJS.ReadableStream,
+    { cleanup: true, signal },
+  );
+
+  streamController.close();
+  await completion;
+  assertEquals(removeCount, 1);
 });
 
 // https://github.com/denoland/deno/issues/28905
