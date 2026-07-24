@@ -49,6 +49,118 @@ const _: () = assert!(
   "LAUFEY_API_VERSION mismatch: update this assert and the prebuilt backend release pin in cli/tools/desktop.rs when laufey bumps its API version",
 );
 
+/// Deterministic FNV-1a 64-bit hash. We use it to derive a stable serve
+/// port from the app name without pulling in a hashing dep; the algorithm
+/// is bytewise reproducible across platforms and Rust versions.
+fn fnv1a_hash_64(data: &[u8]) -> u64 {
+  let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+  for byte in data {
+    hash ^= *byte as u64;
+    hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+  }
+  hash
+}
+
+/// Map an app name to a port in the IANA dynamic/private range
+/// [49152, 65535]. The same name always yields the same port, so the
+/// renderer origin (`http://127.0.0.1:<port>`) is stable across launches
+/// — which is what browser storage APIs (localStorage, IndexedDB, Cache,
+/// OPFS, Service Workers) need to persist data between sessions.
+fn derive_stable_serve_port(app_name: &str) -> u16 {
+  // 16384 = 65535 - 49152 + 1
+  49152 + (fnv1a_hash_64(app_name.as_bytes()) % 16384) as u16
+}
+
+/// Try to bind to `port` on loopback. Returns `Ok(port)` if the port is
+/// available, `Err` otherwise. The listener is dropped before returning so
+/// that Deno.serve can claim the same port — a TOCTOU race exists but on
+/// loopback the window is small enough for ad-hoc service ports.
+fn try_bind_loopback_port(port: u16) -> std::io::Result<u16> {
+  let listener = std::net::TcpListener::bind(("127.0.0.1", port))?;
+  Ok(listener.local_addr()?.port())
+}
+
+/// File where we record the serve port that was last used for an app.
+/// Subsequent launches prefer this port so that even if the hash-derived
+/// port was unavailable on first launch (collision with another process),
+/// the renderer origin stays stable from launch #2 onwards.
+const SERVE_PORT_FILE: &str = "desktop_serve_port";
+
+fn read_persisted_serve_port(app_data_dir: &std::path::Path) -> Option<u16> {
+  let s = std::fs::read_to_string(app_data_dir.join(SERVE_PORT_FILE)).ok()?;
+  s.trim().parse::<u16>().ok()
+}
+
+fn write_persisted_serve_port(app_data_dir: &std::path::Path, port: u16) {
+  if let Err(e) = std::fs::create_dir_all(app_data_dir) {
+    log::debug!(
+      "[desktop] could not create app data dir {}: {}",
+      app_data_dir.display(),
+      e
+    );
+    return;
+  }
+  let path = app_data_dir.join(SERVE_PORT_FILE);
+  if let Err(e) = std::fs::write(&path, port.to_string()) {
+    log::debug!(
+      "[desktop] could not persist serve port to {}: {}",
+      path.display(),
+      e
+    );
+  }
+}
+
+/// Allocate a serve port that stays the same across launches whenever
+/// possible. Resolution order:
+///
+/// 1. The port persisted in `<app_data_dir>/desktop_serve_port` from a
+///    previous launch, if it can be (re)bound.
+/// 2. A port deterministically derived from `app_name` (FNV-1a → dynamic
+///    range).
+/// 3. Any free ephemeral port (`127.0.0.1:0`) — only when both previous
+///    attempts fail (e.g. the preferred port is held by another process
+///    on this launch).
+///
+/// The port that was actually bound is then persisted, so launch N+1
+/// can pick the same port and keep the renderer origin stable.
+///
+/// `app_data_dir` is optional because resolving the platform data dir
+/// can fail in stripped environments; without it we fall back to the
+/// pure hash-derived port (no persistence).
+fn allocate_stable_serve_port(
+  app_name: &str,
+  app_data_dir: Option<&std::path::Path>,
+) -> std::io::Result<u16> {
+  if let Some(dir) = app_data_dir
+    && let Some(prev) = read_persisted_serve_port(dir)
+    && let Ok(p) = try_bind_loopback_port(prev)
+  {
+    log::debug!("[desktop] reusing persisted serve port {p}");
+    return Ok(p);
+  }
+
+  let preferred = derive_stable_serve_port(app_name);
+  let port = match try_bind_loopback_port(preferred) {
+    Ok(p) => {
+      log::debug!("[desktop] using hash-derived serve port {p}");
+      p
+    }
+    Err(_) => {
+      let p = allocate_random_port()?;
+      log::debug!(
+        "[desktop] hash-derived port {preferred} was unavailable; \
+         falling back to ephemeral port {p}"
+      );
+      p
+    }
+  };
+
+  if let Some(dir) = app_data_dir {
+    write_persisted_serve_port(dir, port);
+  }
+  Ok(port)
+}
+
 /// Laufey-backed implementation of [`denort::desktop::DesktopApi`].
 struct WefDesktopApi {
   event_tx: deno_runtime::ops::desktop::DesktopEventTx,
@@ -1272,34 +1384,13 @@ laufey::main!(|| {
 
   laufey::set_js_namespace("bindings");
 
-  // Allocate the desktop serve port and publish it via DENO_SERVE_ADDRESS
-  // BEFORE the tokio runtime is built. Once the runtime spins up its
-  // mio IO thread (and, optionally, the inspector server thread),
-  // `setenv` is no longer thread-safe on glibc — Rust 1.81+ marks it
-  // unsafe for that reason. We're still single-threaded up to here:
-  // the worker-fork path has already returned, and the init calls
-  // above (init_logging, mark_standalone, rustls install_default,
-  // set_js_namespace) don't spawn threads.
-  let desktop_serve_port = match allocate_random_port() {
-    Ok(p) => p,
-    Err(e) => {
-      log::error!("[desktop] failed to allocate serve port: {}", e);
-      return;
-    }
-  };
-  // SAFETY: see the block comment above — single-threaded at this point.
-  unsafe {
-    std::env::set_var(
-      "DENO_SERVE_ADDRESS",
-      format!("tcp:127.0.0.1:{}", desktop_serve_port),
-    );
-  }
-
   // Read the embedded standalone section, extract the VFS, and chdir
   // into the extraction dir — all BEFORE the tokio runtime starts.
   // chdir is process-wide; doing it after the runtime build (and any
   // worker / async tasks it spawns) would race with code that resolves
-  // relative paths.
+  // relative paths. We also need `metadata.app_name` here so we can
+  // allocate a *stable* serve port (see below) keyed by the app's
+  // identity instead of a fresh random port every launch.
   let args: Vec<_> = env::args_os().collect();
   let data = match denort::binary::extract_standalone_with_finder(
     Cow::Owned(args),
@@ -1328,6 +1419,46 @@ laufey::main!(|| {
       );
       return;
     }
+  }
+
+  // Allocate the desktop serve port and publish it via DENO_SERVE_ADDRESS
+  // BEFORE the tokio runtime is built. Once the runtime spins up its
+  // mio IO thread (and, optionally, the inspector server thread),
+  // `setenv` is no longer thread-safe on glibc — Rust 1.81+ marks it
+  // unsafe for that reason. We're still single-threaded up to here:
+  // the worker-fork path has already returned, and the init calls
+  // above (init_logging, mark_standalone, rustls install_default,
+  // set_js_namespace, extract_standalone_with_finder, extract_vfs_to_disk,
+  // set_current_dir) don't spawn threads.
+  //
+  // The port is *stable* across launches when possible — derived from
+  // `app_name` (FNV-1a → IANA dynamic range) and persisted on first
+  // bind. This keeps the renderer origin `http://127.0.0.1:<port>`
+  // identical between launches so origin-scoped browser storage
+  // (localStorage, sessionStorage, IndexedDB, Cache API, OPFS, Service
+  // Worker registrations) actually persists for the user's app.
+  let app_name = data.metadata.app_name.clone().unwrap_or_else(|| {
+    std::env::current_exe()
+      .ok()
+      .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
+      .unwrap_or_else(|| "deno-desktop".to_string())
+  });
+  let app_data_dir =
+    denort::binary::get_data_local_dir().map(|d| d.join(&app_name));
+  let desktop_serve_port =
+    match allocate_stable_serve_port(&app_name, app_data_dir.as_deref()) {
+      Ok(p) => p,
+      Err(e) => {
+        log::error!("[desktop] failed to allocate serve port: {}", e);
+        return;
+      }
+    };
+  // SAFETY: see the block comment above — single-threaded at this point.
+  unsafe {
+    std::env::set_var(
+      "DENO_SERVE_ADDRESS",
+      format!("tcp:127.0.0.1:{}", desktop_serve_port),
+    );
   }
 
   let rt = tokio::runtime::Builder::new_current_thread()
@@ -1959,13 +2090,19 @@ mod tests {
 
   use deno_runtime::ops::desktop::PermissionState;
 
+  use super::allocate_stable_serve_port;
+  use super::derive_stable_serve_port;
   use super::desktop_menu_item_to_laufey_menu_item;
   use super::extract_fork_script_path;
+  use super::fnv1a_hash_64;
   use super::json_to_laufey_value;
   use super::laufey_value_to_desktop_value;
   use super::laufey_value_to_json;
   use super::map_permission_status;
+  use super::read_persisted_serve_port;
   use super::should_show_native_error_dialog;
+  use super::try_bind_loopback_port;
+  use super::write_persisted_serve_port;
 
   // --- should_show_native_error_dialog ---
   //
@@ -2404,5 +2541,122 @@ mod tests {
       },
       _ => panic!("nested must convert to Dict"),
     }
+  }
+
+  // --- stable serve port ---
+  //
+  // Desktop apps need a stable origin (`http://127.0.0.1:<port>`) across
+  // launches so origin-scoped browser storage (localStorage, IndexedDB,
+  // Cache, OPFS, Service Workers) persists. The port is derived from the
+  // app name and persisted to the app data dir.
+
+  #[test]
+  fn fnv1a_is_deterministic() {
+    // Pin a few specific hashes so an accidental change to the formula
+    // is loud — the port is derived from this hash, and changing it
+    // would silently move existing apps to a new origin and wipe their
+    // browser storage.
+    //
+    // "" and "a" are the canonical FNV-1a 64 reference values; the
+    // longer string is a snapshot taken from this implementation as a
+    // regression marker.
+    assert_eq!(fnv1a_hash_64(b""), 0xcbf2_9ce4_8422_2325);
+    assert_eq!(fnv1a_hash_64(b"a"), 0xaf63_dc4c_8601_ec8c);
+    assert_eq!(fnv1a_hash_64(b"foobar"), 0x8594_4171_f739_67e8);
+  }
+
+  #[test]
+  fn derived_port_is_in_dynamic_range_and_stable() {
+    for name in ["my-app", "another", "x", "with spaces and 1.2.3-rc"] {
+      let p1 = derive_stable_serve_port(name);
+      let p2 = derive_stable_serve_port(name);
+      assert_eq!(p1, p2, "same name -> same port ({name})");
+      // IANA dynamic / private range.
+      assert!(p1 >= 49152, "{name} mapped to {p1}");
+    }
+  }
+
+  #[test]
+  fn derived_port_differs_for_distinct_names() {
+    // Not a guarantee for arbitrary names — but for these hand-picked
+    // strings the FNV-1a hash maps to distinct ports, which is the
+    // common case for real app names.
+    let a = derive_stable_serve_port("my-app");
+    let b = derive_stable_serve_port("other-app");
+    assert_ne!(a, b);
+  }
+
+  #[test]
+  fn try_bind_succeeds_on_random_port() {
+    // Port 0 lets the kernel pick a free port — used here just to prove
+    // the helper returns the actually-bound port number.
+    let p = try_bind_loopback_port(0).expect("bind 127.0.0.1:0 should work");
+    assert!(p > 0);
+  }
+
+  #[test]
+  fn try_bind_fails_when_port_busy() {
+    let occupier = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = occupier.local_addr().unwrap().port();
+    assert!(
+      try_bind_loopback_port(port).is_err(),
+      "double-bind of port {port} should fail"
+    );
+  }
+
+  #[test]
+  fn persist_roundtrip_reads_back_port() {
+    let tmp = tempfile::tempdir().unwrap();
+    assert!(read_persisted_serve_port(tmp.path()).is_none());
+    write_persisted_serve_port(tmp.path(), 50123);
+    assert_eq!(read_persisted_serve_port(tmp.path()), Some(50123));
+  }
+
+  #[test]
+  fn persist_ignores_garbage_contents() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join(super::SERVE_PORT_FILE), "not-a-port\n")
+      .unwrap();
+    assert!(read_persisted_serve_port(tmp.path()).is_none());
+  }
+
+  #[test]
+  fn persist_create_dir_on_write() {
+    let tmp = tempfile::tempdir().unwrap();
+    let nested = tmp.path().join("does/not/exist/yet");
+    write_persisted_serve_port(&nested, 51111);
+    assert_eq!(read_persisted_serve_port(&nested), Some(51111));
+  }
+
+  #[test]
+  fn allocate_stable_persists_chosen_port() {
+    let tmp = tempfile::tempdir().unwrap();
+    let port =
+      allocate_stable_serve_port("test-app-persist", Some(tmp.path())).unwrap();
+    assert_eq!(read_persisted_serve_port(tmp.path()), Some(port));
+  }
+
+  #[test]
+  fn allocate_stable_prefers_persisted_port() {
+    // Pre-seed the data dir with a persisted port; the allocator should
+    // pick it back up rather than re-deriving from the app name (which
+    // is what makes the renderer origin stable across launches).
+    let tmp = tempfile::tempdir().unwrap();
+    let preset = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let preset_port = preset.local_addr().unwrap().port();
+    drop(preset);
+    write_persisted_serve_port(tmp.path(), preset_port);
+
+    let got =
+      allocate_stable_serve_port("test-app-preset", Some(tmp.path())).unwrap();
+    assert_eq!(got, preset_port);
+  }
+
+  #[test]
+  fn allocate_stable_works_without_data_dir() {
+    // Stripped envs where we can't resolve a platform data dir must
+    // still produce a port (just without cross-launch persistence).
+    let p = allocate_stable_serve_port("test-app-no-dir", None).unwrap();
+    assert!(p >= 1024, "port {p} should be in the unprivileged range");
   }
 }
