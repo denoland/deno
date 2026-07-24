@@ -4998,6 +4998,7 @@
     "parallel/test-diagnostics-channel-http2-server-stream-created.js": {},
     "parallel/test-diagnostics-channel-http2-server-stream-finish.js": {},
     "parallel/test-diagnostics-channel-http2-server-stream-start.js": {},
+    "parallel/test-diff.js": {},
     "parallel/test-dns-lookup-promises.js": {},
     "parallel/test-double-tls-server.js": {},
     "parallel/test-dummy-stdio.js": {
