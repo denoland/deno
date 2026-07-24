@@ -2910,7 +2910,10 @@
     "parallel/test-pipe-stream.js": {},
     "parallel/test-pipe-unref.js": {},
     "parallel/test-pipe-writev.js": {},
-    "parallel/test-preload-self-referential.js": {},
+    "parallel/test-preload-self-referential.js": {
+      "ignore": true,
+      "reason": "Preloads a package by its own name (`-r self_ref`), which relies on Node's self-referential package resolution; Deno's `--require` does not resolve bare/self-referential specifiers"
+    },
     "parallel/test-preload-worker.js": {},
     "parallel/test-primordials-apply.js": {
       "ignore": true,
