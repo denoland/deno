@@ -131,6 +131,14 @@ impl SubtleCrypto {
   /// that the JS body used to do via `normalizeAlgorithm`, and
   /// `BufferSource` copies the input bytes upfront so we satisfy the
   /// spec "get a copy of the bytes" before any async work.
+  ///
+  /// SHA-2/SHA-3 with hardware acceleration runs at roughly 1 GB/s on
+  /// commodity x86, so inputs up to ~64 KB finish on the calling thread
+  /// in well under the cost of dispatching to tokio's blocking pool. For
+  /// the common shape (token-signing-sized payloads) hashing inline is
+  /// strictly cheaper than the `spawn_blocking` round-trip. Only inputs
+  /// large enough to amortize that dispatch, and to risk blocking the
+  /// event loop if run inline, are offloaded.
   #[required(2)]
   #[arraybuffer]
   async fn digest(
@@ -138,6 +146,9 @@ impl SubtleCrypto {
     #[webidl] algorithm: DigestAlgorithm,
     #[webidl] data: BufferSource,
   ) -> Result<Vec<u8>, CryptoError> {
+    if data.0.len() <= 64 * 1024 {
+      return run_digest(algorithm, data.0);
+    }
     spawn_blocking(move || run_digest(algorithm, data.0)).await?
   }
 
