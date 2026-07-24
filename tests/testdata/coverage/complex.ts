@@ -84,4 +84,4 @@ export function ƒ(): number {
 console.log("%s", () => 1);
 
 // Make sure emojis work properly
-console.log("📣❓");
+console.log("");

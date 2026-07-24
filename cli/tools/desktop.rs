@@ -46,7 +46,7 @@ pub async fn desktop(
 ) -> Result<(), AnyError> {
   log::warn!(
     "{}",
-    colors::yellow_bold("⚠ deno desktop is experimental and subject to change")
+    colors::yellow_bold(" deno desktop is experimental and subject to change")
   );
 
   let all_targets = desktop_flags.all_targets;
@@ -1160,7 +1160,7 @@ fn resolve_hmr_icon_path(
 
 /// Extract the local URL from a line of dev server output.
 fn parse_dev_server_url(line: &str) -> Option<String> {
-  // Vite prints `  ➜  Local:   http://localhost:5173/`
+  // Vite prints `    Local:   http://localhost:5173/`
   regex::Regex::new(r"Local:\s+(https?://\S+)")
     .expect("regex to parse local url failed")
     .captures(line)
@@ -5603,7 +5603,7 @@ def456  other.zip
   #[test]
   fn dev_server_url_matches() {
     assert_eq!(
-      parse_dev_server_url("  ➜  Local:   http://localhost:5173/").as_deref(),
+      parse_dev_server_url("    Local:   http://localhost:5173/").as_deref(),
       Some("http://localhost:5173/")
     );
     assert_eq!(

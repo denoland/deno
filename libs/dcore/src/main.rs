@@ -25,7 +25,7 @@ use crate::metrics::create_metrics;
 
 fn main() -> Result<(), Error> {
   eprintln!(
-    "🛑 deno_core binary is meant for development and testing purposes."
+    " deno_core binary is meant for development and testing purposes."
   );
 
   let cli = build_cli();

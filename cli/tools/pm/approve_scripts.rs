@@ -359,7 +359,7 @@ fn render_candidate(
     &mut line,
     "{} {} {}",
     if is_selected {
-      colors::intense_blue("❯").to_string()
+      colors::intense_blue("").to_string()
     } else {
       " ".to_string()
     },

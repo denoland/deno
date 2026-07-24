@@ -382,7 +382,7 @@ bool
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 Bool
 </td><td>
@@ -396,7 +396,7 @@ i8
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 Uint32, Int32, Number, BigInt
 </td><td>
@@ -410,7 +410,7 @@ u8
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 Uint32, Int32, Number, BigInt
 </td><td>
@@ -424,7 +424,7 @@ i16
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 Uint32, Int32, Number, BigInt
 </td><td>
@@ -438,7 +438,7 @@ u16
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 Uint32, Int32, Number, BigInt
 </td><td>
@@ -452,7 +452,7 @@ i32
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 Uint32, Int32, Number, BigInt
 </td><td>
@@ -466,7 +466,7 @@ u32
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 Uint32, Int32, Number, BigInt
 </td><td>
@@ -480,7 +480,7 @@ Uint32, Int32, Number, BigInt
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 Uint32, Int32, Number, BigInt
 </td><td>
@@ -494,7 +494,7 @@ SMI is internally represented as a signed integer, but unsigned `#[smi]` types w
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 Uint32, Int32, Number, BigInt
 </td><td>
@@ -508,7 +508,7 @@ Uint32, Int32, Number, BigInt
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 Uint32, Int32, Number, BigInt
 </td><td>
@@ -522,7 +522,7 @@ Uint32, Int32, Number, BigInt
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 Uint32, Int32, Number, BigInt
 </td><td>
@@ -536,7 +536,7 @@ Uint32, Int32, Number, BigInt
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 Uint32, Int32, Number, BigInt
 </td><td>
@@ -550,7 +550,7 @@ f32
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 Uint32, Int32, Number, BigInt
 </td><td>
@@ -564,7 +564,7 @@ f64
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 Uint32, Int32, Number, BigInt
 </td><td>
@@ -578,7 +578,7 @@ Uint32, Int32, Number, BigInt
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 String
 </td><td>
@@ -592,7 +592,7 @@ Fastcall available only if string is Latin-1. Will always create an allocated, U
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 String
 </td><td>
@@ -606,7 +606,7 @@ Fastcall available only if string is Latin-1. Will create an owned `String` copy
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 String
 </td><td>
@@ -620,7 +620,7 @@ Fastcall available only if string is Latin-1. Will create a `Cow::Owned` copy of
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 String
 </td><td>
@@ -634,7 +634,7 @@ Fastest `String`-type method. If the string is not Latin-1, will throw a TypeErr
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 any
 </td><td>
@@ -648,7 +648,7 @@ any
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 String
 </td><td>
@@ -662,7 +662,7 @@ String
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 Object
 </td><td>
@@ -676,7 +676,7 @@ Object
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 Function
 </td><td>
@@ -690,7 +690,7 @@ Function
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 ...
 </td><td>
@@ -704,7 +704,7 @@ v8::Local<v8::Value>
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 any
 </td><td>
@@ -718,7 +718,7 @@ v8::Local<v8::String>
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 String
 </td><td>
@@ -732,7 +732,7 @@ v8::Local<v8::Object>
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 Object
 </td><td>
@@ -746,7 +746,7 @@ v8::Local<v8::Function>
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 Function
 </td><td>
@@ -760,7 +760,7 @@ v8::Local<v8::...>
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 ...
 </td><td>
@@ -792,7 +792,7 @@ Any type that implements `deno_core::covert::FromV8Scopeless`.
 </td><td>
 any
 </td><td>
-Any type that implements `deno_core::covert::FromV8`. ⚠️ May be slow.
+Any type that implements `deno_core::covert::FromV8`.  May be slow.
 </td></tr>
 <tr>
 <td>
@@ -806,7 +806,7 @@ Any type that implements `deno_core::covert::FromV8`. ⚠️ May be slow.
 </td><td>
 any
 </td><td>
-Any type that implements `deno_core::covert::FromV8`. ⚠️ May be slow.
+Any type that implements `deno_core::covert::FromV8`.  May be slow.
 </td></tr>
 <tr>
 <td>
@@ -820,7 +820,7 @@ Any type that implements `deno_core::covert::FromV8`. ⚠️ May be slow.
 </td><td>
 any
 </td><td>
-⚠️ May be slow. Legacy & not recommended, use `FromV8` trait and macros instead.
+ May be slow. Legacy & not recommended, use `FromV8` trait and macros instead.
 </td></tr>
 <tr>
 <td>
@@ -834,7 +834,7 @@ any
 </td><td>
 any
 </td><td>
-⚠️ May be slow. Legacy & not recommended, use `FromV8` trait and macros instead.
+ May be slow. Legacy & not recommended, use `FromV8` trait and macros instead.
 </td></tr>
 <tr>
 <td>
@@ -844,11 +844,11 @@ any
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 ArrayBuffer (resizable=true,false)
 </td><td>
-⚠️ JS may modify the contents of the slice if V8 is called re-entrantly.
+ JS may modify the contents of the slice if V8 is called re-entrantly.
 </td></tr>
 <tr>
 <td>
@@ -858,11 +858,11 @@ ArrayBuffer (resizable=true,false)
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 ArrayBuffer (resizable=true,false)
 </td><td>
-⚠️ JS may modify the contents of the slice if V8 is called re-entrantly.
+ JS may modify the contents of the slice if V8 is called re-entrantly.
 </td></tr>
 <tr>
 <td>
@@ -872,11 +872,11 @@ ArrayBuffer (resizable=true,false)
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 ArrayBuffer (resizable=true,false)
 </td><td>
-⚠️ JS may modify the contents of the slice if V8 is called re-entrantly. Because of how V8 treats empty arrays in fastcalls, they will always be passed as null.
+ JS may modify the contents of the slice if V8 is called re-entrantly. Because of how V8 treats empty arrays in fastcalls, they will always be passed as null.
 </td></tr>
 <tr>
 <td>
@@ -886,11 +886,11 @@ ArrayBuffer (resizable=true,false)
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 ArrayBuffer (resizable=true,false)
 </td><td>
-⚠️ JS may modify the contents of the slice if V8 is called re-entrantly. Because of how V8 treats empty arrays in fastcalls, they will always be passed as null.
+ JS may modify the contents of the slice if V8 is called re-entrantly. Because of how V8 treats empty arrays in fastcalls, they will always be passed as null.
 </td></tr>
 <tr>
 <td>
@@ -900,7 +900,7 @@ ArrayBuffer (resizable=true,false)
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 ArrayBuffer (resizable=true,false)
 </td><td>
@@ -914,7 +914,7 @@ Safe, but forces a copy.
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 ArrayBuffer (resizable=true,false)
 </td><td>
@@ -928,7 +928,7 @@ Safe, but forces a copy.
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 ArrayBuffer (resizable=true,false)
 </td><td>
@@ -942,7 +942,7 @@ Safe, but forces a copy.
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 UInt8Array (resizable=true,false)
 </td><td>
@@ -956,7 +956,7 @@ Safe, but forces a copy.
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 UInt8Array (resizable=true,false)
 </td><td>
@@ -970,7 +970,7 @@ Safe, but forces a copy.
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 UInt8Array (resizable=true,false)
 </td><td>
@@ -984,11 +984,11 @@ Safe, but forces a copy.
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 UInt32Array (resizable=true,false)
 </td><td>
-⚠️ JS may modify the contents of the slice if V8 is called re-entrantly.
+ JS may modify the contents of the slice if V8 is called re-entrantly.
 </td></tr>
 <tr>
 <td>
@@ -998,11 +998,11 @@ UInt32Array (resizable=true,false)
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 UInt32Array (resizable=true,false)
 </td><td>
-⚠️ JS may modify the contents of the slice if V8 is called re-entrantly.
+ JS may modify the contents of the slice if V8 is called re-entrantly.
 </td></tr>
 <tr>
 <td>
@@ -1012,7 +1012,7 @@ UInt32Array (resizable=true,false)
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 UInt32Array (resizable=true,false)
 </td><td>
@@ -1026,7 +1026,7 @@ Safe, but forces a copy.
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 UInt32Array (resizable=true,false)
 </td><td>
@@ -1054,7 +1054,7 @@ Safe.
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 External
 </td><td>
@@ -1068,7 +1068,7 @@ External
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 External
 </td><td>
@@ -1082,7 +1082,7 @@ External
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 
 </td><td>
@@ -1096,7 +1096,7 @@ External
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 
 </td><td>
@@ -1110,7 +1110,7 @@ Rc<RefCell<OpState>>
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 
 </td><td>
@@ -1124,7 +1124,7 @@ Rc<RefCell<OpState>>
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 
 </td><td>
@@ -1146,7 +1146,7 @@ bool
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 
 </td><td>
@@ -1162,7 +1162,7 @@ i8
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 
 </td><td>
@@ -1178,7 +1178,7 @@ u8
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 
 </td><td>
@@ -1194,7 +1194,7 @@ i16
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 
 </td><td>
@@ -1210,7 +1210,7 @@ u16
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 
 </td><td>
@@ -1226,7 +1226,7 @@ i32
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 
 </td><td>
@@ -1242,7 +1242,7 @@ u32
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 
 </td><td>
@@ -1258,7 +1258,7 @@ u32
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 
 </td><td>
@@ -1274,7 +1274,7 @@ SMI is internally represented as a signed integer, but unsigned `#[smi]` types w
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 
 </td><td>
@@ -1290,7 +1290,7 @@ SMI is internally represented as a signed integer, but unsigned `#[smi]` types w
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 
 </td><td>
@@ -1306,7 +1306,7 @@ SMI is internally represented as a signed integer, but unsigned `#[smi]` types w
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 
 </td><td>
@@ -1322,7 +1322,7 @@ SMI is internally represented as a signed integer, but unsigned `#[smi]` types w
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 
 </td><td>
@@ -1338,7 +1338,7 @@ SMI is internally represented as a signed integer, but unsigned `#[smi]` types w
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 
 </td><td>
@@ -1354,7 +1354,7 @@ Result must fit within `Number.MIN_SAFE_INTEGER` and `Number.MAX_SAFE_INTEGER`
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 
 </td><td>
@@ -1370,7 +1370,7 @@ Result must fit within `Number.MIN_SAFE_INTEGER` and `Number.MAX_SAFE_INTEGER`
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 
 </td><td>
@@ -1386,7 +1386,7 @@ Result must fit within `Number.MIN_SAFE_INTEGER` and `Number.MAX_SAFE_INTEGER`
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 
 </td><td>
@@ -1402,7 +1402,7 @@ f32
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 
 </td><td>
@@ -1418,7 +1418,7 @@ f64
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 
 </td><td>
@@ -1642,7 +1642,7 @@ f64
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 
 </td><td>
@@ -1658,7 +1658,7 @@ f64
 ```
 
 </td><td>
-✅
+✓
 </td><td>
 
 </td><td>
@@ -1790,7 +1790,7 @@ Any type that implements `deno_core::covert::ToV8`.
 </td><td>
 
 </td><td>
-⚠️ Legacy & not recommended, use `ToV8` trait and macros instead.
+ Legacy & not recommended, use `ToV8` trait and macros instead.
 </td><td>
 
 </td></tr>
@@ -1806,7 +1806,7 @@ Any type that implements `deno_core::covert::ToV8`.
 </td><td>
 
 </td><td>
-⚠️ Legacy & not recommended, use `ToV8` trait and macros instead.
+ Legacy & not recommended, use `ToV8` trait and macros instead.
 </td><td>
 
 </td></tr>

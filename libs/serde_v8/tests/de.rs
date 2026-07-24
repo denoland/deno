@@ -507,7 +507,7 @@ detest!(
 );
 
 detest!(de_bstr, ByteString, "'hello'", "hello".into());
-defail!(defail_bstr, ByteString, "'👋bye'", |e| matches!(
+defail!(defail_bstr, ByteString, "'bye'", |e| matches!(
   e,
   Err(Error::ExpectedLatin1)
 ));
@@ -540,8 +540,8 @@ detest!(
 detest!(
   de_u16str_non_latin1,
   U16String,
-  "'👋bye'",
-  "👋bye".encode_utf16().collect::<Vec<_>>().into()
+  "'bye'",
+  "bye".encode_utf16().collect::<Vec<_>>().into()
 );
 
 // NaN

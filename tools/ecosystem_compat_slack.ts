@@ -139,7 +139,7 @@ function createMessage(ecosystemReports: Record<string, EcosystemReport>) {
       const report = ecosystemReports[os][program] satisfies PmResult;
 
       const text = `${
-        report.exitCode === 0 ? "✅" : "❌"
+        report.exitCode === 0 ? "✓" : "×"
       } code: ${report.exitCode}, (${formatDuration(report.duration)})`;
       row.push({
         type: "rich_text",

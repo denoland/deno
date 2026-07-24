@@ -111,8 +111,8 @@ fn init_subcommand_with_existing_file() {
 
   output.assert_exit_code(0);
   output.assert_stderr_matches_text(
-    "ℹ️ Skipped creating main.ts as it already exists
-✅ Project initialized
+    "ℹ Skipped creating main.ts as it already exists
+✓ Project initialized
 
 Run these commands to get started
 

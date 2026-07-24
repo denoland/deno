@@ -158,7 +158,7 @@ async fn run_subcommand(
     }),
     DenoSubcommand::Bundle(bundle_flags) => spawn_subcommand(async {
       log::warn!(
-        "⚠️  {} is experimental and subject to changes",
+        "  {} is experimental and subject to changes",
         colors::cyan("deno bundle")
       );
       tools::bundle::bundle(Arc::new(flags), bundle_flags).await
@@ -216,7 +216,7 @@ async fn run_subcommand(
     DenoSubcommand::Transpile(transpile_flags) => {
       spawn_subcommand(async move {
         log::warn!(
-          "⚠️  {} is experimental and subject to changes",
+          "  {} is experimental and subject to changes",
           colors::cyan("deno transpile")
         );
         tools::transpile::transpile(Arc::new(flags), transpile_flags).await
@@ -517,7 +517,7 @@ async fn run_subcommand(
       tools::bump_version::bump_version_command(Arc::new(flags), version_flags)
     }),
     DenoSubcommand::Vendor => exit_with_message(
-      "⚠️  `deno vendor` was removed in Deno 2.\n\nSee the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations",
+      "  `deno vendor` was removed in Deno 2.\n\nSee the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations",
       1,
     ),
     DenoSubcommand::Publish(publish_flags) => spawn_subcommand(async {
@@ -1081,7 +1081,7 @@ async fn resolve_flags_and_init(
 
     let result = deno_runtime::deno_permissions::AUDIT_SINK.set(sink);
     if result.is_err() {
-      log::warn!("⚠️  {}", colors::yellow("Audit sink is already set"));
+      log::warn!("  {}", colors::yellow("Audit sink is already set"));
     }
   }
 

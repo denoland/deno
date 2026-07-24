@@ -2084,7 +2084,7 @@ fn display_parts_to_string<'a>(
       }
       _ => out.push(
         // should decode percent-encoding string when hovering over the right edge of module specifier like below
-        // module "file:///path/to/🦕"
+        // module "file:///path/to/"
         to_percent_decoded_str(&part.text),
       ),
     }
@@ -7728,7 +7728,7 @@ mod tests {
       .get_edits_for_file_rename(
         snapshot,
         &module,
-        &temp_dir.url().join("🦕.ts").unwrap(),
+        &temp_dir.url().join(".ts").unwrap(),
         &Default::default(),
       )
       .await
@@ -7742,7 +7742,7 @@ mod tests {
             start: 8,
             length: 6,
           },
-          new_text: "./🦕.ts".to_string(),
+          new_text: "./.ts".to_string(),
         }],
         is_new_file: None,
       }]

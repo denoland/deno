@@ -205,7 +205,7 @@ fn render_package(
     f,
     "{} {} ",
     if is_selected {
-      colors::intense_blue("❯").to_string()
+      colors::intense_blue("").to_string()
     } else {
       " ".to_string()
     },

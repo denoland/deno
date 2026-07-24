@@ -66,7 +66,7 @@ contextual awareness, it is the author's opinion that it is best to spend the
      `lib.esnext.promise.d.ts`, `lib.esnext.string.d.ts`,
      `lib.esnext.weakref.d.ts` which contain definitions that were ratified and
      are now included in the other libs and aren't even referenced by
-     `lib.esnext.d.ts` or within the TypeScript compiler. 🤷
+     `lib.esnext.d.ts` or within the TypeScript compiler. 
    - Revert/merge any changes to lib files that provide forward support. This is
      the "hardest" thing, because you need to assess if the updated version of
      TypeScript now includes the type definitions that we forward support.

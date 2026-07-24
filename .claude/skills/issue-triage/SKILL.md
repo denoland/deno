@@ -165,10 +165,10 @@ label is sufficient. Do not over-label.
 gh issue edit $ARGUMENTS --repo denoland/deno --add-label "bug"
 ```
 
-Remove the `needs triage` or `triage required 👀` label if present:
+Remove the `needs triage` or `triage required ` label if present:
 
 ```sh
-gh issue edit $ARGUMENTS --repo denoland/deno --remove-label "needs triage" --remove-label "triage required 👀"
+gh issue edit $ARGUMENTS --repo denoland/deno --remove-label "needs triage" --remove-label "triage required "
 ```
 
 ## Step 6: Comment on the issue

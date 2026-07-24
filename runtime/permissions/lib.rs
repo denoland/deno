@@ -459,7 +459,7 @@ impl PermissionState {
       log::debug!(
         "{}",
         colors::bold(&format!(
-          "{}️  Granted {}",
+          "{}  Granted {}",
           PERMISSION_EMOJI,
           Self::fmt_access(name, info().as_deref())
         ))

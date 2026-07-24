@@ -8136,12 +8136,12 @@ mod test {
   // The scenario:
   //
   // Phase 1 snapshot:
-  //   root-a ──dep──▶ mid ──dep──▶ shared@^1 (→ 1.0.0) ──dep──▶ leaf
-  //                       ──dep──▶ other ──dep──▶ shared@^1 (→ 1.0.0)
+  //   root-a ──dep── mid ──dep── shared@^1 (→ 1.0.0) ──dep── leaf
+  //                       ──dep── other ──dep── shared@^1 (→ 1.0.0)
   //
   // Phase 2 (extends the snapshot):
-  //   root-c ──dep──▶ mid (same node from snapshot)
-  //          ──dep──▶ shared@^1.1 (→ 1.1.0, new version, triggers dedup)
+  //   root-c ──dep── mid (same node from snapshot)
+  //          ──dep── shared@^1.1 (→ 1.1.0, new version, triggers dedup)
   //
   // In Phase 2's initial BFS, root-c depends on mid, causing mid to be
   // BFS'd. mid.children["shared"] and mid.children["other"] already exist

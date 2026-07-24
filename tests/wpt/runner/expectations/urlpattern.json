@@ -172,8 +172,8 @@
     "expectedFailures": [
       "Pattern: {\"pathname\":\"/foo\"} Component: pathname Groups: {}",
       "Pattern: {\"pathname\":\"/:foo\"} Component: pathname Groups: {\"foo\":\"bar\"}",
-      "Pattern: {\"pathname\":\"/:foo\"} Component: pathname Groups: {\"foo\":\"🍅\"}",
-      "Pattern: {\"hostname\":\"{:foo}.example.com\"} Component: hostname Groups: {\"foo\":\"🍅\"}",
+      "Pattern: {\"pathname\":\"/:foo\"} Component: pathname Groups: {\"foo\":\"\"}",
+      "Pattern: {\"hostname\":\"{:foo}.example.com\"} Component: hostname Groups: {\"foo\":\"\"}",
       "Pattern: {\"pathname\":\"/foo/:bar\"} Component: pathname Groups: {\"bar\":\"baz\"}",
       "Pattern: {\"pathname\":\"/foo:bar\"} Component: pathname Groups: {\"bar\":\"baz\"}",
       "Pattern: {\"pathname\":\"/:foo/:bar\"} Component: pathname Groups: {\"foo\":\"baz\",\"bar\":\"qux\"}",
@@ -186,8 +186,8 @@
     "expectedFailures": [
       "Pattern: {\"pathname\":\"/foo\"} Component: pathname Groups: {}",
       "Pattern: {\"pathname\":\"/:foo\"} Component: pathname Groups: {\"foo\":\"bar\"}",
-      "Pattern: {\"pathname\":\"/:foo\"} Component: pathname Groups: {\"foo\":\"🍅\"}",
-      "Pattern: {\"hostname\":\"{:foo}.example.com\"} Component: hostname Groups: {\"foo\":\"🍅\"}",
+      "Pattern: {\"pathname\":\"/:foo\"} Component: pathname Groups: {\"foo\":\"\"}",
+      "Pattern: {\"hostname\":\"{:foo}.example.com\"} Component: hostname Groups: {\"foo\":\"\"}",
       "Pattern: {\"pathname\":\"/foo/:bar\"} Component: pathname Groups: {\"bar\":\"baz\"}",
       "Pattern: {\"pathname\":\"/foo:bar\"} Component: pathname Groups: {\"bar\":\"baz\"}",
       "Pattern: {\"pathname\":\"/:foo/:bar\"} Component: pathname Groups: {\"foo\":\"baz\",\"bar\":\"qux\"}",

@@ -32,7 +32,7 @@ Deno.test(
     /* TODO(ry) Add tests for these situations
      * ampersand_&.tx                 file:///D:/weird_names/ampersand_&.txt
      * at_@.txt                       file:///D:/weird_names/at_@.txt
-     * emoji_🙃.txt                   file:///D:/weird_names/emoji_%F0%9F%99%83.txt
+     * emoji_.txt                   file:///D:/weird_names/emoji_%F0%9F%99%83.txt
      * percent_%.txt                  file:///D:/weird_names/percent_%25.txt
      * pound_#.txt                    file:///D:/weird_names/pound_%23.txt
      * swapped_surrogate_pair_��.txt  file:///D:/weird_names/swapped_surrogate_pair_%EF%BF%BD%EF%BF%BD.txt

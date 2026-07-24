@@ -22,7 +22,7 @@
 [![GitHub last commit](https://img.shields.io/github/last-commit/honojs/hono)](https://github.com/honojs/hono/commits/main)
 [![Deno badge](https://img.shields.io/endpoint?url=https%3A%2F%2Fdeno-visualizer.danopia.net%2Fshields%2Flatest-version%2Fx%2Fhono%2Fmod.ts)](https://doc.deno.land/https/deno.land/x/hono/mod.ts)
 
-Hono - _**[炎] means flame🔥 in Japanese**_ - is a small, simple, and ultrafast web framework for Cloudflare Workers, Deno, Bun, and others.
+Hono - _**[炎] means flame in Japanese**_ - is a small, simple, and ultrafast web framework for Cloudflare Workers, Deno, Bun, and others.
 
 ```ts
 import { Hono } from 'hono'
@@ -52,7 +52,7 @@ itty-router x 206,641 ops/sec ±3.59% (87 runs sampled)
 sunder x 319,500 ops/sec ±1.33% (93 runs sampled)
 worktop x 187,280 ops/sec ±3.09% (87 runs sampled)
 Fastest is hono - regexp-router
-✨  Done in 38.32s.
+  Done in 38.32s.
 ```
 
 ## Documentation

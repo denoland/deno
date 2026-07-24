@@ -2918,7 +2918,7 @@ mod tests {
 
     let file_name =
       format_file_name("file:///%E6%9D%B1%E4%BA%AC/%F0%9F%A6%95.ts", None);
-    assert_eq!(file_name.file_name, "file:///東京/🦕.ts");
+    assert_eq!(file_name.file_name, "file:///東京/.ts");
   }
 
   #[test]

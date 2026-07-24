@@ -17,4 +17,4 @@ Available tasks:
 - echo_init_cwd
     echo $INIT_CWD
 - echo_emoji
-    echo 🔥
+    echo 

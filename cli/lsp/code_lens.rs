@@ -160,7 +160,7 @@ fn add_test_code_lenses(
   range: &SourceRange,
 ) {
   let range = source_range_to_lsp_range(range, parsed_source.text_info_lazy());
-  for (title, inspect) in [("▶\u{fe0e} Run Test", false), ("Debug", true)] {
+  for (title, inspect) in [("\u{fe0e} Run Test", false), ("Debug", true)] {
     code_lenses.push(lsp::CodeLens {
       range,
       command: Some(lsp::Command {
@@ -802,7 +802,7 @@ mod tests {
             }
           },
           command: Some(lsp::Command {
-            title: "▶\u{fe0e} Run Test".to_string(),
+            title: "\u{fe0e} Run Test".to_string(),
             command: "deno.client.test".to_string(),
             arguments: Some(vec![
               json!("https://deno.land/x/mod.ts"),
@@ -850,7 +850,7 @@ mod tests {
             }
           },
           command: Some(lsp::Command {
-            title: "▶\u{fe0e} Run Test".to_string(),
+            title: "\u{fe0e} Run Test".to_string(),
             command: "deno.client.test".to_string(),
             arguments: Some(vec![
               json!("https://deno.land/x/mod.ts"),
@@ -898,7 +898,7 @@ mod tests {
             }
           },
           command: Some(lsp::Command {
-            title: "▶\u{fe0e} Run Test".to_string(),
+            title: "\u{fe0e} Run Test".to_string(),
             command: "deno.client.test".to_string(),
             arguments: Some(vec![
               json!("https://deno.land/x/mod.ts"),
@@ -946,7 +946,7 @@ mod tests {
             },
           },
           command: Some(lsp::Command {
-            title: "▶\u{fe0e} Run Test".to_string(),
+            title: "\u{fe0e} Run Test".to_string(),
             command: "deno.client.test".to_string(),
             arguments: Some(vec![
               json!("https://deno.land/x/mod.ts"),
@@ -994,7 +994,7 @@ mod tests {
             },
           },
           command: Some(lsp::Command {
-            title: "▶\u{fe0e} Run Test".to_string(),
+            title: "\u{fe0e} Run Test".to_string(),
             command: "deno.client.test".to_string(),
             arguments: Some(vec![
               json!("https://deno.land/x/mod.ts"),
@@ -1042,7 +1042,7 @@ mod tests {
             },
           },
           command: Some(lsp::Command {
-            title: "▶\u{fe0e} Run Test".to_string(),
+            title: "\u{fe0e} Run Test".to_string(),
             command: "deno.client.test".to_string(),
             arguments: Some(vec![
               json!("https://deno.land/x/mod.ts"),
@@ -1090,7 +1090,7 @@ mod tests {
             },
           },
           command: Some(lsp::Command {
-            title: "▶\u{fe0e} Run Test".to_string(),
+            title: "\u{fe0e} Run Test".to_string(),
             command: "deno.client.test".to_string(),
             arguments: Some(vec![
               json!("https://deno.land/x/mod.ts"),
@@ -1138,7 +1138,7 @@ mod tests {
             },
           },
           command: Some(lsp::Command {
-            title: "▶\u{fe0e} Run Test".to_string(),
+            title: "\u{fe0e} Run Test".to_string(),
             command: "deno.client.test".to_string(),
             arguments: Some(vec![
               json!("https://deno.land/x/mod.ts"),
@@ -1186,7 +1186,7 @@ mod tests {
             },
           },
           command: Some(lsp::Command {
-            title: "▶\u{fe0e} Run Test".to_string(),
+            title: "\u{fe0e} Run Test".to_string(),
             command: "deno.client.test".to_string(),
             arguments: Some(vec![
               json!("https://deno.land/x/mod.ts"),
@@ -1234,7 +1234,7 @@ mod tests {
             },
           },
           command: Some(lsp::Command {
-            title: "▶\u{fe0e} Run Test".to_string(),
+            title: "\u{fe0e} Run Test".to_string(),
             command: "deno.client.test".to_string(),
             arguments: Some(vec![
               json!("https://deno.land/x/mod.ts"),
@@ -1327,28 +1327,28 @@ mod tests {
       vec![
         (
           1,
-          "▶\u{fe0e} Run Test".to_string(),
+          "\u{fe0e} Run Test".to_string(),
           "test a".to_string(),
           false
         ),
         (1, "Debug".to_string(), "test a".to_string(), true),
         (
           2,
-          "▶\u{fe0e} Run Test".to_string(),
+          "\u{fe0e} Run Test".to_string(),
           "test a".to_string(),
           false
         ),
         (2, "Debug".to_string(), "test a".to_string(), true),
         (
           3,
-          "▶\u{fe0e} Run Test".to_string(),
+          "\u{fe0e} Run Test".to_string(),
           "test a".to_string(),
           false
         ),
         (3, "Debug".to_string(), "test a".to_string(), true),
         (
           4,
-          "▶\u{fe0e} Run Test".to_string(),
+          "\u{fe0e} Run Test".to_string(),
           "test a".to_string(),
           false
         ),
@@ -1370,14 +1370,14 @@ mod tests {
       vec![
         (
           1,
-          "▶\u{fe0e} Run Test".to_string(),
+          "\u{fe0e} Run Test".to_string(),
           "test a".to_string(),
           false
         ),
         (1, "Debug".to_string(), "test a".to_string(), true),
         (
           2,
-          "▶\u{fe0e} Run Test".to_string(),
+          "\u{fe0e} Run Test".to_string(),
           "test a".to_string(),
           false
         ),
@@ -1401,21 +1401,21 @@ mod tests {
       vec![
         (
           1,
-          "▶\u{fe0e} Run Test".to_string(),
+          "\u{fe0e} Run Test".to_string(),
           "suite".to_string(),
           false
         ),
         (1, "Debug".to_string(), "suite".to_string(), true),
         (
           2,
-          "▶\u{fe0e} Run Test".to_string(),
+          "\u{fe0e} Run Test".to_string(),
           "suite".to_string(),
           false
         ),
         (2, "Debug".to_string(), "suite".to_string(), true),
         (
           3,
-          "▶\u{fe0e} Run Test".to_string(),
+          "\u{fe0e} Run Test".to_string(),
           "suite".to_string(),
           false
         ),

@@ -1332,9 +1332,9 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             if: isPr,
             run: [
               'if [[ -n "$(git status --porcelain)" ]]; then',
-              'echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."',
+              'echo "× Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."',
               'echo ""',
-              'echo "📋 Status:"',
+              'echo " Status:"',
               "git status",
               'echo ""',
               "exit 1",

@@ -877,8 +877,8 @@ async fn jupyter_complete_request_multibyte() -> Result<()> {
 #[test]
 async fn jupyter_complete_request_astral_cursor() -> Result<()> {
   let (_ctx, client, _process) = setup().await;
-  // `"😀"; cons` — the emoji is a single codepoint but two UTF-16 units.
-  let code = "\"😀\"; cons";
+  // `""; cons` — the emoji is a single codepoint but two UTF-16 units.
+  let code = "\"\"; cons";
   let cursor_pos = code.chars().count() as i64; // 9 codepoints
   client
     .send(

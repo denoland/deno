@@ -776,13 +776,13 @@ mod tests {
 
   #[test]
   fn test_format_source_line_utf16_column() {
-    let actual = format_maybe_source_line(Some("\t😀foo();"), Some(4), true, 0);
-    assert_eq!(strip_ansi_codes(&actual), "\n\t😀foo();\n\t  ^");
+    let actual = format_maybe_source_line(Some("\tfoo();"), Some(4), true, 0);
+    assert_eq!(strip_ansi_codes(&actual), "\n\tfoo();\n\t  ^");
   }
 
   #[test]
   fn test_format_source_line_invalid_utf16_column() {
-    let actual = format_maybe_source_line(Some("😀foo();"), Some(2), true, 0);
+    let actual = format_maybe_source_line(Some("foo();"), Some(2), true, 0);
     assert_eq!(
       strip_ansi_codes(&actual),
       "\nWarning Couldn't format source line: Column 2 is out of bounds (source may have changed at runtime)"

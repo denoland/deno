@@ -1,4 +1,4 @@
-const mixed = new TextEncoder().encode("@Ā๐😀");
+const mixed = new TextEncoder().encode("@Ā๐");
 
 function generateRandom(bytes) {
   const result = new Uint8Array(bytes);

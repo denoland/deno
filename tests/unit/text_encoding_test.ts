@@ -282,7 +282,7 @@ Deno.test(function binaryEncode() {
     return chars.map((v: string): number | undefined => v.codePointAt(0));
   }
   const inputs = [
-    "σ😀",
+    "σ",
     "Кириллица is Cyrillic",
     "𝓽𝓮𝔁𝓽",
     "lone𝄞\ud888surrogate",

@@ -8,7 +8,7 @@ const server = new Deno.QuicEndpoint({
 const listener = server.listen({
   cert: Deno.readTextFileSync("../../../testdata/tls/localhost.crt"),
   key: Deno.readTextFileSync("../../../testdata/tls/localhost.key"),
-  alpnProtocols: ["🦕🕳️"],
+  alpnProtocols: [""],
 });
 
 const child = new Deno.Command(Deno.execPath(), {

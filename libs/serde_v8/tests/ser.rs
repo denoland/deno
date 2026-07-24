@@ -239,8 +239,8 @@ sertest!(
 );
 sertest!(
   ser_json_vec_string,
-  json!(["Goodbye", "Dinosaurs 👋☄️"]),
-  "arrEqual(x, ['Goodbye', 'Dinosaurs 👋☄️'])"
+  json!(["Goodbye", "Dinosaurs "]),
+  "arrEqual(x, ['Goodbye', 'Dinosaurs '])"
 );
 sertest!(
   ser_json_tuple,

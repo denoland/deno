@@ -10,7 +10,7 @@ process.stdout.write("│ Hello World │\n");
 process.stdout.write("└─────────────┘\n");
 
 // Various Unicode ranges
-process.stdout.write("Arrows: ◆ ● ▶ ◀\n");
+process.stdout.write("Arrows: ◆ ●  \n");
 process.stdout.write("CJK: 你好世界\n");
 process.stdout.write("Accented: café résumé naïve\n");
 

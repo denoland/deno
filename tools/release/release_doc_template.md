@@ -42,7 +42,7 @@ Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
 - [ ] Wait for the workflow to complete and for a pull request to be
       automatically opened. Review the pull request, make any necessary changes,
       and merge it.
-  - ⛔ **DO NOT** create a release tag manually That will automatically happen.
+  - × **DO NOT** create a release tag manually That will automatically happen.
 
   <details>
      <summary>Failure Steps</summary>
@@ -80,7 +80,7 @@ Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
   The CI pipeline will create a release draft on GitHub
   (https://github.com/denoland/deno/releases).
 
-- ⛔ Verify that:
+- × Verify that:
   - [ ] There are 46 assets on the v$VERSION
         [GitHub release draft](https://github.com/denoland/deno/releases/).
   - [ ] There are 48 zip files for this version on
