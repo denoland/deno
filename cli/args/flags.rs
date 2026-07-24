@@ -222,6 +222,14 @@ impl DenoSubcommandExt for DenoSubcommand {
             os: "linux".into(),
             cpu: "x64".into(),
           },
+          "aarch64-unknown-linux-musl" => NpmSystemInfo {
+            os: "linux".into(),
+            cpu: "arm64".into(),
+          },
+          "x86_64-unknown-linux-musl" => NpmSystemInfo {
+            os: "linux".into(),
+            cpu: "x64".into(),
+          },
           "x86_64-pc-windows-msvc" => NpmSystemInfo {
             os: "win32".into(),
             cpu: "x64".into(),
@@ -2339,9 +2347,11 @@ Unless --reload is specified, this command will not re-download already cached d
     )
 }
 
-const SUPPORTED_OS: [&str; 6] = [
+const SUPPORTED_OS: [&str; 8] = [
   "x86_64-unknown-linux-gnu",
   "aarch64-unknown-linux-gnu",
+  "x86_64-unknown-linux-musl",
+  "aarch64-unknown-linux-musl",
   "x86_64-pc-windows-msvc",
   "aarch64-pc-windows-msvc",
   "x86_64-apple-darwin",
@@ -14394,6 +14404,20 @@ mod tests {
       ])
       .is_err()
     );
+  }
+
+  #[test]
+  fn compile_target_linux_musl() {
+    // denort for linux musl is built and published by CI, so both musl triples
+    // must be accepted by the SUPPORTED_OS value parser.
+    for target in ["x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"] {
+      let r =
+        flags_from_vec(svec!["deno", "compile", "--target", target, "main.ts"]);
+      let DenoSubcommand::Compile(c) = r.unwrap().subcommand else {
+        unreachable!()
+      };
+      assert_eq!(c.target, Some(target.to_string()));
+    }
   }
 
   #[test]
