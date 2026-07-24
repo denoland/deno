@@ -5843,8 +5843,9 @@ fn executable_ext_arg() -> Arg {
 fn exclude_unused_npm_arg() -> Arg {
   Arg::new("exclude-unused-npm")
     .long("exclude-unused-npm")
-    .help(cstr!("Embed only the npm packages reachable from the module graph (managed npm; no <c>node_modules</> directory).
-  <p(245)>Without this flag the full managed npm snapshot from the lockfile / package.json is embedded.
+    .help(cstr!("Embed only the npm packages reachable from the module graph (managed npm).
+  <p(245)>Without this flag the full managed npm snapshot from the lockfile / package.json is embedded,
+  and a local <c>node_modules</> directory is embedded wholesale.
   Reduces binary size when the lockfile contains packages the entrypoint does not import.
   Skips packages that are only reached through non-statically-analyzable dynamic imports;
   pass those with <c>--include npm:<<pkg></> if needed.</>"))

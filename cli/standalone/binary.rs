@@ -633,7 +633,12 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             .as_valid_serialized_for_system(&self.npm_system_info);
             if !snapshot.as_serialized().packages.is_empty() {
               self
-                .fill_npm_vfs(&mut vfs, Some(&snapshot), &progress_bar)
+                .fill_npm_vfs(
+                  &mut vfs,
+                  Some(&snapshot),
+                  compile_flags.exclude_unused_npm,
+                  &progress_bar,
+                )
                 .context("Building npm vfs.")?;
               Some(snapshot)
             } else {
@@ -644,7 +649,16 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           }
         }
         CliNpmResolver::Byonm(_) => {
-          self.fill_npm_vfs(&mut vfs, None, &progress_bar)?;
+          if compile_flags.exclude_unused_npm {
+            // deno doesn't own a BYONM tree, so it can't safely prune it —
+            // package managers lay these out differently (hoisting, virtual
+            // stores) and removing entries could break their symlink chains.
+            log::warn!(
+              "{} --exclude-unused-npm has no effect on a user-managed (BYONM) node_modules directory.",
+              crate::colors::yellow("Warning")
+            );
+          }
+          self.fill_npm_vfs(&mut vfs, None, false, &progress_bar)?;
           None
         }
       }
@@ -1294,7 +1308,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         Ok(Some(snapshot))
       }
       CliNpmResolver::Byonm(_) => {
-        self.fill_npm_vfs(builder, None, progress_bar)?;
+        self.fill_npm_vfs(builder, None, false, progress_bar)?;
         Ok(None)
       }
     }
@@ -1304,6 +1318,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     &self,
     builder: &mut VfsBuilder,
     snapshot: Option<&ValidSerializedNpmResolutionSnapshot>,
+    prune_local_node_modules: bool,
     progress_bar: &ProgressBar,
   ) -> Result<(), AnyError> {
     fn maybe_warn_different_system(system_info: &NpmSystemInfo) {
@@ -1319,9 +1334,56 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       CliNpmResolver::Managed(npm_resolver) => {
         if let Some(node_modules_path) = npm_resolver.root_node_modules_path() {
           maybe_warn_different_system(&self.npm_system_info);
-          let _progress =
-            progress_bar.update_with_prompt(ProgressMessagePrompt::Compile, "");
-          builder.add_dir_recursive(node_modules_path)?;
+          if prune_local_node_modules {
+            // --exclude-unused-npm with a local node_modules directory:
+            // embed only the (already graph-pruned) snapshot's packages
+            // instead of the whole directory. Going one node_modules level
+            // up from each canonical package folder picks up the sibling
+            // symlinks to its direct deps, so node-module resolution at
+            // runtime can follow the symlink chain — same layout trick as
+            // the native-addon embed path above.
+            let snapshot = snapshot.unwrap();
+            let mut packages =
+              snapshot.as_serialized().packages.iter().collect::<Vec<_>>();
+            packages.sort_by(|a, b| a.id.cmp(&b.id)); // determinism
+            let progress = progress_bar
+              .update_with_prompt(ProgressMessagePrompt::Compile, "");
+            progress.set_total_size(packages.len() as u64);
+            let mut embedded_roots: std::collections::HashSet<PathBuf> =
+              std::collections::HashSet::new();
+            let mut packages_done: u64 = 0;
+            for package in packages {
+              let folder =
+                npm_resolver.resolve_pkg_folder_from_pkg_id(&package.id)?;
+              if folder.exists() {
+                let root_to_add = pkg_folder_node_modules_root(&folder)
+                  .unwrap_or(folder.as_path());
+                if embedded_roots.insert(root_to_add.to_path_buf()) {
+                  builder.add_dir_recursive(root_to_add).with_context(
+                    || {
+                      format!(
+                        "Embedding npm package at '{}'",
+                        root_to_add.display()
+                      )
+                    },
+                  )?;
+                }
+              } else {
+                log::warn!(
+                  "{} Ignoring 'npm:{}' because it was not present on the current system.",
+                  crate::colors::yellow("Warning"),
+                  package.id
+                );
+              }
+              packages_done += 1;
+              progress.set_position(packages_done);
+            }
+            drop(progress);
+          } else {
+            let _progress = progress_bar
+              .update_with_prompt(ProgressMessagePrompt::Compile, "");
+            builder.add_dir_recursive(node_modules_path)?;
+          }
           Ok(())
         } else {
           let snapshot = snapshot.unwrap();
