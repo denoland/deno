@@ -1602,6 +1602,24 @@ fn find_section_in_dylib() -> Result<&'static [u8], AnyError> {
   }
 }
 
+/// Exit code the runtime uses to ask the `deno desktop --hmr` supervisor to
+/// relaunch the app. Kept in sync with `HMR_RESTART_EXIT_CODE` in
+/// `cli/tools/desktop.rs`, which owns the child process and re-spawns it (so the
+/// process group, Ctrl-C handling and temp-entrypoint cleanup stay intact —
+/// re-execing from here would orphan the new process from the supervisor).
+const HMR_RESTART_EXIT_CODE: i32 = 75;
+
+/// Ask the supervisor to fully restart the app.
+///
+/// Used by HMR when a top-level module change can't be hot-patched: the module
+/// graph has to be re-evaluated from scratch, which only a fresh process
+/// achieves. We exit with a sentinel code rather than re-spawning ourselves so
+/// the `deno desktop` parent stays in charge of the relaunch.
+fn restart_desktop_app() {
+  log::info!("HMR: restarting desktop app");
+  std::process::exit(HMR_RESTART_EXIT_CODE);
+}
+
 async fn run_desktop(
   update_rolled_back: bool,
   desktop_serve_port: u16,
@@ -1704,20 +1722,29 @@ async fn run_desktop(
 
   let hmr_on_reload: Option<denort::hmr::HmrReloadCallback> =
     if hmr_watch_dir.is_some() && !is_framework_dev {
-      Some(Box::new(move || {
-        let ids: Vec<u32> = open_windows_for_hmr
-          .lock()
-          .unwrap()
-          .iter()
-          .copied()
-          .collect();
-        for id in ids {
-          laufey::Window::from_id(id)
-            .execute_js::<fn(Result<laufey::Value, laufey::Value>)>(
-              "location.reload()",
-              None,
-            );
+      Some(Box::new(move |kind| match kind {
+        // Hot-replaced handler code or a changed static asset: refreshing the
+        // webview re-fetches the served content from the still-running runtime.
+        denort::hmr::ReloadKind::Soft => {
+          let ids: Vec<u32> = open_windows_for_hmr
+            .lock()
+            .unwrap()
+            .iter()
+            .copied()
+            .collect();
+          for id in ids {
+            laufey::Window::from_id(id)
+              .execute_js::<fn(Result<laufey::Value, laufey::Value>)>(
+                "location.reload()",
+                None,
+              );
+          }
         }
+        // A top-level module change V8 can't patch: the runtime's module graph
+        // has to be re-evaluated from scratch, which only a full process
+        // restart achieves. `location.reload()` would leave the stale runtime
+        // running and wedge all subsequent HMR.
+        denort::hmr::ReloadKind::Restart => restart_desktop_app(),
       }))
     } else {
       None
