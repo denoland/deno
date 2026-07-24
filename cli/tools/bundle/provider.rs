@@ -132,7 +132,8 @@ impl BundleProvider for CliBundleProvider {
     std::thread::spawn(move || {
       deno_runtime::tokio_util::create_and_run_current_thread(async move {
         let flags = Arc::new(flags_clone);
-        let bundler = match super::bundle_init(flags, &bundle_flags).await {
+        let bundler = match super::bundle_init(flags, &bundle_flags, &[]).await
+        {
           Ok(bundler) => bundler,
           Err(e) => {
             log::trace!("bundle_init error: {e:?}");
