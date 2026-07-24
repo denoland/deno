@@ -153,11 +153,56 @@ impl TcpStreamResource {
     self.map_socket(Box::new(move |socket| socket.set_nodelay(nodelay)))
   }
 
+  /// Enable or disable `SO_KEEPALIVE`. When enabling, the optional
+  /// `time`/`interval` (in milliseconds; floored to whole seconds on Unix)
+  /// and `retries` map onto `TCP_KEEPIDLE`/`TCP_KEEPINTVL`/`TCP_KEEPCNT`. Each
+  /// timing field is only applied on the platforms where `socket2` exposes it
+  /// (see `keepalive_with_interval`/`keepalive_with_retries`); unsupported
+  /// fields are ignored. When no applicable field is set, only `SO_KEEPALIVE`
+  /// is toggled and the OS-default timers stay in effect.
   pub fn set_keepalive(
     self: Rc<Self>,
     keepalive: bool,
+    time: Option<u32>,
+    interval: Option<u32>,
+    retries: Option<u32>,
   ) -> Result<(), MapError> {
-    self.map_socket(Box::new(move |socket| socket.set_keepalive(keepalive)))
+    self.map_socket(Box::new(move |socket| {
+      if !keepalive {
+        return socket.set_keepalive(false);
+      }
+
+      // `retries` cannot be set on Windows (socket2 0.5 has no
+      // `with_retries` there), so it does not count as an option to apply.
+      #[cfg(windows)]
+      let has_opts = time.is_some() || interval.is_some();
+      #[cfg(not(windows))]
+      let has_opts = time.is_some() || interval.is_some() || retries.is_some();
+      if !has_opts {
+        // `setKeepAlive(true)` / `{}`: only toggle `SO_KEEPALIVE` so the
+        // OS-default timers stay in effect. Going through `set_tcp_keepalive`
+        // would zero the timers on Windows (see below).
+        return socket.set_keepalive(true);
+      }
+
+      // Windows writes the idle time and interval together in a single
+      // `SIO_KEEPALIVE_VALS` ioctl, and socket2 substitutes `0` for unset
+      // fields, which would make the stack probe constantly. The current
+      // values cannot be read back, so fill unspecified fields with the
+      // documented system defaults (`KeepAliveTime` = 2 hours,
+      // `KeepAliveInterval` = 1 second), like Go's standard library does.
+      #[cfg(windows)]
+      let (time, interval) =
+        (time.or(Some(7_200_000)), interval.or(Some(1_000)));
+
+      let mut ka = socket2::TcpKeepalive::new();
+      if let Some(time) = time {
+        ka = ka.with_time(std::time::Duration::from_millis(u64::from(time)));
+      }
+      ka = keepalive_with_interval(ka, interval);
+      ka = keepalive_with_retries(ka, retries);
+      socket.set_tcp_keepalive(&ka)
+    }))
   }
 
   #[allow(clippy::type_complexity, reason = "internal code")]
@@ -174,6 +219,100 @@ impl TcpStreamResource {
 
     Err(MapError::NoResources)
   }
+}
+
+/// Apply `TCP_KEEPINTVL` when set. `socket2::TcpKeepalive::with_interval`
+/// only exists on the platforms below; elsewhere the value is ignored.
+#[cfg(any(
+  target_os = "android",
+  target_os = "dragonfly",
+  target_os = "freebsd",
+  target_os = "fuchsia",
+  target_os = "illumos",
+  target_os = "ios",
+  target_os = "linux",
+  target_os = "macos",
+  target_os = "netbsd",
+  target_os = "tvos",
+  target_os = "watchos",
+  target_os = "windows",
+))]
+fn keepalive_with_interval(
+  ka: socket2::TcpKeepalive,
+  interval: Option<u32>,
+) -> socket2::TcpKeepalive {
+  match interval {
+    Some(interval) => {
+      ka.with_interval(std::time::Duration::from_millis(u64::from(interval)))
+    }
+    None => ka,
+  }
+}
+
+#[cfg(not(any(
+  target_os = "android",
+  target_os = "dragonfly",
+  target_os = "freebsd",
+  target_os = "fuchsia",
+  target_os = "illumos",
+  target_os = "ios",
+  target_os = "linux",
+  target_os = "macos",
+  target_os = "netbsd",
+  target_os = "tvos",
+  target_os = "watchos",
+  target_os = "windows",
+)))]
+fn keepalive_with_interval(
+  ka: socket2::TcpKeepalive,
+  _interval: Option<u32>,
+) -> socket2::TcpKeepalive {
+  ka
+}
+
+/// Apply `TCP_KEEPCNT` when set. `socket2::TcpKeepalive::with_retries` only
+/// exists on the platforms below (Unix; not Windows); elsewhere it is ignored.
+#[cfg(any(
+  target_os = "android",
+  target_os = "dragonfly",
+  target_os = "freebsd",
+  target_os = "fuchsia",
+  target_os = "illumos",
+  target_os = "ios",
+  target_os = "linux",
+  target_os = "macos",
+  target_os = "netbsd",
+  target_os = "tvos",
+  target_os = "watchos",
+))]
+fn keepalive_with_retries(
+  ka: socket2::TcpKeepalive,
+  retries: Option<u32>,
+) -> socket2::TcpKeepalive {
+  match retries {
+    Some(retries) => ka.with_retries(retries),
+    None => ka,
+  }
+}
+
+#[cfg(not(any(
+  target_os = "android",
+  target_os = "dragonfly",
+  target_os = "freebsd",
+  target_os = "fuchsia",
+  target_os = "illumos",
+  target_os = "ios",
+  target_os = "linux",
+  target_os = "macos",
+  target_os = "netbsd",
+  target_os = "tvos",
+  target_os = "watchos",
+)))]
+fn keepalive_with_retries(
+  ka: socket2::TcpKeepalive,
+  _retries: Option<u32>,
+) -> socket2::TcpKeepalive {
+  ka
 }
 
 #[cfg(unix)]

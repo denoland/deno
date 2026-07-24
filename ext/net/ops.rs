@@ -1221,8 +1221,11 @@ pub fn op_set_keepalive(
   state: &mut OpState,
   #[smi] rid: ResourceId,
   keepalive: bool,
+  #[smi] time: i32,
+  #[smi] interval: i32,
+  #[smi] retries: i32,
 ) -> Result<(), NetError> {
-  op_set_keepalive_inner(state, rid, keepalive)
+  op_set_keepalive_inner(state, rid, keepalive, time, interval, retries)
 }
 
 #[inline]
@@ -1230,10 +1233,18 @@ pub fn op_set_keepalive_inner(
   state: &mut OpState,
   rid: ResourceId,
   keepalive: bool,
+  time: i32,
+  interval: i32,
+  retries: i32,
 ) -> Result<(), NetError> {
   let resource: Rc<TcpStreamResource> =
     state.resource_table.get::<TcpStreamResource>(rid)?;
-  resource.set_keepalive(keepalive).map_err(NetError::Map)
+  // `time`/`interval` are milliseconds and `retries` a count; the JS layer
+  // sends `-1` for any field left unset, which maps to `None`.
+  let to_opt = |value: i32| u32::try_from(value).ok();
+  resource
+    .set_keepalive(keepalive, to_opt(time), to_opt(interval), to_opt(retries))
+    .map_err(NetError::Map)
 }
 
 fn format_rdata(
@@ -1528,11 +1539,42 @@ mod tests {
   #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
   async fn tcp_set_keepalive() {
     let set_keepalive = Box::new(|state: &mut OpState, rid| {
-      op_set_keepalive_inner(state, rid, true).unwrap();
+      // time/interval are milliseconds, retries a count.
+      op_set_keepalive_inner(state, rid, true, 10_000, 5_000, 3).unwrap();
     });
     let test_fn = Box::new(|socket: SockRef| {
       assert!(!socket.nodelay().unwrap());
       assert!(socket.keepalive().unwrap());
+      #[cfg(not(any(
+        windows,
+        target_os = "haiku",
+        target_os = "openbsd",
+        target_os = "vita"
+      )))]
+      assert_eq!(
+        socket.keepalive_time().unwrap(),
+        std::time::Duration::from_secs(10)
+      );
+      #[cfg(any(
+        target_os = "android",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "fuchsia",
+        target_os = "illumos",
+        target_os = "ios",
+        target_os = "linux",
+        target_os = "macos",
+        target_os = "netbsd",
+        target_os = "tvos",
+        target_os = "watchos",
+      ))]
+      {
+        assert_eq!(
+          socket.keepalive_interval().unwrap(),
+          std::time::Duration::from_secs(5)
+        );
+        assert_eq!(socket.keepalive_retries().unwrap(), 3);
+      }
     });
     check_sockopt(String::from("127.0.0.1:4146"), set_keepalive, test_fn).await;
   }
