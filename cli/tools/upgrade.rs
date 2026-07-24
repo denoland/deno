@@ -1626,20 +1626,42 @@ fn get_binary_checksum_url(target_version: &str) -> Result<Url, AnyError> {
     .with_context(|| format!("Failed to parse binary checksum URL: {}", url))
 }
 
+/// Parse a SHA-256 hash out of a checksum file's contents.
+///
+/// Handles both the canonical GNU `sha256sum` layout published for Unix
+/// assets (and now for Windows assets):
+///
+/// ```text
+/// <hex_hash>  <filename>
+/// ```
+///
+/// and the PowerShell `Get-FileHash | Format-List` layout historically
+/// published for Windows release assets (e.g. Deno v2.9.x):
+///
+/// ```text
+/// Algorithm       : SHA256
+/// Hash            : ABCDEF0123...
+/// Path            : C:\path\to\deno.exe
+/// ```
+///
+/// In both layouts the only 64-character hex token is the hash itself, so we
+/// return the first such token (lowercased). Returns `None` if none is found.
+fn parse_sha256sum(text: &str) -> Option<String> {
+  text
+    .split_whitespace()
+    .find(|token| {
+      token.len() == 64 && token.chars().all(|c| c.is_ascii_hexdigit())
+    })
+    .map(|hash| hash.to_lowercase())
+}
+
 /// Fetch a SHA-256 hash from a .sha256sum file hosted as a release asset.
-/// The file format is expected to be: `<hex_hash>  <filename>\n`
 async fn fetch_sha256_from_url(
   client: &HttpClient,
   url: Url,
 ) -> Option<String> {
   let text = client.download_text(url).await.ok()?;
-  // sha256sum files are formatted as "<hash>  <filename>" or just "<hash>"
-  let hash = text.split_whitespace().next()?;
-  if hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit()) {
-    Some(hash.to_lowercase())
-  } else {
-    None
-  }
+  parse_sha256sum(&text)
 }
 
 /// Compute the SHA-256 hash of the given data, returning it as a lowercase
@@ -3554,6 +3576,52 @@ mod test {
     assert!(
       url_step2.to_string().contains("/download/v2.7.12/"),
       "step 2 should fetch from v2.7.12 release"
+    );
+  }
+
+  #[test]
+  fn test_parse_sha256sum_canonical() {
+    // Canonical GNU `sha256sum` output, as emitted by `shasum`/`sha256sum`
+    // and now by the Windows release jobs.
+    let text = "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c  deno-aarch64-pc-windows-msvc.zip\n";
+    assert_eq!(
+      parse_sha256sum(text).as_deref(),
+      Some("b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c")
+    );
+  }
+
+  #[test]
+  fn test_parse_sha256sum_hash_only() {
+    let text =
+      "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c\n";
+    assert_eq!(
+      parse_sha256sum(text).as_deref(),
+      Some("b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c")
+    );
+  }
+
+  #[test]
+  fn test_parse_sha256sum_powershell_format_list() {
+    // Historical Windows release assets (e.g. Deno v2.9.x) published
+    // `Get-FileHash | Format-List` output, which is not GNU-canonical.
+    // Hash is uppercase and preceded by "Algorithm"/"Hash" labels.
+    let text = "\r\nAlgorithm       : SHA256\r\nHash            : B5BB9D8014A0F9B1D61E21E796D78DCCDF1352F23CD32812F4850B878AE4944C\r\nPath            : C:\\deno\\target\\release\\deno.exe\r\n\r\n";
+    assert_eq!(
+      parse_sha256sum(text).as_deref(),
+      Some("b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c")
+    );
+  }
+
+  #[test]
+  fn test_parse_sha256sum_no_hash() {
+    assert_eq!(parse_sha256sum(""), None);
+    assert_eq!(parse_sha256sum("not a checksum file"), None);
+    // 63 hex chars (one short) must not be accepted.
+    assert_eq!(
+      parse_sha256sum(
+        "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944"
+      ),
+      None
     );
   }
 }
