@@ -2186,6 +2186,9 @@ mod deprecated {
     use windows_sys::Win32::Foundation::FALSE;
     use windows_sys::Win32::Foundation::GetLastError;
     use windows_sys::Win32::Foundation::TRUE;
+    use windows_sys::Win32::System::Console::CTRL_BREAK_EVENT;
+    use windows_sys::Win32::System::Console::CTRL_C_EVENT;
+    use windows_sys::Win32::System::Console::GenerateConsoleCtrlEvent;
     use windows_sys::Win32::System::Threading::OpenProcess;
     use windows_sys::Win32::System::Threading::PROCESS_TERMINATE;
     use windows_sys::Win32::System::Threading::TerminateProcess;
@@ -2203,6 +2206,30 @@ mod deprecated {
       } else {
         return Err(Error::from(NotFound).into());
       }
+    }
+
+    // SIGBREAK and SIGINT with pid 0 are delivered as console control
+    // events. CTRL_BREAK_EVENT can target a process group: a pid of 0
+    // signals every process attached to the current console, while a
+    // positive pid signals the process group with that id (its leader must
+    // have been spawned with CREATE_NEW_PROCESS_GROUP). CTRL_C_EVENT cannot
+    // be limited to a process group, so it is only delivered for pid 0;
+    // SIGINT with a positive pid terminates the process below, matching
+    // libuv behavior.
+    let ctrl_event = match signo {
+      deno_signals::SIGBREAK => Some(CTRL_BREAK_EVENT),
+      deno_signals::SIGINT if pid == 0 => Some(CTRL_C_EVENT),
+      _ => None,
+    };
+    if let Some(event) = ctrl_event {
+      if pid < 0 {
+        return Err(ProcessError::InvalidPid);
+      }
+      // SAFETY: Win32 call
+      if unsafe { GenerateConsoleCtrlEvent(event, pid as u32) } == FALSE {
+        return Err(Error::last_os_error().into());
+      }
+      return Ok(());
     }
 
     // On Windows, SIGINT/SIGTERM/SIGKILL/SIGQUIT/SIGABRT all result in
