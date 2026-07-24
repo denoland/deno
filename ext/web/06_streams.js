@@ -7132,14 +7132,18 @@ class TransformStream {
       "transformer",
     );
     if (transformerDict.readableType !== undefined) {
-      throw new RangeError(
+      const err = new RangeError(
         `${prefix}: readableType transformers not supported`,
       );
+      err.code = "ERR_INVALID_ARG_VALUE";
+      throw err;
     }
     if (transformerDict.writableType !== undefined) {
-      throw new RangeError(
+      const err = new RangeError(
         `${prefix}: writableType transformers not supported`,
       );
+      err.code = "ERR_INVALID_ARG_VALUE";
+      throw err;
     }
     const readableHighWaterMark = extractHighWaterMark(readableStrategy, 0);
     const readableSizeAlgorithm = extractSizeAlgorithm(readableStrategy);
