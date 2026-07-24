@@ -325,6 +325,31 @@ impl<
     resolution_mode: ResolutionMode,
     resolution_kind: NodeResolutionKind,
   ) -> Result<DenoResolution, DenoResolveError> {
+    let mut resolution = self.resolve_inner(
+      raw_specifier,
+      referrer,
+      resolution_mode,
+      resolution_kind,
+    )?;
+    // Windows paths are case-insensitive, so a `file:` URL specifier with a
+    // lowercased drive letter (e.g. produced by `pathToFileURL(cwd)` in a
+    // node tool when the cwd has a lowercase drive letter) must not create a
+    // module distinct from the properly cased one. Resolutions from such a
+    // module would otherwise fail to prefix-match config-derived URLs
+    // (package.json dep folders, workspace member import map scopes).
+    if cfg!(windows) {
+      normalize_windows_drive_letter_casing(&mut resolution.url);
+    }
+    Ok(resolution)
+  }
+
+  fn resolve_inner(
+    &self,
+    raw_specifier: &str,
+    referrer: &Url,
+    resolution_mode: ResolutionMode,
+    resolution_kind: NodeResolutionKind,
+  ) -> Result<DenoResolution, DenoResolveError> {
     let mut found_package_json_dep = false;
     let mut maybe_diagnostic = None;
     // Use node resolution if we're in an npm package
@@ -684,6 +709,32 @@ impl<
   }
 }
 
+/// Uppercases a lowercased Windows drive letter in a `file:` URL
+/// (`file:///d:/foo` becomes `file:///D:/foo`).
+///
+/// This must only be applied when running on Windows: on other operating
+/// systems a path like `/d:/foo` is a regular directory named `d:` whose
+/// casing is significant.
+fn normalize_windows_drive_letter_casing(url: &mut Url) {
+  if url.scheme() != "file" {
+    return;
+  }
+  let path = url.path();
+  let bytes = path.as_bytes();
+  if bytes.len() >= 3
+    && bytes[0] == b'/'
+    && bytes[1].is_ascii_lowercase()
+    && bytes[2] == b':'
+    && (bytes.len() == 3 || bytes[3] == b'/')
+  {
+    let mut new_path = String::with_capacity(path.len());
+    new_path.push('/');
+    new_path.push(bytes[1].to_ascii_uppercase() as char);
+    new_path.push_str(&path[2..]);
+    url.set_path(&new_path);
+  }
+}
+
 /// Whether the React CVE source patches are enabled. Opt in by setting the
 /// `DENO_PATCH_REACT_CVE` environment variable to a non-empty value other than
 /// `0`.
@@ -833,5 +884,41 @@ pub fn patch_react_cves<'a>(
   match modified {
     Cow::Borrowed(_) => stage1,
     Cow::Owned(s) => Cow::Owned(s),
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_normalize_windows_drive_letter_casing() {
+    fn normalize(input: &str) -> String {
+      let mut url = Url::parse(input).unwrap();
+      normalize_windows_drive_letter_casing(&mut url);
+      url.to_string()
+    }
+
+    // lowercased drive letters are uppercased
+    assert_eq!(normalize("file:///d:/foo/bar.ts"), "file:///D:/foo/bar.ts");
+    assert_eq!(normalize("file:///c:"), "file:///C:");
+    assert_eq!(normalize("file:///c:/"), "file:///C:/");
+    // the query string and fragment survive
+    assert_eq!(
+      normalize("file:///d:/a.ts?foo=1#bar"),
+      "file:///D:/a.ts?foo=1#bar"
+    );
+    // an already uppercased drive letter is left as is
+    assert_eq!(normalize("file:///D:/foo/bar.ts"), "file:///D:/foo/bar.ts");
+    // not drive letters
+    assert_eq!(normalize("file:///dir/foo.ts"), "file:///dir/foo.ts");
+    assert_eq!(normalize("file:///dd:/foo.ts"), "file:///dd:/foo.ts");
+    assert_eq!(normalize("file:///d:foo.ts"), "file:///d:foo.ts");
+    assert_eq!(normalize("file:///"), "file:///");
+    // non file urls are left as is
+    assert_eq!(
+      normalize("https://example.com/d:/foo"),
+      "https://example.com/d:/foo"
+    );
   }
 }

@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "@test/add": "./add.js"
+  }
+}
