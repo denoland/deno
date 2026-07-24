@@ -2022,7 +2022,7 @@ impl NetDescriptor {
 
 #[derive(Debug, thiserror::Error)]
 pub enum NetDescriptorParseError {
-  #[error("invalid value '{0}': URLs are not supported, only domains and ips")]
+  #[error("invalid value '{0}': URLs are not supported, only domains and IPs")]
   Url(String),
   #[error("invalid IPv6 address in '{hostname}': '{ip}'")]
   InvalidIpv6 { hostname: String, ip: String },

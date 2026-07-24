@@ -1209,7 +1209,7 @@ fn validate_permission_args(
           return Err(CliError::new(
             CliErrorKind::InvalidValue,
             format!(
-              "invalid value '{val}': URLs are not supported, only domains and ips"
+              "invalid value '{val}': URLs are not supported, only domains and IPs"
             ),
           ));
         }
