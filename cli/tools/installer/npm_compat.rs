@@ -288,6 +288,7 @@ pub async fn setup_npm_compat(
   resolved_compiler_options: Option<&Value>,
   manage_root_tsconfig: bool,
   type_check_remote: bool,
+  is_desktop: bool,
 ) -> Result<Vec<InstalledJsrPackage>, AnyError> {
   let deno_json = read_deno_json(project_root)?;
   let deno_compiler_options = deno_json
@@ -501,6 +502,7 @@ pub async fn setup_npm_compat(
     &excludes,
     has_local_wasm,
     manage_root_tsconfig,
+    is_desktop,
   )?;
 
   Ok(installed)
@@ -852,6 +854,7 @@ fn generate_deno_tsconfig(
   excludes: &[String],
   has_local_wasm: bool,
   manage_root_tsconfig: bool,
+  is_desktop: bool,
 ) -> Result<(), AnyError> {
   let generated = crate::tsc::tsconfig_gen::generate_tsconfig(
     project_root,
@@ -871,6 +874,7 @@ fn generate_deno_tsconfig(
     excludes,
     has_local_wasm,
     manage_root_tsconfig,
+    is_desktop,
   )
   .map_err(|e| anyhow!("Failed to generate tsconfig: {e}"))?;
 
