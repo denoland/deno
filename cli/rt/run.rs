@@ -1781,6 +1781,17 @@ pub async fn run_with_options(
   };
   deno_core::JsRuntime::init_platform(v8_platform);
 
+  // On Windows, ICU detects the host time zone from the OS and ignores the
+  // `TZ` environment variable. Apply it to ICU explicitly before any isolate
+  // uses `Date`. On unix ICU already honors `TZ`.
+  #[cfg(windows)]
+  if let Some(tz) = std::env::var_os("TZ")
+    .and_then(|tz| tz.into_string().ok())
+    .filter(|tz| !tz.is_empty())
+  {
+    deno_core::v8::icu::set_default_time_zone(&tz);
+  }
+
   let main_module = match NpmPackageReqReference::from_specifier(&main_module) {
     Ok(package_ref) => {
       let pkg_folder = npm_resolver.resolve_pkg_folder_from_deno_module_req(
