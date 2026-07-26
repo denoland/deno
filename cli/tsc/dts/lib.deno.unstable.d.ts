@@ -4673,7 +4673,7 @@ declare namespace Deno {
    * @experimental **UNSTABLE**: New API, yet to be vetted.
    * @category Canvas 2D
    */
-  export function registerAllLocalFonts(): Promise<void>;
+  export function registerLocalFonts(): Promise<void>;
 
   export {}; // only export exports
 }

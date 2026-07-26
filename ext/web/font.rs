@@ -148,7 +148,7 @@ impl FontRegistry {
   }
 }
 
-/// Per-isolate parley context (no system fonts until registerAllLocalFonts).
+/// Per-isolate parley context (no system fonts until registerLocalFonts).
 pub fn create_font_context() -> FontContext {
   FontContext {
     collection: Collection::new(CollectionOptions {
@@ -504,7 +504,7 @@ pub fn op_normalize_font_face_family(#[string] family: &str) -> String {
   normalize_font_face_family(family)
 }
 
-/// Shared local-font DB + flag set by registerAllLocalFonts (process-wide).
+/// Shared local-font DB + flag set by registerLocalFonts (process-wide).
 #[derive(Clone, Default)]
 pub struct SharedLocalFontDb {
   inner: Arc<Mutex<SharedLocalFontDbInner>>,
@@ -555,7 +555,7 @@ pub async fn op_fontdb_register_all_local_fonts(
   state
     .borrow_mut()
     .borrow_mut::<PermissionsContainer>()
-    .check_sys("localFonts", "Deno.registerAllLocalFonts")?;
+    .check_sys("localFonts", "Deno.registerLocalFonts")?;
 
   ensure_local_fonts_loaded(&shared_db).await;
 

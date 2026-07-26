@@ -483,7 +483,7 @@ Deno.test({
   ignore: isWsl || isCIWithoutGPU || !hasCanvasRenderer,
 }, async function canvas2dFillTextRendersGlyphs() {
   // Generic families only resolve once the system fonts are registered.
-  await Deno.registerAllLocalFonts();
+  await Deno.registerLocalFonts();
   const canvas = new OffscreenCanvas(100, 30);
   const ctx = canvas.getContext("2d")!;
   ctx.fillStyle = "white";
@@ -1463,16 +1463,16 @@ async function checkIsWsl() {
 
 Deno.test(
   { permissions: { sys: ["localFonts"] } },
-  async function registerAllLocalFontsSucceeds() {
-    await Deno.registerAllLocalFonts();
+  async function registerLocalFontsSucceeds() {
+    await Deno.registerLocalFonts();
   },
 );
 
 Deno.test(
   { permissions: { sys: [] } },
-  async function registerAllLocalFontsRequiresPermission() {
+  async function registerLocalFontsRequiresPermission() {
     await assertRejects(
-      () => Deno.registerAllLocalFonts(),
+      () => Deno.registerLocalFonts(),
       Deno.errors.NotCapable,
     );
   },

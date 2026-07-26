@@ -394,8 +394,8 @@ denoNsUnstableById[unstableIds.canvas2d] = {
   get fonts() {
     return lazyCanvas2d().fonts;
   },
-  registerAllLocalFonts() {
-    return lazyCanvas2d().registerAllLocalFonts();
+  registerLocalFonts() {
+    return lazyCanvas2d().registerLocalFonts();
   },
 };
 

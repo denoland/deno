@@ -1634,7 +1634,7 @@ ObjectDefineProperty(
   },
 );
 
-function registerAllLocalFonts() {
+function registerLocalFonts() {
   return op_fontdb_register_all_local_fonts();
 }
 
@@ -1759,7 +1759,7 @@ return {
   Path2D,
   fonts,
   queryLocalFonts,
-  registerAllLocalFonts,
+  registerLocalFonts,
   TextMetrics,
 };
 })();

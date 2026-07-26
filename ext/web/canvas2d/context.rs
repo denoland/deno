@@ -2480,7 +2480,7 @@ impl OffscreenCanvasRenderingContext2D {
     state.clip_depth += 1;
   }
 
-  /// Load system fonts if registerAllLocalFonts ran anywhere in the process.
+  /// Load system fonts if registerLocalFonts ran anywhere in the process.
   /// Checked per text op (workers never call it themselves); load is idempotent.
   fn sync_system_fonts(&self) {
     if self.local_fonts.system_fonts_enabled() {
@@ -2491,7 +2491,7 @@ impl OffscreenCanvasRenderingContext2D {
         NO_FONTS_WARNING.call_once(|| {
           log::warn!(
             "Canvas 2D text will not render because no fonts are available. \
-             Call Deno.registerAllLocalFonts() with --allow-sys=localFonts to \
+             Call Deno.registerLocalFonts() with --allow-sys=localFonts to \
              use the system fonts, or register one with new FontFace()."
           );
         });

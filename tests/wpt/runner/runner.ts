@@ -343,13 +343,13 @@ async function generateBundle(location: URL): Promise<string> {
     }
   }
 
-  // Deno needs registerAllLocalFonts; prelude can await, evalContext cannot.
+  // Deno needs registerLocalFonts; prelude can await, evalContext cannot.
   let prelude = "";
   if (
     location.pathname.includes("/html/canvas/") ||
     location.pathname.includes("/css/css-font-loading/")
   ) {
-    prelude = "await Deno.registerAllLocalFonts?.();";
+    prelude = "await Deno.registerLocalFonts?.();";
 
     // Window env waits for load before finishing.
     scriptContents.push([
