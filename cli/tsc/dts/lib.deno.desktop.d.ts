@@ -543,6 +543,8 @@ declare namespace Deno {
     // non-standard events
     resize: CustomEvent<BrowserWindowResizeDetail>;
     move: CustomEvent<BrowserWindowMoveDetail>;
+    /** Fires after a navigation finishes loading. */
+    load: Event;
     close: Event;
     menuclick: CustomEvent<MenuClickDetail>;
     contextmenuclick: CustomEvent<MenuClickDetail>;
