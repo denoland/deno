@@ -184,9 +184,7 @@ Deno.test("Readable toWeb applies backpressure", async () => {
   const CHUNK_SIZE = 16 * 1024;
   const TOTAL_CHUNKS = 64;
 
-  async function assertBackpressure(
-    options?: { type: "bytes" },
-  ) {
+  async function assertBackpressure(options?: { type: "bytes" }) {
     let produced = 0;
     const readable = new Readable({
       // One chunk fills the queue, so the source must stall right after it.
@@ -199,9 +197,10 @@ Deno.test("Readable toWeb applies backpressure", async () => {
       },
     });
 
-    const reader = (Readable.toWeb(readable, options) as ReadableStream<
+    const stream = Readable.toWeb(readable, options) as ReadableStream<
       Uint8Array
-    >).getReader();
+    >;
+    const reader = stream.getReader();
 
     // Give the source plenty of turns to run away while nothing is consuming.
     for (let i = 0; i < 20; i++) {
