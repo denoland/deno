@@ -2791,6 +2791,7 @@ function writeFile(
   let file;
 
   let error: Error | null = null;
+  let syscall = "write";
   (async () => {
     try {
       const fd = await _writeFileGetRid(pathOrRid as string | number, flag);
@@ -2822,6 +2823,7 @@ function writeFile(
       );
 
       if (flush) {
+        syscall = "fsync";
         await new Promise<void>((resolve, reject) => {
           fsExports.fsync(fd, (err: Error | null) => {
             if (err) reject(err);
@@ -2830,7 +2832,7 @@ function writeFile(
         });
       }
     } catch (e) {
-      error = denoWriteFileErrorToNodeError(e as Error, { syscall: "write" });
+      error = denoWriteFileErrorToNodeError(e as Error, { syscall });
     } finally {
       // Make sure to close resource
       if (!isRid && file) file.close();
@@ -2875,6 +2877,7 @@ function writeFileSync(
   let file;
 
   let error: Error | null = null;
+  let syscall = "write";
   try {
     const fd = _writeFileGetRidSync(pathOrRid, flag);
     file = {
@@ -2900,10 +2903,11 @@ function writeFileSync(
     );
 
     if (flush) {
+      syscall = "fsync";
       fsExports.fsyncSync(fd);
     }
   } catch (e) {
-    error = denoWriteFileErrorToNodeError(e as Error, { syscall: "write" });
+    error = denoWriteFileErrorToNodeError(e as Error, { syscall });
   } finally {
     // Make sure to close resource
     if (!isRid && file) file.close();
