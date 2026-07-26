@@ -66,6 +66,7 @@ const {
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetByteOffset,
+  TypedArrayPrototypeSlice,
   TypeError,
   Uint8Array,
 } = primordials;
@@ -463,13 +464,16 @@ class FontFace {
         `${prefix}: source must be a string, ArrayBuffer, or ArrayBufferView.`,
       );
     } else {
-      this.#bytes = ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, source)
-        ? new Uint8Array(source)
-        : new Uint8Array(
-          TypedArrayPrototypeGetBuffer(source),
-          TypedArrayPrototypeGetByteOffset(source),
-          TypedArrayPrototypeGetByteLength(source),
-        );
+      // Own the data: the spec stores a copy, and op_fontdb_load detaches it.
+      this.#bytes = TypedArrayPrototypeSlice(
+        ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, source)
+          ? new Uint8Array(source)
+          : new Uint8Array(
+            TypedArrayPrototypeGetBuffer(source),
+            TypedArrayPrototypeGetByteOffset(source),
+            TypedArrayPrototypeGetByteLength(source),
+          ),
+      );
     }
 
     if (descriptors.style !== undefined) {
@@ -913,7 +917,11 @@ class FontFace {
    */
   async #loadSource() {
     if (this.#bytes !== null) {
-      return await op_fontdb_load(this.#bytes);
+      // op_fontdb_load detaches, so drop the now-empty view. load() is
+      // memoized by #loadPromise / #status, so it is never read again.
+      const bytes = this.#bytes;
+      this.#bytes = null;
+      return await op_fontdb_load(bytes);
     }
     let firstError = null;
     const srcList = this.#srcList;
@@ -938,29 +946,35 @@ class FontFace {
   }
 
   /**
-   * Load one `url()` via fetch (or blob: op).
+   * Load one `url()` via fetch (or blob: op). css-font-loading reserves
+   * SyntaxError for the BufferSource form, so every failure here becomes a
+   * NetworkError -- except a permission error, which stays actionable.
    * @param {string} url
    */
   async #loadUrl(url) {
-    // blob: stays on the Rust side (no JS heap copy).
-    if (StringPrototypeStartsWith(url, "blob:")) {
-      const result = await op_fontdb_load_object_url(url);
-      if (result !== null) return result;
+    try {
+      // blob: stays on the Rust side (no JS heap copy).
+      if (StringPrototypeStartsWith(url, "blob:")) {
+        const result = await op_fontdb_load_object_url(url);
+        if (result === null) {
+          throw new TypeError("the object URL is no longer valid");
+        }
+        return result;
+      }
+      const response = await loadFetch().fetch(url);
+      if (!response.ok) {
+        throw new TypeError(`the server responded with ${response.status}`);
+      }
+      return await op_fontdb_load(
+        new Uint8Array(await response.arrayBuffer()),
+      );
+    } catch (e) {
+      if (ObjectPrototypeIsPrototypeOf(core.NotCapablePrototype, e)) throw e;
       throw new DOMException(
-        `Failed to load 'FontFace': ${url} is no longer valid.`,
+        `Failed to load 'FontFace': ${url}: ${e.message}`,
         "NetworkError",
       );
     }
-    const response = await loadFetch().fetch(url);
-    if (!response.ok) {
-      throw new DOMException(
-        `Failed to load 'FontFace': ${url} responded with ${response.status}.`,
-        "NetworkError",
-      );
-    }
-    return await op_fontdb_load(
-      new Uint8Array(await response.arrayBuffer()),
-    );
   }
 
   /**

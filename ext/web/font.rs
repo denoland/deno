@@ -310,11 +310,15 @@ async fn load_font_data(
 }
 
 /// Load font from a BufferSource; returns an opaque handle.
+///
+/// Detaches so V8 releases the backing store now instead of at the next GC;
+/// fonts are large and `load_font_data` keeps its own copy. Callers hand over
+/// a buffer they own (`FontFace` copies the constructor's BufferSource).
 #[op2]
 #[serde]
 pub async fn op_fontdb_load(
   state: Rc<RefCell<OpState>>,
-  #[buffer] bytes: JsBuffer,
+  #[buffer(detach)] bytes: JsBuffer,
 ) -> Result<FontLoadResult, FontError> {
   load_font_data(&state, bytes.to_vec()).await
 }

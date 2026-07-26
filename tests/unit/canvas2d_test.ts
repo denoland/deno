@@ -922,6 +922,70 @@ Deno.test(function fontFaceConstructorAcceptsTypedArray() {
   assertEquals(face.family, "TestFont");
 });
 
+// css-font-loading reserves SyntaxError for the BufferSource form; a url()
+// source that cannot be fetched or parsed is a NetworkError, never a raw
+// TypeError from fetch.
+Deno.test(
+  { permissions: {} },
+  async function fontFaceLoadUrlRejectsWithNetworkError() {
+    for (
+      const [label, src] of [
+        // Unparsable whatever the base is; `new Request` throws a TypeError.
+        // The relative-url-without---location case is covered by
+        // tests/specs/run/unstable_canvas2d_font_face_url.
+        ["invalid url", 'url("http://[")'],
+        ["unsupported scheme", 'url("wss://example.com/f.otf")'],
+        // Fetched fine, but the bytes are not a font.
+        ["unparsable data url", 'url("data:font/otf;base64,AAECAwQFBgc=")'],
+      ]
+    ) {
+      const face = new FontFace("UrlFont", src);
+      const error = await assertRejects(
+        () => face.load(),
+        DOMException,
+        undefined,
+        label,
+      );
+      assertEquals(error.name, "NetworkError", label);
+      assertEquals(face.status, "error", label);
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { read: true } },
+  async function fontFaceLoadUrlRejectsNonFontFile() {
+    const url = new URL("./canvas2d_test.ts", import.meta.url);
+    const face = new FontFace("NotAFont", `url("${url.href}")`);
+    const error = await assertRejects(() => face.load(), DOMException);
+    assertEquals(error.name, "NetworkError");
+  },
+);
+
+// The constructor stores a copy, and op_fontdb_load detaches only that copy.
+Deno.test(async function fontFaceConstructorCopiesBufferSource() {
+  const bytes = new Uint8Array(
+    await Deno.readFile(
+      new URL("../testdata/NotoSerifCJKjp-Regular-subset.otf", import.meta.url),
+    ),
+  );
+  const size = bytes.byteLength;
+  const face = new FontFace("CopiedFont", bytes);
+  // Wiping the source after construction must not affect the stored font.
+  bytes.fill(0);
+  await face.load();
+  assertEquals(face.status, "loaded");
+  // The caller's buffer survives the detach.
+  assertEquals(bytes.byteLength, size);
+});
+
+Deno.test(async function fontFaceLoadDoesNotDetachCallerBuffer() {
+  const buffer = new Uint8Array([0, 1, 2, 3]).buffer;
+  const face = new FontFace("DetachFont", buffer);
+  await assertRejects(() => face.load(), DOMException);
+  assertEquals(buffer.byteLength, 4);
+});
+
 Deno.test(function fontFaceDefaultDescriptors() {
   const face = new FontFace("TestFont", new ArrayBuffer(4));
   assertEquals(face.style, "normal");
