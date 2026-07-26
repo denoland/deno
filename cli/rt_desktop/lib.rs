@@ -67,7 +67,11 @@ struct WefDesktopApi {
 impl WefDesktopApi {
   /// Set up all event handlers on a newly created window, wiring events
   /// into the shared event channel.
-  fn setup_window_events(&self, window: laufey::Window) -> laufey::Window {
+  fn setup_window_events(
+    &self,
+    window: laufey::Window,
+    show_on_first_load: bool,
+  ) -> laufey::Window {
     let kb_tx = self.event_tx.clone();
     let mouse_click_tx = self.event_tx.clone();
     let mouse_move_tx = self.event_tx.clone();
@@ -76,9 +80,11 @@ impl WefDesktopApi {
     let focus_tx = self.event_tx.clone();
     let resize_tx = self.event_tx.clone();
     let move_tx = self.event_tx.clone();
+    let page_load_tx = self.event_tx.clone();
     let close_tx = self.event_tx.clone();
     let closed_windows = self.closed_windows.clone();
     let open_windows_on_close = self.open_windows.clone();
+    let shown = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     window
       .on_keyboard_event(move |ev| {
@@ -197,6 +203,16 @@ impl WefDesktopApi {
           },
         );
       })
+      .on_page_load(move |ev| {
+        if show_on_first_load && !shown.swap(true, Ordering::AcqRel) {
+          laufey::Window::from_id(ev.window_id).show();
+        }
+        let _ = page_load_tx.try_send(
+          deno_runtime::ops::desktop::DesktopEvent::PageLoad {
+            window_id: ev.window_id,
+          },
+        );
+      })
       .on_close_requested(move |ev| {
         closed_windows.lock().unwrap().insert(ev.window_id);
         open_windows_on_close.lock().unwrap().remove(&ev.window_id);
@@ -231,18 +247,8 @@ impl WefDesktopApi {
         transparent: false,
       },
     );
-    let window = self.setup_window_events(window);
+    let window = self.setup_window_events(window, true);
     let id = window.id();
-
-    // Reveal the window once content has painted. `on_page_load` fires for
-    // every completed navigation, but we only want to show it the first time;
-    // later in-app navigations must not re-show a window the app has hidden.
-    let shown = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    window.on_page_load(move |ev| {
-      if !shown.swap(true, Ordering::AcqRel) {
-        laufey::Window::from_id(ev.window_id).show();
-      }
-    });
 
     self.open_windows.lock().unwrap().insert(id);
     id
@@ -270,7 +276,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
         transparent,
       },
     );
-    let window = self.setup_window_events(window);
+    let window = self.setup_window_events(window, false);
     let id = window.id();
     self.open_windows.lock().unwrap().insert(id);
     id
@@ -370,7 +376,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
       let window = laufey::Window::new(1200, 800);
       window.set_title("Deno Desktop DevTools");
       window.navigate(&url);
-      let window = self.setup_window_events(window);
+      let window = self.setup_window_events(window, false);
       let id = window.id();
       // Track for HMR reload + the singleton check above.
       self.open_windows.lock().unwrap().insert(id);
