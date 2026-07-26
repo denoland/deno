@@ -33,6 +33,9 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const lazyProcess = core.createLazyLoader("node:process");
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const { isAnyArrayBuffer } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
 const lazyStream = core.createLazyLoader("node:stream");
 
 function isWritableStream(object) {
@@ -676,6 +679,13 @@ function newWritableStreamFromStreamWritable(streamWritable) {
     },
 
     async write(chunk) {
+      // A non-object-mode Writable only accepts BufferSource views. Wrap a bare
+      // ArrayBuffer (or SharedArrayBuffer) in a Uint8Array so it can be written
+      // without a copy. Node only unwraps ArrayBuffer here; we also unwrap
+      // SharedArrayBuffer so both are usable.
+      if (!streamWritable.writableObjectMode && isAnyArrayBuffer(chunk)) {
+        chunk = new Uint8Array(chunk);
+      }
       if (streamWritable.writableNeedDrain || !streamWritable.write(chunk)) {
         backpressurePromise = Promise.withResolvers();
         return backpressurePromise.promise.finally(() => {
