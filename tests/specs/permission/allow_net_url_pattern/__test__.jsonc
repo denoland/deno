@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "allow_net_url_pattern": {
+      "args": "run --allow-net=http://127.0.0.1:9999/api/* main.ts",
+      "output": "main.out"
+    }
+  }
+}

@@ -31,6 +31,7 @@ serde_json.workspace = true
 sys_traits.workspace = true
 thiserror.workspace = true
 url.workspace = true
+urlpattern.workspace = true
 which.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
