@@ -1160,10 +1160,11 @@ fn resolve_hmr_icon_path(
 
 /// Extract the local URL from a line of dev server output.
 fn parse_dev_server_url(line: &str) -> Option<String> {
+  let line = console_static_text::ansi::strip_ansi_codes(line);
   // Vite prints `  ➜  Local:   http://localhost:5173/`
   regex::Regex::new(r"Local:\s+(https?://\S+)")
     .expect("regex to parse local url failed")
-    .captures(line)
+    .captures(&line)
     .and_then(|c| c.get(1))
     .map(|m| m.as_str().to_owned())
 }
@@ -5609,6 +5610,18 @@ def456  other.zip
     assert_eq!(
       parse_dev_server_url("  Local:   https://localhost:5173/").as_deref(),
       Some("https://localhost:5173/")
+    );
+  }
+
+  #[test]
+  fn dev_server_url_matches_colored_output() {
+    assert_eq!(
+      parse_dev_server_url(
+        "\x1b[32m➜\x1b[39m  \x1b[1mLocal\x1b[22m:   \
+         \x1b[36mhttp://127.0.0.1:\x1b[1m5173\x1b[22m/\x1b[39m"
+      )
+      .as_deref(),
+      Some("http://127.0.0.1:5173/")
     );
   }
 
