@@ -2242,6 +2242,7 @@ fn install_parse(
           lockfile_only,
           save_exact: result.get_bool("save-exact"),
           package_json: result.get_bool("package-json"),
+          unscoped: result.get_bool("unscoped"),
         }),
         npm_target,
       ));
@@ -2506,6 +2507,7 @@ fn add_parse(result: &ParseResult, flags: &mut Flags) {
     lockfile_only: result.get_bool("lockfile-only"),
     save_exact: result.get_bool("save-exact"),
     package_json: result.get_bool("package-json"),
+    unscoped: result.get_bool("unscoped"),
   });
 }
 
