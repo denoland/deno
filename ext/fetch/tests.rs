@@ -66,7 +66,7 @@ fn test_userspace_resolver() {
     // use `localhost` to ensure dns step happens.
     let addr = format!("localhost:{}", src_addr.port());
 
-    let hickory = hickory_resolver::Resolver::builder_tokio().unwrap().build();
+    let hickory = hickory_resolver::Resolver::builder_tokio().unwrap().build().unwrap();
 
     assert_eq!(thread_counter.load(SeqCst), 0);
     run_test_client_with_resolver(
