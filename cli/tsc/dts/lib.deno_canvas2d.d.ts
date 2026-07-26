@@ -139,6 +139,24 @@ type GlobalCompositeOperation =
 type ImageSmoothingQuality = "high" | "low" | "medium";
 
 /**
+ * @experimental **UNSTABLE**: New API, yet to be vetted.
+ * @category Canvas 2D
+ */
+type FontDisplay = "auto" | "block" | "fallback" | "optional" | "swap";
+
+/**
+ * @experimental **UNSTABLE**: New API, yet to be vetted.
+ * @category Canvas 2D
+ */
+type FontFaceLoadStatus = "error" | "loaded" | "loading" | "unloaded";
+
+/**
+ * @experimental **UNSTABLE**: New API, yet to be vetted.
+ * @category Canvas 2D
+ */
+type FontFaceSetLoadStatus = "loaded" | "loading";
+
+/**
  * Settings passed as the second argument to
  * `OffscreenCanvas.getContext("2d", settings)`.
  *
@@ -827,6 +845,168 @@ interface OffscreenCanvasRenderingContext2D
 declare var OffscreenCanvasRenderingContext2D: {
   prototype: OffscreenCanvasRenderingContext2D;
   new (): never;
+};
+
+/**
+ * @experimental **UNSTABLE**: New API, yet to be vetted.
+ * @category Canvas 2D
+ */
+interface FontFaceDescriptors {
+  ascentOverride?: string;
+  descentOverride?: string;
+  display?: FontDisplay;
+  featureSettings?: string;
+  lineGapOverride?: string;
+  stretch?: string;
+  style?: string;
+  unicodeRange?: string;
+  variationSettings?: string;
+  weight?: string;
+}
+
+/**
+ * One font face for FontFaceSet (`Deno.fonts` / `self.fonts`).
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/FontFace
+ * @experimental **UNSTABLE**: New API, yet to be vetted.
+ * @category Canvas 2D
+ */
+interface FontFace {
+  ascentOverride: string;
+  descentOverride: string;
+  display: FontDisplay;
+  family: string;
+  featureSettings: string;
+  lineGapOverride: string;
+  readonly loaded: Promise<FontFace>;
+  readonly status: FontFaceLoadStatus;
+  stretch: string;
+  style: string;
+  unicodeRange: string;
+  variationSettings: string;
+  weight: string;
+  load(): Promise<FontFace>;
+}
+
+/**
+ * @experimental **UNSTABLE**: New API, yet to be vetted.
+ * @category Canvas 2D
+ */
+declare var FontFace: {
+  prototype: FontFace;
+  /**
+   * `source`: BufferSource or CSS `src` string. `url()` uses fetch (relative
+   * to `location`; file/net need `--allow-read`/`--allow-net`). `local()`
+   * needs `--allow-sys=localFonts`. SFNT only (.ttf/.otf/.ttc/.otc); no WOFF.
+   */
+  new (
+    family: string,
+    source: BufferSource | string,
+    descriptors?: FontFaceDescriptors,
+  ): FontFace;
+};
+
+/**
+ * @experimental **UNSTABLE**: New API, yet to be vetted.
+ * @category Canvas 2D
+ */
+interface FontFaceSetLoadEventInit extends EventInit {
+  fontfaces?: FontFace[];
+}
+
+/**
+ * FontFaceSet load lifecycle event.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/FontFaceSetLoadEvent
+ * @experimental **UNSTABLE**: New API, yet to be vetted.
+ * @category Canvas 2D
+ */
+interface FontFaceSetLoadEvent extends Event {
+  readonly fontfaces: ReadonlyArray<FontFace>;
+}
+
+/**
+ * @experimental **UNSTABLE**: New API, yet to be vetted.
+ * @category Canvas 2D
+ */
+declare var FontFaceSetLoadEvent: {
+  prototype: FontFaceSetLoadEvent;
+  new (
+    type: string,
+    eventInitDict?: FontFaceSetLoadEventInit,
+  ): FontFaceSetLoadEvent;
+};
+
+/**
+ * @experimental **UNSTABLE**: New API, yet to be vetted.
+ * @category Canvas 2D
+ */
+interface FontFaceSetEventMap {
+  loading: FontFaceSetLoadEvent;
+  loadingdone: FontFaceSetLoadEvent;
+  loadingerror: FontFaceSetLoadEvent;
+}
+
+/**
+ * Set of FontFace objects (`Deno.fonts` / `self.fonts`).
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/FontFaceSet
+ * @experimental **UNSTABLE**: New API, yet to be vetted.
+ * @category Canvas 2D
+ */
+interface FontFaceSet extends EventTarget {
+  onloading: ((this: FontFaceSet, ev: FontFaceSetLoadEvent) => any) | null;
+  onloadingdone: ((this: FontFaceSet, ev: FontFaceSetLoadEvent) => any) | null;
+  onloadingerror: ((this: FontFaceSet, ev: FontFaceSetLoadEvent) => any) | null;
+
+  readonly size: number;
+  readonly status: FontFaceSetLoadStatus;
+  readonly ready: Promise<FontFaceSet>;
+
+  add(font: FontFace): FontFaceSet;
+  delete(font: FontFace): boolean;
+  has(font: FontFace): boolean;
+  clear(): void;
+  load(font: string, text?: string): Promise<FontFace[]>;
+  check(font: string, text?: string): boolean;
+
+  forEach(
+    callbackfn: (value: FontFace, key: FontFace, parent: FontFaceSet) => void,
+    thisArg?: any,
+  ): void;
+  values(): IterableIterator<FontFace>;
+  keys(): IterableIterator<FontFace>;
+  entries(): IterableIterator<[FontFace, FontFace]>;
+  [Symbol.iterator](): IterableIterator<FontFace>;
+
+  addEventListener<K extends keyof FontFaceSetEventMap>(
+    type: K,
+    listener: (this: FontFaceSet, ev: FontFaceSetEventMap[K]) => any,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  removeEventListener<K extends keyof FontFaceSetEventMap>(
+    type: K,
+    listener: (this: FontFaceSet, ev: FontFaceSetEventMap[K]) => any,
+    options?: boolean | EventListenerOptions,
+  ): void;
+  removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions,
+  ): void;
+}
+
+/**
+ * @experimental **UNSTABLE**: New API, yet to be vetted.
+ * @category Canvas 2D
+ */
+declare var FontFaceSet: {
+  prototype: FontFaceSet;
 };
 
 /**

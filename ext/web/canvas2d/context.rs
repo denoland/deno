@@ -55,6 +55,7 @@ use super::state::TextBaseline;
 use super::text::build_text_layout;
 use super::text::compute_baseline_y;
 use super::text::compute_text_metrics;
+use super::text::font_metric_offsets;
 use crate::canvas2d::TextMetrics;
 use crate::canvas2d::error::Canvas2DError;
 use crate::canvas2d::gradient::CanvasGradient;
@@ -89,6 +90,7 @@ use crate::css::font::FontState;
 use crate::css::font::TextDirection;
 use crate::css::font::parse_css_font;
 use crate::css::font::parse_css_spacing;
+use crate::font::SharedLocalFontDb;
 use crate::image_data::ImageData;
 
 pub const CONTEXT_ID: &str = "2d";
@@ -102,6 +104,9 @@ const GPU_READBACK_FALLBACK_THRESHOLD: u32 = 2;
 /// GPU's per-draw overhead. Matches Blink's 128 * 129 heuristic.
 const MIN_GPU_ACCELERATED_AREA: u64 = 128 * 129;
 
+/// Guards the one-time warning for drawing text with no fonts available.
+static NO_FONTS_WARNING: std::sync::Once = std::sync::Once::new();
+
 pub struct OffscreenCanvasRenderingContext2D {
   canvas: v8::Global<v8::Object>,
   data: deno_webgpu::canvas::ContextData,
@@ -111,6 +116,7 @@ pub struct OffscreenCanvasRenderingContext2D {
 
   font_ctx: Rc<RefCell<FontContext>>,
   layout_ctx: Rc<RefCell<LayoutContext<()>>>,
+  local_fonts: SharedLocalFontDb,
 
   state: RefCell<DrawingState>,
   state_stack: RefCell<Vec<StateStackEntry>>,
@@ -565,11 +571,13 @@ impl OffscreenCanvasRenderingContext2D {
   #[required(1)]
   #[cppgc]
   fn measure_text(&self, #[string] text: &str) -> TextMetrics {
+    self.sync_system_fonts();
     let state = self.state.borrow();
     compute_text_metrics(
       text,
       &state.font_state,
       state.text_align,
+      &state.lang,
       &self.font_ctx,
       &self.layout_ctx,
     )
@@ -2472,6 +2480,25 @@ impl OffscreenCanvasRenderingContext2D {
     state.clip_depth += 1;
   }
 
+  /// Load system fonts if registerAllLocalFonts ran anywhere in the process.
+  /// Checked per text op (workers never call it themselves); load is idempotent.
+  fn sync_system_fonts(&self) {
+    if self.local_fonts.system_fonts_enabled() {
+      self.font_ctx.borrow_mut().collection.load_system_fonts();
+    } else if !NO_FONTS_WARNING.is_completed() {
+      let mut font_ctx = self.font_ctx.borrow_mut();
+      if font_ctx.collection.family_names().next().is_none() {
+        NO_FONTS_WARNING.call_once(|| {
+          log::warn!(
+            "Canvas 2D text will not render because no fonts are available. \
+             Call Deno.registerAllLocalFonts() with --allow-sys=localFonts to \
+             use the system fonts, or register one with new FontFace()."
+          );
+        });
+      }
+    }
+  }
+
   fn draw_text(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
@@ -2489,6 +2516,7 @@ impl OffscreenCanvasRenderingContext2D {
       return;
     }
 
+    self.sync_system_fonts();
     let mut fc = self.font_ctx.borrow_mut();
     let mut lc = self.layout_ctx.borrow_mut();
     let (
@@ -2505,7 +2533,13 @@ impl OffscreenCanvasRenderingContext2D {
       direction,
     ) = {
       let state = self.state.borrow();
-      let layout = build_text_layout(&mut fc, &mut lc, text, &state.font_state);
+      let layout = build_text_layout(
+        &mut fc,
+        &mut lc,
+        text,
+        &state.font_state,
+        &state.lang,
+      );
 
       let style = if stroke {
         &state.stroke_style
@@ -2541,7 +2575,9 @@ impl OffscreenCanvasRenderingContext2D {
       )
     };
 
-    let baseline_y = compute_baseline_y(y, &layout, text_baseline);
+    let metric_offsets =
+      font_metric_offsets(&layout, self.state.borrow().font_state.size as f64);
+    let baseline_y = compute_baseline_y(y, text_baseline, &metric_offsets);
 
     let layout_baseline = layout
       .lines()
@@ -2549,16 +2585,15 @@ impl OffscreenCanvasRenderingContext2D {
       .map(|line| line.metrics().baseline)
       .unwrap_or(0.0);
 
-    // Compute total line width for text-align adjustment.
+    // Line width for text-align (trailing spaces kept; no collapse).
+    // https://html.spec.whatwg.org/multipage/canvas.html#text-preparation-algorithm
     let line_width: f32 = layout
       .lines()
       .next()
-      .map(|line| line.metrics().advance - line.metrics().trailing_whitespace)
+      .map(|line| line.metrics().advance)
       .unwrap_or(0.0);
 
-    // Condense the text horizontally when it is wider than maxWidth.
-    // TODO(petamoriken): only the glyph advances are compressed for now,
-    // the glyph outlines themselves are not horizontally scaled.
+    // Scale advances + outlines when wider than maxWidth.
     let x_scale: f32 = match max_width {
       Some(max_width) if (line_width as f64) > max_width => {
         (max_width / line_width as f64) as f32
@@ -2599,7 +2634,8 @@ impl OffscreenCanvasRenderingContext2D {
                   continue;
                 };
                 let font = peniko::FontData::clone(glyph_run.run().font());
-                let font_size = glyph_run.run().font_size();
+                // Keep outlines in step with condensed advances.
+                let font_size = glyph_run.run().font_size() * x_scale;
                 let glyphs =
                   glyph_run.positioned_glyphs().map(|g| vello::Glyph {
                     id: g.id,
@@ -2625,7 +2661,7 @@ impl OffscreenCanvasRenderingContext2D {
                   continue;
                 };
                 let font = peniko::FontData::clone(glyph_run.run().font());
-                let font_size = glyph_run.run().font_size();
+                let font_size = glyph_run.run().font_size() * x_scale;
                 apply_cpu_paint(ctx, brush.clone(), brush_transform);
                 ctx.set_transform(st);
                 ctx
@@ -2651,7 +2687,7 @@ impl OffscreenCanvasRenderingContext2D {
                 continue;
               };
               let font = peniko::FontData::clone(glyph_run.run().font());
-              let font_size = glyph_run.run().font_size();
+              let font_size = glyph_run.run().font_size() * x_scale;
 
               let glyphs =
                 glyph_run.positioned_glyphs().map(|g| vello::Glyph {
@@ -2679,7 +2715,7 @@ impl OffscreenCanvasRenderingContext2D {
                 continue;
               };
               let font = peniko::FontData::clone(glyph_run.run().font());
-              let font_size = glyph_run.run().font_size();
+              let font_size = glyph_run.run().font_size() * x_scale;
 
               apply_cpu_paint(ctx, brush.clone(), brush_transform);
               ctx.set_transform(transform);
@@ -3425,7 +3461,7 @@ pub fn create_context<'s>(
     );
     return Ok(None);
   }
-  let (renderer, font_ctx, layout_ctx) = {
+  let (renderer, font_ctx, layout_ctx, local_fonts) = {
     let state = state.borrow();
     let renderer = state
       .try_borrow::<SharedRenderer>()
@@ -3439,7 +3475,11 @@ pub fn create_context<'s>(
       .try_borrow::<Rc<RefCell<LayoutContext<()>>>>()
       .ok_or(Canvas2DError::NotInitialized)?
       .clone();
-    (renderer, font_ctx, layout_ctx)
+    let local_fonts = state
+      .try_borrow::<SharedLocalFontDb>()
+      .ok_or(Canvas2DError::NotInitialized)?
+      .clone();
+    (renderer, font_ctx, layout_ctx, local_fonts)
   };
 
   // Non-object options are ignored.
@@ -3471,6 +3511,7 @@ pub fn create_context<'s>(
     renderer,
     font_ctx,
     layout_ctx,
+    local_fonts,
     state: RefCell::new(DrawingState::default()),
     state_stack: RefCell::new(Vec::new()),
     layer_depth: std::cell::Cell::new(0),

@@ -4657,16 +4657,23 @@ declare namespace Deno {
   }
 
   /**
-   * Loads system fonts into the font database, making them available for
-   * Canvas 2D text rendering. Requires `--allow-sys=localFonts` permission.
-   *
-   * Once called successfully in any context (main thread or worker), the
-   * system fonts become available in that context's font database.
+   * Global FontFaceSet (`document.fonts` equivalent). Workers: `self.fonts`.
+   * Register faces with `Deno.fonts.add(face)` for Canvas 2D text.
    *
    * @experimental **UNSTABLE**: New API, yet to be vetted.
    * @category Canvas 2D
    */
-  export function loadLocalFonts(): Promise<void>;
+  export const fonts: FontFaceSet;
+
+  /**
+   * Load all installed fonts for Canvas 2D and {@linkcode queryLocalFonts}.
+   * Needs `--allow-sys=localFonts`. Until then only FontFace-registered fonts
+   * are visible (generics empty; measureText width 0). Process-wide.
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   * @category Canvas 2D
+   */
+  export function registerAllLocalFonts(): Promise<void>;
 
   export {}; // only export exports
 }

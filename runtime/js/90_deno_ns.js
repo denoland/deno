@@ -391,8 +391,11 @@ core.defineGlobalProperties(denoNsUnstableById[unstableIds.webgpu], {
 // denoNsUnstableById[unstableIds.workerOptions] = { __proto__: null }
 
 denoNsUnstableById[unstableIds.canvas2d] = {
-  loadLocalFonts() {
-    return lazyCanvas2d().loadLocalFonts();
+  get fonts() {
+    return lazyCanvas2d().fonts;
+  },
+  registerAllLocalFonts() {
+    return lazyCanvas2d().registerAllLocalFonts();
   },
 };
 

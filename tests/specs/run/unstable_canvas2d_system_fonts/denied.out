@@ -1,0 +1,3 @@
+before false
+registerAllLocalFonts NotCapable
+after false

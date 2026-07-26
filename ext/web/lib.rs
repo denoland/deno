@@ -155,7 +155,16 @@ deno_core::extension!(deno_web,
     broadcast_channel::op_broadcast_free,
     broadcast_channel::op_broadcast_send,
     broadcast_channel::op_broadcast_recv,
-    font::op_fontdb_load_local_fonts,
+    font::op_fontdb_load,
+    font::op_fontdb_load_local,
+    font::op_fontdb_load_object_url,
+    font::op_fontdb_add,
+    font::op_fontdb_remove,
+    font::op_fontdb_unload,
+    font::op_parse_css_font_query,
+    font::op_parse_css_font_src,
+    font::op_normalize_font_face_family,
+    font::op_fontdb_register_all_local_fonts,
     font::op_fontdb_query_local_fonts,
     font::op_fontdb_local_font_data,
   ],
@@ -225,8 +234,9 @@ deno_core::extension!(deno_web,
     state.put(options.bc);
     state.put(broadcast_channel::BroadcastSabStash::default());
     state.put(Arc::new(OnceLock::<Option<canvas2d::DenoCanvasBackend>>::new()));
-    state.put(Rc::new(RefCell::new(parley::FontContext::new())));
+    state.put(Rc::new(RefCell::new(font::create_font_context())));
     state.put(Rc::new(RefCell::new(parley::LayoutContext::<()>::new())));
+    state.put(Rc::new(RefCell::new(font::FontRegistry::default())));
     state.put(options.shared_local_font_db);
   }
 );

@@ -231,8 +231,69 @@ fn serialize_font_family(family: &str) -> String {
   if valid_unquoted {
     family.to_string()
   } else {
-    format!("\"{}\"", family.replace('\\', "\\\\").replace('"', "\\\""))
+    quote_font_family(family)
   }
+}
+
+/// Quotes a font family name as a CSS `<string>`.
+fn quote_font_family(family: &str) -> String {
+  format!("\"{}\"", family.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+/// Normalize a FontFace family: valid single non-generic names are kept;
+/// everything else is quoted raw (css-font-loading#6236).
+/// https://github.com/w3c/csswg-drafts/issues/6236
+pub fn normalize_font_face_family(s: &str) -> String {
+  match parse_font_face_family(s) {
+    // Quoted: serialize content so `'"Arial"'` becomes `Arial`.
+    Some(ParsedFontFaceFamily::Quoted(family)) => {
+      serialize_font_family(&family)
+    }
+    // Unquoted: keep only if serialization round-trips (preserve spaces).
+    Some(ParsedFontFaceFamily::Unquoted(family))
+      if serialize_font_family(&family) == s =>
+    {
+      family
+    }
+    _ => quote_font_family(s),
+  }
+}
+
+enum ParsedFontFaceFamily {
+  Quoted(String),
+  Unquoted(String),
+}
+
+/// Parse a single non-generic family-name, fully consuming `s`.
+fn parse_font_face_family(s: &str) -> Option<ParsedFontFaceFamily> {
+  let mut input = ParserInput::new(s);
+  let mut parser = Parser::new(&mut input);
+  // Quoted names are always custom (non-generic).
+  if let Ok(quoted) =
+    parser.try_parse(|p| -> Result<String, CSSParseError<'_>> {
+      let value = p.expect_string()?.as_ref().to_string();
+      p.expect_exhausted()?;
+      Ok(value)
+    })
+  {
+    return Some(ParsedFontFaceFamily::Quoted(quoted));
+  }
+  let family = parse_one_font_family(&mut parser)?;
+  if !parser.is_exhausted() {
+    return None;
+  }
+  // Generics are not valid FontFace family names.
+  if is_generic_family(&family) {
+    return None;
+  }
+  Some(ParsedFontFaceFamily::Unquoted(family))
+}
+
+/// Returns true if `family` is a CSS generic font family keyword.
+fn is_generic_family(family: &str) -> bool {
+  GENERIC_FAMILIES
+    .iter()
+    .any(|g| family.eq_ignore_ascii_case(g))
 }
 
 /// Parses a CSS `font-style` value.
@@ -297,6 +358,153 @@ pub fn stretch_to_css_str(stretch: CssFontStretch) -> &'static str {
     CssFontStretch::Expanded => "expanded",
     CssFontStretch::ExtraExpanded => "extra-expanded",
     CssFontStretch::UltraExpanded => "ultra-expanded",
+  }
+}
+
+/// One entry of a CSS `src` descriptor (`@font-face` / FontFace).
+/// https://drafts.csswg.org/css-fonts-4/#src-desc
+#[derive(Clone, Debug, PartialEq)]
+pub enum FontSrc {
+  /// `url(<url>) [format(...)]? [tech(...)]?`
+  Url {
+    url: String,
+    format: Option<String>,
+    tech: Vec<String>,
+  },
+  /// `local(<family-name>)`
+  Local(String),
+}
+
+/// Supported `<font-format>` values (others, e.g. woff/woff2, are skipped).
+/// https://drafts.csswg.org/css-fonts-4/#font-format-values
+const SUPPORTED_FONT_FORMATS: &[&str] = &["collection", "opentype", "truetype"];
+
+/// Supported `<font-tech>` values (unsupported hints skip the entry).
+/// https://drafts.csswg.org/css-fonts-4/#font-tech-values
+const SUPPORTED_FONT_TECHS: &[&str] = &[
+  "features-opentype",
+  "variations",
+  "palettes",
+  "color-colrv0",
+  "color-colrv1",
+  "color-sbix",
+  "color-cbdt",
+];
+
+impl FontSrc {
+  /// False when `format()` / `tech()` promise something we cannot use.
+  pub fn is_supported(&self) -> bool {
+    match self {
+      FontSrc::Local(_) => true,
+      FontSrc::Url { format, tech, .. } => {
+        format.as_ref().is_none_or(|format| {
+          SUPPORTED_FONT_FORMATS.contains(&format.as_str())
+        }) && tech
+          .iter()
+          .all(|tech| SUPPORTED_FONT_TECHS.contains(&tech.as_str()))
+      }
+    }
+  }
+}
+
+/// Parse a CSS `src` descriptor. `None` => SyntaxError in the constructor.
+/// https://drafts.csswg.org/css-font-loading-3/#dom-fontface-fontface
+pub fn parse_css_font_src(s: &str) -> Option<Vec<FontSrc>> {
+  let mut input = ParserInput::new(s.trim());
+  let mut parser = Parser::new(&mut input);
+  let mut srcs = Vec::new();
+  loop {
+    srcs.push(parse_one_font_src(&mut parser)?);
+    if parser.try_parse(|p| p.expect_comma()).is_err() {
+      break;
+    }
+  }
+  if !parser.is_exhausted() {
+    return None;
+  }
+  Some(srcs)
+}
+
+fn parse_one_font_src<'i, 't>(input: &mut Parser<'i, 't>) -> Option<FontSrc> {
+  let tok = input.next().ok()?.clone();
+  let url = match &tok {
+    Token::UnquotedUrl(url) => url.as_ref().to_string(),
+    Token::Function(name) if name.eq_ignore_ascii_case("url") => {
+      input.parse_nested_block(parse_url_string).ok()?
+    }
+    Token::Function(name) if name.eq_ignore_ascii_case("local") => {
+      return Some(FontSrc::Local(
+        input.parse_nested_block(parse_local_family).ok()?,
+      ));
+    }
+    _ => return None,
+  };
+
+  let format = input.try_parse(parse_format_hint).ok();
+  let tech = input.try_parse(parse_tech_hint).unwrap_or_default();
+  Some(FontSrc::Url { url, format, tech })
+}
+
+fn parse_url_string<'i, 't>(
+  input: &mut Parser<'i, 't>,
+) -> Result<String, CSSParseError<'i>> {
+  Ok(input.expect_string()?.as_ref().to_string())
+}
+
+fn parse_local_family<'i, 't>(
+  input: &mut Parser<'i, 't>,
+) -> Result<String, CSSParseError<'i>> {
+  parse_one_font_family(input).ok_or_else(|| {
+    input.new_custom_error(CSSCustomError::InvalidFunction("local".to_string()))
+  })
+}
+
+/// Parses `format(<font-format>)`, which also accepts a legacy string.
+fn parse_format_hint<'i, 't>(
+  input: &mut Parser<'i, 't>,
+) -> Result<String, CSSParseError<'i>> {
+  let tok = input.next()?.clone();
+  match &tok {
+    Token::Function(name) if name.eq_ignore_ascii_case("format") => input
+      .parse_nested_block(|p| {
+        let tok = p.next()?.clone();
+        match &tok {
+          Token::QuotedString(s) | Token::Ident(s) => {
+            Ok(s.as_ref().to_ascii_lowercase())
+          }
+          _ => Err(p.new_custom_error(CSSCustomError::InvalidFunction(
+            "format".to_string(),
+          ))),
+        }
+      }),
+    _ => Err(
+      input
+        .new_custom_error(CSSCustomError::InvalidFunction("src".to_string())),
+    ),
+  }
+}
+
+/// Parses `tech(<font-tech>#)`.
+fn parse_tech_hint<'i, 't>(
+  input: &mut Parser<'i, 't>,
+) -> Result<Vec<String>, CSSParseError<'i>> {
+  let tok = input.next()?.clone();
+  match &tok {
+    Token::Function(name) if name.eq_ignore_ascii_case("tech") => input
+      .parse_nested_block(|p| {
+        let mut techs = Vec::new();
+        loop {
+          techs.push(p.expect_ident()?.as_ref().to_ascii_lowercase());
+          if p.try_parse(|p| p.expect_comma()).is_err() {
+            break;
+          }
+        }
+        Ok(techs)
+      }),
+    _ => Err(
+      input
+        .new_custom_error(CSSCustomError::InvalidFunction("src".to_string())),
+    ),
   }
 }
 
@@ -469,6 +677,7 @@ fn parse_font_family_list<'i, 't>(
 }
 
 /// Case-insensitive generic font family keywords.
+/// https://drafts.csswg.org/css-fonts-4/#generic-font-families
 const GENERIC_FAMILIES: &[&str] = &[
   "serif",
   "sans-serif",
@@ -477,6 +686,8 @@ const GENERIC_FAMILIES: &[&str] = &[
   "monospace",
   "system-ui",
   "math",
+  "emoji",
+  "fangsong",
   "ui-serif",
   "ui-sans-serif",
   "ui-monospace",
@@ -728,5 +939,151 @@ mod tests {
     assert!(parse_css_spacing("none").is_none());
     assert!(parse_css_spacing("NaN").is_none());
     assert!(parse_css_spacing("Infinity").is_none());
+  }
+
+  fn url(url: &str) -> FontSrc {
+    FontSrc::Url {
+      url: url.to_string(),
+      format: None,
+      tech: vec![],
+    }
+  }
+
+  #[test]
+  fn font_src_urls() {
+    assert_eq!(
+      parse_css_font_src("url(blob:null/abc)").unwrap(),
+      vec![url("blob:null/abc")]
+    );
+    assert_eq!(
+      parse_css_font_src(" url('blob:null/abc') ").unwrap(),
+      vec![url("blob:null/abc")]
+    );
+    assert_eq!(
+      parse_css_font_src("url(\"blob:null/abc\")").unwrap(),
+      vec![url("blob:null/abc")]
+    );
+  }
+
+  #[test]
+  fn font_src_keeps_format_and_tech_hints() {
+    assert_eq!(
+      parse_css_font_src("url(a.woff2) format(\"woff2\")").unwrap(),
+      vec![FontSrc::Url {
+        url: "a.woff2".to_string(),
+        format: Some("woff2".to_string()),
+        tech: vec![],
+      }]
+    );
+    // Keyword form and mixed case both accepted.
+    assert_eq!(
+      parse_css_font_src(
+        "url(a.ttf) format(TrueType) tech(variations, color-COLRv1)"
+      )
+      .unwrap(),
+      vec![FontSrc::Url {
+        url: "a.ttf".to_string(),
+        format: Some("truetype".to_string()),
+        tech: vec!["variations".to_string(), "color-colrv1".to_string()],
+      }]
+    );
+  }
+
+  #[test]
+  fn font_src_supported_filters_out_unusable_entries() {
+    let unsupported = [
+      "url(a.woff2) format(\"woff2\")",
+      "url(a.woff) format(\"woff\")",
+      "url(a.svg) format(\"svg\")",
+      "url(a.eot) format(\"embedded-opentype\")",
+      "url(a.ttf) tech(features-graphite)",
+      "url(a.ttf) tech(color-SVG)",
+      "url(a.ttf) format(\"truetype\") tech(variations, incremental)",
+    ];
+    for src in unsupported {
+      let parsed = parse_css_font_src(src).unwrap();
+      assert!(!parsed[0].is_supported(), "{src} should be skipped");
+    }
+
+    let supported = [
+      "url(a.ttf)",
+      "url(a.ttf) format(\"truetype\")",
+      "url(a.otf) format(\"opentype\")",
+      "url(a.ttc) format(\"collection\")",
+      "url(a.ttf) tech(color-COLRv0, color-sbix, palettes)",
+      "local(My Font)",
+    ];
+    for src in supported {
+      let parsed = parse_css_font_src(src).unwrap();
+      assert!(parsed[0].is_supported(), "{src} should be usable");
+    }
+  }
+
+  #[test]
+  fn font_src_list_and_local() {
+    assert_eq!(
+      parse_css_font_src(
+        "local(My Font), local(\"Other Font\"), url(a.ttf) format(\"truetype\")"
+      )
+      .unwrap(),
+      vec![
+        FontSrc::Local("My Font".to_string()),
+        FontSrc::Local("Other Font".to_string()),
+        FontSrc::Url {
+          url: "a.ttf".to_string(),
+          format: Some("truetype".to_string()),
+          tech: vec![],
+        },
+      ]
+    );
+  }
+
+  #[test]
+  fn font_src_rejects_invalid_values() {
+    assert!(parse_css_font_src("").is_none());
+    assert!(parse_css_font_src("blob:null/abc").is_none());
+    assert!(parse_css_font_src("url(a.ttf),").is_none());
+    assert!(parse_css_font_src("url(a.ttf) garbage").is_none());
+    assert!(parse_css_font_src("local()").is_none());
+    assert!(parse_css_font_src("unknown(a.ttf)").is_none());
+    assert!(parse_css_font_src("url(a.ttf) format()").is_none());
+    assert!(parse_css_font_src("url(a.ttf) tech()").is_none());
+  }
+
+  #[test]
+  fn font_face_family_keeps_valid_names() {
+    assert_eq!(normalize_font_face_family("Arial"), "Arial");
+    assert_eq!(
+      normalize_font_face_family("Times New Roman"),
+      "Times New Roman"
+    );
+    // Quoted name unwraps to content.
+    assert_eq!(normalize_font_face_family("\"Arial\""), "Arial");
+    assert_eq!(
+      normalize_font_face_family("\"Times New Roman\""),
+      "Times New Roman"
+    );
+  }
+
+  #[test]
+  fn font_face_family_quotes_invalid_or_generic_names() {
+    // fontface-invalid-family.tentative.html (css-font-loading#6236).
+    for raw in [
+      "content:Segoe UI",
+      "sans-serif",
+      "A, B",
+      "inherit",
+      "a 1",
+      "",
+      "a  b",
+      " a b",
+      "a b ",
+    ] {
+      assert_eq!(
+        normalize_font_face_family(raw),
+        format!("\"{raw}\""),
+        "expected {raw:?} to be quoted"
+      );
+    }
   }
 }

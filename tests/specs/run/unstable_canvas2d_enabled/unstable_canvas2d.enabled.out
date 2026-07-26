@@ -21,6 +21,15 @@ main OffscreenCanvasRenderingContext2D {
   shadowOffsetX: 0,
   shadowOffsetY: 0
 }
+main [class FontFace]
+main undefined
+main FontFaceSet {
+  size: 0,
+  status: "loaded",
+  onloading: null,
+  onloadingdone: null,
+  onloadingerror: null
+}
 worker [Function: OffscreenCanvasRenderingContext2D]
 worker OffscreenCanvasRenderingContext2D {
   canvas: OffscreenCanvas {},
@@ -43,4 +52,19 @@ worker OffscreenCanvasRenderingContext2D {
   shadowColor: "rgba(0, 0, 0, 0)",
   shadowOffsetX: 0,
   shadowOffsetY: 0
+}
+worker [class FontFace]
+worker FontFaceSet {
+  size: 0,
+  status: "loaded",
+  onloading: null,
+  onloadingdone: null,
+  onloadingerror: null
+}
+worker FontFaceSet {
+  size: 0,
+  status: "loaded",
+  onloading: null,
+  onloadingdone: null,
+  onloadingerror: null
 }

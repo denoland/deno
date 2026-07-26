@@ -591,6 +591,38 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.canvas2d] = {
     (c) => c.FontData,
     loadCanvas2d,
   ),
+  FontFace: core.propNonEnumerableLazyLoaded(
+    (c) => c.FontFace,
+    loadCanvas2d,
+  ),
+  FontFaceFeatures: core.propNonEnumerableLazyLoaded(
+    (c) => c.FontFaceFeatures,
+    loadCanvas2d,
+  ),
+  FontFaceVariationAxis: core.propNonEnumerableLazyLoaded(
+    (c) => c.FontFaceVariationAxis,
+    loadCanvas2d,
+  ),
+  FontFaceVariations: core.propNonEnumerableLazyLoaded(
+    (c) => c.FontFaceVariations,
+    loadCanvas2d,
+  ),
+  FontFacePalette: core.propNonEnumerableLazyLoaded(
+    (c) => c.FontFacePalette,
+    loadCanvas2d,
+  ),
+  FontFacePalettes: core.propNonEnumerableLazyLoaded(
+    (c) => c.FontFacePalettes,
+    loadCanvas2d,
+  ),
+  FontFaceSet: core.propNonEnumerableLazyLoaded(
+    (c) => c.FontFaceSet,
+    loadCanvas2d,
+  ),
+  FontFaceSetLoadEvent: core.propNonEnumerableLazyLoaded(
+    (c) => c.FontFaceSetLoadEvent,
+    loadCanvas2d,
+  ),
   queryLocalFonts: core.propWritableLazyLoaded(
     (c) => c.queryLocalFonts,
     loadCanvas2d,
