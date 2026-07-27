@@ -1897,12 +1897,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "debug-ignore"
-version = "1.0.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ffe7ed1d93f4553003e20b629abe9085e1e81b1429520f897f8f8860bc6dfc21"
-
-[[package]]
 name = "debugid"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2322,6 +2316,7 @@ dependencies = [
  "twox-hash 2.1.2",
  "unicycle",
  "url",
+ "uuid",
  "wasm_dep_analyzer",
  "windows-sys 0.59.0",
 ]
@@ -3110,6 +3105,7 @@ dependencies = [
  "deno_lockfile",
  "deno_npm",
  "deno_npm_cache",
+ "deno_npmrc",
  "deno_package_json",
  "deno_path_util",
  "deno_resolver",
@@ -3118,6 +3114,7 @@ dependencies = [
  "deno_unsync",
  "futures",
  "lazy-regex",
+ "libc",
  "log",
  "once_cell",
  "parking_lot",
@@ -3836,6 +3833,7 @@ version = "0.53.0"
 dependencies = [
  "deno_error",
  "deno_path_util",
+ "libc",
  "sys_traits",
  "tempfile",
  "thiserror 2.0.12",
@@ -4371,19 +4369,6 @@ dependencies = [
  "sha3 0.11.0-rc.8",
  "signature 3.0.0-rc.10",
  "subtle",
-]
-
-[[package]]
-name = "editpe"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48cede2bb1b07dd598d269f973792c43e0cd92686d3b452bd6e01d7a8eb01211"
-dependencies = [
- "debug-ignore",
- "indexmap",
- "log",
- "thiserror 1.0.69",
- "zerocopy 0.7.32",
 ]
 
 [[package]]
@@ -6434,9 +6419,9 @@ dependencies = [
 
 [[package]]
 name = "laufey"
-version = "0.5.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0560b9568c4bba38e8a9432530917e724867ca873eaf0f263c3a49d39370777"
+checksum = "9a9149a6c84f22c936d2b6ff1ba3392de20f9ee76eb65e5aebfdca4c8621ba3f"
 dependencies = [
  "bindgen 0.72.1",
  "tokio",
@@ -6678,15 +6663,16 @@ dependencies = [
 
 [[package]]
 name = "libsui"
-version = "0.16.3"
+version = "0.16.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca68ddfd95a7422fda71830518f057cb14aa784a0feed007bc5ef9dff04818b1"
+checksum = "3cd44dd0a322ec9fb05619e59067d1c767718238677369d9c5f004ea26a1184b"
 dependencies = [
- "editpe",
  "image",
+ "indexmap",
  "libc",
  "object",
  "sha2",
+ "thiserror 1.0.69",
  "windows 0.58.0",
  "zerocopy 0.7.32",
 ]
@@ -11286,8 +11272,9 @@ dependencies = [
 
 [[package]]
 name = "v8x"
-version = "149.4.0"
-source = "git+https://github.com/littledivy/v8x?rev=c32bf2bc3ca4acde54e96e79a71fecb7b97ffe93#c32bf2bc3ca4acde54e96e79a71fecb7b97ffe93"
+version = "149.4.0-rc.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cfbc26e0dd12c1780f7b57b6ab197c888cf22b63155463b4275984f0afb14cf1"
 dependencies = [
  "bindgen 0.70.1",
  "bitflags 2.9.3",
