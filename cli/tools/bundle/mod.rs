@@ -230,13 +230,7 @@ pub async fn bundle_init(
     flags_mut.unstable_config.sloppy_imports = true;
   }
   let factory = CliFactory::from_flags(flags.clone());
-
-  // Register any entrypoints that were pre-read into memory (e.g. `/dev/stdin`)
-  // so esbuild's loader doesn't re-read (and drain) the underlying pipe.
   let file_fetcher = factory.file_fetcher()?;
-  for file in memory_files {
-    file_fetcher.insert_memory_files(file.clone());
-  }
 
   let esbuild_path = ensure_esbuild_downloaded(&factory).await?;
 
@@ -256,6 +250,34 @@ pub async fn bundle_init(
   let init_cwd = cli_options.initial_cwd().to_path_buf();
   let module_graph_container =
     factory.main_module_graph_container().await?.clone();
+
+  // Register any entrypoints that were pre-read into memory (e.g. `/dev/stdin`)
+  // so esbuild's loader doesn't re-read (and drain) the underlying pipe.
+  //
+  // The bundle graph is keyed by `resolve_entrypoints`' `resolver.resolve()`
+  // output, which an import map or workspace member can remap away from the URL
+  // the file was pre-read under; register the content under the resolved URL as
+  // well, or the lookup misses and esbuild reopens the drained pipe. Only when
+  // it still names the same file though — a mapping that points the entrypoint
+  // at some *other* file must keep that file's own content.
+  let init_cwd_url = deno_path_util::url_from_directory_path(&init_cwd)?;
+  for file in memory_files {
+    file_fetcher.insert_memory_files(file.clone());
+    if let Ok(resolved) = resolver.resolve(
+      file.url.as_str(),
+      &init_cwd_url,
+      Position::new(0, 0),
+      ResolutionMode::Import,
+      NodeResolutionKind::Execution,
+    ) && resolved != file.url
+      && is_same_file(&resolved, &file.url)
+    {
+      file_fetcher.insert_memory_files(File {
+        url: resolved,
+        ..file.clone()
+      });
+    }
+  }
 
   let (on_end_tx, on_end_rx) = tokio::sync::mpsc::channel(10);
   #[allow(
@@ -340,19 +362,20 @@ pub async fn bundle(
     let flags_mut = Arc::make_mut(&mut flags);
     flags_mut.unstable_config.sloppy_imports = true;
   }
+  // Read non-regular entrypoints (e.g. `/dev/stdin`) exactly once and share the
+  // content with every factory below, so the pipe isn't read twice under
+  // `--check` (denoland/deno#36162). Done for both flows so that an
+  // extensionless entrypoint gets the same media type with and without
+  // `--check`. This is the same cwd `CliOptions` resolves for the factories.
+  let memory_files = read_nonregular_entrypoints(
+    &bundle_flags,
+    &crate::util::env::resolve_cwd(flags.initial_cwd.as_deref())?,
+  )?;
   // `--check[=all]` is documented in `bundle --help`; honour it before we
   // hand the graph to esbuild so type errors surface alongside (and not
   // after) the bundle output (denoland/deno#30159).
-  let mut memory_files = Vec::new();
   if !matches!(flags.type_check_mode, TypeCheckMode::None) {
     let check_factory = CliFactory::from_flags(flags.clone());
-    // Read non-regular entrypoints (e.g. `/dev/stdin`) exactly once and share
-    // the content with both the type-check factory here and the bundle factory
-    // below, so the pipe isn't read twice (denoland/deno#36162).
-    memory_files = read_nonregular_entrypoints(
-      &bundle_flags,
-      check_factory.cli_options()?.initial_cwd(),
-    )?;
     let file_fetcher = check_factory.file_fetcher()?;
     for file in &memory_files {
       file_fetcher.insert_memory_files(file.clone());
@@ -2592,6 +2615,65 @@ fn media_type_to_loader(
   }
 }
 
+/// Whether `metadata` describes a non-regular local file (fifo/char device/
+/// socket, e.g. `/dev/stdin` when stdin is a pipe).
+///
+/// `std::fs::metadata` follows symlinks, so a symlink to a FIFO is reported as
+/// non-regular too.
+fn is_nonregular(metadata: &std::fs::Metadata) -> bool {
+  !metadata.is_file() && !metadata.is_dir()
+}
+
+/// Identifies the file a path actually points at, so aliases of the same pipe
+/// (`/dev/stdin` and `/dev/fd/0`, or a symlink passed alongside its target) are
+/// recognized as one file. Falls back to the path where the platform has no
+/// stable identity.
+#[cfg(unix)]
+type FileIdentity = (u64, u64);
+#[cfg(not(unix))]
+type FileIdentity = PathBuf;
+
+#[cfg(unix)]
+fn file_identity(_path: &Path, metadata: &std::fs::Metadata) -> FileIdentity {
+  use std::os::unix::fs::MetadataExt;
+  (metadata.dev(), metadata.ino())
+}
+
+#[cfg(not(unix))]
+fn file_identity(path: &Path, _metadata: &std::fs::Metadata) -> FileIdentity {
+  path.to_path_buf()
+}
+
+/// Whether two `file:` URLs name the same underlying file (symlinks followed).
+fn is_same_file(a: &Url, b: &Url) -> bool {
+  let (Ok(a), Ok(b)) = (
+    deno_path_util::url_to_file_path(a),
+    deno_path_util::url_to_file_path(b),
+  ) else {
+    return false;
+  };
+  let (Ok(a_meta), Ok(b_meta)) = (std::fs::metadata(&a), std::fs::metadata(&b))
+  else {
+    return false;
+  };
+  file_identity(&a, &a_meta) == file_identity(&b, &b_meta)
+}
+
+/// The local path an entrypoint refers to, or `None` for a specifier that isn't
+/// a local file (`https:`, `npm:`, `jsr:`, ...).
+fn entrypoint_local_path(entrypoint: &str, init_cwd: &Path) -> Option<PathBuf> {
+  if deno_path_util::specifier_has_uri_scheme(entrypoint) {
+    let url = Url::parse(entrypoint).ok()?;
+    if url.scheme() != "file" {
+      return None;
+    }
+    url.to_file_path().ok()
+  } else {
+    let path = init_cwd.join(entrypoint);
+    Some(deno_path_util::normalize_path(Cow::Owned(path)).into_owned())
+  }
+}
+
 /// Read entrypoints that resolve to a non-regular local file (e.g. `/dev/stdin`
 /// when stdin is a pipe) into memory once.
 ///
@@ -2607,39 +2689,69 @@ fn read_nonregular_entrypoints(
   init_cwd: &Path,
 ) -> Result<Vec<File>, AnyError> {
   let mut files = Vec::new();
-  // The same entrypoint may be passed more than once (duplicate CLI args are
-  // valid — they collapse to one bundle). Reading a non-regular entrypoint more
-  // than once would drain the pipe/FIFO a second time (EOF overwrites the first
-  // source, or a symlink-to-FIFO blocks forever on the second open), so track
-  // resolved URLs and read each distinct one only once.
-  let mut seen = std::collections::HashSet::new();
+  // Distinct entrypoints can name the same pipe: the same argument passed twice
+  // (duplicate CLI args are valid — they collapse to one bundle), but also
+  // `/dev/stdin` alongside `/dev/fd/0`, or a symlink alongside its target.
+  // Reading such a pipe a second time drains it (EOF overwrites the first
+  // source, or the second `open()` blocks forever), so read once per underlying
+  // file and hand the same bytes to every URL that aliases it.
+  let mut sources: std::collections::HashMap<FileIdentity, Arc<[u8]>> =
+    Default::default();
+  let mut seen_urls = std::collections::HashSet::new();
   for entrypoint in &bundle_flags.entrypoints {
-    // Only reached from the CLI `deno bundle` path, which canonicalizes
-    // eagerly — match the specifier `prepare_inputs` will resolve.
-    let url = resolve_url_or_path_absolute(entrypoint, init_cwd, true)?;
-    if url.scheme() != "file" {
-      continue;
-    }
-    if !seen.insert(url.clone()) {
-      continue;
-    }
-    let Ok(path) = url.to_file_path() else {
+    let Some(path) = entrypoint_local_path(entrypoint, init_cwd) else {
       continue;
     };
-    match std::fs::metadata(&path) {
-      Ok(metadata) if !metadata.is_file() && !metadata.is_dir() => {
-        let source = std::fs::read(&path)
-          .with_context(|| format!("Reading {}", path.display()))?;
-        files.push(File {
-          url,
-          mtime: None,
-          maybe_headers: None,
-          source: source.into(),
-          loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
-        });
+    let metadata = match std::fs::metadata(&path) {
+      Ok(metadata) => metadata,
+      // A missing entrypoint isn't ours to report: leave it to the module
+      // graph, which names the path in its "Module not found" error.
+      Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
+      // Anything else (EACCES, EINTR, ...) would silently put us back on the
+      // read-the-pipe-twice path, so surface it instead of skipping.
+      Err(err) => {
+        return Err(err)
+          .with_context(|| format!("Reading metadata for {}", path.display()));
       }
-      _ => {}
+    };
+    if !is_nonregular(&metadata) {
+      continue;
     }
+    // Deliberately not canonicalized — see `resolve_url_or_path_absolute`.
+    let url = deno_path_util::url_from_file_path(&path)?;
+    if !seen_urls.insert(url.clone()) {
+      continue;
+    }
+    let source = match sources.entry(file_identity(&path, &metadata)) {
+      std::collections::hash_map::Entry::Occupied(entry) => entry.get().clone(),
+      std::collections::hash_map::Entry::Vacant(entry) => {
+        let source: Arc<[u8]> = std::fs::read(&path)
+          .with_context(|| format!("Reading {}", path.display()))?
+          .into();
+        entry.insert(source.clone());
+        source
+      }
+    };
+    // An extensionless entrypoint like `/dev/stdin` has no media type of its
+    // own, and deno_graph assumes JavaScript for such a root — which would make
+    // `--check` quietly not type-check piped TypeScript. Stamp a TypeScript
+    // content type instead, matching `deno run -` (which names the stdin module
+    // `$deno$stdin.mts`). An entrypoint that does carry an extension (a FIFO
+    // named `foo.js`) keeps its own media type.
+    let maybe_headers = (MediaType::from_specifier(&url) == MediaType::Unknown)
+      .then(|| {
+        std::collections::HashMap::from([(
+          "content-type".to_string(),
+          "application/typescript".to_string(),
+        )])
+      });
+    files.push(File {
+      url,
+      mtime: None,
+      maybe_headers,
+      source,
+      loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
+    });
   }
   Ok(files)
 }
@@ -2661,13 +2773,9 @@ fn resolve_url_or_path_absolute(
     // its target. Any of these makes the bundle flow's specifier diverge from
     // the check flow's `collect_specifiers` specifier (which never
     // canonicalizes), so the shared in-memory file is missed and the drained
-    // pipe is reopened (denoland/deno#36162). `metadata` follows symlinks, so
-    // it reports the FIFO for a symlink-to-FIFO alias too.
-    match std::fs::metadata(&path) {
-      Ok(metadata) if !metadata.is_file() && !metadata.is_dir() => {
-        return Ok(deno_path_util::url_from_file_path(&path)?);
-      }
-      _ => {}
+    // pipe is reopened (denoland/deno#36162).
+    if std::fs::metadata(&path).is_ok_and(|m| is_nonregular(&m)) {
+      return Ok(deno_path_util::url_from_file_path(&path)?);
     }
     // Runtime permission checks must see the caller's path spelling before
     // following aliases. `check_open` then returns the canonical path used for

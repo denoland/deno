@@ -59,4 +59,5 @@ uuid = { workspace = true, features = ["serde"] }
 zeromq.workspace = true
 
 [target.'cfg(unix)'.dev-dependencies]
-nix.workspace = true
+# `fs` for `mkfifo`/`open` in the bundle FIFO regression tests.
+nix = { workspace = true, features = ["fs"] }
