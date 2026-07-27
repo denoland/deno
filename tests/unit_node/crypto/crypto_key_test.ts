@@ -1082,6 +1082,61 @@ Deno.test("X509Certificate verify", function () {
   );
 });
 
+// These fixtures are self-signed. The mismatched variants preserve a valid
+// EC or Ed25519 signature while changing either the outer identifier or both
+// certificate algorithm identifiers.
+const x509VerifyAlgorithmFixtures = [
+  {
+    name: "P-256 with SHA-256",
+    cert:
+      "MIIBFjCBvKADAgECAgID6TAKBggqhkjOPQQDAjAUMRIwEAYDVQQDDAl0ZXN0LTEwMDEwHhcNMjUwMTAxMDAwMDAwWhcNMzUwMTAxMDAwMDAwWjAUMRIwEAYDVQQDDAl0ZXN0LTEwMDEwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAQ5iDIqufUsfxHV0aqSoqwLACdbytjpNGgiVzI/2mckgoVbc4nxFsGcABQxHD1X3AIAHjoOyL2Qx5dzIDSqzZkYMAoGCCqGSM49BAMCA0kAMEYCIQDbGZnK5yAMv3BOcfRNYPcuVKh7tsijFpR9SpLcVwWuQQIhAI7VgVzKOiPsZwNRZj5IkddQLIy2hMW4JgWwdjU9biOC",
+    expected: true,
+  },
+  {
+    name: "P-384 with SHA-384",
+    cert:
+      "MIIBUjCB2aADAgECAgID6jAKBggqhkjOPQQDAzAUMRIwEAYDVQQDDAl0ZXN0LTEwMDIwHhcNMjUwMTAxMDAwMDAwWhcNMzUwMTAxMDAwMDAwWjAUMRIwEAYDVQQDDAl0ZXN0LTEwMDIwdjAQBgcqhkjOPQIBBgUrgQQAIgNiAASeF4erunaIE20LGL8/6iqEte+tSKnqNkNlyR76JBIifQRWul7H7WBjU5raHB47ZuPRoY5/B+zpvNo+Rhl7zds6vyM4aHD20/QkVNGwmVN45yQv/YES6Nn4JEYMZvxHYFMwCgYIKoZIzj0EAwMDaAAwZQIwFBRx+2HuCuzcwWRJ5FKJxSID1+6n08lxbfcF0xoOw4GKLmx93iG4dKy4zXbo5rMhAjEA0JFwZ04mJTlrltcORHBYhqqW1WoTIrnLVoe4SB9oXCDMnqe7YesxBblhkoeSGh45",
+    expected: true,
+  },
+  {
+    name: "P-256 with a different outer identifier",
+    cert:
+      "MIIBFzCBvKADAgECAgID6TAKBggqhkjOPQQDAjAUMRIwEAYDVQQDDAl0ZXN0LTEwMDEwHhcNMjUwMTAxMDAwMDAwWhcNMzUwMTAxMDAwMDAwWjAUMRIwEAYDVQQDDAl0ZXN0LTEwMDEwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAQ5iDIqufUsfxHV0aqSoqwLACdbytjpNGgiVzI/2mckgoVbc4nxFsGcABQxHD1X3AIAHjoOyL2Qx5dzIDSqzZkYMAsGCSqGSIb3DQEBCwNJADBGAiEA2xmZyucgDL9wTnH0TWD3LlSoe7bIoxaUfUqS3FcFrkECIQCO1YFcyjoj7GcDUWY+SJHXUCyMtoTFuCYFsHY1PW4jgg==",
+    expected: false,
+  },
+  {
+    name: "P-256 with RSA identifiers",
+    cert:
+      "MIIBFzCBvaADAgECAgID6TALBgkqhkiG9w0BAQswFDESMBAGA1UEAwwJdGVzdC0xMDAxMB4XDTI1MDEwMTAwMDAwMFoXDTM1MDEwMTAwMDAwMFowFDESMBAGA1UEAwwJdGVzdC0xMDAxMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEOYgyKrn1LH8R1dGqkqKsCwAnW8rY6TRoIlcyP9pnJIKFW3OJ8RbBnAAUMRw9V9wCAB46Dsi9kMeXcyA0qs2ZGDALBgkqhkiG9w0BAQsDSAAwRQIhANayz8pdQqyNfvo/Y53cyVvjPcSUtXTgQKzDASfGiHZPAiARrzc/tiVTI1Qr5n7zs2vG8UzmbUcxvZM0rGttPF6Zsw==",
+    expected: false,
+  },
+  {
+    name: "Ed25519",
+    cert:
+      "MIHVMIGIoAMCAQICAgPrMAUGAytlcDAUMRIwEAYDVQQDDAl0ZXN0LTEwMDMwHhcNMjUwMTAxMDAwMDAwWhcNMzUwMTAxMDAwMDAwWjAUMRIwEAYDVQQDDAl0ZXN0LTEwMDMwKjAFBgMrZXADIQB5tVYuj+ZU+UB4sRLoqYunkB+FOuaVvtfg45ELrQSWZDAFBgMrZXADQQB4nvs+AJwMJo3fdkzoyru+rZFPVApoxP6LBL4t+hNsMhhjfXSCtlLgUZfzXnJAnYgcrJhyFvYSq9mPTXltBVMA",
+    expected: true,
+  },
+  {
+    name: "Ed25519 with a different outer identifier",
+    cert:
+      "MIHbMIGIoAMCAQICAgPrMAUGAytlcDAUMRIwEAYDVQQDDAl0ZXN0LTEwMDMwHhcNMjUwMTAxMDAwMDAwWhcNMzUwMTAxMDAwMDAwWjAUMRIwEAYDVQQDDAl0ZXN0LTEwMDMwKjAFBgMrZXADIQB5tVYuj+ZU+UB4sRLoqYunkB+FOuaVvtfg45ELrQSWZDALBgkqhkiG9w0BAQsDQQB4nvs+AJwMJo3fdkzoyru+rZFPVApoxP6LBL4t+hNsMhhjfXSCtlLgUZfzXnJAnYgcrJhyFvYSq9mPTXltBVMA",
+    expected: false,
+  },
+  {
+    name: "Ed25519 with RSA identifiers",
+    cert:
+      "MIHhMIGOoAMCAQICAgPrMAsGCSqGSIb3DQEBCzAUMRIwEAYDVQQDDAl0ZXN0LTEwMDMwHhcNMjUwMTAxMDAwMDAwWhcNMzUwMTAxMDAwMDAwWjAUMRIwEAYDVQQDDAl0ZXN0LTEwMDMwKjAFBgMrZXADIQB5tVYuj+ZU+UB4sRLoqYunkB+FOuaVvtfg45ELrQSWZDALBgkqhkiG9w0BAQsDQQA47I/+fLD/A/YW7Y50pbt76GwTwlV2dSnRK7Jj/EytW39INzOvODBOUCklqKkWuP4JsNbch/xG0aI2egz5J3gJ",
+    expected: false,
+  },
+];
+
+Deno.test("X509Certificate verify validates signature algorithms", function () {
+  for (const { name, cert, expected } of x509VerifyAlgorithmFixtures) {
+    const x509 = new X509Certificate(Buffer.from(cert, "base64"));
+    assertEquals(x509.verify(x509.publicKey), expected, name);
+  }
+});
+
 Deno.test("X509Certificate infoAccess", function () {
   const x509 = new X509Certificate(certPem);
   const infoAccess = x509.infoAccess;

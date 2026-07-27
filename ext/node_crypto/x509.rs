@@ -1081,6 +1081,9 @@ pub fn op_node_x509_verify(
   };
 
   let cert_inner = cert.inner.get().deref();
+  if cert_inner.signature_algorithm != cert_inner.tbs_certificate.signature {
+    return Ok(false);
+  }
 
   // Get the raw TBS (to-be-signed) certificate bytes and signature.
   // `as_ref()` returns the raw DER bytes of the TBSCertificate including
@@ -1195,6 +1198,9 @@ pub fn op_node_x509_verify(
 
       match ec_key {
         EcPublicKey::P256(key) => {
+          if sig_alg_oid != "1.2.840.10045.4.3.2" {
+            return Ok(false);
+          }
           use p256::ecdsa::signature::Verifier;
           let verifying_key = p256::ecdsa::VerifyingKey::from(key);
           let sig = p256::ecdsa::DerSignature::try_from(sig_value)
@@ -1202,6 +1208,9 @@ pub fn op_node_x509_verify(
           Ok(verifying_key.verify(tbs_raw, &sig).is_ok())
         }
         EcPublicKey::P384(key) => {
+          if sig_alg_oid != "1.2.840.10045.4.3.3" {
+            return Ok(false);
+          }
           use p384::ecdsa::signature::Verifier;
           let verifying_key = p384::ecdsa::VerifyingKey::from(key);
           let sig = p384::ecdsa::DerSignature::try_from(sig_value)
@@ -1212,6 +1221,9 @@ pub fn op_node_x509_verify(
       }
     }
     AsymmetricPublicKey::Ed25519(key) => {
+      if sig_alg_oid != "1.3.101.112" {
+        return Ok(false);
+      }
       let verified = aws_lc_rs::signature::UnparsedPublicKey::new(
         &aws_lc_rs::signature::ED25519,
         key.as_bytes().as_slice(),
