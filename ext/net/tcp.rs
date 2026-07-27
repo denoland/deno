@@ -15,9 +15,11 @@ static CONNS: std::sync::OnceLock<std::sync::Mutex<Connections>> =
   std::sync::OnceLock::new();
 
 #[cfg(test)]
-static DROP_BARRIER: std::sync::OnceLock<
-  std::sync::Mutex<Option<(SocketAddr, Arc<Barrier>)>>,
-> = std::sync::OnceLock::new();
+type DropBarrierSlot = std::sync::Mutex<Option<(SocketAddr, Arc<Barrier>)>>;
+
+#[cfg(test)]
+static DROP_BARRIER: std::sync::OnceLock<DropBarrierSlot> =
+  std::sync::OnceLock::new();
 
 #[cfg(test)]
 struct DropBarrier(Option<Arc<Barrier>>);
