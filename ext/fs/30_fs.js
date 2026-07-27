@@ -163,8 +163,29 @@ function cwd() {
   return op_fs_cwd();
 }
 
+// A listener the `node:process` polyfill registers so that libraries which
+// wrap `process.chdir`/`process.cwd` (e.g. `graceful-fs`, which caches the cwd
+// and only invalidates that cache on `process.chdir`) observe changes made via
+// `Deno.chdir`. See https://github.com/denoland/deno/issues/36294.
+let onChdirListener = null;
+let chdirInProgress = false;
+
+function setOnChdirListener(listener) {
+  onChdirListener = listener;
+}
+
 function chdir(directory) {
   op_fs_chdir(pathFromURL(directory));
+  // Guard against re-entrancy: the listener typically replays the change
+  // through `process.chdir`, which routes back into this function.
+  if (onChdirListener !== null && !chdirInProgress) {
+    chdirInProgress = true;
+    try {
+      onChdirListener();
+    } finally {
+      chdirInProgress = false;
+    }
+  }
 }
 
 function makeTempDirSync(options = { __proto__: null }) {
@@ -973,6 +994,7 @@ function writeTextFile(
 
 return {
   chdir,
+  setOnChdirListener,
   chmod,
   chmodSync,
   chown,
