@@ -839,7 +839,7 @@ fn user_owned_buf(
 /// uncaught, matching Node's MakeCallback behavior where unhandled exceptions
 /// from native callbacks terminate the process.
 pub(crate) fn call_fatal_exception(
-  scope: &mut v8::PinnedRef<v8::HandleScope>,
+  scope: &mut v8::PinScope,
   exception: v8::Local<v8::Value>,
 ) {
   let global = scope.get_current_context().global(scope);

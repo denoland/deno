@@ -15,6 +15,7 @@ import * as net from "node:net";
 import * as stream from "node:stream";
 import { setImmediate } from "node:timers";
 import { Buffer } from "node:buffer";
+import process from "node:process";
 import { execCode } from "../unit/test_util.ts";
 
 const tlsTestdataDir = fromFileUrl(
@@ -1432,7 +1433,9 @@ Deno.test("tls.createSecureContext extracts the CA chain from a pfx", () => {
 // JS write-completion callback then ran while the op still held the
 // OpState borrow, and the callback's process.nextTick panicked with
 // "RefCell already borrowed". The callback must be deferred to the event
-// loop instead, surfacing a normal error.
+// loop instead, surfacing a normal error. The test pins all three halves of
+// that contract: the completion is delivered, it is not delivered from inside
+// the write call, and a process.nextTick from it does not panic.
 Deno.test("tls write after underlying handle closed does not panic", async () => {
   const serverSockets = new Set<tls.TLSSocket>();
   const server = tls.createServer({ cert, key }, (socket) => {
@@ -1451,6 +1454,12 @@ Deno.test("tls write after underlying handle closed does not panic", async () =>
 
   const { promise: errored, resolve: resolveErrored } = Promise
     .withResolvers<void>();
+  const { promise: written, resolve: resolveWritten } = Promise
+    .withResolvers<void>();
+
+  let inWriteCall = false;
+  let completedSynchronously = false;
+  let completionRan = false;
 
   const tlsSock = tls.connect({
     socket: raw,
@@ -1460,11 +1469,30 @@ Deno.test("tls write after underlying handle closed does not panic", async () =>
     // the encrypted output write fails synchronously (EBADF).
     // deno-lint-ignore no-explicit-any
     (raw as any)._handle?.close(() => {});
-    tlsSock.write("hello", () => {});
+    inWriteCall = true;
+    tlsSock.write("hello", () => {
+      completionRan = true;
+      completedSynchronously = inWriteCall;
+      // The exact panic trigger from #35820: reaching another op
+      // (op_node_new_async_id) from the write-completion callback. If the
+      // completion still ran inside the write op, this aborts the process
+      // with "RefCell already borrowed".
+      process.nextTick(resolveWritten);
+    });
+    inWriteCall = false;
   });
   tlsSock.on("error", () => resolveErrored());
 
   await deadline(errored, 10_000);
+  // The completion must actually be delivered — dropping it would leave the
+  // writable side stalled with no error — and it must not be delivered from
+  // inside the write call itself.
+  await deadline(written, 10_000);
+  assert(completionRan, "write completion callback never ran");
+  assert(
+    !completedSynchronously,
+    "write completion callback ran synchronously from write()",
+  );
 
   tlsSock.destroy();
   raw.destroy();

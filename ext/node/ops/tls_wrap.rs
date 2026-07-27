@@ -312,7 +312,7 @@ enum EncOutAction {
 /// wrong variant re-introduces the #35820 reentrancy panic, and a bare
 /// `false` at a call site reads as harmless when it is not. Every dispatch
 /// site must state its intent.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy)]
 enum WriteCompletion {
   /// Run `oncomplete` synchronously. Only sound when the caller does NOT hold
   /// the `OpState` borrow — libuv callbacks (`enc_write_cb`) and the `&self`
@@ -637,23 +637,28 @@ unsafe fn do_emit_client_hello(ctx: &EmitCtx) {
 /// MakeCallback). Shared by the synchronous (`do_invoke_queued`) and deferred
 /// (`defer_invoke_queued`) completion paths so their behavior can't drift.
 fn invoke_write_oncomplete(
-  scope: &mut v8::PinnedRef<v8::HandleScope>,
+  scope: &mut v8::PinScope,
   req_obj: v8::Local<v8::Object>,
   handle: v8::Local<v8::Object>,
   status: i32,
 ) {
   let oncomplete_str =
     v8::String::new_external_onebyte_static(scope, b"oncomplete").unwrap();
-  let Some(oncomplete) = req_obj.get(scope, oncomplete_str.into()) else {
-    return;
-  };
-  let Ok(func) = v8::Local::<v8::Function>::try_from(oncomplete) else {
-    return;
-  };
   let status_val = v8::Integer::new(scope, status);
   let undef = v8::undefined(scope);
+  // The TryCatch covers the property lookup as well as the call: a throwing
+  // getter makes `get` return None with the exception left pending, and on the
+  // deferred path this scope belongs to the V8TaskSpawner, whose contract
+  // forbids returning with an exception set.
   let caught_exception = {
     v8::tc_scope!(tc, scope);
+    let Some(oncomplete) = req_obj.get(tc, oncomplete_str.into()) else {
+      tc.reset();
+      return;
+    };
+    let Ok(func) = v8::Local::<v8::Function>::try_from(oncomplete) else {
+      return;
+    };
     let result = func.call(
       tc,
       req_obj.into(),
@@ -727,7 +732,21 @@ unsafe fn do_invoke_queued(
 /// the completion is dropped without spawning, exactly as the synchronous
 /// `do_invoke_queued` returns early in that case. Falling back to the spawner's
 /// ambient (main) context instead would run `oncomplete`/`reportError` against
-/// the wrong realm — a silent divergence from the synchronous path.
+/// the wrong realm — a silent divergence from the synchronous path. Dropping is
+/// not benign, though: `prepare_invoke_queued` has already taken
+/// `current_write_obj` and cleared `write_callback_scheduled`, so the write's
+/// `oncomplete` never fires and the writable side stalls with no error. This
+/// path is only reachable from a uv-backed write, where `cached_loop_ptr` is
+/// always populated, so a null here is a broken invariant — log it loudly and
+/// assert in debug builds rather than hanging silently.
+///
+/// Ordering: at most one write completion is outstanding per wrap
+/// (`current_write_obj` is a single slot), but JS may issue a further write
+/// before the queued task runs. If that write succeeds and its `enc_write_cb`
+/// fires from the loop before the task, `oncomplete` callbacks are delivered
+/// out of FIFO order. This is accepted: the deferred path is only reached after
+/// a synchronous `uv_write` failure, which means the handle is already dead
+/// (EBADF) and a subsequent successful write is not possible on it.
 fn defer_invoke_queued(
   spawner: &V8TaskSpawner,
   ctx: EmitCtx,
@@ -743,11 +762,25 @@ fn defer_invoke_queued(
   // to enter it. SAFETY: at schedule time the isolate is current (we are inside
   // a write op) and `loop_ptr`/its `data` were populated at construction.
   let context_global = unsafe {
+    debug_assert!(
+      !loop_ptr.is_null(),
+      "deferred write completion without a uv loop"
+    );
     if loop_ptr.is_null() {
+      log::error!(
+        "TLSWrap: dropping deferred write completion, no uv loop; the write callback will not fire"
+      );
       return;
     }
     let ctx_ptr = (*loop_ptr).data;
+    debug_assert!(
+      !ctx_ptr.is_null(),
+      "deferred write completion without a stored v8 context"
+    );
     if ctx_ptr.is_null() {
+      log::error!(
+        "TLSWrap: dropping deferred write completion, no stored v8 context; the write callback will not fire"
+      );
       return;
     }
     let mut isolate = v8::Isolate::from_raw_isolate_ptr(isolate_ptr);
