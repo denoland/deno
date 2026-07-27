@@ -50,7 +50,14 @@
       // which deliberately routes every `.bin` entry through `deno run`; see
       // the NOTE in `resolve_custom_commands`. Locked in so the asymmetry
       // can't change silently.
-      "if": "unix",
+      //
+      // Linux only, because *how* the exec fails is platform specific: on
+      // macOS the spawn falls back to running the file with `/bin/sh` (the
+      // `ENOEXEC` behaviour of `execvp`), so instead of "Exec format error"
+      // the JS source comes back as a pile of shell syntax errors. What is
+      // being asserted here — that the entry is not routed through `deno run`
+      // — is the same on either platform, so testing it on one is enough.
+      "if": "linux",
       "args": "task root-noshebang",
       "output": "root_noshebang_task.out",
       "exitCode": 1
