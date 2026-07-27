@@ -125,15 +125,18 @@ impl BufView {
   ///
   /// # Backing-store caveats (`JsBuffer` arm)
   ///
-  /// - **Resizable stores are copied.** [`bytes::Bytes::from_owner`] snapshots
-  ///   the slice's pointer and length once, but a resizable `ArrayBuffer` may
-  ///   later shrink while the returned `Bytes` is still in flight, leaving that
-  ///   snapshot pointing past the store's valid length. Such stores are copied
-  ///   instead (detected via [`V8Slice::is_backing_store_resizable`]).
+  /// - **Resizable and shared stores are copied.**
+  ///   [`bytes::Bytes::from_owner`] snapshots the slice's pointer and length
+  ///   once. A resizable `ArrayBuffer` may later shrink while the returned
+  ///   `Bytes` is still in flight, leaving that snapshot pointing past the
+  ///   store's valid length; a shared `SharedArrayBuffer` may be mutated
+  ///   concurrently by another thread. Both are copied instead (detected via
+  ///   [`V8Slice::is_backing_store_resizable`] /
+  ///   [`V8Slice::is_backing_store_shared`]).
   /// - **Contents are not snapshotted.** For the zero-copy path the returned
-  ///   `Bytes` aliases live V8 memory, so subsequent JS mutations of the source
-  ///   buffer are observable through it until the bytes are consumed. Callers
-  ///   that need a point-in-time snapshot must copy.
+  ///   `Bytes` aliases live V8 memory, so subsequent (same-thread) JS mutations
+  ///   of the source buffer are observable through it until the bytes are
+  ///   consumed. Callers that need a point-in-time snapshot must copy.
   /// - **The whole store is pinned.** The returned `Bytes` keeps the entire
   ///   backing store alive, not just the viewed sub-range, so a small view over
   ///   a large `ArrayBuffer` can pin the full allocation for as long as any
@@ -144,12 +147,15 @@ impl BufView {
       BufViewInner::Empty => return bytes::Bytes::new(),
       BufViewInner::Bytes(bytes) => bytes,
       BufViewInner::JsBuffer(slice) => {
-        if slice.is_backing_store_resizable() {
+        if slice.is_backing_store_resizable() || slice.is_backing_store_shared()
+        {
           // A resizable ArrayBuffer may shrink while this chunk is still in
-          // flight; `Bytes::from_owner` would then read past the store's valid
-          // length. Copy instead of pinning a stale pointer. (`V8Slice`'s
-          // `Deref` re-clamps against the store length, so this read is
-          // bounds-safe.)
+          // flight (`Bytes::from_owner` would then read past the store's valid
+          // length), and a shared store may be mutated concurrently from
+          // another thread. Copy instead of freezing a pointer into such
+          // memory. The copy reads through `V8Slice`'s clamped `Deref`, so it
+          // can't read out of bounds (a stale `cursor` past the clamped length
+          // would panic, exactly as `BufView::deref` already does).
           return bytes::Bytes::copy_from_slice(&slice[cursor..]);
         }
         bytes::Bytes::from_owner(slice)
@@ -178,9 +184,9 @@ impl Buf for BufView {
 
   /// Override the copying default so generic [`Buf`] consumers (e.g.
   /// `http_body_util::BodyExt::collect`) get the same zero-copy handoff as
-  /// [`BufView::into_bytes`].
+  /// [`BufView::into_bytes`]. `split_to` panics if `len > remaining()`, which
+  /// matches the `Buf::copy_to_bytes` contract.
   fn copy_to_bytes(&mut self, len: usize) -> bytes::Bytes {
-    assert!(len <= self.remaining());
     self.split_to(len).into_bytes()
   }
 }
