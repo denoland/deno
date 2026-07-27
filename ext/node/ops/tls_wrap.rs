@@ -696,23 +696,55 @@ unsafe fn do_invoke_queued(
 /// already borrowed" (#35820). Deferring also matches libuv/Node semantics:
 /// write callbacks never fire synchronously from the write call itself.
 ///
-/// Unlike `do_invoke_queued`, this runs on the spawner's ambient context (the
-/// main context) rather than recovering the TLSWrap's stored context via
-/// `clone_context_global(loop_ptr->data)`. Recovering it here would require
-/// reconstructing the isolate while the spawner's event-loop `HandleScope` is
-/// already live, which is not sound. For a TLSSocket used inside a secondary
-/// realm, `oncomplete` and the `reportError` lookup therefore resolve against
-/// the main global; this is correct for the common single-context case.
+/// Like `do_invoke_queued`, this recovers the TLSWrap's stored context via
+/// `clone_context_global(loop_ptr->data)` so `oncomplete` and the `reportError`
+/// lookup resolve against the realm that owns the socket rather than the
+/// spawner's ambient (main) context. The clone happens here, at schedule time,
+/// while the isolate is current and no spawner `HandleScope` is live yet;
+/// cloning it inside the spawned closure instead would mean reconstructing the
+/// isolate under the already-live event-loop `HandleScope`, which is not sound.
+/// If the context can't be recovered (loop or stored context pointer is null)
+/// we fall back to the spawner's ambient context.
 fn defer_invoke_queued(
   spawner: &V8TaskSpawner,
-  js_handle: v8::Global<v8::Object>,
+  ctx: EmitCtx,
   write_obj: v8::Global<v8::Object>,
   status: i32,
 ) {
-  spawner.spawn(move |scope| {
-    let req_obj = v8::Local::new(scope, &write_obj);
-    let handle = v8::Local::new(scope, &js_handle);
-    invoke_write_oncomplete(scope, req_obj, handle, status);
+  let EmitCtx {
+    isolate_ptr,
+    js_handle,
+    loop_ptr,
+  } = ctx;
+  // Recover the stored context now, before spawning, so the closure only has
+  // to enter it. SAFETY: at schedule time the isolate is current (we are inside
+  // a write op) and `loop_ptr`/its `data` were populated at construction.
+  let context_global = unsafe {
+    if loop_ptr.is_null() {
+      None
+    } else {
+      let ctx_ptr = (*loop_ptr).data;
+      if ctx_ptr.is_null() {
+        None
+      } else {
+        let mut isolate = v8::Isolate::from_raw_isolate_ptr(isolate_ptr);
+        Some(clone_context_global(&mut isolate, ctx_ptr))
+      }
+    }
+  };
+  spawner.spawn(move |scope| match &context_global {
+    Some(context_global) => {
+      let context = v8::Local::new(scope, context_global);
+      let scope = &mut v8::ContextScope::new(scope, context);
+      let req_obj = v8::Local::new(scope, &write_obj);
+      let handle = v8::Local::new(scope, &js_handle);
+      invoke_write_oncomplete(scope, req_obj, handle, status);
+    }
+    None => {
+      let req_obj = v8::Local::new(scope, &write_obj);
+      let handle = v8::Local::new(scope, &js_handle);
+      invoke_write_oncomplete(scope, req_obj, handle, status);
+    }
   });
 }
 
@@ -742,7 +774,7 @@ unsafe fn dispatch_invoke_queued(
         .task_spawner
         .clone()
         .expect("V8TaskSpawner must be present for deferred write completion");
-      defer_invoke_queued(&spawner, ctx.js_handle, write_obj, status);
+      defer_invoke_queued(&spawner, ctx, write_obj, status);
     } else {
       do_invoke_queued(&ctx, write_obj, status);
     }
