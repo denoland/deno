@@ -1513,9 +1513,20 @@ async fn package_windows_app_dir(
     let _ = std::fs::remove_file(&cache_file);
   }
 
-  // Copy the compiled dylib (denort.dll) alongside the backend binary.
+  // Copy the compiled dylib (denort.dll) alongside the backend binary. Both
+  // that name and the launcher name below come from the app name, so either can
+  // land on a file the backend shipped (`libcef.dll`, `d3dcompiler_47.dll`, the
+  // helper executables) — the copy and the rename would clobber it and ship an
+  // app that can't start, so check before writing anything.
+  validate_launcher_name(&app_name, "app name")?;
   let dylib_filename = parts.file_name;
   let dest_dylib = app_dir.join(dylib_filename);
+  let launcher_path = app_dir.join(format!("{}.exe", app_name));
+  let staged_backend = app_dir.join(&laufey_binary_name);
+  reject_backend_file_collision(&dest_dylib, &app_name, "runtime library")?;
+  if launcher_path != staged_backend {
+    reject_backend_file_collision(&launcher_path, &app_name, "launcher")?;
+  }
   std::fs::copy(dylib_path, &dest_dylib)?;
 
   // Rename the LAUFEY backend binary to the app name (`<app>.exe`) so it sits
@@ -1528,9 +1539,6 @@ async fn package_windows_app_dir(
   // default MSI target `C:\Program Files\`): laufey resolves the co-located
   // runtime from its own module path rather than a `--runtime` string, avoiding
   // the historical `ERROR_MOD_NOT_FOUND` (126) failure on such paths.
-  validate_launcher_name(&app_name, "app name")?;
-  let launcher_path = app_dir.join(format!("{}.exe", app_name));
-  let staged_backend = app_dir.join(&laufey_binary_name);
   if staged_backend != launcher_path {
     std::fs::rename(&staged_backend, &launcher_path)?;
   }
@@ -1643,21 +1651,23 @@ async fn package_linux_app_dir(
   let runtime_name = linux_colocated_runtime_name(&app_name);
   let dest_dylib = app_dir.join(&runtime_name);
   let launcher_path = app_dir.join(&app_name);
-  // The app dir already holds the backend's own libraries (libcef.so and
-  // friends), and the launcher lands on `<app>` in a moment. An app name whose
-  // runtime library resolves onto either would clobber it and ship an app that
-  // can't start, so refuse instead of writing it.
-  if dest_dylib.exists() || dest_dylib == launcher_path {
+  let staged_backend = app_dir.join(&laufey_binary_name);
+  // Both names are derived from the app name, so either can land on a file the
+  // backend shipped — or, for an app name like `foo.so`, on each other.
+  reject_backend_file_collision(&dest_dylib, &app_name, "runtime library")?;
+  if dest_dylib == launcher_path {
     bail!(
       "app name {app_name:?} resolves its runtime library to {runtime_name}, \
-       which is already part of the app. Choose a different --output name.",
+       which is the launcher itself. Choose a different --output name.",
     );
+  }
+  if launcher_path != staged_backend {
+    reject_backend_file_collision(&launcher_path, &app_name, "launcher")?;
   }
   std::fs::copy(dylib_path, &dest_dylib)?;
 
   // Rename the LAUFEY backend binary to the app name so `<app>` is the launcher
   // the user runs directly — no `--runtime` argument and no shell wrapper.
-  let staged_backend = app_dir.join(&laufey_binary_name);
   if staged_backend != launcher_path {
     std::fs::rename(&staged_backend, &launcher_path)?;
   }
@@ -2892,6 +2902,29 @@ fn linux_colocated_runtime_name(app_name: &str) -> String {
     _ => app_name,
   };
   format!("{base}.so")
+}
+
+/// Refuse an app-derived file name that lands on a file the backend shipped.
+///
+/// The app dir starts life as a copy of the LAUFEY backend directory, so it
+/// already holds the backend's own files — `libcef.so` and friends on Linux,
+/// `libcef.dll` / `d3dcompiler_47.dll` / the helper executables on Windows.
+/// Both the runtime library and the launcher are named after the app, so an app
+/// name that resolves onto one of those would overwrite it (`fs::copy` and
+/// `fs::rename` both replace silently) and ship an app that can't start.
+fn reject_backend_file_collision(
+  path: &Path,
+  app_name: &str,
+  kind: &str,
+) -> Result<(), AnyError> {
+  if !path.exists() {
+    return Ok(());
+  }
+  let name = path.file_name().unwrap_or_default().to_string_lossy();
+  bail!(
+    "app name {app_name:?} resolves its {kind} to {name}, which is already \
+     part of the app. Choose a different --output name.",
+  );
 }
 
 /// The runtime dylib filename each macOS LAUFEY backend resolves when the
@@ -5680,6 +5713,51 @@ def456  other.zip
     // The launcher only treats a dot past position 0 as an extension, so a
     // dotfile name keeps its whole name.
     assert_eq!(linux_colocated_runtime_name(".hidden"), ".hidden.so");
+  }
+
+  // --- reject_backend_file_collision ---
+
+  #[test]
+  fn reject_backend_file_collision_allows_a_free_name() {
+    let tmp = tempfile::tempdir().unwrap();
+    reject_backend_file_collision(
+      &tmp.path().join("MyApp.so"),
+      "MyApp",
+      "runtime library",
+    )
+    .unwrap();
+  }
+
+  #[test]
+  fn reject_backend_file_collision_rejects_a_backend_file() {
+    // `deno desktop --output libcef` on Linux, or `--output d3dcompiler_47` on
+    // Windows: the copy would replace a file CEF ships and the app would no
+    // longer start, with nothing in the build output to say why.
+    let tmp = tempfile::tempdir().unwrap();
+    for backend_file in ["libcef.so", "d3dcompiler_47.dll"] {
+      let path = tmp.path().join(backend_file);
+      std::fs::write(&path, b"backend").unwrap();
+      let err =
+        reject_backend_file_collision(&path, "libcef", "runtime library")
+          .unwrap_err()
+          .to_string();
+      assert!(err.contains(backend_file), "{err}");
+      assert!(err.contains("already"), "{err}");
+      // The guard must not have touched the file it refused.
+      assert_eq!(std::fs::read(&path).unwrap(), b"backend");
+    }
+  }
+
+  #[test]
+  fn reject_backend_file_collision_reports_the_kind() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("chrome-sandbox");
+    std::fs::write(&path, b"backend").unwrap();
+    let err =
+      reject_backend_file_collision(&path, "chrome-sandbox", "launcher")
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("launcher"), "{err}");
   }
 
   // --- appimage_runtime_for_target ---
