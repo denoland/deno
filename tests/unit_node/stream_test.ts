@@ -197,6 +197,7 @@ Deno.test("Readable toWeb applies backpressure", async () => {
       },
     });
 
+    // @ts-ignore `@types/node` types this parameter as `{ strategy }` only.
     const stream = Readable.toWeb(readable, options) as ReadableStream<
       Uint8Array
     >;
