@@ -5291,6 +5291,10 @@ jobs:
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
         run: cargo build --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
+      - name: Check QuickJS backend (deno + denort)
+        env:
+          CARGO_PROFILE_DEV_DEBUG: 0
+        run: cargo check --locked -p deno -p denort --no-default-features --features quickjs
       - name: Check deno binary
         env:
           NO_COLOR: 1

@@ -1074,6 +1074,20 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 `cargo build --locked ${packagesToBuild} ${binsToBuild} --features=deno/panic-trace`,
               env: { CARGO_PROFILE_DEV_DEBUG: 0 },
             },
+            {
+              // The rest of CI only exercises the default v8 backend. Make sure the
+              // experimental QuickJS backend (the deno_v8 facade over the v8x crate)
+              // keeps compiling for the deno + denort binaries so `deno compile`
+              // and the desktop runtime don't silently regress (notably the
+              // mutually-exclusive v8/quickjs feature guard). A `check` is enough to
+              // catch feature/build-script breakage and does not clobber the v8
+              // binary this job produces.
+              name: "Check QuickJS backend (deno + denort)",
+              if: isLinux.and(buildItem.arch.equals("x86_64")).and(isDebug),
+              run:
+                `cargo check --locked -p deno -p denort --no-default-features --features quickjs`,
+              env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+            },
             cargoBuildReleaseStep,
             {
               // Run a minimal check to ensure that binary is not corrupted, regardless
