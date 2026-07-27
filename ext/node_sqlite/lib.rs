@@ -122,7 +122,7 @@ pub enum SqliteError {
   #[property("code" = self.code())]
   InvalidCallback(&'static str),
   #[class(type)]
-  #[error("FromUtf8Error: {0}")]
+  #[error("String contains a null byte: {0}")]
   #[property("code" = self.code())]
   FromNullError(#[from] std::ffi::NulError),
   #[class(type)]
@@ -141,6 +141,12 @@ pub enum SqliteError {
   #[error("cannot close database while a user-defined callback is running")]
   #[property("code" = self.code())]
   ActiveCallback,
+  #[class(generic)]
+  #[error(
+    "Cannot raise the \"attach\" limit: ATTACH DATABASE is disabled without full permissions for the database path."
+  )]
+  #[property("code" = self.code())]
+  AttachLimitDenied,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -153,6 +159,7 @@ enum ErrorCode {
   ERR_LOAD_SQLITE_EXTENSION,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
+  ERR_ACCESS_DENIED,
 }
 
 impl std::fmt::Display for ErrorCode {
@@ -171,6 +178,7 @@ impl ErrorCode {
       Self::ERR_INVALID_STATE => "ERR_INVALID_STATE",
       Self::ERR_OUT_OF_RANGE => "ERR_OUT_OF_RANGE",
       Self::ERR_LOAD_SQLITE_EXTENSION => "ERR_LOAD_SQLITE_EXTENSION",
+      Self::ERR_ACCESS_DENIED => "ERR_ACCESS_DENIED",
     }
   }
 }
@@ -193,7 +201,9 @@ impl SqliteError {
     match self {
       Self::InvalidConstructor => ErrorCode::ERR_ILLEGAL_CONSTRUCTOR,
       Self::InvalidBindType(_) => ErrorCode::ERR_INVALID_ARG_TYPE,
-      Self::InvalidBindValue(_) => ErrorCode::ERR_INVALID_ARG_VALUE,
+      Self::InvalidBindValue(_) | Self::FromNullError(_) => {
+        ErrorCode::ERR_INVALID_ARG_VALUE
+      }
       Self::FailedBind(_)
       | Self::UnknownNamedParameter(_)
       | Self::DuplicateNamedParameter(..)
@@ -204,6 +214,7 @@ impl SqliteError {
       | Self::ActiveCallback => ErrorCode::ERR_INVALID_STATE,
       Self::NumberTooLarge(_) => ErrorCode::ERR_OUT_OF_RANGE,
       Self::LoadExensionFailed(_) => ErrorCode::ERR_LOAD_SQLITE_EXTENSION,
+      Self::AttachLimitDenied => ErrorCode::ERR_ACCESS_DENIED,
       _ => ErrorCode::ERR_SQLITE_ERROR,
     }
   }

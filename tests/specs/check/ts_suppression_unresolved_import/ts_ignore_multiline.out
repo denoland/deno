@@ -1,0 +1,6 @@
+TS2307 [ERROR]: Cannot find module 'missing-package' or its corresponding type declarations.
+} from "missing-package";
+       ~~~~~~~~~~~~~~~~~
+    at file:///[WILDLINE]/ts_ignore_multiline.ts:5:8
+
+error: Type checking failed.

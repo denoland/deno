@@ -236,6 +236,7 @@ impl Operation {
         ("AES-CBC", Some("AesDerivedKeyParams")),
         ("AES-CTR", Some("AesDerivedKeyParams")),
         ("AES-GCM", Some("AesDerivedKeyParams")),
+        ("AES-OCB", Some("AesDerivedKeyParams")),
         ("AES-KW", Some("AesDerivedKeyParams")),
         ("HMAC", Some("HmacImportParams")),
         ("KMAC128", Some("KmacImportParams")),

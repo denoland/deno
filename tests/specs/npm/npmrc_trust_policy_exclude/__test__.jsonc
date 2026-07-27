@@ -1,0 +1,12 @@
+{
+  "tempDir": true,
+  "tests": {
+    // `@denotest/trust-downgrade` is listed in `trust-policy-exclude[]`, so the
+    // `no-downgrade` policy is skipped for it and the otherwise-rejected 1.1.0
+    // downgrade installs normally.
+    "excluded_package_allowed": {
+      "args": "install npm:@denotest/trust-downgrade@1.1.0",
+      "output": "allowed.out"
+    }
+  }
+}

@@ -250,6 +250,7 @@ async fn create_graph(
       packages: std::slice::from_ref(package),
       build_fast_check_graph: !pack_flags.allow_slow_types,
       validate_graph: true,
+      skip_unanalyzable_exports: false,
     })
     .await?;
   warn_for_slow_type_diagnostics(&graph, package, pack_flags)?;

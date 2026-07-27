@@ -18,9 +18,12 @@ import https from "node:https";
 import zlib from "node:zlib";
 import net, { type AddressInfo, Socket } from "node:net";
 import fs from "node:fs";
+import process from "node:process";
 import type { Duplex } from "node:stream";
 import { text } from "node:stream/consumers";
 import { channel } from "node:diagnostics_channel";
+import * as v8 from "node:v8";
+import { runInNewContext } from "node:vm";
 
 import { assert, assertEquals, assertStringIncludes, fail } from "@std/assert";
 import { assertSpyCalls, spy } from "@std/testing/mock";
@@ -36,6 +39,35 @@ import { execCode } from "../unit/test_util.ts";
 // tests reusing the same port (e.g. 4505) don't fail with EADDRINUSE.
 Deno.test.beforeEach(() => {
   http.globalAgent.destroy();
+});
+
+Deno.test("[node/http] HTTPParser.consume keeps stream handle alive", async () => {
+  v8.setFlagsFromString("--expose_gc");
+  const gc = runInNewContext("gc") as () => void;
+
+  // @ts-ignore: untyped internal binding for direct lifecycle coverage.
+  const { HTTPParser } = process.binding("http_parser");
+  // @ts-ignore: untyped internal binding for direct lifecycle coverage.
+  const { TCP } = process.binding("tcp_wrap");
+
+  const parser = new HTTPParser();
+  parser.initialize(HTTPParser.REQUEST, {});
+
+  let weak: WeakRef<object> | undefined;
+  {
+    const tcp = new TCP(0);
+    weak = new WeakRef(tcp);
+    parser.consume(tcp);
+    tcp.close();
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  for (let i = 0; i < 5; i++) {
+    gc();
+  }
+
+  assert(weak?.deref() !== undefined);
+  parser.unconsume();
 });
 
 Deno.test("[node/http listen]", async () => {
@@ -327,6 +359,34 @@ Deno.test("[node/http] multiple set-cookie headers", async () => {
 
     await res.body!.cancel();
 
+    server.close(() => resolve());
+  });
+
+  await promise;
+});
+
+Deno.test("[node/http] ServerResponse.setHeaders preserves Headers set-cookie entries", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  const server = http.createServer((_req, res) => {
+    res.setHeaders(
+      new Headers([
+        ["Set-Cookie", "foo=bar"],
+        ["Set-Cookie", "bar=foo"],
+      ]),
+    );
+    res.end();
+  });
+
+  server.listen(async () => {
+    const res = await fetch(
+      // deno-lint-ignore no-explicit-any
+      `http://127.0.0.1:${(server.address() as any).port}/`,
+    );
+    assert(res.ok);
+    assertEquals(res.headers.getSetCookie(), ["foo=bar", "bar=foo"]);
+
+    await res.body!.cancel();
     server.close(() => resolve());
   });
 

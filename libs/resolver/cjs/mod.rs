@@ -6,6 +6,7 @@ use node_resolver::InNpmPackageChecker;
 use node_resolver::PackageJsonResolverRc;
 use node_resolver::ResolutionMode;
 use node_resolver::errors::PackageJsonLoadError;
+use rustc_hash::FxHashSet;
 use sys_traits::FsMetadata;
 use sys_traits::FsRead;
 use url::Url;
@@ -28,7 +29,7 @@ pub struct CjsTracker<
 > {
   is_cjs_resolver: IsCjsResolver<TInNpmPackageChecker, TSys>,
   known: MaybeDashMap<Url, ResolutionMode>,
-  require_modules: Vec<Url>,
+  require_modules: FxHashSet<Url>,
 }
 
 impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
@@ -47,7 +48,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
         mode,
       ),
       known: Default::default(),
-      require_modules,
+      require_modules: require_modules.into_iter().collect(),
     }
   }
 

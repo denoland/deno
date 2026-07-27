@@ -60,6 +60,42 @@ Deno.test("correct DataCloneError message", () => {
   structuredClone(ab2, { transfer: [ab2] });
 });
 
+Deno.test("structuredClone URL throws DataCloneError", () => {
+  // URL is not [Serializable] per the WHATWG/HTML spec, so cloning it must
+  // throw a DataCloneError rather than silently producing an empty object.
+  assertThrows(
+    () => structuredClone(new URL("https://example.com/")),
+    DOMException,
+    "Cannot clone object of unsupported type.",
+  );
+  assertThrows(
+    () => structuredClone(new URLSearchParams("a=1&b=2")),
+    DOMException,
+    "Cannot clone object of unsupported type.",
+  );
+});
+
+Deno.test("postMessage URL throws DataCloneError", () => {
+  // Posting a non-serializable value must take the same path as
+  // structuredClone and throw, instead of silently delivering `{}`.
+  const { port1, port2 } = new MessageChannel();
+  try {
+    assertThrows(
+      () => port2.postMessage(new URL("https://example.org/")),
+      DOMException,
+      "Cannot clone object of unsupported type.",
+    );
+    assertThrows(
+      () => port2.postMessage(new URLSearchParams("a=1")),
+      DOMException,
+      "Cannot clone object of unsupported type.",
+    );
+  } finally {
+    port1.close();
+    port2.close();
+  }
+});
+
 Deno.test("structuredClone CryptoKey", async () => {
   // AES key
   const aesKey = await crypto.subtle.generateKey(

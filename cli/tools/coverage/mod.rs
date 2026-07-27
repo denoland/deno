@@ -25,6 +25,7 @@ use regex::Regex;
 use reporter::CoverageReporter;
 use text_lines::TextLines;
 
+use self::ignore_directives::CoverageComment;
 use self::ignore_directives::has_file_ignore_directive;
 use self::ignore_directives::lex_comments;
 use self::ignore_directives::parse_next_ignore_directives;
@@ -81,6 +82,45 @@ struct GenerateCoverageReportOptions<'a> {
   script_runtime_source: String,
   maybe_source_map: &'a Option<Vec<u8>>,
   output: &'a Option<PathBuf>,
+}
+
+/// The byte offset of the end of the code on the line
+/// `line_start_byte_offset..line_end_byte_offset`, with a trailing comment and
+/// the whitespace before it removed. A comment does not execute, so it must not
+/// decide whether a zero-count range reaches the line's end edge when line hit
+/// counts are projected from V8's block ranges. Without this, the same statement
+/// is credited to its un-taken branch (0 hits) when nothing follows it and to
+/// the covered trailing comment (1 hit) when one does. A line with no trailing
+/// comment keeps its raw end, so its attribution is unchanged.
+fn line_content_end_byte_offset(
+  source: &str,
+  line_start_byte_offset: usize,
+  line_end_byte_offset: usize,
+  comments: &[CoverageComment],
+) -> usize {
+  let mut end = line_end_byte_offset;
+  let mut stripped_comment = false;
+  loop {
+    let trimmed_end = line_start_byte_offset
+      + source[line_start_byte_offset..end].trim_end().len();
+    let trailing_comment = comments.iter().find(|comment| {
+      comment.range.start >= line_start_byte_offset
+        && comment.range.start < trimmed_end
+        && comment.range.end >= trimmed_end
+    });
+    match trailing_comment {
+      Some(comment) => {
+        stripped_comment = true;
+        end = comment.range.start;
+      }
+      None => {
+        if stripped_comment {
+          end = trimmed_end;
+        }
+        return end;
+      }
+    }
+  }
 }
 
 fn generate_coverage_report(
@@ -209,6 +249,20 @@ fn generate_coverage_report(
       Vec<(usize, &cdp::CoverageRange)>,
     > = std::collections::BTreeMap::new();
     for (idx, range) in function.ranges[1..].iter().enumerate() {
+      // Skip whitespace-only "gap" ranges V8 emits between blocks (e.g. the
+      // sliver between a catch's `return` and `finally`). They aren't real
+      // branch arms, so counting them yields phantom branches (#35765).
+      let start_byte_offset =
+        runtime_text_lines.byte_index_from_char_index(range.start_char_offset);
+      let end_byte_offset =
+        runtime_text_lines.byte_index_from_char_index(range.end_char_offset);
+      if options.script_runtime_source[start_byte_offset..end_byte_offset]
+        .trim()
+        .is_empty()
+      {
+        continue;
+      }
+
       // Same rationale as above: drop sub-ranges with no source mapping —
       // they belong to transformer-injected helper code, not the user's
       // source.
@@ -317,6 +371,17 @@ fn generate_coverage_report(
       runtime_text_lines.char_index(line_start_byte_offset);
     let line_end_char_offset =
       runtime_text_lines.char_index(line_end_byte_offset);
+    // The line's end edge for the reset pass below is the end of its code,
+    // excluding a trailing comment so a comment cannot change what the line is
+    // credited with.
+    let content_end_byte_offset = line_content_end_byte_offset(
+      &options.script_runtime_source,
+      line_start_byte_offset,
+      line_end_byte_offset,
+      &runtime_comments.comments,
+    );
+    let line_content_end_char_offset =
+      runtime_text_lines.char_index(content_end_byte_offset);
     let ignore = runtime_comments.comments.iter().any(|comment| {
       comment.range.start <= line_start_byte_offset
         && comment.range.end >= line_end_byte_offset
@@ -348,24 +413,56 @@ fn generate_coverage_report(
         }
       }
 
-      // Reset the count if a zero-count range overlaps the line and reaches
-      // at least one edge (start or end) of the line. A zero-count range
-      // floating in the middle of a line (not reaching either edge) is
-      // typically just a tiny gap between blocks (e.g. the unreachable path
-      // between catch's return and finally) and should not zero out the line.
-      for function in &options.script_coverage.functions {
-        for range in &function.ranges {
-          if range.count > 0 {
-            continue;
-          }
+      // Reset the count when a zero-count range genuinely covers this line's
+      // code, judged three ways below. Merely reaching one edge is not enough:
+      // where a covered arm and a zero-count sibling arm meet on one line, the
+      // covered side is real code that ran and must not be hidden. That is the
+      // case at a branch junction such as `} else {`, `} catch {`, or
+      // `} finally {`: when only one arm ran, the other arm's zero-count range
+      // clips the opposite edge, and zeroing the whole line on that single edge
+      // is what otherwise makes the junction count as covered only when both
+      // arms run in the same coverage process. Splitting the two arms across
+      // separate test files then drops the junction from the merged line
+      // coverage. A zero-count range floating in the middle of a line (matching
+      // none of the tests) is a V8 block-boundary gap, e.g. the unreachable path
+      // between a catch's return and finally, and is ignored.
+      for (range_index, range) in options
+        .script_coverage
+        .functions
+        .iter()
+        .flat_map(|function| function.ranges.iter().enumerate())
+      {
+        if range.count > 0 {
+          continue;
+        }
 
-          let overlaps = range.start_char_offset < line_end_char_offset
-            && range.end_char_offset > line_start_char_offset;
-          let reaches_edge = range.start_char_offset <= line_start_char_offset
-            || range.end_char_offset >= line_end_char_offset;
-          if overlaps && reaches_edge {
-            count = 0;
-          }
+        let overlaps = range.start_char_offset < line_end_char_offset
+          && range.end_char_offset > line_start_char_offset;
+        if !overlaps {
+          continue;
+        }
+
+        // The line sits entirely inside the uncovered range: a fully uncovered
+        // line, or one in the middle of a multi-line uncovered block.
+        let spans_content = range.start_char_offset <= line_start_char_offset
+          && range.end_char_offset >= line_content_end_char_offset;
+        // An uncovered statement confined to this line that runs to the end of
+        // its code, e.g. the never-taken `throw` in `if (!x) throw …`. A
+        // multi-line block whose brace only clips a junction extends past the
+        // line end and is excluded here, so the covered half survives.
+        let inline_uncovered = range.start_char_offset
+          >= line_start_char_offset
+          && range.end_char_offset <= line_end_char_offset
+          && range.end_char_offset >= line_content_end_char_offset;
+        // A never-called function is a single count-0 range (ranges[0]) covering
+        // the whole function. Its signature line stays uncovered like its body,
+        // even though the range starts a few characters into that line, after an
+        // `export`/`async` keyword, which the span test above would miss.
+        let whole_function = range_index == 0
+          && (range.start_char_offset <= line_start_char_offset
+            || range.end_char_offset >= line_content_end_char_offset);
+        if spans_content || inline_uncovered || whole_function {
+          count = 0;
         }
       }
     }
@@ -886,3 +983,64 @@ impl std::fmt::Display for CoverageThresholdError {
 }
 
 impl std::error::Error for CoverageThresholdError {}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  /// The source substring credited as code on `line_index`: the line with any
+  /// trailing comment and the whitespace before it removed from its end.
+  /// Exercises `line_content_end_byte_offset` with real lexer comment ranges.
+  fn code_on_line(source: &str, line_index: usize) -> &str {
+    let comments = lex_comments(source, MediaType::JavaScript).comments;
+    let text_lines = TextLines::new(source);
+    let (start, end) = text_lines.line_range(line_index);
+    let content_end =
+      line_content_end_byte_offset(source, start, end, &comments);
+    &source[start..content_end]
+  }
+
+  #[test]
+  fn no_trailing_comment_keeps_whole_line() {
+    assert_eq!(
+      code_on_line("if (!x) throw new Error(\"e\");", 0),
+      "if (!x) throw new Error(\"e\");",
+    );
+  }
+
+  #[test]
+  fn strips_trailing_line_comment() {
+    assert_eq!(
+      code_on_line("if (!x) throw new Error(\"e\"); // never taken", 0),
+      "if (!x) throw new Error(\"e\");",
+    );
+  }
+
+  #[test]
+  fn strips_trailing_block_comment() {
+    assert_eq!(code_on_line("foo(); /* done */", 0), "foo();");
+  }
+
+  #[test]
+  fn strips_multiple_stacked_trailing_comments() {
+    assert_eq!(code_on_line("foo(); /* a */ // b", 0), "foo();");
+  }
+
+  #[test]
+  fn keeps_interior_comment_when_code_follows() {
+    assert_eq!(
+      code_on_line("foo(/* inline */ x);", 0),
+      "foo(/* inline */ x);"
+    );
+  }
+
+  #[test]
+  fn keeps_leading_indentation() {
+    assert_eq!(code_on_line("  return 1; // done", 0), "  return 1;");
+  }
+
+  #[test]
+  fn comment_only_line_has_no_code() {
+    assert_eq!(code_on_line("  // just a comment", 0), "");
+  }
+}

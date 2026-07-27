@@ -5,6 +5,7 @@ use std::ptr;
 use std::ptr::addr_of_mut;
 use std::ptr::null_mut;
 use std::time::Duration;
+use std::time::Instant;
 
 use libuv_sys_lite::uv_async_init;
 use libuv_sys_lite::uv_async_t;
@@ -275,6 +276,80 @@ extern "C" fn test_uv_async_ref(
   ptr::null_mut()
 }
 
+struct CloseAfterSendAsync {
+  env: napi_env,
+  callback: napi_ref,
+}
+
+unsafe extern "C" fn close_after_send_async_cb(_handle: *mut uv_async_t) {
+  // This callback must not run once uv_close has marked the handle closing.
+  // If it does, the queued callback retained and dereferenced a stale
+  // addon-owned uv_async_t after the close callback was allowed to free it.
+  std::process::abort();
+}
+
+unsafe extern "C" fn close_after_send_close_cb(handle: *mut uv_handle_t) {
+  unsafe {
+    let handle = handle.cast::<uv_async_t>();
+    let async_ = (*handle).data as *mut CloseAfterSendAsync;
+    let env = (*async_).env;
+    let mut js_cb = null_mut();
+    assert_napi_ok!(napi_get_reference_value(
+      env,
+      (*async_).callback,
+      &mut js_cb
+    ));
+    let mut global: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_get_global(env, &mut global));
+
+    let mut result: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_call_function(
+      env,
+      global,
+      js_cb,
+      0,
+      ptr::null(),
+      &mut result,
+    ));
+    assert_napi_ok!(napi_delete_reference(env, (*async_).callback));
+    let _ = Box::from_raw(async_);
+    let _ = Box::from_raw(handle);
+  }
+}
+
+#[allow(unused_unsafe, reason = "napi_sys safe fn in unsafe extern blocks")]
+extern "C" fn test_uv_async_close_after_send(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 1);
+  assert_eq!(argc, 1);
+
+  let mut loop_ = null_mut();
+  assert_napi_ok!(napi_get_uv_event_loop(env, &mut loop_));
+  let uv_async = new_raw(MaybeUninit::<uv_async_t>::uninit());
+  let uv_async = uv_async.cast::<uv_async_t>();
+  let mut js_cb = null_mut();
+  assert_napi_ok!(napi_create_reference(env, args[0], 1, &mut js_cb));
+
+  let data = new_raw(CloseAfterSendAsync {
+    env,
+    callback: js_cb,
+  });
+  unsafe {
+    addr_of_mut!((*uv_async).data).write(data.cast());
+    assert_napi_ok!(uv_async_init(
+      loop_.cast(),
+      uv_async,
+      Some(close_after_send_async_cb),
+    ));
+    assert_napi_ok!(libuv_sys_lite::uv_async_send(uv_async));
+    uv_close(uv_async.cast(), Some(close_after_send_close_cb));
+  }
+
+  ptr::null_mut()
+}
+
 // Smoke test for the new uv polyfills (uv_hrtime, uv_timer_*, uv_cpu_info,
 // uv_handle_*, uv_default_loop, uv_is_active/closing, uv_ref/unref). The
 // goal is to verify that the symbols are exported from the host binary and
@@ -290,6 +365,7 @@ extern "C" fn test_uv_polyfills(
 ) -> napi_value {
   use std::ffi::c_int;
   use std::mem::MaybeUninit;
+  use std::mem::size_of;
   use std::ptr;
   use std::ptr::addr_of_mut;
 
@@ -300,11 +376,14 @@ extern "C" fn test_uv_polyfills(
   use libuv_sys_lite::uv_free_cpu_info;
   use libuv_sys_lite::uv_handle_get_data;
   use libuv_sys_lite::uv_handle_set_data;
+  use libuv_sys_lite::uv_handle_size;
   use libuv_sys_lite::uv_handle_t;
+  use libuv_sys_lite::uv_handle_type;
   use libuv_sys_lite::uv_hrtime;
   use libuv_sys_lite::uv_is_active;
   use libuv_sys_lite::uv_is_closing;
   use libuv_sys_lite::uv_ref;
+  use libuv_sys_lite::uv_strerror;
   use libuv_sys_lite::uv_timer_init;
   use libuv_sys_lite::uv_timer_set_repeat;
   use libuv_sys_lite::uv_timer_start;
@@ -366,6 +445,21 @@ extern "C" fn test_uv_polyfills(
     // polyfill's uv_close should detect UV_TIMER and skip a null callback.
     uv_close(handle, None);
 
+    assert_eq!(
+      uv_handle_size(uv_handle_type::UV_POLL),
+      size_of::<libuv_sys_lite::uv_poll_t>()
+    );
+    assert_eq!(
+      uv_handle_size(uv_handle_type::UV_UNKNOWN_HANDLE),
+      usize::MAX
+    );
+
+    assert_eq!(std::ffi::CStr::from_ptr(uv_strerror(-4095)), c"end of file");
+    assert_eq!(
+      std::ffi::CStr::from_ptr(uv_strerror(0)),
+      c"Unknown system error"
+    );
+
     // Force the address of every export we care about so that link-time
     // resolution is exercised even if all earlier asserts were optimized
     // away.
@@ -385,6 +479,8 @@ extern "C" fn test_uv_polyfills(
       uv_is_active as *const () as usize,
       uv_is_closing as *const () as usize,
       uv_close as *const () as usize,
+      uv_handle_size as *const () as usize,
+      uv_strerror as *const () as usize,
     );
 
     // Touch addr_of_mut to silence unused import warnings on platforms
@@ -715,14 +811,238 @@ extern "C" fn test_uv_threads(
   undefined
 }
 
+// Exercises the libuv condition-variable polyfills (uv_cond_*) added to the
+// host binary in ext/napi/uv.rs, resolved from the host `deno` process at
+// runtime like the other uv_* symbols here. The main thread waits on a
+// condition variable until a worker sets a predicate (guarded by the mutex)
+// and signals it; uv_cond_timedwait is then checked to report UV_ETIMEDOUT
+// when nobody signals.
+struct CondArg {
+  mutex: *mut libuv_sys_lite::uv_mutex_t,
+  cond: *mut libuv_sys_lite::uv_cond_t,
+  ready: *mut bool,
+}
+
+unsafe extern "C" fn uv_cond_entry(arg: *mut std::ffi::c_void) {
+  unsafe {
+    let a = arg as *mut CondArg;
+    libuv_sys_lite::uv_mutex_lock((*a).mutex);
+    *(*a).ready = true;
+    libuv_sys_lite::uv_cond_signal((*a).cond);
+    libuv_sys_lite::uv_mutex_unlock((*a).mutex);
+  }
+}
+
+extern "C" fn test_uv_cond(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  use libuv_sys_lite::uv_cond_destroy;
+  use libuv_sys_lite::uv_cond_init;
+  use libuv_sys_lite::uv_cond_t;
+  use libuv_sys_lite::uv_cond_timedwait;
+  use libuv_sys_lite::uv_cond_wait;
+  use libuv_sys_lite::uv_mutex_destroy;
+  use libuv_sys_lite::uv_mutex_init;
+  use libuv_sys_lite::uv_mutex_lock;
+  use libuv_sys_lite::uv_mutex_t;
+  use libuv_sys_lite::uv_mutex_unlock;
+  use libuv_sys_lite::uv_thread_create;
+  use libuv_sys_lite::uv_thread_join;
+  use libuv_sys_lite::uv_thread_t;
+
+  unsafe {
+    let mut mutex = MaybeUninit::<uv_mutex_t>::zeroed();
+    let mutex_ptr = mutex.as_mut_ptr();
+    assert_eq!(uv_mutex_init(mutex_ptr), 0);
+    let mut cond = MaybeUninit::<uv_cond_t>::zeroed();
+    let cond_ptr = cond.as_mut_ptr();
+    assert_eq!(uv_cond_init(cond_ptr), 0);
+
+    let mut ready = false;
+    let mut arg = CondArg {
+      mutex: mutex_ptr,
+      cond: cond_ptr,
+      ready: &mut ready,
+    };
+    let arg_ptr: *mut CondArg = &mut arg;
+
+    // Hold the mutex, then spawn the worker — it blocks on the mutex until
+    // uv_cond_wait below releases it.
+    uv_mutex_lock(mutex_ptr);
+    let mut tid = MaybeUninit::<uv_thread_t>::zeroed();
+    let tid_ptr = tid.as_mut_ptr();
+    assert_eq!(
+      uv_thread_create(tid_ptr, Some(uv_cond_entry), arg_ptr.cast()),
+      0
+    );
+    while !ready {
+      uv_cond_wait(cond_ptr, mutex_ptr);
+    }
+    uv_mutex_unlock(mutex_ptr);
+    assert_eq!(uv_thread_join(tid_ptr), 0);
+    assert!(ready);
+
+    // With nobody signaling, uv_cond_timedwait must report the platform's
+    // UV_ETIMEDOUT (the value the addon itself is compiled against), not just a
+    // non-zero code. Loop to tolerate spurious (rc == 0) wakeups.
+    let uv_etimedout = libuv_sys_lite::uv_errno_t::UV_ETIMEDOUT.0;
+    let start = Instant::now();
+    let rc = loop {
+      uv_mutex_lock(mutex_ptr);
+      let rc = uv_cond_timedwait(cond_ptr, mutex_ptr, 5_000_000);
+      uv_mutex_unlock(mutex_ptr);
+      if rc != 0 {
+        break rc;
+      }
+      assert!(start.elapsed() < Duration::from_secs(5));
+    };
+    assert_eq!(rc, uv_etimedout);
+
+    uv_cond_destroy(cond_ptr);
+    uv_mutex_destroy(mutex_ptr);
+  }
+
+  let mut undefined: napi_value = ptr::null_mut();
+  unsafe {
+    assert_napi_ok!(napi_get_undefined(env, &mut undefined));
+  }
+  undefined
+}
+
+// Exercises uv_cond_broadcast against multiple parked waiters (the
+// single-waiter/uv_cond_signal path is covered by test_uv_cond above). Several
+// worker threads each block in uv_cond_wait on the same condition variable;
+// once all of them are parked the main thread flips the predicate and wakes
+// every one of them with a single uv_cond_broadcast.
+struct BroadcastArg {
+  mutex: *mut libuv_sys_lite::uv_mutex_t,
+  cond: *mut libuv_sys_lite::uv_cond_t,
+  go: *mut bool,
+  waiting: *mut i32,
+  woken: *mut i32,
+}
+
+unsafe extern "C" fn uv_cond_broadcast_entry(arg: *mut std::ffi::c_void) {
+  unsafe {
+    let a = arg as *mut BroadcastArg;
+    libuv_sys_lite::uv_mutex_lock((*a).mutex);
+    // Announce we're about to park, then wait for the predicate. The
+    // increment happens under the mutex, so once main observes `waiting == N`
+    // every worker has released the mutex inside uv_cond_wait and is parked.
+    *(*a).waiting += 1;
+    while !*(*a).go {
+      libuv_sys_lite::uv_cond_wait((*a).cond, (*a).mutex);
+    }
+    *(*a).woken += 1;
+    libuv_sys_lite::uv_mutex_unlock((*a).mutex);
+  }
+}
+
+extern "C" fn test_uv_cond_broadcast(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  use libuv_sys_lite::uv_cond_broadcast;
+  use libuv_sys_lite::uv_cond_destroy;
+  use libuv_sys_lite::uv_cond_init;
+  use libuv_sys_lite::uv_cond_t;
+  use libuv_sys_lite::uv_mutex_destroy;
+  use libuv_sys_lite::uv_mutex_init;
+  use libuv_sys_lite::uv_mutex_lock;
+  use libuv_sys_lite::uv_mutex_t;
+  use libuv_sys_lite::uv_mutex_unlock;
+  use libuv_sys_lite::uv_thread_create;
+  use libuv_sys_lite::uv_thread_join;
+  use libuv_sys_lite::uv_thread_t;
+
+  const N: i32 = 4;
+
+  unsafe {
+    let mut mutex = MaybeUninit::<uv_mutex_t>::zeroed();
+    let mutex_ptr = mutex.as_mut_ptr();
+    assert_eq!(uv_mutex_init(mutex_ptr), 0);
+    let mut cond = MaybeUninit::<uv_cond_t>::zeroed();
+    let cond_ptr = cond.as_mut_ptr();
+    assert_eq!(uv_cond_init(cond_ptr), 0);
+
+    let mut go = false;
+    let mut waiting = 0;
+    let mut woken = 0;
+    let mut arg = BroadcastArg {
+      mutex: mutex_ptr,
+      cond: cond_ptr,
+      go: &mut go,
+      waiting: &mut waiting,
+      woken: &mut woken,
+    };
+    let arg_ptr: *mut BroadcastArg = &mut arg;
+
+    let mut tids = [MaybeUninit::<uv_thread_t>::zeroed(); N as usize];
+    for tid in &mut tids {
+      assert_eq!(
+        uv_thread_create(
+          tid.as_mut_ptr(),
+          Some(uv_cond_broadcast_entry),
+          arg_ptr.cast(),
+        ),
+        0
+      );
+    }
+
+    // Wait until every worker is parked in uv_cond_wait before broadcasting, so
+    // the single broadcast below is what releases all of them.
+    let start = Instant::now();
+    loop {
+      uv_mutex_lock(mutex_ptr);
+      let parked = waiting;
+      uv_mutex_unlock(mutex_ptr);
+      if parked == N {
+        break;
+      }
+      assert!(start.elapsed() < Duration::from_secs(5));
+      std::thread::sleep(Duration::from_millis(1));
+    }
+
+    // One broadcast wakes all parked waiters. Set the predicate through the
+    // shared pointer (same memory as `go`) under the mutex, mirroring how the
+    // workers observe it.
+    uv_mutex_lock(mutex_ptr);
+    *arg.go = true;
+    uv_cond_broadcast(cond_ptr);
+    uv_mutex_unlock(mutex_ptr);
+
+    for tid in &mut tids {
+      assert_eq!(uv_thread_join(tid.as_mut_ptr()), 0);
+    }
+    assert_eq!(woken, N);
+
+    uv_cond_destroy(cond_ptr);
+    uv_mutex_destroy(mutex_ptr);
+  }
+
+  let mut undefined: napi_value = ptr::null_mut();
+  unsafe {
+    assert_napi_ok!(napi_get_undefined(env, &mut undefined));
+  }
+  undefined
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_uv_async", test_uv_async),
     napi_new_property!(env, "test_uv_async_ref", test_uv_async_ref),
+    napi_new_property!(
+      env,
+      "test_uv_async_close_after_send",
+      test_uv_async_close_after_send
+    ),
     napi_new_property!(env, "test_uv_polyfills", test_uv_polyfills),
     napi_new_property!(env, "test_uv_timer_fires", test_uv_timer_fires),
     napi_new_property!(env, "test_uv_loop_helpers", test_uv_loop_helpers),
     napi_new_property!(env, "test_uv_threads", test_uv_threads),
+    napi_new_property!(env, "test_uv_cond", test_uv_cond),
+    napi_new_property!(env, "test_uv_cond_broadcast", test_uv_cond_broadcast),
   ];
 
   assert_napi_ok!(napi_define_properties(

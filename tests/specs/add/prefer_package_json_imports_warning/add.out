@@ -1,0 +1,1 @@
+[WILDCARD]Warning "imports" and "scopes" in the config file are ignored for dependency management when "preferPackageJson" is enabled. Move these dependencies to package.json.[WILDCARD]Add npm:@denotest/esm-basic@1.0.0[WILDCARD]

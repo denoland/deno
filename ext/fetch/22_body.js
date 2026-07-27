@@ -45,6 +45,7 @@ const mimesniff = core.loadExtScript("ext:deno_web/01_mimesniff.js");
 const { BlobPrototype } = core.loadExtScript("ext:deno_web/09_file.js");
 const {
   createProxy,
+  createReadableStream,
   errorReadableStream,
   isReadableStreamDisturbed,
   readableStreamClose,
@@ -55,8 +56,19 @@ const {
   readableStreamThrowIfErrored,
 } = core.loadExtScript("ext:deno_web/06_streams.js");
 
+const noop = () => {};
+const noopAsync = async () => {};
+
 /** @type {WeakMap<ReadableStream<Uint8Array>, number>} */
 const staticBodyLength = new SafeWeakMap();
+
+// Maps a ReadableStream that was materialized from a static body (a string or
+// Uint8Array passed to `new Response(...)` / `new Request(...)`) back to that
+// original static body. This lets `extractBody` recover the static body when a
+// body stream is round-tripped through a new Response/Request without being
+// read, preserving the fast (Content-Length, single-write) response path.
+/** @type {WeakMap<ReadableStream<Uint8Array>, Uint8Array | string>} */
+const staticBodySource = new SafeWeakMap();
 
 /**
  * @param {Uint8Array | string} chunk
@@ -103,15 +115,31 @@ class InnerBody {
         readableStreamClose(this.streamOrStatic);
       } else {
         const length = this.length;
-        const stream = new ReadableStream({
-          start(controller) {
+        // Materialize the static body into a stream lazily. With a high water
+        // mark of 0 the body is only encoded/enqueued once the stream is
+        // actually read. The very common pattern of round-tripping a body
+        // through a new Response/Request just to mutate headers recovers the
+        // static body in `extractBody` (below) and never reads this stream, so
+        // the encode is skipped entirely. `createReadableStream` also avoids
+        // the webidl UnderlyingSource conversion `new ReadableStream({...})`
+        // performs.
+        // The cancel algorithm must return a promise (`readableStreamCancel`
+        // calls `.then` on it directly); the pull algorithm returns undefined,
+        // the synchronous completion sentinel understood by the controller's
+        // pull machinery (see `createReadableStream`).
+        const stream = createReadableStream(
+          noop,
+          (controller) => {
             controller.enqueue(chunkToU8(body));
             controller.close();
           },
-        });
+          noopAsync,
+          0,
+        );
         if (length !== null) {
           WeakMapPrototypeSet(staticBodyLength, stream, length);
         }
+        WeakMapPrototypeSet(staticBodySource, stream, body);
         this.streamOrStatic = stream;
       }
     }
@@ -478,16 +506,40 @@ function extractBody(object) {
     ObjectPrototypeIsPrototypeOf(URLSearchParamsPrototype, object)
   ) {
     // TODO(@satyarohith): not sure what primordial here.
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     source = object.toString();
     contentType = "application/x-www-form-urlencoded;charset=UTF-8";
   } else if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, object)) {
-    stream = object;
-    length = WeakMapPrototypeGet(staticBodyLength, object) ?? null;
     if (object.locked || isReadableStreamDisturbed(object)) {
       throw new TypeError("ReadableStream is locked or disturbed");
     }
-  } else if (object[webidl.AsyncIterable] === webidl.AsyncIterable) {
+    // Fast path: this stream was materialized from a static body and has not
+    // been read. A common framework pattern (e.g. Hono middleware) is to
+    // reconstruct a response via `new Response(oldResponse.body, oldResponse)`
+    // just to mutate headers. Without recovering the static body, the
+    // reconstructed body would be served through the streaming (chunked) path,
+    // losing Content-Length and the single-write fast response op. Recover the
+    // original static body so the fast path is preserved.
+    //
+    // Only recover when the resulting length matches the original body's
+    // known-length semantics: a string source's byte length is genuinely known
+    // (just deferred to avoid an eager encode), and a Uint8Array source is only
+    // known-length if `staticBodyLength` was recorded for it. Recovering a
+    // Uint8Array whose length was *unknown* (e.g. a chunked request body the
+    // server buffered) would wrongly synthesize a Content-Length when the body
+    // is later sent, so leave those as a stream.
+    const recoveredSource = WeakMapPrototypeGet(staticBodySource, object);
+    const knownLength = WeakMapPrototypeGet(staticBodyLength, object);
+    if (
+      recoveredSource !== undefined &&
+      (typeof recoveredSource === "string" || knownLength !== undefined)
+    ) {
+      source = recoveredSource;
+    } else {
+      stream = object;
+      length = knownLength ?? null;
+    }
+  } else if (object[webidl.AsyncSequence] === webidl.AsyncSequence) {
     // If the underlying body is a Node `Readable` running in binary mode
     // (e.g. `http.IncomingMessage`), build a byte `ReadableStream` so that
     // consumers can acquire a BYOB reader. This matches undici's behavior in
@@ -504,7 +556,7 @@ function extractBody(object) {
       stream = new ReadableStream({
         type: "bytes",
         async pull(controller) {
-          // deno-lint-ignore prefer-primordials
+          // deno-lint-ignore deno-internal/prefer-primordials
           const res = await iter.next();
           if (res.done) {
             controller.close();
@@ -514,7 +566,7 @@ function extractBody(object) {
         },
         async cancel(reason) {
           if (iter.return !== undefined) {
-            // deno-lint-ignore prefer-primordials
+            // deno-lint-ignore deno-internal/prefer-primordials
             await iter.return(reason);
           }
         },
@@ -539,8 +591,8 @@ function extractBody(object) {
   return { body, contentType };
 }
 
-webidl.converters["async iterable<Uint8Array>"] = webidl
-  .createAsyncIterableConverter(webidl.converters.Uint8Array);
+webidl.converters["async_sequence<Uint8Array>"] = webidl
+  .createAsyncSequenceConverter(webidl.converters.Uint8Array);
 
 webidl.converters["BodyInit_DOMString"] = (V, prefix, context, opts) => {
   // Fast path: a plain string is by far the most common shape for Response
@@ -565,8 +617,8 @@ webidl.converters["BodyInit_DOMString"] = (V, prefix, context, opts) => {
     if (ArrayBufferIsView(V)) {
       return webidl.converters["ArrayBufferView"](V, prefix, context, opts);
     }
-    if (webidl.isAsyncIterable(V) && !isStringObject(V)) {
-      return webidl.converters["async iterable<Uint8Array>"](
+    if (webidl.isAsyncSequence(V) && !isStringObject(V)) {
+      return webidl.converters["async_sequence<Uint8Array>"](
         V,
         prefix,
         context,

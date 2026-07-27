@@ -300,6 +300,7 @@ impl<
         let workspace_factory = self.workspace_factory();
         Ok(Arc::new(NpmResolutionInitializer::new(
           self.resolver_factory.npm_resolution().clone(),
+          workspace_factory.npmrc()?.clone(),
           workspace_factory.workspace_npm_link_packages()?.clone(),
           match (self.options.resolve_npm_resolution_snapshot)()? {
             Some(snapshot) => {
@@ -398,6 +399,11 @@ impl<
               lifecycle_scripts: self.lifecycle_scripts_config()?.clone(),
               system_info: self.resolver_factory.npm_system_info().clone(),
               workspace_link_packages: workspace_npm_link_packages.clone(),
+              jsr_deps_in_node_modules: workspace_factory
+                .workspace_directory()?
+                .workspace
+                .jsr_deps_in_node_modules()
+                .unwrap_or(false),
             },
           )))
         }

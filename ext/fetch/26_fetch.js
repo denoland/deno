@@ -6,7 +6,7 @@ const {
   op_fetch,
   op_fetch_promise_is_settled,
   op_fetch_send,
-  op_wasm_streaming_feed,
+  op_pipe,
   op_wasm_streaming_set_url,
 } = core.ops;
 const {
@@ -38,8 +38,13 @@ const {
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const { byteLowerCase } = core.loadExtScript("ext:deno_web/00_infra.js");
 const {
+  acquireReadableStreamDefaultReader,
   errorReadableStream,
   getReadableStreamResourceBacking,
+  getReadableStreamStoredError,
+  readableStreamClose,
+  readableStreamDisturb,
+  readableStreamError,
   readableStreamForRid,
   ReadableStreamPrototype,
   resourceForReadableStream,
@@ -584,8 +589,11 @@ async function mainFetch(req, recursive, terminator, inspectorCtx = null) {
         errorText: resp.error[0],
       });
     }
-    const { 0: message, 1: cause } = resp.error;
-    throw new TypeError(message, { cause: new Error(cause) });
+    // `resp.error` is `[detail, cause]`, where `detail` is the full reqwest
+    // message and `cause` is the underlying transport error detail. Mirror
+    // Node's shape: `TypeError: "fetch failed"` with the detail in `.cause`.
+    const cause = resp.error[1];
+    throw new TypeError("fetch failed", { cause: new Error(cause) });
   }
   if (terminator.aborted) {
     // op_fetch_send resolved successfully, so the FetchResponseResource is already in
@@ -1055,22 +1063,68 @@ function handleWasmStreaming(source, rid) {
 
     if (res.body !== null) {
       // 2.6.
-      // Rather than consuming the body as an ArrayBuffer, this passes each
-      // chunk to the feed as soon as it's available.
-      PromisePrototypeThen(
-        (async () => {
-          const reader = res.body.getReader();
-          while (true) {
-            const { value: chunk, done } = await reader.read();
-            if (done) break;
-            op_wasm_streaming_feed(rid, chunk);
-          }
-        })(),
-        // 2.7
-        () => core.close(rid),
-        // 2.8
-        (err) => core.abortWasmStreaming(rid, err),
-      );
+      // Rather than consuming the body as an ArrayBuffer, this feeds each chunk
+      // to the streaming compiler as soon as it's available. Instead of reading
+      // the body chunk-by-chunk in JS and calling `op_wasm_streaming_feed` once
+      // per chunk, hand the underlying stream resource to `op_pipe` with the
+      // wasm streaming resource as the sink (`WasmStreamingResource` implements
+      // `Resource::write`), so a single async op pumps the bytes straight into
+      // V8's streaming compiler.
+      const stream = res.body;
+      const resourceBacking = getReadableStreamResourceBacking(stream);
+      let streamRid, closeStreamRid;
+      if (resourceBacking) {
+        // Fast path: feed straight from the body's backing resource. Acquire a
+        // reader and mark the stream disturbed (as the response-body fast path
+        // does) so nothing else consumes it and, crucially, so the stream stays
+        // referenced until we're done. Otherwise it could be GC'd mid-feed and
+        // its finalizer would close (and thereby cancel the read of) the backing
+        // resource out from under us.
+        acquireReadableStreamDefaultReader(stream);
+        readableStreamDisturb(stream);
+        streamRid = resourceBacking.rid;
+        // Only close the resource if the stream owns it (mirrors the fast path
+        // in `readableStreamCollectIntoUint8Array`).
+        closeStreamRid = resourceBacking.autoClose;
+      } else {
+        // We allocated the resource, so we own it and must close it.
+        streamRid = resourceForReadableStream(stream);
+        closeStreamRid = true;
+      }
+
+      // Pump the bytes in Rust, then reconcile the stream and the wasm
+      // streaming resource. This is wrapped in an async IIFE (rather than a
+      // `.then`/`.catch` pair) so that nothing thrown while handling the
+      // result can escape as an unhandled rejection.
+      PromisePrototypeThen((async () => {
+        let feedError;
+        try {
+          await op_pipe(streamRid, rid, undefined);
+        } catch (err) {
+          feedError = err;
+        }
+        if (closeStreamRid) core.tryClose(streamRid);
+
+        // If the request was aborted, the body stream was errored with the
+        // abort reason (e.g. an AbortError). Surface that reason rather than
+        // the op's generic cancellation error, and don't try to close an
+        // already-errored stream (which would assert).
+        const storedError = resourceBacking
+          ? getReadableStreamStoredError(stream)
+          : undefined;
+        if (storedError !== undefined) {
+          // 2.8
+          core.abortWasmStreaming(rid, storedError);
+        } else if (feedError !== undefined) {
+          // 2.8
+          if (resourceBacking) readableStreamError(stream, feedError);
+          core.abortWasmStreaming(rid, feedError);
+        } else {
+          // 2.7
+          if (resourceBacking) readableStreamClose(stream);
+          core.close(rid);
+        }
+      })());
     } else {
       // 2.7
       core.close(rid);

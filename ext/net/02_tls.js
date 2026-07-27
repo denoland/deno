@@ -241,17 +241,19 @@ function createTlsKeyResolver(callback) {
       if (typeof sni !== "string") {
         break;
       }
-      try {
-        const key = await callback(sni);
-        if (!hasTlsKeyPairOptions(key)) {
-          op_tls_cert_resolver_resolve_error(lookup, sni, "Invalid key");
-        } else {
-          const resolved = loadTlsKeyPair("Deno.listenTls", key);
-          op_tls_cert_resolver_resolve(lookup, sni, resolved);
+      (async () => {
+        try {
+          const key = await callback(sni);
+          if (!hasTlsKeyPairOptions(key)) {
+            op_tls_cert_resolver_resolve_error(lookup, sni, "Invalid key");
+          } else {
+            const resolved = loadTlsKeyPair("Deno.listenTls", key);
+            op_tls_cert_resolver_resolve(lookup, sni, resolved);
+          }
+        } catch (e) {
+          op_tls_cert_resolver_resolve_error(lookup, sni, e.message);
         }
-      } catch (e) {
-        op_tls_cert_resolver_resolve_error(lookup, sni, e.message);
-      }
+      })();
     }
   })();
   return resolver;

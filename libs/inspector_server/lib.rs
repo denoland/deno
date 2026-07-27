@@ -117,6 +117,43 @@ pub fn create_inspector_server(
   Ok(server)
 }
 
+/// The default address the inspector server listens on, matching Node.js.
+pub fn default_inspector_host() -> SocketAddr {
+  SocketAddr::from(([127, 0, 0, 1], 9229))
+}
+
+/// Activates the global inspector server on the [`default_inspector_host`] and
+/// registers `inspector`, mirroring Node.js' behavior when a process is sent
+/// SIGUSR1.
+///
+/// This is a no-op returning `None` when a server is already running (an
+/// `--inspect*` flag, `node:inspector`'s `open()`, or a previous activation).
+/// On success the inspector's WebSocket URL is returned; if the server fails to
+/// bind, the error is logged and `None` is returned.
+pub fn activate_default_inspector_server(
+  name: &'static str,
+  module_url: String,
+  inspector: Rc<JsRuntimeInspector>,
+  wait_for_session: bool,
+) -> Option<InspectorServerUrl> {
+  if get_inspector_server().is_some() {
+    return None;
+  }
+  match create_inspector_server(
+    default_inspector_host(),
+    name,
+    InspectPublishUid::default(),
+  ) {
+    Ok(server) => {
+      Some(server.register_inspector(module_url, inspector, wait_for_session))
+    }
+    Err(err) => {
+      log::error!("Failed to start inspector server: {}", err);
+      None
+    }
+  }
+}
+
 static RESTART_NOTIFIER: OnceLock<broadcast::Sender<()>> = OnceLock::new();
 
 fn get_restart_notifier() -> broadcast::Sender<()> {
@@ -304,7 +341,7 @@ fn handle_ws_request(
   // spawn a task that will wait for websocket connection and then pump messages between
   // the socket and inspector proxy
   spawn(async move {
-    let websocket = match upgrade_fut.await {
+    let mut websocket = match upgrade_fut.await {
       Ok(w) => w,
       Err(err) => {
         log::error!(
@@ -330,8 +367,18 @@ fn handle_ws_request(
       },
     };
 
+    if new_session_tx
+      .unbounded_send(inspector_session_proxy)
+      .is_err()
+    {
+      // The inspector was deregistered between the map lookup and now (e.g.
+      // the runtime is being torn down for a watcher restart). Close the
+      // socket instead of leaving the client attached to a session that will
+      // never respond.
+      close_going_away(&mut websocket).await;
+      return;
+    }
     log::info!("Debugger session started.");
-    let _ = new_session_tx.unbounded_send(inspector_session_proxy);
     pump_websocket_messages(websocket, inbound_tx, outbound_rx).await;
   });
 
@@ -659,6 +706,17 @@ async fn listen_for_new_inspectors(
   }
 }
 
+/// Closes the websocket with code 1001 ("going away"), telling the client
+/// that the server-side session is gone, e.g. because the runtime was torn
+/// down for a watcher restart or the process is exiting.
+async fn close_going_away(
+  websocket: &mut WebSocket<TokioIo<hyper::upgrade::Upgraded>>,
+) {
+  let _ = websocket
+    .write_frame(Frame::close(1001, b"going away"))
+    .await;
+}
+
 /// The pump future takes care of forwarding messages between the websocket
 /// and channels. It resolves when either side disconnects, ignoring any
 /// errors.
@@ -678,9 +736,24 @@ async fn pump_websocket_messages(
 ) {
   'pump: loop {
     tokio::select! {
-        Some(msg) = outbound_rx.next() => {
-            let msg = Frame::text(msg.content.into_bytes().into());
-            let _ = websocket.write_frame(msg).await;
+        maybe_msg = outbound_rx.next() => {
+            match maybe_msg {
+                Some(msg) => {
+                    let msg = Frame::text(msg.content.into_bytes().into());
+                    let _ = websocket.write_frame(msg).await;
+                }
+                None => {
+                    // The isolate-side session was dropped without the client
+                    // disconnecting first, e.g. the file watcher tore down the
+                    // runtime while this server (a process-wide singleton)
+                    // lives on. Close the socket so the client can detect the
+                    // restart and reconnect to the new session; otherwise the
+                    // connection stays open but silently ignores all messages.
+                    close_going_away(&mut websocket).await;
+                    log::info!("Debugger session ended (runtime was torn down)");
+                    break 'pump;
+                }
+            }
         }
         result = websocket.read_frame() => {
             match result {
@@ -706,9 +779,6 @@ async fn pump_websocket_messages(
                     break 'pump;
                 }
             }
-        }
-        else => {
-          break 'pump;
         }
     }
   }

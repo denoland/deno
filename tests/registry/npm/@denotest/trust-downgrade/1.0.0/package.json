@@ -1,0 +1,13 @@
+{
+  "name": "@denotest/trust-downgrade",
+  "version": "1.0.0",
+  "main": "index.js",
+  "publishDate": "2020-01-01T00:00:00.000Z",
+  "_npmUser": {
+    "name": "ci-bot",
+    "approver": {
+      "name": "maintainer",
+      "email": "maintainer@example.com"
+    }
+  }
+}

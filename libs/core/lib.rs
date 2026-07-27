@@ -182,6 +182,7 @@ pub use crate::runtime::CompiledWasmModuleStore;
 pub use crate::runtime::ContextState;
 pub use crate::runtime::CreateRealmOptions;
 pub use crate::runtime::CrossIsolateStore;
+pub use crate::runtime::ExternalModuleImportMetaCb;
 pub use crate::runtime::JsRuntime;
 pub use crate::runtime::JsRuntimeForSnapshot;
 pub use crate::runtime::MODULE_MAP_SLOT_INDEX;
@@ -197,6 +198,7 @@ pub use crate::runtime::host_defined_options::create_host_defined_options_with_k
 pub use crate::runtime::host_defined_options::host_defined_options_kind;
 pub use crate::runtime::host_defined_options::read_host_defined_options_key;
 pub use crate::runtime::host_defined_options::read_host_defined_options_kind;
+pub use crate::runtime::host_defined_options::register_external_module_import_meta_cb;
 pub use crate::runtime::host_defined_options::register_vm_dynamic_import_callback;
 pub use crate::runtime::stats;
 pub use crate::source_map::SourceMapApplication;

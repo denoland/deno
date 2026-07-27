@@ -1,5 +1,4 @@
-cover [WILDCARD]/coverage/branch.ts ... 28.571% (4/14)
-   4 |   } else {
+cover [WILDCARD]/coverage/branch.ts ... 35.714% (5/14)
    5 |     return false;
    6 |   }
 -----|-----

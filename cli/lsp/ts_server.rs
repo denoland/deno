@@ -26,6 +26,7 @@ use crate::lsp::diagnostics::ts_json_to_diagnostics;
 use crate::lsp::documents::Document;
 use crate::lsp::language_server;
 use crate::lsp::logging::lsp_warn;
+use crate::lsp::lsp_custom;
 use crate::lsp::performance::Performance;
 use crate::lsp::refactor;
 use crate::lsp::tsc::TsJsServer;
@@ -291,6 +292,31 @@ impl TsServer {
           .get_quick_info(snapshot.clone(), module, position, token)
           .await?;
         Ok(quick_info.map(|qi| qi.to_hover(module, &snapshot)))
+      }
+    }
+  }
+
+  pub async fn provide_inferred_type(
+    &self,
+    module: &DocumentModule,
+    position: lsp::Position,
+    snapshot: Arc<StateSnapshot>,
+    token: &CancellationToken,
+  ) -> Result<Option<lsp_custom::InferredTypeResponse>, AnyError> {
+    match self {
+      Self::Js(ts_server) => {
+        let position = module.line_index.offset_tsc(position)?;
+        let quick_info = ts_server
+          .get_quick_info(snapshot.clone(), module, position, token)
+          .await?;
+        Ok(quick_info.and_then(|quick_info| {
+          quick_info.display_string(module, &snapshot).map(|text| {
+            lsp_custom::InferredTypeResponse {
+              text,
+              range: quick_info.to_range(module),
+            }
+          })
+        }))
       }
     }
   }

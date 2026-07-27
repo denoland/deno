@@ -434,6 +434,190 @@ extern "C" fn test_tsfn_abort_race(
   ptr::null_mut()
 }
 
+// Reproduces a double free when napi_tsfn_abort is used while more than one
+// thread still holds the tsfn. A previous version freed the tsfn on abort
+// regardless of thread_count, so the still-outstanding thread was left with a
+// dangling pointer; its later release could spawn a second drop of the same
+// box (use-after-free + double free, tripping the assert in TsFn::drop). The
+// tsfn here starts with initial_thread_count = 2, so both threads must release
+// before it is freed and the finalizer must run exactly once.
+extern "C" fn test_tsfn_abort_outstanding(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 1);
+  assert_eq!(argc, 1);
+
+  let mut resource_name: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_string_utf8(
+    env,
+    c"tsfn_abort_outstanding".as_ptr(),
+    usize::MAX,
+    &mut resource_name,
+  ));
+
+  let mut func: napi_ref = ptr::null_mut();
+  assert_napi_ok!(napi_create_reference(env, args[0], 1, &mut func));
+
+  let mut tsfn: napi_threadsafe_function = ptr::null_mut();
+  assert_napi_ok!(napi_create_threadsafe_function(
+    env,
+    ptr::null_mut(),
+    ptr::null_mut(),
+    resource_name,
+    0,
+    2, // initial_thread_count: two releases are owed
+    func as *mut c_void,
+    Some(tsfn_race_finalize),
+    ptr::null_mut(),
+    Some(tsfn_race_call_js),
+    &mut tsfn,
+  ));
+
+  let tsfn_addr = tsfn as usize;
+
+  // Thread A: calls the tsfn, then aborts. With thread_count still at 2 this
+  // must not free the tsfn out from under Thread B.
+  let tsfn_a = tsfn_addr;
+  std::thread::spawn(move || {
+    let tsfn = tsfn_a as napi_threadsafe_function;
+    for _ in 0..100 {
+      let status = unsafe {
+        napi_call_threadsafe_function(
+          tsfn,
+          ptr::null_mut(),
+          ThreadsafeFunctionCallMode::nonblocking,
+        )
+      };
+      if status != napi_ok {
+        break;
+      }
+    }
+    unsafe {
+      napi_release_threadsafe_function(
+        tsfn,
+        ThreadsafeFunctionReleaseMode::abort,
+      );
+    }
+  });
+
+  // Thread B: the second reference holder. Whichever release drops the count
+  // to zero frees the tsfn exactly once.
+  let tsfn_b = tsfn_addr;
+  std::thread::spawn(move || {
+    let tsfn = tsfn_b as napi_threadsafe_function;
+    for _ in 0..100 {
+      let status = unsafe {
+        napi_call_threadsafe_function(
+          tsfn,
+          ptr::null_mut(),
+          ThreadsafeFunctionCallMode::nonblocking,
+        )
+      };
+      if status != napi_ok {
+        break;
+      }
+    }
+    unsafe {
+      napi_release_threadsafe_function(
+        tsfn,
+        ThreadsafeFunctionReleaseMode::release,
+      );
+    }
+  });
+
+  ptr::null_mut()
+}
+
+// Reproduces a double free when napi_acquire_threadsafe_function races the
+// final napi_release_threadsafe_function. A previous version of `acquire` did a
+// plain `fetch_add` after a non-atomic `is_closing` check, so it could increment
+// `thread_count` from 0 back to 1 in the window after the final release read
+// zero but before it marked the tsfn closing. That resurrected a tsfn that was
+// already being freed: the resurrecting thread's own later release then observed
+// `Ok(1)` a second time and spawned a second drop of the same box (use-after-free
+// + double free, tripping the assert in TsFn::drop).
+//
+// The tsfn starts with initial_thread_count = 1. Thread A performs the single
+// owning release (1 -> 0); Thread B races an acquire against it. With the fix,
+// acquire refuses to increment from zero (returns napi_closing), so the count
+// reaches zero exactly once and the finalizer runs exactly once. The JS side
+// loops this many times to hit the narrow window.
+extern "C" fn test_tsfn_acquire_release_race(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 1);
+  assert_eq!(argc, 1);
+
+  let mut resource_name: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_string_utf8(
+    env,
+    c"tsfn_acquire_release_race".as_ptr(),
+    usize::MAX,
+    &mut resource_name,
+  ));
+
+  let mut func: napi_ref = ptr::null_mut();
+  assert_napi_ok!(napi_create_reference(env, args[0], 1, &mut func));
+
+  let mut tsfn: napi_threadsafe_function = ptr::null_mut();
+  assert_napi_ok!(napi_create_threadsafe_function(
+    env,
+    ptr::null_mut(),
+    ptr::null_mut(),
+    resource_name,
+    0,
+    1, // initial_thread_count: a single owning release drops the count to zero
+    func as *mut c_void,
+    Some(tsfn_race_finalize),
+    ptr::null_mut(),
+    Some(tsfn_race_call_js),
+    &mut tsfn,
+  ));
+
+  let tsfn_addr = tsfn as usize;
+
+  // Thread A: the sole owning reference. This release takes the count 1 -> 0
+  // and is the one that must free the tsfn exactly once.
+  let tsfn_a = tsfn_addr;
+  let handle_a = std::thread::spawn(move || {
+    let tsfn = tsfn_a as napi_threadsafe_function;
+    unsafe {
+      napi_release_threadsafe_function(
+        tsfn,
+        ThreadsafeFunctionReleaseMode::release,
+      );
+    }
+  });
+
+  // Thread B: races an acquire against Thread A's final release. If the acquire
+  // succeeds it took a real reference (count was still >= 1) and must balance it
+  // with a release; if it fails (napi_closing) the tsfn was already closing and
+  // must be left untouched. The buggy `acquire` could instead resurrect a zeroed
+  // count here, leading to a second drop.
+  let tsfn_b = tsfn_addr;
+  let handle_b = std::thread::spawn(move || {
+    let tsfn = tsfn_b as napi_threadsafe_function;
+    let status = unsafe { napi_acquire_threadsafe_function(tsfn) };
+    if status == napi_ok {
+      unsafe {
+        napi_release_threadsafe_function(
+          tsfn,
+          ThreadsafeFunctionReleaseMode::release,
+        );
+      }
+    }
+  });
+
+  // Join here so the tsfn pointer is not touched by these threads after this
+  // native call returns (the queued drop runs later on the main thread).
+  handle_a.join().unwrap();
+  handle_b.join().unwrap();
+
+  ptr::null_mut()
+}
+
 // Test napi_acquire_threadsafe_function and napi_release_threadsafe_function.
 // Creates a tsfn with initial_thread_count=1, acquires it (count=2),
 // releases twice (count drops to 1 then 0, triggering close).
@@ -687,8 +871,18 @@ pub fn init(env: napi_env, exports: napi_value) {
     napi_new_property!(env, "test_tsfn_abort_race", test_tsfn_abort_race),
     napi_new_property!(
       env,
+      "test_tsfn_abort_outstanding",
+      test_tsfn_abort_outstanding
+    ),
+    napi_new_property!(
+      env,
       "test_tsfn_acquire_release",
       test_tsfn_acquire_release
+    ),
+    napi_new_property!(
+      env,
+      "test_tsfn_acquire_release_race",
+      test_tsfn_acquire_release_race
     ),
     napi_new_property!(env, "test_tsfn_get_context", test_tsfn_get_context),
     napi_new_property!(env, "test_cancel_async_work", test_cancel_async_work),

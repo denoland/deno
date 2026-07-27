@@ -39,6 +39,18 @@ fn default_bin_name(package: &NpmResolutionPackage) -> &str {
     .unwrap_or(package.id.nv.name.as_str())
 }
 
+fn normalize_bin_name(bin_name: &str) -> &str {
+  let trimmed = bin_name.trim_end_matches(['/', '\\']);
+  // Leave validation of empty or special path component names to package
+  // metadata handling. This only prevents embedded separators from creating
+  // directories inside node_modules/.bin.
+  trimmed
+    .rsplit(['/', '\\'])
+    .next()
+    .filter(|name| !name.is_empty())
+    .unwrap_or(trimmed)
+}
+
 pub fn warn_missing_entrypoint(
   bin_name: &str,
   package_path: &Path,
@@ -101,6 +113,7 @@ impl<'a, TSys: SetupBinEntrySys> BinEntries<'a, TSys> {
       }
       deno_npm::registry::NpmPackageVersionBinEntry::Map(entries) => {
         for name in entries.keys() {
+          let name = normalize_bin_name(name);
           if let Some(other) =
             self.seen_names.insert(name.to_string(), &package.id)
           {
@@ -158,6 +171,7 @@ impl<'a, TSys: SetupBinEntrySys> BinEntries<'a, TSys> {
           }
           deno_npm::registry::NpmPackageVersionBinEntry::Map(entries) => {
             for (name, script) in entries {
+              let name = normalize_bin_name(name);
               if !seen.insert(name) {
                 already_seen(self.sys, package_path, script)?;
                 // we already set up a bin entry with this name
@@ -351,6 +365,7 @@ pub fn set_up_bin_entry<'a>(
   package_path: &'a Path,
   bin_node_modules_dir_path: &Path,
 ) -> Result<EntrySetupOutcome<'a>, std::io::Error> {
+  let bin_name = normalize_bin_name(bin_name);
   if sys_traits::impls::is_windows() {
     windows_shim::set_up_bin_shim(
       sys,
@@ -491,12 +506,47 @@ fn symlink_bin_entry<'a>(
 mod test {
   use std::path::PathBuf;
 
+  use deno_npm::NpmPackageId;
+  use deno_npm::NpmPackageIdPeerDependencies;
+  use deno_npm::resolution::SerializedNpmResolutionSnapshot;
+  use deno_semver::package::PackageNv;
   use sys_traits::FsCreateDirAll;
   use sys_traits::FsRemoveDirAll;
   #[cfg(unix)]
   use sys_traits::FsWrite;
+  use sys_traits::PathsInErrorsExt;
 
   use super::*;
+
+  fn test_package(name: &str) -> NpmResolutionPackage {
+    NpmResolutionPackage {
+      id: NpmPackageId {
+        nv: PackageNv::from_str(&format!("{name}@1.0.0")).unwrap(),
+        peer_dependencies: NpmPackageIdPeerDependencies::default(),
+      },
+      copy_index: 0,
+      system: Default::default(),
+      dist: None,
+      dependencies: Default::default(),
+      optional_dependencies: Default::default(),
+      optional_peer_dependencies: Default::default(),
+      extra: None,
+      is_deprecated: false,
+      has_bin: true,
+      has_scripts: false,
+    }
+  }
+
+  fn empty_snapshot() -> NpmResolutionSnapshot {
+    NpmResolutionSnapshot::new(
+      SerializedNpmResolutionSnapshot {
+        root_packages: Default::default(),
+        packages: Default::default(),
+      }
+      .into_valid()
+      .unwrap(),
+    )
+  }
 
   fn test_dir(name: &str) -> (PathBuf, impl Drop) {
     static COUNTER: std::sync::atomic::AtomicU64 =
@@ -515,6 +565,78 @@ mod test {
     }
     let cleanup = Cleanup(dir.clone());
     (dir, cleanup)
+  }
+
+  #[test]
+  fn normalizes_bin_name_path_segments() {
+    assert_eq!(normalize_bin_name("eslint"), "eslint");
+    assert_eq!(
+      normalize_bin_name("@eslint/config-inspector"),
+      "config-inspector"
+    );
+    assert_eq!(normalize_bin_name("nested/bin/tool"), "tool");
+    assert_eq!(normalize_bin_name("nested\\bin\\tool"), "tool");
+    assert_eq!(normalize_bin_name("nested/bin/tool/"), "tool");
+  }
+
+  #[test]
+  fn collect_bin_files_uses_normalized_bin_names() {
+    let sys = sys_traits::impls::RealSys;
+    let package = test_package("@eslint/config-inspector");
+    let extra = NpmPackageExtraInfo {
+      bin: Some(deno_npm::registry::NpmPackageVersionBinEntry::Map(
+        [(
+          "@eslint/config-inspector".to_string(),
+          "bin/config-inspector.js".to_string(),
+        )]
+        .into_iter()
+        .collect(),
+      )),
+      ..Default::default()
+    };
+    let mut entries = BinEntries::new(sys.with_paths_in_errors());
+    entries.add(&package, &extra, PathBuf::from("/node_modules/pkg"));
+
+    assert_eq!(
+      entries.collect_bin_files(&empty_snapshot()),
+      vec![(
+        "config-inspector".to_string(),
+        PathBuf::from("/node_modules/pkg/bin/config-inspector.js")
+      )]
+    );
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn set_up_bin_entry_uses_normalized_bin_name() {
+    let sys = sys_traits::impls::RealSys;
+    let (dir, _cleanup) = test_dir("normalized_bin_name");
+    let package_path = dir.join("package");
+    let bin_dir = dir.join(".bin");
+    sys.fs_create_dir_all(package_path.join("bin")).unwrap();
+    sys.fs_create_dir_all(&bin_dir).unwrap();
+    write_and_chmod(
+      &package_path.join("bin/config-inspector.js"),
+      b"#!/usr/bin/env node\n",
+      0o644,
+    );
+
+    let package = test_package("@eslint/config-inspector");
+    let extra = NpmPackageExtraInfo::default();
+    let outcome = set_up_bin_entry(
+      &sys,
+      &package,
+      &extra,
+      "@eslint/config-inspector",
+      "bin/config-inspector.js",
+      &package_path,
+      &bin_dir,
+    )
+    .unwrap();
+
+    assert!(matches!(outcome, EntrySetupOutcome::Success));
+    assert!(sys.fs_exists(bin_dir.join("config-inspector")).unwrap());
+    assert!(!sys.fs_exists(bin_dir.join("@eslint")).unwrap());
   }
 
   #[cfg(unix)]

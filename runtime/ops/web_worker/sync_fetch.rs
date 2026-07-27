@@ -119,6 +119,7 @@ pub fn op_worker_sync_fetch(
         .map(|script| {
           let client = client.clone();
           let blob_store = blob_store.clone();
+          let maybe_main_module_blob = handle.maybe_main_module_blob.clone();
           deno_core::unsync::spawn(async move {
             let script_url = Url::parse(&script)
               .map_err(|_| SyncFetchErrorKind::InvalidScriptUrl)?;
@@ -173,8 +174,11 @@ pub fn op_worker_sync_fetch(
                 (Bytes::from(body), Some(mime_type), script)
               }
               "blob" => {
-                let blob = blob_store
-                  .get_object_url(script_url)
+                let blob = maybe_main_module_blob
+                  .as_ref()
+                  .filter(|(blob_specifier, _)| *blob_specifier == script_url)
+                  .map(|(_, blob)| blob.clone())
+                  .or_else(|| blob_store.get_object_url(script_url))
                   .ok_or(FetchError::BlobNotFound)?;
 
                 let mime_type = mime_type_essence(&blob.media_type);

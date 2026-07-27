@@ -377,20 +377,24 @@ impl<'a> AggregateFunctionOption<'a> {
       INVERSE_STRING = "inverse",
     }
 
+    let object = v8::Local::<v8::Object>::try_from(value).map_err(|_| {
+      Error::InvalidArgType(
+        "The \"options\" argument must be an object.".into(),
+      )
+    })?;
+
     let start_key = START_STRING.v8_string(scope).unwrap();
-    let start_value = v8::Local::<v8::Object>::try_from(value)
-      .unwrap()
+    let start_value = object
       .get(scope, start_key.into())
-      .unwrap();
+      .ok_or(Error::V8Exception)?;
     if start_value.is_undefined() {
       return Err(Error::InvalidArgType("The \"options.start\" argument must be a function or a primitive value.".into()));
     }
 
     let step_key = STEP_STRING.v8_string(scope).unwrap();
-    let step_value = v8::Local::<v8::Object>::try_from(value)
-      .unwrap()
+    let step_value = object
       .get(scope, step_key.into())
-      .unwrap();
+      .ok_or(Error::V8Exception)?;
     let step_function = v8::Local::<v8::Function>::try_from(step_value)
       .map_err(|_| {
         Error::InvalidArgType(
@@ -399,10 +403,9 @@ impl<'a> AggregateFunctionOption<'a> {
       })?;
 
     let result_key = RESULT_STRING.v8_string(scope).unwrap();
-    let result_value = v8::Local::<v8::Object>::try_from(value)
-      .unwrap()
+    let result_value = object
       .get(scope, result_key.into())
-      .unwrap();
+      .ok_or(Error::V8Exception)?;
     let result_function = if result_value.is_undefined() {
       None
     } else {
@@ -421,10 +424,9 @@ impl<'a> AggregateFunctionOption<'a> {
     let mut direct_only = false;
 
     let deterministic_key = DETERMINISTIC_STRING.v8_string(scope).unwrap();
-    let deterministic_value = v8::Local::<v8::Object>::try_from(value)
-      .unwrap()
+    let deterministic_value = object
       .get(scope, deterministic_key.into())
-      .unwrap();
+      .ok_or(Error::V8Exception)?;
     if !deterministic_value.is_undefined() {
       if !deterministic_value.is_boolean() {
         return Err(Error::InvalidArgType(
@@ -435,10 +437,9 @@ impl<'a> AggregateFunctionOption<'a> {
     }
 
     let use_bigint_key = USE_BIG_INT_ARGUMENTS_STRING.v8_string(scope).unwrap();
-    let bigint_value = v8::Local::<v8::Object>::try_from(value)
-      .unwrap()
+    let bigint_value = object
       .get(scope, use_bigint_key.into())
-      .unwrap();
+      .ok_or(Error::V8Exception)?;
     if !bigint_value.is_undefined() {
       if !bigint_value.is_boolean() {
         return Err(Error::InvalidArgType(
@@ -450,10 +451,9 @@ impl<'a> AggregateFunctionOption<'a> {
     }
 
     let varargs_key = VARARGS_STRING.v8_string(scope).unwrap();
-    let varargs_value = v8::Local::<v8::Object>::try_from(value)
-      .unwrap()
+    let varargs_value = object
       .get(scope, varargs_key.into())
-      .unwrap();
+      .ok_or(Error::V8Exception)?;
     if !varargs_value.is_undefined() {
       if !varargs_value.is_boolean() {
         return Err(Error::InvalidArgType(
@@ -464,10 +464,9 @@ impl<'a> AggregateFunctionOption<'a> {
     }
 
     let direct_only_key = DIRECT_ONLY_STRING.v8_string(scope).unwrap();
-    let direct_only_value = v8::Local::<v8::Object>::try_from(value)
-      .unwrap()
+    let direct_only_value = object
       .get(scope, direct_only_key.into())
-      .unwrap();
+      .ok_or(Error::V8Exception)?;
     if !direct_only_value.is_undefined() {
       if !direct_only_value.is_boolean() {
         return Err(Error::InvalidArgType(
@@ -478,10 +477,9 @@ impl<'a> AggregateFunctionOption<'a> {
     }
 
     let inverse_key = INVERSE_STRING.v8_string(scope).unwrap();
-    let inverse_value = v8::Local::<v8::Object>::try_from(value)
-      .unwrap()
+    let inverse_value = object
       .get(scope, inverse_key.into())
-      .unwrap();
+      .ok_or(Error::V8Exception)?;
     let inverse_function = if inverse_value.is_undefined() {
       None
     } else {
@@ -581,6 +579,10 @@ pub struct DatabaseSync {
   // Non-zero while a user-defined callback is on the stack; close() refuses
   // to free the connection in that state to avoid a SQLite VDBE use-after-free.
   callback_depth: Rc<Cell<usize>>,
+  // Whether ATTACH DATABASE is held disabled because the process lacks full
+  // permissions for the database path. Used to stop the `limits.attach` setter
+  // from raising the cap and bypassing the boundary.
+  disable_attach: Rc<Cell<bool>>,
 }
 
 struct CallbackDepthGuard {
@@ -668,20 +670,37 @@ fn coerce_limit_value(
 fn apply_initial_limits(
   conn: &rusqlite::Connection,
   options: &DatabaseSyncOptions,
+  disable_attach: bool,
 ) -> Result<(), SqliteError> {
   for (idx, &(_js_name, limit)) in LIMIT_MAPPING.iter().enumerate() {
     if let Some(value) = options.initial_limits[idx] {
+      // When the process lacks full permissions for the database path, the
+      // attach limit is a security cap held at 0: ATTACH DATABASE can reach
+      // files outside the database path, so it must not be raised through the
+      // user-controlled `limits.attach` option. Reject raising it above 0,
+      // mirroring the `db.limits.attach` setter. A value of 0 (keeping it
+      // disabled) is still accepted.
+      if disable_attach
+        && matches!(limit, Limit::SQLITE_LIMIT_ATTACHED)
+        && value > 0
+      {
+        return Err(SqliteError::AttachLimitDenied);
+      }
       conn.set_limit(limit, value)?;
     }
   }
   Ok(())
 }
 
+// Returns the open connection together with `disable_attach`: whether the
+// process lacks full permissions for the database path and so ATTACH DATABASE
+// is held disabled. Callers store this so the `limits.attach` setter cannot
+// later raise the cap and bypass the boundary.
 fn open_db(
   state: &mut OpState,
   location: &str,
   options: &DatabaseSyncOptions,
-) -> Result<rusqlite::Connection, SqliteError> {
+) -> Result<(rusqlite::Connection, bool), SqliteError> {
   let perms = state.borrow::<PermissionsContainer>();
   let disable_attach = perms
     .check_has_all_permissions(Path::new(location))
@@ -714,9 +733,9 @@ fn open_db(
       options.is_defensive_mode,
     ));
 
-    apply_initial_limits(&conn, options)?;
+    apply_initial_limits(&conn, options, disable_attach)?;
 
-    return Ok(conn);
+    return Ok((conn, disable_attach));
   }
 
   let location = perms
@@ -760,9 +779,9 @@ fn open_db(
       options.is_defensive_mode,
     ));
 
-    apply_initial_limits(&conn, options)?;
+    apply_initial_limits(&conn, options, disable_attach)?;
 
-    return Ok(conn);
+    return Ok((conn, disable_attach));
   }
 
   let conn = rusqlite::Connection::open(location)?;
@@ -788,9 +807,9 @@ fn open_db(
     options.is_defensive_mode,
   ));
 
-  apply_initial_limits(&conn, options)?;
+  apply_initial_limits(&conn, options, disable_attach)?;
 
-  Ok(conn)
+  Ok((conn, disable_attach))
 }
 
 fn is_open(
@@ -825,8 +844,10 @@ impl DatabaseSync {
     #[string] location: String,
     #[scoped] options: DatabaseSyncOptions,
   ) -> Result<DatabaseSync, SqliteError> {
+    let mut disable_attach = false;
     let db = if options.open {
-      let db = open_db(state, &location, &options)?;
+      let (db, da) = open_db(state, &location, &options)?;
+      disable_attach = da;
 
       if options.enable_foreign_key_constraints {
         db.execute("PRAGMA foreign_keys = ON", [])?;
@@ -857,6 +878,7 @@ impl DatabaseSync {
       ignore_next_sqlite_error: Rc::new(Cell::new(false)),
       authorizer_data: Rc::new(RefCell::new(None)),
       callback_depth: Rc::new(Cell::new(0)),
+      disable_attach: Rc::new(Cell::new(disable_attach)),
     })
   }
 
@@ -872,7 +894,7 @@ impl DatabaseSync {
       return Err(SqliteError::AlreadyOpen);
     }
 
-    let db = open_db(state, &self.location, &self.options)?;
+    let (db, disable_attach) = open_db(state, &self.location, &self.options)?;
     if self.options.enable_foreign_key_constraints {
       db.execute("PRAGMA foreign_keys = ON", [])?;
     } else {
@@ -891,6 +913,7 @@ impl DatabaseSync {
     );
 
     *self.conn.borrow_mut() = Some(db);
+    self.disable_attach.set(disable_attach);
 
     Ok(())
   }
@@ -1156,7 +1179,9 @@ impl DatabaseSync {
       }
 
       let use_bigint_key = USE_BIG_INT_ARGUMENTS.v8_string(scope).unwrap();
-      let bigint_value = options.get(scope, use_bigint_key.into()).unwrap();
+      let bigint_value = options
+        .get(scope, use_bigint_key.into())
+        .ok_or(validators::Error::V8Exception)?;
       if !bigint_value.is_undefined() {
         if !bigint_value.is_boolean() {
           return Err(
@@ -1171,7 +1196,9 @@ impl DatabaseSync {
       }
 
       let varargs_key = VARARGS.v8_string(scope).unwrap();
-      let varargs_value = options.get(scope, varargs_key.into()).unwrap();
+      let varargs_value = options
+        .get(scope, varargs_key.into())
+        .ok_or(validators::Error::V8Exception)?;
       if !varargs_value.is_undefined() {
         if !varargs_value.is_boolean() {
           return Err(
@@ -1185,8 +1212,9 @@ impl DatabaseSync {
       }
 
       let deterministic_key = DETERMINISTIC.v8_string(scope).unwrap();
-      let deterministic_value =
-        options.get(scope, deterministic_key.into()).unwrap();
+      let deterministic_value = options
+        .get(scope, deterministic_key.into())
+        .ok_or(validators::Error::V8Exception)?;
       if !deterministic_value.is_undefined() {
         if !deterministic_value.is_boolean() {
           return Err(
@@ -1201,8 +1229,9 @@ impl DatabaseSync {
       }
 
       let direct_only_key = DIRECT_ONLY.v8_string(scope).unwrap();
-      let direct_only_value =
-        options.get(scope, direct_only_key.into()).unwrap();
+      let direct_only_value = options
+        .get(scope, direct_only_key.into())
+        .ok_or(validators::Error::V8Exception)?;
       if !direct_only_value.is_undefined() {
         if !direct_only_value.is_boolean() {
           return Err(
@@ -1224,8 +1253,12 @@ impl DatabaseSync {
       -1
     } else {
       let length_key = LENGTH.v8_string(scope).unwrap();
-      let length = function.get(scope, length_key.into()).unwrap();
-      length.int32_value(scope).unwrap_or(0)
+      let length = function
+        .get(scope, length_key.into())
+        .ok_or(validators::Error::V8Exception)?;
+      length
+        .int32_value(scope)
+        .ok_or(validators::Error::V8Exception)?
     };
 
     let db = self.conn.borrow();
@@ -1534,14 +1567,21 @@ impl DatabaseSync {
     // counting.
     let raw_handle = unsafe { db.handle() };
 
-    let mut raw_session = std::ptr::null_mut();
     let mut options = options;
 
     let z_db = options
       .as_mut()
       .and_then(|options| options.db.take())
-      .map(|db| CString::new(db).unwrap())
-      .unwrap_or_else(|| CString::new("main").unwrap());
+      .map(CString::new)
+      .transpose()?
+      .unwrap_or_else(|| c"main".to_owned());
+    let table = options
+      .as_mut()
+      .and_then(|options| options.table.take())
+      .map(CString::new)
+      .transpose()?;
+
+    let mut raw_session = std::ptr::null_mut();
     // SAFETY: `z_db` points to a valid c-string.
     let r = unsafe {
       libsqlite3_sys::sqlite3session_create(
@@ -1555,10 +1595,6 @@ impl DatabaseSync {
       return Err(SqliteError::SessionCreateFailed);
     }
 
-    let table = options
-      .as_mut()
-      .and_then(|options| options.table.take())
-      .map(|table| CString::new(table).unwrap());
     let z_table = table.as_ref().map(|table| table.as_ptr()).unwrap_or(null());
     let r =
       // SAFETY: `z_table` points to a valid c-string and `raw_session`
@@ -1749,7 +1785,10 @@ impl DatabaseSync {
     if self.conn.borrow().is_none() {
       return Err(SqliteError::AlreadyClosed);
     }
-    Ok(DatabaseSyncLimits::create(Rc::clone(&self.conn)))
+    Ok(DatabaseSyncLimits::create(
+      Rc::clone(&self.conn),
+      self.disable_attach.get(),
+    ))
   }
 
   #[fast]
@@ -1775,9 +1814,9 @@ impl DatabaseSync {
       let step_fn_length = options
         .step
         .get(scope, length_key.into())
-        .unwrap()
+        .ok_or(validators::Error::V8Exception)?
         .int32_value(scope)
-        .unwrap();
+        .ok_or(validators::Error::V8Exception)?;
 
       // Subtract 1 because the first argument is the aggregate value.
       argc = step_fn_length - 1;
@@ -1785,9 +1824,9 @@ impl DatabaseSync {
       let inverse_fn_length = if let Some(inverse_fn) = &options.inverse {
         inverse_fn
           .get(scope, length_key.into())
-          .unwrap()
+          .ok_or(validators::Error::V8Exception)?
           .int32_value(scope)
-          .unwrap()
+          .ok_or(validators::Error::V8Exception)?
       } else {
         0
       };
@@ -1993,10 +2032,24 @@ impl DatabaseSync {
     buffer_value: v8::Local<'a, v8::Value>,
     options_value: v8::Local<'a, v8::Value>,
   ) -> Result<(), SqliteError> {
-    if !buffer_value.is_array_buffer_view() {
+    // Refuse to replace the database while SQLite is executing a
+    // user-defined callback. deserialize() finalizes existing statements,
+    // which would invalidate the currently executing statement.
+    if self.callback_depth.get() > 0 {
+      return Err(SqliteError::ActiveCallback);
+    }
+
+    if !buffer_value.is_uint8_array() {
       return Err(SqliteError::Validation(validators::Error::InvalidArgType(
-        "The \"serialized\" argument must be a TypedArray or a DataView."
-          .into(),
+        "The \"buffer\" argument must be a Uint8Array.".into(),
+      )));
+    }
+
+    let view: v8::Local<v8::ArrayBufferView> = buffer_value.try_into().unwrap();
+    let byte_length = view.byte_length();
+    if byte_length == 0 {
+      return Err(SqliteError::Validation(validators::Error::InvalidArgValue(
+        "The \"buffer\" argument must not be empty.".into(),
       )));
     }
 
@@ -2048,8 +2101,6 @@ impl DatabaseSync {
       }
     }
 
-    let view: v8::Local<v8::ArrayBufferView> = buffer_value.try_into().unwrap();
-    let byte_length = view.byte_length();
     let name_cstring = CString::new(db_name)?;
 
     // Per Node's contract, existing prepared statements are finalized before
@@ -2902,7 +2953,7 @@ fn throw_range_error(scope: &mut v8::PinScope<'_, '_>, message: &str) {
   let code_value = ERR_OUT_OF_RANGE.v8_string(scope).unwrap();
   let error_obj: v8::Local<v8::Object> = error.try_into().unwrap();
   error_obj
-    .set(scope, code_key.into(), code_value.into())
+    .create_data_property(scope, code_key.into(), code_value.into())
     .unwrap();
 
   scope.throw_exception(error);
@@ -2921,7 +2972,28 @@ fn throw_type_error_with_code(
   let code_value = v8::String::new(scope, code).unwrap();
   let error_obj: v8::Local<v8::Object> = error.try_into().unwrap();
   error_obj
-    .set(scope, code_key.into(), code_value.into())
+    .create_data_property(scope, code_key.into(), code_value.into())
+    .unwrap();
+
+  scope.throw_exception(error);
+}
+
+// Throws a plain `Error` carrying `code`. Used for conditions that are not
+// `TypeError`s or `RangeError`s, such as the ATTACH_DATABASE access boundary.
+fn throw_error_with_code(
+  scope: &mut v8::PinScope<'_, '_>,
+  message: &str,
+  code: &str,
+) {
+  let msg = v8::String::new(scope, message).unwrap();
+  let error = v8::Exception::error(scope, msg);
+
+  v8_static_strings!(CODE = "code");
+  let code_key = CODE.v8_string(scope).unwrap();
+  let code_value = v8::String::new(scope, code).unwrap();
+  let error_obj: v8::Local<v8::Object> = error.try_into().unwrap();
+  error_obj
+    .create_data_property(scope, code_key.into(), code_value.into())
     .unwrap();
 
   scope.throw_exception(error);
@@ -2931,6 +3003,10 @@ fn throw_type_error_with_code(
 /// This is returned by DatabaseSync.limits getter.
 pub struct DatabaseSyncLimits {
   conn: Rc<RefCell<Option<rusqlite::Connection>>>,
+  // When true, ATTACH DATABASE is held disabled for this connection because the
+  // process lacks full permissions for the database path. The `attach` setter
+  // refuses to raise the cap above 0 in that state.
+  disable_attach: bool,
 }
 
 // SAFETY: we're sure this can be GCed
@@ -2943,8 +3019,14 @@ unsafe impl GarbageCollected for DatabaseSyncLimits {
 }
 
 impl DatabaseSyncLimits {
-  fn create(conn: Rc<RefCell<Option<rusqlite::Connection>>>) -> Self {
-    Self { conn }
+  fn create(
+    conn: Rc<RefCell<Option<rusqlite::Connection>>>,
+    disable_attach: bool,
+  ) -> Self {
+    Self {
+      conn,
+      disable_attach,
+    }
   }
 
   fn get_limit(&self, limit: Limit) -> Result<i32, SqliteError> {
@@ -3114,6 +3196,23 @@ impl DatabaseSyncLimits {
     scope: &mut v8::PinScope<'_, '_>,
     value: v8::Local<v8::Value>,
   ) -> Result<(), SqliteError> {
+    // ATTACH DATABASE is held disabled for processes without full permissions
+    // for the database path. Refuse to raise the cap above 0 so the limit
+    // setter cannot re-enable attach and bypass that boundary. A value of 0
+    // (keeping it disabled) is allowed and falls through to the normal setter.
+    // Malformed values also fall through so set_limit_value reports the right
+    // ERR_INVALID_ARG_* error.
+    if self.disable_attach
+      && matches!(coerce_limit_value(scope, value), Ok(v) if v > 0)
+    {
+      throw_error_with_code(
+        scope,
+        "Cannot raise the \"attach\" limit: ATTACH DATABASE is disabled \
+         without full permissions for the database path.",
+        "ERR_ACCESS_DENIED",
+      );
+      return Ok(());
+    }
     self.set_limit_value(scope, Limit::SQLITE_LIMIT_ATTACHED, value)
   }
 

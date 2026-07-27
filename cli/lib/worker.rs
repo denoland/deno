@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use boxed_error::Boxed;
 use deno_bundle_runtime::BundleProvider;
+use deno_core::ModuleSpecifier;
 use deno_core::error::JsError;
 use deno_node::NodeRequireLoaderRc;
 use deno_node::ops::ipc::ChildIpcSerialization;
@@ -40,6 +41,7 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_process::NpmProcessStateProviderRc;
 use deno_runtime::deno_telemetry::OtelConfig;
 use deno_runtime::deno_tls::RootCertStoreProvider;
+use deno_runtime::deno_web::Blob;
 use deno_runtime::deno_web::BlobStoreTrait;
 use deno_runtime::deno_web::InMemoryBroadcastChannel;
 use deno_runtime::fmt_errors::format_js_error;
@@ -75,6 +77,7 @@ pub trait ModuleLoaderFactory: Send + Sync {
     &self,
     parent_permissions: PermissionsContainer,
     permissions: PermissionsContainer,
+    maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
   ) -> CreateModuleLoaderResult;
 }
 
@@ -104,6 +107,19 @@ impl StorageKeyResolver {
     Self(StorageKeyResolverStrategy::Specified(Some(url.to_string())))
   }
 
+  /// Storage key for a compiled binary. Keyed by the stable app name so each
+  /// app gets a single persistent store, independent of the main module URL
+  /// (which is not stable across differently named binaries). The `app:`
+  /// prefix namespaces this key from URL-derived keys so a compiled app and a
+  /// `deno run` of the same origin can't collide in the shared, temp-backed
+  /// `caches` directory (which is keyed by the hash of this string rather than
+  /// by the per-app data directory).
+  pub fn from_compile_app_name(app_name: &str) -> Self {
+    Self(StorageKeyResolverStrategy::Specified(Some(format!(
+      "app:{app_name}"
+    ))))
+  }
+
   pub fn new_use_main_module() -> Self {
     Self(StorageKeyResolverStrategy::UseMainModule)
   }
@@ -125,13 +141,18 @@ impl StorageKeyResolver {
   }
 }
 
-pub fn get_cache_storage_dir() -> PathBuf {
-  #[allow(
-    clippy::disallowed_methods,
-    reason = "ok because this won't ever be used by the js runtime"
-  )]
-  // Note: we currently use temp_dir() to avoid managing storage size.
-  std::env::temp_dir().join("deno_cache")
+/// Returns the persistent Cache API storage root beneath Deno's origin data
+/// directory. Each storage key uses a hashed child directory of this root.
+pub fn get_cache_storage_dir(origin_data_folder_path: &Path) -> PathBuf {
+  origin_data_folder_path.join("web_cache")
+}
+
+fn get_cache_storage_dir_for_key(
+  origin_data_folder_path: &Path,
+  key: &str,
+) -> PathBuf {
+  get_cache_storage_dir(origin_data_folder_path)
+    .join(checksum::r#gen(&[key.as_bytes()]))
 }
 
 /// By default V8 uses 1.4Gb heap limit which is meant for browser tabs.
@@ -350,6 +371,10 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
       } = shared.module_loader_factory.create_for_worker(
         args.parent_permissions.clone(),
         args.permissions.clone(),
+        args
+          .maybe_main_module_blob
+          .clone()
+          .map(|blob| (args.main_module.clone(), blob)),
       );
       let create_web_worker_cb =
         shared.create_web_worker_callback(stdio.clone());
@@ -357,9 +382,12 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
       let maybe_storage_key = shared
         .storage_key_resolver
         .resolve_storage_key(&args.main_module);
-      let cache_storage_dir = maybe_storage_key.map(|key| {
+      let cache_storage_dir = maybe_storage_key.as_ref().map(|key| {
         // TODO(@satyarohith): storage quota management
-        get_cache_storage_dir().join(checksum::r#gen(&[key.as_bytes()]))
+        get_cache_storage_dir_for_key(
+          shared.options.origin_data_folder_path.as_ref().unwrap(), // must be set if storage key resolver returns a value
+          key,
+        )
       });
 
       // TODO(bartlomieju): this is cruft, update FeatureChecker to spit out
@@ -498,12 +526,15 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         trace_ops: shared.options.trace_ops.clone(),
         close_on_idle: args.close_on_idle,
         maybe_worker_metadata: args.maybe_worker_metadata,
+        maybe_main_module_blob: args.maybe_main_module_blob,
         maybe_coverage_dir: shared.maybe_coverage_dir.clone(),
         maybe_cpu_prof_config: shared.maybe_cpu_prof_config.clone(),
         enable_raw_imports: shared.options.enable_raw_imports,
         enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(
           &shared.sys,
         ),
+        wait_for_debugger_on_start: args.wait_for_debugger_on_start,
+        wait_for_page_wait_for_debugger: args.wait_for_page_wait_for_debugger,
       };
 
       let has_resource_limits = args.resource_limits.is_some();
@@ -657,9 +688,12 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
           .unwrap() // must be set if storage key resolver returns a value
           .join(checksum::r#gen(&[key.as_bytes()]))
       });
-    let cache_storage_dir = maybe_storage_key.map(|key| {
+    let cache_storage_dir = maybe_storage_key.as_ref().map(|key| {
       // TODO(@satyarohith): storage quota management
-      get_cache_storage_dir().join(checksum::r#gen(&[key.as_bytes()]))
+      get_cache_storage_dir_for_key(
+        shared.options.origin_data_folder_path.as_ref().unwrap(), // must be set if storage key resolver returns a value
+        key,
+      )
     });
 
     let services = WorkerServiceOptions {
@@ -963,15 +997,30 @@ impl LibMainWorker {
     Ok(())
   }
 
-  pub async fn run(&mut self) -> Result<i32, CoreError> {
-    log::debug!("main_module {}", self.main_module);
-
+  /// The "load phase": run any preload/require modules, then load and
+  /// first-evaluate the main module and fire the `load` event. This is
+  /// everything that happens before the steady-state event loop begins.
+  ///
+  /// It is factored out of [`Self::run`] so callers that need to treat
+  /// load-phase failures differently from steady-state failures (the desktop
+  /// runtime tags them as a `DesktopStartupError`) can wrap just this call
+  /// without hand-copying the rest of `run`.
+  pub async fn execute_load_phase(&mut self) -> Result<(), CoreError> {
     // Run preload modules first if they were defined
     self.execute_preload_modules().await?;
 
     self.execute_main_module().await?;
     self.worker.dispatch_load_event()?;
 
+    Ok(())
+  }
+
+  /// The "loop phase" that follows [`Self::execute_load_phase`]: drive the
+  /// event loop until the program is done, fire the unload / exit handlers,
+  /// and return the process exit code.
+  pub async fn run_event_loop_to_completion(
+    &mut self,
+  ) -> Result<i32, CoreError> {
     loop {
       self
         .worker
@@ -992,6 +1041,13 @@ impl LibMainWorker {
     self.worker.run_napi_ref_finalizers();
 
     Ok(self.worker.exit_code())
+  }
+
+  pub async fn run(&mut self) -> Result<i32, CoreError> {
+    log::debug!("main_module {}", self.main_module);
+
+    self.execute_load_phase().await?;
+    self.run_event_loop_to_completion().await
   }
 
   #[inline]
@@ -1035,5 +1091,22 @@ mod test {
     // test empty
     let resolver = StorageKeyResolver::empty();
     assert_eq!(resolver.resolve_storage_key(&specifier), None);
+  }
+
+  #[test]
+  fn cache_storage_dir_is_under_origin_data() {
+    let origin_data_dir = PathBuf::from("deno_dir").join("location_data");
+    let key = "file:///project/main.ts";
+
+    assert_eq!(
+      get_cache_storage_dir(&origin_data_dir),
+      origin_data_dir.join("web_cache")
+    );
+    assert_eq!(
+      get_cache_storage_dir_for_key(&origin_data_dir, key),
+      origin_data_dir
+        .join("web_cache")
+        .join(checksum::r#gen(&[key.as_bytes()]))
+    );
   }
 }

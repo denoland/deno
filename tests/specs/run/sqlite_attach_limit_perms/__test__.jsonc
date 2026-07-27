@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "run -A setup.js",
+      "output": "setup.out"
+    },
+    {
+      "args": "run --allow-read=allowed --allow-write=allowed --deny-read=denied --deny-write=denied probe.js",
+      "output": "probe.out"
+    },
+    {
+      "args": "run -A probe_allow.js",
+      "output": "probe_allow.out"
+    }
+  ]
+}

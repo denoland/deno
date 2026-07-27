@@ -183,7 +183,7 @@ pub(crate) fn create_external_references(
 
 /// Result of [`externalize_sources`]: the `v8::OneByteConst` backings, the
 /// original source strings they borrow from (kept alive), and the specifiers of
-/// the externalized `lazy_loaded_js` sources (parallel to the trailing
+/// the externalized `lazy_loaded_*` sources (parallel to the trailing
 /// `original_sources` entries).
 pub(crate) type ExternalizedSources = (
   Box<[v8::OneByteConst]>,
@@ -222,13 +222,14 @@ pub(crate) fn externalize_sources(
     } else {
       0
     };
-  // Record the externalized `lazy_loaded_js` specifiers in iteration order
+  // Record the externalized `lazy_loaded_*` specifiers in iteration order
   // (these become the trailing entries of `original_sources`). `snapshot()`
-  // uses them to drop non-consumed scripts' bytes from the sidecar.
-  let lazy_js_specifiers: Box<[ModuleName]> = if externalize_lazy_js {
+  // uses them to drop non-consumed sources' bytes from the sidecar.
+  let lazy_source_specifiers: Box<[ModuleName]> = if externalize_lazy_js {
     sources
-      .lazy_js
+      .lazy_esm
       .iter()
+      .chain(sources.lazy_js.iter())
       .map(|s| s.specifier.try_clone().unwrap())
       .collect()
   } else {
@@ -293,7 +294,7 @@ pub(crate) fn externalize_sources(
     (
       externals,
       original_sources.into_boxed_slice(),
-      lazy_js_specifiers,
+      lazy_source_specifiers,
     )
   }
 }
@@ -357,8 +358,13 @@ pub(crate) fn initialize_deno_core_namespace<'s, 'i>(
 
   // If we're initializing fresh context set up the console
   if init_mode == InitMode::New {
-    // Bind `call_console` to Deno.core.callConsole
-    let call_console_fn = v8::Function::new(scope, call_console).unwrap();
+    // Bind `call_console` to Deno.core.callConsole. Like Node's
+    // `consoleCall`, it must not be constructable so that the bound console
+    // methods throw when invoked with `new`.
+    let call_console_fn = v8::Function::builder(call_console)
+      .constructor_behavior(v8::ConstructorBehavior::Throw)
+      .build(scope)
+      .unwrap();
     let call_console_key = CALL_CONSOLE.v8_string(scope).unwrap();
     deno_core_obj.set(scope, call_console_key.into(), call_console_fn.into());
 
@@ -611,6 +617,13 @@ pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
   // deferred caller can no longer read them from the global (see
   // `snapshotted_fast_op_refs` / `ensure_fast_ops_upgraded`).
   deno_core_ops_obj: v8::Local<'s, v8::Object>,
+  // The captured-bootstrap clone of `Deno.core.ops` (`capturedCore.ops` in
+  // 01_core.js) that residual ext modules read ops through. The flat-op `.set`s
+  // below replace slots on the ops object, which the shallow clone doesn't see;
+  // mirror them here so residual ext modules get the fast functions too.
+  // (Method/static-method upgrades mutate the shared class objects that the
+  // clone already references, so they need no mirroring.)
+  clone_ops_obj: Option<v8::Local<'s, v8::Object>>,
   set_up_async_stub_fn: v8::Local<'s, v8::Function>,
   op_ctxs: &[OpCtx],
   op_method_decls: &[OpMethodDecl],
@@ -697,6 +710,9 @@ pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
     }
 
     deno_core_ops_obj.set(scope, key.into(), op_fn.into());
+    if let Some(clone_ops_obj) = clone_ops_obj {
+      clone_ops_obj.set(scope, key.into(), op_fn.into());
+    }
   }
 }
 
@@ -742,9 +758,27 @@ pub(crate) fn ensure_fast_ops_upgraded(scope: &mut v8::PinScope) {
   };
   let deno_core_ops_obj = v8::Local::new(scope, &ops_global);
   let set_up_async_stub_fn = v8::Local::new(scope, &stub_global);
+
+  // Residual ext modules read ops through the captured-bootstrap clone of
+  // `core.ops` (`capturedCore.ops` in 01_core.js), a shallow copy that the
+  // flat-op `.set`s below otherwise wouldn't reach. Resolve `<captured>.core
+  // .ops` so the upgrade can mirror the fast functions onto it.
+  let module_map = JsRealm::module_map_from(scope);
+  let clone_ops_obj = module_map.captured_bootstrap().and_then(|g| {
+    let captured = v8::Local::new(scope, &g);
+    let captured = v8::Local::<v8::Object>::try_from(captured).ok()?;
+    let core_key = CORE.v8_string(scope).unwrap();
+    let core = captured.get(scope, core_key.into())?;
+    let core = v8::Local::<v8::Object>::try_from(core).ok()?;
+    let ops_key = OPS.v8_string(scope).unwrap();
+    let ops = core.get(scope, ops_key.into())?;
+    v8::Local::<v8::Object>::try_from(ops).ok()
+  });
+
   upgrade_snapshotted_ops_with_fast_calls(
     scope,
     deno_core_ops_obj,
+    clone_ops_obj,
     set_up_async_stub_fn,
     &context_state.op_ctxs,
     &context_state.op_method_decls,
@@ -963,13 +997,10 @@ pub(crate) fn op_ctx_template<'s, 'i>(
   let op_ctx_ptr = op_ctx as *const OpCtx as *const c_void;
   let external = v8::External::new(scope, op_ctx_ptr as *mut c_void);
 
-  let (slow_fn, fast_fn) = if op_ctx.metrics_enabled() {
-    (
-      op_ctx.decl.slow_fn_with_metrics,
-      op_ctx.decl.fast_fn_with_metrics,
-    )
+  let slow_fn = if op_ctx.metrics_enabled() {
+    op_ctx.decl.slow_fn_with_metrics
   } else {
-    (op_ctx.decl.slow_fn, op_ctx.decl.fast_fn)
+    op_ctx.decl.slow_fn
   };
 
   let builder: v8::FunctionBuilder<v8::FunctionTemplate> =
@@ -991,11 +1022,19 @@ pub(crate) fn op_ctx_template<'s, 'i>(
   // template is still wired to slow_fn; ops fall back to the slow callback
   // path until a follow-up runtime hook re-attaches the fast overloads after
   // snapshot deserialization.
-  let template = if let Some(fast_function) = fast_fn
+  let template = if let Some(overloads) = op_ctx.fast_fn_overloads.as_ref()
     && !will_snapshot
     && !op_ctx.decl.constructable
   {
-    builder.build_fast(scope, &[fast_function])
+    // SAFETY: V8 150.x stores the raw `CFunction` pointers from `overloads`
+    // directly in the `FunctionTemplateInfo`, so `build_fast` requires a
+    // `'static` slice. The backing storage lives in `op_ctx`, which outlives
+    // every `FunctionTemplate` created from it (both are torn down at isolate
+    // disposal), so extending the borrow to `'static` is sound.
+    let overloads: &'static [v8::fast_api::CFunction] = unsafe {
+      std::mem::transmute::<&[_], &'static [_]>(overloads.as_slice())
+    };
+    builder.build_fast(scope, overloads)
   } else {
     builder.build(scope)
   };
@@ -1231,6 +1270,7 @@ pub fn host_import_module_with_phase_dynamically_callback<'s, 'i>(
     if tc_scope.has_caught() {
       let e = tc_scope.exception().unwrap();
       resolver.reject(tc_scope, e);
+      return Some(promise);
     }
   }
   let requested_module_type =
@@ -1384,9 +1424,19 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
   let state = JsRealm::state_from_scope(scope);
 
   let module_global = v8::Global::new(scope, module);
-  let name = module_map
-    .get_name_by_module(&module_global)
-    .expect("Module not found");
+  let Some(name) = module_map.get_name_by_module(&module_global) else {
+    // The module is not tracked by deno_core's module map. This is the
+    // happy path for `node:vm` `SourceTextModule`, whose v8::Module is
+    // created directly by the `node:vm` op and never registered. Delegate
+    // to the external hook (set by `node:vm`) if one is registered; if
+    // not, just leave `import.meta` empty rather than panicking — V8 will
+    // hand the empty object to user code.
+    let runtime_state = JsRuntime::state_from(scope);
+    if let Some(cb) = runtime_state.external_module_import_meta_cb.get() {
+      cb(scope, module, meta);
+    }
+    return;
+  };
   let module_type = module_map
     .get_type_by_module(&module_global)
     .expect("Module not found");

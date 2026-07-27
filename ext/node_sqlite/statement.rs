@@ -45,8 +45,15 @@ impl<'a> ToV8<'a> for RunStatementResult {
       v8::Number::new(scope, self.last_insert_rowid as f64).into()
     };
 
+    // create_data_property defines own data properties directly, avoiding the
+    // generic [[Set]] runtime path (property-key lookup + hidden-class
+    // transitions) that showed up as ~half the cost of a `run()` in profiles.
     obj
-      .set(scope, last_insert_row_id_str.into(), last_insert_row_id)
+      .create_data_property(
+        scope,
+        last_insert_row_id_str.into(),
+        last_insert_row_id,
+      )
       .unwrap();
 
     let changes_str = CHANGES.v8_string(scope).unwrap();
@@ -56,7 +63,9 @@ impl<'a> ToV8<'a> for RunStatementResult {
       v8::Number::new(scope, self.changes as f64).into()
     };
 
-    obj.set(scope, changes_str.into(), changes).unwrap();
+    obj
+      .create_data_property(scope, changes_str.into(), changes)
+      .unwrap();
     Ok(obj.into())
   }
 }
@@ -505,7 +514,7 @@ impl StatementSync {
         let obj = v8::Local::<v8::Object>::try_from(param0).unwrap();
         let keys = obj
           .get_property_names(scope, GetPropertyNamesArgs::default())
-          .unwrap();
+          .ok_or(validators::Error::V8Exception)?;
 
         // Allow specifying named parameters without the SQLite prefix character to improve
         // ergonomics. This can be disabled with `StatementSync#setAllowBareNamedParams`.
@@ -548,9 +557,11 @@ impl StatementSync {
 
         let len = keys.length();
         for j in 0..len {
-          let key = keys.get_index(scope, j).unwrap();
+          let key = keys
+            .get_index(scope, j)
+            .ok_or(validators::Error::V8Exception)?;
           let key_str = key.to_rust_string_lossy(scope);
-          let key_c = std::ffi::CString::new(key_str).unwrap();
+          let key_c = std::ffi::CString::new(key_str.as_bytes())?;
 
           // SAFETY: `raw` is a valid pointer to a sqlite3_stmt.
           let mut r = unsafe {
@@ -567,13 +578,12 @@ impl StatementSync {
                 continue;
               }
 
-              return Err(SqliteError::UnknownNamedParameter(
-                key_c.into_string().unwrap(),
-              ));
+              return Err(SqliteError::UnknownNamedParameter(key_str));
             }
           }
 
-          let value = obj.get(scope, key).unwrap();
+          let value =
+            obj.get(scope, key).ok_or(validators::Error::V8Exception)?;
           self.bind_value(scope, value, r)?;
         }
 
@@ -697,13 +707,44 @@ impl StatementSync {
     #[varargs] params: Option<&v8::FunctionCallbackArguments>,
   ) -> Result<v8::Local<'a, v8::Array>, SqliteError> {
     self.invalidate_iter();
-    let mut arr = vec![];
 
     self.bind_params(scope, params)?;
 
     let _reset = ResetGuard(self);
-    while let Some(result) = self.read_row(scope)? {
-      arr.push(result);
+
+    // Column names are constant across every row of the result set. Build the
+    // V8 name strings once here and reuse them for all rows, instead of
+    // re-creating them per row (as the generic `read_row` does): this drops a
+    // `sqlite3_column_name` FFI call and a string allocation per column per
+    // row, and gives every row object the same shape (hidden class).
+    let num_cols = self.column_count()?;
+    let return_arrays = self.return_arrays();
+    let mut names = Vec::with_capacity(num_cols as usize);
+    if !return_arrays {
+      for i in 0..num_cols {
+        let name = self.column_name(i)?;
+        names.push(
+          v8::String::new_from_utf8(scope, name, v8::NewStringType::Normal)
+            .unwrap()
+            .into(),
+        );
+      }
+    }
+    let null = v8::null(scope).into();
+
+    let mut arr = vec![];
+    while !self.step()? {
+      let mut values = Vec::with_capacity(num_cols as usize);
+      for i in 0..num_cols {
+        values.push(self.column_value(i, scope)?);
+      }
+      let row = if return_arrays {
+        v8::Array::new_with_elements(scope, &values).into()
+      } else {
+        v8::Object::with_prototype_and_properties(scope, null, &names, &values)
+          .into()
+      };
+      arr.push(row);
     }
 
     let arr = v8::Array::new_with_elements(scope, &arr);
@@ -892,16 +933,26 @@ impl StatementSync {
 
     let global = scope.get_current_context().global(scope);
     let iter_str = ITERATOR.v8_string(scope).unwrap();
-    let js_iterator: v8::Local<v8::Object> = {
-      global
-        .get(scope, iter_str.into())
-        .unwrap()
-        .try_into()
-        .unwrap()
-    };
+    let js_iterator = global
+      .get(scope, iter_str.into())
+      .ok_or(validators::Error::V8Exception)?;
+    let js_iterator =
+      v8::Local::<v8::Object>::try_from(js_iterator).map_err(|_| {
+        validators::Error::InvalidArgType("Iterator must be an object.".into())
+      })?;
 
     let proto_str = PROTOTYPE.v8_string(scope).unwrap();
-    let js_iterator_proto = js_iterator.get(scope, proto_str.into()).unwrap();
+    let js_iterator_proto = js_iterator
+      .get(scope, proto_str.into())
+      .ok_or(validators::Error::V8Exception)?;
+    if !js_iterator_proto.is_object() && !js_iterator_proto.is_null() {
+      return Err(
+        validators::Error::InvalidArgType(
+          "Iterator.prototype must be an object or null.".into(),
+        )
+        .into(),
+      );
+    }
 
     let names = &[
       NEXT.v8_string(scope).unwrap().into(),

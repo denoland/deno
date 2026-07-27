@@ -117,6 +117,8 @@ fn bench_op(
   let tokio = tokio::runtime::Builder::new_current_thread()
     .build()
     .unwrap();
+  // Creating a `JsRuntime` requires a tokio runtime context.
+  let _tokio_guard = tokio.enter();
   let mut runtime = JsRuntime::new(RuntimeOptions {
     extensions: vec![testing::init()],
     // We need to feature gate this here to prevent IDE errors

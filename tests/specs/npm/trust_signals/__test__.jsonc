@@ -1,0 +1,18 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_DIR": "$PWD/deno_dir"
+  },
+  "steps": [
+    {
+      // minimumDependencyAge forces the full packument to be fetched, which is
+      // where the `_npmUser.trustedPublisher` publishing-trust signal lives.
+      "args": "install npm:@denotest/trusted-publisher",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "run -A check.ts",
+      "output": "check.out"
+    }
+  ]
+}

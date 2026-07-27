@@ -141,6 +141,43 @@ fn napi_wrap_leak_pointers_finalizer_on_shutdown() {
   );
 }
 
+/// Test that NAPI wrap finalizers are also called at shutdown when the
+/// wrapping happens inside a `Deno.test`. Regression test for #35692, where
+/// the `deno test` worker was torn down without draining the NAPI finalizer
+/// queue (unlike the `deno run` path).
+#[test_util::test]
+fn napi_wrap_leak_finalizer_on_test_shutdown() {
+  napi_build();
+
+  let output = deno_cmd()
+    .current_dir(napi_tests_path())
+    .arg("test")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("--allow-ffi")
+    .arg("--config")
+    .arg(deno_config_path())
+    .arg("--no-lock")
+    .arg("wrap_leak_test.js")
+    .envs(env_vars_for_npm_tests())
+    .output()
+    .unwrap();
+  let stdout = std::str::from_utf8(&output.stdout).unwrap();
+  let stderr = std::str::from_utf8(&output.stderr).unwrap();
+
+  if !output.status.success() {
+    eprintln!("exit code {:?}", output.status.code());
+    println!("stdout {}", stdout);
+    println!("stderr {}", stderr);
+  }
+  assert!(output.status.success());
+  assert!(
+    stdout.contains("pointers released on shutdown"),
+    "Expected wrap finalizer to run at test shutdown, got stdout: {}",
+    stdout
+  );
+}
+
 /// Test napi_fatal_error: calling it should abort the process and log the
 /// error message to stderr.
 #[test_util::test]

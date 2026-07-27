@@ -1,0 +1,7 @@
+Run a JavaScript or TypeScript program, watching for file changes and hot-replacing modules.
+
+This is an alias for deno run --watch-hmr. The process restarts if hot replacement fails.
+  deno watch main.ts
+[WILDCARD]
+Usage: deno watch [OPTIONS] [SCRIPT_ARG]...
+[WILDCARD]

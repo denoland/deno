@@ -27,6 +27,8 @@ const {
 } = core.ops;
 const {
   deserializeJsMessageData,
+  deserializeMessageData,
+  isUncloneable,
   markAsUncloneable: webMarkAsUncloneable,
   addInternalMessageListener,
   incrementActiveCpuProfileCount,
@@ -39,6 +41,7 @@ const {
   nodeWorkerThreadCloseCb,
   refMessagePort,
   serializeJsMessageData,
+  serializeMessageData,
   unrefParentPort,
 } = core.loadExtScript("ext:deno_web/13_message_port.js");
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
@@ -86,6 +89,7 @@ const lazyModule = core.createLazyLoader("node:module");
 // loaders.
 
 const {
+  ArrayBufferIsView,
   ArrayIsArray,
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,
@@ -150,7 +154,7 @@ const workerCpuUsageBuffer = new Float64Array(2);
 const debugWorkerThreads = false;
 function debugWT(...args) {
   if (debugWorkerThreads) {
-    // deno-lint-ignore prefer-primordials no-console
+    // deno-lint-ignore deno-internal/prefer-primordials no-console
     console.log(...args);
   }
 }
@@ -264,7 +268,6 @@ interface WorkerOptions {
     codeRangeSizeMb?: number;
     stackSizeMb?: number;
   };
-  // deno-lint-ignore prefer-primordials
   eval?: boolean;
   transferList?: Transferable[];
   workerData?: unknown;
@@ -589,10 +592,10 @@ class NodeWorker extends EventEmitter {
       // `require` is already available from the Node worker bootstrap.
       // See: https://github.com/denoland/deno/issues/26739
       sourceCode = `var __filename = ${
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         JSON.stringify(lazyProcess().default.cwd() + "/[worker eval]")};\n` +
         `var __dirname = ${
-          // deno-lint-ignore prefer-primordials
+          // deno-lint-ignore deno-internal/prefer-primordials
           JSON.stringify(lazyProcess().default.cwd())};\n` +
         `var module = { exports: {} };\n` +
         `var exports = module.exports;\n` +
@@ -602,7 +605,7 @@ class NodeWorker extends EventEmitter {
     } else if (
       !(typeof specifier === "object" && specifier.protocol === "data:")
     ) {
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       specifier = specifier.toString();
       specifier = op_worker_threads_filename(specifier) ?? specifier;
     }
@@ -617,7 +620,7 @@ class NodeWorker extends EventEmitter {
 
     const id = op_create_worker(
       {
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         specifier: specifier.toString(),
         hasSourceCode,
         sourceCode,
@@ -892,13 +895,22 @@ class NodeWorker extends EventEmitter {
         return;
       }
       if (!this.#dispatchWorkerThreadMessage(data)) return;
-      // Sync drain: process a limited batch of already-queued messages
-      // without going through the async op machinery. The batch limit
-      // prevents starvation of the event loop when message handlers
-      // synchronously post new messages (e.g. ping-pong patterns).
+      // Drain messages already queued on the host side instead of taking the
+      // async op + Promise path for each. The whole burst is processed within
+      // this event-loop turn; the batch limit prevents starving the event loop
+      // under a sustained flood.
       for (let i = 0; i < 1000 && this.#status !== "TERMINATED"; i++) {
         const syncData = op_host_recv_message_sync(this.#id);
         if (syncData === null) break;
+        // Each message dispatch is its own task. Yield a microtask before
+        // delivering this already-dequeued message so a handler that re-armed
+        // itself in a microtask after the previous dispatch (e.g. an
+        // `events.once` listener that re-attaches in a `.then`) is installed
+        // first -- otherwise the message reaches the stale handler and is
+        // lost. A synchronous checkpoint can't help: V8 won't run microtasks
+        // reentrantly while we are already inside one.
+        await new Promise((resolve) => queueMicrotask(() => resolve()));
+        if (this.#status === "TERMINATED") return;
         if (!this.#dispatchWorkerThreadMessage(syncData)) return;
       }
     }
@@ -914,9 +926,18 @@ class NodeWorker extends EventEmitter {
       transferOrOptions === null ||
       (arguments.length <= 1)
     ) {
+      // Reject non-serializable values (e.g. URL) and per-instance
+      // markAsUncloneable values before V8's serializer silently turns them
+      // into `{}`, matching the web MessagePort path and Node's behavior.
+      if (isUncloneable(message)) {
+        throw new DOMException(
+          "Cannot clone object of unsupported type.",
+          "DataCloneError",
+        );
+      }
       op_host_post_message_raw(
         this.#id,
-        core.serialize(message),
+        serializeMessageData(message),
       );
       return;
     }
@@ -1355,11 +1376,11 @@ internals.__initWorkerThreads = (
           const stdinHandler = (ev) => {
             const msg = ev.data;
             if (isWorkerStdinMsg(msg)) {
-              // deno-lint-ignore prefer-primordials
+              // deno-lint-ignore deno-internal/prefer-primordials
               workerStdin.push(msg.data);
               ev.stopImmediatePropagation();
             } else if (isWorkerStdinEndMsg(msg)) {
-              // deno-lint-ignore prefer-primordials
+              // deno-lint-ignore deno-internal/prefer-primordials
               workerStdin.push(null);
               parentPort.removeEventListener("message", stdinHandler);
               ev.stopImmediatePropagation();
@@ -2034,7 +2055,13 @@ function moveMessagePortToContext(
         // surface as `messageerror` per Node semantics.
         let message;
         try {
-          message = core.deserialize(data.data);
+          // `data` is either the raw serialized buffer (no transferables) or a
+          // `{ data, transferables }` object. Deserialize without the
+          // host-object deserializers registry either way.
+          message = deserializeMessageData(
+            ArrayBufferIsView(data) ? data : data.data,
+            false,
+          );
         } catch {
           const err = new Error(
             "Message could not be deserialized in the target context",
@@ -2061,7 +2088,7 @@ function moveMessagePortToContext(
 
   wrapper.postMessage = (msg: unknown) => {
     if (closed) return;
-    op_message_port_post_message_raw(portId, core.serialize(msg));
+    op_message_port_post_message_raw(portId, serializeMessageData(msg));
   };
 
   return wrapper;
@@ -2462,6 +2489,8 @@ class BroadcastChannel extends WebBroadcastChannel {
   }
 }
 
+const { locks } = core.createLazyLoader("ext:deno_web/locks.js")();
+
 // Node's `worker_threads.MessagePort` is a function (not a class) that throws
 // `ERR_CONSTRUCT_CALL_INVALID` whether called as `MessagePort()` or
 // `new MessagePort()`. Mirror that here while keeping
@@ -2511,6 +2540,7 @@ ObjectAssign(exportsObj, {
   // Node's contract (an empty resourceLimits on the main thread).
   resourceLimits: {},
   threadName: "",
+  locks,
   markAsUncloneable,
   markAsUntransferable,
   isMarkedAsUntransferable,

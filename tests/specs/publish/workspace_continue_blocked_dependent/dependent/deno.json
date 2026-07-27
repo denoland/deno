@@ -1,0 +1,8 @@
+{
+  "name": "@foo/dependent",
+  "version": "1.0.0",
+  "exports": "./mod.ts",
+  "imports": {
+    "publish-fails": "jsr:@foo/publish-fails@1"
+  }
+}

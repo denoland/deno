@@ -1,0 +1,4 @@
+[WILDCARD]Initialize @denotest/node-lifecycle-scripts@1.0.0: running 'preinstall' script
+[WILDCARD]Initialize @denotest/node-lifecycle-scripts@1.0.0: running 'install' script
+[WILDCARD]Initialize @denotest/node-lifecycle-scripts@1.0.0: running 'postinstall' script
+[WILDCARD]

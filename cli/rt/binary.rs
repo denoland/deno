@@ -232,7 +232,7 @@ fn choose_and_create_extraction_dir(
   Ok(dir)
 }
 
-fn get_data_local_dir() -> Option<PathBuf> {
+pub(crate) fn get_data_local_dir() -> Option<PathBuf> {
   #[cfg(target_os = "windows")]
   {
     std::env::var_os("LOCALAPPDATA").map(PathBuf::from)

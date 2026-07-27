@@ -539,6 +539,17 @@ fn should_run(if_cond: Option<&str>) -> bool {
       "notWindowsArm" => {
         !(cfg!(target_os = "windows") && cfg!(target_arch = "aarch64"))
       }
+      "notWindowsArmOrMacIntel" => {
+        !((cfg!(target_os = "windows") && cfg!(target_arch = "aarch64"))
+          || (cfg!(target_os = "macos") && cfg!(target_arch = "x86_64")))
+      }
+      "notSlowCiShard" => {
+        let is_linux_x86_ci =
+          *IS_CI && cfg!(target_os = "linux") && cfg!(target_arch = "x86_64");
+        !((cfg!(target_os = "windows") && cfg!(target_arch = "aarch64"))
+          || (cfg!(target_os = "macos") && cfg!(target_arch = "x86_64"))
+          || is_linux_x86_ci)
+      }
       value => panic!("Unknown if condition: {}", value),
     }
   } else {

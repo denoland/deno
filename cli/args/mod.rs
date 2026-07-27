@@ -34,6 +34,7 @@ use deno_config::workspace::WorkspaceDirLintConfig;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDirectoryRc;
 use deno_config::workspace::WorkspaceLintConfig;
+use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
@@ -190,6 +191,13 @@ fn resolve_fmt_options(
 
   if let Some(no_semis) = &fmt_flags.no_semicolons {
     options.semi_colons = Some(!no_semis);
+  }
+
+  // `--no-editorconfig` takes precedence over the deno.json
+  // `useEditorConfig` field. When the flag is absent the config value
+  // (or its `None` default of "on") is left untouched.
+  if fmt_flags.no_editorconfig {
+    options.use_editor_config = Some(false);
   }
 
   options
@@ -618,6 +626,12 @@ impl CliOptions {
         _,
       )) if flags.production => GraphKind::CodeOnly,
       DenoSubcommand::Install(InstallFlags::Local(_, _)) => GraphKind::All,
+      // These edit the dependency requirements and then re-resolve them into
+      // the lockfile. A code-only graph never walks `import type` edges, so
+      // the packages reached only that way would be left out of the lockfile
+      // they rewrite.
+      DenoSubcommand::Outdated(_) => GraphKind::All,
+      DenoSubcommand::Remove(_) => GraphKind::All,
       _ => self.type_check_mode().as_graph_kind(),
     }
   }
@@ -1152,21 +1166,7 @@ impl CliOptions {
   }
 
   pub fn has_hmr(&self) -> bool {
-    if let DenoSubcommand::Run(RunFlags {
-      watch: Some(WatchFlagsWithPaths { hmr, .. }),
-      ..
-    }) = &self.flags.subcommand
-    {
-      *hmr
-    } else if let DenoSubcommand::Serve(ServeFlags {
-      watch: Some(WatchFlagsWithPaths { hmr, .. }),
-      ..
-    }) = &self.flags.subcommand
-    {
-      *hmr
-    } else {
-      false
-    }
+    self.flags.watch.as_ref().is_some_and(|watch| watch.hmr)
   }
 
   /// If the --inspect or --inspect-brk flags are used.
@@ -1407,10 +1407,6 @@ impl CliOptions {
     self.flags.type_check_mode
   }
 
-  pub fn unstable_tsgo(&self) -> bool {
-    self.flags.unstable_config.tsgo || self.workspace().has_unstable("tsgo")
-  }
-
   pub fn unsafely_ignore_certificate_errors(&self) -> &Option<Vec<String>> {
     &self.flags.unsafely_ignore_certificate_errors
   }
@@ -1511,19 +1507,7 @@ impl CliOptions {
 
   pub fn watch_paths(&self) -> Vec<PathBuf> {
     let mut full_paths = Vec::new();
-    if let DenoSubcommand::Run(RunFlags {
-      watch: Some(WatchFlagsWithPaths { paths, .. }),
-      ..
-    })
-    | DenoSubcommand::Serve(ServeFlags {
-      watch: Some(WatchFlagsWithPaths { paths, .. }),
-      ..
-    })
-    | DenoSubcommand::Test(TestFlags {
-      watch: Some(WatchFlagsWithPaths { paths, .. }),
-      ..
-    }) = &self.flags.subcommand
-    {
+    if let Some(WatchFlagsWithPaths { paths, .. }) = &self.flags.watch {
       full_paths.extend(paths.iter().map(|path| self.initial_cwd.join(path)));
     }
 
@@ -1590,6 +1574,7 @@ impl CliOptions {
           }),
         _,
       )) | DenoSubcommand::Add(_)
+        | DenoSubcommand::List(_)
         | DenoSubcommand::Outdated(_)
     ) {
       NpmCachingStrategy::Manual
@@ -1675,7 +1660,11 @@ pub fn config_to_deno_graph_workspace_member(
     None => bail!("Missing 'name' field in config file."),
   };
   let version = match &config.json.version {
-    Some(name) => Some(deno_semver::Version::parse_standard(name)?),
+    Some(version) => {
+      Some(deno_semver::Version::parse_standard(version).with_context(
+        || format!("Invalid 'version' field in '{}'", config.specifier),
+      )?)
+    }
     None => None,
   };
   Ok(deno_graph::WorkspaceMember {

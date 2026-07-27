@@ -144,12 +144,32 @@ async fn registry_server_handler(
       .body(UnsyncBoxBody::new(Empty::new()))?;
     return Ok(res);
   } else if path.starts_with("/api/scopes/") {
-    let body = serde_json::to_string_pretty(&json!({
-      "id": "sdfwqer-sffg-qwerasdf",
-      "status": "success",
-      "error": null
-    }))
-    .unwrap();
+    // Allow tests to simulate a publish failure for an individual package by
+    // naming the package "publish-fails" (or "publish-fails<n>"), used to
+    // exercise that publishing a workspace keeps going after a package fails.
+    //
+    // Consumers of this simulation (rename these fixtures and this match
+    // together):
+    //   - tests/specs/publish/workspace_continue_on_error
+    //   - tests/specs/publish/workspace_continue_blocked_dependent
+    let body = if path.contains("/packages/publish-fails") {
+      serde_json::to_string_pretty(&json!({
+        "id": "sdfwqer-sffg-qwerasdf",
+        "status": "failure",
+        "error": {
+          "code": "internalServerError",
+          "message": "Simulated publish failure"
+        }
+      }))
+      .unwrap()
+    } else {
+      serde_json::to_string_pretty(&json!({
+        "id": "sdfwqer-sffg-qwerasdf",
+        "status": "success",
+        "error": null
+      }))
+      .unwrap()
+    };
     let res = Response::new(UnsyncBoxBody::new(Full::from(body)));
     return Ok(res);
   } else if path.starts_with("/api/publish_status/") {

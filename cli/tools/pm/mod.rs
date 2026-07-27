@@ -43,13 +43,15 @@ mod audit;
 mod cache_deps;
 pub(crate) mod deps;
 pub(crate) mod interactive_picker;
-mod outdated;
+mod list;
+pub(crate) mod outdated;
 mod why;
 
 pub use approve_scripts::approve_scripts;
 pub use audit::audit;
 pub use cache_deps::CacheTopLevelDepsOptions;
 pub use cache_deps::cache_top_level_deps;
+pub use list::list;
 pub use outdated::outdated;
 pub use why::why;
 
@@ -57,6 +59,26 @@ pub use why::why;
 pub(crate) enum ConfigKind {
   DenoJson,
   PackageJson,
+}
+
+/// Which `package.json` section a dependency should be written to. Only
+/// meaningful for `package.json`; `deno.json` always uses `imports`.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum DependencyKind {
+  Normal,
+  Dev,
+  Optional,
+}
+
+impl DependencyKind {
+  /// The `package.json` property this dependency kind is stored under.
+  fn package_json_section(self) -> &'static str {
+    match self {
+      DependencyKind::Normal => "dependencies",
+      DependencyKind::Dev => "devDependencies",
+      DependencyKind::Optional => "optionalDependencies",
+    }
+  }
 }
 
 struct ConfigUpdater {
@@ -161,7 +183,7 @@ impl ConfigUpdater {
     false
   }
 
-  fn add(&mut self, selected: SelectedPackage, dev: bool) {
+  fn add(&mut self, selected: SelectedPackage, kind: DependencyKind) {
     fn insert_index(object: &CstObject, searching_name: &str) -> usize {
       object
         .properties()
@@ -195,50 +217,40 @@ impl ConfigUpdater {
         }
       }
       ConfigKind::PackageJson => {
-        let deps_prop = self.root_object.get("dependencies");
-        let dev_deps_prop = self.root_object.get("devDependencies");
-
-        let dependencies = if dev {
-          self
-            .root_object
-            .object_value("devDependencies")
-            .unwrap_or_else(|| {
-              let index = deps_prop
-                .as_ref()
-                .map(|p| p.property_index() + 1)
-                .unwrap_or_else(|| self.root_object.properties().len());
-              self
-                .root_object
-                .insert(index, "devDependencies", json!({}))
-                .object_value_or_set()
-            })
-        } else {
-          self
-            .root_object
-            .object_value("dependencies")
-            .unwrap_or_else(|| {
-              let index = dev_deps_prop
-                .as_ref()
-                .map(|p| p.property_index())
-                .unwrap_or_else(|| self.root_object.properties().len());
-              self
-                .root_object
-                .insert(index, "dependencies", json!({}))
-                .object_value_or_set()
-            })
-        };
-        let other_dependencies = if dev {
-          deps_prop.and_then(|p| p.value().and_then(|v| v.as_object()))
-        } else {
-          dev_deps_prop.and_then(|p| p.value().and_then(|v| v.as_object()))
-        };
+        let target_section = kind.package_json_section();
+        // Reuse an existing section, otherwise create one right after the most
+        // relevant sibling dependency section so the ordering stays tidy
+        // (`dependencies` -> `devDependencies` -> `optionalDependencies`).
+        let dependencies = self
+          .root_object
+          .object_value(target_section)
+          .unwrap_or_else(|| {
+            let index = self.new_dependency_section_index(kind);
+            self
+              .root_object
+              .insert(index, target_section, json!({}))
+              .object_value_or_set()
+          });
 
         let (alias, value) = package_json_dependency_entry(selected);
 
-        if let Some(other) = other_dependencies
-          && let Some(prop) = other.get(&alias)
-        {
-          remove_prop_and_maybe_parent_prop(prop);
+        // Remove the package from any of the other dependency sections so it
+        // doesn't end up declared twice.
+        for other_section in [
+          DependencyKind::Normal,
+          DependencyKind::Dev,
+          DependencyKind::Optional,
+        ] {
+          if other_section == kind {
+            continue;
+          }
+          if let Some(other) = self
+            .root_object
+            .object_value(other_section.package_json_section())
+            && let Some(prop) = other.get(&alias)
+          {
+            remove_prop_and_maybe_parent_prop(prop);
+          }
         }
 
         match dependencies.get(&alias) {
@@ -254,6 +266,35 @@ impl ConfigUpdater {
     }
 
     self.modified = true;
+  }
+
+  /// Picks the index at which to insert a newly created dependency section so
+  /// that `dependencies`, `devDependencies` and `optionalDependencies` keep a
+  /// stable, predictable order.
+  fn new_dependency_section_index(&self, kind: DependencyKind) -> usize {
+    // Sections that should appear before the one being created, closest first.
+    let preceding: &[&str] = match kind {
+      DependencyKind::Normal => &[],
+      DependencyKind::Dev => &["dependencies"],
+      DependencyKind::Optional => &["devDependencies", "dependencies"],
+    };
+    for section in preceding {
+      if let Some(prop) = self.root_object.get(section) {
+        return prop.property_index() + 1;
+      }
+    }
+    // Otherwise insert before the first following section, if any.
+    let following: &[&str] = match kind {
+      DependencyKind::Normal => &["devDependencies", "optionalDependencies"],
+      DependencyKind::Dev => &["optionalDependencies"],
+      DependencyKind::Optional => &[],
+    };
+    for section in following {
+      if let Some(prop) = self.root_object.get(section) {
+        return prop.property_index();
+      }
+    }
+    self.root_object.properties().len()
   }
 
   fn remove(&mut self, package: &str) -> bool {
@@ -280,6 +321,10 @@ impl ConfigUpdater {
           self
             .root_object
             .object_value("devDependencies")
+            .and_then(|deps| deps.get(package)),
+          self
+            .root_object
+            .object_value("optionalDependencies")
             .and_then(|deps| deps.get(package)),
         ];
         let removed = deps.iter().any(|d| d.is_some());
@@ -398,11 +443,25 @@ fn load_configs(
   flags: &Arc<Flags>,
   has_jsr_specifiers: impl FnOnce() -> bool,
   force_package_json: bool,
-) -> Result<(CliFactory, Option<ConfigUpdater>, Option<ConfigUpdater>), AnyError>
-{
+  honor_prefer_package_json: bool,
+) -> Result<
+  (
+    CliFactory,
+    bool,
+    Option<ConfigUpdater>,
+    Option<ConfigUpdater>,
+  ),
+  AnyError,
+> {
   let cli_factory = CliFactory::from_flags(flags.clone());
   let options = cli_factory.cli_options()?;
   let start_dir = &options.start_dir;
+
+  // The `--package-json` flag or the `preferPackageJson` config setting both
+  // force dependencies to be managed via package.json. `link`/`unlink` opt out
+  // of the config setting because the `"links"` field lives in deno.json.
+  let force_package_json = force_package_json
+    || (honor_prefer_package_json && start_dir.workspace.prefer_package_json());
 
   if force_package_json {
     let npm_config = match start_dir.member_pkg_json() {
@@ -415,12 +474,13 @@ fn load_configs(
         let factory = create_package_json(flags, options)?;
         return Ok((
           factory,
+          force_package_json,
           Some(ConfigUpdater::new(ConfigKind::PackageJson, pkg_json_path)?),
           None,
         ));
       }
     };
-    return Ok((cli_factory, npm_config, None));
+    return Ok((cli_factory, force_package_json, npm_config, None));
   }
 
   let npm_config = match start_dir.member_pkg_json() {
@@ -462,7 +522,7 @@ fn load_configs(
     }
   };
   assert!(deno_config.is_some() || npm_config.is_some());
-  Ok((cli_factory, npm_config, deno_config))
+  Ok((cli_factory, force_package_json, npm_config, deno_config))
 }
 
 fn path_distance(a: &Path, b: &Path) -> usize {
@@ -479,12 +539,13 @@ pub async fn add(
   cmd_name: AddCommandName,
 ) -> Result<(), AnyError> {
   let save_exact = add_flags.save_exact;
-  let force_package_json = add_flags.package_json;
-  let (cli_factory, mut npm_config, mut deno_config) = load_configs(
-    &flags,
-    || add_flags.packages.iter().any(|s| s.starts_with("jsr:")),
-    force_package_json,
-  )?;
+  let (cli_factory, force_package_json, mut npm_config, mut deno_config) =
+    load_configs(
+      &flags,
+      || add_flags.packages.iter().any(|s| s.starts_with("jsr:")),
+      add_flags.package_json,
+      true,
+    )?;
 
   if let Some(deno) = &deno_config
     && deno.obj().get("importMap").is_some()
@@ -655,7 +716,25 @@ pub async fn add(
     }
   }
 
-  let dev = add_flags.dev;
+  let kind = if add_flags.dev {
+    DependencyKind::Dev
+  } else if add_flags.optional {
+    DependencyKind::Optional
+  } else {
+    DependencyKind::Normal
+  };
+
+  // Some packages must be resolved and installed directly as additional graph
+  // roots, rather than relying on them being picked up from the configuration
+  // file during the install step:
+  //
+  // * `--no-save`: the package is installed into `node_modules` (and the
+  //   lockfile) but not declared as a dependency at all.
+  // * `--save-optional`: Deno's installer does not materialize
+  //   `optionalDependencies` from `package.json`, so install the package
+  //   directly to keep parity with `--save-dev` (which does install on add).
+  let install_directly = add_flags.no_save || kind == DependencyKind::Optional;
+  let mut additional_roots = Vec::new();
   for selected_package in selected_packages {
     log::info!(
       "Add {}{}{}",
@@ -664,28 +743,47 @@ pub async fn add(
       selected_package.selected_version
     );
 
+    if install_directly {
+      let specifier = format!(
+        "{}@{}",
+        selected_package.package_name, selected_package.version_req
+      );
+      match deno_core::url::Url::parse(&specifier) {
+        Ok(url) => additional_roots.push(url),
+        Err(err) => {
+          bail!("Failed to parse package specifier '{specifier}': {err}")
+        }
+      }
+    }
+
+    if add_flags.no_save {
+      continue;
+    }
+
     if force_package_json {
-      npm_config.as_mut().unwrap().add(selected_package, dev);
+      npm_config.as_mut().unwrap().add(selected_package, kind);
     } else if selected_package.package_name.starts_with("npm:")
       && prefer_npm_config
     {
       if let Some(npm) = &mut npm_config {
-        npm.add(selected_package, dev);
+        npm.add(selected_package, kind);
       } else {
-        deno_config.as_mut().unwrap().add(selected_package, dev);
+        deno_config.as_mut().unwrap().add(selected_package, kind);
       }
     } else if let Some(deno) = &mut deno_config {
-      deno.add(selected_package, dev);
+      deno.add(selected_package, kind);
     } else {
-      npm_config.as_mut().unwrap().add(selected_package, dev);
+      npm_config.as_mut().unwrap().add(selected_package, kind);
     }
   }
 
-  if let Some(npm) = npm_config {
-    npm.commit()?;
-  }
-  if let Some(deno) = deno_config {
-    deno.commit()?;
+  if !add_flags.no_save {
+    if let Some(npm) = npm_config {
+      npm.commit()?;
+    }
+    if let Some(deno) = deno_config {
+      deno.commit()?;
+    }
   }
 
   npm_install_after_modification(
@@ -693,6 +791,7 @@ pub async fn add(
     Some(jsr_resolver),
     CacheTopLevelDepsOptions {
       lockfile_only: add_flags.lockfile_only,
+      additional_roots,
     },
   )
   .await?;
@@ -865,12 +964,21 @@ async fn find_package_and_select_version_for_req(
         package_req: req.clone(),
       });
     };
-    let range_symbol = if req.version_req.version_text().starts_with('~') {
-      "~"
-    } else if save_exact
+    let range_symbol = if save_exact
       || req.version_req.version_text() == nv.version.to_string()
     {
       ""
+    } else if !nv.version.pre.is_empty() {
+      // Pin pre-release versions exactly, regardless of any range operator the
+      // user requested. A caret or tilde range over a pre-release matches every
+      // pre-release sharing the same major.minor.patch and resolves to the
+      // lexicographically greatest one. For hash based pre-release identifiers
+      // (e.g. an npm dist-tag like `@insiders` that resolves to
+      // `0.0.0-insiders.<hash>`) that is not the newest build and not what the
+      // user asked to install. See #35577.
+      ""
+    } else if req.version_req.version_text().starts_with('~') {
+      "~"
     } else {
       "^"
     };
@@ -1026,9 +1134,8 @@ pub async fn remove(
   flags: Arc<Flags>,
   remove_flags: RemoveFlags,
 ) -> Result<(), AnyError> {
-  let force_package_json = remove_flags.package_json;
-  let (_, npm_config, deno_config) =
-    load_configs(&flags, || false, force_package_json)?;
+  let (_, force_package_json, npm_config, deno_config) =
+    load_configs(&flags, || false, remove_flags.package_json, true)?;
 
   let mut configs = if force_package_json {
     [npm_config, None]
@@ -1078,6 +1185,7 @@ pub async fn remove(
       None,
       CacheTopLevelDepsOptions {
         lockfile_only: remove_flags.lockfile_only,
+        additional_roots: vec![],
       },
     )
     .await?;
@@ -1278,8 +1386,8 @@ fn load_deno_config_for_link(
     // For `link`, force creation of deno.json if missing; the `"links"` field
     // lives there. We achieve this by claiming jsr specifiers are present,
     // which makes `load_configs` materialise a deno.json when one isn't found.
-    let (cli_factory, _npm_config, deno_config) =
-      load_configs(flags, || true, false)?;
+    let (cli_factory, _force_package_json, _npm_config, deno_config) =
+      load_configs(flags, || true, false, false)?;
     let deno_config = deno_config.ok_or_else(|| {
       deno_core::anyhow::anyhow!("Could not load or create deno.json")
     })?;
@@ -1382,6 +1490,7 @@ pub async fn link(
       None,
       CacheTopLevelDepsOptions {
         lockfile_only: link_flags.lockfile_only,
+        additional_roots: vec![],
       },
     )
     .await?;
@@ -1486,6 +1595,7 @@ pub async fn unlink(
     None,
     CacheTopLevelDepsOptions {
       lockfile_only: unlink_flags.lockfile_only,
+      additional_roots: vec![],
     },
   )
   .await?;

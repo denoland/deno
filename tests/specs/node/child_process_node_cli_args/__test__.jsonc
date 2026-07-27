@@ -35,6 +35,10 @@
     "deno_subcommand_passthrough": {
       "args": "run -A --unstable-detect-cjs main.js deno_subcommand",
       "output": "deno_subcommand.out"
+    },
+    "permission_passthrough": {
+      "args": "run -A --unstable-detect-cjs main.js permission_passthrough",
+      "output": "permission_passthrough.out"
     }
   }
 }

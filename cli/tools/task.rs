@@ -188,6 +188,8 @@ pub async fn execute_script(
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
   let progress_bar = factory.text_only_progress_bar();
+  let task_cache =
+    crate::tools::task_cache::TaskCache::new(&factory.deno_dir()?.root);
   let mut env_vars = task_runner::real_env_vars();
 
   if flags.tunnel {
@@ -217,6 +219,8 @@ pub async fn execute_script(
     cli_options,
     maybe_lockfile,
     concurrency: no_of_concurrent_tasks.into(),
+    task_cache: &task_cache,
+    task_fingerprints: std::cell::RefCell::new(HashMap::new()),
   };
 
   let kill_signal = KillSignal::default();
@@ -232,10 +236,15 @@ pub async fn execute_script(
             command: Some(task_flags.task.as_ref().unwrap().to_string()),
             dependencies: vec![],
             description: None,
+            files: Vec::new(),
+            output: Vec::new(),
+            env: Vec::new(),
           },
           kill_signal,
           cli_options.argv(),
           None,
+          0,
+          Some(Vec::new()),
         )
         .await;
     }
@@ -389,6 +398,12 @@ struct TaskRunner<'a> {
   cli_options: &'a CliOptions,
   maybe_lockfile: Option<Arc<CliLockfile>>,
   concurrency: usize,
+  task_cache: &'a crate::tools::task_cache::TaskCache,
+  /// Per-task cache fingerprints, keyed by `ResolvedTask::id`, recorded as
+  /// each task is consulted/run so dependents can fold them into their own
+  /// cache key (the dependency cascade). `None` marks a task that always runs
+  /// (non-cacheable), which forces its dependents to be non-cacheable too.
+  task_fingerprints: std::cell::RefCell<HashMap<usize, Option<String>>>,
 }
 
 impl<'a> TaskRunner<'a> {
@@ -557,6 +572,8 @@ impl<'a> TaskRunner<'a> {
               include_package: self.include_package,
             });
           let label_name = task_label_name(task, self.workspace_root_url);
+          let dep_fingerprints =
+            runner.dependency_fingerprints(&task.dependencies);
           return Some(
             async move {
               match task.task_or_script {
@@ -571,10 +588,15 @@ impl<'a> TaskRunner<'a> {
                       kill_signal,
                       args,
                       parallel_info,
+                      task.id,
+                      dep_fingerprints,
                     )
                     .await
                 }
                 TaskOrScript::Script { details, .. } => {
+                  // npm scripts never participate in the input cache; mark
+                  // non-cacheable so dependents don't cache against them.
+                  runner.record_fingerprint(task.id, None);
                   runner
                     .run_npm_script(
                       task.task_or_script.folder_url(),
@@ -643,6 +665,35 @@ impl<'a> TaskRunner<'a> {
     clippy::too_many_arguments,
     reason = "parallel_info was added to an already-large signature; refactoring into a struct is deferred"
   )]
+  /// Record a task's cache fingerprint (or `None` if it always runs) so that
+  /// dependent tasks can fold it into their own cache key.
+  fn record_fingerprint(&self, task_id: usize, fingerprint: Option<String>) {
+    self
+      .task_fingerprints
+      .borrow_mut()
+      .insert(task_id, fingerprint);
+  }
+
+  /// Collect the fingerprints of a task's direct dependencies for the cache
+  /// cascade. Returns `None` when any dependency is non-cacheable (always
+  /// runs) or has not recorded a fingerprint, which forces the dependent task
+  /// to be non-cacheable too.
+  fn dependency_fingerprints(&self, deps: &[usize]) -> Option<Vec<String>> {
+    let map = self.task_fingerprints.borrow();
+    let mut fingerprints = Vec::with_capacity(deps.len());
+    for dep_id in deps {
+      match map.get(dep_id) {
+        Some(Some(fingerprint)) => fingerprints.push(fingerprint.clone()),
+        _ => return None,
+      }
+    }
+    Some(fingerprints)
+  }
+
+  #[allow(
+    clippy::too_many_arguments,
+    reason = "task execution threads several independent inputs; refactoring into a struct is deferred"
+  )]
   pub async fn run_deno_task(
     &self,
     dir_url: &Url,
@@ -653,8 +704,14 @@ impl<'a> TaskRunner<'a> {
     kill_signal: KillSignal,
     argv: &'a [String],
     parallel_info: Option<ParallelInfo>,
+    task_id: usize,
+    // Fingerprints of this task's direct dependencies for the cache cascade.
+    // `None` means a dependency always runs (is non-cacheable), which makes
+    // this task non-cacheable too.
+    dep_fingerprints: Option<Vec<String>>,
   ) -> Result<i32, deno_core::anyhow::Error> {
     let Some(command) = &definition.command else {
+      self.record_fingerprint(task_id, None);
       self.output_task(
         task_name,
         package_name,
@@ -681,13 +738,71 @@ impl<'a> TaskRunner<'a> {
       &node_modules_bin_dirs,
     )?;
 
-    self
+    // Input-based cache: if the task declares `files`, hash inputs +
+    // command + listed env values and skip on match. Only snapshot the env
+    // vars the task actually lists, and only for cacheable tasks, so the
+    // common (non-cacheable) path doesn't clone the whole environment.
+    let env_snapshot: std::collections::BTreeMap<String, String> =
+      if definition.files.is_empty() || definition.env.is_empty() {
+        std::collections::BTreeMap::new()
+      } else {
+        self
+          .env_vars
+          .iter()
+          .filter_map(|(k, v)| {
+            let k = k.to_str()?;
+            if definition.env.iter().any(|name| name == k) {
+              Some((k.to_string(), v.to_str()?.to_string()))
+            } else {
+              None
+            }
+          })
+          .collect()
+      };
+    let cache_key = crate::tools::task_cache::TaskCacheKey {
+      package_name,
+      task_name,
+      cwd: &cwd,
+      command,
+      argv,
+      files: &definition.files,
+      output: &definition.output,
+      env_names: &definition.env,
+      env: &env_snapshot,
+      dep_fingerprints: dep_fingerprints.as_deref(),
+    };
+    let pending_fingerprint = match self.task_cache.lookup(&cache_key) {
+      crate::tools::task_cache::CacheLookup::Hit(fingerprint) => {
+        self.record_fingerprint(task_id, Some(fingerprint));
+        self.output_task(
+          task_name,
+          package_name,
+          &format!(
+            "{} (cached, inputs unchanged)",
+            colors::gray(task_runner::get_script_with_args(command, argv))
+          ),
+        );
+        return Ok(0);
+      }
+      crate::tools::task_cache::CacheLookup::Miss(fp) => {
+        // Remove artifacts from a previous run so the rebuild doesn't mix
+        // stale and fresh outputs.
+        self.task_cache.clean_stale_outputs(&cache_key, &fp);
+        Some(fp)
+      }
+      crate::tools::task_cache::CacheLookup::NotCacheable => {
+        self.record_fingerprint(task_id, None);
+        None
+      }
+    };
+
+    let exit_code = self
       .run_single(RunSingleOptions {
         task_name,
         package_name,
         label_name,
         script: command,
-        cwd,
+        cwd: cwd.clone(),
         custom_commands,
         node_modules_bin_dirs,
         kill_signal,
@@ -696,7 +811,15 @@ impl<'a> TaskRunner<'a> {
         // npm lifecycle env vars are only set for package.json scripts.
         extra_env_vars: &HashMap::new(),
       })
-      .await
+      .await?;
+
+    if exit_code == 0
+      && let Some(fp) = pending_fingerprint
+    {
+      self.record_fingerprint(task_id, Some(fp.fingerprint.clone()));
+      self.task_cache.store(&cache_key, &fp);
+    }
+    Ok(exit_code)
   }
 
   #[allow(
@@ -1275,6 +1398,9 @@ fn get_available_tasks(
             command: Some(script.to_string()),
             dependencies: vec![],
             description: None,
+            files: Vec::new(),
+            output: Vec::new(),
+            env: Vec::new(),
           },
         });
       }

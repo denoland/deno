@@ -6,7 +6,9 @@ use aws_lc_rs::hkdf;
 use aws_lc_rs::hmac::Algorithm as HmacAlgorithm;
 use aws_lc_rs::hmac::Key as HmacKey;
 use aws_lc_rs::pbkdf2;
+use deno_core::OpState;
 use deno_core::convert::Uint8Array;
+use deno_core::op2;
 use deno_error::JsErrorBox;
 use p256::ecdsa::Signature as P256Signature;
 use p256::ecdsa::SigningKey as P256SigningKey;
@@ -97,13 +99,24 @@ pub use crate::shared::SharedError;
 pub use crate::x448::X448Error;
 pub use crate::x25519::X25519Error;
 
-// No standalone ops — every WebCrypto entry point is implemented as a
-// method on the `Crypto`/`SubtleCrypto`/`CryptoKey` cppgc classes
-// registered below under `objects`. The per-algorithm helpers
+#[op2(fast)]
+fn op_crypto_is_seeded(state: &OpState) -> bool {
+  state.try_borrow::<StdRng>().is_some()
+}
+
+// WebCrypto entry points are implemented as methods on the
+// `Crypto`/`SubtleCrypto`/`CryptoKey` cppgc classes registered below under
+// `objects`. The standalone ops select the seeded `randomUUID` path once when
+// the runtime mints its Crypto singleton and refill the normal path's UUID
+// batch. The per-algorithm helpers
 // (`subtle_*::run`, `import_key_inner`, `export_key_inner`, etc.) are
 // pure-Rust and called directly from those method bodies.
 deno_core::extension!(deno_crypto,
   deps = [ deno_webidl, deno_web ],
+  ops = [
+    crypto::op_crypto_random_uuid_batch,
+    op_crypto_is_seeded,
+  ],
   objects = [
     crypto::Crypto,
     subtle_crypto::SubtleCrypto,
@@ -210,6 +223,9 @@ pub enum CryptoError {
   #[class("DOMExceptionNotSupportedError")]
   #[error("Algorithm '{0}' is not supported")]
   UnsupportedDigestAlgorithm(String),
+  #[class(generic)]
+  #[error("failed to allocate UUID string")]
+  UuidStringAllocation,
   #[class(inherit)]
   #[error(transparent)]
   Other(
@@ -895,12 +911,12 @@ fn read_rsa_public_key(key_data: KeyData) -> Result<RsaPublicKey, CryptoError> {
 
 const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";
 
-pub(crate) fn fast_uuid_v4(bytes: &mut [u8; 16]) -> String {
+pub(crate) fn fast_uuid_v4_bytes(bytes: &mut [u8; 16]) -> [u8; 36] {
   // Set UUID version to 4 and variant to 1.
   bytes[6] = (bytes[6] & 0x0f) | 0x40;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
 
-  let buf = [
+  [
     HEX_CHARS[(bytes[0] >> 4) as usize],
     HEX_CHARS[(bytes[0] & 0x0f) as usize],
     HEX_CHARS[(bytes[1] >> 4) as usize],
@@ -937,7 +953,12 @@ pub(crate) fn fast_uuid_v4(bytes: &mut [u8; 16]) -> String {
     HEX_CHARS[(bytes[14] & 0x0f) as usize],
     HEX_CHARS[(bytes[15] >> 4) as usize],
     HEX_CHARS[(bytes[15] & 0x0f) as usize],
-  ];
+  ]
+}
+
+#[cfg(test)]
+fn fast_uuid_v4(bytes: &mut [u8; 16]) -> String {
+  let buf = fast_uuid_v4_bytes(bytes);
 
   // Safety: the buffer is all valid UTF-8.
   unsafe { String::from_utf8_unchecked(buf.to_vec()) }

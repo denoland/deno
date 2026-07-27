@@ -63,6 +63,8 @@ use ipc::IpcJsonStreamResource;
 use ipc::IpcRefTracker;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "process";
+#[cfg(unix)]
+use deno_io::DENO_EXTRA_STDIO_FDS_ENV_VAR;
 
 #[cfg(unix)]
 fn clear_nonblocking(fd: i32) -> std::io::Result<()> {
@@ -705,6 +707,7 @@ fn create_command(
   )]
   unsafe {
     let mut extra_pipe_fds = Vec::new();
+    let mut child_extra_stdio_fds = Vec::new();
     let mut fds_to_dup = Vec::new();
     let mut fds_to_close = Vec::new();
     let mut ipc_rid = None;
@@ -754,6 +757,7 @@ fn create_command(
           let (fd1, fd2) = deno_io::bi_pipe_pair_raw()?;
           fds_to_dup.push((fd2, target_fd, false));
           fds_to_close.push(fd2);
+          child_extra_stdio_fds.push(target_fd);
           extra_pipe_fds.push(Some(fd1 as i64));
         }
         StdioOrFd::Fd(fd) => {
@@ -763,6 +767,7 @@ fn create_command(
           // but a child doing blocking reads on the inherited fd would
           // otherwise fail with EAGAIN.
           fds_to_dup.push((fd, target_fd, true));
+          child_extra_stdio_fds.push(target_fd);
           extra_pipe_fds.push(None);
         }
         _ => {
@@ -799,6 +804,19 @@ fn create_command(
         libc::setgroups(0, std::ptr::null());
         Ok(())
       });
+    }
+
+    if !child_extra_stdio_fds.is_empty() {
+      let mut value = String::new();
+      for (i, fd) in child_extra_stdio_fds.iter().enumerate() {
+        if i > 0 {
+          value.push(',');
+        }
+        value.push_str(&fd.to_string());
+      }
+      command.env(DENO_EXTRA_STDIO_FDS_ENV_VAR, value);
+    } else {
+      command.env_remove(DENO_EXTRA_STDIO_FDS_ENV_VAR);
     }
 
     Ok((command, ipc_rid, extra_pipe_fds, fds_to_close))
@@ -867,7 +885,13 @@ fn create_command(
               continue;
             }
           };
-          handles_to_close.push(fd2);
+          // Ownership of `fd2` transfers to the command: the spawn
+          // machinery (`uv_stdio_create`) duplicates it into the child's
+          // stdio buffer and closes this original handle itself. Do NOT
+          // also push it onto `handles_to_close` - closing it a second
+          // time races with handle-value reuse on Windows and
+          // intermittently fails a concurrent spawn with
+          // `ERROR_INVALID_HANDLE` (os error 6). See issue #35994.
           command.extra_handle(Some(fd2));
           // `fd1` is a raw Windows HANDLE, but the JS side treats the
           // value it receives as a CRT file descriptor (it calls

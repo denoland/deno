@@ -49,7 +49,7 @@ interface Cache {
    * Put the provided request/response into the cache.
    *
    * How is the API different from browsers?
-   * 1. You cannot match cache objects using by relative paths.
+   * 1. You cannot match cache objects using relative paths.
    * 2. You cannot pass options like `ignoreVary`, `ignoreMethod`, `ignoreSearch`.
    */
   put(request: RequestInfo | URL, response: Response): Promise<void>;
@@ -57,7 +57,7 @@ interface Cache {
    * Return cache object matching the provided request.
    *
    * How is the API different from browsers?
-   * 1. You cannot match cache objects using by relative paths.
+   * 1. You cannot match cache objects using relative paths.
    * 2. You cannot pass options like `ignoreVary`, `ignoreMethod`, `ignoreSearch`.
    */
   match(
@@ -68,13 +68,25 @@ interface Cache {
    * Delete cache object matching the provided request.
    *
    * How is the API different from browsers?
-   * 1. You cannot delete cache objects using by relative paths.
+   * 1. You cannot delete cache objects using relative paths.
    * 2. You cannot pass options like `ignoreVary`, `ignoreMethod`, `ignoreSearch`.
    */
   delete(
     request: RequestInfo | URL,
     options?: CacheQueryOptions,
   ): Promise<boolean>;
+  /**
+   * Return the {@linkcode Request} keys stored in the cache, in insertion
+   * order. When a `request` is provided, only the matching keys are returned.
+   *
+   * How is the API different from browsers?
+   * 1. You cannot match cache objects using relative paths.
+   * 2. You cannot pass options like `ignoreVary`, `ignoreMethod`, `ignoreSearch`.
+   */
+  keys(
+    request?: RequestInfo | URL,
+    options?: CacheQueryOptions,
+  ): Promise<ReadonlyArray<Request>>;
 }
 
 /** The constructor object for {@linkcode Cache}.

@@ -4,8 +4,6 @@ use std::io::Write;
 use std::sync::Once;
 use std::time::Duration;
 
-use async_trait::async_trait;
-use deno_core::futures::future::BoxFuture;
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use hyper::header;
@@ -14,10 +12,12 @@ use opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequ
 use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
 use opentelemetry_proto::transform::common::tonic::ResourceAttributesWithSchema;
 use opentelemetry_sdk::Resource;
-use opentelemetry_sdk::export::logs::LogBatch;
-use opentelemetry_sdk::export::trace::SpanData;
+use opentelemetry_sdk::error::OTelSdkError;
+use opentelemetry_sdk::error::OTelSdkResult;
+use opentelemetry_sdk::logs::LogBatch;
 use opentelemetry_sdk::metrics::Temporality;
 use opentelemetry_sdk::metrics::data::ResourceMetrics;
+use opentelemetry_sdk::trace::SpanData;
 use prost::Message;
 
 use crate::hyper_client::HyperClient;
@@ -260,32 +260,25 @@ impl GrpcSpanExporter {
   pub fn new(client: HyperClient) -> Self {
     Self {
       client,
-      resource: Resource::default(),
+      resource: Resource::builder_empty().build(),
     }
   }
 }
 
-impl opentelemetry_sdk::export::trace::SpanExporter for GrpcSpanExporter {
-  fn export(
-    &mut self,
-    batch: Vec<SpanData>,
-  ) -> BoxFuture<'static, opentelemetry_sdk::export::trace::ExportResult> {
+impl opentelemetry_sdk::trace::SpanExporter for GrpcSpanExporter {
+  async fn export(&self, batch: Vec<SpanData>) -> OTelSdkResult {
     let resource: ResourceAttributesWithSchema = (&self.resource).into();
     let client = self.client.clone();
-    Box::pin(async move {
-      let resource_spans =
-        opentelemetry_proto::transform::trace::tonic::group_spans_by_resource_and_scope(
-          batch, &resource,
-        );
-      let request = ExportTraceServiceRequest { resource_spans };
-      let body = grpc_frame(&request);
-      grpc_send(&client, Signal::Traces, TRACES_PATH, body)
-        .await
-        .map_err(opentelemetry::trace::TraceError::Other)
-    })
+    let resource_spans =
+      opentelemetry_proto::transform::trace::tonic::group_spans_by_resource_and_scope(
+        batch, &resource,
+      );
+    let request = ExportTraceServiceRequest { resource_spans };
+    let body = grpc_frame(&request);
+    grpc_send(&client, Signal::Traces, TRACES_PATH, body)
+      .await
+      .map_err(|e| OTelSdkError::InternalFailure(e.to_string()))
   }
-
-  fn shutdown(&mut self) {}
 
   fn set_resource(&mut self, resource: &Resource) {
     self.resource = resource.clone();
@@ -304,30 +297,24 @@ impl GrpcLogExporter {
   pub fn new(client: HyperClient) -> Self {
     Self {
       client,
-      resource: Resource::default(),
+      resource: Resource::builder_empty().build(),
     }
   }
 }
 
-#[async_trait]
-impl opentelemetry_sdk::export::logs::LogExporter for GrpcLogExporter {
-  async fn export(
-    &mut self,
-    batch: LogBatch<'_>,
-  ) -> opentelemetry_sdk::logs::LogResult<()> {
+impl opentelemetry_sdk::logs::LogExporter for GrpcLogExporter {
+  async fn export(&self, batch: LogBatch<'_>) -> OTelSdkResult {
     let resource: ResourceAttributesWithSchema = (&self.resource).into();
     let resource_logs =
       opentelemetry_proto::transform::logs::tonic::group_logs_by_resource_and_scope(
-        batch, &resource,
+        &batch, &resource,
       );
     let request = ExportLogsServiceRequest { resource_logs };
     let body = grpc_frame(&request);
     grpc_send(&self.client, Signal::Logs, LOGS_PATH, body)
       .await
-      .map_err(opentelemetry_sdk::logs::LogError::Other)
+      .map_err(|e| OTelSdkError::InternalFailure(e.to_string()))
   }
-
-  fn shutdown(&mut self) {}
 
   fn set_resource(&mut self, resource: &Resource) {
     self.resource = resource.clone();
@@ -351,28 +338,22 @@ impl GrpcMetricExporter {
   }
 }
 
-#[async_trait]
 impl opentelemetry_sdk::metrics::exporter::PushMetricExporter
   for GrpcMetricExporter
 {
-  async fn export(
-    &self,
-    metrics: &mut ResourceMetrics,
-  ) -> opentelemetry_sdk::metrics::MetricResult<()> {
-    let request = ExportMetricsServiceRequest::from(&*metrics);
+  async fn export(&self, metrics: &ResourceMetrics) -> OTelSdkResult {
+    let request = ExportMetricsServiceRequest::from(metrics);
     let body = grpc_frame(&request);
     grpc_send(&self.client, Signal::Metrics, METRICS_PATH, body)
       .await
-      .map_err(|e| {
-        opentelemetry_sdk::metrics::MetricError::Other(e.to_string())
-      })
+      .map_err(|e| OTelSdkError::InternalFailure(e.to_string()))
   }
 
-  async fn force_flush(&self) -> opentelemetry_sdk::metrics::MetricResult<()> {
+  fn force_flush(&self) -> OTelSdkResult {
     Ok(())
   }
 
-  fn shutdown(&self) -> opentelemetry_sdk::metrics::MetricResult<()> {
+  fn shutdown_with_timeout(&self, _timeout: Duration) -> OTelSdkResult {
     Ok(())
   }
 

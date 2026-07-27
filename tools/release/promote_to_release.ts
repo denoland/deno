@@ -5,7 +5,7 @@
 
 import { $ } from "jsr:@david/dax@0.41.0";
 import { gray } from "jsr:@std/fmt@1/colors";
-import { patchver } from "jsr:@deno/patchver@0.5.0";
+import { patchver } from "jsr:@deno/patchver@0.5.1";
 
 const SUPPORTED_TARGETS = [
   "aarch64-apple-darwin",
@@ -30,14 +30,20 @@ if (CHANNEL !== "rc" && CHANNEL !== "lts") {
   throw new Error(`Invalid channel: ${CHANNEL}`);
 }
 
-const CANARY_URL = "https://dl.deno.land";
+const DL_URL = "https://dl.deno.land";
 
-function getCanaryBinaryUrl(
-  version: string,
+function getSourceBinaryUrl(
+  versionOrHash: string,
   binary: string,
   target: string,
 ): string {
-  return `${CANARY_URL}/canary/${version}/${binary}-${target}.zip`;
+  if (CHANNEL === "lts") {
+    // LTS is cut from a release branch that has no canary build, so re-stamp
+    // the already-published stable release binaries instead of canary ones.
+    const version = versionOrHash.replace(/^v/, "");
+    return `${DL_URL}/release/v${version}/${binary}-${target}.zip`;
+  }
+  return `${DL_URL}/canary/${versionOrHash}/${binary}-${target}.zip`;
 }
 
 function getUnzippedFilename(binary: string, target: string) {
@@ -73,20 +79,20 @@ async function remove(filePath: string) {
   }
 }
 
-async function fetchLatestCanaryBinary(
-  version: string,
+async function fetchSourceBinary(
+  versionOrHash: string,
   binary: string,
   target: string,
 ) {
-  const url = getCanaryBinaryUrl(version, binary, target);
+  const url = getSourceBinaryUrl(versionOrHash, binary, target);
   await $.request(url).showProgress().pipeToPath();
 }
 
-async function fetchLatestCanaryBinaries(canaryVersion: string) {
+async function fetchSourceBinaries(versionOrHash: string) {
   for (const binary of DENO_BINARIES) {
     for (const target of NON_WINDOWS_TARGETS) {
       $.logStep("Download", binary, gray("target:"), target);
-      await fetchLatestCanaryBinary(canaryVersion, binary, target);
+      await fetchSourceBinary(versionOrHash, binary, target);
     }
   }
 }
@@ -161,6 +167,31 @@ async function runRcodesign(
   await $`codesign -dv --verbose=4 ./deno`;
 }
 
+async function removeExistingSignature(target: string, binaryName: string) {
+  // Only Intel macOS needs this. patchver runs as a Wasm module: libsui's
+  // Intel Mach-O path used to strip the existing code signature by shelling
+  // out to `codesign`, which is gated to Apple hosts and so is absent from the
+  // Wasm build. Injecting the channel section then leaves stale signature data
+  // in __LINKEDIT that rcodesign rejects with "data after signature". Strip it
+  // here first with the runner's native codesign so patchver writes into an
+  // unsigned binary that can be re-signed cleanly.
+  //
+  // arm64 must NOT be stripped: its patchver path rebuilds the signature
+  // in-memory, and removing the signature first makes that output unrecognizable
+  // to rcodesign ("specified path is not of a recognized type").
+  if (target !== "x86_64-apple-darwin") {
+    return;
+  }
+  $.logStep("Remove signature", binaryName);
+  const output = await $`codesign --remove-signature ./${binaryName}`.noThrow();
+  if (output.code !== 0) {
+    $.logError(
+      `Failed to remove existing signature from ${binaryName} (error code ${output.code})`,
+    );
+    Deno.exit(1);
+  }
+}
+
 async function promoteBinaryToRc(
   binary: string,
   target: string,
@@ -183,6 +214,8 @@ async function promoteBinaryToRc(
   await unzipArchive(archiveName, unzippedName);
   await remove(archiveName);
 
+  await removeExistingSignature(target, unzippedName);
+
   $.logStep(
     "Patchver",
     unzippedName,
@@ -197,7 +230,7 @@ async function promoteBinaryToRc(
   await runRcodesign(target, unzippedName, commitHash);
   // Set executable permission
   if (!target.includes("windows")) {
-    Deno.chmod(unzippedName, 0o777);
+    await Deno.chmod(unzippedName, 0o755);
   }
 
   await createArchive(unzippedName, archiveName);
@@ -246,12 +279,15 @@ async function dumpRcVersion() {
 async function main() {
   const commitHash = Deno.args[1];
   if (!commitHash) {
-    throw new Error("Commit hash needs to be provided as an argument");
+    throw new Error(
+      "A canary commit hash (rc) or release version (lts) needs to be provided as an argument",
+    );
   }
-  $.logStep("Download canary binaries...");
-  await fetchLatestCanaryBinaries(commitHash);
-  console.log("All canary binaries ready");
-  $.logStep(`Promote canary binaries to ${CHANNEL}...`);
+  const sourceKind = CHANNEL === "lts" ? "release" : "canary";
+  $.logStep(`Download ${sourceKind} binaries...`);
+  await fetchSourceBinaries(commitHash);
+  console.log(`All ${sourceKind} binaries ready`);
+  $.logStep(`Promote ${sourceKind} binaries to ${CHANNEL}...`);
   await promoteBinariesToRc(commitHash);
 
   // Finally dump the version name to a `release.txt` file for uploading to GCP

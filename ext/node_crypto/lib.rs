@@ -680,6 +680,9 @@ pub fn op_node_cipheriv_encrypt(
     Ok(context) => context,
     Err(_) => return false,
   };
+  if output.len() < input.len() {
+    return false;
+  }
   context.encrypt(input, output);
   true
 }
@@ -766,6 +769,9 @@ pub fn op_node_decipheriv_decrypt(
     Ok(context) => context,
     Err(_) => return false,
   };
+  if output.len() < input.len() {
+    return false;
+  }
   context.decrypt(input, output);
   true
 }

@@ -1,9 +1,13 @@
 true
 hello world
-EVENT: "Serving"
+EVENT: {"Serving":{"kind":"deno-serve"}}
 
 [Object: null prototype] { success: true, code: 0, signal: null }
 node listening
-NODE EVENT: "Serving"
+NODE EVENT: {"Serving":{"kind":"node-http"}}
+
+[Object: null prototype] { success: true, code: 0, signal: null }
+http2 listening
+HTTP2 EVENT: {"Serving":{"kind":"node-http2"}}
 
 [Object: null prototype] { success: true, code: 0, signal: null }

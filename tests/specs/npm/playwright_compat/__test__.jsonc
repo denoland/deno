@@ -1,5 +1,5 @@
 {
-  "if": "notWindowsArm",
+  "if": "notSlowCiShard",
   "envs": {
     "PLAYWRIGHT_BROWSERS_PATH": "../../../../.ms-playwright"
   },

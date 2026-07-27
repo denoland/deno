@@ -1,0 +1,2 @@
+error: --watch and --watch-hmr cannot be used while reading from stdin.
+[WILDCARD]

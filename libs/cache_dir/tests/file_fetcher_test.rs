@@ -4,6 +4,7 @@
 
 use std::time::SystemTime;
 
+use deno_cache_dir::Checksum;
 use deno_cache_dir::file_fetcher::AuthTokens;
 use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_cache_dir::file_fetcher::CachedOrRedirect;
@@ -397,6 +398,17 @@ async fn test_fetch_not_found_is_negatively_cached() {
   assert_not_found(
     file_fetcher
       .fetch_no_follow(&url, FetchNoFollowOptions::default())
+      .await,
+  );
+  assert_not_found(
+    file_fetcher
+      .fetch_no_follow(
+        &url,
+        FetchNoFollowOptions {
+          maybe_checksum: Some(Checksum::new("not matching")),
+          ..Default::default()
+        },
+      )
       .await,
   );
   match file_fetcher

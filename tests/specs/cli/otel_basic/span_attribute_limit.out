@@ -5,7 +5,7 @@
       "spanId": "0000000000000001",
       "traceState": "",
       "parentSpanId": "",
-      "flags": 1,
+      "flags": 257,
       "name": "span",
       "kind": 1,
       "startTimeUnixNano": "[WILDCARD]",

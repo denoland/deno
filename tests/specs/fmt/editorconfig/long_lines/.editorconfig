@@ -1,0 +1,4 @@
+root = true
+
+[*.ts]
+max_line_length = 200

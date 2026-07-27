@@ -3225,39 +3225,132 @@ pub fn wrap_eval_code(source_code: &str) -> String {
   )
 }
 
-/// Deno subcommands - if the first arg is one of these, pass through unchanged
+/// Deno subcommands - if the first arg is one of these, pass through unchanged.
+/// This must be kept in sync with the subcommands registered in
+/// `cli/args/flags.rs` so that spawning e.g. `deno bundle ...` via
+/// `node:child_process` is passed through instead of being treated as a script
+/// to `deno run`. The `subcommands_recognized_by_node_shim` test in
+/// `cli/args/flags.rs` enforces this. See #35591.
 const DENO_SUBCOMMANDS: &[&str] = &[
   "add",
+  "approve-scripts",
+  "audit",
   "bench",
+  "bump-version",
+  "bundle",
   "cache",
   "check",
+  "ci",
+  "clean",
   "compile",
   "completions",
   "coverage",
+  "create",
+  "deploy",
+  "desktop",
   "doc",
   "eval",
   "fmt",
   "help",
+  "i",
   "info",
   "init",
   "install",
+  "json_reference",
+  "jupyter",
+  "link",
   "lint",
+  "list",
   "lsp",
+  "outdated",
+  "pack",
   "publish",
+  "remove",
   "repl",
   "run",
+  "sandbox",
+  "serve",
+  "sync-types",
   "task",
   "tasks",
   "test",
+  "transpile",
   "types",
   "uninstall",
+  "unlink",
+  "update",
   "upgrade",
   "vendor",
+  "watch",
+  "why",
+  "x",
 ];
 
 /// Check if a string is a Deno subcommand
 pub fn is_deno_subcommand(arg: &str) -> bool {
   DENO_SUBCOMMANDS.contains(&arg)
+}
+
+/// Subcommands that execute user code and accept permission flags. A spawned
+/// Node.js process has no permission model, so when one of these is produced by
+/// the node-compat translation without explicit permission flags, we grant `-A`
+/// to mirror Node.js behavior (and to match the non-pass-through script path).
+fn subcommand_runs_user_code(subcommand: &str) -> bool {
+  matches!(subcommand, "run" | "test" | "bench" | "serve")
+}
+
+/// Long-form permission flag names (without the leading `--`): allow/deny
+/// grants plus `--permission-set`. Mirrors the permission flags defined in the
+/// CLI parser (see `permission_args` in cli/args/flags.rs).
+const PERMISSION_LONG_FLAGS: &[&str] = &[
+  "allow-all",
+  "allow-read",
+  "allow-write",
+  "allow-net",
+  "allow-env",
+  "allow-run",
+  "allow-sys",
+  "allow-ffi",
+  "allow-import",
+  "deny-read",
+  "deny-write",
+  "deny-net",
+  "deny-env",
+  "deny-run",
+  "deny-sys",
+  "deny-ffi",
+  "deny-import",
+  "permission-set",
+];
+
+/// Short-form permission flag characters. Mirrors the `.short(...)` aliases in
+/// the CLI parser: -A/-R/-W/-N/-E/-S/-I plus -P for `--permission-set`.
+const PERMISSION_SHORT_FLAGS: &[char] =
+  &['A', 'R', 'W', 'N', 'E', 'S', 'I', 'P'];
+
+/// Whether `arg` is an explicit permission flag: long (`--allow-net`) or short
+/// (`-A`, `-RW`), with or without an `=value` (permission flags require `=` for
+/// values, so the value can be split off first).
+fn is_permission_flag(arg: &str) -> bool {
+  let flag = arg.split('=').next().unwrap_or(arg);
+  if let Some(long) = flag.strip_prefix("--") {
+    return PERMISSION_LONG_FLAGS.contains(&long);
+  }
+  if let Some(shorts) = flag.strip_prefix('-') {
+    // Short flags may be bundled (e.g. `-RW`); treat the arg as a permission
+    // flag if every character is an alphabetic short flag and at least one is a
+    // permission flag.
+    return !shorts.is_empty()
+      && shorts.chars().all(|c| c.is_ascii_alphabetic())
+      && shorts.chars().any(|c| PERMISSION_SHORT_FLAGS.contains(&c));
+  }
+  false
+}
+
+/// Whether the args already carry an explicit permission flag, in which case we
+/// must respect the caller's intent and not inject `-A`.
+fn has_permission_flag(args: &[String]) -> bool {
+  args.iter().any(|a| is_permission_flag(a))
 }
 
 /// Resolve a Node-style entrypoint to a specifier that Deno's `run` subcommand
@@ -3366,12 +3459,23 @@ pub fn translate_to_deno_args(
   let node_options = &mut result.node_options;
 
   // Check if the args already look like Deno args (e.g., from vitest workers)
-  // If the first remaining arg is a Deno subcommand, pass through unchanged
+  // If the first remaining arg is a Deno subcommand, pass through unchanged.
   if let Some(first_arg) = parsed_args.remaining_args.first()
     && is_deno_subcommand(first_arg)
   {
-    // Already Deno-style args, return unchanged
-    result.deno_args = parsed_args.remaining_args;
+    let mut deno_args = parsed_args.remaining_args;
+    // A spawned Node.js process has no permission model. When a tool detects it
+    // is running under Deno and spawns an execution subcommand (e.g.
+    // `deno run <script>`) without any permission flags, grant `-A` so the
+    // child behaves like Node.js instead of tripping a permission prompt. Tools
+    // that pass explicit permission flags (e.g. vitest workers spawn
+    // `run -A ...`) are left untouched. See #35441.
+    if subcommand_runs_user_code(&deno_args[0])
+      && !has_permission_flag(&deno_args)
+    {
+      deno_args.insert(1, "-A".to_string());
+    }
+    result.deno_args = deno_args;
     return result;
   }
 
@@ -5223,4 +5327,74 @@ mod tests {
       "foo.js"
     ]
   );
+
+  /// Helper for the deno-subcommand pass-through path (used when a tool spawns
+  /// Deno with deno-style args). Translation is mode-independent here, so use
+  /// the child_process options.
+  fn translate_passthrough(input: Vec<String>) -> Vec<String> {
+    let parsed_args = parse_args(input).unwrap();
+    let options = TranslateOptions::for_child_process();
+    translate_to_deno_args(parsed_args, &options).deno_args
+  }
+
+  #[test]
+  fn passthrough_run_without_perms_gets_allow_all() {
+    // Regression test for #35441: `deno run <script>` spawned without any
+    // permission flags must receive `-A` so the Node-compat child has full
+    // access instead of prompting.
+    assert_eq!(
+      translate_passthrough(svec!["run", "child.mjs"]),
+      svec!["run", "-A", "child.mjs"]
+    );
+    assert_eq!(
+      translate_passthrough(svec!["run", "npm:storybook", "init"]),
+      svec!["run", "-A", "npm:storybook", "init"]
+    );
+  }
+
+  #[test]
+  fn passthrough_run_with_explicit_perms_is_unchanged() {
+    // vitest workers and similar pass `-A` already; respect explicit flags,
+    // including long, short, bundled and `=value` forms.
+    for flags in [
+      svec!["-A"],
+      svec!["--allow-all"],
+      svec!["--allow-read"],
+      svec!["--allow-read=/etc"],
+      svec!["-R"],
+      svec!["-R=/etc"],
+      svec!["-RW"],
+      svec!["-N=localhost"],
+      svec!["--deny-net"],
+      svec!["-P=prod"],
+    ] {
+      let mut input = svec!["run"];
+      input.extend(flags.iter().cloned());
+      input.push("worker.mjs".to_string());
+      assert_eq!(
+        translate_passthrough(input.clone()),
+        input,
+        "expected {input:?} to pass through unchanged"
+      );
+    }
+  }
+
+  #[test]
+  fn passthrough_run_with_non_permission_short_flag_gets_allow_all() {
+    // `-q` (quiet) is not a permission flag, so `-A` is still injected.
+    assert_eq!(
+      translate_passthrough(svec!["run", "-q", "worker.mjs"]),
+      svec!["run", "-A", "-q", "worker.mjs"]
+    );
+  }
+
+  #[test]
+  fn passthrough_non_execution_subcommand_is_unchanged() {
+    // Non-execution subcommands don't take `-A`; leave them alone.
+    assert_eq!(translate_passthrough(svec!["install"]), svec!["install"]);
+    assert_eq!(
+      translate_passthrough(svec!["add", "npm:foo"]),
+      svec!["add", "npm:foo"]
+    );
+  }
 }

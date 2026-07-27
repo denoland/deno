@@ -14,6 +14,12 @@ pub struct Struct {
 }
 
 #[derive(ToV8)]
+pub struct LifetimeStruct<'a> {
+  a: deno_core::v8::Local<'a, deno_core::v8::Value>,
+  b: u8,
+}
+
+#[derive(ToV8)]
 pub struct SkipIfStruct {
   a: u8,
   #[to_v8(skip_if = Option::is_none)]

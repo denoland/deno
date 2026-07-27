@@ -1,0 +1,18 @@
+{
+  "tempDir": true,
+  "tests": {
+    // 1.1.0 is a plain token publish that comes after 1.0.0's staged publish,
+    // so the `no-downgrade` trust policy refuses to install it.
+    "downgrade_rejected": {
+      "args": "install npm:@denotest/trust-downgrade@1.1.0",
+      "output": "rejected.out",
+      "exitCode": 1
+    },
+    // 1.0.0 is the first published version, so there is no earlier history to
+    // downgrade from and it installs normally.
+    "strong_version_allowed": {
+      "args": "install npm:@denotest/trust-downgrade@1.0.0",
+      "output": "allowed.out"
+    }
+  }
+}

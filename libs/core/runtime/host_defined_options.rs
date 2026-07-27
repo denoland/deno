@@ -120,3 +120,15 @@ pub fn register_vm_dynamic_import_callback(
     .insert(id, v8::Global::new(scope, callback));
   id
 }
+
+/// Register a fallback for V8's host-initialize-import-meta callback that
+/// runs when the module is not tracked by the module map. `node:vm` uses
+/// this to populate `import.meta` for `SourceTextModule` instances. The
+/// callback is per-isolate; subsequent calls overwrite the previous value.
+pub fn register_external_module_import_meta_cb(
+  scope: &mut PinScope<'_, '_>,
+  callback: crate::runtime::ExternalModuleImportMetaCb,
+) {
+  let state = JsRuntime::state_from(scope);
+  state.external_module_import_meta_cb.set(Some(callback));
+}
