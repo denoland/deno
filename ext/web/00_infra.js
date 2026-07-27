@@ -465,7 +465,7 @@ function pathFromURL(pathOrUrl) {
 // it in unit tests
 internals.pathFromURL = pathFromURL;
 
-// deno-lint-ignore prefer-primordials
+// deno-lint-ignore deno-internal/prefer-primordials
 const SymbolMetadata = Symbol.metadata ?? Symbol("Symbol.metadata");
 
 return {

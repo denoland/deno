@@ -21,7 +21,7 @@ function fill(
   end,
 ) {
   // Ignore primordial: `fill` is a method from Node.js Buffer.
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   return buffer.fill(value, start, end);
 }
 

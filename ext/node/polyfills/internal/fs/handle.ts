@@ -213,7 +213,7 @@ export class FileHandle extends EventEmitter {
       };
       // `opts` is a plain options object; `.buffer` is a normal property,
       // not the TypedArray `.buffer` getter.
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       buf = opts.buffer ?? lazyBuffer().Buffer.alloc(16384);
       offset = opts.offset ?? 0;
       length = opts.length ?? getByteLength(buf) - offset;

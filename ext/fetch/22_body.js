@@ -506,7 +506,7 @@ function extractBody(object) {
     ObjectPrototypeIsPrototypeOf(URLSearchParamsPrototype, object)
   ) {
     // TODO(@satyarohith): not sure what primordial here.
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     source = object.toString();
     contentType = "application/x-www-form-urlencoded;charset=UTF-8";
   } else if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, object)) {
@@ -556,7 +556,7 @@ function extractBody(object) {
       stream = new ReadableStream({
         type: "bytes",
         async pull(controller) {
-          // deno-lint-ignore prefer-primordials
+          // deno-lint-ignore deno-internal/prefer-primordials
           const res = await iter.next();
           if (res.done) {
             controller.close();
@@ -566,7 +566,7 @@ function extractBody(object) {
         },
         async cancel(reason) {
           if (iter.return !== undefined) {
-            // deno-lint-ignore prefer-primordials
+            // deno-lint-ignore deno-internal/prefer-primordials
             await iter.return(reason);
           }
         },

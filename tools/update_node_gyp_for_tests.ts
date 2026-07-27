@@ -5,9 +5,9 @@
 // This script updates `test/testdata/assets/node-gyp/*` files that
 // are used by the test registry.
 
-import { create, extract } from "npm:tar";
+import { create, extract } from "npm:tar@6.2.1";
 import { Readable } from "node:stream";
-import { join } from "jsr:@std/path";
+import { join } from "jsr:@std/path@1.1.4";
 import { createGzip } from "node:zlib";
 import { createWriteStream } from "node:fs";
 

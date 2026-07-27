@@ -18,7 +18,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 121;
+const cacheVersion = 122;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
@@ -613,6 +613,15 @@ const buildJobs = buildItems.map((rawBuildItem) => {
   const panicTraceFeatures = usesFramePointerPanicTrace
     ? "deno/panic-trace-frame-pointer"
     : "deno/panic-trace";
+  const usesStartupOrder = rawBuildItem.profile === "release" &&
+    ((rawBuildItem.os === "linux" &&
+      (rawBuildItem.arch === "x86_64" || rawBuildItem.arch === "aarch64")) ||
+      (rawBuildItem.os === "macos" && rawBuildItem.arch === "aarch64"));
+  const startupOrderTarget = rawBuildItem.os === "macos"
+    ? "aarch64-apple-darwin"
+    : `${rawBuildItem.arch}-unknown-linux-gnu`;
+  const startupOrderPath =
+    `target/release/startup-order-${startupOrderTarget}.order`;
   const isLinux = buildItem.os.equals("linux");
   const isWindows = buildItem.os.equals("windows");
   const isMacos = buildItem.os.equals("macos");
@@ -916,6 +925,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           .map((name) => `-p ${name}`).join(" ");
         const binsToBuild = ["deno", "denort", "test_server"]
           .map((name) => `--bin ${name}`).join(" ");
+        const cargoBuildReleaseCommand =
+          `cargo build${buildStdArgs} --release --locked ${packagesToBuild} ${binsToBuild} --features=${panicTraceFeatures}`;
         const cargoBuildReleaseStep = step
           .if(
             isRelease.and(isDenoland.or(buildItem.use_sysroot)),
@@ -972,7 +983,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 "fi",
                 // output fs space before and after building
                 "df -h",
-                `cargo build${buildStdArgs} --release --locked ${packagesToBuild} ${binsToBuild} --features=${panicTraceFeatures}`,
+                cargoBuildReleaseCommand,
                 // Build the desktop runtime shared library (libdenort cdylib) for
                 // laufey-based desktop apps. It is a separate invocation, but
                 // still needs the frame-pointer standard library before its
@@ -981,6 +992,65 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 "df -h",
               ],
             },
+            ...(usesStartupOrder
+              ? [{
+                name: "Trace startup order",
+                run: rawBuildItem.os === "macos"
+                  ? [
+                    "cp -p target/release/deno target/release/deno-before-startup-order",
+                    "target/release/deno run -A tools/startup_order/generate_macos_function_orderfile.ts \\",
+                    "  --binary $GITHUB_WORKSPACE/target/release/deno-before-startup-order \\",
+                    `  --output $GITHUB_WORKSPACE/${startupOrderPath} \\`,
+                    "  --repeats 3 \\",
+                    "  --workload-profile run-first",
+                  ]
+                  : [
+                    "cp -p target/release/deno target/release/deno-before-startup-order",
+                    "target/release/deno run -A tools/startup_order/generate_linux_function_orderfile.ts \\",
+                    "  --binary $GITHUB_WORKSPACE/target/release/deno-before-startup-order \\",
+                    `  --output $GITHUB_WORKSPACE/${startupOrderPath} \\`,
+                    "  --repeats 3 \\",
+                    "  --workload-profile run-first",
+                  ],
+                env: { NO_COLOR: 1 },
+              }, {
+                name: "Relink release deno with startup order",
+                run: cargoBuildReleaseCommand,
+                env: {
+                  DENO_SNAPSHOT_MINIFY_SOURCES: "1",
+                  DENO_USE_STARTUP_ORDER: "1",
+                  DENO_STARTUP_ORDER_FILE:
+                    `\${{ github.workspace }}/${startupOrderPath}`,
+                },
+              }, {
+                name: "Verify startup order",
+                run: [
+                  "target/release/deno run -A tools/startup_order/verify_orderfile.ts \\",
+                  "  --baseline-binary target/release/deno-before-startup-order \\",
+                  "  --binary target/release/deno \\",
+                  `  --order ${startupOrderPath} \\`,
+                  `  --output ${startupOrderPath}.verify.json`,
+                ],
+                env: { NO_COLOR: 1 },
+              }, {
+                name: "Upload startup order",
+                uses: "actions/upload-artifact@v6",
+                if: conditions.status.always(),
+                with: {
+                  name: `startup-order-${profileName}`,
+                  path: [
+                    startupOrderPath,
+                    `${startupOrderPath}.json`,
+                    ...(rawBuildItem.os === "linux"
+                      ? [`${startupOrderPath}.starts.json`]
+                      : []),
+                    `${startupOrderPath}.verify.json`,
+                  ].join("\n"),
+                  "retention-days": 7,
+                  "if-no-files-found": "warn",
+                },
+              }]
+              : []),
             {
               name: "Check release snapshot flags",
               if: isLinux,

@@ -22,6 +22,8 @@ fn main() {
       .hash_dir(tests.join("unit"))
       .hash_dir(tests.join("util"))
       .hash_dir(tests.join("testdata"))
+      // lint_plugin_prefer_primordials_test imports tools/lint_plugins
+      .hash_dir(test_util::root_path().join("tools/lint_plugins"))
       .hash_file(test_util::deno_exe_path())
       .hash_file(test_util::test_server_path());
   });
