@@ -1,0 +1,32 @@
+// Tests that a local workspace member which declares a `bin` in its
+// package.json is linked into `node_modules/.bin` — both the workspace root's
+// and that of a sibling member which depends on it — and that `deno task` can
+// invoke it. Only external npm dependencies used to get `.bin` entries, so a
+// task like `"cli": "local-cli"` failed with "command not found".
+//
+// This covers the default isolated (`.deno`) linker; the hoisted linker is
+// covered by the sibling `workspace_member_bin_hoisted` spec. No network
+// access is required — the workspace contains only local members.
+//
+// https://github.com/denoland/deno/issues/36313
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "run --allow-read check_bin.ts",
+      "output": "ok\n"
+    },
+    {
+      "args": "task --cwd apps/web cli",
+      "output": "member_task.out"
+    },
+    {
+      "args": "task root-cli",
+      "output": "root_task.out"
+    }
+  ]
+}

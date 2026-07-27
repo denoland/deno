@@ -1,0 +1,10 @@
+{
+  "nodeModulesDir": "auto",
+  "workspace": [
+    "./packages/local-cli",
+    "./apps/web"
+  ],
+  "tasks": {
+    "root-cli": "local-cli"
+  }
+}

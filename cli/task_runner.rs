@@ -544,19 +544,39 @@ pub fn resolve_custom_commands(
       commands
     }
     CliNpmResolver::Managed(npm_resolver) => {
-      resolve_managed_npm_commands(node_resolver, npm_resolver)?
+      let mut commands =
+        resolve_managed_npm_commands(node_resolver, npm_resolver)?;
+      // Local workspace members are not part of the npm resolution snapshot,
+      // so a `bin` they declare is only ever visible as a `node_modules/.bin`
+      // entry. Merge those in with `or_insert` so snapshot-derived commands
+      // keep precedence (#36313). Prepending the bin dirs to `PATH` isn't
+      // enough on its own: on Windows the entries are plain `<name>`,
+      // `<name>.cmd` and `<name>.ps1` files rather than executables.
+      for bin_dir in bin_dirs {
+        for (name, cmd) in
+          resolve_npm_commands_from_bin_dir(bin_dir, node_resolver)
+        {
+          commands.entry(name).or_insert(cmd);
+        }
+      }
+      commands
     }
   };
   commands.insert("npm".to_string(), Rc::new(NpmCommand));
   Ok(commands)
 }
 
-/// Builds the list of `node_modules/.bin` directories to consult for a task.
+/// Builds the list of `node_modules/.bin` directories to consult for a task,
+/// ordered closest-first.
 ///
 /// For BYONM this walks up the filesystem from `cwd` collecting every
 /// `<ancestor>/node_modules/.bin` directory (matching how Node, npm, and pnpm
-/// resolve bin commands). For the managed npm resolver there is only ever a
-/// single `node_modules/.bin`.
+/// resolve bin commands).
+///
+/// For the managed npm resolver the walk is bounded by the workspace root
+/// (the directory holding the root `node_modules`), so a task run with
+/// `--cwd <member>` also sees that member's own `node_modules/.bin` without
+/// picking up unrelated directories above the workspace.
 pub fn resolve_task_node_modules_bin_dirs(
   npm_resolver: &CliNpmResolver,
   cwd: &Path,
@@ -566,10 +586,27 @@ pub fn resolve_task_node_modules_bin_dirs(
       .ancestors()
       .map(|dir| dir.join("node_modules").join(".bin"))
       .collect(),
-    CliNpmResolver::Managed(npm_resolver) => npm_resolver
-      .root_node_modules_path()
-      .map(|p| vec![p.join(".bin")])
-      .unwrap_or_default(),
+    CliNpmResolver::Managed(npm_resolver) => {
+      let Some(root_node_modules_path) = npm_resolver.root_node_modules_path()
+      else {
+        return Vec::new();
+      };
+      let mut bin_dirs = Vec::new();
+      // When the cwd is outside the workspace only the root `.bin` applies —
+      // don't reach into unrelated `node_modules` directories.
+      if let Some(root_dir) = root_node_modules_path.parent()
+        && cwd.starts_with(root_dir)
+      {
+        bin_dirs.extend(
+          cwd
+            .ancestors()
+            .take_while(|dir| *dir != root_dir)
+            .map(|dir| dir.join("node_modules").join(".bin")),
+        );
+      }
+      bin_dirs.push(root_node_modules_path.join(".bin"));
+      bin_dirs
+    }
   }
 }
 

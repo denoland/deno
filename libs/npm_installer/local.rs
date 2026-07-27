@@ -269,6 +269,10 @@ impl<
     // node_modules/.deno/<package_folder_id_folder_name>/node_modules/<package_name>
     let workspace_lifecycle_packages =
       self.resolve_workspace_lifecycle_packages(snapshot)?;
+    // Declared before `bin_entries` below so it outlives the borrows it hands
+    // out to it.
+    let workspace_bin_packages =
+      resolve_workspace_bin_packages(&self.npm_install_deps_provider);
     let mut cache_futures = FuturesUnordered::new();
     let mut newest_packages_by_name: HashMap<
       &StackString,
@@ -916,10 +920,14 @@ impl<
 
     // 9. Set up `node_modules/.bin` entries for packages that need it.
     {
-      let bin_entries = match Rc::try_unwrap(bin_entries) {
+      let mut bin_entries = match Rc::try_unwrap(bin_entries) {
         Ok(bin_entries) => bin_entries.into_inner(),
         Err(_) => panic!("Should have sole ref to rc."),
       };
+      // Workspace members that declare a `bin` get a root `.bin` entry too, so
+      // `deno task` and any tooling that looks in `node_modules/.bin` can run
+      // them (#36313). Added last so snapshot packages win a name collision.
+      add_workspace_bin_entries(&mut bin_entries, &workspace_bin_packages);
       bin_entries.finish(
         snapshot,
         &bin_node_modules_dir_path,
@@ -976,6 +984,11 @@ impl<
         .iter()
         .map(|pkg| (&pkg.nv, pkg.target_dir.as_path()))
         .collect();
+      let workspace_bin_pkgs_by_nv: HashMap<&PackageNv, &WorkspaceBinPackage> =
+        workspace_bin_packages
+          .iter()
+          .map(|pkg| (&pkg.nv, pkg))
+          .collect();
       for workspace_pkg in self.npm_install_deps_provider.workspace_pkgs() {
         // The workspace root's `node_modules` is already fully set up above.
         // (Comparing paths here is unreliable: `root_node_modules_path` is
@@ -1032,6 +1045,7 @@ impl<
                   // its bins (the alias link exists either way).
                   bin_deps.push(MemberBinDep {
                     package,
+                    extra: None,
                     read_path: local_registry_package_path.clone(),
                     link_path: member_node_modules.join(alias.as_str()),
                   });
@@ -1042,6 +1056,16 @@ impl<
                 let Some(target_dir) = workspace_member_dirs.get(nv) else {
                   continue;
                 };
+                // A sibling member that ships executables contributes them to
+                // this member's `.bin` too (#36313).
+                if let Some(bin_pkg) = workspace_bin_pkgs_by_nv.get(nv) {
+                  bin_deps.push(MemberBinDep {
+                    package: &bin_pkg.package,
+                    extra: Some(&bin_pkg.extra),
+                    read_path: bin_pkg.package_path.clone(),
+                    link_path: member_node_modules.join(alias.as_str()),
+                  });
+                }
                 (alias, target_dir.to_path_buf(), nv.to_string())
               }
             };
@@ -1835,11 +1859,96 @@ pub(crate) fn remove_stale_member_symlinks<TSys: LocalNpmInstallSys>(
   }
 }
 
+/// A non-root workspace member that declares a `bin` in its package.json.
+///
+/// Workspace members are not npm packages in the resolution snapshot, so a
+/// synthetic [`NpmResolutionPackage`] is built for them here. That lets their
+/// executables go through the same [`BinEntries`] machinery as registry
+/// packages (bin-name normalization, collision handling, unix symlinks and
+/// windows shims) instead of duplicating any of it. See
+/// https://github.com/denoland/deno/issues/36313.
+pub(crate) struct WorkspaceBinPackage {
+  pub nv: PackageNv,
+  pub package: NpmResolutionPackage,
+  pub extra: NpmPackageExtraInfo,
+  /// The member's own directory (where its `bin` scripts live).
+  pub package_path: PathBuf,
+}
+
+/// Builds a [`WorkspaceBinPackage`] for every non-root workspace member that
+/// declares a `bin`. The workspace root is skipped because npm never links a
+/// package's own executables into its `node_modules/.bin`.
+pub(crate) fn resolve_workspace_bin_packages(
+  npm_install_deps_provider: &NpmInstallDepsProvider,
+) -> Vec<WorkspaceBinPackage> {
+  npm_install_deps_provider
+    .workspace_pkgs()
+    .iter()
+    .filter(|pkg| !pkg.is_root)
+    .filter_map(|pkg| {
+      let bin = pkg.bin.clone()?;
+      let extra = NpmPackageExtraInfo {
+        bin: Some(bin),
+        ..Default::default()
+      };
+      Some(WorkspaceBinPackage {
+        nv: pkg.nv.clone(),
+        package: NpmResolutionPackage {
+          id: NpmPackageId {
+            nv: pkg.nv.clone(),
+            peer_dependencies: NpmPackageIdPeerDependencies::from([]),
+          },
+          copy_index: 0,
+          system: NpmResolutionPackageSystemInfo::default(),
+          dist: None,
+          dependencies: Default::default(),
+          optional_dependencies: Default::default(),
+          optional_peer_dependencies: Default::default(),
+          extra: Some(extra.clone()),
+          is_deprecated: false,
+          has_bin: true,
+          // This stand-in exists only to link the member's executables; its
+          // lifecycle scripts are handled by the workspace lifecycle packages.
+          has_scripts: false,
+        },
+        extra,
+        package_path: pkg.target_dir.clone(),
+      })
+    })
+    .collect()
+}
+
+/// Adds the workspace members' executables to the root `node_modules/.bin`
+/// entries.
+///
+/// These are added *after* every snapshot package so that a registry
+/// dependency wins a name collision: `BinEntries` keeps the first entry it
+/// sees for a given name, and when a collision forces a depth sort the
+/// synthetic workspace packages aren't in the snapshot, so they sort last.
+/// Silently replacing a real dependency's executable with a workspace member's
+/// would be surprising, and it matches npm, which links the dependency.
+pub(crate) fn add_workspace_bin_entries<'a, TSys: SetupBinEntrySys>(
+  bin_entries: &mut BinEntries<'a, TSys>,
+  workspace_bin_packages: &'a [WorkspaceBinPackage],
+) {
+  for pkg in workspace_bin_packages {
+    // Point at the member's real directory rather than its root
+    // `node_modules/<name>` symlink so the generated shim resolves even before
+    // that symlink is created (it's created after the root `.bin` is set up).
+    bin_entries.add(&pkg.package, &pkg.extra, pkg.package_path.clone());
+  }
+}
+
 /// A workspace member's direct dependency that may contribute executables to
 /// the member's `node_modules/.bin`.
 pub(crate) struct MemberBinDep<'a> {
   /// The resolved npm package, used for its `bin` metadata.
   pub package: &'a NpmResolutionPackage,
+  /// Already-known extra info for the package. Workspace members aren't in the
+  /// snapshot and their `bin` comes straight from the package.json the deps
+  /// provider read, so there's nothing to look up. `None` means read it from
+  /// `read_path`.
+  pub extra: Option<&'a NpmPackageExtraInfo>,
   /// Where the package's `package.json` is read from: its real location in the
   /// layout (the `.deno` store path for the isolated linker, or the hoisted
   /// package directory for the hoisted linker).
@@ -1863,8 +1972,9 @@ pub(crate) struct MemberBinDep<'a> {
 /// shims are plain files (`<tool>`, `<tool>.cmd`, `<tool>.ps1`) rather than
 /// symlinks.
 ///
-/// Sibling workspace members are not npm packages and so are not included in
-/// `bin_deps`; their executables are not linked into a member's `.bin` yet.
+/// Sibling workspace members that declare a `bin` are included in `bin_deps`
+/// too (via a synthetic [`WorkspaceBinPackage`]), so a member can invoke a
+/// sibling's executable the same way it invokes a registry dependency's.
 pub(crate) async fn setup_member_bin_entries<'a, TSys: LocalNpmInstallSys>(
   sys: SysWithPathsInErrors<'a, TSys>,
   snapshot: &'a NpmResolutionSnapshot,
@@ -1895,17 +2005,22 @@ pub(crate) async fn setup_member_bin_entries<'a, TSys: LocalNpmInstallSys>(
     if !dep.package.has_bin {
       continue;
     }
-    // Cached from the root setup that ran earlier, so this is a map lookup
-    // rather than a disk read in the common case.
-    let extra = extra_info_provider
-      .get_package_extra_info(
-        &dep.package.id.nv,
-        &dep.read_path,
-        ExpectedExtraInfo::from_package(dep.package),
-      )
-      .await
-      .map_err(SyncResolutionWithFsError::Other)?;
-    bin_entries.add(dep.package, &extra, dep.link_path.clone());
+    match dep.extra {
+      Some(extra) => bin_entries.add(dep.package, extra, dep.link_path.clone()),
+      None => {
+        // Cached from the root setup that ran earlier, so this is a map lookup
+        // rather than a disk read in the common case.
+        let extra = extra_info_provider
+          .get_package_extra_info(
+            &dep.package.id.nv,
+            &dep.read_path,
+            ExpectedExtraInfo::from_package(dep.package),
+          )
+          .await
+          .map_err(SyncResolutionWithFsError::Other)?;
+        bin_entries.add(dep.package, &extra, dep.link_path.clone());
+      }
+    }
   }
   // Ignore setup failures here: every package linked into a member is also
   // linked at the root, whose `.bin` setup already reports a missing entrypoint

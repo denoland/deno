@@ -615,6 +615,36 @@ mod test {
     )
   }
 
+  /// A snapshot with `package` as the only top-level package.
+  fn snapshot_with(package: &NpmResolutionPackage) -> NpmResolutionSnapshot {
+    let req = deno_semver::package::PackageReq::from_str(&format!(
+      "{}@{}",
+      package.id.nv.name, package.id.nv.version
+    ))
+    .unwrap();
+    NpmResolutionSnapshot::new(
+      SerializedNpmResolutionSnapshot {
+        root_packages: [(req, package.id.clone())].into_iter().collect(),
+        packages: vec![
+          deno_npm::resolution::SerializedNpmResolutionSnapshotPackage {
+            id: package.id.clone(),
+            system: Default::default(),
+            dist: None,
+            dependencies: Default::default(),
+            optional_dependencies: Default::default(),
+            optional_peer_dependencies: Default::default(),
+            extra: None,
+            is_deprecated: false,
+            has_bin: true,
+            has_scripts: false,
+          },
+        ],
+      }
+      .into_valid()
+      .unwrap(),
+    )
+  }
+
   fn test_dir(name: &str) -> (PathBuf, impl Drop) {
     static COUNTER: std::sync::atomic::AtomicU64 =
       std::sync::atomic::AtomicU64::new(0);
@@ -721,6 +751,52 @@ mod test {
       vec![(
         "valid-bin".to_string(),
         PathBuf::from("/node_modules/pkg/bin/cli.js")
+      )]
+    );
+  }
+
+  /// A workspace member's bins are added after every snapshot package so that
+  /// a real dependency wins a name collision (see `add_workspace_bin_entries`
+  /// in local.rs). A collision triggers the depth sort, and because the
+  /// synthetic workspace package is not in the snapshot it gets the maximum
+  /// depth and sorts last. The names here are chosen so the depth ordering is
+  /// what decides: the name tiebreak alone would pick `z-member`.
+  #[test]
+  fn snapshot_package_wins_collision_with_workspace_member() {
+    let sys = sys_traits::impls::RealSys;
+    let dependency = test_package("a-dep");
+    let dep_extra = NpmPackageExtraInfo {
+      bin: Some(deno_npm::registry::NpmPackageVersionBinEntry::Map(
+        [("shared-cli".to_string(), "dep.js".to_string())]
+          .into_iter()
+          .collect(),
+      )),
+      ..Default::default()
+    };
+    // stands in for a workspace member declaring the same bin name
+    let member = test_package("z-member");
+    let member_extra = NpmPackageExtraInfo {
+      bin: Some(deno_npm::registry::NpmPackageVersionBinEntry::Map(
+        [("shared-cli".to_string(), "member.js".to_string())]
+          .into_iter()
+          .collect(),
+      )),
+      ..Default::default()
+    };
+
+    let mut entries = BinEntries::new(sys.with_paths_in_errors());
+    entries.add(
+      &dependency,
+      &dep_extra,
+      PathBuf::from("/node_modules/a-dep"),
+    );
+    entries.add(&member, &member_extra, PathBuf::from("/workspace/z-member"));
+
+    assert_eq!(
+      entries.collect_bin_files(&snapshot_with(&dependency)),
+      vec![(
+        "shared-cli".to_string(),
+        PathBuf::from("/node_modules/a-dep/dep.js")
       )]
     );
   }
