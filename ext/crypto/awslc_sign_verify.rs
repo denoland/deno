@@ -247,7 +247,306 @@ fn rsa_public_key_modulus_bits(der: &[u8]) -> Option<u32> {
 
 #[cfg(test)]
 mod tests {
-  use super::rsa_public_key_modulus_bits;
+  use super::*;
+  use crate::KeyData;
+  use crate::KeyType;
+  use crate::SignArg;
+  use crate::VerifyArg;
+  use crate::shared::EcNamedCurve;
+
+  // See testdata/README.md. The signatures are RSASSA-PKCS1-v1_5 SHA-256
+  // over `DATA`.
+  const RSA_2048_PRIVATE: &[u8] =
+    include_bytes!("testdata/rsa2048_private_pkcs1.der");
+  const RSA_1024_PRIVATE: &[u8] =
+    include_bytes!("testdata/rsa1024_private_pkcs1.der");
+  const RSA_8192_PUBLIC: &[u8] =
+    include_bytes!("testdata/rsa8192_public_pkcs1.der");
+  const RSA_8192_SIG: &[u8] = include_bytes!("testdata/rsa8192_sig_sha256.bin");
+  const RSA_9216_PUBLIC: &[u8] =
+    include_bytes!("testdata/rsa9216_public_pkcs1.der");
+  const RSA_9216_SIG: &[u8] = include_bytes!("testdata/rsa9216_sig_sha256.bin");
+
+  const DATA: &[u8] = b"deno ext/crypto sign/verify fixture";
+
+  fn private_key(data: &[u8]) -> KeyData {
+    KeyData {
+      r#type: KeyType::Private,
+      data: data.into(),
+    }
+  }
+
+  fn public_key(data: &[u8]) -> KeyData {
+    KeyData {
+      r#type: KeyType::Public,
+      data: data.into(),
+    }
+  }
+
+  /// PKCS#1 `RSAPublicKey` DER for a PKCS#1 private key, the shape
+  /// `import_key` stores for RSA public keys.
+  fn rsa_public_pkcs1(private_pkcs1: &[u8]) -> Vec<u8> {
+    use rsa::pkcs1::DecodeRsaPrivateKey as _;
+    use rsa::pkcs1::EncodeRsaPublicKey as _;
+    rsa::RsaPrivateKey::from_pkcs1_der(private_pkcs1)
+      .unwrap()
+      .to_public_key()
+      .to_pkcs1_der()
+      .unwrap()
+      .as_bytes()
+      .to_vec()
+  }
+
+  // Every intended fast-path combination must actually reach aws-lc: a
+  // `None` here silently degrades to the RustCrypto path with no test
+  // failure anywhere else. Keys are produced by the production keygen
+  // (`generate_ec`), which uses aws-lc for P-256/P-384 but RustCrypto
+  // PKCS#8 for P-521, so the P-521 case also pins that
+  // `EcdsaKeyPair::from_pkcs8` keeps accepting that foreign encoding.
+  #[test]
+  fn ecdsa_fast_path_reachable() {
+    use elliptic_curve::sec1::ToEncodedPoint as _;
+    use p256::pkcs8::DecodePrivateKey as _;
+
+    let cases = [
+      (
+        "P-256+SHA-256",
+        EcNamedCurve::P256,
+        CryptoNamedCurve::P256,
+        CryptoHash::Sha256,
+      ),
+      (
+        "P-384+SHA-384",
+        EcNamedCurve::P384,
+        CryptoNamedCurve::P384,
+        CryptoHash::Sha384,
+      ),
+      (
+        "P-521+SHA-512",
+        EcNamedCurve::P521,
+        CryptoNamedCurve::P521,
+        CryptoHash::Sha512,
+      ),
+    ];
+    for (label, gen_curve, curve, hash) in cases {
+      let pkcs8 = crate::generate_key::generate_ec(gen_curve).unwrap();
+      // Raw SEC1 point, the shape imported public keys store.
+      let sec1 = match curve {
+        CryptoNamedCurve::P256 => p256::SecretKey::from_pkcs8_der(&pkcs8)
+          .unwrap()
+          .public_key()
+          .to_encoded_point(false)
+          .as_bytes()
+          .to_vec(),
+        CryptoNamedCurve::P384 => p384::SecretKey::from_pkcs8_der(&pkcs8)
+          .unwrap()
+          .public_key()
+          .to_encoded_point(false)
+          .as_bytes()
+          .to_vec(),
+        CryptoNamedCurve::P521 => p521::SecretKey::from_pkcs8_der(&pkcs8)
+          .unwrap()
+          .public_key()
+          .to_encoded_point(false)
+          .as_bytes()
+          .to_vec(),
+      };
+
+      let sign_args =
+        SignArg::new(Algorithm::Ecdsa, None, Some(hash), Some(curve));
+      let sig = try_sign(&private_key(&pkcs8), &sign_args, DATA)
+        .unwrap()
+        .unwrap_or_else(|| panic!("{label}: sign missed the fast path"));
+
+      let verify_args = |sig: Vec<u8>| {
+        VerifyArg::new(Algorithm::Ecdsa, None, Some(hash), sig, Some(curve))
+      };
+      // Private key data, the shape generated key pairs store.
+      assert_eq!(
+        try_verify(&private_key(&pkcs8), &verify_args(sig.clone()), DATA),
+        Some(true),
+        "{label}: verify with private key data missed the fast path"
+      );
+      assert_eq!(
+        try_verify(&public_key(&sec1), &verify_args(sig.clone()), DATA),
+        Some(true),
+        "{label}: verify with SEC1 public key missed the fast path"
+      );
+      // A committed fast path reports tampering as false, not fallback.
+      let mut tampered = sig;
+      tampered[0] ^= 0xff;
+      assert_eq!(
+        try_verify(&public_key(&sec1), &verify_args(tampered), DATA),
+        Some(false),
+        "{label}: tampered signature"
+      );
+    }
+  }
+
+  #[test]
+  fn rsa_fast_path_reachable() {
+    let public_der = rsa_public_pkcs1(RSA_2048_PRIVATE);
+    let cases = [
+      (
+        "RSASSA-PKCS1 SHA-256",
+        Algorithm::RsassaPkcs1v15,
+        CryptoHash::Sha256,
+        None,
+      ),
+      (
+        "RSASSA-PKCS1 SHA-384",
+        Algorithm::RsassaPkcs1v15,
+        CryptoHash::Sha384,
+        None,
+      ),
+      (
+        "RSASSA-PKCS1 SHA-512",
+        Algorithm::RsassaPkcs1v15,
+        CryptoHash::Sha512,
+        None,
+      ),
+      (
+        "RSA-PSS SHA-256",
+        Algorithm::RsaPss,
+        CryptoHash::Sha256,
+        Some(32),
+      ),
+      (
+        "RSA-PSS SHA-384",
+        Algorithm::RsaPss,
+        CryptoHash::Sha384,
+        Some(48),
+      ),
+      (
+        "RSA-PSS SHA-512",
+        Algorithm::RsaPss,
+        CryptoHash::Sha512,
+        Some(64),
+      ),
+    ];
+    for (label, algorithm, hash, salt_length) in cases {
+      let sign_args = SignArg::new(algorithm, salt_length, Some(hash), None);
+      let sig = try_sign(&private_key(RSA_2048_PRIVATE), &sign_args, DATA)
+        .unwrap()
+        .unwrap_or_else(|| panic!("{label}: sign missed the fast path"));
+
+      let verify_args =
+        VerifyArg::new(algorithm, salt_length, Some(hash), sig, None);
+      assert_eq!(
+        try_verify(&private_key(RSA_2048_PRIVATE), &verify_args, DATA),
+        Some(true),
+        "{label}: verify with private key data missed the fast path"
+      );
+      assert_eq!(
+        try_verify(&public_key(&public_der), &verify_args, DATA),
+        Some(true),
+        "{label}: verify with public key missed the fast path"
+      );
+    }
+  }
+
+  // Both ends of the modulus gate: 8192 bits is the last fast-path size,
+  // anything past it must return None so the fallback decides.
+  #[test]
+  fn rsa_modulus_gate_boundaries() {
+    assert_eq!(rsa_public_key_modulus_bits(RSA_8192_PUBLIC), Some(8192));
+    assert_eq!(rsa_public_key_modulus_bits(RSA_9216_PUBLIC), Some(9216));
+
+    let verify_args = |sig: &[u8]| {
+      VerifyArg::new(
+        Algorithm::RsassaPkcs1v15,
+        None,
+        Some(CryptoHash::Sha256),
+        sig.to_vec(),
+        None,
+      )
+    };
+    assert_eq!(
+      try_verify(
+        &public_key(RSA_8192_PUBLIC),
+        &verify_args(RSA_8192_SIG),
+        DATA
+      ),
+      Some(true)
+    );
+    assert_eq!(
+      try_verify(
+        &public_key(RSA_9216_PUBLIC),
+        &verify_args(RSA_9216_SIG),
+        DATA
+      ),
+      None
+    );
+  }
+
+  #[test]
+  fn rsa_below_range_falls_back() {
+    let public_der = rsa_public_pkcs1(RSA_1024_PRIVATE);
+    let sign_args = SignArg::new(
+      Algorithm::RsassaPkcs1v15,
+      None,
+      Some(CryptoHash::Sha256),
+      None,
+    );
+    assert!(
+      try_sign(&private_key(RSA_1024_PRIVATE), &sign_args, DATA)
+        .unwrap()
+        .is_none()
+    );
+    let verify_args = VerifyArg::new(
+      Algorithm::RsassaPkcs1v15,
+      None,
+      Some(CryptoHash::Sha256),
+      vec![0; 128],
+      None,
+    );
+    assert_eq!(
+      try_verify(&private_key(RSA_1024_PRIVATE), &verify_args, DATA),
+      None
+    );
+    assert_eq!(
+      try_verify(&public_key(&public_der), &verify_args, DATA),
+      None
+    );
+  }
+
+  // `RSA_MODULUS_BITS` mirrors a range aws-lc enforces internally: at key
+  // parse for sign, but only at verification time for verify, where a
+  // range failure is indistinguishable from a bad signature. If either
+  // assertion fails, aws-lc's accepted range changed and the constant
+  // (and the `RSA_*_2048_8192_*` algorithm choices) must be revisited.
+  #[test]
+  fn rsa_modulus_range_matches_awslc() {
+    // Sign side: the gate is aws-lc's own parse-time range check.
+    assert!(RsaKeyPair::from_der(RSA_1024_PRIVATE).is_err());
+    assert!(RsaKeyPair::from_der(RSA_2048_PRIVATE).is_ok());
+
+    // Verify side: a *valid* signature from an out-of-range key is
+    // rejected by the 2048-8192 parameters, so without the up-front gate
+    // it would surface as "invalid signature" instead of falling back.
+    use rsa::pkcs1::DecodeRsaPrivateKey as _;
+    use rsa::signature::SignatureEncoding as _;
+    use rsa::signature::Signer as _;
+    let small_key =
+      rsa::RsaPrivateKey::from_pkcs1_der(RSA_1024_PRIVATE).unwrap();
+    let small_sig = rsa::pkcs1v15::SigningKey::<sha2::Sha256>::new(small_key)
+      .sign(DATA)
+      .to_vec();
+    let small_public = rsa_public_pkcs1(RSA_1024_PRIVATE);
+    for (public, sig) in [
+      (&small_public[..], &small_sig[..]),
+      (RSA_9216_PUBLIC, RSA_9216_SIG),
+    ] {
+      let rejected = match ParsedPublicKey::new(
+        &signature::RSA_PKCS1_2048_8192_SHA256,
+        public,
+      ) {
+        Ok(parsed) => parsed.verify_sig(DATA, sig).is_err(),
+        Err(_) => true,
+      };
+      assert!(rejected, "aws-lc accepted an out-of-range modulus");
+    }
+  }
 
   // SEQUENCE { INTEGER 0x01ffff (17 bits), INTEGER 65537 }. Pins the exact
   // bit count; len * 8 would report 24.

@@ -4420,3 +4420,84 @@ Deno.test(async function subtleEcdsaTamperedSignatureReturnsFalse() {
     false,
   );
 });
+
+// Fixtures for the modulus-range boundary of the aws-lc fast path
+// (2048-8192 bits). See ext/crypto/testdata/README.md for how they were
+// generated; the signatures are RSASSA-PKCS1-v1_5 SHA-256 over the
+// payload below.
+const oversizedRsaPayload = new TextEncoder().encode(
+  "deno ext/crypto sign/verify fixture",
+);
+
+// 8192 bits is the top of the fast-path range. The RustCrypto fallback
+// cannot use imported public keys above 4096 bits (rsa crate cap), so
+// this passing also proves the fast path is reachable end to end.
+Deno.test(
+  { permissions: { read: true } },
+  async function subtleRsa8192BitImportedKeyVerifies() {
+    const spki = await Deno.readFile(
+      "tests/testdata/webcrypto/rsa8192_spki.der",
+    );
+    const signature = await Deno.readFile(
+      "tests/testdata/webcrypto/rsa8192_sig_sha256.bin",
+    );
+    const key = await crypto.subtle.importKey(
+      "spki",
+      spki,
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      false,
+      ["verify"],
+    );
+    assert(
+      await crypto.subtle.verify(
+        "RSASSA-PKCS1-v1_5",
+        key,
+        signature,
+        oversizedRsaPayload,
+      ),
+    );
+    const tampered = new Uint8Array(signature);
+    tampered[0] ^= 0xff;
+    assertEquals(
+      await crypto.subtle.verify(
+        "RSASSA-PKCS1-v1_5",
+        key,
+        tampered,
+        oversizedRsaPayload,
+      ),
+      false,
+    );
+  },
+);
+
+// Above 8192 bits the fast path must decline and leave the key to the
+// RustCrypto fallback, whose public-key parser rejects moduli over 4096
+// bits with an error. Pinned so a fast-path gate regression (aws-lc
+// fails its range check at verify time) cannot silently turn this into
+// a `false` result for a structurally valid signature.
+Deno.test(
+  { permissions: { read: true } },
+  async function subtleRsaOversizedKeyKeepsFallbackBehavior() {
+    const spki = await Deno.readFile(
+      "tests/testdata/webcrypto/rsa9216_spki.der",
+    );
+    const signature = await Deno.readFile(
+      "tests/testdata/webcrypto/rsa9216_sig_sha256.bin",
+    );
+    const key = await crypto.subtle.importKey(
+      "spki",
+      spki,
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      false,
+      ["verify"],
+    );
+    await assertRejects(async () => {
+      await crypto.subtle.verify(
+        "RSASSA-PKCS1-v1_5",
+        key,
+        signature,
+        oversizedRsaPayload,
+      );
+    });
+  },
+);
