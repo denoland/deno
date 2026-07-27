@@ -25,6 +25,7 @@ use deno_npm::NpmPackageIdPeerDependencies;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmResolutionPackageSystemInfo;
 use deno_npm::NpmSystemInfo;
+use deno_npm::registry::NpmPackageVersionBinEntry;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm_cache::NpmCache;
 use deno_npm_cache::NpmCacheHttpClient;
@@ -244,12 +245,20 @@ impl<
       deno_local_registry_dir.join(".setup-cache.bin"),
     );
 
+    // Declared before `bin_entries` below so it outlives the borrows it hands
+    // out to it.
+    let workspace_bin_packages =
+      resolve_workspace_bin_packages(&self.npm_install_deps_provider);
+
     // 1. Check if packages changed and clean up if needed
     if self.clean_on_install {
       let root_folder_names =
         root_package_folder_names(snapshot, &self.npm_install_deps_provider);
-      let packages_hash =
-        calculate_packages_hash(&package_partitions, &root_folder_names);
+      let packages_hash = calculate_packages_hash(
+        &package_partitions,
+        &root_folder_names,
+        &workspace_bin_packages,
+      );
       if setup_cache.packages_changed(packages_hash) {
         cleanup_unused_packages(
           sys.as_ref(),
@@ -269,10 +278,6 @@ impl<
     // node_modules/.deno/<package_folder_id_folder_name>/node_modules/<package_name>
     let workspace_lifecycle_packages =
       self.resolve_workspace_lifecycle_packages(snapshot)?;
-    // Declared before `bin_entries` below so it outlives the borrows it hands
-    // out to it.
-    let workspace_bin_packages =
-      resolve_workspace_bin_packages(&self.npm_install_deps_provider);
     let mut cache_futures = FuturesUnordered::new();
     let mut newest_packages_by_name: HashMap<
       &StackString,
@@ -1921,21 +1926,73 @@ pub(crate) fn resolve_workspace_bin_packages(
 /// Adds the workspace members' executables to the root `node_modules/.bin`
 /// entries.
 ///
-/// These are added *after* every snapshot package so that a registry
-/// dependency wins a name collision: `BinEntries` keeps the first entry it
-/// sees for a given name, and when a collision forces a depth sort the
-/// synthetic workspace packages aren't in the snapshot, so they sort last.
-/// Silently replacing a real dependency's executable with a workspace member's
-/// would be surprising, and it matches npm, which links the dependency.
+/// Precedence rules for a `.bin` name declared more than once:
+///
+/// * **snapshot package vs. workspace member** — the snapshot package wins.
+///   These are added *after* every snapshot package, `BinEntries` keeps the
+///   first entry it sees for a given name, and when a collision forces a depth
+///   sort the synthetic workspace packages aren't in the snapshot so they get
+///   depth `u64::MAX` and sort last. Silently replacing a real dependency's
+///   executable with a workspace member's would be surprising, and it matches
+///   npm, which links the dependency.
+/// * **workspace member vs. workspace member** — both get depth `u64::MAX`, so
+///   the sort falls back to `sort_by_depth`'s `nv` tiebreak, which is
+///   *descending*; the greatest `<name>@<version>` therefore wins. That's
+///   arbitrary, so [`warn_on_workspace_bin_name_collisions`] warns about it.
+///   npm hard-errors here, but a warning keeps an otherwise fine workspace
+///   installable.
 pub(crate) fn add_workspace_bin_entries<'a, TSys: SetupBinEntrySys>(
   bin_entries: &mut BinEntries<'a, TSys>,
   workspace_bin_packages: &'a [WorkspaceBinPackage],
 ) {
+  warn_on_workspace_bin_name_collisions(workspace_bin_packages);
   for pkg in workspace_bin_packages {
     // Point at the member's real directory rather than its root
     // `node_modules/<name>` symlink so the generated shim resolves even before
     // that symlink is created (it's created after the root `.bin` is set up).
+    //
+    // NOTE: this means `package_path` is a directory inside the user's own
+    // source tree, so on unix `BinEntries` will `chmod +x` the member's `bin`
+    // script in place (see `make_executable_if_exists` in `bin_entries.rs`) —
+    // a git-tracked `packages/foo/cli.js` can flip 100644 -> 100755 and show
+    // up in `git status` after an install. npm's `bin-links` does exactly the
+    // same thing, so this is parity rather than a deno-specific quirk. It also
+    // fires for a member that *loses* a name collision, because the
+    // `already_seen` branch chmods too.
     bin_entries.add(&pkg.package, &pkg.extra, pkg.package_path.clone());
+  }
+}
+
+/// Warns when two workspace members declare the same `bin` name, since only one
+/// of them can win the root `node_modules/.bin` entry and which one is
+/// essentially arbitrary. See [`add_workspace_bin_entries`] for the precedence.
+fn warn_on_workspace_bin_name_collisions(
+  workspace_bin_packages: &[WorkspaceBinPackage],
+) {
+  let mut members_by_bin_name: BTreeMap<&str, BTreeSet<&PackageNv>> =
+    BTreeMap::new();
+  for pkg in workspace_bin_packages {
+    for name in crate::bin_entries::bin_names(&pkg.package, &pkg.extra) {
+      members_by_bin_name.entry(name).or_default().insert(&pkg.nv);
+    }
+  }
+  for (bin_name, members) in members_by_bin_name {
+    if members.len() < 2 {
+      continue;
+    }
+    // `BTreeSet` is sorted ascending and the greatest `nv` wins the entry.
+    let winner = members.last().unwrap();
+    log::warn!(
+      "{} Multiple workspace members declare a \"{}\" bin: {}. Only \"{}\" will be linked into node_modules/.bin.",
+      deno_terminal::colors::yellow("Warning"),
+      bin_name,
+      members
+        .iter()
+        .map(|nv| nv.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", "),
+      winner.name,
+    );
   }
 }
 
@@ -2147,6 +2204,7 @@ pub(crate) fn join_package_name(
 fn calculate_packages_hash(
   package_partitions: &deno_npm::resolution::NpmPackagesPartitioned,
   root_folder_names: &BTreeSet<String>,
+  workspace_bin_packages: &[WorkspaceBinPackage],
 ) -> u64 {
   use std::hash::Hash;
   use std::hash::Hasher;
@@ -2171,7 +2229,38 @@ fn calculate_packages_hash(
     folder_name.hash(&mut hasher);
   }
 
+  // and hash the workspace members' executables, which also land in the root
+  // `node_modules/.bin` but aren't part of the resolution snapshot. Without
+  // this, renaming a member's bin, dropping its `bin` field, or removing the
+  // member entirely would never trip the cleanup and the old entry would
+  // linger (as a dangling symlink, in the last case).
+  for name in workspace_bin_hash_names(workspace_bin_packages) {
+    name.hash(&mut hasher);
+  }
+
   hasher.finish()
+}
+
+/// The `<name>@<version>/<bin name>` pairs contributed by the workspace
+/// members, sorted so the hash doesn't depend on iteration order.
+fn workspace_bin_hash_names(
+  workspace_bin_packages: &[WorkspaceBinPackage],
+) -> BTreeSet<String> {
+  let mut names = BTreeSet::new();
+  for pkg in workspace_bin_packages {
+    match pkg.extra.bin.as_ref() {
+      Some(NpmPackageVersionBinEntry::String(script)) => {
+        names.insert(format!("{}/{}", pkg.nv, script));
+      }
+      Some(NpmPackageVersionBinEntry::Map(entries)) => {
+        for (name, script) in entries {
+          names.insert(format!("{}/{}={}", pkg.nv, name, script));
+        }
+      }
+      None => {}
+    }
+  }
+  names
 }
 
 /// Calculates the set of package folder names that are expected to have a
@@ -2468,6 +2557,7 @@ mod test {
         copy_packages: Vec::new(),
       },
       &root_folder_names,
+      &[],
     );
     let reversed_hash = calculate_packages_hash(
       &deno_npm::resolution::NpmPackagesPartitioned {
@@ -2475,8 +2565,84 @@ mod test {
         copy_packages: Vec::new(),
       },
       &root_folder_names,
+      &[],
     );
     assert_eq!(hash, reversed_hash);
+  }
+
+  #[test]
+  fn test_calculate_packages_hash_includes_workspace_bins() {
+    fn workspace_bin_pkg(
+      nv: &str,
+      bin: NpmPackageVersionBinEntry,
+    ) -> WorkspaceBinPackage {
+      let nv = PackageNv::from_str(nv).unwrap();
+      let extra = NpmPackageExtraInfo {
+        bin: Some(bin),
+        ..Default::default()
+      };
+      WorkspaceBinPackage {
+        nv: nv.clone(),
+        package: NpmResolutionPackage {
+          id: NpmPackageId {
+            nv,
+            peer_dependencies: NpmPackageIdPeerDependencies::from([]),
+          },
+          copy_index: 0,
+          system: Default::default(),
+          dist: None,
+          dependencies: Default::default(),
+          optional_dependencies: Default::default(),
+          optional_peer_dependencies: Default::default(),
+          extra: Some(extra.clone()),
+          is_deprecated: false,
+          has_bin: true,
+          has_scripts: false,
+        },
+        extra,
+        package_path: PathBuf::from("/workspace/packages/member"),
+      }
+    }
+    fn hash(workspace_bin_packages: &[WorkspaceBinPackage]) -> u64 {
+      calculate_packages_hash(
+        &deno_npm::resolution::NpmPackagesPartitioned {
+          packages: Vec::new(),
+          copy_packages: Vec::new(),
+        },
+        &BTreeSet::new(),
+        workspace_bin_packages,
+      )
+    }
+
+    let map = |name: &str, script: &str| {
+      NpmPackageVersionBinEntry::Map(HashMap::from([(
+        name.to_string(),
+        script.to_string(),
+      )]))
+    };
+
+    let base = vec![workspace_bin_pkg("member@1.0.0", map("tool", "./cli.js"))];
+    // renaming the bin must change the hash so the stale `.bin/tool` is pruned
+    let renamed =
+      vec![workspace_bin_pkg("member@1.0.0", map("tool2", "./cli.js"))];
+    // so must dropping the `bin` field entirely, or removing the member
+    let removed: Vec<WorkspaceBinPackage> = Vec::new();
+    // ...and pointing the same bin name at a different script
+    let repointed =
+      vec![workspace_bin_pkg("member@1.0.0", map("tool", "./other.js"))];
+    // the string form participates too
+    let string_form = vec![workspace_bin_pkg(
+      "member@1.0.0",
+      NpmPackageVersionBinEntry::String("./cli.js".to_string()),
+    )];
+
+    let base_hash = hash(&base);
+    assert_ne!(base_hash, hash(&renamed));
+    assert_ne!(base_hash, hash(&removed));
+    assert_ne!(base_hash, hash(&repointed));
+    assert_ne!(base_hash, hash(&string_form));
+    // and it stays stable for an unchanged set
+    assert_eq!(base_hash, hash(&base));
   }
 
   #[test]

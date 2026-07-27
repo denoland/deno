@@ -4,6 +4,7 @@
   "nodeModulesLinker": "hoisted",
   "workspace": [
     "./packages/local-cli",
+    "./packages/shtool",
     "./apps/web"
   ],
   "tasks": {

@@ -21,12 +21,25 @@
       "output": "ok\n"
     },
     {
+      // "Hello from deno" (rather than "node") asserts the task runner resolves
+      // the member's JS bin to a `deno run` command instead of leaving it to a
+      // `PATH` lookup, which would execute the `#!/usr/bin/env node` shebang
+      // with whatever Node happens to be installed — or fail outright.
       "args": "task --cwd apps/web cli",
       "output": "member_task.out"
     },
     {
       "args": "task root-cli",
       "output": "root_task.out"
+    },
+    {
+      // A member whose bin is a POSIX shell script rather than JavaScript must
+      // still run: it resolves through `PATH` (the root `.bin` is prepended)
+      // and `deno_task_shell` honours the shebang. Handing it to
+      // `deno run --ext=js` instead would fail with a `SyntaxError`.
+      "if": "unix",
+      "args": "task root-sh",
+      "output": "root_sh_task.out"
     }
   ]
 }

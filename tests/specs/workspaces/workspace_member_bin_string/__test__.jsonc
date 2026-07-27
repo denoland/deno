@@ -1,0 +1,29 @@
+// End-to-end coverage of the *string* form of a workspace member's `bin`
+// (`"bin": "./cli.js"` rather than a map). The entry name comes from the
+// package name, with the scope stripped for a scoped package, so
+// `@scope/tool` must be linked as `node_modules/.bin/tool`.
+//
+// No network access is required — the workspace contains only local members.
+//
+// https://github.com/denoland/deno/issues/36313
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "run --allow-read check_bin.ts",
+      "output": "ok\n"
+    },
+    {
+      "args": "task scoped",
+      "output": "scoped_task.out"
+    },
+    {
+      "args": "task plain",
+      "output": "plain_task.out"
+    }
+  ]
+}

@@ -18,6 +18,7 @@ use deno_task_shell::ShellCommand;
 use deno_task_shell::ShellCommandContext;
 use deno_task_shell::ShellPipeReader;
 use deno_task_shell::ShellPipeWriter;
+use node_resolver::BinValue;
 use tokio::task::JoinHandle;
 use tokio::task::LocalSet;
 use tokio_util::sync::CancellationToken;
@@ -533,6 +534,13 @@ pub fn resolve_custom_commands(
   let mut commands = match npm_resolver {
     CliNpmResolver::Byonm(_) => {
       // Walk the bin dirs in order (closest first) and merge; closest wins.
+      //
+      // NOTE: unlike the managed branch below this deliberately routes *every*
+      // entry through `deno run`, including ones `read_bin_value` classified as
+      // `Executable`. A JS bin without a shebang classifies as `Executable`,
+      // and in BYONM mode running it through deno is the only thing that makes
+      // it work, so narrowing this would be a regression. The managed branch
+      // can be stricter because its snapshot packages are already resolved.
       let mut commands: HashMap<String, Rc<dyn ShellCommand>> = HashMap::new();
       for bin_dir in bin_dirs {
         for (name, cmd) in
@@ -548,15 +556,37 @@ pub fn resolve_custom_commands(
         resolve_managed_npm_commands(node_resolver, npm_resolver)?;
       // Local workspace members are not part of the npm resolution snapshot,
       // so a `bin` they declare is only ever visible as a `node_modules/.bin`
-      // entry. Merge those in with `or_insert` so snapshot-derived commands
-      // keep precedence (#36313). Prepending the bin dirs to `PATH` isn't
-      // enough on its own: on Windows the entries are plain `<name>`,
-      // `<name>.cmd` and `<name>.ps1` files rather than executables.
+      // entry. Merge those in so they're runnable from a task (#36313).
+      // Prepending the bin dirs to `PATH` isn't enough on its own: on Windows
+      // the entries are plain `<name>`, `<name>.cmd` and `<name>.ps1` files
+      // rather than executables.
+      //
+      // Only `JsFile` entries are merged. An `Executable` entry is a shell
+      // script or a native binary; those already resolve through `PATH` (the
+      // bin dirs are prepended in `prepare_env_vars`) and `deno_task_shell`
+      // honours their shebang, whereas running one with `deno run --ext=js`
+      // would fail with a `SyntaxError`. A workspace member's JS bin still
+      // classifies as `JsFile` on Windows because `windows_shim::generate_sh`
+      // emits `exec node  "$basedir/..." "$@"`, which
+      // `resolve_execution_path_from_npx_shim` matches.
       for bin_dir in bin_dirs {
-        for (name, cmd) in
-          resolve_npm_commands_from_bin_dir(bin_dir, node_resolver)
-        {
-          commands.entry(name).or_insert(cmd);
+        // Only classify names that aren't already resolved — classifying reads
+        // the entire file, and closest-first means the first hit wins anyway.
+        let bin_values = node_resolver
+          .resolve_npm_commands_from_bin_dir_filtered(bin_dir, |name| {
+            !commands.contains_key(name)
+          });
+        for (name, bin_value) in bin_values {
+          let BinValue::JsFile(path) = bin_value else {
+            continue;
+          };
+          commands.insert(
+            name.clone(),
+            Rc::new(NodeModulesFileRunCommand {
+              command_name: name,
+              path,
+            }) as Rc<dyn ShellCommand>,
+          );
         }
       }
       commands

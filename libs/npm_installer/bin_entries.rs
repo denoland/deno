@@ -40,6 +40,26 @@ fn default_bin_name(package: &NpmResolutionPackage) -> &str {
     .unwrap_or(package.id.nv.name.as_str())
 }
 
+/// The `node_modules/.bin` entry names a package would contribute, after
+/// normalization. Mirrors what [`BinEntries::add`] registers.
+pub fn bin_names<'a>(
+  package: &'a NpmResolutionPackage,
+  extra: &'a NpmPackageExtraInfo,
+) -> Vec<&'a str> {
+  match extra.bin.as_ref() {
+    Some(deno_npm::registry::NpmPackageVersionBinEntry::String(_)) => {
+      vec![default_bin_name(package)]
+    }
+    Some(deno_npm::registry::NpmPackageVersionBinEntry::Map(entries)) => {
+      entries
+        .keys()
+        .map(|name| normalize_bin_name(name))
+        .collect()
+    }
+    None => Vec::new(),
+  }
+}
+
 fn normalize_bin_name(bin_name: &str) -> &str {
   let trimmed = bin_name.trim_end_matches(['/', '\\']);
   // Leave validation of empty or special path component names to package

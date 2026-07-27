@@ -1,0 +1,45 @@
+// Re-running `deno install` after a workspace member renames its `bin`, drops
+// its `bin`, or leaves the workspace entirely must prune the stale root
+// `node_modules/.bin` entry. Change detection used to hash only the npm
+// resolution snapshot, so none of these ever tripped the cleanup and the old
+// entry survived — as a dangling symlink, in the last case.
+//
+// This covers the default isolated (`.deno`) linker; the hoisted linker is
+// covered by the sibling `workspace_member_bin_prune_hoisted` spec. No network
+// access is required — the workspace contains only local members.
+//
+// https://github.com/denoland/deno/issues/36313
+{
+  "tempDir": true,
+  "steps": [
+    { "args": "install", "output": "[WILDCARD]" },
+    {
+      "args": "run --allow-read check.ts toolname:exists othername:exists",
+      "output": "ok\n"
+    },
+    {
+      "args": "run --allow-read --allow-write edit.ts rename-bin",
+      "output": "edited\n"
+    },
+    { "args": "install", "output": "[WILDCARD]" },
+    {
+      "args": "run --allow-read check.ts renamed:exists toolname:missing othername:exists",
+      "output": "ok\n"
+    },
+    {
+      "args": "run --allow-read --allow-write edit.ts remove-bin",
+      "output": "edited\n"
+    },
+    { "args": "install", "output": "[WILDCARD]" },
+    {
+      "args": "run --allow-read check.ts renamed:missing othername:exists",
+      "output": "ok\n"
+    },
+    { "args": "run -A edit.ts remove-member", "output": "edited\n" },
+    { "args": "install", "output": "[WILDCARD]" },
+    {
+      "args": "run --allow-read check.ts othername:missing",
+      "output": "ok\n"
+    }
+  ]
+}

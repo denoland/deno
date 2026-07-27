@@ -1117,6 +1117,26 @@ fn cleanup_hoisted_packages(
       remove_unexpected_package(sys, &path, &name_str, &expected_names);
     }
   }
+
+  // Wipe the root `.bin` so entries for packages (and workspace members) that
+  // are no longer part of the install stop resolving. `bin_entries.finish`
+  // recreates every current entry right after this, and unlike the package
+  // directories above there's no cheap way to tell which entry belongs to
+  // which package once it's on disk. The isolated linker does the same in
+  // `cleanup_unused_packages`.
+  let bin_dir = root_node_modules_path.join(".bin");
+  if let Ok(entries) = sys.fs_read_dir(&bin_dir) {
+    for entry in entries.flatten() {
+      let Ok(file_type) = entry.file_type() else {
+        continue;
+      };
+      if file_type.is_file() {
+        let _ = sys.fs_remove_file(entry.path());
+      } else {
+        let _ = sys.fs_remove_dir_all(entry.path());
+      }
+    }
+  }
 }
 
 #[async_trait(?Send)]

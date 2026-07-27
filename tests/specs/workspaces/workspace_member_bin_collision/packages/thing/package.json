@@ -1,0 +1,8 @@
+{
+  "name": "thing",
+  "version": "1.0.0",
+  "type": "module",
+  "bin": {
+    "thing-bin": "./cli.js"
+  }
+}
