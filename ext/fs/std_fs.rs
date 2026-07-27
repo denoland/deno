@@ -499,18 +499,6 @@ impl FileSystem for RealFs {
   }
 }
 
-// Works around `DirBuilder::create` failing on trailing dot-segments (e.g.
-// `foo/.`) when creating directories recursively. See
-// https://github.com/denoland/deno/issues/35450.
-fn normalize_recursive_mkdir_path(path: &Path) -> Cow<'_, Path> {
-  let normalized_path = path.components().collect::<PathBuf>();
-  if normalized_path.as_os_str() == path.as_os_str() {
-    Cow::Borrowed(path)
-  } else {
-    Cow::Owned(normalized_path)
-  }
-}
-
 fn mkdir(path: &Path, recursive: bool, mode: Option<u32>) -> FsResult<()> {
   let mut builder = fs::DirBuilder::new();
   builder.recursive(recursive);
@@ -524,7 +512,13 @@ fn mkdir(path: &Path, recursive: bool, mode: Option<u32>) -> FsResult<()> {
     _ = mode;
   }
   let path = if recursive {
-    normalize_recursive_mkdir_path(path)
+    // `DirBuilder::create` fails on trailing dot-segments (e.g. `foo/.`):
+    // `create_dir_all` falls back to `Path::parent()`, which drops the last
+    // real component along with the `.`, so that component never gets created
+    // and the retry still fails with ENOENT. Normalizing strips `.` while
+    // preserving `..` for the kernel to resolve.
+    // See https://github.com/denoland/deno/issues/35450.
+    Cow::Owned(path.components().collect::<PathBuf>())
   } else {
     Cow::Borrowed(path)
   };
