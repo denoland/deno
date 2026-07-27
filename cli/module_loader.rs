@@ -68,6 +68,7 @@ use deno_resolver::loader::LoadedModuleOrAsset;
 use deno_resolver::loader::MemoryFiles;
 use deno_resolver::loader::StrippingTypesNodeModulesError;
 use deno_resolver::npm::DenoInNpmPackageChecker;
+use deno_resolver::npm::is_synthetic_module;
 use deno_runtime::code_cache;
 use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_node::create_host_defined_options;
@@ -1151,6 +1152,19 @@ impl<TGraphContainer: ModuleGraphContainer>
         )));
       }
       Ok(())
+    }
+
+    // `deno eval` and piped stdin have no file on disk — their source is held
+    // in memory under a synthetic `$deno$` specifier that is already fully
+    // resolved. Neither the import map nor node resolution has anything to
+    // contribute, and node resolution actively breaks it when the cwd is inside
+    // an npm package, because it checks the file system for a file that is
+    // never going to be there.
+    if matches!(kind, deno_core::ResolutionKind::MainModule)
+      && let Ok(url) = ModuleSpecifier::parse(raw_specifier)
+      && is_synthetic_module(&url)
+    {
+      return Ok(url);
     }
 
     // An `npm:` package's bin entry chosen as the main module is
