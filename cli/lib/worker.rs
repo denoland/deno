@@ -242,6 +242,13 @@ pub fn claim_resource_limit_report() -> bool {
 static ACTIVE_WORKER_ISOLATE: std::sync::Mutex<Option<v8::IsolateHandle>> =
   std::sync::Mutex::new(None);
 
+/// Wall-clock deadline for `--max-time`, re-armed whenever a main worker is
+/// created (including `--watch` re-runs) so the budget measures the current
+/// run rather than being fixed at the first run's start. Read by the watchdog
+/// each tick; `None` until the first worker is armed.
+static WALL_DEADLINE: std::sync::Mutex<Option<std::time::Instant>> =
+  std::sync::Mutex::new(None);
+
 /// Grace period given to the main thread to unwind and report a clean error
 /// after the watchdog terminates the isolate, before it force-exits.
 const WATCHDOG_GRACE: Duration = Duration::from_secs(2);
@@ -313,16 +320,23 @@ fn process_cpu_time() -> Duration {
 static CPU_BUDGET_BASELINE: std::sync::Mutex<Option<Duration>> =
   std::sync::Mutex::new(None);
 
-/// Marks the point where the user program begins executing, so the
-/// `--max-cpu-time` budget starts counting from here rather than from process
-/// start. Also clears any latched limit state from a previous `--watch` run so
-/// a rescued isolate doesn't cause the next run's unrelated error to be
-/// misreported as a resource-limit hit.
-pub fn note_program_start() {
+/// Clears any latched resource-limit state at the very start of a run, before
+/// module loading. This must run *before* `preload_main_module` so that a limit
+/// latched by a previous `--watch` run (e.g. the memory near-heap callback set
+/// its flag and the isolate unwound, but the watch loop moved on without the
+/// process exiting) can't cause this run's unrelated failure — even one during
+/// module loading/type-checking — to be misreported as a resource-limit hit.
+pub fn reset_resource_limit_state() {
   MEMORY_LIMIT_EXCEEDED.store(false, Ordering::SeqCst);
   CPU_TIME_LIMIT_EXCEEDED.store(false, Ordering::SeqCst);
   TIME_LIMIT_EXCEEDED.store(false, Ordering::SeqCst);
   RESOURCE_LIMIT_REPORTED.store(false, Ordering::SeqCst);
+}
+
+/// Marks the point where the user program begins executing, so the
+/// `--max-cpu-time` budget starts counting from here rather than from process
+/// start. Re-set on each run so `--watch` re-runs get a fresh budget.
+pub fn note_program_start() {
   *CPU_BUDGET_BASELINE.lock().unwrap() = Some(process_cpu_time());
 }
 
@@ -332,15 +346,13 @@ pub fn note_program_start() {
 /// The memory limit is a sampled RSS cap, so a program allocating faster than
 /// the tick may briefly overshoot before being terminated. The CPU budget is
 /// measured from [`note_program_start`] (excluding Deno's startup / module
-/// loading / type-checking), while the wall-clock deadline is measured from
-/// worker creation so it bounds the total run time.
+/// loading / type-checking), while the wall-clock deadline is read from the
+/// shared [`WALL_DEADLINE`] slot, which is re-armed at each worker creation so
+/// it bounds the current run's total time (including `--watch` re-runs).
 fn start_resource_limit_watchdog(limits: ResourceLimits) {
   std::thread::Builder::new()
     .name("deno-resource-limit-watchdog".to_string())
     .spawn(move || {
-      let wall_deadline = limits
-        .max_time_secs
-        .map(|secs| std::time::Instant::now() + Duration::from_secs(secs));
       loop {
         std::thread::sleep(WATCHDOG_TICK);
         if let Some(limit) = limits.max_memory_bytes
@@ -361,7 +373,7 @@ fn start_resource_limit_watchdog(limits: ResourceLimits) {
             "CPU time limit exceeded (--max-cpu-time)",
           );
         }
-        if let Some(deadline) = wall_deadline
+        if let Some(deadline) = *WALL_DEADLINE.lock().unwrap()
           && std::time::Instant::now() >= deadline
         {
           terminate_and_exit(
@@ -1028,6 +1040,13 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     if limits.any() {
       let handle = worker.js_runtime.v8_isolate().thread_safe_handle();
       *ACTIVE_WORKER_ISOLATE.lock().unwrap() = Some(handle);
+      // Re-arm the wall-clock deadline for this run. Worker creation happens
+      // once per run (including `--watch` re-runs), so re-arming here keeps
+      // `--max-time` measuring the current run instead of the first run's
+      // clock — matching the per-run reset of the CPU budget baseline.
+      *WALL_DEADLINE.lock().unwrap() = limits
+        .max_time_secs
+        .map(|secs| std::time::Instant::now() + Duration::from_secs(secs));
       static WATCHDOG_STARTED: std::sync::Once = std::sync::Once::new();
       WATCHDOG_STARTED.call_once(move || start_resource_limit_watchdog(limits));
     }
@@ -1194,6 +1213,10 @@ impl LibMainWorker {
   }
 
   pub async fn execute_main_module(&mut self) -> Result<(), CoreError> {
+    // Clear any resource-limit state latched by a previous `--watch` run before
+    // loading, so a failure in this run (including during module loading) can't
+    // be misattributed to a limit that fired earlier.
+    reset_resource_limit_state();
     let id = self.worker.preload_main_module(&self.main_module).await?;
     // Loading/compiling/type-checking is done; start the `--max-cpu-time`
     // budget from here so it measures the program, not Deno's startup.
