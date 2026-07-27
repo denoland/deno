@@ -237,8 +237,13 @@ async fn run_subcommand(
     DenoSubcommand::Ci(ci_flags) => spawn_subcommand(async {
       tools::installer::ci_command(Arc::new(flags), ci_flags).await
     }),
-    DenoSubcommand::SyncTypes => spawn_subcommand(async {
-      tools::installer::sync_types_command(Arc::new(flags)).await
+    DenoSubcommand::SyncTypes(sync_types_flags) => spawn_subcommand(async {
+      tools::installer::sync_types_command(
+        Arc::new(flags),
+        sync_types_flags,
+        tools::installer::RootTsConfigMode::Always,
+      )
+      .await
     }),
     DenoSubcommand::JSONReference(json_reference) => {
       spawn_subcommand(async move {

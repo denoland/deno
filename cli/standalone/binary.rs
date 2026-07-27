@@ -261,22 +261,40 @@ fn validate_app_name(app_name: &str) -> Result<(), AnyError> {
   Ok(())
 }
 
-/// Resolve the stable app identity baked into a compiled binary: an explicit
-/// `--app-name`, otherwise the output file name (minus any `.exe` extension).
-/// The derived default is held to the same rules as an explicit flag, since it
-/// becomes a single directory component at runtime (possibly on a different
-/// target OS when cross-compiling); otherwise an output name like `aux` or one
-/// with a trailing dot would silently break persistent storage on the target.
-fn resolve_app_name(
-  compile_flags: &CompileFlags,
-  display_output_filename: &str,
-) -> Result<String, AnyError> {
-  let app_name = compile_flags.app_name.clone().unwrap_or_else(|| {
+fn default_app_name(display_output_filename: &str, is_desktop: bool) -> String {
+  if is_desktop {
+    // A desktop build's compile output is an intermediate shared library. The
+    // final app is packaged without this platform-specific extension, so keep
+    // its baked identity (and default window title) in sync with that name.
+    Path::new(display_output_filename)
+      .file_stem()
+      .and_then(|stem| stem.to_str())
+      .unwrap_or(display_output_filename)
+      .to_string()
+  } else {
     display_output_filename
       .strip_suffix(".exe")
       .unwrap_or(display_output_filename)
       .to_string()
-  });
+  }
+}
+
+/// Resolve the stable app identity baked into a compiled binary: an explicit
+/// `--app-name`, otherwise the output file name (minus the executable extension
+/// added by Deno). The derived default is held to the same rules as an explicit
+/// flag, since it becomes a single directory component at runtime (possibly on
+/// a different target OS when cross-compiling); otherwise an output name like
+/// `aux` or one with a trailing dot would silently break persistent storage on
+/// the target.
+fn resolve_app_name(
+  compile_flags: &CompileFlags,
+  display_output_filename: &str,
+  is_desktop: bool,
+) -> Result<String, AnyError> {
+  let app_name = compile_flags
+    .app_name
+    .clone()
+    .unwrap_or_else(|| default_app_name(display_output_filename, is_desktop));
   validate_app_name(&app_name)?;
   Ok(app_name)
 }
@@ -369,7 +387,11 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     // before we do any work to write the binary. The returned name is discarded
     // here; the value actually baked into the metadata is resolved again at the
     // write site below.
-    resolve_app_name(options.compile_flags, options.display_output_filename)?;
+    resolve_app_name(
+      options.compile_flags,
+      options.display_output_filename,
+      self.is_desktop,
+    )?;
     self.write_standalone_binary(options, original_binary).await
   }
 
@@ -1095,10 +1117,15 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       // Bake in a stable app identity so origin-bound storage (default
       // `Deno.openKv()`, `localStorage`, `caches`) persists to a per-app
       // directory at runtime. Prefer an explicit `--app-name`, otherwise derive
-      // it from the output file name (minus any `.exe` extension). Resolving
-      // here keeps the identity stable even if the binary is later renamed. The
-      // name is already validated in `write_bin` (via `resolve_app_name`).
-      app_name: Some(resolve_app_name(compile_flags, display_output_filename)?),
+      // it from the output file name (minus any executable extension Deno adds).
+      // Resolving here keeps the identity stable even if the binary is later
+      // renamed. The name is already validated in `write_bin` (via
+      // `resolve_app_name`).
+      app_name: Some(resolve_app_name(
+        compile_flags,
+        display_output_filename,
+        self.is_desktop,
+      )?),
       app_version: self
         .cli_options
         .workspace()
@@ -1767,4 +1794,20 @@ fn set_windows_binary_to_gui(bin: &mut [u8]) -> Result<(), AnyError> {
   bin[(subsystem_start)..(subsystem_start + 2)]
     .copy_from_slice(&subsystem.to_le_bytes());
   Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::default_app_name;
+
+  #[test]
+  fn default_app_name_strips_only_deno_added_extensions() {
+    assert_eq!(default_app_name("speedgraph.exe", false), "speedgraph");
+    assert_eq!(default_app_name("speedgraph.so", false), "speedgraph.so");
+
+    assert_eq!(default_app_name("speedgraph.dll", true), "speedgraph");
+    assert_eq!(default_app_name("speedgraph.dylib", true), "speedgraph");
+    assert_eq!(default_app_name("speedgraph.so", true), "speedgraph");
+    assert_eq!(default_app_name("speed.graph.so", true), "speed.graph");
+  }
 }

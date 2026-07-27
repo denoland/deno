@@ -46,7 +46,7 @@ function exportChallenge(spkac, encoding) {
 // For backwards compatibility reasons, this cannot be converted into a
 // ES6 Class.
 function Certificate() {
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   if (!(this instanceof Certificate)) {
     return new Certificate();
   }

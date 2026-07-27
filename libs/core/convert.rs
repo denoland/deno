@@ -12,6 +12,7 @@ use std::sync::Arc;
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
 use smallvec::SmallVec;
+use uuid::Uuid;
 use v8::Local;
 use v8::PinScope;
 
@@ -487,6 +488,36 @@ impl<'s> ToV8<'s> for Arc<str> {
     scope: &mut v8::PinScope<'s, 'i>,
   ) -> Result<v8::Local<'s, v8::Value>, Self::Error> {
     Ok(v8::String::new(scope, &self).unwrap().into()) // TODO
+  }
+}
+
+/// Represented as a hyphenated, lowercase string, matching [`std::fmt::Display`]
+/// for [`Uuid`] (and what `serde`'s human-readable `Serialize`/`Deserialize`
+/// impls for [`Uuid`] already produce/expect).
+impl<'s> ToV8<'s> for Uuid {
+  type Error = Infallible;
+  #[inline]
+  fn to_v8<'i>(
+    self,
+    scope: &mut v8::PinScope<'s, 'i>,
+  ) -> Result<v8::Local<'s, v8::Value>, Self::Error> {
+    Ok(v8::String::new(scope, &self.to_string()).unwrap().into()) // TODO
+  }
+}
+
+impl<'s> FromV8<'s> for Uuid {
+  type Error = JsErrorBox;
+
+  fn from_v8<'i>(
+    scope: &mut v8::PinScope<'s, 'i>,
+    value: v8::Local<'s, v8::Value>,
+  ) -> Result<Self, Self::Error> {
+    let s = value
+      .try_cast::<v8::String>()
+      .map_err(|e| JsErrorBox::from_err(DataError(e)))?;
+    let s = s.to_rust_string_lossy(scope);
+    Uuid::parse_str(&s)
+      .map_err(|e| JsErrorBox::type_error(format!("Invalid UUID: {e}")))
   }
 }
 

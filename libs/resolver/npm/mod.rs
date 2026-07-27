@@ -83,11 +83,37 @@ impl DenoInNpmPackageChecker {
 
 impl InNpmPackageChecker for DenoInNpmPackageChecker {
   fn in_npm_package(&self, specifier: &Url) -> bool {
+    if is_synthetic_module(specifier) {
+      return false;
+    }
     match self {
       DenoInNpmPackageChecker::Managed(c) => c.in_npm_package(specifier),
       DenoInNpmPackageChecker::Byonm(c) => c.in_npm_package(specifier),
     }
   }
+}
+
+/// Whether `specifier` names one of the synthetic modules Deno uses for code
+/// that has no file on disk, such as `deno eval` (`$deno$eval.mts`) or piped
+/// stdin (`$deno$stdin.mts`).
+///
+/// These are resolved against the cwd so that imports and the closest
+/// `package.json` resolve as if the code were a file sitting there, which means
+/// a cwd inside `node_modules` would otherwise classify them as npm package
+/// files. That routes them to the npm module loader, which reads from disk and
+/// fails, because the source only ever exists in memory. `node-gyp` hits this:
+/// it evaluates `binding.gyp` with `node -p` while cwd'd into the package being
+/// built.
+pub fn is_synthetic_module(specifier: &Url) -> bool {
+  if specifier.scheme() != "file" {
+    return false;
+  }
+  let path = specifier.path();
+  let file_name = match path.rfind('/') {
+    Some(index) => &path[index + 1..],
+    None => path,
+  };
+  file_name.starts_with("$deno$")
 }
 
 #[derive(Debug, Error, JsError)]

@@ -68,20 +68,21 @@ fn is_question_token(code: &str, range: &std::ops::Range<usize>) -> bool {
   token_text(code, range) == Some("?")
 }
 
-fn adjust_start_column_for_non_ascii(
-  code: &str,
-  mut start_column: usize,
-) -> usize {
-  // Match the JS behavior that used `charCodeAt` on UTF-16 code units.
-  let utf16_code_units: Vec<u16> = code.encode_utf16().collect();
-  let mut index = 0;
-  while index < start_column {
-    if utf16_code_units.get(index).copied().unwrap_or_default() > 127 {
-      start_column += 1;
+fn utf16_to_utf8_offset(code: &str, offset_utf16: usize) -> Option<usize> {
+  let mut current_utf16 = 0;
+
+  for (offset_utf8, c) in code.char_indices() {
+    if current_utf16 == offset_utf16 {
+      return Some(offset_utf8);
     }
-    index += 1;
+
+    current_utf16 += c.len_utf16();
+    if current_utf16 > offset_utf16 {
+      return None;
+    }
   }
-  start_column
+
+  (current_utf16 == offset_utf16).then_some(code.len())
 }
 
 /// Get the first expression in a code string at the start_column.
@@ -89,8 +90,10 @@ fn adjust_start_column_for_non_ascii(
 /// This mirrors Node.js's implementation
 /// https://github.com/nodejs/node/blob/70f6b58ac655234435a99d72b857dd7b316d34bf/lib/internal/errors/error_source.js#L61-L142
 fn get_first_expression(code: &str, original_start_col_index: usize) -> &str {
-  let start_index =
-    adjust_start_column_for_non_ascii(code, original_start_col_index);
+  let Some(start_index) = utf16_to_utf8_offset(code, original_start_col_index)
+  else {
+    return code;
+  };
 
   let items = deno_ast::lex(code, MediaType::JavaScript);
   let tokens: Vec<(Token, std::ops::Range<usize>)> = items
@@ -197,9 +200,33 @@ fn get_first_expression(code: &str, original_start_col_index: usize) -> &str {
 
   let start = first_member_access_name_token.unwrap_or(start_index);
   let end = terminating_col.unwrap_or(code.len());
-  if start <= end && end <= code.len() {
-    &code[start..end]
-  } else {
-    code
+  code.get(start..end).unwrap_or(code)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_utf16_to_utf8_offset() {
+    let text = "a😀汉b";
+    assert_eq!(utf16_to_utf8_offset(text, 0), Some(0));
+    assert_eq!(utf16_to_utf8_offset(text, 1), Some(1));
+    assert_eq!(utf16_to_utf8_offset(text, 2), None);
+    assert_eq!(utf16_to_utf8_offset(text, 3), Some(5));
+    assert_eq!(utf16_to_utf8_offset(text, 4), Some(8));
+    assert_eq!(utf16_to_utf8_offset(text, 5), Some(9));
+    assert_eq!(utf16_to_utf8_offset(text, 6), None);
+  }
+
+  #[test]
+  fn test_get_first_expression_with_multibyte_identifier() {
+    assert_eq!(get_first_expression("汉汉.ok(false);", 3), "汉汉.ok(false)");
+  }
+
+  #[test]
+  fn test_get_first_expression_with_invalid_utf16_offset() {
+    let code = "😀; assert.ok(false);";
+    assert_eq!(get_first_expression(code, 1), code);
   }
 }

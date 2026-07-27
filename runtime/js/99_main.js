@@ -41,6 +41,7 @@ const {
   ObjectAssign,
   ObjectDefineProperties,
   ObjectDefineProperty,
+  ObjectFreeze,
   ObjectGetOwnPropertyDescriptors,
   ObjectHasOwn,
   ObjectIsExtensible,
@@ -138,7 +139,7 @@ function bootstrapOtel(otelConfig) {
   bootstrap(otelConfig);
 }
 
-// deno-lint-ignore prefer-primordials
+// deno-lint-ignore deno-internal/prefer-primordials
 if (Symbol.metadata) {
   throw "V8 supports Symbol.metadata now, no need to shim it";
 }
@@ -731,10 +732,17 @@ function removeImportedOps() {
   }
 }
 
-// FIXME(bartlomieju): temporarily add whole `Deno.core` to
-// `Deno[Deno.internal]` namespace. It should be removed and only necessary
-// methods should be left there.
-ObjectAssign(internals, { core });
+// `Deno[Deno.internal]` is reachable from user code. Preserve its existing
+// internal compatibility surface, but keep extension-loading capabilities on
+// the core object imported through `ext:core/mod.js`.
+const userVisibleCoreDescriptors = ObjectGetOwnPropertyDescriptors(core);
+delete userVisibleCoreDescriptors.createLazyLoader;
+delete userVisibleCoreDescriptors.loadExtScript;
+const userVisibleCore = ObjectFreeze(ObjectDefineProperties(
+  { __proto__: null },
+  userVisibleCoreDescriptors,
+));
+ObjectAssign(internals, { core: userVisibleCore });
 const internalSymbol = Symbol("Deno.internal");
 // `Deno.test` and its sub-methods are no-ops outside of `deno test`, kept for
 // compatibility so they don't error under `deno run`. Mirrors the surface of
@@ -881,7 +889,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       0: denoVersion,
       1: location_,
       2: unstableFeatures,
-      3: inspectFlag,
       5: hasNodeModulesDir,
       6: argv0,
       7: nodeDebug,
@@ -1025,9 +1032,12 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
 
     bootstrapOtel(otelConfig);
 
-    if (inspectFlag) {
-      core.wrapConsole(globalThis.console, core.v8Console);
-    }
+    // Wrap the console unconditionally (like the worker bootstrap does)
+    // rather than only under --inspect*: the inspector can also be
+    // activated later at runtime (node:inspector open(), SIGUSR1), and
+    // without the wrap those sessions never receive
+    // Runtime.consoleAPICalled events.
+    core.wrapConsole(globalThis.console, core.v8Console);
 
     event.defineEventHandler(globalThis, "error");
     event.defineEventHandler(globalThis, "load");
@@ -1152,6 +1162,8 @@ function bootstrapWorkerRuntime(
     denoNs.build.standalone = standalone;
 
     closeOnIdle = runtimeOptions[14];
+
+    removeImportedOps();
 
     performance.setTimeOrigin();
     globalThis_ = globalThis;
