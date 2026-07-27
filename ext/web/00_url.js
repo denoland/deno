@@ -146,7 +146,7 @@ class URLSearchParams {
         }
         // Sequence<sequence<USVString>>
         const pairs = [];
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         const iter = method.call(init);
         if (iter == null || typeof iter.next !== "function") {
           const err = new TypeError(
@@ -156,7 +156,7 @@ class URLSearchParams {
           throw err;
         }
         while (true) {
-          // deno-lint-ignore prefer-primordials
+          // deno-lint-ignore deno-internal/prefer-primordials
           const res = iter.next();
           if (res == null) {
             const err = new TypeError(
@@ -243,7 +243,7 @@ class URLSearchParams {
     if (url === null) {
       return;
     }
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     url[_updateUrlSearch](this.toString());
   }
 

@@ -30,6 +30,8 @@ use deno_npm_cache::NpmCache;
 use deno_npm_cache::NpmCacheHttpClient;
 use deno_npm_cache::NpmCacheSys;
 use deno_npm_cache::TarballCache;
+use deno_npm_cache::create_dir_all_no_symlink;
+use deno_npm_cache::ensure_not_symlink;
 use deno_npm_cache::hard_link_file;
 use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_resolver::npm::get_package_folder_id_folder_name;
@@ -1303,8 +1305,9 @@ pub(crate) fn clone_dir_recursive_except_node_modules_child(
   to: &Path,
 ) -> Result<(), std::io::Error> {
   let sys = sys.with_paths_in_errors();
+  ensure_not_symlink(sys.as_ref(), to)?;
   _ = sys.fs_remove_dir_all(to);
-  sys.fs_create_dir_all(to)?;
+  create_dir_all_no_symlink(sys.as_ref(), to)?;
   for entry in sys.fs_read_dir(from)? {
     let entry = entry?;
     if entry.file_name().to_str() == Some("node_modules") {
@@ -2255,10 +2258,30 @@ mod test {
   use sys_traits::FsCreateDirAll;
   use sys_traits::FsMetadata;
   use sys_traits::FsRead;
+  use sys_traits::FsSymlinkDir;
   use sys_traits::FsWrite;
   use test_util::TempDir;
 
   use super::*;
+
+  #[test]
+  fn clone_dir_recursive_except_node_modules_child_rejects_symlink_destination()
+  {
+    let sys = sys_traits::impls::InMemorySys::default();
+    let from = Path::new("/from");
+    let to = Path::new("/to");
+    let target = Path::new("/target");
+    sys.fs_create_dir_all(from).unwrap();
+    sys.fs_create_dir_all(target).unwrap();
+    sys.fs_write(from.join("file"), "package contents").unwrap();
+    sys.fs_symlink_dir(target, to).unwrap();
+
+    let err = clone_dir_recursive_except_node_modules_child(&sys, from, to)
+      .unwrap_err();
+
+    assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+    assert!(sys.fs_read_to_string(target.join("file")).is_err());
+  }
 
   #[test]
   fn test_setup_cache() {

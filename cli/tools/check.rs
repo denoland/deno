@@ -12,6 +12,7 @@ use crate::args::Flags;
 use crate::args::SyncTypesFlags;
 use crate::args::TypeCheckModeExt;
 use crate::factory::CliFactory;
+use crate::graph_util::GraphRootsValidOptions;
 use crate::tsc::Diagnostics;
 use crate::util::file_watcher;
 
@@ -129,10 +130,15 @@ async fn native_check(
   // missing modules is not re-added on top of tsc's TS2307 yet; restoring it
   // additively is a follow-up. `allow_unknown_media_types: true` matches
   // `deno check`, letting tsc handle unknown types instead of erroring.
-  factory
-    .module_graph_builder()
-    .await?
-    .graph_roots_valid(&graph, &roots, true, false)?;
+  factory.module_graph_builder().await?.graph_roots_valid(
+    &graph,
+    &roots,
+    GraphRootsValidOptions {
+      allow_unknown_media_types: true,
+      allow_unknown_jsr_exports: false,
+      allow_sloppy_imports_hints_for_unreferenced_roots: true,
+    },
+  )?;
 
   // Enforce the lockfile now that the graph has resolved the project's deps:
   // under `--frozen` this errors if the lockfile is out of date, otherwise it
@@ -318,9 +324,15 @@ async fn native_check(
         }
       }
     }
-    // Write to a unique temp file rather than a fixed path: sibling `deno check`
-    // runs in the same directory (e.g. spec-test variants) would otherwise race
-    // on it, and a fixed path leaves an artifact behind.
+    // Write to the system temp dir, not the project root: this config only
+    // references absolute paths (`extends` the base config by absolute path,
+    // `files` are absolute, `include` is empty), and tsc runs with its cwd
+    // pinned to `project_root` regardless of where the config lives, so its
+    // location does not affect resolution. Keeping it out of the project tree
+    // avoids leaving an artifact behind and, more importantly, avoids racing
+    // with anything enumerating the project directory - e.g. a sibling
+    // spec-test variant that copies the directory while this ephemeral file
+    // briefly exists (and then vanishes when the guard drops).
     let content = deno_core::serde_json::json!({
       "extends": base_tsconfig.to_string_lossy().replace('\\', "/"),
       "include": [],
@@ -329,7 +341,7 @@ async fn native_check(
     let mut tmp = tempfile::Builder::new()
       .prefix("deno-check-")
       .suffix(".tsconfig.json")
-      .tempfile_in(&project_root)?;
+      .tempfile()?;
     std::io::Write::write_all(
       &mut tmp,
       deno_core::serde_json::to_string_pretty(&content)?.as_bytes(),
