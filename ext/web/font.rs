@@ -11,6 +11,8 @@ use std::sync::atomic::Ordering;
 
 use deno_core::JsBuffer;
 use deno_core::OpState;
+use deno_core::ResourceId;
+use deno_core::error::ResourceError;
 use deno_core::op2;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
@@ -42,6 +44,12 @@ use crate::css::font::style_to_css_str;
 /// Probe family for [`op_fontdb_load`] (empty names are skipped by register).
 const PROBE_FAMILY_NAME: &str = "deno-font-face-probe";
 
+/// Chunk size for [`op_fontdb_load_resource`], as in `ext/http`.
+const FONT_READ_CHUNK: usize = 64 * 1024;
+/// Upper bound on how much [`op_fontdb_load_resource`] preallocates from an
+/// untrusted Content-Length.
+const MAX_FONT_PREALLOC: u64 = 32 * 1024 * 1024;
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum FontError {
   #[class("DOMExceptionSyntaxError")]
@@ -50,6 +58,12 @@ pub enum FontError {
   #[class(inherit)]
   #[error(transparent)]
   Permission(#[from] deno_permissions::PermissionCheckError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Resource(#[from] ResourceError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Read(#[from] JsErrorBox),
   #[class(generic)]
   #[error("{0}")]
   Join(String),
@@ -321,6 +335,35 @@ pub async fn op_fontdb_load(
   #[buffer(detach)] bytes: JsBuffer,
 ) -> Result<FontLoadResult, FontError> {
   load_font_data(&state, bytes.to_vec()).await
+}
+
+/// Read a whole readable resource (a fetch response body) and load it as a
+/// font. Unlike [`op_fontdb_load`] the bytes never pass through a V8
+/// ArrayBuffer, which for a multi-megabyte font saves both the allocation and
+/// a full copy.
+///
+/// The caller keeps ownership of the resource and closes it.
+#[op2]
+#[serde]
+pub async fn op_fontdb_load_resource(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Result<FontLoadResult, FontError> {
+  // `deno_web` cannot name the fetch response type, so go through the trait.
+  let resource = state.borrow().resource_table.get_any(rid)?;
+  // Content-Length is attacker-controlled, so treat it as a capped hint.
+  let capacity = resource.size_hint().1.unwrap_or(0).min(MAX_FONT_PREALLOC);
+  let mut bytes = Vec::with_capacity(capacity as usize);
+  loop {
+    // `read` (not `read_byob`): the fetch body returns a zero-copy view of
+    // hyper's buffer, while the default `read_byob` adds a memcpy per chunk.
+    let view = resource.clone().read(FONT_READ_CHUNK).await?;
+    if view.is_empty() {
+      break;
+    }
+    bytes.extend_from_slice(&view);
+  }
+  load_font_data(&state, bytes).await
 }
 
 /// Load font from blob store (null => fall through to next `src`).

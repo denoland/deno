@@ -903,6 +903,22 @@ Deno.test(
   },
 );
 
+// The http body is drained by op_fontdb_load_resource, straight from the
+// response resource, so it never becomes a JS ArrayBuffer.
+Deno.test(
+  { permissions: { net: ["localhost:4545"] } },
+  async function fontFaceLoadFromHttpUrl() {
+    const face = new FontFace(
+      "HttpFont",
+      'url("http://localhost:4545/NotoSerifCJKjp-Regular-subset.otf")',
+    );
+    await face.load();
+    assertEquals(face.status, "loaded");
+    // Descriptors not given by the caller come from the font file.
+    assertEquals(face.weight, "200");
+  },
+);
+
 Deno.test(
   { permissions: { read: false } },
   async function fontFaceLoadFileUrlRequiresReadPermission() {

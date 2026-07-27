@@ -7,6 +7,7 @@ const {
   op_fontdb_load,
   op_fontdb_load_local,
   op_fontdb_load_object_url,
+  op_fontdb_load_resource,
   op_fontdb_local_font_data,
   op_fontdb_query_local_fonts,
   op_fontdb_register_all_local_fonts,
@@ -84,6 +85,8 @@ const { DOMException } = core.loadExtScript(
 const { markNotSerializable } = core.loadExtScript(
   "ext:deno_web/13_message_port.js",
 );
+const { getReadableStreamResourceBacking, readableStreamCollectWithOp } = core
+  .loadExtScript("ext:deno_web/06_streams.js");
 
 let _fileMod;
 const loadFile = () =>
@@ -965,6 +968,13 @@ class FontFace {
       if (!response.ok) {
         throw new TypeError(`the server responded with ${response.status}`);
       }
+      const body = response.body;
+      // Drain the body in Rust: fonts are megabytes, and going through a JS
+      // ArrayBuffer would cost a V8 allocation plus a full extra copy.
+      if (body !== null && getReadableStreamResourceBacking(body) !== null) {
+        return await readableStreamCollectWithOp(body, op_fontdb_load_resource);
+      }
+      // No resource backing (e.g. the inspector tees the body); copy via JS.
       return await op_fontdb_load(
         new Uint8Array(await response.arrayBuffer()),
       );
