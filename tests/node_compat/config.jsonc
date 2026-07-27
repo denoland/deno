@@ -1275,6 +1275,7 @@
       "ignore": true,
       "reason": "Tests Node.js internal `internal/fixed_queue` module which is not exposed in Deno"
     },
+    "parallel/test-fs-append-file-flush.js": {},
     "parallel/test-fs-append-file-sync.js": {},
     "parallel/test-fs-buffer.js": {},
     "parallel/test-fs-buffertype-writesync.js": {},
@@ -1576,6 +1577,7 @@
     "parallel/test-fs-write-buffer-large.js": {},
     "parallel/test-fs-write-buffer.js": {},
     "parallel/test-fs-write-file-buffer.js": {},
+    "parallel/test-fs-write-file-flush.js": {},
     "parallel/test-fs-write-file-invalid-path.js": {},
     "parallel/test-fs-write-file-typedarrays.js": {},
     "parallel/test-fs-write-file.js": {
@@ -1590,6 +1592,7 @@
     "parallel/test-fs-write-stream-end.js": {},
     "parallel/test-fs-write-stream-file-handle.js": {},
     "parallel/test-fs-write-stream-file-handle-2.js": {},
+    "parallel/test-fs-write-stream-flush.js": {},
     "parallel/test-fs-write-stream-fs.js": {},
     "parallel/test-fs-write-stream-patch-open.js": {},
     "parallel/test-fs-write-stream-throw-type-error.js": {},
