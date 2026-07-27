@@ -20,5 +20,5 @@ openssl dgst -sha256 -sign rsa<bits>.pem -out rsa<bits>_sig_sha256.bin payload.b
 ```
 
 The SPKI encodings of the 8192/9216-bit public keys
-(`openssl rsa -in rsa<bits>.pem -pubout -outform DER`) and their signature
-files live in `tests/testdata/webcrypto/` for `tests/unit/webcrypto_test.ts`.
+(`openssl rsa -in rsa<bits>.pem -pubout -outform DER`) and their signature files
+live in `tests/testdata/webcrypto/` for `tests/unit/webcrypto_test.ts`.
