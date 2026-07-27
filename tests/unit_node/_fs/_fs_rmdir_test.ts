@@ -84,7 +84,7 @@ Deno.test("SYNC: prevent removing a file", () => {
   const dir = Deno.makeTempDirSync();
   const fileName = "foo.txt";
   const path = join(dir, fileName);
-  Deno.writeTextFile(path, "Hello, world!");
+  Deno.writeTextFileSync(path, "Hello, world!");
   nodeAssert.throws(
     () => rmdirSync(path),
     {
@@ -100,7 +100,7 @@ Deno.test("ASYNC: prevent removing a file", async () => {
   const dir = await Deno.makeTempDir();
   const fileName = "foo.txt";
   const path = join(dir, fileName);
-  Deno.writeTextFile(path, "Hello, world!");
+  await Deno.writeTextFile(path, "Hello, world!");
   await nodeAssert.rejects(
     async () => await rmdirPromise(path),
     {
