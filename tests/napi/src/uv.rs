@@ -365,6 +365,7 @@ extern "C" fn test_uv_polyfills(
 ) -> napi_value {
   use std::ffi::c_int;
   use std::mem::MaybeUninit;
+  use std::mem::size_of;
   use std::ptr;
   use std::ptr::addr_of_mut;
 
@@ -375,11 +376,14 @@ extern "C" fn test_uv_polyfills(
   use libuv_sys_lite::uv_free_cpu_info;
   use libuv_sys_lite::uv_handle_get_data;
   use libuv_sys_lite::uv_handle_set_data;
+  use libuv_sys_lite::uv_handle_size;
   use libuv_sys_lite::uv_handle_t;
+  use libuv_sys_lite::uv_handle_type;
   use libuv_sys_lite::uv_hrtime;
   use libuv_sys_lite::uv_is_active;
   use libuv_sys_lite::uv_is_closing;
   use libuv_sys_lite::uv_ref;
+  use libuv_sys_lite::uv_strerror;
   use libuv_sys_lite::uv_timer_init;
   use libuv_sys_lite::uv_timer_set_repeat;
   use libuv_sys_lite::uv_timer_start;
@@ -441,6 +445,21 @@ extern "C" fn test_uv_polyfills(
     // polyfill's uv_close should detect UV_TIMER and skip a null callback.
     uv_close(handle, None);
 
+    assert_eq!(
+      uv_handle_size(uv_handle_type::UV_POLL),
+      size_of::<libuv_sys_lite::uv_poll_t>()
+    );
+    assert_eq!(
+      uv_handle_size(uv_handle_type::UV_UNKNOWN_HANDLE),
+      usize::MAX
+    );
+
+    assert_eq!(std::ffi::CStr::from_ptr(uv_strerror(-4095)), c"end of file");
+    assert_eq!(
+      std::ffi::CStr::from_ptr(uv_strerror(0)),
+      c"Unknown system error"
+    );
+
     // Force the address of every export we care about so that link-time
     // resolution is exercised even if all earlier asserts were optimized
     // away.
@@ -460,6 +479,8 @@ extern "C" fn test_uv_polyfills(
       uv_is_active as *const () as usize,
       uv_is_closing as *const () as usize,
       uv_close as *const () as usize,
+      uv_handle_size as *const () as usize,
+      uv_strerror as *const () as usize,
     );
 
     // Touch addr_of_mut to silence unused import warnings on platforms
