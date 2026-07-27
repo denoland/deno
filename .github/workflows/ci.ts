@@ -952,12 +952,14 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                   // compiler plus this narrow opt-in is preferable to moving
                   // release builds to a separate nightly toolchain.
                   'echo "RUSTC_BOOTSTRAP=1" >> "$GITHUB_ENV"',
+                  // `RUSTFLAGS` is a multi-line value, but cargo splits it on
+                  // spaces only (trimming each piece), so a newline is not a
+                  // separator. Append on the same line as the tail of the
+                  // existing value, otherwise the added flags fuse into one
+                  // bogus token.
                   "{",
                   '  echo "RUSTFLAGS<<__DENO_RUSTFLAGS"',
-                  '  echo "$RUSTFLAGS"',
-                  '  echo "-Cforce-frame-pointers=yes"',
-                  '  echo "-Cforce-unwind-tables=no"',
-                  '  echo "-C link-arg=-Wl,--no-eh-frame-hdr"',
+                  '  echo "$RUSTFLAGS -C force-frame-pointers=yes -C force-unwind-tables=no -C link-arg=-Wl,--no-eh-frame-hdr"',
                   '  echo "__DENO_RUSTFLAGS"',
                   '} >> "$GITHUB_ENV"',
                 ],

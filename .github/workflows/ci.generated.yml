@@ -4422,10 +4422,7 @@ jobs:
           echo "RUSTC_BOOTSTRAP=1" >> "$GITHUB_ENV"
           {
             echo "RUSTFLAGS<<__DENO_RUSTFLAGS"
-            echo "$RUSTFLAGS"
-            echo "-Cforce-frame-pointers=yes"
-            echo "-Cforce-unwind-tables=no"
-            echo "-C link-arg=-Wl,--no-eh-frame-hdr"
+            echo "$RUSTFLAGS -C force-frame-pointers=yes -C force-unwind-tables=no -C link-arg=-Wl,--no-eh-frame-hdr"
             echo "__DENO_RUSTFLAGS"
           } >> "$GITHUB_ENV"
       - name: Build release
@@ -6527,10 +6524,7 @@ jobs:
           echo "RUSTC_BOOTSTRAP=1" >> "$GITHUB_ENV"
           {
             echo "RUSTFLAGS<<__DENO_RUSTFLAGS"
-            echo "$RUSTFLAGS"
-            echo "-Cforce-frame-pointers=yes"
-            echo "-Cforce-unwind-tables=no"
-            echo "-C link-arg=-Wl,--no-eh-frame-hdr"
+            echo "$RUSTFLAGS -C force-frame-pointers=yes -C force-unwind-tables=no -C link-arg=-Wl,--no-eh-frame-hdr"
             echo "__DENO_RUSTFLAGS"
           } >> "$GITHUB_ENV"
       - name: Build release
