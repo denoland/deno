@@ -979,11 +979,20 @@ impl DepManager {
                   .jsr_fetch_resolver
                   .version_resolver_for_package(&semver_req.name, &info);
                 let lower_bound = &semver_compatible.as_ref()?.version;
+                // Only consider pre-release versions when the currently
+                // resolved version is itself a pre-release. Otherwise
+                // `deno outdated --latest` reports a pre-release (e.g.
+                // 2.0.3-alpha.0) as the latest version even though JSR
+                // designates the newest stable release as latest. This mirrors
+                // npm packages, which resolve latest from the `latest`
+                // dist-tag. (#36320)
+                let allow_pre_release = !lower_bound.pre.is_empty();
                 {
                   let mut best: Option<&Version> = Some(lower_bound);
                   for version in info.versions.iter().filter_map(
                     |(version, version_info)| {
                       if !version_info.yanked
+                        && (allow_pre_release || version.pre.is_empty())
                         && version_resolver
                           .matches_newest_dependency_date(version_info)
                       {

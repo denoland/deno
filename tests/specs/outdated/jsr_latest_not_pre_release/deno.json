@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "@denotest/jsr-latest-not-pre-release": "jsr:@denotest/jsr-latest-not-pre-release@~1.0.0"
+  }
+}

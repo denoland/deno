@@ -1,0 +1,16 @@
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@denotest/jsr-latest-not-pre-release@1.0": "1.0.0"
+  },
+  "jsr": {
+    "@denotest/jsr-latest-not-pre-release@1.0.0": {
+      "integrity": "adf1e035d38a7a6acd60ec5f0ec2c322d7d2d0c3697937f5304b220692ee3561"
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "jsr:@denotest/jsr-latest-not-pre-release@1.0"
+    ]
+  }
+}
