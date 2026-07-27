@@ -136,6 +136,12 @@ impl<'a, TSys: SetupBinEntrySys> BinEntries<'a, TSys> {
     }
   }
 
+  /// Whether some already-added package contributes a `.bin` entry with this
+  /// (normalized) name.
+  pub fn has_bin_name(&self, name: &str) -> bool {
+    self.seen_names.contains_key(name)
+  }
+
   /// Add a new bin entry (package with a bin field)
   pub fn add<'b>(
     &mut self,

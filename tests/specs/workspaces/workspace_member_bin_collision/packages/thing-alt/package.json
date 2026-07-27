@@ -1,0 +1,8 @@
+{
+  "name": "thing-alt",
+  "version": "1.0.0",
+  "type": "module",
+  "bin": {
+    "thing-bin": "./cli.js"
+  }
+}

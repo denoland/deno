@@ -70,4 +70,8 @@ assertBinTarget(
 // `deno run`.
 assertBinTarget("node_modules/.bin/shtool", "packages/shtool/tool.sh");
 
+// (d) Likewise for a JS bin with no shebang. It's linked, it just can't be
+// exec'd through `PATH` on unix — see the `root-noshebang` task step.
+assertBinTarget("node_modules/.bin/noshebang", "packages/noshebang/cli.js");
+
 console.log("ok");

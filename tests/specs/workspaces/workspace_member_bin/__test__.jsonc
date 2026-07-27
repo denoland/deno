@@ -40,6 +40,20 @@
       "if": "unix",
       "args": "task root-sh",
       "output": "root_sh_task.out"
+    },
+    {
+      // A member whose bin is JavaScript with NO shebang classifies as
+      // `Executable` rather than `JsFile`, so under the managed resolver it is
+      // left to `PATH` and the kernel refuses to exec it. This is *not* a
+      // regression — before #36313 such a member got no `.bin` entry at all —
+      // and `npm`/`node` behave the same way on unix. It differs from BYONM,
+      // which deliberately routes every `.bin` entry through `deno run`; see
+      // the NOTE in `resolve_custom_commands`. Locked in so the asymmetry
+      // can't change silently.
+      "if": "unix",
+      "args": "task root-noshebang",
+      "output": "root_noshebang_task.out",
+      "exitCode": 1
     }
   ]
 }

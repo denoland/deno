@@ -567,7 +567,13 @@ impl<
       // Workspace members that declare a `bin` get a root `.bin` entry too, so
       // `deno task` and any tooling that looks in `node_modules/.bin` can run
       // them (#36313). Added last so snapshot packages win a name collision.
-      add_workspace_bin_entries(&mut bin_entries, &workspace_bin_packages);
+      // Only warn about duplicate bin names on the install path — see the
+      // matching call in `local.rs`.
+      add_workspace_bin_entries(
+        &mut bin_entries,
+        &workspace_bin_packages,
+        self.clean_on_install,
+      );
       bin_entries.finish(
         snapshot,
         &bin_node_modules_dir_path,

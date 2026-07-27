@@ -21,12 +21,14 @@ const resolved = binTargets("node_modules/.bin/thing-bin").map((path) => {
   }
 });
 
-const member = Deno.realPathSync("packages/thing/cli.js");
-if (resolved.includes(member)) {
-  throw new Error(
-    `node_modules/.bin/thing-bin should point at the @denotest/one-bin ` +
-      `dependency, not the workspace member (${member})`,
-  );
+for (const dir of ["thing", "thing-alt"]) {
+  const member = Deno.realPathSync(`packages/${dir}/cli.js`);
+  if (resolved.includes(member)) {
+    throw new Error(
+      `node_modules/.bin/thing-bin should point at the @denotest/one-bin ` +
+        `dependency, not the workspace member (${member})`,
+    );
+  }
 }
 if (!resolved.some((path) => path?.replaceAll("\\", "/").includes("one-bin"))) {
   throw new Error(

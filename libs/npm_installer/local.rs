@@ -932,7 +932,14 @@ impl<
       // Workspace members that declare a `bin` get a root `.bin` entry too, so
       // `deno task` and any tooling that looks in `node_modules/.bin` can run
       // them (#36313). Added last so snapshot packages win a name collision.
-      add_workspace_bin_entries(&mut bin_entries, &workspace_bin_packages);
+      // The collision warning is only worth emitting when the user actually
+      // asked to install; `deno run`/`deno task` re-link too and would
+      // otherwise re-print it ahead of every command's output.
+      add_workspace_bin_entries(
+        &mut bin_entries,
+        &workspace_bin_packages,
+        self.clean_on_install,
+      );
       bin_entries.finish(
         snapshot,
         &bin_node_modules_dir_path,
@@ -1941,11 +1948,22 @@ pub(crate) fn resolve_workspace_bin_packages(
 ///   arbitrary, so [`warn_on_workspace_bin_name_collisions`] warns about it.
 ///   npm hard-errors here, but a warning keeps an otherwise fine workspace
 ///   installable.
+///
+/// `warn_on_collisions` should only be set on the install path. `node_modules`
+/// is re-linked by `deno run`/`deno task` too, and npm reports this kind of
+/// problem once, at install time, rather than ahead of every command.
 pub(crate) fn add_workspace_bin_entries<'a, TSys: SetupBinEntrySys>(
   bin_entries: &mut BinEntries<'a, TSys>,
   workspace_bin_packages: &'a [WorkspaceBinPackage],
+  warn_on_collisions: bool,
 ) {
-  warn_on_workspace_bin_name_collisions(workspace_bin_packages);
+  if warn_on_collisions {
+    // Must run before the members are added below so `has_bin_name` still only
+    // reports names claimed by snapshot packages.
+    warn_on_workspace_bin_name_collisions(workspace_bin_packages, |name| {
+      bin_entries.has_bin_name(name)
+    });
+  }
   for pkg in workspace_bin_packages {
     // Point at the member's real directory rather than its root
     // `node_modules/<name>` symlink so the generated shim resolves even before
@@ -1966,8 +1984,13 @@ pub(crate) fn add_workspace_bin_entries<'a, TSys: SetupBinEntrySys>(
 /// Warns when two workspace members declare the same `bin` name, since only one
 /// of them can win the root `node_modules/.bin` entry and which one is
 /// essentially arbitrary. See [`add_workspace_bin_entries`] for the precedence.
+///
+/// `is_claimed_by_dependency` reports whether a snapshot package already
+/// contributes that name. Those always win, so in that case *no* member is
+/// linked and the message must not name one.
 fn warn_on_workspace_bin_name_collisions(
   workspace_bin_packages: &[WorkspaceBinPackage],
+  is_claimed_by_dependency: impl Fn(&str) -> bool,
 ) {
   let mut members_by_bin_name: BTreeMap<&str, BTreeSet<&PackageNv>> =
     BTreeMap::new();
@@ -1980,19 +2003,29 @@ fn warn_on_workspace_bin_name_collisions(
     if members.len() < 2 {
       continue;
     }
-    // `BTreeSet` is sorted ascending and the greatest `nv` wins the entry.
-    let winner = members.last().unwrap();
-    log::warn!(
-      "{} Multiple workspace members declare a \"{}\" bin: {}. Only \"{}\" will be linked into node_modules/.bin.",
-      deno_terminal::colors::yellow("Warning"),
-      bin_name,
-      members
-        .iter()
-        .map(|nv| nv.name.as_str())
-        .collect::<Vec<_>>()
-        .join(", "),
-      winner.name,
-    );
+    let member_names = members
+      .iter()
+      .map(|nv| nv.name.as_str())
+      .collect::<Vec<_>>()
+      .join(", ");
+    if is_claimed_by_dependency(bin_name) {
+      log::warn!(
+        "{} Multiple workspace members declare a \"{}\" bin: {}. None of them will be linked into node_modules/.bin because a dependency already provides it.",
+        deno_terminal::colors::yellow("Warning"),
+        bin_name,
+        member_names,
+      );
+    } else {
+      // `BTreeSet` is sorted ascending and the greatest `nv` wins the entry.
+      let winner = members.last().unwrap();
+      log::warn!(
+        "{} Multiple workspace members declare a \"{}\" bin: {}. Only \"{}\" will be linked into node_modules/.bin.",
+        deno_terminal::colors::yellow("Warning"),
+        bin_name,
+        member_names,
+        winner.name,
+      );
+    }
   }
 }
 

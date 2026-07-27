@@ -15,6 +15,9 @@
       "output": "[WILDCARD]Warning Multiple workspace members declare a \"dup\" bin: dup-a, dup-b. Only \"dup-b\" will be linked into node_modules/.bin.[WILDCARD]"
     },
     {
+      // `deno task` re-links `node_modules` too, but the warning is gated on
+      // the install path — the absence of a leading `[WILDCARD]` here is what
+      // asserts it isn't re-printed ahead of every task's output.
       "args": "task dup",
       "output": "task.out"
     }

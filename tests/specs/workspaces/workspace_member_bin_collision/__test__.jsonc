@@ -5,13 +5,17 @@
 // resolution snapshot so they sort last when the collision forces a depth
 // sort. Only a synthetic unit test covered this before.
 //
+// Two members declare it, which also exercises the three-way case: the
+// duplicate-bin warning must not claim one of them "will be linked" when the
+// dependency is what actually wins.
+//
 // https://github.com/denoland/deno/issues/36313
 {
   "tempDir": true,
   "steps": [
     {
       "args": "install",
-      "output": "[WILDCARD]"
+      "output": "install.out"
     },
     {
       "args": "run --allow-read check_bin.ts",

@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::io::Write;
@@ -541,6 +542,13 @@ pub fn resolve_custom_commands(
       // and in BYONM mode running it through deno is the only thing that makes
       // it work, so narrowing this would be a regression. The managed branch
       // can be stricter because its snapshot packages are already resolved.
+      //
+      // The asymmetry is intentional and observable: a workspace member whose
+      // `bin` points at a JS file with NO shebang works here but, under the
+      // managed resolver, falls through to `PATH` and fails to exec on unix
+      // (`Exec format error`) — same as `npm`/`node`, which also produce a
+      // non-executable shim target in that case. Pinned by the
+      // `root-noshebang` step of `tests/specs/workspaces/workspace_member_bin`.
       let mut commands: HashMap<String, Rc<dyn ShellCommand>> = HashMap::new();
       for bin_dir in bin_dirs {
         for (name, cmd) in
@@ -569,14 +577,22 @@ pub fn resolve_custom_commands(
       // classifies as `JsFile` on Windows because `windows_shim::generate_sh`
       // emits `exec node  "$basedir/..." "$@"`, which
       // `resolve_execution_path_from_npx_shim` matches.
+      //
+      // `seen` holds every name classified in *any* bin dir, whether or not it
+      // ended up merged. A closer `Executable` entry must still shadow a
+      // farther `JsFile` of the same name: the closer one is what `PATH`
+      // resolves to, and a custom command beats `PATH` in `deno_task_shell`,
+      // so inserting the farther entry would invert closest-first precedence.
+      let mut seen: HashSet<String> = HashSet::new();
       for bin_dir in bin_dirs {
         // Only classify names that aren't already resolved — classifying reads
-        // the entire file, and closest-first means the first hit wins anyway.
+        // the entire file.
         let bin_values = node_resolver
           .resolve_npm_commands_from_bin_dir_filtered(bin_dir, |name| {
-            !commands.contains_key(name)
+            !commands.contains_key(name) && !seen.contains(name)
           });
         for (name, bin_value) in bin_values {
+          seen.insert(name.clone());
           let BinValue::JsFile(path) = bin_value else {
             continue;
           };
@@ -666,6 +682,11 @@ fn resolve_managed_npm_commands(
   let mut result = HashMap::new();
   for id in npm_resolver.resolution().top_level_packages() {
     let package_folder = npm_resolver.resolve_pkg_folder_from_pkg_id(&id)?;
+    // TODO(nathanwhit): this discards the `BinValue` that
+    // `resolve_npm_binary_commands_for_package` already computed, so a registry
+    // package whose bin is a native binary or a shell script is still handed to
+    // `deno run --ext=js`. See the `.bin` handling in `resolve_custom_commands`
+    // above for how that distinction should be honoured.
     let bins =
       node_resolver.resolve_npm_binary_commands_for_package(&package_folder)?;
     result.extend(bins.into_iter().map(|(command_name, path)| {
