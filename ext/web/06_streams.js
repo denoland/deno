@@ -1224,9 +1224,7 @@ function readableStreamForRid(
   if (autoClose) {
     RESOURCE_REGISTRY.register(
       stream,
-      onClose === undefined
-        ? rid
-        : { __proto__: null, rid, onClose },
+      onClose === undefined ? rid : { __proto__: null, rid, onClose },
       stream,
     );
   }
@@ -1501,9 +1499,7 @@ function writableStreamForRid(rid, autoClose = true, cfn, options) {
   if (autoClose) {
     RESOURCE_REGISTRY.register(
       stream,
-      onClose === undefined
-        ? rid
-        : { __proto__: null, rid, onClose },
+      onClose === undefined ? rid : { __proto__: null, rid, onClose },
       stream,
     );
   }
