@@ -1,0 +1,19 @@
+{
+  "tempDir": true,
+  "tests": {
+    "stdin_is_idempotent": {
+      "args": "fmt -",
+      "input": "css`\n  :host {\n    --cf-chip-border-radius: var(\n      --cf-pill-border-radius,\n      var(--cf-border-radius-full, 9999px)\n    );\n  }\n`;\n",
+      "output": "css`\n  :host {\n    --cf-chip-border-radius: var(\n      --cf-pill-border-radius,\n      var(--cf-border-radius-full, 9999px)\n    );\n  }\n`;\n"
+    },
+    "file_format_is_stable": {
+      "args": "fmt styles.ts",
+      "output": "Checked 1 file\n"
+    },
+    "ignored_block_is_idempotent": {
+      "args": "fmt -",
+      "input": "css`\n  /* deno-fmt-ignore */\n  .a{color:red;background:blue}\n`;\n",
+      "output": "css`\n  /* deno-fmt-ignore */\n  .a{color:red;background:blue}\n`;\n"
+    }
+  }
+}

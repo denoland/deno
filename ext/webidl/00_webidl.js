@@ -85,6 +85,7 @@ const {
   Symbol,
   SymbolIterator,
   SymbolAsyncIterator,
+  SymbolPrototypeToString,
   SymbolToStringTag,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetSymbolToStringTag,
@@ -979,111 +980,190 @@ function createSequenceConverter(converter) {
   };
 }
 
-function isAsyncIterable(obj) {
-  if (obj[SymbolAsyncIterator] === undefined) {
-    if (obj[SymbolIterator] === undefined) {
-      return false;
-    }
+// https://tc39.es/ecma262/#sec-getmethod
+function getMethod(V, P) {
+  const func = V[P];
+  if (func === undefined || func === null) {
+    return undefined;
   }
-
-  return true;
+  if (typeof func !== "function") {
+    // Match engine-style key formatting: Symbol(aaa), not the bare description.
+    const name = typeof P === "symbol" ? SymbolPrototypeToString(P) : P;
+    throw new TypeError(`${name} is not a function`);
+  }
+  return func;
 }
 
-const AsyncIterable = Symbol("[[asyncIterable]]");
+// Whether V is convertible to an IDL async_sequence (has a usable
+// @@asyncIterator or @@iterator method). Uses GetMethod, so non-callable
+// methods throw TypeError (same as conversion / union matching).
+function isAsyncSequence(obj) {
+  if (type(obj) !== "Object") {
+    return false;
+  }
+  if (getMethod(obj, SymbolAsyncIterator) !== undefined) {
+    return true;
+  }
+  return getMethod(obj, SymbolIterator) !== undefined;
+}
 
-function createAsyncIterableConverter(converter) {
+// https://tc39.es/ecma262/#sec-createasyncfromsynciterator
+// Manual %AsyncFromSyncIteratorPrototype% so we never go through yield* /
+// user-visible @@iterator lookup (primordials-safe).
+function createAsyncFromSyncIterator(syncIterator) {
+  // Capture [[NextMethod]] as in GetIteratorDirect / Iterator Record.
+  const nextMethod = syncIterator.next;
+  return {
+    async next() {
+      // IteratorNext(syncIteratorRecord) - sync call, may throw.
+      const iterResult = FunctionPrototypeCall(nextMethod, syncIterator);
+      if (type(iterResult) !== "Object") {
+        throw new TypeError(
+          "The iterator.next() method must return an object",
+        );
+      }
+      if (iterResult.done) {
+        return { done: true, value: undefined };
+      }
+      // AsyncFromSyncIteratorContinuation awaits the yielded value so that
+      // sync sources of promises (e.g. arrays of Promises) unwrap.
+      return {
+        done: false,
+        value: await iterResult.value,
+      };
+    },
+    async return(reason) {
+      const returnMethod = getMethod(syncIterator, "return");
+      if (returnMethod === undefined) {
+        return { done: true, value: undefined };
+      }
+      const returnResult = await FunctionPrototypeCall(
+        returnMethod,
+        syncIterator,
+        reason,
+      );
+      if (type(returnResult) !== "Object") {
+        throw new TypeError(
+          "The iterator.return() method must return an object",
+        );
+      }
+      return { done: true, value: undefined };
+    },
+    [SymbolAsyncIterator]() {
+      return this;
+    },
+  };
+}
+
+const AsyncSequence = Symbol("[[asyncSequence]]");
+
+// https://webidl.spec.whatwg.org/#js-async-iterable
+// https://webidl.spec.whatwg.org/#async-sequence-open
+function createAsyncSequenceConverter(converter) {
   return function (
     V,
     prefix = undefined,
     context = undefined,
     opts = EMPTY_OPTS,
   ) {
+    // 1. If V is not an Object, then throw a TypeError.
     if (type(V) !== "Object") {
       throw makeException(
         TypeError,
-        "can not be converted to async iterable.",
+        "can not be converted to async sequence.",
         prefix,
         context,
       );
     }
 
-    let isAsync = true;
-    let method = V[SymbolAsyncIterator];
+    // 2. Let method be ? GetMethod(V, %Symbol.asyncIterator%).
+    let method = getMethod(V, SymbolAsyncIterator);
+    // 3-4. Fall back to sync iterator, or return async sequence value.
+    let sequenceType = "async";
     if (method === undefined) {
-      method = V[SymbolIterator];
-
+      method = getMethod(V, SymbolIterator);
       if (method === undefined) {
         throw makeException(
           TypeError,
-          "is not iterable.",
+          "can not be converted to async sequence.",
           prefix,
           context,
         );
       }
-
-      isAsync = false;
+      sequenceType = "sync";
     }
 
     return {
+      // Fields used by extractBody / callers.
       value: V,
-      [AsyncIterable]: AsyncIterable,
-      open(context) {
+      object: V,
+      method,
+      type: sequenceType,
+      [AsyncSequence]: AsyncSequence,
+      // https://webidl.spec.whatwg.org/#async-sequence-open
+      open(openContext = context) {
+        // 1. Let iterator be ? GetIteratorFromMethod(object, method).
         const iter = FunctionPrototypeCall(method, V);
         if (type(iter) !== "Object") {
           throw new TypeError(
-            `${context} could not be iterated because iterator method did not return object, but ${
+            `${openContext} could not be iterated because iterator method did not return object, but ${
               type(iter)
             }.`,
           );
         }
 
-        let asyncIterator = iter;
+        // 2. If type is "sync", set iterator to CreateAsyncFromSyncIterator(iterator).
+        const asyncIterator = sequenceType === "sync"
+          ? createAsyncFromSyncIterator(iter)
+          : iter;
 
-        if (!isAsync) {
-          asyncIterator = {
-            // deno-lint-ignore require-await
-            async next() {
-              // deno-lint-ignore prefer-primordials
-              return iter.next();
-            },
-          };
-        }
+        // Capture nextMethod per Iterator Record semantics.
+        const nextMethod = asyncIterator.next;
 
         return {
+          // https://webidl.spec.whatwg.org/#async-iterator-get-next-value
+          // Exposed as an async iterator protocol shape for callers.
           async next() {
-            // deno-lint-ignore prefer-primordials
-            const iterResult = await asyncIterator.next();
+            const iterResult = await FunctionPrototypeCall(
+              nextMethod,
+              asyncIterator,
+            );
             if (type(iterResult) !== "Object") {
-              throw TypeError(
-                `${context} failed to iterate next value because the next() method did not return an object, but ${
+              throw new TypeError(
+                `${openContext} failed to iterate next value because the next() method did not return an object, but ${
                   type(iterResult)
                 }.`,
               );
             }
 
             if (iterResult.done) {
-              return { done: true };
+              return { done: true, value: undefined };
             }
 
             const iterValue = converter(
               iterResult.value,
-              `${context} failed to iterate next value`,
-              `The value returned from the next() method`,
+              `${openContext} failed to iterate next value`,
+              "The value returned from the next() method",
               opts,
             );
 
             return { done: false, value: iterValue };
           },
+          // https://webidl.spec.whatwg.org/#async-iterator-close
           async return(reason) {
-            if (asyncIterator.return === undefined) {
+            const returnMethod = getMethod(asyncIterator, "return");
+            if (returnMethod === undefined) {
               return undefined;
             }
 
-            // deno-lint-ignore prefer-primordials
-            const returnPromiseResult = await asyncIterator.return(reason);
+            const returnPromiseResult = await FunctionPrototypeCall(
+              returnMethod,
+              asyncIterator,
+              reason,
+            );
             if (type(returnPromiseResult) !== "Object") {
-              throw TypeError(
-                `${context} failed to close iterator because the return() method did not return an object, but ${
+              throw new TypeError(
+                `${openContext} failed to close iterator because the return() method did not return an object, but ${
                   type(returnPromiseResult)
                 }.`,
               );
@@ -1095,6 +1175,10 @@ function createAsyncIterableConverter(converter) {
             return this;
           },
         };
+      },
+      // Allow for-await-of over the converted async sequence directly.
+      [SymbolAsyncIterator]() {
+        return this.open(context);
       },
     };
   };
@@ -1532,11 +1616,11 @@ internals.webidlBrand = brand;
 
 return {
   assertBranded,
-  AsyncIterable,
+  AsyncSequence,
   brand,
   configureInterface,
   converters,
-  createAsyncIterableConverter,
+  createAsyncSequenceConverter,
   createBranded,
   createDictionaryConverter,
   createEnumConverter,
@@ -1547,7 +1631,7 @@ return {
   createSequenceConverter,
   illegalConstructor,
   invokeCallbackFunction,
-  isAsyncIterable,
+  isAsyncSequence,
   makeException,
   mixinPairIterable,
   requiredArguments,

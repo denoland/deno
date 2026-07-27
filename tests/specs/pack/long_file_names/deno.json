@@ -1,0 +1,5 @@
+{
+  "name": "@test/long-file-names",
+  "version": "1.0.0",
+  "exports": "./mod.ts"
+}

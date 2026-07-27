@@ -104,8 +104,26 @@ detest!(de_bool, bool, "true", true);
 detest!(de_char, char, "'é'", 'é');
 detest!(de_u64, u64, "32", 32);
 detest!(de_string, String, "'Hello'", "Hello".to_owned());
+defail!(
+  de_string_throwing_conversion,
+  String,
+  r#"(() => {
+    const value = new String("hello");
+    value.toString = () => { throw new Error("getter boom"); };
+    return value;
+  })()"#,
+  |e| matches!(e, Err(Error::V8Exception))
+);
 detest!(de_vec_empty, Vec<u64>, "[]", vec![0; 0]);
 detest!(de_vec_u64, Vec<u64>, "[1,2,3,4,5]", vec![1, 2, 3, 4, 5]);
+defail!(
+  de_vec_throwing_index,
+  Vec<u64>,
+  r#"Object.defineProperty([1], "0", {
+    get() { throw new Error("getter boom"); }
+  })"#,
+  |e| matches!(e, Err(Error::V8Exception))
+);
 detest!(
   de_vec_str,
   Vec<String>,
@@ -148,6 +166,22 @@ detest!(de_enum_unit_b, EnumUnit, "'B'", EnumUnit::B);
 detest!(de_enum_unit_so_b, EnumUnit, "new String('B')", EnumUnit::B);
 detest!(de_enum_unit_c, EnumUnit, "'C'", EnumUnit::C);
 detest!(de_enum_unit_so_c, EnumUnit, "new String('C')", EnumUnit::C);
+defail!(
+  de_enum_throwing_payload,
+  EnumPayloads,
+  r#"new Proxy({ UInt: 1 }, {
+    get() { throw new Error("getter boom"); }
+  })"#,
+  |e| matches!(e, Err(Error::V8Exception))
+);
+defail!(
+  de_enum_throwing_own_keys,
+  EnumPayloads,
+  r#"new Proxy({ UInt: 1 }, {
+    ownKeys() { throw new Error("getter boom"); }
+  })"#,
+  |e| matches!(e, Err(Error::V8Exception))
+);
 
 // Enums with payloads (tuples & struct)
 detest!(
@@ -201,6 +235,24 @@ fn de_map() {
     assert_eq!(map.get("nada"), None);
   })
 }
+
+defail!(
+  de_map_throwing_value,
+  std::collections::HashMap<String, u64>,
+  r#"new Proxy({ a: 1 }, {
+    get() { throw new Error("getter boom"); }
+  })"#,
+  |e| matches!(e, Err(Error::V8Exception))
+);
+
+defail!(
+  de_map_throwing_own_keys,
+  std::collections::HashMap<String, u64>,
+  r#"new Proxy({}, {
+    ownKeys() { throw new Error("getter boom"); }
+  })"#,
+  |e| matches!(e, Err(Error::V8Exception))
+);
 
 #[test]
 fn de_obj_with_numeric_keys() {
@@ -340,6 +392,15 @@ fn de_struct_hint() {
     assert_eq!(payload, StructPayload { a: 1, b: 2 })
   })
 }
+
+defail!(
+  de_struct_throwing_field,
+  MathOp,
+  r#"Object.defineProperty({ b: 2 }, "a", {
+    get() { throw new Error("getter boom"); }
+  })"#,
+  |e| matches!(e, Err(Error::V8Exception))
+);
 
 ////
 // JSON tests: serde_json::Value compatibility

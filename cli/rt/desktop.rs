@@ -35,6 +35,8 @@ pub const DESKTOP_JS: &str = r#"
   } = internals.core.ops;
   const BrowserWindowPrototype = BrowserWindow.prototype;
   Object.setPrototypeOf(BrowserWindowPrototype, EventTarget.prototype);
+  const privateDesktopBind = Symbol.for("Deno_privateDesktopBind");
+  const privateDesktopUnbind = Symbol.for("Deno_privateDesktopUnbind");
 
   class UIEvent extends Event {
     #detail = 0;
@@ -225,14 +227,13 @@ pub const DESKTOP_JS: &str = r#"
     // No env access — fine, we just don't trace binding calls.
   }
 
-  const nativeBind = BrowserWindowPrototype.bind;
   BrowserWindowPrototype.bind = function(name, fn) {
     const windowId = this.windowId;
     if (!windowBindCallbacks.has(windowId)) {
       windowBindCallbacks.set(windowId, new Map());
     }
     windowBindCallbacks.get(windowId).set(name, fn.bind(this));
-    nativeBind.call(this, name);
+    BrowserWindowPrototype[privateDesktopBind].call(this, name);
 
     // Inject a renderer-side wrapper that emits console.debug around
     // every binding call. The wrapper waits for the native binding to
@@ -276,12 +277,11 @@ pub const DESKTOP_JS: &str = r#"
     }
   };
 
-  const nativeUnbind = BrowserWindowPrototype.unbind;
   BrowserWindowPrototype.unbind = function(name) {
     const windowId = this.windowId;
     const callbacks = windowBindCallbacks.get(windowId);
     if (callbacks) callbacks.delete(name);
-    nativeUnbind.call(this, name);
+    BrowserWindowPrototype[privateDesktopUnbind].call(this, name);
   };
 
   function alert(message = "Alert") {
@@ -330,6 +330,9 @@ pub const DESKTOP_JS: &str = r#"
 
   const TrayPrototype = Tray.prototype;
   Object.setPrototypeOf(TrayPrototype, EventTarget.prototype);
+  const privateDesktopTrayDestroy = Symbol.for(
+    "Deno_privateDesktopTrayDestroy",
+  );
 
   const trays = new Map();
   const nativeTrayConstructor = Tray;
@@ -342,10 +345,9 @@ pub const DESKTOP_JS: &str = r#"
   Object.setPrototypeOf(OrigTray.prototype, nativeTrayConstructor.prototype);
   Deno.Tray = OrigTray;
 
-  const nativeTrayDestroy = TrayPrototype.destroy;
   TrayPrototype.destroy = function() {
     trays.delete(this.trayId);
-    nativeTrayDestroy.call(this);
+    TrayPrototype[privateDesktopTrayDestroy].call(this);
   };
   TrayPrototype[Symbol.dispose] = function() {
     this.destroy();
@@ -1153,7 +1155,11 @@ pub fn desktop_error_reporting_js(
         platform: Deno.build.os,
         arch: Deno.build.arch,
       }});
-      op_desktop_send_error_report(_errorReportingUrl, body);
+      // The destination is not passed from JS — the op reads the
+      // operator-configured `error_reporting_url` from native state so an
+      // untrusted caller can't retarget it. `_errorReportingUrl` here only
+      // gates whether there's anything to report.
+      op_desktop_send_error_report(body);
     }}
 
     try {{
@@ -1286,6 +1292,36 @@ mod tests {
     // The original BrowserWindow is wrapped so per-window state is
     // recorded.
     assert!(DESKTOP_JS.contains("windows.set"));
+  }
+
+  #[test]
+  fn desktop_js_interposes_on_native_registry_methods() {
+    assert!(
+      DESKTOP_JS.contains("BrowserWindowPrototype.bind = function(name, fn)")
+    );
+    assert!(
+      DESKTOP_JS.contains("BrowserWindowPrototype.unbind = function(name)")
+    );
+    assert!(DESKTOP_JS.contains("TrayPrototype.destroy = function()"));
+    assert!(DESKTOP_JS.contains(
+      "const privateDesktopBind = Symbol.for(\"Deno_privateDesktopBind\")"
+    ));
+    assert!(DESKTOP_JS.contains(
+      "const privateDesktopUnbind = Symbol.for(\"Deno_privateDesktopUnbind\")"
+    ));
+    assert!(
+      DESKTOP_JS.contains(
+        "BrowserWindowPrototype[privateDesktopBind].call(this, name)"
+      )
+    );
+    assert!(DESKTOP_JS.contains(
+      "BrowserWindowPrototype[privateDesktopUnbind].call(this, name)"
+    ));
+    assert!(DESKTOP_JS.contains("Deno_privateDesktopTrayDestroy"));
+    assert!(
+      DESKTOP_JS
+        .contains("TrayPrototype[privateDesktopTrayDestroy].call(this)")
+    );
   }
 
   // --- desktop_auto_update_js ---

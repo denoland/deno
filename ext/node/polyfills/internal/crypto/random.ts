@@ -409,7 +409,34 @@ function randomUUID(options) {
 
   validateBoolean(disableEntropyCache, "options.disableEntropyCache");
 
+  if (disableEntropyCache) {
+    return randomUUIDUncached();
+  }
+
   return globalThis.crypto.randomUUID();
+}
+
+function randomUUIDUncached() {
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+  const chars: number[] = new Array(36);
+  let charIndex = 0;
+  for (let byteIndex = 0; byteIndex < 16; byteIndex++) {
+    if (
+      byteIndex === 4 || byteIndex === 6 || byteIndex === 8 ||
+      byteIndex === 10
+    ) {
+      chars[charIndex++] = 45;
+    }
+    const byte = bytes[byteIndex];
+    chars[charIndex++] = numberToHexCharCode(byte >> 4);
+    chars[charIndex++] = numberToHexCharCode(byte & 0x0f);
+  }
+
+  return StringFromCharCode(...new SafeArrayIterator(chars));
 }
 
 return {

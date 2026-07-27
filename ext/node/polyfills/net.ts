@@ -526,7 +526,7 @@ function _afterConnectImpl(
 
   if (status === 0) {
     if (socket.readable && !readable) {
-      // deno-lint-ignore prefer-primordials -- Readable stream method, not Array.prototype.push
+      // deno-lint-ignore deno-internal/prefer-primordials -- Readable stream method, not Array.prototype.push
       socket.push(null);
       socket.read();
     }
@@ -738,7 +738,7 @@ function _internalConnect(
     localPort = (localPort ?? 0) | 0;
     if (addressType === 4) {
       localAddress = localAddress || DEFAULT_IPV4_ADDR;
-      // deno-lint-ignore prefer-primordials -- libuv handle.bind(), not Function.prototype.bind
+      // deno-lint-ignore deno-internal/prefer-primordials -- libuv handle.bind(), not Function.prototype.bind
       err = (socket._handle as TCP).bind(localAddress, localPort);
     } else {
       // addressType === 6
@@ -839,7 +839,7 @@ function _internalConnectMultiple(context, canceled?: boolean) {
   if (localPort) {
     if (addressType === 4) {
       localAddress = DEFAULT_IPV4_ADDR;
-      // deno-lint-ignore prefer-primordials -- libuv handle.bind(), not Function.prototype.bind
+      // deno-lint-ignore deno-internal/prefer-primordials -- libuv handle.bind(), not Function.prototype.bind
       err = self._handle.bind(localAddress, localPort);
     } else {
       // addressType === 6
@@ -1575,7 +1575,7 @@ function Socket(options) {
     onread !== null &&
     typeof onread === "object"
   ) {
-    // deno-lint-ignore prefer-primordials -- user option object property, not TypedArray#buffer
+    // deno-lint-ignore deno-internal/prefer-primordials -- user option object property, not TypedArray#buffer
     const onreadBuffer = onread.buffer;
     if (
       (isUint8Array(onreadBuffer) || typeof onreadBuffer === "function") &&
@@ -2589,7 +2589,7 @@ function _createServerHandle(
     } else if (isTCP) {
       err = (handle as TCP).bindWithFlags(address, port ?? 0, flags ?? 0);
     } else {
-      // deno-lint-ignore prefer-primordials -- libuv handle.bind(), not Function.prototype.bind
+      // deno-lint-ignore deno-internal/prefer-primordials -- libuv handle.bind(), not Function.prototype.bind
       err = handle.bind(address);
     }
   }

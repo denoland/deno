@@ -335,21 +335,21 @@ function getCallSites(
     validateObject(options, "options");
   }
   const target = {};
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   const original = Error.prepareStackTrace;
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   const limitOriginal = Error.stackTraceLimit;
 
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   Error.stackTraceLimit = frameCount;
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   Error.prepareStackTrace = prepareStackTrace;
   ErrorCaptureStackTrace(target, getCallSites);
 
   const capturedTraces = target.stack;
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   Error.prepareStackTrace = original;
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   Error.stackTraceLimit = limitOriginal;
 
   return capturedTraces;

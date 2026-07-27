@@ -1,0 +1,15 @@
+{
+  "if": "linux",
+  "tempDir": true,
+  "steps": [
+    {
+      "commandName": "bash",
+      "args": ["setup.sh"],
+      "output": ""
+    },
+    {
+      "args": "run main.ts",
+      "output": "caught\n"
+    }
+  ]
+}

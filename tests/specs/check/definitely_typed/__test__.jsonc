@@ -19,6 +19,9 @@
       ]
     },
     "node_modules_dir_none": {
+      // ignored: with node_modules_dir "none", tsc can't resolve the npm pkg
+      // and its @types (TS2307). https://github.com/denoland/deno/issues/36085
+      "ignore": true,
       "steps": [
         {
           "args": "run -A ./set_node_modules_dir.ts none",
@@ -53,6 +56,9 @@
       ]
     },
     "respects_ts_types": {
+      // ignored: tsc resolves the .d.ts types (number) instead of respecting
+      // the ts_types field (string). https://github.com/denoland/deno/issues/36085
+      "ignore": true,
       "steps": [
         {
           "args": "run -A ./set_node_modules_dir.ts auto",

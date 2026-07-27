@@ -11,6 +11,7 @@ use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_error::JsErrorBox;
 use deno_npm::NpmPackageCacheFolderId;
+use deno_npm::fast_registry_json;
 use deno_npmrc::RegistryConfig;
 use deno_npmrc::ResolvedNpmRc;
 use deno_path_util::fs::atomic_write_file_with_retries;
@@ -40,6 +41,8 @@ mod rt;
 mod tarball;
 mod tarball_extract;
 
+pub use fs_util::create_dir_all_no_symlink;
+pub use fs_util::ensure_not_symlink;
 pub use fs_util::hard_link_dir_recursive;
 pub use fs_util::hard_link_file;
 pub use registry_info::RegistryInfoProvider;

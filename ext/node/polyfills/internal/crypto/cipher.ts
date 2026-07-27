@@ -163,12 +163,12 @@ function Cipheriv(
 
   FunctionPrototypeCall(getTransform(), this, {
     transform(chunk, encoding, cb) {
-      // deno-lint-ignore prefer-primordials -- `this` is a Transform stream
+      // deno-lint-ignore deno-internal/prefer-primordials -- `this` is a Transform stream
       this.push(this.update(chunk, encoding));
       cb();
     },
     final(cb) {
-      // deno-lint-ignore prefer-primordials -- `this` is a Transform stream
+      // deno-lint-ignore deno-internal/prefer-primordials -- `this` is a Transform stream
       this.push(this.final());
       cb();
     },
@@ -211,7 +211,8 @@ function Cipheriv(
   this._needsBlockCache = !this._isAesWrap &&
     !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
       cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
-      cipher == "aes-256-ctr" || cipher == "chacha20-poly1305");
+      cipher == "aes-256-ctr" || cipher == "chacha20" ||
+      cipher == "chacha20-poly1305");
   this._authTag = undefined;
   this._autoPadding = true;
   this._finalized = false;
@@ -462,12 +463,12 @@ function Decipheriv(
 
   FunctionPrototypeCall(getTransform(), this, {
     transform(chunk, encoding, cb) {
-      // deno-lint-ignore prefer-primordials -- `this` is a Transform stream
+      // deno-lint-ignore deno-internal/prefer-primordials -- `this` is a Transform stream
       this.push(this.update(chunk, encoding));
       cb();
     },
     final(cb) {
-      // deno-lint-ignore prefer-primordials -- `this` is a Transform stream
+      // deno-lint-ignore deno-internal/prefer-primordials -- `this` is a Transform stream
       this.push(this.final());
       cb();
     },
@@ -511,7 +512,8 @@ function Decipheriv(
   this._needsBlockCache = !this._isAesWrap &&
     !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
       cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
-      cipher == "aes-256-ctr" || cipher == "chacha20-poly1305");
+      cipher == "aes-256-ctr" || cipher == "chacha20" ||
+      cipher == "chacha20-poly1305");
   this._isGcmMode = cipher == "aes-128-gcm" || cipher == "aes-192-gcm" ||
     cipher == "aes-256-gcm";
   this._authTagLength = authTagLength;
@@ -603,7 +605,7 @@ Decipheriv.prototype.setAuthTag = function (
   // GCM authentication tag must be the full 128 bits (16 bytes); shorter tags
   // are only accepted when `authTagLength` is set. This used to be the DEP0182
   // deprecation warning and is now a hard error (matching Node.js).
-  // deno-lint-ignore prefer-primordials -- `buffer` may be Buffer/TypedArray/DataView
+  // deno-lint-ignore deno-internal/prefer-primordials -- `buffer` may be Buffer/TypedArray/DataView
   const tagByteLength = buffer.byteLength;
   if (
     this._isGcmMode && this._authTagLength === -1 &&
@@ -613,7 +615,7 @@ Decipheriv.prototype.setAuthTag = function (
       `Invalid authentication tag length: ${tagByteLength}`,
     );
   }
-  // deno-lint-ignore prefer-primordials -- `buffer` may be Buffer/TypedArray/DataView
+  // deno-lint-ignore deno-internal/prefer-primordials -- `buffer` may be Buffer/TypedArray/DataView
   op_node_decipheriv_auth_tag(this._context, buffer.byteLength);
   this._authTag = buffer;
   return this;

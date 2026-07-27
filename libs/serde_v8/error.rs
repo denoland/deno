@@ -61,6 +61,9 @@ pub enum Error {
   #[error("serde_v8 error: recursion limit exceeded")]
   RecursionLimitExceeded,
 
+  #[error("serde_v8 error: exception during value conversion")]
+  V8Exception,
+
   #[error("serde_v8 error: can't create slice from resizable ArrayBuffer")]
   ResizableBackingStoreNotSupported,
 

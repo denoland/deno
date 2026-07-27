@@ -645,12 +645,17 @@ impl BrowserWindow {
     self.window_id
   }
 
+  // Keep the native primitive separate from DESKTOP_JS's public `bind`
+  // wrapper. The deferred fast-call upgrade may replace this symbol-backed
+  // method without overwriting the wrapper.
   #[fast]
+  #[symbol("Deno_privateDesktopBind")]
   fn bind(&self, #[string] name: &str) {
     self.api.bind(self.window_id, name);
   }
 
   #[fast]
+  #[symbol("Deno_privateDesktopUnbind")]
   fn unbind(&self, #[string] name: &str) {
     self.api.unbind(self.window_id, name);
   }
@@ -1267,11 +1272,20 @@ pub fn send_error_report(url: &str, body: &str) {
 }
 
 #[op2(fast)]
-fn op_desktop_send_error_report(
-  state: &mut OpState,
-  #[string] url: &str,
-  #[string] body: &str,
-) {
+fn op_desktop_send_error_report(state: &mut OpState, #[string] body: &str) {
+  // The report destination is operator config — it is baked into the app at
+  // build time (`error_reporting_url`) and stored in `ERROR_REPORT_CONFIG`.
+  // It is deliberately NOT accepted from JS: this op is exposed on
+  // `core.ops` and survives `removeImportedOps()`, so any (untrusted) code
+  // in the runtime can call it. Trusting a caller-supplied URL would turn
+  // this into an unrestricted file-append (`file://`) or network-POST
+  // (`https://`) primitive that bypasses the `--allow-write`/`--allow-net`
+  // permission checks every other fs/net op performs.
+  let Some((url, _)) = error_report_config() else {
+    // No reporting URL configured (e.g. plain `deno run`, or a desktop app
+    // that didn't set one) — there is nowhere to send, so do nothing.
+    return;
+  };
   // Make sure the panic-hook path has a client too. The OpState client is
   // the one configured with the user's TLS roots/permissions, so we share
   // it across both code paths instead of creating an ad-hoc client.
@@ -1520,7 +1534,10 @@ impl Tray {
       })
   }
 
+  // DESKTOP_JS exposes the public `destroy` wrapper that also updates its tray
+  // registry. Keep the native primitive on a distinct symbol-backed slot.
   #[fast]
+  #[symbol("Deno_privateDesktopTrayDestroy")]
   fn destroy(&self) {
     self.api.destroy_tray(self.tray_id);
   }
@@ -1749,9 +1766,11 @@ mod tests {
   use deno_core::serde_json;
   use deno_core::serde_json::json;
 
+  use super::BrowserWindow;
   use super::DesktopEvent;
   use super::PendingBindResponses;
   use super::PermissionState;
+  use super::Tray;
   use super::dylib_magic_ok;
   use super::permission_state_to_web_string;
   use super::register_bind_call;
@@ -1763,6 +1782,42 @@ mod tests {
   // fail if you change a field name or remove a `#[serde(rename_all =
   // "camelCase")]` so you find out at test time, not at runtime in the
   // packaged app.
+
+  #[test]
+  fn js_wrapped_desktop_methods_use_private_symbols() {
+    for (object, methods) in [
+      (
+        BrowserWindow::DECL,
+        &["Deno_privateDesktopBind", "Deno_privateDesktopUnbind"][..],
+      ),
+      (Tray::DECL, &["Deno_privateDesktopTrayDestroy"][..]),
+    ] {
+      for name in methods {
+        let method = object
+          .methods
+          .iter()
+          .find(|method| method.name == *name)
+          .unwrap_or_else(|| panic!("missing method {name}"));
+        assert!(
+          method.symbol_for,
+          "{name} must not share a string property with its DESKTOP_JS wrapper"
+        );
+        let _ = method.fast_fn();
+      }
+    }
+
+    for (object, public_names) in [
+      (BrowserWindow::DECL, &["bind", "unbind"][..]),
+      (Tray::DECL, &["destroy"][..]),
+    ] {
+      for name in public_names {
+        assert!(
+          object.methods.iter().all(|method| method.name != *name),
+          "native method must not collide with the public {name} wrapper"
+        );
+      }
+    }
+  }
 
   #[test]
   fn app_menu_click_wire_shape() {

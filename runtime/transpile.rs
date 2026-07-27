@@ -150,7 +150,9 @@ const filename = Deno.args[0] ?? "source.js";
 const source = await new Response(Deno.stdin.readable).text();
 const result = minifySync(filename, source, {
   compress: false,
-  mangle: false,
+  mangle: {
+    keepNames: true,
+  },
   codegen: {
     removeWhitespace: true,
     legalComments: "none",

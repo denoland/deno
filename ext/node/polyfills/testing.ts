@@ -475,7 +475,7 @@ function run(options) {
       } catch { /* ignore */ }
       watcher = null;
     }
-    // deno-lint-ignore prefer-primordials -- stream is a Node Readable, not an Array
+    // deno-lint-ignore deno-internal/prefer-primordials -- stream is a Node Readable, not an Array
     stream.push(null);
   }
 
@@ -485,7 +485,7 @@ function run(options) {
     // Node's TestsStream emits each lifecycle entry both as a data chunk
     // (consumed via async iteration / `'data'` listeners) and as a named
     // event so callers can attach `.on('test:watch:drained', ...)` directly.
-    // deno-lint-ignore prefer-primordials -- stream is a Node Readable, not an Array
+    // deno-lint-ignore deno-internal/prefer-primordials -- stream is a Node Readable, not an Array
     stream.push({ __proto__: null, type, data });
     stream.emit(type, data);
   }
@@ -3442,7 +3442,7 @@ const mock = {
     tick: (ms) => mockTimers.tick(ms),
     runAll: () => mockTimers.runAll(),
     // `setTime` is MockTimers' own method, not Date.prototype.setTime.
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     setTime: (ms) => mockTimers.setTime(ms),
     [SymbolDispose]: () => mockTimers.reset(),
   },
