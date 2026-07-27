@@ -739,6 +739,19 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               "strip ./libdenort.so",
               `zip -r libdenort-${buildItem.arch}-unknown-linux-gnu.zip libdenort.so`,
               `shasum -a 256 libdenort-${buildItem.arch}-unknown-linux-gnu.zip > libdenort-${buildItem.arch}-unknown-linux-gnu.zip.sha256sum`,
+              // QuickJS denort/libdenort for `deno compile --engine quickjs`.
+              // Reuse the same target dir (a second one would exceed runner
+              // disk) so only the backend-specific crates rebuild, then restore
+              // the v8 binaries so the inter-job artifacts stay v8.
+              `(cd ../.. && cargo build --release --locked -p denort -p denort_desktop --no-default-features --features quickjs)`,
+              "strip --strip-debug ./denort",
+              `zip -r denort-quickjs-${buildItem.arch}-unknown-linux-gnu.zip denort`,
+              `shasum -a 256 denort-quickjs-${buildItem.arch}-unknown-linux-gnu.zip > denort-quickjs-${buildItem.arch}-unknown-linux-gnu.zip.sha256sum`,
+              "strip ./libdenort.so",
+              `zip -r libdenort-quickjs-${buildItem.arch}-unknown-linux-gnu.zip libdenort.so`,
+              `shasum -a 256 libdenort-quickjs-${buildItem.arch}-unknown-linux-gnu.zip > libdenort-quickjs-${buildItem.arch}-unknown-linux-gnu.zip.sha256sum`,
+              `unzip -o denort-${buildItem.arch}-unknown-linux-gnu.zip`,
+              `unzip -o libdenort-${buildItem.arch}-unknown-linux-gnu.zip`,
               "./deno types > lib.deno.d.ts",
             ],
           },
@@ -777,6 +790,17 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               "strip -x -S ./libdenort.dylib",
               `zip -r libdenort-${buildItem.arch}-apple-darwin.zip libdenort.dylib`,
               `shasum -a 256 libdenort-${buildItem.arch}-apple-darwin.zip > libdenort-${buildItem.arch}-apple-darwin.zip.sha256sum`,
+              // QuickJS denort/libdenort for `deno compile --engine quickjs`
+              // (see the linux note); restore the v8 binaries afterwards.
+              `(cd ../.. && cargo build --release --locked -p denort -p denort_desktop --no-default-features --features quickjs)`,
+              "strip -x -S ./denort",
+              `zip -r denort-quickjs-${buildItem.arch}-apple-darwin.zip denort`,
+              `shasum -a 256 denort-quickjs-${buildItem.arch}-apple-darwin.zip > denort-quickjs-${buildItem.arch}-apple-darwin.zip.sha256sum`,
+              "strip -x -S ./libdenort.dylib",
+              `zip -r libdenort-quickjs-${buildItem.arch}-apple-darwin.zip libdenort.dylib`,
+              `shasum -a 256 libdenort-quickjs-${buildItem.arch}-apple-darwin.zip > libdenort-quickjs-${buildItem.arch}-apple-darwin.zip.sha256sum`,
+              `unzip -o denort-${buildItem.arch}-apple-darwin.zip`,
+              `unzip -o libdenort-${buildItem.arch}-apple-darwin.zip`,
             ],
           },
           {
@@ -836,6 +860,15 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               `Get-FileHash target/release/denort-${buildItem.arch}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-${buildItem.arch}-pc-windows-msvc.zip.sha256sum`,
               `Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.dll -DestinationPath target/release/libdenort-${buildItem.arch}-pc-windows-msvc.zip`,
               `Get-FileHash target/release/libdenort-${buildItem.arch}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/libdenort-${buildItem.arch}-pc-windows-msvc.zip.sha256sum`,
+              // QuickJS denort/libdenort for `deno compile --engine quickjs`
+              // (see the linux note); restore the v8 binaries afterwards.
+              `cargo build --release --locked -p denort -p denort_desktop --no-default-features --features quickjs`,
+              `Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-quickjs-${buildItem.arch}-pc-windows-msvc.zip`,
+              `Get-FileHash target/release/denort-quickjs-${buildItem.arch}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-quickjs-${buildItem.arch}-pc-windows-msvc.zip.sha256sum`,
+              `Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.dll -DestinationPath target/release/libdenort-quickjs-${buildItem.arch}-pc-windows-msvc.zip`,
+              `Get-FileHash target/release/libdenort-quickjs-${buildItem.arch}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/libdenort-quickjs-${buildItem.arch}-pc-windows-msvc.zip.sha256sum`,
+              `Expand-Archive -Force -Path target/release/denort-${buildItem.arch}-pc-windows-msvc.zip -DestinationPath target/release`,
+              `Expand-Archive -Force -Path target/release/libdenort-${buildItem.arch}-pc-windows-msvc.zip -DestinationPath target/release`,
               `target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-${buildItem.arch}-pc-windows-msvc.symcache`,
             ],
           },

@@ -43,7 +43,9 @@ MACOSX_DEPLOYMENT_TARGET = "12.0"
 [target.x86_64-apple-darwin]
 rustflags = [
   "-C",
-  "link-args=-Wl,-fixup_chains -weak_framework Metal -weak_framework MetalPerformanceShaders -weak_framework QuartzCore -weak_framework CoreGraphics",
+  # -L SDK usr/lib: the v8x QuickJS backend's build script links bindgen->libc
+  # (-liconv); see the aarch64 block below.
+  "link-args=-L /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib -Wl,-fixup_chains -weak_framework Metal -weak_framework MetalPerformanceShaders -weak_framework QuartzCore -weak_framework CoreGraphics",
 ]
 
 [target.aarch64-apple-darwin]
