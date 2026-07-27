@@ -1130,6 +1130,77 @@ Deno.test(
   () => testRespondWithCancellation(false),
 );
 
+Deno.test(
+  "[node/http2] respondWithFile closes owned fd when fs.read throws",
+  async () => {
+    const filePath = await Deno.makeTempFile();
+    await Deno.writeFile(filePath, new Uint8Array(256));
+
+    const originalRead = fs.read;
+    const originalClose = fs.close;
+    let closeCalls = 0;
+
+    Object.defineProperty(fs, "read", {
+      configurable: true,
+      writable: true,
+      value: () => {
+        throw new Error("fs.read failed");
+      },
+    });
+    Object.defineProperty(fs, "close", {
+      configurable: true,
+      writable: true,
+      value: (...args: unknown[]) => {
+        closeCalls++;
+        return Reflect.apply(
+          originalClose as unknown as (...args: unknown[]) => unknown,
+          fs,
+          args,
+        );
+      },
+    });
+
+    const streamClose = Promise.withResolvers<void>();
+    const server = http2.createServer();
+    server.on("stream", (stream) => {
+      stream.on("error", () => {});
+      stream.once("close", () => streamClose.resolve());
+      stream.respondWithFile(filePath);
+    });
+
+    let client: http2.ClientHttp2Session | undefined;
+    try {
+      const port = await new Promise<number>((resolve) => {
+        server.listen(0, "127.0.0.1", () => {
+          resolve((server.address() as net.AddressInfo).port);
+        });
+      });
+      client = http2.connect(`http://127.0.0.1:${port}`);
+      client.on("error", () => {});
+      const request = client.request({ ":path": "/" });
+      request.on("error", () => {});
+      request.end();
+
+      await streamClose.promise;
+      assertEquals(closeCalls, 1);
+    } finally {
+      client?.destroy();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      Object.defineProperty(fs, "read", {
+        configurable: true,
+        writable: true,
+        value: originalRead,
+      });
+      Object.defineProperty(fs, "close", {
+        configurable: true,
+        writable: true,
+        value: originalClose,
+      });
+      await Deno.remove(filePath);
+    }
+  },
+);
+
 // Regression test for https://github.com/denoland/deno/issues/33317
 // `http2.createSecureServer({ allowHTTP1: true })` must handle HTTP/1.1
 // clients without throwing `ReferenceError: kIncomingMessage is not defined`.
