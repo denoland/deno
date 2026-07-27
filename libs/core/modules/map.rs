@@ -76,11 +76,15 @@ use crate::source_map::SourceMapper;
 
 const DATA_PREFIX: &str = "data:";
 
+fn is_internal_scheme(scheme: &str) -> bool {
+  matches!(scheme, "ext" | "node" | "checkin")
+}
+
 fn is_internal_module_specifier(specifier: &str) -> bool {
   let Ok(specifier) = ModuleSpecifier::parse(specifier) else {
     return false;
   };
-  matches!(specifier.scheme(), "ext" | "node" | "checkin")
+  is_internal_scheme(specifier.scheme())
 }
 
 fn residual_source_from_static_table(
@@ -1549,6 +1553,11 @@ impl ModuleMap {
     referrer: &str,
     kind: ResolutionKind,
   ) -> ModuleResolveResponse {
+    if let Some(resolved_specifier) =
+      self.maybe_resolve_internal_import(specifier, referrer)
+    {
+      return Ok(resolved_specifier);
+    }
     let resolved_specifier =
       self.loader.borrow().resolve(specifier, referrer, kind)?;
     self.validate_ext_module_import(&resolved_specifier, referrer)?;
@@ -1563,6 +1572,11 @@ impl ModuleMap {
     kind: ResolutionKind,
     import_attributes: &HashMap<String, String>,
   ) -> ModuleResolveResponse {
+    if let Some(resolved_specifier) =
+      self.maybe_resolve_internal_import(specifier, referrer)
+    {
+      return Ok(resolved_specifier);
+    }
     let resolved_specifier = self.loader.borrow().resolve_with_scope(
       scope,
       specifier,
@@ -1572,6 +1586,33 @@ impl ModuleMap {
     )?;
     self.validate_ext_module_import(&resolved_specifier, referrer)?;
     Ok(resolved_specifier)
+  }
+
+  /// Resolves an internal specifier imported by an internal module without
+  /// consulting the loader. Returns `None` when this isn't such an import, in
+  /// which case the loader decides.
+  ///
+  /// Internal modules that aren't baked into the snapshot get instantiated at
+  /// runtime, at which point the installed loader is the embedder's
+  /// user-facing one. In Deno that loader applies the user's import map, so an
+  /// entry like `{ "ext:core/mod.js": "./mod.js" }` used to rewrite the imports
+  /// of internal modules such as `ext:cli/40_test_common.js` or
+  /// `node:_http_agent`, breaking instantiation. Internal specifiers are owned
+  /// by the runtime and always resolve to themselves.
+  ///
+  /// This trusts the referrer only as far as `validate_ext_module_import`
+  /// does — a `node:`-looking referrer that user code made up (e.g. via
+  /// `node:vm`'s `filename` option) isn't enough on its own.
+  fn maybe_resolve_internal_import(
+    &self,
+    specifier: &str,
+    referrer: &str,
+  ) -> Option<ModuleSpecifier> {
+    if !self.is_internal_referrer(referrer) {
+      return None;
+    }
+    let specifier = ModuleSpecifier::parse(specifier).ok()?;
+    is_internal_scheme(specifier.scheme()).then_some(specifier)
   }
 
   fn validate_ext_module_import(
@@ -2785,7 +2826,7 @@ impl ModuleMap {
   ) -> Result<v8::Global<v8::Value>, CoreError> {
     let specifier = ModuleSpecifier::parse(module_specifier)?;
     let previous_loading_internal_modules =
-      matches!(specifier.scheme(), "ext" | "node" | "checkin")
+      is_internal_scheme(specifier.scheme())
         .then(|| self.loading_internal_modules.replace(true));
     let result = self.lazy_load_es_module_with_code_inner(
       scope,
