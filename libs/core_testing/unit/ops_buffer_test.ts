@@ -3,6 +3,7 @@ import { assertArrayEquals, test } from "checkin:testing";
 const {
   op_v8slice_store,
   op_v8slice_clone,
+  op_v8slice_into_bytes,
 } = Deno.core.ops;
 
 // Cloning a buffer should result in the same buffer being returned
@@ -24,4 +25,28 @@ test(function testBufferTransfer() {
   // Note: after https://chromium-review.googlesource.com/c/v8/v8/+/5394731 landed, the underlying
   // AB backingstore is no longer resized.
   assertArrayEquals(output, new Uint8Array(1024 * 1024));
+});
+
+// Exercises the `JsBuffer` arm of `BufView::into_bytes` (the zero-copy handoff
+// used by the fetch/http upload paths). A fixed-length ArrayBuffer takes the
+// zero-copy path.
+test(function testBufferIntoBytes() {
+  const data = new Uint8Array([1, 2, 3, 4, 5]);
+  const output = op_v8slice_into_bytes(data);
+  assertArrayEquals(output, data);
+
+  // A view with a non-zero byte offset must expose only the viewed sub-range.
+  const backing = new Uint8Array([10, 20, 30, 40, 50, 60]);
+  const view = backing.subarray(2, 5);
+  assertArrayEquals(op_v8slice_into_bytes(view), new Uint8Array([30, 40, 50]));
+});
+
+// A resizable ArrayBuffer can't take the zero-copy path (it may shrink while
+// the bytes are still in flight), so `into_bytes` copies. The contents must
+// still round-trip correctly.
+test(function testBufferIntoBytesResizable() {
+  const ab = new ArrayBuffer(4, { maxByteLength: 8 });
+  const data = new Uint8Array(ab);
+  data.set([7, 8, 9, 10]);
+  assertArrayEquals(op_v8slice_into_bytes(data), new Uint8Array([7, 8, 9, 10]));
 });

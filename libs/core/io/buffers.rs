@@ -114,32 +114,51 @@ impl BufView {
     }
   }
 
-  /// Convert this buffer view into [`bytes::Bytes`] without copying its
-  /// contents.
+  /// Convert this buffer view into [`bytes::Bytes`], usually without copying.
   ///
   /// - A `Bytes`-backed view hands off its [`bytes::Bytes`] directly (slicing
   ///   away any consumed prefix, which is itself zero-copy).
   /// - A `JsBuffer`-backed view wraps the V8 backing store as the owner of the
   ///   returned [`bytes::Bytes`]; the store stays alive for as long as any
-  ///   clone of the returned value does.
+  ///   clone of the returned value does. This is a zero-copy handoff except
+  ///   for the two cases noted below.
+  ///
+  /// # Backing-store caveats (`JsBuffer` arm)
+  ///
+  /// - **Resizable stores are copied.** [`bytes::Bytes::from_owner`] snapshots
+  ///   the slice's pointer and length once, but a resizable `ArrayBuffer` may
+  ///   later shrink while the returned `Bytes` is still in flight, leaving that
+  ///   snapshot pointing past the store's valid length. Such stores are copied
+  ///   instead (detected via [`V8Slice::is_backing_store_resizable`]).
+  /// - **Contents are not snapshotted.** For the zero-copy path the returned
+  ///   `Bytes` aliases live V8 memory, so subsequent JS mutations of the source
+  ///   buffer are observable through it until the bytes are consumed. Callers
+  ///   that need a point-in-time snapshot must copy.
+  /// - **The whole store is pinned.** The returned `Bytes` keeps the entire
+  ///   backing store alive, not just the viewed sub-range, so a small view over
+  ///   a large `ArrayBuffer` can pin the full allocation for as long as any
+  ///   clone survives.
   pub fn into_bytes(self) -> bytes::Bytes {
-    match self.inner {
-      BufViewInner::Empty => bytes::Bytes::new(),
-      BufViewInner::Bytes(bytes) => {
-        if self.cursor == 0 {
-          bytes
-        } else {
-          bytes.slice(self.cursor..)
-        }
-      }
+    let cursor = self.cursor;
+    let bytes = match self.inner {
+      BufViewInner::Empty => return bytes::Bytes::new(),
+      BufViewInner::Bytes(bytes) => bytes,
       BufViewInner::JsBuffer(slice) => {
-        let bytes = bytes::Bytes::from_owner(slice);
-        if self.cursor == 0 {
-          bytes
-        } else {
-          bytes.slice(self.cursor..)
+        if slice.is_backing_store_resizable() {
+          // A resizable ArrayBuffer may shrink while this chunk is still in
+          // flight; `Bytes::from_owner` would then read past the store's valid
+          // length. Copy instead of pinning a stale pointer. (`V8Slice`'s
+          // `Deref` re-clamps against the store length, so this read is
+          // bounds-safe.)
+          return bytes::Bytes::copy_from_slice(&slice[cursor..]);
         }
+        bytes::Bytes::from_owner(slice)
       }
+    };
+    if cursor == 0 {
+      bytes
+    } else {
+      bytes.slice(cursor..)
     }
   }
 }
@@ -155,6 +174,14 @@ impl Buf for BufView {
 
   fn advance(&mut self, cnt: usize) {
     self.advance_cursor(cnt)
+  }
+
+  /// Override the copying default so generic [`Buf`] consumers (e.g.
+  /// `http_body_util::BodyExt::collect`) get the same zero-copy handoff as
+  /// [`BufView::into_bytes`].
+  fn copy_to_bytes(&mut self, len: usize) -> bytes::Bytes {
+    assert!(len <= self.remaining());
+    self.split_to(len).into_bytes()
   }
 }
 
