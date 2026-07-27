@@ -27,6 +27,8 @@ pub struct FrameworkDetection {
   /// Optional build command to run before compilation (e.g. "next build").
   /// The command is run with the detected directory as cwd.
   pub build_command: Option<Vec<String>>,
+  /// Command to launch the framework's HMR server for desktop
+  pub hmr_command: Option<Vec<String>>,
 }
 
 impl FrameworkDetection {
@@ -223,6 +225,10 @@ fn deno_task_build() -> Vec<String> {
   vec![deno_exe(), "task".into(), "build".into()]
 }
 
+fn deno_task_dev() -> Vec<String> {
+  vec![deno_exe(), "task".into(), "dev".into()]
+}
+
 fn detect_nextjs(dir: &Path) -> Result<FrameworkDetection, AnyError> {
   let version = detect_package_version(dir, "next").unwrap_or(15);
   let entrypoint = format!(
@@ -253,6 +259,7 @@ if (!Deno.env.get("NODE_CHANNEL_FD")) {{
     entrypoint_code: entrypoint,
     include_paths,
     build_command: Some(deno_task_build()),
+    hmr_command: None, // TODO: add command to enable `deno desktop --hmr` for Next.js
   })
 }
 
@@ -263,6 +270,7 @@ fn detect_astro(_dir: &Path) -> FrameworkDetection {
       .into(),
     include_paths: vec!["dist".into()],
     build_command: Some(deno_task_build()),
+    hmr_command: None, // TODO: add command to enable `deno desktop --hmr` for Astro
   }
 }
 
@@ -294,7 +302,8 @@ Deno.serve(mod.default.fetch);
 "#
       .into(),
       include_paths,
-      build_command: Some(vec![deno_exe(), "task".into(), "build".into()]),
+      build_command: Some(deno_task_build()),
+      hmr_command: Some(deno_task_dev()),
     }
   } else {
     // Fresh 1.x — no build step needed, server-rendered
@@ -303,6 +312,7 @@ Deno.serve(mod.default.fetch);
       entrypoint_code: "// @ts-nocheck\nimport \"./main.ts\";\n".into(),
       include_paths: vec![],
       build_command: None,
+      hmr_command: None,
     }
   }
 }
@@ -320,6 +330,7 @@ fn detect_remix(dir: &Path) -> FrameworkDetection {
       "// @ts-nocheck\nimport \"./node_modules/.bin/remix-serve\";\n".into(),
     include_paths,
     build_command: Some(deno_task_build()),
+    hmr_command: None, // TODO: add command to enable `deno desktop --hmr` for Remix
   }
 }
 
@@ -383,6 +394,7 @@ Deno.serve(async (req) => {
       .into(),
       include_paths: vec!["build/client".into()],
       build_command: Some(deno_task_build()),
+      hmr_command: Some(deno_task_dev()),
     }
   } else {
     // SSR: serve immutable client assets from `build/client`, then hand all
@@ -414,6 +426,7 @@ Deno.serve(async (req) => {
       .into(),
       include_paths: vec!["build".into()],
       build_command: Some(deno_task_build()),
+      hmr_command: Some(deno_task_dev()),
     }
   }
 }
@@ -471,6 +484,7 @@ fn detect_sveltekit(dir: &Path) -> Result<FrameworkDetection, AnyError> {
         .into(),
       include_paths: vec![".deno-deploy".into()],
       build_command: Some(deno_task_build()),
+      hmr_command: Some(deno_task_dev()),
     });
   }
   if dir.join(".output/server/index.ts").exists()
@@ -488,6 +502,7 @@ fn detect_sveltekit(dir: &Path) -> Result<FrameworkDetection, AnyError> {
       ),
       include_paths: vec![".output".into()],
       build_command: Some(deno_task_build()),
+      hmr_command: Some(deno_task_dev()),
     });
   }
   // `@sveltejs/adapter-node` and `svelte-adapter-deno` both emit a `build/`
@@ -504,6 +519,7 @@ fn detect_sveltekit(dir: &Path) -> Result<FrameworkDetection, AnyError> {
       entrypoint_code: "// @ts-nocheck\nimport \"./build/index.js\";\n".into(),
       include_paths: sveltekit_build_includes(dir),
       build_command: Some(deno_task_build()),
+      hmr_command: Some(deno_task_dev()),
     });
   }
   // No build artifacts yet — fall back to config inspection.
@@ -515,6 +531,7 @@ fn detect_sveltekit(dir: &Path) -> Result<FrameworkDetection, AnyError> {
         .into(),
       include_paths: vec![".deno-deploy".into()],
       build_command: Some(deno_task_build()),
+      hmr_command: Some(deno_task_dev()),
     });
   }
   // `@sveltejs/adapter-node` emits the same `build/index.js` shape as
@@ -531,6 +548,7 @@ fn detect_sveltekit(dir: &Path) -> Result<FrameworkDetection, AnyError> {
       entrypoint_code: "// @ts-nocheck\nimport \"./build/index.js\";\n".into(),
       include_paths: vec!["build/client".into()],
       build_command: Some(deno_task_build()),
+      hmr_command: Some(deno_task_dev()),
     });
   }
   if config_text.contains("nitro") {
@@ -540,6 +558,7 @@ fn detect_sveltekit(dir: &Path) -> Result<FrameworkDetection, AnyError> {
         "// @ts-nocheck\nimport \"./.output/server/index.mjs\";\n".into(),
       include_paths: vec![".output".into()],
       build_command: Some(deno_task_build()),
+      hmr_command: Some(deno_task_dev()),
     });
   }
   // SvelteKit is present but the configured adapter isn't one we can locate a
@@ -589,6 +608,11 @@ fn detect_nitro_framework(
     ),
     include_paths: vec![".output".into()],
     build_command: Some(deno_task_build()),
+    // Nuxt (`nuxi dev`), SolidStart and TanStack Start (`vinxi dev`) all run a
+    // Vite-based dev server that prints the `Local:   http://…` line
+    // `parse_dev_server_url` scans for, so `deno task dev` drives HMR for all
+    // three.
+    hmr_command: Some(deno_task_dev()),
   }
 }
 
@@ -604,6 +628,10 @@ fn detect_vite(dir: &Path) -> FrameworkDetection {
       entrypoint_code: format!("// @ts-nocheck\nimport \"./{server_file}\";\n"),
       include_paths: vec!["dist".into()],
       build_command: Some(deno_task_build()),
+      // `vite` (and Vue/React SPA templates built on it) prints the
+      // `Local:   http://…` line `parse_dev_server_url` scans for, so
+      // `deno task dev` drives HMR.
+      hmr_command: Some(deno_task_dev()),
     };
   }
 
@@ -640,6 +668,9 @@ Deno.serve(async (req) => {
     .into(),
     include_paths: vec!["dist".into()],
     build_command: Some(deno_task_build()),
+    // See the SSR branch above: the Vite dev server prints the `Local:` URL
+    // that `parse_dev_server_url` scans for, so `deno task dev` drives HMR.
+    hmr_command: Some(deno_task_dev()),
   }
 }
 
@@ -918,6 +949,9 @@ mod tests {
     assert_eq!(det.include_paths, vec![".output"]);
     let cmd = det.build_command.unwrap();
     assert_eq!(cmd[1..], vec!["task", "build"]);
+    // Nuxt runs a Vite-based dev server, so `deno desktop --hmr` is supported.
+    let hmr = det.hmr_command.unwrap();
+    assert_eq!(hmr[1..], vec!["task", "dev"]);
   }
 
   #[test]
@@ -1190,6 +1224,8 @@ mod tests {
     assert_eq!(det.include_paths, vec!["build/client"]);
     let cmd = det.build_command.unwrap();
     assert_eq!(cmd[1..], vec!["task", "build"]);
+    let hmr = det.hmr_command.unwrap();
+    assert_eq!(hmr[1..], vec!["task", "dev"]);
   }
 
   #[test]
@@ -1235,6 +1271,8 @@ mod tests {
     assert!(det.entrypoint_code.contains("build/server/index.js"));
     assert!(det.entrypoint_code.contains("build/client"));
     assert_eq!(det.include_paths, vec!["build"]);
+    let hmr = det.hmr_command.unwrap();
+    assert_eq!(hmr[1..], vec!["task", "dev"]);
   }
 
   #[test]
@@ -1326,6 +1364,9 @@ mod tests {
     assert_eq!(det.include_paths, vec!["dist"]);
     let cmd = det.build_command.unwrap();
     assert_eq!(cmd[1..], vec!["task", "build"]);
+    // The Vite dev server drives HMR for `deno desktop --hmr`.
+    let hmr = det.hmr_command.unwrap();
+    assert_eq!(hmr[1..], vec!["task", "dev"]);
   }
 
   #[test]
@@ -1355,6 +1396,28 @@ mod tests {
     assert_eq!(det.include_paths, vec!["dist"]);
     let cmd = det.build_command.unwrap();
     assert_eq!(cmd[1..], vec!["task", "build"]);
+    // A plain Vite SPA (e.g. the Vue template) supports `deno desktop --hmr`.
+    let hmr = det.hmr_command.unwrap();
+    assert_eq!(hmr[1..], vec!["task", "dev"]);
+  }
+
+  #[test]
+  fn vue_vite_spa_supports_hmr() {
+    // A Vue SPA scaffolded with `npm create vue@latest` is a plain Vite project
+    // (`vue` + `vite` in devDependencies, a `vite.config.ts`). It must resolve
+    // to the Vite path with `deno desktop --hmr` enabled so the dev-server
+    // workflow from issue #35745 works.
+    let dir = setup_dir();
+    fs::write(dir.path().join("vite.config.ts"), "").unwrap();
+    fs::write(
+      dir.path().join("package.json"),
+      r#"{"dependencies":{"vue":"^3.0.0"},"devDependencies":{"vite":"^5.0.0","@vitejs/plugin-vue":"^5.0.0"}}"#,
+    )
+    .unwrap();
+    let det = detect_framework(dir.path()).unwrap().unwrap();
+    assert_eq!(det.name, "Vite");
+    let hmr = det.hmr_command.unwrap();
+    assert_eq!(hmr[1..], vec!["task", "dev"]);
   }
 
   #[test]
@@ -1586,6 +1649,7 @@ mod tests {
       entrypoint_code: String::new(),
       include_paths: vec![],
       build_command: None,
+      hmr_command: None,
     }
   }
 
@@ -1595,6 +1659,7 @@ mod tests {
       entrypoint_code: String::new(),
       include_paths: vec![],
       build_command: None,
+      hmr_command: None,
     }
   }
 

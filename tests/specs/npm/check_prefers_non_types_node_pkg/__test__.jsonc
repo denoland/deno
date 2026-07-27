@@ -17,6 +17,9 @@
       "output": "expected.out"
     },
     "global_folder": {
+      // ignored: with node_modules_dir "none" (global folder), tsc can't
+      // resolve the npm package. https://github.com/denoland/deno/issues/36085
+      "ignore": true,
       "args": "check --node-modules-dir=none --quiet main.ts",
       "exitCode": 1,
       "output": "expected.out"

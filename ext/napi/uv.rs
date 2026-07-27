@@ -140,6 +140,7 @@ struct uv_async_t {
   // private
   async_cb: uv_async_cb,
   work: napi_async_work,
+  state: *const UvAsyncState,
   refed: bool,
   _padding: [MaybeUninit<usize>; const {
     (UV_ASYNC_SIZE
@@ -148,6 +149,7 @@ struct uv_async_t {
       - size_of::<uv_handle_type>()
       - size_of::<uv_async_cb>()
       - size_of::<napi_async_work>()
+      - size_of::<*const UvAsyncState>()
       - size_of::<bool>()
       - size_of::<usize>())
       / size_of::<usize>()
@@ -166,6 +168,7 @@ struct uv_async_t {
   // private
   async_cb: uv_async_cb,
   work: napi_async_work,
+  state: *const UvAsyncState,
   refed: bool,
   _async_padding: [MaybeUninit<usize>; 2],
   _padding: [MaybeUninit<usize>; const {
@@ -173,13 +176,36 @@ struct uv_async_t {
       - 112
       - size_of::<uv_async_cb>()
       - size_of::<napi_async_work>()
+      - size_of::<*const UvAsyncState>()
       - size_of::<bool>())
       / size_of::<usize>()
   }],
 }
 
+struct UvAsyncState {
+  closing: AtomicBool,
+}
+
 type uv_loop_t = Env;
 type uv_async_cb = extern "C" fn(handle: *mut uv_async_t);
+
+unsafe fn clone_uv_async_state(
+  handle: *const uv_async_t,
+) -> Option<Arc<UvAsyncState>> {
+  unsafe {
+    if handle.is_null() {
+      return None;
+    }
+    let state = (*handle).state;
+    if state.is_null() {
+      return None;
+    }
+
+    Arc::increment_strong_count(state);
+    Some(Arc::from_raw(state))
+  }
+}
+
 #[unsafe(export_name = "uv_async_init")]
 unsafe extern "C" fn _napi_uv_async_init(
   r#loop: *mut uv_loop_t,
@@ -192,6 +218,11 @@ unsafe extern "C" fn _napi_uv_async_init(
     addr_of_mut!((*r#async).r#type).write(uv_handle_type::UV_ASYNC);
     addr_of_mut!((*r#async).async_cb).write(async_cb);
     addr_of_mut!((*r#async).refed).write(true);
+    addr_of_mut!((*r#async).state).write(Arc::into_raw(Arc::new(
+      UvAsyncState {
+        closing: AtomicBool::new(false),
+      },
+    )));
 
     let mut resource_name: MaybeUninit<napi_value> = MaybeUninit::uninit();
     assert_ok(napi_create_string_utf8(
@@ -227,9 +258,19 @@ unsafe extern "C" fn uv_async_send(handle: *mut uv_async_t) -> c_int {
   // runs `execute` on a worker thread), uv_async callbacks need V8 access so
   // they must run on the main thread.
   unsafe {
+    let Some(state) = clone_uv_async_state(handle) else {
+      return 0;
+    };
+    if state.closing.load(Ordering::Acquire) {
+      return 0;
+    }
+
     let env = &mut *(*handle).r#loop;
     let handle = SendPtr(handle as *const uv_async_t);
     env.async_work_sender.spawn(move |_| {
+      if state.closing.load(Ordering::Acquire) {
+        return;
+      }
       let handle = handle.take() as *mut uv_async_t;
       ((*handle).async_cb)(handle);
     });
@@ -254,13 +295,38 @@ unsafe extern "C" fn _napi_uv_close(
     match (*handle).r#type {
       uv_handle_type::UV_ASYNC => {
         let handle: *mut uv_async_t = handle.cast();
+        let Some(state) = clone_uv_async_state(handle) else {
+          return;
+        };
+        if state.closing.swap(true, Ordering::AcqRel) {
+          return;
+        }
+
         napi_delete_async_work((*handle).r#loop, (*handle).work);
-        // Unref the event loop to match the ref in uv_async_init.
+        // Unref the event loop to match the ref in uv_async_init, but keep a
+        // temporary ref for the deferred close callback below.
+        let env = &mut *(*handle).r#loop;
+        let tracker = env.external_ops_tracker.clone();
+        tracker.ref_op();
         if (*handle).refed {
-          let env = &mut *(*handle).r#loop;
-          env.external_ops_tracker.unref_op();
+          tracker.unref_op();
           (*handle).refed = false;
         }
+        let state_ptr = SendPtr((*handle).state);
+        let handle =
+          SendPtr(handle.cast::<uv_handle_t>() as *const uv_handle_t);
+        env.async_work_sender.spawn(move |_| {
+          let handle = handle.take() as *mut uv_handle_t;
+          if let Some(close) = close {
+            close(handle);
+          }
+          let state_ptr = state_ptr.take();
+          if !state_ptr.is_null() {
+            drop(Arc::from_raw(state_ptr));
+          }
+          tracker.unref_op();
+        });
+        return;
       }
       uv_handle_type::UV_TIMER => {
         let handle: *mut uv_timer_t = handle.cast();
@@ -982,8 +1048,21 @@ unsafe extern "C" fn uv_default_loop() -> *mut uv_loop_t {
 }
 
 #[unsafe(no_mangle)]
-unsafe extern "C" fn uv_is_closing(_handle: *const uv_handle_t) -> c_int {
-  0
+unsafe extern "C" fn uv_is_closing(handle: *const uv_handle_t) -> c_int {
+  if handle.is_null() {
+    return 0;
+  }
+  unsafe {
+    match (*handle).r#type {
+      uv_handle_type::UV_ASYNC => {
+        let Some(state) = clone_uv_async_state(handle.cast()) else {
+          return 0;
+        };
+        state.closing.load(Ordering::Acquire) as c_int
+      }
+      _ => 0,
+    }
+  }
 }
 
 #[unsafe(no_mangle)]
@@ -1548,6 +1627,12 @@ unsafe extern "C" fn uv_cond_timedwait(
 unsafe extern "C" fn async_exec_wrap(_env: napi_env, data: *mut c_void) {
   let data: *mut uv_async_t = data.cast();
   unsafe {
+    let Some(state) = clone_uv_async_state(data) else {
+      return;
+    };
+    if state.closing.load(Ordering::Acquire) {
+      return;
+    }
     ((*data).async_cb)(data);
   }
 }

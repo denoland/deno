@@ -832,6 +832,7 @@ impl DepManager {
           permissions: self.permissions_container.clone(),
           ext_overwrite: None,
           allow_unknown_media_types: true,
+          allow_sloppy_imports_hints_for_unreferenced_roots: true,
           skip_graph_roots_validation: false,
           file_content_overrides: Default::default(),
           file_header_overrides: Default::default(),

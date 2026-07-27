@@ -966,7 +966,24 @@ impl TsFn {
     if self.is_closing.load(Ordering::SeqCst) {
       return napi_closing;
     }
-    self.thread_count.fetch_add(1, Ordering::Relaxed);
+    // Refuse to resurrect a tsfn whose `thread_count` already reached zero.
+    // Once at zero the tsfn is terminal (freed, or about to be by the release
+    // that observed the 1->0 transition). A plain `fetch_add` here races that
+    // final release: if `acquire` increments 0->1 after the release read zero,
+    // both this acquire's eventual release and the original one observe
+    // `Ok(1)` and each spawn a drop of the same box — a double free (the assert
+    // in TsFn::drop). A CAS that fails from zero closes that window: zero is a
+    // one-way state, so exactly one release ever sees the 1->0 transition.
+    let result = self.thread_count.fetch_update(
+      Ordering::Relaxed,
+      Ordering::Relaxed,
+      |x| {
+        if x == 0 { None } else { Some(x + 1) }
+      },
+    );
+    if result.is_err() {
+      return napi_closing;
+    }
     napi_ok
   }
 
@@ -988,12 +1005,24 @@ impl TsFn {
       return napi_invalid_arg;
     }
 
-    if (result == Ok(1) || mode == napi_tsfn_abort)
-      && tsfn
-        .is_closing
-        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_ok()
-    {
+    // In abort mode, reject any pending and future calls immediately and wake
+    // up callers that are blocked on a full queue. This only marks the tsfn as
+    // closing; it must NOT free it while other threads still hold a reference.
+    // Freeing here (as a previous version did, regardless of thread_count)
+    // leaves those threads with a dangling pointer, and a subsequent release
+    // from one of them can spawn a second drop of the same box, causing a
+    // use-after-free and a double free (the assert in TsFn::drop).
+    if mode == napi_tsfn_abort {
+      tsfn.is_closing.store(true, Ordering::SeqCst);
+      tsfn.queue_cond.notify_all();
+    }
+
+    // Free the tsfn exactly once, when the last thread has released it. The
+    // thread count reaching zero (`result == Ok(1)`) guarantees no other
+    // thread still holds the pointer, and it can only be observed by a single
+    // release, so the drop is spawned at most once.
+    if result == Ok(1) {
+      tsfn.is_closing.store(true, Ordering::SeqCst);
       tsfn.queue_cond.notify_all();
       let tsfnptr = SendPtr(tsfn);
       // drop must be queued in order to preserve ordering consistent

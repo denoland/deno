@@ -84,6 +84,10 @@ impl CliLinter {
     !self.package_rules.is_empty()
   }
 
+  pub fn has_package_rule(&self, code: &str) -> bool {
+    self.package_rules.iter().any(|r| r.code() == code)
+  }
+
   pub fn lint_package(
     &self,
     graph: &ModuleGraph,

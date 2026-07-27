@@ -1,6 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file no-this-alias
+
 (function () {
 const { core, primordials } = __bootstrap;
 const {
@@ -24,7 +26,6 @@ const {
   NumberIsNaN,
   ObjectDefineProperty,
   ReflectApply,
-  SafeArrayIterator,
   SafeMapIterator,
   SafeMap,
   Symbol,

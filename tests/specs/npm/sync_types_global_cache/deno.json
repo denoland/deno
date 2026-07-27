@@ -1,0 +1,6 @@
+{
+  "nodeModulesDir": "none",
+  "imports": {
+    "@denotest/dual-cjs-esm-dep": "npm:@denotest/dual-cjs-esm-dep@1.0.0"
+  }
+}

@@ -152,7 +152,7 @@ function parseProxyUrl(raw, kind, mode) {
     username,
     password,
     auth: username
-      // deno-lint-ignore prefer-primordials -- Buffer.from()/.toString(encoding) are not primordials.
+      // deno-lint-ignore deno-internal/prefer-primordials -- Buffer.from()/.toString(encoding) are not primordials.
       ? "Basic " + Buffer.from(`${username}:${password}`).toString("base64")
       : undefined,
   };

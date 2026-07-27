@@ -33,7 +33,7 @@ deno_runtime = { workspace = true, features = ["transpile"] }
 deno_snapshots.workspace = true
 deno_terminal.workspace = true
 denort = { path = "../rt" }
-laufey = "0.5.0"
+laufey = "0.6.1"
 libsui.workspace = true
 
 log = { workspace = true, features = ["serde"] }

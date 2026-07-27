@@ -156,7 +156,11 @@ impl TlsKeyResolver {
     // to respond to the requests.
     spawn(async move {
       while let Some((sni, txr)) = rx.recv().await {
-        _ = txr.send(self.resolve_internal(sni, alpn.clone()).await);
+        let resolver = self.clone();
+        let alpn = alpn.clone();
+        spawn(async move {
+          _ = txr.send(resolver.resolve_internal(sni, alpn).await);
+        });
       }
     });
 

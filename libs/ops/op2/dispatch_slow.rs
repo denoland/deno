@@ -514,8 +514,10 @@ pub fn from_arg(
       }
     }
     Arg::String(Strings::RefStr) | Arg::String(Strings::CowStr) => {
-      // Only requires isolate, not a full scope
-      *needs_isolate = true;
+      // Non-string values may be coerced to strings in the slow path. Keep the
+      // converted string handle rooted for the whole argument conversion and
+      // op call instead of creating a temporary inner CallbackScope.
+      *needs_scope = true;
       let maybe_scope = if *needs_scope {
         quote!()
       } else {

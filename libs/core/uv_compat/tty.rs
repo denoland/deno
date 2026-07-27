@@ -1793,17 +1793,7 @@ pub(crate) unsafe fn read_stop_tty(tty: *mut uv_tty_t) -> c_int {
     // Notify the select fallback thread about interest change.
     #[cfg(target_os = "macos")]
     update_select_interest(tty);
-    if (*tty).internal_write_queue.is_empty()
-      && (*tty).internal_shutdown.is_none()
-    {
-      (*tty).flags &= !UV_HANDLE_ACTIVE;
-      // Remove from poll list when fully inactive.
-      let inner = get_inner((*tty).loop_);
-      inner
-        .tty_handles
-        .borrow_mut()
-        .retain(|&h| !std::ptr::eq(h, tty));
-    }
+    deactivate_tty_if_idle(tty);
   }
   0
 }
@@ -2010,6 +2000,31 @@ unsafe fn ensure_tty_registered(tty: *mut uv_tty_t) {
     // until something else wakes the loop (e.g. console input).
     #[cfg(windows)]
     inner.wake();
+  }
+}
+
+/// Deactivate a TTY handle when it has no active read, write, or shutdown
+/// work. A ref'ed but inactive libuv handle does not keep the loop alive.
+///
+/// # Safety
+/// `tty` must be a valid pointer to an initialized `uv_tty_t`.
+unsafe fn deactivate_tty_if_idle(tty: *mut uv_tty_t) {
+  unsafe {
+    if !(*tty).internal_reading
+      && (*tty).internal_write_queue.is_empty()
+      && (*tty).internal_shutdown.is_none()
+    {
+      (*tty).flags &= !UV_HANDLE_ACTIVE;
+
+      #[cfg(target_os = "macos")]
+      update_select_interest(tty);
+
+      let inner = get_inner((*tty).loop_);
+      inner
+        .tty_handles
+        .borrow_mut()
+        .retain(|&h| !std::ptr::eq(h, tty));
+    }
   }
 }
 
@@ -2572,20 +2587,9 @@ pub(crate) unsafe fn poll_tty_handle(
       if let Some(cb) = pending.cb {
         cb(pending.req, 0);
       }
-      // Deactivate the handle if there's no more pending work.
-      // In real libuv, uv__drain stops the I/O watcher so the
-      // handle no longer keeps the event loop alive. Our
-      // UV_HANDLE_ACTIVE flag serves the same purpose.
-      if !(*tty_ptr).internal_reading
-        && (*tty_ptr).internal_write_queue.is_empty()
-        && (*tty_ptr).internal_shutdown.is_none()
-      {
-        (*tty_ptr).flags &= !UV_HANDLE_ACTIVE;
-        #[cfg(target_os = "macos")]
-        update_select_interest(tty_ptr);
-      }
       any_work = true;
     }
+    deactivate_tty_if_idle(tty_ptr);
   }
 
   // Post the select fallback semaphore so the background thread can

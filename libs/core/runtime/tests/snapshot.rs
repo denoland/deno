@@ -482,6 +482,17 @@ fn lazy_loaded_esm_not_snapshotted_but_metadata_survives() {
 
   let snapshot = Box::leak(snapshot);
 
+  // The source is already embedded in the residual source table passed to the
+  // runtime below. Keep its external-string slot for snapshot index alignment,
+  // but do not duplicate its bytes in the snapshot sidecar.
+  {
+    let (_, sidecar) = crate::runtime::snapshot::deconstruct(snapshot);
+    assert_eq!(
+      sidecar.snapshot_data.external_strings.last().copied(),
+      Some(&[][..])
+    );
+  }
+
   // When loading from the snapshot, the lazy ESM module should NOT
   // be in the module map (not compiled/instantiated), but the metadata
   // should be present in known_lazy_esm.

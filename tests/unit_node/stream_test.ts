@@ -4,6 +4,7 @@ import { assert, assertEquals } from "@std/assert";
 import { fromFileUrl, relative } from "@std/path";
 import { finished, pipeline } from "node:stream/promises";
 import {
+  Duplex,
   getDefaultHighWaterMark,
   promises,
   Stream,
@@ -82,6 +83,99 @@ Deno.test("Writable toWeb", async () => {
     .pipeTo(webWritable);
 
   await finished(nodeWritable);
+});
+
+Deno.test("Duplex fromWeb handles readable errors", async () => {
+  let errorController!: ReadableStreamDefaultController;
+  const readable = new ReadableStream({
+    start(controller) {
+      errorController = controller;
+    },
+  });
+  const writable = new WritableStream({
+    write() {
+      // no-op
+    },
+  });
+
+  const duplex = Duplex.fromWeb({ readable, writable });
+  const errorPromise = new Promise<Error>((resolve) => {
+    duplex.once("error", resolve);
+  });
+
+  errorController.error(new Error("Network error"));
+
+  const error = await errorPromise;
+  assertEquals(error.message, "Network error");
+});
+
+Deno.test("Writable toWeb abort handles destroy context", async () => {
+  const nodeWritable = new Writable({
+    write(_chunk, _encoding, callback) {
+      callback();
+    },
+  });
+  const webWritable = Writable.toWeb(nodeWritable);
+
+  await webWritable.abort(new Error("abort"));
+  assert(nodeWritable.destroyed);
+});
+
+Deno.test("Writable fromWeb writev handles write rejection", async () => {
+  const writable = Writable.fromWeb(
+    new WritableStream({
+      write(chunk) {
+        if (String(chunk) === "fail") {
+          throw new Error("Writable write failed");
+        }
+      },
+    }),
+  );
+
+  const errorPromise = new Promise<Error>((resolve) => {
+    writable.once("error", resolve);
+  });
+  const closePromise = new Promise<void>((resolve) => {
+    writable.once("close", resolve);
+  });
+
+  writable.cork();
+  writable.write("ok");
+  writable.write("fail");
+  writable.uncork();
+
+  const error = await errorPromise;
+  assertEquals(error.message, "Writable write failed");
+  await closePromise;
+});
+
+Deno.test("Duplex fromWeb writev handles write rejection", async () => {
+  const duplex = Duplex.fromWeb({
+    readable: new ReadableStream(),
+    writable: new WritableStream({
+      write(chunk) {
+        if (String(chunk) === "fail") {
+          throw new Error("Duplex write failed");
+        }
+      },
+    }),
+  });
+
+  const errorPromise = new Promise<Error>((resolve) => {
+    duplex.once("error", resolve);
+  });
+  const closePromise = new Promise<void>((resolve) => {
+    duplex.once("close", resolve);
+  });
+
+  duplex.cork();
+  duplex.write("ok");
+  duplex.write("fail");
+  duplex.uncork();
+
+  const error = await errorPromise;
+  assertEquals(error.message, "Duplex write failed");
+  await closePromise;
 });
 
 // https://github.com/denoland/deno/issues/30423

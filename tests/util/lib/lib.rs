@@ -159,6 +159,39 @@ pub fn root_path() -> PathRef {
   p.parent()
 }
 
+/// Path to the pre-downloaded native TypeScript compiler, if present.
+///
+/// `tools/download_tsc.ts` materializes it under
+/// `<target>/.native_tsc/deno_dir/tsc/<version>/<platform>/lib/tsc`. The harness
+/// injects this per-test as `DENO_TSC_BIN` (see `TestContextBuilder::build`) so
+/// `deno check`/`run --check`/`cache --check` reuse it instead of downloading
+/// the compiler into every test's fresh `DENO_DIR`. Returns `None` when it
+/// hasn't been downloaded yet.
+pub fn native_tsc_bin_path() -> Option<PathRef> {
+  let exe = if cfg!(windows) { "tsc.exe" } else { "tsc" };
+  // `tools/download_tsc.ts` defaults its cache to `./target/.native_tsc/deno_dir`
+  // (relative to the repo root), i.e. the `target` root - not the per-profile
+  // `target/debug`|`target/release` dir that `target_dir()` returns.
+  let tsc_root = root_path()
+    .join("target")
+    .join(".native_tsc")
+    .join("deno_dir")
+    .join("tsc");
+  for version in std::fs::read_dir(tsc_root.as_path()).ok()?.flatten() {
+    for platform in std::fs::read_dir(version.path())
+      .into_iter()
+      .flatten()
+      .flatten()
+    {
+      let bin = PathRef::new(platform.path()).join("lib").join(exe);
+      if bin.exists() {
+        return Some(bin);
+      }
+    }
+  }
+  None
+}
+
 pub fn prebuilt_path() -> PathRef {
   third_party_path().join("prebuilt")
 }

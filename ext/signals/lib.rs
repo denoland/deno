@@ -275,12 +275,20 @@ pub fn is_forbidden(signo: i32) -> bool {
 }
 
 pub struct SignalStream {
+  signo: i32,
+  id: u32,
   rx: watch::Receiver<()>,
 }
 
 impl SignalStream {
   pub async fn recv(&mut self) -> Option<()> {
     self.rx.changed().await.ok()
+  }
+}
+
+impl Drop for SignalStream {
+  fn drop(&mut self) {
+    unregister(self.signo, self.id);
   }
 }
 
@@ -310,8 +318,8 @@ fn signal_stream_inner(
   let cb = Box::new(move || {
     tx.send_replace(());
   });
-  register(signo, prevent_default, cb)?;
-  Ok(SignalStream { rx })
+  let id = register(signo, prevent_default, cb)?;
+  Ok(SignalStream { signo, id, rx })
 }
 
 pub async fn ctrl_c() -> std::io::Result<()> {

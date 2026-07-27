@@ -1399,7 +1399,7 @@ struct CpCheckPathsResult {
 }
 
 #[derive(Clone, Copy)]
-struct CpSyncOptions<'a> {
+struct CpOptions {
   dereference: bool,
   recursive: bool,
   force: bool,
@@ -1407,6 +1407,11 @@ struct CpSyncOptions<'a> {
   preserve_timestamps: bool,
   verbatim_symlinks: bool,
   mode: u32,
+}
+
+#[derive(Clone, Copy)]
+struct CpSyncOptions<'a> {
+  options: CpOptions,
   filter: Option<v8::Local<'a, v8::Function>>,
 }
 
@@ -1437,14 +1442,18 @@ fn call_cp_sync_filter<'a>(
 }
 
 fn cp_sync_copy_dir<'a>(
-  state: &Rc<RefCell<OpState>>,
+  permissions: &PermissionsContainer,
   fs: &FileSystemRc,
   scope: &mut v8::PinScope<'a, '_>,
   src: &str,
   dest: &str,
   opts: CpSyncOptions<'a>,
 ) -> Result<CpSyncRunStatus, FsError> {
-  let src_path = check_cp_path(state, src, OpenAccessKind::ReadNoFollow)?;
+  let src_path = check_cp_path_with_permissions(
+    permissions,
+    src,
+    OpenAccessKind::ReadNoFollow,
+  )?;
   let entries =
     fs.read_dir_sync(&src_path.as_checked_path())
       .map_err(|err| {
@@ -1481,15 +1490,21 @@ fn cp_sync_copy_dir<'a>(
     }
 
     let stat_info = check_paths_impl_sync(
-      state,
+      permissions,
       fs,
       &src_item,
       &dest_item,
-      opts.dereference,
+      opts.options.dereference,
     )?;
 
     match cp_sync_dispatch(
-      state, fs, scope, &stat_info, &src_item, &dest_item, opts,
+      permissions,
+      fs,
+      scope,
+      &stat_info,
+      &src_item,
+      &dest_item,
+      opts,
     )? {
       CpSyncRunStatus::Completed => {}
       CpSyncRunStatus::JsException => return Ok(CpSyncRunStatus::JsException),
@@ -1500,7 +1515,7 @@ fn cp_sync_copy_dir<'a>(
 }
 
 fn cp_sync_mkdir_and_copy<'a>(
-  state: &Rc<RefCell<OpState>>,
+  permissions: &PermissionsContainer,
   fs: &FileSystemRc,
   scope: &mut v8::PinScope<'a, '_>,
   src_mode: u32,
@@ -1508,7 +1523,8 @@ fn cp_sync_mkdir_and_copy<'a>(
   dest: &str,
   opts: CpSyncOptions<'a>,
 ) -> Result<CpSyncRunStatus, FsError> {
-  let dest_path = check_cp_path(state, dest, OpenAccessKind::Write)?;
+  let dest_path =
+    check_cp_path_with_permissions(permissions, dest, OpenAccessKind::Write)?;
   fs.mkdir_sync(&dest_path.as_checked_path(), false, None)
     .map_err(|err| {
       map_fs_error_to_node_fs_error(
@@ -1521,7 +1537,7 @@ fn cp_sync_mkdir_and_copy<'a>(
       )
     })?;
 
-  let result = cp_sync_copy_dir(state, fs, scope, src, dest, opts)?;
+  let result = cp_sync_copy_dir(permissions, fs, scope, src, dest, opts)?;
   if let CpSyncRunStatus::JsException = result {
     return Ok(result);
   }
@@ -1531,7 +1547,7 @@ fn cp_sync_mkdir_and_copy<'a>(
 }
 
 fn cp_sync_on_dir<'a>(
-  state: &Rc<RefCell<OpState>>,
+  permissions: &PermissionsContainer,
   fs: &FileSystemRc,
   scope: &mut v8::PinScope<'a, '_>,
   stat_info: &CpCheckPathsSyncResult,
@@ -1541,7 +1557,7 @@ fn cp_sync_on_dir<'a>(
 ) -> Result<CpSyncRunStatus, FsError> {
   if !stat_info.is_dest_exists {
     return cp_sync_mkdir_and_copy(
-      state,
+      permissions,
       fs,
       scope,
       stat_info.src_mode,
@@ -1551,11 +1567,11 @@ fn cp_sync_on_dir<'a>(
     );
   }
 
-  cp_sync_copy_dir(state, fs, scope, src, dest, opts)
+  cp_sync_copy_dir(permissions, fs, scope, src, dest, opts)
 }
 
 fn cp_sync_dispatch<'a>(
-  state: &Rc<RefCell<OpState>>,
+  permissions: &PermissionsContainer,
   fs: &FileSystemRc,
   scope: &mut v8::PinScope<'a, '_>,
   stat_info: &CpCheckPathsSyncResult,
@@ -1563,8 +1579,8 @@ fn cp_sync_dispatch<'a>(
   dest: &str,
   opts: CpSyncOptions<'a>,
 ) -> Result<CpSyncRunStatus, FsError> {
-  if stat_info.is_src_directory && opts.recursive {
-    return cp_sync_on_dir(state, fs, scope, stat_info, src, dest, opts);
+  if stat_info.is_src_directory && opts.options.recursive {
+    return cp_sync_on_dir(permissions, fs, scope, stat_info, src, dest, opts);
   } else if stat_info.is_src_directory {
     return Err(
       CpError::EIsDir {
@@ -1577,18 +1593,352 @@ fn cp_sync_dispatch<'a>(
     || stat_info.is_src_char_device
     || stat_info.is_src_block_device
   {
-    op_node_cp_on_file_sync(state, fs, src, dest, stat_info, &opts)?;
+    op_node_cp_on_file_sync(
+      permissions,
+      fs,
+      src,
+      dest,
+      stat_info,
+      &opts.options,
+    )?;
     return Ok(CpSyncRunStatus::Completed);
   } else if stat_info.is_src_symlink {
     op_node_cp_on_link_sync(
-      state,
+      permissions,
+      fs,
+      src,
+      dest,
+      stat_info.is_dest_exists,
+      opts.options.verbatim_symlinks,
+    )?;
+    return Ok(CpSyncRunStatus::Completed);
+  } else if stat_info.is_src_socket {
+    return Err(
+      CpError::Socket {
+        message: format!("cannot copy a socket file: {}", dest),
+        path: dest.to_string(),
+      }
+      .into(),
+    );
+  } else if stat_info.is_src_fifo {
+    return Err(
+      CpError::Fifo {
+        message: format!("cannot copy a FIFO pipe: {}", dest),
+        path: dest.to_string(),
+      }
+      .into(),
+    );
+  }
+
+  Err(
+    CpError::Unknown {
+      message: format!("cannot copy an unknown file type: {}", dest),
+      path: dest.to_string(),
+    }
+    .into(),
+  )
+}
+
+fn cp_sync_copy_dir_no_filter(
+  permissions: &PermissionsContainer,
+  fs: &FileSystemRc,
+  src: &str,
+  dest: &str,
+  opts: CpOptions,
+) -> Result<(), FsError> {
+  let src_path = check_cp_path_with_permissions(
+    permissions,
+    src,
+    OpenAccessKind::ReadNoFollow,
+  )?;
+  let entries =
+    fs.read_dir_sync(&src_path.as_checked_path())
+      .map_err(|err| {
+        map_fs_error_to_node_fs_error(
+          err,
+          NodeFsErrorContext {
+            path: Some(src.to_string()),
+            syscall: Some("opendir".into()),
+            ..Default::default()
+          },
+        )
+      })?;
+
+  for entry in entries {
+    let src_item = Path::new(src)
+      .join(&entry.name)
+      .to_string_lossy()
+      .to_string();
+    let dest_item = Path::new(dest)
+      .join(&entry.name)
+      .to_string_lossy()
+      .to_string();
+
+    let stat_info = check_paths_impl_sync(
+      permissions,
+      fs,
+      &src_item,
+      &dest_item,
+      opts.dereference,
+    )?;
+
+    cp_sync_dispatch_no_filter(
+      permissions,
+      fs,
+      &stat_info,
+      &src_item,
+      &dest_item,
+      opts,
+    )?;
+  }
+
+  Ok(())
+}
+
+fn cp_sync_mkdir_and_copy_no_filter(
+  permissions: &PermissionsContainer,
+  fs: &FileSystemRc,
+  src_mode: u32,
+  src: &str,
+  dest: &str,
+  opts: CpOptions,
+) -> Result<(), FsError> {
+  let dest_path =
+    check_cp_path_with_permissions(permissions, dest, OpenAccessKind::Write)?;
+  fs.mkdir_sync(&dest_path.as_checked_path(), false, None)
+    .map_err(|err| {
+      map_fs_error_to_node_fs_error(
+        err,
+        NodeFsErrorContext {
+          path: Some(dest.to_string()),
+          syscall: Some("mkdir".into()),
+          ..Default::default()
+        },
+      )
+    })?;
+
+  cp_sync_copy_dir_no_filter(permissions, fs, src, dest, opts)?;
+  set_dest_mode(fs, &dest_path.as_checked_path(), src_mode)?;
+  Ok(())
+}
+
+fn cp_sync_on_dir_no_filter(
+  permissions: &PermissionsContainer,
+  fs: &FileSystemRc,
+  stat_info: &CpCheckPathsSyncResult,
+  src: &str,
+  dest: &str,
+  opts: CpOptions,
+) -> Result<(), FsError> {
+  if !stat_info.is_dest_exists {
+    if try_clone_dir_no_filter(permissions, fs, src, dest, opts)? {
+      return Ok(());
+    }
+    return cp_sync_mkdir_and_copy_no_filter(
+      permissions,
+      fs,
+      stat_info.src_mode,
+      src,
+      dest,
+      opts,
+    );
+  }
+
+  cp_sync_copy_dir_no_filter(permissions, fs, src, dest, opts)
+}
+
+#[cfg(target_os = "macos")]
+fn try_clone_dir_no_filter(
+  permissions: &PermissionsContainer,
+  fs: &FileSystemRc,
+  src: &str,
+  dest: &str,
+  opts: CpOptions,
+) -> Result<bool, FsError> {
+  if opts.dereference
+    || !opts.recursive
+    || !opts.force
+    || opts.error_on_exist
+    || opts.preserve_timestamps
+    || opts.verbatim_symlinks
+    || opts.mode != 0
+    || !cp_tree_only_regular_files_and_dirs(permissions, fs, src, dest)?
+  {
+    return Ok(false);
+  }
+
+  let src_path =
+    check_cp_path_with_permissions(permissions, src, OpenAccessKind::Read)?;
+  let dest_path =
+    check_cp_path_with_permissions(permissions, dest, OpenAccessKind::Write)?;
+
+  match clonefile_sync(
+    &src_path.as_checked_path(),
+    &dest_path.as_checked_path(),
+  ) {
+    Ok(()) => Ok(true),
+    Err(_) => {
+      if fs.exists_sync(&dest_path.as_checked_path()) {
+        fs.remove_sync(&dest_path.as_checked_path(), true)
+          .map_err(|err| {
+            map_fs_error_to_node_fs_error(
+              err,
+              NodeFsErrorContext {
+                path: Some(dest.to_string()),
+                syscall: Some("rm".into()),
+                ..Default::default()
+              },
+            )
+          })?;
+      }
+      Ok(false)
+    }
+  }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn try_clone_dir_no_filter(
+  _permissions: &PermissionsContainer,
+  _fs: &FileSystemRc,
+  _src: &str,
+  _dest: &str,
+  _opts: CpOptions,
+) -> Result<bool, FsError> {
+  Ok(false)
+}
+
+#[cfg(target_os = "macos")]
+fn cp_tree_only_regular_files_and_dirs(
+  permissions: &PermissionsContainer,
+  fs: &FileSystemRc,
+  src: &str,
+  dest: &str,
+) -> Result<bool, FsError> {
+  let src_path = check_cp_path_with_permissions(
+    permissions,
+    src,
+    OpenAccessKind::ReadNoFollow,
+  )?;
+  check_cp_path_with_permissions(permissions, dest, OpenAccessKind::Write)?;
+
+  let entries =
+    fs.read_dir_sync(&src_path.as_checked_path())
+      .map_err(|err| {
+        map_fs_error_to_node_fs_error(
+          err,
+          NodeFsErrorContext {
+            path: Some(src.to_string()),
+            syscall: Some("opendir".into()),
+            ..Default::default()
+          },
+        )
+      })?;
+
+  for entry in entries {
+    let src_item = Path::new(src)
+      .join(&entry.name)
+      .to_string_lossy()
+      .to_string();
+    let dest_item = Path::new(dest)
+      .join(&entry.name)
+      .to_string_lossy()
+      .to_string();
+
+    let stat_info =
+      check_paths_impl_sync(permissions, fs, &src_item, &dest_item, false)?;
+    if stat_info.is_src_directory {
+      if !cp_tree_only_regular_files_and_dirs(
+        permissions,
+        fs,
+        &src_item,
+        &dest_item,
+      )? {
+        return Ok(false);
+      }
+    } else if stat_info.is_src_file {
+      check_cp_path_with_permissions(
+        permissions,
+        &src_item,
+        OpenAccessKind::Read,
+      )?;
+      check_cp_path_with_permissions(
+        permissions,
+        &dest_item,
+        OpenAccessKind::Write,
+      )?;
+    } else {
+      return Ok(false);
+    }
+  }
+
+  Ok(true)
+}
+
+#[cfg(target_os = "macos")]
+fn clonefile_sync(
+  src: &CheckedPath,
+  dest: &CheckedPath,
+) -> std::io::Result<()> {
+  use std::ffi::CString;
+  use std::os::unix::ffi::OsStrExt;
+
+  let src = CString::new(src.as_os_str().as_bytes()).map_err(|err| {
+    std::io::Error::new(std::io::ErrorKind::InvalidInput, err)
+  })?;
+  let dest = CString::new(dest.as_os_str().as_bytes()).map_err(|err| {
+    std::io::Error::new(std::io::ErrorKind::InvalidInput, err)
+  })?;
+
+  // SAFETY: `src` and `dest` are valid C strings.
+  let result = unsafe { libc::clonefile(src.as_ptr(), dest.as_ptr(), 0) };
+  if result == 0 {
+    Ok(())
+  } else {
+    Err(std::io::Error::last_os_error())
+  }
+}
+
+fn cp_sync_dispatch_no_filter(
+  permissions: &PermissionsContainer,
+  fs: &FileSystemRc,
+  stat_info: &CpCheckPathsSyncResult,
+  src: &str,
+  dest: &str,
+  opts: CpOptions,
+) -> Result<(), FsError> {
+  if stat_info.is_src_directory && opts.recursive {
+    return cp_sync_on_dir_no_filter(
+      permissions,
+      fs,
+      stat_info,
+      src,
+      dest,
+      opts,
+    );
+  } else if stat_info.is_src_directory {
+    return Err(
+      CpError::EIsDir {
+        message: format!("{} is a directory (not copied)", src),
+        path: src.to_string(),
+      }
+      .into(),
+    );
+  } else if stat_info.is_src_file
+    || stat_info.is_src_char_device
+    || stat_info.is_src_block_device
+  {
+    op_node_cp_on_file_sync(permissions, fs, src, dest, stat_info, &opts)?;
+    return Ok(());
+  } else if stat_info.is_src_symlink {
+    op_node_cp_on_link_sync(
+      permissions,
       fs,
       src,
       dest,
       stat_info.is_dest_exists,
       opts.verbatim_symlinks,
     )?;
-    return Ok(CpSyncRunStatus::Completed);
+    return Ok(());
   } else if stat_info.is_src_socket {
     return Err(
       CpError::Socket {
@@ -1724,10 +2074,18 @@ fn check_cp_path(
   path: &str,
   access_kind: OpenAccessKind,
 ) -> Result<CheckedPathBuf, FsError> {
-  let mut state = state.borrow_mut();
+  let state = state.borrow();
+  let permissions = state.borrow::<PermissionsContainer>();
+  check_cp_path_with_permissions(permissions, path, access_kind)
+}
+
+fn check_cp_path_with_permissions(
+  permissions: &PermissionsContainer,
+  path: &str,
+  access_kind: OpenAccessKind,
+) -> Result<CheckedPathBuf, FsError> {
   Ok(
-    state
-      .borrow_mut::<PermissionsContainer>()
+    permissions
       .check_open(
         Cow::Owned(PathBuf::from(path)),
         access_kind,
@@ -1738,23 +2096,33 @@ fn check_cp_path(
 }
 
 fn check_paths_impl_sync(
-  state: &Rc<RefCell<OpState>>,
+  permissions: &PermissionsContainer,
   fs: &FileSystemRc,
   src: &str,
   dest: &str,
   dereference: bool,
 ) -> Result<CpCheckPathsSyncResult, FsError> {
   let (src_stat_result, dest_result, syscall) = if dereference {
-    let src_path = check_cp_path(state, src, OpenAccessKind::Read)?;
-    let dest_path = check_cp_path(state, dest, OpenAccessKind::Read)?;
+    let src_path =
+      check_cp_path_with_permissions(permissions, src, OpenAccessKind::Read)?;
+    let dest_path =
+      check_cp_path_with_permissions(permissions, dest, OpenAccessKind::Read)?;
     (
       fs.stat_sync(&src_path.as_checked_path()),
       fs.stat_sync(&dest_path.as_checked_path()),
       "stat".to_string(),
     )
   } else {
-    let src_path = check_cp_path(state, src, OpenAccessKind::ReadNoFollow)?;
-    let dest_path = check_cp_path(state, dest, OpenAccessKind::ReadNoFollow)?;
+    let src_path = check_cp_path_with_permissions(
+      permissions,
+      src,
+      OpenAccessKind::ReadNoFollow,
+    )?;
+    let dest_path = check_cp_path_with_permissions(
+      permissions,
+      dest,
+      OpenAccessKind::ReadNoFollow,
+    )?;
     (
       fs.lstat_sync(&src_path.as_checked_path()),
       fs.lstat_sync(&dest_path.as_checked_path()),
@@ -2037,16 +2405,17 @@ pub async fn op_node_cp_validate_and_prepare(
 /// parent directory exists for cpSync.
 /// Returns stat info for the source file.
 fn op_node_cp_validate_and_prepare_sync(
-  state: &Rc<RefCell<OpState>>,
+  permissions: &PermissionsContainer,
   fs: &FileSystemRc,
   src: &str,
   dest: &str,
   dereference: bool,
 ) -> Result<CpCheckPathsSyncResult, FsError> {
-  let check_result = check_paths_impl_sync(state, fs, src, dest, dereference)?;
+  let check_result =
+    check_paths_impl_sync(permissions, fs, src, dest, dereference)?;
 
   check_parent_paths_impl_sync(
-    state,
+    permissions,
     fs,
     src,
     check_result.src_dev,
@@ -2054,7 +2423,7 @@ fn op_node_cp_validate_and_prepare_sync(
     dest,
   )?;
 
-  ensure_parent_dir_impl_sync(state, fs, dest)?;
+  ensure_parent_dir_impl_sync(permissions, fs, dest)?;
 
   Ok(check_result)
 }
@@ -2074,17 +2443,25 @@ pub fn op_node_cp_sync<'a>(
   #[smi] mode: u32,
   filter: v8::Local<'a, v8::Value>,
 ) -> Result<(), FsError> {
-  let fs = {
+  let (fs, permissions) = {
     let state = state.borrow();
-    state.borrow::<FileSystemRc>().clone()
+    (
+      state.borrow::<FileSystemRc>().clone(),
+      state.borrow::<PermissionsContainer>().clone(),
+    )
   };
 
-  let stat_info =
-    op_node_cp_validate_and_prepare_sync(&state, &fs, src, dest, dereference)?;
+  let stat_info = op_node_cp_validate_and_prepare_sync(
+    &permissions,
+    &fs,
+    src,
+    dest,
+    dereference,
+  )?;
 
   let filter = v8::Local::<v8::Function>::try_from(filter).ok();
 
-  let opts = CpSyncOptions {
+  let options = CpOptions {
     dereference,
     recursive,
     force,
@@ -2092,14 +2469,69 @@ pub fn op_node_cp_sync<'a>(
     preserve_timestamps,
     verbatim_symlinks,
     mode,
-    filter,
   };
 
-  match cp_sync_dispatch(&state, &fs, scope, &stat_info, src, dest, opts)? {
+  if filter.is_none() {
+    cp_sync_dispatch_no_filter(
+      &permissions,
+      &fs,
+      &stat_info,
+      src,
+      dest,
+      options,
+    )?;
+    return Ok(());
+  }
+
+  let opts = CpSyncOptions { options, filter };
+
+  match cp_sync_dispatch(&permissions, &fs, scope, &stat_info, src, dest, opts)?
+  {
     // Treat JsException as success here so the pending V8 exception can propagate
     // naturally, preserving the original JS stack instead of rethrowing from Rust.
     CpSyncRunStatus::Completed | CpSyncRunStatus::JsException => Ok(()),
   }
+}
+
+#[op2(stack_trace)]
+#[allow(
+  clippy::unused_async,
+  reason = "maybe_spawn_blocking awaits with sync_fs"
+)]
+pub async fn op_node_cp_fast(
+  state: Rc<RefCell<OpState>>,
+  #[string] src: String,
+  #[string] dest: String,
+  recursive: bool,
+) -> Result<(), FsError> {
+  let (fs, permissions) = {
+    let state = state.borrow();
+    (
+      state.borrow::<FileSystemRc>().clone(),
+      state.borrow::<PermissionsContainer>().clone(),
+    )
+  };
+
+  let opts = CpOptions {
+    dereference: false,
+    recursive,
+    force: true,
+    error_on_exist: false,
+    preserve_timestamps: false,
+    verbatim_symlinks: false,
+    mode: 0,
+  };
+
+  maybe_spawn_blocking!(move || -> Result<(), FsError> {
+    let stat_info = op_node_cp_validate_and_prepare_sync(
+      &permissions,
+      &fs,
+      &src,
+      &dest,
+      opts.dereference,
+    )?;
+    cp_sync_dispatch_no_filter(&permissions, &fs, &stat_info, &src, &dest, opts)
+  })
 }
 
 /// Recursively check if dest parent is a subdirectory of src.
@@ -2200,7 +2632,7 @@ async fn check_parent_paths_impl(
 }
 
 fn check_parent_paths_impl_sync(
-  state: &Rc<RefCell<OpState>>,
+  permissions: &PermissionsContainer,
   fs: &FileSystemRc,
   src: &str,
   src_dev: u64,
@@ -2240,18 +2672,21 @@ fn check_parent_paths_impl_sync(
     }
 
     let current_str = current.to_string_lossy();
-    let checked_path =
-      match check_cp_path(state, &current_str, OpenAccessKind::Read) {
-        Ok(p) => p,
-        // When read permission is ignored, the check returns NotFound.
-        // Treat it like a non-existent directory: stop walking.
-        Err(FsError::Permission(e))
-          if e.kind() == std::io::ErrorKind::NotFound =>
-        {
-          return Ok(());
-        }
-        Err(e) => return Err(e),
-      };
+    let checked_path = match check_cp_path_with_permissions(
+      permissions,
+      &current_str,
+      OpenAccessKind::Read,
+    ) {
+      Ok(p) => p,
+      // When read permission is ignored, the check returns NotFound.
+      // Treat it like a non-existent directory: stop walking.
+      Err(FsError::Permission(e))
+        if e.kind() == std::io::ErrorKind::NotFound =>
+      {
+        return Ok(());
+      }
+      Err(e) => return Err(e),
+    };
     match fs.stat_sync(&checked_path.as_checked_path()) {
       Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
       Err(e) => {
@@ -2335,7 +2770,7 @@ async fn ensure_parent_dir_impl(
 }
 
 fn ensure_parent_dir_impl_sync(
-  state: &Rc<RefCell<OpState>>,
+  permissions: &PermissionsContainer,
   fs: &FileSystemRc,
   dest: &str,
 ) -> Result<(), FsError> {
@@ -2345,12 +2780,19 @@ fn ensure_parent_dir_impl_sync(
     .unwrap_or_default();
 
   let parent_str = dest_parent.to_string_lossy();
-  let checked_parent = check_cp_path(state, &parent_str, OpenAccessKind::Read)?;
+  let checked_parent = check_cp_path_with_permissions(
+    permissions,
+    &parent_str,
+    OpenAccessKind::Read,
+  )?;
   let exists = fs.exists_sync(&checked_parent.as_checked_path());
 
   if !exists {
-    let checked_parent =
-      check_cp_path(state, &parent_str, OpenAccessKind::Write)?;
+    let checked_parent = check_cp_path_with_permissions(
+      permissions,
+      &parent_str,
+      OpenAccessKind::Write,
+    )?;
     fs.mkdir_sync(&checked_parent.as_checked_path(), true, None)
       .map_err(|err| {
         map_fs_error_to_node_fs_error(
@@ -2574,17 +3016,21 @@ pub async fn op_node_cp_on_file(
 }
 
 fn op_node_cp_on_file_sync(
-  state: &Rc<RefCell<OpState>>,
+  permissions: &PermissionsContainer,
   fs: &FileSystemRc,
   src: &str,
   dest: &str,
   stat_info: &CpCheckPathsSyncResult,
-  opts: &CpSyncOptions,
+  opts: &CpOptions,
 ) -> Result<(), FsError> {
   if stat_info.is_dest_exists {
     if opts.force {
       // Remove dest, then copy.
-      let dest_path = check_cp_path(state, dest, OpenAccessKind::Write)?;
+      let dest_path = check_cp_path_with_permissions(
+        permissions,
+        dest,
+        OpenAccessKind::Write,
+      )?;
       fs.remove_sync(&dest_path.as_checked_path(), false)
         .map_err(|err| {
           map_fs_error_to_node_fs_error(
@@ -2611,7 +3057,11 @@ fn op_node_cp_on_file_sync(
   }
 
   if cp_mode_has_copyfile_excl(opts.mode) {
-    let dest_path = check_cp_path(state, dest, OpenAccessKind::ReadNoFollow)?;
+    let dest_path = check_cp_path_with_permissions(
+      permissions,
+      dest,
+      OpenAccessKind::ReadNoFollow,
+    )?;
     match fs.lstat_sync(&dest_path.as_checked_path()) {
       Ok(_) => {
         return Err(
@@ -2636,8 +3086,10 @@ fn op_node_cp_on_file_sync(
     }
   }
 
-  let src_path = check_cp_path(state, src, OpenAccessKind::Read)?;
-  let dest_path = check_cp_path(state, dest, OpenAccessKind::Write)?;
+  let src_path =
+    check_cp_path_with_permissions(permissions, src, OpenAccessKind::Read)?;
+  let dest_path =
+    check_cp_path_with_permissions(permissions, dest, OpenAccessKind::Write)?;
 
   fs.copy_file_sync(&src_path.as_checked_path(), &dest_path.as_checked_path())
     .map_err(|err| {
@@ -2871,14 +3323,18 @@ pub async fn op_node_cp_on_link(
 }
 
 fn op_node_cp_on_link_sync(
-  state: &Rc<RefCell<OpState>>,
+  permissions: &PermissionsContainer,
   fs: &FileSystemRc,
   src: &str,
   dest: &str,
   dest_exists: bool,
   verbatim_symlinks: bool,
 ) -> Result<(), FsError> {
-  let src_path = check_cp_path(state, src, OpenAccessKind::ReadNoFollow)?;
+  let src_path = check_cp_path_with_permissions(
+    permissions,
+    src,
+    OpenAccessKind::ReadNoFollow,
+  )?;
   let resolved_src_buf = fs
     .read_link_sync(&src_path.as_checked_path())
     .map_err(|err| {
@@ -2902,15 +3358,8 @@ fn op_node_cp_on_link_sync(
   }
 
   if !dest_exists {
-    {
-      let mut state = state.borrow_mut();
-      state
-        .borrow_mut::<PermissionsContainer>()
-        .check_write_all("node:fs.symlink")?;
-      state
-        .borrow_mut::<PermissionsContainer>()
-        .check_read_all("node:fs.symlink")?;
-    }
+    permissions.check_write_all("node:fs.symlink")?;
+    permissions.check_read_all("node:fs.symlink")?;
 
     let oldpath = CheckedPathBuf::unsafe_new(PathBuf::from(&resolved_src));
     let newpath = CheckedPathBuf::unsafe_new(PathBuf::from(dest));
@@ -2935,7 +3384,11 @@ fn op_node_cp_on_link_sync(
   }
 
   // Dest exists — try to read it as a symlink.
-  let dest_path = check_cp_path(state, dest, OpenAccessKind::ReadNoFollow)?;
+  let dest_path = check_cp_path_with_permissions(
+    permissions,
+    dest,
+    OpenAccessKind::ReadNoFollow,
+  )?;
   let resolved_dest_result = fs.read_link_sync(&dest_path.as_checked_path());
   let resolved_dest = match resolved_dest_result {
     Ok(p) => {
@@ -2957,15 +3410,8 @@ fn op_node_cp_on_link_sync(
       if kind == std::io::ErrorKind::InvalidInput
         || kind == std::io::ErrorKind::Other
       {
-        {
-          let mut state = state.borrow_mut();
-          state
-            .borrow_mut::<PermissionsContainer>()
-            .check_write_all("node:fs.symlink")?;
-          state
-            .borrow_mut::<PermissionsContainer>()
-            .check_read_all("node:fs.symlink")?;
-        }
+        permissions.check_write_all("node:fs.symlink")?;
+        permissions.check_read_all("node:fs.symlink")?;
 
         let oldpath = CheckedPathBuf::unsafe_new(PathBuf::from(&resolved_src));
         let newpath = CheckedPathBuf::unsafe_new(PathBuf::from(dest));
@@ -3014,15 +3460,8 @@ fn op_node_cp_on_link_sync(
           );
         }
 
-        {
-          let mut state = state.borrow_mut();
-          state
-            .borrow_mut::<PermissionsContainer>()
-            .check_write_all("node:fs.symlink")?;
-          state
-            .borrow_mut::<PermissionsContainer>()
-            .check_read_all("node:fs.symlink")?;
-        }
+        permissions.check_write_all("node:fs.symlink")?;
+        permissions.check_read_all("node:fs.symlink")?;
 
         let oldpath = CheckedPathBuf::unsafe_new(PathBuf::from(&resolved_src));
         let newpath = CheckedPathBuf::unsafe_new(PathBuf::from(dest));
@@ -3061,7 +3500,8 @@ fn op_node_cp_on_link_sync(
   };
 
   // Check subdirectory relationships.
-  let src_path = check_cp_path(state, src, OpenAccessKind::Read)?;
+  let src_path =
+    check_cp_path_with_permissions(permissions, src, OpenAccessKind::Read)?;
   let src_stat = fs.stat_sync(&src_path.as_checked_path()).map_err(|err| {
     map_fs_error_to_node_fs_error(
       err,
@@ -3103,8 +3543,7 @@ fn op_node_cp_on_link_sync(
   }
 
   let dest_path = {
-    let mut state = state.borrow_mut();
-    state.borrow_mut::<PermissionsContainer>().check_open(
+    permissions.check_open(
       Cow::Owned(PathBuf::from(dest)),
       OpenAccessKind::Write,
       Some("node:fs.rm"),
@@ -3122,15 +3561,8 @@ fn op_node_cp_on_link_sync(
     )
   })?;
 
-  {
-    let mut state = state.borrow_mut();
-    state
-      .borrow_mut::<PermissionsContainer>()
-      .check_write_all("node:fs.symlink")?;
-    state
-      .borrow_mut::<PermissionsContainer>()
-      .check_read_all("node:fs.symlink")?;
-  }
+  permissions.check_write_all("node:fs.symlink")?;
+  permissions.check_read_all("node:fs.symlink")?;
 
   let src_path_buf = CheckedPathBuf::unsafe_new(PathBuf::from(&resolved_src));
   let dest_path_buf = CheckedPathBuf::unsafe_new(dest_path.to_path_buf());

@@ -30,6 +30,8 @@ use deno_npm_cache::NpmCache;
 use deno_npm_cache::NpmCacheHttpClient;
 use deno_npm_cache::NpmCacheSys;
 use deno_npm_cache::TarballCache;
+use deno_npm_cache::create_dir_all_no_symlink;
+use deno_npm_cache::ensure_not_symlink;
 use deno_npm_cache::hard_link_file;
 use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_resolver::npm::get_package_folder_id_folder_name;
@@ -1303,8 +1305,9 @@ pub(crate) fn clone_dir_recursive_except_node_modules_child(
   to: &Path,
 ) -> Result<(), std::io::Error> {
   let sys = sys.with_paths_in_errors();
+  ensure_not_symlink(sys.as_ref(), to)?;
   _ = sys.fs_remove_dir_all(to);
-  sys.fs_create_dir_all(to)?;
+  create_dir_all_no_symlink(sys.as_ref(), to)?;
   for entry in sys.fs_read_dir(from)? {
     let entry = entry?;
     if entry.file_name().to_str() == Some("node_modules") {
@@ -2035,9 +2038,15 @@ fn calculate_packages_hash(
 
   let mut hasher = twox_hash::XxHash64::default();
 
-  // Hash all package IDs (iter_all is deterministic)
-  for package in package_partitions.iter_all() {
-    package.id.hash(&mut hasher);
+  // the order of the packages is non-deterministic (hash map iteration
+  // during resolution traversal), so sort the ids before hashing
+  let mut package_ids = package_partitions
+    .iter_all()
+    .map(|package| &package.id)
+    .collect::<Vec<_>>();
+  package_ids.sort_unstable();
+  for package_id in package_ids {
+    package_id.hash(&mut hasher);
   }
 
   // also hash the packages expected at the root of node_modules so that
@@ -2249,10 +2258,30 @@ mod test {
   use sys_traits::FsCreateDirAll;
   use sys_traits::FsMetadata;
   use sys_traits::FsRead;
+  use sys_traits::FsSymlinkDir;
   use sys_traits::FsWrite;
   use test_util::TempDir;
 
   use super::*;
+
+  #[test]
+  fn clone_dir_recursive_except_node_modules_child_rejects_symlink_destination()
+  {
+    let sys = sys_traits::impls::InMemorySys::default();
+    let from = Path::new("/from");
+    let to = Path::new("/to");
+    let target = Path::new("/target");
+    sys.fs_create_dir_all(from).unwrap();
+    sys.fs_create_dir_all(target).unwrap();
+    sys.fs_write(from.join("file"), "package contents").unwrap();
+    sys.fs_symlink_dir(target, to).unwrap();
+
+    let err = clone_dir_recursive_except_node_modules_child(&sys, from, to)
+      .unwrap_err();
+
+    assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+    assert!(sys.fs_read_to_string(target.join("file")).is_err());
+  }
 
   #[test]
   fn test_setup_cache() {
@@ -2288,6 +2317,51 @@ mod test {
         .with_dep("package-a")
         .insert("package-b", "package-b@1.0.0")
     );
+  }
+
+  #[test]
+  fn test_calculate_packages_hash_order_independent() {
+    fn pkg(id: &str) -> NpmResolutionPackage {
+      NpmResolutionPackage {
+        id: NpmPackageId::from_serialized(id).unwrap(),
+        copy_index: 0,
+        system: Default::default(),
+        dist: None,
+        dependencies: Default::default(),
+        optional_dependencies: Default::default(),
+        optional_peer_dependencies: Default::default(),
+        extra: None,
+        is_deprecated: false,
+        has_bin: false,
+        has_scripts: false,
+      }
+    }
+
+    let packages = vec![
+      pkg("package-a@1.0.0"),
+      pkg("package-b@2.0.0"),
+      pkg("package-c@3.0.0"),
+    ];
+    let mut reversed_packages = packages.clone();
+    reversed_packages.reverse();
+    let root_folder_names =
+      BTreeSet::from(["package-a".to_string(), "package-b".to_string()]);
+
+    let hash = calculate_packages_hash(
+      &deno_npm::resolution::NpmPackagesPartitioned {
+        packages,
+        copy_packages: Vec::new(),
+      },
+      &root_folder_names,
+    );
+    let reversed_hash = calculate_packages_hash(
+      &deno_npm::resolution::NpmPackagesPartitioned {
+        packages: reversed_packages,
+        copy_packages: Vec::new(),
+      },
+      &root_folder_names,
+    );
+    assert_eq!(hash, reversed_hash);
   }
 
   #[test]
