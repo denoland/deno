@@ -80,7 +80,7 @@ export class BrotliDecompress extends Transform {
         const input = toU8(chunk);
         const output = new Uint8Array(TypedArrayPrototypeGetByteLength(chunk));
         const avail = op_brotli_decompress_stream(context, input, output);
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         this.push(TypedArrayPrototypeSlice(output, 0, avail));
         callback();
       },
@@ -88,7 +88,7 @@ export class BrotliDecompress extends Transform {
         const output = new Uint8Array(1024);
         let avail;
         while ((avail = op_brotli_decompress_stream_end(context, output)) > 0) {
-          // deno-lint-ignore prefer-primordials
+          // deno-lint-ignore deno-internal/prefer-primordials
           this.push(TypedArrayPrototypeSlice(output, 0, avail));
         }
         close(context);
@@ -112,7 +112,7 @@ export class BrotliCompress extends Transform {
         const output = new Uint8Array(brotliMaxCompressedSize(input.length));
         const written = op_brotli_compress_stream(context, input, output);
         if (written > 0) {
-          // deno-lint-ignore prefer-primordials
+          // deno-lint-ignore deno-internal/prefer-primordials
           this.push(TypedArrayPrototypeSlice(output, 0, written));
         }
         callback();
@@ -121,7 +121,7 @@ export class BrotliCompress extends Transform {
         const output = new Uint8Array(1024);
         let avail;
         while ((avail = op_brotli_compress_stream_end(context, output)) > 0) {
-          // deno-lint-ignore prefer-primordials
+          // deno-lint-ignore deno-internal/prefer-primordials
           this.push(TypedArrayPrototypeSlice(output, 0, avail));
         }
         close(context);

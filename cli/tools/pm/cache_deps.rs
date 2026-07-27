@@ -251,8 +251,15 @@ pub async fn cache_top_level_deps(
         },
       )
       .await?;
-    maybe_graph_error =
-      graph_builder.graph_roots_valid(graph, &roots, true, true);
+    maybe_graph_error = graph_builder.graph_roots_valid(
+      graph,
+      &roots,
+      crate::graph_util::GraphRootsValidOptions {
+        allow_unknown_media_types: true,
+        allow_unknown_jsr_exports: true,
+        allow_sloppy_imports_hints_for_unreferenced_roots: true,
+      },
+    );
   }
 
   if options.lockfile_only {

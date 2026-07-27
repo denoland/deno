@@ -15,6 +15,8 @@ const {
 const {
   SymbolFor,
   ObjectPrototypeIsPrototypeOf,
+  TypeError,
+  TypeErrorPrototype,
   TypedArrayPrototypeGetByteLength,
 } = primordials;
 
@@ -34,6 +36,26 @@ webidl.converters.CompressionFormat = webidl.createEnumConverter(
   ],
 );
 
+// Convert a chunk to a BufferSource, attaching the Node.js-style error `code`
+// that `node:stream/web` consumers rely on. `null` is reported specifically as
+// `ERR_STREAM_NULL_VALUES`; any other non-BufferSource value fails the WebIDL
+// conversion and is tagged `ERR_INVALID_ARG_TYPE`.
+function convertChunk(chunk, prefix) {
+  if (chunk === null) {
+    const err = new TypeError("May not write null values to stream");
+    err.code = "ERR_STREAM_NULL_VALUES";
+    throw err;
+  }
+  try {
+    return webidl.converters.BufferSource(chunk, prefix, "chunk");
+  } catch (err) {
+    if (ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, err)) {
+      err.code = "ERR_INVALID_ARG_TYPE";
+    }
+    throw err;
+  }
+}
+
 class CompressionStream {
   #transform;
 
@@ -46,7 +68,7 @@ class CompressionStream {
 
     this.#transform = new TransformStream({
       transform(chunk, controller) {
-        chunk = webidl.converters.BufferSource(chunk, prefix, "chunk");
+        chunk = convertChunk(chunk, prefix);
         const output = op_compression_write(
           rid,
           chunk,
@@ -108,7 +130,7 @@ class DecompressionStream {
 
     this.#transform = new TransformStream({
       transform(chunk, controller) {
-        chunk = webidl.converters.BufferSource(chunk, prefix, "chunk");
+        chunk = convertChunk(chunk, prefix);
         const output = op_compression_write(
           rid,
           chunk,

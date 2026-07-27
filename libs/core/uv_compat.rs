@@ -16,6 +16,7 @@ use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::VecDeque;
+use std::ffi::CStr;
 use std::ffi::c_int;
 use std::ffi::c_void;
 use std::sync::Arc;
@@ -77,6 +78,32 @@ uv_errno!(UV_ECONNABORTED, libc::ECONNABORTED, -4079);
 uv_errno!(UV_ETIMEDOUT, libc::ETIMEDOUT, -4039);
 uv_errno!(UV_EACCES, libc::EACCES, -4092);
 pub const UV_EOF: i32 = -4095;
+
+pub fn uv_error_message(err: c_int) -> Option<&'static CStr> {
+  let message = match err {
+    x if x == UV_EAGAIN => c"resource temporarily unavailable",
+    x if x == UV_EBADF => c"bad file descriptor",
+    x if x == UV_EADDRINUSE => c"address already in use",
+    x if x == UV_ECONNREFUSED => c"connection refused",
+    x if x == UV_EINVAL => c"invalid argument",
+    x if x == UV_ENOTCONN => c"socket is not connected",
+    x if x == UV_ECANCELED => c"operation canceled",
+    x if x == UV_EPIPE => c"broken pipe",
+    x if x == UV_EBUSY => c"resource busy or locked",
+    x if x == UV_ENOBUFS => c"no buffer space available",
+    x if x == UV_ENOTSUP => c"operation not supported on socket",
+    x if x == UV_EALREADY => c"connection already in progress",
+    x if x == UV_ENOENT => c"no such file or directory",
+    x if x == UV_ENOTSOCK => c"socket operation on non-socket",
+    x if x == UV_ECONNRESET => c"connection reset by peer",
+    x if x == UV_ECONNABORTED => c"software caused connection abort",
+    x if x == UV_ETIMEDOUT => c"connection timed out",
+    x if x == UV_EACCES => c"permission denied",
+    x if x == UV_EOF => c"end of file",
+    _ => return None,
+  };
+  Some(message)
+}
 
 /// Map a `std::io::Error` to the closest libuv error code.
 pub(crate) fn io_error_to_uv(err: &std::io::Error) -> c_int {
