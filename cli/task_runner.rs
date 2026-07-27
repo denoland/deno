@@ -583,6 +583,22 @@ pub fn resolve_custom_commands(
       // farther `JsFile` of the same name: the closer one is what `PATH`
       // resolves to, and a custom command beats `PATH` in `deno_task_shell`,
       // so inserting the farther entry would invert closest-first precedence.
+      //
+      // KNOWN EXCEPTION — closest-first only holds *among the bin dirs*.
+      // Entries are merged with `or_insert` semantics (the `contains_key`
+      // filter), so the first bin dir to provide a name wins over later ones.
+      // But `commands` was pre-seeded above from the resolution snapshot's
+      // top-level packages, so a root dependency's bin beats a nearer
+      // workspace member's — or a nearer dependency's — bin of the same name,
+      // and it does so outright because a custom command also beats `PATH`.
+      // npm and pnpm run the *nearer* one.
+      //
+      // We accept this rather than fix it here: the snapshot pre-seeding is
+      // pre-existing behaviour that applies to every managed task, so
+      // reordering it would reach well beyond workspaces. The fix belongs
+      // alongside the `TODO(nathanwhit)` on `resolve_managed_npm_commands`
+      // below, which has to stop flattening top-level package bins into
+      // unconditional commands before this can be ordered correctly.
       let mut seen: HashSet<String> = HashSet::new();
       for bin_dir in bin_dirs {
         // Only classify names that aren't already resolved — classifying reads
@@ -616,13 +632,19 @@ pub fn resolve_custom_commands(
 /// ordered closest-first.
 ///
 /// For BYONM this walks up the filesystem from `cwd` collecting every
-/// `<ancestor>/node_modules/.bin` directory (matching how Node, npm, and pnpm
-/// resolve bin commands).
+/// `<ancestor>/node_modules/.bin` directory, mirroring the directory *lookup
+/// order* Node, npm, and pnpm use.
 ///
 /// For the managed npm resolver the walk is bounded by the workspace root
 /// (the directory holding the root `node_modules`), so a task run with
 /// `--cwd <member>` also sees that member's own `node_modules/.bin` without
 /// picking up unrelated directories above the workspace.
+///
+/// The returned paths are candidates only: they aren't checked for existence,
+/// and the ordering is a property of this list rather than a guarantee about
+/// which executable a task ends up running. See `resolve_custom_commands` for
+/// how the order is applied, and for the case where the resolution snapshot's
+/// top-level packages take precedence over it.
 pub fn resolve_task_node_modules_bin_dirs(
   npm_resolver: &CliNpmResolver,
   cwd: &Path,

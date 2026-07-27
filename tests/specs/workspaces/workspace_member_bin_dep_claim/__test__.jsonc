@@ -1,0 +1,20 @@
+// A single workspace member declares a `thing-bin` executable that a registry
+// dependency (`@denotest/one-bin`) already provides. The dependency wins the
+// root `node_modules/.bin` entry, so the member's `bin` silently doesn't
+// appear — the warning has to fire even though no *other* member competes for
+// the name, which is the likeliest way to hit this.
+//
+// https://github.com/denoland/deno/issues/36313
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "install.out"
+    },
+    {
+      "args": "task run-bin",
+      "output": "task.out"
+    }
+  ]
+}

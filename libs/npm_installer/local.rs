@@ -1941,7 +1941,9 @@ pub(crate) fn resolve_workspace_bin_packages(
 ///   sort the synthetic workspace packages aren't in the snapshot so they get
 ///   depth `u64::MAX` and sort last. Silently replacing a real dependency's
 ///   executable with a workspace member's would be surprising, and it matches
-///   npm, which links the dependency.
+///   npm, which links the dependency. The member's `bin` then silently doesn't
+///   appear, so [`warn_on_workspace_bin_name_collisions`] reports this case
+///   too, even when only one member declares the name.
 /// * **workspace member vs. workspace member** — both get depth `u64::MAX`, so
 ///   the sort falls back to `sort_by_depth`'s `nv` tiebreak, which is
 ///   *descending*; the greatest `<name>@<version>` therefore wins. That's
@@ -1951,7 +1953,11 @@ pub(crate) fn resolve_workspace_bin_packages(
 ///
 /// `warn_on_collisions` should only be set on the install path. `node_modules`
 /// is re-linked by `deno run`/`deno task` too, and npm reports this kind of
-/// problem once, at install time, rather than ahead of every command.
+/// problem once, at install time, rather than ahead of every command. The
+/// trade-off of that gating is that a user who never re-runs a clean install —
+/// they only ever `deno task` against an already-linked `node_modules` — won't
+/// be shown the warning at all; we take it over reprinting the same warning
+/// ahead of every single command.
 pub(crate) fn add_workspace_bin_entries<'a, TSys: SetupBinEntrySys>(
   bin_entries: &mut BinEntries<'a, TSys>,
   workspace_bin_packages: &'a [WorkspaceBinPackage],
@@ -1981,17 +1987,33 @@ pub(crate) fn add_workspace_bin_entries<'a, TSys: SetupBinEntrySys>(
   }
 }
 
-/// Warns when two workspace members declare the same `bin` name, since only one
-/// of them can win the root `node_modules/.bin` entry and which one is
-/// essentially arbitrary. See [`add_workspace_bin_entries`] for the precedence.
-///
-/// `is_claimed_by_dependency` reports whether a snapshot package already
-/// contributes that name. Those always win, so in that case *no* member is
-/// linked and the message must not name one.
+/// Warns when a workspace member's `bin` name won't end up in the root
+/// `node_modules/.bin` pointing at that member — either because another member
+/// declares the same name (and which one wins is essentially arbitrary), or
+/// because a dependency already claims it. See [`add_workspace_bin_entries`]
+/// for the precedence.
 fn warn_on_workspace_bin_name_collisions(
   workspace_bin_packages: &[WorkspaceBinPackage],
   is_claimed_by_dependency: impl Fn(&str) -> bool,
 ) {
+  for message in workspace_bin_name_collision_warnings(
+    workspace_bin_packages,
+    is_claimed_by_dependency,
+  ) {
+    log::warn!("{} {}", deno_terminal::colors::yellow("Warning"), message);
+  }
+}
+
+/// Builds the warning messages for [`warn_on_workspace_bin_name_collisions`].
+///
+/// `is_claimed_by_dependency` reports whether a snapshot package already
+/// contributes that name. Those always win, so in that case the member isn't
+/// linked and the message must not claim otherwise — including when only a
+/// single member declares the name, which is the likelier way to hit this.
+fn workspace_bin_name_collision_warnings(
+  workspace_bin_packages: &[WorkspaceBinPackage],
+  is_claimed_by_dependency: impl Fn(&str) -> bool,
+) -> Vec<String> {
   let mut members_by_bin_name: BTreeMap<&str, BTreeSet<&PackageNv>> =
     BTreeMap::new();
   for pkg in workspace_bin_packages {
@@ -1999,8 +2021,11 @@ fn warn_on_workspace_bin_name_collisions(
       members_by_bin_name.entry(name).or_default().insert(&pkg.nv);
     }
   }
+  let mut messages = Vec::new();
   for (bin_name, members) in members_by_bin_name {
-    if members.len() < 2 {
+    let claimed_by_dependency = is_claimed_by_dependency(bin_name);
+    // A single member that wins its name outright is the normal case.
+    if members.len() < 2 && !claimed_by_dependency {
       continue;
     }
     let member_names = members
@@ -2008,25 +2033,21 @@ fn warn_on_workspace_bin_name_collisions(
       .map(|nv| nv.name.as_str())
       .collect::<Vec<_>>()
       .join(", ");
-    if is_claimed_by_dependency(bin_name) {
-      log::warn!(
-        "{} Multiple workspace members declare a \"{}\" bin: {}. None of them will be linked into node_modules/.bin because a dependency already provides it.",
-        deno_terminal::colors::yellow("Warning"),
-        bin_name,
-        member_names,
-      );
-    } else {
+    messages.push(match (claimed_by_dependency, members.len()) {
+      (true, 1) => format!(
+        "Workspace member \"{member_names}\" declares a \"{bin_name}\" bin, but it will not be linked into node_modules/.bin because a dependency already provides it."
+      ),
+      (true, _) => format!(
+        "Multiple workspace members declare a \"{bin_name}\" bin: {member_names}. None of them will be linked into node_modules/.bin because a dependency already provides it."
+      ),
       // `BTreeSet` is sorted ascending and the greatest `nv` wins the entry.
-      let winner = members.last().unwrap();
-      log::warn!(
-        "{} Multiple workspace members declare a \"{}\" bin: {}. Only \"{}\" will be linked into node_modules/.bin.",
-        deno_terminal::colors::yellow("Warning"),
-        bin_name,
-        member_names,
-        winner.name,
-      );
-    }
+      (false, _) => format!(
+        "Multiple workspace members declare a \"{bin_name}\" bin: {member_names}. Only \"{}\" will be linked into node_modules/.bin.",
+        members.last().unwrap().name,
+      ),
+    });
   }
+  messages
 }
 
 /// A workspace member's direct dependency that may contribute executables to
@@ -2676,6 +2697,94 @@ mod test {
     assert_ne!(base_hash, hash(&string_form));
     // and it stays stable for an unchanged set
     assert_eq!(base_hash, hash(&base));
+  }
+
+  #[test]
+  fn test_workspace_bin_name_collision_warnings() {
+    fn workspace_bin_pkg(nv: &str, bin_name: &str) -> WorkspaceBinPackage {
+      let nv = PackageNv::from_str(nv).unwrap();
+      let extra = NpmPackageExtraInfo {
+        bin: Some(NpmPackageVersionBinEntry::Map(HashMap::from([(
+          bin_name.to_string(),
+          "./cli.js".to_string(),
+        )]))),
+        ..Default::default()
+      };
+      WorkspaceBinPackage {
+        nv: nv.clone(),
+        package: NpmResolutionPackage {
+          id: NpmPackageId {
+            nv,
+            peer_dependencies: NpmPackageIdPeerDependencies::from([]),
+          },
+          copy_index: 0,
+          system: Default::default(),
+          dist: None,
+          dependencies: Default::default(),
+          optional_dependencies: Default::default(),
+          optional_peer_dependencies: Default::default(),
+          extra: Some(extra.clone()),
+          is_deprecated: false,
+          has_bin: true,
+          has_scripts: false,
+        },
+        extra,
+        package_path: PathBuf::from("/workspace/packages/member"),
+      }
+    }
+
+    let one_member = vec![workspace_bin_pkg("member-a@1.0.0", "tool")];
+    let two_members = vec![
+      workspace_bin_pkg("member-a@1.0.0", "tool"),
+      workspace_bin_pkg("member-b@1.0.0", "tool"),
+    ];
+
+    // a single member that wins its name outright is the normal case
+    assert!(
+      workspace_bin_name_collision_warnings(&one_member, |_| false).is_empty()
+    );
+
+    // ...but a single member whose name a dependency already claims must still
+    // warn, and the message must not claim the member gets linked
+    let warnings =
+      workspace_bin_name_collision_warnings(&one_member, |name| name == "tool");
+    assert_eq!(
+      warnings,
+      vec![
+        "Workspace member \"member-a\" declares a \"tool\" bin, but it will not be linked into node_modules/.bin because a dependency already provides it."
+          .to_string()
+      ]
+    );
+    // an unrelated dependency name doesn't warn
+    let unrelated =
+      workspace_bin_name_collision_warnings(&one_member, |name| {
+        name == "other"
+      });
+    assert!(unrelated.is_empty());
+
+    // member vs. member is unchanged: the greatest `nv` wins
+    let warnings =
+      workspace_bin_name_collision_warnings(&two_members, |_| false);
+    assert_eq!(
+      warnings,
+      vec![
+        "Multiple workspace members declare a \"tool\" bin: member-a, member-b. Only \"member-b\" will be linked into node_modules/.bin."
+          .to_string()
+      ]
+    );
+
+    // ...and when a dependency claims it, neither member is named as a winner
+    let warnings =
+      workspace_bin_name_collision_warnings(&two_members, |name| {
+        name == "tool"
+      });
+    assert_eq!(
+      warnings,
+      vec![
+        "Multiple workspace members declare a \"tool\" bin: member-a, member-b. None of them will be linked into node_modules/.bin because a dependency already provides it."
+          .to_string()
+      ]
+    );
   }
 
   #[test]
