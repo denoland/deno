@@ -1626,17 +1626,24 @@ fn get_binary_checksum_url(target_version: &str) -> Result<Url, AnyError> {
     .with_context(|| format!("Failed to parse binary checksum URL: {}", url))
 }
 
-/// Parse a SHA-256 hash out of a checksum file's contents.
+/// Whether `token` is exactly a 64-character SHA-256 hex digest.
+fn is_sha256_hex(token: &str) -> bool {
+  token.len() == 64 && token.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Parse a SHA-256 hash out of a checksum file's contents, tolerating both the
+/// checksum layouts Deno release assets have been published with.
 ///
-/// Handles both the canonical GNU `sha256sum` layout published for Unix
-/// assets (and now for Windows assets):
+/// The canonical GNU `sha256sum` layout published for Unix assets (and now for
+/// Windows assets) leads with the hash:
 ///
 /// ```text
 /// <hex_hash>  <filename>
 /// ```
 ///
-/// and the PowerShell `Get-FileHash | Format-List` layout historically
-/// published for Windows release assets (e.g. Deno v2.9.x):
+/// Windows release assets historically (e.g. Deno v2.9.x) published PowerShell
+/// `Get-FileHash | Format-List` output instead, where the hash follows a
+/// `Hash` label:
 ///
 /// ```text
 /// Algorithm       : SHA256
@@ -1644,15 +1651,35 @@ fn get_binary_checksum_url(target_version: &str) -> Result<Url, AnyError> {
 /// Path            : C:\path\to\deno.exe
 /// ```
 ///
-/// In both layouts the only 64-character hex token is the hash itself, so we
-/// return the first such token (lowercased). Returns `None` if none is found.
-fn parse_sha256sum(text: &str) -> Option<String> {
-  text
-    .split_whitespace()
-    .find(|token| {
-      token.len() == 64 && token.chars().all(|c| c.is_ascii_hexdigit())
-    })
-    .map(|hash| hash.to_lowercase())
+/// Rather than accept a 64-hex token from anywhere in the body (which would
+/// misread an HTML/XML error page served with HTTP 200 as a valid checksum and
+/// surface later as a spurious "checksum mismatch"), only these two shapes are
+/// recognized: the first whitespace-delimited token, or the value of a `Hash`
+/// label. Returns the hash lowercased, or `None` if neither matches.
+///
+/// Note: distinct from the same-named `parse_sha256sum` in `desktop.rs`, which
+/// parses strict multi-line GNU checksum manifests; this lenient variant exists
+/// only to bridge the legacy Windows format and can be deleted once those
+/// releases age out.
+fn parse_sha256sum_lenient(text: &str) -> Option<String> {
+  // Canonical GNU layout: the hash is the first token on the first line.
+  if let Some(token) = text.split_whitespace().next()
+    && is_sha256_hex(token)
+  {
+    return Some(token.to_lowercase());
+  }
+  // Legacy PowerShell `Format-List` layout: `Hash            : <hex>`.
+  for line in text.lines() {
+    if let Some((label, value)) = line.split_once(':')
+      && label.trim().eq_ignore_ascii_case("Hash")
+    {
+      let value = value.trim();
+      if is_sha256_hex(value) {
+        return Some(value.to_lowercase());
+      }
+    }
+  }
+  None
 }
 
 /// Fetch a SHA-256 hash from a .sha256sum file hosted as a release asset.
@@ -1661,7 +1688,7 @@ async fn fetch_sha256_from_url(
   url: Url,
 ) -> Option<String> {
   let text = client.download_text(url).await.ok()?;
-  parse_sha256sum(&text)
+  parse_sha256sum_lenient(&text)
 }
 
 /// Compute the SHA-256 hash of the given data, returning it as a lowercase
@@ -1930,7 +1957,7 @@ fn verify_checksum(
   let expected_checksum = expected_checksum.trim().to_lowercase();
   if computed_hex != expected_checksum {
     bail!(
-      "Checksum verification failed.\n  Actual:   {}\n  Expected: {}",
+      "Checksum verification failed.\n  Expected: {}\n  Actual:   {}",
       expected_checksum,
       computed_hex
     );
@@ -3585,7 +3612,7 @@ mod test {
     // and now by the Windows release jobs.
     let text = "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c  deno-aarch64-pc-windows-msvc.zip\n";
     assert_eq!(
-      parse_sha256sum(text).as_deref(),
+      parse_sha256sum_lenient(text).as_deref(),
       Some("b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c")
     );
   }
@@ -3595,7 +3622,7 @@ mod test {
     let text =
       "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c\n";
     assert_eq!(
-      parse_sha256sum(text).as_deref(),
+      parse_sha256sum_lenient(text).as_deref(),
       Some("b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c")
     );
   }
@@ -3607,21 +3634,34 @@ mod test {
     // Hash is uppercase and preceded by "Algorithm"/"Hash" labels.
     let text = "\r\nAlgorithm       : SHA256\r\nHash            : B5BB9D8014A0F9B1D61E21E796D78DCCDF1352F23CD32812F4850B878AE4944C\r\nPath            : C:\\deno\\target\\release\\deno.exe\r\n\r\n";
     assert_eq!(
-      parse_sha256sum(text).as_deref(),
+      parse_sha256sum_lenient(text).as_deref(),
       Some("b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c")
     );
   }
 
   #[test]
   fn test_parse_sha256sum_no_hash() {
-    assert_eq!(parse_sha256sum(""), None);
-    assert_eq!(parse_sha256sum("not a checksum file"), None);
+    assert_eq!(parse_sha256sum_lenient(""), None);
+    assert_eq!(parse_sha256sum_lenient("not a checksum file"), None);
     // 63 hex chars (one short) must not be accepted.
     assert_eq!(
-      parse_sha256sum(
+      parse_sha256sum_lenient(
         "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944"
       ),
       None
     );
+  }
+
+  #[test]
+  fn test_parse_sha256sum_rejects_embedded_hex() {
+    // An HTML/XML error body served with HTTP 200 (proxy, captive portal, CDN)
+    // may embed a 64-hex request id/digest that is not a checksum. It must not
+    // be mistaken for a valid hash, else it surfaces as a spurious mismatch.
+    let text = concat!(
+      "<html><body><p>Request blocked</p>",
+      "<!-- trace: b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c -->",
+      "</body></html>\n"
+    );
+    assert_eq!(parse_sha256sum_lenient(text), None);
   }
 }
