@@ -415,7 +415,12 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     }
 
     let target = compile_flags.resolve_target();
-    let binary_name = format!("denort-{target}.zip");
+    let engine_suffix = if compile_flags.engine.as_deref() == Some("quickjs") {
+      "-quickjs"
+    } else {
+      ""
+    };
+    let binary_name = format!("denort{engine_suffix}-{target}.zip");
 
     let binary_path_suffix = match DENO_VERSION_INFO.release_channel {
       ReleaseChannel::Canary => {
@@ -483,7 +488,12 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     } else {
       format!("libdenort.{lib_ext}")
     };
-    let binary_name = format!("libdenort-{target}.zip");
+    let engine_suffix = if compile_flags.engine.as_deref() == Some("quickjs") {
+      "-quickjs"
+    } else {
+      ""
+    };
+    let binary_name = format!("libdenort{engine_suffix}-{target}.zip");
 
     let binary_path_suffix = match DENO_VERSION_INFO.release_channel {
       ReleaseChannel::Canary => {

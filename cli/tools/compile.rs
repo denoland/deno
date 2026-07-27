@@ -1397,6 +1397,7 @@ mod test {
         app_name: None,
         minify: false,
         exclude_unused_npm: false,
+        engine: None,
       },
       &initial_cwd,
     );
@@ -1427,6 +1428,7 @@ mod test {
         app_name: None,
         minify: false,
         exclude_unused_npm: false,
+        engine: None,
       },
       &resolve_cwd(None).unwrap(),
       false,
@@ -1464,6 +1466,7 @@ mod test {
         app_name: None,
         minify: false,
         exclude_unused_npm: false,
+        engine: None,
       },
       &resolve_cwd(None).unwrap(),
       false,

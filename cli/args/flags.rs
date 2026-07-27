@@ -2413,6 +2413,13 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
           .value_parser(SUPPORTED_OS)
           .help_heading(COMPILE_HEADING),
       )
+      .arg(
+        Arg::new("engine")
+          .long("engine")
+          .help(cstr!("JS engine the compiled binary runs on <p(245)>(quickjs produces a smaller, experimental binary)</>"))
+          .value_parser(["v8", "quickjs"])
+          .help_heading(COMPILE_HEADING),
+      )
       .arg(no_code_cache_arg())
       .arg(
         Arg::new("no-terminal")
@@ -2573,6 +2580,13 @@ supported framework (Next.js, Astro, etc.) in the current directory.
             "Backend to use for the desktop app",
           )
           .value_parser(["webview", "cef", "raw"])
+          .help_heading(DESKTOP_HEADING),
+      )
+      .arg(
+        Arg::new("engine")
+          .long("engine")
+          .help("JS engine the desktop binary runs on (quickjs is smaller, experimental)")
+          .value_parser(["v8", "quickjs"])
           .help_heading(DESKTOP_HEADING),
       )
       .arg(
@@ -6915,6 +6929,7 @@ fn compile_parse(
   let args = script.collect();
   let output = matches.remove_one::<String>("output");
   let target = matches.remove_one::<String>("target");
+  let engine = matches.remove_one::<String>("engine");
   flags.watch = watch_arg_parse(matches)?;
   let icon = matches.remove_one::<String>("icon");
   let no_terminal = matches.get_flag("no-terminal");
@@ -6951,6 +6966,7 @@ fn compile_parse(
     app_name,
     minify,
     exclude_unused_npm,
+    engine,
   });
 
   Ok(())
@@ -6985,6 +7001,7 @@ fn desktop_parse(
   let icon = matches.remove_one::<String>("icon");
   let hmr = matches.get_flag("hmr");
   let backend = matches.remove_one::<String>("backend");
+  let engine = matches.remove_one::<String>("engine");
   let all_targets = matches.get_flag("all-targets");
   // Self-extracting packaging is opt-in via `--compress [<fmt>]`. Bare
   // `--compress` defaults to xz (decompressed by the system `tar` with no
@@ -7017,6 +7034,7 @@ fn desktop_parse(
     exclude,
     hmr,
     backend,
+    engine,
     all_targets,
     identifier: None,
     deep_links: Vec::new(),
@@ -14224,6 +14242,7 @@ mod tests {
           app_name: None,
           minify: false,
           exclude_unused_npm: false,
+          engine: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -14305,6 +14324,7 @@ mod tests {
           app_name: None,
           minify: false,
           exclude_unused_npm: false,
+          engine: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -14342,6 +14362,7 @@ mod tests {
           app_name: None,
           minify: false,
           exclude_unused_npm: false,
+          engine: None,
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
@@ -17507,6 +17528,7 @@ Usage: deno lint [OPTIONS] [files]...\n"
           app_name: None,
           minify: false,
           exclude_unused_npm: false,
+          engine: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         preload: svec!["p1.js", "./p2.js"],

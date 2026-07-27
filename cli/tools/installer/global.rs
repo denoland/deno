@@ -397,6 +397,7 @@ async fn install_global_compiled(
     app_name: None,
     minify: false,
     exclude_unused_npm: false,
+    engine: None,
   };
 
   let mut new_flags = flags.as_ref().clone();

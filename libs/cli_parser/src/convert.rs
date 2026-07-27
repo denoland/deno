@@ -2040,6 +2040,7 @@ fn compile_parse(result: &ParseResult, flags: &mut Flags) {
     app_name: result.get_one("app-name").map(|s| s.to_string()),
     minify: result.get_bool("minify"),
     exclude_unused_npm: result.get_bool("exclude-unused-npm"),
+    engine: result.get_one("engine").map(|s| s.to_string()),
   });
 }
 
@@ -2590,6 +2591,7 @@ fn desktop_parse(result: &ParseResult, flags: &mut Flags) {
     inspect_renderer,
     compress,
     exclude_unused_npm: result.get_bool("exclude-unused-npm"),
+    engine: result.get_one("engine").map(|s| s.to_string()),
   });
 }
 

@@ -196,6 +196,11 @@ pub struct CompileFlags {
   /// analyzable dynamic imports may not appear in the graph; pass
   /// `--include npm:<pkg>` for any such packages.
   pub exclude_unused_npm: bool,
+  /// JS engine the compiled binary should run on. `None` (the default) and
+  /// `Some("v8")` use the V8 `denort`; `Some("quickjs")` selects the smaller
+  /// experimental QuickJS `denort` (`denort-quickjs-<target>.zip`). Named
+  /// `engine` because `deno desktop --backend` already means the render backend.
+  pub engine: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -223,6 +228,9 @@ pub struct DesktopFlags {
   pub exclude: Vec<String>,
   pub hmr: bool,
   pub backend: Option<String>,
+  /// JS engine the desktop binary runs on (`v8` default, or `quickjs`). Distinct
+  /// from `backend`, which selects the render backend (webview/cef/raw).
+  pub engine: Option<String>,
   pub all_targets: bool,
   /// Reverse-DNS bundle / application identifier (e.g. `com.acme.foo`).
   /// Used for the macOS `CFBundleIdentifier`, the Linux `.desktop` file
