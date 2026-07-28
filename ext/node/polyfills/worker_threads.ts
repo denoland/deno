@@ -844,6 +844,9 @@ class NodeWorker extends EventEmitter {
     });
 
     this.#status = "TERMINATING";
+    // terminate() resolves from exit. The control loop emits exit only after
+    // the message loop drains, so both receives keep the parent event loop
+    // alive until shutdown finishes.
     if (this.#controlPromise) {
       core.refOpPromise(this.#controlPromise);
     }
