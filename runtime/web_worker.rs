@@ -1185,6 +1185,9 @@ fn print_worker_error(
   );
 }
 
+/// Stops worker coverage and profiling.
+/// A coverage error takes precedence. A profiler error is returned when
+/// coverage cleanup succeeds.
 fn stop_worker_activity(
   maybe_coverage_collector: &mut Option<CoverageCollector>,
   maybe_cpu_profiler: &mut Option<CpuProfiler>,
