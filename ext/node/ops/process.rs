@@ -572,7 +572,7 @@ fn get_resource_usage() -> [f64; 16] {
 
 /// Returns the cgroup-constrained memory limit, or 0 if unconstrained.
 /// This matches Node.js `process.constrainedMemory()` semantics.
-#[op2(fast)]
+#[op2(fast, stack_trace)]
 #[number]
 pub fn op_node_process_constrained_memory<TSys: ExtNodeSys + 'static>(
   state: &mut OpState,
@@ -581,7 +581,7 @@ pub fn op_node_process_constrained_memory<TSys: ExtNodeSys + 'static>(
   {
     state
       .borrow_mut::<PermissionsContainer>()
-      .check_sys("systemMemoryInfo", "node:process.constrainedMemory()")?;
+      .check_sys("systemMemoryInfo", "node:process.constrainedMemory")?;
     let sys = state.borrow::<TSys>();
     Ok(cgroup::cgroup_memory_limit(sys).unwrap_or(0))
   }
