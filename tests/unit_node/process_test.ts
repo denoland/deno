@@ -1916,6 +1916,36 @@ Deno.test({
 });
 
 Deno.test({
+  name: "process.setgroups reads each element exactly once",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  permissions: { sys: ["setgroups"] },
+  fn() {
+    // Validation happens in JS but the gid resolution happens in the op. If the
+    // op re-read the caller's array instead of a validated copy, an index
+    // accessor could hand the syscall a different value than the one that was
+    // checked. Counting reads pins that down: exactly one read per element.
+    //
+    // The getter yields a group name that cannot resolve, so this test can
+    // never reach the syscall itself, even when the suite runs as root.
+    let reads = 0;
+    const groups = [0];
+    Object.defineProperty(groups, 0, {
+      configurable: true,
+      get() {
+        reads++;
+        return "deno-nonexistent-group-name-xyz";
+      },
+    });
+
+    const err = assertThrows(
+      () => process.setgroups!(groups),
+    ) as Error & { code?: string };
+    assertEquals(err.code, "ERR_UNKNOWN_CREDENTIAL");
+    assertEquals(reads, 1);
+  },
+});
+
+Deno.test({
   name: "process.loadEnvFile()",
   async fn() {
     const dirPath = Deno.makeTempDirSync();

@@ -680,7 +680,15 @@ if (!isWindows) {
       // Validate elements here, not in the op, so errors match Node: an
       // out-of-range number must throw ERR_OUT_OF_RANGE instead of wrapping
       // to a garbage gid.
-      for (let i = 0; i < groups.length; i++) {
+      //
+      // Each validated element is copied into a fresh array, and that copy is
+      // what the op receives. `groups` may be an Array subclass or carry index
+      // accessors, so reading an element twice can yield two different values;
+      // handing the original to the op would let a getter swap in an unchecked
+      // gid after validation, or throw from inside the op.
+      const validated: (number | string)[] = [];
+      const len = groups.length;
+      for (let i = 0; i < len; i++) {
         const id = groups[i];
         if (typeof id === "number") {
           validateUint32(id, `groups[${i}]`);
@@ -691,9 +699,10 @@ if (!isWindows) {
             id,
           );
         }
+        ArrayPrototypePush(validated, id);
       }
       try {
-        op_node_process_setgroups(groups);
+        op_node_process_setgroups(validated);
       } catch (err) {
         throw denoErrorToNodeError(err as Error, { syscall: "setgroups" });
       }

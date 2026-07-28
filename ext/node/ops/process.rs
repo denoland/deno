@@ -461,10 +461,12 @@ pub fn op_node_process_setgroups<'a>(
     permissions.check_sys("setgroups", "node:process.setgroups")?;
   }
 
-  if !groups.is_array() {
-    return Err(ProcessError::InvalidParam("groups".to_string()));
-  }
-
+  // The JS wrapper is the only caller and always passes a freshly built array
+  // of numbers and strings (see `setgroups` in polyfills/process.ts). That
+  // matters: reading elements back out here runs index accessors, so passing
+  // the user's own array would let a getter return a different value than the
+  // one the wrapper validated, and would let a throwing getter leave a pending
+  // exception while this op returns an error.
   let arr = v8::Local::<v8::Array>::try_from(groups)
     .map_err(|_| ProcessError::InvalidParam("groups".to_string()))?;
   let len = arr.length();
@@ -481,11 +483,14 @@ pub fn op_node_process_setgroups<'a>(
     gids.push(gid);
   }
 
+  // `nix::unistd::setgroups` is compiled out on Apple targets, so this calls
+  // libc directly to keep macOS working. `ngroups` is `c_int` on the BSDs and
+  // `size_t` elsewhere; `as _` picks the right one per target.
   let raw: Vec<libc::gid_t> = gids.iter().map(|g| g.as_raw()).collect();
-  // SAFETY: raw holds valid gid_t values; pointer is valid for the call duration.
-  if unsafe { libc::setgroups(raw.len() as _, raw.as_ptr()) } != 0 {
-    return Err(std::io::Error::last_os_error().into());
-  }
+  // SAFETY: `raw` is a live, contiguous slice of `ngroups` initialized gid_t
+  // values that outlives the call, and setgroups only reads from it.
+  let res = unsafe { libc::setgroups(raw.len() as _, raw.as_ptr()) };
+  nix::errno::Errno::result(res)?;
 
   Ok(())
 }
