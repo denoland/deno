@@ -513,8 +513,15 @@ function newReadableStreamFromStreamReadable(
 
   const objectMode = streamReadable.readableObjectMode;
   const highWaterMark = streamReadable.readableHighWaterMark;
+  const isByteStream = options?.type === "bytes";
 
   const evaluateStrategyOrFallback = (strategy) => {
+    // A byte stream already measures its queue in bytes and the spec forbids
+    // giving it a size algorithm, so only the highWaterMark applies.
+    if (isByteStream) {
+      return { highWaterMark };
+    }
+
     // If there is a strategy available, use it
     if (strategy) {
       return strategy;
@@ -526,11 +533,23 @@ function newReadableStreamFromStreamReadable(
       return new CountQueuingStrategy({ highWaterMark });
     }
 
-    // When not running in objectMode explicitly, we just fall
-    // back to a minimal strategy that just specifies the highWaterMark
-    // and no size algorithm. Using a ByteLengthQueuingStrategy here
-    // is unnecessary.
-    return { highWaterMark };
+    // Outside of objectMode `highWaterMark` is a byte count, so the queue has
+    // to be measured in bytes as well. With the default size algorithm (1 per
+    // chunk) `controller.desiredSize` only reaches 0 after `highWaterMark`
+    // *chunks*, so `onData` below never pauses the source and the whole
+    // stream ends up buffered in memory instead of flowing with backpressure.
+    //
+    // Node uses a plain `ByteLengthQueuingStrategy` here, whose size algorithm
+    // reads `chunk.byteLength`. That is `undefined` for the strings a
+    // non-objectMode Readable emits once an encoding is set, which makes the
+    // enqueue throw `ERR_INVALID_ARG_VALUE`; fall back to the string length
+    // for those instead.
+    return {
+      highWaterMark,
+      size(chunk) {
+        return chunk.byteLength ?? chunk.length;
+      },
+    };
   };
 
   const strategy = evaluateStrategyOrFallback(options?.strategy);
@@ -577,7 +596,6 @@ function newReadableStreamFromStreamReadable(
 
   streamReadable.on("data", onData);
 
-  const isByteStream = options?.type === "bytes";
   const underlyingSource = {
     start(c) {
       controller = c;
