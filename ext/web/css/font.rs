@@ -1,7 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::rc::Rc;
-
 use cssparser::Token;
 use cssparser::match_ignore_ascii_case;
 use deno_core::WebIDL;
@@ -9,8 +7,8 @@ use deno_core::WebIDL;
 use super::error::CSSCustomError;
 use super::error::CSSParseError;
 use super::value::FontMetrics;
-use super::value::Length;
 use super::value::LengthResolution;
+use super::value::LengthValue;
 use super::value::NumericValue;
 use super::value::ParseOptions;
 use super::value::Parser;
@@ -118,65 +116,18 @@ impl CssFontStretch {
   }
 }
 
-/// A specified `letterSpacing` / `wordSpacing` value.
+/// Parses `letterSpacing` / `wordSpacing`.
 ///
 /// The spec stores the parsed `<length>` and serializes it back on getting, so
 /// font-relative units must resolve against the font in effect when the text is
 /// laid out rather than when the attribute was set.
 /// https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-letterspacing
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
-pub enum CanvasSpacing {
-  /// A single dimension, resolved lazily.
-  Length(Length),
-  /// A math function containing font-relative units. The calculation engine
-  /// works in pixels, so the specified text is retained and re-parsed against
-  /// the current metrics on each use.
-  Deferred(Rc<str>),
-}
-
-impl CanvasSpacing {
-  #[inline]
-  pub fn zero() -> Self {
-    Self::Length(Length::zero())
-  }
-
-  /// Whether resolving this value needs no font metrics.
-  #[inline]
-  pub fn is_absolute(&self) -> bool {
-    match self {
-      Self::Length(length) => length.is_absolute(),
-      Self::Deferred(_) => false,
-    }
-  }
-
-  pub fn resolve(&self, resolution: &LengthResolution) -> f64 {
-    match self {
-      Self::Length(length) => length.resolve(resolution),
-      // The text was accepted by `parse_css_spacing` once, so a re-parse only
-      // fails if the metrics changed what the math function can produce.
-      Self::Deferred(css) => match parse_spacing_length(css, resolution) {
-        Some((length, _)) => length.resolve(resolution),
-        None => 0.0,
-      },
-    }
-  }
-
-  pub fn to_css_string(&self) -> String {
-    match self {
-      Self::Length(length) => length.to_css_string(),
-      Self::Deferred(css) => css.to_string(),
-    }
-  }
-}
-
-/// Parses a `<length>` for `letterSpacing` / `wordSpacing`, reporting whether a
-/// font-relative unit had to be folded to pixels inside a math function.
-fn parse_spacing_length(
+pub fn parse_css_spacing(
   s: &str,
   resolution: &LengthResolution,
-) -> Option<(Length, bool)> {
-  let mut input = ParserInput::new(s.trim());
+) -> Option<LengthValue> {
+  let s = s.trim();
+  let mut input = ParserInput::new(s);
   let mut parser = Parser::new(&mut input);
   let parsed = NumericValue::parse_with_details(
     &mut parser,
@@ -191,19 +142,12 @@ fn parse_spacing_length(
   if !parser.is_exhausted() {
     return None;
   }
-  Some((length, parsed.folded_font_relative))
-}
-
-/// Parses `letterSpacing` / `wordSpacing`.
-pub fn parse_css_spacing(
-  s: &str,
-  resolution: &LengthResolution,
-) -> Option<CanvasSpacing> {
-  let (length, folded_font_relative) = parse_spacing_length(s, resolution)?;
-  if folded_font_relative {
-    return Some(CanvasSpacing::Deferred(Rc::from(s.trim())));
+  if parsed.lost_font_relative {
+    // The length tree cannot express this expression, so fall back to keeping
+    // the specified text and re-parsing it on use.
+    return Some(LengthValue::deferred(s));
   }
-  Some(CanvasSpacing::Length(length))
+  Some(length)
 }
 
 #[derive(Clone, Debug)]
@@ -218,9 +162,9 @@ pub struct FontState {
   pub font_kerning: FontKerning,
   pub font_variant_caps: FontVariantCaps,
   /// CSS letter-spacing value (default `0px`).
-  pub letter_spacing: CanvasSpacing,
+  pub letter_spacing: LengthValue,
   /// CSS word-spacing value (default `0px`).
-  pub word_spacing: CanvasSpacing,
+  pub word_spacing: LengthValue,
   pub text_rendering: TextRendering,
 }
 
@@ -236,8 +180,8 @@ impl Default for FontState {
       direction: TextDirection::default(),
       font_kerning: FontKerning::default(),
       font_variant_caps: FontVariantCaps::default(),
-      letter_spacing: CanvasSpacing::zero(),
-      word_spacing: CanvasSpacing::zero(),
+      letter_spacing: LengthValue::zero(),
+      word_spacing: LengthValue::zero(),
       text_rendering: TextRendering::default(),
     }
   }
@@ -842,7 +786,7 @@ mod tests {
     }
   }
 
-  fn spacing(s: &str, em: f64) -> Option<CanvasSpacing> {
+  fn spacing(s: &str, em: f64) -> Option<LengthValue> {
     parse_css_spacing(s, &LengthResolution::new(metrics(em)))
   }
 
@@ -1112,23 +1056,84 @@ mod tests {
 
   #[test]
   fn spacing_math_functions_resolve_lazily() {
-    // A math function over font-relative units is folded to pixels by the
-    // calculation engine, so the specified text is retained and re-parsed.
+    // A math function over font-relative units is retained as a tree, so it
+    // re-resolves against whichever font is in effect.
     let s = spacing("calc(1em + 2px)", 10.0).unwrap();
-    assert!(matches!(s, CanvasSpacing::Deferred(_)));
-    assert_eq!(s.to_css_string(), "calc(1em + 2px)");
+    assert!(matches!(s, LengthValue::Calc { .. }));
     assert_eq!(resolve("calc(1em + 2px)", 10.0), 12.0);
     assert_eq!(resolve("calc(1em + 2px)", 20.0), 22.0);
+    assert_eq!(resolve("calc(1em - 2px)", 20.0), 18.0);
+    assert_eq!(resolve("calc(2 * 1em)", 20.0), 40.0);
+    assert_eq!(resolve("calc(1em / 2)", 20.0), 10.0);
+    // ex is 0.5em and cap is 0.7em in the synthetic metrics.
+    assert_eq!(resolve("calc(1ex + 1cap)", 20.0), 24.0);
 
-    // Comparison functions are lazy too, because the whole text is re-parsed.
-    assert_eq!(resolve("calc(min(1em, 15px))", 10.0), 10.0);
-    assert_eq!(resolve("calc(min(1em, 15px))", 20.0), 15.0);
+    // Comparison and stepped functions keep their own nodes.
+    assert_eq!(resolve("min(1em, 15px)", 10.0), 10.0);
+    assert_eq!(resolve("min(1em, 15px)", 20.0), 15.0);
+    assert_eq!(resolve("max(1em, 15px)", 10.0), 15.0);
+    assert_eq!(resolve("clamp(5px, 1em, 15px)", 2.0), 5.0);
+    assert_eq!(resolve("clamp(5px, 1em, 15px)", 10.0), 10.0);
+    assert_eq!(resolve("clamp(5px, 1em, 15px)", 100.0), 15.0);
+    assert_eq!(resolve("clamp(none, 1em, 15px)", 100.0), 15.0);
+    assert_eq!(resolve("round(1em, 3px)", 10.0), 9.0);
+    assert_eq!(resolve("round(up, 1em, 3px)", 10.0), 12.0);
+    assert_eq!(resolve("mod(1em, 3px)", 10.0), 1.0);
+    assert_eq!(resolve("rem(1em, 3px)", 10.0), 1.0);
+    assert_eq!(resolve("abs(-1em)", 10.0), 10.0);
+    assert_eq!(resolve("hypot(3em, 4em)", 10.0), 50.0);
+    // Nesting composes.
+    assert_eq!(resolve("calc(min(1em, 15px) + 1px)", 10.0), 11.0);
+    assert_eq!(resolve("calc(min(1em, 15px) + 1px)", 20.0), 16.0);
 
-    // Only font-relative units force the re-parse; a viewport unit is a
-    // constant zero, so the folded pixel value stays correct.
+    // An expression over absolute units is already exact, so it collapses.
+    let s = spacing("calc(1px + 2px)", 10.0).unwrap();
+    assert!(matches!(s, LengthValue::Unit(_)));
+    assert_eq!(s.to_css_string(), "3px");
+
+    // A viewport unit is a constant zero, so it collapses too.
     let s = spacing("calc(1vw + 2px)", 10.0).unwrap();
-    assert!(matches!(s, CanvasSpacing::Length(_)));
+    assert!(matches!(s, LengthValue::Unit(_)));
     assert_eq!(s.to_css_string(), "2px");
+  }
+
+  #[test]
+  fn spacing_math_functions_serialize() {
+    // https://www.w3.org/TR/css-values-4/#calc-serialize
+    for (css, expected) in [
+      // Sum terms are sorted by unit, ASCII case-insensitively.
+      ("calc(2px + 1em)", "calc(1em + 2px)"),
+      ("calc(1em + 2px)", "calc(1em + 2px)"),
+      ("calc(1em - 2px)", "calc(1em - 2px)"),
+      // A tree that simplified to a single dimension drops the wrapper.
+      ("calc(1em * 2)", "2em"),
+      ("calc(1em / 2)", "0.5em"),
+      ("min(1em, 15px)", "min(1em, 15px)"),
+      ("max(1em, 15px)", "max(1em, 15px)"),
+      ("clamp(5px, 1em, 15px)", "clamp(5px, 1em, 15px)"),
+      ("clamp(none, 1em, 15px)", "clamp(none, 1em, 15px)"),
+      ("round(1em, 3px)", "round(1em, 3px)"),
+      ("round(to-zero, 1em, 3px)", "round(to-zero, 1em, 3px)"),
+      ("mod(1em, 3px)", "mod(1em, 3px)"),
+      ("rem(1em, 3px)", "rem(1em, 3px)"),
+      ("abs(-1em)", "1em"),
+      ("hypot(3em, 4em)", "hypot(3em, 4em)"),
+      ("calc(min(1em, 15px) + 1px)", "calc(1px + min(1em, 15px))"),
+    ] {
+      let s = spacing(css, 10.0).unwrap();
+      assert_eq!(s.to_css_string(), expected, "serializing {css}");
+    }
+  }
+
+  #[test]
+  fn spacing_font_dependent_number_falls_back_to_text() {
+    // The length tree cannot express a font dependency that flows through a
+    // `<number>` subexpression, so the specified text is retained instead.
+    let s = spacing("calc(sqrt(1em / 1px) * 1px)", 16.0).unwrap();
+    assert!(matches!(s, LengthValue::Deferred(_)));
+    assert_eq!(s.to_css_string(), "calc(sqrt(1em / 1px) * 1px)");
+    assert_eq!(resolve("calc(sqrt(1em / 1px) * 1px)", 16.0), 4.0);
+    assert_eq!(resolve("calc(sqrt(1em / 1px) * 1px)", 100.0), 10.0);
   }
 
   fn url(url: &str) -> FontSrc {

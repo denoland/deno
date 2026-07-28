@@ -656,10 +656,14 @@ impl OffscreenCanvasRenderingContext2D {
     };
 
     let value = value.to_rust_string_lossy(scope);
+    // Relative lengths in a filter resolve when the attribute is set, against
+    // the default value of the `font` attribute.
+    // https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-filter
+    let resolution = self.default_font_resolution();
     let functions = {
       let mut parser_input = FilterParserInput::new(&value);
       let result: Result<Vec<_>, _> =
-        FilterValueListParser::new(&mut parser_input).collect();
+        FilterValueListParser::new(&mut parser_input, resolution).collect();
       result.ok()
     };
     if let Some(functions) = functions {
@@ -878,7 +882,13 @@ impl OffscreenCanvasRenderingContext2D {
     scope: &mut v8::PinScope<'a, 'a>,
     options: v8::Local<'a, v8::Value>,
   ) -> Result<(), Canvas2DError> {
-    let layer_filter = parse_begin_layer_options(scope, options)?;
+    // A layer filter is a `<filter-value-list>` too, so its relative lengths
+    // resolve the same way `ctx.filter` does.
+    let layer_filter = parse_begin_layer_options(
+      scope,
+      options,
+      self.default_font_resolution(),
+    )?;
 
     let current_state = self.state.borrow().clone();
     let op = current_state.global_composite_operation;
@@ -2955,6 +2965,7 @@ fn check_image_data_size(w: u32, h: u32) -> Result<(), Canvas2DError> {
 fn parse_begin_layer_options<'a>(
   scope: &mut v8::PinScope<'a, 'a>,
   options: v8::Local<'a, v8::Value>,
+  resolution: LengthResolution,
 ) -> Result<LayerFilter, Canvas2DError> {
   if options.is_null_or_undefined() {
     return Ok(LayerFilter::Css(Vec::new()));
@@ -2980,7 +2991,7 @@ fn parse_begin_layer_options<'a>(
     let value = value.to_rust_string_lossy(scope);
     let mut parser_input = FilterParserInput::new(&value);
     let result: Result<Vec<_>, _> =
-      FilterValueListParser::new(&mut parser_input).collect();
+      FilterValueListParser::new(&mut parser_input, resolution).collect();
     return Ok(LayerFilter::Css(result.ok().unwrap_or_default()));
   }
   Ok(LayerFilter::Object(parse_filter_input(scope, filter)?))

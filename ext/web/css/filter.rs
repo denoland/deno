@@ -10,6 +10,7 @@ use super::error::CSSCustomError;
 use super::error::CSSParseError;
 use super::value::Angle;
 use super::value::Length;
+use super::value::LengthResolution;
 use super::value::NumericValue;
 use super::value::ParseOptions;
 
@@ -38,6 +39,7 @@ impl CssFilterFunction {
   #[inline]
   fn parse<'i, 't>(
     input: &mut Parser<'i, 't>,
+    resolution: &LengthResolution,
   ) -> Result<Self, CSSParseError<'i>> {
     let name = input.expect_function()?;
     match_ignore_ascii_case! { &name,
@@ -46,13 +48,12 @@ impl CssFilterFunction {
           if args.is_exhausted() {
             return Ok(CssFilterFunction::Blur(Length::zero()));
           }
-          let value = NumericValue::parse(args, ParseOptions::default())?;
-          let length = try_extract!(value, expect_length(true), args);
-          if length.to_pixels() < 0.0 {
+          let px = parse_length_px(args, resolution)?;
+          if px < 0.0 {
             return Err(args.new_custom_error(CSSCustomError::UnexpectedNumericType));
           }
           args.expect_exhausted()?;
-          Ok(CssFilterFunction::Blur(length))
+          Ok(CssFilterFunction::Blur(Length::from_pixels(px)))
         })
       },
       "brightness" => {
@@ -78,7 +79,7 @@ impl CssFilterFunction {
         })
       },
       "drop-shadow" => {
-        input.parse_nested_block(parse_drop_shadow)
+        input.parse_nested_block(|args| parse_drop_shadow(args, resolution))
       },
       "grayscale" => {
         input.parse_nested_block(|args| {
@@ -154,37 +155,52 @@ impl CssFilterFunction {
   }
 }
 
+/// Parses a `<length>` and resolves it to pixels.
+///
+/// Lengths in a `<filter-value-list>` are resolved when the attribute is set,
+/// so the value can be folded here.
+/// https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-filter
+#[inline]
+fn parse_length_px<'i, 't>(
+  args: &mut Parser<'i, 't>,
+  resolution: &LengthResolution,
+) -> Result<f64, CSSParseError<'i>> {
+  let value = NumericValue::parse(
+    args,
+    ParseOptions {
+      length_resolution: Some(*resolution),
+      ..Default::default()
+    },
+  )?;
+  let length = try_extract!(value, expect_length(true), args);
+  Ok(length.resolve(resolution))
+}
+
 #[inline]
 fn parse_drop_shadow<'i, 't>(
   args: &mut Parser<'i, 't>,
+  resolution: &LengthResolution,
 ) -> Result<CssFilterFunction, CSSParseError<'i>> {
-  let offset_x = NumericValue::parse(args, ParseOptions::default())?;
-  let offset_x = try_extract!(offset_x, expect_length(true), args);
-
-  let offset_y = NumericValue::parse(args, ParseOptions::default())?;
-  let offset_y = try_extract!(offset_y, expect_length(true), args);
+  let offset_x = Length::from_pixels(parse_length_px(args, resolution)?);
+  let offset_y = Length::from_pixels(parse_length_px(args, resolution)?);
 
   let mut blur_radius = Length::zero();
   let mut color = Color::BLACK;
 
   if !args.is_exhausted() {
     let state = args.state();
-    if let Ok(value) = NumericValue::parse(args, ParseOptions::default()) {
-      match value.expect_length(true) {
-        Ok(length) => {
-          if length.to_pixels() < 0.0 {
-            return Err(
-              args.new_custom_error(CSSCustomError::UnexpectedNumericType),
-            );
-          }
-          blur_radius = length;
+    match parse_length_px(args, resolution) {
+      Ok(px) => {
+        if px < 0.0 {
+          return Err(
+            args.new_custom_error(CSSCustomError::UnexpectedNumericType),
+          );
         }
-        Err(_) => {
-          args.reset(&state);
-        }
+        blur_radius = Length::from_pixels(px);
       }
-    } else {
-      args.reset(&state);
+      Err(_) => {
+        args.reset(&state);
+      }
     }
   }
 
@@ -202,15 +218,20 @@ fn parse_drop_shadow<'i, 't>(
 
 pub struct FilterValueListParser<'i, 't> {
   parser: Parser<'i, 't>,
+  resolution: LengthResolution,
   has_function: bool,
   finished: bool,
 }
 
 impl<'i: 't, 't> FilterValueListParser<'i, 't> {
   #[inline]
-  pub fn new(input: &'t mut ParserInput<'i>) -> Self {
+  pub fn new(
+    input: &'t mut ParserInput<'i>,
+    resolution: LengthResolution,
+  ) -> Self {
     Self {
       parser: Parser::new(input),
+      resolution,
       has_function: false,
       finished: false,
     }
@@ -253,7 +274,7 @@ impl<'i, 't> Iterator for FilterValueListParser<'i, 't> {
       }
     }
 
-    let result = CssFilterFunction::parse(input);
+    let result = CssFilterFunction::parse(input, &self.resolution);
     if result.is_ok() {
       self.has_function = true;
     } else {
@@ -266,11 +287,13 @@ impl<'i, 't> Iterator for FilterValueListParser<'i, 't> {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::css::font::default_font_resolution;
 
   fn parse(input: &str) -> Option<Vec<CssFilterFunction>> {
     let mut parser_input = ParserInput::new(input);
     let results: Result<Vec<_>, _> =
-      FilterValueListParser::new(&mut parser_input).collect();
+      FilterValueListParser::new(&mut parser_input, default_font_resolution())
+        .collect();
     results.ok()
   }
 
@@ -325,13 +348,49 @@ mod tests {
   }
 
   #[test]
-  fn filter_blur_non_px_rejected() {
-    // Filters have no metrics to resolve against, so every non-absolute unit
-    // is rejected rather than silently resolving to something wrong.
-    assert_eq!(parse("blur(5em)"), None);
-    assert_eq!(parse("blur(5lh)"), None);
-    assert_eq!(parse("blur(5vw)"), None);
-    assert_eq!(parse("blur(5cqmin)"), None);
+  fn filter_font_relative_lengths() {
+    // Resolved against the default value of the `font` attribute
+    // (`10px sans-serif`), with no face available for the metric-based units.
+    // https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-filter
+    assert_eq!(
+      parse("blur(5em)"),
+      Some(vec![CssFilterFunction::Blur(px(50.0))])
+    );
+    assert_eq!(
+      parse("blur(1ex)"),
+      Some(vec![CssFilterFunction::Blur(px(5.0))])
+    );
+    assert_eq!(
+      parse("blur(1lh)"),
+      Some(vec![CssFilterFunction::Blur(px(12.0))])
+    );
+    assert_eq!(
+      parse("blur(2rem)"),
+      Some(vec![CssFilterFunction::Blur(px(20.0))])
+    );
+    assert_eq!(
+      parse("drop-shadow(1em 2ex 1em red)"),
+      Some(vec![CssFilterFunction::DropShadow {
+        offset_x: px(10.0),
+        offset_y: px(10.0),
+        blur_radius: px(10.0),
+        color: Color::from_rgba8(255, 0, 0, 255),
+      }])
+    );
+    assert_eq!(parse("blur(-1em)"), None);
+  }
+
+  #[test]
+  fn filter_viewport_lengths_are_zero() {
+    // Canvas has no viewport, so these parse but contribute nothing.
+    assert_eq!(
+      parse("blur(5vw)"),
+      Some(vec![CssFilterFunction::Blur(px(0.0))])
+    );
+    assert_eq!(
+      parse("blur(5cqmin)"),
+      Some(vec![CssFilterFunction::Blur(px(0.0))])
+    );
   }
 
   // --- brightness / contrast / grayscale / invert / opacity / saturate / sepia ---

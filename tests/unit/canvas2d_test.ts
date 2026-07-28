@@ -865,20 +865,87 @@ Deno.test(
         return (width - ctx.measureText("AA").width) / 2;
       };
 
-      // The calculation engine works in pixels, so the specified text is kept
-      // and re-parsed against the current font on every use.
+      // A math function over font-relative units is kept as a tree, so it
+      // re-resolves against whichever font is in effect.
       assertEquals(ctx.letterSpacing, "0px");
-      ctx.letterSpacing = "calc(1em + 2px)";
-      assertEquals(ctx.letterSpacing, "calc(1em + 2px)");
-      ctx.letterSpacing = "0px";
       assertAlmostEquals(base("calc(1em + 2px)"), 12, SPACING_EPSILON);
-      assertAlmostEquals(base("calc(min(1em, 15px))"), 10, SPACING_EPSILON);
+      assertAlmostEquals(base("min(1em, 15px)"), 10, SPACING_EPSILON);
+      assertAlmostEquals(base("clamp(5px, 1em, 15px)"), 10, SPACING_EPSILON);
       ctx.font = "100px SpacingCalcFont";
       assertAlmostEquals(base("calc(1em + 2px)"), 102, SPACING_EPSILON);
-      assertAlmostEquals(base("calc(min(1em, 15px))"), 15, SPACING_EPSILON);
+      assertAlmostEquals(base("min(1em, 15px)"), 15, SPACING_EPSILON);
+      assertAlmostEquals(base("clamp(5px, 1em, 15px)"), 15, SPACING_EPSILON);
+      assertAlmostEquals(base("hypot(3em, 4em)"), 500, SPACING_EPSILON);
+
+      // The font dependency of `sqrt(1em / 1px)` flows through a <number>, so
+      // the tree cannot hold it and the specified text is retained instead.
+      assertAlmostEquals(
+        base("calc(sqrt(1em / 1px) * 1px)"),
+        10,
+        SPACING_EPSILON,
+      );
+      ctx.font = "25px SpacingCalcFont";
+      assertAlmostEquals(
+        base("calc(sqrt(1em / 1px) * 1px)"),
+        5,
+        SPACING_EPSILON,
+      );
     });
   },
 );
+
+Deno.test(function canvas2dSpacingMathFunctionSerialization() {
+  // https://www.w3.org/TR/css-values-4/#calc-serialize
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  for (
+    const [value, expected] of [
+      // Sum terms are sorted by unit, ASCII case-insensitively.
+      ["calc(2px + 1em)", "calc(1em + 2px)"],
+      ["calc(1em - 2px)", "calc(1em - 2px)"],
+      // A tree that simplified to a single dimension drops the wrapper.
+      ["calc(1em * 2)", "2em"],
+      ["abs(-1em)", "1em"],
+      ["min(1em, 15px)", "min(1em, 15px)"],
+      ["clamp(none, 1em, 15px)", "clamp(none, 1em, 15px)"],
+      ["round(to-zero, 1em, 3px)", "round(to-zero, 1em, 3px)"],
+      ["calc(min(1em, 15px) + 1px)", "calc(1px + min(1em, 15px))"],
+      // Absolute-only and viewport-only expressions are already exact.
+      ["calc(1px + 2px)", "3px"],
+      ["calc(1vw + 2px)", "2px"],
+    ]
+  ) {
+    ctx.letterSpacing = value;
+    assertEquals(ctx.letterSpacing, expected, `serializing ${value}`);
+  }
+  ctx.letterSpacing = "0px";
+});
+
+Deno.test(function canvas2dFilterFontRelativeLengths() {
+  // Relative lengths in a <filter-value-list> resolve against the default value
+  // of the `font` attribute, so they are accepted rather than rejected. The
+  // getter returns the specified string.
+  // https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-filter
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  for (
+    const value of [
+      "blur(1em)",
+      "blur(2rem)",
+      "blur(1ex)",
+      "blur(1lh)",
+      "blur(10vw)",
+      "drop-shadow(1em 2ex 1em red)",
+    ]
+  ) {
+    ctx.filter = value;
+    assertEquals(ctx.filter, value);
+    ctx.filter = "none";
+  }
+
+  // A negative blur is still invalid, so the previous value is kept.
+  ctx.filter = "blur(2px)";
+  ctx.filter = "blur(-1em)";
+  assertEquals(ctx.filter, "blur(2px)");
+});
 
 Deno.test(function canvas2dLangDefault() {
   const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;

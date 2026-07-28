@@ -2,6 +2,7 @@
 
 use std::f64;
 use std::ops;
+use std::rc::Rc;
 
 pub use cssparser::Parser;
 pub use cssparser::ParserInput;
@@ -283,6 +284,487 @@ impl Length {
     // `-0.10000000149011612`).
     format!("{}{}", self.value as f32, self.unit.to_css_str())
   }
+
+  /// Whether resolving this length needs the font metrics.
+  #[inline]
+  fn is_font_relative(&self) -> bool {
+    self.unit.is_font_relative()
+  }
+
+  #[inline]
+  fn scaled(&self, factor: f64) -> Self {
+    Self {
+      value: self.value * factor,
+      unit: self.unit,
+    }
+  }
+
+  #[inline]
+  fn abs(&self) -> Self {
+    Self {
+      value: self.value.abs(),
+      unit: self.unit,
+    }
+  }
+}
+
+/// https://www.w3.org/TR/css-values-4/#round-func
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RoundStrategy {
+  Nearest,
+  Up,
+  Down,
+  ToZero,
+}
+
+fn round_to_interval(
+  strategy: RoundStrategy,
+  value: f64,
+  interval: f64,
+) -> f64 {
+  if interval == 0.0
+    || value.is_nan()
+    || interval.is_nan()
+    || value.is_infinite() && interval.is_infinite()
+  {
+    return f64::NAN;
+  }
+  if value.is_infinite() {
+    return value;
+  }
+  if interval.is_infinite() {
+    return match strategy {
+      RoundStrategy::Up => {
+        if value > 0.0 {
+          f64::INFINITY
+        } else if value == 0.0 && value.is_sign_positive() {
+          0.0
+        } else {
+          -0.0
+        }
+      }
+      RoundStrategy::Down => {
+        if value < 0.0 {
+          f64::NEG_INFINITY
+        } else if value == 0.0 && value.is_sign_negative() {
+          -0.0
+        } else {
+          0.0
+        }
+      }
+      RoundStrategy::Nearest | RoundStrategy::ToZero => {
+        if value.is_sign_positive() { 0.0 } else { -0.0 }
+      }
+    };
+  }
+  let interval = interval.abs();
+  let quotient = value / interval;
+  let rounded = match strategy {
+    RoundStrategy::Nearest => (quotient + 0.5).floor(),
+    RoundStrategy::Up => quotient.ceil(),
+    RoundStrategy::Down => quotient.floor(),
+    RoundStrategy::ToZero => quotient.trunc(),
+  };
+  rounded * interval
+}
+
+/// https://www.w3.org/TR/css-values-4/#funcdef-hypot
+fn hypot(args: &[f64]) -> f64 {
+  match *args {
+    [] => 0.0,
+    [arg1] => arg1.abs(),
+    [arg1, arg2] => arg1.hypot(arg2),
+    _ => {
+      let mut sum = 0.0;
+      let mut scale = 0.0;
+      for &arg in args {
+        let value = arg.abs();
+        if !value.is_finite() {
+          return value;
+        }
+        if scale < value {
+          let div = scale / value;
+          sum = sum * div * div + 1.0;
+          scale = value;
+        } else if value > 0.0 {
+          let div = value / scale;
+          sum += div * div;
+        }
+      }
+      scale * sum.sqrt()
+    }
+  }
+}
+
+/// A `<length>` expression kept in symbolic form, modelled on CSS Typed OM's
+/// `CSSNumericValue` tree, so that font-relative units resolve against the font
+/// in effect when the value is used rather than when it was parsed.
+/// https://drafts.css-houdini.org/css-typed-om-1/#numeric-objects
+#[derive(Clone, Debug, PartialEq)]
+pub enum LengthCalc {
+  /// `CSSUnitValue`
+  Unit(Length),
+  /// `CSSMathSum`
+  Sum(Box<[LengthCalc]>),
+  /// `CSSMathProduct` with a scalar factor. Also covers `CSSMathNegate`
+  /// (factor -1) and division by a `<number>` (factor 1/n).
+  Scale { factor: f64, value: Box<LengthCalc> },
+  /// `CSSMathMin`
+  Min(Box<[LengthCalc]>),
+  /// `CSSMathMax`
+  Max(Box<[LengthCalc]>),
+  /// https://www.w3.org/TR/css-values-4/#funcdef-clamp
+  Clamp {
+    min: Option<Box<LengthCalc>>,
+    value: Box<LengthCalc>,
+    max: Option<Box<LengthCalc>>,
+  },
+  /// https://www.w3.org/TR/css-values-4/#round-func
+  Round {
+    strategy: RoundStrategy,
+    value: Box<LengthCalc>,
+    interval: Box<LengthCalc>,
+  },
+  /// https://www.w3.org/TR/css-values-4/#funcdef-mod
+  Mod {
+    dividend: Box<LengthCalc>,
+    divisor: Box<LengthCalc>,
+  },
+  /// https://www.w3.org/TR/css-values-4/#funcdef-rem
+  Rem {
+    dividend: Box<LengthCalc>,
+    divisor: Box<LengthCalc>,
+  },
+  /// https://www.w3.org/TR/css-values-4/#funcdef-abs
+  Abs(Box<LengthCalc>),
+  /// https://www.w3.org/TR/css-values-4/#funcdef-hypot
+  Hypot(Box<[LengthCalc]>),
+}
+
+impl LengthCalc {
+  /// Multiplies by a scalar, folding into the leaf when possible so simple
+  /// products do not grow the tree.
+  fn scale(self, factor: f64) -> Self {
+    match self {
+      Self::Unit(length) => Self::Unit(length.scaled(factor)),
+      Self::Scale {
+        factor: inner,
+        value,
+      } => Self::Scale {
+        factor: inner * factor,
+        value,
+      },
+      value => Self::Scale {
+        factor,
+        value: Box::new(value),
+      },
+    }
+  }
+
+  /// https://www.w3.org/TR/css-values-4/#funcdef-abs
+  fn abs(self) -> Self {
+    match self {
+      // "Simplify a calculation tree" folds `abs()` of a numeric value.
+      Self::Unit(length) => Self::Unit(length.abs()),
+      value => Self::Abs(Box::new(value)),
+    }
+  }
+
+  fn sum(terms: Vec<Self>) -> Self {
+    match <[Self; 1]>::try_from(terms) {
+      Ok([single]) => single,
+      Err(terms) => Self::Sum(terms.into_boxed_slice()),
+    }
+  }
+
+  pub fn resolve(&self, resolution: &LengthResolution) -> f64 {
+    match self {
+      Self::Unit(length) => length.resolve(resolution),
+      Self::Sum(terms) => {
+        terms.iter().map(|term| term.resolve(resolution)).sum()
+      }
+      Self::Scale { factor, value } => value.resolve(resolution) * factor,
+      Self::Min(terms) => terms
+        .iter()
+        .map(|term| term.resolve(resolution))
+        .fold(f64::INFINITY, minimum),
+      Self::Max(terms) => terms
+        .iter()
+        .map(|term| term.resolve(resolution))
+        .fold(f64::NEG_INFINITY, maximum),
+      Self::Clamp { min, value, max } => {
+        let low = min
+          .as_ref()
+          .map_or(f64::NEG_INFINITY, |min| min.resolve(resolution));
+        let high = max
+          .as_ref()
+          .map_or(f64::INFINITY, |max| max.resolve(resolution));
+        maximum(low, minimum(value.resolve(resolution), high))
+      }
+      Self::Round {
+        strategy,
+        value,
+        interval,
+      } => round_to_interval(
+        *strategy,
+        value.resolve(resolution),
+        interval.resolve(resolution),
+      ),
+      Self::Mod { dividend, divisor } => dividend
+        .resolve(resolution)
+        .rem_euclid(divisor.resolve(resolution)),
+      Self::Rem { dividend, divisor } => {
+        dividend.resolve(resolution) % divisor.resolve(resolution)
+      }
+      Self::Abs(value) => value.resolve(resolution).abs(),
+      Self::Hypot(terms) => hypot(
+        &terms
+          .iter()
+          .map(|term| term.resolve(resolution))
+          .collect::<Vec<_>>(),
+      ),
+    }
+  }
+
+  /// The unit a term is sorted by. `None` sorts after every dimension, matching
+  /// step 5 of "sort a calculation's children".
+  #[inline]
+  fn sort_unit(&self) -> Option<&'static str> {
+    match self {
+      Self::Unit(length) => Some(length.unit.to_css_str()),
+      _ => None,
+    }
+  }
+
+  /// Serializes the node without the outer `calc()` wrapper.
+  fn serialize(&self) -> String {
+    match self {
+      Self::Unit(length) => length.to_css_string(),
+      Self::Sum(terms) => {
+        // https://www.w3.org/TR/css-values-4/#sort-a-calculations-children
+        let mut sorted = terms.iter().collect::<Vec<_>>();
+        sorted.sort_by(|a, b| match (a.sort_unit(), b.sort_unit()) {
+          (Some(a), Some(b)) => a.cmp(b),
+          (Some(_), None) => std::cmp::Ordering::Less,
+          (None, Some(_)) => std::cmp::Ordering::Greater,
+          (None, None) => std::cmp::Ordering::Equal,
+        });
+        let mut out = String::new();
+        for (index, term) in sorted.iter().enumerate() {
+          // A negative leaf reads better as a subtraction, which is also what
+          // CSSOM serializes.
+          match term {
+            Self::Unit(length) if length.value < 0.0 && index > 0 => {
+              out.push_str(" - ");
+              out.push_str(&length.scaled(-1.0).to_css_string());
+              continue;
+            }
+            _ => {}
+          }
+          if index > 0 {
+            out.push_str(" + ");
+          }
+          out.push_str(&term.serialize());
+        }
+        out
+      }
+      Self::Scale { factor, value } => {
+        format!("{} * {}", *factor as f32, value.serialize())
+      }
+      Self::Min(terms) => format!("min({})", serialize_list(terms)),
+      Self::Max(terms) => format!("max({})", serialize_list(terms)),
+      Self::Clamp { min, value, max } => {
+        let min = min.as_ref().map_or("none".to_string(), |m| m.serialize());
+        let max = max.as_ref().map_or("none".to_string(), |m| m.serialize());
+        format!("clamp({min}, {}, {max})", value.serialize())
+      }
+      Self::Round {
+        strategy,
+        value,
+        interval,
+      } => {
+        let value = value.serialize();
+        let interval = interval.serialize();
+        match strategy {
+          RoundStrategy::Nearest => format!("round({value}, {interval})"),
+          RoundStrategy::Up => format!("round(up, {value}, {interval})"),
+          RoundStrategy::Down => format!("round(down, {value}, {interval})"),
+          RoundStrategy::ToZero => {
+            format!("round(to-zero, {value}, {interval})")
+          }
+        }
+      }
+      Self::Mod { dividend, divisor } => {
+        format!("mod({}, {})", dividend.serialize(), divisor.serialize())
+      }
+      Self::Rem { dividend, divisor } => {
+        format!("rem({}, {})", dividend.serialize(), divisor.serialize())
+      }
+      Self::Abs(value) => format!("abs({})", value.serialize()),
+      Self::Hypot(terms) => format!("hypot({})", serialize_list(terms)),
+    }
+  }
+
+  /// The CSSOM serialization: `calc()` wraps a sum or product, a named function
+  /// serializes as itself, and a tree that simplified down to a single dimension
+  /// serializes as that dimension.
+  /// https://www.w3.org/TR/css-values-4/#calc-serialize
+  pub fn to_css_string(&self) -> String {
+    match self {
+      Self::Sum(_) | Self::Scale { .. } => {
+        format!("calc({})", self.serialize())
+      }
+      _ => self.serialize(),
+    }
+  }
+}
+
+fn serialize_list(terms: &[LengthCalc]) -> String {
+  terms
+    .iter()
+    .map(LengthCalc::serialize)
+    .collect::<Vec<_>>()
+    .join(", ")
+}
+
+/// A specified `<length>`.
+#[derive(Clone, Debug, PartialEq)]
+pub enum LengthValue {
+  /// `CSSUnitValue`: a single dimension, e.g. `3px`, `1ex`, `1vw`.
+  Unit(Length),
+  /// A math function over font-relative units. `px` is the value resolved
+  /// against the metrics in effect at parse time, kept so the calculation
+  /// engine can keep working in pixels; `tree` re-resolves against the font
+  /// actually in use.
+  Calc { px: f64, tree: Rc<LengthCalc> },
+  /// A math function whose font dependency flows through a `<number>`
+  /// subexpression (e.g. `calc(sqrt(1em / 1px) * 1px)`), which the length tree
+  /// cannot represent. Retained as specified text and re-parsed on use.
+  Deferred(Rc<str>),
+}
+
+impl LengthValue {
+  #[inline]
+  pub(crate) fn zero() -> Self {
+    Self::Unit(Length::zero())
+  }
+
+  #[inline]
+  pub(crate) fn from_pixels(value: f64) -> Self {
+    Self::Unit(Length::from_pixels(value))
+  }
+
+  #[inline]
+  fn from_calc(px: f64, tree: LengthCalc) -> Self {
+    Self::Calc {
+      px,
+      tree: Rc::new(tree),
+    }
+  }
+
+  #[inline]
+  pub(crate) fn deferred(css: &str) -> Self {
+    Self::Deferred(Rc::from(css))
+  }
+
+  /// Whether resolving this value needs no font metrics.
+  #[inline]
+  pub fn is_absolute(&self) -> bool {
+    match self {
+      Self::Unit(length) => length.is_absolute(),
+      Self::Calc { .. } | Self::Deferred(_) => false,
+    }
+  }
+
+  /// Whether the font metrics affect this value.
+  #[inline]
+  fn is_font_dependent(&self) -> bool {
+    match self {
+      Self::Unit(length) => length.is_font_relative(),
+      Self::Calc { .. } | Self::Deferred(_) => true,
+    }
+  }
+
+  /// The symbolic form of this value, for building a larger tree.
+  #[inline]
+  fn to_calc(&self) -> LengthCalc {
+    match self {
+      Self::Unit(length) => LengthCalc::Unit(*length),
+      Self::Calc { tree, .. } => (**tree).clone(),
+      // Never reached: `Deferred` is only produced after parsing finishes.
+      Self::Deferred(_) => LengthCalc::Unit(Length::zero()),
+    }
+  }
+
+  /// Resolves an absolute `<length>` to pixels.
+  #[inline]
+  pub fn to_pixels(&self) -> f64 {
+    match self {
+      Self::Unit(length) => length.to_pixels(),
+      Self::Calc { px, .. } => *px,
+      Self::Deferred(_) => {
+        debug_assert!(false, "deferred length has no absolute value");
+        0.0
+      }
+    }
+  }
+
+  /// Resolves a `<length>` to pixels against the given metrics.
+  pub fn resolve(&self, resolution: &LengthResolution) -> f64 {
+    match self {
+      Self::Unit(length) => length.resolve(resolution),
+      Self::Calc { tree, .. } => tree.resolve(resolution),
+      // The text was accepted by the caller once, so a re-parse only fails if
+      // the metrics changed what the math function can produce.
+      Self::Deferred(css) => parse_length_text(css, resolution).unwrap_or(0.0),
+    }
+  }
+
+  pub fn to_css_string(&self) -> String {
+    match self {
+      Self::Unit(length) => length.to_css_string(),
+      Self::Calc { tree, .. } => tree.to_css_string(),
+      Self::Deferred(css) => css.to_string(),
+    }
+  }
+
+  /// `abs()` keeps the specified unit rather than converting to pixels.
+  /// https://www.w3.org/TR/css-values-4/#funcdef-abs
+  fn abs(self) -> Self {
+    match self {
+      Self::Unit(length) => Self::Unit(length.abs()),
+      Self::Calc { px, tree } => {
+        Self::from_calc(px.abs(), (*tree).clone().abs())
+      }
+      deferred => deferred,
+    }
+  }
+
+  /// The number as specified, used by `sign()`, which does no unit conversion.
+  #[inline]
+  fn specified_value(&self) -> f64 {
+    match self {
+      Self::Unit(length) => length.value,
+      Self::Calc { px, .. } => *px,
+      Self::Deferred(_) => 0.0,
+    }
+  }
+}
+
+/// Re-parses a specified `<length>` and resolves it against `resolution`.
+fn parse_length_text(css: &str, resolution: &LengthResolution) -> Option<f64> {
+  let mut input = ParserInput::new(css);
+  let mut parser = Parser::new(&mut input);
+  let value = NumericValue::parse(
+    &mut parser,
+    ParseOptions {
+      length_resolution: Some(*resolution),
+      ..Default::default()
+    },
+  )
+  .ok()?;
+  parser.is_exhausted().then_some(())?;
+  Some(value.expect_length(true).ok()?.resolve(resolution))
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -510,7 +992,7 @@ pub enum NumericValue {
   Zero,
   Number(f64),
   Percent(f64),
-  Length(Length),
+  Length(LengthValue),
   Angle(Angle),
   Time(Time),
   Frequency(Frequency),
@@ -518,9 +1000,9 @@ pub enum NumericValue {
   Flex(f64),
 }
 
-impl From<Length> for NumericValue {
+impl From<LengthValue> for NumericValue {
   #[inline]
-  fn from(value: Length) -> Self {
+  fn from(value: LengthValue) -> Self {
     NumericValue::Length(value)
   }
 }
@@ -585,11 +1067,11 @@ impl NumericValue {
   pub fn expect_length(
     self,
     allow_zero: bool,
-  ) -> Result<Length, CSSCustomError> {
+  ) -> Result<LengthValue, CSSCustomError> {
     match self {
       NumericValue::Zero => {
         if allow_zero {
-          Ok(Length::from_pixels(0.0))
+          Ok(LengthValue::from_pixels(0.0))
         } else {
           Err(CSSCustomError::UnexpectedNumericType)
         }
@@ -733,6 +1215,11 @@ impl ops::SubAssign<&Dimension> for Dimension {
 struct MathValue {
   value: f64,
   dimension: Dimension,
+  /// Symbolic `<length>` form, kept while the dimension is a length and no
+  /// font-dependent `<number>` has entered the computation.
+  calc: Option<LengthCalc>,
+  /// Whether a font-relative unit contributed anywhere in this value.
+  font_dependent: bool,
 }
 
 impl From<NumericValue> for MathValue {
@@ -741,27 +1228,34 @@ impl From<NumericValue> for MathValue {
       NumericValue::Zero => MathValue {
         value: 0.0,
         dimension: Dimension::NUMBER,
+        calc: None,
+        font_dependent: false,
       },
       NumericValue::Number(value) => MathValue {
         value,
         dimension: Dimension::NUMBER,
+        calc: None,
+        font_dependent: false,
       },
       NumericValue::Percent(value) => MathValue {
         value,
         dimension: Dimension::PERCENT,
+        calc: None,
+        font_dependent: false,
       },
-      NumericValue::Length(length) => {
-        let value = length.to_pixels();
-        MathValue {
-          value,
-          dimension: Dimension::LENGTH,
-        }
-      }
+      NumericValue::Length(length) => MathValue {
+        value: length.to_pixels(),
+        dimension: Dimension::LENGTH,
+        font_dependent: length.is_font_dependent(),
+        calc: Some(length.to_calc()),
+      },
       NumericValue::Angle(angle) => {
         let value = angle.to_degrees();
         MathValue {
           value,
           dimension: Dimension::ANGLE,
+          calc: None,
+          font_dependent: false,
         }
       }
       NumericValue::Time(time) => {
@@ -769,6 +1263,8 @@ impl From<NumericValue> for MathValue {
         MathValue {
           value,
           dimension: Dimension::TIME,
+          calc: None,
+          font_dependent: false,
         }
       }
       NumericValue::Frequency(frequency) => {
@@ -776,6 +1272,8 @@ impl From<NumericValue> for MathValue {
         MathValue {
           value,
           dimension: Dimension::FREQUENCY,
+          calc: None,
+          font_dependent: false,
         }
       }
       NumericValue::Resolution(resolution) => {
@@ -783,11 +1281,15 @@ impl From<NumericValue> for MathValue {
         MathValue {
           value,
           dimension: Dimension::RESOLUTION,
+          calc: None,
+          font_dependent: false,
         }
       }
       NumericValue::Flex(value) => MathValue {
         value,
         dimension: Dimension::FLEX,
+        calc: None,
+        font_dependent: false,
       },
     }
   }
@@ -803,7 +1305,7 @@ impl TryFrom<MathValue> for NumericValue {
     } else if math.is_percent() {
       Ok(NumericValue::Percent(value))
     } else if math.is_length() {
-      Ok(Length::from_pixels(value).into())
+      Ok(math.into_length_value().into())
     } else if math.is_angle() {
       Ok(Angle::from_degrees(value).into())
     } else if math.is_time() {
@@ -870,12 +1372,28 @@ impl MathValue {
   /// Returns self unchanged if not a percent.
   fn resolve_percent_as_length(self, base: f64) -> Self {
     if self.is_percent() {
+      // The base is the parent font size, which is fixed for the value being
+      // parsed, so the result is a plain pixel length.
+      let value = self.value * base;
       MathValue {
-        value: self.value * base,
+        value,
         dimension: Dimension::LENGTH,
+        calc: Some(LengthCalc::Unit(Length::from_pixels(value))),
+        font_dependent: self.font_dependent,
       }
     } else {
       self
+    }
+  }
+
+  /// The `<length>` this value represents, keeping its symbolic form when the
+  /// font metrics still matter and the tree survived the computation.
+  fn into_length_value(self) -> LengthValue {
+    match self.calc {
+      Some(tree) if self.font_dependent => {
+        LengthValue::from_calc(self.value, tree)
+      }
+      _ => LengthValue::from_pixels(self.value),
     }
   }
 
@@ -887,6 +1405,7 @@ impl MathValue {
     if self.dimension != other.dimension {
       return Err(self.dimension_mismatch_error(other));
     }
+    self.add_terms(other, 1.0);
     self.value += other.value;
     Ok(())
   }
@@ -899,8 +1418,45 @@ impl MathValue {
     if self.dimension != other.dimension {
       return Err(self.dimension_mismatch_error(other));
     }
+    self.add_terms(other, -1.0);
     self.value -= other.value;
     Ok(())
+  }
+
+  /// Combines the symbolic length forms of a sum or difference into a
+  /// `CSSMathSum`, dropping it if either side has already lost its form.
+  fn add_terms(&mut self, other: &MathValue, sign: f64) {
+    self.font_dependent |= other.font_dependent;
+    if !self.is_length() {
+      self.calc = None;
+      return;
+    }
+    let (Some(left), Some(right)) = (self.calc.take(), other.calc.clone())
+    else {
+      self.calc = None;
+      return;
+    };
+    let right = if sign < 0.0 { right.scale(sign) } else { right };
+    let mut terms = match left {
+      LengthCalc::Sum(terms) => terms.into_vec(),
+      left => vec![left],
+    };
+    terms.push(right);
+    self.calc = Some(LengthCalc::sum(terms));
+  }
+
+  /// Scales the symbolic length form by a `<number>` factor. A factor that is
+  /// itself font-dependent, or a quotient of two lengths, cannot be expressed
+  /// in the tree, so the form is dropped.
+  fn scale_terms(&mut self, other: &MathValue, factor: f64) {
+    self.font_dependent |= other.font_dependent;
+    if !other.is_number() || other.font_dependent {
+      self.calc = None;
+      return;
+    }
+    if let Some(tree) = self.calc.take() {
+      self.calc = Some(tree.scale(factor));
+    }
   }
 
   #[inline]
@@ -920,11 +1476,11 @@ impl MathValue {
   }
 
   #[inline]
-  fn expect_length(self) -> Result<Length, CSSCustomError> {
+  fn expect_length(self) -> Result<LengthValue, CSSCustomError> {
     if !self.is_length() {
       return Err(CSSCustomError::UnexpectedNumericType);
     }
-    Ok(Length::from_pixels(self.value))
+    Ok(self.into_length_value())
   }
 
   #[inline]
@@ -971,6 +1527,7 @@ impl MathValue {
 impl ops::MulAssign<&MathValue> for MathValue {
   #[inline]
   fn mul_assign(&mut self, rhs: &Self) {
+    self.scale_terms(rhs, rhs.value);
     self.value *= rhs.value;
     self.dimension += &rhs.dimension;
   }
@@ -979,6 +1536,7 @@ impl ops::MulAssign<&MathValue> for MathValue {
 impl ops::DivAssign<&MathValue> for MathValue {
   #[inline]
   fn div_assign(&mut self, rhs: &Self) {
+    self.scale_terms(rhs, 1.0 / rhs.value);
     self.value /= rhs.value;
     self.dimension -= &rhs.dimension;
   }
@@ -1039,7 +1597,10 @@ impl NumericAccumulator {
   }
 
   #[inline]
-  fn expect_length(self, allow_zero: bool) -> Result<Length, CSSCustomError> {
+  fn expect_length(
+    self,
+    allow_zero: bool,
+  ) -> Result<LengthValue, CSSCustomError> {
     match self {
       NumericAccumulator::Numeric(numeric) => numeric.expect_length(allow_zero),
       NumericAccumulator::Math(math) => math.expect_length(),
@@ -1127,10 +1688,8 @@ struct ParseState {
   function_depth: u8,
   length_resolution: Option<LengthResolution>,
   channel_keywords: Option<ChannelKeywords>,
-  /// Set when a font-relative unit had to be folded to pixels inside a math
-  /// function, so callers know the result is only valid for the metrics it was
-  /// parsed with.
-  folded_font_relative: bool,
+  /// Set when a font-relative unit was consumed anywhere in the value.
+  saw_font_relative: bool,
 }
 
 impl ParseState {
@@ -1139,7 +1698,7 @@ impl ParseState {
       function_depth: 0,
       length_resolution: opts.length_resolution,
       channel_keywords: opts.channel_keywords,
-      folded_font_relative: false,
+      saw_font_relative: false,
     }
   }
 
@@ -1191,6 +1750,78 @@ macro_rules! try_extract_as_raw {
   };
 }
 
+/// The `<length>` operands of a math function, collected so the result can keep
+/// a symbolic form when it still depends on the font metrics.
+struct LengthOperands {
+  trees: Vec<LengthCalc>,
+  font_dependent: bool,
+}
+
+impl LengthOperands {
+  /// `None` when the function is not operating on `<length>` values.
+  #[inline]
+  fn start(value: &NumericValue) -> Option<Self> {
+    match value {
+      NumericValue::Length(length) => Some(Self {
+        trees: vec![length.to_calc()],
+        font_dependent: length.is_font_dependent(),
+      }),
+      _ => None,
+    }
+  }
+
+  #[inline]
+  fn push(&mut self, value: &LengthValue) {
+    self.font_dependent |= value.is_font_dependent();
+    self.trees.push(value.to_calc());
+  }
+
+  /// The operands, only when the result still depends on the font metrics; an
+  /// expression over absolute units is already exact in pixels.
+  #[inline]
+  fn into_trees(self) -> Option<Vec<LengthCalc>> {
+    self.font_dependent.then_some(self.trees)
+  }
+}
+
+/// Appends an operand when both the collector and the operand are lengths.
+#[inline]
+fn push_operand(
+  operands: &mut Option<LengthOperands>,
+  value: &Option<LengthValue>,
+) {
+  if let (Some(operands), Some(value)) = (operands.as_mut(), value) {
+    operands.push(value);
+  }
+}
+
+/// Extracts an operand that must have the same numeric kind as `$type_ref`,
+/// keeping the `<length>` itself alongside the raw value the calculation engine
+/// works with.
+macro_rules! try_extract_operand {
+  ($expr:expr, $type_ref:expr, $input:expr) => {
+    match &$type_ref {
+      NumericValue::Length(_) => {
+        let length = try_extract!($expr, expect_length(false), $input);
+        (length.to_pixels(), Some(length))
+      }
+      _ => (try_extract_as_raw!($expr, $type_ref, $input), None),
+    }
+  };
+}
+
+/// Like [`from_raw`], but attaches a symbolic `<length>` form when one survived.
+macro_rules! from_raw_with_calc {
+  ($value:expr, $type_ref:expr, $calc:expr) => {
+    match (&$type_ref, $calc) {
+      (NumericValue::Length(_), Some(tree)) => {
+        NumericValue::Length(LengthValue::from_calc($value, tree))
+      }
+      _ => from_raw!($value, $type_ref),
+    }
+  };
+}
+
 macro_rules! from_raw {
   ($value:expr, $type_ref:expr) => {
     match &$type_ref {
@@ -1198,7 +1829,7 @@ macro_rules! from_raw {
       NumericValue::Number(_) => NumericValue::Number($value),
       NumericValue::Percent(_) => NumericValue::Percent($value),
       NumericValue::Length(_) => {
-        NumericValue::Length(Length::from_pixels($value))
+        NumericValue::Length(LengthValue::from_pixels($value))
       }
       NumericValue::Angle(_) => {
         NumericValue::Angle(Angle::from_degrees($value))
@@ -1219,11 +1850,11 @@ macro_rules! from_raw {
 /// about it.
 pub struct ParsedNumericValue {
   pub value: NumericValue,
-  /// Whether a font-relative unit was folded to pixels inside a math function.
-  /// Such a value is only correct for the metrics it was parsed with, so
-  /// callers that must survive a font change have to retain the specified text
-  /// and re-parse it instead.
-  pub folded_font_relative: bool,
+  /// Whether the value depends on the font metrics but kept no form that can be
+  /// re-resolved, because the dependency flowed through a `<number>`
+  /// subexpression the length tree cannot express. Callers that must survive a
+  /// font change have to retain the specified text and re-parse it instead.
+  pub lost_font_relative: bool,
 }
 
 impl NumericValue {
@@ -1242,8 +1873,9 @@ impl NumericValue {
     let result = Self::parse_inner(input, &mut state)?;
     match result.expect_numeric() {
       Ok(value) => Ok(ParsedNumericValue {
+        lost_font_relative: state.saw_font_relative
+          && !matches!(&value, Self::Length(length) if length.is_font_dependent()),
         value,
-        folded_font_relative: state.folded_font_relative,
       }),
       Err(error) => Err(input.new_custom_error(error)),
     }
@@ -1276,7 +1908,10 @@ impl NumericValue {
         if let Some(unit) = LengthUnit::parse(unit) {
           let length = Length { value, unit };
           if unit.is_absolute() {
-            return Ok(NumericValue::Length(length).into());
+            return Ok(NumericValue::Length(LengthValue::Unit(length)).into());
+          }
+          if unit.is_font_relative() {
+            state.saw_font_relative = true;
           }
           let Some(resolution) = state.length_resolution else {
             return Err(
@@ -1285,15 +1920,19 @@ impl NumericValue {
             );
           };
           if state.function_depth == 0 {
-            return Ok(NumericValue::Length(length).into());
+            return Ok(NumericValue::Length(LengthValue::Unit(length)).into());
           }
-          if unit.is_font_relative() {
-            state.folded_font_relative = true;
-          }
+          // Inside a math function the engine works in pixels, so fold the
+          // value. Font-relative units keep their symbolic form so they can be
+          // re-resolved; viewport and container units are a constant zero, so
+          // the folded pixel value stays correct.
+          let px = length.resolve(&resolution);
           return Ok(
-            NumericValue::Length(Length::from_pixels(
-              length.resolve(&resolution),
-            ))
+            NumericValue::Length(if unit.is_font_relative() {
+              LengthValue::from_calc(px, LengthCalc::Unit(length))
+            } else {
+              LengthValue::from_pixels(px)
+            })
             .into(),
           );
         }
@@ -1335,13 +1974,18 @@ impl NumericValue {
               let acc = Self::parse_additive_expression(arguments, state)?;
               let numeric = try_extract!(acc, expect_numeric(), arguments);
               let mut current = extract_as_raw!(numeric);
+              let mut operands = LengthOperands::start(&numeric);
               while !arguments.is_exhausted() {
                 arguments.expect_comma()?;
                 let acc = Self::parse_additive_expression(arguments, state)?;
-                let value = try_extract_as_raw!(acc, numeric, arguments);
+                let (value, operand) = try_extract_operand!(acc, numeric, arguments);
+                push_operand(&mut operands, &operand);
                 current = minimum(current, value);
               }
-              Ok(from_raw!(current, numeric).into())
+              let calc = operands
+                .and_then(LengthOperands::into_trees)
+                .map(|trees| LengthCalc::Min(trees.into_boxed_slice()));
+              Ok(from_raw_with_calc!(current, numeric, calc).into())
             })
           },
           "max" => {
@@ -1349,13 +1993,18 @@ impl NumericValue {
               let acc = Self::parse_additive_expression(arguments, state)?;
               let numeric = try_extract!(acc, expect_numeric(), arguments);
               let mut current = extract_as_raw!(numeric);
+              let mut operands = LengthOperands::start(&numeric);
               while !arguments.is_exhausted() {
                 arguments.expect_comma()?;
                 let acc = Self::parse_additive_expression(arguments, state)?;
-                let value = try_extract_as_raw!(acc, numeric, arguments);
+                let (value, operand) = try_extract_operand!(acc, numeric, arguments);
+                push_operand(&mut operands, &operand);
                 current = maximum(current, value);
               }
-              Ok(from_raw!(current, numeric).into())
+              let calc = operands
+                .and_then(LengthOperands::into_trees)
+                .map(|trees| LengthCalc::Max(trees.into_boxed_slice()));
+              Ok(from_raw_with_calc!(current, numeric, calc).into())
             })
           },
           "clamp" => {
@@ -1388,52 +2037,37 @@ impl NumericValue {
               };
               arguments.expect_exhausted()?;
 
-              let min = match min {
-                Some(value) => try_extract_as_raw!(value, numeric, arguments),
-                None => f64::NEG_INFINITY,
+              let (min, min_operand) = match min {
+                Some(value) => try_extract_operand!(value, numeric, arguments),
+                None => (f64::NEG_INFINITY, None),
               };
-              let max = match max {
-                Some(value) => try_extract_as_raw!(value, numeric, arguments),
-                None => f64::INFINITY,
+              let (max, max_operand) = match max {
+                Some(value) => try_extract_operand!(value, numeric, arguments),
+                None => (f64::INFINITY, None),
               };
+              let calc = LengthOperands::start(&numeric).and_then(|mut operands| {
+                let value = operands.trees[0].clone();
+                let min = min_operand.map(|operand| {
+                  operands.push(&operand);
+                  Box::new(operands.trees.pop().unwrap())
+                });
+                let max = max_operand.map(|operand| {
+                  operands.push(&operand);
+                  Box::new(operands.trees.pop().unwrap())
+                });
+                operands.font_dependent.then_some(LengthCalc::Clamp {
+                  min,
+                  value: Box::new(value),
+                  max,
+                })
+              });
               let value = extract_as_raw!(numeric);
               let result = maximum(min, minimum(value, max));
-              Ok(from_raw!(result, numeric).into())
+              Ok(from_raw_with_calc!(result, numeric, calc).into())
             })
           },
           // https://www.w3.org/TR/css-values-4/#round-func
           "round" => {
-            enum RoundStrategy {
-              Nearest,
-              Up,
-              Down,
-              ToZero,
-            }
-            fn round(strategy: &RoundStrategy, value: f64, interval: f64) -> f64 {
-              if interval == 0.0 || value.is_nan() || interval.is_nan() || value.is_infinite() && interval.is_infinite() {
-                return f64::NAN;
-              }
-              if value.is_infinite() {
-                return value;
-              }
-              if interval.is_infinite() {
-                return match strategy {
-                  RoundStrategy::Up => if value > 0.0 { f64::INFINITY } else if value == 0.0 && value.is_sign_positive() { 0.0 } else { -0.0 },
-                  RoundStrategy::Down => if value < 0.0 { f64::NEG_INFINITY } else if value == 0.0 && value.is_sign_negative() { -0.0 } else { 0.0 },
-                  RoundStrategy::Nearest | RoundStrategy::ToZero => if value.is_sign_positive() { 0.0 } else { -0.0 },
-                }
-              }
-              let interval = interval.abs();
-              let quotient = value / interval;
-              let rounded = match strategy {
-                RoundStrategy::Nearest => (quotient + 0.5).floor(),
-                RoundStrategy::Up => quotient.ceil(),
-                RoundStrategy::Down => quotient.floor(),
-                RoundStrategy::ToZero => quotient.trunc(),
-              };
-              rounded * interval
-            }
-
             input.parse_nested_block(|arguments| {
               let strategy = {
                 let start = arguments.state();
@@ -1461,16 +2095,31 @@ impl NumericValue {
               };
               let acc = Self::parse_additive_expression(arguments, state)?;
               let numeric = try_extract!(acc, expect_numeric(), arguments);
+              let mut operands = LengthOperands::start(&numeric);
               let interval = if !arguments.is_exhausted() {
                 arguments.expect_comma()?;
                 let acc = Self::parse_additive_expression(arguments, state)?;
-                let interval = try_extract_as_raw!(acc, numeric, arguments);
+                let (interval, operand) = try_extract_operand!(acc, numeric, arguments);
+                push_operand(&mut operands, &operand);
                 arguments.expect_exhausted()?;
                 interval
-              } else { 1.0 };
+              } else {
+                push_operand(
+                  &mut operands,
+                  &Some(LengthValue::from_pixels(1.0)),
+                );
+                1.0
+              };
               let value = extract_as_raw!(numeric);
-              let result = round(&strategy, value, interval);
-              Ok(from_raw!(result, numeric).into())
+              let result = round_to_interval(strategy, value, interval);
+              let calc = operands.and_then(LengthOperands::into_trees).map(
+                |mut trees| LengthCalc::Round {
+                  strategy,
+                  interval: Box::new(trees.pop().unwrap()),
+                  value: Box::new(trees.remove(0)),
+                },
+              );
+              Ok(from_raw_with_calc!(result, numeric, calc).into())
             })
           },
           "mod" => {
@@ -1478,12 +2127,20 @@ impl NumericValue {
               let acc = Self::parse_additive_expression(arguments, state)?;
               let numeric = try_extract!(acc, expect_numeric(), arguments);
               let dividend = extract_as_raw!(numeric);
+              let mut operands = LengthOperands::start(&numeric);
               arguments.expect_comma()?;
               let acc = Self::parse_additive_expression(arguments, state)?;
-              let divisor = try_extract_as_raw!(acc, numeric, arguments);
+              let (divisor, operand) = try_extract_operand!(acc, numeric, arguments);
+              push_operand(&mut operands, &operand);
               arguments.expect_exhausted()?;
               let result = dividend.rem_euclid(divisor);
-              Ok(from_raw!(result, numeric).into())
+              let calc = operands.and_then(LengthOperands::into_trees).map(
+                |mut trees| LengthCalc::Mod {
+                  divisor: Box::new(trees.pop().unwrap()),
+                  dividend: Box::new(trees.remove(0)),
+                },
+              );
+              Ok(from_raw_with_calc!(result, numeric, calc).into())
             })
           },
           "rem" => {
@@ -1491,12 +2148,20 @@ impl NumericValue {
               let acc = Self::parse_additive_expression(arguments, state)?;
               let numeric = try_extract!(acc, expect_numeric(), arguments);
               let dividend = extract_as_raw!(numeric);
+              let mut operands = LengthOperands::start(&numeric);
               arguments.expect_comma()?;
               let acc = Self::parse_additive_expression(arguments, state)?;
-              let divisor = try_extract_as_raw!(acc, numeric, arguments);
+              let (divisor, operand) = try_extract_operand!(acc, numeric, arguments);
+              push_operand(&mut operands, &operand);
               arguments.expect_exhausted()?;
               let result = dividend % divisor;
-              Ok(from_raw!(result, numeric).into())
+              let calc = operands.and_then(LengthOperands::into_trees).map(
+                |mut trees| LengthCalc::Rem {
+                  divisor: Box::new(trees.pop().unwrap()),
+                  dividend: Box::new(trees.remove(0)),
+                },
+              );
+              Ok(from_raw_with_calc!(result, numeric, calc).into())
             })
           },
           // https://www.w3.org/TR/css-values-4/#trig-funcs
@@ -1617,46 +2282,24 @@ impl NumericValue {
             })
           },
           "hypot" => {
-            fn hypot(args: &[f64]) -> f64 {
-              match *args {
-                [] => 0.0,
-                [arg1] => arg1.abs(),
-                [arg1, arg2] => arg1.hypot(arg2),
-                _ => {
-                  let mut sum = 0.0;
-                  let mut scale = 0.0;
-                  for &arg in args {
-                    let value = arg.abs();
-                    if !value.is_finite() {
-                      return value;
-                    }
-                    if scale < value {
-                      let div = scale / value;
-                      sum = sum * div * div + 1.0;
-                      scale = value;
-                    } else if value > 0.0 {
-                      let div = value / scale;
-                      sum += div * div;
-                    }
-                  }
-                  scale * sum.sqrt()
-                }
-              }
-            }
-
             input.parse_nested_block(|arguments| {
               let acc = Self::parse_additive_expression(arguments, state)?;
               let numeric = try_extract!(acc, expect_numeric(), arguments);
               let value = extract_as_raw!(numeric);
+              let mut operands = LengthOperands::start(&numeric);
               let mut args = vec![value];
               while !arguments.is_exhausted() {
                 arguments.expect_comma()?;
                 let acc = Self::parse_additive_expression(arguments, state)?;
-                let value = try_extract_as_raw!(acc, numeric, arguments);
+                let (value, operand) = try_extract_operand!(acc, numeric, arguments);
+                push_operand(&mut operands, &operand);
                 args.push(value);
               }
               let result = hypot(&args);
-              Ok(from_raw!(result, numeric).into())
+              let calc = operands
+                .and_then(LengthOperands::into_trees)
+                .map(|trees| LengthCalc::Hypot(trees.into_boxed_slice()));
+              Ok(from_raw_with_calc!(result, numeric, calc).into())
             })
           },
           "log" => {
@@ -1700,10 +2343,7 @@ impl NumericValue {
                   NumericValue::Percent(percent.abs()).into()
                 }
                 NumericValue::Length(length) => {
-                  NumericValue::Length(Length {
-                    value: length.value.abs(),
-                    unit: length.unit,
-                  }).into()
+                  NumericValue::Length(length.abs()).into()
                 }
                 NumericValue::Angle(angle) => {
                   NumericValue::Angle(Angle {
@@ -1751,7 +2391,7 @@ impl NumericValue {
                 NumericValue::Zero => unreachable!(),
                 NumericValue::Number(number) => number,
                 NumericValue::Percent(percent) => percent,
-                NumericValue::Length(length) => length.value,
+                NumericValue::Length(length) => length.specified_value(),
                 NumericValue::Angle(angle) => angle.value,
                 NumericValue::Time(time) => time.value,
                 NumericValue::Frequency(frequency) => frequency.value,
@@ -1950,10 +2590,10 @@ mod tests {
     };
     assert_eq!(
       length,
-      Length {
+      LengthValue::Unit(Length {
         value: -1.0,
         unit: LengthUnit::Cm,
-      }
+      })
     );
     assert_relative_eq!(length.to_pixels(), -96.0 / 2.54);
   }
@@ -2097,10 +2737,10 @@ mod tests {
     let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
-      Ok(NumericValue::Length(Length {
+      Ok(NumericValue::Length(LengthValue::Unit(Length {
         value: 7.0,
-        unit: LengthUnit::Px
-      }))
+        unit: LengthUnit::Px,
+      })))
     );
   }
 
@@ -2111,10 +2751,10 @@ mod tests {
     let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
-      Ok(NumericValue::Length(Length {
+      Ok(NumericValue::Length(LengthValue::Unit(Length {
         value: 9.0,
-        unit: LengthUnit::Px
-      }))
+        unit: LengthUnit::Px,
+      })))
     );
   }
 
@@ -2145,10 +2785,10 @@ mod tests {
     let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
-      Ok(NumericValue::Length(Length {
+      Ok(NumericValue::Length(LengthValue::Unit(Length {
         value: 1.0,
-        unit: LengthUnit::Px
-      }))
+        unit: LengthUnit::Px,
+      })))
     );
   }
 
@@ -2195,10 +2835,10 @@ mod tests {
     let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
-      Ok(NumericValue::Length(Length {
+      Ok(NumericValue::Length(LengthValue::Unit(Length {
         value: -2.0,
-        unit: LengthUnit::Px
-      }))
+        unit: LengthUnit::Px,
+      })))
     );
   }
 
@@ -2228,10 +2868,10 @@ mod tests {
     let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
-      Ok(NumericValue::Length(Length {
+      Ok(NumericValue::Length(LengthValue::Unit(Length {
         value: 3.0,
-        unit: LengthUnit::Px
-      }))
+        unit: LengthUnit::Px,
+      })))
     );
   }
 
@@ -2269,10 +2909,10 @@ mod tests {
     let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
-      Ok(NumericValue::Length(Length {
+      Ok(NumericValue::Length(LengthValue::Unit(Length {
         value: -1.0,
-        unit: LengthUnit::Px
-      }))
+        unit: LengthUnit::Px,
+      })))
     );
   }
 
@@ -2326,10 +2966,10 @@ mod tests {
     let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
-      Ok(NumericValue::Length(Length {
+      Ok(NumericValue::Length(LengthValue::Unit(Length {
         value: -1.0,
-        unit: LengthUnit::Px
-      }))
+        unit: LengthUnit::Px,
+      })))
     );
   }
 
@@ -2359,10 +2999,10 @@ mod tests {
     let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
-      Ok(NumericValue::Length(Length {
+      Ok(NumericValue::Length(LengthValue::Unit(Length {
         value: 1.0,
-        unit: LengthUnit::Px
-      }))
+        unit: LengthUnit::Px,
+      })))
     );
   }
 
@@ -2392,10 +3032,10 @@ mod tests {
     let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
-      Ok(NumericValue::Length(Length {
+      Ok(NumericValue::Length(LengthValue::Unit(Length {
         value: 1.0,
-        unit: LengthUnit::Px
-      }))
+        unit: LengthUnit::Px,
+      })))
     );
   }
 
@@ -2612,10 +3252,10 @@ mod tests {
     let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
-      Ok(NumericValue::Length(Length {
+      Ok(NumericValue::Length(LengthValue::Unit(Length {
         value: 3.0,
-        unit: LengthUnit::Px
-      }))
+        unit: LengthUnit::Px,
+      })))
     );
   }
 
