@@ -1504,11 +1504,9 @@ impl Workspace {
 
     for folder in self.links.values() {
       if let Some(config) = &folder.deno_json {
-        // A linked package's own `links` field is ignored (nested linking is
-        // not supported), but the package is a valid standalone root, so its
-        // config is not wrong — don't warn. Emitting `RootOnlyOption("links")`
-        // here was misleading: a linked package is not a workspace member, so
-        // "specify it in the workspace root" is not applicable. See #35999.
+        // note: a linked package's own `links` field is ignored (nested
+        // linking is not supported), but the package is a valid standalone
+        // root, so don't warn about it here (#35999)
         check_invalid_exports(config, &mut diagnostics);
       }
     }
@@ -3642,9 +3640,8 @@ pub mod test {
 
   #[test]
   fn test_link_of_link() {
-    // A linked package's own `links` field is ignored (nested linking is not
-    // supported), but the linked package is a valid standalone root, so no
-    // diagnostic should be emitted for it. See #35999.
+    // the linked package's `links` field is ignored, but it's a valid
+    // standalone root, so no diagnostic is emitted for it (#35999)
     let workspace_dir = workspace_for_root_and_member_with_fs(
       json!({
         "links": ["../dir"],
