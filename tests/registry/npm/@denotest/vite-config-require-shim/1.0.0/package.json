@@ -1,7 +1,0 @@
-{
-  "name": "@denotest/vite-config-require-shim",
-  "version": "1.0.0",
-  "bin": {
-    "vite-config-require-shim": "./cli.cjs"
-  }
-}

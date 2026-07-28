@@ -1756,14 +1756,38 @@ Module._resolveFilename = function (
     return request;
   }
 
+  // Node rejects `require("file://...")`, but bundlers that emit ESM with a
+  // `createRequire()` shim (rolldown, esbuild) turn externalized dependencies
+  // into absolute `file://` specifiers -- e.g. Vite's config loader, which
+  // always bundles the config to ESM under Deno, so a CommonJS config's
+  // `require("pkg")` becomes `__require("file:///.../pkg/entry.mjs")`.
   if (StringPrototypeStartsWith(request, "file://")) {
-    const filename = op_require_as_file_path(request);
-    if (filename) {
-      const resolved = tryFile(filename, isMain);
-      if (resolved) {
-        return resolved;
+    // A query or fragment can't be represented as a path, and CommonJS has no
+    // per-query module identity (`Module._cache` is keyed by the resolved
+    // filename), so `?t=1` and `?t=2` would silently share one cache entry.
+    // Leave those unresolved rather than returning a stale module. Any literal
+    // `?`/`#` in a URL is a delimiter -- in a path they'd be percent-encoded.
+    if (
+      !StringPrototypeIncludes(request, "?") &&
+      !StringPrototypeIncludes(request, "#")
+    ) {
+      const filename = op_require_as_file_path(request);
+      if (filename) {
+        // `_findPath` handles extension and directory (index / package "main")
+        // resolution, the same as for any other absolute request.
+        const resolved = Module._findPath(
+          filename,
+          [],
+          isMain,
+          parent?.filename,
+        );
+        if (resolved) {
+          return resolved;
+        }
       }
     }
+    // Fall through so the failure is reported by the regular lookup, which
+    // attaches the require stack to the `MODULE_NOT_FOUND` error.
   }
 
   if (StringPrototypeStartsWith(request, "node:")) {
