@@ -25,6 +25,16 @@ Deno.test("[node/assert] deepStrictEqual(0, -0)", () => {
   );
 });
 
+Deno.test("[node/assert] formats multibyte source expressions", () => {
+  const 汉汉: typeof assert = assert;
+  assert.throws(
+    () => {
+      汉汉.ok(false);
+    },
+    /汉汉\.ok\(false\)/,
+  );
+});
+
 Deno.test("[node/assert] CallTracker correctly exported", () => {
   assert.strictEqual(typeof assert.CallTracker, "function");
   assert.strictEqual(typeof assert.default.CallTracker, "function");

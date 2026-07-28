@@ -323,8 +323,11 @@ where
     &def.parameters,
     &mut backing_store_holder,
   )?;
-  let out_buffer_ptr =
-    out_buffer_as_ptr_nonblocking(scope, out_buffer, &mut backing_store_holder);
+  let out_buffer_ptr = out_buffer_as_ptr_nonblocking(
+    scope,
+    out_buffer,
+    &mut backing_store_holder,
+  )?;
 
   let join_handle = spawn_blocking(move || {
     let PtrSymbol { cif, ptr } = symbol.clone();
@@ -378,8 +381,11 @@ pub fn op_ffi_call_nonblocking(
     &symbol.parameter_types,
     &mut backing_store_holder,
   )?;
-  let out_buffer_ptr =
-    out_buffer_as_ptr_nonblocking(scope, out_buffer, &mut backing_store_holder);
+  let out_buffer_ptr = out_buffer_as_ptr_nonblocking(
+    scope,
+    out_buffer,
+    &mut backing_store_holder,
+  )?;
 
   let join_handle = spawn_blocking(move || {
     let Symbol {

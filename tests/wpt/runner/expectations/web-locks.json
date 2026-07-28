@@ -14,7 +14,6 @@
   "idlharness.https.any.html": {
     "expectedFailures": [
       "LockManager interface: existence and properties of interface object",
-      "LockManager interface: operation query()",
       "Lock interface: existence and properties of interface object",
       "Navigator interface: attribute locks"
     ]
@@ -22,7 +21,6 @@
   "idlharness.https.any.worker.html": {
     "expectedFailures": [
       "LockManager interface: existence and properties of interface object",
-      "LockManager interface: operation query()",
       "Lock interface: existence and properties of interface object",
       "WorkerNavigator interface: attribute locks"
     ]

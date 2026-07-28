@@ -626,6 +626,12 @@ impl CliOptions {
         _,
       )) if flags.production => GraphKind::CodeOnly,
       DenoSubcommand::Install(InstallFlags::Local(_, _)) => GraphKind::All,
+      // These edit the dependency requirements and then re-resolve them into
+      // the lockfile. A code-only graph never walks `import type` edges, so
+      // the packages reached only that way would be left out of the lockfile
+      // they rewrite.
+      DenoSubcommand::Outdated(_) => GraphKind::All,
+      DenoSubcommand::Remove(_) => GraphKind::All,
       _ => self.type_check_mode().as_graph_kind(),
     }
   }

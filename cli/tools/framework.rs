@@ -394,7 +394,7 @@ Deno.serve(async (req) => {
       .into(),
       include_paths: vec!["build/client".into()],
       build_command: Some(deno_task_build()),
-      hmr_command: None, // TODO: add command to enable `deno desktop --hmr` for React Router
+      hmr_command: Some(deno_task_dev()),
     }
   } else {
     // SSR: serve immutable client assets from `build/client`, then hand all
@@ -426,7 +426,7 @@ Deno.serve(async (req) => {
       .into(),
       include_paths: vec!["build".into()],
       build_command: Some(deno_task_build()),
-      hmr_command: None, // TODO: add command to enable `deno desktop --hmr` for React Router
+      hmr_command: Some(deno_task_dev()),
     }
   }
 }
@@ -1224,6 +1224,8 @@ mod tests {
     assert_eq!(det.include_paths, vec!["build/client"]);
     let cmd = det.build_command.unwrap();
     assert_eq!(cmd[1..], vec!["task", "build"]);
+    let hmr = det.hmr_command.unwrap();
+    assert_eq!(hmr[1..], vec!["task", "dev"]);
   }
 
   #[test]
@@ -1269,6 +1271,8 @@ mod tests {
     assert!(det.entrypoint_code.contains("build/server/index.js"));
     assert!(det.entrypoint_code.contains("build/client"));
     assert_eq!(det.include_paths, vec!["build"]);
+    let hmr = det.hmr_command.unwrap();
+    assert_eq!(hmr[1..], vec!["task", "dev"]);
   }
 
   #[test]

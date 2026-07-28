@@ -237,6 +237,10 @@ for (const name of new SafeArrayIterator(ReflectOwnKeys(Dirent.prototype))) {
 
 export function copyObject(source) {
   const target = {};
+  // Intentionally copies inherited enumerable properties as well (Node parity):
+  // `options` may be passed with fields on its prototype, e.g.
+  // `{ __proto__: { start, end } }`, and those must be preserved.
+  // deno-lint-ignore guard-for-in
   for (const key in source) {
     target[key] = source[key];
   }
@@ -255,22 +259,22 @@ function join(path, name) {
 
   if (typeof path === "string" && isUint8Array(name)) {
     const pathBuffer = Buffer.from(
-      // deno-lint-ignore prefer-primordials `join` is a `node:path` function
+      // deno-lint-ignore deno-internal/prefer-primordials -- `join` is a `node:path` function
       lazyPath().default.join(path, lazyPath().default.sep),
     );
     // Ignore lint. `concat` is a 'node:buffer' static method on `Buffer`
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     return Buffer.concat([pathBuffer, name]);
   }
 
   if (typeof path === "string" && typeof name === "string") {
-    // deno-lint-ignore prefer-primordials `join` is a `node:path` function
+    // deno-lint-ignore deno-internal/prefer-primordials -- `join` is a `node:path` function
     return lazyPath().default.join(path, name);
   }
 
   if (isUint8Array(path) && isUint8Array(name)) {
     // Ignore lint. `concat` is a 'node:buffer' static method on `Buffer`
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     return Buffer.concat([path, bufferSep, name]);
   }
 
@@ -915,7 +919,7 @@ export const getValidatedPathToString = (fileURLOrPath, propName) => {
     return new TextDecoder().decode(path);
   }
   if (Buffer.isBuffer(path)) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     return path.toString();
   }
   return path;

@@ -17,6 +17,10 @@ const res = await fetch(`http://127.0.0.1:${server.addr.port}/`, {
   headers: { "x-deno-client-address": "10.1.2.3:4567" },
 });
 await res.body?.cancel();
+console.log(
+  "environment after first request:",
+  Deno.env.get("DENO_TRUST_PROXY_HEADERS"),
+);
 
 // A request with a body exercises the streaming/prebuffered raw record
 // construction paths as well.

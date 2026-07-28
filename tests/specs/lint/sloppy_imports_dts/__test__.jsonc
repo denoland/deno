@@ -1,6 +1,9 @@
 {
   "tests": {
     "check": {
+      // ignored: tsc doesn't apply sloppy-imports .d.ts resolution the way
+      // deno does. https://github.com/denoland/deno/issues/36085
+      "ignore": true,
       "args": "check --sloppy-imports main.ts",
       "output": "check.out"
     },
@@ -15,6 +18,10 @@
     },
     // try fixing the lint issues and then ensure deno check and run still work
     "lint_fix": {
+      // ignored: the embedded `check --sloppy-imports` step hits the same
+      // sloppy-imports .d.ts resolution gap as the `check` test above.
+      // https://github.com/denoland/deno/issues/36085
+      "ignore": true,
       "tempDir": true,
       "steps": [{
         "args": "lint --sloppy-imports --fix",

@@ -16,6 +16,32 @@ pub use npm::*;
 use parking_lot::RwLock;
 use url::Url;
 
+fn media_type_name(media_type: MediaType) -> &'static str {
+  match media_type {
+    MediaType::JavaScript
+    | MediaType::Mjs
+    | MediaType::Cjs
+    | MediaType::Jsx => "JavaScript",
+    MediaType::TypeScript
+    | MediaType::Mts
+    | MediaType::Cts
+    | MediaType::Tsx
+    | MediaType::Dts
+    | MediaType::Dmts
+    | MediaType::Dcts => "TypeScript",
+    MediaType::Json => "Json",
+    MediaType::Jsonc => "JsonC",
+    MediaType::Json5 => "Json5",
+    MediaType::Wasm => "Wasm",
+    MediaType::Css => "Css",
+    MediaType::Html => "Html",
+    MediaType::Markdown => "Markdown",
+    MediaType::Sql => "Sql",
+    MediaType::SourceMap => "SourceMap",
+    MediaType::Unknown => "Unknown",
+  }
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub enum AllowJsonImports {
   Always,

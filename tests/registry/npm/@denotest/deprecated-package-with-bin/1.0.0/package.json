@@ -1,0 +1,10 @@
+{
+  "name": "@denotest/deprecated-package-with-bin",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "main.mjs",
+  "directories": {
+    "bin": "./bins"
+  },
+  "deprecated": "Deprecated version"
+}

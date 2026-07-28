@@ -16,6 +16,7 @@ use url::Url;
 use super::LoadedModule;
 use super::LoadedModuleSource;
 use super::RequestedModuleType;
+use super::media_type_name;
 use crate::cjs::CjsTrackerRc;
 
 #[derive(Debug, Error, deno_error::JsError)]
@@ -66,6 +67,14 @@ pub enum NpmModuleLoadError {
     #[source]
     #[inherit]
     source: std::io::Error,
+  },
+  #[class(type)]
+  #[error(
+    "Expected a JSON module, but identified a {actual} module.\n  Specifier: {specifier}"
+  )]
+  ExpectedJsonModule {
+    specifier: Url,
+    actual: &'static str,
   },
 }
 
@@ -186,6 +195,15 @@ impl<
     })?;
 
     let media_type = MediaType::from_specifier(&specifier);
+    if matches!(requested_module_type, RequestedModuleType::Json)
+      && media_type != MediaType::Json
+    {
+      return Err(NpmModuleLoadError::ExpectedJsonModule {
+        specifier: specifier.clone().into_owned(),
+        actual: media_type_name(media_type),
+      });
+    }
+
     match requested_module_type {
       RequestedModuleType::Text | RequestedModuleType::Bytes => {
         Ok(LoadedModule {
