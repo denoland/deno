@@ -1359,6 +1359,17 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[node/worker_threads] terminate during eval worker startup",
+  async fn() {
+    const worker = new workerThreads.Worker("while (true) {}", {
+      eval: true,
+    });
+
+    assertEquals(await worker.terminate(), 1);
+  },
+});
+
+Deno.test({
   name: "[node/worker_threads] terminate interrupts busy loop",
   async fn() {
     const worker = new workerThreads.Worker(

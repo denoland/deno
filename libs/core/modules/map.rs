@@ -76,6 +76,46 @@ use crate::source_map::SourceMapper;
 
 const DATA_PREFIX: &str = "data:";
 
+fn execution_terminated_module_error() -> ModuleError {
+  ModuleError::Core(CoreErrorKind::ExecutionTerminated.into_box())
+}
+
+fn is_execution_terminated_module_error(error: &ModuleError) -> bool {
+  matches!(
+    error,
+    ModuleError::Core(error)
+      if matches!(error.as_kind(), CoreErrorKind::ExecutionTerminated)
+  )
+}
+
+fn module_error_to_v8_exception(
+  scope: &mut v8::PinScope,
+  error: ModuleError,
+) -> v8::Global<v8::Value> {
+  match error {
+    ModuleError::Exception(exception) => exception,
+    ModuleError::Core(error) => error.to_v8_error(scope),
+    ModuleError::Concrete(error) => {
+      CoreErrorKind::Module(error).to_v8_error(scope)
+    }
+  }
+}
+
+fn module_error_from_v8_failure(
+  scope: &mut v8::PinScope,
+  has_terminated: bool,
+  exception: Option<v8::Global<v8::Value>>,
+  error: JsErrorBox,
+) -> ModuleError {
+  if has_terminated || scope.is_execution_terminating() {
+    execution_terminated_module_error()
+  } else if let Some(exception) = exception {
+    ModuleError::Exception(exception)
+  } else {
+    ModuleError::Core(CoreError::from(error))
+  }
+}
+
 fn is_internal_scheme(scheme: &str) -> bool {
   matches!(scheme, "ext" | "node" | "checkin")
 }
@@ -737,21 +777,46 @@ impl ModuleMap {
     scope: &mut v8::PinScope<'s, 'i>,
     name: impl IntoModuleName,
     exports_obj: v8::Local<'s, v8::Object>,
-  ) -> ModuleId {
+  ) -> Result<ModuleId, ModuleError> {
+    v8::tc_scope!(let tc_scope, scope);
+
     let name = name.into_module_name();
-    let name_str = name.v8_string(scope).unwrap();
+    let name_str = name.v8_string(tc_scope).map_err(|error| {
+      module_error_from_v8_failure(
+        tc_scope,
+        false,
+        None,
+        JsErrorBox::from_err(error),
+      )
+    })?;
 
     // Enumerate own string-keyed properties of the exports object.
-    let property_names = exports_obj
-      .get_own_property_names(
-        scope,
-        v8::GetPropertyNamesArgsBuilder::new()
-          .mode(v8::KeyCollectionMode::OwnOnly)
-          .property_filter(v8::PropertyFilter::SKIP_SYMBOLS)
-          .key_conversion(v8::KeyConversionMode::ConvertToString)
-          .build(),
-      )
-      .unwrap();
+    let Some(property_names) = exports_obj.get_own_property_names(
+      tc_scope,
+      v8::GetPropertyNamesArgsBuilder::new()
+        .mode(v8::KeyCollectionMode::OwnOnly)
+        .property_filter(v8::PropertyFilter::SKIP_SYMBOLS)
+        .key_conversion(v8::KeyConversionMode::ConvertToString)
+        .build(),
+    ) else {
+      let has_terminated =
+        tc_scope.has_terminated() || tc_scope.is_execution_terminating();
+      let exception = if has_terminated {
+        None
+      } else {
+        tc_scope
+          .exception()
+          .map(|exception| v8::Global::new(tc_scope, exception))
+      };
+      return Err(module_error_from_v8_failure(
+        tc_scope,
+        has_terminated,
+        exception,
+        JsErrorBox::generic(
+          "Failed to read synthetic module export property names",
+        ),
+      ));
+    };
     let len = property_names.length();
 
     let mut export_names: Vec<v8::Local<v8::String>> =
@@ -767,33 +832,79 @@ impl ModuleMap {
     // shape).
     let mut default_value: v8::Local<v8::Value> = exports_obj.into();
     for i in 0..len {
-      let key_val = property_names.get_index(scope, i).unwrap();
-      let key_str = key_val.to_string(scope).unwrap();
-      let value = exports_obj.get(scope, key_val).unwrap();
-      if key_str.to_rust_string_lossy(scope) == "default" {
+      let key_val = property_names.get_index(tc_scope, i).ok_or_else(|| {
+        let has_terminated = tc_scope.has_terminated();
+        module_error_from_v8_failure(
+          tc_scope,
+          has_terminated,
+          None,
+          JsErrorBox::generic("Failed to read a synthetic module export name"),
+        )
+      })?;
+      let key_str = key_val.to_string(tc_scope).ok_or_else(|| {
+        let has_terminated = tc_scope.has_terminated();
+        module_error_from_v8_failure(
+          tc_scope,
+          has_terminated,
+          None,
+          JsErrorBox::generic(
+            "Failed to convert a synthetic module export name to a string",
+          ),
+        )
+      })?;
+      let Some(value) = exports_obj.get(tc_scope, key_val) else {
+        let has_terminated =
+          tc_scope.has_terminated() || tc_scope.is_execution_terminating();
+        let exception = if has_terminated {
+          None
+        } else {
+          tc_scope
+            .exception()
+            .map(|exception| v8::Global::new(tc_scope, exception))
+        };
+        return Err(module_error_from_v8_failure(
+          tc_scope,
+          has_terminated,
+          exception,
+          JsErrorBox::generic("Failed to read a synthetic module export"),
+        ));
+      };
+      if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+        return Err(execution_terminated_module_error());
+      }
+      if key_str.to_rust_string_lossy(tc_scope) == "default" {
         default_value = value;
         continue;
       }
       export_names.push(key_str);
       export_values.push(value);
     }
-    let default_str = v8::String::new(scope, "default").unwrap();
+    let default_str =
+      v8::String::new(tc_scope, "default").ok_or_else(|| {
+        let has_terminated = tc_scope.has_terminated();
+        module_error_from_v8_failure(
+          tc_scope,
+          has_terminated,
+          None,
+          JsErrorBox::generic("Failed to create the default export name"),
+        )
+      })?;
     export_names.push(default_str);
     export_values.push(default_value);
 
     let module = v8::Module::create_synthetic_module(
-      scope,
+      tc_scope,
       name_str,
       &export_names,
       synthetic_module_evaluation_steps,
     );
 
-    let handle = v8::Global::<v8::Module>::new(scope, module);
+    let handle = v8::Global::<v8::Module>::new(tc_scope, module);
     let mut exports_global = Vec::with_capacity(export_names.len());
     for i in 0..export_names.len() {
       exports_global.push((
-        v8::Global::new(scope, export_names[i]),
-        v8::Global::new(scope, export_values[i]),
+        v8::Global::new(tc_scope, export_names[i]),
+        v8::Global::new(tc_scope, export_values[i]),
       ));
     }
 
@@ -812,7 +923,7 @@ impl ModuleMap {
     );
 
     // Synthetic modules have no imports so their instantation must never fail.
-    self.instantiate_module(scope, id).unwrap();
+    self.instantiate_module(tc_scope, id)?;
     // Eagerly evaluate so the `synthetic_module_evaluation_steps` callback
     // fires now (which sets the exports from the staged store) instead of
     // at first read. Important during snapshot creation: V8 needs the
@@ -823,11 +934,27 @@ impl ModuleMap {
     // unbound exports. Evaluation is synchronous for synthetic modules.
     {
       let handle = self.get_handle(id).unwrap();
-      let local = v8::Local::new(scope, handle);
-      let _ = local.evaluate(scope);
+      let local = v8::Local::new(tc_scope, handle);
+      if local.evaluate(tc_scope).is_none() {
+        let has_terminated =
+          tc_scope.has_terminated() || tc_scope.is_execution_terminating();
+        let exception = if has_terminated {
+          None
+        } else {
+          tc_scope
+            .exception()
+            .map(|exception| v8::Global::new(tc_scope, exception))
+        };
+        return Err(module_error_from_v8_failure(
+          tc_scope,
+          has_terminated,
+          exception,
+          JsErrorBox::generic("Failed to evaluate a synthetic module"),
+        ));
+      }
     }
 
-    id
+    Ok(id)
   }
 
   /// Creates a "synthetic module", that contains only a single, "default" export.
@@ -1377,7 +1504,7 @@ impl ModuleMap {
     &self,
     scope: &mut v8::PinScope<'s, 'i>,
     id: ModuleId,
-  ) -> Result<(), v8::Global<v8::Value>> {
+  ) -> Result<(), ModuleError> {
     v8::tc_scope!(let tc_scope, scope);
 
     let module = self
@@ -1386,7 +1513,10 @@ impl ModuleMap {
       .expect("ModuleInfo not found");
 
     if module.get_status() == v8::ModuleStatus::Errored {
-      return Err(v8::Global::new(tc_scope, module.get_exception()));
+      return Err(ModuleError::Exception(v8::Global::new(
+        tc_scope,
+        module.get_exception(),
+      )));
     }
 
     // FIXME: instantiate_module is called more than it should be,
@@ -1411,8 +1541,15 @@ impl ModuleMap {
     );
     tc_scope.remove_slot::<*const Self>();
     if instantiate_result.is_none() {
-      let exception = tc_scope.exception().unwrap();
-      return Err(v8::Global::new(tc_scope, exception));
+      if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+        return Err(execution_terminated_module_error());
+      }
+      let exception = tc_scope.exception().ok_or_else(|| {
+        ModuleError::Core(CoreError::from(JsErrorBox::generic(
+          "Failed to instantiate module",
+        )))
+      })?;
+      return Err(ModuleError::Exception(v8::Global::new(tc_scope, exception)));
     }
 
     Ok(())
@@ -1477,6 +1614,9 @@ impl ModuleMap {
     );
     if let Some(module) = maybe_module {
       return Some(module);
+    }
+    if scope.is_execution_terminating() {
+      return None;
     }
 
     crate::error::throw_js_error_class(
@@ -1840,6 +1980,13 @@ impl ModuleMap {
           resolver.resolve(scope, module_ns_local).unwrap();
           return false;
         }
+        Err(e)
+          if scope.is_execution_terminating()
+            || matches!(e.as_kind(), CoreErrorKind::ExecutionTerminated) =>
+        {
+          scope.terminate_execution();
+          return false;
+        }
         Err(e) => {
           let exception = e.to_v8_error(scope);
           let exception_local = v8::Local::new(scope, exception);
@@ -1869,6 +2016,13 @@ impl ModuleMap {
           let resolver = resolver_handle.open(scope);
           let module_ns_local = v8::Local::new(scope, module_ns);
           resolver.resolve(scope, module_ns_local).unwrap();
+          return false;
+        }
+        Err(e)
+          if scope.is_execution_terminating()
+            || matches!(e.as_kind(), CoreErrorKind::ExecutionTerminated) =>
+        {
+          scope.terminate_execution();
           return false;
         }
         Err(e) => {
@@ -2143,12 +2297,18 @@ impl ModuleMap {
     }
 
     let Some(value) = module.evaluate(tc_scope) else {
+      if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+        return Err(CoreErrorKind::ExecutionTerminated.into_box());
+      }
       let exception = tc_scope.exception().unwrap();
       return Err(
         CoreErrorKind::Js(JsError::from_v8_exception(tc_scope, exception))
           .into_box(),
       );
     };
+    if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+      return Err(CoreErrorKind::ExecutionTerminated.into_box());
+    }
 
     // Under Explicit microtask policy, V8 won't drain microtasks after
     // module.evaluate(). We must do it ourselves so that the module
@@ -2165,6 +2325,9 @@ impl ModuleMap {
     // (checked above), so its promise settles without a checkpoint.
     if !self.evaluating_top_level.get() {
       tc_scope.perform_microtask_checkpoint();
+      if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+        return Err(CoreErrorKind::ExecutionTerminated.into_box());
+      }
     }
 
     if let Some(exception) = tc_scope.exception() {
@@ -2306,9 +2469,12 @@ impl ModuleMap {
   }
 
   // Returns true if some dynamic import was resolved.
-  fn evaluate_dyn_imports(&self, scope: &mut v8::PinScope) -> bool {
+  fn evaluate_dyn_imports(
+    &self,
+    scope: &mut v8::PinScope,
+  ) -> Result<bool, CoreError> {
     if !self.pending_dyn_mod_evaluations.is_pending() {
-      return false;
+      return Ok(false);
     }
 
     let pending = self.pending_dyn_mod_evaluations.take();
@@ -2322,23 +2488,27 @@ impl ModuleMap {
         }
         v8::PromiseState::Fulfilled => {
           resolved_any = true;
-          self.dynamic_import_resolve(scope, eval.load_id, eval.module_id);
-          self.resolve_tla_waiters(scope, eval.module_id);
+          self.dynamic_import_resolve(scope, eval.load_id, eval.module_id)?;
+          self.resolve_tla_waiters(scope, eval.module_id)?;
         }
         v8::PromiseState::Rejected => {
           resolved_any = true;
           let exception = v8::Global::new(scope, promise.result(scope));
-          self.dynamic_import_reject(scope, eval.load_id, exception.clone());
-          self.reject_tla_waiters(scope, eval.module_id, exception);
+          self.dynamic_import_reject(scope, eval.load_id, exception.clone())?;
+          self.reject_tla_waiters(scope, eval.module_id, exception)?;
         }
       }
     }
     self.pending_dyn_mod_evaluations.set(still_pending);
-    resolved_any
+    Ok(resolved_any)
   }
 
   /// Resolve all waiters that are waiting for a module's TLA to complete.
-  fn resolve_tla_waiters(&self, scope: &mut v8::PinScope, module_id: ModuleId) {
+  fn resolve_tla_waiters(
+    &self,
+    scope: &mut v8::PinScope,
+    module_id: ModuleId,
+  ) -> Result<(), CoreError> {
     let waiters = self.pending_tla_waiters.borrow_mut().remove(&module_id);
     if let Some(waiters) = waiters
       && let Some(module) = self
@@ -2351,12 +2521,24 @@ impl ModuleMap {
 
       for resolver_handle in waiters {
         let resolver = resolver_handle.open(scope);
-        resolver.resolve(scope, module_namespace).unwrap();
+        if resolver.resolve(scope, module_namespace).is_none() {
+          if scope.is_execution_terminating() {
+            return Err(CoreErrorKind::ExecutionTerminated.into_box());
+          }
+          return Err(
+            JsErrorBox::generic("Failed to resolve a top-level-await waiter")
+              .into(),
+          );
+        }
       }
       if !JsRealm::state_from_scope(scope).has_tick_scheduled() {
         scope.perform_microtask_checkpoint();
+        if scope.is_execution_terminating() {
+          return Err(CoreErrorKind::ExecutionTerminated.into_box());
+        }
       }
     }
+    Ok(())
   }
 
   /// Reject all waiters that are waiting for a module's TLA to complete.
@@ -2365,18 +2547,30 @@ impl ModuleMap {
     scope: &mut v8::PinScope,
     module_id: ModuleId,
     exception: v8::Global<v8::Value>,
-  ) {
+  ) -> Result<(), CoreError> {
     let waiters = self.pending_tla_waiters.borrow_mut().remove(&module_id);
     if let Some(waiters) = waiters {
       let exception = v8::Local::new(scope, exception);
       for resolver_handle in waiters {
         let resolver = resolver_handle.open(scope);
-        resolver.reject(scope, exception).unwrap();
+        if resolver.reject(scope, exception).is_none() {
+          if scope.is_execution_terminating() {
+            return Err(CoreErrorKind::ExecutionTerminated.into_box());
+          }
+          return Err(
+            JsErrorBox::generic("Failed to reject a top-level-await waiter")
+              .into(),
+          );
+        }
       }
       if !JsRealm::state_from_scope(scope).has_tick_scheduled() {
         scope.perform_microtask_checkpoint();
+        if scope.is_execution_terminating() {
+          return Err(CoreErrorKind::ExecutionTerminated.into_box());
+        }
       }
     }
+    Ok(())
   }
 
   pub(crate) fn dynamic_import_reject(
@@ -2384,7 +2578,7 @@ impl ModuleMap {
     scope: &mut v8::PinScope,
     id: ModuleLoadId,
     exception: v8::Global<v8::Value>,
-  ) {
+  ) -> Result<(), CoreError> {
     let resolver_handle = self
       .dynamic_import_map
       .borrow_mut()
@@ -2394,10 +2588,21 @@ impl ModuleMap {
     let resolver = resolver_handle.open(scope);
 
     let exception = v8::Local::new(scope, exception);
-    resolver.reject(scope, exception).unwrap();
+    if resolver.reject(scope, exception).is_none() {
+      if scope.is_execution_terminating() {
+        return Err(CoreErrorKind::ExecutionTerminated.into_box());
+      }
+      return Err(
+        JsErrorBox::generic("Failed to reject a dynamic import").into(),
+      );
+    }
     if !JsRealm::state_from_scope(scope).has_tick_scheduled() {
       scope.perform_microtask_checkpoint();
+      if scope.is_execution_terminating() {
+        return Err(CoreErrorKind::ExecutionTerminated.into_box());
+      }
     }
+    Ok(())
   }
 
   pub(crate) fn dynamic_import_resolve(
@@ -2405,7 +2610,7 @@ impl ModuleMap {
     scope: &mut v8::PinScope,
     id: ModuleLoadId,
     mod_id: ModuleId,
-  ) {
+  ) -> Result<(), CoreError> {
     let resolver_handle = self
       .dynamic_import_map
       .borrow_mut()
@@ -2428,11 +2633,22 @@ impl ModuleMap {
     // in turn call `bindings::host_import_module_dynamically_callback` which
     // will reach into `ModuleMap` from within the isolate.
     let module_namespace = module.get_module_namespace();
-    resolver.resolve(scope, module_namespace).unwrap();
+    if resolver.resolve(scope, module_namespace).is_none() {
+      if scope.is_execution_terminating() {
+        return Err(CoreErrorKind::ExecutionTerminated.into_box());
+      }
+      return Err(
+        JsErrorBox::generic("Failed to resolve a dynamic import").into(),
+      );
+    }
     self.dyn_module_evaluate_idle_counter.set(0);
     if !JsRealm::state_from_scope(scope).has_tick_scheduled() {
       scope.perform_microtask_checkpoint();
+      if scope.is_execution_terminating() {
+        return Err(CoreErrorKind::ExecutionTerminated.into_box());
+      }
     }
+    Ok(())
   }
 
   /// Drain all ready module loading work: preparing dynamic imports,
@@ -2472,11 +2688,11 @@ impl ModuleMap {
     while has_evaluated {
       has_evaluated = false;
       loop {
-        self.drain_prepare_dyn_imports(cx, scope);
+        self.drain_prepare_dyn_imports(cx, scope)?;
         self.drain_dyn_imports(cx, scope)?;
         self.drain_code_cache_ready(cx);
 
-        if self.evaluate_dyn_imports(scope) {
+        if self.evaluate_dyn_imports(scope)? {
           has_evaluated = true;
         } else {
           break;
@@ -2493,9 +2709,9 @@ impl ModuleMap {
     &self,
     cx: &mut Context,
     scope: &mut v8::PinScope,
-  ) {
+  ) -> Result<(), CoreError> {
     if !self.preparing_dynamic_imports.is_pending() {
-      return;
+      return Ok(());
     }
 
     while let Poll::Ready(Some((dyn_import_id, prepare_result))) =
@@ -2509,10 +2725,11 @@ impl ModuleMap {
         }
         Err(err) => {
           let exception = err.to_v8_error(scope);
-          self.dynamic_import_reject(scope, dyn_import_id, exception);
+          self.dynamic_import_reject(scope, dyn_import_id, exception)?;
         }
       }
     }
+    Ok(())
   }
 
   /// Drain all ready pending-dynamic-import streams, registering loaded
@@ -2544,14 +2761,16 @@ impl ModuleMap {
                 .push(StreamExt::into_future(load));
             }
             Err(err) => {
-              let exception = match err {
-                ModuleError::Exception(e) => e,
-                ModuleError::Core(e) => e.to_v8_error(scope),
-                ModuleError::Concrete(e) => {
-                  CoreErrorKind::Module(e).to_v8_error(scope)
-                }
-              };
-              self.dynamic_import_reject(scope, dyn_import_id, exception);
+              if scope.is_execution_terminating() {
+                self.dynamic_import_map.borrow_mut().remove(&dyn_import_id);
+                return Err(CoreErrorKind::ExecutionTerminated.into_box());
+              }
+              if is_execution_terminated_module_error(&err) {
+                self.dynamic_import_map.borrow_mut().remove(&dyn_import_id);
+                return Err(CoreErrorKind::ExecutionTerminated.into_box());
+              }
+              let exception = module_error_to_v8_exception(scope, err);
+              self.dynamic_import_reject(scope, dyn_import_id, exception)?;
             }
           }
         }
@@ -2560,7 +2779,7 @@ impl ModuleMap {
           // module specifier, or a problem with the source map, or a failure
           // to fetch the module source code.
           let exception = err.to_v8_error(scope);
-          self.dynamic_import_reject(scope, dyn_import_id, exception);
+          self.dynamic_import_reject(scope, dyn_import_id, exception)?;
         }
         None => {
           // Stream finished — the full module graph has been loaded.
@@ -2575,8 +2794,15 @@ impl ModuleMap {
               let module_id =
                 load.root_module_id().expect("Root module should be loaded");
               let result = self.instantiate_module(scope, module_id);
-              if let Err(exception) = result {
-                self.dynamic_import_reject(scope, dyn_import_id, exception);
+              if let Err(error) = result {
+                if scope.is_execution_terminating()
+                  || is_execution_terminated_module_error(&error)
+                {
+                  self.dynamic_import_map.borrow_mut().remove(&dyn_import_id);
+                  return Err(CoreErrorKind::ExecutionTerminated.into_box());
+                }
+                let exception = module_error_to_v8_exception(scope, error);
+                self.dynamic_import_reject(scope, dyn_import_id, exception)?;
               }
               self.dynamic_import_module_evaluate(
                 scope,
@@ -2594,8 +2820,15 @@ impl ModuleMap {
               let module_id =
                 load.root_module_id().expect("Root module should be loaded");
               let result = self.instantiate_module(scope, module_id);
-              if let Err(exception) = result {
-                self.dynamic_import_reject(scope, dyn_import_id, exception);
+              if let Err(error) = result {
+                if scope.is_execution_terminating()
+                  || is_execution_terminated_module_error(&error)
+                {
+                  self.dynamic_import_map.borrow_mut().remove(&dyn_import_id);
+                  return Err(CoreErrorKind::ExecutionTerminated.into_box());
+                }
+                let exception = module_error_to_v8_exception(scope, error);
+                self.dynamic_import_reject(scope, dyn_import_id, exception)?;
                 continue;
               }
               let module_handle =
@@ -2613,11 +2846,35 @@ impl ModuleMap {
               let maybe_promise = module.evaluate_for_import_defer(tc_scope);
 
               let Some(promise_val) = maybe_promise else {
-                let exception = tc_scope.exception().unwrap();
+                if tc_scope.has_terminated()
+                  || tc_scope.is_execution_terminating()
+                {
+                  self.dynamic_import_map.borrow_mut().remove(&dyn_import_id);
+                  return Err(CoreErrorKind::ExecutionTerminated.into_box());
+                }
+                let Some(exception) = tc_scope.exception() else {
+                  self.dynamic_import_map.borrow_mut().remove(&dyn_import_id);
+                  return Err(
+                    JsErrorBox::generic(
+                      "Failed to evaluate deferred module dependencies",
+                    )
+                    .into(),
+                  );
+                };
                 let exception = v8::Global::new(tc_scope, exception);
-                self.dynamic_import_reject(tc_scope, dyn_import_id, exception);
+                self.dynamic_import_reject(
+                  tc_scope,
+                  dyn_import_id,
+                  exception,
+                )?;
                 continue;
               };
+              if tc_scope.has_terminated()
+                || tc_scope.is_execution_terminating()
+              {
+                self.dynamic_import_map.borrow_mut().remove(&dyn_import_id);
+                return Err(CoreErrorKind::ExecutionTerminated.into_box());
+              }
 
               // Get the deferred namespace — this triggers evaluation on
               // first property access.
@@ -2639,11 +2896,16 @@ impl ModuleMap {
                   let resolver = resolver_handle.open(tc_scope);
                   resolver.resolve(tc_scope, module_namespace).unwrap();
                   tc_scope.perform_microtask_checkpoint();
+                  if tc_scope.has_terminated()
+                    || tc_scope.is_execution_terminating()
+                  {
+                    return Err(CoreErrorKind::ExecutionTerminated.into_box());
+                  }
                 }
                 v8::PromiseState::Rejected => {
                   let err = promise.result(tc_scope);
                   let err = v8::Global::new(tc_scope, err);
-                  self.dynamic_import_reject(tc_scope, dyn_import_id, err);
+                  self.dynamic_import_reject(tc_scope, dyn_import_id, err)?;
                 }
                 v8::PromiseState::Pending => {
                   // Async deps still loading. Store for later resolution.
@@ -2685,7 +2947,17 @@ impl ModuleMap {
                 v8::Local::new(scope, source).into()
               };
               let resolver = state.resolver.open(scope);
-              resolver.resolve(scope, source).unwrap();
+              if resolver.resolve(scope, source).is_none() {
+                if scope.is_execution_terminating() {
+                  return Err(CoreErrorKind::ExecutionTerminated.into_box());
+                }
+                return Err(
+                  JsErrorBox::generic(
+                    "Failed to resolve a source-phase dynamic import",
+                  )
+                  .into(),
+                );
+              }
             }
           }
         }
@@ -2858,10 +3130,9 @@ impl ModuleMap {
       )
       .map_err(|e| e.into_error(scope, false, true))?;
 
-    self.instantiate_module(scope, mod_id).map_err(|e| {
-      let exception = v8::Local::new(scope, e);
-      exception_to_err(scope, exception, false, true)
-    })?;
+    self
+      .instantiate_module(scope, mod_id)
+      .map_err(|error| error.into_error(scope, false, true))?;
 
     let module_handle = self.get_handle(mod_id).unwrap();
     let module_local = v8::Local::<v8::Module>::new(scope, module_handle);
@@ -2869,27 +3140,7 @@ impl ModuleMap {
     let status = module_local.get_status();
     assert_eq!(status, v8::ModuleStatus::Instantiated);
 
-    let value = module_local.evaluate(scope).unwrap();
-    // Under Explicit microtask policy, drain microtasks so the module
-    // evaluation promise resolves for synchronous modules.
-    //
-    // However, skip the checkpoint when we are inside a top-level
-    // `module.evaluate()` call (i.e. `evaluating_top_level` is set).
-    // Draining microtasks at this point can prematurely resolve
-    // TLA-related microtasks (e.g. `await` resume jobs from eagerly-
-    // resolved async ops), which prevents the module evaluation promise
-    // from settling correctly later.
-    if !self.evaluating_top_level.get() {
-      scope.perform_microtask_checkpoint();
-    }
-    let promise = v8::Local::<v8::Promise>::try_from(value).unwrap();
-    let result = promise.result(scope);
-    if !result.is_undefined() {
-      return Err(
-        CoreErrorKind::Js(exception_to_err(scope, result, false, true))
-          .into_box(),
-      );
-    }
+    self.evaluate_module_sync(scope, module_local)?;
 
     let status = module_local.get_status();
     assert_eq!(status, v8::ModuleStatus::Evaluated);
@@ -2897,6 +3148,55 @@ impl ModuleMap {
     let mod_ns = module_local.get_module_namespace();
 
     Ok(v8::Global::new(scope, mod_ns))
+  }
+
+  fn evaluate_module_sync<'s, 'i>(
+    &self,
+    scope: &mut v8::PinScope<'s, 'i>,
+    module: v8::Local<'s, v8::Module>,
+  ) -> Result<(), CoreError> {
+    v8::tc_scope!(let tc_scope, scope);
+
+    let Some(value) = module.evaluate(tc_scope) else {
+      if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+        return Err(CoreErrorKind::ExecutionTerminated.into_box());
+      }
+      if let Some(exception) = tc_scope.exception() {
+        return Err(
+          CoreErrorKind::Js(exception_to_err(tc_scope, exception, false, true))
+            .into_box(),
+        );
+      }
+      return Err(JsErrorBox::generic("Failed to evaluate module").into());
+    };
+    if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+      return Err(CoreErrorKind::ExecutionTerminated.into_box());
+    }
+
+    // Under Explicit microtask policy, drain microtasks so the module
+    // evaluation promise resolves for synchronous modules.
+    //
+    // Skip the checkpoint during a top-level `module.evaluate()` call.
+    // Draining it here can settle top-level-await microtasks too early.
+    if !self.evaluating_top_level.get() {
+      tc_scope.perform_microtask_checkpoint();
+      if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+        return Err(CoreErrorKind::ExecutionTerminated.into_box());
+      }
+    }
+
+    let promise = v8::Local::<v8::Promise>::try_from(value).map_err(|_| {
+      JsErrorBox::generic("Module evaluation did not return a promise")
+    })?;
+    let result = promise.result(tc_scope);
+    if !result.is_undefined() {
+      return Err(
+        CoreErrorKind::Js(exception_to_err(tc_scope, result, false, true))
+          .into_box(),
+      );
+    }
+
+    Ok(())
   }
 
   /// Check if a lazy-loaded ESM module is known to exist for the given
@@ -3002,37 +3302,17 @@ impl ModuleMap {
     if let Some(handle) = cached_handle {
       let handle_local = v8::Local::new(scope, handle);
       if handle_local.get_status() == v8::ModuleStatus::Instantiated {
-        let value = handle_local.evaluate(scope).unwrap();
-        if !self.evaluating_top_level.get() {
-          scope.perform_microtask_checkpoint();
-        }
-        let promise = v8::Local::<v8::Promise>::try_from(value).unwrap();
-        let result = promise.result(scope);
-        if !result.is_undefined() {
-          return Err(
-            CoreErrorKind::Js(exception_to_err(scope, result, false, true))
-              .into_box(),
-          );
-        }
+        self.evaluate_module_sync(scope, handle_local)?;
       }
       return Ok(v8::Global::new(scope, handle_local.get_module_namespace()));
     }
 
-    let module_id = self.build_synthetic_esm_module(scope, module_specifier)?;
+    let module_id = self
+      .build_synthetic_esm_module(scope, module_specifier)
+      .map_err(|error| error.into_error(scope, false, true))?;
     let handle = self.get_handle(module_id).unwrap();
     let handle_local = v8::Local::new(scope, handle);
-    let value = handle_local.evaluate(scope).unwrap();
-    if !self.evaluating_top_level.get() {
-      scope.perform_microtask_checkpoint();
-    }
-    let promise = v8::Local::<v8::Promise>::try_from(value).unwrap();
-    let result = promise.result(scope);
-    if !result.is_undefined() {
-      return Err(
-        CoreErrorKind::Js(exception_to_err(scope, result, false, true))
-          .into_box(),
-      );
-    }
+    self.evaluate_module_sync(scope, handle_local)?;
     Ok(v8::Global::new(scope, handle_local.get_module_namespace()))
   }
 
@@ -3085,26 +3365,14 @@ impl ModuleMap {
       // `get_module_namespace` requires Instantiated+, so drive the module
       // forward synchronously here.
       if handle_local.get_status() == v8::ModuleStatus::Uninstantiated {
-        self.instantiate_module(scope, cached_id).map_err(|e| {
-          let exception = v8::Local::new(scope, e);
-          exception_to_err(scope, exception, false, true)
-        })?;
+        self
+          .instantiate_module(scope, cached_id)
+          .map_err(|error| error.into_error(scope, false, true))?;
       }
       // Returning the namespace before evaluation leaves `export const`
       // bindings in the temporal dead zone, so trigger evaluation here.
       if handle_local.get_status() == v8::ModuleStatus::Instantiated {
-        let value = handle_local.evaluate(scope).unwrap();
-        if !self.evaluating_top_level.get() {
-          scope.perform_microtask_checkpoint();
-        }
-        let promise = v8::Local::<v8::Promise>::try_from(value).unwrap();
-        let result = promise.result(scope);
-        if !result.is_undefined() {
-          return Err(
-            CoreErrorKind::Js(exception_to_err(scope, result, false, true))
-              .into_box(),
-          );
-        }
+        self.evaluate_module_sync(scope, handle_local)?;
       }
       let module = v8::Global::new(scope, handle_local.get_module_namespace());
       return Ok(module);
@@ -3219,7 +3487,7 @@ impl ModuleMap {
     &self,
     scope: &mut v8::PinScope,
     specifier: &str,
-  ) -> Result<ModuleId, CoreError> {
+  ) -> Result<ModuleId, ModuleError> {
     let backing_specifier = {
       let data = self.data.borrow();
       let modules = data.synthetic_esm_modules.borrow();
@@ -3227,25 +3495,27 @@ impl ModuleMap {
       modules.get(&key).map(|v| v.as_str().to_string())
     }
     .ok_or_else(|| {
-      CoreError::from(JsErrorBox::generic(format!(
+      ModuleError::Core(CoreError::from(JsErrorBox::generic(format!(
         "Specifier {specifier} is not a synthetic_esm module"
-      )))
+      ))))
     })?;
 
-    let exports_global = self.load_ext_script(scope, &backing_specifier)?;
+    let exports_global = self
+      .load_ext_script(scope, &backing_specifier)
+      .map_err(ModuleError::Core)?;
     let exports_local = v8::Local::new(scope, exports_global);
     let exports_obj = v8::Local::<v8::Object>::try_from(exports_local)
       .map_err(|_| {
-        CoreError::from(JsErrorBox::type_error(format!(
+        ModuleError::Core(CoreError::from(JsErrorBox::type_error(format!(
           "synthetic_esm backing script {backing_specifier} did not return an object"
-        )))
+        ))))
       })?;
 
-    Ok(self.new_synthetic_module_from_exports_object(
+    self.new_synthetic_module_from_exports_object(
       scope,
       String::from(specifier),
       exports_obj,
-    ))
+    )
   }
 
   /// Convenience wrapper around `build_synthetic_esm_module` for the V8
@@ -3265,8 +3535,15 @@ impl ModuleMap {
         let handle = self.get_handle(module_id)?;
         Some(v8::Local::new(scope, handle))
       }
+      Err(ModuleError::Core(e))
+        if matches!(e.as_kind(), CoreErrorKind::ExecutionTerminated) =>
+      {
+        scope.terminate_execution();
+        None
+      }
       Err(e) => {
-        crate::error::throw_js_error_class(scope, &e);
+        let error = e.into_error(scope, false, true);
+        crate::error::throw_js_error_class(scope, &error);
         None
       }
     }
@@ -3474,15 +3751,18 @@ impl ModuleMap {
     let result = match function.call(tc_scope, undefined, &[bootstrap_arg]) {
       Some(value) => v8::Global::new(tc_scope, value),
       None => {
-        assert!(tc_scope.has_caught());
-        let exception = tc_scope.exception().unwrap();
-        let err = JsError::from_v8_exception(tc_scope, exception);
         self
           .data
           .borrow()
           .lazy_script_loading
           .borrow_mut()
           .remove(&ModuleName::from(specifier_str.clone()));
+        if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+          return Err(CoreErrorKind::ExecutionTerminated.into_box());
+        }
+        assert!(tc_scope.has_caught());
+        let exception = tc_scope.exception().unwrap();
+        let err = JsError::from_v8_exception(tc_scope, exception);
         return Err(CoreErrorKind::Js(err).into_box());
       }
     };
@@ -3600,30 +3880,34 @@ pub(crate) fn synthetic_module_evaluation_steps<'s>(
   let handle = v8::Global::<v8::Module>::new(tc_scope, module);
   let exports = module_map
     .data
-    .borrow_mut()
+    .borrow()
     .synthetic_module_exports_store
-    .remove(&handle)
-    .unwrap();
+    .get(&handle)?
+    .clone();
 
   for (export_name, export_value) in exports {
     let name = v8::Local::new(tc_scope, export_name);
     let value = v8::Local::new(tc_scope, export_value);
 
-    // This should never fail
-    assert!(
-      module
-        .set_synthetic_module_export(tc_scope, name, value)
-        .unwrap()
-    );
-    assert!(!tc_scope.has_caught());
+    if !module.set_synthetic_module_export(tc_scope, name, value)? {
+      return None;
+    }
   }
 
   // Since Top-Level Await is active we need to return a promise.
   // This promise is resolved immediately.
-  let resolver = v8::PromiseResolver::new(tc_scope).unwrap();
+  let resolver = v8::PromiseResolver::new(tc_scope)?;
   let undefined = v8::undefined(tc_scope);
-  resolver.resolve(tc_scope, undefined.into());
-  Some(resolver.get_promise(tc_scope).into())
+  resolver.resolve(tc_scope, undefined.into())?;
+  let promise = resolver.get_promise(tc_scope).into();
+
+  module_map
+    .data
+    .borrow_mut()
+    .synthetic_module_exports_store
+    .remove(&handle);
+
+  Some(promise)
 }
 
 pub fn script_origin<'s, 'i>(
