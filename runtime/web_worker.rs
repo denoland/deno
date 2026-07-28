@@ -256,11 +256,9 @@ impl WebWorkerInternalHandle {
     }
   }
 
-  pub fn allow_isolate_interrupt(&mut self) {
+  pub fn allow_isolate_interrupt(&mut self) -> bool {
     self.can_interrupt_isolate.store(true, Ordering::SeqCst);
-    if self.termination_signal.load(Ordering::SeqCst) {
-      self.terminate_execution();
-    }
+    self.termination_signal.load(Ordering::SeqCst)
   }
 
   pub fn close(&mut self, exit_code: i32) {
@@ -339,13 +337,13 @@ impl WebWorkerHandle {
   }
 
   /// Signal the worker's V8 isolate to stop executing JavaScript at the next
-  /// interrupt point. Unlike [`Self::terminate`], this reaches into a running
-  /// synchronous callback (e.g. a busy loop) instead of only waking the event
-  /// loop. It returns immediately and does not wait for the isolate to actually
-  /// stop, so it narrows — but cannot fully close — any window in which the
-  /// worker is still executing.
+  /// interrupt point. It returns immediately and does not wait for the isolate
+  /// to stop.
   pub fn terminate_execution(&self) {
-    self.isolate_handle.terminate_execution();
+    self.isolate_handle.request_interrupt(
+      terminate_execution_on_interrupt,
+      std::ptr::null_mut(),
+    );
   }
 
   /// Terminate the worker
@@ -360,12 +358,21 @@ impl WebWorkerHandle {
     if schedule_termination {
       self.inspector_handle.terminate_waits();
       if self.can_interrupt_isolate.load(Ordering::SeqCst) {
-        self.isolate_handle.terminate_execution();
+        self.terminate_execution();
       }
       // Wake up the worker's event loop so it can terminate.
       self.terminate_waker.wake();
     }
   }
+}
+
+unsafe extern "C" fn terminate_execution_on_interrupt(
+  isolate: v8::UnsafeRawIsolatePtr,
+  _data: *mut std::ffi::c_void,
+) {
+  // SAFETY: V8 supplies the active isolate to its interrupt callback.
+  let isolate = unsafe { v8::Isolate::ref_from_raw_isolate_ptr(&isolate) };
+  isolate.terminate_execution();
 }
 
 fn create_handles(
@@ -1254,8 +1261,11 @@ pub async fn run_web_worker(
   // Node.js behavior where such eval workers run as CJS (sloppy mode).
   // See: https://github.com/denoland/deno/issues/26739
   let result = if let Some(source_code) = maybe_source_code.take() {
-    worker.internal_handle.allow_isolate_interrupt();
-    let r = worker.execute_script(located_script_name!(), source_code.into());
+    let r = if worker.internal_handle.allow_isolate_interrupt() {
+      Ok(())
+    } else {
+      worker.execute_script(located_script_name!(), source_code.into())
+    };
     worker.start_polling_for_messages();
     r
   } else {
@@ -1264,8 +1274,11 @@ pub async fn run_web_worker(
     match worker.preload_main_module(&specifier).await {
       Ok(id) => {
         worker.start_polling_for_messages();
-        worker.internal_handle.allow_isolate_interrupt();
-        worker.execute_main_module(id).await
+        if worker.internal_handle.allow_isolate_interrupt() {
+          Ok(())
+        } else {
+          worker.execute_main_module(id).await
+        }
       }
       Err(e) => Err(e),
     }
@@ -1282,7 +1295,6 @@ pub async fn run_web_worker(
   }
 
   let result = if result.is_ok() {
-    worker.internal_handle.allow_isolate_interrupt();
     worker
       .run_event_loop(PollEventLoopOptions {
         wait_for_inspector: true,
