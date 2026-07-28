@@ -89,12 +89,14 @@ const state = {
   plugins: [],
   installedPlugins: new Set(),
   ignoredRules: new Set(),
+  processors: new Map(),
 };
 
 function resetState() {
   state.plugins = [];
   state.installedPlugins.clear();
   state.ignoredRules.clear();
+  state.processors.clear();
 }
 
 /**
@@ -218,10 +220,7 @@ export class SourceCode {
   }
 
   get ast() {
-    const program = /** @type {*} */ (getNode(
-      this.#ctx,
-      this.#ctx.rootOffset,
-    ));
+    const program = /** @type {*} */ (getNode(this.#ctx, this.#ctx.rootOffset));
 
     return program;
   }
@@ -327,7 +326,8 @@ export class SourceCode {
     for (let i = 0; i < comments.length; i++) {
       const comment = comments[i];
       if (
-        comment.range[0] >= node.range[0] && comment.range[1] <= node.range[1]
+        comment.range[0] >= node.range[0] &&
+        comment.range[1] <= node.range[1]
       ) {
         inside.push(comment);
       }
@@ -413,14 +413,7 @@ export class Context {
       }
     }
 
-    doReport(
-      this.id,
-      data.message,
-      data.hint,
-      start,
-      end,
-      fixes,
-    );
+    doReport(this.id, data.message, data.hint, start, end, fixes);
   }
 }
 
@@ -509,9 +502,16 @@ function installPlugin(plugin, specifier) {
   state.plugins.push(plugin);
   state.installedPlugins.add(plugin.name);
 
+  if (plugin.processors) {
+    for (const ext of Object.keys(plugin.processors)) {
+      state.processors.set(ext, plugin.processors[ext]);
+    }
+  }
+
   return {
     name: plugin.name,
     ruleNames: Object.keys(plugin.rules),
+    extensions: plugin.processors ? Object.keys(plugin.processors) : [],
   };
 }
 
@@ -626,12 +626,7 @@ function setNodeGetters(ctx) {
       // See the npm `zimmerframe` library.
       enumerable: name !== "parent",
       get() {
-        return readValue(
-          this[INTERNAL_CTX],
-          this[INTERNAL_IDX],
-          i,
-          getNode,
-        );
+        return readValue(this[INTERNAL_CTX], this[INTERNAL_IDX], i, getNode);
       },
     });
   }
@@ -692,7 +687,7 @@ function readType(buf, idx) {
  * @returns {Deno.lint.Node["range"]}
  */
 function readSpan(ctx, idx) {
-  let offset = ctx.spansOffset + (idx * SPAN_SIZE);
+  let offset = ctx.spansOffset + idx * SPAN_SIZE;
   const start = readU32(ctx.buf, offset);
   offset += 4;
   const end = readU32(ctx.buf, offset);
@@ -706,7 +701,7 @@ function readSpan(ctx, idx) {
  * @returns {number}
  */
 function readRawPropOffset(buf, idx) {
-  const offset = (idx * NODE_SIZE) + PROP_OFFSET;
+  const offset = idx * NODE_SIZE + PROP_OFFSET;
   return readU32(buf, offset);
 }
 
@@ -725,7 +720,7 @@ function readPropOffset(ctx, idx) {
  * @returns {number}
  */
 function readChild(buf, idx) {
-  const offset = (idx * NODE_SIZE) + CHILD_OFFSET;
+  const offset = idx * NODE_SIZE + CHILD_OFFSET;
   return readU32(buf, offset);
 }
 /**
@@ -734,7 +729,7 @@ function readChild(buf, idx) {
  * @returns {number}
  */
 function readNext(buf, idx) {
-  const offset = (idx * NODE_SIZE) + NEXT_OFFSET;
+  const offset = idx * NODE_SIZE + NEXT_OFFSET;
   return readU32(buf, offset);
 }
 
@@ -744,7 +739,7 @@ function readNext(buf, idx) {
  * @returns {number}
  */
 function readParent(buf, idx) {
-  const offset = (idx * NODE_SIZE) + PARENT_OFFSET;
+  const offset = idx * NODE_SIZE + PARENT_OFFSET;
   return readU32(buf, offset);
 }
 
@@ -885,8 +880,7 @@ const DECODER = new TextDecoder();
  * @returns {number}
  */
 function readU32(buf, i) {
-  return (buf[i] << 24) + (buf[i + 1] << 16) + (buf[i + 2] << 8) +
-    buf[i + 3];
+  return (buf[i] << 24) + (buf[i + 1] << 16) + (buf[i + 2] << 8) + buf[i + 3];
 }
 
 /**
@@ -1019,7 +1013,8 @@ class MatchCtx {
       }
 
       if (
-        propIdx < propIds.length - 1 && propIds[propIdx + 1] === AST_PROP_LENGTH
+        propIdx < propIds.length - 1 &&
+        propIds[propIdx + 1] === AST_PROP_LENGTH
       ) {
         return count;
       }
@@ -1595,6 +1590,53 @@ function _dump(ctx) {
 internals.installPlugins = installPlugins;
 internals.runPluginsForFile = runPluginsForFile;
 internals.resetState = resetState;
+internals.preprocessFile = preprocessFile;
+internals.postprocessDiagnostics = postprocessDiagnostics;
+
+/**
+ * @param {string} extension
+ * @param {string} text
+ * @param {string} filename
+ * @returns {string | null} JSON-serialized blocks or null
+ */
+function preprocessFile(extension, text, filename) {
+  const processor = state.processors.get(extension);
+
+  if (!processor || !processor.preprocess) return null;
+
+  const blocks = processor.preprocess(text, filename);
+
+  if (!Array.isArray(blocks)) return null;
+
+  const normalized = blocks.map((block) => {
+    if (typeof block === "string") {
+      return { text: block, filename };
+    }
+
+    return { text: block.text, filename: block.filename || filename };
+  });
+
+  return JSON.stringify(normalized);
+}
+
+/**
+ * @param {string} extension
+ * @param {string} diagnosticsJson
+ * @param {string} filename
+ * @returns {string} JSON-serialized processed diagnostics
+ */
+function postprocessDiagnostics(extension, diagnosticsJson, filename) {
+  const processor = state.processors.get(extension);
+  const diagnostics = JSON.parse(diagnosticsJson);
+
+  if (!processor || !processor.postprocess) {
+    return JSON.stringify(diagnostics.flat());
+  }
+
+  const processed = processor.postprocess(diagnostics, filename);
+
+  return JSON.stringify(processed);
+}
 
 /**
  * @param {Deno.lint.Plugin} plugin

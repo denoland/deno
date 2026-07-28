@@ -49,12 +49,26 @@ pub enum PluginHostRequest {
     maybe_token: Option<CancellationToken>,
     tx: oneshot::Sender<PluginHostResponse>,
   },
+  Preprocess {
+    extension: String,
+    text: String,
+    file_path: PathBuf,
+    tx: oneshot::Sender<PluginHostResponse>,
+  },
+  Postprocess {
+    extension: String,
+    diagnostics_json: String,
+    file_path: PathBuf,
+    tx: oneshot::Sender<PluginHostResponse>,
+  },
 }
 
 pub enum PluginHostResponse {
   // TODO: write to structs
   LoadPlugin(Result<Vec<PluginInfo>, AnyError>),
   Run(Result<Vec<LintDiagnostic>, AnyError>),
+  Preprocess(Result<Option<Vec<ExtractedBlock>>, AnyError>),
+  Postprocess(Result<String, AnyError>),
 }
 
 impl std::fmt::Debug for PluginHostResponse {
@@ -62,6 +76,8 @@ impl std::fmt::Debug for PluginHostResponse {
     match self {
       Self::LoadPlugin(_arg0) => f.debug_tuple("LoadPlugin").finish(),
       Self::Run(_arg0) => f.debug_tuple("Run").finish(),
+      Self::Preprocess(_arg0) => f.debug_tuple("Preprocess").finish(),
+      Self::Postprocess(_arg0) => f.debug_tuple("Postprocess").finish(),
     }
   }
 }
@@ -97,6 +113,8 @@ v8_static_strings! {
   DEFAULT = "default",
   INSTALL_PLUGINS = "installPlugins",
   RUN_PLUGINS_FOR_FILE = "runPluginsForFile",
+  PREPROCESS_FILE = "preprocessFile",
+  POSTPROCESS_DIAGNOSTICS = "postprocessDiagnostics",
 }
 
 #[derive(Debug)]
@@ -123,6 +141,8 @@ pub struct PluginHost {
   worker: MainWorker,
   install_plugins_fn: v8::Global<v8::Function>,
   run_plugins_for_file_fn: v8::Global<v8::Function>,
+  preprocess_file_fn: v8::Global<v8::Function>,
+  postprocess_diagnostics_fn: v8::Global<v8::Function>,
   rx: mpsc::Receiver<PluginHostRequest>,
 }
 
@@ -173,7 +193,12 @@ async fn create_plugin_runner_inner(
   let obj = runtime.execute_script("lint.js", "Deno[Deno.internal]")?;
 
   log::debug!("Lint plugins loaded, capturing default exports");
-  let (install_plugins_fn, run_plugins_for_file_fn) = {
+  let (
+    install_plugins_fn,
+    run_plugins_for_file_fn,
+    preprocess_file_fn,
+    postprocess_diagnostics_fn,
+  ) = {
     deno_core::scope!(scope, runtime);
     let module_exports: v8::Local<v8::Object> =
       v8::Local::new(scope, obj).try_into().unwrap();
@@ -193,9 +218,26 @@ async fn create_plugin_runner_inner(
     let run_plugins_for_file_fn: v8::Local<v8::Function> =
       run_plugins_for_file_fn_val.try_into().unwrap();
 
+    let preprocess_file_fn_name = PREPROCESS_FILE.v8_string(scope).unwrap();
+    let preprocess_file_fn_val = module_exports
+      .get(scope, preprocess_file_fn_name.into())
+      .unwrap();
+    let preprocess_file_fn: v8::Local<v8::Function> =
+      preprocess_file_fn_val.try_into().unwrap();
+
+    let postprocess_diagnostics_fn_name =
+      POSTPROCESS_DIAGNOSTICS.v8_string(scope).unwrap();
+    let postprocess_diagnostics_fn_val = module_exports
+      .get(scope, postprocess_diagnostics_fn_name.into())
+      .unwrap();
+    let postprocess_diagnostics_fn: v8::Local<v8::Function> =
+      postprocess_diagnostics_fn_val.try_into().unwrap();
+
     (
       v8::Global::new(scope, install_plugins_fn),
       v8::Global::new(scope, run_plugins_for_file_fn),
+      v8::Global::new(scope, preprocess_file_fn),
+      v8::Global::new(scope, postprocess_diagnostics_fn),
     )
   };
 
@@ -203,6 +245,8 @@ async fn create_plugin_runner_inner(
     worker,
     install_plugins_fn,
     run_plugins_for_file_fn,
+    preprocess_file_fn,
+    postprocess_diagnostics_fn,
     rx: rx_req,
   })
 }
@@ -211,6 +255,7 @@ async fn create_plugin_runner_inner(
 pub struct PluginInfo {
   pub name: String,
   pub rule_names: Vec<String>,
+  pub extensions: Vec<String>,
 }
 
 impl PluginInfo {
@@ -223,6 +268,15 @@ impl PluginInfo {
 
     rules
   }
+}
+
+/// An extracted script block returned by a plugin's preprocessor.
+#[derive(Debug, serde::Deserialize)]
+pub struct ExtractedBlock {
+  /// The extracted script source code text.
+  pub text: String,
+  /// The virtual filename of this script block.
+  pub filename: String,
 }
 
 impl PluginHost {
@@ -296,6 +350,28 @@ impl PluginHost {
           );
           let _ = tx.send(PluginHostResponse::Run(r));
         }
+        PluginHostRequest::Preprocess {
+          extension,
+          text,
+          file_path,
+          tx,
+        } => {
+          let r = self.preprocess_file(&extension, &text, &file_path);
+          let _ = tx.send(PluginHostResponse::Preprocess(r));
+        }
+        PluginHostRequest::Postprocess {
+          extension,
+          diagnostics_json,
+          file_path,
+          tx,
+        } => {
+          let r = self.postprocess_diagnostics(
+            &extension,
+            &diagnostics_json,
+            &file_path,
+          );
+          let _ = tx.send(PluginHostResponse::Postprocess(r));
+        }
       }
     }
     log::debug!("Lint PluginHost run loop finished");
@@ -361,6 +437,93 @@ impl PluginHost {
       _run_plugins_result
     };
     Ok(())
+  }
+
+  /// Preprocesses a file using the custom preprocessors registered in V8 plugins.
+  ///
+  /// Extracts code blocks from custom files (e.g. Vue SFC blocks) before they are passed to the parser.
+  fn preprocess_file(
+    &mut self,
+    extension: &str,
+    text: &str,
+    file_path: &Path,
+  ) -> Result<Option<Vec<ExtractedBlock>>, AnyError> {
+    deno_core::scope!(scope, &mut self.worker.js_runtime);
+    let extension_v8: v8::Local<v8::Value> =
+      v8::String::new(scope, extension).unwrap().into();
+    let text_v8: v8::Local<v8::Value> =
+      v8::String::new(scope, text).unwrap().into();
+    let file_path_v8: v8::Local<v8::Value> =
+      v8::String::new(scope, &file_path.display().to_string())
+        .unwrap()
+        .into();
+
+    let preprocess_file_fn = v8::Local::new(scope, &self.preprocess_file_fn);
+    let undefined = v8::undefined(scope);
+
+    let result = {
+      v8::tc_scope!(tc_scope, scope);
+      let call_res = preprocess_file_fn.call(
+        tc_scope,
+        undefined.into(),
+        &[extension_v8, text_v8, file_path_v8],
+      );
+      if let Some(exception) = tc_scope.exception() {
+        let error = JsError::from_v8_exception(tc_scope, exception);
+        return Err(error.into());
+      }
+      call_res
+    };
+
+    let result_local = result.unwrap();
+    if result_local.is_null_or_undefined() {
+      return Ok(None);
+    }
+
+    let json_str = result_local.to_rust_string_lossy(scope);
+    let blocks: Vec<ExtractedBlock> = serde_json::from_str(&json_str)?;
+    Ok(Some(blocks))
+  }
+
+  /// Postprocesses diagnostics generated from a file using the custom postprocessors registered in V8 plugins.
+  ///
+  /// Filters, adjusts, or merges diagnostic reports for custom files (e.g. mapping coordinates back to the original templates).
+  fn postprocess_diagnostics(
+    &mut self,
+    extension: &str,
+    diagnostics_json: &str,
+    file_path: &Path,
+  ) -> Result<String, AnyError> {
+    deno_core::scope!(scope, &mut self.worker.js_runtime);
+    let extension_v8: v8::Local<v8::Value> =
+      v8::String::new(scope, extension).unwrap().into();
+    let diagnostics_json_v8: v8::Local<v8::Value> =
+      v8::String::new(scope, diagnostics_json).unwrap().into();
+    let file_path_v8: v8::Local<v8::Value> =
+      v8::String::new(scope, &file_path.display().to_string())
+        .unwrap()
+        .into();
+
+    let postprocess_diagnostics_fn =
+      v8::Local::new(scope, &self.postprocess_diagnostics_fn);
+    let undefined = v8::undefined(scope);
+
+    let result = {
+      v8::tc_scope!(tc_scope, scope);
+      let call_res = postprocess_diagnostics_fn.call(
+        tc_scope,
+        undefined.into(),
+        &[extension_v8, diagnostics_json_v8, file_path_v8],
+      );
+      if let Some(exception) = tc_scope.exception() {
+        let error = JsError::from_v8_exception(tc_scope, exception);
+        return Err(error.into());
+      }
+      call_res
+    };
+
+    let json_str = result.unwrap().to_rust_string_lossy(scope);
+    Ok(json_str)
   }
 
   async fn load_plugins(
@@ -507,6 +670,60 @@ impl PluginHostProxy {
 
     if let Ok(PluginHostResponse::Run(diagnostics_result)) = rx.await {
       return diagnostics_result;
+    }
+    bail!("Plugin host has closed")
+  }
+
+  /// Dispatches a preprocessing request to the V8 plugin host thread to extract script blocks from a file.
+  pub async fn preprocess(
+    &self,
+    extension: &str,
+    text: &str,
+    file_path: &Path,
+  ) -> Result<Option<Vec<ExtractedBlock>>, AnyError> {
+    let (tx, rx) = oneshot::channel();
+    self
+      .tx
+      .send(PluginHostRequest::Preprocess {
+        extension: extension.to_string(),
+        text: text.to_string(),
+        file_path: file_path.to_path_buf(),
+        tx,
+      })
+      .await?;
+
+    if let Ok(val) = rx.await {
+      let PluginHostResponse::Preprocess(result) = val else {
+        unreachable!()
+      };
+      return result;
+    }
+    bail!("Plugin host has closed")
+  }
+
+  /// Dispatches a postprocessing request to the V8 plugin host thread to run diagnostics postprocessing on a file.
+  pub async fn postprocess(
+    &self,
+    extension: &str,
+    diagnostics_json: &str,
+    file_path: &Path,
+  ) -> Result<String, AnyError> {
+    let (tx, rx) = oneshot::channel();
+    self
+      .tx
+      .send(PluginHostRequest::Postprocess {
+        extension: extension.to_string(),
+        diagnostics_json: diagnostics_json.to_string(),
+        file_path: file_path.to_path_buf(),
+        tx,
+      })
+      .await?;
+
+    if let Ok(val) = rx.await {
+      let PluginHostResponse::Postprocess(result) = val else {
+        unreachable!()
+      };
+      return result;
     }
     bail!("Plugin host has closed")
   }

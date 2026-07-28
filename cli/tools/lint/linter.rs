@@ -11,6 +11,7 @@ use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
+use deno_ast::SourceTextProvider;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt as _;
@@ -114,6 +115,7 @@ impl CliLinter {
       parsed_source,
       self.deno_lint_config.clone(),
       external_linter_container.get_callback(),
+      None,
     );
     if let Some(err) = external_linter_container.take_error() {
       return Err(err);
@@ -139,7 +141,30 @@ impl CliLinter {
     let external_linter_container =
       ExternalLinterContainer::new(self.maybe_plugin_runner.clone(), None);
 
-    if self.fix {
+    let has_processor = if let Some(runner) = &self.maybe_plugin_runner {
+      if let Some(file_ext) = file_path.extension().and_then(|e| e.to_str()) {
+        let dot_ext = format!(".{file_ext}");
+        let infos = runner.plugin_info.lock();
+        infos.iter().any(|info| {
+          info
+            .extensions
+            .iter()
+            .any(|ext| ext.eq_ignore_ascii_case(&dot_ext))
+        })
+      } else {
+        false
+      }
+    } else {
+      false
+    };
+
+    if has_processor {
+      self.lint_file_processed(
+        file_path,
+        source_code,
+        external_linter_container,
+      )
+    } else if self.fix {
       self.lint_file_and_fix(
         &specifier,
         media_type,
@@ -156,6 +181,7 @@ impl CliLinter {
           source_code,
           config: self.deno_lint_config.clone(),
           external_linter: external_linter_container.get_callback(),
+          source_mapping: None,
         })
         .map_err(AnyError::from)?;
 
@@ -165,6 +191,225 @@ impl CliLinter {
 
       Ok((source, diagnostics))
     }
+  }
+
+  /// Lints a file that has a custom plugin preprocessor/postprocessor (e.g. `.vue` or `.svelte`).
+  ///
+  /// This method runs the V8 preprocessor to extract script blocks, lints each block using
+  /// `deno_lint` with source offset mapping, runs the V8 postprocessor on the aggregated diagnostics,
+  /// and executes iterative autofix mapping back to the parent file coordinates.
+  fn lint_file_processed(
+    &self,
+    file_path: &Path,
+    source_code: String,
+    external_linter_container: ExternalLinterContainer,
+  ) -> Result<(ParsedSource, Vec<LintDiagnostic>), AnyError> {
+    let runner = self.maybe_plugin_runner.as_ref().unwrap();
+    let file_ext = file_path.extension().and_then(|e| e.to_str()).unwrap();
+    let dot_ext = format!(".{file_ext}");
+
+    let mut current_source_code = source_code.clone();
+    let mut fix_iterations = 0;
+
+    // Loop to apply autofixes iteratively (max 5 times to handle overlapping fixes)
+    loop {
+      // Preprocess the markup source code to extract script blocks (e.g. from <script> tags)
+      let preprocess_fut =
+        runner.preprocess(&dot_ext, &current_source_code, file_path);
+      let blocks = deno_core::futures::executor::block_on(preprocess_fut)?;
+
+      let mut all_diagnostics = Vec::new();
+      let mut parsed_source = None;
+
+      if let Some(ref blocks) = blocks {
+        let mut block_diagnostics_batch = Vec::new();
+        // Lint each extracted block individually
+        for block in blocks {
+          let block_media_type = if block.filename.ends_with(".ts")
+            || block.filename.ends_with(".tsx")
+          {
+            MediaType::TypeScript
+          } else {
+            MediaType::JavaScript
+          };
+
+          let block_specifier = specifier_from_file_path(file_path)?;
+          let byte_offset = current_source_code.find(&block.text).unwrap_or(0);
+
+          // Build source mapping to allow deno_lint engine to offset coordinates back to original file
+          let source_mapping = deno_lint::linter::SourceMapping {
+            original_source: current_source_code.clone(),
+            byte_offset,
+          };
+
+          let (block_source, block_diagnostics) = self
+            .linter
+            .lint_file(deno_lint::linter::LintFileOptions {
+              specifier: block_specifier,
+              media_type: block_media_type,
+              source_code: block.text.clone(),
+              config: self.deno_lint_config.clone(),
+              external_linter: external_linter_container.get_callback(),
+              source_mapping: Some(source_mapping),
+            })
+            .map_err(AnyError::from)?;
+
+          if parsed_source.is_none() {
+            parsed_source = Some(block_source);
+          }
+          block_diagnostics_batch.push(block_diagnostics);
+        }
+
+        // Run postprocess in V8 to filter and combine all block diagnostics
+        let source_text_info =
+          deno_ast::SourceTextInfo::new(current_source_code.clone().into());
+        let start_pos = (&source_text_info).start_pos();
+        let serializable_batch: Vec<Vec<SerializableLintDiagnostic>> =
+          block_diagnostics_batch
+            .iter()
+            .map(|batch| {
+              batch
+                .iter()
+                .map(|d| {
+                  SerializableLintDiagnostic::from_diagnostic(d, start_pos)
+                })
+                .collect()
+            })
+            .collect();
+        let diagnostics_json = serde_json::to_string(&serializable_batch)?;
+        let postprocess_fut =
+          runner.postprocess(&dot_ext, &diagnostics_json, file_path);
+        let postprocessed_json =
+          deno_core::futures::executor::block_on(postprocess_fut)?;
+        let serializable_diagnostics: Vec<SerializableLintDiagnostic> =
+          serde_json::from_str(&postprocessed_json)?;
+        all_diagnostics = serializable_diagnostics
+          .into_iter()
+          .map(|d| d.into_diagnostic(&source_text_info))
+          .collect::<Result<Vec<_>, _>>()?;
+      }
+
+      let source = parsed_source.unwrap_or_else(|| {
+        deno_ast::parse_program(deno_ast::ParseParams {
+          specifier: specifier_from_file_path(file_path).unwrap(),
+          text: "".into(),
+          media_type: MediaType::Unknown,
+          capture_tokens: false,
+          scope_analysis: false,
+          maybe_syntax: None,
+        })
+        .unwrap()
+      });
+
+      // If not running with --fix or no diagnostics to fix, we are done
+      if !self.fix || all_diagnostics.is_empty() {
+        return Ok((source, all_diagnostics));
+      }
+
+      // Apply mapped autofixes relative to the original parent file content
+      let text_info = SourceTextInfo::from_string(current_source_code.clone());
+      let Some(new_text) = apply_lint_fixes(&text_info, &all_diagnostics)
+      else {
+        return Ok((source, all_diagnostics));
+      };
+
+      current_source_code = new_text;
+      fix_iterations += 1;
+
+      if fix_iterations > 5 {
+        break;
+      }
+    }
+
+    // Write updated/fixed text back to disk atomically if changes were made
+    if current_source_code != source_code {
+      atomic_write_file_with_retries(
+        &CliSys::default(),
+        file_path,
+        current_source_code.as_bytes(),
+        crate::cache::CACHE_PERM,
+      )?;
+    }
+
+    // Run a final lint pass to get accurate ParsedSource and diagnostics after fixing
+    let preprocess_fut =
+      runner.preprocess(&dot_ext, &current_source_code, file_path);
+    let blocks = deno_core::futures::executor::block_on(preprocess_fut)?;
+    let mut all_diagnostics = Vec::new();
+    let mut parsed_source = None;
+    if let Some(ref blocks) = blocks {
+      let mut block_diagnostics_batch = Vec::new();
+      for block in blocks {
+        let block_media_type = if block.filename.ends_with(".ts")
+          || block.filename.ends_with(".tsx")
+        {
+          MediaType::TypeScript
+        } else {
+          MediaType::JavaScript
+        };
+        let block_specifier = specifier_from_file_path(file_path)?;
+        let byte_offset = current_source_code.find(&block.text).unwrap_or(0);
+        let source_mapping = deno_lint::linter::SourceMapping {
+          original_source: current_source_code.clone(),
+          byte_offset,
+        };
+        let (block_source, block_diagnostics) = self
+          .linter
+          .lint_file(deno_lint::linter::LintFileOptions {
+            specifier: block_specifier,
+            media_type: block_media_type,
+            source_code: block.text.clone(),
+            config: self.deno_lint_config.clone(),
+            external_linter: external_linter_container.get_callback(),
+            source_mapping: Some(source_mapping),
+          })
+          .map_err(AnyError::from)?;
+        if parsed_source.is_none() {
+          parsed_source = Some(block_source);
+        }
+        block_diagnostics_batch.push(block_diagnostics);
+      }
+      let source_text_info =
+        deno_ast::SourceTextInfo::new(current_source_code.clone().into());
+      let start_pos = (&source_text_info).start_pos();
+      let serializable_batch: Vec<Vec<SerializableLintDiagnostic>> =
+        block_diagnostics_batch
+          .iter()
+          .map(|batch| {
+            batch
+              .iter()
+              .map(|d| {
+                SerializableLintDiagnostic::from_diagnostic(d, start_pos)
+              })
+              .collect()
+          })
+          .collect();
+      let diagnostics_json = serde_json::to_string(&serializable_batch)?;
+      let postprocess_fut =
+        runner.postprocess(&dot_ext, &diagnostics_json, file_path);
+      let postprocessed_json =
+        deno_core::futures::executor::block_on(postprocess_fut)?;
+      let serializable_diagnostics: Vec<SerializableLintDiagnostic> =
+        serde_json::from_str(&postprocessed_json)?;
+      all_diagnostics = serializable_diagnostics
+        .into_iter()
+        .map(|d| d.into_diagnostic(&source_text_info))
+        .collect::<Result<Vec<_>, _>>()?;
+    }
+
+    let source = parsed_source.unwrap_or_else(|| {
+      deno_ast::parse_program(deno_ast::ParseParams {
+        specifier: specifier_from_file_path(file_path).unwrap(),
+        text: "".into(),
+        media_type: MediaType::Unknown,
+        capture_tokens: false,
+        scope_analysis: false,
+        maybe_syntax: None,
+      })
+      .unwrap()
+    });
+
+    Ok((source, all_diagnostics))
   }
 
   fn lint_file_and_fix(
@@ -182,6 +427,7 @@ impl CliLinter {
       source_code,
       config: self.deno_lint_config.clone(),
       external_linter: external_linter_container.get_callback(),
+      source_mapping: None,
     })?;
 
     if let Some(err) = external_linter_container.take_error() {
@@ -263,6 +509,7 @@ fn apply_lint_fixes_and_relint(
       media_type,
       config: config.clone(),
       external_linter: external_linter_container.get_callback(),
+      source_mapping: None,
     })?;
     let mut new_diagnostics = source.diagnostics().clone();
     new_diagnostics.retain(|d| !original_source.diagnostics().contains(d));
@@ -501,5 +748,148 @@ mod test {
     ]);
     assert_eq!(changes.len(), 1);
     assert_eq!(changes[0].range, 0..125);
+  }
+}
+
+/// A serializable representation of a `LintDiagnostic` designed for V8/JSON serialization boundaries.
+///
+/// This struct converts non-serializable Swc types (like `SourcePos` and `SourceRange`) to simple
+/// 0-indexed byte offsets relative to the start of the file.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SerializableLintDiagnostic {
+  pub specifier: String,
+  pub code: String,
+  pub message: String,
+  pub hint: Option<String>,
+  pub range: Option<(usize, usize)>,
+  pub severity: String,
+  pub fixes: Vec<SerializableLintFix>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SerializableLintFix {
+  pub description: String,
+  pub changes: Vec<SerializableLintFixChange>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SerializableLintFixChange {
+  pub new_text: String,
+  pub range: (usize, usize),
+}
+
+impl SerializableLintDiagnostic {
+  /// Converts a `LintDiagnostic` into its serializable format.
+  ///
+  /// Maps coordinate bounds (e.g. diagnostic ranges and potential code fixes) to 0-indexed byte
+  /// offsets using the provided file starting position as a baseline.
+  pub fn from_diagnostic(
+    d: &LintDiagnostic,
+    start_pos: deno_ast::StartSourcePos,
+  ) -> Self {
+    let range = d.range.as_ref().map(|r| {
+      (
+        r.range.start.as_byte_index(start_pos),
+        r.range.end.as_byte_index(start_pos),
+      )
+    });
+    let fixes = d
+      .details
+      .fixes
+      .iter()
+      .map(|f| SerializableLintFix {
+        description: f.description.to_string(),
+        changes: f
+          .changes
+          .iter()
+          .map(|c| SerializableLintFixChange {
+            new_text: c.new_text.to_string(),
+            range: (
+              c.range.start.as_byte_index(start_pos),
+              c.range.end.as_byte_index(start_pos),
+            ),
+          })
+          .collect(),
+      })
+      .collect();
+
+    Self {
+      specifier: d.specifier.to_string(),
+      code: d.details.code.clone(),
+      message: d.details.message.clone(),
+      hint: d.details.hint.clone(),
+      range,
+      severity: d.severity.as_str().to_string(),
+      fixes,
+    }
+  }
+
+  /// Reconstructs a full `LintDiagnostic` from its serializable representation.
+  ///
+  /// Recreates Swc coordinate systems and constructs exact diagnostic/fix ranges by offset-shifting
+  /// the source text's baseline starting position.
+  pub fn into_diagnostic(
+    self,
+    source_text_info: &deno_ast::SourceTextInfo,
+  ) -> Result<LintDiagnostic, deno_core::anyhow::Error> {
+    use std::borrow::Cow;
+
+    use deno_ast::ModuleSpecifier;
+    use deno_ast::SourceRange;
+    use deno_ast::SourceTextProvider;
+    use deno_lint::diagnostic::LintDiagnosticDetails;
+    use deno_lint::diagnostic::LintDiagnosticRange;
+    use deno_lint::diagnostic::LintDiagnosticSeverity;
+    use deno_lint::diagnostic::LintDocsUrl;
+    use deno_lint::diagnostic::LintFix;
+    use deno_lint::diagnostic::LintFixChange;
+
+    let specifier = ModuleSpecifier::parse(&self.specifier)?;
+    let start_pos = source_text_info.start_pos().as_source_pos();
+
+    let range = self.range.map(|(start, end)| LintDiagnosticRange {
+      text_info: source_text_info.clone(),
+      range: SourceRange::new(start_pos + start, start_pos + end),
+      description: None,
+    });
+
+    let fixes = self
+      .fixes
+      .into_iter()
+      .map(|f| LintFix {
+        description: Cow::Owned(f.description),
+        changes: f
+          .changes
+          .into_iter()
+          .map(|c| LintFixChange {
+            new_text: Cow::Owned(c.new_text),
+            range: SourceRange::new(
+              start_pos + c.range.0,
+              start_pos + c.range.1,
+            ),
+          })
+          .collect(),
+      })
+      .collect();
+
+    let severity = if self.severity == "warning" {
+      LintDiagnosticSeverity::Warning
+    } else {
+      LintDiagnosticSeverity::Error
+    };
+
+    Ok(LintDiagnostic {
+      specifier,
+      range,
+      details: LintDiagnosticDetails {
+        message: self.message,
+        code: self.code,
+        hint: self.hint,
+        fixes,
+        custom_docs_url: LintDocsUrl::None,
+        info: vec![],
+      },
+      severity,
+    })
   }
 }
