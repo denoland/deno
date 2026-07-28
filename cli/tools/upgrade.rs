@@ -1654,15 +1654,17 @@ fn is_sha256_hex(token: &str) -> bool {
 /// Rather than accept a 64-hex token from anywhere in the body (which would
 /// misread an HTML/XML error page served with HTTP 200 as a valid checksum and
 /// surface later as a spurious "checksum mismatch"), only these two shapes are
-/// recognized: the first whitespace-delimited token, or the value of a `Hash`
-/// label. Returns the hash lowercased, or `None` if neither matches.
+/// recognized: the leading whitespace-delimited token, or the value of a
+/// `Hash:` label on some line. Returns the hash lowercased, or `None` if
+/// neither matches.
 ///
 /// Note: distinct from the same-named `parse_sha256sum` in `desktop.rs`, which
 /// parses strict multi-line GNU checksum manifests; this lenient variant exists
 /// only to bridge the legacy Windows format and can be deleted once those
 /// releases age out.
 fn parse_sha256sum_lenient(text: &str) -> Option<String> {
-  // Canonical GNU layout: the hash is the first token on the first line.
+  // Canonical GNU layout: the hash is the leading token (any leading blank
+  // lines or indentation are skipped by `split_whitespace`).
   if let Some(token) = text.split_whitespace().next()
     && is_sha256_hex(token)
   {
@@ -3611,6 +3613,17 @@ mod test {
     // Canonical GNU `sha256sum` output, as emitted by `shasum`/`sha256sum`
     // and now by the Windows release jobs.
     let text = "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c  deno-aarch64-pc-windows-msvc.zip\n";
+    assert_eq!(
+      parse_sha256sum_lenient(text).as_deref(),
+      Some("b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c")
+    );
+  }
+
+  #[test]
+  fn test_parse_sha256sum_canonical_uppercase() {
+    // A canonical-layout file whose hash is uppercase must still normalize,
+    // since `verify_checksum` compares against a lowercase hex digest.
+    let text = "B5BB9D8014A0F9B1D61E21E796D78DCCDF1352F23CD32812F4850B878AE4944C  deno.exe\n";
     assert_eq!(
       parse_sha256sum_lenient(text).as_deref(),
       Some("b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c")
