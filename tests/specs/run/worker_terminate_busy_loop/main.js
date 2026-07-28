@@ -5,7 +5,7 @@ const command = new Deno.Command(Deno.execPath(), {
     "run",
     "-A",
     "--quiet",
-    new URL("./child.js", import.meta.url).pathname,
+    new URL("./child.js", import.meta.url).href,
   ],
   stdout: "piped",
   stderr: "piped",
