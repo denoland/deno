@@ -705,6 +705,17 @@ mod tests {
   }
 
   #[test]
+  fn transform_relative_units_rejected() {
+    // `DOMMatrix` must reject relative lengths, and a transform list has no
+    // element to resolve them against.
+    // https://drafts.fxtf.org/geometry/#dom-dommatrixreadonly-dommatrixreadonly
+    assert_eq!(parse("translate(1em)"), None);
+    assert_eq!(parse("translate(1lh)"), None);
+    assert_eq!(parse("translateX(1vw)"), None);
+    assert_eq!(parse("perspective(1cqw)"), None);
+  }
+
+  #[test]
   fn transform_rotate_no_unit_rejected() {
     assert_eq!(parse("rotate(10)"), None);
   }

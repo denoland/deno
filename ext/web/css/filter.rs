@@ -326,7 +326,12 @@ mod tests {
 
   #[test]
   fn filter_blur_non_px_rejected() {
+    // Filters have no metrics to resolve against, so every non-absolute unit
+    // is rejected rather than silently resolving to something wrong.
     assert_eq!(parse("blur(5em)"), None);
+    assert_eq!(parse("blur(5lh)"), None);
+    assert_eq!(parse("blur(5vw)"), None);
+    assert_eq!(parse("blur(5cqmin)"), None);
   }
 
   // --- brightness / contrast / grayscale / invert / opacity / saturate / sepia ---

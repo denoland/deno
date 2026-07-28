@@ -1618,6 +1618,7 @@ ObjectDefineProperty(
             "strokeStyle",
             "globalAlpha",
             "font",
+            "lang",
             "textAlign",
             "textBaseline",
             "globalCompositeOperation",

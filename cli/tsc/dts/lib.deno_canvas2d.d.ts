@@ -743,6 +743,8 @@ interface CanvasTextDrawingStyles {
   fontStretch: CanvasFontStretch;
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/fontVariantCaps) */
   fontVariantCaps: CanvasFontVariantCaps;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/lang) */
+  lang: string;
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/letterSpacing) */
   letterSpacing: string;
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CanvasRenderingContext2D/textAlign) */

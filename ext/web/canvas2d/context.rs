@@ -58,6 +58,7 @@ use super::text::compute_text_metrics;
 use super::text::font_metric_offsets;
 use crate::canvas2d::TextMetrics;
 use crate::canvas2d::error::Canvas2DError;
+use crate::canvas2d::font_metrics::length_resolution;
 use crate::canvas2d::gradient::CanvasGradient;
 use crate::canvas2d::gradient::build_conic_gradient;
 use crate::canvas2d::gradient::build_linear_gradient;
@@ -90,6 +91,7 @@ use crate::css::font::FontState;
 use crate::css::font::TextDirection;
 use crate::css::font::parse_css_font;
 use crate::css::font::parse_css_spacing;
+use crate::css::value::LengthResolution;
 use crate::font::SharedLocalFontDb;
 use crate::image_data::ImageData;
 
@@ -231,14 +233,18 @@ impl OffscreenCanvasRenderingContext2D {
 
   #[setter]
   fn font(&self, #[webidl] value: String) {
-    if let Some(state) = parse_css_font(&value) {
+    // Relative lengths in the shorthand resolve against the parent font, which
+    // for a canvas with no element is the default `10px sans-serif`.
+    // https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-font
+    let resolution = self.default_font_resolution();
+    if let Some(state) = parse_css_font(&value, &resolution) {
       let mut s = self.state.borrow_mut();
       // Keep non-shorthand canvas text state.
       s.font_state = FontState {
         direction: s.font_state.direction,
         font_kerning: s.font_state.font_kerning,
-        letter_spacing: s.font_state.letter_spacing,
-        word_spacing: s.font_state.word_spacing,
+        letter_spacing: s.font_state.letter_spacing.clone(),
+        word_spacing: s.font_state.word_spacing.clone(),
         text_rendering: s.font_state.text_rendering,
         ..state
       };
@@ -374,7 +380,8 @@ impl OffscreenCanvasRenderingContext2D {
 
   #[setter]
   fn letter_spacing(&self, #[webidl] value: String) {
-    if let Some(spacing) = parse_css_spacing(&value) {
+    let resolution = self.current_font_resolution();
+    if let Some(spacing) = parse_css_spacing(&value, &resolution) {
       self.state.borrow_mut().font_state.letter_spacing = spacing;
     }
   }
@@ -387,7 +394,8 @@ impl OffscreenCanvasRenderingContext2D {
 
   #[setter]
   fn word_spacing(&self, #[webidl] value: String) {
-    if let Some(spacing) = parse_css_spacing(&value) {
+    let resolution = self.current_font_resolution();
+    if let Some(spacing) = parse_css_spacing(&value, &resolution) {
       self.state.borrow_mut().font_state.word_spacing = spacing;
     }
   }
@@ -2481,11 +2489,35 @@ impl OffscreenCanvasRenderingContext2D {
   }
 
   /// Load system fonts if registerLocalFonts ran anywhere in the process.
-  /// Checked per text op (workers never call it themselves); load is idempotent.
-  fn sync_system_fonts(&self) {
-    if self.local_fonts.system_fonts_enabled() {
+  /// Checked per op (workers never call it themselves); load is idempotent.
+  fn load_system_fonts_if_enabled(&self) -> bool {
+    let enabled = self.local_fonts.system_fonts_enabled();
+    if enabled {
       self.font_ctx.borrow_mut().collection.load_system_fonts();
-    } else if !NO_FONTS_WARNING.is_completed() {
+    }
+    enabled
+  }
+
+  /// Metrics of the canvas default font, which font-relative lengths in the
+  /// `font` shorthand resolve against (there is no parent element).
+  fn default_font_resolution(&self) -> LengthResolution {
+    self.load_system_fonts_if_enabled();
+    length_resolution(&mut self.font_ctx.borrow_mut(), &FontState::default())
+  }
+
+  /// Metrics of the font in effect, which font-relative lengths in
+  /// `letterSpacing` / `wordSpacing` resolve against.
+  fn current_font_resolution(&self) -> LengthResolution {
+    self.load_system_fonts_if_enabled();
+    let state = self.state.borrow();
+    length_resolution(&mut self.font_ctx.borrow_mut(), &state.font_state)
+  }
+
+  /// Same as [`Self::load_system_fonts_if_enabled`], plus the one-time warning
+  /// for drawing text with nothing to draw it with.
+  fn sync_system_fonts(&self) {
+    if !self.load_system_fonts_if_enabled() && !NO_FONTS_WARNING.is_completed()
+    {
       let mut font_ctx = self.font_ctx.borrow_mut();
       if font_ctx.collection.family_names().next().is_none() {
         NO_FONTS_WARNING.call_once(|| {

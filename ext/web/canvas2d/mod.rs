@@ -4,6 +4,7 @@ mod angle;
 mod context;
 mod error;
 mod filter;
+mod font_metrics;
 pub mod gradient;
 mod image;
 mod path;

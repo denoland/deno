@@ -13,6 +13,64 @@ use crate::css::error::CSSParseError;
 use crate::f64::maximum;
 use crate::f64::minimum;
 
+/// Metrics of a single font, in pixels, used to resolve font-relative
+/// `<length>` units.
+/// https://www.w3.org/TR/css-values-4/#font-relative-lengths
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FontMetrics {
+  /// `em`: the font size.
+  pub em: f64,
+  /// `cap`: the cap height.
+  pub cap: f64,
+  /// `ch`: the advance measure of the `0` (U+0030) glyph.
+  pub ch: f64,
+  /// `ex`: the x-height.
+  pub ex: f64,
+  /// `ic`: the advance measure of the `水` (U+6C34) glyph.
+  pub ic: f64,
+  /// `lh`: the used line height, which canvas always computes from `normal`.
+  pub lh: f64,
+}
+
+impl FontMetrics {
+  /// The ratio assumed for a `normal` line height when no font metrics are
+  /// available.
+  const NORMAL_LINE_HEIGHT_RATIO: f64 = 1.2;
+
+  /// The values CSS mandates when a metric cannot be determined. `cap` has no
+  /// numeric fallback in the spec (it says to use the font's ascent), so this
+  /// reuses the 0.8em ascent assumed elsewhere when no face is available.
+  /// https://www.w3.org/TR/css-values-4/#font-relative-lengths
+  #[inline]
+  pub fn fallback(em: f64) -> Self {
+    Self {
+      em,
+      cap: em * 0.8,
+      ch: em * 0.5,
+      ex: em * 0.5,
+      ic: em,
+      lh: em * Self::NORMAL_LINE_HEIGHT_RATIO,
+    }
+  }
+}
+
+/// The context a font-relative `<length>` resolves against.
+///
+/// Canvas has no root element, so `new` points both the element and the root
+/// metrics at the same font, matching Blink's canvas length resolution.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LengthResolution {
+  pub font: FontMetrics,
+  pub root: FontMetrics,
+}
+
+impl LengthResolution {
+  #[inline]
+  pub fn new(font: FontMetrics) -> Self {
+    Self { font, root: font }
+  }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Length {
   value: f64,
@@ -31,13 +89,86 @@ enum LengthUnit {
   Px,
   // https://www.w3.org/TR/css-values-4/#font-relative-lengths
   Em,
-  Rem,
-  Ex,
+  Cap,
   Ch,
+  Ex,
   Ic,
+  Lh,
+  Rem,
+  Rcap,
+  Rch,
+  Rex,
+  Ric,
+  Rlh,
+  /// Viewport- and container-relative units. Canvas has neither a viewport nor
+  /// a query container, so the initial containing block is zero-sized and these
+  /// always resolve to zero; only the unit name matters, for serialization.
+  /// https://www.w3.org/TR/css-values-4/#viewport-relative-lengths
+  /// https://drafts.csswg.org/css-conditional-5/#container-lengths
+  Zero(&'static str),
 }
 
 impl LengthUnit {
+  #[inline]
+  fn parse(unit: &str) -> Option<Self> {
+    Some(match_ignore_ascii_case! { unit,
+      // https://www.w3.org/TR/css-values-4/#absolute-lengths
+      "cm" => Self::Cm,
+      "mm" => Self::Mm,
+      "q" => Self::Q,
+      "in" => Self::In,
+      "pc" => Self::Pc,
+      "pt" => Self::Pt,
+      "px" => Self::Px,
+      // https://www.w3.org/TR/css-values-4/#font-relative-lengths
+      "em" => Self::Em,
+      "cap" => Self::Cap,
+      "ch" => Self::Ch,
+      "ex" => Self::Ex,
+      "ic" => Self::Ic,
+      "lh" => Self::Lh,
+      "rem" => Self::Rem,
+      "rcap" => Self::Rcap,
+      "rch" => Self::Rch,
+      "rex" => Self::Rex,
+      "ric" => Self::Ric,
+      "rlh" => Self::Rlh,
+      // https://www.w3.org/TR/css-values-4/#viewport-relative-lengths
+      "vw" => Self::Zero("vw"),
+      "svw" => Self::Zero("svw"),
+      "lvw" => Self::Zero("lvw"),
+      "dvw" => Self::Zero("dvw"),
+      "vh" => Self::Zero("vh"),
+      "svh" => Self::Zero("svh"),
+      "lvh" => Self::Zero("lvh"),
+      "dvh" => Self::Zero("dvh"),
+      "vi" => Self::Zero("vi"),
+      "svi" => Self::Zero("svi"),
+      "lvi" => Self::Zero("lvi"),
+      "dvi" => Self::Zero("dvi"),
+      "vb" => Self::Zero("vb"),
+      "svb" => Self::Zero("svb"),
+      "lvb" => Self::Zero("lvb"),
+      "dvb" => Self::Zero("dvb"),
+      "vmin" => Self::Zero("vmin"),
+      "svmin" => Self::Zero("svmin"),
+      "lvmin" => Self::Zero("lvmin"),
+      "dvmin" => Self::Zero("dvmin"),
+      "vmax" => Self::Zero("vmax"),
+      "svmax" => Self::Zero("svmax"),
+      "lvmax" => Self::Zero("lvmax"),
+      "dvmax" => Self::Zero("dvmax"),
+      // https://drafts.csswg.org/css-conditional-5/#container-lengths
+      "cqw" => Self::Zero("cqw"),
+      "cqh" => Self::Zero("cqh"),
+      "cqi" => Self::Zero("cqi"),
+      "cqb" => Self::Zero("cqb"),
+      "cqmin" => Self::Zero("cqmin"),
+      "cqmax" => Self::Zero("cqmax"),
+      _ => return None,
+    })
+  }
+
   #[inline]
   fn is_absolute(self) -> bool {
     matches!(
@@ -46,6 +177,14 @@ impl LengthUnit {
     )
   }
 
+  /// Whether resolving this unit depends on the font in effect, and therefore
+  /// has to be deferred until the value is used.
+  #[inline]
+  fn is_font_relative(self) -> bool {
+    !self.is_absolute() && !matches!(self, Self::Zero(_))
+  }
+
+  #[inline]
   fn to_css_str(self) -> &'static str {
     match self {
       Self::Cm => "cm",
@@ -56,10 +195,18 @@ impl LengthUnit {
       Self::Pt => "pt",
       Self::Px => "px",
       Self::Em => "em",
-      Self::Rem => "rem",
-      Self::Ex => "ex",
+      Self::Cap => "cap",
       Self::Ch => "ch",
+      Self::Ex => "ex",
       Self::Ic => "ic",
+      Self::Lh => "lh",
+      Self::Rem => "rem",
+      Self::Rcap => "rcap",
+      Self::Rch => "rch",
+      Self::Rex => "rex",
+      Self::Ric => "ric",
+      Self::Rlh => "rlh",
+      Self::Zero(unit) => unit,
     }
   }
 }
@@ -67,9 +214,6 @@ impl LengthUnit {
 impl Length {
   const INCH_TO_PX: f64 = 96.0;
   const INCH_TO_CM: f64 = 2.54;
-  // `rem` resolves against the root font size, which is fixed at 16px in
-  // OffscreenCanvas (no DOM root is available).
-  const ROOT_FONT_SIZE_PX: f64 = 16.0;
 
   #[inline]
   pub(crate) fn zero() -> Self {
@@ -84,7 +228,12 @@ impl Length {
     }
   }
 
-  fn resolve(&self, font_size: f64) -> f64 {
+  #[inline]
+  pub fn is_absolute(&self) -> bool {
+    self.unit.is_absolute()
+  }
+
+  fn absolute_to_pixels(&self) -> f64 {
     let value = self.value;
     match self.unit {
       LengthUnit::Cm => value * (Self::INCH_TO_PX / Self::INCH_TO_CM),
@@ -94,27 +243,38 @@ impl Length {
       LengthUnit::Pc => value * (Self::INCH_TO_PX / 6.0),
       LengthUnit::Pt => value * (Self::INCH_TO_PX / 72.0),
       LengthUnit::Px => value,
-      // Font-relative units. `ex`/`ch` use the common 0.5em approximation
-      // since the actual x-height / advance measure is not tracked here.
-      LengthUnit::Em => value * font_size,
-      LengthUnit::Rem => value * Self::ROOT_FONT_SIZE_PX,
-      LengthUnit::Ex => value * 0.5 * font_size,
-      LengthUnit::Ch => value * 0.5 * font_size,
-      LengthUnit::Ic => value * font_size,
+      _ => 0.0,
     }
   }
 
   /// Resolves an absolute `<length>` to pixels.
   #[inline]
   pub fn to_pixels(&self) -> f64 {
-    debug_assert!(self.unit.is_absolute());
-    self.resolve(0.0)
+    debug_assert!(self.is_absolute());
+    self.absolute_to_pixels()
   }
 
-  /// Resolves a `<length>` to pixels.
-  #[inline]
-  pub fn resolve_to_pixels(&self, font_size: f64) -> f64 {
-    self.resolve(font_size)
+  /// Resolves a `<length>` to pixels against the given metrics.
+  pub fn resolve(&self, resolution: &LengthResolution) -> f64 {
+    let value = self.value;
+    let font = &resolution.font;
+    let root = &resolution.root;
+    match self.unit {
+      LengthUnit::Em => value * font.em,
+      LengthUnit::Cap => value * font.cap,
+      LengthUnit::Ch => value * font.ch,
+      LengthUnit::Ex => value * font.ex,
+      LengthUnit::Ic => value * font.ic,
+      LengthUnit::Lh => value * font.lh,
+      LengthUnit::Rem => value * root.em,
+      LengthUnit::Rcap => value * root.cap,
+      LengthUnit::Rch => value * root.ch,
+      LengthUnit::Rex => value * root.ex,
+      LengthUnit::Ric => value * root.ic,
+      LengthUnit::Rlh => value * root.lh,
+      LengthUnit::Zero(_) => 0.0,
+      _ => self.absolute_to_pixels(),
+    }
   }
 
   pub fn to_css_string(&self) -> String {
@@ -137,6 +297,20 @@ enum AngleUnit {
   Grad,
   Rad,
   Turn,
+}
+
+impl AngleUnit {
+  /// https://www.w3.org/TR/css-values-4/#angles
+  #[inline]
+  fn parse(unit: &str) -> Option<Self> {
+    Some(match_ignore_ascii_case! { unit,
+      "deg" => Self::Deg,
+      "grad" => Self::Grad,
+      "rad" => Self::Rad,
+      "turn" => Self::Turn,
+      _ => return None,
+    })
+  }
 }
 
 impl Angle {
@@ -203,6 +377,18 @@ enum TimeUnit {
   Ms,
 }
 
+impl TimeUnit {
+  /// https://www.w3.org/TR/css-values-4/#time
+  #[inline]
+  fn parse(unit: &str) -> Option<Self> {
+    Some(match_ignore_ascii_case! { unit,
+      "s" => Self::S,
+      "ms" => Self::Ms,
+      _ => return None,
+    })
+  }
+}
+
 impl Time {
   #[inline]
   fn from_seconds(value: f64) -> Self {
@@ -234,6 +420,18 @@ pub struct Frequency {
 enum FrequencyUnit {
   Hz,
   Khz,
+}
+
+impl FrequencyUnit {
+  /// https://www.w3.org/TR/css-values-4/#frequency
+  #[inline]
+  fn parse(unit: &str) -> Option<Self> {
+    Some(match_ignore_ascii_case! { unit,
+      "hz" => Self::Hz,
+      "khz" => Self::Khz,
+      _ => return None,
+    })
+  }
 }
 
 impl Frequency {
@@ -268,6 +466,19 @@ enum ResolutionUnit {
   Dpi,
   Dpcm,
   Dppx,
+}
+
+impl ResolutionUnit {
+  /// https://www.w3.org/TR/css-values-4/#resolution
+  #[inline]
+  fn parse(unit: &str) -> Option<Self> {
+    Some(match_ignore_ascii_case! { unit,
+      "dpi" => Self::Dpi,
+      "dpcm" => Self::Dpcm,
+      "dppx" | "x" => Self::Dppx,
+      _ => return None,
+    })
+  }
 }
 
 impl Resolution {
@@ -901,9 +1112,10 @@ impl ChannelKeywords {
 
 #[derive(Default)]
 pub struct ParseOptions {
-  /// Base font size in pixels for resolving em/rem and percentage values.
-  /// When `None`, em/rem tokens yield `ContainsRelativeLengthValues`.
-  pub em_base: Option<f64>,
+  /// Metrics for resolving font-relative `<length>` units and percentages.
+  /// When `None`, any non-absolute `<length>` unit yields
+  /// `ContainsRelativeLengthValues`.
+  pub length_resolution: Option<LengthResolution>,
   /// Channel keywords resolvable as `<number>` values, used by the CSS
   /// relative color syntax. When `None`, bare identifiers other than calc
   /// constants are rejected.
@@ -913,17 +1125,27 @@ pub struct ParseOptions {
 #[derive(Debug)]
 struct ParseState {
   function_depth: u8,
-  em_base: Option<f64>,
+  length_resolution: Option<LengthResolution>,
   channel_keywords: Option<ChannelKeywords>,
+  /// Set when a font-relative unit had to be folded to pixels inside a math
+  /// function, so callers know the result is only valid for the metrics it was
+  /// parsed with.
+  folded_font_relative: bool,
 }
 
 impl ParseState {
   fn new(opts: ParseOptions) -> Self {
     Self {
       function_depth: 0,
-      em_base: opts.em_base,
+      length_resolution: opts.length_resolution,
       channel_keywords: opts.channel_keywords,
+      folded_font_relative: false,
     }
+  }
+
+  #[inline]
+  fn em_base(&self) -> Option<f64> {
+    self.length_resolution.map(|resolution| resolution.font.em)
   }
 }
 
@@ -993,14 +1215,36 @@ macro_rules! from_raw {
   };
 }
 
+/// A parsed numeric value plus the parse-time facts a caller needs to know
+/// about it.
+pub struct ParsedNumericValue {
+  pub value: NumericValue,
+  /// Whether a font-relative unit was folded to pixels inside a math function.
+  /// Such a value is only correct for the metrics it was parsed with, so
+  /// callers that must survive a font change have to retain the specified text
+  /// and re-parse it instead.
+  pub folded_font_relative: bool,
+}
+
 impl NumericValue {
   pub fn parse<'i, 't>(
     input: &mut Parser<'i, 't>,
     opts: ParseOptions,
   ) -> Result<Self, CSSParseError<'i>> {
-    let result = Self::parse_inner(input, &mut ParseState::new(opts))?;
+    Ok(Self::parse_with_details(input, opts)?.value)
+  }
+
+  pub fn parse_with_details<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    opts: ParseOptions,
+  ) -> Result<ParsedNumericValue, CSSParseError<'i>> {
+    let mut state = ParseState::new(opts);
+    let result = Self::parse_inner(input, &mut state)?;
     match result.expect_numeric() {
-      Ok(numeric) => Ok(numeric),
+      Ok(value) => Ok(ParsedNumericValue {
+        value,
+        folded_font_relative: state.folded_font_relative,
+      }),
       Err(error) => Err(input.new_custom_error(error)),
     }
   }
@@ -1024,68 +1268,55 @@ impl NumericValue {
       }
       Token::Dimension { value, unit, .. } => {
         let value = *value as f64;
-        match_ignore_ascii_case! { &unit,
-          // https://www.w3.org/TR/css-values-4/#absolute-lengths
-          "cm" => Ok(NumericValue::Length(Length { value, unit: LengthUnit::Cm }).into()),
-          "mm" => Ok(NumericValue::Length(Length { value, unit: LengthUnit::Mm }).into()),
-          "q" => Ok(NumericValue::Length(Length { value, unit: LengthUnit::Q }).into()),
-          "in" => Ok(NumericValue::Length(Length { value, unit: LengthUnit::In }).into()),
-          "pc" => Ok(NumericValue::Length(Length { value, unit: LengthUnit::Pc }).into()),
-          "pt" => Ok(NumericValue::Length(Length { value, unit: LengthUnit::Pt }).into()),
-          "px" => Ok(NumericValue::Length(Length { value, unit: LengthUnit::Px }).into()),
-          // https://www.w3.org/TR/css-values-4/#font-relative-lengths
-          // Font-relative units are only accepted when em_base is provided
-          // (font / spacing contexts). At the top level they are kept in their
-          // original unit so they can be resolved lazily against the actual
-          // font size; inside math functions they must be folded to pixels so
-          // the dimension arithmetic stays in pixels.
-          "em" | "rem" | "ex" | "ch" | "ic" => {
-            let Some(base) = state.em_base else {
-              return Err(input.new_custom_error(CSSCustomError::ContainsRelativeLengthValues));
-            };
-            let unit = match_ignore_ascii_case! { &unit,
-              "em" => LengthUnit::Em,
-              "rem" => LengthUnit::Rem,
-              "ex" => LengthUnit::Ex,
-              "ch" => LengthUnit::Ch,
-              "ic" => LengthUnit::Ic,
-              _ => unreachable!(),
-            };
-            let length = Length { value, unit };
-            if state.function_depth == 0 {
-              Ok(NumericValue::Length(length).into())
-            } else {
-              Ok(NumericValue::Length(Length::from_pixels(length.resolve_to_pixels(base))).into())
-            }
-          },
-          "rex" | "cap" | "rcap" | "rch" | "ric" | "lh" | "rlh" |
-          "vw" | "svw" | "lvw" | "dvw" | "vh" | "svh" | "lvh" | "dvh" | "vi" | "svi" | "lvi" | "dvi" |
-          "vb" | "svb" | "lvb" | "dvb" | "vmin" | "svmin" | "lvmin" | "dvmin" | "vmax" | "svmax" | "lvmax" | "dvmax" |
-          // https://www.w3.org/TR/css-contain-3/#container-lengths
-          "cqw" | "cqh" | "cqi" | "cqb" | "cqmin" | "cqmax"
-          => Err(input.new_custom_error(CSSCustomError::ContainsRelativeLengthValues)),
-          // https://www.w3.org/TR/css-values-4/#angles
-          "deg" => Ok(NumericValue::Angle(Angle { value, unit: AngleUnit::Deg }).into()),
-          "grad" => Ok(NumericValue::Angle(Angle { value, unit: AngleUnit::Grad }).into()),
-          "rad" => Ok(NumericValue::Angle(Angle { value, unit: AngleUnit::Rad }).into()),
-          "turn" => Ok(NumericValue::Angle(Angle { value, unit: AngleUnit::Turn }).into()),
-          // https://www.w3.org/TR/css-values-4/#time
-          "s" => Ok(NumericValue::Time(Time { value, unit: TimeUnit::S }).into()),
-          "ms" => Ok(NumericValue::Time(Time { value, unit: TimeUnit::Ms }).into()),
-          // https://www.w3.org/TR/css-values-4/#frequency
-          "hz" => Ok(NumericValue::Frequency(Frequency { value, unit: FrequencyUnit::Hz }).into()),
-          "khz" => Ok(NumericValue::Frequency(Frequency { value, unit: FrequencyUnit::Khz }).into()),
-          // https://www.w3.org/TR/css-values-4/#resolution
-          "dpi" => Ok(NumericValue::Resolution(Resolution { value, unit: ResolutionUnit::Dpi }).into()),
-          "dpcm" => Ok(NumericValue::Resolution(Resolution { value, unit: ResolutionUnit::Dpcm }).into()),
-          "dppx" | "x" => Ok(NumericValue::Resolution(Resolution { value, unit: ResolutionUnit::Dppx }).into()),
-          // https://www.w3.org/TR/css-grid-2/#fr-unit
-          "fr" => Ok(NumericValue::Flex(value).into()),
-          _ => {
-            let token = token.clone();
-            Err(input.new_unexpected_token_error(token))
+        // Non-absolute units are only accepted when metrics are provided (font
+        // and spacing contexts). At the top level they keep their original unit
+        // so they can be resolved lazily against the font actually in effect;
+        // inside math functions they must be folded to pixels so the dimension
+        // arithmetic stays in pixels.
+        if let Some(unit) = LengthUnit::parse(unit) {
+          let length = Length { value, unit };
+          if unit.is_absolute() {
+            return Ok(NumericValue::Length(length).into());
           }
+          let Some(resolution) = state.length_resolution else {
+            return Err(
+              input
+                .new_custom_error(CSSCustomError::ContainsRelativeLengthValues),
+            );
+          };
+          if state.function_depth == 0 {
+            return Ok(NumericValue::Length(length).into());
+          }
+          if unit.is_font_relative() {
+            state.folded_font_relative = true;
+          }
+          return Ok(
+            NumericValue::Length(Length::from_pixels(
+              length.resolve(&resolution),
+            ))
+            .into(),
+          );
         }
+        if let Some(unit) = AngleUnit::parse(unit) {
+          return Ok(NumericValue::Angle(Angle { value, unit }).into());
+        }
+        if let Some(unit) = TimeUnit::parse(unit) {
+          return Ok(NumericValue::Time(Time { value, unit }).into());
+        }
+        if let Some(unit) = FrequencyUnit::parse(unit) {
+          return Ok(NumericValue::Frequency(Frequency { value, unit }).into());
+        }
+        if let Some(unit) = ResolutionUnit::parse(unit) {
+          return Ok(
+            NumericValue::Resolution(Resolution { value, unit }).into(),
+          );
+        }
+        // https://www.w3.org/TR/css-grid-2/#fr-unit
+        if unit.eq_ignore_ascii_case("fr") {
+          return Ok(NumericValue::Flex(value).into());
+        }
+        let token = token.clone();
+        Err(input.new_unexpected_token_error(token))
       }
       Token::Function(name) => {
         state.function_depth += 1;
@@ -1599,7 +1830,7 @@ impl NumericValue {
             let rhs = Self::parse_multiplicative_expression(input, state)?;
             let mut left = lhs.into_math();
             let mut right = rhs.into_math();
-            if let Some(base) = state.em_base {
+            if let Some(base) = state.em_base() {
               if left.is_length() && right.is_percent() {
                 right = right.resolve_percent_as_length(base);
               } else if left.is_percent() && right.is_length() {
@@ -1616,7 +1847,7 @@ impl NumericValue {
             let rhs = Self::parse_multiplicative_expression(input, state)?;
             let mut left = lhs.into_math();
             let mut right = rhs.into_math();
-            if let Some(base) = state.em_base {
+            if let Some(base) = state.em_base() {
               if left.is_length() && right.is_percent() {
                 right = right.resolve_percent_as_length(base);
               } else if left.is_percent() && right.is_length() {

@@ -17,6 +17,7 @@ use parley::style::FontFeatures;
 use parley::style::FontWeight;
 use parley::style::GenericFamily;
 
+use super::font_metrics::length_resolution;
 use super::state::TextAlign;
 use super::state::TextBaseline;
 use crate::canvas2d::text_metrics::TextMetrics;
@@ -24,6 +25,8 @@ use crate::css::font::FontKerning;
 use crate::css::font::FontState;
 use crate::css::font::FontVariantCaps;
 use crate::css::font::TextDirection;
+use crate::css::value::FontMetrics;
+use crate::css::value::LengthResolution;
 
 /// ASCII whitespace -> U+0020 (not collapsed); drop U+0000.
 /// https://html.spec.whatwg.org/multipage/canvas.html#text-preparation-algorithm
@@ -97,6 +100,25 @@ fn font_variant_caps_features(caps: FontVariantCaps) -> Vec<FontFeature> {
   }
 }
 
+/// Resolves letter/word spacing in pixels against the current font, touching
+/// the font collection only when a font-relative unit is actually used.
+fn resolve_spacing(
+  font_ctx: &mut FontContext,
+  fstate: &FontState,
+) -> (f32, f32) {
+  let resolution = if fstate.letter_spacing.is_absolute()
+    && fstate.word_spacing.is_absolute()
+  {
+    LengthResolution::new(FontMetrics::fallback(fstate.size as f64))
+  } else {
+    length_resolution(font_ctx, fstate)
+  };
+  (
+    fstate.letter_spacing.resolve(&resolution) as f32,
+    fstate.word_spacing.resolve(&resolution) as f32,
+  )
+}
+
 /// Builds a parley layout for canvas text (`lang`: canvas `lang` attribute).
 pub(super) fn build_text_layout(
   font_ctx: &mut FontContext,
@@ -108,6 +130,11 @@ pub(super) fn build_text_layout(
   let text = prepare_text(text);
   let synthesized = synthesize_caps_text(&text, fstate.font_variant_caps);
   let text: &str = synthesized.as_deref().unwrap_or(&text);
+
+  // Spacing is resolved before the builder borrows the font context, because
+  // font-relative units have to query the collection for the current face.
+  let (letter_spacing_px, word_spacing_px) = resolve_spacing(font_ctx, fstate);
+
   let mut builder = layout_ctx.ranged_builder(font_ctx, text, 1.0, true);
 
   // Full family list so missing faces fall back to later entries.
@@ -132,14 +159,10 @@ pub(super) fn build_text_layout(
   builder.push_default(StyleProperty::FontStyle(fstate.style.to_parley()));
   builder.push_default(StyleProperty::FontWidth(fstate.stretch.to_parley()));
 
-  let letter_spacing_px =
-    fstate.letter_spacing.resolve_to_pixels(fstate.size as f64) as f32;
   if letter_spacing_px != 0.0 {
     builder.push_default(StyleProperty::LetterSpacing(letter_spacing_px));
   }
 
-  let word_spacing_px =
-    fstate.word_spacing.resolve_to_pixels(fstate.size as f64) as f32;
   if word_spacing_px != 0.0 {
     builder.push_default(StyleProperty::WordSpacing(word_spacing_px));
   }

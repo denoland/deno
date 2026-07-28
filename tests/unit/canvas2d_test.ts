@@ -697,6 +697,252 @@ Deno.test(function canvas2dWordSpacingInvalidIgnored() {
   assertEquals(ctx.wordSpacing, "4px");
 });
 
+// Metrics of tests/testdata/NotoSansCJKjp-Regular-subset-halt-min.otf, which
+// the font-relative length tests below resolve against. unitsPerEm is 1000, so
+// each ratio is the raw font unit divided by 1000.
+const TEST_FONT_PATH = "../testdata/NotoSansCJKjp-Regular-subset-halt-min.otf";
+/** OS/2 sxHeight (543). */
+const TEST_FONT_EX = 0.543;
+/** OS/2 sCapHeight (733). */
+const TEST_FONT_CAP = 0.733;
+/** Advance of `0` (555). */
+const TEST_FONT_CH = 0.555;
+/** hhea ascender - descender + lineGap (1160 + 288 + 0). */
+const TEST_FONT_LH = 1.448;
+/** Spacing is applied at f32 precision, so exact equality is too strict. */
+const SPACING_EPSILON = 1e-3;
+
+async function withTestFont<T>(
+  family: string,
+  fn: (ctx: OffscreenCanvasRenderingContext2D) => T,
+): Promise<T> {
+  const bytes = await Deno.readFile(new URL(TEST_FONT_PATH, import.meta.url));
+  const face = new FontFace(family, bytes);
+  Deno.fonts.add(face);
+  try {
+    await Deno.fonts.ready;
+    return fn(new OffscreenCanvas(400, 200).getContext("2d")!);
+  } finally {
+    Deno.fonts.delete(face);
+  }
+}
+
+Deno.test(
+  { permissions: { read: true } },
+  async function canvas2dSpacingFontRelativeUnits() {
+    await withTestFont("SpacingUnitsFont", (ctx) => {
+      ctx.font = "100px SpacingUnitsFont";
+      const base = ctx.measureText("AA").width;
+      // letterSpacing is added after every character, so "AA" grows by twice
+      // the resolved spacing.
+      const perChar = (spacing: string) => {
+        ctx.letterSpacing = spacing;
+        const width = ctx.measureText("AA").width;
+        ctx.letterSpacing = "0px";
+        return (width - base) / 2;
+      };
+
+      // https://www.w3.org/TR/css-values-4/#font-relative-lengths
+      assertAlmostEquals(perChar("1em"), 100, SPACING_EPSILON);
+      assertAlmostEquals(perChar("1ex"), 100 * TEST_FONT_EX, SPACING_EPSILON);
+      assertAlmostEquals(perChar("1cap"), 100 * TEST_FONT_CAP, SPACING_EPSILON);
+      assertAlmostEquals(perChar("1ch"), 100 * TEST_FONT_CH, SPACING_EPSILON);
+      assertAlmostEquals(perChar("1lh"), 100 * TEST_FONT_LH, SPACING_EPSILON);
+
+      // Canvas has no root element, so the root units see the same font.
+      assertAlmostEquals(perChar("1rem"), 100, SPACING_EPSILON);
+      assertAlmostEquals(perChar("1rex"), 100 * TEST_FONT_EX, SPACING_EPSILON);
+      assertAlmostEquals(
+        perChar("1rcap"),
+        100 * TEST_FONT_CAP,
+        SPACING_EPSILON,
+      );
+      assertAlmostEquals(perChar("1rch"), 100 * TEST_FONT_CH, SPACING_EPSILON);
+      assertAlmostEquals(perChar("1rlh"), 100 * TEST_FONT_LH, SPACING_EPSILON);
+    });
+  },
+);
+
+Deno.test(
+  { permissions: { read: true } },
+  async function canvas2dSpacingFontRelativeUnitsTrackTheFont() {
+    await withTestFont("SpacingTrackFont", (ctx) => {
+      ctx.font = "20px SpacingTrackFont";
+      ctx.letterSpacing = "1ex";
+      const narrow = ctx.measureText("AA").width;
+      ctx.font = "40px SpacingTrackFont";
+      // The specified value is retained, so it re-resolves against the new
+      // font instead of staying at the pixel value it first computed to.
+      assertEquals(ctx.letterSpacing, "1ex");
+      assertAlmostEquals(
+        ctx.measureText("AA").width,
+        narrow * 2,
+        SPACING_EPSILON,
+      );
+    });
+  },
+);
+
+Deno.test(function canvas2dSpacingUnitRoundTrip() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  for (
+    const unit of [
+      "em",
+      "cap",
+      "ch",
+      "ex",
+      "ic",
+      "lh",
+      "rem",
+      "rcap",
+      "rch",
+      "rex",
+      "ric",
+      "rlh",
+      "vw",
+      "svh",
+      "lvi",
+      "dvb",
+      "vmin",
+      "dvmax",
+      "cqw",
+      "cqmin",
+    ]
+  ) {
+    ctx.letterSpacing = `1${unit.toUpperCase()}`;
+    assertEquals(ctx.letterSpacing, `1${unit}`);
+    ctx.wordSpacing = `2${unit}`;
+    assertEquals(ctx.wordSpacing, `2${unit}`);
+  }
+  ctx.letterSpacing = "0px";
+  ctx.wordSpacing = "0px";
+});
+
+Deno.test(function canvas2dViewportUnitsResolveToZero() {
+  // Canvas has no viewport and no query container, so the initial containing
+  // block is zero-sized. The value still round-trips, per the setter steps.
+  // https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-letterspacing
+  // https://drafts.csswg.org/css-conditional-5/#container-lengths
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  const base = ctx.measureText("AA").width;
+  for (const value of ["10vw", "10dvh", "10cqmin"]) {
+    ctx.letterSpacing = value;
+    assertEquals(ctx.letterSpacing, value);
+    assertEquals(ctx.measureText("AA").width, base);
+  }
+  ctx.letterSpacing = "0px";
+
+  ctx.font = "10vw sans-serif";
+  assertEquals(ctx.font, "0px sans-serif");
+});
+
+Deno.test(function canvas2dFontShorthandRelativeUnits() {
+  // The shorthand resolves against the parent font, which for a canvas with no
+  // element is the `10px sans-serif` default -- never against the font being
+  // set. Only `em` and `rem` are asserted here because the metric-based units
+  // depend on whichever face backs `sans-serif`; their fallbacks are covered by
+  // `relative_size_resolves_against_default_10px` in ext/web/css/font.rs.
+  // https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-font
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  ctx.font = "1em sans-serif";
+  assertEquals(ctx.font, "10px sans-serif");
+  // No root element, so `rem` sees the same default font rather than 16px.
+  ctx.font = "1rem sans-serif";
+  assertEquals(ctx.font, "10px sans-serif");
+  ctx.font = "200% sans-serif";
+  assertEquals(ctx.font, "20px sans-serif");
+});
+
+Deno.test(
+  { permissions: { read: true } },
+  async function canvas2dSpacingMathFunctionsTrackTheFont() {
+    await withTestFont("SpacingCalcFont", (ctx) => {
+      ctx.font = "10px SpacingCalcFont";
+      const base = (spacing: string) => {
+        ctx.letterSpacing = spacing;
+        const width = ctx.measureText("AA").width;
+        ctx.letterSpacing = "0px";
+        return (width - ctx.measureText("AA").width) / 2;
+      };
+
+      // The calculation engine works in pixels, so the specified text is kept
+      // and re-parsed against the current font on every use.
+      assertEquals(ctx.letterSpacing, "0px");
+      ctx.letterSpacing = "calc(1em + 2px)";
+      assertEquals(ctx.letterSpacing, "calc(1em + 2px)");
+      ctx.letterSpacing = "0px";
+      assertAlmostEquals(base("calc(1em + 2px)"), 12, SPACING_EPSILON);
+      assertAlmostEquals(base("calc(min(1em, 15px))"), 10, SPACING_EPSILON);
+      ctx.font = "100px SpacingCalcFont";
+      assertAlmostEquals(base("calc(1em + 2px)"), 102, SPACING_EPSILON);
+      assertAlmostEquals(base("calc(min(1em, 15px))"), 15, SPACING_EPSILON);
+    });
+  },
+);
+
+Deno.test(function canvas2dLangDefault() {
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  assertEquals(ctx.lang, "inherit");
+  // Deno has no document, so an unparsable tag is kept verbatim and simply
+  // resolves to no locale.
+  ctx.lang = "not-a-real-lang";
+  assertEquals(ctx.lang, "not-a-real-lang");
+});
+
+// The test font carries a `locl` feature with JAN / KOR / ZHS / ZHT / ZHH
+// LangSys entries. Korean substitutes a wider U+0020 (280 vs 224 per em),
+// which Japanese leaves alone, so `lang` is observable through measureText.
+Deno.test(
+  { permissions: { read: true } },
+  async function canvas2dLangSelectsLanguageSpecificGlyphs() {
+    await withTestFont("LangFont", (ctx) => {
+      ctx.font = "100px LangFont";
+      const widthFor = (lang: string) => {
+        ctx.lang = lang;
+        return ctx.measureText("A A").width;
+      };
+
+      const ja = widthFor("ja");
+      assertAlmostEquals(widthFor("ko"), ja + 100 * (0.280 - 0.224));
+      // No locale means no `locl`, which for this font matches Japanese.
+      assertEquals(widthFor("inherit"), ja);
+      assertEquals(widthFor(""), ja);
+      assertEquals(widthFor("en"), ja);
+    });
+  },
+);
+
+Deno.test(
+  { permissions: { read: true }, ignore: !hasCanvasRenderer },
+  async function canvas2dLangAppliesToFillText() {
+    const inkWidth = (ctx: OffscreenCanvasRenderingContext2D, lang: string) => {
+      ctx.clearRect(0, 0, 400, 200);
+      ctx.lang = lang;
+      ctx.fillStyle = "black";
+      ctx.fillText("A A", 10, 120);
+      const { data } = ctx.getImageData(0, 0, 400, 200);
+      let min = Infinity;
+      let max = -Infinity;
+      for (let y = 0; y < 200; y++) {
+        for (let x = 0; x < 400; x++) {
+          if (data[(y * 400 + x) * 4 + 3] !== 0) {
+            min = Math.min(min, x);
+            max = Math.max(max, x);
+          }
+        }
+      }
+      return max - min;
+    };
+
+    await withTestFont("LangDrawFont", (ctx) => {
+      ctx.font = "100px LangDrawFont";
+      // Drawing goes through the same layout as measureText, so the wider
+      // Korean space shows up in the rendered ink too.
+      assert(inkWidth(ctx, "ko") > inkWidth(ctx, "ja"));
+    });
+  },
+);
+
 Deno.test(function canvas2dTextRenderingDefault() {
   const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
   assertEquals(ctx.textRendering, "auto");

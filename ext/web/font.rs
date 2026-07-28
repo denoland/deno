@@ -32,6 +32,7 @@ use crate::blob::BlobStoreTrait;
 use crate::css::font::CssFontStretch;
 use crate::css::font::CssFontStyle;
 use crate::css::font::FontSrc;
+use crate::css::font::default_font_resolution;
 use crate::css::font::normalize_font_face_family;
 use crate::css::font::parse_css_font;
 use crate::css::font::parse_css_font_src;
@@ -502,7 +503,10 @@ struct CssFontQueryResult {
 pub fn op_parse_css_font_query(
   #[string] font: &str,
 ) -> Option<CssFontQueryResult> {
-  let state = parse_css_font(font)?;
+  // A query has no canvas behind it, so font-relative lengths fall back to the
+  // ratios CSS mandates for the default font; only the family and the
+  // style/weight/stretch triple are used for matching anyway.
+  let state = parse_css_font(font, &default_font_resolution())?;
   // Query must name exactly one family.
   let [family] = <[String; 1]>::try_from(state.families).ok()?;
   Some(CssFontQueryResult {
