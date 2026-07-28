@@ -14,6 +14,7 @@ use crate::error::JsError;
 use crate::error::exception_to_err;
 use crate::modules::LazyEsmModuleLoader;
 use crate::modules::ModuleCodeString;
+use crate::modules::ModuleError;
 use crate::modules::ModuleId;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleName;
@@ -102,10 +103,9 @@ impl ModuleMap {
       )
       .map_err(|e| e.into_error(scope, false, true))?;
 
-    self.instantiate_module(scope, mod_id).map_err(|e| {
-      let exception = v8::Local::new(scope, e);
-      exception_to_err(scope, exception, false, true)
-    })?;
+    self
+      .instantiate_module(scope, mod_id)
+      .map_err(|error| error.into_error(scope, false, true))?;
 
     let module_handle = self.get_handle(mod_id).unwrap();
     let module_local = v8::Local::<v8::Module>::new(scope, module_handle);
@@ -113,27 +113,7 @@ impl ModuleMap {
     let status = module_local.get_status();
     assert_eq!(status, v8::ModuleStatus::Instantiated);
 
-    let value = module_local.evaluate(scope).unwrap();
-    // Under Explicit microtask policy, drain microtasks so the module
-    // evaluation promise resolves for synchronous modules.
-    //
-    // However, skip the checkpoint when we are inside a top-level
-    // `module.evaluate()` call (i.e. `evaluating_top_level` is set).
-    // Draining microtasks at this point can prematurely resolve
-    // TLA-related microtasks (e.g. `await` resume jobs from eagerly-
-    // resolved async ops), which prevents the module evaluation promise
-    // from settling correctly later.
-    if !self.evaluating_top_level.get() {
-      scope.perform_microtask_checkpoint();
-    }
-    let promise = v8::Local::<v8::Promise>::try_from(value).unwrap();
-    let result = promise.result(scope);
-    if !result.is_undefined() {
-      return Err(
-        CoreErrorKind::Js(exception_to_err(scope, result, false, true))
-          .into_box(),
-      );
-    }
+    self.evaluate_module_sync(scope, module_local)?;
 
     let status = module_local.get_status();
     assert_eq!(status, v8::ModuleStatus::Evaluated);
@@ -141,6 +121,55 @@ impl ModuleMap {
     let mod_ns = module_local.get_module_namespace();
 
     Ok(v8::Global::new(scope, mod_ns))
+  }
+
+  fn evaluate_module_sync<'s, 'i>(
+    &self,
+    scope: &mut v8::PinScope<'s, 'i>,
+    module: v8::Local<'s, v8::Module>,
+  ) -> Result<(), CoreError> {
+    v8::tc_scope!(let tc_scope, scope);
+
+    let Some(value) = module.evaluate(tc_scope) else {
+      if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+        return Err(CoreErrorKind::ExecutionTerminated.into_box());
+      }
+      if let Some(exception) = tc_scope.exception() {
+        return Err(
+          CoreErrorKind::Js(exception_to_err(tc_scope, exception, false, true))
+            .into_box(),
+        );
+      }
+      return Err(JsErrorBox::generic("Failed to evaluate module").into());
+    };
+    if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+      return Err(CoreErrorKind::ExecutionTerminated.into_box());
+    }
+
+    // Under Explicit microtask policy, drain microtasks so the module
+    // evaluation promise resolves for synchronous modules.
+    //
+    // Skip the checkpoint during a top-level `module.evaluate()` call.
+    // Draining it here can settle top-level-await microtasks too early.
+    if !self.evaluating_top_level.get() {
+      tc_scope.perform_microtask_checkpoint();
+      if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+        return Err(CoreErrorKind::ExecutionTerminated.into_box());
+      }
+    }
+
+    let promise = v8::Local::<v8::Promise>::try_from(value).map_err(|_| {
+      JsErrorBox::generic("Module evaluation did not return a promise")
+    })?;
+    let result = promise.result(tc_scope);
+    if !result.is_undefined() {
+      return Err(
+        CoreErrorKind::Js(exception_to_err(tc_scope, result, false, true))
+          .into_box(),
+      );
+    }
+
+    Ok(())
   }
 
   /// Check if a lazy-loaded ESM module is known to exist for the given
@@ -246,37 +275,17 @@ impl ModuleMap {
     if let Some(handle) = cached_handle {
       let handle_local = v8::Local::new(scope, handle);
       if handle_local.get_status() == v8::ModuleStatus::Instantiated {
-        let value = handle_local.evaluate(scope).unwrap();
-        if !self.evaluating_top_level.get() {
-          scope.perform_microtask_checkpoint();
-        }
-        let promise = v8::Local::<v8::Promise>::try_from(value).unwrap();
-        let result = promise.result(scope);
-        if !result.is_undefined() {
-          return Err(
-            CoreErrorKind::Js(exception_to_err(scope, result, false, true))
-              .into_box(),
-          );
-        }
+        self.evaluate_module_sync(scope, handle_local)?;
       }
       return Ok(v8::Global::new(scope, handle_local.get_module_namespace()));
     }
 
-    let module_id = self.build_synthetic_esm_module(scope, module_specifier)?;
+    let module_id = self
+      .build_synthetic_esm_module(scope, module_specifier)
+      .map_err(|error| error.into_error(scope, false, true))?;
     let handle = self.get_handle(module_id).unwrap();
     let handle_local = v8::Local::new(scope, handle);
-    let value = handle_local.evaluate(scope).unwrap();
-    if !self.evaluating_top_level.get() {
-      scope.perform_microtask_checkpoint();
-    }
-    let promise = v8::Local::<v8::Promise>::try_from(value).unwrap();
-    let result = promise.result(scope);
-    if !result.is_undefined() {
-      return Err(
-        CoreErrorKind::Js(exception_to_err(scope, result, false, true))
-          .into_box(),
-      );
-    }
+    self.evaluate_module_sync(scope, handle_local)?;
     Ok(v8::Global::new(scope, handle_local.get_module_namespace()))
   }
 
@@ -329,26 +338,14 @@ impl ModuleMap {
       // `get_module_namespace` requires Instantiated+, so drive the module
       // forward synchronously here.
       if handle_local.get_status() == v8::ModuleStatus::Uninstantiated {
-        self.instantiate_module(scope, cached_id).map_err(|e| {
-          let exception = v8::Local::new(scope, e);
-          exception_to_err(scope, exception, false, true)
-        })?;
+        self
+          .instantiate_module(scope, cached_id)
+          .map_err(|error| error.into_error(scope, false, true))?;
       }
       // Returning the namespace before evaluation leaves `export const`
       // bindings in the temporal dead zone, so trigger evaluation here.
       if handle_local.get_status() == v8::ModuleStatus::Instantiated {
-        let value = handle_local.evaluate(scope).unwrap();
-        if !self.evaluating_top_level.get() {
-          scope.perform_microtask_checkpoint();
-        }
-        let promise = v8::Local::<v8::Promise>::try_from(value).unwrap();
-        let result = promise.result(scope);
-        if !result.is_undefined() {
-          return Err(
-            CoreErrorKind::Js(exception_to_err(scope, result, false, true))
-              .into_box(),
-          );
-        }
+        self.evaluate_module_sync(scope, handle_local)?;
       }
       let module = v8::Global::new(scope, handle_local.get_module_namespace());
       return Ok(module);
@@ -463,7 +460,7 @@ impl ModuleMap {
     &self,
     scope: &mut v8::PinScope,
     specifier: &str,
-  ) -> Result<ModuleId, CoreError> {
+  ) -> Result<ModuleId, ModuleError> {
     let backing_specifier = {
       let data = self.data.borrow();
       let modules = data.synthetic_esm_modules.borrow();
@@ -471,25 +468,27 @@ impl ModuleMap {
       modules.get(&key).map(|v| v.as_str().to_string())
     }
     .ok_or_else(|| {
-      CoreError::from(JsErrorBox::generic(format!(
+      ModuleError::Core(CoreError::from(JsErrorBox::generic(format!(
         "Specifier {specifier} is not a synthetic_esm module"
-      )))
+      ))))
     })?;
 
-    let exports_global = self.load_ext_script(scope, &backing_specifier)?;
+    let exports_global = self
+      .load_ext_script(scope, &backing_specifier)
+      .map_err(ModuleError::Core)?;
     let exports_local = v8::Local::new(scope, exports_global);
     let exports_obj = v8::Local::<v8::Object>::try_from(exports_local)
       .map_err(|_| {
-        CoreError::from(JsErrorBox::type_error(format!(
+        ModuleError::Core(CoreError::from(JsErrorBox::type_error(format!(
           "synthetic_esm backing script {backing_specifier} did not return an object"
-        )))
+        ))))
       })?;
 
-    Ok(self.new_synthetic_module_from_exports_object(
+    self.new_synthetic_module_from_exports_object(
       scope,
       String::from(specifier),
       exports_obj,
-    ))
+    )
   }
 
   /// Convenience wrapper around `build_synthetic_esm_module` for the V8
@@ -509,8 +508,15 @@ impl ModuleMap {
         let handle = self.get_handle(module_id)?;
         Some(v8::Local::new(scope, handle))
       }
+      Err(ModuleError::Core(e))
+        if matches!(e.as_kind(), CoreErrorKind::ExecutionTerminated) =>
+      {
+        scope.terminate_execution();
+        None
+      }
       Err(e) => {
-        crate::error::throw_js_error_class(scope, &e);
+        let error = e.into_error(scope, false, true);
+        crate::error::throw_js_error_class(scope, &error);
         None
       }
     }
@@ -718,15 +724,18 @@ impl ModuleMap {
     let result = match function.call(tc_scope, undefined, &[bootstrap_arg]) {
       Some(value) => v8::Global::new(tc_scope, value),
       None => {
-        assert!(tc_scope.has_caught());
-        let exception = tc_scope.exception().unwrap();
-        let err = JsError::from_v8_exception(tc_scope, exception);
         self
           .data
           .borrow()
           .lazy_script_loading
           .borrow_mut()
           .remove(&ModuleName::from(specifier_str.clone()));
+        if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+          return Err(CoreErrorKind::ExecutionTerminated.into_box());
+        }
+        assert!(tc_scope.has_caught());
+        let exception = tc_scope.exception().unwrap();
+        let err = JsError::from_v8_exception(tc_scope, exception);
         return Err(CoreErrorKind::Js(err).into_box());
       }
     };

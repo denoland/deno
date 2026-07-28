@@ -75,6 +75,46 @@ pub use ext_script::wrap_lazy_ext_script;
 use tracked::TrackedFutures;
 use tracked::TrackedVec;
 
+fn execution_terminated_module_error() -> ModuleError {
+  ModuleError::Core(CoreErrorKind::ExecutionTerminated.into_box())
+}
+
+fn is_execution_terminated_module_error(error: &ModuleError) -> bool {
+  matches!(
+    error,
+    ModuleError::Core(error)
+      if matches!(error.as_kind(), CoreErrorKind::ExecutionTerminated)
+  )
+}
+
+fn module_error_to_v8_exception(
+  scope: &mut v8::PinScope,
+  error: ModuleError,
+) -> v8::Global<v8::Value> {
+  match error {
+    ModuleError::Exception(exception) => exception,
+    ModuleError::Core(error) => error.to_v8_error(scope),
+    ModuleError::Concrete(error) => {
+      CoreErrorKind::Module(error).to_v8_error(scope)
+    }
+  }
+}
+
+fn module_error_from_v8_failure(
+  scope: &mut v8::PinScope,
+  has_terminated: bool,
+  exception: Option<v8::Global<v8::Value>>,
+  error: JsErrorBox,
+) -> ModuleError {
+  if has_terminated || scope.is_execution_terminating() {
+    execution_terminated_module_error()
+  } else if let Some(exception) = exception {
+    ModuleError::Exception(exception)
+  } else {
+    ModuleError::Core(CoreError::from(error))
+  }
+}
+
 fn is_internal_scheme(scheme: &str) -> bool {
   matches!(scheme, "ext" | "node" | "checkin")
 }
@@ -603,21 +643,46 @@ impl ModuleMap {
     scope: &mut v8::PinScope<'s, 'i>,
     name: impl IntoModuleName,
     exports_obj: v8::Local<'s, v8::Object>,
-  ) -> ModuleId {
+  ) -> Result<ModuleId, ModuleError> {
+    v8::tc_scope!(let tc_scope, scope);
+
     let name = name.into_module_name();
-    let name_str = name.v8_string(scope).unwrap();
+    let name_str = name.v8_string(tc_scope).map_err(|error| {
+      module_error_from_v8_failure(
+        tc_scope,
+        false,
+        None,
+        JsErrorBox::from_err(error),
+      )
+    })?;
 
     // Enumerate own string-keyed properties of the exports object.
-    let property_names = exports_obj
-      .get_own_property_names(
-        scope,
-        v8::GetPropertyNamesArgsBuilder::new()
-          .mode(v8::KeyCollectionMode::OwnOnly)
-          .property_filter(v8::PropertyFilter::SKIP_SYMBOLS)
-          .key_conversion(v8::KeyConversionMode::ConvertToString)
-          .build(),
-      )
-      .unwrap();
+    let Some(property_names) = exports_obj.get_own_property_names(
+      tc_scope,
+      v8::GetPropertyNamesArgsBuilder::new()
+        .mode(v8::KeyCollectionMode::OwnOnly)
+        .property_filter(v8::PropertyFilter::SKIP_SYMBOLS)
+        .key_conversion(v8::KeyConversionMode::ConvertToString)
+        .build(),
+    ) else {
+      let has_terminated =
+        tc_scope.has_terminated() || tc_scope.is_execution_terminating();
+      let exception = if has_terminated {
+        None
+      } else {
+        tc_scope
+          .exception()
+          .map(|exception| v8::Global::new(tc_scope, exception))
+      };
+      return Err(module_error_from_v8_failure(
+        tc_scope,
+        has_terminated,
+        exception,
+        JsErrorBox::generic(
+          "Failed to read synthetic module export property names",
+        ),
+      ));
+    };
     let len = property_names.length();
 
     let mut export_names: Vec<v8::Local<v8::String>> =
@@ -633,33 +698,79 @@ impl ModuleMap {
     // shape).
     let mut default_value: v8::Local<v8::Value> = exports_obj.into();
     for i in 0..len {
-      let key_val = property_names.get_index(scope, i).unwrap();
-      let key_str = key_val.to_string(scope).unwrap();
-      let value = exports_obj.get(scope, key_val).unwrap();
-      if key_str.to_rust_string_lossy(scope) == "default" {
+      let key_val = property_names.get_index(tc_scope, i).ok_or_else(|| {
+        let has_terminated = tc_scope.has_terminated();
+        module_error_from_v8_failure(
+          tc_scope,
+          has_terminated,
+          None,
+          JsErrorBox::generic("Failed to read a synthetic module export name"),
+        )
+      })?;
+      let key_str = key_val.to_string(tc_scope).ok_or_else(|| {
+        let has_terminated = tc_scope.has_terminated();
+        module_error_from_v8_failure(
+          tc_scope,
+          has_terminated,
+          None,
+          JsErrorBox::generic(
+            "Failed to convert a synthetic module export name to a string",
+          ),
+        )
+      })?;
+      let Some(value) = exports_obj.get(tc_scope, key_val) else {
+        let has_terminated =
+          tc_scope.has_terminated() || tc_scope.is_execution_terminating();
+        let exception = if has_terminated {
+          None
+        } else {
+          tc_scope
+            .exception()
+            .map(|exception| v8::Global::new(tc_scope, exception))
+        };
+        return Err(module_error_from_v8_failure(
+          tc_scope,
+          has_terminated,
+          exception,
+          JsErrorBox::generic("Failed to read a synthetic module export"),
+        ));
+      };
+      if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+        return Err(execution_terminated_module_error());
+      }
+      if key_str.to_rust_string_lossy(tc_scope) == "default" {
         default_value = value;
         continue;
       }
       export_names.push(key_str);
       export_values.push(value);
     }
-    let default_str = v8::String::new(scope, "default").unwrap();
+    let default_str =
+      v8::String::new(tc_scope, "default").ok_or_else(|| {
+        let has_terminated = tc_scope.has_terminated();
+        module_error_from_v8_failure(
+          tc_scope,
+          has_terminated,
+          None,
+          JsErrorBox::generic("Failed to create the default export name"),
+        )
+      })?;
     export_names.push(default_str);
     export_values.push(default_value);
 
     let module = v8::Module::create_synthetic_module(
-      scope,
+      tc_scope,
       name_str,
       &export_names,
       synthetic_module_evaluation_steps,
     );
 
-    let handle = v8::Global::<v8::Module>::new(scope, module);
+    let handle = v8::Global::<v8::Module>::new(tc_scope, module);
     let mut exports_global = Vec::with_capacity(export_names.len());
     for i in 0..export_names.len() {
       exports_global.push((
-        v8::Global::new(scope, export_names[i]),
-        v8::Global::new(scope, export_values[i]),
+        v8::Global::new(tc_scope, export_names[i]),
+        v8::Global::new(tc_scope, export_values[i]),
       ));
     }
 
@@ -678,7 +789,7 @@ impl ModuleMap {
     );
 
     // Synthetic modules have no imports so their instantation must never fail.
-    self.instantiate_module(scope, id).unwrap();
+    self.instantiate_module(tc_scope, id)?;
     // Eagerly evaluate so the `synthetic_module_evaluation_steps` callback
     // fires now (which sets the exports from the staged store) instead of
     // at first read. Important during snapshot creation: V8 needs the
@@ -689,11 +800,27 @@ impl ModuleMap {
     // unbound exports. Evaluation is synchronous for synthetic modules.
     {
       let handle = self.get_handle(id).unwrap();
-      let local = v8::Local::new(scope, handle);
-      let _ = local.evaluate(scope);
+      let local = v8::Local::new(tc_scope, handle);
+      if local.evaluate(tc_scope).is_none() {
+        let has_terminated =
+          tc_scope.has_terminated() || tc_scope.is_execution_terminating();
+        let exception = if has_terminated {
+          None
+        } else {
+          tc_scope
+            .exception()
+            .map(|exception| v8::Global::new(tc_scope, exception))
+        };
+        return Err(module_error_from_v8_failure(
+          tc_scope,
+          has_terminated,
+          exception,
+          JsErrorBox::generic("Failed to evaluate a synthetic module"),
+        ));
+      }
     }
 
-    id
+    Ok(id)
   }
 
   /// Creates a "synthetic module", that contains only a single, "default" export.
@@ -1171,7 +1298,7 @@ impl ModuleMap {
     &self,
     scope: &mut v8::PinScope<'s, 'i>,
     id: ModuleId,
-  ) -> Result<(), v8::Global<v8::Value>> {
+  ) -> Result<(), ModuleError> {
     v8::tc_scope!(let tc_scope, scope);
 
     let module = self
@@ -1180,7 +1307,10 @@ impl ModuleMap {
       .expect("ModuleInfo not found");
 
     if module.get_status() == v8::ModuleStatus::Errored {
-      return Err(v8::Global::new(tc_scope, module.get_exception()));
+      return Err(ModuleError::Exception(v8::Global::new(
+        tc_scope,
+        module.get_exception(),
+      )));
     }
 
     // FIXME: instantiate_module is called more than it should be,
@@ -1205,8 +1335,15 @@ impl ModuleMap {
     );
     tc_scope.remove_slot::<*const Self>();
     if instantiate_result.is_none() {
-      let exception = tc_scope.exception().unwrap();
-      return Err(v8::Global::new(tc_scope, exception));
+      if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+        return Err(execution_terminated_module_error());
+      }
+      let exception = tc_scope.exception().ok_or_else(|| {
+        ModuleError::Core(CoreError::from(JsErrorBox::generic(
+          "Failed to instantiate module",
+        )))
+      })?;
+      return Err(ModuleError::Exception(v8::Global::new(tc_scope, exception)));
     }
 
     Ok(())
@@ -1271,6 +1408,9 @@ impl ModuleMap {
     );
     if let Some(module) = maybe_module {
       return Some(module);
+    }
+    if scope.is_execution_terminating() {
+      return None;
     }
 
     crate::error::throw_js_error_class(
@@ -1632,30 +1772,34 @@ pub(crate) fn synthetic_module_evaluation_steps<'s>(
   let handle = v8::Global::<v8::Module>::new(tc_scope, module);
   let exports = module_map
     .data
-    .borrow_mut()
+    .borrow()
     .synthetic_module_exports_store
-    .remove(&handle)
-    .unwrap();
+    .get(&handle)?
+    .clone();
 
   for (export_name, export_value) in exports {
     let name = v8::Local::new(tc_scope, export_name);
     let value = v8::Local::new(tc_scope, export_value);
 
-    // This should never fail
-    assert!(
-      module
-        .set_synthetic_module_export(tc_scope, name, value)
-        .unwrap()
-    );
-    assert!(!tc_scope.has_caught());
+    if !module.set_synthetic_module_export(tc_scope, name, value)? {
+      return None;
+    }
   }
 
   // Since Top-Level Await is active we need to return a promise.
   // This promise is resolved immediately.
-  let resolver = v8::PromiseResolver::new(tc_scope).unwrap();
+  let resolver = v8::PromiseResolver::new(tc_scope)?;
   let undefined = v8::undefined(tc_scope);
-  resolver.resolve(tc_scope, undefined.into());
-  Some(resolver.get_promise(tc_scope).into())
+  resolver.resolve(tc_scope, undefined.into())?;
+  let promise = resolver.get_promise(tc_scope).into();
+
+  module_map
+    .data
+    .borrow_mut()
+    .synthetic_module_exports_store
+    .remove(&handle);
+
+  Some(promise)
 }
 
 pub fn script_origin<'s, 'i>(
