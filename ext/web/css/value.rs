@@ -6,6 +6,7 @@ use std::rc::Rc;
 
 pub use cssparser::Parser;
 pub use cssparser::ParserInput;
+use cssparser::SourcePosition;
 use cssparser::Token;
 use cssparser::match_ignore_ascii_case;
 
@@ -308,94 +309,6 @@ impl Length {
   }
 }
 
-/// https://www.w3.org/TR/css-values-4/#round-func
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum RoundStrategy {
-  Nearest,
-  Up,
-  Down,
-  ToZero,
-}
-
-fn round_to_interval(
-  strategy: RoundStrategy,
-  value: f64,
-  interval: f64,
-) -> f64 {
-  if interval == 0.0
-    || value.is_nan()
-    || interval.is_nan()
-    || value.is_infinite() && interval.is_infinite()
-  {
-    return f64::NAN;
-  }
-  if value.is_infinite() {
-    return value;
-  }
-  if interval.is_infinite() {
-    return match strategy {
-      RoundStrategy::Up => {
-        if value > 0.0 {
-          f64::INFINITY
-        } else if value == 0.0 && value.is_sign_positive() {
-          0.0
-        } else {
-          -0.0
-        }
-      }
-      RoundStrategy::Down => {
-        if value < 0.0 {
-          f64::NEG_INFINITY
-        } else if value == 0.0 && value.is_sign_negative() {
-          -0.0
-        } else {
-          0.0
-        }
-      }
-      RoundStrategy::Nearest | RoundStrategy::ToZero => {
-        if value.is_sign_positive() { 0.0 } else { -0.0 }
-      }
-    };
-  }
-  let interval = interval.abs();
-  let quotient = value / interval;
-  let rounded = match strategy {
-    RoundStrategy::Nearest => (quotient + 0.5).floor(),
-    RoundStrategy::Up => quotient.ceil(),
-    RoundStrategy::Down => quotient.floor(),
-    RoundStrategy::ToZero => quotient.trunc(),
-  };
-  rounded * interval
-}
-
-/// https://www.w3.org/TR/css-values-4/#funcdef-hypot
-fn hypot(args: &[f64]) -> f64 {
-  match *args {
-    [] => 0.0,
-    [arg1] => arg1.abs(),
-    [arg1, arg2] => arg1.hypot(arg2),
-    _ => {
-      let mut sum = 0.0;
-      let mut scale = 0.0;
-      for &arg in args {
-        let value = arg.abs();
-        if !value.is_finite() {
-          return value;
-        }
-        if scale < value {
-          let div = scale / value;
-          sum = sum * div * div + 1.0;
-          scale = value;
-        } else if value > 0.0 {
-          let div = value / scale;
-          sum += div * div;
-        }
-      }
-      scale * sum.sqrt()
-    }
-  }
-}
-
 /// A `<length>` expression kept in symbolic form, modelled on CSS Typed OM's
 /// `CSSNumericValue` tree, so that font-relative units resolve against the font
 /// in effect when the value is used rather than when it was parsed.
@@ -439,6 +352,11 @@ pub enum LengthCalc {
   Abs(Box<LengthCalc>),
   /// https://www.w3.org/TR/css-values-4/#funcdef-hypot
   Hypot(Box<[LengthCalc]>),
+  /// A subexpression whose font dependency flows through a `<number>`, as in
+  /// `sqrt(1em / 1px) * 1px`: dividing two lengths leaves the dimension system,
+  /// so the tree cannot express it. Retained as specified text (a `<calc-sum>`
+  /// body) and re-parsed on use.
+  Deferred(Box<str>),
 }
 
 impl LengthCalc {
@@ -523,11 +441,17 @@ impl LengthCalc {
           .map(|term| term.resolve(resolution))
           .collect::<Vec<_>>(),
       ),
+      // The text parsed once already, so a re-parse only fails if the metrics
+      // changed what the expression can produce.
+      Self::Deferred(css) => parse_length_text(css, resolution).unwrap_or(0.0),
     }
   }
 
-  /// The unit a term is sorted by. `None` sorts after every dimension, matching
-  /// step 5 of "sort a calculation's children".
+  /// The unit a term is sorted by. Anything that is not a dimension -- a nested
+  /// function, or a retained `Deferred` fragment -- returns `None` and lands in
+  /// the trailing group, in its authored order, which is step 5 of "sort a
+  /// calculation's children".
+  /// https://www.w3.org/TR/css-values-4/#sort-a-calculations-children
   #[inline]
   fn sort_unit(&self) -> Option<&'static str> {
     match self {
@@ -602,6 +526,7 @@ impl LengthCalc {
       }
       Self::Abs(value) => format!("abs({})", value.serialize()),
       Self::Hypot(terms) => format!("hypot({})", serialize_list(terms)),
+      Self::Deferred(css) => css.to_string(),
     }
   }
 
@@ -611,7 +536,8 @@ impl LengthCalc {
   /// https://www.w3.org/TR/css-values-4/#calc-serialize
   pub fn to_css_string(&self) -> String {
     match self {
-      Self::Sum(_) | Self::Scale { .. } => {
+      // A bare sum, product or retained fragment is only valid inside `calc()`.
+      Self::Sum(_) | Self::Scale { .. } | Self::Deferred(_) => {
         format!("calc({})", self.serialize())
       }
       _ => self.serialize(),
@@ -619,31 +545,25 @@ impl LengthCalc {
   }
 }
 
-fn serialize_list(terms: &[LengthCalc]) -> String {
-  terms
-    .iter()
-    .map(LengthCalc::serialize)
-    .collect::<Vec<_>>()
-    .join(", ")
-}
-
-/// A specified `<length>`.
+/// A `<length>` as specified, which is what the canvas text styles have to
+/// store: the getters serialize it back, and font-relative units only resolve
+/// when the value is used.
+/// https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-letterspacing
 #[derive(Clone, Debug, PartialEq)]
-pub enum LengthValue {
+pub enum SpecifiedLength {
   /// `CSSUnitValue`: a single dimension, e.g. `3px`, `1ex`, `1vw`.
   Unit(Length),
-  /// A math function over font-relative units. `px` is the value resolved
-  /// against the metrics in effect at parse time, kept so the calculation
-  /// engine can keep working in pixels; `tree` re-resolves against the font
-  /// actually in use.
-  Calc { px: f64, tree: Rc<LengthCalc> },
-  /// A math function whose font dependency flows through a `<number>`
-  /// subexpression (e.g. `calc(sqrt(1em / 1px) * 1px)`), which the length tree
-  /// cannot represent. Retained as specified text and re-parsed on use.
-  Deferred(Rc<str>),
+  /// A math function over font-relative units. `resolved_px` is the value
+  /// folded against the metrics in effect at parse time, which is what lets the
+  /// calculation engine keep working in pixels; `tree` re-resolves against the
+  /// font actually in use.
+  Calc {
+    resolved_px: f64,
+    tree: Rc<LengthCalc>,
+  },
 }
 
-impl LengthValue {
+impl SpecifiedLength {
   #[inline]
   pub(crate) fn zero() -> Self {
     Self::Unit(Length::zero())
@@ -655,16 +575,11 @@ impl LengthValue {
   }
 
   #[inline]
-  fn from_calc(px: f64, tree: LengthCalc) -> Self {
+  fn from_calc(resolved_px: f64, tree: LengthCalc) -> Self {
     Self::Calc {
-      px,
+      resolved_px,
       tree: Rc::new(tree),
     }
-  }
-
-  #[inline]
-  pub(crate) fn deferred(css: &str) -> Self {
-    Self::Deferred(Rc::from(css))
   }
 
   /// Whether resolving this value needs no font metrics.
@@ -672,7 +587,7 @@ impl LengthValue {
   pub fn is_absolute(&self) -> bool {
     match self {
       Self::Unit(length) => length.is_absolute(),
-      Self::Calc { .. } | Self::Deferred(_) => false,
+      Self::Calc { .. } => false,
     }
   }
 
@@ -681,7 +596,7 @@ impl LengthValue {
   fn is_font_dependent(&self) -> bool {
     match self {
       Self::Unit(length) => length.is_font_relative(),
-      Self::Calc { .. } | Self::Deferred(_) => true,
+      Self::Calc { .. } => true,
     }
   }
 
@@ -691,21 +606,26 @@ impl LengthValue {
     match self {
       Self::Unit(length) => LengthCalc::Unit(*length),
       Self::Calc { tree, .. } => (**tree).clone(),
-      // Never reached: `Deferred` is only produced after parsing finishes.
-      Self::Deferred(_) => LengthCalc::Unit(Length::zero()),
     }
   }
 
-  /// Resolves an absolute `<length>` to pixels.
+  /// Drops the symbolic form: a math function becomes the pixel value it folded
+  /// to against the metrics it was parsed with.
+  #[inline]
+  pub fn to_length(&self) -> Length {
+    match self {
+      Self::Unit(length) => *length,
+      Self::Calc { resolved_px, .. } => Length::from_pixels(*resolved_px),
+    }
+  }
+
+  /// The value in pixels as resolved when it was parsed. Only the calculation
+  /// engine reads this, to keep its arithmetic in pixels while parsing.
   #[inline]
   pub fn to_pixels(&self) -> f64 {
     match self {
       Self::Unit(length) => length.to_pixels(),
-      Self::Calc { px, .. } => *px,
-      Self::Deferred(_) => {
-        debug_assert!(false, "deferred length has no absolute value");
-        0.0
-      }
+      Self::Calc { resolved_px, .. } => *resolved_px,
     }
   }
 
@@ -714,9 +634,6 @@ impl LengthValue {
     match self {
       Self::Unit(length) => length.resolve(resolution),
       Self::Calc { tree, .. } => tree.resolve(resolution),
-      // The text was accepted by the caller once, so a re-parse only fails if
-      // the metrics changed what the math function can produce.
-      Self::Deferred(css) => parse_length_text(css, resolution).unwrap_or(0.0),
     }
   }
 
@@ -724,7 +641,6 @@ impl LengthValue {
     match self {
       Self::Unit(length) => length.to_css_string(),
       Self::Calc { tree, .. } => tree.to_css_string(),
-      Self::Deferred(css) => css.to_string(),
     }
   }
 
@@ -733,38 +649,20 @@ impl LengthValue {
   fn abs(self) -> Self {
     match self {
       Self::Unit(length) => Self::Unit(length.abs()),
-      Self::Calc { px, tree } => {
-        Self::from_calc(px.abs(), (*tree).clone().abs())
+      Self::Calc { resolved_px, tree } => {
+        Self::from_calc(resolved_px.abs(), (*tree).clone().abs())
       }
-      deferred => deferred,
     }
   }
 
-  /// The number as specified, used by `sign()`, which does no unit conversion.
+  /// The number as written, used by `sign()`, which does no unit conversion.
   #[inline]
-  fn specified_value(&self) -> f64 {
+  fn raw_value(&self) -> f64 {
     match self {
       Self::Unit(length) => length.value,
-      Self::Calc { px, .. } => *px,
-      Self::Deferred(_) => 0.0,
+      Self::Calc { resolved_px, .. } => *resolved_px,
     }
   }
-}
-
-/// Re-parses a specified `<length>` and resolves it against `resolution`.
-fn parse_length_text(css: &str, resolution: &LengthResolution) -> Option<f64> {
-  let mut input = ParserInput::new(css);
-  let mut parser = Parser::new(&mut input);
-  let value = NumericValue::parse(
-    &mut parser,
-    ParseOptions {
-      length_resolution: Some(*resolution),
-      ..Default::default()
-    },
-  )
-  .ok()?;
-  parser.is_exhausted().then_some(())?;
-  Some(value.expect_length(true).ok()?.resolve(resolution))
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -992,7 +890,7 @@ pub enum NumericValue {
   Zero,
   Number(f64),
   Percent(f64),
-  Length(LengthValue),
+  Length(SpecifiedLength),
   Angle(Angle),
   Time(Time),
   Frequency(Frequency),
@@ -1000,9 +898,9 @@ pub enum NumericValue {
   Flex(f64),
 }
 
-impl From<LengthValue> for NumericValue {
+impl From<SpecifiedLength> for NumericValue {
   #[inline]
-  fn from(value: LengthValue) -> Self {
+  fn from(value: SpecifiedLength) -> Self {
     NumericValue::Length(value)
   }
 }
@@ -1063,15 +961,29 @@ impl NumericValue {
     }
   }
 
+  /// Extracts a `<length>`, dropping the symbolic form of a math function: what
+  /// comes back is the dimension as specified, or the pixel value the function
+  /// folded to against the metrics it was parsed with. Callers that have to
+  /// survive a later font change want [`Self::expect_specified_length`] instead.
   #[inline]
   pub fn expect_length(
     self,
     allow_zero: bool,
-  ) -> Result<LengthValue, CSSCustomError> {
+  ) -> Result<Length, CSSCustomError> {
+    Ok(self.expect_specified_length(allow_zero)?.to_length())
+  }
+
+  /// Extracts a `<length>` as specified, keeping the `LengthCalc` tree of a math
+  /// function so it can be re-resolved against whichever font is in effect.
+  #[inline]
+  pub fn expect_specified_length(
+    self,
+    allow_zero: bool,
+  ) -> Result<SpecifiedLength, CSSCustomError> {
     match self {
       NumericValue::Zero => {
         if allow_zero {
-          Ok(LengthValue::from_pixels(0.0))
+          Ok(SpecifiedLength::from_pixels(0.0))
         } else {
           Err(CSSCustomError::UnexpectedNumericType)
         }
@@ -1305,7 +1217,7 @@ impl TryFrom<MathValue> for NumericValue {
     } else if math.is_percent() {
       Ok(NumericValue::Percent(value))
     } else if math.is_length() {
-      Ok(math.into_length_value().into())
+      Ok(math.into_specified_length().into())
     } else if math.is_angle() {
       Ok(Angle::from_degrees(value).into())
     } else if math.is_time() {
@@ -1388,12 +1300,12 @@ impl MathValue {
 
   /// The `<length>` this value represents, keeping its symbolic form when the
   /// font metrics still matter and the tree survived the computation.
-  fn into_length_value(self) -> LengthValue {
+  fn into_specified_length(self) -> SpecifiedLength {
     match self.calc {
       Some(tree) if self.font_dependent => {
-        LengthValue::from_calc(self.value, tree)
+        SpecifiedLength::from_calc(self.value, tree)
       }
-      _ => LengthValue::from_pixels(self.value),
+      _ => SpecifiedLength::from_pixels(self.value),
     }
   }
 
@@ -1476,11 +1388,19 @@ impl MathValue {
   }
 
   #[inline]
-  fn expect_length(self) -> Result<LengthValue, CSSCustomError> {
+  fn expect_length(self) -> Result<Length, CSSCustomError> {
     if !self.is_length() {
       return Err(CSSCustomError::UnexpectedNumericType);
     }
-    Ok(self.into_length_value())
+    Ok(Length::from_pixels(self.value))
+  }
+
+  #[inline]
+  fn expect_specified_length(self) -> Result<SpecifiedLength, CSSCustomError> {
+    if !self.is_length() {
+      return Err(CSSCustomError::UnexpectedNumericType);
+    }
+    Ok(self.into_specified_length())
   }
 
   #[inline]
@@ -1597,13 +1517,23 @@ impl NumericAccumulator {
   }
 
   #[inline]
-  fn expect_length(
-    self,
-    allow_zero: bool,
-  ) -> Result<LengthValue, CSSCustomError> {
+  fn expect_length(self, allow_zero: bool) -> Result<Length, CSSCustomError> {
     match self {
       NumericAccumulator::Numeric(numeric) => numeric.expect_length(allow_zero),
       NumericAccumulator::Math(math) => math.expect_length(),
+    }
+  }
+
+  #[inline]
+  fn expect_specified_length(
+    self,
+    allow_zero: bool,
+  ) -> Result<SpecifiedLength, CSSCustomError> {
+    match self {
+      NumericAccumulator::Numeric(numeric) => {
+        numeric.expect_specified_length(allow_zero)
+      }
+      NumericAccumulator::Math(math) => math.expect_specified_length(),
     }
   }
 
@@ -1750,51 +1680,6 @@ macro_rules! try_extract_as_raw {
   };
 }
 
-/// The `<length>` operands of a math function, collected so the result can keep
-/// a symbolic form when it still depends on the font metrics.
-struct LengthOperands {
-  trees: Vec<LengthCalc>,
-  font_dependent: bool,
-}
-
-impl LengthOperands {
-  /// `None` when the function is not operating on `<length>` values.
-  #[inline]
-  fn start(value: &NumericValue) -> Option<Self> {
-    match value {
-      NumericValue::Length(length) => Some(Self {
-        trees: vec![length.to_calc()],
-        font_dependent: length.is_font_dependent(),
-      }),
-      _ => None,
-    }
-  }
-
-  #[inline]
-  fn push(&mut self, value: &LengthValue) {
-    self.font_dependent |= value.is_font_dependent();
-    self.trees.push(value.to_calc());
-  }
-
-  /// The operands, only when the result still depends on the font metrics; an
-  /// expression over absolute units is already exact in pixels.
-  #[inline]
-  fn into_trees(self) -> Option<Vec<LengthCalc>> {
-    self.font_dependent.then_some(self.trees)
-  }
-}
-
-/// Appends an operand when both the collector and the operand are lengths.
-#[inline]
-fn push_operand(
-  operands: &mut Option<LengthOperands>,
-  value: &Option<LengthValue>,
-) {
-  if let (Some(operands), Some(value)) = (operands.as_mut(), value) {
-    operands.push(value);
-  }
-}
-
 /// Extracts an operand that must have the same numeric kind as `$type_ref`,
 /// keeping the `<length>` itself alongside the raw value the calculation engine
 /// works with.
@@ -1802,7 +1687,8 @@ macro_rules! try_extract_operand {
   ($expr:expr, $type_ref:expr, $input:expr) => {
     match &$type_ref {
       NumericValue::Length(_) => {
-        let length = try_extract!($expr, expect_length(false), $input);
+        let length =
+          try_extract!($expr, expect_specified_length(false), $input);
         (length.to_pixels(), Some(length))
       }
       _ => (try_extract_as_raw!($expr, $type_ref, $input), None),
@@ -1815,7 +1701,7 @@ macro_rules! from_raw_with_calc {
   ($value:expr, $type_ref:expr, $calc:expr) => {
     match (&$type_ref, $calc) {
       (NumericValue::Length(_), Some(tree)) => {
-        NumericValue::Length(LengthValue::from_calc($value, tree))
+        NumericValue::Length(SpecifiedLength::from_calc($value, tree))
       }
       _ => from_raw!($value, $type_ref),
     }
@@ -1829,7 +1715,7 @@ macro_rules! from_raw {
       NumericValue::Number(_) => NumericValue::Number($value),
       NumericValue::Percent(_) => NumericValue::Percent($value),
       NumericValue::Length(_) => {
-        NumericValue::Length(LengthValue::from_pixels($value))
+        NumericValue::Length(SpecifiedLength::from_pixels($value))
       }
       NumericValue::Angle(_) => {
         NumericValue::Angle(Angle::from_degrees($value))
@@ -1846,37 +1732,14 @@ macro_rules! from_raw {
   };
 }
 
-/// A parsed numeric value plus the parse-time facts a caller needs to know
-/// about it.
-pub struct ParsedNumericValue {
-  pub value: NumericValue,
-  /// Whether the value depends on the font metrics but kept no form that can be
-  /// re-resolved, because the dependency flowed through a `<number>`
-  /// subexpression the length tree cannot express. Callers that must survive a
-  /// font change have to retain the specified text and re-parse it instead.
-  pub lost_font_relative: bool,
-}
-
 impl NumericValue {
   pub fn parse<'i, 't>(
     input: &mut Parser<'i, 't>,
     opts: ParseOptions,
   ) -> Result<Self, CSSParseError<'i>> {
-    Ok(Self::parse_with_details(input, opts)?.value)
-  }
-
-  pub fn parse_with_details<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    opts: ParseOptions,
-  ) -> Result<ParsedNumericValue, CSSParseError<'i>> {
-    let mut state = ParseState::new(opts);
-    let result = Self::parse_inner(input, &mut state)?;
+    let result = Self::parse_inner(input, &mut ParseState::new(opts))?;
     match result.expect_numeric() {
-      Ok(value) => Ok(ParsedNumericValue {
-        lost_font_relative: state.saw_font_relative
-          && !matches!(&value, Self::Length(length) if length.is_font_dependent()),
-        value,
-      }),
+      Ok(numeric) => Ok(numeric),
       Err(error) => Err(input.new_custom_error(error)),
     }
   }
@@ -1908,7 +1771,9 @@ impl NumericValue {
         if let Some(unit) = LengthUnit::parse(unit) {
           let length = Length { value, unit };
           if unit.is_absolute() {
-            return Ok(NumericValue::Length(LengthValue::Unit(length)).into());
+            return Ok(
+              NumericValue::Length(SpecifiedLength::Unit(length)).into(),
+            );
           }
           if unit.is_font_relative() {
             state.saw_font_relative = true;
@@ -1920,7 +1785,9 @@ impl NumericValue {
             );
           };
           if state.function_depth == 0 {
-            return Ok(NumericValue::Length(LengthValue::Unit(length)).into());
+            return Ok(
+              NumericValue::Length(SpecifiedLength::Unit(length)).into(),
+            );
           }
           // Inside a math function the engine works in pixels, so fold the
           // value. Font-relative units keep their symbolic form so they can be
@@ -1929,9 +1796,9 @@ impl NumericValue {
           let px = length.resolve(&resolution);
           return Ok(
             NumericValue::Length(if unit.is_font_relative() {
-              LengthValue::from_calc(px, LengthCalc::Unit(length))
+              SpecifiedLength::from_calc(px, LengthCalc::Unit(length))
             } else {
-              LengthValue::from_pixels(px)
+              SpecifiedLength::from_pixels(px)
             })
             .into(),
           );
@@ -2106,7 +1973,7 @@ impl NumericValue {
               } else {
                 push_operand(
                   &mut operands,
-                  &Some(LengthValue::from_pixels(1.0)),
+                  &Some(SpecifiedLength::from_pixels(1.0)),
                 );
                 1.0
               };
@@ -2391,7 +2258,7 @@ impl NumericValue {
                 NumericValue::Zero => unreachable!(),
                 NumericValue::Number(number) => number,
                 NumericValue::Percent(percent) => percent,
-                NumericValue::Length(length) => length.specified_value(),
+                NumericValue::Length(length) => length.raw_value(),
                 NumericValue::Angle(angle) => angle.value,
                 NumericValue::Time(time) => time.value,
                 NumericValue::Frequency(frequency) => frequency.value,
@@ -2457,6 +2324,7 @@ impl NumericValue {
     input: &mut Parser<'i, 't>,
     state: &mut ParseState,
   ) -> Result<NumericAccumulator, CSSParseError<'i>> {
+    let span_start = input.position();
     let mut lhs = Self::parse_multiplicative_expression(input, state)?;
 
     while !input.is_exhausted() {
@@ -2510,31 +2378,53 @@ impl NumericValue {
       }
     }
 
-    Ok(lhs)
+    Ok(retain_lost_length(lhs, input, span_start))
+  }
+
+  /// Parses one factor, marking it font-dependent when it consumed a
+  /// font-relative unit. A `<number>` derived from one (`sqrt(1em / 1px)`)
+  /// carries no unit, so only this bookkeeping keeps the dependency visible.
+  fn parse_operand<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    state: &mut ParseState,
+  ) -> Result<MathValue, CSSParseError<'i>> {
+    let before = state.saw_font_relative;
+    let rhs = Self::parse_inner(input, state)?;
+    let mut rhs = rhs.into_math();
+    rhs.font_dependent |= state.saw_font_relative != before;
+    Ok(rhs)
   }
 
   fn parse_multiplicative_expression<'i, 't>(
     input: &mut Parser<'i, 't>,
     state: &mut ParseState,
   ) -> Result<NumericAccumulator, CSSParseError<'i>> {
+    let span_start = input.position();
+    let before = state.saw_font_relative;
     let mut lhs = Self::parse_inner(input, state)?;
+    // The first factor can hide a font dependency too, as in
+    // `calc(sqrt(1em / 1px) * 1px)`, so it needs the same bookkeeping. Once it
+    // has been folded into a `MathValue` the flag lives there instead.
+    let mut lhs_font_dependent = state.saw_font_relative != before;
 
     while !input.is_exhausted() {
       let start = input.state();
       let token = input.next()?;
       match token {
         Token::Delim('*') => {
-          let rhs = Self::parse_inner(input, state)?;
+          let rhs = Self::parse_operand(input, state)?;
           let mut left = lhs.into_math();
-          let right = rhs.into_math();
-          left *= &right;
+          left.font_dependent |= lhs_font_dependent;
+          lhs_font_dependent = false;
+          left *= &rhs;
           lhs = left.into();
         }
         Token::Delim('/') => {
-          let rhs = Self::parse_inner(input, state)?;
+          let rhs = Self::parse_operand(input, state)?;
           let mut left = lhs.into_math();
-          let right = rhs.into_math();
-          left /= &right;
+          left.font_dependent |= lhs_font_dependent;
+          lhs_font_dependent = false;
+          left /= &rhs;
           lhs = left.into();
         }
         _ => {
@@ -2544,7 +2434,189 @@ impl NumericValue {
       }
     }
 
-    Ok(lhs)
+    Ok(retain_lost_length(lhs, input, span_start))
+  }
+}
+
+/// https://www.w3.org/TR/css-values-4/#round-func
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RoundStrategy {
+  Nearest,
+  Up,
+  Down,
+  ToZero,
+}
+
+fn round_to_interval(
+  strategy: RoundStrategy,
+  value: f64,
+  interval: f64,
+) -> f64 {
+  if interval == 0.0
+    || value.is_nan()
+    || interval.is_nan()
+    || value.is_infinite() && interval.is_infinite()
+  {
+    return f64::NAN;
+  }
+  if value.is_infinite() {
+    return value;
+  }
+  if interval.is_infinite() {
+    return match strategy {
+      RoundStrategy::Up => {
+        if value > 0.0 {
+          f64::INFINITY
+        } else if value == 0.0 && value.is_sign_positive() {
+          0.0
+        } else {
+          -0.0
+        }
+      }
+      RoundStrategy::Down => {
+        if value < 0.0 {
+          f64::NEG_INFINITY
+        } else if value == 0.0 && value.is_sign_negative() {
+          -0.0
+        } else {
+          0.0
+        }
+      }
+      RoundStrategy::Nearest | RoundStrategy::ToZero => {
+        if value.is_sign_positive() { 0.0 } else { -0.0 }
+      }
+    };
+  }
+  let interval = interval.abs();
+  let quotient = value / interval;
+  let rounded = match strategy {
+    RoundStrategy::Nearest => (quotient + 0.5).floor(),
+    RoundStrategy::Up => quotient.ceil(),
+    RoundStrategy::Down => quotient.floor(),
+    RoundStrategy::ToZero => quotient.trunc(),
+  };
+  rounded * interval
+}
+
+/// https://www.w3.org/TR/css-values-4/#funcdef-hypot
+fn hypot(args: &[f64]) -> f64 {
+  match *args {
+    [] => 0.0,
+    [arg1] => arg1.abs(),
+    [arg1, arg2] => arg1.hypot(arg2),
+    _ => {
+      let mut sum = 0.0;
+      let mut scale = 0.0;
+      for &arg in args {
+        let value = arg.abs();
+        if !value.is_finite() {
+          return value;
+        }
+        if scale < value {
+          let div = scale / value;
+          sum = sum * div * div + 1.0;
+          scale = value;
+        } else if value > 0.0 {
+          let div = value / scale;
+          sum += div * div;
+        }
+      }
+      scale * sum.sqrt()
+    }
+  }
+}
+
+fn serialize_list(terms: &[LengthCalc]) -> String {
+  terms
+    .iter()
+    .map(LengthCalc::serialize)
+    .collect::<Vec<_>>()
+    .join(", ")
+}
+
+/// Re-parses a retained `<calc-sum>` body and resolves it against `resolution`.
+fn parse_length_text(css: &str, resolution: &LengthResolution) -> Option<f64> {
+  let css = format!("calc({css})");
+  let mut input = ParserInput::new(&css);
+  let mut parser = Parser::new(&mut input);
+  let value = NumericValue::parse(
+    &mut parser,
+    ParseOptions {
+      length_resolution: Some(*resolution),
+      ..Default::default()
+    },
+  )
+  .ok()?;
+  parser.is_exhausted().then_some(())?;
+  // The re-parse already folded every unit against `resolution`, and
+  // `expect_length` drops the tree, so this cannot recurse back into here.
+  Some(value.expect_length(true).ok()?.resolve(resolution))
+}
+
+/// Retains the source text of a `<length>` subexpression that lost its symbolic
+/// form, so it can be re-parsed against the font in use.
+///
+/// The only way to lose it is a `<number>` factor that itself depends on the
+/// font (`sqrt(1em / 1px) * 1px`), because dividing two lengths leaves the
+/// dimension system. Capturing here keeps the retained fragment as tight as
+/// possible: the rest of the expression stays a tree.
+fn retain_lost_length(
+  accumulator: NumericAccumulator,
+  input: &Parser<'_, '_>,
+  span_start: SourcePosition,
+) -> NumericAccumulator {
+  let NumericAccumulator::Math(mut math) = accumulator else {
+    return accumulator;
+  };
+  if math.is_length() && math.font_dependent && math.calc.is_none() {
+    let css = input.slice_from(span_start).trim();
+    math.calc = Some(LengthCalc::Deferred(Box::from(css)));
+  }
+  NumericAccumulator::Math(math)
+}
+
+/// The `<length>` operands of a math function, collected so the result can keep
+/// a symbolic form when it still depends on the font metrics.
+struct LengthOperands {
+  trees: Vec<LengthCalc>,
+  font_dependent: bool,
+}
+
+impl LengthOperands {
+  /// `None` when the function is not operating on `<length>` values.
+  #[inline]
+  fn start(value: &NumericValue) -> Option<Self> {
+    match value {
+      NumericValue::Length(length) => Some(Self {
+        trees: vec![length.to_calc()],
+        font_dependent: length.is_font_dependent(),
+      }),
+      _ => None,
+    }
+  }
+
+  #[inline]
+  fn push(&mut self, value: &SpecifiedLength) {
+    self.font_dependent |= value.is_font_dependent();
+    self.trees.push(value.to_calc());
+  }
+
+  /// The operands, only when the result still depends on the font metrics; an
+  /// expression over absolute units is already exact in pixels.
+  #[inline]
+  fn into_trees(self) -> Option<Vec<LengthCalc>> {
+    self.font_dependent.then_some(self.trees)
+  }
+}
+
+/// Appends an operand when both the collector and the operand are lengths.
+#[inline]
+fn push_operand(
+  operands: &mut Option<LengthOperands>,
+  value: &Option<SpecifiedLength>,
+) {
+  if let (Some(operands), Some(value)) = (operands.as_mut(), value) {
+    operands.push(value);
   }
 }
 
@@ -2590,7 +2662,7 @@ mod tests {
     };
     assert_eq!(
       length,
-      LengthValue::Unit(Length {
+      SpecifiedLength::Unit(Length {
         value: -1.0,
         unit: LengthUnit::Cm,
       })
@@ -2737,7 +2809,7 @@ mod tests {
     let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
-      Ok(NumericValue::Length(LengthValue::Unit(Length {
+      Ok(NumericValue::Length(SpecifiedLength::Unit(Length {
         value: 7.0,
         unit: LengthUnit::Px,
       })))
@@ -2751,7 +2823,7 @@ mod tests {
     let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
-      Ok(NumericValue::Length(LengthValue::Unit(Length {
+      Ok(NumericValue::Length(SpecifiedLength::Unit(Length {
         value: 9.0,
         unit: LengthUnit::Px,
       })))
@@ -2785,7 +2857,7 @@ mod tests {
     let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
-      Ok(NumericValue::Length(LengthValue::Unit(Length {
+      Ok(NumericValue::Length(SpecifiedLength::Unit(Length {
         value: 1.0,
         unit: LengthUnit::Px,
       })))
@@ -2835,7 +2907,7 @@ mod tests {
     let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
-      Ok(NumericValue::Length(LengthValue::Unit(Length {
+      Ok(NumericValue::Length(SpecifiedLength::Unit(Length {
         value: -2.0,
         unit: LengthUnit::Px,
       })))
@@ -2868,7 +2940,7 @@ mod tests {
     let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
-      Ok(NumericValue::Length(LengthValue::Unit(Length {
+      Ok(NumericValue::Length(SpecifiedLength::Unit(Length {
         value: 3.0,
         unit: LengthUnit::Px,
       })))
@@ -2909,7 +2981,7 @@ mod tests {
     let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
-      Ok(NumericValue::Length(LengthValue::Unit(Length {
+      Ok(NumericValue::Length(SpecifiedLength::Unit(Length {
         value: -1.0,
         unit: LengthUnit::Px,
       })))
@@ -2966,7 +3038,7 @@ mod tests {
     let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
-      Ok(NumericValue::Length(LengthValue::Unit(Length {
+      Ok(NumericValue::Length(SpecifiedLength::Unit(Length {
         value: -1.0,
         unit: LengthUnit::Px,
       })))
@@ -2999,7 +3071,7 @@ mod tests {
     let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
-      Ok(NumericValue::Length(LengthValue::Unit(Length {
+      Ok(NumericValue::Length(SpecifiedLength::Unit(Length {
         value: 1.0,
         unit: LengthUnit::Px,
       })))
@@ -3032,7 +3104,7 @@ mod tests {
     let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
-      Ok(NumericValue::Length(LengthValue::Unit(Length {
+      Ok(NumericValue::Length(SpecifiedLength::Unit(Length {
         value: 1.0,
         unit: LengthUnit::Px,
       })))
@@ -3252,7 +3324,7 @@ mod tests {
     let result = NumericValue::parse(&mut parser, ParseOptions::default());
     assert_eq!(
       result,
-      Ok(NumericValue::Length(LengthValue::Unit(Length {
+      Ok(NumericValue::Length(SpecifiedLength::Unit(Length {
         value: 3.0,
         unit: LengthUnit::Px,
       })))

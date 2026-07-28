@@ -8,11 +8,11 @@ use super::error::CSSCustomError;
 use super::error::CSSParseError;
 use super::value::FontMetrics;
 use super::value::LengthResolution;
-use super::value::LengthValue;
 use super::value::NumericValue;
 use super::value::ParseOptions;
 use super::value::Parser;
 use super::value::ParserInput;
+use super::value::SpecifiedLength;
 
 /// Parsed CSS font shorthand.
 /// https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-font
@@ -125,11 +125,11 @@ impl CssFontStretch {
 pub fn parse_css_spacing(
   s: &str,
   resolution: &LengthResolution,
-) -> Option<LengthValue> {
+) -> Option<SpecifiedLength> {
   let s = s.trim();
   let mut input = ParserInput::new(s);
   let mut parser = Parser::new(&mut input);
-  let parsed = NumericValue::parse_with_details(
+  let value = NumericValue::parse(
     &mut parser,
     ParseOptions {
       length_resolution: Some(*resolution),
@@ -138,14 +138,9 @@ pub fn parse_css_spacing(
   )
   .ok()?;
   // The literal `0` is a valid <length>; everything else must be a length.
-  let length = parsed.value.expect_length(true).ok()?;
+  let length = value.expect_specified_length(true).ok()?;
   if !parser.is_exhausted() {
     return None;
-  }
-  if parsed.lost_font_relative {
-    // The length tree cannot express this expression, so fall back to keeping
-    // the specified text and re-parsing it on use.
-    return Some(LengthValue::deferred(s));
   }
   Some(length)
 }
@@ -162,9 +157,9 @@ pub struct FontState {
   pub font_kerning: FontKerning,
   pub font_variant_caps: FontVariantCaps,
   /// CSS letter-spacing value (default `0px`).
-  pub letter_spacing: LengthValue,
+  pub letter_spacing: SpecifiedLength,
   /// CSS word-spacing value (default `0px`).
-  pub word_spacing: LengthValue,
+  pub word_spacing: SpecifiedLength,
   pub text_rendering: TextRendering,
 }
 
@@ -180,8 +175,8 @@ impl Default for FontState {
       direction: TextDirection::default(),
       font_kerning: FontKerning::default(),
       font_variant_caps: FontVariantCaps::default(),
-      letter_spacing: LengthValue::zero(),
-      word_spacing: LengthValue::zero(),
+      letter_spacing: SpecifiedLength::zero(),
+      word_spacing: SpecifiedLength::zero(),
       text_rendering: TextRendering::default(),
     }
   }
@@ -768,6 +763,7 @@ fn parse_one_font_family<'i, 't>(input: &mut Parser<'i, 't>) -> Option<String> {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::css::value::LengthCalc;
 
   fn parse(s: &str) -> Option<FontState> {
     parse_css_font(s, &default_font_resolution())
@@ -786,7 +782,7 @@ mod tests {
     }
   }
 
-  fn spacing(s: &str, em: f64) -> Option<LengthValue> {
+  fn spacing(s: &str, em: f64) -> Option<SpecifiedLength> {
     parse_css_spacing(s, &LengthResolution::new(metrics(em)))
   }
 
@@ -1059,7 +1055,7 @@ mod tests {
     // A math function over font-relative units is retained as a tree, so it
     // re-resolves against whichever font is in effect.
     let s = spacing("calc(1em + 2px)", 10.0).unwrap();
-    assert!(matches!(s, LengthValue::Calc { .. }));
+    assert!(matches!(s, SpecifiedLength::Calc { .. }));
     assert_eq!(resolve("calc(1em + 2px)", 10.0), 12.0);
     assert_eq!(resolve("calc(1em + 2px)", 20.0), 22.0);
     assert_eq!(resolve("calc(1em - 2px)", 20.0), 18.0);
@@ -1088,12 +1084,12 @@ mod tests {
 
     // An expression over absolute units is already exact, so it collapses.
     let s = spacing("calc(1px + 2px)", 10.0).unwrap();
-    assert!(matches!(s, LengthValue::Unit(_)));
+    assert!(matches!(s, SpecifiedLength::Unit(_)));
     assert_eq!(s.to_css_string(), "3px");
 
     // A viewport unit is a constant zero, so it collapses too.
     let s = spacing("calc(1vw + 2px)", 10.0).unwrap();
-    assert!(matches!(s, LengthValue::Unit(_)));
+    assert!(matches!(s, SpecifiedLength::Unit(_)));
     assert_eq!(s.to_css_string(), "2px");
   }
 
@@ -1127,13 +1123,33 @@ mod tests {
 
   #[test]
   fn spacing_font_dependent_number_falls_back_to_text() {
-    // The length tree cannot express a font dependency that flows through a
-    // `<number>` subexpression, so the specified text is retained instead.
+    // The tree cannot express a font dependency that flows through a `<number>`
+    // subexpression, so that subexpression alone is retained as text.
     let s = spacing("calc(sqrt(1em / 1px) * 1px)", 16.0).unwrap();
-    assert!(matches!(s, LengthValue::Deferred(_)));
+    assert!(matches!(
+      &s,
+      SpecifiedLength::Calc { tree, .. } if matches!(**tree, LengthCalc::Deferred(_))
+    ));
     assert_eq!(s.to_css_string(), "calc(sqrt(1em / 1px) * 1px)");
     assert_eq!(resolve("calc(sqrt(1em / 1px) * 1px)", 16.0), 4.0);
     assert_eq!(resolve("calc(sqrt(1em / 1px) * 1px)", 100.0), 10.0);
+
+    // Only the lost factor becomes text; the rest of the sum stays a tree, and
+    // a retained fragment sorts after the dimensions.
+    let s = spacing("calc(2px + sqrt(1em / 1px) * 1px)", 16.0).unwrap();
+    assert_eq!(s.to_css_string(), "calc(2px + sqrt(1em / 1px) * 1px)");
+    assert_eq!(resolve("calc(2px + sqrt(1em / 1px) * 1px)", 16.0), 6.0);
+    assert_eq!(resolve("calc(sqrt(1em / 1px) * 1px + 2px)", 16.0), 6.0);
+    assert_eq!(
+      spacing("calc(sqrt(1em / 1px) * 1px + 2px)", 16.0)
+        .unwrap()
+        .to_css_string(),
+      "calc(2px + sqrt(1em / 1px) * 1px)"
+    );
+
+    // Dividing by a length also leaves the dimension system.
+    assert_eq!(resolve("calc(1em / 1px * 1px)", 16.0), 16.0);
+    assert_eq!(resolve("calc(1em / 1px * 1px)", 25.0), 25.0);
   }
 
   fn url(url: &str) -> FontSrc {

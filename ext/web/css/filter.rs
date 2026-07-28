@@ -48,7 +48,7 @@ impl CssFilterFunction {
           if args.is_exhausted() {
             return Ok(CssFilterFunction::Blur(Length::zero()));
           }
-          let px = parse_length_px(args, resolution)?;
+          let px = parse_length_pixels(args, resolution)?;
           if px < 0.0 {
             return Err(args.new_custom_error(CSSCustomError::UnexpectedNumericType));
           }
@@ -161,7 +161,7 @@ impl CssFilterFunction {
 /// so the value can be folded here.
 /// https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-filter
 #[inline]
-fn parse_length_px<'i, 't>(
+fn parse_length_pixels<'i, 't>(
   args: &mut Parser<'i, 't>,
   resolution: &LengthResolution,
 ) -> Result<f64, CSSParseError<'i>> {
@@ -181,15 +181,15 @@ fn parse_drop_shadow<'i, 't>(
   args: &mut Parser<'i, 't>,
   resolution: &LengthResolution,
 ) -> Result<CssFilterFunction, CSSParseError<'i>> {
-  let offset_x = Length::from_pixels(parse_length_px(args, resolution)?);
-  let offset_y = Length::from_pixels(parse_length_px(args, resolution)?);
+  let offset_x = Length::from_pixels(parse_length_pixels(args, resolution)?);
+  let offset_y = Length::from_pixels(parse_length_pixels(args, resolution)?);
 
   let mut blur_radius = Length::zero();
   let mut color = Color::BLACK;
 
   if !args.is_exhausted() {
     let state = args.state();
-    match parse_length_px(args, resolution) {
+    match parse_length_pixels(args, resolution) {
       Ok(px) => {
         if px < 0.0 {
           return Err(

@@ -7,7 +7,7 @@ use cssparser::match_ignore_ascii_case;
 use super::error::CSSCustomError;
 use super::error::CSSParseError;
 use super::value::Angle;
-use super::value::LengthValue;
+use super::value::Length;
 use super::value::NumericValue;
 use super::value::ParseOptions;
 
@@ -17,11 +17,11 @@ use super::value::ParseOptions;
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum Transform {
-  Translate(LengthValue, Option<LengthValue>),
-  TranslateX(LengthValue),
-  TranslateY(LengthValue),
-  TranslateZ(LengthValue),
-  Translate3d(LengthValue, LengthValue, LengthValue),
+  Translate(Length, Option<Length>),
+  TranslateX(Length),
+  TranslateY(Length),
+  TranslateZ(Length),
+  Translate3d(Length, Length, Length),
   Scale(f64, Option<f64>),
   ScaleX(f64),
   ScaleY(f64),
@@ -35,7 +35,7 @@ pub enum Transform {
   Skew(Angle, Option<Angle>),
   SkewX(Angle),
   SkewY(Angle),
-  Perspective(Option<LengthValue>),
+  Perspective(Option<Length>),
   Matrix([f64; 6]),
   Matrix3d([f64; 16]),
 }
@@ -356,8 +356,8 @@ mod tests {
     results.ok()
   }
 
-  fn px(v: f64) -> LengthValue {
-    LengthValue::from_pixels(v)
+  fn px(v: f64) -> Length {
+    Length::from_pixels(v)
   }
 
   // --- none / empty ---
