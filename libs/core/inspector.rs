@@ -476,6 +476,8 @@ struct JsRuntimeInspectorState {
   auto_attach_enabled: Rc<Cell<bool>>,
   auto_attach_wait_for_debugger_on_start: Rc<Cell<bool>>,
   discover_targets_enabled: Rc<Cell<bool>>,
+  /// Latched when termination begins. Every later inspector poll clears pause
+  /// and startup wait state while the runtime shuts down.
   termination_requested: Arc<AtomicBool>,
   /// Shared buffer of captured Network.* request/response bodies, populated
   /// from `op_inspector_emit_protocol_event` and read by the dispatcher
