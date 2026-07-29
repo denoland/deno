@@ -274,32 +274,6 @@ mod npm {
         }
       };
 
-    // Convert bulk response to flat list of advisories
-    let mut advisories: Vec<AuditAdvisory> = Vec::new();
-    for (pkg_name, pkg_advisories) in &bulk_response {
-      for adv in pkg_advisories {
-        // The public registry does not return `patched_versions`, so infer it
-        // from the vulnerable range's exclusive upper bound when missing.
-        let patched_versions = adv
-          .patched_versions
-          .clone()
-          .filter(|p| !p.is_empty())
-          .or_else(|| derive_patched_from_vulnerable(&adv.vulnerable_versions))
-          .unwrap_or_default();
-        advisories.push(AuditAdvisory {
-          title: adv.title.clone(),
-          severity: adv.severity.clone(),
-          url: adv.url.clone(),
-          module_name: pkg_name.clone(),
-          vulnerable_versions: adv.vulnerable_versions.clone(),
-          patched_versions,
-          cves: adv.cves.clone(),
-          ghsa_id: extract_ghsa_id(adv),
-          advisory_id: adv.id,
-        });
-      }
-    }
-
     // Build map of installed versions per package for vulnerability filtering
     // and fix target computation.
     let mut installed_versions: HashMap<String, Vec<deno_semver::Version>> =
@@ -309,6 +283,44 @@ mod npm {
         .entry(pkg.id.nv.name.to_string())
         .or_default()
         .push(pkg.id.nv.version.clone());
+    }
+
+    // Convert bulk response to flat list of advisories
+    let mut advisories: Vec<AuditAdvisory> = Vec::new();
+    for (pkg_name, pkg_advisories) in &bulk_response {
+      let installed = installed_versions
+        .get(pkg_name)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+      for adv in pkg_advisories {
+        // The public registry does not return `patched_versions`, so infer it
+        // from the vulnerable range when missing. The inferred flag is tracked
+        // so the report can flag it as a guess rather than registry-supplied.
+        let api_patched =
+          adv.patched_versions.clone().filter(|p| !p.is_empty());
+        let (patched_versions, patched_inferred) = match api_patched {
+          Some(p) => (p, false),
+          None => match derive_patched_from_vulnerable(
+            &adv.vulnerable_versions,
+            installed,
+          ) {
+            Some(p) => (p, true),
+            None => (String::new(), false),
+          },
+        };
+        advisories.push(AuditAdvisory {
+          title: adv.title.clone(),
+          severity: adv.severity.clone(),
+          url: adv.url.clone(),
+          module_name: pkg_name.clone(),
+          vulnerable_versions: adv.vulnerable_versions.clone(),
+          patched_versions,
+          patched_inferred,
+          cves: adv.cves.clone(),
+          ghsa_id: extract_ghsa_id(adv),
+          advisory_id: adv.id,
+        });
+      }
     }
 
     // Filter out advisories where no installed version falls within
@@ -434,8 +446,18 @@ mod npm {
         continue;
       };
 
-      let installed_major = installed_versions
-        .get(&adv.module_name)
+      let installed = installed_versions.get(&adv.module_name);
+      // Never propose a target that is not strictly newer than what is
+      // installed -- that would be a downgrade or a no-op, not a fix. This
+      // guards against a wrong inferred target (e.g. from a disjoint range)
+      // silently rewriting a dependency backwards.
+      if let Some(max_installed) = installed.and_then(|vs| vs.iter().max())
+        && target <= *max_installed
+      {
+        continue;
+      }
+
+      let installed_major = installed
         .and_then(|vs| vs.iter().min())
         .map(|v| v.major)
         .unwrap_or(0);
@@ -546,19 +568,28 @@ mod npm {
         adv.vulnerable_versions
       );
       if has_fix {
+        // Inferred targets are a heuristic (see derive_patched_from_vulnerable)
+        // rather than registry-supplied, so flag them as such.
+        let inferred = if adv.patched_inferred {
+          colors::gray(" (inferred)").to_string()
+        } else {
+          String::new()
+        };
         _ = writeln!(
           stdout,
-          "│ {}    {}",
+          "│ {}    {}{}",
           colors::gray("Patched:"),
-          adv.patched_versions
+          adv.patched_versions,
+          inferred
         );
         _ = writeln!(stdout, "│ {}       {}", colors::gray("Info:"), adv.url);
         _ = writeln!(
           stdout,
-          "╰ {}    update {} to {}",
+          "╰ {}    update {} to {}{}",
           colors::gray("Actions:"),
           adv.module_name,
-          adv.patched_versions
+          adv.patched_versions,
+          inferred
         );
       } else {
         _ = writeln!(stdout, "╰ {}       {}", colors::gray("Info:"), adv.url);
@@ -631,22 +662,84 @@ mod npm {
   /// when the registry does not provide one.
   ///
   /// The public npm bulk advisory endpoint only returns `vulnerable_versions`,
-  /// so the first fixed version is inferred from an exclusive upper bound. For
-  /// example `<1.1.0` or `>=1.0.0 <1.1.0` yields `>=1.1.0`. Ranges without an
-  /// exclusive upper bound (`<=1.1.0`, open-ended `>=1.0.0`) cannot be resolved
-  /// to a definite fixed version and yield `None`.
-  pub fn derive_patched_from_vulnerable(vulnerable: &str) -> Option<String> {
-    for token in vulnerable.split_whitespace() {
-      let Some(rest) = token.strip_prefix('<') else {
+  /// so the first fixed version is inferred from the vulnerable range's
+  /// exclusive upper bound. A vulnerable range can be a disjunction of comma or
+  /// `||`-separated alternatives (e.g. `>=4.0.0 <4.17.21 || >=5.0.0 <5.0.3`);
+  /// the fix depends on which alternative the installed version falls in, so
+  /// this derives per-installed-version and fails closed on ambiguity.
+  ///
+  /// For example `<1.1.0` or `>=1.0.0 <1.1.0` with an installed `1.0.0` yields
+  /// `>=1.1.0`. Returns `None` (no inferred fix) when the matching alternative
+  /// has no exclusive upper bound (`<=1.1.0`, open-ended `>=1.0.0`) or when
+  /// installed versions map to conflicting fix targets, so the tool never
+  /// asserts a fix -- or worse, a downgrade -- it cannot substantiate.
+  pub fn derive_patched_from_vulnerable(
+    vulnerable: &str,
+    installed: &[deno_semver::Version],
+  ) -> Option<String> {
+    use deno_semver::VersionReq;
+
+    let alternatives: Vec<&str> = vulnerable
+      .split("||")
+      .map(str::trim)
+      .filter(|s| !s.is_empty())
+      .collect();
+    if alternatives.is_empty() {
+      return None;
+    }
+
+    let mut target: Option<deno_semver::Version> = None;
+    for version in installed {
+      // Find the alternative describing this installed version's vulnerability.
+      let Some(branch) = alternatives.iter().find(|branch| {
+        VersionReq::parse_from_npm(branch)
+          .map(|req| req.matches(version))
+          .unwrap_or(false)
+      }) else {
+        // Not vulnerable under any alternative (e.g. already patched); skip.
         continue;
       };
-      // "<=" is an inclusive upper bound; we can't know the next fixed version.
-      if rest.starts_with('=') {
-        continue;
+      // The fixed version is that alternative's exclusive upper bound.
+      let Some(upper) = exclusive_upper_bound(branch) else {
+        // Open-ended vulnerable range: no known fix. Fail closed.
+        return None;
+      };
+      match &target {
+        None => target = Some(upper),
+        Some(existing) if *existing == upper => {}
+        // Installed versions disagree on the fix target. Fail closed.
+        Some(_) => return None,
       }
-      if deno_semver::Version::parse_standard(rest).is_ok() {
-        return Some(format!(">={}", rest));
+    }
+
+    target.map(|v| format!(">={}", v))
+  }
+
+  /// Extract the exclusive upper bound (`<X.Y.Z`, but not `<=X.Y.Z`) from a
+  /// single conjunctive npm range. Tolerates a space after the operator
+  /// (`< 1.1.0`). Returns `None` if there is no exclusive upper bound.
+  fn exclusive_upper_bound(range: &str) -> Option<deno_semver::Version> {
+    let tokens: Vec<&str> = range.split_whitespace().collect();
+    let mut i = 0;
+    while i < tokens.len() {
+      if let Some(rest) = tokens[i].strip_prefix('<') {
+        // "<=" is an inclusive bound; we can't know the next fixed version.
+        if rest.starts_with('=') {
+          i += 1;
+          continue;
+        }
+        let ver_str = if rest.is_empty() {
+          // Operator separated from the version by whitespace: "< 1.1.0".
+          i += 1;
+          tokens.get(i).copied().unwrap_or("")
+        } else {
+          rest
+        };
+        if let Ok(v) = deno_semver::Version::parse_standard(ver_str) {
+          return Some(v);
+        }
       }
+      i += 1;
     }
     None
   }
@@ -662,6 +755,9 @@ mod npm {
     module_name: String,
     vulnerable_versions: String,
     patched_versions: String,
+    /// Whether `patched_versions` was inferred from `vulnerable_versions`
+    /// rather than supplied by the registry.
+    patched_inferred: bool,
     cves: Vec<String>,
     /// GitHub advisory id (`GHSA-...`), if it could be determined.
     ghsa_id: Option<String>,
@@ -1093,20 +1189,65 @@ mod tests {
     assert_eq!(extract_ghsa_id(&item), None);
   }
 
+  fn versions(vs: &[&str]) -> Vec<deno_semver::Version> {
+    vs.iter()
+      .map(|v| deno_semver::Version::parse_standard(v).unwrap())
+      .collect()
+  }
+
   #[test]
   fn test_derive_patched_from_vulnerable() {
+    let installed = versions(&["1.0.0"]);
     assert_eq!(
-      derive_patched_from_vulnerable("<1.1.0").as_deref(),
+      derive_patched_from_vulnerable("<1.1.0", &installed).as_deref(),
       Some(">=1.1.0")
     );
     assert_eq!(
-      derive_patched_from_vulnerable(">=4.0.0 <4.17.21").as_deref(),
+      derive_patched_from_vulnerable(">=4.0.0 <4.17.21", &versions(&["4.5.0"]))
+        .as_deref(),
       Some(">=4.17.21")
     );
+    // Operator separated from the version by whitespace.
+    assert_eq!(
+      derive_patched_from_vulnerable("< 1.1.0", &installed).as_deref(),
+      Some(">=1.1.0")
+    );
     // Inclusive upper bound and open-ended ranges cannot be resolved.
-    assert_eq!(derive_patched_from_vulnerable("<=1.1.0"), None);
-    assert_eq!(derive_patched_from_vulnerable(">=1.0.0"), None);
-    assert_eq!(derive_patched_from_vulnerable("*"), None);
+    assert_eq!(derive_patched_from_vulnerable("<=1.1.0", &installed), None);
+    assert_eq!(derive_patched_from_vulnerable(">=1.0.0", &installed), None);
+    assert_eq!(derive_patched_from_vulnerable("*", &installed), None);
+    // No installed version is vulnerable -> nothing to fix.
+    assert_eq!(
+      derive_patched_from_vulnerable("<1.1.0", &versions(&["2.0.0"])),
+      None
+    );
+  }
+
+  #[test]
+  fn test_derive_patched_from_vulnerable_disjoint_ranges() {
+    let range = ">=4.0.0 <4.17.21 || >=5.0.0 <5.0.3";
+    // The fix depends on which alternative the installed version falls in.
+    assert_eq!(
+      derive_patched_from_vulnerable(range, &versions(&["4.17.0"])).as_deref(),
+      Some(">=4.17.21")
+    );
+    assert_eq!(
+      derive_patched_from_vulnerable(range, &versions(&["5.0.1"])).as_deref(),
+      Some(">=5.0.3")
+    );
+    // Installed versions in different branches disagree -> fail closed.
+    assert_eq!(
+      derive_patched_from_vulnerable(range, &versions(&["4.17.0", "5.0.1"])),
+      None
+    );
+    // A branch with no exclusive upper bound has no known fix -> fail closed.
+    assert_eq!(
+      derive_patched_from_vulnerable(
+        ">=1.0.0 <1.1.0 || >=2.0.0",
+        &versions(&["2.5.0"])
+      ),
+      None
+    );
   }
 
   #[test]

@@ -698,6 +698,8 @@ fn get_advisory_for_with_vuln2() -> serde_json::Value {
   })
 }
 
+// Mirrors the public registry exactly: no `cves` field, so the GHSA id from
+// the URL is the only identifier available for `--ignore`.
 fn get_advisory_for_with_vuln3() -> serde_json::Value {
   json!({
     "id": 1000003,
@@ -705,7 +707,6 @@ fn get_advisory_for_with_vuln3() -> serde_json::Value {
     "title": "@denotest/with-vuln3 has security vulnerability",
     "severity": "high",
     "vulnerable_versions": "<1.1.0",
-    "cves": ["CVE-2025-0003"],
     "cwe": ["CWE-79"]
   })
 }
