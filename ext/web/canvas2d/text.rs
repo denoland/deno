@@ -114,8 +114,8 @@ fn resolve_spacing(
     length_resolution(font_ctx, fstate)
   };
   (
-    fstate.letter_spacing.resolve(&resolution) as f32,
-    fstate.word_spacing.resolve(&resolution) as f32,
+    fstate.letter_spacing.resolve_to_pixels(&resolution) as f32,
+    fstate.word_spacing.resolve_to_pixels(&resolution) as f32,
   )
 }
 

@@ -31,6 +31,7 @@ use crate::css::error::css_parse_error_to_string;
 use crate::css::transform::ParserInput;
 use crate::css::transform::Transform;
 use crate::css::transform::TransformListParser;
+use crate::css::value::Length;
 use crate::f64::maximum;
 use crate::f64::minimum;
 
@@ -1839,28 +1840,43 @@ impl DOMMatrixReadOnly {
     &self,
     transform: &Transform,
   ) -> Result<(), GeometryError> {
+    /// A `<transform-list>` rejects relative lengths while parsing, so every
+    /// length here has a pixel value; a `SyntaxError` is the right answer if one
+    /// ever slips through.
+    /// https://drafts.fxtf.org/geometry/#dom-dommatrixreadonly-dommatrixreadonly
+    fn transform_pixels(length: &Length) -> Result<f64, GeometryError> {
+      length.to_pixels().ok_or_else(|| {
+        GeometryError::FailedToParse(
+          "relative lengths are not supported".to_string(),
+        )
+      })
+    }
+
     match transform {
       Transform::Translate(x, y) => {
-        let x = x.to_pixels();
-        let y = if let Some(y) = y { y.to_pixels() } else { 0.0 };
+        let x = transform_pixels(x)?;
+        let y = match y {
+          Some(y) => transform_pixels(y)?,
+          None => 0.0,
+        };
         self.translate_self_inner(x, y, 0.0);
       }
       Transform::TranslateX(x) => {
-        let x = x.to_pixels();
+        let x = transform_pixels(x)?;
         self.translate_self_inner(x, 0.0, 0.0);
       }
       Transform::TranslateY(y) => {
-        let y = y.to_pixels();
+        let y = transform_pixels(y)?;
         self.translate_self_inner(0.0, y, 0.0);
       }
       Transform::TranslateZ(z) => {
-        let z = z.to_pixels();
+        let z = transform_pixels(z)?;
         self.translate_self_inner(0.0, 0.0, z);
       }
       Transform::Translate3d(x, y, z) => {
-        let x = x.to_pixels();
-        let y = y.to_pixels();
-        let z = z.to_pixels();
+        let x = transform_pixels(x)?;
+        let y = transform_pixels(y)?;
+        let z = transform_pixels(z)?;
         self.translate_self_inner(x, y, z);
         self.is_2d.set(false);
       }
@@ -1924,7 +1940,7 @@ impl DOMMatrixReadOnly {
       }
       Transform::Perspective(length) => {
         if let Some(length) = length {
-          self.perspective_self_inner(length.to_pixels());
+          self.perspective_self_inner(transform_pixels(length)?);
         }
         self.is_2d.set(false);
       }

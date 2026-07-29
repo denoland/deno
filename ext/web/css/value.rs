@@ -15,6 +15,9 @@ use crate::css::error::CSSParseError;
 use crate::f64::maximum;
 use crate::f64::minimum;
 
+const INCH_TO_PX: f64 = 96.0;
+const INCH_TO_CM: f64 = 2.54;
+
 /// Metrics of a single font, in pixels, used to resolve font-relative
 /// `<length>` units.
 /// https://www.w3.org/TR/css-values-4/#font-relative-lengths
@@ -186,7 +189,23 @@ impl LengthUnit {
     !self.is_absolute() && !matches!(self, Self::Zero(_))
   }
 
+  /// The constant pixels-per-unit factor of an absolute unit; `None` for a unit
+  /// that needs the font metrics or a viewport.
+  /// https://www.w3.org/TR/css-values-4/#absolute-lengths
   #[inline]
+  fn absolute_px_factor(self) -> Option<f64> {
+    Some(match self {
+      Self::Cm => INCH_TO_PX / INCH_TO_CM,
+      Self::Mm => INCH_TO_PX / INCH_TO_CM / 10.0,
+      Self::Q => INCH_TO_PX / INCH_TO_CM / 40.0,
+      Self::In => INCH_TO_PX,
+      Self::Pc => INCH_TO_PX / 6.0,
+      Self::Pt => INCH_TO_PX / 72.0,
+      Self::Px => 1.0,
+      _ => return None,
+    })
+  }
+
   fn to_css_str(self) -> &'static str {
     match self {
       Self::Cm => "cm",
@@ -214,9 +233,6 @@ impl LengthUnit {
 }
 
 impl Length {
-  const INCH_TO_PX: f64 = 96.0;
-  const INCH_TO_CM: f64 = 2.54;
-
   #[inline]
   pub(crate) fn zero() -> Self {
     Self::from_pixels(0.0)
@@ -235,29 +251,38 @@ impl Length {
     self.unit.is_absolute()
   }
 
-  fn absolute_to_pixels(&self) -> f64 {
-    let value = self.value;
-    match self.unit {
-      LengthUnit::Cm => value * (Self::INCH_TO_PX / Self::INCH_TO_CM),
-      LengthUnit::Mm => value * (Self::INCH_TO_PX / Self::INCH_TO_CM / 10.0),
-      LengthUnit::Q => value * (Self::INCH_TO_PX / Self::INCH_TO_CM / 40.0),
-      LengthUnit::In => value * Self::INCH_TO_PX,
-      LengthUnit::Pc => value * (Self::INCH_TO_PX / 6.0),
-      LengthUnit::Pt => value * (Self::INCH_TO_PX / 72.0),
-      LengthUnit::Px => value,
-      _ => 0.0,
-    }
+  /// Whether resolving this length needs the font metrics.
+  #[inline]
+  fn is_font_relative(&self) -> bool {
+    self.unit.is_font_relative()
   }
 
-  /// Resolves an absolute `<length>` to pixels.
+  /// The pixel value, when the unit needs no font metrics.
   #[inline]
-  pub fn to_pixels(&self) -> f64 {
-    debug_assert!(self.is_absolute());
-    self.absolute_to_pixels()
+  pub fn to_pixels(&self) -> Option<f64> {
+    Some(self.value * self.unit.absolute_px_factor()?)
+  }
+
+  /// The pixel value of a length the calculation engine produced.
+  ///
+  /// Every dimension the engine sees has already been folded to pixels: a unit
+  /// only survives at the top level, and the additive and multiplicative layers
+  /// are unreachable there because both `Token::ParenthesisBlock` and every math
+  /// function require `function_depth > 0`. An unfolded unit here would be a
+  /// parser bug rather than bad input.
+  #[inline]
+  fn folded_pixels(&self) -> f64 {
+    self.to_pixels().unwrap_or_else(|| {
+      debug_assert!(false, "unfolded {self:?} reached the calculation engine");
+      0.0
+    })
   }
 
   /// Resolves a `<length>` to pixels against the given metrics.
-  pub fn resolve(&self, resolution: &LengthResolution) -> f64 {
+  pub fn resolve_to_pixels(&self, resolution: &LengthResolution) -> f64 {
+    if let Some(factor) = self.unit.absolute_px_factor() {
+      return self.value * factor;
+    }
     let value = self.value;
     let font = &resolution.font;
     let root = &resolution.root;
@@ -274,22 +299,9 @@ impl Length {
       LengthUnit::Rex => value * root.ex,
       LengthUnit::Ric => value * root.ic,
       LengthUnit::Rlh => value * root.lh,
-      LengthUnit::Zero(_) => 0.0,
-      _ => self.absolute_to_pixels(),
+      // Canvas has neither a viewport nor a query container.
+      _ => 0.0,
     }
-  }
-
-  pub fn to_css_string(&self) -> String {
-    // CSS numeric literals are parsed at f32 precision (cssparser), so format
-    // the value as f32 to avoid f32->f64 widening noise (e.g. `-0.1` becoming
-    // `-0.10000000149011612`).
-    format!("{}{}", self.value as f32, self.unit.to_css_str())
-  }
-
-  /// Whether resolving this length needs the font metrics.
-  #[inline]
-  fn is_font_relative(&self) -> bool {
-    self.unit.is_font_relative()
   }
 
   #[inline]
@@ -306,6 +318,13 @@ impl Length {
       value: self.value.abs(),
       unit: self.unit,
     }
+  }
+
+  pub fn to_css_string(&self) -> String {
+    // CSS numeric literals are parsed at f32 precision (cssparser), so format
+    // the value as f32 to avoid f32->f64 widening noise (e.g. `-0.1` becoming
+    // `-0.10000000149011612`).
+    format!("{}{}", self.value as f32, self.unit.to_css_str())
   }
 }
 
@@ -395,29 +414,32 @@ impl LengthCalc {
     }
   }
 
-  pub fn resolve(&self, resolution: &LengthResolution) -> f64 {
+  pub fn resolve_to_pixels(&self, resolution: &LengthResolution) -> f64 {
     match self {
-      Self::Unit(length) => length.resolve(resolution),
-      Self::Sum(terms) => {
-        terms.iter().map(|term| term.resolve(resolution)).sum()
+      Self::Unit(length) => length.resolve_to_pixels(resolution),
+      Self::Sum(terms) => terms
+        .iter()
+        .map(|term| term.resolve_to_pixels(resolution))
+        .sum(),
+      Self::Scale { factor, value } => {
+        value.resolve_to_pixels(resolution) * factor
       }
-      Self::Scale { factor, value } => value.resolve(resolution) * factor,
       Self::Min(terms) => terms
         .iter()
-        .map(|term| term.resolve(resolution))
+        .map(|term| term.resolve_to_pixels(resolution))
         .fold(f64::INFINITY, minimum),
       Self::Max(terms) => terms
         .iter()
-        .map(|term| term.resolve(resolution))
+        .map(|term| term.resolve_to_pixels(resolution))
         .fold(f64::NEG_INFINITY, maximum),
       Self::Clamp { min, value, max } => {
         let low = min
           .as_ref()
-          .map_or(f64::NEG_INFINITY, |min| min.resolve(resolution));
+          .map_or(f64::NEG_INFINITY, |min| min.resolve_to_pixels(resolution));
         let high = max
           .as_ref()
-          .map_or(f64::INFINITY, |max| max.resolve(resolution));
-        maximum(low, minimum(value.resolve(resolution), high))
+          .map_or(f64::INFINITY, |max| max.resolve_to_pixels(resolution));
+        maximum(low, minimum(value.resolve_to_pixels(resolution), high))
       }
       Self::Round {
         strategy,
@@ -425,20 +447,21 @@ impl LengthCalc {
         interval,
       } => round_to_interval(
         *strategy,
-        value.resolve(resolution),
-        interval.resolve(resolution),
+        value.resolve_to_pixels(resolution),
+        interval.resolve_to_pixels(resolution),
       ),
       Self::Mod { dividend, divisor } => dividend
-        .resolve(resolution)
-        .rem_euclid(divisor.resolve(resolution)),
+        .resolve_to_pixels(resolution)
+        .rem_euclid(divisor.resolve_to_pixels(resolution)),
       Self::Rem { dividend, divisor } => {
-        dividend.resolve(resolution) % divisor.resolve(resolution)
+        dividend.resolve_to_pixels(resolution)
+          % divisor.resolve_to_pixels(resolution)
       }
-      Self::Abs(value) => value.resolve(resolution).abs(),
+      Self::Abs(value) => value.resolve_to_pixels(resolution).abs(),
       Self::Hypot(terms) => hypot(
         &terms
           .iter()
-          .map(|term| term.resolve(resolution))
+          .map(|term| term.resolve_to_pixels(resolution))
           .collect::<Vec<_>>(),
       ),
       // The text parsed once already, so a re-parse only fails if the metrics
@@ -619,21 +642,21 @@ impl SpecifiedLength {
     }
   }
 
-  /// The value in pixels as resolved when it was parsed. Only the calculation
+  /// The value in pixels as folded when it was parsed. Only the calculation
   /// engine reads this, to keep its arithmetic in pixels while parsing.
   #[inline]
-  pub fn to_pixels(&self) -> f64 {
+  fn folded_pixels(&self) -> f64 {
     match self {
-      Self::Unit(length) => length.to_pixels(),
+      Self::Unit(length) => length.folded_pixels(),
       Self::Calc { resolved_px, .. } => *resolved_px,
     }
   }
 
   /// Resolves a `<length>` to pixels against the given metrics.
-  pub fn resolve(&self, resolution: &LengthResolution) -> f64 {
+  pub fn resolve_to_pixels(&self, resolution: &LengthResolution) -> f64 {
     match self {
-      Self::Unit(length) => length.resolve(resolution),
-      Self::Calc { tree, .. } => tree.resolve(resolution),
+      Self::Unit(length) => length.resolve_to_pixels(resolution),
+      Self::Calc { tree, .. } => tree.resolve_to_pixels(resolution),
     }
   }
 
@@ -862,9 +885,6 @@ impl ResolutionUnit {
 }
 
 impl Resolution {
-  const INCH_TO_PX: f64 = 96.0;
-  const INCH_TO_CM: f64 = 2.54;
-
   #[inline]
   fn from_dot_per_pixels(value: f64) -> Self {
     Self {
@@ -877,8 +897,8 @@ impl Resolution {
   fn to_dot_per_pixels(&self) -> f64 {
     let value = self.value;
     match self.unit {
-      ResolutionUnit::Dpi => value / Self::INCH_TO_PX,
-      ResolutionUnit::Dpcm => value / (Self::INCH_TO_PX / Self::INCH_TO_CM),
+      ResolutionUnit::Dpi => value / INCH_TO_PX,
+      ResolutionUnit::Dpcm => value / (INCH_TO_PX / INCH_TO_CM),
       ResolutionUnit::Dppx => value,
     }
   }
@@ -1156,7 +1176,7 @@ impl From<NumericValue> for MathValue {
         font_dependent: false,
       },
       NumericValue::Length(length) => MathValue {
-        value: length.to_pixels(),
+        value: length.folded_pixels(),
         dimension: Dimension::LENGTH,
         font_dependent: length.is_font_dependent(),
         calc: Some(length.to_calc()),
@@ -1644,7 +1664,7 @@ macro_rules! extract_as_raw {
       NumericValue::Zero => unreachable!(),
       NumericValue::Number(number) => *number,
       NumericValue::Percent(percent) => *percent,
-      NumericValue::Length(length) => length.to_pixels(),
+      NumericValue::Length(length) => length.folded_pixels(),
       NumericValue::Angle(angle) => angle.to_degrees(),
       NumericValue::Time(time) => time.to_seconds(),
       NumericValue::Frequency(frequency) => frequency.to_hertz(),
@@ -1661,7 +1681,7 @@ macro_rules! try_extract_as_raw {
       NumericValue::Number(_) => try_extract!($expr, expect_number(), $input),
       NumericValue::Percent(_) => try_extract!($expr, expect_percent(), $input),
       NumericValue::Length(_) => {
-        try_extract!($expr, expect_length(false), to_pixels(), $input)
+        try_extract!($expr, expect_length(false), folded_pixels(), $input)
       }
       NumericValue::Angle(_) => {
         try_extract!($expr, expect_angle(false), to_degrees(), $input)
@@ -1689,7 +1709,7 @@ macro_rules! try_extract_operand {
       NumericValue::Length(_) => {
         let length =
           try_extract!($expr, expect_specified_length(false), $input);
-        (length.to_pixels(), Some(length))
+        (length.folded_pixels(), Some(length))
       }
       _ => (try_extract_as_raw!($expr, $type_ref, $input), None),
     }
@@ -1793,7 +1813,7 @@ impl NumericValue {
           // value. Font-relative units keep their symbolic form so they can be
           // re-resolved; viewport and container units are a constant zero, so
           // the folded pixel value stays correct.
-          let px = length.resolve(&resolution);
+          let px = length.resolve_to_pixels(&resolution);
           return Ok(
             NumericValue::Length(if unit.is_font_relative() {
               SpecifiedLength::from_calc(px, LengthCalc::Unit(length))
@@ -2550,7 +2570,12 @@ fn parse_length_text(css: &str, resolution: &LengthResolution) -> Option<f64> {
   parser.is_exhausted().then_some(())?;
   // The re-parse already folded every unit against `resolution`, and
   // `expect_length` drops the tree, so this cannot recurse back into here.
-  Some(value.expect_length(true).ok()?.resolve(resolution))
+  Some(
+    value
+      .expect_length(true)
+      .ok()?
+      .resolve_to_pixels(resolution),
+  )
 }
 
 /// Retains the source text of a `<length>` subexpression that lost its symbolic
@@ -2667,7 +2692,7 @@ mod tests {
         unit: LengthUnit::Cm,
       })
     );
-    assert_relative_eq!(length.to_pixels(), -96.0 / 2.54);
+    assert_relative_eq!(length.to_length().to_pixels().unwrap(), -96.0 / 2.54);
   }
 
   #[test]
@@ -3273,7 +3298,7 @@ mod tests {
     let Ok(NumericValue::Length(length)) = result else {
       panic!("expect length: {:?}", result);
     };
-    assert_relative_eq!(length.to_pixels(), 13.0);
+    assert_relative_eq!(length.to_length().to_pixels().unwrap(), 13.0);
   }
 
   #[test]

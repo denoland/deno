@@ -632,7 +632,7 @@ fn parse_css_font_inner<'i, 't>(
     })
     .ok()?;
   let size = match size_value {
-    NumericValue::Length(l) => l.resolve(resolution) as f32,
+    NumericValue::Length(l) => l.resolve_to_pixels(resolution) as f32,
     NumericValue::Percent(p) => (p * resolution.font.em) as f32,
     NumericValue::Zero => 0.0f32,
     _ => return None,
@@ -654,7 +654,7 @@ fn parse_css_font_inner<'i, 't>(
       )?;
       match lh_value {
         NumericValue::Number(n) => Ok((n * resolution.font.em) as f32),
-        NumericValue::Length(l) => Ok(l.resolve(resolution) as f32),
+        NumericValue::Length(l) => Ok(l.resolve_to_pixels(resolution) as f32),
         NumericValue::Percent(pct) => Ok((pct * resolution.font.em) as f32),
         NumericValue::Zero => Ok(0.0f32),
         _ => Err(p.new_custom_error(CSSCustomError::UnexpectedNumericType)),
@@ -786,10 +786,10 @@ mod tests {
     parse_css_spacing(s, &LengthResolution::new(metrics(em)))
   }
 
-  fn resolve(s: &str, em: f64) -> f64 {
+  fn resolve_to_pixels(s: &str, em: f64) -> f64 {
     spacing(s, em)
       .unwrap()
-      .resolve(&LengthResolution::new(metrics(em)))
+      .resolve_to_pixels(&LengthResolution::new(metrics(em)))
   }
 
   #[test]
@@ -975,7 +975,7 @@ mod tests {
     let s = spacing("3px", 10.0).unwrap();
     assert_eq!(s.to_css_string(), "3px");
     assert!(s.is_absolute());
-    assert_eq!(resolve("3px", 10.0), 3.0);
+    assert_eq!(resolve_to_pixels("3px", 10.0), 3.0);
 
     let s = spacing("1EX", 20.0).unwrap();
     assert_eq!(s.to_css_string(), "1ex");
@@ -1020,7 +1020,7 @@ mod tests {
       let s = spacing(css, 20.0).unwrap();
       assert_eq!(s.to_css_string(), css, "serializing {css}");
       assert!(!s.is_absolute(), "{css} should need metrics");
-      assert_eq!(resolve(css, 20.0), expected, "resolving {css}");
+      assert_eq!(resolve_to_pixels(css, 20.0), expected, "resolving {css}");
     }
   }
 
@@ -1031,9 +1031,9 @@ mod tests {
       root: metrics(100.0),
     };
     let s = parse_css_spacing("1rex", &resolution).unwrap();
-    assert_eq!(s.resolve(&resolution), 50.0);
+    assert_eq!(s.resolve_to_pixels(&resolution), 50.0);
     let s = parse_css_spacing("1ex", &resolution).unwrap();
-    assert_eq!(s.resolve(&resolution), 10.0);
+    assert_eq!(s.resolve_to_pixels(&resolution), 10.0);
   }
 
   #[test]
@@ -1046,7 +1046,7 @@ mod tests {
     ] {
       let s = spacing(css, 20.0).unwrap();
       assert_eq!(s.to_css_string(), css, "serializing {css}");
-      assert_eq!(resolve(css, 20.0), 0.0, "resolving {css}");
+      assert_eq!(resolve_to_pixels(css, 20.0), 0.0, "resolving {css}");
     }
   }
 
@@ -1056,31 +1056,31 @@ mod tests {
     // re-resolves against whichever font is in effect.
     let s = spacing("calc(1em + 2px)", 10.0).unwrap();
     assert!(matches!(s, SpecifiedLength::Calc { .. }));
-    assert_eq!(resolve("calc(1em + 2px)", 10.0), 12.0);
-    assert_eq!(resolve("calc(1em + 2px)", 20.0), 22.0);
-    assert_eq!(resolve("calc(1em - 2px)", 20.0), 18.0);
-    assert_eq!(resolve("calc(2 * 1em)", 20.0), 40.0);
-    assert_eq!(resolve("calc(1em / 2)", 20.0), 10.0);
+    assert_eq!(resolve_to_pixels("calc(1em + 2px)", 10.0), 12.0);
+    assert_eq!(resolve_to_pixels("calc(1em + 2px)", 20.0), 22.0);
+    assert_eq!(resolve_to_pixels("calc(1em - 2px)", 20.0), 18.0);
+    assert_eq!(resolve_to_pixels("calc(2 * 1em)", 20.0), 40.0);
+    assert_eq!(resolve_to_pixels("calc(1em / 2)", 20.0), 10.0);
     // ex is 0.5em and cap is 0.7em in the synthetic metrics.
-    assert_eq!(resolve("calc(1ex + 1cap)", 20.0), 24.0);
+    assert_eq!(resolve_to_pixels("calc(1ex + 1cap)", 20.0), 24.0);
 
     // Comparison and stepped functions keep their own nodes.
-    assert_eq!(resolve("min(1em, 15px)", 10.0), 10.0);
-    assert_eq!(resolve("min(1em, 15px)", 20.0), 15.0);
-    assert_eq!(resolve("max(1em, 15px)", 10.0), 15.0);
-    assert_eq!(resolve("clamp(5px, 1em, 15px)", 2.0), 5.0);
-    assert_eq!(resolve("clamp(5px, 1em, 15px)", 10.0), 10.0);
-    assert_eq!(resolve("clamp(5px, 1em, 15px)", 100.0), 15.0);
-    assert_eq!(resolve("clamp(none, 1em, 15px)", 100.0), 15.0);
-    assert_eq!(resolve("round(1em, 3px)", 10.0), 9.0);
-    assert_eq!(resolve("round(up, 1em, 3px)", 10.0), 12.0);
-    assert_eq!(resolve("mod(1em, 3px)", 10.0), 1.0);
-    assert_eq!(resolve("rem(1em, 3px)", 10.0), 1.0);
-    assert_eq!(resolve("abs(-1em)", 10.0), 10.0);
-    assert_eq!(resolve("hypot(3em, 4em)", 10.0), 50.0);
+    assert_eq!(resolve_to_pixels("min(1em, 15px)", 10.0), 10.0);
+    assert_eq!(resolve_to_pixels("min(1em, 15px)", 20.0), 15.0);
+    assert_eq!(resolve_to_pixels("max(1em, 15px)", 10.0), 15.0);
+    assert_eq!(resolve_to_pixels("clamp(5px, 1em, 15px)", 2.0), 5.0);
+    assert_eq!(resolve_to_pixels("clamp(5px, 1em, 15px)", 10.0), 10.0);
+    assert_eq!(resolve_to_pixels("clamp(5px, 1em, 15px)", 100.0), 15.0);
+    assert_eq!(resolve_to_pixels("clamp(none, 1em, 15px)", 100.0), 15.0);
+    assert_eq!(resolve_to_pixels("round(1em, 3px)", 10.0), 9.0);
+    assert_eq!(resolve_to_pixels("round(up, 1em, 3px)", 10.0), 12.0);
+    assert_eq!(resolve_to_pixels("mod(1em, 3px)", 10.0), 1.0);
+    assert_eq!(resolve_to_pixels("rem(1em, 3px)", 10.0), 1.0);
+    assert_eq!(resolve_to_pixels("abs(-1em)", 10.0), 10.0);
+    assert_eq!(resolve_to_pixels("hypot(3em, 4em)", 10.0), 50.0);
     // Nesting composes.
-    assert_eq!(resolve("calc(min(1em, 15px) + 1px)", 10.0), 11.0);
-    assert_eq!(resolve("calc(min(1em, 15px) + 1px)", 20.0), 16.0);
+    assert_eq!(resolve_to_pixels("calc(min(1em, 15px) + 1px)", 10.0), 11.0);
+    assert_eq!(resolve_to_pixels("calc(min(1em, 15px) + 1px)", 20.0), 16.0);
 
     // An expression over absolute units is already exact, so it collapses.
     let s = spacing("calc(1px + 2px)", 10.0).unwrap();
@@ -1131,15 +1131,24 @@ mod tests {
       SpecifiedLength::Calc { tree, .. } if matches!(**tree, LengthCalc::Deferred(_))
     ));
     assert_eq!(s.to_css_string(), "calc(sqrt(1em / 1px) * 1px)");
-    assert_eq!(resolve("calc(sqrt(1em / 1px) * 1px)", 16.0), 4.0);
-    assert_eq!(resolve("calc(sqrt(1em / 1px) * 1px)", 100.0), 10.0);
+    assert_eq!(resolve_to_pixels("calc(sqrt(1em / 1px) * 1px)", 16.0), 4.0);
+    assert_eq!(
+      resolve_to_pixels("calc(sqrt(1em / 1px) * 1px)", 100.0),
+      10.0
+    );
 
     // Only the lost factor becomes text; the rest of the sum stays a tree, and
     // a retained fragment sorts after the dimensions.
     let s = spacing("calc(2px + sqrt(1em / 1px) * 1px)", 16.0).unwrap();
     assert_eq!(s.to_css_string(), "calc(2px + sqrt(1em / 1px) * 1px)");
-    assert_eq!(resolve("calc(2px + sqrt(1em / 1px) * 1px)", 16.0), 6.0);
-    assert_eq!(resolve("calc(sqrt(1em / 1px) * 1px + 2px)", 16.0), 6.0);
+    assert_eq!(
+      resolve_to_pixels("calc(2px + sqrt(1em / 1px) * 1px)", 16.0),
+      6.0
+    );
+    assert_eq!(
+      resolve_to_pixels("calc(sqrt(1em / 1px) * 1px + 2px)", 16.0),
+      6.0
+    );
     assert_eq!(
       spacing("calc(sqrt(1em / 1px) * 1px + 2px)", 16.0)
         .unwrap()
@@ -1148,8 +1157,8 @@ mod tests {
     );
 
     // Dividing by a length also leaves the dimension system.
-    assert_eq!(resolve("calc(1em / 1px * 1px)", 16.0), 16.0);
-    assert_eq!(resolve("calc(1em / 1px * 1px)", 25.0), 25.0);
+    assert_eq!(resolve_to_pixels("calc(1em / 1px * 1px)", 16.0), 16.0);
+    assert_eq!(resolve_to_pixels("calc(1em / 1px * 1px)", 25.0), 25.0);
   }
 
   fn url(url: &str) -> FontSrc {

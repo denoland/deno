@@ -173,7 +173,7 @@ fn parse_length_pixels<'i, 't>(
     },
   )?;
   let length = try_extract!(value, expect_length(true), args);
-  Ok(length.resolve(resolution))
+  Ok(length.resolve_to_pixels(resolution))
 }
 
 #[inline]
