@@ -3,7 +3,6 @@ console.log("Worker: bundling module");
 const allowed = await Deno.bundle({
   entrypoints: ["./worker.ts"],
   write: false,
-  outputDir: "/",
 });
 console.log("Worker: allowed bundle result.success:", allowed.success);
 
@@ -14,7 +13,6 @@ try {
   const denied = await Deno.bundle({
     entrypoints: ["./main.ts"],
     write: false,
-    outputDir: "/",
   });
   readDenied = !denied.success &&
     denied.errors.some((error) => error.text.includes("Requires read access"));
