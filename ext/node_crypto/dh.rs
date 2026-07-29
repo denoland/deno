@@ -24,9 +24,9 @@ impl PublicKey {
 pub struct PrivateKey(BigUint);
 
 impl PrivateKey {
-  pub fn new(exponent_size: usize) -> Self {
+  pub fn new(exponent_bits: usize) -> Self {
     let mut rng = rand::thread_rng();
-    let exponent = rng.gen_biguint(exponent_size);
+    let exponent = rng.gen_biguint(exponent_bits);
     Self(exponent)
   }
 
@@ -62,7 +62,7 @@ impl DiffieHellman {
   where
     G: DiffieHellmanGroup,
   {
-    let private_key = PrivateKey::new(G::EXPONENT_SIZE / 8);
+    let private_key = PrivateKey::new(G::EXPONENT_SIZE);
 
     let generator = BigUint::from_usize(G::GENERATOR).unwrap();
     // MODULUS arrays are stored as big-endian u32 words (matching RFCs).
@@ -302,4 +302,30 @@ impl DiffieHellmanGroup for Modp8192 {
     0x9558E447, 0x5677E9AA, 0x9E3050E2, 0x765694DF, 0xC81F56E8, 0x80B96E71,
     0x60C980DD, 0x98EDD3DF, 0xFFFFFFFF, 0xFFFFFFFF,
   ];
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn assert_group_private_exponent_uses_bits<G>()
+  where
+    G: DiffieHellmanGroup,
+  {
+    let largest_exponent_bits = (0..8)
+      .map(|_| DiffieHellman::group::<G>().private_key.0.bits())
+      .max()
+      .unwrap();
+    assert!(
+      largest_exponent_bits > G::EXPONENT_SIZE / 2,
+      "expected an exponent near {} bits, got at most {largest_exponent_bits} bits",
+      G::EXPONENT_SIZE
+    );
+  }
+
+  #[test]
+  fn predefined_group_private_exponents_use_bits() {
+    assert_group_private_exponent_uses_bits::<Modp1536>();
+    assert_group_private_exponent_uses_bits::<Modp2048>();
+  }
 }
