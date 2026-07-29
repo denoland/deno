@@ -328,12 +328,24 @@ impl<
     permissions: FetchPermissionsOptionRef<'_>,
     options: FetchNoFollowOptions<'_>,
   ) -> Result<FileOrRedirect, FetchNoFollowError> {
-    let specifier = self.validate_fetch(specifier, permissions)?;
-    self
+    let checked_specifier = self.validate_fetch(specifier, permissions)?;
+    let restore_original_url =
+      specifier.scheme() == "file" && checked_specifier.as_ref() != specifier;
+    let mut result = self
       .file_fetcher
-      .fetch_no_follow(&specifier, options.into_deno_cache_dir_options())
+      .fetch_no_follow(
+        &checked_specifier,
+        options.into_deno_cache_dir_options(),
+      )
       .await
-      .map_err(|err| FetchNoFollowErrorKind::FetchNoFollow(err).into_box())
+      .map_err(|err| FetchNoFollowErrorKind::FetchNoFollow(err).into_box())?;
+    if restore_original_url && let FileOrRedirect::File(file) = &mut result {
+      // `check_open` may canonicalize an allowed path before it is read. Keep
+      // the requested URL as the module identity so short paths and symlink
+      // aliases do not become graph redirects to paths outside the allowlist.
+      file.url = specifier.clone();
+    }
+    Ok(result)
   }
 
   fn validate_fetch<'a>(
@@ -348,11 +360,9 @@ impl<
       FetchPermissionsOptionRef::AllowAll => {}
       FetchPermissionsOptionRef::RestrictedWithFileApiName(
         permissions,
-        kind,
+        _,
         file_api_name,
-      ) if specifier.scheme() == "file"
-        && kind == CheckSpecifierKind::Dynamic =>
-      {
+      ) if specifier.scheme() == "file" => {
         let path =
           deno_path_util::url_to_file_path(specifier).map_err(|_| {
             PermissionCheckError::InvalidFilePath(specifier.clone())

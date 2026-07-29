@@ -100,8 +100,12 @@ pub async fn prepare_inputs(
   bundle_flags: &BundleFlags,
   plugin_handler: &mut DenoPluginHandler,
 ) -> Result<BundlerInput, AnyError> {
-  let resolved_entrypoints =
-    resolve_entrypoints(resolver, init_cwd, &bundle_flags.entrypoints)?;
+  let resolved_entrypoints = resolve_entrypoints(
+    resolver,
+    init_cwd,
+    &bundle_flags.entrypoints,
+    !plugin_handler.is_runtime_api,
+  )?;
 
   // Partition into HTML and non-HTML entrypoints
   let mut html_paths = Vec::new();
@@ -425,7 +429,7 @@ async fn emit_bundle_declarations(
   // Resolve entrypoints to specifiers
   let resolver = factory.resolver().await?;
   let entrypoint_specifiers =
-    resolve_entrypoints(resolver, init_cwd, &bundle_flags.entrypoints)?;
+    resolve_entrypoints(resolver, init_cwd, &bundle_flags.entrypoints, true)?;
 
   // Determine root names with media types
   let root_names: Vec<(ModuleSpecifier, MediaType)> = entrypoint_specifiers
@@ -2210,7 +2214,7 @@ impl DenoPluginHandler {
     // `specifier` is now the concrete module we're about to read the source of
     // (a `file:` path for local modules, including npm packages resolved into
     // `node_modules`). Gate the read on the caller's permissions.
-    let specifier = self.check_read_permission(&specifier)?;
+    let checked_specifier = self.check_read_permission(&specifier)?;
 
     let graph = self.module_graph_container.graph();
     let module_or_asset = self
@@ -2223,7 +2227,7 @@ impl DenoPluginHandler {
         LoadCodeSourceErrorKind::LoadUnpreparedModule(_) => {
           let file = self
             .file_fetcher
-            .fetch(&specifier, &self.permissions)
+            .fetch(&checked_specifier, &self.permissions)
             .await?;
           let media_type = MediaType::from_specifier_and_headers(
             &specifier,
@@ -2249,12 +2253,12 @@ impl DenoPluginHandler {
                 let str = String::from_utf8_lossy(&file.source);
                 let value = str.into();
                 let source = self
-                  .maybe_transpile(&file.url, media_type, &value, None)
+                  .maybe_transpile(&specifier, media_type, &value, None)
                   .await?;
                 return self
                   .create_module_response(
                     &graph,
-                    &file.url,
+                    &specifier,
                     media_type,
                     source.as_bytes(),
                     Some(requested_type),
@@ -2265,7 +2269,7 @@ impl DenoPluginHandler {
                 return self
                   .create_module_response(
                     &graph,
-                    &file.url,
+                    &specifier,
                     media_type,
                     &file.source,
                     Some(requested_type),
@@ -2285,11 +2289,11 @@ impl DenoPluginHandler {
         specifier,
         statically_analyzable: _,
       } => {
-        let specifier = self.check_read_permission(&specifier)?;
+        let checked_specifier = self.check_read_permission(&specifier)?;
         LoadedModuleSource::ArcBytes(
           self
             .file_fetcher
-            .fetch(&specifier, &self.permissions)
+            .fetch(&checked_specifier, &self.permissions)
             .await?
             .source,
         )
@@ -2568,13 +2572,23 @@ fn media_type_to_loader(
 fn resolve_url_or_path_absolute(
   specifier: &str,
   current_dir: &Path,
+  canonicalize: bool,
 ) -> Result<Url, AnyError> {
   if deno_path_util::specifier_has_uri_scheme(specifier) {
     Ok(Url::parse(specifier)?)
   } else {
     let path = current_dir.join(specifier);
     let path = deno_path_util::normalize_path(Cow::Owned(path));
-    let path = canonicalize_path(&path)?;
+    // Runtime permission checks must see the caller's path spelling before
+    // following aliases. `check_open` then returns the canonical path used for
+    // the actual read. The trusted CLI path retains its historical eager
+    // canonicalization.
+    let canonicalized_path = canonicalize_path(&path)?;
+    let path = if canonicalize {
+      Cow::Owned(canonicalized_path)
+    } else {
+      path
+    };
     Ok(deno_path_util::url_from_file_path(&path)?)
   }
 }
@@ -2583,10 +2597,13 @@ fn resolve_entrypoints(
   resolver: &CliResolver,
   init_cwd: &Path,
   entrypoints: &[String],
+  canonicalize_entrypoints: bool,
 ) -> Result<Vec<Url>, AnyError> {
   let entrypoints = entrypoints
     .iter()
-    .map(|e| resolve_url_or_path_absolute(e, init_cwd))
+    .map(|e| {
+      resolve_url_or_path_absolute(e, init_cwd, canonicalize_entrypoints)
+    })
     .collect::<Result<Vec<_>, _>>()?;
 
   let init_cwd_url = Url::from_directory_path(init_cwd).unwrap();

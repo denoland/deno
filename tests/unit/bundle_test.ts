@@ -254,6 +254,60 @@ Deno.test("bundle: module read requires caller permission", async () => {
   );
 });
 
+Deno.test("bundle: permitted path alias preserves module identity", async () => {
+  using dir = new TempDir();
+  const realDir = dir.join("real");
+  const aliasDir = dir.join("alias");
+  const entry = join(realDir, "entry.ts");
+  const aliasEntry = join(aliasDir, "entry.ts");
+  const runner = dir.join("runner.ts");
+
+  await Deno.mkdir(realDir);
+  await Deno.writeTextFile(entry, "export const value = 42;\n");
+  await Deno.symlink(realDir, aliasDir, {
+    type: Deno.build.os === "windows" ? "junction" : "dir",
+  });
+  await Deno.writeTextFile(
+    runner,
+    unindent`
+      const result = await Deno.bundle({
+        entrypoints: [${JSON.stringify(aliasEntry)}],
+        write: false,
+      });
+      console.log(JSON.stringify({
+        success: result.success,
+        errors: result.errors.map((error) => error.text),
+      }));
+    `,
+  );
+
+  const { success, stdout, stderr } = await new Deno.Command(
+    Deno.execPath(),
+    {
+      args: [
+        "run",
+        "--no-config",
+        "--no-lock",
+        "--no-prompt",
+        "--quiet",
+        "--unstable-bundle",
+        `--allow-read=${runner},${aliasEntry}`,
+        runner,
+      ],
+      stdout: "piped",
+      stderr: "piped",
+    },
+  ).output();
+
+  const stderrText = new TextDecoder().decode(stderr);
+  assert(success, stderrText);
+  const result = JSON.parse(new TextDecoder().decode(stdout)) as {
+    success: boolean;
+    errors: string[];
+  };
+  assert(result.success, JSON.stringify(result.errors));
+});
+
 Deno.test("bundle: html entrypoint read requires caller permission", async () => {
   using dir = new TempDir();
   const secretDir = dir.join("secret");
