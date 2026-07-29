@@ -132,10 +132,7 @@ pub const fn op_external_with_result() -> ::deno_core::_ops::OpDecl {
                     rv.set(deno_core::_ops::RustToV8::to_v8(result, &mut scope))
                 }
                 Err(err) => {
-                    if !deno_core::error::try_throw_js_error_class(&mut scope, &err) {
-                        let exception = deno_core::error::to_v8_error(&mut scope, &err);
-                        scope.throw_exception(exception);
-                    }
+                    deno_core::error::throw_op_error(&mut scope, &err);
                     return 1;
                 }
             };

@@ -979,10 +979,7 @@ impl Foo {
                     &parts,
                 );
                 if let Err(err) = f(&mut scope, &args) {
-                    if !deno_core::error::try_throw_js_error_class(&mut scope, &err) {
-                        let exception = deno_core::error::to_v8_error(&mut scope, &err);
-                        scope.throw_exception(exception);
-                    }
+                    deno_core::error::throw_op_error(&mut scope, &err);
                     return 1;
                 }
                 let Some(self_) = deno_core::_ops::try_unwrap_cppgc_object::<

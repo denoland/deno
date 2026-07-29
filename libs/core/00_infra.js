@@ -42,6 +42,7 @@
 
   let isLeakTracingEnabled = false;
   let submitLeakTrace;
+  let registerErrorClassNative;
 
   // Exposed for testing promise id wraparound behavior.
   function __setNextPromiseId(promiseId) {
@@ -56,8 +57,12 @@
     return isLeakTracingEnabled;
   }
 
-  function __initializeCoreMethods(submitLeakTrace_) {
+  function __initializeCoreMethods(
+    submitLeakTrace_,
+    registerErrorClassNative_,
+  ) {
     submitLeakTrace = submitLeakTrace_;
+    registerErrorClassNative = registerErrorClassNative_;
   }
 
   const build = {
@@ -136,6 +141,9 @@
       enumerable: true,
       configurable: false,
     });
+    // Op errors bypass registered constructors in both slow and fast dispatch.
+    // Classes that depend on constructor-created state must use a builder.
+    registerErrorClassNative?.(className, errorClass);
   }
 
   function registerErrorBuilder(className, errorBuilder) {

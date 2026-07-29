@@ -5,7 +5,6 @@ use std::task::Poll;
 
 use deno_error::JsErrorBox;
 
-use crate::JsBuffer;
 use crate::JsRuntime;
 use crate::RuntimeOptions;
 use crate::op2;
@@ -17,11 +16,13 @@ async fn test_error_builder() {
     Err(JsErrorBox::new("DOMExceptionOperationError", "abc"))
   }
 
-  #[op2]
-  fn op_registered_err(
-    #[buffer(detach)] _buffer: JsBuffer,
-  ) -> Result<(), JsErrorBox> {
-    Err(JsErrorBox::new("RegisteredError", "registered message"))
+  #[op2(fast)]
+  fn op_registered_err(#[buffer] buffer: &[u8]) -> Result<(), JsErrorBox> {
+    if buffer.first() == Some(&1) {
+      Err(JsErrorBox::new("RegisteredError", "registered message"))
+    } else {
+      Ok(())
+    }
   }
 
   deno_core::extension!(test_ext, ops = [op_err, op_registered_err]);

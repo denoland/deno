@@ -28,12 +28,14 @@ core.registerErrorBuilder(
 
 let registeredConstructorCalls = 0;
 let registeredNameSetterCalls = 0;
-class RegisteredError extends Error {
-  constructor(message) {
-    super(message);
-    registeredConstructorCalls++;
-  }
+function RegisteredError(message) {
+  registeredConstructorCalls++;
+  const error = new Error(message);
+  Object.setPrototypeOf(error, RegisteredError.prototype);
+  return error;
 }
+RegisteredError.prototype = Object.create(Error.prototype);
+const registeredPrototype = RegisteredError.prototype;
 core.registerErrorClass("RegisteredError", RegisteredError);
 const registeredDescriptor = Object.getOwnPropertyDescriptor(
   core.errorConstructors,
@@ -95,23 +97,52 @@ if (inheritedConstructorLookupCalls !== 0) {
   throw new Error("inherited constructor lookup was consulted");
 }
 
+function callRegisteredError(buffer) {
+  return ops.op_registered_err(buffer);
+}
+
+const fastBuffer = new Uint8Array(1);
+// Keep one call site hot enough for V8 to dispatch through the generated fast
+// callback, then make that same callback return an error.
+for (let i = 0; i < 6000; i++) {
+  callRegisteredError(fastBuffer);
+}
+fastBuffer[0] = 1;
+let err;
 try {
-  ops.op_registered_err(new Uint8Array());
+  callRegisteredError(fastBuffer);
   throw new Error("op_registered_err didn't throw!");
-} catch (err) {
-  if (!(err instanceof RegisteredError)) {
-    throw new Error("err not RegisteredError");
-  }
-  if (registeredConstructorCalls !== 0) {
-    throw new Error("registered constructor was called");
-  }
-  if (registeredNameSetterCalls !== 0) {
-    throw new Error("registered name setter was called");
-  }
-  if (!Object.hasOwn(err, "name") || err.name !== "RegisteredError") {
-    throw new Error("err.name is incorrect");
-  }
-  if (err.message !== "registered message") {
-    throw new Error("err.message is incorrect");
-  }
+} catch (error) {
+  err = error;
+}
+if (!(err instanceof RegisteredError)) {
+  throw new Error("err not RegisteredError");
+}
+if (registeredConstructorCalls !== 0) {
+  throw new Error("registered constructor was called");
+}
+if (registeredNameSetterCalls !== 0) {
+  throw new Error("registered name setter was called");
+}
+if (!Object.hasOwn(err, "name") || err.name !== "RegisteredError") {
+  throw new Error("err.name is incorrect");
+}
+if (err.message !== "registered message") {
+  throw new Error("err.message is incorrect");
+}
+if (fastBuffer.byteLength !== 1) {
+  throw new Error("fast op buffer was detached");
+}
+
+// Replacing a writable function prototype after registration must not change
+// the prototype captured by native error construction.
+RegisteredError.prototype = Object.create(Error.prototype);
+try {
+  callRegisteredError(fastBuffer);
+  throw new Error("op_registered_err didn't throw!");
+} catch (error) {
+  err = error;
+}
+if (Object.getPrototypeOf(err) !== registeredPrototype) {
+  throw new Error("registered prototype was not snapshotted");
 }

@@ -42,6 +42,15 @@ pub fn op_add_main_module_handler(
 }
 
 #[op2(fast)]
+pub fn op_register_error_class<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  #[string] class_name: &str,
+  constructor: v8::Local<'s, v8::Value>,
+) {
+  error::register_error_class(scope, class_name, constructor);
+}
+
+#[op2(fast)]
 pub fn op_set_handled_promise_rejection_handler(
   scope: &mut v8::PinScope,
   f: Option<v8::Local<v8::Function>>,

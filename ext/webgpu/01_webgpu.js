@@ -105,6 +105,9 @@ class GPUValidationError extends GPUError {
     this[_message] = message;
   }
 }
+// These errors rely on Web IDL brand and private message state established by
+// their constructors. Keep them builder-only: registered classes intentionally
+// bypass constructors during native op-error construction.
 core.registerErrorBuilder(
   "GPUValidationError",
   (message) => new GPUValidationError(message),

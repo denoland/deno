@@ -1260,13 +1260,7 @@ pub(crate) fn throw_exception(
 
   gs_quote!(generator_state(scope) => {
     #maybe_scope
-    if !deno_core::error::try_throw_js_error_class(&mut #scope, &err) {
-      let exception = deno_core::error::to_v8_error(
-        &mut #scope,
-        &err,
-      );
-      #scope.throw_exception(exception);
-    }
+    deno_core::error::throw_op_error(&mut #scope, &err);
     return 1;
   })
 }
