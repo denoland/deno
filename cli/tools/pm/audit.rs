@@ -278,14 +278,24 @@ mod npm {
     let mut advisories: Vec<AuditAdvisory> = Vec::new();
     for (pkg_name, pkg_advisories) in &bulk_response {
       for adv in pkg_advisories {
+        // The public registry does not return `patched_versions`, so infer it
+        // from the vulnerable range's exclusive upper bound when missing.
+        let patched_versions = adv
+          .patched_versions
+          .clone()
+          .filter(|p| !p.is_empty())
+          .or_else(|| derive_patched_from_vulnerable(&adv.vulnerable_versions))
+          .unwrap_or_default();
         advisories.push(AuditAdvisory {
           title: adv.title.clone(),
           severity: adv.severity.clone(),
           url: adv.url.clone(),
           module_name: pkg_name.clone(),
           vulnerable_versions: adv.vulnerable_versions.clone(),
-          patched_versions: adv.patched_versions.clone().unwrap_or_default(),
+          patched_versions,
           cves: adv.cves.clone(),
+          ghsa_id: extract_ghsa_id(adv),
+          advisory_id: adv.id,
         });
       }
     }
@@ -317,11 +327,15 @@ mod npm {
       }
     });
 
-    // Filter out ignored CVEs
+    // Filter out ignored advisories, matched by GHSA id, numeric advisory id,
+    // or CVE id (case-insensitive).
     if !audit_flags.ignore.is_empty() {
-      advisories.retain(|adv| {
-        !adv.cves.iter().any(|cve| audit_flags.ignore.contains(cve))
-      });
+      let ignore: HashSet<String> = audit_flags
+        .ignore
+        .iter()
+        .map(|s| s.trim().to_ascii_lowercase())
+        .collect();
+      advisories.retain(|adv| !adv.is_ignored(&ignore));
     }
 
     // Compute vulnerability counts from remaining advisories
@@ -515,6 +529,10 @@ mod npm {
           AdvisorySeverity::Critical => colors::red("critical"),
         }
       );
+      if let Some(id) = adv.display_id() {
+        // Surfaced so it can be passed to `deno audit --ignore <ID>`.
+        _ = writeln!(stdout, "│ {}         {}", colors::gray("ID:"), id);
+      }
       _ = writeln!(
         stdout,
         "│ {}    {}",
@@ -570,6 +588,13 @@ mod npm {
   /// Advisory item from the bulk API response.
   #[derive(Debug, Deserialize)]
   pub struct BulkAdvisoryItem {
+    /// Numeric advisory id assigned by the registry.
+    #[serde(default)]
+    pub id: Option<u64>,
+    /// GitHub advisory id (`GHSA-xxxx-xxxx-xxxx`). The public npm registry
+    /// only exposes this via `url`, but some registries include it directly.
+    #[serde(default)]
+    pub github_advisory_id: Option<String>,
     pub url: String,
     pub title: String,
     pub severity: String,
@@ -581,6 +606,49 @@ mod npm {
     #[serde(default)]
     #[allow(dead_code, reason = "deserialized but not yet displayed")]
     pub cwe: Vec<String>,
+  }
+
+  /// Extract the GitHub advisory id (`GHSA-xxxx-xxxx-xxxx`) for an advisory.
+  ///
+  /// Prefers an explicit `github_advisory_id` field, falling back to the last
+  /// path segment of the advisory `url`, which for public npm registry
+  /// responses looks like `https://github.com/advisories/GHSA-xxxx-xxxx-xxxx`.
+  pub fn extract_ghsa_id(item: &BulkAdvisoryItem) -> Option<String> {
+    if let Some(id) = &item.github_advisory_id
+      && !id.is_empty()
+    {
+      return Some(id.clone());
+    }
+    item
+      .url
+      .rsplit('/')
+      .next()
+      .filter(|seg| seg.starts_with("GHSA-"))
+      .map(|seg| seg.to_string())
+  }
+
+  /// Derive a `patched_versions` range from an advisory's `vulnerable_versions`
+  /// when the registry does not provide one.
+  ///
+  /// The public npm bulk advisory endpoint only returns `vulnerable_versions`,
+  /// so the first fixed version is inferred from an exclusive upper bound. For
+  /// example `<1.1.0` or `>=1.0.0 <1.1.0` yields `>=1.1.0`. Ranges without an
+  /// exclusive upper bound (`<=1.1.0`, open-ended `>=1.0.0`) cannot be resolved
+  /// to a definite fixed version and yield `None`.
+  pub fn derive_patched_from_vulnerable(vulnerable: &str) -> Option<String> {
+    for token in vulnerable.split_whitespace() {
+      let Some(rest) = token.strip_prefix('<') else {
+        continue;
+      };
+      // "<=" is an inclusive upper bound; we can't know the next fixed version.
+      if rest.starts_with('=') {
+        continue;
+      }
+      if deno_semver::Version::parse_standard(rest).is_ok() {
+        return Some(format!(">={}", rest));
+      }
+    }
+    None
   }
 
   /// The bulk advisory endpoint response: { "package-name": [advisory, ...] }
@@ -595,6 +663,44 @@ mod npm {
     vulnerable_versions: String,
     patched_versions: String,
     cves: Vec<String>,
+    /// GitHub advisory id (`GHSA-...`), if it could be determined.
+    ghsa_id: Option<String>,
+    /// Numeric advisory id from the registry, if present.
+    advisory_id: Option<u64>,
+  }
+
+  impl AuditAdvisory {
+    /// The identifier to surface to the user for `--ignore`. Prefers the GHSA
+    /// id, then the numeric id, then the first CVE.
+    fn display_id(&self) -> Option<String> {
+      self
+        .ghsa_id
+        .clone()
+        .or_else(|| self.advisory_id.map(|id| id.to_string()))
+        .or_else(|| self.cves.first().cloned())
+    }
+
+    /// Whether this advisory matches one of the given (lower-cased) ignore
+    /// tokens, by GHSA id, numeric id, or CVE id.
+    fn is_ignored(&self, ignore: &HashSet<String>) -> bool {
+      if self
+        .ghsa_id
+        .as_ref()
+        .is_some_and(|g| ignore.contains(&g.to_ascii_lowercase()))
+      {
+        return true;
+      }
+      if self
+        .advisory_id
+        .is_some_and(|id| ignore.contains(&id.to_string()))
+      {
+        return true;
+      }
+      self
+        .cves
+        .iter()
+        .any(|cve| ignore.contains(&cve.to_ascii_lowercase()))
+    }
   }
 
   struct AuditVulnerabilities {
@@ -938,7 +1044,70 @@ mod socket_dev {
 mod tests {
   use deno_core::serde_json;
 
+  use super::npm::BulkAdvisoryItem;
   use super::npm::BulkAuditResponse;
+  use super::npm::derive_patched_from_vulnerable;
+  use super::npm::extract_ghsa_id;
+
+  fn advisory(json: serde_json::Value) -> BulkAdvisoryItem {
+    serde_json::from_value(json).unwrap()
+  }
+
+  #[test]
+  fn test_extract_ghsa_id_from_url() {
+    let item = advisory(serde_json::json!({
+      "url": "https://github.com/advisories/GHSA-mh99-v99m-4gvg",
+      "title": "t",
+      "severity": "high",
+      "vulnerable_versions": "<1.0.0"
+    }));
+    assert_eq!(
+      extract_ghsa_id(&item).as_deref(),
+      Some("GHSA-mh99-v99m-4gvg")
+    );
+  }
+
+  #[test]
+  fn test_extract_ghsa_id_prefers_explicit_field() {
+    let item = advisory(serde_json::json!({
+      "github_advisory_id": "GHSA-aaaa-bbbb-cccc",
+      "url": "https://example.com/vuln/1",
+      "title": "t",
+      "severity": "high",
+      "vulnerable_versions": "<1.0.0"
+    }));
+    assert_eq!(
+      extract_ghsa_id(&item).as_deref(),
+      Some("GHSA-aaaa-bbbb-cccc")
+    );
+  }
+
+  #[test]
+  fn test_extract_ghsa_id_none_for_non_github_url() {
+    let item = advisory(serde_json::json!({
+      "url": "https://example.com/vuln/101010",
+      "title": "t",
+      "severity": "high",
+      "vulnerable_versions": "<1.0.0"
+    }));
+    assert_eq!(extract_ghsa_id(&item), None);
+  }
+
+  #[test]
+  fn test_derive_patched_from_vulnerable() {
+    assert_eq!(
+      derive_patched_from_vulnerable("<1.1.0").as_deref(),
+      Some(">=1.1.0")
+    );
+    assert_eq!(
+      derive_patched_from_vulnerable(">=4.0.0 <4.17.21").as_deref(),
+      Some(">=4.17.21")
+    );
+    // Inclusive upper bound and open-ended ranges cannot be resolved.
+    assert_eq!(derive_patched_from_vulnerable("<=1.1.0"), None);
+    assert_eq!(derive_patched_from_vulnerable(">=1.0.0"), None);
+    assert_eq!(derive_patched_from_vulnerable("*"), None);
+  }
 
   #[test]
   fn test_bulk_audit_response_deserialize_empty() {

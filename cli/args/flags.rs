@@ -1775,6 +1775,9 @@ Show only high and critical severity vulnerabilities
 Check against socket.dev vulnerability database
   <p(245)>deno audit --socket</>
 
+Ignore a specific advisory by its GHSA or CVE id
+  <p(245)>deno audit --ignore=GHSA-xxxx-xxxx-xxxx</>
+
 Don't error if the audit data can't be retrieved from the registry
   <p(245)>deno audit --ignore-registry-errors</>"
     ),
@@ -1818,9 +1821,9 @@ Don't error if the audit data can't be retrieved from the registry
       .arg(
         Arg::new("ignore")
           .long("ignore")
-          .help("Ignore advisories matching the given CVE IDs")
+          .help("Ignore advisories matching the given GHSA or CVE IDs")
           .action(ArgAction::Append)
-          .value_name("CVE")
+          .value_name("ID")
       )
       .arg(
         Arg::new("fix")

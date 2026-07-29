@@ -670,13 +670,17 @@ fn process_npm_security_advisories_bulk_body(
   Some(serde_json::Value::Object(response))
 }
 
+// The public npm bulk advisory endpoint only returns `id`, `url` (which
+// embeds the GHSA id), `title`, `severity`, `vulnerable_versions`, `cwe` and
+// `cvss` -- it does not return `patched_versions`. A `cves` field is included
+// here to exercise CVE-based `--ignore` matching.
 fn get_advisory_for_with_vuln1() -> serde_json::Value {
   json!({
-    "url": "https://example.com/vuln/101010",
+    "id": 1000001,
+    "url": "https://github.com/advisories/GHSA-1111-1111-1111",
     "title": "@denotest/with-vuln1 is susceptible to prototype pollution",
     "severity": "high",
     "vulnerable_versions": "<1.1.0",
-    "patched_versions": ">=1.1.0",
     "cves": ["CVE-2025-0001"],
     "cwe": ["CWE-1321"]
   })
@@ -684,11 +688,11 @@ fn get_advisory_for_with_vuln1() -> serde_json::Value {
 
 fn get_advisory_for_with_vuln2() -> serde_json::Value {
   json!({
-    "url": "https://example.com/vuln/202020",
+    "id": 1000002,
+    "url": "https://github.com/advisories/GHSA-2222-2222-2222",
     "title": "@denotest/with-vuln2 can steal crypto keys",
     "severity": "critical",
     "vulnerable_versions": "<2.0.0",
-    "patched_versions": ">=2.0.0",
     "cves": ["CVE-2025-0002"],
     "cwe": ["CWE-326"]
   })
@@ -696,11 +700,11 @@ fn get_advisory_for_with_vuln2() -> serde_json::Value {
 
 fn get_advisory_for_with_vuln3() -> serde_json::Value {
   json!({
-    "url": "https://example.com/vuln/303030",
+    "id": 1000003,
+    "url": "https://github.com/advisories/GHSA-3333-3333-3333",
     "title": "@denotest/with-vuln3 has security vulnerability",
     "severity": "high",
     "vulnerable_versions": "<1.1.0",
-    "patched_versions": ">=1.1.0",
     "cves": ["CVE-2025-0003"],
     "cwe": ["CWE-79"]
   })
