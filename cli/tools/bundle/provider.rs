@@ -158,7 +158,7 @@ impl BundleProvider for CliBundleProvider {
         };
         log::trace!("process_result");
         let process_result_result = if write_output {
-          super::process_result(
+          match super::process_result(
             &result,
             &bundler.cwd,
             crate::tools::bundle::should_replace_require_shim(
@@ -168,10 +168,13 @@ impl BundleProvider for CliBundleProvider {
             bundler.input,
             bundle_flags.output_dir.as_ref().map(Path::new),
             Some(&permissions),
-          )
-          .map(|_| {
-            result.output_files = None;
-          })
+          ) {
+            Ok(_) => {
+              result.output_files = None;
+              Ok(())
+            }
+            Err(err) => Err(err),
+          }
         } else {
           process_output_files(
             &bundle_flags,

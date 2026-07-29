@@ -108,7 +108,7 @@ pub async fn prepare_inputs(
   let mut script_entry_urls = Vec::new();
   for url in &resolved_entrypoints {
     if is_html_entrypoint(url) {
-      html_paths.push(url.to_file_path().unwrap());
+      html_paths.push(deno_path_util::url_to_file_path(url)?);
     } else {
       script_entry_urls.push(url.clone());
     }
@@ -159,7 +159,9 @@ pub async fn prepare_inputs(
       let entry = html::load_html_entrypoint(
         init_cwd,
         html_path,
-        plugin_handler.file_permissions.as_ref(),
+        plugin_handler
+          .is_runtime_api
+          .then_some(&plugin_handler.permissions),
       )?;
 
       let virtual_module_path =
@@ -230,9 +232,9 @@ pub async fn bundle_init(
   // Module loads (including remote imports) are checked against the caller's
   // permissions when invoked via `Deno.bundle()`, and against the CLI's own
   // permissions when invoked via `deno bundle`.
-  let permissions = match &caller_permissions {
-    Some(permissions) => permissions.clone(),
-    None => factory.root_permissions_container()?.clone(),
+  let (permissions, is_runtime_api) = match caller_permissions {
+    Some(permissions) => (permissions, true),
+    None => (factory.root_permissions_container()?.clone(), false),
   };
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
@@ -254,7 +256,7 @@ pub async fn bundle_init(
     resolved_roots: Arc::new(RwLock::new(Arc::new(IndexSet::new()))),
     module_graph_container,
     permissions,
-    file_permissions: caller_permissions,
+    is_runtime_api,
     module_loader: module_loader.clone(),
     externals_matcher: if bundle_flags.external.is_empty() {
       None
@@ -1216,7 +1218,10 @@ impl EsbuildBundler {
       let updated = html::load_html_entrypoint(
         &self.cwd,
         &page.path,
-        self.plugin_handler.file_permissions.as_ref(),
+        self
+          .plugin_handler
+          .is_runtime_api
+          .then_some(&self.plugin_handler.permissions),
       )?;
       let virtual_module_url =
         deno_path_util::url_from_file_path(&updated.virtual_module_path)?
@@ -1472,11 +1477,9 @@ pub struct DenoPluginHandler {
   resolved_roots: Arc<RwLock<Arc<IndexSet<ModuleSpecifier>>>>,
   module_graph_container: Arc<MainModuleGraphContainer>,
   permissions: PermissionsContainer,
-  /// Only set when bundling via `Deno.bundle()`, where reads and writes of
-  /// local files must respect the calling program's permissions. `deno bundle`
-  /// reads and writes its entrypoints and output without a check, like the
-  /// other CLI subcommands.
-  file_permissions: Option<PermissionsContainer>,
+  /// Whether reads and writes must respect the calling program's permissions.
+  /// The directly invoked `deno bundle` command is a trusted CLI path.
+  is_runtime_api: bool,
   module_loader: Arc<CliDenoResolverModuleLoader>,
   externals_matcher: Option<ExternalsMatcher>,
   on_end_tx: tokio::sync::mpsc::Sender<esbuild_client::OnEndArgs>,
@@ -2099,9 +2102,12 @@ impl DenoPluginHandler {
         graph,
         specifiers,
         PrepareModuleLoadOptions {
-          is_dynamic: false,
+          is_dynamic: self.is_runtime_api,
           lib: TsTypeLib::default(),
           permissions: self.permissions.clone(),
+          file_permission_api_name: self
+            .is_runtime_api
+            .then_some("Deno.bundle()"),
           ext_overwrite: None,
           allow_unknown_media_types: true,
           skip_graph_roots_validation: true,
@@ -2117,23 +2123,42 @@ impl DenoPluginHandler {
   /// When bundling via `Deno.bundle()`, reading a module returns its
   /// (transpiled) source to the calling program, so it must be gated on the
   /// caller's permissions. `deno bundle` reads its inputs unchecked like the
-  /// other CLI subcommands, in which case `file_permissions` is `None` and this
-  /// is a no-op.
+  /// other CLI subcommands, in which case this is a no-op.
   ///
-  /// This mirrors how dynamic `import()` is gated: `check_specifier` applies a
-  /// read check to `file:` specifiers and an import check to remote ones. The
-  /// file fetcher only gates the latter for the bundler (module reads use
-  /// `Static` semantics, which exempt `file:`), so this closes the local-read
-  /// gap without canonicalizing paths in a way that would break reads scoped to
-  /// a symlinked directory (e.g. a `/var` -> `/private/var` temp dir on macOS).
-  fn check_read_permission(
+  /// Graph preparation already performs the check before reading source. This
+  /// second boundary covers later esbuild loads and direct asset fetches.
+  fn check_read_permission<'a>(
     &self,
-    specifier: &Url,
-  ) -> Result<(), BundleLoadError> {
-    if let Some(permissions) = &self.file_permissions {
-      permissions.check_specifier(specifier, CheckSpecifierKind::Dynamic)?;
+    specifier: &'a Url,
+  ) -> Result<Cow<'a, Url>, BundleLoadError> {
+    if self.is_runtime_api {
+      if specifier.scheme() == "file" {
+        let path = deno_path_util::url_to_file_path(specifier).map_err(|_| {
+          deno_runtime::deno_permissions::PermissionCheckError::InvalidFilePath(
+            specifier.clone(),
+          )
+        })?;
+        let checked_path = self.permissions.check_open(
+          Cow::Owned(path),
+          OpenAccessKind::Read,
+          Some("Deno.bundle()"),
+        )?;
+        let checked_specifier = deno_path_util::url_from_file_path(
+          &checked_path,
+        )
+        .map_err(|_| {
+          deno_runtime::deno_permissions::PermissionCheckError::InvalidFilePath(
+            specifier.clone(),
+          )
+        })?;
+        return Ok(Cow::Owned(checked_specifier));
+      } else {
+        self
+          .permissions
+          .check_specifier(specifier, CheckSpecifierKind::Dynamic)?;
+      }
     }
-    Ok(())
+    Ok(Cow::Borrowed(specifier))
   }
 
   async fn bundle_load(
@@ -2185,7 +2210,7 @@ impl DenoPluginHandler {
     // `specifier` is now the concrete module we're about to read the source of
     // (a `file:` path for local modules, including npm packages resolved into
     // `node_modules`). Gate the read on the caller's permissions.
-    self.check_read_permission(&specifier)?;
+    let specifier = self.check_read_permission(&specifier)?;
 
     let graph = self.module_graph_container.graph();
     let module_or_asset = self
@@ -2260,7 +2285,7 @@ impl DenoPluginHandler {
         specifier,
         statically_analyzable: _,
       } => {
-        self.check_read_permission(&specifier)?;
+        let specifier = self.check_read_permission(&specifier)?;
         LoadedModuleSource::ArcBytes(
           self
             .file_fetcher
@@ -2582,7 +2607,7 @@ fn resolve_entrypoints(
 }
 
 fn is_html_entrypoint(url: &Url) -> bool {
-  url.path().to_ascii_lowercase().ends_with(".html")
+  url.scheme() == "file" && url.path().to_ascii_lowercase().ends_with(".html")
 }
 
 fn resolve_roots(
@@ -3017,6 +3042,9 @@ mod entrypoint_tests {
     ));
     assert!(!is_html_entrypoint(
       &Url::parse("file:///tmp/secret.txt#.html").unwrap()
+    ));
+    assert!(!is_html_entrypoint(
+      &Url::parse("https://example.com/index.html").unwrap()
     ));
   }
 }

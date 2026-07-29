@@ -5,6 +5,7 @@ import {
   assertEquals,
   assertFalse,
   assertMatch,
+  assertRejects,
   assertStringIncludes,
   unindent,
 } from "./test_util.ts";
@@ -58,14 +59,7 @@ class TempFile implements AsyncDisposable, Disposable {
 }
 
 async function assertPathNotFound(path: string) {
-  try {
-    await Deno.lstat(path);
-    throw new Error(`expected path not to exist: ${path}`);
-  } catch (err) {
-    if (!(err instanceof Deno.errors.NotFound)) {
-      throw err;
-    }
-  }
+  await assertRejects(() => Deno.lstat(path), Deno.errors.NotFound);
 }
 
 Deno.test("bundle: basic in-memory bundle succeeds and returns content", async () => {
@@ -215,20 +209,16 @@ Deno.test("bundle: module read requires caller permission", async () => {
         entrypoints: [${JSON.stringify(secret)}],
         write: false,
       });
-      const text = result.outputFiles
-        ?.map((f) => new TextDecoder().decode(f.contents))
-        .join("") ?? "";
       console.log(JSON.stringify({
         success: result.success,
-        leaked: text.includes("super-secret-value"),
         outputs: result.outputFiles?.length ?? 0,
-        errors: result.errors?.map((e) => e.text) ?? [],
+        errors: result.errors.map((error) => error.text),
       }));
     `,
   );
 
   // Read access to the runner only, so reading the bundled module is denied
-  // and its (transpiled) source is never returned to the caller.
+  // before graph preparation reads its source.
   const { success, stdout } = await new Deno.Command(Deno.execPath(), {
     args: [
       "run",
@@ -246,16 +236,21 @@ Deno.test("bundle: module read requires caller permission", async () => {
   assert(success);
   const result = JSON.parse(new TextDecoder().decode(stdout)) as {
     success: boolean;
-    leaked: boolean;
     outputs: number;
     errors: string[];
   };
   assertFalse(result.success);
-  assertFalse(result.leaked);
   assertEquals(result.outputs, 0);
   assert(
-    result.errors.some((e) => e.includes("Requires read access")),
-    `expected a read-access error, got: ${JSON.stringify(result.errors)}`,
+    result.errors.some((error) => error.includes("Requires read access")),
+  );
+  assert(
+    result.errors.some((error) => error.includes("--allow-read")),
+    JSON.stringify(result.errors),
+  );
+  assertFalse(
+    result.errors.some((error) => error.includes("import()")),
+    JSON.stringify(result.errors),
   );
 });
 
