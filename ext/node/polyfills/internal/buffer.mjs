@@ -49,7 +49,6 @@ const {
   SymbolFor,
   SymbolSpecies,
   SymbolToPrimitive,
-  TypeErrorPrototype,
   TypedArrayPrototypeCopyWithin,
   TypedArrayPrototypeFill,
   TypedArrayPrototypeGetBuffer,
@@ -76,7 +75,7 @@ const {
   op_transcode,
 } = core.ops;
 
-const { TextDecoder, TextEncoder } = core.loadExtScript(
+const { TextEncoder } = core.loadExtScript(
   "ext:deno_web/08_text_encoding.js",
 );
 const { codes } = core.loadExtScript("ext:deno_node/internal/error_codes.ts");
@@ -113,7 +112,6 @@ const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_STATE,
   genericNodeError,
-  NodeError,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { getOptionValue } = core.loadExtScript(
   "ext:deno_node/internal/options.ts",
@@ -298,7 +296,7 @@ function _from(value, encodingOrOffset, length) {
       return fromArrayBuffer(value, encodingOrOffset, length);
     }
 
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     const valueOf = value.valueOf && value.valueOf();
     if (
       valueOf != null &&
@@ -376,10 +374,9 @@ Buffer.copyBytesFrom = function copyBytesFrom(
     ),
   );
 };
-
 const BufferPrototype = Buffer.prototype;
 
-ObjectSetPrototypeOf(Buffer.prototype, Uint8ArrayPrototype);
+ObjectSetPrototypeOf(BufferPrototype, Uint8ArrayPrototype);
 
 ObjectSetPrototypeOf(Buffer, Uint8Array);
 
@@ -418,7 +415,7 @@ function _alloc(size, fill, encoding) {
         encoding,
       );
     }
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     return buffer.fill(fill, encoding);
   }
   return buffer;
@@ -477,7 +474,7 @@ function fromString(string, encoding) {
     let buf = createBuffer(length);
     const actual = buf.write(string, encoding);
     if (actual !== length) {
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       buf = buf.slice(0, actual);
     }
     return buf;
@@ -504,7 +501,7 @@ function fromArrayLike(obj) {
 }
 
 function fromObject(obj) {
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   if (obj.length !== undefined || isAnyArrayBuffer(obj.buffer)) {
     if (typeof obj.length !== "number") {
       return createBuffer(0);
@@ -633,7 +630,7 @@ function byteLength(string, encoding) {
     }
     if (isSharedArrayBuffer(string)) {
       // TODO(petamoriken): add SharedArayBuffer to primordials
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       return string.byteLength;
     }
 
@@ -806,7 +803,7 @@ Buffer.prototype.toString = function toString(encoding, start, end) {
     throw new codes.ERR_UNKNOWN_ENCODING(encoding);
   }
 
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   return ops.slice(this, start, end);
 };
 
@@ -960,8 +957,17 @@ Buffer.prototype.compare = function compare(
   );
 };
 
-function bidirectionalIndexOf(buffer, val, byteOffset, encoding, dir) {
+function bidirectionalIndexOf(buffer, val, byteOffset, end, encoding, dir) {
   validateBuffer(buffer);
+
+  if (typeof end === "string") {
+    encoding = end;
+    end = undefined;
+  }
+  if (end === undefined) {
+    // deno-lint-ignore deno-internal/prefer-primordials
+    end = buffer.length || buffer.byteLength;
+  }
 
   if (typeof byteOffset === "string") {
     encoding = byteOffset;
@@ -973,13 +979,13 @@ function bidirectionalIndexOf(buffer, val, byteOffset, encoding, dir) {
   }
   byteOffset = +byteOffset;
   if (NumberIsNaN(byteOffset)) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     byteOffset = dir ? 0 : (buffer.length || buffer.byteLength);
   }
   dir = !!dir;
 
   if (typeof val === "number") {
-    return indexOfNumber(buffer, val >>> 0, byteOffset, dir);
+    return indexOfNumber(buffer, val >>> 0, byteOffset, dir, end);
   }
 
   let ops;
@@ -993,13 +999,13 @@ function bidirectionalIndexOf(buffer, val, byteOffset, encoding, dir) {
     if (ops === undefined) {
       throw new codes.ERR_UNKNOWN_ENCODING(encoding);
     }
-    // deno-lint-ignore prefer-primordials
-    return ops.indexOf(buffer, val, byteOffset, dir);
+    // deno-lint-ignore deno-internal/prefer-primordials
+    return ops.indexOf(buffer, val, byteOffset, dir, end);
   }
 
   if (isUint8Array(val)) {
     const encodingVal = ops === undefined ? encodingsMap.utf8 : ops.encodingVal;
-    return indexOfBuffer(buffer, val, byteOffset, encodingVal, dir);
+    return indexOfBuffer(buffer, val, byteOffset, encodingVal, dir, end);
   }
 
   throw new codes.ERR_INVALID_ARG_TYPE(
@@ -1009,23 +1015,25 @@ function bidirectionalIndexOf(buffer, val, byteOffset, encoding, dir) {
   );
 }
 
-Buffer.prototype.includes = function includes(val, byteOffset, encoding) {
+Buffer.prototype.includes = function includes(val, byteOffset, end, encoding) {
   // Match Node's lib/buffer.js: call bidirectionalIndexOf directly so that
   // Buffer.prototype.includes.call(uint8array, ...) works generically without
   // resolving to Uint8Array.prototype.indexOf.
-  return bidirectionalIndexOf(this, val, byteOffset, encoding, true) !== -1;
+  return bidirectionalIndexOf(this, val, byteOffset, end, encoding, true) !==
+    -1;
 };
 
-Buffer.prototype.indexOf = function indexOf(val, byteOffset, encoding) {
-  return bidirectionalIndexOf(this, val, byteOffset, encoding, true);
+Buffer.prototype.indexOf = function indexOf(val, byteOffset, end, encoding) {
+  return bidirectionalIndexOf(this, val, byteOffset, end, encoding, true);
 };
 
 Buffer.prototype.lastIndexOf = function lastIndexOf(
   val,
   byteOffset,
+  end,
   encoding,
 ) {
-  return bidirectionalIndexOf(this, val, byteOffset, encoding, false);
+  return bidirectionalIndexOf(this, val, byteOffset, end, encoding, false);
 };
 
 Buffer.prototype.asciiSlice = function asciiSlice(offset, length) {
@@ -1033,11 +1041,11 @@ Buffer.prototype.asciiSlice = function asciiSlice(offset, length) {
 };
 
 Buffer.prototype.asciiWrite = function asciiWrite(string, offset, length) {
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   if (offset < 0 || offset > this.byteLength) {
     throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
   }
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   if (length < 0 || length > this.byteLength - offset) {
     throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("length");
   }
@@ -1152,11 +1160,11 @@ Buffer.prototype.latin1Write = function latin1Write(
   offset,
   length,
 ) {
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   if (offset < 0 || offset > this.byteLength) {
     throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
   }
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   if (length < 0 || length > this.byteLength - offset) {
     throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("length");
   }
@@ -1188,11 +1196,11 @@ function utf8Slice(start, end) {
 }
 
 Buffer.prototype.utf8Write = function utf8Write(string, offset, length) {
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   if (offset < 0 || offset > this.byteLength) {
     throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
   }
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   if (length < 0 || length > this.byteLength - offset) {
     throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("length");
   }
@@ -1283,7 +1291,7 @@ function fromArrayBuffer(obj, byteOffset, length) {
     }
   }
 
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   const maxLength = obj.byteLength - byteOffset;
 
   if (maxLength < 0) {
@@ -2560,13 +2568,14 @@ const encodingOps = {
     byteLength: (string) => string.length,
     encoding: "ascii",
     encodingVal: encodingsMap.ascii,
-    indexOf: (buf, val, byteOffset, dir) =>
+    indexOf: (buf, val, byteOffset, dir, end) =>
       indexOfBuffer(
         buf,
         asciiToBytes(val),
         byteOffset,
         encodingsMap.ascii,
         dir,
+        end,
       ),
     slice: (buf, start, end) =>
       FunctionPrototypeCall(Buffer.prototype.asciiSlice, buf, start, end),
@@ -2583,13 +2592,14 @@ const encodingOps = {
     byteLength: (string) => base64ByteLength(string, string.length),
     encoding: "base64",
     encodingVal: encodingsMap.base64,
-    indexOf: (buf, val, byteOffset, dir) =>
+    indexOf: (buf, val, byteOffset, dir, end) =>
       indexOfBuffer(
         buf,
         base64ToBytes(val),
         byteOffset,
         encodingsMap.base64,
         dir,
+        end,
       ),
     slice: (buf, start, end) =>
       FunctionPrototypeCall(Buffer.prototype.base64Slice, buf, start, end),
@@ -2606,13 +2616,14 @@ const encodingOps = {
     byteLength: (string) => base64ByteLength(string, string.length),
     encoding: "base64url",
     encodingVal: encodingsMap.base64url,
-    indexOf: (buf, val, byteOffset, dir) =>
+    indexOf: (buf, val, byteOffset, dir, end) =>
       indexOfBuffer(
         buf,
         base64UrlToBytes(val),
         byteOffset,
         encodingsMap.base64url,
         dir,
+        end,
       ),
     slice: (buf, start, end) =>
       FunctionPrototypeCall(Buffer.prototype.base64urlSlice, buf, start, end),
@@ -2629,13 +2640,14 @@ const encodingOps = {
     byteLength: (string) => string.length >>> 1,
     encoding: "hex",
     encodingVal: encodingsMap.hex,
-    indexOf: (buf, val, byteOffset, dir) =>
+    indexOf: (buf, val, byteOffset, dir, end) =>
       indexOfBuffer(
         buf,
         hexToBytes(val),
         byteOffset,
         encodingsMap.hex,
         dir,
+        end,
       ),
     slice: (buf, start, end) =>
       FunctionPrototypeCall(Buffer.prototype.hexSlice, buf, start, end),
@@ -2652,13 +2664,14 @@ const encodingOps = {
     byteLength: (string) => string.length,
     encoding: "latin1",
     encodingVal: encodingsMap.latin1,
-    indexOf: (buf, val, byteOffset, dir) =>
+    indexOf: (buf, val, byteOffset, dir, end) =>
       indexOfBuffer(
         buf,
         asciiToBytes(val),
         byteOffset,
         encodingsMap.latin1,
         dir,
+        end,
       ),
     slice: (buf, start, end) =>
       FunctionPrototypeCall(Buffer.prototype.latin1Slice, buf, start, end),
@@ -2675,13 +2688,14 @@ const encodingOps = {
     byteLength: (string) => string.length * 2,
     encoding: "ucs2",
     encodingVal: encodingsMap.utf16le,
-    indexOf: (buf, val, byteOffset, dir) =>
+    indexOf: (buf, val, byteOffset, dir, end) =>
       indexOfBuffer(
         buf,
         utf16leToBytes(val),
         byteOffset,
         encodingsMap.utf16le,
         dir,
+        end,
       ),
     slice: (buf, start, end) =>
       FunctionPrototypeCall(Buffer.prototype.ucs2Slice, buf, start, end),
@@ -2698,13 +2712,14 @@ const encodingOps = {
     byteLength: byteLengthUtf8,
     encoding: "utf8",
     encodingVal: encodingsMap.utf8,
-    indexOf: (buf, val, byteOffset, dir) =>
+    indexOf: (buf, val, byteOffset, dir, end) =>
       indexOfBuffer(
         buf,
         utf8Encoder.encode(val),
         byteOffset,
         encodingsMap.utf8,
         dir,
+        end,
       ),
     slice: (buf, start, end) =>
       FunctionPrototypeCall(Buffer.prototype.utf8Slice, buf, start, end),
@@ -2721,13 +2736,14 @@ const encodingOps = {
     byteLength: (string) => string.length * 2,
     encoding: "utf16le",
     encodingVal: encodingsMap.utf16le,
-    indexOf: (buf, val, byteOffset, dir) =>
+    indexOf: (buf, val, byteOffset, dir, end) =>
       indexOfBuffer(
         buf,
         utf16leToBytes(val),
         byteOffset,
         encodingsMap.utf16le,
         dir,
+        end,
       ),
     slice: (buf, start, end) =>
       FunctionPrototypeCall(Buffer.prototype.ucs2Slice, buf, start, end),
@@ -2809,7 +2825,7 @@ function _copyActual(
   }
 
   if (sourceStart !== 0 || sourceEnd < source.length) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     source = new Uint8Array(source.buffer, source.byteOffset + sourceStart, nb);
   }
 

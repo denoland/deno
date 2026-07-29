@@ -118,7 +118,7 @@ function _createSocketHandle(
       err = handle.open(fd);
     }
   } else if (port || address) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     err = handle.bind(address, port || 0, flags);
   }
 

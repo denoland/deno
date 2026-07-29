@@ -18,6 +18,33 @@ use crate::graph_util::resolution_error_for_tsc_diagnostic;
 
 const MAX_SOURCE_LINE_LENGTH: usize = 150;
 
+fn source_line_prefix(source_line: &str, column_utf16: u64) -> Option<String> {
+  let mut current_utf16 = 0;
+  let mut prefix = String::new();
+
+  for c in source_line.chars() {
+    if current_utf16 == column_utf16 {
+      return Some(prefix);
+    }
+
+    let next_utf16 = current_utf16 + c.len_utf16() as u64;
+    if next_utf16 > column_utf16 {
+      return None;
+    }
+
+    if c == '\t' {
+      prefix.push('\t');
+    } else {
+      for _ in 0..c.len_utf16() {
+        prefix.push(' ');
+      }
+    }
+    current_utf16 = next_utf16;
+  }
+
+  (current_utf16 == column_utf16).then_some(prefix)
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DiagnosticCategory {
   Warning,
@@ -313,20 +340,22 @@ impl Diagnostic {
       && !source_line.is_empty()
       && source_line.len() <= MAX_SOURCE_LINE_LENGTH
     {
-      write!(f, "\n{:indent$}{}", "", source_line, indent = level)?;
-      let length = if start.line == end.line {
-        end.character - start.character
+      let same_line = start.line == end.line;
+      let length = if same_line {
+        let Some(length) = end.character.checked_sub(start.character) else {
+          return Ok(());
+        };
+        if end.character > source_line.encode_utf16().count() as u64 {
+          return Ok(());
+        }
+        length
       } else {
         1
       };
-      let mut s = String::new();
-      for i in 0..start.character {
-        s.push(if source_line.chars().nth(i as usize).unwrap() == '\t' {
-          '\t'
-        } else {
-          ' '
-        });
-      }
+      let Some(mut s) = source_line_prefix(source_line, start.character) else {
+        return Ok(());
+      };
+      write!(f, "\n{:indent$}{}", "", source_line, indent = level)?;
       // TypeScript always uses `~` when underlining, but v8 always uses `^`.
       // We will use `^` to indicate a single point, or `~` when spanning
       // multiple characters.
@@ -677,6 +706,60 @@ mod tests {
     assert_eq!(
       strip_ansi_codes(&actual),
       "TS2584 [ERROR]: Cannot find name \'console\'. Do you need to change your target library? Try changing the `lib` compiler option to include \'dom\'.\nconsole.log(\"a\");\n~~~~~~~\n    at test.ts:1:1"
+    );
+  }
+
+  #[test]
+  fn test_diagnostics_utf16_source_positions() {
+    let value = json!([
+      {
+        "start": {
+          "line": 0,
+          "character": 3
+        },
+        "end": {
+          "line": 0,
+          "character": 6
+        },
+        "fileName": "test.ts",
+        "messageText": "Example diagnostic.",
+        "sourceLine": "\t😀foo();",
+        "category": 1,
+        "code": 2322
+      }
+    ]);
+    let diagnostics: Diagnostics = serde_json::from_value(value).unwrap();
+    let actual = diagnostics.to_string();
+    assert_eq!(
+      strip_ansi_codes(&actual),
+      "TS2322 [ERROR]: Example diagnostic.\n\t😀foo();\n\t  ~~~\n    at test.ts:1:4"
+    );
+  }
+
+  #[test]
+  fn test_diagnostics_invalid_utf16_source_position() {
+    let value = json!([
+      {
+        "start": {
+          "line": 0,
+          "character": 1
+        },
+        "end": {
+          "line": 0,
+          "character": 2
+        },
+        "fileName": "test.ts",
+        "messageText": "Example diagnostic.",
+        "sourceLine": "😀foo();",
+        "category": 1,
+        "code": 2322
+      }
+    ]);
+    let diagnostics: Diagnostics = serde_json::from_value(value).unwrap();
+    let actual = diagnostics.to_string();
+    assert_eq!(
+      strip_ansi_codes(&actual),
+      "TS2322 [ERROR]: Example diagnostic.\n    at test.ts:1:2"
     );
   }
 

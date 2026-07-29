@@ -516,6 +516,7 @@ async fn jupyter_kernel_info() -> Result<()> {
         "mimetype": "text/x.typescript",
         "file_extension": ".ts",
         "pygments_lexer": "typescript",
+        "codemirror_mode": "typescript",
         "nbconvert_exporter": "script"
       },
     }),

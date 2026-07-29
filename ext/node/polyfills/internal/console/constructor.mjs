@@ -686,7 +686,7 @@ const consoleMethods = {
         ? new SafeSetIterator(tabularData)
         : new SafeArrayIterator(tabularData);
       // Ignoring lint. `setlikeIterator` has a safe primordial value.
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       for (const v of setlikeIterator) {
         ArrayPrototypePush(values, _inspect(v));
         length++;

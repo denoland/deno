@@ -1246,9 +1246,9 @@ function normalizeSpawnArguments(
   }
 
   // Validate detached, if present.
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   if (options.detached != null) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     validateBoolean(options.detached, "options.detached");
   }
 
@@ -1410,7 +1410,7 @@ function normalizeSpawnArguments(
     ...options,
     args,
     cwd,
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     detached: !!options.detached,
     env,
     envPairs,
@@ -1949,7 +1949,7 @@ function spawnSync(
     const output = nodeSpawnSyncChild({
       args: [command, ...new SafeArrayIterator(args)],
       cwd,
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       env: mapValues(env, (value) => value.toString()),
       argv0: argv0 !== command ? argv0 : undefined,
       stdout: toDenoStdio(stdout_),
@@ -1989,9 +1989,9 @@ function spawnSync(
     }
 
     if (encoding && encoding !== "buffer") {
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       stdout = stdout && stdout.toString(encoding);
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       stderr = stderr && stderr.toString(encoding);
     }
 
@@ -2472,7 +2472,7 @@ function createIpcHandle(message, rawFd) {
     // socket.bind(handle).  The `bind(udpHandle)` path in dgram.ts calls
     // replaceHandle + startListening, making the socket immediately usable.
     const socket = new DgramSocket(message.dgramType);
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     socket.bind(udp);
     return socket;
   }

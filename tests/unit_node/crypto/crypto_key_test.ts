@@ -1082,6 +1082,43 @@ Deno.test("X509Certificate verify", function () {
   );
 });
 
+// https://github.com/denoland/deno/issues/36309
+// The ECDSA digest must come from the certificate's `signatureAlgorithm`
+// (ecdsa-with-SHA256 here), not from the issuer key's curve. This leaf is a
+// P-256 certificate signed by a P-384 issuer using SHA-256 (as Apple App
+// Attest chains are), which previously failed to verify.
+Deno.test("X509Certificate verify cross-curve ecdsa chain", function () {
+  const crossCurveCaPem = `-----BEGIN CERTIFICATE-----
+MIIBxTCCAUqgAwIBAgIUFkZzTvCTV/eJVr87jS1GKZX8IPEwCgYIKoZIzj0EAwIw
+GTEXMBUGA1UEAwwOQ3Jvc3MgQ3VydmUgQ0EwHhcNMjYwNzI3MDkxMDM5WhcNMzYw
+NzI0MDkxMDM5WjAZMRcwFQYDVQQDDA5Dcm9zcyBDdXJ2ZSBDQTB2MBAGByqGSM49
+AgEGBSuBBAAiA2IABMHiEl3CJP/jRs2u4jJHI3mxa/4V4ZBAqpdS42dqGRqqEiDd
+by0zCuZ4saLZPz9rvsN7CxcjrdV0Z621vQm+TBImHi7CL7E5qAZxrR31UJ9p52+k
+8BoATUfoSXNQo/28raNTMFEwHQYDVR0OBBYEFGgsWnzOP+cQ5BzulgStVdGbOBJf
+MB8GA1UdIwQYMBaAFGgsWnzOP+cQ5BzulgStVdGbOBJfMA8GA1UdEwEB/wQFMAMB
+Af8wCgYIKoZIzj0EAwIDaQAwZgIxAKv8tBXbbA9pR41GWxQmSf/bXDhQNntG3YsG
+Y1JH0fXeJ+NNjfZle1b9S5Ljks6pAQIxALmcMTDbr96MVRa0QxNI57OFuA6vJ7G6
+ISCPbtKAgkiabrWVGfhcIhEqc8vz91mJDA==
+-----END CERTIFICATE-----
+`;
+  const crossCurveLeafPem = `-----BEGIN CERTIFICATE-----
+MIIBjTCCARKgAwIBAgIUU8z17ymc8g9qPv+IPSe9DYG7WfswCgYIKoZIzj0EAwIw
+GTEXMBUGA1UEAwwOQ3Jvc3MgQ3VydmUgQ0EwHhcNMjYwNzI3MDkxMDM5WhcNMjcw
+NzI3MDkxMDM5WjAPMQ0wCwYDVQQDDARsZWFmMFkwEwYHKoZIzj0CAQYIKoZIzj0D
+AQcDQgAEyqluuCFjuMl2Iuhtg504A5jQJRyxrsM1/iJxIY54enUe6RqldPZ2YfM4
+leCAHympKdYAPGCidW2W17+vfpSfPaNCMEAwHQYDVR0OBBYEFLkgR+1YYc8WTdWR
+aX362SwZYmhsMB8GA1UdIwQYMBaAFGgsWnzOP+cQ5BzulgStVdGbOBJfMAoGCCqG
+SM49BAMCA2kAMGYCMQDtzRY/6GrdVfX+dDs0AvNwRzgmICSOKC4977cMqz28GuMI
+vPPlLPVytaNmuuygy04CMQDPQT9pqF1pmYbMtLXPEaN228ngdOkzVKUN6rInB0Jo
+s/KhMqowHz1KcSoPuUZ82rI=
+-----END CERTIFICATE-----
+`;
+  const leaf = new X509Certificate(crossCurveLeafPem);
+  const ca = new X509Certificate(crossCurveCaPem);
+  assertEquals(leaf.checkIssued(ca), true);
+  assertEquals(leaf.verify(ca.publicKey), true);
+});
+
 Deno.test("X509Certificate infoAccess", function () {
   const x509 = new X509Certificate(certPem);
   const infoAccess = x509.infoAccess;

@@ -41,6 +41,8 @@ mod rt;
 mod tarball;
 mod tarball_extract;
 
+pub use fs_util::create_dir_all_no_symlink;
+pub use fs_util::ensure_not_symlink;
 pub use fs_util::hard_link_dir_recursive;
 pub use fs_util::hard_link_file;
 pub use registry_info::RegistryInfoProvider;
@@ -566,9 +568,15 @@ fn has_install_script(
   let Some(scripts) = raw_fields.get("scripts") else {
     return Ok(false);
   };
-  let scripts =
+  // Historically some packuments contain a malformed `scripts` field that is
+  // not a map (e.g. an empty string, see #36323). Treat anything that doesn't
+  // deserialize as an object as having no lifecycle scripts rather than failing
+  // to load the entire packument.
+  let Ok(scripts) =
     serde_json::from_str::<BTreeMap<String, &RawValue>>(scripts.get())
-      .map_err(JsErrorBox::from_err)?;
+  else {
+    return Ok(false);
+  };
   Ok(
     scripts.contains_key("preinstall")
       || scripts.contains_key("install")
@@ -873,5 +881,33 @@ mod tests {
       )
       .unwrap();
     assert!(!cache_metadata.full_packument);
+  }
+
+  #[test]
+  fn slim_package_info_bytes_tolerates_malformed_scripts() {
+    // Some historical packuments contain a `scripts` field that isn't a map
+    // (e.g. npm:jsox@1.1.121 has `"scripts":""`). Loading the packument should
+    // succeed and treat it as having no lifecycle scripts (see #36323).
+    let input = br#"{
+      "name":"pkg",
+      "dist-tags":{"latest":"1.0.0"},
+      "versions":{
+        "1.0.0":{"version":"1.0.0","scripts":""},
+        "1.0.1":{"version":"1.0.1","scripts":[]},
+        "1.0.2":{"version":"1.0.2","scripts":{"postinstall":"node x.js"}}
+      },
+      "time":{"1.0.0":"2026-01-01T00:00:00.000Z"}
+    }"#;
+
+    let output = slim_package_info_bytes(input, None, false).unwrap();
+    let value: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    // malformed `scripts` values are dropped and don't mark an install script
+    assert!(value["versions"]["1.0.0"].get("hasInstallScript").is_none());
+    assert!(value["versions"]["1.0.1"].get("hasInstallScript").is_none());
+    // a well-formed `scripts` map with a lifecycle hook is still detected
+    assert_eq!(value["versions"]["1.0.2"]["hasInstallScript"], true);
+
+    // the whole packument still parses back into an NpmPackageInfo
+    deno_npm::registry::NpmPackageInfo::from_packument_bytes(output).unwrap();
   }
 }

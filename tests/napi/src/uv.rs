@@ -276,6 +276,80 @@ extern "C" fn test_uv_async_ref(
   ptr::null_mut()
 }
 
+struct CloseAfterSendAsync {
+  env: napi_env,
+  callback: napi_ref,
+}
+
+unsafe extern "C" fn close_after_send_async_cb(_handle: *mut uv_async_t) {
+  // This callback must not run once uv_close has marked the handle closing.
+  // If it does, the queued callback retained and dereferenced a stale
+  // addon-owned uv_async_t after the close callback was allowed to free it.
+  std::process::abort();
+}
+
+unsafe extern "C" fn close_after_send_close_cb(handle: *mut uv_handle_t) {
+  unsafe {
+    let handle = handle.cast::<uv_async_t>();
+    let async_ = (*handle).data as *mut CloseAfterSendAsync;
+    let env = (*async_).env;
+    let mut js_cb = null_mut();
+    assert_napi_ok!(napi_get_reference_value(
+      env,
+      (*async_).callback,
+      &mut js_cb
+    ));
+    let mut global: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_get_global(env, &mut global));
+
+    let mut result: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_call_function(
+      env,
+      global,
+      js_cb,
+      0,
+      ptr::null(),
+      &mut result,
+    ));
+    assert_napi_ok!(napi_delete_reference(env, (*async_).callback));
+    let _ = Box::from_raw(async_);
+    let _ = Box::from_raw(handle);
+  }
+}
+
+#[allow(unused_unsafe, reason = "napi_sys safe fn in unsafe extern blocks")]
+extern "C" fn test_uv_async_close_after_send(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 1);
+  assert_eq!(argc, 1);
+
+  let mut loop_ = null_mut();
+  assert_napi_ok!(napi_get_uv_event_loop(env, &mut loop_));
+  let uv_async = new_raw(MaybeUninit::<uv_async_t>::uninit());
+  let uv_async = uv_async.cast::<uv_async_t>();
+  let mut js_cb = null_mut();
+  assert_napi_ok!(napi_create_reference(env, args[0], 1, &mut js_cb));
+
+  let data = new_raw(CloseAfterSendAsync {
+    env,
+    callback: js_cb,
+  });
+  unsafe {
+    addr_of_mut!((*uv_async).data).write(data.cast());
+    assert_napi_ok!(uv_async_init(
+      loop_.cast(),
+      uv_async,
+      Some(close_after_send_async_cb),
+    ));
+    assert_napi_ok!(libuv_sys_lite::uv_async_send(uv_async));
+    uv_close(uv_async.cast(), Some(close_after_send_close_cb));
+  }
+
+  ptr::null_mut()
+}
+
 // Smoke test for the new uv polyfills (uv_hrtime, uv_timer_*, uv_cpu_info,
 // uv_handle_*, uv_default_loop, uv_is_active/closing, uv_ref/unref). The
 // goal is to verify that the symbols are exported from the host binary and
@@ -291,6 +365,7 @@ extern "C" fn test_uv_polyfills(
 ) -> napi_value {
   use std::ffi::c_int;
   use std::mem::MaybeUninit;
+  use std::mem::size_of;
   use std::ptr;
   use std::ptr::addr_of_mut;
 
@@ -301,11 +376,14 @@ extern "C" fn test_uv_polyfills(
   use libuv_sys_lite::uv_free_cpu_info;
   use libuv_sys_lite::uv_handle_get_data;
   use libuv_sys_lite::uv_handle_set_data;
+  use libuv_sys_lite::uv_handle_size;
   use libuv_sys_lite::uv_handle_t;
+  use libuv_sys_lite::uv_handle_type;
   use libuv_sys_lite::uv_hrtime;
   use libuv_sys_lite::uv_is_active;
   use libuv_sys_lite::uv_is_closing;
   use libuv_sys_lite::uv_ref;
+  use libuv_sys_lite::uv_strerror;
   use libuv_sys_lite::uv_timer_init;
   use libuv_sys_lite::uv_timer_set_repeat;
   use libuv_sys_lite::uv_timer_start;
@@ -367,6 +445,21 @@ extern "C" fn test_uv_polyfills(
     // polyfill's uv_close should detect UV_TIMER and skip a null callback.
     uv_close(handle, None);
 
+    assert_eq!(
+      uv_handle_size(uv_handle_type::UV_POLL),
+      size_of::<libuv_sys_lite::uv_poll_t>()
+    );
+    assert_eq!(
+      uv_handle_size(uv_handle_type::UV_UNKNOWN_HANDLE),
+      usize::MAX
+    );
+
+    assert_eq!(std::ffi::CStr::from_ptr(uv_strerror(-4095)), c"end of file");
+    assert_eq!(
+      std::ffi::CStr::from_ptr(uv_strerror(0)),
+      c"Unknown system error"
+    );
+
     // Force the address of every export we care about so that link-time
     // resolution is exercised even if all earlier asserts were optimized
     // away.
@@ -386,6 +479,8 @@ extern "C" fn test_uv_polyfills(
       uv_is_active as *const () as usize,
       uv_is_closing as *const () as usize,
       uv_close as *const () as usize,
+      uv_handle_size as *const () as usize,
+      uv_strerror as *const () as usize,
     );
 
     // Touch addr_of_mut to silence unused import warnings on platforms
@@ -937,6 +1032,11 @@ pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_uv_async", test_uv_async),
     napi_new_property!(env, "test_uv_async_ref", test_uv_async_ref),
+    napi_new_property!(
+      env,
+      "test_uv_async_close_after_send",
+      test_uv_async_close_after_send
+    ),
     napi_new_property!(env, "test_uv_polyfills", test_uv_polyfills),
     napi_new_property!(env, "test_uv_timer_fires", test_uv_timer_fires),
     napi_new_property!(env, "test_uv_loop_helpers", test_uv_loop_helpers),
