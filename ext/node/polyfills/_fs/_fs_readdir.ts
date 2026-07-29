@@ -21,8 +21,68 @@ const lazyPath = core.createLazyLoader("node:path");
 const {
   ArrayPrototypePush,
   ArrayPrototypeShift,
+  ArrayPrototypeSort,
   Error,
+  StringPrototypeCharCodeAt,
+  StringPrototypeCodePointAt,
 } = primordials;
+
+// Node's `fs.readdir` returns entries sorted per directory, because it is backed
+// by libuv's `uv__fs_scandir`, which sorts with a bytewise `strcmp` on the
+// UTF-8 filenames. Because UTF-8 preserves code point ordering under a bytewise
+// comparison, that is equivalent to comparing by Unicode code point.
+//
+// JavaScript's default `<` compares UTF-16 code units, which matches code point
+// ordering for every name made only of code units below 0xD800, the
+// overwhelmingly common case. It only diverges once a name contains a surrogate
+// (i.e. an astral character), so we scan a directory's entries once and fall
+// back to the slower explicit code-point comparison only when one is present.
+function compareEntriesFast(a: Deno.DirEntry, b: Deno.DirEntry): number {
+  const an = a.name;
+  const bn = b.name;
+  return an < bn ? -1 : an > bn ? 1 : 0;
+}
+
+function compareEntriesUtf8(a: Deno.DirEntry, b: Deno.DirEntry): number {
+  const an = a.name;
+  const bn = b.name;
+  if (an === bn) return 0;
+  const aLen = an.length;
+  const bLen = bn.length;
+  let ai = 0;
+  let bi = 0;
+  while (ai < aLen && bi < bLen) {
+    const ac = StringPrototypeCodePointAt(an, ai)!;
+    const bc = StringPrototypeCodePointAt(bn, bi)!;
+    if (ac !== bc) return ac < bc ? -1 : 1;
+    ai += ac > 0xffff ? 2 : 1;
+    bi += bc > 0xffff ? 2 : 1;
+  }
+  // One string is a prefix of the other; the shorter one sorts first.
+  return (aLen - ai) - (bLen - bi);
+}
+
+function hasSurrogate(name: string): boolean {
+  for (let i = 0; i < name.length; i++) {
+    if (StringPrototypeCharCodeAt(name, i) >= 0xd800) return true;
+  }
+  return false;
+}
+
+function sortDirEntries(entries: Deno.DirEntry[]): Deno.DirEntry[] {
+  if (entries.length < 2) return entries;
+  let needsUtf8 = false;
+  for (let i = 0; i < entries.length; i++) {
+    if (hasSurrogate(entries[i].name)) {
+      needsUtf8 = true;
+      break;
+    }
+  }
+  return ArrayPrototypeSort(
+    entries,
+    needsUtf8 ? compareEntriesUtf8 : compareEntriesFast,
+  );
+}
 
 type readDirOptions = {
   encoding?: string;
@@ -52,7 +112,7 @@ async function collectReadDir(path: string): Promise<Deno.DirEntry[]> {
   } finally {
     core.close(rid);
   }
-  return entries;
+  return sortDirEntries(entries);
 }
 
 // Mirrors Node's lib/internal/fs/utils.js getOptions(): a bare string options
@@ -214,7 +274,7 @@ export function readdirSync(
   let current: string | undefined;
   while ((current = ArrayPrototypeShift(dirs)) !== undefined) {
     try {
-      const entries = op_fs_read_dir_sync(current);
+      const entries = sortDirEntries(op_fs_read_dir_sync(current));
 
       for (let i = 0; i < entries.length; i++) {
         const entry = entries[i];
