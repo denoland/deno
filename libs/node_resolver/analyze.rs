@@ -98,7 +98,7 @@ pub trait CjsCodeAnalyzer {
 }
 
 pub trait CjsAnalysisSourceProvider {
-  fn load_source(&self, specifier: &Url) -> Option<String>;
+  fn load_source<'a>(&'a self, specifier: &Url) -> Option<Cow<'a, str>>;
 }
 
 pub enum ResolvedCjsAnalysis<'a> {
@@ -188,12 +188,10 @@ impl<
     &self,
     entry_specifier: &Url,
     source: Option<Cow<'a, str>>,
-    source_provider: Option<&dyn CjsAnalysisSourceProvider>,
+    source_provider: Option<&'a dyn CjsAnalysisSourceProvider>,
   ) -> Result<ResolvedCjsAnalysis<'a>, TranslateCjsToEsmError> {
     let source = source.or_else(|| {
-      source_provider
-        .and_then(|provider| provider.load_source(entry_specifier))
-        .map(Cow::Owned)
+      source_provider.and_then(|provider| provider.load_source(entry_specifier))
     });
     let analysis = self
       .cjs_code_analyzer
@@ -323,8 +321,7 @@ impl<
         .analyze_cjs_member_props(
           &inner_specifier,
           source_provider
-            .and_then(|provider| provider.load_source(&inner_specifier))
-            .map(Cow::Owned),
+            .and_then(|provider| provider.load_source(&inner_specifier)),
           &entry.member,
         )
         .await
@@ -365,12 +362,13 @@ impl<
     errors: &mut Vec<JsErrorBox>,
     source_provider: Option<&'a (dyn CjsAnalysisSourceProvider + 'a)>,
   ) {
-    struct Analysis {
+    struct Analysis<'a> {
       reexport_specifier: url::Url,
-      analysis: CjsAnalysis<'static>,
+      analysis: CjsAnalysis<'a>,
     }
 
-    type AnalysisFuture<'a> = LocalBoxFuture<'a, Result<Analysis, JsErrorBox>>;
+    type AnalysisFuture<'a> =
+      LocalBoxFuture<'a, Result<Analysis<'a>, JsErrorBox>>;
 
     let mut handled_reexports: HashSet<Url> = HashSet::default();
     handled_reexports.insert(entry_specifier.clone());
@@ -421,8 +419,7 @@ impl<
           let referrer = referrer.clone();
           let future = async move {
             let source = source_provider
-              .and_then(|provider| provider.load_source(&reexport_specifier))
-              .map(Cow::Owned);
+              .and_then(|provider| provider.load_source(&reexport_specifier));
             let analysis = cjs_code_analyzer
               .analyze_cjs(
                 &reexport_specifier,
@@ -799,7 +796,7 @@ impl<
     &self,
     entry_specifier: &Url,
     source: Option<Cow<'a, str>>,
-    source_provider: Option<&dyn CjsAnalysisSourceProvider>,
+    source_provider: Option<&'a dyn CjsAnalysisSourceProvider>,
   ) -> Result<Cow<'a, str>, TranslateCjsToEsmError> {
     let all_exports = if matches!(self.mode, NodeCodeTranslatorMode::Disabled) {
       return Ok(source.unwrap());

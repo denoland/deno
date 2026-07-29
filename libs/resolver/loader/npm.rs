@@ -167,6 +167,7 @@ impl<
     specifier: Cow<'a, Url>,
     maybe_referrer: Option<&Url>,
     requested_module_type: &RequestedModuleType<'_>,
+    fallback_source_provider: Option<&dyn CjsAnalysisSourceProvider>,
   ) -> Result<LoadedModule<'a>, NpmModuleLoadError> {
     let file_path = deno_path_util::url_to_file_path(&specifier)?;
     let code = self.sys.fs_read(&file_path).map_err(|source| {
@@ -221,6 +222,7 @@ impl<
                 Some(&NpmCjsAnalysisSourceProvider {
                   in_npm_pkg_checker: &self.in_npm_pkg_checker,
                   sys: &self.sys,
+                  fallback: fallback_source_provider,
                 }),
               )
               .await?
@@ -245,6 +247,7 @@ impl<
 struct NpmCjsAnalysisSourceProvider<'a, TInNpmPackageChecker, TSys> {
   in_npm_pkg_checker: &'a TInNpmPackageChecker,
   sys: &'a TSys,
+  fallback: Option<&'a dyn CjsAnalysisSourceProvider>,
 }
 
 impl<TInNpmPackageChecker, TSys> CjsAnalysisSourceProvider
@@ -253,19 +256,21 @@ where
   TInNpmPackageChecker: InNpmPackageChecker,
   TSys: NpmModuleLoaderSys,
 {
-  fn load_source(&self, specifier: &Url) -> Option<String> {
-    // Recursive npm analysis must stay within npm-owned sources. Targets
-    // outside package roots are left to their active loader and runtime
-    // permission checks instead of being read ambiently here.
+  fn load_source<'a>(&'a self, specifier: &Url) -> Option<Cow<'a, str>> {
+    // Recursive npm analysis reads package-owned sources directly. Targets
+    // outside package roots must go through the active loader's source
+    // provider so its permission and source-selection policy remains in force.
     if !self.in_npm_pkg_checker.in_npm_package(specifier) {
-      return None;
+      return self
+        .fallback
+        .and_then(|provider| provider.load_source(specifier));
     }
     let path = deno_path_util::url_to_file_path(specifier).ok()?;
     self
       .sys
       .fs_read_to_string_lossy(path)
       .ok()
-      .map(Cow::into_owned)
+      .map(|source| Cow::Owned(source.into_owned()))
   }
 }
 

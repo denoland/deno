@@ -613,7 +613,10 @@ struct PermissionedCjsAnalysisSourceProvider<'a> {
 }
 
 impl CjsAnalysisSourceProvider for PermissionedCjsAnalysisSourceProvider<'_> {
-  fn load_source(&self, specifier: &ModuleSpecifier) -> Option<String> {
+  fn load_source<'a>(
+    &'a self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<Cow<'a, str>> {
     let path = deno_path_util::url_to_file_path(specifier).ok()?;
     let mut permissions = self.permissions.clone();
     let path = self
@@ -624,7 +627,7 @@ impl CjsAnalysisSourceProvider for PermissionedCjsAnalysisSourceProvider<'_> {
       .sys
       .fs_read_to_string_lossy(path)
       .ok()
-      .map(Cow::into_owned)
+      .map(|source| Cow::Owned(source.into_owned()))
   }
 }
 

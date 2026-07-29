@@ -186,7 +186,7 @@ impl<'a> StandaloneCjsAnalysisSourceProvider<'a> {
 }
 
 impl CjsAnalysisSourceProvider for StandaloneCjsAnalysisSourceProvider<'_> {
-  fn load_source(&self, specifier: &Url) -> Option<String> {
+  fn load_source<'a>(&'a self, specifier: &Url) -> Option<Cow<'a, str>> {
     let path = deno_path_util::url_to_file_path(specifier).ok()?;
     let mut permissions = self.permissions.clone();
     let path = self
@@ -197,7 +197,7 @@ impl CjsAnalysisSourceProvider for StandaloneCjsAnalysisSourceProvider<'_> {
       .loader
       .load_text_file_lossy(&path)
       .ok()
-      .map(|source| source.to_string())
+      .map(|source| Cow::Owned(source.to_string()))
   }
 }
 
@@ -447,11 +447,14 @@ impl EmbeddedModuleLoader {
     options: ModuleLoadOptions,
   ) -> deno_core::ModuleLoadResponse {
     if self.shared.node_resolver.in_npm_package(original_specifier) {
+      let loader = self.clone();
       let shared = self.shared.clone();
       let original_specifier = original_specifier.clone();
       let maybe_referrer = maybe_referrer.map(|r| r.specifier.clone());
       return deno_core::ModuleLoadResponse::Async(
         async move {
+          let source_provider =
+            StandaloneCjsAnalysisSourceProvider::new(&loader);
           let code_source = shared
             .npm_module_loader
             .load(
@@ -460,6 +463,7 @@ impl EmbeddedModuleLoader {
               &as_deno_resolver_requested_module_type(
                 &options.requested_module_type,
               ),
+              Some(&source_provider),
             )
             .await
             .map_err(JsErrorBox::from_err)?;
@@ -569,13 +573,9 @@ impl EmbeddedModuleLoader {
                   Some(&source_provider),
                 )
                 .await
-                .map_err(JsErrorBox::from_err)?;
-              let module_source = match source {
-                Cow::Owned(source) => ModuleSourceCode::String(source.into()),
-                Cow::Borrowed(source) => {
-                  ModuleSourceCode::String(FastString::from_static(source))
-                }
-              };
+                .map_err(JsErrorBox::from_err)?
+                .into_owned();
+              let module_source = ModuleSourceCode::String(source.into());
               // CJS modules are always JavaScript, but gate on the module
               // type anyway to keep the code cache contract uniform across all
               // load paths: only JavaScript produces a V8 code cache.

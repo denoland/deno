@@ -221,6 +221,7 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
               Cow::Borrowed(specifier),
               maybe_referrer,
               requested_module_type,
+              cjs_analysis_source_provider,
             )
             .await
             .map_err(LoadCodeSourceError::from)?;
@@ -644,15 +645,14 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
         original_source,
       )
       .await?;
+    let source_provider =
+      GraphCjsAnalysisSourceProvider::new(graph, fallback_source_provider);
     let text = self
       .node_code_translator
       .translate_cjs_to_esm_with_source_provider(
         specifier,
         Some(Cow::Borrowed(js_source.as_ref())),
-        Some(&GraphCjsAnalysisSourceProvider {
-          graph,
-          fallback: fallback_source_provider,
-        }),
+        Some(&source_provider),
       )
       .await?;
     // Apply load-time security mitigations for known React Server Components
@@ -674,20 +674,29 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
   }
 }
 
-struct GraphCjsAnalysisSourceProvider<'a> {
+pub struct GraphCjsAnalysisSourceProvider<'a> {
   graph: &'a ModuleGraph,
   fallback: Option<&'a dyn CjsAnalysisSourceProvider>,
 }
 
+impl<'a> GraphCjsAnalysisSourceProvider<'a> {
+  pub fn new(
+    graph: &'a ModuleGraph,
+    fallback: Option<&'a dyn CjsAnalysisSourceProvider>,
+  ) -> Self {
+    Self { graph, fallback }
+  }
+}
+
 impl CjsAnalysisSourceProvider for GraphCjsAnalysisSourceProvider<'_> {
-  fn load_source(&self, specifier: &Url) -> Option<String> {
+  fn load_source<'a>(&'a self, specifier: &Url) -> Option<Cow<'a, str>> {
     if let Some(module) = self.graph.get(specifier) {
       match module {
         deno_graph::Module::Js(module) => {
-          return Some(module.source.text.to_string());
+          return Some(Cow::Borrowed(module.source.text.as_ref()));
         }
         deno_graph::Module::Json(module) => {
-          return Some(module.source.text.to_string());
+          return Some(Cow::Borrowed(module.source.text.as_ref()));
         }
         _ => {}
       }
