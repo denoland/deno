@@ -1946,6 +1946,28 @@ Deno.test({
 });
 
 Deno.test({
+  name: "process.setgroups propagates a throwing element getter",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  permissions: { sys: ["setgroups"] },
+  fn() {
+    // A getter that throws must surface as that error, with no syscall and no
+    // exception left pending on the isolate. The statement after the throw
+    // checks the isolate is still usable.
+    const sentinel = new Error("boom");
+    const groups = [0];
+    Object.defineProperty(groups, 0, {
+      configurable: true,
+      get() {
+        throw sentinel;
+      },
+    });
+
+    assertThrows(() => process.setgroups!(groups), Error, "boom");
+    assertEquals(typeof process.setgroups, "function");
+  },
+});
+
+Deno.test({
   name: "process.loadEnvFile()",
   async fn() {
     const dirPath = Deno.makeTempDirSync();
