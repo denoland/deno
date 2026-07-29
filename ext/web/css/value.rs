@@ -17,6 +17,10 @@ use crate::f64::minimum;
 
 const INCH_TO_PX: f64 = 96.0;
 const INCH_TO_CM: f64 = 2.54;
+const TURN_TO_DEG: f64 = 360.0;
+const TURN_TO_GRAD: f64 = 400.0;
+const S_TO_MS: f64 = 1000.0;
+const KHZ_TO_HZ: f64 = 1000.0;
 
 /// Metrics of a single font, in pixels, used to resolve font-relative
 /// `<length>` units.
@@ -189,11 +193,11 @@ impl LengthUnit {
     !self.is_absolute() && !matches!(self, Self::Zero(_))
   }
 
-  /// The constant pixels-per-unit factor of an absolute unit; `None` for a unit
-  /// that needs the font metrics or a viewport.
+  /// The factor to the canonical unit, `px`. `None` for a unit that needs the
+  /// font metrics or a viewport, which has no constant factor.
   /// https://www.w3.org/TR/css-values-4/#absolute-lengths
   #[inline]
-  fn absolute_px_factor(self) -> Option<f64> {
+  fn px_factor(self) -> Option<f64> {
     Some(match self {
       Self::Cm => INCH_TO_PX / INCH_TO_CM,
       Self::Mm => INCH_TO_PX / INCH_TO_CM / 10.0,
@@ -260,7 +264,7 @@ impl Length {
   /// The pixel value, when the unit needs no font metrics.
   #[inline]
   pub fn to_pixels(&self) -> Option<f64> {
-    Some(self.value * self.unit.absolute_px_factor()?)
+    Some(self.value * self.unit.px_factor()?)
   }
 
   /// The pixel value of a length the calculation engine produced.
@@ -280,7 +284,7 @@ impl Length {
 
   /// Resolves a `<length>` to pixels against the given metrics.
   pub fn resolve_to_pixels(&self, resolution: &LengthResolution) -> f64 {
-    if let Some(factor) = self.unit.absolute_px_factor() {
+    if let Some(factor) = self.unit.px_factor() {
       return self.value * factor;
     }
     let value = self.value;
@@ -703,6 +707,18 @@ enum AngleUnit {
 }
 
 impl AngleUnit {
+  /// The factor to the canonical unit, `deg`.
+  /// https://www.w3.org/TR/css-values-4/#angles
+  #[inline]
+  fn deg_factor(self) -> f64 {
+    match self {
+      Self::Deg => 1.0,
+      Self::Grad => TURN_TO_DEG / TURN_TO_GRAD,
+      Self::Rad => TURN_TO_DEG / f64::consts::TAU,
+      Self::Turn => TURN_TO_DEG,
+    }
+  }
+
   /// https://www.w3.org/TR/css-values-4/#angles
   #[inline]
   fn parse(unit: &str) -> Option<Self> {
@@ -717,9 +733,6 @@ impl AngleUnit {
 }
 
 impl Angle {
-  const TURN_TO_DEG: f64 = 360.0;
-  const TURN_TO_GRAD: f64 = 400.0;
-
   #[inline]
   pub(crate) fn zero() -> Self {
     Self::from_degrees(0.0)
@@ -743,26 +756,12 @@ impl Angle {
 
   #[inline]
   pub fn to_degrees(&self) -> f64 {
-    let value = self.value;
-    match self.unit {
-      AngleUnit::Deg => value,
-      AngleUnit::Grad => value * (Self::TURN_TO_DEG / Self::TURN_TO_GRAD),
-      AngleUnit::Rad => value.to_degrees(),
-      AngleUnit::Turn => value * Self::TURN_TO_DEG,
-    }
+    self.value * self.unit.deg_factor()
   }
 
   #[inline]
   pub fn to_radians(&self) -> f64 {
-    let value = self.value;
-    match self.unit {
-      AngleUnit::Deg => value.to_radians(),
-      AngleUnit::Grad => {
-        (value * (Self::TURN_TO_DEG / Self::TURN_TO_GRAD)).to_radians()
-      }
-      AngleUnit::Rad => value,
-      AngleUnit::Turn => value * f64::consts::TAU,
-    }
+    self.to_degrees().to_radians()
   }
 }
 
@@ -781,6 +780,16 @@ enum TimeUnit {
 }
 
 impl TimeUnit {
+  /// The factor to the canonical unit, `s`.
+  /// https://www.w3.org/TR/css-values-4/#time
+  #[inline]
+  fn s_factor(self) -> f64 {
+    match self {
+      Self::S => 1.0,
+      Self::Ms => 1.0 / S_TO_MS,
+    }
+  }
+
   /// https://www.w3.org/TR/css-values-4/#time
   #[inline]
   fn parse(unit: &str) -> Option<Self> {
@@ -803,11 +812,7 @@ impl Time {
 
   #[inline]
   pub fn to_seconds(&self) -> f64 {
-    let value = self.value;
-    match self.unit {
-      TimeUnit::S => value,
-      TimeUnit::Ms => value * 1000.0,
-    }
+    self.value * self.unit.s_factor()
   }
 }
 
@@ -826,6 +831,16 @@ enum FrequencyUnit {
 }
 
 impl FrequencyUnit {
+  /// The factor to the canonical unit, `hz`.
+  /// https://www.w3.org/TR/css-values-4/#frequency
+  #[inline]
+  fn hz_factor(self) -> f64 {
+    match self {
+      Self::Hz => 1.0,
+      Self::Khz => KHZ_TO_HZ,
+    }
+  }
+
   /// https://www.w3.org/TR/css-values-4/#frequency
   #[inline]
   fn parse(unit: &str) -> Option<Self> {
@@ -848,11 +863,7 @@ impl Frequency {
 
   #[inline]
   pub fn to_hertz(&self) -> f64 {
-    let value = self.value;
-    match self.unit {
-      FrequencyUnit::Hz => value,
-      FrequencyUnit::Khz => value * 1000.0,
-    }
+    self.value * self.unit.hz_factor()
   }
 }
 
@@ -872,6 +883,17 @@ enum ResolutionUnit {
 }
 
 impl ResolutionUnit {
+  /// The factor to the canonical unit, `dppx`.
+  /// https://www.w3.org/TR/css-values-4/#resolution
+  #[inline]
+  fn dppx_factor(self) -> f64 {
+    match self {
+      Self::Dpi => 1.0 / INCH_TO_PX,
+      Self::Dpcm => INCH_TO_CM / INCH_TO_PX,
+      Self::Dppx => 1.0,
+    }
+  }
+
   /// https://www.w3.org/TR/css-values-4/#resolution
   #[inline]
   fn parse(unit: &str) -> Option<Self> {
@@ -895,12 +917,7 @@ impl Resolution {
 
   #[inline]
   fn to_dot_per_pixels(&self) -> f64 {
-    let value = self.value;
-    match self.unit {
-      ResolutionUnit::Dpi => value / INCH_TO_PX,
-      ResolutionUnit::Dpcm => value / (INCH_TO_PX / INCH_TO_CM),
-      ResolutionUnit::Dppx => value,
-    }
+    self.value * self.unit.dppx_factor()
   }
 }
 
@@ -2766,6 +2783,68 @@ mod tests {
       }
     );
     assert_eq!(resolution.to_dot_per_pixels(), 3.0);
+  }
+
+  #[test]
+  fn canonical_unit_conversions() {
+    fn parse_one(css: &str) -> NumericValue {
+      let mut input = ParserInput::new(css);
+      let mut parser = Parser::new(&mut input);
+      NumericValue::parse(&mut parser, ParseOptions::default()).unwrap()
+    }
+    fn px(css: &str) -> f64 {
+      parse_one(css)
+        .expect_length(false)
+        .unwrap()
+        .to_pixels()
+        .unwrap()
+    }
+    fn deg(css: &str) -> f64 {
+      parse_one(css).expect_angle(false).unwrap().to_degrees()
+    }
+    fn rad(css: &str) -> f64 {
+      parse_one(css).expect_angle(false).unwrap().to_radians()
+    }
+
+    // Every unit converts to its dimension's canonical unit. The inputs are all
+    // exact in f32, which is the precision cssparser reads literals at.
+    // https://www.w3.org/TR/css-values-4/#canonical-unit
+    assert_relative_eq!(px("1in"), 96.0);
+    assert_relative_eq!(px("72pt"), 96.0);
+    assert_relative_eq!(px("6pc"), 96.0);
+    assert_relative_eq!(px("1cm"), 96.0 / 2.54, epsilon = 1e-12);
+    assert_relative_eq!(px("1mm"), 96.0 / 25.4, epsilon = 1e-12);
+    assert_relative_eq!(px("1q"), 96.0 / 101.6, epsilon = 1e-12);
+
+    assert_relative_eq!(deg("100grad"), 90.0);
+    assert_relative_eq!(deg("0.5turn"), 180.0);
+    assert_relative_eq!(deg("1rad"), 1.0f64.to_degrees());
+    assert_relative_eq!(rad("180deg"), f64::consts::PI);
+    assert_relative_eq!(rad("0.5turn"), f64::consts::PI);
+    assert_relative_eq!(rad("200grad"), f64::consts::PI);
+
+    let NumericValue::Time(time) = parse_one("500ms") else {
+      panic!("expect time");
+    };
+    assert_relative_eq!(time.to_seconds(), 0.5);
+
+    let NumericValue::Frequency(frequency) = parse_one("2khz") else {
+      panic!("expect frequency");
+    };
+    assert_relative_eq!(frequency.to_hertz(), 2000.0);
+
+    let NumericValue::Resolution(resolution) = parse_one("96dpi") else {
+      panic!("expect resolution");
+    };
+    assert_relative_eq!(resolution.to_dot_per_pixels(), 1.0);
+    let NumericValue::Resolution(resolution) = parse_one("1dpcm") else {
+      panic!("expect resolution");
+    };
+    assert_relative_eq!(
+      resolution.to_dot_per_pixels(),
+      2.54 / 96.0,
+      epsilon = 1e-12
+    );
   }
 
   #[test]
