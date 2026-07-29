@@ -935,11 +935,23 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       let serve = undefined;
       core.addMainModuleHandler((main) => {
         if (ObjectHasOwn(main, "default")) {
-          try {
-            serve = lazyServeMod().registerDeclarativeServer(main.default);
-          } catch (e) {
-            if (mode === executionModes.serve || autoServe) {
-              throw e;
+          const dflt = main.default;
+          // `registerDeclarativeServer` returns immediately unless the default
+          // export has an own `fetch`, but merely reaching that check loads
+          // 00_serve.ts -> 23_request/23_response/22_body -> the web-streams
+          // polyfill: ~430 KB across 11 modules. Every CommonJS entry point
+          // surfaces `module.exports` as `default`, and plenty of ESM ones
+          // have an unrelated `export default`, so that graph was being
+          // compiled for programs that will never serve anything. Hoist the
+          // guard here. `dflt == null` still calls through, so the TypeError
+          // `Object.hasOwn(null, ...)` raises under `deno serve` is unchanged.
+          if (dflt == null || ObjectHasOwn(dflt, "fetch")) {
+            try {
+              serve = lazyServeMod().registerDeclarativeServer(dflt);
+            } catch (e) {
+              if (mode === executionModes.serve || autoServe) {
+                throw e;
+              }
             }
           }
         }

@@ -2337,6 +2337,52 @@ fn builtin_core_module() {
   runtime.module_map().set_loading_internal_modules(false);
 }
 
+// An internal module that is lazily loaded at runtime gets its imports
+// resolved by the embedder's loader, which in Deno applies the user's import
+// map. Mapping `ext:core/mod.js` used to rewrite internal imports too and
+// break instantiation. Regression test for
+// https://github.com/denoland/deno/issues/36302.
+#[test]
+fn lazy_loaded_internal_module_ignores_loader_remapping() {
+  /// Stands in for an import map that maps every specifier.
+  struct RemappingLoader;
+
+  impl ModuleLoader for RemappingLoader {
+    fn resolve(
+      &self,
+      _specifier: &str,
+      _referrer: &str,
+      _kind: ResolutionKind,
+    ) -> ModuleResolveResponse {
+      Ok(ModuleSpecifier::parse("file:///remapped.js").unwrap())
+    }
+
+    fn load(
+      &self,
+      _module_specifier: &ModuleSpecifier,
+      _maybe_referrer: Option<&ModuleLoadReferrer>,
+      _options: ModuleLoadOptions,
+    ) -> ModuleLoadResponse {
+      unreachable!();
+    }
+  }
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    module_loader: Some(Rc::new(RemappingLoader)),
+    ..Default::default()
+  });
+
+  runtime
+    .lazy_load_es_module_with_code(
+      "ext:test/lazy.js",
+      r#"
+      import { core } from "ext:core/mod.js";
+      if (typeof core === "undefined") throw new Error("core missing");
+    "#,
+    )
+    .unwrap();
+}
+
 #[test]
 fn import_meta_filename_dirname() {
   #[cfg(not(target_os = "windows"))]
