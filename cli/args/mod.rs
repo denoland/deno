@@ -729,7 +729,8 @@ impl CliOptions {
   }
 
   pub fn no_legacy_abort(&self) -> bool {
-    self.flags.no_legacy_abort() || self.workspace().has_unstable("no-legacy-abort")
+    self.flags.no_legacy_abort()
+      || self.workspace().has_unstable("no-legacy-abort")
   }
 
   pub fn env_file_names(
