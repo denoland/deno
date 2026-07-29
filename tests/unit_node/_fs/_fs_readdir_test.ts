@@ -124,10 +124,7 @@ for (const variant of ["async", "sync"] as const) {
     Deno.writeTextFileSync(join(dir, "b.txt"), "hi");
     Deno.writeTextFileSync(join(dir, "a.txt"), "hi");
     try {
-      const files = (await read(dir, { recursive: true }) as string[]).map((
-        f,
-      ) => f.toString());
-      assertEquals(files, [
+      assertEquals(await read(dir, { recursive: true }), [
         "a.txt",
         "b",
         "b.txt",
@@ -151,18 +148,21 @@ for (const variant of ["async", "sync"] as const) {
     }
   });
 
-  // Astral characters are where our code-point comparator must differ from a
-  // default UTF-16 sort: U+1F600 (😀) is a surrogate pair whose leading code
-  // unit (0xD83D) sorts below "z" under UTF-16, but the code point (0x1F600)
-  // sorts above it — which is what libuv/Node produce. macOS normalizes
-  // filenames (NFD), but these names are unaffected, so no skip is needed.
+  // Astral characters are where a code-point comparison must differ from a
+  // default UTF-16 sort. U+1F600 (😀) is the surrogate pair 0xD83D 0xDE00, and
+  // U+FF5A (ｚ) is a single code unit 0xFF5A, so under UTF-16 the emoji sorts
+  // first (0xD83D < 0xFF5A) while libuv/Node sort by code point and put U+FF5A
+  // first (0xFF5A < 0x1F600). Note that comparing an astral character against
+  // an ASCII name would NOT distinguish the two orders, since a lead surrogate
+  // is already above every ASCII code unit. macOS normalizes filenames (NFD),
+  // but neither name is affected, so no skip is needed.
   Deno.test(`${variant}: astral filenames sort by code point`, async () => {
     const dir = Deno.makeTempDirSync();
-    for (const name of ["z", "😀", "a"]) {
+    for (const name of ["😀", "ｚ", "a"]) {
       Deno.writeTextFileSync(join(dir, name), "hi");
     }
     try {
-      assertEquals(await read(dir), ["a", "z", "😀"]);
+      assertEquals(await read(dir), ["a", "ｚ", "😀"]);
     } finally {
       Deno.removeSync(dir, { recursive: true });
     }

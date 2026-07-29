@@ -33,10 +33,12 @@ const {
 // comparison, that is equivalent to comparing by Unicode code point.
 //
 // JavaScript's default `<` compares UTF-16 code units, which matches code point
-// ordering for every name made only of code units below 0xD800, the
-// overwhelmingly common case. It only diverges once a name contains a surrogate
-// (i.e. an astral character), so we scan a directory's entries once and fall
-// back to the slower explicit code-point comparison only when one is present.
+// ordering for every name made only of BMP characters, the overwhelmingly common
+// case. It only diverges once a name contains a surrogate (i.e. an astral
+// character), whose lead code unit (0xD800-0xDBFF) sorts below the BMP
+// characters in 0xE000-0xFFFF even though its code point is above all of them.
+// So we scan a directory's entries once and fall back to the slower explicit
+// code-point comparison only when a surrogate is present.
 function compareEntriesFast(a: Deno.DirEntry, b: Deno.DirEntry): number {
   const an = a.name;
   const bn = b.name;
@@ -64,7 +66,8 @@ function compareEntriesUtf8(a: Deno.DirEntry, b: Deno.DirEntry): number {
 
 function hasSurrogate(name: string): boolean {
   for (let i = 0; i < name.length; i++) {
-    if (StringPrototypeCharCodeAt(name, i) >= 0xd800) return true;
+    // 0xF800 masks off the low 11 bits, so this matches 0xD800-0xDFFF.
+    if ((StringPrototypeCharCodeAt(name, i) & 0xf800) === 0xd800) return true;
   }
   return false;
 }
