@@ -617,6 +617,53 @@ impl StandaloneModules {
       .starts_with(self.vfs.root())
   }
 
+  fn read_file_from_vfs<'a>(
+    &'a self,
+    specifier: &'a Url,
+    path: &Path,
+  ) -> Result<Option<DenoCompileModuleData<'a>>, JsErrorBox> {
+    let entry = match self.vfs.file_entry(path) {
+      Ok(entry) => entry,
+      Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
+      Err(err) => return Err(JsErrorBox::from_err(err)),
+    };
+    let bytes = self
+      .vfs
+      .read_file_all(entry)
+      .map_err(JsErrorBox::from_err)?;
+    let transpiled = entry
+      .transpiled_offset
+      .and_then(|t| self.vfs.read_file_offset_with_len(t).ok());
+    let source_map = entry
+      .source_map_offset
+      .and_then(|t| self.vfs.read_file_offset_with_len(t).ok());
+    let cjs_export_analysis = entry
+      .cjs_export_analysis_offset
+      .and_then(|t| self.vfs.read_file_offset_with_len(t).ok());
+    Ok(Some(DenoCompileModuleData {
+      media_type: MediaType::from_specifier(specifier),
+      specifier,
+      is_valid_utf8: entry.is_valid_utf8,
+      data: bytes,
+      transpiled,
+      source_map,
+      cjs_export_analysis,
+    }))
+  }
+
+  pub fn read_embedded<'a>(
+    &'a self,
+    specifier: &'a Url,
+  ) -> Result<Option<DenoCompileModuleData<'a>>, JsErrorBox> {
+    if specifier.scheme() == "file" {
+      let path = deno_path_util::url_to_file_path(specifier)
+        .map_err(JsErrorBox::from_err)?;
+      self.read_file_from_vfs(specifier, &path)
+    } else {
+      self.modules.read(specifier).map_err(JsErrorBox::from_err)
+    }
+  }
+
   pub fn read<'a>(
     &'a self,
     specifier: &'a Url,
@@ -624,72 +671,50 @@ impl StandaloneModules {
     if specifier.scheme() == "file" {
       let path = deno_path_util::url_to_file_path(specifier)
         .map_err(JsErrorBox::from_err)?;
-      let mut transpiled = None;
-      let mut source_map = None;
-      let mut cjs_export_analysis = None;
-      let mut is_valid_utf8 = false;
-      let bytes = match self.vfs.file_entry(&path) {
-        Ok(entry) => {
-          let bytes = self
-            .vfs
-            .read_file_all(entry)
-            .map_err(JsErrorBox::from_err)?;
-          is_valid_utf8 = entry.is_valid_utf8;
-          transpiled = entry
-            .transpiled_offset
-            .and_then(|t| self.vfs.read_file_offset_with_len(t).ok());
-          source_map = entry
-            .source_map_offset
-            .and_then(|t| self.vfs.read_file_offset_with_len(t).ok());
-          cjs_export_analysis = entry
-            .cjs_export_analysis_offset
-            .and_then(|t| self.vfs.read_file_offset_with_len(t).ok());
-          bytes
-        }
+      if let Some(data) = self.read_file_from_vfs(specifier, &path)? {
+        return Ok(Some(data));
+      }
+
+      #[allow(
+        clippy::disallowed_types,
+        reason = "use real file system because not in vfs"
+      )]
+      let bytes = match sys_traits::impls::RealSys.fs_read(&path) {
+        Ok(bytes) => bytes,
         Err(err) if err.kind() == ErrorKind::NotFound => {
-          #[allow(
-            clippy::disallowed_types,
-            reason = "use real file system because not in vfs"
-          )]
-          let bytes = match sys_traits::impls::RealSys.fs_read(&path) {
-            Ok(bytes) => bytes,
-            Err(err) if err.kind() == ErrorKind::NotFound => {
-              return Ok(None);
-            }
-            Err(err) => return Err(JsErrorBox::from_err(err)),
-          };
-          // A file read from disk at runtime (e.g. a plugin discovered by a
-          // compiled program) hasn't been transpiled at compile time, so
-          // transpile TypeScript/JSX here, mirroring `deno run`.
-          let media_type = MediaType::from_specifier(specifier);
-          if matches!(
-            media_type,
-            MediaType::TypeScript
-              | MediaType::Mts
-              | MediaType::Cts
-              | MediaType::Jsx
-              | MediaType::Tsx
-          ) {
-            let text = String::from_utf8_lossy(&bytes).into_owned();
-            let transpiled_text =
-              transpile_runtime_module(specifier, media_type, text)?;
-            transpiled = Some(Cow::Owned(transpiled_text.into_bytes()));
-          }
-          bytes
+          return Ok(None);
         }
         Err(err) => return Err(JsErrorBox::from_err(err)),
       };
+      let mut transpiled = None;
+      // A file read from disk at runtime (e.g. a plugin discovered by a
+      // compiled program) hasn't been transpiled at compile time, so
+      // transpile TypeScript/JSX here, mirroring `deno run`.
+      let media_type = MediaType::from_specifier(specifier);
+      if matches!(
+        media_type,
+        MediaType::TypeScript
+          | MediaType::Mts
+          | MediaType::Cts
+          | MediaType::Jsx
+          | MediaType::Tsx
+      ) {
+        let text = String::from_utf8_lossy(&bytes).into_owned();
+        let transpiled_text =
+          transpile_runtime_module(specifier, media_type, text)?;
+        transpiled = Some(Cow::Owned(transpiled_text.into_bytes()));
+      }
       Ok(Some(DenoCompileModuleData {
-        media_type: MediaType::from_specifier(specifier),
+        media_type,
         specifier,
-        is_valid_utf8,
+        is_valid_utf8: false,
         data: bytes,
         transpiled,
-        source_map,
-        cjs_export_analysis,
+        source_map: None,
+        cjs_export_analysis: None,
       }))
     } else {
-      self.modules.read(specifier).map_err(JsErrorBox::from_err)
+      self.read_embedded(specifier)
     }
   }
 }
