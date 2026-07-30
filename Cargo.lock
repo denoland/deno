@@ -2914,6 +2914,7 @@ dependencies = [
  "deno_native_certs",
  "deno_net",
  "deno_node_crypto",
+ "deno_os",
  "deno_package_json",
  "deno_path_util",
  "deno_permissions",
