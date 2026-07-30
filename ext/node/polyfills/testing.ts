@@ -52,6 +52,7 @@ const {
   StringPrototypeMatch,
   StringPrototypeSlice,
   StringPrototypeSplit,
+  StringPrototypeToLowerCase,
   StringPrototypeStartsWith,
   Symbol,
   SymbolDispose,
@@ -213,6 +214,9 @@ const {
 // `ERR_INVALID_STATE` is a hand-written class exported at the top level of the
 // errors module; unlike the generated codes it is not registered on `.codes`.
 const { ERR_INVALID_STATE } = nodeErrors;
+const { emitExperimentalWarning } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 const {
   tapEscape,
@@ -443,6 +447,37 @@ const lazyProcess = core.createLazyLoader("node:process");
 // behavior this implements.
 function run(options) {
   options = options ?? {};
+
+  // Experimental `testTagFilters`: a bare string is normalized to a
+  // single-element array; every element must be a string. Registering a
+  // non-empty filter emits the one-shot experimental warning.
+  let testTagFilters = options.testTagFilters;
+  if (testTagFilters !== undefined) {
+    if (typeof testTagFilters === "string") {
+      testTagFilters = [testTagFilters];
+    }
+    if (!ArrayIsArray(testTagFilters)) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "options.testTagFilters",
+        ["string", "string[]"],
+        options.testTagFilters,
+      );
+    }
+    for (let i = 0; i < testTagFilters.length; i++) {
+      if (typeof testTagFilters[i] !== "string") {
+        throw new ERR_INVALID_ARG_TYPE(
+          `options.testTagFilters[${i}]`,
+          "string",
+          testTagFilters[i],
+        );
+      }
+    }
+    if (testTagFilters.length > 0 && !tagsWarningEmitted) {
+      tagsWarningEmitted = true;
+      emitExperimentalWarning("Test tags");
+    }
+  }
+
   const watch = options.watch === true;
   const signal = options.signal;
   let cwd = options.cwd;
@@ -1346,11 +1381,34 @@ class NodeTestContext {
   // so such subtests still complete (Node semantics) and their Deno test steps
   // finish before the parent step returns.
   #subtestPromises = [];
+  // Canonical tags declared directly on this test/suite (see prepareTags).
+  #ownTags = [];
 
-  constructor(t, parent, name) {
+  constructor(t, parent, name, tags) {
     this.#denoContext = t;
     this.#parent = parent;
     this.#name = name;
+    if (tags !== undefined) {
+      this.#ownTags = tags;
+    }
+  }
+
+  // The effective tag set: the parent's tags followed by this context's own
+  // tags, deduped (parent-first order). Tags are already canonical (lowercased
+  // and deduped) individually.
+  get tags() {
+    const parentTags = this.#parent ? this.#parent.tags : [];
+    if (this.#ownTags.length === 0) {
+      // Return a fresh copy so callers cannot mutate internal state.
+      return ArrayPrototypeSlice(parentTags);
+    }
+    const result = ArrayPrototypeSlice(parentTags);
+    for (let i = 0; i < this.#ownTags.length; i++) {
+      if (!ArrayPrototypeIncludes(result, this.#ownTags[i])) {
+        ArrayPrototypePush(result, this.#ownTags[i]);
+      }
+    }
+    return result;
   }
 
   get [skippedSymbol]() {
@@ -1450,6 +1508,7 @@ class NodeTestContext {
             denoTestContext,
             parentContext,
             prepared.name,
+            prepared.options.tags,
           );
           let bodyOk = false;
           try {
@@ -1708,6 +1767,7 @@ class TestSuite {
           denoTestContext,
           suiteNodeContext,
           prepared.name,
+          prepared.options.tags,
         );
         // beforeEach()/afterEach() cascade through the whole ancestor chain:
         // each test runs every enclosing suite's hooks, plus the file-scope
@@ -1788,6 +1848,7 @@ class TestSuite {
         prepared.name,
         parentSuiteContext,
         parentSuite,
+        prepared.options.tags,
       ),
       ignore: !!prepared.options.todo || !!prepared.options.skip,
     });
@@ -1808,6 +1869,40 @@ class TestSuite {
   }
 }
 
+// Node's experimental test `tags` feature. Tags are validated (array of
+// non-empty strings), canonicalized (lowercased and deduped, preserving
+// declaration order), and the experimental warning is emitted once the first
+// time any tag is registered.
+let tagsWarningEmitted = false;
+function prepareTags(tags, argName) {
+  if (!ArrayIsArray(tags)) {
+    throw new ERR_INVALID_ARG_TYPE(argName, "string[]", tags);
+  }
+  const canonical = [];
+  for (let i = 0; i < tags.length; i++) {
+    const tag = tags[i];
+    if (typeof tag !== "string") {
+      throw new ERR_INVALID_ARG_TYPE(`${argName}[${i}]`, "string", tag);
+    }
+    if (tag === "") {
+      throw new ERR_INVALID_ARG_VALUE(
+        `${argName}[${i}]`,
+        tag,
+        "must not be an empty string",
+      );
+    }
+    const lower = StringPrototypeToLowerCase(tag);
+    if (!ArrayPrototypeIncludes(canonical, lower)) {
+      ArrayPrototypePush(canonical, lower);
+    }
+  }
+  if (canonical.length > 0 && !tagsWarningEmitted) {
+    tagsWarningEmitted = true;
+    emitExperimentalWarning("Test tags");
+  }
+  return canonical;
+}
+
 function prepareOptions(name, options, fn, overrides) {
   if (typeof name === "function") {
     fn = name;
@@ -1824,6 +1919,10 @@ function prepareOptions(name, options, fn, overrides) {
 
   const finalOptions = { ...options, ...overrides };
 
+  if (finalOptions.tags !== undefined) {
+    finalOptions.tags = prepareTags(finalOptions.tags, "options.tags");
+  }
+
   if (typeof fn !== "function") {
     fn = noop;
   }
@@ -1837,7 +1936,12 @@ function prepareOptions(name, options, fn, overrides) {
 
 function wrapTestFn(fn, resolve, name, options) {
   return async function (t) {
-    const nodeTestContext = new NodeTestContext(t, undefined, name);
+    const nodeTestContext = new NodeTestContext(
+      t,
+      undefined,
+      name,
+      options.tags,
+    );
     let beforeEachOk = false;
     try {
       await runRootBeforeOnce();
@@ -1900,11 +2004,16 @@ function prepareDenoTest(name, options, fn, overrides) {
   return PromiseResolve();
 }
 
-function wrapSuiteFn(fn, resolve, name, parentNodeContext, parentSuite) {
+function wrapSuiteFn(fn, resolve, name, parentNodeContext, parentSuite, tags) {
   return async function (t) {
     const isTopLevel = parentNodeContext === undefined;
     if (isTopLevel) await runRootBeforeOnce();
-    const suiteNodeContext = new NodeTestContext(t, parentNodeContext, name);
+    const suiteNodeContext = new NodeTestContext(
+      t,
+      parentNodeContext,
+      name,
+      tags,
+    );
     const prevSuite = currentSuite;
     const suite = currentSuite = new TestSuite(
       t,
@@ -1951,7 +2060,14 @@ function prepareDenoTestForSuite(name, options, fn, overrides) {
 
   const denoTestOptions = {
     name: prepared.name,
-    fn: wrapSuiteFn(prepared.fn, noop, prepared.name, undefined),
+    fn: wrapSuiteFn(
+      prepared.fn,
+      noop,
+      prepared.name,
+      undefined,
+      undefined,
+      prepared.options.tags,
+    ),
     only: prepared.options.only,
     ignore: !!prepared.options.todo || !!prepared.options.skip,
     sanitizeOnly: false,

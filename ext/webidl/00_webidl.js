@@ -102,10 +102,16 @@ const {
 // from `opts` -- never mutate -- so a shared frozen object is safe.
 const EMPTY_OPTS = ObjectFreeze({ __proto__: null });
 
-function makeException(ErrorType, message, prefix, context) {
-  return new ErrorType(
+function makeException(ErrorType, message, prefix, context, code = undefined) {
+  const err = new ErrorType(
     `${prefix ? prefix + ": " : ""}${context ? context : "Value"} ${message}`,
   );
+  // Optional Node-compatible error code (e.g. ERR_INVALID_ARG_TYPE) so that
+  // node:* consumers observing `err.code` behave the same as on Node.
+  if (code !== undefined) {
+    err.code = code;
+  }
+  return err;
 }
 
 function toNumber(value) {
@@ -604,6 +610,7 @@ converters.ArrayBufferView = (
       "is not a view on an ArrayBuffer or SharedArrayBuffer",
       prefix,
       context,
+      "ERR_INVALID_ARG_TYPE",
     );
   }
   let buffer;
@@ -655,6 +662,7 @@ converters.BufferSource = (
       "is not an ArrayBuffer or a view on one",
       prefix,
       context,
+      "ERR_INVALID_ARG_TYPE",
     );
   }
   if (
@@ -667,6 +675,7 @@ converters.BufferSource = (
       "is not an ArrayBuffer, SharedArrayBuffer, or a view on one",
       prefix,
       context,
+      "ERR_INVALID_ARG_TYPE",
     );
   }
 
@@ -748,7 +757,9 @@ function requiredArguments(length, required, prefix, argNames) {
     const errMsg = `${prefix ? prefix + ": " : ""}${required} argument${
       required === 1 ? "" : "s"
     } required, but only ${length} present`;
-    throw new TypeError(errMsg);
+    const err = new TypeError(errMsg);
+    err.code = "ERR_MISSING_ARGS";
+    throw err;
   }
 }
 
@@ -825,12 +836,14 @@ function createDictionaryConverter(name, ...dictionaries) {
   return function (V, prefix, context, opts) {
     if (V === undefined || V === null) {
       if (hasRequiredKey) {
-        throw makeException(
+        const err = makeException(
           TypeError,
           "can not be converted to a dictionary",
           prefix,
           context,
         );
+        err.code = "ERR_INVALID_ARG_TYPE";
+        throw err;
       }
       const idlDict = { __proto__: null };
       // Fast path: copy primitive defaults via explicit loop (faster than
@@ -849,12 +862,14 @@ function createDictionaryConverter(name, ...dictionaries) {
     }
 
     if (typeof V !== "object" && typeof V !== "function") {
-      throw makeException(
+      const err = makeException(
         TypeError,
         "can not be converted to a dictionary",
         prefix,
         context,
       );
+      err.code = "ERR_INVALID_ARG_TYPE";
+      throw err;
     }
 
     const idlDict = { __proto__: null };
@@ -902,11 +917,14 @@ function createEnumConverter(name, values) {
     const S = String(V);
 
     if (!E.has(S)) {
-      throw new TypeError(
+      const err = new TypeError(
         `${
           prefix ? prefix + ": " : ""
         }The provided value '${S}' is not a valid enum value of type ${name}`,
       );
+      // Node attaches ERR_INVALID_ARG_VALUE to enum-validation TypeErrors.
+      err.code = "ERR_INVALID_ARG_VALUE";
+      throw err;
     }
 
     return S;

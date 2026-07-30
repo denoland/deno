@@ -1640,33 +1640,44 @@ macro_rules! attr_raw {
     } else {
       None
     };
-    let value = if let Ok(string) = $value.try_cast::<v8::String>() {
-      Some(Value::String(StringValue::from({
-        let x = v8::ValueView::new($scope, string);
-        match x.data() {
-          v8::ValueViewData::OneByte(bytes) => {
-            String::from_utf8_lossy(bytes).into_owned()
+    let value = 'value: {
+      if let Ok(string) = $value.try_cast::<v8::String>() {
+        break 'value Some(Value::String(StringValue::from({
+          let x = v8::ValueView::new($scope, string);
+          match x.data() {
+            v8::ValueViewData::OneByte(bytes) => {
+              String::from_utf8_lossy(bytes).into_owned()
+            }
+            v8::ValueViewData::TwoByte(bytes) => {
+              String::from_utf16_lossy(bytes)
+            }
           }
-          v8::ValueViewData::TwoByte(bytes) => String::from_utf16_lossy(bytes),
+        })));
+      }
+      if let Ok(number) = $value.try_cast::<v8::Number>() {
+        break 'value Some(Value::F64(number.value()));
+      }
+      if let Ok(boolean) = $value.try_cast::<v8::Boolean>() {
+        break 'value Some(Value::Bool(boolean.is_true()));
+      }
+      if let Ok(bigint) = $value.try_cast::<v8::BigInt>() {
+        let (i64_value, _lossless) = bigint.i64_value();
+        break 'value Some(Value::I64(i64_value));
+      }
+      if let Ok(array) = $value.try_cast::<v8::Array>() {
+        let len = array.length();
+        if len == 0 {
+          break 'value Some(Value::Array(Array::String(vec![])));
         }
-      })))
-    } else if let Ok(number) = $value.try_cast::<v8::Number>() {
-      Some(Value::F64(number.value()))
-    } else if let Ok(boolean) = $value.try_cast::<v8::Boolean>() {
-      Some(Value::Bool(boolean.is_true()))
-    } else if let Ok(bigint) = $value.try_cast::<v8::BigInt>() {
-      let (i64_value, _lossless) = bigint.i64_value();
-      Some(Value::I64(i64_value))
-    } else if let Ok(array) = $value.try_cast::<v8::Array>() {
-      let len = array.length();
-      if len == 0 {
-        Some(Value::Array(Array::String(vec![])))
-      } else {
-        let first = array.get_index($scope, 0).unwrap();
+        let Some(first) = array.get_index($scope, 0) else {
+          return;
+        };
         if first.is_string() {
           let mut vec = Vec::with_capacity(len as usize);
           for i in 0..len {
-            let element = array.get_index($scope, i).unwrap();
+            let Some(element) = array.get_index($scope, i) else {
+              return;
+            };
             if let Ok(s) = element.try_cast::<v8::String>() {
               let view = v8::ValueView::new($scope, s);
               vec.push(StringValue::from(match view.data() {
@@ -1679,40 +1690,46 @@ macro_rules! attr_raw {
               }));
             }
           }
-          Some(Value::Array(Array::String(vec)))
-        } else if first.is_number() {
+          break 'value Some(Value::Array(Array::String(vec)));
+        }
+        if first.is_number() {
           let mut vec = Vec::with_capacity(len as usize);
           for i in 0..len {
-            let element = array.get_index($scope, i).unwrap();
+            let Some(element) = array.get_index($scope, i) else {
+              return;
+            };
             if let Ok(n) = element.try_cast::<v8::Number>() {
               vec.push(n.value());
             }
           }
-          Some(Value::Array(Array::F64(vec)))
-        } else if first.is_boolean() {
+          break 'value Some(Value::Array(Array::F64(vec)));
+        }
+        if first.is_boolean() {
           let mut vec = Vec::with_capacity(len as usize);
           for i in 0..len {
-            let element = array.get_index($scope, i).unwrap();
+            let Some(element) = array.get_index($scope, i) else {
+              return;
+            };
             if let Ok(b) = element.try_cast::<v8::Boolean>() {
               vec.push(b.is_true());
             }
           }
-          Some(Value::Array(Array::Bool(vec)))
-        } else if first.is_big_int() {
+          break 'value Some(Value::Array(Array::Bool(vec)));
+        }
+        if first.is_big_int() {
           let mut vec = Vec::with_capacity(len as usize);
           for i in 0..len {
-            let element = array.get_index($scope, i).unwrap();
+            let Some(element) = array.get_index($scope, i) else {
+              return;
+            };
             if let Ok(b) = element.try_cast::<v8::BigInt>() {
               let (i64_value, _lossless) = b.i64_value();
               vec.push(i64_value);
             }
           }
-          Some(Value::Array(Array::I64(vec)))
-        } else {
-          None
+          break 'value Some(Value::Array(Array::I64(vec)));
         }
       }
-    } else {
       None
     };
     if let (Some(name), Some(value)) = (name, value) {
@@ -1723,22 +1740,26 @@ macro_rules! attr_raw {
   }};
 }
 
-macro_rules! attr {
-  ($scope:ident, $attributes:expr => $dropped_attributes_count:expr, $limit:expr, $value_length_limit:expr, $name:expr, $value:expr) => {
-    // Enforce the configured per-element attribute count limit
-    // (`OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT`): once the limit is reached, further
-    // attributes are dropped and counted, matching the OpenTelemetry SDK spec.
-    if $attributes.len() >= $limit {
-      $dropped_attributes_count += 1;
-    } else if let Some(mut kv) = attr_raw!($scope, $name, $value) {
-      // Enforce `OTEL_(SPAN_)ATTRIBUTE_VALUE_LENGTH_LIMIT`: string values (and
-      // string-array elements) longer than the limit are truncated.
-      truncate_attr_value(&mut kv.value, $value_length_limit);
-      $attributes.push(kv);
-    } else {
-      $dropped_attributes_count += 1;
-    }
-  };
+fn push_parsed_attr(
+  attributes: &mut Vec<KeyValue>,
+  dropped_attributes_count: &mut u32,
+  limit: usize,
+  value_length_limit: Option<usize>,
+  attr: Option<KeyValue>,
+) {
+  // Enforce the configured per-element attribute count limit
+  // (`OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT`): once the limit is reached, further
+  // attributes are dropped and counted, matching the OpenTelemetry SDK spec.
+  if attributes.len() >= limit {
+    *dropped_attributes_count += 1;
+  } else if let Some(mut kv) = attr {
+    // Enforce `OTEL_(SPAN_)ATTRIBUTE_VALUE_LENGTH_LIMIT`: string values (and
+    // string-array elements) longer than the limit are truncated.
+    truncate_attr_value(&mut kv.value, value_length_limit);
+    attributes.push(kv);
+  } else {
+    *dropped_attributes_count += 1;
+  }
 }
 
 /// Convert the integer log level that ext/console uses to the corresponding
@@ -2266,7 +2287,7 @@ impl OtelSpan {
   }
 
   #[fast]
-  fn add_event(&self, #[string] name: String, start_time: f64) {
+  fn add_event(&self, #[string] name: String, start_time: f64) -> u32 {
     let start_time = if start_time.is_nan() {
       SystemTime::now()
     } else {
@@ -2277,18 +2298,19 @@ impl OtelSpan {
     let limit = span_event_count_limit();
     let mut state = self.0.borrow_mut();
     let OtelSpanState::Recording(span) = &mut **state else {
-      return;
+      return 0;
     };
     // Enforce OTEL_SPAN_EVENT_COUNT_LIMIT: once the limit is reached, drop
     // further events and count them in droppedEventsCount.
     if span.events.events.len() >= limit {
       span.events.dropped_count += 1;
-      return;
+      return 0;
     }
     span
       .events
       .events
       .push(Event::new(name, start_time, vec![], 0));
+    span.events.events.len() as u32
   }
 
   #[fast]
@@ -2333,31 +2355,81 @@ impl OtelSpan {
 fn span_attributes(
   span: &mut SpanData,
   location: u32,
+  target: u32,
 ) -> Option<(&mut Vec<KeyValue>, &mut u32)> {
   match location {
     // SELF
     0 => Some((&mut span.attributes, &mut span.dropped_attributes_count)),
-    // LAST_EVENT
-    1 => span
-      .events
-      .events
-      .last_mut()
-      .map(|e| (&mut e.attributes, &mut e.dropped_attributes_count)),
-    // LAST_LINK
-    2 => span
-      .links
-      .links
-      .last_mut()
-      .map(|e| (&mut e.attributes, &mut e.dropped_attributes_count)),
+    // EVENT
+    1 => target
+      .checked_sub(1)
+      .and_then(|index| span.events.events.get_mut(index as usize))
+      .map(|event| {
+        (&mut event.attributes, &mut event.dropped_attributes_count)
+      }),
+    // LINK
+    2 => target
+      .checked_sub(1)
+      .and_then(|index| span.links.links.get_mut(index as usize))
+      .map(|link| (&mut link.attributes, &mut link.dropped_attributes_count)),
     _ => None,
   }
 }
 
-#[op2(fast)]
+fn should_parse_span_attribute(
+  span: &OtelSpan,
+  location: u32,
+  target: u32,
+  limit: usize,
+) -> bool {
+  let mut state = span.0.borrow_mut();
+  let OtelSpanState::Recording(span) = &mut **state else {
+    return false;
+  };
+  let Some((attributes, dropped_attributes_count)) =
+    span_attributes(span, location, target)
+  else {
+    return false;
+  };
+  if attributes.len() >= limit {
+    *dropped_attributes_count += 1;
+    false
+  } else {
+    true
+  }
+}
+
+fn push_span_attribute(
+  span: &OtelSpan,
+  location: u32,
+  target: u32,
+  limit: usize,
+  value_length_limit: Option<usize>,
+  attr: Option<KeyValue>,
+) {
+  let mut state = span.0.borrow_mut();
+  if let OtelSpanState::Recording(span) = &mut **state {
+    let Some((attributes, dropped_attributes_count)) =
+      span_attributes(span, location, target)
+    else {
+      return;
+    };
+    push_parsed_attr(
+      attributes,
+      dropped_attributes_count,
+      limit,
+      value_length_limit,
+      attr,
+    );
+  }
+}
+
+#[op2(fast, reentrant)]
 fn op_otel_span_attribute1<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   span: v8::Local<'_, v8::Value>,
   #[smi] location: u32,
+  #[smi] target: u32,
   key: v8::Local<'s, v8::Value>,
   value: v8::Local<'s, v8::Value>,
 ) {
@@ -2368,22 +2440,25 @@ fn op_otel_span_attribute1<'s>(
   };
   let limit = attribute_count_limit();
   let value_length_limit = attribute_value_length_limit();
-  let mut state = span.0.borrow_mut();
-  if let OtelSpanState::Recording(span) = &mut **state {
-    let Some((attributes, dropped_attributes_count)) =
-      span_attributes(span, location)
-    else {
-      return;
-    };
-    attr!(scope, attributes => *dropped_attributes_count, limit, value_length_limit, key, value);
+  if should_parse_span_attribute(&span, location, target, limit) {
+    let attr = attr_raw!(scope, key, value);
+    push_span_attribute(
+      &span,
+      location,
+      target,
+      limit,
+      value_length_limit,
+      attr,
+    );
   }
 }
 
-#[op2(fast)]
+#[op2(fast, reentrant)]
 fn op_otel_span_attribute2<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   span: v8::Local<'_, v8::Value>,
   #[smi] location: u32,
+  #[smi] target: u32,
   key1: v8::Local<'s, v8::Value>,
   value1: v8::Local<'s, v8::Value>,
   key2: v8::Local<'s, v8::Value>,
@@ -2396,24 +2471,37 @@ fn op_otel_span_attribute2<'s>(
   };
   let limit = attribute_count_limit();
   let value_length_limit = attribute_value_length_limit();
-  let mut state = span.0.borrow_mut();
-  if let OtelSpanState::Recording(span) = &mut **state {
-    let Some((attributes, dropped_attributes_count)) =
-      span_attributes(span, location)
-    else {
-      return;
-    };
-    attr!(scope, attributes => *dropped_attributes_count, limit, value_length_limit, key1, value1);
-    attr!(scope, attributes => *dropped_attributes_count, limit, value_length_limit, key2, value2);
+  if should_parse_span_attribute(&span, location, target, limit) {
+    let attr = attr_raw!(scope, key1, value1);
+    push_span_attribute(
+      &span,
+      location,
+      target,
+      limit,
+      value_length_limit,
+      attr,
+    );
+  }
+  if should_parse_span_attribute(&span, location, target, limit) {
+    let attr = attr_raw!(scope, key2, value2);
+    push_span_attribute(
+      &span,
+      location,
+      target,
+      limit,
+      value_length_limit,
+      attr,
+    );
   }
 }
 
 #[allow(clippy::too_many_arguments, reason = "op")]
-#[op2(fast)]
+#[op2(fast, reentrant)]
 fn op_otel_span_attribute3<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   span: v8::Local<'_, v8::Value>,
   #[smi] location: u32,
+  #[smi] target: u32,
   key1: v8::Local<'s, v8::Value>,
   value1: v8::Local<'s, v8::Value>,
   key2: v8::Local<'s, v8::Value>,
@@ -2428,16 +2516,38 @@ fn op_otel_span_attribute3<'s>(
   };
   let limit = attribute_count_limit();
   let value_length_limit = attribute_value_length_limit();
-  let mut state = span.0.borrow_mut();
-  if let OtelSpanState::Recording(span) = &mut **state {
-    let Some((attributes, dropped_attributes_count)) =
-      span_attributes(span, location)
-    else {
-      return;
-    };
-    attr!(scope, attributes => *dropped_attributes_count, limit, value_length_limit, key1, value1);
-    attr!(scope, attributes => *dropped_attributes_count, limit, value_length_limit, key2, value2);
-    attr!(scope, attributes => *dropped_attributes_count, limit, value_length_limit, key3, value3);
+  if should_parse_span_attribute(&span, location, target, limit) {
+    let attr = attr_raw!(scope, key1, value1);
+    push_span_attribute(
+      &span,
+      location,
+      target,
+      limit,
+      value_length_limit,
+      attr,
+    );
+  }
+  if should_parse_span_attribute(&span, location, target, limit) {
+    let attr = attr_raw!(scope, key2, value2);
+    push_span_attribute(
+      &span,
+      location,
+      target,
+      limit,
+      value_length_limit,
+      attr,
+    );
+  }
+  if should_parse_span_attribute(&span, location, target, limit) {
+    let attr = attr_raw!(scope, key3, value3);
+    push_span_attribute(
+      &span,
+      location,
+      target,
+      limit,
+      value_length_limit,
+      attr,
+    );
   }
 }
 
@@ -2471,14 +2581,14 @@ fn op_otel_span_add_link<'s>(
   #[smi] trace_flags: u8,
   is_remote: bool,
   #[smi] dropped_attributes_count: u32,
-) -> bool {
+) -> u32 {
   let trace_id = parse_trace_id(scope, trace_id);
   if trace_id == TraceId::INVALID {
-    return false;
+    return 0;
   };
   let span_id = parse_span_id(scope, span_id);
   if span_id == SpanId::INVALID {
-    return false;
+    return 0;
   };
   let span_context = SpanContext::new(
     trace_id,
@@ -2491,7 +2601,7 @@ fn op_otel_span_add_link<'s>(
   let Some(span) =
     deno_core::_ops::try_unwrap_cppgc_object::<OtelSpan>(scope, span)
   else {
-    return true;
+    return 0;
   };
   let mut state = span.0.borrow_mut();
   if let OtelSpanState::Recording(span) = &mut **state {
@@ -2500,8 +2610,10 @@ fn op_otel_span_add_link<'s>(
       vec![],
       dropped_attributes_count,
     ));
+    span.links.links.len() as u32
+  } else {
+    0
   }
-  true
 }
 
 struct OtelMeter(opentelemetry::metrics::Meter);
@@ -2800,9 +2912,9 @@ fn op_otel_metric_record0(
   }
 }
 
-#[op2(fast)]
+#[op2(fast, reentrant)]
 fn op_otel_metric_record1(
-  state: &mut OpState,
+  state: Rc<RefCell<OpState>>,
   scope: &mut v8::PinScope<'_, '_>,
   instrument: v8::Local<'_, v8::Value>,
   value: f64,
@@ -2815,7 +2927,10 @@ fn op_otel_metric_record1(
   ) else {
     return;
   };
-  let mut values = state.try_take::<MetricAttributes>();
+  let mut values = {
+    let mut state = state.borrow_mut();
+    state.try_take::<MetricAttributes>()
+  };
   let attr1 = attr_raw!(scope, key1, value1);
   let attributes = match &mut values {
     Some(values) => {
@@ -2840,9 +2955,9 @@ fn op_otel_metric_record1(
 }
 
 #[allow(clippy::too_many_arguments, reason = "op")]
-#[op2(fast)]
+#[op2(fast, reentrant)]
 fn op_otel_metric_record2(
-  state: &mut OpState,
+  state: Rc<RefCell<OpState>>,
   scope: &mut v8::PinScope<'_, '_>,
   instrument: v8::Local<'_, v8::Value>,
   value: f64,
@@ -2857,7 +2972,10 @@ fn op_otel_metric_record2(
   ) else {
     return;
   };
-  let mut values = state.try_take::<MetricAttributes>();
+  let mut values = {
+    let mut state = state.borrow_mut();
+    state.try_take::<MetricAttributes>()
+  };
   let attr1 = attr_raw!(scope, key1, value1);
   let attr2 = attr_raw!(scope, key2, value2);
   let attributes = match &mut values {
@@ -2888,9 +3006,9 @@ fn op_otel_metric_record2(
 }
 
 #[allow(clippy::too_many_arguments, reason = "op")]
-#[op2(fast)]
+#[op2(fast, reentrant)]
 fn op_otel_metric_record3(
-  state: &mut OpState,
+  state: Rc<RefCell<OpState>>,
   scope: &mut v8::PinScope<'_, '_>,
   instrument: v8::Local<'_, v8::Value>,
   value: f64,
@@ -2907,7 +3025,10 @@ fn op_otel_metric_record3(
   ) else {
     return;
   };
-  let mut values = state.try_take::<MetricAttributes>();
+  let mut values = {
+    let mut state = state.borrow_mut();
+    state.try_take::<MetricAttributes>()
+  };
   let attr1 = attr_raw!(scope, key1, value1);
   let attr2 = attr_raw!(scope, key2, value2);
   let attr3 = attr_raw!(scope, key3, value3);
@@ -2959,9 +3080,9 @@ fn op_otel_metric_observable_record0(
   }
 }
 
-#[op2(fast)]
+#[op2(fast, reentrant)]
 fn op_otel_metric_observable_record1(
-  state: &mut OpState,
+  state: Rc<RefCell<OpState>>,
   scope: &mut v8::PinScope<'_, '_>,
   instrument: v8::Local<'_, v8::Value>,
   value: f64,
@@ -2974,7 +3095,10 @@ fn op_otel_metric_observable_record1(
   ) else {
     return;
   };
-  let values = state.try_take::<MetricAttributes>();
+  let values = {
+    let mut state = state.borrow_mut();
+    state.try_take::<MetricAttributes>()
+  };
   let attr1 = attr_raw!(scope, key1, value1);
   let mut attributes = values
     .map(|mut attr| {
@@ -2992,9 +3116,9 @@ fn op_otel_metric_observable_record1(
 }
 
 #[allow(clippy::too_many_arguments, reason = "op")]
-#[op2(fast)]
+#[op2(fast, reentrant)]
 fn op_otel_metric_observable_record2(
-  state: &mut OpState,
+  state: Rc<RefCell<OpState>>,
   scope: &mut v8::PinScope<'_, '_>,
   instrument: v8::Local<'_, v8::Value>,
   value: f64,
@@ -3009,15 +3133,18 @@ fn op_otel_metric_observable_record2(
   ) else {
     return;
   };
-  let values = state.try_take::<MetricAttributes>();
+  let values = {
+    let mut state = state.borrow_mut();
+    state.try_take::<MetricAttributes>()
+  };
+  let attr1 = attr_raw!(scope, key1, value1);
+  let attr2 = attr_raw!(scope, key2, value2);
   let mut attributes = values
     .map(|mut attr| {
       attr.attributes.reserve_exact(2);
       attr.attributes
     })
     .unwrap_or_else(|| Vec::with_capacity(2));
-  let attr1 = attr_raw!(scope, key1, value1);
-  let attr2 = attr_raw!(scope, key2, value2);
   if let Some(kv1) = attr1 {
     attributes.push(kv1);
   }
@@ -3031,9 +3158,9 @@ fn op_otel_metric_observable_record2(
 }
 
 #[allow(clippy::too_many_arguments, reason = "op")]
-#[op2(fast)]
+#[op2(fast, reentrant)]
 fn op_otel_metric_observable_record3(
-  state: &mut OpState,
+  state: Rc<RefCell<OpState>>,
   scope: &mut v8::PinScope<'_, '_>,
   instrument: v8::Local<'_, v8::Value>,
   value: f64,
@@ -3050,16 +3177,19 @@ fn op_otel_metric_observable_record3(
   ) else {
     return;
   };
-  let values = state.try_take::<MetricAttributes>();
+  let values = {
+    let mut state = state.borrow_mut();
+    state.try_take::<MetricAttributes>()
+  };
+  let attr1 = attr_raw!(scope, key1, value1);
+  let attr2 = attr_raw!(scope, key2, value2);
+  let attr3 = attr_raw!(scope, key3, value3);
   let mut attributes = values
     .map(|mut attr| {
       attr.attributes.reserve_exact(3);
       attr.attributes
     })
     .unwrap_or_else(|| Vec::with_capacity(3));
-  let attr1 = attr_raw!(scope, key1, value1);
-  let attr2 = attr_raw!(scope, key2, value2);
-  let attr3 = attr_raw!(scope, key3, value3);
   if let Some(kv1) = attr1 {
     attributes.push(kv1);
   }
@@ -3076,10 +3206,10 @@ fn op_otel_metric_observable_record3(
 }
 
 #[allow(clippy::too_many_arguments, reason = "op")]
-#[op2(fast)]
+#[op2(fast, reentrant)]
 fn op_otel_metric_attribute3<'s>(
   scope: &mut v8::PinScope<'s, '_>,
-  state: &mut OpState,
+  state: Rc<RefCell<OpState>>,
   #[smi] capacity: u32,
   key1: v8::Local<'s, v8::Value>,
   value1: v8::Local<'s, v8::Value>,
@@ -3088,36 +3218,31 @@ fn op_otel_metric_attribute3<'s>(
   key3: v8::Local<'s, v8::Value>,
   value3: v8::Local<'s, v8::Value>,
 ) {
-  let mut values = state.try_borrow_mut::<MetricAttributes>();
+  let values = {
+    let mut state = state.borrow_mut();
+    state.try_take::<MetricAttributes>()
+  };
+  let mut attributes = values
+    .map(|mut values| {
+      values.attributes.reserve_exact(
+        (capacity as usize).saturating_sub(values.attributes.capacity()),
+      );
+      values.attributes
+    })
+    .unwrap_or_else(|| Vec::with_capacity(capacity as usize));
   let attr1 = attr_raw!(scope, key1, value1);
   let attr2 = attr_raw!(scope, key2, value2);
   let attr3 = attr_raw!(scope, key3, value3);
-  if let Some(values) = &mut values {
-    values.attributes.reserve_exact(
-      (capacity as usize).saturating_sub(values.attributes.capacity()),
-    );
-    if let Some(kv1) = attr1 {
-      values.attributes.push(kv1);
-    }
-    if let Some(kv2) = attr2 {
-      values.attributes.push(kv2);
-    }
-    if let Some(kv3) = attr3 {
-      values.attributes.push(kv3);
-    }
-  } else {
-    let mut attributes = Vec::with_capacity(capacity as usize);
-    if let Some(kv1) = attr1 {
-      attributes.push(kv1);
-    }
-    if let Some(kv2) = attr2 {
-      attributes.push(kv2);
-    }
-    if let Some(kv3) = attr3 {
-      attributes.push(kv3);
-    }
-    state.put(MetricAttributes { attributes });
+  if let Some(kv1) = attr1 {
+    attributes.push(kv1);
   }
+  if let Some(kv2) = attr2 {
+    attributes.push(kv2);
+  }
+  if let Some(kv3) = attr3 {
+    attributes.push(kv3);
+  }
+  state.borrow_mut().put(MetricAttributes { attributes });
 }
 
 struct ObservationDone(oneshot::Sender<()>);

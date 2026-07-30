@@ -1,0 +1,1 @@
+error: jsr:@denotest/add and npm:@denotest/add would both be added as "add". Provide an explicit alias for one of them (ex. `deno add my-alias@npm:@denotest/add`).
