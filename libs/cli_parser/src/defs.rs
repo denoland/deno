@@ -1696,6 +1696,10 @@ pub static INSTALL_SUBCOMMAND: CommandDef = CommandDef {
       .long_aliases(&["exact"])
       .set_true()
       .conflicts_with(&["entrypoint", "global"]),
+    ArgDef::new("unscoped")
+      .long("unscoped")
+      .set_true()
+      .conflicts_with(&["entrypoint", "global"]),
     ArgDef::new("package-json")
       .long("package-json")
       .set_true()
@@ -1980,6 +1984,7 @@ pub static ADD_SUBCOMMAND: CommandDef = CommandDef {
       .long("save-exact")
       .long_aliases(&["exact"])
       .set_true(),
+    ArgDef::new("unscoped").long("unscoped").set_true(),
     ArgDef::new("npm")
       .long("npm")
       .set_true()
