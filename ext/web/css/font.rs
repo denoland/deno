@@ -1027,8 +1027,8 @@ mod tests {
   #[test]
   fn spacing_root_units_read_the_root_metrics() {
     let resolution = LengthResolution {
-      font: metrics(20.0),
       root: metrics(100.0),
+      ..LengthResolution::new(metrics(20.0))
     };
     let s = parse_css_spacing("1rex", &resolution).unwrap();
     assert_eq!(s.resolve_to_pixels(&resolution), 50.0);
@@ -1087,10 +1087,12 @@ mod tests {
     assert!(matches!(s, SpecifiedLength::Unit(_)));
     assert_eq!(s.to_css_string(), "3px");
 
-    // A viewport unit is a constant zero, so it collapses too.
+    // A viewport unit resolves to zero here, but the tree is still retained so
+    // the value serializes as written.
     let s = spacing("calc(1vw + 2px)", 10.0).unwrap();
-    assert!(matches!(s, SpecifiedLength::Unit(_)));
-    assert_eq!(s.to_css_string(), "2px");
+    assert!(matches!(s, SpecifiedLength::Calc { .. }));
+    assert_eq!(s.to_css_string(), "calc(2px + 1vw)");
+    assert_eq!(resolve_to_pixels("calc(1vw + 2px)", 10.0), 2.0);
   }
 
   #[test]
@@ -1122,8 +1124,8 @@ mod tests {
   }
 
   #[test]
-  fn spacing_font_dependent_number_falls_back_to_text() {
-    // The tree cannot express a font dependency that flows through a `<number>`
+  fn spacing_relative_number_falls_back_to_text() {
+    // The tree cannot express a dependency that flows through a `<number>`
     // subexpression, so that subexpression alone is retained as text.
     let s = spacing("calc(sqrt(1em / 1px) * 1px)", 16.0).unwrap();
     assert!(matches!(
@@ -1159,6 +1161,11 @@ mod tests {
     // Dividing by a length also leaves the dimension system.
     assert_eq!(resolve_to_pixels("calc(1em / 1px * 1px)", 16.0), 16.0);
     assert_eq!(resolve_to_pixels("calc(1em / 1px * 1px)", 25.0), 25.0);
+
+    // A viewport unit takes the same path, even though it resolves to zero.
+    let s = spacing("calc(sqrt(1vw / 1px) * 1px)", 16.0).unwrap();
+    assert_eq!(s.to_css_string(), "calc(sqrt(1vw / 1px) * 1px)");
+    assert_eq!(resolve_to_pixels("calc(sqrt(1vw / 1px) * 1px)", 16.0), 0.0);
   }
 
   fn url(url: &str) -> FontSrc {

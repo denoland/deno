@@ -63,20 +63,48 @@ impl FontMetrics {
   }
 }
 
-/// The context a font-relative `<length>` resolves against.
+/// The size a viewport- or container-percentage `<length>` resolves against, in
+/// pixels.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct BoxSize {
+  pub width: f64,
+  pub height: f64,
+}
+
+impl BoxSize {
+  #[inline]
+  fn min(&self) -> f64 {
+    minimum(self.width, self.height)
+  }
+
+  #[inline]
+  fn max(&self) -> f64 {
+    maximum(self.width, self.height)
+  }
+}
+
+/// The context a relative `<length>` resolves against.
 ///
 /// Canvas has no root element, so `new` points both the element and the root
-/// metrics at the same font, matching Blink's canvas length resolution.
+/// metrics at the same font, matching Blink's canvas length resolution. It also
+/// has no viewport, so the initial containing block is zero-sized.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LengthResolution {
   pub font: FontMetrics,
   pub root: FontMetrics,
+  /// The initial containing block, which every viewport- and
+  /// container-percentage unit resolves against.
+  pub viewport: BoxSize,
 }
 
 impl LengthResolution {
   #[inline]
   pub fn new(font: FontMetrics) -> Self {
-    Self { font, root: font }
+    Self {
+      font,
+      root: font,
+      viewport: BoxSize::default(),
+    }
   }
 }
 
@@ -109,12 +137,38 @@ enum LengthUnit {
   Rex,
   Ric,
   Rlh,
-  /// Viewport- and container-relative units. Canvas has neither a viewport nor
-  /// a query container, so the initial containing block is zero-sized and these
-  /// always resolve to zero; only the unit name matters, for serialization.
-  /// https://www.w3.org/TR/css-values-4/#viewport-relative-lengths
-  /// https://drafts.csswg.org/css-conditional-5/#container-lengths
-  Zero(&'static str),
+  // https://www.w3.org/TR/css-values-4/#viewport-relative-lengths
+  Vw,
+  Vh,
+  Vi,
+  Vb,
+  Vmin,
+  Vmax,
+  Svw,
+  Svh,
+  Svi,
+  Svb,
+  Svmin,
+  Svmax,
+  Lvw,
+  Lvh,
+  Lvi,
+  Lvb,
+  Lvmin,
+  Lvmax,
+  Dvw,
+  Dvh,
+  Dvi,
+  Dvb,
+  Dvmin,
+  Dvmax,
+  // https://drafts.csswg.org/css-conditional-5/#container-lengths
+  Cqw,
+  Cqh,
+  Cqi,
+  Cqb,
+  Cqmin,
+  Cqmax,
 }
 
 impl LengthUnit {
@@ -143,37 +197,37 @@ impl LengthUnit {
       "ric" => Self::Ric,
       "rlh" => Self::Rlh,
       // https://www.w3.org/TR/css-values-4/#viewport-relative-lengths
-      "vw" => Self::Zero("vw"),
-      "svw" => Self::Zero("svw"),
-      "lvw" => Self::Zero("lvw"),
-      "dvw" => Self::Zero("dvw"),
-      "vh" => Self::Zero("vh"),
-      "svh" => Self::Zero("svh"),
-      "lvh" => Self::Zero("lvh"),
-      "dvh" => Self::Zero("dvh"),
-      "vi" => Self::Zero("vi"),
-      "svi" => Self::Zero("svi"),
-      "lvi" => Self::Zero("lvi"),
-      "dvi" => Self::Zero("dvi"),
-      "vb" => Self::Zero("vb"),
-      "svb" => Self::Zero("svb"),
-      "lvb" => Self::Zero("lvb"),
-      "dvb" => Self::Zero("dvb"),
-      "vmin" => Self::Zero("vmin"),
-      "svmin" => Self::Zero("svmin"),
-      "lvmin" => Self::Zero("lvmin"),
-      "dvmin" => Self::Zero("dvmin"),
-      "vmax" => Self::Zero("vmax"),
-      "svmax" => Self::Zero("svmax"),
-      "lvmax" => Self::Zero("lvmax"),
-      "dvmax" => Self::Zero("dvmax"),
+      "vw" => Self::Vw,
+      "vh" => Self::Vh,
+      "vi" => Self::Vi,
+      "vb" => Self::Vb,
+      "vmin" => Self::Vmin,
+      "vmax" => Self::Vmax,
+      "svw" => Self::Svw,
+      "svh" => Self::Svh,
+      "svi" => Self::Svi,
+      "svb" => Self::Svb,
+      "svmin" => Self::Svmin,
+      "svmax" => Self::Svmax,
+      "lvw" => Self::Lvw,
+      "lvh" => Self::Lvh,
+      "lvi" => Self::Lvi,
+      "lvb" => Self::Lvb,
+      "lvmin" => Self::Lvmin,
+      "lvmax" => Self::Lvmax,
+      "dvw" => Self::Dvw,
+      "dvh" => Self::Dvh,
+      "dvi" => Self::Dvi,
+      "dvb" => Self::Dvb,
+      "dvmin" => Self::Dvmin,
+      "dvmax" => Self::Dvmax,
       // https://drafts.csswg.org/css-conditional-5/#container-lengths
-      "cqw" => Self::Zero("cqw"),
-      "cqh" => Self::Zero("cqh"),
-      "cqi" => Self::Zero("cqi"),
-      "cqb" => Self::Zero("cqb"),
-      "cqmin" => Self::Zero("cqmin"),
-      "cqmax" => Self::Zero("cqmax"),
+      "cqw" => Self::Cqw,
+      "cqh" => Self::Cqh,
+      "cqi" => Self::Cqi,
+      "cqb" => Self::Cqb,
+      "cqmin" => Self::Cqmin,
+      "cqmax" => Self::Cqmax,
       _ => return None,
     })
   }
@@ -186,11 +240,44 @@ impl LengthUnit {
     )
   }
 
-  /// Whether resolving this unit depends on the font in effect, and therefore
-  /// has to be deferred until the value is used.
+  /// The size a viewport- or container-percentage unit is 1% of. `None` for
+  /// every other unit. Canvas has no retractable browser UI, no query
+  /// container and no writing mode, so all of them read the same box on a
+  /// horizontal inline axis.
+  /// https://www.w3.org/TR/css-values-4/#viewport-relative-lengths
+  /// https://drafts.csswg.org/css-conditional-5/#container-lengths
   #[inline]
-  fn is_font_relative(self) -> bool {
-    !self.is_absolute() && !matches!(self, Self::Zero(_))
+  fn percentage_basis(self, resolution: &LengthResolution) -> Option<f64> {
+    let viewport = &resolution.viewport;
+    Some(match self {
+      Self::Vw
+      | Self::Vi
+      | Self::Svw
+      | Self::Svi
+      | Self::Lvw
+      | Self::Lvi
+      | Self::Dvw
+      | Self::Dvi
+      | Self::Cqw
+      | Self::Cqi => viewport.width,
+      Self::Vh
+      | Self::Vb
+      | Self::Svh
+      | Self::Svb
+      | Self::Lvh
+      | Self::Lvb
+      | Self::Dvh
+      | Self::Dvb
+      | Self::Cqh
+      | Self::Cqb => viewport.height,
+      Self::Vmin | Self::Svmin | Self::Lvmin | Self::Dvmin | Self::Cqmin => {
+        viewport.min()
+      }
+      Self::Vmax | Self::Svmax | Self::Lvmax | Self::Dvmax | Self::Cqmax => {
+        viewport.max()
+      }
+      _ => return None,
+    })
   }
 
   /// The factor to the canonical unit, `px`. `None` for a unit that needs the
@@ -231,7 +318,36 @@ impl LengthUnit {
       Self::Rex => "rex",
       Self::Ric => "ric",
       Self::Rlh => "rlh",
-      Self::Zero(unit) => unit,
+      Self::Vw => "vw",
+      Self::Vh => "vh",
+      Self::Vi => "vi",
+      Self::Vb => "vb",
+      Self::Vmin => "vmin",
+      Self::Vmax => "vmax",
+      Self::Svw => "svw",
+      Self::Svh => "svh",
+      Self::Svi => "svi",
+      Self::Svb => "svb",
+      Self::Svmin => "svmin",
+      Self::Svmax => "svmax",
+      Self::Lvw => "lvw",
+      Self::Lvh => "lvh",
+      Self::Lvi => "lvi",
+      Self::Lvb => "lvb",
+      Self::Lvmin => "lvmin",
+      Self::Lvmax => "lvmax",
+      Self::Dvw => "dvw",
+      Self::Dvh => "dvh",
+      Self::Dvi => "dvi",
+      Self::Dvb => "dvb",
+      Self::Dvmin => "dvmin",
+      Self::Dvmax => "dvmax",
+      Self::Cqw => "cqw",
+      Self::Cqh => "cqh",
+      Self::Cqi => "cqi",
+      Self::Cqb => "cqb",
+      Self::Cqmin => "cqmin",
+      Self::Cqmax => "cqmax",
     }
   }
 }
@@ -255,12 +371,6 @@ impl Length {
     self.unit.is_absolute()
   }
 
-  /// Whether resolving this length needs the font metrics.
-  #[inline]
-  fn is_font_relative(&self) -> bool {
-    self.unit.is_font_relative()
-  }
-
   /// The pixel value, when the unit needs no font metrics.
   #[inline]
   pub fn to_pixels(&self) -> Option<f64> {
@@ -282,10 +392,16 @@ impl Length {
     })
   }
 
-  /// Resolves a `<length>` to pixels against the given metrics.
+  /// Resolves a `<length>` to pixels against the given resolution context.
   pub fn resolve_to_pixels(&self, resolution: &LengthResolution) -> f64 {
     if let Some(factor) = self.unit.px_factor() {
       return self.value * factor;
+    }
+    // A viewport- or container-percentage unit is 1% of the box it is relative
+    // to. Canvas has no viewport and no query container, so every one of them
+    // is 1% of nothing there.
+    if let Some(basis) = self.unit.percentage_basis(resolution) {
+      return self.value * basis / 100.0;
     }
     let value = self.value;
     let font = &resolution.font;
@@ -303,8 +419,11 @@ impl Length {
       LengthUnit::Rex => value * root.ex,
       LengthUnit::Ric => value * root.ic,
       LengthUnit::Rlh => value * root.lh,
-      // Canvas has neither a viewport nor a query container.
-      _ => 0.0,
+      // Handled by `px_factor` and `percentage_basis` above.
+      _ => {
+        debug_assert!(false, "no resolution rule for {self:?}");
+        0.0
+      }
     }
   }
 
@@ -333,8 +452,8 @@ impl Length {
 }
 
 /// A `<length>` expression kept in symbolic form, modelled on CSS Typed OM's
-/// `CSSNumericValue` tree, so that font-relative units resolve against the font
-/// in effect when the value is used rather than when it was parsed.
+/// `CSSNumericValue` tree, so that relative units serialize as written and
+/// resolve when the value is used rather than when it was parsed.
 /// https://drafts.css-houdini.org/css-typed-om-1/#numeric-objects
 #[derive(Clone, Debug, PartialEq)]
 pub enum LengthCalc {
@@ -573,17 +692,16 @@ impl LengthCalc {
 }
 
 /// A `<length>` as specified, which is what the canvas text styles have to
-/// store: the getters serialize it back, and font-relative units only resolve
-/// when the value is used.
+/// store: the getters serialize it back, and relative units only resolve when
+/// the value is used.
 /// https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-letterspacing
 #[derive(Clone, Debug, PartialEq)]
 pub enum SpecifiedLength {
   /// `CSSUnitValue`: a single dimension, e.g. `3px`, `1ex`, `1vw`.
   Unit(Length),
-  /// A math function over font-relative units. `resolved_px` is the value
-  /// folded against the metrics in effect at parse time, which is what lets the
-  /// calculation engine keep working in pixels; `tree` re-resolves against the
-  /// font actually in use.
+  /// A math function over relative units. `resolved_px` is the value folded at
+  /// parse time, which is what lets the calculation engine keep working in
+  /// pixels; `tree` re-resolves against the context actually in use.
   Calc {
     resolved_px: f64,
     tree: Rc<LengthCalc>,
@@ -618,11 +736,12 @@ impl SpecifiedLength {
     }
   }
 
-  /// Whether the font metrics affect this value.
+  /// Whether the resolution context affects this value, so that its symbolic
+  /// form has to be retained.
   #[inline]
-  fn is_font_dependent(&self) -> bool {
+  fn is_relative(&self) -> bool {
     match self {
-      Self::Unit(length) => length.is_font_relative(),
+      Self::Unit(length) => !length.is_absolute(),
       Self::Calc { .. } => true,
     }
   }
@@ -1165,10 +1284,10 @@ struct MathValue {
   value: f64,
   dimension: Dimension,
   /// Symbolic `<length>` form, kept while the dimension is a length and no
-  /// font-dependent `<number>` has entered the computation.
+  /// relative `<number>` has entered the computation.
   calc: Option<LengthCalc>,
-  /// Whether a font-relative unit contributed anywhere in this value.
-  font_dependent: bool,
+  /// Whether a relative unit contributed anywhere in this value.
+  relative: bool,
 }
 
 impl From<NumericValue> for MathValue {
@@ -1178,24 +1297,24 @@ impl From<NumericValue> for MathValue {
         value: 0.0,
         dimension: Dimension::NUMBER,
         calc: None,
-        font_dependent: false,
+        relative: false,
       },
       NumericValue::Number(value) => MathValue {
         value,
         dimension: Dimension::NUMBER,
         calc: None,
-        font_dependent: false,
+        relative: false,
       },
       NumericValue::Percent(value) => MathValue {
         value,
         dimension: Dimension::PERCENT,
         calc: None,
-        font_dependent: false,
+        relative: false,
       },
       NumericValue::Length(length) => MathValue {
         value: length.folded_pixels(),
         dimension: Dimension::LENGTH,
-        font_dependent: length.is_font_dependent(),
+        relative: length.is_relative(),
         calc: Some(length.to_calc()),
       },
       NumericValue::Angle(angle) => {
@@ -1204,7 +1323,7 @@ impl From<NumericValue> for MathValue {
           value,
           dimension: Dimension::ANGLE,
           calc: None,
-          font_dependent: false,
+          relative: false,
         }
       }
       NumericValue::Time(time) => {
@@ -1213,7 +1332,7 @@ impl From<NumericValue> for MathValue {
           value,
           dimension: Dimension::TIME,
           calc: None,
-          font_dependent: false,
+          relative: false,
         }
       }
       NumericValue::Frequency(frequency) => {
@@ -1222,7 +1341,7 @@ impl From<NumericValue> for MathValue {
           value,
           dimension: Dimension::FREQUENCY,
           calc: None,
-          font_dependent: false,
+          relative: false,
         }
       }
       NumericValue::Resolution(resolution) => {
@@ -1231,14 +1350,14 @@ impl From<NumericValue> for MathValue {
           value,
           dimension: Dimension::RESOLUTION,
           calc: None,
-          font_dependent: false,
+          relative: false,
         }
       }
       NumericValue::Flex(value) => MathValue {
         value,
         dimension: Dimension::FLEX,
         calc: None,
-        font_dependent: false,
+        relative: false,
       },
     }
   }
@@ -1328,18 +1447,18 @@ impl MathValue {
         value,
         dimension: Dimension::LENGTH,
         calc: Some(LengthCalc::Unit(Length::from_pixels(value))),
-        font_dependent: self.font_dependent,
+        relative: self.relative,
       }
     } else {
       self
     }
   }
 
-  /// The `<length>` this value represents, keeping its symbolic form when the
-  /// font metrics still matter and the tree survived the computation.
+  /// The `<length>` this value represents, keeping its symbolic form when a
+  /// relative unit contributed and the tree survived the computation.
   fn into_specified_length(self) -> SpecifiedLength {
     match self.calc {
-      Some(tree) if self.font_dependent => {
+      Some(tree) if self.relative => {
         SpecifiedLength::from_calc(self.value, tree)
       }
       _ => SpecifiedLength::from_pixels(self.value),
@@ -1375,7 +1494,7 @@ impl MathValue {
   /// Combines the symbolic length forms of a sum or difference into a
   /// `CSSMathSum`, dropping it if either side has already lost its form.
   fn add_terms(&mut self, other: &MathValue, sign: f64) {
-    self.font_dependent |= other.font_dependent;
+    self.relative |= other.relative;
     if !self.is_length() {
       self.calc = None;
       return;
@@ -1395,11 +1514,11 @@ impl MathValue {
   }
 
   /// Scales the symbolic length form by a `<number>` factor. A factor that is
-  /// itself font-dependent, or a quotient of two lengths, cannot be expressed
-  /// in the tree, so the form is dropped.
+  /// itself relative, or a quotient of two lengths, cannot be expressed in the
+  /// tree, so the form is dropped.
   fn scale_terms(&mut self, other: &MathValue, factor: f64) {
-    self.font_dependent |= other.font_dependent;
-    if !other.is_number() || other.font_dependent {
+    self.relative |= other.relative;
+    if !other.is_number() || other.relative {
       self.calc = None;
       return;
     }
@@ -1655,8 +1774,8 @@ struct ParseState {
   function_depth: u8,
   length_resolution: Option<LengthResolution>,
   channel_keywords: Option<ChannelKeywords>,
-  /// Set when a font-relative unit was consumed anywhere in the value.
-  saw_font_relative: bool,
+  /// Set when a relative `<length>` unit was consumed anywhere in the value.
+  saw_relative_length: bool,
 }
 
 impl ParseState {
@@ -1665,7 +1784,7 @@ impl ParseState {
       function_depth: 0,
       length_resolution: opts.length_resolution,
       channel_keywords: opts.channel_keywords,
-      saw_font_relative: false,
+      saw_relative_length: false,
     }
   }
 
@@ -1800,11 +1919,10 @@ impl NumericValue {
       }
       Token::Dimension { value, unit, .. } => {
         let value = *value as f64;
-        // Non-absolute units are only accepted when metrics are provided (font
-        // and spacing contexts). At the top level they keep their original unit
-        // so they can be resolved lazily against the font actually in effect;
-        // inside math functions they must be folded to pixels so the dimension
-        // arithmetic stays in pixels.
+        // Relative units are only accepted when a resolution context is
+        // provided (font and spacing contexts). At the top level they keep
+        // their unit so they resolve lazily; inside math functions they are also
+        // folded to pixels, because the engine works in pixels.
         if let Some(unit) = LengthUnit::parse(unit) {
           let length = Length { value, unit };
           if unit.is_absolute() {
@@ -1812,9 +1930,7 @@ impl NumericValue {
               NumericValue::Length(SpecifiedLength::Unit(length)).into(),
             );
           }
-          if unit.is_font_relative() {
-            state.saw_font_relative = true;
-          }
+          state.saw_relative_length = true;
           let Some(resolution) = state.length_resolution else {
             return Err(
               input
@@ -1826,17 +1942,14 @@ impl NumericValue {
               NumericValue::Length(SpecifiedLength::Unit(length)).into(),
             );
           }
-          // Inside a math function the engine works in pixels, so fold the
-          // value. Font-relative units keep their symbolic form so they can be
-          // re-resolved; viewport and container units are a constant zero, so
-          // the folded pixel value stays correct.
+          // The symbolic form rides along: font-relative units re-resolve
+          // against the font in effect, and all of them serialize as written.
           let px = length.resolve_to_pixels(&resolution);
           return Ok(
-            NumericValue::Length(if unit.is_font_relative() {
-              SpecifiedLength::from_calc(px, LengthCalc::Unit(length))
-            } else {
-              SpecifiedLength::from_pixels(px)
-            })
+            NumericValue::Length(SpecifiedLength::from_calc(
+              px,
+              LengthCalc::Unit(length),
+            ))
             .into(),
           );
         }
@@ -1959,7 +2072,7 @@ impl NumericValue {
                   operands.push(&operand);
                   Box::new(operands.trees.pop().unwrap())
                 });
-                operands.font_dependent.then_some(LengthCalc::Clamp {
+                operands.relative.then_some(LengthCalc::Clamp {
                   min,
                   value: Box::new(value),
                   max,
@@ -2418,17 +2531,17 @@ impl NumericValue {
     Ok(retain_lost_length(lhs, input, span_start))
   }
 
-  /// Parses one factor, marking it font-dependent when it consumed a
-  /// font-relative unit. A `<number>` derived from one (`sqrt(1em / 1px)`)
-  /// carries no unit, so only this bookkeeping keeps the dependency visible.
+  /// Parses one factor, marking it relative when it consumed a relative unit.
+  /// A `<number>` derived from one (`sqrt(1em / 1px)`) carries no unit, so only
+  /// this bookkeeping keeps the dependency visible.
   fn parse_operand<'i, 't>(
     input: &mut Parser<'i, 't>,
     state: &mut ParseState,
   ) -> Result<MathValue, CSSParseError<'i>> {
-    let before = state.saw_font_relative;
+    let before = state.saw_relative_length;
     let rhs = Self::parse_inner(input, state)?;
     let mut rhs = rhs.into_math();
-    rhs.font_dependent |= state.saw_font_relative != before;
+    rhs.relative |= state.saw_relative_length != before;
     Ok(rhs)
   }
 
@@ -2437,12 +2550,11 @@ impl NumericValue {
     state: &mut ParseState,
   ) -> Result<NumericAccumulator, CSSParseError<'i>> {
     let span_start = input.position();
-    let before = state.saw_font_relative;
+    let before = state.saw_relative_length;
     let mut lhs = Self::parse_inner(input, state)?;
-    // The first factor can hide a font dependency too, as in
-    // `calc(sqrt(1em / 1px) * 1px)`, so it needs the same bookkeeping. Once it
-    // has been folded into a `MathValue` the flag lives there instead.
-    let mut lhs_font_dependent = state.saw_font_relative != before;
+    // The first factor can hide a dependency too, as in
+    // `calc(sqrt(1em / 1px) * 1px)`, so it needs the same bookkeeping.
+    let mut lhs_relative = state.saw_relative_length != before;
 
     while !input.is_exhausted() {
       let start = input.state();
@@ -2451,16 +2563,16 @@ impl NumericValue {
         Token::Delim('*') => {
           let rhs = Self::parse_operand(input, state)?;
           let mut left = lhs.into_math();
-          left.font_dependent |= lhs_font_dependent;
-          lhs_font_dependent = false;
+          left.relative |= lhs_relative;
+          lhs_relative = false;
           left *= &rhs;
           lhs = left.into();
         }
         Token::Delim('/') => {
           let rhs = Self::parse_operand(input, state)?;
           let mut left = lhs.into_math();
-          left.font_dependent |= lhs_font_dependent;
-          lhs_font_dependent = false;
+          left.relative |= lhs_relative;
+          lhs_relative = false;
           left /= &rhs;
           lhs = left.into();
         }
@@ -2610,7 +2722,7 @@ fn retain_lost_length(
   let NumericAccumulator::Math(mut math) = accumulator else {
     return accumulator;
   };
-  if math.is_length() && math.font_dependent && math.calc.is_none() {
+  if math.is_length() && math.relative && math.calc.is_none() {
     let css = input.slice_from(span_start).trim();
     math.calc = Some(LengthCalc::Deferred(Box::from(css)));
   }
@@ -2618,10 +2730,10 @@ fn retain_lost_length(
 }
 
 /// The `<length>` operands of a math function, collected so the result can keep
-/// a symbolic form when it still depends on the font metrics.
+/// a symbolic form when a relative unit contributed.
 struct LengthOperands {
   trees: Vec<LengthCalc>,
-  font_dependent: bool,
+  relative: bool,
 }
 
 impl LengthOperands {
@@ -2631,7 +2743,7 @@ impl LengthOperands {
     match value {
       NumericValue::Length(length) => Some(Self {
         trees: vec![length.to_calc()],
-        font_dependent: length.is_font_dependent(),
+        relative: length.is_relative(),
       }),
       _ => None,
     }
@@ -2639,15 +2751,15 @@ impl LengthOperands {
 
   #[inline]
   fn push(&mut self, value: &SpecifiedLength) {
-    self.font_dependent |= value.is_font_dependent();
+    self.relative |= value.is_relative();
     self.trees.push(value.to_calc());
   }
 
-  /// The operands, only when the result still depends on the font metrics; an
-  /// expression over absolute units is already exact in pixels.
+  /// The operands, only when a relative unit contributed; an expression over
+  /// absolute units is already exact in pixels.
   #[inline]
   fn into_trees(self) -> Option<Vec<LengthCalc>> {
-    self.font_dependent.then_some(self.trees)
+    self.relative.then_some(self.trees)
   }
 }
 
@@ -2669,6 +2781,16 @@ mod tests {
   use cssparser::ParseErrorKind;
 
   use super::*;
+
+  /// Every viewport- and container-percentage unit.
+  /// https://www.w3.org/TR/css-values-4/#viewport-relative-lengths
+  /// https://drafts.csswg.org/css-conditional-5/#container-lengths
+  const BOX_RELATIVE_UNIT_NAMES: [&str; 30] = [
+    "vw", "vh", "vi", "vb", "vmin", "vmax", "svw", "svh", "svi", "svb",
+    "svmin", "svmax", "lvw", "lvh", "lvi", "lvb", "lvmin", "lvmax", "dvw",
+    "dvh", "dvi", "dvb", "dvmin", "dvmax", "cqw", "cqh", "cqi", "cqb", "cqmin",
+    "cqmax",
+  ];
 
   #[test]
   fn zero() {
@@ -2845,6 +2967,102 @@ mod tests {
       2.54 / 96.0,
       epsilon = 1e-12
     );
+  }
+
+  #[test]
+  fn box_relative_unit_names_round_trip() {
+    // Guards `parse` and `to_css_str` against drifting apart, and keeps every
+    // one of these units resolvable only through the viewport size.
+    let resolution = LengthResolution::new(FontMetrics::fallback(10.0));
+    for name in BOX_RELATIVE_UNIT_NAMES {
+      let unit = LengthUnit::parse(name).unwrap();
+      assert_eq!(unit.to_css_str(), name);
+      assert_eq!(LengthUnit::parse(&name.to_ascii_uppercase()), Some(unit));
+      assert!(!unit.is_absolute(), "{name}");
+      assert_eq!(unit.px_factor(), None, "{name}");
+      assert!(unit.percentage_basis(&resolution).is_some(), "{name}");
+    }
+  }
+
+  #[test]
+  fn box_relative_units_read_the_resolution() {
+    // Canvas always passes a zero-sized viewport, so these paths are only
+    // observable through a resolution built by hand.
+    // https://www.w3.org/TR/css-values-4/#viewport-relative-lengths
+    // https://drafts.csswg.org/css-conditional-5/#container-lengths
+    fn px(css: &str, resolution: &LengthResolution) -> f64 {
+      let mut input = ParserInput::new(css);
+      let mut parser = Parser::new(&mut input);
+      NumericValue::parse(
+        &mut parser,
+        ParseOptions {
+          length_resolution: Some(*resolution),
+          ..Default::default()
+        },
+      )
+      .unwrap()
+      .expect_length(false)
+      .unwrap()
+      .resolve_to_pixels(resolution)
+    }
+
+    let resolution = LengthResolution {
+      viewport: BoxSize {
+        width: 800.0,
+        height: 600.0,
+      },
+      ..LengthResolution::new(FontMetrics::fallback(10.0))
+    };
+
+    // Every unit measures the axis its name asks for. The small, large and
+    // dynamic viewports coincide, and container units share the same size.
+    for (unit, expected) in [
+      ("w", 80.0),
+      ("h", 60.0),
+      // No writing mode, so the inline axis is horizontal.
+      ("i", 80.0),
+      ("b", 60.0),
+      ("min", 60.0),
+      ("max", 80.0),
+    ] {
+      for prefix in ["v", "sv", "lv", "dv", "cq"] {
+        let css = format!("10{prefix}{unit}");
+        assert_relative_eq!(px(&css, &resolution), expected);
+      }
+    }
+
+    // Inside a math function the value is folded against the same resolution.
+    assert_relative_eq!(px("calc(10vw + 2px)", &resolution), 82.0);
+    // Font-relative units are unaffected.
+    assert_relative_eq!(px("2em", &resolution), 20.0);
+  }
+
+  #[test]
+  fn box_relative_units_default_to_zero() {
+    // Canvas has no viewport and no query container.
+    let resolution = LengthResolution::new(FontMetrics::fallback(10.0));
+    assert_eq!(resolution.viewport, BoxSize::default());
+    for unit in BOX_RELATIVE_UNIT_NAMES {
+      let css = format!("10{unit}");
+      let mut input = ParserInput::new(&css);
+      let mut parser = Parser::new(&mut input);
+      let length = NumericValue::parse(
+        &mut parser,
+        ParseOptions {
+          length_resolution: Some(resolution),
+          ..Default::default()
+        },
+      )
+      .unwrap()
+      .expect_length(false)
+      .unwrap();
+      assert_eq!(length.to_css_string(), css, "serializing {css}");
+      assert_eq!(
+        length.resolve_to_pixels(&resolution),
+        0.0,
+        "resolving {css}"
+      );
+    }
   }
 
   #[test]

@@ -909,9 +909,11 @@ Deno.test(function canvas2dSpacingMathFunctionSerialization() {
       ["clamp(none, 1em, 15px)", "clamp(none, 1em, 15px)"],
       ["round(to-zero, 1em, 3px)", "round(to-zero, 1em, 3px)"],
       ["calc(min(1em, 15px) + 1px)", "calc(1px + min(1em, 15px))"],
-      // Absolute-only and viewport-only expressions are already exact.
+      // Viewport units resolve to zero, but are still retained symbolically.
+      ["calc(1vw + 2px)", "calc(2px + 1vw)"],
+      ["min(1cqmin, 15px)", "min(1cqmin, 15px)"],
+      // An absolute-only expression is already exact, so it collapses.
       ["calc(1px + 2px)", "3px"],
-      ["calc(1vw + 2px)", "2px"],
     ]
   ) {
     ctx.letterSpacing = value;
