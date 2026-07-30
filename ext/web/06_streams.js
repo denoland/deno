@@ -484,6 +484,11 @@ function bufferSourceByteLength(O) {
 // Using SymbolFor to make globally available. This is used by `node:stream`
 // to interop with the web streams API.
 const _isClosedPromise = SymbolFor("nodejs.webstream.isClosedPromise");
+// Set on a stream to a function that errors its controller. `node:stream`'s
+// `addAbortSignal` uses this to abort a web stream from an AbortSignal.
+const _controllerErrorFunction = SymbolFor(
+  "nodejs.webstream.controllerErrorFunction",
+);
 
 const _abortAlgorithm = Symbol("[[abortAlgorithm]]");
 const _abortSteps = Symbol("[[AbortSteps]]");
@@ -1154,8 +1159,13 @@ function resourceForReadableStream(stream, length, onError) {
 const DEFAULT_CHUNK_SIZE = 64 * 1024; // 64 KiB
 
 // A finalization registry to clean up underlying resources that are GC'ed.
-const RESOURCE_REGISTRY = new SafeFinalizationRegistry((rid) => {
-  core.tryClose(rid);
+const RESOURCE_REGISTRY = new SafeFinalizationRegistry((resource) => {
+  if (typeof resource === "number") {
+    core.tryClose(resource);
+  } else {
+    core.tryClose(resource.rid);
+    resource.onClose();
+  }
 });
 
 const _readAll = Symbol("[[readAll]]");
@@ -1186,9 +1196,18 @@ function annotateResourceStreamError(e) {
  *
  * @param {number} rid The resource ID to read from.
  * @param {boolean=} autoClose If the resource should be auto-closed when the stream closes. Defaults to true.
+ * @param {function(*)=} cfn A custom stream constructor.
+ * @param {function(*, *)=} onError A custom resource read error handler.
+ * @param {function()=} onClose Called when the resource is no longer owned by the stream.
  * @returns {ReadableStream<Uint8Array>}
  */
-function readableStreamForRid(rid, autoClose = true, cfn, onError) {
+function readableStreamForRid(
+  rid,
+  autoClose = true,
+  cfn,
+  onError,
+  onClose,
+) {
   const stream = cfn ? cfn(_brand) : new ReadableStream(_brand);
   stream[_resourceBacking] = { rid, autoClose };
 
@@ -1196,6 +1215,11 @@ function readableStreamForRid(rid, autoClose = true, cfn, onError) {
     if (!autoClose) return;
     RESOURCE_REGISTRY.unregister(stream);
     core.tryClose(rid);
+    if (onClose !== undefined) {
+      const callback = onClose;
+      onClose = undefined;
+      callback();
+    }
   };
 
   const cancelRead = () => {
@@ -1203,7 +1227,11 @@ function readableStreamForRid(rid, autoClose = true, cfn, onError) {
   };
 
   if (autoClose) {
-    RESOURCE_REGISTRY.register(stream, rid, stream);
+    RESOURCE_REGISTRY.register(
+      stream,
+      onClose === undefined ? rid : { __proto__: null, rid, onClose },
+      stream,
+    );
   }
 
   const underlyingSource = {
@@ -1453,20 +1481,32 @@ async function readableStreamCollectIntoUint8Array(stream) {
  *
  * @param {number} rid The resource ID to write to.
  * @param {boolean=} autoClose If the resource should be auto-closed when the stream closes. Defaults to true.
+ * @param {function(*)=} cfn A custom stream constructor.
+ * @param {{ bufferSize?: number, onClose?: function() }=} options Additional stream options.
  * @returns {ReadableStream<Uint8Array>}
  */
 function writableStreamForRid(rid, autoClose = true, cfn, options) {
   const stream = cfn ? cfn(_brand) : new WritableStream(_brand);
   stream[_resourceBacking] = { rid, autoClose };
+  let onClose = options?.onClose;
 
   const tryClose = () => {
     if (!autoClose) return;
     RESOURCE_REGISTRY.unregister(stream);
     core.tryClose(rid);
+    if (onClose !== undefined) {
+      const callback = onClose;
+      onClose = undefined;
+      callback();
+    }
   };
 
   if (autoClose) {
-    RESOURCE_REGISTRY.register(stream, rid, stream);
+    RESOURCE_REGISTRY.register(
+      stream,
+      onClose === undefined ? rid : { __proto__: null, rid, onClose },
+      stream,
+    );
   }
 
   const bufferSize = options?.bufferSize ?? 0;
@@ -4236,6 +4276,8 @@ function setUpReadableByteStreamController(
   controller[_autoAllocateChunkSize] = autoAllocateChunkSize;
   controller[_pendingPullIntos] = new Queue();
   stream[_controller] = controller;
+  stream[_controllerErrorFunction] = (error) =>
+    readableByteStreamControllerError(controller, error);
   const startResult = startAlgorithm(controller);
   const startPromise = PromiseResolve(startResult);
   uponPromise(
@@ -4400,6 +4442,8 @@ function setUpReadableStreamDefaultController(
   controller[_pullAlgorithm] = pullAlgorithm;
   controller[_cancelAlgorithm] = cancelAlgorithm;
   stream[_controller] = controller;
+  stream[_controllerErrorFunction] = (error) =>
+    readableStreamDefaultControllerError(controller, error);
   const startResult = startAlgorithm(controller);
   const startPromise = PromiseResolve(startResult);
   uponPromise(startPromise, () => {
@@ -4510,6 +4554,11 @@ function setUpTransformStreamDefaultController(
   assert(stream[_controller] === undefined);
   controller[_stream] = stream;
   stream[_controller] = controller;
+  // `node:stream`'s `addAbortSignal` treats a `TransformStream` as a web stream
+  // (see `isWebStream`) and aborts it via this function; erroring the transform
+  // errors both its readable and writable sides.
+  stream[_controllerErrorFunction] = (error) =>
+    transformStreamError(stream, error);
   controller[_transformAlgorithm] = transformAlgorithm;
   controller[_flushAlgorithm] = flushAlgorithm;
   controller[_cancelAlgorithm] = cancelAlgorithm;
@@ -4625,6 +4674,8 @@ function setUpWritableStreamDefaultController(
   assert(stream[_controller] === undefined);
   controller[_stream] = stream;
   stream[_controller] = controller;
+  stream[_controllerErrorFunction] = (error) =>
+    writableStreamDefaultControllerErrorIfNeeded(controller, error);
   resetQueue(controller);
   controller[_signal] = newSignal();
   controller[_started] = false;
@@ -7132,14 +7183,18 @@ class TransformStream {
       "transformer",
     );
     if (transformerDict.readableType !== undefined) {
-      throw new RangeError(
+      const err = new RangeError(
         `${prefix}: readableType transformers not supported`,
       );
+      err.code = "ERR_INVALID_ARG_VALUE";
+      throw err;
     }
     if (transformerDict.writableType !== undefined) {
-      throw new RangeError(
+      const err = new RangeError(
         `${prefix}: writableType transformers not supported`,
       );
+      err.code = "ERR_INVALID_ARG_VALUE";
+      throw err;
     }
     const readableHighWaterMark = extractHighWaterMark(readableStrategy, 0);
     const readableSizeAlgorithm = extractSizeAlgorithm(readableStrategy);

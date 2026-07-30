@@ -7,6 +7,7 @@ const {
   ArrayIsArray,
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
+  ArrayPrototypeReverse,
   Date,
   DatePrototypeGetDate,
   DatePrototypeGetHours,
@@ -60,7 +61,11 @@ const {
   validateNumber,
   validateObject,
   validateString,
+  validateStringArray,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { myersDiff } = core.loadExtScript(
+  "ext:deno_node/internal/assert/myers_diff.js",
+);
 const { parseArgs } = core.loadExtScript(
   "ext:deno_node/internal/util/parse_args/parse_args.js",
 );
@@ -404,8 +409,29 @@ function convertProcessSignalToExitCode(signalCode) {
   return 128 + signals[signalCode];
 }
 
+function validateDiffInput(value, name) {
+  if (!ArrayIsArray(value)) {
+    validateString(value, name);
+    return;
+  }
+  validateStringArray(value, name);
+}
+
+// https://nodejs.org/api/util.html#utildiffactual-expected
+function diff(actual, expected) {
+  if (actual === expected) {
+    return [];
+  }
+
+  validateDiffInput(actual, "actual");
+  validateDiffInput(expected, "expected");
+
+  return ArrayPrototypeReverse(myersDiff(actual, expected));
+}
+
 return {
   callbackify,
+  diff,
   debuglog,
   debug: debuglog,
   format,

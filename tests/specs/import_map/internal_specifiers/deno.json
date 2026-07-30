@@ -1,0 +1,7 @@
+{
+  "imports": {
+    "ext:core/mod.js": "./remapped.js",
+    "ext:cli/40_test_common.js": "./remapped.js",
+    "node:net": "./remapped.js"
+  }
+}

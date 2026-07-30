@@ -181,7 +181,7 @@ cargo test harness for correct setup.
   execution and output validation
 - **Unit tests** (`tests/unit/`) - JavaScript/TypeScript unit tests for runtime
   APIs
-- **Integration tests** (`cli/tests/`) - Additional integration tests
+- **Integration tests** (`tests/integration/`) - Additional integration tests
 - **WPT** (`tests/wpt/`) - Web Platform Tests for web standards compliance
 
 ## "spec" tests
