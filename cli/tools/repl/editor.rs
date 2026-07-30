@@ -271,6 +271,15 @@ fn validate(input: &str) -> ValidationResult {
   // Whether the last (non-comment) token was a `.`, which means a member
   // access is still missing its property and more input should be read.
   let mut ends_with_dot = false;
+  // Byte offset (in `input`) up to which the text has already been consumed by
+  // a detected regex literal; tokens starting before it must be skipped.
+  let mut skip_until = 0;
+  // Whether any regex literal was skipped. Deciding that a `/` starts a regex
+  // is a guess (we don't track expression position), so once we've acted on
+  // that guess we only ever *suppress* a validation error, never report one:
+  // a wrong "valid" is recovered by V8 reporting the real syntax error, but a
+  // wrong "invalid"/"incomplete" wedges the REPL waiting for input.
+  let mut skipped_regex = false;
   let tokens = deno_ast::lex(input, deno_ast::MediaType::TypeScript)
     .into_iter()
     .filter_map(|item| match item.inner {
@@ -279,21 +288,39 @@ fn validate(input: &str) -> ValidationResult {
     });
 
   for (token, range) in tokens {
+    if range.start < skip_until {
+      // This token is part of a regex literal that was already consumed.
+      continue;
+    }
     let current_line_index = line_info.line_index(range.start);
     if current_line_index != last_line_index {
       div_token_count_on_current_line = 0;
       last_line_index = current_line_index;
 
       if let Some(error) = queued_validation_error {
+        if skipped_regex {
+          return ValidationResult::Valid(None);
+        }
         return error;
       }
     }
     ends_with_dot = matches!(token, Token::Dot);
     match token {
       Token::BinOp(BinOpToken::Div) | Token::AssignOp(AssignOp::DivAssign) => {
-        // it's too complicated to write code to detect regular expression literals
-        // which are no longer tokenized, so if a `/` or `/=` happens twice on the same
-        // line, then we bail
+        // A regex literal is reported by the lexer as a division operator (`/`
+        // or `/=`) followed by however the rest of the pattern happens to
+        // tokenize — often a stray string literal that swallows the closing `]`
+        // of a character class, leaving the `[` orphaned on the stack. Rescan
+        // the literal by hand and skip the tokens it covers.
+        // See https://github.com/denoland/deno/issues/24963
+        if let Some(regex_end) = find_regex_literal_end(input, range.start) {
+          skip_until = regex_end;
+          skipped_regex = true;
+          continue;
+        }
+        // Not a regex, so it's a real division. It's too complicated to detect
+        // regular expression literals in every position, so if a `/` or `/=`
+        // happens twice on the same line, then we bail.
         div_token_count_on_current_line += 1;
         if div_token_count_on_current_line >= 2 {
           return ValidationResult::Valid(None);
@@ -337,7 +364,12 @@ fn validate(input: &str) -> ValidationResult {
     }
   }
 
-  if let Some(error) = queued_validation_error {
+  if skipped_regex && (queued_validation_error.is_some() || !stack.is_empty()) {
+    // We guessed that a `/` started a regex and skipped over it. If that left
+    // the input looking unbalanced the guess was probably wrong, so hand it to
+    // V8 rather than rejecting it or blocking on more input.
+    ValidationResult::Valid(None)
+  } else if let Some(error) = queued_validation_error {
     error
   } else if !stack.is_empty() || in_template || ends_with_dot {
     // A trailing `.` means the user broke a method chain across lines (e.g.
@@ -699,6 +731,71 @@ let left = test( arr.slice( 0 , arr.length/2 ) )"#;
   fn validate_regex_looking_code() {
     let code = r#"/testing/;"#;
     assert!(matches!(validate(code), ValidationResult::Valid(_)));
+  }
+
+  #[test]
+  fn validate_regex_literal_with_quotes() {
+    // A character class containing a quote used to lex as a stray string
+    // literal that swallowed the closing `]`, leaving the `[` orphaned on the
+    // stack — so this either reported "Mismatched pairs" or blocked waiting
+    // for more input. See https://github.com/denoland/deno/issues/24963
+    assert!(matches!(
+      validate("let re = /[']/;"),
+      ValidationResult::Valid(_)
+    ));
+    assert!(matches!(
+      validate(r#"let re = /["]/;"#),
+      ValidationResult::Valid(_)
+    ));
+    // The issue's original reproduction.
+    assert!(matches!(
+      validate("function fn() { if (/[']/); }"),
+      ValidationResult::Valid(_)
+    ));
+    // Both quote kinds in one class, plus flags after the closing `/`.
+    assert!(matches!(
+      validate(r#"const re = /["']/gi;"#),
+      ValidationResult::Valid(_)
+    ));
+    // Escaped `/` inside the pattern, and quotes outside a character class.
+    assert!(matches!(
+      validate(r##"/https?:\/\/deno.land\/(?:std\@?[^\'\"]*)/.test(x)"##),
+      ValidationResult::Valid(_)
+    ));
+    // A regex on the second line of a multi-line input.
+    assert!(matches!(
+      validate("const a = 1;\nconst re = /[']/;"),
+      ValidationResult::Valid(_)
+    ));
+  }
+
+  #[test]
+  fn validate_division_is_not_a_regex() {
+    assert!(matches!(validate("a / b"), ValidationResult::Valid(_)));
+    assert!(matches!(validate("a / b / c"), ValidationResult::Valid(_)));
+  }
+
+  #[test]
+  fn validate_unterminated_regex_is_incomplete() {
+    // `find_regex_literal_end` bails without a closing `/`, so nothing is
+    // skipped and the unbalanced `[` still asks for more input.
+    assert!(matches!(
+      validate("const re = /["),
+      ValidationResult::Incomplete
+    ));
+  }
+
+  #[test]
+  fn validate_ambiguous_slash_never_reports_an_error() {
+    // Whether a `/` starts a regex depends on expression position, which we
+    // don't track. Both of these are guesses that can go the wrong way, so the
+    // validator must fall back to letting V8 report the real error rather than
+    // rejecting the input or blocking on more of it.
+    assert!(matches!(
+      validate("if (x) /re/.test(y)"),
+      ValidationResult::Valid(_)
+    ));
+    assert!(matches!(validate("x++ /2/ y"), ValidationResult::Valid(_)));
   }
 
   #[test]
