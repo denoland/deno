@@ -208,7 +208,6 @@ pub struct DenoCjsCodeAnalyzer<TSys: DenoCjsCodeAnalyzerSys> {
   /// module, or the same lookup across multiple importers) do not
   /// re-parse the source.
   member_props_cache: MemberPropsCache,
-  sys: TSys,
 }
 
 impl<TSys: DenoCjsCodeAnalyzerSys> DenoCjsCodeAnalyzer<TSys> {
@@ -216,14 +215,12 @@ impl<TSys: DenoCjsCodeAnalyzerSys> DenoCjsCodeAnalyzer<TSys> {
     cache: NodeAnalysisCacheRc,
     cjs_tracker: CjsTrackerRc<DenoInNpmPackageChecker, TSys>,
     module_export_analyzer: ModuleExportAnalyzerRc,
-    sys: TSys,
   ) -> Self {
     Self {
       cache,
       cjs_tracker,
       module_export_analyzer,
       member_props_cache: Default::default(),
-      sys,
     }
   }
 
@@ -319,25 +316,12 @@ impl<TSys: DenoCjsCodeAnalyzerSys> CjsCodeAnalyzer
   ) -> Result<ExtNodeCjsAnalysis<'a>, JsErrorBox> {
     let source = match source {
       Some(source) => source,
-      None => {
-        if let Ok(path) = deno_path_util::url_to_file_path(specifier) {
-          if let Ok(source_from_file) = self.sys.fs_read_to_string_lossy(path) {
-            source_from_file
-          } else {
-            return Ok(ExtNodeCjsAnalysis::Cjs(CjsAnalysisExports {
-              exports: vec![],
-              reexports: vec![],
-              member_reexports: vec![],
-            }));
-          }
-        } else {
-          return Ok(ExtNodeCjsAnalysis::Cjs(CjsAnalysisExports {
-            exports: vec![],
-            reexports: vec![],
-            member_reexports: vec![],
-          }));
-        }
-      }
+      // The analyzer may be asked to recursively inspect CJS re-exports
+      // after only resolving the target specifier. Do not load that target
+      // independently here because it may not match the source selected by
+      // the caller's module loader. Callers should pass loader-owned source
+      // explicitly when recursive analysis is available.
+      None => return Ok(ExtNodeCjsAnalysis::Cjs(empty_cjs_analysis())),
     };
     let analysis = self
       .inner_cjs_analysis(specifier, &source, esm_analysis_mode)
@@ -362,13 +346,9 @@ impl<TSys: DenoCjsCodeAnalyzerSys> CjsCodeAnalyzer
   ) -> Result<Option<Vec<String>>, JsErrorBox> {
     let source = match maybe_source {
       Some(source) => source,
-      None => match deno_path_util::url_to_file_path(specifier) {
-        Ok(path) => match self.sys.fs_read_to_string_lossy(path) {
-          Ok(source_from_file) => source_from_file,
-          Err(_) => return Ok(None),
-        },
-        Err(_) => return Ok(None),
-      },
+      // See `analyze_cjs`: callers must provide loader-owned source. Without
+      // it, report that the member could not be statically narrowed.
+      None => return Ok(None),
     };
     let source = source.strip_prefix('\u{FEFF}').unwrap_or(&source);
     let media_type = MediaType::from_specifier(specifier);
@@ -423,6 +403,13 @@ fn to_ext_cjs_analysis_exports(
         member: m.member,
       })
       .collect(),
+  }
+}
+fn empty_cjs_analysis() -> CjsAnalysisExports {
+  CjsAnalysisExports {
+    exports: vec![],
+    reexports: vec![],
+    member_reexports: vec![],
   }
 }
 
