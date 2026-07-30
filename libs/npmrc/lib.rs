@@ -1185,26 +1185,14 @@ registry=https://registry.npmjs.org/
 
     // Auth keys are scheme-relative, but the complete host and port must
     // match.
-    assert_eq!(
-      auth_token("https://example.com/pkg.tgz"),
-      Some("HOST")
-    );
+    assert_eq!(auth_token("https://example.com/pkg.tgz"), Some("HOST"));
     assert_eq!(auth_token("http://example.com/pkg.tgz"), Some("HOST"));
-    assert_eq!(
-      auth_token("https://example.com:443/pkg.tgz"),
-      Some("HOST")
-    );
+    assert_eq!(auth_token("https://example.com:443/pkg.tgz"), Some("HOST"));
     assert_eq!(auth_token("https://example.com.evil/pkg.tgz"), None);
-    assert_eq!(
-      auth_token("https://example.com:8443/pkg.tgz"),
-      Some("PORT")
-    );
+    assert_eq!(auth_token("https://example.com:8443/pkg.tgz"), Some("PORT"));
     assert_eq!(auth_token("https://example.com:8444/pkg.tgz"), None);
     assert_eq!(auth_token("https://example.com:18443/pkg.tgz"), None);
-    assert_eq!(
-      auth_token("https://[::1]:8443/pkg.tgz"),
-      Some("IPV6")
-    );
+    assert_eq!(auth_token("https://[::1]:8443/pkg.tgz"), Some("IPV6"));
     assert_eq!(auth_token("https://[::1]:8444/pkg.tgz"), None);
 
     // Path matches stop at segment boundaries and the longest valid path wins.
@@ -1212,10 +1200,7 @@ registry=https://registry.npmjs.org/
       auth_token("https://example.com/private/pkg.tgz"),
       Some("PRIVATE")
     );
-    assert_eq!(
-      auth_token("https://example.com/private"),
-      Some("PRIVATE")
-    );
+    assert_eq!(auth_token("https://example.com/private"), Some("PRIVATE"));
     assert_eq!(
       auth_token("https://example.com/privateevil/pkg.tgz"),
       Some("HOST")
