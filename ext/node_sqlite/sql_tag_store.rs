@@ -230,7 +230,9 @@ impl SQLTagStore {
 
     let mut sql = String::new();
     for i in 0..n_strings {
-      let str_val = strings.get_index(scope, i).unwrap();
+      let str_val = strings
+        .get_index(scope, i)
+        .ok_or(super::validators::Error::V8Exception)?;
       if !str_val.is_string() {
         return Err(SqliteError::Validation(
           super::validators::Error::InvalidArgType(
@@ -388,7 +390,11 @@ impl SQLTagStore {
     };
 
     obj
-      .set(scope, last_insert_row_id_str.into(), last_insert_row_id_val)
+      .create_data_property(
+        scope,
+        last_insert_row_id_str.into(),
+        last_insert_row_id_val,
+      )
       .unwrap();
 
     let changes_str = CHANGES.v8_string(scope).unwrap();
@@ -399,7 +405,9 @@ impl SQLTagStore {
       v8::Number::new(scope, changes as f64).into()
     };
 
-    obj.set(scope, changes_str.into(), changes_val).unwrap();
+    obj
+      .create_data_property(scope, changes_str.into(), changes_val)
+      .unwrap();
 
     Ok(obj.into())
   }
@@ -642,16 +650,28 @@ impl SQLTagStore {
 
     let global = scope.get_current_context().global(scope);
     let iter_str = ITERATOR.v8_string(scope).unwrap();
-    let js_iterator: v8::Local<v8::Object> = {
-      global
-        .get(scope, iter_str.into())
-        .unwrap()
-        .try_into()
-        .unwrap()
-    };
+    let js_iterator = global
+      .get(scope, iter_str.into())
+      .ok_or(super::validators::Error::V8Exception)?;
+    let js_iterator =
+      v8::Local::<v8::Object>::try_from(js_iterator).map_err(|_| {
+        super::validators::Error::InvalidArgType(
+          "Iterator must be an object.".into(),
+        )
+      })?;
 
     let proto_str = PROTOTYPE.v8_string(scope).unwrap();
-    let js_iterator_proto = js_iterator.get(scope, proto_str.into()).unwrap();
+    let js_iterator_proto = js_iterator
+      .get(scope, proto_str.into())
+      .ok_or(super::validators::Error::V8Exception)?;
+    if !js_iterator_proto.is_object() && !js_iterator_proto.is_null() {
+      return Err(
+        super::validators::Error::InvalidArgType(
+          "Iterator.prototype must be an object or null.".into(),
+        )
+        .into(),
+      );
+    }
 
     let names = &[
       NEXT.v8_string(scope).unwrap().into(),

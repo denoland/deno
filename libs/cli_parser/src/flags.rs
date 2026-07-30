@@ -58,10 +58,13 @@ pub enum DefaultRegistry {
 pub struct AddFlags {
   pub packages: Vec<String>,
   pub dev: bool,
+  pub optional: bool,
+  pub no_save: bool,
   pub default_registry: Option<DefaultRegistry>,
   pub lockfile_only: bool,
   pub save_exact: bool,
   pub package_json: bool,
+  pub unscoped: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -158,6 +161,14 @@ pub struct CheckFlags {
   pub doc: bool,
   pub doc_only: bool,
   pub check_js: bool,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct SyncTypesFlags {
+  /// Files, directories, or remote modules to use as module graph roots.
+  /// These scope dependency discovery, not the generated TypeScript project.
+  /// An empty list discovers dependencies from the entire project.
+  pub roots: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -793,7 +804,7 @@ pub enum DenoSubcommand {
   Link(LinkFlags),
   Unlink(UnlinkFlags),
   Lsp,
-  SyncTypes,
+  SyncTypes(SyncTypesFlags),
   Lint(LintFlags),
   Repl(ReplFlags),
   Run(RunFlags),

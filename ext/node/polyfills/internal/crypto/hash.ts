@@ -171,7 +171,7 @@ Hash.prototype._transform = function _transform(
 
 Hash.prototype._flush = function _flush(callback: () => void) {
   const digest = op_node_hash_digest(this[kHandle]);
-  // deno-lint-ignore prefer-primordials -- `this` is a Node stream (Transform)
+  // deno-lint-ignore deno-internal/prefer-primordials -- `this` is a Node stream (Transform)
   this.push(digest === null ? Buffer.alloc(0) : Buffer.from(digest));
   callback();
 };
@@ -201,11 +201,11 @@ Hash.prototype.update = function update(
     const u8 = ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, buf)
       ? buf as Uint8Array
       : new Uint8Array(
-        // deno-lint-ignore prefer-primordials -- ArrayBufferView accessor, receiver may be a DataView
+        // deno-lint-ignore deno-internal/prefer-primordials -- ArrayBufferView accessor, receiver may be a DataView
         (buf as ArrayBufferView).buffer,
-        // deno-lint-ignore prefer-primordials -- ArrayBufferView accessor, receiver may be a DataView
+        // deno-lint-ignore deno-internal/prefer-primordials -- ArrayBufferView accessor, receiver may be a DataView
         (buf as ArrayBufferView).byteOffset,
-        // deno-lint-ignore prefer-primordials -- ArrayBufferView accessor, receiver may be a DataView
+        // deno-lint-ignore deno-internal/prefer-primordials -- ArrayBufferView accessor, receiver may be a DataView
         (buf as ArrayBufferView).byteLength,
       );
     unwrapErr(op_node_hash_update(this[kHandle], u8));
@@ -243,7 +243,7 @@ Hash.prototype.digest = function digest(outputEncoding: any) {
     case "buffer":
       return Buffer.from(digest);
     default:
-      // deno-lint-ignore prefer-primordials -- Buffer.prototype.toString(encoding), not String.prototype.toString
+      // deno-lint-ignore deno-internal/prefer-primordials -- Buffer.prototype.toString(encoding), not String.prototype.toString
       return Buffer.from(digest).toString(outputEncoding);
   }
 };
@@ -287,7 +287,7 @@ class HmacImpl {
         callback();
       },
       flush(callback: () => void) {
-        // deno-lint-ignore prefer-primordials -- `this` is a Node stream (Transform)
+        // deno-lint-ignore deno-internal/prefer-primordials -- `this` is a Node stream (Transform)
         this.push(self.digest());
         callback();
       },
@@ -316,7 +316,7 @@ class HmacImpl {
       const hash = new Hash(alg, options);
       bufKey = hash.update(keyData).digest() as Buffer;
     } else {
-      // deno-lint-ignore prefer-primordials -- Buffer.concat, not Array.prototype.concat
+      // deno-lint-ignore deno-internal/prefer-primordials -- Buffer.concat, not Array.prototype.concat
       bufKey = Buffer.concat([keyData, this.#ZEROES], blockSize);
     }
 

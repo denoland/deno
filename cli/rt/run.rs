@@ -1408,6 +1408,7 @@ pub async fn run_with_options(
         },
         scopes: Default::default(),
         registry_configs: Default::default(),
+        replace_registry_host: Default::default(),
         min_release_age_days: None,
         trust_policy: Default::default(),
         trust_policy_ignore_after_minutes: None,
@@ -1832,6 +1833,18 @@ pub async fn run_with_options(
       .js_runtime()
       .execute_script("ext:deno_desktop/auto_update", js)?;
 
+    // Make the operator-configured reporting URL available to the native
+    // op (and the panic hook) via `ERROR_REPORT_CONFIG`. The op reads the
+    // destination from here rather than trusting a JS-supplied URL, so an
+    // untrusted caller can't retarget it. `OnceLock::set` is a no-op if a
+    // path that already knows the URL (e.g. `run_desktop`) set it first.
+    if let Some(url) = options.error_reporting_url.as_deref() {
+      deno_runtime::ops::desktop::set_error_report_config(
+        url.to_string(),
+        options.auto_update_version.clone(),
+      );
+    }
+
     let js = crate::desktop::desktop_error_reporting_js(
       options.error_reporting_url.as_deref(),
       options.auto_update_version.as_deref(),
@@ -2021,6 +2034,7 @@ fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
     },
     scopes: Default::default(),
     registry_configs: Default::default(),
+    replace_registry_host: Default::default(),
     min_release_age_days: None,
     trust_policy: Default::default(),
     trust_policy_ignore_after_minutes: None,

@@ -124,7 +124,7 @@ class AsyncResource {
     thisArg?: AsyncResource,
   ) {
     type = type || fn.name || "bound-anonymous-fn";
-    // deno-lint-ignore prefer-primordials -- `bind` is AsyncResource's own method, not Function.prototype.bind
+    // deno-lint-ignore deno-internal/prefer-primordials -- `bind` is AsyncResource's own method, not Function.prototype.bind
     return (new AsyncResource(type)).bind(fn, thisArg);
   }
 }
@@ -193,7 +193,7 @@ class AsyncLocalStorage {
   }
 
   static bind(fn: (...args: unknown[]) => unknown) {
-    // deno-lint-ignore prefer-primordials -- `bind` is AsyncResource's own static method, not Function.prototype.bind
+    // deno-lint-ignore deno-internal/prefer-primordials -- `bind` is AsyncResource's own static method, not Function.prototype.bind
     return AsyncResource.bind(fn);
   }
 

@@ -1,12 +1,24 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { randomFillSync, randomUUID, timingSafeEqual } from "node:crypto";
 import { Buffer } from "node:buffer";
-import { assert, assertEquals, assertThrows } from "../../unit/test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertMatch,
+  assertThrows,
+} from "../../unit/test_util.ts";
 import { assertNotEquals } from "@std/assert";
+
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 Deno.test("[node/crypto.getRandomUUID] works the same way as Web Crypto API", () => {
   assertEquals(randomUUID().length, crypto.randomUUID().length);
   assertEquals(typeof randomUUID(), typeof crypto.randomUUID());
+});
+
+Deno.test("[node/crypto.randomUUID] supports disableEntropyCache", () => {
+  assertMatch(randomUUID({ disableEntropyCache: true }), UUID_REGEX);
 });
 
 Deno.test("[node/crypto.randomFillSync] supported arguments", () => {

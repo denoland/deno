@@ -626,6 +626,12 @@ impl CliOptions {
         _,
       )) if flags.production => GraphKind::CodeOnly,
       DenoSubcommand::Install(InstallFlags::Local(_, _)) => GraphKind::All,
+      // These edit the dependency requirements and then re-resolve them into
+      // the lockfile. A code-only graph never walks `import type` edges, so
+      // the packages reached only that way would be left out of the lockfile
+      // they rewrite.
+      DenoSubcommand::Outdated(_) => GraphKind::All,
+      DenoSubcommand::Remove(_) => GraphKind::All,
       _ => self.type_check_mode().as_graph_kind(),
     }
   }
@@ -724,6 +730,7 @@ impl CliOptions {
 
   pub fn no_legacy_abort(&self) -> bool {
     self.flags.no_legacy_abort()
+      || self.workspace().has_unstable("no-legacy-abort")
   }
 
   pub fn env_file_names(
@@ -1399,10 +1406,6 @@ impl CliOptions {
 
   pub fn type_check_mode(&self) -> TypeCheckMode {
     self.flags.type_check_mode
-  }
-
-  pub fn unstable_tsgo(&self) -> bool {
-    self.flags.unstable_config.tsgo || self.workspace().has_unstable("tsgo")
   }
 
   pub fn unsafely_ignore_certificate_errors(&self) -> &Option<Vec<String>> {

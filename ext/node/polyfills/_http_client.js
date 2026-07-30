@@ -366,9 +366,9 @@ function inspectorEmitResponseReceived(req, res) {
       let len;
       if (typeof chunk === "string") {
         len = chunk.length;
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
       } else if (chunk.byteLength !== undefined) {
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         len = chunk.byteLength;
       } else {
         len = 0;
@@ -721,7 +721,7 @@ function ClientRequest(input, options, cb) {
     if (options.auth && !this.getHeader("Authorization")) {
       this.setHeader(
         "Authorization",
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         "Basic " + Buffer.from(options.auth).toString("base64"),
       );
     }
@@ -936,7 +936,7 @@ function getRetryDataSize(data, encoding) {
   if (typeof data === "string") {
     return Buffer.byteLength(data, encoding || undefined);
   }
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   return data?.byteLength ?? data?.length ?? 0;
 }
 
@@ -1065,7 +1065,7 @@ function socketCloseListener() {
     req._closed = true;
     req.emit("close");
     if (!res.aborted && res.readable) {
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       res.push(null);
     }
   } else {
@@ -1168,7 +1168,7 @@ function socketOnData(d) {
     parser.finish();
     freeParser(parser, req, socket);
 
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     const bodyHead = d.slice(bytesParsed, d.length);
 
     const eventName = req.method === "CONNECT" ? "connect" : "upgrade";

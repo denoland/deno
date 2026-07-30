@@ -17,6 +17,8 @@
 (function () {
 const { core, primordials, internals } = __bootstrap;
 const {
+  op_crypto_is_seeded,
+  op_crypto_random_uuid_batch,
   Crypto,
   CryptoKey,
   SubtleCrypto,
@@ -27,6 +29,7 @@ const {
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
   SafeArrayIterator,
+  StringPrototypeSlice,
   SymbolFor,
 } = primordials;
 
@@ -239,12 +242,41 @@ function getSubtleSingleton() {
   return subtleSingleton;
 }
 
-// `Crypto` is the cppgc-wrapped Rust class imported above; `getRandomValues`,
-// `randomUUID` and the `subtle` getter are implemented natively in
-// `crypto.rs`. Here we only decorate the prototype with the inspector hook
-// and the WebIDL `Symbol.toStringTag` machinery, then mint the singleton
-// via `Crypto.create(subtle)` (a static method on the cppgc class).
+// `Crypto` is the cppgc-wrapped Rust class imported above. `getRandomValues`
+// and the `subtle` getter are implemented natively in `crypto.rs`. The normal
+// `randomUUID` path batches complete UUID strings so calls after a refill stay
+// in JS; seeded runtimes use the native method to preserve exact RNG call order.
 const CryptoPrototype = Crypto.prototype;
+const cppgcRandomUUID = CryptoPrototype.randomUUID;
+
+const UUID_STRING_BYTES = 36;
+const UUID_BATCH_SIZE = 128;
+let uuidBatchData;
+let uuidBatch = UUID_BATCH_SIZE;
+
+function randomUUID() {
+  if (this !== cryptoSingleton || usesSeededRng) {
+    return FunctionPrototypeCall(cppgcRandomUUID, this);
+  }
+  if (uuidBatch === UUID_BATCH_SIZE) {
+    uuidBatchData = op_crypto_random_uuid_batch();
+    uuidBatch = 0;
+  }
+  const start = uuidBatch++ * UUID_STRING_BYTES;
+  return StringPrototypeSlice(
+    uuidBatchData,
+    start,
+    start + UUID_STRING_BYTES,
+  );
+}
+
+ObjectDefineProperty(CryptoPrototype, "randomUUID", {
+  __proto__: null,
+  value: randomUUID,
+  writable: true,
+  enumerable: true,
+  configurable: true,
+});
 ObjectDefineProperty(CryptoPrototype, SymbolFor("Deno.privateCustomInspect"), {
   __proto__: null,
   value: function (inspect, inspectOptions) {
@@ -265,9 +297,11 @@ webidl.configureInterface(Crypto);
 applyWebIdlInterfaceShape(Crypto);
 
 let cryptoSingleton;
+let usesSeededRng = false;
 function getCryptoSingleton() {
   if (cryptoSingleton === undefined) {
     cryptoSingleton = Crypto.create(getSubtleSingleton());
+    usesSeededRng = op_crypto_is_seeded();
     // Stamp the WebIDL brand so `Reflect.getPrototypeOf(crypto)` and
     // the IDL `Crypto interface: operation randomUUID()` invariants
     // resolve through the same brand-check path as `SubtleCrypto`.

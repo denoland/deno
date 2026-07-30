@@ -236,7 +236,7 @@ fn print_cache_info(
   let registry_cache = dir.registries_folder_path();
   let mut origin_dir = dir.origin_data_folder_path();
   let deno_dir = dir.root_path_for_display().to_string();
-  let web_cache_dir = deno_lib::worker::get_cache_storage_dir();
+  let web_cache_dir = deno_lib::worker::get_cache_storage_dir(&origin_dir);
 
   if let Some(location) = &location {
     origin_dir =
