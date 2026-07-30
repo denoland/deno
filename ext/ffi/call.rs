@@ -208,7 +208,7 @@ where
           &symbol.cif,
           &symbol.ptr,
           call_args,
-          out_buffer.unwrap().0,
+          validate_struct_out_buffer(&symbol.cif, out_buffer)?,
         ),
       },
     })
@@ -232,7 +232,7 @@ fn ffi_call(
   parameter_types: &[NativeType],
   result_type: NativeType,
   out_buffer: Option<OutBuffer>,
-) -> FfiValue {
+) -> Result<FfiValue, IRError> {
   let call_args: Vec<Arg> = call_args
     .iter()
     .enumerate()
@@ -244,7 +244,7 @@ fn ffi_call(
 
   // SAFETY: types in the `Cif` match the actual calling convention and
   // types of symbol.
-  unsafe {
+  Ok(unsafe {
     match result_type {
       NativeType::Void => {
         cif.call::<()>(fun_ptr, &call_args);
@@ -291,11 +291,16 @@ fn ffi_call(
         ))
       }
       NativeType::Struct(_) => {
-        ffi_call_rtype_struct(cif, &fun_ptr, call_args, out_buffer.unwrap().0);
+        ffi_call_rtype_struct(
+          cif,
+          &fun_ptr,
+          call_args,
+          validate_struct_out_buffer(cif, out_buffer)?,
+        );
         FfiValue::Null
       }
     }
-  }
+  })
 }
 
 #[op2(stack_trace)]
@@ -349,7 +354,7 @@ where
       .await
       .map_err(CallError::NonblockingCallFailure)?;
     // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
-    Ok(result)
+    Ok(result?)
   })
 }
 
@@ -413,7 +418,7 @@ pub fn op_ffi_call_nonblocking(
       .await
       .map_err(CallError::NonblockingCallFailure)?;
     // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
-    Ok(result)
+    Ok(result?)
   })
 }
 
@@ -444,7 +449,7 @@ pub fn op_ffi_call_ptr(
     &def.parameters,
     def.result.clone(),
     out_buffer_ptr,
-  );
+  )?;
   // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
   Ok(result)
 }
