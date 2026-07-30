@@ -35,4 +35,4 @@ This is done using `/DEF:` on Windows, `-exported_symbol,_` on macOS and
 `--export-dynamic-symbol=` on Linux. See [`cli/build.rs`](../build.rs).
 
 On Windows, you need to generate the `.def` file by running
-[`tools/napi/generate_symbols_lists.js`](../../tools/napi/generate_symbols_lists.js).
+[`tools/napi/generate_symbols_lists.js`](../../../tools/napi/generate_symbols_lists.js).
