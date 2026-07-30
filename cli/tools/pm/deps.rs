@@ -986,6 +986,18 @@ impl DepManager {
                 // designates the newest stable release as latest. This mirrors
                 // npm packages, which resolve latest from the `latest`
                 // dist-tag. (#36320)
+                //
+                // JSR's `meta.json` also has a `latest` field (exposed as
+                // `info.latest`), but it can't replace the scan below on its
+                // own: it never points at a pre-release, so a project already
+                // tracking a pre-release line would stop being offered newer
+                // pre-releases, and it may fall outside the
+                // `minimumDependencyAge` window, in which case we still want
+                // the newest version that is old enough. That last fallback is
+                // also where the two registries deliberately differ: the npm
+                // path above reports no latest version at all when its `latest`
+                // dist-tag is too new, rather than walking back to an older
+                // version.
                 let allow_pre_release = !lower_bound.pre.is_empty();
                 {
                   let mut best: Option<&Version> = Some(lower_bound);
