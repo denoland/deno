@@ -1622,6 +1622,55 @@ Deno.test(function spawnSyncShellMetacharactersEscaped() {
   assertEquals(ret.stdout.trim(), "a&b|c<d>e");
 });
 
+Deno.test({
+  name: "spawn shell preserves pre-quoted arguments",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    for (const quote of ["'", '"']) {
+      const deferred = withTimeout<number | null>();
+      const child = spawn(
+        "printf",
+        [`${quote}<%s>\\n${quote}`, `${quote}hello world${quote}`],
+        { shell: true },
+      );
+      let stdout = "";
+      child.stdout!.setEncoding("utf-8");
+      child.stdout!.on("data", (chunk) => stdout += chunk);
+      child.on("error", deferred.reject);
+      child.on("close", deferred.resolve);
+      assertEquals(await deferred.promise, 0);
+      assertEquals(stdout, "<hello world>\n");
+    }
+  },
+});
+
+Deno.test({
+  name: "spawnSync shell preserves pre-quoted arguments",
+  ignore: Deno.build.os === "windows",
+  fn() {
+    for (const quote of ["'", '"']) {
+      const ret = spawnSync(
+        "printf",
+        [`${quote}<%s>\\n${quote}`, `${quote}hello world${quote}`],
+        { shell: true, encoding: "utf-8" },
+      );
+      assertEquals(ret.status, 0);
+      assertEquals(ret.stdout, "<hello world>\n");
+    }
+
+    const breakout = spawnSync(
+      "printf",
+      ["'%s\\n'", "'safe'; printf injected; 'still-safe'"],
+      { shell: true, encoding: "utf-8" },
+    );
+    assertEquals(breakout.status, 0);
+    assertEquals(
+      breakout.stdout,
+      "safe'; printf injected; 'still-safe\n",
+    );
+  },
+});
+
 Deno.test(function spawnSyncReturnsPid() {
   const ret = spawnSync(Deno.execPath(), ["eval", "console.log('hi')"]);
   assertEquals(ret.status, 0);
