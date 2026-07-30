@@ -632,10 +632,15 @@ fn url_to_local_sub_path<'a>(
     // This function is a bit of a balancing act between readability
     // and avoiding collisions.
     let hash = checksum(data.as_bytes());
-    // keep the paths short because of windows path limit
-    const MAX_LENGTH: usize = 20;
-    let mut sub = String::with_capacity(MAX_LENGTH);
-    for c in data.chars().take(MAX_LENGTH) {
+    // Keep the full SHA-256 digest for 128-bit collision resistance. Limit the
+    // readable prefix because URL depth and the cache root make the full path
+    // length unbounded. The resulting components remain well below Windows'
+    // 255 UTF-16 code unit limit, and shorter components reduce growth for
+    // tools with legacy full-path limits.
+    const HASH_HEX_LENGTH: usize = 64;
+    const MAX_READABLE_PREFIX_LENGTH: usize = 8;
+    let mut sub = String::with_capacity(MAX_READABLE_PREFIX_LENGTH);
+    for c in data.chars().take(MAX_READABLE_PREFIX_LENGTH) {
       // don't include the query string (only use it in the hash)
       if c == '?' {
         break;
@@ -652,9 +657,9 @@ fn url_to_local_sub_path<'a>(
     };
     let ext = last_ext.unwrap_or("");
     if sub.is_empty() {
-      format!("#{}{}", &hash[..7], ext)
+      format!("#{}{}", &hash[..HASH_HEX_LENGTH], ext)
     } else {
-      format!("#{}_{}{}", &sub, &hash[..5], ext)
+      format!("#{}_{}{}", &sub, &hash[..HASH_HEX_LENGTH], ext)
     }
   }
 
@@ -1148,19 +1153,19 @@ mod test {
       // capital letter in filename
       "https://deno.land/x/MOD.ts",
       &[],
-      "deno.land/x/#mod_fa860.ts",
+      "deno.land/x/#mod_fa86079152a87234b0dcc4d647df11a067f4ccea71eded88f80dc88a59aff932.ts",
     );
     run_test(
       // query string
       "https://deno.land/x/mod.ts?testing=1",
       &[],
-      "deno.land/x/#mod_2eb80.ts",
+      "deno.land/x/#mod_2eb80c6117dc809eaecdd451bdaa72d176535af705a82314e231193e45e7c082.ts",
     );
     run_test(
       // capital letter in directory
       "https://deno.land/OTHER/mod.ts",
       &[],
-      "deno.land/#other_1c55d/mod.ts",
+      "deno.land/#other_1c55d9b826e8dfa994370e306ae8dc2e849f3e003381dc848a0b95f782c0c0e3/mod.ts",
     );
     run_test(
       // under max of 30 chars
@@ -1172,32 +1177,32 @@ mod test {
       // max 30 chars
       "https://deno.land/x/0123456789012345678901234567.js",
       &[],
-      "deno.land/x/#01234567890123456789_836de.js",
+      "deno.land/x/#01234567_836dee2653754d4c0755d5d2e2dad1e30e27ca28ff0500c182590ca82e662c3b.js",
     );
     run_test(
       // forbidden char
       "https://deno.land/x/mod's.js",
       &[],
-      "deno.land/x/#mod_s_44fc8.js",
+      "deno.land/x/#mod_s_44fc8f28b5e501d84350d5addab6670e468148f73bceb40b0fddb084a589292f.js",
     );
     run_test(
       // no extension
       "https://deno.land/x/mod",
       &[("content-type", "application/typescript")],
-      "deno.land/x/#mod_e55cf.ts",
+      "deno.land/x/#mod_e55cffc81a5ad8cfe85239d944a3ae9513645a9eed79bc884f51b80b2760fc46.ts",
     );
     run_test(
       // known extension in directory is not allowed
       // because it could conflict with a file of the same name
       "https://deno.land/x/mod.js/mod.js",
       &[],
-      "deno.land/x/#mod.js_59c58/mod.js",
+      "deno.land/x/#mod.js_59c58ac8dd1ef25612eceb30854f65ed61339b4ea9b4ca82d93eec5dd901fdd6/mod.js",
     );
     run_test(
       // slash slash in path
       "http://localhost//mod.js",
       &[],
-      "http_localhost/#e3b0c44/mod.js",
+      "http_localhost/#e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855/mod.js",
     );
     run_test(
       // headers same extension
@@ -1211,20 +1216,20 @@ mod test {
       // https://deno.land/x/mod.ts to resolve as a typescript file
       "https://deno.land/x/mod.ts",
       &[("content-type", "application/javascript")],
-      "deno.land/x/#mod.ts_e8c36.js",
+      "deno.land/x/#mod.ts_e8c3622ccfbed67f4b3058cd4417bf41d066236f49c6f3e63b7c243b584c6734.js",
     );
     run_test(
       // not allowed windows folder name
       "https://deno.land/x/con/con.ts",
       &[],
-      "deno.land/x/#con_1143d/con.ts",
+      "deno.land/x/#con_1143da2bc54c495c4be31d3868785d39ffdfd56df5668f0645d8f14d47647952/con.ts",
     );
     run_test(
       // disallow ending a directory with a period
       // https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file
       "https://deno.land/x/test./main.ts",
       &[],
-      "deno.land/x/#test._4ee3d/main.ts",
+      "deno.land/x/#test._4ee3df88f682d376531d8803f2ccbee56d075cd248fc300f55dfe8596a7354b7/main.ts",
     );
     run_test("https://deno.land/x/mod.wasm", &[], "deno.land/x/mod.wasm");
 
@@ -1256,6 +1261,115 @@ mod test {
         result.has_hash
       )
     }
+  }
+
+  #[test]
+  fn hashed_paths_distinguish_known_prefix_collision() {
+    let first = url_to_local_sub_path(
+      &Url::parse("https://localhost/SuperLongPackageNameX/mod.ts").unwrap(),
+      None,
+    )
+    .unwrap()
+    .as_relative_path();
+    let second = url_to_local_sub_path(
+      &Url::parse("https://localhost/SuperLongPackageName649563/mod.ts")
+        .unwrap(),
+      None,
+    )
+    .unwrap()
+    .as_relative_path();
+
+    assert_eq!(
+      first,
+      PathBuf::from(
+        "localhost/#superlon_efdea95c2352e1c0e8fe4125c9852138cafa1860e379443f62e52d10d0af0fca/mod.ts"
+      )
+    );
+    assert_eq!(
+      second,
+      PathBuf::from(
+        "localhost/#superlon_efdea807118a3c9755682a01db8f754ba6092d92d39648d5842c4eecbbed2d4f/mod.ts"
+      )
+    );
+    assert_ne!(first, second);
+  }
+
+  #[test]
+  fn hashed_path_components_remain_short() {
+    let url = Url::parse(&format!(
+      "https://localhost/{}.d.mts",
+      "A".repeat(64)
+    ))
+    .unwrap();
+    let sub_path = url_to_local_sub_path(&url, None).unwrap();
+    let component = sub_path.parts.last().unwrap();
+
+    // 1 marker + 8 readable characters + 1 separator + 64 hash characters
+    // + the 6-character extension.
+    assert_eq!(component.len(), 80);
+    assert!(component.encode_utf16().count() < 255);
+  }
+
+  #[test]
+  fn legacy_hashed_path_is_regenerated_from_global_cache() {
+    let temp = tempdir().unwrap();
+    let global_path = temp.path().join("global");
+    let local_path = temp.path().join("local");
+    let global_cache =
+      new_rc(GlobalHttpCache::new(RealSys, global_path.clone()));
+    let url =
+      Url::parse("https://localhost/SuperLongPackageNameX/mod.ts").unwrap();
+    let fresh_content = b"export const value = 'fresh';";
+    global_cache
+      .set(&url, Default::default(), fresh_content)
+      .unwrap();
+
+    let legacy_file =
+      local_path.join("localhost/#superlongpackagename_efdea/mod.ts");
+    std::fs::create_dir_all(legacy_file.parent().unwrap()).unwrap();
+    std::fs::write(&legacy_file, b"export const value = 'legacy';").unwrap();
+    std::fs::write(
+      local_path.join("manifest.json"),
+      serde_json::to_vec_pretty(&serde_json::json!({
+        "folders": {
+          "https://localhost/SuperLongPackageNameX/":
+            "localhost/#superlongpackagename_efdea"
+        }
+      }))
+      .unwrap(),
+    )
+    .unwrap();
+
+    let local_cache = LocalHttpCache::new(
+      local_path.clone(),
+      global_cache.clone(),
+      GlobalToLocalCopy::Allow,
+      Url::parse("https://jsr.io/").unwrap(),
+    );
+    let key = local_cache.cache_item_key(&url).unwrap();
+    let entry = local_cache.get(&key, None).unwrap().unwrap();
+    assert_eq!(entry.content.as_ref(), fresh_content);
+
+    let regenerated_file = local_path.join(
+      "localhost/#superlon_efdea95c2352e1c0e8fe4125c9852138cafa1860e379443f62e52d10d0af0fca/mod.ts",
+    );
+    assert_eq!(std::fs::read(&regenerated_file).unwrap(), fresh_content);
+    assert_eq!(
+      std::fs::read(&legacy_file).unwrap(),
+      b"export const value = 'legacy';"
+    );
+
+    // Once regenerated, the local cache remains usable without the global
+    // cache from which the new path was populated.
+    std::fs::remove_dir_all(global_path).unwrap();
+    let local_cache = LocalHttpCache::new(
+      local_path,
+      global_cache,
+      GlobalToLocalCopy::Allow,
+      Url::parse("https://jsr.io/").unwrap(),
+    );
+    let entry = local_cache.get(&key, None).unwrap().unwrap();
+    assert_eq!(entry.content.as_ref(), fresh_content);
   }
 
   #[test]
