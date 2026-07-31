@@ -62,7 +62,7 @@ impl DiffieHellman {
   where
     G: DiffieHellmanGroup,
   {
-    let private_key = PrivateKey::new(G::EXPONENT_SIZE);
+    let private_key = PrivateKey::new(G::EXPONENT_BITS);
 
     let generator = BigUint::from_usize(G::GENERATOR).unwrap();
     // MODULUS arrays are stored as big-endian u32 words (matching RFCs).
@@ -102,8 +102,8 @@ impl DiffieHellman {
 pub trait DiffieHellmanGroup {
   const GENERATOR: usize;
   const MODULUS: &'static [u32];
-  /// Size of the exponent in bits
-  const EXPONENT_SIZE: usize;
+  /// Private exponent size in bits, matching OpenSSL's named-group defaults.
+  const EXPONENT_BITS: usize;
 }
 
 /// 1536-bit MODP Group
@@ -111,7 +111,7 @@ pub trait DiffieHellmanGroup {
 pub struct Modp1536;
 impl DiffieHellmanGroup for Modp1536 {
   const GENERATOR: usize = 2;
-  const EXPONENT_SIZE: usize = 192;
+  const EXPONENT_BITS: usize = 200;
 
   const MODULUS: &'static [u32] = &[
     0xFFFFFFFF, 0xFFFFFFFF, 0xC90FDAA2, 0x2168C234, 0xC4C6628B, 0x80DC1CD1,
@@ -130,7 +130,7 @@ impl DiffieHellmanGroup for Modp1536 {
 pub struct Modp2048;
 impl DiffieHellmanGroup for Modp2048 {
   const GENERATOR: usize = 2;
-  const EXPONENT_SIZE: usize = 256;
+  const EXPONENT_BITS: usize = 225;
 
   const MODULUS: &'static [u32] = &[
     0xFFFFFFFF, 0xFFFFFFFF, 0xC90FDAA2, 0x2168C234, 0xC4C6628B, 0x80DC1CD1,
@@ -152,7 +152,7 @@ impl DiffieHellmanGroup for Modp2048 {
 pub struct Modp3072;
 impl DiffieHellmanGroup for Modp3072 {
   const GENERATOR: usize = 2;
-  const EXPONENT_SIZE: usize = 384;
+  const EXPONENT_BITS: usize = 275;
 
   const MODULUS: &'static [u32] = &[
     0xFFFFFFFF, 0xFFFFFFFF, 0xC90FDAA2, 0x2168C234, 0xC4C6628B, 0x80DC1CD1,
@@ -179,7 +179,7 @@ impl DiffieHellmanGroup for Modp3072 {
 pub struct Modp4096;
 impl DiffieHellmanGroup for Modp4096 {
   const GENERATOR: usize = 2;
-  const EXPONENT_SIZE: usize = 512;
+  const EXPONENT_BITS: usize = 325;
 
   const MODULUS: &'static [u32] = &[
     0xFFFFFFFF, 0xFFFFFFFF, 0xC90FDAA2, 0x2168C234, 0xC4C6628B, 0x80DC1CD1,
@@ -212,7 +212,7 @@ impl DiffieHellmanGroup for Modp4096 {
 pub struct Modp6144;
 impl DiffieHellmanGroup for Modp6144 {
   const GENERATOR: usize = 2;
-  const EXPONENT_SIZE: usize = 768;
+  const EXPONENT_BITS: usize = 375;
 
   const MODULUS: &'static [u32] = &[
     0xFFFFFFFF, 0xFFFFFFFF, 0xC90FDAA2, 0x2168C234, 0xC4C6628B, 0x80DC1CD1,
@@ -255,7 +255,7 @@ impl DiffieHellmanGroup for Modp6144 {
 pub struct Modp8192;
 impl DiffieHellmanGroup for Modp8192 {
   const GENERATOR: usize = 2;
-  const EXPONENT_SIZE: usize = 1024;
+  const EXPONENT_BITS: usize = 400;
 
   const MODULUS: &'static [u32] = &[
     0xFFFFFFFF, 0xFFFFFFFF, 0xC90FDAA2, 0x2168C234, 0xC4C6628B, 0x80DC1CD1,
@@ -308,24 +308,25 @@ impl DiffieHellmanGroup for Modp8192 {
 mod tests {
   use super::*;
 
-  fn assert_group_private_exponent_uses_bits<G>()
+  fn assert_group_private_exponent_uses_bits<G>(expected_bits: usize)
   where
     G: DiffieHellmanGroup,
   {
-    let largest_exponent_bits = (0..8)
-      .map(|_| DiffieHellman::group::<G>().private_key.0.bits())
-      .max()
-      .unwrap();
+    assert_eq!(G::EXPONENT_BITS, expected_bits);
+    let exponent_bits = DiffieHellman::group::<G>().private_key.0.bits();
     assert!(
-      largest_exponent_bits > G::EXPONENT_SIZE / 2,
-      "expected an exponent near {} bits, got at most {largest_exponent_bits} bits",
-      G::EXPONENT_SIZE
+      exponent_bits > expected_bits / 2,
+      "expected an exponent near {expected_bits} bits, got {exponent_bits} bits"
     );
   }
 
   #[test]
   fn predefined_group_private_exponents_use_bits() {
-    assert_group_private_exponent_uses_bits::<Modp1536>();
-    assert_group_private_exponent_uses_bits::<Modp2048>();
+    assert_group_private_exponent_uses_bits::<Modp1536>(200);
+    assert_group_private_exponent_uses_bits::<Modp2048>(225);
+    assert_group_private_exponent_uses_bits::<Modp3072>(275);
+    assert_group_private_exponent_uses_bits::<Modp4096>(325);
+    assert_group_private_exponent_uses_bits::<Modp6144>(375);
+    assert_group_private_exponent_uses_bits::<Modp8192>(400);
   }
 }
