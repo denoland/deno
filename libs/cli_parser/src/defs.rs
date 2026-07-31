@@ -1454,6 +1454,11 @@ pub static COMPILE_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1))
       .value_parser(ValueParser::Choices(SUPPORTED_OS)),
+    ArgDef::new("engine")
+      .long("engine")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(&["v8", "quickjs"])),
     ArgDef::new("no-terminal").long("no-terminal").set_true(),
     ArgDef::new("icon")
       .long("icon")
@@ -2566,6 +2571,11 @@ pub static DESKTOP_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1))
       .value_parser(ValueParser::Choices(&["webview", "cef", "raw"])),
+    ArgDef::new("engine")
+      .long("engine")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(&["v8", "quickjs"])),
     ArgDef::new("all-targets").long("all-targets").set_true(),
     ArgDef::new("compress")
       .long("compress")

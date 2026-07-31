@@ -6929,7 +6929,10 @@ fn compile_parse(
   let args = script.collect();
   let output = matches.remove_one::<String>("output");
   let target = matches.remove_one::<String>("target");
-  let engine = matches.remove_one::<String>("engine");
+  let engine = matches
+    .remove_one::<String>("engine")
+    .map(|value| value.parse().expect("engine is validated by clap"))
+    .unwrap_or_default();
   flags.watch = watch_arg_parse(matches)?;
   let icon = matches.remove_one::<String>("icon");
   let no_terminal = matches.get_flag("no-terminal");
@@ -7001,7 +7004,10 @@ fn desktop_parse(
   let icon = matches.remove_one::<String>("icon");
   let hmr = matches.get_flag("hmr");
   let backend = matches.remove_one::<String>("backend");
-  let engine = matches.remove_one::<String>("engine");
+  let engine = matches
+    .remove_one::<String>("engine")
+    .map(|value| value.parse().expect("engine is validated by clap"))
+    .unwrap_or_default();
   let all_targets = matches.get_flag("all-targets");
   // Self-extracting packaging is opt-in via `--compress [<fmt>]`. Bare
   // `--compress` defaults to xz (decompressed by the system `tar` with no
@@ -14242,13 +14248,34 @@ mod tests {
           app_name: None,
           minify: false,
           exclude_unused_npm: false,
-          engine: None,
+          engine: Default::default(),
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn compile_and_desktop_engine() {
+    let flags = flags_from_vec(svec![
+      "deno", "compile", "--engine", "quickjs", "main.ts"
+    ])
+    .unwrap();
+    let DenoSubcommand::Compile(compile) = flags.subcommand else {
+      panic!("expected compile subcommand");
+    };
+    assert_eq!(compile.engine, JavaScriptEngine::QuickJs);
+
+    let flags = flags_from_vec(svec![
+      "deno", "desktop", "--engine", "quickjs", "main.tsx"
+    ])
+    .unwrap();
+    let DenoSubcommand::Desktop(desktop) = flags.subcommand else {
+      panic!("expected desktop subcommand");
+    };
+    assert_eq!(desktop.engine, JavaScriptEngine::QuickJs);
   }
 
   #[test]
@@ -14324,7 +14351,7 @@ mod tests {
           app_name: None,
           minify: false,
           exclude_unused_npm: false,
-          engine: None,
+          engine: Default::default(),
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -14362,7 +14389,7 @@ mod tests {
           app_name: None,
           minify: false,
           exclude_unused_npm: false,
-          engine: None,
+          engine: Default::default(),
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
@@ -17528,7 +17555,7 @@ Usage: deno lint [OPTIONS] [files]...\n"
           app_name: None,
           minify: false,
           exclude_unused_npm: false,
-          engine: None,
+          engine: Default::default(),
         }),
         type_check_mode: TypeCheckMode::Local,
         preload: svec!["p1.js", "./p2.js"],

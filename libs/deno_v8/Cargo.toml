@@ -13,6 +13,8 @@ description = "JavaScript engine facade for Deno"
 path = "lib.rs"
 
 [features]
+# These passthroughs intentionally mirror rusty_v8's feature surface. Keep
+# additions in sync so moving through the facade never silently disables one.
 default = ["v8"]
 v8 = ["dep:rusty_v8"]
 quickjs = ["dep:v8x_backend", "v8x_backend/quickjs"]
@@ -35,5 +37,5 @@ v8_enable_v8_checks = [
 ]
 
 [dependencies]
-rusty_v8 = { package = "v8", version = "150.2.0", optional = true, default-features = false }
+rusty_v8 = { package = "v8", version = "150.4.0", optional = true, default-features = false }
 v8x_backend = { package = "v8x", version = "=149.4.0-rc.1", optional = true, default-features = false }

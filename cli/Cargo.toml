@@ -25,8 +25,10 @@ harness = false
 
 [features]
 default = ["v8"]
-v8 = ["__runtime_defaults", "v8/v8"]
-quickjs = ["__runtime_defaults", "v8/quickjs"]
+# The dependency named `v8` is the deno_v8 facade, retained under the existing
+# crate name so the engine integration does not require source-level churn.
+v8 = ["__runtime_defaults", "deno_core/v8", "v8/v8"]
+quickjs = ["__runtime_defaults", "deno_core/quickjs", "v8/quickjs"]
 __runtime_defaults = ["upgrade", "__vendored_zlib_ng"]
 # A feature that enables heap profiling with dhat on Linux.
 # 1. Compile with `cargo build --profile=release-with-debug --features=dhat-heap`

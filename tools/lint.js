@@ -460,20 +460,15 @@ async function clippy() {
       new TextDecoder().decode(metadataOutput.stdout),
     );
     const workspaceMembers = new Set(metadata.workspace_members);
-    const excludedFeatures = new Set([
-      "deno/quickjs",
-      "denort/quickjs",
-      "denort_desktop/quickjs",
-      "deno_v8/quickjs",
-      "deno_v8/v8_enable_pointer_compression",
-      "deno_v8/v8_enable_sandbox",
-    ]);
     const workspaceFeatures = metadata.packages
       .filter((pkg) => workspaceMembers.has(pkg.id) && pkg.name !== "deno_core")
       .flatMap((pkg) =>
         Object.keys(pkg.features).map((feature) => `${pkg.name}/${feature}`)
       )
-      .filter((feature) => !excludedFeatures.has(feature))
+      .filter((feature) =>
+        !feature.endsWith("/quickjs") &&
+        !feature.startsWith("deno_v8/v8_enable_")
+      )
       .sort();
 
     const cmd = [

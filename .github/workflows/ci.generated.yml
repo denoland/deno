@@ -833,6 +833,13 @@ jobs:
           strip -x -S ./libdenort.dylib
           zip -r libdenort-x86_64-apple-darwin.zip libdenort.dylib
           shasum -a 256 libdenort-x86_64-apple-darwin.zip > libdenort-x86_64-apple-darwin.zip.sha256sum
+          restore_v8_runtimes() {
+            test ! -e denort.v8 || mv -f denort.v8 denort
+            test ! -e libdenort.v8.dylib || mv -f libdenort.v8.dylib libdenort.dylib
+          }
+          trap restore_v8_runtimes EXIT
+          mv denort denort.v8
+          mv libdenort.dylib libdenort.v8.dylib
           (cd ../.. && cargo build --release --locked -p denort -p denort_desktop --no-default-features --features quickjs)
           strip -x -S ./denort
           zip -r denort-quickjs-x86_64-apple-darwin.zip denort
@@ -840,8 +847,8 @@ jobs:
           strip -x -S ./libdenort.dylib
           zip -r libdenort-quickjs-x86_64-apple-darwin.zip libdenort.dylib
           shasum -a 256 libdenort-quickjs-x86_64-apple-darwin.zip > libdenort-quickjs-x86_64-apple-darwin.zip.sha256sum
-          unzip -o denort-x86_64-apple-darwin.zip
-          unzip -o libdenort-x86_64-apple-darwin.zip
+          restore_v8_runtimes
+          trap - EXIT
       - name: Build bsdiff helper
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: cargo build --release -p bsdiff_helper
@@ -1305,6 +1312,10 @@ jobs:
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
         run: cargo build --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
+      - name: Check QuickJS backend (deno + denort)
+        env:
+          CARGO_PROFILE_DEV_DEBUG: 0
+        run: cargo check --locked -p deno -p denort --no-default-features --features quickjs
       - name: Check deno binary
         env:
           NO_COLOR: 1
@@ -1957,6 +1968,13 @@ jobs:
           strip -x -S ./libdenort.dylib
           zip -r libdenort-aarch64-apple-darwin.zip libdenort.dylib
           shasum -a 256 libdenort-aarch64-apple-darwin.zip > libdenort-aarch64-apple-darwin.zip.sha256sum
+          restore_v8_runtimes() {
+            test ! -e denort.v8 || mv -f denort.v8 denort
+            test ! -e libdenort.v8.dylib || mv -f libdenort.v8.dylib libdenort.dylib
+          }
+          trap restore_v8_runtimes EXIT
+          mv denort denort.v8
+          mv libdenort.dylib libdenort.v8.dylib
           (cd ../.. && cargo build --release --locked -p denort -p denort_desktop --no-default-features --features quickjs)
           strip -x -S ./denort
           zip -r denort-quickjs-aarch64-apple-darwin.zip denort
@@ -1964,8 +1982,8 @@ jobs:
           strip -x -S ./libdenort.dylib
           zip -r libdenort-quickjs-aarch64-apple-darwin.zip libdenort.dylib
           shasum -a 256 libdenort-quickjs-aarch64-apple-darwin.zip > libdenort-quickjs-aarch64-apple-darwin.zip.sha256sum
-          unzip -o denort-aarch64-apple-darwin.zip
-          unzip -o libdenort-aarch64-apple-darwin.zip
+          restore_v8_runtimes
+          trap - EXIT
       - name: Build bsdiff helper
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: cargo build --release -p bsdiff_helper
@@ -2997,13 +3015,19 @@ jobs:
           Get-FileHash target/release/denort-x86_64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-x86_64-pc-windows-msvc.zip.sha256sum
           Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.dll -DestinationPath target/release/libdenort-x86_64-pc-windows-msvc.zip
           Get-FileHash target/release/libdenort-x86_64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/libdenort-x86_64-pc-windows-msvc.zip.sha256sum
-          cargo build --release --locked -p denort -p denort_desktop --no-default-features --features quickjs
-          Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-quickjs-x86_64-pc-windows-msvc.zip
-          Get-FileHash target/release/denort-quickjs-x86_64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-quickjs-x86_64-pc-windows-msvc.zip.sha256sum
-          Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.dll -DestinationPath target/release/libdenort-quickjs-x86_64-pc-windows-msvc.zip
-          Get-FileHash target/release/libdenort-quickjs-x86_64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/libdenort-quickjs-x86_64-pc-windows-msvc.zip.sha256sum
-          Expand-Archive -Force -Path target/release/denort-x86_64-pc-windows-msvc.zip -DestinationPath target/release
-          Expand-Archive -Force -Path target/release/libdenort-x86_64-pc-windows-msvc.zip -DestinationPath target/release
+          try {
+            Move-Item target/release/denort.exe target/release/denort.v8.exe
+            Move-Item target/release/denort.dll target/release/denort.v8.dll
+            cargo build --release --locked -p denort -p denort_desktop --no-default-features --features quickjs
+            if ($LASTEXITCODE -ne 0) { throw "QuickJS runtime build failed" }
+            Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-quickjs-x86_64-pc-windows-msvc.zip
+            Get-FileHash target/release/denort-quickjs-x86_64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-quickjs-x86_64-pc-windows-msvc.zip.sha256sum
+            Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.dll -DestinationPath target/release/libdenort-quickjs-x86_64-pc-windows-msvc.zip
+            Get-FileHash target/release/libdenort-quickjs-x86_64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/libdenort-quickjs-x86_64-pc-windows-msvc.zip.sha256sum
+          } finally {
+            if (Test-Path target/release/denort.v8.exe) { Move-Item -Force target/release/denort.v8.exe target/release/denort.exe }
+            if (Test-Path target/release/denort.v8.dll) { Move-Item -Force target/release/denort.v8.dll target/release/denort.dll }
+          }
           target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-x86_64-pc-windows-msvc.symcache
       - name: Build bsdiff helper
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
@@ -3897,13 +3921,19 @@ jobs:
           Get-FileHash target/release/denort-aarch64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-aarch64-pc-windows-msvc.zip.sha256sum
           Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.dll -DestinationPath target/release/libdenort-aarch64-pc-windows-msvc.zip
           Get-FileHash target/release/libdenort-aarch64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/libdenort-aarch64-pc-windows-msvc.zip.sha256sum
-          cargo build --release --locked -p denort -p denort_desktop --no-default-features --features quickjs
-          Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-quickjs-aarch64-pc-windows-msvc.zip
-          Get-FileHash target/release/denort-quickjs-aarch64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-quickjs-aarch64-pc-windows-msvc.zip.sha256sum
-          Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.dll -DestinationPath target/release/libdenort-quickjs-aarch64-pc-windows-msvc.zip
-          Get-FileHash target/release/libdenort-quickjs-aarch64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/libdenort-quickjs-aarch64-pc-windows-msvc.zip.sha256sum
-          Expand-Archive -Force -Path target/release/denort-aarch64-pc-windows-msvc.zip -DestinationPath target/release
-          Expand-Archive -Force -Path target/release/libdenort-aarch64-pc-windows-msvc.zip -DestinationPath target/release
+          try {
+            Move-Item target/release/denort.exe target/release/denort.v8.exe
+            Move-Item target/release/denort.dll target/release/denort.v8.dll
+            cargo build --release --locked -p denort -p denort_desktop --no-default-features --features quickjs
+            if ($LASTEXITCODE -ne 0) { throw "QuickJS runtime build failed" }
+            Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-quickjs-aarch64-pc-windows-msvc.zip
+            Get-FileHash target/release/denort-quickjs-aarch64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-quickjs-aarch64-pc-windows-msvc.zip.sha256sum
+            Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.dll -DestinationPath target/release/libdenort-quickjs-aarch64-pc-windows-msvc.zip
+            Get-FileHash target/release/libdenort-quickjs-aarch64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/libdenort-quickjs-aarch64-pc-windows-msvc.zip.sha256sum
+          } finally {
+            if (Test-Path target/release/denort.v8.exe) { Move-Item -Force target/release/denort.v8.exe target/release/denort.exe }
+            if (Test-Path target/release/denort.v8.dll) { Move-Item -Force target/release/denort.v8.dll target/release/denort.dll }
+          }
           target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-aarch64-pc-windows-msvc.symcache
       - name: Build bsdiff helper
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
@@ -4534,6 +4564,13 @@ jobs:
           strip ./libdenort.so
           zip -r libdenort-x86_64-unknown-linux-gnu.zip libdenort.so
           shasum -a 256 libdenort-x86_64-unknown-linux-gnu.zip > libdenort-x86_64-unknown-linux-gnu.zip.sha256sum
+          restore_v8_runtimes() {
+            test ! -e denort.v8 || mv -f denort.v8 denort
+            test ! -e libdenort.v8.so || mv -f libdenort.v8.so libdenort.so
+          }
+          trap restore_v8_runtimes EXIT
+          mv denort denort.v8
+          mv libdenort.so libdenort.v8.so
           (cd ../.. && cargo build --release --locked -p denort -p denort_desktop --no-default-features --features quickjs)
           strip --strip-debug ./denort
           zip -r denort-quickjs-x86_64-unknown-linux-gnu.zip denort
@@ -4541,8 +4578,8 @@ jobs:
           strip ./libdenort.so
           zip -r libdenort-quickjs-x86_64-unknown-linux-gnu.zip libdenort.so
           shasum -a 256 libdenort-quickjs-x86_64-unknown-linux-gnu.zip > libdenort-quickjs-x86_64-unknown-linux-gnu.zip.sha256sum
-          unzip -o denort-x86_64-unknown-linux-gnu.zip
-          unzip -o libdenort-x86_64-unknown-linux-gnu.zip
+          restore_v8_runtimes
+          trap - EXIT
           ./deno types > lib.deno.d.ts
       - name: Build bsdiff helper
         if: 'github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
@@ -6641,6 +6678,13 @@ jobs:
           strip ./libdenort.so
           zip -r libdenort-aarch64-unknown-linux-gnu.zip libdenort.so
           shasum -a 256 libdenort-aarch64-unknown-linux-gnu.zip > libdenort-aarch64-unknown-linux-gnu.zip.sha256sum
+          restore_v8_runtimes() {
+            test ! -e denort.v8 || mv -f denort.v8 denort
+            test ! -e libdenort.v8.so || mv -f libdenort.v8.so libdenort.so
+          }
+          trap restore_v8_runtimes EXIT
+          mv denort denort.v8
+          mv libdenort.so libdenort.v8.so
           (cd ../.. && cargo build --release --locked -p denort -p denort_desktop --no-default-features --features quickjs)
           strip --strip-debug ./denort
           zip -r denort-quickjs-aarch64-unknown-linux-gnu.zip denort
@@ -6648,8 +6692,8 @@ jobs:
           strip ./libdenort.so
           zip -r libdenort-quickjs-aarch64-unknown-linux-gnu.zip libdenort.so
           shasum -a 256 libdenort-quickjs-aarch64-unknown-linux-gnu.zip > libdenort-quickjs-aarch64-unknown-linux-gnu.zip.sha256sum
-          unzip -o denort-aarch64-unknown-linux-gnu.zip
-          unzip -o libdenort-aarch64-unknown-linux-gnu.zip
+          restore_v8_runtimes
+          trap - EXIT
           ./deno types > lib.deno.d.ts
       - name: Build bsdiff helper
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'

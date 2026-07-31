@@ -5047,13 +5047,32 @@ fn compile() {
         app_name: None,
         minify: false,
         exclude_unused_npm: false,
-        engine: None,
+        engine: Default::default(),
       }),
       type_check_mode: TypeCheckMode::Local,
       code_cache_enabled: true,
       ..Flags::default()
     }
   );
+}
+
+#[test]
+fn compile_and_desktop_engine() {
+  let flags =
+    flags_from_vec(svec!["deno", "compile", "--engine", "quickjs", "main.ts"])
+      .unwrap();
+  let DenoSubcommand::Compile(compile) = flags.subcommand else {
+    panic!("expected compile subcommand");
+  };
+  assert_eq!(compile.engine, JavaScriptEngine::QuickJs);
+
+  let flags =
+    flags_from_vec(svec!["deno", "desktop", "--engine", "quickjs", "main.tsx"])
+      .unwrap();
+  let DenoSubcommand::Desktop(desktop) = flags.subcommand else {
+    panic!("expected desktop subcommand");
+  };
+  assert_eq!(desktop.engine, JavaScriptEngine::QuickJs);
 }
 
 #[test]
@@ -5160,7 +5179,7 @@ fn compile_watch_with_no_clear_screen() {
         app_name: None,
         minify: false,
         exclude_unused_npm: false,
-        engine: None,
+        engine: Default::default(),
       }),
       type_check_mode: TypeCheckMode::Local,
       code_cache_enabled: true,
@@ -5197,7 +5216,7 @@ fn compile_with_flags() {
         app_name: None,
         minify: false,
         exclude_unused_npm: false,
-        engine: None,
+        engine: Default::default(),
       }),
       import_map_path: Some("import_map.json".to_string()),
       no_remote: true,
@@ -8095,7 +8114,7 @@ fn preload_flag_test() {
         app_name: None,
         minify: false,
         exclude_unused_npm: false,
-        engine: None,
+        engine: Default::default(),
       }),
       type_check_mode: TypeCheckMode::Local,
       preload: svec!["p1.js", "./p2.js"],

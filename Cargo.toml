@@ -148,7 +148,10 @@ deno_bench_util = { version = "0.249.0", path = "./tests/bench_util" }
 deno_cache_dir = { version = "0.47.0", path = "./libs/cache_dir" }
 deno_cli_parser = { version = "0.5.0", path = "./libs/cli_parser" }
 deno_config = { version = "0.105.0", features = ["workspace"], path = "./libs/config" }
-deno_core = { version = "0.408.0", path = "./libs/core" }
+# Workspace binaries select the JavaScript engine at their top level. Keep the
+# reactor enabled here without pulling deno_core's public V8 default into a
+# QuickJS feature graph.
+deno_core = { version = "0.408.0", path = "./libs/core", default-features = false, features = ["reactor-tokio"] }
 deno_core_testing = { path = "./libs/core_testing" }
 deno_crypto_provider = { version = "0.49.0", path = "./libs/crypto" }
 deno_dotenv = { version = "0.24.0", path = "./libs/dotenv" }
@@ -174,7 +177,7 @@ eszip = { version = "0.133.0", path = "./libs/eszip" }
 napi_sym = { version = "0.185.0", path = "./ext/napi/sym" }
 node_resolver = { version = "0.93.0", path = "./libs/node_resolver" }
 node_shim = { version = "0.30.0", path = "libs/node_shim" }
-serde_v8 = { version = "0.317.0", path = "./libs/serde_v8" }
+serde_v8 = { version = "0.317.0", path = "./libs/serde_v8", default-features = false }
 test_macro = { path = "./tests/util/test_macro" }
 test_util = { path = "./tests/util/lib" }
 

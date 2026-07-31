@@ -43,9 +43,7 @@ MACOSX_DEPLOYMENT_TARGET = "12.0"
 [target.x86_64-apple-darwin]
 rustflags = [
   "-C",
-  # -L SDK usr/lib: the v8x QuickJS backend's build script links bindgen->libc
-  # (-liconv); see the aarch64 block below.
-  "link-args=-L /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib -Wl,-fixup_chains -weak_framework Metal -weak_framework MetalPerformanceShaders -weak_framework QuartzCore -weak_framework CoreGraphics",
+  "link-args=-Wl,-fixup_chains -weak_framework Metal -weak_framework MetalPerformanceShaders -weak_framework QuartzCore -weak_framework CoreGraphics",
 ]
 
 [target.aarch64-apple-darwin]
@@ -53,11 +51,7 @@ rustflags = [
   "-C",
   # --icf=safe folds identical (address-insignificant) functions; ~6MB (~10%) idle RSS win, measured on release.
   # -fixup_chains: see [env] note above (chained fixups -> faster pre-main launch).
-  # -L SDK usr/lib: the v8x QuickJS backend's build script links bindgen->libc
-  # (-liconv); with -fuse-ld=lld and no default lib search, iconv's SDK stub
-  # isn't found unless the SDK lib dir is on the path. v8x's own .cargo/config
-  # is not honored when it is consumed as a dependency, so add it here.
-  "link-args=-fuse-ld=lld -L /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib -Wl,--icf=safe -Wl,-fixup_chains -weak_framework Metal -weak_framework MetalPerformanceShaders -weak_framework QuartzCore -weak_framework CoreGraphics",
+  "link-args=-fuse-ld=lld -Wl,--icf=safe -Wl,-fixup_chains -weak_framework Metal -weak_framework MetalPerformanceShaders -weak_framework QuartzCore -weak_framework CoreGraphics",
 ]
 
 [target.'cfg(all())']
