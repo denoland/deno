@@ -42,6 +42,14 @@ __vendored_zlib_ng = ["flate2/zlib-ng-compat", "libz-sys/zlib-ng"]
 lsp-tracing = ["dep:tracing", "dep:tracing-subscriber", "dep:tracing-opentelemetry", "opentelemetry-otlp/grpc-tonic"]
 # Custom panic trace with `deno_panic`
 panic-trace = ["deno_panic"]
+# PROTOTYPE — wayfinder P3. Throwaway. Both halves are required: the snapshot
+# build has its own `deno_runtime` (a build-dependency of `deno_snapshots`),
+# and the interceptor has to be present in *both* to be baked in and used.
+permcap_mask = ["deno_runtime/permcap_mask", "deno_snapshots/permcap_mask"]
+permcap_nonmask = [
+  "deno_runtime/permcap_nonmask",
+  "deno_snapshots/permcap_nonmask",
+]
 
 [build-dependencies]
 deno_runtime = { workspace = true }

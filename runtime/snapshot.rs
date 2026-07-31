@@ -98,6 +98,13 @@ pub fn create_runtime_snapshot(
     ops::desktop::deno_desktop::lazy_init(),
     ops::bootstrap::deno_bootstrap::init(Some(snapshot_options), false),
     runtime::lazy_init(),
+    // PROTOTYPE — wayfinder P3. Throwaway. This has to be in the *snapshot*
+    // extension list, not just worker.rs: `create_context` only consults
+    // `global_template_middleware` on the no-snapshot path, so the only way a
+    // named property handler reaches a snapshotted context is by being
+    // installed when the snapshot is built. This is exactly how
+    // `ext/node/global.rs` shipped it before denoland/deno#33249.
+    crate::permcap_proto::deno_permcap_proto::init(),
     ops::web_worker::deno_web_worker::lazy_init(),
   ];
   extensions.extend(custom_extensions);

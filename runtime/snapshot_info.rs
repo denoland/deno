@@ -67,6 +67,8 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
     ops::desktop::deno_desktop::init(),
     ops::bootstrap::deno_bootstrap::init(None, false),
     runtime::init(),
+    // PROTOTYPE — wayfinder P3, throwaway.
+    crate::permcap_proto::deno_permcap_proto::init(),
     ops::web_worker::deno_web_worker::init(),
   ]
 }

@@ -20,6 +20,12 @@ exclude_runtime_main_js = []
 hmr = ["transpile"]
 snapshot = ["transpile"]
 transpile = ["deno_ast"]
+# PROTOTYPE — wayfinder P3. Throwaway; delete with runtime/permcap_proto.rs.
+# The interceptor variants have to be build-time features because a named
+# property handler installed via `global_template_middleware` is baked into
+# the startup snapshot and cannot be gated at runtime.
+permcap_mask = []
+permcap_nonmask = []
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }

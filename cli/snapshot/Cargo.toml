@@ -15,6 +15,11 @@ path = "lib.rs"
 
 [features]
 disable = []
+# PROTOTYPE — wayfinder P3. Throwaway. `deno_runtime` is a *build*-dependency
+# here, so its features do not unify with the CLI's normal dependency on it;
+# the interceptor has to be switched on for the snapshot build separately.
+permcap_mask = ["deno_runtime/permcap_mask"]
+permcap_nonmask = ["deno_runtime/permcap_nonmask"]
 
 [build-dependencies]
 deno_runtime = { workspace = true, features = ["snapshot"] }

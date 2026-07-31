@@ -17,6 +17,9 @@ import {
   op_internal_log,
   op_main_module,
   op_node_has_child_ipc_pipe,
+  // PROTOTYPE — wayfinder P3, throwaway.
+  op_permcap_install,
+  op_permcap_probe,
   op_ppid,
   op_proto_get_attempted,
   op_proto_set_attempted,
@@ -1125,6 +1128,12 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       // the first node:* use), so non-node programs never pay node bootstrap.
       internals.__nodeBootstrapArgs = nodeBootstrapArgs;
     }
+
+    // PROTOTYPE — wayfinder P3, throwaway. Has to run *after* bootstrap: the
+    // authority-bearing globals this moves into a side bag are defined by the
+    // code above, so at context-creation time there is nothing to move.
+    internals.opPermcapProbe = op_permcap_probe;
+    op_permcap_install();
   } else {
     // Warmup
   }
