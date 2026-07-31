@@ -1255,6 +1255,8 @@ fn common_extensions<
       unconfigured_runtime,
     ),
     runtime::init(),
+    // PROTOTYPE — wayfinder P1, throwaway.
+    crate::permcap_proto::deno_permcap_proto::init(),
     // NOTE(bartlomieju): this is done, just so that ops from this extension
     // are available and importing them in `99_main.js` doesn't cause an
     // error because they're not defined. Trying to use these ops in non-worker

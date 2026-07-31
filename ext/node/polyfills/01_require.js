@@ -2131,6 +2131,17 @@ function enrichCJSError(error) {
   }
 }
 
+// PROTOTYPE - wayfinder P1, throwaway. Mirrors `permcap_proto_package_id` in
+// cli/module_loader.rs so CJS modules carry the same stamp ESM ones do.
+function permcapProtoPackageId(filename) {
+  const idx = filename.lastIndexOf("/node_modules/");
+  if (idx === -1) return undefined;
+  const rest = filename.slice(idx + "/node_modules/".length);
+  const parts = rest.split("/");
+  const name = parts[0][0] === "@" ? `${parts[0]}/${parts[1]}` : parts[0];
+  return `npm:${name}`;
+}
+
 function wrapSafe(
   filename,
   content,
@@ -2139,18 +2150,25 @@ function wrapSafe(
 ) {
   let f;
   let err;
+  // PROTOTYPE - wayfinder P1. Index 2 is the package stamp; index 1 is left
+  // undefined because `node:vm` owns it.
+  const hostDefined = [
+    format !== "module",
+    undefined,
+    permcapProtoPackageId(filename),
+  ];
 
   if (patched) {
     [f, err] = core.evalContext(
       Module.wrap(content),
       url.pathToFileURL(filename).toString(),
-      [format !== "module"],
+      hostDefined,
     );
   } else {
     [f, err] = core.compileFunction(
       content,
       url.pathToFileURL(filename).toString(),
-      [format !== "module"],
+      hostDefined,
       [
         "exports",
         "require",

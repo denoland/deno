@@ -1,0 +1,10 @@
+{
+  "name": "permcap-p1-app",
+  "private": true,
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^4.19.2",
+    "chalk": "^4.1.2",
+    "lodash": "^4.17.21"
+  }
+}

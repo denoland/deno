@@ -37,6 +37,8 @@ pub use cpu_profiler::cpu_prof_filename;
 pub mod fmt_errors;
 pub mod js;
 pub mod ops;
+// PROTOTYPE — wayfinder P1, throwaway. See runtime/permcap_proto.rs.
+pub mod permcap_proto;
 pub mod permissions;
 #[cfg(feature = "snapshot")]
 pub mod snapshot;

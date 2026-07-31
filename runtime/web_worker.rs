@@ -623,6 +623,8 @@ impl WebWorker {
         false,
       ),
       runtime::init(),
+      // PROTOTYPE — wayfinder P1, throwaway.
+      crate::permcap_proto::deno_permcap_proto::init(),
       ops::web_worker::deno_web_worker::init(),
     ];
 

@@ -1,0 +1,6 @@
+{
+  "nodeModulesDir": "manual",
+  "imports": {
+    "probe-esm": "./node_modules/probe-esm/index.mjs"
+  }
+}

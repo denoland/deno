@@ -70,7 +70,6 @@ use deno_resolver::loader::StrippingTypesNodeModulesError;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::code_cache;
 use deno_runtime::deno_node::NodeRequireLoader;
-use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::ops::require::UnableToGetCwdError;
 use deno_runtime::deno_permissions::CheckSpecifierKind;
 use deno_runtime::deno_permissions::PermissionsContainer;
@@ -1362,10 +1361,31 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     name: &str,
   ) -> Option<deno_core::v8::Local<'s, deno_core::v8::Data>> {
     let name = deno_core::ModuleSpecifier::parse(name).ok()?;
-    if self.0.shared.in_npm_pkg_checker.in_npm_package(&name) {
-      Some(create_host_defined_options(scope))
-    } else {
-      None
+    let is_npm = self.0.shared.in_npm_pkg_checker.in_npm_package(&name);
+    // PROTOTYPE — wayfinder P1, throwaway. Stamp the package id alongside the
+    // existing npm marker so a global-accessor interceptor can attribute reads.
+    let pkg_id = permcap_proto_package_id(name.as_str());
+    match (is_npm, pkg_id) {
+      (false, None) => None,
+      (is_npm, pkg_id) => {
+        let arr = deno_core::v8::PrimitiveArray::new(
+          scope,
+          deno_runtime::permcap_proto::PERMCAP_PKG_INDEX + 1,
+        );
+        if is_npm {
+          let v = deno_core::v8::Boolean::new(scope, true);
+          arr.set(scope, 0, v.into());
+        }
+        if let Some(pkg_id) = pkg_id {
+          let v = deno_core::v8::String::new(scope, &pkg_id).unwrap();
+          arr.set(
+            scope,
+            deno_runtime::permcap_proto::PERMCAP_PKG_INDEX,
+            v.into(),
+          );
+        }
+        Some(arr.into())
+      }
     }
   }
 
@@ -2311,4 +2331,29 @@ mod tests {
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     assert_eq!(parsed_source_cache.len(), 0);
   }
+}
+
+// PROTOTYPE — wayfinder P1, throwaway. Derive a package id from a specifier by
+// path heuristic. D1 settled that real identity must be resolver-derived from
+// the module graph, not scraped from paths; this stands in for that map so the
+// experiments can exercise the *attribution* path, which is what P1 falsifies.
+pub fn permcap_proto_package_id(specifier: &str) -> Option<String> {
+  if let Some(idx) = specifier.rfind("/node_modules/") {
+    let rest = &specifier[idx + "/node_modules/".len()..];
+    let mut parts = rest.split('/');
+    let first = parts.next()?;
+    let name = if first.starts_with('@') {
+      format!("{}/{}", first, parts.next()?)
+    } else {
+      first.to_string()
+    };
+    return Some(format!("npm:{name}"));
+  }
+  if let Some(rest) = specifier.strip_prefix("https://jsr.io/") {
+    let mut parts = rest.split('/');
+    let scope = parts.next()?;
+    let name = parts.next()?;
+    return Some(format!("jsr:{scope}/{name}"));
+  }
+  None
 }
