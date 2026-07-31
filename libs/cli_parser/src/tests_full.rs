@@ -6716,6 +6716,7 @@ fn add_or_install_subcommand() {
           lockfile_only: false,
           save_exact: false,
           package_json: false,
+          unscoped: false,
         })
       );
     }
@@ -6737,6 +6738,7 @@ fn add_or_install_subcommand() {
         lockfile_only: true,
         save_exact: false,
         package_json: false,
+        unscoped: false,
       });
       expected_flags.frozen_lockfile = Some(true);
       assert_eq!(r.unwrap(), expected_flags);
@@ -6754,6 +6756,7 @@ fn add_or_install_subcommand() {
           lockfile_only: false,
           save_exact: false,
           package_json: false,
+          unscoped: false,
         }),
       );
     }
@@ -6770,6 +6773,7 @@ fn add_or_install_subcommand() {
           lockfile_only: false,
           save_exact: false,
           package_json: false,
+          unscoped: false,
         }),
       );
     }
@@ -6786,6 +6790,7 @@ fn add_or_install_subcommand() {
           lockfile_only: false,
           save_exact: false,
           package_json: false,
+          unscoped: false,
         }),
       );
     }
@@ -6802,6 +6807,7 @@ fn add_or_install_subcommand() {
           lockfile_only: false,
           save_exact: false,
           package_json: false,
+          unscoped: false,
         }),
       );
     }
@@ -6818,6 +6824,25 @@ fn add_or_install_subcommand() {
           lockfile_only: false,
           save_exact: false,
           package_json: false,
+          unscoped: false,
+        }),
+      );
+    }
+    {
+      let r =
+        flags_from_vec(svec!["deno", cmd, "--unscoped", "jsr:@david/which"]);
+      assert_eq!(
+        r.unwrap(),
+        mk_flags(AddFlags {
+          packages: svec!["jsr:@david/which"],
+          dev: false,
+          optional: false,
+          no_save: false,
+          default_registry: Some(DefaultRegistry::Npm),
+          lockfile_only: false,
+          save_exact: false,
+          package_json: false,
+          unscoped: true,
         }),
       );
     }
@@ -6868,6 +6893,7 @@ fn add_or_install_subcommand() {
           lockfile_only: false,
           save_exact: false,
           package_json: false,
+          unscoped: false,
         }),
         permissions: PermissionFlags {
           allow_import: Some(svec!["example.com"]),
@@ -7466,7 +7492,7 @@ fn net_flag_with_url() {
   ]);
   assert_eq!(
     r.unwrap_err().to_string(),
-    "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+    "error: invalid value 'https://example.com': URLs are not supported, only domains and IPs"
   );
 }
 
@@ -7543,7 +7569,7 @@ fn allow_import_with_url() {
   ]);
   assert_eq!(
     r.unwrap_err().to_string(),
-    "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+    "error: invalid value 'https://example.com': URLs are not supported, only domains and IPs"
   );
 }
 
@@ -7557,7 +7583,7 @@ fn deny_import_with_url() {
   ]);
   assert_eq!(
     r.unwrap_err().to_string(),
-    "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+    "error: invalid value 'https://example.com': URLs are not supported, only domains and IPs"
   );
 }
 

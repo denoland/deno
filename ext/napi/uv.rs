@@ -1231,6 +1231,61 @@ unsafe extern "C" fn uv_handle_get_type(handle: *const uv_handle_t) -> c_int {
   unsafe { (*handle).r#type as c_int }
 }
 
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_handle_size(handle_type: c_int) -> usize {
+  match handle_type {
+    x if x == uv_handle_type::UV_ASYNC as c_int => {
+      size_of::<libuv_sys_lite::uv_async_t>()
+    }
+    x if x == uv_handle_type::UV_CHECK as c_int => {
+      size_of::<libuv_sys_lite::uv_check_t>()
+    }
+    x if x == uv_handle_type::UV_FS_EVENT as c_int => {
+      size_of::<libuv_sys_lite::uv_fs_event_t>()
+    }
+    x if x == uv_handle_type::UV_FS_POLL as c_int => {
+      size_of::<libuv_sys_lite::uv_fs_poll_t>()
+    }
+    x if x == uv_handle_type::UV_HANDLE as c_int => {
+      size_of::<libuv_sys_lite::uv_handle_t>()
+    }
+    x if x == uv_handle_type::UV_IDLE as c_int => {
+      size_of::<libuv_sys_lite::uv_idle_t>()
+    }
+    x if x == uv_handle_type::UV_NAMED_PIPE as c_int => {
+      size_of::<libuv_sys_lite::uv_pipe_t>()
+    }
+    x if x == uv_handle_type::UV_POLL as c_int => {
+      size_of::<libuv_sys_lite::uv_poll_t>()
+    }
+    x if x == uv_handle_type::UV_PREPARE as c_int => {
+      size_of::<libuv_sys_lite::uv_prepare_t>()
+    }
+    x if x == uv_handle_type::UV_PROCESS as c_int => {
+      size_of::<libuv_sys_lite::uv_process_t>()
+    }
+    x if x == uv_handle_type::UV_STREAM as c_int => {
+      size_of::<libuv_sys_lite::uv_stream_t>()
+    }
+    x if x == uv_handle_type::UV_TCP as c_int => {
+      size_of::<libuv_sys_lite::uv_tcp_t>()
+    }
+    x if x == uv_handle_type::UV_TIMER as c_int => {
+      size_of::<libuv_sys_lite::uv_timer_t>()
+    }
+    x if x == uv_handle_type::UV_TTY as c_int => {
+      size_of::<libuv_sys_lite::uv_tty_t>()
+    }
+    x if x == uv_handle_type::UV_UDP as c_int => {
+      size_of::<libuv_sys_lite::uv_udp_t>()
+    }
+    x if x == uv_handle_type::UV_SIGNAL as c_int => {
+      size_of::<libuv_sys_lite::uv_signal_t>()
+    }
+    _ => usize::MAX,
+  }
+}
+
 // uv_cpu_info: report no available CPU info. Callers (e.g. Sentry's
 // profiler) treat this as a non-fatal degradation.
 #[unsafe(no_mangle)]
@@ -1289,6 +1344,14 @@ unsafe extern "C" fn uv_queue_work(
     });
   }
   0
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_strerror(err: c_int) -> *const std::ffi::c_char {
+  if let Some(message) = uv_compat::uv_error_message(err) {
+    return message.as_ptr();
+  }
+  c"Unknown system error".as_ptr()
 }
 
 // ---------- uv thread / semaphore polyfills ----------

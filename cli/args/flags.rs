@@ -1029,6 +1029,8 @@ static DENO_HELP: &str = cstr!(
 <y>Standard Library:</> https://jsr.io/@std
 <y>Bugs:</> https://github.com/denoland/deno/issues
 <y>Discord:</> https://discord.gg/deno
+
+<p(245)>If you are an AI agent, read</> <c>https://deno.com/agents.md</> <p(245)>to get started.</>
 ");
 
 pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
@@ -1679,6 +1681,13 @@ fn add_no_save_arg() -> Arg {
     .conflicts_with("save-optional")
 }
 
+fn add_unscoped_arg() -> Arg {
+  Arg::new("unscoped")
+    .long("unscoped")
+    .help("Use the package name without its scope as the alias (ex. `jsr:@david/jsonc-morph` is added as `jsonc-morph`). Packages given an explicit alias are unaffected.")
+    .action(ArgAction::SetTrue)
+}
+
 fn add_subcommand() -> Command {
   command(
     "add",
@@ -1719,6 +1728,7 @@ Or multiple dependencies at once:
           .help("Save exact version without the caret (^)")
           .action(ArgAction::SetTrue),
       )
+      .arg(add_unscoped_arg())
       .arg(package_json_arg())
       .arg(env_file_arg())
       .arg(min_dep_age_arg())
@@ -3396,6 +3406,7 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
             .conflicts_with("entrypoint")
             .conflicts_with("global"),
         )
+        .arg(add_unscoped_arg().conflicts_with("entrypoint").conflicts_with("global"))
         .arg(lockfile_only_arg().conflicts_with("global"))
         .arg(package_json_arg().conflicts_with("entrypoint").conflicts_with("global"))
         .arg(
@@ -6609,6 +6620,7 @@ fn add_parse_inner(
     lockfile_only: matches.get_flag("lockfile-only"),
     save_exact: matches.get_flag("save-exact"),
     package_json: matches.get_flag("package-json"),
+    unscoped: matches.get_flag("unscoped"),
   }
 }
 
@@ -15993,6 +16005,7 @@ mod tests {
             lockfile_only: false,
             save_exact: false,
             package_json: false,
+            unscoped: false,
           })
         );
       }
@@ -16014,6 +16027,7 @@ mod tests {
           lockfile_only: true,
           save_exact: false,
           package_json: false,
+          unscoped: false,
         });
         expected_flags.frozen_lockfile = Some(true);
         assert_eq!(r.unwrap(), expected_flags);
@@ -16031,6 +16045,7 @@ mod tests {
             lockfile_only: false,
             save_exact: false,
             package_json: false,
+            unscoped: false,
           }),
         );
       }
@@ -16047,6 +16062,7 @@ mod tests {
             lockfile_only: false,
             save_exact: false,
             package_json: false,
+            unscoped: false,
           }),
         );
       }
@@ -16063,6 +16079,7 @@ mod tests {
             lockfile_only: false,
             save_exact: false,
             package_json: false,
+            unscoped: false,
           }),
         );
       }
@@ -16079,6 +16096,7 @@ mod tests {
             lockfile_only: false,
             save_exact: false,
             package_json: false,
+            unscoped: false,
           }),
         );
       }
@@ -16095,6 +16113,25 @@ mod tests {
             lockfile_only: false,
             save_exact: false,
             package_json: false,
+            unscoped: false,
+          }),
+        );
+      }
+      {
+        let r =
+          flags_from_vec(svec!["deno", cmd, "--unscoped", "jsr:@david/which"]);
+        assert_eq!(
+          r.unwrap(),
+          mk_flags(AddFlags {
+            packages: svec!["jsr:@david/which"],
+            dev: false,
+            optional: false,
+            no_save: false,
+            default_registry: Some(DefaultRegistry::Npm),
+            lockfile_only: false,
+            save_exact: false,
+            package_json: false,
+            unscoped: true,
           }),
         );
       }
@@ -16145,6 +16182,7 @@ mod tests {
             lockfile_only: false,
             save_exact: false,
             package_json: false,
+            unscoped: false,
           }),
           permissions: PermissionFlags {
             allow_import: Some(svec!["example.com"]),
@@ -16860,7 +16898,7 @@ mod tests {
     ]);
     assert_eq!(
       r.unwrap_err().to_string(),
-      "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+      "error: invalid value 'https://example.com': URLs are not supported, only domains and IPs"
     );
   }
 
@@ -16938,7 +16976,7 @@ Usage: deno lint [OPTIONS] [files]...\n"
     ]);
     assert_eq!(
       r.unwrap_err().to_string(),
-      "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+      "error: invalid value 'https://example.com': URLs are not supported, only domains and IPs"
     );
   }
 
@@ -16952,7 +16990,7 @@ Usage: deno lint [OPTIONS] [files]...\n"
     ]);
     assert_eq!(
       r.unwrap_err().to_string(),
-      "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+      "error: invalid value 'https://example.com': URLs are not supported, only domains and IPs"
     );
   }
 

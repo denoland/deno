@@ -1209,7 +1209,7 @@ fn validate_permission_args(
           return Err(CliError::new(
             CliErrorKind::InvalidValue,
             format!(
-              "invalid value '{val}': URLs are not supported, only domains and ips"
+              "invalid value '{val}': URLs are not supported, only domains and IPs"
             ),
           ));
         }
@@ -2246,6 +2246,7 @@ fn install_parse(
           lockfile_only,
           save_exact: result.get_bool("save-exact"),
           package_json: result.get_bool("package-json"),
+          unscoped: result.get_bool("unscoped"),
         }),
         npm_target,
       ));
@@ -2510,6 +2511,7 @@ fn add_parse(result: &ParseResult, flags: &mut Flags) {
     lockfile_only: result.get_bool("lockfile-only"),
     save_exact: result.get_bool("save-exact"),
     package_json: result.get_bool("package-json"),
+    unscoped: result.get_bool("unscoped"),
   });
 }
 

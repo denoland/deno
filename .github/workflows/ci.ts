@@ -18,7 +18,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 121;
+const cacheVersion = 122;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
@@ -602,6 +602,17 @@ const buildItems = handleBuildItems([{
 
 const buildJobs = buildItems.map((rawBuildItem) => {
   const buildItem = defineExprObj(rawBuildItem);
+  // Linux release artifacts use frame pointers for stack walking, so their
+  // DWARF unwind tables can be removed during packaging. Rebuild std to keep
+  // the frame-pointer chain intact through Rust code.
+  const usesFramePointerPanicTrace = rawBuildItem.profile === "release" &&
+    rawBuildItem.os === "linux";
+  const buildStdArgs = usesFramePointerPanicTrace
+    ? " -Zbuild-std=core,alloc,std,proc_macro,panic_abort"
+    : "";
+  const panicTraceFeatures = usesFramePointerPanicTrace
+    ? "deno/panic-trace-frame-pointer"
+    : "deno/panic-trace";
   const usesStartupOrder = rawBuildItem.profile === "release" &&
     ((rawBuildItem.os === "linux" &&
       (rawBuildItem.arch === "x86_64" || rawBuildItem.arch === "aarch64")) ||
@@ -723,7 +734,9 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             run: [
               "cd target/release",
               `./deno -A ../../tools/release/create_symcache.ts deno-${buildItem.arch}-unknown-linux-gnu.symcache`,
-              "strip ./deno",
+              "strip --remove-section=.eh_frame --remove-section=.eh_frame_hdr ./deno",
+              "if readelf -SW ./deno | grep -Eq '\\.eh_frame(_hdr)?'; then echo 'unwind sections remain in deno'; exit 1; fi",
+              "if readelf -lW ./deno | grep -q GNU_EH_FRAME; then echo 'PT_GNU_EH_FRAME remains in deno'; exit 1; fi",
               `shasum -a 256 deno > deno-${buildItem.arch}-unknown-linux-gnu.sha256sum`,
               `zip -r deno-${buildItem.arch}-unknown-linux-gnu.zip deno`,
               `shasum -a 256 deno-${buildItem.arch}-unknown-linux-gnu.zip > deno-${buildItem.arch}-unknown-linux-gnu.zip.sha256sum`,
@@ -733,10 +746,14 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               // compiled binary whose C++ static-init guards deadlock
               // (`__cxa_guard_acquire failed to acquire mutex`). Keep .symtab
               // (strip only debug info) so the relocations survive.
-              "strip --strip-debug ./denort",
+              "strip --strip-debug --remove-section=.eh_frame --remove-section=.eh_frame_hdr ./denort",
+              "if readelf -SW ./denort | grep -Eq '\\.eh_frame(_hdr)?'; then echo 'unwind sections remain in denort'; exit 1; fi",
+              "if readelf -lW ./denort | grep -q GNU_EH_FRAME; then echo 'PT_GNU_EH_FRAME remains in denort'; exit 1; fi",
               `zip -r denort-${buildItem.arch}-unknown-linux-gnu.zip denort`,
               `shasum -a 256 denort-${buildItem.arch}-unknown-linux-gnu.zip > denort-${buildItem.arch}-unknown-linux-gnu.zip.sha256sum`,
-              "strip ./libdenort.so",
+              "strip --remove-section=.eh_frame --remove-section=.eh_frame_hdr ./libdenort.so",
+              "if readelf -SW ./libdenort.so | grep -Eq '\\.eh_frame(_hdr)?'; then echo 'unwind sections remain in libdenort.so'; exit 1; fi",
+              "if readelf -lW ./libdenort.so | grep -q GNU_EH_FRAME; then echo 'PT_GNU_EH_FRAME remains in libdenort.so'; exit 1; fi",
               `zip -r libdenort-${buildItem.arch}-unknown-linux-gnu.zip libdenort.so`,
               `shasum -a 256 libdenort-${buildItem.arch}-unknown-linux-gnu.zip > libdenort-${buildItem.arch}-unknown-linux-gnu.zip.sha256sum`,
               // QuickJS denort/libdenort for `deno compile --engine quickjs`.
@@ -963,7 +980,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         const binsToBuild = ["deno", "denort", "test_server"]
           .map((name) => `--bin ${name}`).join(" ");
         const cargoBuildReleaseCommand =
-          `cargo build --release --locked ${packagesToBuild} ${binsToBuild} --features=deno/panic-trace`;
+          `cargo build${buildStdArgs} --release --locked ${packagesToBuild} ${binsToBuild} --features=${panicTraceFeatures}`;
         const cargoBuildReleaseStep = step
           .if(
             isRelease.and(isDenoland.or(buildItem.use_sysroot)),
@@ -981,6 +998,27 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               if: isNotTag,
               run: 'echo "DENO_CANARY=true" >> $GITHUB_ENV',
             },
+            ...(usesFramePointerPanicTrace
+              ? [{
+                name: "Configure frame-pointer panic traces",
+                run: [
+                  // `build-std` is unstable, but keeping Deno's pinned stable
+                  // compiler plus this narrow opt-in is preferable to moving
+                  // release builds to a separate nightly toolchain.
+                  'echo "RUSTC_BOOTSTRAP=1" >> "$GITHUB_ENV"',
+                  // `RUSTFLAGS` is a multi-line value, but cargo splits it on
+                  // spaces only (trimming each piece), so a newline is not a
+                  // separator. Append on the same line as the tail of the
+                  // existing value, otherwise the added flags fuse into one
+                  // bogus token.
+                  "{",
+                  '  echo "RUSTFLAGS<<__DENO_RUSTFLAGS"',
+                  '  echo "$RUSTFLAGS -C force-frame-pointers=yes -C force-unwind-tables=no -C link-arg=-Wl,--no-eh-frame-hdr"',
+                  '  echo "__DENO_RUSTFLAGS"',
+                  '} >> "$GITHUB_ENV"',
+                ],
+              }]
+              : []),
             {
               name: "Build release",
               env: {
@@ -1003,9 +1041,10 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 "df -h",
                 cargoBuildReleaseCommand,
                 // Build the desktop runtime shared library (libdenort cdylib) for
-                // laufey-based desktop apps. Separate invocation because the
-                // panic-trace feature only applies to the deno/denort binaries.
-                "cargo build --release --locked -p denort_desktop",
+                // laufey-based desktop apps. It is a separate invocation, but
+                // still needs the frame-pointer standard library before its
+                // unwind sections can be removed during packaging.
+                `cargo build${buildStdArgs} --release --locked -p denort_desktop`,
                 "df -h",
               ],
             },
