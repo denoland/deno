@@ -92,6 +92,10 @@ impl BoxSize {
 pub struct LengthResolution {
   pub font: FontMetrics,
   pub root: FontMetrics,
+  /// What a `<percentage>` is 1% of. `None` where the property takes a plain
+  /// `<length>`, which is what makes a percentage invalid there.
+  /// https://www.w3.org/TR/css-values-4/#mixed-percentages
+  pub percentage_basis: Option<f64>,
   /// The initial containing block, which every viewport- and
   /// container-percentage unit resolves against.
   pub viewport: BoxSize,
@@ -103,6 +107,7 @@ impl LengthResolution {
     Self {
       font,
       root: font,
+      percentage_basis: None,
       viewport: BoxSize::default(),
     }
   }
@@ -169,6 +174,9 @@ enum LengthUnit {
   Cqb,
   Cqmin,
   Cqmax,
+  /// A `<percentage>`, which is a `<length>` only given a basis.
+  /// https://www.w3.org/TR/css-values-4/#mixed-percentages
+  Percent,
 }
 
 impl LengthUnit {
@@ -240,10 +248,11 @@ impl LengthUnit {
     )
   }
 
-  /// The size a viewport- or container-percentage unit is 1% of. `None` for
-  /// every other unit. Canvas has no retractable browser UI, no query
-  /// container and no writing mode, so all of them read the same box on a
-  /// horizontal inline axis.
+  /// The size this unit is 1% of. `None` for every unit that is not a
+  /// percentage of something. Canvas has no retractable browser UI, no query
+  /// container and no writing mode, so all of the box-relative ones read the
+  /// same box on a horizontal inline axis.
+  /// https://www.w3.org/TR/css-values-4/#mixed-percentages
   /// https://www.w3.org/TR/css-values-4/#viewport-relative-lengths
   /// https://drafts.csswg.org/css-conditional-5/#container-lengths
   #[inline]
@@ -276,6 +285,7 @@ impl LengthUnit {
       Self::Vmax | Self::Svmax | Self::Lvmax | Self::Dvmax | Self::Cqmax => {
         viewport.max()
       }
+      Self::Percent => return resolution.percentage_basis,
       _ => return None,
     })
   }
@@ -348,6 +358,7 @@ impl LengthUnit {
       Self::Cqb => "cqb",
       Self::Cqmin => "cqmin",
       Self::Cqmax => "cqmax",
+      Self::Percent => "%",
     }
   }
 }
@@ -397,9 +408,8 @@ impl Length {
     if let Some(factor) = self.unit.px_factor() {
       return self.value * factor;
     }
-    // A viewport- or container-percentage unit is 1% of the box it is relative
-    // to. Canvas has no viewport and no query container, so every one of them
-    // is 1% of nothing there.
+    // Canvas has no viewport and no query container, so the box-relative units
+    // are 1% of nothing there.
     if let Some(basis) = self.unit.percentage_basis(resolution) {
       return self.value * basis / 100.0;
     }
@@ -1276,7 +1286,9 @@ impl ops::SubAssign<&Dimension> for Dimension {
 }
 
 // Struct for intermediate representations of calculations like `calc(1px / 1px * 1px)`
-// Currently, combined units such as <length-percentage> are not supported
+// `<length-percentage>` is handled by giving `%` a basis at parse time, making
+// it another relative length unit rather than a percent hint. The other
+// combined units have no basis to offer, so they stay unsupported.
 // https://drafts.css-houdini.org/css-typed-om-1/#cssnumericvalue-percent-hint
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
@@ -1413,6 +1425,8 @@ impl MathValue {
     is_flex: FLEX,
   }
 
+  /// The `<length-percentage>` arm is only reached where the context withheld a
+  /// percentage basis, since a percentage that has one is already a length.
   fn dimension_mismatch_error(&self, other: &MathValue) -> CSSCustomError {
     if self.is_percent() || other.is_percent() {
       if self.is_length() || other.is_length() {
@@ -1434,24 +1448,6 @@ impl MathValue {
       }
     }
     CSSCustomError::NumericTypeMismatch
-  }
-
-  /// Convert a percent value to an absolute length in pixels using the given base.
-  /// Returns self unchanged if not a percent.
-  fn resolve_percent_as_length(self, base: f64) -> Self {
-    if self.is_percent() {
-      // The base is the parent font size, which is fixed for the value being
-      // parsed, so the result is a plain pixel length.
-      let value = self.value * base;
-      MathValue {
-        value,
-        dimension: Dimension::LENGTH,
-        calc: Some(LengthCalc::Unit(Length::from_pixels(value))),
-        relative: self.relative,
-      }
-    } else {
-      self
-    }
   }
 
   /// The `<length>` this value represents, keeping its symbolic form when a
@@ -1787,11 +1783,6 @@ impl ParseState {
       saw_relative_length: false,
     }
   }
-
-  #[inline]
-  fn em_base(&self) -> Option<f64> {
-    self.length_resolution.map(|resolution| resolution.font.em)
-  }
 }
 
 macro_rules! extract_as_raw {
@@ -1888,6 +1879,23 @@ macro_rules! from_raw {
   };
 }
 
+/// A `<length>` that depends on the resolution context. At the top level it
+/// keeps its unit and resolves lazily; inside a math function it is also folded
+/// to pixels, because the engine works in pixels, with the symbolic form riding
+/// along so the value still serializes as written.
+fn relative_length(
+  length: Length,
+  resolution: &LengthResolution,
+  state: &mut ParseState,
+) -> NumericValue {
+  state.saw_relative_length = true;
+  if state.function_depth == 0 {
+    return NumericValue::Length(SpecifiedLength::Unit(length));
+  }
+  let px = length.resolve_to_pixels(resolution);
+  NumericValue::Length(SpecifiedLength::from_calc(px, LengthCalc::Unit(length)))
+}
+
 impl NumericValue {
   pub fn parse<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -1915,14 +1923,24 @@ impl NumericValue {
         Ok(NumericValue::Number(*value as f64).into())
       }
       Token::Percentage { unit_value, .. } => {
-        Ok(NumericValue::Percent(*unit_value as f64).into())
+        // Without a basis a percentage keeps its own numeric type, which is
+        // what rejects it in a plain `<length>` position.
+        let Some(resolution) = state
+          .length_resolution
+          .filter(|resolution| resolution.percentage_basis.is_some())
+        else {
+          return Ok(NumericValue::Percent(*unit_value as f64).into());
+        };
+        let length = Length {
+          value: *unit_value as f64 * 100.0,
+          unit: LengthUnit::Percent,
+        };
+        Ok(relative_length(length, &resolution, state).into())
       }
       Token::Dimension { value, unit, .. } => {
         let value = *value as f64;
         // Relative units are only accepted when a resolution context is
-        // provided (font and spacing contexts). At the top level they keep
-        // their unit so they resolve lazily; inside math functions they are also
-        // folded to pixels, because the engine works in pixels.
+        // provided (font and spacing contexts).
         if let Some(unit) = LengthUnit::parse(unit) {
           let length = Length { value, unit };
           if unit.is_absolute() {
@@ -1930,28 +1948,13 @@ impl NumericValue {
               NumericValue::Length(SpecifiedLength::Unit(length)).into(),
             );
           }
-          state.saw_relative_length = true;
           let Some(resolution) = state.length_resolution else {
             return Err(
               input
                 .new_custom_error(CSSCustomError::ContainsRelativeLengthValues),
             );
           };
-          if state.function_depth == 0 {
-            return Ok(
-              NumericValue::Length(SpecifiedLength::Unit(length)).into(),
-            );
-          }
-          // The symbolic form rides along: font-relative units re-resolve
-          // against the font in effect, and all of them serialize as written.
-          let px = length.resolve_to_pixels(&resolution);
-          return Ok(
-            NumericValue::Length(SpecifiedLength::from_calc(
-              px,
-              LengthCalc::Unit(length),
-            ))
-            .into(),
-          );
+          return Ok(relative_length(length, &resolution, state).into());
         }
         if let Some(unit) = AngleUnit::parse(unit) {
           return Ok(NumericValue::Angle(Angle { value, unit }).into());
@@ -2487,14 +2490,7 @@ impl NumericValue {
             input.expect_whitespace()?;
             let rhs = Self::parse_multiplicative_expression(input, state)?;
             let mut left = lhs.into_math();
-            let mut right = rhs.into_math();
-            if let Some(base) = state.em_base() {
-              if left.is_length() && right.is_percent() {
-                right = right.resolve_percent_as_length(base);
-              } else if left.is_percent() && right.is_length() {
-                left = left.resolve_percent_as_length(base);
-              }
-            }
+            let right = rhs.into_math();
             if let Err(error) = left.try_add_assign(&right) {
               return Err(input.new_custom_error(error));
             }
@@ -2504,14 +2500,7 @@ impl NumericValue {
             input.expect_whitespace()?;
             let rhs = Self::parse_multiplicative_expression(input, state)?;
             let mut left = lhs.into_math();
-            let mut right = rhs.into_math();
-            if let Some(base) = state.em_base() {
-              if left.is_length() && right.is_percent() {
-                right = right.resolve_percent_as_length(base);
-              } else if left.is_percent() && right.is_length() {
-                left = left.resolve_percent_as_length(base);
-              }
-            }
+            let right = rhs.into_math();
             if let Err(error) = left.try_sub_assign(&right) {
               return Err(input.new_custom_error(error));
             }
@@ -3062,6 +3051,94 @@ mod tests {
         0.0,
         "resolving {css}"
       );
+    }
+  }
+
+  /// A `<length-percentage>` context: `%` is 1% of 40px, `em` is 10px.
+  fn length_percentage_resolution() -> LengthResolution {
+    LengthResolution {
+      percentage_basis: Some(40.0),
+      ..LengthResolution::new(FontMetrics::fallback(10.0))
+    }
+  }
+
+  fn parse_with(
+    css: &str,
+    resolution: &LengthResolution,
+  ) -> Result<NumericValue, ()> {
+    let mut input = ParserInput::new(css);
+    let mut parser = Parser::new(&mut input);
+    NumericValue::parse(
+      &mut parser,
+      ParseOptions {
+        length_resolution: Some(*resolution),
+        ..Default::default()
+      },
+    )
+    .map_err(|_| ())
+  }
+
+  #[test]
+  fn percentage_is_a_length_only_with_a_basis() {
+    // https://www.w3.org/TR/css-values-4/#mixed-percentages
+    let resolution = length_percentage_resolution();
+    let Ok(NumericValue::Length(length)) = parse_with("50%", &resolution)
+    else {
+      panic!("expect length");
+    };
+    assert_eq!(length.to_css_string(), "50%");
+    assert_relative_eq!(length.resolve_to_pixels(&resolution), 20.0);
+
+    // Without a basis the same token stays a percentage, so it never satisfies
+    // a `<length>`.
+    let plain = LengthResolution::new(FontMetrics::fallback(10.0));
+    assert_eq!(plain.percentage_basis, None);
+    assert_eq!(parse_with("50%", &plain), Ok(NumericValue::Percent(0.5)));
+    assert!(parse_with("calc(1em + 50%)", &plain).is_err());
+  }
+
+  #[test]
+  fn percentage_mixes_with_lengths() {
+    let resolution = length_percentage_resolution();
+    for (css, expected) in [
+      ("calc(1em + 50%)", 30.0),
+      ("calc(50% - 1em)", 10.0),
+      ("min(1em, 50%)", 10.0),
+      ("max(50%, 1em)", 20.0),
+      ("clamp(1em, 50%, 15px)", 15.0),
+      ("calc(50% * 2)", 40.0),
+      // Dividing out the percentage leaves a plain scalar factor.
+      ("calc(100% / 50% * 1em)", 20.0),
+    ] {
+      let Ok(NumericValue::Length(length)) = parse_with(css, &resolution)
+      else {
+        panic!("expect length: {css}");
+      };
+      assert_relative_eq!(length.resolve_to_pixels(&resolution), expected);
+    }
+
+    // A percentage carries a length exponent, so these are type errors.
+    for css in ["calc(1px * 50%)", "calc(50% + 1)", "calc(50% + 1deg)"] {
+      assert!(parse_with(css, &resolution).is_err(), "{css}");
+    }
+  }
+
+  #[test]
+  fn percentage_keeps_its_symbolic_form() {
+    // `%` sorts ahead of every dimension, which "sort a calculation's children"
+    // asks for and ASCII order already gives.
+    // https://www.w3.org/TR/css-values-4/#sort-a-calculations-children
+    let resolution = length_percentage_resolution();
+    for (css, expected) in [
+      ("calc(1em + 50%)", "calc(50% + 1em)"),
+      ("calc(2px + 50%)", "calc(50% + 2px)"),
+      ("min(1em, 50%)", "min(1em, 50%)"),
+    ] {
+      let Ok(NumericValue::Length(length)) = parse_with(css, &resolution)
+      else {
+        panic!("expect length: {css}");
+      };
+      assert_eq!(length.to_css_string(), expected);
     }
   }
 

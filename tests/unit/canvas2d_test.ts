@@ -853,6 +853,43 @@ Deno.test(function canvas2dFontShorthandRelativeUnits() {
   assertEquals(ctx.font, "20px sans-serif");
 });
 
+Deno.test(function canvas2dFontShorthandLengthPercentage() {
+  // font-size takes a <length-percentage>, so percentages mix with lengths.
+  // https://drafts.csswg.org/css-fonts-4/#font-size-prop
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  for (
+    const [value, expected] of [
+      ["calc(0.5em + 50%) sans-serif", "10px sans-serif"],
+      ["calc(50% - 0.2em) sans-serif", "3px sans-serif"],
+      ["min(0.5em, 50%) sans-serif", "5px sans-serif"],
+      ["clamp(50%, 1em, 200%) sans-serif", "10px sans-serif"],
+    ]
+  ) {
+    ctx.font = value;
+    assertEquals(ctx.font, expected, value);
+  }
+
+  // A percentage counts as a length, so these do not type-check.
+  ctx.font = "10px sans-serif";
+  for (const value of ["calc(1px * 50%) sans-serif", "calc(50% + 1) serif"]) {
+    ctx.font = value;
+    assertEquals(ctx.font, "10px sans-serif", value);
+  }
+});
+
+Deno.test(function canvas2dSpacingRejectsPercentages() {
+  // The spacing attributes take a plain <length>, which leaves a percentage
+  // nothing to be 1% of.
+  // https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-letterspacing
+  const ctx = new OffscreenCanvas(10, 10).getContext("2d")!;
+  ctx.letterSpacing = "2px";
+  for (const value of ["50%", "calc(1em + 50%)", "min(1em, 50%)"]) {
+    ctx.letterSpacing = value;
+    assertEquals(ctx.letterSpacing, "2px", value);
+  }
+  ctx.letterSpacing = "0px";
+});
+
 Deno.test(
   { permissions: { read: true } },
   async function canvas2dSpacingMathFunctionsTrackTheFont() {

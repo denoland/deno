@@ -619,26 +619,38 @@ fn parse_css_font_inner<'i, 't>(
     }
   }
 
-  // Parse font-size (<length> | <percentage>).
+  // Parse font-size (<length-percentage>), a percentage of the font size in
+  // effect on the canvas.
+  let size_resolution = LengthResolution {
+    percentage_basis: Some(resolution.font.em),
+    ..*resolution
+  };
   let size_value = input
     .try_parse(|p| {
       NumericValue::parse(
         p,
         ParseOptions {
-          length_resolution: Some(*resolution),
+          length_resolution: Some(size_resolution),
           ..Default::default()
         },
       )
     })
     .ok()?;
   let size = match size_value {
-    NumericValue::Length(l) => l.resolve_to_pixels(resolution) as f32,
-    NumericValue::Percent(p) => (p * resolution.font.em) as f32,
+    NumericValue::Length(l) => l.resolve_to_pixels(&size_resolution) as f32,
     NumericValue::Zero => 0.0f32,
     _ => return None,
   };
 
-  // Parse optional /line-height.
+  // Parse optional /line-height, which is relative to the font size just
+  // parsed rather than to the one that size was relative to.
+  // https://drafts.csswg.org/css2/#propdef-line-height
+  let size_px = size as f64;
+  let line_height_resolution = LengthResolution {
+    font: FontMetrics::fallback(size_px),
+    percentage_basis: Some(size_px),
+    ..*resolution
+  };
   let line_height: Option<f32> = input
     .try_parse(|p| {
       let tok = p.next()?.clone();
@@ -648,14 +660,15 @@ fn parse_css_font_inner<'i, 't>(
       let lh_value = NumericValue::parse(
         p,
         ParseOptions {
-          length_resolution: Some(*resolution),
+          length_resolution: Some(line_height_resolution),
           ..Default::default()
         },
       )?;
       match lh_value {
-        NumericValue::Number(n) => Ok((n * resolution.font.em) as f32),
-        NumericValue::Length(l) => Ok(l.resolve_to_pixels(resolution) as f32),
-        NumericValue::Percent(pct) => Ok((pct * resolution.font.em) as f32),
+        NumericValue::Number(n) => Ok((n * size_px) as f32),
+        NumericValue::Length(l) => {
+          Ok(l.resolve_to_pixels(&line_height_resolution) as f32)
+        }
         NumericValue::Zero => Ok(0.0f32),
         _ => Err(p.new_custom_error(CSSCustomError::UnexpectedNumericType)),
       }
@@ -953,6 +966,39 @@ mod tests {
   }
 
   #[test]
+  fn size_percentage_is_of_the_canvas_font() {
+    // font-size takes a <length-percentage>, so a percentage mixes freely with
+    // the length units around it.
+    // https://drafts.csswg.org/css-fonts-4/#font-size-prop
+    assert_eq!(parse("50% sans-serif").unwrap().size, 5.0);
+    assert_eq!(parse("calc(0.5em + 50%) sans-serif").unwrap().size, 10.0);
+    assert_eq!(parse("calc(50% - 0.2em) sans-serif").unwrap().size, 3.0);
+    assert_eq!(parse("min(0.5em, 50%) sans-serif").unwrap().size, 5.0);
+    assert_eq!(
+      parse("clamp(50%, 1em, 200%) sans-serif").unwrap().size,
+      10.0
+    );
+
+    // A percentage counts as a length, so these are type errors.
+    assert!(parse("calc(1px * 50%) sans-serif").is_none());
+    assert!(parse("calc(50% + 1) sans-serif").is_none());
+  }
+
+  #[test]
+  fn line_height_is_relative_to_the_size_just_parsed() {
+    // Not to the font the size was itself relative to.
+    // https://drafts.csswg.org/css2/#propdef-line-height
+    assert_eq!(parse("20px/1.5 serif").unwrap().line_height, Some(30.0));
+    assert_eq!(parse("20px/150% serif").unwrap().line_height, Some(30.0));
+    assert_eq!(parse("20px/2em serif").unwrap().line_height, Some(40.0));
+    assert_eq!(parse("20px/30px serif").unwrap().line_height, Some(30.0));
+    assert_eq!(
+      parse("20px/calc(50% + 5px) serif").unwrap().line_height,
+      Some(15.0)
+    );
+  }
+
+  #[test]
   fn reserved_family_idents_rejected() {
     assert!(parse("10px inherit").is_none());
     assert!(parse("10px initial").is_none());
@@ -1047,6 +1093,22 @@ mod tests {
       let s = spacing(css, 20.0).unwrap();
       assert_eq!(s.to_css_string(), css, "serializing {css}");
       assert_eq!(resolve_to_pixels(css, 20.0), 0.0, "resolving {css}");
+    }
+  }
+
+  #[test]
+  fn spacing_rejects_percentages() {
+    // The spacing attributes take a plain <length>, so nothing gives a
+    // percentage a basis to be 1% of.
+    // https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-letterspacing
+    for css in [
+      "50%",
+      "calc(50%)",
+      "calc(1em + 50%)",
+      "calc(50% - 2px)",
+      "min(1em, 50%)",
+    ] {
+      assert!(spacing(css, 20.0).is_none(), "{css}");
     }
   }
 
