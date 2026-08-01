@@ -231,6 +231,10 @@ declare namespace Deno {
       },
     );
 
+    /**
+     * Get a drawing context for the canvas.
+     * If this was previously called, it will return the same context.
+     */
     getContext(
       contextId: "bitmaprenderer",
       options?: any,
@@ -240,6 +244,12 @@ declare namespace Deno {
       contextId: OffscreenRenderingContextId,
       options?: any,
     ): OffscreenRenderingContext | null;
+    // Spec also defines "2d", "webgl", and "webgl2" context ids; Deno does
+    // not implement those and getContext returns null for them.
+    getContext(
+      contextId: "2d" | "webgl" | "webgl2",
+      options?: any,
+    ): null;
 
     present(): void;
   }
