@@ -2130,6 +2130,14 @@ impl JsRuntime {
   ) -> impl Future<Output = Result<v8::Global<v8::Value>, Box<JsError>>> + use<>
   {
     v8::tc_scope!(let scope, scope);
+    // Bump the user-code depth counter for the duration of the call.
+    // This ensures dispatchEvent from within the called function sees
+    // depth >= 1 and does not run microtasks between listeners —
+    // matching browser behavior for user-code dispatch.
+    let context_state = JsRealm::state_from_scope(scope);
+    context_state
+      .user_code_depth
+      .set(context_state.user_code_depth.get().wrapping_add(1));
     let cb = function.open(scope);
     let this = v8::undefined(scope).into();
     let promise = if args.is_empty() {
@@ -2142,6 +2150,9 @@ impl JsRuntime {
       }
       cb.call(scope, this, &local_args)
     };
+    context_state
+      .user_code_depth
+      .set(context_state.user_code_depth.get().wrapping_sub(1));
 
     if promise.is_none() {
       if scope.is_execution_terminating() {

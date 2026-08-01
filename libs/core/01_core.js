@@ -1080,6 +1080,22 @@
     }
   }
 
+  // Like invokeUserCallback, but does NOT perform a microtask checkpoint
+  // on exit. Use this for entry points where the event loop already
+  // handles microtask checkpoints with the correct ordering — e.g. timer
+  // callbacks, where listOnTimeout calls runNextTicks() between timers,
+  // preserving the Node.js nextTick-before-microtask invariant. Calling
+  // op_run_microtasks() here would drain microtasks BEFORE ticks,
+  // violating that invariant.
+  function withUserCodeDepth(cb, thisArg, args) {
+    userCodeDepth[0]++;
+    try {
+      return ReflectApply(cb, thisArg, args);
+    } finally {
+      userCodeDepth[0]--;
+    }
+  }
+
   // Extra Deno.core.* exports
   const core = ObjectAssign(globalThis.Deno.core, {
     internalRidSymbol: Symbol("Deno.internal.rid"),
@@ -1097,6 +1113,7 @@
       userCodeDepth = buf;
     },
     invokeUserCallback,
+    withUserCodeDepth,
     __drainNextTickAndMacrotasks,
     __handleRejections,
     __reportException,

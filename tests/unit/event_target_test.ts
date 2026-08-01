@@ -237,46 +237,45 @@ Deno.test(function eventTargetThisShouldDefaultToWindow() {
 // from internal code (e.g. AbortSignal.timeout firing), microtasks
 // queued by an event listener must run before the next listener is
 // invoked, matching Web IDL's "clean up after running script".
+//
+// AbortSignal.timeout creates a *system* timer whose callback is
+// internal JS (not user code). When it fires, the abort event is
+// dispatched with an empty user-code stack, so microtasks run between
+// listeners — matching browser behavior.
 Deno.test(
   async function microtaskCheckpointBetweenEventListenersDispatchedFromInternalCode() {
-    const target = new EventTarget();
+    const signal = AbortSignal.timeout(10);
     const log: string[] = [];
 
-    // Use setTimeout(0) so the dispatch happens from internal timer
-    // code with an empty user-code stack — mirroring AbortSignal.timeout.
-    await new Promise<void>((resolve) => {
-      target.addEventListener("foo", () => {
-        log.push("foo event 1");
-        queueMicrotask(() => log.push("foo microtask 1"));
-      });
-      target.addEventListener("foo", () => {
-        log.push("foo event 2");
-        queueMicrotask(() => log.push("foo microtask 2"));
-      });
-
-      setTimeout(() => {
-        target.dispatchEvent(new Event("foo"));
-        resolve();
-      }, 0);
+    signal.addEventListener("abort", () => {
+      log.push("abort event 1");
+      queueMicrotask(() => log.push("abort microtask 1"));
+    });
+    signal.addEventListener("abort", () => {
+      log.push("abort event 2");
+      queueMicrotask(() => log.push("abort microtask 2"));
     });
 
-    // Drain any remaining microtasks before asserting.
-    await new Promise<void>((r) => queueMicrotask(() => r()));
+    // Wait for the signal to abort and drain remaining microtasks.
+    await new Promise<void>((resolve) => {
+      signal.addEventListener("abort", () => setTimeout(resolve, 0));
+    });
 
     assertEquals(log, [
-      "foo event 1",
-      "foo microtask 1",
-      "foo event 2",
-      "foo microtask 2",
+      "abort event 1",
+      "abort microtask 1",
+      "abort event 2",
+      "abort microtask 2",
     ]);
   },
 );
 
 // Regression test for denoland/deno#11731: when an event is dispatched
-// from user code, microtasks must NOT run between listeners — they
-// must wait until the user code that called dispatchEvent unwinds.
+// from user code (including setTimeout callbacks, which ARE user
+// code), microtasks must NOT run between listeners — they wait until
+// the user code that called dispatchEvent unwinds.
 Deno.test(
-  function microtaskCheckpointDeferredBetweenListenersDispatchedFromUserCode() {
+  async function microtaskCheckpointDeferredBetweenListenersDispatchedFromUserCode() {
     const target = new EventTarget();
     const log: string[] = [];
 
@@ -289,18 +288,22 @@ Deno.test(
       queueMicrotask(() => log.push("foo microtask 2"));
     });
 
+    // Dispatching synchronously from a top-level async test function:
+    // depth is >= 1 (bumped by mod_evaluate), so microtasks must NOT
+    // run between listeners.
     target.dispatchEvent(new Event("foo"));
 
-    // Microtasks should not have run yet — they run after dispatchEvent
-    // returns to the top-level user script.
+    // Microtasks have not run yet.
     assertEquals(log, ["foo event 1", "foo event 2"]);
 
-    // Drain microtasks.
-    queueMicrotask(() => {});
-    // After the next tick, microtasks should have run.
-    // (We can't await here because this is a sync test; the assertion
-    // above is the meaningful one. The async test above covers the full
-    // ordering for the internal-dispatch case.)
+    // After draining microtasks, they should have run.
+    await new Promise<void>((r) => queueMicrotask(() => r()));
+    assertEquals(log, [
+      "foo event 1",
+      "foo event 2",
+      "foo microtask 1",
+      "foo microtask 2",
+    ]);
   },
 );
 

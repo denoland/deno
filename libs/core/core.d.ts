@@ -171,6 +171,29 @@ export namespace core {
   function runNextTicks(): void;
 
   /**
+   * Invoke a user-provided callback. Bumps the user-code depth counter
+   * for the duration of the call; when the counter returns to zero
+   * after the call, performs a microtask checkpoint. This matches
+   * Web IDL's "clean up after running script" algorithm.
+   */
+  function invokeUserCallback<T extends (...args: any[]) => any>(
+    cb: T,
+    thisArg: any,
+    args: Parameters<T>,
+  ): ReturnType<T>;
+
+  /**
+   * Like invokeUserCallback, but does NOT perform a microtask
+   * checkpoint on exit. Use this for entry points where the event
+   * loop already handles microtask checkpoints (e.g. timer callbacks).
+   */
+  function withUserCodeDepth<T extends (...args: any[]) => any>(
+    cb: T,
+    thisArg: any,
+    args: Parameters<T>,
+  ): ReturnType<T>;
+
+  /**
    * Register async hook emit functions called directly in the drain loop.
    * Defaults to no-ops; ext/node/ sets the real implementations at bootstrap.
    */
