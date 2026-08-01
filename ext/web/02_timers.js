@@ -104,7 +104,7 @@ function setInterval(callback, timeout = 0, ...args) {
     try {
       setAsyncContext(asyncContext);
       timerDepth = depth + 1;
-      // Bump the user-code depth counter — see setTimeout above for
+      // Bump the user-code depth counter - see setTimeout above for
       // rationale on using withUserCodeDepth instead of
       // invokeUserCallback.
       core.withUserCodeDepth(unboundCallback, globalThis, args);

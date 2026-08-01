@@ -1082,7 +1082,7 @@
 
   // Like invokeUserCallback, but does NOT perform a microtask checkpoint
   // on exit. Use this for entry points where the event loop already
-  // handles microtask checkpoints with the correct ordering — e.g. timer
+  // handles microtask checkpoints with the correct ordering - e.g. timer
   // callbacks, where listOnTimeout calls runNextTicks() between timers,
   // preserving the Node.js nextTick-before-microtask invariant. Calling
   // op_run_microtasks() here would drain microtasks BEFORE ticks,
