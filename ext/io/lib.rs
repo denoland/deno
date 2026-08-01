@@ -64,6 +64,9 @@ use windows_sys::Win32::System::Console::STD_OUTPUT_HANDLE;
 
 #[cfg(unix)]
 const STDIN_READ_POLL_TIMEOUT_MS: i32 = 100;
+#[cfg(windows)]
+const STDIN_READ_POLL_TIMEOUT: std::time::Duration =
+  std::time::Duration::from_millis(100);
 
 mod fd_table;
 pub mod fs;
@@ -747,6 +750,40 @@ impl StdFileResourceInner {
   }
 
   #[cfg(windows)]
+  fn poll_stdin_pipe_ready(file: &StdFile) -> io::Result<Option<bool>> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::FILE_TYPE_PIPE;
+    use windows_sys::Win32::Storage::FileSystem::GetFileType;
+    use windows_sys::Win32::System::Pipes::PeekNamedPipe;
+
+    let handle = file.as_raw_handle();
+    if unsafe { GetFileType(handle) } != FILE_TYPE_PIPE {
+      return Ok(None);
+    }
+
+    let mut bytes_available = 0u32;
+    let result = unsafe {
+      PeekNamedPipe(
+        handle,
+        std::ptr::null_mut(),
+        0,
+        std::ptr::null_mut(),
+        &mut bytes_available,
+        std::ptr::null_mut(),
+      )
+    };
+    if result == 0 {
+      let err = io::Error::last_os_error();
+      if err.kind() == ErrorKind::BrokenPipe {
+        return Ok(Some(true));
+      }
+      return Err(err);
+    }
+
+    Ok(Some(bytes_available > 0))
+  }
+
+  #[cfg(windows)]
   async fn handle_stdin_read(
     &self,
     state: Arc<Mutex<WinTtyState>>,
@@ -762,6 +799,12 @@ impl StdFileResourceInner {
       let fut = self.with_inner_blocking_task(move |file| {
         let _terminal_input_guard =
           deno_permissions::prompter::lock_terminal_input();
+        if let Some(false) =
+          Self::poll_stdin_pipe_ready(file).map_err(|e| (e.into(), buf))?
+        {
+          return Ok((None, buf));
+        }
+
         /* Start reading, and set the reading flag to true */
         state.lock().reading = true;
         let nread = match file.read(&mut buf) {
@@ -819,15 +862,21 @@ impl StdFileResourceInner {
           return Err((FsError::FileBusy, buf));
         }
 
-        Ok((nread, buf))
+        Ok((Some(nread), buf))
       });
 
       match fut.await {
+        Ok((Some(nread), b)) => return Ok((nread, b)),
+        Ok((None, b)) => {
+          buf = b;
+          tokio::time::sleep(STDIN_READ_POLL_TIMEOUT).await;
+          continue;
+        }
         Err((FsError::FileBusy, b)) => {
           buf = b;
           continue;
         }
-        other => return other.map_err(|(e, _)| e),
+        Err((e, _)) => return Err(e),
       }
     }
   }
