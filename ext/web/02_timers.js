@@ -24,7 +24,6 @@ const {
   MapPrototypeGet,
   MapPrototypeSet,
   PromisePrototypeThen,
-  ReflectApply,
   SafeMap,
   TypeError,
   indirectEval,

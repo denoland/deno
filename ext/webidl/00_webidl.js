@@ -61,7 +61,6 @@ const {
   PromisePrototypeThen,
   PromiseReject,
   PromiseResolve,
-  ReflectApply,
   ReflectDefineProperty,
   ReflectGetOwnPropertyDescriptor,
   ReflectHas,
