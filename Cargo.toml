@@ -149,9 +149,9 @@ deno_cache_dir = { version = "0.48.0", path = "./libs/cache_dir" }
 deno_cli_parser = { version = "0.6.0", path = "./libs/cli_parser" }
 deno_config = { version = "0.106.0", features = ["workspace"], path = "./libs/config" }
 # Workspace binaries select the JavaScript engine at their top level. Keep the
-# reactor enabled here without pulling deno_core's public V8 default into a
-# QuickJS feature graph.
-deno_core = { version = "0.409.0", path = "./libs/core", default-features = false, features = ["reactor-tokio"] }
+# backend-independent runtime defaults enabled here without pulling deno_core's
+# public V8 default into a QuickJS feature graph.
+deno_core = { version = "0.409.0", path = "./libs/core", default-features = false, features = ["reactor-tokio", "v8_use_custom_libcxx"] }
 deno_core_testing = { path = "./libs/core_testing" }
 deno_crypto_provider = { version = "0.50.0", path = "./libs/crypto" }
 deno_dotenv = { version = "0.25.0", path = "./libs/dotenv" }
