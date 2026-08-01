@@ -268,17 +268,11 @@ function lookup(
   }
 
   if (!hostname) {
-    if (all) {
-      nextTick(callback as LookupCallback, null, []);
-    } else {
-      nextTick(
-        callback as LookupCallback,
-        null,
-        null,
-        family === 6 ? 6 : 4,
-      );
-    }
-    return {};
+    throw new ERR_INVALID_ARG_VALUE(
+      "hostname",
+      hostname,
+      "must be a non-empty string",
+    );
   }
 
   const matchedFamily = isIP(hostname);
