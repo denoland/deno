@@ -106,7 +106,10 @@
       "reason": "Tests Node's --require / --import preload CLI flags, which Deno does not implement."
     },
     "es-module/test-require-module-synchronous-rejection-handling.js": {},
-    "es-module/test-require-module-tla-execution.js": {},
+    "es-module/test-require-module-tla-execution.js": {
+      "ignore": true,
+      "reason": "Node 26.5 asserts the ERR_REQUIRE_ASYNC_MODULE hint names --experimental-print-required-tla; Deno points at --stack-trace-limit instead, as it does not implement that flag"
+    },
     "es-module/test-require-module-tla-nested.js": {},
     "es-module/test-require-module-tla-print-execution.js": {
       "ignore": true,
@@ -703,7 +706,10 @@
       "reason": "Flaky on CI (intermittently exits non-zero with no captured output) although it passes locally; the test's expectWarning/SHAKE handling races with async deprecation-warning delivery under CI concurrency"
     },
     "parallel/test-crypto-hkdf.js": {},
-    "parallel/test-crypto-hmac.js": {},
+    "parallel/test-crypto-hmac.js": {
+      "ignore": true,
+      "reason": "Node 26.5 added coverage for the historical 'dss1'/'DSS1' SHA-1 digest aliases, which Deno's createHmac does not accept"
+    },
     "parallel/test-crypto-keygen.js": {
       "ignore": true,
       "reason": "Node 26 BoringSSL branch expects a synchronous RangeError 'publicExponent is invalid' for invalid RSA publicExponent which Deno validates asynchronously in the op"
@@ -1847,7 +1853,6 @@
     "parallel/test-http-pipeline-socket-parser-typeerror.js": {},
     "parallel/test-http-proxy.js": {},
     "parallel/test-http-raw-headers.js": {},
-    "parallel/test-http-rawheaders-limit.js": {},
     "parallel/test-http-readable-data-event.js": {},
     "parallel/test-http-remove-connection-header-persists-connection.js": {},
     "parallel/test-http-remove-header-stays-removed.js": {},
@@ -2219,7 +2224,10 @@
     "parallel/test-https-agent-abort-controller.js": {},
     "parallel/test-https-agent-constructor.js": {},
     "parallel/test-https-agent-create-connection.js": {},
-    "parallel/test-https-agent-getname.js": {},
+    "parallel/test-https-agent-getname.js": {
+      "ignore": true,
+      "reason": "Node 26.5 added coverage for Agent#getName including pfx buffers and passphrases in the socket name; Deno stringifies pfx to [object Object]"
+    },
     "parallel/test-https-agent-servername.js": {},
     "parallel/test-https-agent-sockets-leak.js": {},
     "parallel/test-https-agent-unref-socket.js": {},
@@ -2538,7 +2546,10 @@
     "parallel/test-net-connect-immediate-finish.js": {},
     "parallel/test-net-connect-no-arg.js": {},
     "parallel/test-net-connect-options-allowhalfopen.js": {},
-    "parallel/test-net-connect-options-invalid.js": {},
+    "parallel/test-net-connect-options-invalid.js": {
+      "ignore": true,
+      "reason": "Node 26.5 added coverage for rejecting options.host containing null bytes with ERR_INVALID_ARG_VALUE; Deno passes the host through to the resolver"
+    },
     "parallel/test-net-connect-options-fd.js": {},
     "parallel/test-net-connect-options-ipv6.js": {},
     "parallel/test-net-connect-options-port.js": {},
@@ -3494,7 +3505,10 @@
     "parallel/test-stream-readable-reading-readingMore.js": {},
     "parallel/test-stream-readable-resume-hwm.js": {},
     "parallel/test-stream-readable-resumeScheduled.js": {},
-    "parallel/test-stream-readable-setEncoding-existing-buffers.js": {},
+    "parallel/test-stream-readable-setEncoding-existing-buffers.js": {
+      "ignore": true,
+      "reason": "Node 26.5 added coverage for setEncoding() applied to already-buffered incomplete UTF-8 sequences, which Deno's Readable drops instead of emitting"
+    },
     "parallel/test-stream-readable-setEncoding-null.js": {},
     "parallel/test-stream-readable-strategy-option.js": {},
     "parallel/test-stream-readable-to-web-byob.js": {},
@@ -3644,7 +3658,10 @@
     "parallel/test-timers-ordering.js": {},
     "parallel/test-timers-process-tampering.js": {},
     "parallel/test-timers-promises.js": {},
-    "parallel/test-timers-promises-scheduler.js": {},
+    "parallel/test-timers-promises-scheduler.js": {
+      "ignore": true,
+      "reason": "Node 26.5 added coverage for scheduler.yield/wait rejecting a foreign `this` with ERR_INVALID_THIS, which Deno's scheduler does not check"
+    },
     "parallel/test-timers-refresh-in-callback.js": {},
     "parallel/test-timers-refresh.js": {},
     "parallel/test-timers-same-timeout-wrong-list-deleted.js": {},
@@ -3679,7 +3696,10 @@
     "parallel/test-tls-cert-chains-concat.js": {},
     "parallel/test-tls-cert-ext-encoding.js": {},
     "parallel/test-tls-cert-regression.js": {},
-    "parallel/test-tls-check-server-identity.js": {},
+    "parallel/test-tls-check-server-identity.js": {
+      "ignore": true,
+      "reason": "Node 26.5 added coverage for hostnames containing the fullwidth full stop U+3002, which Deno's checkServerIdentity treats as a label separator"
+    },
     "parallel/test-tls-client-abort.js": {},
     "parallel/test-tls-client-abort2.js": {},
     "parallel/test-tls-client-auth.js": {
@@ -3766,7 +3786,10 @@
     "parallel/test-tls-on-empty-socket.js": {},
     "parallel/test-tls-onread-static-buffer.js": {},
     "parallel/test-tls-options-boolean-check.js": {},
-    "parallel/test-tls-over-http-tunnel.js": {},
+    "parallel/test-tls-over-http-tunnel.js": {
+      "ignore": true,
+      "reason": "Node 26.5 now asserts the CONNECT request's Host header names the tunnel target; Deno sends the proxy's own host:port"
+    },
     "parallel/test-tls-pause.js": {},
     "parallel/test-tls-peer-certificate-encoding.js": {},
     "parallel/test-tls-peer-certificate-multi-keys.js": {},
@@ -4057,7 +4080,10 @@
     "parallel/test-whatwg-url-custom-inspect.js": {},
     "parallel/test-whatwg-url-custom-parsing.js": {},
     "parallel/test-whatwg-url-custom-searchparams-append.js": {},
-    "parallel/test-whatwg-url-custom-searchparams-constructor.js": {},
+    "parallel/test-whatwg-url-custom-searchparams-constructor.js": {
+      "ignore": true,
+      "reason": "Node 26.5 added coverage for WebIDL union coercion in the URLSearchParams constructor (null -> 'null='), which Deno treats as an empty init"
+    },
     "parallel/test-whatwg-url-custom-searchparams-delete.js": {},
     "parallel/test-whatwg-url-custom-searchparams-entries.js": {},
     "parallel/test-whatwg-url-custom-searchparams-foreach.js": {},
@@ -4219,7 +4245,10 @@
     "parallel/test-zlib-from-string.js": {},
     "parallel/test-zlib-invalid-arg-value-brotli-compress.js": {},
     "parallel/test-zlib-invalid-input-memory.js": {},
-    "parallel/test-zlib-invalid-input.js": {},
+    "parallel/test-zlib-invalid-input.js": {
+      "ignore": true,
+      "reason": "Node 26.5 added coverage for inputs with a spoofed length/byteLength and for out-of-range _outOffset, expecting ERR_OUT_OF_RANGE from zlib"
+    },
     "parallel/test-zlib-kmaxlength-rangeerror.js": {
       "darwin": false,
       "linux": false,

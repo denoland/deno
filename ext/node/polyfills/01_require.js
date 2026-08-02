@@ -2260,7 +2260,19 @@ function _throwRequireAsyncModule(specifier, module) {
   // deprecation getter when --pending-deprecation is set.
   const parentModule = module ? moduleParentCache.get(module) : undefined;
   const parent = parentModule?.filename ?? "<unknown>";
-  throw new internalErrors.ERR_REQUIRE_ASYNC_MODULE(specifier, parent);
+  const requireStack = [];
+  for (
+    let cursor = parentModule;
+    cursor;
+    cursor = moduleParentCache.get(cursor)
+  ) {
+    ArrayPrototypePush(requireStack, cursor.filename || cursor.id);
+  }
+  throw new internalErrors.ERR_REQUIRE_ASYNC_MODULE(
+    specifier,
+    parent,
+    requireStack,
+  );
 }
 
 function loadESMFromCJS(module, filename, code, sourceFromHook = false) {

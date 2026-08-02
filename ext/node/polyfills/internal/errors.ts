@@ -2131,11 +2131,21 @@ class ERR_QUIC_TLS13_REQUIRED extends NodeError {
   }
 }
 class ERR_REQUIRE_ASYNC_MODULE extends NodeError {
-  constructor(filename: string, parentFilename: string) {
-    super(
-      "ERR_REQUIRE_ASYNC_MODULE",
-      `require() cannot be used on an ESM graph with top-level await. Use import() instead. To see where the top-level await comes from, use --stack-trace-limit=100 and inspect the dependency graph. Requiring ${filename}. From ${parentFilename}`,
-    );
+  requireStack: string[];
+
+  constructor(
+    filename: string,
+    parentFilename: string,
+    requireStack: string[] = [],
+  ) {
+    let message =
+      `require() cannot be used on an ESM graph with top-level await. Use import() instead. To see where the top-level await comes from, use --stack-trace-limit=100 and inspect the dependency graph. Requiring ${filename}. From ${parentFilename}`;
+    if (requireStack.length > 0) {
+      message = message + "\nRequire stack:\n- " +
+        ArrayPrototypeJoin(requireStack, "\n- ");
+    }
+    super("ERR_REQUIRE_ASYNC_MODULE", message);
+    this.requireStack = requireStack;
     this.name = `Error [${this.code}]`;
     this.toString = nodeErrorToStringWithEmbeddedCode;
   }
