@@ -20,21 +20,19 @@ struct CachedStatement {
   inner: InnerStatementPtr,
   return_arrays: bool,
   use_big_ints: bool,
-  /// Bumped whenever the statement is rebound or reset by `get`/`all`/`run`/
-  /// `iterate`. A live iterator captures this and refuses to step once it
-  /// changes, so it cannot resume over another caller's bound parameters.
+  /// Reassigned from the store's counter whenever the statement is rebound or
+  /// reset by `get`/`all`/`run`/`iterate`. A live iterator captures this and
+  /// refuses to step once it changes, so it cannot resume over another
+  /// caller's bound parameters. Values are drawn from a store-wide sequence
+  /// rather than counting up per statement, so that a cache entry evicted and
+  /// re-prepared under the same SQL cannot hand a stale iterator a generation
+  /// it already recorded.
   iter_generation: Cell<u64>,
 }
 
 impl CachedStatement {
   fn is_finalized(&self) -> bool {
     self.inner.get().is_none()
-  }
-
-  fn invalidate_iter(&self) {
-    self
-      .iter_generation
-      .set(self.iter_generation.get().wrapping_add(1));
   }
 
   fn reset(&self) -> Result<(), SqliteError> {
@@ -130,6 +128,8 @@ pub struct SQLTagStore {
   use_big_ints: bool,
   db_object: v8::Global<v8::Object>,
   iter_contexts: RefCell<Vec<*mut SQLTagStoreIteratorContext>>,
+  /// Monotonic source for `CachedStatement::iter_generation`.
+  next_iter_generation: Cell<u64>,
 }
 
 struct SQLTagStoreIteratorContext {
@@ -207,7 +207,22 @@ impl SQLTagStore {
       use_big_ints,
       db_object,
       iter_contexts: RefCell::new(Vec::new()),
+      next_iter_generation: Cell::new(0),
     }
+  }
+
+  /// Hands out a generation value that has never been used by this store, so
+  /// no iterator holding an older one can be mistaken for current.
+  fn bump_iter_generation(&self) -> u64 {
+    let generation = self.next_iter_generation.get().wrapping_add(1);
+    self.next_iter_generation.set(generation);
+    generation
+  }
+
+  /// Invalidates any live iterator over `stmt` by moving it to a fresh
+  /// generation.
+  fn invalidate_iter(&self, stmt: &CachedStatement) {
+    stmt.iter_generation.set(self.bump_iter_generation());
   }
 
   // Parse template literal strings and interpolated values to build
@@ -280,7 +295,7 @@ impl SQLTagStore {
           stmt.use_big_ints = self.use_big_ints;
           // Rebinding for this caller resets the statement out from under any
           // live iterator over the same tagged literal.
-          stmt.invalidate_iter();
+          self.invalidate_iter(stmt);
           // Need to return, but can't borrow mut twice
           drop(cache);
           return Ok(self.get_cached_statement(&sql));
@@ -314,7 +329,7 @@ impl SQLTagStore {
       inner: stmt_cell,
       return_arrays: self.return_arrays,
       use_big_ints: self.use_big_ints,
-      iter_generation: Cell::new(0),
+      iter_generation: Cell::new(self.bump_iter_generation()),
     };
 
     self.cache.borrow_mut().put(sql.clone(), cached_stmt);
@@ -517,7 +532,7 @@ impl SQLTagStore {
           inner: stmt_cell,
           return_arrays: self.return_arrays,
           use_big_ints: self.use_big_ints,
-          iter_generation: Cell::new(0),
+          iter_generation: Cell::new(self.bump_iter_generation()),
         };
 
         self.cache.borrow_mut().put(sql.clone(), cached_stmt);
@@ -530,7 +545,7 @@ impl SQLTagStore {
       stmt.use_big_ints = self.use_big_ints;
       // A second `iterate` over the same tagged literal rebinds the shared
       // statement, so the previous iterator has to stop here too.
-      stmt.invalidate_iter();
+      self.invalidate_iter(&stmt);
       stmt.bind_params(scope, args, 1)?;
       stmt.iter_generation.get()
     };

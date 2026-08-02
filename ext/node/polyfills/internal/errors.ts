@@ -2131,7 +2131,7 @@ class ERR_QUIC_TLS13_REQUIRED extends NodeError {
   }
 }
 class ERR_REQUIRE_ASYNC_MODULE extends NodeError {
-  requireStack: string[];
+  declare requireStack: string[];
 
   constructor(
     filename: string,
@@ -2145,7 +2145,14 @@ class ERR_REQUIRE_ASYNC_MODULE extends NodeError {
         ArrayPrototypeJoin(requireStack, "\n- ");
     }
     super("ERR_REQUIRE_ASYNC_MODULE", message);
-    this.requireStack = requireStack;
+    // Not enumerable, so it does not show up in the inspected error.
+    ObjectDefineProperty(this, "requireStack", {
+      __proto__: null,
+      enumerable: false,
+      configurable: true,
+      writable: true,
+      value: requireStack,
+    });
     this.name = `Error [${this.code}]`;
     this.toString = nodeErrorToStringWithEmbeddedCode;
   }

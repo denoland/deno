@@ -236,6 +236,22 @@ function Agent(this: any, options: any) {
 ObjectSetPrototypeOf(Agent.prototype, HttpAgent.prototype);
 ObjectSetPrototypeOf(Agent, HttpAgent);
 
+// `pfx` may be an array of `{ buf, passphrase }`, which stringifies to
+// "[object Object]" and would let sockets holding different client
+// certificates share a pool entry.
+function getPfxAgentKey(pfx: any, passphrase: any) {
+  if (!ArrayIsArray(pfx)) return pfx;
+
+  let key = "";
+  for (let i = 0; i < pfx.length; i++) {
+    const value = pfx[i];
+    const raw = value?.buf || value;
+    const pass = value?.passphrase || passphrase;
+    key += `:${raw}:${pass}`;
+  }
+  return key;
+}
+
 Agent.prototype.getName = function getName(
   this: any,
   options: any = { __proto__: null },
@@ -262,24 +278,7 @@ Agent.prototype.getName = function getName(
   if (options.key) name += options.key;
 
   name += ":";
-  if (options.pfx) {
-    // `pfx` may be an array of `{ buf, passphrase }`, which stringifies to
-    // "[object Object]" and would let sockets holding different client
-    // certificates share a pool entry.
-    if (ArrayIsArray(options.pfx)) {
-      for (let i = 0; i < options.pfx.length; i++) {
-        const entry = options.pfx[i];
-        if (entry !== null && typeof entry === "object") {
-          if (entry.buf !== undefined) name += entry.buf;
-          if (entry.passphrase !== undefined) name += entry.passphrase;
-        } else {
-          name += entry;
-        }
-      }
-    } else {
-      name += options.pfx;
-    }
-  }
+  if (options.pfx) name += getPfxAgentKey(options.pfx, options.passphrase);
 
   name += ":";
   if (options.rejectUnauthorized !== undefined) {

@@ -150,6 +150,7 @@ const {
   validateNumber,
   validatePort,
   validateString,
+  validateStringWithoutNullBytes,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 
 const {
@@ -174,7 +175,6 @@ const {
   ReflectHas,
   SafeArrayIterator,
   StringPrototypeCharCodeAt,
-  StringPrototypeIncludes,
   Symbol,
   SymbolAsyncDispose,
 } = primordials;
@@ -1054,18 +1054,7 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
   const host = options.host || "localhost";
   let { port, autoSelectFamilyAttemptTimeout, autoSelectFamily } = options;
 
-  validateString(host, "options.host");
-
-  // A null byte would be silently truncated by the resolver, letting
-  // "127.0.0.1\0.allowed.example" pass a hostname allowlist and then resolve
-  // as "127.0.0.1".
-  if (StringPrototypeIncludes(host, "\0")) {
-    throw new ERR_INVALID_ARG_VALUE(
-      "options.host",
-      host,
-      "must be a string without null bytes",
-    );
-  }
+  validateStringWithoutNullBytes(host, "options.host");
 
   if (localAddress && !isIP(localAddress)) {
     throw new ERR_INVALID_IP_ADDRESS(localAddress);

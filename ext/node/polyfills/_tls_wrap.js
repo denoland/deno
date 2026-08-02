@@ -99,6 +99,9 @@ const { kEmptyObject } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const { domainToASCII } = core.loadExtScript(
+  "ext:deno_node/internal/idna.ts",
+);
 const {
   validateFunction,
   validateInt32,
@@ -1804,11 +1807,6 @@ function check(hostParts, pattern, wildcards) {
 
   const isBad = (s) => RegExpPrototypeTest(nonAsciiPattern, s);
   if (ArrayPrototypeSome(patternParts, isBad)) return false;
-  // The host is only split on U+002E, but IDNA also maps U+3002, U+FF0E and
-  // U+FF61 to a label separator. Matching a non-ASCII label against a wildcard
-  // would let "foo<U+3002>bar.example.com" pass for "*.example.com" even
-  // though it resolves as the four-label "foo.bar.example.com".
-  if (ArrayPrototypeSome(hostParts, isBad)) return false;
 
   for (let i = hostParts.length - 1; i > 0; i -= 1) {
     if (hostParts[i] !== patternParts[i]) return false;
@@ -1849,6 +1847,7 @@ function checkServerIdentity(hostname, cert) {
   const ips = [];
 
   hostname = "" + hostname;
+  const hostnameASCII = domainToASCII(hostname);
 
   if (altNames) {
     const splitAltNames = StringPrototypeIncludes(altNames, '"')
@@ -1869,8 +1868,16 @@ function checkServerIdentity(hostname, cert) {
   let valid = false;
   let reason = "Unknown reason";
 
+  // Remove trailing dots for error messages and matching.
   hostname = unfqdn(hostname);
+  const hostnameASCIIWithoutFQDN = unfqdn(hostnameASCII);
 
+  // An IP literal must not be IDNA-normalized: domainToASCII() returns '' for
+  // an IPv6 literal (it is not a domain), so matching against the normalized
+  // host would skip IP-SAN matching for IPv6 entirely. Match IP hosts against
+  // the original hostname (net.isIP() rejects non-ASCII, so there is no IDNA
+  // confusion to guard against here); the normalized form is kept for the
+  // DNS-name path below.
   if (net.isIP(hostname)) {
     valid = ArrayPrototypeIncludes(ips, canonicalizeIP(hostname));
     if (!valid) {
@@ -1878,7 +1885,11 @@ function checkServerIdentity(hostname, cert) {
         ArrayPrototypeJoin(ips, ", ");
     }
   } else if (dnsNames.length > 0 || subject?.CN) {
-    const hostParts = splitHost(hostname);
+    // Match on the IDNA-normalized host: splitHost() only splits on U+002E,
+    // but IDNA also maps U+3002, U+FF0E and U+FF61 to a label separator, so
+    // "foo<U+3002>bar.example.com" must be seen as the four-label
+    // "foo.bar.example.com" rather than a single label matching "*".
+    const hostParts = splitHost(hostnameASCIIWithoutFQDN);
     const wildcard = (pattern) => check(hostParts, pattern, true);
 
     if (dnsNames.length > 0) {

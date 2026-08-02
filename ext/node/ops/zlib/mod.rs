@@ -36,6 +36,24 @@ fn check(condition: bool, msg: &str) -> Result<(), JsErrorBox> {
   }
 }
 
+fn slice_input(input: &[u8], off: u32, len: u32) -> Result<&[u8], JsErrorBox> {
+  (off as usize)
+    .checked_add(len as usize)
+    .and_then(|end| input.get(off as usize..end))
+    .ok_or_else(|| JsErrorBox::type_error("invalid input range"))
+}
+
+fn slice_output(
+  out: &mut [u8],
+  off: u32,
+  len: u32,
+) -> Result<&mut [u8], JsErrorBox> {
+  (off as usize)
+    .checked_add(len as usize)
+    .and_then(|end| out.get_mut(off as usize..end))
+    .ok_or_else(|| JsErrorBox::type_error("invalid output range"))
+}
+
 #[derive(Default)]
 struct ZlibInner {
   dictionary: Option<Vec<u8>>,
@@ -665,21 +683,27 @@ impl BrotliEncoder {
     #[smi] out_len: u32,
     #[buffer] write_result: &mut [u32],
   ) -> Result<(), JsErrorBox> {
+    // The caller controls the offsets and lengths, so they have to be checked
+    // against the real backing store before `compress_stream` indexes with
+    // them; it would otherwise panic and take the process down.
+    let input_slice = slice_input(input, in_off, in_len)?;
+    let output_slice = slice_output(out, out_off, out_len)?;
+
     let mut avail_in = in_len as usize;
     let mut avail_out = out_len as usize;
     // SAFETY: `inst`, `next_in`, `next_out`, `avail_in`, and `avail_out` are valid pointers.
     let callback = unsafe {
       let mut ctx = self.ctx.borrow_mut();
-      let ctx = ctx.as_mut().expect("BrotliDecoder not initialized");
+      let ctx = ctx.as_mut().expect("BrotliEncoder not initialized");
 
       ctx.inst.compress_stream(
         std::mem::transmute::<u8, BrotliEncoderOperation>(flush),
         &mut avail_in,
-        input,
-        &mut (in_off as usize),
+        input_slice,
+        &mut 0,
         &mut avail_out,
-        out,
-        &mut (out_off as usize),
+        output_slice,
+        &mut 0,
         &mut None,
         &mut |_, _, _, _| (),
       );
@@ -709,6 +733,10 @@ impl BrotliEncoder {
     #[smi] out_len: u32,
     #[buffer] write_result: &mut [u32],
   ) -> Result<(), JsErrorBox> {
+    // See the bounds note in `write`.
+    let input_slice = slice_input(input, in_off, in_len)?;
+    let output_slice = slice_output(out, out_off, out_len)?;
+
     let mut ctx = self.ctx.borrow_mut();
     let ctx = ctx.as_mut().expect("BrotliEncoder not initialized");
 
@@ -719,11 +747,11 @@ impl BrotliEncoder {
       ctx.inst.compress_stream(
         std::mem::transmute::<u8, BrotliEncoderOperation>(flush),
         &mut avail_in,
-        input,
-        &mut (in_off as usize),
+        input_slice,
+        &mut 0,
         &mut avail_out,
-        out,
-        &mut (out_off as usize),
+        output_slice,
+        &mut 0,
         &mut None,
         &mut |_, _, _, _| (),
       );

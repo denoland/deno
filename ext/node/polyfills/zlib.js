@@ -80,6 +80,7 @@ const { ownerSymbol: owner_symbol } = core.loadExtScript(
 );
 const {
   checkRangesOrGetDefault,
+  validateBoolean,
   validateFiniteNumber,
   validateFunction,
   validateUint32,
@@ -319,6 +320,13 @@ function ZlibBase(opts, mode, handle, { flush, finishFlush, fullFlush }) {
       kMaxLength,
       kMaxLength,
     );
+
+    if (opts.rejectGarbageAfterEnd !== undefined) {
+      validateBoolean(
+        opts.rejectGarbageAfterEnd,
+        "options.rejectGarbageAfterEnd",
+      );
+    }
 
     if (opts.encoding || opts.objectMode || opts.writableObjectMode) {
       opts = { ...opts };
@@ -580,13 +588,12 @@ function processChunkSync(self, chunk, flushFlag) {
     }
   }
 
-  self.bytesWritten = inputRead;
-
-  if (self._rejectGarbageAfterEnd && availInAfter > 0) {
+  if (availInAfter > 0 && self._rejectGarbageAfterEnd) {
     _close(self);
     throw new ERR_TRAILING_JUNK_AFTER_STREAM_END();
   }
 
+  self.bytesWritten = inputRead;
   _close(self);
 
   if (nread === 0) {

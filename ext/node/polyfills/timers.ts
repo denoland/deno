@@ -6,12 +6,12 @@ const {
   FunctionPrototypeBind,
   ObjectCreate,
   ObjectDefineProperty,
-  ObjectPrototypeIsPrototypeOf,
   Promise,
   PromiseReject,
   PromiseWithResolvers,
   SafeArrayIterator,
   SafePromisePrototypeFinally,
+  Symbol,
   SymbolFor,
 } = primordials;
 
@@ -358,8 +358,12 @@ const promises = {
   setInterval: setIntervalAsync,
 };
 
+// Brands the one instance handed out as `scheduler`, so that a merely
+// prototype-linked object is still rejected as a foreign receiver.
+const kScheduler = Symbol("kScheduler");
+
 function validateScheduler(self: unknown) {
-  if (!ObjectPrototypeIsPrototypeOf(Scheduler.prototype, self)) {
+  if (self === null || self === undefined || !self[kScheduler]) {
     throw new ERR_INVALID_THIS("Scheduler");
   }
 }
@@ -384,6 +388,7 @@ class Scheduler {
 }
 
 const scheduler = ObjectCreate(Scheduler.prototype);
+scheduler[kScheduler] = true;
 promises.scheduler = scheduler;
 
 return {

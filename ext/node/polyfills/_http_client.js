@@ -700,11 +700,7 @@ function ClientRequest(input, options, cb) {
       }
     }
 
-    if (method === "CONNECT" && !this.getHeader("host") && setHost) {
-      // The request target of a CONNECT is the authority being tunnelled to,
-      // and Host has to name that authority rather than the proxy we dialed.
-      this.setHeader("Host", this.path);
-    } else if (host && !this.getHeader("host") && setHost) {
+    if (host && !this.getHeader("host") && setHost) {
       let hostHeader = host;
 
       const posColon = StringPrototypeIndexOf(hostHeader, ":");
@@ -719,7 +715,13 @@ function ClientRequest(input, options, cb) {
       if (port && +port !== defaultPort) {
         hostHeader += ":" + port;
       }
-      this.setHeader("Host", hostHeader);
+
+      // The request target of a CONNECT is the authority being tunnelled to,
+      // so Host has to name that authority rather than the proxy we dialed.
+      this.setHeader(
+        "Host",
+        method === "CONNECT" && options.path ? String(this.path) : hostHeader,
+      );
     }
 
     if (options.auth && !this.getHeader("Authorization")) {
