@@ -11,7 +11,6 @@ const {
   PromiseWithResolvers,
   SafeArrayIterator,
   SafePromisePrototypeFinally,
-  Symbol,
   SymbolFor,
 } = primordials;
 
@@ -358,12 +357,11 @@ const promises = {
   setInterval: setIntervalAsync,
 };
 
-// Brands the one instance handed out as `scheduler`, so that a merely
-// prototype-linked object is still rejected as a foreign receiver.
-const kScheduler = Symbol("kScheduler");
-
+// There is exactly one `scheduler`, so identity is the check: a
+// prototype-linked object, or one carrying whatever properties the real
+// instance has, is still a foreign receiver.
 function validateScheduler(self: unknown) {
-  if (self === null || self === undefined || !self[kScheduler]) {
+  if (self !== scheduler) {
     throw new ERR_INVALID_THIS("Scheduler");
   }
 }
@@ -388,7 +386,6 @@ class Scheduler {
 }
 
 const scheduler = ObjectCreate(Scheduler.prototype);
-scheduler[kScheduler] = true;
 promises.scheduler = scheduler;
 
 return {

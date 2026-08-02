@@ -29,6 +29,7 @@ const { core, primordials } = __bootstrap;
 const {
   ArrayBuffer,
   MathMax,
+  NumberIsInteger,
   NumberIsNaN,
   ObjectDefineProperties,
   ObjectDefineProperty,
@@ -480,10 +481,12 @@ ZlibBase.prototype._processChunk = function (chunk, flushFlag, cb) {
   }
 };
 
-// `length` and `byteLength` can be shadowed by own accessors, and the native
-// write trusts the value it is handed to size the read out of the backing
-// store. Check the reported size against the intrinsic one before it is used
-// as a length, and likewise that the output window is inside the chunk.
+// `byteLength` can be shadowed by an own accessor, and the write paths below
+// trust the value they are handed to size the read out of the backing store.
+// Check the reported size against the intrinsic one before it is used as a
+// length, and likewise that the output window is inside the output buffer.
+// The ops bounds-check as well, so this is about reporting Node's error rather
+// than about memory safety.
 function validateChunkBounds(self, chunk) {
   if (isUint8Array(chunk)) {
     const actual = TypedArrayPrototypeGetByteLength(chunk);
@@ -495,10 +498,16 @@ function validateChunkBounds(self, chunk) {
       );
     }
   }
-  if (self._outOffset < 0 || self._outOffset > self._chunkSize) {
+  // A fractional offset would otherwise be truncated on the way into the op,
+  // so reject it here instead of silently writing somewhere else.
+  if (
+    !NumberIsInteger(self._outOffset) ||
+    self._outOffset < 0 ||
+    self._outOffset > self._chunkSize
+  ) {
     throw new ERR_OUT_OF_RANGE(
       "outOffset",
-      `>= 0 and <= ${self._chunkSize}`,
+      `an integer >= 0 and <= ${self._chunkSize}`,
       self._outOffset,
     );
   }

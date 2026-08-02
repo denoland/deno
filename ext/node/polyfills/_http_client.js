@@ -718,10 +718,11 @@ function ClientRequest(input, options, cb) {
 
       // The request target of a CONNECT is the authority being tunnelled to,
       // so Host has to name that authority rather than the proxy we dialed.
-      this.setHeader(
-        "Host",
-        method === "CONNECT" && options.path ? String(this.path) : hostHeader,
-      );
+      if (method === "CONNECT" && options.path) {
+        hostHeader = String(options.path);
+      }
+
+      this.setHeader("Host", hostHeader);
     }
 
     if (options.auth && !this.getHeader("Authorization")) {

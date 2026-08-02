@@ -1847,7 +1847,6 @@ function checkServerIdentity(hostname, cert) {
   const ips = [];
 
   hostname = "" + hostname;
-  const hostnameASCII = domainToASCII(hostname);
 
   if (altNames) {
     const splitAltNames = StringPrototypeIncludes(altNames, '"')
@@ -1870,14 +1869,12 @@ function checkServerIdentity(hostname, cert) {
 
   // Remove trailing dots for error messages and matching.
   hostname = unfqdn(hostname);
-  const hostnameASCIIWithoutFQDN = unfqdn(hostnameASCII);
 
   // An IP literal must not be IDNA-normalized: domainToASCII() returns '' for
   // an IPv6 literal (it is not a domain), so matching against the normalized
   // host would skip IP-SAN matching for IPv6 entirely. Match IP hosts against
-  // the original hostname (net.isIP() rejects non-ASCII, so there is no IDNA
-  // confusion to guard against here); the normalized form is kept for the
-  // DNS-name path below.
+  // the hostname as given; net.isIP() rejects non-ASCII, so there is no IDNA
+  // confusion to guard against here.
   if (net.isIP(hostname)) {
     valid = ArrayPrototypeIncludes(ips, canonicalizeIP(hostname));
     if (!valid) {
@@ -1888,8 +1885,17 @@ function checkServerIdentity(hostname, cert) {
     // Match on the IDNA-normalized host: splitHost() only splits on U+002E,
     // but IDNA also maps U+3002, U+FF0E and U+FF61 to a label separator, so
     // "foo<U+3002>bar.example.com" must be seen as the four-label
-    // "foo.bar.example.com" rather than a single label matching "*".
-    const hostParts = splitHost(hostnameASCIIWithoutFQDN);
+    // "foo.bar.example.com" rather than a single label matching "*". An
+    // all-ASCII host has no such mapping to apply (check() lowercases and
+    // rejects non-ASCII patterns), so it is matched as given and the
+    // normalization is skipped, keeping the op off the common handshake path.
+    // domainToASCII() returns '' for a host IDNA rejects; that empty host is
+    // then matched by no pattern, which is the intended fail-closed outcome.
+    const hostParts = splitHost(
+      RegExpPrototypeTest(nonAsciiPattern, hostname)
+        ? domainToASCII(hostname)
+        : hostname,
+    );
     const wildcard = (pattern) => check(hostParts, pattern, true);
 
     if (dnsNames.length > 0) {

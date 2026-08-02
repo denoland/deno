@@ -581,9 +581,15 @@ impl SQLTagStore {
         VALUE.v8_string(scope).unwrap().into(),
       ];
 
+      let generation = store
+        .cache
+        .borrow()
+        .peek(&ctx.sql)
+        .map(|stmt| stmt.iter_generation.get());
+
       // If the cached statement was evicted mid-iteration, finish the iterator
       // instead of re-preparing and restarting from the first row.
-      if ctx.finished.get() || !store.cache.borrow().exists(&ctx.sql) {
+      if ctx.finished.get() || generation.is_none() {
         let values =
           &[v8::Boolean::new(scope, true).into(), v8::null(scope).into()];
         let null = v8::null(scope).into();
@@ -593,9 +599,7 @@ impl SQLTagStore {
         return;
       }
 
-      if store.get_cached_statement(&ctx.sql).iter_generation.get()
-        != ctx.expected_generation
-      {
+      if generation != Some(ctx.expected_generation) {
         let msg = v8::String::new(
           scope,
           "This iterator was invalidated because the statement was reset by calling get(), all(), run(), or iterate() on the same tagged template.",
@@ -658,7 +662,17 @@ impl SQLTagStore {
       let store = unsafe { &*ctx.store };
 
       ctx.finished.set(true);
-      if store.cache.borrow().exists(&ctx.sql) {
+      // Only reset the statement if it is still the one this iterator was
+      // bound to. A get()/all()/run()/iterate() on the same tagged template
+      // rebinds the shared statement for another caller, and resetting it here
+      // — e.g. while `for...of` unwinds after next() reported the
+      // invalidation — would restart that caller's iteration from the first
+      // row.
+      let is_current =
+        store.cache.borrow().peek(&ctx.sql).is_some_and(|stmt| {
+          stmt.iter_generation.get() == ctx.expected_generation
+        });
+      if is_current {
         let _ = {
           let stmt = store.get_cached_statement(&ctx.sql);
           stmt.reset()
