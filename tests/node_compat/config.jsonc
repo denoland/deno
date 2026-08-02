@@ -4265,7 +4265,10 @@
     "parallel/test-zlib-reset-before-write.js": {},
     "parallel/test-zlib-sync-no-event.js": {},
     "parallel/test-zlib-truncated.js": {},
-    "parallel/test-zlib-type-error.js": {},
+    "parallel/test-zlib-type-error.js": {
+      "ignore": true,
+      "reason": "Node 26.5 added coverage for the rejectGarbageAfterEnd option on sync decompression, which Deno's zlib does not implement"
+    },
     "parallel/test-zlib-unused-weak.js": {},
     "parallel/test-zlib-unzip-one-byte-chunks.js": {},
     "parallel/test-zlib-write-after-close.js": {},
@@ -5292,7 +5295,10 @@
       "windows": false,
       "reason": "Expected values to be strictly equal"
     },
-    "parallel/test-sqlite-template-tag.js": {},
+    "parallel/test-sqlite-template-tag.js": {
+      "ignore": true,
+      "reason": "Node 26.5 added coverage for TagStore iterators being invalidated when the cached statement is reused; Deno's node:sqlite lets a stale iterator keep stepping"
+    },
     "parallel/test-startup-empty-regexp-statics.mjs": {
       "windows": false,
       "darwin": false,
