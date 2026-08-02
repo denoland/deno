@@ -188,6 +188,36 @@ fn package_json_to_bin_entry(
   }
 }
 
+/// The normalized `node_modules/.bin` entry names contributed by the
+/// workspace's non-root members.
+///
+/// Members aren't part of the npm resolution snapshot, so `deno task` needs
+/// this to tell a member's bin apart from a dependency's when merging `.bin`
+/// entries into its custom commands (#36313).
+pub fn workspace_member_bin_names(
+  workspace: &Workspace,
+) -> std::collections::HashSet<String> {
+  let mut names = std::collections::HashSet::new();
+  for (folder_url, folder) in workspace.config_folders() {
+    if folder_url == workspace.root_dir_url() {
+      continue;
+    }
+    let Some(pkg_json) = &folder.pkg_json else {
+      continue;
+    };
+    let Some(bin) = package_json_to_bin_entry(pkg_json) else {
+      continue;
+    };
+    let nv = package_json_to_lifecycle_nv(pkg_json);
+    names.extend(
+      crate::bin_entries::bin_names(nv.name.as_str(), Some(&bin))
+        .into_iter()
+        .map(|name| name.to_string()),
+    );
+  }
+  names
+}
+
 impl NpmInstallDepsProvider {
   pub fn empty() -> Self {
     Self::default()

@@ -30,25 +30,25 @@ use sys_traits::SysWithPathsInErrors;
 /// Returns the name of the default binary for the given package.
 /// This is the package name without the organization (`@org/`), if any.
 fn default_bin_name(package: &NpmResolutionPackage) -> &str {
-  package
-    .id
-    .nv
-    .name
-    .as_str()
+  strip_package_scope(package.id.nv.name.as_str())
+}
+
+fn strip_package_scope(package_name: &str) -> &str {
+  package_name
     .rsplit_once('/')
     .map(|(_, name)| name)
-    .unwrap_or(package.id.nv.name.as_str())
+    .unwrap_or(package_name)
 }
 
 /// The `node_modules/.bin` entry names a package would contribute, after
 /// normalization. Mirrors what [`BinEntries::add`] registers.
 pub fn bin_names<'a>(
-  package: &'a NpmResolutionPackage,
-  extra: &'a NpmPackageExtraInfo,
+  package_name: &'a str,
+  bin: Option<&'a deno_npm::registry::NpmPackageVersionBinEntry>,
 ) -> Vec<&'a str> {
-  match extra.bin.as_ref() {
+  match bin {
     Some(deno_npm::registry::NpmPackageVersionBinEntry::String(_)) => {
-      vec![default_bin_name(package)]
+      vec![strip_package_scope(package_name)]
     }
     Some(deno_npm::registry::NpmPackageVersionBinEntry::Map(entries)) => {
       entries
@@ -115,12 +115,21 @@ pub fn warn_missing_entrypoint(
   );
 }
 
+struct BinEntry<'a> {
+  package: &'a NpmResolutionPackage,
+  package_path: PathBuf,
+  extra: NpmPackageExtraInfo,
+  /// Whether `package_path` is a workspace member, i.e. a directory in the
+  /// user's own source tree rather than something we laid out.
+  is_workspace_member: bool,
+}
+
 pub struct BinEntries<'a, TSys: SetupBinEntrySys> {
   /// Packages that have colliding bin names
   collisions: HashSet<&'a NpmPackageId>,
   seen_names: HashMap<String, &'a NpmPackageId>,
   /// The bin entries
-  entries: Vec<(&'a NpmResolutionPackage, PathBuf, NpmPackageExtraInfo)>,
+  entries: Vec<BinEntry<'a>>,
   sorted: bool,
   sys: SysWithPathsInErrors<'a, TSys>,
 }
@@ -148,6 +157,27 @@ impl<'a, TSys: SetupBinEntrySys> BinEntries<'a, TSys> {
     package: &'a NpmResolutionPackage,
     extra: &'b NpmPackageExtraInfo,
     package_path: PathBuf,
+  ) {
+    self.add_maybe_workspace_member(package, extra, package_path, false)
+  }
+
+  /// Same as [`Self::add`], but for a workspace member, whose `package_path`
+  /// is in the user's own source tree.
+  pub fn add_workspace_member<'b>(
+    &mut self,
+    package: &'a NpmResolutionPackage,
+    extra: &'b NpmPackageExtraInfo,
+    package_path: PathBuf,
+  ) {
+    self.add_maybe_workspace_member(package, extra, package_path, true)
+  }
+
+  fn add_maybe_workspace_member<'b>(
+    &mut self,
+    package: &'a NpmResolutionPackage,
+    extra: &'b NpmPackageExtraInfo,
+    package_path: PathBuf,
+    is_workspace_member: bool,
   ) {
     let Some(bin) = extra.bin.as_ref() else {
       // likely lockfile incorrectly said that the package has a bin
@@ -193,7 +223,12 @@ impl<'a, TSys: SetupBinEntrySys> BinEntries<'a, TSys> {
       return;
     }
 
-    self.entries.push((package, package_path, extra.clone()));
+    self.entries.push(BinEntry {
+      package,
+      package_path,
+      extra: extra.clone(),
+      is_workspace_member,
+    });
   }
 
   fn for_each_entry(
@@ -223,10 +258,25 @@ impl<'a, TSys: SetupBinEntrySys> BinEntries<'a, TSys> {
 
     let mut seen = HashSet::new();
 
-    for (package, package_path, extra) in &self.entries {
+    for entry in &self.entries {
+      let BinEntry {
+        package,
+        package_path,
+        extra,
+        is_workspace_member,
+      } = entry;
       if !filter(package) {
         continue;
       }
+      // an entry that lost its name isn't linked to, so there's nothing to do
+      // for it other than make it executable, which we skip for a workspace
+      // member so we don't touch a file in the user's source tree for nothing
+      let mut already_seen = |sys, package_path: &Path, script: &str| {
+        if *is_workspace_member {
+          return Ok(());
+        }
+        already_seen(sys, package_path, script)
+      };
       if let Some(bin_entries) = &extra.bin {
         match bin_entries {
           deno_npm::registry::NpmPackageVersionBinEntry::String(script) => {
@@ -364,13 +414,18 @@ impl<'a, TSys: SetupBinEntrySys> BinEntries<'a, TSys> {
 // that has a bin entry, then sort them by depth
 fn sort_by_depth(
   snapshot: &NpmResolutionSnapshot,
-  bin_entries: &mut [(&NpmResolutionPackage, PathBuf, NpmPackageExtraInfo)],
+  bin_entries: &mut [BinEntry<'_>],
   collisions: &mut HashSet<&NpmPackageId>,
 ) {
   enum Entry<'a> {
     Pkg(&'a NpmPackageId),
     IncreaseDepth,
   }
+
+  // Entries that aren't in the snapshot (workspace members) can never be found
+  // by the walk below, so drop them up front to keep its early exit working.
+  // They get `u64::MAX` from the sort either way.
+  collisions.retain(|id| snapshot.package_from_id(id).is_some());
 
   let mut seen = HashSet::new();
   let mut depths: HashMap<&NpmPackageId, u64> =
@@ -410,7 +465,8 @@ fn sort_by_depth(
     }
   }
 
-  bin_entries.sort_by(|(a, _, _), (b, _, _)| {
+  bin_entries.sort_by(|a, b| {
+    let (a, b) = (a.package, b.package);
     depths
       .get(&a.id)
       .unwrap_or(&u64::MAX)

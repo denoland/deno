@@ -932,9 +932,6 @@ impl<
       // Workspace members that declare a `bin` get a root `.bin` entry too, so
       // `deno task` and any tooling that looks in `node_modules/.bin` can run
       // them (#36313). Added last so snapshot packages win a name collision.
-      // The collision warning is only worth emitting when the user actually
-      // asked to install; `deno run`/`deno task` re-link too and would
-      // otherwise re-print it ahead of every command's output.
       add_workspace_bin_entries(
         &mut bin_entries,
         &workspace_bin_packages,
@@ -1068,8 +1065,8 @@ impl<
                 let Some(target_dir) = workspace_member_dirs.get(nv) else {
                   continue;
                 };
-                // A sibling member that ships executables contributes them to
-                // this member's `.bin` too (#36313).
+                // a sibling member's executables land in this member's
+                // `.bin` too (#36313)
                 if let Some(bin_pkg) = workspace_bin_pkgs_by_nv.get(nv) {
                   bin_deps.push(MemberBinDep {
                     package: &bin_pkg.package,
@@ -1873,12 +1870,9 @@ pub(crate) fn remove_stale_member_symlinks<TSys: LocalNpmInstallSys>(
 
 /// A non-root workspace member that declares a `bin` in its package.json.
 ///
-/// Workspace members are not npm packages in the resolution snapshot, so a
-/// synthetic [`NpmResolutionPackage`] is built for them here. That lets their
-/// executables go through the same [`BinEntries`] machinery as registry
-/// packages (bin-name normalization, collision handling, unix symlinks and
-/// windows shims) instead of duplicating any of it. See
-/// https://github.com/denoland/deno/issues/36313.
+/// Members are not npm packages in the resolution snapshot, so a synthetic
+/// [`NpmResolutionPackage`] is built for them here in order to reuse the same
+/// [`BinEntries`] machinery as registry packages (#36313).
 pub(crate) struct WorkspaceBinPackage {
   pub nv: PackageNv,
   pub package: NpmResolutionPackage,
@@ -1933,65 +1927,43 @@ pub(crate) fn resolve_workspace_bin_packages(
 /// Adds the workspace members' executables to the root `node_modules/.bin`
 /// entries.
 ///
-/// Precedence rules for a `.bin` name declared more than once:
+/// Members are added after every snapshot package and aren't in the snapshot,
+/// so `sort_by_depth` gives them depth `u64::MAX` and a real dependency wins
+/// a name collision (as it does in npm). Two members colliding fall back to
+/// that sort's descending `nv` tiebreak, so the greatest `<name>@<version>`
+/// wins; that's arbitrary, hence the warning.
 ///
-/// * **snapshot package vs. workspace member** — the snapshot package wins.
-///   These are added *after* every snapshot package, `BinEntries` keeps the
-///   first entry it sees for a given name, and when a collision forces a depth
-///   sort the synthetic workspace packages aren't in the snapshot so they get
-///   depth `u64::MAX` and sort last. Silently replacing a real dependency's
-///   executable with a workspace member's would be surprising, and it matches
-///   npm, which links the dependency. The member's `bin` then silently doesn't
-///   appear, so [`warn_on_workspace_bin_name_collisions`] reports this case
-///   too, even when only one member declares the name.
-/// * **workspace member vs. workspace member** — both get depth `u64::MAX`, so
-///   the sort falls back to `sort_by_depth`'s `nv` tiebreak, which is
-///   *descending*; the greatest `<name>@<version>` therefore wins. That's
-///   arbitrary, so [`warn_on_workspace_bin_name_collisions`] warns about it.
-///   npm hard-errors here, but a warning keeps an otherwise fine workspace
-///   installable.
-///
-/// `warn_on_collisions` should only be set on the install path. `node_modules`
-/// is re-linked by `deno run`/`deno task` too, and npm reports this kind of
-/// problem once, at install time, rather than ahead of every command. The
-/// trade-off of that gating is that a user who never re-runs a clean install —
-/// they only ever `deno task` against an already-linked `node_modules` — won't
-/// be shown the warning at all; we take it over reprinting the same warning
-/// ahead of every single command.
+/// `warn_on_collisions` should only be set on the install path: `node_modules`
+/// is re-linked by `deno run`/`deno task` too, and npm reports this once at
+/// install time rather than ahead of every command.
 pub(crate) fn add_workspace_bin_entries<'a, TSys: SetupBinEntrySys>(
   bin_entries: &mut BinEntries<'a, TSys>,
   workspace_bin_packages: &'a [WorkspaceBinPackage],
   warn_on_collisions: bool,
 ) {
   if warn_on_collisions {
-    // Must run before the members are added below so `has_bin_name` still only
-    // reports names claimed by snapshot packages.
+    // must run first so `has_bin_name` only reports snapshot package names
     warn_on_workspace_bin_name_collisions(workspace_bin_packages, |name| {
       bin_entries.has_bin_name(name)
     });
   }
   for pkg in workspace_bin_packages {
     // Point at the member's real directory rather than its root
-    // `node_modules/<name>` symlink so the generated shim resolves even before
-    // that symlink is created (it's created after the root `.bin` is set up).
-    //
-    // NOTE: this means `package_path` is a directory inside the user's own
-    // source tree, so on unix `BinEntries` will `chmod +x` the member's `bin`
-    // script in place (see `make_executable_if_exists` in `bin_entries.rs`) —
-    // a git-tracked `packages/foo/cli.js` can flip 100644 -> 100755 and show
-    // up in `git status` after an install. npm's `bin-links` does exactly the
-    // same thing, so this is parity rather than a deno-specific quirk. It also
-    // fires for a member that *loses* a name collision, because the
-    // `already_seen` branch chmods too.
-    bin_entries.add(&pkg.package, &pkg.extra, pkg.package_path.clone());
+    // `node_modules/<name>` symlink, which isn't created until after the root
+    // `.bin` setup. Note this means `BinEntries` chmods the member's bin
+    // script `+x` in the user's own source tree, same as npm's `bin-links`.
+    bin_entries.add_workspace_member(
+      &pkg.package,
+      &pkg.extra,
+      pkg.package_path.clone(),
+    );
   }
 }
 
 /// Warns when a workspace member's `bin` name won't end up in the root
-/// `node_modules/.bin` pointing at that member — either because another member
-/// declares the same name (and which one wins is essentially arbitrary), or
-/// because a dependency already claims it. See [`add_workspace_bin_entries`]
-/// for the precedence.
+/// `node_modules/.bin` pointing at that member, either because another member
+/// declares the same name or because a dependency already claims it. See
+/// [`add_workspace_bin_entries`] for the precedence.
 fn warn_on_workspace_bin_name_collisions(
   workspace_bin_packages: &[WorkspaceBinPackage],
   is_claimed_by_dependency: impl Fn(&str) -> bool,
@@ -2007,9 +1979,8 @@ fn warn_on_workspace_bin_name_collisions(
 /// Builds the warning messages for [`warn_on_workspace_bin_name_collisions`].
 ///
 /// `is_claimed_by_dependency` reports whether a snapshot package already
-/// contributes that name. Those always win, so in that case the member isn't
-/// linked and the message must not claim otherwise — including when only a
-/// single member declares the name, which is the likelier way to hit this.
+/// contributes that name. Those always win, so the message must not say the
+/// member gets linked, including when only a single member declares the name.
 fn workspace_bin_name_collision_warnings(
   workspace_bin_packages: &[WorkspaceBinPackage],
   is_claimed_by_dependency: impl Fn(&str) -> bool,
@@ -2017,7 +1988,10 @@ fn workspace_bin_name_collision_warnings(
   let mut members_by_bin_name: BTreeMap<&str, BTreeSet<&PackageNv>> =
     BTreeMap::new();
   for pkg in workspace_bin_packages {
-    for name in crate::bin_entries::bin_names(&pkg.package, &pkg.extra) {
+    for name in crate::bin_entries::bin_names(
+      pkg.nv.name.as_str(),
+      pkg.extra.bin.as_ref(),
+    ) {
       members_by_bin_name.entry(name).or_default().insert(&pkg.nv);
     }
   }
@@ -2055,10 +2029,9 @@ fn workspace_bin_name_collision_warnings(
 pub(crate) struct MemberBinDep<'a> {
   /// The resolved npm package, used for its `bin` metadata.
   pub package: &'a NpmResolutionPackage,
-  /// Already-known extra info for the package. Workspace members aren't in the
-  /// snapshot and their `bin` comes straight from the package.json the deps
-  /// provider read, so there's nothing to look up. `None` means read it from
-  /// `read_path`.
+  /// Already-known extra info, for workspace members (whose `bin` comes
+  /// straight from the package.json the deps provider read). `None` means read
+  /// it from `read_path`.
   pub extra: Option<&'a NpmPackageExtraInfo>,
   /// Where the package's `package.json` is read from: its real location in the
   /// layout (the `.deno` store path for the isolated linker, or the hoisted
@@ -2084,8 +2057,7 @@ pub(crate) struct MemberBinDep<'a> {
 /// symlinks.
 ///
 /// Sibling workspace members that declare a `bin` are included in `bin_deps`
-/// too (via a synthetic [`WorkspaceBinPackage`]), so a member can invoke a
-/// sibling's executable the same way it invokes a registry dependency's.
+/// too (via a synthetic [`WorkspaceBinPackage`]).
 pub(crate) async fn setup_member_bin_entries<'a, TSys: LocalNpmInstallSys>(
   sys: SysWithPathsInErrors<'a, TSys>,
   snapshot: &'a NpmResolutionSnapshot,
@@ -2117,7 +2089,12 @@ pub(crate) async fn setup_member_bin_entries<'a, TSys: LocalNpmInstallSys>(
       continue;
     }
     match dep.extra {
-      Some(extra) => bin_entries.add(dep.package, extra, dep.link_path.clone()),
+      // only workspace members come with their extra info already known
+      Some(extra) => bin_entries.add_workspace_member(
+        dep.package,
+        extra,
+        dep.link_path.clone(),
+      ),
       None => {
         // Cached from the root setup that ran earlier, so this is a map lookup
         // rather than a disk read in the common case.
@@ -2255,7 +2232,7 @@ pub(crate) fn join_package_name(
 
 /// Calculates a hash of the current package set for change detection.
 /// This allows us to detect when npm packages have been added, removed, or changed.
-fn calculate_packages_hash(
+pub(crate) fn calculate_packages_hash(
   package_partitions: &deno_npm::resolution::NpmPackagesPartitioned,
   root_folder_names: &BTreeSet<String>,
   workspace_bin_packages: &[WorkspaceBinPackage],
@@ -2284,10 +2261,8 @@ fn calculate_packages_hash(
   }
 
   // and hash the workspace members' executables, which also land in the root
-  // `node_modules/.bin` but aren't part of the resolution snapshot. Without
-  // this, renaming a member's bin, dropping its `bin` field, or removing the
-  // member entirely would never trip the cleanup and the old entry would
-  // linger (as a dangling symlink, in the last case).
+  // `node_modules/.bin` but aren't part of the resolution snapshot, so that
+  // renaming or dropping a member's bin trips the cleanup
   for name in workspace_bin_hash_names(workspace_bin_packages) {
     name.hash(&mut hasher);
   }
@@ -2429,7 +2404,19 @@ fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
     },
   );
 
-  // remove the .bin directory entries
+  clear_bin_dir(sys, root_node_modules_dir);
+}
+
+/// Removes every entry in the root `node_modules/.bin`.
+///
+/// Entries for packages (and workspace members) that are no longer part of the
+/// install have no cheap way to be identified on disk, so the directory is
+/// cleared and `BinEntries::finish` recreates the current entries right after.
+/// Only called when the install actually changed.
+pub(crate) fn clear_bin_dir<TSys: LocalNpmInstallSys>(
+  sys: &TSys,
+  root_node_modules_dir: &Path,
+) {
   let bin_dir = root_node_modules_dir.join(".bin");
   if let Ok(entries) = sys.fs_read_dir(&bin_dir) {
     for entry in entries.flatten() {

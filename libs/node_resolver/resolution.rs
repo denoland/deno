@@ -1138,11 +1138,10 @@ impl<
   /// Same as [`Self::resolve_npm_commands_from_bin_dir`], but only classifies
   /// entries whose command name passes `filter`.
   ///
-  /// Classifying an entry means reading the whole file off disk
-  /// ([`read_bin_value`]), and a `node_modules/.bin` can hold hundreds of
-  /// entries, some of them multi-megabyte bundled CLIs. Callers that already
-  /// know they will discard some of the names should filter here so that I/O
-  /// never happens.
+  /// Classifying an entry reads the file ([`read_bin_value`]); shebang scripts,
+  /// which is most of what's in a `node_modules/.bin`, are read to EOF. Callers
+  /// that already know they will discard some of the names should filter here
+  /// so that I/O never happens.
   pub fn resolve_npm_commands_from_bin_dir_filtered(
     &self,
     bin_dir: &Path,
