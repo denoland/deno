@@ -1804,6 +1804,11 @@ function check(hostParts, pattern, wildcards) {
 
   const isBad = (s) => RegExpPrototypeTest(nonAsciiPattern, s);
   if (ArrayPrototypeSome(patternParts, isBad)) return false;
+  // The host is only split on U+002E, but IDNA also maps U+3002, U+FF0E and
+  // U+FF61 to a label separator. Matching a non-ASCII label against a wildcard
+  // would let "foo<U+3002>bar.example.com" pass for "*.example.com" even
+  // though it resolves as the four-label "foo.bar.example.com".
+  if (ArrayPrototypeSome(hostParts, isBad)) return false;
 
   for (let i = hostParts.length - 1; i > 0; i -= 1) {
     if (hostParts[i] !== patternParts[i]) return false;

@@ -6,6 +6,7 @@ const {
   FunctionPrototypeBind,
   ObjectCreate,
   ObjectDefineProperty,
+  ObjectPrototypeIsPrototypeOf,
   Promise,
   PromiseReject,
   PromiseWithResolvers,
@@ -42,6 +43,7 @@ const { kEmptyObject, promisify } = core.loadExtScript(
 const {
   AbortError,
   ERR_ILLEGAL_CONSTRUCTOR,
+  ERR_INVALID_THIS,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const lazyEventTarget = core.createLazyLoader(
   "ext:deno_node/internal/event_target.mjs",
@@ -356,17 +358,27 @@ const promises = {
   setInterval: setIntervalAsync,
 };
 
+function validateScheduler(self: unknown) {
+  if (!ObjectPrototypeIsPrototypeOf(Scheduler.prototype, self)) {
+    throw new ERR_INVALID_THIS("Scheduler");
+  }
+}
+
 class Scheduler {
   constructor() {
     throw new ERR_ILLEGAL_CONSTRUCTOR();
   }
-  async wait(
+  // Not `async`: the `this` check has to reject a foreign receiver
+  // synchronously rather than returning a rejected promise.
+  wait(
     delay: number,
     options?: { signal?: AbortSignal },
   ): Promise<void> {
-    return await setTimeoutPromise(delay, undefined, options);
+    validateScheduler(this);
+    return setTimeoutPromise(delay, undefined, options);
   }
   yield() {
+    validateScheduler(this);
     return promises.setImmediate();
   }
 }

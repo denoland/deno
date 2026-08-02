@@ -20,11 +20,21 @@ struct CachedStatement {
   inner: InnerStatementPtr,
   return_arrays: bool,
   use_big_ints: bool,
+  /// Bumped whenever the statement is rebound or reset by `get`/`all`/`run`/
+  /// `iterate`. A live iterator captures this and refuses to step once it
+  /// changes, so it cannot resume over another caller's bound parameters.
+  iter_generation: Cell<u64>,
 }
 
 impl CachedStatement {
   fn is_finalized(&self) -> bool {
     self.inner.get().is_none()
+  }
+
+  fn invalidate_iter(&self) {
+    self
+      .iter_generation
+      .set(self.iter_generation.get().wrapping_add(1));
   }
 
   fn reset(&self) -> Result<(), SqliteError> {
@@ -126,6 +136,7 @@ struct SQLTagStoreIteratorContext {
   store: *const SQLTagStore,
   store_ref: v8::Global<v8::Value>,
   sql: String,
+  expected_generation: u64,
   finished: Cell<bool>,
   finalized_functions: Cell<u8>,
   next_func: RefCell<Option<v8::Weak<v8::Function>>>,
@@ -267,6 +278,9 @@ impl SQLTagStore {
           // Update settings from store
           stmt.return_arrays = self.return_arrays;
           stmt.use_big_ints = self.use_big_ints;
+          // Rebinding for this caller resets the statement out from under any
+          // live iterator over the same tagged literal.
+          stmt.invalidate_iter();
           // Need to return, but can't borrow mut twice
           drop(cache);
           return Ok(self.get_cached_statement(&sql));
@@ -300,6 +314,7 @@ impl SQLTagStore {
       inner: stmt_cell,
       return_arrays: self.return_arrays,
       use_big_ints: self.use_big_ints,
+      iter_generation: Cell::new(0),
     };
 
     self.cache.borrow_mut().put(sql.clone(), cached_stmt);
@@ -502,24 +517,30 @@ impl SQLTagStore {
           inner: stmt_cell,
           return_arrays: self.return_arrays,
           use_big_ints: self.use_big_ints,
+          iter_generation: Cell::new(0),
         };
 
         self.cache.borrow_mut().put(sql.clone(), cached_stmt);
       }
     }
 
-    {
+    let expected_generation = {
       let mut stmt = self.get_cached_statement(&sql);
       stmt.return_arrays = self.return_arrays;
       stmt.use_big_ints = self.use_big_ints;
+      // A second `iterate` over the same tagged literal rebinds the shared
+      // statement, so the previous iterator has to stop here too.
+      stmt.invalidate_iter();
       stmt.bind_params(scope, args, 1)?;
-    }
+      stmt.iter_generation.get()
+    };
 
     let store_ref = v8::Global::new(scope, args.this().cast::<v8::Value>());
     let iter_ctx = Box::into_raw(Box::new(SQLTagStoreIteratorContext {
       store: self as *const SQLTagStore,
       store_ref,
       sql,
+      expected_generation,
       finished: Cell::new(false),
       finalized_functions: Cell::new(0),
       next_func: RefCell::new(None),
@@ -554,6 +575,26 @@ impl SQLTagStore {
         let result =
           v8::Object::with_prototype_and_properties(scope, null, names, values);
         rv.set(result.into());
+        return;
+      }
+
+      if store.get_cached_statement(&ctx.sql).iter_generation.get()
+        != ctx.expected_generation
+      {
+        let msg = v8::String::new(
+          scope,
+          "This iterator was invalidated because the statement was reset by calling get(), all(), run(), or iterate() on the same tagged template.",
+        )
+        .unwrap();
+        let err = v8::Exception::error(scope, msg);
+        let code_key = v8::String::new(scope, "code").unwrap();
+        let code_val = v8::String::new(scope, "ERR_INVALID_STATE").unwrap();
+        err.to_object(scope).unwrap().set(
+          scope,
+          code_key.into(),
+          code_val.into(),
+        );
+        scope.throw_exception(err);
         return;
       }
 

@@ -38,6 +38,7 @@ const {
   ObjectSetPrototypeOf,
   ReflectApply,
   Symbol,
+  TypedArrayPrototypeGetByteLength,
   Uint32Array,
 } = primordials;
 
@@ -471,7 +472,32 @@ ZlibBase.prototype._processChunk = function (chunk, flushFlag, cb) {
   }
 };
 
+// `length` and `byteLength` can be shadowed by own accessors, and the native
+// write trusts the value it is handed to size the read out of the backing
+// store. Check the reported size against the intrinsic one before it is used
+// as a length, and likewise that the output window is inside the chunk.
+function validateChunkBounds(self, chunk) {
+  if (isUint8Array(chunk)) {
+    const actual = TypedArrayPrototypeGetByteLength(chunk);
+    if (chunk.byteLength > actual) {
+      throw new ERR_OUT_OF_RANGE(
+        "chunk.byteLength",
+        `<= ${actual}`,
+        chunk.byteLength,
+      );
+    }
+  }
+  if (self._outOffset < 0 || self._outOffset > self._chunkSize) {
+    throw new ERR_OUT_OF_RANGE(
+      "outOffset",
+      `>= 0 and <= ${self._chunkSize}`,
+      self._outOffset,
+    );
+  }
+}
+
 function processChunkSync(self, chunk, flushFlag) {
+  validateChunkBounds(self, chunk);
   let availInBefore = chunk.byteLength;
   let availOutBefore = self._chunkSize - self._outOffset;
   let inOff = 0;
@@ -555,6 +581,12 @@ function processChunkSync(self, chunk, flushFlag) {
   }
 
   self.bytesWritten = inputRead;
+
+  if (self._rejectGarbageAfterEnd && availInAfter > 0) {
+    _close(self);
+    throw new ERR_TRAILING_JUNK_AFTER_STREAM_END();
+  }
+
   _close(self);
 
   if (nread === 0) {
@@ -567,6 +599,8 @@ function processChunkSync(self, chunk, flushFlag) {
 function processChunk(self, chunk, flushFlag, cb) {
   const handle = self._handle;
   if (!handle) return process.nextTick(cb);
+
+  validateChunkBounds(self, chunk);
 
   // The native binding expects a Uint8Array
   if (!isUint8Array(chunk)) {
@@ -898,6 +932,12 @@ function Zlib(opts, mode) {
   );
 
   ReflectApply(ZlibBase, this, [opts, mode, handle, zlibDefaultOpts]);
+
+  if (this._rejectGarbageAfterEnd) {
+    // Stop the engine from transparently continuing into the next gzip member,
+    // so trailing input is still visible as unconsumed after the write.
+    handle.setRejectGarbageAfterEnd(true);
+  }
 
   this._level = level;
   this._strategy = strategy;

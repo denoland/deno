@@ -700,7 +700,11 @@ function ClientRequest(input, options, cb) {
       }
     }
 
-    if (host && !this.getHeader("host") && setHost) {
+    if (method === "CONNECT" && !this.getHeader("host") && setHost) {
+      // The request target of a CONNECT is the authority being tunnelled to,
+      // and Host has to name that authority rather than the proxy we dialed.
+      this.setHeader("Host", this.path);
+    } else if (host && !this.getHeader("host") && setHost) {
       let hostHeader = host;
 
       const posColon = StringPrototypeIndexOf(hostHeader, ":");

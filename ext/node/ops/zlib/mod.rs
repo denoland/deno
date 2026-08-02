@@ -50,6 +50,10 @@ struct ZlibInner {
   write_in_progress: bool,
   pending_close: bool,
   gzib_id_bytes_read: u32,
+  /// When set, a gzip member boundary is not silently followed by the next
+  /// member; the remaining input is left for the caller to reject as trailing
+  /// junk.
+  reject_garbage_after_end: bool,
   callback: Option<v8::Global<v8::Function>>,
   strm: StreamWrapper,
 }
@@ -168,7 +172,8 @@ impl ZlibInner {
           }
         }
 
-        while self.strm.avail_in > 0
+        while !self.reject_garbage_after_end
+          && self.strm.avail_in > 0
           && self.mode == Mode::Gunzip
           && self.err == Z_STREAM_END
           // SAFETY: `strm` is a valid pointer to zlib strm.
@@ -341,6 +346,19 @@ impl Zlib {
 
     // If there is a pending write, defer the close until the write is done.
     zlib.close()?;
+
+    Ok(())
+  }
+
+  #[fast]
+  pub fn set_reject_garbage_after_end(
+    &self,
+    value: bool,
+  ) -> Result<(), ZlibError> {
+    let mut zlib = self.inner.borrow_mut();
+    let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
+
+    zlib.reject_garbage_after_end = value;
 
     Ok(())
   }

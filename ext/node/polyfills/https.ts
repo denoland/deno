@@ -6,6 +6,7 @@
 (function () {
 const { core, primordials } = __bootstrap;
 const {
+  ArrayIsArray,
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,
   ArrayPrototypeShift,
@@ -261,7 +262,24 @@ Agent.prototype.getName = function getName(
   if (options.key) name += options.key;
 
   name += ":";
-  if (options.pfx) name += options.pfx;
+  if (options.pfx) {
+    // `pfx` may be an array of `{ buf, passphrase }`, which stringifies to
+    // "[object Object]" and would let sockets holding different client
+    // certificates share a pool entry.
+    if (ArrayIsArray(options.pfx)) {
+      for (let i = 0; i < options.pfx.length; i++) {
+        const entry = options.pfx[i];
+        if (entry !== null && typeof entry === "object") {
+          if (entry.buf !== undefined) name += entry.buf;
+          if (entry.passphrase !== undefined) name += entry.passphrase;
+        } else {
+          name += entry;
+        }
+      }
+    } else {
+      name += options.pfx;
+    }
+  }
 
   name += ":";
   if (options.rejectUnauthorized !== undefined) {
