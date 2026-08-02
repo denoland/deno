@@ -95,6 +95,10 @@ impl WorkerId {
     let id = WORKER_ID_COUNTER.fetch_add(1, Ordering::SeqCst);
     WorkerId(id)
   }
+
+  pub fn as_u32(&self) -> u32 {
+    self.0
+  }
 }
 impl fmt::Display for WorkerId {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -258,6 +262,7 @@ pub struct SendableWebWorkerHandle {
   receiver: mpsc::Receiver<WorkerControlEvent>,
   termination_signal: Arc<AtomicBool>,
   terminate_waker: Arc<AtomicWaker>,
+  isolate_handle: v8::IsolateHandle,
 }
 
 impl From<SendableWebWorkerHandle> for WebWorkerHandle {
@@ -267,6 +272,7 @@ impl From<SendableWebWorkerHandle> for WebWorkerHandle {
       port: Rc::new(handle.port),
       termination_signal: handle.termination_signal,
       terminate_waker: handle.terminate_waker,
+      isolate_handle: handle.isolate_handle,
     }
   }
 }
@@ -284,6 +290,7 @@ pub struct WebWorkerHandle {
   receiver: Rc<RefCell<mpsc::Receiver<WorkerControlEvent>>>,
   termination_signal: Arc<AtomicBool>,
   terminate_waker: Arc<AtomicWaker>,
+  isolate_handle: v8::IsolateHandle,
 }
 
 impl WebWorkerHandle {
@@ -296,6 +303,16 @@ impl WebWorkerHandle {
   pub async fn get_control_event(&self) -> Option<WorkerControlEvent> {
     let mut receiver = self.receiver.borrow_mut();
     receiver.next().await
+  }
+
+  /// Signal the worker's V8 isolate to stop executing JavaScript at the next
+  /// interrupt point. Unlike [`Self::terminate`], this reaches into a running
+  /// synchronous callback (e.g. a busy loop) instead of only waking the event
+  /// loop. It returns immediately and does not wait for the isolate to actually
+  /// stop, so it narrows — but cannot fully close — any window in which the
+  /// worker is still executing.
+  pub fn terminate_execution(&self) {
+    self.isolate_handle.terminate_execution();
   }
 
   /// Terminate the worker
@@ -331,7 +348,7 @@ fn create_handles(
     termination_signal: termination_signal.clone(),
     has_terminated,
     terminate_waker: terminate_waker.clone(),
-    isolate_handle,
+    isolate_handle: isolate_handle.clone(),
     cancel: CancelHandle::new_rc(),
     sender: ctrl_tx,
     worker_type,
@@ -342,6 +359,7 @@ fn create_handles(
     port: worker_port,
     termination_signal,
     terminate_waker,
+    isolate_handle,
   };
   (internal_handle, external_handle)
 }
@@ -405,6 +423,8 @@ pub struct WebWorkerOptions {
   pub maybe_cpu_prof_config: Option<CpuProfilerConfig>,
   pub enable_raw_imports: bool,
   pub enable_stack_trace_arg_in_ops: bool,
+  pub wait_for_debugger_on_start: bool,
+  pub wait_for_page_wait_for_debugger: bool,
 }
 
 /// This struct is an implementation of `Worker` Web API
@@ -431,6 +451,8 @@ pub struct WebWorker {
   /// Set to `true` by the near-heap-limit callback when resource limits
   /// are exceeded, so the error handler can emit `ERR_WORKER_OUT_OF_MEMORY`.
   pub oom_triggered: Arc<AtomicBool>,
+  wait_for_debugger_on_start: bool,
+  wait_for_page_wait_for_debugger: bool,
 }
 
 impl Drop for WebWorker {
@@ -704,7 +726,16 @@ impl WebWorker {
       );
       let op_state = js_runtime.op_state();
       let mut op_state = op_state.borrow_mut();
+      if options.worker_type == WorkerThreadType::Node {
+        deno_web::locks::set_lock_client_id(
+          &mut op_state,
+          deno_web::locks::worker_lock_client_id(options.worker_id.as_u32()),
+        );
+      }
       op_state.put(internal_handle.clone());
+      op_state.put(crate::ops::web_worker::WaitForWorkerDebuggerOnMessage(
+        options.wait_for_page_wait_for_debugger,
+      ));
       (internal_handle, external_handle)
     };
 
@@ -748,6 +779,9 @@ impl WebWorker {
         maybe_cpu_prof_config: options.maybe_cpu_prof_config,
         bootstrap_error: None,
         oom_triggered: Arc::new(AtomicBool::new(false)),
+        wait_for_debugger_on_start: options.wait_for_debugger_on_start,
+        wait_for_page_wait_for_debugger: options
+          .wait_for_page_wait_for_debugger,
       },
       external_handle,
       options.bootstrap,
@@ -1120,6 +1154,18 @@ pub async fn run_web_worker(
       .post_event(WorkerControlEvent::TerminalError(error, 1))
       .expect("Failed to post message to host");
     return Ok(());
+  }
+
+  if worker.wait_for_debugger_on_start {
+    worker
+      .js_runtime
+      .inspector()
+      .wait_for_runtime_run_if_waiting_for_debugger();
+  } else if worker.wait_for_page_wait_for_debugger {
+    worker
+      .js_runtime
+      .inspector()
+      .wait_for_page_wait_for_debugger();
   }
 
   // Execute provided source code immediately via V8 script evaluation

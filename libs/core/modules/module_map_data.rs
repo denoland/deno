@@ -201,12 +201,16 @@ pub(crate) struct ModuleMapData {
   pub(crate) synthetic_module_exports_store: SyntheticModuleExportsStore,
   pub(crate) lazy_esm_sources:
     Rc<RefCell<HashMap<ModuleName, ModuleCodeString>>>,
+  pub(crate) residual_lazy_esm_sources:
+    &'static [(&'static str, &'static str)],
   /// Specifiers of lazy-loaded ESM modules known to exist (survives
   /// snapshotting). Used to check if a module should be loaded from
   /// `lazy_esm_sources` without going through the external module loader.
   pub(crate) known_lazy_esm: RefCell<HashSet<String>>,
   pub(crate) lazy_script_sources:
     Rc<RefCell<HashMap<ModuleName, ModuleCodeString>>>,
+  pub(crate) residual_lazy_script_sources:
+    &'static [(&'static str, &'static str)],
   /// Results of `load_ext_script` evaluations. Populated on first
   /// evaluation so later callers (`Deno.core.loadExtScript()` from JS,
   /// the `synthetic_esm` dispatch from Rust) share a single evaluated

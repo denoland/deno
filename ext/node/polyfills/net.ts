@@ -526,7 +526,7 @@ function _afterConnectImpl(
 
   if (status === 0) {
     if (socket.readable && !readable) {
-      // deno-lint-ignore prefer-primordials -- Readable stream method, not Array.prototype.push
+      // deno-lint-ignore deno-internal/prefer-primordials -- Readable stream method, not Array.prototype.push
       socket.push(null);
       socket.read();
     }
@@ -738,7 +738,7 @@ function _internalConnect(
     localPort = (localPort ?? 0) | 0;
     if (addressType === 4) {
       localAddress = localAddress || DEFAULT_IPV4_ADDR;
-      // deno-lint-ignore prefer-primordials -- libuv handle.bind(), not Function.prototype.bind
+      // deno-lint-ignore deno-internal/prefer-primordials -- libuv handle.bind(), not Function.prototype.bind
       err = (socket._handle as TCP).bind(localAddress, localPort);
     } else {
       // addressType === 6
@@ -839,7 +839,7 @@ function _internalConnectMultiple(context, canceled?: boolean) {
   if (localPort) {
     if (addressType === 4) {
       localAddress = DEFAULT_IPV4_ADDR;
-      // deno-lint-ignore prefer-primordials -- libuv handle.bind(), not Function.prototype.bind
+      // deno-lint-ignore deno-internal/prefer-primordials -- libuv handle.bind(), not Function.prototype.bind
       err = self._handle.bind(localAddress, localPort);
     } else {
       // addressType === 6
@@ -1575,7 +1575,7 @@ function Socket(options) {
     onread !== null &&
     typeof onread === "object"
   ) {
-    // deno-lint-ignore prefer-primordials -- user option object property, not TypedArray#buffer
+    // deno-lint-ignore deno-internal/prefer-primordials -- user option object property, not TypedArray#buffer
     const onreadBuffer = onread.buffer;
     if (
       (isUint8Array(onreadBuffer) || typeof onreadBuffer === "function") &&
@@ -2233,7 +2233,12 @@ ObjectDefineProperty(Socket.prototype, "_handle", {
     if (this[kHandle] && !v) {
       unregisterActiveHandle(this);
     } else if (!this[kHandle] && v) {
-      registerActiveHandle(this);
+      registerActiveHandle(
+        this,
+        ObjectPrototypeIsPrototypeOf(TCP.prototype, v)
+          ? "TCPSocketWrap"
+          : "PipeWrap",
+      );
     }
     this[kHandle] = v;
   },
@@ -2584,7 +2589,7 @@ function _createServerHandle(
     } else if (isTCP) {
       err = (handle as TCP).bindWithFlags(address, port ?? 0, flags ?? 0);
     } else {
-      // deno-lint-ignore prefer-primordials -- libuv handle.bind(), not Function.prototype.bind
+      // deno-lint-ignore deno-internal/prefer-primordials -- libuv handle.bind(), not Function.prototype.bind
       err = handle.bind(address);
     }
   }
@@ -2664,6 +2669,14 @@ function _onconnectionImpl(this: any, err: number, clientHandle?: Handle) {
   }
 }
 
+// The libuv-style wrap name Node reports for a server handle from
+// `process.getActiveResourcesInfo()`.
+function _serverWrapName(handle: Handle) {
+  return ObjectPrototypeIsPrototypeOf(TCP.prototype, handle)
+    ? "TCPServerWrap"
+    : "PipeWrap";
+}
+
 function _setupListenHandle(
   this: Server,
   address: string | null,
@@ -2679,7 +2692,7 @@ function _setupListenHandle(
   // In the case of a server sent via IPC, we don't need to do this.
   if (this._handle) {
     debug("setupListenHandle: have a handle already");
-    registerActiveHandle(this);
+    registerActiveHandle(this, _serverWrapName(this._handle));
   } else {
     debug("setupListenHandle: create a handle");
 
@@ -2730,7 +2743,7 @@ function _setupListenHandle(
     }
 
     this._handle = rval;
-    registerActiveHandle(this);
+    registerActiveHandle(this, _serverWrapName(this._handle));
   }
 
   this[asyncIdSymbol] = _getNewAsyncId(this._handle);

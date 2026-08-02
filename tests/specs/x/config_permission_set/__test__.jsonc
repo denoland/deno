@@ -1,0 +1,26 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_DIR": "$PWD/deno_dir"
+  },
+  // Regression test for issue #35991: in the npm auto-install re-run path,
+  // `deno x` built the child `deno run` argv from the internal runner flags,
+  // whose `config_flag` was overwritten to a generated temp `deno.json`. The
+  // user's explicit `--config` (and the `-P`/`--permission-set` selection it
+  // defines) was therefore dropped, so the child could not resolve the
+  // permission set and failed with `NotCapable` — diverging from `deno run`.
+  //
+  // The permission set `write` lives in an explicit `--config` that is NOT
+  // auto-discoverable from cwd (it is in a `configs/` subdir). `deno x` must
+  // forward both the explicit `--config` and the `-P=write` selection to the
+  // re-run `deno run <bin>` subprocess so the child resolves the set and is
+  // allowed to write — matching
+  // `deno run --config=configs/write.json -P=write npm:@denotest/try-write`.
+  // (Selecting `-P=write` is what forces the child to load the forwarded config
+  // to find the set, so a passing run proves the config really reached it.)
+  //
+  // Pre-fix (commit 080d1a2363b) this exits 1 with `NotCapable`; the fix makes
+  // it exit 0.
+  "args": "x -y --config=configs/write.json -P=write npm:@denotest/try-write",
+  "output": "[WILDCARD]write succeeded\n"
+}

@@ -377,6 +377,7 @@ impl PublishPreparer {
         packages: package_configs,
         build_fast_check_graph,
         validate_graph: true,
+        skip_unanalyzable_exports: false,
       })
       .await?;
 

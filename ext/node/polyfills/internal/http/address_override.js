@@ -73,8 +73,13 @@ function consumeOverride() {
   addressOverrideConsumed = true;
 }
 
-function notifyAddressOverrideServing() {
-  op_http_notify_serving();
+// Server kind codes for op_http_notify_serving. Must match
+// `serving_server_kind()` in ext/http/lib.rs.
+const SERVER_KIND_NODE_HTTP = 2;
+const SERVER_KIND_NODE_HTTP2 = 3;
+
+function notifyAddressOverrideServing(kind = SERVER_KIND_NODE_HTTP) {
+  op_http_notify_serving(kind);
 }
 
 // Translate an override record into the argument for denoListen().
@@ -156,7 +161,7 @@ class OverrideSocket extends Duplex {
       if (this.#initialChunk !== null && this.#initialChunk.length > 0) {
         const chunk = Buffer.from(this.#initialChunk);
         this.#initialChunk = null;
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         if (!this.push(chunk)) {
           await new Promise((resolve) => {
             this._readResume = resolve;
@@ -175,7 +180,7 @@ class OverrideSocket extends Duplex {
           return;
         }
         if (n === null) {
-          // deno-lint-ignore prefer-primordials
+          // deno-lint-ignore deno-internal/prefer-primordials
           this.push(null);
           return;
         }
@@ -184,7 +189,7 @@ class OverrideSocket extends Duplex {
         // Copy into a Buffer so the caller owns it independently of
         // our reusable read buffer.
         const chunk = Buffer.from(this.#readBuf.subarray(0, n));
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         if (!this.push(chunk)) {
           // Backpressure: wait until _read() is called before reading
           // more from the connection.
@@ -522,13 +527,15 @@ function startOverrideListener(
   }
 
   server[kOverrideListener] = denoListener;
-  notifyAddressOverrideServing();
+  notifyAddressOverrideServing(
+    alpnRouting ? SERVER_KIND_NODE_HTTP2 : SERVER_KIND_NODE_HTTP,
+  );
 
   (async () => {
     try {
       const it = denoListener[SymbolAsyncIterator]();
       while (true) {
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         const { done, value: conn } = await it.next();
         if (done) break;
         if (server[kOverrideClosed]) {
@@ -623,5 +630,7 @@ function applyAddressOverride() {
 export {
   applyAddressOverride,
   notifyAddressOverrideServing,
+  SERVER_KIND_NODE_HTTP,
+  SERVER_KIND_NODE_HTTP2,
   startOverrideListener,
 };

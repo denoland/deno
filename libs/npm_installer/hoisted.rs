@@ -784,6 +784,9 @@ impl<
         crate::process_state::NpmProcessStateLinkerMode::Hoisted,
       )
       .as_serialized();
+      let resolve_pkg_folder = |id: &NpmPackageId| {
+        hoisted_package_path(&layout, &self.root_node_modules_path, &id.nv)
+      };
 
       self
         .lifecycle_scripts_executor
@@ -791,6 +794,7 @@ impl<
           init_cwd: &self.lifecycle_scripts_config.initial_cwd,
           process_state: process_state.as_str(),
           root_node_modules_dir_path: &self.root_node_modules_path,
+          resolve_pkg_folder: Some(&resolve_pkg_folder),
           on_ran_pkg_scripts: &|_pkg| Ok(()),
           snapshot,
           system_packages: &package_partitions.packages,

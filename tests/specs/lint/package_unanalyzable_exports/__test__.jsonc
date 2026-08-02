@@ -1,0 +1,21 @@
+{
+  "tests": {
+    // https://github.com/denoland/deno/issues/26308
+    "css_export_ignored": {
+      "cwd": "ok",
+      "args": "lint",
+      "output": "Checked 1 file\n"
+    },
+    "css_export_ignored_entrypoint": {
+      "cwd": "ok",
+      "args": "lint main.ts",
+      "output": "Checked 1 file\n"
+    },
+    "no_slow_types_still_works": {
+      "cwd": "slow",
+      "args": "lint",
+      "output": "slow.out",
+      "exitCode": 1
+    }
+  }
+}

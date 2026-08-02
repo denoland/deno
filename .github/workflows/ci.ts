@@ -18,7 +18,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 118;
+const cacheVersion = 122;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
@@ -517,6 +517,18 @@ const denoCoreChangesCheckStep = step({
   outputs: ["skip_deno_core_test"] as const,
 });
 
+// Detects PRs that only touch the `doc/` directory. Such PRs run the `lint`
+// job alone (markdown is still formatted/linted) and skip the build, test,
+// bench and deno_core jobs. The base SHA is already fetched by the deno_core
+// changes step above.
+const docsOnlyChangesCheckStep = step({
+  id: "docs_only_changes",
+  run: [
+    `deno run -A tools/check_docs_only_changes.js \${{ github.event.pull_request.base.sha }}`,
+  ],
+  outputs: ["docs_only"] as const,
+});
+
 const preBuildJob = job("pre_build", {
   name: "pre-build",
   runsOn: "ubuntu-latest",
@@ -525,12 +537,17 @@ const preBuildJob = job("pre_build", {
     installDenoStep,
     step.if(conditions.isDraftPr())(preBuildCheckStep),
     denoCoreChangesCheckStep,
+    docsOnlyChangesCheckStep,
   ),
   outputs: {
     skip_build: preBuildCheckStep.outputs.skip_build,
     skip_deno_core_test: denoCoreChangesCheckStep.outputs.skip_deno_core_test,
+    docs_only: docsOnlyChangesCheckStep.outputs.docs_only,
   },
 });
+
+// Jobs that compile or test code should not run when a PR only edits docs.
+const notDocsOnly = preBuildJob.outputs.docs_only.notEquals("true");
 
 // === build job ===
 
@@ -585,6 +602,26 @@ const buildItems = handleBuildItems([{
 
 const buildJobs = buildItems.map((rawBuildItem) => {
   const buildItem = defineExprObj(rawBuildItem);
+  // Linux release artifacts use frame pointers for stack walking, so their
+  // DWARF unwind tables can be removed during packaging. Rebuild std to keep
+  // the frame-pointer chain intact through Rust code.
+  const usesFramePointerPanicTrace = rawBuildItem.profile === "release" &&
+    rawBuildItem.os === "linux";
+  const buildStdArgs = usesFramePointerPanicTrace
+    ? " -Zbuild-std=core,alloc,std,proc_macro,panic_abort"
+    : "";
+  const panicTraceFeatures = usesFramePointerPanicTrace
+    ? "deno/panic-trace-frame-pointer"
+    : "deno/panic-trace";
+  const usesStartupOrder = rawBuildItem.profile === "release" &&
+    ((rawBuildItem.os === "linux" &&
+      (rawBuildItem.arch === "x86_64" || rawBuildItem.arch === "aarch64")) ||
+      (rawBuildItem.os === "macos" && rawBuildItem.arch === "aarch64"));
+  const startupOrderTarget = rawBuildItem.os === "macos"
+    ? "aarch64-apple-darwin"
+    : `${rawBuildItem.arch}-unknown-linux-gnu`;
+  const startupOrderPath =
+    `target/release/startup-order-${startupOrderTarget}.order`;
   const isLinux = buildItem.os.equals("linux");
   const isWindows = buildItem.os.equals("windows");
   const isMacos = buildItem.os.equals("macos");
@@ -661,7 +698,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
     {
       name: jobNameForJob("build"),
       needs: [preBuildJob],
-      if: preBuildJob.outputs.skip_build.notEquals("true"),
+      if: preBuildJob.outputs.skip_build.notEquals("true").and(notDocsOnly),
       runsOn: buildItem.runner,
       // This is required to successfully authenticate with Azure using OIDC for
       // code signing.
@@ -697,7 +734,9 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             run: [
               "cd target/release",
               `./deno -A ../../tools/release/create_symcache.ts deno-${buildItem.arch}-unknown-linux-gnu.symcache`,
-              "strip ./deno",
+              "strip --remove-section=.eh_frame --remove-section=.eh_frame_hdr ./deno",
+              "if readelf -SW ./deno | grep -Eq '\\.eh_frame(_hdr)?'; then echo 'unwind sections remain in deno'; exit 1; fi",
+              "if readelf -lW ./deno | grep -q GNU_EH_FRAME; then echo 'PT_GNU_EH_FRAME remains in deno'; exit 1; fi",
               `shasum -a 256 deno > deno-${buildItem.arch}-unknown-linux-gnu.sha256sum`,
               `zip -r deno-${buildItem.arch}-unknown-linux-gnu.zip deno`,
               `shasum -a 256 deno-${buildItem.arch}-unknown-linux-gnu.zip > deno-${buildItem.arch}-unknown-linux-gnu.zip.sha256sum`,
@@ -707,10 +746,14 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               // compiled binary whose C++ static-init guards deadlock
               // (`__cxa_guard_acquire failed to acquire mutex`). Keep .symtab
               // (strip only debug info) so the relocations survive.
-              "strip --strip-debug ./denort",
+              "strip --strip-debug --remove-section=.eh_frame --remove-section=.eh_frame_hdr ./denort",
+              "if readelf -SW ./denort | grep -Eq '\\.eh_frame(_hdr)?'; then echo 'unwind sections remain in denort'; exit 1; fi",
+              "if readelf -lW ./denort | grep -q GNU_EH_FRAME; then echo 'PT_GNU_EH_FRAME remains in denort'; exit 1; fi",
               `zip -r denort-${buildItem.arch}-unknown-linux-gnu.zip denort`,
               `shasum -a 256 denort-${buildItem.arch}-unknown-linux-gnu.zip > denort-${buildItem.arch}-unknown-linux-gnu.zip.sha256sum`,
-              "strip ./libdenort.so",
+              "strip --remove-section=.eh_frame --remove-section=.eh_frame_hdr ./libdenort.so",
+              "if readelf -SW ./libdenort.so | grep -Eq '\\.eh_frame(_hdr)?'; then echo 'unwind sections remain in libdenort.so'; exit 1; fi",
+              "if readelf -lW ./libdenort.so | grep -q GNU_EH_FRAME; then echo 'PT_GNU_EH_FRAME remains in libdenort.so'; exit 1; fi",
               `zip -r libdenort-${buildItem.arch}-unknown-linux-gnu.zip libdenort.so`,
               `shasum -a 256 libdenort-${buildItem.arch}-unknown-linux-gnu.zip > libdenort-${buildItem.arch}-unknown-linux-gnu.zip.sha256sum`,
               "./deno types > lib.deno.d.ts",
@@ -882,6 +925,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           .map((name) => `-p ${name}`).join(" ");
         const binsToBuild = ["deno", "denort", "test_server"]
           .map((name) => `--bin ${name}`).join(" ");
+        const cargoBuildReleaseCommand =
+          `cargo build${buildStdArgs} --release --locked ${packagesToBuild} ${binsToBuild} --features=${panicTraceFeatures}`;
         const cargoBuildReleaseStep = step
           .if(
             isRelease.and(isDenoland.or(buildItem.use_sysroot)),
@@ -899,6 +944,27 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               if: isNotTag,
               run: 'echo "DENO_CANARY=true" >> $GITHUB_ENV',
             },
+            ...(usesFramePointerPanicTrace
+              ? [{
+                name: "Configure frame-pointer panic traces",
+                run: [
+                  // `build-std` is unstable, but keeping Deno's pinned stable
+                  // compiler plus this narrow opt-in is preferable to moving
+                  // release builds to a separate nightly toolchain.
+                  'echo "RUSTC_BOOTSTRAP=1" >> "$GITHUB_ENV"',
+                  // `RUSTFLAGS` is a multi-line value, but cargo splits it on
+                  // spaces only (trimming each piece), so a newline is not a
+                  // separator. Append on the same line as the tail of the
+                  // existing value, otherwise the added flags fuse into one
+                  // bogus token.
+                  "{",
+                  '  echo "RUSTFLAGS<<__DENO_RUSTFLAGS"',
+                  '  echo "$RUSTFLAGS -C force-frame-pointers=yes -C force-unwind-tables=no -C link-arg=-Wl,--no-eh-frame-hdr"',
+                  '  echo "__DENO_RUSTFLAGS"',
+                  '} >> "$GITHUB_ENV"',
+                ],
+              }]
+              : []),
             {
               name: "Build release",
               env: {
@@ -919,14 +985,74 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 "fi",
                 // output fs space before and after building
                 "df -h",
-                `cargo build --release --locked ${packagesToBuild} ${binsToBuild} --features=deno/panic-trace`,
+                cargoBuildReleaseCommand,
                 // Build the desktop runtime shared library (libdenort cdylib) for
-                // laufey-based desktop apps. Separate invocation because the
-                // panic-trace feature only applies to the deno/denort binaries.
-                "cargo build --release --locked -p denort_desktop",
+                // laufey-based desktop apps. It is a separate invocation, but
+                // still needs the frame-pointer standard library before its
+                // unwind sections can be removed during packaging.
+                `cargo build${buildStdArgs} --release --locked -p denort_desktop`,
                 "df -h",
               ],
             },
+            ...(usesStartupOrder
+              ? [{
+                name: "Trace startup order",
+                run: rawBuildItem.os === "macos"
+                  ? [
+                    "cp -p target/release/deno target/release/deno-before-startup-order",
+                    "target/release/deno run -A tools/startup_order/generate_macos_function_orderfile.ts \\",
+                    "  --binary $GITHUB_WORKSPACE/target/release/deno-before-startup-order \\",
+                    `  --output $GITHUB_WORKSPACE/${startupOrderPath} \\`,
+                    "  --repeats 3 \\",
+                    "  --workload-profile run-first",
+                  ]
+                  : [
+                    "cp -p target/release/deno target/release/deno-before-startup-order",
+                    "target/release/deno run -A tools/startup_order/generate_linux_function_orderfile.ts \\",
+                    "  --binary $GITHUB_WORKSPACE/target/release/deno-before-startup-order \\",
+                    `  --output $GITHUB_WORKSPACE/${startupOrderPath} \\`,
+                    "  --repeats 3 \\",
+                    "  --workload-profile run-first",
+                  ],
+                env: { NO_COLOR: 1 },
+              }, {
+                name: "Relink release deno with startup order",
+                run: cargoBuildReleaseCommand,
+                env: {
+                  DENO_SNAPSHOT_MINIFY_SOURCES: "1",
+                  DENO_USE_STARTUP_ORDER: "1",
+                  DENO_STARTUP_ORDER_FILE:
+                    `\${{ github.workspace }}/${startupOrderPath}`,
+                },
+              }, {
+                name: "Verify startup order",
+                run: [
+                  "target/release/deno run -A tools/startup_order/verify_orderfile.ts \\",
+                  "  --baseline-binary target/release/deno-before-startup-order \\",
+                  "  --binary target/release/deno \\",
+                  `  --order ${startupOrderPath} \\`,
+                  `  --output ${startupOrderPath}.verify.json`,
+                ],
+                env: { NO_COLOR: 1 },
+              }, {
+                name: "Upload startup order",
+                uses: "actions/upload-artifact@v6",
+                if: conditions.status.always(),
+                with: {
+                  name: `startup-order-${profileName}`,
+                  path: [
+                    startupOrderPath,
+                    `${startupOrderPath}.json`,
+                    ...(rawBuildItem.os === "linux"
+                      ? [`${startupOrderPath}.starts.json`]
+                      : []),
+                    `${startupOrderPath}.verify.json`,
+                  ].join("\n"),
+                  "retention-days": 7,
+                  "if-no-files-found": "warn",
+                },
+              }]
+              : []),
             {
               name: "Check release snapshot flags",
               if: isLinux,
@@ -1099,6 +1225,9 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               ].join("\n"),
               body_path: "target/release/release-notes.md",
               draft: true,
+              // Flag pre-release tags (e.g. -alpha./-beta./-rc.) as pre-releases
+              // so they are not marked "Latest" when the draft is published.
+              prerelease: "${{ contains(github.ref_name, '-') }}",
             },
           },
         );
@@ -1236,6 +1365,38 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             },
           },
           {
+            name: "Set up native tsc cache",
+            if: testCrateNameExpr.equals("integration").or(
+              testCrateNameExpr.equals("specs"),
+            ),
+            uses: "actions/cache@v5",
+            with: {
+              // Keyed on native.rs so a pinned-version bump re-downloads.
+              path: "./target/.native_tsc",
+              key:
+                "tsc-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('cli/tsc/native.rs') }}",
+            },
+          },
+          {
+            // Warm the cache with the compiler `deno check` uses (into the
+            // default target/.native_tsc/deno_dir) so the test step doesn't
+            // re-download it for every test's fresh DENO_DIR. The harness
+            // resolves that path and injects DENO_TSC_BIN per-test itself (see
+            // test_util::native_tsc_bin_path); no env export needed. Run it with
+            // the built deno binary (the test job has no system `deno` on PATH).
+            name: "Pre-download native tsc",
+            if: testCrateNameExpr.equals("integration").or(
+              testCrateNameExpr.equals("specs"),
+            ),
+            run: [
+              'DENO_BIN=""',
+              "for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do",
+              '  [ -f "$c" ] && DENO_BIN="$c" && break',
+              "done",
+              '"$DENO_BIN" run -A ./tools/download_tsc.ts',
+            ].join("\n"),
+          },
+          {
             if: buildItem.os.equals("linux").and(
               buildItem.arch.equals("aarch64"),
             ),
@@ -1361,7 +1522,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
     additionalJobs.push(job(jobIdForJob("build-libs"), {
       name: jobNameForJob("build libs"),
       needs: [preBuildJob],
-      if: preBuildJob.outputs.skip_build.notEquals("true"),
+      if: preBuildJob.outputs.skip_build.notEquals("true").and(notDocsOnly),
       runsOn: buildItem.runner,
       timeoutMinutes: 30,
       steps: step.if(isNotTag.and(buildItem.skip.not()))(
@@ -1513,7 +1674,7 @@ const benchJob = job(
   {
     name: `bench release ${benchProfile.os}-${benchProfile.arch}`,
     needs: [preBuildJob],
-    if: preBuildJob.outputs.skip_build.notEquals("true"),
+    if: preBuildJob.outputs.skip_build.notEquals("true").and(notDocsOnly),
     runsOn: benchProfile.runner,
     timeoutMinutes: 240,
     defaults: {
@@ -1699,7 +1860,8 @@ const denoCoreTestJob = job("deno-core-test", {
   name: `deno_core test linux-x86_64`,
   needs: [preBuildJob],
   if: preBuildJob.outputs.skip_build.notEquals("true")
-    .and(preBuildJob.outputs.skip_deno_core_test.notEquals("true")),
+    .and(preBuildJob.outputs.skip_deno_core_test.notEquals("true"))
+    .and(notDocsOnly),
   runsOn: denoCoreTestProfile.runner,
   timeoutMinutes: 60,
   defaults: {
@@ -1713,6 +1875,16 @@ const denoCoreTestJob = job("deno-core-test", {
     RUST_LIB_BACKTRACE: 0,
   },
   steps: step.if(isNotTag)(
+    {
+      // Frees several GB of preinstalled toolchains this job never uses
+      // (.NET, Android SDK, GHC, Boost), fixing recurring "No space left
+      // on device" failures while compiling deno_core's doctests.
+      name: "Free disk space",
+      run: [
+        'sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true',
+        "df -h",
+      ],
+    },
     cloneRepoStep,
     denoCoreTestCacheSteps.restoreCacheStep,
     installRustStep,
@@ -1767,7 +1939,7 @@ const miriNightlyToolchain = "nightly-2025-11-12";
 const denoCoreMiriJob = job("deno-core-miri", {
   name: "deno_core miri linux-x86_64",
   needs: [preBuildJob],
-  if: preBuildJob.outputs.skip_build.notEquals("true"),
+  if: preBuildJob.outputs.skip_build.notEquals("true").and(notDocsOnly),
   runsOn: Runners.linuxX86Xl.runner,
   timeoutMinutes: 60,
   defaults: {

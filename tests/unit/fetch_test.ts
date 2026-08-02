@@ -66,13 +66,15 @@ Deno.test(
   { permissions: { net: true } },
   async function fetchConnectionError() {
     const port = findClosedPortInRange(4000, 9999);
-    await assertRejects(
+    const err = await assertRejects(
       async () => {
         await fetch(`http://localhost:${port}`);
       },
       TypeError,
-      "client error (Connect)",
+      "fetch failed",
     );
+    assert(err.cause instanceof Error, `err.cause was ${err.cause}`);
+    assertStringIncludes(err.cause.message, "client error (Connect)");
   },
 );
 
@@ -104,13 +106,15 @@ Deno.test(
 Deno.test(
   { permissions: { net: true } },
   async function fetchDnsError() {
-    await assertRejects(
+    const err = await assertRejects(
       async () => {
         await fetch("http://nil/");
       },
       TypeError,
-      "client error (Connect)",
+      "fetch failed",
     );
+    assert(err.cause instanceof Error, `err.cause was ${err.cause}`);
+    assertStringIncludes(err.cause.message, "client error (Connect)");
   },
 );
 
@@ -513,6 +517,91 @@ Deno.test(
     assertEquals(response.headers.get("proxy-authorization"), null);
     assertEquals(response.headers.get("accept"), "application/json");
     assertEquals(await response.text(), "");
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true, read: true, write: true },
+    ignore: Deno.build.os === "windows",
+  },
+  async function fetchRedirectSensitiveHeadersAreOriginScoped() {
+    const started = Promise.withResolvers<number>();
+    await using _server = Deno.serve({
+      port: 0,
+      onListen: ({ port }) => started.resolve(port),
+    }, (request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/redirect") {
+        return Response.redirect(url.searchParams.get("location")!, 302);
+      }
+      return Response.json({
+        authorization: request.headers.get("authorization"),
+        cookie: request.headers.get("cookie"),
+        proxyAuthorization: request.headers.get("proxy-authorization"),
+        safe: request.headers.get("x-safe"),
+      });
+    });
+
+    const port = await started.promise;
+    using client = Deno.createHttpClient({
+      proxy: {
+        transport: "tcp",
+        hostname: "localhost",
+        port,
+      },
+    });
+    const headers = {
+      authorization: "Bearer parent",
+      cookie: "session=parent",
+      "proxy-authorization": "Basic parent",
+      "x-safe": "keep",
+    };
+
+    async function redirect(
+      from: string,
+      to: string,
+    ): Promise<Record<string, string | null>> {
+      const response = await fetch(
+        `${from}/redirect?location=${encodeURIComponent(`${to}/target`)}`,
+        { client, headers },
+      );
+      return await response.json();
+    }
+
+    assertEquals(
+      await redirect(
+        "http://parent.example.test",
+        "http://parent.example.test",
+      ),
+      {
+        authorization: "Bearer parent",
+        cookie: "session=parent",
+        proxyAuthorization: "Basic parent",
+        safe: "keep",
+      },
+    );
+
+    const strippedHeaders = {
+      authorization: null,
+      cookie: null,
+      proxyAuthorization: null,
+      safe: "keep",
+    };
+    assertEquals(
+      await redirect(
+        "http://parent.example.test",
+        "http://child.parent.example.test",
+      ),
+      strippedHeaders,
+    );
+    assertEquals(
+      await redirect(
+        "http://parent.example.test",
+        "https://parent.example.test",
+      ),
+      strippedHeaders,
+    );
   },
 );
 
@@ -1667,6 +1756,37 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true, read: true } },
+  async function fetchHttp2MaxHeaderListSizeTooSmall() {
+    const caCert = await Deno.readTextFile("tests/testdata/tls/RootCA.pem");
+    const client = Deno.createHttpClient({
+      caCerts: [caCert],
+      http2MaxHeaderListSize: 64,
+    });
+    await assertRejects(
+      () => fetch("https://localhost:5547/large_headers", { client }),
+      TypeError,
+    );
+    client.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, read: true } },
+  async function fetchHttp2MaxHeaderListSizeLargeEnough() {
+    const caCert = await Deno.readTextFile("tests/testdata/tls/RootCA.pem");
+    const client = Deno.createHttpClient({
+      caCerts: [caCert],
+      http2MaxHeaderListSize: 64 * 1024,
+    });
+    const res = await fetch("https://localhost:5547/large_headers", { client });
+    assert(res.ok);
+    assertEquals(await res.text(), "ok");
+    client.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, read: true } },
   async function fetchForceHttp1OnHttp2Server() {
     const client = Deno.createHttpClient({ http2: false, http1: true });
     await assertRejects(
@@ -1792,11 +1912,13 @@ Deno.test(
 Deno.test(
   { permissions: { read: true } },
   async function fetchFileDoesNotExist() {
+    const url = import.meta.resolve("./bad.json");
     await assertRejects(
       async () => {
-        await fetch(import.meta.resolve("./bad.json"));
+        await fetch(url);
       },
       TypeError,
+      `Error fetching file '${url}'`,
     );
   },
 );
@@ -1946,13 +2068,15 @@ Deno.test(
 
     // It should fail if multiple content-length headers with different values are sent
     const listener = invalidServer(addr, body);
-    await assertRejects(
+    const err = await assertRejects(
       async () => {
         await fetch(`http://${addr}/`);
       },
       TypeError,
-      "client error",
+      "fetch failed",
     );
+    assert(err.cause instanceof Error, `err.cause was ${err.cause}`);
+    assertStringIncludes(err.cause.message, "client error");
 
     listener.close();
   },
@@ -2122,16 +2246,9 @@ Deno.test(
 
     assert(err instanceof TypeError, `err was ${err}`);
 
-    assertStringIncludes(
-      err.message,
-      "error sending request from 127.0.0.1:",
-      `err.message was ${err.message}`,
-    );
-    assertStringIncludes(
-      err.message,
-      ` for http://localhost:${listenPort}/ (127.0.0.1:${listenPort}): client error (SendRequest): error from user's Body stream`,
-      `err.message was ${err.message}`,
-    );
+    // Node-compatible fetch error shape: `TypeError: "fetch failed"` with the
+    // underlying error surfaced via `.cause`.
+    assertEquals(err.message, "fetch failed", `err.message was ${err.message}`);
 
     assert(err.cause, `err.cause was null ${err}`);
     assert(
@@ -2213,9 +2330,15 @@ Deno.test("URL authority is used as 'Authorization' header", async () => {
 Deno.test(
   { permissions: { net: true } },
   async function errorMessageIncludesUrlAndDetailsWithNoTcpInfo() {
-    await assertRejects(
+    const err = await assertRejects(
       () => fetch("http://example.invalid"),
       TypeError,
+      "fetch failed",
+    );
+    // The url and low-level detail are surfaced via `.cause` (Node-compatible).
+    assert(err.cause instanceof Error, `err.cause was ${err.cause}`);
+    assertStringIncludes(
+      err.cause.message,
       "error sending request for url (http://example.invalid/): client error (Connect): dns error: ",
     );
   },
@@ -2244,18 +2367,51 @@ Deno.test(
     listener.close();
 
     assert(err instanceof TypeError, `${err}`);
-    assertStringIncludes(
-      err.message,
-      "error sending request from 127.0.0.1:",
-      `${err.message}`,
-    );
-    assertStringIncludes(
-      err.message,
-      ` for http://localhost:${listenPort}/ (127.0.0.1:${listenPort}): client error (SendRequest): `,
-      `${err.message}`,
-    );
+    // Node-compatible shape: `"fetch failed"` with the low-level transport
+    // detail surfaced via `.cause`. The exact `.cause` text (the innermost OS
+    // error, e.g. "Connection reset by peer") is platform-specific, so only the
+    // shape is asserted here.
+    assertEquals(err.message, "fetch failed", `${err.message}`);
+    assert(err.cause instanceof Error, `err.cause was ${err.cause}`);
+    assert(err.cause.message.length > 0, `err.cause.message was empty`);
 
     await server;
+  },
+);
+
+// Regression test for https://github.com/denoland/deno/issues/35612
+// When the server closes the connection before the response message is
+// complete, fetch must reject with Node's error shape: `TypeError: "fetch
+// failed"` whose `.cause` carries the low-level detail, rather than leaking
+// the raw reqwest message into `.message` with an undefined `.cause`.
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchConnectionClosedBeforeMessageComplete() {
+    const { default: http } = await import("node:http");
+    const server = http.createServer((_req, res) => {
+      res.writeHead(200);
+      res.write("hi");
+      res.socket!.destroy();
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve)
+    );
+    const { port } = server.address() as { port: number };
+
+    const err = await assertRejects(async () => {
+      const res = await fetch(`http://127.0.0.1:${port}/`);
+      await res.text();
+    });
+
+    server.close();
+
+    assert(err instanceof TypeError, `err was ${err}`);
+    assertEquals(err.message, "fetch failed", `err.message was ${err.message}`);
+    assert(err.cause instanceof Error, `err.cause was ${err.cause}`);
+    assertStringIncludes(
+      err.cause.message,
+      "connection closed before message completed",
+    );
   },
 );
 

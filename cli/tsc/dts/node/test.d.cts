@@ -1444,6 +1444,27 @@ declare module "node:test" {
          */
         function afterEach(fn?: HookFn, options?: HookOptions): void;
         /**
+         * This function returns the {@link TestContext} of the test that is currently
+         * executing, or `undefined` if there is no test running in the current
+         * asynchronous context. It can be used to access the current test context from
+         * helper functions without having to explicitly pass the context around.
+         *
+         * ```js
+         * import { test, getTestContext } from 'node:test';
+         *
+         * function assertContextName(expected) {
+         *   const ctx = getTestContext();
+         *   assert.strictEqual(ctx.name, expected);
+         * }
+         *
+         * test('example test', () => {
+         *   assertContextName('example test');
+         * });
+         * ```
+         * @since v26.1.0
+         */
+        function getTestContext(): TestContext | undefined;
+        /**
          * The hook function. The first argument is the context in which the hook is called.
          * If the hook uses callbacks, the callback function is passed as the second argument.
          */

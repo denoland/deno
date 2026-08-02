@@ -17,6 +17,8 @@ use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use futures::StreamExt;
 use futures::stream::FuturesOrdered;
+use rustc_hash::FxHashMap;
+use rustc_hash::FxHashSet;
 use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
@@ -146,13 +148,19 @@ impl SerializedNpmResolutionSnapshot {
   pub fn into_valid(
     self,
   ) -> Result<ValidSerializedNpmResolutionSnapshot, PackageIdNotFoundError> {
-    let mut verify_ids = HashSet::with_capacity(self.packages.len());
+    let mut verify_ids = FxHashSet::with_capacity_and_hasher(
+      self.packages.len(),
+      Default::default(),
+    );
 
     // collect the specifiers to version mappings
     verify_ids.extend(self.root_packages.values());
 
     // then the packages
-    let mut package_ids = HashSet::with_capacity(self.packages.len());
+    let mut package_ids = FxHashSet::with_capacity_and_hasher(
+      self.packages.len(),
+      Default::default(),
+    );
     for package in &self.packages {
       package_ids.insert(&package.id);
       verify_ids.extend(package.dependencies.values());
@@ -216,14 +224,16 @@ impl SerializedNpmResolutionSnapshot {
 
     loop {
       // Group packages by nv.
-      let mut nv_to_indices: HashMap<PackageNv, Vec<usize>> = HashMap::new();
+      let mut nv_to_indices: FxHashMap<PackageNv, Vec<usize>> =
+        FxHashMap::default();
       for (i, p) in self.packages.iter().enumerate() {
         nv_to_indices.entry(p.id.nv.clone()).or_default().push(i);
       }
 
       // For each nv group, partition packages by their dep signature and
       // emit (subset → canonical) mappings for equivalent partitions.
-      let mut mappings: HashMap<NpmPackageId, NpmPackageId> = HashMap::new();
+      let mut mappings: FxHashMap<NpmPackageId, NpmPackageId> =
+        FxHashMap::default();
       for indices in nv_to_indices.values() {
         if indices.len() < 2 {
           continue;
@@ -345,29 +355,35 @@ impl AddPkgReqsResult {
 #[derive(Debug, Default, Clone)]
 pub struct NpmResolutionSnapshot {
   /// The unique package requirements map to a single npm package name and version.
-  pub(super) package_reqs: HashMap<PackageReq, PackageNv>,
+  pub(super) package_reqs: FxHashMap<PackageReq, PackageNv>,
   // Each root level npm package name and version maps to an exact npm package node id.
-  pub(super) root_packages: HashMap<PackageNv, NpmPackageId>,
-  pub(super) packages_by_name: HashMap<StackString, Vec<NpmPackageId>>,
-  pub(super) packages: HashMap<NpmPackageId, NpmResolutionPackage>,
+  pub(super) root_packages: FxHashMap<PackageNv, NpmPackageId>,
+  pub(super) packages_by_name: FxHashMap<StackString, Vec<NpmPackageId>>,
+  pub(super) packages: FxHashMap<NpmPackageId, NpmResolutionPackage>,
 }
 
 impl NpmResolutionSnapshot {
   pub fn new(snapshot: ValidSerializedNpmResolutionSnapshot) -> Self {
     let snapshot = snapshot.0;
-    let mut package_reqs = HashMap::<PackageReq, PackageNv>::with_capacity(
-      snapshot.root_packages.len(),
-    );
-    let mut root_packages = HashMap::<PackageNv, NpmPackageId>::with_capacity(
-      snapshot.root_packages.len(),
-    );
+    let mut package_reqs =
+      FxHashMap::<PackageReq, PackageNv>::with_capacity_and_hasher(
+        snapshot.root_packages.len(),
+        Default::default(),
+      );
+    let mut root_packages =
+      FxHashMap::<PackageNv, NpmPackageId>::with_capacity_and_hasher(
+        snapshot.root_packages.len(),
+        Default::default(),
+      );
     let mut packages_by_name =
-      HashMap::<StackString, Vec<NpmPackageId>>::with_capacity(
+      FxHashMap::<StackString, Vec<NpmPackageId>>::with_capacity_and_hasher(
         snapshot.packages.len(),
+        Default::default(),
       ); // close enough
     let mut packages =
-      HashMap::<NpmPackageId, NpmResolutionPackage>::with_capacity(
+      FxHashMap::<NpmPackageId, NpmResolutionPackage>::with_capacity_and_hasher(
         snapshot.packages.len(),
+        Default::default(),
       );
     let mut copy_index_resolver =
       SnapshotPackageCopyIndexResolver::with_capacity(snapshot.packages.len());
@@ -510,13 +526,26 @@ impl NpmResolutionSnapshot {
   /// Returns a new snapshot made from a subset of this snapshot's package reqs.
   /// Requirements not present in this snapshot will be ignored.
   pub fn subset(&self, package_reqs: &[PackageReq]) -> Self {
-    let mut new_package_reqs = HashMap::with_capacity(package_reqs.len());
-    let mut packages = HashMap::with_capacity(package_reqs.len() * 2);
-    let mut packages_by_name: HashMap<StackString, Vec<NpmPackageId>> =
-      HashMap::with_capacity(package_reqs.len());
-    let mut root_packages = HashMap::with_capacity(package_reqs.len());
+    let mut new_package_reqs = FxHashMap::with_capacity_and_hasher(
+      package_reqs.len(),
+      Default::default(),
+    );
+    let mut packages = FxHashMap::with_capacity_and_hasher(
+      package_reqs.len() * 2,
+      Default::default(),
+    );
+    let mut packages_by_name: FxHashMap<StackString, Vec<NpmPackageId>> =
+      FxHashMap::with_capacity_and_hasher(
+        package_reqs.len(),
+        Default::default(),
+      );
+    let mut root_packages = FxHashMap::with_capacity_and_hasher(
+      package_reqs.len(),
+      Default::default(),
+    );
 
-    let mut visited = HashSet::with_capacity(packages.len());
+    let mut visited =
+      FxHashSet::with_capacity_and_hasher(packages.len(), Default::default());
 
     let mut stack = Vec::new();
     for req in package_reqs {
@@ -587,7 +616,10 @@ impl NpmResolutionSnapshot {
   ) -> ValidSerializedNpmResolutionSnapshot {
     let mut final_packages = Vec::with_capacity(self.packages.len());
     let mut pending = VecDeque::with_capacity(self.packages.len());
-    let mut visited_nvs = HashSet::with_capacity(self.packages.len());
+    let mut visited_nvs = FxHashSet::with_capacity_and_hasher(
+      self.packages.len(),
+      Default::default(),
+    );
 
     // add the root packages
     for pkg_id in self.root_packages.values() {
@@ -744,7 +776,7 @@ impl NpmResolutionSnapshot {
     self.root_packages.values()
   }
 
-  pub fn package_reqs(&self) -> &HashMap<PackageReq, PackageNv> {
+  pub fn package_reqs(&self) -> &FxHashMap<PackageReq, PackageNv> {
     &self.package_reqs
   }
 
@@ -822,7 +854,10 @@ impl NpmResolutionSnapshot {
   ) -> Vec<NpmResolutionPackage> {
     let mut packages = Vec::with_capacity(self.packages.len());
     let mut pending = VecDeque::with_capacity(self.packages.len());
-    let mut visited_nvs = HashSet::with_capacity(self.packages.len());
+    let mut visited_nvs = FxHashSet::with_capacity_and_hasher(
+      self.packages.len(),
+      Default::default(),
+    );
 
     for pkg_id in self.root_packages.values() {
       if visited_nvs.insert(&pkg_id.nv) {
@@ -864,7 +899,7 @@ impl NpmResolutionSnapshot {
         .iter()
         .filter(|p| p.copy_index == 0)
         .map(|p| p.id.nv.clone())
-        .collect::<HashSet<_>>();
+        .collect::<FxHashSet<_>>();
 
       // partition out any packages that are "copy" packages
       for i in (0..packages.len()).rev() {
@@ -925,24 +960,30 @@ impl NpmResolutionSnapshot {
 }
 
 pub struct SnapshotPackageCopyIndexResolver {
-  packages_to_copy_index: HashMap<NpmPackageId, u8>,
-  package_name_version_to_copy_count: HashMap<PackageNv, u8>,
+  packages_to_copy_index: FxHashMap<NpmPackageId, u8>,
+  package_name_version_to_copy_count: FxHashMap<PackageNv, u8>,
 }
 
 impl SnapshotPackageCopyIndexResolver {
   pub fn with_capacity(capacity: usize) -> Self {
     Self {
-      packages_to_copy_index: HashMap::with_capacity(capacity),
-      package_name_version_to_copy_count: HashMap::with_capacity(capacity), // close enough
+      packages_to_copy_index: FxHashMap::with_capacity_and_hasher(
+        capacity,
+        Default::default(),
+      ),
+      package_name_version_to_copy_count: FxHashMap::with_capacity_and_hasher(
+        capacity,
+        Default::default(),
+      ), // close enough
     }
   }
 
   pub fn from_map_with_capacity(
-    mut packages_to_copy_index: HashMap<NpmPackageId, u8>,
+    mut packages_to_copy_index: FxHashMap<NpmPackageId, u8>,
     capacity: usize,
   ) -> Self {
     let mut package_name_version_to_copy_count =
-      HashMap::with_capacity(capacity); // close enough
+      FxHashMap::with_capacity_and_hasher(capacity, Default::default()); // close enough
     if capacity > packages_to_copy_index.len() {
       packages_to_copy_index.reserve(capacity - packages_to_copy_index.len());
     }
@@ -1096,7 +1137,7 @@ pub fn snapshot_from_lockfile(
         version: info.version.clone(),
       })
     })
-    .collect::<HashSet<_>>();
+    .collect::<FxHashSet<_>>();
   // collect the specifiers to version mappings
   for (key, value) in &lockfile.content.packages.specifiers {
     match key.kind {

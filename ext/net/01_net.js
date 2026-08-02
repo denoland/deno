@@ -22,7 +22,6 @@ const {
   op_net_join_multi_v6_udp,
   op_net_leave_multi_v4_udp,
   op_net_leave_multi_v6_udp,
-  op_net_listen_memory,
   op_net_listen_tcp,
   op_net_listen_tunnel,
   op_net_listen_unix,
@@ -75,16 +74,20 @@ async function write(rid, data) {
 }
 
 async function resolveDns(query, recordType, options) {
+  const signal = options?.signal;
+  if (signal) {
+    signal.throwIfAborted();
+  }
   let cancelRid;
   let abortHandler;
-  if (options?.signal) {
-    options.signal.throwIfAborted();
-    cancelRid = createCancelHandle();
-    abortHandler = () => core.tryClose(cancelRid);
-    options.signal[abortSignal.add](abortHandler);
-  }
 
   try {
+    if (signal) {
+      cancelRid = createCancelHandle();
+      abortHandler = () => core.tryClose(cancelRid);
+      signal[abortSignal.add](abortHandler);
+    }
+
     const res = await op_dns_resolve({
       cancelRid,
       query,
@@ -93,11 +96,18 @@ async function resolveDns(query, recordType, options) {
     }, /* useEdns0 */ true);
     return ArrayPrototypeMap(res, (recordWithTtl) => recordWithTtl.data);
   } finally {
-    if (options?.signal) {
-      options.signal[abortSignal.remove](abortHandler);
+    if (cancelRid !== undefined) {
+      // The op consumes this on its normal path. Close it here as well in case
+      // the op returned before taking ownership.
+      core.tryClose(cancelRid);
+    }
+    if (abortHandler !== undefined) {
+      signal[abortSignal.remove](abortHandler);
+    }
 
+    if (signal) {
       // always throw the abort error when aborted
-      options.signal.throwIfAborted();
+      signal.throwIfAborted();
     }
   }
 }
@@ -638,16 +648,6 @@ function listen(args) {
   }
 }
 
-// Internal: the in-process `memory:` transport is not a public `Deno.listen`
-// transport. It backs the desktop runtime's `DENO_SERVE_ADDRESS=memory:<name>`
-// serve path only, so it is exposed to `ext:deno_http/00_serve.js` but never
-// reachable through `Deno.listen`/`Deno.serve`.
-function listenMemory(name) {
-  const { 0: rid, 1: resolvedName, 2: id } = op_net_listen_memory(name);
-  const addr = { transport: "memory", name: resolvedName, id };
-  return new Listener(rid, addr, "memory");
-}
-
 function validatePort(maybePort, isServer = false) {
   // A missing port means "any available port" (port 0) for servers. Clients
   // must always specify a port to connect to, so a missing port is left as-is
@@ -706,17 +706,21 @@ function createListenDatagram(udpOpFn, unixOpFn) {
 async function connect(args) {
   switch (args.transport ?? "tcp") {
     case "tcp": {
-      let cancelRid;
-      let abortHandler;
-      if (args?.signal) {
-        args.signal.throwIfAborted();
-        cancelRid = createCancelHandle();
-        abortHandler = () => core.tryClose(cancelRid);
-        args.signal[abortSignal.add](abortHandler);
+      const signal = args?.signal;
+      if (signal) {
+        signal.throwIfAborted();
       }
       const port = validatePort(args.port);
+      let cancelRid;
+      let abortHandler;
 
       try {
+        if (signal) {
+          cancelRid = createCancelHandle();
+          abortHandler = () => core.tryClose(cancelRid);
+          signal[abortSignal.add](abortHandler);
+        }
+
         const { 0: rid, 1: localAddr, 2: remoteAddr } =
           await op_net_connect_tcp(
             {
@@ -736,9 +740,16 @@ async function connect(args) {
 
         return new TcpConn(rid, remoteAddr, localAddr);
       } finally {
-        if (args?.signal) {
-          args.signal[abortSignal.remove](abortHandler);
-          args.signal.throwIfAborted();
+        if (cancelRid !== undefined) {
+          // The op consumes this on its normal path. Close it here as well in
+          // case the op returned before taking ownership.
+          core.tryClose(cancelRid);
+        }
+        if (abortHandler !== undefined) {
+          signal[abortSignal.remove](abortHandler);
+        }
+        if (signal) {
+          signal.throwIfAborted();
         }
       }
     }
@@ -772,7 +783,6 @@ return {
   createListenDatagram,
   dropMembership,
   listen,
-  listenMemory,
   Listener,
   listenOptionApiName,
   resolveDns,

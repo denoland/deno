@@ -275,6 +275,8 @@ pub fn is_forbidden(signo: i32) -> bool {
 }
 
 pub struct SignalStream {
+  signo: i32,
+  id: u32,
   rx: watch::Receiver<()>,
 }
 
@@ -284,17 +286,53 @@ impl SignalStream {
   }
 }
 
+impl Drop for SignalStream {
+  fn drop(&mut self) {
+    unregister(self.signo, self.id);
+  }
+}
+
 pub fn signal_stream(signo: i32) -> Result<SignalStream, std::io::Error> {
+  signal_stream_inner(signo, true)
+}
+
+/// Like [`signal_stream`], but does not prevent the default signal behavior.
+///
+/// The stream only observes the signal: if no other registered handler
+/// (e.g. a JS signal listener) prevents the default, the default action
+/// still runs, terminating the process for signals like SIGINT. This is
+/// important for consumers that poll the stream from the main event loop,
+/// which may be blocked in synchronous JS execution and unable to react
+/// to the notification.
+pub fn signal_stream_allow_default(
+  signo: i32,
+) -> Result<SignalStream, std::io::Error> {
+  signal_stream_inner(signo, false)
+}
+
+fn signal_stream_inner(
+  signo: i32,
+  prevent_default: bool,
+) -> Result<SignalStream, std::io::Error> {
   let (tx, rx) = watch::channel(());
   let cb = Box::new(move || {
     tx.send_replace(());
   });
-  register(signo, true, cb)?;
-  Ok(SignalStream { rx })
+  let id = register(signo, prevent_default, cb)?;
+  Ok(SignalStream { signo, id, rx })
 }
 
 pub async fn ctrl_c() -> std::io::Result<()> {
-  let mut stream = signal_stream(libc::SIGINT)?;
+  ctrl_c_inner(signal_stream(libc::SIGINT)?).await
+}
+
+/// Like [`ctrl_c`], but does not prevent the default SIGINT behavior.
+/// See [`signal_stream_allow_default`].
+pub async fn ctrl_c_allow_default() -> std::io::Result<()> {
+  ctrl_c_inner(signal_stream_allow_default(libc::SIGINT)?).await
+}
+
+async fn ctrl_c_inner(mut stream: SignalStream) -> std::io::Result<()> {
   match stream.recv().await {
     Some(_) => Ok(()),
     None => Err(std::io::Error::other("failed to receive SIGINT signal")),

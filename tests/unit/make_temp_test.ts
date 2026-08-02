@@ -28,7 +28,7 @@ Deno.test({ permissions: { write: true } }, function makeTempDirSyncSuccess() {
 });
 
 Deno.test(
-  { permissions: { read: true, write: true } },
+  { permissions: { read: true, write: true, sys: ["umask"] } },
   function makeTempDirSyncMode() {
     const path = Deno.makeTempDirSync();
     const pathInfo = Deno.statSync(path);
@@ -70,7 +70,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true, write: true } },
+  { permissions: { read: true, write: true, sys: ["umask"] } },
   async function makeTempDirMode() {
     const path = await Deno.makeTempDir();
     const pathInfo = Deno.statSync(path);
@@ -103,7 +103,7 @@ Deno.test({ permissions: { write: true } }, function makeTempFileSyncSuccess() {
 });
 
 Deno.test(
-  { permissions: { read: true, write: true } },
+  { permissions: { read: true, write: true, sys: ["umask"] } },
   function makeTempFileSyncMode() {
     const path = Deno.makeTempFileSync();
     const pathInfo = Deno.statSync(path);
@@ -146,7 +146,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true, write: true } },
+  { permissions: { read: true, write: true, sys: ["umask"] } },
   async function makeTempFileMode() {
     const path = await Deno.makeTempFile();
     const pathInfo = Deno.statSync(path);

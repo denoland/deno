@@ -1,0 +1,4 @@
+{
+  "nodeModulesDir": "manual",
+  "nodeModulesLinker": "hoisted"
+}

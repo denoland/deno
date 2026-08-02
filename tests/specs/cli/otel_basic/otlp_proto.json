@@ -512,6 +512,10 @@
                         "spanId": {
                           "type": "bytes",
                           "id": 10
+                        },
+                        "eventName": {
+                          "type": "string",
+                          "id": 12
                         }
                       },
                       "reserved": [

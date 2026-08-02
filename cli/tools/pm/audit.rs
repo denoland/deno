@@ -162,6 +162,7 @@ async fn apply_fixes(
       Some(jsr_fetch_resolver),
       CacheTopLevelDepsOptions {
         lockfile_only: false,
+        additional_roots: vec![],
       },
     )
     .await?;

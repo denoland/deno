@@ -174,7 +174,6 @@ impl HttpPropertyExtractor for DefaultHttpPropertyExtractor {
       ))]
       NetworkStreamAddress::Vsock(vsock) => Some(vsock.port()),
       NetworkStreamAddress::Tunnel(ref addr) => Some(addr.port() as _),
-      NetworkStreamAddress::Memory(_) => None,
       #[cfg(windows)]
       NetworkStreamAddress::WindowsPipe(_) => None,
     };
@@ -191,7 +190,6 @@ impl HttpPropertyExtractor for DefaultHttpPropertyExtractor {
         Rc::from(format!("vsock:{}", addr.cid()))
       }
       NetworkStreamAddress::Tunnel(ref addr) => Rc::from(addr.hostname()),
-      NetworkStreamAddress::Memory(_) => Rc::from("memory"),
       #[cfg(windows)]
       NetworkStreamAddress::WindowsPipe(_) => Rc::from("pipe"),
     };
@@ -243,7 +241,6 @@ fn listener_properties(
     ))]
     NetworkStreamAddress::Vsock(vsock) => Some(vsock.port()),
     NetworkStreamAddress::Tunnel(addr) => Some(addr.port() as _),
-    NetworkStreamAddress::Memory(_) => None,
     #[cfg(windows)]
     NetworkStreamAddress::WindowsPipe(_) => None,
   };
@@ -305,7 +302,6 @@ fn req_host_from_addr(
         format!("{}:{}", addr.hostname(), addr.port())
       }
     }
-    NetworkStreamAddress::Memory(_) => "localhost".to_owned(),
     #[cfg(windows)]
     NetworkStreamAddress::WindowsPipe(_) => "localhost".to_owned(),
   }
@@ -323,7 +319,6 @@ fn req_scheme_from_stream_type(stream_type: NetworkStreamType) -> &'static str {
       target_os = "macos"
     ))]
     NetworkStreamType::Vsock => "http+vsock://",
-    NetworkStreamType::Memory => "http+memory://",
     #[cfg(windows)]
     NetworkStreamType::WindowsPipe => "http://",
   }
@@ -356,7 +351,6 @@ fn req_host<'a>(
         target_os = "macos"
       ))]
       NetworkStreamType::Vsock => {}
-      NetworkStreamType::Memory => {}
       #[cfg(windows)]
       NetworkStreamType::WindowsPipe => {}
     }

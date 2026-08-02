@@ -146,7 +146,7 @@ function convertLineEndingsToNative(s) {
 /** @param {(BlobReference | Blob)[]} parts */
 async function* toIterator(parts) {
   for (let i = 0; i < parts.length; ++i) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     yield* parts[i].stream();
   }
 }
@@ -375,7 +375,7 @@ class Blob {
         relativeStart -= size;
         relativeEnd -= size;
       } else {
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         const chunk = part.slice(
           relativeStart,
           MathMin(part.size, relativeEnd),

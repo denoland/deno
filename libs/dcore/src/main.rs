@@ -51,6 +51,13 @@ fn main() -> Result<(), Error> {
 
   init_v8_flags(&v8_flags);
 
+  // The tokio runtime must exist and be entered before the `JsRuntime` is
+  // created, so that delayed V8 tasks can be scheduled on it.
+  let runtime = tokio::runtime::Builder::new_current_thread()
+    .enable_all()
+    .build()?;
+  let _tokio_guard = runtime.enter();
+
   let (metrics_summary, mut js_runtime, _worker_host_side) =
     if matches.get_flag("strace-ops") || matches.get_flag("strace-ops-summary")
     {
@@ -90,10 +97,6 @@ fn main() -> Result<(), Error> {
       )
       .unwrap(),
     )));
-
-  let runtime = tokio::runtime::Builder::new_current_thread()
-    .enable_all()
-    .build()?;
 
   let main_module: deno_core::url::Url = deno_core::resolve_path(
     &file_path,

@@ -119,3 +119,68 @@ console.log(
 );
 
 console.log(await nodeChild.status);
+
+const h2SockPath = `${tempDirPath}/h2-control.sock`;
+const h2OverrideSockPath = `${tempDirPath}/h2-override.sock`;
+const h2TestPath = `${tempDirPath}/h2_test.ts`;
+
+const h2Command = new Deno.Command(Deno.execPath(), {
+  env: {
+    DENO_UNSTABLE_CONTROL_SOCK: `unix:${h2SockPath}`,
+  },
+});
+
+const h2Child = h2Command.spawn();
+
+i = 0;
+while (true) {
+  try {
+    await Deno.lstat(h2SockPath);
+    break;
+  } catch {}
+
+  i += 1;
+  if (i > 100) {
+    throw new Error(`${h2SockPath} did not exist`);
+  }
+
+  await new Promise((r) => setTimeout(r, 10));
+}
+
+const h2Sock = await Deno.connect({
+  transport: "unix",
+  path: h2SockPath,
+});
+
+Deno.writeTextFileSync(
+  h2TestPath,
+  `
+import http2 from "node:http2";
+const server = http2.createServer();
+server.listen(0, () => {
+  console.log("http2 listening");
+  server.close();
+});
+`,
+);
+
+const h2Data = JSON.stringify({
+  cwd: tempDirPath,
+  args: ["run", "-A", "h2_test.ts"],
+  env: [
+    ["DENO_AUTO_SERVE", "1"],
+    ["DENO_SERVE_ADDRESS", `duplicate,unix:${h2OverrideSockPath}`],
+  ],
+});
+
+await h2Sock.write(new TextEncoder().encode(h2Data + "\n"));
+
+const h2Buf = new Uint8Array(128);
+const h2N = await h2Sock.read(h2Buf);
+
+console.log(
+  "HTTP2 EVENT:",
+  new TextDecoder().decode(h2Buf.subarray(0, h2N)),
+);
+
+console.log(await h2Child.status);

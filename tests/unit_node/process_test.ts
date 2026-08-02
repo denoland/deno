@@ -942,6 +942,71 @@ Deno.test({
 });
 
 Deno.test({
+  name:
+    "process.getActiveResourcesInfo reports net handles with Node wrap names",
+  async fn() {
+    const countOf = (type: string) =>
+      process.getActiveResourcesInfo().filter((t) => t === type).length;
+
+    const beforeServer = countOf("TCPServerWrap");
+    const beforeSocket = countOf("TCPSocketWrap");
+
+    let acceptedSocket: net.Socket | undefined;
+    const server = net.createServer((socket) => {
+      acceptedSocket = socket;
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+
+    const serverConnection = once(server, "connection");
+    const clientSocket = net.connect(
+      (server.address() as net.AddressInfo).port,
+    );
+    try {
+      await Promise.all([once(clientSocket, "connect"), serverConnection]);
+
+      assertEquals(countOf("TCPServerWrap"), beforeServer + 1);
+      // The client socket plus the server-accepted socket.
+      assertEquals(countOf("TCPSocketWrap"), beforeSocket + 2);
+    } finally {
+      clientSocket.destroy();
+      acceptedSocket?.destroy();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  },
+});
+
+Deno.test({
+  name: "process.getActiveResourcesInfo reports fs requests as FSReqCallback",
+  async fn() {
+    const tempFile = Deno.makeTempFileSync();
+    const countOf = () =>
+      process.getActiveResourcesInfo().filter((t) => t === "FSReqCallback")
+        .length;
+    try {
+      const before = countOf();
+      const promises = Array.from(
+        { length: 5 },
+        () =>
+          new Promise<number>((resolve, reject) => {
+            fs.open(tempFile, "r", (err, fd) => {
+              if (err) reject(err);
+              else resolve(fd);
+            });
+          }),
+      );
+
+      assertEquals(countOf(), before + 5);
+
+      const fds = await Promise.all(promises);
+      for (const fd of fds) fs.closeSync(fd);
+      assertEquals(countOf(), before);
+    } finally {
+      Deno.removeSync(tempFile);
+    }
+  },
+});
+
+Deno.test({
   name: "process.hrtime",
   // TODO(kt3k): Enable this test
   ignore: true,
@@ -1562,6 +1627,39 @@ Deno.test("process.resourceUsage()", () => {
 Deno.test("importedResourceUsage", async () => {
   const { resourceUsage } = await import("node:process");
   assert(resourceUsage === process.resourceUsage);
+});
+
+Deno.test({
+  name:
+    "process.constrainedMemory requires systemMemoryInfo permission on Linux and Android",
+  ignore: Deno.build.os !== "linux" && Deno.build.os !== "android",
+  permissions: { sys: false },
+  fn() {
+    assertThrows(
+      () => process.constrainedMemory(),
+      Deno.errors.NotCapable,
+      'Requires sys access to "systemMemoryInfo"',
+    );
+  },
+});
+
+Deno.test({
+  name: "process.constrainedMemory works with sys permission",
+  ignore: Deno.build.os !== "linux" && Deno.build.os !== "android",
+  permissions: { sys: true },
+  fn() {
+    assert(typeof process.constrainedMemory() === "number");
+  },
+});
+
+Deno.test({
+  name:
+    "process.constrainedMemory returns 0 without sys permission outside Linux and Android",
+  ignore: Deno.build.os === "linux" || Deno.build.os === "android",
+  permissions: { sys: false },
+  fn() {
+    assertEquals(process.constrainedMemory(), 0);
+  },
 });
 
 Deno.test("process.stdout.columns writable", () => {

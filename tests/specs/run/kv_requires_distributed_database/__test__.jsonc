@@ -1,0 +1,25 @@
+{
+  "tests": {
+    // No KV database attached + DENO_KV_REQUIRES_DISTRIBUTED_DATABASE=error:
+    // Deno.openKv() is force-exposed (even without --unstable-kv) and rejects
+    // with a clear message instead of "Deno.openKv is not a function".
+    "error_no_database": {
+      "args": "run -A main.ts",
+      "envs": { "DENO_KV_REQUIRES_DISTRIBUTED_DATABASE": "error" },
+      "output": "error.out"
+    },
+    // DENO_KV_REQUIRES_DISTRIBUTED_DATABASE=warn allows the local in-memory
+    // fallback but logs a warning. Requires KV to be enabled (--unstable-kv).
+    "warn_in_memory_fallback": {
+      "args": "run -A --unstable-kv main.ts",
+      "envs": { "DENO_KV_REQUIRES_DISTRIBUTED_DATABASE": "warn" },
+      "output": "warn.out"
+    },
+    // Without the env var, behavior is unchanged: no --unstable-kv means
+    // Deno.openKv is not exposed.
+    "unset_unchanged": {
+      "args": "run -A main.ts",
+      "output": "unset.out"
+    }
+  }
+}

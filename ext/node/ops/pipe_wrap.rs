@@ -21,6 +21,7 @@ use deno_core::uv_compat::UvConnect;
 use deno_core::uv_compat::UvLoop;
 use deno_core::uv_compat::UvStream;
 use deno_core::v8;
+use deno_net::check_unix_socket_path;
 use deno_permissions::PermissionsContainer;
 
 use crate::ops::handle_wrap::AsyncWrap;
@@ -312,15 +313,14 @@ impl PipeWrap {
 
   #[fast]
   fn open(&self, state: &mut OpState, #[smi] fd: i32) -> i32 {
-    // Check FdTable for duplicate fds. Stdio fds (0-2) are pre-registered
-    // as TableOwned; for those, open is allowed (no-op check). Non-stdio
-    // fds already in FdTable are rejected (EEXIST).
-    {
-      let fd_table = state.borrow::<deno_io::FdTable>();
-      if fd_table.contains(fd) && !(0..=2).contains(&fd) {
-        return -libc::EEXIST;
-      }
-    }
+    // See `FdTable::begin_uv_adopt` for the duplicate-fd policy (stdio and
+    // inherited extra stdio fds may be adopted; other tracked fds are
+    // rejected).
+    let Some(was_inherited) =
+      state.borrow::<deno_io::FdTable>().begin_uv_adopt(fd)
+    else {
+      return -libc::EEXIST;
+    };
     let pipe = self.pipe_ptr();
     if pipe.is_null() {
       return uv_compat::UV_EBADF;
@@ -338,8 +338,9 @@ impl PipeWrap {
       unsafe { uv_compat::uv_pipe_open(pipe, fd) }
     };
     if ret == 0 {
-      // Register as UvOwned - the native handle owns the fd.
-      state.borrow_mut::<deno_io::FdTable>().register_uv_owned(fd);
+      state
+        .borrow_mut::<deno_io::FdTable>()
+        .finish_uv_adopt(fd, was_inherited);
       self.base.set_fd(fd);
     }
     ret
@@ -353,11 +354,13 @@ impl PipeWrap {
   ) -> Result<i32, deno_permissions::PermissionCheckError> {
     // Binding a unix-domain socket creates a socket inode on disk (and arms
     // the fchmod/unlink-on-close that operate on the bound path), so it
-    // requires filesystem read+write permission for the path -- matching
-    // `connect()` above and `Deno.listen({ transport: "unix" })`. Checking
-    // here (rather than only in `listen()`) ensures the path is never bound,
-    // chmod'd, or unlinked by permission-less code.
-    state.borrow_mut::<PermissionsContainer>().check_open(
+    // requires filesystem read+write permission for the path AND an
+    // `--allow-net=unix:<path>` grant -- matching `connect()` above and
+    // `Deno.listen({ transport: "unix" })`. Checking here (rather than only in
+    // `listen()`) ensures the path is never bound, chmod'd, or unlinked by
+    // permission-less code.
+    check_unix_socket_path(
+      state.borrow_mut::<PermissionsContainer>(),
       std::borrow::Cow::Borrowed(std::path::Path::new(path)),
       deno_permissions::OpenAccessKind::ReadWriteNoFollow,
       Some("node:net.Server.listen()"),
@@ -381,10 +384,14 @@ impl PipeWrap {
     if pipe.is_null() {
       return Ok(uv_compat::UV_EBADF);
     }
-    // Permission check: verify the bind path is allowed.
+    // Permission check: verify the bind path is allowed. A listening unix
+    // socket needs both filesystem read+write access to the path and an
+    // `--allow-net=unix:<path>` grant, mirroring `bind()` and the native
+    // `Deno.listen({ transport: "unix" })` path.
     // SAFETY: pipe is valid (null-checked above).
     if let Some(path) = unsafe { &*pipe }.bind_path() {
-      state.borrow_mut::<PermissionsContainer>().check_open(
+      check_unix_socket_path(
+        state.borrow_mut::<PermissionsContainer>(),
         std::borrow::Cow::Borrowed(std::path::Path::new(path)),
         deno_permissions::OpenAccessKind::ReadWriteNoFollow,
         Some("node:net.Server.listen()"),
@@ -417,7 +424,16 @@ impl PipeWrap {
     #[string] path: &str,
     scope: &mut v8::PinScope,
   ) -> Result<i32, deno_permissions::PermissionCheckError> {
-    state.borrow_mut::<PermissionsContainer>().check_open(
+    // A Unix-domain socket is both a filesystem entry and an outbound network
+    // primitive, so connecting requires filesystem read+write permission for
+    // the path AND an `--allow-net=unix:<path>` grant -- matching the native
+    // `Deno.connect({ transport: "unix" })` path in `ext/net/ops_unix.rs`.
+    // Without the network check, `--allow-read`/`--allow-write` on a socket
+    // path alone could reach local IPC services (Docker, dbus, podman, etc.)
+    // under `--deny-net`. Abstract socket paths (Linux, leading NUL) have no
+    // filesystem entry and are covered by the network check alone.
+    check_unix_socket_path(
+      state.borrow_mut::<PermissionsContainer>(),
       std::borrow::Cow::Borrowed(std::path::Path::new(path)),
       deno_permissions::OpenAccessKind::ReadWriteNoFollow,
       Some("node:net.createConnection()"),
@@ -546,6 +562,11 @@ impl PipeWrap {
       }
       fd
     };
+    // Stop any active read before clearing the JS handle so the read-callback
+    // registry drops its strong `Global<this>` and the wrapper can be GC'd
+    // after close. The stream pointer is still valid here (close_handle runs
+    // afterwards).
+    self.base.read_stop_internal();
     self.base.clear_js_handle();
     let result = self
       .base

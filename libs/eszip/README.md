@@ -7,8 +7,6 @@ file.
 The eszip file format is designed to be compact and streaming capable. This
 allows for efficient loading of large ECMAScript module graphs.
 
-https://eszip-viewer.deno.dev/ is a tool for inspecting eszip files.
-
 [module_graph]: https://docs.rs/deno_graph/latest/deno_graph/struct.ModuleGraph.html
 
 ## File format
