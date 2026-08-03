@@ -252,6 +252,24 @@ function afterWriteDispatched(
   }
 }
 
+// Apply readable backpressure: when a `stream.push()` returns false the
+// consumer is over its highWaterMark, so stop pulling from the native side
+// until it drains. Shared by onStreamRead and by http2's deferred client-body
+// flush (emitClientResponseNT), which pushes chunks that were buffered before
+// the 'response' event and so bypassed onStreamRead's own check.
+// deno-lint-ignore no-explicit-any
+function stopReadingOnBackpressure(handle: any, stream: any) {
+  handle.reading = false;
+
+  if (!stream.destroyed) {
+    const err = handle.readStop();
+
+    if (err) {
+      stream.destroy(errnoException(err, "read"));
+    }
+  }
+}
+
 // Here we differ from Node slightly. Node makes use of the `kReadBytesOrError`
 // entry of the `streamBaseState` array from the `stream_wrap` internal binding.
 // Here we pass the `nread` value directly to this method as async Deno APIs
@@ -322,15 +340,7 @@ function onStreamRead(
     }
 
     if (!result) {
-      handle.reading = false;
-
-      if (!stream.destroyed) {
-        const err = handle.readStop();
-
-        if (err) {
-          stream.destroy(errnoException(err, "read"));
-        }
-      }
+      stopReadingOnBackpressure(handle, stream);
     }
 
     return ret;
@@ -432,6 +442,7 @@ return {
   writevGeneric,
   writeGeneric,
   onStreamRead,
+  stopReadingOnBackpressure,
   setStreamTimeout,
 };
 })();

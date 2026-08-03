@@ -851,31 +851,88 @@ Deno.test("[node/http2 client] 'response' is emitted before 'data'", {
   const port = (server.address() as net.AddressInfo).port;
   const client = http2.connect(`http://localhost:${port}`);
 
-  const done = Promise.withResolvers<void>();
-  const events: string[] = [];
+  try {
+    const events = await new Promise<string[]>((resolve, reject) => {
+      const seen: string[] = [];
+      const req = client.request({ [http2.constants.HTTP2_HEADER_PATH]: "/" });
+      req.on("response", () => seen.push("response"));
+      req.on("data", () => seen.push("data"));
+      req.on("end", () => resolve(seen));
+      req.on("error", reject);
+      client.on("error", reject);
+      req.end();
+    });
 
-  const req = client.request({ [http2.constants.HTTP2_HEADER_PATH]: "/" });
-  req.on("response", () => events.push("response"));
-  req.on("data", () => events.push("data"));
-  req.on("end", () => {
-    try {
-      assertEquals(events[0], "response");
-      assert(
-        events.indexOf("response") < events.indexOf("data"),
-        `expected 'response' before 'data', got: ${events.join(",")}`,
-      );
-    } catch (e) {
-      done.reject(e);
-      return;
-    }
+    assert(
+      events.indexOf("response") < events.indexOf("data"),
+      `expected 'response' before 'data', got: ${events.join(",")}`,
+    );
+  } finally {
     client.close();
-    server.close((err) => err ? done.reject(err) : done.resolve());
-  });
-  req.on("error", done.reject);
-  client.on("error", done.reject);
-  req.end();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
 
-  await done.promise;
+// Same ordering guarantee for a server-pushed stream: its 'push' event (the
+// PUSH_RESPONSE headers) must precede the pushed body's 'data', even with the
+// 'data' listener attached synchronously and body in the same frame batch. This
+// exercises the 'push' branch of emitClientResponseNT.
+Deno.test("[node/http2 client] pushed stream 'push' is emitted before 'data'", {
+  ignore: Deno.build.os === "windows",
+  sanitizeResources: false,
+  sanitizeOps: false,
+}, async () => {
+  const server = http2.createServer();
+  server.on("stream", (stream, headers) => {
+    const port = (server.address() as net.AddressInfo).port;
+    if (headers[http2.constants.HTTP2_HEADER_PATH] === "/") {
+      stream.pushStream({
+        [http2.constants.HTTP2_HEADER_PATH]: "/pushed",
+        [http2.constants.HTTP2_HEADER_AUTHORITY]: `localhost:${port}`,
+      }, (err, push) => {
+        if (err) throw err;
+        push.respond({ [http2.constants.HTTP2_HEADER_STATUS]: 200 });
+        push.write("pushed ");
+        push.end("body");
+      });
+    }
+    stream.respond({ [http2.constants.HTTP2_HEADER_STATUS]: 200 });
+    stream.end("main");
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, resolve);
+  });
+
+  const port = (server.address() as net.AddressInfo).port;
+  const client = http2.connect(`http://localhost:${port}`);
+
+  try {
+    const events = await new Promise<string[]>((resolve, reject) => {
+      const seen: string[] = [];
+      client.on("stream", (push) => {
+        // Attach the 'data' listener synchronously, before 'push' is emitted.
+        push.on("push", () => seen.push("push"));
+        push.on("data", () => seen.push("data"));
+        push.on("end", () => resolve(seen));
+        push.on("error", reject);
+      });
+      const req = client.request({ [http2.constants.HTTP2_HEADER_PATH]: "/" });
+      req.on("error", reject);
+      client.on("error", reject);
+      req.resume();
+      req.end();
+    });
+
+    assert(
+      events.indexOf("push") < events.indexOf("data"),
+      `expected 'push' before 'data', got: ${events.join(",")}`,
+    );
+  } finally {
+    client.close();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
 });
 
 Deno.test("[node/http2 client] connect without net permission", {

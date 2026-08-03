@@ -195,6 +195,7 @@ const {
   kUpdateTimer,
   onStreamRead,
   setStreamTimeout,
+  stopReadingOnBackpressure,
   writeGeneric,
   writevGeneric,
 } = core.loadExtScript("ext:deno_node/internal/stream_base_commons.ts");
@@ -1473,18 +1474,37 @@ function emit(self, ...args) {
 // 'response' (denoland/deno#35947).
 function emitClientResponseNT(stream, event, obj, flags, headers) {
   const state = stream[kState];
+  // Set responseEmitted before emitting so a re-entrant push() from inside a
+  // user 'response' listener forwards straight through the override below rather
+  // than re-buffering. Only the native read callback pushes today, so nothing
+  // actually re-enters here, but if it ever did those chunks would (correctly)
+  // land after the pendingData flushed just below.
   state.responseEmitted = true;
   ReflectApply(stream.emit, stream, [event, obj, flags, headers]);
   const pending = state.pendingData;
   if (pending !== null) {
     state.pendingData = null;
+    let result = true;
     for (let i = 0; i < pending.length; i++) {
+      const chunk = pending[i];
       // Now that responseEmitted is set, push() forwards straight through.
       // deno-lint-ignore prefer-primordials
-      stream.push(pending[i][0], pending[i][1]);
+      const pushed = stream.push(chunk);
       if (stream.destroyed) {
-        break;
+        return;
       }
+      // Only body chunks participate in backpressure; the trailing null EOF
+      // (always last) takes onStreamRead's non-data path, which never pauses.
+      if (chunk !== null) {
+        result = pushed;
+      }
+    }
+    // While buffering, the override returned true unconditionally, so the native
+    // read was never paused. If the flushed backlog pushed the readable past its
+    // highWaterMark, honor that backpressure now (what onStreamRead would have
+    // done had the chunks not been intercepted).
+    if (!result) {
+      stopReadingOnBackpressure(stream[kHandle], stream);
     }
   }
 }
@@ -1676,8 +1696,9 @@ function onSessionHeaders(
       originSet.delete(stream[kOrigin]);
     }
     debugStream(id, type, "emitting stream '%s' event", event);
-    // The first header event ('response'/'push') releases the client read gate
-    // in _read so that body 'data' cannot be emitted before it.
+    // The first client header event ('response'/'push') flushes any body
+    // chunks that ClientHttp2Stream.push buffered, so body 'data' cannot be
+    // emitted before it (denoland/deno#35947).
     const emitFn = (event === "response" || event === "push")
       ? emitClientResponseNT
       : emit;
@@ -2580,6 +2601,13 @@ class Http2Stream extends Duplex {
     if (!this.closed) {
       closeStream(this, code, hasHandle ? kForceRstStream : kNoRstStream);
     }
+    // A client stream torn down before its 'response'/'push' event may still
+    // hold body chunks buffered by ClientHttp2Stream.push (emitClientResponseNT
+    // never ran). They can no longer be delivered, so drop them and mark the
+    // response emitted so the null EOF below pushes straight through instead of
+    // being re-buffered by the override.
+    state.pendingData = null;
+    state.responseEmitted = true;
     // deno-lint-ignore prefer-primordials
     this.push(null);
 
@@ -3520,8 +3548,11 @@ class ClientHttp2Stream extends Http2Stream {
       // lose it if the peer tears the stream down first). Once data has been
       // buffered, the null must stay queued behind it to preserve order.
       if (chunk !== null || state.pendingData !== null) {
+        // Buffer just the chunk: onStreamRead is the only synchronous pusher and
+        // calls push(buf) with no encoding, so `encoding` is always undefined on
+        // this path and does not need to be preserved.
         const pending = state.pendingData ??= [];
-        ArrayPrototypePush(pending, [chunk, encoding]);
+        ArrayPrototypePush(pending, chunk);
         return true;
       }
     }
