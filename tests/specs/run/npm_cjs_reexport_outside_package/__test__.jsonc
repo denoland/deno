@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "permitted": {
+      "args": "run --no-prompt --allow-read main.mjs",
+      "output": "main.out"
+    },
+    "denied": {
+      "args": "run --no-prompt --allow-read=node_modules denied.mjs",
+      "output": "denied.out"
+    }
+  }
+}

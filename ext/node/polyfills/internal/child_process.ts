@@ -1320,8 +1320,11 @@ function normalizeSpawnArguments(
         emittedShellDeprecation = true;
       }
       const escapedParts = [
-        escapeShellArg(file),
-        ...new SafeArrayIterator(ArrayPrototypeMap(args, escapeShellArg)),
+        escapeShellArg(stripShellArgQuotes(file)),
+        ...new SafeArrayIterator(ArrayPrototypeMap(
+          args,
+          (arg) => escapeShellArg(stripShellArgQuotes(arg)),
+        )),
       ];
       command = ArrayPrototypeJoin(escapedParts, " ");
     } else {
@@ -1448,6 +1451,27 @@ function waitForStreamToClose(stream) {
   stream.once("close", onClose);
   stream.once("error", onError);
   return deferred.promise;
+}
+
+/**
+ * Removes one layer of quotes that callers added around a complete shell
+ * argument. The argument is escaped again before being passed to the shell.
+ */
+function stripShellArgQuotes(arg) {
+  if (arg.length < 2) {
+    return arg;
+  }
+  const doubleQuoted = StringPrototypeStartsWith(arg, '"') &&
+    StringPrototypeEndsWith(arg, '"');
+  // cmd.exe treats single quotes as ordinary characters, while POSIX shells
+  // recognize both single and double quotes.
+  const singleQuoted = lazyProcess().default.platform !== "win32" &&
+    StringPrototypeStartsWith(arg, "'") &&
+    StringPrototypeEndsWith(arg, "'");
+  if (doubleQuoted || singleQuoted) {
+    return StringPrototypeSlice(arg, 1, -1);
+  }
+  return arg;
 }
 
 /**
