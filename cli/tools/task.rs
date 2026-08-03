@@ -100,6 +100,18 @@ pub async fn execute_script(
     };
     let task_regex = arg_to_task_name_filter(task_name)?;
 
+    // `--resume-from <package>`: skip every package that sorts before the named
+    // one, then run it and all topologically-later packages. We match the
+    // package name exactly (anchored regex) reusing the same name-resolution as
+    // `--filter` (deno.json/package.json `name`, falling back to the directory
+    // name).
+    let resume_regex = task_flags
+      .resume_from
+      .as_deref()
+      .map(package_name_to_exact_regex)
+      .transpose()?;
+    let mut resume_reached = false;
+
     let mut packages_task_info: Vec<PackageTaskInfo> = vec![];
 
     let workspace = cli_options.workspace();
@@ -119,6 +131,21 @@ pub async fn execute_script(
         continue;
       }
 
+      if let Some(resume_regex) = &resume_regex
+        && !resume_reached
+      {
+        if !matches_package(
+          folder,
+          folder_url,
+          force_use_pkg_json,
+          resume_regex,
+          folder_url == root_dir_url,
+        ) {
+          continue;
+        }
+        resume_reached = true;
+      }
+
       let member_dir = workspace.resolve_member_dir(folder_url);
       let mut tasks_config = member_dir.to_tasks_config()?;
       if force_use_pkg_json {
@@ -135,6 +162,38 @@ pub async fn execute_script(
         matched_tasks,
         tasks_config,
       });
+    }
+
+    if let Some(resume_regex) = &resume_regex
+      && let Some(resume_from) = &task_flags.resume_from
+      && !resume_reached
+    {
+      // Distinguish "doesn't exist" from "exists but excluded by --filter":
+      // re-scan the whole workspace ignoring the filter to see if the package
+      // is there at all.
+      let exists_in_workspace = workspace
+        .config_folders_sorted_by_dependencies()
+        .into_iter()
+        .any(|(folder_url, folder)| {
+          matches_package(
+            folder,
+            folder_url,
+            force_use_pkg_json,
+            resume_regex,
+            folder_url == root_dir_url,
+          )
+        });
+      if exists_in_workspace {
+        bail!(
+          "Package '{}' is excluded by --filter, so --resume-from cannot start from it.",
+          resume_from
+        );
+      } else {
+        bail!(
+          "No package matching '{}' found in the workspace for --resume-from.",
+          resume_from
+        );
+      }
     }
 
     // Logging every task definition would be too spammy. Pnpm only
@@ -1545,6 +1604,14 @@ fn package_filter_to_regex(input: &str) -> Result<regex::Regex, regex::Error> {
   regex_str = regex_str.replace("\\*", ".*");
 
   Regex::new(&regex_str)
+}
+
+/// Builds a regex that matches `input` exactly. Used by `--resume-from`, which
+/// (unlike `--filter`) names a single package rather than a glob.
+fn package_name_to_exact_regex(
+  input: &str,
+) -> Result<regex::Regex, regex::Error> {
+  Regex::new(&format!("^{}$", regex::escape(input)))
 }
 
 fn arg_to_task_name_filter(

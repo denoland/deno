@@ -1,0 +1,40 @@
+{
+  "tests": {
+    "resume_from_first_runs_all": {
+      // pkg-c sorts first, so resuming from it runs the whole workspace.
+      "args": "task --resume-from pkg-c build",
+      "output": "all.out"
+    },
+    "resume_from_middle": {
+      // pkg-c is skipped; pkg-b and the topologically-later pkg-a run.
+      "args": "task --resume-from pkg-b build",
+      "output": "from_middle.out"
+    },
+    "resume_from_last_runs_one": {
+      // pkg-a sorts last, so resuming from it runs only pkg-a.
+      "args": "task --resume-from pkg-a build",
+      "output": "from_last.out"
+    },
+    "resume_from_implies_recursive": {
+      // No -r needed: --resume-from implies a workspace run.
+      "args": "task -r --resume-from pkg-b build",
+      "output": "from_middle.out"
+    },
+    "resume_from_within_filter": {
+      // --resume-from applies within the --filter selection.
+      "args": "task --filter pkg-* --resume-from pkg-b build",
+      "output": "from_middle.out"
+    },
+    "resume_from_unknown_package": {
+      "args": "task --resume-from nope build",
+      "output": "unknown.out",
+      "exitCode": 1
+    },
+    "resume_from_outside_filter": {
+      // pkg-b is excluded by the filter, so it cannot be resumed from.
+      "args": "task --filter pkg-a --resume-from pkg-b build",
+      "output": "filtered_out.out",
+      "exitCode": 1
+    }
+  }
+}

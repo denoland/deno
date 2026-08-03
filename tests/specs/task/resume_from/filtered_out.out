@@ -1,0 +1,1 @@
+error: Package 'pkg-b' is excluded by --filter, so --resume-from cannot start from it.

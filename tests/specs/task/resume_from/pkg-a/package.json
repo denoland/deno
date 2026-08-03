@@ -1,0 +1,9 @@
+{
+  "name": "pkg-a",
+  "scripts": {
+    "build": "echo a"
+  },
+  "dependencies": {
+    "pkg-b": "*"
+  }
+}

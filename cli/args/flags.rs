@@ -4282,6 +4282,13 @@ Evaluate a task from string:
         .value_parser(value_parser!(String)),
       )
       .arg(
+        Arg::new("resume-from")
+          .long("resume-from")
+          .value_name("PACKAGE")
+          .help("Resume a workspace run from the given package, running it and all topologically-later packages while skipping earlier ones; implies --recursive flag")
+          .value_parser(value_parser!(String)),
+      )
+      .arg(
         Arg::new("eval")
           .long("eval")
           .help(
@@ -7995,7 +8002,9 @@ fn task_parse(
   lock_args_parse(flags, matches);
   env_file_arg_parse(flags, matches);
 
-  let mut recursive = matches.get_flag("recursive");
+  let resume_from = matches.remove_one::<String>("resume-from");
+  // `--resume-from` operates on the workspace, so it implies `--recursive`.
+  let mut recursive = matches.get_flag("recursive") || resume_from.is_some();
   let filter = if let Some(filter) = matches.remove_one::<String>("filter") {
     recursive = false;
     Some(filter)
@@ -8015,6 +8024,7 @@ fn task_parse(
     filter,
     eval: matches.get_flag("eval"),
     no_prefix: matches.get_flag("no-prefix"),
+    resume_from,
     concurrency: matches.remove_one::<NonZeroUsize>("jobs"),
     if_present: matches.get_flag("if-present"),
   };
@@ -14621,6 +14631,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          resume_from: None,
           concurrency: None,
           if_present: false,
         }),
@@ -14641,6 +14652,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          resume_from: None,
           concurrency: None,
           if_present: false,
         }),
@@ -14660,6 +14672,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          resume_from: None,
           concurrency: None,
           if_present: false,
         }),
@@ -14679,6 +14692,7 @@ mod tests {
           filter: Some("*".to_string()),
           eval: false,
           no_prefix: false,
+          resume_from: None,
           concurrency: None,
           if_present: false,
         }),
@@ -14698,6 +14712,7 @@ mod tests {
           filter: Some("*".to_string()),
           eval: false,
           no_prefix: false,
+          resume_from: None,
           concurrency: None,
           if_present: false,
         }),
@@ -14717,6 +14732,7 @@ mod tests {
           filter: Some("*".to_string()),
           eval: false,
           no_prefix: false,
+          resume_from: None,
           concurrency: None,
           if_present: false,
         }),
@@ -14736,6 +14752,7 @@ mod tests {
           filter: None,
           eval: true,
           no_prefix: false,
+          resume_from: None,
           concurrency: None,
           if_present: false,
         }),
@@ -14768,6 +14785,7 @@ mod tests {
             filter: None,
             eval: false,
             no_prefix: false,
+            resume_from: None,
             concurrency: Some(NonZeroUsize::new(1).unwrap()),
             if_present: false,
           }),
@@ -14807,6 +14825,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          resume_from: None,
           concurrency: None,
           if_present: false,
         }),
@@ -14830,6 +14849,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          resume_from: None,
           concurrency: None,
           if_present: false,
         }),
@@ -14854,6 +14874,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          resume_from: None,
           concurrency: None,
           if_present: false,
         }),
@@ -14877,6 +14898,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          resume_from: None,
           concurrency: None,
           if_present: false,
         }),
@@ -14900,6 +14922,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          resume_from: None,
           concurrency: None,
           if_present: false,
         }),
@@ -14924,6 +14947,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          resume_from: None,
           concurrency: None,
           if_present: false,
         }),
@@ -14947,6 +14971,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          resume_from: None,
           concurrency: None,
           if_present: false,
         }),
@@ -14969,6 +14994,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          resume_from: None,
           concurrency: None,
           if_present: false,
         }),
@@ -14992,6 +15018,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          resume_from: None,
           concurrency: None,
           if_present: false,
         }),
@@ -15011,6 +15038,61 @@ mod tests {
   }
 
   #[test]
+  fn task_subcommand_resume_from() {
+    // `--resume-from` implies `--recursive`, which expands the filter to `*`.
+    let r =
+      flags_from_vec(svec!["deno", "task", "--resume-from", "pkg-b", "build"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          cwd: None,
+          task: Some("build".to_string()),
+          is_run: false,
+          recursive: true,
+          filter: Some("*".to_string()),
+          eval: false,
+          no_prefix: false,
+          resume_from: Some("pkg-b".to_string()),
+          concurrency: None,
+          if_present: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    // Combined with `--filter`, the explicit filter is preserved (and
+    // `recursive` stays false, matching `--filter`'s own behavior).
+    let r = flags_from_vec(svec![
+      "deno",
+      "task",
+      "--filter",
+      "pkg-*",
+      "--resume-from",
+      "pkg-b",
+      "build"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          cwd: None,
+          task: Some("build".to_string()),
+          is_run: false,
+          recursive: false,
+          filter: Some("pkg-*".to_string()),
+          eval: false,
+          no_prefix: false,
+          resume_from: Some("pkg-b".to_string()),
+          concurrency: None,
+          if_present: false,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn task_subcommand_env_file() {
     let r = flags_from_vec(svec!["deno", "task", "--env-file", "build"]);
     assert_eq!(
@@ -15024,6 +15106,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          resume_from: None,
           concurrency: None,
           if_present: false,
         }),
@@ -15050,6 +15133,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          resume_from: None,
           concurrency: None,
           if_present: false,
         }),
@@ -15073,6 +15157,7 @@ mod tests {
           filter: None,
           eval: false,
           no_prefix: false,
+          resume_from: None,
           concurrency: None,
           if_present: true,
         }),

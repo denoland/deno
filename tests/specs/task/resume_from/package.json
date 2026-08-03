@@ -1,0 +1,7 @@
+{
+  "workspaces": [
+    "./pkg-a",
+    "./pkg-b",
+    "./pkg-c"
+  ]
+}
