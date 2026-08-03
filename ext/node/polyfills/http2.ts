@@ -624,6 +624,18 @@ function onSessionInternalError(integerCode, customErrorCode) {
 }
 
 function settingsCallback(cb, ack, duration) {
+  // A destroyed session must not invoke the user settings callback. This
+  // mirrors Node's Http2Session::Close (src/node_http2.cc), which detaches the
+  // pending Http2Settings (dropping its callback) rather than running it, and
+  // matches the pending-PING cancellation already done in closeSession(). The
+  // handle's SETTINGS_ACK dispatch is not guaranteed to be torn down
+  // synchronously with session.destroy(), so a SETTINGS_ACK that arrives in the
+  // window after destroy() would otherwise still fire this callback. That race
+  // is what intermittently trips the `mustNotCall()` settings callback in
+  // test-http2-ping-settings-heapdump.js on slower runners (deno#36141).
+  if (this.destroyed) {
+    return;
+  }
   this[kState].pendingAck--;
   this[kLocalSettings] = undefined;
   if (ack) {

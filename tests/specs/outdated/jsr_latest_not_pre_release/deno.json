@@ -1,0 +1,14 @@
+{
+  "imports": {
+    // Newest version is a pre-release (1.2.0-alpha.0), but a newer stable
+    // release exists: latest is the stable 1.1.0.
+    "@denotest/jsr-latest-not-pre-release": "jsr:@denotest/jsr-latest-not-pre-release@~1.0.0",
+    // Only the newer versions are pre-releases (2.0.0-beta.x), so there is no
+    // newer latest at all and the package drops out of the table. This is the
+    // shape of the originally reported bug (#36320).
+    "@denotest/has-pre-release": "jsr:@denotest/has-pre-release@1.0.0",
+    // Currently resolved version is itself a pre-release, so newer
+    // pre-releases are still reported as latest.
+    "@denotest/has-only-pre-release": "jsr:@denotest/has-only-pre-release@2.0.0-beta.1"
+  }
+}
