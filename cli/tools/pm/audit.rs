@@ -70,6 +70,58 @@ pub async fn audit(
   Ok(result.exit_code)
 }
 
+/// Outcome of checking a derived fix target against what the registry has
+/// actually published.
+enum PublishedTarget {
+  /// The oldest published version satisfying the target.
+  Version(String),
+  /// Registry metadata was unavailable; proceed with the derived target rather
+  /// than blocking the fix on a transient fetch failure.
+  Unknown,
+  /// Nothing published satisfies the target.
+  None,
+  /// The nearest published version crosses a major boundary the target did not,
+  /// so applying it would be a major upgrade in disguise.
+  CrossesMajor(String),
+}
+
+/// Snap a derived fix target to the oldest published version that satisfies it.
+///
+/// `target_version` is a *lower bound* (`>=X`), and when inferred from a
+/// vulnerable range's exclusive upper bound it assumes that bound was really
+/// released -- which is not guaranteed. Writing it into the manifest verbatim
+/// can pin a version that does not exist, so resolve it against the registry
+/// first. Prereleases are skipped unless the target is itself a prerelease.
+async fn resolve_published_target(
+  deps: &super::deps::DepManager,
+  action: &FixableAction,
+) -> PublishedTarget {
+  let Ok(target) = deno_semver::Version::parse_standard(&action.target_version)
+  else {
+    return PublishedTarget::Unknown;
+  };
+  let Some(info) = deps
+    .npm_fetch_resolver
+    .package_info(&action.module_name)
+    .await
+  else {
+    return PublishedTarget::Unknown;
+  };
+  let nearest = info
+    .versions
+    .keys()
+    .filter(|v| **v >= target)
+    .filter(|v| v.pre.is_empty() || !target.pre.is_empty())
+    .min();
+  match nearest {
+    None => PublishedTarget::None,
+    Some(v) if v.major > target.major => {
+      PublishedTarget::CrossesMajor(v.to_string())
+    }
+    Some(v) => PublishedTarget::Version(v.to_string()),
+  }
+}
+
 async fn apply_fixes(
   factory: &CliFactory,
   flags: Arc<Flags>,
@@ -117,16 +169,43 @@ async fn apply_fixes(
 
     match dep_lookup.get(&action.module_name) {
       Some(Some((dep_id, version_req_str))) => {
+        // The target can be a version that was never published: when the
+        // registry omits `patched_versions` it is inferred from the vulnerable
+        // range's exclusive upper bound, which assumes that bound is a real
+        // release. Snap it to the oldest published version that actually
+        // satisfies it, so `--fix` never commits a manifest that cannot
+        // install. Done here, after the dep is known to be updatable, so an
+        // untouchable dep is reported as such instead of triggering a fetch.
+        let target_version = match resolve_published_target(&deps, action).await
+        {
+          PublishedTarget::Unknown => action.target_version.clone(),
+          PublishedTarget::Version(v) => v,
+          PublishedTarget::None => {
+            unfixable.push(format!(
+              "{} (no published version satisfies >={})",
+              action.module_name, action.target_version
+            ));
+            continue;
+          }
+          PublishedTarget::CrossesMajor(v) => {
+            unfixable.push(format!(
+              "{} (nearest published fix {} is a major upgrade)",
+              action.module_name, v
+            ));
+            continue;
+          }
+        };
+
         // Preserve the original version requirement style.
         // Only handle simple spec styles (caret, tilde, exact pin)
         // to avoid silently rewriting complex ranges.
         let trimmed = version_req_str.trim();
         let new_spec = if trimmed.starts_with('~') {
-          format!("~{}", action.target_version)
+          format!("~{}", target_version)
         } else if trimmed.starts_with('^') {
-          format!("^{}", action.target_version)
+          format!("^{}", target_version)
         } else if trimmed.chars().next().is_some_and(|c| c.is_ascii_digit()) {
-          action.target_version.clone()
+          target_version.clone()
         } else {
           unfixable.push(format!(
             "{} (unsupported version spec: {})",
@@ -397,17 +476,18 @@ mod npm {
       &installed_versions,
       minimal_severity,
     );
-    let fixable_modules: HashSet<&str> = fixable_actions
-      .iter()
-      .map(|a| a.module_name.as_str())
-      .collect();
+    let actions_by_module: HashMap<&str, &super::FixableAction> =
+      fixable_actions
+        .iter()
+        .map(|a| (a.module_name.as_str(), a))
+        .collect();
 
     print_report(
       &vulns,
       &advisories,
       minimal_severity,
       audit_flags.ignore_unfixable,
-      &fixable_modules,
+      &actions_by_module,
     );
 
     // Exit code 1 only if there are vulnerabilities at or above the specified level
@@ -533,12 +613,38 @@ mod npm {
     None
   }
 
+  /// Whether the version `--fix` would move this package to actually satisfies
+  /// this advisory's patched range.
+  ///
+  /// Actions are derived per module (the highest target across that module's
+  /// advisories), so a module-level action does not automatically resolve every
+  /// advisory on that module -- one whose `patched_versions` is unusable for
+  /// fixing (e.g. an exclusive `>1.0.0` lower bound) contributes no target of
+  /// its own and may not be covered by a sibling's.
+  fn action_resolves(
+    adv: &AuditAdvisory,
+    action: &super::FixableAction,
+  ) -> bool {
+    let Ok(target) =
+      deno_semver::Version::parse_standard(&action.target_version)
+    else {
+      return false;
+    };
+    match deno_semver::VersionReq::parse_from_npm(&adv.patched_versions) {
+      Ok(req) => req.matches(&target),
+      // Unparseable patched range: fall back to the derived minimum so an
+      // advisory that produced this very target still counts as resolved.
+      Err(_) => min_version_from_range(&adv.patched_versions)
+        .is_some_and(|min| target >= min),
+    }
+  }
+
   fn print_report(
     vulns: &AuditVulnerabilities,
     advisories: &[AuditAdvisory],
     minimal_severity: AdvisorySeverity,
     ignore_unfixable: bool,
-    fixable_modules: &HashSet<&str>,
+    actions_by_module: &HashMap<&str, &super::FixableAction>,
   ) {
     let stdout = &mut std::io::stdout();
 
@@ -607,28 +713,49 @@ mod npm {
           inferred
         );
         _ = writeln!(stdout, "│ {}       {}", colors::gray("Info:"), adv.url);
-        // Drive the `Actions:` line off the actual fixable action, not merely
-        // the presence of a patched range: an advisory can have a patch that
-        // `--fix` won't apply (e.g. a newer copy is already installed and the
-        // downgrade guard skips it). Telling the user to run `--fix` for
-        // something it will silently skip is worse than saying nothing.
+        // Drive the `Actions:` line off the actual derived action -- both
+        // whether there is one and which version it targets. Actions are
+        // per-module while advisories are per-vulnerability, so a module with
+        // several advisories gets a single target (the highest); printing this
+        // advisory's own range would name a version `--fix` never writes.
+        //
+        // An advisory can also have a patched range yet no applicable action at
+        // all (e.g. the downgrade guard skips it when a newer copy is already
+        // installed). Telling the user to run `--fix` for something it will
+        // silently skip is worse than saying nothing.
         //
         // The `(inferred)` note is shown on `Patched:` above; repeating it here
         // reads as though the action itself is inferred, so keep it to one line.
-        if fixable_modules.contains(adv.module_name.as_str()) {
-          _ = writeln!(
-            stdout,
-            "╰ {}    update {} to {}",
-            colors::gray("Actions:"),
-            adv.module_name,
-            adv.patched_versions
-          );
-        } else {
-          _ = writeln!(
-            stdout,
-            "╰ {}    no automatic fix available",
-            colors::gray("Actions:"),
-          );
+        match actions_by_module.get(adv.module_name.as_str()) {
+          Some(action) if action_resolves(adv, action) => {
+            // `--fix` refuses major upgrades, so don't imply it will apply one.
+            // It also refuses transitive, aliased and complex-spec deps, but
+            // those are only knowable once the manifest is loaded in
+            // `apply_fixes`, so they stay reported there.
+            let note = if action.is_major {
+              colors::gray(" (major upgrade, not applied by --fix)").to_string()
+            } else {
+              String::new()
+            };
+            // Printed as a lower bound rather than an exact version: `--fix`
+            // snaps the target up to the oldest *published* version satisfying
+            // it, which for an inferred target need not be the target itself.
+            _ = writeln!(
+              stdout,
+              "╰ {}    update {} to >={}{}",
+              colors::gray("Actions:"),
+              adv.module_name,
+              action.target_version,
+              note
+            );
+          }
+          _ => {
+            _ = writeln!(
+              stdout,
+              "╰ {}    no automatic fix available",
+              colors::gray("Actions:"),
+            );
+          }
         }
       } else {
         _ = writeln!(stdout, "╰ {}       {}", colors::gray("Info:"), adv.url);
@@ -683,20 +810,28 @@ mod npm {
   /// Prefers an explicit `github_advisory_id` field, falling back to the last
   /// path segment of the advisory `url`, which for public npm registry
   /// responses looks like `https://github.com/advisories/GHSA-xxxx-xxxx-xxxx`.
+  ///
+  /// Both sources are checked for the `GHSA-` prefix (case-insensitively, since
+  /// `--ignore` matching is case-insensitive too) so a non-GitHub `url` or an
+  /// unrelated registry field never gets surfaced as a GHSA id.
   pub fn extract_ghsa_id(item: &BulkAdvisoryItem) -> Option<String> {
-    if let Some(id) = &item.github_advisory_id
-      && !id.is_empty()
-    {
-      return Some(id.clone());
+    fn as_ghsa_id(candidate: &str) -> Option<String> {
+      let candidate = candidate.trim();
+      candidate
+        .get(..5)
+        .filter(|prefix| prefix.eq_ignore_ascii_case("GHSA-"))
+        .map(|_| candidate.to_string())
     }
-    item
-      .url
-      .trim_end_matches('/')
-      .rsplit('/')
-      .next()
-      .map(|seg| seg.split(['?', '#']).next().unwrap_or(seg))
-      .filter(|seg| seg.starts_with("GHSA-"))
-      .map(str::to_string)
+
+    if let Some(id) = item.github_advisory_id.as_deref()
+      && let Some(id) = as_ghsa_id(id)
+    {
+      return Some(id);
+    }
+    // Strip the query/fragment before trimming a trailing slash, so
+    // `.../GHSA-xxxx/?utm=1` still yields the id.
+    let path = item.url.split(['?', '#']).next().unwrap_or(&item.url);
+    as_ghsa_id(path.trim_end_matches('/').rsplit('/').next()?)
   }
 
   /// Derive a `patched_versions` range from an advisory's `vulnerable_versions`
@@ -731,12 +866,16 @@ mod npm {
 
     let mut target: Option<deno_semver::Version> = None;
     for version in installed {
-      // Find the alternative describing this installed version's vulnerability.
-      let Some(branch) = alternatives.iter().find(|branch| {
+      // Every alternative describing this installed version's vulnerability.
+      // Alternatives are normally disjoint; if overlapping ones disagree on the
+      // fixed version there is no single answer, so fail closed rather than
+      // picking whichever happens to come first.
+      let mut matching = alternatives.iter().filter(|branch| {
         VersionReq::parse_from_npm(branch)
           .map(|req| req.matches(version))
           .unwrap_or(false)
-      }) else {
+      });
+      let Some(branch) = matching.next() else {
         // Not vulnerable under any alternative (e.g. already patched); skip.
         continue;
       };
@@ -745,6 +884,11 @@ mod npm {
         // Open-ended vulnerable range: no known fix. Fail closed.
         return None;
       };
+      for other in matching {
+        if exclusive_upper_bound(other) != Some(upper.clone()) {
+          return None;
+        }
+      }
       match &target {
         None => target = Some(upper),
         Some(existing) if *existing == upper => {}
@@ -919,6 +1063,59 @@ mod npm {
         exclusive_upper_bound("<2.0.0 <1.1.0"),
         Some(version("1.1.0"))
       );
+    }
+
+    fn advisory(patched: &str) -> AuditAdvisory {
+      AuditAdvisory {
+        title: "t".to_string(),
+        severity: "high".to_string(),
+        url: "https://example.com/vuln/1".to_string(),
+        module_name: "lodash".to_string(),
+        vulnerable_versions: "<4.17.21".to_string(),
+        patched_versions: patched.to_string(),
+        patched_inferred: false,
+        cves: vec![],
+        ghsa_id: None,
+        advisory_id: None,
+      }
+    }
+
+    fn action(target: &str) -> super::super::FixableAction {
+      super::super::FixableAction {
+        module_name: "lodash".to_string(),
+        target_version: target.to_string(),
+        is_major: false,
+      }
+    }
+
+    #[test]
+    fn test_action_resolves() {
+      // The module-wide target satisfies this advisory's patched range.
+      assert!(action_resolves(&advisory(">=4.17.21"), &action("4.17.21")));
+      assert!(action_resolves(&advisory(">=4.17.21"), &action("4.17.25")));
+      // A sibling advisory's lower target does not resolve this one -- the
+      // report must not claim `--fix` handles it.
+      assert!(!action_resolves(&advisory(">=4.17.25"), &action("4.17.21")));
+      // Exclusive lower bound: unusable for deriving a target, but a target
+      // above it still resolves the advisory.
+      assert!(action_resolves(&advisory(">4.17.20"), &action("4.17.21")));
+      assert!(!action_resolves(&advisory(">4.17.20"), &action("4.17.20")));
+    }
+
+    #[test]
+    fn test_derive_fixable_actions_picks_highest_target() {
+      // Two advisories on one module: `--fix` moves to the highest target, and
+      // both advisories must be judged against that single target.
+      let advisories = vec![advisory(">=4.17.21"), advisory(">=4.17.25")];
+      let mut installed = HashMap::new();
+      installed.insert("lodash".to_string(), vec![version("4.17.20")]);
+
+      let actions =
+        derive_fixable_actions(&advisories, &installed, AdvisorySeverity::Low);
+      assert_eq!(actions.len(), 1);
+      assert_eq!(actions[0].target_version, "4.17.25");
+      assert!(action_resolves(&advisories[0], &actions[0]));
+      assert!(action_resolves(&advisories[1], &actions[0]));
     }
   }
 }
@@ -1280,6 +1477,38 @@ mod tests {
   }
 
   #[test]
+  fn test_extract_ghsa_id_ignores_non_ghsa_explicit_field() {
+    // A registry that populates the field with something else must not have it
+    // surfaced as a GHSA id; fall back to the URL.
+    let item = advisory(serde_json::json!({
+      "github_advisory_id": "not-an-advisory-id",
+      "url": "https://github.com/advisories/GHSA-mh99-v99m-4gvg",
+      "title": "t",
+      "severity": "high",
+      "vulnerable_versions": "<1.0.0"
+    }));
+    assert_eq!(
+      extract_ghsa_id(&item).as_deref(),
+      Some("GHSA-mh99-v99m-4gvg")
+    );
+  }
+
+  #[test]
+  fn test_extract_ghsa_id_is_case_insensitive() {
+    // `--ignore` matching is case-insensitive, so recognition must be too.
+    let item = advisory(serde_json::json!({
+      "url": "https://github.com/advisories/ghsa-mh99-v99m-4gvg",
+      "title": "t",
+      "severity": "high",
+      "vulnerable_versions": "<1.0.0"
+    }));
+    assert_eq!(
+      extract_ghsa_id(&item).as_deref(),
+      Some("ghsa-mh99-v99m-4gvg")
+    );
+  }
+
+  #[test]
   fn test_extract_ghsa_id_none_for_non_github_url() {
     let item = advisory(serde_json::json!({
       "url": "https://example.com/vuln/101010",
@@ -1296,6 +1525,8 @@ mod tests {
       "https://github.com/advisories/GHSA-mh99-v99m-4gvg/",
       "https://github.com/advisories/GHSA-mh99-v99m-4gvg?utm=1",
       "https://github.com/advisories/GHSA-mh99-v99m-4gvg#summary",
+      // Trailing slash *and* a query -- the query must be stripped first.
+      "https://github.com/advisories/GHSA-mh99-v99m-4gvg/?utm=1",
     ] {
       let item = advisory(serde_json::json!({
         "url": url,
@@ -1369,6 +1600,21 @@ mod tests {
         &versions(&["2.5.0"])
       ),
       None
+    );
+    // Overlapping alternatives that disagree on the fixed version have no
+    // single answer -> fail closed rather than taking whichever comes first.
+    assert_eq!(
+      derive_patched_from_vulnerable("<1.5.0 || <2.0.0", &versions(&["1.0.0"])),
+      None
+    );
+    // Overlapping alternatives that agree are still resolvable.
+    assert_eq!(
+      derive_patched_from_vulnerable(
+        "<1.5.0 || >=1.0.0 <1.5.0",
+        &versions(&["1.0.0"])
+      )
+      .as_deref(),
+      Some(">=1.5.0")
     );
   }
 
