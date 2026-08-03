@@ -1,7 +1,7 @@
 (async () => {
   for (let i = 0; i < 1000; i++) {
     try {
-      const resp = await fetch("http://localhost:12372/");
+      const resp = await fetch("http://localhost:12373/");
       const body = await resp.text();
       console.log(`status: ${resp.status}`);
       console.log(`body: ${body}`);
@@ -17,9 +17,5 @@
 export default {
   fetch(req) {
     throw new Error("boom");
-  },
-  async onError(err) {
-    await new Promise((r) => setTimeout(r, 1));
-    return new Response("custom async error handler", { status: 500 });
   },
 } satisfies Deno.ServeDefaultExport;

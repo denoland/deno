@@ -6,12 +6,17 @@
       "exitCode": 0
     },
     "async": {
-      "args": "serve --check --port 12371 async.ts",
+      "args": "serve --check --port 12372 async.ts",
       "output": "async.out",
       "exitCode": 0
     },
+    "default": {
+      "args": "serve --check --port 12373 default.ts",
+      "output": "default.out",
+      "exitCode": 0
+    },
     "error_on_non_function": {
-      "args": "serve --port 12371 error_on_non_function.ts",
+      "args": "serve --check --port 12374 error_on_non_function.ts",
       "output": "error_on_non_function.out",
       "exitCode": 1
     }

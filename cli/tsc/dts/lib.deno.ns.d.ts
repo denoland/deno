@@ -5744,8 +5744,17 @@ declare namespace Deno {
     /**
      * The handler to invoke when a {@linkcode fetch} handler throws. It is
      * passed the thrown error and must return (or resolve to) the `Response`
-     * to send to the client. If not provided, the server responds with a
-     * default 500 "Internal Server Error".
+     * to send to the client.
+     *
+     * It is also invoked when a streaming response body throws while it is
+     * being sent. In that case the status and headers are already on the wire,
+     * so the returned response is discarded and the handler serves only to
+     * observe the error.
+     *
+     * If not provided, the built-in handler logs the error to stderr and
+     * responds with a 500 "Internal Server Error". Supplying `onError`
+     * replaces that behavior entirely, including the logging — log the error
+     * yourself if you still want it reported.
      *
      * @category HTTP Server
      */
