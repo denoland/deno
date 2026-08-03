@@ -413,16 +413,14 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
         if (inner !== null && inner.unusable()) {
           throw new TypeError("Body already consumed.");
         }
-        let stream;
-        if (inner !== null) {
-          stream = inner.stream;
-        } else {
-          // A null body yields an empty, already-closed stream so that reading
-          // it to completion produces "".
-          stream = new ReadableStream();
-          readableStreamClose(stream);
+        if (inner === null) {
+          // A null body yields an empty, already-closed stream. Per the spec
+          // this is returned as-is; no decoder is set up for it.
+          const emptyStream = new ReadableStream();
+          readableStreamClose(emptyStream);
+          return emptyStream;
         }
-        return stream.pipeThrough(new TextDecoderStream());
+        return inner.stream.pipeThrough(new TextDecoderStream());
       },
       writable: true,
       configurable: true,
