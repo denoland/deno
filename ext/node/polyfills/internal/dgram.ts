@@ -23,6 +23,9 @@
 (function () {
 const { core, primordials } = __bootstrap;
 const lazyDns = core.createLazyLoader("node:dns");
+// `nextTick()` silently drops callbacks until node:process has been
+// bootstrapped, so make sure it is loaded before scheduling one.
+const lazyProcess = core.createLazyLoader("node:process");
 const { ERR_SOCKET_BAD_TYPE } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
@@ -75,7 +78,7 @@ function defaultLookup(
   callback: (err: unknown, address: string, family: number) => void,
 ) {
   if (isIP(address) === family) {
-    lazyDns();
+    lazyProcess();
     nextTick(callback, null, address, family);
     return;
   }
