@@ -6370,15 +6370,6 @@ dependencies = [
 
 [[package]]
 name = "lax-core"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59154ddba1bc6fa3d3e9ef0190dbecbac0cbbdc87b8d28e4437f8ff9c70b8d24"
-dependencies = [
- "dprint-core",
-]
-
-[[package]]
-name = "lax-core"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "31e9266de41ab34dbeb7b0176a6430b1091f1fa7f4dd9f7ccf3e430a9c5a6789"
@@ -6388,13 +6379,13 @@ dependencies = [
 
 [[package]]
 name = "lax-css"
-version = "0.2.4"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03894b80c51cf9a758f8bbecdc1b74a36032ce4624cf2a3b0f2ed378e2627b01"
+checksum = "c964e0b1c58e6a38762c707d7b5f7a78ab4efab65d3e6c4ab2031deb8f65229e"
 dependencies = [
  "anyhow",
  "dprint-core",
- "lax-core 0.1.2",
+ "lax-core",
  "serde",
 ]
 
@@ -6406,19 +6397,19 @@ checksum = "0b6f67a7a729b68c4b8e6f45315b0777fdf9618cfd569d4551d14d0906b93306"
 dependencies = [
  "anyhow",
  "dprint-core",
- "lax-core 0.3.0",
+ "lax-core",
  "serde",
 ]
 
 [[package]]
 name = "lax-sql"
-version = "0.2.1"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68eb5374e8216c43b6a467e1613c25c5c669c46143829db3c870cf903a9c2a69"
+checksum = "e2cca919c19f0e32e8a9fe410e087fc71e4a5ce7a843f939967c643e7881981f"
 dependencies = [
  "anyhow",
  "dprint-core",
- "lax-core 0.1.2",
+ "lax-core",
  "serde",
 ]
 
