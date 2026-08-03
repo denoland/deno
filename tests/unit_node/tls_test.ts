@@ -1427,6 +1427,57 @@ Deno.test("tls.createSecureContext extracts the CA chain from a pfx", () => {
   assert(context.ca[0] !== context.cert);
 });
 
+// IDNA maps U+3002 (and U+FF0E, U+FF61) to a label separator, but splitHost()
+// only splits on U+002E. Matching on the raw hostname would therefore see
+// "foo<U+3002>bar.example.com" as the three labels ["foo。bar", "example",
+// "com"], letting the single wildcard in "*.example.com" stand in for what is
+// really two labels.
+Deno.test("tls.checkServerIdentity does not let a confusable pass as a label separator", () => {
+  const cert = {
+    subject: { CN: "*.example.com" },
+    subjectaltname: "DNS:*.example.com",
+  };
+
+  // deno-lint-ignore no-explicit-any
+  const err = tls.checkServerIdentity("foo。bar.example.com", cert as any);
+  assert(err instanceof Error, "confusable host must not match the wildcard");
+  assertEquals(
+    // deno-lint-ignore no-explicit-any
+    (err as any).code,
+    "ERR_TLS_CERT_ALTNAME_INVALID",
+  );
+
+  // The ASCII host it normalizes to is genuinely four labels, and is rejected
+  // the same way.
+  assert(
+    // deno-lint-ignore no-explicit-any
+    tls.checkServerIdentity("foo.bar.example.com", cert as any) instanceof
+      Error,
+  );
+});
+
+// The normalization must not cost a legitimate internationalized host its
+// match: "bücher.example.com" is one label under IDNA, so the wildcard covers
+// it.
+Deno.test("tls.checkServerIdentity matches a U-label host against a wildcard", () => {
+  const cert = {
+    subject: { CN: "*.example.com" },
+    subjectaltname: "DNS:*.example.com",
+  };
+
+  assertEquals(
+    // deno-lint-ignore no-explicit-any
+    tls.checkServerIdentity("bücher.example.com", cert as any),
+    undefined,
+  );
+  // The all-ASCII common path is unchanged.
+  assertEquals(
+    // deno-lint-ignore no-explicit-any
+    tls.checkServerIdentity("www.example.com", cert as any),
+    undefined,
+  );
+});
+
 // Regression test for https://github.com/denoland/deno/issues/35820
 // Writing through a TLS socket whose underlying handle was already closed
 // made the encrypted write fail synchronously inside the write op. The

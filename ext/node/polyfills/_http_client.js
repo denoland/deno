@@ -715,6 +715,13 @@ function ClientRequest(input, options, cb) {
       if (port && +port !== defaultPort) {
         hostHeader += ":" + port;
       }
+
+      // The request target of a CONNECT is the authority being tunnelled to,
+      // so Host has to name that authority rather than the proxy we dialed.
+      if (method === "CONNECT" && options.path) {
+        hostHeader = String(options.path);
+      }
+
       this.setHeader("Host", hostHeader);
     }
 
