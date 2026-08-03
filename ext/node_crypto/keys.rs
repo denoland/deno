@@ -593,6 +593,10 @@ pub enum RsaJwkError {
   #[class(type)]
   #[error("missing RSA private component")]
   MissingRsaPrivateComponent,
+  #[class(type)]
+  #[property("code" = "ERR_CRYPTO_INVALID_JWK")]
+  #[error("Invalid JWK RSA key")]
+  InvalidJwk,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -1370,47 +1374,38 @@ impl KeyObjectHandle {
   ) -> Result<KeyObjectHandle, RsaJwkError> {
     use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 
-    let n = BASE64_URL_SAFE_NO_PAD.decode(jwk.n.as_bytes())?;
-    let e = BASE64_URL_SAFE_NO_PAD.decode(jwk.e.as_bytes())?;
+    let n_bytes = BASE64_URL_SAFE_NO_PAD.decode(jwk.n.as_bytes())?;
+    let e_bytes = BASE64_URL_SAFE_NO_PAD.decode(jwk.e.as_bytes())?;
+
+    let n = rsa::BigUint::from_bytes_be(&n_bytes);
+    let e = rsa::BigUint::from_bytes_be(&e_bytes);
 
     if is_public {
-      let public_key = RsaPublicKey::new(
-        rsa::BigUint::from_bytes_be(&n),
-        rsa::BigUint::from_bytes_be(&e),
-      )?;
+      let public_key = RsaPublicKey::new(n, e)?;
 
       Ok(KeyObjectHandle::AsymmetricPublic(AsymmetricPublicKey::Rsa(
         public_key,
       )))
     } else {
-      let d = BASE64_URL_SAFE_NO_PAD.decode(
-        jwk
-          .d
-          .ok_or(RsaJwkError::MissingRsaPrivateComponent)?
-          .as_bytes(),
-      )?;
-      let p = BASE64_URL_SAFE_NO_PAD.decode(
-        jwk
-          .p
-          .ok_or(RsaJwkError::MissingRsaPrivateComponent)?
-          .as_bytes(),
-      )?;
-      let q = BASE64_URL_SAFE_NO_PAD.decode(
-        jwk
-          .q
-          .ok_or(RsaJwkError::MissingRsaPrivateComponent)?
-          .as_bytes(),
-      )?;
+      let d_bytes = BASE64_URL_SAFE_NO_PAD
+        .decode(jwk.d.ok_or(RsaJwkError::InvalidJwk)?.as_bytes())?;
+      let p_bytes = BASE64_URL_SAFE_NO_PAD
+        .decode(jwk.p.ok_or(RsaJwkError::InvalidJwk)?.as_bytes())?;
+      let q_bytes = BASE64_URL_SAFE_NO_PAD
+        .decode(jwk.q.ok_or(RsaJwkError::InvalidJwk)?.as_bytes())?;
 
-      let mut private_key = RsaPrivateKey::from_components(
-        rsa::BigUint::from_bytes_be(&n),
-        rsa::BigUint::from_bytes_be(&e),
-        rsa::BigUint::from_bytes_be(&d),
-        vec![
-          rsa::BigUint::from_bytes_be(&p),
-          rsa::BigUint::from_bytes_be(&q),
-        ],
-      )?;
+      let d = rsa::BigUint::from_bytes_be(&d_bytes);
+      let p = rsa::BigUint::from_bytes_be(&p_bytes);
+      let q = rsa::BigUint::from_bytes_be(&q_bytes);
+
+      let modulus = &p * &q;
+      if modulus != n {
+        return Err(RsaJwkError::InvalidJwk);
+      }
+
+      let mut private_key =
+        RsaPrivateKey::from_components(n, e, d, vec![p, q])?;
+
       private_key.precompute()?; // precompute CRT params
 
       Ok(KeyObjectHandle::AsymmetricPrivate(

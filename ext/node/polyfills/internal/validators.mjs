@@ -187,6 +187,21 @@ function validateString(value, name) {
   }
 }
 
+/**
+ * Validates that a JWK member is a string.
+ *
+ * Unlike `validateString()`, this throws `ERR_CRYPTO_INVALID_JWK` to match
+ * Node.js behavior for malformed JWK objects.
+ *
+ * @param {unknown} value
+ * @param {string} name
+ */
+function validateJwkString(value, name) {
+  if (typeof value !== "string") {
+    throw new codes.ERR_CRYPTO_INVALID_JWK();
+  }
+}
+
 /** @typedef {(value: unknown, name: string, min?: number, max?: number) => asserts value is number} ValidateNumber */
 /** @type {ValidateNumber} */
 const validateNumber = hideStackFrames((value, name, min = undefined, max) => {
@@ -467,6 +482,7 @@ return {
     validateOneOf,
     validatePort,
     validateString,
+    validateJwkString,
     validateStringArray,
     validateUint32,
     validateUnion,
@@ -494,6 +510,7 @@ return {
   validateOneOf,
   validatePort,
   validateString,
+  validateJwkString,
   validateStringArray,
   validateUint32,
   validateUnion,

@@ -84,7 +84,7 @@ const {
 const {
   validateObject,
   validateOneOf,
-  validateString,
+  validateJwkString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 
 const getArrayBufferOrView = hideStackFrames(
@@ -249,16 +249,16 @@ function getKeyObjectHandleFromJwk(key, ctx) {
   const isPublic = ctx === kConsumePublic || ctx === kCreatePublic;
 
   if (key.kty === "OKP") {
-    validateString(key.crv, "key.crv");
+    validateJwkString(key.crv, "key.crv");
     validateOneOf(
       key.crv,
       "key.crv",
       ["Ed25519", "Ed448", "X25519", "X448"],
     );
-    validateString(key.x, "key.x");
+    validateJwkString(key.x, "key.x");
 
     if (!isPublic) {
-      validateString(key.d, "key.d");
+      validateJwkString(key.d, "key.d");
     }
 
     let keyData;
@@ -291,20 +291,20 @@ function getKeyObjectHandleFromJwk(key, ctx) {
   }
 
   if (key.kty === "EC") {
-    validateString(key.crv, "key.crv");
-    validateString(key.x, "key.x");
-    validateString(key.y, "key.y");
+    validateJwkString(key.crv, "key.crv");
+    validateJwkString(key.x, "key.x");
+    validateJwkString(key.y, "key.y");
 
     if (!isPublic) {
-      validateString(key.d, "key.d");
+      validateJwkString(key.d, "key.d");
     }
 
     return op_node_create_ec_jwk(key, isPublic);
   }
 
   // RSA
-  validateString(key.n, "key.n");
-  validateString(key.e, "key.e");
+  validateJwkString(key.n, "key.n");
+  validateJwkString(key.e, "key.e");
 
   const jwk = {
     kty: key.kty,
@@ -313,12 +313,12 @@ function getKeyObjectHandleFromJwk(key, ctx) {
   };
 
   if (!isPublic) {
-    validateString(key.d, "key.d");
-    validateString(key.p, "key.p");
-    validateString(key.q, "key.q");
-    validateString(key.dp, "key.dp");
-    validateString(key.dq, "key.dq");
-    validateString(key.qi, "key.qi");
+    validateJwkString(key.d, "key.d");
+    validateJwkString(key.p, "key.p");
+    validateJwkString(key.q, "key.q");
+    validateJwkString(key.dp, "key.dp");
+    validateJwkString(key.dq, "key.dq");
+    validateJwkString(key.qi, "key.qi");
     jwk.d = key.d;
     jwk.p = key.p;
     jwk.q = key.q;
@@ -402,7 +402,7 @@ function prepareAsymmetricKey(
         "key",
         key.encoding,
       ),
-      ...parseKeyEncoding(key, undefined, isPublic),
+      ...parseKeyEncoding(key, undefined, isPublic, "key"),
     };
   }
   throw new ERR_INVALID_ARG_TYPE(
@@ -479,9 +479,7 @@ function parseKeyEncoding(
 }
 
 function option(name: string, objName?: string) {
-  return objName === undefined
-    ? `options.${name}`
-    : `options.${objName}.${name}`;
+  return objName === undefined ? `options.${name}` : `${objName}.${name}`;
 }
 
 function parseKeyFormatAndType(
