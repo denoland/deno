@@ -211,8 +211,10 @@ impl SQLTagStore {
     }
   }
 
-  /// Hands out a generation value that has never been used by this store, so
-  /// no iterator holding an older one can be mistaken for current.
+  /// Hands out the next generation value for this store, so no iterator
+  /// holding an older one can be mistaken for current. The counter wraps, but
+  /// only after 2^64 rebinds, by which point no iterator from the previous lap
+  /// can still be alive.
   fn bump_iter_generation(&self) -> u64 {
     let generation = self.next_iter_generation.get().wrapping_add(1);
     self.next_iter_generation.set(generation);

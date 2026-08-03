@@ -597,12 +597,15 @@ function processChunkSync(self, chunk, flushFlag) {
     }
   }
 
+  // Recorded before the trailing-junk check so the count of what was actually
+  // consumed is observable on the throwing path too.
+  self.bytesWritten = inputRead;
+
   if (availInAfter > 0 && self._rejectGarbageAfterEnd) {
     _close(self);
     throw new ERR_TRAILING_JUNK_AFTER_STREAM_END();
   }
 
-  self.bytesWritten = inputRead;
   _close(self);
 
   if (nread === 0) {
