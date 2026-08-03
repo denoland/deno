@@ -1139,8 +1139,9 @@ Buffer.prototype.base64urlSlice = function base64urlSlice(
     return "";
   }
 
-  // No size split like base64Slice: the from-buffer op builds the V8
-  // one-byte string directly and measures faster at every size.
+  // No size split: op_base64url_encode_from_buffer builds the V8 one-byte
+  // string directly and measures faster at every size. base64Slice's 4096
+  // split above needs the same re-measurement (follow-up to #36398).
   return op_base64url_encode_from_buffer(this, offset, end - offset);
 };
 

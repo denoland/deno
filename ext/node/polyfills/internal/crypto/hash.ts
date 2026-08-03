@@ -8,7 +8,7 @@ const { core, primordials } = __bootstrap;
 
 const {
   Hasher,
-  op_base64url_encode,
+  op_base64url_encode_from_buffer,
   op_node_create_hash,
   op_node_export_secret_key,
   op_node_get_hashes,
@@ -64,6 +64,7 @@ const {
   StringFromCharCode,
   StringPrototypeToLowerCase,
   Symbol,
+  TypedArrayPrototypeGetByteLength,
   Uint8Array,
   Uint8ArrayPrototype,
 } = primordials;
@@ -238,7 +239,11 @@ Hash.prototype.digest = function digest(outputEncoding: any) {
     case "base64":
       return encodeToBase64(digest);
     case "base64url":
-      return op_base64url_encode(digest);
+      return op_base64url_encode_from_buffer(
+        digest,
+        0,
+        TypedArrayPrototypeGetByteLength(digest),
+      );
     case undefined:
     case "buffer":
       return Buffer.from(digest);
