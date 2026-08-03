@@ -74,11 +74,15 @@ pub async fn format(
       .ext_flag()
       .as_ref()
       .map(|s| s.as_str())
-      .unwrap_or("ts")
-      .to_string();
-    // Honor `.editorconfig` for stdin the same way file-based formatting
-    // does, resolving it against a synthetic path in the current directory
-    // (https://github.com/denoland/deno/issues/36172).
+      .unwrap_or("ts");
+    // Honor `.editorconfig` for stdin the same way file-based formatting does,
+    // resolving it against a synthetic `_stdin.<ext>` path. The resolution base
+    // is the current working directory, not the (possibly relocated via
+    // `--config`) config start dir: stdin has no real location, so the cwd is
+    // the only meaningful place to look for an `.editorconfig`
+    // (https://github.com/denoland/deno/issues/36172). Build the synthetic path
+    // once and pass it down so editorconfig matching and the dprint call can
+    // never diverge on the name.
     let editorconfig_cache = EditorConfigCache::new();
     let stdin_path = cli_options.initial_cwd().join(format!("_stdin.{ext}"));
     fmt_options.options = resolve_per_file_options(
@@ -86,7 +90,7 @@ pub async fn format(
       &editorconfig_cache,
       &stdin_path,
     );
-    return format_stdin(&fmt_flags, fmt_options, &ext);
+    return format_stdin(&fmt_flags, fmt_options, &stdin_path);
   }
 
   if let Some(watch_flags) = &flags.watch {
@@ -1241,7 +1245,7 @@ fn format_ensure_stable(
 fn format_stdin(
   fmt_flags: &FmtFlags,
   fmt_options: FmtOptions,
-  ext: &str,
+  file_path: &Path,
 ) -> Result<(), AnyError> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
@@ -1251,9 +1255,8 @@ fn format_stdin(
     had_bom: false,
     text: source.into(),
   };
-  let file_path = PathBuf::from(format!("_stdin.{ext}"));
   let formatted_text = format_file(
-    &file_path,
+    file_path,
     &file,
     &fmt_options.options,
     &fmt_options.unstable,
