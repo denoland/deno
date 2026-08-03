@@ -64,6 +64,7 @@ pub struct AddFlags {
   pub lockfile_only: bool,
   pub save_exact: bool,
   pub package_json: bool,
+  pub unscoped: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
