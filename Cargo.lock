@@ -6378,6 +6378,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lax-core"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "31e9266de41ab34dbeb7b0176a6430b1091f1fa7f4dd9f7ccf3e430a9c5a6789"
+dependencies = [
+ "dprint-core",
+]
+
+[[package]]
 name = "lax-css"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6385,19 +6394,19 @@ checksum = "03894b80c51cf9a758f8bbecdc1b74a36032ce4624cf2a3b0f2ed378e2627b01"
 dependencies = [
  "anyhow",
  "dprint-core",
- "lax-core",
+ "lax-core 0.1.2",
  "serde",
 ]
 
 [[package]]
 name = "lax-markup"
-version = "0.2.5"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57349e8fdb68f5fd322a16ec4311e1ecbc7d0b3419a9efb089bba3c45011a553"
+checksum = "0b6f67a7a729b68c4b8e6f45315b0777fdf9618cfd569d4551d14d0906b93306"
 dependencies = [
  "anyhow",
  "dprint-core",
- "lax-core",
+ "lax-core 0.3.0",
  "serde",
 ]
 
@@ -6409,7 +6418,7 @@ checksum = "68eb5374e8216c43b6a467e1613c25c5c669c46143829db3c870cf903a9c2a69"
 dependencies = [
  "anyhow",
  "dprint-core",
- "lax-core",
+ "lax-core 0.1.2",
  "serde",
 ]
 
@@ -6550,7 +6559,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4979f22fdb869068da03c9f7528f8297c6fd2606bc3a4affe42e6a823fdb8da4"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.52.6",
 ]
 
 [[package]]
