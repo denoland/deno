@@ -451,12 +451,25 @@ mod npm {
       // installed -- that would be a downgrade or a no-op, not a fix. This
       // guards against a wrong inferred target (e.g. from a disjoint range)
       // silently rewriting a dependency backwards.
+      //
+      // Compared against the *newest* installed copy (`max`): this is
+      // deliberately conservative for multi-version installs. If a package is
+      // present at both a vulnerable `4.5.0` and a non-vulnerable `5.0.1`, an
+      // advisory covering only `<4.17.21` proposes no action rather than
+      // touching the manifest -- `apply_fixes` would classify the `4.5.0` copy
+      // as a transitive dependency anyway, so erring toward "propose nothing"
+      // is the safe direction for a security tool.
       if let Some(max_installed) = installed.and_then(|vs| vs.iter().max())
         && target <= *max_installed
       {
         continue;
       }
 
+      // Use the *oldest* installed copy (`min`) to classify the upgrade: if any
+      // installed copy is a major version behind the fix, treat it as a major
+      // (non-auto-applicable) upgrade. Both aggregates pick the conservative
+      // extreme -- `max` above to avoid downgrades, `min` here to avoid
+      // silently applying a major bump.
       let installed_major = installed
         .and_then(|vs| vs.iter().min())
         .map(|v| v.major)
@@ -583,13 +596,14 @@ mod npm {
           inferred
         );
         _ = writeln!(stdout, "│ {}       {}", colors::gray("Info:"), adv.url);
+        // The `(inferred)` note is shown on `Patched:` above; repeating it here
+        // reads as though the action itself is inferred, so keep it to one line.
         _ = writeln!(
           stdout,
-          "╰ {}    update {} to {}{}",
+          "╰ {}    update {} to {}",
           colors::gray("Actions:"),
           adv.module_name,
-          adv.patched_versions,
-          inferred
+          adv.patched_versions
         );
       } else {
         _ = writeln!(stdout, "╰ {}       {}", colors::gray("Info:"), adv.url);
@@ -663,7 +677,7 @@ mod npm {
   ///
   /// The public npm bulk advisory endpoint only returns `vulnerable_versions`,
   /// so the first fixed version is inferred from the vulnerable range's
-  /// exclusive upper bound. A vulnerable range can be a disjunction of comma or
+  /// exclusive upper bound. A vulnerable range can be a disjunction of
   /// `||`-separated alternatives (e.g. `>=4.0.0 <4.17.21 || >=5.0.0 <5.0.3`);
   /// the fix depends on which alternative the installed version falls in, so
   /// this derives per-installed-version and fails closed on ambiguity.
@@ -818,6 +832,41 @@ mod npm {
         AdvisorySeverity::High => self.high + self.critical,
         AdvisorySeverity::Critical => self.critical,
       }
+    }
+  }
+
+  #[cfg(test)]
+  mod tests {
+    use super::*;
+
+    fn version(v: &str) -> deno_semver::Version {
+      deno_semver::Version::parse_standard(v).unwrap()
+    }
+
+    #[test]
+    fn test_derive_fixable_actions_downgrade_guard() {
+      // An advisory whose patched range is older than what is installed must
+      // never produce an action -- doing so would rewrite the manifest
+      // backwards. This is exactly the case a wrong inferred target (from a
+      // disjoint vulnerable range) could hit.
+      let advisories = vec![AuditAdvisory {
+        title: "t".to_string(),
+        severity: "high".to_string(),
+        url: "https://example.com/vuln/1".to_string(),
+        module_name: "lodash".to_string(),
+        vulnerable_versions: "<4.17.21".to_string(),
+        patched_versions: ">=4.17.21".to_string(),
+        patched_inferred: true,
+        cves: vec![],
+        ghsa_id: None,
+        advisory_id: None,
+      }];
+      let mut installed = HashMap::new();
+      installed.insert("lodash".to_string(), vec![version("5.0.1")]);
+
+      let actions =
+        derive_fixable_actions(&advisories, &installed, AdvisorySeverity::Low);
+      assert!(actions.is_empty());
     }
   }
 }
