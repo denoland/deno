@@ -12,10 +12,19 @@ use rand::Rng;
 #[derive(Clone)]
 pub struct Prime(pub num_bigint_dig::BigUint);
 
+/// The smallest bit size a prime can have: 2 is the smallest prime, so
+/// anything below two bits has no candidates. `num_bigint_dig`'s `gen_prime`
+/// panics rather than failing for smaller sizes, and the `n - 1` arithmetic
+/// below would underflow, so both entry points reject these up front.
+const MIN_PRIME_BITS: usize = 2;
+
 impl Prime {
-  pub fn generate(n: usize) -> Self {
+  pub fn generate(n: usize) -> Result<Self, GeneratePrimeError> {
+    if n < MIN_PRIME_BITS {
+      return Err(GeneratePrimeError::BitsTooSmall);
+    }
     let mut rng = rand::thread_rng();
-    Self(rng.gen_prime(n))
+    Ok(Self(rng.gen_prime(n)))
   }
 
   /// Generate a prime with optional constraints:
@@ -37,6 +46,10 @@ impl Prime {
     rem: Option<&[u8]>,
   ) -> Result<Self, GeneratePrimeError> {
     use num_bigint_dig::BigUint;
+
+    if n < MIN_PRIME_BITS {
+      return Err(GeneratePrimeError::BitsTooSmall);
+    }
 
     let add_val = add.map(BigUint::from_bytes_be);
     let rem_val = rem.map(BigUint::from_bytes_be);
@@ -211,6 +224,7 @@ pub enum GeneratePrimeError {
   InvalidAdd,
   InvalidRem,
   OutOfRange,
+  BitsTooSmall,
 }
 
 impl From<&[u8]> for Prime {

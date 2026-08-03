@@ -1643,7 +1643,7 @@ fn gen_prime(
     let prime = primes::Prime::generate_with_options(size, safe, add, rem)?;
     Ok(prime.0.to_bytes_be().into())
   } else {
-    Ok(primes::Prime::generate(size).0.to_bytes_be().into())
+    Ok(primes::Prime::generate(size)?.0.to_bytes_be().into())
   }
 }
 
@@ -1658,6 +1658,11 @@ pub enum GeneratePrimeError {
   #[class("ERR_OUT_OF_RANGE")]
   #[error("prime generation failed: no suitable prime found in range")]
   OutOfRange,
+  // Node surfaces OpenSSL's error here verbatim, as a plain `Error` with no
+  // `code`, so match the message rather than inventing an `ERR_` code.
+  #[class(generic)]
+  #[error("error:01800076:bignum routines::bits too small")]
+  BitsTooSmall,
   #[class(generic)]
   #[error(transparent)]
   JoinError(#[from] tokio::task::JoinError),
@@ -1669,6 +1674,9 @@ impl From<primes::GeneratePrimeError> for GeneratePrimeError {
       primes::GeneratePrimeError::InvalidAdd => GeneratePrimeError::InvalidAdd,
       primes::GeneratePrimeError::InvalidRem => GeneratePrimeError::InvalidRem,
       primes::GeneratePrimeError::OutOfRange => GeneratePrimeError::OutOfRange,
+      primes::GeneratePrimeError::BitsTooSmall => {
+        GeneratePrimeError::BitsTooSmall
+      }
     }
   }
 }
