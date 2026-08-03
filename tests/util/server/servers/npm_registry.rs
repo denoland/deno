@@ -686,6 +686,10 @@ fn get_advisory_for_with_vuln1() -> serde_json::Value {
   })
 }
 
+// Unlike the public registry, this advisory intentionally includes
+// `patched_versions` so the registry-supplied branch keeps spec coverage: its
+// `Patched:` line shows no `(inferred)` suffix, unlike the other two which are
+// inferred from `vulnerable_versions`.
 fn get_advisory_for_with_vuln2() -> serde_json::Value {
   json!({
     "id": 1000002,
@@ -693,6 +697,7 @@ fn get_advisory_for_with_vuln2() -> serde_json::Value {
     "title": "@denotest/with-vuln2 can steal crypto keys",
     "severity": "critical",
     "vulnerable_versions": "<2.0.0",
+    "patched_versions": ">=2.0.0",
     "cves": ["CVE-2025-0002"],
     "cwe": ["CWE-326"]
   })

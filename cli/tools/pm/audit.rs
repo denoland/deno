@@ -381,21 +381,33 @@ mod npm {
 
     let minimal_severity =
       AdvisorySeverity::parse(&audit_flags.severity).unwrap();
-    print_report(
-      &vulns,
-      &advisories,
-      minimal_severity,
-      audit_flags.ignore_unfixable,
-    );
 
     // Derive fixable actions from advisories at or above the severity
     // threshold that have patched versions. The bulk API does not return
     // explicit "actions" like the retired full audit API did, so we
     // extract the minimum satisfying version from patched_versions ranges.
+    //
+    // Computed before `print_report` so the report's `Actions:` line reflects
+    // what `--fix` will actually do: an advisory can have a patched range yet
+    // no applicable action (e.g. the downgrade guard skips it when a newer copy
+    // is already installed), and the report must not tell the user to run
+    // `--fix` for something `--fix` will silently skip.
     let fixable_actions = derive_fixable_actions(
       &advisories,
       &installed_versions,
       minimal_severity,
+    );
+    let fixable_modules: HashSet<&str> = fixable_actions
+      .iter()
+      .map(|a| a.module_name.as_str())
+      .collect();
+
+    print_report(
+      &vulns,
+      &advisories,
+      minimal_severity,
+      audit_flags.ignore_unfixable,
+      &fixable_modules,
     );
 
     // Exit code 1 only if there are vulnerabilities at or above the specified level
@@ -447,29 +459,19 @@ mod npm {
       };
 
       let installed = installed_versions.get(&adv.module_name);
-      // Never propose a target that is not strictly newer than what is
-      // installed -- that would be a downgrade or a no-op, not a fix. This
-      // guards against a wrong inferred target (e.g. from a disjoint range)
-      // silently rewriting a dependency backwards.
-      //
-      // Compared against the *newest* installed copy (`max`): this is
-      // deliberately conservative for multi-version installs. If a package is
-      // present at both a vulnerable `4.5.0` and a non-vulnerable `5.0.1`, an
-      // advisory covering only `<4.17.21` proposes no action rather than
-      // touching the manifest -- `apply_fixes` would classify the `4.5.0` copy
-      // as a transitive dependency anyway, so erring toward "propose nothing"
-      // is the safe direction for a security tool.
+      // Never propose a target that isn't strictly newer than the *newest*
+      // installed copy (`max`): that would be a downgrade or no-op, not a fix.
+      // Deliberately conservative for multi-version installs -- if a package is
+      // present at both a vulnerable and a non-vulnerable copy, propose nothing
+      // rather than risk rewriting the manifest backwards.
       if let Some(max_installed) = installed.and_then(|vs| vs.iter().max())
         && target <= *max_installed
       {
         continue;
       }
 
-      // Use the *oldest* installed copy (`min`) to classify the upgrade: if any
-      // installed copy is a major version behind the fix, treat it as a major
-      // (non-auto-applicable) upgrade. Both aggregates pick the conservative
-      // extreme -- `max` above to avoid downgrades, `min` here to avoid
-      // silently applying a major bump.
+      // Classify against the *oldest* installed copy (`min`) so a fix that is a
+      // major bump for any copy is treated as major (non-auto-applicable).
       let installed_major = installed
         .and_then(|vs| vs.iter().min())
         .map(|v| v.major)
@@ -536,6 +538,7 @@ mod npm {
     advisories: &[AuditAdvisory],
     minimal_severity: AdvisorySeverity,
     ignore_unfixable: bool,
+    fixable_modules: &HashSet<&str>,
   ) {
     let stdout = &mut std::io::stdout();
 
@@ -547,6 +550,14 @@ mod npm {
         continue;
       }
 
+      // With inference in play, `patched_versions` is empty only when we could
+      // not determine a fix (inclusive/open-ended/conflicting ranges) -- which
+      // is indistinguishable from a genuinely unpatched advisory, since the
+      // public registry never marks one as such. `--ignore-unfixable` therefore
+      // suppresses both. This is a deliberate, opt-in trade-off documented in
+      // the PR: the tool never *asserts* a fix it can't substantiate
+      // (derivation fails closed), and advisories are only hidden when the user
+      // explicitly asks to hide unfixable ones.
       let has_fix = !adv.patched_versions.is_empty();
       if !has_fix && ignore_unfixable {
         continue;
@@ -596,15 +607,29 @@ mod npm {
           inferred
         );
         _ = writeln!(stdout, "│ {}       {}", colors::gray("Info:"), adv.url);
+        // Drive the `Actions:` line off the actual fixable action, not merely
+        // the presence of a patched range: an advisory can have a patch that
+        // `--fix` won't apply (e.g. a newer copy is already installed and the
+        // downgrade guard skips it). Telling the user to run `--fix` for
+        // something it will silently skip is worse than saying nothing.
+        //
         // The `(inferred)` note is shown on `Patched:` above; repeating it here
         // reads as though the action itself is inferred, so keep it to one line.
-        _ = writeln!(
-          stdout,
-          "╰ {}    update {} to {}",
-          colors::gray("Actions:"),
-          adv.module_name,
-          adv.patched_versions
-        );
+        if fixable_modules.contains(adv.module_name.as_str()) {
+          _ = writeln!(
+            stdout,
+            "╰ {}    update {} to {}",
+            colors::gray("Actions:"),
+            adv.module_name,
+            adv.patched_versions
+          );
+        } else {
+          _ = writeln!(
+            stdout,
+            "╰ {}    no automatic fix available",
+            colors::gray("Actions:"),
+          );
+        }
       } else {
         _ = writeln!(stdout, "╰ {}       {}", colors::gray("Info:"), adv.url);
       }
@@ -666,10 +691,12 @@ mod npm {
     }
     item
       .url
+      .trim_end_matches('/')
       .rsplit('/')
       .next()
+      .map(|seg| seg.split(['?', '#']).next().unwrap_or(seg))
       .filter(|seg| seg.starts_with("GHSA-"))
-      .map(|seg| seg.to_string())
+      .map(str::to_string)
   }
 
   /// Derive a `patched_versions` range from an advisory's `vulnerable_versions`
@@ -731,9 +758,12 @@ mod npm {
 
   /// Extract the exclusive upper bound (`<X.Y.Z`, but not `<=X.Y.Z`) from a
   /// single conjunctive npm range. Tolerates a space after the operator
-  /// (`< 1.1.0`). Returns `None` if there is no exclusive upper bound.
+  /// (`< 1.1.0`). If a range lists several exclusive upper bounds (e.g. a
+  /// malformed `<1.1.0 <2.0.0`), the smallest is returned -- the conservative
+  /// choice for the first fixed version. Returns `None` if there is none.
   fn exclusive_upper_bound(range: &str) -> Option<deno_semver::Version> {
     let tokens: Vec<&str> = range.split_whitespace().collect();
+    let mut min: Option<deno_semver::Version> = None;
     let mut i = 0;
     while i < tokens.len() {
       if let Some(rest) = tokens[i].strip_prefix('<') {
@@ -750,12 +780,15 @@ mod npm {
           rest
         };
         if let Ok(v) = deno_semver::Version::parse_standard(ver_str) {
-          return Some(v);
+          match &min {
+            Some(m) if *m <= v => {}
+            _ => min = Some(v),
+          }
         }
       }
       i += 1;
     }
-    None
+    min
   }
 
   /// The bulk advisory endpoint response: { "package-name": [advisory, ...] }
@@ -867,6 +900,25 @@ mod npm {
       let actions =
         derive_fixable_actions(&advisories, &installed, AdvisorySeverity::Low);
       assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn test_exclusive_upper_bound() {
+      assert_eq!(exclusive_upper_bound("<1.1.0"), Some(version("1.1.0")));
+      assert_eq!(
+        exclusive_upper_bound(">=1.0.0 <1.1.0"),
+        Some(version("1.1.0"))
+      );
+      // Space after the operator.
+      assert_eq!(exclusive_upper_bound("< 1.1.0"), Some(version("1.1.0")));
+      // Inclusive and open-ended bounds have no exclusive upper bound.
+      assert_eq!(exclusive_upper_bound("<=1.1.0"), None);
+      assert_eq!(exclusive_upper_bound(">=1.0.0"), None);
+      // Multiple exclusive upper bounds -> take the smallest (conservative).
+      assert_eq!(
+        exclusive_upper_bound("<2.0.0 <1.1.0"),
+        Some(version("1.1.0"))
+      );
     }
   }
 }
@@ -1236,6 +1288,27 @@ mod tests {
       "vulnerable_versions": "<1.0.0"
     }));
     assert_eq!(extract_ghsa_id(&item), None);
+  }
+
+  #[test]
+  fn test_extract_ghsa_id_tolerates_trailing_slash_and_query() {
+    for url in [
+      "https://github.com/advisories/GHSA-mh99-v99m-4gvg/",
+      "https://github.com/advisories/GHSA-mh99-v99m-4gvg?utm=1",
+      "https://github.com/advisories/GHSA-mh99-v99m-4gvg#summary",
+    ] {
+      let item = advisory(serde_json::json!({
+        "url": url,
+        "title": "t",
+        "severity": "high",
+        "vulnerable_versions": "<1.0.0"
+      }));
+      assert_eq!(
+        extract_ghsa_id(&item).as_deref(),
+        Some("GHSA-mh99-v99m-4gvg"),
+        "failed for {url}"
+      );
+    }
   }
 
   fn versions(vs: &[&str]) -> Vec<deno_semver::Version> {
