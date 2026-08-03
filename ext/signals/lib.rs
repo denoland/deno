@@ -3,7 +3,8 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::sync::OnceLock;
-use std::sync::atomic::AtomicBool;
+#[cfg(unix)]
+use std::sync::atomic::AtomicI32;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 
@@ -20,20 +21,49 @@ static SIGWINCH: i32 = 28;
 
 static COUNTER: AtomicU32 = AtomicU32::new(0);
 
-// While set, an unhandled terminating signal (SIGTERM/SIGINT/SIGHUP) delivered
-// to the OS signal thread is consumed instead of running the exit callbacks and
-// the OS default action. The file watcher enables this for the duration of a
+// The single terminating signal number the OS signal thread should consume once
+// (instead of running the exit callbacks and the OS default action), or 0 when
+// nothing is suppressed. The file watcher arms this for the duration of a
 // graceful restart, where a JS signal handler may unregister itself and re-raise
 // a real OS signal (the `signal-exit` "unload + re-raise" pattern used by Vite
 // 8 / rolldown) that would otherwise kill the watcher instead of restarting it.
 // See https://github.com/denoland/deno/issues/35942.
-static SUPPRESS_DEFAULT_EXIT: AtomicBool = AtomicBool::new(false);
+#[cfg(unix)]
+static SUPPRESSED_SIGNAL: AtomicI32 = AtomicI32::new(0);
 
-/// Suppress (or restore) the OS default action for an unhandled terminating
-/// signal. While suppressed, a SIGTERM/SIGINT/SIGHUP with no registered handler
-/// is consumed rather than terminating the process.
-pub fn set_suppress_default_exit(suppress: bool) {
-  SUPPRESS_DEFAULT_EXIT.store(suppress, Ordering::SeqCst);
+/// Arm one-shot suppression of the OS default action for `signal` and return a
+/// guard that disarms on drop.
+///
+/// A graceful restart re-raises exactly one signal after unregistering its JS
+/// handler; only that single matching signal is consumed, so a genuine external
+/// signal (e.g. `kill <pid>` from a supervisor) in the same window still
+/// terminates. Signals other than `signal` — notably a real Ctrl+C — are never
+/// suppressed.
+///
+/// This only works because the re-raise happens synchronously inside the signal
+/// handler thread. A signal that arrives after the guard is dropped, or a
+/// library that re-raises after an `await`, lands with the flag already cleared
+/// and still terminates — this is a best-effort window, not a hard guarantee.
+///
+/// The mechanism is a no-op on non-unix targets: the bug only reproduces with a
+/// real OS re-raise, which does not exist on Windows (`raise()` is synthetic
+/// there).
+pub fn suppress_default_exit_for(signal: i32) -> SuppressDefaultExitGuard {
+  #[cfg(unix)]
+  SUPPRESSED_SIGNAL.store(signal, Ordering::Relaxed);
+  #[cfg(not(unix))]
+  let _ = signal;
+  SuppressDefaultExitGuard(())
+}
+
+/// Disarms the suppression armed by [`suppress_default_exit_for`] on drop.
+pub struct SuppressDefaultExitGuard(());
+
+impl Drop for SuppressDefaultExitGuard {
+  fn drop(&mut self) {
+    #[cfg(unix)]
+    SUPPRESSED_SIGNAL.store(0, Ordering::Relaxed);
+  }
 }
 
 fn is_terminating_signal(signal: i32) -> bool {
@@ -85,9 +115,15 @@ fn init() -> Handle {
       if !handled {
         if is_terminating_signal(signal) {
           // A graceful restart (file watcher) may have unregistered the JS
-          // handler and re-raised this signal; consume it instead of killing
-          // the process. See https://github.com/denoland/deno/issues/35942.
-          if SUPPRESS_DEFAULT_EXIT.load(Ordering::SeqCst) {
+          // handler and re-raised this signal; consume that single re-raise
+          // instead of killing the process. `compare_exchange` disarms as it
+          // matches, so at most one signal is swallowed and a genuine external
+          // signal still terminates. See
+          // https://github.com/denoland/deno/issues/35942.
+          if SUPPRESSED_SIGNAL
+            .compare_exchange(signal, 0, Ordering::Relaxed, Ordering::Relaxed)
+            .is_ok()
+          {
             continue;
           }
           run_exit();
@@ -112,14 +148,6 @@ fn init() -> Handle {
       _ => return 0,
     };
     let handled = handle_signal(signal);
-    if !handled
-      && is_terminating_signal(signal)
-      && SUPPRESS_DEFAULT_EXIT.load(Ordering::SeqCst)
-    {
-      // Consume a re-raised terminating signal during a graceful restart
-      // (https://github.com/denoland/deno/issues/35942).
-      return 1;
-    }
     handled as _
   }
 
