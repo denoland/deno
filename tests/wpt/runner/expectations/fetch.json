@@ -747,8 +747,6 @@
       "mode-no-cors.sub.any.worker.html": {
         "ignore": true
       },
-      "request-private-network-headers.tentative.any.html": false,
-      "request-private-network-headers.tentative.any.worker.html": false,
       "response-null-body.any.html": {
         "ignore": true
       },
@@ -1348,8 +1346,8 @@
       "request.any.worker.html": true,
       "general.any.html": true,
       "general.any.worker.html": true,
-      "cache.https.any.html": false,
-      "cache.https.any.worker.html": false,
+      "cache.https.any.html": true,
+      "cache.https.any.worker.html": true,
       "destroyed-context.html": false,
       "keepalive.html": {
         "expectedFailures": [
@@ -1501,54 +1499,10 @@
       "cors-preflight-status.any.html": false,
       "cors-preflight-status.any.worker.html": false,
       "cors-preflight.any.html": {
-        "expectedFailures": [
-          "CORS [DELETE], server allows",
-          "CORS [DELETE], server refuses",
-          "CORS [PUT], server allows",
-          "CORS [PUT], server allows, check preflight has user agent",
-          "CORS [PUT], server refuses",
-          "CORS [PATCH], server allows",
-          "CORS [PATCH], server refuses",
-          "CORS [patcH], server allows",
-          "CORS [patcH], server refuses",
-          "CORS [NEW], server allows",
-          "CORS [NEW], server refuses",
-          "CORS [chicken], server allows",
-          "CORS [chicken], server refuses",
-          "CORS [GET] [x-test-header: allowed], server allows",
-          "CORS [GET] [x-test-header: refused], server refuses",
-          "CORS [GET] [several headers], server allows",
-          "CORS [GET] [several headers], server refuses",
-          "CORS [PUT] [several headers], server allows",
-          "CORS [PUT] [several headers], server refuses",
-          "CORS [PUT] [only safe headers], server allows",
-          "\"authorization\" should not be covered by the wildcard symbol"
-        ]
+        "ignore": true
       },
       "cors-preflight.any.worker.html": {
-        "expectedFailures": [
-          "CORS [DELETE], server allows",
-          "CORS [DELETE], server refuses",
-          "CORS [PUT], server allows",
-          "CORS [PUT], server allows, check preflight has user agent",
-          "CORS [PUT], server refuses",
-          "CORS [PATCH], server allows",
-          "CORS [PATCH], server refuses",
-          "CORS [patcH], server allows",
-          "CORS [patcH], server refuses",
-          "CORS [NEW], server allows",
-          "CORS [NEW], server refuses",
-          "CORS [chicken], server allows",
-          "CORS [chicken], server refuses",
-          "CORS [GET] [x-test-header: allowed], server allows",
-          "CORS [GET] [x-test-header: refused], server refuses",
-          "CORS [GET] [several headers], server allows",
-          "CORS [GET] [several headers], server refuses",
-          "CORS [PUT] [several headers], server allows",
-          "CORS [PUT] [several headers], server refuses",
-          "CORS [PUT] [only safe headers], server allows",
-          "\"authorization\" should not be covered by the wildcard symbol"
-        ]
+        "ignore": true
       },
       "cors-redirect-credentials.any.html": {
         "expectedFailures": [

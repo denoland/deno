@@ -119,7 +119,10 @@ async function readControlMessages() {
       if (!line.trim()) continue;
 
       const msg = JSON.parse(line);
-      if (msg === "Serving") {
+      if (
+        msg === "Serving" ||
+        (typeof msg === "object" && msg !== null && "Serving" in msg)
+      ) {
         receivedServing = true;
         console.error("[CONTROL CLIENT] Received Serving signal from Deno");
 

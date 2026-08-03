@@ -36,6 +36,29 @@ fn check(condition: bool, msg: &str) -> Result<(), JsErrorBox> {
   }
 }
 
+/// The caller of every `write`/`writeSync` op below controls the offsets and
+/// lengths, so the window has to be checked against the real backing store
+/// before anything indexes with it; it would otherwise panic and take the
+/// process down. Go through these rather than open-coding the check, so a new
+/// op cannot be written without one.
+fn slice_input(input: &[u8], off: u32, len: u32) -> Result<&[u8], JsErrorBox> {
+  (off as usize)
+    .checked_add(len as usize)
+    .and_then(|end| input.get(off as usize..end))
+    .ok_or_else(|| JsErrorBox::type_error("invalid input range"))
+}
+
+fn slice_output(
+  out: &mut [u8],
+  off: u32,
+  len: u32,
+) -> Result<&mut [u8], JsErrorBox> {
+  (off as usize)
+    .checked_add(len as usize)
+    .and_then(|end| out.get_mut(off as usize..end))
+    .ok_or_else(|| JsErrorBox::type_error("invalid output range"))
+}
+
 #[derive(Default)]
 struct ZlibInner {
   dictionary: Option<Vec<u8>>,
@@ -50,6 +73,10 @@ struct ZlibInner {
   write_in_progress: bool,
   pending_close: bool,
   gzib_id_bytes_read: u32,
+  /// When set, a gzip member boundary is not silently followed by the next
+  /// member; the remaining input is left for the caller to reject as trailing
+  /// junk.
+  reject_garbage_after_end: bool,
   callback: Option<v8::Global<v8::Function>>,
   strm: StreamWrapper,
 }
@@ -75,14 +102,8 @@ impl ZlibInner {
 
     self.write_in_progress = true;
 
-    let next_in = input
-      .get(in_off as usize..in_off as usize + in_len as usize)
-      .ok_or_else(|| JsErrorBox::type_error("invalid input range"))?
-      .as_ptr() as *mut _;
-    let next_out = out
-      .get_mut(out_off as usize..out_off as usize + out_len as usize)
-      .ok_or_else(|| JsErrorBox::type_error("invalid output range"))?
-      .as_mut_ptr();
+    let next_in = slice_input(input, in_off, in_len)?.as_ptr() as *mut _;
+    let next_out = slice_output(out, out_off, out_len)?.as_mut_ptr();
 
     self.strm.avail_in = in_len;
     self.strm.next_in = next_in;
@@ -168,7 +189,8 @@ impl ZlibInner {
           }
         }
 
-        while self.strm.avail_in > 0
+        while !self.reject_garbage_after_end
+          && self.strm.avail_in > 0
           && self.mode == Mode::Gunzip
           && self.err == Z_STREAM_END
           // SAFETY: `strm` is a valid pointer to zlib strm.
@@ -341,6 +363,19 @@ impl Zlib {
 
     // If there is a pending write, defer the close until the write is done.
     zlib.close()?;
+
+    Ok(())
+  }
+
+  #[fast]
+  pub fn set_reject_garbage_after_end(
+    &self,
+    value: bool,
+  ) -> Result<(), ZlibError> {
+    let mut zlib = self.inner.borrow_mut();
+    let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
+
+    zlib.reject_garbage_after_end = value;
 
     Ok(())
   }
@@ -647,21 +682,24 @@ impl BrotliEncoder {
     #[smi] out_len: u32,
     #[buffer] write_result: &mut [u32],
   ) -> Result<(), JsErrorBox> {
+    let input_slice = slice_input(input, in_off, in_len)?;
+    let output_slice = slice_output(out, out_off, out_len)?;
+
     let mut avail_in = in_len as usize;
     let mut avail_out = out_len as usize;
     // SAFETY: `inst`, `next_in`, `next_out`, `avail_in`, and `avail_out` are valid pointers.
     let callback = unsafe {
       let mut ctx = self.ctx.borrow_mut();
-      let ctx = ctx.as_mut().expect("BrotliDecoder not initialized");
+      let ctx = ctx.as_mut().expect("BrotliEncoder not initialized");
 
       ctx.inst.compress_stream(
         std::mem::transmute::<u8, BrotliEncoderOperation>(flush),
         &mut avail_in,
-        input,
-        &mut (in_off as usize),
+        input_slice,
+        &mut 0,
         &mut avail_out,
-        out,
-        &mut (out_off as usize),
+        output_slice,
+        &mut 0,
         &mut None,
         &mut |_, _, _, _| (),
       );
@@ -691,6 +729,9 @@ impl BrotliEncoder {
     #[smi] out_len: u32,
     #[buffer] write_result: &mut [u32],
   ) -> Result<(), JsErrorBox> {
+    let input_slice = slice_input(input, in_off, in_len)?;
+    let output_slice = slice_output(out, out_off, out_len)?;
+
     let mut ctx = self.ctx.borrow_mut();
     let ctx = ctx.as_mut().expect("BrotliEncoder not initialized");
 
@@ -701,11 +742,11 @@ impl BrotliEncoder {
       ctx.inst.compress_stream(
         std::mem::transmute::<u8, BrotliEncoderOperation>(flush),
         &mut avail_in,
-        input,
-        &mut (in_off as usize),
+        input_slice,
+        &mut 0,
         &mut avail_out,
-        out,
-        &mut (out_off as usize),
+        output_slice,
+        &mut 0,
         &mut None,
         &mut |_, _, _, _| (),
       );
@@ -831,14 +872,8 @@ impl BrotliDecoder {
       let ctx = self.ctx.borrow();
       let ctx = ctx.as_ref().expect("BrotliDecoder not initialized");
 
-      let mut next_in = input
-        .get(in_off as usize..in_off as usize + in_len as usize)
-        .ok_or_else(|| JsErrorBox::type_error("invalid input range"))?
-        .as_ptr();
-      let mut next_out = out
-        .get_mut(out_off as usize..out_off as usize + out_len as usize)
-        .ok_or_else(|| JsErrorBox::type_error("invalid output range"))?
-        .as_mut_ptr();
+      let mut next_in = slice_input(input, in_off, in_len)?.as_ptr();
+      let mut next_out = slice_output(out, out_off, out_len)?.as_mut_ptr();
 
       let mut avail_in = in_len as usize;
       let mut avail_out = out_len as usize;
@@ -919,14 +954,8 @@ impl BrotliDecoder {
     let mut ctx = self.ctx.borrow_mut();
     let ctx = ctx.as_mut().expect("BrotliDecoder not initialized");
 
-    let mut next_in = input
-      .get(in_off as usize..in_off as usize + in_len as usize)
-      .ok_or_else(|| JsErrorBox::type_error("invalid input range"))?
-      .as_ptr();
-    let mut next_out = out
-      .get_mut(out_off as usize..out_off as usize + out_len as usize)
-      .ok_or_else(|| JsErrorBox::type_error("invalid output range"))?
-      .as_mut_ptr();
+    let mut next_in = slice_input(input, in_off, in_len)?.as_ptr();
+    let mut next_out = slice_output(out, out_off, out_len)?.as_mut_ptr();
 
     let mut avail_in = in_len as usize;
     let mut avail_out = out_len as usize;
@@ -1109,12 +1138,8 @@ impl ZstdCompress {
       let mut ctx = self.ctx.borrow_mut();
       let ctx = ctx.as_mut().expect("ZstdCompress not initialized");
 
-      let input_slice = input
-        .get(in_off as usize..in_off as usize + in_len as usize)
-        .ok_or_else(|| JsErrorBox::type_error("invalid input range"))?;
-      let output_slice = out
-        .get_mut(out_off as usize..out_off as usize + out_len as usize)
-        .ok_or_else(|| JsErrorBox::type_error("invalid output range"))?;
+      let input_slice = slice_input(input, in_off, in_len)?;
+      let output_slice = slice_output(out, out_off, out_len)?;
 
       let mut in_buffer = InBuffer::around(input_slice);
       let mut out_buffer = OutBuffer::around(output_slice);
@@ -1197,12 +1222,8 @@ impl ZstdCompress {
     let mut ctx = self.ctx.borrow_mut();
     let ctx = ctx.as_mut().expect("ZstdCompress not initialized");
 
-    let input_slice = input
-      .get(in_off as usize..in_off as usize + in_len as usize)
-      .ok_or_else(|| JsErrorBox::type_error("invalid input range"))?;
-    let output_slice = out
-      .get_mut(out_off as usize..out_off as usize + out_len as usize)
-      .ok_or_else(|| JsErrorBox::type_error("invalid output range"))?;
+    let input_slice = slice_input(input, in_off, in_len)?;
+    let output_slice = slice_output(out, out_off, out_len)?;
 
     let mut in_buffer = InBuffer::around(input_slice);
     let mut out_buffer = OutBuffer::around(output_slice);
@@ -1365,12 +1386,8 @@ impl ZstdDecompress {
       let mut ctx = self.ctx.borrow_mut();
       let ctx = ctx.as_mut().expect("ZstdDecompress not initialized");
 
-      let input_slice = input
-        .get(in_off as usize..in_off as usize + in_len as usize)
-        .ok_or_else(|| JsErrorBox::type_error("invalid input range"))?;
-      let output_slice = out
-        .get_mut(out_off as usize..out_off as usize + out_len as usize)
-        .ok_or_else(|| JsErrorBox::type_error("invalid output range"))?;
+      let input_slice = slice_input(input, in_off, in_len)?;
+      let output_slice = slice_output(out, out_off, out_len)?;
 
       let mut in_buffer = InBuffer::around(input_slice);
       let mut out_buffer = OutBuffer::around(output_slice);
@@ -1417,12 +1434,8 @@ impl ZstdDecompress {
     let mut ctx = self.ctx.borrow_mut();
     let ctx = ctx.as_mut().expect("ZstdDecompress not initialized");
 
-    let input_slice = input
-      .get(in_off as usize..in_off as usize + in_len as usize)
-      .ok_or_else(|| JsErrorBox::type_error("invalid input range"))?;
-    let output_slice = out
-      .get_mut(out_off as usize..out_off as usize + out_len as usize)
-      .ok_or_else(|| JsErrorBox::type_error("invalid output range"))?;
+    let input_slice = slice_input(input, in_off, in_len)?;
+    let output_slice = slice_output(out, out_off, out_len)?;
 
     let mut in_buffer = InBuffer::around(input_slice);
     let mut out_buffer = OutBuffer::around(output_slice);

@@ -1963,7 +1963,10 @@ fn pkg_json_to_version_info(
     .map_err(|source| PkgJsonToVersionInfoError::VersionInvalid { source })?;
   Ok(NpmPackageVersionInfo {
     version,
-    exports: pkg_json.exports.clone().map(serde_json::Value::Object),
+    exports: pkg_json
+      .exports
+      .as_ref()
+      .map(deno_npm::registry::NpmPackageExportKeys::from_exports_object),
     dist: None,
     bin: pkg_json
       .bin

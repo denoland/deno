@@ -5,7 +5,7 @@
       "spanId": "[WILDLINE]",
       "traceState": "",
       "parentSpanId": "",
-      "flags": 1,
+      "flags": 257,
       "name": "GET",
       "kind": 3,
 [WILDCARD]
@@ -19,7 +19,7 @@
       "spanId": "[WILDLINE]",
       "traceState": "",
       "parentSpanId": "[WILDLINE]",
-      "flags": 1,
+      "flags": 257,
       "name": "GET",
       "kind": 2,
 [WILDCARD]
@@ -34,7 +34,7 @@
       "spanId": "[WILDLINE]",
       "traceState": "",
       "parentSpanId": "[WILDLINE]",
-      "flags": 1,
+      "flags": 257,
       "name": "GET",
       "kind": 3,
 [WILDCARD]
@@ -63,7 +63,7 @@
       "spanId": "[WILDLINE]",
       "traceState": "",
       "parentSpanId": "[WILDLINE]",
-      "flags": 1,
+      "flags": 257,
       "name": "GET",
       "kind": 2,
 [WILDCARD]
@@ -86,7 +86,7 @@
       "spanId": "[WILDLINE]",
       "traceState": "",
       "parentSpanId": "[WILDLINE]",
-      "flags": 1,
+      "flags": 257,
       "name": "GET",
       "kind": 3,
 [WILDCARD]
@@ -115,7 +115,7 @@
       "spanId": "[WILDLINE]",
       "traceState": "",
       "parentSpanId": "[WILDLINE]",
-      "flags": 1,
+      "flags": 257,
       "name": "GET",
       "kind": 2,
 [WILDCARD]

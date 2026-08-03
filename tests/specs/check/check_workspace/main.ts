@@ -2,7 +2,7 @@
 import "./member/mod.ts";
 
 // Only defined for window.
-localStorage;
+alert;
 
 // Only defined for worker.
-onmessage;
+WorkerGlobalScope;

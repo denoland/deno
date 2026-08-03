@@ -43,7 +43,7 @@ pub async fn compile(
   flags: Flags,
   compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
-  if let Some(watch_flags) = &compile_flags.watch {
+  if let Some(watch_flags) = &flags.watch {
     let no_clear_screen = watch_flags.no_clear_screen;
     file_watcher::watch_func(
       Arc::new(flags),
@@ -97,28 +97,9 @@ async fn compile_inner(
   let _framework_entrypoint_file = if let Some(dir) = source_dir {
     if let Some(detection) = super::framework::detect_framework(&dir)? {
       log::info!("Detected {} framework", detection.name);
-      // Run the framework's build step if needed.
-      if let Some(build_cmd) = &detection.build_command {
-        log::info!(
-          "{} {} project...",
-          colors::green("Building"),
-          detection.name,
-        );
-        let status = std::process::Command::new(&build_cmd[0])
-          .args(&build_cmd[1..])
-          .current_dir(&dir)
-          .status()
-          .with_context(|| {
-            format!("Failed to run build command: {}", build_cmd.join(" "))
-          })?;
-        if !status.success() {
-          bail!(
-            "{} build failed (exit code: {})",
-            detection.name,
-            status.code().unwrap_or(-1)
-          );
-        }
-      }
+      // Run the framework's build step (if any) before bundling its build
+      // output via `include_paths`.
+      super::framework::run_build_command(&detection, &dir)?;
       // Enable CJS detection for Node-based frameworks.
       flags.unstable_config.detect_cjs = true;
       // These frameworks emit a pre-built/bundled server entrypoint that is
@@ -160,7 +141,7 @@ async fn compile_inner(
     } else {
       bail!(
         "Could not detect a supported framework in '{}'.\n\
-         Supported frameworks: Next.js, Astro, Fresh, Remix, SvelteKit, Nuxt, SolidStart, TanStack Start, Vite\n\
+         Supported frameworks: Next.js, Astro, Fresh, Remix, React Router, SvelteKit, Nuxt, SolidStart, TanStack Start, Vite\n\
          Provide an explicit entrypoint instead of a directory.",
         dir.display()
       );
@@ -1406,7 +1387,6 @@ mod test {
         output: None,
         args: Vec::new(),
         target: None,
-        watch: None,
         no_terminal: false,
         icon: Some("favicon.ico".to_string()),
         include: Default::default(),
@@ -1437,7 +1417,6 @@ mod test {
         output: Some(String::from("./file")),
         args: Vec::new(),
         target: Some("x86_64-unknown-linux-gnu".to_string()),
-        watch: None,
         no_terminal: false,
         icon: None,
         include: Default::default(),
@@ -1475,7 +1454,6 @@ mod test {
         output: Some(String::from("./file")),
         args: Vec::new(),
         target: Some("x86_64-pc-windows-msvc".to_string()),
-        watch: None,
         include: Default::default(),
         exclude: Default::default(),
         icon: None,

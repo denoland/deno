@@ -1,0 +1,9 @@
+{
+  // ignored: the grep-format diagnostics carry no end column, so the export=
+  // error underlines just the `export` keyword instead of the whole statement.
+  // https://github.com/denoland/deno/issues/36091
+  "ignore": true,
+  "args": "check main.ts",
+  "output": "main.out",
+  "exitCode": 1
+}

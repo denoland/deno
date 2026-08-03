@@ -148,7 +148,7 @@ async fn run_subcommand(
     }),
     DenoSubcommand::Bench(bench_flags) => spawn_subcommand(async {
       let flags = Arc::new(flags);
-      if bench_flags.watch.is_some() {
+      if flags.watch.is_some() {
         tools::bench::run_benchmarks_with_watch(flags, bench_flags)
           .boxed_local()
           .await
@@ -237,11 +237,17 @@ async fn run_subcommand(
     DenoSubcommand::Ci(ci_flags) => spawn_subcommand(async {
       tools::installer::ci_command(Arc::new(flags), ci_flags).await
     }),
+    DenoSubcommand::SyncTypes(sync_types_flags) => spawn_subcommand(async {
+      tools::installer::sync_types_command(
+        Arc::new(flags),
+        sync_types_flags,
+        tools::installer::RootTsConfigMode::Always,
+      )
+      .await
+    }),
     DenoSubcommand::JSONReference(json_reference) => {
       spawn_subcommand(async move {
-        display::write_to_stdout_ignore_sigpipe(
-          &deno_core::serde_json::to_vec_pretty(&json_reference.json).unwrap(),
-        )
+        display::write_json_to_stdout(&json_reference.json)
       })
     }
     DenoSubcommand::Jupyter(jupyter_flags) => spawn_subcommand(async {
@@ -329,7 +335,7 @@ async fn run_subcommand(
         let result = tools::run::run_script(
           WorkerExecutionMode::Run,
           flags.clone(),
-          run_flags.watch,
+          flags.watch.clone(),
           unconfigured_runtime,
           roots.clone(),
         )
@@ -349,10 +355,7 @@ async fn run_subcommand(
               && flags.node_modules_dir.is_none()
             {
               let mut flags = flags.deref().clone();
-              let watch = match &flags.subcommand {
-                DenoSubcommand::Run(run_flags) => run_flags.watch.clone(),
-                _ => unreachable!(),
-              };
+              let watch = flags.watch.clone();
               flags.node_modules_dir =
                 Some(deno_config::deno_json::NodeModulesDirMode::None);
               // use the current lockfile, but don't write it out
@@ -466,7 +469,7 @@ async fn run_subcommand(
           };
         }
 
-        if test_flags.watch.is_some() {
+        if flags.watch.is_some() {
           tools::test::run_tests_with_watch(Arc::new(flags), test_flags).await
         } else {
           tools::test::run_tests(Arc::new(flags), test_flags).await
@@ -477,8 +480,8 @@ async fn run_subcommand(
       spawn_subcommand(async move {
         match completions_flags {
           CompletionsFlags::Static(buf) => {
-            display::write_to_stdout_ignore_sigpipe(&buf)
-              .map_err(AnyError::from)
+            deno_print::drop_write_stdout(&buf);
+            Ok::<_, AnyError>(())
           }
           CompletionsFlags::Dynamic(f) => {
             f()?;
@@ -489,7 +492,8 @@ async fn run_subcommand(
     }
     DenoSubcommand::Types => spawn_subcommand(async move {
       let types = tsc::get_types_declaration_file_text();
-      display::write_to_stdout_ignore_sigpipe(types.as_bytes())
+      deno_print::drop_write_stdout(types.as_bytes());
+      Ok::<_, AnyError>(())
     }),
     #[cfg(feature = "upgrade")]
     DenoSubcommand::Upgrade(upgrade_flags) => spawn_subcommand(async {
@@ -624,8 +628,23 @@ fn setup_panic_hook() {
     eprintln!("Deno has panicked. This is a bug in Deno. Please report this");
     eprintln!("at https://github.com/denoland/deno/issues/new.");
     eprintln!("If you can reliably reproduce this panic, include the");
-    eprintln!("reproduction steps and re-run with the RUST_BACKTRACE=1 env");
-    eprintln!("var set and include the backtrace in your report.");
+    #[cfg(not(all(
+      feature = "panic-trace-frame-pointer",
+      target_os = "linux",
+      any(target_arch = "x86_64", target_arch = "aarch64")
+    )))]
+    {
+      eprintln!("reproduction steps and re-run with the RUST_BACKTRACE=1 env");
+      eprintln!("var set and include the backtrace in your report.");
+    }
+    #[cfg(all(
+      feature = "panic-trace-frame-pointer",
+      target_os = "linux",
+      any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
+    eprintln!(
+      "reproduction steps and the stack trace URL below in your report."
+    );
     eprintln!();
     eprintln!("Platform: {} {}", env::consts::OS, env::consts::ARCH);
     eprintln!("Version: {}", deno_lib::version::DENO_VERSION_INFO.deno);
@@ -643,6 +662,17 @@ fn setup_panic_hook() {
           info.deno.to_string()
         };
 
+      #[cfg(all(
+        feature = "panic-trace-frame-pointer",
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+      ))]
+      let trace = deno_panic::trace_frame_pointer();
+      #[cfg(not(all(
+        feature = "panic-trace-frame-pointer",
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+      )))]
       let trace = deno_panic::trace();
       eprintln!("View stack trace at:");
       eprintln!(
@@ -733,7 +763,44 @@ fn exit_for_error(error: AnyError, initial_cwd: Option<&std::path::Path>) -> ! {
     error_string.push_str(&hint);
   }
 
+  // When a package couldn't be resolved because the only matching version is
+  // newer than the configured minimum dependency age, the error doesn't
+  // mention the setting that caused it. Point the user at it.
+  if let Some(hint) = maybe_minimum_dependency_age_hint(&error_string) {
+    error_string.push_str(&hint);
+  }
+
   exit_with_message(&error_string, 1);
+}
+
+/// Substring present in every "package rejected because it is newer than the
+/// minimum dependency age" error (both the jsr and npm resolvers include it).
+const MINIMUM_DEPENDENCY_AGE_MARKER: &str = "minimum dependency date";
+
+/// If `error_string` is a resolution failure caused by the minimum dependency
+/// age safeguard, returns a note explaining the setting and how to override it.
+fn maybe_minimum_dependency_age_hint(error_string: &str) -> Option<String> {
+  if !error_string.contains(MINIMUM_DEPENDENCY_AGE_MARKER) {
+    return None;
+  }
+  Some(format!(
+    concat!(
+      "\n\n{} This version is blocked by the minimum dependency age policy, ",
+      "which avoids installing recently published versions to reduce supply ",
+      "chain risk (the default is 24 hours). To use this version now, pass the ",
+      "{} (or {}) flag (for example {} to disable it, or a shorter duration ",
+      "like {} minutes) or set {} in your deno.json, or wait until the version ",
+      "is old enough.\n{} {}"
+    ),
+    colors::yellow("hint:"),
+    colors::bold("--minimum-dependency-age"),
+    colors::bold("--min-dep-age"),
+    colors::bold("0"),
+    colors::bold("60"),
+    colors::bold("\"minimumDependencyAge\""),
+    colors::yellow("docs:"),
+    colors::cyan("https://docs.deno.com/go/minimum-dependency-age"),
+  ))
 }
 
 pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
@@ -912,7 +979,7 @@ async fn resolve_flags_and_init(
       Err(err) => exit_for_error(AnyError::from(err), initial_cwd.as_deref()),
     };
   // preserve already loaded env variables
-  if flags.subcommand.watch_flags().is_some() {
+  if flags.watch.is_some() {
     WatchEnvTracker::snapshot();
   }
 
@@ -1192,10 +1259,16 @@ fn wait_for_start(
 
       #[derive(deno_core::serde::Serialize)]
       enum Event {
-        Serving,
+        Serving {
+          #[serde(skip_serializing_if = "Option::is_none")]
+          kind: Option<&'static str>,
+        },
       }
 
-      let mut buf = deno_core::serde_json::to_vec(&Event::Serving).unwrap();
+      let mut buf = deno_core::serde_json::to_vec(&Event::Serving {
+        kind: deno_runtime::deno_http::serving_server_kind(),
+      })
+      .unwrap();
       buf.push(b'\n');
       let _ = tx.write_all(&buf).await;
     });

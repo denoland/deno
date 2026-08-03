@@ -136,6 +136,9 @@ pub struct NewestDependencyDateOptions {
   /// Prevents installing packages newer than the specified date.
   pub date: Option<NewestDependencyDate>,
   pub exclude: BTreeSet<PackageName>,
+  /// Package name prefixes to exclude (e.g. `@scope/` from a
+  /// `@scope/*` wildcard entry).
+  pub exclude_prefixes: Vec<PackageName>,
 }
 
 impl NewestDependencyDateOptions {
@@ -143,6 +146,7 @@ impl NewestDependencyDateOptions {
     Self {
       date: Some(NewestDependencyDate(date)),
       exclude: Default::default(),
+      exclude_prefixes: Default::default(),
     }
   }
 
@@ -151,7 +155,12 @@ impl NewestDependencyDateOptions {
     package_name: &PackageName,
   ) -> Option<NewestDependencyDate> {
     let date = self.date?;
-    if self.exclude.contains(package_name) {
+    if self.exclude.contains(package_name)
+      || self
+        .exclude_prefixes
+        .iter()
+        .any(|prefix| package_name.starts_with(prefix.as_str()))
+    {
       None
     } else {
       Some(date)
@@ -316,6 +325,28 @@ impl<'a> NpmPackageVersionResolver<'a> {
     exclude_prerelease: bool,
   ) -> Option<TrustEvidence> {
     let mut best: Option<TrustEvidence> = None;
+    let mut indexed_evidence = self.info.versions.trust_evidence().peekable();
+    if indexed_evidence.peek().is_some() {
+      for (version, evidence) in indexed_evidence {
+        if exclude_prerelease && !version.pre.is_empty() {
+          continue;
+        }
+        let Some(published_at) = self.info.time.get(version) else {
+          continue;
+        };
+        if *published_at >= before_date {
+          continue;
+        }
+        if best.is_none_or(|current| *evidence > current) {
+          best = Some(*evidence);
+          if *evidence == TrustEvidence::StagedPublish {
+            return best;
+          }
+        }
+      }
+      return best;
+    }
+
     for version_info in self.info.versions.values() {
       let version = &version_info.version;
       if exclude_prerelease && !version.pre.is_empty() {
@@ -522,25 +553,24 @@ impl<'a> NpmPackageVersionResolver<'a> {
     error_version_req: &VersionReq,
   ) -> Result<&'a NpmPackageVersionInfo, NpmPackageVersionResolutionError> {
     let mut found_matching_version = false;
-    let mut maybe_best_version: Option<&'a NpmPackageVersionInfo> = None;
-    for version_info in self.info.versions.values() {
-      let version = &version_info.version;
+    let mut maybe_best_version: Option<&Version> = None;
+    for version in self.info.versions.keys() {
       if self.version_req_satisfies(matching_version_req, version)? {
         found_matching_version = true;
         if self.matches_newest_dependency_date(version) {
           let is_best_version = maybe_best_version
             .as_ref()
-            .map(|best_version| best_version.version.cmp(version).is_lt())
+            .map(|best_version| (*best_version).cmp(version).is_lt())
             .unwrap_or(true);
           if is_best_version {
-            maybe_best_version = Some(version_info);
+            maybe_best_version = Some(version);
           }
         }
       }
     }
 
     match maybe_best_version {
-      Some(v) => Ok(v),
+      Some(version) => Ok(self.info.versions.get(version).unwrap()),
       // Although it seems like we could make this smart by fetching the latest
       // information for this package here, we really need a full restart. There
       // could be very interesting bugs that occur if this package's version was
@@ -634,7 +664,7 @@ fn create_link_package_info(
   }
   Arc::new(NpmPackageInfo {
     name: name.clone(),
-    versions: version_map,
+    versions: version_map.into(),
     dist_tags,
     time: HashMap::new(),
   })
@@ -706,7 +736,7 @@ mod test {
     let package_req = PackageReq::from_str("test@latest").unwrap();
     let package_info = NpmPackageInfo {
       name: "test".into(),
-      versions: HashMap::new(),
+      versions: HashMap::new().into(),
       dist_tags: HashMap::from([(
         "latest".into(),
         Version::parse_from_npm("1.0.0-alpha").unwrap(),
@@ -743,7 +773,8 @@ mod test {
             ..Default::default()
           },
         ),
-      ]),
+      ])
+      .into(),
       dist_tags: HashMap::from([(
         "latest".into(),
         Version::parse_from_npm("1.0.0-alpha").unwrap(),
@@ -776,7 +807,8 @@ mod test {
             ..Default::default()
           },
         ),
-      ]),
+      ])
+      .into(),
       dist_tags: HashMap::from([(
         "latest".into(),
         Version::parse_from_npm("1.1.0").unwrap(),
@@ -842,7 +874,7 @@ mod test {
             r#"{ "version": "1.3.0", "_npmUser": { "approver": {} } }"#,
           ),
         ),
-      ]),
+      ]).into(),
       dist_tags: Default::default(),
       time: HashMap::from([
         (ver("1.0.0"), "2025-01-01T00:00:00.000Z".parse().unwrap()),
@@ -931,7 +963,8 @@ mod test {
           ),
         ),
         (ver("1.1.0"), version_info(r#"{ "version": "1.1.0" }"#)),
-      ]),
+      ])
+      .into(),
       dist_tags: Default::default(),
       time: HashMap::from([
         (ver("1.0.0"), "2025-01-01T00:00:00.000Z".parse().unwrap()),
@@ -988,6 +1021,26 @@ mod test {
   }
 
   #[test]
+  fn test_newest_dependency_date_exclude() {
+    let options = NewestDependencyDateOptions {
+      date: Some(NewestDependencyDate(
+        "2025-01-01T00:00:00.000Z".parse().unwrap(),
+      )),
+      exclude: BTreeSet::from(["@denotest/exact".into()]),
+      exclude_prefixes: vec!["@scope/".into()],
+    };
+    // exact match
+    assert!(options.get_for_package(&"@denotest/exact".into()).is_none());
+    // prefix match (from a `@scope/*` wildcard entry)
+    assert!(options.get_for_package(&"@scope/foo".into()).is_none());
+    assert!(options.get_for_package(&"@scope/bar".into()).is_none());
+    // no match
+    assert!(options.get_for_package(&"@denotest/other".into()).is_some());
+    assert!(options.get_for_package(&"@scoped/foo".into()).is_some());
+    assert!(options.get_for_package(&"@scope".into()).is_some());
+  }
+
+  #[test]
   fn test_trust_policy_excludes_prereleases_from_history() {
     fn version_info(json: &str) -> NpmPackageVersionInfo {
       serde_json::from_str(json).unwrap()
@@ -1009,7 +1062,8 @@ mod test {
           ),
         ),
         (ver("1.0.0"), version_info(r#"{ "version": "1.0.0" }"#)),
-      ]),
+      ])
+      .into(),
       dist_tags: Default::default(),
       time: HashMap::from([
         (
@@ -1049,7 +1103,8 @@ mod test {
         (version("2.0.0-beta.1"), version_info("2.0.0-beta.1")),
         (version("2.0.0"), version_info("2.0.0")),
         (version("2.1.0"), version_info("2.1.0")),
-      ]),
+      ])
+      .into(),
       dist_tags: HashMap::from([("stable".into(), version("2.0.0"))]),
       time: HashMap::from([
         (version("1.9.0"), date("2025-05-15T00:00:00.000Z")),
@@ -1075,7 +1130,8 @@ mod test {
         (version("1.0.0-beta.9"), version_info("1.0.0-beta.9")),
         (version("1.0.0-next.2"), version_info("1.0.0-next.2")),
         (version("1.0.0"), version_info("1.0.0")),
-      ]),
+      ])
+      .into(),
       dist_tags: HashMap::from([("next".into(), version("1.0.0-next.2"))]),
       time: HashMap::from([
         (version("1.0.0-beta.9"), date("2025-05-15T00:00:00.000Z")),
@@ -1105,7 +1161,8 @@ mod test {
           version("7.0.0-dev.20260626.1"),
           version_info("7.0.0-dev.20260626.1"),
         ),
-      ]),
+      ])
+      .into(),
       dist_tags: HashMap::from([(
         "latest".into(),
         version("7.0.0-dev.20260626.1"),
@@ -1137,7 +1194,8 @@ mod test {
       versions: HashMap::from([
         (version("1.9.0"), version_info("1.9.0")),
         (version("2.0.0"), version_info("2.0.0")),
-      ]),
+      ])
+      .into(),
       dist_tags: HashMap::from([("latest".into(), version("2.0.0"))]),
       time: HashMap::from([
         (version("1.9.0"), date("2025-05-15T00:00:00.000Z")),
@@ -1166,7 +1224,8 @@ mod test {
       versions: HashMap::from([
         (version("1.9.0"), version_info("1.9.0")),
         (version("2.0.0+build.5"), version_info("2.0.0+build.5")),
-      ]),
+      ])
+      .into(),
       dist_tags: HashMap::from([("latest".into(), version("2.0.0+build.5"))]),
       time: HashMap::from([
         (version("1.9.0"), date("2025-05-15T00:00:00.000Z")),
@@ -1192,7 +1251,8 @@ mod test {
       versions: HashMap::from([
         (version("1.9.0"), version_info("1.9.0")),
         (version("2.0.0"), version_info("2.0.0")),
-      ]),
+      ])
+      .into(),
       dist_tags: HashMap::from([("latest".into(), version("2.0.0"))]),
       time: HashMap::from([
         (version("1.9.0"), date("2025-05-29T00:00:00.000Z")),
@@ -1231,7 +1291,8 @@ mod test {
             ..Default::default()
           },
         ),
-      ]),
+      ])
+      .into(),
       dist_tags: HashMap::from([(
         "latest".into(),
         Version::parse_from_npm("1.0.0-rc.1").unwrap(),
@@ -1283,7 +1344,8 @@ mod test {
             ..Default::default()
           },
         ),
-      ]),
+      ])
+      .into(),
       dist_tags: HashMap::from([
         (
           "latest".into(),
@@ -1340,7 +1402,8 @@ mod test {
           vi(r#"{ "version": "1.0.0", "_npmUser": { "approver": {} } }"#),
         ),
         (ver("1.1.0"), vi(r#"{ "version": "1.1.0" }"#)),
-      ]),
+      ])
+      .into(),
       dist_tags: Default::default(),
       time: HashMap::from([
         (ver("1.0.0"), "2025-01-01T00:00:00.000Z".parse().unwrap()),

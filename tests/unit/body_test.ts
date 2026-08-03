@@ -1,5 +1,21 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { assert, assertEquals, assertRejects } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertRejects,
+  assertThrows,
+} from "./test_util.ts";
+
+async function readTextStream(stream: ReadableStream<string>): Promise<string> {
+  const reader = stream.getReader();
+  let result = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    result += value;
+  }
+  return result;
+}
 
 // just a hack to get a body object
 // deno-lint-ignore no-explicit-any
@@ -257,6 +273,61 @@ Deno.test(
   },
 );
 
+Deno.test(async function bodyMultipartFormDataRejectsTooManyPartHeaders() {
+  const boundary = "AaB03x";
+  const partHeaders = [
+    'Content-Disposition: form-data; name="field"',
+  ];
+  for (let i = 0; i < 128; i++) {
+    partHeaders.push(`X-Deno-Test-${i}: ${i}`);
+  }
+  const payload = [
+    `--${boundary}`,
+    ...partHeaders,
+    "",
+    "value",
+    `--${boundary}--`,
+  ].join("\r\n");
+
+  const body = buildBody(
+    new TextEncoder().encode(payload),
+    new Headers({
+      "Content-Type": `multipart/form-data; boundary=${boundary}`,
+    }),
+  );
+
+  await assertRejects(
+    () => body.formData(),
+    TypeError,
+    "too many headers",
+  );
+});
+
+Deno.test(async function bodyMultipartFormDataRejectsLargePartHeaders() {
+  const boundary = "AaB03x";
+  const payload = [
+    `--${boundary}`,
+    'Content-Disposition: form-data; name="field"',
+    `X-Deno-Large: ${"a".repeat(16 * 1024)}`,
+    "",
+    "value",
+    `--${boundary}--`,
+  ].join("\r\n");
+
+  const body = buildBody(
+    new TextEncoder().encode(payload),
+    new Headers({
+      "Content-Type": `multipart/form-data; boundary=${boundary}`,
+    }),
+  );
+
+  await assertRejects(
+    () => body.formData(),
+    TypeError,
+    "headers are too large",
+  );
+});
+
 Deno.test(
   async function bodyMultipartFormDataEmbeddedBoundaryTextInFileContent() {
     const boundary = "AaB03x";
@@ -338,6 +409,41 @@ Deno.test(
     assertEquals(formData.get("field"), "value");
   },
 );
+
+Deno.test(async function responseTextStream() {
+  const text = "Hello 👋 wörld";
+  const stream = new Response(text).textStream();
+  assert(stream instanceof ReadableStream);
+  assertEquals(await readTextStream(stream), text);
+});
+
+Deno.test(async function requestTextStream() {
+  const text = "Hello 👋 wörld";
+  const stream = new Request("http://foo/", { method: "POST", body: text })
+    .textStream();
+  assert(stream instanceof ReadableStream);
+  assertEquals(await readTextStream(stream), text);
+});
+
+Deno.test(async function textStreamNullBody() {
+  const stream = new Response(null).textStream();
+  assert(stream instanceof ReadableStream);
+  assertEquals(await readTextStream(stream), "");
+
+  const stream2 = new Response().textStream();
+  assert(stream2 instanceof ReadableStream);
+  assertEquals(await readTextStream(stream2), "");
+});
+
+Deno.test(async function textStreamConsumedBodyThrows() {
+  const response = new Response("already consumed");
+  await response.text();
+  assertThrows(
+    () => response.textStream(),
+    TypeError,
+    "Body already consumed.",
+  );
+});
 
 Deno.test(async function bodyBadResourceError() {
   const file = await Deno.open("README.md");

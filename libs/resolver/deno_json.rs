@@ -1029,6 +1029,7 @@ pub struct TsConfigData {
   compiler_options: CompilerOptionsData,
   filter: TsConfigFileFilterRc,
   references: Vec<String>,
+  is_deno_generated: bool,
 }
 
 impl TsConfigData {
@@ -1149,6 +1150,12 @@ impl<
   }
 
   fn visit_reference(&mut self, ts_config: Rc<TsConfigData>) {
+    // `deno sync-types` generates referenced projects solely for stock
+    // TypeScript's resolver. They point into Deno's npm cache and must not
+    // become Deno compiler-option scopes or project roots themselves.
+    if ts_config.is_deno_generated {
+      return;
+    }
     let specifier = ts_config.specifier();
     if self.collected.contains_key(specifier) {
       return;
@@ -1227,6 +1234,10 @@ impl<
         .inspect_err(|e| warn(e))
         .ok();
     let object = value.as_ref().and_then(|v| v.as_object());
+    let is_deno_generated = object
+      .and_then(|o| o.get("_deno_generated"))
+      .and_then(|v| v.as_bool())
+      .unwrap_or(false);
     let extends_targets = object
       .and_then(|o| o.get("extends"))
       .into_iter()
@@ -1253,6 +1264,9 @@ impl<
         let path = url_to_file_path(&url).ok()?;
         self.read_ts_config_with_cache(Cow::Owned(path)).ok()
       })
+      // Generated stock-TypeScript compatibility configs should not affect
+      // Deno's own compiler options when a root tsconfig extends them.
+      .filter(|config| !config.is_deno_generated)
       .collect::<Vec<_>>();
     let sources = extends_targets
       .iter()
@@ -1356,6 +1370,7 @@ impl<
         dir_path: dir_path.to_path_buf(),
       }),
       references,
+      is_deno_generated,
     })
   }
 }

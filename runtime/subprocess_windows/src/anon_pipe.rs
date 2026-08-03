@@ -34,9 +34,9 @@ use std::io;
 use std::mem;
 use std::os::windows::prelude::*;
 use std::ptr;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering::Relaxed;
 
+use rand::RngCore;
+use rand::rngs::OsRng;
 use windows_sys::Win32::Foundation::BOOL;
 use windows_sys::Win32::Foundation::ERROR_ACCESS_DENIED;
 use windows_sys::Win32::Foundation::ERROR_BROKEN_PIPE;
@@ -154,11 +154,7 @@ pub fn anon_pipe(
     let mut tries = 0;
     loop {
       tries += 1;
-      name = format!(
-        r"\\.\pipe\__rust_anonymous_pipe1__.{}.{}",
-        GetCurrentProcessId(),
-        random_number(),
-      );
+      name = pipe_name(GetCurrentProcessId());
       let wide_name = OsStr::new(&name)
         .encode_wide()
         .chain(Some(0))
@@ -241,6 +237,9 @@ pub fn anon_pipe(
       0,
       ptr::null_mut(),
     );
+    if handle2 == INVALID_HANDLE_VALUE {
+      return Err(io::Error::last_os_error());
+    }
     let theirs = Handle::from_raw_handle(handle2);
 
     Ok(Pipes {
@@ -250,14 +249,33 @@ pub fn anon_pipe(
   }
 }
 
-fn random_number() -> usize {
-  static N: std::sync::atomic::AtomicUsize = AtomicUsize::new(0);
-  loop {
-    if N.load(Relaxed) != 0 {
-      return N.fetch_add(1, Relaxed);
-    }
+fn pipe_name(process_id: u32) -> String {
+  let mut rng = OsRng;
+  format!(
+    r"\\.\pipe\__rust_anonymous_pipe1__.{}.{:016x}{:016x}",
+    process_id,
+    rng.next_u64(),
+    rng.next_u64(),
+  )
+}
 
-    N.store(fastrand::usize(..), Relaxed);
+#[cfg(test)]
+mod tests {
+  use super::pipe_name;
+
+  #[test]
+  fn pipe_name_uses_fresh_random_suffix() {
+    let first = pipe_name(1234);
+    let second = pipe_name(1234);
+
+    assert_ne!(first, second);
+
+    let prefix = r"\\.\pipe\__rust_anonymous_pipe1__.1234.";
+    let suffix = first
+      .strip_prefix(prefix)
+      .expect("pipe name should include the process id prefix");
+    assert_eq!(suffix.len(), 32);
+    assert!(suffix.chars().all(|c| c.is_ascii_hexdigit()));
   }
 }
 

@@ -88,9 +88,11 @@ fn create_cli_snapshot(
         // `&'static` external string (via `include_str!`), avoiding a per-script
         // owned source copy in the V8 heap. See `load_ext_script`.
         wrap_residual_js_source(&transpiled_path);
+        assert_residual_entry_ascii(&transpiled_path, file.specifier.as_str());
         residual_js.push((file.specifier.as_str(), transpiled_path));
       }
       LazyExtensionFileKind::Esm => {
+        assert_residual_entry_ascii(&transpiled_path, file.specifier.as_str());
         residual_esm.push((file.specifier.as_str(), transpiled_path));
       }
     }
@@ -269,6 +271,20 @@ fn wrap_residual_js_source(path: &std::path::Path) {
 }
 
 #[cfg(not(feature = "disable"))]
+fn assert_residual_entry_ascii(path: &std::path::Path, specifier: &str) {
+  assert!(
+    specifier.is_ascii(),
+    "generated residual source specifier {specifier} contains non-ASCII bytes",
+  );
+  let source = std::fs::read(path).unwrap();
+  assert!(
+    source.is_ascii(),
+    "generated residual source for {specifier} at {} contains non-ASCII bytes",
+    path.display(),
+  );
+}
+
+#[cfg(not(feature = "disable"))]
 fn write_residual_table(
   f: &mut std::fs::File,
   out_dir: &std::path::Path,
@@ -277,6 +293,8 @@ fn write_residual_table(
 ) {
   use std::io::Write;
   writeln!(f, "pub static {name}: &[(&str, &str)] = &[").unwrap();
+  let mut entries = entries.iter().collect::<Vec<_>>();
+  entries.sort_by_key(|(specifier, _)| *specifier);
   for (specifier, transpiled_path) in entries {
     let rel = transpiled_path.strip_prefix(out_dir).unwrap();
     writeln!(

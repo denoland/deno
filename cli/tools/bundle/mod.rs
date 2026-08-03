@@ -1918,12 +1918,30 @@ impl DenoPluginHandler {
     let mut specifiers_vec = Vec::with_capacity(specifiers.len());
     for specifier in specifiers {
       let specifier = deno_path_util::url_from_file_path(specifier)?;
+      // Raw imports are represented as external assets in the module graph.
+      // Their contents are fetched by `bundle_load` instead of being stored
+      // in the graph, so reloading them as ordinary graph roots loses their
+      // requested module type (for example, `type: "css"`). Esbuild will call
+      // `on_load` again for the changed file and fetch its current contents.
+      if matches!(
+        graph.get(&specifier),
+        Some(deno_graph::Module::External(module)) if module.was_asset_load
+      ) {
+        continue;
+      }
       specifiers_vec.push(specifier);
     }
-    self
-      .module_load_preparer
-      .reload_specifiers(graph, specifiers_vec, false, self.permissions.clone())
-      .await?;
+    if !specifiers_vec.is_empty() {
+      self
+        .module_load_preparer
+        .reload_specifiers(
+          graph,
+          specifiers_vec,
+          false,
+          self.permissions.clone(),
+        )
+        .await?;
+    }
     graph_permit.commit();
     Ok(())
   }
@@ -2058,6 +2076,7 @@ impl DenoPluginHandler {
           permissions: self.permissions.clone(),
           ext_overwrite: None,
           allow_unknown_media_types: true,
+          allow_sloppy_imports_hints_for_unreferenced_roots: true,
           skip_graph_roots_validation: true,
           file_content_overrides: Default::default(),
           file_header_overrides: Default::default(),
@@ -2117,7 +2136,7 @@ impl DenoPluginHandler {
     let graph = self.module_graph_container.graph();
     let module_or_asset = self
       .module_loader
-      .load(&graph, &specifier, None, requested_type)
+      .load(&graph, &specifier, None, requested_type, None)
       .await;
     let module_or_asset = match module_or_asset {
       Ok(module_or_asset) => module_or_asset,
@@ -2832,7 +2851,7 @@ pub fn process_result(
       .unwrap_or_else(|| Cow::Borrowed(file.contents.as_ref()));
 
     if file.path.ends_with("<stdout>") {
-      crate::display::write_to_stdout_ignore_sigpipe(bytes.as_ref())?;
+      deno_print::drop_write_stdout(bytes.as_ref());
       continue;
     }
 

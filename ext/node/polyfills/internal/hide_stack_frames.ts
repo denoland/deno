@@ -24,7 +24,7 @@ function hideStackFrames<T extends GenericFunction = GenericFunction>(
     try {
       return ReflectApply(fn, this, args);
     } catch (error) {
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       if (Error.stackTraceLimit) {
         ErrorCaptureStackTrace(error, wrappedFn);
       }

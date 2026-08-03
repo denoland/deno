@@ -35,6 +35,21 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name: "napi uv async close cancels pending send",
+  fn: async () => {
+    let closed = false;
+    await new Promise((resolve) => {
+      uv.test_uv_async_close_after_send(() => {
+        closed = true;
+        resolve();
+      });
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assertEquals(closed, true);
+  },
+});
+
 // Exercises the uv polyfills added for native addons that link directly
 // against libuv (e.g. @sentry/profiling-node). The Rust side asserts that
 // uv_hrtime, uv_timer_*, uv_cpu_info, uv_handle_*, uv_default_loop,
@@ -93,5 +108,27 @@ Deno.test({
   name: "napi uv thread + semaphore",
   fn: () => {
     uv.test_uv_threads();
+  },
+});
+
+// Exercises the uv_cond_* polyfills end to end: a worker thread sets a
+// predicate under the mutex and signals a condition variable the main thread
+// is waiting on, then uv_cond_timedwait is checked to time out. If any of
+// these symbols are missing from the deno binary the addon would fail to load
+// and this test would error.
+Deno.test({
+  name: "napi uv condition variable",
+  fn: () => {
+    uv.test_uv_cond();
+  },
+});
+
+// Exercises uv_cond_broadcast: several worker threads park in uv_cond_wait on
+// the same condition variable and the main thread wakes them all with a single
+// broadcast once they are all parked.
+Deno.test({
+  name: "napi uv condition variable broadcast",
+  fn: () => {
+    uv.test_uv_cond_broadcast();
   },
 });

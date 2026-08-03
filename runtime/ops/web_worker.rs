@@ -13,6 +13,7 @@ use deno_core::OpState;
 use deno_core::op2;
 use deno_web::JsMessageData;
 use deno_web::MessagePortError;
+use deno_web::RecvMessageData;
 pub use sync_fetch::SyncFetchError;
 
 use self::sync_fetch::op_worker_sync_fetch;
@@ -64,7 +65,7 @@ fn op_worker_post_message_raw(
 #[op2(async(lazy), fast)]
 async fn op_worker_recv_message(
   state: Rc<RefCell<OpState>>,
-) -> Result<Option<JsMessageData>, MessagePortError> {
+) -> Result<Option<RecvMessageData>, MessagePortError> {
   let handle = {
     let state = state.borrow();
     state.borrow::<WebWorkerInternalHandle>().clone()

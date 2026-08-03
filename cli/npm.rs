@@ -31,6 +31,7 @@ use deno_npm_installer::lifecycle_scripts::LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR;
 use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutor;
 use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutorOptions;
 use deno_npm_installer::lifecycle_scripts::PackageWithScript;
+use deno_npm_installer::lifecycle_scripts::ResolvePkgFolderFn;
 use deno_npm_installer::lifecycle_scripts::compute_lifecycle_script_layers;
 use deno_npm_installer::lifecycle_scripts::is_broken_default_install_script;
 use deno_npmrc::RegistryConfig;
@@ -268,6 +269,7 @@ pub struct NpmFetchResolver {
   file_fetcher: Arc<CliFileFetcher>,
   npmrc: Arc<ResolvedNpmRc>,
   version_resolver: Arc<NpmVersionResolver>,
+  deserialize_export_keys: bool,
 }
 
 impl NpmFetchResolver {
@@ -282,7 +284,17 @@ impl NpmFetchResolver {
       file_fetcher,
       npmrc,
       version_resolver,
+      deserialize_export_keys: false,
     }
+  }
+
+  /// Fill in the `exports` subpath keys of each package version when parsing
+  /// registry metadata. Only the LSP needs them (for npm import-specifier
+  /// completion); every other consumer leaves them off so nothing is retained.
+  /// See [`deno_npm::registry::NpmPackageInfo::fill_export_keys`].
+  pub fn with_export_keys(mut self) -> Self {
+    self.deserialize_export_keys = true;
+    self
   }
 
   pub async fn req_to_nv(
@@ -397,8 +409,17 @@ impl NpmFetchResolver {
       )
       .await
       .map_err(|e| format!("{e:#}"))?;
-    serde_json::from_slice::<NpmPackageInfo>(&file.source)
-      .map_err(|e| format!("failed to parse package metadata: {e}"))
+    let mut info = serde_json::from_slice::<NpmPackageInfo>(&file.source)
+      .map_err(|e| format!("failed to parse package metadata: {e}"))?;
+    if self.deserialize_export_keys {
+      // `exports` subpath keys are skipped by the shared parse; the LSP is the
+      // only consumer, so fill them in here rather than making every command
+      // retain them (see denoland/deno#35664).
+      info
+        .fill_export_keys(&file.source)
+        .map_err(|e| format!("failed to parse package metadata: {e}"))?;
+    }
+    Ok(info)
   }
 
   pub fn applicable_version_infos<'a>(
@@ -470,6 +491,7 @@ impl LifecycleScriptsExecutor for DenoTaskLifeCycleScriptsExecutor {
         &mut bin_entries,
         options.snapshot,
         options.system_packages,
+        options.resolve_pkg_folder,
       )
       .await;
 
@@ -624,6 +646,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
         package,
         options.snapshot,
         options.additional_packages,
+        options.resolve_pkg_folder,
       )
       .await;
 
@@ -709,6 +732,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
     bin_entries: &mut BinEntries<'a, CliSys>,
     snapshot: &'a NpmResolutionSnapshot,
     packages: &'a [NpmResolutionPackage],
+    resolve_pkg_folder: Option<ResolvePkgFolderFn<'_>>,
   ) -> crate::task_runner::TaskCustomCommands {
     let mut custom_commands = crate::task_runner::TaskCustomCommands::new();
     custom_commands
@@ -736,6 +760,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
         custom_commands,
         snapshot,
         packages,
+        resolve_pkg_folder,
       )
       .await
   }
@@ -753,13 +778,24 @@ impl DenoTaskLifeCycleScriptsExecutor {
     mut commands: crate::task_runner::TaskCustomCommands,
     snapshot: &'a NpmResolutionSnapshot,
     packages: P,
+    resolve_pkg_folder: Option<ResolvePkgFolderFn<'_>>,
   ) -> crate::task_runner::TaskCustomCommands {
     for package in packages {
-      let Ok(package_path) = self
-        .npm_resolver
-        .resolve_pkg_folder_from_pkg_id(&package.id)
-      else {
-        continue;
+      // prefer the installer-provided resolver, which knows the layout
+      // being installed (e.g. hoisted); the npm resolver assumes the
+      // isolated `.deno` layout
+      let package_path = match resolve_pkg_folder {
+        Some(resolve_pkg_folder) => match resolve_pkg_folder(&package.id) {
+          Some(path) => path,
+          None => continue,
+        },
+        None => match self
+          .npm_resolver
+          .resolve_pkg_folder_from_pkg_id(&package.id)
+        {
+          Ok(path) => path,
+          Err(_) => continue,
+        },
       };
       let extra = if let Some(extra) = &package.extra {
         Cow::Borrowed(extra)
@@ -805,6 +841,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
     package: &NpmResolutionPackage,
     snapshot: &NpmResolutionSnapshot,
     additional_packages: &[&NpmResolutionPackage],
+    resolve_pkg_folder: Option<ResolvePkgFolderFn<'_>>,
   ) -> crate::task_runner::TaskCustomCommands {
     let sys = CliSys::default();
     let mut bin_entries = BinEntries::new(sys.with_paths_in_errors());
@@ -829,6 +866,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
           }
           Some(dep)
         }),
+        resolve_pkg_folder,
       )
       .await
   }

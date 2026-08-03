@@ -383,15 +383,15 @@ impl TCPWrap {
     if fd < 0 {
       return uv_compat::UV_EBADF;
     }
-    // Refuse to adopt a descriptor Deno already tracks. Stdio (0-2) is
-    // pre-registered and may be re-opened; any other fd already in the
-    // FdTable is rejected, matching `PipeWrap::open`.
-    {
-      let fd_table = state.borrow::<deno_io::FdTable>();
-      if fd_table.contains(fd) && !(0..=2).contains(&fd) {
-        return -libc::EEXIST;
-      }
-    }
+    // See `FdTable::begin_uv_adopt` for the duplicate-fd policy (stdio and
+    // inherited extra stdio fds may be adopted — the latter covers an
+    // inherited TCP socket claimed via net.Socket({ fd }) or
+    // server.listen({ fd }); other tracked fds are rejected).
+    let Some(was_inherited) =
+      state.borrow::<deno_io::FdTable>().begin_uv_adopt(fd)
+    else {
+      return -libc::EEXIST;
+    };
     let tcp = self.tcp_ptr();
     if tcp.is_null() {
       return uv_compat::UV_EBADF;
@@ -428,7 +428,9 @@ impl TCPWrap {
     // Track the adopted fd so it can't be re-adopted by another wrap and is
     // dropped from the FdTable on close.
     if ret == 0 {
-      state.borrow_mut::<deno_io::FdTable>().register_uv_owned(fd);
+      state
+        .borrow_mut::<deno_io::FdTable>()
+        .finish_uv_adopt(fd, was_inherited);
       self.base.set_fd(fd);
     }
     ret
@@ -458,6 +460,11 @@ impl TCPWrap {
       // number.
       self.base.set_fd(-1);
     }
+    // Stop any active read before clearing the JS handle so the read-callback
+    // registry drops its strong `Global<this>` and the wrapper can be GC'd
+    // after close. The stream pointer is still valid here (close_handle runs
+    // afterwards).
+    self.base.read_stop_internal();
     self.base.clear_js_handle();
     self
       .base

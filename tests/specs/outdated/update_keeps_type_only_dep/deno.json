@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "@denotest/type-only-jsr-dep": "jsr:@denotest/type-only-jsr-dep@^1.0.0"
+  }
+}

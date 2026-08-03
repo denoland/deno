@@ -1,4 +1,8 @@
 {
+  // Disabled during the TypeScript un-fork: stock TS holds a single
+  // jsxImportSource per program, so per-workspace-member jsx config is not
+  // expressible. Re-enabled by the jsx per-member follow-up.
+  "ignore": true,
   "tempDir": true,
   "steps": [
     {

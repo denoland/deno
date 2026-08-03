@@ -253,6 +253,10 @@ pub enum WorkspaceDiagnosticKind {
   )]
   MinimumDependencyAgeExcludeMissingPrefix { entry: String },
   #[error(
+    "\"minimumDependencyAge.exclude\" entry \"{entry}\" may only use a single '*' wildcard at the end, preceded by a package name prefix (e.g. \"npm:@scope/*\")."
+  )]
+  MinimumDependencyAgeExcludeInvalidWildcard { entry: String },
+  #[error(
     "Invalid version requirement '{version_req}' for catalog entry '{name}'."
   )]
   InvalidCatalogVersionReq { name: String, version_req: String },
@@ -1374,16 +1378,28 @@ impl Workspace {
         && let Some(serde_json::Value::Array(exclude)) = obj.get("exclude")
       {
         for item in exclude {
-          if let serde_json::Value::String(value) = item
-            && !value.starts_with("jsr:")
-            && !value.starts_with("npm:")
-          {
-            diagnostics.push(WorkspaceDiagnostic {
-              config_url: config.specifier.clone(),
-              kind: WorkspaceDiagnosticKind::MinimumDependencyAgeExcludeMissingPrefix {
-                entry: value.to_string()
-              },
-            });
+          if let serde_json::Value::String(value) = item {
+            if !value.starts_with("jsr:") && !value.starts_with("npm:") {
+              diagnostics.push(WorkspaceDiagnostic {
+                config_url: config.specifier.clone(),
+                kind: WorkspaceDiagnosticKind::MinimumDependencyAgeExcludeMissingPrefix {
+                  entry: value.to_string()
+                },
+              });
+            } else {
+              // both "jsr:" and "npm:" are 4 bytes long
+              let package_pattern = &value[4..];
+              if let Some(index) = package_pattern.find('*')
+                && (index != package_pattern.len() - 1 || index == 0)
+              {
+                diagnostics.push(WorkspaceDiagnostic {
+                  config_url: config.specifier.clone(),
+                  kind: WorkspaceDiagnosticKind::MinimumDependencyAgeExcludeInvalidWildcard {
+                    entry: value.to_string()
+                  },
+                });
+              }
+            }
           }
         }
       }
@@ -4911,6 +4927,43 @@ pub mod test {
       vec![
         WorkspaceDiagnosticKind::MinimumDependencyAgeExcludeMissingPrefix {
           entry: "@scope/name".to_string(),
+        },
+      ],
+    );
+  }
+
+  #[test]
+  fn test_workspaces_invalid_wildcard_excludes() {
+    run_single_json_diagnostics_test(
+      json!({
+        "minimumDependencyAge": {
+          "age": 120,
+          "exclude": [
+            "npm:@scope/*",
+            "jsr:@scope/*",
+            "npm:@scope/*/name",
+            "jsr:*@scope/name",
+            "npm:@scope/**",
+            "npm:*",
+            "jsr:*"
+          ]
+        },
+      }),
+      vec![
+        WorkspaceDiagnosticKind::MinimumDependencyAgeExcludeInvalidWildcard {
+          entry: "npm:@scope/*/name".to_string(),
+        },
+        WorkspaceDiagnosticKind::MinimumDependencyAgeExcludeInvalidWildcard {
+          entry: "jsr:*@scope/name".to_string(),
+        },
+        WorkspaceDiagnosticKind::MinimumDependencyAgeExcludeInvalidWildcard {
+          entry: "npm:@scope/**".to_string(),
+        },
+        WorkspaceDiagnosticKind::MinimumDependencyAgeExcludeInvalidWildcard {
+          entry: "npm:*".to_string(),
+        },
+        WorkspaceDiagnosticKind::MinimumDependencyAgeExcludeInvalidWildcard {
+          entry: "jsr:*".to_string(),
         },
       ],
     );

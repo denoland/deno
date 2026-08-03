@@ -84,6 +84,12 @@ pub use pipe::PipeWrite;
 pub use pipe::RawPipeHandle;
 pub use pipe::pipe;
 
+/// Env var used by the Node `child_process` spawn path to tell a Deno child
+/// which extra numeric stdio fd slots it inherited. Both `deno_process` (which
+/// sets it) and `deno_io` (which consumes it at startup) reference this single
+/// constant so the name has one source of truth.
+pub const DENO_EXTRA_STDIO_FDS_ENV_VAR: &str = "DENO_EXTRA_STDIO_FDS";
+
 /// Abstraction over `AsRawFd` (unix) and `AsRawHandle` (windows)
 pub trait AsRawIoHandle {
   fn as_raw_io_handle(&self) -> RawIoHandle;
@@ -200,6 +206,58 @@ fn stdio_fd(fd: i32) -> StdFile {
   unsafe { StdFile::from_raw_fd(fd) }
 }
 
+#[cfg(unix)]
+fn inherited_extra_stdio_fd(fd: i32) -> Option<StdFile> {
+  if fd < 3 {
+    return None;
+  }
+  // The dup exists purely for in-process node:fs use, so mark it
+  // close-on-exec: unlike the original fd (which must stay inheritable, as
+  // in Node), the dup must not leak into spawned grandchildren, where it
+  // would hold pipe ends open and delay EOF for the parent.
+  // SAFETY: fcntl validates the descriptor and gives FdTable its own handle.
+  let dup_fd = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0) };
+  if dup_fd == -1 {
+    log::debug!(
+      "duplicating inherited extra stdio fd {} failed: {}",
+      fd,
+      std::io::Error::last_os_error()
+    );
+    return None;
+  }
+  // SAFETY: dup_fd is a fresh descriptor owned by the returned file.
+  Some(unsafe { StdFile::from_raw_fd(dup_fd) })
+}
+
+#[cfg(unix)]
+fn register_inherited_extra_stdio_fds(fd_table: &mut FdTable) {
+  let Ok(fds) = std::env::var(DENO_EXTRA_STDIO_FDS_ENV_VAR) else {
+    return;
+  };
+  // Consume the marker so it does not leak into the child's own environment
+  // (`Deno.env.toObject()`) and get inherited by grandchildren spawned through
+  // paths that bypass `create_command` (FFI exec, embedders, native modules),
+  // where the stale fd numbers would no longer be valid.
+  // SAFETY: this runs synchronously on the main thread during extension init,
+  // before any user JS (or worker/FFI/native code) that could read or write the
+  // environment runs, so there is no concurrent access to race with. This is
+  // the same startup env-mutation invariant Deno relies on elsewhere.
+  unsafe {
+    std::env::remove_var(DENO_EXTRA_STDIO_FDS_ENV_VAR);
+  }
+  for fd in fds.split(',').filter_map(|fd| fd.parse::<i32>().ok()) {
+    if fd_table.contains(fd) {
+      continue;
+    }
+    if let Some(file) = inherited_extra_stdio_fd(fd) {
+      fd_table.register_inherited_extra_stdio(
+        fd,
+        Rc::new(StdFileResourceInner::file(file, None)) as Rc<dyn fs::File>,
+      );
+    }
+  }
+}
+
 #[cfg(windows)]
 fn stdio_fd(fd: i32) -> StdFile {
   let std_handle = match fd {
@@ -300,6 +358,9 @@ deno_core::extension!(deno_io,
         stderr: child_stderr,
       });
     }
+
+    #[cfg(unix)]
+    register_inherited_extra_stdio_fds(&mut fd_table);
 
     state.put(fd_table);
   },
@@ -1465,7 +1526,7 @@ pub fn stat_extra(file: &std::fs::File, fsstat: &mut FsStat) -> FsResult<()> {
     if let Ok(file_info) = query_file_information(file_handle) {
       fsstat.ctime = Some(windows_time_to_unix_time_msec(
         &file_info.BasicInformation.ChangeTime,
-      ) as u64);
+      ));
 
       if file_info.BasicInformation.FileAttributes
         & windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT

@@ -1,6 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::io::Write;
 use std::time::Duration;
 
 use deno_core::error::AnyError;
@@ -85,27 +84,12 @@ pub fn human_elapsed_with_ms_limit(elapsed: u128, ms_limit: u128) -> String {
   format!("{minutes}m{seconds_remainder}s")
 }
 
-pub fn write_to_stdout_ignore_sigpipe(
-  bytes: &[u8],
-) -> Result<(), std::io::Error> {
-  use std::io::ErrorKind;
-
-  match std::io::stdout().write_all(bytes) {
-    Ok(()) => Ok(()),
-    Err(e) => match e.kind() {
-      ErrorKind::BrokenPipe => Ok(()),
-      _ => Err(e),
-    },
-  }
-}
-
 pub fn write_json_to_stdout<T>(value: &T) -> Result<(), AnyError>
 where
   T: ?Sized + serde::ser::Serialize,
 {
-  let mut writer = std::io::BufWriter::new(std::io::stdout());
-  serde_json::to_writer_pretty(&mut writer, value)?;
-  writeln!(&mut writer)?;
+  let json = serde_json::to_string_pretty(value)?;
+  deno_print::drop_println!("{}", json);
   Ok(())
 }
 

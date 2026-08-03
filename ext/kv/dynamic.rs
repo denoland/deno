@@ -72,6 +72,39 @@ impl DatabaseHandler for MultiBackendDbHandler {
       *path = format!("{}{}", prefix, path);
     }
 
+    // Deno Deploy: when an attached (distributed) KV database is required,
+    // do not silently fall back to a local/in-memory store. `error` rejects
+    // the open with a clear message; `warn` logs once and allows the fallback.
+    // A distributed database is one served over http(s) (see `remote_or_sqlite`).
+    if let Ok(mode) = std::env::var("DENO_KV_REQUIRES_DISTRIBUTED_DATABASE") {
+      let is_distributed = path
+        .as_deref()
+        .is_some_and(|p| p.starts_with("https://") || p.starts_with("http://"));
+      if !is_distributed {
+        match mode.as_str() {
+          "error" => {
+            return Err(JsErrorBox::type_error(
+              "Deno.openKv() failed: no KV database is attached to this app. \
+               Attach a KV database to your app in the Deno Deploy dashboard, \
+               then redeploy.",
+            ));
+          }
+          "warn" => {
+            static WARNED: std::sync::Once = std::sync::Once::new();
+            WARNED.call_once(|| {
+              log::warn!(
+                "Deno.openKv(): no KV database is attached to this app; using \
+                 a temporary in-memory store. Data will not persist and is not \
+                 shared between instances. Attach a KV database in the Deno \
+                 Deploy dashboard."
+              );
+            });
+          }
+          _ => {}
+        }
+      }
+    }
+
     for (prefixes, handler) in &self.backends {
       for &prefix in *prefixes {
         if prefix.is_empty() {

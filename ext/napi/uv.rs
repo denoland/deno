@@ -140,6 +140,7 @@ struct uv_async_t {
   // private
   async_cb: uv_async_cb,
   work: napi_async_work,
+  state: *const UvAsyncState,
   refed: bool,
   _padding: [MaybeUninit<usize>; const {
     (UV_ASYNC_SIZE
@@ -148,6 +149,7 @@ struct uv_async_t {
       - size_of::<uv_handle_type>()
       - size_of::<uv_async_cb>()
       - size_of::<napi_async_work>()
+      - size_of::<*const UvAsyncState>()
       - size_of::<bool>()
       - size_of::<usize>())
       / size_of::<usize>()
@@ -166,6 +168,7 @@ struct uv_async_t {
   // private
   async_cb: uv_async_cb,
   work: napi_async_work,
+  state: *const UvAsyncState,
   refed: bool,
   _async_padding: [MaybeUninit<usize>; 2],
   _padding: [MaybeUninit<usize>; const {
@@ -173,13 +176,36 @@ struct uv_async_t {
       - 112
       - size_of::<uv_async_cb>()
       - size_of::<napi_async_work>()
+      - size_of::<*const UvAsyncState>()
       - size_of::<bool>())
       / size_of::<usize>()
   }],
 }
 
+struct UvAsyncState {
+  closing: AtomicBool,
+}
+
 type uv_loop_t = Env;
 type uv_async_cb = extern "C" fn(handle: *mut uv_async_t);
+
+unsafe fn clone_uv_async_state(
+  handle: *const uv_async_t,
+) -> Option<Arc<UvAsyncState>> {
+  unsafe {
+    if handle.is_null() {
+      return None;
+    }
+    let state = (*handle).state;
+    if state.is_null() {
+      return None;
+    }
+
+    Arc::increment_strong_count(state);
+    Some(Arc::from_raw(state))
+  }
+}
+
 #[unsafe(export_name = "uv_async_init")]
 unsafe extern "C" fn _napi_uv_async_init(
   r#loop: *mut uv_loop_t,
@@ -192,6 +218,11 @@ unsafe extern "C" fn _napi_uv_async_init(
     addr_of_mut!((*r#async).r#type).write(uv_handle_type::UV_ASYNC);
     addr_of_mut!((*r#async).async_cb).write(async_cb);
     addr_of_mut!((*r#async).refed).write(true);
+    addr_of_mut!((*r#async).state).write(Arc::into_raw(Arc::new(
+      UvAsyncState {
+        closing: AtomicBool::new(false),
+      },
+    )));
 
     let mut resource_name: MaybeUninit<napi_value> = MaybeUninit::uninit();
     assert_ok(napi_create_string_utf8(
@@ -227,9 +258,19 @@ unsafe extern "C" fn uv_async_send(handle: *mut uv_async_t) -> c_int {
   // runs `execute` on a worker thread), uv_async callbacks need V8 access so
   // they must run on the main thread.
   unsafe {
+    let Some(state) = clone_uv_async_state(handle) else {
+      return 0;
+    };
+    if state.closing.load(Ordering::Acquire) {
+      return 0;
+    }
+
     let env = &mut *(*handle).r#loop;
     let handle = SendPtr(handle as *const uv_async_t);
     env.async_work_sender.spawn(move |_| {
+      if state.closing.load(Ordering::Acquire) {
+        return;
+      }
       let handle = handle.take() as *mut uv_async_t;
       ((*handle).async_cb)(handle);
     });
@@ -254,13 +295,38 @@ unsafe extern "C" fn _napi_uv_close(
     match (*handle).r#type {
       uv_handle_type::UV_ASYNC => {
         let handle: *mut uv_async_t = handle.cast();
+        let Some(state) = clone_uv_async_state(handle) else {
+          return;
+        };
+        if state.closing.swap(true, Ordering::AcqRel) {
+          return;
+        }
+
         napi_delete_async_work((*handle).r#loop, (*handle).work);
-        // Unref the event loop to match the ref in uv_async_init.
+        // Unref the event loop to match the ref in uv_async_init, but keep a
+        // temporary ref for the deferred close callback below.
+        let env = &mut *(*handle).r#loop;
+        let tracker = env.external_ops_tracker.clone();
+        tracker.ref_op();
         if (*handle).refed {
-          let env = &mut *(*handle).r#loop;
-          env.external_ops_tracker.unref_op();
+          tracker.unref_op();
           (*handle).refed = false;
         }
+        let state_ptr = SendPtr((*handle).state);
+        let handle =
+          SendPtr(handle.cast::<uv_handle_t>() as *const uv_handle_t);
+        env.async_work_sender.spawn(move |_| {
+          let handle = handle.take() as *mut uv_handle_t;
+          if let Some(close) = close {
+            close(handle);
+          }
+          let state_ptr = state_ptr.take();
+          if !state_ptr.is_null() {
+            drop(Arc::from_raw(state_ptr));
+          }
+          tracker.unref_op();
+        });
+        return;
       }
       uv_handle_type::UV_TIMER => {
         let handle: *mut uv_timer_t = handle.cast();
@@ -982,8 +1048,21 @@ unsafe extern "C" fn uv_default_loop() -> *mut uv_loop_t {
 }
 
 #[unsafe(no_mangle)]
-unsafe extern "C" fn uv_is_closing(_handle: *const uv_handle_t) -> c_int {
-  0
+unsafe extern "C" fn uv_is_closing(handle: *const uv_handle_t) -> c_int {
+  if handle.is_null() {
+    return 0;
+  }
+  unsafe {
+    match (*handle).r#type {
+      uv_handle_type::UV_ASYNC => {
+        let Some(state) = clone_uv_async_state(handle.cast()) else {
+          return 0;
+        };
+        state.closing.load(Ordering::Acquire) as c_int
+      }
+      _ => 0,
+    }
+  }
 }
 
 #[unsafe(no_mangle)]
@@ -1152,6 +1231,61 @@ unsafe extern "C" fn uv_handle_get_type(handle: *const uv_handle_t) -> c_int {
   unsafe { (*handle).r#type as c_int }
 }
 
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_handle_size(handle_type: c_int) -> usize {
+  match handle_type {
+    x if x == uv_handle_type::UV_ASYNC as c_int => {
+      size_of::<libuv_sys_lite::uv_async_t>()
+    }
+    x if x == uv_handle_type::UV_CHECK as c_int => {
+      size_of::<libuv_sys_lite::uv_check_t>()
+    }
+    x if x == uv_handle_type::UV_FS_EVENT as c_int => {
+      size_of::<libuv_sys_lite::uv_fs_event_t>()
+    }
+    x if x == uv_handle_type::UV_FS_POLL as c_int => {
+      size_of::<libuv_sys_lite::uv_fs_poll_t>()
+    }
+    x if x == uv_handle_type::UV_HANDLE as c_int => {
+      size_of::<libuv_sys_lite::uv_handle_t>()
+    }
+    x if x == uv_handle_type::UV_IDLE as c_int => {
+      size_of::<libuv_sys_lite::uv_idle_t>()
+    }
+    x if x == uv_handle_type::UV_NAMED_PIPE as c_int => {
+      size_of::<libuv_sys_lite::uv_pipe_t>()
+    }
+    x if x == uv_handle_type::UV_POLL as c_int => {
+      size_of::<libuv_sys_lite::uv_poll_t>()
+    }
+    x if x == uv_handle_type::UV_PREPARE as c_int => {
+      size_of::<libuv_sys_lite::uv_prepare_t>()
+    }
+    x if x == uv_handle_type::UV_PROCESS as c_int => {
+      size_of::<libuv_sys_lite::uv_process_t>()
+    }
+    x if x == uv_handle_type::UV_STREAM as c_int => {
+      size_of::<libuv_sys_lite::uv_stream_t>()
+    }
+    x if x == uv_handle_type::UV_TCP as c_int => {
+      size_of::<libuv_sys_lite::uv_tcp_t>()
+    }
+    x if x == uv_handle_type::UV_TIMER as c_int => {
+      size_of::<libuv_sys_lite::uv_timer_t>()
+    }
+    x if x == uv_handle_type::UV_TTY as c_int => {
+      size_of::<libuv_sys_lite::uv_tty_t>()
+    }
+    x if x == uv_handle_type::UV_UDP as c_int => {
+      size_of::<libuv_sys_lite::uv_udp_t>()
+    }
+    x if x == uv_handle_type::UV_SIGNAL as c_int => {
+      size_of::<libuv_sys_lite::uv_signal_t>()
+    }
+    _ => usize::MAX,
+  }
+}
+
 // uv_cpu_info: report no available CPU info. Callers (e.g. Sentry's
 // profiler) treat this as a non-fatal degradation.
 #[unsafe(no_mangle)]
@@ -1210,6 +1344,14 @@ unsafe extern "C" fn uv_queue_work(
     });
   }
   0
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_strerror(err: c_int) -> *const std::ffi::c_char {
+  if let Some(message) = uv_compat::uv_error_message(err) {
+    return message.as_ptr();
+  }
+  c"Unknown system error".as_ptr()
 }
 
 // ---------- uv thread / semaphore polyfills ----------
@@ -1398,9 +1540,162 @@ unsafe extern "C" fn uv_thread_equal(t1: *const u64, t2: *const u64) -> c_int {
   (unsafe { *t1 == *t2 }) as c_int
 }
 
+// ---------- uv condition variable polyfills ----------
+//
+// libuv's condition variables pair with `uv_mutex_t` for the usual "wait until
+// a predicate holds" pattern, and native addons that link against libuv
+// directly (e.g. `@sap/hana-client`) use them for their own background work.
+// Like the semaphore/thread polyfills above, `uv_cond_t` is an opaque,
+// platform-specific struct the addon allocates itself (a `pthread_cond_t` on
+// unix, a pointer-sized `CONDITION_VARIABLE` on Windows), so we don't depend on
+// its layout: we stash a small integer token in it and keep the real state in a
+// process-global registry. The smallest `uv_cond_t` is Windows' pointer-sized
+// `CONDITION_VARIABLE`, so a `u32` token fits everywhere (matching `uv_sem_t`).
+//
+// The condvar is backed by its own internal mutex rather than the addon's
+// `uv_mutex_t`. `uv_cond_wait` takes the internal mutex, releases the addon
+// mutex, then blocks on the internal mutex; a concurrent `uv_cond_signal` /
+// `uv_cond_broadcast` must take that same internal mutex to notify and can't
+// acquire it until the waiter is actually parked, so no wakeup is lost.
+
+// `uv_cond_timedwait` returns `UV_ETIMEDOUT` on timeout. That value is
+// platform specific: libuv's `uv/errno.h` defines it as `-ETIMEDOUT` on unix
+// (`-110` on Linux, `-60` on macOS) and only falls back to the placeholder
+// `-4039` on Windows (and other platforms without `ETIMEDOUT`). Addons compare
+// the return against their own `UV_ETIMEDOUT`, so we must match per platform
+// rather than always returning `-4039`.
+const UV_ETIMEDOUT: c_int = {
+  #[cfg(windows)]
+  {
+    -4039
+  }
+  #[cfg(not(windows))]
+  {
+    -libc::ETIMEDOUT
+  }
+};
+
+struct CondInner {
+  mutex: Mutex<()>,
+  condvar: deno_core::parking_lot::Condvar,
+}
+
+static CONDS: OnceLock<
+  Mutex<std::collections::HashMap<u32, std::sync::Arc<CondInner>>>,
+> = OnceLock::new();
+static COND_NEXT: std::sync::atomic::AtomicU32 =
+  std::sync::atomic::AtomicU32::new(1);
+
+fn conds()
+-> &'static Mutex<std::collections::HashMap<u32, std::sync::Arc<CondInner>>> {
+  CONDS.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
+}
+
+fn cond_lookup(cond: *const u32) -> Option<std::sync::Arc<CondInner>> {
+  if cond.is_null() {
+    return None;
+  }
+  let id = unsafe { *cond };
+  conds().lock().get(&id).cloned()
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_cond_init(cond: *mut u32) -> c_int {
+  if cond.is_null() {
+    return -1;
+  }
+  let id = COND_NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+  let inner = std::sync::Arc::new(CondInner {
+    mutex: Mutex::new(()),
+    condvar: deno_core::parking_lot::Condvar::new(),
+  });
+  conds().lock().insert(id, inner);
+  unsafe {
+    *cond = id;
+  }
+  0
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_cond_destroy(cond: *mut u32) {
+  if cond.is_null() {
+    return;
+  }
+  let id = unsafe { *cond };
+  conds().lock().remove(&id);
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_cond_signal(cond: *mut u32) {
+  if let Some(inner) = cond_lookup(cond) {
+    let _guard = inner.mutex.lock();
+    inner.condvar.notify_one();
+  }
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_cond_broadcast(cond: *mut u32) {
+  if let Some(inner) = cond_lookup(cond) {
+    let _guard = inner.mutex.lock();
+    inner.condvar.notify_all();
+  }
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_cond_wait(cond: *mut u32, mutex: *mut uv_mutex_t) {
+  let Some(inner) = cond_lookup(cond) else {
+    return;
+  };
+  let mut guard = inner.mutex.lock();
+  // Release the addon's mutex, mirroring uv_cond_wait's atomic "unlock and
+  // block". We already hold the internal mutex, so a signaler can't slip a
+  // notify past us before we park.
+  unsafe {
+    (*mutex).mutex.force_unlock();
+  }
+  inner.condvar.wait(&mut guard);
+  drop(guard);
+  // Re-acquire the addon mutex before returning; the caller still believes it
+  // holds it. Forget the guard like `uv_mutex_lock` so it stays locked until
+  // the addon calls `uv_mutex_unlock`.
+  unsafe {
+    std::mem::forget((*mutex).mutex.lock());
+  }
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn uv_cond_timedwait(
+  cond: *mut u32,
+  mutex: *mut uv_mutex_t,
+  timeout: u64, // nanoseconds
+) -> c_int {
+  let Some(inner) = cond_lookup(cond) else {
+    return -1;
+  };
+  let mut guard = inner.mutex.lock();
+  unsafe {
+    (*mutex).mutex.force_unlock();
+  }
+  let timed_out = inner
+    .condvar
+    .wait_for(&mut guard, std::time::Duration::from_nanos(timeout))
+    .timed_out();
+  drop(guard);
+  unsafe {
+    std::mem::forget((*mutex).mutex.lock());
+  }
+  if timed_out { UV_ETIMEDOUT } else { 0 }
+}
+
 unsafe extern "C" fn async_exec_wrap(_env: napi_env, data: *mut c_void) {
   let data: *mut uv_async_t = data.cast();
   unsafe {
+    let Some(state) = clone_uv_async_state(data) else {
+      return;
+    };
+    if state.closing.load(Ordering::Acquire) {
+      return;
+    }
     ((*data).async_cb)(data);
   }
 }
@@ -1451,6 +1746,11 @@ mod tests {
       UV_WORK_SIZE
     );
     assert_eq!(std::mem::size_of::<uv_work_t>(), UV_WORK_SIZE);
+    // We store a u32 token in the addon-allocated `uv_cond_t`, so it must fit.
+    assert!(
+      std::mem::size_of::<u32>()
+        <= std::mem::size_of::<libuv_sys_lite::uv_cond_t>()
+    );
   }
 
   // Drives the uv_sem_* / uv_thread_* polyfills the way a native addon
