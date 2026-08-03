@@ -477,7 +477,7 @@ export class Glob {
         this.#isExcluded = (value) =>
           ArrayPrototypeSome(matchers, (matcher) => {
             // No primordial exists for Minimatch.prototype.match.
-            // deno-lint-ignore prefer-primordials
+            // deno-lint-ignore deno-internal/prefer-primordials
             return matcher.match(value);
           });
         this.#results.setup(this.#root, this.#isExcluded);
@@ -863,7 +863,7 @@ export class Glob {
       for (let i = 0; i < item.patterns.length; i++) {
         const iter = this.#iterateSubpatterns(item.path, item.patterns[i]);
         while (true) {
-          // deno-lint-ignore prefer-primordials
+          // deno-lint-ignore deno-internal/prefer-primordials
           const { done, value } = await iter.next();
           if (done) break;
           yield value;
@@ -1191,7 +1191,7 @@ export function matchGlobPattern(
 ): boolean {
   validateString(path, "path");
   validateString(pattern, "pattern");
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   return cachedMatcher(pattern, windows).match(path);
 }
 

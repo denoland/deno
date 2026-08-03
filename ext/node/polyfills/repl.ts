@@ -1870,7 +1870,7 @@ export class REPLServer extends (Interface as any) {
     try {
       // `path` is the node:path module, not an Array; `path.join` is the
       // path joiner.
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       const replPath = path.join(process.cwd(), "repl");
       const replRequire = Module.createRequire(replPath);
       ObjectDefineProperty(context, "require", {

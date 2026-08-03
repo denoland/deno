@@ -461,8 +461,10 @@ impl FileSystem for RealFs {
     options: OpenOptions,
     data: Box<[u8]>,
   ) -> FsResult<()> {
-    let mut file = open_with_checked_path(options, &path.as_checked_path())?;
+    // Open on the blocking pool as well: open() can block (e.g. FIFOs,
+    // network filesystems) and must not stall the runtime thread.
     spawn_blocking(move || {
+      let mut file = open_with_checked_path(options, &path.as_checked_path())?;
       #[cfg(unix)]
       if let Some(mode) = options.mode {
         use std::os::unix::fs::PermissionsExt;
@@ -489,8 +491,10 @@ impl FileSystem for RealFs {
     path: CheckedPathBuf,
     options: OpenOptions,
   ) -> FsResult<Cow<'static, [u8]>> {
-    let mut file = open_with_checked_path(options, &path.as_checked_path())?;
+    // Open on the blocking pool as well: open() can block (e.g. FIFOs,
+    // network filesystems) and must not stall the runtime thread.
     spawn_blocking(move || {
+      let mut file = open_with_checked_path(options, &path.as_checked_path())?;
       let mut buf = Vec::new();
       file.read_to_end(&mut buf)?;
       Ok::<_, FsError>(Cow::Owned(buf))

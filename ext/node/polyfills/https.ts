@@ -6,6 +6,7 @@
 (function () {
 const { core, primordials } = __bootstrap;
 const {
+  ArrayIsArray,
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,
   ArrayPrototypeShift,
@@ -235,6 +236,22 @@ function Agent(this: any, options: any) {
 ObjectSetPrototypeOf(Agent.prototype, HttpAgent.prototype);
 ObjectSetPrototypeOf(Agent, HttpAgent);
 
+// `pfx` may be an array of `{ buf, passphrase }`, which stringifies to
+// "[object Object]" and would let sockets holding different client
+// certificates share a pool entry.
+function getPfxAgentKey(pfx: any, passphrase: any) {
+  if (!ArrayIsArray(pfx)) return pfx;
+
+  let key = "";
+  for (let i = 0; i < pfx.length; i++) {
+    const value = pfx[i];
+    const raw = value?.buf || value;
+    const pass = value?.passphrase || passphrase;
+    key += `:${raw}:${pass}`;
+  }
+  return key;
+}
+
 Agent.prototype.getName = function getName(
   this: any,
   options: any = { __proto__: null },
@@ -261,7 +278,7 @@ Agent.prototype.getName = function getName(
   if (options.key) name += options.key;
 
   name += ":";
-  if (options.pfx) name += options.pfx;
+  if (options.pfx) name += getPfxAgentKey(options.pfx, options.passphrase);
 
   name += ":";
   if (options.rejectUnauthorized !== undefined) {
@@ -532,9 +549,9 @@ function openCONNECTTunnel(agent: any, options: any, cb: any) {
     // Buffer raw bytes until we've parsed the response status line + headers.
     let buf = Buffer.alloc(0);
     function onData(chunk: any) {
-      // deno-lint-ignore prefer-primordials -- Buffer.concat is a Buffer static
+      // deno-lint-ignore deno-internal/prefer-primordials -- Buffer.concat is a Buffer static
       buf = Buffer.concat([buf, chunk]);
-      // deno-lint-ignore prefer-primordials -- Buffer.prototype.indexOf
+      // deno-lint-ignore deno-internal/prefer-primordials -- Buffer.prototype.indexOf
       const idx = buf.indexOf("\r\n\r\n");
       if (idx === -1) {
         // Need more data; if too much is buffered without headers, bail.
@@ -548,9 +565,9 @@ function openCONNECTTunnel(agent: any, options: any, cb: any) {
       waitingForTunnelResponse = false;
       tunnelSocket.removeListener("end", failUnexpectedEnd);
       tunnelSocket.removeListener("close", failUnexpectedEnd);
-      // deno-lint-ignore prefer-primordials -- Buffer.prototype.slice/toString
+      // deno-lint-ignore deno-internal/prefer-primordials -- Buffer.prototype.slice/toString
       const headerStr = buf.slice(0, idx).toString("ascii");
-      // deno-lint-ignore prefer-primordials -- Buffer.prototype.slice
+      // deno-lint-ignore deno-internal/prefer-primordials -- Buffer.prototype.slice
       const remainder = buf.slice(idx + 4);
       const statusLine = StringPrototypeSplit(headerStr, "\r\n", 1)[0];
       const m = RegExpPrototypeExec(STATUS_LINE_RE, statusLine);
@@ -619,6 +636,8 @@ function openCONNECTTunnel(agent: any, options: any, cb: any) {
         // the TLS layer. Normally CONNECT response has no body, so this
         // should be empty.
         if (remainder.length > 0) {
+          // Stream.unshift (push data back into the readable), not Array#unshift.
+          // deno-lint-ignore deno-internal/prefer-primordials
           tlsSocket.unshift?.(remainder);
         }
         // Detach our top-level proxy error handler from the TCP socket so
