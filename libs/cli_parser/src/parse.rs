@@ -317,7 +317,12 @@ fn parse_args(
             CliErrorKind::InvalidValue,
             format!(
               "the argument '{}' cannot be used with '{}'",
-              arg_def.name, other
+              display_arg(arg_def),
+              cmd_def
+                .all_args()
+                .find(|a| a.name == *other)
+                .map(display_arg)
+                .unwrap_or_else(|| (*other).to_string())
             ),
           ));
         }
@@ -648,5 +653,22 @@ fn increment_arg_count(result: &mut ParseResult, arg_def: &ArgDef) {
       is_present: true,
       count: 1,
     });
+  }
+}
+
+/// Render an arg the way clap did in conflict messages: `--long <value>` for
+/// value-taking flags, `--long` for booleans, `<NAME>` for positionals.
+fn display_arg(arg: &ArgDef) -> String {
+  if arg.positional {
+    return format!("<{}>", arg.value_name.unwrap_or(arg.name));
+  }
+  let flag = match (arg.long, arg.short) {
+    (Some(long), _) => format!("--{long}"),
+    (None, Some(short)) => format!("-{short}"),
+    (None, None) => arg.name.to_string(),
+  };
+  match arg.num_args {
+    NumArgs::Exact(0) => flag,
+    _ => format!("{flag} <{}>", arg.value_name.unwrap_or(arg.name)),
   }
 }

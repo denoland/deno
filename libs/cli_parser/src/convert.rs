@@ -1837,6 +1837,7 @@ fn check_parse(result: &ParseResult, flags: &mut Flags) {
 
 fn info_parse(result: &ParseResult, flags: &mut Flags) {
   reload_arg_parse(result, flags);
+  min_dep_age_arg_parse(result, flags);
   config_args_parse(result, flags);
   import_map_arg_parse(result, flags);
   location_arg_parse(result, flags);
@@ -2526,6 +2527,7 @@ fn publish_parse(result: &ParseResult, flags: &mut Flags) {
 
 fn add_parse(result: &ParseResult, flags: &mut Flags) {
   allow_and_deny_import_parse(result, flags);
+  min_dep_age_arg_parse(result, flags);
   lock_args_parse(result, flags);
   env_file_arg_parse(result, flags);
 
@@ -2721,6 +2723,7 @@ fn why_parse(result: &ParseResult, flags: &mut Flags) {
 
 fn remove_parse(result: &ParseResult, flags: &mut Flags) {
   lock_args_parse(result, flags);
+  min_dep_age_arg_parse(result, flags);
   let packages: Vec<String> = result
     .get_many("packages")
     .map(|v| v.iter().map(|s| s.to_string()).collect())

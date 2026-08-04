@@ -5,6 +5,7 @@
 )]
 use pretty_assertions::assert_eq;
 
+use crate::convert::flags_from_vec;
 use crate::*;
 
 /// Helper: create Vec<String> from string literals.
@@ -1585,5 +1586,51 @@ fn graph_only_commands_take_only_import_permissions() {
         "`deno {cmd}` should not accept --{denied}"
       );
     }
+  }
+}
+
+/// Flags that landed on `main` after this branch forked and were only wired
+/// into the clap tables. The `--long` diff that caught the missing *flags*
+/// can't see missing value choices, conflicts, or conversion wiring, so pin
+/// them here.
+#[test]
+fn post_fork_flag_wiring() {
+  // #36149: `deno fmt --ext` gained xml/svg.
+  let fmt = defs::DENO_ROOT.find_subcommand("fmt").unwrap();
+  let ext = fmt.all_args().find(|a| a.name == "ext").unwrap();
+  let ValueParser::Choices(choices) = ext.value_parser.as_ref().unwrap() else {
+    panic!("fmt --ext should validate against a fixed list");
+  };
+  assert!(choices.contains(&"xml"));
+  assert!(choices.contains(&"svg"));
+
+  // #35748: `deno task --members` conflicts with --recursive and --filter.
+  let task = defs::DENO_ROOT.find_subcommand("task").unwrap();
+  let members = task.all_args().find(|a| a.name == "members").unwrap();
+  assert!(members.conflicts.contains(&"recursive"));
+  assert!(members.conflicts.contains(&"filter"));
+  let err =
+    flags_from_vec(svec!["deno", "task", "--members", "--recursive", "dev"])
+      .unwrap_err();
+  assert!(
+    err
+      .to_string()
+      .contains("the argument '--members' cannot be used with '--recursive'"),
+    "got: {err}"
+  );
+
+  // #36099: --minimum-dependency-age reaches add/remove/info, not just the
+  // runtime subcommands.
+  for args in [
+    svec!["deno", "add", "--min-dep-age=0", "jsr:@std/path"],
+    svec!["deno", "remove", "--min-dep-age=0", "@std/path"],
+    svec!["deno", "info", "--min-dep-age=0", "main.ts"],
+  ] {
+    let cmd = args[1].clone();
+    let flags = flags_from_vec(args).unwrap();
+    assert!(
+      flags.minimum_dependency_age.is_some(),
+      "`deno {cmd}` dropped --min-dep-age"
+    );
   }
 }

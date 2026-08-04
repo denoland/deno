@@ -907,8 +907,8 @@ pub static FMT_SUBCOMMAND: CommandDef = CommandDef {
       .requires(&["files"])
       .value_parser(ValueParser::Choices(&[
         "ts", "tsx", "js", "jsx", "mts", "mjs", "cts", "cjs", "md", "json",
-        "jsonc", "css", "scss", "less", "html", "svelte", "vue", "astro",
-        "yml", "yaml", "ipynb", "sql", "vto", "njk",
+        "jsonc", "css", "scss", "less", "html", "xml", "svg", "svelte", "vue",
+        "astro", "yml", "yaml", "ipynb", "sql", "vto", "njk",
       ]))
 .help("Set content type of the supplied file"),
     ArgDef::new("ignore")
@@ -1603,7 +1603,10 @@ pub static TASK_SUBCOMMAND: CommandDef = CommandDef {
       .long("recursive")
       .set_true()
 .help("Run the task in all projects in the workspace"),
-    ArgDef::new("members").long("members").set_true()
+    ArgDef::new("members")
+      .long("members")
+      .set_true()
+      .conflicts_with(&["recursive", "filter"])
 .help("Run the task in all workspace members, but not in the workspace root"),
     ArgDef::new("filter")
       .short('f')

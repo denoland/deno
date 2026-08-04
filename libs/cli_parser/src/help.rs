@@ -114,7 +114,9 @@ pub fn render_help(cmd: &CommandDef) -> String {
       let help_lines: Vec<&str> = arg.help.split('\n').collect();
       out.push_str(&format!("  {:<22}  {}\n", flag_str, help_lines[0]));
       for rest_line in &help_lines[1..] {
-        out.push_str(&format!("{:28}{}\n", "", rest_line));
+        // Indent to the description column; any further indentation is
+        // baked into the help string itself (as it was for clap).
+        out.push_str(&format!("{:26}{}\n", "", rest_line));
       }
     }
   }
