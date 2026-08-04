@@ -92,6 +92,7 @@ impl MainModuleGraphContainer {
           is_dynamic: false,
           lib: self.cli_options.ts_type_lib_window(),
           permissions: self.root_permissions.clone(),
+          file_permission_api_name: None,
           ext_overwrite: options.ext_overwrite,
           allow_unknown_media_types: options.allow_unknown_media_types,
           skip_graph_roots_validation: false,

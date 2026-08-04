@@ -830,6 +830,7 @@ impl DepManager {
           is_dynamic: false,
           lib: deno_config::workspace::TsTypeLib::DenoWindow,
           permissions: self.permissions_container.clone(),
+          file_permission_api_name: None,
           ext_overwrite: None,
           allow_unknown_media_types: true,
           skip_graph_roots_validation: false,
