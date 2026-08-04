@@ -286,6 +286,28 @@ const cloneSubmodule = (path: string) =>
     name: `Clone submodule ${path}`,
     run: `git submodule update --init --recursive --depth=1 -- ${path}`,
   });
+// Emit a canonical GNU `sha256sum`-style file ("<hash>  <name>\n") for a
+// Windows release asset so `deno upgrade`/`deno_install` verification can
+// consume it, matching what the Unix jobs produce via `shasum -a 256`.
+// PowerShell's `Out-File` defaults to a CRLF line ending, which GNU checksum
+// readers fold into the filename ("No such file or directory"), so we append
+// an explicit LF and pass `-NoNewline`.
+//
+// The hash is computed into `$Sha256` on a line of its own rather than inlined
+// as a `"$(...)"` subexpression: `file` may be a quoted path, and nesting
+// quotes inside an interpolated subexpression is legal PowerShell but easy to
+// get subtly wrong — and the delta step that needs the quoting only runs on tag
+// builds, so a mistake there would first surface during a release.
+//
+// `file`/`out` are inserted verbatim (callers may pass quoted paths). `name` is
+// the bare filename recorded in the checksum file, matching the Unix jobs'
+// convention; it is interpolated into a PowerShell double-quoted string, so
+// callers may reference `$Var` (as the delta step does) but must not pass `"`,
+// `$(` or a backtick.
+const winSha256sum = (file: string, name: string, out: string) => [
+  `$Sha256 = (Get-FileHash ${file} -Algorithm SHA256).Hash.ToLower()`,
+  `"$Sha256  ${name}\`n" | Out-File -NoNewline -Encoding ascii ${out}`,
+];
 const cloneStdSubmoduleStep = cloneSubmodule("./tests/util/std");
 const installDenoStep = step({
   name: "Install Deno",
@@ -846,13 +868,29 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             if: isWindows.and(isDenoland),
             shell: "pwsh",
             run: [
-              `Get-FileHash target/release/deno.exe -Algorithm SHA256 | Format-List > target/release/deno-${buildItem.arch}-pc-windows-msvc.sha256sum`,
+              ...winSha256sum(
+                "target/release/deno.exe",
+                "deno.exe",
+                `target/release/deno-${buildItem.arch}-pc-windows-msvc.sha256sum`,
+              ),
               `Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-${buildItem.arch}-pc-windows-msvc.zip`,
-              `Get-FileHash target/release/deno-${buildItem.arch}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/deno-${buildItem.arch}-pc-windows-msvc.zip.sha256sum`,
+              ...winSha256sum(
+                `target/release/deno-${buildItem.arch}-pc-windows-msvc.zip`,
+                `deno-${buildItem.arch}-pc-windows-msvc.zip`,
+                `target/release/deno-${buildItem.arch}-pc-windows-msvc.zip.sha256sum`,
+              ),
               `Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-${buildItem.arch}-pc-windows-msvc.zip`,
-              `Get-FileHash target/release/denort-${buildItem.arch}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-${buildItem.arch}-pc-windows-msvc.zip.sha256sum`,
+              ...winSha256sum(
+                `target/release/denort-${buildItem.arch}-pc-windows-msvc.zip`,
+                `denort-${buildItem.arch}-pc-windows-msvc.zip`,
+                `target/release/denort-${buildItem.arch}-pc-windows-msvc.zip.sha256sum`,
+              ),
               `Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.dll -DestinationPath target/release/libdenort-${buildItem.arch}-pc-windows-msvc.zip`,
-              `Get-FileHash target/release/libdenort-${buildItem.arch}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/libdenort-${buildItem.arch}-pc-windows-msvc.zip.sha256sum`,
+              ...winSha256sum(
+                `target/release/libdenort-${buildItem.arch}-pc-windows-msvc.zip`,
+                `libdenort-${buildItem.arch}-pc-windows-msvc.zip`,
+                `target/release/libdenort-${buildItem.arch}-pc-windows-msvc.zip.sha256sum`,
+              ),
               `target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-${buildItem.arch}-pc-windows-msvc.symcache`,
             ],
           },
@@ -904,7 +942,11 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               "Remove-Item -Recurse -Force prev -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Path prev | Out-Null",
               "Expand-Archive -Force -Path prev.zip -DestinationPath prev",
               '& .\\target\\release\\bsdiff_helper.exe "prev\\deno.exe" "target\\release\\deno.exe" "target\\release\\deno-$Target.from-$PrevVersion.bsdiff"',
-              'Get-FileHash "target\\release\\deno-$Target.from-$PrevVersion.bsdiff" -Algorithm SHA256 | Format-List > "target\\release\\deno-$Target.from-$PrevVersion.bsdiff.sha256sum"',
+              ...winSha256sum(
+                '"target\\release\\deno-$Target.from-$PrevVersion.bsdiff"',
+                "deno-$Target.from-$PrevVersion.bsdiff",
+                '"target\\release\\deno-$Target.from-$PrevVersion.bsdiff.sha256sum"',
+              ),
             ],
           },
           step({
