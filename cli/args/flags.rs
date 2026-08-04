@@ -5893,49 +5893,6 @@ fn seed_arg() -> Arg {
     .value_parser(value_parser!(u64))
 }
 
-/// Parses a memory size for `--max-memory` into megabytes. A plain number
-/// is interpreted as megabytes; `k`/`kb`, `m`/`mb` and `g`/`gb` suffixes are
-/// accepted.
-fn parse_memory_size_mb(s: &str) -> Result<u64, String> {
-  enum Unit {
-    Gb,
-    Mb,
-    Kb,
-  }
-  let lower = s.trim().to_ascii_lowercase();
-  let (num, unit) = if let Some(v) =
-    lower.strip_suffix("gb").or_else(|| lower.strip_suffix('g'))
-  {
-    (v, Unit::Gb)
-  } else if let Some(v) =
-    lower.strip_suffix("mb").or_else(|| lower.strip_suffix('m'))
-  {
-    (v, Unit::Mb)
-  } else if let Some(v) =
-    lower.strip_suffix("kb").or_else(|| lower.strip_suffix('k'))
-  {
-    (v, Unit::Kb)
-  } else {
-    (lower.as_str(), Unit::Mb)
-  };
-  let n = num
-    .trim()
-    .parse::<u64>()
-    .map_err(|_| format!("invalid memory size '{s}'"))?;
-  if n == 0 {
-    return Err("memory size must be greater than 0".to_string());
-  }
-  // Return the size in megabytes. Values under 1 MB are rejected rather than
-  // silently rounded up, which would hand back a cap different from what the
-  // user asked for.
-  match unit {
-    Unit::Gb => Ok(n.saturating_mul(1024)),
-    Unit::Mb => Ok(n),
-    Unit::Kb if n < 1024 => Err("memory size must be at least 1mb".to_string()),
-    Unit::Kb => Ok(n / 1024),
-  }
-}
-
 fn max_memory_arg() -> Arg {
   Arg::new("max-memory")
     .long("max-memory")
@@ -5945,7 +5902,7 @@ fn max_memory_arg() -> Arg {
   <p(245)>A plain number is interpreted as megabytes; k/m/g suffixes are supported.
   When the limit is exceeded the program is terminated with an error.</>"
     ))
-    .value_parser(parse_memory_size_mb)
+    .value_parser(deno_cli_parser::convert::parse_memory_size_mb)
 }
 
 fn max_cpu_time_arg() -> Arg {
@@ -5956,7 +5913,7 @@ fn max_cpu_time_arg() -> Arg {
       "Limit the total CPU time available to the program, in seconds, e.g. <p(245)>--max-cpu-time=30</>
   <p(245)>When the budget is exhausted the program is terminated with an error.</>"
     ))
-    .value_parser(parse_positive_seconds)
+    .value_parser(deno_cli_parser::convert::parse_positive_seconds)
 }
 
 fn max_time_arg() -> Arg {
@@ -5967,21 +5924,7 @@ fn max_time_arg() -> Arg {
       "Limit the total wall-clock run time of the program, in seconds, e.g. <p(245)>--max-time=30</>
   <p(245)>When the deadline is reached the program is terminated with an error.</>"
     ))
-    .value_parser(parse_positive_seconds)
-}
-
-/// Parses a positive number of seconds for the time-based resource limits.
-/// Zero is rejected so the flags fail fast instead of terminating the program
-/// before it starts, matching how `--max-memory=0` is rejected.
-fn parse_positive_seconds(s: &str) -> Result<u64, String> {
-  let n = s
-    .trim()
-    .parse::<u64>()
-    .map_err(|_| format!("invalid duration '{s}'"))?;
-  if n == 0 {
-    return Err("duration must be greater than 0 seconds".to_string());
-  }
-  Ok(n)
+    .value_parser(deno_cli_parser::convert::parse_positive_seconds)
 }
 
 fn hmr_arg(takes_files: bool) -> Arg {
@@ -12185,6 +12128,79 @@ mod tests {
         code_cache_enabled: true,
         ..Flags::default()
       }
+    );
+  }
+
+  #[test]
+  fn run_resource_limits() {
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--max-memory=512m",
+      "--max-cpu-time=30",
+      "--max-time=60",
+      "script.ts"
+    ])
+    .unwrap();
+    assert_eq!(flags.max_memory, Some(512));
+    assert_eq!(flags.max_cpu_time, Some(30));
+    assert_eq!(flags.max_time, Some(60));
+  }
+
+  #[test]
+  fn compile_resource_limits() {
+    let flags =
+      flags_from_vec(svec!["deno", "compile", "--max-memory=1g", "script.ts"])
+        .unwrap();
+    assert_eq!(flags.max_memory, Some(1024));
+  }
+
+  #[test]
+  fn max_memory_size_suffixes() {
+    // Plain number is megabytes; k/m/g (and kb/mb/gb) suffixes are accepted.
+    let cases = [
+      ("512", 512),
+      ("512m", 512),
+      ("512mb", 512),
+      ("2g", 2048),
+      ("2gb", 2048),
+      ("2048k", 2),
+      ("2048kb", 2),
+    ];
+    for (input, expected_mb) in cases {
+      let flags = flags_from_vec(svec![
+        "deno",
+        "run",
+        &format!("--max-memory={input}"),
+        "script.ts"
+      ])
+      .unwrap();
+      assert_eq!(flags.max_memory, Some(expected_mb), "input: {input}");
+    }
+  }
+
+  #[test]
+  fn resource_limits_reject_invalid() {
+    // Zero, sub-1mb sizes and non-numeric values are rejected up front.
+    for arg in [
+      "--max-memory=0",
+      "--max-memory=512k", // < 1mb
+      "--max-memory=abc",
+      "--max-cpu-time=0",
+      "--max-time=0",
+    ] {
+      assert!(
+        flags_from_vec(svec!["deno", "run", arg, "script.ts"]).is_err(),
+        "expected error for {arg}"
+      );
+    }
+  }
+
+  #[test]
+  fn resource_limits_not_on_test() {
+    // The limits are only defined on run/compile.
+    assert!(
+      flags_from_vec(svec!["deno", "test", "--max-memory=512m"]).is_err()
     );
   }
 

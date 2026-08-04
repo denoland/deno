@@ -775,6 +775,81 @@ fn seed_arg_parse(result: &ParseResult, flags: &mut Flags) {
   }
 }
 
+/// Parses a memory size for `--max-memory` into megabytes. A plain number
+/// is interpreted as megabytes; `k`/`kb`, `m`/`mb` and `g`/`gb` suffixes are
+/// accepted. Shared with the clap parser's `--max-memory` value parser so both
+/// front-ends interpret the flag identically.
+pub fn parse_memory_size_mb(s: &str) -> Result<u64, String> {
+  enum Unit {
+    Gb,
+    Mb,
+    Kb,
+  }
+  let lower = s.trim().to_ascii_lowercase();
+  let (num, unit) = if let Some(v) =
+    lower.strip_suffix("gb").or_else(|| lower.strip_suffix('g'))
+  {
+    (v, Unit::Gb)
+  } else if let Some(v) =
+    lower.strip_suffix("mb").or_else(|| lower.strip_suffix('m'))
+  {
+    (v, Unit::Mb)
+  } else if let Some(v) =
+    lower.strip_suffix("kb").or_else(|| lower.strip_suffix('k'))
+  {
+    (v, Unit::Kb)
+  } else {
+    (lower.as_str(), Unit::Mb)
+  };
+  let n = num
+    .trim()
+    .parse::<u64>()
+    .map_err(|_| format!("invalid memory size '{s}'"))?;
+  if n == 0 {
+    return Err("memory size must be greater than 0".to_string());
+  }
+  // Return the size in megabytes. Values under 1 MB are rejected rather than
+  // silently rounded up, which would hand back a cap different from what the
+  // user asked for.
+  match unit {
+    Unit::Gb => Ok(n.saturating_mul(1024)),
+    Unit::Mb => Ok(n),
+    Unit::Kb if n < 1024 => Err("memory size must be at least 1mb".to_string()),
+    Unit::Kb => Ok(n / 1024),
+  }
+}
+
+/// Parses a positive number of seconds for the time-based resource limits
+/// (`--max-cpu-time`, `--max-time`). Zero is rejected so the flags fail fast
+/// instead of terminating the program before it starts, matching how
+/// `--max-memory=0` is rejected. Shared with the clap parser.
+pub fn parse_positive_seconds(s: &str) -> Result<u64, String> {
+  let n = s
+    .trim()
+    .parse::<u64>()
+    .map_err(|_| format!("invalid duration '{s}'"))?;
+  if n == 0 {
+    return Err("duration must be greater than 0 seconds".to_string());
+  }
+  Ok(n)
+}
+
+/// Parses the `--max-memory`, `--max-cpu-time` and `--max-time` resource-limit
+/// flags. These are only defined on `run`/`compile`, so this is a no-op for
+/// other subcommands. Invalid values are validated (and reported) by the clap
+/// front-end; here they are simply dropped, matching `seed_arg_parse`.
+fn resource_limit_args_parse(result: &ParseResult, flags: &mut Flags) {
+  if let Some(s) = result.get_one("max-memory") {
+    flags.max_memory = parse_memory_size_mb(s).ok();
+  }
+  if let Some(s) = result.get_one("max-cpu-time") {
+    flags.max_cpu_time = parse_positive_seconds(s).ok();
+  }
+  if let Some(s) = result.get_one("max-time") {
+    flags.max_time = parse_positive_seconds(s).ok();
+  }
+}
+
 fn enable_testing_features_arg_parse(result: &ParseResult, flags: &mut Flags) {
   if result.get_bool("enable-testing-features") {
     flags.enable_testing_features = true;
@@ -1314,6 +1389,7 @@ fn run_parse(
   force_hmr: bool,
 ) -> Result<(), CliError> {
   runtime_args_parse(result, flags, true, true);
+  resource_limit_args_parse(result, flags);
   ext_arg_parse(result, flags);
 
   flags.tunnel = result.get_bool("tunnel");
@@ -1997,6 +2073,7 @@ fn bench_parse(result: &ParseResult, flags: &mut Flags) {
 fn compile_parse(result: &ParseResult, flags: &mut Flags) {
   flags.type_check_mode = TypeCheckMode::Local;
   runtime_args_parse(result, flags, true, false);
+  resource_limit_args_parse(result, flags);
 
   let source_file = result
     .get_one("source_file")
