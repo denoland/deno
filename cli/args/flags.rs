@@ -2426,7 +2426,7 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
       .arg(
         Arg::new("engine")
           .long("engine")
-          .help(cstr!("JS engine the compiled binary runs on <p(245)>(quickjs produces a smaller, experimental binary)</>"))
+          .help(cstr!("JS engine the compiled binary runs on <p(245)>(quickjs is smaller and experimental, and does not receive the same security updates as v8)</>"))
           .value_parser(["v8", "quickjs"])
           .help_heading(COMPILE_HEADING),
       )
@@ -2595,7 +2595,7 @@ supported framework (Next.js, Astro, etc.) in the current directory.
       .arg(
         Arg::new("engine")
           .long("engine")
-          .help("JS engine the desktop binary runs on (quickjs is smaller, experimental)")
+          .help("JS engine the desktop binary runs on (quickjs is smaller and experimental, and does not receive the same security updates as v8)")
           .value_parser(["v8", "quickjs"])
           .help_heading(DESKTOP_HEADING),
       )

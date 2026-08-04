@@ -1458,7 +1458,10 @@ pub static COMPILE_SUBCOMMAND: CommandDef = CommandDef {
       .long("engine")
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1))
-      .value_parser(ValueParser::Choices(&["v8", "quickjs"])),
+      .value_parser(ValueParser::Choices(&["v8", "quickjs"]))
+      .help(
+        "JS engine the compiled binary runs on (quickjs is smaller and experimental, and does not receive the same security updates as v8)",
+      ),
     ArgDef::new("no-terminal").long("no-terminal").set_true(),
     ArgDef::new("icon")
       .long("icon")
@@ -2580,7 +2583,10 @@ pub static DESKTOP_SUBCOMMAND: CommandDef = CommandDef {
       .long("engine")
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1))
-      .value_parser(ValueParser::Choices(&["v8", "quickjs"])),
+      .value_parser(ValueParser::Choices(&["v8", "quickjs"]))
+      .help(
+        "JS engine the desktop binary runs on (quickjs is smaller and experimental, and does not receive the same security updates as v8)",
+      ),
     ArgDef::new("all-targets").long("all-targets").set_true(),
     ArgDef::new("compress")
       .long("compress")
