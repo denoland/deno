@@ -13,6 +13,8 @@ try {
 } catch (e) {
   console.log(
     "result:",
-    (e as Error).name === "NotCapable" ? "denied" : `other:${(e as Error).name}`,
+    (e as Error).name === "NotCapable"
+      ? "denied"
+      : `other:${(e as Error).name}`,
   );
 }
