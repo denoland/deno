@@ -11274,8 +11274,7 @@ dependencies = [
 [[package]]
 name = "v8x"
 version = "149.4.0-rc.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cfbc26e0dd12c1780f7b57b6ab197c888cf22b63155463b4275984f0afb14cf1"
+source = "git+https://github.com/littledivy/v8x?rev=a385bb8f63490fb2ad0095f72a1d355cb394d20e#a385bb8f63490fb2ad0095f72a1d355cb394d20e"
 dependencies = [
  "bindgen 0.70.1",
  "bitflags 2.9.3",

@@ -1321,7 +1321,10 @@ pub static TASK_SUBCOMMAND: CommandDef = CommandDef {
       .short('r')
       .long("recursive")
       .set_true(),
-    ArgDef::new("members").long("members").set_true(),
+    ArgDef::new("members")
+      .long("members")
+      .set_true()
+      .conflicts_with(&["recursive", "filter"]),
     ArgDef::new("filter")
       .short('f')
       .long("filter")

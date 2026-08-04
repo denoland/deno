@@ -5379,6 +5379,7 @@ fn task_subcommand() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
@@ -5399,6 +5400,7 @@ fn task_subcommand() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
@@ -5418,6 +5420,7 @@ fn task_subcommand() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
@@ -5437,6 +5440,7 @@ fn task_subcommand() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: false,
+        members: false,
         filter: Some("*".to_string()),
         eval: false,
         no_prefix: false,
@@ -5456,6 +5460,7 @@ fn task_subcommand() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: true,
+        members: false,
         filter: Some("*".to_string()),
         eval: false,
         no_prefix: false,
@@ -5475,6 +5480,7 @@ fn task_subcommand() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: true,
+        members: false,
         filter: Some("*".to_string()),
         eval: false,
         no_prefix: false,
@@ -5485,6 +5491,33 @@ fn task_subcommand() {
     }
   );
 
+  let r = flags_from_vec(svec!["deno", "task", "--members", "build"]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Task(TaskFlags {
+        cwd: None,
+        task: Some("build".to_string()),
+        is_run: false,
+        recursive: false,
+        members: true,
+        filter: Some("*".to_string()),
+        eval: false,
+        no_prefix: false,
+        concurrency: None,
+        if_present: false,
+      }),
+      ..Flags::default()
+    }
+  );
+
+  let r = flags_from_vec(svec!["deno", "task", "--members", "-r", "build"]);
+  assert!(r.is_err());
+
+  let r =
+    flags_from_vec(svec!["deno", "task", "--members", "-f", "*", "build"]);
+  assert!(r.is_err());
+
   let r = flags_from_vec(svec!["deno", "task", "--eval", "echo 1"]);
   assert_eq!(
     r.unwrap(),
@@ -5494,6 +5527,7 @@ fn task_subcommand() {
         task: Some("echo 1".to_string()),
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: true,
         no_prefix: false,
@@ -5526,6 +5560,7 @@ fn task_subcommand_jobs() {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -5565,6 +5600,7 @@ fn task_subcommand_double_hyphen() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
@@ -5588,6 +5624,7 @@ fn task_subcommand_double_hyphen() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
@@ -5612,6 +5649,7 @@ fn task_subcommand_double_hyphen_only() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
@@ -5635,6 +5673,7 @@ fn task_following_arg() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
@@ -5658,6 +5697,7 @@ fn task_following_double_hyphen_arg() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
@@ -5682,6 +5722,7 @@ fn task_with_global_flags() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
@@ -5705,6 +5746,7 @@ fn task_subcommand_empty() {
         task: None,
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
@@ -5727,6 +5769,7 @@ fn task_subcommand_config() {
         task: None,
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
@@ -5750,6 +5793,7 @@ fn task_subcommand_config_short() {
         task: None,
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
@@ -5779,6 +5823,7 @@ fn task_subcommand_env_file() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
@@ -5805,6 +5850,7 @@ fn task_subcommand_env_file() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
@@ -5828,6 +5874,7 @@ fn task_subcommand_if_present() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
