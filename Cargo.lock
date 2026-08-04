@@ -2154,6 +2154,7 @@ dependencies = [
  "async-trait",
  "deno_core",
  "deno_error",
+ "deno_permissions",
  "regex",
  "serde",
 ]

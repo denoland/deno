@@ -1204,12 +1204,14 @@ impl ModuleGraphBuilder {
   ) -> CliDenoGraphLoader {
     self.create_graph_loader_with_permissions(
       self.root_permissions_container.clone(),
+      None,
     )
   }
 
   pub fn create_graph_loader_with_permissions(
     &self,
     permissions: PermissionsContainer,
+    file_permission_api_name: Option<&'static str>,
   ) -> CliDenoGraphLoader {
     CliDenoGraphLoader::new(
       self.file_fetcher.clone(),
@@ -1219,6 +1221,7 @@ impl ModuleGraphBuilder {
       deno_resolver::file_fetcher::DenoGraphLoaderOptions {
         file_header_overrides: self.cli_options.resolve_file_header_overrides(),
         permissions: Some(permissions),
+        file_permission_api_name,
         reporter: self.load_reporter.clone(),
         include_npm_sources: self.analyze_npm_sources(),
       },
