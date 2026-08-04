@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 const EXPECTED_OP_COUNT = 42;
-const EXPECTED_WORKER_OP_COUNT = 19;
+const EXPECTED_WORKER_OP_COUNT = 20;
 
 function getExposedOpNames(): string[] {
   // @ts-ignore TS doesn't allow to index with symbol
