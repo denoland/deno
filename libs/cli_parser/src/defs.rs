@@ -538,6 +538,28 @@ pub static UNSTABLE_ARGS: &[ArgDef] = &[
 .help("Enable unstable Web Worker APIs"),
 ];
 
+/// The only permission args accepted by commands that resolve a module graph
+/// but never run it (`bundle`, `cache`, `check`, `doc`, `info`). Unlike the
+/// flags in `PERMISSION_ARGS` these are shown in the normal options table,
+/// since those commands have no "Permission options" section.
+pub static IMPORT_PERMISSION_ARGS: &[ArgDef] = &[
+  ArgDef::new("allow-import")
+    .short('I')
+    .long("allow-import")
+    .action(ArgAction::Append)
+    .num_args(NumArgs::ZeroOrMore)
+    .require_equals()
+    .value_delimiter(',')
+    .help("Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary. Default value: deno.land:443,jsr.io:443,esm.sh:443,raw.esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,gist.githubusercontent.com:443"),
+  ArgDef::new("deny-import")
+    .long("deny-import")
+    .action(ArgAction::Append)
+    .num_args(NumArgs::ZeroOrMore)
+    .require_equals()
+    .value_delimiter(',')
+    .help("Deny importing from remote hosts. Optionally specify denied IP addresses and host names, with ports as necessary."),
+];
+
 pub static ALLOW_SCRIPTS_ARG: &[ArgDef] = &[ArgDef::new("allow-scripts")
   .long("allow-scripts")
   .action(ArgAction::Append)
@@ -1383,7 +1405,7 @@ pub static CACHE_SUBCOMMAND: CommandDef = CommandDef {
     UNSTABLE_ARGS,
     COMPILE_ARGS,
     INSPECT_ARGS,
-    PERMISSION_ARGS,
+    IMPORT_PERMISSION_ARGS,
     ALLOW_SCRIPTS_ARG,
   ],
   subcommands: &[],
@@ -1452,7 +1474,7 @@ pub static CHECK_SUBCOMMAND: CommandDef = CommandDef {
     UNSTABLE_ARGS,
     COMPILE_ARGS,
     RUNTIME_MISC_ARGS,
-    PERMISSION_ARGS,
+    IMPORT_PERMISSION_ARGS,
   ],
   subcommands: &[],
   default_subcommand: None,
@@ -1479,7 +1501,7 @@ pub static INFO_SUBCOMMAND: CommandDef = CommandDef {
       .conflicts_with(&["file"])
 .help("Show files used for origin bound APIs like the Web Storage API when running a script with --location=<HREF>"),
   ],
-  arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS, PERMISSION_ARGS],
+  arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS, IMPORT_PERMISSION_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -1548,7 +1570,7 @@ pub static DOC_SUBCOMMAND: CommandDef = CommandDef {
 .help("Dot separated path to symbol"),
     ArgDef::new("builtin").long("builtin").set_true(),
   ],
-  arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS, PERMISSION_ARGS],
+  arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS, IMPORT_PERMISSION_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -2801,7 +2823,7 @@ pub static BUNDLE_SUBCOMMAND: CommandDef = CommandDef {
   arg_groups: &[
     COMPILE_ARGS,
     UNSTABLE_ARGS,
-    PERMISSION_ARGS,
+    IMPORT_PERMISSION_ARGS,
     ALLOW_SCRIPTS_ARG,
   ],
   subcommands: &[],

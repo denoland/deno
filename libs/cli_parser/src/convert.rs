@@ -3074,7 +3074,9 @@ fn bundle_parse(result: &ParseResult, flags: &mut Flags) {
   // `compile_args_without_check_parse` deliberately omits `--check`; apply it
   // here so `deno bundle --check=all` type-checks (mirrors clap, #30159).
   check_arg_parse(result, flags);
-  permission_args_parse(result, flags);
+  // `bundle` resolves a module graph but never runs it, so the only
+  // permissions it takes are the import ones.
+  allow_and_deny_import_parse(result, flags);
 
   let entrypoints = result
     .get_many("file")

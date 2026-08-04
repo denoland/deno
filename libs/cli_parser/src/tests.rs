@@ -1549,3 +1549,41 @@ fn permission_help_section_is_rendered() {
   let fmt = help::render_subcommand_help(&defs::DENO_ROOT, "fmt").unwrap();
   assert!(!fmt.contains("Permission options:"));
 }
+
+/// Commands that resolve a module graph but never run it take only the
+/// import permissions — not the full permission set. These wrongly accepted
+/// every permission flag during the clap cutover.
+#[test]
+fn graph_only_commands_take_only_import_permissions() {
+  for cmd in ["bundle", "cache", "check", "doc", "info"] {
+    let sub = defs::DENO_ROOT.find_subcommand(cmd).unwrap();
+    let names: Vec<&str> = sub
+      .args
+      .iter()
+      .chain(sub.arg_groups.iter().copied().flatten())
+      .map(|a| a.name)
+      .collect();
+
+    assert!(
+      names.contains(&"allow-import") && names.contains(&"deny-import"),
+      "`deno {cmd}` should accept the import permissions"
+    );
+    for denied in [
+      "allow-all",
+      "allow-read",
+      "allow-write",
+      "allow-net",
+      "allow-env",
+      "allow-run",
+      "allow-sys",
+      "allow-ffi",
+      "no-prompt",
+      "permission-set",
+    ] {
+      assert!(
+        !names.contains(&denied),
+        "`deno {cmd}` should not accept --{denied}"
+      );
+    }
+  }
+}
