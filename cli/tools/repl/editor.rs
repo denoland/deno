@@ -318,9 +318,11 @@ fn validate(input: &str) -> ValidationResult {
           skipped_regex = true;
           continue;
         }
-        // Not a regex, so it's a real division. It's too complicated to detect
-        // regular expression literals in every position, so if a `/` or `/=`
-        // happens twice on the same line, then we bail.
+        // The rescan above rejected this as a regex, so treat it as division.
+        // In practice that only happens when the scan ran to the end of the
+        // line without finding a closing `/`, which leaves this as a rarely
+        // taken fallback: if a `/` or `/=` happens twice on the same line, bail
+        // and let V8 decide rather than guessing at the expression position.
         div_token_count_on_current_line += 1;
         if div_token_count_on_current_line >= 2 {
           return ValidationResult::Valid(None);
@@ -364,12 +366,7 @@ fn validate(input: &str) -> ValidationResult {
     }
   }
 
-  if skipped_regex && (queued_validation_error.is_some() || !stack.is_empty()) {
-    // We guessed that a `/` started a regex and skipped over it. If that left
-    // the input looking unbalanced the guess was probably wrong, so hand it to
-    // V8 rather than rejecting it or blocking on more input.
-    ValidationResult::Valid(None)
-  } else if let Some(error) = queued_validation_error {
+  let result = if let Some(error) = queued_validation_error {
     error
   } else if !stack.is_empty() || in_template || ends_with_dot {
     // A trailing `.` means the user broke a method chain across lines (e.g.
@@ -378,7 +375,21 @@ fn validate(input: &str) -> ValidationResult {
     ValidationResult::Incomplete
   } else {
     ValidationResult::Valid(None)
+  };
+
+  if skipped_regex && !matches!(result, ValidationResult::Valid(_)) {
+    // We guessed that a `/` started a regex and skipped over it. If that left
+    // the input looking unbalanced the guess was probably wrong, so hand it to
+    // V8 rather than rejecting it or blocking on more input. The skipped span
+    // can swallow one half of a `` ` `` pair or a trailing `.`, so this covers
+    // every non-`Valid` outcome rather than just a queued error or open stack.
+    // The suppression is whole-input, so one skipped regex on the first line
+    // also silences a genuine error further down; that keeps the guess strictly
+    // non-reporting, which is the property this relies on.
+    return ValidationResult::Valid(None);
   }
+
+  result
 }
 
 /// Scan a regex literal starting at the opening `/` located at `start` and
@@ -773,6 +784,14 @@ let left = test( arr.slice( 0 , arr.length/2 ) )"#;
   fn validate_division_is_not_a_regex() {
     assert!(matches!(validate("a / b"), ValidationResult::Valid(_)));
     assert!(matches!(validate("a / b / c"), ValidationResult::Valid(_)));
+    // The two above reach `Valid` through the regex rescan and its suppression,
+    // not the division counter. A `(` that never closes would otherwise be
+    // `Incomplete`, so this only passes if the second `/` on the line trips the
+    // counter and bails, which is the fallback those two never reach.
+    assert!(matches!(
+      validate("f(a / b / c"),
+      ValidationResult::Valid(_)
+    ));
   }
 
   #[test]
@@ -796,6 +815,14 @@ let left = test( arr.slice( 0 , arr.length/2 ) )"#;
       ValidationResult::Valid(_)
     ));
     assert!(matches!(validate("x++ /2/ y"), ValidationResult::Valid(_)));
+    // The skipped span can end inside a template literal, leaving the opening
+    // `` ` `` consumed and the closing one not, or swallow the token before a
+    // trailing `.`. Both would otherwise block the REPL waiting for input.
+    assert!(matches!(
+      validate("a / `x / y`"),
+      ValidationResult::Valid(_)
+    ));
+    assert!(matches!(validate("a / b / c."), ValidationResult::Valid(_)));
   }
 
   #[test]
