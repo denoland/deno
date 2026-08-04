@@ -4275,6 +4275,13 @@ Evaluate a task from string:
           .action(ArgAction::SetTrue),
       )
       .arg(
+        Arg::new("members")
+          .long("members")
+          .help("Run the task in all workspace members, but not in the workspace root")
+          .action(ArgAction::SetTrue)
+          .conflicts_with_all(["recursive", "filter"]),
+      )
+      .arg(
         Arg::new("filter")
         .long("filter")
         .short('f')
@@ -7996,10 +8003,11 @@ fn task_parse(
   env_file_arg_parse(flags, matches);
 
   let mut recursive = matches.get_flag("recursive");
+  let members = matches.get_flag("members");
   let filter = if let Some(filter) = matches.remove_one::<String>("filter") {
     recursive = false;
     Some(filter)
-  } else if recursive {
+  } else if recursive || members {
     Some("*".to_string())
   } else {
     None
@@ -8012,6 +8020,7 @@ fn task_parse(
     task: None,
     is_run: false,
     recursive,
+    members,
     filter,
     eval: matches.get_flag("eval"),
     no_prefix: matches.get_flag("no-prefix"),
@@ -14618,6 +14627,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14638,6 +14648,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14657,6 +14668,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14676,6 +14688,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: Some("*".to_string()),
           eval: false,
           no_prefix: false,
@@ -14695,6 +14708,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: true,
+          members: false,
           filter: Some("*".to_string()),
           eval: false,
           no_prefix: false,
@@ -14714,6 +14728,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: true,
+          members: false,
           filter: Some("*".to_string()),
           eval: false,
           no_prefix: false,
@@ -14724,6 +14739,33 @@ mod tests {
       }
     );
 
+    let r = flags_from_vec(svec!["deno", "task", "--members", "build"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          cwd: None,
+          task: Some("build".to_string()),
+          is_run: false,
+          recursive: false,
+          members: true,
+          filter: Some("*".to_string()),
+          eval: false,
+          no_prefix: false,
+          concurrency: None,
+          if_present: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "task", "--members", "-r", "build"]);
+    assert!(r.is_err());
+
+    let r =
+      flags_from_vec(svec!["deno", "task", "--members", "-f", "*", "build"]);
+    assert!(r.is_err());
+
     let r = flags_from_vec(svec!["deno", "task", "--eval", "echo 1"]);
     assert_eq!(
       r.unwrap(),
@@ -14733,6 +14775,7 @@ mod tests {
           task: Some("echo 1".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: true,
           no_prefix: false,
@@ -14765,6 +14808,7 @@ mod tests {
             task: Some("build".to_string()),
             is_run: false,
             recursive: false,
+            members: false,
             filter: None,
             eval: false,
             no_prefix: false,
@@ -14804,6 +14848,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14827,6 +14872,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14851,6 +14897,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14874,6 +14921,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14897,6 +14945,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14921,6 +14970,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14944,6 +14994,7 @@ mod tests {
           task: None,
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14966,6 +15017,7 @@ mod tests {
           task: None,
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14989,6 +15041,7 @@ mod tests {
           task: None,
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -15021,6 +15074,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -15047,6 +15101,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -15070,6 +15125,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
