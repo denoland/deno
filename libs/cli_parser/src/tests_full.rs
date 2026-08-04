@@ -9590,3 +9590,59 @@ fn serve_compile_keep_double_dash() {
     matches!(flags.subcommand, DenoSubcommand::Compile(c) if c.args == svec!["--", "-a"])
   );
 }
+
+#[test]
+fn upgrade_no_delta() {
+  let r = flags_from_vec(svec!["deno", "upgrade", "--no-delta"]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Upgrade(UpgradeFlags {
+        force: false,
+        dry_run: false,
+        canary: false,
+        no_delta: true,
+        release_candidate: false,
+        version: None,
+        output: None,
+        version_or_hash_or_channel: None,
+        checksum: None,
+        pr: None,
+        branch: None,
+      }),
+      ..Flags::default()
+    }
+  );
+}
+
+#[test]
+fn hrtime_flags_are_accepted_as_no_ops() {
+  // Removed in Deno 2, but still parsed so we can warn instead of erroring.
+  for flag in ["--allow-hrtime", "--deny-hrtime"] {
+    let r = flags_from_vec(svec!["deno", "run", flag, "script.ts"]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags.subcommand,
+      DenoSubcommand::Run(RunFlags::new_default("script.ts".to_string()))
+    );
+  }
+}
+
+#[test]
+fn use_env_proxy_flags() {
+  let r = flags_from_vec(svec!["deno", "run", "--use-env-proxy", "script.ts"]);
+  assert!(r.is_ok());
+
+  let r =
+    flags_from_vec(svec!["deno", "run", "--no-use-env-proxy", "script.ts"]);
+  assert!(r.is_ok());
+
+  let r = flags_from_vec(svec![
+    "deno",
+    "run",
+    "--use-env-proxy",
+    "--no-use-env-proxy",
+    "script.ts"
+  ]);
+  assert!(r.is_err());
+}

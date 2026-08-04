@@ -145,6 +145,16 @@ pub static PERMISSION_ARGS: &[ArgDef] = &[
     .require_equals()
     .value_delimiter(','),
   ArgDef::new("no-prompt").long("no-prompt").set_true(),
+  // Removed in Deno 2 — still accepted so we can print the deprecation
+  // warning in `convert` instead of failing with "unexpected argument".
+  ArgDef::new("allow-hrtime")
+    .long("allow-hrtime")
+    .set_true()
+    .hidden(),
+  ArgDef::new("deny-hrtime")
+    .long("deny-hrtime")
+    .set_true()
+    .hidden(),
   ArgDef::new("permission-set")
     .short('P')
     .long("permission-set")
@@ -533,6 +543,15 @@ static RUN_ARGS: &[ArgDef] = &[
     .long("tunnel")
     .long_aliases(&["connected"])
     .set_true()
+    .hidden(),
+  ArgDef::new("use-env-proxy")
+    .long("use-env-proxy")
+    .set_true()
+    .conflicts_with(&["no-use-env-proxy"]),
+  ArgDef::new("no-use-env-proxy")
+    .long("no-use-env-proxy")
+    .set_true()
+    .conflicts_with(&["use-env-proxy"])
     .hidden(),
   // Allow --allow-scripts on run (through arg_groups, but also directly)
 ];
@@ -1123,6 +1142,7 @@ pub static UPGRADE_SUBCOMMAND: CommandDef = CommandDef {
       .long("branch")
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1)),
+    ArgDef::new("no-delta").long("no-delta").set_true(),
   ],
   arg_groups: &[UNSTABLE_ARGS],
   subcommands: &[],

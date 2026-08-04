@@ -532,6 +532,17 @@ fn permission_args_parse(result: &ParseResult, flags: &mut Flags) {
   if result.get_bool("no-prompt") {
     flags.permissions.no_prompt = true;
   }
+
+  if result.get_bool("allow-hrtime") || result.get_bool("deny-hrtime") {
+    // use eprintln instead of log::warn because logging hasn't been initialized yet
+    #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
+    {
+      eprintln!(
+        "{} `allow-hrtime` and `deny-hrtime` have been removed in Deno 2, as high resolution time is now always allowed",
+        deno_runtime::colors::yellow("Warning")
+      );
+    }
+  }
 }
 
 fn inspect_arg_parse(result: &ParseResult, flags: &mut Flags) {
@@ -1320,6 +1331,16 @@ fn run_parse(
   ext_arg_parse(result, flags);
 
   flags.tunnel = result.get_bool("tunnel");
+  if result.get_bool("use-env-proxy") {
+    // Node's --use-env-proxy is process-wide. Deno's node polyfills read the
+    // same env variable as the Node tests when selecting global proxy config.
+    // SAFETY: CLI parsing runs before worker startup and before Deno starts
+    // any threads that could concurrently read the process environment.
+    unsafe { std::env::set_var("NODE_USE_ENV_PROXY", "1") };
+  } else if result.get_bool("no-use-env-proxy") {
+    // SAFETY: see the --use-env-proxy branch above.
+    unsafe { std::env::set_var("NODE_USE_ENV_PROXY", "0") };
+  }
   flags.code_cache_enabled = !result.get_bool("no-code-cache");
   let coverage_dir = if result.contains("coverage") {
     Some(result.get_one("coverage").unwrap_or("coverage").to_string())
