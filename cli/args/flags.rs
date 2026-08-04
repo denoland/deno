@@ -14124,6 +14124,48 @@ mod tests {
   }
 
   #[test]
+  fn compile_watch_with_paths() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "compile",
+      "--watch=foo,bar",
+      "--watch-exclude=baz",
+      "main.ts"
+    ]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags.watch,
+      Some(WatchFlagsWithPaths {
+        hmr: false,
+        paths: svec!["foo", "bar"],
+        no_clear_screen: false,
+        exclude: svec!["baz"],
+      })
+    );
+  }
+
+  #[test]
+  fn check_watch_with_paths() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "check",
+      "--watch=foo,bar",
+      "--watch-exclude=baz",
+      "main.ts"
+    ]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags.watch,
+      Some(WatchFlagsWithPaths {
+        hmr: false,
+        paths: svec!["foo", "bar"],
+        no_clear_screen: false,
+        exclude: svec!["baz"],
+      })
+    );
+  }
+
+  #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
     let r = flags_from_vec(svec!["deno", "compile", "--include", "include.txt", "--exclude", "exclude.txt", "--import-map", "import_map.json", "--no-code-cache", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--icon", "favicon.ico", "--output", "colors", "--env=.example.env", "https://examples.deno.land/color-logging.ts", "foo", "bar", "-p", "8080"]);
