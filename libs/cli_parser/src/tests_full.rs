@@ -5047,12 +5047,32 @@ fn compile() {
         app_name: None,
         minify: false,
         exclude_unused_npm: false,
+        engine: Default::default(),
       }),
       type_check_mode: TypeCheckMode::Local,
       code_cache_enabled: true,
       ..Flags::default()
     }
   );
+}
+
+#[test]
+fn compile_and_desktop_engine() {
+  let flags =
+    flags_from_vec(svec!["deno", "compile", "--engine", "quickjs", "main.ts"])
+      .unwrap();
+  let DenoSubcommand::Compile(compile) = flags.subcommand else {
+    panic!("expected compile subcommand");
+  };
+  assert_eq!(compile.engine, JavaScriptEngine::QuickJs);
+
+  let flags =
+    flags_from_vec(svec!["deno", "desktop", "--engine", "quickjs", "main.tsx"])
+      .unwrap();
+  let DenoSubcommand::Desktop(desktop) = flags.subcommand else {
+    panic!("expected desktop subcommand");
+  };
+  assert_eq!(desktop.engine, JavaScriptEngine::QuickJs);
 }
 
 #[test]
@@ -5159,6 +5179,7 @@ fn compile_watch_with_no_clear_screen() {
         app_name: None,
         minify: false,
         exclude_unused_npm: false,
+        engine: Default::default(),
       }),
       type_check_mode: TypeCheckMode::Local,
       code_cache_enabled: true,
@@ -5195,6 +5216,7 @@ fn compile_with_flags() {
         app_name: None,
         minify: false,
         exclude_unused_npm: false,
+        engine: Default::default(),
       }),
       import_map_path: Some("import_map.json".to_string()),
       no_remote: true,
@@ -6694,6 +6716,7 @@ fn add_or_install_subcommand() {
           lockfile_only: false,
           save_exact: false,
           package_json: false,
+          unscoped: false,
         })
       );
     }
@@ -6715,6 +6738,7 @@ fn add_or_install_subcommand() {
         lockfile_only: true,
         save_exact: false,
         package_json: false,
+        unscoped: false,
       });
       expected_flags.frozen_lockfile = Some(true);
       assert_eq!(r.unwrap(), expected_flags);
@@ -6732,6 +6756,7 @@ fn add_or_install_subcommand() {
           lockfile_only: false,
           save_exact: false,
           package_json: false,
+          unscoped: false,
         }),
       );
     }
@@ -6748,6 +6773,7 @@ fn add_or_install_subcommand() {
           lockfile_only: false,
           save_exact: false,
           package_json: false,
+          unscoped: false,
         }),
       );
     }
@@ -6764,6 +6790,7 @@ fn add_or_install_subcommand() {
           lockfile_only: false,
           save_exact: false,
           package_json: false,
+          unscoped: false,
         }),
       );
     }
@@ -6780,6 +6807,7 @@ fn add_or_install_subcommand() {
           lockfile_only: false,
           save_exact: false,
           package_json: false,
+          unscoped: false,
         }),
       );
     }
@@ -6796,6 +6824,25 @@ fn add_or_install_subcommand() {
           lockfile_only: false,
           save_exact: false,
           package_json: false,
+          unscoped: false,
+        }),
+      );
+    }
+    {
+      let r =
+        flags_from_vec(svec!["deno", cmd, "--unscoped", "jsr:@david/which"]);
+      assert_eq!(
+        r.unwrap(),
+        mk_flags(AddFlags {
+          packages: svec!["jsr:@david/which"],
+          dev: false,
+          optional: false,
+          no_save: false,
+          default_registry: Some(DefaultRegistry::Npm),
+          lockfile_only: false,
+          save_exact: false,
+          package_json: false,
+          unscoped: true,
         }),
       );
     }
@@ -6846,6 +6893,7 @@ fn add_or_install_subcommand() {
           lockfile_only: false,
           save_exact: false,
           package_json: false,
+          unscoped: false,
         }),
         permissions: PermissionFlags {
           allow_import: Some(svec!["example.com"]),
@@ -8092,6 +8140,7 @@ fn preload_flag_test() {
         app_name: None,
         minify: false,
         exclude_unused_npm: false,
+        engine: Default::default(),
       }),
       type_check_mode: TypeCheckMode::Local,
       preload: svec!["p1.js", "./p2.js"],
