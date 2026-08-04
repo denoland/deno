@@ -85,7 +85,16 @@ class TextDecoder {
     ) {
       encoding = "utf-8";
     } else {
-      encoding = op_encoding_normalize_label(label);
+      try {
+        encoding = op_encoding_normalize_label(label);
+      } catch (err) {
+        // The op only rejects unknown encoding labels; Node attaches
+        // ERR_ENCODING_NOT_SUPPORTED to that error.
+        if (err !== null && typeof err === "object" && err.code === undefined) {
+          err.code = "ERR_ENCODING_NOT_SUPPORTED";
+        }
+        throw err;
+      }
     }
     this.#encoding = encoding;
     this.#fatal = options.fatal;

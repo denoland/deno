@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "npm_js_rejected_when_json_requested": {
+      "args": "run -A main.ts",
+      "output": "true\ntrue\nexecuted false\n"
+    }
+  }
+}

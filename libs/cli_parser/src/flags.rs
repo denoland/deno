@@ -52,10 +52,13 @@ pub enum DefaultRegistry {
 pub struct AddFlags {
   pub packages: Vec<String>,
   pub dev: bool,
+  pub optional: bool,
+  pub no_save: bool,
   pub default_registry: Option<DefaultRegistry>,
   pub lockfile_only: bool,
   pub save_exact: bool,
   pub package_json: bool,
+  pub unscoped: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -584,6 +587,8 @@ pub struct TaskFlags {
   pub task: Option<String>,
   pub is_run: bool,
   pub recursive: bool,
+  /// Run the task in all workspace members, but not in the workspace root.
+  pub members: bool,
   pub filter: Option<String>,
   pub eval: bool,
   pub no_prefix: bool,

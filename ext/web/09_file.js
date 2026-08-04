@@ -72,6 +72,17 @@ function ReadableStream(...args) {
     ...new SafeArrayIterator(args),
   );
 }
+// Defer loading `08_text_encoding.js` for the same reason: `TextDecoderStream`
+// pulls in the 06_streams.js polyfill, and is only constructed inside
+// `Blob.textStream()` (see usage below).
+let _textDecoderStream;
+function TextDecoderStream(...args) {
+  return new (_textDecoderStream ??
+    (_textDecoderStream = core.loadExtScript("ext:deno_web/08_text_encoding.js")
+      .TextDecoderStream))(
+    ...new SafeArrayIterator(args),
+  );
+}
 const { URL } = core.loadExtScript("ext:deno_web/00_url.js");
 const { createFilteredInspectProxy } = core.loadExtScript(
   "ext:deno_web/01_console.js",
@@ -135,7 +146,7 @@ function convertLineEndingsToNative(s) {
 /** @param {(BlobReference | Blob)[]} parts */
 async function* toIterator(parts) {
   for (let i = 0; i < parts.length; ++i) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     yield* parts[i].stream();
   }
 }
@@ -364,7 +375,7 @@ class Blob {
         relativeStart -= size;
         relativeEnd -= size;
       } else {
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         const chunk = part.slice(
           relativeStart,
           MathMin(part.size, relativeEnd),
@@ -417,6 +428,14 @@ class Blob {
       },
     });
     return stream;
+  }
+
+  /**
+   * @returns {ReadableStream<string>}
+   */
+  textStream() {
+    webidl.assertBranded(this, BlobPrototype);
+    return this.stream().pipeThrough(new TextDecoderStream());
   }
 
   /**

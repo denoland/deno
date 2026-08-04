@@ -229,8 +229,8 @@ impl<'de> de::Deserializer<'de> for &'_ mut Deserializer<'_, '_, '_> {
     V: Visitor<'de>,
   {
     if self.input.is_string() || self.input.is_string_object() {
-      // fixme: this unwrap is not safe because stringifier could have thrown
-      let v8_string = self.input.to_string(self.scope).unwrap();
+      let v8_string =
+        self.input.to_string(self.scope).ok_or(Error::V8Exception)?;
       let string = to_utf8(v8_string, self.scope);
       visitor.visit_string(string)
     } else {
@@ -347,7 +347,7 @@ impl<'de> de::Deserializer<'de> for &'_ mut Deserializer<'_, '_, '_> {
       };
       visitor.visit_map(map)
     } else {
-      visitor.visit_map(MapObjectAccess::new(obj, self.scope, depth))
+      visitor.visit_map(MapObjectAccess::new(obj, self.scope, depth)?)
     }
   }
 
@@ -397,7 +397,7 @@ impl<'de> de::Deserializer<'de> for &'_ mut Deserializer<'_, '_, '_> {
 
         // Fields names are a hint and must be inferred when not provided
         if fields.is_empty() {
-          visitor.visit_map(MapObjectAccess::new(obj, self.scope, depth))
+          visitor.visit_map(MapObjectAccess::new(obj, self.scope, depth)?)
         } else {
           visitor.visit_map(StructAccess {
             obj,
@@ -440,18 +440,17 @@ impl<'de> de::Deserializer<'de> for &'_ mut Deserializer<'_, '_, '_> {
       let tag = {
         let prop_names =
           obj.get_own_property_names(self.scope, Default::default());
-        let prop_names = prop_names
-          .ok_or_else(|| Error::ExpectedEnum(self.input.type_repr()))?;
+        let prop_names = prop_names.ok_or(Error::V8Exception)?;
         let prop_names_len = prop_names.length();
         if prop_names_len != 1 {
           return Err(Error::LengthMismatch(prop_names_len as usize, 1));
         }
-        // fixme: this unwrap  is not safe because of proxies
-        prop_names.get_index(self.scope, 0).unwrap()
+        prop_names
+          .get_index(self.scope, 0)
+          .ok_or(Error::V8Exception)?
       };
 
-      // fixme: this unwrap  is not safe because of proxies
-      let payload = obj.get(self.scope, tag).unwrap();
+      let payload = obj.get(self.scope, tag).ok_or(Error::V8Exception)?;
       visitor.visit_enum(EnumAccess {
         scope: self.scope,
         tag,
@@ -509,24 +508,23 @@ impl<'a, 's, 'i> MapObjectAccess<'a, 's, 'i> {
     obj: v8::Local<'a, v8::Object>,
     scope: &'a mut v8::PinScope<'s, 'i>,
     remaining_depth: usize,
-  ) -> Self {
-    let keys = match obj.get_own_property_names(
-      scope,
-      v8::GetPropertyNamesArgsBuilder::new()
-        .key_conversion(v8::KeyConversionMode::ConvertToString)
-        .build(),
-    ) {
-      Some(keys) => {
-        SeqAccess::new(keys.into(), scope, 0..keys.length(), remaining_depth)
-      }
-      None => SeqAccess::new(obj, scope, 0..0, remaining_depth),
-    };
+  ) -> Result<Self> {
+    let keys = obj
+      .get_own_property_names(
+        scope,
+        v8::GetPropertyNamesArgsBuilder::new()
+          .key_conversion(v8::KeyConversionMode::ConvertToString)
+          .build(),
+      )
+      .ok_or(Error::V8Exception)?;
+    let keys =
+      SeqAccess::new(keys.into(), scope, 0..keys.length(), remaining_depth);
 
-    Self {
+    Ok(Self {
       obj,
       keys,
       next_value: None,
-    }
+    })
   }
 }
 
@@ -538,7 +536,10 @@ impl<'de> de::MapAccess<'de> for MapObjectAccess<'_, '_, '_> {
     seed: K,
   ) -> Result<Option<K::Value>> {
     while let Some(key) = self.keys.next_element::<magic::Value>()? {
-      let v8_val = self.obj.get(self.keys.scope, key.v8_value).unwrap();
+      let v8_val = self
+        .obj
+        .get(self.keys.scope, key.v8_value)
+        .ok_or(Error::V8Exception)?;
       if v8_val.is_undefined() {
         // Historically keys/value pairs with undefined values are not added to the output
         continue;
@@ -593,7 +594,10 @@ impl<'de> de::MapAccess<'de> for MapPairsAccess<'_, '_, '_> {
     seed: K,
   ) -> Result<Option<K::Value>> {
     if self.pos < self.len {
-      let v8_key = self.obj.get_index(self.scope, self.pos).unwrap();
+      let v8_key = self
+        .obj
+        .get_index(self.scope, self.pos)
+        .ok_or(Error::V8Exception)?;
       self.pos += 1;
       let mut deserializer = Deserializer::with_depth(
         self.scope,
@@ -613,7 +617,10 @@ impl<'de> de::MapAccess<'de> for MapPairsAccess<'_, '_, '_> {
     seed: V,
   ) -> Result<V::Value> {
     debug_assert!(self.pos < self.len);
-    let v8_val = self.obj.get_index(self.scope, self.pos).unwrap();
+    let v8_val = self
+      .obj
+      .get_index(self.scope, self.pos)
+      .ok_or(Error::V8Exception)?;
     self.pos += 1;
     let mut deserializer =
       Deserializer::with_depth(self.scope, v8_val, None, self.remaining_depth);
@@ -642,7 +649,7 @@ impl<'de> de::MapAccess<'de> for StructAccess<'_, '_, '_> {
   {
     for field in self.keys.by_ref() {
       let key = v8_struct_key(self.scope, field).into();
-      let val = self.obj.get(self.scope, key).unwrap();
+      let val = self.obj.get(self.scope, key).ok_or(Error::V8Exception)?;
       if val.is_undefined() {
         // Historically keys/value pairs with undefined values are not added to the output
         continue;
@@ -700,8 +707,10 @@ impl<'de> de::SeqAccess<'de> for SeqAccess<'_, '_, '_> {
     seed: T,
   ) -> Result<Option<T::Value>> {
     if let Some(pos) = self.range.next() {
-      // fixme: this unwrap  is not safe because of proxies
-      let val = self.obj.get_index(self.scope, pos).unwrap();
+      let val = self
+        .obj
+        .get_index(self.scope, pos)
+        .ok_or(Error::V8Exception)?;
       let mut deserializer =
         Deserializer::with_depth(self.scope, val, None, self.remaining_depth);
       seed.deserialize(&mut deserializer).map(Some)

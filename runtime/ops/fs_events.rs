@@ -315,8 +315,21 @@ fn is_file_removed(event_path: &Path) -> bool {
   }
 }
 
+// The notify crate's Windows backend reports a missing watch path as a
+// Generic error with this message (see `add_watch` in notify's
+// src/windows.rs), unlike the inotify backend which reports PathNotFound.
+// Normalize it so a watch on a vanished path surfaces as NotFound on all
+// platforms; the node:fs `fs.watch` polyfill relies on this to emit a
+// recoverable ENOENT instead of an unrecognized error that kills watchers
+// like chokidar/vite (see denoland/deno#35855).
+const WINDOWS_PATH_NOT_FOUND_MSG: &str =
+  "Input watch path is neither a file nor a directory.";
+
 deno_error::js_error_wrapper!(NotifyError, JsNotifyError, |err| {
   match &err.kind {
+    notify::ErrorKind::Generic(msg) if msg == WINDOWS_PATH_NOT_FOUND_MSG => {
+      "NotFound".into()
+    }
     notify::ErrorKind::Generic(_) => GENERIC_ERROR.into(),
     notify::ErrorKind::Io(e) => e.get_class(),
     notify::ErrorKind::PathNotFound => "NotFound".into(),
@@ -680,6 +693,52 @@ mod tests {
 
     assert!(!is_ignored_notify_event(&event));
     assert_eq!(FsEvent::from(event).kind, "access");
+  }
+
+  #[test]
+  fn maps_windows_missing_path_generic_error_to_not_found() {
+    let err = JsNotifyError(NotifyError {
+      kind: notify::ErrorKind::Generic(WINDOWS_PATH_NOT_FOUND_MSG.to_string()),
+      paths: vec![PathBuf::from("watched/file.txt")],
+    });
+    assert_eq!(err.get_class(), "NotFound");
+
+    let other = JsNotifyError(NotifyError {
+      kind: notify::ErrorKind::Generic("some other failure".to_string()),
+      paths: vec![],
+    });
+    assert_eq!(other.get_class(), GENERIC_ERROR);
+  }
+
+  // The test above only proves the match arm fires for our own constant. This
+  // drives the real notify backend against a path that does not exist so a
+  // notify upgrade that rewords the Windows missing-path message fails loudly
+  // here instead of silently regressing fs.watch to a non-ENOENT error (see
+  // denoland/deno#35855). notify's `watch_inner` returns this Generic error
+  // synchronously from its is_dir/is_file check, so no real watch is opened.
+  #[cfg(windows)]
+  #[test]
+  fn notify_windows_missing_path_message_matches_constant() {
+    let mut watcher: RecommendedWatcher = Watcher::new(
+      |_res: Result<NotifyEvent, NotifyError>| {},
+      Default::default(),
+    )
+    .unwrap();
+
+    let missing = PathBuf::from(r"C:\deno-nonexistent\watch\target");
+    let err = watcher
+      .watch(&missing, RecursiveMode::NonRecursive)
+      .expect_err("watching a nonexistent path should fail");
+
+    assert!(
+      matches!(
+        &err.kind,
+        notify::ErrorKind::Generic(msg) if msg == WINDOWS_PATH_NOT_FOUND_MSG
+      ),
+      "notify no longer reports the expected Generic message; got {:?}",
+      err.kind,
+    );
+    assert_eq!(JsNotifyError(err).get_class(), "NotFound");
   }
 
   #[test]

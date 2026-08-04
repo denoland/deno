@@ -16,6 +16,7 @@ const SUPPORTED_OS: &[&str] = &[
   "x86_64-unknown-linux-gnu",
   "aarch64-unknown-linux-gnu",
   "x86_64-pc-windows-msvc",
+  "aarch64-pc-windows-msvc",
   "x86_64-apple-darwin",
   "aarch64-apple-darwin",
 ];
@@ -1332,6 +1333,7 @@ pub static TASK_SUBCOMMAND: CommandDef = CommandDef {
       .short('r')
       .long("recursive")
       .set_true(),
+    ArgDef::new("members").long("members").set_true(),
     ArgDef::new("filter")
       .short('f')
       .long("filter")
@@ -1662,6 +1664,15 @@ pub static INSTALL_SUBCOMMAND: CommandDef = CommandDef {
       .long("dev")
       .set_true()
       .conflicts_with(&["entrypoint", "global"]),
+    ArgDef::new("save-optional")
+      .short('O')
+      .long("save-optional")
+      .set_true()
+      .conflicts_with(&["entrypoint", "global", "dev"]),
+    ArgDef::new("no-save")
+      .long("no-save")
+      .set_true()
+      .conflicts_with(&["entrypoint", "global", "dev", "save-optional"]),
     ArgDef::new("prod")
       .long("prod")
       .long_aliases(&["production"])
@@ -1696,6 +1707,10 @@ pub static INSTALL_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("save-exact")
       .long("save-exact")
       .long_aliases(&["exact"])
+      .set_true()
+      .conflicts_with(&["entrypoint", "global"]),
+    ArgDef::new("unscoped")
+      .long("unscoped")
       .set_true()
       .conflicts_with(&["entrypoint", "global"]),
     ArgDef::new("package-json")
@@ -1980,10 +1995,20 @@ pub static ADD_SUBCOMMAND: CommandDef = CommandDef {
       .num_args(NumArgs::OneOrMore)
       .required(),
     ArgDef::new("dev").short('D').long("dev").set_true(),
+    ArgDef::new("save-optional")
+      .short('O')
+      .long("save-optional")
+      .set_true()
+      .conflicts_with(&["dev"]),
+    ArgDef::new("no-save")
+      .long("no-save")
+      .set_true()
+      .conflicts_with(&["dev", "save-optional"]),
     ArgDef::new("save-exact")
       .long("save-exact")
       .long_aliases(&["exact"])
       .set_true(),
+    ArgDef::new("unscoped").long("unscoped").set_true(),
     ArgDef::new("npm")
       .long("npm")
       .set_true()

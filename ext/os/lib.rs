@@ -530,6 +530,10 @@ fn op_uid(state: &mut OpState) -> Result<Option<u32>, PermissionCheckError> {
 
 #[op2(fast)]
 fn op_runtime_cpu_usage(#[buffer] out: &mut [f64]) {
+  if out.len() < 2 {
+    return;
+  }
+
   let (sys, user) = get_cpu_usage();
 
   out[0] = sys.as_micros() as f64;
@@ -639,6 +643,10 @@ fn op_runtime_memory_usage(
   scope: &mut v8::PinScope<'_, '_>,
   #[buffer] out: &mut [f64],
 ) {
+  if out.len() < 4 {
+    return;
+  }
+
   let s = scope.get_heap_statistics();
 
   let (rss, heap_total, heap_used, external) = (

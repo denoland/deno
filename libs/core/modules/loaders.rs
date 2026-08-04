@@ -572,6 +572,14 @@ impl ModuleLoader for FsModuleLoader {
         ModuleType::JavaScript
       };
 
+      if options.requested_module_type == RequestedModuleType::Json
+        && module_type != ModuleType::Json
+      {
+        return Err(JsErrorBox::type_error(format!(
+          "Expected a JSON module, but identified a {module_type} module.\n  Specifier: {module_specifier}"
+        )));
+      }
+
       // If we loaded a JSON file, but the "requested_module_type" (that is computed from
       // import attributes) is not JSON we need to fail.
       if module_type == ModuleType::Json

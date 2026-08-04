@@ -286,7 +286,7 @@ async function copyDir(
   const dir = await lazyFsPromises().opendirPromise(src);
   const iterator = dir[SymbolAsyncIterator]();
   while (true) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     const { done, value } = await iterator.next();
     if (done) break;
     const { name } = value;

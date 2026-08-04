@@ -7,6 +7,12 @@ pub struct CallbackInfo {
   pub env: *mut Env,
   pub cb: napi_callback,
   pub data: *mut c_void,
+}
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct CallbackInfoScope {
+  pub function_info: *const CallbackInfo,
   pub args: *const c_void,
 }
 
@@ -17,20 +23,16 @@ impl CallbackInfo {
     cb: napi_callback,
     data: *mut c_void,
   ) -> *mut Self {
-    Box::into_raw(Box::new(Self {
-      env,
-      cb,
-      data,
-      args: std::ptr::null(),
-    }))
+    Box::into_raw(Box::new(Self { env, cb, data }))
   }
 }
 
 extern "C" fn call_fn(info: *const v8::FunctionCallbackInfo) {
-  let callback_info = unsafe { &*info };
-  let args =
-    v8::FunctionCallbackArguments::from_function_callback_info(callback_info);
-  let mut rv = v8::ReturnValue::from_function_callback_info(callback_info);
+  let v8_callback_info = unsafe { &*info };
+  let args = v8::FunctionCallbackArguments::from_function_callback_info(
+    v8_callback_info,
+  );
+  let mut rv = v8::ReturnValue::from_function_callback_info(v8_callback_info);
   // SAFETY: create_function guarantees that the data is a CallbackInfo external.
   let info_ptr: *mut CallbackInfo = unsafe {
     let external_value = v8::Local::<v8::External>::cast_unchecked(args.data());
@@ -38,13 +40,21 @@ extern "C" fn call_fn(info: *const v8::FunctionCallbackInfo) {
   };
 
   // SAFETY: pointer from Box::into_raw.
-  let info = unsafe { &mut *info_ptr };
-  info.args = &args as *const _ as *const c_void;
+  let info = unsafe { &*info_ptr };
+  let mut callback_info_scope = CallbackInfoScope {
+    function_info: info_ptr,
+    args: &args as *const _ as *const c_void,
+  };
 
   // SAFETY: calling user provided function pointer.
-  let value = unsafe { (info.cb)(info.env as napi_env, info_ptr as *mut _) };
+  let value = unsafe {
+    (info.cb)(
+      info.env as napi_env,
+      &mut callback_info_scope as *mut _ as *mut c_void,
+    )
+  };
   if let Some(exc) = unsafe { &mut *info.env }.last_exception.take() {
-    v8::callback_scope!(unsafe scope, callback_info);
+    v8::callback_scope!(unsafe scope, v8_callback_info);
     let exc = v8::Local::new(scope, exc);
     scope.throw_exception(exc);
   }

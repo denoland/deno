@@ -91,7 +91,7 @@ class JSStreamSocket extends lazyNet().Socket {
       // Write methods - delegate to owner.doWrite which writes to the
       // underlying stream and triggers req.oncomplete via finishWrite.
       writeBuffer(req, data) {
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         const len = data.byteLength ?? data.length ?? 0;
         streamBaseState[kBytesWritten] = len;
         streamBaseState[kLastWriteWasAsync] = 1;
@@ -103,7 +103,7 @@ class JSStreamSocket extends lazyNet().Socket {
         if (allBuffers) {
           bufs = chunks;
           for (let i = 0; i < bufs.length; i++) {
-            // deno-lint-ignore prefer-primordials
+            // deno-lint-ignore deno-internal/prefer-primordials
             total += bufs[i].byteLength ?? bufs[i].length ?? 0;
           }
         } else {
@@ -115,7 +115,7 @@ class JSStreamSocket extends lazyNet().Socket {
               ? Buffer.from(chunk, enc)
               : chunk;
             bufs[i >> 1] = buf;
-            // deno-lint-ignore prefer-primordials
+            // deno-lint-ignore deno-internal/prefer-primordials
             total += buf.byteLength ?? buf.length ?? 0;
           }
         }
@@ -145,10 +145,10 @@ class JSStreamSocket extends lazyNet().Socket {
       // the TLS engine instead.
       readBuffer(chunk) {
         if (!handle.onread) return;
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         const len = chunk.byteLength ?? chunk.length ?? 0;
         if (len === 0) return;
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         streamBaseState[kArrayBufferOffset] = chunk.byteOffset ?? 0;
         streamBaseState[kReadBytesOrError] = len;
         FunctionPrototypeCall(handle.onread, handle, chunk, len);

@@ -55,3 +55,47 @@ Deno.test("napi external string utf16", function () {
   // Either outcome is valid -- zero-copy is preferred but copy is acceptable
   assertEquals(typeof zeroCopy, "boolean");
 });
+
+Deno.test("napi external string finalizers keep per-resource state", async () => {
+  if (typeof globalThis.gc !== "function") {
+    return;
+  }
+
+  strings.test_external_string_finalizer_reset();
+  let values = strings.test_external_string_finalizer_collisions();
+
+  assertEquals(values[0].length, 4096);
+  assertEquals(values[1].length, 4096);
+  assertEquals(values[2].length, 4096);
+  assertEquals(values[3].length, 4096);
+  // rusty_v8 cannot distinguish two live resources with the same address,
+  // length, and encoding. The first remains external and the second is copied.
+  assertEquals(values.slice(4), [true, false, true, false]);
+
+  const empty = strings.test_empty_external_string_finalizers();
+  assertEquals(empty[0], "");
+  assertEquals(empty[1], "");
+  assertEquals(empty.slice(2), [false, false]);
+  assertEquals(strings.test_external_string_finalizer_status(), [
+    4,
+    false,
+    false,
+    0b111010,
+  ]);
+
+  values = null;
+  for (let i = 0; i < 100; i++) {
+    globalThis.gc();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    if (strings.test_external_string_finalizer_status()[0] === 6) {
+      break;
+    }
+  }
+
+  assertEquals(strings.test_external_string_finalizer_status(), [
+    6,
+    false,
+    false,
+    0b111111,
+  ]);
+});

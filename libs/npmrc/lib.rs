@@ -21,6 +21,8 @@ mod ini;
 /// The default npm registry URL.
 pub static NPM_DEFAULT_REGISTRY: &str = "https://registry.npmjs.org";
 
+const NPM_DEFAULT_REGISTRY_HOST: &str = "registry.npmjs.org";
+
 #[derive(Debug, thiserror::Error)]
 pub enum ResolveError {
   #[error("failed parsing npm registry url for scope '{scope}'")]
@@ -74,11 +76,111 @@ pub enum TrustPolicyConfig {
   NoDowngrade,
 }
 
+/// Controls when the configured registry replaces the registry host in a
+/// package tarball URL. This mirrors npm's `replace-registry-host` setting.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub enum ReplaceRegistryHost {
+  /// Replace tarball URLs hosted by the public npm registry.
+  #[default]
+  NpmJs,
+  /// Never replace a tarball URL.
+  Never,
+  /// Replace every tarball URL.
+  Always,
+  /// Replace tarball URLs hosted by this hostname.
+  Hostname(String),
+  /// Replace tarball URLs whose hostname and path match this URL prefix.
+  Url(Url),
+}
+
+impl ReplaceRegistryHost {
+  fn parse(value: &str) -> Self {
+    let value = value.trim();
+    match value {
+      "" | "npmjs" => Self::NpmJs,
+      "never" => Self::Never,
+      "always" => Self::Always,
+      _ => match Url::parse(value) {
+        Ok(url) if url.host_str().is_some() => Self::Url(url),
+        _ => Self::Hostname(value.to_string()),
+      },
+    }
+  }
+
+  pub fn for_npm(sys: &impl EnvVar) -> Option<Self> {
+    for env_var_name in [
+      "NPM_CONFIG_REPLACE_REGISTRY_HOST",
+      "npm_config_replace_registry_host",
+    ] {
+      if let Ok(value) = sys.env_var(env_var_name) {
+        return Some(Self::parse(&value));
+      }
+    }
+    None
+  }
+
+  fn matches(&self, tarball_url: &Url) -> Option<Option<&str>> {
+    match self {
+      Self::NpmJs => (tarball_url.host_str()
+        == Some(NPM_DEFAULT_REGISTRY_HOST))
+      .then_some(None),
+      Self::Never => None,
+      Self::Always => Some(None),
+      Self::Hostname(hostname) => {
+        (tarball_url.host_str() == Some(hostname.as_str())).then_some(None)
+      }
+      Self::Url(url) => {
+        let host_matches = url.host_str() == tarball_url.host_str();
+        let match_path = url.path().trim_end_matches('/');
+        let path_matches = match_path.is_empty()
+          || path_has_prefix(tarball_url.path(), match_path);
+        (host_matches && path_matches)
+          .then_some((!match_path.is_empty()).then_some(match_path))
+      }
+    }
+  }
+
+  fn replace(&self, mut tarball_url: Url, registry_url: &Url) -> Url {
+    let Some(maybe_match_path) = self.matches(&tarball_url) else {
+      return tarball_url;
+    };
+    let original_url = tarball_url.clone();
+    if tarball_url.set_scheme(registry_url.scheme()).is_err()
+      || tarball_url.set_host(registry_url.host_str()).is_err()
+      || tarball_url.set_port(registry_url.port()).is_err()
+    {
+      return original_url;
+    }
+
+    let registry_path = registry_url.path().trim_end_matches('/');
+    let tarball_path = original_url.path();
+    let replaced_path = if let Some(match_path) = maybe_match_path {
+      format!("{}{}", registry_path, &tarball_path[match_path.len()..])
+    } else if !registry_path.is_empty()
+      && !path_has_prefix(tarball_path, registry_path)
+    {
+      format!("{}{}", registry_path, tarball_path)
+    } else {
+      tarball_path.to_string()
+    };
+    tarball_url.set_path(&replaced_path);
+    tarball_url
+  }
+}
+
+fn path_has_prefix(path: &str, prefix: &str) -> bool {
+  path == prefix
+    || path
+      .strip_prefix(prefix)
+      .is_some_and(|suffix| suffix.starts_with('/'))
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct NpmRc {
   pub registry: Option<String>,
   pub scope_registries: HashMap<String, String>,
   pub registry_configs: HashMap<String, Arc<RegistryConfig>>,
+  pub replace_registry_host: Option<ReplaceRegistryHost>,
   /// `min-release-age` value in days. See
   /// https://docs.npmjs.com/cli/v11/using-npm/config#min-release-age
   pub min_release_age_days: Option<u64>,
@@ -103,6 +205,8 @@ impl NpmRc {
     let mut registry = None;
     let mut scope_registries: HashMap<String, String> = HashMap::new();
     let mut registry_configs: HashMap<String, RegistryConfig> = HashMap::new();
+    let replace_registry_host_from_env = ReplaceRegistryHost::for_npm(sys);
+    let mut replace_registry_host = None;
     let mut min_release_age_days = min_release_age_days_from_env(sys);
     let mut trust_policy = TrustPolicyConfig::default();
     let mut trust_policy_ignore_after_minutes: Option<u64> = None;
@@ -157,6 +261,11 @@ impl NpmRc {
             {
               let value = expand_vars(text, sys);
               registry = Some(value);
+            } else if key == "replace-registry-host"
+              && let Value::String(text) = &kv.value
+            {
+              let value = expand_vars(text, sys);
+              replace_registry_host = Some(ReplaceRegistryHost::parse(&value));
             } else if key == "min-release-age" {
               // npm interprets the value as a number of days. Ignore values
               // that can't be parsed rather than erroring (npm is lenient
@@ -225,6 +334,8 @@ impl NpmRc {
         .into_iter()
         .map(|(k, v)| (k, Arc::new(v)))
         .collect(),
+      replace_registry_host: replace_registry_host_from_env
+        .or(replace_registry_host),
       min_release_age_days,
       trust_policy,
       trust_policy_ignore_after_minutes,
@@ -264,6 +375,10 @@ impl NpmRc {
       },
       scopes,
       registry_configs: self.registry_configs.clone(),
+      replace_registry_host: self
+        .replace_registry_host
+        .clone()
+        .unwrap_or_default(),
       min_release_age_days: self.min_release_age_days,
       trust_policy: self.trust_policy,
       trust_policy_ignore_after_minutes: self.trust_policy_ignore_after_minutes,
@@ -352,6 +467,7 @@ pub struct ResolvedNpmRc {
   pub default_config: RegistryConfigWithUrl,
   pub scopes: HashMap<String, RegistryConfigWithUrl>,
   pub registry_configs: HashMap<String, Arc<RegistryConfig>>,
+  pub replace_registry_host: ReplaceRegistryHost,
   /// `min-release-age` value in days. See
   /// https://docs.npmjs.com/cli/v11/using-npm/config#min-release-age
   pub min_release_age_days: Option<u64>,
@@ -400,22 +516,29 @@ impl ResolvedNpmRc {
     urls
   }
 
+  /// Applies npm's `replace-registry-host` policy to a package tarball URL.
+  pub fn replace_tarball_url(
+    &self,
+    tarball_url: Url,
+    package_name: &str,
+  ) -> Url {
+    self
+      .replace_registry_host
+      .replace(tarball_url, self.get_registry_url(package_name))
+  }
+
   pub fn tarball_config(
     &self,
     tarball_url: &Url,
   ) -> Option<&Arc<RegistryConfig>> {
-    // https://example.com/chalk.tgz -> example.com/.tgz
-    let registry_url = tarball_url
-      .as_str()
-      .split_once("//")
-      .map(|(_, right)| right)?;
-    let mut best_match: Option<(&str, &Arc<RegistryConfig>)> = None;
+    let mut best_match: Option<(usize, &Arc<RegistryConfig>)> = None;
     for (config_url, config) in &self.registry_configs {
-      if registry_url.starts_with(config_url)
-        && (best_match.is_none()
-          || matches!(best_match, Some((current_config_url, _)) if config_url.len() > current_config_url.len()))
+      if let Some(match_len) =
+        registry_config_match_len(tarball_url, config_url)
+        && best_match
+          .is_none_or(|(current_match_len, _)| match_len > current_match_len)
       {
-        best_match = Some((config_url, config));
+        best_match = Some((match_len, config));
       }
     }
     best_match.map(|(_, config)| config)
@@ -459,6 +582,41 @@ impl ResolvedNpmRc {
       None
     }
   }
+}
+
+fn registry_config_match_len(
+  tarball_url: &Url,
+  config_url: &str,
+) -> Option<usize> {
+  let (config_authority, config_path) = config_url
+    .find('/')
+    .map(|index| config_url.split_at(index))
+    .unwrap_or((config_url, ""));
+  if config_authority.is_empty() || tarball_url.host().is_none() {
+    return None;
+  }
+
+  // npm auth keys are scheme-relative. Compare the complete serialized
+  // authority so a host without a port does not match that host on a
+  // non-default port (and so similarly-prefixed host names stay distinct).
+  let tarball_authority =
+    &tarball_url[url::Position::BeforeHost..url::Position::AfterPort];
+  if !config_authority.eq_ignore_ascii_case(tarball_authority) {
+    return None;
+  }
+
+  let tarball_path = tarball_url.path();
+  let path_matches = if config_path.is_empty() {
+    true
+  } else if config_path.ends_with('/') {
+    tarball_path.starts_with(config_path)
+  } else {
+    tarball_path == config_path
+      || tarball_path
+        .strip_prefix(config_path)
+        .is_some_and(|rest| rest.starts_with('/'))
+  };
+  path_matches.then_some(config_path.len())
 }
 
 fn expand_vars(input: &str, sys: &impl EnvVar) -> String {
@@ -560,6 +718,143 @@ mod test {
 
   use super::*;
 
+  fn replace_tarball_url(
+    config: &str,
+    registry: &str,
+    tarball: &str,
+    package_name: &str,
+  ) -> String {
+    let npm_rc = NpmRc::parse(
+      &InMemorySys::default(),
+      &format!("registry={registry}\n{config}"),
+    )
+    .unwrap()
+    .as_resolved(&npm_url(NPM_DEFAULT_REGISTRY))
+    .unwrap();
+    npm_rc
+      .replace_tarball_url(Url::parse(tarball).unwrap(), package_name)
+      .to_string()
+  }
+
+  #[test]
+  fn test_replace_registry_host_default() {
+    assert_eq!(
+      replace_tarball_url(
+        "",
+        "https://artifactory.example.com/api/npm/npm-remote/",
+        "https://registry.npmjs.org/@scope/pkg/-/pkg-1.0.0.tgz?x=1#fragment",
+        "@scope/pkg",
+      ),
+      "https://artifactory.example.com/api/npm/npm-remote/@scope/pkg/-/pkg-1.0.0.tgz?x=1#fragment",
+    );
+    assert_eq!(
+      replace_tarball_url(
+        "",
+        "https://artifactory.example.com/api/npm/npm-remote/",
+        "https://cdn.example.com/pkg-1.0.0.tgz",
+        "pkg",
+      ),
+      "https://cdn.example.com/pkg-1.0.0.tgz",
+    );
+  }
+
+  #[test]
+  fn test_replace_registry_host_never_and_always() {
+    let tarball = "https://cdn.example.com/pkg/-/pkg-1.0.0.tgz";
+    assert_eq!(
+      replace_tarball_url(
+        "replace-registry-host=never",
+        "https://mirror.example.com/npm/",
+        tarball,
+        "pkg",
+      ),
+      tarball,
+    );
+    assert_eq!(
+      replace_tarball_url(
+        "replace-registry-host=always",
+        "https://mirror.example.com/npm/",
+        tarball,
+        "pkg",
+      ),
+      "https://mirror.example.com/npm/pkg/-/pkg-1.0.0.tgz",
+    );
+  }
+
+  #[test]
+  fn test_replace_registry_host_hostname() {
+    assert_eq!(
+      replace_tarball_url(
+        "replace-registry-host=old.example.com",
+        "https://mirror.example.com/npm/",
+        "http://old.example.com/pkg/-/pkg-1.0.0.tgz",
+        "pkg",
+      ),
+      "https://mirror.example.com/npm/pkg/-/pkg-1.0.0.tgz",
+    );
+  }
+
+  #[test]
+  fn test_replace_registry_host_url_prefix() {
+    assert_eq!(
+      replace_tarball_url(
+        "replace-registry-host=https://old.example.com/api/npm/",
+        "https://mirror.example.com/npm/",
+        "https://old.example.com/api/npm/pkg/-/pkg-1.0.0.tgz",
+        "pkg",
+      ),
+      "https://mirror.example.com/npm/pkg/-/pkg-1.0.0.tgz",
+    );
+    let non_matching =
+      "https://old.example.com/api/npm-other/pkg/-/pkg-1.0.0.tgz";
+    assert_eq!(
+      replace_tarball_url(
+        "replace-registry-host=https://old.example.com/api/npm/",
+        "https://mirror.example.com/npm/",
+        non_matching,
+        "pkg",
+      ),
+      non_matching,
+    );
+  }
+
+  #[test]
+  fn test_replace_registry_host_does_not_duplicate_registry_path() {
+    assert_eq!(
+      replace_tarball_url(
+        "replace-registry-host=old.example.com",
+        "https://mirror.example.com/npm/",
+        "https://old.example.com/npm/pkg/-/pkg-1.0.0.tgz",
+        "pkg",
+      ),
+      "https://mirror.example.com/npm/pkg/-/pkg-1.0.0.tgz",
+    );
+  }
+
+  #[test]
+  fn test_replace_registry_host_uses_scoped_registry() {
+    assert_eq!(
+      replace_tarball_url(
+        "@scope:registry=https://scope.example.com/npm/",
+        "https://default.example.com/",
+        "https://registry.npmjs.org/@scope/pkg/-/pkg-1.0.0.tgz",
+        "@scope/pkg",
+      ),
+      "https://scope.example.com/npm/@scope/pkg/-/pkg-1.0.0.tgz",
+    );
+  }
+
+  #[test]
+  fn test_replace_registry_host_env_overrides_npmrc() {
+    let sys = InMemorySys::default();
+    sys.env_set_var("NPM_CONFIG_REPLACE_REGISTRY_HOST", "never");
+    let npm_rc = NpmRc::parse(&sys, "replace-registry-host=always").unwrap();
+    assert_eq!(
+      npm_rc.replace_registry_host,
+      Some(ReplaceRegistryHost::Never)
+    );
+  }
+
   #[test]
   fn test_parse_basic() {
     // https://docs.npmjs.com/cli/v10/configuring-npm/npmrc#auth-related-configuration
@@ -651,6 +946,7 @@ registry=https://registry.npmjs.org/
             })
           ),
         ]),
+        replace_registry_host: None,
         min_release_age_days: None,
         trust_policy: Default::default(),
         trust_policy_ignore_after_minutes: None,
@@ -716,6 +1012,7 @@ registry=https://registry.npmjs.org/
           ),
         ]),
         registry_configs: npm_rc.registry_configs.clone(),
+        replace_registry_host: ReplaceRegistryHost::default(),
         min_release_age_days: None,
         trust_policy: Default::default(),
         trust_policy_ignore_after_minutes: None,
@@ -865,6 +1162,68 @@ registry=https://registry.npmjs.org/
   }
 
   #[test]
+  fn test_tarball_config_matches_authority_and_path_boundaries() {
+    let npm_rc = NpmRc::parse(
+      &InMemorySys::default(),
+      r#"
+//example.com:_authToken=HOST
+//example.com:8443/:_authToken=PORT
+//example.com/private:_authToken=PRIVATE
+//example.com/private/nested/:_authToken=NESTED
+//[::1]:8443/:_authToken=IPV6
+"#,
+    )
+    .unwrap();
+    let resolved_npm_rc = npm_rc
+      .as_resolved(&npm_url("https://registry.npmjs.org/"))
+      .unwrap();
+    let auth_token = |url: &str| {
+      resolved_npm_rc
+        .tarball_config(&Url::parse(url).unwrap())
+        .and_then(|config| config.auth_token.as_deref())
+    };
+
+    // Auth keys are scheme-relative, but the complete host and port must
+    // match.
+    assert_eq!(auth_token("https://example.com/pkg.tgz"), Some("HOST"));
+    assert_eq!(auth_token("http://example.com/pkg.tgz"), Some("HOST"));
+    assert_eq!(auth_token("https://example.com:443/pkg.tgz"), Some("HOST"));
+    assert_eq!(auth_token("https://example.com.evil/pkg.tgz"), None);
+    assert_eq!(auth_token("https://example.com:8443/pkg.tgz"), Some("PORT"));
+    assert_eq!(auth_token("https://example.com:8444/pkg.tgz"), None);
+    assert_eq!(auth_token("https://example.com:18443/pkg.tgz"), None);
+    assert_eq!(auth_token("https://[::1]:8443/pkg.tgz"), Some("IPV6"));
+    assert_eq!(auth_token("https://[::1]:8444/pkg.tgz"), None);
+
+    // Path matches stop at segment boundaries and the longest valid path wins.
+    assert_eq!(
+      auth_token("https://example.com/private/pkg.tgz"),
+      Some("PRIVATE")
+    );
+    assert_eq!(auth_token("https://example.com/private"), Some("PRIVATE"));
+    assert_eq!(
+      auth_token("https://example.com/privateevil/pkg.tgz"),
+      Some("HOST")
+    );
+    assert_eq!(
+      auth_token("https://example.com/private:evil/pkg.tgz"),
+      Some("HOST")
+    );
+    assert_eq!(
+      auth_token("https://example.com/private/nested/pkg.tgz"),
+      Some("NESTED")
+    );
+    assert_eq!(
+      auth_token("https://example.com/private/nested"),
+      Some("PRIVATE")
+    );
+    assert_eq!(
+      auth_token("https://example.com/private/nested/?download=1"),
+      Some("NESTED")
+    );
+  }
+
+  #[test]
   fn test_parse_env_vars() {
     let sys = InMemorySys::default();
     sys.env_set_var("VAR_FOUND", "SOME_VALUE");
@@ -895,6 +1254,7 @@ registry=${VAR_FOUND}
             ..Default::default()
           })
         ),]),
+        replace_registry_host: None,
         min_release_age_days: None,
         trust_policy: Default::default(),
         trust_policy_ignore_after_minutes: None,

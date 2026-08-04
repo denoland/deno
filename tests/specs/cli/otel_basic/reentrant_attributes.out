@@ -1,0 +1,407 @@
+{
+  "spans": [
+    {
+      "traceId": "00000000000000000000000000000001",
+      "spanId": "0000000000000001",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 257,
+      "name": "reentrant attribute span",
+      "kind": 1,
+      "startTimeUnixNano": "[WILDCARD]",
+      "endTimeUnixNano": "[WILDCARD]",
+      "attributes": [],
+      "droppedAttributesCount": 0,
+      "events": [],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    },
+    {
+      "traceId": "00000000000000000000000000000002",
+      "spanId": "0000000000000002",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 257,
+      "name": "throwing attribute span",
+      "kind": 1,
+      "startTimeUnixNano": "[WILDCARD]",
+      "endTimeUnixNano": "[WILDCARD]",
+      "attributes": [],
+      "droppedAttributesCount": 0,
+      "events": [],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    },
+    {
+      "traceId": "00000000000000000000000000000003",
+      "spanId": "0000000000000003",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 257,
+      "name": "full attribute span",
+      "kind": 1,
+      "startTimeUnixNano": "[WILDCARD]",
+      "endTimeUnixNano": "[WILDCARD]",
+      "attributes": [
+        {
+          "key": "first",
+          "value": {
+            "stringValue": "value"
+          }
+        }
+      ],
+      "droppedAttributesCount": 1,
+      "events": [],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    },
+    {
+      "traceId": "00000000000000000000000000000004",
+      "spanId": "0000000000000004",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 257,
+      "name": "stable attribute targets span",
+      "kind": 1,
+      "startTimeUnixNano": "[WILDCARD]",
+      "endTimeUnixNano": "[WILDCARD]",
+      "attributes": [],
+      "droppedAttributesCount": 0,
+      "events": [
+        {
+          "timeUnixNano": "[WILDCARD]",
+          "name": "outer event",
+          "attributes": [
+            {
+              "key": "reentrant",
+              "value": {
+                "arrayValue": {
+                  "values": [
+                    {
+                      "stringValue": "event-trigger"
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "droppedAttributesCount": 0
+        },
+        {
+          "timeUnixNano": "[WILDCARD]",
+          "name": "nested event",
+          "attributes": [],
+          "droppedAttributesCount": 0
+        }
+      ],
+      "droppedEventsCount": 0,
+      "links": [
+        {
+          "traceId": "00000000000000000000000000000010",
+          "spanId": "0000000000000010",
+          "traceState": "",
+          "attributes": [
+            {
+              "key": "reentrant",
+              "value": {
+                "arrayValue": {
+                  "values": [
+                    {
+                      "stringValue": "link-trigger"
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "droppedAttributesCount": 0,
+          "flags": 257
+        },
+        {
+          "traceId": "00000000000000000000000000000011",
+          "spanId": "0000000000000011",
+          "traceState": "",
+          "attributes": [],
+          "droppedAttributesCount": 0,
+          "flags": 257
+        }
+      ],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    }
+  ],
+  "logs": [],
+  "metrics": [
+    {
+      "name": "reentrant.counter",
+      "description": "",
+      "unit": "",
+      "metadata": [],
+      "sum": {
+        "dataPoints": [
+          {
+            "attributes": [],
+            "startTimeUnixNano": "[WILDCARD]",
+            "timeUnixNano": "[WILDCARD]",
+            "exemplars": [],
+            "flags": 0,
+            "asDouble": 3
+          },
+          {
+            "attributes": [
+              {
+                "key": "fifth",
+                "value": {
+                  "stringValue": "five"
+                }
+              },
+              {
+                "key": "first",
+                "value": {
+                  "stringValue": "one"
+                }
+              },
+              {
+                "key": "reentrant",
+                "value": {
+                  "arrayValue": {
+                    "values": [
+                      {
+                        "stringValue": "metric-trigger"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "key": "second",
+                "value": {
+                  "stringValue": "two"
+                }
+              },
+              {
+                "key": "seventh",
+                "value": {
+                  "stringValue": "seven"
+                }
+              },
+              {
+                "key": "sixth",
+                "value": {
+                  "stringValue": "six"
+                }
+              },
+              {
+                "key": "third",
+                "value": {
+                  "stringValue": "three"
+                }
+              }
+            ],
+            "startTimeUnixNano": "[WILDCARD]",
+            "timeUnixNano": "[WILDCARD]",
+            "exemplars": [],
+            "flags": 0,
+            "asDouble": 1
+          }
+        ],
+        "aggregationTemporality": 2,
+        "isMonotonic": true
+      }
+    },
+    {
+      "name": "reentrant.counter",
+      "description": "",
+      "unit": "",
+      "metadata": [],
+      "sum": {
+        "dataPoints": [
+          {
+            "attributes": [],
+            "startTimeUnixNano": "[WILDCARD]",
+            "timeUnixNano": "[WILDCARD]",
+            "exemplars": [],
+            "flags": 0,
+            "asDouble": 3
+          },
+          {
+            "attributes": [
+              {
+                "key": "fifth",
+                "value": {
+                  "stringValue": "five"
+                }
+              },
+              {
+                "key": "first",
+                "value": {
+                  "stringValue": "one"
+                }
+              },
+              {
+                "key": "reentrant",
+                "value": {
+                  "arrayValue": {
+                    "values": [
+                      {
+                        "stringValue": "metric-trigger"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "key": "second",
+                "value": {
+                  "stringValue": "two"
+                }
+              },
+              {
+                "key": "seventh",
+                "value": {
+                  "stringValue": "seven"
+                }
+              },
+              {
+                "key": "sixth",
+                "value": {
+                  "stringValue": "six"
+                }
+              },
+              {
+                "key": "third",
+                "value": {
+                  "stringValue": "three"
+                }
+              }
+            ],
+            "startTimeUnixNano": "[WILDCARD]",
+            "timeUnixNano": "[WILDCARD]",
+            "exemplars": [],
+            "flags": 0,
+            "asDouble": 1
+          }
+        ],
+        "aggregationTemporality": 2,
+        "isMonotonic": true
+      }
+    },
+    {
+      "name": "reentrant.nested",
+      "description": "",
+      "unit": "",
+      "metadata": [],
+      "sum": {
+        "dataPoints": [
+          {
+            "attributes": [],
+            "startTimeUnixNano": "[WILDCARD]",
+            "timeUnixNano": "[WILDCARD]",
+            "exemplars": [],
+            "flags": 0,
+            "asDouble": 4
+          }
+        ],
+        "aggregationTemporality": 2,
+        "isMonotonic": true
+      }
+    },
+    {
+      "name": "reentrant.nested",
+      "description": "",
+      "unit": "",
+      "metadata": [],
+      "sum": {
+        "dataPoints": [
+          {
+            "attributes": [],
+            "startTimeUnixNano": "[WILDCARD]",
+            "timeUnixNano": "[WILDCARD]",
+            "exemplars": [],
+            "flags": 0,
+            "asDouble": 4
+          }
+        ],
+        "aggregationTemporality": 2,
+        "isMonotonic": true
+      }
+    },
+    {
+      "name": "reentrant.observable",
+      "description": "",
+      "unit": "",
+      "metadata": [],
+      "sum": {
+        "dataPoints": [
+          {
+            "attributes": [],
+            "startTimeUnixNano": "[WILDCARD]",
+            "timeUnixNano": "[WILDCARD]",
+            "exemplars": [],
+            "flags": 0,
+            "asDouble": 3
+          },
+          {
+            "attributes": [
+              {
+                "key": "first",
+                "value": {
+                  "stringValue": "one"
+                }
+              },
+              {
+                "key": "reentrant",
+                "value": {
+                  "arrayValue": {
+                    "values": [
+                      {
+                        "stringValue": "observable-trigger"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "key": "second",
+                "value": {
+                  "stringValue": "two"
+                }
+              },
+              {
+                "key": "third",
+                "value": {
+                  "stringValue": "three"
+                }
+              }
+            ],
+            "startTimeUnixNano": "[WILDCARD]",
+            "timeUnixNano": "[WILDCARD]",
+            "exemplars": [],
+            "flags": 0,
+            "asDouble": 1
+          }
+        ],
+        "aggregationTemporality": 2,
+        "isMonotonic": true
+      }
+    }
+  ]
+}
