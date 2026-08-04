@@ -52,6 +52,11 @@ fn normalize_bin_name(bin_name: &str) -> &str {
     .unwrap_or(trimmed)
 }
 
+/// Checks that a bin target cannot escape its package directory.
+///
+/// This is intentionally called during collection and again at each setup
+/// boundary so a future caller cannot bypass the validation. `.` is allowed:
+/// it names the package directory itself and cannot escape it.
 fn bin_script_stays_in_package(script: &str) -> bool {
   let path = Path::new(script);
   if script.is_empty() || path.is_absolute() {
@@ -573,6 +578,7 @@ mod test {
   use deno_npm::resolution::SerializedNpmResolutionSnapshot;
   use deno_semver::package::PackageNv;
   use sys_traits::FsCreateDirAll;
+  use sys_traits::FsRead;
   use sys_traits::FsRemoveDirAll;
   use sys_traits::FsWrite;
   use sys_traits::PathsInErrorsExt;
@@ -644,6 +650,7 @@ mod test {
   fn validates_bin_script_stays_in_package() {
     assert!(bin_script_stays_in_package("bin/cli.js"));
     assert!(bin_script_stays_in_package("./bin/../cli.js"));
+    assert!(bin_script_stays_in_package("."));
     assert!(!bin_script_stays_in_package(""));
     assert!(!bin_script_stays_in_package("../outside.js"));
     assert!(!bin_script_stays_in_package("bin/../../outside.js"));
@@ -655,14 +662,10 @@ mod test {
   fn validates_windows_bin_script_paths() {
     assert!(bin_script_stays_in_package(r"bin\..\cli.js"));
     assert!(!bin_script_stays_in_package(r"..\outside.js"));
-    assert!(!bin_script_stays_in_package(
-      r"bin\..\..\outside.js"
-    ));
+    assert!(!bin_script_stays_in_package(r"bin\..\..\outside.js"));
     assert!(!bin_script_stays_in_package(r"C:\outside.js"));
     assert!(!bin_script_stays_in_package(r"C:outside.js"));
-    assert!(!bin_script_stays_in_package(
-      r"\\server\share\outside.js"
-    ));
+    assert!(!bin_script_stays_in_package(r"\\server\share\outside.js"));
     assert!(!bin_script_stays_in_package(r"\outside.js"));
   }
 
@@ -818,11 +821,11 @@ mod test {
       assert!(!sys.fs_exists(path.with_extension("ps1")).unwrap());
     }
     assert_eq!(
-      std::fs::read(&absolute_script).unwrap(),
+      &*sys.fs_read(&absolute_script).unwrap(),
       b"#!/usr/bin/env node\n"
     );
     assert_eq!(
-      std::fs::read(&parent_script).unwrap(),
+      &*sys.fs_read(&parent_script).unwrap(),
       b"#!/usr/bin/env node\n"
     );
     #[cfg(unix)]
