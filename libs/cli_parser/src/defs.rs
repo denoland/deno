@@ -1768,6 +1768,14 @@ pub static COMPILE_SUBCOMMAND: CommandDef = CommandDef {
       .num_args(NumArgs::Exact(1))
       .value_parser(ValueParser::Choices(SUPPORTED_OS))
 .help("Target OS architecture"),
+    ArgDef::new("engine")
+      .long("engine")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(&["v8", "quickjs"]))
+      .help(
+        "JS engine the compiled binary runs on (quickjs is smaller and experimental, and does not receive the same security updates as v8)",
+      ),
     ArgDef::new("no-terminal").long("no-terminal").set_true()
 .help("Hide terminal on Windows"),
     ArgDef::new("icon")
@@ -3088,6 +3096,14 @@ pub static DESKTOP_SUBCOMMAND: CommandDef = CommandDef {
       .num_args(NumArgs::Exact(1))
       .value_parser(ValueParser::Choices(&["webview", "cef", "raw"]))
 .help("Backend to use for the desktop app"),
+    ArgDef::new("engine")
+      .long("engine")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(&["v8", "quickjs"]))
+      .help(
+        "JS engine the desktop binary runs on (quickjs is smaller and experimental, and does not receive the same security updates as v8)",
+      ),
     ArgDef::new("all-targets").long("all-targets").set_true()
 .help("Build for all supported target platforms"),
     ArgDef::new("compress")

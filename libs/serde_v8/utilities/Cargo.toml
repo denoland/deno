@@ -9,5 +9,10 @@ publish = false
 [lib]
 path = "lib.rs"
 
+[features]
+default = ["v8"]
+quickjs = ["v8/quickjs"]
+v8 = ["v8/v8"]
+
 [dependencies]
 v8.workspace = true
