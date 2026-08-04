@@ -2348,23 +2348,17 @@ Deno.test(
   { permissions: { net: true } },
   async function errorMessageIncludesUrlAndDetailsWithTcpInfo() {
     const listener = Deno.listen({ port: listenPort });
-    // Accept connections in a loop so retries also hit the same error.
-    // This is needed because connection reset is retryable.
+    // A single connection is enough: a failure on a freshly established
+    // connection is never retried.
     const server = (async () => {
-      while (true) {
-        let conn;
-        try {
-          conn = await listener.accept();
-        } catch {
-          break;
-        }
-        conn.close();
-      }
+      const conn = await listener.accept();
+      listener.close();
+      // Immediately close the connection to simulate a connection error
+      conn.close();
     })();
 
     const url = `http://localhost:${listenPort}`;
     const err = await assertRejects(() => fetch(url));
-    listener.close();
 
     assert(err instanceof TypeError, `${err}`);
     // Node-compatible shape: `"fetch failed"` with the low-level transport
