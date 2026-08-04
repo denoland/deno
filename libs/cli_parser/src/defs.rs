@@ -1321,6 +1321,7 @@ pub static TASK_SUBCOMMAND: CommandDef = CommandDef {
       .short('r')
       .long("recursive")
       .set_true(),
+    ArgDef::new("members").long("members").set_true(),
     ArgDef::new("filter")
       .short('f')
       .long("filter")
@@ -1454,6 +1455,14 @@ pub static COMPILE_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1))
       .value_parser(ValueParser::Choices(SUPPORTED_OS)),
+    ArgDef::new("engine")
+      .long("engine")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(&["v8", "quickjs"]))
+      .help(
+        "JS engine the compiled binary runs on (quickjs is smaller and experimental, and does not receive the same security updates as v8)",
+      ),
     ArgDef::new("no-terminal").long("no-terminal").set_true(),
     ArgDef::new("icon")
       .long("icon")
@@ -1690,6 +1699,10 @@ pub static INSTALL_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("save-exact")
       .long("save-exact")
       .long_aliases(&["exact"])
+      .set_true()
+      .conflicts_with(&["entrypoint", "global"]),
+    ArgDef::new("unscoped")
+      .long("unscoped")
       .set_true()
       .conflicts_with(&["entrypoint", "global"]),
     ArgDef::new("package-json")
@@ -1976,6 +1989,7 @@ pub static ADD_SUBCOMMAND: CommandDef = CommandDef {
       .long("save-exact")
       .long_aliases(&["exact"])
       .set_true(),
+    ArgDef::new("unscoped").long("unscoped").set_true(),
     ArgDef::new("npm")
       .long("npm")
       .set_true()
@@ -2566,6 +2580,14 @@ pub static DESKTOP_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1))
       .value_parser(ValueParser::Choices(&["webview", "cef", "raw"])),
+    ArgDef::new("engine")
+      .long("engine")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1))
+      .value_parser(ValueParser::Choices(&["v8", "quickjs"]))
+      .help(
+        "JS engine the desktop binary runs on (quickjs is smaller and experimental, and does not receive the same security updates as v8)",
+      ),
     ArgDef::new("all-targets").long("all-targets").set_true(),
     ArgDef::new("compress")
       .long("compress")

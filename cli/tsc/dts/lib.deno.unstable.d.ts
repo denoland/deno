@@ -191,6 +191,10 @@ declare namespace Deno {
    * }
    * ```
    *
+   * Requires read access to local entrypoints and their dependency trees,
+   * import access to remote modules, and write access when output is written
+   * to the filesystem.
+   *
    * @category Bundler
    * @experimental
    */

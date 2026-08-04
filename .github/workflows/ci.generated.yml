@@ -833,6 +833,22 @@ jobs:
           strip -x -S ./libdenort.dylib
           zip -r libdenort-x86_64-apple-darwin.zip libdenort.dylib
           shasum -a 256 libdenort-x86_64-apple-darwin.zip > libdenort-x86_64-apple-darwin.zip.sha256sum
+          restore_v8_runtimes() {
+            test ! -e denort.v8 || mv -f denort.v8 denort
+            test ! -e libdenort.v8.dylib || mv -f libdenort.v8.dylib libdenort.dylib
+          }
+          trap restore_v8_runtimes EXIT
+          mv denort denort.v8
+          mv libdenort.dylib libdenort.v8.dylib
+          (cd ../.. && cargo build --release --locked -p denort -p denort_desktop --no-default-features --features quickjs)
+          strip -x -S ./denort
+          zip -r denort-quickjs-x86_64-apple-darwin.zip denort
+          shasum -a 256 denort-quickjs-x86_64-apple-darwin.zip > denort-quickjs-x86_64-apple-darwin.zip.sha256sum
+          strip -x -S ./libdenort.dylib
+          zip -r libdenort-quickjs-x86_64-apple-darwin.zip libdenort.dylib
+          shasum -a 256 libdenort-quickjs-x86_64-apple-darwin.zip > libdenort-quickjs-x86_64-apple-darwin.zip.sha256sum
+          restore_v8_runtimes
+          trap - EXIT
       - name: Build bsdiff helper
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: cargo build --release -p bsdiff_helper
@@ -1296,6 +1312,10 @@ jobs:
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
         run: cargo build --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
+      - name: Check QuickJS backend (deno + denort)
+        env:
+          CARGO_PROFILE_DEV_DEBUG: 0
+        run: cargo check --locked -p deno -p denort --no-default-features --features quickjs
       - name: Check deno binary
         env:
           NO_COLOR: 1
@@ -1711,7 +1731,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test --locked --lib -p deno -p denort -p node_shim -p bsdiff_helper -p deno_lib -p denort_desktop -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_canvas -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_cache_dir -p deno_cli_parser -p deno_config -p deno_crypto_provider -p deno_dotenv -p eszip -p deno_http_h1 -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p napi_sys -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_npmrc -p deno_package_json -p deno_print -p deno_resolver -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
+        run: cargo test --locked --lib -p deno -p denort -p node_shim -p bsdiff_helper -p deno_lib -p denort_desktop -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_canvas -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_cache_dir -p deno_cli_parser -p deno_config -p deno_crypto_provider -p deno_v8 -p deno_dotenv -p eszip -p deno_http_h1 -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p napi_sys -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_npmrc -p deno_package_json -p deno_print -p deno_resolver -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
       - name: Cache cargo home
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
@@ -1948,6 +1968,22 @@ jobs:
           strip -x -S ./libdenort.dylib
           zip -r libdenort-aarch64-apple-darwin.zip libdenort.dylib
           shasum -a 256 libdenort-aarch64-apple-darwin.zip > libdenort-aarch64-apple-darwin.zip.sha256sum
+          restore_v8_runtimes() {
+            test ! -e denort.v8 || mv -f denort.v8 denort
+            test ! -e libdenort.v8.dylib || mv -f libdenort.v8.dylib libdenort.dylib
+          }
+          trap restore_v8_runtimes EXIT
+          mv denort denort.v8
+          mv libdenort.dylib libdenort.v8.dylib
+          (cd ../.. && cargo build --release --locked -p denort -p denort_desktop --no-default-features --features quickjs)
+          strip -x -S ./denort
+          zip -r denort-quickjs-aarch64-apple-darwin.zip denort
+          shasum -a 256 denort-quickjs-aarch64-apple-darwin.zip > denort-quickjs-aarch64-apple-darwin.zip.sha256sum
+          strip -x -S ./libdenort.dylib
+          zip -r libdenort-quickjs-aarch64-apple-darwin.zip libdenort.dylib
+          shasum -a 256 libdenort-quickjs-aarch64-apple-darwin.zip > libdenort-quickjs-aarch64-apple-darwin.zip.sha256sum
+          restore_v8_runtimes
+          trap - EXIT
       - name: Build bsdiff helper
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: cargo build --release -p bsdiff_helper
@@ -2777,7 +2813,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test --locked --lib -p deno -p denort -p node_shim -p bsdiff_helper -p deno_lib -p denort_desktop -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_canvas -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_cache_dir -p deno_cli_parser -p deno_config -p deno_crypto_provider -p deno_dotenv -p eszip -p deno_http_h1 -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p napi_sys -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_npmrc -p deno_package_json -p deno_print -p deno_resolver -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
+        run: cargo test --locked --lib -p deno -p denort -p node_shim -p bsdiff_helper -p deno_lib -p denort_desktop -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_canvas -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_cache_dir -p deno_cli_parser -p deno_config -p deno_crypto_provider -p deno_v8 -p deno_dotenv -p eszip -p deno_http_h1 -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p napi_sys -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_npmrc -p deno_package_json -p deno_print -p deno_resolver -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
       - name: Cache cargo home
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
@@ -2979,6 +3015,19 @@ jobs:
           Get-FileHash target/release/denort-x86_64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-x86_64-pc-windows-msvc.zip.sha256sum
           Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.dll -DestinationPath target/release/libdenort-x86_64-pc-windows-msvc.zip
           Get-FileHash target/release/libdenort-x86_64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/libdenort-x86_64-pc-windows-msvc.zip.sha256sum
+          try {
+            Move-Item target/release/denort.exe target/release/denort.v8.exe
+            Move-Item target/release/denort.dll target/release/denort.v8.dll
+            cargo build --release --locked -p denort -p denort_desktop --no-default-features --features quickjs
+            if ($LASTEXITCODE -ne 0) { throw "QuickJS runtime build failed" }
+            Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-quickjs-x86_64-pc-windows-msvc.zip
+            Get-FileHash target/release/denort-quickjs-x86_64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-quickjs-x86_64-pc-windows-msvc.zip.sha256sum
+            Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.dll -DestinationPath target/release/libdenort-quickjs-x86_64-pc-windows-msvc.zip
+            Get-FileHash target/release/libdenort-quickjs-x86_64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/libdenort-quickjs-x86_64-pc-windows-msvc.zip.sha256sum
+          } finally {
+            if (Test-Path target/release/denort.v8.exe) { Move-Item -Force target/release/denort.v8.exe target/release/denort.exe }
+            if (Test-Path target/release/denort.v8.dll) { Move-Item -Force target/release/denort.v8.dll target/release/denort.dll }
+          }
           target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-x86_64-pc-windows-msvc.symcache
       - name: Build bsdiff helper
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
@@ -3872,6 +3921,19 @@ jobs:
           Get-FileHash target/release/denort-aarch64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-aarch64-pc-windows-msvc.zip.sha256sum
           Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.dll -DestinationPath target/release/libdenort-aarch64-pc-windows-msvc.zip
           Get-FileHash target/release/libdenort-aarch64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/libdenort-aarch64-pc-windows-msvc.zip.sha256sum
+          try {
+            Move-Item target/release/denort.exe target/release/denort.v8.exe
+            Move-Item target/release/denort.dll target/release/denort.v8.dll
+            cargo build --release --locked -p denort -p denort_desktop --no-default-features --features quickjs
+            if ($LASTEXITCODE -ne 0) { throw "QuickJS runtime build failed" }
+            Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-quickjs-aarch64-pc-windows-msvc.zip
+            Get-FileHash target/release/denort-quickjs-aarch64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-quickjs-aarch64-pc-windows-msvc.zip.sha256sum
+            Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.dll -DestinationPath target/release/libdenort-quickjs-aarch64-pc-windows-msvc.zip
+            Get-FileHash target/release/libdenort-quickjs-aarch64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/libdenort-quickjs-aarch64-pc-windows-msvc.zip.sha256sum
+          } finally {
+            if (Test-Path target/release/denort.v8.exe) { Move-Item -Force target/release/denort.v8.exe target/release/denort.exe }
+            if (Test-Path target/release/denort.v8.dll) { Move-Item -Force target/release/denort.v8.dll target/release/denort.dll }
+          }
           target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-aarch64-pc-windows-msvc.symcache
       - name: Build bsdiff helper
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
@@ -4516,6 +4578,22 @@ jobs:
           if readelf -lW ./libdenort.so | grep -q GNU_EH_FRAME; then echo 'PT_GNU_EH_FRAME remains in libdenort.so'; exit 1; fi
           zip -r libdenort-x86_64-unknown-linux-gnu.zip libdenort.so
           shasum -a 256 libdenort-x86_64-unknown-linux-gnu.zip > libdenort-x86_64-unknown-linux-gnu.zip.sha256sum
+          restore_v8_runtimes() {
+            test ! -e denort.v8 || mv -f denort.v8 denort
+            test ! -e libdenort.v8.so || mv -f libdenort.v8.so libdenort.so
+          }
+          trap restore_v8_runtimes EXIT
+          mv denort denort.v8
+          mv libdenort.so libdenort.v8.so
+          (cd ../.. && cargo build --release --locked -p denort -p denort_desktop --no-default-features --features quickjs)
+          strip --strip-debug ./denort
+          zip -r denort-quickjs-x86_64-unknown-linux-gnu.zip denort
+          shasum -a 256 denort-quickjs-x86_64-unknown-linux-gnu.zip > denort-quickjs-x86_64-unknown-linux-gnu.zip.sha256sum
+          strip ./libdenort.so
+          zip -r libdenort-quickjs-x86_64-unknown-linux-gnu.zip libdenort.so
+          shasum -a 256 libdenort-quickjs-x86_64-unknown-linux-gnu.zip > libdenort-quickjs-x86_64-unknown-linux-gnu.zip.sha256sum
+          restore_v8_runtimes
+          trap - EXIT
           ./deno types > lib.deno.d.ts
       - name: Build bsdiff helper
         if: 'github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
@@ -5305,6 +5383,10 @@ jobs:
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
         run: cargo build --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
+      - name: Check QuickJS backend (deno + denort)
+        env:
+          CARGO_PROFILE_DEV_DEBUG: 0
+        run: cargo check --locked -p deno -p denort --no-default-features --features quickjs
       - name: Check deno binary
         env:
           NO_COLOR: 1
@@ -6288,7 +6370,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test --locked --lib -p deno -p denort -p node_shim -p bsdiff_helper -p deno_lib -p denort_desktop -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_canvas -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_cache_dir -p deno_cli_parser -p deno_config -p deno_crypto_provider -p deno_dotenv -p eszip -p deno_http_h1 -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p napi_sys -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_npmrc -p deno_package_json -p deno_print -p deno_resolver -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
+        run: cargo test --locked --lib -p deno -p denort -p node_shim -p bsdiff_helper -p deno_lib -p denort_desktop -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_canvas -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_cache_dir -p deno_cli_parser -p deno_config -p deno_crypto_provider -p deno_v8 -p deno_dotenv -p eszip -p deno_http_h1 -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p napi_sys -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_npmrc -p deno_package_json -p deno_print -p deno_resolver -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
       - name: Cache cargo home
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
@@ -6625,6 +6707,22 @@ jobs:
           if readelf -lW ./libdenort.so | grep -q GNU_EH_FRAME; then echo 'PT_GNU_EH_FRAME remains in libdenort.so'; exit 1; fi
           zip -r libdenort-aarch64-unknown-linux-gnu.zip libdenort.so
           shasum -a 256 libdenort-aarch64-unknown-linux-gnu.zip > libdenort-aarch64-unknown-linux-gnu.zip.sha256sum
+          restore_v8_runtimes() {
+            test ! -e denort.v8 || mv -f denort.v8 denort
+            test ! -e libdenort.v8.so || mv -f libdenort.v8.so libdenort.so
+          }
+          trap restore_v8_runtimes EXIT
+          mv denort denort.v8
+          mv libdenort.so libdenort.v8.so
+          (cd ../.. && cargo build --release --locked -p denort -p denort_desktop --no-default-features --features quickjs)
+          strip --strip-debug ./denort
+          zip -r denort-quickjs-aarch64-unknown-linux-gnu.zip denort
+          shasum -a 256 denort-quickjs-aarch64-unknown-linux-gnu.zip > denort-quickjs-aarch64-unknown-linux-gnu.zip.sha256sum
+          strip ./libdenort.so
+          zip -r libdenort-quickjs-aarch64-unknown-linux-gnu.zip libdenort.so
+          shasum -a 256 libdenort-quickjs-aarch64-unknown-linux-gnu.zip > libdenort-quickjs-aarch64-unknown-linux-gnu.zip.sha256sum
+          restore_v8_runtimes
+          trap - EXIT
           ./deno types > lib.deno.d.ts
       - name: Build bsdiff helper
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
@@ -7403,18 +7501,18 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: |-
           cargo nextest run --release \
-                --features "deno_core/default deno_core/unsafe_use_unprotected_platform" \
+                --features "deno_core/default deno_core/unsafe_use_unprotected_platform deno_core/v8" \
                 --tests --examples \
-                -p deno_core -p build-your-own-js-snapshot -p dcore -p deno_ops -p deno_ops_compile_test_runner -p serde_v8 -p deno_core_testing
+                -p deno_core -p deno_v8 -p build-your-own-js-snapshot -p dcore -p deno_ops -p deno_ops_compile_test_runner -p serde_v8 -p deno_core_testing
       - name: Cargo nextest ops compile test runner (release)
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: cargo nextest run --release -p deno_ops_compile_test_runner
+        run: cargo nextest run --release -p deno_ops_compile_test_runner -p deno_v8
       - name: Cargo doc test
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: cargo test --doc --release -p deno_core -p build-your-own-js-snapshot -p deno_ops -p serde_v8 -p deno_core_testing
+        run: cargo test --doc --release -p deno_core -p deno_v8 -p build-your-own-js-snapshot -p deno_ops -p serde_v8 -p deno_core_testing
       - name: Run examples (regression tests)
         if: '!startsWith(github.ref, ''refs/tags/'')'
-        run: cargo run -p deno_core --example op2
+        run: cargo run -p deno_core --example op2 --features v8
       - name: Cache cargo home
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
@@ -7475,7 +7573,7 @@ jobs:
           cargo clean
           rustup component add --toolchain nightly-2025-11-12 miri
           # This somehow prints errors in CI that don't show up locally
-          RUSTFLAGS=-Awarnings cargo +nightly-2025-11-12 miri test -p deno_core
+          RUSTFLAGS=-Awarnings cargo +nightly-2025-11-12 miri test -p deno_core --features v8
   ci-status:
     name: ci status
     needs:
