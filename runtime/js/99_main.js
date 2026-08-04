@@ -705,6 +705,7 @@ const NOT_IMPORTED_OPS = [
   "Notification",
   "op_desktop_apply_patch",
   "op_desktop_confirm_update",
+  "op_desktop_verify_ed25519",
   "op_desktop_init",
   "op_desktop_recv_event",
   "op_desktop_resolve_bind_call",
