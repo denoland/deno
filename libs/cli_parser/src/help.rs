@@ -119,12 +119,28 @@ pub fn render_help(cmd: &CommandDef) -> String {
     }
   }
 
+  // Permission options, mirroring clap's after-help. The permission args are
+  // hidden from the table above and documented in this section instead.
+  if has_permission_args(cmd) {
+    out.push('\n');
+    out.push_str(crate::permission_help::PERMISSION_HELP);
+  }
+
   // Environment variables (root help only), mirroring clap's after-help.
   if cmd.name == "deno" {
     out.push_str(&render_env_vars());
   }
 
   out
+}
+
+/// Whether this command accepts the shared permission args, and so should get
+/// the "Permission options" section.
+fn has_permission_args(cmd: &CommandDef) -> bool {
+  cmd
+    .arg_groups
+    .iter()
+    .any(|g| std::ptr::eq(g.as_ptr(), crate::defs::PERMISSION_ARGS.as_ptr()))
 }
 
 /// Render the "Environment variables" section documented in `deno --help`.

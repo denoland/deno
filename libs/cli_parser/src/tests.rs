@@ -1483,45 +1483,24 @@ fn levenshtein_basics() {
 /// cutover from clap silently dropped all of them once already; this keeps
 /// the arg tables and the help renderer honest.
 ///
-/// The permission args are exempt because clap never gave them help text
-/// either — it hid them from `--help` entirely instead.
+/// The permission args are not covered here: they are hidden from the
+/// options table and documented in the "Permission options" section
+/// instead, which `permission_help_section_is_rendered` covers.
 #[test]
 fn args_have_help_text() {
   const EXEMPT: &[&str] = &[
     // No help text on the clap side either.
-    "allow-all",
-    "allow-env",
-    "allow-ffi",
-    "allow-hrtime",
-    "allow-net",
-    "allow-read",
-    "allow-run",
-    "allow-sys",
-    "allow-write",
     "branch",
     "builtin",
-    "deny-env",
-    "deny-ffi",
-    "deny-hrtime",
-    "deny-import",
-    "deny-net",
-    "deny-read",
-    "deny-run",
-    "deny-sys",
-    "deny-write",
     "enable-testing-features",
     "eszip-internal-do-not-use",
     "external",
     "format",
     "help",
-    "ignore-env",
-    "ignore-read",
     "ext",
     "inspect-publish-uid",
     "json",
-    "no-prompt",
     "no-use-env-proxy",
-    "permission-set",
     "pr",
     "unstable-byonm",
   ];
@@ -1553,4 +1532,20 @@ fn args_have_help_text() {
     "these options render with no description in --help:\n  {}",
     missing.join("\n  ")
   );
+}
+
+/// The permission flags are hidden from the options table, so the
+/// "Permission options" section is the only place they are documented.
+#[test]
+fn permission_help_section_is_rendered() {
+  let run = help::render_subcommand_help(&defs::DENO_ROOT, "run").unwrap();
+  assert!(run.contains("Permission options:"));
+  assert!(run.contains("Allow file system read access"));
+  assert!(run.contains("DENO_TRACE_PERMISSIONS"));
+  // Hidden from the table above, documented in the section below.
+  assert!(!run.contains("  -R, --allow-read[=VALUE...]  \n"));
+
+  // Commands without permission args don't get the section.
+  let fmt = help::render_subcommand_help(&defs::DENO_ROOT, "fmt").unwrap();
+  assert!(!fmt.contains("Permission options:"));
 }

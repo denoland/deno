@@ -30,108 +30,125 @@ pub static PERMISSION_ARGS: &[ArgDef] = &[
     .short('A')
     .long("allow-all")
     .set_true()
-.help("Allow all permissions"),
+.help("Allow all permissions")
+.hidden(),
   ArgDef::new("allow-read")
     .short('R')
     .long("allow-read")
     .action(ArgAction::Append)
     .num_args(NumArgs::ZeroOrMore)
     .require_equals()
-    .value_delimiter(','),
+    .value_delimiter(',')
+.hidden(),
   ArgDef::new("deny-read")
     .long("deny-read")
     .action(ArgAction::Append)
     .num_args(NumArgs::ZeroOrMore)
     .require_equals()
-    .value_delimiter(','),
+    .value_delimiter(',')
+.hidden(),
   ArgDef::new("ignore-read")
     .long("ignore-read")
     .action(ArgAction::Append)
     .num_args(NumArgs::ZeroOrMore)
     .require_equals()
-    .value_delimiter(','),
+    .value_delimiter(',')
+.hidden(),
   ArgDef::new("allow-write")
     .short('W')
     .long("allow-write")
     .action(ArgAction::Append)
     .num_args(NumArgs::ZeroOrMore)
     .require_equals()
-    .value_delimiter(','),
+    .value_delimiter(',')
+.hidden(),
   ArgDef::new("deny-write")
     .long("deny-write")
     .action(ArgAction::Append)
     .num_args(NumArgs::ZeroOrMore)
     .require_equals()
-    .value_delimiter(','),
+    .value_delimiter(',')
+.hidden(),
   ArgDef::new("allow-net")
     .short('N')
     .long("allow-net")
     .action(ArgAction::Append)
     .num_args(NumArgs::ZeroOrMore)
     .require_equals()
-    .value_delimiter(','),
+    .value_delimiter(',')
+.hidden(),
   ArgDef::new("deny-net")
     .long("deny-net")
     .action(ArgAction::Append)
     .num_args(NumArgs::ZeroOrMore)
     .require_equals()
-    .value_delimiter(','),
+    .value_delimiter(',')
+.hidden(),
   ArgDef::new("allow-env")
     .short('E')
     .long("allow-env")
     .action(ArgAction::Append)
     .num_args(NumArgs::ZeroOrMore)
     .require_equals()
-    .value_delimiter(','),
+    .value_delimiter(',')
+.hidden(),
   ArgDef::new("deny-env")
     .long("deny-env")
     .action(ArgAction::Append)
     .num_args(NumArgs::ZeroOrMore)
     .require_equals()
-    .value_delimiter(','),
+    .value_delimiter(',')
+.hidden(),
   ArgDef::new("ignore-env")
     .long("ignore-env")
     .action(ArgAction::Append)
     .num_args(NumArgs::ZeroOrMore)
     .require_equals()
-    .value_delimiter(','),
+    .value_delimiter(',')
+.hidden(),
   ArgDef::new("allow-run")
     .long("allow-run")
     .action(ArgAction::Append)
     .num_args(NumArgs::ZeroOrMore)
     .require_equals()
-    .value_delimiter(','),
+    .value_delimiter(',')
+.hidden(),
   ArgDef::new("deny-run")
     .long("deny-run")
     .action(ArgAction::Append)
     .num_args(NumArgs::ZeroOrMore)
     .require_equals()
-    .value_delimiter(','),
+    .value_delimiter(',')
+.hidden(),
   ArgDef::new("allow-sys")
     .short('S')
     .long("allow-sys")
     .action(ArgAction::Append)
     .num_args(NumArgs::ZeroOrMore)
     .require_equals()
-    .value_delimiter(','),
+    .value_delimiter(',')
+.hidden(),
   ArgDef::new("deny-sys")
     .long("deny-sys")
     .action(ArgAction::Append)
     .num_args(NumArgs::ZeroOrMore)
     .require_equals()
-    .value_delimiter(','),
+    .value_delimiter(',')
+.hidden(),
   ArgDef::new("allow-ffi")
     .long("allow-ffi")
     .action(ArgAction::Append)
     .num_args(NumArgs::ZeroOrMore)
     .require_equals()
-    .value_delimiter(','),
+    .value_delimiter(',')
+.hidden(),
   ArgDef::new("deny-ffi")
     .long("deny-ffi")
     .action(ArgAction::Append)
     .num_args(NumArgs::ZeroOrMore)
     .require_equals()
-    .value_delimiter(','),
+    .value_delimiter(',')
+.hidden(),
   ArgDef::new("allow-import")
     .short('I')
     .long("allow-import")
@@ -139,15 +156,18 @@ pub static PERMISSION_ARGS: &[ArgDef] = &[
     .num_args(NumArgs::ZeroOrMore)
     .require_equals()
     .value_delimiter(',')
-.help("Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary. Default value: deno.land:443,jsr.io:443,esm.sh:443,raw.esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,gist.githubusercontent.com:443"),
+.help("Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary. Default value: deno.land:443,jsr.io:443,esm.sh:443,raw.esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,gist.githubusercontent.com:443")
+.hidden(),
   ArgDef::new("deny-import")
     .long("deny-import")
     .action(ArgAction::Append)
     .num_args(NumArgs::ZeroOrMore)
     .require_equals()
     .value_delimiter(',')
-.help("Deny importing from remote hosts. Optionally specify denied IP addresses and host names, with ports as necessary."),
-  ArgDef::new("no-prompt").long("no-prompt").set_true(),
+.help("Deny importing from remote hosts. Optionally specify denied IP addresses and host names, with ports as necessary.")
+.hidden(),
+  ArgDef::new("no-prompt").long("no-prompt").set_true()
+.hidden(),
   // Removed in Deno 2 — still accepted so we can print the deprecation
   // warning in `convert` instead of failing with "unexpected argument".
   ArgDef::new("allow-hrtime")
@@ -163,7 +183,8 @@ pub static PERMISSION_ARGS: &[ArgDef] = &[
     .long("permission-set")
     .action(ArgAction::Set)
     .num_args(NumArgs::Optional)
-    .require_equals(),
+    .require_equals()
+.hidden(),
 ];
 
 pub static COMPILE_ARGS: &[ArgDef] = &[
