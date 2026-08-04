@@ -1,5 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { assert, assertEquals, fail } from "@std/assert";
+import { assert, assertEquals, assertRejects, fail } from "@std/assert";
 import dns, { getDefaultResultOrder, lookupService } from "node:dns";
 import dnsPromises, {
   getDefaultResultOrder as getDefaultResultOrderPromise,
@@ -252,4 +252,31 @@ Deno.test("[node/dns] lookup of a missing host reports ENOTFOUND", async () => {
   assertEquals(err.errno, -3008);
   assertEquals(err.syscall, "getaddrinfo");
   assertEquals(err.hostname, "nonexistent-host.invalid");
+});
+
+// Regression test for https://github.com/denoland/deno/issues/35173
+// Querying a name server that refuses the connection must fail promptly with
+// ECONNREFUSED (like c-ares/Node.js), instead of silently timing out.
+// Windows surfaces a connected-UDP ICMP "port unreachable" as ECONNRESET
+// rather than ECONNREFUSED, so this is gated to other platforms.
+Deno.test({
+  name: "[node/dns] resolve against a refused name server reports ECONNREFUSED",
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    const resolver = new dnsPromises.Resolver();
+    // Nothing is listening on this loopback port.
+    resolver.setServers(["127.0.0.1:56789"]);
+
+    const start = Date.now();
+    const err = await assertRejects(() =>
+      resolver.resolve4("example.com")
+    ) as ErrnoException;
+    assertEquals(err.code, "ECONNREFUSED");
+    assertEquals(err.syscall, "queryA");
+    // Should fail fast rather than hang on the resolver timeout.
+    assert(
+      Date.now() - start < 2000,
+      "expected the query to fail promptly",
+    );
+  },
 });
