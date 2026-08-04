@@ -565,6 +565,7 @@ impl InspectorInfo {
 mod tests {
   use http_body_util::BodyExt;
   use http_body_util::Empty;
+
   use super::*;
 
   fn request_with_host(host: Option<&str>) -> http::Request<()> {
@@ -643,18 +644,12 @@ mod tests {
     drop(available);
     let server = InspectorServer::new(addr, "dcore").unwrap();
 
-    let status = send_http(
-      server.host,
-      get_request("/json", "localhost:43123"),
-    )
-    .await;
+    let status =
+      send_http(server.host, get_request("/json", "localhost:43123")).await;
     assert_eq!(status, http::StatusCode::OK);
 
-    let status = send_http(
-      server.host,
-      get_request("/json", "example.test:43123"),
-    )
-    .await;
+    let status =
+      send_http(server.host, get_request("/json", "example.test:43123")).await;
     assert_eq!(status, http::StatusCode::BAD_REQUEST);
 
     let ws_request = http::Request::builder()

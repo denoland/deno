@@ -370,10 +370,7 @@ fn valid_ws_origin<T>(
     return false;
   };
 
-  if matches!(
-    url.scheme(),
-    "devtools" | "chrome" | "chrome-devtools"
-  ) {
+  if matches!(url.scheme(), "devtools" | "chrome" | "chrome-devtools") {
     return true;
   }
   if !matches!(url.scheme(), "http" | "https")
@@ -390,7 +387,9 @@ fn valid_ws_origin<T>(
     return false;
   };
   let origin_hostname = match url.host() {
-    Some(Host::Domain(hostname)) if hostname.eq_ignore_ascii_case("localhost") => {
+    Some(Host::Domain(hostname))
+      if hostname.eq_ignore_ascii_case("localhost") =>
+    {
       "localhost".to_string()
     }
     Some(Host::Ipv4(ip)) => ip.to_string(),
@@ -2236,8 +2235,9 @@ mod tests {
       .header("Sec-WebSocket-Version", "13")
       .body(Empty::<Bytes>::new())
       .unwrap();
-    let (_client, response) =
-      handshake::client(&TokioExec, request, stream).await.unwrap();
+    let (_client, response) = handshake::client(&TokioExec, request, stream)
+      .await
+      .unwrap();
     assert_eq!(response.status(), http::StatusCode::SWITCHING_PROTOCOLS);
   }
 

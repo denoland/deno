@@ -1031,7 +1031,11 @@ mod tests {
       let host = validated_host_header(&request).unwrap().unwrap();
       assert_eq!(host.authority(), authority);
     }
-    assert!(validated_host_header(&request_with_host(None)).unwrap().is_none());
+    assert!(
+      validated_host_header(&request_with_host(None))
+        .unwrap()
+        .is_none()
+    );
   }
 
   #[test]
@@ -1087,10 +1091,12 @@ mod tests {
     (status, String::from_utf8(body.to_vec()).unwrap())
   }
 
-  fn get_request(path: &str, host: Option<&str>) -> http::Request<Empty<Bytes>> {
-    let mut request = http::Request::builder()
-      .method(http::Method::GET)
-      .uri(path);
+  fn get_request(
+    path: &str,
+    host: Option<&str>,
+  ) -> http::Request<Empty<Bytes>> {
+    let mut request =
+      http::Request::builder().method(http::Method::GET).uri(path);
     if let Some(host) = host {
       request = request.header(http::header::HOST, host);
     } else {
@@ -1122,11 +1128,9 @@ mod tests {
 
     let mut forwarded_response = String::new();
     for _ in 0..50 {
-      let (status, response) = send_http(
-        server.host,
-        get_request("/json", Some("localhost:43123")),
-      )
-      .await;
+      let (status, response) =
+        send_http(server.host, get_request("/json", Some("localhost:43123")))
+          .await;
       assert_eq!(status, http::StatusCode::OK);
       forwarded_response = response;
       if forwarded_response.contains(&uuid.to_string()) {
@@ -1138,11 +1142,9 @@ mod tests {
       "\"webSocketDebuggerUrl\":\"ws://localhost:43123/{uuid}\""
     )));
 
-    let (status, ip_response) = send_http(
-      server.host,
-      get_request("/json", Some("127.0.0.1:54321")),
-    )
-    .await;
+    let (status, ip_response) =
+      send_http(server.host, get_request("/json", Some("127.0.0.1:54321")))
+        .await;
     assert_eq!(status, http::StatusCode::OK);
     assert!(ip_response.contains(&format!(
       "\"webSocketDebuggerUrl\":\"ws://127.0.0.1:54321/{uuid}\""
