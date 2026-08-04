@@ -3042,6 +3042,23 @@ fn max_memory_size_suffixes() {
 }
 
 #[test]
+fn resource_limits_reject_invalid() {
+  // Both parsers reject zero, sub-1mb sizes and non-numeric values.
+  for arg in [
+    "--max-memory=0",
+    "--max-memory=512k",
+    "--max-memory=abc",
+    "--max-cpu-time=0",
+    "--max-time=0",
+  ] {
+    assert!(
+      flags_from_vec(svec!["deno", "run", arg, "script.ts"]).is_err(),
+      "expected error for {arg}"
+    );
+  }
+}
+
+#[test]
 fn run_seed_with_v8_flags() {
   let r = flags_from_vec(svec![
     "deno",

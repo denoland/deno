@@ -135,7 +135,7 @@ pub fn convert(result: ParseResult) -> Result<Flags, CliError> {
     Some("doc") => doc_parse(&result, &mut flags)?,
     Some("task") => task_parse(&result, &mut flags)?,
     Some("bench") => bench_parse(&result, &mut flags),
-    Some("compile") => compile_parse(&result, &mut flags),
+    Some("compile") => compile_parse(&result, &mut flags)?,
     Some("coverage") => coverage_parse(&result, &mut flags)?,
     Some("repl") => repl_parse(&result, &mut flags, false),
     Some("install" | "i") => install_parse(&result, &mut flags)?,
@@ -836,18 +836,25 @@ pub fn parse_positive_seconds(s: &str) -> Result<u64, String> {
 
 /// Parses the `--max-memory`, `--max-cpu-time` and `--max-time` resource-limit
 /// flags. These are only defined on `run`/`compile`, so this is a no-op for
-/// other subcommands. Invalid values are validated (and reported) by the clap
-/// front-end; here they are simply dropped, matching `seed_arg_parse`.
-fn resource_limit_args_parse(result: &ParseResult, flags: &mut Flags) {
+/// other subcommands. Invalid values are rejected here (mirroring the clap
+/// front-end's value parsers) so both parsers agree on what is accepted.
+fn resource_limit_args_parse(
+  result: &ParseResult,
+  flags: &mut Flags,
+) -> Result<(), CliError> {
+  fn invalid(e: String) -> CliError {
+    CliError::new(CliErrorKind::InvalidValue, e)
+  }
   if let Some(s) = result.get_one("max-memory") {
-    flags.max_memory = parse_memory_size_mb(s).ok();
+    flags.max_memory = Some(parse_memory_size_mb(s).map_err(invalid)?);
   }
   if let Some(s) = result.get_one("max-cpu-time") {
-    flags.max_cpu_time = parse_positive_seconds(s).ok();
+    flags.max_cpu_time = Some(parse_positive_seconds(s).map_err(invalid)?);
   }
   if let Some(s) = result.get_one("max-time") {
-    flags.max_time = parse_positive_seconds(s).ok();
+    flags.max_time = Some(parse_positive_seconds(s).map_err(invalid)?);
   }
+  Ok(())
 }
 
 fn enable_testing_features_arg_parse(result: &ParseResult, flags: &mut Flags) {
@@ -1389,7 +1396,7 @@ fn run_parse(
   force_hmr: bool,
 ) -> Result<(), CliError> {
   runtime_args_parse(result, flags, true, true);
-  resource_limit_args_parse(result, flags);
+  resource_limit_args_parse(result, flags)?;
   ext_arg_parse(result, flags);
 
   flags.tunnel = result.get_bool("tunnel");
@@ -2070,10 +2077,13 @@ fn bench_parse(result: &ParseResult, flags: &mut Flags) {
   });
 }
 
-fn compile_parse(result: &ParseResult, flags: &mut Flags) {
+fn compile_parse(
+  result: &ParseResult,
+  flags: &mut Flags,
+) -> Result<(), CliError> {
   flags.type_check_mode = TypeCheckMode::Local;
   runtime_args_parse(result, flags, true, false);
-  resource_limit_args_parse(result, flags);
+  resource_limit_args_parse(result, flags)?;
 
   let source_file = result
     .get_one("source_file")
@@ -2118,6 +2128,7 @@ fn compile_parse(result: &ParseResult, flags: &mut Flags) {
     minify: result.get_bool("minify"),
     exclude_unused_npm: result.get_bool("exclude-unused-npm"),
   });
+  Ok(())
 }
 
 fn coverage_parse(
