@@ -1478,3 +1478,79 @@ fn levenshtein_basics() {
   .unwrap_err();
   assert!(err.suggestion.as_ref().unwrap().contains("--allow-read"));
 }
+
+/// Every non-hidden option should carry a description in `--help`. The
+/// cutover from clap silently dropped all of them once already; this keeps
+/// the arg tables and the help renderer honest.
+///
+/// The permission args are exempt because clap never gave them help text
+/// either — it hid them from `--help` entirely instead.
+#[test]
+fn args_have_help_text() {
+  const EXEMPT: &[&str] = &[
+    // No help text on the clap side either.
+    "allow-all",
+    "allow-env",
+    "allow-ffi",
+    "allow-hrtime",
+    "allow-net",
+    "allow-read",
+    "allow-run",
+    "allow-sys",
+    "allow-write",
+    "branch",
+    "builtin",
+    "deny-env",
+    "deny-ffi",
+    "deny-hrtime",
+    "deny-import",
+    "deny-net",
+    "deny-read",
+    "deny-run",
+    "deny-sys",
+    "deny-write",
+    "enable-testing-features",
+    "eszip-internal-do-not-use",
+    "external",
+    "format",
+    "help",
+    "ignore-env",
+    "ignore-read",
+    "ext",
+    "inspect-publish-uid",
+    "json",
+    "no-prompt",
+    "no-use-env-proxy",
+    "permission-set",
+    "pr",
+    "unstable-byonm",
+  ];
+
+  fn walk(cmd: &CommandDef, path: &str, missing: &mut Vec<String>) {
+    let args = cmd
+      .args
+      .iter()
+      .chain(cmd.arg_groups.iter().copied().flatten());
+    for arg in args {
+      if arg.hidden || arg.positional || arg.help.is_empty() {
+        if !arg.hidden && !arg.positional && !EXEMPT.contains(&arg.name) {
+          missing.push(format!("{path} --{}", arg.name));
+        }
+        continue;
+      }
+    }
+    for sub in cmd.subcommands {
+      walk(sub, &format!("{path} {}", sub.name), missing);
+    }
+  }
+
+  let mut missing = Vec::new();
+  walk(&defs::DENO_ROOT, "deno", &mut missing);
+  missing.sort();
+  missing.dedup();
+  assert!(
+    missing.is_empty(),
+    "these options render with no description in --help:\n  {}",
+    missing.join("\n  ")
+  );
+}
