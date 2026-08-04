@@ -1634,3 +1634,48 @@ fn post_fork_flag_wiring() {
     );
   }
 }
+
+/// clap attached the unstable flags to every subcommand via its shared
+/// `command()` builder, so a command that omits them rejects flags the old
+/// parser accepted. Eight commands were missing them after the cutover.
+#[test]
+fn every_subcommand_accepts_unstable_flags() {
+  fn accepts_unstable(cmd: &CommandDef) -> bool {
+    cmd.all_args().any(|a| a.name == "unstable-kv")
+      && cmd.all_args().any(|a| a.name == "unstable")
+  }
+
+  let mut missing = Vec::new();
+  for sub in defs::DENO_ROOT.subcommands {
+    // `help` is the one command clap builds without them.
+    if sub.name == "help" || sub.name.starts_with("json_reference") {
+      continue;
+    }
+    if !accepts_unstable(sub) {
+      missing.push(sub.name);
+    }
+  }
+  assert!(
+    missing.is_empty(),
+    "these subcommands reject --unstable-* flags: {missing:?}"
+  );
+
+  // They stay hidden from `--help`, as they were under clap.
+  let init = defs::DENO_ROOT.find_subcommand("init").unwrap();
+  assert!(
+    init
+      .all_args()
+      .find(|a| a.name == "unstable")
+      .unwrap()
+      .hidden
+  );
+  // ...except on `vendor`, which documents the deprecation notice.
+  let vendor = defs::DENO_ROOT.find_subcommand("vendor").unwrap();
+  assert!(
+    !vendor
+      .all_args()
+      .find(|a| a.name == "unstable")
+      .unwrap()
+      .hidden
+  );
+}

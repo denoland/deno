@@ -402,10 +402,19 @@ pub static CPU_PROF_ARGS: &[ArgDef] = &[
 
 // All unstable feature flags from runtime/features/gen.rs.
 // Keep in sync with UNSTABLE_FEATURES.
-pub static UNSTABLE_ARGS: &[ArgDef] = &[
+/// The deprecated bare `--unstable` flag. Hidden everywhere except `vendor`,
+/// which defines its own visible copy (clap's `UnstableArgsConfig::None` vs
+/// `ResolutionOnly`).
+pub static UNSTABLE_DEPRECATED_ARG: &[ArgDef] = &[
   ArgDef::new("unstable").long("unstable").set_true().hidden()
 .help("The `--unstable` flag has been deprecated. Use granular `--unstable-*` flags instead\n  To view the list of individual unstable feature flags, run this command again with --help=unstable"),
-  ArgDef::new("unstable-bare-node-builtins")
+];
+
+/// The granular `--unstable-*` feature flags. clap attaches these to every
+/// subcommand, so any command that omits them will reject flags the old
+/// parser accepted.
+pub static UNSTABLE_FEATURE_ARGS: &[ArgDef] = &[
+ArgDef::new("unstable-bare-node-builtins")
     .long("unstable-bare-node-builtins")
     .set_true()
     .hidden()
@@ -679,7 +688,8 @@ static RUN_ARGS: &[ArgDef] = &[
 ];
 
 static RUN_ARG_GROUPS: &[&[ArgDef]] = &[
-  UNSTABLE_ARGS,
+  UNSTABLE_DEPRECATED_ARG,
+  UNSTABLE_FEATURE_ARGS,
   PERMISSION_ARGS,
   COMPILE_ARGS,
   INSPECT_ARGS,
@@ -798,7 +808,7 @@ pub static SERVE_SUBCOMMAND: CommandDef = CommandDef {
 .help("Disable V8 code cache feature"),
   ],
   arg_groups: &[
-    UNSTABLE_ARGS,
+    UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS,
     PERMISSION_ARGS,
     COMPILE_ARGS,
     INSPECT_ARGS,
@@ -846,7 +856,7 @@ pub static EVAL_SUBCOMMAND: CommandDef = CommandDef {
 .help("Enable type-checking. This subcommand does not type-check by default; pass --check=all to also type-check remote modules. Alternatively, use the 'deno check' subcommand."),
   ],
   arg_groups: &[
-    UNSTABLE_ARGS,
+    UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS,
     PERMISSION_ARGS,
     COMPILE_ARGS,
     INSPECT_ARGS,
@@ -997,7 +1007,7 @@ pub static FMT_SUBCOMMAND: CommandDef = CommandDef {
       .hidden()
 .help("Enable formatting YAML files"),
   ],
-  arg_groups: &[UNSTABLE_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -1110,7 +1120,7 @@ pub static LINT_SUBCOMMAND: CommandDef = CommandDef {
   ],
   // NOTE: lint takes only import permission args, no other permission
   // args (see issue #27336).
-  arg_groups: &[UNSTABLE_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -1288,7 +1298,7 @@ pub static TEST_SUBCOMMAND: CommandDef = CommandDef {
 .help("Set type-checking behavior. This subcommand type-checks local modules by default, so passing --check is redundant; pass --check=all to also type-check remote modules. Alternatively, use the 'deno check' subcommand."),
   ],
   arg_groups: &[
-    UNSTABLE_ARGS,
+    UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS,
     PERMISSION_ARGS,
     COMPILE_ARGS,
     INSPECT_ARGS,
@@ -1366,7 +1376,7 @@ pub static UPGRADE_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("no-delta").long("no-delta").set_true()
 .help("Disable delta updates and always download the full archive"),
   ],
-  arg_groups: &[UNSTABLE_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -1402,7 +1412,7 @@ pub static CACHE_SUBCOMMAND: CommandDef = CommandDef {
 .help("Load environment variables from local file\n  Only the first environment variable with a given key is used.\n  Existing process environment variables are not overwritten, so if variables with the same names already exist in the environment, their values will be preserved.\n  Where multiple declarations for the same environment variable exist in your .env file, the first one encountered is applied. This is determined by the order of the files you pass as arguments."),
   ],
   arg_groups: &[
-    UNSTABLE_ARGS,
+    UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS,
     COMPILE_ARGS,
     INSPECT_ARGS,
     IMPORT_PERMISSION_ARGS,
@@ -1471,7 +1481,7 @@ pub static CHECK_SUBCOMMAND: CommandDef = CommandDef {
 .help("Do not clear terminal screen when under watch mode"),
   ],
   arg_groups: &[
-    UNSTABLE_ARGS,
+    UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS,
     COMPILE_ARGS,
     RUNTIME_MISC_ARGS,
     IMPORT_PERMISSION_ARGS,
@@ -1501,7 +1511,7 @@ pub static INFO_SUBCOMMAND: CommandDef = CommandDef {
       .conflicts_with(&["file"])
 .help("Show files used for origin bound APIs like the Web Storage API when running a script with --location=<HREF>"),
   ],
-  arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS, IMPORT_PERMISSION_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS, COMPILE_ARGS, IMPORT_PERMISSION_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -1570,7 +1580,7 @@ pub static DOC_SUBCOMMAND: CommandDef = CommandDef {
 .help("Dot separated path to symbol"),
     ArgDef::new("builtin").long("builtin").set_true(),
   ],
-  arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS, IMPORT_PERMISSION_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS, COMPILE_ARGS, IMPORT_PERMISSION_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -1657,7 +1667,7 @@ pub static TASK_SUBCOMMAND: CommandDef = CommandDef {
       .require_equals()
 .help("Error out if lockfile is out of date"),
   ],
-  arg_groups: &[UNSTABLE_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: true,
@@ -1734,7 +1744,7 @@ pub static BENCH_SUBCOMMAND: CommandDef = CommandDef {
 .help("Set content type of the supplied file"),
   ],
   arg_groups: &[
-    UNSTABLE_ARGS,
+    UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS,
     PERMISSION_ARGS,
     COMPILE_ARGS,
     INSPECT_ARGS,
@@ -1857,7 +1867,7 @@ pub static COMPILE_SUBCOMMAND: CommandDef = CommandDef {
 .help("Do not clear terminal screen when under watch mode"),
   ],
   arg_groups: &[
-    UNSTABLE_ARGS,
+    UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS,
     PERMISSION_ARGS,
     COMPILE_ARGS,
     INSPECT_ARGS,
@@ -1920,7 +1930,7 @@ pub static COVERAGE_SUBCOMMAND: CommandDef = CommandDef {
       .requires(&["lcov"])
 .help("Exports the coverage report in lcov format to the given file.\n  If no --output arg is specified then the report is written to stdout."),
   ],
-  arg_groups: &[UNSTABLE_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -1954,7 +1964,7 @@ pub static REPL_SUBCOMMAND: CommandDef = CommandDef {
 .help("Load environment variables from local file\n  Only the first environment variable with a given key is used.\n  Existing process environment variables are not overwritten, so if variables with the same names already exist in the environment, their values will be preserved.\n  Where multiple declarations for the same environment variable exist in your .env file, the first one encountered is applied. This is determined by the order of the files you pass as arguments."),
   ],
   arg_groups: &[
-    UNSTABLE_ARGS,
+    UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS,
     PERMISSION_ARGS,
     COMPILE_ARGS,
     INSPECT_ARGS,
@@ -2103,7 +2113,7 @@ pub static INSTALL_SUBCOMMAND: CommandDef = CommandDef {
 .help("Set type-checking behavior. This subcommand type-checks local modules by default, so passing --check is redundant; pass --check=all to also type-check remote modules. Alternatively, use the 'deno check' subcommand."),
   ],
   arg_groups: &[
-    UNSTABLE_ARGS,
+    UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS,
     PERMISSION_ARGS,
     COMPILE_ARGS,
     INSPECT_ARGS,
@@ -2145,7 +2155,7 @@ pub static UNINSTALL_SUBCOMMAND: CommandDef = CommandDef {
       .conflicts_with(&["global"])
 .help("Force using package.json for dependency management instead of deno.json"),
   ],
-  arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS, COMPILE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -2158,7 +2168,7 @@ pub static TYPES_SUBCOMMAND: CommandDef = CommandDef {
   about: "Print runtime TypeScript declarations",
   aliases: &[],
   args: &[],
-  arg_groups: &[UNSTABLE_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -2185,7 +2195,7 @@ pub static COMPLETIONS_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("dynamic").long("dynamic").set_true()
 .help("Generate dynamic completions for the given shell (unstable), currently this only provides available tasks for `deno task`."),
   ],
-  arg_groups: &[UNSTABLE_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -2233,7 +2243,7 @@ pub static INIT_SUBCOMMAND: CommandDef = CommandDef {
       .set_true()
       .help("Bypass the prompt and run with full permissions"),
   ],
-  arg_groups: &[],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: true,
@@ -2268,7 +2278,7 @@ pub static CREATE_SUBCOMMAND: CommandDef = CommandDef {
       .set_true()
       .help("Bypass the prompt and run with full permissions"),
   ],
-  arg_groups: &[],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -2320,7 +2330,7 @@ pub static JUPYTER_SUBCOMMAND: CommandDef = CommandDef {
   ],
   // clap's `jupyter` exposes only its own flags (no runtime/permission/compile
   // groups); `jupyter_parse` reads none of them, so they are trimmed to match.
-  arg_groups: &[UNSTABLE_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -2369,7 +2379,7 @@ pub static PUBLISH_SUBCOMMAND: CommandDef = CommandDef {
       .require_equals()
 .help("Load environment variables from local file\n  Only the first environment variable with a given key is used.\n  Existing process environment variables are not overwritten, so if variables with the same names already exist in the environment, their values will be preserved.\n  Where multiple declarations for the same environment variable exist in your .env file, the first one encountered is applied. This is determined by the order of the files you pass as arguments."),
   ],
-  arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS, COMPILE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -2444,7 +2454,7 @@ pub static ADD_SUBCOMMAND: CommandDef = CommandDef {
       .require_equals()
 .help("Load environment variables from local file\n  Only the first environment variable with a given key is used.\n  Existing process environment variables are not overwritten, so if variables with the same names already exist in the environment, their values will be preserved.\n  Where multiple declarations for the same environment variable exist in your .env file, the first one encountered is applied. This is determined by the order of the files you pass as arguments."),
   ],
-  arg_groups: &[UNSTABLE_ARGS, ALLOW_SCRIPTS_ARG, COMPILE_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS, ALLOW_SCRIPTS_ARG, COMPILE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -2482,7 +2492,7 @@ pub static REMOVE_SUBCOMMAND: CommandDef = CommandDef {
       .conflicts_with(&["global"])
 .help("Force using package.json for dependency management instead of deno.json"),
   ],
-  arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS, COMPILE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -2532,7 +2542,7 @@ pub static OUTDATED_SUBCOMMAND: CommandDef = CommandDef {
       .require_equals()
 .help("Load environment variables from local file\n  Only the first environment variable with a given key is used.\n  Existing process environment variables are not overwritten, so if variables with the same names already exist in the environment, their values will be preserved.\n  Where multiple declarations for the same environment variable exist in your .env file, the first one encountered is applied. This is determined by the order of the files you pass as arguments."),
   ],
-  arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS, COMPILE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -2576,7 +2586,7 @@ pub static UPDATE_SUBCOMMAND: CommandDef = CommandDef {
       .require_equals()
 .help("Load environment variables from local file\n  Only the first environment variable with a given key is used.\n  Existing process environment variables are not overwritten, so if variables with the same names already exist in the environment, their values will be preserved.\n  Where multiple declarations for the same environment variable exist in your .env file, the first one encountered is applied. This is determined by the order of the files you pass as arguments."),
   ],
-  arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS, COMPILE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -2589,7 +2599,7 @@ pub static DEPLOY_SUBCOMMAND: CommandDef = CommandDef {
   about: "Deploy to Deno Deploy",
   aliases: &[],
   args: &[],
-  arg_groups: &[UNSTABLE_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -2602,7 +2612,7 @@ pub static SANDBOX_SUBCOMMAND: CommandDef = CommandDef {
   about: "Run in sandbox mode",
   aliases: &[],
   args: &[],
-  arg_groups: &[UNSTABLE_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -2644,7 +2654,7 @@ pub static CLEAN_SUBCOMMAND: CommandDef = CommandDef {
       .requires(&["except"])
 .help("Sets the linker mode for npm packages (isolated or hoisted)"),
   ],
-  arg_groups: &[UNSTABLE_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -2681,7 +2691,7 @@ pub static LIST_SUBCOMMAND: CommandDef = CommandDef {
       .set_true()
 .help("Include all workspace members"),
   ],
-  arg_groups: &[],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -2705,7 +2715,7 @@ pub static APPROVE_SCRIPTS_SUBCOMMAND: CommandDef = CommandDef {
       .set_true()
 .help("Install only updating the lockfile"),
   ],
-  arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS, COMPILE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -2718,7 +2728,7 @@ pub static LSP_SUBCOMMAND: CommandDef = CommandDef {
   about: "Start the language server",
   aliases: &[],
   args: &[],
-  arg_groups: &[UNSTABLE_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -2751,7 +2761,7 @@ pub static VENDOR_SUBCOMMAND: CommandDef = CommandDef {
       .help("The `--unstable` flag has been deprecated. Use granular `--unstable-*` flags instead\nTo view the list of individual unstable feature flags, run this command again with --help=unstable")
 .help("The `--unstable` flag has been deprecated. Use granular `--unstable-*` flags instead\n  To view the list of individual unstable feature flags, run this command again with --help=unstable"),
   ],
-  arg_groups: &[],
+  arg_groups: &[UNSTABLE_FEATURE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -2833,7 +2843,7 @@ pub static BUNDLE_SUBCOMMAND: CommandDef = CommandDef {
   ],
   arg_groups: &[
     COMPILE_ARGS,
-    UNSTABLE_ARGS,
+    UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS,
     IMPORT_PERMISSION_ARGS,
     ALLOW_SCRIPTS_ARG,
   ],
@@ -2883,7 +2893,7 @@ pub static AUDIT_SUBCOMMAND: CommandDef = CommandDef {
       .value_delimiter(',')
 .help("Ignore advisories matching the given CVE IDs"),
   ],
-  arg_groups: &[UNSTABLE_ARGS, LOCK_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS, LOCK_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -2944,12 +2954,12 @@ pub static X_SUBCOMMAND: CommandDef = CommandDef {
   ],
   arg_groups: &[
     ALLOW_SCRIPTS_ARG,
-    UNSTABLE_ARGS,
+    UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS,
     COMPILE_ARGS,
     PERMISSION_ARGS,
     RUNTIME_MISC_ARGS,
     INSPECT_ARGS,
-    UNSTABLE_ARGS,
+    UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS,
   ],
   subcommands: &[],
   default_subcommand: None,
@@ -3128,7 +3138,7 @@ pub static DESKTOP_SUBCOMMAND: CommandDef = CommandDef {
 .help("Load environment variables from local file\n  Only the first environment variable with a given key is used.\n  Existing process environment variables are not overwritten, so if variables with the same names already exist in the environment, their values will be preserved.\n  Where multiple declarations for the same environment variable exist in your .env file, the first one encountered is applied. This is determined by the order of the files you pass as arguments."),
   ],
   arg_groups: &[
-    UNSTABLE_ARGS,
+    UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS,
     PERMISSION_ARGS,
     COMPILE_ARGS,
     INSPECT_ARGS,
@@ -3202,7 +3212,7 @@ pub static PACK_SUBCOMMAND: CommandDef = CommandDef {
       .require_equals()
 .help("Load environment variables from local file\n  Only the first environment variable with a given key is used.\n  Existing process environment variables are not overwritten, so if variables with the same names already exist in the environment, their values will be preserved.\n  Where multiple declarations for the same environment variable exist in your .env file, the first one encountered is applied. This is determined by the order of the files you pass as arguments."),
   ],
-  arg_groups: &[UNSTABLE_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -3233,7 +3243,7 @@ pub static CI_SUBCOMMAND: CommandDef = CommandDef {
       .require_equals()
 .help("Load environment variables from local file\n  Only the first environment variable with a given key is used.\n  Existing process environment variables are not overwritten, so if variables with the same names already exist in the environment, their values will be preserved.\n  Where multiple declarations for the same environment variable exist in your .env file, the first one encountered is applied. This is determined by the order of the files you pass as arguments."),
   ],
-  arg_groups: &[UNSTABLE_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -3288,7 +3298,7 @@ pub static BUMP_VERSION_SUBCOMMAND: CommandDef = CommandDef {
       .conflicts_with(&["workspace"])
 .help("Explicit path to the manifest file to bump.\n  May point to a `deno.json`/`deno.jsonc` or a `package.json`. When\n  set, single-file mode is forced (workspace auto-detection is bypassed).\n  Useful when both `deno.json` and `package.json` exist in the same\n  directory."),
   ],
-  arg_groups: &[],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -3332,7 +3342,7 @@ pub static TRANSPILE_SUBCOMMAND: CommandDef = CommandDef {
         "Generate .d.ts declaration files (requires type-checking via tsc)",
       ),
   ],
-  arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS, COMPILE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -3355,7 +3365,7 @@ pub static WHY_SUBCOMMAND: CommandDef = CommandDef {
       .require_equals()
 .help("Load environment variables from local file\n  Only the first environment variable with a given key is used.\n  Existing process environment variables are not overwritten, so if variables with the same names already exist in the environment, their values will be preserved.\n  Where multiple declarations for the same environment variable exist in your .env file, the first one encountered is applied. This is determined by the order of the files you pass as arguments."),
   ],
-  arg_groups: &[LOCK_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS, LOCK_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -3379,7 +3389,7 @@ pub static LINK_SUBCOMMAND: CommandDef = CommandDef {
       .set_true()
       .help("Install only updating the lockfile"),
   ],
-  arg_groups: &[LOCK_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS, LOCK_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -3403,7 +3413,7 @@ pub static UNLINK_SUBCOMMAND: CommandDef = CommandDef {
       .set_true()
       .help("Install only updating the lockfile"),
   ],
-  arg_groups: &[LOCK_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS, LOCK_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -3437,7 +3447,7 @@ pub static SYNC_TYPES_SUBCOMMAND: CommandDef = CommandDef {
       .value_delimiter(',')
 .help("Deny importing from remote hosts. Optionally specify denied IP addresses and host names, with ports as necessary."),
   ],
-  arg_groups: &[UNSTABLE_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -3450,7 +3460,7 @@ pub static DENO_ROOT: CommandDef = CommandDef {
   about: "A modern JavaScript and TypeScript runtime",
   aliases: &[],
   args: GLOBAL_ARGS,
-  arg_groups: &[UNSTABLE_ARGS],
+  arg_groups: &[UNSTABLE_DEPRECATED_ARG, UNSTABLE_FEATURE_ARGS],
   subcommands: &[
     RUN_SUBCOMMAND,
     WATCH_SUBCOMMAND,
