@@ -3460,9 +3460,9 @@ dependencies = [
 
 [[package]]
 name = "deno_task_shell"
-version = "0.33.0"
+version = "0.33.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd069c87eb3cdc25e9898fe633a07ec7f20218e92ad3e7eccab3db324764d4fb"
+checksum = "8ac466d733d16a8ab5268b7e83a407289b25060a8f96dadc5cb96232a67c5282"
 dependencies = [
  "bitflags 2.9.3",
  "deno_path_util",
