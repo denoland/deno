@@ -1182,7 +1182,16 @@ pub async fn op_dns_resolve(
 
 #[op2]
 #[serde]
-pub fn op_net_get_system_dns_servers() -> Result<Vec<(String, u16)>, NetError> {
+pub fn op_net_get_system_dns_servers(
+  state: &mut OpState,
+) -> Result<Vec<(String, u16)>, NetError> {
+  // Reading the host resolver configuration (the system nameservers, e.g.
+  // from /etc/resolv.conf) exposes host network configuration, so gate it
+  // behind the same `sys` permission as Deno.networkInterfaces(). Reachable
+  // from JS via node:dns.getServers().
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_sys("networkInterfaces", "node:dns.getServers()")?;
   let (config, _opts) = system_conf::read_system_conf()
     .unwrap_or_else(|_| (ResolverConfig::default(), ResolverOpts::default()));
   let servers = config
