@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "profiler_line_numbers": {
+      "args": "run --inspect=0 -A main.js",
+      "output": "main.out"
+    }
+  }
+}
