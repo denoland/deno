@@ -82,7 +82,26 @@ function chdir(directory: string): void {
 }
 
 /** https://nodejs.org/api/process.html#process_process_cwd */
-const cwd = fs.cwd;
+function cwd() {
+  try {
+    return fs.cwd();
+  } catch (e) {
+    // When the working directory has been removed, libuv (and thus Node)
+    // surfaces an enriched ENOENT message pointing at the likely cause.
+    // Deno surfaces the bare OS error, so rewrite it to match Node.
+    if ((e as { code?: string })?.code === "ENOENT") {
+      const err = new Error(
+        "ENOENT: process.cwd failed with error no such file or directory, " +
+          "the current working directory was likely removed without changing " +
+          "the working directory, uv_cwd",
+      );
+      (err as { code?: string; syscall?: string }).code = "ENOENT";
+      (err as { code?: string; syscall?: string }).syscall = "uv_cwd";
+      throw err;
+    }
+    throw e;
+  }
+}
 
 /** https://nodejs.org/api/process.html#process_process_nexttick_callback_args */
 const nextTick = _nextTick;
