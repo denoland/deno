@@ -52,6 +52,10 @@ struct NpmCacheProjects {
 struct NodeTypesSetup {
   type_root: Option<String>,
   undici_types_dir: Option<PathBuf>,
+  /// Absolute path to the resolved `@types/node` package directory (under
+  /// `node_modules` or the materialized `.deno/npm-compat` copy), used to build
+  /// the type-reference typeRoot in global-cache mode.
+  node_types_dir: Option<PathBuf>,
 }
 
 fn path_for_typescript(path: &Path) -> String {
@@ -486,6 +490,22 @@ pub async fn setup_npm_compat(
     excludes.push("vendor".to_string());
   }
 
+  // In global-cache mode (no real `node_modules`), lay out a `typeRoots`-
+  // resolvable directory of the imported npm packages so stock tsc can resolve
+  // TypeScript type-reference directives (`/// <reference types="<pkg>" />`),
+  // which resolve via `typeRoots`/`node_modules` rather than `paths`. With a
+  // real `node_modules` (`auto`/`manual`) the package walk already handles this.
+  let type_ref_root = if use_global_cache_layout {
+    let extra = node_types
+      .node_types_dir
+      .clone()
+      .map(|dir| vec![("@types/node".to_string(), dir)])
+      .unwrap_or_default();
+    setup_type_ref_root(project_root, &npm_cache_projects.package_paths, &extra)
+  } else {
+    None
+  };
+
   // Generate .deno/tsconfig.json and ensure root tsconfig.json extends it
   generate_deno_tsconfig(
     project_root,
@@ -498,6 +518,7 @@ pub async fn setup_npm_compat(
     &npm_cache_projects.package_paths,
     &npm_cache_projects.references,
     node_types.type_root.as_deref(),
+    type_ref_root.as_deref(),
     &excludes,
     has_local_wasm,
     manage_root_tsconfig,
@@ -553,11 +574,13 @@ async fn ensure_types_node(
   // Reuse an @types/node the project already installed under node_modules.
   if !use_global_cache_layout {
     let node_modules = project_root.join("node_modules");
-    if node_modules.join("@types/node").exists() {
+    let node_types_dir = node_modules.join("@types/node");
+    if node_types_dir.exists() {
       let undici_types_dir = node_modules.join("undici-types");
       return NodeTypesSetup {
         type_root: Some("../node_modules/@types".to_string()),
         undici_types_dir: undici_types_dir.exists().then_some(undici_types_dir),
+        node_types_dir: Some(node_types_dir),
       };
     }
   }
@@ -570,6 +593,7 @@ async fn ensure_types_node(
     return NodeTypesSetup {
       type_root: Some(type_root),
       undici_types_dir: undici_types_dir.exists().then_some(undici_types_dir),
+      node_types_dir: Some(node_dir),
     };
   }
   match download_npm_package(&modules_dir, "@types/node", None, http_client)
@@ -588,12 +612,98 @@ async fn ensure_types_node(
       NodeTypesSetup {
         type_root: node_dir.exists().then_some(type_root),
         undici_types_dir: undici_types_dir.exists().then_some(undici_types_dir),
+        node_types_dir: node_dir.exists().then_some(node_dir),
       }
     }
     _ => NodeTypesSetup {
       type_root: None,
       undici_types_dir: None,
+      node_types_dir: None,
     },
+  }
+}
+
+/// Materialize a `typeRoots`-resolvable layout for TypeScript
+/// **type-reference directives** (`/// <reference types="<pkg>" />`) in
+/// global-cache (`nodeModulesDir: "none"`) mode.
+///
+/// tsgo resolves a reference directive's `types="<pkg>"` through `typeRoots`
+/// (looking for `<typeRoot>/<pkg>`) and a `node_modules` walk - never through
+/// `compilerOptions.paths` (which only steers module imports). With a real
+/// `node_modules` (`auto`/`manual`) the walk finds the package; in `none` mode
+/// there is none, so a bare `/// <reference types="@types/node" />` or
+/// `/// <reference types="@denotest/augments-global/import-meta" />` fails to
+/// resolve. This lays out `.deno/type-refs/<pkg-name>` symlinks pointing at the
+/// resolved global-cache package folders so `typeRoots` can find each package
+/// under its real (possibly scoped) name, honoring its `package.json`
+/// `exports`/`types` and internal relative references. Returns the relative
+/// typeRoot (`./type-refs`) to add to the generated tsconfig, or `None` when
+/// nothing was materialized.
+///
+/// Symlinks (not copies) so the package's own relative `/// <reference />`
+/// directives and `exports` targets resolve against the real files; `.deno/` is
+/// gitignored, so these never enter the user's tree.
+fn setup_type_ref_root(
+  project_root: &Path,
+  npm_package_paths: &BTreeMap<String, PathBuf>,
+  extra_packages: &[(String, PathBuf)],
+) -> Option<String> {
+  let type_refs_dir = project_root.join(".deno/type-refs");
+  // Regenerate from scratch so stale entries (a removed dependency) don't linger.
+  if type_refs_dir.exists() {
+    let _ = std::fs::remove_dir_all(&type_refs_dir);
+  }
+
+  // Resolve each import target to `(package name, folder)`, then fold in the
+  // extra packages (e.g. an `@types/node` materialized under `.deno/npm-compat`
+  // that isn't a resolver snapshot entry).
+  let mut entries: Vec<(String, PathBuf)> = npm_package_paths
+    .iter()
+    .filter_map(|(target, folder)| {
+      let npm_ref =
+        deno_semver::npm::NpmPackageReqReference::from_str(target).ok()?;
+      Some((npm_ref.req().name.to_string(), folder.clone()))
+    })
+    .collect();
+  entries.extend(extra_packages.iter().cloned());
+
+  // Deduplicate by resolved package name; the same package may be reachable via
+  // several import targets (the `npm:` scheme and an alias).
+  let mut linked = false;
+  let mut seen: std::collections::BTreeSet<String> =
+    std::collections::BTreeSet::new();
+  for (pkg_name, folder) in entries {
+    if !seen.insert(pkg_name.clone()) {
+      continue;
+    }
+    if !folder.exists() {
+      continue;
+    }
+    let link_path = type_refs_dir.join(&pkg_name);
+    // A scoped package (`@types/node`) needs its `@types` parent created first.
+    if let Some(parent) = link_path.parent()
+      && std::fs::create_dir_all(parent).is_err()
+    {
+      continue;
+    }
+    if symlink_dir(&folder, &link_path).is_ok() {
+      linked = true;
+    }
+  }
+
+  linked.then(|| "./type-refs".to_string())
+}
+
+/// Create a directory symlink at `link` pointing at `target`, portably across
+/// platforms.
+fn symlink_dir(target: &Path, link: &Path) -> std::io::Result<()> {
+  #[cfg(windows)]
+  {
+    std::os::windows::fs::symlink_dir(target, link)
+  }
+  #[cfg(not(windows))]
+  {
+    std::os::unix::fs::symlink(target, link)
   }
 }
 
@@ -849,6 +959,7 @@ fn generate_deno_tsconfig(
   npm_package_paths: &BTreeMap<String, PathBuf>,
   npm_project_references: &[String],
   node_types_root: Option<&str>,
+  type_ref_root: Option<&str>,
   excludes: &[String],
   has_local_wasm: bool,
   manage_root_tsconfig: bool,
@@ -868,6 +979,7 @@ fn generate_deno_tsconfig(
     npm_package_paths,
     npm_project_references,
     node_types_root,
+    type_ref_root,
     excludes,
     has_local_wasm,
     manage_root_tsconfig,
