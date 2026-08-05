@@ -67,6 +67,7 @@
     op_op_names,
     op_print,
     op_ref_op,
+    op_register_error_class,
     op_resources,
     op_run_microtasks,
     op_serialize,
@@ -123,6 +124,7 @@
 
   __initializeCoreMethods(
     submitLeakTrace,
+    op_register_error_class,
   );
 
   function submitLeakTrace(id) {

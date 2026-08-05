@@ -1691,7 +1691,6 @@ impl JsRuntime {
       drain_next_tick_and_macrotasks_cb,
       handle_rejections_cb,
       build_custom_error_cb,
-      error_constructors,
       run_immediate_callbacks_cb,
       wasm_instance_fn,
       wasm_instances_map,
@@ -1742,6 +1741,10 @@ impl JsRuntime {
         ERROR_CONSTRUCTORS,
         "Deno.core.errorConstructors",
       );
+      // The built-in Error classes register before `op_register_error_class`
+      // is installed, so every realm needs this initial bulk capture whether
+      // its bootstrap code was loaded from source or from a snapshot.
+      crate::error::capture_registered_error_classes(scope, error_constructors);
       let run_immediate_callbacks_cb: v8::Local<v8::Function> = bindings::get(
         scope,
         core_obj,
@@ -1883,7 +1886,6 @@ impl JsRuntime {
         v8::Global::new(scope, drain_next_tick_and_macrotasks_cb),
         v8::Global::new(scope, handle_rejections_cb),
         v8::Global::new(scope, build_custom_error_cb),
-        v8::Global::new(scope, error_constructors),
         v8::Global::new(scope, run_immediate_callbacks_cb),
         wasm_instance_fn.map(|f| v8::Global::new(scope, f)),
         wasm_instances_map.map(|m| v8::Global::new(scope, m)),
@@ -1913,11 +1915,6 @@ impl JsRuntime {
       .js_build_custom_error_cb
       .borrow_mut()
       .replace(build_custom_error_cb);
-    state_rc
-      .exception_state
-      .js_error_constructors
-      .borrow_mut()
-      .replace(error_constructors);
     state_rc
       .run_immediate_callbacks_cb
       .borrow_mut()

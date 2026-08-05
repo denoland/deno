@@ -2,6 +2,7 @@
 
 use std::cell::Cell;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::collections::VecDeque;
 
 use crate::error::JsError;
@@ -25,11 +26,11 @@ pub(crate) struct ExceptionState {
     RefCell<VecDeque<(v8::Global<v8::Promise>, v8::Global<v8::Value>)>>,
   pub(crate) js_build_custom_error_cb:
     RefCell<Option<v8::Global<v8::Function>>>,
-  /// Map of registered error class name to its constructor (the JS
-  /// `Deno.core.errorConstructors` object). Used to natively rebuild an
-  /// exception with the correct prototype without re-entering JS, e.g. from a
-  /// V8 fast call. See [`crate::error::throw_js_error_class`].
-  pub(crate) js_error_constructors: RefCell<Option<v8::Global<v8::Object>>>,
+  /// Prototypes captured when error classes are registered. Looking them up
+  /// here keeps op-error construction native and independent of later
+  /// constructor mutations.
+  pub(crate) registered_error_class_prototypes:
+    RefCell<HashMap<String, v8::Global<v8::Value>>>,
   pub(crate) js_handled_promise_rejection_cb:
     RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) js_format_exception_cb: RefCell<Option<v8::Global<v8::Function>>>,
@@ -44,7 +45,7 @@ impl ExceptionState {
   pub(crate) fn prepare_to_destroy(&self) {
     // TODO(mmastrac): we can probably move this to Drop eventually
     self.js_build_custom_error_cb.borrow_mut().take();
-    self.js_error_constructors.borrow_mut().take();
+    self.registered_error_class_prototypes.borrow_mut().clear();
     self.js_handled_promise_rejection_cb.borrow_mut().take();
     self.js_format_exception_cb.borrow_mut().take();
     self.pending_promise_rejections.borrow_mut().clear();
