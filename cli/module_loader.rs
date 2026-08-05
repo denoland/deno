@@ -74,6 +74,9 @@ use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::ops::require::UnableToGetCwdError;
 use deno_runtime::deno_permissions::CheckSpecifierKind;
+use deno_runtime::deno_permissions::CheckedPathBuf;
+use deno_runtime::deno_permissions::OpenAccessKind;
+use deno_runtime::deno_permissions::PermissionState;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_web::Blob;
 use deno_runtime::tokio_util::create_basic_runtime;
@@ -1323,6 +1326,60 @@ pub struct CliModuleLoader<TGraphContainer: ModuleGraphContainer>(
   Rc<CliModuleLoaderInner<TGraphContainer>>,
 );
 
+impl<TGraphContainer: ModuleGraphContainer> CliModuleLoader<TGraphContainer> {
+  fn checked_diagnostic_file_path(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<CheckedPathBuf> {
+    if specifier.scheme() != "file" {
+      return None;
+    }
+
+    let path = deno_path_util::url_to_file_path(specifier).ok()?;
+
+    // Stack trace formatting cannot interactively request permissions. Query
+    // first, then use the path returned by the permission check for the read.
+    let permission_state = if self.0.permissions.query_read_all() {
+      PermissionState::Granted
+    } else {
+      self.0.permissions.query_read(Some(path.to_str()?)).ok()?
+    };
+    if !matches!(
+      permission_state,
+      PermissionState::Granted | PermissionState::GrantedPartial
+    ) {
+      return None;
+    }
+
+    self
+      .0
+      .permissions
+      .check_open(Cow::Owned(path), OpenAccessKind::Read, Some("source map"))
+      .ok()
+      .map(|path| path.into_owned())
+  }
+
+  fn read_diagnostic_file(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<Cow<'static, [u8]>> {
+    if let Some(file) = self.0.shared.memory_files.get(specifier) {
+      return Some(Cow::Owned(file.source.to_vec()));
+    }
+
+    let path = self.checked_diagnostic_file_path(specifier)?;
+    self.0.shared.sys.fs_read(&path).ok()
+  }
+
+  fn read_diagnostic_text_file(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<String> {
+    let source = self.read_diagnostic_file(specifier)?;
+    Some(String::from_utf8_lossy(&source).into_owned())
+  }
+}
+
 impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
   for CliModuleLoader<TGraphContainer>
 {
@@ -1904,6 +1961,13 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
   ) -> Option<Cow<'_, [u8]>> {
     let specifier = resolve_url(source_map_url).ok()?;
 
+    if let Some(source_map) = self.read_diagnostic_file(&specifier) {
+      return Some(source_map);
+    }
+    if specifier.scheme() == "file" {
+      return None;
+    }
+
     if let Ok(Some(file)) = self
       .0
       .shared
@@ -1922,14 +1986,23 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
   // this for non-npm packages)
   fn source_map_source_exists(&self, source_url: &str) -> Option<bool> {
     let specifier = resolve_url(source_url).ok()?;
+    let graph = self.0.graph_container.graph();
+
+    if graph_has_diagnostic_source(&graph, &specifier) {
+      return Some(true);
+    }
+    if self.0.shared.memory_files.get(&specifier).is_some() {
+      return Some(true);
+    }
 
     // some npm packages rely on the file existing or not to end up in
     // the stack trace, so for backwards compat reasons only check this
     // for npm packages because we don't want the perf hit otherwise
     if self.0.shared.in_npm_pkg_checker.in_npm_package(&specifier)
-      && let Ok(path) = deno_path_util::url_to_file_path(&specifier)
+      && specifier.scheme() == "file"
     {
-      return Some(path.is_file());
+      let path = self.checked_diagnostic_file_path(&specifier)?;
+      return self.0.shared.sys.fs_is_file(&path).ok();
     }
 
     Some(true)
@@ -1956,6 +2029,11 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       }
       None => {
         // Not in graph, try to read from file system (for source-mapped original files)
+        if specifier.scheme() == "file" {
+          let source = self.read_diagnostic_text_file(&specifier)?;
+          return extract_source_line(&source, line_number);
+        }
+
         if let Ok(Some(file)) = self
           .0
           .shared
@@ -2032,6 +2110,16 @@ fn extract_source_line(text: &str, line_number: usize) -> Option<String> {
       line_number + 1,
     )),
   }
+}
+
+fn graph_has_diagnostic_source(
+  graph: &ModuleGraph,
+  specifier: &ModuleSpecifier,
+) -> bool {
+  matches!(
+    graph.get(specifier),
+    Some(deno_graph::Module::Js(_) | deno_graph::Module::Json(_))
+  )
 }
 
 /// Holds the `ModuleGraph` in workers.
@@ -2331,8 +2419,38 @@ where
 #[cfg(test)]
 mod tests {
   use deno_graph::ast::ParsedSourceStore;
+  use deno_graph::source::MemoryLoader;
+  use deno_graph::source::Source;
 
   use super::*;
+
+  #[tokio::test]
+  async fn test_graph_has_diagnostic_source_in_node_modules() {
+    let specifier =
+      ModuleSpecifier::parse("file:///node_modules/pkg/original.js").unwrap();
+    let loader = MemoryLoader::new(
+      vec![(
+        specifier.to_string(),
+        Source::Module {
+          specifier: specifier.to_string(),
+          content: "export const value = 1;",
+          maybe_headers: None,
+        },
+      )],
+      Vec::new(),
+    );
+    let mut graph = ModuleGraph::new(GraphKind::CodeOnly);
+    graph
+      .build(
+        vec![specifier.clone()],
+        Vec::new(),
+        &loader,
+        Default::default(),
+      )
+      .await;
+
+    assert!(graph_has_diagnostic_source(&graph, &specifier));
+  }
 
   #[tokio::test]
   async fn test_inflight_module_loads_tracker() {
