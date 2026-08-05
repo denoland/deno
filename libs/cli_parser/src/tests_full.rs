@@ -5491,6 +5491,33 @@ fn task_subcommand() {
     }
   );
 
+  let r = flags_from_vec(svec!["deno", "task", "--members", "build"]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Task(TaskFlags {
+        cwd: None,
+        task: Some("build".to_string()),
+        is_run: false,
+        recursive: false,
+        members: true,
+        filter: Some("*".to_string()),
+        eval: false,
+        no_prefix: false,
+        concurrency: None,
+        if_present: false,
+      }),
+      ..Flags::default()
+    }
+  );
+
+  let r = flags_from_vec(svec!["deno", "task", "--members", "-r", "build"]);
+  assert!(r.is_err());
+
+  let r =
+    flags_from_vec(svec!["deno", "task", "--members", "-f", "*", "build"]);
+  assert!(r.is_err());
+
   let r = flags_from_vec(svec!["deno", "task", "--eval", "echo 1"]);
   assert_eq!(
     r.unwrap(),
