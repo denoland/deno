@@ -2,8 +2,13 @@
 
 pub mod bitmap;
 mod image_ops;
+pub mod webidl;
+pub use bitmap::ImageBitmap;
 pub use image;
 use image::ColorType;
+pub use image_ops::crop;
+pub use image_ops::premultiply_alpha;
+pub use image_ops::transform_rgb_color_space;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ImageError {
@@ -18,6 +23,9 @@ pub enum ImageError {
   #[class("DOMExceptionInvalidStateError")]
   #[error("Cannot decode image '{0}'")]
   InvalidImage(image::ImageError),
+  #[class("DOMExceptionInvalidStateError")]
+  #[error("The image source is no longer usable")]
+  ImageSourceAleadyDetached,
   #[class("DOMExceptionInvalidStateError")]
   #[error(
     "The chunk data is not big enough with the specified width: {0} and height: {1}"
