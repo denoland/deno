@@ -540,8 +540,9 @@ fn op_runtime_cpu_usage(#[buffer] out: &mut [f64]) {
   out[1] = user.as_micros() as f64;
 }
 
+/// Returns the process-wide `(system, user)` CPU time consumed so far.
 #[cfg(unix)]
-fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
+pub fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
   let mut rusage = std::mem::MaybeUninit::uninit();
 
   // Uses POSIX getrusage from libc
@@ -563,8 +564,9 @@ fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
   (sys, user)
 }
 
+/// Returns the process-wide `(system, user)` CPU time consumed so far.
 #[cfg(windows)]
-fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
+pub fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
   use windows_sys::Win32::Foundation::FALSE;
   use windows_sys::Win32::Foundation::FILETIME;
   use windows_sys::Win32::Foundation::SYSTEMTIME;
@@ -633,8 +635,9 @@ fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
   }
 }
 
+/// Returns the process-wide `(system, user)` CPU time consumed so far.
 #[cfg(not(any(windows, unix)))]
-fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
+pub fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
   Default::default()
 }
 
@@ -660,6 +663,12 @@ fn op_runtime_memory_usage(
   out[1] = heap_total as f64;
   out[2] = heap_used as f64;
   out[3] = external as f64;
+}
+
+/// Returns the process resident set size (RSS) in bytes, or 0 if it can't
+/// be determined on the current platform.
+pub fn get_process_rss() -> u64 {
+  rss()
 }
 
 #[cfg(any(target_os = "android", target_os = "linux"))]

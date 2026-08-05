@@ -1,0 +1,24 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "if": "unix",
+    "args": "compile --max-memory=512m --output main main.js",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "unix",
+    "commandName": "./main",
+    "args": [],
+    "output": "main.out",
+    "exitCode": 1
+  }, {
+    "if": "windows",
+    "args": "compile --max-memory=512m --output main.exe main.js",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "windows",
+    "commandName": "./main.exe",
+    "args": [],
+    "output": "main.out",
+    "exitCode": 1
+  }]
+}

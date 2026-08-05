@@ -304,6 +304,27 @@ pub static RUNTIME_MISC_ARGS: &[ArgDef] = &[
     .value_delimiter(','),
 ];
 
+// Resource-limit flags, only defined on `run` and `compile` (mirroring the
+// clap `resource_limit_args` helper). `--max-memory` accepts a size with an
+// optional k/m/g suffix, so it is left as a free-form value and parsed in the
+// convert layer; the seconds-based limits validate as `u64` here.
+pub static RESOURCE_LIMIT_ARGS: &[ArgDef] = &[
+  ArgDef::new("max-memory")
+    .long("max-memory")
+    .action(ArgAction::Set)
+    .num_args(NumArgs::Exact(1)),
+  ArgDef::new("max-cpu-time")
+    .long("max-cpu-time")
+    .action(ArgAction::Set)
+    .num_args(NumArgs::Exact(1))
+    .value_parser(ValueParser::U64),
+  ArgDef::new("max-time")
+    .long("max-time")
+    .action(ArgAction::Set)
+    .num_args(NumArgs::Exact(1))
+    .value_parser(ValueParser::U64),
+];
+
 pub static CPU_PROF_ARGS: &[ArgDef] = &[
   ArgDef::new("cpu-prof").long("cpu-prof").set_true().hidden(),
   ArgDef::new("cpu-prof-dir")
@@ -543,6 +564,7 @@ static RUN_ARG_GROUPS: &[&[ArgDef]] = &[
   COMPILE_ARGS,
   INSPECT_ARGS,
   RUNTIME_MISC_ARGS,
+  RESOURCE_LIMIT_ARGS,
   CPU_PROF_ARGS,
   ALLOW_SCRIPTS_ARG,
 ];
@@ -1536,6 +1558,7 @@ pub static COMPILE_SUBCOMMAND: CommandDef = CommandDef {
     COMPILE_ARGS,
     INSPECT_ARGS,
     RUNTIME_MISC_ARGS,
+    RESOURCE_LIMIT_ARGS,
   ],
   subcommands: &[],
   default_subcommand: None,

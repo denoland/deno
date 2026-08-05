@@ -2380,7 +2380,7 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
     UnstableArgsConfig::ResolutionAndRuntime,
   )
   .defer(|cmd| {
-    runtime_args(cmd, true, false, true)
+    resource_limit_args(runtime_args(cmd, true, false, true))
       .arg(check_arg(true))
       .arg(
         Arg::new("include")
@@ -4048,7 +4048,7 @@ TypeScript is supported, however it is not type-checked, only transpiled."
 
 fn run_args(command: Command, top_level: bool) -> Command {
   cpu_prof_args(
-    runtime_args(command, true, true, true)
+    resource_limit_args(runtime_args(command, true, true, true))
       .arg(check_arg(false))
       .arg(watch_arg(true))
       .arg(hmr_arg(true))
@@ -5584,6 +5584,20 @@ fn runtime_misc_args(app: Command) -> Command {
     .arg(require_arg())
 }
 
+/// Resource-limit flags (`--max-memory`, `--max-cpu-time`, `--max-time`).
+///
+/// These are intentionally exposed only on `deno run` and `deno compile`: the
+/// watchdog enforces a single main isolate, so on multi-worker subcommands
+/// (`deno test`, `deno bench`, `deno serve`) the limits would be either
+/// silently unenforced or applied process-wide across unrelated workers. See
+/// the review discussion on #35723.
+fn resource_limit_args(app: Command) -> Command {
+  app
+    .arg(max_memory_arg())
+    .arg(max_cpu_time_arg())
+    .arg(max_time_arg())
+}
+
 fn eszip_arg() -> Arg {
   Arg::new("eszip-internal-do-not-use")
     .hide(true)
@@ -5943,6 +5957,40 @@ fn seed_arg() -> Arg {
     .value_name("NUMBER")
     .help("Set the random number generator seed")
     .value_parser(value_parser!(u64))
+}
+
+fn max_memory_arg() -> Arg {
+  Arg::new("max-memory")
+    .long("max-memory")
+    .value_name("SIZE")
+    .help(cstr!(
+      "Limit the total memory (resident set size) available to the program, e.g. <p(245)>--max-memory=512m</>
+  <p(245)>A plain number is interpreted as megabytes; k/m/g suffixes are supported.
+  When the limit is exceeded the program is terminated with an error.</>"
+    ))
+    .value_parser(deno_cli_parser::convert::parse_memory_size_mb)
+}
+
+fn max_cpu_time_arg() -> Arg {
+  Arg::new("max-cpu-time")
+    .long("max-cpu-time")
+    .value_name("SECONDS")
+    .help(cstr!(
+      "Limit the total CPU time available to the program, in seconds, e.g. <p(245)>--max-cpu-time=30</>
+  <p(245)>When the budget is exhausted the program is terminated with an error.</>"
+    ))
+    .value_parser(deno_cli_parser::convert::parse_positive_seconds)
+}
+
+fn max_time_arg() -> Arg {
+  Arg::new("max-time")
+    .long("max-time")
+    .value_name("SECONDS")
+    .help(cstr!(
+      "Limit the total wall-clock run time of the program, in seconds, e.g. <p(245)>--max-time=30</>
+  <p(245)>When the deadline is reached the program is terminated with an error.</>"
+    ))
+    .value_parser(deno_cli_parser::convert::parse_positive_seconds)
 }
 
 fn hmr_arg(takes_files: bool) -> Arg {
@@ -8758,6 +8806,9 @@ fn runtime_args_parse(
   location_arg_parse(flags, matches);
   v8_flags_arg_parse(flags, matches);
   seed_arg_parse(flags, matches);
+  max_memory_arg_parse(flags, matches);
+  max_cpu_time_arg_parse(flags, matches);
+  max_time_arg_parse(flags, matches);
   enable_testing_features_arg_parse(flags, matches);
   env_file_arg_parse(flags, matches);
   trace_ops_parse(flags, matches);
@@ -8873,6 +8924,23 @@ fn seed_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
     flags.v8_flags.push(format!("--random-seed={seed}"));
   }
+}
+
+// The resource-limit args are only defined on `deno run` / `deno compile`
+// (see `resource_limit_args`), but `runtime_args_parse` is shared across every
+// runtime subcommand, so use `try_remove_one` to no-op where they're absent
+// rather than panicking on an unknown argument id.
+fn max_memory_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.max_memory = matches.try_remove_one::<u64>("max-memory").ok().flatten();
+}
+
+fn max_cpu_time_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.max_cpu_time =
+    matches.try_remove_one::<u64>("max-cpu-time").ok().flatten();
+}
+
+fn max_time_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.max_time = matches.try_remove_one::<u64>("max-time").ok().flatten();
 }
 
 fn no_check_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -12143,6 +12211,79 @@ mod tests {
         code_cache_enabled: true,
         ..Flags::default()
       }
+    );
+  }
+
+  #[test]
+  fn run_resource_limits() {
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--max-memory=512m",
+      "--max-cpu-time=30",
+      "--max-time=60",
+      "script.ts"
+    ])
+    .unwrap();
+    assert_eq!(flags.max_memory, Some(512));
+    assert_eq!(flags.max_cpu_time, Some(30));
+    assert_eq!(flags.max_time, Some(60));
+  }
+
+  #[test]
+  fn compile_resource_limits() {
+    let flags =
+      flags_from_vec(svec!["deno", "compile", "--max-memory=1g", "script.ts"])
+        .unwrap();
+    assert_eq!(flags.max_memory, Some(1024));
+  }
+
+  #[test]
+  fn max_memory_size_suffixes() {
+    // Plain number is megabytes; k/m/g (and kb/mb/gb) suffixes are accepted.
+    let cases = [
+      ("512", 512),
+      ("512m", 512),
+      ("512mb", 512),
+      ("2g", 2048),
+      ("2gb", 2048),
+      ("2048k", 2),
+      ("2048kb", 2),
+    ];
+    for (input, expected_mb) in cases {
+      let flags = flags_from_vec(svec![
+        "deno",
+        "run",
+        &format!("--max-memory={input}"),
+        "script.ts"
+      ])
+      .unwrap();
+      assert_eq!(flags.max_memory, Some(expected_mb), "input: {input}");
+    }
+  }
+
+  #[test]
+  fn resource_limits_reject_invalid() {
+    // Zero, sub-1mb sizes and non-numeric values are rejected up front.
+    for arg in [
+      "--max-memory=0",
+      "--max-memory=512k", // < 1mb
+      "--max-memory=abc",
+      "--max-cpu-time=0",
+      "--max-time=0",
+    ] {
+      assert!(
+        flags_from_vec(svec!["deno", "run", arg, "script.ts"]).is_err(),
+        "expected error for {arg}"
+      );
+    }
+  }
+
+  #[test]
+  fn resource_limits_not_on_test() {
+    // The limits are only defined on run/compile.
+    assert!(
+      flags_from_vec(svec!["deno", "test", "--max-memory=512m"]).is_err()
     );
   }
 

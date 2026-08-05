@@ -2995,6 +2995,70 @@ fn run_seed() {
 }
 
 #[test]
+fn run_resource_limits() {
+  let flags = flags_from_vec(svec![
+    "deno",
+    "run",
+    "--max-memory=512m",
+    "--max-cpu-time=30",
+    "--max-time=60",
+    "script.ts"
+  ])
+  .unwrap();
+  assert_eq!(flags.max_memory, Some(512));
+  assert_eq!(flags.max_cpu_time, Some(30));
+  assert_eq!(flags.max_time, Some(60));
+}
+
+#[test]
+fn compile_resource_limits() {
+  let flags =
+    flags_from_vec(svec!["deno", "compile", "--max-memory=1g", "script.ts"])
+      .unwrap();
+  assert_eq!(flags.max_memory, Some(1024));
+}
+
+#[test]
+fn max_memory_size_suffixes() {
+  let cases = [
+    ("512", 512),
+    ("512m", 512),
+    ("512mb", 512),
+    ("2g", 2048),
+    ("2gb", 2048),
+    ("2048k", 2),
+    ("2048kb", 2),
+  ];
+  for (input, expected_mb) in cases {
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      &format!("--max-memory={input}"),
+      "script.ts"
+    ])
+    .unwrap();
+    assert_eq!(flags.max_memory, Some(expected_mb), "input: {input}");
+  }
+}
+
+#[test]
+fn resource_limits_reject_invalid() {
+  // Both parsers reject zero, sub-1mb sizes and non-numeric values.
+  for arg in [
+    "--max-memory=0",
+    "--max-memory=512k",
+    "--max-memory=abc",
+    "--max-cpu-time=0",
+    "--max-time=0",
+  ] {
+    assert!(
+      flags_from_vec(svec!["deno", "run", arg, "script.ts"]).is_err(),
+      "expected error for {arg}"
+    );
+  }
+}
+
+#[test]
 fn run_seed_with_v8_flags() {
   let r = flags_from_vec(svec![
     "deno",
