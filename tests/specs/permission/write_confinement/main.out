@@ -1,0 +1,6 @@
+write cwd: ok
+write cwd subdir: ok
+write temp: ok
+write .git hook: NotCapable --allow-write
+write .git config: NotCapable --allow-write
+write outside: NotCapable --allow-write
