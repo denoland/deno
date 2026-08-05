@@ -22,6 +22,7 @@ use rustc_hash::FxHashSet;
 use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
+use url::Url;
 
 use super::NpmPackageVersionNotFound;
 use super::UnmetPeerDepDiagnostic;
@@ -1033,6 +1034,23 @@ pub enum SnapshotFromLockfileError {
   #[error(transparent)]
   #[class(inherit)]
   PackageIdDeserialization(#[from] NpmPackageIdDeserializationError),
+  #[error(
+    "The lockfile contains an invalid tarball URL '{tarball}' for npm package '{package_nv}'."
+  )]
+  #[class(type)]
+  InvalidPackageTarballUrl {
+    package_nv: Box<PackageNv>,
+    tarball: String,
+  },
+  #[error(
+    "The lockfile tarball URL '{tarball}' for npm package '{package_nv}' does not match the expected registry origin '{expected_origin}'."
+  )]
+  #[class(type)]
+  PackageTarballOriginMismatch {
+    package_nv: Box<PackageNv>,
+    tarball: String,
+    expected_origin: String,
+  },
 }
 
 pub struct SnapshotFromLockfileParams<'a> {
@@ -1091,7 +1109,7 @@ fn dist_from_incomplete_package_info(
   integrity: Option<&str>,
   tarball: Option<&str>,
   default_tarball_url: &dyn DefaultTarballUrlProvider,
-) -> NpmPackageVersionDistInfo {
+) -> Result<NpmPackageVersionDistInfo, SnapshotFromLockfileError> {
   let (shasum, integrity) = if let Some(integrity) = integrity {
     if integrity.contains('-') {
       (None, Some(integrity.to_string()))
@@ -1101,14 +1119,49 @@ fn dist_from_incomplete_package_info(
   } else {
     (None, None)
   };
-  NpmPackageVersionDistInfo {
-    tarball: tarball
-      .map(|t| t.to_string())
-      .unwrap_or_else(|| default_tarball_url.default_tarball_url(id)),
+  let default_tarball = default_tarball_url.default_tarball_url(id);
+  let tarball = tarball.filter(|tarball| !tarball.is_empty());
+  let tarball = match tarball {
+    Some(tarball) => {
+      validate_incomplete_lockfile_tarball_url(id, tarball, &default_tarball)?;
+      tarball.to_string()
+    }
+    None => default_tarball,
+  };
+  Ok(NpmPackageVersionDistInfo {
+    tarball,
     shasum,
     integrity,
     attestations: None,
+  })
+}
+
+fn validate_incomplete_lockfile_tarball_url(
+  id: &PackageNv,
+  tarball: &str,
+  default_tarball: &str,
+) -> Result<(), SnapshotFromLockfileError> {
+  let tarball_url = Url::parse(tarball).map_err(|_| {
+    SnapshotFromLockfileError::InvalidPackageTarballUrl {
+      package_nv: Box::new(id.clone()),
+      tarball: tarball.to_string(),
+    }
+  })?;
+  let default_tarball_url = Url::parse(default_tarball).map_err(|_| {
+    SnapshotFromLockfileError::InvalidPackageTarballUrl {
+      package_nv: Box::new(id.clone()),
+      tarball: default_tarball.to_string(),
+    }
+  })?;
+  let expected_origin = default_tarball_url.origin();
+  if tarball_url.origin() != expected_origin {
+    return Err(SnapshotFromLockfileError::PackageTarballOriginMismatch {
+      package_nv: Box::new(id.clone()),
+      tarball: tarball.to_string(),
+      expected_origin: expected_origin.ascii_serialization(),
+    });
   }
+  Ok(())
 }
 
 #[derive(Debug, Error, Clone, JsError)]
@@ -1178,7 +1231,7 @@ pub fn snapshot_from_lockfile(
           package.integrity.as_deref(),
           package.tarball.as_deref(),
           default_tarball_url,
-        ))
+        )?)
       } else {
         None
       },
@@ -1649,6 +1702,42 @@ mod tests {
     }
   }
 
+  struct TestScopedRegistryTarballUrlProvider;
+
+  impl DefaultTarballUrlProvider for TestScopedRegistryTarballUrlProvider {
+    fn default_tarball_url(&self, nv: &PackageNv) -> String {
+      assert_eq!(nv.name, "@scope/pkg");
+      format!(
+        "https://scope.example.com/npm/@scope/pkg/-/pkg-{}.tgz",
+        nv.version
+      )
+    }
+  }
+
+  async fn snapshot_from_lockfile_content(
+    content: &str,
+    default_tarball_url: &dyn DefaultTarballUrlProvider,
+  ) -> Result<ValidSerializedNpmResolutionSnapshot, SnapshotFromLockfileError>
+  {
+    let api = TestNpmRegistryApi::default();
+    let lockfile = Lockfile::new(
+      NewLockfileOptions {
+        file_path: PathBuf::from("/deno.lock"),
+        content,
+        overwrite: false,
+      },
+      &api,
+    )
+    .await
+    .unwrap();
+    snapshot_from_lockfile(SnapshotFromLockfileParams {
+      lockfile: &lockfile,
+      link_packages: &Default::default(),
+      default_tarball_url,
+      dedup_equivalent_peer_variants: false,
+    })
+  }
+
   #[tokio::test]
   async fn test_snapshot_from_lockfile_v2() {
     let api = TestNpmRegistryApi::default();
@@ -1765,6 +1854,117 @@ mod tests {
           NpmPackageId::from_serialized("emoji-regex@10.2.1").unwrap()
         )
       ])
+    );
+  }
+
+  #[tokio::test]
+  async fn test_snapshot_from_lockfile_rejects_mismatched_tarball_origin() {
+    let err = snapshot_from_lockfile_content(
+      r#"{
+        "version": "5",
+        "specifiers": {
+          "npm:chalk@5": "5.3.0"
+        },
+        "npm": {
+          "chalk@5.3.0": {
+            "integrity": "sha512-integrity1",
+            "tarball": "https://evil.example/chalk-5.3.0.tgz",
+            "dependencies": []
+          }
+        }
+      }"#,
+      &TestDefaultTarballUrlProvider,
+    )
+    .await
+    .unwrap_err();
+
+    assert!(matches!(
+      err,
+      SnapshotFromLockfileError::PackageTarballOriginMismatch { .. }
+    ));
+  }
+
+  #[tokio::test]
+  async fn test_snapshot_from_lockfile_rejects_invalid_tarball_url() {
+    let err = snapshot_from_lockfile_content(
+      r#"{
+        "version": "5",
+        "specifiers": {
+          "npm:chalk@5": "5.3.0"
+        },
+        "npm": {
+          "chalk@5.3.0": {
+            "integrity": "sha512-integrity1",
+            "tarball": "not a url",
+            "dependencies": []
+          }
+        }
+      }"#,
+      &TestDefaultTarballUrlProvider,
+    )
+    .await
+    .unwrap_err();
+
+    assert!(matches!(
+      err,
+      SnapshotFromLockfileError::InvalidPackageTarballUrl { .. }
+    ));
+  }
+
+  #[tokio::test]
+  async fn test_snapshot_from_lockfile_allows_scoped_registry_tarball_path() {
+    let snapshot = snapshot_from_lockfile_content(
+      r#"{
+        "version": "5",
+        "specifiers": {
+          "npm:@scope/pkg@1": "1.0.0"
+        },
+        "npm": {
+          "@scope/pkg@1.0.0": {
+            "integrity": "sha512-integrity1",
+            "tarball": "https://scope.example.com/downloads/pkg-1.0.0.tgz",
+            "dependencies": []
+          }
+        }
+      }"#,
+      &TestScopedRegistryTarballUrlProvider,
+    )
+    .await
+    .unwrap();
+
+    let package = snapshot.as_serialized().packages.first().unwrap();
+    assert_eq!(package.id.nv.name, "@scope/pkg");
+    assert_eq!(
+      package.dist.as_ref().unwrap().tarball,
+      "https://scope.example.com/downloads/pkg-1.0.0.tgz"
+    );
+  }
+
+  #[tokio::test]
+  async fn test_snapshot_from_lockfile_uses_default_for_empty_tarball() {
+    let snapshot = snapshot_from_lockfile_content(
+      r#"{
+        "version": "5",
+        "specifiers": {
+          "npm:chalk@5": "5.3.0"
+        },
+        "npm": {
+          "chalk@5.3.0": {
+            "integrity": "sha512-integrity1",
+            "tarball": "",
+            "dependencies": []
+          }
+        }
+      }"#,
+      &TestDefaultTarballUrlProvider,
+    )
+    .await
+    .unwrap();
+
+    let package = snapshot.as_serialized().packages.first().unwrap();
+    assert_eq!(
+      package.dist.as_ref().unwrap().tarball,
+      "https://example.com/chalk@5.3.0.tar.gz"
     );
   }
 
