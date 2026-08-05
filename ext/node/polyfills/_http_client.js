@@ -639,6 +639,7 @@ function ClientRequest(input, options, cb) {
   this.joinDuplicateHeaders = options.joinDuplicateHeaders;
 
   this[kPath] = options.path || "/";
+  this[kProxyRewrittenToAbsolute] = false;
 
   // For HTTP via HTTP proxy, rewrite path to an absolute URL so the proxy
   // knows where to forward the request.
@@ -681,7 +682,6 @@ function ClientRequest(input, options, cb) {
   this.reusedSocket = false;
   this.host = host;
   this.protocol = protocol;
-  this[kProxyRewrittenToAbsolute] = this[kProxyRewrittenToAbsolute] || false;
   this[kPerfStartTime] = performance.now();
 
   if (this.agent) {
@@ -695,16 +695,16 @@ function ClientRequest(input, options, cb) {
   }
 
   let hostHeaderFromOptions = host;
-
-  {
-    const posColon = StringPrototypeIndexOf(hostHeaderFromOptions, ":");
-    if (
-      posColon !== -1 &&
-      StringPrototypeIncludes(hostHeaderFromOptions, ":", posColon + 1) &&
-      StringPrototypeCharCodeAt(hostHeaderFromOptions, 0) !== 91 /* '[' */
-    ) {
-      hostHeaderFromOptions = `[${hostHeaderFromOptions}]`;
-    }
+  // For the Host header, ensure that IPv6 addresses are enclosed
+  // in square brackets, as defined by URI formatting
+  // https://tools.ietf.org/html/rfc3986#section-3.2.2
+  const posColon = StringPrototypeIndexOf(hostHeaderFromOptions, ":");
+  if (
+    posColon !== -1 &&
+    StringPrototypeIncludes(hostHeaderFromOptions, ":", posColon + 1) &&
+    StringPrototypeCharCodeAt(hostHeaderFromOptions, 0) !== 91 /* '[' */
+  ) {
+    hostHeaderFromOptions = `[${hostHeaderFromOptions}]`;
   }
 
   if (port && +port !== defaultPort) {
@@ -881,11 +881,14 @@ ClientRequest.prototype._implicitHeader = function _implicitHeader() {
       });
     }
 
-    // Set request attributes
+    // Set request attributes. When the path has been rewritten to
+    // absolute-form for proxying it is already a full URL, so appending it to
+    // the authority again would duplicate it.
     const protocol = this.protocol || "http:";
-    const host = this.getHeader("host") || this.host || "localhost";
     const path = this.path || "/";
-    const fullUrl = `${protocol}//${host}${path}`;
+    const fullUrl = this[kProxyRewrittenToAbsolute]
+      ? path
+      : `${protocol}//${this[kAuthority]}${path}`;
     try {
       const parsedUrl = new URL(fullUrl);
       span.setAttribute("http.request.method", this.method);
@@ -1275,7 +1278,6 @@ function parserOnIncomingClient(res, shouldKeepAlive) {
   // Emit HttpClient perf entry (at response-header time)
   const perfStartTime = req[kPerfStartTime];
   if (perfStartTime !== undefined) {
-    const host = req.getHeader("host") || req.host || "localhost";
     enqueueNodePerformanceEntry({
       name: "HttpClient",
       entryType: "http",
@@ -1288,7 +1290,7 @@ function parserOnIncomingClient(res, shouldKeepAlive) {
           // it is already a full URL.
           url: req[kProxyRewrittenToAbsolute]
             ? req.path
-            : `${req.protocol || "http:"}//${req[kAuthority] || host}${
+            : `${req.protocol || "http:"}//${req[kAuthority]}${
               req.path || "/"
             }`,
           headers: req.getHeaders(),
