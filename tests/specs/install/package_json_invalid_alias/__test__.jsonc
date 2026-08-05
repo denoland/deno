@@ -1,0 +1,31 @@
+{
+  "tempDir": true,
+  "tests": {
+    "isolated": {
+      "steps": [
+        {
+          "args": "install --node-modules-dir=auto --no-lock",
+          "output": "[WILDCARD]Invalid package alias '../outside'[WILDCARD]",
+          "exitCode": 1
+        },
+        {
+          "args": "run --no-config --no-npm --no-lock --allow-read check.ts",
+          "output": "preserved\n"
+        }
+      ]
+    },
+    "hoisted": {
+      "steps": [
+        {
+          "args": "install --node-modules-dir=manual --node-modules-linker=hoisted --no-lock",
+          "output": "[WILDCARD]Invalid package alias '../outside'[WILDCARD]",
+          "exitCode": 1
+        },
+        {
+          "args": "run --no-config --no-npm --no-lock --allow-read check.ts",
+          "output": "preserved\n"
+        }
+      ]
+    }
+  }
+}
