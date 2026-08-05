@@ -73,7 +73,6 @@ deno_core::extension!(deno_web,
   ops = [
     op_base64_decode,
     op_base64_decode_into,
-    op_base64_encode,
     op_base64_encode_from_buffer,
     op_base64_atob,
     op_base64_btoa,
@@ -419,12 +418,6 @@ fn op_base64_atob(#[scoped] mut s: ByteString) -> Result<ByteString, WebError> {
         .into(),
     )
   }
-}
-
-#[op2]
-#[string]
-fn op_base64_encode(#[buffer] s: &[u8]) -> String {
-  forgiving_base64_encode(s)
 }
 
 /// Encode a sub-range of a buffer to base64, avoiding a JS-side slice copy.

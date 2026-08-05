@@ -10,7 +10,6 @@
 const { core, internals, primordials } = __bootstrap;
 const {
   op_base64_decode,
-  op_base64_encode,
   op_base64_encode_from_buffer,
 } = core.ops;
 const {
@@ -34,6 +33,7 @@ const {
   StringPrototypeToLowerCase,
   StringPrototypeToUpperCase,
   Symbol,
+  TypedArrayPrototypeGetByteLength,
   TypeError,
 } = primordials;
 
@@ -250,7 +250,11 @@ function collectHttpQuotedString(input, position, extractValue) {
  * @returns {string}
  */
 function forgivingBase64Encode(data) {
-  return op_base64_encode(data);
+  return op_base64_encode_from_buffer(
+    data,
+    0,
+    TypedArrayPrototypeGetByteLength(data),
+  );
 }
 
 /**

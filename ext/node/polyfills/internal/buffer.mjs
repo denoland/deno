@@ -63,7 +63,6 @@ const {
 } = primordials;
 const {
   op_base64_decode_into,
-  op_base64_encode,
   op_base64_encode_from_buffer,
   op_base64url_decode_into,
   op_base64url_encode_from_buffer,
@@ -1076,13 +1075,6 @@ Buffer.prototype.base64Slice = function base64Slice(
     return "";
   }
 
-  // Use op_base64_encode (#[string] return) for small buffers where
-  // the lighter-weight op2 string path is faster.
-  // Use op_base64_encode_from_buffer (v8::String::new_external_onebyte) for
-  // large buffers where avoiding UTF-8 processing and copying matters.
-  if (offset === 0 && end === byteLength && end <= 4096) {
-    return op_base64_encode(this);
-  }
   return op_base64_encode_from_buffer(this, offset, end - offset);
 };
 
@@ -1150,9 +1142,6 @@ Buffer.prototype.base64urlSlice = function base64urlSlice(
     return "";
   }
 
-  // No size split: op_base64url_encode_from_buffer builds the V8 one-byte
-  // string directly and measures faster at every size. base64Slice's 4096
-  // split above needs the same re-measurement (follow-up to #36398).
   return op_base64url_encode_from_buffer(this, offset, end - offset);
 };
 

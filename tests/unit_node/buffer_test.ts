@@ -895,6 +895,35 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[node/buffer] base64 on views with non-zero byteOffset",
+  fn() {
+    const ab = new ArrayBuffer(32);
+    const raw = new Uint8Array(ab);
+    for (let i = 0; i < raw.length; i++) raw[i] = i;
+
+    // The ops receive the view, not the whole ArrayBuffer.
+    const view = Buffer.from(ab, 8, 16);
+    const copy = Buffer.from(raw.slice(8, 24));
+    assertEquals(view.toString("base64"), copy.toString("base64"));
+    assertEquals(
+      view.toString("base64", 1, 5),
+      copy.toString("base64", 1, 5),
+    );
+
+    // Unpadded input takes the loose path; padded input the strict path.
+    // Both land inside the view and leave the rest of the buffer alone.
+    assertEquals(view.write("//////", 2, "base64"), 4);
+    assertEquals(Array.from(raw.subarray(10, 14)), [0xff, 0xff, 0xff, 0xff]);
+    assertEquals(view.write("AQIDBA==", 10, "base64"), 4);
+    assertEquals(Array.from(raw.subarray(18, 22)), [1, 2, 3, 4]);
+    assertEquals(raw[9], 9);
+    assertEquals(raw[14], 14);
+    assertEquals(raw[17], 17);
+    assertEquals(raw[24], 24);
+  },
+});
+
+Deno.test({
   name: "[node/buffer] isEncoding returns true for valid encodings",
   fn() {
     [
