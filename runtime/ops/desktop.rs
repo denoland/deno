@@ -10,6 +10,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::sync::atomic::AtomicU32;
@@ -918,6 +919,111 @@ pub struct AutoUpdateState {
   pub rolled_back: bool,
 }
 
+impl AutoUpdateState {
+  /// Directory used for auto-update sentinel/backup/update files.
+  pub fn state_dir(&self) -> PathBuf {
+    auto_update_state_dir(&self.dylib_path)
+  }
+}
+
+/// File name for an auto-update sidecar file.
+///
+/// For a dylib named `libruntime.dylib`, the sidecars are named
+/// `libruntime.dylib.update`, `libruntime.dylib.backup`, etc.
+pub fn auto_update_file_name(dylib_path: &Path, suffix: &str) -> String {
+  let stem = dylib_path
+    .file_stem()
+    .map(|s| s.to_string_lossy())
+    .unwrap_or_default();
+  if let Some(ext) = dylib_path.extension().and_then(|e| e.to_str()) {
+    format!("{stem}.{ext}.{suffix}")
+  } else {
+    format!("{stem}.{suffix}")
+  }
+}
+
+/// Directory used for auto-update sentinel/backup/update files.
+///
+/// When the dylib lives inside a macOS `.app` bundle, the directory is placed
+/// outside the bundle (`~/Library/Application Support/<bundle-id>`) so that
+/// writing to it does not invalidate the code signature. Otherwise it falls
+/// back to the dylib's parent directory.
+pub fn auto_update_state_dir(dylib_path: &Path) -> PathBuf {
+  #[cfg(target_os = "macos")]
+  if let Some(dir) = macos_auto_update_state_dir(dylib_path) {
+    return dir;
+  }
+  dylib_path.parent().unwrap_or(dylib_path).to_path_buf()
+}
+
+#[cfg(target_os = "macos")]
+#[allow(
+  clippy::disallowed_methods,
+  reason = "auto-update state directory is written outside the signed app bundle"
+)]
+fn macos_auto_update_state_dir(dylib_path: &Path) -> Option<PathBuf> {
+  let bundle_dir = macos_app_bundle_dir(dylib_path)?;
+  let bundle_id = macos_bundle_identifier(&bundle_dir)
+    .unwrap_or_else(|| fallback_bundle_identifier(&bundle_dir));
+  let home = std::env::var_os("HOME")?;
+  let dir = PathBuf::from(home)
+    .join("Library/Application Support")
+    .join(bundle_id);
+  let _ = std::fs::create_dir_all(&dir);
+  Some(dir)
+}
+
+#[cfg(target_os = "macos")]
+#[allow(
+  clippy::disallowed_methods,
+  reason = "auto-update state directory is written outside the signed app bundle"
+)]
+fn macos_app_bundle_dir(dylib_path: &Path) -> Option<PathBuf> {
+  let macos_dir = dylib_path.parent()?;
+  if macos_dir.file_name()?.to_str()? != "MacOS" {
+    return None;
+  }
+  let contents_dir = macos_dir.parent()?;
+  if contents_dir.file_name()?.to_str()? != "Contents" {
+    return None;
+  }
+  let bundle_dir = contents_dir.parent()?;
+  if !bundle_dir.join("Contents/Info.plist").is_file() {
+    return None;
+  }
+  Some(bundle_dir.to_path_buf())
+}
+
+#[cfg(target_os = "macos")]
+#[allow(
+  clippy::disallowed_methods,
+  reason = "auto-update state directory is written outside the signed app bundle"
+)]
+fn macos_bundle_identifier(bundle_dir: &Path) -> Option<String> {
+  let plist =
+    std::fs::read_to_string(bundle_dir.join("Contents/Info.plist")).ok()?;
+  let key = "<key>CFBundleIdentifier</key>";
+  let pos = plist.find(key)? + key.len();
+  let rest = &plist[pos..];
+  let start_tag = "<string>";
+  let start = rest.find(start_tag)? + start_tag.len();
+  let end = rest[start..].find("</string>")?;
+  let id = rest[start..start + end].to_string();
+  if id.is_empty() {
+    return None;
+  }
+  Some(id)
+}
+
+#[cfg(target_os = "macos")]
+fn fallback_bundle_identifier(bundle_dir: &Path) -> String {
+  use sha2::Digest;
+  let hash = faster_hex::hex_string(&sha2::Sha256::digest(
+    bundle_dir.to_string_lossy().as_bytes(),
+  ));
+  format!("com.deno.desktop.{}", &hash[..16])
+}
+
 /// Hex-decoded length of a SHA-256 digest.
 const SHA256_HEX_LEN: usize = 64;
 
@@ -1008,10 +1114,9 @@ pub fn op_desktop_apply_patch(
     ));
   }
 
-  let update_path = dylib_path.with_extension(format!(
-    "{}.update",
-    dylib_path.extension().unwrap_or_default().to_string_lossy()
-  ));
+  let state_dir = auto_update_state_dir(dylib_path);
+  let update_name = auto_update_file_name(dylib_path, "update");
+  let update_path = state_dir.join(update_name);
   std::fs::write(&update_path, &patched).map_err(|e| {
     deno_error::JsErrorBox::generic(format!(
       "Failed to write update to {}: {}",
@@ -1090,17 +1195,14 @@ async fn op_desktop_recv_event(
 
 #[allow(
   clippy::disallowed_methods,
-  reason = "privileged auto-update sentinel write next to the dylib, outside any user sandbox"
+  reason = "privileged auto-update sentinel write outside the app bundle"
 )]
 #[op2(fast)]
 pub fn op_desktop_confirm_update(state: &mut OpState) {
   if let Some(s) = state.try_borrow::<AutoUpdateState>() {
-    let ext = s
-      .dylib_path
-      .extension()
-      .unwrap_or_default()
-      .to_string_lossy();
-    let sentinel = s.dylib_path.with_extension(format!("{}.update-ok", ext));
+    let state_dir = auto_update_state_dir(&s.dylib_path);
+    let sentinel_name = auto_update_file_name(&s.dylib_path, "update-ok");
+    let sentinel = state_dir.join(sentinel_name);
     let _ = std::fs::write(&sentinel, b"ok");
   }
 }

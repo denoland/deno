@@ -36,6 +36,8 @@ use deno_lib::version::otel_runtime_config;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_terminal::colors;
 use denort::desktop::DesktopApi;
+use denort::desktop::auto_update_file_name;
+use denort::desktop::auto_update_state_dir;
 use denort::run::RunOptions;
 
 /// Compile-time check: the laufey crate we're linking against must use the
@@ -1093,10 +1095,11 @@ fn get_dylib_path() -> Option<PathBuf> {
 #[cfg(unix)]
 #[allow(clippy::print_stderr, reason = "runs before logging is initialized")]
 fn apply_pending_update(dylib_path: &Path) -> bool {
-  let ext = dylib_path.extension().unwrap_or_default().to_string_lossy();
-  let update_path = dylib_path.with_extension(format!("{}.update", ext));
-  let backup_path = dylib_path.with_extension(format!("{}.backup", ext));
-  let sentinel_path = dylib_path.with_extension(format!("{}.update-ok", ext));
+  let state_dir = auto_update_state_dir(dylib_path);
+  let update_path = state_dir.join(auto_update_file_name(dylib_path, "update"));
+  let backup_path = state_dir.join(auto_update_file_name(dylib_path, "backup"));
+  let sentinel_path =
+    state_dir.join(auto_update_file_name(dylib_path, "update-ok"));
 
   if update_path.exists() {
     // New update pending — apply it.
@@ -1119,10 +1122,11 @@ fn apply_pending_update(dylib_path: &Path) -> bool {
     if std::fs::rename(&update_path, dylib_path).is_err() {
       // Rename failed (cross-filesystem / perms / etc.). Fall back to a
       // temp-then-rename copy so the dylib is never observed half-written:
-      // copy the update to `<dylib>.update.tmp` on the same filesystem as
-      // the dylib, then atomic-rename into place. Only on full success do
+      // copy the update to `<dylib>.update.tmp` in the auto-update state
+      // directory, then atomic-rename into place. Only on full success do
       // we consume the staged `.update`.
-      let tmp_path = dylib_path.with_extension(format!("{}.update.tmp", ext));
+      let tmp_path =
+        state_dir.join(auto_update_file_name(dylib_path, "update.tmp"));
       let copy_ok = std::fs::copy(&update_path, &tmp_path).is_ok()
         && std::fs::rename(&tmp_path, dylib_path).is_ok();
       if copy_ok {
