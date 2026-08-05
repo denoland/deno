@@ -18,11 +18,17 @@ pub struct PublishOrderGraph {
 
 impl PublishOrderGraph {
   pub fn next(&mut self) -> Vec<String> {
+    let mut depth_cache = HashMap::new();
     let mut package_names_with_depth = self
       .in_degree
       .iter()
       .filter_map(|(name, &degree)| if degree == 0 { Some(name) } else { None })
-      .map(|item| (item.clone(), self.compute_depth(item, HashSet::new())))
+      .map(|item| {
+        (
+          item.clone(),
+          self.compute_depth(item, &mut depth_cache, &mut HashSet::new()),
+        )
+      })
       .collect::<Vec<_>>();
 
     // sort by depth to in order to prioritize those packages
@@ -60,24 +66,32 @@ impl PublishOrderGraph {
 
   fn compute_depth(
     &self,
-    package_name: &String,
-    mut visited: HashSet<String>,
+    package_name: &str,
+    depth_cache: &mut HashMap<String, usize>,
+    visiting: &mut HashSet<String>,
   ) -> usize {
-    if visited.contains(package_name) {
+    if let Some(depth) = depth_cache.get(package_name) {
+      return *depth;
+    }
+
+    if !visiting.insert(package_name.to_string()) {
       return 0; // cycle
     }
 
-    visited.insert(package_name.clone());
-
-    let Some(parents) = self.reverse_map.get(package_name) else {
-      return 0;
+    let depth = if let Some(parents) = self.reverse_map.get(package_name) {
+      let max_depth = parents
+        .iter()
+        .map(|child| self.compute_depth(child, depth_cache, visiting))
+        .max()
+        .unwrap_or(0);
+      1 + max_depth
+    } else {
+      0
     };
-    let max_depth = parents
-      .iter()
-      .map(|child| self.compute_depth(child, visited.clone()))
-      .max()
-      .unwrap_or(0);
-    1 + max_depth
+
+    visiting.remove(package_name);
+    depth_cache.insert(package_name.to_string(), depth);
+    depth
   }
 }
 
@@ -317,6 +331,25 @@ mod test {
     graph.finish_package("a");
     assert!(graph.next().is_empty());
     graph.ensure_no_pending().unwrap();
+  }
+
+  #[test]
+  fn test_graph_dense_dag_depth_is_memoized() {
+    let package_count = 40;
+    let mut packages = HashMap::new();
+    for i in 0..package_count {
+      let mut deps = HashSet::new();
+      if i + 1 < package_count {
+        deps.insert(format!("pkg{:02}", i + 1));
+      }
+      if i + 2 < package_count {
+        deps.insert(format!("pkg{:02}", i + 2));
+      }
+      packages.insert(format!("pkg{i:02}"), deps);
+    }
+
+    let mut graph = build_publish_order_graph_from_pkgs_deps(packages);
+    assert_eq!(graph.next(), vec!["pkg39".to_string()]);
   }
 
   #[test]
