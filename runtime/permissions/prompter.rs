@@ -494,72 +494,208 @@ impl PermissionPrompter for TtyPrompter {
     let name = escape_control_characters(name);
     let api_name = api_name.map(escape_control_characters);
 
-    // print to stderr so that if stdout is piped this is still displayed.
-    let opts: String = if is_unary {
+    fn visible_width(text: &str) -> usize {
+      let mut width = 0;
+      let mut chars = text.chars();
+      while let Some(ch) = chars.next() {
+        if ch == '\x1b' {
+          for ch in chars.by_ref() {
+            if ch.is_ascii_alphabetic() {
+              break;
+            }
+          }
+        } else {
+          width += 1;
+        }
+      }
+      width
+    }
+
+    fn border_line(content: String) -> String {
+      colors::yellow(content).to_string()
+    }
+
+    fn border_cell_line(width: usize, content: &str) -> String {
+      let padding = width.saturating_sub(visible_width(content));
       format!(
-        "[y/n/A] (y = yes, allow; n = no, deny; A = allow all {name} permissions)"
+        "{} {content}{} {}\n",
+        colors::yellow("│"),
+        " ".repeat(padding),
+        colors::yellow("│"),
       )
-    } else {
-      "[y/n] (y = yes, allow; n = no, deny)".to_string()
-    };
+    }
+
+    fn box_rule(width: usize) -> String {
+      format!("├{}┤\n", "─".repeat(width + 2))
+    }
+
+    fn terminal_inner_width() -> Option<usize> {
+      #[cfg(unix)]
+      {
+        // SAFETY: ioctl only writes to the winsize struct.
+        unsafe {
+          let mut size: libc::winsize = std::mem::zeroed();
+          if libc::ioctl(2, libc::TIOCGWINSZ, &mut size as *mut _) != 0 {
+            return None;
+          }
+          return (size.ws_col as usize).checked_sub(4);
+        }
+      }
+
+      #[cfg(windows)]
+      {
+        use winapi::um::processenv::GetStdHandle;
+        use winapi::um::winbase::STD_ERROR_HANDLE;
+        use winapi::um::wincon::GetConsoleScreenBufferInfo;
+        use winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO;
+
+        // SAFETY: winapi calls read console metadata into bufinfo.
+        unsafe {
+          let handle = GetStdHandle(STD_ERROR_HANDLE);
+          let mut bufinfo: CONSOLE_SCREEN_BUFFER_INFO = std::mem::zeroed();
+          if GetConsoleScreenBufferInfo(handle, &mut bufinfo) == 0 {
+            return None;
+          }
+          let cols = i32::from(bufinfo.srWindow.Right)
+            - i32::from(bufinfo.srWindow.Left)
+            + 1;
+          return usize::try_from(cols).ok()?.checked_sub(4);
+        }
+      }
+
+      #[cfg(not(any(unix, windows)))]
+      {
+        None
+      }
+    }
+
+    fn prompt_line(prefix: &str) -> String {
+      format!("  {prefix} › ")
+    }
 
     // output everything in one shot to make the tests more reliable
-    let stack_lines_count = {
-      let mut output = String::new();
-      write!(&mut output, "┏ {PERMISSION_EMOJI}  ").unwrap();
-      write!(&mut output, "{}", colors::bold("Deno requests ")).unwrap();
-      write!(&mut output, "{}", colors::bold(message.clone())).unwrap();
-      writeln!(&mut output, "{}", colors::bold(".")).unwrap();
-      if let Some(api_name) = api_name.clone() {
-        writeln!(
-          &mut output,
-          "┠─ Requested by `{}` API.",
-          colors::bold(api_name)
-        )
-        .unwrap();
-      }
-      let stack_lines_count = if let Some(get_stack) = get_stack {
-        let stack = get_stack();
-        let len = stack.len();
-        for (idx, frame) in stack.into_iter().enumerate() {
-          writeln!(
-            &mut output,
-            "┃  {} {}",
-            colors::gray(if idx != len - 1 { "├─" } else { "└─" }),
-            colors::gray(frame),
-          )
-          .unwrap();
-        }
-        len
-      } else {
-        writeln!(
-          &mut output,
-          "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.",
-        ).unwrap();
-        1
-      };
-      let msg = format!(
-        "Learn more at: {}",
-        colors::cyan_with_underline(&format!(
-          "https://docs.deno.com/go/--allow-{}",
-          name
-        ))
-      );
-      writeln!(&mut output, "┠─ {}", colors::italic(&msg)).unwrap();
-      let msg = if crate::is_standalone() {
+    let prompt_lines_count = {
+      let docs_url = format!("https://docs.deno.com/go/--allow-{}", name);
+      let retry = if crate::is_standalone() {
         format!(
-          "Specify the required permissions during compile time using `deno compile --allow-{name}`."
+          "deno compile --allow-{name}  # specify during compile time"
         )
       } else {
-        format!("Run again with --allow-{name} to bypass this prompt.")
+        format!("deno run --allow-{name} ...")
       };
-      writeln!(&mut output, "┠─ {}", colors::italic(&msg)).unwrap();
-      write!(&mut output, "┗ {}", colors::bold("Allow?")).unwrap();
-      write!(&mut output, " {opts} > ").unwrap();
+
+      let mut lines = vec![
+        colors::gray("Deno is asking for:").to_string(),
+        String::new(),
+        format!("  {}", colors::bold(message.clone())),
+        String::new(),
+      ];
+
+      if let Some(api_name) = api_name.clone() {
+        lines.push(format!(
+          "{}   {}",
+          colors::gray("Source"),
+          colors::bold(api_name)
+        ));
+      }
+
+      if let Some(get_stack) = get_stack {
+        let stack = get_stack();
+        if !stack.is_empty() {
+          lines.push(colors::gray("Stack").to_string());
+          let len = stack.len();
+          for (idx, frame) in stack.into_iter().enumerate() {
+            lines.push(format!(
+              "  {} {}",
+              colors::gray(if idx != len - 1 { "├─" } else { "└─" }),
+              colors::gray(frame),
+            ));
+          }
+        }
+      } else {
+        lines.push(
+          format!(
+            "{}    set DENO_TRACE_PERMISSIONS=1 for stack frames",
+            colors::gray("Trace")
+          ),
+        );
+      }
+
+      lines.push(format!(
+        "{}     {}",
+        colors::gray("Docs"),
+        colors::cyan_with_underline(&docs_url)
+      ));
+      lines.push(format!(
+        "{}   {}",
+        colors::gray("Bypass"),
+        colors::italic(&retry)
+      ));
+
+      let actions = if is_unary {
+        format!(
+          "{} allow once   {} deny   {} allow all {name}",
+          colors::green_bold("[y]"),
+          colors::red_bold("[n]"),
+          colors::yellow_bold("[A]"),
+        )
+      } else {
+        format!(
+          "{} allow once   {} deny",
+          colors::green_bold("[y]"),
+          colors::red_bold("[n]"),
+        )
+      };
+
+      let content_width = lines
+        .iter()
+        .chain(std::iter::once(&actions))
+        .map(|line| visible_width(line))
+        .max()
+        .unwrap_or(0)
+        .max(54);
+      let width = terminal_inner_width()
+        .map(|terminal_width| terminal_width.max(content_width))
+        .unwrap_or(content_width);
+
+      let mut output = String::new();
+      let title = " Permission Request ";
+      writeln!(
+        &mut output,
+        "{}{}{}",
+        colors::yellow("┌─"),
+        colors::bold(title),
+        border_line(format!(
+          "{}┐",
+          "─".repeat(width.saturating_sub(visible_width(title)) + 1)
+        ))
+      )
+      .unwrap();
+      for line in &lines {
+        write!(&mut output, "{}", border_cell_line(width, line)).unwrap();
+      }
+      write!(&mut output, "{}", box_rule(width)).unwrap();
+      write!(&mut output, "{}", border_cell_line(width, &actions)).unwrap();
+      write!(
+        &mut output,
+        "{}",
+        border_line(prompt_line("select"))
+      )
+      .unwrap();
 
       stderr_lock.write_all(output.as_bytes()).unwrap();
 
-      stack_lines_count
+      lines.len() + 4
+    };
+
+    let unrecognized_prompt = || {
+      if is_unary {
+        format!(
+          "Unrecognized option. select [y/n/A: y allow, n deny, A allow all {name}]"
+        )
+      } else {
+        "Unrecognized option. select [y/n: y allow, n deny]".to_string()
+      }
     };
 
     let value = loop {
@@ -578,28 +714,39 @@ impl PermissionPrompter for TtyPrompter {
 
       let mut input = String::new();
       let result = stdin_lock.read_line(&mut input);
+      if result.is_err() {
+        break PromptResponse::Deny;
+      };
       let input = input.trim_end_matches(['\r', '\n']);
-      if result.is_err() || input.len() != 1 {
+
+      if matches!(
+        input.as_bytes(),
+        [b'\x1b', b'[', ..] | [b'\x1b', b'O', ..]
+      ) {
+        clear_n_lines(&mut stderr_lock, 1);
+        write!(stderr_lock, "{}", prompt_line("select")).unwrap();
+        continue;
+      }
+
+      if input.len() != 1 {
         break PromptResponse::Deny;
       };
 
-      let clear_n = if api_name.is_some() { 5 } else { 4 } + stack_lines_count;
-
       match input.as_bytes()[0] as char {
         'y' | 'Y' => {
-          clear_n_lines(&mut stderr_lock, clear_n);
+          clear_n_lines(&mut stderr_lock, prompt_lines_count);
           let msg = format!("Granted {message}.");
           writeln!(stderr_lock, "✅ {}", colors::bold(&msg)).unwrap();
           break PromptResponse::Allow;
         }
         'n' | 'N' | '\x1b' => {
-          clear_n_lines(&mut stderr_lock, clear_n);
+          clear_n_lines(&mut stderr_lock, prompt_lines_count);
           let msg = format!("Denied {message}.");
           writeln!(stderr_lock, "❌ {}", colors::bold(&msg)).unwrap();
           break PromptResponse::Deny;
         }
         'A' if is_unary => {
-          clear_n_lines(&mut stderr_lock, clear_n);
+          clear_n_lines(&mut stderr_lock, prompt_lines_count);
           let msg = format!("Granted all {name} access.");
           writeln!(stderr_lock, "✅ {}", colors::bold(&msg)).unwrap();
           break PromptResponse::AllowAll;
@@ -609,8 +756,8 @@ impl PermissionPrompter for TtyPrompter {
           clear_n_lines(&mut stderr_lock, 1);
           write!(
             stderr_lock,
-            "┗ {} {opts} > ",
-            colors::bold("Unrecognized option. Allow?")
+            "{}",
+            prompt_line(&colors::bold(unrecognized_prompt()).to_string())
           )
           .unwrap();
         }
