@@ -11273,7 +11273,7 @@ dependencies = [
 
 [[package]]
 name = "v8x"
-version = "149.4.0-rc.1"
+version = "149.4.0-rc.2"
 source = "git+https://github.com/littledivy/v8x?rev=b0359855804a8accee3dedf8d455533f627eb24c#b0359855804a8accee3dedf8d455533f627eb24c"
 dependencies = [
  "bindgen 0.70.1",
