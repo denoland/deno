@@ -1,0 +1,16 @@
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@denotest/add@^0.2.0": "0.2.0"
+  },
+  "jsr": {
+    "@denotest/add@0.2.0": {
+      "integrity": "54e71e46ebd1812f7b70eb061f039854d4cf076b77dc4835171e0aaa6fa6c404"
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "jsr:@denotest/add@^0.2.0"
+    ]
+  }
+}
