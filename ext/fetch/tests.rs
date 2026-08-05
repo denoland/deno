@@ -172,6 +172,7 @@ async fn run_test_client_with_resolver(
       http2: true,
       local_address: None,
       client_builder_hook: None,
+      no_delay: false,
       http2_max_header_list_size: None,
     },
   )
@@ -202,6 +203,37 @@ async fn run_test_client(
     Default::default(),
   )
   .await
+}
+
+// The connector applies `TCP_NODELAY` to the socket according to the
+// `no_delay` flag. No reachable HTTP server is needed: the option is set on the
+// client socket as soon as the TCP connection is established, so a bare
+// listener that accepts and holds the connection is enough to read it back.
+#[tokio::test]
+async fn connector_sets_nodelay() {
+  use tokio::net::TcpListener;
+  use tower::Service;
+
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let addr = listener.local_addr().unwrap();
+  tokio::spawn(async move {
+    let mut accepted = vec![];
+    while let Ok((conn, _)) = listener.accept().await {
+      accepted.push(conn);
+    }
+  });
+
+  for no_delay in [false, true] {
+    let mut connector = dns::PermissionedHttpConnector::new(
+      dns::Resolver::default(),
+      None,
+      None,
+      no_delay,
+    );
+    let uri: http::Uri = format!("http://{addr}").parse().unwrap();
+    let io = connector.call(uri).await.unwrap();
+    assert_eq!(io.inner().nodelay().unwrap(), no_delay);
+  }
 }
 
 /// A resolver that resolves any name to a single fixed address.
@@ -267,6 +299,7 @@ async fn test_http_proxy_denies_destination_resolving_to_denied_ip() {
       http2: true,
       local_address: None,
       client_builder_hook: None,
+      no_delay: false,
       http2_max_header_list_size: None,
     },
   )
@@ -604,6 +637,7 @@ fn create_http_test_client() -> crate::Client {
       client_builder_hook: None,
       http2_max_header_list_size: None,
       permissions: None,
+      no_delay: false,
     },
   )
   .unwrap()
