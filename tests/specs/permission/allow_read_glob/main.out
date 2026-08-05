@@ -1,0 +1,4 @@
+sub/a.txt: allowed
+sub/nested/a.txt: denied
+sub/a.log: denied
+other/a.txt: denied

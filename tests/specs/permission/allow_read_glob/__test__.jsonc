@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "allow_read_glob": {
+      "args": "run --allow-read=sub/*.txt main.ts",
+      "output": "main.out"
+    }
+  }
+}
