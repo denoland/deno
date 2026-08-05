@@ -3405,17 +3405,16 @@ fn create_ipa(app_bundle: &Path, ipa_path: &Path) -> Result<(), AnyError> {
         zip.add_directory(&zip_path, SimpleFileOptions::default())?;
         stack.push(path);
       } else {
-        // `options` is only reassigned inside the `#[cfg(unix)]` block below,
-        // so on non-unix targets the `mut` is unused.
-        #[cfg_attr(not(unix), allow(unused_mut))]
-        let mut options = SimpleFileOptions::default()
+        let options = SimpleFileOptions::default()
           .compression_method(zip::CompressionMethod::Deflated);
+        // Preserve unix permissions where available; on non-unix targets the
+        // base options are used as-is.
         #[cfg(unix)]
-        {
+        let options = {
           use std::os::unix::fs::PermissionsExt;
           let mode = std::fs::metadata(&path)?.permissions().mode();
-          options = options.unix_permissions(mode);
-        }
+          options.unix_permissions(mode)
+        };
         zip.start_file(&zip_path, options)?;
         let data = std::fs::read(&path)?;
         zip.write_all(&data)?;
