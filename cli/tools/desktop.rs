@@ -3405,6 +3405,9 @@ fn create_ipa(app_bundle: &Path, ipa_path: &Path) -> Result<(), AnyError> {
         zip.add_directory(&zip_path, SimpleFileOptions::default())?;
         stack.push(path);
       } else {
+        // `options` is only reassigned inside the `#[cfg(unix)]` block below,
+        // so on non-unix targets the `mut` is unused.
+        #[cfg_attr(not(unix), allow(unused_mut))]
         let mut options = SimpleFileOptions::default()
           .compression_method(zip::CompressionMethod::Deflated);
         #[cfg(unix)]
