@@ -1629,6 +1629,61 @@ Deno.test("[node/http] server graceful close", async () => {
   await promise;
 });
 
+// Regression test for https://github.com/denoland/deno/issues/35609.
+// server.close() must stop accepting new connections but keep existing
+// keep-alive connections open so a follow-up request on the same socket is
+// still served (graceful drain). It previously tore the socket down as soon
+// as the in-flight response finished.
+Deno.test("[node/http] server.close() drains existing keep-alive connection", async () => {
+  let reqCount = 0;
+  let closeCallbackFired = false;
+  const server = http.createServer((_req, res) => {
+    reqCount++;
+    if (reqCount === 1) {
+      server.close(() => {
+        closeCallbackFired = true;
+      });
+    }
+    res.setHeader("Connection", "keep-alive");
+    res.end("reply-" + reqCount);
+  });
+
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  server.listen(0, "127.0.0.1", () => {
+    const port = (server.address() as AddressInfo).port;
+    const socket = net.connect(port, "127.0.0.1", () => {
+      socket.write(
+        "GET /first HTTP/1.1\r\nHost: x\r\nConnection: keep-alive\r\n\r\n",
+      );
+    });
+    let buf = "";
+    let sent2 = false;
+    socket.on("data", (d) => {
+      buf += d;
+      if (!sent2 && /reply-1/.test(buf)) {
+        sent2 = true;
+        // Second request arrives after close() on the still-open socket.
+        socket.write(
+          "GET /second HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n",
+        );
+      }
+      if (/reply-2/.test(buf)) {
+        socket.destroy();
+        resolve();
+      }
+    });
+    socket.on("close", () => {
+      if (reqCount < 2) {
+        reject(new Error("connection dropped before 2nd request was served"));
+      }
+    });
+  });
+
+  await promise;
+  assert(closeCallbackFired);
+  assertEquals(reqCount, 2);
+});
+
 Deno.test("[node/http] server closeAllConnections shutdown", async () => {
   const server = http.createServer((_req, res) => {
     res.writeHead(200, { "Content-Type": "application/json" });
