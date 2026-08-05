@@ -252,7 +252,29 @@ class TcpConn extends Conn {
   }
 
   setKeepAlive(keepAlive = true) {
-    return op_set_keepalive(this.#rid, keepAlive);
+    let enable = true;
+    let time = -1;
+    let interval = -1;
+    let retries = -1;
+    if (typeof keepAlive === "boolean") {
+      enable = keepAlive;
+    } else if (keepAlive !== null && typeof keepAlive === "object") {
+      // An options object always enables keepalive; disable with `false`.
+      if (keepAlive.time !== undefined) {
+        time = validateKeepAliveDelay(keepAlive.time, "time");
+      }
+      if (keepAlive.interval !== undefined) {
+        interval = validateKeepAliveDelay(keepAlive.interval, "interval");
+      }
+      if (keepAlive.retries !== undefined) {
+        retries = validateKeepAliveRetries(keepAlive.retries);
+      }
+    } else {
+      throw new TypeError(
+        "Argument 'keepAlive' must be a boolean or an options object",
+      );
+    }
+    return op_set_keepalive(this.#rid, enable, time, interval, retries);
   }
 }
 
@@ -671,6 +693,36 @@ function validatePort(maybePort, isServer = false) {
     throw new RangeError(`Invalid port (out of range): ${maybePort}`);
   }
   return port;
+}
+
+// Keepalive timings are passed to the native op as i32 values, so they must
+// fit in a signed 32-bit integer.
+const MAX_KEEPALIVE_VALUE = 2147483647;
+
+// `time`/`interval` are milliseconds and are floored to whole seconds by the
+// OS, so a value below 1000ms would become 0s and be rejected by the kernel.
+function validateKeepAliveDelay(value, name) {
+  if (
+    typeof value !== "number" || !NumberIsInteger(value) ||
+    value < 1000 || value > MAX_KEEPALIVE_VALUE
+  ) {
+    throw new TypeError(
+      `Invalid keepAlive ${name} (expected an integer >= 1000): ${value}`,
+    );
+  }
+  return value;
+}
+
+function validateKeepAliveRetries(value) {
+  if (
+    typeof value !== "number" || !NumberIsInteger(value) ||
+    value < 1 || value > MAX_KEEPALIVE_VALUE
+  ) {
+    throw new TypeError(
+      `Invalid keepAlive retries (expected an integer >= 1): ${value}`,
+    );
+  }
+  return value;
 }
 
 function createListenDatagram(udpOpFn, unixOpFn) {
