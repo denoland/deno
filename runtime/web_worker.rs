@@ -1219,11 +1219,9 @@ pub async fn run_web_worker(
   };
 
   if let Err(e) = result {
-    // For Node workers with OOM, skip script execution (V8 is terminated)
+    // For workers with OOM, skip script execution (V8 is terminated)
     // and use a dedicated error type with exit code 1.
-    if internal_handle.worker_type == WorkerThreadType::Node
-      && worker.oom_triggered.load(Ordering::SeqCst)
-    {
+    if worker.oom_triggered.load(Ordering::SeqCst) {
       let oom_error: CoreError = CoreErrorKind::JsBox(
         deno_error::JsErrorBox::new(
           "ERR_WORKER_OUT_OF_MEMORY",
