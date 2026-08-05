@@ -799,12 +799,14 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             run: [
               `target/release/deno -A tools/release/create_symcache.ts target/release/deno-${buildItem.arch}-apple-darwin.symcache`,
               "strip -x -S target/release/deno",
-              'echo "Key is $(echo $APPLE_CODESIGN_KEY | base64 -d | wc -c) bytes"',
-              "rcodesign sign target/release/deno " +
+              'if [[ "$GITHUB_REF" == "refs/heads/main" || "$GITHUB_REF" == refs/tags/* ]]; then',
+              '  echo "Key is $(echo $APPLE_CODESIGN_KEY | base64 -d | wc -c) bytes"',
+              "  rcodesign sign target/release/deno " +
               "--code-signature-flags=runtime " +
               '--p12-password="$APPLE_CODESIGN_PASSWORD" ' +
               "--p12-file=<(echo $APPLE_CODESIGN_KEY | base64 -d) " +
               "--entitlements-xml-file=cli/entitlements.plist",
+              "fi",
               "cd target/release",
               `shasum -a 256 deno > deno-${buildItem.arch}-apple-darwin.sha256sum`,
               `zip -r deno-${buildItem.arch}-apple-darwin.zip deno`,
