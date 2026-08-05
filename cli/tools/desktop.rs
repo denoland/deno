@@ -1589,7 +1589,7 @@ async fn package_desktop_app(
   };
 
   if is_ios {
-    package_ios_app_bundle(dylib_path, desktop_flags, cli_options).await
+    package_ios_app_bundle(dylib_path, desktop_flags, cli_options)
   } else if is_darwin {
     package_macos_app_bundle(
       dylib_path,
@@ -3050,7 +3050,7 @@ fn macos_runtime_dylib_name(backend: &str, laufey_exe_stem: &str) -> String {
 ///   AppName          (static executable + injected user code)
 ///   Info.plist
 /// ```
-async fn package_ios_app_bundle(
+fn package_ios_app_bundle(
   bin_path: &Path,
   desktop_flags: &DesktopFlags,
   cli_options: &CliOptions,

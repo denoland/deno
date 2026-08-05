@@ -1,3 +1,5 @@
+// Copyright 2018-2026 the Deno authors. MIT license.
+
 // Compile the laufey C++/ObjC++ backend + UIKit shell and link iOS frameworks.
 //
 // The native laufey backend sources live in a checkout of the `wef` repo. Its
