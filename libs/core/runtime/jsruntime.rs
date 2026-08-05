@@ -1741,10 +1741,10 @@ impl JsRuntime {
         ERROR_CONSTRUCTORS,
         "Deno.core.errorConstructors",
       );
-      crate::error::snapshot_registered_error_classes(
-        scope,
-        error_constructors,
-      );
+      // The built-in Error classes register before `op_register_error_class`
+      // is installed, so every realm needs this initial bulk capture whether
+      // its bootstrap code was loaded from source or from a snapshot.
+      crate::error::capture_registered_error_classes(scope, error_constructors);
       let run_immediate_callbacks_cb: v8::Local<v8::Function> = bindings::get(
         scope,
         core_obj,

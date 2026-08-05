@@ -269,7 +269,7 @@ pub fn throw_js_error_class(
   scope: &mut v8::PinScope,
   error: &dyn JsErrorClass,
 ) {
-  if try_throw_js_error_class(scope, error) {
+  if try_throw_registered_error_class(scope, error) {
     return;
   }
   let class = error.get_class();
@@ -280,7 +280,7 @@ pub fn throw_js_error_class(
 /// Throws an op error through native registered-class construction when
 /// available, falling back to its JavaScript builder otherwise.
 pub fn throw_op_error(scope: &mut v8::PinScope, error: &dyn JsErrorClass) {
-  if try_throw_js_error_class(scope, error) {
+  if try_throw_registered_error_class(scope, error) {
     return;
   }
   let exception = to_v8_error(scope, error);
@@ -293,7 +293,7 @@ pub fn throw_op_error(scope: &mut v8::PinScope, error: &dyn JsErrorClass) {
 /// Returns `false` when the class cannot be reconstructed natively, including
 /// classes that only have a custom JavaScript builder. Callers that support
 /// custom builders may then fall back to [`to_v8_error`].
-pub fn try_throw_js_error_class(
+fn try_throw_registered_error_class(
   scope: &mut v8::PinScope,
   error: &dyn JsErrorClass,
 ) -> bool {
@@ -317,14 +317,17 @@ pub(crate) fn register_error_class<'s, 'i>(
   };
   let state = JsRealm::exception_state_from_scope(scope);
   let mut prototypes = state.registered_error_class_prototypes.borrow_mut();
+  // The JS registry rejects duplicate class names, so the first successfully
+  // captured prototype is also the only valid registration for this realm.
   if !prototypes.contains_key(class) {
     prototypes.insert(class.to_owned(), v8::Global::new(scope, prototype));
   }
 }
 
-/// Rebuild the native prototype cache after loading a snapshot. Registrations
-/// performed later notify Rust directly through `op_register_error_class`.
-pub(crate) fn snapshot_registered_error_classes<'s, 'i>(
+/// Capture the native prototype cache after loading bootstrap code or a
+/// snapshot. Registrations performed later notify Rust directly through
+/// `op_register_error_class`.
+pub(crate) fn capture_registered_error_classes<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   constructors: v8::Local<'s, v8::Object>,
 ) {

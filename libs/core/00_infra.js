@@ -14,6 +14,7 @@
     ObjectAssign,
     ObjectDefineProperty,
     ObjectFreeze,
+    ObjectHasOwn,
     Promise,
     PromiseReject,
     PromiseResolve,
@@ -117,9 +118,16 @@
         const keys = [];
         for (const property of new SafeArrayIterator(additionalProperties)) {
           const key = property[0];
-          if (!(key in error)) {
+          // Match native registered-error construction: preserve existing own
+          // properties without consulting or invoking prototype accessors.
+          if (!ObjectHasOwn(error, key)) {
             keys.push(key);
-            error[key] = property[1];
+            ObjectDefineProperty(error, key, {
+              value: property[1],
+              writable: true,
+              enumerable: true,
+              configurable: true,
+            });
           }
         }
         Object.defineProperty(error, SymbolFor("errorAdditionalPropertyKeys"), {
@@ -141,8 +149,11 @@
       enumerable: true,
       configurable: false,
     });
-    // Op errors bypass registered constructors in both slow and fast dispatch.
-    // Classes that depend on constructor-created state must use a builder.
+    // Registered op errors bypass their constructors in both slow and fast
+    // dispatch. Native reconstruction requires a non-Proxy function with an
+    // own data `prototype`; other constructors remain builder-only and become
+    // plain Error instances on fast dispatch. Classes that depend on
+    // constructor-created state must use a builder and remain slow-only.
     registerErrorClassNative?.(className, errorClass);
   }
 

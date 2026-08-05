@@ -397,7 +397,8 @@ pub(crate) fn generate_fast_result_early_exit(
         let mut scope = scope.init();
         // Keep fast-call error construction on the native registered-class
         // path. This preserves the expected error shape without invoking a
-        // class constructor or custom builder from the callback.
+        // class constructor or custom builder from the callback. Re-entering
+        // JS here can invalidate fast-call arguments (GHSA-p4r3-6jgx-4cj5).
         deno_core::error::throw_js_error_class(&mut scope, &err);
         // SAFETY: All fast return types have zero as a valid value
         return unsafe { std::mem::zeroed() };
