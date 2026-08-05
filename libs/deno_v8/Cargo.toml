@@ -38,4 +38,4 @@ v8_enable_v8_checks = [
 
 [dependencies]
 rusty_v8 = { package = "v8", version = "150.4.0", optional = true, default-features = false }
-v8x_backend = { package = "v8x", version = "=149.4.0-rc.1", git = "https://github.com/littledivy/v8x", rev = "598da64e8546424171f8b64ddfe33d385212686c", optional = true, default-features = false }
+v8x_backend = { package = "v8x", version = "=149.4.0-rc.1", git = "https://github.com/littledivy/v8x", rev = "5be399591ce5d81372bb5bc21046a0b46ce27cc5", optional = true, default-features = false }

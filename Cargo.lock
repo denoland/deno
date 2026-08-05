@@ -11274,7 +11274,7 @@ dependencies = [
 [[package]]
 name = "v8x"
 version = "149.4.0-rc.1"
-source = "git+https://github.com/littledivy/v8x?rev=598da64e8546424171f8b64ddfe33d385212686c#598da64e8546424171f8b64ddfe33d385212686c"
+source = "git+https://github.com/littledivy/v8x?rev=5be399591ce5d81372bb5bc21046a0b46ce27cc5#5be399591ce5d81372bb5bc21046a0b46ce27cc5"
 dependencies = [
  "bindgen 0.70.1",
  "bitflags 2.9.3",
