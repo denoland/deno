@@ -1,0 +1,8 @@
+{
+  "name": "@denotest/libc-package-not-musl",
+  "version": "1.0.0",
+  "main": "index.js",
+  "os": ["linux"],
+  "cpu": ["x64"],
+  "libc": ["!musl"]
+}

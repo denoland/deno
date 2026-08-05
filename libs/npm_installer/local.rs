@@ -297,6 +297,12 @@ impl<
       self.npm_package_extra_info_provider.clone(),
     ));
 
+    // Platform packages excluded because their `libc` (read from package.json
+    // after extraction) doesn't match the target. Populated by the reader
+    // futures below and consulted when linking deps and top-level packages.
+    let excluded_by_libc: Arc<Mutex<HashSet<NpmPackageId>>> =
+      Arc::new(Mutex::new(HashSet::new()));
+
     // Map a package to the workspace member directory that declares it as a
     // direct dependency, so its lifecycle scripts run with `INIT_CWD` pointing
     // at that member rather than the workspace root.
@@ -380,6 +386,7 @@ impl<
           let bin_entries_to_setup = bin_entries.clone();
           let install_reporter = self.install_reporter.clone();
           let lifecycle_script_init_cwds = lifecycle_script_init_cwds.clone();
+          let excluded_by_libc = excluded_by_libc.clone();
 
           cache_futures.push(
             async move {
@@ -388,6 +395,35 @@ impl<
                 .ensure_package(&package.id.nv, dist)
                 .await
                 .map_err(JsErrorBox::from_err)?;
+
+              // npm's abbreviated packument omits the `libc` field, so a
+              // package's libc constraint is only known once it has been
+              // extracted and its package.json read. Skip materializing a
+              // platform-specific package whose libc doesn't match the target
+              // (e.g. a `musl` build when targeting `glibc`). The tarball is
+              // still cached; it just doesn't get linked into node_modules.
+              let target_libc = self.system_info.libc.as_str();
+              let is_platform_specific =
+                !package.system.os.is_empty() || !package.system.cpu.is_empty();
+              if !target_libc.is_empty() && is_platform_specific {
+                let cache_folder =
+                  self.npm_cache.package_folder_for_nv(&package.id.nv);
+                let extra = extra_info_provider
+                  .get_package_extra_info(
+                    &package.id.nv,
+                    &cache_folder,
+                    ExpectedExtraInfo::from_package(package),
+                  )
+                  .await
+                  .map_err(JsErrorBox::from_err)?;
+                if !extra.libc.is_empty()
+                  && !deno_npm::libc_matches(&extra.libc, target_libc)
+                {
+                  excluded_by_libc.lock().insert(package.id.clone());
+                  return Ok(());
+                }
+              }
+
               let pb_guard =
                 self.reporter.on_initializing(&package.id.nv.to_string());
               let _initialization_guard =
@@ -649,6 +685,10 @@ impl<
     }
     drop(cache_futures);
 
+    // Packages skipped above because their libc didn't match the target. They
+    // were never materialized, so don't link them anywhere below.
+    let excluded_by_libc = std::mem::take(&mut *excluded_by_libc.lock());
+
     // 5. Symlink all the dependencies into the .deno directory.
     //
     // Symlink node_modules/.deno/<package_id>/node_modules/<dep_name> to
@@ -667,6 +707,9 @@ impl<
           && !dep.system.matches_system(&self.system_info)
         {
           continue; // this isn't a dependency for the current system
+        }
+        if excluded_by_libc.contains(dep_id) {
+          continue; // excluded above by libc mismatch
         }
         let dep_cache_folder_id = dep.get_package_cache_folder_id();
         let dep_folder_name =
@@ -721,6 +764,9 @@ impl<
             }
           }
         };
+        if excluded_by_libc.contains(&remote_pkg.id) {
+          continue; // excluded above by libc mismatch; never materialized
+        }
         let Some(remote_alias) = &remote.alias else {
           continue;
         };
@@ -795,6 +841,9 @@ impl<
       .collect::<Vec<_>>();
     ids.sort_by(|a, b| b.cmp(a)); // create determinism and only include the latest version
     for id in ids {
+      if excluded_by_libc.contains(id) {
+        continue; // excluded above by libc mismatch; never materialized
+      }
       match found_names.entry(&id.nv.name) {
         Entry::Occupied(_) => {
           continue; // skip, already handled
@@ -879,6 +928,9 @@ impl<
     // 8. Create a node_modules/.deno/node_modules/<package-name> directory with
     // the remaining packages
     for package in newest_packages_by_name.values() {
+      if excluded_by_libc.contains(&package.id) {
+        continue; // excluded above by libc mismatch; never materialized
+      }
       match found_names.entry(&package.id.nv.name) {
         Entry::Occupied(_) => {
           continue; // skip, already handled

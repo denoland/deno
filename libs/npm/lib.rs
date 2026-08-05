@@ -352,6 +352,11 @@ pub struct NpmPackageExtraInfo {
   pub bin: Option<NpmPackageVersionBinEntry>,
   pub scripts: HashMap<SmallStackString, String>,
   pub deprecated: Option<String>,
+  /// The `libc` constraint read from the package's `package.json` (e.g.
+  /// `glibc`, `musl`). Empty means no constraint. This is not present in npm's
+  /// abbreviated packument, so it is only populated when read from disk.
+  #[serde(default)]
+  pub libc: Vec<SmallStackString>,
 }
 
 impl std::fmt::Debug for NpmResolutionPackage {
@@ -411,6 +416,10 @@ pub struct NpmSystemInfo {
   pub os: SmallStackString,
   /// `process.arch` value from Node.js
   pub cpu: SmallStackString,
+  /// `libc` of the target (e.g. `glibc`, `musl`). Only meaningful on Linux;
+  /// empty on other platforms.
+  #[serde(default)]
+  pub libc: SmallStackString,
 }
 
 impl Default for NpmSystemInfo {
@@ -418,6 +427,7 @@ impl Default for NpmSystemInfo {
     Self {
       os: node_js_os(std::env::consts::OS).into(),
       cpu: node_js_cpu(std::env::consts::ARCH).into(),
+      libc: host_libc().into(),
     }
   }
 }
@@ -427,8 +437,66 @@ impl NpmSystemInfo {
     Self {
       os: node_js_os(os).into(),
       cpu: node_js_cpu(cpu).into(),
+      // sole caller passes the host os, so use the detected host libc
+      libc: host_libc().into(),
     }
   }
+}
+
+/// The `libc` of the host the current binary is running on, as a Node.js-style
+/// value. Empty on non-Linux platforms.
+pub fn host_libc() -> &'static str {
+  #[cfg(all(target_os = "linux", target_env = "musl"))]
+  {
+    // Built against musl, so the host is definitely musl.
+    "musl"
+  }
+  #[cfg(all(target_os = "linux", not(target_env = "musl")))]
+  {
+    // Built against glibc, but the host may still be musl: a glibc-built deno
+    // can run on Alpine via gcompat, where native packages probe for the musl
+    // variant at runtime. So detect the host libc at runtime rather than
+    // trusting the compile-time libc. Mirrors Node's detect-libc: a musl system
+    // ships its dynamic loader as `/lib/ld-musl-<arch>.so.1`.
+    use std::sync::OnceLock;
+
+    use sys_traits::FsDirEntry;
+    use sys_traits::FsReadDir;
+    static LIBC: OnceLock<&'static str> = OnceLock::new();
+    LIBC.get_or_init(|| {
+      let is_musl = sys_traits::impls::RealSys.fs_read_dir("/lib").is_ok_and(
+        |mut entries| {
+          entries.any(|entry| {
+            entry.is_ok_and(|entry| {
+              entry
+                .file_name()
+                .to_str()
+                .is_some_and(|name| name.starts_with("ld-musl-"))
+            })
+          })
+        },
+      );
+      if is_musl { "musl" } else { "glibc" }
+    })
+  }
+  #[cfg(not(target_os = "linux"))]
+  {
+    ""
+  }
+}
+
+/// The default `libc` to assume for a given Node.js-style `os` value. The
+/// `libc` field only applies to Linux, where we default to `glibc` (the most
+/// common). Empty for other platforms.
+pub fn libc_for_os(os: &str) -> &'static str {
+  if os == "linux" { "glibc" } else { "" }
+}
+
+/// Whether a package's `libc` constraint (from its `package.json`) is
+/// satisfied by `target`. An empty constraint matches anything. Supports
+/// negation (e.g. `!musl`), mirroring the `os`/`cpu` matching.
+pub fn libc_matches(package_libc: &[SmallStackString], target: &str) -> bool {
+  matches_os_or_cpu_vec(package_libc, target)
 }
 
 /// Extracts the package name from a specifier that may contain a subpath.

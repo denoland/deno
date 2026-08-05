@@ -145,6 +145,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys> NpmPackageFsInstaller
       deprecated: None,
       bin: None,
       scripts: [("postinstall".into(), "".into())].into_iter().collect(),
+      libc: Vec::new(),
     };
 
     for package in &package_partitions.packages {

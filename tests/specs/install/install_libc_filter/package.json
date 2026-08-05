@@ -1,0 +1,6 @@
+{
+  "name": "test",
+  "dependencies": {
+    "@denotest/libc-package": "1.0.0"
+  }
+}
