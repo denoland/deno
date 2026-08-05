@@ -65,6 +65,8 @@ const {
   op_base64_decode_into,
   op_base64_encode,
   op_base64_encode_from_buffer,
+  op_base64url_decode_into,
+  op_base64url_encode_from_buffer,
   op_is_ascii,
   op_is_utf8,
   op_mark_as_untransferable,
@@ -115,9 +117,6 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { getOptionValue } = core.loadExtScript(
   "ext:deno_node/internal/options.ts",
-);
-const { forgivingBase64UrlEncode } = core.loadExtScript(
-  "ext:deno_web/00_infra.js",
 );
 const { atob, btoa } = core.loadExtScript("ext:deno_web/05_base64.js");
 const { Blob, blobFromObjectUrl, File } = core.loadExtScript(
@@ -1119,15 +1118,31 @@ Buffer.prototype.base64Write = function base64Write(
 
 Buffer.prototype.base64urlSlice = function base64urlSlice(
   offset,
-  length,
+  end,
 ) {
-  if (offset === 0 && length === this.length) {
-    return forgivingBase64UrlEncode(this);
-  } else {
-    return forgivingBase64UrlEncode(
-      TypedArrayPrototypeSlice(this, offset, length),
-    );
+  const byteLength = TypedArrayPrototypeGetByteLength(this);
+  if (offset === undefined) {
+    offset = 0;
   }
+
+  if (end === undefined) {
+    end = byteLength;
+  }
+
+  if (offset < 0 || offset > byteLength) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
+  }
+  if (end < 0 || end > byteLength) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("end");
+  }
+  if (end <= offset) {
+    return "";
+  }
+
+  // No size split: op_base64url_encode_from_buffer builds the V8 one-byte
+  // string directly and measures faster at every size. base64Slice's 4096
+  // split above needs the same re-measurement (follow-up to #36398).
+  return op_base64url_encode_from_buffer(this, offset, end - offset);
 };
 
 Buffer.prototype.base64urlWrite = function base64urlWrite(
@@ -1135,6 +1150,38 @@ Buffer.prototype.base64urlWrite = function base64urlWrite(
   offset,
   length,
 ) {
+  const byteLength = TypedArrayPrototypeGetByteLength(this);
+  if (offset === undefined) {
+    offset = 0;
+  }
+  if (offset < 0 || offset > byteLength) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
+  }
+
+  const remaining = byteLength - offset;
+  if (length === undefined || length > remaining) {
+    length = remaining;
+  } else if (length < 0) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("length");
+  }
+
+  const target = offset === 0 && length === byteLength
+    ? this
+    : TypedArrayPrototypeSubarray(this, 0, offset + length);
+  // Invalid base64url comes back as -1 (cheaper than an exception on dirty
+  // input); the catch only absorbs the onebyte-string conversion TypeError
+  // for inputs with characters above U+00FF.
+  let written = -1;
+  try {
+    written = op_base64url_decode_into(string, target, offset);
+  } catch {
+    // fall through to the cleaning path
+  }
+  if (written !== -1) {
+    return written;
+  }
+  // Fallback for dirty input: Node's cleaning semantics live in
+  // base64UrlToBytes (strip invalid chars, truncate at '=', re-pad).
   return blitBuffer(base64UrlToBytes(string), this, offset, length);
 };
 

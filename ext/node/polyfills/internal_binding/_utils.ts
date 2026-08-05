@@ -3,8 +3,10 @@
 (function () {
 const { core, primordials } = __bootstrap;
 const {
+  op_base64url_decode,
+} = core.ops;
+const {
   forgivingBase64Decode,
-  forgivingBase64UrlDecode,
 } = core.loadExtScript("ext:deno_web/00_infra.js");
 const {
   DataView,
@@ -81,12 +83,14 @@ function base64clean(str: string) {
 
 function base64UrlToBytes(str: string) {
   str = base64clean(str);
+  // Node's base64url decode also accepts the standard alphabet; the Url op
+  // does not, so this conversion is load-bearing.
   str = StringPrototypeReplaceAll(
     StringPrototypeReplaceAll(str, "+", "-"),
     "/",
     "_",
   );
-  return forgivingBase64UrlDecode(str);
+  return op_base64url_decode(str);
 }
 
 // https://github.com/nodejs/node/blob/591ba692bfe30408e6a67397e7d18bfa1b9c3561/deps/nbytes/src/nbytes.cpp#L144-L158
