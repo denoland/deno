@@ -141,7 +141,7 @@ fn _083_legacy_external_source_map() {
   )
   .unwrap();
   // Write a faulty old external source map.
-  let faulty_map_path = deno_dir.path().join("gen/http/localhost_PORT4545/9576bd5febd0587c5c4d88d57cb3ac8ebf2600c529142abe3baa9a751d20c334.js.map");
+  let faulty_map_path = deno_dir.path().join("gen/http/localhost_port_4545/9576bd5febd0587c5c4d88d57cb3ac8ebf2600c529142abe3baa9a751d20c334.js.map");
   faulty_map_path.parent().create_dir_all();
   faulty_map_path.write(r#"{\"version\":3,\"file\":\"\",\"sourceRoot\":\"\",\"sources\":[\"http://localhost:4545/083_legacy_external_source_map.ts\"],\"names\":[],\"mappings\":\";AAAA,MAAM,IAAI,KAAK,CAAC,KAAK,CAAC,CAAC\"}"#);
   let output = Command::new(util::deno_exe_path())
@@ -3000,7 +3000,7 @@ console.log(returnsHi());"#,
 
   assert!(vendor_dir.exists());
   let mod1_file = vendor_dir
-    .join("http_localhost_4545")
+    .join("http_localhost_port_4545")
     .join("subdir")
     .join("mod1.ts");
   mod1_file.write("export function returnsHi() { return 'bye bye bye'; }");
@@ -3022,7 +3022,7 @@ console.log(returnsHi());"#,
   // ensure we can add and execute files in directories that have a hash in them
   test_context
     .new_command()
-    // http_localhost_4545/subdir/#capitals_c75d7/main.js
+    // http_localhost_port_4545/subdir/#capitals_c75d7/main.js
     .args("cache --allow-import http://localhost:4545/subdir/CAPITALS/main.js")
     .run()
     .skip_output_check();
@@ -3030,12 +3030,12 @@ console.log(returnsHi());"#,
     vendor_dir.join("manifest.json").read_json_value(),
     json!({
       "folders": {
-        "http://localhost:4545/subdir/CAPITALS/": "http_localhost_4545/subdir/#capitals_c75d7"
+        "http://localhost:4545/subdir/CAPITALS/": "http_localhost_port_4545/subdir/#capitals_c75d7"
       }
     })
   );
   vendor_dir
-    .join("http_localhost_4545/subdir/#capitals_c75d7/hello_there.ts")
+    .join("http_localhost_port_4545/subdir/#capitals_c75d7/hello_there.ts")
     .write("console.log('hello there');");
   test_context
     .new_command()
@@ -3047,7 +3047,7 @@ console.log(returnsHi());"#,
   // now try importing directly from the vendor folder
   temp_dir.write(
     "main.ts",
-    r#"import { returnsHi } from './vendor/http_localhost_4545/subdir/mod1.ts';
+    r#"import { returnsHi } from './vendor/http_localhost_port_4545/subdir/mod1.ts';
 console.log(returnsHi());"#,
   );
   deno_run_cmd
