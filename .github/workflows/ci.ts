@@ -899,8 +899,12 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               "try {",
               "  Move-Item target/release/denort.exe target/release/denort.v8.exe",
               "  Move-Item target/release/denort.dll target/release/denort.v8.dll",
-              `  cargo build --release --locked -p denort -p denort_desktop --no-default-features --features quickjs`,
-              '  if ($LASTEXITCODE -ne 0) { throw "QuickJS runtime build failed" }',
+              // Both packages produce denort.pdb on Windows. Building them in
+              // one Cargo invocation lets their linkers race to write it.
+              `  cargo build --release --locked -p denort --no-default-features --features quickjs`,
+              '  if ($LASTEXITCODE -ne 0) { throw "QuickJS denort build failed" }',
+              `  cargo build --release --locked -p denort_desktop --no-default-features --features quickjs`,
+              '  if ($LASTEXITCODE -ne 0) { throw "QuickJS denort_desktop build failed" }',
               `  Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-quickjs-${buildItem.arch}-pc-windows-msvc.zip`,
               `  Get-FileHash target/release/denort-quickjs-${buildItem.arch}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-quickjs-${buildItem.arch}-pc-windows-msvc.zip.sha256sum`,
               `  Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.dll -DestinationPath target/release/libdenort-quickjs-${buildItem.arch}-pc-windows-msvc.zip`,
