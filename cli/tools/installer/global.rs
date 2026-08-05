@@ -24,6 +24,7 @@ use deno_npm_installer::PackagesAllowedScripts;
 use deno_path_util::resolve_url_or_path;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageReq;
 use jsonc_parser::cst::CstInputValue;
 use log::Level;
 use once_cell::sync::Lazy;
@@ -49,6 +50,8 @@ use crate::file_fetcher::CliFileFetcher;
 use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::file_fetcher::create_cli_file_fetcher;
 use crate::jsr::JsrFetchResolver;
+use crate::util::console::ConfirmOptions;
+use crate::util::console::confirm;
 use crate::util::env::resolve_cwd;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
@@ -151,6 +154,13 @@ pub async fn install_global(
       &install_flags_global,
     )
     .await?;
+    let mut module_flags = flags.as_ref().clone();
+    maybe_prompt_allow_lifecycle_scripts(
+      &factory.bin_name_resolver()?,
+      &name_and_url,
+      &mut module_flags,
+    )
+    .await?;
 
     // set up config dir
     let installation_dir = get_installer_bin_dir(
@@ -178,7 +188,7 @@ pub async fn install_global(
       .extend(package_json_dep_import_entries(&name_and_url.module_url));
     setup_config_dir(
       &name_and_url,
-      &flags,
+      &module_flags,
       cli_options.initial_cwd(),
       &installation_dir,
       Some(&jsr_lockfile_fetcher),
@@ -191,7 +201,7 @@ pub async fn install_global(
     create_install_shim(
       &name_and_url,
       cli_options.initial_cwd(),
-      &flags,
+      &module_flags,
       &install_flags_global,
     )?;
 
@@ -202,7 +212,7 @@ pub async fn install_global(
       match create_install_shim(
         extra_entry,
         cli_options.initial_cwd(),
-        &flags,
+        &module_flags,
         &install_flags_global,
       ) {
         Ok(()) => installed_extra.push(&extra_entry.name),
@@ -420,6 +430,76 @@ async fn install_global_compiled(
   Ok(())
 }
 
+async fn maybe_prompt_allow_lifecycle_scripts(
+  bin_name_resolver: &BinNameResolver<'_>,
+  bin_name_and_url: &BinaryNameAndUrl,
+  flags: &mut Flags,
+) -> Result<(), AnyError> {
+  if !matches!(flags.allow_scripts, PackagesAllowedScripts::None)
+    || resolve_no_prompt(&flags.permissions)
+  {
+    return Ok(());
+  }
+  let Ok(npm_ref) =
+    NpmPackageReqReference::from_specifier(&bin_name_and_url.module_url)
+  else {
+    return Ok(());
+  };
+
+  let package_reqs = bin_name_resolver
+    .resolve_npm_lifecycle_scripts_package_reqs(&npm_ref)
+    .await?;
+  if package_reqs.is_empty() {
+    return Ok(());
+  };
+
+  if confirm(ConfirmOptions {
+    message: lifecycle_scripts_prompt_message(&package_reqs),
+    default: false,
+  }) == Some(true)
+  {
+    flags.allow_scripts = PackagesAllowedScripts::Some(package_reqs);
+  }
+
+  Ok(())
+}
+
+fn lifecycle_scripts_prompt_message(package_reqs: &[PackageReq]) -> String {
+  if package_reqs.len() == 1 {
+    return format!(
+      "Run lifecycle scripts for {}?",
+      npm_package_req_to_string(&package_reqs[0])
+    );
+  }
+  format!(
+    "Run lifecycle scripts for these packages?\n{}",
+    package_reqs
+      .iter()
+      .map(|req| format!("- {}", npm_package_req_to_string(req)))
+      .collect::<Vec<_>>()
+      .join("\n")
+  )
+}
+
+fn npm_package_req_to_string(req: &PackageReq) -> String {
+  format!("npm:{req}")
+}
+
+fn package_allowed_scripts_config_value(
+  allow_scripts: &PackagesAllowedScripts,
+) -> Option<CstInputValue> {
+  match allow_scripts {
+    PackagesAllowedScripts::All => Some(CstInputValue::Bool(true)),
+    PackagesAllowedScripts::Some(reqs) => Some(CstInputValue::Array(
+      reqs
+        .iter()
+        .map(|req| CstInputValue::String(npm_package_req_to_string(req)))
+        .collect(),
+    )),
+    PackagesAllowedScripts::None => None,
+  }
+}
+
 async fn setup_config_dir(
   bin_name_and_url: &BinaryNameAndUrl,
   flags: &Flags,
@@ -526,6 +606,15 @@ async fn setup_config_dir(
       "nodeModulesDir",
       CstInputValue::String(mode.as_str().to_string()),
     );
+  }
+  if let Some(value) =
+    package_allowed_scripts_config_value(&flags.allow_scripts)
+  {
+    if let Some(prop) = config_obj.get("allowScripts") {
+      prop.set_value(value);
+    } else {
+      config_obj.append("allowScripts", value);
+    }
   }
   fs::write(dir.join("deno.json"), config.to_string())?;
 
@@ -2166,6 +2255,43 @@ mod tests {
     let content = fs::read_to_string(file_path).unwrap();
     // setup_config_dir appends a workspace field to stop workspace discovery
     assert!(content.contains("\"workspace\""));
+  }
+
+  #[tokio::test]
+  async fn install_with_allow_scripts_writes_config() {
+    let temp_dir = TempDir::new();
+    let config_file_path = temp_dir.path().join("deno.json");
+    fs::write(&config_file_path, r#"{ "allowScripts": false }"#).unwrap();
+    let result = create_install_shim(
+      &Flags {
+        config_flag: ConfigFlag::Path(config_file_path.to_string()),
+        allow_scripts: PackagesAllowedScripts::Some(vec![
+          PackageReq::from_str("@denotest/lifecycle-scripts-simple@1.0.0")
+            .unwrap(),
+        ]),
+        ..Flags::default()
+      },
+      InstallFlagsGlobal {
+        module_urls: vec!["http://localhost:4545/cat.ts".to_string()],
+        args: vec![],
+        name: Some("echo_test".to_string()),
+        root: Some(temp_dir.path().to_string()),
+        force: true,
+        compile: false,
+      },
+    )
+    .await;
+    assert!(result.is_ok());
+
+    let file_path = temp_dir
+      .path()
+      .join("bin")
+      .join(".echo_test")
+      .join("deno.json");
+    let content = fs::read_to_string(file_path).unwrap();
+    assert!(content.contains(
+      r#""allowScripts": ["npm:@denotest/lifecycle-scripts-simple@1.0.0"]"#
+    ));
   }
 
   // TODO: enable on Windows after fixing batch escaping
