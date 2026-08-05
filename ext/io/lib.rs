@@ -752,6 +752,7 @@ impl StdFileResourceInner {
   #[cfg(windows)]
   fn poll_stdin_pipe_ready(file: &StdFile) -> io::Result<Option<bool>> {
     use std::os::windows::io::AsRawHandle;
+
     use windows_sys::Win32::Storage::FileSystem::FILE_TYPE_PIPE;
     use windows_sys::Win32::Storage::FileSystem::GetFileType;
     use windows_sys::Win32::System::Pipes::PeekNamedPipe;
@@ -799,10 +800,10 @@ impl StdFileResourceInner {
       let fut = self.with_inner_blocking_task(move |file| {
         let _terminal_input_guard =
           deno_permissions::prompter::lock_terminal_input();
-        if let Some(false) =
-          Self::poll_stdin_pipe_ready(file).map_err(|e| (e.into(), buf))?
-        {
-          return Ok((None, buf));
+        match Self::poll_stdin_pipe_ready(file) {
+          Ok(Some(false)) => return Ok((None, buf)),
+          Ok(_) => {}
+          Err(e) => return Err((e.into(), buf)),
         }
 
         /* Start reading, and set the reading flag to true */
