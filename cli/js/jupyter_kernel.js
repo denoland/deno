@@ -17,7 +17,6 @@ const {
   op_jupyter_repl_evaluate,
   op_jupyter_repl_get_properties,
   op_jupyter_repl_global_lexical_scope_names,
-  op_jupyter_repl_call_function_on_args,
   op_jupyter_repl_call_function_on,
   op_jupyter_repl_interrupt,
   op_jupyter_repl_cancel_interrupt,
@@ -743,41 +742,15 @@ async function startJupyterKernel() {
     }
 
     if (evalResult !== null && evalResult !== undefined) {
-      // Check for exception
-      const exDetails = evalResult?.exceptionDetails;
-      if (exDetails) {
-        // Exception during execution
-        const exception = exDetails.exception;
-        let ename = "Error";
-        let evalue = "(none)";
-        let traceback = [];
-
-        if (exception) {
-          const callResult = await op_jupyter_repl_call_function_on_args(
-            `function(object) {
-              if (object instanceof Error) {
-                const name = "name" in object ? String(object.name) : "";
-                const message = "message" in object ? String(object.message) : "";
-                const stack = "stack" in object ? String(object.stack) : "";
-                return JSON.stringify({ name, message, stack });
-              } else {
-                return JSON.stringify({ name: "", message: String(object), stack: "" });
-              }
-            }`,
-            [exception],
-          );
-          if (callResult?.result?.value) {
-            try {
-              const parsed = JSON.parse(callResult.result.value);
-              ename = parsed.name || "Error";
-              evalue = parsed.message || "(none)";
-              traceback = (parsed.stack || "").split("\n");
-            } catch { /**/ }
-          }
-        } else {
-          ename = exDetails.text || "Error";
-          evalue = exDetails.text || "(none)";
-        }
+      // Source-map-aware error shape filled in by the REPL thread: line
+      // numbers in `traceback` already point at the user's TypeScript
+      // input, not the transpiled cell source. Every thrown exception is
+      // surfaced here (never silently dropped), which also covers #35290.
+      const evalError = evalResult.error;
+      if (evalError) {
+        const ename = evalError.ename || "Error";
+        const evalue = evalError.evalue || "(none)";
+        const traceback = evalError.traceback || [];
 
         const errFrames = await encodeMsg(
           session,
@@ -805,8 +778,9 @@ async function startJupyterKernel() {
         );
         await socket.send(peerId, replyFrames);
       } else {
-        // Success: publish the result
-        const result = evalResult?.result;
+        // Success: publish the result. The cdp evaluate response is nested
+        // under `value` by JupyterEvaluateOutcome (errors come via `error`).
+        const result = evalResult?.value?.result;
         if (result && !silent) {
           const arg0 = { value: executionCount };
           const arg1 = result.objectId
@@ -1088,7 +1062,7 @@ async function startJupyterKernel() {
       const resp = await op_jupyter_repl_evaluate(
         `(${expr})`, // wrap to handle expressions like "globalThis"
       );
-      return resp?.result?.objectId || null;
+      return resp?.value?.result?.objectId || null;
     } catch {
       return null;
     }

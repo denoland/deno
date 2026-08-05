@@ -25,6 +25,8 @@ use crate::args::JupyterFlags;
 use crate::cdp;
 use crate::ops;
 use crate::ops::jupyter::IopubMessage;
+use crate::ops::jupyter::JupyterEvaluateError;
+use crate::ops::jupyter::JupyterEvaluateOutcome;
 use crate::ops::jupyter::JupyterReplRequest;
 use crate::ops::jupyter::KernelConnectionInfo;
 use crate::ops::jupyter::KernelInputState;
@@ -306,12 +308,41 @@ impl JupyterReplSession {
           .js_runtime
           .v8_isolate()
           .cancel_terminate_execution();
+
+        // Use the source-map-tracking wrapper so stack frames in any
+        // thrown error can be remapped from transpiled JS back to the
+        // user's TypeScript. The wrapper owns set+await+clear and pins
+        // the user's original `line` as the echoed source.
         let result = self
           .repl_session
-          .evaluate_line_with_object_wrapping(&line)
+          .evaluate_line_with_source_map_tracking(&line)
           .await;
-        let json = result.ok().and_then(|r| serde_json::to_value(r.value).ok());
-        let _ = resp_tx.send(json);
+
+        let outcome = match result {
+          Ok(r) => {
+            if let Some(exception_details) = r.value.exception_details.as_ref()
+            {
+              let error = self.build_evaluate_error(exception_details).await;
+              JupyterEvaluateOutcome {
+                value: None,
+                error: Some(error),
+              }
+            } else {
+              let value = serde_json::to_value(&r.value).ok();
+              JupyterEvaluateOutcome { value, error: None }
+            }
+          }
+          Err(err) => JupyterEvaluateOutcome {
+            value: None,
+            error: Some(JupyterEvaluateError {
+              ename: "Error".to_string(),
+              evalue: err.to_string(),
+              traceback: vec![err.to_string()],
+            }),
+          },
+        };
+
+        let _ = resp_tx.send(outcome);
       }
       JupyterReplRequest::GetProperties { object_id, resp_tx } => {
         let result = self
@@ -341,18 +372,6 @@ impl JupyterReplSession {
           .await;
         let _ = resp_tx.send(result);
       }
-      JupyterReplRequest::CallFunctionOnArgs {
-        function_declaration,
-        args,
-        resp_tx,
-      } => {
-        let result = self
-          .repl_session
-          .call_function_on_args(function_declaration, &args)
-          .await;
-        let _ = resp_tx
-          .send(result.map(|r| serde_json::to_value(r).unwrap_or_default()));
-      }
       JupyterReplRequest::CallFunctionOn {
         arg0,
         arg1,
@@ -378,5 +397,102 @@ impl JupyterReplSession {
       }
     }
     Ok(())
+  }
+
+  /// Build the source-map-remapped `{ename, evalue, traceback}` Jupyter
+  /// expects from a CDP `ExceptionDetails`. When the exception is a real
+  /// `Error` instance we ask the inspector to JSON-encode its
+  /// `name`/`message`/`stack` (so non-enumerable properties are picked up)
+  /// and rewrite the stack via `ReplSession::apply_source_map_to_stack`.
+  /// For non-`Error` throws we fall back to the CDP text and the exception
+  /// description.
+  async fn build_evaluate_error(
+    &mut self,
+    exception_details: &cdp::ExceptionDetails,
+  ) -> JupyterEvaluateError {
+    if let Some(exception) = exception_details.exception.as_ref() {
+      let extract_fn = r#"function (object) {
+        if (object instanceof Error) {
+          const name = "name" in object ? String(object.name) : "Error";
+          const message = "message" in object ? String(object.message) : "";
+          const stack = "stack" in object ? String(object.stack) : "";
+          return JSON.stringify({ name, message, stack });
+        }
+        return JSON.stringify({
+          name: "",
+          message: String(object),
+          stack: "",
+        });
+      }"#;
+
+      match self
+        .repl_session
+        .call_function_on_args(
+          extract_fn.to_string(),
+          std::slice::from_ref(exception),
+        )
+        .await
+      {
+        Ok(resp) => {
+          if let Some(json_str) =
+            resp.result.value.as_ref().and_then(|v| v.as_str())
+            && let Ok(parsed) =
+              serde_json::from_str::<serde_json::Value>(json_str)
+          {
+            let name = parsed
+              .get("name")
+              .and_then(|v| v.as_str())
+              .filter(|s| !s.is_empty())
+              .unwrap_or("Error")
+              .to_string();
+            let message = parsed
+              .get("message")
+              .and_then(|v| v.as_str())
+              .unwrap_or("")
+              .to_string();
+            let stack_str = parsed
+              .get("stack")
+              .and_then(|v| v.as_str())
+              .unwrap_or("")
+              .to_string();
+            let mapped =
+              self.repl_session.apply_source_map_to_stack(&stack_str);
+            let traceback = if mapped.is_empty() {
+              if message.is_empty() {
+                vec![name.clone()]
+              } else {
+                vec![format!("{name}: {message}")]
+              }
+            } else {
+              mapped.split('\n').map(|s| s.to_string()).collect()
+            };
+            return JupyterEvaluateError {
+              ename: name,
+              evalue: message,
+              traceback,
+            };
+          }
+          // call_function_on succeeded but the inspector returned an
+          // unexpected shape — drop through to the textual fallback below.
+        }
+        Err(_) => {
+          // Inspector call failed — fall through to textual fallback.
+        }
+      }
+    }
+
+    // Non-`Error` throw, or extraction failed: build a minimal traceback
+    // from the CDP exception text.
+    let (ename, evalue) = exception_details.get_message_and_description();
+    let traceback = if evalue.is_empty() {
+      vec![ename.clone()]
+    } else {
+      vec![format!("{ename}: {evalue}")]
+    };
+    JupyterEvaluateError {
+      ename,
+      evalue,
+      traceback,
+    }
   }
 }
