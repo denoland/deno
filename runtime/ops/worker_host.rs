@@ -50,6 +50,8 @@ use crate::web_worker::WorkerThreadType;
 use crate::web_worker::run_web_worker;
 use crate::worker::FormatJsErrorFn;
 
+const BYTES_PER_MB: usize = 1024 * 1024;
+
 pub const UNSTABLE_FEATURE_NAME: &str = "worker-options";
 
 /// Default OS stack size for the thread a worker's isolate runs on.
@@ -70,6 +72,41 @@ pub struct ResourceLimits {
   pub max_old_generation_size_mb: Option<usize>,
   pub code_range_size_mb: Option<usize>,
   pub stack_size_mb: Option<usize>,
+}
+
+fn resource_limit_mb_to_bytes(
+  name: &'static str,
+  value: usize,
+) -> Result<usize, CreateWorkerError> {
+  value
+    .checked_mul(BYTES_PER_MB)
+    .ok_or(CreateWorkerError::ResourceLimitTooLarge(name))
+}
+
+fn validate_resource_limits(
+  limits: &ResourceLimits,
+) -> Result<(), CreateWorkerError> {
+  if let Some(value) = limits
+    .max_young_generation_size_mb
+    .filter(|&value| value > 0)
+  {
+    resource_limit_mb_to_bytes(
+      "resourceLimits.maxYoungGenerationSizeMb",
+      value,
+    )?;
+  }
+  if let Some(value) =
+    limits.max_old_generation_size_mb.filter(|&value| value > 0)
+  {
+    resource_limit_mb_to_bytes("resourceLimits.maxOldGenerationSizeMb", value)?;
+  }
+  if let Some(value) = limits.code_range_size_mb.filter(|&value| value > 0) {
+    resource_limit_mb_to_bytes("resourceLimits.codeRangeSizeMb", value)?;
+  }
+  if let Some(value) = limits.stack_size_mb.filter(|&value| value > 0) {
+    resource_limit_mb_to_bytes("resourceLimits.stackSizeMb", value)?;
+  }
+  Ok(())
 }
 
 pub struct CreateWebWorkerArgs {
@@ -290,6 +327,9 @@ pub enum CreateWorkerError {
   #[class(inherit)]
   #[error("{0}")]
   Io(#[from] std::io::Error),
+  #[class(range)]
+  #[error("Worker {0} is too large")]
+  ResourceLimitTooLarge(&'static str),
 }
 
 /// Create worker as the host
@@ -344,6 +384,9 @@ fn op_create_worker(
     })
     .unwrap_or(false);
   let worker_id = WorkerId::new();
+  if let Some(ref limits) = args.resource_limits {
+    validate_resource_limits(limits)?;
+  }
 
   let module_specifier = deno_core::resolve_url(&specifier)?;
   // Synchronously capture the root blob so a racing `URL.revokeObjectURL`
@@ -371,7 +414,10 @@ fn op_create_worker(
     .unwrap_or(DEFAULT_WORKER_STACK_SIZE_MB);
   let thread_builder = std::thread::Builder::new()
     .name(format!("{worker_id}"))
-    .stack_size(stack_size_mb * 1024 * 1024);
+    .stack_size(resource_limit_mb_to_bytes(
+      "resourceLimits.stackSizeMb",
+      stack_size_mb,
+    )?);
   let maybe_worker_metadata = if let Some(data) = maybe_worker_metadata {
     let transferables =
       deserialize_js_transferables(state, data.transferables)?;
