@@ -549,12 +549,13 @@ class DynamicLibrary {
         );
         this.symbols[symbol] = new Function(
           "call",
+          "Uint8Array",
           `return function (${params}) {
             const buffer = new Uint8Array(${structSize});
             call(${params}${parameters.length > 0 ? ", " : ""}buffer);
             return buffer;
           }`,
-        )(call);
+        )(call, Uint8Array);
       }
     }
   }
@@ -573,6 +574,9 @@ function getTurbocallTarget() {
 }
 
 internals.getTurbocallTarget = getTurbocallTarget;
+// Used to test caller-provided struct return views.
+internals.ffiCallPtr = op_ffi_call_ptr;
+internals.ffiCallPtrNonblocking = op_ffi_call_ptr_nonblocking;
 
 return {
   dlopen,
