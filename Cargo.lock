@@ -2696,6 +2696,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_ios_app"
+version = "0.0.0"
+dependencies = [
+ "cc",
+ "denort_desktop",
+]
+
+[[package]]
 name = "deno_kv"
 version = "0.163.0"
 dependencies = [
@@ -3788,6 +3796,7 @@ dependencies = [
 name = "denort_desktop"
 version = "2.7.4"
 dependencies = [
+ "cc",
  "deno_core",
  "deno_error",
  "deno_lib",
