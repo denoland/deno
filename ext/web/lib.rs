@@ -479,9 +479,15 @@ fn base64_encode_to_v8_string<'a>(
 }
 
 #[op2]
-#[string]
-fn op_base64_btoa(#[scoped] s: ByteString) -> String {
-  forgiving_base64_encode(s.as_ref())
+fn op_base64_btoa<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  #[scoped] s: ByteString,
+) -> Result<v8::Local<'a, v8::String>, WebError> {
+  base64_encode_to_v8_string(
+    scope,
+    s.as_ref(),
+    v8::simdutf::Base64Options::Default,
+  )
 }
 
 /// See <https://infra.spec.whatwg.org/#forgiving-base64>
