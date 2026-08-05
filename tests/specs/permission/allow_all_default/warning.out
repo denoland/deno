@@ -1,0 +1,2 @@
+Warning Running with all permissions granted by default. Use --allow-* to restrict permissions, or --deny-* to deny specific permissions.
+[WILDCARD]hello from user code

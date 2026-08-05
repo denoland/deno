@@ -1,0 +1,7 @@
+read: granted
+write: granted
+net: granted
+env: granted
+run: granted
+sys: granted
+ffi: granted

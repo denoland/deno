@@ -1,0 +1,42 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_UNSTABLE_ALLOW_ALL_BY_DEFAULT": "1",
+    "ALLOW_ALL_TEST_VAR": "hello"
+  },
+  "tests": {
+    "profile_default": {
+      // gate on, no flags: every capability is granted, equivalent to -A
+      "args": "run --quiet profile.ts",
+      "output": "profile.out"
+    },
+    "run_prints_warning": {
+      // `deno run` warns that it is running with all permissions by default
+      "args": "run warning.ts",
+      "output": "warning.out"
+    },
+    "deny_composes": {
+      // --deny-* composes on top of the default (deny wins): net is denied but
+      // read is still granted
+      "args": "run --quiet --deny-net deny_composes.ts",
+      "output": "deny_composes.out"
+    },
+    "explicit_flag_opts_out": {
+      // an explicit --allow-read flag disables the default entirely, so a write
+      // now fails naming --allow-write
+      "args": "run --quiet --allow-read opt_out.ts",
+      "output": "opt_out.out"
+    },
+    "gate_off": {
+      // gate off: byte-for-byte today's deny-by-default behavior
+      "args": "run --quiet gate_off.ts",
+      "envs": { "DENO_UNSTABLE_ALLOW_ALL_BY_DEFAULT": "0" },
+      "output": "gate_off.out"
+    },
+    "worker_inherits": {
+      // a worker with default permissions inherits the allow-all default
+      "args": "run --quiet worker_main.ts",
+      "output": "worker.out"
+    }
+  }
+}
