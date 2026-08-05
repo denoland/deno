@@ -389,7 +389,9 @@ fn test_local_global_cache() {
       );
       assert!(
         local_cache_path
-          .join("deno.land/#invalid_1ee01/module2.ts")
+          .join(
+            "deno.land/#invalid_1ee01cc6701e8bfb4d21161c9e414870dbb33e9d515e4015dbb85b719d9d1efc/module2.ts"
+          )
           .exists()
       );
 
@@ -422,7 +424,7 @@ fn test_local_global_cache() {
           }
         },
         "folders": {
-          "https://deno.land/INVALID/": "deno.land/#invalid_1ee01",
+          "https://deno.land/INVALID/": "deno.land/#invalid_1ee01cc6701e8bfb4d21161c9e414870dbb33e9d515e4015dbb85b719d9d1efc",
         }
       })
     );
