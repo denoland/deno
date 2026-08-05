@@ -3372,6 +3372,7 @@ fn add_ios_app_icon(
 /// top-level entry is `Payload/<AppName>.app/`.
 fn create_ipa(app_bundle: &Path, ipa_path: &Path) -> Result<(), AnyError> {
   use std::io::Write;
+
   use zip::write::SimpleFileOptions;
 
   let app_dir_name = app_bundle
