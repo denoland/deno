@@ -58,9 +58,9 @@ const Runners = {
   linuxArmXl: {
     os: "linux",
     arch: "aarch64",
-    runner: isDenoland.and(isMainOrTag).then(ubuntuARMXlRunner).else(
-      ubuntuARMRunner,
-    ),
+    runner: isDenoland.and(isMainOrTag.or(hasCiFullLabel)).then(
+      ubuntuARMXlRunner,
+    ).else(ubuntuARMRunner),
     testRunner: ubuntuARMRunner,
   },
   macosX86: {
