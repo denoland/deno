@@ -261,6 +261,22 @@ impl Utf16Map {
     Some(self.utf16_offsets[line] + TextSize::from(col_utf16))
   }
 
+  /// Given a line index and a UTF-8 byte column *within that line* (both
+  /// 0-indexed), returns the UTF-16 line/column position. This is the
+  /// counterpart to `utf8_to_utf16_offset` for callers (like JSON parse
+  /// error reporting) that only have a per-line byte column rather than an
+  /// absolute document-wide byte offset.
+  pub fn utf16_position_from_utf8_line_col(
+    &self,
+    line: u32,
+    utf8_col: u32,
+  ) -> Option<LineAndColumnIndex> {
+    let line_start_utf8 = *self.utf8_offsets.get(line as usize)?;
+    let utf8_offset = line_start_utf8 + TextSize::from(utf8_col);
+    let utf16_offset = self.utf8_to_utf16_offset(utf8_offset)?;
+    Some(self.position_utf16(utf16_offset))
+  }
+
   fn utf8_to_utf16_col(&self, line: u32, col: TextSize) -> u32 {
     let mut utf16_col = u32::from(col);
 
