@@ -62,7 +62,7 @@ interface Window extends EventTarget {
   prompt: (message?: string, defaultValue?: string) => string | null;
   Deno: typeof Deno;
   Navigator: typeof Navigator;
-  navigator: Navigator;
+  readonly navigator: Navigator;
   Location: typeof Location;
   location: Location;
   localStorage: Storage;
@@ -335,7 +335,9 @@ declare var sessionStorage: Storage;
  *
  * @see  https://developer.mozilla.org/en-US/docs/Web/API/Window/caches
  */
-declare var caches: CacheStorage;
+declare var caches: typeof globalThis extends { document: any; caches: infer T }
+  ? T
+  : CacheStorage;
 
 /**
  * Provides information about the Deno runtime environment and the system
