@@ -1,0 +1,5 @@
+{
+  "name": "@denotest/with-vuln4",
+  "version": "1.2.0",
+  "type": "module"
+}

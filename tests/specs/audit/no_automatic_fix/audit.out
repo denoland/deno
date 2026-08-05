@@ -5,7 +5,7 @@
 │ Vulnerable: <1.1.0
 │ Patched:    >=1.1.0 (inferred)
 │ Info:       https://github.com/advisories/GHSA-1111-1111-1111
-╰ Actions:    update @denotest/with-vuln1 to >=1.1.0
+╰ Actions:    no automatic fix available
 
 Found 1 vulnerabilities
 Severity: 0 low, 0 moderate, 1 high, 0 critical
