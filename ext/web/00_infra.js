@@ -10,7 +10,6 @@
 const { core, internals, primordials } = __bootstrap;
 const {
   op_base64_decode,
-  op_base64_decode_into,
   op_base64_encode,
   op_base64_encode_from_buffer,
 } = core.ops;
@@ -273,16 +272,6 @@ function forgivingBase64Decode(data) {
 }
 
 /**
- * @param {string} data
- * @param {Uint8Array} target
- * @param {number} offset
- * @returns {number}
- */
-function forgivingBase64DecodeInto(data, target, offset) {
-  return op_base64_decode_into(data, target, offset);
-}
-
-/**
  * @param {string} char
  * @returns {boolean}
  */
@@ -410,7 +399,6 @@ return {
   collectHttpQuotedString,
   collectSequenceOfCodepoints,
   forgivingBase64Decode,
-  forgivingBase64DecodeInto,
   forgivingBase64Encode,
   forgivingBase64EncodeFromBuffer,
   HTTP_QUOTED_STRING_TOKEN_POINT,

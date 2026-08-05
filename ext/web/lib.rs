@@ -350,24 +350,21 @@ fn op_base64_decode(
   Ok(v.into())
 }
 
-/// Decode base64 directly into a target buffer at the given offset.
-/// Returns the number of bytes written.
+/// Decode base64 into `target` at `offset`, truncating when the remaining
+/// target is smaller than the decoded output. Returns the number of bytes
+/// written, or the -1 invalid-input sentinel (see base64_decode_into_slice).
 ///
-/// Fast path: tries strict decode directly into target (zero intermediate
-/// copies). This works for properly-padded base64 without whitespace.
-/// Slow path: uses forgiving decode for inputs with whitespace or missing
-/// padding.
+/// Fast path: strict decode straight into target — clean padded input is the
+/// common case for the standard alphabet, unlike base64url.
 #[op2(fast)]
 fn op_base64_decode_into(
   #[string(onebyte)] input: Cow<[u8]>,
   #[buffer] target: &mut [u8],
   #[smi] offset: u32,
-) -> Result<u32, WebError> {
+) -> Result<i32, WebError> {
   let offset = offset as usize;
   let target = target.get_mut(offset..).ok_or(WebError::BufferTooSmall)?;
 
-  // Fast path: try strict decode directly into target.
-  // Works for clean padded base64 (the common case).
   let max_len = v8::simdutf::maximal_binary_length_from_base64(&input);
   if target.len() >= max_len
     && let Some(len) = simdutf_base64_decode_into(
@@ -377,41 +374,14 @@ fn op_base64_decode_into(
       v8::simdutf::LastChunkHandling::Strict,
     )
   {
-    return Ok(len as u32);
+    return Ok(len as i32);
   }
 
-  // Slow path: forgiving decode for whitespace/missing padding.
-  const STACK_BUF_SIZE: usize = 8192;
-  if max_len <= STACK_BUF_SIZE {
-    let mut buf = std::mem::MaybeUninit::<[u8; STACK_BUF_SIZE]>::uninit();
-    // Safety: simdutf writes into buf without reading uninitialized data.
-    let decoded_len = simdutf_base64_decode_into(
-      &input,
-      unsafe {
-        std::slice::from_raw_parts_mut(
-          buf.as_mut_ptr() as *mut u8,
-          STACK_BUF_SIZE,
-        )
-      },
-      v8::simdutf::Base64Options::Default,
-      v8::simdutf::LastChunkHandling::Loose,
-    )
-    .ok_or(WebError::Base64Decode)?;
-    let bytes_to_write = decoded_len.min(target.len());
-    // Safety: decoded_len bytes were written by simdutf.
-    target[..bytes_to_write].copy_from_slice(unsafe {
-      std::slice::from_raw_parts(buf.as_ptr() as *const u8, bytes_to_write)
-    });
-    Ok(bytes_to_write as u32)
-  } else {
-    let decoded = simdutf_base64_decode_to_vec(
-      &input,
-      v8::simdutf::Base64Options::Default,
-    )?;
-    let bytes_to_write = decoded.len().min(target.len());
-    target[..bytes_to_write].copy_from_slice(&decoded[..bytes_to_write]);
-    Ok(bytes_to_write as u32)
-  }
+  Ok(base64_decode_into_slice(
+    &input,
+    target,
+    v8::simdutf::Base64Options::Default,
+  ))
 }
 
 #[op2]
@@ -557,19 +527,19 @@ fn op_base64url_decode(
   Ok(v.into())
 }
 
-/// Decode base64url into `target`, truncating when `target` is smaller than
-/// the decoded output. Returns the number of bytes written, or -1 if the
-/// input is not valid base64url. Decode failure is a sentinel rather than an
-/// error so the JS caller's cleaning fallback does not pay for a thrown
-/// exception on dirty input. The count always fits i32: it is bounded by
-/// 3/4 of V8's maximum string length.
-///
-/// Unlike op_base64_decode_into there is no strict pre-pass: base64url input
-/// is typically unpadded and simdutf Strict rejects unpadded final chunks, so
-/// the direct path decodes Loose straight into the target.
+/// Decode base64 into `target` with Loose last-chunk handling, truncating
+/// when `target` is smaller than the decoded output. Returns the number of
+/// bytes written, or -1 if the input is not valid base64 for the given
+/// alphabet. Decode failure is a sentinel rather than an error so the JS
+/// callers' cleaning fallbacks do not pay for a thrown exception on dirty
+/// input. The count always fits i32: it is bounded by 3/4 of V8's maximum
+/// string length.
 #[inline]
-fn base64url_decode_into_slice(input: &[u8], target: &mut [u8]) -> i32 {
-  use v8::simdutf::Base64Options;
+fn base64_decode_into_slice(
+  input: &[u8],
+  target: &mut [u8],
+  options: v8::simdutf::Base64Options,
+) -> i32 {
   use v8::simdutf::LastChunkHandling;
 
   // Fast path: decode directly into target when it can hold the worst-case
@@ -579,7 +549,7 @@ fn base64url_decode_into_slice(input: &[u8], target: &mut [u8]) -> i32 {
     return match simdutf_base64_decode_into(
       input,
       target,
-      Base64Options::Url,
+      options,
       LastChunkHandling::Loose,
     ) {
       Some(len) => len as i32,
@@ -601,7 +571,7 @@ fn base64url_decode_into_slice(input: &[u8], target: &mut [u8]) -> i32 {
           STACK_BUF_SIZE,
         )
       },
-      Base64Options::Url,
+      options,
       LastChunkHandling::Loose,
     ) {
       Some(len) => len,
@@ -614,8 +584,7 @@ fn base64url_decode_into_slice(input: &[u8], target: &mut [u8]) -> i32 {
     });
     bytes_to_write as i32
   } else {
-    let decoded = match simdutf_base64_decode_to_vec(input, Base64Options::Url)
-    {
+    let decoded = match simdutf_base64_decode_to_vec(input, options) {
       Ok(v) => v,
       Err(_) => return -1,
     };
@@ -625,6 +594,12 @@ fn base64url_decode_into_slice(input: &[u8], target: &mut [u8]) -> i32 {
   }
 }
 
+/// Decode base64url into `target` at `offset`. Returns the number of bytes
+/// written, or the -1 invalid-input sentinel (see base64_decode_into_slice).
+///
+/// Unlike op_base64_decode_into there is no strict pre-pass: base64url input
+/// is typically unpadded and simdutf Strict rejects unpadded final chunks, so
+/// the direct path decodes Loose straight into the target.
 #[op2(fast)]
 fn op_base64url_decode_into(
   #[string(onebyte)] input: Cow<[u8]>,
@@ -633,7 +608,11 @@ fn op_base64url_decode_into(
 ) -> Result<i32, WebError> {
   let offset = offset as usize;
   let target = target.get_mut(offset..).ok_or(WebError::BufferTooSmall)?;
-  Ok(base64url_decode_into_slice(&input, target))
+  Ok(base64_decode_into_slice(
+    &input,
+    target,
+    v8::simdutf::Base64Options::Url,
+  ))
 }
 
 /// Encode a sub-range of a buffer to base64url, avoiding a JS-side slice copy.
@@ -969,7 +948,7 @@ mod tests {
   use v8::simdutf::LastChunkHandling;
 
   use super::WebError;
-  use super::base64url_decode_into_slice;
+  use super::base64_decode_into_slice;
   use super::simdutf_base64_decode_into;
   use super::simdutf_base64_decode_to_vec;
   use super::simdutf_base64_encode;
@@ -1006,6 +985,10 @@ mod tests {
       Base64Options::Url,
       LastChunkHandling::Loose,
     )
+  }
+
+  fn base64url_decode_into_slice(input: &[u8], target: &mut [u8]) -> i32 {
+    base64_decode_into_slice(input, target, Base64Options::Url)
   }
 
   // RFC 4648 section 10 test vectors, base64url form (unpadded).
@@ -1233,6 +1216,38 @@ mod tests {
     let mut big = vec![b'A'; 12000];
     big.push(b'!');
     assert_eq!(base64url_decode_into_slice(&big, &mut [0u8; 4]), -1);
+  }
+
+  #[test]
+  fn base64_std_decode_into_slice_direct_and_truncating() {
+    let std = Base64Options::Default;
+    // Direct path with padded input.
+    let mut exact = [0u8; 3];
+    assert_eq!(base64_decode_into_slice(b"Zm9v", &mut exact, std), 3);
+    assert_eq!(&exact, b"foo");
+
+    // Truncating write via the scratch path; whitespace forces Loose.
+    let mut small = [0u8; 2];
+    assert_eq!(base64_decode_into_slice(b"Zm9v YmFy", &mut small, std), 2);
+    assert_eq!(&small, b"fo");
+  }
+
+  #[test]
+  fn base64_std_decode_into_slice_sentinel_on_all_paths() {
+    let std = Base64Options::Default;
+    // Direct path.
+    assert_eq!(base64_decode_into_slice(b"!!!!", &mut [0u8; 16], std), -1);
+    // The url alphabet is invalid for the standard decode.
+    assert_eq!(base64_decode_into_slice(b"-_8", &mut [0u8; 16], std), -1);
+    // Stack scratch path (target smaller than max_len).
+    assert_eq!(
+      base64_decode_into_slice(b"!!!!!!!!", &mut [0u8; 2], std),
+      -1
+    );
+    // Vec scratch path (max_len > 8192).
+    let mut big = vec![b'A'; 12000];
+    big.push(b'!');
+    assert_eq!(base64_decode_into_slice(&big, &mut [0u8; 4], std), -1);
   }
 
   #[test]

@@ -41,16 +41,23 @@ function base64ToBytes(str: string) {
   try {
     return forgivingBase64Decode(str);
   } catch {
-    // Convert base64url characters to standard base64 before cleaning,
-    // so that the padding logic in base64clean works correctly.
-    str = StringPrototypeReplaceAll(
-      StringPrototypeReplaceAll(str, "-", "+"),
-      "_",
-      "/",
-    );
-    str = base64clean(str);
-    return forgivingBase64Decode(str);
+    return base64CleanToBytes(str);
   }
+}
+
+// Node's cleaning semantics for dirty base64 input. Callers that already
+// know the input is invalid (a -1 op sentinel) come here directly, skipping
+// base64ToBytes' first decode attempt, which would always throw.
+function base64CleanToBytes(str: string) {
+  // Convert base64url characters to standard base64 before cleaning,
+  // so that the padding logic in base64clean works correctly.
+  str = StringPrototypeReplaceAll(
+    StringPrototypeReplaceAll(str, "-", "+"),
+    "_",
+    "/",
+  );
+  str = base64clean(str);
+  return forgivingBase64Decode(str);
 }
 
 const INVALID_BASE64_RE = new SafeRegExp(/[^+/0-9A-Za-z-_]/g);
@@ -162,6 +169,7 @@ function utf16leToBytes(str: string, units?: number) {
 
 return {
   asciiToBytes,
+  base64CleanToBytes,
   base64ToBytes,
   base64UrlToBytes,
   hexToBytes,

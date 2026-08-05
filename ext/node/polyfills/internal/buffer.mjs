@@ -89,6 +89,7 @@ const { indexOfBuffer, indexOfNumber } = core.loadExtScript(
 );
 const {
   asciiToBytes,
+  base64CleanToBytes,
   base64ToBytes,
   base64UrlToBytes,
   hexToBytes,
@@ -1108,12 +1109,22 @@ Buffer.prototype.base64Write = function base64Write(
   const target = offset === 0 && length === byteLength
     ? this
     : TypedArrayPrototypeSubarray(this, 0, offset + length);
+  // Invalid base64 comes back as -1 (cheaper than an exception on dirty
+  // input); the catch only absorbs the onebyte-string conversion TypeError
+  // for inputs with characters above U+00FF.
+  let written = -1;
   try {
-    return op_base64_decode_into(string, target, offset);
+    written = op_base64_decode_into(string, target, offset);
   } catch {
-    // Fallback for strings with base64url chars or invalid chars
-    return blitBuffer(base64ToBytes(string), this, offset, length);
+    // fall through to the cleaning path
   }
+  if (written !== -1) {
+    return written;
+  }
+  // Fallback for dirty input: Node's cleaning semantics live in
+  // base64CleanToBytes (map base64url chars onto the standard alphabet,
+  // truncate at '=', strip invalid chars, re-pad).
+  return blitBuffer(base64CleanToBytes(string), this, offset, length);
 };
 
 Buffer.prototype.base64urlSlice = function base64urlSlice(

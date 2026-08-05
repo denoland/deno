@@ -528,6 +528,50 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[node/buffer] Buffer.from base64 accepts dirty input",
+  fn() {
+    const expected = Buffer.from("hello world");
+    // Unpadded, padded, and whitespace-laced input decodes without cleaning.
+    assertEquals(Buffer.from("aGVsbG8gd29ybGQ", "base64"), expected);
+    assertEquals(Buffer.from("aGVsbG8gd29ybGQ=", "base64"), expected);
+    assertEquals(Buffer.from("aGVs bG8g\nd29y\tbGQ", "base64"), expected);
+    // base64url alphabet maps onto the standard one (Node cleaning
+    // semantics).
+    assertEquals(
+      Buffer.from("-_-_", "base64"),
+      Buffer.from([0xfb, 0xff, 0xbf]),
+    );
+    // Junk characters are stripped; everything after '=' is dropped.
+    assertEquals(Buffer.from("aGVsbG8!gd29ybGQ", "base64"), expected);
+    assertEquals(
+      Buffer.from("aGVsbG8=gd29ybGQ", "base64").toString(),
+      "hello",
+    );
+    // Characters above U+00FF take the cleaning path via the catch.
+    assertEquals(Buffer.from("aGVsbG8\u{1F600}gd29ybGQ", "base64"), expected);
+    assertEquals(Buffer.from("!!!", "base64").length, 0);
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] base64 write truncates into small targets",
+  fn() {
+    const small = Buffer.alloc(2);
+    assertEquals(small.write("aGVsbG8gd29ybGQ=", "base64"), 2);
+    assertEquals(small.toString(), "he");
+
+    const buf = Buffer.alloc(16, 0x2e);
+    assertEquals(buf.write("aGVsbG8=", 3, "base64"), 5);
+    assertEquals(buf.toString("latin1"), "...hello........");
+
+    // Dirty input truncates through the cleaning fallback too.
+    const dirty = Buffer.alloc(2);
+    assertEquals(dirty.write("aGVs bG8!gd29ybGQ", "base64"), 2);
+    assertEquals(dirty.toString(), "he");
+  },
+});
+
+Deno.test({
   name: "[node/buffer] Buffer to string base64",
   fn() {
     for (const encoding of ["base64", "BASE64"]) {
