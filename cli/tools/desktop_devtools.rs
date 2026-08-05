@@ -74,6 +74,10 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::serde_json::json;
+use deno_core::url::Host;
+use deno_core::url::Url;
+use deno_runtime::deno_inspector_server::ValidatedHost;
+use deno_runtime::deno_inspector_server::validated_host_header;
 use fastwebsockets::Frame;
 use fastwebsockets::OpCode;
 use fastwebsockets::WebSocket;
@@ -283,6 +287,15 @@ async fn handle_request(
   req: hyper::Request<Incoming>,
   state: Arc<MuxState>,
 ) -> hyper::Response<Full<Bytes>> {
+  let host = match validated_host_header(&req) {
+    Ok(host) => host,
+    Err(_) => {
+      return simple_response(
+        http::StatusCode::BAD_REQUEST,
+        "Invalid Host header",
+      );
+    }
+  };
   if req.method() != http::Method::GET {
     return simple_response(
       http::StatusCode::METHOD_NOT_ALLOWED,
@@ -291,8 +304,8 @@ async fn handle_request(
   }
   let path = req.uri().path().to_string();
   match path.as_str() {
-    "/json/version" => json_version(&state),
-    "/json" | "/json/list" => json_list(&state),
+    "/json/version" => json_version(&state, host.as_ref()),
+    "/json" | "/json/list" => json_list(&state, host.as_ref()),
     "/json/protocol" => json_protocol(),
     "/debugger-attached" => {
       if state
@@ -306,6 +319,12 @@ async fn handle_request(
     }
     other => {
       if let Some(kind) = state.target_for_path(other) {
+        if !valid_ws_origin(&req, host.as_ref()) {
+          return simple_response(
+            http::StatusCode::FORBIDDEN,
+            "Origin does not match request authority",
+          );
+        }
         match handle_upgrade(req, kind, state.clone()) {
           Ok(resp) => resp,
           Err(err) => {
@@ -331,6 +350,54 @@ async fn handle_request(
       }
     }
   }
+}
+
+fn valid_ws_origin<T>(
+  req: &hyper::Request<T>,
+  host: Option<&ValidatedHost>,
+) -> bool {
+  let mut origins = req.headers().get_all(http::header::ORIGIN).iter();
+  let Some(origin) = origins.next() else {
+    return true;
+  };
+  if origins.next().is_some() {
+    return false;
+  }
+  let Ok(origin) = origin.to_str() else {
+    return false;
+  };
+  let Ok(url) = Url::parse(origin) else {
+    return false;
+  };
+
+  if matches!(url.scheme(), "devtools" | "chrome" | "chrome-devtools") {
+    return true;
+  }
+  if !matches!(url.scheme(), "http" | "https")
+    || !url.username().is_empty()
+    || url.password().is_some()
+    || url.path() != "/"
+    || url.query().is_some()
+    || url.fragment().is_some()
+  {
+    return false;
+  }
+
+  let Some(host) = host else {
+    return false;
+  };
+  let origin_hostname = match url.host() {
+    Some(Host::Domain(hostname))
+      if hostname.eq_ignore_ascii_case("localhost") =>
+    {
+      "localhost".to_string()
+    }
+    Some(Host::Ipv4(ip)) => ip.to_string(),
+    Some(Host::Ipv6(ip)) => ip.to_string(),
+    _ => return false,
+  };
+  origin_hostname == host.hostname()
+    && url.port_or_known_default() == Some(host.port().unwrap_or(80))
 }
 
 /// GET `http://<cef_internal><path>` and return the response verbatim.
@@ -395,7 +462,14 @@ async fn proxy_devtools_asset(
   )
 }
 
-fn json_version(state: &MuxState) -> hyper::Response<Full<Bytes>> {
+fn json_version(
+  state: &MuxState,
+  host: Option<&ValidatedHost>,
+) -> hyper::Response<Full<Bytes>> {
+  let authority = host
+    .map(ValidatedHost::authority)
+    .map(String::from)
+    .unwrap_or_else(|| state.listen.to_string());
   let body = json!({
     "Browser": format!("deno-desktop/{}", env!("CARGO_PKG_VERSION")),
     "Protocol-Version": "1.3",
@@ -405,18 +479,24 @@ fn json_version(state: &MuxState) -> hyper::Response<Full<Bytes>> {
     // CEF upstream exposes the richer Target.* domain.
     "webSocketDebuggerUrl": format!(
       "ws://{}{}",
-      state.listen,
+      authority,
       TargetKind::Cef.path(),
     ),
   });
   json_response(body)
 }
 
-fn json_list(state: &MuxState) -> hyper::Response<Full<Bytes>> {
-  let listen = state.listen.to_string();
-  let unified_url = format!("ws://{listen}{}", TargetKind::Unified.path());
-  let deno_url = format!("ws://{listen}{}", TargetKind::Deno.path());
-  let cef_url = format!("ws://{listen}{}", TargetKind::Cef.path());
+fn json_list(
+  state: &MuxState,
+  host: Option<&ValidatedHost>,
+) -> hyper::Response<Full<Bytes>> {
+  let authority = host
+    .map(ValidatedHost::authority)
+    .map(String::from)
+    .unwrap_or_else(|| state.listen.to_string());
+  let unified_url = format!("ws://{authority}{}", TargetKind::Unified.path());
+  let deno_url = format!("ws://{authority}{}", TargetKind::Deno.path());
+  let cef_url = format!("ws://{authority}{}", TargetKind::Cef.path());
 
   // Primary entry: the unified session. DevTools opens one window
   // (inspector.html — full browser DevTools) and gets both isolates as
@@ -1318,6 +1398,53 @@ mod tests {
     assert_eq!(state.target_for_path("/bogus"), None);
   }
 
+  fn request_with_host_and_origin(
+    host: Option<&str>,
+    origin: Option<&str>,
+  ) -> http::Request<()> {
+    let mut request = http::Request::builder().uri("/unified");
+    if let Some(host) = host {
+      request = request.header(http::header::HOST, host);
+    }
+    if let Some(origin) = origin {
+      request = request.header(http::header::ORIGIN, origin);
+    }
+    request.body(()).unwrap()
+  }
+
+  #[test]
+  fn websocket_origins_match_client_visible_authority() {
+    for origin in [
+      None,
+      Some("devtools://devtools"),
+      Some("chrome://inspect"),
+      Some("chrome-devtools://devtools"),
+      Some("http://localhost:43123"),
+      Some("https://localhost:43123"),
+    ] {
+      let request =
+        request_with_host_and_origin(Some("localhost:43123"), origin);
+      let host = validated_host_header(&request).unwrap();
+      assert!(valid_ws_origin(&request, host.as_ref()));
+    }
+
+    for origin in [
+      "http://example.test:43123",
+      "http://localhost:43124",
+      "file://localhost",
+      "null",
+    ] {
+      let request =
+        request_with_host_and_origin(Some("localhost:43123"), Some(origin));
+      let host = validated_host_header(&request).unwrap();
+      assert!(!valid_ws_origin(&request, host.as_ref()));
+    }
+
+    let request =
+      request_with_host_and_origin(None, Some("http://localhost:43123"));
+    assert!(!valid_ws_origin(&request, None));
+  }
+
   // ── sessionId dispatch ────────────────────────────────────────────
 
   #[test]
@@ -1572,7 +1699,7 @@ mod tests {
   #[tokio::test]
   async fn json_list_returns_three_targets() {
     let state = MuxState::new(test_config(), "127.0.0.1:9229".parse().unwrap());
-    let resp = json_list(&state);
+    let resp = json_list(&state, None);
     let body = resp.into_body();
     let bytes = body.collect().await.unwrap().to_bytes();
     let list: Vec<Value> = serde_json::from_slice(&bytes).unwrap();
@@ -1649,7 +1776,7 @@ mod tests {
     }
 
     // IDs must be stable across calls — DevTools caches them.
-    let resp2 = json_list(&state);
+    let resp2 = json_list(&state, None);
     let bytes2 = resp2.into_body().collect().await.unwrap().to_bytes();
     let list2: Vec<Value> = serde_json::from_slice(&bytes2).unwrap();
     for (a, b) in list.iter().zip(list2.iter()) {
@@ -1663,7 +1790,7 @@ mod tests {
   #[tokio::test]
   async fn json_version_shape() {
     let state = MuxState::new(test_config(), "127.0.0.1:9229".parse().unwrap());
-    let resp = json_version(&state);
+    let resp = json_version(&state, None);
     assert_eq!(resp.status(), http::StatusCode::OK);
     let ct = resp.headers().get(http::header::CONTENT_TYPE).unwrap();
     assert_eq!(ct, "application/json");
@@ -1966,7 +2093,11 @@ mod tests {
   }
 
   /// GET a path from the mux over raw HTTP and return the body bytes.
-  async fn http_get(addr: SocketAddr, path: &str) -> (http::StatusCode, Bytes) {
+  async fn http_get_with_host(
+    addr: SocketAddr,
+    path: &str,
+    host: &str,
+  ) -> (http::StatusCode, Bytes) {
     let stream = TcpStream::connect(addr).await.unwrap();
     let io = TokioIo::new(stream);
     let (mut sender, conn) =
@@ -1977,13 +2108,48 @@ mod tests {
     let req = hyper::Request::builder()
       .method(http::Method::GET)
       .uri(path)
-      .header(http::header::HOST, addr.to_string())
+      .header(http::header::HOST, host)
       .body(Empty::<Bytes>::new())
       .unwrap();
     let resp = sender.send_request(req).await.unwrap();
     let status = resp.status();
     let bytes = resp.collect().await.unwrap().to_bytes();
     (status, bytes)
+  }
+
+  async fn http_get(addr: SocketAddr, path: &str) -> (http::StatusCode, Bytes) {
+    http_get_with_host(addr, path, &addr.to_string()).await
+  }
+
+  async fn upgrade_status(
+    addr: SocketAddr,
+    path: &str,
+    host: &str,
+    origin: Option<&str>,
+  ) -> http::StatusCode {
+    let stream = TcpStream::connect(addr).await.unwrap();
+    let io = TokioIo::new(stream);
+    let (mut sender, conn) =
+      hyper::client::conn::http1::handshake(io).await.unwrap();
+    tokio::spawn(async move {
+      let _ = conn.with_upgrades().await;
+    });
+    let mut request = hyper::Request::builder()
+      .method(http::Method::GET)
+      .uri(path)
+      .header(http::header::HOST, host)
+      .header(http::header::UPGRADE, "websocket")
+      .header(http::header::CONNECTION, "upgrade")
+      .header("Sec-WebSocket-Key", handshake::generate_key())
+      .header("Sec-WebSocket-Version", "13");
+    if let Some(origin) = origin {
+      request = request.header(http::header::ORIGIN, origin);
+    }
+    sender
+      .send_request(request.body(Empty::<Bytes>::new()).unwrap())
+      .await
+      .unwrap()
+      .status()
   }
 
   #[tokio::test]
@@ -1999,6 +2165,43 @@ mod tests {
     let list: Vec<Value> = serde_json::from_slice(&body).unwrap();
     assert_eq!(list.len(), 3);
 
+    // Discovery preserves a client-visible forwarded authority.
+    let (status, body) =
+      http_get_with_host(mux.listen, "/json/list", "localhost:43123").await;
+    assert_eq!(status, http::StatusCode::OK);
+    let list: Vec<Value> = serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+      list[0]["webSocketDebuggerUrl"],
+      "ws://localhost:43123/unified"
+    );
+
+    // Named authorities are rejected on discovery and WebSocket routes.
+    let (status, _) =
+      http_get_with_host(mux.listen, "/json/list", "example.test:43123").await;
+    assert_eq!(status, http::StatusCode::BAD_REQUEST);
+    assert_eq!(
+      upgrade_status(
+        mux.listen,
+        "/unified",
+        "example.test:43123",
+        Some("http://example.test:43123"),
+      )
+      .await,
+      http::StatusCode::BAD_REQUEST
+    );
+
+    // Browser WebSocket requests must come from their request authority.
+    assert_eq!(
+      upgrade_status(
+        mux.listen,
+        "/unified",
+        &mux.listen.to_string(),
+        Some("http://example.test:43123"),
+      )
+      .await,
+      http::StatusCode::FORBIDDEN
+    );
+
     // /json/version.
     let (status, body) = http_get(mux.listen, "/json/version").await;
     assert_eq!(status, http::StatusCode::OK);
@@ -2012,6 +2215,30 @@ mod tests {
     // Unknown path → 404.
     let (status, _) = http_get(mux.listen, "/nope").await;
     assert_eq!(status, http::StatusCode::NOT_FOUND);
+  }
+
+  #[tokio::test]
+  async fn integration_forwarded_same_origin_websocket_is_allowed() {
+    let cef = spawn_mock_upstream().await;
+    let deno = spawn_mock_upstream().await;
+    let mux = spawn_test_mux(&cef, &deno, false).await;
+
+    let stream = TcpStream::connect(mux.listen).await.unwrap();
+    let request = hyper::Request::builder()
+      .method(http::Method::GET)
+      .uri("/unified")
+      .header(http::header::HOST, "localhost:43123")
+      .header(http::header::ORIGIN, "http://localhost:43123")
+      .header(http::header::UPGRADE, "websocket")
+      .header(http::header::CONNECTION, "upgrade")
+      .header("Sec-WebSocket-Key", handshake::generate_key())
+      .header("Sec-WebSocket-Version", "13")
+      .body(Empty::<Bytes>::new())
+      .unwrap();
+    let (_client, response) = handshake::client(&TokioExec, request, stream)
+      .await
+      .unwrap();
+    assert_eq!(response.status(), http::StatusCode::SWITCHING_PROTOCOLS);
   }
 
   #[tokio::test]
