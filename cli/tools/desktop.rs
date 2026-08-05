@@ -2609,13 +2609,69 @@ fn codesign_macos_bundle(
     }
   }
 
-  // Finally the main bundle. Use the browser-process entitlements if
-  // laufey shipped them; otherwise sign with no entitlements (still
-  // launches, just no JIT for V8 in the browser process — which doesn't
-  // host V8 anyway, so this is fine).
+  // Finally the main bundle. Prefer the entitlements laufey ships, which is
+  // the CEF case; the webview backend ships none and needs the JIT
+  // entitlement supplied here. The backends differ in a way that matters:
+  // CEF's browser process genuinely doesn't host V8 (its renderers do, and
+  // they get the helper entitlements above), but with the webview backend
+  // CFBundleExecutable *is* laufey_webview, which loads the runtime dylib and
+  // runs V8 in-process.
   let browser_entitlements = locate_browser_entitlements(app_bundle);
-  codesign_one(app_bundle, identity, browser_entitlements.as_deref(), None)?;
+  // Bound to a local so the temp file outlives the codesign call below.
+  let webview_entitlements =
+    if browser_entitlements.is_none() && identity != "-" {
+      Some(write_webview_entitlements()?)
+    } else {
+      None
+    };
+  let entitlements = browser_entitlements
+    .as_deref()
+    .or_else(|| webview_entitlements.as_ref().map(|f| f.path()));
+  codesign_one(app_bundle, identity, entitlements, None)?;
   Ok(())
+}
+
+/// Entitlements the webview backend needs under the Hardened Runtime.
+///
+/// `codesign_one` passes `--options runtime` for any real identity, and under
+/// the Hardened Runtime `mmap(MAP_JIT)` is denied unless the binary carries
+/// `com.apple.security.cs.allow-jit`. That is how V8 reserves its CodeRange,
+/// so without this a Developer ID-signed webview app aborts before its window
+/// ever opens:
+///
+/// ```text
+/// # Fatal process out of memory: Failed to reserve virtual memory for CodeRange
+/// ```
+///
+/// Only `allow-jit` is here. `allow-unsigned-executable-memory` and
+/// `disable-library-validation` are its usual companions in Electron guides,
+/// but each widens the attack surface the Hardened Runtime exists to narrow,
+/// and neither is needed: V8 takes the `MAP_JIT` path on macOS, and every
+/// dylib in the bundle is signed with the same identity.
+const WEBVIEW_ENTITLEMENTS: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.cs.allow-jit</key>
+	<true/>
+</dict>
+</plist>
+"#;
+
+/// Write [`WEBVIEW_ENTITLEMENTS`] somewhere `codesign --entitlements` can read.
+///
+/// A temp file rather than `Contents/Resources/entitlements.plist`: the
+/// entitlements are baked into the signature itself, so a copy inside the
+/// bundle would ship in every app without ever being read again.
+fn write_webview_entitlements() -> Result<tempfile::NamedTempFile, AnyError> {
+  let mut file = tempfile::Builder::new()
+    .prefix("deno-desktop-entitlements-")
+    .suffix(".plist")
+    .tempfile()
+    .context("failed to create the entitlements plist")?;
+  std::io::Write::write_all(&mut file, WEBVIEW_ENTITLEMENTS.as_bytes())
+    .context("failed to write the entitlements plist")?;
+  Ok(file)
 }
 
 /// Read `CFBundleIdentifier` out of `Contents/Info.plist` via `plutil`.
@@ -5463,6 +5519,37 @@ mod disclaim_spawn {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  // --- codesign entitlements ---
+
+  #[test]
+  fn webview_entitlements_grant_jit() {
+    // Losing this key doesn't fail the build — it produces a signed app that
+    // aborts on launch reserving V8's CodeRange, which is only visible to
+    // whoever downloads it.
+    assert!(
+      WEBVIEW_ENTITLEMENTS.contains("com.apple.security.cs.allow-jit"),
+      "the JIT entitlement is what makes a signed webview app launchable"
+    );
+  }
+
+  #[test]
+  #[cfg(target_os = "macos")]
+  fn webview_entitlements_are_a_valid_plist() {
+    // Hand-written XML that `codesign --entitlements` rejects would break
+    // every signed build, so lint it with the same parser the OS uses.
+    let file = write_webview_entitlements().unwrap();
+    let output = std::process::Command::new("plutil")
+      .arg("-lint")
+      .arg(file.path())
+      .output()
+      .unwrap();
+    assert!(
+      output.status.success(),
+      "plutil rejected the entitlements plist: {}",
+      String::from_utf8_lossy(&output.stdout)
+    );
+  }
 
   // --- macOS Info.plist ---
 
