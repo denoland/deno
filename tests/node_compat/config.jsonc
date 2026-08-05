@@ -106,7 +106,10 @@
       "reason": "Tests Node's --require / --import preload CLI flags, which Deno does not implement."
     },
     "es-module/test-require-module-synchronous-rejection-handling.js": {},
-    "es-module/test-require-module-tla-execution.js": {},
+    "es-module/test-require-module-tla-execution.js": {
+      "ignore": true,
+      "reason": "Node 26.5 asserts the ERR_REQUIRE_ASYNC_MODULE hint names --experimental-print-required-tla; Deno points at --stack-trace-limit instead, as it does not implement that flag"
+    },
     "es-module/test-require-module-tla-nested.js": {},
     "es-module/test-require-module-tla-print-execution.js": {
       "ignore": true,
@@ -964,6 +967,7 @@
     "parallel/test-dgram-connect.js": {},
     "parallel/test-dgram-createSocket-type.js": {},
     "parallel/test-dgram-custom-lookup.js": {},
+    "parallel/test-dgram-default-lookup-ip.js": {},
     "parallel/test-dgram-error-message-address.js": {},
     "parallel/test-dgram-implicit-bind.js": {},
     "parallel/test-dgram-ipv6only.js": {},
@@ -1275,6 +1279,7 @@
       "ignore": true,
       "reason": "Tests Node.js internal `internal/fixed_queue` module which is not exposed in Deno"
     },
+    "parallel/test-fs-append-file-flush.js": {},
     "parallel/test-fs-append-file-sync.js": {},
     "parallel/test-fs-buffer.js": {},
     "parallel/test-fs-buffertype-writesync.js": {},
@@ -1576,6 +1581,7 @@
     "parallel/test-fs-write-buffer-large.js": {},
     "parallel/test-fs-write-buffer.js": {},
     "parallel/test-fs-write-file-buffer.js": {},
+    "parallel/test-fs-write-file-flush.js": {},
     "parallel/test-fs-write-file-invalid-path.js": {},
     "parallel/test-fs-write-file-typedarrays.js": {},
     "parallel/test-fs-write-file.js": {
@@ -1590,6 +1596,7 @@
     "parallel/test-fs-write-stream-end.js": {},
     "parallel/test-fs-write-stream-file-handle.js": {},
     "parallel/test-fs-write-stream-file-handle-2.js": {},
+    "parallel/test-fs-write-stream-flush.js": {},
     "parallel/test-fs-write-stream-fs.js": {},
     "parallel/test-fs-write-stream-patch-open.js": {},
     "parallel/test-fs-write-stream-throw-type-error.js": {},
@@ -1848,7 +1855,6 @@
     "parallel/test-http-pipeline-socket-parser-typeerror.js": {},
     "parallel/test-http-proxy.js": {},
     "parallel/test-http-raw-headers.js": {},
-    "parallel/test-http-rawheaders-limit.js": {},
     "parallel/test-http-readable-data-event.js": {},
     "parallel/test-http-remove-connection-header-persists-connection.js": {},
     "parallel/test-http-remove-header-stays-removed.js": {},
@@ -3004,6 +3010,8 @@
     "parallel/test-process-uptime.js": {},
     "parallel/test-process-warning.js": {},
     "parallel/test-promise-handled-rejection-no-warning.js": {},
+    "parallel/test-promise-hook-on-before.js": {},
+    "parallel/test-promise-hook-on-init.js": {},
     "parallel/test-promise-unhandled-default.js": {},
     "parallel/test-promise-unhandled-issue-43655.js": {},
     "parallel/test-promise-unhandled-silent.js": {},
@@ -4297,6 +4305,7 @@
     "parallel/test-zlib-params.js": {},
     "parallel/test-zlib-premature-end.js": {},
     "parallel/test-zlib-random-byte-pipes.js": {},
+    "parallel/test-zlib-reject-garbage-after-end.js": {},
     "parallel/test-zlib-reset-before-write.js": {},
     "parallel/test-zlib-sync-no-event.js": {},
     "parallel/test-zlib-truncated.js": {},

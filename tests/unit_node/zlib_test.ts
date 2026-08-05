@@ -493,3 +493,39 @@ Deno.test("zlib writeSync works with the Node 7-argument signature", () => {
   assert(state[0] <= output.length, "avail_out out of range");
   assert(state[1] <= input.length, "avail_in out of range");
 });
+
+// Callers that drive `_handle.writeSync()` directly (see above) choose the
+// offsets and lengths themselves. The Brotli encoder ops used to index the
+// backing store with them unchecked, which panicked the process; they must
+// report an out-of-range window as an error instead.
+Deno.test("brotli writeSync rejects out-of-range offsets", () => {
+  const input = Buffer.from("hello");
+  const output = Buffer.allocUnsafe(1024);
+  // deno-lint-ignore no-explicit-any
+  const handle = (createBrotliCompress() as any)._handle;
+
+  const writeSync = (
+    inOff: number,
+    inLen: number,
+    outOff: number,
+    outLen: number,
+  ) =>
+    handle.writeSync(
+      constants.BROTLI_OPERATION_PROCESS,
+      input,
+      inOff,
+      inLen,
+      output,
+      outOff,
+      outLen,
+    );
+
+  assertThrows(() => writeSync(0, input.length + 1, 0, output.length));
+  assertThrows(() => writeSync(input.length, 1, 0, output.length));
+  assertThrows(() => writeSync(0xffffffff, 1, 0, output.length));
+  assertThrows(() => writeSync(0, input.length, 0, output.length + 1));
+  assertThrows(() => writeSync(0, input.length, output.length, 1));
+  assertThrows(() => writeSync(0, input.length, 0xffffffff, 1));
+  // The in-range window still works.
+  writeSync(0, input.length, 0, output.length);
+});

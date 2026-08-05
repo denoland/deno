@@ -15,6 +15,7 @@ import * as net from "node:net";
 import * as stream from "node:stream";
 import { setImmediate } from "node:timers";
 import { Buffer } from "node:buffer";
+import process from "node:process";
 import { execCode } from "../unit/test_util.ts";
 
 const tlsTestdataDir = fromFileUrl(
@@ -1424,4 +1425,133 @@ Deno.test("tls.createSecureContext extracts the CA chain from a pfx", () => {
   // The chained CA cert landed in `ca`, distinct from the leaf cert.
   assert(context.ca[0].includes("BEGIN CERTIFICATE"));
   assert(context.ca[0] !== context.cert);
+});
+
+// IDNA maps U+3002 (and U+FF0E, U+FF61) to a label separator, but splitHost()
+// only splits on U+002E. Matching on the raw hostname would therefore see
+// "foo<U+3002>bar.example.com" as the three labels ["foo。bar", "example",
+// "com"], letting the single wildcard in "*.example.com" stand in for what is
+// really two labels.
+Deno.test("tls.checkServerIdentity does not let a confusable pass as a label separator", () => {
+  const cert = {
+    subject: { CN: "*.example.com" },
+    subjectaltname: "DNS:*.example.com",
+  };
+
+  // deno-lint-ignore no-explicit-any
+  const err = tls.checkServerIdentity("foo。bar.example.com", cert as any);
+  assert(err instanceof Error, "confusable host must not match the wildcard");
+  assertEquals(
+    // deno-lint-ignore no-explicit-any
+    (err as any).code,
+    "ERR_TLS_CERT_ALTNAME_INVALID",
+  );
+
+  // The ASCII host it normalizes to is genuinely four labels, and is rejected
+  // the same way.
+  assert(
+    // deno-lint-ignore no-explicit-any
+    tls.checkServerIdentity("foo.bar.example.com", cert as any) instanceof
+      Error,
+  );
+});
+
+// The normalization must not cost a legitimate internationalized host its
+// match: "bücher.example.com" is one label under IDNA, so the wildcard covers
+// it.
+Deno.test("tls.checkServerIdentity matches a U-label host against a wildcard", () => {
+  const cert = {
+    subject: { CN: "*.example.com" },
+    subjectaltname: "DNS:*.example.com",
+  };
+
+  assertEquals(
+    // deno-lint-ignore no-explicit-any
+    tls.checkServerIdentity("bücher.example.com", cert as any),
+    undefined,
+  );
+  // The all-ASCII common path is unchanged.
+  assertEquals(
+    // deno-lint-ignore no-explicit-any
+    tls.checkServerIdentity("www.example.com", cert as any),
+    undefined,
+  );
+});
+
+// Regression test for https://github.com/denoland/deno/issues/35820
+// Writing through a TLS socket whose underlying handle was already closed
+// made the encrypted write fail synchronously inside the write op. The
+// JS write-completion callback then ran while the op still held the
+// OpState borrow, and the callback's process.nextTick panicked with
+// "RefCell already borrowed". The callback must be deferred to the event
+// loop instead, surfacing a normal error. The test pins all three halves of
+// that contract: the completion is delivered, it is not delivered from inside
+// the write call, and a process.nextTick from it does not panic.
+Deno.test("tls write after underlying handle closed does not panic", async () => {
+  const serverSockets = new Set<tls.TLSSocket>();
+  const server = tls.createServer({ cert, key }, (socket) => {
+    serverSockets.add(socket);
+    socket.on("error", () => {});
+  });
+
+  const { promise: listening, resolve: resolveListening } = Promise
+    .withResolvers<void>();
+  server.listen(0, resolveListening);
+  await listening;
+
+  const port = (server.address() as net.AddressInfo).port;
+  const raw = net.connect(port, "127.0.0.1");
+  raw.on("error", () => {});
+
+  const { promise: errored, resolve: resolveErrored } = Promise
+    .withResolvers<void>();
+  const { promise: written, resolve: resolveWritten } = Promise
+    .withResolvers<void>();
+
+  let inWriteCall = false;
+  let completedSynchronously = false;
+  let completionRan = false;
+
+  const tlsSock = tls.connect({
+    socket: raw,
+    rejectUnauthorized: false,
+  }, () => {
+    // Close the raw handle out from under the TLS wrap, then write:
+    // the encrypted output write fails synchronously (EBADF).
+    // deno-lint-ignore no-explicit-any
+    (raw as any)._handle?.close(() => {});
+    inWriteCall = true;
+    tlsSock.write("hello", () => {
+      completionRan = true;
+      completedSynchronously = inWriteCall;
+      // The exact panic trigger from #35820: reaching another op
+      // (op_node_new_async_id) from the write-completion callback. If the
+      // completion still ran inside the write op, this aborts the process
+      // with "RefCell already borrowed".
+      process.nextTick(resolveWritten);
+    });
+    inWriteCall = false;
+  });
+  tlsSock.on("error", () => resolveErrored());
+
+  await deadline(errored, 10_000);
+  // The completion must actually be delivered — dropping it would leave the
+  // writable side stalled with no error — and it must not be delivered from
+  // inside the write call itself.
+  await deadline(written, 10_000);
+  assert(completionRan, "write completion callback never ran");
+  assert(
+    !completedSynchronously,
+    "write completion callback ran synchronously from write()",
+  );
+
+  tlsSock.destroy();
+  raw.destroy();
+  for (const socket of serverSockets) {
+    socket.destroy();
+  }
+  const { promise: closed, resolve: resolveClosed } = Promise
+    .withResolvers<void>();
+  server.close(() => resolveClosed());
+  await closed;
 });

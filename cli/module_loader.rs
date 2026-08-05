@@ -68,6 +68,7 @@ use deno_resolver::loader::LoadedModuleOrAsset;
 use deno_resolver::loader::MemoryFiles;
 use deno_resolver::loader::StrippingTypesNodeModulesError;
 use deno_resolver::npm::DenoInNpmPackageChecker;
+use deno_resolver::npm::is_synthetic_module;
 use deno_runtime::code_cache;
 use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_node::create_host_defined_options;
@@ -82,6 +83,7 @@ use eszip::EszipV2;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
+use node_resolver::analyze::CjsAnalysisSourceProvider;
 use node_resolver::errors::PackageJsonLoadError;
 use rustc_hash::FxHashSet;
 use sys_traits::FsCanonicalize;
@@ -151,6 +153,7 @@ pub struct PrepareModuleLoadOptions<'a> {
   pub is_dynamic: bool,
   pub lib: TsTypeLib,
   pub permissions: PermissionsContainer,
+  pub file_permission_api_name: Option<&'static str>,
   pub ext_overwrite: Option<&'a String>,
   pub allow_unknown_media_types: bool,
   pub allow_sloppy_imports_hints_for_unreferenced_roots: bool,
@@ -198,6 +201,7 @@ impl ModuleLoadPreparer {
       is_dynamic,
       lib,
       permissions,
+      file_permission_api_name,
       ext_overwrite,
       allow_unknown_media_types,
       allow_sloppy_imports_hints_for_unreferenced_roots,
@@ -209,7 +213,10 @@ impl ModuleLoadPreparer {
 
     let mut loader = self
       .module_graph_builder
-      .create_graph_loader_with_permissions(permissions);
+      .create_graph_loader_with_permissions(
+        permissions,
+        file_permission_api_name,
+      );
     if !file_content_overrides.is_empty() {
       loader.set_file_content_overrides(file_content_overrides);
     }
@@ -313,7 +320,7 @@ impl ModuleLoadPreparer {
 
     let loader = self
       .module_graph_builder
-      .create_graph_loader_with_permissions(permissions);
+      .create_graph_loader_with_permissions(permissions, None);
     self
       .module_graph_builder
       .build_graph_with_npm_resolution(
@@ -610,6 +617,33 @@ struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
 }
 
+// Recursive CJS analysis must not prompt for or acquire new read access. This
+// provider is constructed with a prompt-disabled snapshot of CLI permissions.
+struct PermissionedCjsAnalysisSourceProvider<'a> {
+  permissions: PermissionsContainer,
+  npm_registry_permission_checker: &'a NpmRegistryReadPermissionChecker<CliSys>,
+  sys: &'a CliSys,
+}
+
+impl CjsAnalysisSourceProvider for PermissionedCjsAnalysisSourceProvider<'_> {
+  fn load_source<'a>(
+    &'a self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<Cow<'a, str>> {
+    let path = deno_path_util::url_to_file_path(specifier).ok()?;
+    let mut permissions = self.permissions.clone();
+    let path = self
+      .npm_registry_permission_checker
+      .ensure_read_permission(&mut permissions, Cow::Owned(path))
+      .ok()?;
+    self
+      .sys
+      .fs_read_to_string_lossy(path)
+      .ok()
+      .map(|source| Cow::Owned(source.into_owned()))
+  }
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ResolveReferrerError {
   #[class(inherit)]
@@ -731,6 +765,7 @@ impl<TGraphContainer: ModuleGraphContainer>
           is_dynamic,
           lib: self.lib,
           permissions: permissions.clone(),
+          file_permission_api_name: None,
           ext_overwrite: None,
           allow_unknown_media_types: false,
           allow_sloppy_imports_hints_for_unreferenced_roots: !is_dynamic_import,
@@ -919,6 +954,13 @@ impl<TGraphContainer: ModuleGraphContainer>
     let graph = self.graph_container.graph();
     let deno_resolver_requested_module_type =
       as_deno_resolver_requested_module_type(requested_module_type);
+    let cjs_analysis_source_provider = PermissionedCjsAnalysisSourceProvider {
+      permissions: self.permissions.deep_clone_without_prompt(),
+      npm_registry_permission_checker: &self
+        .shared
+        .npm_registry_permission_checker,
+      sys: &self.shared.sys,
+    };
     match self
       .shared
       .module_loader
@@ -927,6 +969,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         &specifier,
         maybe_referrer,
         &deno_resolver_requested_module_type,
+        Some(&cjs_analysis_source_provider),
       )
       .await?
     {
@@ -1181,6 +1224,19 @@ impl<TGraphContainer: ModuleGraphContainer>
         )));
       }
       Ok(())
+    }
+
+    // `deno eval` and piped stdin have no file on disk — their source is held
+    // in memory under a synthetic `$deno$` specifier that is already fully
+    // resolved. Neither the import map nor node resolution has anything to
+    // contribute, and node resolution actively breaks it when the cwd is inside
+    // an npm package, because it checks the file system for a file that is
+    // never going to be there.
+    if matches!(kind, deno_core::ResolutionKind::MainModule)
+      && let Ok(url) = ModuleSpecifier::parse(raw_specifier)
+      && is_synthetic_module(&url)
+    {
+      return Ok(url);
     }
 
     // An `npm:` package's bin entry chosen as the main module is
@@ -1715,6 +1771,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
               is_dynamic,
               lib,
               permissions: permissions.clone(),
+              file_permission_api_name: None,
               ext_overwrite: None,
               allow_unknown_media_types: false,
               allow_sloppy_imports_hints_for_unreferenced_roots,

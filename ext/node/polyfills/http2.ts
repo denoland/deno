@@ -624,6 +624,18 @@ function onSessionInternalError(integerCode, customErrorCode) {
 }
 
 function settingsCallback(cb, ack, duration) {
+  // A destroyed session must not invoke the user settings callback. This
+  // mirrors Node's Http2Session::Close (src/node_http2.cc), which detaches the
+  // pending Http2Settings (dropping its callback) rather than running it, and
+  // matches the pending-PING cancellation already done in closeSession(). The
+  // handle's SETTINGS_ACK dispatch is not guaranteed to be torn down
+  // synchronously with session.destroy(), so a SETTINGS_ACK that arrives in the
+  // window after destroy() would otherwise still fire this callback. That race
+  // is what intermittently trips the `mustNotCall()` settings callback in
+  // test-http2-ping-settings-heapdump.js on slower runners (deno#36141).
+  if (this.destroyed) {
+    return;
+  }
   this[kState].pendingAck--;
   this[kLocalSettings] = undefined;
   if (ack) {
@@ -2815,6 +2827,7 @@ function processRespondWithFD(
 
   const ownsFd = self.ownsFd;
   let stopped = false;
+  let reading = false;
   let fdClosed = false;
 
   function closeOwnedFd() {
@@ -2824,13 +2837,25 @@ function processRespondWithFD(
   }
 
   function stopReading() {
-    if (stopped) return;
     stopped = true;
     self.removeListener("close", stopReading);
-    closeOwnedFd();
+    if (!reading) {
+      closeOwnedFd();
+    }
   }
 
   self.once("close", stopReading);
+
+  function handleReadError() {
+    stopReading();
+    // Match Node: a read failure (e.g. EBADF from a bad fd) resets the
+    // stream with NGHTTP2_INTERNAL_ERROR rather than leaking the
+    // underlying fs error to user code.
+    if (!self.destroyed && !self.closed) {
+      closeStream(self, NGHTTP2_INTERNAL_ERROR, kForceRstStream);
+    }
+    self.destroy();
+  }
 
   function readAndWrite(err) {
     if (err || self.destroyed || self.closed) {
@@ -2842,40 +2867,38 @@ function processRespondWithFD(
       finish();
       return;
     }
-    fs.read(fd, buf, 0, readLen, seekable ? pos : null, (err, bytesRead) => {
-      if (stopped) return;
-      if (err) {
-        stopReading();
-        // Match Node: a read failure (e.g. EBADF from a bad fd) resets the
-        // stream with NGHTTP2_INTERNAL_ERROR rather than leaking the
-        // underlying fs error to user code.
-        if (!self.destroyed && !self.closed) {
-          closeStream(self, NGHTTP2_INTERNAL_ERROR, kForceRstStream);
+    reading = true;
+    try {
+      fs.read(fd, buf, 0, readLen, seekable ? pos : null, (err, bytesRead) => {
+        reading = false;
+        if (err) {
+          handleReadError();
+          return;
         }
-        self.destroy();
-        return;
-      }
-      if (self.destroyed || self.closed) {
-        stopReading();
-        return;
-      }
-      if (bytesRead === 0) {
-        finish();
-        return;
-      }
-      if (seekable) pos += bytesRead;
-      // deno-lint-ignore deno-internal/prefer-primordials
-      const chunk = buf.slice(0, bytesRead);
-      self.write(chunk, readAndWrite);
-    });
+        if (stopped || self.destroyed || self.closed) {
+          stopReading();
+          return;
+        }
+        if (bytesRead === 0) {
+          finish();
+          return;
+        }
+        if (seekable) pos += bytesRead;
+        // deno-lint-ignore deno-internal/prefer-primordials
+        const chunk = buf.slice(0, bytesRead);
+        self.write(chunk, readAndWrite);
+      });
+    } catch {
+      reading = false;
+      handleReadError();
+    }
   }
 
   function finish() {
-    if (stopped) return;
-    stopped = true;
-    self.removeListener("close", stopReading);
-    closeOwnedFd();
-    self.end();
+    stopReading();
+    if (!self.destroyed && !self.closed) {
+      self.end();
+    }
   }
 
   const ret = ReflectApply(

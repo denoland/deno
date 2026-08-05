@@ -23,7 +23,6 @@ const {
   SafeArrayIterator,
   SafePromisePrototypeFinally,
   String,
-  StringPrototypeEndsWith,
   StringPrototypeIndexOf,
   StringPrototypeSlice,
   StringPrototypeSplit,
@@ -801,14 +800,8 @@ function httpRedirectFetch(request, response, terminator, inspectorCtx = null) {
     }
   }
 
-  // Drop confidential headers when redirecting to a less secure protocol
-  // or to a different domain that is not a superdomain
-  if (
-    (locationURL.protocol !== currentURL.protocol &&
-      locationURL.protocol !== "https:") ||
-    (locationURL.host !== currentURL.host &&
-      !isSubdomain(locationURL.host, currentURL.host))
-  ) {
+  // Drop redirect-sensitive headers when crossing origins.
+  if (locationURL.origin !== currentURL.origin) {
     for (let i = 0; i < request.headerList.length; i++) {
       if (
         ArrayPrototypeIncludes(
@@ -998,22 +991,6 @@ function abortFetch(request, responseObject, error) {
     if (response.body !== null) response.body.error(error);
   }
   return error;
-}
-
-/**
- * Checks if the given string is a subdomain of the given domain.
- *
- * @param {String} subdomain
- * @param {String} domain
- * @returns {Boolean}
- */
-function isSubdomain(subdomain, domain) {
-  const dot = subdomain.length - domain.length - 1;
-  return (
-    dot > 0 &&
-    subdomain[dot] === "." &&
-    StringPrototypeEndsWith(subdomain, domain)
-  );
 }
 
 /**

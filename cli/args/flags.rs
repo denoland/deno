@@ -1029,6 +1029,8 @@ static DENO_HELP: &str = cstr!(
 <y>Standard Library:</> https://jsr.io/@std
 <y>Bugs:</> https://github.com/denoland/deno/issues
 <y>Discord:</> https://discord.gg/deno
+
+<p(245)>If you are an AI agent, read</> <c>https://deno.com/agents.md</> <p(245)>to get started.</>
 ");
 
 pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
@@ -1679,6 +1681,13 @@ fn add_no_save_arg() -> Arg {
     .conflicts_with("save-optional")
 }
 
+fn add_unscoped_arg() -> Arg {
+  Arg::new("unscoped")
+    .long("unscoped")
+    .help("Use the package name without its scope as the alias (ex. `jsr:@david/jsonc-morph` is added as `jsonc-morph`). Packages given an explicit alias are unaffected.")
+    .action(ArgAction::SetTrue)
+}
+
 fn add_subcommand() -> Command {
   command(
     "add",
@@ -1719,6 +1728,7 @@ Or multiple dependencies at once:
           .help("Save exact version without the caret (^)")
           .action(ArgAction::SetTrue),
       )
+      .arg(add_unscoped_arg())
       .arg(package_json_arg())
       .arg(env_file_arg())
       .arg(min_dep_age_arg())
@@ -2425,6 +2435,13 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
           .value_parser(SUPPORTED_OS)
           .help_heading(COMPILE_HEADING),
       )
+      .arg(
+        Arg::new("engine")
+          .long("engine")
+          .help(cstr!("JS engine the compiled binary runs on <p(245)>(quickjs is smaller and experimental, and does not receive the same security updates as v8)</>"))
+          .value_parser(["v8", "quickjs"])
+          .help_heading(COMPILE_HEADING),
+      )
       .arg(no_code_cache_arg())
       .arg(
         Arg::new("no-terminal")
@@ -2606,6 +2623,13 @@ supported framework (Next.js, Astro, etc.) in the current directory.
             "Backend to use for the desktop app",
           )
           .value_parser(["webview", "cef", "raw"])
+          .help_heading(DESKTOP_HEADING),
+      )
+      .arg(
+        Arg::new("engine")
+          .long("engine")
+          .help("JS engine the desktop binary runs on (quickjs is smaller and experimental, and does not receive the same security updates as v8)")
+          .value_parser(["v8", "quickjs"])
           .help_heading(DESKTOP_HEADING),
       )
       .arg(
@@ -3015,7 +3039,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .help("Set content type of the supplied file")
           .value_parser([
             "ts", "tsx", "js", "jsx", "mts", "mjs", "cts", "cjs", "md", "json", "jsonc", "css", "scss",
-            "less", "html", "svelte", "vue", "astro", "yml", "yaml",
+            "less", "html", "xml", "svg", "svelte", "vue", "astro", "yml", "yaml",
             "ipynb", "sql", "vto", "njk"
           ])
           .help_heading(FMT_HEADING).requires("files"),
@@ -3415,6 +3439,7 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
             .conflicts_with("entrypoint")
             .conflicts_with("global"),
         )
+        .arg(add_unscoped_arg().conflicts_with("entrypoint").conflicts_with("global"))
         .arg(lockfile_only_arg().conflicts_with("global"))
         .arg(package_json_arg().conflicts_with("entrypoint").conflicts_with("global"))
         .arg(
@@ -4295,6 +4320,13 @@ Evaluate a task from string:
           .short('r')
           .help("Run the task in all projects in the workspace")
           .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("members")
+          .long("members")
+          .help("Run the task in all workspace members, but not in the workspace root")
+          .action(ArgAction::SetTrue)
+          .conflicts_with_all(["recursive", "filter"]),
       )
       .arg(
         Arg::new("filter")
@@ -6628,6 +6660,7 @@ fn add_parse_inner(
     lockfile_only: matches.get_flag("lockfile-only"),
     save_exact: matches.get_flag("save-exact"),
     package_json: matches.get_flag("package-json"),
+    unscoped: matches.get_flag("unscoped"),
   }
 }
 
@@ -6948,6 +6981,10 @@ fn compile_parse(
   let args = script.collect();
   let output = matches.remove_one::<String>("output");
   let target = matches.remove_one::<String>("target");
+  let engine = matches
+    .remove_one::<String>("engine")
+    .map(|value| value.parse().expect("engine is validated by clap"))
+    .unwrap_or_default();
   flags.watch = watch_arg_parse(matches)?;
   let icon = matches.remove_one::<String>("icon");
   let no_terminal = matches.get_flag("no-terminal");
@@ -6984,6 +7021,7 @@ fn compile_parse(
     app_name,
     minify,
     exclude_unused_npm,
+    engine,
   });
 
   Ok(())
@@ -7018,6 +7056,10 @@ fn desktop_parse(
   let icon = matches.remove_one::<String>("icon");
   let hmr = matches.get_flag("hmr");
   let backend = matches.remove_one::<String>("backend");
+  let engine = matches
+    .remove_one::<String>("engine")
+    .map(|value| value.parse().expect("engine is validated by clap"))
+    .unwrap_or_default();
   let all_targets = matches.get_flag("all-targets");
   // Self-extracting packaging is opt-in via `--compress [<fmt>]`. Bare
   // `--compress` defaults to xz (decompressed by the system `tar` with no
@@ -7050,6 +7092,7 @@ fn desktop_parse(
     exclude,
     hmr,
     backend,
+    engine,
     all_targets,
     identifier: None,
     deep_links: Vec::new(),
@@ -8020,10 +8063,11 @@ fn task_parse(
   env_file_arg_parse(flags, matches);
 
   let mut recursive = matches.get_flag("recursive");
+  let members = matches.get_flag("members");
   let filter = if let Some(filter) = matches.remove_one::<String>("filter") {
     recursive = false;
     Some(filter)
-  } else if recursive {
+  } else if recursive || members {
     Some("*".to_string())
   } else {
     None
@@ -8036,6 +8080,7 @@ fn task_parse(
     task: None,
     is_run: false,
     recursive,
+    members,
     filter,
     eval: matches.get_flag("eval"),
     no_prefix: matches.get_flag("no-prefix"),
@@ -14260,12 +14305,34 @@ mod tests {
           app_name: None,
           minify: false,
           exclude_unused_npm: false,
+          engine: Default::default(),
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn compile_and_desktop_engine() {
+    let flags = flags_from_vec(svec![
+      "deno", "compile", "--engine", "quickjs", "main.ts"
+    ])
+    .unwrap();
+    let DenoSubcommand::Compile(compile) = flags.subcommand else {
+      panic!("expected compile subcommand");
+    };
+    assert_eq!(compile.engine, JavaScriptEngine::QuickJs);
+
+    let flags = flags_from_vec(svec![
+      "deno", "desktop", "--engine", "quickjs", "main.tsx"
+    ])
+    .unwrap();
+    let DenoSubcommand::Desktop(desktop) = flags.subcommand else {
+      panic!("expected desktop subcommand");
+    };
+    assert_eq!(desktop.engine, JavaScriptEngine::QuickJs);
   }
 
   #[test]
@@ -14341,6 +14408,7 @@ mod tests {
           app_name: None,
           minify: false,
           exclude_unused_npm: false,
+          engine: Default::default(),
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -14378,6 +14446,7 @@ mod tests {
           app_name: None,
           minify: false,
           exclude_unused_npm: false,
+          engine: Default::default(),
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
@@ -14642,6 +14711,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14662,6 +14732,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14681,6 +14752,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14700,6 +14772,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: Some("*".to_string()),
           eval: false,
           no_prefix: false,
@@ -14719,6 +14792,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: true,
+          members: false,
           filter: Some("*".to_string()),
           eval: false,
           no_prefix: false,
@@ -14738,6 +14812,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: true,
+          members: false,
           filter: Some("*".to_string()),
           eval: false,
           no_prefix: false,
@@ -14748,6 +14823,33 @@ mod tests {
       }
     );
 
+    let r = flags_from_vec(svec!["deno", "task", "--members", "build"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          cwd: None,
+          task: Some("build".to_string()),
+          is_run: false,
+          recursive: false,
+          members: true,
+          filter: Some("*".to_string()),
+          eval: false,
+          no_prefix: false,
+          concurrency: None,
+          if_present: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "task", "--members", "-r", "build"]);
+    assert!(r.is_err());
+
+    let r =
+      flags_from_vec(svec!["deno", "task", "--members", "-f", "*", "build"]);
+    assert!(r.is_err());
+
     let r = flags_from_vec(svec!["deno", "task", "--eval", "echo 1"]);
     assert_eq!(
       r.unwrap(),
@@ -14757,6 +14859,7 @@ mod tests {
           task: Some("echo 1".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: true,
           no_prefix: false,
@@ -14789,6 +14892,7 @@ mod tests {
             task: Some("build".to_string()),
             is_run: false,
             recursive: false,
+            members: false,
             filter: None,
             eval: false,
             no_prefix: false,
@@ -14828,6 +14932,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14851,6 +14956,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14875,6 +14981,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14898,6 +15005,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14921,6 +15029,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14945,6 +15054,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14968,6 +15078,7 @@ mod tests {
           task: None,
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14990,6 +15101,7 @@ mod tests {
           task: None,
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -15013,6 +15125,7 @@ mod tests {
           task: None,
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -15045,6 +15158,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -15071,6 +15185,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -15094,6 +15209,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -15981,6 +16097,7 @@ mod tests {
             lockfile_only: false,
             save_exact: false,
             package_json: false,
+            unscoped: false,
           })
         );
       }
@@ -16002,6 +16119,7 @@ mod tests {
           lockfile_only: true,
           save_exact: false,
           package_json: false,
+          unscoped: false,
         });
         expected_flags.frozen_lockfile = Some(true);
         assert_eq!(r.unwrap(), expected_flags);
@@ -16019,6 +16137,7 @@ mod tests {
             lockfile_only: false,
             save_exact: false,
             package_json: false,
+            unscoped: false,
           }),
         );
       }
@@ -16035,6 +16154,7 @@ mod tests {
             lockfile_only: false,
             save_exact: false,
             package_json: false,
+            unscoped: false,
           }),
         );
       }
@@ -16051,6 +16171,7 @@ mod tests {
             lockfile_only: false,
             save_exact: false,
             package_json: false,
+            unscoped: false,
           }),
         );
       }
@@ -16067,6 +16188,7 @@ mod tests {
             lockfile_only: false,
             save_exact: false,
             package_json: false,
+            unscoped: false,
           }),
         );
       }
@@ -16083,6 +16205,25 @@ mod tests {
             lockfile_only: false,
             save_exact: false,
             package_json: false,
+            unscoped: false,
+          }),
+        );
+      }
+      {
+        let r =
+          flags_from_vec(svec!["deno", cmd, "--unscoped", "jsr:@david/which"]);
+        assert_eq!(
+          r.unwrap(),
+          mk_flags(AddFlags {
+            packages: svec!["jsr:@david/which"],
+            dev: false,
+            optional: false,
+            no_save: false,
+            default_registry: Some(DefaultRegistry::Npm),
+            lockfile_only: false,
+            save_exact: false,
+            package_json: false,
+            unscoped: true,
           }),
         );
       }
@@ -16133,6 +16274,7 @@ mod tests {
             lockfile_only: false,
             save_exact: false,
             package_json: false,
+            unscoped: false,
           }),
           permissions: PermissionFlags {
             allow_import: Some(svec!["example.com"]),
@@ -16848,7 +16990,7 @@ mod tests {
     ]);
     assert_eq!(
       r.unwrap_err().to_string(),
-      "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+      "error: invalid value 'https://example.com': URLs are not supported, only domains and IPs"
     );
   }
 
@@ -16926,7 +17068,7 @@ Usage: deno lint [OPTIONS] [files]...\n"
     ]);
     assert_eq!(
       r.unwrap_err().to_string(),
-      "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+      "error: invalid value 'https://example.com': URLs are not supported, only domains and IPs"
     );
   }
 
@@ -16940,7 +17082,7 @@ Usage: deno lint [OPTIONS] [files]...\n"
     ]);
     assert_eq!(
       r.unwrap_err().to_string(),
-      "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+      "error: invalid value 'https://example.com': URLs are not supported, only domains and IPs"
     );
   }
 
@@ -17543,6 +17685,7 @@ Usage: deno lint [OPTIONS] [files]...\n"
           app_name: None,
           minify: false,
           exclude_unused_npm: false,
+          engine: Default::default(),
         }),
         type_check_mode: TypeCheckMode::Local,
         preload: svec!["p1.js", "./p2.js"],

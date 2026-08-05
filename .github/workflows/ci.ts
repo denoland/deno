@@ -18,7 +18,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 121;
+const cacheVersion = 122;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
@@ -602,6 +602,17 @@ const buildItems = handleBuildItems([{
 
 const buildJobs = buildItems.map((rawBuildItem) => {
   const buildItem = defineExprObj(rawBuildItem);
+  // Linux release artifacts use frame pointers for stack walking, so their
+  // DWARF unwind tables can be removed during packaging. Rebuild std to keep
+  // the frame-pointer chain intact through Rust code.
+  const usesFramePointerPanicTrace = rawBuildItem.profile === "release" &&
+    rawBuildItem.os === "linux";
+  const buildStdArgs = usesFramePointerPanicTrace
+    ? " -Zbuild-std=core,alloc,std,proc_macro,panic_abort"
+    : "";
+  const panicTraceFeatures = usesFramePointerPanicTrace
+    ? "deno/panic-trace-frame-pointer"
+    : "deno/panic-trace";
   const usesStartupOrder = rawBuildItem.profile === "release" &&
     ((rawBuildItem.os === "linux" &&
       (rawBuildItem.arch === "x86_64" || rawBuildItem.arch === "aarch64")) ||
@@ -723,7 +734,9 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             run: [
               "cd target/release",
               `./deno -A ../../tools/release/create_symcache.ts deno-${buildItem.arch}-unknown-linux-gnu.symcache`,
-              "strip ./deno",
+              "strip --remove-section=.eh_frame --remove-section=.eh_frame_hdr ./deno",
+              "if readelf -SW ./deno | grep -Eq '\\.eh_frame(_hdr)?'; then echo 'unwind sections remain in deno'; exit 1; fi",
+              "if readelf -lW ./deno | grep -q GNU_EH_FRAME; then echo 'PT_GNU_EH_FRAME remains in deno'; exit 1; fi",
               `shasum -a 256 deno > deno-${buildItem.arch}-unknown-linux-gnu.sha256sum`,
               `zip -r deno-${buildItem.arch}-unknown-linux-gnu.zip deno`,
               `shasum -a 256 deno-${buildItem.arch}-unknown-linux-gnu.zip > deno-${buildItem.arch}-unknown-linux-gnu.zip.sha256sum`,
@@ -733,12 +746,37 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               // compiled binary whose C++ static-init guards deadlock
               // (`__cxa_guard_acquire failed to acquire mutex`). Keep .symtab
               // (strip only debug info) so the relocations survive.
-              "strip --strip-debug ./denort",
+              "strip --strip-debug --remove-section=.eh_frame --remove-section=.eh_frame_hdr ./denort",
+              "if readelf -SW ./denort | grep -Eq '\\.eh_frame(_hdr)?'; then echo 'unwind sections remain in denort'; exit 1; fi",
+              "if readelf -lW ./denort | grep -q GNU_EH_FRAME; then echo 'PT_GNU_EH_FRAME remains in denort'; exit 1; fi",
               `zip -r denort-${buildItem.arch}-unknown-linux-gnu.zip denort`,
               `shasum -a 256 denort-${buildItem.arch}-unknown-linux-gnu.zip > denort-${buildItem.arch}-unknown-linux-gnu.zip.sha256sum`,
-              "strip ./libdenort.so",
+              "strip --remove-section=.eh_frame --remove-section=.eh_frame_hdr ./libdenort.so",
+              "if readelf -SW ./libdenort.so | grep -Eq '\\.eh_frame(_hdr)?'; then echo 'unwind sections remain in libdenort.so'; exit 1; fi",
+              "if readelf -lW ./libdenort.so | grep -q GNU_EH_FRAME; then echo 'PT_GNU_EH_FRAME remains in libdenort.so'; exit 1; fi",
               `zip -r libdenort-${buildItem.arch}-unknown-linux-gnu.zip libdenort.so`,
               `shasum -a 256 libdenort-${buildItem.arch}-unknown-linux-gnu.zip > libdenort-${buildItem.arch}-unknown-linux-gnu.zip.sha256sum`,
+              // QuickJS denort/libdenort for `deno compile --engine quickjs`.
+              // Reuse the same target dir (a second one would exceed runner
+              // disk). Back up the v8 binaries and restore them even if the
+              // QuickJS build fails so later release steps never see a partial
+              // or wrong-engine runtime.
+              "restore_v8_runtimes() {",
+              "  test ! -e denort.v8 || mv -f denort.v8 denort",
+              "  test ! -e libdenort.v8.so || mv -f libdenort.v8.so libdenort.so",
+              "}",
+              "trap restore_v8_runtimes EXIT",
+              "mv denort denort.v8",
+              "mv libdenort.so libdenort.v8.so",
+              `(cd ../.. && cargo build --release --locked -p denort -p denort_desktop --no-default-features --features quickjs)`,
+              "strip --strip-debug ./denort",
+              `zip -r denort-quickjs-${buildItem.arch}-unknown-linux-gnu.zip denort`,
+              `shasum -a 256 denort-quickjs-${buildItem.arch}-unknown-linux-gnu.zip > denort-quickjs-${buildItem.arch}-unknown-linux-gnu.zip.sha256sum`,
+              "strip ./libdenort.so",
+              `zip -r libdenort-quickjs-${buildItem.arch}-unknown-linux-gnu.zip libdenort.so`,
+              `shasum -a 256 libdenort-quickjs-${buildItem.arch}-unknown-linux-gnu.zip > libdenort-quickjs-${buildItem.arch}-unknown-linux-gnu.zip.sha256sum`,
+              "restore_v8_runtimes",
+              "trap - EXIT",
               "./deno types > lib.deno.d.ts",
             ],
           },
@@ -777,6 +815,24 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               "strip -x -S ./libdenort.dylib",
               `zip -r libdenort-${buildItem.arch}-apple-darwin.zip libdenort.dylib`,
               `shasum -a 256 libdenort-${buildItem.arch}-apple-darwin.zip > libdenort-${buildItem.arch}-apple-darwin.zip.sha256sum`,
+              // QuickJS denort/libdenort for `deno compile --engine quickjs`
+              // (see the linux note).
+              "restore_v8_runtimes() {",
+              "  test ! -e denort.v8 || mv -f denort.v8 denort",
+              "  test ! -e libdenort.v8.dylib || mv -f libdenort.v8.dylib libdenort.dylib",
+              "}",
+              "trap restore_v8_runtimes EXIT",
+              "mv denort denort.v8",
+              "mv libdenort.dylib libdenort.v8.dylib",
+              `(cd ../.. && cargo build --release --locked -p denort -p denort_desktop --no-default-features --features quickjs)`,
+              "strip -x -S ./denort",
+              `zip -r denort-quickjs-${buildItem.arch}-apple-darwin.zip denort`,
+              `shasum -a 256 denort-quickjs-${buildItem.arch}-apple-darwin.zip > denort-quickjs-${buildItem.arch}-apple-darwin.zip.sha256sum`,
+              "strip -x -S ./libdenort.dylib",
+              `zip -r libdenort-quickjs-${buildItem.arch}-apple-darwin.zip libdenort.dylib`,
+              `shasum -a 256 libdenort-quickjs-${buildItem.arch}-apple-darwin.zip > libdenort-quickjs-${buildItem.arch}-apple-darwin.zip.sha256sum`,
+              "restore_v8_runtimes",
+              "trap - EXIT",
             ],
           },
           {
@@ -836,6 +892,21 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               `Get-FileHash target/release/denort-${buildItem.arch}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-${buildItem.arch}-pc-windows-msvc.zip.sha256sum`,
               `Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.dll -DestinationPath target/release/libdenort-${buildItem.arch}-pc-windows-msvc.zip`,
               `Get-FileHash target/release/libdenort-${buildItem.arch}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/libdenort-${buildItem.arch}-pc-windows-msvc.zip.sha256sum`,
+              // QuickJS denort/libdenort for `deno compile --engine quickjs`
+              // (see the linux note).
+              "try {",
+              "  Move-Item target/release/denort.exe target/release/denort.v8.exe",
+              "  Move-Item target/release/denort.dll target/release/denort.v8.dll",
+              `  cargo build --release --locked -p denort -p denort_desktop --no-default-features --features quickjs`,
+              '  if ($LASTEXITCODE -ne 0) { throw "QuickJS runtime build failed" }',
+              `  Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-quickjs-${buildItem.arch}-pc-windows-msvc.zip`,
+              `  Get-FileHash target/release/denort-quickjs-${buildItem.arch}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-quickjs-${buildItem.arch}-pc-windows-msvc.zip.sha256sum`,
+              `  Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.dll -DestinationPath target/release/libdenort-quickjs-${buildItem.arch}-pc-windows-msvc.zip`,
+              `  Get-FileHash target/release/libdenort-quickjs-${buildItem.arch}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/libdenort-quickjs-${buildItem.arch}-pc-windows-msvc.zip.sha256sum`,
+              "} finally {",
+              "  if (Test-Path target/release/denort.v8.exe) { Move-Item -Force target/release/denort.v8.exe target/release/denort.exe }",
+              "  if (Test-Path target/release/denort.v8.dll) { Move-Item -Force target/release/denort.v8.dll target/release/denort.dll }",
+              "}",
               `target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-${buildItem.arch}-pc-windows-msvc.symcache`,
             ],
           },
@@ -909,7 +980,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
         const binsToBuild = ["deno", "denort", "test_server"]
           .map((name) => `--bin ${name}`).join(" ");
         const cargoBuildReleaseCommand =
-          `cargo build --release --locked ${packagesToBuild} ${binsToBuild} --features=deno/panic-trace`;
+          `cargo build${buildStdArgs} --release --locked ${packagesToBuild} ${binsToBuild} --features=${panicTraceFeatures}`;
         const cargoBuildReleaseStep = step
           .if(
             isRelease.and(isDenoland.or(buildItem.use_sysroot)),
@@ -927,6 +998,27 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               if: isNotTag,
               run: 'echo "DENO_CANARY=true" >> $GITHUB_ENV',
             },
+            ...(usesFramePointerPanicTrace
+              ? [{
+                name: "Configure frame-pointer panic traces",
+                run: [
+                  // `build-std` is unstable, but keeping Deno's pinned stable
+                  // compiler plus this narrow opt-in is preferable to moving
+                  // release builds to a separate nightly toolchain.
+                  'echo "RUSTC_BOOTSTRAP=1" >> "$GITHUB_ENV"',
+                  // `RUSTFLAGS` is a multi-line value, but cargo splits it on
+                  // spaces only (trimming each piece), so a newline is not a
+                  // separator. Append on the same line as the tail of the
+                  // existing value, otherwise the added flags fuse into one
+                  // bogus token.
+                  "{",
+                  '  echo "RUSTFLAGS<<__DENO_RUSTFLAGS"',
+                  '  echo "$RUSTFLAGS -C force-frame-pointers=yes -C force-unwind-tables=no -C link-arg=-Wl,--no-eh-frame-hdr"',
+                  '  echo "__DENO_RUSTFLAGS"',
+                  '} >> "$GITHUB_ENV"',
+                ],
+              }]
+              : []),
             {
               name: "Build release",
               env: {
@@ -949,9 +1041,10 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 "df -h",
                 cargoBuildReleaseCommand,
                 // Build the desktop runtime shared library (libdenort cdylib) for
-                // laufey-based desktop apps. Separate invocation because the
-                // panic-trace feature only applies to the deno/denort binaries.
-                "cargo build --release --locked -p denort_desktop",
+                // laufey-based desktop apps. It is a separate invocation, but
+                // still needs the frame-pointer standard library before its
+                // unwind sections can be removed during packaging.
+                `cargo build${buildStdArgs} --release --locked -p denort_desktop`,
                 "df -h",
               ],
             },
@@ -1072,6 +1165,24 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               if: isDebug,
               run:
                 `cargo build --locked ${packagesToBuild} ${binsToBuild} --features=deno/panic-trace`,
+              env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+            },
+            {
+              // The rest of CI only exercises the default v8 backend. Make sure the
+              // experimental QuickJS backend (the deno_v8 facade over the v8x crate)
+              // keeps compiling for the deno + denort binaries so `deno compile`
+              // and the desktop runtime don't silently regress (notably the
+              // mutually-exclusive v8/quickjs feature guard). A `check` is enough to
+              // catch feature/build-script breakage and does not clobber the v8
+              // binary this job produces.
+              name: "Check QuickJS backend (deno + denort)",
+              if: isDebug.and(
+                isLinux.and(buildItem.arch.equals("x86_64")).or(
+                  isMacos.and(buildItem.arch.equals("aarch64")),
+                ),
+              ),
+              run:
+                `cargo check --locked -p deno -p denort --no-default-features --features quickjs`,
               env: { CARGO_PROFILE_DEV_DEBUG: 0 },
             },
             cargoBuildReleaseStep,
@@ -1802,6 +1913,7 @@ const publishCanaryJob = job("publish-canary", {
 // Cargo package names for the libs/* workspace members (merged from deno_core).
 const denoCorePackageNames = [
   "deno_core",
+  "deno_v8",
   "build-your-own-js-snapshot",
   "dcore",
   "deno_ops",
@@ -1863,7 +1975,7 @@ const denoCoreTestJob = job("deno-core-test", {
       name: "Cargo nextest (release)",
       run: [
         `cargo nextest run --release`,
-        `  --features "deno_core/default deno_core/unsafe_use_unprotected_platform"`,
+        `  --features "deno_core/default deno_core/unsafe_use_unprotected_platform deno_core/v8"`,
         `  --tests --examples`,
         `  ${denoCorePackageNames.map((p) => `-p ${p}`).join(" ")}`,
       ].join(" \\\n    "),
@@ -1871,7 +1983,8 @@ const denoCoreTestJob = job("deno-core-test", {
     {
       // Ported from denoland/deno_core .github/workflows/ci-test-ops/action.yml
       name: "Cargo nextest ops compile test runner (release)",
-      run: "cargo nextest run --release -p deno_ops_compile_test_runner",
+      run:
+        "cargo nextest run --release -p deno_ops_compile_test_runner -p deno_v8",
     },
     {
       name: "Cargo doc test",
@@ -1885,7 +1998,7 @@ const denoCoreTestJob = job("deno-core-test", {
       // Regression test for https://github.com/denoland/deno/pull/19615.
       name: "Run examples (regression tests)",
       run: [
-        "cargo run -p deno_core --example op2",
+        "cargo run -p deno_core --example op2 --features v8",
       ],
     },
     denoCoreTestCacheSteps.saveCacheStep,
@@ -1928,7 +2041,7 @@ const denoCoreMiriJob = job("deno-core-miri", {
         "cargo clean",
         `rustup component add --toolchain ${miriNightlyToolchain} miri`,
         "# This somehow prints errors in CI that don't show up locally",
-        `RUSTFLAGS=-Awarnings cargo +${miriNightlyToolchain} miri test -p deno_core`,
+        `RUSTFLAGS=-Awarnings cargo +${miriNightlyToolchain} miri test -p deno_core --features v8`,
       ],
     },
   ),

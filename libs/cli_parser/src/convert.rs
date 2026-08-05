@@ -1209,7 +1209,7 @@ fn validate_permission_args(
           return Err(CliError::new(
             CliErrorKind::InvalidValue,
             format!(
-              "invalid value '{val}': URLs are not supported, only domains and ips"
+              "invalid value '{val}': URLs are not supported, only domains and IPs"
             ),
           ));
         }
@@ -1918,11 +1918,12 @@ fn task_parse(result: &ParseResult, flags: &mut Flags) -> Result<(), CliError> {
   env_file_arg_parse(result, flags);
 
   let mut recursive = result.get_bool("recursive");
+  let members = result.get_bool("members");
   let filter =
     if let Some(filter) = result.get_one("filter").map(|s| s.to_string()) {
       recursive = false;
       Some(filter)
-    } else if recursive {
+    } else if recursive || members {
       Some("*".to_string())
     } else {
       None
@@ -1955,6 +1956,7 @@ fn task_parse(result: &ParseResult, flags: &mut Flags) -> Result<(), CliError> {
     task: task_name,
     is_run: false,
     recursive,
+    members,
     filter,
     eval,
     no_prefix: result.get_bool("no-prefix"),
@@ -2040,6 +2042,10 @@ fn compile_parse(result: &ParseResult, flags: &mut Flags) {
     app_name: result.get_one("app-name").map(|s| s.to_string()),
     minify: result.get_bool("minify"),
     exclude_unused_npm: result.get_bool("exclude-unused-npm"),
+    engine: result
+      .get_one("engine")
+      .map(|value| value.parse().expect("engine is validated by the parser"))
+      .unwrap_or_default(),
   });
 }
 
@@ -2242,6 +2248,7 @@ fn install_parse(
           lockfile_only,
           save_exact: result.get_bool("save-exact"),
           package_json: result.get_bool("package-json"),
+          unscoped: result.get_bool("unscoped"),
         }),
         npm_target,
       ));
@@ -2506,6 +2513,7 @@ fn add_parse(result: &ParseResult, flags: &mut Flags) {
     lockfile_only: result.get_bool("lockfile-only"),
     save_exact: result.get_bool("save-exact"),
     package_json: result.get_bool("package-json"),
+    unscoped: result.get_bool("unscoped"),
   });
 }
 
@@ -2592,6 +2600,10 @@ fn desktop_parse(result: &ParseResult, flags: &mut Flags) {
     inspect_renderer,
     compress,
     exclude_unused_npm: result.get_bool("exclude-unused-npm"),
+    engine: result
+      .get_one("engine")
+      .map(|value| value.parse().expect("engine is validated by the parser"))
+      .unwrap_or_default(),
   });
 }
 

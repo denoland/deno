@@ -77,6 +77,98 @@ Deno.test("ASYNC: read dirs recursively", async () => {
   }
 });
 
+// Promise wrapper around the callback-style `readdir` so sorted-order tests can
+// exercise the async and sync paths through the same assertions.
+function readdirAsync(
+  path: string,
+  options?: { withFileTypes?: boolean; recursive?: boolean },
+): Promise<Array<string | Dirent>> {
+  return new Promise((resolve, reject) => {
+    const cb = (err: Error | null, files: Array<string | Dirent>) => {
+      if (err) reject(err);
+      else resolve(files);
+    };
+    // deno-lint-ignore no-explicit-any
+    options ? readdir(path, options as any, cb as any) : readdir(path, cb);
+  });
+}
+
+for (const variant of ["async", "sync"] as const) {
+  const read = (
+    path: string,
+    options?: { withFileTypes?: boolean; recursive?: boolean },
+  ) =>
+    variant === "async"
+      ? readdirAsync(path, options)
+      // deno-lint-ignore no-explicit-any
+      : Promise.resolve(readdirSync(path, options as any));
+
+  Deno.test(`${variant}: entries are sorted like Node (per directory)`, async () => {
+    const dir = Deno.makeTempDirSync();
+    for (const name of ["a", "2", "index.js", "b", "1", "c", "0"]) {
+      Deno.writeTextFileSync(join(dir, name), "hi");
+    }
+    try {
+      assertEquals(await read(dir), ["0", "1", "2", "a", "b", "c", "index.js"]);
+    } finally {
+      Deno.removeSync(dir, { recursive: true });
+    }
+  });
+
+  Deno.test(`${variant}: recursive entries are sorted per directory`, async () => {
+    const dir = Deno.makeTempDirSync();
+    // Names chosen so a global sort and a per-directory sort differ: a global
+    // sort would place "b/a.txt" before "b.txt".
+    Deno.mkdirSync(join(dir, "b"));
+    Deno.writeTextFileSync(join(dir, "b", "a.txt"), "hi");
+    Deno.writeTextFileSync(join(dir, "b.txt"), "hi");
+    Deno.writeTextFileSync(join(dir, "a.txt"), "hi");
+    try {
+      assertEquals(await read(dir, { recursive: true }), [
+        "a.txt",
+        "b",
+        "b.txt",
+        join("b", "a.txt"),
+      ]);
+    } finally {
+      Deno.removeSync(dir, { recursive: true });
+    }
+  });
+
+  Deno.test(`${variant}: withFileTypes entries are sorted`, async () => {
+    const dir = Deno.makeTempDirSync();
+    for (const name of ["c", "a", "b"]) {
+      Deno.writeTextFileSync(join(dir, name), "hi");
+    }
+    try {
+      const entries = await read(dir, { withFileTypes: true }) as Dirent[];
+      assertEquals(entries.map((e) => e.name), ["a", "b", "c"]);
+    } finally {
+      Deno.removeSync(dir, { recursive: true });
+    }
+  });
+
+  // Astral characters are where a code-point comparison must differ from a
+  // default UTF-16 sort. U+1F600 (😀) is the surrogate pair 0xD83D 0xDE00, and
+  // U+FF5A (ｚ) is a single code unit 0xFF5A, so under UTF-16 the emoji sorts
+  // first (0xD83D < 0xFF5A) while libuv/Node sort by code point and put U+FF5A
+  // first (0xFF5A < 0x1F600). Note that comparing an astral character against
+  // an ASCII name would NOT distinguish the two orders, since a lead surrogate
+  // is already above every ASCII code unit. macOS normalizes filenames (NFD),
+  // but neither name is affected, so no skip is needed.
+  Deno.test(`${variant}: astral filenames sort by code point`, async () => {
+    const dir = Deno.makeTempDirSync();
+    for (const name of ["😀", "ｚ", "a"]) {
+      Deno.writeTextFileSync(join(dir, name), "hi");
+    }
+    try {
+      assertEquals(await read(dir), ["a", "ｚ", "😀"]);
+    } finally {
+      Deno.removeSync(dir, { recursive: true });
+    }
+  });
+}
+
 Deno.test({
   name: "SYNC: reading empty the directory",
   fn() {
