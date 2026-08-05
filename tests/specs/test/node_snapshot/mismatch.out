@@ -1,0 +1,8 @@
+running 1 test from ./mismatch_test.js
+mismatch ... FAILED ([WILDLINE])
+[WILDCARD]error: AssertionError: Expected values to be strictly equal:[WILDCARD]
++ '\n"actual value"\n'
+- '\n"expected value"\n'
+[WILDCARD]
+FAILED | 0 passed | 1 failed ([WILDLINE])
+[WILDCARD]
