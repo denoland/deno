@@ -84,6 +84,15 @@ openssl req -new -nodes -newkey rsa:2048 -keyout localhost_v1_forged.key -out fo
 openssl x509 -req -sha256 -days 36135 -in forged.csr -CA impostor.pem -CAkey impostor.key -set_serial 0x5a1102 -out localhost_v1_forged.crt
 ```
 
+`localhost_v1_via_non_ca.crt` is signed by `localhost.crt`, an ordinary server
+certificate with `basicConstraints: CA:FALSE`. It verifies cryptographically but
+must not build a trusted chain through that non-CA certificate:
+
+```shell
+openssl req -new -nodes -newkey rsa:2048 -keyout localhost_v1_via_non_ca.key -out via_non_ca.csr -subj "/C=US/ST=YourState/L=YourCity/O=Example-Certificates/CN=localhost"
+openssl x509 -req -sha256 -days 36135 -in via_non_ca.csr -CA localhost.crt -CAkey localhost.key -set_serial 0x5a1103 -out localhost_v1_via_non_ca.crt
+```
+
 ## PKCS#12 (PFX) bundles
 
 Bundles wrapping `localhost.crt` + `localhost.key`, with the MAC computed using
