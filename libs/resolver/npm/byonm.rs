@@ -317,7 +317,6 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
     }
 
     // now try to resolve based on the closest node_modules directory
-    let maybe_referrer_path = url_to_file_path(referrer).ok();
     let search_node_modules = |node_modules: &Path| {
       if req.version_req.tag().is_some() {
         return None;
@@ -699,16 +698,20 @@ mod tests {
   use sys_traits::FsCreateDirAll;
   use sys_traits::FsWrite;
   use sys_traits::impls::InMemorySys;
+  #[cfg(unix)]
+  use sys_traits::impls::RealSys;
+  #[cfg(unix)]
+  use test_util::TempDir;
 
   use super::*;
 
   fn test_resolver(
     sys: InMemorySys,
-    search_stop_dir: &str,
+    search_stop_dir: PathBuf,
   ) -> ByonmNpmResolver<InMemorySys> {
     ByonmNpmResolver::new(ByonmNpmResolverCreateOptions {
       root_node_modules_dir: None,
-      search_stop_dir: Some(PathBuf::from(search_stop_dir)),
+      search_stop_dir: Some(search_stop_dir),
       pkg_json_resolver: deno_maybe_sync::new_rc(PackageJsonResolver::new(
         sys.clone(),
         None,
@@ -717,7 +720,16 @@ mod tests {
     })
   }
 
-  fn write_pkg_json(sys: &InMemorySys, path: &str, text: &str) {
+  fn test_path(path: &str) -> PathBuf {
+    let root = if cfg!(windows) {
+      PathBuf::from(r"C:\sandbox")
+    } else {
+      PathBuf::from("/sandbox")
+    };
+    root.join(path)
+  }
+
+  fn write_pkg_json(sys: &InMemorySys, path: PathBuf, text: &str) {
     sys.fs_write(path, text).unwrap();
   }
 
@@ -728,22 +740,23 @@ mod tests {
   #[test]
   fn deno_module_req_package_json_lookup_stops_at_search_stop_dir() {
     let sys = InMemorySys::default();
-    sys.fs_create_dir_all("/sandbox/vfs/app").unwrap();
-    sys.fs_create_dir_all("/sandbox/node_modules/evil").unwrap();
+    sys.fs_create_dir_all(test_path("vfs/app")).unwrap();
+    sys
+      .fs_create_dir_all(test_path("node_modules/evil"))
+      .unwrap();
     write_pkg_json(
       &sys,
-      "/sandbox/package.json",
+      test_path("package.json"),
       r#"{"dependencies":{"evil":"1.0.0"}}"#,
     );
     write_pkg_json(
       &sys,
-      "/sandbox/node_modules/evil/package.json",
+      test_path("node_modules/evil/package.json"),
       r#"{"name":"evil","version":"1.0.0"}"#,
     );
 
-    let resolver = test_resolver(sys, "/sandbox/vfs");
-    let referrer =
-      url_from_file_path(Path::new("/sandbox/vfs/app/main.js")).unwrap();
+    let resolver = test_resolver(sys, test_path("vfs"));
+    let referrer = url_from_file_path(&test_path("vfs/app/main.js")).unwrap();
     let err = resolver
       .resolve_pkg_folder_from_deno_module_req(&evil_req(), &referrer)
       .unwrap_err();
@@ -757,22 +770,23 @@ mod tests {
   #[test]
   fn deno_module_req_node_modules_lookup_stops_at_search_stop_dir() {
     let sys = InMemorySys::default();
-    sys.fs_create_dir_all("/sandbox/vfs/app").unwrap();
-    sys.fs_create_dir_all("/sandbox/node_modules/evil").unwrap();
+    sys.fs_create_dir_all(test_path("vfs/app")).unwrap();
+    sys
+      .fs_create_dir_all(test_path("node_modules/evil"))
+      .unwrap();
     write_pkg_json(
       &sys,
-      "/sandbox/vfs/package.json",
+      test_path("vfs/package.json"),
       r#"{"dependencies":{"evil":"1.0.0"}}"#,
     );
     write_pkg_json(
       &sys,
-      "/sandbox/node_modules/evil/package.json",
+      test_path("node_modules/evil/package.json"),
       r#"{"name":"evil","version":"1.0.0"}"#,
     );
 
-    let resolver = test_resolver(sys, "/sandbox/vfs");
-    let referrer =
-      url_from_file_path(Path::new("/sandbox/vfs/app/main.js")).unwrap();
+    let resolver = test_resolver(sys, test_path("vfs"));
+    let referrer = url_from_file_path(&test_path("vfs/app/main.js")).unwrap();
     let err = resolver
       .resolve_pkg_folder_from_deno_module_req(&evil_req(), &referrer)
       .unwrap_err();
@@ -787,17 +801,18 @@ mod tests {
   #[test]
   fn deno_module_req_closest_node_modules_lookup_stops_at_search_stop_dir() {
     let sys = InMemorySys::default();
-    sys.fs_create_dir_all("/sandbox/vfs/app").unwrap();
-    sys.fs_create_dir_all("/sandbox/node_modules/evil").unwrap();
+    sys.fs_create_dir_all(test_path("vfs/app")).unwrap();
+    sys
+      .fs_create_dir_all(test_path("node_modules/evil"))
+      .unwrap();
     write_pkg_json(
       &sys,
-      "/sandbox/node_modules/evil/package.json",
+      test_path("node_modules/evil/package.json"),
       r#"{"name":"evil","version":"1.0.0"}"#,
     );
 
-    let resolver = test_resolver(sys, "/sandbox/vfs");
-    let referrer =
-      url_from_file_path(Path::new("/sandbox/vfs/app/main.js")).unwrap();
+    let resolver = test_resolver(sys, test_path("vfs"));
+    let referrer = url_from_file_path(&test_path("vfs/app/main.js")).unwrap();
     let err = resolver
       .resolve_pkg_folder_from_deno_module_req(&evil_req(), &referrer)
       .unwrap_err();
@@ -811,16 +826,15 @@ mod tests {
   #[test]
   fn find_ancestor_package_json_with_dep_stops_at_search_stop_dir() {
     let sys = InMemorySys::default();
-    sys.fs_create_dir_all("/sandbox/vfs/app").unwrap();
+    sys.fs_create_dir_all(test_path("vfs/app")).unwrap();
     write_pkg_json(
       &sys,
-      "/sandbox/package.json",
+      test_path("package.json"),
       r#"{"dependencies":{"evil":"1.0.0"}}"#,
     );
 
-    let resolver = test_resolver(sys, "/sandbox/vfs");
-    let referrer =
-      url_from_file_path(Path::new("/sandbox/vfs/app/main.js")).unwrap();
+    let resolver = test_resolver(sys, test_path("vfs"));
+    let referrer = url_from_file_path(&test_path("vfs/app/main.js")).unwrap();
 
     assert!(
       resolver
@@ -832,17 +846,18 @@ mod tests {
   #[test]
   fn bounded_lookup_rejects_referrer_outside_search_stop_dir() {
     let sys = InMemorySys::default();
-    sys.fs_create_dir_all("/sandbox/vfs/app").unwrap();
-    sys.fs_create_dir_all("/sandbox/node_modules/evil").unwrap();
+    sys.fs_create_dir_all(test_path("vfs/app")).unwrap();
+    sys
+      .fs_create_dir_all(test_path("node_modules/evil"))
+      .unwrap();
     write_pkg_json(
       &sys,
-      "/sandbox/node_modules/evil/package.json",
+      test_path("node_modules/evil/package.json"),
       r#"{"name":"evil","version":"1.0.0"}"#,
     );
 
-    let resolver = test_resolver(sys, "/sandbox/vfs");
-    let referrer =
-      url_from_file_path(Path::new("/sandbox/app/main.js")).unwrap();
+    let resolver = test_resolver(sys, test_path("vfs"));
+    let referrer = url_from_file_path(&test_path("app/main.js")).unwrap();
     let err = resolver
       .resolve_pkg_folder_from_deno_module_req(&evil_req(), &referrer)
       .unwrap_err();
@@ -856,39 +871,40 @@ mod tests {
   #[test]
   fn deno_module_req_allows_package_json_and_node_modules_at_search_stop_dir() {
     let sys = InMemorySys::default();
-    sys.fs_create_dir_all("/sandbox/vfs/app").unwrap();
+    sys.fs_create_dir_all(test_path("vfs/app")).unwrap();
     sys
-      .fs_create_dir_all("/sandbox/vfs/node_modules/evil")
+      .fs_create_dir_all(test_path("vfs/node_modules/evil"))
       .unwrap();
     write_pkg_json(
       &sys,
-      "/sandbox/vfs/package.json",
+      test_path("vfs/package.json"),
       r#"{"dependencies":{"evil":"1.0.0"}}"#,
     );
     write_pkg_json(
       &sys,
-      "/sandbox/vfs/node_modules/evil/package.json",
+      test_path("vfs/node_modules/evil/package.json"),
       r#"{"name":"evil","version":"1.0.0"}"#,
     );
 
-    let resolver = test_resolver(sys, "/sandbox/vfs");
-    let referrer =
-      url_from_file_path(Path::new("/sandbox/vfs/app/main.js")).unwrap();
+    let resolver = test_resolver(sys, test_path("vfs"));
+    let referrer = url_from_file_path(&test_path("vfs/app/main.js")).unwrap();
     let result = resolver
       .resolve_pkg_folder_from_deno_module_req(&evil_req(), &referrer)
       .unwrap();
 
-    assert_eq!(result, PathBuf::from("/sandbox/vfs/node_modules/evil"));
+    assert_eq!(result, test_path("vfs/node_modules/evil"));
   }
 
   #[test]
   fn unbounded_lookup_preserves_ancestor_node_modules_resolution() {
     let sys = InMemorySys::default();
-    sys.fs_create_dir_all("/sandbox/vfs/app").unwrap();
-    sys.fs_create_dir_all("/sandbox/node_modules/evil").unwrap();
+    sys.fs_create_dir_all(test_path("vfs/app")).unwrap();
+    sys
+      .fs_create_dir_all(test_path("node_modules/evil"))
+      .unwrap();
     write_pkg_json(
       &sys,
-      "/sandbox/node_modules/evil/package.json",
+      test_path("node_modules/evil/package.json"),
       r#"{"name":"evil","version":"1.0.0"}"#,
     );
     let resolver = ByonmNpmResolver::new(ByonmNpmResolverCreateOptions {
@@ -901,31 +917,32 @@ mod tests {
       sys: NodeResolutionSys::new(sys, None),
     });
 
-    let referrer =
-      url_from_file_path(Path::new("/sandbox/vfs/app/main.js")).unwrap();
+    let referrer = url_from_file_path(&test_path("vfs/app/main.js")).unwrap();
     let result = resolver
       .resolve_pkg_folder_from_deno_module_req(&evil_req(), &referrer)
       .unwrap();
 
-    assert_eq!(result, PathBuf::from("/sandbox/node_modules/evil"));
+    assert_eq!(result, test_path("node_modules/evil"));
   }
 
   #[test]
   fn package_folder_lookup_stops_at_search_stop_dir() {
     let sys = InMemorySys::default();
-    sys.fs_create_dir_all("/sandbox/vfs/app").unwrap();
-    sys.fs_create_dir_all("/sandbox/node_modules/evil").unwrap();
+    sys.fs_create_dir_all(test_path("vfs/app")).unwrap();
+    sys
+      .fs_create_dir_all(test_path("node_modules/evil"))
+      .unwrap();
     write_pkg_json(
       &sys,
-      "/sandbox/node_modules/evil/package.json",
+      test_path("node_modules/evil/package.json"),
       r#"{"name":"evil","version":"1.0.0"}"#,
     );
 
-    let resolver = test_resolver(sys, "/sandbox/vfs");
-    let referrer_path = Path::new("/sandbox/vfs/app/main.js");
+    let resolver = test_resolver(sys, test_path("vfs"));
+    let referrer_path = test_path("vfs/app/main.js");
     let result = resolver.resolve_package_folder_from_package(
       "evil",
-      &UrlOrPathRef::from_path(referrer_path),
+      &UrlOrPathRef::from_path(&referrer_path),
     );
 
     assert!(result.is_err());
@@ -934,25 +951,65 @@ mod tests {
   #[test]
   fn package_folder_lookup_allows_node_modules_at_search_stop_dir() {
     let sys = InMemorySys::default();
-    sys.fs_create_dir_all("/sandbox/vfs/app").unwrap();
+    sys.fs_create_dir_all(test_path("vfs/app")).unwrap();
     sys
-      .fs_create_dir_all("/sandbox/vfs/node_modules/evil")
+      .fs_create_dir_all(test_path("vfs/node_modules/evil"))
       .unwrap();
     write_pkg_json(
       &sys,
-      "/sandbox/vfs/node_modules/evil/package.json",
+      test_path("vfs/node_modules/evil/package.json"),
       r#"{"name":"evil","version":"1.0.0"}"#,
     );
 
-    let resolver = test_resolver(sys, "/sandbox/vfs");
-    let referrer_path = Path::new("/sandbox/vfs/app/main.js");
+    let resolver = test_resolver(sys, test_path("vfs"));
+    let referrer_path = test_path("vfs/app/main.js");
     let result = resolver
       .resolve_package_folder_from_package(
         "evil",
-        &UrlOrPathRef::from_path(referrer_path),
+        &UrlOrPathRef::from_path(&referrer_path),
       )
       .unwrap();
 
-    assert_eq!(result, PathBuf::from("/sandbox/vfs/node_modules/evil"));
+    assert_eq!(result, test_path("vfs/node_modules/evil"));
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn closest_node_modules_lookup_uses_canonicalized_start() {
+    let temp_dir = TempDir::new();
+    let temp_dir_path = temp_dir.path().to_path_buf();
+    let real_vfs_dir = temp_dir_path.join("real-vfs");
+    let linked_vfs_dir = temp_dir_path.join("linked-vfs");
+    let outside_pkg_dir = temp_dir_path.join("node_modules/evil");
+    let sys = RealSys;
+    sys.fs_create_dir_all(real_vfs_dir.join("app")).unwrap();
+    sys.fs_create_dir_all(&outside_pkg_dir).unwrap();
+    sys
+      .fs_write(
+        outside_pkg_dir.join("package.json"),
+        r#"{"name":"evil","version":"1.0.0"}"#,
+      )
+      .unwrap();
+    std::os::unix::fs::symlink(&real_vfs_dir, &linked_vfs_dir).unwrap();
+
+    let resolver = ByonmNpmResolver::new(ByonmNpmResolverCreateOptions {
+      root_node_modules_dir: None,
+      search_stop_dir: Some(linked_vfs_dir.clone()),
+      pkg_json_resolver: deno_maybe_sync::new_rc(PackageJsonResolver::new(
+        sys.clone(),
+        None,
+      )),
+      sys: NodeResolutionSys::new(sys, None),
+    });
+    let referrer =
+      url_from_file_path(&linked_vfs_dir.join("app/main.js")).unwrap();
+    let err = resolver
+      .resolve_pkg_folder_from_deno_module_req(&evil_req(), &referrer)
+      .unwrap_err();
+
+    assert!(matches!(
+      err,
+      ByonmResolvePkgFolderFromDenoReqError::UnmatchedReq(_)
+    ));
   }
 }
