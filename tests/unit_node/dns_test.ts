@@ -253,3 +253,34 @@ Deno.test("[node/dns] lookup of a missing host reports ENOTFOUND", async () => {
   assertEquals(err.syscall, "getaddrinfo");
   assertEquals(err.hostname, "nonexistent-host.invalid");
 });
+
+// Regression test for https://github.com/denoland/deno/issues/35173
+// When Resolver.setServers() points at a port with no listener the error
+// must be ECONNREFUSED (matching Node.js / c-ares behaviour) and must
+// resolve quickly rather than hanging until hickory's internal timeout.
+Deno.test(
+  "[node/dns] Resolver.resolve4 returns ECONNREFUSED for closed port",
+  async () => {
+    const resolver = new dnsPromises.Resolver();
+    // Port 1 is almost universally closed.
+    resolver.setServers(["127.0.0.1:1"]);
+
+    const start = Date.now();
+    let err: ErrnoException | undefined;
+    try {
+      await resolver.resolve4("example.com");
+    } catch (e) {
+      err = e as ErrnoException;
+    }
+    const elapsed = Date.now() - start;
+
+    assert(err != null, "expected an error");
+    assertEquals(
+      err.code,
+      "ECONNREFUSED",
+      `expected ECONNREFUSED but got ${err.code}`,
+    );
+    // Must fail fast (well under 1 second) rather than timing out.
+    assert(elapsed < 500, `took ${elapsed}ms, expected < 500ms`);
+  },
+);
