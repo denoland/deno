@@ -1511,7 +1511,7 @@ impl Client {
     self.inject_common_headers(&mut req);
 
     req.headers_mut().entry(ACCEPT).or_insert(STAR_STAR);
-    req.extensions_mut().insert(ConnectionReused::default());
+    insert_connection_reused(&mut req);
 
     let uri = req.uri().clone();
 
@@ -1534,7 +1534,7 @@ impl Client {
     self.inject_common_headers(&mut req);
 
     req.headers_mut().entry(ACCEPT).or_insert(STAR_STAR);
-    req.extensions_mut().insert(ConnectionReused::default());
+    insert_connection_reused(&mut req);
 
     let uri = req.uri().clone();
 
@@ -1547,6 +1547,18 @@ impl Client {
       .map_err(|e| ClientSendError { uri, source: e })?;
     Ok(resp.map(box_raw_body))
   }
+}
+
+/// Marks a request for connection provenance tracking.
+///
+/// Streaming bodies are skipped: [`FetchRetry::clone_request`] can't clone them,
+/// so they are never retried and tracking them would only cost a
+/// `capture_connection` slot, a boxed future and two `Arc`s per request.
+fn insert_connection_reused(req: &mut http::Request<ReqBody>) {
+  if matches!(req.body(), ReqBody::Streaming(..)) {
+    return;
+  }
+  req.extensions_mut().insert(ConnectionReused::default());
 }
 
 // This is a custom enum to allow the retry policy to clone the variants that could be retried.
@@ -1663,6 +1675,12 @@ struct ConnectionUsage(Arc<AtomicUsize>);
 ///
 /// The `Arc` is shared with the clone that `tower`'s retry layer keeps around,
 /// so writes made while the request is in flight are visible to the policy.
+///
+/// Every entry point into [`Client`] must insert this extension for any request
+/// whose body can be cloned. [`FetchRetry`] reads a missing extension as
+/// [`ConnectionKind::Fresh`], which disables *all* transport retries for that
+/// request — including the stale-pool retry — with no diagnostic. Streaming
+/// bodies are the one legitimate exception, since they can never be retried.
 #[derive(Clone, Debug, Default)]
 struct ConnectionReused(Arc<AtomicBool>);
 
@@ -1808,14 +1826,38 @@ where
   fn call(&mut self, mut req: http::Request<ReqBody>) -> Self::Future {
     let Some(reused) = req.extensions().get::<ConnectionReused>().cloned()
     else {
+      // Only streaming bodies are allowed to skip the extension: they can't be
+      // cloned, so they are never retried and don't need provenance tracked.
+      // Any other request arriving here would silently lose *all* transport
+      // retries, since `FetchRetry` reads a missing extension as `Fresh`.
+      debug_assert!(
+        matches!(req.body(), ReqBody::Streaming(..)),
+        "request reached FetchClient without a ConnectionReused extension; \
+         every entry point must insert it (see ConnectionReused)"
+      );
       return Box::pin(self.inner.call(req));
     };
     let captured = capture_connection(&mut req);
     let fut = self.inner.call(req);
     Box::pin(async move {
-      // Record the reuse as soon as the connection has been checked out, so
-      // that requests multiplexed onto the same HTTP/2 connection don't
-      // mistake each other's dispatch for prior use.
+      // Record provenance as soon as the connection has been checked out
+      // rather than when the response completes, so that a request that never
+      // gets a connection is not classified as pooled.
+      //
+      // Known limitation on HTTP/2: the counter is per connection, not per
+      // stream. A request multiplexed onto a connection that a concurrent
+      // sibling established a moment earlier observes a non-zero count and is
+      // classified as `Pooled`, so it stays retryable even though that
+      // connection was never in the pool. Bumping on response completion would
+      // err the other way — an in-flight sibling wouldn't mark the connection
+      // used, conservatively suppressing a legitimate retry — but it would
+      // also fail to mark a connection used before a second stream starts,
+      // which is the more common case. Most h2 transport failures are decided
+      // by the `h2::Error` branch in `is_error_retryable` before provenance is
+      // consulted, so the exposed window is narrow. Closing it properly needs
+      // a checkout-time snapshot distinguishing "this connection was created
+      // for me" from "created for a concurrent sibling", which the current
+      // design can't express.
       let mut fut = std::pin::pin!(fut);
       {
         let record = std::pin::pin!(record_connection_reuse(captured, reused));
@@ -1842,10 +1884,13 @@ async fn record_connection_reuse(
   if let Some(connected) = metadata.as_ref() {
     connected.get_extras(&mut extras);
   }
+  // `Relaxed` suffices for both: the request/response round trip already
+  // establishes the happens-before edge between this write and the retry
+  // policy's read.
   let was_reused = extras
     .get::<ConnectionUsage>()
-    .is_some_and(|usage| usage.0.fetch_add(1, Ordering::SeqCst) > 0);
-  reused.0.store(was_reused, Ordering::SeqCst);
+    .is_some_and(|usage| usage.0.fetch_add(1, Ordering::Relaxed) > 0);
+  reused.0.store(was_reused, Ordering::Relaxed);
 }
 
 /// Deno.fetch's retry policy.
@@ -1881,11 +1926,16 @@ where
         None
       }
       Err(err) => {
-        let connection_reused = req
+        let connection_kind = if req
           .extensions()
           .get::<ConnectionReused>()
-          .is_some_and(|reused| reused.0.load(Ordering::SeqCst));
-        if is_error_retryable(&*err, connection_reused) {
+          .is_some_and(|reused| reused.0.load(Ordering::Relaxed))
+        {
+          ConnectionKind::Pooled
+        } else {
+          ConnectionKind::Fresh
+        };
+        if is_error_retryable(&*err, connection_kind) {
           req.extensions_mut().insert(Retried);
           Some(future::ready(()))
         } else {
@@ -1914,14 +1964,24 @@ where
   }
 }
 
-/// `connection_reused` tells whether the failed attempt was sent on a
-/// connection that had already served a request. Transport-level failures are
-/// only safe to retry on such connections: a failure on a freshly established
-/// connection means the server accepted the request and may well have processed
-/// it, so resending would duplicate a non-idempotent request.
+/// Provenance of the connection a request attempt was sent on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ConnectionKind {
+  /// Checked out of the pool, i.e. it had already served a request.
+  Pooled,
+  /// Established for this attempt.
+  Fresh,
+}
+
+/// `connection_kind` tells whether the failed attempt was sent on a connection
+/// that had already served a request. Transport-level failures are only safe to
+/// retry on [`ConnectionKind::Pooled`] connections: the same failure on a
+/// [`ConnectionKind::Fresh`] one means the server accepted the request and may
+/// well have processed it, so resending would duplicate a non-idempotent
+/// request.
 fn is_error_retryable(
   err: &(dyn std::error::Error + 'static),
-  connection_reused: bool,
+  connection_kind: ConnectionKind,
 ) -> bool {
   // Note: hyper doesn't promise it will always be this h2 version. Keep up to date.
   if let Some(err) = find_source::<h2::Error>(err) {
@@ -1946,7 +2006,7 @@ fn is_error_retryable(
   // The remaining cases are only distinguishable from a server that accepted
   // the request and then died halfway through by the fact that the connection
   // came out of the pool.
-  if !connection_reused {
+  if connection_kind == ConnectionKind::Fresh {
     return false;
   }
 
