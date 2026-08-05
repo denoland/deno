@@ -171,6 +171,40 @@ Deno.test({ permissions: { read: false } }, async function readPermFailure() {
   }, Deno.errors.NotCapable);
 });
 
+// Regression test for https://github.com/denoland/deno/issues/27497
+// Reading from a file opened without `read: true` used to surface as the
+// raw OS error ("Bad file descriptor (os error 9)"). Make sure we now
+// throw a TypeError with an actionable hint *before* hitting the kernel.
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function readWithoutReadAccessThrowsTypeError() {
+    const tempDir = await Deno.makeTempDir();
+    const filename = `${tempDir}/log.txt`;
+    await Deno.writeTextFile(filename, "hi\n");
+    using file = await Deno.open(filename, { append: true });
+
+    // The validation is synchronous — both `read` and `readSync` throw
+    // before dispatching to the kernel.
+    assertThrows(
+      () => file.readSync(new Uint8Array(8)),
+      TypeError,
+      "FsFile.readSync: file was opened without read access",
+    );
+    assertThrows(
+      () => file.read(new Uint8Array(8)),
+      TypeError,
+      "FsFile.read: file was opened without read access",
+    );
+    assertThrows(
+      () => file.readable,
+      TypeError,
+      "FsFile.readable: file was opened without read access",
+    );
+
+    await Deno.remove(tempDir, { recursive: true });
+  },
+);
+
 Deno.test(
   { permissions: { write: true } },
   async function writeNullBufferFailure() {
