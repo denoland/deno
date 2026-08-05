@@ -58,26 +58,37 @@ pub use self::diagnostics::Position;
 pub use self::js::TscConstants;
 
 pub fn get_types_declaration_file_text() -> String {
-  concat_lib_texts(&[
-    "deno.ns",
-    "deno.console",
-    "deno.url",
-    "deno.web",
-    "deno.fetch",
-    "deno.webgpu",
-    "deno.websocket",
-    "deno.webstorage",
-    "deno.canvas",
-    "deno.crypto",
-    "deno.broadcast_channel",
-    "deno.net",
-    "deno.shared_globals",
-    "deno.cache",
-    "esnext.temporal",
-    "deno.window",
-    "deno.unstable",
-  ])
+  concat_lib_texts(WINDOW_LIB_NAMES)
 }
+
+/// The full window lib set plus `deno.desktop`, used by `deno check --desktop`
+/// (and `deno desktop`). `deno.desktop` is additive: it declares the extra
+/// desktop-only globals (e.g. `Notification`) on top of the window globals.
+pub fn get_desktop_types_declaration_file_text() -> String {
+  let mut names = WINDOW_LIB_NAMES.to_vec();
+  names.push("deno.desktop");
+  concat_lib_texts(&names)
+}
+
+const WINDOW_LIB_NAMES: &[&str] = &[
+  "deno.ns",
+  "deno.console",
+  "deno.url",
+  "deno.web",
+  "deno.fetch",
+  "deno.webgpu",
+  "deno.websocket",
+  "deno.webstorage",
+  "deno.canvas",
+  "deno.crypto",
+  "deno.broadcast_channel",
+  "deno.net",
+  "deno.shared_globals",
+  "deno.cache",
+  "esnext.temporal",
+  "deno.window",
+  "deno.unstable",
+];
 
 /// The `Deno` namespace only, without Deno's web-platform globals (`fetch`,
 /// `FormData`, `console`, WebGPU, ...). For projects that opt into the `dom`
