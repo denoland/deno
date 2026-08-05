@@ -1,0 +1,18 @@
+{
+  "tempDir": true,
+  "steps": [
+    // With coverage enabled the fast filter path falls back to the legacy
+    // single-phase path, so even filtered-out files contribute the coverage of
+    // their top-level evaluation.
+    {
+      "args": "test --quiet --coverage=cov_data --filter match .",
+      "exitCode": 0,
+      "output": "test_run.out"
+    },
+    {
+      "args": "coverage cov_data",
+      "exitCode": 0,
+      "output": "coverage.out"
+    }
+  ]
+}

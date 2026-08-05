@@ -1,0 +1,25 @@
+Warning Permissions in the config file is an experimental feature and may change in the future.
+Check [WILDCARD]member_a/main_test.ts
+Check [WILDCARD]member_b/main_test.ts
+running 1 test from ./member_a/main_test.ts
+match ... ok ([WILDCARD])
+Uncaught error from ./member_b/main_test.ts FAILED
+
+ ERRORS 
+
+./member_b/main_test.ts (uncaught error)
+error: (in promise) NotCapable: Requires read access to "[WILDCARD]data.txt", run again with the --allow-read flag
+Deno.readTextFileSync(import.meta.dirname + "/../member_a/data.txt");
+     ^
+    at Object.readTextFileSync [WILDCARD]
+    at [WILDCARD]member_b/main_test.ts:3:6
+This error was not caught from a test and caused the test runner to fail on the referenced module.
+It most likely originated from a dangling promise, event/timeout handler or top-level code.
+
+ FAILURES 
+
+./member_b/main_test.ts (uncaught error)
+
+FAILED | 1 passed | 1 failed ([WILDCARD])
+
+error: Test failed
