@@ -1,9 +1,17 @@
 {
-  "steps": [
-    {
-      "if": "unix",
-      "args": "run -A main.ts",
-      "output": "ok\n"
+  "tests": {
+    // Regression test for #15370: the TZ environment variable must be
+    // respected on every platform, including Windows (where ICU otherwise
+    // reads the host time zone from the OS and ignores TZ).
+    "startup": {
+      "envs": { "TZ": "Asia/Manila" },
+      "args": "run main.ts",
+      "output": "main.out"
+    },
+    // Setting TZ at runtime via Deno.env.set must also take effect.
+    "runtime": {
+      "args": "run --allow-env runtime.ts",
+      "output": "runtime.out"
     }
-  ]
+  }
 }
