@@ -61,6 +61,7 @@ tokio.workspace = true
 tokio-eld.workspace = true
 url.workspace = true
 webpki-root-certs.workspace = true
+x509-parser.workspace = true
 zstd.workspace = true
 
 [target.'cfg(unix)'.dependencies]
