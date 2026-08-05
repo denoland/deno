@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "roots": [
+    "file://[WILDCARD]/main.ts"
+  ],
+  "modules": [
+    {
+      "kind": "esm",
+      "dependencies": [
+        {
+          "specifier": "@denotest/different-nested-dep",
+          "code": {
+            "specifier": "npm:@denotest/different-nested-dep@1.0.0",
+            "span": {
+              "start": {
+                "line": 0,
+                "character": 16
+              },
+              "end": {
+                "line": 0,
+                "character": 48
+              }
+            }
+          }
+        }
+      ],
+      "local": "[WILDCARD]main.ts",
+      "size": 399,
+      "mediaType": "TypeScript",
+      "specifier": "file://[WILDCARD]/main.ts"
+    },
+    {
+      "kind": "npm",
+      "specifier": "npm:/@denotest/different-nested-dep@1.0.0",
+      "npmPackage": "@denotest/different-nested-dep@1.0.0"
+    }
+  ],
+  "redirects": {
+    "npm:@denotest/different-nested-dep@1.0.0": "npm:/@denotest/different-nested-dep@1.0.0"
+  },
+  "npmPackages": {
+    "@denotest/different-nested-dep@1.0.0": {
+      "name": "@denotest/different-nested-dep",
+      "version": "1.0.0",
+      "dependencies": [
+        "@denotest/different-nested-dep-child@1.0.0"
+      ],
+      "registryUrl": "http://localhost:4260/",
+      "localPath": "[WILDCARD]"
+    },
+    "@denotest/different-nested-dep-child@1.0.0": {
+      "name": "@denotest/different-nested-dep-child",
+      "version": "1.0.0",
+      "dependencies": [],
+      "registryUrl": "http://localhost:4260/",
+      "localPath": "[WILDCARD]"
+    },
+    "@denotest/different-nested-dep-child@2.0.0": {
+      "name": "@denotest/different-nested-dep-child",
+      "version": "2.0.0",
+      "dependencies": [],
+      "registryUrl": "http://localhost:4260/",
+      "localPath": "[WILDCARD]"
+    }
+  }
+}
