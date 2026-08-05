@@ -77,6 +77,7 @@ pub use bi_pipe::BiPipeWrite;
 pub use bi_pipe::RawBiPipeHandle;
 pub use bi_pipe::bi_pipe_pair_raw;
 pub use fd_table::FdTable;
+pub use fd_table::register_internal_fd;
 pub use pipe::AsyncPipeRead;
 pub use pipe::AsyncPipeWrite;
 pub use pipe::PipeRead;

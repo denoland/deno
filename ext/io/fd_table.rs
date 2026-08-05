@@ -1,7 +1,10 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::rc::Rc;
+use std::sync::Mutex;
+use std::sync::OnceLock;
 
 use crate::fs::File;
 
@@ -33,6 +36,17 @@ pub enum FdOwnership {
 /// to look up files and detect duplicate registrations.
 pub struct FdTable {
   entries: HashMap<i32, FdOwnership>,
+}
+
+static INTERNAL_FDS: OnceLock<Mutex<HashSet<i32>>> = OnceLock::new();
+
+/// Register a process-owned fd that must not be adopted by user fd APIs.
+pub fn register_internal_fd(fd: i32) {
+  INTERNAL_FDS
+    .get_or_init(Default::default)
+    .lock()
+    .unwrap()
+    .insert(fd);
 }
 
 impl FdTable {
@@ -98,7 +112,12 @@ impl FdTable {
 
   /// Check if an fd is registered (either ownership type).
   pub fn contains(&self, fd: i32) -> bool {
-    self.entries.contains_key(&fd)
+    if self.entries.contains_key(&fd) {
+      return true;
+    }
+    INTERNAL_FDS
+      .get()
+      .is_some_and(|fds| fds.lock().unwrap().contains(&fd))
   }
 
   /// Check if an fd is an inherited extra stdio descriptor.
