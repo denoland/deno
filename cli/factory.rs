@@ -656,6 +656,7 @@ impl CliFactory {
             | DenoSubcommand::Lsp
             | DenoSubcommand::SyncTypes { .. }
             | DenoSubcommand::Lint { .. }
+            | DenoSubcommand::Codemod { .. }
             | DenoSubcommand::Repl { .. }
             | DenoSubcommand::Run { .. }
             | DenoSubcommand::Serve { .. }

@@ -280,6 +280,9 @@ async fn run_subcommand(
         tools::lint::lint(Arc::new(flags), lint_flags).await
       }
     }),
+    DenoSubcommand::Codemod(codemod_flags) => spawn_subcommand(async move {
+      tools::codemod::codemod(Arc::new(flags), codemod_flags).await
+    }),
     DenoSubcommand::Outdated(update_flags) => spawn_subcommand(async move {
       tools::pm::outdated(Arc::new(flags), update_flags).await
     }),

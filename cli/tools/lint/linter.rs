@@ -40,11 +40,16 @@ pub struct CliLinterOptions {
   pub fix: bool,
   pub deno_lint_config: DenoLintConfig,
   pub maybe_plugin_runner: Option<Arc<PluginHostProxy>>,
+  /// Whether applied fixes should be written back to disk. Defaults to `true`
+  /// for normal linting; `deno codemod --dry-run` sets this to `false` so the
+  /// transformed source is computed but never persisted.
+  pub write_fixes: bool,
 }
 
 #[derive(Debug)]
 pub struct CliLinter {
   fix: bool,
+  write_fixes: bool,
   package_rules: Vec<Box<dyn PackageLintRule>>,
   linter: DenoLintLinter,
   deno_lint_config: DenoLintConfig,
@@ -68,6 +73,7 @@ impl CliLinter {
     }
     Self {
       fix: options.fix,
+      write_fixes: options.write_fixes,
       package_rules,
       linter: DenoLintLinter::new(LinterOptions {
         rules: deno_lint_rules,
@@ -227,7 +233,7 @@ impl CliLinter {
       }
     }
 
-    if fix_iterations > 0 {
+    if fix_iterations > 0 && self.write_fixes {
       // everything looks good and the file still parses, so write it out
       atomic_write_file_with_retries(
         &CliSys::default(),

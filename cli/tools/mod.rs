@@ -5,6 +5,7 @@ pub mod bump_version;
 pub mod bundle;
 pub mod check;
 pub mod clean;
+pub mod codemod;
 pub mod compile;
 pub mod coverage;
 pub mod deploy;
