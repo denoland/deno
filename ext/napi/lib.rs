@@ -620,6 +620,8 @@ pub struct Env {
   pub async_hooks_after: v8::Global<v8::Function>,
   pub async_hooks_destroy: v8::Global<v8::Function>,
   pub next_async_id: i64,
+  #[cfg(unix)]
+  active_poll_fds: HashMap<i32, usize>,
 }
 
 unsafe impl Send for Env {}
@@ -654,6 +656,8 @@ impl Env {
       async_hooks_after,
       async_hooks_destroy,
       next_async_id: 1,
+      #[cfg(unix)]
+      active_poll_fds: HashMap::new(),
       shared: std::ptr::null_mut(),
       open_handle_scopes: 0,
       open_callback_scopes: 0,
@@ -867,6 +871,28 @@ fn drain_gc_finalizers(
     // Backstop for a throw that escaped without being recorded.
     if let Some(exception) = tc.exception() {
       report_finalizer_exception(tc, exception);
+    }
+  }
+
+  #[cfg(unix)]
+  pub(crate) fn try_acquire_poll_fd(
+    &mut self,
+    fd: i32,
+    poll_addr: usize,
+  ) -> bool {
+    match self.active_poll_fds.get(&fd) {
+      Some(owner) if *owner != poll_addr => false,
+      _ => {
+        self.active_poll_fds.insert(fd, poll_addr);
+        true
+      }
+    }
+  }
+
+  #[cfg(unix)]
+  pub(crate) fn release_poll_fd(&mut self, fd: i32, poll_addr: usize) {
+    if self.active_poll_fds.get(&fd) == Some(&poll_addr) {
+      self.active_poll_fds.remove(&fd);
     }
   }
 }

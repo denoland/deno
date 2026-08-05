@@ -548,8 +548,6 @@ struct PollBridge {
   active: AtomicBool,
   #[cfg(unix)]
   fd: c_int,
-  #[cfg(unix)]
-  cb: uv_poll_cb,
 }
 
 #[cfg(unix)]
@@ -871,6 +869,44 @@ unsafe extern "C" fn uv_idle_stop(_idle: *mut uv_idle_t) -> c_int {
   0
 }
 
+#[cfg(unix)]
+unsafe fn fcntl_retry_on_eintr(
+  fd: c_int,
+  cmd: c_int,
+  arg: c_int,
+) -> Result<c_int, c_int> {
+  loop {
+    let result = unsafe { libc::fcntl(fd, cmd, arg) };
+    if result != -1 {
+      return Ok(result);
+    }
+    let code = std::io::Error::last_os_error()
+      .raw_os_error()
+      .unwrap_or(libc::EINVAL);
+    if code != libc::EINTR {
+      return Err(code);
+    }
+  }
+}
+
+#[cfg(unix)]
+unsafe fn set_fd_nonblocking(fd: c_int) -> c_int {
+  // F_GETFL ignores the variadic argument, so this 0 placeholder is harmless.
+  let flags = match unsafe { fcntl_retry_on_eintr(fd, libc::F_GETFL, 0) } {
+    Ok(flags) => flags,
+    Err(code) => return -code,
+  };
+  if flags & libc::O_NONBLOCK != 0 {
+    return 0;
+  }
+  match unsafe {
+    fcntl_retry_on_eintr(fd, libc::F_SETFL, flags | libc::O_NONBLOCK)
+  } {
+    Ok(_) => 0,
+    Err(code) => -code,
+  }
+}
+
 #[unsafe(no_mangle)]
 unsafe extern "C" fn uv_poll_init_socket(
   r#loop: *mut uv_loop_t,
@@ -878,6 +914,13 @@ unsafe extern "C" fn uv_poll_init_socket(
   fd: uv_os_sock_t,
 ) -> c_int {
   unsafe {
+    #[cfg(unix)]
+    {
+      let result = set_fd_nonblocking(fd);
+      if result != 0 {
+        return result;
+      }
+    }
     let data = (*poll).data;
     std::ptr::write_bytes(poll.cast::<u8>(), 0, UV_POLL_SIZE);
     addr_of_mut!((*poll).data).write(data);
@@ -890,8 +933,6 @@ unsafe extern "C" fn uv_poll_init_socket(
       active: AtomicBool::new(false),
       #[cfg(unix)]
       fd,
-      #[cfg(unix)]
-      cb: None,
     });
     #[cfg(windows)]
     let _ = fd;
@@ -909,6 +950,15 @@ unsafe extern "C" fn uv_poll_init(
   unsafe { uv_poll_init_socket(r#loop, poll, fd as uv_os_sock_t) }
 }
 
+#[cfg(unix)]
+const UV_READABLE: c_int = 1;
+#[cfg(unix)]
+const UV_WRITABLE: c_int = 2;
+#[cfg(unix)]
+const UV_DISCONNECT: c_int = 4;
+#[cfg(unix)]
+const UV_PRIORITIZED: c_int = 8;
+
 #[unsafe(no_mangle)]
 unsafe extern "C" fn uv_poll_start(
   poll: *mut uv_poll_t,
@@ -918,37 +968,65 @@ unsafe extern "C" fn uv_poll_start(
   unsafe {
     let bridge_ptr = (*poll).bridge;
     if bridge_ptr.is_null() {
-      return -1;
+      return uv_compat::UV_EINVAL;
+    }
+    #[cfg(unix)]
+    if cb.is_none() && events != 0 {
+      return uv_compat::UV_EINVAL;
+    }
+    let env = &mut *(*poll).r#loop;
+    #[cfg(unix)]
+    if !env.try_acquire_poll_fd((&*bridge_ptr).fd, poll as usize) {
+      return uv_compat::UV_EEXIST;
+    }
+    if events == 0 {
+      return uv_poll_stop(poll);
     }
 
     (&*bridge_ptr).active.store(false, Ordering::Release);
     if !(*poll).active {
       (*poll).active = true;
       if (*poll).refed {
-        (&mut *(*poll).r#loop).external_ops_tracker.ref_op();
+        env.external_ops_tracker.ref_op();
       }
     }
     let bridge = Arc::new(PollBridge {
       active: AtomicBool::new(true),
       #[cfg(unix)]
       fd: (&*bridge_ptr).fd,
-      #[cfg(unix)]
-      cb,
     });
     *bridge_ptr = bridge;
     #[cfg(unix)]
     let bridge = Arc::clone(&*bridge_ptr);
-    let sender = (&mut *(*poll).r#loop).async_work_sender.clone();
+    let sender = env.async_work_sender.clone();
     let poll_ptr = SendPtr(poll as *const uv_poll_t);
     #[cfg(unix)]
     std::thread::spawn(move || {
+      let poll = poll_ptr.take() as *mut uv_poll_t;
+      let cb = cb.unwrap();
       let mut poll_events = 0;
-      if events & 1 != 0 {
+      if events & UV_READABLE != 0 {
         poll_events |= libc::POLLIN;
       }
-      if events & 2 != 0 {
+      if events & UV_WRITABLE != 0 {
         poll_events |= libc::POLLOUT;
       }
+      if events & UV_PRIORITIZED != 0 {
+        poll_events |= libc::POLLPRI;
+      }
+      // POLLRDHUP is only available on these targets. Elsewhere, omitting
+      // UV_DISCONNECT is fine: libuv treats it as an optional shutdown
+      // optimization.
+      #[cfg(any(
+        target_os = "linux",
+        target_os = "android",
+        target_os = "freebsd",
+        target_os = "illumos",
+      ))]
+      if events & UV_DISCONNECT != 0 {
+        poll_events |= libc::POLLRDHUP;
+      }
+
       while bridge.active.load(Ordering::Acquire) {
         let mut fds = libc::pollfd {
           fd: bridge.fd,
@@ -956,20 +1034,70 @@ unsafe extern "C" fn uv_poll_start(
           revents: 0,
         };
         let result = libc::poll(&mut fds, 1, 10);
-        if result <= 0 {
+        if result == 0 {
           continue;
         }
-        if !bridge.active.swap(false, Ordering::AcqRel) {
+        let mut cb_status = 0;
+        if result < 0 {
+          let code = std::io::Error::last_os_error()
+            .raw_os_error()
+            .unwrap_or(libc::EIO);
+          if code == libc::EINTR {
+            continue;
+          }
+          cb_status = -code;
+        }
+        let mut cb_events = 0;
+        if result > 0 {
+          if fds.revents & libc::POLLIN != 0 {
+            cb_events |= UV_READABLE;
+          }
+          if fds.revents & libc::POLLOUT != 0 {
+            cb_events |= UV_WRITABLE;
+          }
+          if fds.revents & libc::POLLPRI != 0 {
+            cb_events |= UV_PRIORITIZED;
+          }
+          #[cfg(any(
+            target_os = "linux",
+            target_os = "android",
+            target_os = "freebsd",
+            target_os = "illumos",
+          ))]
+          if fds.revents & libc::POLLRDHUP != 0 {
+            cb_events |= UV_DISCONNECT;
+          }
+
+          if fds.revents & libc::POLLNVAL != 0
+            || (fds.revents & libc::POLLERR != 0
+              && fds.revents & libc::POLLPRI == 0)
+          {
+            cb_status = uv_compat::UV_EBADF;
+            cb_events = 0;
+          } else if fds.revents & (libc::POLLERR | libc::POLLHUP) != 0 {
+            // libuv reports the interests that can make progress on an error
+            // or hangup, even when poll(2) returned no ordinary readiness bits.
+            cb_events |= events
+              & (UV_READABLE | UV_WRITABLE | UV_DISCONNECT | UV_PRIORITIZED);
+          }
+        }
+        if !bridge.active.load(Ordering::Acquire) {
           break;
         }
-        if let Some(cb) = bridge.cb {
-          let poll_ptr = SendPtr(poll_ptr.take());
-          sender.spawn(move |_| {
-            let poll = poll_ptr.take() as *mut uv_poll_t;
-            cb(poll, 0, events);
-          });
-        }
-        break;
+        let bridge = Arc::clone(&bridge);
+        let poll_ptr = SendPtr(poll as *const uv_poll_t);
+        // Waiting for the loop-thread callback provides back-pressure for
+        // level-triggered fds. Re-polling earlier can flood the loop queue.
+        sender.spawn_blocking(move |_| {
+          if !bridge.active.load(Ordering::Acquire) {
+            return;
+          }
+          let poll = poll_ptr.take() as *mut uv_poll_t;
+          if cb_status != 0 {
+            uv_poll_stop(poll);
+          }
+          cb(poll, cb_status, cb_events);
+        });
       }
     });
     #[cfg(windows)]
@@ -994,13 +1122,7 @@ unsafe fn uv_poll_close(poll: *mut uv_poll_t) {
     if bridge_ptr.is_null() {
       return;
     }
-    (&*bridge_ptr).active.store(false, Ordering::Release);
-    if (*poll).active {
-      (*poll).active = false;
-      if (*poll).refed {
-        (&mut *(*poll).r#loop).external_ops_tracker.unref_op();
-      }
-    }
+    uv_poll_stop(poll);
     drop(Box::from_raw(bridge_ptr));
     (*poll).bridge = std::ptr::null_mut();
   }
@@ -1017,6 +1139,8 @@ unsafe extern "C" fn uv_poll_stop(poll: *mut uv_poll_t) -> c_int {
       return 0;
     }
     (&*bridge_ptr).active.store(false, Ordering::Release);
+    #[cfg(unix)]
+    (&mut *(*poll).r#loop).release_poll_fd((&*bridge_ptr).fd, poll as usize);
     if (*poll).active {
       (*poll).active = false;
       if (*poll).refed {
