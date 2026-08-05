@@ -43,7 +43,10 @@ struct ConnectionSpec {
 
 impl ConnectionSpec {
   fn endpoint(&self, port: u16) -> String {
-    format!("{}:{}", self.ip, port)
+    match self.transport.as_str() {
+      "ipc" => format!("ipc://{}-{}", self.ip, port),
+      _ => format!("{}:{}", self.ip, port),
+    }
   }
 }
 
@@ -81,6 +84,22 @@ impl ConnectionSpec {
       },
       listeners,
     )
+  }
+
+  #[cfg(unix)]
+  fn new_ipc(ip: String) -> Self {
+    Self {
+      key: "".into(),
+      signature_scheme: "hmac-sha256".into(),
+      transport: "ipc".into(),
+      ip,
+      hb_port: 1,
+      control_port: 2,
+      shell_port: 3,
+      stdin_port: 4,
+      iopub_port: 5,
+      kernel_name: "deno".into(),
+    }
   }
 }
 
@@ -395,6 +414,10 @@ impl Drop for JupyterServerProcess {
 }
 
 async fn server_ready_on(addr: &str) -> bool {
+  if let Some(path) = addr.strip_prefix("ipc://") {
+    return tokio::fs::metadata(path).await.is_ok();
+  }
+
   matches!(
     timeout(
       Duration::from_millis(1000),
@@ -423,6 +446,41 @@ async fn server_ready(conn: &ConnectionSpec) -> bool {
 
 async fn setup_server() -> (TestContext, ConnectionSpec, JupyterServerProcess) {
   setup_server_with_key("").await
+}
+
+#[cfg(unix)]
+async fn setup_ipc_server()
+-> (TestContext, ConnectionSpec, JupyterServerProcess) {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let socket_prefix = context
+    .temp_dir()
+    .path()
+    .join("deno-jupyter-ipc")
+    .to_string_lossy()
+    .to_string();
+  let conn = ConnectionSpec::new_ipc(socket_prefix);
+  let conn_file = context.temp_dir().path().join("connection.json");
+  conn_file.write_json(&conn);
+
+  let mut process = context
+    .new_command()
+    .args_vec(vec![
+      "jupyter",
+      "--kernel",
+      "--conn",
+      conn_file.to_string().as_str(),
+    ])
+    .spawn()
+    .unwrap();
+
+  for _ in 0..40 {
+    if process.try_wait().unwrap().is_none() && server_ready(&conn).await {
+      return (context, conn, JupyterServerProcess(Some(process)));
+    }
+    tokio::time::sleep(Duration::from_millis(250)).await;
+  }
+
+  panic!("Failed to start Jupyter IPC server");
 }
 
 async fn setup_server_with_key(
@@ -485,6 +543,26 @@ async fn setup() -> (TestContext, JupyterClient, JupyterServerProcess) {
   let _ = client.recv_heartbeat().await.unwrap();
 
   (context, client, process)
+}
+
+#[cfg(unix)]
+#[test]
+async fn jupyter_ipc_kernel_info() -> Result<()> {
+  let (_ctx, conn, _process) = setup_ipc_server().await;
+  let client = JupyterClient::new(&conn).await;
+  client.io_subscribe("").await?;
+  client.send_heartbeat(b"ping").await?;
+  let msg = client.recv_heartbeat().await?;
+  assert_eq!(msg, Bytes::from_static(b"ping"));
+
+  client
+    .send(Control, "kernel_info_request", json!({}))
+    .await?;
+  let msg = client.recv(Control).await?;
+  assert_eq!(msg.header.msg_type, "kernel_info_reply");
+  assert_json_subset(msg.content, json!({ "status": "ok" }));
+
+  Ok(())
 }
 
 #[test]
