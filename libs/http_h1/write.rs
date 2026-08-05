@@ -14,6 +14,9 @@ pub struct ResponseHeader<'a> {
   pub headers: &'a [Header<'a>],
   pub content_length: Option<u64>,
   pub keep_alive: bool,
+  /// node:http mode: preserve a user-set content-length on bodiless statuses
+  /// (1xx/204/205/304) instead of stripping it like Deno.serve does.
+  pub node_mode: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -210,6 +213,53 @@ pub fn append_chunked_end_to(
   Ok(cursor.len())
 }
 
+// node:http hardcodes an HTTP/1.1 status line on every response (even to
+// HTTP/1.0 clients); Deno.serve echoes the request version. The keep-alive and
+// chunked-framing logic continues to use `response.version` (the real request
+// version), so 1.0 close-delimiting / explicit keep-alive still work.
+fn status_line_version(response: &ResponseHeader<'_>) -> Version {
+  if response.node_mode {
+    Version::Http11
+  } else {
+    response.version
+  }
+}
+
+// The auto `Connection` header bytes for this response, or None if none is
+// emitted. node:http capitalizes it (Deno.serve lowercases). A close-delimited
+// HTTP/1.0 response (streamed body, no Content-Length, no chunked framing) is
+// delimited by the connection close, so node:http emits an explicit close.
+// Callers place this BEFORE Transfer-Encoding for node:http (Node's order) and
+// after the framing headers for Deno.serve.
+fn connection_header_for(
+  response: &ResponseHeader<'_>,
+  chunked: bool,
+  body_allowed: bool,
+) -> Option<&'static [u8]> {
+  let node_mode = response.node_mode;
+  if response.keep_alive && response.version == Version::Http10 {
+    Some(if node_mode {
+      b"Connection: keep-alive\r\n".as_slice()
+    } else {
+      b"connection: keep-alive\r\n".as_slice()
+    })
+  } else if (!response.keep_alive && response.version == Version::Http11)
+    || (node_mode
+      && response.version == Version::Http10
+      && body_allowed
+      && response.content_length.is_none()
+      && !chunked)
+  {
+    Some(if node_mode {
+      b"Connection: close\r\n".as_slice()
+    } else {
+      b"connection: close\r\n".as_slice()
+    })
+  } else {
+    None
+  }
+}
+
 fn write_response_head_inner(
   out: &mut Vec<u8>,
   response: ResponseHeader<'_>,
@@ -218,7 +268,9 @@ fn write_response_head_inner(
   let chunked = chunked && response.version == Version::Http11;
   assert!(valid_reason(response.reason), "invalid response reason");
   out.clear();
-  out.extend_from_slice(response_version_bytes(response.version));
+  // node:http always writes an HTTP/1.1 status line, even to HTTP/1.0 clients
+  // (the keep-alive/framing logic below still uses the real request version).
+  out.extend_from_slice(response_version_bytes(status_line_version(&response)));
   out.push(b' ');
   push_status(out, response.status);
   out.push(b' ');
@@ -227,6 +279,10 @@ fn write_response_head_inner(
 
   let mut date = None;
   let body_allowed = status_allows_body(response.status);
+  let node_mode = response.node_mode;
+  // node:http sends a user-set content-length verbatim (the engine doesn't
+  // override it); track it so we don't also emit our own below.
+  let mut user_content_length = false;
   for header in response.headers {
     assert!(
       valid_header_name(header.name),
@@ -236,12 +292,22 @@ fn write_response_head_inner(
       valid_header_value(header.value),
       "invalid response header value"
     );
-    if header.name.eq_ignore_ascii_case(b"date") {
+    // Deno.serve captures a user/auto Date and re-emits it after the framing
+    // headers. node:http supplies its own Date (nativeWireHeaders) already in
+    // Node's order (before Connection) and casing, so write it verbatim in place.
+    if !node_mode && header.name.eq_ignore_ascii_case(b"date") {
       date = Some(header.value);
       continue;
     }
     if header.name.eq_ignore_ascii_case(b"content-length") {
-      continue;
+      // Deno.serve strips a user content-length and emits its own. node:http
+      // sends a user-set content-length verbatim -- Node never overrides it, so
+      // multiple/mismatched lengths reach the client (which may reject per RFC).
+      // The engine then skips emitting its own (see `user_content_length`).
+      if !node_mode {
+        continue;
+      }
+      user_content_length = true;
     }
     if header.name.eq_ignore_ascii_case(b"transfer-encoding") {
       continue;
@@ -255,14 +321,33 @@ fn write_response_head_inner(
   if let Some(content_length) = response.content_length
     && body_allowed
     && !chunked
+    && !user_content_length
   {
-    out.extend_from_slice(b"content-length: ");
+    // node:http capitalizes the auto Content-Length header (Deno.serve uses
+    // lowercase); Node always emits `Content-Length` and some clients/tests
+    // depend on the exact bytes.
+    out.extend_from_slice(if node_mode {
+      b"Content-Length: ".as_slice()
+    } else {
+      b"content-length: ".as_slice()
+    });
     push_u64(out, content_length);
     out.extend_from_slice(b"\r\n");
   }
 
+  let connection = connection_header_for(&response, chunked, body_allowed);
+  // node:http emits the Connection header BEFORE Transfer-Encoding (Node's
+  // order); Deno.serve emits it after the framing headers (its byte layout).
+  if node_mode && let Some(connection) = connection {
+    out.extend_from_slice(connection);
+  }
+
   if chunked && body_allowed {
-    out.extend_from_slice(b"transfer-encoding: chunked\r\n");
+    out.extend_from_slice(if node_mode {
+      b"Transfer-Encoding: chunked\r\n".as_slice()
+    } else {
+      b"transfer-encoding: chunked\r\n".as_slice()
+    });
   }
 
   if let Some(date) = date {
@@ -271,10 +356,8 @@ fn write_response_head_inner(
     out.extend_from_slice(b"\r\n");
   }
 
-  if response.keep_alive && response.version == Version::Http10 {
-    out.extend_from_slice(b"connection: keep-alive\r\n");
-  } else if !response.keep_alive && response.version == Version::Http11 {
-    out.extend_from_slice(b"connection: close\r\n");
+  if !node_mode && let Some(connection) = connection {
+    out.extend_from_slice(connection);
   }
   out.extend_from_slice(b"\r\n");
 }
@@ -287,7 +370,8 @@ fn write_response_head_to_inner(
   let chunked = chunked && response.version == Version::Http11;
   assert!(valid_reason(response.reason), "invalid response reason");
   let mut cursor = SliceWriter::new(out);
-  cursor.push(response_version_bytes(response.version))?;
+  // node:http always writes an HTTP/1.1 status line (see write_response_head_inner).
+  cursor.push(response_version_bytes(status_line_version(&response)))?;
   cursor.push(b" ")?;
   cursor.push_status(response.status)?;
   cursor.push(b" ")?;
@@ -296,6 +380,10 @@ fn write_response_head_to_inner(
 
   let mut date = None;
   let body_allowed = status_allows_body(response.status);
+  let node_mode = response.node_mode;
+  // node:http sends a user-set content-length verbatim (the engine doesn't
+  // override it); track it so we don't also emit our own below.
+  let mut user_content_length = false;
   for header in response.headers {
     assert!(
       valid_header_name(header.name),
@@ -305,12 +393,22 @@ fn write_response_head_to_inner(
       valid_header_value(header.value),
       "invalid response header value"
     );
-    if header.name.eq_ignore_ascii_case(b"date") {
+    // Deno.serve captures a user/auto Date and re-emits it after the framing
+    // headers. node:http supplies its own Date (nativeWireHeaders) already in
+    // Node's order (before Connection) and casing, so write it verbatim in place.
+    if !node_mode && header.name.eq_ignore_ascii_case(b"date") {
       date = Some(header.value);
       continue;
     }
     if header.name.eq_ignore_ascii_case(b"content-length") {
-      continue;
+      // Deno.serve strips a user content-length and emits its own. node:http
+      // sends a user-set content-length verbatim -- Node never overrides it, so
+      // multiple/mismatched lengths reach the client (which may reject per RFC).
+      // The engine then skips emitting its own (see `user_content_length`).
+      if !node_mode {
+        continue;
+      }
+      user_content_length = true;
     }
     if header.name.eq_ignore_ascii_case(b"transfer-encoding") {
       continue;
@@ -324,14 +422,26 @@ fn write_response_head_to_inner(
   if let Some(content_length) = response.content_length
     && body_allowed
     && !chunked
+    && !user_content_length
   {
     cursor.push(b"content-length: ")?;
     cursor.push_u64(content_length)?;
     cursor.push(b"\r\n")?;
   }
 
+  let connection = connection_header_for(&response, chunked, body_allowed);
+  // node:http emits the Connection header BEFORE Transfer-Encoding (Node's
+  // order); Deno.serve emits it after the framing headers (its byte layout).
+  if node_mode && let Some(connection) = connection {
+    cursor.push(connection)?;
+  }
+
   if chunked && body_allowed {
-    cursor.push(b"transfer-encoding: chunked\r\n")?;
+    cursor.push(if node_mode {
+      b"Transfer-Encoding: chunked\r\n".as_slice()
+    } else {
+      b"transfer-encoding: chunked\r\n".as_slice()
+    })?;
   }
 
   if let Some(date) = date {
@@ -340,10 +450,8 @@ fn write_response_head_to_inner(
     cursor.push(b"\r\n")?;
   }
 
-  if response.keep_alive && response.version == Version::Http10 {
-    cursor.push(b"connection: keep-alive\r\n")?;
-  } else if !response.keep_alive && response.version == Version::Http11 {
-    cursor.push(b"connection: close\r\n")?;
+  if !node_mode && let Some(connection) = connection {
+    cursor.push(connection)?;
   }
   cursor.push(b"\r\n")?;
   Ok(cursor.len())
@@ -540,6 +648,7 @@ mod tests {
         headers: &headers,
         content_length: Some(13),
         keep_alive: true,
+        node_mode: false,
       },
     );
     assert_eq!(
@@ -624,6 +733,7 @@ mod tests {
         headers: &headers,
         content_length: None,
         keep_alive: true,
+        node_mode: false,
       },
     );
     assert_eq!(
@@ -671,6 +781,7 @@ mod tests {
         headers: &headers,
         content_length: Some(0),
         keep_alive: true,
+        node_mode: false,
       },
     );
   }
@@ -692,6 +803,7 @@ mod tests {
         headers: &headers,
         content_length: Some(0),
         keep_alive: true,
+        node_mode: false,
       },
     );
   }
@@ -719,6 +831,7 @@ mod tests {
         headers: &[],
         content_length: Some(0),
         keep_alive: false,
+        node_mode: false,
       },
     );
     assert_eq!(
@@ -757,6 +870,7 @@ mod tests {
         headers: &headers,
         content_length: Some(5),
         keep_alive: true,
+        node_mode: false,
       },
     );
     assert_eq!(
@@ -791,6 +905,7 @@ mod tests {
         headers: &headers,
         content_length: Some(5),
         keep_alive: true,
+        node_mode: false,
       },
     )
     .unwrap();
@@ -812,6 +927,7 @@ mod tests {
         headers: &[],
         content_length: Some(5),
         keep_alive: false,
+        node_mode: false,
       },
     );
     assert_eq!(out, b"HTTP/1.0 200 OK\r\ncontent-length: 5\r\n\r\n");
@@ -829,6 +945,7 @@ mod tests {
         headers: &[],
         content_length: Some(5),
         keep_alive: true,
+        node_mode: false,
       },
     );
     assert_eq!(
@@ -849,6 +966,7 @@ mod tests {
         headers: &[],
         content_length: None,
         keep_alive: false,
+        node_mode: false,
       },
     );
     assert_eq!(out, b"HTTP/1.0 200 OK\r\n\r\n");
@@ -866,6 +984,7 @@ mod tests {
         headers: &[],
         content_length: Some(5),
         keep_alive: true,
+        node_mode: false,
       },
     );
     assert_eq!(out, b"HTTP/1.1 205 Reset Content\r\n\r\n");
@@ -897,6 +1016,7 @@ mod tests {
         headers: &headers,
         content_length: Some(100),
         keep_alive: true,
+        node_mode: false,
       },
     );
     assert_eq!(out, b"HTTP/1.1 304 Not Modified\r\nx-test: ok\r\n\r\n");
@@ -928,6 +1048,7 @@ mod tests {
         headers: &headers,
         content_length: Some(100),
         keep_alive: true,
+        node_mode: false,
       },
     )
     .unwrap();
@@ -953,6 +1074,7 @@ mod tests {
         headers: &headers,
         content_length: Some(13),
         keep_alive: true,
+        node_mode: false,
       },
     )
     .unwrap();
@@ -975,6 +1097,7 @@ mod tests {
           headers: &[],
           content_length: Some(0),
           keep_alive: true,
+          node_mode: false,
         },
       ),
       Err(OutputFull)
