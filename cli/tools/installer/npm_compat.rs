@@ -664,14 +664,69 @@ fn resolve_version_req(meta: &Value, req: &str) -> Option<String> {
 
 /// If `deno_json` references an external import map via `importMap`, read that
 /// file and return its `imports` object.
+///
+/// Local (`./` / `../`) import targets in the referenced map are relative to the
+/// import map file's own directory, which may differ from `project_root` (e.g. a
+/// deno.json in a subdirectory referencing an import map at the repo root). The
+/// downstream `paths` generation treats local targets as project-root-relative,
+/// so rebase each such target onto `project_root` here.
 fn read_referenced_import_map(
   project_root: &Path,
   deno_json: &Value,
 ) -> Option<serde_json::Map<String, Value>> {
   let rel = deno_json.get("importMap").and_then(|v| v.as_str())?;
-  let content = std::fs::read_to_string(project_root.join(rel)).ok()?;
+  let import_map_path = project_root.join(rel);
+  let content = std::fs::read_to_string(&import_map_path).ok()?;
   let parsed: Value = serde_json::from_str(&content).ok()?;
-  parsed.get("imports").and_then(|v| v.as_object()).cloned()
+  let imports = parsed.get("imports").and_then(|v| v.as_object())?;
+
+  let import_map_dir = import_map_path.parent();
+  let rebased = imports
+    .iter()
+    .map(|(alias, target)| {
+      let rebased_target = target
+        .as_str()
+        .filter(|t| t.starts_with("./") || t.starts_with("../"))
+        .and_then(|t| import_map_dir.map(|dir| (t, dir)))
+        .and_then(|(t, dir)| {
+          rebase_local_target_to_project_root(project_root, dir, t)
+        })
+        .map(Value::String)
+        .unwrap_or_else(|| target.clone());
+      (alias.clone(), rebased_target)
+    })
+    .collect();
+  Some(rebased)
+}
+
+/// Rewrite a local import-map target (relative to `import_map_dir`) into a path
+/// relative to `project_root`, always prefixed with `./` or `../` so the
+/// downstream local-alias path generation recognizes it as a local target.
+/// Returns `None` if the two directories are the same (no rebasing needed) or
+/// the result can't be computed.
+fn rebase_local_target_to_project_root(
+  project_root: &Path,
+  import_map_dir: &Path,
+  target: &str,
+) -> Option<String> {
+  if import_map_dir == project_root {
+    return None;
+  }
+  let absolute = deno_path_util::normalize_path(std::borrow::Cow::Owned(
+    import_map_dir.join(target),
+  ))
+  .into_owned();
+  // `diff_paths` returns `None` only when no relative path exists at all - in
+  // practice a Windows import map on a different drive than the project. The
+  // downstream `paths` generation is inherently project-root-relative, so such a
+  // target simply can't be expressed; return `None` and leave the original
+  // (which will fail to resolve) rather than emit a confidently-wrong path.
+  let relative = pathdiff::diff_paths(&absolute, project_root)?;
+  let mut s = relative.to_string_lossy().replace('\\', "/");
+  if !(s.starts_with("./") || s.starts_with("../")) {
+    s = format!("./{s}");
+  }
+  Some(s)
 }
 
 /// Build tsconfig `paths` entries that map each workspace member's package name
