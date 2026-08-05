@@ -9,6 +9,7 @@
 
 use std::cell::Cell;
 use std::cell::RefCell;
+use std::path::Path;
 use std::rc::Rc;
 
 use deno_core::CppgcInherits;
@@ -313,11 +314,25 @@ impl PipeWrap {
 
   #[fast]
   fn open(&self, state: &mut OpState, #[smi] fd: i32) -> i32 {
-    // See `FdTable::begin_uv_adopt` for the duplicate-fd policy (stdio and
-    // inherited extra stdio fds may be adopted; other tracked fds are
-    // rejected).
-    let Some(was_inherited) =
-      state.borrow::<deno_io::FdTable>().begin_uv_adopt(fd)
+    if fd < 0 {
+      return uv_compat::UV_EBADF;
+    }
+    // Descriptors explicitly associated with this isolate may be adopted
+    // directly. Preserve Node compatibility for an untracked raw descriptor
+    // only when the isolate has all permissions.
+    let untracked =
+      fd > 2 && !state.borrow::<deno_io::FdTable>().contains(fd);
+    let allow_untracked = untracked
+      && state
+        .borrow::<PermissionsContainer>()
+        .check_has_all_permissions(Path::new("node:net.Socket({ fd })"))
+        .is_ok();
+    if untracked && !allow_untracked {
+      return -libc::EPERM;
+    }
+    let Some(replace_registration) = state
+      .borrow::<deno_io::FdTable>()
+      .begin_uv_adopt(fd, allow_untracked)
     else {
       return -libc::EEXIST;
     };
@@ -340,7 +355,7 @@ impl PipeWrap {
     if ret == 0 {
       state
         .borrow_mut::<deno_io::FdTable>()
-        .finish_uv_adopt(fd, was_inherited);
+        .finish_uv_adopt(fd, replace_registration);
       self.base.set_fd(fd);
     }
     ret
