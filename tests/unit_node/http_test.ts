@@ -3787,3 +3787,54 @@ Deno.test(
     await promise;
   },
 );
+
+// A server that resets the connection immediately after writing a complete
+// response must not fail the request: Node releases the socket to the agent
+// before the reset is processed, so the error is discarded and the response is
+// delivered normally. Regression test for a spurious ECONNRESET emitted in the
+// window between the last body chunk and the response's "end".
+Deno.test("[node/http] RST right after a complete response is not an error", async () => {
+  const server = net.createServer((socket) => {
+    socket.on("data", () => {
+      socket.write(
+        "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\nok",
+      );
+      socket.resetAndDestroy();
+    });
+    socket.on("error", () => {});
+  });
+
+  const port = await new Promise<number>((resolve) => {
+    server.listen(0, () => resolve((server.address() as AddressInfo).port));
+  });
+
+  const agent = new http.Agent({ keepAlive: true });
+  const errors: string[] = [];
+
+  const status = await new Promise<number>((resolve, reject) => {
+    const req = http.request(
+      { port, host: "127.0.0.1", method: "GET", path: "/", agent },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c) => chunks.push(c));
+        res.on("end", () => {
+          assertEquals(Buffer.concat(chunks).toString(), "ok");
+          resolve(res.statusCode!);
+        });
+        res.on("error", reject);
+      },
+    );
+    req.on("error", (e: NodeJS.ErrnoException) => {
+      errors.push(e.code ?? e.message);
+      reject(e);
+    });
+    req.end();
+  });
+
+  assertEquals(status, 200);
+  assertEquals(errors, []);
+
+  agent.destroy();
+  server.close();
+  await new Promise((resolve) => server.on("close", resolve));
+});
