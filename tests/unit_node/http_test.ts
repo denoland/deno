@@ -3750,6 +3750,50 @@ Deno.test(
 );
 
 Deno.test(
+  "[node/http] proxied absolute-form target omits the default port",
+  async () => {
+    // Node builds the absolute-form target with `new URL()`, whose `href`
+    // drops the port when it is the scheme default, so port 80 must not
+    // appear on the wire while a non-default port must.
+    for (
+      const { port, expected } of [
+        { port: 80, expected: "http://example.com/foo" },
+        { port: 8080, expected: "http://example.com:8080/foo" },
+      ]
+    ) {
+      const { promise, resolve, reject } = Promise.withResolvers<void>();
+      let seenUrl: string | undefined;
+      // unreachable target - the proxy intercepts and short-circuits.
+      const proxy = http.createServer((req, res) => {
+        seenUrl = req.url;
+        res.end("via-proxy");
+      });
+      proxy.listen(0, () => {
+        const proxyPort = (proxy.address() as AddressInfo).port;
+        const req = http.request({
+          hostname: "example.com",
+          port,
+          path: "/foo",
+          agent: new http.Agent({
+            proxyEnv: { HTTP_PROXY: `http://127.0.0.1:${proxyPort}` },
+          } as ProxyAgentLike),
+        }, (res) => {
+          res.resume();
+          res.on("end", () => {
+            proxy.close();
+            resolve();
+          });
+        });
+        req.on("error", reject);
+        req.end();
+      });
+      await promise;
+      assertEquals(seenUrl, expected);
+    }
+  },
+);
+
+Deno.test(
   "[node/http] NO_PROXY bypasses configured HTTP_PROXY",
   async () => {
     // If NO_PROXY matches the target, the request should hit the origin

@@ -649,9 +649,12 @@ function ClientRequest(input, options, cb) {
         StringPrototypeCharCodeAt(t, 0) !== 91
       ? `[${t}]`
       : t;
-    this[kPath] = `http://${formattedHost}:${this[kProxyTargetPort]}${
-      options.path || "/"
-    }`;
+    // Node builds this target with `new URL()`, whose `href` omits the port
+    // when it is the scheme default, so match that rather than always
+    // emitting `:port`.
+    const targetPort = this[kProxyTargetPort];
+    const portSuffix = +targetPort === 80 ? "" : `:${targetPort}`;
+    this[kPath] = `http://${formattedHost}${portSuffix}${options.path || "/"}`;
     this[kProxyRewrittenToAbsolute] = true;
   }
 
