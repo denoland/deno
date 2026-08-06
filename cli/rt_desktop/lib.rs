@@ -36,6 +36,8 @@ use deno_lib::version::otel_runtime_config;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_terminal::colors;
 use denort::desktop::DesktopApi;
+use denort::desktop::auto_update_file_name;
+use denort::desktop::auto_update_state_dir;
 use denort::run::RunOptions;
 
 /// Compile-time check: the laufey crate we're linking against must use the
@@ -1078,6 +1080,34 @@ fn get_dylib_path() -> Option<PathBuf> {
   }
 }
 
+/// Replaces `dylib_path` with `src`, tolerating `src` on another filesystem.
+///
+/// `rename(2)` only works within a single filesystem, and the auto-update state
+/// directory deliberately lives outside the app bundle (see
+/// `auto_update_state_dir`) — so on a machine where the `.app` and `$HOME` are
+/// on different volumes, every direct rename into the bundle fails with
+/// `EXDEV`. Staging through a temp file *beside the dylib* keeps the final step
+/// a same-filesystem rename, which is the thing that makes it atomic: the dylib
+/// is never observed half-written, however the copy goes.
+///
+/// The temp file lives inside the bundle for the duration, which is fine on
+/// this path specifically — we're replacing the dylib, so the bundle's code
+/// signature is being invalidated regardless.
+#[cfg(unix)]
+fn replace_dylib_with(src: &Path, dylib_path: &Path, tmp_suffix: &str) -> bool {
+  if std::fs::rename(src, dylib_path).is_ok() {
+    return true;
+  }
+  let tmp_path =
+    dylib_path.with_file_name(auto_update_file_name(dylib_path, tmp_suffix));
+  let staged = std::fs::copy(src, &tmp_path).is_ok()
+    && std::fs::rename(&tmp_path, dylib_path).is_ok();
+  if !staged {
+    let _ = std::fs::remove_file(&tmp_path);
+  }
+  staged
+}
+
 /// Manages pending updates and rollback on startup.
 ///
 /// Uses a sentinel file (`.update-ok`) to detect if the last update
@@ -1093,10 +1123,11 @@ fn get_dylib_path() -> Option<PathBuf> {
 #[cfg(unix)]
 #[allow(clippy::print_stderr, reason = "runs before logging is initialized")]
 fn apply_pending_update(dylib_path: &Path) -> bool {
-  let ext = dylib_path.extension().unwrap_or_default().to_string_lossy();
-  let update_path = dylib_path.with_extension(format!("{}.update", ext));
-  let backup_path = dylib_path.with_extension(format!("{}.backup", ext));
-  let sentinel_path = dylib_path.with_extension(format!("{}.update-ok", ext));
+  let state_dir = auto_update_state_dir(dylib_path);
+  let update_path = state_dir.join(auto_update_file_name(dylib_path, "update"));
+  let backup_path = state_dir.join(auto_update_file_name(dylib_path, "backup"));
+  let sentinel_path =
+    state_dir.join(auto_update_file_name(dylib_path, "update-ok"));
 
   if update_path.exists() {
     // New update pending — apply it.
@@ -1116,29 +1147,20 @@ fn apply_pending_update(dylib_path: &Path) -> bool {
       return false;
     }
 
-    if std::fs::rename(&update_path, dylib_path).is_err() {
-      // Rename failed (cross-filesystem / perms / etc.). Fall back to a
-      // temp-then-rename copy so the dylib is never observed half-written:
-      // copy the update to `<dylib>.update.tmp` on the same filesystem as
-      // the dylib, then atomic-rename into place. Only on full success do
-      // we consume the staged `.update`.
-      let tmp_path = dylib_path.with_extension(format!("{}.update.tmp", ext));
-      let copy_ok = std::fs::copy(&update_path, &tmp_path).is_ok()
-        && std::fs::rename(&tmp_path, dylib_path).is_ok();
-      if copy_ok {
-        let _ = std::fs::remove_file(&update_path);
-      } else {
-        // Couldn't apply the update by rename or copy. Leave `.update` in
-        // place so the next launch retries, drop the stale `.tmp`, and
-        // delete the unused `.backup` — otherwise the next launch would
-        // see backup-without-sentinel and trigger a spurious "rollback"
-        // even though we never swapped anything in.
-        let _ = std::fs::remove_file(&tmp_path);
-        let _ = std::fs::remove_file(&backup_path);
-        eprintln!(
-          "[desktop] failed to apply staged update; will retry on next launch"
-        );
-      }
+    if replace_dylib_with(&update_path, dylib_path, "update.tmp") {
+      // A successful direct rename already consumed `.update`; after a staged
+      // copy it's still there, so drop it either way.
+      let _ = std::fs::remove_file(&update_path);
+    } else {
+      // Couldn't apply the update by rename or copy. Leave `.update` in
+      // place so the next launch retries, and delete the unused `.backup`
+      // — otherwise the next launch would see backup-without-sentinel and
+      // trigger a spurious "rollback" even though we never swapped
+      // anything in.
+      let _ = std::fs::remove_file(&backup_path);
+      eprintln!(
+        "[desktop] failed to apply staged update; will retry on next launch"
+      );
     }
     return false;
   }
@@ -1146,7 +1168,14 @@ fn apply_pending_update(dylib_path: &Path) -> bool {
   if backup_path.exists() && !sentinel_path.exists() {
     // Last update didn't write the sentinel → it crashed. Rollback.
     eprintln!("[desktop] Last update failed to start, rolling back...");
-    let _ = std::fs::rename(&backup_path, dylib_path);
+    if !replace_dylib_with(&backup_path, dylib_path, "rollback.tmp") {
+      // Report the truth rather than dispatching a "rolled back" event for a
+      // rollback that didn't happen: the broken dylib is still in place, so
+      // this launch will fail the same way. Keep `.backup` so the next launch
+      // retries instead of treating the failed update as the new baseline.
+      eprintln!("[desktop] rollback failed; keeping backup for next launch");
+      return false;
+    }
     return true;
   }
 
@@ -2371,6 +2400,50 @@ mod tests {
         "successful-boot path must delete sentinel"
       );
       assert_eq!(read(&dylib), "new", "dylib untouched on cleanup path");
+    }
+
+    #[test]
+    fn pending_update_reports_no_rollback_when_rollback_fails() {
+      // A rollback that can't write must not claim it happened: the caller
+      // dispatches a "rolled back" event off the return value, and the broken
+      // dylib is still in place. The backup has to survive so the next launch
+      // retries rather than adopting the failed update as the new baseline.
+      let tmp = tempfile::tempdir().unwrap();
+      let (dylib, _, backup, _) = paths(tmp.path());
+      touch(&dylib, "new-but-broken");
+      touch(&backup, "old-but-known-good");
+
+      // Make the dylib's directory unwritable so both the rename and the
+      // staged copy fail. Skipped when that doesn't actually deny writes —
+      // root ignores these bits, and this test would silently invert.
+      let original = std::fs::metadata(tmp.path()).unwrap().permissions();
+      let mut readonly = original.clone();
+      std::os::unix::fs::PermissionsExt::set_mode(&mut readonly, 0o500);
+      std::fs::set_permissions(tmp.path(), readonly).unwrap();
+      let writes_denied =
+        std::fs::write(tmp.path().join("probe"), b"x").is_err();
+
+      let rolled_back = if writes_denied {
+        Some(apply_pending_update(&dylib))
+      } else {
+        None
+      };
+
+      // Restore before asserting, or a failure leaves an undeletable tempdir.
+      std::fs::set_permissions(tmp.path(), original).unwrap();
+
+      if let Some(rolled_back) = rolled_back {
+        assert!(
+          !rolled_back,
+          "a rollback that could not be written must not report success"
+        );
+        assert!(backup.exists(), "failed rollback must keep .backup");
+        assert_eq!(
+          read(&dylib),
+          "new-but-broken",
+          "dylib is untouched when the rollback cannot be applied"
+        );
+      }
     }
 
     #[test]
