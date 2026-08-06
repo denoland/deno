@@ -13,3 +13,4 @@ path = "lib.rs"
 
 [dependencies]
 aws-lc-sys.workspace = true
+ed448-goldilocks.workspace = true
