@@ -2589,6 +2589,9 @@ pub static DESKTOP_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Append)
       .num_args(NumArgs::Optional)
       .require_equals(),
+    ArgDef::new("backend-args")
+      .long("backend-args")
+      .num_args(NumArgs::Optional),
   ],
   arg_groups: &[
     UNSTABLE_ARGS,

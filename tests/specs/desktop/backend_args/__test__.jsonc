@@ -1,0 +1,64 @@
+{
+  "tempDir": true,
+  "tests": {
+    "forwards_backend_flags_to_launcher": {
+      "steps": [
+        {
+          "if": "unix",
+          "args": [
+            "desktop",
+            "--backend=cef",
+            "--backend-args=\"--user-agent=\\\"potato\\\"\"",
+            "--output",
+            "./hello",
+            "./main.ts"
+          ],
+          "output": "[WILDCARD]"
+        },
+        {
+          "if": "unix",
+          "commandName": "./hello/hello",
+          "args": [],
+          "output": "desktop.out"
+        }
+      ]
+    },
+    "forwards_backend_flags_to_launcher_hmi": {
+      "steps": [
+        {
+          "if": "unix",
+          "args": [
+            "desktop",
+            "--hmr",
+            "--backend=cef",
+            "--backend-args=\"--user-agent=\\\"potato\\\"\"",
+            "./main.ts"
+          ],
+          "output": "desktop_hmi.out"
+        }
+      ]
+    },
+    "forwards_backend_flags_to_launcher_config": {
+      "steps": [
+        {
+          "if": "unix",
+          "args": [
+            "desktop",
+            "--output",
+            "./hello2",
+            "--config",
+            "./desktop_config.jsonc",
+            "./main.ts"
+          ],
+          "output": "[WILDCARD]"
+        },
+        {
+          "if": "unix",
+          "commandName": "./hello2/hello2",
+          "args": [],
+          "output": "desktop_config.out"
+        }
+      ]
+    }
+  }
+}
