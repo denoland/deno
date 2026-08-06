@@ -717,6 +717,39 @@ fn serve_flags() {
       ..Flags::default()
     }
   );
+  let r = flags_from_vec(svec![
+    "deno",
+    "serve",
+    "--tls-cert",
+    "cert.pem",
+    "--tls-key",
+    "cert.key",
+    "main.ts"
+  ]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Serve(ServeFlags {
+        tls_cert_and_key: Some((
+          "cert.pem".to_string(),
+          "cert.key".to_string()
+        )),
+        ..ServeFlags::new_default("main.ts".to_string(), 8000, "0.0.0.0")
+      }),
+      permissions: PermissionFlags {
+        allow_net: None,
+        ..Default::default()
+      },
+      code_cache_enabled: true,
+      ..Flags::default()
+    }
+  );
+  let r =
+    flags_from_vec(svec!["deno", "serve", "--tls-cert", "cert.pem", "main.ts"]);
+  assert!(r.is_err());
+  let r =
+    flags_from_vec(svec!["deno", "serve", "--tls-key", "cert.key", "main.ts"]);
+  assert!(r.is_err());
 }
 
 #[test]
