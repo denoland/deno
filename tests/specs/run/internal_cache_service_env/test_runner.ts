@@ -12,10 +12,14 @@ const server = Deno.serve(
 
 const tempDir = Deno.makeTempDirSync();
 const envFilePath = `${tempDir}/startup.env`;
+const traceDir = `${tempDir}/webgpu-trace`;
 const endpoint = `http://127.0.0.1:${server.addr.port}`;
 Deno.writeTextFileSync(
   envFilePath,
-  `DENO_CACHE_LSC_ENDPOINT=${endpoint},launcher-token\n`,
+  [
+    `DENO_CACHE_LSC_ENDPOINT=${endpoint},launcher-token`,
+    `DENO_WEBGPU_TRACE=${traceDir}`,
+  ].join("\n"),
 );
 
 try {
@@ -23,8 +27,10 @@ try {
     args: [
       "run",
       "--quiet",
+      "--allow-env=DENO_WEBGPU_TRACE",
       `--env-file=${envFilePath}`,
       "main.ts",
+      traceDir,
     ],
     clearEnv: true,
     stdout: "piped",

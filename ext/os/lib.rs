@@ -28,8 +28,11 @@ pub use ops::signal::SignalError;
 const SORTED_NODE_ENV_VAR_ALLOWLIST: [&str; 4] =
   ["FORCE_COLOR", "NODE_DEBUG", "NODE_OPTIONS", "NO_COLOR"];
 
-const RESERVED_INTERNAL_ENV_VARS: [&str; 2] =
-  ["DENO_CACHE_LSC_ENDPOINT", "DENO_UNSTABLE_CRON_SOCK"];
+const RESERVED_INTERNAL_ENV_VARS: [&str; 3] = [
+  "DENO_CACHE_LSC_ENDPOINT",
+  "DENO_UNSTABLE_CRON_SOCK",
+  "DENO_WEBGPU_TRACE",
+];
 
 pub fn is_reserved_internal_env_var(key: &str) -> bool {
   RESERVED_INTERNAL_ENV_VARS.iter().any(|reserved| {

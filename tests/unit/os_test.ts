@@ -54,11 +54,13 @@ Deno.test(
     const keys = [
       "DENO_CACHE_LSC_ENDPOINT",
       "DENO_UNSTABLE_CRON_SOCK",
+      "DENO_WEBGPU_TRACE",
     ];
     if (Deno.build.os === "windows") {
       keys.push(
         "deno_cache_lsc_endpoint",
         "deno_unstable_cron_sock",
+        "deno_webgpu_trace",
       );
     }
     for (const key of keys) {

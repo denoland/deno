@@ -522,11 +522,13 @@ Deno.test({
     const keys = [
       "DENO_CACHE_LSC_ENDPOINT",
       "DENO_UNSTABLE_CRON_SOCK",
+      "DENO_WEBGPU_TRACE",
     ];
     if (Deno.build.os === "windows") {
       keys.push(
         "deno_cache_lsc_endpoint",
         "deno_unstable_cron_sock",
+        "deno_webgpu_trace",
       );
     }
     for (const key of keys) {
@@ -1932,6 +1934,14 @@ Deno.test({
     const envContent = [
       "DENO_CACHE_LSC_ENDPOINT=http://changed.example,changed-token",
       "DENO_UNSTABLE_CRON_SOCK=tcp:changed.example:1234",
+      "DENO_WEBGPU_TRACE=/changed/trace/directory",
+      ...(Deno.build.os === "windows"
+        ? [
+          "deno_cache_lsc_endpoint=http://lowercase.example,lowercase-token",
+          "deno_unstable_cron_sock=tcp:lowercase.example:5678",
+          "deno_webgpu_trace=C:\\changed\\trace\\directory",
+        ]
+        : []),
       "ORDINARY_LOAD_ENV_FILE_VAR=loaded",
     ].join("\n");
     Deno.writeTextFileSync(envFilePath, envContent);
@@ -1949,15 +1959,22 @@ Deno.test({
       process.env.DENO_UNSTABLE_CRON_SOCK,
       "tcp:launcher.example:4321",
     );
+    assert.strictEqual(
+      process.env.DENO_WEBGPU_TRACE,
+      Deno.args[1],
+    );
     assert.strictEqual(process.env.ORDINARY_LOAD_ENV_FILE_VAR, "loaded");
     `;
 
+    const traceDir = path.join(dirPath, "launcher-trace");
+
     const command = new Deno.Command(Deno.execPath(), {
-      args: ["eval", code, envFilePath],
+      args: ["eval", code, envFilePath, traceDir],
       cwd: testDir,
       env: {
         DENO_CACHE_LSC_ENDPOINT: "http://launcher.example,launcher-token",
         DENO_UNSTABLE_CRON_SOCK: "tcp:launcher.example:4321",
+        DENO_WEBGPU_TRACE: traceDir,
       },
       stderr: "piped",
       stdout: "piped",
