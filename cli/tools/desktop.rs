@@ -6940,6 +6940,7 @@ def456  other.zip
 
   #[test]
   fn appimage_uses_runtime_supported_zstd_squashfs() {
+    use crate::args::JavaScriptEngine;
     let tmp = tempfile::tempdir().unwrap();
     let app_dir = fake_linux_app_dir(tmp.path(), "MyApp");
     let appimage_path = tmp.path().join("MyApp.AppImage");
@@ -6966,6 +6967,7 @@ def456  other.zip
         inspect_renderer: None,
         compress: None,
         exclude_unused_npm: false,
+        engine: JavaScriptEngine::V8,
       },
     )
     .unwrap();
