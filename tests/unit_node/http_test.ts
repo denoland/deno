@@ -25,7 +25,13 @@ import { channel } from "node:diagnostics_channel";
 import * as v8 from "node:v8";
 import { runInNewContext } from "node:vm";
 
-import { assert, assertEquals, assertStringIncludes, fail } from "@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertStringIncludes,
+  assertThrows,
+  fail,
+} from "@std/assert";
 import { assertSpyCalls, spy } from "@std/testing/mock";
 import { fromFileUrl, relative } from "@std/path";
 import { retry } from "@std/async/retry";
@@ -290,6 +296,75 @@ Deno.test("[node/http] .writeHead()", async (t) => {
         assertEquals(res.status, 200);
         assertEquals(res.headers.get("foo"), "bar");
       },
+    );
+  });
+
+  await t.step("validates raw header representations", () => {
+    const cases: [unknown, string][] = [
+      [["bad name", "value"], "ERR_INVALID_HTTP_TOKEN"],
+      [["x-test", "value\r\nx-extra: value"], "ERR_INVALID_CHAR"],
+      [[["bad name", "value"]], "ERR_INVALID_HTTP_TOKEN"],
+      [[[
+        "x-test",
+        "value\r\nx-extra: value",
+      ]], "ERR_INVALID_CHAR"],
+      [{ "bad name": "value" }, "ERR_INVALID_HTTP_TOKEN"],
+      [{ "x-test": "value\r\nx-extra: value" }, "ERR_INVALID_CHAR"],
+    ];
+
+    for (const [headers, code] of cases) {
+      const response = new ServerResponse(
+        { method: "GET" } as IncomingMessage,
+      );
+      const error = assertThrows(() => {
+        response.writeHead(200, headers as Record<string, string>);
+      }) as Error & { code: string };
+      assertEquals(error.code, code);
+    }
+  });
+
+  await t.step("rejects odd-length raw header arrays", () => {
+    const response = new ServerResponse(
+      { method: "GET" } as IncomingMessage,
+    );
+    const error = assertThrows(() => {
+      response.writeHead(
+        200,
+        ["x-test", "value", "dangling"] as unknown as Record<string, string>,
+      );
+    }) as Error & { code: string };
+    assertEquals(error.code, "ERR_INVALID_ARG_VALUE");
+  });
+
+  await t.step("preserves repeated and array-valued raw headers", async () => {
+    await testWriteHead(
+      (res) =>
+        res.writeHead(200, [
+          ["x-repeated", "one"],
+          ["x-repeated", "two"],
+        ]),
+      (res) => {
+        assertEquals(res.headers.get("x-repeated"), "one, two");
+      },
+    );
+    await testWriteHead(
+      (res) => res.writeHead(200, { "x-array": ["three", "four"] }),
+      (res) => {
+        assertEquals(res.headers.get("x-array"), "three, four");
+      },
+    );
+  });
+
+  await t.step("preserves setHeader output", () => {
+    const response = new ServerResponse(
+      { method: "GET" } as IncomingMessage,
+    );
+    response.sendDate = false;
+    response.setHeader("x-test", "value");
+    response.writeHead(200);
+    assertStringIncludes(
+      (response as ServerResponse & { _header: string })._header,
+      "x-test: value\r\n",
     );
   });
 });
