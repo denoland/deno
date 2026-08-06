@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "unscoped-alias": "npm:chalk@5",
+    "scoped-alias": "npm:@denotest/add@1.0.0"
+  }
+}

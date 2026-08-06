@@ -119,6 +119,59 @@ pub enum PackageJsonDepValueParseErrorKind {
   #[class(type)]
   #[error("Package name must not be empty")]
   EmptyName,
+  #[class(inherit)]
+  #[error(transparent)]
+  InvalidNpmPackageName(#[from] InvalidNpmPackageNameError),
+}
+
+#[derive(Debug, Clone, Error, JsError, PartialEq, Eq)]
+#[class(type)]
+#[error("Invalid npm package name '{name}'")]
+pub struct InvalidNpmPackageNameError {
+  pub name: String,
+}
+
+/// Validates an npm package name using npm's compatibility rules for existing
+/// packages. In particular, legacy mixed-case package names remain valid.
+pub fn validate_npm_package_name(
+  name: &str,
+) -> Result<(), InvalidNpmPackageNameError> {
+  fn is_url_friendly_component(value: &str) -> bool {
+    !value.is_empty()
+      && value.bytes().all(|byte| {
+        byte.is_ascii_alphanumeric()
+          || matches!(
+            byte,
+            b'-' | b'_' | b'.' | b'!' | b'~' | b'*' | b'\'' | b'(' | b')'
+          )
+      })
+  }
+
+  let is_valid = !name.is_empty()
+    && !name.starts_with(['.', '-', '_'])
+    && name.trim() == name
+    && !matches!(name.to_ascii_lowercase().as_str(), "node_modules" | "favicon.ico")
+    && if let Some(scoped_name) = name.strip_prefix('@') {
+      let Some((scope, package)) = scoped_name.split_once('/') else {
+        return Err(InvalidNpmPackageNameError {
+          name: name.to_string(),
+        });
+      };
+      !package.contains('/')
+        && !package.starts_with('.')
+        && is_url_friendly_component(scope)
+        && is_url_friendly_component(package)
+    } else {
+      !name.contains('/') && is_url_friendly_component(name)
+    };
+
+  if is_valid {
+    Ok(())
+  } else {
+    Err(InvalidNpmPackageNameError {
+      name: name.to_string(),
+    })
+  }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -217,6 +270,8 @@ impl PackageJsonDepValue {
       if name.is_empty() {
         return Err(PackageJsonDepValueParseErrorKind::EmptyName.into_box());
       }
+      validate_npm_package_name(&name)
+        .map_err(|err| PackageJsonDepValueParseErrorKind::from(err).into_box())?;
       match VersionReq::parse_from_npm(version_req) {
         Ok(version_req) => {
           Ok(PackageJsonDepValue::Req(PackageReq { name, version_req }))
@@ -230,6 +285,8 @@ impl PackageJsonDepValue {
     if key.is_empty() {
       return Err(PackageJsonDepValueParseErrorKind::EmptyName.into_box());
     }
+    validate_npm_package_name(key)
+      .map_err(|err| PackageJsonDepValueParseErrorKind::from(err).into_box())?;
 
     if let Some((scheme, value)) = value.split_once(':') {
       match scheme {
@@ -317,6 +374,9 @@ fn parse_workspace_dep_value(
         && !name.is_empty()
         && !range.is_empty()
       {
+        validate_npm_package_name(name).map_err(|err| {
+          PackageJsonDepValueParseErrorKind::from(err).into_box()
+        })?;
         Ok((Some(name.into()), parse_workspace_req(range)?))
       } else {
         Err(bare_err)
@@ -938,6 +998,86 @@ mod test {
     .unwrap();
 
     assert!(package_json.exports.is_none());
+  }
+
+  #[test]
+  fn validates_npm_package_names() {
+    for name in [
+      "package",
+      "package-name",
+      "package.name",
+      "legacy_Package",
+      "@scope/package",
+      "@Legacy-Scope/Package",
+    ] {
+      assert_eq!(validate_npm_package_name(name), Ok(()), "{name}");
+    }
+
+    for name in [
+      "",
+      ".",
+      "..",
+      "./package",
+      "../package",
+      "/package",
+      "package/name",
+      "package//name",
+      "package\\name",
+      "C:\\package",
+      "C:package",
+      "@scope",
+      "@scope/",
+      "@/package",
+      "@scope/.",
+      "@scope/..",
+      "@scope/package/extra",
+      "-package",
+      "_package",
+      "node_modules",
+      "favicon.ico",
+      "package name",
+      "påckage",
+    ] {
+      assert_eq!(
+        validate_npm_package_name(name),
+        Err(InvalidNpmPackageNameError {
+          name: name.to_string()
+        }),
+        "{name}",
+      );
+    }
+  }
+
+  #[test]
+  fn validates_package_json_npm_alias_names() {
+    assert_eq!(
+      PackageJsonDepValue::parse("alias", "npm:package@^1").unwrap(),
+      PackageJsonDepValue::Req(PackageReq::from_str("package@^1").unwrap()),
+    );
+    assert_eq!(
+      PackageJsonDepValue::parse("alias", "npm:@scope/package@^1").unwrap(),
+      PackageJsonDepValue::Req(
+        PackageReq::from_str("@scope/package@^1").unwrap()
+      ),
+    );
+
+    let err =
+      PackageJsonDepValue::parse("alias", "npm:../package@1").unwrap_err();
+    assert_eq!(
+      err.into_kind(),
+      PackageJsonDepValueParseErrorKind::InvalidNpmPackageName(
+        InvalidNpmPackageNameError {
+          name: "../package".to_string()
+        }
+      )
+    );
+
+    let err =
+      PackageJsonDepValue::parse("../alias", "catalog:").unwrap_err();
+    assert!(matches!(
+      err.as_kind(),
+      PackageJsonDepValueParseErrorKind::InvalidNpmPackageName(_)
+    ));
   }
 
   fn get_local_package_json_version_reqs_for_tests(
