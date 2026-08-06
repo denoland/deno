@@ -1,11 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
-use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
-use std::str::FromStr;
 use std::sync::Arc;
 
 use deno_ast::SourceRange;
@@ -17,9 +15,7 @@ use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
-use deno_core::serde_json::json;
 use deno_core::url::Url;
-use deno_error::JsErrorBox;
 use deno_lint::diagnostic::LintDiagnosticRange;
 use deno_npm::NpmPackageId;
 use deno_path_util::url_to_file_path;
@@ -54,36 +50,8 @@ use super::language_server;
 use super::resolver::LspResolver;
 use super::tsc;
 use crate::args::jsr_url;
-use crate::lsp::urls::uri_to_url;
 use crate::tools::lint::CliLinter;
 use crate::util::path::relative_specifier;
-
-/// Diagnostic error codes which actually are the same, and so when grouping
-/// fixes we treat them the same.
-static FIX_ALL_ERROR_CODES: Lazy<HashMap<&'static str, &'static str>> =
-  Lazy::new(|| ([("2339", "2339"), ("2345", "2339")]).into_iter().collect());
-
-/// Fixes which help determine if there is a preferred fix when there are
-/// multiple fixes available.
-static PREFERRED_FIXES: Lazy<HashMap<&'static str, (u32, bool)>> =
-  Lazy::new(|| {
-    ([
-      ("annotateWithTypeFromJSDoc", (1, false)),
-      ("constructorForDerivedNeedSuperCall", (1, false)),
-      ("extendsInterfaceBecomesImplements", (1, false)),
-      ("awaitInSyncFunction", (1, false)),
-      ("classIncorrectlyImplementsInterface", (3, false)),
-      ("classDoesntImplementInheritedAbstractMember", (3, false)),
-      ("unreachableCode", (1, false)),
-      ("unusedIdentifier", (1, false)),
-      ("forgottenThisPropertyAccess", (1, false)),
-      ("spelling", (2, false)),
-      ("addMissingAwait", (1, false)),
-      ("fixImport", (0, true)),
-    ])
-    .into_iter()
-    .collect()
-  });
 
 static IMPORT_SPECIFIER_RE: Lazy<Regex> = lazy_regex::lazy_regex!(
   r#"\sfrom\s+["']([^"']*)["']|import\s*\(\s*["']([^"']*)["']\s*\)"#
@@ -224,14 +192,6 @@ pub fn get_lint_references(
       })
       .collect(),
   )
-}
-
-fn code_as_string(code: &Option<lsp::NumberOrString>) -> String {
-  match code {
-    Some(lsp::NumberOrString::String(str)) => str.clone(),
-    Some(lsp::NumberOrString::Number(num)) => num.to_string(),
-    _ => "".to_string(),
-  }
 }
 
 /// Given a specifier and a referring specifier, determine if a value in the
@@ -661,35 +621,6 @@ impl<'a> TsResponseImportMapper<'a> {
     }
     None
   }
-
-  pub fn is_valid_import(
-    &self,
-    specifier_text: &str,
-    referrer: &ModuleSpecifier,
-    resolution_mode: ResolutionMode,
-  ) -> bool {
-    self
-      .resolver
-      .get_scoped_resolver(self.scope.as_deref())
-      .as_cli_resolver()
-      .resolve(
-        specifier_text,
-        referrer,
-        deno_graph::Position::zeroed(),
-        resolution_mode,
-        NodeResolutionKind::Types,
-      )
-      .ok()
-      .filter(|s| {
-        let specifier = self
-          .tsc_specifier_map
-          .normalize(s.as_str())
-          .map(Cow::Owned)
-          .unwrap_or(Cow::Borrowed(s));
-        !specifier.as_str().contains("/node_modules/")
-      })
-      .is_some()
-  }
 }
 
 fn maybe_reverse_definitely_typed(
@@ -841,138 +772,6 @@ pub fn fix_ts_import_changes(
   Ok(r)
 }
 
-pub fn fix_ts_import_changes_for_file_rename(
-  changes: Vec<tsc::FileTextChanges>,
-  new_uri: &str,
-  old_module: &DocumentModule,
-  language_server: &language_server::Inner,
-  token: &CancellationToken,
-) -> Result<Vec<tsc::FileTextChanges>, AnyError> {
-  let Ok(new_uri) = Uri::from_str(new_uri) else {
-    return Ok(Vec::new());
-  };
-  if !new_uri.scheme().as_str().eq_ignore_ascii_case("file") {
-    return Ok(Vec::new());
-  }
-  let new_file_hints = [uri_to_url(&new_uri)];
-  let mut r = Vec::with_capacity(changes.len());
-  for mut change in changes {
-    if token.is_cancelled() {
-      return Err(anyhow!("request cancelled"));
-    }
-    let Ok(target_specifier) = resolve_url(&change.file_name) else {
-      continue;
-    };
-    let Some(target_module) =
-      language_server.document_modules.module_for_specifier(
-        &target_specifier,
-        old_module.scope.as_deref(),
-        Some(&old_module.compiler_options_key),
-      )
-    else {
-      continue;
-    };
-    let import_mapper =
-      language_server.get_ts_response_import_mapper(&target_module);
-    for text_change in &mut change.text_changes {
-      if let Some(new_specifier) = import_mapper.check_unresolved_specifier(
-        &text_change.new_text,
-        &target_module.specifier,
-        target_module.resolution_mode,
-        &new_file_hints,
-      ) {
-        text_change.new_text = new_specifier;
-      }
-    }
-    r.push(change);
-  }
-  Ok(r)
-}
-
-/// Fix tsc import code actions so that the module specifier is correct for
-/// resolution by Deno (includes the extension).
-fn fix_ts_import_action<'a>(
-  action: &'a tsc::CodeFixAction,
-  module: &DocumentModule,
-  language_server: &language_server::Inner,
-) -> Option<Cow<'a, tsc::CodeFixAction>> {
-  if !matches!(
-    action.fix_name.as_str(),
-    "import" | "fixMissingFunctionDeclaration"
-  ) {
-    return Some(Cow::Borrowed(action));
-  }
-  let specifier = (|| {
-    let text_change = action.changes.first()?.text_changes.first()?;
-    let captures = IMPORT_SPECIFIER_RE.captures(&text_change.new_text)?;
-    Some(captures.get(1)?.as_str())
-  })();
-  let Some(specifier) = specifier else {
-    return Some(Cow::Borrowed(action));
-  };
-  let import_mapper = language_server.get_ts_response_import_mapper(module);
-  if let Some(new_specifier) = import_mapper.check_unresolved_specifier(
-    specifier,
-    &module.specifier,
-    module.resolution_mode,
-    &action
-      .changes
-      .iter()
-      .filter(|c| c.is_new_file.unwrap_or(false))
-      .filter_map(|c| resolve_url(&c.file_name).ok())
-      .collect::<Vec<_>>(),
-  ) {
-    let description = action.description.replace(specifier, &new_specifier);
-    let changes = action
-      .changes
-      .iter()
-      .map(|c| {
-        let text_changes = c
-          .text_changes
-          .iter()
-          .map(|tc| tsc::TextChange {
-            span: tc.span.clone(),
-            new_text: tc.new_text.replace(specifier, &new_specifier),
-          })
-          .collect();
-        tsc::FileTextChanges {
-          file_name: c.file_name.clone(),
-          text_changes,
-          is_new_file: c.is_new_file,
-        }
-      })
-      .collect();
-
-    Some(Cow::Owned(tsc::CodeFixAction {
-      description,
-      changes,
-      commands: None,
-      fix_name: action.fix_name.clone(),
-      fix_id: None,
-      fix_all_description: None,
-    }))
-  } else if !import_mapper.is_valid_import(
-    specifier,
-    &module.specifier,
-    module.resolution_mode,
-  ) {
-    None
-  } else {
-    Some(Cow::Borrowed(action))
-  }
-}
-
-/// Determines if two TypeScript diagnostic codes are effectively equivalent.
-fn is_equivalent_code(
-  a: &Option<lsp::NumberOrString>,
-  b: &Option<lsp::NumberOrString>,
-) -> bool {
-  let a_code = code_as_string(a);
-  let b_code = code_as_string(b);
-  FIX_ALL_ERROR_CODES.get(a_code.as_str())
-    == FIX_ALL_ERROR_CODES.get(b_code.as_str())
-}
-
 /// Convert changes returned from a TypeScript quick fix action into edits
 /// for an LSP CodeAction.
 pub fn ts_changes_to_edit(
@@ -1000,200 +799,6 @@ pub fn ts_changes_to_edit(
 pub struct CodeActionData {
   pub uri: Uri,
   pub fix_id: String,
-}
-
-#[derive(Debug, Default)]
-pub struct TsFixActionCollector {
-  entries: Vec<(lsp::CodeAction, tsc::CodeFixAction)>,
-  fix_all_entries_by_id: HashMap<String, (lsp::CodeAction, tsc::CodeFixAction)>,
-}
-
-impl TsFixActionCollector {
-  /// Add a TypeScript code fix action to the code actions collection.
-  pub fn add_ts_fix_action(
-    &mut self,
-    fix_action: &tsc::CodeFixAction,
-    diagnostic: &lsp::Diagnostic,
-    module: &DocumentModule,
-    language_server: &language_server::Inner,
-  ) -> Result<(), AnyError> {
-    if fix_action.commands.is_some() {
-      // In theory, tsc can return actions that require "commands" to be applied
-      // back into TypeScript.  Currently there is only one command, `install
-      // package` but Deno doesn't support that.  The problem is that the
-      // `.applyCodeActionCommand()` returns a promise, and with the current way
-      // we wrap tsc, we can't handle the asynchronous response, so it is
-      // actually easier to return errors if we ever encounter one of these,
-      // which we really wouldn't expect from the Deno lsp.
-      return Err(
-        JsErrorBox::new(
-          "UnsupportedFix",
-          "The action returned from TypeScript is unsupported.",
-        )
-        .into(),
-      );
-    }
-    let Some(fix_action) =
-      fix_ts_import_action(fix_action, module, language_server)
-    else {
-      return Ok(());
-    };
-    let edit =
-      ts_changes_to_edit(&fix_action.changes, module, language_server)?;
-    let action = lsp::CodeAction {
-      title: fix_action.description.clone(),
-      kind: Some(lsp::CodeActionKind::QUICKFIX),
-      diagnostics: Some(vec![diagnostic.clone()]),
-      edit,
-      command: None,
-      is_preferred: None,
-      disabled: None,
-      data: None,
-    };
-    self.entries.retain(|(a, f)| {
-      !(fix_action.fix_name == f.fix_name && action.edit == a.edit)
-    });
-    self.entries.push((action, fix_action.as_ref().clone()));
-
-    if let Some(fix_id) = &fix_action.fix_id
-      && let Some((existing_fix_all, existing_action)) =
-        self.fix_all_entries_by_id.get(fix_id)
-    {
-      self.entries.retain(|(c, _)| c != existing_fix_all);
-      self
-        .entries
-        .push((existing_fix_all.clone(), existing_action.clone()));
-    }
-    Ok(())
-  }
-
-  /// Add a TypeScript action to the actions as a "fix all" action, where it
-  /// will fix all occurrences of the diagnostic in the file.
-  pub fn add_ts_fix_all_action(
-    &mut self,
-    action: &tsc::CodeFixAction,
-    module: &DocumentModule,
-    diagnostic: &lsp::Diagnostic,
-  ) {
-    let data = action.fix_id.as_ref().map(|fix_id| {
-      json!(CodeActionData {
-        uri: module.uri.as_ref().clone(),
-        fix_id: fix_id.clone(),
-      })
-    });
-    let title = if let Some(description) = &action.fix_all_description {
-      description.clone()
-    } else {
-      format!("{} (Fix all in file)", action.description)
-    };
-
-    let code_action = lsp::CodeAction {
-      title,
-      kind: Some(lsp::CodeActionKind::QUICKFIX),
-      diagnostics: Some(vec![diagnostic.clone()]),
-      edit: None,
-      command: None,
-      is_preferred: None,
-      disabled: None,
-      data,
-    };
-    if let Some((existing, _)) = self
-      .fix_all_entries_by_id
-      .get(action.fix_id.as_ref().unwrap())
-    {
-      self.entries.retain(|(a, _)| a != existing);
-    }
-    self.entries.push((code_action.clone(), action.clone()));
-    self.fix_all_entries_by_id.insert(
-      action.fix_id.clone().unwrap(),
-      (code_action, action.clone()),
-    );
-  }
-
-  /// Determine if a action can be converted into a "fix all" action.
-  pub fn is_fix_all_action(
-    &self,
-    action: &tsc::CodeFixAction,
-    diagnostic: &lsp::Diagnostic,
-    file_diagnostics: &[lsp::Diagnostic],
-  ) -> bool {
-    // If the action does not have a fix id (indicating it can be "bundled up")
-    // or if the collection already contains a "bundled" action return false
-    if action
-      .fix_id
-      .as_ref()
-      .is_none_or(|fix_id| self.fix_all_entries_by_id.contains_key(fix_id))
-    {
-      false
-    } else {
-      // else iterate over the diagnostic in the file and see if there are any
-      // other diagnostics that could be bundled together in a "fix all" code
-      // action
-      file_diagnostics.iter().any(|d| {
-        if d.source.as_deref() != Some(DiagnosticSource::Ts.as_lsp_source())
-          || d == diagnostic
-          || d.code.is_none()
-          || diagnostic.code.is_none()
-        {
-          return false;
-        }
-        d.code == diagnostic.code
-          || is_equivalent_code(&d.code, &diagnostic.code)
-      })
-    }
-  }
-
-  pub fn into_code_actions(
-    self,
-    has_deno_code_actions: bool,
-  ) -> impl Iterator<Item = lsp::CodeAction> {
-    // Finalize `CodeAction::is_preferred` before returning.
-    let is_preferred_list = self
-      .entries
-      .iter()
-      .map(|(_, fix_action)| {
-        if fix_action.fix_id.is_some() {
-          return None;
-        }
-        let (fix_priority, only_one) =
-          PREFERRED_FIXES.get(fix_action.fix_name.as_str())?;
-        // This is to make sure 'Remove import' isn't preferred over 'Cache
-        // dependencies'.
-        if has_deno_code_actions {
-          return Some(false);
-        }
-        for (_, other_fix_action) in &self.entries {
-          if other_fix_action == fix_action {
-            continue;
-          }
-          if other_fix_action.fix_id.is_some() {
-            continue;
-          }
-          let Some((other_fix_priority, _)) =
-            PREFERRED_FIXES.get(other_fix_action.fix_name.as_str())
-          else {
-            continue;
-          };
-          match other_fix_priority.cmp(fix_priority) {
-            Ordering::Less => continue,
-            Ordering::Greater => return Some(false),
-            Ordering::Equal => {
-              if *only_one && fix_action.fix_name == other_fix_action.fix_name {
-                return Some(false);
-              }
-            }
-          }
-        }
-        Some(true)
-      })
-      .collect::<Vec<_>>();
-    self.entries.into_iter().zip(is_preferred_list).map(
-      |((mut action, _), is_preferred)| {
-        action.is_preferred = is_preferred;
-        action
-      },
-    )
-  }
 }
 
 /// Prepend the whitespace characters found at the start of line_content to content.
@@ -1234,6 +839,7 @@ pub fn source_range_to_lsp_range(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use deno_core::serde_json::json;
 
   #[test]
   fn test_reference_to_diagnostic() {
