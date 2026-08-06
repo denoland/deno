@@ -154,6 +154,62 @@ Deno.test(async function testEncryptDecrypt() {
   }
 });
 
+Deno.test(async function testRsaOaepLabelBytes() {
+  const subtle = globalThis.crypto.subtle;
+  const keyPair = await subtle.generateKey(
+    {
+      name: "RSA-OAEP",
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: "SHA-256",
+    },
+    true,
+    ["encrypt", "decrypt"],
+  );
+  const data = new TextEncoder().encode("Secret Message");
+  const labels = [
+    new Uint8Array([0x80]),
+    new Uint8Array([0x81]),
+    new TextEncoder().encode("ordinary label"),
+  ];
+  const cipherTexts: ArrayBuffer[] = [];
+
+  for (const label of labels) {
+    const cipherText = await subtle.encrypt(
+      { name: "RSA-OAEP", label },
+      keyPair.publicKey,
+      data,
+    );
+    cipherTexts.push(cipherText);
+
+    const decrypted = await subtle.decrypt(
+      { name: "RSA-OAEP", label },
+      keyPair.privateKey,
+      cipherText,
+    );
+    assertEquals(new Uint8Array(decrypted), data);
+  }
+
+  await assertRejects(
+    () =>
+      subtle.decrypt(
+        { name: "RSA-OAEP", label: labels[1] },
+        keyPair.privateKey,
+        cipherTexts[0],
+      ),
+    DOMException,
+  );
+  await assertRejects(
+    () =>
+      subtle.decrypt(
+        { name: "RSA-OAEP", label: labels[0] },
+        keyPair.privateKey,
+        cipherTexts[1],
+      ),
+    DOMException,
+  );
+});
+
 Deno.test(async function testGenerateRSAKey() {
   const subtle = globalThis.crypto.subtle;
   assert(subtle);
