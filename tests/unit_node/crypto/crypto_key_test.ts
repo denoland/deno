@@ -789,6 +789,90 @@ Deno.test("generateKeyPair promisify", async () => {
   assert(privateKey.startsWith("-----BEGIN ENCRYPTED PRIVATE KEY-----"));
 });
 
+Deno.test("private key export preserves passphrase bytes", async (t) => {
+  const { privateKey } = generateKeyPairSync("ec", {
+    namedCurve: "P-256",
+  });
+  const expected = privateKey.export({ type: "pkcs8", format: "der" });
+  const bytes = [0xff, 0xfe, 0x80, 0x61, 0xc3];
+  const passphrases: [string, () => unknown][] = [
+    ["Buffer", () => Buffer.from(bytes)],
+    ["Uint8Array", () => new Uint8Array(bytes)],
+    ["ArrayBuffer", () => new Uint8Array(bytes).buffer],
+    [
+      "DataView",
+      () => {
+        const data = new Uint8Array([0, ...bytes, 0]);
+        return new DataView(data.buffer, 1, bytes.length);
+      },
+    ],
+    ["string", () => "pässphrase"],
+  ];
+
+  for (const format of ["pem", "der"] as const) {
+    for (const [name, createPassphrase] of passphrases) {
+      await t.step(`${format} ${name}`, () => {
+        const passphrase = createPassphrase();
+        const encrypted = privateKey.export({
+          type: "pkcs8",
+          format,
+          cipher: "aes-256-cbc",
+          passphrase,
+        } as any);
+        const imported = createPrivateKey({
+          key: encrypted,
+          type: "pkcs8",
+          format,
+          passphrase,
+        } as any);
+        assertEquals(
+          imported.export({ type: "pkcs8", format: "der" }),
+          expected,
+        );
+      });
+    }
+  }
+});
+
+Deno.test("private key export validates passphrase options", () => {
+  const { privateKey } = generateKeyPairSync("ec", {
+    namedCurve: "P-256",
+  });
+
+  for (const passphrase of [undefined, null, 1, {}, true]) {
+    const error = assertThrows(
+      () =>
+        privateKey.export({
+          type: "pkcs8",
+          format: "pem",
+          cipher: "aes-256-cbc",
+          passphrase,
+        } as any),
+      TypeError,
+      "options.passphrase",
+    );
+    assertEquals(
+      (error as Error & { code: string }).code,
+      "ERR_INVALID_ARG_VALUE",
+    );
+  }
+
+  const error = assertThrows(
+    () =>
+      privateKey.export({
+        type: "pkcs8",
+        format: "pem",
+        passphrase: "secret",
+      } as any),
+    TypeError,
+    "options.cipher",
+  );
+  assertEquals(
+    (error as Error & { code: string }).code,
+    "ERR_INVALID_ARG_VALUE",
+  );
+});
+
 Deno.test("RSA export private JWK", function () {
   // @ts-ignore @types/node broken
   const { privateKey, publicKey } = generateKeyPairSync("rsa", {
