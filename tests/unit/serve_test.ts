@@ -3091,6 +3091,68 @@ createServerLengthTest("fixedResponseKnownEmpty", {
   expectsConnLen: true,
 });
 
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerTruncatesStreamingResponseToContentLength() {
+    const payload = "x".repeat(5_000);
+    const ac = new AbortController();
+    await using server = Deno.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      signal: ac.signal,
+      onListen() {},
+      handler: () => {
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(payload));
+            controller.close();
+          },
+        });
+        return new Response(stream, {
+          headers: { "content-length": "70" },
+        });
+      },
+    });
+
+    const port = (server.addr as Deno.NetAddr).port;
+    // The POST leaves its request body unread so the shared connection writer
+    // takes the same overflow path as the normal GET response writer.
+    for (
+      const request of [
+        "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
+        "POST / HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 1\r\nConnection: close\r\n\r\n",
+      ]
+    ) {
+      const conn = await Deno.connect({ hostname: "127.0.0.1", port });
+      await conn.write(new TextEncoder().encode(request));
+
+      const decoder = new TextDecoder();
+      let raw = "";
+      while (true) {
+        const chunk = new Uint8Array(1024);
+        const read = await conn.read(chunk);
+        if (read === null) break;
+        raw += decoder.decode(chunk.subarray(0, read), { stream: true });
+        const separator = raw.indexOf("\r\n\r\n");
+        if (separator >= 0 && raw.length >= separator + 4 + 70) break;
+      }
+      raw += decoder.decode();
+      conn.close();
+
+      const separator = raw.indexOf("\r\n\r\n");
+      assert(separator > 0);
+      assertStringIncludes(
+        raw.slice(0, separator).toLowerCase(),
+        "content-length: 70",
+      );
+      assertEquals(raw.slice(separator + 4), "x".repeat(70));
+    }
+
+    ac.abort();
+    await server.finished;
+  },
+);
+
 createServerLengthTest("chunkedRespondKnown", {
   headers: { "transfer-encoding": "chunked" },
   body: "foo bar baz",

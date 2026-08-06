@@ -3945,6 +3945,20 @@ fn abort_raw_response_body(body: &mut ResponseBytesInner) {
   std::mem::take(body).abort();
 }
 
+fn limit_fixed_response_chunk<'a>(
+  chunk: &'a [u8],
+  remaining: &mut Option<u64>,
+) -> (&'a [u8], bool) {
+  let Some(remaining) = remaining else {
+    return (chunk, false);
+  };
+  let write_len = chunk
+    .len()
+    .min(usize::try_from(*remaining).unwrap_or(usize::MAX));
+  *remaining -= write_len as u64;
+  (&chunk[..write_len], *remaining == 0)
+}
+
 struct RawResponseBodyFinishGuard {
   record: Rc<RawHttpRecord>,
   active: bool,
@@ -3991,6 +4005,7 @@ where
     && !raw_response_has_transfer_encoding(&parts))
   .then(|| raw_response_content_length(&parts))
   .flatten();
+  let mut remaining = content_length;
   if context.head {
     conn
       .write_response_with_scratch(
@@ -4036,6 +4051,12 @@ where
       finish.finish(false);
       return Err(error.into());
     }
+  }
+  if remaining == Some(0) {
+    abort_raw_response_body(&mut body);
+    conn.finish_response_with_scratch(scratch, &[]).await?;
+    finish.finish(true);
+    return Ok(());
   }
   loop {
     let event = poll_fn(|cx| {
@@ -4086,12 +4107,12 @@ where
         return Ok(());
       }
       RawResponseBodyEvent::Frame(ResponseStreamResult::NonEmptyBuf(chunk)) => {
+        let (chunk, fixed_body_complete) =
+          limit_fixed_response_chunk(&chunk, &mut remaining);
         let result = if content_length.is_some() {
-          conn.write_response_body_with_scratch(&chunk).await
+          conn.write_response_body_with_scratch(chunk).await
         } else {
-          conn
-            .write_response_chunk_with_scratch(scratch, &chunk)
-            .await
+          conn.write_response_chunk_with_scratch(scratch, chunk).await
         };
         if let Err(error) = result {
           abort_raw_response_body(&mut body);
@@ -4099,6 +4120,12 @@ where
           return Err(error.into());
         }
         finish.record.add_otel_response_size(chunk.len());
+        if fixed_body_complete {
+          abort_raw_response_body(&mut body);
+          conn.finish_response_with_scratch(scratch, &[]).await?;
+          finish.finish(true);
+          return Ok(());
+        }
       }
       RawResponseBodyEvent::Frame(ResponseStreamResult::NoData) => continue,
       RawResponseBodyEvent::Frame(ResponseStreamResult::Error(error)) => {
@@ -4131,6 +4158,7 @@ where
     && !raw_response_has_transfer_encoding(&parts))
   .then(|| raw_response_content_length(&parts))
   .flatten();
+  let mut remaining = content_length;
   if context.head {
     let mut writer = h1::SharedResponseWriter::new(h1::Response {
       version: context.version,
@@ -4184,6 +4212,20 @@ where
     })
     .await
     .inspect_err(|_| abort_raw_response_body(&mut body))?;
+  }
+  if remaining == Some(0) {
+    abort_raw_response_body(&mut body);
+    let mut end = h1::SharedResponseEndWriter::new(&[]);
+    poll_fn(|cx| {
+      let mut conn = conn.borrow_mut();
+      let Some(conn) = conn.as_mut() else {
+        return Poll::Ready(Err(raw_h1_connection_closed()));
+      };
+      conn.poll_finish_response(cx, &mut end)
+    })
+    .await?;
+    finish.finish(true);
+    return Ok(());
   }
   loop {
     let event = poll_fn(|cx| {
@@ -4252,8 +4294,10 @@ where
         return Ok(());
       }
       RawResponseBodyEvent::Frame(ResponseStreamResult::NonEmptyBuf(chunk)) => {
+        let (chunk, fixed_body_complete) =
+          limit_fixed_response_chunk(&chunk, &mut remaining);
         let result = if content_length.is_some() {
-          let mut writer = h1::SharedResponseBodyWriter::new(&chunk);
+          let mut writer = h1::SharedResponseBodyWriter::new(chunk);
           poll_fn(|cx| {
             let mut conn = conn.borrow_mut();
             let Some(conn) = conn.as_mut() else {
@@ -4263,7 +4307,7 @@ where
           })
           .await
         } else {
-          let mut writer = h1::SharedResponseChunkWriter::new(&chunk);
+          let mut writer = h1::SharedResponseChunkWriter::new(chunk);
           poll_fn(|cx| {
             let mut conn = conn.borrow_mut();
             let Some(conn) = conn.as_mut() else {
@@ -4279,6 +4323,20 @@ where
           return Err(error);
         }
         finish.record.add_otel_response_size(chunk.len());
+        if fixed_body_complete {
+          abort_raw_response_body(&mut body);
+          let mut end = h1::SharedResponseEndWriter::new(&[]);
+          poll_fn(|cx| {
+            let mut conn = conn.borrow_mut();
+            let Some(conn) = conn.as_mut() else {
+              return Poll::Ready(Err(raw_h1_connection_closed()));
+            };
+            conn.poll_finish_response(cx, &mut end)
+          })
+          .await?;
+          finish.finish(true);
+          return Ok(());
+        }
       }
       RawResponseBodyEvent::Frame(ResponseStreamResult::NoData) => continue,
       RawResponseBodyEvent::Frame(ResponseStreamResult::Error(error)) => {
