@@ -106,7 +106,10 @@
       "reason": "Tests Node's --require / --import preload CLI flags, which Deno does not implement."
     },
     "es-module/test-require-module-synchronous-rejection-handling.js": {},
-    "es-module/test-require-module-tla-execution.js": {},
+    "es-module/test-require-module-tla-execution.js": {
+      "ignore": true,
+      "reason": "Node 26.5 asserts the ERR_REQUIRE_ASYNC_MODULE hint names --experimental-print-required-tla; Deno points at --stack-trace-limit instead, as it does not implement that flag"
+    },
     "es-module/test-require-module-tla-nested.js": {},
     "es-module/test-require-module-tla-print-execution.js": {
       "ignore": true,
@@ -964,6 +967,7 @@
     "parallel/test-dgram-connect.js": {},
     "parallel/test-dgram-createSocket-type.js": {},
     "parallel/test-dgram-custom-lookup.js": {},
+    "parallel/test-dgram-default-lookup-ip.js": {},
     "parallel/test-dgram-error-message-address.js": {},
     "parallel/test-dgram-implicit-bind.js": {},
     "parallel/test-dgram-ipv6only.js": {},
@@ -1851,7 +1855,6 @@
     "parallel/test-http-pipeline-socket-parser-typeerror.js": {},
     "parallel/test-http-proxy.js": {},
     "parallel/test-http-raw-headers.js": {},
-    "parallel/test-http-rawheaders-limit.js": {},
     "parallel/test-http-readable-data-event.js": {},
     "parallel/test-http-remove-connection-header-persists-connection.js": {},
     "parallel/test-http-remove-header-stays-removed.js": {},
@@ -4302,6 +4305,7 @@
     "parallel/test-zlib-params.js": {},
     "parallel/test-zlib-premature-end.js": {},
     "parallel/test-zlib-random-byte-pipes.js": {},
+    "parallel/test-zlib-reject-garbage-after-end.js": {},
     "parallel/test-zlib-reset-before-write.js": {},
     "parallel/test-zlib-sync-no-event.js": {},
     "parallel/test-zlib-truncated.js": {},

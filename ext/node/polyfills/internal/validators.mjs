@@ -16,6 +16,7 @@ const {
   NumberIsFinite,
   SafeRegExp,
   String,
+  StringPrototypeIncludes,
   StringPrototypeTrim,
   ReflectHas,
   RegExpPrototypeTest,
@@ -186,6 +187,18 @@ function validateString(value, name) {
     throw new codes.ERR_INVALID_ARG_TYPE(name, "string", value);
   }
 }
+
+/** @type {typeof validateString} */
+const validateStringWithoutNullBytes = hideStackFrames((value, name) => {
+  validateString(value, name);
+  if (StringPrototypeIncludes(value, "\u0000")) {
+    throw new codes.ERR_INVALID_ARG_VALUE(
+      name,
+      value,
+      "must be a string without null bytes",
+    );
+  }
+});
 
 /** @typedef {(value: unknown, name: string, min?: number, max?: number) => asserts value is number} ValidateNumber */
 /** @type {ValidateNumber} */
@@ -468,6 +481,7 @@ return {
     validatePort,
     validateString,
     validateStringArray,
+    validateStringWithoutNullBytes,
     validateUint32,
     validateUnion,
     validateFiniteNumber,
@@ -495,6 +509,7 @@ return {
   validatePort,
   validateString,
   validateStringArray,
+  validateStringWithoutNullBytes,
   validateUint32,
   validateUnion,
 };

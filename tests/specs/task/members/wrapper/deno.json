@@ -1,0 +1,9 @@
+{
+  "workspace": [
+    "./foo",
+    "./bar"
+  ],
+  "tasks": {
+    "dev": "deno task --members dev"
+  }
+}

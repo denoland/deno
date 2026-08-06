@@ -8,6 +8,7 @@ const { core, primordials } = __bootstrap;
 
 const {
   Hasher,
+  op_base64url_encode_from_buffer,
   op_node_create_hash,
   op_node_export_secret_key,
   op_node_get_hashes,
@@ -24,7 +25,6 @@ const lazyStream = core.createLazyLoader("node:stream");
 
 const {
   forgivingBase64Encode: encodeToBase64,
-  forgivingBase64UrlEncode: encodeToBase64Url,
 } = core.loadExtScript("ext:deno_web/00_infra.js");
 const {
   validateEncoding,
@@ -64,6 +64,7 @@ const {
   StringFromCharCode,
   StringPrototypeToLowerCase,
   Symbol,
+  TypedArrayPrototypeGetByteLength,
   Uint8Array,
   Uint8ArrayPrototype,
 } = primordials;
@@ -238,7 +239,11 @@ Hash.prototype.digest = function digest(outputEncoding: any) {
     case "base64":
       return encodeToBase64(digest);
     case "base64url":
-      return encodeToBase64Url(digest);
+      return op_base64url_encode_from_buffer(
+        digest,
+        0,
+        TypedArrayPrototypeGetByteLength(digest),
+      );
     case undefined:
     case "buffer":
       return Buffer.from(digest);

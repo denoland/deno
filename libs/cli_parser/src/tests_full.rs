@@ -5047,12 +5047,32 @@ fn compile() {
         app_name: None,
         minify: false,
         exclude_unused_npm: false,
+        engine: Default::default(),
       }),
       type_check_mode: TypeCheckMode::Local,
       code_cache_enabled: true,
       ..Flags::default()
     }
   );
+}
+
+#[test]
+fn compile_and_desktop_engine() {
+  let flags =
+    flags_from_vec(svec!["deno", "compile", "--engine", "quickjs", "main.ts"])
+      .unwrap();
+  let DenoSubcommand::Compile(compile) = flags.subcommand else {
+    panic!("expected compile subcommand");
+  };
+  assert_eq!(compile.engine, JavaScriptEngine::QuickJs);
+
+  let flags =
+    flags_from_vec(svec!["deno", "desktop", "--engine", "quickjs", "main.tsx"])
+      .unwrap();
+  let DenoSubcommand::Desktop(desktop) = flags.subcommand else {
+    panic!("expected desktop subcommand");
+  };
+  assert_eq!(desktop.engine, JavaScriptEngine::QuickJs);
 }
 
 #[test]
@@ -5159,6 +5179,7 @@ fn compile_watch_with_no_clear_screen() {
         app_name: None,
         minify: false,
         exclude_unused_npm: false,
+        engine: Default::default(),
       }),
       type_check_mode: TypeCheckMode::Local,
       code_cache_enabled: true,
@@ -5195,6 +5216,7 @@ fn compile_with_flags() {
         app_name: None,
         minify: false,
         exclude_unused_npm: false,
+        engine: Default::default(),
       }),
       import_map_path: Some("import_map.json".to_string()),
       no_remote: true,
@@ -5357,6 +5379,7 @@ fn task_subcommand() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
@@ -5377,6 +5400,7 @@ fn task_subcommand() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
@@ -5396,6 +5420,7 @@ fn task_subcommand() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
@@ -5415,6 +5440,7 @@ fn task_subcommand() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: false,
+        members: false,
         filter: Some("*".to_string()),
         eval: false,
         no_prefix: false,
@@ -5434,6 +5460,7 @@ fn task_subcommand() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: true,
+        members: false,
         filter: Some("*".to_string()),
         eval: false,
         no_prefix: false,
@@ -5453,6 +5480,7 @@ fn task_subcommand() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: true,
+        members: false,
         filter: Some("*".to_string()),
         eval: false,
         no_prefix: false,
@@ -5463,6 +5491,33 @@ fn task_subcommand() {
     }
   );
 
+  let r = flags_from_vec(svec!["deno", "task", "--members", "build"]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Task(TaskFlags {
+        cwd: None,
+        task: Some("build".to_string()),
+        is_run: false,
+        recursive: false,
+        members: true,
+        filter: Some("*".to_string()),
+        eval: false,
+        no_prefix: false,
+        concurrency: None,
+        if_present: false,
+      }),
+      ..Flags::default()
+    }
+  );
+
+  let r = flags_from_vec(svec!["deno", "task", "--members", "-r", "build"]);
+  assert!(r.is_err());
+
+  let r =
+    flags_from_vec(svec!["deno", "task", "--members", "-f", "*", "build"]);
+  assert!(r.is_err());
+
   let r = flags_from_vec(svec!["deno", "task", "--eval", "echo 1"]);
   assert_eq!(
     r.unwrap(),
@@ -5472,6 +5527,7 @@ fn task_subcommand() {
         task: Some("echo 1".to_string()),
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: true,
         no_prefix: false,
@@ -5504,6 +5560,7 @@ fn task_subcommand_jobs() {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -5543,6 +5600,7 @@ fn task_subcommand_double_hyphen() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
@@ -5566,6 +5624,7 @@ fn task_subcommand_double_hyphen() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
@@ -5590,6 +5649,7 @@ fn task_subcommand_double_hyphen_only() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
@@ -5613,6 +5673,7 @@ fn task_following_arg() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
@@ -5636,6 +5697,7 @@ fn task_following_double_hyphen_arg() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
@@ -5660,6 +5722,7 @@ fn task_with_global_flags() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
@@ -5683,6 +5746,7 @@ fn task_subcommand_empty() {
         task: None,
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
@@ -5705,6 +5769,7 @@ fn task_subcommand_config() {
         task: None,
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
@@ -5728,6 +5793,7 @@ fn task_subcommand_config_short() {
         task: None,
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
@@ -5757,6 +5823,7 @@ fn task_subcommand_env_file() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
@@ -5783,6 +5850,7 @@ fn task_subcommand_env_file() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
@@ -5806,6 +5874,7 @@ fn task_subcommand_if_present() {
         task: Some("build".to_string()),
         is_run: false,
         recursive: false,
+        members: false,
         filter: None,
         eval: false,
         no_prefix: false,
@@ -8118,6 +8187,7 @@ fn preload_flag_test() {
         app_name: None,
         minify: false,
         exclude_unused_npm: false,
+        engine: Default::default(),
       }),
       type_check_mode: TypeCheckMode::Local,
       preload: svec!["p1.js", "./p2.js"],

@@ -1918,11 +1918,12 @@ fn task_parse(result: &ParseResult, flags: &mut Flags) -> Result<(), CliError> {
   env_file_arg_parse(result, flags);
 
   let mut recursive = result.get_bool("recursive");
+  let members = result.get_bool("members");
   let filter =
     if let Some(filter) = result.get_one("filter").map(|s| s.to_string()) {
       recursive = false;
       Some(filter)
-    } else if recursive {
+    } else if recursive || members {
       Some("*".to_string())
     } else {
       None
@@ -1955,6 +1956,7 @@ fn task_parse(result: &ParseResult, flags: &mut Flags) -> Result<(), CliError> {
     task: task_name,
     is_run: false,
     recursive,
+    members,
     filter,
     eval,
     no_prefix: result.get_bool("no-prefix"),
@@ -2040,6 +2042,10 @@ fn compile_parse(result: &ParseResult, flags: &mut Flags) {
     app_name: result.get_one("app-name").map(|s| s.to_string()),
     minify: result.get_bool("minify"),
     exclude_unused_npm: result.get_bool("exclude-unused-npm"),
+    engine: result
+      .get_one("engine")
+      .map(|value| value.parse().expect("engine is validated by the parser"))
+      .unwrap_or_default(),
   });
 }
 
@@ -2593,6 +2599,10 @@ fn desktop_parse(result: &ParseResult, flags: &mut Flags) {
     compress,
     exclude_unused_npm: result.get_bool("exclude-unused-npm"),
     backend_args: result.get_one("backend-args").map(|s| s.to_string()),
+    engine: result
+      .get_one("engine")
+      .map(|value| value.parse().expect("engine is validated by the parser"))
+      .unwrap_or_default(),
   });
 }
 

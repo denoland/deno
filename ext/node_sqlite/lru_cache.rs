@@ -63,6 +63,11 @@ where
     self.map.contains_key(key)
   }
 
+  /// Reads an entry without promoting it to most-recently-used.
+  pub fn peek(&self, key: &K) -> Option<&V> {
+    self.map.get(key)
+  }
+
   pub fn size(&self) -> usize {
     self.map.len()
   }

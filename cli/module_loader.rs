@@ -153,6 +153,7 @@ pub struct PrepareModuleLoadOptions<'a> {
   pub is_dynamic: bool,
   pub lib: TsTypeLib,
   pub permissions: PermissionsContainer,
+  pub file_permission_api_name: Option<&'static str>,
   pub ext_overwrite: Option<&'a String>,
   pub allow_unknown_media_types: bool,
   pub allow_sloppy_imports_hints_for_unreferenced_roots: bool,
@@ -200,6 +201,7 @@ impl ModuleLoadPreparer {
       is_dynamic,
       lib,
       permissions,
+      file_permission_api_name,
       ext_overwrite,
       allow_unknown_media_types,
       allow_sloppy_imports_hints_for_unreferenced_roots,
@@ -211,7 +213,10 @@ impl ModuleLoadPreparer {
 
     let mut loader = self
       .module_graph_builder
-      .create_graph_loader_with_permissions(permissions);
+      .create_graph_loader_with_permissions(
+        permissions,
+        file_permission_api_name,
+      );
     if !file_content_overrides.is_empty() {
       loader.set_file_content_overrides(file_content_overrides);
     }
@@ -315,7 +320,7 @@ impl ModuleLoadPreparer {
 
     let loader = self
       .module_graph_builder
-      .create_graph_loader_with_permissions(permissions);
+      .create_graph_loader_with_permissions(permissions, None);
     self
       .module_graph_builder
       .build_graph_with_npm_resolution(
@@ -760,6 +765,7 @@ impl<TGraphContainer: ModuleGraphContainer>
           is_dynamic,
           lib: self.lib,
           permissions: permissions.clone(),
+          file_permission_api_name: None,
           ext_overwrite: None,
           allow_unknown_media_types: false,
           allow_sloppy_imports_hints_for_unreferenced_roots: !is_dynamic_import,
@@ -1765,6 +1771,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
               is_dynamic,
               lib,
               permissions: permissions.clone(),
+              file_permission_api_name: None,
               ext_overwrite: None,
               allow_unknown_media_types: false,
               allow_sloppy_imports_hints_for_unreferenced_roots,

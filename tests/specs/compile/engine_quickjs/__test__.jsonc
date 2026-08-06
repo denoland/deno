@@ -1,0 +1,14 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "compile --engine quickjs --output main main.ts",
+      "output": "compile.out"
+    },
+    {
+      "commandName": "./main",
+      "args": [],
+      "output": "quickjs flag accepted\n"
+    }
+  ]
+}
