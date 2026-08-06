@@ -78,6 +78,68 @@ const JSON_SCHEMA_VERSION: u8 = 1;
 
 static STDIN_FILE_NAME: &str = "$deno$stdin.mts";
 
+/// Preloads all configured plugins across all workspace members, spins up the V8 plugin host,
+/// and collects any custom extensions they preprocess (e.g. `".vue"`).
+///
+/// This avoids reloading plugins for each file and resolves custom extensions prior to workspace directory crawling.
+async fn preload_plugins_and_get_extensions(
+  members_lint_options: &[(WorkspaceDirectoryRc, LintOptions)],
+) -> Result<(Option<Arc<PluginHostProxy>>, Vec<String>), AnyError> {
+  // Collect and deduplicate all plugin specifiers across the entire workspace members
+  let mut all_plugin_specifiers = Vec::new();
+  for (_, member_options) in members_lint_options {
+    all_plugin_specifiers.extend(member_options.plugins.clone());
+  }
+  all_plugin_specifiers.sort();
+  all_plugin_specifiers.dedup();
+
+  if all_plugin_specifiers.is_empty() {
+    return Ok((None, Vec::new()));
+  }
+
+  #[allow(clippy::print_stdout, reason = "actually want to output")]
+  #[allow(clippy::print_stderr, reason = "actually want to output")]
+  fn logger_printer(msg: &str, is_err: bool) {
+    if is_err {
+      eprint!("{}", msg);
+    } else {
+      print!("{}", msg);
+    }
+  }
+
+  // Extract all exclude rules from workspace members
+  let logger = PluginLogger::new(logger_printer);
+  let mut all_excludes = Vec::new();
+  for (_, member_options) in members_lint_options {
+    if let Some(exclude) = &member_options.rules.exclude {
+      all_excludes.extend(exclude.clone());
+    }
+  }
+  all_excludes.sort();
+  all_excludes.dedup();
+
+  // Create the runner host and load all plugins asynchronously
+  let runner = create_runner_and_load_plugins(
+    all_plugin_specifiers,
+    logger,
+    Some(all_excludes),
+  )
+  .await?;
+
+  // Collect all custom extensions preprocessed by loaded plugins
+  let mut additional_extensions = Vec::new();
+  {
+    let infos = runner.plugin_info.lock();
+    for info in infos.iter() {
+      additional_extensions.extend(info.extensions.clone());
+    }
+  }
+  additional_extensions.sort();
+  additional_extensions.dedup();
+
+  Ok((Some(Arc::new(runner)), additional_extensions))
+}
+
 pub async fn lint(
   flags: Arc<Flags>,
   lint_flags: LintFlags,
@@ -97,6 +159,11 @@ pub async fn lint(
   let compiler_options_resolver = factory.compiler_options_resolver()?;
   let workspace_lint_options =
     cli_options.resolve_workspace_lint_options(&lint_flags)?;
+  let members_lint_options =
+    cli_options.resolve_lint_options_for_members(&lint_flags)?;
+  let (plugin_runner, additional_extensions) =
+    preload_plugins_and_get_extensions(&members_lint_options).await?;
+
   let success = if is_stdin {
     lint_stdin(
       cli_options,
@@ -113,9 +180,13 @@ pub async fn lint(
       compiler_options_resolver.clone(),
       cli_options.start_dir.clone(),
       &workspace_lint_options,
+      plugin_runner.clone(),
     );
-    let paths_with_options_batches =
-      resolve_paths_with_options_batches(cli_options, &lint_flags)?;
+    let paths_with_options_batches = resolve_paths_with_options_batches(
+      cli_options,
+      &lint_flags,
+      &additional_extensions,
+    )?;
     for paths_with_options in paths_with_options_batches {
       linter
         .lint_files(
@@ -144,8 +215,16 @@ async fn lint_with_watch_inner(
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
   let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
-  let mut paths_with_options_batches =
-    resolve_paths_with_options_batches(cli_options, &lint_flags)?;
+  let members_lint_options =
+    cli_options.resolve_lint_options_for_members(&lint_flags)?;
+  let (plugin_runner, additional_extensions) =
+    preload_plugins_and_get_extensions(&members_lint_options).await?;
+
+  let mut paths_with_options_batches = resolve_paths_with_options_batches(
+    cli_options,
+    &lint_flags,
+    &additional_extensions,
+  )?;
   for paths_with_options in &mut paths_with_options_batches {
     _ = watcher_communicator.watch_paths(
       file_watcher::watch_paths_for_file_patterns(
@@ -177,6 +256,7 @@ async fn lint_with_watch_inner(
     factory.compiler_options_resolver()?.clone(),
     cli_options.start_dir.clone(),
     &cli_options.resolve_workspace_lint_options(&lint_flags)?,
+    plugin_runner.clone(),
   );
   for paths_with_options in paths_with_options_batches {
     linter
@@ -229,13 +309,18 @@ struct PathsWithOptions {
 fn resolve_paths_with_options_batches(
   cli_options: &CliOptions,
   lint_flags: &LintFlags,
+  additional_extensions: &[String],
 ) -> Result<Vec<PathsWithOptions>, AnyError> {
   let members_lint_options =
     cli_options.resolve_lint_options_for_members(lint_flags)?;
   let mut paths_with_options_batches =
     Vec::with_capacity(members_lint_options.len());
   for (dir, lint_options) in members_lint_options {
-    let files = collect_lint_files(cli_options, lint_options.files.clone());
+    let files = collect_lint_files(
+      cli_options,
+      lint_options.files.clone(),
+      additional_extensions,
+    );
     if !files.is_empty() {
       paths_with_options_batches.push(PathsWithOptions {
         dir,
@@ -263,6 +348,7 @@ struct WorkspaceLinter {
   workspace_module_graph: Option<WorkspaceModuleGraphFuture>,
   has_error: Arc<AtomicFlag>,
   file_count: usize,
+  plugin_runner: Option<Arc<PluginHostProxy>>,
 }
 
 impl WorkspaceLinter {
@@ -273,6 +359,7 @@ impl WorkspaceLinter {
     compiler_options_resolver: Arc<CompilerOptionsResolver>,
     workspace_dir: Arc<WorkspaceDirectory>,
     workspace_options: &WorkspaceLintOptions,
+    plugin_runner: Option<Arc<PluginHostProxy>>,
   ) -> Self {
     let reporter_lock =
       Arc::new(Mutex::new(create_reporter(workspace_options.reporter_kind)));
@@ -286,6 +373,7 @@ impl WorkspaceLinter {
       workspace_module_graph: None,
       has_error: Default::default(),
       file_count: 0,
+      plugin_runner,
     }
   }
 
@@ -334,8 +422,8 @@ impl WorkspaceLinter {
       }
     }
 
-    let mut plugin_runner = None;
-    if !plugin_specifiers.is_empty() {
+    let mut plugin_runner = self.plugin_runner.clone();
+    if plugin_runner.is_none() && !plugin_specifiers.is_empty() {
       let logger = plugins::PluginLogger::new(logger_printer);
       let runner = plugins::create_runner_and_load_plugins(
         plugin_specifiers,
@@ -344,7 +432,7 @@ impl WorkspaceLinter {
       )
       .await?;
       plugin_runner = Some(Arc::new(runner));
-    } else if lint_rules.rules.is_empty() {
+    } else if plugin_runner.is_none() && lint_rules.rules.is_empty() {
       bail!("No rules have been configured")
     }
 
@@ -505,9 +593,15 @@ impl WorkspaceLinter {
 fn collect_lint_files(
   cli_options: &CliOptions,
   files: FilePatterns,
+  additional_extensions: &[String],
 ) -> Vec<PathBuf> {
   FileCollector::new(|e| {
     is_script_ext(e.path)
+      || additional_extensions.iter().any(|ext| {
+        e.path.extension().is_some_and(|e_ext| {
+          e_ext.eq_ignore_ascii_case(ext.trim_start_matches('.'))
+        })
+      })
       || (e.path.extension().is_none() && cli_options.ext_flag().is_some())
   })
   .ignore_git_folder()

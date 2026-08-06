@@ -9,6 +9,7 @@ use deno_graph::fast_check::FastCheckDiagnostic;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::diagnostic::LintDiagnosticDetails;
 use deno_lint::diagnostic::LintDiagnosticRange;
+use deno_lint::diagnostic::LintDiagnosticSeverity;
 use deno_lint::diagnostic::LintDocsUrl;
 use deno_lint::tags;
 
@@ -61,6 +62,7 @@ impl PackageLintRule for NoSlowTypesRule {
             .map(|u| LintDocsUrl::Custom(u.into_owned()))
             .unwrap_or_default(),
         },
+        severity: LintDiagnosticSeverity::Error,
       })
       .collect()
   }

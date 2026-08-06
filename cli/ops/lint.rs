@@ -13,6 +13,7 @@ use deno_core::op2;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::diagnostic::LintDiagnosticDetails;
 use deno_lint::diagnostic::LintDiagnosticRange;
+use deno_lint::diagnostic::LintDiagnosticSeverity;
 use deno_lint::diagnostic::LintDocsUrl;
 use deno_lint::diagnostic::LintFix;
 use deno_lint::diagnostic::LintFixChange;
@@ -169,6 +170,7 @@ impl LintPluginContainer {
         custom_docs_url: LintDocsUrl::None,
         info: vec![],
       },
+      severity: LintDiagnosticSeverity::Error,
     };
     self.diagnostics.push(lint_diagnostic);
     Ok(())
