@@ -263,6 +263,12 @@ function updateExceptionCapture() {
   }
 }
 
+function clearDomainStack() {
+  stack.length = 0;
+  active = process.domain = null;
+  updateExceptionCapture();
+}
+
 function domainUncaughtExceptionHandler(er) {
   const curDomain = process.domain;
   if (!curDomain || curDomain._disposed) {
@@ -281,22 +287,28 @@ function domainUncaughtExceptionHandler(er) {
     er.domainThrown = true;
   }
 
-  // Remove the errored domain from the stack. This cleans up the entry
-  // left by emitBefore when the callback threw before emitAfter could run.
-  if (stack.length === 1) {
-    active = process.domain = null;
-    stack.length = 0;
-  } else {
-    const idx = ArrayPrototypeLastIndexOf(stack, curDomain);
-    if (idx !== -1) {
-      ArrayPrototypeSplice(stack, idx, 1);
-    }
-    active = process.domain = stack.length > 0 ? stack[stack.length - 1] : null;
+  // Run the error handler outside of its domain, but within its parent.
+  // A domain may have been entered more than once, so remove all adjacent
+  // entries for the currently active domain.
+  while (process.domain === curDomain) {
+    curDomain.exit();
   }
 
-  updateExceptionCapture();
+  try {
+    curDomain.emit("error", er);
+  } catch (handlerError) {
+    // Let the parent domain handle errors thrown by a child domain's handler.
+    // If there is no parent, pass the error on to the process-level handler.
+    if (stack.length > 0) {
+      active = process.domain = stack[stack.length - 1];
+      return domainUncaughtExceptionHandler(handlerError);
+    }
+    throw handlerError;
+  }
 
-  curDomain.emit("error", er);
+  // An uncaught exception ends the current turn. No entered domains should
+  // remain active when unrelated work begins on a later turn.
+  clearDomainStack();
 }
 
 let patched = false;

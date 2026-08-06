@@ -6,6 +6,34 @@ import domain from "node:domain";
 import { EventEmitter } from "node:events";
 import { assertEquals } from "@std/assert";
 
+const processWithDomain = process as typeof process & {
+  domain: unknown | null;
+};
+
+function assertActiveDomain(expected: unknown | null) {
+  assertEquals(processWithDomain.domain, expected);
+}
+
+function assertNoActiveDomain() {
+  assertActiveDomain(null);
+
+  // Entering and exiting a new domain must not reveal an older stack entry.
+  const probe = domain.create();
+  probe.enter();
+  probe.exit();
+  assertActiveDomain(null);
+}
+
+function checkNoDomainOnLaterTurn() {
+  // Create the promise reaction before entering a domain so the check itself
+  // is not associated with one of the domains being checked.
+  const deferred = Promise.withResolvers<void>();
+  return {
+    check: deferred.promise.then(assertNoActiveDomain),
+    schedule: deferred.resolve,
+  };
+}
+
 Deno.test("should work on throws", async function () {
   const deferred = Promise.withResolvers<void>();
   const d = domain.create();
@@ -109,4 +137,70 @@ Deno.test("intercept should work", async function () {
     // @ts-ignore node:domain types are out of date
   })(new Error("a passed error"), 2, 3);
   await deferred.promise;
+});
+
+Deno.test("handled async errors clear manually entered domains", async () => {
+  const outer = domain.create();
+  const inner = domain.create();
+  const laterTurn = checkNoDomainOnLaterTurn();
+
+  inner.on("error", (error) => {
+    assertEquals(error.message, "inner callback failed");
+    laterTurn.schedule();
+  });
+
+  outer.run(() => {
+    setTimeout(() => {
+      inner.enter();
+      throw new Error("inner callback failed");
+    }, 0);
+  });
+
+  await laterTurn.check;
+});
+
+Deno.test("errors from a nested domain handler reach its parent", async () => {
+  const parent = domain.create();
+  const child = domain.create();
+  const laterTurn = checkNoDomainOnLaterTurn();
+
+  parent.on("error", (error) => {
+    assertEquals(error.message, "child handler failed");
+    assertActiveDomain(null);
+    laterTurn.schedule();
+  });
+  child.on("error", () => {
+    assertActiveDomain(parent);
+    throw new Error("child handler failed");
+  });
+
+  parent.run(() => {
+    setTimeout(() => {
+      child.enter();
+      throw new Error("child callback failed");
+    }, 0);
+  });
+
+  await laterTurn.check;
+});
+
+Deno.test("balanced domain entries preserve their parent", () => {
+  const parent = domain.create();
+  const child = domain.create();
+
+  parent.enter();
+  try {
+    child.enter();
+    try {
+      assertActiveDomain(child);
+    } finally {
+      child.exit();
+    }
+
+    assertActiveDomain(parent);
+  } finally {
+    parent.exit();
+  }
+
+  assertNoActiveDomain();
 });
