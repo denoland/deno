@@ -106,16 +106,16 @@ fn resolve_spacing(
   font_ctx: &mut FontContext,
   fstate: &FontState,
 ) -> (f32, f32) {
-  let resolution = if fstate.letter_spacing.is_absolute()
-    && fstate.word_spacing.is_absolute()
+  let resolution = if fstate.letter_spacing.is_relative_length()
+    || fstate.word_spacing.is_relative_length()
   {
-    LengthResolution::new(FontMetrics::fallback(fstate.size as f64))
-  } else {
     length_resolution(font_ctx, fstate)
+  } else {
+    LengthResolution::new(FontMetrics::fallback(fstate.size as f64))
   };
   (
-    fstate.letter_spacing.resolve_to_pixels(&resolution) as f32,
-    fstate.word_spacing.resolve_to_pixels(&resolution) as f32,
+    fstate.letter_spacing.resolve(&resolution) as f32,
+    fstate.word_spacing.resolve(&resolution) as f32,
   )
 }
 

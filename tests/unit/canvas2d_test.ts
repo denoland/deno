@@ -914,8 +914,9 @@ Deno.test(
       assertAlmostEquals(base("clamp(5px, 1em, 15px)"), 15, SPACING_EPSILON);
       assertAlmostEquals(base("hypot(3em, 4em)"), 500, SPACING_EPSILON);
 
-      // The font dependency of `sqrt(1em / 1px)` flows through a <number>, so
-      // the tree cannot hold it and the specified text is retained instead.
+      // The font dependency of `sqrt(1em / 1px)` flows through a <number>, and
+      // of `atan2(1em, 1px)` through an <angle>. The tree holds both, because
+      // its nodes carry no dimension of their own.
       assertAlmostEquals(
         base("calc(sqrt(1em / 1px) * 1px)"),
         10,
@@ -925,6 +926,17 @@ Deno.test(
       assertAlmostEquals(
         base("calc(sqrt(1em / 1px) * 1px)"),
         5,
+        SPACING_EPSILON,
+      );
+      assertAlmostEquals(
+        base("calc(atan2(1em, 1px) / 1deg * 1px)"),
+        Math.atan2(25, 1) * 180 / Math.PI,
+        SPACING_EPSILON,
+      );
+      ctx.font = "100px SpacingCalcFont";
+      assertAlmostEquals(
+        base("calc(atan2(1em, 1px) / 1deg * 1px)"),
+        Math.atan2(100, 1) * 180 / Math.PI,
         SPACING_EPSILON,
       );
     });
@@ -951,6 +963,16 @@ Deno.test(function canvas2dSpacingMathFunctionSerialization() {
       ["min(1cqmin, 15px)", "min(1cqmin, 15px)"],
       // An absolute-only expression is already exact, so it collapses.
       ["calc(1px + 2px)", "3px"],
+      // A dependency that leaves the length dimension keeps its nodes, and a
+      // product serializes in its authored order.
+      ["calc(sqrt(1em / 1px) * 1px)", "calc(sqrt(1em / 1px) * 1px)"],
+      ["calc(1em / 1px * 1px)", "calc(1em / 1px * 1px)"],
+      ["calc(pow(1em / 1px, 2) * 1px)", "calc(pow(1em / 1px, 2) * 1px)"],
+      ["calc(sign(1em) * 2px)", "calc(sign(1em) * 2px)"],
+      [
+        "calc(atan2(1em, 1px) / 1deg * 1px)",
+        "calc(atan2(1em, 1px) / 1deg * 1px)",
+      ],
     ]
   ) {
     ctx.letterSpacing = value;

@@ -12,7 +12,7 @@ use super::value::NumericValue;
 use super::value::ParseOptions;
 use super::value::Parser;
 use super::value::ParserInput;
-use super::value::SpecifiedLength;
+use super::value::SpecifiedNumericValue;
 
 /// Parsed CSS font shorthand.
 /// https://html.spec.whatwg.org/multipage/canvas.html#dom-context-2d-font
@@ -125,11 +125,11 @@ impl CssFontStretch {
 pub fn parse_css_spacing(
   s: &str,
   resolution: &LengthResolution,
-) -> Option<SpecifiedLength> {
+) -> Option<SpecifiedNumericValue> {
   let s = s.trim();
   let mut input = ParserInput::new(s);
   let mut parser = Parser::new(&mut input);
-  let value = NumericValue::parse(
+  let length = SpecifiedNumericValue::parse(
     &mut parser,
     ParseOptions {
       length_resolution: Some(*resolution),
@@ -137,9 +137,7 @@ pub fn parse_css_spacing(
     },
   )
   .ok()?;
-  // The literal `0` is a valid <length>; everything else must be a length.
-  let length = value.expect_specified_length(true).ok()?;
-  if !parser.is_exhausted() {
+  if !length.is_length() || !parser.is_exhausted() {
     return None;
   }
   Some(length)
@@ -157,9 +155,9 @@ pub struct FontState {
   pub font_kerning: FontKerning,
   pub font_variant_caps: FontVariantCaps,
   /// CSS letter-spacing value (default `0px`).
-  pub letter_spacing: SpecifiedLength,
+  pub letter_spacing: SpecifiedNumericValue,
   /// CSS word-spacing value (default `0px`).
-  pub word_spacing: SpecifiedLength,
+  pub word_spacing: SpecifiedNumericValue,
   pub text_rendering: TextRendering,
 }
 
@@ -175,8 +173,8 @@ impl Default for FontState {
       direction: TextDirection::default(),
       font_kerning: FontKerning::default(),
       font_variant_caps: FontVariantCaps::default(),
-      letter_spacing: SpecifiedLength::zero(),
-      word_spacing: SpecifiedLength::zero(),
+      letter_spacing: SpecifiedNumericValue::zero(),
+      word_spacing: SpecifiedNumericValue::zero(),
       text_rendering: TextRendering::default(),
     }
   }
@@ -776,7 +774,6 @@ fn parse_one_font_family<'i, 't>(input: &mut Parser<'i, 't>) -> Option<String> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::css::value::LengthCalc;
 
   fn parse(s: &str) -> Option<FontState> {
     parse_css_font(s, &default_font_resolution())
@@ -795,14 +792,14 @@ mod tests {
     }
   }
 
-  fn spacing(s: &str, em: f64) -> Option<SpecifiedLength> {
+  fn spacing(s: &str, em: f64) -> Option<SpecifiedNumericValue> {
     parse_css_spacing(s, &LengthResolution::new(metrics(em)))
   }
 
   fn resolve_to_pixels(s: &str, em: f64) -> f64 {
     spacing(s, em)
       .unwrap()
-      .resolve_to_pixels(&LengthResolution::new(metrics(em)))
+      .resolve(&LengthResolution::new(metrics(em)))
   }
 
   #[test]
@@ -1020,12 +1017,12 @@ mod tests {
   fn spacing_parse_and_serialize() {
     let s = spacing("3px", 10.0).unwrap();
     assert_eq!(s.to_css_string(), "3px");
-    assert!(s.is_absolute());
+    assert!(!s.is_relative_length());
     assert_eq!(resolve_to_pixels("3px", 10.0), 3.0);
 
     let s = spacing("1EX", 20.0).unwrap();
     assert_eq!(s.to_css_string(), "1ex");
-    assert!(!s.is_absolute());
+    assert!(s.is_relative_length());
 
     let s = spacing("-0.1cm", 10.0).unwrap();
     assert_eq!(s.to_css_string(), "-0.1cm");
@@ -1065,7 +1062,7 @@ mod tests {
     ] {
       let s = spacing(css, 20.0).unwrap();
       assert_eq!(s.to_css_string(), css, "serializing {css}");
-      assert!(!s.is_absolute(), "{css} should need metrics");
+      assert!(s.is_relative_length(), "{css} should need metrics");
       assert_eq!(resolve_to_pixels(css, 20.0), expected, "resolving {css}");
     }
   }
@@ -1077,9 +1074,9 @@ mod tests {
       ..LengthResolution::new(metrics(20.0))
     };
     let s = parse_css_spacing("1rex", &resolution).unwrap();
-    assert_eq!(s.resolve_to_pixels(&resolution), 50.0);
+    assert_eq!(s.resolve(&resolution), 50.0);
     let s = parse_css_spacing("1ex", &resolution).unwrap();
-    assert_eq!(s.resolve_to_pixels(&resolution), 10.0);
+    assert_eq!(s.resolve(&resolution), 10.0);
   }
 
   #[test]
@@ -1116,8 +1113,10 @@ mod tests {
   fn spacing_math_functions_resolve_lazily() {
     // A math function over font-relative units is retained as a tree, so it
     // re-resolves against whichever font is in effect.
-    let s = spacing("calc(1em + 2px)", 10.0).unwrap();
-    assert!(matches!(s, SpecifiedLength::Calc { .. }));
+    assert_eq!(
+      spacing("calc(1em + 2px)", 10.0).unwrap().to_css_string(),
+      "calc(1em + 2px)"
+    );
     assert_eq!(resolve_to_pixels("calc(1em + 2px)", 10.0), 12.0);
     assert_eq!(resolve_to_pixels("calc(1em + 2px)", 20.0), 22.0);
     assert_eq!(resolve_to_pixels("calc(1em - 2px)", 20.0), 18.0);
@@ -1146,13 +1145,11 @@ mod tests {
 
     // An expression over absolute units is already exact, so it collapses.
     let s = spacing("calc(1px + 2px)", 10.0).unwrap();
-    assert!(matches!(s, SpecifiedLength::Unit(_)));
     assert_eq!(s.to_css_string(), "3px");
 
     // A viewport unit resolves to zero here, but the tree is still retained so
     // the value serializes as written.
     let s = spacing("calc(1vw + 2px)", 10.0).unwrap();
-    assert!(matches!(s, SpecifiedLength::Calc { .. }));
     assert_eq!(s.to_css_string(), "calc(2px + 1vw)");
     assert_eq!(resolve_to_pixels("calc(1vw + 2px)", 10.0), 2.0);
   }
@@ -1186,14 +1183,11 @@ mod tests {
   }
 
   #[test]
-  fn spacing_relative_number_falls_back_to_text() {
-    // The tree cannot express a dependency that flows through a `<number>`
-    // subexpression, so that subexpression alone is retained as text.
+  fn spacing_relative_number_keeps_its_tree() {
+    // A dependency that flows through a `<number>` subexpression is expressed
+    // by the tree too: dividing two lengths leaves the dimension system, but
+    // the nodes are dimension-agnostic, so the font is still reachable.
     let s = spacing("calc(sqrt(1em / 1px) * 1px)", 16.0).unwrap();
-    assert!(matches!(
-      &s,
-      SpecifiedLength::Calc { tree, .. } if matches!(**tree, LengthCalc::Deferred(_))
-    ));
     assert_eq!(s.to_css_string(), "calc(sqrt(1em / 1px) * 1px)");
     assert_eq!(resolve_to_pixels("calc(sqrt(1em / 1px) * 1px)", 16.0), 4.0);
     assert_eq!(
@@ -1201,8 +1195,7 @@ mod tests {
       10.0
     );
 
-    // Only the lost factor becomes text; the rest of the sum stays a tree, and
-    // a retained fragment sorts after the dimensions.
+    // A product has no unit of its own, so it sorts after the dimensions.
     let s = spacing("calc(2px + sqrt(1em / 1px) * 1px)", 16.0).unwrap();
     assert_eq!(s.to_css_string(), "calc(2px + sqrt(1em / 1px) * 1px)");
     assert_eq!(
@@ -1220,14 +1213,54 @@ mod tests {
       "calc(2px + sqrt(1em / 1px) * 1px)"
     );
 
-    // Dividing by a length also leaves the dimension system.
+    // Dividing by a length, with no function in between.
     assert_eq!(resolve_to_pixels("calc(1em / 1px * 1px)", 16.0), 16.0);
     assert_eq!(resolve_to_pixels("calc(1em / 1px * 1px)", 25.0), 25.0);
+    assert_eq!(
+      spacing("calc(1em / 1px * 1px)", 16.0)
+        .unwrap()
+        .to_css_string(),
+      "calc(1em / 1px * 1px)"
+    );
 
     // A viewport unit takes the same path, even though it resolves to zero.
     let s = spacing("calc(sqrt(1vw / 1px) * 1px)", 16.0).unwrap();
     assert_eq!(s.to_css_string(), "calc(sqrt(1vw / 1px) * 1px)");
     assert_eq!(resolve_to_pixels("calc(sqrt(1vw / 1px) * 1px)", 16.0), 0.0);
+  }
+
+  #[test]
+  fn spacing_relative_dependency_through_an_angle() {
+    // `atan2()` turns two lengths into an `<angle>`, so a font dependency can
+    // leave the length dimension without passing through a `<number>` at all.
+    // The tree covers this because its nodes carry no dimension.
+    let s = spacing("calc(atan2(1em, 1px) / 1deg * 1px)", 16.0).unwrap();
+    assert_eq!(s.to_css_string(), "calc(atan2(1em, 1px) / 1deg * 1px)");
+    assert_eq!(
+      resolve_to_pixels("calc(atan2(1em, 1px) / 1deg * 1px)", 16.0),
+      16.0_f64.atan2(1.0).to_degrees()
+    );
+    assert_eq!(
+      resolve_to_pixels("calc(atan2(1em, 1px) / 1deg * 1px)", 100.0),
+      100.0_f64.atan2(1.0).to_degrees()
+    );
+  }
+
+  #[test]
+  fn spacing_relative_dependency_through_other_functions() {
+    // Every `<number>`-valued function keeps its node, so each of these
+    // re-resolves rather than freezing the parse-time metrics.
+    for (css, em, expected) in [
+      ("calc(pow(1em / 1px, 2) * 1px)", 4.0, 16.0),
+      ("calc(pow(1em / 1px, 2) * 1px)", 5.0, 25.0),
+      ("calc(sign(1em) * 2px)", 10.0, 2.0),
+      ("calc(log(1em / 1px, 2) * 1px)", 8.0, 3.0),
+      ("calc(exp(1em / 1px) * 1px)", 0.0, 1.0),
+      ("calc(abs(1em / 1px) * 1px)", 7.0, 7.0),
+      ("calc(sin(90deg) * 1em)", 12.0, 12.0),
+    ] {
+      assert_eq!(resolve_to_pixels(css, em), expected, "resolving {css}");
+    }
   }
 
   fn url(url: &str) -> FontSrc {
