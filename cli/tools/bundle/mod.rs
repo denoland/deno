@@ -25,6 +25,7 @@ use deno_bundle_runtime::BundleFormat;
 use deno_bundle_runtime::BundlePlatform;
 use deno_bundle_runtime::PackageHandling;
 use deno_bundle_runtime::SourceMapType;
+use deno_cache_dir::npm::NpmCacheDir;
 use deno_config::workspace::TsTypeLib;
 use deno_core::anyhow::Context as _;
 use deno_core::error::AnyError;
@@ -39,6 +40,8 @@ use deno_graph::GraphKind;
 use deno_graph::ModuleErrorKind;
 use deno_graph::ModuleGraph;
 use deno_graph::Position;
+use deno_npm_cache::NpmCacheSetting;
+use deno_npm_cache::TarballCache;
 use deno_path_util::resolve_url_or_path;
 use deno_resolver::cache::ParsedSourceCache;
 use deno_resolver::graph::ResolveWithGraphError;
@@ -50,6 +53,8 @@ use deno_resolver::loader::LoadedModuleOrAsset;
 use deno_resolver::loader::LoadedModuleSource;
 use deno_resolver::loader::RequestedModuleType;
 use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
+use deno_resolver::npmrc::create_default_npmrc;
+use deno_resolver::workspace::WorkspaceNpmLinkPackagesRc;
 use deno_runtime::deno_permissions::CheckSpecifierKind;
 use deno_runtime::deno_permissions::OpenAccessKind;
 use deno_runtime::deno_permissions::PermissionsContainer;
@@ -82,7 +87,11 @@ use crate::module_loader::CliEmitter;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::module_loader::PrepareModuleLoadOptions;
 use crate::node::CliNodeResolver;
+use crate::npm::CliNpmCache;
+use crate::npm::CliNpmCacheHttpClient;
+use crate::npm::CliNpmRegistryInfoProvider;
 use crate::npm::CliNpmResolver;
+use crate::npm::NpmPackumentFormat;
 use crate::resolver::CliCjsTracker;
 use crate::resolver::CliResolver;
 use crate::tools::bundle::externals::ExternalsMatcher;
@@ -2664,20 +2673,54 @@ fn resolve_roots(
 async fn ensure_esbuild_downloaded(
   factory: &CliFactory,
 ) -> Result<PathBuf, AnyError> {
-  let installer_factory = factory.npm_installer_factory()?;
   let deno_dir = factory.deno_dir()?;
-  let npmrc = factory.npmrc()?;
-  let npm_registry_info = installer_factory.registry_info_provider()?;
-  let resolver_factory = factory.resolver_factory()?;
-  let workspace_factory = resolver_factory.workspace_factory();
+  let sys = factory.sys();
+
+  // Esbuild is an implementation detail of the bundler, so resolve its
+  // platform package independently from the workspace's package settings.
+  // The default npmrc still honors the process-wide NPM_CONFIG_REGISTRY,
+  // which keeps explicit registry mirrors and the test registry working.
+  let npmrc = Arc::new(create_default_npmrc(&sys));
+  let npm_cache_dir = Arc::new(NpmCacheDir::new(
+    &sys,
+    deno_dir.npm_folder_path(),
+    npmrc.get_all_known_registries_urls(),
+  ));
+  let npm_cache = Arc::new(CliNpmCache::new(
+    npm_cache_dir,
+    sys.clone(),
+    NpmCacheSetting::from_cache_setting(
+      &factory.cli_options()?.cache_setting(),
+    ),
+    npmrc.clone(),
+  ));
+  let npm_client = Arc::new(CliNpmCacheHttpClient::new(
+    factory.http_client_provider().clone(),
+    factory.text_only_progress_bar().clone(),
+    NpmPackumentFormat::Abbreviated,
+  ));
+  let npm_registry_info = Arc::new(CliNpmRegistryInfoProvider::new(
+    npm_cache.clone(),
+    npm_client.clone(),
+    npmrc.clone(),
+    NpmPackumentFormat::Abbreviated,
+  ));
+  let tarball_cache = Arc::new(TarballCache::new(
+    npm_cache.clone(),
+    npm_client,
+    sys,
+    npmrc.clone(),
+    None,
+  ));
+  let link_packages = WorkspaceNpmLinkPackagesRc::default();
 
   let esbuild_path = esbuild::ensure_esbuild(
     deno_dir,
-    npmrc,
-    npm_registry_info,
-    workspace_factory.workspace_npm_link_packages()?,
-    installer_factory.tarball_cache()?,
-    factory.npm_cache()?,
+    &npmrc,
+    &npm_registry_info,
+    &link_packages,
+    &tarball_cache,
+    &npm_cache,
   )
   .await?;
   Ok(esbuild_path)

@@ -1,0 +1,21 @@
+{
+  "tempDir": true,
+  "tests": {
+    "workspace_registry_only_applies_to_project_dependencies": {
+      "steps": [
+        {
+          "args": "run --quiet main.ts",
+          "output": "42\n"
+        },
+        {
+          "args": "bundle --quiet --output=out.js main.ts",
+          "output": ""
+        },
+        {
+          "args": "run --quiet out.js",
+          "output": "42\n"
+        }
+      ]
+    }
+  }
+}
