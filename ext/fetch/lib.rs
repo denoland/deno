@@ -1670,8 +1670,12 @@ fn op_fetch_promise_is_settled(promise: v8::Local<v8::Promise>) -> bool {
 #[derive(Clone, Debug)]
 struct ConnectionUsage(Arc<AtomicUsize>);
 
-/// Request extension recording whether the last attempt was sent on a pooled
-/// (already used) connection. Read by [`FetchRetry`].
+/// Request extension recording whether the connection most recently checked out
+/// for this request was a pooled (already used) one. Read by [`FetchRetry`].
+///
+/// "Most recently" matters because `hyper_util` retries unstarted requests
+/// internally: [`CheckoutTracker`] keeps this in step with every checkout so it
+/// describes the attempt that produced the error, not the first one tried.
 ///
 /// The `Arc` is shared with the clone that `tower`'s retry layer keeps around,
 /// so writes made while the request is in flight are visible to the policy.
@@ -1840,9 +1844,20 @@ where
     let captured = capture_connection(&mut req);
     let fut = self.inner.call(req);
     Box::pin(async move {
-      // Record provenance as soon as the connection has been checked out
-      // rather than when the response completes, so that a request that never
-      // gets a connection is not classified as pooled.
+      // Re-read the capture slot after every poll of the request future rather
+      // than once, because a single `tower` attempt can span several *internal*
+      // ones: `hyper_util`'s client loops on `TrySendError::Retryable`, so a
+      // request that checks out a stale pooled connection and is recovered
+      // unstarted gets resent on a fresh connection, replacing the slot. The
+      // classification has to describe the attempt that actually produced the
+      // error -- calling it `Pooled` when the failing attempt ran on a fresh
+      // connection would let a non-idempotent request be retried and
+      // duplicated. `hyper_util` performs the checkout while polling this
+      // future, so sampling after each poll observes every one of them.
+      //
+      // A request that never gets a connection leaves the slot empty and stays
+      // `Fresh`, which disables transport retries -- the right default, since
+      // it was certainly never sent.
       //
       // Known limitation on HTTP/2: the counter is per connection, not per
       // stream. A request multiplexed onto a connection that a concurrent
@@ -1859,38 +1874,65 @@ where
       // for me" from "created for a concurrent sibling", which the current
       // design can't express.
       let mut fut = std::pin::pin!(fut);
-      {
-        let record = std::pin::pin!(record_connection_reuse(captured, reused));
-        let selected =
-          deno_core::futures::future::select(fut.as_mut(), record).await;
-        // The request finishing first means no connection was ever checked
-        // out, i.e. it failed to connect and was certainly not sent.
-        if let deno_core::futures::future::Either::Left((result, _)) = selected
-        {
-          return result;
-        }
-      }
-      fut.await
+      let mut tracker = CheckoutTracker::default();
+      std::future::poll_fn(|cx| {
+        let polled = fut.as_mut().poll(cx);
+        tracker.sample(&captured, &reused);
+        polled
+      })
+      .await
     })
   }
 }
 
-async fn record_connection_reuse(
-  mut captured: CaptureConnection,
-  reused: ConnectionReused,
-) {
-  let metadata = captured.wait_for_connection_metadata().await;
-  let mut extras = Extensions::new();
-  if let Some(connected) = metadata.as_ref() {
-    connected.get_extras(&mut extras);
+/// Keeps [`ConnectionReused`] describing the most recent connection checked out
+/// for a request, counting each checkout exactly once however often the request
+/// future is polled.
+#[derive(Default)]
+struct CheckoutTracker {
+  /// The counter of the connection recorded by the last sample, used to tell a
+  /// fresh checkout from a repeat sighting of the same one. Held as an `Arc`
+  /// rather than a raw pointer so the enclosing future stays `Send + Sync`.
+  last_seen: Option<Arc<AtomicUsize>>,
+}
+
+impl CheckoutTracker {
+  fn sample(
+    &mut self,
+    captured: &CaptureConnection,
+    reused: &ConnectionReused,
+  ) {
+    let metadata = captured.connection_metadata();
+    let Some(connected) = metadata.as_ref() else {
+      // No connection checked out yet.
+      return;
+    };
+    self.record(connected, reused);
   }
-  // `Relaxed` suffices for both: the request/response round trip already
-  // establishes the happens-before edge between this write and the retry
-  // policy's read.
-  let was_reused = extras
-    .get::<ConnectionUsage>()
-    .is_some_and(|usage| usage.0.fetch_add(1, Ordering::Relaxed) > 0);
-  reused.0.store(was_reused, Ordering::Relaxed);
+
+  /// The body of [`Self::sample`], split out so it can be driven with synthetic
+  /// [`Connected`] values instead of a live `hyper_util` capture slot.
+  fn record(&mut self, connected: &Connected, reused: &ConnectionReused) {
+    let mut extras = Extensions::new();
+    connected.get_extras(&mut extras);
+    let Some(usage) = extras.get::<ConnectionUsage>() else {
+      return;
+    };
+    if self
+      .last_seen
+      .as_ref()
+      .is_some_and(|last| Arc::ptr_eq(last, &usage.0))
+    {
+      // Still the connection we already accounted for.
+      return;
+    }
+    // `Relaxed` suffices for both: the request/response round trip already
+    // establishes the happens-before edge between this write and the retry
+    // policy's read.
+    let was_reused = usage.0.fetch_add(1, Ordering::Relaxed) > 0;
+    reused.0.store(was_reused, Ordering::Relaxed);
+    self.last_seen = Some(usage.0.clone());
+  }
 }
 
 /// Deno.fetch's retry policy.
