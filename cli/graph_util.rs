@@ -59,8 +59,8 @@ use sys_traits::FsMetadata;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
-use crate::args::TypeCheckModeExt;
 use crate::args::config_to_deno_graph_workspace_member;
+use crate::args::graph_kind;
 use crate::args::jsr_url;
 use crate::cache;
 use crate::cache::GlobalHttpCache;
@@ -699,7 +699,7 @@ impl ModuleGraphCreator {
     &self,
     roots: Vec<ModuleSpecifier>,
   ) -> Result<Arc<deno_graph::ModuleGraph>, AnyError> {
-    let graph_kind = self.options.type_check_mode().as_graph_kind();
+    let graph_kind = graph_kind(self.options.type_check_mode());
 
     let graph = self
       .create_graph_with_options(CreateGraphOptions {
