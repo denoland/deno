@@ -1238,11 +1238,19 @@ impl CliOptions {
   /// - `Permissions::from_options` re-resolves `allow_run`, which logs for
   ///   each entry it cannot resolve. Keeping the other fields empty avoids
   ///   duplicating that output.
+  ///
+  /// A permission set that cannot be resolved is skipped rather than fatal:
+  /// the file fetcher is built in contexts where the flags carry a `-P` naming
+  /// a set that this options' config does not define. `deno x` is one — it
+  /// re-runs with a generated `deno.json` while still forwarding the user's
+  /// `-P` for the child to resolve. Where the set is genuinely missing,
+  /// `permissions_options` still errors when the permissions are built.
   pub fn import_deny_permissions_options(
     &self,
   ) -> Result<PermissionsOptions, AnyError> {
-    let config_permissions =
-      self.resolve_config_permissions_for_dir(&self.start_dir)?;
+    let config_permissions = self
+      .resolve_config_permissions_for_dir(&self.start_dir)
+      .unwrap_or(None);
     let all = flags_to_permissions_options(
       &self.flags.permissions,
       config_permissions,
