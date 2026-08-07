@@ -84,6 +84,23 @@ function chdir(directory: string): void {
 /** https://nodejs.org/api/process.html#process_process_cwd */
 const cwd = fs.cwd;
 
+// Libraries such as `graceful-fs` (pulled in by `fs-extra` and many others)
+// wrap `process.chdir`/`process.cwd` to cache the working directory, only
+// invalidating that cache when `process.chdir` is called. `Deno.chdir` changes
+// the working directory without going through `process.chdir`, which would
+// leave `process.cwd()` stale. Replay `Deno.chdir` through the currently
+// installed `process.chdir` (when it has been wrapped) so those caches stay in
+// sync. See https://github.com/denoland/deno/issues/36294.
+fs.setOnChdirListener(() => {
+  const process = globalThis.process;
+  if (
+    process !== undefined && process !== null &&
+    typeof process.chdir === "function" && process.chdir !== chdir
+  ) {
+    process.chdir(fs.cwd());
+  }
+});
+
 /** https://nodejs.org/api/process.html#process_process_nexttick_callback_args */
 const nextTick = _nextTick;
 
