@@ -69,6 +69,10 @@
       "args": "run -A main.ts start_active_span.ts",
       "output": "start_active_span.out"
     },
+    "context": {
+      "args": "run -A main.ts context.ts",
+      "output": "context.out"
+    },
     "node_http_request": {
       "args": "run -A main.ts node_http_request.ts",
       "output": "node_http_request.out"
@@ -100,6 +104,18 @@
     "propagators_api": {
       "args": "run -A main.ts propagators_api.ts",
       "output": "propagators_api.out"
+    },
+    "baggage_api": {
+      "args": "run -A main.ts baggage_api.ts",
+      "output": "baggage_api.out"
+    },
+    "trace_context_propagator": {
+      "args": "run -A main.ts trace_context_propagator.ts",
+      "output": "trace_context_propagator.out"
+    },
+    "composite_propagator_failure": {
+      "args": "run -A main.ts composite_propagator_failure.ts",
+      "output": "composite_propagator_failure.out"
     },
     "cron": {
       "args": "run -A main.ts cron.ts",
