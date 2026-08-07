@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "deny_net_node_tcp_wrap_bind_resolved_ip": {
+      "args": "run --allow-net --deny-net=127.0.0.1,[::1] --unstable-node-globals main.ts",
+      "output": "main.out"
+    }
+  }
+}
