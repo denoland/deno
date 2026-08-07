@@ -10,6 +10,7 @@ use deno_error::JsErrorBox;
 use deno_runtime::deno_permissions::OpenAccessKind;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use parking_lot::Mutex;
+use sys_traits::FsReadLink;
 
 use crate::sys::DenoLibSys;
 
@@ -35,6 +36,60 @@ struct EnsureRegistryReadPermissionError {
   #[source]
   #[inherit]
   source: std::io::Error,
+}
+
+/// Canonicalizes the nearest existing entry, then appends any unresolved path
+/// components. Using symlink metadata to find that entry is important because
+/// it stops at a dangling symlink or junction instead of treating the link's
+/// name as an ordinary missing component.
+fn canonicalize_path_maybe_not_exists<TSys>(
+  sys: &TSys,
+  mut path: &Path,
+) -> Result<PathBuf, std::io::Error>
+where
+  TSys: sys_traits::FsCanonicalize + sys_traits::FsMetadata + FsReadLink,
+{
+  let mut names_stack = Vec::new();
+  loop {
+    match sys.fs_symlink_metadata(path) {
+      Ok(_) => {
+        let mut canonicalized_path = match sys.fs_canonicalize(path) {
+          Ok(path) => path,
+          Err(err) if err.kind() == ErrorKind::NotFound => {
+            let target = sys.fs_read_link(path)?;
+            let target = if target.is_absolute() {
+              target
+            } else {
+              path.parent().unwrap_or_else(|| Path::new(".")).join(target)
+            };
+            let target =
+              deno_path_util::normalize_path(Cow::Owned(target)).into_owned();
+            canonicalize_path_maybe_not_exists(sys, &target)?
+          }
+          Err(err) => return Err(err),
+        };
+        for name in names_stack.into_iter().rev() {
+          canonicalized_path = canonicalized_path.join(name);
+        }
+        return Ok(
+          deno_path_util::normalize_path(Cow::Owned(canonicalized_path))
+            .into_owned(),
+        );
+      }
+      Err(err) if err.kind() == ErrorKind::NotFound => {
+        names_stack.push(match path.file_name() {
+          Some(name) => name.to_owned(),
+          None => return Err(err),
+        });
+        path = match path.parent() {
+          Some(parent) if parent.as_os_str().is_empty() => Path::new("."),
+          Some(parent) => parent,
+          None => return Err(err),
+        };
+      }
+      Err(err) => return Err(err),
+    }
+  }
 }
 
 impl<TSys: DenoLibSys> NpmRegistryReadPermissionChecker<TSys> {
@@ -74,6 +129,7 @@ impl<TSys: DenoLibSys> NpmRegistryReadPermissionChecker<TSys> {
       }
       NpmRegistryReadPermissionCheckerMode::Global(registry_path)
       | NpmRegistryReadPermissionCheckerMode::Local(registry_path) => {
+        let mut path = path;
         // allow reading if it's in the node_modules
         let is_path_in_node_modules = path.starts_with(registry_path)
           && path
@@ -106,15 +162,22 @@ impl<TSys: DenoLibSys> NpmRegistryReadPermissionChecker<TSys> {
               }
             };
           if let Some(registry_path_canon) = canonicalize(registry_path)? {
-            if let Some(path_canon) = canonicalize(&path)? {
-              if path_canon.starts_with(registry_path_canon) {
-                return Ok(Cow::Owned(path_canon));
-              }
-            } else if path.starts_with(registry_path_canon)
-              || path.starts_with(registry_path)
-            {
-              return Ok(path);
+            let path_canon = if let Some(path_canon) = canonicalize(&path)? {
+              path_canon
+            } else {
+              canonicalize_path_maybe_not_exists(&self.sys, &path).map_err(
+                |source| {
+                  JsErrorBox::from_err(EnsureRegistryReadPermissionError {
+                    path: path.to_path_buf(),
+                    source,
+                  })
+                },
+              )?
+            };
+            if path_canon.starts_with(&registry_path_canon) {
+              return Ok(Cow::Owned(path_canon));
             }
+            path = Cow::Owned(path_canon);
           }
         }
 

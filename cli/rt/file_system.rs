@@ -802,6 +802,20 @@ impl sys_traits::BaseFsCanonicalize for DenoRtSys {
   }
 }
 
+impl sys_traits::BaseFsReadLink for DenoRtSys {
+  #[inline]
+  fn base_fs_read_link(&self, path: &Path) -> std::io::Result<PathBuf> {
+    if self.is_vfs_path(path) {
+      self.vfs.read_link(path)
+    } else {
+      sys_traits::BaseFsReadLink::base_fs_read_link(
+        &sys_traits::impls::RealSys,
+        path,
+      )
+    }
+  }
+}
+
 impl sys_traits::BaseFsMetadata for DenoRtSys {
   type Metadata = BoxedFsMetadataValue;
 
