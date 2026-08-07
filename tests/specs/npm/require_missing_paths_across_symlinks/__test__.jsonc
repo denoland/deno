@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "run -A setup.js",
+      "output": ""
+    },
+    {
+      "args": "run main.js",
+      "output": "main.out"
+    },
+    {
+      "args": "run --allow-read=outside,removed main_with_read.js",
+      "output": "main.out"
+    }
+  ]
+}
