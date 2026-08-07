@@ -23,6 +23,14 @@ type Handler = Box<dyn Fn() + Send>;
 type Handlers = HashMap<i32, Vec<(u32, bool, Handler)>>;
 static HANDLERS: OnceLock<(Handle, Mutex<Handlers>)> = OnceLock::new();
 
+/// Interceptors run before regular handlers and can consume a signal.
+/// If the interceptor returns `true`, the signal is consumed and regular
+/// handlers are NOT called. Used by the SIGINT watchdog to prevent
+/// other listeners (e.g. the test runner) from seeing the signal.
+type Interceptor = Box<dyn Fn() -> bool + Send>;
+static INTERCEPTORS: OnceLock<Mutex<HashMap<i32, Interceptor>>> =
+  OnceLock::new();
+
 #[cfg(unix)]
 struct Handle(signal_hook::iterator::Handle);
 
@@ -30,6 +38,16 @@ struct Handle(signal_hook::iterator::Handle);
 struct Handle;
 
 fn handle_signal(signal: i32) -> bool {
+  // Check interceptor first — if it consumes the signal, skip handlers.
+  if let Some(interceptors) = INTERCEPTORS.get() {
+    let interceptors = interceptors.lock().unwrap();
+    if let Some(interceptor) = interceptors.get(&signal)
+      && interceptor()
+    {
+      return true;
+    }
+  }
+
   let Some((_, handlers)) = HANDLERS.get() else {
     return false;
   };
@@ -210,6 +228,30 @@ pub fn register(
   }
 
   Ok(id)
+}
+
+/// Set an interceptor for a signal. The interceptor runs before regular
+/// handlers. If it returns `true`, the signal is consumed and no regular
+/// handlers are called. Pass `None` to remove the interceptor.
+pub fn set_interceptor(signal: i32, f: Option<Box<dyn Fn() -> bool + Send>>) {
+  // Ensure signal infrastructure is initialized so the signal thread
+  // exists to call handle_signal (and thus our interceptor).
+  HANDLERS.get_or_init(|| {
+    let handle = init();
+    let handlers = Mutex::new(HashMap::new());
+    (handle, handlers)
+  });
+
+  let interceptors = INTERCEPTORS.get_or_init(|| Mutex::new(HashMap::new()));
+  let mut map = interceptors.lock().unwrap();
+  match f {
+    Some(f) => {
+      map.insert(signal, f);
+    }
+    None => {
+      map.remove(&signal);
+    }
+  }
 }
 
 pub fn unregister(signal: i32, id: u32) {
