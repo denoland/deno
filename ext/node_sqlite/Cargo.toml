@@ -18,3 +18,4 @@ deno_error.workspace = true
 deno_permissions.workspace = true
 rusqlite.workspace = true
 thiserror.workspace = true
+tokio.workspace = true

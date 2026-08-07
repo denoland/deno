@@ -8,7 +8,10 @@ mod sql_tag_store;
 mod statement;
 mod validators;
 
-pub use backup::op_node_database_backup;
+pub use backup::op_node_database_backup_finish;
+pub use backup::op_node_database_backup_init;
+pub use backup::op_node_database_backup_run;
+pub use backup::op_node_database_backup_step;
 pub use database::DatabaseSync;
 pub use database::DatabaseSyncLimits;
 pub use session::Session;
@@ -17,7 +20,12 @@ pub use statement::StatementSync;
 
 deno_core::extension!(
   deno_node_sqlite,
-  ops = [op_node_database_backup,],
+  ops = [
+    op_node_database_backup_init,
+    op_node_database_backup_step,
+    op_node_database_backup_run,
+    op_node_database_backup_finish,
+  ],
   objects = [
     DatabaseSync,
     DatabaseSyncLimits,
@@ -33,6 +41,14 @@ pub enum SqliteError {
   #[error(transparent)]
   #[property("code" = self.code())]
   Permission(#[from] deno_permissions::PermissionCheckError),
+  #[class(inherit)]
+  #[error(transparent)]
+  #[property("code" = self.code())]
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(inherit)]
+  #[error(transparent)]
+  #[property("code" = self.code())]
+  JoinError(#[from] tokio::task::JoinError),
   #[class(generic)]
   #[error(transparent)]
   #[property("code" = self.code())]

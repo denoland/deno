@@ -531,6 +531,79 @@ Deno.test("[node/sqlite] Database backup", async () => {
   Deno.removeSync(`${tempDir}/backup.db`);
 });
 
+Deno.test("[node/sqlite] backup does not block the event loop", async () => {
+  const db = new DatabaseSync(`${tempDir}/backup_async_src.db`);
+  db.exec("CREATE TABLE data (key INTEGER PRIMARY KEY, value TEXT)");
+  const insert = db.prepare("INSERT INTO data (key, value) VALUES (?, ?)");
+  for (let i = 0; i < 500; i++) {
+    insert.run(i, "A".repeat(1024));
+  }
+
+  let timerFired = false;
+  const timer = setTimeout(() => {
+    timerFired = true;
+  }, 0);
+  let progressCalls = 0;
+  await backup(db, `${tempDir}/backup_async_dst.db`, {
+    rate: 1,
+    progress: () => {
+      progressCalls++;
+    },
+  });
+  clearTimeout(timer);
+
+  assert(timerFired, "timer should fire while the backup is in progress");
+  assert(progressCalls > 0);
+
+  db.close();
+  Deno.removeSync(`${tempDir}/backup_async_src.db`);
+  Deno.removeSync(`${tempDir}/backup_async_dst.db`);
+});
+
+Deno.test("[node/sqlite] backup without progress does not block the event loop", async () => {
+  const db = new DatabaseSync(`${tempDir}/backup_noprogress_src.db`);
+  db.exec("CREATE TABLE data (key INTEGER PRIMARY KEY, value TEXT)");
+  const insert = db.prepare("INSERT INTO data (key, value) VALUES (?, ?)");
+  for (let i = 0; i < 500; i++) {
+    insert.run(i, "A".repeat(1024));
+  }
+
+  let timerFired = false;
+  const timer = setTimeout(() => {
+    timerFired = true;
+  }, 0);
+  // No progress callback: the copy loop runs entirely server-side, but each
+  // step still yields to the event loop so the timer must fire before it
+  // resolves.
+  await backup(db, `${tempDir}/backup_noprogress_dst.db`, { rate: 1 });
+  clearTimeout(timer);
+
+  assert(timerFired, "timer should fire while the backup is in progress");
+
+  db.close();
+  Deno.removeSync(`${tempDir}/backup_noprogress_src.db`);
+  Deno.removeSync(`${tempDir}/backup_noprogress_dst.db`);
+});
+
+Deno.test("[node/sqlite] backup survives closing the source database", async () => {
+  const db = new DatabaseSync(`${tempDir}/backup_close_src.db`);
+  populate(db, 1000);
+
+  // Close the source database while the backup is still in flight. Like
+  // Node, the backup keeps the underlying connection alive and completes.
+  const promise = backup(db, `${tempDir}/backup_close_dst.db`, { rate: 1 });
+  db.close();
+  await promise;
+
+  const backupDb = new DatabaseSync(`${tempDir}/backup_close_dst.db`);
+  const row = backupDb.prepare("SELECT COUNT(*) AS n FROM test").get();
+  assertEquals(row!.n, 1000);
+  backupDb.close();
+
+  Deno.removeSync(`${tempDir}/backup_close_src.db`);
+  Deno.removeSync(`${tempDir}/backup_close_dst.db`);
+});
+
 Deno.test("[node/sqlite] DatabaseSync.serialize/deserialize round-trip", () => {
   using src = new DatabaseSync(":memory:");
   src.exec("CREATE TABLE t(id INTEGER PRIMARY KEY, name TEXT)");

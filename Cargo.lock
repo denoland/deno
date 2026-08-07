@@ -3000,6 +3000,7 @@ dependencies = [
  "deno_permissions",
  "rusqlite",
  "thiserror 2.0.12",
+ "tokio",
 ]
 
 [[package]]

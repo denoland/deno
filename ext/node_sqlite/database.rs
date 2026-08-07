@@ -63,6 +63,14 @@ const LIMIT_MAPPING: [(&str, Limit); NUM_LIMITS] = [
   ("triggerDepth", Limit::SQLITE_LIMIT_TRIGGER_DEPTH),
 ];
 
+// rusqlite defaults to NOMUTEX; use FULL_MUTEX so backup steps can run safely
+// from another thread while JS keeps using the connection.
+pub(crate) const DEFAULT_OPEN_FLAGS: rusqlite::OpenFlags =
+  rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE
+    .union(rusqlite::OpenFlags::SQLITE_OPEN_CREATE)
+    .union(rusqlite::OpenFlags::SQLITE_OPEN_URI)
+    .union(rusqlite::OpenFlags::SQLITE_OPEN_FULL_MUTEX);
+
 struct DatabaseSyncOptions {
   open: bool,
   enable_foreign_key_constraints: bool,
@@ -583,6 +591,10 @@ pub struct DatabaseSync {
   // permissions for the database path. Used to stop the `limits.attach` setter
   // from raising the cap and bypassing the boundary.
   disable_attach: Rc<Cell<bool>>,
+  // Active backup jobs using this DB as their source.
+  pub(crate) active_backups: Rc<Cell<usize>>,
+  // Park the connection until active backups finish.
+  pub(crate) deferred_close_conn: Rc<RefCell<Option<rusqlite::Connection>>>,
 }
 
 struct CallbackDepthGuard {
@@ -707,7 +719,8 @@ fn open_db(
     .is_err();
 
   if location == ":memory:" {
-    let conn = rusqlite::Connection::open_in_memory()?;
+    let conn =
+      rusqlite::Connection::open_in_memory_with_flags(DEFAULT_OPEN_FLAGS)?;
     if disable_attach {
       assert!(set_db_config(
         &conn,
@@ -752,7 +765,8 @@ fn open_db(
   if options.read_only {
     let conn = rusqlite::Connection::open_with_flags(
       location,
-      rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+      rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
+        | rusqlite::OpenFlags::SQLITE_OPEN_FULL_MUTEX,
     )?;
     if disable_attach {
       assert!(set_db_config(
@@ -784,7 +798,8 @@ fn open_db(
     return Ok((conn, disable_attach));
   }
 
-  let conn = rusqlite::Connection::open(location)?;
+  let conn =
+    rusqlite::Connection::open_with_flags(location, DEFAULT_OPEN_FLAGS)?;
   conn.busy_timeout(std::time::Duration::from_millis(options.timeout))?;
 
   if options.allow_extension {
@@ -879,6 +894,8 @@ impl DatabaseSync {
       authorizer_data: Rc::new(RefCell::new(None)),
       callback_depth: Rc::new(Cell::new(0)),
       disable_attach: Rc::new(Cell::new(disable_attach)),
+      active_backups: Rc::new(Cell::new(0)),
+      deferred_close_conn: Rc::new(RefCell::new(None)),
     })
   }
 
@@ -957,7 +974,10 @@ impl DatabaseSync {
       }
     }
 
-    let _ = self.conn.borrow_mut().take();
+    let conn = self.conn.borrow_mut().take();
+    if self.active_backups.get() > 0 {
+      *self.deferred_close_conn.borrow_mut() = conn;
+    }
 
     Ok(())
   }
