@@ -532,6 +532,17 @@ fn permission_args_parse(result: &ParseResult, flags: &mut Flags) {
   if result.get_bool("no-prompt") {
     flags.permissions.no_prompt = true;
   }
+
+  if result.get_bool("allow-hrtime") || result.get_bool("deny-hrtime") {
+    // use eprintln instead of log::warn because logging hasn't been initialized yet
+    #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
+    {
+      eprintln!(
+        "{} `allow-hrtime` and `deny-hrtime` have been removed in Deno 2, as high resolution time is now always allowed",
+        deno_runtime::colors::yellow("Warning")
+      );
+    }
+  }
 }
 
 fn inspect_arg_parse(result: &ParseResult, flags: &mut Flags) {
@@ -1212,7 +1223,7 @@ fn validate_permission_args(
           return Err(CliError::new(
             CliErrorKind::InvalidValue,
             format!(
-              "invalid value '{val}': URLs are not supported, only domains and ips"
+              "invalid value '{val}': URLs are not supported, only domains and IPs"
             ),
           ));
         }
@@ -1320,6 +1331,16 @@ fn run_parse(
   ext_arg_parse(result, flags);
 
   flags.tunnel = result.get_bool("tunnel");
+  if result.get_bool("use-env-proxy") {
+    // Node's --use-env-proxy is process-wide. Deno's node polyfills read the
+    // same env variable as the Node tests when selecting global proxy config.
+    // SAFETY: CLI parsing runs before worker startup and before Deno starts
+    // any threads that could concurrently read the process environment.
+    unsafe { std::env::set_var("NODE_USE_ENV_PROXY", "1") };
+  } else if result.get_bool("no-use-env-proxy") {
+    // SAFETY: see the --use-env-proxy branch above.
+    unsafe { std::env::set_var("NODE_USE_ENV_PROXY", "0") };
+  }
   flags.code_cache_enabled = !result.get_bool("no-code-cache");
   let coverage_dir = if result.contains("coverage") {
     Some(result.get_one("coverage").unwrap_or("coverage").to_string())
@@ -1816,6 +1837,7 @@ fn check_parse(result: &ParseResult, flags: &mut Flags) {
 
 fn info_parse(result: &ParseResult, flags: &mut Flags) {
   reload_arg_parse(result, flags);
+  min_dep_age_arg_parse(result, flags);
   config_args_parse(result, flags);
   import_map_arg_parse(result, flags);
   location_arg_parse(result, flags);
@@ -1921,11 +1943,12 @@ fn task_parse(result: &ParseResult, flags: &mut Flags) -> Result<(), CliError> {
   env_file_arg_parse(result, flags);
 
   let mut recursive = result.get_bool("recursive");
+  let members = result.get_bool("members");
   let filter =
     if let Some(filter) = result.get_one("filter").map(|s| s.to_string()) {
       recursive = false;
       Some(filter)
-    } else if recursive {
+    } else if recursive || members {
       Some("*".to_string())
     } else {
       None
@@ -1958,6 +1981,7 @@ fn task_parse(result: &ParseResult, flags: &mut Flags) -> Result<(), CliError> {
     task: task_name,
     is_run: false,
     recursive,
+    members,
     filter,
     eval,
     no_prefix: result.get_bool("no-prefix"),
@@ -2043,6 +2067,10 @@ fn compile_parse(result: &ParseResult, flags: &mut Flags) {
     app_name: result.get_one("app-name").map(|s| s.to_string()),
     minify: result.get_bool("minify"),
     exclude_unused_npm: result.get_bool("exclude-unused-npm"),
+    engine: result
+      .get_one("engine")
+      .map(|value| value.parse().expect("engine is validated by the parser"))
+      .unwrap_or_default(),
   });
 }
 
@@ -2248,10 +2276,13 @@ fn install_parse(
         InstallFlagsLocal::Add(AddFlags {
           packages: packages.iter().map(|s| s.to_string()).collect(),
           dev,
+          optional: result.get_bool("save-optional"),
+          no_save: result.get_bool("no-save"),
           default_registry,
           lockfile_only,
           save_exact: result.get_bool("save-exact"),
           package_json: result.get_bool("package-json"),
+          unscoped: result.get_bool("unscoped"),
         }),
         npm_target,
       ));
@@ -2500,6 +2531,7 @@ fn publish_parse(result: &ParseResult, flags: &mut Flags) {
 
 fn add_parse(result: &ParseResult, flags: &mut Flags) {
   allow_and_deny_import_parse(result, flags);
+  min_dep_age_arg_parse(result, flags);
   lock_args_parse(result, flags);
   env_file_arg_parse(result, flags);
 
@@ -2519,10 +2551,13 @@ fn add_parse(result: &ParseResult, flags: &mut Flags) {
   flags.subcommand = DenoSubcommand::Add(AddFlags {
     packages,
     dev,
+    optional: result.get_bool("save-optional"),
+    no_save: result.get_bool("no-save"),
     default_registry,
     lockfile_only: result.get_bool("lockfile-only"),
     save_exact: result.get_bool("save-exact"),
     package_json: result.get_bool("package-json"),
+    unscoped: result.get_bool("unscoped"),
   });
 }
 
@@ -2608,6 +2643,10 @@ fn desktop_parse(result: &ParseResult, flags: &mut Flags) {
     inspect_renderer,
     compress,
     exclude_unused_npm: result.get_bool("exclude-unused-npm"),
+    engine: result
+      .get_one("engine")
+      .map(|value| value.parse().expect("engine is validated by the parser"))
+      .unwrap_or_default(),
   });
 }
 
@@ -2692,6 +2731,7 @@ fn why_parse(result: &ParseResult, flags: &mut Flags) {
 
 fn remove_parse(result: &ParseResult, flags: &mut Flags) {
   lock_args_parse(result, flags);
+  min_dep_age_arg_parse(result, flags);
   let packages: Vec<String> = result
     .get_many("packages")
     .map(|v| v.iter().map(|s| s.to_string()).collect())
@@ -3045,7 +3085,9 @@ fn bundle_parse(result: &ParseResult, flags: &mut Flags) {
   // `compile_args_without_check_parse` deliberately omits `--check`; apply it
   // here so `deno bundle --check=all` type-checks (mirrors clap, #30159).
   check_arg_parse(result, flags);
-  permission_args_parse(result, flags);
+  // `bundle` resolves a module graph but never runs it, so the only
+  // permissions it takes are the import ones.
+  allow_and_deny_import_parse(result, flags);
 
   let entrypoints = result
     .get_many("file")

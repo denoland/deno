@@ -165,6 +165,39 @@ type MemberPropsCache = deno_maybe_sync::MaybeArc<
   MaybeDashMap<(Url, u64), deno_maybe_sync::MaybeArc<MemberPropsMap>>,
 >;
 
+/// Whether a source should skip CJS export analysis (treated as ESM) instead of
+/// being parsed for `module.exports`/`require`.
+///
+/// Non-script files can't carry CJS exports. The file extension answers this for
+/// everything except extensionless files (`MediaType::Unknown`), which may be
+/// real modules (an npm `"main"` with no extension — see
+/// `test-module-main-extension-lookup`) OR binary assets a framework happened to
+/// `require()`. Feeding binary to swc panics (it asserts on a backwards span), so
+/// for `Unknown` we only analyze when the source looks like text rather than
+/// blanket-skipping every extensionless module.
+///
+/// `MediaType::Json` is handled by the caller before this and is not considered
+/// here.
+fn should_skip_cjs_analysis(media_type: MediaType, source: &str) -> bool {
+  let is_definitely_non_script = !matches!(
+    media_type,
+    MediaType::JavaScript
+      | MediaType::Mjs
+      | MediaType::Cjs
+      | MediaType::Jsx
+      | MediaType::TypeScript
+      | MediaType::Mts
+      | MediaType::Cts
+      | MediaType::Tsx
+      | MediaType::Dts
+      | MediaType::Dmts
+      | MediaType::Dcts
+      | MediaType::Unknown
+  );
+  let looks_binary = source.contains('\0') || source.contains('\u{FFFD}');
+  is_definitely_non_script || (media_type == MediaType::Unknown && looks_binary)
+}
+
 pub struct DenoCjsCodeAnalyzer<TSys: DenoCjsCodeAnalyzerSys> {
   cache: NodeAnalysisCacheRc,
   cjs_tracker: CjsTrackerRc<DenoInNpmPackageChecker, TSys>,
@@ -175,7 +208,6 @@ pub struct DenoCjsCodeAnalyzer<TSys: DenoCjsCodeAnalyzerSys> {
   /// module, or the same lookup across multiple importers) do not
   /// re-parse the source.
   member_props_cache: MemberPropsCache,
-  sys: TSys,
 }
 
 impl<TSys: DenoCjsCodeAnalyzerSys> DenoCjsCodeAnalyzer<TSys> {
@@ -183,14 +215,12 @@ impl<TSys: DenoCjsCodeAnalyzerSys> DenoCjsCodeAnalyzer<TSys> {
     cache: NodeAnalysisCacheRc,
     cjs_tracker: CjsTrackerRc<DenoInNpmPackageChecker, TSys>,
     module_export_analyzer: ModuleExportAnalyzerRc,
-    sys: TSys,
   ) -> Self {
     Self {
       cache,
       cjs_tracker,
       module_export_analyzer,
       member_props_cache: Default::default(),
-      sys,
     }
   }
 
@@ -212,32 +242,7 @@ impl<TSys: DenoCjsCodeAnalyzerSys> DenoCjsCodeAnalyzer<TSys> {
       return Ok(DenoCjsAnalysis::Cjs(Default::default()));
     }
 
-    // Non-script files can't carry CJS exports. Extensions answer this for
-    // everything except extensionless files (`MediaType::Unknown`), which may
-    // be real modules (an npm `"main"` with no extension — see
-    // test-module-main-extension-lookup) OR binary assets a framework happened
-    // to `require()`. Feeding binary to swc panics (it asserts on a backwards
-    // span), so for `Unknown` we only proceed when the source looks like text
-    // rather than blanket-skipping every extensionless module.
-    let is_definitely_non_script = !matches!(
-      media_type,
-      MediaType::JavaScript
-        | MediaType::Mjs
-        | MediaType::Cjs
-        | MediaType::Jsx
-        | MediaType::TypeScript
-        | MediaType::Mts
-        | MediaType::Cts
-        | MediaType::Tsx
-        | MediaType::Dts
-        | MediaType::Dmts
-        | MediaType::Dcts
-        | MediaType::Unknown
-    );
-    let looks_binary = source.contains('\0') || source.contains('\u{FFFD}');
-    if is_definitely_non_script
-      || (media_type == MediaType::Unknown && looks_binary)
-    {
+    if should_skip_cjs_analysis(media_type, source) {
       return Ok(DenoCjsAnalysis::Esm);
     }
 
@@ -311,25 +316,12 @@ impl<TSys: DenoCjsCodeAnalyzerSys> CjsCodeAnalyzer
   ) -> Result<ExtNodeCjsAnalysis<'a>, JsErrorBox> {
     let source = match source {
       Some(source) => source,
-      None => {
-        if let Ok(path) = deno_path_util::url_to_file_path(specifier) {
-          if let Ok(source_from_file) = self.sys.fs_read_to_string_lossy(path) {
-            source_from_file
-          } else {
-            return Ok(ExtNodeCjsAnalysis::Cjs(CjsAnalysisExports {
-              exports: vec![],
-              reexports: vec![],
-              member_reexports: vec![],
-            }));
-          }
-        } else {
-          return Ok(ExtNodeCjsAnalysis::Cjs(CjsAnalysisExports {
-            exports: vec![],
-            reexports: vec![],
-            member_reexports: vec![],
-          }));
-        }
-      }
+      // The analyzer may be asked to recursively inspect CJS re-exports
+      // after only resolving the target specifier. Do not load that target
+      // independently here because it may not match the source selected by
+      // the caller's module loader. Callers should pass loader-owned source
+      // explicitly when recursive analysis is available.
+      None => return Ok(ExtNodeCjsAnalysis::Cjs(empty_cjs_analysis())),
     };
     let analysis = self
       .inner_cjs_analysis(specifier, &source, esm_analysis_mode)
@@ -354,13 +346,9 @@ impl<TSys: DenoCjsCodeAnalyzerSys> CjsCodeAnalyzer
   ) -> Result<Option<Vec<String>>, JsErrorBox> {
     let source = match maybe_source {
       Some(source) => source,
-      None => match deno_path_util::url_to_file_path(specifier) {
-        Ok(path) => match self.sys.fs_read_to_string_lossy(path) {
-          Ok(source_from_file) => source_from_file,
-          Err(_) => return Ok(None),
-        },
-        Err(_) => return Ok(None),
-      },
+      // See `analyze_cjs`: callers must provide loader-owned source. Without
+      // it, report that the member could not be statically narrowed.
+      None => return Ok(None),
     };
     let source = source.strip_prefix('\u{FEFF}').unwrap_or(&source);
     let media_type = MediaType::from_specifier(specifier);
@@ -415,5 +403,71 @@ fn to_ext_cjs_analysis_exports(
         member: m.member,
       })
       .collect(),
+  }
+}
+fn empty_cjs_analysis() -> CjsAnalysisExports {
+  CjsAnalysisExports {
+    exports: vec![],
+    reexports: vec![],
+    member_reexports: vec![],
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn skips_non_script_media_types() {
+    // Definitely-non-script extensions never carry CJS exports, regardless of
+    // whether their bytes happen to look like text.
+    for mt in [MediaType::Wasm, MediaType::Css, MediaType::Html] {
+      assert!(should_skip_cjs_analysis(mt, "anything"));
+    }
+  }
+
+  #[test]
+  fn analyzes_script_media_types() {
+    // Real script extensions are always analyzed, even if the source contains
+    // bytes the binary heuristic would flag (the extension is authoritative).
+    for mt in [
+      MediaType::JavaScript,
+      MediaType::Mjs,
+      MediaType::Cjs,
+      MediaType::Jsx,
+      MediaType::TypeScript,
+      MediaType::Mts,
+      MediaType::Cts,
+      MediaType::Tsx,
+    ] {
+      assert!(!should_skip_cjs_analysis(mt, "module.exports = 1;"));
+      assert!(!should_skip_cjs_analysis(mt, "still\u{FFFD}script"));
+    }
+  }
+
+  #[test]
+  fn analyzes_extensionless_text() {
+    // Extensionless npm `"main"` entries (e.g. `test-module-main-extension-lookup`)
+    // are real modules and must be analyzed rather than skipped.
+    assert!(!should_skip_cjs_analysis(
+      MediaType::Unknown,
+      "module.exports = function () {};\n",
+    ));
+    assert!(!should_skip_cjs_analysis(MediaType::Unknown, ""));
+  }
+
+  #[test]
+  fn skips_extensionless_binary() {
+    // Extensionless binary assets a framework happened to `require()` must be
+    // skipped: feeding them to swc panics on a backwards span. Detected via a
+    // NUL byte or the U+FFFD replacement char (invalid UTF-8 read lossily).
+    assert!(should_skip_cjs_analysis(
+      MediaType::Unknown,
+      "MZ\u{0}\u{0}binary",
+    ));
+    assert!(should_skip_cjs_analysis(
+      MediaType::Unknown,
+      "PNG\u{FFFD}\u{FFFD}",
+    ));
   }
 }

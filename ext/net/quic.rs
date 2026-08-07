@@ -114,11 +114,17 @@ pub enum QuicError {
   #[error("Peer does not support WebTransport")]
   WebTransportPeerUnsupported,
   #[class(generic)]
+  #[error("WebTransport handshake frame exceeds the 64 KiB limit")]
+  WebTransportHandshakeFrameTooLarge,
+  #[class(generic)]
   #[error("{0}")]
   WebTransportSettingsError(#[from] web_transport_proto::SettingsError),
   #[class(generic)]
   #[error("{0}")]
   WebTransportConnectError(#[from] web_transport_proto::ConnectError),
+  #[class(type)]
+  #[error("Invalid WebTransport URL: {0}")]
+  WebTransportUrlParse(#[from] url::ParseError),
   #[class(inherit)]
   #[error(transparent)]
   Other(#[from] JsErrorBox),
@@ -1096,8 +1102,52 @@ pub(crate) mod webtransport {
   use rustls::crypto::verify_tls13_signature;
   use sha2::Digest;
   use sha2::Sha256;
+  use x509_parser::prelude::FromDer;
+  use x509_parser::prelude::X509Certificate;
 
   use super::*;
+
+  // WebTransport setup only exchanges SETTINGS and CONNECT headers. Keep the
+  // incremental decoder bounded while allowing ample room for extensions and
+  // unusually long request URLs.
+  const MAX_HANDSHAKE_FRAME_SIZE: usize = 64 * 1024;
+
+  fn checked_handshake_buffer_len(
+    current: usize,
+    additional: usize,
+  ) -> Option<usize> {
+    current
+      .checked_add(additional)
+      .filter(|&len| len <= MAX_HANDSHAKE_FRAME_SIZE)
+  }
+
+  fn append_handshake_chunk(
+    buf: &mut Vec<u8>,
+    chunk: &[u8],
+  ) -> Result<(), QuicError> {
+    checked_handshake_buffer_len(buf.len(), chunk.len())
+      .ok_or(QuicError::WebTransportHandshakeFrameTooLarge)?;
+    buf.extend_from_slice(chunk);
+    Ok(())
+  }
+
+  async fn read_handshake_chunk(
+    rx: &mut quinn::RecvStream,
+    buf: &mut Vec<u8>,
+  ) -> Result<(), QuicError> {
+    let remaining = MAX_HANDSHAKE_FRAME_SIZE
+      .checked_sub(buf.len())
+      .ok_or(QuicError::WebTransportHandshakeFrameTooLarge)?;
+    // Read one byte beyond the remaining capacity so an oversized message is
+    // rejected without copying that byte into the accumulator.
+    let read_limit = remaining
+      .checked_add(1)
+      .ok_or(QuicError::WebTransportHandshakeFrameTooLarge)?;
+    let chunk = rx.read_chunk(read_limit, true).await?;
+    let chunk = chunk.ok_or(QuicError::WebTransportPeerUnsupported)?;
+
+    append_handshake_chunk(buf, &chunk.bytes)
+  }
 
   async fn exchange_settings(
     state: Rc<RefCell<OpState>>,
@@ -1129,9 +1179,7 @@ pub(crate) mod webtransport {
       let mut buf = Vec::new();
 
       loop {
-        let chunk = rx.read_chunk(usize::MAX, true).await?;
-        let chunk = chunk.ok_or(QuicError::WebTransportPeerUnsupported)?;
-        buf.extend_from_slice(&chunk.bytes);
+        read_handshake_chunk(&mut rx, &mut buf).await?;
 
         let mut limit = std::io::Cursor::new(&buf);
 
@@ -1173,7 +1221,7 @@ pub(crate) mod webtransport {
     use web_transport_proto::ConnectResponse;
 
     let conn = connection_resource.0.clone();
-    let url = url::Url::parse(&url).unwrap();
+    let url = url::Url::parse(&url)?;
 
     let (settings_tx_rid, settings_rx_rid) =
       exchange_settings(state.clone(), conn.clone()).await?;
@@ -1189,9 +1237,7 @@ pub(crate) mod webtransport {
 
       buf.clear();
       loop {
-        let chunk = rx.read_chunk(usize::MAX, true).await?;
-        let chunk = chunk.ok_or(QuicError::WebTransportPeerUnsupported)?;
-        buf.extend_from_slice(&chunk.bytes);
+        read_handshake_chunk(&mut rx, &mut buf).await?;
 
         let mut limit = std::io::Cursor::new(&buf);
 
@@ -1245,9 +1291,7 @@ pub(crate) mod webtransport {
       let mut buf = Vec::new();
 
       let req = loop {
-        let chunk = rx.read_chunk(usize::MAX, true).await?;
-        let chunk = chunk.ok_or(QuicError::WebTransportPeerUnsupported)?;
-        buf.extend_from_slice(&chunk.bytes);
+        read_handshake_chunk(&mut rx, &mut buf).await?;
 
         let mut limit = std::io::Cursor::new(&buf);
 
@@ -1300,6 +1344,38 @@ pub(crate) mod webtransport {
     }
   }
 
+  fn verify_certificate_validity(
+    end_entity: &rustls::pki_types::CertificateDer<'_>,
+    now: rustls::pki_types::UnixTime,
+  ) -> Result<(), rustls::Error> {
+    let (remainder, certificate) =
+      X509Certificate::from_der(end_entity.as_ref()).map_err(|_| {
+        rustls::Error::InvalidCertificate(rustls::CertificateError::BadEncoding)
+      })?;
+    if !remainder.is_empty() {
+      return Err(rustls::Error::InvalidCertificate(
+        rustls::CertificateError::BadEncoding,
+      ));
+    }
+
+    let now = i64::try_from(now.as_secs()).map_err(|_| {
+      rustls::Error::InvalidCertificate(rustls::CertificateError::Expired)
+    })?;
+    let validity = certificate.validity();
+    if now < validity.not_before.timestamp() {
+      return Err(rustls::Error::InvalidCertificate(
+        rustls::CertificateError::NotValidYet,
+      ));
+    }
+    if now > validity.not_after.timestamp() {
+      return Err(rustls::Error::InvalidCertificate(
+        rustls::CertificateError::Expired,
+      ));
+    }
+
+    Ok(())
+  }
+
   impl ServerCertVerifier for ServerFingerprints {
     fn verify_server_cert(
       &self,
@@ -1307,7 +1383,7 @@ pub(crate) mod webtransport {
       _intermediates: &[rustls::pki_types::CertificateDer<'_>],
       _server_name: &rustls::pki_types::ServerName<'_>,
       _ocsp_response: &[u8],
-      _now: rustls::pki_types::UnixTime,
+      now: rustls::pki_types::UnixTime,
     ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
       let cert_hash = Sha256::digest(end_entity);
 
@@ -1316,6 +1392,7 @@ pub(crate) mod webtransport {
         .iter()
         .any(|fingerprint| fingerprint == cert_hash.as_slice())
       {
+        verify_certificate_validity(end_entity, now)?;
         return Ok(rustls::client::danger::ServerCertVerified::assertion());
       }
 
@@ -1359,6 +1436,69 @@ pub(crate) mod webtransport {
         .provider
         .signature_verification_algorithms
         .supported_schemes()
+    }
+  }
+  #[cfg(test)]
+  mod tests {
+    use rustls::client::danger::ServerCertVerifier;
+
+    use super::*;
+
+    static CERTIFICATE: &[u8] =
+      include_bytes!("../tls/testdata/example1_cert.der");
+
+    fn verify_at(
+      timestamp: i64,
+    ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+      let certificate = rustls::pki_types::CertificateDer::from(CERTIFICATE);
+      let fingerprint = Sha256::digest(CERTIFICATE).to_vec();
+      let verifier = ServerFingerprints::new(vec![fingerprint]);
+      let server_name =
+        rustls::pki_types::ServerName::try_from("example1.com").unwrap();
+      let now = rustls::pki_types::UnixTime::since_unix_epoch(
+        Duration::from_secs(timestamp.try_into().unwrap()),
+      );
+      verifier.verify_server_cert(&certificate, &[], &server_name, &[], now)
+    }
+
+    #[test]
+    fn fingerprint_certificate_must_be_currently_valid() {
+      let (_, certificate) = X509Certificate::from_der(CERTIFICATE).unwrap();
+      let validity = certificate.validity();
+      let not_before = validity.not_before.timestamp();
+      let not_after = validity.not_after.timestamp();
+
+      verify_at(not_before + (not_after - not_before) / 2).unwrap();
+      assert!(matches!(
+        verify_at(not_before - 1),
+        Err(rustls::Error::InvalidCertificate(
+          rustls::CertificateError::NotValidYet
+        ))
+      ));
+      assert!(matches!(
+        verify_at(not_after + 1),
+        Err(rustls::Error::InvalidCertificate(
+          rustls::CertificateError::Expired
+        ))
+      ));
+    }
+
+    #[test]
+    fn handshake_buffer_length_is_bounded() {
+      let mut buf = vec![0; MAX_HANDSHAKE_FRAME_SIZE - 1];
+      append_handshake_chunk(&mut buf, &[0]).unwrap();
+      assert_eq!(buf.len(), MAX_HANDSHAKE_FRAME_SIZE);
+
+      assert!(matches!(
+        append_handshake_chunk(&mut buf, &[0]),
+        Err(QuicError::WebTransportHandshakeFrameTooLarge)
+      ));
+      assert_eq!(buf.len(), MAX_HANDSHAKE_FRAME_SIZE);
+    }
+
+    #[test]
+    fn handshake_buffer_length_rejects_overflow() {
+      assert_eq!(checked_handshake_buffer_len(usize::MAX, 1), None);
     }
   }
 }

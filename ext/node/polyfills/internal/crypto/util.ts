@@ -197,6 +197,14 @@ const cipherInfoTable: CipherInfoResult[] = [
     mode: "ctr",
   },
   {
+    name: "chacha20",
+    nid: 1019,
+    blockSize: 1,
+    ivLength: 16,
+    keyLength: 32,
+    mode: "stream",
+  },
+  {
     name: "chacha20-poly1305",
     nid: 1018,
     blockSize: 1,
@@ -299,6 +307,7 @@ const supportedCiphers = [
   "aes192-wrap",
   "aes256",
   "aes256-wrap",
+  "chacha20",
   "chacha20-poly1305",
   "des-ede3-cbc",
   "id-aes128-wrap-pad",
@@ -315,6 +324,8 @@ const hashBlockSizes: Record<string, number> = {
   rmd160: 64,
   ripemd160: 64,
   sha1: 64,
+  // Historical OpenSSL alias for sha1, also accepted by the digest ops.
+  dss1: 64,
   sha224: 64,
   sha256: 64,
   sha384: 128,

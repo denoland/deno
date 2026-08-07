@@ -143,6 +143,30 @@ async fn registry_server_handler(
       .status(StatusCode::NOT_FOUND)
       .body(UnsyncBoxBody::new(Empty::new()))?;
     return Ok(res);
+  } else if path.starts_with("/api/scopes/") && path.ends_with("/provenance") {
+    // Allow tests to simulate a registry that rejects a provenance attestation
+    // by naming the package "provenance-fails". Publishing itself still
+    // succeeds, which is the case that matters: the version is already live and
+    // immutable by the time the attestation is submitted.
+    //
+    // Consumers of this simulation (rename these fixtures and this match
+    // together):
+    //   - tests/testdata/publish/provenance_rejected
+    if path.contains("/packages/provenance-fails") {
+      let body = serde_json::to_string_pretty(&json!({
+        "code": "internalServerError",
+        "message": "Internal Server Error",
+      }))
+      .unwrap();
+      let res = Response::builder()
+        .status(StatusCode::INTERNAL_SERVER_ERROR)
+        .body(UnsyncBoxBody::new(Full::from(body)))?;
+      return Ok(res);
+    }
+    let res = Response::builder()
+      .status(StatusCode::NO_CONTENT)
+      .body(UnsyncBoxBody::new(Empty::new()))?;
+    return Ok(res);
   } else if path.starts_with("/api/scopes/") {
     // Allow tests to simulate a publish failure for an individual package by
     // naming the package "publish-fails" (or "publish-fails<n>"), used to

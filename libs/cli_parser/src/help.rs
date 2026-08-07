@@ -114,9 +114,18 @@ pub fn render_help(cmd: &CommandDef) -> String {
       let help_lines: Vec<&str> = arg.help.split('\n').collect();
       out.push_str(&format!("  {:<22}  {}\n", flag_str, help_lines[0]));
       for rest_line in &help_lines[1..] {
-        out.push_str(&format!("{:28}{}\n", "", rest_line));
+        // Indent to the description column; any further indentation is
+        // baked into the help string itself (as it was for clap).
+        out.push_str(&format!("{:26}{}\n", "", rest_line));
       }
     }
+  }
+
+  // Permission options, mirroring clap's after-help. The permission args are
+  // hidden from the table above and documented in this section instead.
+  if has_permission_args(cmd) {
+    out.push('\n');
+    out.push_str(crate::permission_help::PERMISSION_HELP);
   }
 
   // Environment variables (root help only), mirroring clap's after-help.
@@ -125,6 +134,15 @@ pub fn render_help(cmd: &CommandDef) -> String {
   }
 
   out
+}
+
+/// Whether this command accepts the shared permission args, and so should get
+/// the "Permission options" section.
+fn has_permission_args(cmd: &CommandDef) -> bool {
+  cmd
+    .arg_groups
+    .iter()
+    .any(|g| std::ptr::eq(g.as_ptr(), crate::defs::PERMISSION_ARGS.as_ptr()))
 }
 
 /// Render the "Environment variables" section documented in `deno --help`.

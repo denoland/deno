@@ -29,6 +29,11 @@ fn capture_output() -> Result<Output, std::io::Error> {
       "run",
       "--release", // CI runs in --release mode, so re-use its cache.
       "--quiet",   // only capture the command's output.
+      // deno_core's default enables no JS engine backend (the deno_v8 facade
+      // requires exactly one of `v8`/`quickjs`); this nested build is a fresh
+      // cargo invocation that wouldn't otherwise inherit one, so pick v8.
+      "--features",
+      "deno_core/v8",
     ])
     .output()
 }

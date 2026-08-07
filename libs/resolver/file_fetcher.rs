@@ -85,6 +85,11 @@ pub enum GetCachedSourceOrLocalErrorKind {
 pub enum FetchPermissionsOptionRef<'a> {
   AllowAll,
   Restricted(&'a PermissionsContainer, CheckSpecifierKind),
+  RestrictedWithFileApiName(
+    &'a PermissionsContainer,
+    CheckSpecifierKind,
+    &'a str,
+  ),
 }
 
 #[derive(Debug, Default)]
@@ -305,10 +310,13 @@ impl<
     permissions: FetchPermissionsOptionRef<'_>,
     options: FetchNoFollowOptions<'_>,
   ) -> Result<CachedOrRedirect, FetchNoFollowError> {
-    self.validate_fetch(specifier, permissions)?;
+    let specifier = self.validate_fetch(specifier, permissions)?;
     self
       .file_fetcher
-      .ensure_cached_no_follow(specifier, options.into_deno_cache_dir_options())
+      .ensure_cached_no_follow(
+        &specifier,
+        options.into_deno_cache_dir_options(),
+      )
       .await
       .map_err(|err| FetchNoFollowErrorKind::FetchNoFollow(err).into_box())
   }
@@ -320,31 +328,66 @@ impl<
     permissions: FetchPermissionsOptionRef<'_>,
     options: FetchNoFollowOptions<'_>,
   ) -> Result<FileOrRedirect, FetchNoFollowError> {
-    self.validate_fetch(specifier, permissions)?;
-    self
+    let checked_specifier = self.validate_fetch(specifier, permissions)?;
+    let restore_original_url =
+      specifier.scheme() == "file" && checked_specifier.as_ref() != specifier;
+    let mut result = self
       .file_fetcher
-      .fetch_no_follow(specifier, options.into_deno_cache_dir_options())
+      .fetch_no_follow(
+        &checked_specifier,
+        options.into_deno_cache_dir_options(),
+      )
       .await
-      .map_err(|err| FetchNoFollowErrorKind::FetchNoFollow(err).into_box())
+      .map_err(|err| FetchNoFollowErrorKind::FetchNoFollow(err).into_box())?;
+    if restore_original_url && let FileOrRedirect::File(file) = &mut result {
+      // `check_open` may canonicalize an allowed path before it is read. Keep
+      // the requested URL as the module identity so short paths and symlink
+      // aliases do not become graph redirects to paths outside the allowlist.
+      file.url = specifier.clone();
+    }
+    Ok(result)
   }
 
-  fn validate_fetch(
+  fn validate_fetch<'a>(
     &self,
-    specifier: &Url,
+    specifier: &'a Url,
     permissions: FetchPermissionsOptionRef<'_>,
-  ) -> Result<(), FetchNoFollowError> {
+  ) -> Result<Cow<'a, Url>, FetchNoFollowError> {
     validate_scheme(specifier).map_err(|err| {
       FetchNoFollowErrorKind::FetchNoFollow(err.into()).into_box()
     })?;
     match permissions {
-      FetchPermissionsOptionRef::AllowAll => {
-        // allow
+      FetchPermissionsOptionRef::AllowAll => {}
+      FetchPermissionsOptionRef::RestrictedWithFileApiName(
+        permissions,
+        _,
+        file_api_name,
+      ) if specifier.scheme() == "file" => {
+        let path =
+          deno_path_util::url_to_file_path(specifier).map_err(|_| {
+            PermissionCheckError::InvalidFilePath(specifier.clone())
+          })?;
+        let checked_path = permissions.check_open(
+          Cow::Owned(path),
+          deno_permissions::OpenAccessKind::Read,
+          Some(file_api_name),
+        )?;
+        let checked_specifier =
+          deno_path_util::url_from_file_path(&checked_path).map_err(|_| {
+            PermissionCheckError::InvalidFilePath(specifier.clone())
+          })?;
+        return Ok(Cow::Owned(checked_specifier));
       }
-      FetchPermissionsOptionRef::Restricted(permissions, kind) => {
+      FetchPermissionsOptionRef::Restricted(permissions, kind)
+      | FetchPermissionsOptionRef::RestrictedWithFileApiName(
+        permissions,
+        kind,
+        _,
+      ) => {
         permissions.check_specifier(specifier, kind)?;
       }
     }
-    Ok(())
+    Ok(Cow::Borrowed(specifier))
   }
 
   /// A synchronous way to retrieve a source file, where if the file has already
@@ -408,6 +451,8 @@ pub struct DenoGraphLoaderOptions {
   /// don't need to pre-analyze npm sources for https specifiers.
   pub include_npm_sources: bool,
   pub permissions: Option<PermissionsContainer>,
+  /// Uses `check_open` with this API name for dynamic local-file loads.
+  pub file_permission_api_name: Option<&'static str>,
   pub reporter: Option<GraphLoaderReporterRc>,
 }
 
@@ -434,6 +479,7 @@ pub struct DenoGraphLoader<
   global_http_cache: GlobalHttpCacheRc<TSys>,
   in_npm_pkg_checker: DenoInNpmPackageChecker,
   permissions: Option<PermissionsContainer>,
+  file_permission_api_name: Option<&'static str>,
   sys: TSys,
   cache_info_enabled: bool,
   include_npm_sources: bool,
@@ -460,6 +506,7 @@ impl<
       sys,
       file_header_overrides: options.file_header_overrides,
       permissions: options.permissions,
+      file_permission_api_name: options.file_permission_api_name,
       cache_info_enabled: false,
       include_npm_sources: options.include_npm_sources,
       reporter: options.reporter,
@@ -516,6 +563,7 @@ impl<
   > {
     let file_fetcher = self.file_fetcher.clone();
     let permissions = self.permissions.clone();
+    let file_permission_api_name = self.file_permission_api_name;
     let is_statically_analyzable = !options.was_dynamic_root;
 
     async move {
@@ -535,16 +583,27 @@ impl<
       let result = strategy
         .handle_fetch_or_cache_no_follow(
           &specifier,
-          match &permissions {
-            Some(permissions) => FetchPermissionsOptionRef::Restricted(
-              permissions,
-              if is_statically_analyzable {
+          match (&permissions, file_permission_api_name) {
+            (Some(permissions), file_permission_api_name) => {
+              let kind = if is_statically_analyzable {
                 CheckSpecifierKind::Static
               } else {
                 CheckSpecifierKind::Dynamic
-              },
-            ),
-            None => FetchPermissionsOptionRef::AllowAll,
+              };
+              match file_permission_api_name {
+                Some(api_name) => {
+                  FetchPermissionsOptionRef::RestrictedWithFileApiName(
+                    permissions,
+                    kind,
+                    api_name,
+                  )
+                }
+                None => {
+                  FetchPermissionsOptionRef::Restricted(permissions, kind)
+                }
+              }
+            }
+            (None, _) => FetchPermissionsOptionRef::AllowAll,
           },
           FetchNoFollowOptions {
             local: FetchLocalOptions {
@@ -915,6 +974,7 @@ mod test {
       DenoGraphLoaderOptions {
         file_header_overrides: HashMap::new(),
         permissions: None,
+        file_permission_api_name: None,
         reporter: None,
         include_npm_sources: false,
       },

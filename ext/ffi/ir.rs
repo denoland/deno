@@ -21,8 +21,17 @@ impl BackingStoreHolder {
     Self(Vec::new())
   }
 
-  fn push(&mut self, store: v8::SharedRef<v8::BackingStore>) {
+  fn push(
+    &mut self,
+    store: v8::SharedRef<v8::BackingStore>,
+  ) -> Result<(), IRError> {
+    // A shared reference keeps the backing store object alive, but it cannot
+    // keep a user-resizable store's data pointer stable across an async call.
+    if store.is_resizable_by_user_javascript() {
+      return Err(IRError::ResizableBackingStore);
+    }
     self.0.push(store);
+    Ok(())
   }
 }
 
@@ -67,6 +76,10 @@ pub enum IRError {
   InvalidArrayBuffer,
   #[error("Invalid FFI struct type, expected ArrayBuffer, or ArrayBufferView")]
   InvalidStructType,
+  #[error(
+    "Resizable backing stores are not supported for nonblocking FFI calls"
+  )]
+  ResizableBackingStore,
   #[error("Invalid FFI function type, expected null, or External")]
   InvalidFunctionType,
 }
@@ -99,15 +112,17 @@ pub fn out_buffer_as_ptr_nonblocking(
   scope: &mut v8::PinScope<'_, '_>,
   out_buffer: Option<v8::Local<v8::TypedArray>>,
   holder: &mut BackingStoreHolder,
-) -> Option<OutBuffer> {
+) -> Result<Option<OutBuffer>, IRError> {
   match out_buffer {
     Some(out_buffer) => {
       let ab = out_buffer.buffer(scope).unwrap();
-      holder.push(ab.get_backing_store());
-      ab.data()
-        .map(|non_null| OutBuffer(non_null.as_ptr() as *mut u8))
+      holder.push(ab.get_backing_store())?;
+      Ok(
+        ab.data()
+          .map(|non_null| OutBuffer(non_null.as_ptr() as *mut u8)),
+      )
     }
-    None => None,
+    None => Ok(None),
   }
 }
 
@@ -459,11 +474,11 @@ pub fn ffi_parse_buffer_arg_nonblocking(
 ) -> Result<NativeValue, IRError> {
   // Retain the backing store before extracting the raw pointer.
   if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(arg) {
-    holder.push(value.get_backing_store());
+    holder.push(value.get_backing_store())?;
   } else if let Ok(value) = v8::Local::<v8::ArrayBufferView>::try_from(arg)
     && let Some(ab) = value.buffer(scope)
   {
-    holder.push(ab.get_backing_store());
+    holder.push(ab.get_backing_store())?;
   }
   let pointer = parse_buffer_arg(arg)?;
   Ok(NativeValue { pointer })
@@ -512,11 +527,11 @@ pub fn ffi_parse_struct_arg_nonblocking(
   holder: &mut BackingStoreHolder,
 ) -> Result<NativeValue, IRError> {
   if let Ok(value) = v8::Local::<v8::ArrayBuffer>::try_from(arg) {
-    holder.push(value.get_backing_store());
+    holder.push(value.get_backing_store())?;
   } else if let Ok(value) = v8::Local::<v8::ArrayBufferView>::try_from(arg)
     && let Some(ab) = value.buffer(scope)
   {
-    holder.push(ab.get_backing_store());
+    holder.push(ab.get_backing_store())?;
   }
   ffi_parse_struct_arg(scope, arg)
 }

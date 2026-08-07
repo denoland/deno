@@ -154,6 +154,62 @@ Deno.test(async function testEncryptDecrypt() {
   }
 });
 
+Deno.test(async function testRsaOaepLabelBytes() {
+  const subtle = globalThis.crypto.subtle;
+  const keyPair = await subtle.generateKey(
+    {
+      name: "RSA-OAEP",
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: "SHA-256",
+    },
+    true,
+    ["encrypt", "decrypt"],
+  );
+  const data = new TextEncoder().encode("Secret Message");
+  const labels = [
+    new Uint8Array([0x80]),
+    new Uint8Array([0x81]),
+    new TextEncoder().encode("ordinary label"),
+  ];
+  const cipherTexts: ArrayBuffer[] = [];
+
+  for (const label of labels) {
+    const cipherText = await subtle.encrypt(
+      { name: "RSA-OAEP", label },
+      keyPair.publicKey,
+      data,
+    );
+    cipherTexts.push(cipherText);
+
+    const decrypted = await subtle.decrypt(
+      { name: "RSA-OAEP", label },
+      keyPair.privateKey,
+      cipherText,
+    );
+    assertEquals(new Uint8Array(decrypted), data);
+  }
+
+  await assertRejects(
+    () =>
+      subtle.decrypt(
+        { name: "RSA-OAEP", label: labels[1] },
+        keyPair.privateKey,
+        cipherTexts[0],
+      ),
+    DOMException,
+  );
+  await assertRejects(
+    () =>
+      subtle.decrypt(
+        { name: "RSA-OAEP", label: labels[0] },
+        keyPair.privateKey,
+        cipherTexts[1],
+      ),
+    DOMException,
+  );
+});
+
 Deno.test(async function testGenerateRSAKey() {
   const subtle = globalThis.crypto.subtle;
   assert(subtle);
@@ -3245,6 +3301,91 @@ Deno.test(async function slhDsaSignVerifyAndExportRoundTrips() {
     ["verify"],
   );
   assert(await crypto.subtle.verify(params, derivedPublic, signature, data));
+});
+
+// https://github.com/denoland/deno/pull/35708
+// Exercise every "raw-*" KeyFormat variant through the *typed* `crypto.subtle`
+// API (no `as any`/`AnyAlg` cast on the `format` argument). This round-trips the
+// runtime and also guards that lib.deno_crypto.d.ts's `KeyFormat` union stays in
+// sync with the formats importKey()/exportKey() actually accept: if any variant
+// were dropped from the type, this test would fail to type-check.
+Deno.test(async function webcryptoRawKeyFormatVariants() {
+  // raw-secret: symmetric AES-GCM key.
+  const aesKey = await crypto.subtle.generateKey(
+    { name: "AES-GCM", length: 256 },
+    true,
+    ["encrypt", "decrypt"],
+  );
+  const rawSecret = await crypto.subtle.exportKey("raw-secret", aesKey);
+  assertEquals(rawSecret.byteLength, 32);
+  const importedSecret = await crypto.subtle.importKey(
+    "raw-secret",
+    rawSecret,
+    "AES-GCM",
+    true,
+    ["encrypt", "decrypt"],
+  );
+  assertEquals(importedSecret.type, "secret");
+  assertEquals(
+    new Uint8Array(await crypto.subtle.exportKey("raw-secret", importedSecret)),
+    new Uint8Array(rawSecret),
+  );
+
+  // raw-public / raw-private: SLH-DSA key pair.
+  const slhDsa = "SLH-DSA-SHAKE-128f";
+  const slhPair = await crypto.subtle.generateKey(
+    slhDsa,
+    true,
+    ["sign", "verify"],
+  ) as CryptoKeyPair;
+  const rawPublic = await crypto.subtle.exportKey(
+    "raw-public",
+    slhPair.publicKey,
+  );
+  const rawPrivate = await crypto.subtle.exportKey(
+    "raw-private",
+    slhPair.privateKey,
+  );
+  assertEquals(rawPublic.byteLength, 32);
+  assertEquals(rawPrivate.byteLength, 64);
+  const importedPublic = await crypto.subtle.importKey(
+    "raw-public",
+    rawPublic,
+    slhDsa,
+    true,
+    ["verify"],
+  );
+  const importedPrivate = await crypto.subtle.importKey(
+    "raw-private",
+    rawPrivate,
+    slhDsa,
+    true,
+    ["sign"],
+  );
+  assertEquals(importedPublic.type, "public");
+  assertEquals(importedPrivate.type, "private");
+
+  // raw-seed: ML-DSA private key seed.
+  const mlDsa = "ML-DSA-65";
+  const mlPair = await crypto.subtle.generateKey(
+    mlDsa,
+    true,
+    ["sign", "verify"],
+  ) as CryptoKeyPair;
+  const rawSeed = await crypto.subtle.exportKey("raw-seed", mlPair.privateKey);
+  assertEquals(rawSeed.byteLength, 32);
+  const importedSeed = await crypto.subtle.importKey(
+    "raw-seed",
+    rawSeed,
+    mlDsa,
+    true,
+    ["sign"],
+  );
+  assertEquals(importedSeed.type, "private");
+  assertEquals(
+    new Uint8Array(await crypto.subtle.exportKey("raw-seed", importedSeed)),
+    new Uint8Array(rawSeed),
+  );
 });
 
 Deno.test(async function argon2DeriveBitsRfcVectors() {

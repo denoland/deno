@@ -614,6 +614,7 @@ impl FlagsExt for Flags {
       if let Ok(module_specifier) = resolve_url_or_path(arg, current_dir) {
         if module_specifier.scheme() == "file"
           || module_specifier.scheme() == "npm"
+          || module_specifier.scheme() == "jsr"
         {
           if let Ok(p) = url_to_file_path(&module_specifier) {
             maybe_resolve_directory(p)
@@ -621,8 +622,9 @@ impl FlagsExt for Flags {
             Some(current_dir.to_path_buf())
           }
         } else {
-          // When the entrypoint doesn't have file: scheme (it's the remote
-          // script), then we don't auto discover the config file.
+          // When the entrypoint is a remote script (e.g. https:), then we
+          // don't auto discover the config file. Package entrypoints (npm:,
+          // jsr:) resolve within the project context, so they do.
           None
         }
       } else {
@@ -832,6 +834,8 @@ static DENO_HELP: &str = cstr!(
 <y>Standard Library:</> https://jsr.io/@std
 <y>Bugs:</> https://github.com/denoland/deno/issues
 <y>Discord:</> https://discord.gg/deno
+
+<p(245)>If you are an AI agent, read</> <c>https://deno.com/agents.md</> <p(245)>to get started.</>
 ");
 
 pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
@@ -1596,6 +1600,33 @@ fn add_dev_arg() -> Arg {
     .action(ArgAction::SetTrue)
 }
 
+fn add_optional_arg() -> Arg {
+  Arg::new("save-optional")
+    .long("save-optional")
+    .short('O')
+    .help("Add the package as an optional dependency (under `optionalDependencies`). Note: this only applies when adding to a `package.json` file.")
+    .action(ArgAction::SetTrue)
+    .conflicts_with("dev")
+}
+
+fn add_no_save_arg() -> Arg {
+  Arg::new("no-save")
+    .long("no-save")
+    .help(
+      "Install the package(s) without adding them to the configuration file.",
+    )
+    .action(ArgAction::SetTrue)
+    .conflicts_with("dev")
+    .conflicts_with("save-optional")
+}
+
+fn add_unscoped_arg() -> Arg {
+  Arg::new("unscoped")
+    .long("unscoped")
+    .help("Use the package name without its scope as the alias (ex. `jsr:@david/jsonc-morph` is added as `jsonc-morph`). Packages given an explicit alias are unaffected.")
+    .action(ArgAction::SetTrue)
+}
+
 fn add_subcommand() -> Command {
   command(
     "add",
@@ -1621,6 +1652,8 @@ Or multiple dependencies at once:
           .action(ArgAction::Append),
       )
       .arg(add_dev_arg())
+      .arg(add_optional_arg())
+      .arg(add_no_save_arg())
       .arg(allow_scripts_arg())
       .arg(allow_import_arg())
       .arg(deny_import_arg())
@@ -1634,8 +1667,10 @@ Or multiple dependencies at once:
           .help("Save exact version without the caret (^)")
           .action(ArgAction::SetTrue),
       )
+      .arg(add_unscoped_arg())
       .arg(package_json_arg())
       .arg(env_file_arg())
+      .arg(min_dep_age_arg())
   })
 }
 
@@ -1832,6 +1867,7 @@ removes a globally installed executable script:
       .args(lock_args())
       .arg(lockfile_only_arg().conflicts_with("global"))
       .arg(package_json_arg().conflicts_with("global"))
+      .arg(min_dep_age_arg().conflicts_with("global"))
   })
 }
 
@@ -2252,10 +2288,11 @@ Unless --reload is specified, this command will not re-download already cached d
     )
 }
 
-const SUPPORTED_OS: [&str; 5] = [
+const SUPPORTED_OS: [&str; 6] = [
   "x86_64-unknown-linux-gnu",
   "aarch64-unknown-linux-gnu",
   "x86_64-pc-windows-msvc",
+  "aarch64-pc-windows-msvc",
   "x86_64-apple-darwin",
   "aarch64-apple-darwin",
 ];
@@ -2323,6 +2360,13 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
           .long("target")
           .help("Target OS architecture")
           .value_parser(SUPPORTED_OS)
+          .help_heading(COMPILE_HEADING),
+      )
+      .arg(
+        Arg::new("engine")
+          .long("engine")
+          .help(cstr!("JS engine the compiled binary runs on <p(245)>(quickjs is smaller and experimental, and does not receive the same security updates as v8)</>"))
+          .value_parser(["v8", "quickjs"])
           .help_heading(COMPILE_HEADING),
       )
       .arg(no_code_cache_arg())
@@ -2485,6 +2529,13 @@ supported framework (Next.js, Astro, etc.) in the current directory.
             "Backend to use for the desktop app",
           )
           .value_parser(["webview", "cef", "raw"])
+          .help_heading(DESKTOP_HEADING),
+      )
+      .arg(
+        Arg::new("engine")
+          .long("engine")
+          .help("JS engine the desktop binary runs on (quickjs is smaller and experimental, and does not receive the same security updates as v8)")
+          .value_parser(["v8", "quickjs"])
           .help_heading(DESKTOP_HEADING),
       )
       .arg(
@@ -2894,7 +2945,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .help("Set content type of the supplied file")
           .value_parser([
             "ts", "tsx", "js", "jsx", "mts", "mjs", "cts", "cjs", "md", "json", "jsonc", "css", "scss",
-            "less", "html", "svelte", "vue", "astro", "yml", "yaml",
+            "less", "html", "xml", "svg", "svelte", "vue", "astro", "yml", "yaml",
             "ipynb", "sql", "vto", "njk"
           ])
           .help_heading(FMT_HEADING).requires("files"),
@@ -3282,6 +3333,8 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
         )
         .arg(env_file_arg())
         .arg(add_dev_arg().conflicts_with("entrypoint").conflicts_with("global"))
+        .arg(add_optional_arg().conflicts_with("entrypoint").conflicts_with("global"))
+        .arg(add_no_save_arg().conflicts_with("entrypoint").conflicts_with("global"))
         .args(default_registry_args().into_iter().map(|arg| arg.conflicts_with("entrypoint").conflicts_with("global")))
         .arg(
           Arg::new("save-exact")
@@ -3292,6 +3345,7 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
             .conflicts_with("entrypoint")
             .conflicts_with("global"),
         )
+        .arg(add_unscoped_arg().conflicts_with("entrypoint").conflicts_with("global"))
         .arg(lockfile_only_arg().conflicts_with("global"))
         .arg(package_json_arg().conflicts_with("entrypoint").conflicts_with("global"))
         .arg(
@@ -4172,6 +4226,13 @@ Evaluate a task from string:
           .short('r')
           .help("Run the task in all projects in the workspace")
           .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("members")
+          .long("members")
+          .help("Run the task in all workspace members, but not in the workspace root")
+          .action(ArgAction::SetTrue)
+          .conflicts_with_all(["recursive", "filter"]),
       )
       .arg(
         Arg::new("filter")
@@ -6474,6 +6535,7 @@ fn add_parse(
   allow_and_deny_import_parse(flags, matches)?;
   lock_args_parse(flags, matches);
   env_file_arg_parse(flags, matches);
+  min_dep_age_arg_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Add(add_parse_inner(matches, None));
   Ok(())
 }
@@ -6498,10 +6560,13 @@ fn add_parse_inner(
   AddFlags {
     packages,
     dev,
+    optional: matches.get_flag("save-optional"),
+    no_save: matches.get_flag("no-save"),
     default_registry,
     lockfile_only: matches.get_flag("lockfile-only"),
     save_exact: matches.get_flag("save-exact"),
     package_json: matches.get_flag("package-json"),
+    unscoped: matches.get_flag("unscoped"),
   }
 }
 
@@ -6510,6 +6575,7 @@ fn remove_parse(
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
   lock_args_parse(flags, matches);
+  min_dep_age_arg_parse(flags, matches);
   let packages = matches.remove_many::<String>("packages").unwrap();
 
   // `deno remove --global <name>...` is an alias for `deno uninstall --global
@@ -6821,6 +6887,10 @@ fn compile_parse(
   let args = script.collect();
   let output = matches.remove_one::<String>("output");
   let target = matches.remove_one::<String>("target");
+  let engine = matches
+    .remove_one::<String>("engine")
+    .map(|value| value.parse().expect("engine is validated by clap"))
+    .unwrap_or_default();
   flags.watch = watch_arg_parse(matches)?;
   let icon = matches.remove_one::<String>("icon");
   let no_terminal = matches.get_flag("no-terminal");
@@ -6857,6 +6927,7 @@ fn compile_parse(
     app_name,
     minify,
     exclude_unused_npm,
+    engine,
   });
 
   Ok(())
@@ -6891,6 +6962,10 @@ fn desktop_parse(
   let icon = matches.remove_one::<String>("icon");
   let hmr = matches.get_flag("hmr");
   let backend = matches.remove_one::<String>("backend");
+  let engine = matches
+    .remove_one::<String>("engine")
+    .map(|value| value.parse().expect("engine is validated by clap"))
+    .unwrap_or_default();
   let all_targets = matches.get_flag("all-targets");
   // Self-extracting packaging is opt-in via `--compress [<fmt>]`. Bare
   // `--compress` defaults to xz (decompressed by the system `tar` with no
@@ -6923,6 +6998,7 @@ fn desktop_parse(
     exclude,
     hmr,
     backend,
+    engine,
     all_targets,
     identifier: None,
     deep_links: Vec::new(),
@@ -7879,10 +7955,11 @@ fn task_parse(
   env_file_arg_parse(flags, matches);
 
   let mut recursive = matches.get_flag("recursive");
+  let members = matches.get_flag("members");
   let filter = if let Some(filter) = matches.remove_one::<String>("filter") {
     recursive = false;
     Some(filter)
-  } else if recursive {
+  } else if recursive || members {
     Some("*".to_string())
   } else {
     None
@@ -7895,6 +7972,7 @@ fn task_parse(
     task: None,
     is_run: false,
     recursive,
+    members,
     filter,
     eval: matches.get_flag("eval"),
     no_prefix: matches.get_flag("no-prefix"),
@@ -12165,6 +12243,26 @@ mod tests {
   }
 
   #[test]
+  fn minimum_dependency_age_pm_subcommands() {
+    // The package management subcommands that resolve versions must accept the
+    // flag so users can act on the "blocked by minimum dependency age" hint.
+    let cases = [
+      svec!["deno", "add", "--min-dep-age=0", "jsr:@std/path"],
+      svec!["deno", "add", "--minimum-dependency-age=0", "jsr:@std/path"],
+      svec!["deno", "remove", "--min-dep-age=0", "@std/path"],
+    ];
+    for args in cases {
+      let flags = flags_from_vec(args.clone())
+        .unwrap_or_else(|e| panic!("failed to parse {args:?}: {e}"));
+      assert_eq!(
+        flags.minimum_dependency_age,
+        Some(NewestDependencyDate::Disabled),
+        "{args:?}"
+      );
+    }
+  }
+
+  #[test]
   fn run_seed_with_v8_flags() {
     let r = flags_from_vec(svec![
       "deno",
@@ -14255,12 +14353,34 @@ mod tests {
           app_name: None,
           minify: false,
           exclude_unused_npm: false,
+          engine: Default::default(),
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn compile_and_desktop_engine() {
+    let flags = flags_from_vec(svec![
+      "deno", "compile", "--engine", "quickjs", "main.ts"
+    ])
+    .unwrap();
+    let DenoSubcommand::Compile(compile) = flags.subcommand else {
+      panic!("expected compile subcommand");
+    };
+    assert_eq!(compile.engine, JavaScriptEngine::QuickJs);
+
+    let flags = flags_from_vec(svec![
+      "deno", "desktop", "--engine", "quickjs", "main.tsx"
+    ])
+    .unwrap();
+    let DenoSubcommand::Desktop(desktop) = flags.subcommand else {
+      panic!("expected desktop subcommand");
+    };
+    assert_eq!(desktop.engine, JavaScriptEngine::QuickJs);
   }
 
   #[test]
@@ -14336,6 +14456,7 @@ mod tests {
           app_name: None,
           minify: false,
           exclude_unused_npm: false,
+          engine: Default::default(),
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -14373,6 +14494,7 @@ mod tests {
           app_name: None,
           minify: false,
           exclude_unused_npm: false,
+          engine: Default::default(),
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
@@ -14395,6 +14517,35 @@ mod tests {
         env_file: Some(vec![".example.env".to_owned()]),
         ..Flags::default()
       }
+    );
+  }
+
+  #[test]
+  fn compile_target_aarch64_windows() {
+    // denort for Windows arm64 is built and published by CI, so
+    // `--target aarch64-pc-windows-msvc` must be accepted by the SUPPORTED_OS
+    // value parser (and an unsupported triple must still be rejected).
+    let r = flags_from_vec(svec![
+      "deno",
+      "compile",
+      "--target",
+      "aarch64-pc-windows-msvc",
+      "main.ts"
+    ]);
+    let DenoSubcommand::Compile(c) = r.unwrap().subcommand else {
+      unreachable!()
+    };
+    assert_eq!(c.target, Some("aarch64-pc-windows-msvc".to_string()));
+
+    assert!(
+      flags_from_vec(svec![
+        "deno",
+        "compile",
+        "--target",
+        "riscv64gc-unknown-linux-gnu",
+        "main.ts"
+      ])
+      .is_err()
     );
   }
 
@@ -14526,6 +14677,12 @@ mod tests {
       flags_from_vec(svec!["deno", "https://example.com/foo.js"]).unwrap();
     assert_eq!(flags.config_path_args(&cwd), None);
 
+    let flags = flags_from_vec(svec!["deno", "run", "jsr:@scope/foo"]).unwrap();
+    assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.clone()]));
+
+    let flags = flags_from_vec(svec!["deno", "run", "npm:@scope/foo"]).unwrap();
+    assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.clone()]));
+
     let flags =
       flags_from_vec(svec!["deno", "lint", "dir/a/a.js", "dir/b/b.js"])
         .unwrap();
@@ -14602,6 +14759,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14622,6 +14780,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14641,6 +14800,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14660,6 +14820,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: Some("*".to_string()),
           eval: false,
           no_prefix: false,
@@ -14679,6 +14840,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: true,
+          members: false,
           filter: Some("*".to_string()),
           eval: false,
           no_prefix: false,
@@ -14698,6 +14860,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: true,
+          members: false,
           filter: Some("*".to_string()),
           eval: false,
           no_prefix: false,
@@ -14708,6 +14871,33 @@ mod tests {
       }
     );
 
+    let r = flags_from_vec(svec!["deno", "task", "--members", "build"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          cwd: None,
+          task: Some("build".to_string()),
+          is_run: false,
+          recursive: false,
+          members: true,
+          filter: Some("*".to_string()),
+          eval: false,
+          no_prefix: false,
+          concurrency: None,
+          if_present: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "task", "--members", "-r", "build"]);
+    assert!(r.is_err());
+
+    let r =
+      flags_from_vec(svec!["deno", "task", "--members", "-f", "*", "build"]);
+    assert!(r.is_err());
+
     let r = flags_from_vec(svec!["deno", "task", "--eval", "echo 1"]);
     assert_eq!(
       r.unwrap(),
@@ -14717,6 +14907,7 @@ mod tests {
           task: Some("echo 1".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: true,
           no_prefix: false,
@@ -14749,6 +14940,7 @@ mod tests {
             task: Some("build".to_string()),
             is_run: false,
             recursive: false,
+            members: false,
             filter: None,
             eval: false,
             no_prefix: false,
@@ -14788,6 +14980,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14811,6 +15004,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14835,6 +15029,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14858,6 +15053,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14881,6 +15077,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14905,6 +15102,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14928,6 +15126,7 @@ mod tests {
           task: None,
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14950,6 +15149,7 @@ mod tests {
           task: None,
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -14973,6 +15173,7 @@ mod tests {
           task: None,
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -15005,6 +15206,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -15031,6 +15233,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -15054,6 +15257,7 @@ mod tests {
           task: Some("build".to_string()),
           is_run: false,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -15935,10 +16139,13 @@ mod tests {
           mk_flags(AddFlags {
             packages: svec!["@david/which"],
             dev: false, // default is false
+            optional: false,
+            no_save: false,
             default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
             package_json: false,
+            unscoped: false,
           })
         );
       }
@@ -15954,10 +16161,13 @@ mod tests {
         let mut expected_flags = mk_flags(AddFlags {
           packages: svec!["@david/which", "@luca/hello"],
           dev: false,
+          optional: false,
+          no_save: false,
           default_registry: Some(DefaultRegistry::Npm),
           lockfile_only: true,
           save_exact: false,
           package_json: false,
+          unscoped: false,
         });
         expected_flags.frozen_lockfile = Some(true);
         assert_eq!(r.unwrap(), expected_flags);
@@ -15969,10 +16179,13 @@ mod tests {
           mk_flags(AddFlags {
             packages: svec!["npm:chalk"],
             dev: true,
+            optional: false,
+            no_save: false,
             default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
             package_json: false,
+            unscoped: false,
           }),
         );
       }
@@ -15983,10 +16196,13 @@ mod tests {
           mk_flags(AddFlags {
             packages: svec!["chalk"],
             dev: false,
+            optional: false,
+            no_save: false,
             default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
             package_json: false,
+            unscoped: false,
           }),
         );
       }
@@ -15997,13 +16213,94 @@ mod tests {
           mk_flags(AddFlags {
             packages: svec!["@std/fs"],
             dev: false,
+            optional: false,
+            no_save: false,
             default_registry: Some(DefaultRegistry::Jsr),
             lockfile_only: false,
             save_exact: false,
             package_json: false,
+            unscoped: false,
           }),
         );
       }
+      for arg in ["--save-optional", "-O"] {
+        let r = flags_from_vec(svec!["deno", cmd, arg, "npm:chalk"]);
+        assert_eq!(
+          r.unwrap(),
+          mk_flags(AddFlags {
+            packages: svec!["npm:chalk"],
+            dev: false,
+            optional: true,
+            no_save: false,
+            default_registry: Some(DefaultRegistry::Npm),
+            lockfile_only: false,
+            save_exact: false,
+            package_json: false,
+            unscoped: false,
+          }),
+        );
+      }
+      {
+        let r = flags_from_vec(svec!["deno", cmd, "--no-save", "npm:chalk"]);
+        assert_eq!(
+          r.unwrap(),
+          mk_flags(AddFlags {
+            packages: svec!["npm:chalk"],
+            dev: false,
+            optional: false,
+            no_save: true,
+            default_registry: Some(DefaultRegistry::Npm),
+            lockfile_only: false,
+            save_exact: false,
+            package_json: false,
+            unscoped: false,
+          }),
+        );
+      }
+      {
+        let r =
+          flags_from_vec(svec!["deno", cmd, "--unscoped", "jsr:@david/which"]);
+        assert_eq!(
+          r.unwrap(),
+          mk_flags(AddFlags {
+            packages: svec!["jsr:@david/which"],
+            dev: false,
+            optional: false,
+            no_save: false,
+            default_registry: Some(DefaultRegistry::Npm),
+            lockfile_only: false,
+            save_exact: false,
+            package_json: false,
+            unscoped: true,
+          }),
+        );
+      }
+      // --save-optional conflicts with --dev
+      assert!(
+        flags_from_vec(svec![
+          "deno",
+          cmd,
+          "--save-optional",
+          "--dev",
+          "npm:chalk"
+        ])
+        .is_err()
+      );
+      // --no-save conflicts with --dev and --save-optional
+      assert!(
+        flags_from_vec(svec!["deno", cmd, "--no-save", "--dev", "npm:chalk"])
+          .is_err()
+      );
+      assert!(
+        flags_from_vec(svec![
+          "deno",
+          cmd,
+          "--no-save",
+          "--save-optional",
+          "npm:chalk"
+        ])
+        .is_err()
+      );
     }
 
     {
@@ -16019,10 +16316,13 @@ mod tests {
           subcommand: DenoSubcommand::Add(AddFlags {
             packages: svec!["@david/which"],
             dev: false,
+            optional: false,
+            no_save: false,
             default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
             package_json: false,
+            unscoped: false,
           }),
           permissions: PermissionFlags {
             allow_import: Some(svec!["example.com"]),
@@ -16738,7 +17038,7 @@ mod tests {
     ]);
     assert_eq!(
       r.unwrap_err().to_string(),
-      "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+      "error: invalid value 'https://example.com': URLs are not supported, only domains and IPs"
     );
   }
 
@@ -16816,7 +17116,7 @@ Usage: deno lint [OPTIONS] [files]...\n"
     ]);
     assert_eq!(
       r.unwrap_err().to_string(),
-      "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+      "error: invalid value 'https://example.com': URLs are not supported, only domains and IPs"
     );
   }
 
@@ -16830,7 +17130,7 @@ Usage: deno lint [OPTIONS] [files]...\n"
     ]);
     assert_eq!(
       r.unwrap_err().to_string(),
-      "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+      "error: invalid value 'https://example.com': URLs are not supported, only domains and IPs"
     );
   }
 
@@ -17433,6 +17733,7 @@ Usage: deno lint [OPTIONS] [files]...\n"
           app_name: None,
           minify: false,
           exclude_unused_npm: false,
+          engine: Default::default(),
         }),
         type_check_mode: TypeCheckMode::Local,
         preload: svec!["p1.js", "./p2.js"],

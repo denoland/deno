@@ -243,8 +243,12 @@ async fn run_subcommand(
       tools::installer::ci_command(Arc::new(flags), ci_flags).await
     }),
     DenoSubcommand::SyncTypes(sync_types_flags) => spawn_subcommand(async {
-      tools::installer::sync_types_command(Arc::new(flags), sync_types_flags)
-        .await
+      tools::installer::sync_types_command(
+        Arc::new(flags),
+        sync_types_flags,
+        tools::installer::RootTsConfigMode::Always,
+      )
+      .await
     }),
     DenoSubcommand::JSONReference(json_reference) => {
       spawn_subcommand(async move {
@@ -299,6 +303,7 @@ async fn run_subcommand(
           task: None,
           is_run: true,
           recursive: false,
+          members: false,
           filter: None,
           eval: false,
           no_prefix: false,
@@ -410,6 +415,7 @@ async fn run_subcommand(
                   task: Some(run_flags.script.clone()),
                   is_run: true,
                   recursive: false,
+                  members: false,
                   filter: None,
                   eval: false,
                   no_prefix: false,
@@ -629,8 +635,23 @@ fn setup_panic_hook() {
     eprintln!("Deno has panicked. This is a bug in Deno. Please report this");
     eprintln!("at https://github.com/denoland/deno/issues/new.");
     eprintln!("If you can reliably reproduce this panic, include the");
-    eprintln!("reproduction steps and re-run with the RUST_BACKTRACE=1 env");
-    eprintln!("var set and include the backtrace in your report.");
+    #[cfg(not(all(
+      feature = "panic-trace-frame-pointer",
+      target_os = "linux",
+      any(target_arch = "x86_64", target_arch = "aarch64")
+    )))]
+    {
+      eprintln!("reproduction steps and re-run with the RUST_BACKTRACE=1 env");
+      eprintln!("var set and include the backtrace in your report.");
+    }
+    #[cfg(all(
+      feature = "panic-trace-frame-pointer",
+      target_os = "linux",
+      any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
+    eprintln!(
+      "reproduction steps and the stack trace URL below in your report."
+    );
     eprintln!();
     eprintln!("Platform: {} {}", env::consts::OS, env::consts::ARCH);
     eprintln!("Version: {}", deno_lib::version::DENO_VERSION_INFO.deno);
@@ -648,6 +669,17 @@ fn setup_panic_hook() {
           info.deno.to_string()
         };
 
+      #[cfg(all(
+        feature = "panic-trace-frame-pointer",
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+      ))]
+      let trace = deno_panic::trace_frame_pointer();
+      #[cfg(not(all(
+        feature = "panic-trace-frame-pointer",
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+      )))]
       let trace = deno_panic::trace();
       eprintln!("View stack trace at:");
       eprintln!(
