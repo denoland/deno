@@ -41,6 +41,7 @@ use deno_resolver::file_fetcher::FetchPermissionsOptionRef;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_resolver::npm::ManagedNpmResolverRc;
 use deno_runtime::deno_io::FromRawIoHandle;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_task_shell::KillSignal;
@@ -86,6 +87,10 @@ const NPM_PACKAGE_INFO_ACCEPT: &str =
 #[derive(Debug)]
 pub struct CliNpmCacheHttpClient {
   http_client_provider: Arc<HttpClientProvider>,
+  /// The `--deny-import` rules, when there are any. Registry requests are
+  /// requests for code, so they are subject to the same deny rules as an
+  /// `import` even though they have no module specifier of their own.
+  import_deny_permissions: Option<PermissionsContainer>,
   progress_bar: ProgressBar,
   packument_format: NpmPackumentFormat,
 }
@@ -93,11 +98,13 @@ pub struct CliNpmCacheHttpClient {
 impl CliNpmCacheHttpClient {
   pub fn new(
     http_client_provider: Arc<HttpClientProvider>,
+    import_deny_permissions: Option<PermissionsContainer>,
     progress_bar: ProgressBar,
     packument_format: NpmPackumentFormat,
   ) -> Self {
     Self {
       http_client_provider,
+      import_deny_permissions,
       progress_bar,
       packument_format,
     }
@@ -129,6 +136,14 @@ impl deno_npm_cache::NpmCacheHttpClient for CliNpmCacheHttpClient {
     maybe_etag: Option<String>,
     maybe_registry_config: Option<&RegistryConfig>,
   ) -> Result<NpmCacheHttpClientResponse, deno_npm_cache::DownloadError> {
+    if let Some(permissions) = &self.import_deny_permissions {
+      permissions.check_import_deny_url(&url).map_err(|err| {
+        deno_npm_cache::DownloadError {
+          status_code: None,
+          error: JsErrorBox::from_err(err),
+        }
+      })?;
+    }
     let guard = self.progress_bar.update(url.as_str());
     let client = self
       .get_or_create_http_client(maybe_registry_config)

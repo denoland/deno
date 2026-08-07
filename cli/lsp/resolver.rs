@@ -1066,6 +1066,8 @@ impl<'a> ResolverFactory<'a> {
       let pb = ProgressBar::new(ProgressBarStyle::TextOnly);
       let npm_client = Arc::new(CliNpmCacheHttpClient::new(
         http_client_provider.clone(),
+        // see the note in `lsp::config`: no permission enforcement here
+        None,
         pb.clone(),
         NpmPackumentFormat::Abbreviated,
       ));

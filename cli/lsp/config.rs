@@ -1345,6 +1345,9 @@ impl WorkspaceConfigData {
           .cloned()
           // will only happen in the tests
           .unwrap_or_else(|| Arc::new(HttpClientProvider::new(None, None))),
+        // the language server analyzes rather than runs code, so it is not
+        // subject to the permissions a `deno run` would enforce
+        None,
         pb.clone(),
         NpmPackumentFormat::Abbreviated,
       )),

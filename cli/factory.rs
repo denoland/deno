@@ -308,6 +308,8 @@ struct CliFactoryServices {
   file_fetcher: Deferred<Arc<CliFileFetcher>>,
   fs: Deferred<Arc<dyn deno_fs::FileSystem>>,
   http_client_provider: Deferred<Arc<HttpClientProvider>>,
+  import_deny_permissions: Deferred<Option<PermissionsContainer>>,
+  import_http_client_provider: Deferred<Arc<HttpClientProvider>>,
   main_graph_container: Deferred<Arc<MainModuleGraphContainer>>,
   graph_reporter: Deferred<Option<Arc<dyn deno_graph::source::Reporter>>>,
   memory_files: Arc<MemoryFiles>,
@@ -495,31 +497,61 @@ impl CliFactory {
       })
   }
 
+  /// The `--deny-import` rules on their own, as a permissions container.
+  ///
+  /// Every request made to load code — module fetches and npm registry
+  /// traffic alike — is checked against these, so that a deny rule written as
+  /// an IP literal also covers hostnames that resolve to it.
+  ///
+  /// Deliberately not `root_permissions_container`: building that resolves the
+  /// main module, which needs the file fetcher this feeds.
+  pub fn import_deny_permissions(
+    &self,
+  ) -> Result<&Option<PermissionsContainer>, AnyError> {
+    self.services.import_deny_permissions.get_or_try_init(|| {
+      let options = self.cli_options()?.import_deny_permissions_options()?;
+      if options.deny_import.as_ref().is_none_or(|d| d.is_empty()) {
+        // nothing to check against, so leave the plain client and its
+        // connection pool alone
+        return Ok(None);
+      }
+      let desc_parser = self.permission_desc_parser()?.clone();
+      let permissions =
+        Permissions::from_options(desc_parser.as_ref(), &options)?;
+      Ok(Some(PermissionsContainer::new(desc_parser, permissions)))
+    })
+  }
+
+  /// The HTTP client used to load code.
+  ///
+  /// Identical to [`Self::http_client_provider`] except that its connections
+  /// re-check the address they resolved to against `--deny-import`: the check
+  /// on the specifier itself happens before DNS resolution, so it cannot tell
+  /// that a hostname points at a denied address.
+  fn import_http_client_provider(
+    &self,
+  ) -> Result<&Arc<HttpClientProvider>, AnyError> {
+    self
+      .services
+      .import_http_client_provider
+      .get_or_try_init(|| {
+        let Some(permissions) = self.import_deny_permissions()?.clone() else {
+          return Ok(self.http_client_provider().clone());
+        };
+        Ok(Arc::new(
+          HttpClientProvider::new(
+            Some(self.root_cert_store_provider().clone()),
+            self.flags.unsafely_ignore_certificate_errors.clone(),
+          )
+          .with_import_permissions(permissions),
+        ))
+      })
+  }
+
   pub fn file_fetcher(&self) -> Result<&Arc<CliFileFetcher>, AnyError> {
     self.services.file_fetcher.get_or_try_init(|| {
+      let http_client_provider = self.import_http_client_provider()?.clone();
       let cli_options = self.cli_options()?;
-      // A dedicated client so that connections made to load a module re-check
-      // the address they resolved to against `--deny-import`. The check on the
-      // specifier itself happens before DNS resolution, so it cannot tell that
-      // a hostname points at a denied address.
-      //
-      // Deliberately not `root_permissions_container`: building that resolves
-      // the main module, which the file fetcher itself is needed for.
-      let desc_parser = self.permission_desc_parser()?.clone();
-      let deny_permissions = Permissions::from_options(
-        desc_parser.as_ref(),
-        &cli_options.import_deny_permissions_options()?,
-      )?;
-      let http_client_provider = Arc::new(
-        HttpClientProvider::new(
-          Some(self.root_cert_store_provider().clone()),
-          self.flags.unsafely_ignore_certificate_errors.clone(),
-        )
-        .with_import_permissions(PermissionsContainer::new(
-          desc_parser,
-          deny_permissions,
-        )),
-      );
       Ok(Arc::new(create_cli_file_fetcher(
         self.blob_store().clone(),
         self.http_cache()?.clone(),
@@ -613,7 +645,8 @@ impl CliFactory {
       Ok(CliNpmInstallerFactory::new(
         resolver_factory.clone(),
         Arc::new(CliNpmCacheHttpClient::new(
-          self.http_client_provider().clone(),
+          self.import_http_client_provider()?.clone(),
+          self.import_deny_permissions()?.clone(),
           self.text_only_progress_bar().clone(),
           if needs_full_packument {
             NpmPackumentFormat::Full

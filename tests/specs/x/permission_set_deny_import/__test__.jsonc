@@ -1,0 +1,21 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_DIR": "$PWD/deno_dir"
+  },
+  // `deno x` installs the package with an internal factory whose config is a
+  // generated temp `deno.json`, so the `-P` set named on the command line does
+  // not resolve against it. The `deny` rules of the user's set must still reach
+  // that install — dropping them because the set could not be resolved would
+  // silently fetch from an address the user denied.
+  //
+  // The test npm registry is served from loopback, which this set denies, so
+  // the install must be refused.
+  "tests": {
+    "denied": {
+      "args": "x -y -P=locked npm:@denotest/try-write",
+      "output": "[WILDCARD]Requires import access[WILDCARD]",
+      "exitCode": 1
+    }
+  }
+}
