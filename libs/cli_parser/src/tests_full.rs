@@ -5,7 +5,8 @@
 )]
 // Ported from cli/args/flags.rs `mod tests` (the clap parity contract) to run
 // against the zero-cost parser via `convert::flags_from_vec`. A few tests that
-// depend on clap internals are skipped inline and stay in cli/args/flags.rs.
+// need CLI-side state (cwd resolution, env vars, the bare-run fast path) are
+// skipped inline and stay in cli/args/flags.rs.
 
 use std::net::SocketAddr;
 use std::num::NonZeroU8;
@@ -3718,7 +3719,7 @@ fn deny_net_denylist_with_ipv6_address() {
   );
 }
 
-// PORT-SKIP: test_no_colon_in_value_name tests clap-internal builders/parsers; kept in cli/args/flags.rs
+// PORT-SKIP: no_colon_in_value_name walks the whole CommandDef tree; kept in cli/args/flags.rs
 
 #[test]
 fn test_with_flags() {
@@ -5352,7 +5353,7 @@ fn location_with_bad_scheme() {
   );
 }
 
-// PORT-SKIP: test_config_path_args depends on clap internals (clap_root/config_path_args); kept in cli/args/flags.rs
+// PORT-SKIP: test_config_path_args needs CLI-side cwd resolution; kept in cli/args/flags.rs
 
 #[test]
 fn test_no_clear_watch_flag_without_watch_flag() {
@@ -7303,9 +7304,9 @@ fn bare_with_flag_no_file() {
   );
 }
 
-// PORT-SKIP: subcommands_recognized_by_node_shim depends on clap internals (clap_root/config_path_args); kept in cli/args/flags.rs
+// PORT-SKIP: subcommands_recognized_by_node_shim depends on the node_shim crate; kept in cli/args/flags.rs
 
-// PORT-SKIP: equal_help_output depends on clap internals (clap_root/config_path_args); kept in cli/args/flags.rs
+// PORT-SKIP: equal_help_output walks the whole CommandDef tree; kept in cli/args/flags.rs
 
 #[test]
 fn ci_subcommand_defaults() {
@@ -7348,7 +7349,7 @@ fn install_permissions_non_global() {
   );
 }
 
-// PORT-SKIP: install_os_arch_flags tests clap-internal builders/parsers; kept in cli/args/flags.rs
+// PORT-SKIP: install_os_arch_flags asserts DenoSubcommand::npm_system_info (cli-only); kept in cli/args/flags.rs
 
 // PORT-SKIP: install_os_only_flag asserts DenoSubcommand::npm_system_info (cli-only); kept in cli/args/flags.rs
 
@@ -8393,7 +8394,76 @@ fn inspect_flag_parsing() {
   }
 }
 
-// PORT-SKIP: inspect_value_parser_resolves_hostnames tests clap-internal builders/parsers; kept in cli/args/flags.rs
+/// Node accepts `--inspect=localhost:0` (and similar hostname forms); the
+/// parser resolves them via DNS rather than rejecting or silently dropping
+/// them. Ported from the clap-era `inspect_value_parser_resolves_hostnames`.
+#[test]
+fn inspect_resolves_hostnames() {
+  let cases = [
+    ("localhost:0", 0u16),
+    ("localhost:1234", 1234),
+    ("localhost", 9229),
+  ];
+  for (input, expected_port) in cases {
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      &format!("--inspect={input}"),
+      "foo.ts"
+    ])
+    .unwrap_or_else(|e| panic!("failed to parse {input:?}: {e}"));
+    let addr = flags
+      .inspect
+      .unwrap_or_else(|| panic!("--inspect={input} did not set an address"));
+    assert_eq!(addr.port(), expected_port, "port for {input:?}");
+    assert!(
+      addr.ip().is_loopback(),
+      "expected loopback for {input:?}, got {}",
+      addr.ip()
+    );
+  }
+}
+
+/// Non-hostname forms: bare port, bare `:port`, bare IP, and full `host:port`.
+#[test]
+fn inspect_address_forms() {
+  let cases = [
+    ("9222", "127.0.0.1:9222"),
+    (":9222", "127.0.0.1:9222"),
+    ("192.168.0.1", "192.168.0.1:9229"),
+    ("192.168.0.1:8080", "192.168.0.1:8080"),
+    ("[::1]:8080", "[::1]:8080"),
+  ];
+  for (input, expected) in cases {
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      &format!("--inspect={input}"),
+      "foo.ts"
+    ])
+    .unwrap_or_else(|e| panic!("failed to parse {input:?}: {e}"));
+    assert_eq!(
+      flags.inspect.map(|a| a.to_string()).as_deref(),
+      Some(expected),
+      "{input:?}"
+    );
+  }
+}
+
+/// An unresolvable host or out-of-range port is rejected outright rather than
+/// silently dropping the flag.
+#[test]
+fn inspect_invalid_address_is_rejected() {
+  for input in ["localhost:99999", ""] {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      &format!("--inspect={input}"),
+      "foo.ts"
+    ]);
+    assert!(r.is_err(), "expected --inspect={input:?} to be rejected");
+  }
+}
 
 #[test]
 fn inspect_publish_uid_flag_parsing() {

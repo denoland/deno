@@ -577,15 +577,7 @@ fn parse_shebang(shebang: &str) -> Shebang {
       "scoped --deny-* flags aren't supported yet, either remove them or ignore the test",
     ),
     Ok(flags) => Shebang::Permissions(Box::new(flags.permissions)),
-    Err(err) => match err.get(clap::error::ContextKind::InvalidArg) {
-      Some(clap::error::ContextValue::String(arg)) => {
-        invalid(&format!("could not parse flag {arg}"))
-      }
-      Some(clap::error::ContextValue::Strings(args)) => {
-        invalid(&format!("could not parse flags {}", args.join(", ")))
-      }
-      _ => invalid("could not parse flags"),
-    },
+    Err(err) => invalid(&format!("could not parse flags: {}", err.message)),
   }
 }
 

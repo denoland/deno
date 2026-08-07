@@ -1105,33 +1105,9 @@ version = "4.5.56"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "793207c7fa6300a0608d1080b858e5fdbe713cdc1c8db9fb17777d8a13e63df0"
 dependencies = [
- "anstream",
  "anstyle",
  "clap_lex",
- "strsim",
  "terminal_size",
-]
-
-[[package]]
-name = "clap_complete"
-version = "4.5.65"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "430b4dc2b5e3861848de79627b2bedc9f3342c7da5173a14eaa5d0f8dc18ae5d"
-dependencies = [
- "clap",
- "clap_lex",
- "is_executable",
- "shlex",
-]
-
-[[package]]
-name = "clap_complete_fig"
-version = "4.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d494102c8ff3951810c72baf96910b980fb065ca5d3101243e6a8dc19747c86b"
-dependencies = [
- "clap",
- "clap_complete",
 ]
 
 [[package]]
@@ -1883,7 +1859,6 @@ name = "dcore"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "clap",
  "deno_core",
  "deno_core_testing",
  "fastwebsockets 0.10.0",
@@ -1948,9 +1923,6 @@ dependencies = [
  "capacity_builder",
  "cfb",
  "chrono",
- "clap",
- "clap_complete",
- "clap_complete_fig",
  "color-print",
  "console_static_text",
  "criterion",
@@ -6255,15 +6227,6 @@ checksum = "173609498df190136aa7dea1a91db051746d339e18476eed5ca40521f02d7aa5"
 dependencies = [
  "is-docker",
  "once_cell",
-]
-
-[[package]]
-name = "is_executable"
-version = "1.0.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "baabb8b4867b26294d818bf3f651a454b6901431711abb96e296245888d6e8c4"
-dependencies = [
- "windows-sys 0.60.2",
 ]
 
 [[package]]
