@@ -41,8 +41,16 @@
     "es-module/test-esm-import-attributes-1.mjs": {},
     "es-module/test-esm-import-attributes-2.mjs": {},
     "es-module/test-esm-import-attributes-3.mjs": {},
+    "es-module/test-esm-import-attributes-validation-text.js": {
+      "ignore": true,
+      "reason": "Requires Node's internal `internal/modules/esm/assert` module, which Deno does not expose"
+    },
     "es-module/test-esm-import-json-named-export.mjs": {},
     "es-module/test-esm-import-meta-main.mjs": {},
+    "es-module/test-esm-import-text-disabled.mjs": {
+      "ignore": true,
+      "reason": "Asserts that text imports are rejected when Node's --experimental-import-text flag is absent; Deno supports `with { type: 'text' }` unconditionally, so the imports resolve instead of rejecting"
+    },
     "es-module/test-esm-in-require-cache-2.mjs": {},
     "es-module/test-esm-in-require-cache.js": {},
     "es-module/test-esm-loader-cache-clearing.js": {},
@@ -782,6 +790,7 @@
       "reason": "Uses ML-DSA (post-quantum) keygen + toCryptoKey, a new Node 26 algorithm not yet supported by Deno"
     },
     "parallel/test-crypto-lazy-transform-writable.js": {},
+    "parallel/test-crypto-negative-zero.js": {},
     "parallel/test-crypto-oneshot-hash.js": {},
     "parallel/test-crypto-oneshot-hash-xof.js": {},
     "parallel/test-crypto-oaep-zero-length.js": {},
@@ -887,6 +896,38 @@
       "ignore": true,
       "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
     },
+    "parallel/test-debugger-probe-max-hit-invalid.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-probe-max-hit-miss.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-probe-max-hit-partial.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-probe-max-hit-shared.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-probe-max-hit-text.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-probe-max-hit.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-probe-startup-pause.js": {
+      "ignore": true,
+      "reason": "Requires Node's internal `internal/debugger/inspect_probe` module, part of the 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-probe-typescript.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
     "parallel/test-debugger-profile-command.js": {
       "ignore": true,
       "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
@@ -908,6 +949,10 @@
     "parallel/test-debugger-run-after-quit-restart.js": {
       "ignore": true,
       "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-run-restart-init.js": {
+      "ignore": true,
+      "reason": "Requires Node's internal `internal/debugger/inspect_repl` module, part of the 'node inspect' CLI subcommand which Deno does not implement"
     },
     "parallel/test-debugger-sb-before-load.js": {
       "ignore": true,
