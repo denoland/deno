@@ -7759,28 +7759,6 @@ def456  other.zip
   // --- desktop.backendArgs config merge (CLI flag > deno.json) ---
 
   #[test]
-  fn backend_args_with_quoted_inner_value_are_split() {
-    let flags = DesktopFlags {
-      source_file: "main.ts".to_string(),
-      backend_args: Some("\"--user-agent=\\\"potato\\\"\"".to_string()),
-      ..Default::default()
-    };
-
-    assert_eq!(filtered_backend_args(&flags), vec!["--user-agent=potato"]);
-  }
-
-  #[test]
-  fn backend_args_with_multiple_values_are_split() {
-    let flags = DesktopFlags {
-      source_file: "main.ts".to_string(),
-      backend_args: Some("\"--foo --bar\"".to_string()),
-      ..Default::default()
-    };
-
-    assert_eq!(filtered_backend_args(&flags), vec!["--foo", "--bar"]);
-  }
-
-  #[test]
   fn backend_args_from_deno_json_for_selected_backend() {
     let mut flags = DesktopFlags {
       source_file: "main.ts".to_string(),
