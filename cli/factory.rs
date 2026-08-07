@@ -693,6 +693,7 @@ impl CliFactory {
           ),
           caching_strategy: cli_options.default_npm_caching_strategy(),
           lifecycle_scripts_config: cli_options.lifecycle_scripts_config(),
+          node_version: deno_lib::version::NODE_VERSION.to_string(),
           production: match cli_options.sub_command() {
             DenoSubcommand::Install(InstallFlags::Local(flags, _)) => {
               match flags {

@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "@denotest/bin-created-by-lifecycle": "1.0.0"
+  },
+  "scripts": {
+    "run-testbin": "testbin"
+  }
+}

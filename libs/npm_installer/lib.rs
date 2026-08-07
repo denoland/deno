@@ -158,6 +158,9 @@ pub struct NpmInstallerOptions<TSys: NpmInstallerSys> {
   pub linker_mode: NodeModulesLinkerMode,
   pub lifecycle_scripts: Arc<LifecycleScriptsConfig>,
   pub system_info: NpmSystemInfo,
+  /// The Node.js version Deno emulates. Used to key native-addon build output
+  /// in the npm build side-effects cache.
+  pub node_version: String,
   pub workspace_link_packages: WorkspaceNpmLinkPackagesRc,
   /// Whether `jsr:` dependencies are installed into `node_modules` via JSR's
   /// npm compatibility registry (the `jsrDepsInNodeModules` config option).
@@ -226,6 +229,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
                   clean_on_install: options.clean_on_install,
                   lifecycle_scripts: options.lifecycle_scripts,
                   system_info: options.system_info,
+                  node_version: options.node_version,
                   reporter: install_reporter,
                   node_modules_folder,
                   jsr_deps_in_node_modules: options.jsr_deps_in_node_modules,
@@ -246,6 +250,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
                   clean_on_install: options.clean_on_install,
                   lifecycle_scripts: options.lifecycle_scripts,
                   system_info: options.system_info,
+                  node_version: options.node_version,
                   reporter: install_reporter,
                   node_modules_folder,
                   jsr_deps_in_node_modules: options.jsr_deps_in_node_modules,
