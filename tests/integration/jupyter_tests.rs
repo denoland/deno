@@ -428,7 +428,19 @@ async fn setup_server() -> (TestContext, ConnectionSpec, JupyterServerProcess) {
 async fn setup_server_with_key(
   key: &str,
 ) -> (TestContext, ConnectionSpec, JupyterServerProcess) {
+  setup_server_with_key_and_config(key, None).await
+}
+
+async fn setup_server_with_key_and_config(
+  key: &str,
+  deno_json: Option<&str>,
+) -> (TestContext, ConnectionSpec, JupyterServerProcess) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
+  // The kernel is launched with the temp dir as its cwd, so a `deno.json`
+  // written here is discovered the same way it would be next to a notebook.
+  if let Some(deno_json) = deno_json {
+    context.temp_dir().path().join("deno.json").write(deno_json);
+  }
   let (mut conn, mut listeners) = ConnectionSpec::new();
   conn.key = key.into();
   let conn_file = context.temp_dir().path().join("connection.json");
@@ -485,6 +497,223 @@ async fn setup() -> (TestContext, JupyterClient, JupyterServerProcess) {
   let _ = client.recv_heartbeat().await.unwrap();
 
   (context, client, process)
+}
+
+async fn setup_with_deno_json(
+  deno_json: &str,
+) -> (TestContext, JupyterClient, JupyterServerProcess) {
+  let (context, conn, process) =
+    setup_server_with_key_and_config("", Some(deno_json)).await;
+  let client = JupyterClient::new(&conn).await;
+  client.io_subscribe("").await.unwrap();
+  client.send_heartbeat(b"ping").await.unwrap();
+  let _ = client.recv_heartbeat().await.unwrap();
+  (context, client, process)
+}
+
+// Runs a cell and returns the concatenated text of its `stream` (stdout/stderr)
+// iopub messages once the `execute_reply` arrives.
+async fn run_cell_collect_stream(
+  client: &JupyterClient,
+  code: &str,
+) -> Result<String> {
+  client
+    .send(
+      Shell,
+      "execute_request",
+      json!({
+        "silent": false,
+        "store_history": true,
+        "user_expressions": {},
+        "allow_stdin": false,
+        "stop_on_error": false,
+        "code": code,
+      }),
+    )
+    .await?;
+  let reply = client.recv(Shell).await?;
+  assert_eq!(reply.header.msg_type, "execute_reply");
+  let mut text = String::new();
+  for _ in 0..8 {
+    match client.recv(IoPub).await {
+      Ok(msg) => {
+        if msg.header.msg_type == "stream"
+          && let Some(t) = msg.content.get("text").and_then(|t| t.as_str())
+        {
+          text.push_str(t);
+        }
+        if msg
+          .content
+          .get("execution_state")
+          .map(|s| s == "idle")
+          .unwrap_or(false)
+        {
+          break;
+        }
+      }
+      Err(e) => {
+        if e.downcast_ref::<tokio::time::error::Elapsed>().is_some() {
+          break;
+        }
+        return Err(e);
+      }
+    }
+  }
+  Ok(text)
+}
+
+const PERMS_PROBE: &str = r#"
+const out = [];
+try { Deno.env.get("ALLOWED_VAR"); out.push("env_allowed:ok"); }
+catch (e) { out.push("env_allowed:" + e.name); }
+try { Deno.env.get("DENIED_VAR"); out.push("env_denied:ok"); }
+catch (e) { out.push("env_denied:" + e.name); }
+console.log(out.join(" "));
+"#;
+
+// A `permissions.jupyter` set in deno.json scopes what notebook cells may do.
+#[test]
+async fn jupyter_permissions_jupyter_set() -> Result<()> {
+  let (_ctx, client, _process) = setup_with_deno_json(
+    r#"{ "permissions": { "jupyter": { "env": ["ALLOWED_VAR"] } } }"#,
+  )
+  .await;
+  let out = run_cell_collect_stream(&client, PERMS_PROBE).await?;
+  assert!(out.contains("env_allowed:ok"), "got: {out:?}");
+  assert!(out.contains("env_denied:NotCapable"), "got: {out:?}");
+  Ok(())
+}
+
+// With no `permissions` key the kernel keeps the historical allow-all behavior.
+#[test]
+async fn jupyter_permissions_default_allow_all() -> Result<()> {
+  let (_ctx, client, _process) =
+    setup_with_deno_json(r#"{ "unstable": [] }"#).await;
+  let out = run_cell_collect_stream(&client, PERMS_PROBE).await?;
+  assert!(out.contains("env_allowed:ok"), "got: {out:?}");
+  assert!(out.contains("env_denied:ok"), "got: {out:?}");
+  Ok(())
+}
+
+// Sends a cell, answers the single permission/input prompt it raises on the
+// stdin channel with `answer`, and returns (execute_reply status, prompt text,
+// concatenated stream text).
+async fn run_cell_answering_prompt(
+  client: &JupyterClient,
+  code: &str,
+  answer: &str,
+) -> Result<(String, String, String)> {
+  client
+    .send(
+      Shell,
+      "execute_request",
+      json!({
+        "silent": false,
+        "store_history": true,
+        "user_expressions": {},
+        "allow_stdin": true,
+        "stop_on_error": false,
+        "code": code,
+      }),
+    )
+    .await?;
+
+  let req = client.recv(Stdin).await?;
+  assert_eq!(req.header.msg_type, "input_request");
+  let prompt = req
+    .content
+    .get("prompt")
+    .and_then(|p| p.as_str())
+    .unwrap_or_default()
+    .to_string();
+  client
+    .send(
+      Stdin,
+      "input_reply",
+      json!({ "value": answer, "status": "ok" }),
+    )
+    .await?;
+
+  let reply = client.recv(Shell).await?;
+  assert_eq!(reply.header.msg_type, "execute_reply");
+  let status = reply
+    .content
+    .get("status")
+    .and_then(|s| s.as_str())
+    .unwrap_or_default()
+    .to_string();
+
+  let mut text = String::new();
+  for _ in 0..8 {
+    match client.recv(IoPub).await {
+      Ok(msg) => {
+        if msg.header.msg_type == "stream"
+          && let Some(t) = msg.content.get("text").and_then(|t| t.as_str())
+        {
+          text.push_str(t);
+        }
+        if msg
+          .content
+          .get("execution_state")
+          .map(|s| s == "idle")
+          .unwrap_or(false)
+        {
+          break;
+        }
+      }
+      Err(e) => {
+        if e.downcast_ref::<tokio::time::error::Elapsed>().is_some() {
+          break;
+        }
+        return Err(e);
+      }
+    }
+  }
+  Ok((status, prompt, text))
+}
+
+const PROMPT_PROBE: &str = r#"
+let r;
+try { r = "value:" + Deno.env.get("DENIED_VAR"); }
+catch (e) { r = "denied:" + e.name; }
+console.log(r);
+"#;
+
+// When a cell accesses something outside its `permissions.jupyter` set, the
+// kernel asks the frontend over the stdin channel; answering "y" grants it.
+#[test]
+async fn jupyter_permission_prompt_allow() -> Result<()> {
+  let (_ctx, client, _process) = setup_with_deno_json(
+    r#"{ "permissions": { "jupyter": { "env": ["ALLOWED_VAR"] } } }"#,
+  )
+  .await;
+  let (status, prompt, text) =
+    run_cell_answering_prompt(&client, PROMPT_PROBE, "y").await?;
+  assert!(
+    prompt.contains("Deno requests env access"),
+    "prompt: {prompt:?}"
+  );
+  assert_eq!(status, "ok");
+  assert!(text.contains("value:"), "got: {text:?}");
+  Ok(())
+}
+
+// Answering "n" to the prompt denies the access, surfacing a NotCapable error.
+#[test]
+async fn jupyter_permission_prompt_deny() -> Result<()> {
+  let (_ctx, client, _process) = setup_with_deno_json(
+    r#"{ "permissions": { "jupyter": { "env": ["ALLOWED_VAR"] } } }"#,
+  )
+  .await;
+  let (status, prompt, text) =
+    run_cell_answering_prompt(&client, PROMPT_PROBE, "n").await?;
+  assert!(
+    prompt.contains("Deno requests env access"),
+    "prompt: {prompt:?}"
+  );
+  assert_eq!(status, "ok");
+  assert!(text.contains("denied:NotCapable"), "got: {text:?}");
+  Ok(())
 }
 
 #[test]
