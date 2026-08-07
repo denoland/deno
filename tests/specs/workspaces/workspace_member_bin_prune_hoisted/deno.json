@@ -1,0 +1,8 @@
+{
+  "nodeModulesDir": "manual",
+  "nodeModulesLinker": "hoisted",
+  "workspace": [
+    "./packages/tool",
+    "./packages/other"
+  ]
+}
