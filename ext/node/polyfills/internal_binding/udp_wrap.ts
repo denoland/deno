@@ -24,6 +24,8 @@
 const { core, primordials } = __bootstrap;
 const {
   op_node_udp_bind,
+  op_node_udp_connect,
+  op_node_udp_disconnect,
   op_node_udp_fd_for_ipc,
   op_node_udp_join_multi_v4,
   op_node_udp_join_multi_v6,
@@ -34,11 +36,13 @@ const {
   op_node_udp_open,
   op_node_udp_recv,
   op_node_udp_send,
+  op_node_udp_send_connected,
   op_node_udp_set_broadcast,
   op_node_udp_set_multicast_interface,
   op_node_udp_set_multicast_loopback,
   op_node_udp_set_multicast_ttl,
   op_node_udp_set_ttl,
+  op_node_udp_try_send_connected,
 } = core.ops;
 const {
   ArrayPrototypeMap,
@@ -80,6 +84,28 @@ const AF_INET = 2;
 const AF_INET6 = 10;
 
 const UDP_DGRAM_MAXSIZE = 64 * 1024;
+
+function isNotCapableError(error: unknown): boolean {
+  return ObjectPrototypeIsPrototypeOf(
+    Deno.errors.NotCapable.prototype,
+    error,
+  );
+}
+
+function udpSendErrorCode(error: unknown): number {
+  if (
+    ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, error)
+  ) {
+    return codeMap.get("EBADF")!;
+  }
+  if (
+    ObjectPrototypeIsPrototypeOf(ErrorPrototype, error) &&
+    StringPrototypeMatch((error as Error).message, osErrorRegExp)
+  ) {
+    return codeMap.get("EMSGSIZE")!;
+  }
+  return codeMap.get("UNKNOWN")!;
+}
 
 /** Validate that the address is a parseable IPv4 address. */
 function isValidIPv4Address(address: string): boolean {
@@ -287,9 +313,18 @@ class UDP extends HandleWrap {
   }
 
   disconnect(): number {
-    this.#remoteAddress = undefined;
-    this.#remotePort = undefined;
-    this.#remoteFamily = undefined;
+    if (this.#rid === undefined) {
+      return codeMap.get("EBADF")!;
+    }
+
+    try {
+      op_node_udp_disconnect(this.#rid);
+      this.#remoteAddress = undefined;
+      this.#remotePort = undefined;
+      this.#remoteFamily = undefined;
+    } catch (e) {
+      return codeMap.get(e.code ?? "UNKNOWN") ?? codeMap.get("UNKNOWN")!;
+    }
 
     return 0;
   }
@@ -581,7 +616,7 @@ class UDP extends HandleWrap {
         : ("IPv4" as const);
       return 0;
     } catch (e) {
-      if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotCapable.prototype, e)) {
+      if (isNotCapableError(e)) {
         throw e;
       }
       return codeMap.get(e.code ?? "UNKNOWN") ?? codeMap.get("UNKNOWN")!;
@@ -589,11 +624,23 @@ class UDP extends HandleWrap {
   }
 
   #doConnect(ip: string, port: number, family: number): number {
-    this.#remoteAddress = ip;
-    this.#remotePort = port;
-    this.#remoteFamily = family === AF_INET6
-      ? ("IPv6" as const)
-      : ("IPv4" as const);
+    if (this.#rid === undefined) {
+      return codeMap.get("EBADF")!;
+    }
+
+    try {
+      op_node_udp_connect(this.#rid, ip, port);
+      this.#remoteAddress = ip;
+      this.#remotePort = port;
+      this.#remoteFamily = family === AF_INET6
+        ? ("IPv6" as const)
+        : ("IPv4" as const);
+    } catch (e) {
+      if (isNotCapableError(e)) {
+        throw e;
+      }
+      return codeMap.get(e.code ?? "UNKNOWN") ?? codeMap.get("UNKNOWN")!;
+    }
 
     return 0;
   }
@@ -606,13 +653,16 @@ class UDP extends HandleWrap {
     _family: number,
   ): number {
     let hasCallback: boolean;
+    let connected: boolean;
 
     if (args.length === 3) {
       this.#remotePort = args[0] as number;
       this.#remoteAddress = args[1] as string;
       hasCallback = args[2] as boolean;
+      connected = false;
     } else {
       hasCallback = args[0] as boolean;
+      connected = true;
     }
 
     const payload = new Uint8Array(
@@ -629,31 +679,42 @@ class UDP extends HandleWrap {
       ),
     );
 
-    (async () => {
-      let sent: number;
-      let err: number | null = null;
-
+    if (connected) {
       try {
-        sent = await op_node_udp_send(
+        const sent = op_node_udp_try_send_connected(
           this.#rid!,
           payload,
           this.#remoteAddress!,
           this.#remotePort!,
         );
-      } catch (e) {
-        if (
-          ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e)
-        ) {
-          err = codeMap.get("EBADF")!;
-        } else if (
-          ObjectPrototypeIsPrototypeOf(ErrorPrototype, e) &&
-          StringPrototypeMatch(e.message, osErrorRegExp)
-        ) {
-          err = codeMap.get("EMSGSIZE")!;
-        } else {
-          err = codeMap.get("UNKNOWN")!;
+        if (sent > 0) {
+          return sent;
         }
+      } catch (error) {
+        return udpSendErrorCode(error);
+      }
+    }
 
+    (async () => {
+      let sent: number;
+      let err: number | null = null;
+
+      try {
+        sent = connected
+          ? await op_node_udp_send_connected(
+            this.#rid!,
+            payload,
+            this.#remoteAddress!,
+            this.#remotePort!,
+          )
+          : await op_node_udp_send(
+            this.#rid!,
+            payload,
+            this.#remoteAddress!,
+            this.#remotePort!,
+          );
+      } catch (error) {
+        err = udpSendErrorCode(error);
         sent = 0;
       }
 
