@@ -2006,19 +2006,29 @@ async fn package_linux_app_dir(
 /// are searched the same way the old sibling-checkout heuristic searched.
 const LAUFEY_DEV_DIR_ENV: &str = "LAUFEY_DEV_DIR";
 
+/// Overrides `<deno_dir>/laufey` with a fixed cache directory. The backend
+/// archives are 100+ MB, so downloading one per test is impractical when each
+/// spec test gets its own throwaway `DENO_DIR` — the test harness points every
+/// test at the same on-disk cache via this var instead (see
+/// `tests/util/lib/builders.rs` and `tools/download_laufey.ts`).
+const LAUFEY_CACHE_DIR_ENV: &str = "DENO_LAUFEY_CACHE_DIR";
+
 /// Resolves LAUFEY backend binaries and `.app` bundles, falling back to
 /// downloading prebuilt archives from the laufey GitHub releases when
 /// `LAUFEY_DEV_DIR` is not set.
 struct LaufeyBackendResolver {
   http_client_provider: Arc<HttpClientProvider>,
-  /// `<deno_dir>/laufey/<version>/`
+  /// `<deno_dir>/laufey/<version>/`, or `<DENO_LAUFEY_CACHE_DIR>/<version>/`
+  /// when the override is set.
   cache_root: PathBuf,
 }
 
 impl LaufeyBackendResolver {
   fn new(factory: &CliFactory) -> Result<Self, AnyError> {
-    let cache_root =
-      factory.deno_dir()?.root.join("laufey").join(LAUFEY_VERSION);
+    let cache_root = match std::env::var_os(LAUFEY_CACHE_DIR_ENV) {
+      Some(dir) => PathBuf::from(dir).join(LAUFEY_VERSION),
+      None => factory.deno_dir()?.root.join("laufey").join(LAUFEY_VERSION),
+    };
     Ok(Self {
       http_client_provider: factory.http_client_provider().clone(),
       cache_root,

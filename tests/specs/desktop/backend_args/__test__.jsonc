@@ -32,6 +32,8 @@
             "--hmr",
             "--backend=cef",
             "--backend-args=\"--user-agent=\\\"potato\\\"\"",
+            "--output",
+            "./hello3",
             "./main.ts"
           ],
           "output": "desktop_hmi.out"
