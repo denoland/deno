@@ -80,6 +80,83 @@ Deno.test(async function nested() {
   assertEquals(await deferred1.promise, null);
 });
 
+Deno.test(async function asyncLocalStorageExitPreservesNoStore() {
+  const als = new AsyncLocalStorage<string>();
+
+  await als.run("outer", async () => {
+    assertEquals(als.getStore(), "outer");
+    assertEquals(als.exit(() => als.getStore()), undefined);
+
+    await als.exit(async () => {
+      assertEquals(als.getStore(), undefined);
+      await Promise.resolve();
+      assertEquals(als.getStore(), undefined);
+
+      als.exit(() => {
+        assertEquals(als.getStore(), undefined);
+      });
+
+      await als.run("inner", async () => {
+        assertEquals(als.getStore(), "inner");
+        await Promise.resolve();
+        assertEquals(als.getStore(), "inner");
+      });
+      assertEquals(als.getStore(), undefined);
+    });
+
+    assertEquals(als.getStore(), "outer");
+  });
+
+  assertEquals(als.getStore(), undefined);
+});
+
+Deno.test(async function asyncLocalStorageDistinguishesUndefinedFromDefault() {
+  const als = new AsyncLocalStorage<string | undefined>({
+    defaultValue: "default",
+  });
+
+  assertEquals(als.getStore(), "default");
+  await als.exit(async () => {
+    assertEquals(als.getStore(), undefined);
+    await Promise.resolve();
+    assertEquals(als.getStore(), undefined);
+  });
+  assertEquals(als.getStore(), "default");
+
+  await als.run(undefined, async () => {
+    assertEquals(als.getStore(), undefined);
+    await Promise.resolve();
+    assertEquals(als.getStore(), undefined);
+  });
+  assertEquals(als.getStore(), "default");
+});
+
+Deno.test(async function asyncLocalStorageExitDoesNotAffectConcurrentFlows() {
+  const als = new AsyncLocalStorage<string>();
+  const exited = Promise.withResolvers<void>();
+  const resume = Promise.withResolvers<void>();
+
+  const exitingFlow = als.run("exiting", async () => {
+    await als.exit(async () => {
+      assertEquals(als.getStore(), undefined);
+      exited.resolve();
+      await resume.promise;
+      assertEquals(als.getStore(), undefined);
+    });
+    assertEquals(als.getStore(), "exiting");
+  });
+
+  await exited.promise;
+  await als.run("concurrent", async () => {
+    assertEquals(als.getStore(), "concurrent");
+    await Promise.resolve();
+    assertEquals(als.getStore(), "concurrent");
+  });
+
+  resume.resolve();
+  await exitingFlow;
+});
+
 Deno.test(async function enterWith() {
   const als = new AsyncLocalStorage();
   const deferred = Promise.withResolvers();
