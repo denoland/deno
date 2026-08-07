@@ -335,6 +335,7 @@ pub fn create_client_from_options(
       proxy: options.proxy.clone(),
       dns_resolver: options.resolver.clone(),
       permissions,
+      resolved_deny_check_kind: dns::ResolvedDenyCheckKind::Net,
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
@@ -924,6 +925,7 @@ pub fn op_fetch_custom_client(
       proxy: args.proxy,
       dns_resolver: dns::Resolver::default(),
       permissions: Some(permissions),
+      resolved_deny_check_kind: dns::ResolvedDenyCheckKind::Net,
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
@@ -962,6 +964,9 @@ pub struct CreateHttpClientOptions {
   /// When set, every connection runs the net-deny check against the IP it
   /// actually connected to, mirroring `Deno.connect`.
   pub permissions: Option<PermissionsContainer>,
+  /// Which deny list `permissions` is checked against. Clients that load
+  /// modules use `Import`; everything else uses `Net`.
+  pub resolved_deny_check_kind: dns::ResolvedDenyCheckKind,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: Option<TlsKey>,
   pub pool_max_idle_per_host: Option<usize>,
@@ -981,6 +986,7 @@ impl Default for CreateHttpClientOptions {
       proxy: None,
       dns_resolver: dns::Resolver::default(),
       permissions: None,
+      resolved_deny_check_kind: dns::ResolvedDenyCheckKind::default(),
       unsafely_ignore_certificate_errors: None,
       client_cert_chain_and_key: None,
       pool_max_idle_per_host: None,
@@ -1062,6 +1068,7 @@ pub fn create_http_client(
     options.dns_resolver.clone(),
     local_address,
     options.permissions,
+    options.resolved_deny_check_kind,
   );
 
   let user_agent = user_agent.parse::<HeaderValue>().map_err(|_| {

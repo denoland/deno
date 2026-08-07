@@ -3359,6 +3359,48 @@ impl UnaryPermission<ImportDescriptor> {
     );
     self.check_desc(None, false, None)
   }
+
+  /// Check if a resolved IP address is explicitly denied.
+  ///
+  /// The `--deny-import` check runs against the specifier's hostname before
+  /// any DNS lookup, so a name that resolves to a denied IP (a wildcard DNS
+  /// alias like `127.0.0.1.nip.io`, or simply an attacker-controlled record
+  /// pointing at loopback) passes it. Re-checking the address the connection
+  /// actually goes to closes that gap, mirroring
+  /// `UnaryPermission<NetDescriptor>::check_resolved_ip_deny`.
+  ///
+  /// Only checks deny rules — the allow check has already been performed
+  /// against the original hostname.
+  pub fn check_resolved_ip_deny(
+    &mut self,
+    desc: &ImportDescriptor,
+    api_name: Option<&str>,
+  ) -> Result<(), PermissionDeniedError> {
+    let info = format_display_name(desc.display_name()).into_owned();
+    let denied = || {
+      PermissionState::permission_denied_error(
+        ImportDescriptor::flag_name(),
+        Some(info.as_str()),
+        PermissionState::Denied,
+      )
+    };
+    if self.flag_denied_global {
+      return Err(denied());
+    }
+    for item in self.descriptors.iter() {
+      match item {
+        UnaryPermissionDesc::FlagDenied(v)
+        | UnaryPermissionDesc::FlagIgnored(v)
+          if desc.matches_deny(v) =>
+        {
+          return Err(denied());
+        }
+        _ => {}
+      }
+    }
+    let _ = api_name;
+    Ok(())
+  }
 }
 
 impl UnaryPermission<EnvDescriptor> {
@@ -4662,6 +4704,26 @@ impl PermissionsContainer {
     let mut inner = self.inner.lock();
     let desc = NetDescriptor(Host::Ip(*resolved_ip), Some(port.into()));
     inner.net.check_resolved_ip_deny(&desc, Some(api_name))?;
+    Ok(())
+  }
+
+  /// After resolving a module specifier's hostname to an IP address, check
+  /// that the resolved IP is not in the import deny list. This prevents
+  /// bypassing IP-literal `--deny-import` rules via hostname aliases that
+  /// resolve to the denied IP.
+  #[inline(always)]
+  pub fn check_import_resolved(
+    &mut self,
+    resolved_ip: &std::net::IpAddr,
+    port: u16,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    let mut inner = self.inner.lock();
+    let desc = ImportDescriptor(NetDescriptor(
+      Host::Ip(*resolved_ip),
+      Some(port.into()),
+    ));
+    inner.import.check_resolved_ip_deny(&desc, Some(api_name))?;
     Ok(())
   }
 

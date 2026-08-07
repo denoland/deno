@@ -498,10 +498,32 @@ impl CliFactory {
   pub fn file_fetcher(&self) -> Result<&Arc<CliFileFetcher>, AnyError> {
     self.services.file_fetcher.get_or_try_init(|| {
       let cli_options = self.cli_options()?;
+      // A dedicated client so that connections made to load a module re-check
+      // the address they resolved to against `--deny-import`. The check on the
+      // specifier itself happens before DNS resolution, so it cannot tell that
+      // a hostname points at a denied address.
+      //
+      // Deliberately not `root_permissions_container`: building that resolves
+      // the main module, which the file fetcher itself is needed for.
+      let desc_parser = self.permission_desc_parser()?.clone();
+      let deny_permissions = Permissions::from_options(
+        desc_parser.as_ref(),
+        &cli_options.import_deny_permissions_options()?,
+      )?;
+      let http_client_provider = Arc::new(
+        HttpClientProvider::new(
+          Some(self.root_cert_store_provider().clone()),
+          self.flags.unsafely_ignore_certificate_errors.clone(),
+        )
+        .with_import_permissions(PermissionsContainer::new(
+          desc_parser,
+          deny_permissions,
+        )),
+      );
       Ok(Arc::new(create_cli_file_fetcher(
         self.blob_store().clone(),
         self.http_cache()?.clone(),
-        self.http_client_provider().clone(),
+        http_client_provider,
         self.services.memory_files.clone(),
         self.sys(),
         CreateCliFileFetcherOptions {

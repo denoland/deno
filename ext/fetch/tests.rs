@@ -168,6 +168,7 @@ async fn run_test_client_with_resolver(
       pool_idle_timeout: None,
       dns_resolver: resolver,
       permissions: None,
+      resolved_deny_check_kind: Default::default(),
       http1: true,
       http2: true,
       local_address: None,
@@ -263,6 +264,7 @@ async fn test_http_proxy_denies_destination_resolving_to_denied_ip() {
       pool_idle_timeout: None,
       dns_resolver: resolver,
       permissions: Some(deny_net_permissions(&[denied_ip])),
+      resolved_deny_check_kind: Default::default(),
       http1: true,
       http2: true,
       local_address: None,
@@ -604,6 +606,7 @@ fn create_http_test_client() -> crate::Client {
       client_builder_hook: None,
       http2_max_header_list_size: None,
       permissions: None,
+      resolved_deny_check_kind: Default::default(),
     },
   )
   .unwrap()
