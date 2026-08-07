@@ -86,7 +86,7 @@ impl ContextifyScript {
     produce_cached_data: bool,
     parsing_context: Option<v8::Local<'s, v8::Object>>,
     import_module_dynamically_id: i32,
-  ) -> Option<CompileResult> {
+  ) -> Option<CompileResult<'s>> {
     let context = if let Some(parsing_context) = parsing_context {
       let Some(context) =
         ContextifyContext::from_sandbox_obj(scope, parsing_context)
@@ -163,17 +163,12 @@ impl ContextifyScript {
     let this = deno_core::cppgc::make_cppgc_object(scope, Self { script });
 
     Some(CompileResult {
-      value: v8::Global::new(scope, v8::Local::<v8::Value>::from(this)),
+      value: this.into(),
       cached_data: cached_data.as_ref().map(|c| {
         let backing_store =
           v8::ArrayBuffer::new_backing_store_from_vec(c.to_vec());
-        v8::Global::new(
-          scope,
-          v8::Local::<v8::Value>::from(v8::ArrayBuffer::with_backing_store(
-            scope,
-            &backing_store.make_shared(),
-          )),
-        )
+        v8::ArrayBuffer::with_backing_store(scope, &backing_store.make_shared())
+          .into()
       }),
       cached_data_rejected: source
         .get_cached_data()
@@ -1393,7 +1388,7 @@ pub fn op_vm_create_script<'a>(
   produce_cached_data: bool,
   parsing_context: Option<v8::Local<'a, v8::Object>>,
   import_module_dynamically_id: i32,
-) -> Option<CompileResult> {
+) -> Option<CompileResult<'a>> {
   ContextifyScript::create(
     scope,
     source,
@@ -1482,9 +1477,9 @@ pub fn op_vm_is_context(
 }
 
 #[derive(ToV8)]
-struct CompileResult {
-  value: v8::Global<v8::Value>,
-  cached_data: Option<v8::Global<v8::Value>>,
+struct CompileResult<'a> {
+  value: v8::Local<'a, v8::Value>,
+  cached_data: Option<v8::Local<'a, v8::Value>>,
   cached_data_rejected: bool,
   cached_data_produced: bool,
 }
@@ -1503,7 +1498,7 @@ pub fn op_vm_compile_function<'s>(
   context_extensions: Option<v8::Local<'s, v8::Array>>,
   params: Option<v8::Local<'s, v8::Array>>,
   import_module_dynamically_id: i32,
-) -> Option<CompileResult> {
+) -> Option<CompileResult<'s>> {
   let context = if let Some(parsing_context) = parsing_context {
     let Some(context) =
       ContextifyContext::from_sandbox_obj(scope, parsing_context)
@@ -1597,17 +1592,12 @@ pub fn op_vm_compile_function<'s>(
   };
 
   Some(CompileResult {
-    value: v8::Global::new(scope, v8::Local::<v8::Value>::from(function)),
+    value: function.into(),
     cached_data: cached_data.as_ref().map(|c| {
       let backing_store =
         v8::ArrayBuffer::new_backing_store_from_vec(c.to_vec());
-      v8::Global::new(
-        scope,
-        v8::Local::<v8::Value>::from(v8::ArrayBuffer::with_backing_store(
-          scope,
-          &backing_store.make_shared(),
-        )),
-      )
+      v8::ArrayBuffer::with_backing_store(scope, &backing_store.make_shared())
+        .into()
     }),
     cached_data_rejected: source
       .get_cached_data()

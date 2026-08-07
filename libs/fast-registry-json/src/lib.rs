@@ -938,6 +938,7 @@ enum PackumentState<'i> {
   Start,
   WantNameValue,
   WantDenoEtagValue,
+  WantDenoPackumentFormatValue,
   InVersions,
   WantVersion(&'i str),
   InDistTags,
@@ -992,6 +993,7 @@ struct PackumentIndexer<'i> {
   state: PackumentState<'i>,
   name: Option<&'i str>,
   deno_etag: Option<&'i str>,
+  deno_packument_format: Option<&'i str>,
   versions: Vec<&'i str>,
   version_ranges: Vec<(u32, u32)>,
   dist_tags: rustc_hash::FxHashMap<&'i str, &'i str>,
@@ -1011,6 +1013,7 @@ impl<'i> PackumentIndexer<'i> {
       state: PackumentState::Start,
       name: None,
       deno_etag: None,
+      deno_packument_format: None,
       versions: Vec::new(),
       version_ranges: Vec::new(),
       dist_tags: rustc_hash::FxHashMap::default(),
@@ -1062,10 +1065,17 @@ impl<'i> PackumentIndexer<'i> {
       {
         self.deno_etag = Some(self.string_value(start, end));
         self.state = PackumentState::Start;
+      } else if !is_key
+        && matches!(self.state, PackumentState::WantDenoPackumentFormatValue)
+      {
+        self.deno_packument_format = Some(self.string_value(start, end));
+        self.state = PackumentState::Start;
       } else if is_key && v == b"name" {
         self.state = PackumentState::WantNameValue;
       } else if is_key && v == b"_deno.etag" {
         self.state = PackumentState::WantDenoEtagValue;
+      } else if is_key && v == b"_deno.packumentFormat" {
+        self.state = PackumentState::WantDenoPackumentFormatValue;
       } else if is_key && v == b"versions" {
         self.state = PackumentState::InVersions;
       } else if is_key && v == b"dist-tags" {
@@ -1257,6 +1267,7 @@ impl<'i> PackumentIndexer<'i> {
     Ok(PackumentIndex {
       name: self.name,
       deno_etag: self.deno_etag,
+      deno_packument_format: self.deno_packument_format,
       versions: self.versions,
       version_ranges: self.version_ranges,
       dist_tags: self.dist_tags,
@@ -1323,6 +1334,9 @@ pub enum TrustEvidence {
 pub struct PackumentIndex<'i> {
   pub name: Option<&'i str>,
   pub deno_etag: Option<&'i str>,
+  /// Custom top-level property written by the cache to record which format
+  /// the packument was fetched in (currently only `"full"`).
+  pub deno_packument_format: Option<&'i str>,
   pub versions: Vec<&'i str>,
   pub version_ranges: Vec<(u32, u32)>,
   pub dist_tags: rustc_hash::FxHashMap<&'i str, &'i str>,
@@ -1683,6 +1697,23 @@ mod tests {
     let index = pluck_packument_index(input).unwrap();
     assert_eq!(index.name, Some("pkg"));
     assert_eq!(index.deno_etag, None);
+    assert_eq!(index.versions, vec!["1.0.0"]);
+  }
+
+  #[test]
+  fn packument_index_plucks_deno_packument_format() {
+    let input = r#"{"name":"pkg","versions":{"1.0.0":{"version":"1.0.0"}},"time":{},"_deno.packumentFormat":"full"}"#;
+    let index = pluck_packument_index(input).unwrap();
+    assert_eq!(index.deno_packument_format, Some("full"));
+    assert_eq!(index.versions, vec!["1.0.0"]);
+    assert!(index.time.is_empty());
+  }
+
+  #[test]
+  fn packument_index_ignores_nested_deno_packument_format() {
+    let input = r#"{"name":"pkg","versions":{"1.0.0":{"version":"1.0.0","_deno.packumentFormat":"full"}}}"#;
+    let index = pluck_packument_index(input).unwrap();
+    assert_eq!(index.deno_packument_format, None);
     assert_eq!(index.versions, vec!["1.0.0"]);
   }
 

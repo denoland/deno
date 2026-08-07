@@ -2535,9 +2535,10 @@ supported framework (Next.js, Astro, etc.) in the current directory.
       .arg(
         Arg::new("backend")
           .long("backend")
-          .help("Backend to use for the desktop app")
+          .help(
+            "Backend to use for the desktop app",
+          )
           .value_parser(["webview", "cef", "raw"])
-          .default_value("webview")
           .help_heading(DESKTOP_HEADING),
       )
       .arg(
@@ -14130,8 +14131,9 @@ mod tests {
       panic!("expected desktop subcommand");
     };
     assert_eq!(desktop.source_file, "main.tsx");
-    // The UI backend defaults to webview.
-    assert_eq!(desktop.backend.as_deref(), Some("webview"));
+    // No --backend flag leaves the field unset so `desktop.backend` in
+    // deno.json (or the webview default) can take effect during config merge.
+    assert_eq!(desktop.backend.as_deref(), None);
   }
 
   #[test]

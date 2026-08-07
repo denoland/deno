@@ -108,6 +108,38 @@ impl FdTable {
       Some(FdOwnership::InheritedExtraStdio(_))
     )
   }
+
+  /// Check whether a libuv stream wrap (`PipeWrap::open`, `TCPWrap::open`)
+  /// may adopt `fd`. Stdio fds (0-2) are pre-registered and may be re-opened;
+  /// inherited extra stdio fds may be adopted (e.g. via `net.Socket({ fd })`)
+  /// and are consumed by `finish_uv_adopt` only once the uv open actually
+  /// claims the fd, so a failed open leaves the fd usable by node:fs. Any
+  /// other tracked fd is a duplicate.
+  ///
+  /// Returns `Some(was_inherited)` if adoption may proceed (pass the flag to
+  /// `finish_uv_adopt` on success), or `None` if the fd is already tracked
+  /// and the caller should reject with `EEXIST`.
+  pub fn begin_uv_adopt(&self, fd: i32) -> Option<bool> {
+    if self.is_inherited_extra_stdio(fd) {
+      Some(true)
+    } else if self.contains(fd) && !(0..=2).contains(&fd) {
+      None
+    } else {
+      Some(false)
+    }
+  }
+
+  /// Record a successful uv adoption started with `begin_uv_adopt`. Drops the
+  /// inherited entry if there was one (libuv now owns the original fd; only
+  /// the node:fs dup is released, and its close is deferred until any
+  /// `Rc<dyn File>` clone held by an in-flight node:fs stream drops), then
+  /// tracks the fd as UvOwned so it can't be re-adopted by another wrap.
+  pub fn finish_uv_adopt(&mut self, fd: i32, was_inherited: bool) {
+    if was_inherited {
+      self.remove(fd);
+    }
+    self.register_uv_owned(fd);
+  }
 }
 
 impl Default for FdTable {

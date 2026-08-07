@@ -193,6 +193,7 @@ async fn generate_doc_nodes_for_builtin_types(
         unstable_bytes_imports: false,
         unstable_text_imports: true,
         unstable_css_imports: false,
+        unstable_config_imports: false,
       },
     )
     .await;

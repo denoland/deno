@@ -212,12 +212,13 @@ impl WefDesktopApi {
   /// JS via `BrowserWindow`, this one is created *hidden* and revealed only once
   /// its first navigation has finished loading (wired here via `on_page_load`).
   ///
-  /// The runtime navigates this window to `app://` only after the in-process
-  /// server is listening, so creating it visible up front would leave the user
-  /// staring at an empty webview — which paints solid black on Wayland, where
-  /// the compositor presents the pre-load frame verbatim. Deferring the reveal
-  /// to load-finished means the window's first visible frame already has
-  /// content. See https://github.com/denoland/deno/issues/35530.
+  /// The runtime navigates this window to the app's `http://127.0.0.1:PORT`
+  /// URL only after the loopback server is listening, so creating it visible
+  /// up front would leave the user staring at an empty webview — which paints
+  /// solid black on Wayland, where the compositor presents the pre-load frame
+  /// verbatim. Deferring the reveal to load-finished means the window's first
+  /// visible frame already has content. See
+  /// https://github.com/denoland/deno/issues/35530.
   fn create_initial_window(&self, width: i32, height: i32) -> u32 {
     let window = laufey::Window::new_with_options(
       width,
@@ -421,7 +422,14 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
           let call_id =
             deno_runtime::ops::desktop::register_bind_call(&responses, resp_tx);
           let event = deno_runtime::ops::desktop::DesktopEvent::BindCall {
-            window_id: js_call.window_id,
+            // Attribute the call to the window the binding was registered on,
+            // not to `js_call.window_id`. The backend's per-call renderer id
+            // can drift from the id `bind()` recorded the callback under (seen
+            // on CEF/Windows when a larger module graph delays startup; see
+            // denoland/deno#35647), which would make the runtime-side lookup
+            // in `windowBindCallbacks` miss and reject an otherwise-registered
+            // call. The registration id always matches that map's key.
+            window_id,
             name,
             args: serde_json::Value::Array(args),
             call_id,
@@ -1332,28 +1340,48 @@ laufey::main!(|| {
     match run_desktop(update_rolled_back, desktop_serve_port, data).await {
       Ok(()) => log::debug!("[desktop] run_desktop completed OK"),
       Err(error) => {
-        let is_js_error = js_error_downcast_ref(&error).is_some();
-        let error_string = match js_error_downcast_ref(&error) {
-          Some(js_error) => format_js_error(js_error, None),
-          None => format!("{:?}", error),
+        // A failure raised while the app's main module was still loading or
+        // first evaluating is tagged `DesktopStartupError` (see
+        // `denort::run`). It carries its own pre-formatted message.
+        let startup = error.downcast_ref::<denort::run::DesktopStartupError>();
+        let error_string = match startup {
+          Some(startup) => startup.message.clone(),
+          None => match js_error_downcast_ref(&error) {
+            Some(js_error) => format_js_error(js_error, None),
+            None => format!("{:?}", error),
+          },
         };
-        log::error!(
-          "{}: {}",
-          colors::red_bold("error"),
-          error_string.trim_start_matches("error: ")
-        );
-        // Only show native alert for non-JS errors (startup crashes).
-        // JS errors are already handled by the error reporting JS listener.
-        if !is_js_error {
-          laufey::alert(
-            "Application Error",
-            error_string.trim_start_matches("error: "),
-          );
+        let message = error_string.trim_start_matches("error: ");
+        log::error!("{}: {}", colors::red_bold("error"), message);
+        let is_startup = startup.is_some();
+        // A `DesktopStartupError` wraps the formatted message rather than the
+        // original `JsError`, so only consult `js_error_downcast_ref` for the
+        // untagged (post-load) case.
+        let is_js_error =
+          !is_startup && js_error_downcast_ref(&error).is_some();
+        if should_show_native_error_dialog(is_startup, is_js_error) {
+          laufey::alert("Application Error", message);
         }
       }
     }
   });
 });
+
+/// Decide whether the desktop shell should pop a native error dialog for a
+/// failure that propagated out of the runtime.
+///
+/// - Startup failures (tagged `DesktopStartupError`; see its docs) are
+///   surfaced here because the app's own `error` / `unhandledrejection`
+///   listeners never ran to report them.
+/// - Non-JS crashes are surfaced too.
+/// - A post-load JS error is left to the app's own listeners, which already
+///   show a dialog; alerting again here would just duplicate it.
+fn should_show_native_error_dialog(
+  is_startup: bool,
+  is_js_error: bool,
+) -> bool {
+  is_startup || !is_js_error
+}
 
 /// Run as a headless worker (no Laufey window). Used when a framework dev
 /// server forks child processes that re-execute this dylib.
@@ -1403,7 +1431,7 @@ fn run_headless_worker() {
       // VFS should already be extracted by the parent process.
       // In dev mode, keep the source directory as CWD (inherited from parent).
       // In production mode, set CWD to extraction directory.
-      if env::var("DENO_DESKTOP_DEV").is_err() {
+      if env::var("DENO_DESKTOP_DEV_URL").is_err() {
         let _ = std::env::set_current_dir(&data.root_path);
       }
       denort::file_system::DenoRtSys::new_self_extracting(data.vfs.clone())
@@ -1654,7 +1682,7 @@ async fn run_desktop(
 
   // Framework dev servers handle their own HMR via websocket.
   // For non-framework apps, V8-level HMR reloads the webview.
-  let is_framework_dev = env::var("DENO_DESKTOP_DEV").is_ok();
+  let is_framework_dev = env::var("DENO_DESKTOP_DEV_URL").is_ok();
 
   // In dev mode, restore CWD to the source directory so the framework
   // dev server watches the original source files, not the extracted VFS.
@@ -1803,7 +1831,8 @@ async fn run_desktop(
   // Run the Deno runtime and Laufey event loop concurrently.
   // We spawn the runtime first, wait for the server to be ready,
   // then navigate the webview.
-  let url = format!("http://127.0.0.1:{}", desktop_serve_port);
+  let url = env::var("DENO_DESKTOP_DEV_URL")
+    .unwrap_or_else(|_| format!("http://127.0.0.1:{}", desktop_serve_port));
   log::debug!("[desktop] starting runtime and laufey event loop");
   let run_fut =
     denort::run::run_with_options(Arc::new(sys.clone()), sys, data, run_opts);
@@ -1848,39 +1877,42 @@ async fn run_desktop(
     }
 
     let id = initial_window_id_for_navigate.load(Ordering::Acquire);
-    let mut server_ready = false;
-    for i in 0..60 {
-      if let Ok(mut stream) =
-        tokio::net::TcpStream::connect(("127.0.0.1", desktop_serve_port)).await
-      {
-        let req = format!(
-          "GET / HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n",
-          desktop_serve_port
-        );
-        if stream.write_all(req.as_bytes()).await.is_ok() {
-          let mut buf = vec![0u8; 256];
-          if let Ok(n) = stream.read(&mut buf).await {
-            let response = String::from_utf8_lossy(&buf[..n]);
-            if response.starts_with("HTTP/1.1 2")
-              || response.starts_with("HTTP/1.1 3")
-              || response.starts_with("HTTP/1.0 2")
-              || response.starts_with("HTTP/1.0 3")
-            {
-              log::debug!(
-                "[desktop] Server ready after {} attempts, navigating to {}",
-                i + 1,
-                &url
-              );
-              server_ready = true;
-              break;
+    if !is_framework_dev {
+      let mut server_ready = false;
+      for i in 0..60 {
+        if let Ok(mut stream) =
+          tokio::net::TcpStream::connect(("127.0.0.1", desktop_serve_port))
+            .await
+        {
+          let req = format!(
+            "GET / HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n",
+            desktop_serve_port
+          );
+          if stream.write_all(req.as_bytes()).await.is_ok() {
+            let mut buf = vec![0u8; 256];
+            if let Ok(n) = stream.read(&mut buf).await {
+              let response = String::from_utf8_lossy(&buf[..n]);
+              if response.starts_with("HTTP/1.1 2")
+                || response.starts_with("HTTP/1.1 3")
+                || response.starts_with("HTTP/1.0 2")
+                || response.starts_with("HTTP/1.0 3")
+              {
+                log::debug!(
+                  "[desktop] Server ready after {} attempts, navigating to {}",
+                  i + 1,
+                  &url
+                );
+                server_ready = true;
+                break;
+              }
             }
           }
         }
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
       }
-      tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-    }
-    if !server_ready {
-      log::warn!("Server not ready after 15s, navigating anyway");
+      if !server_ready {
+        log::warn!("Server not ready after 15s, navigating anyway");
+      }
     }
     laufey::Window::from_id(id).navigate(&url);
 
@@ -1933,6 +1965,36 @@ mod tests {
   use super::laufey_value_to_desktop_value;
   use super::laufey_value_to_json;
   use super::map_permission_status;
+  use super::should_show_native_error_dialog;
+
+  // --- should_show_native_error_dialog ---
+  //
+  // See `should_show_native_error_dialog` / `DesktopStartupError` for the
+  // rationale. In short: startup failures must be surfaced (the app never got
+  // to report them), while post-load JS errors are left to the app's own
+  // listeners so we don't show a duplicate dialog.
+
+  #[test]
+  fn startup_js_error_is_surfaced() {
+    // A failed import / link error / top-level throw during the load phase
+    // is tagged as a startup error and never reaches the app's listeners,
+    // so the shell must show the dialog itself.
+    assert!(should_show_native_error_dialog(true, false));
+  }
+
+  #[test]
+  fn post_load_js_error_is_left_to_the_app() {
+    // An uncaught error after the app loaded is reported by the app's own
+    // error/unhandledrejection listeners: a second dialog here would just
+    // duplicate it.
+    assert!(!should_show_native_error_dialog(false, true));
+  }
+
+  #[test]
+  fn non_js_crash_is_surfaced() {
+    // A non-JS runtime crash has no JS listener to report it.
+    assert!(should_show_native_error_dialog(false, false));
+  }
 
   // --- extract_fork_script_path ---
   //

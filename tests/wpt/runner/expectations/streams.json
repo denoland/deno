@@ -207,12 +207,7 @@
   "transferable": {
     "deserialize-error.window.html": false,
     "transfer-with-messageport.window.html": true,
-    "readable-stream.html": {
-      "expectedFailures": [
-        "cancel should be propagated to the original",
-        "cancel should abort a pending read()"
-      ]
-    },
+    "readable-stream.html": true,
     "reason.html": true,
     "service-worker.https.html": false,
     "shared-worker.html": false,

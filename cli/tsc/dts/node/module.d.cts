@@ -636,7 +636,7 @@ declare module "module" {
              * > **Caveat**: only present on `file:` modules.
              * @since v21.2.0, v20.11.0
              */
-            dirname?: string;
+            dirname: string;
             /**
              * The full absolute path and filename of the current module, with
              * symlinks resolved.
@@ -647,7 +647,7 @@ declare module "module" {
              * > `file:` protocol will not provide it.
              * @since v21.2.0, v20.11.0
              */
-            filename?: string;
+            filename: string;
             /**
              * The absolute `file:` URL of the module.
              *

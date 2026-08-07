@@ -63,6 +63,7 @@ const {
   PromiseResolve,
   PromiseWithResolvers,
   RangeError,
+  ReflectApply,
   ReflectHas,
   SafeFinalizationRegistry,
   SafePromiseAll,
@@ -965,8 +966,11 @@ class ResourceStreamResourceSink {
  * @param {Uint8Array} chunk
  */
 async function readableStreamWriteChunkFn(reader, sink, chunk) {
-  // Empty chunk. Re-read.
-  if (chunk.length == 0) {
+  // Empty Uint8Array chunk. Re-read.
+  if (
+    TypedArrayPrototypeGetSymbolToStringTag(chunk) === "Uint8Array" &&
+    TypedArrayPrototypeGetByteLength(chunk) == 0
+  ) {
     return true;
   }
 
@@ -1009,9 +1013,10 @@ async function readableStreamReadFn(reader, sink, onError) {
   // The read request, its handlers, and the write continuation are hoisted
   // out of the loop and allocated once per stream instead of once per
   // chunk; the per-iteration state travels through the `reentrant`,
-  // `gotChunk`, and `promise` slots, which is safe because exactly one
-  // read is in flight per iteration.
+  // `hasChunk`, `gotChunk`, and `promise` slots, which is safe because
+  // exactly one read is in flight per iteration.
   let reentrant = true;
+  let hasChunk = false;
   let gotChunk = undefined;
   /** @type {Deferred<boolean>} */
   let promise;
@@ -1021,8 +1026,10 @@ async function readableStreamReadFn(reader, sink, onError) {
 
   const readRequest = {
     chunkSteps(chunk) {
-      // If the chunk has non-zero length, write it
+      // If the read completed synchronously, write the chunk after
+      // reentrancy ends.
       if (reentrant) {
+        hasChunk = true;
         gotChunk = chunk;
       } else {
         PromisePrototypeThen(
@@ -1073,12 +1080,12 @@ async function readableStreamReadFn(reader, sink, onError) {
     // The ops here look like op_write_all/op_close, but we're not actually writing to a
     // real resource.
     reentrant = true;
+    hasChunk = false;
     gotChunk = undefined;
     promise = new Deferred();
-
     readableStreamDefaultReaderRead(reader, readRequest);
     reentrant = false;
-    if (gotChunk) {
+    if (hasChunk) {
       PromisePrototypeThen(
         readableStreamWriteChunkFn(reader, sink, gotChunk),
         onWriteFulfilled,
@@ -1128,7 +1135,17 @@ function resourceForReadableStream(stream, length, onError) {
 
   // Trigger the first read
   PromisePrototypeCatch(readableStreamReadFn(reader, sink, onError), (err) => {
+    if (sink.external !== undefined) {
+      op_readable_stream_resource_write_error(
+        sink.external,
+        extractStringErrorFromError(err),
+      );
+      sink.close();
+    }
     PromisePrototypeCatch(reader.cancel(err), () => {});
+    if (onError !== undefined) {
+      onError(err);
+    }
   });
 
   return rid;
@@ -3301,104 +3318,106 @@ function readableStreamPipeTo(
     signal[add](abortAlgorithm);
   }
 
-  function pipeLoop() {
-    return new Promise((resolveLoop, rejectLoop) => {
-      /** @param {boolean} done */
-      function next(done) {
-        if (done) {
-          resolveLoop();
-        } else {
-          uponPromise(pipeStep(), next, rejectLoop);
-        }
+  // Persistent pump. Instead of allocating a `new Promise`, a read-request
+  // object with three closures, and an `uponPromise` chain per chunk, a single
+  // hoisted read request is re-armed in a constant-depth loop: a synchronously
+  // delivered chunk sets `syncAdvance` and the `do/while` re-arms without
+  // growing the stack (like `readableStreamCollectIntoUint8Array`), while an
+  // asynchronous delivery re-enters `pump` from `chunkSteps`. The writer-ready
+  // microtask hop is skipped whenever the writable has no backpressure (checked
+  // synchronously via `dest[_backpressure]`), so a fast sink drains at close to
+  // the raw `reader.read()` loop's rate. The identity-transform bypass from
+  // #35799 is preserved as a per-chunk branch the pump composes with.
+  const noopHandler = () => {};
+  let pumping = false;
+  let syncAdvance = false;
+
+  /** @param {any} chunk */
+  function writeChunk(chunk) {
+    if (bypassActive) {
+      try {
+        transformStreamDefaultControllerEnqueue(bypassTS[_controller], chunk);
+        return;
+      } catch {
+        // The transform errored or its readable side can no longer accept
+        // chunks; the generic write below observes the same condition through
+        // the writable's state and shuts the pipe down with the right error.
+        bypassActive = false;
       }
-      next(false);
-    });
+    }
+    // Track only the last write. A single shared rejection handler
+    // (setPromiseIsHandledToTrue) keeps the write promise from surfacing as
+    // unhandled without a per-chunk closure; the pipe surfaces write errors
+    // through the writer's closed promise, and shutdown awaits the last write
+    // via waitForWritesToFinish.
+    currentWrite = writableStreamDefaultWriterWrite(writer, chunk);
+    setPromiseIsHandledToTrue(currentWrite);
   }
 
-  /** @returns {Promise<boolean>} */
-  function pipeStep() {
-    if (shuttingDown === true) {
-      return PromiseResolve(true);
-    }
-
-    if (bypassActive) {
-      const readableController = bypassTS[_readable][_controller];
-      if (
-        dest[_state] === "writable" &&
-        writableStreamCloseQueuedOrInFlight(dest) === false &&
-        readableStreamDefaultControllerCanCloseOrEnqueue(readableController)
-      ) {
-        if (bypassTS[_backpressure] === true) {
-          // Pace on the transform's own backpressure flag, exactly like
-          // the generic sink write algorithm does: it is set by the
-          // enqueue below when the readable's desired size is exhausted
-          // and cleared (resolving this promise) by the next
-          // readable-side pull.
-          return transformPromiseWith(
-            bypassTS[_backpressureChangePromise].promise,
-            pipeStep,
-          );
-        }
-        return new Promise((resolveRead, rejectRead) => {
-          readableStreamDefaultReaderRead(
-            reader,
-            {
-              chunkSteps(chunk) {
-                if (bypassActive) {
-                  try {
-                    transformStreamDefaultControllerEnqueue(
-                      bypassTS[_controller],
-                      chunk,
-                    );
-                    resolveRead(false);
-                    return;
-                  } catch {
-                    // The transform errored or its readable side can no
-                    // longer accept chunks; the generic write below
-                    // observes the same condition through the writable's
-                    // state and shuts the pipe down with the right error.
-                    bypassActive = false;
-                  }
-                }
-                currentWrite = transformPromiseWith(
-                  writableStreamDefaultWriterWrite(writer, chunk),
-                  undefined,
-                  () => {},
-                );
-                resolveRead(false);
-              },
-              closeSteps() {
-                resolveRead(true);
-              },
-              errorSteps: rejectRead,
-            },
-          );
-        });
+  /** @type {ReadRequest} */
+  const readRequest = {
+    chunkSteps(chunk) {
+      writeChunk(chunk);
+      if (pumping) {
+        syncAdvance = true;
+      } else {
+        pump();
       }
-      bypassActive = false;
-    }
+    },
+    // Source close/error is finalized by the isOrBecomes{Closed,Errored}
+    // handlers installed below; the pump simply stops re-arming.
+    closeSteps: noopHandler,
+    errorSteps: noopHandler,
+  };
 
-    return transformPromiseWith(writer[_readyPromise].promise, () => {
-      return new Promise((resolveRead, rejectRead) => {
-        readableStreamDefaultReaderRead(
-          reader,
-          {
-            chunkSteps(chunk) {
-              currentWrite = transformPromiseWith(
-                writableStreamDefaultWriterWrite(writer, chunk),
-                undefined,
-                () => {},
-              );
-              resolveRead(false);
-            },
-            closeSteps() {
-              resolveRead(true);
-            },
-            errorSteps: rejectRead,
-          },
-        );
-      });
-    });
+  function pump() {
+    pumping = true;
+    do {
+      syncAdvance = false;
+      if (shuttingDown === true) {
+        break;
+      }
+
+      // Recompute identity-bypass eligibility each iteration; any state change
+      // on either side permanently disables the route (a later chunk then
+      // takes the generic writer path, surfacing the proper rejection).
+      if (bypassActive) {
+        const readableController = bypassTS[_readable][_controller];
+        if (
+          dest[_state] === "writable" &&
+          writableStreamCloseQueuedOrInFlight(dest) === false &&
+          readableStreamDefaultControllerCanCloseOrEnqueue(readableController)
+        ) {
+          if (bypassTS[_backpressure] === true) {
+            // Pace on the transform's own backpressure flag; resume when the
+            // next readable-side pull clears it. Rejection (transform errored)
+            // is left to the shutdown handlers.
+            uponPromise(
+              bypassTS[_backpressureChangePromise].promise,
+              pump,
+              noopHandler,
+            );
+            break;
+          }
+        } else {
+          bypassActive = false;
+        }
+      }
+
+      if (bypassActive === false && dest[_backpressure] === true) {
+        // Writable backpressure: wait for the writer-ready promise, then
+        // resume. Rejection (dest errored) is left to the shutdown handlers.
+        uponPromise(writer[_readyPromise].promise, pump, noopHandler);
+        break;
+      }
+
+      // No backpressure on the active path: read one chunk. A queued chunk is
+      // delivered synchronously (chunkSteps sets syncAdvance and the loop
+      // re-arms at constant stack depth); an empty queue delivers
+      // asynchronously and re-enters pump from chunkSteps.
+      readableStreamDefaultReaderRead(reader, readRequest);
+    } while (syncAdvance);
+    pumping = false;
   }
 
   isOrBecomesErrored(
@@ -3457,18 +3476,19 @@ function readableStreamPipeTo(
     }
   }
 
-  setPromiseIsHandledToTrue(pipeLoop());
+  pump();
 
   return promise.promise;
 
   /** @returns {Promise<void>} */
   function waitForWritesToFinish() {
     const oldCurrentWrite = currentWrite;
-    return transformPromiseWith(
-      currentWrite,
-      () =>
-        oldCurrentWrite !== currentWrite ? waitForWritesToFinish() : undefined,
-    );
+    // `currentWrite` is now the raw write promise (see writeChunk), which may
+    // reject; settle either way, since write errors are surfaced through the
+    // writer's closed promise rather than the individual write.
+    const onSettled = () =>
+      oldCurrentWrite !== currentWrite ? waitForWritesToFinish() : undefined;
+    return transformPromiseWith(currentWrite, onSettled, onSettled);
   }
 
   /**
@@ -3875,16 +3895,44 @@ function readableByteStreamTee(stream) {
    * @param {ReadableStreamBYOBReader} thisReader
    */
   function forwardReaderError(thisReader) {
-    PromisePrototypeCatch(thisReader[_closedPromise].promise, (e) => {
-      if (thisReader !== reader) {
-        return;
-      }
-      readableByteStreamControllerError(branch1[_controller], e);
-      readableByteStreamControllerError(branch2[_controller], e);
-      if (!canceled1 || !canceled2) {
-        cancelPromise.resolve(undefined);
-      }
-    });
+    PromisePrototypeThen(
+      thisReader[_closedPromise].promise,
+      () => {
+        // The source closed. If the in-flight source read was a BYOB read, its
+        // read-into request was orphaned: readableStreamClose() only runs the
+        // close steps of a default reader's read requests, not a BYOB reader's
+        // read-into requests, so the readIntoRequest close steps that propagate
+        // the close to the branches never ran and `reading` is still set. (When
+        // the close instead arrives on a default source read, readRequest's
+        // close steps already cleared `reading` and settled both branches, so
+        // this is a no-op.) Commit the source's still-pending zero-filled
+        // pull-into to run those close steps, which return the lent buffer to
+        // the BYOB branch and settle both branches with `{ done: true }`.
+        if (
+          thisReader !== reader ||
+          !reading ||
+          !isReadableStreamBYOBReader(reader) ||
+          stream[_controller][_pendingPullIntos].size === 0
+        ) {
+          return;
+        }
+        const firstDescriptor = stream[_controller][_pendingPullIntos].peek();
+        readableByteStreamControllerRespondInClosedState(
+          stream[_controller],
+          firstDescriptor,
+        );
+      },
+      (e) => {
+        if (thisReader !== reader) {
+          return;
+        }
+        readableByteStreamControllerError(branch1[_controller], e);
+        readableByteStreamControllerError(branch2[_controller], e);
+        if (!canceled1 || !canceled2) {
+          cancelPromise.resolve(undefined);
+        }
+      },
+    );
   }
 
   // The read requests, their microtask callbacks, and the pending chunk and
@@ -4495,15 +4543,27 @@ function setUpTransformStreamDefaultControllerFromTransformer(
   let flushAlgorithm = _defaultFlushAlgorithm;
   let cancelAlgorithm = _defaultCancelAlgorithm;
   if (transformerDict.transform !== undefined) {
-    transformAlgorithm = (chunk, controller) =>
-      webidl.invokeCallbackFunction(
-        transformerDict.transform,
-        [chunk, controller],
-        transformer,
-        webidl.converters["Promise<undefined>"],
-        "Failed to execute 'transformAlgorithm' on 'TransformStreamDefaultController'",
-        true,
-      );
+    const transformCallback = transformerDict.transform;
+    // Synchronous-transform fast path: a transform() that enqueues and returns
+    // undefined (or any non-thenable) completes without a wrapper promise from
+    // the Promise<undefined> converter. Returning undefined signals synchronous
+    // completion to transformStreamDefaultControllerPerformTransform, which then
+    // skips that promise and the transformPromiseWith() microtask hop -- pure
+    // per-chunk overhead on the transform hot loop. A synchronous throw becomes
+    // a rejected promise so the stream errors as before; a thenable return keeps
+    // the full async path (matching webidl.invokeCallbackFunction).
+    transformAlgorithm = (chunk, controller) => {
+      let rv;
+      try {
+        rv = ReflectApply(transformCallback, transformer, [chunk, controller]);
+      } catch (err) {
+        return PromiseReject(err);
+      }
+      if (rv === undefined || typeof rv?.then !== "function") {
+        return undefined;
+      }
+      return PromiseResolve(rv);
+    };
   }
   if (transformerDict.flush !== undefined) {
     flushAlgorithm = (controller) =>
@@ -4790,6 +4850,13 @@ function transformStreamDefaultControllerPerformTransform(controller, chunk) {
     return resolvedPromise();
   }
   const transformPromise = transformAlgorithm(chunk, controller);
+  if (transformPromise === undefined) {
+    // The transform completed synchronously (see the transformAlgorithm set up
+    // in setUpTransformStreamDefaultControllerFromTransformer): the chunk was
+    // already enqueued, so resolve the write without a per-chunk promise or a
+    // microtask hop, exactly like the identity-transform fast path above.
+    return resolvedPromise();
+  }
   return transformPromiseWith(transformPromise, undefined, (r) => {
     transformStreamError(controller[_stream], r);
     throw r;
@@ -5661,42 +5728,91 @@ class ReadableStreamAsyncIteratorReadRequest {
   }
 }
 
+/**
+ * The generic (async) path for the default async iterator's next(): allocate a
+ * Deferred + read request and hand it to the reader. Hoisted out of next() so
+ * the closure isn't allocated on every iteration, and reused by the chained
+ * (concurrent next()) path.
+ * @param {ReadableStreamDefaultReader} reader
+ * @returns {Promise<IteratorResult<unknown>>}
+ */
+function readableStreamAsyncIteratorNextSteps(reader) {
+  if (reader[_iteratorFinished]) {
+    return PromiseResolve({ value: undefined, done: true });
+  }
+
+  if (reader[_stream] === undefined) {
+    return PromiseReject(
+      new TypeError(
+        "Cannot get the next iteration result once the reader has been released.",
+      ),
+    );
+  }
+
+  /** @type {Deferred<IteratorResult<any>>} */
+  const promise = new Deferred();
+  // internal values (_iteratorNext & _iteratorFinished) are modified inside
+  // ReadableStreamAsyncIteratorReadRequest methods
+  // see: https://webidl.spec.whatwg.org/#es-default-asynchronous-iterator-object
+  const readRequest = new ReadableStreamAsyncIteratorReadRequest(
+    reader,
+    promise,
+  );
+
+  readableStreamDefaultReaderRead(reader, readRequest);
+  // The extra PromisePrototypeThen hop is load-bearing, not redundant: for a
+  // lazily-pulling source the queue is empty here, so the read triggers pull()
+  // and the controller schedules a follow-up pull a microtask later. This hop
+  // delays next()'s resolution by that one tick so the follow-up pull is
+  // observed before the consumer acts on the result (e.g. calls return() to
+  // cancel). Returning promise.promise directly resolves a tick too early and
+  // drops that pull -- see WPT streams async-iterator "next() ...; return()".
+  return PromisePrototypeThen(promise.promise);
+}
+
 /** @type {AsyncIterator<unknown>} */
 const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
   /** @returns {Promise<IteratorResult<unknown>>} */
   next() {
     /** @type {ReadableStreamDefaultReader} */
     const reader = this[_reader];
-    function nextSteps() {
-      if (reader[_iteratorFinished]) {
-        return PromiseResolve({ value: undefined, done: true });
-      }
 
-      if (reader[_stream] === undefined) {
-        return PromiseReject(
-          new TypeError(
-            "Cannot get the next iteration result once the reader has been released.",
-          ),
-        );
-      }
-
-      /** @type {Deferred<IteratorResult<any>>} */
-      const promise = new Deferred();
-      // internal values (_iteratorNext & _iteratorFinished) are modified inside
-      // ReadableStreamAsyncIteratorReadRequest methods
-      // see: https://webidl.spec.whatwg.org/#es-default-asynchronous-iterator-object
-      const readRequest = new ReadableStreamAsyncIteratorReadRequest(
-        reader,
-        promise,
+    // A prior next() is still in flight: chain after it so iteration results are
+    // delivered in call order (per the WebIDL default async iterator).
+    const ongoing = reader[_iteratorNext];
+    if (ongoing) {
+      return reader[_iteratorNext] = PromisePrototypeThen(
+        ongoing,
+        () => readableStreamAsyncIteratorNextSteps(reader),
+        () => readableStreamAsyncIteratorNextSteps(reader),
       );
-
-      readableStreamDefaultReaderRead(reader, readRequest);
-      return PromisePrototypeThen(promise.promise);
     }
 
-    return reader[_iteratorNext] = reader[_iteratorNext]
-      ? PromisePrototypeThen(reader[_iteratorNext], nextSteps, nextSteps)
-      : nextSteps();
+    // Sync fast path: nothing in flight, stream readable, default (non-byte)
+    // controller with a chunk already queued. Mirrors
+    // ReadableStreamDefaultReader.read()'s fast path, skips allocating a
+    // Deferred, a ReadRequest object, and a microtask hop, and leaves
+    // _iteratorNext null so subsequent iterations stay on this path.
+    const stream = reader[_stream];
+    if (stream !== undefined && stream[_state] === "readable") {
+      const controller = stream[_controller];
+      if (
+        controller[_pendingPullIntos] === undefined &&
+        controller[_queue].size !== 0
+      ) {
+        stream[_disturbed] = true;
+        const chunk = dequeueValue(controller);
+        if (controller[_closeRequested] && controller[_queue].size === 0) {
+          readableStreamDefaultControllerClearAlgorithms(controller);
+          readableStreamClose(stream);
+        } else {
+          readableStreamDefaultControllerCallPullIfNeeded(controller);
+        }
+        return PromiseResolve({ value: chunk, done: false });
+      }
+    }
+
+    return reader[_iteratorNext] = readableStreamAsyncIteratorNextSteps(reader);
   },
   /**
    * @param {unknown} arg

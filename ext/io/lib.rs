@@ -211,11 +211,15 @@ fn inherited_extra_stdio_fd(fd: i32) -> Option<StdFile> {
   if fd < 3 {
     return None;
   }
-  // SAFETY: dup validates the descriptor and gives FdTable its own handle.
-  let dup_fd = unsafe { libc::dup(fd) };
+  // The dup exists purely for in-process node:fs use, so mark it
+  // close-on-exec: unlike the original fd (which must stay inheritable, as
+  // in Node), the dup must not leak into spawned grandchildren, where it
+  // would hold pipe ends open and delay EOF for the parent.
+  // SAFETY: fcntl validates the descriptor and gives FdTable its own handle.
+  let dup_fd = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0) };
   if dup_fd == -1 {
     log::debug!(
-      "dup() failed for inherited extra stdio fd {}: {}",
+      "duplicating inherited extra stdio fd {} failed: {}",
       fd,
       std::io::Error::last_os_error()
     );

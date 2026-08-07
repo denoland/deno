@@ -7420,7 +7420,10 @@ mod tests {
       .await
       .unwrap()
       .unwrap();
-    assert_eq!(info.entries.len(), 22);
+    // 23 with stock TypeScript: `@types/node`'s `console` global exposes the
+    // `Console` constructor property in addition to the 22 log methods (the
+    // forked compiler suppressed it).
+    assert_eq!(info.entries.len(), 23);
     let details = ts_server
       .get_completion_details(
         snapshot.clone(),
@@ -7516,6 +7519,34 @@ mod tests {
           {
             "text": "void",
             "kind": "keyword"
+          },
+          {
+            "text": " ",
+            "kind": "space"
+          },
+          {
+            "text": "(",
+            "kind": "punctuation"
+          },
+          {
+            "text": "+",
+            "kind": "operator"
+          },
+          {
+            "text": "1",
+            "kind": "numericLiteral"
+          },
+          {
+            "text": " ",
+            "kind": "space"
+          },
+          {
+            "text": "overload",
+            "kind": "text"
+          },
+          {
+            "text": ")",
+            "kind": "punctuation"
           }
         ],
         "documentation": [

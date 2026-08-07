@@ -531,6 +531,14 @@ fn format_markup_embedded(
         "ts" | "typescript" | "mts" => "ts",
         "tsx" => "tsx",
         "jsx" => "jsx",
+        // Astro treats inline `<script>` contents as TypeScript by default,
+        // so a bare script tag (which `lax_markup` reports as `js`) must be
+        // formatted as TypeScript rather than JavaScript.
+        _ if file_path.extension().and_then(|e| e.to_str())
+          == Some("astro") =>
+        {
+          "ts"
+        }
         _ => "js",
       };
       let path = file_path.with_extension(ext);

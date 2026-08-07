@@ -413,24 +413,56 @@ fn generate_coverage_report(
         }
       }
 
-      // Reset the count if a zero-count range overlaps the line and reaches
-      // at least one edge (start or end) of the line. A zero-count range
-      // floating in the middle of a line (not reaching either edge) is
-      // typically just a tiny gap between blocks (e.g. the unreachable path
-      // between catch's return and finally) and should not zero out the line.
-      for function in &options.script_coverage.functions {
-        for range in &function.ranges {
-          if range.count > 0 {
-            continue;
-          }
+      // Reset the count when a zero-count range genuinely covers this line's
+      // code, judged three ways below. Merely reaching one edge is not enough:
+      // where a covered arm and a zero-count sibling arm meet on one line, the
+      // covered side is real code that ran and must not be hidden. That is the
+      // case at a branch junction such as `} else {`, `} catch {`, or
+      // `} finally {`: when only one arm ran, the other arm's zero-count range
+      // clips the opposite edge, and zeroing the whole line on that single edge
+      // is what otherwise makes the junction count as covered only when both
+      // arms run in the same coverage process. Splitting the two arms across
+      // separate test files then drops the junction from the merged line
+      // coverage. A zero-count range floating in the middle of a line (matching
+      // none of the tests) is a V8 block-boundary gap, e.g. the unreachable path
+      // between a catch's return and finally, and is ignored.
+      for (range_index, range) in options
+        .script_coverage
+        .functions
+        .iter()
+        .flat_map(|function| function.ranges.iter().enumerate())
+      {
+        if range.count > 0 {
+          continue;
+        }
 
-          let overlaps = range.start_char_offset < line_end_char_offset
-            && range.end_char_offset > line_start_char_offset;
-          let reaches_edge = range.start_char_offset <= line_start_char_offset
-            || range.end_char_offset >= line_content_end_char_offset;
-          if overlaps && reaches_edge {
-            count = 0;
-          }
+        let overlaps = range.start_char_offset < line_end_char_offset
+          && range.end_char_offset > line_start_char_offset;
+        if !overlaps {
+          continue;
+        }
+
+        // The line sits entirely inside the uncovered range: a fully uncovered
+        // line, or one in the middle of a multi-line uncovered block.
+        let spans_content = range.start_char_offset <= line_start_char_offset
+          && range.end_char_offset >= line_content_end_char_offset;
+        // An uncovered statement confined to this line that runs to the end of
+        // its code, e.g. the never-taken `throw` in `if (!x) throw …`. A
+        // multi-line block whose brace only clips a junction extends past the
+        // line end and is excluded here, so the covered half survives.
+        let inline_uncovered = range.start_char_offset
+          >= line_start_char_offset
+          && range.end_char_offset <= line_end_char_offset
+          && range.end_char_offset >= line_content_end_char_offset;
+        // A never-called function is a single count-0 range (ranges[0]) covering
+        // the whole function. Its signature line stays uncovered like its body,
+        // even though the range starts a few characters into that line, after an
+        // `export`/`async` keyword, which the span test above would miss.
+        let whole_function = range_index == 0
+          && (range.start_char_offset <= line_start_char_offset
+            || range.end_char_offset >= line_content_end_char_offset);
+        if spans_content || inline_uncovered || whole_function {
+          count = 0;
         }
       }
     }
