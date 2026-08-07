@@ -923,6 +923,18 @@ struct SerializedDesktopAppConfig {
   /// `HKCU\Software\Classes\<scheme>` protocol handler (Windows).
   #[serde(rename = "deepLinks")]
   pub deep_links: Option<Vec<String>>,
+  /// Opt-in to registering the otherwise-reserved `http`/`https` schemes as
+  /// deep links. Off by default; only a genuine default-browser-style utility
+  /// should enable it. `file`/`ftp`/`ws`/`wss` stay reserved regardless.
+  #[serde(rename = "allowWebSchemes")]
+  pub allow_web_schemes: Option<bool>,
+  /// macOS TCC permissions the app declares in its Info.plist. Each entry emits
+  /// the matching `NS…UsageDescription` key (e.g. `"camera"` →
+  /// `NSCameraUsageDescription`). When omitted, none of those keys are emitted.
+  pub permissions: Option<Vec<String>>,
+  /// Run as a macOS menu-bar / accessory app with no Dock icon (emits
+  /// `LSUIElement`). Off by default.
+  pub agent: Option<bool>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
@@ -976,6 +988,9 @@ impl SerializedDesktopConfig {
         name: a.name,
         identifier: a.identifier,
         deep_links: a.deep_links,
+        allow_web_schemes: a.allow_web_schemes,
+        permissions: a.permissions,
+        agent: a.agent,
         icons: a.icons.map(|i| {
           fn resolve_icon_value(
             v: SerializedDesktopIconValue,
@@ -1050,6 +1065,9 @@ pub struct DesktopAppConfig {
   pub identifier: Option<String>,
   pub icons: Option<DesktopIconsConfig>,
   pub deep_links: Option<Vec<String>>,
+  pub allow_web_schemes: Option<bool>,
+  pub permissions: Option<Vec<String>>,
+  pub agent: Option<bool>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]

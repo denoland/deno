@@ -54,6 +54,17 @@ the dylib** named `d3n0l4nd`, read back with
 metadata + VFS, exactly like `deno compile`, but sourced from the loaded image
 rather than argv0.
 
+**Only graph-reachable files are embedded.** The bundle contains what the
+static module graph reaches — imports, `deno compile`-visible references. A file
+read **at runtime** (`Deno.readFile("icon16.png")` for a tray icon, a config
+loaded via `fetch`/`readTextFile`, etc.) is invisible to that analysis and is
+*not* embedded, so it resolves against the extracted VFS root
+(`…/deno-compile-<app>/…`) and fails with a NotFound at a temp path that looks
+nothing like a project file. Fix: pass each such asset to
+`deno desktop --include <path>` (repeatable) so it ships in the VFS. The
+runtime detects this specific failure and appends the `--include` hint to the
+error (`augment_missing_asset_hint`, `lib.rs`).
+
 ## Boot ordering (and why it's strict)
 
 Inside `laufey::main!` everything up to the tokio runtime is deliberately
