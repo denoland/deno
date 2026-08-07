@@ -246,6 +246,20 @@ const workflow = createWorkflow({
             "aws s3 cp release-${{github.event.inputs.releaseKind}}-latest.txt s3://dl-deno-land/release-${{github.event.inputs.releaseKind}}-latest.txt",
           ],
         }),
+        step({
+          name: "Purge CDN cache",
+          env: {
+            CLOUDFLARE_ZONE_ID: "${{ vars.CLOUDFLARE_ZONE_ID }}",
+            CLOUDFLARE_API_TOKEN: "${{ secrets.CLOUDFLARE_API_TOKEN }}",
+          },
+          run: [
+            "# The latest.txt file lives at a stable URL but changes every",
+            "# release, so the edge has to be told to drop it. Otherwise",
+            "# `deno upgrade` keeps serving the previous version until the",
+            "# 4 hour TTL expires.",
+            "deno run -A --lock=tools/deno.lock.json tools/release/purge_cdn_cache.ts release-${{github.event.inputs.releaseKind}}-latest.txt",
+          ],
+        }),
       ],
     },
   ],
