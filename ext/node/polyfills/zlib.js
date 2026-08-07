@@ -39,6 +39,7 @@ const {
   ObjectSetPrototypeOf,
   ReflectApply,
   Symbol,
+  SymbolHasInstance,
   TypedArrayPrototypeGetByteLength,
   Uint32Array,
 } = primordials;
@@ -59,9 +60,19 @@ const {
 } = errorCodes;
 
 const { finished, Transform } = core.createLazyLoader("node:stream")();
-const { deprecateInstantiation } = core.loadExtScript(
+const { deprecateInstantiation, emitExperimentalWarning } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );
+const {
+  ZipEntry,
+  ZipFile,
+  ZipBuffer,
+  createZipArchive,
+  createZipArchiveSync,
+  zipFiles,
+  getMaxZipContentSize,
+  setMaxZipContentSize,
+} = core.loadExtScript("ext:deno_node/internal/zip/index.js");
 const {
   isAnyArrayBuffer,
   isArrayBufferView,
@@ -1245,6 +1256,75 @@ function createProperty(ctor) {
   };
 }
 
+// ZIP archive support is experimental. The warning fires when the API is
+// *used*, not when node:zlib is imported: the ESM facade reads every export to
+// build its bindings, so warning on property access would fire on a bare
+// `import 'node:zlib'`. Each public class is a thin subclass whose factory
+// methods (and, for ZipBuffer, its constructor) warn; each function is a
+// warn-on-call wrapper. A `[Symbol.hasInstance]` override keeps `instanceof`
+// matching instances produced by the internal (unwrapped) implementation. The
+// rest of node:zlib is stable and never warns.
+function emitZipExperimentalWarning() {
+  emitExperimentalWarning("The zlib ZIP archive API");
+}
+
+function experimentalZipFunction(fn, thisArg) {
+  return function (...args) {
+    emitZipExperimentalWarning();
+    return ReflectApply(fn, thisArg, args);
+  };
+}
+
+// Thin subclasses that gate *use* of the experimental ZIP API behind the
+// warning while leaving `instanceof` (and the public class name) intact.
+class ExperimentalZipEntry extends ZipEntry {
+  static [SymbolHasInstance](instance) {
+    return instance instanceof ZipEntry;
+  }
+}
+
+class ExperimentalZipFile extends ZipFile {
+  static [SymbolHasInstance](instance) {
+    return instance instanceof ZipFile;
+  }
+}
+
+class ExperimentalZipBuffer extends ZipBuffer {
+  static [SymbolHasInstance](instance) {
+    return instance instanceof ZipBuffer;
+  }
+  constructor(buffer) {
+    emitZipExperimentalWarning();
+    super(buffer);
+  }
+}
+
+// Shadow each public factory with a warn-on-call wrapper, and restore the
+// public class name that subclassing changed.
+for (
+  const { 0: Wrapper, 1: Raw, 2: factories } of [
+    [ExperimentalZipEntry, ZipEntry, [
+      "read",
+      "create",
+      "createSync",
+      "createStream",
+      "createSymlink",
+    ]],
+    [ExperimentalZipFile, ZipFile, ["open", "openSync"]],
+    [ExperimentalZipBuffer, ZipBuffer, []],
+  ]
+) {
+  for (const name of factories) {
+    ObjectDefineProperty(Wrapper, name, {
+      __proto__: null,
+      configurable: true,
+      writable: true,
+      value: experimentalZipFunction(Raw[name], Raw),
+    });
+  }
+  ObjectDefineProperty(Wrapper, "name", { __proto__: null, value: Raw.name });
+}
+
 function crc32(data, value = 0) {
   if (typeof data !== "string" && !isArrayBufferView(data)) {
     throw new ERR_INVALID_ARG_TYPE("data", [
@@ -1373,6 +1453,16 @@ const zlib = {
 
   constants,
   codes,
+
+  // ZIP archive support (experimental).
+  ZipEntry: ExperimentalZipEntry,
+  ZipFile: ExperimentalZipFile,
+  ZipBuffer: ExperimentalZipBuffer,
+  createZipArchive: experimentalZipFunction(createZipArchive),
+  createZipArchiveSync: experimentalZipFunction(createZipArchiveSync),
+  zipFiles: experimentalZipFunction(zipFiles),
+  getMaxZipContentSize: experimentalZipFunction(getMaxZipContentSize),
+  setMaxZipContentSize: experimentalZipFunction(setMaxZipContentSize),
 
   ...deprecatedConstants,
 };
