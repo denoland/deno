@@ -1,0 +1,41 @@
+{
+  "tests": {
+    // `localhost` resolves to the denied loopback address, so the load must be
+    // blocked even though the specifier's hostname matches no deny rule.
+    "denied_via_resolved_ip": {
+      "args": "run --quiet --allow-import --deny-import=127.0.0.1,[::1] main.ts",
+      "output": "[WILDCARD]Requires import access[WILDCARD]",
+      "exitCode": 1
+    },
+    // Control: the same import succeeds with no deny rule in place.
+    "allowed_without_deny": {
+      "args": "run --quiet --allow-import main.ts",
+      "output": "3\n"
+    },
+    // A module already in the cache must be denied too. `--deny-import` governs
+    // which code may be loaded, not only which connections are opened, so the
+    // resolved-address check cannot live solely in the HTTP connector.
+    "denied_when_cached": {
+      "steps": [{
+        "args": "cache --quiet --allow-import main.ts",
+        "output": "",
+        "exitCode": 0
+      }, {
+        "args": "run --quiet --cached-only --allow-import --deny-import=127.0.0.1,[::1] main.ts",
+        "output": "[WILDCARD]Requires import access[WILDCARD]",
+        "exitCode": 1
+      }]
+    },
+    // Control for the cached case: still loads when nothing is denied.
+    "allowed_when_cached": {
+      "steps": [{
+        "args": "cache --quiet --allow-import main.ts",
+        "output": "",
+        "exitCode": 0
+      }, {
+        "args": "run --quiet --cached-only --allow-import main.ts",
+        "output": "3\n"
+      }]
+    }
+  }
+}
