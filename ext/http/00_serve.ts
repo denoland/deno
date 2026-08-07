@@ -1043,63 +1043,73 @@ function mapToNativeResponseCallback(context, callback, onError) {
     return undefined;
   }
 
+  function handleOnErrorError(req, span, innerRequest, error) {
+    if (otelState.METRICS_ENABLED) {
+      op_http_metric_handle_otel_error(req);
+    }
+    internals.log(
+      "error",
+      "Exception in onError while handling exception",
+      error,
+    );
+    return finishOrReturnNative(
+      req,
+      span,
+      innerRequest,
+      internalServerError(),
+    );
+  }
+
   function handleError(req, span, innerRequest, error) {
     let response;
     try {
       response = onError(error);
     } catch (error) {
-      if (otelState.METRICS_ENABLED) {
-        op_http_metric_handle_otel_error(req);
-      }
-      internals.log(
-        "error",
-        "Exception in onError while handling exception",
-        error,
-      );
-      response = internalServerError();
+      return handleOnErrorError(req, span, innerRequest, error);
     }
     try {
-      return finishOrReturnMaybePromise(req, span, innerRequest, response);
-    } catch (error) {
-      if (otelState.METRICS_ENABLED) {
-        op_http_metric_handle_otel_error(req);
-      }
-      internals.log(
-        "error",
-        "Exception in onError while handling exception",
-        error,
-      );
-      return finishOrReturnNative(
+      return finishOrReturnMaybePromise(
         req,
         span,
         innerRequest,
-        internalServerError(),
+        response,
+        true,
       );
+    } catch (error) {
+      return handleOnErrorError(req, span, innerRequest, error);
     }
   }
 
-  function finishOrReturnMaybePromise(req, span, innerRequest, response) {
+  function finishOrReturnMaybePromise(
+    req,
+    span,
+    innerRequest,
+    response,
+    isOnErrorResponse = false,
+  ) {
     if (
-      response !== null &&
-      (typeof response === "object" || typeof response === "function") &&
-      typeof response.then === "function"
+      (
+        response !== null &&
+        (typeof response === "object" || typeof response === "function") &&
+        typeof response.then === "function"
+      ) ||
+      (
+        innerRequest?.request !== undefined &&
+        requestHeadersExposed(innerRequest.request)
+      )
     ) {
-      return PromisePrototypeThen(
+      const finished = PromisePrototypeThen(
         PromiseResolve(response),
         (response) =>
           finishOrReturnNative(req, span, innerRequest, response, true),
-        (error) => handleError(req, span, innerRequest, error),
       );
-    }
-    if (
-      innerRequest?.request !== undefined &&
-      requestHeadersExposed(innerRequest.request)
-    ) {
       return PromisePrototypeThen(
-        PromiseResolve(response),
-        (response) =>
-          finishOrReturnNative(req, span, innerRequest, response, true),
-        (error) => handleError(req, span, innerRequest, error),
+        finished,
+        undefined,
+        (error) =>
+          isOnErrorResponse
+            ? handleOnErrorError(req, span, innerRequest, error)
+            : handleError(req, span, innerRequest, error),
       );
     }
     return finishOrReturnNative(req, span, innerRequest, response);
