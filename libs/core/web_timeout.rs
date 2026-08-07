@@ -2,119 +2,75 @@
 
 use std::cell::Cell;
 use std::cell::UnsafeCell;
-use std::mem::MaybeUninit;
-use std::ops::Deref;
 use std::pin::Pin;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::task::Context;
 use std::task::Poll;
+use std::task::Wake;
 use std::task::Waker;
 use std::time::Duration;
 
-use cooked_waker::IntoWaker;
-use cooked_waker::ViaRawPointer;
-use cooked_waker::Wake;
-use cooked_waker::WakeRef;
+use futures::task::AtomicWaker;
 
 use crate::reactor::Reactor;
 use crate::reactor::ReactorInstant;
 use crate::reactor::ReactorTimer;
 
-/// Like a Box<T> but without Uniqueness semantics, which
-/// cause issues with self-referential waker pointers under Stacked Borrows.
-#[repr(transparent)]
-struct OwnedPtr<T> {
-  ptr: *mut T,
-}
-
-impl<T> OwnedPtr<T> {
-  fn from_box(b: Box<T>) -> Self {
-    Self {
-      ptr: Box::into_raw(b),
-    }
-  }
-}
-
-impl<T> Deref for OwnedPtr<T> {
-  type Target = T;
-  fn deref(&self) -> &T {
-    unsafe { &*self.ptr }
-  }
-}
-
-impl<T> std::ops::DerefMut for OwnedPtr<T> {
-  fn deref_mut(&mut self) -> &mut T {
-    unsafe { &mut *self.ptr }
-  }
-}
-
-impl<T> Drop for OwnedPtr<T> {
-  fn drop(&mut self) {
-    unsafe {
-      let _ = Box::from_raw(self.ptr);
-    }
-  }
-}
-
 struct MutableSleep<Tmr: ReactorTimer> {
   sleep: UnsafeCell<Option<Tmr>>,
-  ready: Cell<bool>,
-  external_waker: UnsafeCell<Option<Waker>>,
+  wake_state: Arc<MutableSleepWaker>,
   internal_waker: Waker,
 }
 
 impl<Tmr: ReactorTimer + 'static> MutableSleep<Tmr> {
-  fn new() -> OwnedPtr<Self> {
-    unsafe {
-      let mut ptr = OwnedPtr::from_box(Box::new(MaybeUninit::<Self>::uninit()));
-      let raw = ptr.as_ptr();
-      ptr.write(MutableSleep {
-        sleep: Default::default(),
-        ready: Default::default(),
-        external_waker: Default::default(),
-        internal_waker: MutableSleepWaker::<Tmr> { inner: raw }.into_waker(),
-      });
-      std::mem::transmute(ptr)
+  fn new() -> Self {
+    let wake_state = Arc::new(MutableSleepWaker {
+      ready: AtomicBool::new(false),
+      external_waker: AtomicWaker::new(),
+    });
+    Self {
+      sleep: Default::default(),
+      internal_waker: Waker::from(Arc::clone(&wake_state)),
+      wake_state,
     }
   }
 
   fn poll_ready(&self, cx: &mut Context) -> Poll<()> {
-    if self.ready.take() {
-      Poll::Ready(())
-    } else {
-      let external =
-        unsafe { self.external_waker.get().as_mut().unwrap_unchecked() };
-      if let Some(external) = external {
-        // Already have this waker
-        let waker = cx.waker();
-        if !external.will_wake(waker) {
-          external.clone_from(waker);
-        }
+    if self.wake_state.ready.swap(false, Ordering::AcqRel) {
+      return Poll::Ready(());
+    }
 
-        // We do a manual deadline check here. The timer wheel may not immediately check the deadline if the
-        // executor was blocked.
-        // Skip this check under Miri as it interferes with time simulation.
-        #[cfg(not(miri))]
-        {
-          let sleep = unsafe { self.sleep.get().as_mut().unwrap_unchecked() };
-          if let Some(sleep) = sleep
-            && Tmr::Instant::now() >= sleep.deadline()
-          {
-            return Poll::Ready(());
-          }
-        }
-        Poll::Pending
-      } else {
-        *external = Some(cx.waker().clone());
-        Poll::Pending
+    self.wake_state.external_waker.register(cx.waker());
+
+    // Check again after registering so a wake racing with registration cannot
+    // be lost.
+    if self.wake_state.ready.swap(false, Ordering::AcqRel) {
+      return Poll::Ready(());
+    }
+
+    // We do a manual deadline check here. The timer wheel may not immediately
+    // check the deadline if the executor was blocked. Skip this check under
+    // Miri as it interferes with time simulation.
+    #[cfg(not(miri))]
+    {
+      let sleep = unsafe { self.sleep.get().as_mut().unwrap_unchecked() };
+      if let Some(sleep) = sleep
+        && Tmr::Instant::now() >= sleep.deadline()
+      {
+        return Poll::Ready(());
       }
     }
+
+    Poll::Pending
   }
 
   fn clear(&self) {
     unsafe {
       *self.sleep.get() = None;
     }
-    self.ready.set(false);
+    self.wake_state.ready.store(false, Ordering::Release);
   }
 
   fn change(&self, timer: Tmr) {
@@ -137,58 +93,24 @@ impl<Tmr: ReactorTimer + 'static> MutableSleep<Tmr> {
     // Register our waker
     let waker = &self.internal_waker;
     if pin.poll(&mut Context::from_waker(waker)).is_ready() {
-      self.ready.set(true);
       self.internal_waker.wake_by_ref();
     }
   }
 }
 
-#[repr(transparent)]
-struct MutableSleepWaker<Tmr: ReactorTimer> {
-  inner: *const MutableSleep<Tmr>,
+struct MutableSleepWaker {
+  ready: AtomicBool,
+  external_waker: AtomicWaker,
 }
 
-impl<Tmr: ReactorTimer> Clone for MutableSleepWaker<Tmr> {
-  fn clone(&self) -> Self {
-    MutableSleepWaker { inner: self.inner }
-  }
-}
-
-unsafe impl<Tmr: ReactorTimer> Send for MutableSleepWaker<Tmr> {}
-unsafe impl<Tmr: ReactorTimer> Sync for MutableSleepWaker<Tmr> {}
-
-impl<Tmr: ReactorTimer> WakeRef for MutableSleepWaker<Tmr> {
-  fn wake_by_ref(&self) {
-    unsafe {
-      let this = self.inner.as_ref().unwrap_unchecked();
-      this.ready.set(true);
-      let waker = this.external_waker.get().as_mut().unwrap_unchecked();
-      if let Some(waker) = waker.as_ref() {
-        waker.wake_by_ref();
-      }
-    }
-  }
-}
-
-impl<Tmr: ReactorTimer> Wake for MutableSleepWaker<Tmr> {
-  fn wake(self) {
-    self.wake_by_ref()
-  }
-}
-
-impl<Tmr: ReactorTimer> Drop for MutableSleepWaker<Tmr> {
-  fn drop(&mut self) {}
-}
-
-unsafe impl<Tmr: ReactorTimer> ViaRawPointer for MutableSleepWaker<Tmr> {
-  type Target = ();
-
-  fn into_raw(self) -> *mut () {
-    self.inner as _
+impl Wake for MutableSleepWaker {
+  fn wake(self: Arc<Self>) {
+    self.wake_by_ref();
   }
 
-  unsafe fn from_raw(ptr: *mut ()) -> Self {
-    MutableSleepWaker { inner: ptr as _ }
+  fn wake_by_ref(self: &Arc<Self>) {
+    self.ready.store(true, Ordering::Release);
+    self.external_waker.wake();
   }
 }
 
@@ -199,7 +121,7 @@ unsafe impl<Tmr: ReactorTimer> ViaRawPointer for MutableSleepWaker<Tmr> {
 /// Node.js's architecture). Rust just needs to know when to wake up.
 pub(crate) struct UserTimer<R: Reactor> {
   reactor: R,
-  sleep: OwnedPtr<MutableSleep<R::Timer>>,
+  sleep: MutableSleep<R::Timer>,
   base_instant: R::Instant,
   /// Whether the timer handle is "ref'd" (keeps event loop alive).
   refed: Cell<bool>,
@@ -256,5 +178,54 @@ impl<R: Reactor> UserTimer<R> {
   /// Whether the timer handle is ref'd.
   pub fn is_refed(&self) -> bool {
     self.refed.get()
+  }
+}
+
+#[cfg(all(test, feature = "reactor-tokio"))]
+mod tests {
+  use std::sync::Arc;
+  use std::sync::mpsc;
+  use std::task::Wake;
+
+  use super::*;
+
+  struct NotifyWaker(mpsc::Sender<()>);
+
+  impl Wake for NotifyWaker {
+    fn wake(self: Arc<Self>) {
+      self.wake_by_ref();
+    }
+
+    fn wake_by_ref(self: &Arc<Self>) {
+      self.0.send(()).unwrap();
+    }
+  }
+
+  #[test]
+  fn timer_wake_from_another_thread() {
+    let sleep = MutableSleep::<crate::reactor_tokio::TokioTimer>::new();
+
+    // A wake before the external waker is registered must remain observable.
+    let timer_waker = sleep.internal_waker.clone();
+    std::thread::spawn(move || timer_waker.wake())
+      .join()
+      .unwrap();
+
+    let (notify_tx, notify_rx) = mpsc::channel();
+    let external_waker = Waker::from(Arc::new(NotifyWaker(notify_tx)));
+    let mut cx = Context::from_waker(&external_waker);
+    assert_eq!(sleep.poll_ready(&mut cx), Poll::Ready(()));
+
+    // Once registered, an off-thread wake must notify the external task and
+    // make the timer ready.
+    let timer_waker = sleep.internal_waker.clone();
+    assert_eq!(sleep.poll_ready(&mut cx), Poll::Pending);
+
+    std::thread::spawn(move || timer_waker.wake())
+      .join()
+      .unwrap();
+
+    notify_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+    assert_eq!(sleep.poll_ready(&mut cx), Poll::Ready(()));
   }
 }
