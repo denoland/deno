@@ -1485,6 +1485,36 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             ].join("\n"),
           },
           {
+            name: "Set up native laufey cache",
+            if: testCrateNameExpr.equals("specs"),
+            uses: "actions/cache@v5",
+            with: {
+              // Keyed on laufey_sums.lock so a pinned-version bump re-downloads.
+              path: "./target/.native_laufey",
+              key:
+                "laufey-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('cli/laufey_sums.lock') }}",
+            },
+          },
+          {
+            // Warm the cache with the "laufey" desktop backend that `deno
+            // desktop` downloads (into the default target/.native_laufey) so
+            // the test step doesn't re-download the (100+ MB) archive for
+            // every test's fresh DENO_DIR. The harness resolves that path and
+            // injects DENO_LAUFEY_CACHE_DIR per-test itself (see
+            // test_util::native_laufey_cache_dir); no env export needed. Run
+            // it with the built deno binary (the test job has no system
+            // `deno` on PATH).
+            name: "Pre-download native laufey",
+            if: testCrateNameExpr.equals("specs"),
+            run: [
+              'DENO_BIN=""',
+              "for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do",
+              '  [ -f "$c" ] && DENO_BIN="$c" && break',
+              "done",
+              '"$DENO_BIN" run -A ./tools/download_laufey.ts',
+            ].join("\n"),
+          },
+          {
             if: buildItem.os.equals("linux").and(
               buildItem.arch.equals("aarch64"),
             ),

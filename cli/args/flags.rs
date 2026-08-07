@@ -2559,6 +2559,11 @@ supported framework (Next.js, Astro, etc.) in the current directory.
           .default_missing_value("xz")
           .help_heading(DESKTOP_HEADING),
       )
+      .arg(
+        Arg::new("backend-args").long("backend-args").help(
+          "Flags to pass to the backend"
+        ).help_heading(DESKTOP_HEADING)
+      )
       .arg(executable_ext_arg())
       .arg(env_file_arg())
       .arg(
@@ -6984,6 +6989,7 @@ fn desktop_parse(
     .map(|f| f.collect::<Vec<_>>())
     .unwrap_or_default();
   let exclude_unused_npm = matches.get_flag("exclude-unused-npm");
+  let backend_args = matches.remove_one::<String>("backend-args");
   ext_arg_parse(flags, matches);
 
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
@@ -7006,6 +7012,7 @@ fn desktop_parse(
     inspect_renderer,
     compress,
     exclude_unused_npm,
+    backend_args,
   });
 
   Ok(())

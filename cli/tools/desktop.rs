@@ -165,6 +165,18 @@ fn apply_desktop_config_to_flags(
     desktop_flags.backend = Some(backend);
   }
 
+  if let Some(backend_args_config) = desktop_config.backend_args
+    && desktop_flags.backend_args.is_none()
+  {
+    let effective_backend =
+      desktop_flags.backend.as_deref().unwrap_or("webview");
+    desktop_flags.backend_args = match effective_backend {
+      "cef" => backend_args_config.cef,
+      "webview" => backend_args_config.webview,
+      _ => None,
+    };
+  }
+
   if let Some(macos_config) = desktop_config.macos
     && let Some(identity) = macos_config.codesign_identity
     && desktop_flags.codesign_identity.is_none()
@@ -574,6 +586,7 @@ async fn compile_desktop(
         &bundle_path,
         &appimage_abs,
         desktop_flags.target.as_deref(),
+        &desktop_flags,
       )?;
       appimage_abs
     } else if let Some(deb) = deb_output.as_deref() {
@@ -655,8 +668,10 @@ fn make_self_extracting(
   };
   match target_os {
     "macos" => make_self_extracting_macos(bundle_path, format, desktop_flags),
-    "windows" => make_self_extracting_dir(bundle_path, format, true),
-    _ => make_self_extracting_dir(bundle_path, format, false),
+    "windows" => {
+      make_self_extracting_dir(bundle_path, format, true, desktop_flags)
+    }
+    _ => make_self_extracting_dir(bundle_path, format, false, desktop_flags),
   }
 }
 
@@ -984,6 +999,12 @@ fn make_self_extracting_macos(
   let (raw, comp) =
     write_tar_compressed(staging.path(), &inner_name, &payload, format)?;
   let hash = payload_hash(&payload)?;
+  let backend_args = format_backend_args_for_shell(desktop_flags)?;
+  let launcher_args = if backend_args.is_empty() {
+    String::new()
+  } else {
+    format!(" {backend_args}")
+  };
 
   let launcher = format!(
     "#!/bin/sh\n\
@@ -995,7 +1016,7 @@ fn make_self_extracting_macos(
      \u{20} mkdir -p \"$DEST\"\n\
      \u{20} tar -xf \"$DIR/../Resources/{payload_name}\" -C \"$DEST\"\n\
      fi\n\
-     exec \"$APP/Contents/MacOS/{app_name}\" \"$@\"\n",
+     exec \"$APP/Contents/MacOS/{app_name}\"{launcher_args} \"$@\"\n",
   );
   let launcher_path = macos_dir.join(&app_name);
   std::fs::write(&launcher_path, launcher)?;
@@ -1044,6 +1065,7 @@ fn make_self_extracting_dir(
   bundle_path: &Path,
   format: &str,
   windows: bool,
+  desktop_flags: &DesktopFlags,
 ) -> Result<(), AnyError> {
   let app_name = bundle_path
     .file_name()
@@ -1067,6 +1089,12 @@ fn make_self_extracting_dir(
   let hash = payload_hash(&payload)?;
 
   if windows {
+    let backend_args = format_backend_args_for_cmd(desktop_flags)?;
+    let launcher_args = if backend_args.is_empty() {
+      String::new()
+    } else {
+      format!(" {backend_args}")
+    };
     let launcher = format!(
       "@echo off\r\n\
        setlocal\r\n\
@@ -1076,10 +1104,16 @@ fn make_self_extracting_dir(
        \u{20} mkdir \"%DEST%\" 2>nul\r\n\
        \u{20} tar -xf \"%DIR%{payload_name}\" -C \"%DEST%\"\r\n\
        )\r\n\
-       \"%DEST%\\{app_name}\\{app_name}.exe\" %*\r\n",
+       \"%DEST%\\{app_name}\\{app_name}.exe\"{launcher_args} %*\r\n",
     );
     std::fs::write(bundle_path.join(format!("{app_name}.bat")), launcher)?;
   } else {
+    let backend_args = format_backend_args_for_shell(desktop_flags)?;
+    let launcher_args = if backend_args.is_empty() {
+      String::new()
+    } else {
+      format!(" {backend_args}")
+    };
     let launcher = format!(
       "#!/bin/sh\n\
        set -e\n\
@@ -1090,7 +1124,7 @@ fn make_self_extracting_dir(
        \u{20} mkdir -p \"$DEST\"\n\
        \u{20} tar -xf \"$DIR/{payload_name}\" -C \"$DEST\"\n\
        fi\n\
-       exec \"$APP/{app_name}\" \"$@\"\n",
+       exec \"$APP/{app_name}\"{launcher_args} \"$@\"\n",
     );
     let launcher_path = bundle_path.join(&app_name);
     std::fs::write(&launcher_path, launcher)?;
@@ -1225,6 +1259,92 @@ async fn spawn_framework_dev_server(
   Ok((url, child))
 }
 
+/// Parses a raw `--backend-args` value into argv tokens using shell-style
+/// quoting/escaping rules, so users can pass a single flag value containing
+/// multiple backend args, some of which may themselves contain spaces (e.g.
+/// `--backend-args '--user-agent="Custom Browser" --enable-x'`).
+fn parse_backend_args(raw: &str) -> Result<Vec<String>, AnyError> {
+  shell_words::split(raw).map_err(|e| {
+    deno_core::anyhow::anyhow!("invalid --backend-args quoting: {e}")
+  })
+}
+
+fn filtered_backend_args(
+  desktop_flags: &DesktopFlags,
+) -> Result<Vec<String>, AnyError> {
+  let Some(backend_args) = desktop_flags.backend_args.as_deref() else {
+    return Ok(Vec::new());
+  };
+
+  let tokens = parse_backend_args(backend_args)?;
+
+  let mut forwarded = Vec::new();
+  let mut iter = tokens.into_iter().peekable();
+  while let Some(token) = iter.next() {
+    match token.as_str() {
+      _ if token.starts_with("--remote-debugging-port") => {
+        log::warn!(
+          "Ignoring --remote-debugging-port in backend args; Deno handles the remote debugging port"
+        );
+      }
+      _ if token == "--runtime" => {
+        log::warn!(
+          "Ignoring --runtime in backend args; Deno handles the runtime path"
+        );
+        let _ = iter.next();
+      }
+      _ => {
+        forwarded.push(token);
+      }
+    }
+  }
+
+  Ok(forwarded)
+}
+
+fn apply_backend_flags(
+  cmd: &mut std::process::Command,
+  desktop_flags: &DesktopFlags,
+) -> Result<(), AnyError> {
+  for token in filtered_backend_args(desktop_flags)? {
+    cmd.arg(token);
+  }
+  Ok(())
+}
+
+fn format_backend_args_for_shell(
+  desktop_flags: &DesktopFlags,
+) -> Result<String, AnyError> {
+  Ok(
+    filtered_backend_args(desktop_flags)?
+      .into_iter()
+      .map(|arg| {
+        shlex::try_quote(&arg)
+          .unwrap_or_else(|_| {
+            std::borrow::Cow::Owned(format!("\"{}\"", arg.replace('"', "\\\"")))
+          })
+          .into_owned()
+      })
+      .collect::<Vec<_>>()
+      .join(" "),
+  )
+}
+
+fn format_backend_args_for_cmd(
+  desktop_flags: &DesktopFlags,
+) -> Result<String, AnyError> {
+  Ok(
+    filtered_backend_args(desktop_flags)?
+      .into_iter()
+      .map(|arg| {
+        let escaped = arg.replace('%', "%%").replace('"', "\"\"");
+        format!("\"{escaped}\"")
+      })
+      .collect::<Vec<_>>()
+      .join(" "),
+  )
+}
+
 /// Launch the desktop app with HMR enabled after compilation.
 ///
 /// Framework dev servers provide HMR via websocket. Since they run inside
@@ -1324,6 +1444,8 @@ async fn run_desktop_hmr(
   if desktop_flags.hmr {
     cmd.env("DENO_DESKTOP_HMR", &source_abs);
   }
+
+  apply_backend_flags(&mut cmd, desktop_flags)?;
 
   let _dev_server_child = if desktop_flags.hmr
     && let Some(fw) = framework
@@ -1755,11 +1877,35 @@ async fn package_linux_app_dir(
   std::fs::copy(dylib_path, &dest_dylib)?;
 
   // Rename the LAUFEY backend binary to the app name so `<app>` is the launcher
-  // the user runs directly — no `--runtime` argument and no shell wrapper.
+  // the user runs directly. When backend args are present, we add a tiny shell
+  // wrapper so those flags reach the backend while still pointing it at the
+  // colocated runtime.
+  let backend_args = format_backend_args_for_shell(desktop_flags)?;
+  let launcher_args = if backend_args.is_empty() {
+    String::new()
+  } else {
+    format!(" {backend_args}")
+  };
+
   let launcher_path = app_dir.join(&app_name);
   let staged_backend = app_dir.join(&laufey_binary_name);
-  if staged_backend != launcher_path {
-    std::fs::rename(&staged_backend, &launcher_path)?;
+  if backend_args.is_empty() {
+    if staged_backend != launcher_path {
+      std::fs::rename(&staged_backend, &launcher_path)?;
+    }
+  } else {
+    let wrapped_backend = app_dir.join(format!("{app_name}.bin"));
+    if staged_backend != wrapped_backend {
+      std::fs::rename(&staged_backend, &wrapped_backend)?;
+    }
+    let launcher = format!(
+      "#!/bin/sh\n\
+       set -e\n\
+       DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
+       export LAUFEY_RUNTIME_PATH=\"$DIR/{app_name}.so\"\n\
+       exec \"$DIR/{app_name}.bin\"{launcher_args} \"$@\"\n",
+    );
+    std::fs::write(&launcher_path, launcher)?;
   }
   #[cfg(unix)]
   {
@@ -1850,19 +1996,29 @@ async fn package_linux_app_dir(
 /// are searched the same way the old sibling-checkout heuristic searched.
 const LAUFEY_DEV_DIR_ENV: &str = "LAUFEY_DEV_DIR";
 
+/// Overrides `<deno_dir>/laufey` with a fixed cache directory. The backend
+/// archives are 100+ MB, so downloading one per test is impractical when each
+/// spec test gets its own throwaway `DENO_DIR` — the test harness points every
+/// test at the same on-disk cache via this var instead (see
+/// `tests/util/lib/builders.rs` and `tools/download_laufey.ts`).
+const LAUFEY_CACHE_DIR_ENV: &str = "DENO_LAUFEY_CACHE_DIR";
+
 /// Resolves LAUFEY backend binaries and `.app` bundles, falling back to
 /// downloading prebuilt archives from the laufey GitHub releases when
 /// `LAUFEY_DEV_DIR` is not set.
 struct LaufeyBackendResolver {
   http_client_provider: Arc<HttpClientProvider>,
-  /// `<deno_dir>/laufey/<version>/`
+  /// `<deno_dir>/laufey/<version>/`, or `<DENO_LAUFEY_CACHE_DIR>/<version>/`
+  /// when the override is set.
   cache_root: PathBuf,
 }
 
 impl LaufeyBackendResolver {
   fn new(factory: &CliFactory) -> Result<Self, AnyError> {
-    let cache_root =
-      factory.deno_dir()?.root.join("laufey").join(LAUFEY_VERSION);
+    let cache_root = match std::env::var_os(LAUFEY_CACHE_DIR_ENV) {
+      Some(dir) => PathBuf::from(dir).join(LAUFEY_VERSION),
+      None => factory.deno_dir()?.root.join("laufey").join(LAUFEY_VERSION),
+    };
     Ok(Self {
       http_client_provider: factory.http_client_provider().clone(),
       cache_root,
@@ -3449,6 +3605,7 @@ fn create_linux_appimage(
   app_dir: &Path,
   appimage_path: &Path,
   target: Option<&str>,
+  desktop_flags: &DesktopFlags,
 ) -> Result<(), AnyError> {
   use std::io::Cursor;
   use std::io::Write as _;
@@ -3474,10 +3631,16 @@ fn create_linux_appimage(
   // AppRun is what the AppImage invokes on launch. Thin shell shim that
   // delegates to the existing launcher (which already sets $DIR and execs
   // the backend with the right args).
+  let backend_args = format_backend_args_for_shell(desktop_flags)?;
+  let launcher_args = if backend_args.is_empty() {
+    String::new()
+  } else {
+    format!(" {backend_args}")
+  };
   let apprun = format!(
     "#!/bin/sh\n\
      DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
-     exec \"$DIR/{app_name}\" \"$@\"\n",
+     exec \"$DIR/{app_name}\"{launcher_args} \"$@\"\n",
   );
   writer.push_file(
     Cursor::new(apprun.into_bytes()),
@@ -5461,6 +5624,8 @@ mod disclaim_spawn {
 
 #[cfg(test)]
 mod tests {
+  use deno_config::deno_json::DesktopBackendArgsConfig;
+
   use super::*;
 
   // --- macOS Info.plist ---
@@ -6747,6 +6912,7 @@ def456  other.zip
       source_file: String::new(),
       output: None,
       args: vec![],
+      backend_args: None,
       target: None,
       icon: None,
       include: vec![],
@@ -6774,11 +6940,37 @@ def456  other.zip
 
   #[test]
   fn appimage_uses_runtime_supported_zstd_squashfs() {
+    use crate::args::JavaScriptEngine;
     let tmp = tempfile::tempdir().unwrap();
     let app_dir = fake_linux_app_dir(tmp.path(), "MyApp");
     let appimage_path = tmp.path().join("MyApp.AppImage");
     let target = Some("x86_64-unknown-linux-gnu");
-    create_linux_appimage(&app_dir, &appimage_path, target).unwrap();
+    create_linux_appimage(
+      &app_dir,
+      &appimage_path,
+      target,
+      &DesktopFlags {
+        source_file: ".".to_string(),
+        output: None,
+        args: Vec::new(),
+        backend_args: None,
+        target: None,
+        icon: None,
+        include: Vec::new(),
+        exclude: Vec::new(),
+        hmr: true,
+        backend: None,
+        all_targets: false,
+        identifier: None,
+        deep_links: Vec::new(),
+        codesign_identity: None,
+        inspect_renderer: None,
+        compress: None,
+        exclude_unused_npm: false,
+        engine: JavaScriptEngine::V8,
+      },
+    )
+    .unwrap();
 
     let runtime_offset =
       appimage_runtime_for_target(target).unwrap().len() as u64;
@@ -7562,5 +7754,131 @@ def456  other.zip
     apply_desktop_config_to_flags(&mut flags, config);
     // Left unset; callers fall back to "webview" via unwrap_or("webview").
     assert_eq!(flags.backend.as_deref(), None);
+  }
+
+  // --- desktop.backendArgs config merge (CLI flag > deno.json) ---
+
+  #[test]
+  fn backend_args_from_deno_json_for_selected_backend() {
+    let mut flags = DesktopFlags {
+      source_file: "main.ts".to_string(),
+      backend: Some("cef".to_string()),
+      backend_args: None,
+      ..Default::default()
+    };
+    let config = DesktopConfig {
+      backend_args: Some(DesktopBackendArgsConfig {
+        cef: Some("--enable-logging".to_string()),
+        webview: Some("--verbose".to_string()),
+      }),
+      ..Default::default()
+    };
+    apply_desktop_config_to_flags(&mut flags, config);
+    assert_eq!(flags.backend_args.as_deref(), Some("--enable-logging"));
+  }
+
+  #[test]
+  fn backend_args_default_to_webview_when_backend_unset() {
+    let mut flags = DesktopFlags {
+      source_file: "main.ts".to_string(),
+      backend: None,
+      backend_args: None,
+      ..Default::default()
+    };
+    let config = DesktopConfig {
+      backend_args: Some(DesktopBackendArgsConfig {
+        cef: Some("--enable-logging".to_string()),
+        webview: Some("--verbose".to_string()),
+      }),
+      ..Default::default()
+    };
+    apply_desktop_config_to_flags(&mut flags, config);
+    assert_eq!(flags.backend_args.as_deref(), Some("--verbose"));
+  }
+
+  #[test]
+  fn cli_backend_args_override_deno_json() {
+    let mut flags = DesktopFlags {
+      source_file: "main.ts".to_string(),
+      backend: Some("cef".to_string()),
+      backend_args: Some("--from-cli".to_string()),
+      ..Default::default()
+    };
+    let config = DesktopConfig {
+      backend_args: Some(DesktopBackendArgsConfig {
+        cef: Some("--enable-logging".to_string()),
+        webview: None,
+      }),
+      ..Default::default()
+    };
+    apply_desktop_config_to_flags(&mut flags, config);
+    assert_eq!(flags.backend_args.as_deref(), Some("--from-cli"));
+  }
+
+  #[test]
+  fn backend_args_ignored_for_unknown_backend() {
+    let mut flags = DesktopFlags {
+      source_file: "main.ts".to_string(),
+      backend: Some("custom".to_string()),
+      backend_args: None,
+      ..Default::default()
+    };
+    let config = DesktopConfig {
+      backend_args: Some(DesktopBackendArgsConfig {
+        cef: Some("--enable-logging".to_string()),
+        webview: Some("--verbose".to_string()),
+      }),
+      ..Default::default()
+    };
+    apply_desktop_config_to_flags(&mut flags, config);
+    assert_eq!(flags.backend_args.as_deref(), None);
+  }
+
+  // --- parse_backend_args: shell-style tokenization of --backend-args ---
+
+  #[test]
+  fn parse_backend_args_simple_quoted_value() {
+    let tokens = parse_backend_args(r#"--user-agent="potato""#).unwrap();
+    assert_eq!(tokens, vec!["--user-agent=potato".to_string()]);
+  }
+
+  #[test]
+  fn parse_backend_args_quoted_value_with_spaces() {
+    let tokens =
+      parse_backend_args(r#"--user-agent="potato browser" --enable-logging"#)
+        .unwrap();
+    assert_eq!(
+      tokens,
+      vec![
+        "--user-agent=potato browser".to_string(),
+        "--enable-logging".to_string(),
+      ]
+    );
+  }
+
+  #[test]
+  fn parse_backend_args_preserves_escaped_inner_quotes() {
+    let tokens = parse_backend_args(r#"--title="a \"quoted\" title""#).unwrap();
+    assert_eq!(tokens, vec![r#"--title=a "quoted" title"#.to_string()]);
+  }
+
+  #[test]
+  fn parse_backend_args_simple_unquoted_value_unaffected() {
+    let tokens = parse_backend_args("--enable-logging --verbose").unwrap();
+    assert_eq!(
+      tokens,
+      vec!["--enable-logging".to_string(), "--verbose".to_string()]
+    );
+  }
+
+  #[test]
+  fn parse_backend_args_malformed_quoting_errors() {
+    let err = parse_backend_args(r#"--user-agent="unterminated"#).unwrap_err();
+    assert!(
+      err
+        .to_string()
+        .starts_with("invalid --backend-args quoting: "),
+      "unexpected error message: {err}",
+    );
   }
 }

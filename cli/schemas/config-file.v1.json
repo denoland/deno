@@ -193,6 +193,21 @@
           "description": "Backend to use for the desktop app.",
           "enum": ["webview", "cef"]
         },
+        "backendArgs": {
+          "type": "object",
+          "description": "Optional backend-specific arguments.",
+          "additionalProperties": false,
+          "properties": {
+            "cef": {
+              "type": "string",
+              "description": "Optional argument for the CEF backend."
+            },
+            "webview": {
+              "type": "string",
+              "description": "Optional argument for the webview backend."
+            }
+          }
+        },
         "output": {
           "type": "object",
           "description": "Platform-specific output paths.",

@@ -2572,6 +2572,7 @@ impl WorkspaceDirectory {
     Ok(DesktopConfig {
       app: member_config.app.or(root_config.app),
       backend: member_config.backend.or(root_config.backend),
+      backend_args: member_config.backend_args.or(root_config.backend_args),
       output: member_config.output.or(root_config.output),
       release: member_config.release.or(root_config.release),
       error_reporting: member_config
