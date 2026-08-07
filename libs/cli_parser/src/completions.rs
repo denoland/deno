@@ -669,10 +669,19 @@ mod tests {
 
   #[test]
   fn completes_flags_in_subcommand() {
-    let c = complete(&["deno", "run", "--allow-r"], 2, &no_positional);
+    let c = complete(&["deno", "run", "--no-r"], 2, &no_positional);
     let v = values(&c);
-    assert!(v.iter().all(|f| f.starts_with("--allow-r")), "{v:?}");
-    assert!(v.contains(&"--allow-read"), "{v:?}");
+    assert!(v.iter().all(|f| f.starts_with("--no-r")), "{v:?}");
+    assert!(v.contains(&"--no-remote"), "{v:?}");
+  }
+
+  #[test]
+  fn hidden_permission_flags_are_not_offered() {
+    // Permission args are `hidden` (they're documented in the after-help
+    // "Permission options" section instead), and clap's `.hide(true)` kept
+    // them out of clap_complete's candidates too — so stay consistent.
+    let c = complete(&["deno", "run", "--allow-r"], 2, &no_positional);
+    assert!(c.is_empty(), "{:?}", values(&c));
   }
 
   #[test]
