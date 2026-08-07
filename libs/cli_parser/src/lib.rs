@@ -15,9 +15,11 @@ pub mod flags;
 pub mod completions;
 pub mod convert;
 pub mod defs;
+pub mod env_vars;
 mod error;
 pub mod help;
 mod parse;
+pub mod permission_help;
 mod types;
 
 pub use error::CliError;
