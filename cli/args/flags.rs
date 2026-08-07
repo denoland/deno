@@ -63,41 +63,35 @@ fn join_paths(allowlist: &[String], d: &str) -> String {
     .join(d)
 }
 
-pub trait FileFlagsExt {
-  fn as_file_patterns(&self, base: &Path) -> Result<FilePatterns, AnyError>;
-}
-
-impl FileFlagsExt for FileFlags {
-  fn as_file_patterns(&self, base: &Path) -> Result<FilePatterns, AnyError> {
-    Ok(FilePatterns {
-      include: if self.include.is_empty() {
-        None
-      } else {
-        Some(PathOrPatternSet::from_include_relative_path_or_patterns(
-          base,
-          &self.include,
-        )?)
-      },
-      exclude: PathOrPatternSet::from_exclude_relative_path_or_patterns(
+/// Resolve a subcommand's include/ignore globs against `base`.
+pub fn resolve_file_patterns(
+  files: &FileFlags,
+  base: &Path,
+) -> Result<FilePatterns, AnyError> {
+  Ok(FilePatterns {
+    include: if files.include.is_empty() {
+      None
+    } else {
+      Some(PathOrPatternSet::from_include_relative_path_or_patterns(
         base,
-        &self.ignore,
-      )?,
-      base: base.to_path_buf(),
-    })
-  }
+        &files.include,
+      )?)
+    },
+    exclude: PathOrPatternSet::from_exclude_relative_path_or_patterns(
+      base,
+      &files.ignore,
+    )?,
+    base: base.to_path_buf(),
+  })
 }
 
-pub trait CompileFlagsExt {
-  fn resolve_target(&self) -> String;
-}
-
-impl CompileFlagsExt for CompileFlags {
-  fn resolve_target(&self) -> String {
-    self
-      .target
-      .clone()
-      .unwrap_or_else(|| env!("TARGET").to_string())
-  }
+/// The `--target` triple for `deno compile`, defaulting to the triple this
+/// binary was built for.
+pub fn resolve_compile_target(flags: &CompileFlags) -> String {
+  flags
+    .target
+    .clone()
+    .unwrap_or_else(|| env!("TARGET").to_string())
 }
 
 fn npm_system_info_from_env() -> NpmSystemInfo {
@@ -109,84 +103,74 @@ fn npm_system_info_from_env() -> NpmSystemInfo {
   }
 }
 
-pub trait DenoSubcommandExt {
-  fn npm_system_info(&self) -> NpmSystemInfo;
-}
-
-impl DenoSubcommandExt for DenoSubcommand {
-  fn npm_system_info(&self) -> NpmSystemInfo {
-    match self {
-      DenoSubcommand::Compile(CompileFlags {
-        target: Some(target),
-        ..
-      })
-      | DenoSubcommand::Desktop(DesktopFlags {
-        target: Some(target),
-        ..
-      }) => {
-        // the values of NpmSystemInfo align with the possible values for the
-        // `arch` and `platform` fields of Node.js' `process` global:
-        // https://nodejs.org/api/process.html
-        match target.as_str() {
-          "aarch64-apple-darwin" => NpmSystemInfo {
-            os: "darwin".into(),
-            cpu: "arm64".into(),
-          },
-          "aarch64-unknown-linux-gnu" => NpmSystemInfo {
-            os: "linux".into(),
-            cpu: "arm64".into(),
-          },
-          "x86_64-apple-darwin" => NpmSystemInfo {
-            os: "darwin".into(),
-            cpu: "x64".into(),
-          },
-          "x86_64-unknown-linux-gnu" => NpmSystemInfo {
-            os: "linux".into(),
-            cpu: "x64".into(),
-          },
-          "x86_64-pc-windows-msvc" => NpmSystemInfo {
-            os: "win32".into(),
-            cpu: "x64".into(),
-          },
-          value => {
-            log::warn!(
-              concat!(
-                "Not implemented npm system info for target '{}'. Using current ",
-                "system default. This may impact architecture specific dependencies."
-              ),
-              value,
-            );
-            NpmSystemInfo::default()
-          }
+/// The npm platform/arch a subcommand should resolve packages for. `compile`
+/// and `desktop` follow their `--target`; `install` follows `--os`/`--arch`;
+/// everything else uses the current system.
+pub fn npm_system_info(subcommand: &DenoSubcommand) -> NpmSystemInfo {
+  match subcommand {
+    DenoSubcommand::Compile(CompileFlags {
+      target: Some(target),
+      ..
+    })
+    | DenoSubcommand::Desktop(DesktopFlags {
+      target: Some(target),
+      ..
+    }) => {
+      // the values of NpmSystemInfo align with the possible values for the
+      // `arch` and `platform` fields of Node.js' `process` global:
+      // https://nodejs.org/api/process.html
+      match target.as_str() {
+        "aarch64-apple-darwin" => NpmSystemInfo {
+          os: "darwin".into(),
+          cpu: "arm64".into(),
+        },
+        "aarch64-unknown-linux-gnu" => NpmSystemInfo {
+          os: "linux".into(),
+          cpu: "arm64".into(),
+        },
+        "x86_64-apple-darwin" => NpmSystemInfo {
+          os: "darwin".into(),
+          cpu: "x64".into(),
+        },
+        "x86_64-unknown-linux-gnu" => NpmSystemInfo {
+          os: "linux".into(),
+          cpu: "x64".into(),
+        },
+        "x86_64-pc-windows-msvc" => NpmSystemInfo {
+          os: "win32".into(),
+          cpu: "x64".into(),
+        },
+        value => {
+          log::warn!(
+            concat!(
+              "Not implemented npm system info for target '{}'. Using current ",
+              "system default. This may impact architecture specific dependencies."
+            ),
+            value,
+          );
+          NpmSystemInfo::default()
         }
       }
-      DenoSubcommand::Install(InstallFlags::Local(
-        _,
-        NpmInstallTargetFlags { os, arch },
-      )) => {
-        let default = npm_system_info_from_env();
-        NpmSystemInfo {
-          os: os.as_deref().unwrap_or(&default.os).into(),
-          cpu: arch.as_deref().unwrap_or(&default.cpu).into(),
-        }
-      }
-      _ => npm_system_info_from_env(),
     }
+    DenoSubcommand::Install(InstallFlags::Local(
+      _,
+      NpmInstallTargetFlags { os, arch },
+    )) => {
+      let default = npm_system_info_from_env();
+      NpmSystemInfo {
+        os: os.as_deref().unwrap_or(&default.os).into(),
+        cpu: arch.as_deref().unwrap_or(&default.cpu).into(),
+      }
+    }
+    _ => npm_system_info_from_env(),
   }
 }
 
-pub trait TypeCheckModeExt {
-  fn as_graph_kind(&self) -> GraphKind;
-}
-
-impl TypeCheckModeExt for TypeCheckMode {
-  /// Gets the corresponding module `GraphKind` that should be created
-  /// for the current `TypeCheckMode`.
-  fn as_graph_kind(&self) -> GraphKind {
-    match self.is_true() {
-      true => GraphKind::All,
-      false => GraphKind::CodeOnly,
-    }
+/// The module `GraphKind` that should be created for a `TypeCheckMode`.
+pub fn graph_kind(mode: TypeCheckMode) -> GraphKind {
+  match mode.is_true() {
+    true => GraphKind::All,
+    false => GraphKind::CodeOnly,
   }
 }
 
@@ -989,7 +973,7 @@ mod tests {
       ))
     );
     assert_eq!(
-      flags.subcommand.npm_system_info(),
+      npm_system_info(&flags.subcommand),
       NpmSystemInfo {
         os: "linux".into(),
         cpu: "arm64".into(),
@@ -1015,7 +999,7 @@ mod tests {
         },
       ))
     );
-    let sys_info = flags.subcommand.npm_system_info();
+    let sys_info = npm_system_info(&flags.subcommand);
     assert_eq!(sys_info.os.as_str(), "win32");
   }
 
