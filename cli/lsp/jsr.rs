@@ -29,6 +29,8 @@ use crate::args::jsr_url;
 use crate::file_fetcher::CliFileFetcher;
 use crate::file_fetcher::TextDecodedFile;
 use crate::jsr::JsrFetchResolver;
+use crate::jsr::jsr_package_meta_url;
+use crate::jsr::jsr_package_version_meta_url;
 use crate::jsr::partial_jsr_package_version_info_from_slice;
 use crate::sys::CliSys;
 
@@ -304,7 +306,7 @@ impl JsrCacheResolver {
       return info.value().clone();
     }
     let read_cached_package_info = || {
-      let meta_url = jsr_url().join(&format!("{}/meta.json", name)).ok()?;
+      let meta_url = jsr_package_meta_url(name)?;
       let meta_bytes = read_cached_url(&meta_url, &self.cache)?;
       serde_json::from_slice::<JsrPackageInfo>(&meta_bytes).ok()
     };
@@ -321,9 +323,7 @@ impl JsrCacheResolver {
       return info.value().clone();
     }
     let read_cached_package_version_info = || {
-      let meta_url = jsr_url()
-        .join(&format!("{}/{}_meta.json", &nv.name, &nv.version))
-        .ok()?;
+      let meta_url = jsr_package_version_meta_url(nv)?;
       let meta_bytes = read_cached_url(&meta_url, &self.cache)?;
       partial_jsr_package_version_info_from_slice(&meta_bytes).ok()
     };

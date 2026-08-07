@@ -45,6 +45,7 @@ use super::search::PackageSearchApi;
 use super::text::LineIndex;
 use super::tsc;
 use crate::jsr::JsrFetchResolver;
+use crate::jsr::is_valid_jsr_package_name;
 use crate::lsp::registries::DocumentationCompletionItemData;
 use crate::util::env::resolve_cwd;
 use crate::util::path::is_importable_ext;
@@ -625,6 +626,9 @@ async fn get_jsr_completions(
   if let Some(v_index) = parse_bare_specifier_version_index(bare_specifier) {
     let package_name = &bare_specifier[..v_index];
     let v_prefix = &bare_specifier[(v_index + 1)..];
+    if !is_valid_jsr_package_name(package_name) {
+      return None;
+    }
 
     let versions = jsr_search_api.versions(package_name).await.ok()?;
     let items = versions
@@ -1510,6 +1514,33 @@ mod tests {
         ],
       }
     );
+  }
+
+  #[tokio::test]
+  async fn test_get_jsr_completions_rejects_invalid_package_names() {
+    let range = lsp::Range::default();
+    let referrer = ModuleSpecifier::parse("file:///referrer.ts").unwrap();
+    for package_name in [
+      "http:127.0.0.1:8000?action=delete",
+      "@scope/package?query",
+      "@scope/package#fragment",
+      "@scope/..",
+      "@scope/%2e%2e",
+      "@scope/package:extra",
+    ] {
+      let jsr_search_api = TestPackageSearchApi::default()
+        .with_package_version(package_name, "1.0.0", &[]);
+      let actual = get_jsr_completions(
+        &referrer,
+        &format!("jsr:{package_name}@"),
+        &range,
+        None,
+        &jsr_search_api,
+        None,
+      )
+      .await;
+      assert_eq!(actual, None, "accepted invalid package name {package_name:?}");
+    }
   }
 
   #[tokio::test]
