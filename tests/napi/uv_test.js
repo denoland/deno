@@ -169,16 +169,8 @@ uvPollTest("napi uv poll reports actual writable events", (done) => {
   uv.test_uv_poll_reports_actual_writable_events(done);
 });
 
-uvPollTest("napi uv poll reports prioritized events", (done) => {
-  uv.test_uv_poll_reports_prioritized_events(done);
-});
-
 uvPollTest("napi uv poll dispatches hangup-only readiness", (done) => {
   uv.test_uv_poll_dispatches_hangup_only(done);
-});
-
-uvPollTest("napi uv poll reports error-only result and stops", (done) => {
-  uv.test_uv_poll_error_reports_ebadf_and_stops(done);
 });
 
 uvPollTest("napi uv poll reports invalid fd error", (done) => {

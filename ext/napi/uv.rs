@@ -26,6 +26,8 @@ fn assert_ok(res: c_int) -> c_int {
 }
 
 use std::ffi::c_int;
+#[cfg(unix)]
+use std::ffi::c_short;
 
 use js_native_api::napi_create_string_utf8;
 use node_api::napi_create_async_work;
@@ -959,6 +961,72 @@ const UV_DISCONNECT: c_int = 4;
 #[cfg(unix)]
 const UV_PRIORITIZED: c_int = 8;
 
+#[cfg(unix)]
+fn uv_events_to_poll_events(events: c_int) -> c_short {
+  let mut poll_events = 0;
+  if events & UV_READABLE != 0 {
+    poll_events |= libc::POLLIN;
+  }
+  if events & UV_WRITABLE != 0 {
+    poll_events |= libc::POLLOUT;
+  }
+  if events & UV_PRIORITIZED != 0 {
+    poll_events |= libc::POLLPRI;
+  }
+  // POLLRDHUP is only available on these targets. Elsewhere, omitting
+  // UV_DISCONNECT is fine: libuv treats it as an optional shutdown
+  // optimization.
+  #[cfg(any(
+    target_os = "linux",
+    target_os = "android",
+    target_os = "freebsd",
+    target_os = "illumos",
+  ))]
+  if events & UV_DISCONNECT != 0 {
+    poll_events |= libc::POLLRDHUP;
+  }
+  poll_events
+}
+
+#[cfg(unix)]
+fn poll_revents_to_uv_callback_args(
+  revents: c_short,
+  requested_events: c_int,
+) -> (c_int, c_int) {
+  let mut cb_events = 0;
+  if revents & libc::POLLIN != 0 {
+    cb_events |= UV_READABLE;
+  }
+  if revents & libc::POLLOUT != 0 {
+    cb_events |= UV_WRITABLE;
+  }
+  if revents & libc::POLLPRI != 0 {
+    cb_events |= UV_PRIORITIZED;
+  }
+  #[cfg(any(
+    target_os = "linux",
+    target_os = "android",
+    target_os = "freebsd",
+    target_os = "illumos",
+  ))]
+  if revents & libc::POLLRDHUP != 0 {
+    cb_events |= UV_DISCONNECT;
+  }
+
+  if revents & libc::POLLNVAL != 0
+    || (revents & libc::POLLERR != 0 && revents & libc::POLLPRI == 0)
+  {
+    return (uv_compat::UV_EBADF, 0);
+  }
+  if revents & (libc::POLLERR | libc::POLLHUP) != 0 {
+    // libuv reports the interests that can make progress on an error or
+    // hangup, even when poll(2) returned no ordinary readiness bits.
+    cb_events |= requested_events
+      & (UV_READABLE | UV_WRITABLE | UV_DISCONNECT | UV_PRIORITIZED);
+  }
+  (0, cb_events)
+}
+
 #[unsafe(no_mangle)]
 unsafe extern "C" fn uv_poll_start(
   poll: *mut uv_poll_t,
@@ -1004,28 +1072,7 @@ unsafe extern "C" fn uv_poll_start(
     std::thread::spawn(move || {
       let poll = poll_ptr.take() as *mut uv_poll_t;
       let cb = cb.unwrap();
-      let mut poll_events = 0;
-      if events & UV_READABLE != 0 {
-        poll_events |= libc::POLLIN;
-      }
-      if events & UV_WRITABLE != 0 {
-        poll_events |= libc::POLLOUT;
-      }
-      if events & UV_PRIORITIZED != 0 {
-        poll_events |= libc::POLLPRI;
-      }
-      // POLLRDHUP is only available on these targets. Elsewhere, omitting
-      // UV_DISCONNECT is fine: libuv treats it as an optional shutdown
-      // optimization.
-      #[cfg(any(
-        target_os = "linux",
-        target_os = "android",
-        target_os = "freebsd",
-        target_os = "illumos",
-      ))]
-      if events & UV_DISCONNECT != 0 {
-        poll_events |= libc::POLLRDHUP;
-      }
+      let poll_events = uv_events_to_poll_events(events);
 
       while bridge.active.load(Ordering::Acquire) {
         let mut fds = libc::pollfd {
@@ -1037,50 +1084,22 @@ unsafe extern "C" fn uv_poll_start(
         if result == 0 {
           continue;
         }
-        let mut cb_status = 0;
-        if result < 0 {
+        let poll_error = if result < 0 {
           let code = std::io::Error::last_os_error()
             .raw_os_error()
             .unwrap_or(libc::EIO);
           if code == libc::EINTR {
             continue;
           }
-          cb_status = -code;
-        }
-        let mut cb_events = 0;
-        if result > 0 {
-          if fds.revents & libc::POLLIN != 0 {
-            cb_events |= UV_READABLE;
-          }
-          if fds.revents & libc::POLLOUT != 0 {
-            cb_events |= UV_WRITABLE;
-          }
-          if fds.revents & libc::POLLPRI != 0 {
-            cb_events |= UV_PRIORITIZED;
-          }
-          #[cfg(any(
-            target_os = "linux",
-            target_os = "android",
-            target_os = "freebsd",
-            target_os = "illumos",
-          ))]
-          if fds.revents & libc::POLLRDHUP != 0 {
-            cb_events |= UV_DISCONNECT;
-          }
-
-          if fds.revents & libc::POLLNVAL != 0
-            || (fds.revents & libc::POLLERR != 0
-              && fds.revents & libc::POLLPRI == 0)
-          {
-            cb_status = uv_compat::UV_EBADF;
-            cb_events = 0;
-          } else if fds.revents & (libc::POLLERR | libc::POLLHUP) != 0 {
-            // libuv reports the interests that can make progress on an error
-            // or hangup, even when poll(2) returned no ordinary readiness bits.
-            cb_events |= events
-              & (UV_READABLE | UV_WRITABLE | UV_DISCONNECT | UV_PRIORITIZED);
-          }
-        }
+          Some(code)
+        } else {
+          None
+        };
+        let (cb_status, cb_events) = if let Some(code) = poll_error {
+          (-code, 0)
+        } else {
+          poll_revents_to_uv_callback_args(fds.revents, events)
+        };
         if !bridge.active.load(Ordering::Acquire) {
           break;
         }
@@ -1874,6 +1893,39 @@ mod tests {
     assert!(
       std::mem::size_of::<u32>()
         <= std::mem::size_of::<libuv_sys_lite::uv_cond_t>()
+    );
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn uv_events_translate_to_poll_events() {
+    assert_eq!(
+      uv_events_to_poll_events(UV_READABLE | UV_WRITABLE | UV_PRIORITIZED),
+      libc::POLLIN | libc::POLLOUT | libc::POLLPRI
+    );
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn poll_revents_translate_to_uv_callback_args() {
+    assert_eq!(
+      poll_revents_to_uv_callback_args(
+        libc::POLLIN | libc::POLLOUT,
+        UV_READABLE | UV_WRITABLE | UV_DISCONNECT
+      ),
+      (0, UV_READABLE | UV_WRITABLE)
+    );
+    assert_eq!(
+      poll_revents_to_uv_callback_args(libc::POLLPRI, UV_PRIORITIZED),
+      (0, UV_PRIORITIZED)
+    );
+    assert_eq!(
+      poll_revents_to_uv_callback_args(libc::POLLHUP, UV_READABLE),
+      (0, UV_READABLE)
+    );
+    assert_eq!(
+      poll_revents_to_uv_callback_args(libc::POLLERR, UV_READABLE),
+      (uv_compat::UV_EBADF, 0)
     );
   }
 

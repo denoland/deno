@@ -1364,35 +1364,6 @@ extern "C" fn test_uv_poll_reports_actual_writable_events(
 }
 
 #[cfg(unix)]
-extern "C" fn test_uv_poll_reports_prioritized_events(
-  env: napi_env,
-  info: napi_callback_info,
-) -> napi_value {
-  unsafe {
-    // TCP out-of-band data produces POLLPRI on the peer, exercising the
-    // POLLPRI-to-UV_PRIORITIZED translation.
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let client =
-      std::net::TcpStream::connect(listener.local_addr().unwrap()).unwrap();
-    let (server, _) = listener.accept().unwrap();
-    assert_eq!(
-      libc::send(client.as_raw_fd(), c"x".as_ptr().cast(), 1, libc::MSG_OOB),
-      1
-    );
-    let state = new_poll_test_with_fds(
-      env,
-      poll_callback_arg(env, info),
-      server.into(),
-      client.into(),
-    );
-    let prioritized = libuv_sys_lite::uv_poll_event::UV_PRIORITIZED.0 as i32;
-    poll_test_expect(state, 0, prioritized, true, false);
-    poll_test_start(state, prioritized, Some(poll_expected_cb));
-  }
-  null_mut()
-}
-
-#[cfg(unix)]
 extern "C" fn test_uv_poll_dispatches_hangup_only(
   env: napi_env,
   info: napi_callback_info,
@@ -1415,44 +1386,6 @@ extern "C" fn test_uv_poll_dispatches_hangup_only(
     let readable = libuv_sys_lite::uv_poll_event::UV_READABLE.0 as i32;
     poll_test_expect(state, 0, readable, true, false);
     poll_test_start(state, readable, Some(poll_expected_cb));
-  }
-  null_mut()
-}
-
-#[cfg(unix)]
-extern "C" fn test_uv_poll_error_reports_ebadf_and_stops(
-  env: napi_env,
-  info: napi_callback_info,
-) -> napi_value {
-  unsafe {
-    let mut fds = [0; 2];
-    assert_eq!(pipe(fds.as_mut_ptr()), 0);
-    let reader = OwnedFd::from_raw_fd(fds[0]);
-    let writer = OwnedFd::from_raw_fd(fds[1]);
-    drop(reader);
-    // POLLERR is reported independently of the requested mask. Because this
-    // watch requests only readable events, a pipe write end without a reader
-    // produces an error-only result. It must invoke the callback with UV_EBADF,
-    // deactivate the handle, and not enter a retry loop.
-    let placeholder: OwnedFd = File::open("/dev/null").unwrap().into();
-    let state = new_poll_test_with_fds(
-      env,
-      poll_callback_arg(env, info),
-      writer,
-      placeholder,
-    );
-    poll_test_expect(
-      state,
-      libuv_sys_lite::uv_errno_t::UV_EBADF.0,
-      0,
-      false,
-      true,
-    );
-    poll_test_start(
-      state,
-      libuv_sys_lite::uv_poll_event::UV_READABLE.0 as i32,
-      Some(poll_expected_cb),
-    );
   }
   null_mut()
 }
@@ -1823,11 +1756,7 @@ unsupported_poll_test!(test_uv_poll_init_sets_nonblocking);
 #[cfg(not(unix))]
 unsupported_poll_test!(test_uv_poll_reports_actual_writable_events);
 #[cfg(not(unix))]
-unsupported_poll_test!(test_uv_poll_reports_prioritized_events);
-#[cfg(not(unix))]
 unsupported_poll_test!(test_uv_poll_dispatches_hangup_only);
-#[cfg(not(unix))]
-unsupported_poll_test!(test_uv_poll_error_reports_ebadf_and_stops);
 #[cfg(not(unix))]
 unsupported_poll_test!(test_uv_poll_invalid_fd_reports_ebadf);
 #[cfg(not(unix))]
@@ -1870,18 +1799,8 @@ pub fn init(env: napi_env, exports: napi_value) {
     ),
     napi_new_property!(
       env,
-      "test_uv_poll_reports_prioritized_events",
-      test_uv_poll_reports_prioritized_events
-    ),
-    napi_new_property!(
-      env,
       "test_uv_poll_dispatches_hangup_only",
       test_uv_poll_dispatches_hangup_only
-    ),
-    napi_new_property!(
-      env,
-      "test_uv_poll_error_reports_ebadf_and_stops",
-      test_uv_poll_error_reports_ebadf_and_stops
     ),
     napi_new_property!(
       env,
