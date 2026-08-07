@@ -1561,6 +1561,23 @@ Deno.test(
 );
 
 Deno.test(
+  { permissions: { read: true } },
+  function createHttpClientMismatchedCertAndKey() {
+    assertThrows(
+      () =>
+        Deno.createHttpClient({
+          cert: Deno.readTextFileSync(
+            "tests/testdata/tls/localhost.crt",
+          ),
+          key: Deno.readTextFileSync("tests/testdata/tls/RootCA.key"),
+        }),
+      TypeError,
+      "keys may not be consistent: KeyMismatch",
+    );
+  },
+);
+
+Deno.test(
   { permissions: { read: true, net: true } },
   async function fetchCustomClientPrivateKey(): Promise<
     void

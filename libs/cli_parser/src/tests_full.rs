@@ -9539,3 +9539,160 @@ fn tier3_requires() {
     .is_ok()
   );
 }
+
+// ---------------------------------------------------------------------------
+// PR5 cutover: link / unlink subcommands (newly wired into the parser).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn link_subcommand() {
+  let flags =
+    flags_from_vec(svec!["deno", "link", "../a", "../b", "--lockfile-only"])
+      .unwrap();
+  assert_eq!(
+    flags.subcommand,
+    DenoSubcommand::Link(LinkFlags {
+      paths: svec!["../a", "../b"],
+      lockfile_only: true,
+    })
+  );
+
+  // lock args flow through to the top-level flags.
+  let flags =
+    flags_from_vec(svec!["deno", "link", "../a", "--frozen"]).unwrap();
+  assert_eq!(flags.frozen_lockfile, Some(true));
+  assert!(matches!(
+    flags.subcommand,
+    DenoSubcommand::Link(LinkFlags {
+      lockfile_only: false,
+      ..
+    })
+  ));
+
+  // at least one path is required.
+  assert!(flags_from_vec(svec!["deno", "link"]).is_err());
+}
+
+#[test]
+fn unlink_subcommand() {
+  let flags =
+    flags_from_vec(svec!["deno", "unlink", "@scope/name", "../c"]).unwrap();
+  assert_eq!(
+    flags.subcommand,
+    DenoSubcommand::Unlink(UnlinkFlags {
+      names_or_paths: svec!["@scope/name", "../c"],
+      lockfile_only: false,
+    })
+  );
+
+  assert!(flags_from_vec(svec!["deno", "unlink"]).is_err());
+}
+
+#[test]
+fn eval_double_dash_stripped() {
+  // Unlike run/task, `deno eval` strips the `--` separator from argv
+  // (clap plain trailing-var-arg, not `.last(true)`).
+  let flags =
+    flags_from_vec(svec!["deno", "eval", "console.log(1)", "--", "a&b"])
+      .unwrap();
+  assert_eq!(flags.argv, svec!["a&b"]);
+
+  // run keeps it, for contrast.
+  let flags =
+    flags_from_vec(svec!["deno", "run", "x.ts", "--", "a&b"]).unwrap();
+  assert_eq!(flags.argv, svec!["--", "a&b"]);
+}
+
+#[test]
+fn sync_types_subcommand() {
+  let flags = flags_from_vec(svec!["deno", "sync-types"]).unwrap();
+  assert_eq!(
+    flags.subcommand,
+    DenoSubcommand::SyncTypes(SyncTypesFlags::default())
+  );
+
+  let flags =
+    flags_from_vec(svec!["deno", "sync-types", "a.ts", "tools/"]).unwrap();
+  assert_eq!(
+    flags.subcommand,
+    DenoSubcommand::SyncTypes(SyncTypesFlags {
+      roots: svec!["a.ts", "tools/"],
+    })
+  );
+
+  // --allow-import flows into permissions.
+  let flags =
+    flags_from_vec(svec!["deno", "sync-types", "--allow-import=example.com"])
+      .unwrap();
+  assert_eq!(flags.permissions.allow_import, Some(svec!["example.com"]));
+}
+
+#[test]
+fn serve_compile_keep_double_dash() {
+  // serve/compile use clap's trailing_var_arg (like run), so they keep `--`.
+  let flags =
+    flags_from_vec(svec!["deno", "serve", "x.ts", "--", "-a"]).unwrap();
+  assert_eq!(flags.argv, svec!["--", "-a"]);
+
+  let flags =
+    flags_from_vec(svec!["deno", "compile", "x.ts", "--", "-a"]).unwrap();
+  assert!(
+    matches!(flags.subcommand, DenoSubcommand::Compile(c) if c.args == svec!["--", "-a"])
+  );
+}
+
+#[test]
+fn upgrade_no_delta() {
+  let r = flags_from_vec(svec!["deno", "upgrade", "--no-delta"]);
+  assert_eq!(
+    r.unwrap(),
+    Flags {
+      subcommand: DenoSubcommand::Upgrade(UpgradeFlags {
+        force: false,
+        dry_run: false,
+        canary: false,
+        no_delta: true,
+        release_candidate: false,
+        version: None,
+        output: None,
+        version_or_hash_or_channel: None,
+        checksum: None,
+        pr: None,
+        branch: None,
+      }),
+      ..Flags::default()
+    }
+  );
+}
+
+#[test]
+fn hrtime_flags_are_accepted_as_no_ops() {
+  // Removed in Deno 2, but still parsed so we can warn instead of erroring.
+  for flag in ["--allow-hrtime", "--deny-hrtime"] {
+    let r = flags_from_vec(svec!["deno", "run", flag, "script.ts"]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags.subcommand,
+      DenoSubcommand::Run(RunFlags::new_default("script.ts".to_string()))
+    );
+  }
+}
+
+#[test]
+fn use_env_proxy_flags() {
+  let r = flags_from_vec(svec!["deno", "run", "--use-env-proxy", "script.ts"]);
+  assert!(r.is_ok());
+
+  let r =
+    flags_from_vec(svec!["deno", "run", "--no-use-env-proxy", "script.ts"]);
+  assert!(r.is_ok());
+
+  let r = flags_from_vec(svec![
+    "deno",
+    "run",
+    "--use-env-proxy",
+    "--no-use-env-proxy",
+    "script.ts"
+  ]);
+  assert!(r.is_err());
+}

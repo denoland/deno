@@ -151,6 +151,9 @@ pub fn convert(result: ParseResult) -> Result<Flags, CliError> {
     Some("update") => outdated_parse(&result, &mut flags, true),
     Some("clean") => clean_parse(&result, &mut flags),
     Some("list") => list_parse(&result, &mut flags),
+    Some("link") => link_parse(&result, &mut flags),
+    Some("unlink") => unlink_parse(&result, &mut flags),
+    Some("sync-types") => sync_types_parse(&result, &mut flags),
     Some("approve-scripts" | "approve-builds") => {
       approve_scripts_parse(&result, &mut flags)
     }
@@ -528,6 +531,17 @@ fn permission_args_parse(result: &ParseResult, flags: &mut Flags) {
 
   if result.get_bool("no-prompt") {
     flags.permissions.no_prompt = true;
+  }
+
+  if result.get_bool("allow-hrtime") || result.get_bool("deny-hrtime") {
+    // use eprintln instead of log::warn because logging hasn't been initialized yet
+    #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
+    {
+      eprintln!(
+        "{} `allow-hrtime` and `deny-hrtime` have been removed in Deno 2, as high resolution time is now always allowed",
+        deno_runtime::colors::yellow("Warning")
+      );
+    }
   }
 }
 
@@ -1317,6 +1331,16 @@ fn run_parse(
   ext_arg_parse(result, flags);
 
   flags.tunnel = result.get_bool("tunnel");
+  if result.get_bool("use-env-proxy") {
+    // Node's --use-env-proxy is process-wide. Deno's node polyfills read the
+    // same env variable as the Node tests when selecting global proxy config.
+    // SAFETY: CLI parsing runs before worker startup and before Deno starts
+    // any threads that could concurrently read the process environment.
+    unsafe { std::env::set_var("NODE_USE_ENV_PROXY", "1") };
+  } else if result.get_bool("no-use-env-proxy") {
+    // SAFETY: see the --use-env-proxy branch above.
+    unsafe { std::env::set_var("NODE_USE_ENV_PROXY", "0") };
+  }
   flags.code_cache_enabled = !result.get_bool("no-code-cache");
   let coverage_dir = if result.contains("coverage") {
     Some(result.get_one("coverage").unwrap_or("coverage").to_string())
@@ -1813,6 +1837,7 @@ fn check_parse(result: &ParseResult, flags: &mut Flags) {
 
 fn info_parse(result: &ParseResult, flags: &mut Flags) {
   reload_arg_parse(result, flags);
+  min_dep_age_arg_parse(result, flags);
   config_args_parse(result, flags);
   import_map_arg_parse(result, flags);
   location_arg_parse(result, flags);
@@ -2211,15 +2236,13 @@ fn install_parse(
     arch: result.get_one("arch").map(|s| s.to_string()),
   };
 
-  if result.contains("entrypoint") {
-    // --entrypoint takes values directly; also include any positional "cmd" args
-    let mut entrypoints: Vec<String> = result
-      .get_many("entrypoint")
+  if result.get_bool("entrypoint") {
+    // `--entrypoint` is a boolean flag; the entrypoints are the positional
+    // `cmd` args (mirrors clap).
+    let entrypoints: Vec<String> = result
+      .get_many("cmd")
       .map(|v| v.iter().map(|s| s.to_string()).collect())
       .unwrap_or_default();
-    if let Some(cmd_vals) = result.get_many("cmd") {
-      entrypoints.extend(cmd_vals.iter().map(|s| s.to_string()));
-    }
     flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
       InstallFlagsLocal::Entrypoints(InstallEntrypointsFlags {
         entrypoints,
@@ -2231,6 +2254,17 @@ fn install_parse(
     ));
   } else if let Some(packages) = result.get_many("cmd") {
     if !packages.is_empty() {
+      // Adding packages needs a config to write them to; `--no-config`
+      // disables that. Mirror clap's guard.
+      if matches!(flags.config_flag, ConfigFlag::Disabled) {
+        return Err(CliError::new(
+          CliErrorKind::InvalidValue,
+          "deno install can't be used to add packages if `--no-config` is passed.",
+        )
+        .with_suggestion(
+          "to cache the packages without adding to a config, pass the `--entrypoint` flag",
+        ));
+      }
       let dev = result.get_bool("dev");
       let default_registry = if result.get_bool("jsr") {
         Some(DefaultRegistry::Jsr)
@@ -2303,6 +2337,15 @@ fn completions_parse(result: &ParseResult, flags: &mut Flags) {
     .get_one("shell")
     .map(|s| s.to_string())
     .unwrap_or_else(|| "bash".to_string());
+  // Dynamic completions (bash/fish/zsh) are generated CLI-side; only record
+  // the target shell here. Other shells fall back to static generation.
+  if result.get_bool("dynamic")
+    && matches!(shell.as_str(), "bash" | "fish" | "zsh")
+  {
+    flags.subcommand =
+      DenoSubcommand::Completions(CompletionsFlags::Dynamic { shell });
+    return;
+  }
   let buf = crate::completions::generate(&shell, &crate::defs::DENO_ROOT);
   flags.subcommand = DenoSubcommand::Completions(CompletionsFlags::Static(
     buf.into_boxed_slice(),
@@ -2488,6 +2531,7 @@ fn publish_parse(result: &ParseResult, flags: &mut Flags) {
 
 fn add_parse(result: &ParseResult, flags: &mut Flags) {
   allow_and_deny_import_parse(result, flags);
+  min_dep_age_arg_parse(result, flags);
   lock_args_parse(result, flags);
   env_file_arg_parse(result, flags);
 
@@ -2518,6 +2562,7 @@ fn add_parse(result: &ParseResult, flags: &mut Flags) {
 }
 
 fn pack_parse(result: &ParseResult, flags: &mut Flags) {
+  flags.type_check_mode = TypeCheckMode::Local; // local by default
   config_args_parse(result, flags);
   env_file_arg_parse(result, flags);
   let include = result
@@ -2687,6 +2732,7 @@ fn why_parse(result: &ParseResult, flags: &mut Flags) {
 
 fn remove_parse(result: &ParseResult, flags: &mut Flags) {
   lock_args_parse(result, flags);
+  min_dep_age_arg_parse(result, flags);
   let packages: Vec<String> = result
     .get_many("packages")
     .map(|v| v.iter().map(|s| s.to_string()).collect())
@@ -2774,6 +2820,38 @@ fn list_parse(result: &ParseResult, flags: &mut Flags) {
     prod: result.get_bool("prod"),
     dev: result.get_bool("dev"),
     filters,
+  });
+}
+
+fn link_parse(result: &ParseResult, flags: &mut Flags) {
+  lock_args_parse(result, flags);
+  flags.subcommand = DenoSubcommand::Link(LinkFlags {
+    paths: result
+      .get_many("paths")
+      .map(|v| v.iter().map(|s| s.to_string()).collect())
+      .unwrap_or_default(),
+    lockfile_only: result.get_bool("lockfile-only"),
+  });
+}
+
+fn sync_types_parse(result: &ParseResult, flags: &mut Flags) {
+  allow_and_deny_import_parse(result, flags);
+  flags.subcommand = DenoSubcommand::SyncTypes(SyncTypesFlags {
+    roots: result
+      .get_many("roots")
+      .map(|v| v.iter().map(|s| s.to_string()).collect())
+      .unwrap_or_default(),
+  });
+}
+
+fn unlink_parse(result: &ParseResult, flags: &mut Flags) {
+  lock_args_parse(result, flags);
+  flags.subcommand = DenoSubcommand::Unlink(UnlinkFlags {
+    names_or_paths: result
+      .get_many("names_or_paths")
+      .map(|v| v.iter().map(|s| s.to_string()).collect())
+      .unwrap_or_default(),
+    lockfile_only: result.get_bool("lockfile-only"),
   });
 }
 
@@ -3008,7 +3086,9 @@ fn bundle_parse(result: &ParseResult, flags: &mut Flags) {
   // `compile_args_without_check_parse` deliberately omits `--check`; apply it
   // here so `deno bundle --check=all` type-checks (mirrors clap, #30159).
   check_arg_parse(result, flags);
-  permission_args_parse(result, flags);
+  // `bundle` resolves a module graph but never runs it, so the only
+  // permissions it takes are the import ones.
+  allow_and_deny_import_parse(result, flags);
 
   let entrypoints = result
     .get_many("file")
