@@ -9,11 +9,13 @@ use deno_ast::ProgramRef;
 use deno_ast::swc::ast::AssignOp;
 use deno_ast::swc::ast::AssignTarget;
 use deno_ast::swc::ast::CallExpr;
+use deno_ast::swc::ast::Decl;
 use deno_ast::swc::ast::Expr;
 use deno_ast::swc::ast::Lit;
 use deno_ast::swc::ast::MemberExpr;
 use deno_ast::swc::ast::MemberProp;
 use deno_ast::swc::ast::ModuleItem;
+use deno_ast::swc::ast::Pat;
 use deno_ast::swc::ast::SimpleAssignTarget;
 use deno_ast::swc::ast::Stmt;
 use deno_error::JsErrorBox;
@@ -22,6 +24,96 @@ use url::Url;
 
 use super::ModuleExportAnalyzer;
 use crate::cache::ParsedSourceCacheRc;
+
+pub fn is_cjs_shaped_source(
+  specifier: &Url,
+  media_type: MediaType,
+  source: &str,
+) -> bool {
+  if media_type != MediaType::JavaScript {
+    return false;
+  }
+  let source = source.strip_prefix('\u{FEFF}').unwrap_or(source);
+  let Ok(parsed_source) = deno_ast::parse_program(deno_ast::ParseParams {
+    specifier: specifier.clone(),
+    text: source.into(),
+    media_type,
+    capture_tokens: false,
+    scope_analysis: false,
+    maybe_syntax: None,
+  }) else {
+    return false;
+  };
+  if !parsed_source.compute_is_script() {
+    return false;
+  }
+
+  match parsed_source.program_ref() {
+    ProgramRef::Module(module) => {
+      let statements = module.body.iter().filter_map(|item| match item {
+        ModuleItem::Stmt(stmt) => Some(stmt),
+        ModuleItem::ModuleDecl(_) => None,
+      });
+      is_cjs_shaped_statements(statements)
+    }
+    ProgramRef::Script(script) => is_cjs_shaped_statements(script.body.iter()),
+  }
+}
+
+fn is_cjs_shaped_statements<'a>(
+  statements: impl Iterator<Item = &'a Stmt>,
+) -> bool {
+  let statements: Vec<_> = statements.collect();
+  if statements.iter().any(|stmt| declares_node_global(stmt)) {
+    return false;
+  }
+  statements.iter().copied().any(is_cjs_shaped_stmt)
+}
+
+fn declares_node_global(stmt: &Stmt) -> bool {
+  let Stmt::Decl(decl) = stmt else {
+    return false;
+  };
+  match decl {
+    Decl::Fn(decl) => is_node_global(&decl.ident.sym),
+    Decl::Class(decl) => is_node_global(&decl.ident.sym),
+    Decl::Var(decl) => decl.decls.iter().any(|declarator| {
+      matches!(
+        &declarator.name,
+        Pat::Ident(binding) if is_node_global(&binding.id.sym)
+      )
+    }),
+    _ => false,
+  }
+}
+
+fn is_node_global(name: &str) -> bool {
+  matches!(name, "require" | "module" | "exports")
+}
+
+fn is_cjs_shaped_stmt(stmt: &Stmt) -> bool {
+  match stmt {
+    Stmt::Expr(expr_stmt) => is_cjs_shaped_expr(&expr_stmt.expr),
+    Stmt::Decl(Decl::Var(var_decl)) => var_decl
+      .decls
+      .iter()
+      .any(|decl| decl.init.as_deref().is_some_and(is_cjs_shaped_expr)),
+    _ => false,
+  }
+}
+
+fn is_cjs_shaped_expr(expr: &Expr) -> bool {
+  if matches!(expr, Expr::Call(call) if matches!(&call.callee, deno_ast::swc::ast::Callee::Expr(callee) if matches!(&**callee, Expr::Ident(ident) if ident.sym == "require")))
+  {
+    return true;
+  }
+  let Expr::Assign(assign) = expr else {
+    return false;
+  };
+  assign.op == AssignOp::Assign
+    && matches!(&assign.left, AssignTarget::Simple(SimpleAssignTarget::Member(member))
+      if is_module_exports_member(member) || exports_member_name(member).is_some())
+}
 
 pub struct DenoAstModuleExportAnalyzer {
   parsed_source_cache: ParsedSourceCacheRc,
@@ -307,5 +399,69 @@ fn call_expr_require_spec(call: &CallExpr) -> Option<String> {
   match arg.expr.as_lit()? {
     Lit::Str(s) => s.value.as_str().map(|s| s.to_string()),
     _ => None,
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn is_cjs(source: &str) -> bool {
+    is_cjs_shaped_source(
+      &Url::parse("file:///package/index.js").unwrap(),
+      MediaType::JavaScript,
+      source,
+    )
+  }
+
+  #[test]
+  fn detects_top_level_cjs_shapes() {
+    for source in [
+      "require(\"./dep.js\");",
+      "module.exports = {};",
+      "module.exports.hello = require(\"./dep.js\").hello;",
+      "exports.hello = 1;",
+    ] {
+      assert!(is_cjs(source), "{source}");
+    }
+  }
+
+  #[test]
+  fn ignores_nested_cjs_shapes() {
+    for source in [
+      "function load() { require(\"./dep.js\"); }",
+      "const load = () => { module.exports = {}; }",
+      "class Loader { load() { exports.hello = 1; } }",
+    ] {
+      assert!(!is_cjs(source), "{source}");
+    }
+  }
+
+  #[test]
+  fn ignores_esm_and_textual_matches() {
+    for source in [
+      "export const value = 1;",
+      "import value from \"./dep.js\";",
+      "const text = \"module.exports = 1\";",
+      "// require(\"./dep.js\")",
+      "const text = `exports.value = 1`;",
+      "const require = customRequire; require(\"./dep.js\");",
+      "const module = {}; module.exports = {};",
+      "const exports = {}; exports.value = 1;",
+      "const object = { load() { require(\"./dep.js\"); } };",
+    ] {
+      assert!(!is_cjs(source), "{source}");
+    }
+  }
+
+  #[test]
+  fn handles_bom_parse_errors_and_media_types() {
+    assert!(is_cjs("\u{FEFF}module.exports = 1;"));
+    assert!(!is_cjs("module.exports ="));
+    assert!(!is_cjs_shaped_source(
+      &Url::parse("file:///package/index.ts").unwrap(),
+      MediaType::TypeScript,
+      "module.exports = 1;",
+    ));
   }
 }

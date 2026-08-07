@@ -2211,7 +2211,9 @@ Module._extensions[".wasm"] = loadESMFromCJS;
 
 function loadMaybeCjs(module, filename) {
   const content = op_require_read_file(filename);
-  const format = op_require_is_maybe_cjs(filename) ? undefined : "module";
+  const format = op_require_is_maybe_cjs(filename, content)
+    ? undefined
+    : "module";
   module._compile(content, filename, format);
 }
 

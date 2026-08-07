@@ -82,6 +82,16 @@ pub trait NodeRequireLoader {
     specifier: &Url,
   ) -> Result<bool, PackageJsonLoadError>;
 
+  /// Get if a module loaded via `require()` should first be compiled as CJS,
+  /// using the source that was already loaded for compilation.
+  fn is_maybe_cjs_from_require_with_source(
+    &self,
+    specifier: &Url,
+    _source: &str,
+  ) -> Result<bool, PackageJsonLoadError> {
+    self.is_maybe_cjs_from_require(specifier)
+  }
+
   fn resolve_require_node_module_paths(&self, from: &Path) -> Vec<String> {
     default_resolve_require_node_module_paths(from)
   }

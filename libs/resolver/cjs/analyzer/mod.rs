@@ -25,6 +25,8 @@ mod deno_ast;
 
 #[cfg(feature = "deno_ast")]
 pub use deno_ast::DenoAstModuleExportAnalyzer;
+#[cfg(feature = "deno_ast")]
+pub use deno_ast::is_cjs_shaped_source;
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ModuleExportsAndReExports {

@@ -76,6 +76,50 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
       .map(|mode| mode == ResolutionMode::Require)
   }
 
+  /// Checks whether a file loaded via `require()` should be compiled as
+  /// CommonJS using the source already loaded by the require implementation.
+  /// This only overrides an explicit `"type": "module"` decision for a
+  /// JavaScript file with a positive top-level CommonJS shape.
+  pub fn is_maybe_cjs_from_require_with_source(
+    &self,
+    specifier: &Url,
+    media_type: MediaType,
+    source: &str,
+  ) -> Result<bool, PackageJsonLoadError> {
+    let mode = self
+      .is_cjs_resolver
+      .check_for_require(specifier, media_type)?;
+    if mode == ResolutionMode::Require {
+      return Ok(true);
+    }
+    if media_type != MediaType::JavaScript {
+      return Ok(false);
+    }
+    let Ok(path) = deno_path_util::url_to_file_path(specifier) else {
+      return Ok(false);
+    };
+    let Some(pkg_json) = self
+      .is_cjs_resolver
+      .pkg_json_resolver
+      .get_closest_package_json(&path)?
+    else {
+      return Ok(false);
+    };
+    if pkg_json.typ != "module" || path.extension().is_none() {
+      return Ok(false);
+    }
+
+    #[cfg(feature = "deno_ast")]
+    return Ok(analyzer::is_cjs_shaped_source(
+      specifier, media_type, source,
+    ));
+    #[cfg(not(feature = "deno_ast"))]
+    {
+      let _ = (specifier, source);
+      Ok(false)
+    }
+  }
+
   /// Mark a file as being known CJS or ESM.
   pub fn set_is_known_script(&self, specifier: &Url, is_script: bool) {
     let new_value = if is_script {
@@ -353,6 +397,10 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
     }
   }
 
+  /// Gets the initial resolution mode for a file loaded via `require()`.
+  /// Ambiguous files in a `"type": "module"` package are initially ESM;
+  /// callers with source available may apply the require-only CJS-shape
+  /// fallback in [`CjsTracker::is_maybe_cjs_from_require_with_source`].
   fn check_for_require(
     &self,
     specifier: &Url,
