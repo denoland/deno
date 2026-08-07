@@ -396,7 +396,7 @@ async fn run_subcommand(
                   } else {
                     format!("some similar subcommands exist: {quoted}")
                   };
-                  Err(cli_parse_error(
+                  Err(unrecognized_subcommand_error(
                     &deno_cli_parser::CliError::new(
                       deno_cli_parser::CliErrorKind::UnknownSubcommand,
                       format!("unrecognized subcommand '{}'", run_flags.script),
@@ -747,12 +747,13 @@ fn exit_with_message(message: &str, code: i32) -> ! {
   deno_runtime::exit(code);
 }
 
-/// Render a flag-parsing failure for the terminal.
+/// Render the "unrecognized subcommand" suggestion for the terminal.
 ///
-/// The trailing newline separates the message from whatever the shell prints
-/// next; `CliError`'s own `Display` deliberately omits it so the message stays
-/// usable programmatically.
-fn cli_parse_error(err: &deno_cli_parser::CliError) -> AnyError {
+/// This one error is followed by a blank line, which is what clap's formatter
+/// produced for it. Ordinary flag errors are rendered without it (they went
+/// through `clap::Error::raw`, which appended nothing), so they keep using
+/// `CliError`'s plain `Display`.
+fn unrecognized_subcommand_error(err: &deno_cli_parser::CliError) -> AnyError {
   AnyError::msg(format!("{err}\n"))
 }
 
@@ -993,7 +994,7 @@ async fn resolve_flags_and_init(
         deno_print::drop_write_stdout(version.as_bytes());
         deno_runtime::exit(0);
       }
-      Err(err) => exit_for_error(cli_parse_error(&err), initial_cwd.as_deref()),
+      Err(err) => exit_for_error(AnyError::from(err), initial_cwd.as_deref()),
     };
   // preserve already loaded env variables
   if flags.watch.is_some() {
