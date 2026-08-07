@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": [
+      "eval",
+      "Deno.writeTextFileSync('.gitignore', 'before.txt\\n[\\nafter.txt')"
+    ],
+    "output": "[WILDCARD]"
+  }, {
+    "args": "publish --dry-run",
+    "output": "publish.out"
+  }]
+}
