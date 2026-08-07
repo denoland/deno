@@ -43,6 +43,7 @@ pub use parse::parse_request_head_uninit;
 pub use parse::parse_request_head_uninit_all;
 pub use parse::parse_request_head_uninit_all_with_options;
 pub use parse::parse_request_head_uninit_with_options;
+pub use parse::is_valid_host_header_value;
 pub use protocol::BodyStatus;
 pub use protocol::CoreRequest;
 pub use protocol::CoreUpgradeKind;

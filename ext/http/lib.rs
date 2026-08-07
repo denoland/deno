@@ -69,10 +69,12 @@ use hyper::header::CONTENT_ENCODING;
 use hyper::header::CONTENT_LENGTH;
 use hyper::header::CONTENT_RANGE;
 use hyper::header::CONTENT_TYPE;
+use hyper::header::CONNECTION;
 use hyper::header::COOKIE;
 use hyper::header::HeaderMap;
 use hyper::header::HeaderName;
 use hyper::header::HeaderValue;
+use hyper::header::HOST;
 use hyper::server::conn::http1;
 use hyper::server::conn::http2;
 use hyper::service::Service;
@@ -955,6 +957,17 @@ impl Service<Request<Incoming>> for HttpService {
   >;
 
   fn call(&self, request: Request<Incoming>) -> Self::Future {
+    if matches!(request.version(), http::Version::HTTP_10 | http::Version::HTTP_11)
+      && !has_valid_host_header(&request)
+    {
+      let mut response = Response::new(LegacyBody::full(Bytes::new()));
+      *response.status_mut() = http::StatusCode::BAD_REQUEST;
+      response
+        .headers_mut()
+        .insert(CONNECTION, HeaderValue::from_static("close"));
+      return Box::pin(async move { Ok(response) });
+    }
+
     let acceptors_rx = self.acceptors_rx.clone();
     Box::pin(async move {
       let mut acceptors_rx = acceptors_rx.borrow_mut().await;
@@ -963,6 +976,15 @@ impl Service<Request<Incoming>> for HttpService {
       acceptor.call(request).await
     })
   }
+}
+
+fn has_valid_host_header(request: &Request<Incoming>) -> bool {
+  let mut hosts = request.headers().get_all(HOST).iter();
+  let Some(host) = hosts.next() else {
+    return true;
+  };
+  hosts.next().is_none()
+    && deno_http_h1::is_valid_host_header_value(host.as_bytes())
 }
 
 /// A pair of one-shot channels which first transfer a HTTP request from the

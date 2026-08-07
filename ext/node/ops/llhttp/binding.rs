@@ -60,6 +60,7 @@ struct Inner {
   current_header_field: Vec<u8>,
   current_header_value: Vec<u8>,
   in_header_value: bool,
+  host_count: usize,
   /// Set to true when a partial batch of headers was flushed to JS via
   /// kOnHeaders during parsing (when total exceeded MAX_HEADER_PAIRS).
   /// When false at `on_headers_complete` with accumulated headers, we
@@ -137,6 +138,7 @@ impl HTTPParser {
         current_header_field: Vec::new(),
         current_header_value: Vec::new(),
         in_header_value: false,
+        host_count: 0,
         headers_flushed: false,
         url: Vec::new(),
         status_message: Vec::new(),
@@ -228,6 +230,7 @@ impl Inner {
     self.current_header_field.clear();
     self.current_header_value.clear();
     self.in_header_value = false;
+    self.host_count = 0;
     self.headers_flushed = false;
     self.url.clear();
     self.status_message.clear();
@@ -317,6 +320,7 @@ unsafe extern "C" fn on_message_begin(parser: *mut sys::llhttp_t) -> c_int {
   inner.current_header_field.clear();
   inner.current_header_value.clear();
   inner.in_header_value = false;
+  inner.host_count = 0;
   inner.headers_flushed = false;
   inner.header_nread = 0;
   inner.header_overflow = false;
@@ -412,6 +416,16 @@ unsafe extern "C" fn on_header_value_complete(
     .rposition(|&b| b != b' ' && b != b'\t')
     .map_or(0, |p| p + 1);
   value.truncate(trimmed_len);
+  if unsafe { (*parser).type_ } == sys::HTTP_REQUEST as u8
+    && field.eq_ignore_ascii_case(b"host")
+  {
+    inner.host_count += 1;
+    if inner.host_count > 1
+      || !deno_http_h1::is_valid_host_header_value(&value)
+    {
+      return -1;
+    }
+  }
   inner.header_fields.push(field);
   inner.header_values.push(value);
   inner.in_header_value = false;
