@@ -8,7 +8,7 @@
           "args": [
             "desktop",
             "--backend=cef",
-            "--backend-args=\"--user-agent=\\\"potato\\\"\"",
+            "--backend-args=--user-agent=\"potato\"",
             "--output",
             "./hello",
             "./main.ts"
@@ -31,12 +31,73 @@
             "desktop",
             "--hmr",
             "--backend=cef",
-            "--backend-args=\"--user-agent=\\\"potato\\\"\"",
+            "--backend-args=--user-agent=\"potato\"",
             "--output",
             "./hello3",
             "./main.ts"
           ],
           "output": "desktop_hmi.out"
+        }
+      ]
+    },
+    "forwards_backend_flags_with_quoted_spaces": {
+      "steps": [
+        {
+          "if": "unix",
+          "args": [
+            "desktop",
+            "--backend=cef",
+            "--backend-args=--user-agent=\"potato browser\" --enable-logging",
+            "--output",
+            "./hello_spaces",
+            "./main.ts"
+          ],
+          "output": "[WILDCARD]"
+        },
+        {
+          "if": "unix",
+          "commandName": "./hello_spaces/hello_spaces",
+          "args": [],
+          "output": "desktop_spaces.out"
+        }
+      ]
+    },
+    "forwards_backend_flags_with_escaped_quotes": {
+      "steps": [
+        {
+          "if": "unix",
+          "args": [
+            "desktop",
+            "--backend=cef",
+            "--backend-args=--user-agent=\"a \\\"quoted\\\" agent\"",
+            "--output",
+            "./hello_escaped",
+            "./main.ts"
+          ],
+          "output": "[WILDCARD]"
+        },
+        {
+          "if": "unix",
+          "commandName": "./hello_escaped/hello_escaped",
+          "args": [],
+          "output": "desktop_escaped.out"
+        }
+      ]
+    },
+    "malformed_backend_args_reports_error": {
+      "steps": [
+        {
+          "if": "unix",
+          "args": [
+            "desktop",
+            "--backend=cef",
+            "--backend-args=--user-agent=\"unterminated",
+            "--output",
+            "./hello_malformed",
+            "./main.ts"
+          ],
+          "output": "[WILDCARD]invalid --backend-args quoting[WILDCARD]",
+          "exitCode": 1
         }
       ]
     },

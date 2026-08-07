@@ -999,7 +999,7 @@ fn make_self_extracting_macos(
   let (raw, comp) =
     write_tar_compressed(staging.path(), &inner_name, &payload, format)?;
   let hash = payload_hash(&payload)?;
-  let backend_args = format_backend_args_for_shell(desktop_flags);
+  let backend_args = format_backend_args_for_shell(desktop_flags)?;
   let launcher_args = if backend_args.is_empty() {
     String::new()
   } else {
@@ -1089,7 +1089,7 @@ fn make_self_extracting_dir(
   let hash = payload_hash(&payload)?;
 
   if windows {
-    let backend_args = format_backend_args_for_cmd(desktop_flags);
+    let backend_args = format_backend_args_for_cmd(desktop_flags)?;
     let launcher_args = if backend_args.is_empty() {
       String::new()
     } else {
@@ -1108,7 +1108,7 @@ fn make_self_extracting_dir(
     );
     std::fs::write(bundle_path.join(format!("{app_name}.bat")), launcher)?;
   } else {
-    let backend_args = format_backend_args_for_shell(desktop_flags);
+    let backend_args = format_backend_args_for_shell(desktop_flags)?;
     let launcher_args = if backend_args.is_empty() {
       String::new()
     } else {
@@ -1259,43 +1259,24 @@ async fn spawn_framework_dev_server(
   Ok((url, child))
 }
 
-fn split_backend_args(backend_args: &str) -> Option<Vec<String>> {
-  let mut candidates = vec![backend_args.to_string()];
-
-  if let Some(stripped) = backend_args
-    .strip_prefix('"')
-    .and_then(|s| s.strip_suffix('"'))
-  {
-    candidates.push(stripped.to_string());
-  } else if let Some(stripped) = backend_args
-    .strip_prefix('\'')
-    .and_then(|s| s.strip_suffix('\''))
-  {
-    candidates.push(stripped.to_string());
-  }
-
-  for candidate in candidates {
-    let normalized = candidate.replace(r#"\""#, "\"").replace(r"\'", "'");
-    if let Some(tokens) = shlex::split(&normalized) {
-      return Some(tokens);
-    }
-  }
-
-  None
+/// Parses a raw `--backend-args` value into argv tokens using shell-style
+/// quoting/escaping rules, so users can pass a single flag value containing
+/// multiple backend args, some of which may themselves contain spaces (e.g.
+/// `--backend-args '--user-agent="Custom Browser" --enable-x'`).
+fn parse_backend_args(raw: &str) -> Result<Vec<String>, AnyError> {
+  shell_words::split(raw).map_err(|e| {
+    deno_core::anyhow::anyhow!("invalid --backend-args quoting: {e}")
+  })
 }
 
-fn filtered_backend_args(desktop_flags: &DesktopFlags) -> Vec<String> {
+fn filtered_backend_args(
+  desktop_flags: &DesktopFlags,
+) -> Result<Vec<String>, AnyError> {
   let Some(backend_args) = desktop_flags.backend_args.as_deref() else {
-    return Vec::new();
+    return Ok(Vec::new());
   };
 
-  let Some(tokens) = split_backend_args(backend_args) else {
-    log::warn!(
-      "Ignoring malformed backend args {:?}: could not parse shell syntax",
-      backend_args,
-    );
-    return Vec::new();
-  };
+  let tokens = parse_backend_args(backend_args)?;
 
   let mut forwarded = Vec::new();
   let mut iter = tokens.into_iter().peekable();
@@ -1318,41 +1299,50 @@ fn filtered_backend_args(desktop_flags: &DesktopFlags) -> Vec<String> {
     }
   }
 
-  forwarded
+  Ok(forwarded)
 }
 
 fn apply_backend_flags(
   cmd: &mut std::process::Command,
   desktop_flags: &DesktopFlags,
-) {
-  for token in filtered_backend_args(desktop_flags) {
+) -> Result<(), AnyError> {
+  for token in filtered_backend_args(desktop_flags)? {
     cmd.arg(token);
   }
+  Ok(())
 }
 
-fn format_backend_args_for_shell(desktop_flags: &DesktopFlags) -> String {
-  filtered_backend_args(desktop_flags)
-    .into_iter()
-    .map(|arg| {
-      shlex::try_quote(&arg)
-        .unwrap_or_else(|_| {
-          std::borrow::Cow::Owned(format!("\"{}\"", arg.replace('"', "\\\"")))
-        })
-        .into_owned()
-    })
-    .collect::<Vec<_>>()
-    .join(" ")
+fn format_backend_args_for_shell(
+  desktop_flags: &DesktopFlags,
+) -> Result<String, AnyError> {
+  Ok(
+    filtered_backend_args(desktop_flags)?
+      .into_iter()
+      .map(|arg| {
+        shlex::try_quote(&arg)
+          .unwrap_or_else(|_| {
+            std::borrow::Cow::Owned(format!("\"{}\"", arg.replace('"', "\\\"")))
+          })
+          .into_owned()
+      })
+      .collect::<Vec<_>>()
+      .join(" "),
+  )
 }
 
-fn format_backend_args_for_cmd(desktop_flags: &DesktopFlags) -> String {
-  filtered_backend_args(desktop_flags)
-    .into_iter()
-    .map(|arg| {
-      let escaped = arg.replace('%', "%%").replace('"', "\"\"");
-      format!("\"{escaped}\"")
-    })
-    .collect::<Vec<_>>()
-    .join(" ")
+fn format_backend_args_for_cmd(
+  desktop_flags: &DesktopFlags,
+) -> Result<String, AnyError> {
+  Ok(
+    filtered_backend_args(desktop_flags)?
+      .into_iter()
+      .map(|arg| {
+        let escaped = arg.replace('%', "%%").replace('"', "\"\"");
+        format!("\"{escaped}\"")
+      })
+      .collect::<Vec<_>>()
+      .join(" "),
+  )
 }
 
 /// Launch the desktop app with HMR enabled after compilation.
@@ -1455,7 +1445,7 @@ async fn run_desktop_hmr(
     cmd.env("DENO_DESKTOP_HMR", &source_abs);
   }
 
-  apply_backend_flags(&mut cmd, desktop_flags);
+  apply_backend_flags(&mut cmd, desktop_flags)?;
 
   let _dev_server_child = if desktop_flags.hmr
     && let Some(fw) = framework
@@ -1890,7 +1880,7 @@ async fn package_linux_app_dir(
   // the user runs directly. When backend args are present, we add a tiny shell
   // wrapper so those flags reach the backend while still pointing it at the
   // colocated runtime.
-  let backend_args = format_backend_args_for_shell(desktop_flags);
+  let backend_args = format_backend_args_for_shell(desktop_flags)?;
   let launcher_args = if backend_args.is_empty() {
     String::new()
   } else {
@@ -3641,7 +3631,7 @@ fn create_linux_appimage(
   // AppRun is what the AppImage invokes on launch. Thin shell shim that
   // delegates to the existing launcher (which already sets $DIR and execs
   // the backend with the right args).
-  let backend_args = format_backend_args_for_shell(desktop_flags);
+  let backend_args = format_backend_args_for_shell(desktop_flags)?;
   let launcher_args = if backend_args.is_empty() {
     String::new()
   } else {
@@ -7842,5 +7832,53 @@ def456  other.zip
     };
     apply_desktop_config_to_flags(&mut flags, config);
     assert_eq!(flags.backend_args.as_deref(), None);
+  }
+
+  // --- parse_backend_args: shell-style tokenization of --backend-args ---
+
+  #[test]
+  fn parse_backend_args_simple_quoted_value() {
+    let tokens = parse_backend_args(r#"--user-agent="potato""#).unwrap();
+    assert_eq!(tokens, vec!["--user-agent=potato".to_string()]);
+  }
+
+  #[test]
+  fn parse_backend_args_quoted_value_with_spaces() {
+    let tokens =
+      parse_backend_args(r#"--user-agent="potato browser" --enable-logging"#)
+        .unwrap();
+    assert_eq!(
+      tokens,
+      vec![
+        "--user-agent=potato browser".to_string(),
+        "--enable-logging".to_string(),
+      ]
+    );
+  }
+
+  #[test]
+  fn parse_backend_args_preserves_escaped_inner_quotes() {
+    let tokens = parse_backend_args(r#"--title="a \"quoted\" title""#).unwrap();
+    assert_eq!(tokens, vec![r#"--title=a "quoted" title"#.to_string()]);
+  }
+
+  #[test]
+  fn parse_backend_args_simple_unquoted_value_unaffected() {
+    let tokens = parse_backend_args("--enable-logging --verbose").unwrap();
+    assert_eq!(
+      tokens,
+      vec!["--enable-logging".to_string(), "--verbose".to_string()]
+    );
+  }
+
+  #[test]
+  fn parse_backend_args_malformed_quoting_errors() {
+    let err = parse_backend_args(r#"--user-agent="unterminated"#).unwrap_err();
+    assert!(
+      err
+        .to_string()
+        .starts_with("invalid --backend-args quoting: "),
+      "unexpected error message: {err}",
+    );
   }
 }
