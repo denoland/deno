@@ -499,13 +499,14 @@ impl CliFactory {
 
   /// The `--deny-import` rules on their own, as a permissions container.
   ///
-  /// Every request made to load code — module fetches and npm registry
-  /// traffic alike — is checked against these, so that a deny rule written as
-  /// an IP literal also covers hostnames that resolve to it.
+  /// Module fetches are checked against these so that a deny rule written as
+  /// an IP literal also covers hostnames that resolve to it. Scoped to the
+  /// module fetcher: npm and jsr package resolution is not an `import` and is
+  /// not governed by `--deny-import`.
   ///
   /// Deliberately not `root_permissions_container`: building that resolves the
   /// main module, which needs the file fetcher this feeds.
-  pub fn import_deny_permissions(
+  fn import_deny_permissions(
     &self,
   ) -> Result<&Option<PermissionsContainer>, AnyError> {
     self.services.import_deny_permissions.get_or_try_init(|| {
@@ -645,8 +646,9 @@ impl CliFactory {
       Ok(CliNpmInstallerFactory::new(
         resolver_factory.clone(),
         Arc::new(CliNpmCacheHttpClient::new(
-          self.import_http_client_provider()?.clone(),
-          self.import_deny_permissions()?.clone(),
+          // npm registry traffic is not an `import`: `--deny-import` governs
+          // `https://` module specifiers, not package resolution
+          self.http_client_provider().clone(),
           self.text_only_progress_bar().clone(),
           if needs_full_packument {
             NpmPackumentFormat::Full

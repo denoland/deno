@@ -4753,29 +4753,6 @@ impl PermissionsContainer {
     Ok(())
   }
 
-  /// Deny-only import check for a URL the module system is about to request,
-  /// covering both the host as written and the addresses it resolves to.
-  ///
-  /// For requests made outside the module graph — npm registry metadata and
-  /// tarballs — there is no specifier to run [`Self::check_specifier`]
-  /// against, but the same `--deny-import` rules should still decide whether
-  /// the request may be made. Deny-only: nothing here can grant access that
-  /// was not already granted, so registries stay reachable unless the user
-  /// denied them.
-  pub fn check_import_deny_url(
-    &self,
-    url: &Url,
-  ) -> Result<(), PermissionCheckError> {
-    let desc = self
-      .descriptor_parser
-      .parse_import_descriptor_from_url(url)?;
-    {
-      let inner = self.inner.lock();
-      check_deny_only(&inner.import, &desc)?;
-    }
-    self.check_import_resolved_host(url)
-  }
-
   /// Checks the addresses a URL's hostname resolves to against the import
   /// deny list.
   ///
