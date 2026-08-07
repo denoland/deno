@@ -629,7 +629,7 @@ impl CliOptions {
       // they rewrite.
       DenoSubcommand::Outdated(_) => GraphKind::All,
       DenoSubcommand::Remove(_) => GraphKind::All,
-      _ => self.type_check_mode().as_graph_kind(),
+      _ => graph_kind(self.type_check_mode()),
     }
   }
 
@@ -658,7 +658,7 @@ impl CliOptions {
   }
 
   pub fn npm_system_info(&self) -> NpmSystemInfo {
-    self.sub_command().npm_system_info()
+    npm_system_info(self.sub_command())
   }
 
   /// Resolve the specifier for a specified import map.
@@ -987,7 +987,7 @@ impl CliOptions {
     fmt_flags: &FmtFlags,
   ) -> Result<Vec<(WorkspaceDirectoryRc, FmtOptions)>, AnyError> {
     let cli_arg_patterns =
-      fmt_flags.files.as_file_patterns(self.initial_cwd())?;
+      resolve_file_patterns(&fmt_flags.files, self.initial_cwd())?;
     let member_configs = self
       .workspace()
       .resolve_fmt_config_for_members(&cli_arg_patterns)?;
@@ -1021,7 +1021,7 @@ impl CliOptions {
     lint_flags: &LintFlags,
   ) -> Result<Vec<(WorkspaceDirectoryRc, LintOptions)>, AnyError> {
     let cli_arg_patterns =
-      lint_flags.files.as_file_patterns(self.initial_cwd())?;
+      resolve_file_patterns(&lint_flags.files, self.initial_cwd())?;
     let member_configs = self
       .workspace()
       .resolve_lint_config_for_members(&cli_arg_patterns)?;
@@ -1060,7 +1060,7 @@ impl CliOptions {
     test_flags: &TestFlags,
   ) -> Result<Vec<(WorkspaceDirectoryRc, TestOptions)>, AnyError> {
     let cli_arg_patterns =
-      test_flags.files.as_file_patterns(self.initial_cwd())?;
+      resolve_file_patterns(&test_flags.files, self.initial_cwd())?;
     let workspace_dir_configs = self
       .workspace()
       .resolve_test_config_for_members(&cli_arg_patterns)?;
@@ -1084,7 +1084,7 @@ impl CliOptions {
     bench_flags: &BenchFlags,
   ) -> Result<Vec<(WorkspaceDirectoryRc, BenchOptions)>, AnyError> {
     let cli_arg_patterns =
-      bench_flags.files.as_file_patterns(self.initial_cwd())?;
+      resolve_file_patterns(&bench_flags.files, self.initial_cwd())?;
     let workspace_dir_configs = self
       .workspace()
       .resolve_bench_config_for_members(&cli_arg_patterns)?;

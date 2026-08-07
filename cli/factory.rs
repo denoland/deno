@@ -66,11 +66,11 @@ use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::ConfigFlag;
 use crate::args::DenoSubcommand;
-use crate::args::DenoSubcommandExt;
 use crate::args::Flags;
 use crate::args::FlagsExt;
 use crate::args::InstallFlags;
 use crate::args::InstallFlagsLocal;
+use crate::args::npm_system_info;
 use crate::cache::Caches;
 use crate::cache::CodeCache;
 use crate::cache::DenoDir;
@@ -1431,7 +1431,7 @@ impl CliFactory {
             node_resolver::analyze::NodeCodeTranslatorMode::ModuleLoader
           },
           node_resolution_cache: Some(Arc::new(NodeResolutionThreadLocalCache)),
-          npm_system_info: self.flags.subcommand.npm_system_info(),
+          npm_system_info: npm_system_info(&self.flags.subcommand),
           specified_import_map: Some(Box::new(CliSpecifiedImportMapProvider {
             cli_options: options.clone(),
             eszip_module_loader_provider: self
