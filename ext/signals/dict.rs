@@ -145,7 +145,7 @@ signal_dict!(
   (31, "SIGSYS" | "SIGUNUSED")
 );
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 signal_dict!(
   (1, "SIGHUP"),
   (2, "SIGINT"),

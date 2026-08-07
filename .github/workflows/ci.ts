@@ -2197,6 +2197,11 @@ function resolveWorkspaceCrates(testPackageMembers: Set<string>) {
       // libs/* crates (merged from deno_core) have their own dedicated
       // deno-core-test CI job, so skip them here.
       continue;
+    } else if (member === "cli/deno_ios_app") {
+      // deno_ios_app is an iOS-only binary crate with no lib target (it links
+      // the laufey backend only when compiled for iOS), so it can't be part of
+      // the host `cargo test --lib` job.
+      continue;
     } else if (cargoToml.bin) {
       ensureNoIntegrationTests(member, cargoToml);
       binCrates.push(cargoToml.package.name);

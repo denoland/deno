@@ -4,6 +4,7 @@
 resolver = "2"
 members = [
   "cli",
+  "cli/deno_ios_app",
   "cli/lib",
   "cli/rt",
   "cli/rt_desktop",

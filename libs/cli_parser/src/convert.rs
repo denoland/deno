@@ -2595,6 +2595,8 @@ fn desktop_parse(result: &ParseResult, flags: &mut Flags) {
     identifier: None,
     deep_links: Vec::new(),
     codesign_identity: None,
+    ios_provisioning_profile: None,
+    ios_entitlements: None,
     inspect_renderer,
     compress,
     exclude_unused_npm: result.get_bool("exclude-unused-npm"),

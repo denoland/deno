@@ -87,6 +87,7 @@ impl FileSystem for RealFs {
     }
     #[cfg(any(
       target_os = "macos",
+      target_os = "ios",
       target_os = "openbsd",
       target_os = "freebsd"
     ))]
@@ -1005,6 +1006,7 @@ fn statfs(path: &Path, bigint: bool) -> FsResult<FsStatFs> {
     if bigint {
       #[cfg(not(any(
         target_os = "macos",
+        target_os = "ios",
         target_os = "freebsd",
         target_os = "openbsd"
       )))]
@@ -1015,6 +1017,7 @@ fn statfs(path: &Path, bigint: bool) -> FsResult<FsStatFs> {
       };
       #[cfg(any(
         target_os = "macos",
+        target_os = "ios",
         target_os = "freebsd",
         target_os = "openbsd"
       ))]

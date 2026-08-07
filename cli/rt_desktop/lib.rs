@@ -1301,6 +1301,21 @@ laufey::main!(|| {
     );
   }
 
+  // On iOS `HOME` (NSHomeDirectory) is the app's Data container, whose *root*
+  // is not writable — only Documents/, Library/ and tmp/ are. Apps that write
+  // to `$HOME/<something>` (a normal desktop convention) fail with EPERM.
+  // Point `HOME` at the writable Documents/ dir so those apps work unmodified.
+  #[cfg(target_os = "ios")]
+  if let Some(home) = std::env::var_os("HOME") {
+    let documents = std::path::Path::new(&home).join("Documents");
+    if std::fs::create_dir_all(&documents).is_ok() {
+      // SAFETY: still single-threaded here (see the block comment above).
+      unsafe {
+        std::env::set_var("HOME", &documents);
+      }
+    }
+  }
+
   // Read the embedded standalone section, extract the VFS, and chdir
   // into the extraction dir — all BEFORE the tokio runtime starts.
   // chdir is process-wide; doing it after the runtime build (and any

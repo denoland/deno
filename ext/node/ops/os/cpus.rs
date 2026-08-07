@@ -25,7 +25,7 @@ impl CpuInfo {
   }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 pub fn cpu_info() -> Option<Vec<CpuInfo>> {
   let mut model: [u8; 512] = [0; 512];
   let mut size = std::mem::size_of_val(&model);

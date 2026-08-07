@@ -141,6 +141,32 @@ impl<'de> Deserialize<'de> for ForeignSymbol {
   }
 }
 
+// iOS permits `dlopen`/`dlsym` only for dylibs that ship *inside* the app
+// bundle and are code-signed at build time (loading downloaded code stays
+// forbidden). Bundled dylibs live in `App.app/Frameworks/`, so a bare library
+// name (e.g. `Deno.dlopen("libfoo.dylib")`) is resolved against that directory,
+// letting iOS callers use the same bare-name form as every other platform.
+// Absolute or multi-component relative paths are honored as-is.
+#[cfg(target_os = "ios")]
+fn resolve_ios_bundle_path(path: Cow<'_, Path>) -> Cow<'_, Path> {
+  let is_bare_name = path.is_relative()
+    && path.components().count() == 1
+    && matches!(
+      path.components().next(),
+      Some(std::path::Component::Normal(_))
+    );
+  if is_bare_name
+    && let Ok(exe) = std::env::current_exe()
+    && let Some(app_dir) = exe.parent()
+  {
+    let candidate = app_dir.join("Frameworks").join(&path);
+    if candidate.exists() {
+      return Cow::Owned(candidate);
+    }
+  }
+  path
+}
+
 #[op2(stack_trace)]
 pub fn op_ffi_load<'scope>(
   scope: &mut v8::PinScope<'scope, '_>,
@@ -162,6 +188,9 @@ pub fn op_ffi_load<'scope>(
     Some(loader) => loader.load_and_resolve_path(&path)?,
     None => Cow::Borrowed(path.as_ref()),
   };
+  // On iOS, remap a bare bundled-dylib name to the app bundle's Frameworks dir.
+  #[cfg(target_os = "ios")]
+  let real_path = resolve_ios_bundle_path(real_path);
   let lib = Library::open(real_path.as_ref()).map_err(|e| {
     dlopen2::Error::OpeningLibraryError(std::io::Error::other(format_error(
       e, &real_path,
@@ -270,7 +299,14 @@ fn make_sync_fn<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   symbol: Box<Symbol>,
 ) -> v8::Local<'s, v8::Function> {
-  let turbocall = if turbocall::is_compatible(&symbol) {
+  // The turbocall fast path JIT-compiles a trampoline into freshly mmap'd
+  // executable memory. iOS forbids creating executable pages at runtime on
+  // device (jitless), so skip it there and use the libffi slow path, which
+  // needs no runtime codegen. `Deno.dlopen`/`op_ffi_call` themselves work
+  // fine on iOS — libffi dispatches through static, pre-signed assembly.
+  let use_turbocall =
+    !cfg!(target_os = "ios") && turbocall::is_compatible(&symbol);
+  let turbocall = if use_turbocall {
     match turbocall::compile_trampoline(&symbol) {
       Ok(trampoline) => {
         let turbocall = turbocall::make_template(&symbol, trampoline);

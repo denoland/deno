@@ -1333,7 +1333,12 @@ fn get_desktop_specific_filepath(
     Some(target) => target.contains("darwin"),
     None => cfg!(target_os = "macos"),
   };
-  if is_windows {
+  // iOS ships a static executable (not a loadable library), so the injected
+  // artifact is a plain binary with no library extension.
+  let is_ios = matches!(target, Some(t) if t.contains("apple-ios"));
+  if is_ios {
+    output.with_extension("")
+  } else if is_windows {
     output.with_extension("dll")
   } else if is_darwin {
     output.with_extension("dylib")

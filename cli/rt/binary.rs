@@ -243,7 +243,20 @@ pub(crate) fn get_data_local_dir() -> Option<PathBuf> {
     sys_traits::EnvHomeDir::env_home_dir(&sys_traits::impls::RealSys)
       .map(|h| h.join("Library").join("Application Support"))
   }
-  #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+  #[cfg(target_os = "ios")]
+  {
+    // On iOS the app sandbox only permits writes under Library/, Documents/
+    // and tmp/ of the Data container ($HOME); `.local/share` at the container
+    // root is EPERM. Extract into Library/Caches (purgeable, non-backed-up).
+    #[allow(clippy::disallowed_types, reason = "setup code")]
+    sys_traits::EnvHomeDir::env_home_dir(&sys_traits::impls::RealSys)
+      .map(|h| h.join("Library").join("Caches"))
+  }
+  #[cfg(not(any(
+    target_os = "windows",
+    target_os = "macos",
+    target_os = "ios"
+  )))]
   {
     std::env::var_os("XDG_DATA_HOME")
       .map(PathBuf::from)
