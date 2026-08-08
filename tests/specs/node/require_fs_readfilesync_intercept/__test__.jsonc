@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "intercept_cjs": {
+      "args": "run --allow-read main.cjs",
+      "output": "main.out"
+    },
+    "intercept_json": {
+      "args": "run --allow-read json_main.cjs",
+      "output": "json_main.out"
+    }
+  }
+}
