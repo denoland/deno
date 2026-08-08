@@ -663,7 +663,7 @@ const NOT_IMPORTED_OPS = [
   "op_jupyter_deno_version",
   "op_jupyter_typescript_version",
   // Used in jupyter API
-  "op_base64_encode",
+  "op_base64_encode_from_buffer",
 
   // Used in the lint API
   "op_lint_report",
