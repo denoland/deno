@@ -535,6 +535,8 @@ static CONTENT_TYPES: phf::Set<&'static [u8]> = phf_set! {
   b"application/x-dtbresource+xml",
   b"application/x-httpd-php",
   b"application/x-javascript",
+  // not in mime-db; see jshttp/mime-db#224
+  b"application/x-ndjson",
   b"application/x-ns-proxy-autoconfig",
   b"application/x-sh",
   b"application/x-tar",
@@ -651,6 +653,7 @@ mod tests {
   #[test]
   fn compressible_content_type() {
     assert!(is_content_compressible("application/json"));
+    assert!(is_content_compressible("application/x-ndjson"));
     assert!(is_content_compressible("text/plain;charset=UTF-8"));
     assert!(is_content_compressible("text/PlAIn; charset=utf-8"));
   }
