@@ -1,0 +1,5 @@
+[WILDCARD]deno transpile is experimental and subject to changes
+Emit [WILDCARD]dist[WILDCARD]import_extensions.js
+Emit [WILDCARD]dist[WILDCARD]helpers.js
+Emit [WILDCARD]dist[WILDCARD]helper.mjs
+Emit [WILDCARD]dist[WILDCARD]helper.cjs
