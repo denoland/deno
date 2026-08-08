@@ -164,6 +164,12 @@ pub(crate) fn generate_dispatch_slow(
     quote!()
   };
 
+  let with_construct_call_check = if generator_state.use_this_cppgc {
+    with_construct_call_check(generator_state)
+  } else {
+    quote!()
+  };
+
   let with_self = if generator_state.needs_self {
     with_self(generator_state, &signature.ret_val)
   } else {
@@ -192,6 +198,7 @@ pub(crate) fn generate_dispatch_slow(
       #with_scope
       #with_retval
       #with_args
+      #with_construct_call_check
       #with_validate
       #with_required_check
       #with_opctx
@@ -319,6 +326,26 @@ pub(crate) fn with_required_check(
       let mut msg = #message_prefix.to_string();
       msg.push_str(&present.to_string());
       msg.push_str(" present");
+      let msg = deno_core::v8::String::new(&mut #scope, &msg).unwrap();
+      let exception = deno_core::v8::Exception::type_error(&mut #scope, msg.into());
+      #scope.throw_exception(exception);
+      return 1;
+    })
+  )
+}
+
+pub(crate) fn with_construct_call_check(
+  generator_state: &mut GeneratorState,
+) -> TokenStream {
+  generator_state.needs_scope = true;
+  generator_state.needs_args = true;
+  let prefix = format!("Failed to construct '{}'", generator_state.self_ty);
+  gs_quote!(generator_state(fn_args, scope) =>
+    (if !#fn_args.is_construct_call() {
+      let msg = format!(
+        "{}: Please use the 'new' operator, this constructor cannot be called as a function.",
+        #prefix,
+      );
       let msg = deno_core::v8::String::new(&mut #scope, &msg).unwrap();
       let exception = deno_core::v8::Exception::type_error(&mut #scope, msg.into());
       #scope.throw_exception(exception);
