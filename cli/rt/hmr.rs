@@ -140,6 +140,38 @@ fn should_retry(status: &cdp::Status) -> bool {
   )
 }
 
+/// Source files that are part of the V8 module graph and can be hot-replaced
+/// via `Debugger.setScriptSource` (after transpiling, if needed).
+fn is_script_ext(ext: &str) -> bool {
+  matches!(ext, "js" | "ts" | "jsx" | "tsx" | "mjs" | "cjs")
+}
+
+/// Static assets served to the webview. They aren't in the module graph, so a
+/// change can't be hot-replaced — the webview just needs to re-fetch them with
+/// a page reload.
+fn is_asset_ext(ext: &str) -> bool {
+  matches!(
+    ext,
+    "html"
+      | "htm"
+      | "css"
+      | "json"
+      | "svg"
+      | "png"
+      | "jpg"
+      | "jpeg"
+      | "gif"
+      | "webp"
+      | "avif"
+      | "ico"
+      | "wasm"
+      | "woff"
+      | "woff2"
+      | "ttf"
+      | "otf"
+  )
+}
+
 /// Transpile a TypeScript/TSX/JSX source file to JavaScript for HMR.
 fn transpile_for_hmr(
   specifier: &Url,
@@ -279,15 +311,32 @@ impl HmrState {
   }
 }
 
-/// Callback invoked after a module is successfully hot-replaced.
-pub type HmrReloadCallback = Box<dyn Fn() + Send + Sync>;
+/// How the host should react to a change that couldn't be (or didn't need to
+/// be) hot-replaced.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReloadKind {
+  /// Refresh the webview content (e.g. `location.reload()`). Enough when only
+  /// served assets or already-hot-replaced handler code changed.
+  Soft,
+  /// The V8 module graph itself must be re-evaluated from scratch (a top-level
+  /// module change V8 can't patch in place). A soft reload can't reset the
+  /// runtime's module state, so the whole app has to be restarted.
+  Restart,
+}
+
+/// Callback invoked when the host should reload or restart the app.
+pub type HmrReloadCallback = Box<dyn Fn(ReloadKind) + Send + Sync>;
 
 /// Result of attempting to apply a single change.
 enum ChangeOutcome {
   /// `setScriptSource` succeeded — the URL was hot-replaced.
   Replaced(String),
-  /// V8 can't apply the change in place; ask the host to reload.
-  NeedsReload(String),
+  /// The change can't be hot-replaced but a webview refresh picks it up
+  /// (static assets, or a removed module the page just needs to re-fetch).
+  SoftReload(String),
+  /// V8 rejected the change as a top-level module edit; the runtime must be
+  /// fully restarted to re-evaluate the module graph.
+  Restart(String),
   /// Nothing to do (untracked file, transient I/O error, etc.).
   Skipped,
 }
@@ -348,7 +397,7 @@ impl DesktopHmrRunner {
         };
         for path in event.paths {
           if let Some(ext) = path.extension().and_then(|e| e.to_str())
-            && matches!(ext, "js" | "ts" | "jsx" | "tsx" | "mjs" | "cjs")
+            && (is_script_ext(ext) || is_asset_ext(ext))
           {
             let _ = changed_tx.send((path, change));
           }
@@ -436,16 +485,21 @@ impl DesktopHmrRunner {
             }
           }
 
-          let mut needs_reload = false;
+          let mut needs_soft_reload = false;
+          let mut needs_restart = false;
           let mut handled: HashSet<String> = HashSet::new();
           for (path, change) in pending {
             match self.handle_change(&path, change).await {
               ChangeOutcome::Replaced(url) => {
                 handled.insert(url);
               }
-              ChangeOutcome::NeedsReload(reason) => {
-                log::info!("HMR: {} — falling back to page reload", reason);
-                needs_reload = true;
+              ChangeOutcome::SoftReload(reason) => {
+                log::info!("HMR: {} — reloading page", reason);
+                needs_soft_reload = true;
+              }
+              ChangeOutcome::Restart(reason) => {
+                log::info!("HMR: {} — restarting app", reason);
+                needs_restart = true;
               }
               ChangeOutcome::Skipped => {}
             }
@@ -456,10 +510,15 @@ impl DesktopHmrRunner {
             log::info!("HMR: replaced {}", url);
           }
 
-          if (needs_reload || !handled.is_empty())
-            && let Some(on_reload) = &self.on_reload
-          {
-            on_reload();
+          // A restart re-evaluates the whole module graph, so it subsumes any
+          // soft reload queued in the same batch. Otherwise refresh the webview
+          // if anything was hot-replaced or an asset changed.
+          if let Some(on_reload) = &self.on_reload {
+            if needs_restart {
+              on_reload(ReloadKind::Restart);
+            } else if needs_soft_reload || !handled.is_empty() {
+              on_reload(ReloadKind::Soft);
+            }
           }
         }
       }
@@ -473,6 +532,14 @@ impl DesktopHmrRunner {
     path: &Path,
     change: FileChange,
   ) -> ChangeOutcome {
+    // Static assets aren't in the V8 module graph and can't be hot-replaced.
+    // Any change to one means the webview is showing stale content, so ask the
+    // host for a soft page reload to re-fetch it.
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    if !is_script_ext(ext) {
+      return ChangeOutcome::SoftReload(format!("{} changed", path.display()));
+    }
+
     #[allow(
       clippy::disallowed_methods,
       reason = "denort has no canonicalize helper; non-canonicalizable paths are handled below"
@@ -519,7 +586,7 @@ impl DesktopHmrRunner {
       // that V8 had loaded. Either way, setScriptSource isn't applicable —
       // ask the host to reload so it picks up the new state.
       return if script_id.is_some() {
-        ChangeOutcome::NeedsReload(format!("{} removed", module_url))
+        ChangeOutcome::SoftReload(format!("{} removed", module_url))
       } else {
         ChangeOutcome::Skipped
       };
@@ -574,11 +641,14 @@ impl DesktopHmrRunner {
       log::error!("HMR: failed to reload {}: {}", module_url, explain(&result));
 
       // V8 can't replace modules whose top-level surface (imports, exported
-      // bindings, top-level let/const) changed. The classic run-mode HMR
-      // restarts the worker; here we tell the host to reload the page so the
-      // user's edit isn't silently dropped.
+      // bindings, top-level let/const) changed. A page reload won't help: it
+      // refreshes the webview but leaves the runtime's module graph untouched,
+      // so the edit is silently dropped and — because the unapplied top-level
+      // diff is re-sent with every later edit — all subsequent HMR for this
+      // module stays blocked too. The classic run-mode HMR restarts the worker;
+      // do the equivalent here by asking the host to restart the app.
       if matches!(result.status, cdp::Status::BlockedByTopLevelEsModuleChange) {
-        return ChangeOutcome::NeedsReload(format!(
+        return ChangeOutcome::Restart(format!(
           "{} requires a top-level module reload",
           module_url
         ));
@@ -684,4 +754,29 @@ pub fn setup_desktop_hmr(
 
   runner.start();
   Ok(runner)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn script_vs_asset_classification() {
+    // Module-graph sources are hot-replaced; nothing else is.
+    for ext in ["js", "ts", "jsx", "tsx", "mjs", "cjs"] {
+      assert!(is_script_ext(ext), "{ext} should be a script");
+      assert!(!is_asset_ext(ext), "{ext} should not be an asset");
+    }
+    // Static assets (the #35496 sibling fix) trigger a page reload, not a
+    // setScriptSource — they must be watched but never treated as scripts.
+    for ext in ["html", "css", "json", "svg", "png", "wasm", "woff2"] {
+      assert!(is_asset_ext(ext), "{ext} should be an asset");
+      assert!(!is_script_ext(ext), "{ext} should not be a script");
+    }
+    // Editor noise (swap/backup/temp) stays out of both sets so it never
+    // triggers a reload.
+    for ext in ["swp", "tmp", "orig", "bak"] {
+      assert!(!is_script_ext(ext) && !is_asset_ext(ext));
+    }
+  }
 }
