@@ -767,6 +767,30 @@ Deno.test(
 );
 
 Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { run: [Deno.execPath()], read: true },
+  },
+  function commandLoaderEnvValueValidation() {
+    for (const name of ["LD_PRELOAD", "DYLD_INSERT_LIBRARIES"]) {
+      const command = (value: string) =>
+        new Deno.Command(Deno.execPath(), {
+          args: ["eval", ""],
+          clearEnv: true,
+          env: { [name]: value },
+        });
+
+      assertEquals(command("").outputSync().success, true);
+      assertThrows(
+        () => command("\t").outputSync(),
+        Deno.errors.NotCapable,
+        name,
+      );
+    }
+  },
+);
+
+Deno.test(
   { permissions: { run: true, read: true } },
   function commandSyncEnv() {
     const { stdout } = new Deno.Command(Deno.execPath(), {
