@@ -26,6 +26,7 @@ import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypePush,
   FunctionPrototypeCall,
+  ObjectCreate,
   ObjectDefineProperty,
   ObjectSetPrototypeOf,
   StringPrototypeCharCodeAt,
@@ -116,7 +117,7 @@ ObjectDefineProperty(IncomingMessage.prototype, "headers", {
   __proto__: null,
   get: function () {
     if (!this[kHeaders]) {
-      this[kHeaders] = {};
+      this[kHeaders] = ObjectCreate(null);
 
       const src = this.rawHeaders;
       const dst = this[kHeaders];
@@ -136,7 +137,7 @@ ObjectDefineProperty(IncomingMessage.prototype, "headersDistinct", {
   __proto__: null,
   get: function () {
     if (!this[kHeadersDistinct]) {
-      this[kHeadersDistinct] = {};
+      this[kHeadersDistinct] = ObjectCreate(null);
 
       const src = this.rawHeaders;
       const dst = this[kHeadersDistinct];
@@ -156,7 +157,7 @@ ObjectDefineProperty(IncomingMessage.prototype, "trailers", {
   __proto__: null,
   get: function () {
     if (!this[kTrailers]) {
-      this[kTrailers] = {};
+      this[kTrailers] = ObjectCreate(null);
 
       const src = this.rawTrailers;
       const dst = this[kTrailers];
@@ -176,7 +177,7 @@ ObjectDefineProperty(IncomingMessage.prototype, "trailersDistinct", {
   __proto__: null,
   get: function () {
     if (!this[kTrailersDistinct]) {
-      this[kTrailersDistinct] = {};
+      this[kTrailersDistinct] = ObjectCreate(null);
 
       const src = this.rawTrailers;
       const dst = this[kTrailersDistinct];

@@ -1537,6 +1537,68 @@ Deno.test("[node/http] IncomingMessage override", () => {
   });
 });
 
+Deno.test("[node/http] IncomingMessage header maps handle built-in names", async () => {
+  const hostname = "127.0.0.1";
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const server = http.createServer((req, res) => {
+    req.resume();
+    req.on("end", () => {
+      try {
+        const headers = req.headers as Record<string, string | string[]>;
+        const headersDistinct = req.headersDistinct as Record<string, string[]>;
+        const trailers = req.trailers as Record<string, string | string[]>;
+        const trailersDistinct = req.trailersDistinct as Record<
+          string,
+          string[]
+        >;
+        assertEquals(Object.getPrototypeOf(req.headers), null);
+        assertEquals(headers["constructor"], "request");
+        assertEquals(Object.getPrototypeOf(req.headersDistinct), null);
+        assertEquals(headersDistinct["constructor"], ["request"]);
+        assertEquals(Object.getPrototypeOf(req.trailers), null);
+        assertEquals(trailers["constructor"], "trailer");
+        assertEquals(Object.getPrototypeOf(req.trailersDistinct), null);
+        assertEquals(trailersDistinct["constructor"], ["trailer"]);
+        res.end("ok");
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+
+  try {
+    server.listen(0, hostname);
+    await once(server, "listening");
+    const { port } = server.address() as AddressInfo;
+    const conn = await Deno.connect({ hostname, port });
+    try {
+      await conn.write(
+        new TextEncoder().encode(
+          [
+            "POST / HTTP/1.1",
+            "Host: localhost",
+            "Transfer-Encoding: chunked",
+            "constructor: request",
+            "",
+            "0",
+            "constructor: trailer",
+            "",
+            "",
+          ].join("\r\n"),
+        ),
+      );
+      await promise;
+    } finally {
+      conn.close();
+    }
+  } finally {
+    server.close();
+  }
+});
+
 Deno.test("[node/http] ServerResponse assignSocket and detachSocket", () => {
   const req = new http.IncomingMessage(new net.Socket());
   const res = new http.ServerResponse(req);
