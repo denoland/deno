@@ -6,6 +6,7 @@ import * as http2 from "node:http2";
 import * as https from "node:https";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { Buffer } from "node:buffer";
+import fs from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import * as net from "node:net";
@@ -896,6 +897,309 @@ Deno.test("[node/http2 client] connect with pre-created socket", {
   server.close();
   await new Promise<void>((resolve) => server.on("close", resolve));
 });
+
+// A stream write only completes once nghttp2 has framed its bytes, so a peer
+// that stops reading holds the write outstanding instead of letting it buffer
+// without bound on the native side.
+Deno.test("[node/http2] stream writes apply backpressure", async () => {
+  const chunk = Buffer.alloc(256 * 1024);
+  const backpressured = Promise.withResolvers<void>();
+  const drained = Promise.withResolvers<void>();
+  let pending = 0;
+
+  const server = http2.createServer();
+  server.on("stream", (stream) => {
+    stream.respond({ ":status": 200 });
+    // The client leaves the response paused, so its flow-control window closes
+    // and nghttp2 stops accepting DATA. Write until the Writable pushes back.
+    //
+    // With the pre-fix synchronous completion, write() always returns true, so
+    // this loop never breaks and the test would hang until the runner's
+    // timeout rather than failing the assertions below — that timeout is the
+    // primary regression signal here.
+    while (true) {
+      pending++;
+      if (!stream.write(chunk, () => pending--)) {
+        break;
+      }
+    }
+    stream.once("drain", () => drained.resolve());
+    backpressured.resolve();
+  });
+
+  const port = await new Promise<number>((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      resolve((server.address() as net.AddressInfo).port);
+    });
+  });
+
+  const client = http2.connect(`http://127.0.0.1:${port}`);
+  client.on("error", () => {});
+  const request = client.request({ ":path": "/" });
+  request.on("error", () => {});
+  request.on("response", () => request.pause());
+  request.end();
+
+  try {
+    await backpressured.promise;
+    // Nothing can drain the write while the window is shut, so its callback
+    // must stay outstanding rather than reporting a bogus instant completion.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert(pending > 0, "write completed even though the peer never read");
+
+    // Reading reopens the window, which releases the write and the producer.
+    request.resume();
+    await drained.promise;
+    assertEquals(pending, 0);
+  } finally {
+    client.destroy();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+Deno.test("[node/http2] destroy cleans internal socket references", async () => {
+  const server = http2.createServer((_req, res) => {
+    res.end("ok");
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as net.AddressInfo).port;
+
+  const client = http2.connect(`http://127.0.0.1:${port}`);
+  await new Promise<void>((resolve, reject) => {
+    client.once("connect", resolve);
+    client.once("error", reject);
+  });
+
+  const clientSymbols = Object.getOwnPropertySymbols(client);
+  const socketSymbol = clientSymbols.find((symbol) =>
+    String(symbol) === "Symbol(socket)"
+  );
+  const handleSymbol = clientSymbols.find((symbol) =>
+    String(symbol) === "Symbol(kHandle)"
+  );
+  if (!socketSymbol || !handleSymbol) {
+    throw new Error("missing expected internal http2 symbols");
+  }
+
+  const clientRecord = client as unknown as Record<symbol, unknown>;
+  const socket = clientRecord[socketSymbol] as net.Socket;
+  const handle = clientRecord[handleSymbol] as Record<symbol, unknown>;
+  const ownerSymbol = Object.getOwnPropertySymbols(handle).find((symbol) =>
+    String(symbol) === "Symbol(ownerSymbol)"
+  );
+
+  client.destroy();
+  await new Promise<void>((resolve) => client.once("close", resolve));
+
+  assertEquals(clientRecord[handleSymbol], undefined);
+  if (ownerSymbol) {
+    assertEquals(handle[ownerSymbol], undefined);
+  }
+  assertEquals(socket.listenerCount("data"), 0);
+  assertEquals(socket.listenerCount("error"), 0);
+  assertEquals(socket.listenerCount("close"), 0);
+
+  // A user can retain the internal handle through reflection. Late socket
+  // events or callbacks must become harmless after native teardown rather
+  // than dereferencing the released nghttp2 session.
+  const retainedHandle = handle as unknown as {
+    receive(data: Uint8Array): void;
+    getOutgoingChunk(): Uint8Array;
+    hasPendingData(): boolean;
+    settings(callback: () => void): boolean;
+    ping(payload: Uint8Array): number;
+    destroy(): void;
+  };
+  retainedHandle.receive(new Uint8Array([0]));
+  assertEquals(retainedHandle.getOutgoingChunk().byteLength, 0);
+  assertEquals(retainedHandle.hasPendingData(), false);
+  assertEquals(retainedHandle.settings(() => {}), false);
+  assertEquals(retainedHandle.ping(new Uint8Array(8)), -1);
+  retainedHandle.destroy();
+
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+});
+
+async function testRespondWithCancellation(ownsFd: boolean) {
+  const filePath = await Deno.makeTempFile();
+  await Deno.writeFile(filePath, new Uint8Array(256 * 1024));
+
+  const originalRead = fs.read;
+  const originalClose = fs.close;
+  let streamClosed = false;
+  let readsAfterClose = 0;
+  let closeCalls = 0;
+
+  Object.defineProperty(fs, "read", {
+    configurable: true,
+    writable: true,
+    value: (...args: unknown[]) => {
+      if (streamClosed) readsAfterClose++;
+      const callbackIndex = args.length - 1;
+      const callback = args[callbackIndex] as (...args: unknown[]) => void;
+      args[callbackIndex] = (...callbackArgs: unknown[]) => {
+        setTimeout(() => callback(...callbackArgs), 3);
+      };
+      return Reflect.apply(
+        originalRead as unknown as (...args: unknown[]) => unknown,
+        fs,
+        args,
+      );
+    },
+  });
+  Object.defineProperty(fs, "close", {
+    configurable: true,
+    writable: true,
+    value: (...args: unknown[]) => {
+      closeCalls++;
+      return Reflect.apply(
+        originalClose as unknown as (...args: unknown[]) => unknown,
+        fs,
+        args,
+      );
+    },
+  });
+
+  const fd = ownsFd ? undefined : fs.openSync(filePath, "r");
+  const streamClose = Promise.withResolvers<void>();
+  const server = http2.createServer();
+  server.on("stream", (stream) => {
+    stream.on("error", () => {});
+    stream.once("close", () => {
+      streamClosed = true;
+      streamClose.resolve();
+    });
+    if (ownsFd) {
+      stream.respondWithFile(filePath);
+    } else {
+      stream.respondWithFD(fd!);
+    }
+  });
+
+  let client: http2.ClientHttp2Session | undefined;
+  try {
+    const port = await new Promise<number>((resolve) => {
+      server.listen(0, "127.0.0.1", () => {
+        resolve((server.address() as net.AddressInfo).port);
+      });
+    });
+    client = http2.connect(`http://127.0.0.1:${port}`);
+    client.on("error", () => {});
+    const request = client.request({ ":path": "/" });
+    request.on("error", () => {});
+    request.on("response", () => {
+      request.destroy();
+      client!.destroy();
+    });
+    request.end();
+
+    const timeout = setTimeout(
+      () => streamClose.reject(new Error("stream close timeout")),
+      5000,
+    );
+    await streamClose.promise.finally(() => clearTimeout(timeout));
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    assertEquals(readsAfterClose, 0);
+    assertEquals(closeCalls, ownsFd ? 1 : 0);
+  } finally {
+    client?.destroy();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    if (fd !== undefined) fs.closeSync(fd);
+    Object.defineProperty(fs, "read", {
+      configurable: true,
+      writable: true,
+      value: originalRead,
+    });
+    Object.defineProperty(fs, "close", {
+      configurable: true,
+      writable: true,
+      value: originalClose,
+    });
+    await Deno.remove(filePath);
+  }
+}
+
+Deno.test(
+  "[node/http2] respondWithFile stops reading and closes owned fd",
+  () => testRespondWithCancellation(true),
+);
+
+Deno.test(
+  "[node/http2] respondWithFD stops reading without closing caller fd",
+  () => testRespondWithCancellation(false),
+);
+
+Deno.test(
+  "[node/http2] respondWithFile closes owned fd when fs.read throws",
+  async () => {
+    const filePath = await Deno.makeTempFile();
+    await Deno.writeFile(filePath, new Uint8Array(256));
+
+    const originalRead = fs.read;
+    const originalClose = fs.close;
+    let closeCalls = 0;
+
+    Object.defineProperty(fs, "read", {
+      configurable: true,
+      writable: true,
+      value: () => {
+        throw new Error("fs.read failed");
+      },
+    });
+    Object.defineProperty(fs, "close", {
+      configurable: true,
+      writable: true,
+      value: (...args: unknown[]) => {
+        closeCalls++;
+        return Reflect.apply(
+          originalClose as unknown as (...args: unknown[]) => unknown,
+          fs,
+          args,
+        );
+      },
+    });
+
+    const streamClose = Promise.withResolvers<void>();
+    const server = http2.createServer();
+    server.on("stream", (stream) => {
+      stream.on("error", () => {});
+      stream.once("close", () => streamClose.resolve());
+      stream.respondWithFile(filePath);
+    });
+
+    let client: http2.ClientHttp2Session | undefined;
+    try {
+      const port = await new Promise<number>((resolve) => {
+        server.listen(0, "127.0.0.1", () => {
+          resolve((server.address() as net.AddressInfo).port);
+        });
+      });
+      client = http2.connect(`http://127.0.0.1:${port}`);
+      client.on("error", () => {});
+      const request = client.request({ ":path": "/" });
+      request.on("error", () => {});
+      request.end();
+
+      await streamClose.promise;
+      assertEquals(closeCalls, 1);
+    } finally {
+      client?.destroy();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      Object.defineProperty(fs, "read", {
+        configurable: true,
+        writable: true,
+        value: originalRead,
+      });
+      Object.defineProperty(fs, "close", {
+        configurable: true,
+        writable: true,
+        value: originalClose,
+      });
+      await Deno.remove(filePath);
+    }
+  },
+);
 
 // Regression test for https://github.com/denoland/deno/issues/33317
 // `http2.createSecureServer({ allowHTTP1: true })` must handle HTTP/1.1

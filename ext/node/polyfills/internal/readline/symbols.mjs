@@ -19,7 +19,7 @@ const kHistoryNext = Symbol("_historyNext");
 const kHistoryPrev = Symbol("_historyPrev");
 const kInsertString = Symbol("_insertString");
 const kLine = Symbol("_line");
-const kLine_buffer = Symbol("_line_buffer");
+const kLineBuffer = Symbol("_line_buffer");
 const kMoveCursor = Symbol("_moveCursor");
 const kNormalWrite = Symbol("_normalWrite");
 const kOldPrompt = Symbol("_oldPrompt");
@@ -52,7 +52,7 @@ return {
   kHistoryPrev,
   kInsertString,
   kLine,
-  kLine_buffer,
+  kLineBuffer,
   kMoveCursor,
   kNormalWrite,
   kOldPrompt,

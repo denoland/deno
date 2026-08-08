@@ -137,6 +137,29 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerRequestDoesNotExposeExternal() {
+    let innerRequest: object | undefined;
+    await using server = await makeServer((req) => {
+      const requestSymbol = Object.getOwnPropertySymbols(req).find(
+        (symbol) => symbol.description === "request",
+      );
+      if (requestSymbol !== undefined) {
+        innerRequest = (req as unknown as Record<symbol, object>)[
+          requestSymbol
+        ];
+      }
+      return new Response("ok");
+    });
+    const resp = await fetch(`http://localhost:${servePort}/`);
+    await resp.text();
+    assert(innerRequest !== undefined);
+    assertEquals(Reflect.has(innerRequest, "external"), false);
+    await server.shutdown();
+  },
+);
+
 // When shutting down abruptly, we require that all in-progress connections are aborted,
 // no new connections are allowed, and no new transactions are allowed on existing connections.
 Deno.test(
@@ -5691,9 +5714,10 @@ Deno.test(
 Deno.test(
   { permissions: { net: true, run: true } },
   async function handleServeCallbackReturn() {
-    const deferred = Promise.withResolvers<void>();
     const listeningDeferred = Promise.withResolvers<void>();
     const ac = new AbortController();
+    let callbackCount = 0;
+    let errorCount = 0;
 
     await using server = Deno.serve(
       {
@@ -5701,26 +5725,38 @@ Deno.test(
         onListen: onListen(listeningDeferred.resolve),
         signal: ac.signal,
         onError: (error) => {
+          errorCount++;
           assert(error instanceof TypeError);
           assert(
             error.message ===
               "Return value from serve handler must be a response or a promise resolving to a response",
           );
-          deferred.resolve();
           return new Response("Customized Internal Error from onError");
         },
       },
       () => {
         // Trick the typechecker
-        return <Response> <unknown> undefined;
+        const response = <Response> <unknown> undefined;
+        return callbackCount++ === 0 ? response : Promise.resolve(response);
       },
     );
     await listeningDeferred.promise;
-    const respText = await curlRequest([`http://localhost:${servePort}`]);
-    await deferred.promise;
+    const syncRespText = await curlRequest([`http://localhost:${servePort}`]);
+    const asyncRespText = await curlRequest([
+      "--max-time",
+      "2",
+      `http://localhost:${servePort}`,
+    ]);
     ac.abort();
     await server.finished;
-    assert(respText === "Customized Internal Error from onError");
+    assertEquals(errorCount, 2);
+    assertEquals(
+      [syncRespText, asyncRespText],
+      [
+        "Customized Internal Error from onError",
+        "Customized Internal Error from onError",
+      ],
+    );
   },
 );
 

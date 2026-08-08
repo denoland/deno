@@ -7,6 +7,8 @@ use std::time::Duration;
 use sys_traits::FsCreateDirAll;
 use sys_traits::FsDirEntry;
 use sys_traits::FsHardLink;
+use sys_traits::FsMetadata;
+use sys_traits::FsMetadataValue;
 use sys_traits::FsReadDir;
 use sys_traits::FsRemoveFile;
 use sys_traits::PathsInErrorsExt;
@@ -14,20 +16,20 @@ use sys_traits::ThreadSleep;
 
 #[sys_traits::auto_impl]
 pub trait HardLinkDirRecursiveSys:
-  HardLinkFileSys + FsCreateDirAll + FsReadDir
+  HardLinkFileSys + FsCreateDirAll + FsMetadata + FsReadDir
 {
 }
 
 /// Hardlinks the files in one directory to another directory.
 ///
-/// Note: Does not handle symlinks.
+/// Note: Does not hardlink source symlinks and rejects symlinked destinations.
 pub fn hard_link_dir_recursive<TSys: HardLinkDirRecursiveSys>(
   sys: &TSys,
   from: &Path,
   to: &Path,
 ) -> Result<(), std::io::Error> {
   let sys = sys.with_paths_in_errors();
-  sys.fs_create_dir_all(to)?;
+  create_dir_all_no_symlink(sys.as_ref(), to)?;
   let read_dir = sys.fs_read_dir(from)?;
 
   for entry in read_dir {
@@ -44,6 +46,40 @@ pub fn hard_link_dir_recursive<TSys: HardLinkDirRecursiveSys>(
   }
 
   Ok(())
+}
+
+/// Creates a directory and rejects a symlink at the destination.
+pub fn create_dir_all_no_symlink<TSys>(
+  sys: &TSys,
+  path: &Path,
+) -> Result<(), std::io::Error>
+where
+  TSys: FsCreateDirAll + FsMetadata,
+{
+  ensure_not_symlink(sys, path)?;
+  sys.fs_create_dir_all(path)?;
+  ensure_not_symlink(sys, path)
+}
+
+/// Returns an error when the path is a symlink.
+pub fn ensure_not_symlink<TSys>(
+  sys: &TSys,
+  path: &Path,
+) -> Result<(), std::io::Error>
+where
+  TSys: FsMetadata,
+{
+  match sys.fs_symlink_metadata(path) {
+    Ok(metadata) if metadata.file_type().is_symlink() => {
+      Err(std::io::Error::new(
+        ErrorKind::AlreadyExists,
+        "refusing to materialize package into symlinked directory",
+      ))
+    }
+    Ok(_) => Ok(()),
+    Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
+    Err(err) => Err(err),
+  }
 }
 
 #[sys_traits::auto_impl]
@@ -94,4 +130,33 @@ pub fn hard_link_file<TSys: HardLinkFileSys>(
     }
   }
   Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+  use std::path::Path;
+
+  use sys_traits::FsCreateDirAll;
+  use sys_traits::FsRead;
+  use sys_traits::FsSymlinkDir;
+  use sys_traits::FsWrite;
+
+  use super::*;
+
+  #[test]
+  fn hard_link_dir_recursive_rejects_symlink_destination_directory() {
+    let sys = sys_traits::impls::InMemorySys::default();
+    let from = Path::new("/from");
+    let to = Path::new("/to");
+    let target = Path::new("/target");
+    sys.fs_create_dir_all(from).unwrap();
+    sys.fs_create_dir_all(target).unwrap();
+    sys.fs_write(from.join("file"), "package contents").unwrap();
+    sys.fs_symlink_dir(target, to).unwrap();
+
+    let err = hard_link_dir_recursive(&sys, from, to).unwrap_err();
+
+    assert_eq!(err.kind(), ErrorKind::AlreadyExists);
+    assert!(sys.fs_read_to_string(target.join("file")).is_err());
+  }
 }

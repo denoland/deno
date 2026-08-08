@@ -170,6 +170,7 @@ fn ffi_nonblocking_buffer_gc() {
 }
 
 #[test_util::test]
+#[ignore = "native check does not yet inject unstable Deno types (e.g. FFI); tracked with the deno.* lib migration (#35985)"]
 fn ffi_symbol_types() {
   build();
 

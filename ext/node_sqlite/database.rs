@@ -2039,10 +2039,17 @@ impl DatabaseSync {
       return Err(SqliteError::ActiveCallback);
     }
 
-    if !buffer_value.is_array_buffer_view() {
+    if !buffer_value.is_uint8_array() {
       return Err(SqliteError::Validation(validators::Error::InvalidArgType(
-        "The \"serialized\" argument must be a TypedArray or a DataView."
-          .into(),
+        "The \"buffer\" argument must be a Uint8Array.".into(),
+      )));
+    }
+
+    let view: v8::Local<v8::ArrayBufferView> = buffer_value.try_into().unwrap();
+    let byte_length = view.byte_length();
+    if byte_length == 0 {
+      return Err(SqliteError::Validation(validators::Error::InvalidArgValue(
+        "The \"buffer\" argument must not be empty.".into(),
       )));
     }
 
@@ -2094,8 +2101,6 @@ impl DatabaseSync {
       }
     }
 
-    let view: v8::Local<v8::ArrayBufferView> = buffer_value.try_into().unwrap();
-    let byte_length = view.byte_length();
     let name_cstring = CString::new(db_name)?;
 
     // Per Node's contract, existing prepared statements are finalized before

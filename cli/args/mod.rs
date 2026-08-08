@@ -22,7 +22,6 @@ pub use deno_config::deno_json::CoverageThresholds;
 use deno_config::deno_json::FmtConfig;
 pub use deno_config::deno_json::FmtOptionsConfig;
 pub use deno_config::deno_json::LintRulesConfig;
-use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::deno_json::PermissionConfigValue;
 use deno_config::deno_json::PermissionsObjectWithBase;
 pub use deno_config::deno_json::ProseWrap;
@@ -37,9 +36,7 @@ use deno_config::workspace::WorkspaceLintConfig;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::url::Url;
 use deno_graph::GraphKind;
-use deno_lib::args::CaData;
 use deno_lib::args::has_flag_env_var;
 use deno_lib::args::npm_pkg_req_ref_to_binary_command;
 use deno_lib::args::npm_process_state;
@@ -626,7 +623,13 @@ impl CliOptions {
         _,
       )) if flags.production => GraphKind::CodeOnly,
       DenoSubcommand::Install(InstallFlags::Local(_, _)) => GraphKind::All,
-      _ => self.type_check_mode().as_graph_kind(),
+      // These edit the dependency requirements and then re-resolve them into
+      // the lockfile. A code-only graph never walks `import type` edges, so
+      // the packages reached only that way would be left out of the lockfile
+      // they rewrite.
+      DenoSubcommand::Outdated(_) => GraphKind::All,
+      DenoSubcommand::Remove(_) => GraphKind::All,
+      _ => graph_kind(self.type_check_mode()),
     }
   }
 
@@ -655,7 +658,7 @@ impl CliOptions {
   }
 
   pub fn npm_system_info(&self) -> NpmSystemInfo {
-    self.sub_command().npm_system_info()
+    npm_system_info(self.sub_command())
   }
 
   /// Resolve the specifier for a specified import map.
@@ -724,6 +727,7 @@ impl CliOptions {
 
   pub fn no_legacy_abort(&self) -> bool {
     self.flags.no_legacy_abort()
+      || self.workspace().has_unstable("no-legacy-abort")
   }
 
   pub fn env_file_names(
@@ -983,7 +987,7 @@ impl CliOptions {
     fmt_flags: &FmtFlags,
   ) -> Result<Vec<(WorkspaceDirectoryRc, FmtOptions)>, AnyError> {
     let cli_arg_patterns =
-      fmt_flags.files.as_file_patterns(self.initial_cwd())?;
+      resolve_file_patterns(&fmt_flags.files, self.initial_cwd())?;
     let member_configs = self
       .workspace()
       .resolve_fmt_config_for_members(&cli_arg_patterns)?;
@@ -1017,7 +1021,7 @@ impl CliOptions {
     lint_flags: &LintFlags,
   ) -> Result<Vec<(WorkspaceDirectoryRc, LintOptions)>, AnyError> {
     let cli_arg_patterns =
-      lint_flags.files.as_file_patterns(self.initial_cwd())?;
+      resolve_file_patterns(&lint_flags.files, self.initial_cwd())?;
     let member_configs = self
       .workspace()
       .resolve_lint_config_for_members(&cli_arg_patterns)?;
@@ -1056,7 +1060,7 @@ impl CliOptions {
     test_flags: &TestFlags,
   ) -> Result<Vec<(WorkspaceDirectoryRc, TestOptions)>, AnyError> {
     let cli_arg_patterns =
-      test_flags.files.as_file_patterns(self.initial_cwd())?;
+      resolve_file_patterns(&test_flags.files, self.initial_cwd())?;
     let workspace_dir_configs = self
       .workspace()
       .resolve_test_config_for_members(&cli_arg_patterns)?;
@@ -1080,7 +1084,7 @@ impl CliOptions {
     bench_flags: &BenchFlags,
   ) -> Result<Vec<(WorkspaceDirectoryRc, BenchOptions)>, AnyError> {
     let cli_arg_patterns =
-      bench_flags.files.as_file_patterns(self.initial_cwd())?;
+      resolve_file_patterns(&bench_flags.files, self.initial_cwd())?;
     let workspace_dir_configs = self
       .workspace()
       .resolve_bench_config_for_members(&cli_arg_patterns)?;

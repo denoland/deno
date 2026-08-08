@@ -137,6 +137,10 @@ async fn try_run_npm_bin_executable(
     bin_value,
     npm_process_state,
     &unstable_args,
+    // This path only ever resolves to `BinValue::Executable` (native npm
+    // bins); the `JsFile` re-run arm — the only consumer of these forwarded
+    // `deno run` args — is never reached here, so pass an empty set.
+    &[],
   )?;
   Ok(Some(exit_code))
 }

@@ -170,6 +170,96 @@ Deno.test({
 });
 
 Deno.test({
+  ignore: isWsl || isCIWithoutGPU,
+}, async function webgpuBufferUnmapWritesMappedRangesBack() {
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+
+  const device = await adapter.requestDevice();
+  assert(device);
+
+  const size = 16;
+  const writeBuffer = device.createBuffer({
+    size,
+    usage: GPUBufferUsage.MAP_WRITE | GPUBufferUsage.COPY_SRC,
+  });
+  const readBuffer = device.createBuffer({
+    size,
+    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+  });
+
+  await writeBuffer.mapAsync(GPUMapMode.WRITE);
+  const firstRange = writeBuffer.getMappedRange(0, 8);
+  const secondRange = writeBuffer.getMappedRange(8, 8);
+  new Uint8Array(firstRange).set([1, 2, 3, 4, 5, 6, 7, 8]);
+  new Uint8Array(secondRange).set([9, 10, 11, 12, 13, 14, 15, 16]);
+  writeBuffer.unmap();
+
+  assertEquals(firstRange.byteLength, 0);
+  assertEquals(secondRange.byteLength, 0);
+
+  const encoder = device.createCommandEncoder();
+  encoder.copyBufferToBuffer(writeBuffer, 0, readBuffer, 0, size);
+  device.queue.submit([encoder.finish()]);
+
+  await readBuffer.mapAsync(GPUMapMode.READ);
+  const readRange = readBuffer.getMappedRange();
+  assertEquals(
+    new Uint8Array(readRange),
+    new Uint8Array([
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+    ]),
+  );
+  readBuffer.unmap();
+
+  assertEquals(readRange.byteLength, 0);
+  device.destroy();
+});
+
+Deno.test({
+  ignore: isWsl || isCIWithoutGPU,
+}, async function webgpuBufferDestroyDetachesMappedRange() {
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+
+  const device = await adapter.requestDevice();
+  assert(device);
+
+  const buffer = device.createBuffer({
+    size: 4096,
+    usage: GPUBufferUsage.MAP_WRITE | GPUBufferUsage.COPY_SRC,
+  });
+
+  await buffer.mapAsync(GPUMapMode.WRITE);
+  const mappedRange = buffer.getMappedRange();
+  const mappedView = new Uint8Array(mappedRange);
+  mappedView[0] = 0x41;
+
+  buffer.destroy();
+
+  assertEquals(mappedRange.byteLength, 0);
+  assertEquals(mappedView.byteLength, 0);
+  assertEquals(mappedView[0], undefined);
+
+  device.destroy();
+});
+
+Deno.test({
   permissions: { read: true, env: true },
   ignore: isWsl || isCIWithoutGPU,
 }, async function webgpuHelloTriangle() {
@@ -335,6 +425,37 @@ Deno.test(function webgpuWindowSurfaceNoWidthHeight() {
     msgIncludes,
   );
 });
+
+Deno.test(
+  { permissions: { ffi: false } },
+  function webgpuWindowSurfaceFfiPermission() {
+    const response = new Response("ok", { status: 201 });
+    const nativeResponseSymbol = Object.getOwnPropertySymbols(response).find(
+      (symbol) => symbol.description === "serve native response",
+    );
+    assert(nativeResponseSymbol !== undefined);
+    const nativeResponse =
+      (response as unknown as Record<symbol, Deno.PointerValue>)[
+        nativeResponseSymbol
+      ];
+    assert(nativeResponse);
+    const system = Deno.build.os === "darwin" ? "x11" : "cocoa";
+
+    assertThrows(
+      () => {
+        new Deno.UnsafeWindowSurface({
+          system,
+          windowHandle: nativeResponse,
+          displayHandle: nativeResponse,
+          width: 1,
+          height: 1,
+        });
+      },
+      Deno.errors.NotCapable,
+      "Requires ffi access",
+    );
+  },
+);
 
 Deno.test({
   permissions: { ffi: true },

@@ -317,7 +317,7 @@ function onStreamRead(
       );
       // Ignore use of primordial here. The `push` method is from a `Readable`
       // stream instance.
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       result = stream.push(buf);
     }
 
@@ -370,7 +370,7 @@ function onStreamRead(
     // `end` -> `close`
     // Ignore use of primordial. The `push` method is from a `Readable` stream
     // instance.
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     stream.push(null);
     stream.read(0);
   }
