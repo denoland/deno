@@ -1,0 +1,1 @@
+require("./cjs-shaped.js");

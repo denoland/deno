@@ -488,6 +488,25 @@ fn get_message_suggestions_inner(
       {
         return vec![];
       }
+      // For .js files, the error may originate from a required ESM file
+      // while the top frame is the CJS caller (e.g. main.cjs -> cjs-shaped.js).
+      // In that case the .js path appears in the message's embedded stack
+      // rather than in `frames`, so check both.
+      let is_js = e
+        .frames
+        .iter()
+        .any(|f| f.file_name.as_ref().is_some_and(|n| n.ends_with(".js")))
+        || msg.contains(".js:");
+      if is_js {
+        return vec![
+          FixSuggestion::info(
+            "This .js file is being treated as an ES module.",
+          ),
+          FixSuggestion::hint(
+            "If this file is intended to be CommonJS, rename it to use the .cjs extension.",
+          ),
+        ];
+      }
       return vec![
         FixSuggestion::info_multiline(&[
           cstr!(
