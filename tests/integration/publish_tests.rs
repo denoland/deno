@@ -78,6 +78,49 @@ fn publish_warning_not_in_graph() {
 }
 
 #[test]
+fn publish_rejects_invalid_identities_before_authentication() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("LICENSE").write("");
+  temp_dir.join("mod.ts").write("export const value = 1;");
+
+  for name in [
+    "@foo/../../other",
+    "@foo/package/other",
+    "@foo/package?other",
+    "@foo/package#other",
+    "@foo/package\\other",
+  ] {
+    temp_dir.join("deno.json").write_json(&json!({
+      "name": name,
+      "version": "1.0.0",
+      "exports": "./mod.ts",
+    }));
+
+    let output = context.new_command().arg("publish").run();
+    output.assert_exit_code(1);
+    assert_contains!(output.combined_output(), "Invalid package name");
+    assert_not_contains!(
+      output.combined_output(),
+      "No means to authenticate"
+    );
+  }
+
+  temp_dir.join("deno.json").write_json(&json!({
+    "name": "@foo/package",
+    "version": "1.0.0?other",
+    "exports": "./mod.ts",
+  }));
+  let output = context.new_command().arg("publish").run();
+  output.assert_exit_code(1);
+  assert_contains!(output.combined_output(), "Invalid package version");
+  assert_not_contains!(
+    output.combined_output(),
+    "No means to authenticate"
+  );
+}
+
+#[test]
 fn provenance() {
   TestContextBuilder::new()
     .use_http_server()
