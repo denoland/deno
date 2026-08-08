@@ -1472,10 +1472,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           let mut entries = entries.filter_map(|e| e.ok()).collect::<Vec<_>>();
           entries.sort_by_cached_key(|entry| entry.file_name()); // determinism
           for entry in entries {
-            let path = entry.path();
-            if !path.is_dir() {
+            let Ok(file_type) = entry.file_type() else {
+              continue;
+            };
+            if !file_type.is_dir() {
               continue;
             }
+            let path = entry.path();
             if path.ends_with("node_modules") {
               builder.add_dir_recursive(&path)?;
             } else {

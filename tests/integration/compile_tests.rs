@@ -1022,6 +1022,74 @@ Embedded Files
 }
 
 #[test]
+fn compile_byonm_skips_symlinked_node_modules_roots() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let project_dir = temp_dir.path().join("project");
+  project_dir.join("main.ts").write("console.log('ok');");
+  project_dir
+    .join("package.json")
+    .write(r#"{ "name": "compile-byonm-test", "private": true }"#);
+
+  const TOP_LEVEL_SENTINEL: &[u8] = b"top-level-linked-node-modules-sentinel";
+  const NESTED_SENTINEL: &[u8] = b"nested-linked-node-modules-sentinel";
+  const REAL_SENTINEL: &[u8] = b"real-node-modules-sentinel";
+
+  let top_level_target = temp_dir.path().join("top_level_target");
+  top_level_target
+    .join("sentinel.txt")
+    .write(TOP_LEVEL_SENTINEL);
+  temp_dir.symlink_dir(&top_level_target, project_dir.join("node_modules"));
+
+  let nested_target = temp_dir.path().join("nested_target");
+  nested_target.join("sentinel.txt").write(NESTED_SENTINEL);
+  temp_dir.symlink_dir(
+    &nested_target,
+    project_dir.join("packages/nested/node_modules"),
+  );
+
+  project_dir
+    .join("packages/real/node_modules/pkg/sentinel.txt")
+    .write(REAL_SENTINEL);
+
+  let binary_path = project_dir.join(if cfg!(windows) {
+    "compiled.exe"
+  } else {
+    "compiled"
+  });
+  context
+    .new_command()
+    .current_dir(&project_dir)
+    .args("compile --output compiled main.ts")
+    .run()
+    .assert_exit_code(0)
+    .skip_output_check();
+
+  let binary = binary_path.read_to_bytes_if_exists().unwrap();
+  assert!(
+    binary
+      .windows(REAL_SENTINEL.len())
+      .any(|window| window == REAL_SENTINEL)
+  );
+  assert!(
+    !binary
+      .windows(TOP_LEVEL_SENTINEL.len())
+      .any(|window| window == TOP_LEVEL_SENTINEL)
+  );
+  assert!(
+    !binary
+      .windows(NESTED_SENTINEL.len())
+      .any(|window| window == NESTED_SENTINEL)
+  );
+
+  context
+    .new_command()
+    .name(binary_path)
+    .run()
+    .assert_matches_text("ok\n");
+}
+
+#[test]
 fn dynamic_imports_tmp_lit() {
   let context = TestContextBuilder::new().build();
   let dir = context.temp_dir();
