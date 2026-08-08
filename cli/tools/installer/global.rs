@@ -1451,9 +1451,11 @@ fn validate_npm_tarball_urls(
   for pkg_info in content.packages.npm.values() {
     if let Some(tarball) = &pkg_info.tarball {
       let tarball_str = tarball.as_str();
-      let is_allowed = allowed_registries
-        .iter()
-        .any(|registry_url| tarball_str.starts_with(registry_url.as_str()));
+      let is_allowed = Url::parse(tarball_str).is_ok_and(|tarball_url| {
+        allowed_registries.iter().any(|registry_url| {
+          tarball_url_matches_registry(&tarball_url, registry_url)
+        })
+      });
       if !is_allowed {
         return Err(tarball_str.to_string());
       }
@@ -1461,6 +1463,32 @@ fn validate_npm_tarball_urls(
   }
 
   Ok(())
+}
+
+fn tarball_url_matches_registry(
+  tarball_url: &Url,
+  registry_url: &Url,
+) -> bool {
+  if tarball_url.scheme() != registry_url.scheme()
+    || tarball_url.host_str() != registry_url.host_str()
+    || tarball_url.port_or_known_default()
+      != registry_url.port_or_known_default()
+    || tarball_url.username() != registry_url.username()
+    || tarball_url.password() != registry_url.password()
+  {
+    return false;
+  }
+
+  let registry_path = registry_url
+    .path()
+    .strip_suffix('/')
+    .unwrap_or_else(|| registry_url.path());
+  registry_path.is_empty()
+    || tarball_url.path() == registry_path
+    || tarball_url
+      .path()
+      .strip_prefix(registry_path)
+      .is_some_and(|suffix| suffix.starts_with('/'))
 }
 
 #[cfg(test)]
@@ -2550,6 +2578,50 @@ mod tests {
       Some("https://npm.mycompany.com/@myco/pkg/-/pkg-1.0.0.tgz"),
     )]);
     assert!(super::validate_npm_tarball_urls(&content, &npmrc).is_ok());
+  }
+
+  #[test]
+  fn validate_npm_tarball_urls_allows_path_scoped_registry() {
+    let npmrc = create_npmrc_with_registries(
+      "https://npm.mycompany.com/scoped/company/",
+      &[],
+    );
+
+    for tarball in [
+      "https://npm.mycompany.com/scoped/company/pkg/-/pkg-1.0.0.tgz",
+      "https://npm.mycompany.com:443/scoped/company/pkg/-/pkg-1.0.0.tgz",
+    ] {
+      let content =
+        create_lockfile_content_with_npm(&[("pkg@1.0.0", Some(tarball))]);
+      assert!(
+        super::validate_npm_tarball_urls(&content, &npmrc).is_ok(),
+        "expected {tarball} to be allowed"
+      );
+    }
+  }
+
+  #[test]
+  fn validate_npm_tarball_urls_rejects_path_scoped_registry_mismatches() {
+    let npmrc = create_npmrc_with_registries(
+      "https://npm.mycompany.com/scoped/company",
+      &[],
+    );
+
+    for tarball in [
+      "https://npm.mycompany.com/scoped/company/../other/pkg.tgz",
+      "https://npm.mycompany.com/scoped/company/%2e%2e/other/pkg.tgz",
+      "https://npm.mycompany.com/scoped/company-other/pkg.tgz",
+      "http://npm.mycompany.com/scoped/company/pkg.tgz",
+      "https://npm.mycompany.com:444/scoped/company/pkg.tgz",
+      "https://user@npm.mycompany.com/scoped/company/pkg.tgz",
+    ] {
+      let content =
+        create_lockfile_content_with_npm(&[("pkg@1.0.0", Some(tarball))]);
+      assert_eq!(
+        super::validate_npm_tarball_urls(&content, &npmrc).unwrap_err(),
+        tarball,
+      );
+    }
   }
 
   #[test]
