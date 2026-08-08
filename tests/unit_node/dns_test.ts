@@ -1,5 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { assert, assertEquals, assertRejects, assertThrows, fail } from "@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertRejects,
+  assertThrows,
+  fail,
+} from "@std/assert";
 import dns, { getDefaultResultOrder, lookupService } from "node:dns";
 import dnsPromises, {
   getDefaultResultOrder as getDefaultResultOrderPromise,
