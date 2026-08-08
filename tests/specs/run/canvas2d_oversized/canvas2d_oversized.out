@@ -1,0 +1,3 @@
+The canvas size (70000x100) exceeds the maximum supported dimension of 65535px; getContext("2d") returns null.
+null
+true

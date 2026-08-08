@@ -4656,6 +4656,25 @@ declare namespace Deno {
     export {}; // only export exports
   }
 
+  /**
+   * Global FontFaceSet (`document.fonts` equivalent). Workers: `self.fonts`.
+   * Register faces with `Deno.fonts.add(face)` for Canvas 2D text.
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   * @category Canvas 2D
+   */
+  export const fonts: FontFaceSet;
+
+  /**
+   * Load all installed fonts for Canvas 2D and {@linkcode queryLocalFonts}.
+   * Needs `--allow-sys=localFonts`. Until then only FontFace-registered fonts
+   * are visible (generics empty; measureText width 0). Process-wide.
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   * @category Canvas 2D
+   */
+  export function registerLocalFonts(): Promise<void>;
+
   export {}; // only export exports
 }
 

@@ -2954,7 +2954,7 @@ impl SysDescriptor {
       | "networkInterfaces" | "systemMemoryInfo" | "uid" | "gid" | "cpus"
       | "homedir" | "getegid" | "statfs" | "getPriority" | "setPriority"
       | "userInfo" | "setegid" | "seteuid" | "setgid" | "setuid" | "ca"
-      | "umask" => Ok(Self(kind)),
+      | "localFonts" | "umask" => Ok(Self(kind)),
 
       // the underlying permission check changed to `userInfo` to better match the API,
       // alias this to avoid breaking existing projects with `--allow-sys=username`

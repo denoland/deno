@@ -58,6 +58,9 @@ pub enum ImageDataError {
   #[class(generic)]
   #[error("Failed to allocate ImageData backing store")]
   AllocationFailed,
+  #[class(generic)]
+  #[error("pixel data length mismatch")]
+  PixelDataMismatch,
 }
 
 #[derive(WebIDL, Debug, Clone, Copy, PartialEq, Eq)]
@@ -111,6 +114,87 @@ pub struct ImageData {
   pixel_format: ImageDataPixelFormat,
   color_space: PredefinedColorSpace,
   data: v8::TracedReference<v8::Object>,
+}
+
+impl ImageData {
+  pub fn get_width(&self) -> u32 {
+    self.width
+  }
+
+  pub fn get_height(&self) -> u32 {
+    self.height
+  }
+
+  pub fn read_pixels_rgba8(&self, scope: &mut v8::PinScope<'_, '_>) -> Vec<u8> {
+    let data_obj = self.data.get(scope).unwrap();
+    let data_val: v8::Local<v8::Value> = data_obj.into();
+    let ta = v8::Local::<v8::TypedArray>::try_from(data_val).unwrap();
+    let byte_len = ta.byte_length();
+    let mut bytes = vec![0u8; byte_len];
+    ta.copy_contents(&mut bytes);
+    match self.pixel_format {
+      ImageDataPixelFormat::RgbaUnorm8 => bytes,
+      ImageDataPixelFormat::RgbaFloat16 => {
+        let pixel_count = self.width as usize * self.height as usize;
+        let mut out = vec![0u8; pixel_count * 4];
+        for i in 0..pixel_count * 4 {
+          let bits = u16::from_le_bytes([bytes[i * 2], bytes[i * 2 + 1]]);
+          let f = half::f16::from_bits(bits).to_f32();
+          out[i] = (f.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
+        }
+        out
+      }
+    }
+  }
+
+  /// Create an ImageData from raw RGBA8 pixel data (for internal use by getImageData etc).
+  pub fn new_rgba_unorm8(
+    scope: &mut v8::PinScope<'_, '_>,
+    width: u32,
+    height: u32,
+    pixels: &[u8],
+  ) -> Result<Self, ImageDataError> {
+    Self::new_rgba_unorm8_with_color_space(
+      scope,
+      width,
+      height,
+      pixels,
+      PredefinedColorSpace::Srgb,
+    )
+  }
+
+  pub fn new_rgba_unorm8_with_color_space(
+    scope: &mut v8::PinScope<'_, '_>,
+    width: u32,
+    height: u32,
+    pixels: &[u8],
+    color_space: PredefinedColorSpace,
+  ) -> Result<Self, ImageDataError> {
+    if pixels.len() != (width as usize * height as usize * 4) {
+      return Err(ImageDataError::PixelDataMismatch);
+    }
+    let byte_len = pixels.len();
+    let ab = v8::ArrayBuffer::new(scope, byte_len);
+    let Some(ta) = v8::Uint8ClampedArray::new(scope, ab, 0, byte_len) else {
+      return Err(ImageDataError::AllocationFailed);
+    };
+    let buf_ptr = ab.data().unwrap().as_ptr() as *mut u8;
+    // SAFETY: `buf_ptr` points to the ArrayBuffer's backing store with at
+    // least `byte_len` bytes (allocated above), and `pixels` has exactly
+    // `byte_len` bytes. The regions do not overlap.
+    unsafe {
+      std::ptr::copy_nonoverlapping(pixels.as_ptr(), buf_ptr, byte_len);
+    }
+    let data_obj: v8::Local<v8::Object> = ta.into();
+
+    Ok(ImageData {
+      width,
+      height,
+      pixel_format: ImageDataPixelFormat::RgbaUnorm8,
+      color_space,
+      data: v8::TracedReference::new(scope, data_obj),
+    })
+  }
 }
 
 // SAFETY: we're sure `ImageData` can be GCed.
