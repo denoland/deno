@@ -216,6 +216,35 @@ Deno.test(function headerCopiesUnaffectedByOriginalMutation() {
   ]);
 });
 
+Deno.test(
+  { permissions: { net: true } },
+  async function headerIterationConsistentAcrossFetch() {
+    // Scenario from the denoland/deno#32728 review: populate the iteration
+    // entries cache on a Request's headers, fetch it, iterate again. fetch()
+    // pushes Accept and Accept-Language directly onto the raw header list of
+    // its inner request (26_fetch.js), bypassing the Headers mutators. The
+    // Request constructor clones the inner request, so the original request
+    // must not observe those pushes, and the pushes must reach the wire.
+    const { promise, resolve } = Promise.withResolvers<Headers>();
+    await using server = Deno.serve(
+      { port: 0, onListen: () => {} },
+      (req) => {
+        resolve(req.headers);
+        return new Response("ok");
+      },
+    );
+    const url = `http://localhost:${server.addr.port}/`;
+    const req = new Request(url, { headers: { "x-foo": "bar" } });
+    assertEquals([...req.headers], [["x-foo", "bar"]]); // populate the cache
+    const resp = await fetch(req);
+    await resp.body?.cancel();
+    const received = await promise;
+    assertEquals(received.get("accept"), "*/*");
+    assertEquals(received.get("accept-language"), "*");
+    assertEquals([...req.headers], [["x-foo", "bar"]]);
+  },
+);
+
 Deno.test(function headerGetSuccess() {
   const headers = new Headers(headerDict);
   for (const [name, value] of Object.entries(headerDict)) {
