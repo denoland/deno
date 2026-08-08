@@ -18,13 +18,13 @@ use crate::cppgc::FunctionTemplateData;
 use crate::error::CoreError;
 use crate::error::CreateCodeCacheError;
 use crate::error::JsError;
-use crate::error::exception_to_err;
 use crate::error::exception_to_err_result;
 use crate::event_loop::EventLoopPhases;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::IntoModuleCodeString;
 use crate::modules::IntoModuleName;
 use crate::modules::ModuleCodeString;
+use crate::modules::ModuleError;
 use crate::modules::ModuleId;
 use crate::modules::ModuleMap;
 use crate::modules::ModuleName;
@@ -600,7 +600,7 @@ impl JsRealm {
     &self,
     scope: &mut v8::PinScope,
     id: ModuleId,
-  ) -> Result<(), v8::Global<v8::Value>> {
+  ) -> Result<(), ModuleError> {
     self.0.module_map().instantiate_module(scope, id)
   }
 
@@ -659,10 +659,9 @@ impl JsRealm {
     })
     .await?;
     context_scope!(scope, self, isolate);
-    self.instantiate_module(scope, root_id).map_err(|e| {
-      let exception = v8::Local::new(scope, e);
-      exception_to_err(scope, exception, false, false)
-    })?;
+    self
+      .instantiate_module(scope, root_id)
+      .map_err(|error| error.into_error(scope, false, false))?;
     Ok(root_id)
   }
 

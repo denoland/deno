@@ -111,6 +111,8 @@ use crate::modules::ExtCodeCache;
 use crate::modules::ExtModuleLoader;
 use crate::modules::IntoModuleCodeString;
 use crate::modules::IntoModuleName;
+#[cfg(test)]
+use crate::modules::ModuleError;
 use crate::modules::ModuleId;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleMap;
@@ -3133,7 +3135,7 @@ impl JsRuntime {
   pub(crate) fn instantiate_module(
     &mut self,
     id: ModuleId,
-  ) -> Result<(), v8::Global<v8::Value>> {
+  ) -> Result<(), ModuleError> {
     let isolate = &mut *self.inner.v8_isolate;
     let realm = JsRealm::clone(&self.inner.main_realm);
     jsrealm::context_scope!(scope, realm, isolate);
@@ -3330,13 +3332,9 @@ impl JsRuntime {
     let root_id = load.root_module_id().expect("Root module should be loaded");
 
     jsrealm::context_scope!(scope, &realm, self.v8_isolate());
-    realm.instantiate_module(scope, root_id).map_err(|e| {
-      let exception = v8::Local::new(scope, e);
-      CoreErrorKind::Js(crate::error::exception_to_err(
-        scope, exception, false, false,
-      ))
-      .into_box()
-    })?;
+    realm
+      .instantiate_module(scope, root_id)
+      .map_err(|error| error.into_error(scope, false, false))?;
 
     Ok(root_id)
   }
