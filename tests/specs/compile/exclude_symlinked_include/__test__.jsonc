@@ -1,0 +1,20 @@
+// An exclude entry that is both `..`-relative and reaches its target through a
+// symlink. Neither the plain join (keeps the literal `..`) nor the canonical
+// form (`real/skip.ts`) equals the path the include walker visits
+// (`folder/linkdir/skip.ts`), so without the normalized form `skip.ts` is
+// pulled into the module graph and embedded anyway.
+{
+  "tempDir": true,
+  "if": "unix",
+  "steps": [
+    {
+      "args": "run -A setup.js",
+      "output": "[WILDCARD]"
+    },
+    {
+      "cwd": "app",
+      "args": "compile --include ../folder --exclude ../folder/linkdir/skip.ts --output main main.ts",
+      "output": "compile.out"
+    }
+  ]
+}
