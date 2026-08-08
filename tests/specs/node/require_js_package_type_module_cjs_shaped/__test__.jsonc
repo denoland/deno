@@ -1,0 +1,16 @@
+{
+  "tests": {
+    "require_cjs_shaped": {
+      "args": "run -A require_cjs_shaped.cjs",
+      "output": "require_cjs_shaped.out"
+    },
+    "require_esm": {
+      "args": "run -A require_esm.cjs",
+      "output": "require_esm.out"
+    },
+    "import_esm": {
+      "args": "run -A import_esm.mjs",
+      "output": "import_esm.out"
+    }
+  }
+}
