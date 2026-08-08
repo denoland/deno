@@ -1,5 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { assert, assertEquals, fail } from "@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertRejects,
+  assertThrows,
+  fail,
+} from "@std/assert";
 import dns, { getDefaultResultOrder, lookupService } from "node:dns";
 import dnsPromises, {
   getDefaultResultOrder as getDefaultResultOrderPromise,
@@ -163,78 +169,33 @@ Deno.test("[node/dns] lookup uses the system resolver / hosts file", async () =>
   );
 });
 
-// Regression test for https://github.com/denoland/deno/issues/34801
-// `dns.lookup` must follow Node.js behavior when `hostname` is falsy
-// (undefined / null / empty string): the callback is invoked with
-// (null, null, family) instead of throwing synchronously.
-Deno.test("[node/dns] lookup with falsy hostname invokes callback", async () => {
+// Regression test for https://github.com/denoland/deno/issues/36378
+// Node.js moved the falsy-hostname case of `dns.lookup` to end-of-life
+// (nodejs/node a5f9ca1f, Node v25+): `undefined`, `null` and `""` now
+// throw ERR_INVALID_ARG_VALUE synchronously instead of invoking the
+// callback with (null, null, family).
+Deno.test("[node/dns] lookup with falsy hostname throws", () => {
   for (const hostname of [undefined, null, ""]) {
-    const result = await new Promise<
-      { error: unknown; address: unknown; family: unknown }
-    >((resolve) => {
-      // deno-lint-ignore no-explicit-any
-      dns.lookup(hostname as any, (error, address, family) => {
-        resolve({ error, address, family });
-      });
-    });
-    assertEquals(result, { error: null, address: null, family: 4 });
+    assertThrows(
+      () => {
+        // deno-lint-ignore no-explicit-any
+        dns.lookup(hostname as any, () => {});
+      },
+      TypeError,
+      "must be a non-empty string",
+    );
   }
-
-  // family argument is honored when 6.
-  const result6 = await new Promise<
-    { error: unknown; address: unknown; family: unknown }
-  >((resolve) => {
-    dns.lookup(
-      // deno-lint-ignore no-explicit-any
-      undefined as any,
-      6,
-      (error, address, family) => resolve({ error, address, family }),
-    );
-  });
-  assertEquals(result6, { error: null, address: null, family: 6 });
-
-  // options.family = 6
-  const resultOpt6 = await new Promise<
-    { error: unknown; address: unknown; family: unknown }
-  >((resolve) => {
-    dns.lookup(
-      // deno-lint-ignore no-explicit-any
-      undefined as any,
-      { family: 6 },
-      (error, address, family) => resolve({ error, address, family }),
-    );
-  });
-  assertEquals(resultOpt6, { error: null, address: null, family: 6 });
-
-  // options.all = true returns an empty array via the callback.
-  const resultAll = await new Promise<
-    { error: unknown; addresses: unknown }
-  >((resolve) => {
-    dns.lookup(
-      // deno-lint-ignore no-explicit-any
-      undefined as any,
-      { all: true },
-      // deno-lint-ignore no-explicit-any
-      (error, addresses: any) => resolve({ error, addresses }),
-    );
-  });
-  assertEquals(resultAll, { error: null, addresses: [] });
 });
 
-Deno.test("[node/dns] promises.lookup with falsy hostname resolves", async () => {
+Deno.test("[node/dns] promises.lookup with falsy hostname rejects", async () => {
   for (const hostname of [undefined, null, ""]) {
-    // deno-lint-ignore no-explicit-any
-    const result = await lookupPromise(hostname as any);
-    assertEquals(result as unknown, { address: null, family: 4 });
+    await assertRejects(
+      // deno-lint-ignore no-explicit-any
+      () => lookupPromise(hostname as any),
+      TypeError,
+      "must be a non-empty string",
+    );
   }
-
-  // deno-lint-ignore no-explicit-any
-  const result6 = await lookupPromise(undefined as any, { family: 6 });
-  assertEquals(result6 as unknown, { address: null, family: 6 });
-
-  // deno-lint-ignore no-explicit-any
-  const resultAll = await lookupPromise(undefined as any, { all: true });
-  assertEquals(resultAll, []);
 });
 
 // Regression test for https://github.com/denoland/deno/issues/25927
