@@ -1494,8 +1494,10 @@ fn make_bat_command_line(
   for arg in args.iter().skip(1) {
     cmd.push(' ' as u16);
     let arg_bytes = arg.as_encoded_bytes();
-    // Disallow \r and \n as they may truncate the arguments.
-    const DISALLOWED: &[u8] = b"\r\n";
+    // Disallow `"` because cmd.exe does not support safely escaping quotes in
+    // batch file arguments. Also disallow \r and \n as they may truncate the
+    // arguments.
+    const DISALLOWED: &[u8] = b"\"\r\n";
     if arg_bytes.iter().any(|c| DISALLOWED.contains(c)) {
       return Err(std::io::Error::new(
         io::ErrorKind::InvalidInput,
@@ -1645,6 +1647,8 @@ mod tests {
 
   #[test]
   fn test_make_program_args() {
+    // Quotes remain supported for programs that are not routed through
+    // cmd.exe's batch file argument handling.
     let args = ["hello", "world", "\"hello world\""]
       .into_iter()
       .map(|s| s.as_ref())
@@ -1652,5 +1656,38 @@ mod tests {
     let verbatim_arguments = false;
     let result = make_program_args(&args, verbatim_arguments).unwrap();
     assert_eq!(result, WCString::new("hello world \"\\\"hello world\\\"\""));
+  }
+
+  #[test]
+  fn test_make_bat_command_line_rejects_quotes_and_newlines() {
+    let script = r"C:\safe\runner.cmd".encode_utf16().collect::<Vec<_>>();
+
+    for invalid_arg in [r#"bad"quote"#, "bad\rarg", "bad\narg"] {
+      let raw_args = ["runner.cmd", invalid_arg];
+      let args = raw_args
+        .into_iter()
+        .map(OsStr::new)
+        .collect::<Vec<&OsStr>>();
+
+      let err = make_bat_command_line(&script, &args, true).unwrap_err();
+      assert_eq!(err.kind(), io::ErrorKind::InvalidInput, "{invalid_arg:?}");
+    }
+  }
+
+  #[test]
+  fn test_make_bat_command_line_allows_safe_args() {
+    let script = r"C:\safe\runner.cmd".encode_utf16().collect::<Vec<_>>();
+    let raw_args = ["runner.cmd", "alpha", "space value"];
+    let args = raw_args
+      .into_iter()
+      .map(OsStr::new)
+      .collect::<Vec<&OsStr>>();
+
+    let result = make_bat_command_line(&script, &args, true).unwrap();
+    let result = String::from_utf16_lossy(&result);
+    assert_eq!(
+      result,
+      r#"/e:ON /v:OFF /d /c ""C:\safe\runner.cmd" "alpha" "space value"""#
+    );
   }
 }
