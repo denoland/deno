@@ -939,8 +939,7 @@ class PrivateKeyObject extends AsymmetricKeyObject {
         this[kHandle],
         type,
         cipher ?? null,
-        // deno-lint-ignore deno-internal/prefer-primordials -- Buffer.prototype.toString has no primordial
-        passphrase != null ? passphrase.toString() : null,
+        passphrase ?? null,
       );
     } else {
       return Buffer.from(
@@ -948,8 +947,7 @@ class PrivateKeyObject extends AsymmetricKeyObject {
           this[kHandle],
           type,
           cipher ?? null,
-          // deno-lint-ignore deno-internal/prefer-primordials -- Buffer.prototype.toString has no primordial
-          passphrase != null ? passphrase.toString() : null,
+          passphrase ?? null,
         ),
       );
     }
