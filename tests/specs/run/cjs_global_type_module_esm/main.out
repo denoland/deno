@@ -1,0 +1,6 @@
+[WILDCARD]ReferenceError: module is not defined[WILDCARD]
+module.exports.hello = "hi";
+^
+    at [WILDCARD]cjs-shaped.js:1:1[WILDCARD]
+    info: This .js file is being treated as an ES module.
+    hint: If this file is intended to be CommonJS, rename it to use the .cjs extension.[WILDCARD]
