@@ -26,6 +26,7 @@ deno_core.workspace = true
 deno_dotenv.workspace = true
 deno_error.workspace = true
 deno_fs.workspace = true
+deno_http_h1.workspace = true
 deno_inspector_server.workspace = true
 deno_io.workspace = true
 deno_native_certs.workspace = true

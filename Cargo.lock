@@ -2886,6 +2886,7 @@ dependencies = [
  "deno_dotenv",
  "deno_error",
  "deno_fs",
+ "deno_http_h1",
  "deno_inspector_server",
  "deno_io",
  "deno_native_certs",
