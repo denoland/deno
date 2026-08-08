@@ -885,7 +885,13 @@ fn create_command(
               continue;
             }
           };
-          handles_to_close.push(fd2);
+          // Ownership of `fd2` transfers to the command: the spawn
+          // machinery (`uv_stdio_create`) duplicates it into the child's
+          // stdio buffer and closes this original handle itself. Do NOT
+          // also push it onto `handles_to_close` - closing it a second
+          // time races with handle-value reuse on Windows and
+          // intermittently fails a concurrent spawn with
+          // `ERROR_INVALID_HANDLE` (os error 6). See issue #35994.
           command.extra_handle(Some(fd2));
           // `fd1` is a raw Windows HANDLE, but the JS side treats the
           // value it receives as a CRT file descriptor (it calls

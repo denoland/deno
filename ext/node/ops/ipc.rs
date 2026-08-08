@@ -888,20 +888,16 @@ mod impl_ {
     state: &mut OpState,
     #[smi] rid: ResourceId,
     serialization_json: bool,
-  ) {
+  ) -> Result<(), deno_core::error::ResourceError> {
     if serialization_json {
-      let stream = state
-        .resource_table
-        .get::<IpcJsonStreamResource>(rid)
-        .expect("Invalid resource ID");
+      let stream = state.resource_table.get::<IpcJsonStreamResource>(rid)?;
       stream.ref_tracker.ref_();
     } else {
-      let stream = state
-        .resource_table
-        .get::<IpcAdvancedStreamResource>(rid)
-        .expect("Invalid resource ID");
+      let stream =
+        state.resource_table.get::<IpcAdvancedStreamResource>(rid)?;
       stream.ref_tracker.ref_();
     }
+    Ok(())
   }
 
   #[op2(fast)]
@@ -909,20 +905,16 @@ mod impl_ {
     state: &mut OpState,
     #[smi] rid: ResourceId,
     serialization_json: bool,
-  ) {
+  ) -> Result<(), deno_core::error::ResourceError> {
     if serialization_json {
-      let stream = state
-        .resource_table
-        .get::<IpcJsonStreamResource>(rid)
-        .expect("Invalid resource ID");
+      let stream = state.resource_table.get::<IpcJsonStreamResource>(rid)?;
       stream.ref_tracker.unref();
     } else {
-      let stream = state
-        .resource_table
-        .get::<IpcAdvancedStreamResource>(rid)
-        .expect("Invalid resource ID");
+      let stream =
+        state.resource_table.get::<IpcAdvancedStreamResource>(rid)?;
       stream.ref_tracker.unref();
     }
+    Ok(())
   }
 
   #[cfg(test)]
@@ -930,6 +922,11 @@ mod impl_ {
     use deno_core::JsRuntime;
     use deno_core::RuntimeOptions;
     use deno_core::v8;
+
+    deno_core::extension!(
+      test_ipc_ops,
+      ops = [super::op_node_ipc_ref, super::op_node_ipc_unref],
+    );
 
     fn wrap_expr(s: &str) -> String {
       format!("(function () {{ return {s}; }})()")
@@ -983,6 +980,34 @@ mod impl_ {
         let actual = serialize_js_to_json(&mut runtime, js);
         assert_eq!(actual, expect);
       }
+    }
+
+    #[test]
+    fn ipc_ref_unref_invalid_resource() {
+      let mut runtime = JsRuntime::new(RuntimeOptions {
+        extensions: vec![test_ipc_ops::init()],
+        ..Default::default()
+      });
+
+      runtime
+        .execute_script(
+          "ipc_ref_unref_invalid_resource.js",
+          r#"
+            for (const opName of ["op_node_ipc_ref", "op_node_ipc_unref"]) {
+              for (const serializationJson of [true, false]) {
+                try {
+                  Deno.core.ops[opName](0, serializationJson);
+                  throw new Error(`${opName} did not throw`);
+                } catch (error) {
+                  if (error.name !== "BadResource") {
+                    throw error;
+                  }
+                }
+              }
+            }
+          "#,
+        )
+        .unwrap();
     }
   }
 }

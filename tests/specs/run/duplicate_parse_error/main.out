@@ -1,0 +1,5 @@
+error: SyntaxError: The left-hand side of an assignment expression must be a variable or a property access.
+  |
+1 | for (console.log("a") of [1]);
+  |      ~~~~~~~~~~~~~~~~
+    at [WILDCARD]main.ts:1:6

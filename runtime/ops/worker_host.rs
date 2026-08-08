@@ -52,6 +52,17 @@ use crate::worker::FormatJsErrorFn;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "worker-options";
 
+/// Default OS stack size for the thread a worker's isolate runs on.
+///
+/// This is `deno_node`'s `DEFAULT_STACK_SIZE_MB`, which is what
+/// `resourceLimits.stackSizeMb` reports back to JS: without setting it here the
+/// thread would get Rust's 2MB default while we told the user it was 4MB. 2MB
+/// also leaves very little native headroom above V8's own JS stack limit
+/// (`--stack-size`, 1MB by default), so a raised `--stack-size` overflows the
+/// OS stack and aborts the process instead of raising `RangeError`.
+const DEFAULT_WORKER_STACK_SIZE_MB: usize =
+  deno_node::ops::worker_threads::DEFAULT_STACK_SIZE_MB;
+
 /// V8 resource limits for worker isolates, matching Node.js `resourceLimits`.
 #[derive(FromV8, Default, Clone)]
 pub struct ResourceLimits {
@@ -98,6 +109,7 @@ pub struct WorkerThread {
   worker_type: WorkerThreadType,
   cancel_handle: Rc<CancelHandle>,
   cpu_thread_handle: Arc<AtomicU64>,
+  web_lock_client_id: Option<String>,
 
   // A WorkerThread that hasn't been explicitly terminated can only be removed
   // from the WorkersTable once close messages have been received for both the
@@ -122,7 +134,45 @@ impl WorkerThread {
 
 impl Drop for WorkerThread {
   fn drop(&mut self) {
-    self.worker_handle.clone().terminate();
+    // Promptly release the worker's Web Locks so other clients waiting on them
+    // don't stay blocked until the worker thread fully unwinds. This is a
+    // promptness optimization on top of the real backstop: the worker's held
+    // and pending lock resources live in its own op_state and
+    // release/cancel by id when its `JsRuntime` drops.
+    //
+    // `cleanup_locks_for_client_id` re-grants the worker's held locks to other
+    // clients synchronously. If the worker were still executing a callback under
+    // an exclusive lock (e.g. mutating a `SharedArrayBuffer` in a synchronous
+    // loop), the new grantee could run concurrently with it, violating mutual
+    // exclusion. `terminate()` alone doesn't prevent this: it only wakes the
+    // event loop and can't interrupt synchronous JS already in flight. So when
+    // the worker actually holds a lock we're about to hand off, we first call
+    // `terminate_execution()`, which makes the worker's isolate throw a
+    // termination exception at the next interrupt point, halting any such loop
+    // and its callback continuation/microtasks before the lock is handed off.
+    //
+    // The `client_holds_lock` gate matters: `terminate_execution()` can abort an
+    // in-progress synthetic module instantiation (e.g. a lazy `require` during
+    // boot, which panics on failure), so we must not force-halt a worker that
+    // has no held lock to protect. A worker that holds a lock is past boot and
+    // parked in — or synchronously looping inside — its lock callback.
+    //
+    // This narrows the window but can't fully close it: `terminate_execution()`
+    // returns without waiting for the isolate to stop, so a native op already in
+    // flight on the worker keeps running until it returns to JS, and a lock
+    // acquired between the `client_holds_lock` check and cleanup isn't halted.
+    // Any lock left held in that residual window is still released by the
+    // resource-drop backstop when the worker's `JsRuntime` drops.
+    let handle = self.worker_handle.clone();
+    if let Some(client_id) = &self.web_lock_client_id
+      && deno_web::locks::client_holds_lock(client_id)
+    {
+      handle.terminate_execution();
+    }
+    handle.terminate();
+    if let Some(client_id) = &self.web_lock_client_id {
+      deno_web::locks::cleanup_locks_for_client_id(client_id);
+    }
   }
 }
 
@@ -311,15 +361,17 @@ fn op_create_worker(
   let (handle_sender, handle_receiver) =
     std::sync::mpsc::sync_channel::<SendableWebWorkerHandle>(1);
 
-  // Setup new thread. If stackSizeMb is specified in resourceLimits,
-  // set the OS thread stack size to match Node.js behavior.
-  let mut thread_builder =
-    std::thread::Builder::new().name(format!("{worker_id}"));
-  if let Some(ref limits) = args.resource_limits
-    && let Some(stack_mb) = limits.stack_size_mb.filter(|&v| v > 0)
-  {
-    thread_builder = thread_builder.stack_size(stack_mb * 1024 * 1024);
-  }
+  // Setup new thread. stackSizeMb from resourceLimits wins, matching Node.js
+  // behavior; otherwise the isolate thread gets the default above rather than
+  // Rust's smaller 2MB one.
+  let stack_size_mb = args
+    .resource_limits
+    .as_ref()
+    .and_then(|limits| limits.stack_size_mb.filter(|&v| v > 0))
+    .unwrap_or(DEFAULT_WORKER_STACK_SIZE_MB);
+  let thread_builder = std::thread::Builder::new()
+    .name(format!("{worker_id}"))
+    .stack_size(stack_size_mb * 1024 * 1024);
   let maybe_worker_metadata = if let Some(data) = maybe_worker_metadata {
     let transferables =
       deserialize_js_transferables(state, data.transferables)?;
@@ -405,6 +457,13 @@ fn op_create_worker(
     worker_type: args.worker_type,
     cancel_handle: CancelHandle::new_rc(),
     cpu_thread_handle,
+    // Only Node workers get a host-assigned `worker-N` lock client id (and thus
+    // prompt cleanup on teardown). `web_worker.rs` assigns the matching id at
+    // startup for the same worker types. Classic/module Web Workers keep the
+    // default lazily-assigned numeric client id and rely on the resource-drop
+    // backstop to release their locks when their `JsRuntime` unwinds.
+    web_lock_client_id: matches!(args.worker_type, WorkerThreadType::Node)
+      .then(|| deno_web::locks::worker_lock_client_id(worker_id.as_u32())),
     ctrl_closed: false,
     message_closed: false,
     termination_requested: false,
@@ -731,6 +790,10 @@ fn op_host_get_worker_cpu_usage(
   #[scoped] id: WorkerId,
   #[buffer] out: &mut [f64],
 ) {
+  if out.len() < 2 {
+    return;
+  }
+
   if let Some(worker_thread) = state.borrow::<WorkersTable>().get(&id) {
     let handle = worker_thread.cpu_thread_handle.load(Ordering::Acquire);
     if handle != 0 {
@@ -746,6 +809,10 @@ fn op_host_get_worker_cpu_usage(
 
 #[op2(fast)]
 fn op_current_thread_cpu_usage(#[buffer] out: &mut [f64]) {
+  if out.len() < 2 {
+    return;
+  }
+
   let handle = capture_current_thread_handle();
   let (user, system) = get_thread_cpu_usage_by_handle(handle);
   out[0] = user;

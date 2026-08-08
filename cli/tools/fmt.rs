@@ -609,12 +609,25 @@ fn format_embedded_css(
     ignore_file_comment_text: "deno-fmt-ignore-file".to_string(),
     single_line: false,
   };
-  let Some(formatted) =
-    lax_css::format_text(Path::new("embedded.css"), text, &lax_css_config)?
+  // lax-css prints custom property values verbatim, keeping the leading
+  // whitespace on their wrapped continuation lines. the typescript formatter
+  // reindents the embedded result when it puts it back in the template, so
+  // without dedenting first that leading whitespace grows by the template's
+  // indentation on every pass and the format never reaches a fixed point.
+  let dedented = dedent_embedded(text);
+  let Some(formatted) = lax_css::format_text(
+    Path::new("embedded.css"),
+    &dedented,
+    &lax_css_config,
+  )?
   else {
+    // lax-css declined to reformat (an ignore directive, or content it
+    // considers already canonical). leave the block exactly as the user wrote
+    // it: the typescript formatter then emits the template verbatim, which is a
+    // fixed point and preserves any intentional formatting inside it.
     return Ok(None);
   };
-  let formatted = formatted.trim_end_matches('\n');
+  let formatted = formatted.trim_matches('\n');
   Ok(if formatted == text {
     None
   } else {

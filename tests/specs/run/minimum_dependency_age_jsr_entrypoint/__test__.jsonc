@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "tests": {
+    "excluded": {
+      "cwd": "excluded",
+      "args": "run jsr:@denotest/add",
+      "output": "excluded.out"
+    },
+    "not_excluded": {
+      "cwd": "not_excluded",
+      "args": "run jsr:@denotest/add",
+      "output": "not_excluded.out"
+    }
+  }
+}

@@ -521,6 +521,91 @@ Deno.test(
 );
 
 Deno.test(
+  {
+    permissions: { net: true, read: true, write: true },
+    ignore: Deno.build.os === "windows",
+  },
+  async function fetchRedirectSensitiveHeadersAreOriginScoped() {
+    const started = Promise.withResolvers<number>();
+    await using _server = Deno.serve({
+      port: 0,
+      onListen: ({ port }) => started.resolve(port),
+    }, (request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/redirect") {
+        return Response.redirect(url.searchParams.get("location")!, 302);
+      }
+      return Response.json({
+        authorization: request.headers.get("authorization"),
+        cookie: request.headers.get("cookie"),
+        proxyAuthorization: request.headers.get("proxy-authorization"),
+        safe: request.headers.get("x-safe"),
+      });
+    });
+
+    const port = await started.promise;
+    using client = Deno.createHttpClient({
+      proxy: {
+        transport: "tcp",
+        hostname: "localhost",
+        port,
+      },
+    });
+    const headers = {
+      authorization: "Bearer parent",
+      cookie: "session=parent",
+      "proxy-authorization": "Basic parent",
+      "x-safe": "keep",
+    };
+
+    async function redirect(
+      from: string,
+      to: string,
+    ): Promise<Record<string, string | null>> {
+      const response = await fetch(
+        `${from}/redirect?location=${encodeURIComponent(`${to}/target`)}`,
+        { client, headers },
+      );
+      return await response.json();
+    }
+
+    assertEquals(
+      await redirect(
+        "http://parent.example.test",
+        "http://parent.example.test",
+      ),
+      {
+        authorization: "Bearer parent",
+        cookie: "session=parent",
+        proxyAuthorization: "Basic parent",
+        safe: "keep",
+      },
+    );
+
+    const strippedHeaders = {
+      authorization: null,
+      cookie: null,
+      proxyAuthorization: null,
+      safe: "keep",
+    };
+    assertEquals(
+      await redirect(
+        "http://parent.example.test",
+        "http://child.parent.example.test",
+      ),
+      strippedHeaders,
+    );
+    assertEquals(
+      await redirect(
+        "http://parent.example.test",
+        "https://parent.example.test",
+      ),
+      strippedHeaders,
+    );
+  },
+);
+
+Deno.test(
   { permissions: { net: true } },
   async function fetchInitStringBody() {
     const data = "Hello World";
@@ -1476,6 +1561,23 @@ Deno.test(
 );
 
 Deno.test(
+  { permissions: { read: true } },
+  function createHttpClientMismatchedCertAndKey() {
+    assertThrows(
+      () =>
+        Deno.createHttpClient({
+          cert: Deno.readTextFileSync(
+            "tests/testdata/tls/localhost.crt",
+          ),
+          key: Deno.readTextFileSync("tests/testdata/tls/RootCA.key"),
+        }),
+      TypeError,
+      "keys may not be consistent: KeyMismatch",
+    );
+  },
+);
+
+Deno.test(
   { permissions: { read: true, net: true } },
   async function fetchCustomClientPrivateKey(): Promise<
     void
@@ -1665,6 +1767,37 @@ Deno.test(
     const res = await fetch("https://localhost:5547/http_version", { client });
     assert(res.ok);
     assertEquals(await res.text(), "HTTP/2.0");
+    client.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, read: true } },
+  async function fetchHttp2MaxHeaderListSizeTooSmall() {
+    const caCert = await Deno.readTextFile("tests/testdata/tls/RootCA.pem");
+    const client = Deno.createHttpClient({
+      caCerts: [caCert],
+      http2MaxHeaderListSize: 64,
+    });
+    await assertRejects(
+      () => fetch("https://localhost:5547/large_headers", { client }),
+      TypeError,
+    );
+    client.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, read: true } },
+  async function fetchHttp2MaxHeaderListSizeLargeEnough() {
+    const caCert = await Deno.readTextFile("tests/testdata/tls/RootCA.pem");
+    const client = Deno.createHttpClient({
+      caCerts: [caCert],
+      http2MaxHeaderListSize: 64 * 1024,
+    });
+    const res = await fetch("https://localhost:5547/large_headers", { client });
+    assert(res.ok);
+    assertEquals(await res.text(), "ok");
     client.close();
   },
 );

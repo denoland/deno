@@ -3233,6 +3233,7 @@ pub fn wrap_eval_code(source_code: &str) -> String {
 /// `cli/args/flags.rs` enforces this. See #35591.
 const DENO_SUBCOMMANDS: &[&str] = &[
   "add",
+  "approve-builds",
   "approve-scripts",
   "audit",
   "bench",
@@ -3267,9 +3268,11 @@ const DENO_SUBCOMMANDS: &[&str] = &[
   "publish",
   "remove",
   "repl",
+  "rm",
   "run",
   "sandbox",
   "serve",
+  "sync-types",
   "task",
   "tasks",
   "test",

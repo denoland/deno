@@ -22,6 +22,7 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const {
   op_node_cp_check_paths_recursive,
+  op_node_cp_fast,
   op_node_cp_on_file,
   op_node_cp_on_link,
   op_node_cp_validate_and_prepare,
@@ -138,6 +139,11 @@ async function cpFn(
   opts,
 ) {
   try {
+    if (canUseNativeFastPath(opts)) {
+      await op_node_cp_fast(src, dest, opts.recursive);
+      return;
+    }
+
     const filter = opts.filter;
     if (filter && !(await filter(src, dest))) return;
     const statInfo = await op_node_cp_validate_and_prepare(
@@ -157,6 +163,16 @@ async function cpFn(
 
     throwCpError(err);
   }
+}
+
+function canUseNativeFastPath(opts) {
+  return opts.filter === undefined &&
+    opts.dereference === false &&
+    opts.force === true &&
+    opts.errorOnExist === false &&
+    opts.preserveTimestamps === false &&
+    opts.verbatimSymlinks === false &&
+    opts.mode === 0;
 }
 
 function getStatsForCopy(
@@ -270,7 +286,7 @@ async function copyDir(
   const dir = await lazyFsPromises().opendirPromise(src);
   const iterator = dir[SymbolAsyncIterator]();
   while (true) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     const { done, value } = await iterator.next();
     if (done) break;
     const { name } = value;

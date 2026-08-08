@@ -17,13 +17,13 @@
     },
     "ts_ignore_multiline": {
       "args": "check --quiet ts_ignore_multiline.ts",
-      "output": "",
-      "exitCode": 0
+      "output": "ts_ignore_multiline.out",
+      "exitCode": 1
     },
     "ts_expect_error_multiline": {
       "args": "check --quiet ts_expect_error_multiline.ts",
-      "output": "",
-      "exitCode": 0
+      "output": "ts_expect_error_multiline.out",
+      "exitCode": 1
     },
     "ts_expect_error_unused": {
       "args": "check --quiet ts_expect_error_unused.ts",

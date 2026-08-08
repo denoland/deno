@@ -35,6 +35,21 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name: "napi uv async close cancels pending send",
+  fn: async () => {
+    let closed = false;
+    await new Promise((resolve) => {
+      uv.test_uv_async_close_after_send(() => {
+        closed = true;
+        resolve();
+      });
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assertEquals(closed, true);
+  },
+});
+
 // Exercises the uv polyfills added for native addons that link directly
 // against libuv (e.g. @sentry/profiling-node). The Rust side asserts that
 // uv_hrtime, uv_timer_*, uv_cpu_info, uv_handle_*, uv_default_loop,

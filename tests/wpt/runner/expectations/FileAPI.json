@@ -23,8 +23,8 @@
     "Blob-constructor-endings.any.worker.html": true,
     "Blob-newobject.any.html": true,
     "Blob-newobject.any.worker.html": true,
-    "Blob-textStream.any.html": false,
-    "Blob-textStream.any.worker.html": false
+    "Blob-textStream.any.html": true,
+    "Blob-textStream.any.worker.html": true
   },
   "file": {
     "File-constructor.any.html": true,
@@ -103,9 +103,6 @@
   },
   "idlharness.any.html": {
     "expectedFailures": [
-      "Blob interface: operation textStream()",
-      "Blob interface: new Blob([\"TEST\"]) must inherit property \"textStream()\" with the proper type",
-      "Blob interface: new File([\"myFileBits\"], \"myFileName\") must inherit property \"textStream()\" with the proper type",
       "FileList interface: existence and properties of interface object",
       "FileList interface object length",
       "FileList interface object name",
@@ -119,9 +116,6 @@
   },
   "idlharness.any.worker.html": {
     "expectedFailures": [
-      "Blob interface: operation textStream()",
-      "Blob interface: new Blob([\"TEST\"]) must inherit property \"textStream()\" with the proper type",
-      "Blob interface: new File([\"myFileBits\"], \"myFileName\") must inherit property \"textStream()\" with the proper type",
       "FileList interface: existence and properties of interface object",
       "FileList interface object length",
       "FileList interface object name",
@@ -146,7 +140,6 @@
   "FileReaderSync.worker.html": false,
   "idlharness.worker.html": {
     "expectedFailures": [
-      "Blob interface: operation textStream()",
       "FileList interface: existence and properties of interface object",
       "FileList interface object length",
       "FileList interface object name",
@@ -193,7 +186,6 @@
   },
   "idlharness.html": {
     "expectedFailures": [
-      "Blob interface: operation textStream()",
       "FileList interface: existence and properties of interface object",
       "FileList interface object length",
       "FileList interface object name",

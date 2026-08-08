@@ -26,6 +26,21 @@ Deno.test(function eventInitializedWithTypeAndDict() {
   assertEquals(event.cancelable, true);
 });
 
+Deno.test(function eventSubclassWithReadOnlyToStringTag() {
+  class SubclassedEvent extends Event {}
+  Object.defineProperty(SubclassedEvent.prototype, Symbol.toStringTag, {
+    value: "SubclassedEvent",
+    configurable: true,
+  });
+
+  const event = new SubclassedEvent("test");
+  assertEquals(
+    Object.prototype.toString.call(event),
+    "[object SubclassedEvent]",
+  );
+  assertEquals(Object.hasOwn(event, Symbol.toStringTag), false);
+});
+
 Deno.test(function eventComposedPathSuccess() {
   const type = "click";
   const event = new Event(type);
