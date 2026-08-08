@@ -271,12 +271,21 @@ fn parse_url_with_base(
   url: &str,
   base: &ModuleSpecifier,
 ) -> Result<ModuleSpecifier, AnyError> {
-  match Url::parse(url) {
-    Ok(url) => Ok(url),
-    Err(ParseError::RelativeUrlWithoutBase) => {
-      base.join(url).map_err(|err| err.into())
-    }
-    Err(err) => Err(err.into()),
+  let url = match Url::parse(url) {
+    Ok(url) => url,
+    Err(ParseError::RelativeUrlWithoutBase) => base.join(url)?,
+    Err(err) => return Err(err.into()),
+  };
+  validate_endpoint_scheme(&url)?;
+  Ok(url)
+}
+
+fn validate_endpoint_scheme(url: &Url) -> Result<(), AnyError> {
+  match url.scheme() {
+    "http" | "https" => Ok(()),
+    scheme => Err(anyhow!(
+      "Unsupported registry endpoint scheme \"{scheme}\". Expected \"http\" or \"https\"."
+    )),
   }
 }
 
@@ -912,10 +921,10 @@ impl ModuleRegistry {
             Token::Key(k) => {
               if let Some(prefix) = &k.prefix {
                 let maybe_url = registry.get_url_for_key(k);
+                let base = Url::parse(&origin).ok()?;
                 if let Some(url) = maybe_url
-                  && let Some(items) = self.get_items(url).await
+                  && let Some(items) = self.get_items(url, &base).await
                 {
-                  let base = Url::parse(&origin).ok()?;
                   let (items, preselect, incomplete) = match items {
                     VariableItems::List(list) => {
                       (list.items, list.preselect, list.is_incomplete)
@@ -1017,6 +1026,7 @@ impl ModuleRegistry {
     &self,
     url: &Url,
   ) -> Option<lsp::Documentation> {
+    validate_endpoint_scheme(url).ok()?;
     let file_fetcher = self.file_fetcher.clone();
     let file = {
       let file = file_fetcher.fetch_bypass_permissions(url).await.ok()?;
@@ -1072,8 +1082,16 @@ impl ModuleRegistry {
     }
   }
 
-  async fn get_items(&self, url: &str) -> Option<VariableItems> {
-    let specifier = ModuleSpecifier::parse(url).ok()?;
+  async fn get_items(
+    &self,
+    url: &str,
+    base: &Url,
+  ) -> Option<VariableItems> {
+    let specifier = parse_url_with_base(url, base)
+      .map_err(|err| {
+        error!("Internal error mapping endpoint \"{}\". {}", url, err);
+      })
+      .ok()?;
     let file = {
       let file = self
         .file_fetcher
@@ -1299,6 +1317,81 @@ mod tests {
       ]
     })).unwrap();
     assert!(validate_config(&cfg).is_ok());
+  }
+
+  #[test]
+  fn test_registry_endpoint_schemes() {
+    let base = Url::parse(
+      "https://registry.example/.well-known/deno-import-intellisense.json",
+    )
+    .unwrap();
+
+    assert_eq!(
+      parse_url_with_base("/api/modules", &base).unwrap().as_str(),
+      "https://registry.example/api/modules",
+    );
+    assert_eq!(
+      parse_url_with_base("https://registry.example/api/modules", &base)
+        .unwrap()
+        .as_str(),
+      "https://registry.example/api/modules",
+    );
+    assert_eq!(
+      parse_url_with_base("https://api.example/modules", &base)
+        .unwrap()
+        .as_str(),
+      "https://api.example/modules",
+    );
+    assert_eq!(
+      parse_url_with_base("//cdn.example/modules", &base)
+        .unwrap()
+        .as_str(),
+      "https://cdn.example/modules",
+    );
+
+    for endpoint in [
+      "file:///tmp/modules.json",
+      "data:application/json,[]",
+      "blob:https://registry.example/id",
+      "ftp://registry.example/modules",
+    ] {
+      assert!(parse_url_with_base(endpoint, &base).is_err(), "{endpoint}");
+    }
+  }
+
+  #[tokio::test]
+  async fn test_registry_rejects_unsupported_endpoint_schemes() {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    let temp_dir = TempDir::new();
+    let items_path = temp_dir.path().join("items.json");
+    std::fs::write(&items_path, r#"["item"]"#).unwrap();
+    let documentation_path = temp_dir.path().join("documentation.json");
+    std::fs::write(
+      &documentation_path,
+      r#"{"kind":"markdown","value":"documentation"}"#,
+    )
+    .unwrap();
+
+    let module_registry = ModuleRegistry::new(
+      temp_dir.path().join("registries").to_path_buf(),
+      Arc::new(HttpClientProvider::new(None, None)),
+    );
+    let base = Url::parse("https://registry.example/").unwrap();
+    let items_url = Url::from_file_path(items_path).unwrap();
+    let documentation_url = Url::from_file_path(documentation_path).unwrap();
+
+    assert!(
+      module_registry
+        .get_items(items_url.as_str(), &base)
+        .await
+        .is_none()
+    );
+    assert!(
+      module_registry
+        .get_documentation(&documentation_url)
+        .await
+        .is_none()
+    );
   }
 
   #[tokio::test]
