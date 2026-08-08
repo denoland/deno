@@ -24,7 +24,6 @@ const {
   MapPrototypeGet,
   MapPrototypeSet,
   PromisePrototypeThen,
-  ReflectApply,
   SafeMap,
   TypeError,
   indirectEval,
@@ -64,7 +63,15 @@ function setTimeout(callback, timeout = 0, ...args) {
     try {
       setAsyncContext(asyncContext);
       timerDepth = depth + 1;
-      ReflectApply(unboundCallback, globalThis, args);
+      // Bump the user-code depth counter so that dispatchEvent from
+      // within the timer callback does not run microtasks between
+      // listeners (matching browser behavior for user-code dispatch).
+      // Use withUserCodeDepth instead of invokeUserCallback because
+      // listOnTimeout already calls runNextTicks() between timers,
+      // which preserves the Node.js nextTick-before-microtask
+      // invariant. Calling op_run_microtasks() here would drain
+      // microtasks before ticks, breaking that invariant.
+      core.withUserCodeDepth(unboundCallback, globalThis, args);
     } finally {
       timerDepth = prevDepth;
       setAsyncContext(oldContext);
@@ -96,7 +103,10 @@ function setInterval(callback, timeout = 0, ...args) {
     try {
       setAsyncContext(asyncContext);
       timerDepth = depth + 1;
-      ReflectApply(unboundCallback, globalThis, args);
+      // Bump the user-code depth counter - see setTimeout above for
+      // rationale on using withUserCodeDepth instead of
+      // invokeUserCallback.
+      core.withUserCodeDepth(unboundCallback, globalThis, args);
     } finally {
       timerDepth = prevDepth;
       setAsyncContext(oldContext);

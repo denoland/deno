@@ -233,6 +233,80 @@ Deno.test(function eventTargetThisShouldDefaultToWindow() {
   assertEquals(n, 1);
 });
 
+// Regression test for denoland/deno#11731: when an event is dispatched
+// from internal code (e.g. AbortSignal.timeout firing), microtasks
+// queued by an event listener must run before the next listener is
+// invoked, matching Web IDL's "clean up after running script".
+//
+// AbortSignal.timeout creates a *system* timer whose callback is
+// internal JS (not user code). When it fires, the abort event is
+// dispatched with an empty user-code stack, so microtasks run between
+// listeners — matching browser behavior.
+Deno.test(
+  async function microtaskCheckpointBetweenEventListenersDispatchedFromInternalCode() {
+    const signal = AbortSignal.timeout(10);
+    const log: string[] = [];
+
+    signal.addEventListener("abort", () => {
+      log.push("abort event 1");
+      queueMicrotask(() => log.push("abort microtask 1"));
+    });
+    signal.addEventListener("abort", () => {
+      log.push("abort event 2");
+      queueMicrotask(() => log.push("abort microtask 2"));
+    });
+
+    // Wait for the signal to abort and drain remaining microtasks.
+    await new Promise<void>((resolve) => {
+      signal.addEventListener("abort", () => setTimeout(resolve, 0));
+    });
+
+    assertEquals(log, [
+      "abort event 1",
+      "abort microtask 1",
+      "abort event 2",
+      "abort microtask 2",
+    ]);
+  },
+);
+
+// Regression test for denoland/deno#11731: when an event is dispatched
+// from user code (including setTimeout callbacks, which ARE user
+// code), microtasks must NOT run between listeners — they wait until
+// the user code that called dispatchEvent unwinds.
+Deno.test(
+  async function microtaskCheckpointDeferredBetweenListenersDispatchedFromUserCode() {
+    const target = new EventTarget();
+    const log: string[] = [];
+
+    target.addEventListener("foo", () => {
+      log.push("foo event 1");
+      queueMicrotask(() => log.push("foo microtask 1"));
+    });
+    target.addEventListener("foo", () => {
+      log.push("foo event 2");
+      queueMicrotask(() => log.push("foo microtask 2"));
+    });
+
+    // Dispatching synchronously from a top-level async test function:
+    // depth is >= 1 (bumped by mod_evaluate), so microtasks must NOT
+    // run between listeners.
+    target.dispatchEvent(new Event("foo"));
+
+    // Microtasks have not run yet.
+    assertEquals(log, ["foo event 1", "foo event 2"]);
+
+    // After draining microtasks, they should have run.
+    await new Promise<void>((r) => queueMicrotask(() => r()));
+    assertEquals(log, [
+      "foo event 1",
+      "foo event 2",
+      "foo microtask 1",
+      "foo microtask 2",
+    ]);
+  },
+);
+
 Deno.test(function eventTargetShouldAcceptEventListenerObject() {
   const target = new EventTarget();
   const event = new Event("foo", { bubbles: true, cancelable: false });
