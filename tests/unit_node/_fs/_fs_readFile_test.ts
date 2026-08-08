@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
+import { O_CREAT, O_RDONLY } from "node:constants";
 import { existsSync, promises, readFile, readFileSync } from "node:fs";
 import * as path from "@std/path";
 import {
@@ -14,6 +15,96 @@ import { Buffer } from "node:buffer";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
 const testData = path.resolve(moduleDir, "testdata", "hello.txt");
+const permissionTestDir = Deno.makeTempDirSync();
+const readCreateOptions = {
+  flag: O_RDONLY | O_CREAT,
+} as unknown as { flag: string };
+const readOnlyOptions = {
+  flag: O_RDONLY,
+} as unknown as { flag: string };
+
+Deno.test({
+  name: "fs.readFileSync requires write access when flags may create",
+  permissions: { read: true, write: false },
+  fn() {
+    const filePath = path.join(permissionTestDir, "sync_read_only.txt");
+
+    assertThrows(
+      () => readFileSync(filePath, readCreateOptions),
+      Deno.errors.NotCapable,
+    );
+    assertEquals(existsSync(filePath), false);
+  },
+});
+
+Deno.test({
+  name: "fs.promises.readFile requires write access when flags may create",
+  permissions: { read: true, write: false },
+  async fn() {
+    const filePath = path.join(permissionTestDir, "async_read_only.txt");
+
+    await assertRejects(
+      () => readFilePromise(filePath, readCreateOptions),
+      Deno.errors.NotCapable,
+    );
+    assertEquals(existsSync(filePath), false);
+  },
+});
+
+Deno.test({
+  name: "fs.readFile requires read access when flags may create",
+  permissions: { read: false, write: true },
+  async fn() {
+    assertThrows(
+      () => readFileSync(testData, readCreateOptions),
+      Deno.errors.NotCapable,
+    );
+    await assertRejects(
+      () => readFilePromise(testData, readCreateOptions),
+      Deno.errors.NotCapable,
+    );
+  },
+});
+
+Deno.test({
+  name: "fs.readFile with read-only flags only requires read access",
+  permissions: { read: true, write: false },
+  async fn() {
+    assertEquals(
+      readFileSync(testData, readOnlyOptions).toString(),
+      "hello world",
+    );
+    assertEquals(
+      (await readFilePromise(testData, readOnlyOptions)).toString(),
+      "hello world",
+    );
+  },
+});
+
+Deno.test({
+  name: "fs.readFile can read and create when both accesses are granted",
+  permissions: { read: true, write: true },
+  async fn() {
+    const tempDir = Deno.makeTempDirSync();
+    try {
+      const syncPath = path.join(tempDir, "sync.txt");
+      const asyncPath = path.join(tempDir, "async.txt");
+
+      assertEquals(
+        readFileSync(syncPath, readCreateOptions).length,
+        0,
+      );
+      assertEquals(
+        (await readFilePromise(asyncPath, readCreateOptions)).length,
+        0,
+      );
+      assertEquals(existsSync(syncPath), true);
+      assertEquals(existsSync(asyncPath), true);
+    } finally {
+      Deno.removeSync(tempDir, { recursive: true });
+    }
+  },
+});
 
 Deno.test("readFileSuccess", async function () {
   const data = await new Promise((res, rej) => {
