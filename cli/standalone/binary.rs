@@ -266,8 +266,7 @@ fn add_pkg_node_modules_root(
   embedded_roots: &mut HashSet<PathBuf>,
   pkg_folder: &Path,
 ) -> Result<(), AnyError> {
-  let root =
-    pkg_folder_node_modules_root(pkg_folder).unwrap_or(pkg_folder);
+  let root = pkg_folder_node_modules_root(pkg_folder).unwrap_or(pkg_folder);
   let canonical_root = crate::util::fs::canonicalize_path(root)
     .with_context(|| format!("Canonicalizing '{}'", root.display()))?;
   if embedded_roots.insert(canonical_root) {
