@@ -191,6 +191,102 @@ Deno.test(async function bodyMultipartFormDataEmptyFilenameIsFile() {
   assertEquals(await fileWithContents.text(), "file contents");
 });
 
+Deno.test(async function bodyMultipartFormDataInitialBoundaryAtStart() {
+  const boundary = "AaB03x";
+  const payload = [
+    `--${boundary}`,
+    'Content-Disposition: form-data; name="field"',
+    "",
+    "value",
+    `--${boundary}--`,
+  ].join("\r\n");
+
+  const body = buildBody(
+    new TextEncoder().encode(payload),
+    new Headers({
+      "Content-Type": `multipart/form-data; boundary=${boundary}`,
+    }),
+  );
+
+  const formData = await body.formData();
+  assertEquals(formData.get("field"), "value");
+});
+
+Deno.test(async function bodyMultipartFormDataIgnoresPreamble() {
+  const boundary = "AaB03x";
+  const payload = [
+    "multipart preamble",
+    'Content-Disposition: form-data; name="preamble"',
+    "",
+    "not a field",
+    `--${boundary}\t `,
+    'Content-Disposition: form-data; name="field"',
+    "",
+    "value",
+    `--${boundary}--`,
+  ].join("\r\n");
+
+  const body = buildBody(
+    new TextEncoder().encode(payload),
+    new Headers({
+      "Content-Type": `multipart/form-data; boundary=${boundary}`,
+    }),
+  );
+
+  const formData = await body.formData();
+  assertEquals(formData.get("preamble"), null);
+  assertEquals(formData.get("field"), "value");
+});
+
+Deno.test(async function bodyMultipartFormDataInitialClosingBoundaryIsEmpty() {
+  const boundary = "AaB03x";
+  const payloads = [
+    `--${boundary}--`,
+    `--${boundary}--\r\n`,
+    `preamble\r\n--${boundary}--\r\nepilogue`,
+    `--${boundary}-- \t\r\n`,
+  ];
+
+  for (const payload of payloads) {
+    const body = buildBody(
+      new TextEncoder().encode(payload),
+      new Headers({
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
+      }),
+    );
+
+    const formData = await body.formData();
+    assertEquals([...formData], []);
+  }
+});
+
+Deno.test(async function bodyMultipartFormDataRejectsInvalidInitialBoundary() {
+  const boundary = "AaB03x";
+  const payloads = [
+    "",
+    "multipart preamble",
+    `--${boundary.slice(0, -1)}\r\n`,
+    `--${boundary}-\r\n`,
+    `--${boundary}extra\r\n`,
+    `--${boundary} \tinvalid\r\n`,
+  ];
+
+  for (const payload of payloads) {
+    const body = buildBody(
+      new TextEncoder().encode(payload),
+      new Headers({
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
+      }),
+    );
+
+    await assertRejects(
+      () => body.formData(),
+      TypeError,
+      "Unable to parse body as form data",
+    );
+  }
+});
+
 Deno.test(
   { permissions: { net: true } },
   async function bodyURLEncodedFormData() {

@@ -388,6 +388,8 @@ const CRLF = "\r\n";
 const LF = StringPrototypeCodePointAt(CRLF, 1);
 const CR = StringPrototypeCodePointAt(CRLF, 0);
 const DASH = StringPrototypeCodePointAt("-", 0);
+const SPACE = StringPrototypeCodePointAt(" ", 0);
+const TAB = StringPrototypeCodePointAt("\t", 0);
 const MAX_MULTIPART_PART_HEADER_SIZE = 16 * 1024;
 const MAX_MULTIPART_PART_HEADER_COUNT = 128;
 
@@ -411,9 +413,8 @@ class MultipartParser {
       );
     }
 
-    this.boundary = `--${boundary}`;
     this.body = body;
-    this.boundaryChars = core.encode(this.boundary);
+    this.boundaryChars = core.encode(`--${boundary}`);
   }
 
   /**
@@ -448,13 +449,66 @@ class MultipartParser {
 
   /**
    * @param {number} index
+   * @returns {boolean}
+   */
+  #matchesBoundary(index) {
+    for (let i = 0; i < this.boundaryChars.length; i++) {
+      if (this.body[index + i] !== this.boundaryChars[i]) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * @returns {{ type: 1 | 2, headerStart: number } | null}
+   */
+  #findInitialDelimiter() {
+    for (let index = 0; index < this.body.length; index++) {
+      const isLineStart = index === 0 ||
+        (this.body[index - 2] === CR && this.body[index - 1] === LF);
+      if (!isLineStart || !this.#matchesBoundary(index)) {
+        continue;
+      }
+
+      let suffixIndex = index + this.boundaryChars.length;
+      /** @type {1 | 2} */
+      let type = 1;
+      if (
+        this.body[suffixIndex] === DASH &&
+        this.body[suffixIndex + 1] === DASH
+      ) {
+        type = 2;
+        suffixIndex += 2;
+      }
+
+      while (
+        this.body[suffixIndex] === SPACE || this.body[suffixIndex] === TAB
+      ) {
+        suffixIndex++;
+      }
+
+      if (type === 2 && suffixIndex === this.body.length) {
+        return { type, headerStart: suffixIndex };
+      }
+      if (
+        this.body[suffixIndex] === CR && this.body[suffixIndex + 1] === LF
+      ) {
+        return { type, headerStart: suffixIndex + 2 };
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * @param {number} index
    * @returns {0 | 1 | 2}
    */
   #delimiterType(index) {
-    for (let i = 0; i < this.boundaryChars.length; i++) {
-      if (this.body[index + i] !== this.boundaryChars[i]) {
-        return 0;
-      }
+    if (!this.#matchesBoundary(index)) {
+      return 0;
     }
 
     const suffixIndex = index + this.boundaryChars.length;
@@ -475,38 +529,27 @@ class MultipartParser {
    * @returns {FormData}
    */
   parse() {
-    // To have fields body must be at least 2 boundaries + \r\n + --
-    // on the last boundary.
-    if (this.body.length < (this.boundary.length * 2) + 4) {
-      const decodedBody = core.decode(this.body);
-      const lastBoundary = this.boundary + "--";
-      // check if it's an empty valid form data
-      if (
-        decodedBody === lastBoundary ||
-        decodedBody === lastBoundary + "\r\n"
-      ) {
-        return new FormData();
-      }
+    const initialDelimiter = this.#findInitialDelimiter();
+    if (initialDelimiter === null) {
       throw new TypeError("Unable to parse body as form data");
     }
 
     const formData = new FormData();
+    if (initialDelimiter.type === 2) {
+      return formData;
+    }
+
     let headerText = "";
-    let headerStart = 0;
-    let state = 0;
+    let headerStart = initialDelimiter.headerStart;
+    let state = 1;
     let fileStart = 0;
 
-    for (let i = 0; i < this.body.length; i++) {
+    for (let i = headerStart; i < this.body.length; i++) {
       const byte = this.body[i];
       const prevByte = this.body[i - 1];
       const isNewLine = byte === LF && prevByte === CR;
 
-      if (state === 0 && isNewLine) {
-        state = 1;
-        headerStart = i + 1;
-      } else if (
-        state === 1
-      ) {
+      if (state === 1) {
         const headerByteLength = i - headerStart + 1;
         if (headerByteLength > MAX_MULTIPART_PART_HEADER_SIZE) {
           throw new TypeError("Multipart part headers are too large");
