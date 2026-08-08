@@ -57,6 +57,18 @@ fn pty_multiline_dot_chain() {
 }
 
 #[test(flaky)]
+fn pty_regex_literal_with_quote() {
+  // A quote inside a character class used to leave the validator waiting for a
+  // closing string, so the REPL blocked instead of evaluating the line.
+  // https://github.com/denoland/deno/issues/24963
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("let re = /[']/;");
+    console.write_line("re.test(\"'\")");
+    console.expect("true");
+  });
+}
+
+#[test(flaky)]
 fn pty_null() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("null");
