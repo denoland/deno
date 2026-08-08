@@ -18,7 +18,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 122;
+const cacheVersion = 123;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
@@ -58,9 +58,9 @@ const Runners = {
   linuxArmXl: {
     os: "linux",
     arch: "aarch64",
-    runner: isDenoland.and(isMainOrTag).then(ubuntuARMXlRunner).else(
-      ubuntuARMRunner,
-    ),
+    runner: isDenoland.and(isMainOrTag.or(hasCiFullLabel)).then(
+      ubuntuARMXlRunner,
+    ).else(ubuntuARMRunner),
     testRunner: ubuntuARMRunner,
   },
   macosX86: {
@@ -622,6 +622,13 @@ const buildJobs = buildItems.map((rawBuildItem) => {
     : `${rawBuildItem.arch}-unknown-linux-gnu`;
   const startupOrderPath =
     `target/release/startup-order-${startupOrderTarget}.order`;
+  // The startup-order two-pass build (trace startup workloads, relink with the
+  // generated order, then verify) adds several minutes to the release build,
+  // most visibly to `release linux-x86_64` which is the only release build that
+  // runs on PRs. The ordered binary is only shipped/benchmarked from main and
+  // release tags, so restrict the extra passes to those; PRs (and anyone
+  // iterating on the ordering tooling) can opt back in with the `ci-full` label.
+  const runStartupOrder = isMainOrTag.or(hasCiFullLabel);
   const isLinux = buildItem.os.equals("linux");
   const isWindows = buildItem.os.equals("windows");
   const isMacos = buildItem.os.equals("macos");
@@ -799,12 +806,14 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             run: [
               `target/release/deno -A tools/release/create_symcache.ts target/release/deno-${buildItem.arch}-apple-darwin.symcache`,
               "strip -x -S target/release/deno",
-              'echo "Key is $(echo $APPLE_CODESIGN_KEY | base64 -d | wc -c) bytes"',
-              "rcodesign sign target/release/deno " +
+              'if [[ "$GITHUB_REF" == "refs/heads/main" || "$GITHUB_REF" == refs/tags/* ]]; then',
+              '  echo "Key is $(echo $APPLE_CODESIGN_KEY | base64 -d | wc -c) bytes"',
+              "  rcodesign sign target/release/deno " +
               "--code-signature-flags=runtime " +
               '--p12-password="$APPLE_CODESIGN_PASSWORD" ' +
               "--p12-file=<(echo $APPLE_CODESIGN_KEY | base64 -d) " +
               "--entitlements-xml-file=cli/entitlements.plist",
+              "fi",
               "cd target/release",
               `shasum -a 256 deno > deno-${buildItem.arch}-apple-darwin.sha256sum`,
               `zip -r deno-${buildItem.arch}-apple-darwin.zip deno`,
@@ -897,8 +906,12 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               "try {",
               "  Move-Item target/release/denort.exe target/release/denort.v8.exe",
               "  Move-Item target/release/denort.dll target/release/denort.v8.dll",
-              `  cargo build --release --locked -p denort -p denort_desktop --no-default-features --features quickjs`,
-              '  if ($LASTEXITCODE -ne 0) { throw "QuickJS runtime build failed" }',
+              // Both packages produce denort.pdb on Windows. Building them in
+              // one Cargo invocation lets their linkers race to write it.
+              `  cargo build --release --locked -p denort --no-default-features --features quickjs`,
+              '  if ($LASTEXITCODE -ne 0) { throw "QuickJS denort build failed" }',
+              `  cargo build --release --locked -p denort_desktop --no-default-features --features quickjs`,
+              '  if ($LASTEXITCODE -ne 0) { throw "QuickJS denort_desktop build failed" }',
               `  Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-quickjs-${buildItem.arch}-pc-windows-msvc.zip`,
               `  Get-FileHash target/release/denort-quickjs-${buildItem.arch}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-quickjs-${buildItem.arch}-pc-windows-msvc.zip.sha256sum`,
               `  Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.dll -DestinationPath target/release/libdenort-quickjs-${buildItem.arch}-pc-windows-msvc.zip`,
@@ -1051,6 +1064,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             ...(usesStartupOrder
               ? [{
                 name: "Trace startup order",
+                if: runStartupOrder,
                 run: rawBuildItem.os === "macos"
                   ? [
                     "cp -p target/release/deno target/release/deno-before-startup-order",
@@ -1071,6 +1085,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 env: { NO_COLOR: 1 },
               }, {
                 name: "Relink release deno with startup order",
+                if: runStartupOrder,
                 run: cargoBuildReleaseCommand,
                 env: {
                   DENO_SNAPSHOT_MINIFY_SOURCES: "1",
@@ -1080,6 +1095,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 },
               }, {
                 name: "Verify startup order",
+                if: runStartupOrder,
                 run: [
                   "target/release/deno run -A tools/startup_order/verify_orderfile.ts \\",
                   "  --baseline-binary target/release/deno-before-startup-order \\",
@@ -1091,7 +1107,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               }, {
                 name: "Upload startup order",
                 uses: "actions/upload-artifact@v6",
-                if: conditions.status.always(),
+                if: runStartupOrder.and(conditions.status.always()),
                 with: {
                   name: `startup-order-${profileName}`,
                   path: [

@@ -22,6 +22,11 @@ pub struct CommandDef {
   /// If true, pass all remaining args after subcommand name through
   /// without parsing (deploy/sandbox pattern).
   pub passthrough: bool,
+  /// If true, a `--` separator before the forwarded args is kept in the
+  /// forwarded argv (clap's `.last(true)` / external-subcommand behavior, e.g.
+  /// `deno run x.ts -- -a` forwards `["--", "-a"]`). If false, the `--` is
+  /// stripped (clap's plain `trailing_var_arg`, e.g. `deno eval`/`serve`).
+  pub keep_double_dash: bool,
 }
 
 impl CommandDef {
@@ -36,6 +41,7 @@ impl CommandDef {
       default_subcommand: None,
       trailing_var_arg: false,
       passthrough: false,
+      keep_double_dash: false,
     }
   }
 

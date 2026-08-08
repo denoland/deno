@@ -31,7 +31,47 @@ pub struct FrameworkDetection {
   pub hmr_command: Option<Vec<String>>,
 }
 
+/// Entrypoint compiled for `deno desktop --hmr` on projects whose dev command
+/// is plain `vite dev`: it boots the project's own Vite dev server through
+/// Vite's JS API *inside* the desktop runtime, so server-side code (SvelteKit
+/// endpoints, Vite SSR handlers) keeps access to `Deno.desktop` — matching the
+/// compiled app, where the server also runs in the desktop runtime (#35899).
+///
+/// The runtime publishes `DENO_SERVE_ADDRESS` before user code runs and the
+/// webview polls-then-navigates to that port. Binding Vite to it explicitly
+/// (rather than relying on the node:http listen override alone) keeps the
+/// port Vite believes it serves on — `printUrls`, HMR websocket origin — in
+/// agreement with where it actually listens.
+const VITE_DEV_ENTRYPOINT: &str = r#"// @ts-nocheck
+import { createServer } from "vite";
+const addr = Deno.env.get("DENO_SERVE_ADDRESS") ?? "";
+const match = addr.match(/^tcp:(.+):(\d+)$/);
+const server = await createServer({
+  server: match
+    ? { host: match[1], port: Number(match[2]), strictPort: true }
+    : {},
+});
+await server.listen();
+server.printUrls();
+"#;
+
 impl FrameworkDetection {
+  /// Entrypoint that boots the framework's dev server *inside* the desktop
+  /// runtime for `deno desktop --hmr`, so server-side code keeps access to
+  /// `Deno.desktop` (#35899). `None` means `--hmr` falls back to spawning
+  /// `hmr_command` as a separate plain-Deno process, where desktop APIs are
+  /// unavailable to server code.
+  pub fn hmr_entrypoint_code(&self) -> Option<&'static str> {
+    match self.name {
+      // Both run plain `vite dev` as their dev task; boot the same server
+      // through Vite's JS API so it lives inside the desktop runtime. The
+      // wrapper dev CLIs (`nuxi dev`, `vinxi dev`, `react-router dev`,
+      // Fresh's dev.ts) are not plain Vite and keep the external path.
+      "Vite" | "SvelteKit" => Some(VITE_DEV_ENTRYPOINT),
+      _ => None,
+    }
+  }
+
   /// Directories (relative to the project root) where the framework keeps
   /// static assets like favicons. Used to auto-detect a desktop app icon
   /// when the user didn't supply `--icon`.
@@ -947,9 +987,12 @@ mod tests {
     let det = detect_framework(dir.path()).unwrap().unwrap();
     assert_eq!(det.name, "Nuxt");
     assert_eq!(det.include_paths, vec![".output"]);
+    // Nuxt runs a Vite-based dev server, so `deno desktop --hmr` is
+    // supported — but `nuxi dev` is not plain `vite dev`, so it keeps the
+    // external dev-server process rather than the in-runtime dev entrypoint.
+    assert!(det.hmr_entrypoint_code().is_none());
     let cmd = det.build_command.unwrap();
     assert_eq!(cmd[1..], vec!["task", "build"]);
-    // Nuxt runs a Vite-based dev server, so `deno desktop --hmr` is supported.
     let hmr = det.hmr_command.unwrap();
     assert_eq!(hmr[1..], vec!["task", "dev"]);
   }
@@ -1055,6 +1098,14 @@ mod tests {
     assert_eq!(det.name, "SvelteKit");
     assert!(det.entrypoint_code.contains("build/index.js"));
     assert_eq!(det.include_paths, vec!["build/client"]);
+    // SvelteKit's dev command is plain `vite dev`, so `--hmr` boots the dev
+    // server inside the desktop runtime and server-side endpoints keep
+    // `Deno.desktop` (#35899).
+    assert!(
+      det
+        .hmr_entrypoint_code()
+        .is_some_and(|code| code.contains("createServer"))
+    );
   }
 
   #[test]
@@ -1394,9 +1445,17 @@ mod tests {
     // binary is reproducible.
     assert!(det.entrypoint_code.contains("jsr:@std/http@^1/file-server"));
     assert_eq!(det.include_paths, vec!["dist"]);
+    // A plain Vite SPA (e.g. the Vue template) supports `deno desktop --hmr`.
+    // Vite's dev command is plain `vite dev`, so `--hmr` boots the dev server
+    // inside the desktop runtime and server code keeps the desktop APIs
+    // (#35899).
+    assert!(
+      det
+        .hmr_entrypoint_code()
+        .is_some_and(|code| code.contains("createServer"))
+    );
     let cmd = det.build_command.unwrap();
     assert_eq!(cmd[1..], vec!["task", "build"]);
-    // A plain Vite SPA (e.g. the Vue template) supports `deno desktop --hmr`.
     let hmr = det.hmr_command.unwrap();
     assert_eq!(hmr[1..], vec!["task", "dev"]);
   }
