@@ -189,6 +189,7 @@ EXPORTS
   uv_handle_get_data
   uv_handle_get_loop
   uv_handle_get_type
+  uv_handle_size
   uv_cpu_info
   uv_free_cpu_info
   uv_timer_init
@@ -212,3 +213,4 @@ EXPORTS
   uv_cond_broadcast
   uv_cond_wait
   uv_cond_timedwait
+  uv_strerror

@@ -8,6 +8,8 @@ use std::path::PathBuf;
 use capacity_builder::StringBuilder;
 use deno_core::anyhow;
 use deno_core::error::AnyError;
+use deno_runtime::deno_permissions::OpenAccessKind;
+use deno_runtime::deno_permissions::PermissionsContainer;
 
 use crate::tools::bundle::OutputFile;
 
@@ -374,9 +376,20 @@ fn parse_html_entrypoint(
 pub fn load_html_entrypoint(
   cwd: &Path,
   path: &Path,
+  permissions: Option<&PermissionsContainer>,
 ) -> anyhow::Result<HtmlEntrypoint> {
-  let contents = std::fs::read_to_string(path)?;
-  let canonical_path = crate::util::fs::canonicalize_path(path)?;
+  let checked_path = permissions
+    .map(|permissions| {
+      permissions.check_open(
+        Cow::Borrowed(path),
+        OpenAccessKind::Read,
+        Some("Deno.bundle()"),
+      )
+    })
+    .transpose()?;
+  let open_path = checked_path.as_deref().unwrap_or(path);
+  let contents = std::fs::read_to_string(open_path)?;
+  let canonical_path = crate::util::fs::canonicalize_path(open_path)?;
   parse_html_entrypoint(cwd, path, canonical_path, contents)
 }
 
@@ -703,7 +716,75 @@ fn inject_scripts_and_css(
 
 #[cfg(test)]
 mod tests {
+  use std::sync::Arc;
+
+  use deno_runtime::deno_permissions::Permissions;
+  use deno_runtime::permissions::RuntimePermissionDescriptorParser;
+
   use super::*;
+
+  fn no_prompt_permissions() -> PermissionsContainer {
+    PermissionsContainer::new(
+      Arc::new(RuntimePermissionDescriptorParser::new(
+        crate::sys::CliSys::default(),
+      )),
+      Permissions::none_without_prompt(),
+    )
+  }
+
+  fn allow_all_permissions() -> PermissionsContainer {
+    PermissionsContainer::allow_all(Arc::new(
+      RuntimePermissionDescriptorParser::new(crate::sys::CliSys::default()),
+    ))
+  }
+
+  #[test]
+  fn load_html_entrypoint_requires_read_permission() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let html_path = temp_dir.path().join("index.html");
+    std::fs::write(&html_path, "<p>blocked</p>").unwrap();
+
+    let err = load_html_entrypoint(
+      temp_dir.path(),
+      &html_path,
+      Some(&no_prompt_permissions()),
+    )
+    .unwrap_err();
+
+    assert!(
+      err.to_string().contains("Requires read access"),
+      "unexpected error: {err}"
+    );
+  }
+
+  #[test]
+  fn load_html_entrypoint_allows_read_permission() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let html_path = temp_dir.path().join("index.html");
+    std::fs::write(&html_path, "<p>allowed</p>").unwrap();
+
+    let entry = load_html_entrypoint(
+      temp_dir.path(),
+      &html_path,
+      Some(&allow_all_permissions()),
+    )
+    .unwrap();
+
+    assert_eq!(entry.path, html_path);
+    assert_eq!(entry.contents, "<p>allowed</p>");
+  }
+
+  #[test]
+  fn load_html_entrypoint_without_permissions_skips_check() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let html_path = temp_dir.path().join("index.html");
+    std::fs::write(&html_path, "<p>cli</p>").unwrap();
+
+    let entry =
+      load_html_entrypoint(temp_dir.path(), &html_path, None).unwrap();
+
+    assert_eq!(entry.contents, "<p>cli</p>");
+  }
 
   fn script(src: &str) -> Script {
     Script {

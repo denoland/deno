@@ -688,6 +688,39 @@ async fn test_lazy_load_esm_evaluates_pre_instantiated_sibling() {
   result.await.unwrap();
 }
 
+/// Regression test for https://github.com/denoland/deno/issues/36216
+///
+/// Evaluating a pre-instantiated module cached under a synthetic ESM specifier
+/// can synchronously start a dynamic import. The cache-hit path must not keep
+/// `ModuleMapData` borrowed while V8 runs the module body, because starting
+/// the import allocates a new module load ID from the same map.
+#[test]
+fn test_cached_synthetic_esm_evaluation_allows_dynamic_import() {
+  let mut runtime = JsRuntime::new(Default::default());
+  let module_map = runtime.module_map().clone();
+
+  deno_core::scope!(scope, runtime);
+  module_map.add_synthetic_esm_module(
+    ascii_str!("custom:synthetic").into(),
+    ascii_str!("ext:test/backing.js").into(),
+  );
+  let module_id = module_map
+    .new_es_module(
+      scope,
+      false,
+      ascii_str!("custom:synthetic").into(),
+      ascii_str!(r#"import("file:///dynamic_import.js").catch(() => {});"#)
+        .into(),
+      false,
+      None,
+    )
+    .unwrap();
+  module_map.instantiate_module(scope, module_id).unwrap();
+  module_map
+    .lazy_load_synthetic_esm_module(scope, "custom:synthetic")
+    .unwrap();
+}
+
 /// Regression test for https://github.com/denoland/deno/issues/34307
 ///
 /// Two concurrent dynamic `import()` calls each spawn their own
@@ -967,6 +1000,58 @@ fn test_validate_import_attributes_default() {
     .unwrap();
 }
 
+fn fs_module_loader_specifier(file_name: &str) -> ModuleSpecifier {
+  let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    .join("modules")
+    .join("testdata")
+    .join(file_name);
+  deno_path_util::url_from_file_path(&path).unwrap()
+}
+
+async fn load_fs_module(
+  file_name: &str,
+  requested_module_type: RequestedModuleType,
+) -> Result<ModuleSource, ModuleLoaderError> {
+  let specifier = fs_module_loader_specifier(file_name);
+  let response = FsModuleLoader.load(
+    &specifier,
+    None,
+    ModuleLoadOptions {
+      is_dynamic_import: false,
+      is_synchronous: false,
+      requested_module_type,
+    },
+  );
+  match response {
+    ModuleLoadResponse::Sync(result) => result,
+    ModuleLoadResponse::Async(future) => future.await,
+  }
+}
+
+#[tokio::test]
+async fn test_fs_module_loader_rejects_non_json_for_json_request() {
+  for file_name in ["fs_module_loader.js", "fs_module_loader"] {
+    let specifier = fs_module_loader_specifier(file_name);
+    let error = load_fs_module(file_name, RequestedModuleType::Json)
+      .await
+      .unwrap_err();
+
+    assert_eq!(error.get_class(), "TypeError");
+    assert_eq!(
+      error.to_string(),
+      format!(
+        "Expected a JSON module, but identified a JavaScript module.\n  Specifier: {specifier}"
+      )
+    );
+  }
+
+  let module =
+    load_fs_module("fs_module_loader.json", RequestedModuleType::Json)
+      .await
+      .unwrap();
+  assert_eq!(module.module_type, ModuleType::Json);
+}
+
 #[test]
 fn test_validate_import_attributes_callback() {
   // Verify that `validate_import_attributes_cb` is called and can deny
@@ -1102,6 +1187,60 @@ fn test_validate_import_attributes_callback2() {
       exception_to_err_result::<()>(scope, exception, false, true).unwrap_err();
     assert_eq!(err.to_string(), "Uncaught TypeError: boom!");
   }
+}
+
+#[tokio::test]
+async fn test_validate_import_attributes_callback_dynamic_import() {
+  fn validate_import_attributes(
+    scope: &mut v8::PinScope,
+    _attributes: &HashMap<String, String>,
+    _context: &ImportAttributesContext,
+  ) {
+    let message = v8::String::new(scope, "boom!").unwrap();
+    let exception = v8::Exception::type_error(scope, message);
+    scope.throw_exception(exception);
+  }
+
+  let loader = Rc::new(TestingModuleLoader::new(StaticModuleLoader::with(
+    Url::parse("file:///target.js").unwrap(),
+    ascii_str!("globalThis.executed = true;"),
+  )));
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    module_loader: Some(loader.clone()),
+    validate_import_attributes_cb: Some(Box::new(validate_import_attributes)),
+    ..Default::default()
+  });
+
+  runtime
+    .execute_script(
+      "file:///main.js",
+      r#"
+      globalThis.executed = false;
+      globalThis.importError = undefined;
+      import("./target.js", { with: { unsupported: "value" } })
+        .catch((error) => globalThis.importError = error);
+      "#,
+    )
+    .unwrap();
+  runtime.run_event_loop(Default::default()).await.unwrap();
+
+  assert_eq!(loader.counts(), ModuleLoadEventCounts::default());
+  runtime
+    .execute_script(
+      "file:///check.js",
+      r#"
+      if (globalThis.executed) {
+        throw new Error("rejected import was evaluated");
+      }
+      if (!(globalThis.importError instanceof TypeError)) {
+        throw new Error("expected dynamic import to reject with TypeError");
+      }
+      if (globalThis.importError.message !== "boom!") {
+        throw new Error(`unexpected rejection: ${globalThis.importError}`);
+      }
+      "#,
+    )
+    .unwrap();
 }
 
 #[test]
@@ -2196,6 +2335,52 @@ fn builtin_core_module() {
   futures::executor::block_on(runtime.run_event_loop(Default::default()))
     .unwrap();
   runtime.module_map().set_loading_internal_modules(false);
+}
+
+// An internal module that is lazily loaded at runtime gets its imports
+// resolved by the embedder's loader, which in Deno applies the user's import
+// map. Mapping `ext:core/mod.js` used to rewrite internal imports too and
+// break instantiation. Regression test for
+// https://github.com/denoland/deno/issues/36302.
+#[test]
+fn lazy_loaded_internal_module_ignores_loader_remapping() {
+  /// Stands in for an import map that maps every specifier.
+  struct RemappingLoader;
+
+  impl ModuleLoader for RemappingLoader {
+    fn resolve(
+      &self,
+      _specifier: &str,
+      _referrer: &str,
+      _kind: ResolutionKind,
+    ) -> ModuleResolveResponse {
+      Ok(ModuleSpecifier::parse("file:///remapped.js").unwrap())
+    }
+
+    fn load(
+      &self,
+      _module_specifier: &ModuleSpecifier,
+      _maybe_referrer: Option<&ModuleLoadReferrer>,
+      _options: ModuleLoadOptions,
+    ) -> ModuleLoadResponse {
+      unreachable!();
+    }
+  }
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    module_loader: Some(Rc::new(RemappingLoader)),
+    ..Default::default()
+  });
+
+  runtime
+    .lazy_load_es_module_with_code(
+      "ext:test/lazy.js",
+      r#"
+      import { core } from "ext:core/mod.js";
+      if (typeof core === "undefined") throw new Error("core missing");
+    "#,
+    )
+    .unwrap();
 }
 
 #[test]

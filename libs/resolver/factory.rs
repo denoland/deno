@@ -873,7 +873,6 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         )),
         #[cfg(not(feature = "deno_ast"))]
         new_rc(crate::cjs::analyzer::NotImplementedModuleExportAnalyzer),
-        self.workspace_factory.sys().clone(),
       );
       Ok(new_rc(
         node_resolver::analyze::CjsModuleExportAnalyzer::new(
@@ -1080,6 +1079,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     self.npm_module_loader.get_or_try_init(|| {
       Ok(new_rc(NpmModuleLoader::new(
         self.cjs_tracker()?.clone(),
+        self.in_npm_package_checker()?.clone(),
         self.node_code_translator()?.clone(),
         self.workspace_factory.sys.clone(),
       )))

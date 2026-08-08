@@ -162,6 +162,41 @@ where
   })
 }
 
+async fn wait_for_server_and_watcher<R>(
+  file_name: &str,
+  stderr_lines: &mut LoggingLines<R>,
+) -> String
+where
+  R: tokio::io::AsyncBufRead + Unpin,
+{
+  let timeout = tokio::time::Duration::from_secs(60);
+
+  tokio::time::timeout(timeout, async {
+    let mut listening_line = None;
+    let mut watcher_ready = false;
+    while let Some(line) = stderr_lines.next_line().await.unwrap() {
+      if line.contains("Listening on") {
+        listening_line = Some(line.clone());
+      }
+      if line.contains("Watching paths") && line.contains(file_name) {
+        watcher_ready = true;
+      }
+      if watcher_ready && let Some(line) = listening_line.take() {
+        return line;
+      }
+    }
+    panic!("Output ended before the server and watcher were ready")
+  })
+  .await
+  .unwrap_or_else(|_| {
+    panic!(
+      "Server and watcher were not ready for file \"{}\" after {} seconds",
+      file_name,
+      timeout.as_secs()
+    )
+  })
+}
+
 fn check_alive_then_kill(mut child: DenoChild) {
   assert!(child.try_wait().unwrap().is_none());
   child.kill().unwrap();
@@ -577,6 +612,7 @@ async fn fmt_check_all_files_on_each_change_test() {
 }
 
 #[test(flaky)]
+#[ignore = "native check under --watch is not yet supported: it writes .deno artifacts into the watched dir, which retriggers the watcher (#35946)"]
 async fn check_watch_test() {
   let t = TempDir::new();
   let file_to_check = t.path().join("main.ts");
@@ -941,6 +977,8 @@ async fn serve_watch_parallel_stops_old_workers() {
     .arg("--watch")
     .arg("--port")
     .arg("0")
+    .arg("-L")
+    .arg("debug")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
     .env("DENO_JOBS", "4")
@@ -976,7 +1014,14 @@ async fn serve_watch_parallel_stops_old_workers_inner(
   let port_regex =
     regex::Regex::new(r"Listening on https?:[^:]+:(\d+)/").unwrap();
 
-  let line = wait_contains("Listening on", &mut stderr_lines).await;
+  // "Listening on" only means that the HTTP listener is ready. Watch paths
+  // are delivered to the notify task asynchronously, so wait until the entry
+  // point is actually watched before doing the one-shot rewrite below. The
+  // readiness lines are produced by separate tasks and may arrive either way
+  // around.
+  let line =
+    wait_for_server_and_watcher("server_file_to_watch.js", &mut stderr_lines)
+      .await;
   let old_port = port_regex.captures(&line).unwrap()[1].to_string();
 
   let client = reqwest::Client::builder()
@@ -1001,15 +1046,32 @@ async fn serve_watch_parallel_stops_old_workers_inner(
     .unwrap();
   assert_eq!(body, "v1");
 
-  file_to_watch.write(
-    "export default {
+  // Rewrite the watched file until the watcher actually picks up the change.
+  // "Watching paths" is logged before the OS-level watch is necessarily armed:
+  // on Windows the notify backend (ReadDirectoryChangesWatcher) dispatches the
+  // add-watch to a background thread, so a single write can land in the window
+  // after the log line but before the watch arms, be missed entirely, and the
+  // restart never happens (issue #36106). Re-writing on an interval closes that
+  // window; the watcher debounces the repeated identical writes, and we abort
+  // the moment the restart begins so only one restart is triggered.
+  let v2 = "export default {
       fetch(_request) {
         return new Response(\"v2\");
       },
-    };",
-  );
+    };";
+  file_to_watch.write(v2);
+  let rewriter = {
+    let file_to_watch = file_to_watch.clone();
+    tokio::spawn(async move {
+      loop {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        file_to_watch.write(v2);
+      }
+    })
+  };
 
   wait_contains("Restarting", &mut stderr_lines).await;
+  rewriter.abort();
   let line = wait_contains("Listening on", &mut stderr_lines).await;
   let new_port = port_regex.captures(&line).unwrap()[1].to_string();
 

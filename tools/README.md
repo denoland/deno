@@ -15,7 +15,7 @@ deno run --allow-read --allow-write --allow-run ./tools/format.js
 
 ## lint.js
 
-This script will lint the code base (currently using dlint, clippy). It is a
+This script will lint the code base (currently using deno lint, clippy). It is a
 prerequisite to run this before code check in.
 
 To run linting:

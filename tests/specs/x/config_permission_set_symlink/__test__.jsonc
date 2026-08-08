@@ -1,0 +1,25 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_DIR": "$PWD/deno_dir"
+  },
+  // Regression test for PR #36025 review: when the explicit `--config` path is a
+  // symlink, `deno x` must forward the path the user supplied (made absolute,
+  // symlinks NOT resolved), so a relative permission path (`.`) in the set stays
+  // relative to the supplied path's directory (cwd) rather than the symlink
+  // target's directory. `cwd/config.json` -> `real/deno.json` with a `write`
+  // permission set granting `["."]`; the bin writes `test.txt` in cwd, which is
+  // only allowed if `.` resolves to cwd. Canonicalizing the config path would
+  // resolve `.` to `real/` and the write would fail with `NotCapable` — matching
+  // `deno run --config=config.json -P=write npm:@denotest/try-write` (exit 0).
+  "steps": [
+    {
+      "args": "run -A setup.js",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "x -y --config=config.json -P=write npm:@denotest/try-write",
+      "output": "[WILDCARD]write succeeded\n"
+    }
+  ]
+}
