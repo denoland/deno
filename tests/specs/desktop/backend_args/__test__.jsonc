@@ -14,7 +14,7 @@
           "args": [
             "desktop",
             "--backend=cef",
-            "--backend-args=--user-agent=\"potato\"",
+            "--backend-args=--user-agent=\"potato\" --no-sandbox --disable-gpu --disable-dev-shm-usage",
             "--output",
             "./hello",
             "./main.ts"
@@ -58,7 +58,7 @@
             "desktop",
             "--hmr",
             "--backend=cef",
-            "--backend-args=--user-agent=\"potato\"",
+            "--backend-args=--user-agent=\"potato\" --no-sandbox --disable-gpu --disable-dev-shm-usage",
             "--output",
             "./hello3",
             "./main.ts"
@@ -74,7 +74,7 @@
           "args": [
             "desktop",
             "--backend=cef",
-            "--backend-args=--user-agent=\"potato browser\" --enable-logging",
+            "--backend-args=--user-agent=\"potato browser\" --enable-logging --no-sandbox --disable-gpu --disable-dev-shm-usage",
             "--output",
             "./hello_spaces",
             "./main.ts"
@@ -110,7 +110,7 @@
           "args": [
             "desktop",
             "--backend=cef",
-            "--backend-args=--user-agent=\"a \\\"quoted\\\" agent\"",
+            "--backend-args=--user-agent=\"a \\\"quoted\\\" agent\" --no-sandbox --disable-gpu --disable-dev-shm-usage",
             "--output",
             "./hello_escaped",
             "./main.ts"

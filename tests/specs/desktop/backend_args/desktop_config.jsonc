@@ -2,7 +2,7 @@
   "desktop": {
     "backend": "cef",
     "backendArgs": {
-      "cef": "--user-agent=potato"
+      "cef": "--user-agent=potato --no-sandbox --disable-gpu --disable-dev-shm-usage"
     }
   }
 }
