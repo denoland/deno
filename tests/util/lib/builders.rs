@@ -844,19 +844,35 @@ impl TestCommandBuilder {
 
     let status = process.wait().unwrap();
     // Drop the sender to cancel the watchdog, then check if it timed out
-    if let Some((cancel_tx, handle)) = timeout_handle {
+    let timed_out = timeout_handle.is_some_and(|(cancel_tx, handle)| {
       drop(cancel_tx);
-      let timed_out = handle.join().unwrap_or(true);
-      if timed_out {
-        panic!("Test command timed out");
-      }
-    }
+      handle.join().unwrap_or(true)
+    });
+    // Join the output threads before panicking on a timeout so that
+    // everything the process printed can be included in the diagnostic.
     let std_out_err = std_out_err_handle.map(|(stdout, stderr)| {
       (
         sanitize_output(stdout.join().unwrap(), &args),
         sanitize_output(stderr.join().unwrap(), &args),
       )
     });
+    if timed_out {
+      use std::fmt::Write;
+      let mut msg = String::from("Test command timed out");
+      if let Some(combined) = &combined {
+        let _ = write!(
+          msg,
+          "\n---- captured output ----\n{combined}\n------------------------"
+        );
+      }
+      if let Some((stdout, stderr)) = &std_out_err {
+        let _ = write!(
+          msg,
+          "\n---- captured stdout ----\n{stdout}\n---- captured stderr ----\n{stderr}\n------------------------"
+        );
+      }
+      panic!("{msg}");
+    }
     let exit_code = status.code();
     #[cfg(unix)]
     let signal = {
