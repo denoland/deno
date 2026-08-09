@@ -53,7 +53,9 @@
     "forwards_backend_flags_to_launcher_hmi": {
       "steps": [
         {
-          "if": "unix",
+          // The runtime dylib name differs per platform (libdenort.so vs
+          // libdenort.dylib), so the expected output differs too.
+          "if": "linux",
           "args": [
             "desktop",
             "--hmr",
@@ -64,6 +66,19 @@
             "./main.ts"
           ],
           "output": "desktop_hmi.out"
+        },
+        {
+          "if": "mac",
+          "args": [
+            "desktop",
+            "--hmr",
+            "--backend=cef",
+            "--backend-args=--user-agent=\"potato\" --no-sandbox --disable-gpu --disable-dev-shm-usage",
+            "--output",
+            "./hello3",
+            "./main.ts"
+          ],
+          "output": "desktop_hmi_mac.out"
         }
       ]
     },
