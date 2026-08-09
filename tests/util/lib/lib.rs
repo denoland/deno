@@ -192,6 +192,10 @@ pub fn native_tsc_bin_path() -> Option<PathRef> {
   None
 }
 
+pub fn native_laufey_cache_dir() -> PathRef {
+  root_path().join("target").join(".native_laufey")
+}
+
 pub fn prebuilt_path() -> PathRef {
   third_party_path().join("prebuilt")
 }

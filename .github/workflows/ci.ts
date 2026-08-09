@@ -1392,6 +1392,12 @@ const buildJobs = buildItems.map((rawBuildItem) => {
       }),
     });
     const testCrateNameExpr = testMatrix.test_crate;
+    // Desktop spec tests (part of the "specs" crate) launch a real GUI
+    // backend, which needs a display. Linux CI runners have no display, so
+    // run the test binary under a virtual X display via xvfb-run.
+    const cargoTestCmdPrefix = rawBuildItem.os === "linux"
+      ? "xvfb-run -a "
+      : "";
     const {
       restoreCacheStep,
       saveCacheStep,
@@ -1489,6 +1495,36 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             ].join("\n"),
           },
           {
+            name: "Set up native laufey cache",
+            if: testCrateNameExpr.equals("specs"),
+            uses: "actions/cache@v5",
+            with: {
+              // Keyed on laufey_sums.lock so a pinned-version bump re-downloads.
+              path: "./target/.native_laufey",
+              key:
+                "laufey-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('cli/laufey_sums.lock') }}",
+            },
+          },
+          {
+            // Warm the cache with the "laufey" desktop backend that `deno
+            // desktop` downloads (into the default target/.native_laufey) so
+            // the test step doesn't re-download the (100+ MB) archive for
+            // every test's fresh DENO_DIR. The harness resolves that path and
+            // injects DENO_LAUFEY_CACHE_DIR per-test itself (see
+            // test_util::native_laufey_cache_dir); no env export needed. Run
+            // it with the built deno binary (the test job has no system
+            // `deno` on PATH).
+            name: "Pre-download native laufey",
+            if: testCrateNameExpr.equals("specs"),
+            run: [
+              'DENO_BIN=""',
+              "for c in ./target/release/deno ./target/release/deno.exe ./target/debug/deno ./target/debug/deno.exe; do",
+              '  [ -f "$c" ] && DENO_BIN="$c" && break',
+              "done",
+              '"$DENO_BIN" run -A ./tools/download_laufey.ts',
+            ].join("\n"),
+          },
+          {
             if: buildItem.os.equals("linux").and(
               buildItem.arch.equals("aarch64"),
             ),
@@ -1508,8 +1544,10 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           {
             name: "Test (debug)",
             if: isDebug,
+            // Desktop spec tests launch a GUI backend, so run under a virtual
+            // X display on Linux where no real display is available.
             run:
-              `cargo test -p ${testMatrix.test_package} --test ${testMatrix.test_crate}`,
+              `${cargoTestCmdPrefix}cargo test -p ${testMatrix.test_package} --test ${testMatrix.test_crate}`,
             env: {
               CARGO_PROFILE_DEV_DEBUG: 0,
               CI_SHARD_INDEX: isPr.then(testMatrix.shard_index).else(""),
@@ -1522,7 +1560,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               isDenoland.or(buildItem.use_sysroot),
             ),
             run:
-              `cargo test -p ${testMatrix.test_package} --test ${testMatrix.test_crate} --release`,
+              `${cargoTestCmdPrefix}cargo test -p ${testMatrix.test_package} --test ${testMatrix.test_crate} --release`,
             env: {
               CI_SHARD_INDEX: isPr.then(testMatrix.shard_index).else(""),
               CI_SHARD_TOTAL: isPr.then(testMatrix.shard_total).else(""),

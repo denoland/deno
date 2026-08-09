@@ -1,0 +1,8 @@
+{
+  "desktop": {
+    "backend": "cef",
+    "backendArgs": {
+      "cef": "--user-agent=potato"
+    }
+  }
+}

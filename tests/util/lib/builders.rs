@@ -304,6 +304,22 @@ impl TestContextBuilder {
       }
     }
 
+    // Same idea as `DENO_TSC_BIN` above, but for `deno desktop`'s "laufey"
+    // backend downloads: point every test's fresh `DENO_DIR` at one shared
+    // cache dir instead of re-downloading the (100+ MB) backend archive per
+    // test. An explicit ambient `DENO_LAUFEY_CACHE_DIR` still wins, as does a
+    // value a test sets itself.
+    if !envs.contains_key("DENO_LAUFEY_CACHE_DIR") {
+      let laufey_cache_dir = std::env::var_os("DENO_LAUFEY_CACHE_DIR")
+        .map(|v| v.to_string_lossy().into_owned())
+        .unwrap_or_else(|| {
+          crate::native_laufey_cache_dir()
+            .to_string_lossy()
+            .into_owned()
+        });
+      envs.insert("DENO_LAUFEY_CACHE_DIR".to_string(), laufey_cache_dir);
+    }
+
     TestContext {
       cwd,
       deno_exe,

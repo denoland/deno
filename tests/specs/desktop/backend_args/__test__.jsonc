@@ -1,0 +1,258 @@
+{
+  "tempDir": true,
+  // Kill any step that doesn't finish in 60s instead of hanging until CI
+  // cancels the job. The steps that launch a packaged app only exit when the
+  // GUI backend makes its HTTP request; if the backend can't start (e.g. no
+  // usable display/sandbox on a CI runner) the process would otherwise run
+  // forever.
+  "timeout": 60,
+  "tests": {
+    "forwards_backend_flags_to_launcher": {
+      "steps": [
+        {
+          "if": "linux",
+          "args": [
+            "desktop",
+            "--backend=cef",
+            "--backend-args=--user-agent=\"potato\"",
+            "--output",
+            "./hello",
+            "./main.ts"
+          ],
+          "output": "[WILDCARD]"
+        },
+        {
+          "if": "linux",
+          "commandName": "./hello/hello",
+          "args": [],
+          "output": "desktop.out"
+        },
+        {
+          // laufey v0.6.1 ships no cef build for aarch64-pc-windows-msvc,
+          // so Windows exercises the webview backend instead. Unlike the
+          // cef backend (which feeds the process argv into CefMainArgs so
+          // extra switches reach Chromium), the webview backend parses only
+          // `--runtime` and silently drops everything else — so the packaged
+          // app's webview would keep its default user agent and the app's
+          // `main.ts` would never see a user-agent header and exit. Only
+          // assert packaging (which is where backend args are parsed and
+          // baked into the launcher), never launch the packaged app here.
+          "if": "windows",
+          "args": [
+            "desktop",
+            "--backend=webview",
+            "--backend-args=--user-agent=\"potato\"",
+            "--output",
+            "./hello",
+            "./main.ts"
+          ],
+          "output": "[WILDCARD]"
+        }
+      ]
+    },
+    "forwards_backend_flags_to_launcher_hmi": {
+      "steps": [
+        {
+          "if": "unix",
+          "args": [
+            "desktop",
+            "--hmr",
+            "--backend=cef",
+            "--backend-args=--user-agent=\"potato\"",
+            "--output",
+            "./hello3",
+            "./main.ts"
+          ],
+          "output": "desktop_hmi.out"
+        }
+      ]
+    },
+    "forwards_backend_flags_with_quoted_spaces": {
+      "steps": [
+        {
+          "if": "linux",
+          "args": [
+            "desktop",
+            "--backend=cef",
+            "--backend-args=--user-agent=\"potato browser\" --enable-logging",
+            "--output",
+            "./hello_spaces",
+            "./main.ts"
+          ],
+          "output": "[WILDCARD]"
+        },
+        {
+          "if": "linux",
+          "commandName": "./hello_spaces/hello_spaces",
+          "args": [],
+          "output": "desktop_spaces.out"
+        },
+        {
+          // Windows (webview): packaging only, see
+          // forwards_backend_flags_to_launcher.
+          "if": "windows",
+          "args": [
+            "desktop",
+            "--backend=webview",
+            "--backend-args=--user-agent=\"potato browser\" --enable-logging",
+            "--output",
+            "./hello_spaces",
+            "./main.ts"
+          ],
+          "output": "[WILDCARD]"
+        }
+      ]
+    },
+    "forwards_backend_flags_with_escaped_quotes": {
+      "steps": [
+        {
+          "if": "linux",
+          "args": [
+            "desktop",
+            "--backend=cef",
+            "--backend-args=--user-agent=\"a \\\"quoted\\\" agent\"",
+            "--output",
+            "./hello_escaped",
+            "./main.ts"
+          ],
+          "output": "[WILDCARD]"
+        },
+        {
+          "if": "linux",
+          "commandName": "./hello_escaped/hello_escaped",
+          "args": [],
+          "output": "desktop_escaped.out"
+        },
+        {
+          // Windows (webview): packaging only, see
+          // forwards_backend_flags_to_launcher.
+          "if": "windows",
+          "args": [
+            "desktop",
+            "--backend=webview",
+            "--backend-args=--user-agent=\"a \\\"quoted\\\" agent\"",
+            "--output",
+            "./hello_escaped",
+            "./main.ts"
+          ],
+          "output": "[WILDCARD]"
+        }
+      ]
+    },
+    "malformed_backend_args_reports_error": {
+      "steps": [
+        {
+          "if": "linux",
+          "args": [
+            "desktop",
+            "--backend=cef",
+            "--backend-args=--user-agent=\"unterminated",
+            "--output",
+            "./hello_malformed",
+            "./main.ts"
+          ],
+          "output": "[WILDCARD]invalid --backend-args quoting[WILDCARD]",
+          "exitCode": 1
+        },
+        {
+          "if": "mac",
+          "args": [
+            "desktop",
+            "--hmr",
+            "--backend=cef",
+            "--backend-args=--user-agent=\"unterminated",
+            "--output",
+            "./hello_malformed",
+            "./main.ts"
+          ],
+          "output": "[WILDCARD]invalid --backend-args quoting[WILDCARD]",
+          "exitCode": 1
+        },
+        {
+          // Mirror the mac variant: --hmr makes the malformed quoting fail
+          // fast at dev-server startup, before any backend download/launch.
+          "if": "windows",
+          "args": [
+            "desktop",
+            "--hmr",
+            "--backend=webview",
+            "--backend-args=--user-agent=\"unterminated",
+            "--output",
+            "./hello_malformed",
+            "./main.ts"
+          ],
+          "output": "[WILDCARD]invalid --backend-args quoting[WILDCARD]",
+          "exitCode": 1
+        }
+      ]
+    },
+    "forwards_backend_flags_to_launcher_config": {
+      "steps": [
+        {
+          "if": "linux",
+          "args": [
+            "desktop",
+            "--output",
+            "./hello2",
+            "--config",
+            "./desktop_config.jsonc",
+            "./main.ts"
+          ],
+          "output": "[WILDCARD]"
+        },
+        {
+          "if": "linux",
+          "commandName": "./hello2/hello2",
+          "args": [],
+          "output": "desktop_config.out"
+        },
+        {
+          // Windows (webview): packaging only, see
+          // forwards_backend_flags_to_launcher.
+          "if": "windows",
+          "args": [
+            "desktop",
+            "--output",
+            "./hello2",
+            "--config",
+            "./desktop_config_windows.jsonc",
+            "./main.ts"
+          ],
+          "output": "[WILDCARD]"
+        }
+      ]
+    },
+    "packages_macos_app_bundle": {
+      "steps": [
+        {
+          "if": "mac",
+          "args": [
+            "desktop",
+            "--backend=cef",
+            "--backend-args=--user-agent=\"potato\"",
+            "--output",
+            "./hello",
+            "./main.ts"
+          ],
+          "output": "desktop_mac.out"
+        }
+      ]
+    },
+    "packages_macos_app_bundle_config": {
+      "steps": [
+        {
+          "if": "mac",
+          "args": [
+            "desktop",
+            "--output",
+            "./hello2",
+            "--config",
+            "./desktop_config.jsonc",
+            "./main.ts"
+          ],
+          "output": "desktop_mac_config.out"
+        }
+      ]
+    }
+  }
+}

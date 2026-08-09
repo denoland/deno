@@ -1,0 +1,8 @@
+{
+  "desktop": {
+    "backend": "webview",
+    "backendArgs": {
+      "webview": "--user-agent=potato"
+    }
+  }
+}

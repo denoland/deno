@@ -280,6 +280,8 @@ pub struct DesktopFlags {
   /// the full managed snapshot. Same opt-in semantics as
   /// `deno compile --exclude-unused-npm`.
   pub exclude_unused_npm: bool,
+  /// Optional flags to be passed to the chosen laufey backend
+  pub backend_args: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
