@@ -314,6 +314,19 @@ pub fn denort_exe_path() -> PathRef {
   PathRef::new(p)
 }
 
+/// Path to the desktop runtime shared library (`denort_desktop` cdylib)
+/// in the same artifact directory as the `deno` binary.
+pub fn libdenort_path() -> PathRef {
+  let file_name = if cfg!(target_os = "macos") {
+    "libdenort.dylib"
+  } else if cfg!(windows) {
+    "denort.dll"
+  } else {
+    "libdenort.so"
+  };
+  target_dir().join(file_name)
+}
+
 pub fn prebuilt_tool_path(tool: &str) -> PathRef {
   let mut exe = tool.to_string();
   exe.push_str(if cfg!(windows) { ".exe" } else { "" });

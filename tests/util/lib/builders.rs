@@ -226,6 +226,17 @@ impl TestContextBuilder {
     // The `denort` binary is in the same artifact directory as the `deno` binary.
     let denort_bin = denort_exe_path();
     self = self.env("DENORT_BIN", denort_bin.to_string());
+    // Same idea for `deno desktop` tests: point at the libdenort built from
+    // this checkout so a stale libdenort restored from a CI target cache
+    // (or downloaded from dl.deno.land) is never loaded — a runtime from a
+    // different commit can fail to deserialize the metadata this CLI writes.
+    // Only set when the file exists; otherwise leave it to the CLI's own
+    // resolution (dev paths, then download) so local runs without a built
+    // libdenort keep working.
+    let libdenort = crate::libdenort_path();
+    if libdenort.exists() {
+      self = self.env("DENORT_DESKTOP_BIN", libdenort.to_string());
+    }
     self
   }
 

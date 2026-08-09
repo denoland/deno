@@ -640,10 +640,10 @@ const buildJobs = buildItems.map((rawBuildItem) => {
   const jobIdForJob = (name: string) => `${name}-${profileName}`;
   const jobNameForJob = (name: string) =>
     `${name} ${buildItem.profile} ${buildItem.os}-${buildItem.arch}`;
-  const createBinaryArtifact = (name: string) => {
+  const createBinaryArtifact = (name: string, fileName?: string) => {
     const directory = `target/${buildItem.profile}`;
     const exeExt = rawBuildItem.os === "windows" ? ".exe" : "";
-    const fileName = `${name}${exeExt}`;
+    fileName ??= `${name}${exeExt}`;
     const artifact = defineArtifact(
       `${profileName}-${name.replaceAll("_", "-")}`,
       {
@@ -675,6 +675,18 @@ const buildJobs = buildItems.map((rawBuildItem) => {
   const denoArtifact = createBinaryArtifact("deno");
   const denortArtifact = createBinaryArtifact("denort");
   const testServerArtifact = createBinaryArtifact("test_server");
+  // The desktop runtime (denort_desktop cdylib) has a platform-specific file
+  // name. Desktop spec tests load it, and it must come from the same commit
+  // as the CLI under test — a libdenort from another commit can fail to
+  // deserialize the metadata the current CLI writes into a compiled app.
+  const libdenortArtifact = createBinaryArtifact(
+    "libdenort",
+    rawBuildItem.os === "macos"
+      ? "libdenort.dylib"
+      : rawBuildItem.os === "windows"
+      ? "denort.dll"
+      : "libdenort.so",
+  );
   const env = {
     CARGO_TERM_COLOR: "always",
     RUST_BACKTRACE: "full",
@@ -1188,6 +1200,18 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               env: { CARGO_PROFILE_DEV_DEBUG: 0 },
             },
             {
+              // The desktop spec tests compile apps against libdenort (the
+              // denort_desktop cdylib), which is uploaded below and
+              // downloaded by the specs test job. Build it here so the
+              // runtime always matches the CLI under test (a stale or
+              // released libdenort can fail to deserialize the metadata
+              // this commit's CLI writes).
+              name: "Build debug desktop runtime (libdenort)",
+              if: isDebug,
+              run: "cargo build --locked -p denort_desktop",
+              env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+            },
+            {
               // The rest of CI only exercises the default v8 backend. Make sure the
               // experimental QuickJS backend (the deno_v8 facade over the v8x crate)
               // keeps compiling for the deno + denort binaries so `deno compile`
@@ -1224,6 +1248,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             denoArtifact.upload(),
             denortArtifact.upload(),
             testServerArtifact.upload(),
+            libdenortArtifact.upload(),
           );
 
         const shouldPublishCondition = isRelease.and(isDenoland)
@@ -1453,6 +1478,13 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               .or(testCrateNameExpr.equals("specs"))
               .or(testCrateNameExpr.equals("unit"))
               .or(testCrateNameExpr.equals("unit_node")),
+          ),
+          // Desktop spec tests compile and launch apps against libdenort;
+          // download the one built from this commit (the spec test harness
+          // points DENORT_DESKTOP_BIN at it) so a stale runtime restored
+          // from the target cache is never loaded.
+          libdenortArtifact.download().if(
+            testCrateNameExpr.equals("specs"),
           ),
           {
             name: "Set up playwright cache",
