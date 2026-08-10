@@ -1123,6 +1123,51 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[node/buffer] hex decode dirty-input semantics",
+  fn() {
+    // Odd-length input drops the trailing char (pre-trimmed fast path).
+    assertEquals(Buffer.from("abc", "hex"), Buffer.from([0xab]));
+    assertEquals(Buffer.from("aabbc", "hex"), Buffer.from([0xaa, 0xbb]));
+    // Whitespace and chars above U+00FF truncate through the fallback.
+    assertEquals(Buffer.from("aa bb", "hex"), Buffer.from([0xaa]));
+    assertEquals(Buffer.from("aa\u{1F600}bb", "hex"), Buffer.from([0xaa]));
+    // Mixed case decodes on the fast path.
+    assertEquals(
+      Buffer.from("aAbBcC", "hex"),
+      Buffer.from([0xaa, 0xbb, 0xcc]),
+    );
+    // Target fills before trailing junk is reached: clean fast-path return
+    // (Node's target-capped write), no fallback involved.
+    const small = Buffer.alloc(2);
+    assertEquals(small.write("aabbzz", "hex"), 2);
+    assertEquals(small.toString("hex"), "aabb");
+    // Junk before the target fills goes through the truncating fallback.
+    const dirty = Buffer.alloc(2);
+    assertEquals(dirty.write("aazzbb", "hex"), 1);
+    assertEquals(dirty.toString("hex"), "aa00");
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] hex write into views with non-zero byteOffset",
+  fn() {
+    const ab = new ArrayBuffer(32);
+    const raw = new Uint8Array(ab);
+    for (let i = 0; i < raw.length; i++) raw[i] = i;
+    const view = Buffer.from(ab, 8, 16);
+    // Writes land inside the view and leave the rest of the buffer alone.
+    assertEquals(view.write("ffff", 2, "hex"), 2);
+    assertEquals(Array.from(raw.subarray(10, 12)), [0xff, 0xff]);
+    assertEquals(raw[9], 9);
+    assertEquals(raw[12], 12);
+    assertEquals(raw[24], 24);
+    // An explicit length caps the write window.
+    assertEquals(view.write("aabbccdd", 12, 2, "hex"), 2);
+    assertEquals(Array.from(raw.subarray(20, 23)), [0xaa, 0xbb, 22]);
+  },
+});
+
+Deno.test({
   name: "[node/buffer] File is exported from node:buffer",
   fn() {
     assertEquals(typeof BufferFile, "function");

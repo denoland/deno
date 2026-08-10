@@ -68,6 +68,7 @@ const {
 // primordials copy does not include them; capture lazily from the live
 // prototype on first use.
 let Uint8ArrayPrototypeToHex;
+let Uint8ArrayPrototypeSetFromHex;
 const {
   op_base64_decode_into,
   op_base64_encode_from_buffer,
@@ -1199,12 +1200,34 @@ Buffer.prototype.hexWrite = function hexWrite(string, offset, length) {
     throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("length");
   }
 
-  return blitBuffer(
-    hexToBytes(string),
-    this,
-    offset,
-    length,
-  );
+  // Node drops a trailing odd char; native setFromHex would throw on it.
+  if (string.length & 1) {
+    string = StringPrototypeSlice(string, 0, -1);
+  }
+
+  const target = offset === 0 && length === byteLength
+    ? this
+    : TypedArrayPrototypeSubarray(this, offset, offset + length);
+  // setFromHex stops cleanly when the target fills first (Node's
+  // target-capped write); it throws on invalid input, where Node truncates
+  // at the first invalid pair, so the catch falls back to the JS truncating
+  // decoder. A partial prefix written before the throw is rewritten
+  // byte-identically by the fallback.
+  if (Uint8ArrayPrototypeSetFromHex === undefined) {
+    Uint8ArrayPrototypeSetFromHex = uncurryThis(
+      Uint8ArrayPrototype.setFromHex,
+    );
+  }
+  try {
+    return Uint8ArrayPrototypeSetFromHex(target, string).written;
+  } catch {
+    return blitBuffer(
+      hexToBytes(string),
+      this,
+      offset,
+      length,
+    );
+  }
 };
 
 function hexIndexOutOfRange() {
