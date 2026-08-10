@@ -1063,6 +1063,66 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[node/buffer] hexSlice direct-call index semantics match Node",
+  fn() {
+    const buf = Buffer.from([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    const hexSlice = Buffer.prototype.hexSlice;
+    // A forward range reaching past the end throws Node's coded RangeError,
+    // as do negative indexes.
+    for (
+      const call of [
+        () => hexSlice.call(buf, 0, 999),
+        () => hexSlice.call(buf, -1, 5),
+        () => hexSlice.call(buf, 0, -1),
+      ]
+    ) {
+      const err = assertThrows(call, RangeError, "Index out of range");
+      assertEquals((err as { code?: string }).code, "ERR_OUT_OF_RANGE");
+    }
+    // Reversed, empty, and Infinity-start ranges return "" (Node's
+    // StringSlice checks end <= start before bounds).
+    assertEquals(hexSlice.call(buf, 20, 5), "");
+    assertEquals(hexSlice.call(buf, 5, 2), "");
+    assertEquals(hexSlice.call(buf, 10, 10), "");
+    assertEquals(hexSlice.call(buf, Infinity), "");
+    // ToInteger coercion.
+    assertEquals(hexSlice.call(buf, "2", "5"), "030405");
+    assertEquals(hexSlice.call(buf, 1.9, 5.9), "02030405");
+    assertEquals(hexSlice.call(buf, NaN, 4), "01020304");
+    assertEquals(hexSlice.call(buf), "0102030405060708090a");
+    // Any ArrayBufferView receiver encodes its underlying bytes.
+    assertEquals(
+      hexSlice.call(new Uint8ClampedArray([1, 2, 3]), 0, 3),
+      "010203",
+    );
+    // Detached buffers report length 0: both the clamped toString path and
+    // explicit-arg direct calls return "".
+    const ab = new ArrayBuffer(8);
+    const view = Buffer.from(ab);
+    structuredClone(ab, { transfer: [ab] });
+    assertEquals(view.toString("hex"), "");
+    assertEquals(hexSlice.call(view, 0, 5), "");
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] hex on views with non-zero byteOffset",
+  fn() {
+    const ab = new ArrayBuffer(32);
+    const raw = new Uint8Array(ab);
+    for (let i = 0; i < raw.length; i++) raw[i] = i;
+    const view = Buffer.from(ab, 8, 16);
+    const copy = Buffer.from(raw.slice(8, 24));
+    assertEquals(view.toString("hex"), copy.toString("hex"));
+    assertEquals(view.toString("hex", 1, 5), copy.toString("hex", 1, 5));
+    // 64 KiB crosses the old external-string threshold.
+    const big = Buffer.alloc(65536, 0xab);
+    assertEquals(big.toString("hex").length, 131072);
+    assertEquals(big.toString("hex", 1, 257).length, 512);
+  },
+});
+
+Deno.test({
   name: "[node/buffer] File is exported from node:buffer",
   fn() {
     assertEquals(typeof BufferFile, "function");

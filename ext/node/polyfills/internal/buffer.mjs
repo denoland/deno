@@ -60,7 +60,14 @@ const {
   TypedArrayPrototypeSubarray,
   Uint8Array,
   Uint8ArrayPrototype,
+  uncurryThis,
 } = primordials;
+
+// The TC39 arraybuffer-base64 methods are installed after snapshot
+// deserialization (V8 InstallConditionalFeatures), so the snapshot-time
+// primordials copy does not include them; capture lazily from the live
+// prototype on first use.
+let Uint8ArrayPrototypeToHex;
 const {
   op_base64_decode_into,
   op_base64_encode_from_buffer,
@@ -738,15 +745,6 @@ function decodeUtf16le(buffer, start, end) {
   );
 }
 
-function encodeHex(buffer, start, end) {
-  return op_node_encoding_slice(
-    buffer,
-    start,
-    end,
-    4,
-  );
-}
-
 Buffer.prototype.toString = function toString(encoding, start, end) {
   if (arguments.length === 0) {
     return decodeUtf8(
@@ -1209,8 +1207,57 @@ Buffer.prototype.hexWrite = function hexWrite(string, offset, length) {
   );
 };
 
-Buffer.prototype.hexSlice = function hexSlice(offset, length) {
-  return encodeHex(this, offset, length);
+function hexIndexOutOfRange() {
+  const err = new RangeError("Index out of range");
+  err.code = "ERR_OUT_OF_RANGE";
+  return err;
+}
+
+Buffer.prototype.hexSlice = function hexSlice(start, end) {
+  let byteLength = TypedArrayPrototypeGetByteLength(this);
+  // Index semantics replicate Node's C++ StringSlice: zero-length receivers
+  // (including detached) return "" before any validation, ToInteger
+  // coercion, negative index throws "Index out of range", end < start
+  // clamps to empty, and only a forward range with end > length throws.
+  if (byteLength === 0) {
+    return "";
+  }
+  start = start === undefined ? 0 : MathTrunc(Number(start)) || 0;
+  end = end === undefined ? byteLength : MathTrunc(Number(end)) || 0;
+  if (start < 0 || end < 0) {
+    throw hexIndexOutOfRange();
+  }
+  if (end <= start) {
+    return "";
+  }
+  // Re-read: argument coercion can run user code that resizes or detaches
+  // the underlying buffer (detached views report length 0).
+  byteLength = TypedArrayPrototypeGetByteLength(this);
+  if (end > byteLength) {
+    throw hexIndexOutOfRange();
+  }
+  if (end - start > kStringMaxLength / 2) {
+    throw genericNodeError(
+      `Cannot create a string longer than 0x${
+        NumberPrototypeToString(kStringMaxLength, 16)
+      } characters`,
+      { code: "ERR_STRING_TOO_LONG" },
+    );
+  }
+  // Byte-relative view: non-Uint8Array receivers (any ArrayBufferView was
+  // accepted by the op) hex-encode their underlying bytes.
+  const view = start === 0 && end === byteLength &&
+      ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, this)
+    ? this
+    : new Uint8Array(
+      TypedArrayPrototypeGetBuffer(this),
+      TypedArrayPrototypeGetByteOffset(this) + start,
+      end - start,
+    );
+  if (Uint8ArrayPrototypeToHex === undefined) {
+    Uint8ArrayPrototypeToHex = uncurryThis(Uint8ArrayPrototype.toHex);
+  }
+  return Uint8ArrayPrototypeToHex(view);
 };
 
 Buffer.prototype.latin1Slice = function latin1Slice(offset, length) {
