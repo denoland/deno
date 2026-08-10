@@ -65,16 +65,16 @@ use hyper::body::Body;
 use hyper::body::Frame;
 use hyper::body::Incoming;
 use hyper::body::SizeHint;
+use hyper::header::CONNECTION;
 use hyper::header::CONTENT_ENCODING;
 use hyper::header::CONTENT_LENGTH;
 use hyper::header::CONTENT_RANGE;
 use hyper::header::CONTENT_TYPE;
-use hyper::header::CONNECTION;
 use hyper::header::COOKIE;
+use hyper::header::HOST;
 use hyper::header::HeaderMap;
 use hyper::header::HeaderName;
 use hyper::header::HeaderValue;
-use hyper::header::HOST;
 use hyper::server::conn::http1;
 use hyper::server::conn::http2;
 use hyper::service::Service;
@@ -957,8 +957,10 @@ impl Service<Request<Incoming>> for HttpService {
   >;
 
   fn call(&self, request: Request<Incoming>) -> Self::Future {
-    if matches!(request.version(), http::Version::HTTP_10 | http::Version::HTTP_11)
-      && !has_valid_host_header(&request)
+    if matches!(
+      request.version(),
+      http::Version::HTTP_10 | http::Version::HTTP_11
+    ) && !has_valid_host_header(&request)
     {
       let mut response = Response::new(LegacyBody::full(Bytes::new()));
       *response.status_mut() = http::StatusCode::BAD_REQUEST;

@@ -376,7 +376,7 @@ impl HeaderInfo {
       0 if body_kind == BodyKind::Empty => Ok(()),
       0 => Err(ParseError::MissingHost),
       1 => Ok(()),
-      _ => unreachable!(),
+      _ => Err(ParseError::MultipleHost),
     }
   }
 
@@ -441,13 +441,7 @@ pub fn is_valid_host_header_value(value: &[u8]) -> bool {
   }
 
   let (host, port) = match value.iter().position(|&byte| byte == b':') {
-    Some(index) => {
-      let port = &value[index + 1..];
-      if port.contains(&b':') {
-        return false;
-      }
-      (&value[..index], Some(port))
-    }
+    Some(index) => (&value[..index], Some(&value[index + 1..])),
     None => (value, None),
   };
 
@@ -466,8 +460,7 @@ fn is_valid_ip_literal_authority(value: &[u8]) -> bool {
   }
   let suffix = &value[close + 1..];
   if !suffix.is_empty()
-    && (suffix[0] != b':'
-      || !suffix[1..].iter().all(u8::is_ascii_digit))
+    && (suffix[0] != b':' || !suffix[1..].iter().all(u8::is_ascii_digit))
   {
     return false;
   }
@@ -520,8 +513,7 @@ fn is_unreserved(byte: u8) -> bool {
 fn is_sub_delim(byte: u8) -> bool {
   matches!(
     byte,
-    b'!' | b'$' | b'&' | b'\'' | b'(' | b')' | b'*' | b'+' | b',' | b';'
-      | b'='
+    b'!' | b'$' | b'&' | b'\'' | b'(' | b')' | b'*' | b'+' | b',' | b';' | b'='
   )
 }
 
@@ -841,9 +833,12 @@ mod tests {
       b"xn--tda.com",
       b"127.0.0.1",
       b"127.0.0.1:8080",
+      b"example.com:",
       b"[::1]",
+      b"[::1]:",
       b"[2001:db8::1]:8080",
       b"[v1.example]",
+      b"[v1.example]:8080",
       b"example%2Ecom",
     ] {
       assert!(is_valid_host_header_value(value), "{value:?}");
@@ -871,8 +866,7 @@ mod tests {
   #[test]
   fn rejects_invalid_host_header_value() {
     for value in [b"\xc3\xbc.example".as_slice(), b"\xff.example"] {
-      let mut request =
-        b"GET / HTTP/1.1\r\nHost: ".to_vec();
+      let mut request = b"GET / HTTP/1.1\r\nHost: ".to_vec();
       request.extend_from_slice(value);
       request.extend_from_slice(b"\r\n\r\n");
       let mut headers = [Header::EMPTY; 8];

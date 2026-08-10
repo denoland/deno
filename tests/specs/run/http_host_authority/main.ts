@@ -62,9 +62,10 @@ async function send(port: number, data: Uint8Array): Promise<string> {
 }
 
 function assertStatus(response: string, status: number) {
-  assertEquals(response.split("\r\n", 1)[0], `HTTP/1.1 ${status} ${
-    status === 200 ? "OK" : "Bad Request"
-  }`);
+  assertEquals(
+    response.split("\r\n", 1)[0],
+    `HTTP/1.1 ${status} ${status === 200 ? "OK" : "Bad Request"}`,
+  );
 }
 
 async function testDenoServe() {
@@ -84,75 +85,72 @@ async function testDenoServe() {
   });
   const port = await listening.promise;
 
-  for (const host of [
-    "example.com",
-    "xn--tda.com",
-    "127.0.0.1",
-    "127.0.0.1:8080",
-    "[::1]",
-    "[2001:db8::1]:8080",
-  ]) {
-    assertStatus(await send(port, request(encoder.encode(host))), 200);
+  async function assertRequest(data: Uint8Array, status: number) {
+    const callsBefore = calls;
+    assertStatus(await send(port, data), status);
+    assertEquals(calls, callsBefore + (status === 200 ? 1 : 0));
   }
-  assertStatus(await send(port, request(new Uint8Array())), 200);
-  assertStatus(await send(port, request(null)), 200);
-  assertStatus(
-    await send(
-      port,
-      request(
-        encoder.encode("example.com"),
-        concat([
-          encoder.encode("X-Byte-Value: "),
-          new Uint8Array([0xc3, 0xbc]),
-          encoder.encode("\r\n"),
-        ]),
-      ),
+
+  for (
+    const host of [
+      "example.com",
+      "xn--tda.com",
+      "127.0.0.1",
+      "127.0.0.1:8080",
+      "[::1]",
+      "[2001:db8::1]:8080",
+    ]
+  ) {
+    await assertRequest(request(encoder.encode(host)), 200);
+  }
+  await assertRequest(request(new Uint8Array()), 200);
+  await assertRequest(request(null), 200);
+  await assertRequest(
+    request(
+      encoder.encode("example.com"),
+      concat([
+        encoder.encode("X-Byte-Value: "),
+        new Uint8Array([0xc3, 0xbc]),
+        encoder.encode("\r\n"),
+      ]),
     ),
     200,
   );
   assertEquals(observedHeader, "Ã¼");
 
-  for (const host of [
-    new Uint8Array([0xc3, 0xbc, 0x2e, 0x63, 0x6f, 0x6d]),
-    new Uint8Array([0xff, 0x2e, 0x63, 0x6f, 0x6d]),
-    encoder.encode("user@example.com"),
-    encoder.encode("example.com:http"),
-    encoder.encode("[not-an-ip]"),
-  ]) {
-    assertStatus(await send(port, request(host)), 400);
+  for (
+    const host of [
+      new Uint8Array([0xc3, 0xbc, 0x2e, 0x63, 0x6f, 0x6d]),
+      new Uint8Array([0xff, 0x2e, 0x63, 0x6f, 0x6d]),
+      encoder.encode("user@example.com"),
+      encoder.encode("example.com:http"),
+      encoder.encode("[not-an-ip]"),
+    ]
+  ) {
+    await assertRequest(request(host), 400);
   }
-  assertStatus(
-    await send(
-      port,
-      concat([
-        encoder.encode("GET / HTTP/1.1\r\n"),
-        encoder.encode("Host: example.com\r\n"),
-        encoder.encode("Host: example.org\r\n"),
-        encoder.encode("Connection: close\r\n\r\n"),
-      ]),
+  await assertRequest(
+    concat([
+      encoder.encode("GET / HTTP/1.1\r\n"),
+      encoder.encode("Host: example.com\r\n"),
+      encoder.encode("Host: example.org\r\n"),
+      encoder.encode("Connection: close\r\n\r\n"),
+    ]),
+    400,
+  );
+  await assertRequest(
+    encoder.encode(
+      "GET / HTTP/1.0\r\nHost: example.com\r\nHost: example.org\r\nConnection: close\r\n\r\n",
     ),
     400,
   );
-  assertStatus(
-    await send(
-      port,
-      encoder.encode(
-        "GET / HTTP/1.0\r\nHost: example.com\r\nHost: example.org\r\nConnection: close\r\n\r\n",
-      ),
+  await assertRequest(
+    request(
+      new Uint8Array([0xc3, 0xbc, 0x2e, 0x63, 0x6f, 0x6d]),
+      encoder.encode("Expect: 100-continue\r\nContent-Length: 1\r\n"),
     ),
     400,
   );
-  assertStatus(
-    await send(
-      port,
-      request(
-        new Uint8Array([0xc3, 0xbc, 0x2e, 0x63, 0x6f, 0x6d]),
-        encoder.encode("Expect: 100-continue\r\nContent-Length: 1\r\n"),
-      ),
-    ),
-    400,
-  );
-  assertEquals(calls, 9);
 
   ac.abort();
   await server.finished;
@@ -185,40 +183,42 @@ async function testDenoServeHttp() {
     return response;
   }
 
-  assertStatus(
-    await serveOne(request(new Uint8Array([0xc3, 0xbc, 0x2e, 0x63, 0x6f, 0x6d]))),
+  async function assertRequest(data: Uint8Array, status: number) {
+    const callsBefore = calls;
+    assertStatus(await serveOne(data), status);
+    assertEquals(calls, callsBefore + (status === 200 ? 1 : 0));
+  }
+
+  await assertRequest(
+    request(new Uint8Array([0xc3, 0xbc, 0x2e, 0x63, 0x6f, 0x6d])),
     400,
   );
-  assertStatus(
-    await serveOne(
-      request(new Uint8Array([0xff, 0x2e, 0x63, 0x6f, 0x6d])),
+  await assertRequest(
+    request(new Uint8Array([0xff, 0x2e, 0x63, 0x6f, 0x6d])),
+    400,
+  );
+  await assertRequest(
+    request(
+      encoder.encode("example.com"),
+      encoder.encode("Host: example.org\r\n"),
     ),
     400,
   );
-  assertStatus(
-    await serveOne(
-      request(
-        encoder.encode("example.com"),
-        encoder.encode("Host: example.org\r\n"),
-      ),
-    ),
-    400,
-  );
-  assertStatus(
-    await serveOne(request(encoder.encode("example.com"))),
-    200,
-  );
-  assertEquals(calls, 1);
+  await assertRequest(request(encoder.encode("example.com")), 200);
+  await assertRequest(request(new Uint8Array()), 200);
+  await assertRequest(request(null), 200);
   listener.close();
   console.log("Deno.serveHttp: ok");
 }
 
 async function testNodeHttp() {
   let calls = 0;
-  let observedHeader: string | string[] | undefined;
+  let observedByteHeader: string | string[] | undefined;
+  let observedHost: string | undefined;
   const server = createServer((req, res) => {
     calls++;
-    observedHeader = req.headers["x-byte-value"];
+    observedByteHeader = req.headers["x-byte-value"];
+    observedHost = req.headers.host;
     res.end();
   });
   await new Promise<void>((resolve) => {
@@ -229,46 +229,43 @@ async function testNodeHttp() {
     throw new Error("Expected a TCP address");
   }
 
-  assertStatus(
-    await send(
-      address.port,
-      request(new Uint8Array([0xc3, 0xbc, 0x2e, 0x63, 0x6f, 0x6d])),
-    ),
-    400,
+  async function assertRequest(data: Uint8Array, status: number) {
+    const callsBefore = calls;
+    assertStatus(await send(address.port, data), status);
+    assertEquals(calls, callsBefore + (status === 200 ? 1 : 0));
+  }
+
+  await assertRequest(
+    request(new Uint8Array([0xc3, 0xbc, 0x2e, 0x63, 0x6f, 0x6d])),
+    200,
   );
-  assertStatus(
-    await send(
-      address.port,
-      request(new Uint8Array([0xff, 0x2e, 0x63, 0x6f, 0x6d])),
-    ),
-    400,
+  await assertRequest(
+    request(new Uint8Array([0xff, 0x2e, 0x63, 0x6f, 0x6d])),
+    200,
   );
-  assertStatus(
-    await send(
-      address.port,
-      request(
-        encoder.encode("example.com"),
-        encoder.encode("Host: example.org\r\n"),
-      ),
-    ),
-    400,
-  );
-  assertStatus(
-    await send(
-      address.port,
-      request(
-        encoder.encode("example.com"),
-        concat([
-          encoder.encode("X-Byte-Value: "),
-          new Uint8Array([0xc3, 0xbc]),
-          encoder.encode("\r\n"),
-        ]),
-      ),
+  await assertRequest(
+    request(
+      encoder.encode("example.com"),
+      encoder.encode("Host: example.org\r\n"),
     ),
     200,
   );
-  assertEquals(observedHeader, "Ã¼");
-  assertEquals(calls, 1);
+  assertEquals(observedHost, "example.com");
+  await assertRequest(request(new Uint8Array()), 200);
+  assertEquals(observedHost, "");
+  await assertRequest(request(null), 400);
+  await assertRequest(
+    request(
+      encoder.encode("example.com"),
+      concat([
+        encoder.encode("X-Byte-Value: "),
+        new Uint8Array([0xc3, 0xbc]),
+        encoder.encode("\r\n"),
+      ]),
+    ),
+    200,
+  );
+  assertEquals(observedByteHeader, "Ã¼");
   await new Promise<void>((resolve, reject) => {
     server.close((error) => error ? reject(error) : resolve());
   });
