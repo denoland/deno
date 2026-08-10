@@ -34,6 +34,11 @@ internals.__initCluster = (
 
   initChild(cluster);
 
+  // Durable flag so other polyfills (e.g. node:http's native fast path) can tell
+  // they're in a cluster worker without loading node:cluster. Set here because
+  // NODE_UNIQUE_ID is dropped once the worker is set up.
+  internals.nodeClusterIsWorker = true;
+
   if (typeof schedPolicyEnv === "string" && schedPolicyEnv.length > 0) {
     if (schedPolicyEnv === "rr") {
       cluster.schedulingPolicy = cluster.SCHED_RR;

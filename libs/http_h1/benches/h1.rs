@@ -62,6 +62,7 @@ fn bench_write(c: &mut Criterion) {
           headers: black_box(&headers),
           content_length: Some(13),
           keep_alive: true,
+          node_mode: false,
         },
       );
       black_box(out.len());

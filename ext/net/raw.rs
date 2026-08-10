@@ -482,6 +482,73 @@ network_stream!(
   ]
 );
 
+/// A borrowed raw handle to a network stream's socket, used to synchronously
+/// probe for a peer close (EOF/RST) that the async reactor has not surfaced
+/// yet -- a `poll_read` consults cached readiness and can miss a FIN that
+/// arrived since the reactor last ran. The probe never consumes data
+/// (`MSG_PEEK`) and never blocks (the socket is non-blocking under tokio).
+#[derive(Copy, Clone)]
+pub struct PeerEofProbe(
+  #[cfg(unix)] std::os::fd::RawFd,
+  #[cfg(windows)] std::os::windows::io::RawSocket,
+);
+
+impl PeerEofProbe {
+  /// True when the peer has closed (EOF or connection reset) with no readable
+  /// data in front of it. Pending data (e.g. a pipelined request) reads as
+  /// `false`: an EOF behind data is invisible to a peek, which keeps this
+  /// conservative.
+  pub fn eof_pending(&self) -> bool {
+    // SAFETY: the handle is owned by the stream this probe was created from
+    // (the caller keeps that stream alive); ManuallyDrop prevents the borrowed
+    // handle from being closed.
+    #[cfg(unix)]
+    let socket = std::mem::ManuallyDrop::new(unsafe {
+      <socket2::Socket as std::os::fd::FromRawFd>::from_raw_fd(self.0)
+    });
+    // SAFETY: as above.
+    #[cfg(windows)]
+    let socket = std::mem::ManuallyDrop::new(unsafe {
+      <socket2::Socket as std::os::windows::io::FromRawSocket>::from_raw_socket(
+        self.0,
+      )
+    });
+    let mut buf = [std::mem::MaybeUninit::<u8>::uninit()];
+    match socket.peek(&mut buf) {
+      Ok(0) => true,
+      Ok(_) => false,
+      Err(err) => matches!(
+        err.kind(),
+        std::io::ErrorKind::ConnectionReset
+          | std::io::ErrorKind::ConnectionAborted
+      ),
+    }
+  }
+}
+
+impl NetworkStream {
+  /// See [`PeerEofProbe`]. Only streams backed directly by a socket support
+  /// probing; TLS (a peek would see ciphertext) and virtual streams return
+  /// `None`.
+  pub fn peer_eof_probe(&self) -> Option<PeerEofProbe> {
+    match self {
+      #[cfg(unix)]
+      NetworkStream::Tcp(stream) => {
+        Some(PeerEofProbe(std::os::fd::AsRawFd::as_raw_fd(stream)))
+      }
+      #[cfg(windows)]
+      NetworkStream::Tcp(stream) => Some(PeerEofProbe(
+        std::os::windows::io::AsRawSocket::as_raw_socket(stream),
+      )),
+      #[cfg(unix)]
+      NetworkStream::Unix(stream) => {
+        Some(PeerEofProbe(std::os::fd::AsRawFd::as_raw_fd(stream)))
+      }
+      _ => None,
+    }
+  }
+}
+
 pub enum NetworkStreamAddress {
   Ip(std::net::SocketAddr),
   #[cfg(unix)]

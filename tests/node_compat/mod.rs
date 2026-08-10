@@ -131,18 +131,19 @@ fn main() {
 
   if let Some(filter) = &cli_filter {
     // With a filter, run any matching test from the full suite
-    // e.g. `cargo test --test node_compat -- test-assert`
+    // e.g. `cargo test --test node_compat -- test-assert`.
+    //
+    // Set NODE_TEST_ENABLED_ONLY=1 to additionally restrict the filter to the
+    // enabled set (the tests listed in config.jsonc), so e.g.
+    // `NODE_TEST_ENABLED_ONLY=1 cargo test --test node_compat -- http` runs only
+    // the enabled http tests instead of every http test in the vendored suite.
+    if enabled_only() {
+      retain_enabled_tests(&mut category, &config);
+    }
     category.filter_children(filter);
   } else if !cli_args.report {
     // Without a filter, only run tests listed in config.jsonc
-    let config_tests: std::collections::HashSet<&str> =
-      config.tests.keys().map(|s| s.as_str()).collect();
-    category.children.retain(|child| match child {
-      CollectedCategoryOrTest::Test(t) => {
-        config_tests.contains(t.data.test_path.as_str())
-      }
-      _ => true,
-    });
+    retain_enabled_tests(&mut category, &config);
   }
 
   // Apply sharding if CI_SHARD_INDEX / CI_SHARD_TOTAL are set
@@ -275,6 +276,28 @@ fn load_config() -> NodeCompatConfig {
   let config_content = std::fs::read_to_string(&config_path).unwrap();
   jsonc_parser::parse_to_serde_value(&config_content, &Default::default())
     .unwrap()
+}
+
+/// Whether a CLI filter should be restricted to the enabled set (config.jsonc).
+/// Controlled by `NODE_TEST_ENABLED_ONLY=1`.
+fn enabled_only() -> bool {
+  std::env::var("NODE_TEST_ENABLED_ONLY").is_ok_and(|v| v == "1" || v == "true")
+}
+
+/// Drop every collected test that isn't listed in config.jsonc (the enabled
+/// set). Categories (non-test children) are kept so nested structure survives.
+fn retain_enabled_tests(
+  category: &mut CollectedTestCategory<NodeCompatTestData>,
+  config: &NodeCompatConfig,
+) {
+  let config_tests: std::collections::HashSet<&str> =
+    config.tests.keys().map(|s| s.as_str()).collect();
+  category.children.retain(|child| match child {
+    CollectedCategoryOrTest::Test(t) => {
+      config_tests.contains(t.data.test_path.as_str())
+    }
+    _ => true,
+  });
 }
 
 // Directories that don't contain runnable tests

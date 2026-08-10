@@ -3,7 +3,25 @@
 
 // deno-lint-ignore-file no-explicit-any
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
+import {
+  op_http_abort_response,
+  op_http_close_after_finish,
+  op_http_get_request_cancelled,
+  op_http_set_node_auto_headers,
+  op_http_set_promise_complete,
+  op_http_set_response_body_bytes,
+  op_http_set_response_body_bytes_with_headers,
+  op_http_set_response_body_resource,
+  op_http_set_response_body_static_with_content_type,
+  op_http_set_response_body_text,
+  op_http_set_response_body_text_with_headers,
+  op_http_set_response_close_delimited,
+  op_http_set_response_force_close,
+  op_http_set_response_headers,
+  op_http_set_response_status_message,
+  op_http_set_response_trailers,
+} from "ext:core/ops";
 const {
   Array,
   ArrayIsArray,
@@ -24,6 +42,7 @@ const {
   ObjectKeys,
   ObjectSetPrototypeOf,
   ObjectValues,
+  PromisePrototypeThen,
   SafeRegExp,
   SafeSet,
   String,
@@ -44,6 +63,9 @@ import { Stream } from "node:stream";
 const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
 import type { Socket } from "node:net";
 const {
+  kNativeCancelWatch,
+  kNativeExternal,
+  kNativeWriteBuf,
   kNeedDrain,
   kOutHeaders,
   utcDate,
@@ -113,6 +135,600 @@ const RE_CONN_CLOSE = new SafeRegExp(/(?:^|\W)close(?:$|\W)/i);
 
 function isCookieField(s: string) {
   return s.length === 6 && StringPrototypeToLowerCase(s) === "cookie";
+}
+
+// ===========================================================================
+// Native fast-path helpers. When a ServerResponse is in native mode
+// (`this[kNativeExternal]` set), its writeHead/write/end commit the response
+// straight to the deno_http_h1 engine via op_http_* ops, bypassing socket
+// serialization. See ext/node/polyfills/_http_server.js (native dispatch).
+// ===========================================================================
+
+// Inert truthy value for `_header` so `headersSent` reads true and a second
+// writeHead throws -- native mode never writes `_header` to a socket.
+const NATIVE_HEADER_SENT = "\r\n";
+
+// Holds the ReadableStream controller once a native response switches to
+// incremental streaming (see nativeStartStream). Absent => not streaming.
+const kNativeStream = Symbol("kNativeStream");
+// Structured trailer list ([[name, value], ...]) collected by addTrailers in
+// native mode, committed via op_http_set_response_trailers before the response
+// body. Setting trailers on the record makes the engine frame the response as
+// chunked and emit them after the body.
+const kNativeTrailers = Symbol("kNativeTrailers");
+
+// Build the wire header list ([[name, value], ...]) from kOutHeaders. Multi-
+// value headers expand to repeated entries. Returns null if there are none.
+function nativeWireHeaders(msg: any) {
+  const oh = msg[kOutHeaders];
+  const out: [string, string][] = [];
+  let hasConnection = false;
+  let hasKeepAlive = false;
+  let hasDate = false;
+  if (oh !== null && oh !== undefined) {
+    // deno-lint-ignore guard-for-in
+    for (const key in oh) {
+      const entry = oh[key];
+      const name = entry[0];
+      const value = entry[1];
+      if (key === "connection") {
+        hasConnection = true;
+      } else if (key === "keep-alive") {
+        hasKeepAlive = true;
+      } else if (key === "date") {
+        hasDate = true;
+      }
+      if (ArrayIsArray(value)) {
+        for (let i = 0; i < value.length; i++) {
+          ArrayPrototypePush(out, [name, String(value[i])]);
+        }
+      } else {
+        ArrayPrototypePush(out, [name, String(value)]);
+      }
+    }
+  }
+  // A write()'d response with no explicit framing is sent chunked (see
+  // nativeEnd); the engine frames it chunked when it sees this header.
+  if (msg._nativeChunked) {
+    ArrayPrototypePush(out, ["Transfer-Encoding", "chunked"]);
+  }
+  // Node's formulaic Date / Connection: keep-alive / Keep-Alive headers are
+  // emitted by the engine (raw_response_headers, in Node's order + casing)
+  // instead of being marshaled into this header Vec on every response. Compute
+  // Node's exact conditions here and stash them on `msg`; nativeApplyAutoHeaders
+  // forwards them to op_http_set_node_auto_headers at commit time.
+  //
+  // Date: Node adds it honoring res.sendDate / removeHeader('Date').
+  msg._nativeAutoDate = !hasDate && msg.sendDate === true;
+  // Connection: Node emits an explicit `Connection: keep-alive` (+ `Keep-Alive`)
+  // on HTTP/1.1 keep-alive responses; the engine otherwise omits it (1.1 default)
+  // -- unless the handler removed or set its own connection header, or this is
+  // the last response on the socket.
+  let keepAliveConnection = false;
+  let keepAliveSecs = -1;
+  const req = msg.req;
+  if (
+    !hasConnection && !msg._removedConnection && !msg._last &&
+    msg.shouldKeepAlive && req !== undefined && req.httpVersionMinor === 1
+  ) {
+    keepAliveConnection = true;
+    const kat = msg._keepAliveTimeout;
+    if (!hasKeepAlive && typeof kat === "number" && kat > 0) {
+      keepAliveSecs = MathFloor(kat / 1000);
+    }
+  }
+  msg._nativeKeepAliveConnection = keepAliveConnection;
+  msg._nativeKeepAliveSecs = keepAliveSecs;
+  return out.length === 0 ? null : out;
+}
+
+// Forward the engine-emitted auto-header decisions computed by nativeWireHeaders
+// to the record, before the body/headers commit op consumes the external.
+function nativeApplyAutoHeaders(msg: any, external: any) {
+  op_http_set_node_auto_headers(
+    external,
+    msg._nativeAutoDate === true,
+    msg._nativeKeepAliveConnection === true,
+    typeof msg._nativeKeepAliveSecs === "number"
+      ? msg._nativeKeepAliveSecs
+      : -1,
+  );
+}
+
+function nativeChunkToBuffer(chunk: any, encoding?: string | null) {
+  if (typeof chunk === "string") {
+    return Buffer.from(chunk, encoding || "utf8");
+  }
+  return chunk;
+}
+
+// _contentLength is normally set by _matchHeader during _storeHeader, which the
+// native path skips, so derive it from the Content-Length header in kOutHeaders.
+// Returns whether strictContentLength should be enforced for this response.
+function nativeContentLength(msg: any): boolean {
+  if (msg._contentLength == null && msg[kOutHeaders]) {
+    const cl = msg[kOutHeaders]["content-length"];
+    if (cl !== undefined) {
+      msg._contentLength = +cl[1];
+    }
+  }
+  return msg.strictContentLength && _checkStrictContentLength(msg);
+}
+
+// The native write/end fast paths bypass write_(), so replicate its byte
+// accounting: enforce strictContentLength (throws ERR_HTTP_CONTENT_LENGTH_MISMATCH
+// on over/under-run) and accumulate the body bytes into `kBytesWritten` and the
+// synthetic socket's `bytesWritten` (which the engine, not the socket, actually
+// writes through). `fromEnd` requires an exact match; mid-stream requires
+// not-exceeding.
+function nativeAccountChunk(
+  msg: any,
+  chunk: any,
+  encoding: string | null,
+  fromEnd: boolean,
+) {
+  if (chunk === undefined || chunk === null || chunk === "") {
+    return;
+  }
+  const len = typeof chunk === "string"
+    ? Buffer.byteLength(chunk, encoding || "utf8")
+    : TypedArrayPrototypeGetByteLength(chunk);
+  if (
+    nativeContentLength(msg) &&
+    (fromEnd
+      ? msg[kBytesWritten] + len !== msg._contentLength
+      : msg[kBytesWritten] + len > msg._contentLength)
+  ) {
+    throw new ERR_HTTP_CONTENT_LENGTH_MISMATCH(
+      len + msg[kBytesWritten],
+      msg._contentLength,
+    );
+  }
+  msg[kBytesWritten] += len;
+  const sock = msg.socket;
+  if (
+    sock !== undefined && sock !== null && typeof sock.bytesWritten === "number"
+  ) {
+    sock.bytesWritten += len;
+  }
+}
+
+// Commit the response in a single op. `body` is a string (UTF-8 fast path),
+// a Buffer/Uint8Array, or null/undefined for no body.
+function nativeCommit(msg: any, body: any) {
+  const external = msg[kNativeExternal];
+  msg[kNativeExternal] = null;
+  // The response now owns the external (the body-commit op below consumes it);
+  // mark the request so a later `req.destroy()` doesn't abort via the now-stale
+  // external (would be a use-after-free).
+  if (msg.req !== undefined && msg.req !== null) {
+    msg.req._nativeResponded = true;
+  }
+  // writeHead() locks the status (a later `res.statusCode = ...` is a no-op in
+  // Node); fall back to the live statusCode when end() committed without one.
+  const status = msg._nativeWriteHead ? msg._nativeStatus : msg.statusCode;
+  // RFC 2616: a 204/304 MUST NOT have a body, so a user-set Transfer-Encoding:
+  // chunked is unframeable -- Node suppresses the chunk and forces the
+  // connection closed (no keep-alive). Tell the engine to close after this
+  // response (borrows the external; before the body-commit op consumes it).
+  if (msg._nativeForceClose) {
+    // Something (e.g. a handler emitting 'close' on the socket to abort
+    // pipelining) requested the connection be closed after this response.
+    op_http_set_response_force_close(external);
+  }
+  if (
+    (status === 204 || status === 304) && msg.hasHeader("transfer-encoding")
+  ) {
+    msg.shouldKeepAlive = false;
+    op_http_set_response_force_close(external);
+  } else if (msg._hasBody && msg._removedContLen && msg._removedTE) {
+    // The handler removed both Content-Length and Transfer-Encoding, so the body
+    // has no length framing: send it close-delimited (no content-length header;
+    // the connection closes to mark the end). Matches Node's _storeHeader, which
+    // sets `_last = true` when both are removed.
+    msg.shouldKeepAlive = false;
+    op_http_set_response_close_delimited(external);
+  }
+  // No writeHead() but a custom `res.statusMessage` was set (writeHead handles
+  // its own case and sets `_nativeWriteHead`): push the reason phrase. Truthy
+  // statusMessage without writeHead is always user-supplied, so the hot path
+  // (no statusMessage) skips this.
+  if (msg.statusMessage && !msg._nativeWriteHead) {
+    op_http_set_response_status_message(external, msg.statusMessage);
+  }
+  // Set trailers on the record first (borrows the external); the engine then
+  // frames the response as chunked and appends them after the body. Must run
+  // before the body-commit op below, which consumes the external.
+  const trailers = msg[kNativeTrailers];
+  if (trailers !== undefined && trailers !== null && trailers.length > 0) {
+    op_http_set_response_trailers(external, trailers);
+  }
+  const headers = nativeWireHeaders(msg);
+  nativeApplyAutoHeaders(msg, external);
+  // Fast path: once Date/Connection/Keep-Alive are engine-emitted, the common
+  // response carries a single `content-type` header. Route it through the
+  // static-content-type op (content-type as one onebyte value + body as a v8
+  // value) instead of marshaling a header-tuple Vec. Guarded on the lowercase
+  // name so the engine's lowercase `content-type` output stays byte-identical --
+  // Node preserves the user's casing, so a differently-cased name falls back.
+  const onlyContentType = headers !== null && headers.length === 1 &&
+    headers[0][0] === "content-type";
+  if (
+    body === undefined || body === null || body === "" ||
+    msg._hasBody === false
+  ) {
+    if (headers !== null) {
+      op_http_set_response_headers(external, headers);
+    }
+    op_http_set_promise_complete(external, status);
+  } else if (typeof body === "string") {
+    if (onlyContentType) {
+      op_http_set_response_body_static_with_content_type(
+        external,
+        body,
+        status,
+        headers[0][1],
+      );
+    } else if (headers !== null) {
+      op_http_set_response_body_text_with_headers(
+        external,
+        body,
+        status,
+        headers,
+      );
+    } else {
+      op_http_set_response_body_text(external, body, status);
+    }
+  } else {
+    if (onlyContentType) {
+      op_http_set_response_body_static_with_content_type(
+        external,
+        body,
+        status,
+        headers[0][1],
+      );
+    } else if (headers !== null) {
+      op_http_set_response_body_bytes_with_headers(
+        external,
+        body,
+        status,
+        headers,
+      );
+    } else {
+      op_http_set_response_body_bytes(external, body, status);
+    }
+  }
+}
+
+function nativeEnd(msg: any, chunk: any, encoding: any, callback: any) {
+  if (typeof chunk === "function") {
+    callback = chunk;
+    chunk = null;
+    encoding = null;
+  } else if (typeof encoding === "function") {
+    callback = encoding;
+    encoding = null;
+  }
+
+  // The native path bypasses write_(); replicate its chunk-type validation
+  // (null/undefined are fine for end() = no body).
+  if (
+    chunk !== undefined && chunk !== null && typeof chunk !== "string" &&
+    !isUint8Array(chunk)
+  ) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "chunk",
+      ["string", "Buffer", "Uint8Array"],
+      chunk,
+    );
+  }
+  // strictContentLength + byte accounting for the final chunk, then a final
+  // exact-match check that also catches an under-run (writes summed below the
+  // declared Content-Length with no make-up chunk at end()).
+  nativeAccountChunk(msg, chunk, encoding, true);
+  if (nativeContentLength(msg) && msg[kBytesWritten] !== msg._contentLength) {
+    throw new ERR_HTTP_CONTENT_LENGTH_MISMATCH(
+      msg[kBytesWritten],
+      msg._contentLength,
+    );
+  }
+
+  const buffered = msg[kNativeWriteBuf];
+  // Fold the final end() chunk into the buffered writes so it participates in
+  // the framing / coalescing decisions below.
+  if (
+    buffered !== undefined && buffered !== null &&
+    chunk !== undefined && chunk !== null && chunk !== ""
+  ) {
+    ArrayPrototypePush(buffered, nativeChunkToBuffer(chunk, encoding));
+    chunk = null;
+  }
+  // Node frames a write()d response chunked (it can't know the total length at
+  // write() time) unless the handler set an explicit Content-Length or
+  // Transfer-Encoding. (write() created kNativeWriteBuf; end()-only did not.)
+  const willChunk = buffered !== undefined && buffered !== null &&
+    msg._hasBody !== false &&
+    msg.req !== undefined && msg.req.httpVersionMinor === 1 &&
+    !msg.hasHeader("content-length") && !msg.hasHeader("transfer-encoding") &&
+    !msg._removedTE;
+
+  // Each write() must stay its own HTTP chunk on the wire -- Node frames one
+  // chunk per write(), and clients that treat each chunk as a record (e.g. the
+  // ReadableStream pipeline in test-webstreams-pipeline) observe those
+  // boundaries. Coalescing 2+ writes into one flat body would merge them into a
+  // single chunk, so route the multi-write chunked case through the streaming
+  // body, which frames per enqueued buffer (nativeStartStream flushes
+  // kNativeWriteBuf one enqueue at a time with aggregation disabled). A single
+  // buffered chunk has no boundary to preserve, so it stays on the faster
+  // single-op flat path.
+  if (willChunk && buffered.length >= 2) {
+    if (!msg._header) {
+      msg._header = NATIVE_HEADER_SENT;
+    }
+    msg.finished = true;
+    const reqEnd = msg.req;
+    if (reqEnd !== undefined && reqEnd !== null && reqEnd._nativeDiscardBody) {
+      reqEnd._nativeDiscardBody(msg);
+    }
+    // Commit headers + flush the buffered writes into the body stream, then
+    // close the controller so the engine finishes the (chunked) body. The
+    // resource body drains asynchronously and frees the external on completion.
+    nativeStartStream(msg);
+    const controller = msg[kNativeStream];
+    msg[kNativeStream] = null;
+    if (controller !== undefined && controller !== null) {
+      try {
+        controller.close();
+      } catch { /* already errored/closed */ }
+    }
+    nativeFinishOrWatch(msg, callback, msg._nativeAborted === true);
+    return msg;
+  }
+
+  let body;
+  if (buffered !== undefined && buffered !== null) {
+    msg[kNativeWriteBuf] = null;
+    // The buffered writes are now committed into the flat body.
+    msg[kChunkedLength] = 0;
+    if (buffered.length === 0) {
+      body = null;
+    } else if (buffered.length === 1) {
+      body = buffered[0];
+    } else {
+      // deno-lint-ignore prefer-primordials -- Buffer.concat is a static Buffer method, not Array/TypedArray concat
+      body = Buffer.concat(buffered);
+    }
+  } else if (
+    typeof chunk === "string" && encoding && encoding !== "utf8" &&
+    encoding !== "utf-8"
+  ) {
+    body = Buffer.from(chunk, encoding);
+  } else {
+    body = chunk; // string (utf8 fast path), Buffer, or null
+  }
+
+  if (!msg._header) {
+    msg._header = NATIVE_HEADER_SENT;
+  }
+  // Node chunks a response that used write() (it can't know the total length at
+  // write() time) when no explicit Content-Length/Transfer-Encoding was set; our
+  // flat coalescing path would otherwise send Content-Length. Opt into chunked
+  // framing to match. (write() created kNativeWriteBuf; end()-only did not.)
+  if (willChunk) {
+    msg._nativeChunked = true;
+  }
+  // Was the client already gone? Check before nativeCommit consumes the
+  // external; an aborted response emits 'close' (not 'finish').
+  const ext = msg[kNativeExternal];
+  const aborted = ext ? op_http_get_request_cancelled(ext) : false;
+  // `finished` is settable; `writableEnded`/`writableFinished` are getters
+  // derived from it (+ outputSize/socket, both empty here), so don't assign them.
+  msg.finished = true;
+  // Response complete without the handler consuming the request body: discard it
+  // (Node dumps the unread body on finish). Done synchronously here so a body
+  // read scheduled by an attached 'data' listener can't deliver the body or
+  // touch the just-consumed external.
+  const reqEnd = msg.req;
+  if (reqEnd !== undefined && reqEnd !== null && reqEnd._nativeDiscardBody) {
+    reqEnd._nativeDiscardBody(msg);
+  }
+  nativeCommit(msg, body);
+  nativeFinishOrWatch(msg, callback, aborted);
+  return msg;
+}
+
+// Emit finish/close for a committed response. When the request's cancel
+// watcher is armed (the handler returned before end(); see makeNativeOnRequest)
+// the commit can race a client teardown the engine has not observed yet, so
+// the 'finish'-vs-'close' choice defers to the watcher's verdict: it resolves
+// true when the client went away before the engine flushed the response --
+// Node never emits 'finish' for those -- and false once the body is written.
+// The sync fast path (no watcher) keeps the immediate emission.
+function nativeFinishOrWatch(msg: any, callback: any, aborted: boolean) {
+  const watch = msg[kNativeCancelWatch];
+  if (aborted || watch === undefined || watch === null) {
+    nativeEmitFinish(msg, callback, aborted);
+    return;
+  }
+  msg[kNativeCancelWatch] = null;
+  PromisePrototypeThen(watch, (cancelled: boolean) => {
+    nativeEmitFinish(msg, callback, cancelled === true);
+  });
+}
+
+// Emit prefinish/finish asynchronously (once) for a committed native response.
+function nativeEmitFinish(msg: any, callback: any, aborted?: boolean) {
+  const finish = () => {
+    if (msg._nativeFinishEmitted) return;
+    msg._nativeFinishEmitted = true;
+    if (aborted) {
+      // The client went away before the response completed: Node emits 'close'
+      // (the response never 'finish'es). Emitting only one keeps tests that
+      // register the same listener on both events correct
+      // (test-http-writable-true-after-close).
+      if (!msg._closed && !msg.destroyed) {
+        msg._closed = true;
+        msg.destroyed = true;
+        msg.emit("close");
+      }
+      return;
+    }
+    // If the connection closes after this response (HTTP/1.0 or Connection:
+    // close), end the synthetic socket's writable side first so
+    // `socket.writableEnded` reflects it before 'finish' listeners run.
+    const sock = msg.socket;
+    if (
+      !msg.shouldKeepAlive && sock !== undefined && sock !== null &&
+      !sock.writableEnded && typeof sock.end === "function"
+    ) {
+      sock.end();
+    }
+    msg.emit("prefinish");
+    msg.emit("finish");
+    // Mark the response closed/destroyed one extra tick later (Node sets
+    // res.destroyed at 'close'; `res.writable` stays true as it's a plain
+    // field). The extra tick makes a *deferred* (setImmediate) write-after-end
+    // route ERR_STREAM_WRITE_AFTER_END to its callback with no 'error' event
+    // (write_ takes the destroyed branch) -- while a *synchronous*
+    // write-after-end, whose error tick runs before this, still sees the
+    // response open and emits 'error'.
+    (globalThis as any).process.nextTick(() => {
+      if (!msg._closed && !msg.destroyed) {
+        msg._closed = true;
+        msg.destroyed = true;
+        msg.emit("close");
+      }
+      // Drain the request so it 'end's (then autoDestroy -> 'close') after the
+      // response closes, matching Node's ordering. Only when the body is fully
+      // received (`complete`, so we never read a freed external) AND something
+      // is listening for the lifecycle -- the hot path (no listener) skips this
+      // to avoid per-request drain/destroy overhead.
+      const req = msg.req;
+      if (
+        req !== undefined && req !== null && req.complete &&
+        !req.readableEnded && !req.destroyed &&
+        (req.listenerCount("end") > 0 || req.listenerCount("close") > 0 ||
+          req.listenerCount("data") > 0)
+      ) {
+        req.resume();
+      }
+    });
+  };
+  (globalThis as any).process.nextTick(finish);
+  if (typeof callback === "function") {
+    msg.once("finish", callback);
+  }
+}
+
+// Switch a still-open native response to incremental streaming: commit the
+// headers/status now and back the body with a ReadableStream-derived resource
+// that the deno_http_h1 engine drains as chunks are enqueued. Used when a
+// handler calls write() and yields without ending in the same tick (e.g. SSE,
+// chunked responses). Buffered write() chunks are flushed into the stream.
+function nativeStartStream(msg: any) {
+  const external = msg[kNativeExternal];
+  // Note whether the client already went away before we consume the external;
+  // nativeEndStream uses it to emit 'close' instead of 'finish'.
+  msg._nativeAborted = op_http_get_request_cancelled(external);
+  // The streaming resource borrows the external; we own its lifecycle now and
+  // free it via op_http_close_after_finish once the body fully drains.
+  msg[kNativeExternal] = null;
+  // The streaming response now owns the external; see nativeCommit.
+  if (msg.req !== undefined && msg.req !== null) {
+    msg.req._nativeResponded = true;
+  }
+  // writeHead() locks the status (see nativeCommit).
+  const status = msg._nativeWriteHead ? msg._nativeStatus : msg.statusCode;
+  const headers = nativeWireHeaders(msg);
+  nativeApplyAutoHeaders(msg, external);
+  if (headers !== null) {
+    op_http_set_response_headers(external, headers);
+  }
+  let controller: any;
+  const stream = new (globalThis as any).ReadableStream({
+    start(c: any) {
+      controller = c;
+    },
+    cancel() {
+      // Client went away; nothing more to push.
+    },
+  });
+  msg[kNativeStream] = controller;
+  if (!msg._header) {
+    msg._header = NATIVE_HEADER_SENT;
+  }
+  const buffered = msg[kNativeWriteBuf];
+  msg[kNativeWriteBuf] = null;
+  if (buffered !== undefined && buffered !== null) {
+    for (let i = 0; i < buffered.length; i++) {
+      controller.enqueue(buffered[i]);
+    }
+  }
+  // The buffered chunks were flushed to the stream: clear the accounted length
+  // and release any writer that backpressured.
+  msg[kChunkedLength] = 0;
+  if (msg[kNeedDrain]) {
+    msg[kNeedDrain] = false;
+    (globalThis as any).process.nextTick(() => msg.emit("drain"));
+  }
+  // noAggregate: preserve per-write buffer boundaries so each res.write becomes
+  // its own HTTP chunk on the wire, matching Node's chunked framing.
+  const rid = internals.resourceForReadableStream(
+    stream,
+    undefined,
+    undefined,
+    true,
+  );
+  PromisePrototypeThen(
+    op_http_set_response_body_resource(external, rid, true, status),
+    () => op_http_close_after_finish(external),
+    () => op_http_close_after_finish(external),
+  );
+}
+
+// Deferred check armed on the first buffered write(): if the response is still
+// open (not ended via the single-op fast path) and hasn't already streamed,
+// promote it to a streaming body so the buffered chunks are flushed to the
+// client instead of waiting for end().
+function nativeMaybeStream(msg: any) {
+  if (msg[kNativeExternal] === null || msg[kNativeExternal] === undefined) {
+    return; // already committed (single-op end) or already streaming
+  }
+  if (msg.finished) {
+    return;
+  }
+  nativeStartStream(msg);
+}
+
+// end() for a response that is already streaming: enqueue the final chunk and
+// close the stream so the engine finishes the body.
+function nativeEndStream(msg: any, chunk: any, encoding: any, callback: any) {
+  if (typeof chunk === "function") {
+    callback = chunk;
+    chunk = null;
+    encoding = null;
+  } else if (typeof encoding === "function") {
+    callback = encoding;
+    encoding = null;
+  }
+  const controller = msg[kNativeStream];
+  msg[kNativeStream] = null;
+  if (chunk !== undefined && chunk !== null && chunk !== "") {
+    try {
+      controller.enqueue(nativeChunkToBuffer(chunk, encoding));
+    } catch { /* stream already errored/closed */ }
+  }
+  try {
+    controller.close();
+  } catch { /* already closed */ }
+  msg.finished = true;
+  // Discard an unread request body on finish (Node dumps it), same as nativeEnd.
+  const reqEnd = msg.req;
+  if (reqEnd !== undefined && reqEnd !== null && reqEnd._nativeDiscardBody) {
+    reqEnd._nativeDiscardBody(msg);
+  }
+  nativeFinishOrWatch(msg, callback, msg._nativeAborted === true);
+  return msg;
 }
 
 export function OutgoingMessage(options?: any) {
@@ -262,6 +878,35 @@ ObjectDefineProperties(
       }
       this.destroyed = true;
 
+      // Native mode: abort an in-flight streaming response by erroring the
+      // backing ReadableStream, so the engine tears the connection down and the
+      // peer sees an ECONNRESET (matches `res.destroy()` on the classic path).
+      const controller = this[kNativeStream];
+      if (controller !== undefined && controller !== null) {
+        this[kNativeStream] = null;
+        try {
+          controller.error(error || new Error("aborted"));
+        } catch { /* already closed/errored */ }
+      } else {
+        // Native mode, response not yet committed: drop the connection so the
+        // peer sees an ECONNRESET (the external is still live -- a commit op
+        // would have nulled it).
+        const ext = this[kNativeExternal];
+        if (ext !== undefined && ext !== null) {
+          this[kNativeExternal] = null;
+          if (this.req !== undefined && this.req !== null) {
+            this.req._nativeResponded = true;
+          }
+          op_http_abort_response(ext);
+          // Free the external. Unlike a committed response (whose body-commit op
+          // consumes it) or a streaming response (nativeStartStream's
+          // op_http_close_after_finish), an uncommitted abort has no op that
+          // consumes it -- without this the record (and its server_state clone)
+          // leaks, so the server never drains and the event loop hangs.
+          op_http_close_after_finish(ext);
+        }
+      }
+
       if (this.socket) {
         this.socket.destroy(error);
       } else {
@@ -269,6 +914,21 @@ ObjectDefineProperties(
           socket.destroy(error);
         });
       }
+
+      // This destroy() fully overrides Writable's, so emit the lifecycle events
+      // Node would (async): 'error' (if any, and only when observed) then
+      // 'close'. nativeEmitFinish's close path is guarded on the same `_closed`
+      // flag, so the response emits 'close' exactly once.
+      (globalThis as any).process.nextTick(() => {
+        if (this._closed) {
+          return;
+        }
+        this._closed = true;
+        if (error && this.listenerCount("error") > 0) {
+          this.emit("error", error);
+        }
+        this.emit("close");
+      });
 
       return this;
     },
@@ -420,6 +1080,65 @@ ObjectDefineProperties(
         callback = encoding;
         encoding = null;
       }
+      if (this[kNativeStream] || this[kNativeExternal]) {
+        // The native fast paths below bypass write_(); replicate its chunk
+        // validation so bad types throw the same errors Node does.
+        if (chunk === null) {
+          throw new ERR_STREAM_NULL_VALUES();
+        }
+        if (typeof chunk !== "string" && !isUint8Array(chunk)) {
+          throw new ERR_INVALID_ARG_TYPE(
+            "chunk",
+            ["string", "Buffer", "Uint8Array"],
+            chunk,
+          );
+        }
+        nativeAccountChunk(this, chunk, encoding, false);
+      }
+      if (this[kNativeStream]) {
+        // Already streaming: hand the chunk straight to the body stream. The
+        // engine drains it as the socket allows. (Byte-aware backpressure with a
+        // 'drain' signal is a follow-up; we return true as the buffered path did,
+        // which never stalls a pipe().)
+        if (chunk !== undefined && chunk !== null && chunk.length !== 0) {
+          this[kNativeStream].enqueue(nativeChunkToBuffer(chunk, encoding));
+        }
+        if (typeof callback === "function") {
+          (globalThis as any).process.nextTick(callback);
+        }
+        return true;
+      }
+      if (this[kNativeExternal]) {
+        // Native mode: buffer chunks. On the first write, arm a deferred check
+        // that promotes the response to a streaming body if the handler yields
+        // without ending in this tick (e.g. SSE/chunked). A synchronous
+        // write()+end() never trips it and stays a single-op commit (nativeEnd
+        // coalesces the buffer).
+        let buf = this[kNativeWriteBuf];
+        if (buf === undefined || buf === null) {
+          buf = this[kNativeWriteBuf] = [];
+          (globalThis as any).process.nextTick(nativeMaybeStream, this);
+        }
+        if (chunk !== undefined && chunk !== null && chunk.length !== 0) {
+          const b = nativeChunkToBuffer(chunk, encoding);
+          ArrayPrototypePush(buf, b);
+          // Track the buffered length so `writableLength` reflects it and
+          // write() applies backpressure once the high-water mark is hit. Node
+          // frames a chunked body on the wire, so account the framed length
+          // (`<hex-len>\r\n<chunk>\r\n`).
+          this[kChunkedLength] += nativeContentLength(this)
+            ? b.length
+            : NumberPrototypeToString(b.length, 16).length + 4 + b.length;
+        }
+        if (typeof callback === "function") {
+          (globalThis as any).process.nextTick(callback);
+        }
+        if (this[kChunkedLength] >= this.writableHighWaterMark) {
+          this[kNeedDrain] = true;
+          return false;
+        }
+        return true;
+      }
       const ret = write_(this, chunk, encoding, callback, false);
       if (!ret) {
         this[kNeedDrain] = true;
@@ -431,6 +1150,11 @@ ObjectDefineProperties(
       this._trailer = "";
       const keys = ObjectKeys(headers);
       const isArray = ArrayIsArray(headers);
+      // Native mode commits trailers as a structured list via
+      // op_http_set_response_trailers (see nativeCommit); the serialized
+      // `_trailer` string is only used by the classic socket path.
+      const native = !!this[kNativeExternal];
+      const nativeList = native ? [] : null;
       let field, value;
       for (let i = 0, l = keys.length; i < l; i++) {
         if (isArray) {
@@ -448,10 +1172,22 @@ ObjectDefineProperties(
           throw new ERR_INVALID_CHAR("trailer content", field);
         }
         this._trailer += field + ": " + value + "\r\n";
+        if (nativeList !== null) {
+          ArrayPrototypePush(nativeList, [field, String(value)]);
+        }
+      }
+      if (nativeList !== null) {
+        this[kNativeTrailers] = nativeList;
       }
     },
 
     end(chunk: any, encoding: any, callback: any) {
+      if (this[kNativeStream]) {
+        return nativeEndStream(this, chunk, encoding, callback);
+      }
+      if (this[kNativeExternal]) {
+        return nativeEnd(this, chunk, encoding, callback);
+      }
       if (typeof chunk === "function") {
         callback = chunk;
         chunk = null;
@@ -528,9 +1264,16 @@ ObjectDefineProperties(
         // Fully uncork connection on end().
         this.socket._writableState.corked = 1;
         this.socket.uncork();
+      } else {
+        // No socket yet: fully uncork the buffered output. Only in the no-socket
+        // case -- Node's uncork() decrements kCorked even with a socket, but
+        // Deno's only does so without one (see cork()/uncork() below), so running
+        // this with a socket would leave kCorked stuck at 1 and make
+        // res.writableCorked disagree with res.socket.writableCorked
+        // (test-http-response-cork).
+        this[kCorked] = 1;
+        this.uncork();
       }
-      this[kCorked] = 1;
-      this.uncork();
 
       this.finished = true;
 
@@ -548,6 +1291,18 @@ ObjectDefineProperties(
     },
 
     flushHeaders() {
+      // Native fast path: commit the headers immediately as a streaming
+      // response (flushHeaders sends headers without ending the body, e.g.
+      // full-duplex / SSE). The generic _send("") path doesn't go through the
+      // native write buffer, so it would never reach the engine.
+      if (this[kNativeStream]) {
+        return; // already streaming (flushHeaders is idempotent)
+      }
+      if (this[kNativeExternal]) {
+        nativeStartStream(this);
+        return;
+      }
+
       if (!this._header) {
         this._implicitHeader();
       }
@@ -646,6 +1401,25 @@ ObjectDefineProperties(
     },
 
     _send(data: any, encoding?: string | null, callback?: () => void) {
+      // Native fast path: an explicit _send() is a manual flush (e.g. test code
+      // forcing packet boundaries via res._send('')). Promote to a streaming
+      // response so the headers commit now with streaming framing (chunked for
+      // HTTP/1.1, close-delimited for HTTP/1.0) instead of coalescing into a
+      // flat Content-Length body. The native write()+end() hot path commits via
+      // nativeEnd/nativeEndStream and never reaches here, so this only affects
+      // code that calls _send() directly.
+      if (this[kNativeStream] || this[kNativeExternal]) {
+        if (this[kNativeExternal]) {
+          nativeStartStream(this);
+        }
+        if (data !== undefined && data !== null && data.length !== 0) {
+          this[kNativeStream].enqueue(nativeChunkToBuffer(data, encoding));
+        }
+        if (typeof callback === "function") {
+          (globalThis as any).process.nextTick(callback);
+        }
+        return true;
+      }
       // This is a shameful hack to get the headers and first body chunk onto
       // the same packet. Future versions of Node are going to take care of
       // this at a lower level and in a more general way.

@@ -67,6 +67,13 @@ struct BoundedBufferChannelInner {
   read_waker: Option<Waker>,
   write_waker: Option<Waker>,
 
+  // When set, `read` never aggregates multiple queued buffers into one BufView,
+  // so each written buffer is delivered as a distinct read. node:http's chunked
+  // streaming uses this to preserve per-write chunk boundaries on the wire
+  // (Node emits one HTTP chunk per res.write); the default (aggregating) path is
+  // kept for Deno.serve and everything else.
+  no_aggregate: bool,
+
   _unsend: PhantomData<std::sync::MutexGuard<'static, ()>>,
 }
 
@@ -110,6 +117,7 @@ impl BoundedBufferChannelInner {
       current_size: 0,
       read_waker: None,
       write_waker: None,
+      no_aggregate: false,
       _unsend: PhantomData,
     }
   }
@@ -171,8 +179,10 @@ impl BoundedBufferChannelInner {
     }
 
     // If we have less than the aggregation limit AND we have more than one buffer in the channel,
-    // aggregate and return everything in a single buffer.
-    if limit >= BUFFER_AGGREGATION_LIMIT
+    // aggregate and return everything in a single buffer. Skipped when the
+    // channel preserves buffer boundaries (node:http chunked streaming).
+    if !self.no_aggregate
+      && limit >= BUFFER_AGGREGATION_LIMIT
       && self.current_size <= BUFFER_AGGREGATION_LIMIT
       && self.len > 1
     {
@@ -319,6 +329,16 @@ struct BoundedBufferChannel {
 }
 
 impl BoundedBufferChannel {
+  // A channel whose `read` never aggregates queued buffers, preserving per-write
+  // buffer boundaries (node:http chunked streaming -- one HTTP chunk per write).
+  fn no_aggregate() -> Self {
+    let mut inner = BoundedBufferChannelInner::new();
+    inner.no_aggregate = true;
+    Self {
+      inner: Rc::new(RefCell::new(inner)),
+    }
+  }
+
   // TODO(mmastrac): in release mode we should be able to make this an UnsafeCell
   #[inline(always)]
   fn inner(&self) -> RefMut<'_, BoundedBufferChannelInner> {
@@ -483,6 +503,25 @@ pub fn op_readable_stream_resource_allocate(state: &mut OpState) -> ResourceId {
     read_queue: Default::default(),
     cancel_handle: Default::default(),
     channel: BoundedBufferChannel::default(),
+    data: ReadableStreamResourceData { completion },
+    size_hint: (0, None),
+  };
+  state.resource_table.add(resource)
+}
+
+/// Allocate a resource that wraps a ReadableStream whose reads preserve
+/// per-write buffer boundaries (no aggregation of queued buffers). Used by
+/// node:http chunked streaming so each `res.write` becomes its own HTTP chunk.
+#[op2(fast)]
+#[smi]
+pub fn op_readable_stream_resource_allocate_no_aggregate(
+  state: &mut OpState,
+) -> ResourceId {
+  let completion = CompletionHandle::default();
+  let resource = ReadableStreamResource {
+    read_queue: Default::default(),
+    cancel_handle: Default::default(),
+    channel: BoundedBufferChannel::no_aggregate(),
     data: ReadableStreamResourceData { completion },
     size_hint: (0, None),
   };

@@ -251,6 +251,10 @@ impl<S: AsyncRead + Unpin> NetworkBufferedStream<S> {
     let bytes = Bytes::copy_from_slice(self.current_slice());
     (self.io, bytes)
   }
+
+  pub fn get_ref(&self) -> &S {
+    &self.io
+  }
 }
 
 impl<S: AsyncRead + Unpin> AsyncRead for NetworkBufferedStream<S> {
