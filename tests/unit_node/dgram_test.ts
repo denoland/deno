@@ -86,13 +86,13 @@ function sendTo(
   });
 }
 
-function sendConnected(socket: Socket, message: string): Promise<void> {
+function sendConnected(socket: Socket, message: string): Promise<number> {
   return new Promise((resolve, reject) => {
-    socket.send(message, (error) => {
+    socket.send(message, (error, bytes) => {
       if (error) {
         reject(error);
       } else {
-        resolve();
+        resolve(bytes);
       }
     });
   });
@@ -137,7 +137,7 @@ async function connectedUdpPeerTest(
       throw error;
     }
 
-    const clientPort = client.address().port;
+    let clientPort = client.address().port;
     const firstPeerPort = firstPeer.address().port;
     const secondPeerPort = secondPeer.address().port;
 
@@ -152,24 +152,41 @@ async function connectedUdpPeerTest(
     assertEquals(await receivedFromFirstPeer, "first-peer");
 
     const firstPeerReceived = receiveMessage(firstPeer);
-    await sendConnected(client, "connected-send");
+    assertEquals(await sendConnected(client, "connected-send"), 14);
     assertEquals(await firstPeerReceived, "connected-send");
 
+    const firstPeerReceivedEmpty = receiveMessage(firstPeer);
+    assertEquals(await sendConnected(client, ""), 0);
+    assertEquals(await firstPeerReceivedEmpty, "");
+
     client.disconnect();
+
+    const secondPeerReceivedAfterDisconnect = receiveMessage(secondPeer);
+    await sendTo(client, "disconnected-send", secondPeerPort, hostname);
+    assertEquals(
+      await secondPeerReceivedAfterDisconnect,
+      "disconnected-send",
+    );
+
+    // Linux releases the local port when a UDP socket is disconnected and
+    // assigns a new one on the next send or connect. Query the live socket.
+    clientPort = client.address().port;
+    assert(clientPort > 0);
     const receivedAfterDisconnect = receiveMessage(client);
     await sendTo(secondPeer, "after-disconnect", clientPort, hostname);
     assertEquals(await receivedAfterDisconnect, "after-disconnect");
 
     await connectSocket(client, firstPeerPort, hostname);
     const sentBeforeReconnect = receiveMessage(firstPeer);
-    client.send("before-reconnect");
+    assertEquals(await sendConnected(client, "before-reconnect"), 16);
     client.disconnect();
 
     await connectSocket(client, secondPeerPort, hostname);
     assertEquals(client.remoteAddress().port, secondPeerPort);
+    clientPort = client.address().port;
 
     const secondPeerReceived = receiveMessage(secondPeer);
-    await sendConnected(client, "reconnected-send");
+    assertEquals(await sendConnected(client, "reconnected-send"), 16);
     assertEquals(await sentBeforeReconnect, "before-reconnect");
     assertEquals(await secondPeerReceived, "reconnected-send");
 

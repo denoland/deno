@@ -27,6 +27,7 @@ const {
   op_node_udp_connect,
   op_node_udp_disconnect,
   op_node_udp_fd_for_ipc,
+  op_node_udp_getsockname,
   op_node_udp_join_multi_v4,
   op_node_udp_join_multi_v6,
   op_node_udp_join_source_specific,
@@ -92,17 +93,23 @@ function isNotCapableError(error: unknown): boolean {
   );
 }
 
-function udpSendErrorCode(error: unknown): number {
+function udpErrorCode(error: unknown): number {
   if (
     ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, error)
   ) {
     return codeMap.get("EBADF")!;
   }
-  if (
-    ObjectPrototypeIsPrototypeOf(ErrorPrototype, error) &&
-    StringPrototypeMatch((error as Error).message, osErrorRegExp)
-  ) {
-    return codeMap.get("EMSGSIZE")!;
+  if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, error)) {
+    const typedError = error as Error & { code?: string };
+    const mappedCode = typedError.code === undefined
+      ? undefined
+      : codeMap.get(typedError.code);
+    if (mappedCode !== undefined) {
+      return mappedCode;
+    }
+    if (StringPrototypeMatch(typedError.message, osErrorRegExp)) {
+      return codeMap.get("EMSGSIZE")!;
+    }
   }
   return codeMap.get("UNKNOWN")!;
 }
@@ -419,13 +426,22 @@ class UDP extends HandleWrap {
    * @return An error status code.
    */
   getsockname(sockname: Record<string, string | number>): number {
-    if (this.#address === undefined) {
+    if (this.#rid === undefined) {
       return codeMap.get("EBADF")!;
     }
 
-    sockname.address = this.#address;
-    sockname.port = this.#port!;
-    sockname.family = this.#family!;
+    try {
+      const result = op_node_udp_getsockname(this.#rid);
+      const address = result[0];
+      const port = result[1];
+      this.#address = address;
+      this.#port = port;
+      sockname.address = address;
+      sockname.port = port;
+      sockname.family = this.#family!;
+    } catch (e) {
+      return codeMap.get(e.code ?? "UNKNOWN") ?? codeMap.get("UNKNOWN")!;
+    }
 
     return 0;
   }
@@ -691,7 +707,7 @@ class UDP extends HandleWrap {
           return sent;
         }
       } catch (error) {
-        return udpSendErrorCode(error);
+        return udpErrorCode(error);
       }
     }
 
@@ -714,7 +730,7 @@ class UDP extends HandleWrap {
             this.#remotePort!,
           );
       } catch (error) {
-        err = udpSendErrorCode(error);
+        err = udpErrorCode(error);
         sent = 0;
       }
 
@@ -757,7 +773,7 @@ class UDP extends HandleWrap {
       ) {
         nread = 0;
       } else {
-        nread = codeMap.get("UNKNOWN")!;
+        nread = udpErrorCode(e);
       }
     }
 

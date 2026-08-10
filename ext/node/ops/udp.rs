@@ -595,6 +595,17 @@ pub fn op_node_udp_disconnect(
   Ok(())
 }
 
+#[op2]
+#[serde]
+pub fn op_node_udp_getsockname(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> Result<(String, u16), NodeUdpError> {
+  let resource = state.resource_table.get::<NodeUdpSocketResource>(rid)?;
+  let addr = resource.socket.local_addr()?;
+  Ok((addr.ip().to_string(), addr.port()))
+}
+
 #[cfg(unix)]
 fn disconnect_udp_socket(socket: &UdpSocket) -> std::io::Result<()> {
   use std::os::fd::AsRawFd;
@@ -661,7 +672,7 @@ fn disconnect_udp_socket(socket: &UdpSocket) -> std::io::Result<()> {
   // AF_UNSPEC SOCKADDR_STORAGE, which disconnects a datagram socket.
   let result = unsafe {
     windows_sys::Win32::Networking::WinSock::connect(
-      socket.as_raw_socket(),
+      socket.as_raw_socket() as _,
       &addr as *const SOCKADDR_STORAGE as *const SOCKADDR,
       std::mem::size_of_val(&addr) as i32,
     )
@@ -738,6 +749,9 @@ fn check_udp_send_permission(
 
 #[op2(fast)]
 #[smi]
+/// Returns the number of synchronously written bytes plus one, or zero when
+/// the socket would block and the caller should fall back to the async op.
+/// The offset distinguishes a synchronous zero-length datagram from fallback.
 pub fn op_node_udp_try_send_connected(
   state: &mut OpState,
   #[smi] rid: ResourceId,
