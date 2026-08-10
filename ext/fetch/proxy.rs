@@ -3,6 +3,7 @@
 //! Parts of this module should be able to be replaced with other crates
 //! eventually, once generic versions appear in hyper-util, et al.
 
+#[cfg(not(windows))]
 use std::borrow::Cow;
 use std::env;
 use std::future::Future;
@@ -17,6 +18,7 @@ use std::task::Context;
 use std::task::Poll;
 
 use deno_core::futures::TryFutureExt;
+#[cfg(not(windows))]
 use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionsContainer;
 use deno_tls::rustls::ClientConfig as TlsConfig;
