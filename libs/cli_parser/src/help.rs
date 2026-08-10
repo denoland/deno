@@ -114,11 +114,63 @@ pub fn render_help(cmd: &CommandDef) -> String {
       let help_lines: Vec<&str> = arg.help.split('\n').collect();
       out.push_str(&format!("  {:<22}  {}\n", flag_str, help_lines[0]));
       for rest_line in &help_lines[1..] {
-        out.push_str(&format!("{:28}{}\n", "", rest_line));
+        // Indent to the description column; any further indentation is
+        // baked into the help string itself (as it was for clap).
+        out.push_str(&format!("{:26}{}\n", "", rest_line));
       }
     }
   }
 
+  // Permission options, mirroring clap's after-help. The permission args are
+  // hidden from the table above and documented in this section instead.
+  if has_permission_args(cmd) {
+    out.push('\n');
+    out.push_str(crate::permission_help::PERMISSION_HELP);
+  }
+
+  // Environment variables (root help only), mirroring clap's after-help.
+  if cmd.name == "deno" {
+    out.push_str(&render_env_vars());
+  }
+
+  out
+}
+
+/// Whether this command accepts the shared permission args, and so should get
+/// the "Permission options" section.
+fn has_permission_args(cmd: &CommandDef) -> bool {
+  cmd
+    .arg_groups
+    .iter()
+    .any(|g| std::ptr::eq(g.as_ptr(), crate::defs::PERMISSION_ARGS.as_ptr()))
+}
+
+/// Render the "Environment variables" section documented in `deno --help`.
+fn render_env_vars() -> String {
+  use crate::env_vars::ENV_VARS;
+  let mut out = String::from(
+    "\nEnvironment variables:\nDocs: https://docs.deno.com/go/env-vars\n\n",
+  );
+  let width = ENV_VARS.iter().map(|v| v.name.len()).max().unwrap_or(0) + 1;
+  let entries: Vec<String> = ENV_VARS
+    .iter()
+    .map(|var| {
+      let indent = " ".repeat(width);
+      let desc = var.description.replace('\n', &format!("\n  {indent}"));
+      let mut entry = format!(
+        "  {}{}{}",
+        var.name,
+        " ".repeat(width - var.name.len()),
+        desc
+      );
+      if let Some(example) = var.example {
+        entry.push_str(&format!("\n  {} {}", indent, example));
+      }
+      entry
+    })
+    .collect();
+  out.push_str(&entries.join("\n"));
+  out.push('\n');
   out
 }
 
