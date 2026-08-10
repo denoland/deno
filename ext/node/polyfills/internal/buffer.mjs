@@ -1186,6 +1186,21 @@ Buffer.prototype.base64urlWrite = function base64urlWrite(
 };
 
 Buffer.prototype.hexWrite = function hexWrite(string, offset, length) {
+  const byteLength = TypedArrayPrototypeGetByteLength(this);
+  if (offset === undefined) {
+    offset = 0;
+  }
+  if (offset < 0 || offset > byteLength) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
+  }
+
+  const remaining = byteLength - offset;
+  if (length === undefined || length > remaining) {
+    length = remaining;
+  } else if (length < 0) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("length");
+  }
+
   return blitBuffer(
     hexToBytes(string),
     this,

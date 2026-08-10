@@ -1032,6 +1032,37 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[node/buffer] hexWrite validates its offset and length",
+  fn() {
+    const buf = Buffer.alloc(10);
+    // Same validation block as base64Write: out-of-bounds and negative
+    // offsets and negative lengths throw coded RangeErrors (negative length
+    // previously returned its own value without writing).
+    for (
+      const call of [
+        () => Buffer.prototype.hexWrite.call(buf, "aabb", 20),
+        () => Buffer.prototype.hexWrite.call(buf, "aabb", -1),
+        () => Buffer.prototype.hexWrite.call(buf, "aabb", 0, -5),
+      ]
+    ) {
+      const err = assertThrows(call, RangeError);
+      assertEquals(
+        (err as { code?: string }).code,
+        "ERR_BUFFER_OUT_OF_BOUNDS",
+      );
+    }
+    // offset == length writes nothing; oversized length clamps (Node
+    // parity).
+    assertEquals(Buffer.prototype.hexWrite.call(buf, "aabb", 10), 0);
+    assertEquals(
+      Buffer.prototype.hexWrite.call(buf, "aabbccddee", 8, 100),
+      2,
+    );
+    assertEquals(buf.toString("hex"), "0000000000000000aabb");
+  },
+});
+
+Deno.test({
   name: "[node/buffer] File is exported from node:buffer",
   fn() {
     assertEquals(typeof BufferFile, "function");
