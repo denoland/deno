@@ -1,26 +1,18 @@
 {
   "tempDir": true,
+  "envs": {
+    "DENO_DIR": "$PWD/deno_dir"
+  },
   "steps": [
     {
-      // Populate the cache with the abbreviated packument: minimumDependencyAge
-      // is disabled here, so no full packument is fetched and the cached
-      // registry.json carries no per-version publish timestamps.
-      "args": "run --no-lock --minimum-dependency-age=0 main.ts",
-      "output": "first.out"
-    },
-    {
-      // Strip the `time` field and the `_deno.packumentFormat` marker from the
-      // cached registry.json, accurately simulating a cache written by an
-      // older Deno.
-      "args": "run -A strip_registry_time.ts $DENO_DIR",
-      "output": ""
-    },
-    {
-      // With the default minimumDependencyAge policy and --cached-only, the
-      // cached abbreviated metadata must be used as-is instead of failing
-      // while trying to re-fetch the full packument over the network (which
-      // --cached-only forbids). The resolver already treats a missing publish
-      // timestamp as acceptable, so the metadata is fully usable.
+      // `deno_dir/` is a genuine npm cache written by Deno 2.8.2 (see
+      // registry.json: abbreviated install manifest without the `time`
+      // field, and predating the `_deno.packumentFormat` marker). Under
+      // the default minimumDependencyAge policy (24h) with --cached-only,
+      // this cache must be usable as-is instead of failing while trying to
+      // re-fetch the full packument over the network (which --cached-only
+      // forbids). The resolver already treats a missing publish timestamp
+      // as acceptable.
       "args": "run --no-lock --cached-only --minimum-dependency-age=1440 main.ts",
       "output": "ok\n"
     }
