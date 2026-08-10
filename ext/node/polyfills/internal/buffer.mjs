@@ -63,7 +63,6 @@ const {
 } = primordials;
 const {
   op_base64_decode_into,
-  op_base64_encode,
   op_base64_encode_from_buffer,
   op_base64url_decode_into,
   op_base64url_encode_from_buffer,
@@ -89,6 +88,7 @@ const { indexOfBuffer, indexOfNumber } = core.loadExtScript(
 );
 const {
   asciiToBytes,
+  base64CleanToBytes,
   base64ToBytes,
   base64UrlToBytes,
   hexToBytes,
@@ -1075,13 +1075,6 @@ Buffer.prototype.base64Slice = function base64Slice(
     return "";
   }
 
-  // Use op_base64_encode (#[string] return) for small buffers where
-  // the lighter-weight op2 string path is faster.
-  // Use op_base64_encode_from_buffer (v8::String::new_external_onebyte) for
-  // large buffers where avoiding UTF-8 processing and copying matters.
-  if (offset === 0 && end === byteLength && end <= 4096) {
-    return op_base64_encode(this);
-  }
   return op_base64_encode_from_buffer(this, offset, end - offset);
 };
 
@@ -1108,12 +1101,22 @@ Buffer.prototype.base64Write = function base64Write(
   const target = offset === 0 && length === byteLength
     ? this
     : TypedArrayPrototypeSubarray(this, 0, offset + length);
+  // Invalid base64 comes back as -1 (cheaper than an exception on dirty
+  // input); the catch only absorbs the onebyte-string conversion TypeError
+  // for inputs with characters above U+00FF.
+  let written = -1;
   try {
-    return op_base64_decode_into(string, target, offset);
+    written = op_base64_decode_into(string, target, offset);
   } catch {
-    // Fallback for strings with base64url chars or invalid chars
-    return blitBuffer(base64ToBytes(string), this, offset, length);
+    // fall through to the cleaning path
   }
+  if (written !== -1) {
+    return written;
+  }
+  // Fallback for dirty input: Node's cleaning semantics live in
+  // base64CleanToBytes (map base64url chars onto the standard alphabet,
+  // truncate at '=', strip invalid chars, re-pad).
+  return blitBuffer(base64CleanToBytes(string), this, offset, length);
 };
 
 Buffer.prototype.base64urlSlice = function base64urlSlice(
@@ -1139,9 +1142,6 @@ Buffer.prototype.base64urlSlice = function base64urlSlice(
     return "";
   }
 
-  // No size split: op_base64url_encode_from_buffer builds the V8 one-byte
-  // string directly and measures faster at every size. base64Slice's 4096
-  // split above needs the same re-measurement (follow-up to #36398).
   return op_base64url_encode_from_buffer(this, offset, end - offset);
 };
 
