@@ -1,7 +1,7 @@
 {
   "tests": {
     "cjs_shaped_js_is_esm": {
-      "args": "run main.cjs",
+      "args": "run -A main.cjs",
       "output": "main.out",
       "exitCode": 1
     }
