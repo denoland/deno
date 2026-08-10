@@ -1,0 +1,28 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      // Populate the cache with the abbreviated packument: minimumDependencyAge
+      // is disabled here, so no full packument is fetched and the cached
+      // registry.json carries no per-version publish timestamps.
+      "args": "run --no-lock --minimum-dependency-age=0 main.ts",
+      "output": "first.out"
+    },
+    {
+      // Strip the `time` field and the `_deno.packumentFormat` marker from the
+      // cached registry.json, accurately simulating a cache written by an
+      // older Deno.
+      "args": "run -A strip_registry_time.ts $DENO_DIR",
+      "output": ""
+    },
+    {
+      // With the default minimumDependencyAge policy and --cached-only, the
+      // cached abbreviated metadata must be used as-is instead of failing
+      // while trying to re-fetch the full packument over the network (which
+      // --cached-only forbids). The resolver already treats a missing publish
+      // timestamp as acceptable, so the metadata is fully usable.
+      "args": "run --no-lock --cached-only --minimum-dependency-age=1440 main.ts",
+      "output": "ok\n"
+    }
+  ]
+}
