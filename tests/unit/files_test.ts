@@ -19,6 +19,19 @@ Deno.test(function filesStdioFileDescriptors() {
   assertEquals(Deno.stderr.rid, 2);
 });
 
+Deno.test(function fsFileGlobalSymbolCannotConstruct() {
+  const FsFileCtor = Deno.FsFile as unknown as new (
+    rid: number,
+    token: symbol,
+  ) => Deno.FsFile;
+
+  assertThrows(
+    () => new FsFileCtor(0, Symbol.for("Deno.internal.FsFile")),
+    TypeError,
+    "'Deno.FsFile' cannot be constructed",
+  );
+});
+
 Deno.test(
   { permissions: { read: true } },
   async function filesCopyToStdout() {
