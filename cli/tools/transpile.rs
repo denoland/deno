@@ -258,6 +258,13 @@ impl VisitMut for ImportExtensionRewriter {
       ast::ModuleDecl::ExportAll(node) => {
         rewrite_import_specifier(&mut node.src)
       }
+      ast::ModuleDecl::TsImportEquals(node) => {
+        if let ast::TsModuleRef::TsExternalModuleRef(module_ref) =
+          &mut node.module_ref
+        {
+          rewrite_import_specifier(&mut module_ref.expr);
+        }
+      }
       _ => {}
     }
     node.visit_mut_children_with(self);

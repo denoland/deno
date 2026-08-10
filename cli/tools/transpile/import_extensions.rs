@@ -16,6 +16,8 @@ pub fn rewrite(specifier: &str) -> Option<String> {
     None
   } else if let Some(path) = path.strip_suffix(".tsx") {
     Some(format!("{path}.js{suffix}"))
+  } else if let Some(path) = path.strip_suffix(".jsx") {
+    Some(format!("{path}.js{suffix}"))
   } else if let Some(path) = path.strip_suffix(".ts") {
     Some(format!("{path}.js{suffix}"))
   } else if let Some(path) = path.strip_suffix(".mts") {
@@ -35,6 +37,7 @@ mod tests {
   fn rewrites_typescript_extensions() {
     assert_eq!(rewrite("./mod.ts").as_deref(), Some("./mod.js"));
     assert_eq!(rewrite("../mod.tsx").as_deref(), Some("../mod.js"));
+    assert_eq!(rewrite("./mod.jsx").as_deref(), Some("./mod.js"));
     assert_eq!(rewrite("./mod.mts").as_deref(), Some("./mod.mjs"));
     assert_eq!(rewrite("./mod.cts").as_deref(), Some("./mod.cjs"));
   }

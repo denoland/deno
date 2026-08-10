@@ -36,7 +36,7 @@
     "rewrite_import_extensions": {
       "steps": [
         {
-          "args": "transpile import_extensions.ts helpers.ts helper.mts helper.cts --outdir dist",
+          "args": "transpile import_extensions.ts helpers.ts helper.mts helper.cts view.jsx --outdir dist",
           "output": "rewrite_import_extensions_emit.out"
         },
         {

@@ -1,4 +1,6 @@
 import "./helpers.ts";
+import "./view.jsx";
+import helper = require("./helper.cts");
 export { add } from "./helpers.ts";
 export * from "./helper.mts";
 
