@@ -543,6 +543,7 @@ class Console {
     // by ObjectCreate(%ObjectPrototype%), instead of %ObjectPrototype%.
     const console = ObjectCreate({}, {
       [SymbolToStringTag]: {
+        __proto__: null,
         enumerable: false,
         writable: false,
         configurable: true,

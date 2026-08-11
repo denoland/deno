@@ -1334,7 +1334,11 @@ const globalIteratorPrototype = ObjectGetPrototypeOf(ArrayIteratorPrototype);
 
 function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
   const iteratorPrototype = ObjectCreate(globalIteratorPrototype, {
-    [SymbolToStringTag]: { configurable: true, value: `${name} Iterator` },
+    [SymbolToStringTag]: {
+      __proto__: null,
+      configurable: true,
+      value: `${name} Iterator`,
+    },
   });
   define(iteratorPrototype, {
     next() {
