@@ -68,7 +68,7 @@ fn pty_null() {
 fn pty_primordials_protected_from_object_prototype_properties() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("Object.prototype.get = function () {}");
-    console.expect("undefined");
+    console.expect("[Function (anonymous)]");
     console.write_line("new Deno.Command(\"whoami\")");
     console.expect("Command");
   });
