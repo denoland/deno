@@ -410,13 +410,7 @@ pub fn op_require_stat<TSys: ExtNodeSys + 'static>(
   #[string] path: &str,
 ) -> Result<i32, JsErrorBox> {
   let path = Cow::Borrowed(Path::new(path));
-  let path = if path.ends_with("node_modules") {
-    // skip stat permission checks for node_modules directories
-    // because they're noisy and it's fine
-    path
-  } else {
-    ensure_read_permission(state, path)?
-  };
+  let path = ensure_read_permission(state, path)?;
   let sys = state.borrow::<TSys>();
   if let Ok(metadata) = sys.fs_metadata(&path) {
     if metadata.file_type().is_file() {
@@ -696,17 +690,21 @@ pub fn op_require_is_maybe_cjs(
 pub fn op_require_read_package_scope<TSys: ExtNodeSys + 'static>(
   state: &mut OpState,
   #[string] package_json_path: &str,
-) -> Option<PackageJsonRc> {
-  let pkg_json_resolver = state.borrow::<PackageJsonResolverRc<TSys>>();
+) -> Result<Option<PackageJsonRc>, JsErrorBox> {
   let package_json_path = Path::new(package_json_path);
   if package_json_path.file_name() != Some("package.json".as_ref()) {
     // permissions: do not allow reading a non-package.json file
-    return None;
+    return Ok(None);
   }
-  pkg_json_resolver
-    .load_package_json(package_json_path)
-    .ok()
-    .flatten()
+  let package_json_path =
+    ensure_read_permission(state, Cow::Borrowed(package_json_path))?;
+  let pkg_json_resolver = state.borrow::<PackageJsonResolverRc<TSys>>();
+  Ok(
+    pkg_json_resolver
+      .load_package_json(&package_json_path)
+      .ok()
+      .flatten(),
+  )
 }
 
 #[op2(stack_trace)]
