@@ -67,6 +67,9 @@ const {
 // deserialization (V8 InstallConditionalFeatures), so the snapshot-time
 // primordials copy does not include them; capture lazily from the live
 // prototype on first use.
+// TODO(tomas-zijdemans): once V8 ships these methods unconditionally
+// (no --js-arraybuffer-base64 flag), move them to primordials and drop
+// the lazy capture.
 let Uint8ArrayPrototypeToHex;
 let Uint8ArrayPrototypeSetFromHex;
 const {
