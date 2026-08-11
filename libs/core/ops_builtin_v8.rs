@@ -383,7 +383,18 @@ pub fn op_eval_context<'s, 'i>(
     cb(specifier, code_cache_hash, &code_cache);
   }
 
-  match script.run(tc_scope) {
+  // Bump the user-code depth counter for the duration of script
+  // execution — see JsRealm::execute_script for rationale.
+  let context_state = JsRealm::state_from_scope(tc_scope);
+  context_state
+    .user_code_depth
+    .set(context_state.user_code_depth.get().wrapping_add(1));
+  let run_result = script.run(tc_scope);
+  context_state
+    .user_code_depth
+    .set(context_state.user_code_depth.get().wrapping_sub(1));
+
+  match run_result {
     Some(result) => {
       out.set_index(tc_scope, 0, result);
       out.set_index(tc_scope, 1, null.into());
