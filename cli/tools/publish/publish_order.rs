@@ -24,10 +24,10 @@ impl PublishOrderGraph {
       .iter()
       .filter_map(|(name, &degree)| if degree == 0 { Some(name) } else { None })
       .map(|item| {
-        (
-          item.clone(),
-          self.compute_depth(item, &mut depth_cache, &mut HashSet::new()),
-        )
+        let mut visiting = HashSet::new();
+        let (depth, _) =
+          self.compute_depth(item, &mut depth_cache, &mut visiting);
+        (item.clone(), depth)
       })
       .collect::<Vec<_>>();
 
@@ -64,34 +64,42 @@ impl PublishOrderGraph {
     }
   }
 
-  fn compute_depth(
-    &self,
-    package_name: &str,
-    depth_cache: &mut HashMap<String, usize>,
-    visiting: &mut HashSet<String>,
-  ) -> usize {
+  fn compute_depth<'a>(
+    &'a self,
+    package_name: &'a str,
+    depth_cache: &mut HashMap<&'a str, usize>,
+    visiting: &mut HashSet<&'a str>,
+  ) -> (usize, bool) {
     if let Some(depth) = depth_cache.get(package_name) {
-      return *depth;
+      return (*depth, true);
     }
 
-    if !visiting.insert(package_name.to_string()) {
-      return 0; // cycle
+    if !visiting.insert(package_name) {
+      return (0, false); // cycle
     }
 
-    let depth = if let Some(parents) = self.reverse_map.get(package_name) {
-      let max_depth = parents
-        .iter()
-        .map(|child| self.compute_depth(child, depth_cache, visiting))
-        .max()
-        .unwrap_or(0);
-      1 + max_depth
-    } else {
-      0
-    };
+    let (depth, is_acyclic) =
+      if let Some(parents) = self.reverse_map.get(package_name) {
+        let mut max_depth = 0;
+        let mut is_acyclic = true;
+        for child in parents {
+          let (child_depth, child_is_acyclic) =
+            self.compute_depth(child, depth_cache, visiting);
+          max_depth = max_depth.max(child_depth);
+          is_acyclic &= child_is_acyclic;
+        }
+        (1 + max_depth, is_acyclic)
+      } else {
+        (0, true)
+      };
 
     visiting.remove(package_name);
-    depth_cache.insert(package_name.to_string(), depth);
-    depth
+    // A cycle-truncated depth depends on the path used to reach the node.
+    // Caching it (or an ancestor derived from it) would poison other roots.
+    if is_acyclic {
+      depth_cache.insert(package_name, depth);
+    }
+    (depth, is_acyclic)
   }
 }
 
@@ -334,7 +342,35 @@ mod test {
   }
 
   #[test]
-  fn test_graph_dense_dag_depth_is_memoized() {
+  fn test_graph_memoized_depth_order() {
+    let mut graph = build_publish_order_graph_from_pkgs_deps(HashMap::from([
+      ("deep".to_string(), HashSet::new()),
+      ("shallow".to_string(), HashSet::new()),
+      ("middle".to_string(), HashSet::from(["deep".to_string()])),
+      (
+        "shared".to_string(),
+        HashSet::from(["middle".to_string(), "shallow".to_string()]),
+      ),
+      ("top".to_string(), HashSet::from(["shared".to_string()])),
+    ]));
+
+    assert_eq!(
+      graph.next(),
+      vec!["deep".to_string(), "shallow".to_string()]
+    );
+    graph.finish_package("deep");
+    graph.finish_package("shallow");
+    assert_eq!(graph.next(), vec!["middle".to_string()]);
+    graph.finish_package("middle");
+    assert_eq!(graph.next(), vec!["shared".to_string()]);
+    graph.finish_package("shared");
+    assert_eq!(graph.next(), vec!["top".to_string()]);
+    graph.finish_package("top");
+    graph.ensure_no_pending().unwrap();
+  }
+
+  #[test]
+  fn test_graph_dense_dag_completes() {
     let package_count = 40;
     let mut packages = HashMap::new();
     for i in 0..package_count {
@@ -350,6 +386,33 @@ mod test {
 
     let mut graph = build_publish_order_graph_from_pkgs_deps(packages);
     assert_eq!(graph.next(), vec!["pkg39".to_string()]);
+  }
+
+  #[test]
+  fn test_graph_cycle_depth_is_not_cached() {
+    let mut graph = build_publish_order_graph_from_pkgs_deps(HashMap::from([
+      (
+        "a".to_string(),
+        HashSet::from(["r1".to_string(), "b".to_string()]),
+      ),
+      (
+        "b".to_string(),
+        HashSet::from(["r2".to_string(), "a".to_string()]),
+      ),
+      ("r1".to_string(), HashSet::new()),
+      ("r2".to_string(), HashSet::new()),
+    ]));
+
+    let mut depth_cache = HashMap::new();
+    for root in ["r1", "r2"] {
+      let mut visiting = HashSet::new();
+      assert_eq!(
+        graph.compute_depth(root, &mut depth_cache, &mut visiting),
+        (3, false)
+      );
+    }
+    assert!(depth_cache.is_empty());
+    assert_eq!(graph.next(), vec!["r1".to_string(), "r2".to_string()]);
   }
 
   #[test]
