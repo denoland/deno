@@ -3103,6 +3103,60 @@ class ERR_INVALID_STATE extends NodeError {
   }
 }
 
+class ERR_ZIP_ARCHIVE_TOO_LARGE extends NodeRangeError {
+  constructor(reason: string) {
+    super(
+      "ERR_ZIP_ARCHIVE_TOO_LARGE",
+      `ZIP archive structure exceeds the allowed size: ${reason}`,
+    );
+  }
+}
+
+class ERR_ZIP_ENTRY_CORRUPT extends NodeError {
+  constructor(reason: string) {
+    super("ERR_ZIP_ENTRY_CORRUPT", `ZIP entry is corrupt: ${reason}`);
+  }
+}
+
+class ERR_ZIP_ENTRY_NOT_FOUND extends NodeError {
+  constructor(name: string) {
+    super(
+      "ERR_ZIP_ENTRY_NOT_FOUND",
+      `no such entry ${JSONStringify(name)} in the archive`,
+    );
+  }
+}
+
+class ERR_ZIP_ENTRY_TOO_LARGE extends NodeRangeError {
+  constructor(reason: string) {
+    super(
+      "ERR_ZIP_ENTRY_TOO_LARGE",
+      `ZIP entry exceeds the allowed size: ${reason}`,
+    );
+  }
+}
+
+class ERR_ZIP_INVALID_ARCHIVE extends NodeError {
+  constructor(reason: string) {
+    super("ERR_ZIP_INVALID_ARCHIVE", `invalid ZIP archive: ${reason}`);
+  }
+}
+
+class ERR_ZIP_NOT_WRITABLE extends NodeTypeError {
+  constructor() {
+    super(
+      "ERR_ZIP_NOT_WRITABLE",
+      "this archive was not opened for writing",
+    );
+  }
+}
+
+class ERR_ZIP_UNSUPPORTED_FEATURE extends NodeError {
+  constructor(reason: string) {
+    super("ERR_ZIP_UNSUPPORTED_FEATURE", `unsupported ZIP feature: ${reason}`);
+  }
+}
+
 interface UvExceptionContext {
   syscall: string;
   path?: string;
@@ -3303,6 +3357,13 @@ codes.ERR_HTTP2_PAYLOAD_FORBIDDEN = ERR_HTTP2_PAYLOAD_FORBIDDEN;
 codes.ERR_HTTP2_PSEUDOHEADER_NOT_ALLOWED = ERR_HTTP2_PSEUDOHEADER_NOT_ALLOWED;
 codes.ERR_HTTP2_STATUS_INVALID = ERR_HTTP2_STATUS_INVALID;
 codes.ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS = ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS;
+codes.ERR_ZIP_ARCHIVE_TOO_LARGE = ERR_ZIP_ARCHIVE_TOO_LARGE;
+codes.ERR_ZIP_ENTRY_CORRUPT = ERR_ZIP_ENTRY_CORRUPT;
+codes.ERR_ZIP_ENTRY_NOT_FOUND = ERR_ZIP_ENTRY_NOT_FOUND;
+codes.ERR_ZIP_ENTRY_TOO_LARGE = ERR_ZIP_ENTRY_TOO_LARGE;
+codes.ERR_ZIP_INVALID_ARCHIVE = ERR_ZIP_INVALID_ARCHIVE;
+codes.ERR_ZIP_NOT_WRITABLE = ERR_ZIP_NOT_WRITABLE;
+codes.ERR_ZIP_UNSUPPORTED_FEATURE = ERR_ZIP_UNSUPPORTED_FEATURE;
 
 // TODO(kt3k): assign all error classes here.
 
@@ -3649,6 +3710,13 @@ return {
   ERR_WORKER_UNSUPPORTED_EXTENSION,
   ERR_WORKER_UNSUPPORTED_OPERATION,
   ERR_TRAILING_JUNK_AFTER_STREAM_END,
+  ERR_ZIP_ARCHIVE_TOO_LARGE,
+  ERR_ZIP_ENTRY_CORRUPT,
+  ERR_ZIP_ENTRY_NOT_FOUND,
+  ERR_ZIP_ENTRY_TOO_LARGE,
+  ERR_ZIP_INVALID_ARCHIVE,
+  ERR_ZIP_NOT_WRITABLE,
+  ERR_ZIP_UNSUPPORTED_FEATURE,
   ERR_ZLIB_INITIALIZATION_FAILED,
   ERR_CRYPTO_UNKNOWN_DH_GROUP,
   ERR_CRYPTO_UNKNOWN_CIPHER,
@@ -3963,6 +4031,13 @@ return {
     ERR_WORKER_UNSUPPORTED_EXTENSION,
     ERR_WORKER_UNSUPPORTED_OPERATION,
     ERR_TRAILING_JUNK_AFTER_STREAM_END,
+    ERR_ZIP_ARCHIVE_TOO_LARGE,
+    ERR_ZIP_ENTRY_CORRUPT,
+    ERR_ZIP_ENTRY_NOT_FOUND,
+    ERR_ZIP_ENTRY_TOO_LARGE,
+    ERR_ZIP_INVALID_ARCHIVE,
+    ERR_ZIP_NOT_WRITABLE,
+    ERR_ZIP_UNSUPPORTED_FEATURE,
     ERR_ZLIB_INITIALIZATION_FAILED,
     E,
     NodeError,

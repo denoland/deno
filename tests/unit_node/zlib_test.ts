@@ -27,6 +27,9 @@ import {
   unzipSync,
   zstdCompressSync,
 } from "node:zlib";
+// The ZIP archive API is not in our bundled @types/node yet, so the tests below
+// reach it through the default export and cast.
+import zlib from "node:zlib";
 import { Buffer } from "node:buffer";
 import { createReadStream, createWriteStream } from "node:fs";
 import { Readable } from "node:stream";
@@ -528,4 +531,196 @@ Deno.test("brotli writeSync rejects out-of-range offsets", () => {
   assertThrows(() => writeSync(0, input.length, 0xffffffff, 1));
   // The in-range window still works.
   writeSync(0, input.length, 0, output.length);
+});
+
+// -- ZIP archive support (node:zlib) -----------------------------------------
+// Ported from the coverage in nodejs/node#64339.
+
+function zipEntries(entries: unknown[]) {
+  // deno-lint-ignore no-explicit-any
+  return buffer((zlib as any).createZipArchive(entries));
+}
+
+async function sampleArchive() {
+  return await zipEntries([
+    // deno-lint-ignore no-explicit-any
+    await (zlib as any).ZipEntry.create(
+      "hello.txt",
+      Buffer.from("Hello, ZIP!"),
+    ),
+    // deno-lint-ignore no-explicit-any
+    await (zlib as any).ZipEntry.create(
+      "dir/nested.bin",
+      Buffer.from([1, 2, 3, 4]),
+    ),
+  ]);
+}
+
+Deno.test("zlib ZIP: createZipArchive round trips through ZipBuffer", async () => {
+  const archive = await sampleArchive();
+  assert(Buffer.isBuffer(archive));
+
+  // deno-lint-ignore no-explicit-any
+  const zip = new (zlib as any).ZipBuffer(archive);
+  assertEquals(zip.size, 2);
+  assertEquals([...zip.keys()], ["hello.txt", "dir/nested.bin"]);
+  assert(zip.has("hello.txt"));
+
+  const entry = zip.get("hello.txt");
+  // deno-lint-ignore no-explicit-any
+  assert(entry instanceof (zlib as any).ZipEntry);
+  assertEquals(entry.name, "hello.txt");
+  assertEquals(entry.size, 11);
+  assertEquals(entry.isFile, true);
+  assertEquals(entry.isDirectory, false);
+  assertEquals((await entry.content()).toString(), "Hello, ZIP!");
+  assertEquals(entry.contentSync().toString(), "Hello, ZIP!");
+
+  assertEquals([...zip.get("dir/nested.bin").contentSync()], [1, 2, 3, 4]);
+});
+
+Deno.test("zlib ZIP: contentIterator streams the member", async () => {
+  const archive = await sampleArchive();
+  // deno-lint-ignore no-explicit-any
+  const entry = new (zlib as any).ZipBuffer(archive).get("hello.txt");
+
+  let out = "";
+  for await (const chunk of entry.contentIterator()) {
+    out += chunk.toString();
+  }
+  assertEquals(out, "Hello, ZIP!");
+});
+
+Deno.test("zlib ZIP: createZipArchiveSync yields Buffer chunks", () => {
+  const chunks = [
+    // deno-lint-ignore no-explicit-any
+    ...(zlib as any).createZipArchiveSync([
+      // deno-lint-ignore no-explicit-any
+      (zlib as any).ZipEntry.createSync("a.txt", Buffer.from("a")),
+    ]),
+  ];
+  const archive = Buffer.concat(chunks);
+  // deno-lint-ignore no-explicit-any
+  const zip = new (zlib as any).ZipBuffer(archive);
+  assertEquals(zip.get("a.txt").contentSync().toString(), "a");
+});
+
+Deno.test("zlib ZIP: ZipBuffer add and delete rewrite the archive", async () => {
+  const archive = await sampleArchive();
+  // deno-lint-ignore no-explicit-any
+  const zip = new (zlib as any).ZipBuffer(archive);
+  zip.addSync("added.txt", Buffer.from("added"));
+  zip.delete("dir/nested.bin");
+
+  // deno-lint-ignore no-explicit-any
+  const rebuilt = new (zlib as any).ZipBuffer(zip.toBufferSync());
+  assertEquals([...rebuilt.keys()], ["hello.txt", "added.txt"]);
+  assertEquals(rebuilt.get("added.txt").contentSync().toString(), "added");
+});
+
+Deno.test("zlib ZIP: ZipFile reads and writes an archive on disk", async () => {
+  const dir = Deno.makeTempDirSync();
+  const path = `${dir}/test.zip`;
+  try {
+    Deno.writeFileSync(path, await sampleArchive());
+
+    // deno-lint-ignore no-explicit-any
+    const zip = await (zlib as any).ZipFile.open(path);
+    assertEquals(zip.size, 2);
+    assertEquals(
+      (await (await zip.get("hello.txt")).content()).toString(),
+      "Hello, ZIP!",
+    );
+    assertEquals(
+      (await buffer(await zip.stream("hello.txt"))).toString(),
+      "Hello, ZIP!",
+    );
+    await zip.close();
+
+    // deno-lint-ignore no-explicit-any
+    const writable = (zlib as any).ZipFile.openSync(path, { writable: true });
+    writable.addSync("written.txt", Buffer.from("written"));
+    assertEquals(
+      writable.getSync("written.txt").contentSync().toString(),
+      "written",
+    );
+    writable.closeSync();
+
+    // deno-lint-ignore no-explicit-any
+    const reread = new (zlib as any).ZipBuffer(Deno.readFileSync(path));
+    assertEquals(reread.get("written.txt").contentSync().toString(), "written");
+  } finally {
+    Deno.removeSync(dir, { recursive: true });
+  }
+});
+
+Deno.test("zlib ZIP: zipFiles archives paths from disk", async () => {
+  const dir = Deno.makeTempDirSync();
+  try {
+    Deno.writeTextFileSync(`${dir}/one.txt`, "one");
+    Deno.mkdirSync(`${dir}/sub`);
+    Deno.writeTextFileSync(`${dir}/sub/two.txt`, "two");
+
+    // `files` is an iterable of [sourcePath, entryName] pairs.
+    const archive = await buffer(
+      // deno-lint-ignore no-explicit-any
+      (zlib as any).zipFiles([
+        [`${dir}/one.txt`, "one.txt"],
+        [`${dir}/sub/two.txt`, "sub/two.txt"],
+      ]),
+    );
+    // deno-lint-ignore no-explicit-any
+    const zip = new (zlib as any).ZipBuffer(archive);
+    assertEquals([...zip.keys()], ["one.txt", "sub/two.txt"]);
+    // The file-backed entries are streamed in, not buffered.
+    assertEquals(zip.get("one.txt").contentSync().toString(), "one");
+    assertEquals(zip.get("sub/two.txt").contentSync().toString(), "two");
+  } finally {
+    Deno.removeSync(dir, { recursive: true });
+  }
+});
+
+Deno.test("zlib ZIP: max content size is configurable", () => {
+  // deno-lint-ignore no-explicit-any
+  const z = zlib as any;
+  const previous = z.getMaxZipContentSize();
+  try {
+    z.setMaxZipContentSize(1024);
+    assertEquals(z.getMaxZipContentSize(), 1024);
+  } finally {
+    z.setMaxZipContentSize(previous);
+  }
+});
+
+Deno.test("zlib ZIP: corrupt archives and missing entries throw ERR_ZIP_*", async () => {
+  // deno-lint-ignore no-explicit-any
+  const codeOf = (fn: () => unknown): any => {
+    try {
+      fn();
+    } catch (err) {
+      // deno-lint-ignore no-explicit-any
+      return (err as any).code;
+    }
+    throw new Error("expected the call to throw");
+  };
+
+  assertEquals(
+    // deno-lint-ignore no-explicit-any
+    codeOf(() => new (zlib as any).ZipBuffer(Buffer.from("not a zip archive"))),
+    "ERR_ZIP_INVALID_ARCHIVE",
+  );
+
+  const archive = await sampleArchive();
+  assertEquals(
+    // deno-lint-ignore no-explicit-any
+    codeOf(() => new (zlib as any).ZipBuffer(archive).get("nope.txt")),
+    "ERR_ZIP_ENTRY_NOT_FOUND",
+  );
+
+  // `data` is binary only - a string is rejected, matching Node.
+  assertEquals(
+    // deno-lint-ignore no-explicit-any
+    codeOf(() => (zlib as any).ZipEntry.createSync("x.txt", "a string")),
+    "ERR_INVALID_ARG_TYPE",
+  );
 });
