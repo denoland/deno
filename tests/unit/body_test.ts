@@ -56,6 +56,21 @@ Deno.test(async function responseCloneStaticBodyIsIndependent() {
   assertEquals(await clone.text(), "AAAA");
 });
 
+Deno.test(async function responseClonePreservesImmutableAndNullBodies() {
+  for (const body of ["AAAA", new Blob(["AAAA"])]) {
+    const response = new Response(body);
+    const clone = response.clone();
+
+    assertEquals(await response.text(), "AAAA");
+    assertEquals(await clone.text(), "AAAA");
+  }
+
+  const response = new Response();
+  const clone = response.clone();
+  assertEquals(response.body, null);
+  assertEquals(clone.body, null);
+});
+
 Deno.test(
   { permissions: { net: true } },
   async function requestCloneMaterializedStaticBodyIsIndependentAcrossRedirect() {
