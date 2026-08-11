@@ -197,6 +197,18 @@ fn should_change_cwd_in_pre_exec(
 }
 
 #[cfg(unix)]
+fn unix_child_effective_identity_will_change(
+  uid: Option<u32>,
+  gid: Option<u32>,
+) -> bool {
+  // SAFETY: getegid and geteuid are async-signal-safe and cannot fail.
+  let (current_uid, current_gid) =
+    unsafe { (libc::geteuid(), libc::getegid()) };
+  uid.is_some_and(|uid| uid as libc::uid_t != current_uid)
+    || gid.is_some_and(|gid| gid as libc::gid_t != current_gid)
+}
+
+#[cfg(unix)]
 fn check_identity_syscall_result(result: libc::c_int) -> std::io::Result<()> {
   if result == -1 {
     Err(std::io::Error::last_os_error())
@@ -241,9 +253,18 @@ fn apply_unix_child_setup<'a>(
   uid: Option<u32>,
   gid: Option<u32>,
   cwd: Option<&'a CStr>,
+  effective_identity_will_change: bool,
   mut run_step: impl FnMut(UnixChildSetupStep<'a>) -> std::io::Result<()>,
 ) -> std::io::Result<()> {
-  run_step(UnixChildSetupStep::ClearSupplementaryGroups)?;
+  // Preserve same-ID spawns for unprivileged callers, which can reapply their
+  // effective IDs even though they cannot alter supplementary groups. Never
+  // ignore a group-clearing failure before an effective identity transition.
+  if let Err(err) = run_step(UnixChildSetupStep::ClearSupplementaryGroups)
+    && (effective_identity_will_change
+      || err.raw_os_error() != Some(libc::EPERM))
+  {
+    return Err(err);
+  }
   if let Some(gid) = gid {
     run_step(UnixChildSetupStep::SetPrimaryGroupId(gid))?;
   }
@@ -751,9 +772,9 @@ fn create_command(
   #[cfg(unix)]
   let move_cwd_to_pre_exec =
     should_change_cwd_in_pre_exec(uid, gid, run_env.set_cwd_on_command);
-  // Rust applies current_dir before user pre_exec callbacks. Defer it when
-  // changing identity so the child drops privileges first, matching the
-  // ordering of Command's built-in uid/gid setup.
+  // Rust applies built-in uid/gid changes before current_dir, but applies
+  // current_dir before user pre_exec callbacks. Defer it into our callback so
+  // replacing the built-in identity setup preserves uid/gid-before-cwd order.
   #[cfg(unix)]
   let pre_exec_cwd = if move_cwd_to_pre_exec {
     Some(
@@ -886,10 +907,13 @@ fn create_command(
         if should_clear_groups {
           // Keep the identity change in one checked sequence. Command::uid
           // clears groups itself, but does not report every failure.
+          let effective_identity_will_change =
+            unix_child_effective_identity_will_change(uid, gid);
           apply_unix_child_setup(
             uid,
             gid,
             pre_exec_cwd.as_deref(),
+            effective_identity_will_change,
             run_unix_child_setup_step,
           )?;
         }
@@ -2380,6 +2404,7 @@ mod tests {
   use super::check_identity_syscall_result;
   use super::should_change_cwd_in_pre_exec;
   use super::should_clear_supplementary_groups;
+  use super::unix_child_effective_identity_will_change;
 
   #[test]
   fn supplementary_groups_are_only_cleared_for_identity_options() {
@@ -2391,6 +2416,22 @@ mod tests {
     assert!(!should_change_cwd_in_pre_exec(Some(1000), None, false));
     assert!(should_change_cwd_in_pre_exec(Some(1000), None, true));
     assert!(should_change_cwd_in_pre_exec(None, Some(1000), true));
+
+    // SAFETY: getegid and geteuid are async-signal-safe and cannot fail.
+    let (current_uid, current_gid) =
+      unsafe { (libc::geteuid() as u32, libc::getegid() as u32) };
+    assert!(!unix_child_effective_identity_will_change(
+      Some(current_uid),
+      Some(current_gid)
+    ));
+    assert!(unix_child_effective_identity_will_change(
+      Some(current_uid.wrapping_add(1)),
+      Some(current_gid)
+    ));
+    assert!(unix_child_effective_identity_will_change(
+      Some(current_uid),
+      Some(current_gid.wrapping_add(1))
+    ));
   }
 
   #[test]
@@ -2409,6 +2450,7 @@ mod tests {
       Some(1000),
       Some(2000),
       Some(cwd.as_c_str()),
+      true,
       |step| {
         steps.push(step);
         Ok(())
@@ -2427,15 +2469,51 @@ mod tests {
   }
 
   #[test]
-  fn identity_change_stops_when_group_clear_fails() {
+  fn identity_transition_stops_when_group_clear_fails() {
     let mut steps = Vec::new();
-    let error = apply_unix_child_setup(Some(1000), Some(2000), None, |step| {
-      steps.push(step);
-      Err(std::io::Error::from_raw_os_error(libc::EPERM))
-    })
-    .unwrap_err();
+    let error =
+      apply_unix_child_setup(Some(1000), Some(2000), None, true, |step| {
+        steps.push(step);
+        Err(std::io::Error::from_raw_os_error(libc::EPERM))
+      })
+      .unwrap_err();
     assert_eq!(steps, [UnixChildSetupStep::ClearSupplementaryGroups]);
     assert_eq!(error.raw_os_error(), Some(libc::EPERM));
+  }
+
+  #[test]
+  fn unchanged_identity_tolerates_group_clear_permission_denied() {
+    let mut steps = Vec::new();
+    apply_unix_child_setup(Some(1000), Some(2000), None, false, |step| {
+      steps.push(step);
+      if matches!(step, UnixChildSetupStep::ClearSupplementaryGroups) {
+        Err(std::io::Error::from_raw_os_error(libc::EPERM))
+      } else {
+        Ok(())
+      }
+    })
+    .unwrap();
+    assert_eq!(
+      steps,
+      [
+        UnixChildSetupStep::ClearSupplementaryGroups,
+        UnixChildSetupStep::SetPrimaryGroupId(2000),
+        UnixChildSetupStep::SetUserId(1000),
+      ]
+    );
+  }
+
+  #[test]
+  fn unchanged_identity_stops_on_other_group_clear_errors() {
+    let mut steps = Vec::new();
+    let error =
+      apply_unix_child_setup(Some(1000), Some(2000), None, false, |step| {
+        steps.push(step);
+        Err(std::io::Error::from_raw_os_error(libc::EIO))
+      })
+      .unwrap_err();
+    assert_eq!(steps, [UnixChildSetupStep::ClearSupplementaryGroups]);
+    assert_eq!(error.raw_os_error(), Some(libc::EIO));
   }
 
   #[test]
@@ -2446,6 +2524,7 @@ mod tests {
       Some(1000),
       Some(2000),
       Some(cwd.as_c_str()),
+      true,
       |step| {
         let is_chdir =
           matches!(step, UnixChildSetupStep::ChangeCurrentDirectory(_));
