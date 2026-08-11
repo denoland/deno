@@ -871,6 +871,11 @@ pub fn op_fetch_custom_client(
     match proxy {
       Proxy::Http { url, .. } => {
         let url = Url::parse(url)?;
+        if !matches!(url.scheme(), "http" | "https" | "socks5" | "socks5h") {
+          return Err(FetchError::ClientCreate(
+            HttpClientCreateError::InvalidProxyUrl,
+          ));
+        }
         permissions.check_net_url(&url, "Deno.createHttpClient()")?;
       }
       Proxy::Tcp { hostname, port } => {
@@ -900,7 +905,6 @@ pub fn op_fetch_custom_client(
         }
       }
       Proxy::Vsock { cid, port } => {
-        let permissions = state.borrow_mut::<PermissionsContainer>();
         permissions.check_net_vsock(*cid, *port, "Deno.createHttpClient()")?;
       }
     }
@@ -1058,6 +1062,7 @@ pub fn create_http_client(
         .map_err(|_| HttpClientCreateError::InvalidAddress(local_address))
     })
     .transpose()?;
+  let permissions = options.permissions.clone();
   let http_connector = dns::PermissionedHttpConnector::new(
     options.dns_resolver.clone(),
     local_address,
@@ -1131,6 +1136,7 @@ pub fn create_http_client(
     tls: tls_config,
     tls_proxy: proxy_tls_config,
     user_agent: Some(user_agent.clone()),
+    permissions,
   };
 
   if let Some(pool_max_idle_per_host) = options.pool_max_idle_per_host {
