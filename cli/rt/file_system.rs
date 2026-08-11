@@ -1884,6 +1884,7 @@ mod test {
   use std::io::Write;
 
   use deno_lib::standalone::virtual_fs::VfsBuilder;
+  use sys_traits::FsReadLink;
   use test_util::TempDir;
   use test_util::assert_contains;
 
@@ -1947,6 +1948,7 @@ mod test {
 
     // get the virtual fs
     let (dest_path, virtual_fs) = into_virtual_fs(builder, &temp_dir);
+    let virtual_fs = Arc::new(virtual_fs);
 
     assert_eq!(read_file(&virtual_fs, &dest_path.join("a.txt")), "data");
     assert_eq!(read_file(&virtual_fs, &dest_path.join("b.txt")), "data");
@@ -1961,6 +1963,15 @@ mod test {
     assert_eq!(
       virtual_fs
         .canonicalize(&dest_path.join("sub_dir").join("e.txt"))
+        .unwrap(),
+      dest_path.join("e.txt"),
+    );
+
+    // read link through DenoRtSys
+    let sys = DenoRtSys::new(virtual_fs.clone());
+    assert_eq!(
+      sys
+        .fs_read_link(dest_path.join("sub_dir").join("e.txt"))
         .unwrap(),
       dest_path.join("e.txt"),
     );

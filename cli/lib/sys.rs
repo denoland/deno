@@ -8,7 +8,6 @@ use sys_traits::FsMetadata;
 use sys_traits::FsOpen;
 use sys_traits::FsRead;
 use sys_traits::FsReadDir;
-use sys_traits::FsReadLink;
 use sys_traits::FsRemoveFile;
 use sys_traits::FsRename;
 use sys_traits::SystemRandom;
@@ -25,7 +24,6 @@ pub trait DenoLibSys:
   + FsRemoveFile
   + FsRename
   + FsRead
-  + FsReadLink
   + ThreadSleep
   + SystemRandom
   + ExtNodeSys
