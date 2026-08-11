@@ -253,3 +253,38 @@ Deno.test("[node/dns] lookup of a missing host reports ENOTFOUND", async () => {
   assertEquals(err.syscall, "getaddrinfo");
   assertEquals(err.hostname, "nonexistent-host.invalid");
 });
+
+function assertEmptyHostnameResolveError(error: unknown) {
+  assert(error instanceof Error);
+
+  const dnsError = error as ErrnoException;
+  assertEquals(dnsError.name, "Error");
+  assertEquals(dnsError.message, "queryA ENODATA");
+  assertEquals(dnsError.code, "ENODATA");
+  assertEquals(dnsError.errno, undefined);
+  assertEquals(dnsError.syscall, "queryA");
+  assertEquals(dnsError.hostname, undefined);
+}
+
+Deno.test(
+  "[node/dns] resolve empty hostname callback reports ENODATA",
+  async () => {
+    const error = await new Promise<unknown>((resolve) => {
+      dns.resolve("", "A", (error) => resolve(error));
+    });
+
+    assertEmptyHostnameResolveError(error);
+  },
+);
+
+Deno.test(
+  "[node/dns] promises.resolve empty hostname reports ENODATA",
+  async () => {
+    const error = await dnsPromises.resolve("", "A").then(
+      () => undefined,
+      (error) => error,
+    );
+
+    assertEmptyHostnameResolveError(error);
+  },
+);

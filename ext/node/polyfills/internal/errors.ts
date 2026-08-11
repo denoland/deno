@@ -394,12 +394,17 @@ const dnsException = hideStackFrames(function (code, syscall, hostname) {
   // c-ares error code.
   if (typeof code === "number") {
     errno = code;
-    // ENOTFOUND is not a proper POSIX error, but this error has been in place
-    // long enough that it's not practical to remove it.
     if (
+      code === MapPrototypeGet(codeMap, "EAI_NODATA") && hostname === ""
+    ) {
+      errno = undefined;
+      code = "ENODATA";
+    } else if (
       code === MapPrototypeGet(codeMap, "EAI_NODATA") ||
       code === MapPrototypeGet(codeMap, "EAI_NONAME")
     ) {
+      // ENOTFOUND is not a proper POSIX error, but this error has been in place
+      // long enough that it's not practical to remove it.
       code = "ENOTFOUND"; // Fabricated error name.
     } else {
       code = getSystemErrorName(code);
