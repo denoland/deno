@@ -1,0 +1,3 @@
+write cwd: ok
+write .git: NotCapable --allow-write
+write outside: NotCapable --allow-write
