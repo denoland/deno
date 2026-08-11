@@ -393,19 +393,21 @@ pub enum JupyterBroadcastError {
 /// the stdin ZMQ channel) and blocks until a reply arrives. Returns `None`
 /// when stdin is disabled, the channel has been closed, or the frontend
 /// declines to answer.
-#[op2]
-#[string]
-pub fn op_jupyter_input(
-  state: &mut OpState,
-  #[string] prompt: String,
-  is_password: bool,
+/// Sends an `input_request` to the frontend (via the kernel thread) and blocks
+/// the calling thread until the `input_reply` value arrives. Returns `None`
+/// when stdin is disabled, the channel has been closed, or the frontend
+/// declines to answer. Shared by `prompt()`/`confirm()` and the permission
+/// prompter, both of which run synchronously on the REPL thread.
+pub fn request_input_blocking(
+  sender: &mpsc::UnboundedSender<PendingInputRequest>,
+  prompt: String,
+  password: bool,
 ) -> Option<String> {
-  let sender = state.borrow::<ReplInputSender>().tx.clone();
   let (resp_tx, resp_rx) = oneshot::channel();
   if sender
     .send(PendingInputRequest {
       prompt,
-      password: is_password,
+      password,
       resp_tx,
     })
     .is_err()
@@ -418,6 +420,17 @@ pub fn op_jupyter_input(
     .join()
     .ok()
     .flatten()
+}
+
+#[op2]
+#[string]
+pub fn op_jupyter_input(
+  state: &mut OpState,
+  #[string] prompt: String,
+  is_password: bool,
+) -> Option<String> {
+  let sender = state.borrow::<ReplInputSender>().tx.clone();
+  request_input_blocking(&sender, prompt, is_password)
 }
 
 #[op2]
