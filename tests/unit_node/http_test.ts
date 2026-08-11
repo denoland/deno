@@ -1551,11 +1551,11 @@ Deno.test("[node/http] IncomingMessage header maps handle built-in names", async
           string,
           string[]
         >;
-        assertEquals(Object.getPrototypeOf(req.headers), null);
+        assertEquals(Object.getPrototypeOf(req.headers), Object.prototype);
         assertEquals(headers["constructor"], "request");
         assertEquals(Object.getPrototypeOf(req.headersDistinct), null);
         assertEquals(headersDistinct["constructor"], ["request"]);
-        assertEquals(Object.getPrototypeOf(req.trailers), null);
+        assertEquals(Object.getPrototypeOf(req.trailers), Object.prototype);
         assertEquals(trailers["constructor"], "trailer");
         assertEquals(Object.getPrototypeOf(req.trailersDistinct), null);
         assertEquals(trailersDistinct["constructor"], ["trailer"]);

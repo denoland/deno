@@ -117,7 +117,7 @@ ObjectDefineProperty(IncomingMessage.prototype, "headers", {
   __proto__: null,
   get: function () {
     if (!this[kHeaders]) {
-      this[kHeaders] = ObjectCreate(null);
+      this[kHeaders] = {};
 
       const src = this.rawHeaders;
       const dst = this[kHeaders];
@@ -157,7 +157,7 @@ ObjectDefineProperty(IncomingMessage.prototype, "trailers", {
   __proto__: null,
   get: function () {
     if (!this[kTrailers]) {
-      this[kTrailers] = ObjectCreate(null);
+      this[kTrailers] = {};
 
       const src = this.rawTrailers;
       const dst = this[kTrailers];
