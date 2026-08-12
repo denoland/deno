@@ -632,38 +632,57 @@ impl Drop for StdFileResourceInner {
 /// thread, so that it never occupies a thread of the shared tokio blocking
 /// threadpool (which other fs operations need in order to make progress).
 ///
-/// If a thread cannot be spawned — for example `EAGAIN` once the OS refuses to
-/// create more threads — this falls back to the blocking threadpool rather than
-/// panicking. That gives up the guarantee above, but only on a machine that is
-/// already out of threads, and stalling other fs work is a far better failure
-/// mode than aborting the process.
+/// Thread creation can fail with `EAGAIN` once the OS refuses to create more
+/// threads, which is plausible in exactly the high-concurrency scenario this
+/// helper exists for. Such pressure is usually transient, so retry with backoff
+/// while it clears — waiting here costs nothing that the caller is not already
+/// waiting for, and it keeps the threadpool free for the work that will relieve
+/// the pressure.
 async fn spawn_unpooled_blocking<F, R>(action: F) -> R
 where
   F: FnOnce() -> R + Send + 'static,
   R: Send + 'static,
 {
-  // held so that `action` can be recovered if the thread fails to spawn, in
-  // which case the closure below is dropped without ever having run
-  let action_slot = std::sync::Arc::new(std::sync::Mutex::new(Some(action)));
-  let thread_action_slot = action_slot.clone();
-  let (tx, rx) = tokio::sync::oneshot::channel();
-  let spawn_result = std::thread::Builder::new()
-    .name("deno-flock".to_string())
-    // these threads only sit in a single syscall, so the default 2MB stack is
-    // wasteful when many locks are pending at once
-    .stack_size(256 * 1024)
-    .spawn(move || {
-      let action = thread_action_slot.lock().unwrap().take().unwrap();
-      let _ = tx.send(action());
-    });
+  // ~400ms of retries in total
+  const MAX_SPAWN_ATTEMPTS: usize = 10;
+  const MAX_SPAWN_BACKOFF: std::time::Duration =
+    std::time::Duration::from_millis(100);
 
-  match spawn_result {
-    Ok(_) => rx.await.unwrap(),
-    Err(_) => {
-      let action = action_slot.lock().unwrap().take().unwrap();
-      spawn_blocking(action).await.unwrap()
+  let mut backoff = std::time::Duration::from_millis(1);
+
+  for attempt in 0..MAX_SPAWN_ATTEMPTS {
+    // `action` is handed to the thread only once the thread is known to exist,
+    // so that a failed spawn leaves it owned here and available to retry with
+    let (action_tx, action_rx) = std::sync::mpsc::channel::<F>();
+    let (result_tx, result_rx) = tokio::sync::oneshot::channel();
+    let spawn_result = std::thread::Builder::new()
+      .name("deno-flock".to_string())
+      // these threads only sit in a single syscall, so the default 2MB stack is
+      // wasteful when many locks are pending at once
+      .stack_size(256 * 1024)
+      .spawn(move || {
+        if let Ok(action) = action_rx.recv() {
+          let _ = result_tx.send(action());
+        }
+      });
+
+    if spawn_result.is_ok() {
+      // the receiver is alive, because the thread that owns it was spawned
+      let _ = action_tx.send(action);
+      return result_rx.await.unwrap();
+    }
+
+    if attempt + 1 < MAX_SPAWN_ATTEMPTS {
+      tokio::time::sleep(backoff).await;
+      backoff = (backoff * 2).min(MAX_SPAWN_BACKOFF);
     }
   }
+
+  // The exhaustion is not clearing, so stop retrying and use the threadpool.
+  // That gives up the guarantee above, but only on a machine that has stayed
+  // out of threads throughout, and stalling other fs work is a far better
+  // failure mode than failing the lock or aborting the process.
+  spawn_blocking(action).await.unwrap()
 }
 
 impl StdFileResourceInner {
