@@ -334,11 +334,35 @@
     return SafeIterator;
   };
 
-  const SafeArrayIterator = createSafeIterator(
-    primordials.ArrayPrototypeSymbolIterator,
-    primordials.ArrayIteratorPrototypeNext,
-  );
+  class SafeArrayIterator {
+    #array;
+    #done = false;
+    #index = 0;
+    constructor(array) {
+      this.#array = array;
+    }
+    next() {
+      if (this.#done) {
+        return { value: undefined, done: true };
+      }
+      const array = this.#array;
+      const index = this.#index;
+      if (index >= array.length) {
+        this.#done = true;
+        return { value: undefined, done: true };
+      }
+      this.#index = index + 1;
+      return { value: array[index], done: false };
+    }
+    [SymbolIterator]() {
+      return this;
+    }
+  }
+  ObjectSetPrototypeOf(SafeArrayIterator.prototype, null);
+  ObjectFreeze(SafeArrayIterator.prototype);
+  ObjectFreeze(SafeArrayIterator);
   primordials.SafeArrayIterator = SafeArrayIterator;
+
   primordials.SafeSetIterator = createSafeIterator(
     primordials.SetPrototypeSymbolIterator,
     primordials.SetIteratorPrototypeNext,
