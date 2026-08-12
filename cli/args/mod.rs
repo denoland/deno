@@ -1224,6 +1224,39 @@ impl CliOptions {
     Ok(permissions_options)
   }
 
+  /// Permissions options holding nothing but the resolved `deny_import` rules.
+  ///
+  /// Used to build the deny-only permissions the module fetcher checks
+  /// resolved addresses against. Deliberately not `permissions_options`:
+  ///
+  /// - that augments `allow_import` from the main module, whose resolution is
+  ///   then cached in `main_module_cell`. Running before the workspace
+  ///   resolver exists would cache a bare specifier as a file path.
+  /// - `Permissions::from_options` re-resolves `allow_run`, which logs for
+  ///   each entry it cannot resolve. Keeping the other fields empty avoids
+  ///   duplicating that output.
+  ///
+  /// A permission set that cannot be resolved is an error rather than an
+  /// empty deny list: these rules decide whether code may be loaded at all, so
+  /// failing to read them has to fail the command, not quietly load the code.
+  /// Callers that build options whose config cannot see the user's `-P` set
+  /// (`deno x` generates a temp `deno.json`) are responsible for carrying the
+  /// resolved rules over themselves — see `x::resolve_import_deny_rules`.
+  pub fn import_deny_permissions_options(
+    &self,
+  ) -> Result<PermissionsOptions, AnyError> {
+    let config_permissions =
+      self.resolve_config_permissions_for_dir(&self.start_dir)?;
+    let all = flags_to_permissions_options(
+      &self.flags.permissions,
+      config_permissions,
+    )?;
+    Ok(PermissionsOptions {
+      deny_import: all.deny_import,
+      ..Default::default()
+    })
+  }
+
   fn resolve_config_permissions_for_dir<'a>(
     &self,
     dir: &'a WorkspaceDirectory,
