@@ -693,7 +693,7 @@ function createFilteredInspectProxy({ object, keys, evaluate }) {
       ? getEvaluatedDescriptor(object, key)
       : (getDescendantPropertyDescriptor(object, key) ??
         getEvaluatedDescriptor(object, key));
-    ObjectDefineProperty(result, key, descriptor);
+    ObjectDefineProperty(result, key, { __proto__: null, ...descriptor });
   }
   return result;
 
@@ -710,6 +710,7 @@ function createFilteredInspectProxy({ object, keys, evaluate }) {
 
   function getEvaluatedDescriptor(object, key) {
     return {
+      __proto__: null,
       configurable: true,
       enumerable: true,
       value: object[key],

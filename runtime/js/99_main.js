@@ -54,12 +54,25 @@ const {
   PromiseResolve,
   queueMicrotask,
   ReflectApply,
+  ReflectOwnKeys,
   StringPrototypePadEnd,
   Symbol,
   SymbolDispose,
   SymbolIterator,
   TypeError,
 } = primordials;
+
+function getSafeOwnPropertyDescriptors(object) {
+  const descriptors = ObjectGetOwnPropertyDescriptors(object);
+  const safeDescriptors = { __proto__: null };
+  const keys = ReflectOwnKeys(descriptors);
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    safeDescriptors[key] = { __proto__: null, ...descriptors[key] };
+  }
+  return safeDescriptors;
+}
+
 const {
   isNativeError,
 } = core;
@@ -736,7 +749,7 @@ function removeImportedOps() {
 // `Deno[Deno.internal]` is reachable from user code. Preserve its existing
 // internal compatibility surface, but keep extension-loading capabilities on
 // the core object imported through `ext:core/mod.js`.
-const userVisibleCoreDescriptors = ObjectGetOwnPropertyDescriptors(core);
+const userVisibleCoreDescriptors = getSafeOwnPropertyDescriptors(core);
 delete userVisibleCoreDescriptors.createLazyLoader;
 delete userVisibleCoreDescriptors.loadExtScript;
 const userVisibleCore = ObjectFreeze(ObjectDefineProperties(
@@ -782,7 +795,7 @@ const finalDenoNs = ObjectDefineProperties(
       },
     },
   },
-  ObjectGetOwnPropertyDescriptors(denoNs),
+  getSafeOwnPropertyDescriptors(denoNs),
 );
 
 ObjectDefineProperties(finalDenoNs, {
@@ -1089,7 +1102,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       if (unstable) {
         ObjectDefineProperties(
           finalDenoNs,
-          ObjectGetOwnPropertyDescriptors(unstable),
+          getSafeOwnPropertyDescriptors(unstable),
         );
       }
     }
@@ -1247,7 +1260,7 @@ function bootstrapWorkerRuntime(
       if (unstable) {
         ObjectDefineProperties(
           finalDenoNs,
-          ObjectGetOwnPropertyDescriptors(unstable),
+          getSafeOwnPropertyDescriptors(unstable),
         );
       }
     }

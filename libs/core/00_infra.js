@@ -119,7 +119,8 @@
             error[key] = property[1];
           }
         }
-        Object.defineProperty(error, SymbolFor("errorAdditionalPropertyKeys"), {
+        ObjectDefineProperty(error, SymbolFor("errorAdditionalPropertyKeys"), {
+          __proto__: null,
           value: keys,
           writable: false,
           enumerable: false,
@@ -424,6 +425,7 @@
         );
     }
     ObjectDefineProperty(fn, "name", {
+      __proto__: null,
       value: opName,
       configurable: false,
       writable: false,
@@ -431,6 +433,7 @@
 
     if (maybeProto) {
       ObjectDefineProperty(fn, "prototype", {
+        __proto__: null,
         value: maybeProto.prototype,
         configurable: false,
         writable: false,
