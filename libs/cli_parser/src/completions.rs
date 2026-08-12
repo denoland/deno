@@ -46,15 +46,14 @@ fn generate_bash(cmd: &CommandDef) -> Vec<u8> {
   // Add subcommand detection
   for sub in cmd.subcommands {
     out.push_str(&format!(
-            "            \"{name},{}\")\\n                cmd=\"{name}__{}\"\n                ;;\n",
+            "            \"{name},{}\")\n                cmd=\"{name}__{}\"\n                ;;\n",
             sub.name,
             sub.name.replace('-', "__"),
         ));
   }
 
-  out.push_str(
-    "            *)\\n                ;;\n        esac\n    done\n\n",
-  );
+  out
+    .push_str("            *)\n                ;;\n        esac\n    done\n\n");
 
   // Root command completions
   let root_flags: Vec<String> = cmd
