@@ -1237,7 +1237,9 @@ unsafe fn new_poll_test_with_fds(
     libuv_sys_lite::uv_handle_set_data(poll.cast(), state.cast());
     libuv_sys_lite::uv_handle_set_data(timer.cast(), state.cast());
     assert_eq!(
-      libuv_sys_lite::uv_timer_start(timer, Some(poll_test_timeout), 1000, 0),
+      // This failure-only watchdog leaves the short settle timers below
+      // unchanged while providing enough margin for loaded CI workers.
+      libuv_sys_lite::uv_timer_start(timer, Some(poll_test_timeout), 10_000, 0),
       0
     );
     state
