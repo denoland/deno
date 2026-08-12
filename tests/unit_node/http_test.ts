@@ -3794,6 +3794,69 @@ Deno.test(
 );
 
 Deno.test(
+  "[node/http] proxied absolute-form target normalizes the authority",
+  async () => {
+    // The target goes through the URL parser, like Node's, so the authority
+    // comes out normalized: the host lowercased and an IPv6 address bracketed
+    // exactly once. A protocol-relative path must stay a path - resolving it
+    // as a URL would retarget the request at another authority.
+    for (
+      const { hostname, path, expected } of [
+        {
+          hostname: "EXAMPLE.COM",
+          path: "/foo",
+          expected: "http://example.com:8080/foo",
+        },
+        {
+          hostname: "::1",
+          path: "/foo",
+          expected: "http://[::1]:8080/foo",
+        },
+        {
+          hostname: "[::1]",
+          path: "/foo",
+          expected: "http://[::1]:8080/foo",
+        },
+        {
+          hostname: "example.com",
+          path: "//evil.example/x",
+          expected: "http://example.com:8080//evil.example/x",
+        },
+      ]
+    ) {
+      const { promise, resolve, reject } = Promise.withResolvers<void>();
+      let seenUrl: string | undefined;
+      // unreachable target - the proxy intercepts and short-circuits.
+      const proxy = http.createServer((req, res) => {
+        seenUrl = req.url;
+        res.end("via-proxy");
+      });
+      proxy.listen(0, () => {
+        const proxyPort = (proxy.address() as AddressInfo).port;
+        const req = http.request({
+          hostname,
+          port: 8080,
+          path,
+          agent: new http.Agent({
+            proxyEnv: { HTTP_PROXY: `http://127.0.0.1:${proxyPort}` },
+          } as ProxyAgentLike),
+        }, (res) => {
+          res.resume();
+          res.on("end", () => {
+            proxy.close();
+            resolve();
+          });
+        });
+        req.on("error", reject);
+        req.end();
+      });
+      await promise;
+      assertEquals(seenUrl, expected);
+    }
+  },
+);
+
+Deno.test(
   "[node/http] NO_PROXY bypasses configured HTTP_PROXY",
   async () => {
     // If NO_PROXY matches the target, the request should hit the origin

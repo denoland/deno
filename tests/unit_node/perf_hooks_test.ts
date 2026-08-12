@@ -283,6 +283,38 @@ Deno.test("[perf_hooks]: HttpClient url is not duplicated when proxied", async (
   }
 });
 
+// The URL is built from the request authority, so an explicitly supplied Host
+// header does not change it. Node reports the same, as both derive the URL
+// from `options`, not from the outgoing headers.
+Deno.test("[perf_hooks]: HttpClient url ignores an explicit Host header", async () => {
+  const server = http.createServer((_req, res) => res.end("ok"));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as AddressInfo).port;
+
+  const observed = observeHttpEntry("HttpClient");
+  try {
+    await new Promise<void>((resolve, reject) => {
+      http.request({
+        hostname: "127.0.0.1",
+        port,
+        path: "/observed",
+        headers: { host: "someone.else" },
+      }, (res) => {
+        res.resume();
+        res.on("end", resolve);
+      }).on("error", reject).end();
+    });
+
+    const detail = await observed.detail;
+    assertEquals(detail.req.url, `http://127.0.0.1:${port}/observed`);
+  } finally {
+    observed.dispose();
+    await new Promise<void>((resolve, reject) =>
+      server.close((err) => err ? reject(err) : resolve())
+    );
+  }
+});
+
 Deno.test("[perf_hooks]: node:http server entries are not retroactive", async () => {
   let finishResponse: (() => void) | undefined;
   let resolveRequestStarted = () => {};
