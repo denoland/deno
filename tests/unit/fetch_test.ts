@@ -2365,34 +2365,27 @@ Deno.test(
   { permissions: { net: true } },
   async function errorMessageIncludesUrlAndDetailsWithTcpInfo() {
     const listener = Deno.listen({ port: listenPort });
-    // Accept connections in a loop so retries also hit the same error.
-    // This is needed because connection reset is retryable.
-    const server = (async () => {
-      while (true) {
-        let conn;
-        try {
-          conn = await listener.accept();
-        } catch {
-          break;
-        }
-        conn.close();
-      }
-    })();
+    // A single connection is enough: a failure on a freshly established
+    // connection is never retried.
+    // Immediately close the connection to simulate a connection error.
+    const server = listener.accept().then((conn) => conn.close());
 
-    const url = `http://localhost:${listenPort}`;
-    const err = await assertRejects(() => fetch(url));
-    listener.close();
+    try {
+      const url = `http://localhost:${listenPort}`;
+      const err = await assertRejects(() => fetch(url));
 
-    assert(err instanceof TypeError, `${err}`);
-    // Node-compatible shape: `"fetch failed"` with the low-level transport
-    // detail surfaced via `.cause`. The exact `.cause` text (the innermost OS
-    // error, e.g. "Connection reset by peer") is platform-specific, so only the
-    // shape is asserted here.
-    assertEquals(err.message, "fetch failed", `${err.message}`);
-    assert(err.cause instanceof Error, `err.cause was ${err.cause}`);
-    assert(err.cause.message.length > 0, `err.cause.message was empty`);
-
-    await server;
+      assert(err instanceof TypeError, `${err}`);
+      // Node-compatible shape: `"fetch failed"` with the low-level transport
+      // detail surfaced via `.cause`. The exact `.cause` text (the innermost OS
+      // error, e.g. "Connection reset by peer") is platform-specific, so only
+      // the shape is asserted here.
+      assertEquals(err.message, "fetch failed", `${err.message}`);
+      assert(err.cause instanceof Error, `err.cause was ${err.cause}`);
+      assert(err.cause.message.length > 0, `err.cause.message was empty`);
+    } finally {
+      listener.close();
+      await server.catch(() => {});
+    }
   },
 );
 
