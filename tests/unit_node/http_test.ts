@@ -1681,8 +1681,8 @@ Deno.test("[node/http] server close shuts down an accepted idle socket", async (
 
   const serverClosed = once(server, "close");
   const socketClosed = once(socket, "close");
-  const { promise: closeCallback, resolve: resolveCloseCallback } = Promise
-    .withResolvers<void>();
+  const { promise: closeCallback, resolve: resolveCloseCallback, reject } =
+    Promise.withResolvers<void>();
   const { promise: timeout, reject: rejectTimeout } = Promise.withResolvers<
     never
   >();
@@ -1692,7 +1692,13 @@ Deno.test("[node/http] server close shuts down an accepted idle socket", async (
   );
 
   try {
-    server.close(resolveCloseCallback);
+    server.close((error) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolveCloseCallback();
+      }
+    });
     await Promise.race([
       Promise.all([closeCallback, socketClosed]),
       timeout,
