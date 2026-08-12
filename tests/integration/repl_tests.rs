@@ -65,6 +65,16 @@ fn pty_null() {
 }
 
 #[test(flaky)]
+fn pty_primordials_protected_from_object_prototype_properties() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("Object.prototype.get = function () {}");
+    console.expect("[Function (anonymous)]");
+    console.write_line("new Deno.Command(\"whoami\")");
+    console.expect("Command");
+  });
+}
+
+#[test(flaky)]
 fn pty_unpaired_braces() {
   for right_brace in &[")", "]", "}"] {
     util::with_pty(&["repl"], |mut console| {
