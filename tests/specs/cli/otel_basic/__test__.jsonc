@@ -73,6 +73,14 @@
       "args": "run -A main.ts node_http_request.ts",
       "output": "node_http_request.out"
     },
+    "node_http_request_proxy": {
+      "args": "run -A main.ts node_http_request_proxy.ts",
+      "output": "node_http_request_proxy.out"
+    },
+    "node_http_server_absolute_form": {
+      "args": "run -A main.ts node_http_server_absolute_form.ts",
+      "output": "node_http_server_absolute_form.out"
+    },
     "http2": {
       "args": "run -A main.ts http2.ts",
       "output": "http2.out"
