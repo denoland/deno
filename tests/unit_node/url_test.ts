@@ -10,6 +10,16 @@ Deno.test({
     assertEquals(domainToASCII("münchen.de"), "xn--mnchen-3ya.de");
     // Invalid domain returns empty string
     assertEquals(domainToASCII("xn--iñvalid.com"), "");
+    // Forbidden domain code points (control chars, space, and characters like
+    // `%<>`) are rejected and return an empty string, matching Node.js.
+    // Regression test for https://github.com/denoland/deno/issues/36514
+    assertEquals(domainToASCII("\x00null.com"), "");
+    assertEquals(domainToASCII("a b.com"), "");
+    assertEquals(domainToASCII("a<b.com"), "");
+    assertEquals(domainToASCII("a%b.com"), "");
+    // Underscores and empty labels are allowed (not forbidden code points).
+    assertEquals(domainToASCII("under_score.com"), "under_score.com");
+    assertEquals(domainToASCII("example..com"), "example..com");
   },
 });
 

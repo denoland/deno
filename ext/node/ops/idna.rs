@@ -119,7 +119,19 @@ pub fn op_node_idna_punycode_to_unicode(
 #[op2]
 #[string]
 pub fn op_node_idna_domain_to_ascii(#[string] domain: String) -> String {
-  idna::domain_to_ascii(&domain).unwrap_or_default()
+  // Node's `url.domainToASCII` is backed by ada/ICU and applies the WHATWG URL
+  // host parser: an IPv6 literal in brackets (e.g. `[::1]`) is returned
+  // verbatim, and otherwise the UTS #46 "forbidden domain code point" deny list
+  // is enforced (rejecting control chars, spaces, and characters like
+  // `%<>[]|`), returning an empty string on failure. Match that here so results
+  // agree with Node (see https://github.com/denoland/deno/issues/36514).
+  if domain.starts_with('[') && domain.ends_with(']') {
+    return domain;
+  }
+
+  idna::domain_to_ascii_cow(domain.as_bytes(), idna::AsciiDenyList::URL)
+    .map(|cow| cow.into_owned())
+    .unwrap_or_default()
 }
 
 /// Converts a domain to Unicode as per the IDNA spec
