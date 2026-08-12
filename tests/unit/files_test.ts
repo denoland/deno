@@ -19,6 +19,19 @@ Deno.test(function filesStdioFileDescriptors() {
   assertEquals(Deno.stderr.rid, 2);
 });
 
+Deno.test(function fsFileGlobalSymbolCannotConstruct() {
+  const FsFileCtor = Deno.FsFile as unknown as new (
+    rid: number,
+    token: symbol,
+  ) => Deno.FsFile;
+
+  assertThrows(
+    () => new FsFileCtor(0, Symbol.for("Deno.internal.FsFile")),
+    TypeError,
+    "'Deno.FsFile' cannot be constructed",
+  );
+});
+
 Deno.test(
   { permissions: { read: true } },
   async function filesCopyToStdout() {
@@ -33,7 +46,7 @@ Deno.test(
 
 Deno.test(
   {
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, sys: ["umask"] },
   },
   function openSyncMode() {
     const path = Deno.makeTempDirSync() + "/test_openSync.txt";
@@ -51,7 +64,7 @@ Deno.test(
 
 Deno.test(
   {
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, sys: ["umask"] },
   },
   async function openMode() {
     const path = (await Deno.makeTempDir()) + "/test_open.txt";
@@ -69,7 +82,7 @@ Deno.test(
 
 Deno.test(
   {
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, sys: ["umask"] },
   },
   function openSyncUrl() {
     const tempDir = Deno.makeTempDirSync();
@@ -94,7 +107,7 @@ Deno.test(
 
 Deno.test(
   {
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, sys: ["umask"] },
   },
   async function openUrl() {
     const tempDir = await Deno.makeTempDir();

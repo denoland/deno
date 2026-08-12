@@ -326,7 +326,11 @@ async fn handshake_http2(
     return Err(HandshakeError::NoH2Alpn);
   }
 
-  let h2 = h2::client::Builder::new();
+  let mut h2 = h2::client::Builder::new();
+  // We don't use HTTP/2 server push, and leaving it enabled exposes an h2
+  // state-machine assertion that a malicious server can trip to abort the
+  // process (a second 1xx response on a PUSH_PROMISE stream).
+  h2.enable_push(false);
   let (mut send, conn) = h2.handshake::<_, Bytes>(connection).await?;
   spawn(conn);
   let mut request = Request::builder();
@@ -423,6 +427,7 @@ fn create_client_from_websocket_options(
       proxy: options.proxy.clone(),
       dns_resolver: options.resolver.clone(),
       permissions: Some(permissions),
+      resolved_deny_check_kind: Default::default(),
       unsafely_ignore_certificate_errors: unsafely_ignore_certificate_errors
         .then_some(vec![]),
       client_cert_chain_and_key: options

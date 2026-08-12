@@ -812,6 +812,11 @@ fn lock_file_lock_write() {
     .arg("--quiet")
     .arg("npm:cowsay@1.5.0")
     .envs(env_vars_for_npm_tests())
+    // This test relies on downloading the real cowsay tarballs (the lockfile
+    // omits the tarball URLs, so they resolve to `registry.npmjs.org`). Point
+    // the registry at the real npm registry so those downloads aren't relocated
+    // to the (private) test registry, which doesn't serve these packages.
+    .env("NPM_CONFIG_REGISTRY", "https://registry.npmjs.org/")
     .piped_output()
     .spawn()
     .unwrap();

@@ -343,18 +343,65 @@ impl<T> PendingNapiAsyncWork for T where T: FnOnce() + Send + 'static {}
 /// This matches Node.js's behavior of tracking references with finalize
 /// callbacks and calling them during `napi_env::DeleteMe()`.
 pub struct PendingNapiFinalizer {
+  /// Unique identity of this registration. Finalizers must be deregistered by
+  /// id, never by `data`: several live registrations can share the same `data`
+  /// pointer (addons routinely pass a null or repeated `native_object`), and
+  /// removing an arbitrary entry with a matching `data` leaves the entry whose
+  /// callback already ran behind, which then runs a second time at shutdown.
+  pub id: NapiFinalizerId,
   pub env: napi_env,
   pub cb: napi_finalize,
   pub data: *mut c_void,
   pub hint: *mut c_void,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NapiFinalizerId(u64);
+
+/// Tracked finalizer callbacks that should be called at shutdown.
+/// Matches Node.js `finalizing_reflist` / `reflist` behavior.
+#[derive(Default)]
+pub struct RefTracker {
+  next_id: u64,
+  pending: Vec<PendingNapiFinalizer>,
+}
+
+impl RefTracker {
+  /// Removes and returns all pending finalizers, leaving the tracker empty.
+  pub fn take_pending(&mut self) -> Vec<PendingNapiFinalizer> {
+    std::mem::take(&mut self.pending)
+  }
+
+  fn add(
+    &mut self,
+    env: napi_env,
+    cb: napi_finalize,
+    data: *mut c_void,
+    hint: *mut c_void,
+  ) -> NapiFinalizerId {
+    let id = NapiFinalizerId(self.next_id);
+    self.next_id += 1;
+    self.pending.push(PendingNapiFinalizer {
+      id,
+      env,
+      cb,
+      data,
+      hint,
+    });
+    id
+  }
+
+  fn remove(&mut self, id: NapiFinalizerId) {
+    if let Some(pos) = self.pending.iter().rposition(|f| f.id == id) {
+      self.pending.remove(pos);
+    }
+  }
+}
+
 pub struct NapiState {
   // Thread safe functions.
   pub env_cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
-  /// Tracked finalizer callbacks that should be called at shutdown.
-  /// Matches Node.js `finalizing_reflist` / `reflist` behavior.
-  pub ref_tracker: Rc<RefCell<Vec<PendingNapiFinalizer>>>,
+  pub ref_tracker: Rc<RefCell<RefTracker>>,
   pub env_shared_ptrs: Vec<*mut EnvShared>,
   /// Raw Env pointers for teardown of external string finalizers.
   pub env_ptrs: Vec<*mut Env>,
@@ -372,18 +419,14 @@ unsafe impl Send for NapiState {}
 
 impl Drop for NapiState {
   fn drop(&mut self) {
-    // Drain external string finalizers from all tracked Envs and remove
-    // their entries from the global EXTERNAL_STRING_ENVS map. This
-    // prevents stale Env pointer dereferences if V8 GCs the external
-    // string after the Env is gone.
+    // External string resources can outlive their Env until V8 disposes the
+    // isolate. Stop exposing each Env to those eventual callbacks. Callbacks
+    // whose V8 resource was already disposed are completed here with their
+    // original Env; the rest keep their registry entry, which the isolate's
+    // disposal reclaims by firing the V8 destructor with a null Env. They
+    // cannot be swept here because V8 still reads their buffers.
     for env_ptr in &self.env_ptrs {
-      let env = unsafe { &mut **env_ptr };
-      let keys: Vec<usize> =
-        env.external_string_finalizers.keys().copied().collect();
-      for key in keys {
-        crate::js_native_api::remove_external_string_env_entry(key);
-      }
-      env.external_string_finalizers.clear();
+      crate::js_native_api::detach_external_string_env(*env_ptr);
     }
 
     let hooks = {
@@ -494,7 +537,7 @@ pub struct Env {
   pub shared: *mut EnvShared,
   pub async_work_sender: V8CrossThreadTaskSpawner,
   cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
-  ref_tracker: Rc<RefCell<Vec<PendingNapiFinalizer>>>,
+  ref_tracker: Rc<RefCell<RefTracker>>,
   external_ops_tracker: ExternalOpsTracker,
   pub last_error: napi_extended_error_info,
   pub last_exception: Option<v8::Global<v8::Value>>,
@@ -506,7 +549,6 @@ pub struct Env {
   pub async_hooks_after: v8::Global<v8::Function>,
   pub async_hooks_destroy: v8::Global<v8::Function>,
   pub next_async_id: i64,
-  pub external_string_finalizers: HashMap<usize, (napi_finalize, *mut c_void)>,
 }
 
 unsafe impl Send for Env {}
@@ -526,7 +568,7 @@ impl Env {
     async_hooks_destroy: v8::Global<v8::Function>,
     sender: V8CrossThreadTaskSpawner,
     cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
-    ref_tracker: Rc<RefCell<Vec<PendingNapiFinalizer>>>,
+    ref_tracker: Rc<RefCell<RefTracker>>,
     external_ops_tracker: ExternalOpsTracker,
   ) -> Self {
     Self {
@@ -554,7 +596,6 @@ impl Env {
         error_code: Cell::new(napi_ok),
       },
       last_exception: None,
-      external_string_finalizers: HashMap::new(),
     }
   }
 
@@ -636,20 +677,12 @@ impl Env {
     cb: napi_finalize,
     data: *mut c_void,
     hint: *mut c_void,
-  ) {
-    self.ref_tracker.borrow_mut().push(PendingNapiFinalizer {
-      env,
-      cb,
-      data,
-      hint,
-    });
+  ) -> NapiFinalizerId {
+    self.ref_tracker.borrow_mut().add(env, cb, data, hint)
   }
 
-  pub fn remove_ref_finalizer(&self, data: *mut c_void) {
-    let mut tracker = self.ref_tracker.borrow_mut();
-    if let Some(pos) = tracker.iter().rposition(|f| f.data == data) {
-      tracker.remove(pos);
-    }
+  pub fn remove_ref_finalizer(&self, id: NapiFinalizerId) {
+    self.ref_tracker.borrow_mut().remove(id);
   }
 }
 
@@ -663,7 +696,7 @@ deno_core::extension!(deno_napi,
   state = |state, options| {
     state.put(NapiState {
       env_cleanup_hooks: Rc::new(RefCell::new(vec![])),
-      ref_tracker: Rc::new(RefCell::new(vec![])),
+      ref_tracker: Rc::new(RefCell::new(RefTracker::default())),
       env_shared_ptrs: vec![],
       env_ptrs: vec![],
       napi_wrap: None,

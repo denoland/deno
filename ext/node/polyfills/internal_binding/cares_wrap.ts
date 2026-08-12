@@ -379,6 +379,12 @@ class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
       const cancelRid = core.createCancelHandle();
       this.#cancelRids.add(cancelRid);
       let timer: ReturnType<typeof setTimeout> | undefined;
+      // Whether this attempt was aborted by its own timeout timer (rather than
+      // by an explicit cancel()). The op is not given a timeout, so the manual
+      // timer below is what enforces the per-attempt `timeout`; when it fires
+      // the op throws `Interrupted`, which must be treated as a timeout and
+      // retried, exactly like the `TimedOut` hickory raises when it wins first.
+      let timedOut = false;
 
       try {
         if (this.#timeout >= 0) {
@@ -388,6 +394,7 @@ class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
             currentTimeout = MathMin(currentTimeout, this.#maxTimeout);
           }
           timer = setTimeout(() => {
+            timedOut = true;
             this.#cancelRids.delete(cancelRid);
             core.tryClose(cancelRid);
           }, currentTimeout);
@@ -409,7 +416,13 @@ class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
         if (
           ObjectPrototypeIsPrototypeOf(Deno.errors.Interrupted.prototype, e)
         ) {
-          // Interrupted means explicit cancel - don't retry
+          if (timedOut) {
+            // Our own timeout timer aborted the op - this is a timeout, so
+            // retry with the next (longer) timeout if attempts remain.
+            if (attempt < tries - 1) continue;
+          }
+          // Either the attempts are exhausted or this was an explicit cancel();
+          // in both cases stop and report a timeout.
           code = "ETIMEOUT";
         } else if (
           ObjectPrototypeIsPrototypeOf(Deno.errors.TimedOut.prototype, e)

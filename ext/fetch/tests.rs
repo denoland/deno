@@ -23,11 +23,15 @@ use http::header::HeaderValue;
 use http::header::RANGE;
 use http::header::TRANSFER_ENCODING;
 use http_body_util::BodyExt;
+use hyper_util::client::legacy::connect::Connected;
 use hyper_util::client::legacy::connect::dns::Name;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
 
+use super::CheckoutTracker;
+use super::ConnectionReused;
+use super::ConnectionUsage;
 use super::CreateHttpClientOptions;
 use super::create_http_client;
 use crate::dns;
@@ -168,6 +172,7 @@ async fn run_test_client_with_resolver(
       pool_idle_timeout: None,
       dns_resolver: resolver,
       permissions: None,
+      resolved_deny_check_kind: Default::default(),
       http1: true,
       http2: true,
       local_address: None,
@@ -230,6 +235,68 @@ fn deny_net_permissions(deny: &[&str]) -> PermissionsContainer {
   PermissionsContainer::new(Arc::new(parser), perms)
 }
 
+fn deny_import_permissions(deny: &[&str]) -> PermissionsContainer {
+  let parser =
+    RuntimePermissionDescriptorParser::new(sys_traits::impls::RealSys);
+  let perms = Permissions::from_options(
+    &parser,
+    &PermissionsOptions {
+      allow_import: Some(vec![]),
+      deny_import: Some(deny.iter().map(|s| s.to_string()).collect()),
+      ..Default::default()
+    },
+  )
+  .unwrap();
+  PermissionsContainer::new(Arc::new(parser), perms)
+}
+
+// A client that loads modules checks resolved addresses against the import
+// deny list rather than the net one, so that `--deny-import` written as an IP
+// literal covers hostnames resolving to it — and so that `--deny-net` does not
+// silently start governing module loads.
+#[tokio::test]
+async fn test_import_client_denies_host_resolving_to_denied_ip() {
+  // RFC 5737 TEST-NET-1: never routed, and never connected to here since the
+  // deny check fails first.
+  let denied_ip = "192.0.2.1";
+  let resolver = dns::Resolver::custom(Arc::new(FixedResolver(
+    format!("{denied_ip}:0").parse().unwrap(),
+  )));
+
+  let client = create_http_client(
+    "fetch/test",
+    CreateHttpClientOptions {
+      root_cert_store: None,
+      ca_certs: vec![],
+      proxy: None,
+      unsafely_ignore_certificate_errors: Some(vec![]),
+      client_cert_chain_and_key: None,
+      pool_max_idle_per_host: None,
+      pool_idle_timeout: None,
+      dns_resolver: resolver,
+      permissions: Some(deny_import_permissions(&[denied_ip])),
+      resolved_deny_check_kind: dns::ResolvedDenyCheckKind::Import,
+      http1: true,
+      http2: true,
+      local_address: None,
+      client_builder_hook: None,
+      http2_max_header_list_size: None,
+    },
+  )
+  .unwrap();
+
+  let req = http::Request::builder()
+    .uri("http://denied.example/mod.ts")
+    .body(crate::ReqBody::empty())
+    .unwrap();
+  let err = client.send(req).await.unwrap_err();
+  let msg = err.to_string().to_lowercase();
+  assert!(
+    msg.contains("import access") && msg.contains(denied_ip),
+    "expected an import-deny error for the destination IP, got: {err}"
+  );
+}
+
 // A destination routed through a proxy must still be checked against the net
 // deny list. The connection the connector opens is to the proxy, so without a
 // separate destination check an IP-level `--deny-net` rule could be bypassed by
@@ -263,6 +330,7 @@ async fn test_http_proxy_denies_destination_resolving_to_denied_ip() {
       pool_idle_timeout: None,
       dns_resolver: resolver,
       permissions: Some(deny_net_permissions(&[denied_ip])),
+      resolved_deny_check_kind: Default::default(),
       http1: true,
       http2: true,
       local_address: None,
@@ -604,6 +672,7 @@ fn create_http_test_client() -> crate::Client {
       client_builder_hook: None,
       http2_max_header_list_size: None,
       permissions: None,
+      resolved_deny_check_kind: Default::default(),
     },
   )
   .unwrap()
@@ -831,4 +900,55 @@ async fn create_socks_proxy(src_addr: SocketAddr) -> SocketAddr {
   });
 
   prx_addr
+}
+
+/// A single `tower` attempt can span several *internal* `hyper_util` ones: a
+/// request that checks out a stale pooled connection is recovered unstarted and
+/// resent on a fresh one. [`CheckoutTracker`] has to follow that, because
+/// [`FetchRetry`] uses the classification to decide whether resending is safe,
+/// and resending a request that a fresh connection already carried can
+/// duplicate a non-idempotent one.
+#[test]
+fn checkout_tracker_follows_the_latest_checkout() {
+  fn connection(dispatched: usize) -> Connected {
+    Connected::new()
+      .extra(ConnectionUsage(Arc::new(AtomicUsize::new(dispatched))))
+  }
+
+  let reused = ConnectionReused::default();
+  let mut tracker = CheckoutTracker::default();
+
+  // First checkout: a pooled connection, which had already served a request.
+  tracker.record(&connection(1), &reused);
+  assert!(
+    reused.0.load(SeqCst),
+    "pooled checkout should classify as reused"
+  );
+
+  // hyper_util recovered the unstarted request and resent it on a connection
+  // established for this attempt. That attempt is the one whose error reaches
+  // the retry policy, so the classification must follow it.
+  tracker.record(&connection(0), &reused);
+  assert!(
+    !reused.0.load(SeqCst),
+    "classification must describe the connection of the final attempt"
+  );
+}
+
+/// The request future is polled many times per attempt, but a checkout happens
+/// once -- the counter is what a *later* request on the same connection reads
+/// to learn it was pooled, so inflating it would misclassify fresh connections.
+#[test]
+fn checkout_tracker_counts_each_checkout_once() {
+  let usage = Arc::new(AtomicUsize::new(0));
+  let connected = Connected::new().extra(ConnectionUsage(usage.clone()));
+  let reused = ConnectionReused::default();
+  let mut tracker = CheckoutTracker::default();
+
+  for _ in 0..5 {
+    tracker.record(&connected, &reused);
+  }
+
+  assert_eq!(usage.load(SeqCst), 1, "repeated polls must not re-count");
+  assert!(!reused.0.load(SeqCst), "first use is not a reuse");
 }

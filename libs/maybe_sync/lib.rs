@@ -14,8 +14,10 @@ mod inner {
   pub use std::sync::Arc as MaybeArc;
   pub use std::sync::OnceLock as MaybeOnceLock;
 
-  pub use dashmap::DashMap as MaybeDashMap;
-  pub use dashmap::DashSet as MaybeDashSet;
+  pub type MaybeDashMap<K, V, S = rustc_hash::FxBuildHasher> =
+    dashmap::DashMap<K, V, S>;
+  pub type MaybeDashSet<T, S = rustc_hash::FxBuildHasher> =
+    dashmap::DashSet<T, S>;
 }
 
 #[cfg(not(feature = "sync"))]
@@ -26,8 +28,9 @@ mod inner {
   use std::collections::HashMap;
   use std::hash::BuildHasher;
   use std::hash::Hash;
-  use std::hash::RandomState;
   pub use std::rc::Rc as MaybeArc;
+
+  use rustc_hash::FxBuildHasher;
 
   pub trait MaybeSync {}
   impl<T> MaybeSync for T where T: ?Sized {}
@@ -35,8 +38,17 @@ mod inner {
   impl<T> MaybeSend for T where T: ?Sized {}
 
   // Wrapper struct that exposes a subset of `DashMap` API.
-  #[derive(Debug)]
-  pub struct MaybeDashMap<K, V, S = RandomState>(RefCell<HashMap<K, V, S>>);
+  pub struct MaybeDashMap<K, V, S = FxBuildHasher>(RefCell<HashMap<K, V, S>>);
+
+  // manual impl to avoid requiring `S: Debug` (ex. `FxBuildHasher`
+  // does not implement `Debug`)
+  impl<K: std::fmt::Debug, V: std::fmt::Debug, S> std::fmt::Debug
+    for MaybeDashMap<K, V, S>
+  {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      std::fmt::Debug::fmt(&self.0, f)
+    }
+  }
 
   impl<K, V, S> Default for MaybeDashMap<K, V, S>
   where
@@ -79,10 +91,17 @@ mod inner {
   }
 
   // Wrapper struct that exposes a subset of `DashMap` API.
-  #[derive(Debug)]
-  pub struct MaybeDashSet<V, S = RandomState>(
+  pub struct MaybeDashSet<V, S = FxBuildHasher>(
     RefCell<std::collections::HashSet<V, S>>,
   );
+
+  // manual impl to avoid requiring `S: Debug` (ex. `FxBuildHasher`
+  // does not implement `Debug`)
+  impl<V: std::fmt::Debug, S> std::fmt::Debug for MaybeDashSet<V, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      std::fmt::Debug::fmt(&self.0, f)
+    }
+  }
 
   impl<V, S> Default for MaybeDashSet<V, S>
   where

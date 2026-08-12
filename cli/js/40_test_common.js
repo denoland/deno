@@ -5,37 +5,54 @@ const { serializePermissions } = core.loadExtScript(
 );
 const ops = core.ops;
 const {
-  StringPrototypeReplaceAll,
+  NumberPrototypeToString,
   SafeArrayIterator,
+  StringPrototypeCharCodeAt,
+  StringPrototypePadStart,
+  StringPrototypeSlice,
 } = primordials;
 
-const ESCAPE_ASCII_CHARS = [
-  ["\b", "\\b"],
-  ["\f", "\\f"],
-  ["\t", "\\t"],
-  ["\n", "\\n"],
-  ["\r", "\\r"],
-  ["\v", "\\v"],
-];
+function escapeControlChar(code) {
+  switch (code) {
+    case 0x08:
+      return "\\b";
+    case 0x09:
+      return "\\t";
+    case 0x0a:
+      return "\\n";
+    case 0x0b:
+      return "\\v";
+    case 0x0c:
+      return "\\f";
+    case 0x0d:
+      return "\\r";
+  }
+  return `\\x${
+    StringPrototypePadStart(NumberPrototypeToString(code, 16), 2, "0")
+  }`;
+}
 
 /**
  * @param {string} name
  * @returns {string}
  */
 export function escapeName(name) {
-  // Check if we need to escape a character
+  let escapedName = "";
+  let lastIndex = 0;
+
   for (let i = 0; i < name.length; i++) {
-    const ch = name.charCodeAt(i);
-    if (ch <= 13 && ch >= 8) {
-      // Slow path: We do need to escape it
-      for (const [escape, replaceWith] of ESCAPE_ASCII_CHARS) {
-        name = StringPrototypeReplaceAll(name, escape, replaceWith);
-      }
-      return name;
+    const code = StringPrototypeCharCodeAt(name, i);
+    if (code <= 0x1f || code === 0x7f || (code >= 0x80 && code <= 0x9f)) {
+      escapedName += StringPrototypeSlice(name, lastIndex, i) +
+        escapeControlChar(code);
+      lastIndex = i + 1;
     }
   }
 
-  // We didn't need to escape anything, return original string
+  if (lastIndex !== 0) {
+    return escapedName + StringPrototypeSlice(name, lastIndex);
+  }
+
   return name;
 }
 

@@ -27,10 +27,10 @@ use tokio::net::unix;
 pub struct FullDuplexResource<R, W> {
   rd: AsyncRefCell<R>,
   wr: AsyncRefCell<W>,
-  // When a full-duplex resource is closed, all pending 'read' ops are
-  // canceled, while 'write' ops are allowed to complete. Therefore only
-  // 'read' futures should be attached to this cancel handle.
-  cancel_handle: CancelHandle,
+  // op_cancel_read only cancels read ops. Closing the resource cancels both
+  // halves so blocked writes don't keep the underlying socket alive.
+  read_cancel_handle: CancelHandle,
+  write_cancel_handle: CancelHandle,
 }
 
 impl<R, W> FullDuplexResource<R, W>
@@ -42,7 +42,8 @@ where
     Self {
       rd: rd.into(),
       wr: wr.into(),
-      cancel_handle: Default::default(),
+      read_cancel_handle: Default::default(),
+      write_cancel_handle: Default::default(),
     }
   }
 
@@ -58,12 +59,21 @@ where
     RcRef::map(self, |r| &r.wr).borrow_mut()
   }
 
-  pub fn cancel_handle(self: &Rc<Self>) -> RcRef<CancelHandle> {
-    RcRef::map(self, |r| &r.cancel_handle)
+  pub fn read_cancel_handle(self: &Rc<Self>) -> RcRef<CancelHandle> {
+    RcRef::map(self, |r| &r.read_cancel_handle)
+  }
+
+  pub fn write_cancel_handle(self: &Rc<Self>) -> RcRef<CancelHandle> {
+    RcRef::map(self, |r| &r.write_cancel_handle)
   }
 
   pub fn cancel_read_ops(&self) {
-    self.cancel_handle.cancel()
+    self.read_cancel_handle.cancel()
+  }
+
+  pub fn cancel_ops(&self) {
+    self.read_cancel_handle.cancel();
+    self.write_cancel_handle.cancel();
   }
 
   pub async fn read(
@@ -71,7 +81,10 @@ where
     data: &mut [u8],
   ) -> Result<usize, std::io::Error> {
     let mut rd = self.rd_borrow_mut().await;
-    let nread = rd.read(data).try_or_cancel(self.cancel_handle()).await?;
+    let nread = rd
+      .read(data)
+      .try_or_cancel(self.read_cancel_handle())
+      .await?;
     Ok(nread)
   }
 
@@ -80,13 +93,18 @@ where
     data: &[u8],
   ) -> Result<usize, std::io::Error> {
     let mut wr = self.wr_borrow_mut().await;
-    let nwritten = wr.write(data).await?;
+    let nwritten = wr
+      .write(data)
+      .try_or_cancel(self.write_cancel_handle())
+      .await?;
     Ok(nwritten)
   }
 
   pub async fn shutdown(self: Rc<Self>) -> Result<(), std::io::Error> {
     let mut wr = self.wr_borrow_mut().await;
-    wr.shutdown().await?;
+    wr.shutdown()
+      .try_or_cancel(self.write_cancel_handle())
+      .await?;
     Ok(())
   }
 }
@@ -117,7 +135,7 @@ impl Resource for TcpStreamResource {
   }
 
   fn close(self: Rc<Self>) {
-    self.cancel_read_ops();
+    self.cancel_ops();
   }
 
   // Override the trait's no-op default. Without this, `self.cancel_read_ops()`
@@ -198,6 +216,9 @@ impl UnixStreamResource {
   pub fn cancel_read_ops(&self) {
     unreachable!()
   }
+  pub fn cancel_ops(&self) {
+    unreachable!()
+  }
 }
 
 impl Resource for UnixStreamResource {
@@ -213,7 +234,7 @@ impl Resource for UnixStreamResource {
   }
 
   fn close(self: Rc<Self>) {
-    self.cancel_read_ops();
+    self.cancel_ops();
   }
 
   // See the note on TcpStreamResource::cancel_read_ops.
@@ -252,6 +273,9 @@ impl VsockStreamResource {
   pub fn cancel_read_ops(&self) {
     unreachable!()
   }
+  pub fn cancel_ops(&self) {
+    unreachable!()
+  }
 }
 
 impl Resource for VsockStreamResource {
@@ -267,11 +291,94 @@ impl Resource for VsockStreamResource {
   }
 
   fn close(self: Rc<Self>) {
-    self.cancel_read_ops();
+    self.cancel_ops();
   }
 
   // See the note on TcpStreamResource::cancel_read_ops.
   fn cancel_read_ops(self: Rc<Self>) {
     VsockStreamResource::cancel_read_ops(&self);
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use std::io;
+  use std::pin::Pin;
+  use std::rc::Rc;
+  use std::task::Context;
+  use std::task::Poll;
+  use std::time::Duration;
+
+  use tokio::io::AsyncRead;
+  use tokio::io::AsyncWrite;
+  use tokio::io::ReadBuf;
+
+  use super::FullDuplexResource;
+
+  struct PendingRead;
+
+  impl AsyncRead for PendingRead {
+    fn poll_read(
+      self: Pin<&mut Self>,
+      _cx: &mut Context<'_>,
+      _buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+      Poll::Pending
+    }
+  }
+
+  struct PendingWrite;
+
+  impl AsyncWrite for PendingWrite {
+    fn poll_write(
+      self: Pin<&mut Self>,
+      _cx: &mut Context<'_>,
+      _buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+      Poll::Pending
+    }
+
+    fn poll_flush(
+      self: Pin<&mut Self>,
+      _cx: &mut Context<'_>,
+    ) -> Poll<io::Result<()>> {
+      Poll::Pending
+    }
+
+    fn poll_shutdown(
+      self: Pin<&mut Self>,
+      _cx: &mut Context<'_>,
+    ) -> Poll<io::Result<()>> {
+      Poll::Pending
+    }
+  }
+
+  #[tokio::test]
+  async fn close_cancels_pending_write() {
+    let resource =
+      Rc::new(FullDuplexResource::new((PendingRead, PendingWrite)));
+    let write = resource.clone().write(&[1, 2, 3]);
+    tokio::pin!(write);
+
+    assert!(
+      tokio::time::timeout(Duration::from_millis(10), &mut write)
+        .await
+        .is_err()
+    );
+
+    resource.cancel_read_ops();
+    assert!(
+      tokio::time::timeout(Duration::from_millis(10), &mut write)
+        .await
+        .is_err(),
+      "canceling reads should not cancel writes"
+    );
+
+    resource.cancel_ops();
+    let err = tokio::time::timeout(Duration::from_secs(1), write)
+      .await
+      .expect("write should be canceled")
+      .expect_err("write should reject");
+    assert_eq!(err.kind(), io::ErrorKind::Interrupted);
   }
 }

@@ -5,6 +5,8 @@ pub use inner::LaxSingleProcessFsFlagSys;
 
 #[cfg(not(target_arch = "wasm32"))]
 mod inner {
+  use std::io::ErrorKind;
+  use std::io::Write;
   use std::path::PathBuf;
   use std::sync::Arc;
   use std::time::Duration;
@@ -36,7 +38,6 @@ mod inner {
     sys_traits::FsOpen
     + sys_traits::FsMetadata
     + sys_traits::FsRemoveFile
-    + sys_traits::FsWrite
     + sys_traits::ThreadSleep
     + sys_traits::SystemTimeNow
     + Clone
@@ -71,7 +72,34 @@ mod inner {
 
     pub fn touch(&mut self) {
       self.count += 1;
-      _ = self.sys.fs_write(&self.file_path, self.count.to_string());
+      if let Err(err) = self.write_count() {
+        log::debug!(
+          "Failed updating poll file at {}. {:#}",
+          self.file_path.display(),
+          err
+        );
+      }
+    }
+
+    fn write_count(&self) -> std::io::Result<()> {
+      match self.sys.fs_symlink_metadata(&self.file_path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+          self.sys.fs_remove_file(&self.file_path)?;
+        }
+        Ok(_) => {}
+        Err(err) if err.kind() == ErrorKind::NotFound => {}
+        Err(err) => return Err(err),
+      }
+
+      let mut open_options = sys_traits::OpenOptions::new();
+      open_options.create = true;
+      open_options.write = true;
+      open_options.truncate = true;
+      #[cfg(unix)]
+      open_options.custom_flags(libc::O_NOFOLLOW);
+
+      let mut file = self.sys.fs_open(&self.file_path, &open_options)?;
+      file.write_all(self.count.to_string().as_bytes())
     }
   }
 
@@ -337,6 +365,42 @@ mod test {
 
     // ensure this is cleaned up
     assert!(!lock_path.with_extension("lock.poll").exists())
+  }
+
+  #[cfg(unix)]
+  #[tokio::test]
+  async fn lax_fs_lock_replaces_symlinked_poll_file_without_overwriting_target()
+  {
+    let temp_dir = TempDir::new();
+    let lock_path = temp_dir.path().join("file.lock");
+    let target_path = temp_dir.path().join("target.txt");
+    let poll_path = lock_path.with_extension("lock.poll");
+    std::fs::write(&target_path, "secret").unwrap();
+    std::os::unix::fs::symlink(&target_path, &poll_path).unwrap();
+
+    let flag = LaxSingleProcessFsFlag::lock(
+      &sys_traits::impls::RealSys,
+      lock_path.to_path_buf(),
+      &LogReporter,
+      "waiting",
+    )
+    .await;
+
+    assert_eq!(std::fs::read_to_string(&target_path).unwrap(), "secret");
+    std::fs::read_to_string(&poll_path)
+      .unwrap()
+      .parse::<usize>()
+      .unwrap();
+    assert!(
+      !std::fs::symlink_metadata(&poll_path)
+        .unwrap()
+        .file_type()
+        .is_symlink()
+    );
+
+    drop(flag);
+    assert_eq!(std::fs::read_to_string(&target_path).unwrap(), "secret");
+    assert!(std::fs::symlink_metadata(&poll_path).is_err());
   }
 
   #[tokio::test]

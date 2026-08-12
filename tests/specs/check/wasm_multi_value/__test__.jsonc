@@ -1,8 +1,4 @@
 {
-  // ignored: local `.wasm` imports aren't type-materialized (only remote wasm
-  // is), so tsc can't resolve `./x.wasm` -> spurious TS2307 instead of the real
-  // multi-value type error. https://github.com/denoland/deno/issues/36085
-  "ignore": true,
   "args": "check main.ts",
   "output": "check.out",
   "exitCode": 1

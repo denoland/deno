@@ -153,8 +153,6 @@ const {
   op_node_fs_read_deferred,
   op_node_fs_read_file_sync,
   op_node_fs_read_sync,
-  op_node_fs_seek,
-  op_node_fs_seek_sync,
   op_node_fs_write_deferred,
   op_node_fs_write_sync,
   op_node_lchmod,
@@ -384,7 +382,7 @@ function encodeRealpathResult(
   if (options.encoding === "buffer") {
     return asBuffer;
   }
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   return asBuffer.toString(options.encoding);
 }
 
@@ -478,6 +476,59 @@ type ReadvCallback = (
   buffers: readonly ArrayBufferView[],
 ) => void;
 
+function prepareReadvBuffers(
+  buffers: readonly ArrayBufferView[],
+  allowDirect: boolean,
+) {
+  const views: Uint8Array[] = [];
+  const lengths: number[] = [];
+  let length = 0;
+  for (let i = 0; i < buffers.length; i++) {
+    const view = arrayBufferViewToUint8Array(buffers[i]);
+    const viewLength = TypedArrayPrototypeGetByteLength(view);
+    ArrayPrototypePush(views, view);
+    ArrayPrototypePush(lengths, viewLength);
+    length += viewLength;
+  }
+
+  if (allowDirect && views.length === 1) {
+    return { buffer: views[0], lengths, needsScatter: false, views };
+  }
+
+  // A staging buffer preserves one-read semantics while safely supporting
+  // duplicate and overlapping views.
+  return {
+    buffer: new Uint8Array(length),
+    lengths,
+    needsScatter: true,
+    views,
+  };
+}
+
+function scatterReadvBuffer(
+  source: Uint8Array,
+  views: Uint8Array[],
+  lengths: number[],
+  bytesRead: number,
+) {
+  let offset = 0;
+  for (let i = 0; i < views.length && offset < bytesRead; i++) {
+    const view = views[i];
+    const length = MathMin(
+      lengths[i],
+      TypedArrayPrototypeGetByteLength(view),
+      bytesRead - offset,
+    );
+    if (length > 0) {
+      TypedArrayPrototypeSet(
+        view,
+        TypedArrayPrototypeSubarray(source, offset, offset + length),
+      );
+    }
+    offset += lengths[i];
+  }
+}
+
 function readv(
   fd: number,
   buffers: readonly ArrayBufferView[],
@@ -505,41 +556,18 @@ function readv(
     lazyProcess().default.nextTick(cb, null, 0, buffers);
     return;
   }
+  const { buffer, lengths, views } = prepareReadvBuffers(buffers, false);
 
-  const innerReadv = async (
-    fd: number,
-    buffers: readonly ArrayBufferView[],
-    position: number | null,
-  ) => {
-    if (typeof position === "number") {
-      await op_node_fs_seek(fd, position, 0);
-    }
-
-    let readTotal = 0;
-    let readInBuf = 0;
-    let bufIdx = 0;
-    let buf = buffers[bufIdx];
-    while (bufIdx < buffers.length) {
-      const nread = op_node_fs_read_sync(fd, buf, -1n);
-      if (nread === null) {
-        break;
-      }
-      readInBuf += nread;
-      if (readInBuf === TypedArrayPrototypeGetByteLength(buf)) {
-        readTotal += readInBuf;
-        readInBuf = 0;
-        bufIdx += 1;
-        buf = buffers[bufIdx];
-      }
-    }
-    readTotal += readInBuf;
-
-    return readTotal;
-  };
-
-  PromisePrototypeThen(innerReadv(fd, buffers, pos), (numRead) => {
-    cb(null, numRead, buffers);
-  }, (err) => cb(err, -1, buffers));
+  PromisePrototypeThen(
+    op_node_fs_read_deferred(fd, buffer, pos === null ? -1n : BigInt(pos)),
+    (numRead) => {
+      scatterReadvBuffer(buffer, views, lengths, numRead);
+      cb(null, numRead, buffers);
+    },
+    (err) => {
+      cb(denoErrorToNodeError(err, { syscall: "read" }), 0, buffers);
+    },
+  );
 }
 
 ObjectDefineProperty(readv, customPromisifyArgs, {
@@ -568,29 +596,25 @@ function readvSync(
   }
   if (typeof position === "number") {
     validateInteger(position, "position", 0);
-    op_node_fs_seek_sync(fd, position, 0);
   }
 
-  let readTotal = 0;
-  let readInBuf = 0;
-  let bufIdx = 0;
-  let buf = buffers[bufIdx];
-  while (bufIdx < buffers.length) {
-    const nread = op_node_fs_read_sync(fd, buf, -1n);
-    if (nread === null) {
-      break;
+  const { buffer, lengths, needsScatter, views } = prepareReadvBuffers(
+    buffers,
+    true,
+  );
+  try {
+    const numRead = op_node_fs_read_sync(
+      fd,
+      buffer,
+      typeof position === "number" ? BigInt(position) : -1n,
+    );
+    if (needsScatter) {
+      scatterReadvBuffer(buffer, views, lengths, numRead);
     }
-    readInBuf += nread;
-    if (readInBuf === TypedArrayPrototypeGetByteLength(buf)) {
-      readTotal += readInBuf;
-      readInBuf = 0;
-      bufIdx += 1;
-      buf = buffers[bufIdx];
-    }
+    return numRead;
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, { syscall: "read" });
   }
-  readTotal += readInBuf;
-
-  return readTotal;
 }
 
 function readvPromise(
@@ -622,9 +646,9 @@ function readFileMaybeDecode(
   data: Uint8Array,
   encoding: Encodings | null | undefined,
 ): string | Buffer {
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   const buffer = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   if (encoding) return buffer.toString(encoding);
   return buffer;
 }
@@ -1140,12 +1164,12 @@ function access(
     mode = fsConstants.F_OK;
   }
 
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   path = getValidatedPath(path).toString();
   mode = getValidMode(mode, "access");
   const cb = makeCallback(callback);
 
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   Deno.lstat(path).then(
     (info) => {
       if (info.mode === null) {
@@ -1175,7 +1199,7 @@ function access(
       }
     },
     (err) => {
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       if (err instanceof Deno.errors.NotFound) {
         const e: any = new Error(
           `ENOENT: no such file or directory, access '${path}'`,
@@ -1193,11 +1217,11 @@ function access(
 }
 
 function accessSync(path: string | Buffer | URL, mode?: number) {
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   path = getValidatedPath(path).toString();
   mode = getValidMode(mode, "access");
   try {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     const info = Deno.lstatSync(path.toString());
     if (info.mode === null) {
       return;
@@ -1220,7 +1244,7 @@ function accessSync(path: string | Buffer | URL, mode?: number) {
       throw e;
     }
   } catch (err) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     if (err instanceof Deno.errors.NotFound) {
       const e: any = new Error(
         `ENOENT: no such file or directory, access '${path}'`,
@@ -1316,12 +1340,12 @@ function chown(
   callback: CallbackWithError,
 ) {
   callback = makeCallback(callback);
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   path = getValidatedPath(path).toString();
   validateInteger(uid, "uid", -1, kMaxUserId);
   validateInteger(gid, "gid", -1, kMaxUserId);
 
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   Deno.chown(path, uid, gid).then(
     () => callback(null),
     callback,
@@ -1333,7 +1357,7 @@ function chownSync(
   uid: number,
   gid: number,
 ) {
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   path = getValidatedPath(path).toString();
   validateInteger(uid, "uid", -1, kMaxUserId);
   validateInteger(gid, "gid", -1, kMaxUserId);
@@ -2165,7 +2189,7 @@ function decodeMkdtemp(
   if (encoding === "utf8") return str;
   const buffer = Buffer.from(str);
   if (encoding === "buffer") return buffer;
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   return buffer.toString(encoding);
 }
 
@@ -2320,7 +2344,7 @@ function _opendirGetPathString(
   path: string | Buffer | URL,
 ): string {
   if (Buffer.isBuffer(path)) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     return path.toString();
   }
 
@@ -2443,7 +2467,7 @@ function writeSync(
     if (typeof offset === "object") {
       ({
         offset = 0,
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         length = buffer.byteLength - (offset as number),
         position = null,
       } = offsetOrOptions ?? kEmptyObject);
@@ -2457,10 +2481,10 @@ function writeSync(
       validateInteger(offset, "offset", 0);
     }
     if (typeof length !== "number") {
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       length = buffer.byteLength - offset;
     }
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     validateOffsetLengthWrite(offset, length, buffer.byteLength);
     return innerWriteSync(fd, buffer, offset, length, position);
   }
@@ -2507,7 +2531,7 @@ function write(
     if (typeof offset === "object") {
       ({
         offset = 0,
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         length = buffer.byteLength - (offset as number),
         position = null,
       } = offsetOrOptions ?? kEmptyObject);
@@ -2518,15 +2542,15 @@ function write(
       validateInteger(offset, "offset", 0);
     }
     if (typeof length !== "number") {
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       length = buffer.byteLength - offset;
     }
     if (typeof position !== "number") {
       position = null;
     }
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     validateOffsetLengthWrite(offset, length, buffer.byteLength);
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     innerWrite(fd, buffer, offset, length, position).then(
       (nwritten) => {
         callback!(null, nwritten, buffer);
@@ -2556,7 +2580,7 @@ function write(
   callback = maybeCallback(position);
   buffer = Buffer.from(str, length);
 
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   innerWrite(fd, buffer, 0, buffer.length, offset).then(
     (nwritten) => {
       callback(null, nwritten, buffer);
@@ -2613,15 +2637,15 @@ function writev(
     const chunks: Buffer[] = [];
     for (let i = 0; i < buffers.length; i++) {
       if (Buffer.isBuffer(buffers[i])) {
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         chunks.push(buffers[i]);
       } else {
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         chunks.push(Buffer.from(buffers[i]));
       }
     }
     const pos = typeof position === "number" ? position : -1;
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     const buffer = Buffer.concat(chunks);
     return await op_node_fs_write_deferred(fd, buffer, pos);
   };
@@ -2637,7 +2661,7 @@ function writev(
 
   if (typeof position !== "number") position = null;
 
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   innerWritev(fd, buffers, position).then(
     (nwritten) => callback(null, nwritten, buffers),
     (err) => callback(err),
@@ -2659,15 +2683,15 @@ function writevSync(
     const chunks: Buffer[] = [];
     for (let i = 0; i < buffers.length; i++) {
       if (Buffer.isBuffer(buffers[i])) {
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         chunks.push(buffers[i]);
       } else {
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         chunks.push(Buffer.from(buffers[i]));
       }
     }
     const pos = typeof position === "number" ? position : -1;
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     const buffer = Buffer.concat(chunks);
     return op_node_fs_write_sync(fd, buffer, pos);
   };
@@ -2775,6 +2799,11 @@ function writeFile(
     signal = options.signal;
   }
 
+  const flush = (typeof options === "object" && options !== null)
+    ? ((options as WriteFileOptions).flush ?? false)
+    : false;
+  validateBoolean(flush, "options.flush");
+
   const encoding = getValidatedEncoding(options) || "utf8";
 
   if (!ArrayBufferIsView(data) && !_isCustomIterable(data)) {
@@ -2786,6 +2815,7 @@ function writeFile(
   let file;
 
   let error: Error | null = null;
+  let syscall = "write";
   (async () => {
     try {
       const fd = await _writeFileGetRid(pathOrRid as string | number, flag);
@@ -2815,8 +2845,18 @@ function writeFile(
         encoding,
         signal,
       );
+
+      if (flush) {
+        syscall = "fsync";
+        await new Promise<void>((resolve, reject) => {
+          fsExports.fsync(fd, (err: Error | null) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+      }
     } catch (e) {
-      error = denoWriteFileErrorToNodeError(e as Error, { syscall: "write" });
+      error = denoWriteFileErrorToNodeError(e as Error, { syscall });
     } finally {
       // Make sure to close resource
       if (!isRid && file) file.close();
@@ -2842,6 +2882,11 @@ function writeFileSync(
     mode = options.mode;
   }
 
+  const flush = (typeof options === "object" && options !== null)
+    ? ((options as WriteFileOptions).flush ?? false)
+    : false;
+  validateBoolean(flush, "options.flush");
+
   const encoding = getValidatedEncoding(options) || "utf8";
 
   // Match Node: fs.writeFileSync only accepts string or ArrayBufferView for
@@ -2856,6 +2901,7 @@ function writeFileSync(
   let file;
 
   let error: Error | null = null;
+  let syscall = "write";
   try {
     const fd = _writeFileGetRidSync(pathOrRid, flag);
     file = {
@@ -2879,8 +2925,13 @@ function writeFileSync(
       data as (Exclude<WriteFileSyncData, string>),
       encoding,
     );
+
+    if (flush) {
+      syscall = "fsync";
+      fsExports.fsyncSync(fd);
+    }
   } catch (e) {
-    error = denoWriteFileErrorToNodeError(e as Error, { syscall: "write" });
+    error = denoWriteFileErrorToNodeError(e as Error, { syscall });
   } finally {
     // Make sure to close resource
     if (!isRid && file) file.close();
@@ -2895,34 +2946,34 @@ function _writeAllSync(
   encoding: BufferEncoding,
 ) {
   if (!_isCustomIterable(data)) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     let remaining = data.byteLength;
     while (remaining > 0) {
       const bytesWritten = w.writeSync(
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         data.subarray(data.byteLength - remaining),
       );
       remaining -= bytesWritten;
     }
   } else {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     for (const buf of data) {
       let toWrite = ArrayBufferIsView(buf) ? buf : Buffer.from(buf, encoding);
       toWrite = new Uint8Array(
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         toWrite.buffer,
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         toWrite.byteOffset,
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         toWrite.byteLength,
       );
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       let remaining = toWrite.byteLength;
       while (remaining > 0) {
         const bytesWritten = w.writeSync(
-          // deno-lint-ignore prefer-primordials
+          // deno-lint-ignore deno-internal/prefer-primordials
           toWrite.subarray(toWrite.byteLength - remaining),
         );
         remaining -= bytesWritten;
@@ -2938,13 +2989,13 @@ async function _writeAll(
   signal?: AbortSignal,
 ) {
   if (!_isCustomIterable(data)) {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     let remaining = data.byteLength;
     while (remaining > 0) {
       const writeSize = MathMin(kWriteFileMaxChunkSize, remaining);
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       const offset = data.byteLength - remaining;
       const bytesWritten = await w.write(
         data.subarray(offset, offset + writeSize),
@@ -2953,23 +3004,23 @@ async function _writeAll(
       _checkAborted(signal);
     }
   } else {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     for await (const buf of data) {
       _checkAborted(signal);
       let toWrite = ArrayBufferIsView(buf) ? buf : Buffer.from(buf, encoding);
       toWrite = new Uint8Array(
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         toWrite.buffer,
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         toWrite.byteOffset,
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         toWrite.byteLength,
       );
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       let remaining = toWrite.byteLength;
       while (remaining > 0) {
         const writeSize = MathMin(kWriteFileMaxChunkSize, remaining);
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         const offset = toWrite.byteLength - remaining;
         const bytesWritten = await w.write(
           toWrite.subarray(offset, offset + writeSize),
@@ -3076,7 +3127,7 @@ function utimes(
   mtime: number | string | Date,
   callback: CallbackWithError,
 ) {
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   path = getValidatedPath(path).toString();
 
   if (!callback) {
@@ -3098,7 +3149,7 @@ function utimesSync(
   atime: number | string | Date,
   mtime: number | string | Date,
 ) {
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   path = getValidatedPath(path).toString();
   atime = getValidTime(atime, "atime");
   mtime = getValidTime(mtime, "mtime");
@@ -3270,7 +3321,7 @@ function asyncIterableToCallback<T>(
 ) {
   const iterator = iter[SymbolAsyncIterator]();
   function next() {
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     PromisePrototypeThen(iterator.next(), (obj: IteratorResult<T>) => {
       if (obj.done) {
         callback(obj.value, true);
@@ -3356,7 +3407,7 @@ function createIgnoreMatcher(
       });
       ArrayPrototypePush(
         compiled,
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         (filename: string) => mm.match(filename),
       );
     } else if (ObjectPrototypeIsPrototypeOf(RegExpPrototype, matcher)) {
@@ -3405,7 +3456,7 @@ function encodeWatchFilename(
   if (encoding === "buffer") {
     return asBuffer;
   }
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   return asBuffer.toString(encoding as BufferEncoding);
 }
 
@@ -3441,7 +3492,7 @@ function watch(
 
   validateIgnoreOption(options?.ignore, "options.ignore");
 
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   const watchPath = getValidatedPath(filename).toString();
 
   // Match Node: validate non-boolean `recursive`/`persistent` up front.
@@ -3488,11 +3539,13 @@ function watch(
   let resolvedWatchPath = watchPath;
   try {
     // Pre-validate path existence so missing-path failures surface as a
-    // typed `Deno.errors.NotFound` consistently across platforms. notify
-    // 6.1.1's Windows backend (`add_watch` in src/windows.rs) returns a
-    // Generic error rather than a typed NotFound when the path doesn't
-    // exist, which would otherwise bypass the prototype check in
-    // makeWatchNodeError above.
+    // typed `Deno.errors.NotFound` consistently across platforms. The
+    // notify crate's Windows backend (`add_watch` in src/windows.rs)
+    // reports a missing path as a Generic error rather than a typed
+    // NotFound; runtime/ops/fs_events.rs maps that message to NotFound so
+    // the prototype check in makeWatchNodeError above also covers paths
+    // that vanish between this check and the watch (or mid-watch), see
+    // denoland/deno#35855.
     Deno.lstatSync(watchPath);
     iterator = Deno.watchFs(watchPath, { recursive });
     // Resolve the watched path once so we can compute relative paths.
@@ -3587,7 +3640,7 @@ function watchPromise(
     ignore?: IgnoreOption;
   },
 ): AsyncIterable<{ eventType: string; filename: string | Buffer | null }> {
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   const watchPath = getValidatedPath(filename).toString();
 
   const recursive = options?.recursive ?? false;
@@ -3634,7 +3687,7 @@ function watchPromise(
         throw abortError();
       }
       while (true) {
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         const iterResult = await fsIterable.next();
         if (iterResult.done) {
           cleanupAbort();
@@ -3693,7 +3746,7 @@ function watchFile(
   listenerOrOptions: WatchFileListener | WatchFileOptions,
   listener?: WatchFileListener,
 ): StatWatcher {
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   const watchPath = getValidatedPath(filename).toString();
   const handler = typeof listenerOrOptions === "function"
     ? listenerOrOptions
@@ -3720,7 +3773,7 @@ function unwatchFile(
   filename: string | Buffer | URL,
   listener?: WatchFileListener,
 ) {
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   const watchPath = getValidatedPath(filename).toString();
   const watcher = MapPrototypeGet(statWatchers, watchPath);
 
@@ -3913,7 +3966,7 @@ const DeprecatedStats = deprecate(
   "DEP0180",
 );
 
-return {
+const fsExports = {
   // For tests
   _toUnixTimestamp,
   access,
@@ -4056,4 +4109,8 @@ return {
   writev,
   writevSync,
 };
+// `writeFile`/`writeFileSync` call `fsExports.fsync`/`fsyncSync` (rather than
+// the local bindings) so the `flush` option honors monkey-patches/mocks made
+// on the `node:fs` namespace, matching Node's `lib/fs.js`.
+return fsExports;
 })();

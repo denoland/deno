@@ -187,6 +187,7 @@ pub fn generate_tsconfig(
   npm_project_references: &[String],
   node_types_root: Option<&str>,
   excludes: &[String],
+  has_local_wasm: bool,
   manage_root_tsconfig: bool,
 ) -> Result<GeneratedTsConfig, std::io::Error> {
   // Write Deno type definitions to .deno/types/deno/ (private typeRoot).
@@ -232,6 +233,7 @@ pub fn generate_tsconfig(
     npm_project_references,
     node_types_root,
     excludes,
+    has_local_wasm,
   );
 
   // Write to .deno/tsconfig.json
@@ -766,6 +768,7 @@ fn build_tsconfig(
   npm_project_references: &[String],
   node_types_root: Option<&str>,
   excludes: &[String],
+  has_local_wasm: bool,
 ) -> Value {
   let mut compiler_options = base_compiler_options();
 
@@ -875,6 +878,35 @@ fn build_tsconfig(
       })
       .collect();
     compiler_options.insert("rootDirs".to_string(), Value::Array(rebased));
+  }
+
+  // Local `.wasm` imports: their generated declarations were mirrored under
+  // `.deno/wasm/<rel>` (as `<name>.d.wasm.ts`). Overlay `.deno/wasm` on the
+  // project root via `rootDirs` and enable `allowArbitraryExtensions` so tsc
+  // resolves a relative `import "./foo.wasm"` (never matched by `paths`) to the
+  // mirror. `..` is the project root as seen from the generated `.deno/`
+  // tsconfig; `./wasm` is the mirror dir. Both are appended to whatever
+  // `rootDirs` the user already has (rebased above), so we don't clobber theirs.
+  if has_local_wasm {
+    compiler_options
+      .insert("allowArbitraryExtensions".to_string(), json!(true));
+    let root_dirs = match compiler_options.get_mut("rootDirs") {
+      Some(Value::Array(existing)) => existing,
+      _ => {
+        compiler_options
+          .insert("rootDirs".to_string(), Value::Array(Vec::new()));
+        match compiler_options.get_mut("rootDirs") {
+          Some(Value::Array(existing)) => existing,
+          _ => unreachable!(),
+        }
+      }
+    };
+    for entry in ["..", "./wasm"] {
+      let value = Value::String(entry.to_string());
+      if !root_dirs.contains(&value) {
+        root_dirs.push(value);
+      }
+    }
   }
 
   // Merge the user's `compilerOptions.types`. Bare packages that resolve via
@@ -2362,6 +2394,7 @@ interface AlsoKeep {
       &[],
       None,
       &[],
+      false,
     );
 
     let include = tsconfig.get("include").unwrap().as_array().unwrap();
@@ -2388,6 +2421,7 @@ interface AlsoKeep {
       &[],
       None,
       &excludes,
+      false,
     );
     let exclude = tsconfig.get("exclude").unwrap().as_array().unwrap();
     // node_modules always excluded; project excludes are rebased onto `../`.
@@ -2418,6 +2452,7 @@ interface AlsoKeep {
       &[],
       None,
       &[],
+      false,
     );
 
     // Should use "files" instead of "include"/"exclude"
@@ -2446,6 +2481,7 @@ interface AlsoKeep {
       &references,
       None,
       &[],
+      false,
     );
 
     assert_eq!(
@@ -2482,6 +2518,7 @@ interface AlsoKeep {
       &[],
       None,
       &[],
+      false,
     );
 
     let paths = tsconfig

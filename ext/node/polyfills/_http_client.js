@@ -129,6 +129,8 @@ const {
 const INVALID_PATH_REGEX = new SafeRegExp(/[^\u0021-\u00ff]/);
 const kError = Symbol("kError");
 const kPath = Symbol("kPath");
+const kAuthority = Symbol("kAuthority");
+const kProxyRewrittenToAbsolute = Symbol("kProxyRewrittenToAbsolute");
 const kOtelSpan = Symbol("kOtelSpan");
 const kPerfStartTime = Symbol("kPerfStartTime");
 const kRetryData = Symbol("kRetryData");
@@ -366,9 +368,9 @@ function inspectorEmitResponseReceived(req, res) {
       let len;
       if (typeof chunk === "string") {
         len = chunk.length;
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
       } else if (chunk.byteLength !== undefined) {
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         len = chunk.byteLength;
       } else {
         len = 0;
@@ -637,6 +639,7 @@ function ClientRequest(input, options, cb) {
   this.joinDuplicateHeaders = options.joinDuplicateHeaders;
 
   this[kPath] = options.path || "/";
+  this[kProxyRewrittenToAbsolute] = false;
 
   // For HTTP via HTTP proxy, rewrite path to an absolute URL so the proxy
   // knows where to forward the request.
@@ -646,9 +649,13 @@ function ClientRequest(input, options, cb) {
         StringPrototypeCharCodeAt(t, 0) !== 91
       ? `[${t}]`
       : t;
-    this[kPath] = `http://${formattedHost}:${this[kProxyTargetPort]}${
-      options.path || "/"
-    }`;
+    // Node builds this target with `new URL()`, whose `href` omits the port
+    // when it is the scheme default, so match that rather than always
+    // emitting `:port`.
+    const targetPort = this[kProxyTargetPort];
+    const portSuffix = +targetPort === 80 ? "" : `:${targetPort}`;
+    this[kPath] = `http://${formattedHost}${portSuffix}${options.path || "/"}`;
+    this[kProxyRewrittenToAbsolute] = true;
   }
 
   if (cb) {
@@ -690,6 +697,26 @@ function ClientRequest(input, options, cb) {
     }
   }
 
+  let hostHeaderFromOptions = host;
+  // For the Host header, ensure that IPv6 addresses are enclosed
+  // in square brackets, as defined by URI formatting
+  // https://tools.ietf.org/html/rfc3986#section-3.2.2
+  const posColon = StringPrototypeIndexOf(hostHeaderFromOptions, ":");
+  if (
+    posColon !== -1 &&
+    StringPrototypeIncludes(hostHeaderFromOptions, ":", posColon + 1) &&
+    StringPrototypeCharCodeAt(hostHeaderFromOptions, 0) !== 91 /* '[' */
+  ) {
+    hostHeaderFromOptions = `[${hostHeaderFromOptions}]`;
+  }
+
+  if (port && +port !== defaultPort) {
+    hostHeaderFromOptions += ":" + port;
+  }
+  // Preserve the request authority (with the port when non-default) so that
+  // the perf_hooks entry can report a faithful URL.
+  this[kAuthority] = hostHeaderFromOptions;
+
   const headersArray = ArrayIsArray(options.headers);
   if (!headersArray) {
     if (options.headers) {
@@ -701,27 +728,21 @@ function ClientRequest(input, options, cb) {
     }
 
     if (host && !this.getHeader("host") && setHost) {
-      let hostHeader = host;
+      let hostHeader = hostHeaderFromOptions;
 
-      const posColon = StringPrototypeIndexOf(hostHeader, ":");
-      if (
-        posColon !== -1 &&
-        StringPrototypeIncludes(hostHeader, ":", posColon + 1) &&
-        StringPrototypeCharCodeAt(hostHeader, 0) !== 91 /* '[' */
-      ) {
-        hostHeader = `[${hostHeader}]`;
+      // The request target of a CONNECT is the authority being tunnelled to,
+      // so Host has to name that authority rather than the proxy we dialed.
+      if (method === "CONNECT" && options.path) {
+        hostHeader = String(options.path);
       }
 
-      if (port && +port !== defaultPort) {
-        hostHeader += ":" + port;
-      }
       this.setHeader("Host", hostHeader);
     }
 
     if (options.auth && !this.getHeader("Authorization")) {
       this.setHeader(
         "Authorization",
-        // deno-lint-ignore prefer-primordials
+        // deno-lint-ignore deno-internal/prefer-primordials
         "Basic " + Buffer.from(options.auth).toString("base64"),
       );
     }
@@ -863,11 +884,14 @@ ClientRequest.prototype._implicitHeader = function _implicitHeader() {
       });
     }
 
-    // Set request attributes
+    // Set request attributes. When the path has been rewritten to
+    // absolute-form for proxying it is already a full URL, so appending it to
+    // the authority again would duplicate it.
     const protocol = this.protocol || "http:";
-    const host = this.getHeader("host") || this.host || "localhost";
     const path = this.path || "/";
-    const fullUrl = `${protocol}//${host}${path}`;
+    const fullUrl = this[kProxyRewrittenToAbsolute]
+      ? path
+      : `${protocol}//${this[kAuthority]}${path}`;
     try {
       const parsedUrl = new URL(fullUrl);
       span.setAttribute("http.request.method", this.method);
@@ -936,7 +960,7 @@ function getRetryDataSize(data, encoding) {
   if (typeof data === "string") {
     return Buffer.byteLength(data, encoding || undefined);
   }
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   return data?.byteLength ?? data?.length ?? 0;
 }
 
@@ -1065,7 +1089,7 @@ function socketCloseListener() {
     req._closed = true;
     req.emit("close");
     if (!res.aborted && res.readable) {
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       res.push(null);
     }
   } else {
@@ -1168,7 +1192,7 @@ function socketOnData(d) {
     parser.finish();
     freeParser(parser, req, socket);
 
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     const bodyHead = d.slice(bytesParsed, d.length);
 
     const eventName = req.method === "CONNECT" ? "connect" : "upgrade";
@@ -1257,7 +1281,6 @@ function parserOnIncomingClient(res, shouldKeepAlive) {
   // Emit HttpClient perf entry (at response-header time)
   const perfStartTime = req[kPerfStartTime];
   if (perfStartTime !== undefined) {
-    const host = req.getHeader("host") || req.host || "localhost";
     enqueueNodePerformanceEntry({
       name: "HttpClient",
       entryType: "http",
@@ -1266,7 +1289,13 @@ function parserOnIncomingClient(res, shouldKeepAlive) {
       detail: {
         req: {
           method: req.method,
-          url: `${req.protocol || "http:"}//${host}${req.path || "/"}`,
+          // If the path has been rewritten to absolute-form for proxying,
+          // it is already a full URL.
+          url: req[kProxyRewrittenToAbsolute]
+            ? req.path
+            : `${req.protocol || "http:"}//${req[kAuthority]}${
+              req.path || "/"
+            }`,
           headers: req.getHeaders(),
         },
         res: {

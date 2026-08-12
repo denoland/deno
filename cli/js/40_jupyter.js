@@ -281,12 +281,12 @@ async function format(obj) {
   }
   if (isJpg(obj)) {
     return {
-      "image/jpeg": core.ops.op_base64_encode(obj),
+      "image/jpeg": core.ops.op_base64_encode_from_buffer(obj, 0, obj.length),
     };
   }
   if (isPng(obj)) {
     return {
-      "image/png": core.ops.op_base64_encode(obj),
+      "image/png": core.ops.op_base64_encode_from_buffer(obj, 0, obj.length),
     };
   }
   if (isSVGElementLike(obj)) {
@@ -393,11 +393,15 @@ function image(obj) {
   }
 
   if (isJpg(obj)) {
-    return makeDisplayable({ "image/jpeg": core.ops.op_base64_encode(obj) });
+    return makeDisplayable({
+      "image/jpeg": core.ops.op_base64_encode_from_buffer(obj, 0, obj.length),
+    });
   }
 
   if (isPng(obj)) {
-    return makeDisplayable({ "image/png": core.ops.op_base64_encode(obj) });
+    return makeDisplayable({
+      "image/png": core.ops.op_base64_encode_from_buffer(obj, 0, obj.length),
+    });
   }
 
   if (obj instanceof GPUTexture) {

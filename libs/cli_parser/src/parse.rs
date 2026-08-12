@@ -132,8 +132,19 @@ fn parse_args(
   while i < args.len() {
     let arg = &args[i];
 
-    // Per-positional trailing mode: absorb everything into this positional
+    // Per-positional trailing mode: absorb everything into this positional.
+    //
+    // INVARIANT: this path always strips `--` and does NOT honor
+    // `cmd_def.keep_double_dash` (unlike the two command-level `--` paths
+    // below). That's correct only because every subcommand with a `.trailing()`
+    // positional (init/create/x) has `keep_double_dash: false`. If a subcommand
+    // ever needs both a `.trailing()` positional and `--` retention, this path
+    // must be taught to honor the flag.
     if let Some(trail_def) = positional_trailing_def {
+      debug_assert!(
+        !cmd_def.keep_double_dash,
+        "keep_double_dash is ignored for `.trailing()` positionals; see INVARIANT above"
+      );
       if arg == "--" {
         // `--` still transitions to command-level trailing
         // so that `deno init --npm vite -- --serve` puts --serve
@@ -168,6 +179,11 @@ fn parse_args(
         continue;
       }
       trailing_mode = true;
+      // Keep the `--` in the forwarded args for subcommands that mirror clap's
+      // `.last(true)` / external-subcommand behavior; strip it otherwise.
+      if cmd_def.keep_double_dash {
+        result.trailing.push(arg.clone());
+      }
       i += 1;
       continue;
     }
@@ -231,9 +247,14 @@ fn parse_args(
               && positional_index >= positional_defs.len()
             {
               i += 1;
-              // Keep a `--` separator in the forwarded args to match clap's
-              // trailing-var-arg behavior (e.g. `deno run script.ts -- -a`
-              // forwards `["--", "-a"]`).
+              // Strip a leading `--` separator unless this subcommand keeps it
+              // in the forwarded argv (clap `.last(true)` / external behavior,
+              // e.g. `deno run x.ts -- -a` forwards `["--", "-a"]`, but
+              // `deno eval code -- a` forwards `["a"]`).
+              if !cmd_def.keep_double_dash && i < args.len() && args[i] == "--"
+              {
+                i += 1;
+              }
               while i < args.len() {
                 result.trailing.push(args[i].clone());
                 i += 1;
@@ -296,7 +317,12 @@ fn parse_args(
             CliErrorKind::InvalidValue,
             format!(
               "the argument '{}' cannot be used with '{}'",
-              arg_def.name, other
+              display_arg(arg_def),
+              cmd_def
+                .all_args()
+                .find(|a| a.name == *other)
+                .map(display_arg)
+                .unwrap_or_else(|| (*other).to_string())
             ),
           ));
         }
@@ -627,5 +653,22 @@ fn increment_arg_count(result: &mut ParseResult, arg_def: &ArgDef) {
       is_present: true,
       count: 1,
     });
+  }
+}
+
+/// Render an arg the way clap did in conflict messages: `--long <value>` for
+/// value-taking flags, `--long` for booleans, `<NAME>` for positionals.
+fn display_arg(arg: &ArgDef) -> String {
+  if arg.positional {
+    return format!("<{}>", arg.value_name.unwrap_or(arg.name));
+  }
+  let flag = match (arg.long, arg.short) {
+    (Some(long), _) => format!("--{long}"),
+    (None, Some(short)) => format!("-{short}"),
+    (None, None) => arg.name.to_string(),
+  };
+  match arg.num_args {
+    NumArgs::Exact(0) => flag,
+    _ => format!("{flag} <{}>", arg.value_name.unwrap_or(arg.name)),
   }
 }

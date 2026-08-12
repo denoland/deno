@@ -651,6 +651,12 @@ Readable.prototype.setEncoding = function (enc) {
   state.buffer.length = 0;
   state.bufferIndex = 0;
 
+  // Nothing more will arrive to complete a partial character, so flush it to
+  // the replacement character now rather than dropping it.
+  if (state.ended) {
+    content += decoder.end();
+  }
+
   if (content !== "") {
     state.buffer.push(content);
   }

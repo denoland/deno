@@ -323,10 +323,25 @@ async fn compile_desktop(
   let desktop_entrypoint_file = if desktop_flags.source_file == "." {
     let cwd = &detection_cwd;
     if let Some(detection) = detected_framework.as_ref() {
-      let use_framework_hmr =
-        desktop_flags.hmr && detection.hmr_command.is_some();
+      let use_framework_hmr = desktop_flags.hmr
+        && (detection.hmr_entrypoint_code().is_some()
+          || detection.hmr_command.is_some());
       let entrypoint_code = if use_framework_hmr {
-        NOOP_ENTRYPOINT.to_string()
+        match detection.hmr_entrypoint_code() {
+          Some(code) => {
+            // The generated dev shim imports the framework's dev-server API
+            // (e.g. Vite's); type-checking it would demand the project ship
+            // `@types/node` and checks nothing user-authored, so skip it.
+            flags.type_check_mode = TypeCheckMode::None;
+            // The dev server used to run as an unsandboxed `deno task dev`
+            // subprocess; now that it runs inside the desktop runtime, keep
+            // that behavior — a sandboxed Vite immediately dies on env reads
+            // (e.g. NAPI_RS_WASI_FLAVOR from its napi loader).
+            flags.permissions.allow_all = true;
+            code.to_string()
+          }
+          None => NOOP_ENTRYPOINT.to_string(),
+        }
       } else {
         detection.entrypoint_code.clone()
       };
@@ -508,6 +523,7 @@ async fn compile_desktop(
     bundle: false,
     minify: false,
     exclude_unused_npm: desktop_flags.exclude_unused_npm,
+    engine: desktop_flags.engine,
   };
 
   let mut temp_flags = flags.clone();
@@ -1160,10 +1176,11 @@ fn resolve_hmr_icon_path(
 
 /// Extract the local URL from a line of dev server output.
 fn parse_dev_server_url(line: &str) -> Option<String> {
+  let line = console_static_text::ansi::strip_ansi_codes(line);
   // Vite prints `  ➜  Local:   http://localhost:5173/`
   regex::Regex::new(r"Local:\s+(https?://\S+)")
     .expect("regex to parse local url failed")
-    .captures(line)
+    .captures(&line)
     .and_then(|c| c.get(1))
     .map(|m| m.as_str().to_owned())
 }
@@ -1323,7 +1340,20 @@ async fn run_desktop_hmr(
     cmd.env("DENO_DESKTOP_HMR", &source_abs);
   }
 
+  // In-runtime framework dev: the compiled entrypoint boots the framework's
+  // dev server inside the desktop runtime (see `hmr_entrypoint_code`), so
+  // server-side code keeps access to `Deno.desktop` (#35899). Signal
+  // rt_desktop to restore CWD to the source dir and leave hot reloading to
+  // the framework; the webview finds the server via the regular
+  // DENO_SERVE_ADDRESS poll, so no external process and no URL scraping.
+  let in_runtime_dev = desktop_flags.hmr
+    && framework.is_some_and(|f| f.hmr_entrypoint_code().is_some());
+  if in_runtime_dev {
+    cmd.env("DENO_DESKTOP_FRAMEWORK_DEV", "1");
+  }
+
   let _dev_server_child = if desktop_flags.hmr
+    && !in_runtime_dev
     && let Some(fw) = framework
     && let Some(dev_cmd) = &fw.hmr_command
   {
@@ -3332,13 +3362,18 @@ fn create_macos_dmg(
   Ok(())
 }
 
-/// AppImage Type-2 runtime ELF stubs, vendored from
-/// github.com/AppImage/type2-runtime at tag `20251108`. Prepended verbatim to
-/// the SquashFS payload to form the final AppImage.
-const APPIMAGE_RUNTIME_X86_64: &[u8] =
-  include_bytes!("appimage_runtime/runtime-x86_64");
-const APPIMAGE_RUNTIME_AARCH64: &[u8] =
-  include_bytes!("appimage_runtime/runtime-aarch64");
+/// Zstd-compressed AppImage Type-2 runtime ELF stubs, vendored from
+/// github.com/AppImage/type2-runtime at tag `20251108`. The selected runtime
+/// is decompressed and prepended to the SquashFS payload when creating an
+/// AppImage.
+const APPIMAGE_RUNTIME_X86_64: &[u8] = include_bytes!(concat!(
+  env!("OUT_DIR"),
+  "/appimage_runtime/runtime-x86_64.zstd"
+));
+const APPIMAGE_RUNTIME_AARCH64: &[u8] = include_bytes!(concat!(
+  env!("OUT_DIR"),
+  "/appimage_runtime/runtime-aarch64.zstd"
+));
 
 /// 1×1 transparent PNG, used when the caller didn't supply an icon.
 /// appimagetool-built AppImages expect a top-level `<Name>.png` to exist.
@@ -3356,17 +3391,23 @@ const STUB_ICON_PNG: &[u8] = &[
 /// arch (e.g. `x86_64-unknown-linux-gnu` → `x86_64`).
 fn appimage_runtime_for_target(
   target: Option<&str>,
-) -> Result<&'static [u8], AnyError> {
+) -> Result<Vec<u8>, AnyError> {
   let arch = target
     .and_then(|t| t.split('-').next())
     .unwrap_or(std::env::consts::ARCH);
-  match arch {
-    "x86_64" => Ok(APPIMAGE_RUNTIME_X86_64),
-    "aarch64" => Ok(APPIMAGE_RUNTIME_AARCH64),
+  let compressed = match arch {
+    "x86_64" => APPIMAGE_RUNTIME_X86_64,
+    "aarch64" => APPIMAGE_RUNTIME_AARCH64,
     other => bail!(
       "No bundled AppImage runtime for arch '{other}'; supported: x86_64, aarch64"
     ),
-  }
+  };
+  let uncompressed_len =
+    u32::from_le_bytes(compressed[..4].try_into().unwrap());
+  zstd::bulk::decompress(&compressed[4..], uncompressed_len as usize)
+    .with_context(|| {
+      format!("Failed to decompress AppImage runtime for {arch}")
+    })
 }
 
 /// Unix mode bits for a filesystem entry. On non-Unix hosts (cross-compiling
@@ -3517,7 +3558,7 @@ fn create_linux_appimage(
   let mut out = std::fs::File::create(appimage_path).with_context(|| {
     format!("Failed to create AppImage at {}", appimage_path.display())
   })?;
-  out.write_all(runtime_elf)?;
+  out.write_all(&runtime_elf)?;
   out.write_all(&squashfs.into_inner())?;
   drop(out);
 
@@ -5602,6 +5643,18 @@ def456  other.zip
   }
 
   #[test]
+  fn dev_server_url_matches_colored_output() {
+    assert_eq!(
+      parse_dev_server_url(
+        "\x1b[32m➜\x1b[39m  \x1b[1mLocal\x1b[22m:   \
+         \x1b[36mhttp://127.0.0.1:\x1b[1m5173\x1b[22m/\x1b[39m"
+      )
+      .as_deref(),
+      Some("http://127.0.0.1:5173/")
+    );
+  }
+
+  #[test]
   fn dev_server_url_matches_with_subpath() {
     assert_eq!(
       parse_dev_server_url("  Local:   http://localhost:5173/app").as_deref(),
@@ -5776,12 +5829,15 @@ def456  other.zip
 
   #[test]
   fn appimage_runtime_target_arch_lookup() {
-    assert!(
-      appimage_runtime_for_target(Some("x86_64-unknown-linux-gnu")).is_ok()
-    );
-    assert!(
-      appimage_runtime_for_target(Some("aarch64-unknown-linux-gnu")).is_ok()
-    );
+    let x86_64 =
+      appimage_runtime_for_target(Some("x86_64-unknown-linux-gnu")).unwrap();
+    assert_eq!(x86_64.len(), 944_632);
+    assert_eq!(&x86_64[..4], b"\x7fELF");
+
+    let aarch64 =
+      appimage_runtime_for_target(Some("aarch64-unknown-linux-gnu")).unwrap();
+    assert_eq!(aarch64.len(), 936_456);
+    assert_eq!(&aarch64[..4], b"\x7fELF");
   }
 
   #[test]
@@ -6725,6 +6781,7 @@ def456  other.zip
       exclude: vec![],
       hmr: false,
       backend: None,
+      engine: Default::default(),
       all_targets: false,
       identifier: None,
       deep_links: Vec::new(),

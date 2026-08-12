@@ -30,6 +30,7 @@ use deno_core::op2;
 use deno_permissions::PermissionsContainer;
 use hickory_proto::op::ResponseCode;
 use hickory_proto::rr::RData;
+use hickory_proto::rr::Record;
 use hickory_proto::rr::RecordType;
 use hickory_resolver::ConnectionProvider;
 use hickory_resolver::config::ConnectionConfig;
@@ -1334,11 +1335,19 @@ pub async fn op_dns_resolve(
     )
     .await?
   };
-  lookup
-    .answers()
-    .iter()
-    .chain(lookup.authorities())
-    .chain(lookup.additionals())
+
+  // Only the answer section is returned. Authority and additional records
+  // (e.g. NS records or nameserver glue addresses) are not part of the
+  // queried result set and must not leak into `Deno.resolveDns()` output.
+  format_dns_records(lookup.answers(), record_type)
+}
+
+fn format_dns_records<'a>(
+  records: impl IntoIterator<Item = &'a Record>,
+  record_type: RecordType,
+) -> Result<Vec<DnsRecordWithTtl>, NetError> {
+  records
+    .into_iter()
     .filter_map(|rec| {
       let is_any = record_type == RecordType::ANY;
       // For ANY queries, use each record's actual type for formatting
@@ -1365,15 +1374,27 @@ pub async fn op_dns_resolve(
 
 #[op2]
 #[serde]
-pub fn op_net_get_system_dns_servers() -> Result<Vec<(String, u16)>, NetError> {
+pub fn op_net_get_system_dns_servers(
+  state: &mut OpState,
+) -> Result<Vec<(String, u16)>, NetError> {
+  // Reading the host resolver configuration (the system nameservers, e.g.
+  // from /etc/resolv.conf) exposes host network configuration, so gate it
+  // behind the same `sys` permission as Deno.networkInterfaces(). Reachable
+  // from JS via node:dns.getServers().
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_sys("networkInterfaces", "node:dns.getServers()")?;
   let (config, _opts) = system_conf::read_system_conf()
     .unwrap_or_else(|_| (ResolverConfig::default(), ResolverOpts::default()));
+  // Dedup name servers sharing the same ip and port, while preserving the
+  // configured order (callers such as `node:dns.getServers()` expect the
+  // servers in the order they were configured).
+  let mut seen = HashSet::new();
   let servers = config
     .name_servers()
     .iter()
     .flat_map(|ns| ns.connections.iter().map(|c| (ns.ip.to_string(), c.port)))
-    .collect::<HashSet<_>>() // This removes duplicate name_servers sharing the same ip and port.
-    .into_iter()
+    .filter(|server| seen.insert(server.clone()))
     .collect();
   Ok(servers)
 }
@@ -1430,8 +1451,9 @@ fn format_rdata(
       RData::CAA(caa) => DnsRecordData::Caa {
         critical: caa.issuer_critical,
         tag: caa.tag.to_string(),
-        // hickory_proto now handles CAA records encoding within the CAA struct, we can assume that it's safe to unwrap here
-        value: str::from_utf8(&caa.value).unwrap().to_string(),
+        // The value is opaque bytes from an untrusted server; decode
+        // leniently rather than panicking on invalid UTF-8.
+        value: String::from_utf8_lossy(&caa.value).into_owned(),
       },
       RData::CNAME(cname) => DnsRecordData::Cname(cname.to_string()),
       RData::MX(mx) => DnsRecordData::Mx {
@@ -1441,9 +1463,9 @@ fn format_rdata(
       RData::NAPTR(naptr) => DnsRecordData::Naptr {
         order: naptr.order,
         preference: naptr.preference,
-        flags: String::from_utf8(naptr.flags.to_vec()).unwrap(),
-        services: String::from_utf8(naptr.services.to_vec()).unwrap(),
-        regexp: String::from_utf8(naptr.regexp.to_vec()).unwrap(),
+        flags: String::from_utf8_lossy(&naptr.flags).into_owned(),
+        services: String::from_utf8_lossy(&naptr.services).into_owned(),
+        regexp: String::from_utf8_lossy(&naptr.regexp).into_owned(),
         replacement: naptr.replacement.to_string(),
       },
       RData::NS(ns) => DnsRecordData::Ns(ns.to_string()),
@@ -1508,6 +1530,8 @@ mod tests {
   use hickory_proto::rr::rdata::naptr::NAPTR;
   use hickory_proto::rr::rdata::srv::SRV;
   use hickory_proto::rr::rdata::txt::TXT;
+  use hickory_proto::serialize::binary::BinDecoder;
+  use hickory_proto::serialize::binary::Restrict;
   use socket2::SockRef;
 
   use super::*;
@@ -1557,6 +1581,33 @@ mod tests {
   }
 
   #[test]
+  fn dns_records_caa_lossy_invalid_utf8_for_any_query() {
+    // Raw CAA RDATA received from the network: flags, tag, then an opaque
+    // value containing invalid UTF-8.
+    const RDATA: &[u8] = b"\x00\x05issue\xffa";
+    let rdata = RData::read(
+      &mut BinDecoder::new(RDATA),
+      RecordType::CAA,
+      Restrict::new(u16::try_from(RDATA.len()).unwrap()),
+    )
+    .unwrap();
+    let records = [Record::from_rdata(Name::new(), 60, rdata)];
+
+    assert_eq!(
+      format_dns_records(&records, RecordType::ANY).unwrap(),
+      vec![DnsRecordWithTtl {
+        data: DnsRecordData::Caa {
+          critical: false,
+          tag: "issue".to_string(),
+          value: "\u{fffd}a".to_string(),
+        },
+        record_type: Some("CAA".to_string()),
+        ttl: 60,
+      }]
+    );
+  }
+
+  #[test]
   fn rdata_to_return_record_cname() {
     let rdata = RData::CNAME(CNAME(Name::new()));
     assert_eq!(
@@ -1596,6 +1647,31 @@ mod tests {
         services: "".to_string(),
         regexp: "".to_string(),
         replacement: "".to_string()
+      })
+    );
+  }
+
+  #[test]
+  fn rdata_to_return_record_naptr_lossy_invalid_utf8() {
+    // Flags are restricted to ASCII by Hickory's wire decoder. Services and
+    // regexp remain arbitrary character strings and can contain invalid UTF-8.
+    const RDATA: &[u8] = b"\x00\x01\x00\x02\x01U\x02s\xff\x02\xffr\x00";
+    let rdata = RData::read(
+      &mut BinDecoder::new(RDATA),
+      RecordType::NAPTR,
+      Restrict::new(u16::try_from(RDATA.len()).unwrap()),
+    )
+    .unwrap();
+
+    assert_eq!(
+      format_rdata(&rdata, RecordType::NAPTR).unwrap(),
+      Some(DnsRecordData::Naptr {
+        order: 1,
+        preference: 2,
+        flags: "U".to_string(),
+        services: "s\u{fffd}".to_string(),
+        regexp: "\u{fffd}r".to_string(),
+        replacement: ".".to_string(),
       })
     );
   }

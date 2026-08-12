@@ -16,8 +16,6 @@ use std::time::Duration;
 use std::time::SystemTime;
 
 use bytes::Bytes;
-use bytes::BytesMut;
-use deno_core::AsyncMut;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufMutView;
@@ -41,8 +39,6 @@ use deno_core::v8;
 use deno_http_h1 as h1;
 use deno_net::ops_tls::TlsStream;
 use deno_net::raw::NetworkStream;
-use deno_net::raw::NetworkStreamReadHalf;
-use deno_net::raw::NetworkStreamWriteHalf;
 use deno_websocket::ServerWebSocket;
 use deno_websocket::ws_create_server_stream;
 use deno_websocket::ws_create_server_stream_with_guard;
@@ -62,10 +58,8 @@ use hyper::http::HeaderValue;
 use hyper::server::conn::http2;
 use hyper::service::HttpService;
 use hyper::service::service_fn;
-use hyper::upgrade::OnUpgrade;
 use hyper_util::rt::TokioIo;
 use smallvec::SmallVec;
-use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
@@ -344,9 +338,6 @@ pub enum HttpNextError {
   #[class("Http")]
   #[error("invalid HTTP status line")]
   InvalidHttpStatusLine,
-  #[class("Http")]
-  #[error("raw upgrade failed")]
-  RawUpgradeFailed,
   #[class(inherit)]
   #[error(transparent)]
   TakeNetworkStream(
@@ -1457,10 +1448,6 @@ impl RawHttpRecord {
     self.0.borrow().request_body_taken_full
   }
 
-  fn take_upgrade(&self) -> Option<Rc<RawUpgrade>> {
-    self.0.borrow_mut().upgrade.take()
-  }
-
   fn finish_response_body(&self, complete: bool) {
     let mut inner = self.0.borrow_mut();
     if complete {
@@ -1713,47 +1700,6 @@ where
   fn size_hint(&self) -> (u64, Option<u64>) {
     self.size_hint
   }
-}
-
-#[op2(fast)]
-#[smi]
-pub fn op_http_upgrade_raw(
-  state: &mut OpState,
-  external: *const c_void,
-) -> Result<ResourceId, HttpNextError> {
-  // SAFETY: external is deleted before calling this op.
-  let http = unsafe { take_external!(external, "op_http_upgrade_raw") };
-  if let HttpRecordExternal::Raw(record) = http {
-    let Some(upgrade) = record.take_upgrade() else {
-      return Err(raw_upgrade_unavailable());
-    };
-    let read = Rc::new(AsyncRefCell::new(None));
-    let read_cell = AsyncRefCell::borrow_sync(read.clone()).unwrap();
-    let write = UpgradeStreamWriteState::RawParsing(
-      BytesMut::with_capacity(
-        b"HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n".len(),
-      ),
-      record,
-      upgrade.conn.clone(),
-      read_cell,
-    );
-    return Ok(state.resource_table.add(UpgradeStream::new(read, write)));
-  }
-  let http = http.into_hyper("op_http_upgrade_raw")?;
-
-  let upgrade = http.upgrade()?;
-
-  let read = Rc::new(AsyncRefCell::new(None));
-  let read_cell = AsyncRefCell::borrow_sync(read.clone()).unwrap();
-
-  let write = UpgradeStreamWriteState::Parsing(
-    BytesMut::with_capacity(b"HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n".len()),
-    http,
-    upgrade,
-    read_cell,
-  );
-
-  Ok(state.resource_table.add(UpgradeStream::new(read, write)))
 }
 
 #[op2]
@@ -5547,327 +5493,6 @@ pub async fn op_http_close(
   }
 
   Ok(())
-}
-
-enum UpgradeStreamWriteState {
-  RawParsing(
-    BytesMut,
-    Rc<RawHttpRecord>,
-    RawNetworkH1ConnectionCell,
-    AsyncMut<Option<(NetworkStreamReadHalf, Bytes)>>,
-  ),
-  Parsing(
-    BytesMut,
-    Rc<HttpRecord>,
-    OnUpgrade,
-    AsyncMut<Option<(NetworkStreamReadHalf, Bytes)>>,
-  ),
-  Network(NetworkStreamWriteHalf),
-  /// The upgrade was rejected with a non-101 status code.
-  /// The response has been sent and the stream is now closed for writing.
-  Rejected,
-  Failed,
-}
-
-struct UpgradeStream {
-  read: Rc<AsyncRefCell<Option<(NetworkStreamReadHalf, Bytes)>>>,
-  write: AsyncRefCell<UpgradeStreamWriteState>,
-  cancel_handle: CancelHandle,
-  /// Set to true when the upgrade was rejected with a non-101 status.
-  /// When rejected, reads return EOF and writes are silently ignored.
-  rejected: std::cell::Cell<bool>,
-}
-
-impl UpgradeStream {
-  pub fn new(
-    read: Rc<AsyncRefCell<Option<(NetworkStreamReadHalf, Bytes)>>>,
-    write: UpgradeStreamWriteState,
-  ) -> Self {
-    Self {
-      read,
-      write: AsyncRefCell::new(write),
-      cancel_handle: CancelHandle::new(),
-      rejected: std::cell::Cell::new(false),
-    }
-  }
-
-  async fn read(
-    self: Rc<Self>,
-    buf: &mut [u8],
-  ) -> Result<usize, std::io::Error> {
-    // If the upgrade was rejected, return EOF
-    if self.rejected.get() {
-      return Ok(0);
-    }
-
-    let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
-    async {
-      let read = RcRef::map(self, |this| &this.read);
-      let mut read = read.borrow_mut().await;
-      let Some(read) = &mut *read else {
-        return Err(std::io::Error::other(HttpNextError::RawUpgradeFailed));
-      };
-      if !read.1.is_empty() {
-        let n = read.1.len().min(buf.len());
-        buf[0..n].copy_from_slice(&read.1.split_to(n));
-        Ok(n)
-      } else {
-        Pin::new(&mut read.0).read(buf).await
-      }
-    }
-    .try_or_cancel(cancel_handle)
-    .await
-  }
-
-  async fn write(self: Rc<Self>, buf: &[u8]) -> Result<usize, std::io::Error> {
-    let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
-    let this = self.clone();
-    async {
-      let wr = RcRef::map(self, |this| &this.write);
-      let mut wr = wr.borrow_mut().await;
-      match std::mem::replace(&mut *wr, UpgradeStreamWriteState::Failed) {
-        UpgradeStreamWriteState::Failed => {
-          Err(std::io::Error::other(HttpNextError::RawUpgradeFailed))
-        }
-        UpgradeStreamWriteState::Rejected => {
-          // The upgrade was rejected and the response was already sent.
-          // Silently accept writes but don't do anything with them.
-          *wr = UpgradeStreamWriteState::Rejected;
-          Ok(buf.len())
-        }
-        UpgradeStreamWriteState::RawParsing(
-          mut bytes,
-          http,
-          conn,
-          mut read_cell,
-        ) => {
-          let prev_len = bytes.len();
-          bytes.extend_from_slice(buf);
-
-          let mut headers = [httparse::EMPTY_HEADER; 16];
-          let mut response = httparse::Response::new(&mut headers);
-          match response.parse(&bytes) {
-            Ok(httparse::Status::Partial) => {
-              *wr = UpgradeStreamWriteState::RawParsing(
-                bytes, http, conn, read_cell,
-              );
-              Ok(buf.len())
-            }
-            Ok(httparse::Status::Complete(n)) => {
-              let status_code = response.code.unwrap_or(0);
-
-              if status_code != StatusCode::SWITCHING_PROTOCOLS.as_u16() {
-                http.set_status(status_code);
-                for header in response.headers {
-                  if header.name.is_empty() {
-                    continue;
-                  }
-                  http.append_response_header(
-                    header.name.as_bytes().to_vec(),
-                    header.value.to_vec(),
-                  );
-                }
-                if bytes.len() > n {
-                  http.set_flat_response_body(FlatResponseBody::Bytes(
-                    BufView::from(bytes[n..].to_vec()),
-                  ));
-                } else {
-                  http.set_flat_response_body(FlatResponseBody::Empty);
-                }
-                *wr = UpgradeStreamWriteState::Rejected;
-                this.rejected.set(true);
-                http.complete();
-                return Ok(buf.len());
-              }
-
-              let (stream, head_bytes) = take_raw_upgrade_stream(&RawUpgrade {
-                conn,
-                websocket_tx: RefCell::new(None),
-              })
-              .map_err(std::io::Error::other)?;
-              let (read, mut write) = stream.into_split();
-
-              let mut written = 0;
-              while written < n {
-                written +=
-                  Pin::new(&mut write).write(&bytes[written..n]).await?;
-              }
-
-              let _ = read_cell.insert((read, head_bytes));
-
-              if status_code == StatusCode::SWITCHING_PROTOCOLS.as_u16() {
-                *wr = UpgradeStreamWriteState::Network(write);
-              } else {
-                *wr = UpgradeStreamWriteState::Rejected;
-                this.rejected.set(true);
-              }
-
-              http.complete();
-              Ok(n - prev_len)
-            }
-            Err(e) => Err(std::io::Error::other(e)),
-          }
-        }
-        UpgradeStreamWriteState::Parsing(
-          mut bytes,
-          http,
-          on_upgrade,
-          mut read_cell,
-        ) => {
-          let prev_len = bytes.len();
-          bytes.extend_from_slice(buf);
-
-          let mut headers = [httparse::EMPTY_HEADER; 16];
-          let mut response = httparse::Response::new(&mut headers);
-          match response.parse(&bytes) {
-            Ok(httparse::Status::Partial) => {
-              *wr = UpgradeStreamWriteState::Parsing(
-                bytes, http, on_upgrade, read_cell,
-              );
-              Ok(buf.len())
-            }
-            Ok(httparse::Status::Complete(n)) => {
-              let status_code = response.code.unwrap_or(0);
-
-              if status_code == StatusCode::SWITCHING_PROTOCOLS.as_u16() {
-                let status = StatusCode::from_u16(status_code)
-                  .unwrap_or(StatusCode::SWITCHING_PROTOCOLS);
-                http.otel_info_set_status(status.as_u16());
-                http.response_parts().status = status;
-
-                for header in response.headers {
-                  http.response_parts().headers.append(
-                    HeaderName::from_bytes(header.name.as_bytes())
-                      .map_err(std::io::Error::other)?,
-                    HeaderValue::from_bytes(header.value)
-                      .map_err(std::io::Error::other)?,
-                  );
-                }
-
-                http.complete();
-
-                let upgraded =
-                  on_upgrade.await.map_err(std::io::Error::other)?;
-                let (stream, bytes) = extract_network_stream(upgraded);
-                let (read, write) = stream.into_split();
-
-                let _ = read_cell.insert((read, bytes));
-                *wr = UpgradeStreamWriteState::Network(write);
-
-                Ok(n - prev_len)
-              } else {
-                // Upgrade rejected - send the rejection response through hyper
-                http.otel_info_set_status(status_code);
-                http.response_parts().status =
-                  StatusCode::from_u16(status_code)
-                    .unwrap_or(StatusCode::BAD_REQUEST);
-
-                for header in response.headers {
-                  http.response_parts().headers.append(
-                    HeaderName::from_bytes(header.name.as_bytes())
-                      .map_err(std::io::Error::other)?,
-                    HeaderValue::from_bytes(header.value)
-                      .map_err(std::io::Error::other)?,
-                  );
-                }
-
-                // Any data after the headers is the response body
-                let body = bytes.split_off(n);
-                if !body.is_empty() {
-                  http.set_response_body(ResponseBytesInner::Bytes(
-                    BufView::from(body.freeze()),
-                  ));
-                }
-
-                http.complete();
-
-                // Mark as rejected - no upgrade will happen
-                *wr = UpgradeStreamWriteState::Rejected;
-                this.rejected.set(true);
-                // Drop the on_upgrade future since we're not upgrading
-                drop(on_upgrade);
-
-                Ok(buf.len())
-              }
-            }
-            Err(e) => Err(std::io::Error::other(e)),
-          }
-        }
-        UpgradeStreamWriteState::Network(mut stream) => {
-          let r = Pin::new(&mut stream).write(buf).await;
-          *wr = UpgradeStreamWriteState::Network(stream);
-          r
-        }
-      }
-    }
-    .try_or_cancel(cancel_handle)
-    .await
-  }
-
-  async fn write_vectored(
-    self: Rc<Self>,
-    buf1: &[u8],
-    buf2: &[u8],
-  ) -> Result<usize, std::io::Error> {
-    let mut wr = RcRef::map(&self, |r| &r.write).borrow_mut().await;
-
-    match &mut *wr {
-      UpgradeStreamWriteState::Failed => {
-        Err(std::io::Error::other(HttpNextError::RawUpgradeFailed))
-      }
-      UpgradeStreamWriteState::Rejected => {
-        // The upgrade was rejected; silently accept writes
-        Ok(buf1.len() + buf2.len())
-      }
-      UpgradeStreamWriteState::RawParsing(..) => {
-        drop(wr);
-        self.write(if buf1.is_empty() { buf2 } else { buf1 }).await
-      }
-      UpgradeStreamWriteState::Parsing(..) => {
-        drop(wr);
-        self.write(if buf1.is_empty() { buf2 } else { buf1 }).await
-      }
-      UpgradeStreamWriteState::Network(stream) => {
-        let bufs = [std::io::IoSlice::new(buf1), std::io::IoSlice::new(buf2)];
-        stream.write_vectored(&bufs).await
-      }
-    }
-  }
-}
-
-impl Resource for UpgradeStream {
-  fn name(&self) -> Cow<'_, str> {
-    "httpRawUpgradeStream".into()
-  }
-
-  deno_core::impl_readable_byob!();
-  deno_core::impl_writable!();
-
-  fn close(self: Rc<Self>) {
-    self.cancel_handle.cancel();
-  }
-}
-
-#[op2(fast)]
-pub fn op_can_write_vectored(
-  state: &mut OpState,
-  #[smi] rid: ResourceId,
-) -> bool {
-  state.resource_table.get::<UpgradeStream>(rid).is_ok()
-}
-
-#[op2]
-#[number]
-pub async fn op_raw_write_vectored(
-  state: Rc<RefCell<OpState>>,
-  #[smi] rid: ResourceId,
-  #[buffer] buf1: JsBuffer,
-  #[buffer] buf2: JsBuffer,
-) -> Result<usize, HttpNextError> {
-  let resource: Rc<UpgradeStream> =
-    state.borrow().resource_table.get::<UpgradeStream>(rid)?;
-  let nwritten = resource.write_vectored(&buf1, &buf2).await?;
-  Ok(nwritten)
 }
 
 #[op2(fast)]

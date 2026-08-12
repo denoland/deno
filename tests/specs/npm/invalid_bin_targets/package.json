@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@denotest/invalid-bin-target": "1.0.0"
+  }
+}
