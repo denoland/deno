@@ -282,7 +282,7 @@ function validatePort(port, name = "Port", allowZero = true) {
     throw new codes.ERR_SOCKET_BAD_PORT(name, port, allowZero);
   }
 
-  return port;
+  return port | 0;
 }
 
 /**

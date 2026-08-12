@@ -25,6 +25,7 @@ use deno_core::op2;
 use deno_permissions::PermissionsContainer;
 use hickory_proto::ProtoError;
 use hickory_proto::ProtoErrorKind;
+use hickory_proto::op::ResponseCode;
 use hickory_proto::rr::Record;
 use hickory_proto::rr::record_data::RData;
 use hickory_proto::rr::record_type::RecordType;
@@ -151,6 +152,7 @@ pub enum NetError {
   Canceled(#[from] deno_core::Canceled),
   #[class("NotFound")]
   #[error("{0}")]
+  #[property("ares_code" = self.ares_code())]
   DnsNotFound(ResolveError),
   #[class("NotConnected")]
   #[error("{0}")]
@@ -160,6 +162,7 @@ pub enum NetError {
   DnsTimedOut(ResolveError),
   #[class(generic)]
   #[error("{0}")]
+  #[property("ares_code" = self.ares_code())]
   Dns(#[from] ResolveError),
   #[class("NotSupported")]
   #[error("Provided record type is not supported")]
@@ -197,6 +200,53 @@ pub enum NetError {
   #[class(generic)]
   #[error("Tunnel is not open")]
   TunnelMissing,
+}
+
+impl NetError {
+  /// Maps the underlying hickory resolver error to a c-ares style error code
+  /// string (e.g. `EBADNAME`, `ENOTFOUND`, `ENODATA`) so that `node:dns`
+  /// resolver errors surface the same `code` as Node.js. Returns an empty
+  /// string when there is no meaningful c-ares mapping (the caller then falls
+  /// back to its default handling).
+  fn ares_code(&self) -> &'static str {
+    let resolve_err = match self {
+      NetError::Dns(e) | NetError::DnsNotFound(e) => e,
+      _ => return "",
+    };
+
+    match resolve_err.kind() {
+      // A malformed hostname (empty label like `example..com`, illegal
+      // characters, or a label/name that is too long) fails while the query
+      // name is being parsed. c-ares reports all of these as `EBADNAME`.
+      ResolveErrorKind::Proto(ProtoError { kind, .. })
+        if matches!(
+          **kind,
+          ProtoErrorKind::Msg(_)
+            | ProtoErrorKind::Message(_)
+            | ProtoErrorKind::CharacterDataTooLong { .. }
+            | ProtoErrorKind::LabelBytesTooLong(_)
+            | ProtoErrorKind::DomainNameTooLong(_)
+        ) =>
+      {
+        "EBADNAME"
+      }
+      // No records found: distinguish between a non-existent domain
+      // (`NXDOMAIN` -> `ENOTFOUND`) and an existing domain that simply has no
+      // records of the requested type (`NoError` -> `ENODATA`), matching
+      // c-ares/Node.js.
+      ResolveErrorKind::Proto(ProtoError { kind, .. }) => match &**kind {
+        ProtoErrorKind::NoRecordsFound { response_code, .. } => {
+          if *response_code == ResponseCode::NXDomain {
+            "ENOTFOUND"
+          } else {
+            "ENODATA"
+          }
+        }
+        _ => "",
+      },
+      _ => "",
+    }
+  }
 }
 
 pub(crate) fn accept_err(e: std::io::Error) -> NetError {

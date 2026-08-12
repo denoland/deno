@@ -42,6 +42,51 @@ Deno.test("lookupService with callback", async () => {
   assertEquals(typeof defaultImportResult.service, "string");
 });
 
+// Regression test for https://github.com/denoland/deno/issues/36537
+// `dns.lookupService` must accept a numeric string port like Node.js instead
+// of throwing `TypeError: expected i32`.
+Deno.test("[node/dns] lookupService accepts a string port", async () => {
+  const result = await new Promise<LookupServiceResult>(
+    (resolve, reject) => {
+      // deno-lint-ignore no-explicit-any
+      lookupService("127.0.0.1", "80" as any, (err, hostname, service) => {
+        if (err) reject(err);
+        else resolve({ hostname, service });
+      });
+    },
+  );
+  assertEquals(typeof result.hostname, "string");
+  assertEquals(typeof result.service, "string");
+});
+
+// Regression test for https://github.com/denoland/deno/issues/36518
+// `Resolver.setLocalAddress` must not throw ERR_NOT_IMPLEMENTED; Node accepts
+// it and returns undefined.
+Deno.test("[node/dns] Resolver.setLocalAddress does not throw", () => {
+  const resolver = new dns.promises.Resolver();
+  resolver.setLocalAddress("0.0.0.0", "::");
+  // Callable with only the IPv4 argument too.
+  resolver.setLocalAddress("0.0.0.0");
+});
+
+// Regression test for https://github.com/denoland/deno/issues/36516
+// `dns.resolveX` with a malformed hostname (e.g. an empty label) must report
+// `EBADNAME` with `errno: undefined`, matching Node.js/c-ares, instead of
+// flattening the error to `UNKNOWN` (errno -4094). The bad name is rejected
+// while parsing the query, so this does not depend on network access.
+Deno.test("[node/dns] resolve of a malformed hostname reports EBADNAME", async () => {
+  const err = await new Promise<ErrnoException>((resolve) => {
+    dns.resolve4("example..com", (err) => {
+      resolve(err as unknown as ErrnoException);
+    });
+  });
+  assert(err, "expected an error for a malformed hostname");
+  assertEquals(err.code, "EBADNAME");
+  assertEquals(err.errno, undefined);
+  assertEquals(err.syscall, "queryA");
+  assertEquals(err.hostname, "example..com");
+});
+
 Deno.test("lookupService promise", async () => {
   // Named import
   const result = await lookupServicePromise(address, port);
