@@ -220,20 +220,6 @@ class Conn {
   }
 }
 
-class UpgradedConn extends Conn {
-  #rid = 0;
-
-  constructor(rid, remoteAddr, localAddr) {
-    super(rid, remoteAddr, localAddr);
-    ObjectDefineProperty(this, internalRidSymbol, {
-      __proto__: null,
-      enumerable: false,
-      value: rid,
-    });
-    this.#rid = rid;
-  }
-}
-
 class TcpConn extends Conn {
   #rid = 0;
 
@@ -791,7 +777,6 @@ return {
   setMulticastTTL,
   TcpConn,
   UnixConn,
-  UpgradedConn,
   validatePort,
   VsockConn,
 };

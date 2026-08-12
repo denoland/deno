@@ -1,0 +1,15 @@
+{
+  "name": "@denotest/esm-basic",
+  "versions": {
+    "1.0.0": {
+      "version": "1.0.0",
+      "dist": {
+        "tarball": "http://localhost:4260/@denotest/esm-basic/1.0.0.tgz",
+        "shasum": "dummy-value",
+        "integrity": "sha512-LvAO9tXoBq0fhrWc5PdAATOZxxrd1KTeIFhUucK8w1WNKrapcjVVjqU8s8L5fm0Ppd/tMIGXcRvbfWWmOmBgWQ=="
+      }
+    }
+  },
+  "dist-tags": { "latest": "1.0.0" },
+  "_deno.etag": "\"piqKgODpaaQbs/W8QsS11t26HKoX/2wjDFcCHb+1Uqc=\""
+}

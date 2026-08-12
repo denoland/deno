@@ -30,7 +30,10 @@ function createStorage(persistent) {
 
     defineProperty(target, key, descriptor) {
       if (typeof key === "symbol") {
-        return ReflectDefineProperty(target, key, descriptor);
+        return ReflectDefineProperty(target, key, {
+          __proto__: null,
+          ...descriptor,
+        });
       }
       target.setItem(key, descriptor.value);
       return true;
@@ -42,7 +45,7 @@ function createStorage(persistent) {
       }
       if (ReflectHas(target, key)) {
         const value = target[key];
-        if (typeof value === "function") {
+        if (typeof value === "function" && key !== "constructor") {
           return FunctionPrototypeBind(value, target);
         }
         return value;

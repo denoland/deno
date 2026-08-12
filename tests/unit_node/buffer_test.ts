@@ -528,6 +528,50 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[node/buffer] Buffer.from base64 accepts dirty input",
+  fn() {
+    const expected = Buffer.from("hello world");
+    // Unpadded, padded, and whitespace-laced input decodes without cleaning.
+    assertEquals(Buffer.from("aGVsbG8gd29ybGQ", "base64"), expected);
+    assertEquals(Buffer.from("aGVsbG8gd29ybGQ=", "base64"), expected);
+    assertEquals(Buffer.from("aGVs bG8g\nd29y\tbGQ", "base64"), expected);
+    // base64url alphabet maps onto the standard one (Node cleaning
+    // semantics).
+    assertEquals(
+      Buffer.from("-_-_", "base64"),
+      Buffer.from([0xfb, 0xff, 0xbf]),
+    );
+    // Junk characters are stripped; everything after '=' is dropped.
+    assertEquals(Buffer.from("aGVsbG8!gd29ybGQ", "base64"), expected);
+    assertEquals(
+      Buffer.from("aGVsbG8=gd29ybGQ", "base64").toString(),
+      "hello",
+    );
+    // Characters above U+00FF take the cleaning path via the catch.
+    assertEquals(Buffer.from("aGVsbG8\u{1F600}gd29ybGQ", "base64"), expected);
+    assertEquals(Buffer.from("!!!", "base64").length, 0);
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] base64 write truncates into small targets",
+  fn() {
+    const small = Buffer.alloc(2);
+    assertEquals(small.write("aGVsbG8gd29ybGQ=", "base64"), 2);
+    assertEquals(small.toString(), "he");
+
+    const buf = Buffer.alloc(16, 0x2e);
+    assertEquals(buf.write("aGVsbG8=", 3, "base64"), 5);
+    assertEquals(buf.toString("latin1"), "...hello........");
+
+    // Dirty input truncates through the cleaning fallback too.
+    const dirty = Buffer.alloc(2);
+    assertEquals(dirty.write("aGVs bG8!gd29ybGQ", "base64"), 2);
+    assertEquals(dirty.toString(), "he");
+  },
+});
+
+Deno.test({
   name: "[node/buffer] Buffer to string base64",
   fn() {
     for (const encoding of ["base64", "BASE64"]) {
@@ -726,6 +770,156 @@ Deno.test({
     assertEquals(buf.base64urlSlice(), "AQID");
     // @ts-expect-error Buffer.prototype.base64urlSlice is an undocumented API
     assertEquals(buf.base64urlSlice(0, 3), "AQID");
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] base64url round-trips",
+  fn() {
+    for (
+      const bytes of [
+        [],
+        [0],
+        [0xfb],
+        [0xfb, 0xff],
+        [0xfb, 0xff, 0x7e],
+        [0xfb, 0xff, 0x7e, 0x00],
+      ]
+    ) {
+      const buf = Buffer.from(bytes);
+      const encoded = buf.toString("base64url");
+      // URL-safe alphabet, no padding.
+      assertEquals(/^[-_A-Za-z0-9]*$/.test(encoded), true);
+      assertEquals(Buffer.from(encoded, "base64url"), buf);
+    }
+    // Larger than the op's 8 KiB stack buffer.
+    const bytes = new Uint8Array(65536);
+    for (let i = 0; i < bytes.length; i++) bytes[i] = (i * 31) & 0xff;
+    const big = Buffer.from(bytes);
+    assertEquals(Buffer.from(big.toString("base64url"), "base64url"), big);
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] base64url sub-range toString",
+  fn() {
+    const buf = Buffer.from("hello world");
+    assertEquals(buf.toString("base64url", 1, 5), "ZWxsbw");
+    assertEquals(buf.toString("base64url", 0, buf.length), "aGVsbG8gd29ybGQ");
+    assertEquals(buf.toString("base64url", 4, 4), "");
+    // Out-of-range bounds are clamped by toString.
+    assertEquals(buf.toString("base64url", -5, 100), "aGVsbG8gd29ybGQ");
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] Buffer.from base64url accepts dirty input",
+  fn() {
+    const expected = Buffer.from("hello world");
+    // Padded and unpadded.
+    assertEquals(Buffer.from("aGVsbG8gd29ybGQ", "base64url"), expected);
+    assertEquals(Buffer.from("aGVsbG8gd29ybGQ=", "base64url"), expected);
+    // Whitespace-laced.
+    assertEquals(Buffer.from("aGVs bG8g\nd29y\tbGQ", "base64url"), expected);
+    // Mixed/standard alphabet (Node cleaning semantics).
+    assertEquals(
+      Buffer.from("+/+/", "base64url"),
+      Buffer.from([0xfb, 0xff, 0xbf]),
+    );
+    // Junk characters are stripped; everything after '=' is dropped.
+    assertEquals(Buffer.from("aGVsbG8!gd29ybGQ", "base64url"), expected);
+    assertEquals(
+      Buffer.from("aGVsbG8=gd29ybGQ", "base64url").toString(),
+      "hello",
+    );
+    assertEquals(Buffer.from("!!!", "base64url").length, 0);
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] base64url write truncates into small targets",
+  fn() {
+    const small = Buffer.alloc(2);
+    assertEquals(small.write("aGVsbG8gd29ybGQ", "base64url"), 2);
+    assertEquals(small.toString(), "he");
+
+    const buf = Buffer.alloc(16, 0x2e);
+    assertEquals(buf.write("aGVsbG8", 3, "base64url"), 5);
+    assertEquals(buf.toString("latin1"), "...hello........");
+
+    const limited = Buffer.alloc(64);
+    limited.fill(0x61, 32);
+    const input = Buffer.from("B".repeat(48)).toString("base64url");
+    assertEquals(limited.write(input, 0, 32, "base64url"), 32);
+    assertEquals(limited.subarray(0, 32), Buffer.alloc(32, 0x42));
+    assertEquals(limited.subarray(32), Buffer.alloc(32, 0x61));
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] base64urlWrite validates its offset",
+  fn() {
+    const buf = Buffer.alloc(10);
+    assertThrows(
+      () => {
+        Buffer.prototype.base64urlWrite.call(buf, "YmFzZTY0", 100);
+      },
+      RangeError,
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] base64url on views with non-zero byteOffset",
+  fn() {
+    const ab = new ArrayBuffer(32);
+    const raw = new Uint8Array(ab);
+    for (let i = 0; i < raw.length; i++) raw[i] = i;
+
+    // The ops receive the view, not the whole ArrayBuffer.
+    const view = Buffer.from(ab, 8, 16);
+    const copy = Buffer.from(raw.slice(8, 24));
+    assertEquals(view.toString("base64url"), copy.toString("base64url"));
+    assertEquals(
+      view.toString("base64url", 1, 5),
+      copy.toString("base64url", 1, 5),
+    );
+
+    // Writes land inside the view and leave the rest of the buffer alone.
+    assertEquals(view.write("_____w", 2, "base64url"), 4);
+    assertEquals(Array.from(raw.subarray(10, 14)), [0xff, 0xff, 0xff, 0xff]);
+    assertEquals(raw[9], 9);
+    assertEquals(raw[14], 14);
+    assertEquals(raw[24], 24);
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] base64 on views with non-zero byteOffset",
+  fn() {
+    const ab = new ArrayBuffer(32);
+    const raw = new Uint8Array(ab);
+    for (let i = 0; i < raw.length; i++) raw[i] = i;
+
+    // The ops receive the view, not the whole ArrayBuffer.
+    const view = Buffer.from(ab, 8, 16);
+    const copy = Buffer.from(raw.slice(8, 24));
+    assertEquals(view.toString("base64"), copy.toString("base64"));
+    assertEquals(
+      view.toString("base64", 1, 5),
+      copy.toString("base64", 1, 5),
+    );
+
+    // Unpadded input takes the loose path; padded input the strict path.
+    // Both land inside the view and leave the rest of the buffer alone.
+    assertEquals(view.write("//////", 2, "base64"), 4);
+    assertEquals(Array.from(raw.subarray(10, 14)), [0xff, 0xff, 0xff, 0xff]);
+    assertEquals(view.write("AQIDBA==", 10, "base64"), 4);
+    assertEquals(Array.from(raw.subarray(18, 22)), [1, 2, 3, 4]);
+    assertEquals(raw[9], 9);
+    assertEquals(raw[14], 14);
+    assertEquals(raw[17], 17);
+    assertEquals(raw[24], 24);
   },
 });
 

@@ -180,6 +180,73 @@ Deno.test(
 
 Deno.test(
   {
+    ignore: Deno.build.os === "windows",
+    permissions: { run: true },
+  },
+  async function workerSignalListenerIsRemovedOnTerminate() {
+    const childCode = `
+      const workerCode = \`
+        Deno.addSignalListener("SIGTERM", () => {});
+        self.postMessage("registered");
+        setInterval(() => {}, 1000);
+      \`;
+      const worker = new Worker(
+        "data:application/javascript," + encodeURIComponent(workerCode),
+        { type: "module" },
+      );
+      await new Promise((resolve) => {
+        worker.onmessage = resolve;
+      });
+      worker.terminate();
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      console.log("ready");
+      setInterval(() => {}, 1000);
+    `;
+
+    const child = new Deno.Command(Deno.execPath(), {
+      args: ["eval", childCode],
+      stdout: "piped",
+      stderr: "piped",
+    }).spawn();
+
+    const stdout = child.stdout
+      .pipeThrough(new TextDecoderStream())
+      .getReader();
+    const stderrPromise = child.stderr
+      .pipeThrough(new TextDecoderStream())
+      .getReader()
+      .read();
+
+    try {
+      const { value } = await stdout.read();
+      assertEquals(value, "ready\n");
+
+      child.kill("SIGTERM");
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      const status = await Promise.race([
+        child.status,
+        new Promise<undefined>((resolve) => {
+          timeoutId = setTimeout(() => resolve(undefined), 2000);
+        }),
+      ]);
+      clearTimeout(timeoutId);
+
+      if (status === undefined) {
+        child.kill("SIGKILL");
+        await child.status;
+        const stderr = (await stderrPromise).value ?? "";
+        throw new Error(`child ignored SIGTERM; stderr: ${stderr}`);
+      }
+
+      assertEquals(status.signal, "SIGTERM");
+    } finally {
+      stdout.releaseLock();
+    }
+  },
+);
+
+Deno.test(
+  {
     ignore: Deno.build.os !== "windows",
     permissions: { run: true },
   },

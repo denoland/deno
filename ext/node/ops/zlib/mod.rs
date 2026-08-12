@@ -7,6 +7,7 @@ use std::rc::Rc;
 use brotli::enc::StandardAlloc;
 use brotli::enc::encode::BrotliEncoderDestroyInstance;
 use brotli::enc::encode::BrotliEncoderOperation;
+use brotli::enc::encode::BrotliEncoderParameter;
 use brotli::enc::encode::BrotliEncoderStateStruct;
 use brotli::ffi;
 use deno_core::op2;
@@ -36,6 +37,29 @@ fn check(condition: bool, msg: &str) -> Result<(), JsErrorBox> {
   }
 }
 
+/// The caller of every `write`/`writeSync` op below controls the offsets and
+/// lengths, so the window has to be checked against the real backing store
+/// before anything indexes with it; it would otherwise panic and take the
+/// process down. Go through these rather than open-coding the check, so a new
+/// op cannot be written without one.
+fn slice_input(input: &[u8], off: u32, len: u32) -> Result<&[u8], JsErrorBox> {
+  (off as usize)
+    .checked_add(len as usize)
+    .and_then(|end| input.get(off as usize..end))
+    .ok_or_else(|| JsErrorBox::type_error("invalid input range"))
+}
+
+fn slice_output(
+  out: &mut [u8],
+  off: u32,
+  len: u32,
+) -> Result<&mut [u8], JsErrorBox> {
+  (off as usize)
+    .checked_add(len as usize)
+    .and_then(|end| out.get_mut(off as usize..end))
+    .ok_or_else(|| JsErrorBox::type_error("invalid output range"))
+}
+
 #[derive(Default)]
 struct ZlibInner {
   dictionary: Option<Vec<u8>>,
@@ -50,6 +74,10 @@ struct ZlibInner {
   write_in_progress: bool,
   pending_close: bool,
   gzib_id_bytes_read: u32,
+  /// When set, a gzip member boundary is not silently followed by the next
+  /// member; the remaining input is left for the caller to reject as trailing
+  /// junk.
+  reject_garbage_after_end: bool,
   callback: Option<v8::Global<v8::Function>>,
   strm: StreamWrapper,
 }
@@ -75,14 +103,8 @@ impl ZlibInner {
 
     self.write_in_progress = true;
 
-    let next_in = input
-      .get(in_off as usize..in_off as usize + in_len as usize)
-      .ok_or_else(|| JsErrorBox::type_error("invalid input range"))?
-      .as_ptr() as *mut _;
-    let next_out = out
-      .get_mut(out_off as usize..out_off as usize + out_len as usize)
-      .ok_or_else(|| JsErrorBox::type_error("invalid output range"))?
-      .as_mut_ptr();
+    let next_in = slice_input(input, in_off, in_len)?.as_ptr() as *mut _;
+    let next_out = slice_output(out, out_off, out_len)?.as_mut_ptr();
 
     self.strm.avail_in = in_len;
     self.strm.next_in = next_in;
@@ -168,7 +190,8 @@ impl ZlibInner {
           }
         }
 
-        while self.strm.avail_in > 0
+        while !self.reject_garbage_after_end
+          && self.strm.avail_in > 0
           && self.mode == Mode::Gunzip
           && self.err == Z_STREAM_END
           // SAFETY: `strm` is a valid pointer to zlib strm.
@@ -341,6 +364,19 @@ impl Zlib {
 
     // If there is a pending write, defer the close until the write is done.
     zlib.close()?;
+
+    Ok(())
+  }
+
+  #[fast]
+  pub fn set_reject_garbage_after_end(
+    &self,
+    value: bool,
+  ) -> Result<(), ZlibError> {
+    let mut zlib = self.inner.borrow_mut();
+    let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
+
+    zlib.reject_garbage_after_end = value;
 
     Ok(())
   }
@@ -576,15 +612,49 @@ unsafe impl deno_core::GarbageCollected for BrotliEncoder {
   }
 }
 
-fn encoder_param(i: u32) -> brotli::enc::encode::BrotliEncoderParameter {
-  const _: () = {
-    assert!(
-      std::mem::size_of::<brotli::enc::encode::BrotliEncoderParameter>()
-        == std::mem::size_of::<u32>(),
-    );
-  };
-  // SAFETY: `i` is a valid u32 value that corresponds to a BrotliEncoderParameter.
-  unsafe { std::mem::transmute(i) }
+fn encoder_param(i: usize) -> Option<BrotliEncoderParameter> {
+  use BrotliEncoderParameter::*;
+
+  Some(match i {
+    0 => BROTLI_PARAM_MODE,
+    1 => BROTLI_PARAM_QUALITY,
+    2 => BROTLI_PARAM_LGWIN,
+    3 => BROTLI_PARAM_LGBLOCK,
+    4 => BROTLI_PARAM_DISABLE_LITERAL_CONTEXT_MODELING,
+    5 => BROTLI_PARAM_SIZE_HINT,
+    6 => BROTLI_PARAM_LARGE_WINDOW,
+    150 => BROTLI_PARAM_Q9_5,
+    151 => BROTLI_METABLOCK_CALLBACK,
+    152 => BROTLI_PARAM_STRIDE_DETECTION_QUALITY,
+    153 => BROTLI_PARAM_HIGH_ENTROPY_DETECTION_QUALITY,
+    154 => BROTLI_PARAM_LITERAL_BYTE_SCORE,
+    155 => BROTLI_PARAM_CDF_ADAPTATION_DETECTION,
+    156 => BROTLI_PARAM_PRIOR_BITMASK_DETECTION,
+    157 => BROTLI_PARAM_SPEED,
+    158 => BROTLI_PARAM_SPEED_MAX,
+    159 => BROTLI_PARAM_CM_SPEED,
+    160 => BROTLI_PARAM_CM_SPEED_MAX,
+    161 => BROTLI_PARAM_SPEED_LOW,
+    162 => BROTLI_PARAM_SPEED_LOW_MAX,
+    164 => BROTLI_PARAM_CM_SPEED_LOW,
+    165 => BROTLI_PARAM_CM_SPEED_LOW_MAX,
+    166 => BROTLI_PARAM_AVOID_DISTANCE_PREFIX_SEARCH,
+    167 => BROTLI_PARAM_CATABLE,
+    168 => BROTLI_PARAM_APPENDABLE,
+    169 => BROTLI_PARAM_MAGIC_NUMBER,
+    171 => BROTLI_PARAM_FAVOR_EFFICIENCY,
+    _ => return None,
+  })
+}
+
+fn encoder_operation(i: u8) -> Result<BrotliEncoderOperation, JsErrorBox> {
+  match i {
+    0 => Ok(BrotliEncoderOperation::BROTLI_OPERATION_PROCESS),
+    1 => Ok(BrotliEncoderOperation::BROTLI_OPERATION_FLUSH),
+    2 => Ok(BrotliEncoderOperation::BROTLI_OPERATION_FINISH),
+    3 => Ok(BrotliEncoderOperation::BROTLI_OPERATION_EMIT_METADATA),
+    _ => Err(JsErrorBox::type_error("invalid Brotli operation")),
+  }
 }
 
 #[op2]
@@ -602,6 +672,10 @@ impl BrotliEncoder {
     #[buffer] params: &[u32],
     #[scoped] callback: v8::Global<v8::Function>,
   ) -> bool {
+    if params.len() > usize::from(u8::MAX) + 1 {
+      return false;
+    }
+
     let inst = {
       let mut state = BrotliEncoderStateStruct::new(StandardAlloc::default());
 
@@ -609,7 +683,10 @@ impl BrotliEncoder {
         if value == 0xFFFFFFFF {
           continue; // Skip setting the parameter, same as C API.
         }
-        if !state.set_parameter(encoder_param(i as u32), value) {
+        let Some(parameter) = encoder_param(i) else {
+          return false;
+        };
+        if !state.set_parameter(parameter, value) {
           return false;
         }
       }
@@ -647,21 +724,24 @@ impl BrotliEncoder {
     #[smi] out_len: u32,
     #[buffer] write_result: &mut [u32],
   ) -> Result<(), JsErrorBox> {
+    let operation = encoder_operation(flush)?;
+    let input_slice = slice_input(input, in_off, in_len)?;
+    let output_slice = slice_output(out, out_off, out_len)?;
+
     let mut avail_in = in_len as usize;
     let mut avail_out = out_len as usize;
-    // SAFETY: `inst`, `next_in`, `next_out`, `avail_in`, and `avail_out` are valid pointers.
-    let callback = unsafe {
+    let callback = {
       let mut ctx = self.ctx.borrow_mut();
-      let ctx = ctx.as_mut().expect("BrotliDecoder not initialized");
+      let ctx = ctx.as_mut().expect("BrotliEncoder not initialized");
 
       ctx.inst.compress_stream(
-        std::mem::transmute::<u8, BrotliEncoderOperation>(flush),
+        operation,
         &mut avail_in,
-        input,
-        &mut (in_off as usize),
+        input_slice,
+        &mut 0,
         &mut avail_out,
-        out,
-        &mut (out_off as usize),
+        output_slice,
+        &mut 0,
         &mut None,
         &mut |_, _, _, _| (),
       );
@@ -691,25 +771,26 @@ impl BrotliEncoder {
     #[smi] out_len: u32,
     #[buffer] write_result: &mut [u32],
   ) -> Result<(), JsErrorBox> {
+    let operation = encoder_operation(flush)?;
+    let input_slice = slice_input(input, in_off, in_len)?;
+    let output_slice = slice_output(out, out_off, out_len)?;
+
     let mut ctx = self.ctx.borrow_mut();
     let ctx = ctx.as_mut().expect("BrotliEncoder not initialized");
 
     let mut avail_in = in_len as usize;
     let mut avail_out = out_len as usize;
-    // SAFETY: `inst`, `next_in`, `next_out`, `avail_in`, and `avail_out` are valid pointers.
-    unsafe {
-      ctx.inst.compress_stream(
-        std::mem::transmute::<u8, BrotliEncoderOperation>(flush),
-        &mut avail_in,
-        input,
-        &mut (in_off as usize),
-        &mut avail_out,
-        out,
-        &mut (out_off as usize),
-        &mut None,
-        &mut |_, _, _, _| (),
-      );
-    };
+    ctx.inst.compress_stream(
+      operation,
+      &mut avail_in,
+      input_slice,
+      &mut 0,
+      &mut avail_out,
+      output_slice,
+      &mut 0,
+      &mut None,
+      &mut |_, _, _, _| (),
+    );
 
     if write_result.len() >= 2 {
       write_result[0] = avail_out as u32;
@@ -831,14 +912,8 @@ impl BrotliDecoder {
       let ctx = self.ctx.borrow();
       let ctx = ctx.as_ref().expect("BrotliDecoder not initialized");
 
-      let mut next_in = input
-        .get(in_off as usize..in_off as usize + in_len as usize)
-        .ok_or_else(|| JsErrorBox::type_error("invalid input range"))?
-        .as_ptr();
-      let mut next_out = out
-        .get_mut(out_off as usize..out_off as usize + out_len as usize)
-        .ok_or_else(|| JsErrorBox::type_error("invalid output range"))?
-        .as_mut_ptr();
+      let mut next_in = slice_input(input, in_off, in_len)?.as_ptr();
+      let mut next_out = slice_output(out, out_off, out_len)?.as_mut_ptr();
 
       let mut avail_in = in_len as usize;
       let mut avail_out = out_len as usize;
@@ -919,14 +994,8 @@ impl BrotliDecoder {
     let mut ctx = self.ctx.borrow_mut();
     let ctx = ctx.as_mut().expect("BrotliDecoder not initialized");
 
-    let mut next_in = input
-      .get(in_off as usize..in_off as usize + in_len as usize)
-      .ok_or_else(|| JsErrorBox::type_error("invalid input range"))?
-      .as_ptr();
-    let mut next_out = out
-      .get_mut(out_off as usize..out_off as usize + out_len as usize)
-      .ok_or_else(|| JsErrorBox::type_error("invalid output range"))?
-      .as_mut_ptr();
+    let mut next_in = slice_input(input, in_off, in_len)?.as_ptr();
+    let mut next_out = slice_output(out, out_off, out_len)?.as_mut_ptr();
 
     let mut avail_in = in_len as usize;
     let mut avail_out = out_len as usize;
@@ -1109,12 +1178,8 @@ impl ZstdCompress {
       let mut ctx = self.ctx.borrow_mut();
       let ctx = ctx.as_mut().expect("ZstdCompress not initialized");
 
-      let input_slice = input
-        .get(in_off as usize..in_off as usize + in_len as usize)
-        .ok_or_else(|| JsErrorBox::type_error("invalid input range"))?;
-      let output_slice = out
-        .get_mut(out_off as usize..out_off as usize + out_len as usize)
-        .ok_or_else(|| JsErrorBox::type_error("invalid output range"))?;
+      let input_slice = slice_input(input, in_off, in_len)?;
+      let output_slice = slice_output(out, out_off, out_len)?;
 
       let mut in_buffer = InBuffer::around(input_slice);
       let mut out_buffer = OutBuffer::around(output_slice);
@@ -1197,12 +1262,8 @@ impl ZstdCompress {
     let mut ctx = self.ctx.borrow_mut();
     let ctx = ctx.as_mut().expect("ZstdCompress not initialized");
 
-    let input_slice = input
-      .get(in_off as usize..in_off as usize + in_len as usize)
-      .ok_or_else(|| JsErrorBox::type_error("invalid input range"))?;
-    let output_slice = out
-      .get_mut(out_off as usize..out_off as usize + out_len as usize)
-      .ok_or_else(|| JsErrorBox::type_error("invalid output range"))?;
+    let input_slice = slice_input(input, in_off, in_len)?;
+    let output_slice = slice_output(out, out_off, out_len)?;
 
     let mut in_buffer = InBuffer::around(input_slice);
     let mut out_buffer = OutBuffer::around(output_slice);
@@ -1365,12 +1426,8 @@ impl ZstdDecompress {
       let mut ctx = self.ctx.borrow_mut();
       let ctx = ctx.as_mut().expect("ZstdDecompress not initialized");
 
-      let input_slice = input
-        .get(in_off as usize..in_off as usize + in_len as usize)
-        .ok_or_else(|| JsErrorBox::type_error("invalid input range"))?;
-      let output_slice = out
-        .get_mut(out_off as usize..out_off as usize + out_len as usize)
-        .ok_or_else(|| JsErrorBox::type_error("invalid output range"))?;
+      let input_slice = slice_input(input, in_off, in_len)?;
+      let output_slice = slice_output(out, out_off, out_len)?;
 
       let mut in_buffer = InBuffer::around(input_slice);
       let mut out_buffer = OutBuffer::around(output_slice);
@@ -1417,12 +1474,8 @@ impl ZstdDecompress {
     let mut ctx = self.ctx.borrow_mut();
     let ctx = ctx.as_mut().expect("ZstdDecompress not initialized");
 
-    let input_slice = input
-      .get(in_off as usize..in_off as usize + in_len as usize)
-      .ok_or_else(|| JsErrorBox::type_error("invalid input range"))?;
-    let output_slice = out
-      .get_mut(out_off as usize..out_off as usize + out_len as usize)
-      .ok_or_else(|| JsErrorBox::type_error("invalid output range"))?;
+    let input_slice = slice_input(input, in_off, in_len)?;
+    let output_slice = slice_output(out, out_off, out_len)?;
 
     let mut in_buffer = InBuffer::around(input_slice);
     let mut out_buffer = OutBuffer::around(output_slice);
@@ -1471,6 +1524,39 @@ pub fn op_zlib_crc32(#[buffer] data: &[u8], value: u32) -> u32 {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn brotli_encoder_operation_values() {
+    assert!(matches!(
+      encoder_operation(0),
+      Ok(BrotliEncoderOperation::BROTLI_OPERATION_PROCESS)
+    ));
+    assert!(matches!(
+      encoder_operation(1),
+      Ok(BrotliEncoderOperation::BROTLI_OPERATION_FLUSH)
+    ));
+    assert!(matches!(
+      encoder_operation(2),
+      Ok(BrotliEncoderOperation::BROTLI_OPERATION_FINISH)
+    ));
+    assert!(matches!(
+      encoder_operation(3),
+      Ok(BrotliEncoderOperation::BROTLI_OPERATION_EMIT_METADATA)
+    ));
+    for operation in 4..=u8::MAX {
+      assert!(encoder_operation(operation).is_err());
+    }
+  }
+
+  #[test]
+  fn brotli_encoder_parameter_values() {
+    for parameter in [0, 6, 150, 162, 164, 171] {
+      assert!(encoder_param(parameter).is_some());
+    }
+    for parameter in [7, 149, 163, 170, 172, 256] {
+      assert!(encoder_param(parameter).is_none());
+    }
+  }
 
   #[test]
   fn zlib_start_write() {

@@ -12,6 +12,68 @@ import { Buffer } from "node:buffer";
 import * as path from "@std/path";
 import { open as openPromise } from "node:fs/promises";
 
+async function runReadvFixture<T>(
+  mode: "file" | "pipe-sync" | "pipe-async",
+): Promise<T> {
+  const fixture = path.fromFileUrl(
+    new URL("./testdata/readv_short_read.ts", import.meta.url),
+  );
+  const isPipe = mode !== "file";
+  const child = new Deno.Command(Deno.execPath(), {
+    args: ["run", "-A", fixture, mode],
+    stdin: isPipe ? "piped" : "null",
+    stdout: "piped",
+    stderr: "piped",
+    signal: AbortSignal.timeout(10_000),
+  }).spawn();
+
+  let output: Deno.CommandOutput;
+  try {
+    if (mode === "pipe-async") {
+      const reader = child.stderr.getReader();
+      let ready = "";
+      try {
+        const decoder = new TextDecoder();
+        while (!ready.includes("\n")) {
+          const chunk = await reader.read();
+          assertFalse(chunk.done);
+          ready += decoder.decode(chunk.value, { stream: true });
+        }
+      } finally {
+        reader.releaseLock();
+      }
+      assertEquals(ready, "ready\n");
+    }
+
+    if (isPipe) {
+      const writer = child.stdin.getWriter();
+      await writer.write(new TextEncoder().encode("abc"));
+      writer.releaseLock();
+    }
+
+    output = await child.output();
+  } catch (error) {
+    try {
+      child.kill();
+    } catch {
+      // The child may have already exited due to the timeout signal.
+    }
+    await child.status;
+    throw error;
+  } finally {
+    if (isPipe) {
+      try {
+        await child.stdin.close();
+      } catch {
+        // The child's pipe may already be closed on an error path.
+      }
+    }
+  }
+  const stderr = new TextDecoder().decode(output.stderr);
+  assert(output.success, stderr);
+  return JSON.parse(new TextDecoder().decode(output.stdout));
+}
+
 async function readTest<T extends NodeJS.ArrayBufferView>(
   testData: string,
   buffer: T,
@@ -64,6 +126,81 @@ Deno.test({
       },
     );
   },
+});
+
+Deno.test("readv returns short reads and preserves positions", async () => {
+  const result = await runReadvFixture("file");
+  assertEquals(result, {
+    sync: {
+      bytesRead: 3,
+      eofBytesRead: 0,
+      dataViewBacking: [255, 97, 98, 254],
+      uint16Backing: [253, 252, 99, 0, 0, 0, 251, 250],
+    },
+    async: {
+      bytesRead: 3,
+      eofBytesRead: 0,
+      buffersMatch: true,
+      callbackWasAsync: true,
+      dataViewBacking: [255, 97, 98, 254],
+      uint16Backing: [253, 252, 99, 0, 0, 0, 251, 250],
+    },
+    positionedSync: {
+      bytesRead: 2,
+      positioned: [100, 101],
+      cursor: [97],
+    },
+    positionedAsync: {
+      bytesRead: 2,
+      buffersMatch: true,
+      callbackWasAsync: true,
+      positioned: [100, 101],
+      cursor: [97],
+    },
+    empty: {
+      sync: 0,
+      async: {
+        bytesRead: 0,
+        buffersMatch: true,
+        callbackWasAsync: true,
+      },
+    },
+    invalidZeroLength: {
+      syncCode: "EBADF",
+      async: {
+        code: "EBADF",
+        bytesRead: 0,
+        buffersMatch: true,
+        callbackWasAsync: true,
+      },
+    },
+    nonNumberPosition: [98],
+    overlapping: {
+      bytesRead: 4,
+      buffer: [99, 100],
+    },
+  });
+});
+
+Deno.test("readv returns a short pipe read without waiting for EOF", async (t) => {
+  await t.step("sync", async () => {
+    const result = await runReadvFixture("pipe-sync");
+    assertEquals(result, {
+      bytesRead: 3,
+      buffers: [[97, 98], [99, 0, 0, 0]],
+    });
+  });
+
+  await t.step("async", async () => {
+    const result = await runReadvFixture("pipe-async");
+    assertEquals(result, {
+      bytesRead: 3,
+      buffersMatch: true,
+      callbackWasAsync: true,
+      timerFired: true,
+      buffers: [[97, 98], [99, 0, 0, 0]],
+    });
+  });
 });
 
 Deno.test({

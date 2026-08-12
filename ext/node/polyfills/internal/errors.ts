@@ -2131,11 +2131,28 @@ class ERR_QUIC_TLS13_REQUIRED extends NodeError {
   }
 }
 class ERR_REQUIRE_ASYNC_MODULE extends NodeError {
-  constructor(filename: string, parentFilename: string) {
-    super(
-      "ERR_REQUIRE_ASYNC_MODULE",
-      `require() cannot be used on an ESM graph with top-level await. Use import() instead. To see where the top-level await comes from, use --stack-trace-limit=100 and inspect the dependency graph. Requiring ${filename}. From ${parentFilename}`,
-    );
+  declare requireStack: string[];
+
+  constructor(
+    filename: string,
+    parentFilename: string,
+    requireStack: string[] = [],
+  ) {
+    let message =
+      `require() cannot be used on an ESM graph with top-level await. Use import() instead. To see where the top-level await comes from, use --stack-trace-limit=100 and inspect the dependency graph. Requiring ${filename}. From ${parentFilename}`;
+    if (requireStack.length > 0) {
+      message = message + "\nRequire stack:\n- " +
+        ArrayPrototypeJoin(requireStack, "\n- ");
+    }
+    super("ERR_REQUIRE_ASYNC_MODULE", message);
+    // Not enumerable, so it does not show up in the inspected error.
+    ObjectDefineProperty(this, "requireStack", {
+      __proto__: null,
+      enumerable: false,
+      configurable: true,
+      writable: true,
+      value: requireStack,
+    });
     this.name = `Error [${this.code}]`;
     this.toString = nodeErrorToStringWithEmbeddedCode;
   }
@@ -2721,6 +2738,14 @@ class ERR_ZLIB_INITIALIZATION_FAILED extends NodeError {
     super("ERR_ZLIB_INITIALIZATION_FAILED", message);
   }
 }
+class ERR_TRAILING_JUNK_AFTER_STREAM_END extends NodeTypeError {
+  constructor() {
+    super(
+      "ERR_TRAILING_JUNK_AFTER_STREAM_END",
+      "Trailing garbage found after the compressed stream",
+    );
+  }
+}
 class ERR_FALSY_VALUE_REJECTION extends NodeError {
   reason: string;
   constructor(reason: string) {
@@ -3260,6 +3285,7 @@ codes.ERR_STREAM_WRITE_AFTER_END = ERR_STREAM_WRITE_AFTER_END;
 codes.ERR_BROTLI_INVALID_PARAM = ERR_BROTLI_INVALID_PARAM;
 codes.ERR_ZSTD_INVALID_PARAM = ERR_ZSTD_INVALID_PARAM;
 codes.ERR_ZLIB_INITIALIZATION_FAILED = ERR_ZLIB_INITIALIZATION_FAILED;
+codes.ERR_TRAILING_JUNK_AFTER_STREAM_END = ERR_TRAILING_JUNK_AFTER_STREAM_END;
 codes.ERR_HTTP2_CONNECT_AUTHORITY = ERR_HTTP2_CONNECT_AUTHORITY;
 codes.ERR_HTTP2_CONNECT_PATH = ERR_HTTP2_CONNECT_PATH;
 codes.ERR_HTTP2_CONNECT_SCHEME = ERR_HTTP2_CONNECT_SCHEME;
@@ -3622,6 +3648,7 @@ return {
   ERR_WORKER_UNSERIALIZABLE_ERROR,
   ERR_WORKER_UNSUPPORTED_EXTENSION,
   ERR_WORKER_UNSUPPORTED_OPERATION,
+  ERR_TRAILING_JUNK_AFTER_STREAM_END,
   ERR_ZLIB_INITIALIZATION_FAILED,
   ERR_CRYPTO_UNKNOWN_DH_GROUP,
   ERR_CRYPTO_UNKNOWN_CIPHER,
@@ -3935,6 +3962,7 @@ return {
     ERR_WORKER_UNSERIALIZABLE_ERROR,
     ERR_WORKER_UNSUPPORTED_EXTENSION,
     ERR_WORKER_UNSUPPORTED_OPERATION,
+    ERR_TRAILING_JUNK_AFTER_STREAM_END,
     ERR_ZLIB_INITIALIZATION_FAILED,
     E,
     NodeError,
