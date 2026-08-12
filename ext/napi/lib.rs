@@ -391,9 +391,16 @@ impl RefTracker {
     id
   }
 
-  fn remove(&mut self, id: NapiFinalizerId) {
+  /// Removes the entry with `id`, returning `true` if it was still pending.
+  /// The return value lets the GC weak callback and env teardown coordinate
+  /// the "run once" contract: whichever path removes the entry first runs the
+  /// finalizer, and the other observes `false` and skips it.
+  fn remove(&mut self, id: NapiFinalizerId) -> bool {
     if let Some(pos) = self.pending.iter().rposition(|f| f.id == id) {
       self.pending.remove(pos);
+      true
+    } else {
+      false
     }
   }
 }
@@ -681,8 +688,10 @@ impl Env {
     self.ref_tracker.borrow_mut().add(env, cb, data, hint)
   }
 
-  pub fn remove_ref_finalizer(&self, id: NapiFinalizerId) {
-    self.ref_tracker.borrow_mut().remove(id);
+  /// Deregisters a shutdown finalizer entry, returning `true` if it was still
+  /// pending (see [`RefTracker::remove`]).
+  pub fn remove_ref_finalizer(&self, id: NapiFinalizerId) -> bool {
+    self.ref_tracker.borrow_mut().remove(id)
   }
 }
 
