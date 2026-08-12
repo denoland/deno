@@ -67,6 +67,18 @@ unsafe fn ffi_call_rtype_struct(
   }
 }
 
+fn validate_struct_out_buffer(
+  cif: &libffi::middle::Cif,
+  out_buffer: Option<OutBuffer>,
+) -> Result<OutBuffer, IRError> {
+  // SAFETY: `Cif::new` prepares a non-null result type that remains owned by
+  // `cif`. libffi populates its ABI size while preparing the CIF.
+  let expected = unsafe { (*(*cif.as_raw_ptr()).rtype).size };
+  out_buffer
+    .ok_or(IRError::MissingStructReturnBuffer)?
+    .validate_size(expected)
+}
+
 // A one-off synchronous FFI call.
 pub(crate) fn ffi_call_sync<'scope>(
   scope: &mut v8::PinScope<'scope, '_>,
@@ -208,7 +220,7 @@ where
           &symbol.cif,
           &symbol.ptr,
           call_args,
-          validate_struct_out_buffer(&symbol.cif, out_buffer)?,
+          validate_struct_out_buffer(&symbol.cif, out_buffer)?.as_ptr(),
         ),
       },
     })
@@ -232,7 +244,7 @@ fn ffi_call(
   parameter_types: &[NativeType],
   result_type: NativeType,
   out_buffer: Option<OutBuffer>,
-) -> Result<FfiValue, IRError> {
+) -> FfiValue {
   let call_args: Vec<Arg> = call_args
     .iter()
     .enumerate()
@@ -244,7 +256,7 @@ fn ffi_call(
 
   // SAFETY: types in the `Cif` match the actual calling convention and
   // types of symbol.
-  Ok(unsafe {
+  unsafe {
     match result_type {
       NativeType::Void => {
         cif.call::<()>(fun_ptr, &call_args);
@@ -295,12 +307,14 @@ fn ffi_call(
           cif,
           &fun_ptr,
           call_args,
-          validate_struct_out_buffer(cif, out_buffer)?,
+          out_buffer
+            .expect("struct return buffer was validated")
+            .as_ptr(),
         );
         FfiValue::Null
       }
     }
-  })
+  }
 }
 
 #[op2(stack_trace)]
@@ -328,11 +342,13 @@ where
     &def.parameters,
     &mut backing_store_holder,
   )?;
-  let out_buffer_ptr = out_buffer_as_ptr_nonblocking(
-    scope,
-    out_buffer,
-    &mut backing_store_holder,
-  )?;
+  let out_buffer =
+    out_buffer_as_ptr_nonblocking(out_buffer, &mut backing_store_holder)?;
+  let out_buffer_ptr = if matches!(&def.result, NativeType::Struct(_)) {
+    Some(validate_struct_out_buffer(&symbol.cif, out_buffer)?)
+  } else {
+    None
+  };
 
   let join_handle = spawn_blocking(move || {
     let PtrSymbol { cif, ptr } = symbol.clone();
@@ -354,7 +370,7 @@ where
       .await
       .map_err(CallError::NonblockingCallFailure)?;
     // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
-    Ok(result?)
+    Ok(result)
   })
 }
 
@@ -386,11 +402,13 @@ pub fn op_ffi_call_nonblocking(
     &symbol.parameter_types,
     &mut backing_store_holder,
   )?;
-  let out_buffer_ptr = out_buffer_as_ptr_nonblocking(
-    scope,
-    out_buffer,
-    &mut backing_store_holder,
-  )?;
+  let out_buffer =
+    out_buffer_as_ptr_nonblocking(out_buffer, &mut backing_store_holder)?;
+  let out_buffer_ptr = if matches!(&symbol.result_type, NativeType::Struct(_)) {
+    Some(validate_struct_out_buffer(&symbol.cif, out_buffer)?)
+  } else {
+    None
+  };
 
   let join_handle = spawn_blocking(move || {
     let Symbol {
@@ -418,7 +436,7 @@ pub fn op_ffi_call_nonblocking(
       .await
       .map_err(CallError::NonblockingCallFailure)?;
     // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
-    Ok(result?)
+    Ok(result)
   })
 }
 
@@ -440,7 +458,12 @@ pub fn op_ffi_call_ptr(
   let symbol = PtrSymbol::new(pointer, &def)?;
   let call_args = ffi_parse_args(scope, parameters, &def.parameters)?;
 
-  let out_buffer_ptr = out_buffer_as_ptr(scope, out_buffer);
+  let out_buffer = out_buffer_as_ptr(out_buffer);
+  let out_buffer_ptr = if matches!(&def.result, NativeType::Struct(_)) {
+    Some(validate_struct_out_buffer(&symbol.cif, out_buffer)?)
+  } else {
+    None
+  };
 
   let result = ffi_call(
     call_args,
@@ -449,7 +472,7 @@ pub fn op_ffi_call_ptr(
     &def.parameters,
     def.result.clone(),
     out_buffer_ptr,
-  )?;
+  );
   // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
   Ok(result)
 }
@@ -541,13 +564,22 @@ mod tests {
           }
         }
 
-        function assertInvalidBufferError(error) {
+        function assertInvalidBufferError(error, actual) {
           if (!(error instanceof TypeError)) {
             throw new Error(`expected TypeError, got ${error?.constructor?.name}`);
           }
           const expected =
-            "Invalid FFI struct return buffer: expected at least 32 bytes, got 31";
+            `Invalid FFI struct return buffer: expected at least 32 bytes, got ${actual}`;
           if (error.message !== expected) {
+            throw new Error(`unexpected error: ${error.message}`);
+          }
+        }
+
+        function assertMissingBufferError(error) {
+          if (!(error instanceof TypeError)) {
+            throw new Error(`expected TypeError, got ${error?.constructor?.name}`);
+          }
+          if (error.message !== "Missing FFI struct return buffer") {
             throw new Error(`unexpected error: ${error.message}`);
           }
         }
@@ -584,7 +616,7 @@ mod tests {
           op_ffi_call_ptr(pointer, definition, [9, 10, 11, 12], undersizedOut);
           throw new Error("synchronous call accepted an undersized buffer");
         } catch (error) {
-          assertInvalidBufferError(error);
+          assertInvalidBufferError(error, 31);
         }
         try {
           await op_ffi_call_ptr_nonblocking(
@@ -595,7 +627,52 @@ mod tests {
           );
           throw new Error("nonblocking call accepted an undersized buffer");
         } catch (error) {
-          assertInvalidBufferError(error);
+          assertInvalidBufferError(error, 31);
+        }
+
+        try {
+          op_ffi_call_ptr(pointer, definition, [9, 10, 11, 12]);
+          throw new Error("synchronous call accepted a missing buffer");
+        } catch (error) {
+          assertMissingBufferError(error);
+        }
+
+        try {
+          await op_ffi_call_ptr_nonblocking(
+            pointer,
+            { ...definition, nonblocking: true },
+            [9, 10, 11, 12],
+          );
+          throw new Error("nonblocking call accepted a missing buffer");
+        } catch (error) {
+          assertMissingBufferError(error);
+        }
+
+        const zeroLengthOut = new Uint8Array(new ArrayBuffer(32), 0, 0);
+        try {
+          op_ffi_call_ptr(
+            pointer,
+            definition,
+            [9, 10, 11, 12],
+            zeroLengthOut,
+          );
+          throw new Error("synchronous call accepted a zero-length buffer");
+        } catch (error) {
+          assertInvalidBufferError(error, 0);
+        }
+
+        const detachedOut = new Uint8Array(32);
+        detachedOut.buffer.transfer();
+        try {
+          await op_ffi_call_ptr_nonblocking(
+            pointer,
+            { ...definition, nonblocking: true },
+            [9, 10, 11, 12],
+            detachedOut,
+          );
+          throw new Error("nonblocking call accepted a detached buffer");
+        } catch (error) {
+          assertInvalidBufferError(error, 0);
         }
       })()
     "#

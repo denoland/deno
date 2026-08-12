@@ -2,6 +2,7 @@
 
 use std::ffi::c_void;
 use std::ptr;
+use std::ptr::NonNull;
 
 use deno_core::v8;
 use libffi::middle::Arg;
@@ -84,13 +85,15 @@ pub enum IRError {
     "Invalid FFI struct return buffer: expected at least {expected} bytes, got {actual}"
   )]
   InvalidStructReturnBuffer { expected: usize, actual: usize },
+  #[error("Missing FFI struct return buffer")]
+  MissingStructReturnBuffer,
   #[error("Invalid FFI function type, expected null, or External")]
   InvalidFunctionType,
 }
 
 #[derive(Clone, Copy)]
 pub struct OutBuffer {
-  ptr: *mut u8,
+  ptr: Option<NonNull<u8>>,
   byte_length: usize,
 }
 
@@ -100,76 +103,57 @@ unsafe impl Send for OutBuffer {}
 // SAFETY: See above
 unsafe impl Sync for OutBuffer {}
 
+impl OutBuffer {
+  pub fn validate_size(self, expected: usize) -> Result<Self, IRError> {
+    if self.byte_length < expected {
+      return Err(IRError::InvalidStructReturnBuffer {
+        expected,
+        actual: self.byte_length,
+      });
+    }
+    self.ptr.ok_or(IRError::InvalidStructReturnBuffer {
+      expected,
+      actual: self.byte_length,
+    })?;
+    Ok(self)
+  }
+
+  pub fn as_ptr(self) -> *mut u8 {
+    self
+      .ptr
+      .expect("struct return buffer was validated")
+      .as_ptr()
+  }
+}
+
 pub fn out_buffer_as_ptr(
-  scope: &mut v8::PinScope<'_, '_>,
   out_buffer: Option<v8::Local<v8::TypedArray>>,
 ) -> Option<OutBuffer> {
-  match out_buffer {
-    Some(out_buffer) => {
-      let byte_offset = out_buffer.byte_offset();
-      let byte_length = out_buffer.byte_length();
-      let ab = out_buffer.buffer(scope).unwrap();
-      ab.data().map(|non_null| {
-        // SAFETY: `byte_offset` describes this TypedArray view, so it is
-        // within (or one byte past) the backing store allocation.
-        let ptr = unsafe { non_null.as_ptr().add(byte_offset) };
-        OutBuffer {
-          ptr: ptr.cast(),
-          byte_length,
-        }
-      })
-    }
-    None => None,
-  }
+  out_buffer.map(|out_buffer| OutBuffer {
+    ptr: NonNull::new(out_buffer.data().cast()),
+    byte_length: out_buffer.byte_length(),
+  })
 }
 
 /// Like `out_buffer_as_ptr` but also returns the backing store reference
 /// to prevent GC from freeing the buffer during nonblocking FFI calls.
 pub fn out_buffer_as_ptr_nonblocking(
-  scope: &mut v8::PinScope<'_, '_>,
   out_buffer: Option<v8::Local<v8::TypedArray>>,
   holder: &mut BackingStoreHolder,
 ) -> Result<Option<OutBuffer>, IRError> {
   match out_buffer {
     Some(out_buffer) => {
-      let byte_offset = out_buffer.byte_offset();
       let byte_length = out_buffer.byte_length();
-      let ab = out_buffer.buffer(scope).unwrap();
-      holder.push(ab.get_backing_store())?;
-      Ok(ab.data().map(|non_null| {
-        // SAFETY: `byte_offset` describes this TypedArray view, so it is
-        // within (or one byte past) the backing store allocation.
-        let ptr = unsafe { non_null.as_ptr().add(byte_offset) };
-        OutBuffer {
-          ptr: ptr.cast(),
-          byte_length,
-        }
+      if let Some(backing_store) = out_buffer.get_backing_store() {
+        holder.push(backing_store)?;
+      }
+      Ok(Some(OutBuffer {
+        ptr: NonNull::new(out_buffer.data().cast()),
+        byte_length,
       }))
     }
     None => Ok(None),
   }
-}
-
-pub fn validate_struct_out_buffer(
-  cif: &libffi::middle::Cif,
-  out_buffer: Option<OutBuffer>,
-) -> Result<*mut u8, IRError> {
-  // SAFETY: `Cif::new` prepares a non-null result type that remains owned by
-  // `cif`. libffi populates its ABI size while preparing the CIF.
-  let expected = unsafe { (*(*cif.as_raw_ptr()).rtype).size };
-  let Some(out_buffer) = out_buffer else {
-    return Err(IRError::InvalidStructReturnBuffer {
-      expected,
-      actual: 0,
-    });
-  };
-  if out_buffer.byte_length < expected {
-    return Err(IRError::InvalidStructReturnBuffer {
-      expected,
-      actual: out_buffer.byte_length,
-    });
-  }
-  Ok(out_buffer.ptr)
 }
 
 /// Intermediate format for easy translation from NativeType + V8 value

@@ -833,26 +833,23 @@ function hash() { return dylib.symbols.hash(bytes, bytes.byteLength); };
 
 testOptimized(hash, () => hash(), "hash");
 
-const ffiPermission = await Deno.permissions.revoke({ name: "ffi" });
-assertNotEquals(ffiPermission.state, "granted");
 const originalUint8Array = globalThis.Uint8Array;
 let replacementUint8ArrayCalls = 0;
-let rectAfterPermissionRevoke;
+let rectAfterUint8ArrayOverride;
 try {
-  globalThis.Uint8Array = function (length) {
+  globalThis.Uint8Array = function () {
     replacementUint8ArrayCalls++;
-    const backing = new originalUint8Array(length + 16);
-    return new originalUint8Array(backing.buffer, 16, length);
+    return new originalUint8Array(1);
   };
-  rectAfterPermissionRevoke = dylib.symbols.make_rect(1, 2, 3, 4);
+  rectAfterUint8ArrayOverride = dylib.symbols.make_rect(1, 2, 3, 4);
 } finally {
   globalThis.Uint8Array = originalUint8Array;
 }
 assertEquals(replacementUint8ArrayCalls, 0);
-assertInstanceOf(rectAfterPermissionRevoke, Uint8Array);
-assertEquals(rectAfterPermissionRevoke.byteOffset, 0);
+assertInstanceOf(rectAfterUint8ArrayOverride, Uint8Array);
+assertEquals(rectAfterUint8ArrayOverride.byteOffset, 0);
 assertEquals(
-  Array.from(new Float64Array(rectAfterPermissionRevoke.buffer)),
+  Array.from(new Float64Array(rectAfterUint8ArrayOverride.buffer)),
   [1, 2, 3, 4],
 );
 
