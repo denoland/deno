@@ -870,14 +870,18 @@ function normalizeEventHandlerOptions(
   }
 }
 
-function removeListener(targetListeners, type, listener) {
-  const index = ArrayPrototypeIndexOf(targetListeners[type], listener);
+function removeListener(
+  targetListeners,
+  type,
+  listener,
+  index = ArrayPrototypeIndexOf(targetListeners[type], listener),
+) {
   if (index === -1) {
     return;
   }
 
   ArrayPrototypeSplice(targetListeners[type], index, 1);
-  if (listener.signal && listener.abortListener) {
+  if (listener.abortListener) {
     listener.signal.removeEventListener("abort", listener.abortListener);
     listener.signal = undefined;
     listener.abortListener = undefined;
@@ -1085,7 +1089,7 @@ class EventTarget {
             listener.options.capture === options.capture)) &&
         listener.callback === callback
       ) {
-        removeListener(listeners, type, listener);
+        removeListener(listeners, type, listener, i);
         break;
       }
     }
