@@ -111,7 +111,7 @@ impl LscBackend {
     );
     let mut headers = HeaderMap::new();
     for hdr in &request_response.request_headers {
-      headers.insert(
+      headers.append(
         HeaderName::from_bytes(
           &[REQHDR_PREFIX.as_bytes(), &hdr.0[..]].concat(),
         )?,
@@ -125,7 +125,7 @@ impl LscBackend {
       if hdr.0[..] == b"content-encoding"[..] {
         return Err(CacheError::ContentEncodingNotAllowed);
       }
-      headers.insert(
+      headers.append(
         HeaderName::from_bytes(&hdr.0[..])?,
         HeaderValue::from_bytes(&hdr.1[..])?,
       );
@@ -196,9 +196,9 @@ impl LscBackend {
     // From https://w3c.github.io/ServiceWorker/#request-matches-cached-item-algorithm
     // If there's Vary header in the response, ensure all the
     // headers of the cached request match the query request.
-    if let Some(vary_header) = res.headers().get(&VARY)
+    if let Some(vary_header) = get_header_from_map(VARY.as_str(), res.headers())
       && !vary_header_matches(
-        vary_header.as_bytes(),
+        &vary_header,
         &request.request_headers,
         res.headers(),
       )
@@ -319,7 +319,7 @@ impl deno_core::Resource for LscBackend {
 }
 
 fn vary_header_matches(
-  vary_header: &[u8],
+  vary_header: &ByteString,
   query_request_headers: &[(ByteString, ByteString)],
   cached_headers: &HeaderMap,
 ) -> bool {
@@ -329,6 +329,9 @@ fn vary_header_matches(
   };
   let headers = get_headers_from_vary_header(vary_header);
   for header in headers {
+    if header == "*" {
+      return false;
+    }
     // Ignoring `accept-encoding` is safe because we refuse to cache responses
     // with `content-encoding`
     if header == "accept-encoding" {
@@ -336,14 +339,22 @@ fn vary_header_matches(
     }
     let lookup_key = format!("{}{}", REQHDR_PREFIX, header);
     let query_header = get_header(&header, query_request_headers);
-    let cached_header = cached_headers.get(&lookup_key);
-    if query_header.as_ref().map(|x| &x[..])
-      != cached_header.as_ref().map(|x| x.as_bytes())
-    {
+    let cached_header = get_header_from_map(&lookup_key, cached_headers);
+    if query_header != cached_header {
       return false;
     }
   }
   true
+}
+
+fn get_header_from_map(name: &str, headers: &HeaderMap) -> Option<ByteString> {
+  let mut values = headers.get_all(name).iter();
+  let mut combined = values.next()?.as_bytes().to_vec();
+  for value in values {
+    combined.extend_from_slice(b", ");
+    combined.extend_from_slice(value.as_bytes());
+  }
+  Some(combined.into())
 }
 
 fn build_cache_object_key(cache_name: &[u8], request_url: &[u8]) -> String {
@@ -352,4 +363,54 @@ fn build_cache_object_key(cache_name: &[u8], request_url: &[u8]) -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(cache_name),
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(request_url),
   )
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn lsc_vary_header_matches_combined_values() {
+    let mut cached_headers = HeaderMap::new();
+    cached_headers.append(
+      "x-lsc-meta-reqhdr-x-example",
+      HeaderValue::from_static("first"),
+    );
+    cached_headers.append(
+      "x-lsc-meta-reqhdr-x-example",
+      HeaderValue::from_static("cached"),
+    );
+
+    let query_headers = vec![
+      ("X-Example".into(), "first".into()),
+      ("x-example".into(), "cached".into()),
+    ];
+    assert!(vary_header_matches(
+      &"x-example".into(),
+      &query_headers,
+      &cached_headers,
+    ));
+
+    let query_headers = vec![
+      ("x-example".into(), "first".into()),
+      ("x-example".into(), "query".into()),
+    ];
+    assert!(!vary_header_matches(
+      &"x-example".into(),
+      &query_headers,
+      &cached_headers,
+    ));
+  }
+
+  #[test]
+  fn lsc_combines_repeated_vary_fields() {
+    let mut headers = HeaderMap::new();
+    headers.append(VARY, HeaderValue::from_static("accept-language"));
+    headers.append(VARY, HeaderValue::from_static("x-example"));
+
+    assert_eq!(
+      get_header_from_map(VARY.as_str(), &headers),
+      Some("accept-language, x-example".into()),
+    );
+  }
 }
