@@ -43,11 +43,7 @@ const asyncResourceRegistry = new SafeFinalizationRegistry(
   (asyncId: number) => emitDestroyHook(asyncId),
 );
 
-const kExitedStore = Symbol("kExitedStore");
-
-interface AsyncLocalStorageStore {
-  value: unknown;
-}
+const kUndefinedStore = Symbol("kUndefinedStore");
 
 class AsyncResource {
   type: string;
@@ -160,10 +156,9 @@ class AsyncLocalStorage {
   // deno-lint-ignore no-explicit-any
   run(store: any, callback: any, ...args: any[]): any {
     this.enabled = true;
-    const previous = this.#variable.enter({
-      __proto__: null,
-      value: store,
-    });
+    const previous = this.#variable.enter(
+      store === undefined ? kUndefinedStore : store,
+    );
     try {
       return ReflectApply(callback, null, args);
     } finally {
@@ -173,7 +168,7 @@ class AsyncLocalStorage {
 
   // deno-lint-ignore no-explicit-any
   exit(callback: (...args: unknown[]) => any, ...args: any[]): any {
-    const previous = this.#variable.enter(kExitedStore);
+    const previous = this.#variable.enter(kUndefinedStore);
     try {
       return ReflectApply(callback, null, args);
     } finally {
@@ -183,25 +178,19 @@ class AsyncLocalStorage {
 
   // deno-lint-ignore no-explicit-any
   getStore(): any {
-    const store = this.#variable.get() as
-      | AsyncLocalStorageStore
-      | typeof kExitedStore
-      | undefined;
-    if (store === kExitedStore) {
+    const store = this.#variable.get();
+    if (store === kUndefinedStore) {
       return undefined;
     }
     if (!this.enabled) {
       return this.#defaultValue;
     }
-    return store === undefined ? this.#defaultValue : store.value;
+    return store === undefined ? this.#defaultValue : store;
   }
 
   enterWith(store: unknown) {
     this.enabled = true;
-    this.#variable.enter({
-      __proto__: null,
-      value: store,
-    });
+    this.#variable.enter(store === undefined ? kUndefinedStore : store);
   }
 
   disable() {

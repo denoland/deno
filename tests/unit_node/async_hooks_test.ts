@@ -2,7 +2,7 @@
 import { AsyncLocalStorage, AsyncResource, createHook } from "node:async_hooks";
 import process from "node:process";
 import { clearImmediate, setImmediate } from "node:timers";
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
 
 Deno.test(async function foo() {
   const asyncLocalStorage = new AsyncLocalStorage();
@@ -129,6 +129,43 @@ Deno.test(async function asyncLocalStorageDistinguishesUndefinedFromDefault() {
     assertEquals(als.getStore(), undefined);
   });
   assertEquals(als.getStore(), "default");
+
+  als.enterWith(undefined);
+  assertEquals(als.getStore(), undefined);
+  await Promise.resolve();
+  assertEquals(als.getStore(), undefined);
+  als.disable();
+  assertEquals(als.getStore(), "default");
+});
+
+Deno.test(async function asyncLocalStorageExitRestoresAfterErrors() {
+  const als = new AsyncLocalStorage<string>();
+
+  await als.run("outer", async () => {
+    assertThrows(
+      () =>
+        als.exit(() => {
+          assertEquals(als.getStore(), undefined);
+          throw new Error("sync error");
+        }),
+      Error,
+      "sync error",
+    );
+    assertEquals(als.getStore(), "outer");
+
+    await assertRejects(
+      () =>
+        als.exit(async () => {
+          assertEquals(als.getStore(), undefined);
+          await Promise.resolve();
+          assertEquals(als.getStore(), undefined);
+          throw new Error("async error");
+        }),
+      Error,
+      "async error",
+    );
+    assertEquals(als.getStore(), "outer");
+  });
 });
 
 Deno.test(async function asyncLocalStorageExitDoesNotAffectConcurrentFlows() {
