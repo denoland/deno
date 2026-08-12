@@ -453,3 +453,158 @@ pub fn op_ffi_call_ptr(
   // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
   Ok(result)
 }
+
+#[cfg(test)]
+mod tests {
+  use std::sync::Arc;
+  use std::sync::atomic::AtomicUsize;
+  use std::sync::atomic::Ordering;
+
+  use deno_core::JsRuntime;
+  use deno_core::RuntimeOptions;
+  use deno_permissions::PermissionsContainer;
+  use deno_permissions::RuntimePermissionDescriptorParser;
+
+  use super::op_ffi_call_ptr;
+  use super::op_ffi_call_ptr_nonblocking;
+  use crate::repr::op_ffi_ptr_create;
+
+  deno_core::extension!(
+    test_ffi_call_ops,
+    ops = [
+      op_ffi_call_ptr,
+      op_ffi_call_ptr_nonblocking,
+      op_ffi_ptr_create,
+    ],
+  );
+
+  #[derive(Clone, Copy)]
+  #[repr(C)]
+  struct Rect {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+  }
+
+  static MAKE_RECT_CALL_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+  extern "C" fn make_rect(x: f64, y: f64, width: f64, height: f64) -> Rect {
+    MAKE_RECT_CALL_COUNT.fetch_add(1, Ordering::Relaxed);
+    Rect {
+      x,
+      y,
+      width,
+      height,
+    }
+  }
+
+  #[tokio::test]
+  async fn caller_provided_struct_return_views() {
+    MAKE_RECT_CALL_COUNT.store(0, Ordering::Relaxed);
+
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![test_ffi_call_ops::init()],
+      ..Default::default()
+    });
+    let parser = Arc::new(RuntimePermissionDescriptorParser::new(
+      sys_traits::impls::RealSys,
+    ));
+    runtime
+      .op_state()
+      .borrow_mut()
+      .put(PermissionsContainer::allow_all(parser));
+
+    let function_pointer = make_rect as *const () as usize;
+    let source = r#"
+      (async () => {
+        const {
+          op_ffi_call_ptr,
+          op_ffi_call_ptr_nonblocking,
+          op_ffi_ptr_create,
+        } = Deno.core.ops;
+        const pointer = op_ffi_ptr_create(__FUNCTION_POINTER__n);
+        const definition = {
+          parameters: ["f64", "f64", "f64", "f64"],
+          result: { struct: ["f64", "f64", "f64", "f64"] },
+        };
+        const fill = 0xee;
+
+        function assertEquals(actual, expected) {
+          if (actual.length !== expected.length) {
+            throw new Error(`length mismatch: ${actual.length} !== ${expected.length}`);
+          }
+          for (let i = 0; i < actual.length; i++) {
+            if (!Object.is(actual[i], expected[i])) {
+              throw new Error(`value mismatch at ${i}: ${actual[i]} !== ${expected[i]}`);
+            }
+          }
+        }
+
+        function assertInvalidBufferError(error) {
+          if (!(error instanceof TypeError)) {
+            throw new Error(`expected TypeError, got ${error?.constructor?.name}`);
+          }
+          const expected =
+            "Invalid FFI struct return buffer: expected at least 32 bytes, got 31";
+          if (error.message !== expected) {
+            throw new Error(`unexpected error: ${error.message}`);
+          }
+        }
+
+        const syncBacking = new Uint8Array(64);
+        syncBacking.fill(fill);
+        const syncOut = new Uint8Array(syncBacking.buffer, 16, 32);
+        op_ffi_call_ptr(pointer, definition, [1, 2, 3, 4], syncOut);
+        assertEquals(syncBacking.subarray(0, 16), new Array(16).fill(fill));
+        assertEquals(
+          new Float64Array(syncBacking.buffer, 16, 4),
+          [1, 2, 3, 4],
+        );
+        assertEquals(syncBacking.subarray(48), new Array(16).fill(fill));
+
+        const asyncBacking = new Uint8Array(64);
+        asyncBacking.fill(fill);
+        const asyncOut = new Uint8Array(asyncBacking.buffer, 16, 32);
+        await op_ffi_call_ptr_nonblocking(
+          pointer,
+          { ...definition, nonblocking: true },
+          [5, 6, 7, 8],
+          asyncOut,
+        );
+        assertEquals(asyncBacking.subarray(0, 16), new Array(16).fill(fill));
+        assertEquals(
+          new Float64Array(asyncBacking.buffer, 16, 4),
+          [5, 6, 7, 8],
+        );
+        assertEquals(asyncBacking.subarray(48), new Array(16).fill(fill));
+
+        const undersizedOut = new Uint8Array(31);
+        try {
+          op_ffi_call_ptr(pointer, definition, [9, 10, 11, 12], undersizedOut);
+          throw new Error("synchronous call accepted an undersized buffer");
+        } catch (error) {
+          assertInvalidBufferError(error);
+        }
+        try {
+          await op_ffi_call_ptr_nonblocking(
+            pointer,
+            { ...definition, nonblocking: true },
+            [9, 10, 11, 12],
+            undersizedOut,
+          );
+          throw new Error("nonblocking call accepted an undersized buffer");
+        } catch (error) {
+          assertInvalidBufferError(error);
+        }
+      })()
+    "#
+    .replace("__FUNCTION_POINTER__", &function_pointer.to_string());
+
+    let promise = runtime.execute_script("ffi_call_test.js", source).unwrap();
+    #[allow(deprecated, reason = "test code")]
+    runtime.resolve_value(promise).await.unwrap();
+
+    assert_eq!(MAKE_RECT_CALL_COUNT.load(Ordering::Relaxed), 2);
+  }
+}

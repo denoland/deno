@@ -574,9 +574,6 @@ function getTurbocallTarget() {
 }
 
 internals.getTurbocallTarget = getTurbocallTarget;
-// Used to test caller-provided struct return views.
-internals.ffiCallPtr = op_ffi_call_ptr;
-internals.ffiCallPtrNonblocking = op_ffi_call_ptr_nonblocking;
 
 return {
   dlopen,

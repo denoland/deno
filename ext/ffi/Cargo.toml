@@ -33,5 +33,8 @@ tokio.workspace = true
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Globalization", "Win32_System_Diagnostics_Debug"] }
 
+[dev-dependencies]
+sys_traits = { workspace = true, features = ["libc", "real"] }
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_aarch, values("x86_64", "aarch64"))'] }

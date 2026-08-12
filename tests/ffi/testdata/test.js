@@ -265,14 +265,6 @@ const dylib = Deno.dlopen(libPath, {
     parameters: ["f64", "f64", "f64", "f64"],
     result: { struct: RectNested },
   },
-  get_make_rect_ptr: {
-    parameters: [],
-    result: "pointer",
-  },
-  get_make_rect_call_count: {
-    parameters: [],
-    result: "usize",
-  },
   print_rect: {
     parameters: [{ struct: RectNestedCached }],
     result: "void",
@@ -747,99 +739,6 @@ const rect_async = await dylib.symbols.make_rect_async(10, 20, 100, 200);
 assertInstanceOf(rect_async, Uint8Array);
 assertEquals(rect_async.length, 4 * 8);
 assertEquals(Array.from(new Float64Array(rect_async.buffer)), [10, 20, 100, 200]);
-
-const makeRectPointer = dylib.symbols.get_make_rect_ptr();
-const makeRectDefinition = {
-  parameters: ["f64", "f64", "f64", "f64"],
-  result: { struct: Rect },
-};
-const { ffiCallPtr, ffiCallPtrNonblocking } = Deno[Deno.internal];
-const shiftedFill = 0xee;
-
-const shiftedSyncBacking = new Uint8Array(64);
-shiftedSyncBacking.fill(shiftedFill);
-const shiftedSyncOut = new Uint8Array(
-  shiftedSyncBacking.buffer,
-  16,
-  4 * 8,
-);
-ffiCallPtr(
-  makeRectPointer,
-  makeRectDefinition,
-  [1, 2, 3, 4],
-  shiftedSyncOut,
-);
-assertEquals(
-  Array.from(shiftedSyncBacking.subarray(0, 16)),
-  new Array(16).fill(shiftedFill),
-);
-assertEquals(
-  Array.from(new Float64Array(shiftedSyncBacking.buffer, 16, 4)),
-  [1, 2, 3, 4],
-);
-assertEquals(
-  Array.from(shiftedSyncBacking.subarray(48)),
-  new Array(16).fill(shiftedFill),
-);
-
-const shiftedAsyncBacking = new Uint8Array(64);
-shiftedAsyncBacking.fill(shiftedFill);
-const shiftedAsyncOut = new Uint8Array(
-  shiftedAsyncBacking.buffer,
-  16,
-  4 * 8,
-);
-await ffiCallPtrNonblocking(
-  makeRectPointer,
-  { ...makeRectDefinition, nonblocking: true },
-  [5, 6, 7, 8],
-  shiftedAsyncOut,
-);
-assertEquals(
-  Array.from(shiftedAsyncBacking.subarray(0, 16)),
-  new Array(16).fill(shiftedFill),
-);
-assertEquals(
-  Array.from(new Float64Array(shiftedAsyncBacking.buffer, 16, 4)),
-  [5, 6, 7, 8],
-);
-assertEquals(
-  Array.from(shiftedAsyncBacking.subarray(48)),
-  new Array(16).fill(shiftedFill),
-);
-
-const callsBeforeUndersizedOut = dylib.symbols.get_make_rect_call_count();
-const undersizedOut = new Uint8Array(4 * 8 - 1);
-assertThrows(
-  () =>
-    ffiCallPtr(
-      makeRectPointer,
-      makeRectDefinition,
-      [9, 10, 11, 12],
-      undersizedOut,
-    ),
-  TypeError,
-  "Invalid FFI struct return buffer: expected at least 32 bytes, got 31",
-);
-assertEquals(
-  dylib.symbols.get_make_rect_call_count(),
-  callsBeforeUndersizedOut,
-);
-await assertRejects(
-  () =>
-    ffiCallPtrNonblocking(
-      makeRectPointer,
-      { ...makeRectDefinition, nonblocking: true },
-      [9, 10, 11, 12],
-      undersizedOut,
-    ),
-  TypeError,
-  "Invalid FFI struct return buffer: expected at least 32 bytes, got 31",
-);
-assertEquals(
-  dylib.symbols.get_make_rect_call_count(),
-  callsBeforeUndersizedOut,
-);
 
 // Test complex, mixed struct returning and passing
 const mixedStruct = dylib.symbols.create_mixed(3, 12.515000343322754, rect_async, Deno.UnsafePointer.create(12456789), new Uint32Array([8, 32]));

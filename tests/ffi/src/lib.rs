@@ -10,8 +10,6 @@
 
 use std::os::raw::c_void;
 use std::sync::Mutex;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -560,22 +558,9 @@ pub struct Rect {
   h: f64,
 }
 
-static MAKE_RECT_CALL_COUNT: AtomicUsize = AtomicUsize::new(0);
-
 #[unsafe(no_mangle)]
 pub extern "C" fn make_rect(x: f64, y: f64, w: f64, h: f64) -> Rect {
-  MAKE_RECT_CALL_COUNT.fetch_add(1, Ordering::Relaxed);
   Rect { x, y, w, h }
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn get_make_rect_ptr() -> *const c_void {
-  make_rect as *const c_void
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn get_make_rect_call_count() -> usize {
-  MAKE_RECT_CALL_COUNT.load(Ordering::Relaxed)
 }
 
 #[unsafe(no_mangle)]
