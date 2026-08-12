@@ -1102,6 +1102,13 @@ Deno.test({
     structuredClone(ab, { transfer: [ab] });
     assertEquals(view.toString("hex"), "");
     assertEquals(hexSlice.call(view, 0, 5), "");
+    // DataView receivers fail the TypedArray brand check. The old op accepted
+    // any ArrayBufferView here; Node rejects non-Uint8Array receivers, so
+    // throwing is the closer behavior.
+    assertThrows(
+      () => hexSlice.call(new DataView(new ArrayBuffer(4)), 0, 4),
+      TypeError,
+    );
   },
 });
 
@@ -1131,6 +1138,13 @@ Deno.test({
     // Whitespace and chars above U+00FF truncate through the fallback.
     assertEquals(Buffer.from("aa bb", "hex"), Buffer.from([0xaa]));
     assertEquals(Buffer.from("aa\u{1F600}bb", "hex"), Buffer.from([0xaa]));
+    // The fallback masks charCodeAt with 0xff, so chars above U+00FF whose
+    // low byte is a hex digit decode: U+0141 -> 'A', U+0142 -> 'B'. The
+    // native path rejects them, so this pins the fallback's old semantics.
+    assertEquals(
+      Buffer.from("aa\u0141\u0142", "hex"),
+      Buffer.from([0xaa, 0xab]),
+    );
     // Mixed case decodes on the fast path.
     assertEquals(
       Buffer.from("aAbBcC", "hex"),
@@ -1145,6 +1159,11 @@ Deno.test({
     const dirty = Buffer.alloc(2);
     assertEquals(dirty.write("aazzbb", "hex"), 1);
     assertEquals(dirty.toString("hex"), "aa00");
+    // A partial native write before the invalid pair must not leave stale
+    // bytes past the truncation point once the fallback rewrites the prefix.
+    const partial = Buffer.alloc(4);
+    assertEquals(partial.write("aabbzz11", "hex"), 2);
+    assertEquals(Array.from(partial), [0xaa, 0xbb, 0, 0]);
   },
 });
 

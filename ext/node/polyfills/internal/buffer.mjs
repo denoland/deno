@@ -2,7 +2,7 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 // Copyright Feross Aboukhadijeh, and other contributors. All rights reserved. MIT license.
 (function () {
-const { core, primordials } = __bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const {
   isAnyArrayBuffer,
   isArrayBuffer,
@@ -60,18 +60,27 @@ const {
   TypedArrayPrototypeSubarray,
   Uint8Array,
   Uint8ArrayPrototype,
-  uncurryThis,
 } = primordials;
 
 // The TC39 arraybuffer-base64 methods are installed after snapshot
 // deserialization (V8 InstallConditionalFeatures), so the snapshot-time
-// primordials copy does not include them; capture lazily from the live
-// prototype on first use.
+// primordials copy does not include them. The runtime bootstrap captures
+// them off the pristine prototype before any user code runs (99_main.js
+// captureHexMethods) and stashes the uncurried functions on `internals`;
+// an undefined slot means the method is unavailable and the JS codec is
+// used instead. Read lazily so a snapshot-time evaluation of this module
+// cannot bake in pre-bootstrap values.
 // TODO(tomas-zijdemans): once V8 ships these methods unconditionally
 // (no --js-arraybuffer-base64 flag), move them to primordials and drop
-// the lazy capture.
+// the indirection.
+let hexMethodsCaptured = false;
 let Uint8ArrayPrototypeToHex;
 let Uint8ArrayPrototypeSetFromHex;
+function captureHexMethods() {
+  hexMethodsCaptured = true;
+  Uint8ArrayPrototypeToHex = internals.uint8ArrayToHex;
+  Uint8ArrayPrototypeSetFromHex = internals.uint8ArraySetFromHex;
+}
 const {
   op_base64_decode_into,
   op_base64_encode_from_buffer,
@@ -102,6 +111,7 @@ const {
   base64CleanToBytes,
   base64ToBytes,
   base64UrlToBytes,
+  bytesToHex,
   hexToBytes,
   utf16leToBytes,
 } = core.loadExtScript("ext:deno_node/internal_binding/_utils.ts");
@@ -1208,6 +1218,12 @@ Buffer.prototype.hexWrite = function hexWrite(string, offset, length) {
     string = StringPrototypeSlice(string, 0, -1);
   }
 
+  if (!hexMethodsCaptured) {
+    captureHexMethods();
+  }
+  if (Uint8ArrayPrototypeSetFromHex === undefined) {
+    return blitBuffer(hexToBytes(string), this, offset, length);
+  }
   const target = offset === 0 && length === byteLength
     ? this
     : TypedArrayPrototypeSubarray(this, offset, offset + length);
@@ -1215,12 +1231,11 @@ Buffer.prototype.hexWrite = function hexWrite(string, offset, length) {
   // target-capped write); it throws on invalid input, where Node truncates
   // at the first invalid pair, so the catch falls back to the JS truncating
   // decoder. A partial prefix written before the throw is rewritten
-  // byte-identically by the fallback.
-  if (Uint8ArrayPrototypeSetFromHex === undefined) {
-    Uint8ArrayPrototypeSetFromHex = uncurryThis(
-      Uint8ArrayPrototype.setFromHex,
-    );
-  }
+  // byte-identically by the fallback. The catch also absorbs detached-buffer
+  // TypeErrors and brand-check failures on non-Uint8Array receivers, which
+  // take the fallback with unchanged behavior. Invalid hex therefore costs
+  // one caught exception per call (visible to debuggers that pause on
+  // caught exceptions).
   try {
     return Uint8ArrayPrototypeSetFromHex(target, string).written;
   } catch {
@@ -1280,8 +1295,11 @@ Buffer.prototype.hexSlice = function hexSlice(start, end) {
       TypedArrayPrototypeGetByteOffset(this) + start,
       end - start,
     );
+  if (!hexMethodsCaptured) {
+    captureHexMethods();
+  }
   if (Uint8ArrayPrototypeToHex === undefined) {
-    Uint8ArrayPrototypeToHex = uncurryThis(Uint8ArrayPrototype.toHex);
+    return bytesToHex(view);
   }
   return Uint8ArrayPrototypeToHex(view);
 };
