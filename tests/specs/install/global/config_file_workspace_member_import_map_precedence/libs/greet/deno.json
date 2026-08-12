@@ -1,0 +1,7 @@
+{
+  "name": "@scope/greet",
+  "version": "0.1.0",
+  "exports": {
+    ".": "./mod.ts"
+  }
+}

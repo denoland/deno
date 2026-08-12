@@ -185,6 +185,10 @@ pub trait Resource: Any + 'static {
   /// resource has been removed from the resource table.
   fn close(self: Rc<Self>) {}
 
+  /// Cancel pending read operations without removing the resource from the
+  /// resource table.
+  fn cancel_read_ops(self: Rc<Self>) {}
+
   /// Resources backed by a file descriptor or socket handle can let ops know
   /// to allow for low-level optimizations.
   fn backing_handle(self: Rc<Self>) -> Option<ResourceHandle> {

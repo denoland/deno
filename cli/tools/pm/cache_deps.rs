@@ -13,6 +13,7 @@ use deno_graph::JsrPackageReqNotFoundError;
 use deno_graph::packages::JsrPackageVersionInfo;
 use deno_npm_installer::PackageCaching;
 use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_resolver::npm::version_req_matches_including_pre;
 use deno_semver::Version;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
@@ -24,6 +25,10 @@ use crate::graph_util::BuildGraphWithNpmOptions;
 
 pub struct CacheTopLevelDepsOptions {
   pub lockfile_only: bool,
+  /// Extra specifiers to resolve and cache in addition to the project's
+  /// declared dependencies. Used by `deno add --no-save` to install packages
+  /// without writing them to the configuration file.
+  pub additional_roots: Vec<Url>,
 }
 
 pub async fn cache_top_level_deps(
@@ -46,7 +51,8 @@ pub async fn cache_top_level_deps(
   let resolver = factory.workspace_resolver().await?;
 
   let mut maybe_graph_error = Ok(());
-  if let Some(import_map) = resolver.maybe_import_map() {
+  let has_import_map = resolver.maybe_import_map().is_some();
+  if has_import_map || !options.additional_roots.is_empty() {
     let jsr_resolver = if let Some(resolver) = jsr_resolver {
       resolver
     } else {
@@ -82,11 +88,22 @@ pub async fn cache_top_level_deps(
       .collect::<HashMap<_, _>>();
     let workspace_jsr_packages = resolver.jsr_packages();
 
-    for entry in import_map.imports().entries().chain(
-      import_map
-        .scopes()
-        .flat_map(|scope| scope.imports.entries()),
-    ) {
+    let import_map_entries = resolver
+      .maybe_import_map()
+      .map(|import_map| {
+        import_map
+          .imports()
+          .entries()
+          .chain(
+            import_map
+              .scopes()
+              .flat_map(|scope| scope.imports.entries()),
+          )
+          .collect::<Vec<_>>()
+      })
+      .unwrap_or_default();
+
+    for entry in import_map_entries {
       let Some(specifier) = entry.value else {
         continue;
       };
@@ -113,6 +130,20 @@ pub async fn cache_top_level_deps(
             continue;
           }
           if !seen_reqs.insert(req_ref.req().clone()) {
+            continue;
+          }
+          if req_ref.req().version_req.tag().is_some() {
+            // JSR has no dist-tags, so this dependency can never resolve.
+            // Warn instead of failing so the rest of the project still
+            // installs; the graph build reports a proper error when the
+            // specifier is actually imported. Skipping here also keeps
+            // tagged reqs away from VersionReq::matches below, which
+            // panics on tags.
+            log::warn!(
+              "{} Ignoring \"jsr:{}\". Version tags are not supported in jsr specifiers.",
+              deno_terminal::colors::yellow("Warning"),
+              req_ref.req(),
+            );
             continue;
           }
           let resolved_req = graph.packages.mappings().get(req_ref.req());
@@ -166,7 +197,10 @@ pub async fn cache_top_level_deps(
               continue;
             };
             let version_req = &req_ref.req().version_req;
-            if version_req.tag().is_none() && version_req.matches(&version) {
+            // match prereleases too: a workspace member is provided explicitly
+            // by the user, so e.g. `0.40.0-pre` should still resolve to it
+            // instead of being fetched from the registry.
+            if version_req_matches_including_pre(version_req, &version) {
               // if version req matches the workspace package's version, use that
               // (so it doesn't need to be installed)
               continue;
@@ -202,6 +236,9 @@ pub async fn cache_top_level_deps(
     }
     drop(info_futures);
 
+    // Packages requested via `--no-save`: install them without declaring them.
+    roots.extend(options.additional_roots.iter().cloned());
+
     let graph_builder = factory.module_graph_builder().await?;
     graph_builder
       .build_graph_roots_with_npm_resolution(
@@ -214,8 +251,15 @@ pub async fn cache_top_level_deps(
         },
       )
       .await?;
-    maybe_graph_error =
-      graph_builder.graph_roots_valid(graph, &roots, true, true);
+    maybe_graph_error = graph_builder.graph_roots_valid(
+      graph,
+      &roots,
+      crate::graph_util::GraphRootsValidOptions {
+        allow_unknown_media_types: true,
+        allow_unknown_jsr_exports: true,
+        allow_sloppy_imports_hints_for_unreferenced_roots: true,
+      },
+    );
   }
 
   if options.lockfile_only {

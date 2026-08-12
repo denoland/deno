@@ -1,0 +1,6 @@
+{
+  "name": "@denotest/root",
+  "dependencies": {
+    "@denotest/lib": "workspace:*"
+  }
+}

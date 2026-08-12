@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "unref_allows_exit": {
+      "args": "run -A unref_allows_exit.ts",
+      "output": "unref_allows_exit.out"
+    },
+    "ref_prevents_exit": {
+      "args": "run -A ref_prevents_exit.ts",
+      "output": "ref_prevents_exit.out"
+    }
+  }
+}

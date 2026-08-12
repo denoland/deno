@@ -1,0 +1,6 @@
+TS2578 [ERROR]: Unused '@ts-expect-error' directive.
+// @ts-expect-error
+^
+    at file:///[WILDLINE]/ts_expect_error_unused.ts:1:1
+
+error: Type checking failed.

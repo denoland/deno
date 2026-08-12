@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "module_not_found": {
+      "args": "run module_not_found.js",
+      "output": "module_not_found.out",
+      "exitCode": 1
+    },
+    "legacy_addon": {
+      "args": "run legacy_addon.js",
+      "output": "legacy_addon.out",
+      "exitCode": 1
+    }
+  }
+}

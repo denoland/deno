@@ -1,2 +1,4 @@
+Download http://localhost:4260/@denotest%2fhas-patch-versions
+Download http://localhost:4260/@denotest/has-patch-versions/0.1.1.tgz
 Updated 1 dependency:
  - npm:@denotest/has-patch-versions ~0.1.0 -> ~0.1.1

@@ -21,7 +21,7 @@ function __TEMPLATE__(__ARGS_PARAM__) {
   if (isLeakTracingEnabled) {
     submitLeakTrace(id);
   }
-  nextPromiseId = (id + 1) & 0xffffffff;
+  nextPromiseId = (id + 1) & 0x7fffffff;
   return setPromise(id);
 }
 

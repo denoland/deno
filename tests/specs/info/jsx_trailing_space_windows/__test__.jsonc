@@ -1,0 +1,10 @@
+{
+  // On Windows, a trailing space in a file path argument used to be percent
+  // encoded into the specifier (`main.tsx%20`), which caused the media type to
+  // be misdetected (TypeScript instead of TSX) and a confusing parse error.
+  // The OS opens the file fine (it trims the trailing space), so Deno now
+  // normalizes the path the same way. See denoland/deno#30585.
+  "if": "windows",
+  "args": ["info", "./main.tsx "],
+  "output": "info.out"
+}

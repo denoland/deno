@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "tests": {
+    // Regression test for https://github.com/denoland/deno/issues/23736
+    // A `"/": "./"` import map entry (recommended in the docs for project-root
+    // absolute imports) must not rewrite the npm bin entrypoint, whose resolved
+    // file URL lives in the global npm cache outside the project directory.
+    "esm_bin": {
+      "args": "run -A --quiet npm:@denotest/bin/cli-esm this is a test",
+      "output": "esm.out"
+    },
+    "cjs_bin": {
+      "args": "run -A --quiet npm:@denotest/bin/cli-cjs this is a test",
+      "output": "cjs.out"
+    }
+  }
+}

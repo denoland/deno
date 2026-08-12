@@ -1,0 +1,5 @@
+TS2307 [ERROR]: Import "asdfsdf" not a dependency
+  hint: If you want to use the npm package, try running `deno add npm:asdfsdf`
+    at file:///[WILDCARD]/foo.d.ts:1:17
+
+error: Type checking failed.

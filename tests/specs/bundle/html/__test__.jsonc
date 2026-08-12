@@ -60,6 +60,18 @@
           "output": ""
         }
       ]
+    },
+    "sourcemap": {
+      "steps": [
+        {
+          "args": "bundle --outdir ./dist --sourcemap=external index.html",
+          "output": "sourcemap-bundle.out"
+        },
+        {
+          "args": "run -A sourcemap-bundle.asserts.ts",
+          "output": ""
+        }
+      ]
     }
   }
 }

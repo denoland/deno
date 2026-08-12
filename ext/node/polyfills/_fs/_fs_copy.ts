@@ -1,18 +1,26 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
+import { core, primordials } from "ext:core/mod.js";
 import type { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
-import { makeCallback } from "ext:deno_node/_fs/_fs_common.ts";
-import { Buffer } from "node:buffer";
+const { makeCallback } = core.loadExtScript(
+  "ext:deno_node/_fs/_fs_common.ts",
+);
+import type { Buffer } from "node:buffer";
 import {
-  getValidatedPath,
+  getValidatedPathToString,
   getValidMode,
 } from "ext:deno_node/internal/fs/utils.mjs";
-import { fs } from "ext:deno_node/internal_binding/constants.ts";
-import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
-import { promisify } from "ext:deno_node/internal/util.mjs";
+
+const {
+  Error,
+  ObjectPrototypeIsPrototypeOf,
+  PromisePrototypeThen,
+} = primordials;
+const { fs } = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
+const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
+const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 
 export function copyFile(
   src: string | Buffer | URL,
@@ -35,13 +43,13 @@ export function copyFile(
     callback = mode;
     mode = 0;
   }
-  const srcStr = getValidatedPath(src, "src").toString();
-  const destStr = getValidatedPath(dest, "dest").toString();
+  const srcStr = getValidatedPathToString(src, "src");
+  const destStr = getValidatedPathToString(dest, "dest");
   const modeNum = getValidMode(mode, "copyFile");
   const cb = makeCallback(callback);
 
   if ((modeNum & fs.COPYFILE_EXCL) === fs.COPYFILE_EXCL) {
-    Deno.lstat(destStr).then(() => {
+    PromisePrototypeThen(Deno.lstat(destStr), () => {
       // deno-lint-ignore no-explicit-any
       const e: any = new Error(
         `EEXIST: file already exists, copyfile '${srcStr}' -> '${destStr}'`,
@@ -51,14 +59,18 @@ export function copyFile(
       e.code = "EEXIST";
       cb(e);
     }, (e) => {
-      if (e instanceof Deno.errors.NotFound) {
-        Deno.copyFile(srcStr, destStr).then(() => cb(null), cb);
+      if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, e)) {
+        PromisePrototypeThen(
+          Deno.copyFile(srcStr, destStr),
+          () => cb(null),
+          cb,
+        );
       } else {
         cb(e);
       }
     });
   } else {
-    Deno.copyFile(srcStr, destStr).then(() => cb(null), cb);
+    PromisePrototypeThen(Deno.copyFile(srcStr, destStr), () => cb(null), cb);
   }
 }
 
@@ -73,8 +85,8 @@ export function copyFileSync(
   dest: string | Buffer | URL,
   mode?: number,
 ) {
-  const srcStr = getValidatedPath(src, "src").toString();
-  const destStr = getValidatedPath(dest, "dest").toString();
+  const srcStr = getValidatedPathToString(src, "src");
+  const destStr = getValidatedPathToString(dest, "dest");
   const modeNum = getValidMode(mode, "copyFile");
 
   if ((modeNum & fs.COPYFILE_EXCL) === fs.COPYFILE_EXCL) {
@@ -82,7 +94,7 @@ export function copyFileSync(
       Deno.lstatSync(destStr);
       throw new Error(`A file exists at the destination: ${destStr}`);
     } catch (e) {
-      if (e instanceof Deno.errors.NotFound) {
+      if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, e)) {
         Deno.copyFileSync(srcStr, destStr);
       } else {
         throw e;

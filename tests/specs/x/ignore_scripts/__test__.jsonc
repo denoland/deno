@@ -1,0 +1,6 @@
+{
+  "tempDir": true,
+  "args": "x -y --ignore-scripts=@denotest/lifecycle-scripts-simple npm:@denotest/lifecycle-scripts-simple",
+  "output": "ignore_scripts.out",
+  "exitCode": 1
+}

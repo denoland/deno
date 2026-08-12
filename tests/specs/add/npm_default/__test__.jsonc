@@ -1,0 +1,67 @@
+{
+  "tempDir": true,
+  "tests": {
+    // Unprefixed package name should resolve as npm by default
+    "add_unprefixed": {
+      "args": "add @denotest/esm-basic",
+      "output": "add_unprefixed.out"
+    },
+    // Mixing unprefixed (npm default) with explicit jsr: prefix
+    "add_mixed_with_jsr": {
+      "args": "add @denotest/esm-basic jsr:@denotest/add",
+      "output": "add_mixed.out"
+    },
+    // install subcommand should also default to npm
+    "install_unprefixed": {
+      "args": "install @denotest/esm-basic",
+      "output": "add_unprefixed.out"
+    },
+    // Explicit npm: prefix still works (backward compat)
+    "add_explicit_npm_prefix": {
+      "args": "add npm:@denotest/esm-basic",
+      "output": "add_unprefixed.out"
+    },
+    // --jsr flag overrides default to jsr
+    "add_jsr_flag": {
+      "args": "add --jsr @denotest/add",
+      "output": "add_jsr_flag.out"
+    },
+    // --npm flag is now a no-op (same as default) but should still work
+    "add_npm_flag_noop": {
+      "args": "add --npm @denotest/esm-basic",
+      "output": "add_unprefixed.out"
+    },
+    // Alias with explicit npm: prefix still works when default is npm
+    "add_alias_with_prefix": {
+      "steps": [
+        {
+          "args": "add my-alias@npm:@denotest/esm-basic",
+          "output": "Add npm:@denotest/esm-basic@1.0.0\n[WILDCARD]\n"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(JSON.stringify(JSON.parse(Deno.readTextFileSync('deno.json')).imports))"
+          ],
+          "output": "{\"my-alias\":\"npm:@denotest/esm-basic@^1.0.0\"}\n"
+        }
+      ]
+    },
+    // Alias with jsr: prefix works even when default is npm
+    "add_alias_jsr_prefix": {
+      "steps": [
+        {
+          "args": "add my-jsr@jsr:@denotest/add",
+          "output": "Add jsr:@denotest/add@1.0.0\n[WILDCARD]\n"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(JSON.stringify(JSON.parse(Deno.readTextFileSync('deno.json')).imports))"
+          ],
+          "output": "{\"my-jsr\":\"jsr:@denotest/add@^1.0.0\"}\n"
+        }
+      ]
+    }
+  }
+}

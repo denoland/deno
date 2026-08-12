@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "typo_names_the_subcommand": {
+      "args": "intall",
+      "output": "intall.out",
+      "exitCode": 1
+    },
+    "another_typo_names_the_subcommand": {
+      "args": "comple",
+      "output": "comple.out",
+      "exitCode": 1
+    }
+  }
+}

@@ -1,0 +1,20 @@
+// Regression test for https://github.com/denoland/deno/issues/19726
+//
+// An npm workspace where each member package is symlinked into the root
+// `node_modules` (as `npm install` does). `pkg-a` and `pkg-b` import each other
+// (a cyclic dependency). Resolving these symlinked workspace packages through
+// `node_modules` used to panic during package.json module resolution.
+{
+  "tempDir": true,
+  "if": "unix",
+  "steps": [
+    {
+      "args": "run -A setup.js",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "test -A",
+      "output": "test.out"
+    }
+  ]
+}

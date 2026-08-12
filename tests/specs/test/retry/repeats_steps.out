@@ -1,0 +1,10 @@
+running 1 test from ./repeats_steps.ts
+repeated with steps ...
+  inner ... ok ([WILDCARD])
+  inner ... ok ([WILDCARD])
+  inner ... ok ([WILDCARD])
+  inner ... ok ([WILDCARD])
+repeated with steps ... ok ([WILDCARD])
+
+ok | 1 passed (1 step) | 0 failed ([WILDCARD])
+

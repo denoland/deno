@@ -1,12 +1,15 @@
 Listening on vsock:4294967295:1234567
 Response {
-  body: ReadableStream { locked: false },
+  body: ReadableStream {
+    locked: false,
+    state: "readable",
+    supportsBYOB: true
+  },
   bodyUsed: false,
   headers: Headers {
     "content-length": "24",
     "content-type": "text/plain;charset=UTF-8",
-    date: "[WILDCARD]",
-    vary: "Accept-Encoding"
+    date: "[WILDCARD]"
   },
   ok: true,
   redirected: false,
@@ -16,13 +19,16 @@ Response {
 }
 http://insecure.invalid/
 Response {
-  body: ReadableStream { locked: false },
+  body: ReadableStream {
+    locked: false,
+    state: "readable",
+    supportsBYOB: true
+  },
   bodyUsed: false,
   headers: Headers {
     "content-length": "23",
     "content-type": "text/plain;charset=UTF-8",
-    date: "[WILDCARD]",
-    vary: "Accept-Encoding"
+    date: "[WILDCARD]"
   },
   ok: true,
   redirected: false,

@@ -1,7 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
-import { op_now, op_time_origin } from "ext:core/ops";
+(function () {
+const { core, primordials } = __bootstrap;
+const { op_now, op_time_origin } = core.ops;
 const {
   ArrayIsArray,
   ArrayPrototypeFilter,
@@ -22,11 +23,32 @@ const {
   Uint32Array,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { structuredClone } from "./02_structured_clone.js";
-import { createFilteredInspectProxy } from "./01_console.js";
-import { EventTarget } from "./02_event.js";
-import { DOMException } from "./01_dom_exception.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+
+// Lazy-load structuredClone from 02_structured_clone
+let _structuredClone;
+function getStructuredClone() {
+  if (!_structuredClone) {
+    _structuredClone = core.loadExtScript(
+      "ext:deno_web/02_structured_clone.js",
+    ).structuredClone;
+  }
+  return _structuredClone;
+}
+
+// Lazy-load createFilteredInspectProxy from console
+let _createFilteredInspectProxy;
+function getCreateFilteredInspectProxy() {
+  if (!_createFilteredInspectProxy) {
+    _createFilteredInspectProxy = core.loadExtScript(
+      "ext:deno_web/01_console.js",
+    ).createFilteredInspectProxy;
+  }
+  return _createFilteredInspectProxy;
+}
+
+const { EventTarget } = core.loadExtScript("ext:deno_web/02_event.js");
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 let performanceEntries = [];
@@ -214,7 +236,7 @@ class PerformanceEntry {
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return inspect(
-      createFilteredInspectProxy({
+      getCreateFilteredInspectProxy()({
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(
           PerformanceEntryPrototype,
@@ -272,7 +294,7 @@ class PerformanceMark extends PerformanceEntry {
         `Cannot construct PerformanceMark: startTime cannot be negative, received ${startTime}`,
       );
     }
-    this[_detail] = structuredClone(detail);
+    this[_detail] = getStructuredClone()(detail);
   }
 
   toJSON() {
@@ -288,7 +310,7 @@ class PerformanceMark extends PerformanceEntry {
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return inspect(
-      createFilteredInspectProxy({
+      getCreateFilteredInspectProxy()({
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(PerformanceMarkPrototype, this),
         keys: [
@@ -331,7 +353,7 @@ class PerformanceMeasure extends PerformanceEntry {
 
     super(name, "measure", startTime, duration, key);
     this[webidl.brand] = webidl.brand;
-    this[_detail] = structuredClone(detail);
+    this[_detail] = getStructuredClone()(detail);
   }
 
   toJSON() {
@@ -347,7 +369,7 @@ class PerformanceMeasure extends PerformanceEntry {
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return inspect(
-      createFilteredInspectProxy({
+      getCreateFilteredInspectProxy()({
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(
           PerformanceMeasurePrototype,
@@ -368,26 +390,31 @@ class PerformanceMeasure extends PerformanceEntry {
 webidl.configureInterface(PerformanceMeasure);
 const PerformanceMeasurePrototype = PerformanceMeasure.prototype;
 
+function scheduleObserverCallback(observer) {
+  if (observer[_scheduled]) {
+    return;
+  }
+  observer[_scheduled] = true;
+  queueMicrotask(() => {
+    observer[_scheduled] = false;
+    const entries = observer[_buffer];
+    observer[_buffer] = [];
+    if (entries.length > 0) {
+      const entryList = new PerformanceObserverEntryList(
+        entries,
+        illegalConstructorKey,
+      );
+      observer[_callback](entryList, observer);
+    }
+  });
+}
+
 function queuePerformanceEntry(entry) {
   for (let i = 0; i < performanceObservers.length; i++) {
     const observer = performanceObservers[i];
     if (ArrayPrototypeIncludes(observer[_entryTypes], entry.entryType)) {
       ArrayPrototypePush(observer[_buffer], entry);
-      if (!observer[_scheduled]) {
-        observer[_scheduled] = true;
-        queueMicrotask(() => {
-          observer[_scheduled] = false;
-          const entries = observer[_buffer];
-          observer[_buffer] = [];
-          if (entries.length > 0) {
-            const entryList = new PerformanceObserverEntryList(
-              entries,
-              illegalConstructorKey,
-            );
-            observer[_callback](entryList, observer);
-          }
-        });
-      }
+      scheduleObserverCallback(observer);
     }
   }
 }
@@ -520,6 +547,23 @@ class PerformanceObserver {
 
     if (!ArrayPrototypeIncludes(performanceObservers, this)) {
       ArrayPrototypePush(performanceObservers, this);
+    }
+
+    // Per https://w3c.github.io/performance-timeline/#dom-performanceobserver-observe,
+    // when the single-type form is used with buffered=true, prepend any
+    // already-recorded entries of that type to the observer's buffer.
+    if (type !== undefined && options.buffered === true) {
+      let appended = false;
+      for (let i = 0; i < performanceEntries.length; i++) {
+        const entry = performanceEntries[i];
+        if (entry.entryType === type) {
+          ArrayPrototypePush(this[_buffer], entry);
+          appended = true;
+        }
+      }
+      if (appended) {
+        scheduleObserverCallback(this);
+      }
     }
   }
 
@@ -785,7 +829,7 @@ class Performance extends EventTarget {
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return inspect(
-      createFilteredInspectProxy({
+      getCreateFilteredInspectProxy()({
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(PerformancePrototype, this),
         keys: ["timeOrigin"],
@@ -804,7 +848,7 @@ webidl.converters["Performance"] = webidl.createInterfaceConverter(
 
 const performance = new Performance(illegalConstructorKey);
 
-export {
+return {
   Performance,
   performance,
   PerformanceEntry,
@@ -814,3 +858,4 @@ export {
   PerformanceObserverEntryList,
   setTimeOrigin,
 };
+})();

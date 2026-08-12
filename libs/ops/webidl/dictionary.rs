@@ -119,7 +119,11 @@ pub fn get_body(
             __value,
             __prefix.clone(),
             ::deno_core::webidl::ContextFn::new_borrowed(&|| {
-              format!("{} ({})", #context_prefix, __context.call()).into()
+              let mut __context_msg = #context_prefix.to_string();
+              __context_msg.push_str(" (");
+              __context_msg.push_str(&__context.call());
+              __context_msg.push(')');
+              __context_msg.into()
             }),
             &#options,
           )?

@@ -1,20 +1,24 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
 
-// deno-lint-ignore-file prefer-primordials
-
-import { primordials } from "ext:core/mod.js";
-import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
-import { isError } from "ext:deno_node/internal/util.mjs";
-import { isErrorStackTraceLimitWritable } from "ext:deno_node/internal/errors.ts";
-import * as colors from "ext:deno_node/internal/util/colors.ts";
-import {
-  myersDiff,
-  printMyersDiff,
-  printSimpleMyersDiff,
-} from "ext:deno_node/internal/assert/myers_diff.js";
-import { validateObject } from "ext:deno_node/internal/validators.mjs";
-import * as io from "ext:deno_io/12_io.js";
+(function () {
+const { core, primordials } = __bootstrap;
+const { inspect } = core.loadExtScript(
+  "ext:deno_node/internal/util/inspect.mjs",
+);
+const { isError } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const { isErrorStackTraceLimitWritable } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+const colors = core.loadExtScript("ext:deno_node/internal/util/colors.ts");
+const { myersDiff, printMyersDiff, printSimpleMyersDiff } = core
+  .loadExtScript(
+    "ext:deno_node/internal/assert/myers_diff.js",
+  );
+const { validateObject } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
+const io = core.loadExtScript("ext:deno_io/12_io.js");
 
 function getConsoleWidth() {
   try {
@@ -25,15 +29,21 @@ function getConsoleWidth() {
 }
 
 const {
+  ArrayPrototypeIncludes,
   ArrayPrototypeJoin,
   ArrayPrototypePop,
   ArrayPrototypeSlice,
   Error,
   ErrorCaptureStackTrace,
+  ErrorPrototype,
   ObjectAssign,
   ObjectDefineProperty,
   ObjectGetPrototypeOf,
   ObjectPrototypeHasOwnProperty,
+  ObjectPrototypeIsPrototypeOf,
+  ReflectGet,
+  ReflectHas,
+  ReflectSet,
   String,
   StringPrototypeRepeat,
   StringPrototypeSlice,
@@ -151,7 +161,8 @@ function getStackedDiff(actual, expected) {
     `\n${colors.green}+${colors.white} ${actual}\n${colors.red}- ${colors.white}${expected}`;
   const stringsLen = actual.length + expected.length;
   const maxTerminalLength = io.stderr.isTerminal() ? getConsoleWidth() : 80;
-  const showIndicator = isStringComparison && (stringsLen <= maxTerminalLength);
+  const showIndicator = isStringComparison &&
+    (stringsLen <= maxTerminalLength);
 
   if (showIndicator) {
     let indicatorIdx = -1;
@@ -224,7 +235,10 @@ function createErrDiff(
   const inspectedActual = inspectValue(actual);
   const inspectedExpected = inspectValue(expected);
   const inspectedSplitActual = StringPrototypeSplit(inspectedActual, "\n");
-  const inspectedSplitExpected = StringPrototypeSplit(inspectedExpected, "\n");
+  const inspectedSplitExpected = StringPrototypeSplit(
+    inspectedExpected,
+    "\n",
+  );
   const showSimpleDiff = isSimpleDiff(
     actual,
     inspectedSplitActual,
@@ -304,7 +318,7 @@ function addEllipsis(string) {
   return string;
 }
 
-export class AssertionError extends Error {
+class AssertionError extends Error {
   // deno-lint-ignore constructor-super
   constructor(options) {
     validateObject(options, "options");
@@ -322,11 +336,13 @@ export class AssertionError extends Error {
       expected,
     } = options;
 
-    const limit = Error.stackTraceLimit;
-    if (isErrorStackTraceLimitWritable()) Error.stackTraceLimit = 0;
+    const limit = ReflectGet(Error, "stackTraceLimit");
+    if (isErrorStackTraceLimitWritable()) {
+      ReflectSet(Error, "stackTraceLimit", 0);
+    }
 
     if (message != null) {
-      if (kMethodsWithCustomMessageDiff.includes(operator)) {
+      if (ArrayPrototypeIncludes(kMethodsWithCustomMessageDiff, operator)) {
         super(createErrDiff(actual, expected, operator, message, diff));
       } else {
         super(String(message));
@@ -341,14 +357,16 @@ export class AssertionError extends Error {
       if (
         typeof actual === "object" && actual !== null &&
         typeof expected === "object" && expected !== null &&
-        "stack" in actual && actual instanceof Error &&
-        "stack" in expected && expected instanceof Error
+        ReflectHas(actual, "stack") &&
+        ObjectPrototypeIsPrototypeOf(ErrorPrototype, actual) &&
+        ReflectHas(expected, "stack") &&
+        ObjectPrototypeIsPrototypeOf(ErrorPrototype, expected)
       ) {
         actual = copyError(actual);
         expected = copyError(expected);
       }
 
-      if (kMethodsWithCustomMessageDiff.includes(operator)) {
+      if (ArrayPrototypeIncludes(kMethodsWithCustomMessageDiff, operator)) {
         super(createErrDiff(actual, expected, operator, message, diff));
       } else if (
         operator === "notDeepStrictEqual" ||
@@ -415,7 +433,9 @@ export class AssertionError extends Error {
       }
     }
 
-    if (isErrorStackTraceLimitWritable()) Error.stackTraceLimit = limit;
+    if (isErrorStackTraceLimitWritable()) {
+      ReflectSet(Error, "stackTraceLimit", limit);
+    }
 
     this.generatedMessage = !message;
     ObjectDefineProperty(this, "name", {
@@ -484,4 +504,8 @@ export class AssertionError extends Error {
   }
 }
 
-export default AssertionError;
+return {
+  AssertionError,
+  default: AssertionError,
+};
+})();

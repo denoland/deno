@@ -28,13 +28,13 @@ use std::time::SystemTime;
 
 use deno_core::GarbageCollected;
 use deno_core::OpState;
+use deno_core::ToV8;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::mpsc::UnboundedSender;
 use deno_core::futures::future::BoxFuture;
-use deno_core::futures::stream;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::DataError;
@@ -73,22 +73,22 @@ use opentelemetry_otlp::Protocol;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_otlp::WithHttpConfig;
 use opentelemetry_sdk::Resource;
-use opentelemetry_sdk::export::trace::SpanData;
-use opentelemetry_sdk::logs::BatchLogProcessor;
+use opentelemetry_sdk::error::OTelSdkResult;
 use opentelemetry_sdk::logs::LogProcessor;
-pub use opentelemetry_sdk::logs::LogRecord;
+pub use opentelemetry_sdk::logs::SdkLogRecord as LogRecord;
+use opentelemetry_sdk::logs::log_processor_with_async_runtime::BatchLogProcessor;
 use opentelemetry_sdk::metrics::ManualReader;
-use opentelemetry_sdk::metrics::MetricResult;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use opentelemetry_sdk::metrics::Temporality;
 use opentelemetry_sdk::metrics::exporter::PushMetricExporter;
 use opentelemetry_sdk::metrics::reader::MetricReader;
-use opentelemetry_sdk::trace::BatchSpanProcessor;
 use opentelemetry_sdk::trace::IdGenerator;
 use opentelemetry_sdk::trace::RandomIdGenerator;
+use opentelemetry_sdk::trace::SpanData;
 use opentelemetry_sdk::trace::SpanEvents;
 use opentelemetry_sdk::trace::SpanLinks;
 use opentelemetry_sdk::trace::SpanProcessor as _;
+use opentelemetry_sdk::trace::span_processor_with_async_runtime::BatchSpanProcessor;
 use opentelemetry_semantic_conventions::resource::PROCESS_RUNTIME_NAME;
 use opentelemetry_semantic_conventions::resource::PROCESS_RUNTIME_VERSION;
 use opentelemetry_semantic_conventions::resource::TELEMETRY_SDK_LANGUAGE;
@@ -101,6 +101,9 @@ use sys_traits::FsRead;
 use thiserror::Error;
 use tokio::sync::oneshot;
 use tokio::task::JoinSet;
+
+mod console_exporter;
+mod grpc_exporter;
 
 deno_core::extension!(
   deno_telemetry,
@@ -127,7 +130,7 @@ deno_core::extension!(
     op_otel_metric_observation_done,
   ],
   objects = [OtelTracer, OtelMeter, OtelSpan],
-  esm = ["telemetry.ts", "util.ts"],
+  lazy_loaded_js = ["telemetry.ts", "util.ts"],
 );
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -236,24 +239,39 @@ impl hyper::rt::Executor<BoxFuture<'static, ()>> for OtelSharedRuntime {
 }
 
 impl opentelemetry_sdk::runtime::Runtime for OtelSharedRuntime {
-  type Interval = Pin<Box<dyn Stream<Item = ()> + Send + 'static>>;
-  type Delay = Pin<Box<tokio::time::Sleep>>;
-
-  fn interval(&self, period: Duration) -> Self::Interval {
-    stream::repeat(())
-      .then(move |_| tokio::time::sleep(period))
-      .boxed()
-  }
-
-  fn spawn(&self, future: BoxFuture<'static, ()>) {
+  fn spawn<F>(&self, future: F)
+  where
+    F: std::future::Future<Output = ()> + Send + 'static,
+  {
     (*OTEL_SHARED_RUNTIME_SPAWN_TASK_TX)
-      .unbounded_send(future)
+      .unbounded_send(future.boxed())
       .expect("failed to send task to shared OpenTelemetry runtime");
   }
 
-  fn delay(&self, duration: Duration) -> Self::Delay {
-    Box::pin(tokio::time::sleep(duration))
+  fn delay(
+    &self,
+    duration: Duration,
+  ) -> impl std::future::Future<Output = ()> + Send + 'static {
+    tokio::time::sleep(duration)
   }
+}
+
+/// Mint a blank [`LogRecord`]. In opentelemetry 0.32 `SdkLogRecord` no longer
+/// has a public constructor; records are created through a logger. We keep a
+/// process-wide factory logger purely to produce empty records, which are then
+/// populated and emitted with an explicit instrumentation scope via the log
+/// processor.
+fn new_log_record() -> LogRecord {
+  use opentelemetry::logs::Logger as _;
+  use opentelemetry::logs::LoggerProvider as _;
+
+  static LOG_RECORD_FACTORY: Lazy<opentelemetry_sdk::logs::SdkLogger> =
+    Lazy::new(|| {
+      opentelemetry_sdk::logs::SdkLoggerProvider::builder()
+        .build()
+        .logger("deno")
+    });
+  LOG_RECORD_FACTORY.create_log_record()
 }
 
 impl opentelemetry_sdk::runtime::RuntimeChannel for OtelSharedRuntime {
@@ -328,8 +346,8 @@ impl<T> Stream for BatchMessageChannelReceiver<T> {
 enum DenoPeriodicReaderMessage {
   Register(std::sync::Weak<opentelemetry_sdk::metrics::Pipeline>),
   Export,
-  ForceFlush(oneshot::Sender<MetricResult<()>>),
-  Shutdown(oneshot::Sender<MetricResult<()>>),
+  ForceFlush(oneshot::Sender<OTelSdkResult>),
+  Shutdown(oneshot::Sender<OTelSdkResult>),
 }
 
 #[derive(Debug)]
@@ -351,18 +369,18 @@ impl MetricReader for DenoPeriodicReader {
   fn collect(
     &self,
     _rm: &mut opentelemetry_sdk::metrics::data::ResourceMetrics,
-  ) -> opentelemetry_sdk::metrics::MetricResult<()> {
+  ) -> OTelSdkResult {
     unreachable!("collect should not be called on DenoPeriodicReader");
   }
 
-  fn force_flush(&self) -> opentelemetry_sdk::metrics::MetricResult<()> {
+  fn force_flush(&self) -> OTelSdkResult {
     let (tx, rx) = oneshot::channel();
     let _ = self.tx.try_send(DenoPeriodicReaderMessage::ForceFlush(tx));
     deno_core::futures::executor::block_on(rx).unwrap()?;
     Ok(())
   }
 
-  fn shutdown(&self) -> opentelemetry_sdk::metrics::MetricResult<()> {
+  fn shutdown_with_timeout(&self, _timeout: Duration) -> OTelSdkResult {
     let (tx, rx) = oneshot::channel();
     let _ = self.tx.try_send(DenoPeriodicReaderMessage::Shutdown(tx));
     deno_core::futures::executor::block_on(rx).unwrap()?;
@@ -381,14 +399,19 @@ const METRIC_EXPORT_INTERVAL_NAME: &str = "OTEL_METRIC_EXPORT_INTERVAL";
 const DEFAULT_INTERVAL: Duration = Duration::from_secs(60);
 
 impl DenoPeriodicReader {
-  fn new(
+  fn new<E: PushMetricExporter + 'static>(
     sys: &impl TelemetrySys,
-    exporter: opentelemetry_otlp::MetricExporter,
+    exporter: E,
   ) -> Self {
     let interval = sys
       .env_var(METRIC_EXPORT_INTERVAL_NAME)
       .ok()
-      .and_then(|v| v.parse().map(Duration::from_millis).ok())
+      .and_then(|v| {
+        v.parse()
+          .map(Duration::from_millis)
+          .ok()
+          .filter(|d| !d.is_zero())
+      })
       .unwrap_or(DEFAULT_INTERVAL);
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(256);
@@ -405,10 +428,7 @@ impl DenoPeriodicReader {
         let exporter = &exporter;
         async move {
           let mut resource_metrics =
-            opentelemetry_sdk::metrics::data::ResourceMetrics {
-              resource: Default::default(),
-              scope_metrics: Default::default(),
-            };
+            opentelemetry_sdk::metrics::data::ResourceMetrics::default();
           if collect_observed {
             let callbacks = {
               let mut callbacks = OTEL_PRE_COLLECT_CALLBACKS.lock().unwrap();
@@ -424,10 +444,10 @@ impl DenoPeriodicReader {
             while futures.join_next().await.is_some() {}
           }
           inner.collect(&mut resource_metrics)?;
-          if resource_metrics.scope_metrics.is_empty() {
+          if resource_metrics.scope_metrics().next().is_none() {
             return Ok(());
           }
-          exporter.export(&mut resource_metrics).await?;
+          exporter.export(&resource_metrics).await?;
           Ok(())
         }
       };
@@ -508,6 +528,7 @@ mod hyper_client {
   use std::fmt::Debug;
   use std::pin::Pin;
   use std::task::Poll;
+  use std::time::Duration;
 
   use deno_net::tunnel::TunnelConnection;
   use deno_net::tunnel::TunnelStream;
@@ -751,13 +772,28 @@ mod hyper_client {
     }
   }
 
+  const DEFAULT_OTEL_EXPORTER_OTLP_TIMEOUT: Duration = Duration::from_secs(10);
+
+  fn parse_otlp_timeout() -> Duration {
+    match std::env::var("OTEL_EXPORTER_OTLP_TIMEOUT") {
+      Ok(val) => match val.parse::<u64>() {
+        Ok(millis) if millis > 0 => Duration::from_millis(millis),
+        _ => DEFAULT_OTEL_EXPORTER_OTLP_TIMEOUT,
+      },
+      Err(_) => DEFAULT_OTEL_EXPORTER_OTLP_TIMEOUT,
+    }
+  }
+
   #[derive(Debug, Clone)]
   pub struct HyperClient {
     inner: Client<Connector, Full<Bytes>>,
+    timeout: Duration,
   }
 
   impl HyperClient {
-    pub fn new(sys: &impl FsRead) -> deno_core::anyhow::Result<Self> {
+    fn build_connector(
+      sys: &impl FsRead,
+    ) -> deno_core::anyhow::Result<Connector> {
       let connector = if let Some(tunnel) = get_tunnel() {
         Connector::Tunnel(tunnel.clone())
       } else if let Ok(addr) = std::env::var("OTEL_DENO_VSOCK") {
@@ -800,7 +836,12 @@ mod hyper_client {
             let cert = sys.fs_read(cert_path)?;
 
             let certs = load_certs(&mut std::io::Cursor::new(cert))?;
-            let key = load_private_keys(&key)?.into_iter().next().unwrap();
+            let key =
+              load_private_keys(&key)?.into_iter().next().ok_or_else(|| {
+                deno_core::anyhow::anyhow!(
+                  "no private key found in OTEL_EXPORTER_OTLP_CLIENT_KEY file"
+                )
+              })?;
 
             TlsKeys::Static(TlsKey(certs, key))
           }
@@ -822,24 +863,92 @@ mod hyper_client {
         Connector::Http(connector)
       };
 
-      Ok(Self {
-        inner: Client::builder(OtelSharedRuntime).build(connector),
+      Ok(connector)
+    }
+
+    pub fn new(sys: &impl FsRead) -> deno_core::anyhow::Result<Self> {
+      let connector = Self::build_connector(sys)?;
+      Ok(Self::from_connector(connector, false))
+    }
+
+    /// Create a client configured for gRPC (HTTP/2 enforced).
+    pub fn new_h2(sys: &impl FsRead) -> deno_core::anyhow::Result<Self> {
+      let connector = Self::build_connector(sys)?;
+      Ok(Self::from_connector(connector, true))
+    }
+
+    fn from_connector(connector: Connector, http2_only: bool) -> Self {
+      let mut builder = Client::builder(OtelSharedRuntime);
+      if http2_only {
+        builder.http2_only(true);
+      }
+      Self {
+        inner: builder.build(connector),
+        timeout: parse_otlp_timeout(),
+      }
+    }
+  }
+
+  impl HyperClient {
+    pub fn timeout(&self) -> Duration {
+      self.timeout
+    }
+
+    /// Send a gRPC request, preserving HTTP/2 trailers for grpc-status.
+    /// Returns (response_headers, trailers).
+    pub async fn grpc_request(
+      &self,
+      request: Request<Vec<u8>>,
+    ) -> Result<
+      (hyper::http::response::Parts, Option<hyper::HeaderMap>),
+      Box<dyn std::error::Error + Send + Sync>,
+    > {
+      let (parts, body) = request.into_parts();
+      let request = Request::from_parts(parts, Full::from(body));
+      let result = tokio::time::timeout(self.timeout, async {
+        let response = self.inner.request(request).await?;
+        let (parts, body) = response.into_parts();
+        let collected = http_body_util::Limited::new(body, 1024 * 1024)
+          .collect()
+          .await?;
+        let trailers = collected.trailers().cloned();
+        Ok::<_, Box<dyn std::error::Error + Send + Sync>>((parts, trailers))
       })
+      .await
+      .map_err(|_| -> Box<dyn std::error::Error + Send + Sync> {
+        Box::new(std::io::Error::new(
+          std::io::ErrorKind::TimedOut,
+          format!("OTEL export timed out after {}ms", self.timeout.as_millis()),
+        ))
+      })??;
+      Ok(result)
     }
   }
 
   #[async_trait::async_trait]
   impl opentelemetry_http::HttpClient for HyperClient {
-    async fn send(
+    async fn send_bytes(
       &self,
-      request: Request<Vec<u8>>,
+      request: Request<Bytes>,
     ) -> Result<Response<Bytes>, HttpError> {
       let (parts, body) = request.into_parts();
-      let request = Request::from_parts(parts, Full::from(body));
-      let response = self.inner.request(request).await?;
-      let (parts, body) = response.into_parts();
-      let body = body.collect().await?.to_bytes();
-      let response = Response::from_parts(parts, body);
+      let request = Request::from_parts(parts, Full::new(body));
+      let response = tokio::time::timeout(self.timeout, async {
+        let response = self.inner.request(request).await?;
+        let (parts, body) = response.into_parts();
+        let body = http_body_util::Limited::new(body, 1024 * 1024)
+          .collect()
+          .await?
+          .to_bytes();
+        Ok::<_, HttpError>(Response::from_parts(parts, body))
+      })
+      .await
+      .map_err(|_| {
+        std::io::Error::new(
+          std::io::ErrorKind::TimedOut,
+          format!("OTEL export timed out after {}ms", self.timeout.as_millis()),
+        )
+      })??;
       Ok(response.error_for_status()?)
     }
   }
@@ -852,6 +961,10 @@ pub struct OtelGlobals {
   pub id_generator: DenoIdGenerator,
   pub meter_provider: SdkMeterProvider,
   pub builtin_instrumentation_scope: InstrumentationScope,
+  pub span_event_count_limit: usize,
+  pub span_attribute_count_limit: usize,
+  pub span_attribute_value_length_limit: Option<usize>,
+  pub sampler: Sampler,
   pub config: OtelConfig,
 }
 
@@ -862,6 +975,245 @@ impl OtelGlobals {
 
   pub fn has_metrics(&self) -> bool {
     self.config.metrics_enabled
+  }
+}
+
+/// Default maximum number of events per span, per the OpenTelemetry SDK spec
+/// for `OTEL_SPAN_EVENT_COUNT_LIMIT`.
+const DEFAULT_SPAN_EVENT_COUNT_LIMIT: usize = 128;
+
+/// Resolve the span event count limit from `OTEL_SPAN_EVENT_COUNT_LIMIT`,
+/// falling back to the spec default of 128.
+///
+/// See <https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/#span-limits>
+fn span_event_count_limit_from_env(sys: &impl TelemetrySys) -> usize {
+  sys
+    .env_var("OTEL_SPAN_EVENT_COUNT_LIMIT")
+    .ok()
+    .and_then(|v| v.trim().parse::<usize>().ok())
+    .unwrap_or(DEFAULT_SPAN_EVENT_COUNT_LIMIT)
+}
+
+/// The effective span event count limit from the initialized globals, falling
+/// back to the spec default if telemetry is not yet initialized.
+fn span_event_count_limit() -> usize {
+  OTEL_GLOBALS
+    .get()
+    .map(|g| g.span_event_count_limit)
+    .unwrap_or(DEFAULT_SPAN_EVENT_COUNT_LIMIT)
+}
+
+/// Default maximum number of attributes per span (and per span event / link),
+/// as defined by the OpenTelemetry SDK spec for `OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT`
+/// (and `OTEL_ATTRIBUTE_COUNT_LIMIT`).
+const DEFAULT_ATTRIBUTE_COUNT_LIMIT: usize = 128;
+
+/// Resolve the span attribute count limit from the environment, honoring
+/// `OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT` and falling back to the general
+/// `OTEL_ATTRIBUTE_COUNT_LIMIT`, then to the spec default of 128.
+///
+/// See <https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/#attribute-limits>
+fn span_attribute_count_limit_from_env(sys: &impl TelemetrySys) -> usize {
+  [
+    "OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT",
+    "OTEL_ATTRIBUTE_COUNT_LIMIT",
+  ]
+  .into_iter()
+  .find_map(|name| {
+    sys
+      .env_var(name)
+      .ok()
+      .and_then(|v| v.trim().parse::<usize>().ok())
+  })
+  .unwrap_or(DEFAULT_ATTRIBUTE_COUNT_LIMIT)
+}
+
+/// The effective span attribute count limit from the initialized globals,
+/// falling back to the spec default if telemetry is not yet initialized.
+fn attribute_count_limit() -> usize {
+  OTEL_GLOBALS
+    .get()
+    .map(|g| g.span_attribute_count_limit)
+    .unwrap_or(DEFAULT_ATTRIBUTE_COUNT_LIMIT)
+}
+
+/// Resolve the maximum attribute value length from the environment, honoring
+/// `OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT` and falling back to the general
+/// `OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT`. The default is no limit, and per the
+/// spec non-positive values are invalid and treated as no limit.
+///
+/// See <https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/#attribute-limits>
+fn span_attribute_value_length_limit_from_env(
+  sys: &impl TelemetrySys,
+) -> Option<usize> {
+  [
+    "OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT",
+    "OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT",
+  ]
+  .into_iter()
+  .find_map(|name| sys.env_var(name).ok().map(|v| v.trim().to_string()))
+  .and_then(|v| v.parse::<usize>().ok())
+  .filter(|&limit| limit > 0)
+}
+
+/// The effective attribute value length limit from the initialized globals.
+/// Returns `None` (no limit) when unset or telemetry is not yet initialized.
+fn attribute_value_length_limit() -> Option<usize> {
+  OTEL_GLOBALS
+    .get()
+    .and_then(|g| g.span_attribute_value_length_limit)
+}
+
+/// Truncate a single string attribute value to at most `limit` characters,
+/// per `OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT`.
+fn truncate_string_value(value: &mut StringValue, limit: usize) {
+  if value.as_str().chars().count() > limit {
+    let truncated: String = value.as_str().chars().take(limit).collect();
+    *value = StringValue::from(truncated);
+  }
+}
+
+/// Apply the configured attribute value length limit to a built attribute
+/// value. String values and the elements of string-array values are truncated
+/// to `limit` characters; other value types are unaffected. A `None` limit is
+/// a no-op.
+fn truncate_attr_value(value: &mut Value, limit: Option<usize>) {
+  let Some(limit) = limit else {
+    return;
+  };
+  match value {
+    Value::String(s) => truncate_string_value(s, limit),
+    Value::Array(Array::String(arr)) => {
+      for s in arr.iter_mut() {
+        truncate_string_value(s, limit);
+      }
+    }
+    _ => {}
+  }
+}
+
+/// Head-based trace sampler configured via the `OTEL_TRACES_SAMPLER` and
+/// `OTEL_TRACES_SAMPLER_ARG` environment variables.
+///
+/// See <https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/#general-sdk-configuration>
+#[derive(Debug, Clone, Copy)]
+pub struct Sampler {
+  /// When set, the sampling decision of a valid parent span takes precedence
+  /// over `root` (the `parentbased_*` variants).
+  parent_based: bool,
+  /// The sampler consulted when there is no parent (or `parent_based` is
+  /// false).
+  root: RootSampler,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum RootSampler {
+  AlwaysOn,
+  AlwaysOff,
+  TraceIdRatio(f64),
+}
+
+impl Default for Sampler {
+  fn default() -> Self {
+    // When `OTEL_TRACES_SAMPLER` is unset, preserve Deno's historical behavior
+    // of recording and sampling every span.
+    Sampler {
+      parent_based: false,
+      root: RootSampler::AlwaysOn,
+    }
+  }
+}
+
+impl Sampler {
+  fn from_env(
+    sys: &impl TelemetrySys,
+  ) -> Result<Self, deno_core::anyhow::Error> {
+    let Ok(value) = sys.env_var("OTEL_TRACES_SAMPLER") else {
+      return Ok(Self::default());
+    };
+    let value = value.trim();
+    if value.is_empty() {
+      return Ok(Self::default());
+    }
+    // `OTEL_TRACES_SAMPLER_ARG` is the sampling probability for the
+    // `traceidratio` samplers, in the range [0, 1]. It defaults to 1.0 and is
+    // ignored by the other samplers.
+    let ratio = || -> f64 {
+      sys
+        .env_var("OTEL_TRACES_SAMPLER_ARG")
+        .ok()
+        .and_then(|s| s.trim().parse::<f64>().ok())
+        .unwrap_or(1.0)
+        .clamp(0.0, 1.0)
+    };
+    let sampler = match value {
+      "always_on" => Sampler {
+        parent_based: false,
+        root: RootSampler::AlwaysOn,
+      },
+      "always_off" => Sampler {
+        parent_based: false,
+        root: RootSampler::AlwaysOff,
+      },
+      "traceidratio" => Sampler {
+        parent_based: false,
+        root: RootSampler::TraceIdRatio(ratio()),
+      },
+      "parentbased_always_on" => Sampler {
+        parent_based: true,
+        root: RootSampler::AlwaysOn,
+      },
+      "parentbased_always_off" => Sampler {
+        parent_based: true,
+        root: RootSampler::AlwaysOff,
+      },
+      "parentbased_traceidratio" => Sampler {
+        parent_based: true,
+        root: RootSampler::TraceIdRatio(ratio()),
+      },
+      other => {
+        return Err(deno_core::anyhow::anyhow!(
+          "Env var OTEL_TRACES_SAMPLER specifies an unsupported sampler: {}",
+          other
+        ));
+      }
+    };
+    Ok(sampler)
+  }
+
+  /// Returns whether a span with the given `trace_id` should be sampled
+  /// (recorded and exported), given its `parent` span context if any.
+  fn should_sample(
+    &self,
+    parent: Option<&SpanContext>,
+    trace_id: TraceId,
+  ) -> bool {
+    let parent_decision = parent.and_then(|parent| {
+      (self.parent_based && parent.is_valid()).then(|| parent.is_sampled())
+    });
+    if let Some(sampled) = parent_decision {
+      return sampled;
+    }
+    match self.root {
+      RootSampler::AlwaysOn => true,
+      RootSampler::AlwaysOff => false,
+      RootSampler::TraceIdRatio(ratio) => {
+        if ratio >= 1.0 {
+          return true;
+        }
+        if ratio <= 0.0 {
+          return false;
+        }
+        // Matches the opentelemetry-rust `TraceIdRatioBased` sampler: derive a
+        // deterministic value in [0, 2^63) from the lower 64 bits of the trace
+        // id and keep the span when it falls below the probability bound.
+        let bytes = trace_id.to_bytes();
+        let low = u64::from_be_bytes(bytes[8..16].try_into().unwrap());
+        let value = low >> 1;
+        let bound = (ratio * (1u64 << 63) as f64) as u64;
+        value < bound
+      }
+    }
   }
 }
 
@@ -884,11 +1236,20 @@ pub fn init(
 
   // Parse the `OTEL_EXPORTER_OTLP_PROTOCOL` variable. The opentelemetry_*
   // crates don't do this automatically.
-  // TODO(piscisaureus): enable GRPC support.
-  let protocol = match sys.env_var("OTEL_EXPORTER_OTLP_PROTOCOL").as_deref() {
-    Ok("http/protobuf") => Protocol::HttpBinary,
-    Ok("http/json") => Protocol::HttpJson,
-    Ok("") | Err(std::env::VarError::NotPresent) => Protocol::HttpBinary,
+  // `opentelemetry_otlp::Protocol::Grpc` is feature-gated behind the
+  // (tonic-based) `grpc-tonic` feature, which we don't enable because we ship
+  // our own gRPC framing. Track the gRPC choice with a separate flag so the
+  // `protocol` value is only ever the HTTP variant passed to the OTLP HTTP
+  // exporter builder.
+  let protocol_var = sys.env_var("OTEL_EXPORTER_OTLP_PROTOCOL");
+  let (use_console_exporter, use_grpc, protocol) = match protocol_var.as_deref()
+  {
+    Ok("console") => (true, false, Protocol::HttpBinary),
+    Ok("http/protobuf") | Ok("") | Err(std::env::VarError::NotPresent) => {
+      (false, false, Protocol::HttpBinary)
+    }
+    Ok("http/json") => (false, false, Protocol::HttpJson),
+    Ok("grpc") => (false, true, Protocol::HttpBinary),
     Ok(protocol) => {
       return Err(deno_core::anyhow::anyhow!(
         "Env var OTEL_EXPORTER_OTLP_PROTOCOL specifies an unsupported protocol: {}",
@@ -909,50 +1270,34 @@ pub fn init(
   //   * Additional attributes from the `OTEL_RESOURCE_ATTRIBUTES` env var.
   //   * Default attribute values defined here.
   // TODO(piscisaureus): add more default attributes (e.g. script path).
-  let mut resource = Resource::default();
+  // The base resource picks up `service.name`, the `telemetry.sdk.*`
+  // attributes and any `OTEL_RESOURCE_ATTRIBUTES`/`OTEL_SERVICE_NAME` values.
+  let base_resource = Resource::builder().build();
+  let sdk_language = base_resource
+    .get(&Key::new(TELEMETRY_SDK_LANGUAGE))
+    .unwrap();
+  let sdk_name = base_resource.get(&Key::new(TELEMETRY_SDK_NAME)).unwrap();
+  let sdk_version =
+    base_resource.get(&Key::new(TELEMETRY_SDK_VERSION)).unwrap();
 
   // Add the runtime name and version to the resource attributes. Also override
   // the `telemetry.sdk` attributes to include the Deno runtime.
-  resource = resource.merge(&Resource::new(vec![
-    KeyValue::new(PROCESS_RUNTIME_NAME, rt_config.runtime_name),
-    KeyValue::new(PROCESS_RUNTIME_VERSION, rt_config.runtime_version.clone()),
-    KeyValue::new(
-      TELEMETRY_SDK_LANGUAGE,
-      format!(
-        "deno-{}",
-        resource.get(Key::new(TELEMETRY_SDK_LANGUAGE)).unwrap()
+  let resource = Resource::builder()
+    .with_attributes([
+      KeyValue::new(PROCESS_RUNTIME_NAME, rt_config.runtime_name),
+      KeyValue::new(PROCESS_RUNTIME_VERSION, rt_config.runtime_version.clone()),
+      KeyValue::new(TELEMETRY_SDK_LANGUAGE, format!("deno-{sdk_language}")),
+      KeyValue::new(TELEMETRY_SDK_NAME, format!("deno-{sdk_name}")),
+      KeyValue::new(
+        TELEMETRY_SDK_VERSION,
+        format!("{}-{}", rt_config.runtime_version, sdk_version),
       ),
-    ),
-    KeyValue::new(
-      TELEMETRY_SDK_NAME,
-      format!(
-        "deno-{}",
-        resource.get(Key::new(TELEMETRY_SDK_NAME)).unwrap()
-      ),
-    ),
-    KeyValue::new(
-      TELEMETRY_SDK_VERSION,
-      format!(
-        "{}-{}",
-        rt_config.runtime_version,
-        resource.get(Key::new(TELEMETRY_SDK_VERSION)).unwrap()
-      ),
-    ),
-  ]));
+    ])
+    .build();
 
   // The OTLP endpoint is automatically picked up from the
   // `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable. Additional headers can
   // be specified using `OTEL_EXPORTER_OTLP_HEADERS`.
-
-  let client = hyper_client::HyperClient::new(sys)?;
-
-  let span_exporter = HttpExporterBuilder::default()
-    .with_http_client(client.clone())
-    .with_protocol(protocol)
-    .build_span_exporter()?;
-  let mut span_processor =
-    BatchSpanProcessor::builder(span_exporter, OtelSharedRuntime).build();
-  span_processor.set_resource(&resource);
 
   let temporality_preference = sys
     .env_var("OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE")
@@ -969,23 +1314,81 @@ pub fn init(
       ));
     }
   };
-  let metric_exporter = HttpExporterBuilder::default()
-    .with_http_client(client.clone())
-    .with_protocol(protocol)
-    .build_metrics_exporter(temporality)?;
-  let metric_reader = DenoPeriodicReader::new(sys, metric_exporter);
-  let meter_provider = SdkMeterProvider::builder()
-    .with_reader(metric_reader)
-    .with_resource(resource.clone())
-    .build();
 
-  let log_exporter = HttpExporterBuilder::default()
-    .with_http_client(client)
-    .with_protocol(protocol)
-    .build_log_exporter()?;
-  let log_processor =
-    BatchLogProcessor::builder(log_exporter, OtelSharedRuntime).build();
-  log_processor.set_resource(&resource);
+  let (span_processor, meter_provider, log_processor) = if use_console_exporter
+  {
+    let span_exporter = console_exporter::ConsoleSpanExporter::new();
+    let mut span_processor =
+      BatchSpanProcessor::builder(span_exporter, OtelSharedRuntime).build();
+    span_processor.set_resource(&resource);
+
+    let metric_exporter =
+      console_exporter::ConsoleMetricExporter::new(temporality);
+    let metric_reader = DenoPeriodicReader::new(sys, metric_exporter);
+    let meter_provider = SdkMeterProvider::builder()
+      .with_reader(metric_reader)
+      .with_resource(resource.clone())
+      .build();
+
+    let log_exporter = console_exporter::ConsoleLogExporter::new();
+    let mut log_processor =
+      BatchLogProcessor::builder(log_exporter, OtelSharedRuntime).build();
+    log_processor.set_resource(&resource);
+
+    (span_processor, meter_provider, log_processor)
+  } else if use_grpc {
+    let client = hyper_client::HyperClient::new_h2(sys)?;
+
+    let span_exporter = grpc_exporter::GrpcSpanExporter::new(client.clone());
+    let mut span_processor =
+      BatchSpanProcessor::builder(span_exporter, OtelSharedRuntime).build();
+    span_processor.set_resource(&resource);
+
+    let metric_exporter =
+      grpc_exporter::GrpcMetricExporter::new(client.clone(), temporality);
+    let metric_reader = DenoPeriodicReader::new(sys, metric_exporter);
+    let meter_provider = SdkMeterProvider::builder()
+      .with_reader(metric_reader)
+      .with_resource(resource.clone())
+      .build();
+
+    let log_exporter = grpc_exporter::GrpcLogExporter::new(client);
+    let mut log_processor =
+      BatchLogProcessor::builder(log_exporter, OtelSharedRuntime).build();
+    log_processor.set_resource(&resource);
+
+    (span_processor, meter_provider, log_processor)
+  } else {
+    let client = hyper_client::HyperClient::new(sys)?;
+
+    let span_exporter = HttpExporterBuilder::default()
+      .with_http_client(client.clone())
+      .with_protocol(protocol)
+      .build_span_exporter()?;
+    let mut span_processor =
+      BatchSpanProcessor::builder(span_exporter, OtelSharedRuntime).build();
+    span_processor.set_resource(&resource);
+
+    let metric_exporter = HttpExporterBuilder::default()
+      .with_http_client(client.clone())
+      .with_protocol(protocol)
+      .build_metrics_exporter(temporality)?;
+    let metric_reader = DenoPeriodicReader::new(sys, metric_exporter);
+    let meter_provider = SdkMeterProvider::builder()
+      .with_reader(metric_reader)
+      .with_resource(resource.clone())
+      .build();
+
+    let log_exporter = HttpExporterBuilder::default()
+      .with_http_client(client)
+      .with_protocol(protocol)
+      .build_log_exporter()?;
+    let mut log_processor =
+      BatchLogProcessor::builder(log_exporter, OtelSharedRuntime).build();
+    log_processor.set_resource(&resource);
+
+    (span_processor, meter_provider, log_processor)
+  };
 
   let builtin_instrumentation_scope =
     opentelemetry::InstrumentationScope::builder("deno")
@@ -998,6 +1401,12 @@ pub fn init(
     DenoIdGenerator::random()
   };
 
+  let span_event_count_limit = span_event_count_limit_from_env(sys);
+  let span_attribute_count_limit = span_attribute_count_limit_from_env(sys);
+  let span_attribute_value_length_limit =
+    span_attribute_value_length_limit_from_env(sys);
+  let sampler = Sampler::from_env(sys)?;
+
   OTEL_GLOBALS
     .set(OtelGlobals {
       log_processor,
@@ -1005,6 +1414,10 @@ pub fn init(
       id_generator,
       meter_provider,
       builtin_instrumentation_scope,
+      span_event_count_limit,
+      span_attribute_count_limit,
+      span_attribute_value_length_limit,
+      sampler,
       config,
     })
     .map_err(|_| deno_core::anyhow::anyhow!("failed to set otel globals"))?;
@@ -1052,7 +1465,7 @@ pub fn handle_log(record: &log::Record) {
     return;
   };
 
-  let mut log_record = LogRecord::default();
+  let mut log_record = new_log_record();
 
   let now = SystemTime::now();
   log_record.set_timestamp(now);
@@ -1227,33 +1640,44 @@ macro_rules! attr_raw {
     } else {
       None
     };
-    let value = if let Ok(string) = $value.try_cast::<v8::String>() {
-      Some(Value::String(StringValue::from({
-        let x = v8::ValueView::new($scope, string);
-        match x.data() {
-          v8::ValueViewData::OneByte(bytes) => {
-            String::from_utf8_lossy(bytes).into_owned()
+    let value = 'value: {
+      if let Ok(string) = $value.try_cast::<v8::String>() {
+        break 'value Some(Value::String(StringValue::from({
+          let x = v8::ValueView::new($scope, string);
+          match x.data() {
+            v8::ValueViewData::OneByte(bytes) => {
+              String::from_utf8_lossy(bytes).into_owned()
+            }
+            v8::ValueViewData::TwoByte(bytes) => {
+              String::from_utf16_lossy(bytes)
+            }
           }
-          v8::ValueViewData::TwoByte(bytes) => String::from_utf16_lossy(bytes),
+        })));
+      }
+      if let Ok(number) = $value.try_cast::<v8::Number>() {
+        break 'value Some(Value::F64(number.value()));
+      }
+      if let Ok(boolean) = $value.try_cast::<v8::Boolean>() {
+        break 'value Some(Value::Bool(boolean.is_true()));
+      }
+      if let Ok(bigint) = $value.try_cast::<v8::BigInt>() {
+        let (i64_value, _lossless) = bigint.i64_value();
+        break 'value Some(Value::I64(i64_value));
+      }
+      if let Ok(array) = $value.try_cast::<v8::Array>() {
+        let len = array.length();
+        if len == 0 {
+          break 'value Some(Value::Array(Array::String(vec![])));
         }
-      })))
-    } else if let Ok(number) = $value.try_cast::<v8::Number>() {
-      Some(Value::F64(number.value()))
-    } else if let Ok(boolean) = $value.try_cast::<v8::Boolean>() {
-      Some(Value::Bool(boolean.is_true()))
-    } else if let Ok(bigint) = $value.try_cast::<v8::BigInt>() {
-      let (i64_value, _lossless) = bigint.i64_value();
-      Some(Value::I64(i64_value))
-    } else if let Ok(array) = $value.try_cast::<v8::Array>() {
-      let len = array.length();
-      if len == 0 {
-        Some(Value::Array(Array::String(vec![])))
-      } else {
-        let first = array.get_index($scope, 0).unwrap();
+        let Some(first) = array.get_index($scope, 0) else {
+          return;
+        };
         if first.is_string() {
           let mut vec = Vec::with_capacity(len as usize);
           for i in 0..len {
-            let element = array.get_index($scope, i).unwrap();
+            let Some(element) = array.get_index($scope, i) else {
+              return;
+            };
             if let Ok(s) = element.try_cast::<v8::String>() {
               let view = v8::ValueView::new($scope, s);
               vec.push(StringValue::from(match view.data() {
@@ -1266,40 +1690,46 @@ macro_rules! attr_raw {
               }));
             }
           }
-          Some(Value::Array(Array::String(vec)))
-        } else if first.is_number() {
+          break 'value Some(Value::Array(Array::String(vec)));
+        }
+        if first.is_number() {
           let mut vec = Vec::with_capacity(len as usize);
           for i in 0..len {
-            let element = array.get_index($scope, i).unwrap();
+            let Some(element) = array.get_index($scope, i) else {
+              return;
+            };
             if let Ok(n) = element.try_cast::<v8::Number>() {
               vec.push(n.value());
             }
           }
-          Some(Value::Array(Array::F64(vec)))
-        } else if first.is_boolean() {
+          break 'value Some(Value::Array(Array::F64(vec)));
+        }
+        if first.is_boolean() {
           let mut vec = Vec::with_capacity(len as usize);
           for i in 0..len {
-            let element = array.get_index($scope, i).unwrap();
+            let Some(element) = array.get_index($scope, i) else {
+              return;
+            };
             if let Ok(b) = element.try_cast::<v8::Boolean>() {
               vec.push(b.is_true());
             }
           }
-          Some(Value::Array(Array::Bool(vec)))
-        } else if first.is_big_int() {
+          break 'value Some(Value::Array(Array::Bool(vec)));
+        }
+        if first.is_big_int() {
           let mut vec = Vec::with_capacity(len as usize);
           for i in 0..len {
-            let element = array.get_index($scope, i).unwrap();
+            let Some(element) = array.get_index($scope, i) else {
+              return;
+            };
             if let Ok(b) = element.try_cast::<v8::BigInt>() {
               let (i64_value, _lossless) = b.i64_value();
               vec.push(i64_value);
             }
           }
-          Some(Value::Array(Array::I64(vec)))
-        } else {
-          None
+          break 'value Some(Value::Array(Array::I64(vec)));
         }
       }
-    } else {
       None
     };
     if let (Some(name), Some(value)) = (name, value) {
@@ -1310,18 +1740,26 @@ macro_rules! attr_raw {
   }};
 }
 
-macro_rules! attr {
-  ($scope:ident, $attributes:expr $(=> $dropped_attributes_count:expr)?, $name:expr, $value:expr) => {
-    let attr = attr_raw!($scope, $name, $value);
-    if let Some(kv) = attr {
-      $attributes.push(kv);
-    }
-    $(
-      else {
-        $dropped_attributes_count += 1;
-      }
-    )?
-  };
+fn push_parsed_attr(
+  attributes: &mut Vec<KeyValue>,
+  dropped_attributes_count: &mut u32,
+  limit: usize,
+  value_length_limit: Option<usize>,
+  attr: Option<KeyValue>,
+) {
+  // Enforce the configured per-element attribute count limit
+  // (`OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT`): once the limit is reached, further
+  // attributes are dropped and counted, matching the OpenTelemetry SDK spec.
+  if attributes.len() >= limit {
+    *dropped_attributes_count += 1;
+  } else if let Some(mut kv) = attr {
+    // Enforce `OTEL_(SPAN_)ATTRIBUTE_VALUE_LENGTH_LIMIT`: string values (and
+    // string-array elements) longer than the limit are truncated.
+    truncate_attr_value(&mut kv.value, value_length_limit);
+    attributes.push(kv);
+  } else {
+    *dropped_attributes_count += 1;
+  }
 }
 
 /// Convert the integer log level that ext/console uses to the corresponding
@@ -1357,7 +1795,7 @@ fn op_otel_log<'s>(
 
   let severity = severity_from_level(level);
 
-  let mut log_record = LogRecord::default();
+  let mut log_record = new_log_record();
   let now = SystemTime::now();
   log_record.set_timestamp(now);
   log_record.set_observed_timestamp(now);
@@ -1461,7 +1899,7 @@ fn op_otel_log_foreign(
   let trace_id = parse_trace_id(scope, trace_id);
   let span_id = parse_span_id(scope, span_id);
 
-  let mut log_record = LogRecord::default();
+  let mut log_record = new_log_record();
 
   let now = SystemTime::now();
   log_record.set_timestamp(now);
@@ -1505,7 +1943,7 @@ pub fn report_event(name: &'static str, data: impl std::fmt::Display) {
     return;
   };
 
-  let mut log_record = LogRecord::default();
+  let mut log_record = new_log_record();
 
   log_record.set_observed_timestamp(SystemTime::now());
   log_record.set_event_name(name);
@@ -1582,37 +2020,54 @@ impl OtelTracer {
     start_time: Option<f64>,
     #[smi] attribute_count: usize,
   ) -> Result<OtelSpan, JsErrorBox> {
-    let OtelGlobals { id_generator, .. } = OTEL_GLOBALS
+    let OtelGlobals {
+      id_generator,
+      sampler,
+      ..
+    } = OTEL_GLOBALS
       .get()
       .ok_or_else(|| JsErrorBox::generic("otel not initialized"))?;
-    let span_context;
     let parent_span_id;
+    let trace_id;
+    let trace_state;
+    let parent_span_context;
     match parent {
       Some(parent) => {
         let parent = parent.0.borrow();
-        let parent_span_context = match &**parent {
+        let ctx = match &**parent {
           OtelSpanState::Recording(span) => &span.span_context,
           OtelSpanState::Done(span_context) => span_context,
         };
-        span_context = SpanContext::new(
-          parent_span_context.trace_id(),
-          id_generator.new_span_id(),
-          TraceFlags::SAMPLED,
-          false,
-          parent_span_context.trace_state().clone(),
-        );
-        parent_span_id = parent_span_context.span_id();
+        trace_id = ctx.trace_id();
+        trace_state = ctx.trace_state().clone();
+        parent_span_id = ctx.span_id();
+        parent_span_context = Some(ctx.clone());
       }
       None => {
-        span_context = SpanContext::new(
-          id_generator.new_trace_id(),
-          id_generator.new_span_id(),
-          TraceFlags::SAMPLED,
-          false,
-          TraceState::NONE,
-        );
+        trace_id = id_generator.new_trace_id();
+        trace_state = TraceState::NONE;
         parent_span_id = SpanId::INVALID;
+        parent_span_context = None;
       }
+    }
+    let sampled = sampler.should_sample(parent_span_context.as_ref(), trace_id);
+    let span_context = SpanContext::new(
+      trace_id,
+      id_generator.new_span_id(),
+      if sampled {
+        TraceFlags::SAMPLED
+      } else {
+        TraceFlags::default()
+      },
+      false,
+      trace_state,
+    );
+    if !sampled {
+      // The span is not sampled: keep its context for propagation, but do not
+      // record or export it.
+      return Ok(OtelSpan(Rc::new(RefCell::new(Box::new(
+        OtelSpanState::Done(span_context),
+      )))));
     }
     let name = owned_string(
       scope,
@@ -1638,6 +2093,7 @@ impl OtelTracer {
     let span_data = SpanData {
       span_context,
       parent_span_id,
+      parent_span_is_remote: false,
       span_kind,
       name: Cow::Owned(name),
       start_time,
@@ -1649,8 +2105,8 @@ impl OtelTracer {
       links: SpanLinks::default(),
       instrumentation_scope: self.0.clone(),
     };
-    Ok(OtelSpan(RefCell::new(Box::new(OtelSpanState::Recording(
-      span_data,
+    Ok(OtelSpan(Rc::new(RefCell::new(Box::new(
+      OtelSpanState::Recording(span_data),
     )))))
   }
 
@@ -1660,6 +2116,7 @@ impl OtelTracer {
     scope: &mut v8::PinScope<'s, '_>,
     parent_trace_id: v8::Local<'s, v8::Value>,
     parent_span_id: v8::Local<'s, v8::Value>,
+    #[smi] parent_trace_flags: u8,
     name: v8::Local<'s, v8::Value>,
     #[smi] span_kind: u8,
     start_time: Option<f64>,
@@ -1673,16 +2130,39 @@ impl OtelTracer {
     if parent_span_id == SpanId::INVALID {
       return Err(JsErrorBox::generic("invalid span id"));
     };
-    let OtelGlobals { id_generator, .. } = OTEL_GLOBALS
+    let OtelGlobals {
+      id_generator,
+      sampler,
+      ..
+    } = OTEL_GLOBALS
       .get()
       .ok_or_else(|| JsErrorBox::generic("otel not initialized"))?;
+    // Reconstruct the remote parent context so `parentbased_*` samplers honor
+    // the upstream sampling decision carried in the propagated trace flags.
+    let parent_context = SpanContext::new(
+      parent_trace_id,
+      parent_span_id,
+      TraceFlags::new(parent_trace_flags),
+      true,
+      TraceState::NONE,
+    );
+    let sampled = sampler.should_sample(Some(&parent_context), parent_trace_id);
     let span_context = SpanContext::new(
       parent_trace_id,
       id_generator.new_span_id(),
-      TraceFlags::SAMPLED,
+      if sampled {
+        TraceFlags::SAMPLED
+      } else {
+        TraceFlags::default()
+      },
       false,
       TraceState::NONE,
     );
+    if !sampled {
+      return Ok(OtelSpan(Rc::new(RefCell::new(Box::new(
+        OtelSpanState::Done(span_context),
+      )))));
+    }
     let name = owned_string(
       scope,
       name
@@ -1707,6 +2187,7 @@ impl OtelTracer {
     let span_data = SpanData {
       span_context,
       parent_span_id,
+      parent_span_is_remote: false,
       span_kind,
       name: Cow::Owned(name),
       start_time,
@@ -1718,14 +2199,13 @@ impl OtelTracer {
       links: SpanLinks::default(),
       instrumentation_scope: self.0.clone(),
     };
-    Ok(OtelSpan(RefCell::new(Box::new(OtelSpanState::Recording(
-      span_data,
+    Ok(OtelSpan(Rc::new(RefCell::new(Box::new(
+      OtelSpanState::Recording(span_data),
     )))))
   }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8)]
 struct JsSpanContext {
   trace_id: Box<str>,
   span_id: Box<str>,
@@ -1742,13 +2222,15 @@ struct OtelSpanCannotBeConstructedError;
 #[class(type)]
 struct InvalidSpanStatusCodeError;
 
-// boxed because of https://github.com/denoland/rusty_v8/issues/1676
-#[derive(Debug)]
-struct OtelSpan(RefCell<Box<OtelSpanState>>);
+// Rc-wrapped so the span can be shared between JS (via cppgc) and the HTTP
+// record (for copying attributes to metrics). The inner Box is kept to keep
+// the cppgc-traced struct small (see https://github.com/denoland/rusty_v8/issues/1676).
+#[derive(Debug, Clone)]
+pub struct OtelSpan(pub Rc<RefCell<Box<OtelSpanState>>>);
 
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant, reason = "TODO: investigate")]
-enum OtelSpanState {
+pub enum OtelSpanState {
   Recording(SpanData),
   Done(SpanContext),
 }
@@ -1770,7 +2252,6 @@ impl OtelSpan {
     Err(OtelSpanCannotBeConstructedError)
   }
 
-  #[serde]
   fn span_context(&self) -> JsSpanContext {
     let state = self.0.borrow();
     let span_context = match &**state {
@@ -1806,7 +2287,7 @@ impl OtelSpan {
   }
 
   #[fast]
-  fn add_event(&self, #[string] name: String, start_time: f64) {
+  fn add_event(&self, #[string] name: String, start_time: f64) -> u32 {
     let start_time = if start_time.is_nan() {
       SystemTime::now()
     } else {
@@ -1814,14 +2295,22 @@ impl OtelSpan {
         .checked_add(Duration::from_secs_f64(start_time / 1000.0))
         .unwrap()
     };
+    let limit = span_event_count_limit();
     let mut state = self.0.borrow_mut();
     let OtelSpanState::Recording(span) = &mut **state else {
-      return;
+      return 0;
     };
+    // Enforce OTEL_SPAN_EVENT_COUNT_LIMIT: once the limit is reached, drop
+    // further events and count them in droppedEventsCount.
+    if span.events.events.len() >= limit {
+      span.events.dropped_count += 1;
+      return 0;
+    }
     span
       .events
       .events
       .push(Event::new(name, start_time, vec![], 0));
+    span.events.events.len() as u32
   }
 
   #[fast]
@@ -1866,31 +2355,81 @@ impl OtelSpan {
 fn span_attributes(
   span: &mut SpanData,
   location: u32,
+  target: u32,
 ) -> Option<(&mut Vec<KeyValue>, &mut u32)> {
   match location {
     // SELF
     0 => Some((&mut span.attributes, &mut span.dropped_attributes_count)),
-    // LAST_EVENT
-    1 => span
-      .events
-      .events
-      .last_mut()
-      .map(|e| (&mut e.attributes, &mut e.dropped_attributes_count)),
-    // LAST_LINK
-    2 => span
-      .links
-      .links
-      .last_mut()
-      .map(|e| (&mut e.attributes, &mut e.dropped_attributes_count)),
+    // EVENT
+    1 => target
+      .checked_sub(1)
+      .and_then(|index| span.events.events.get_mut(index as usize))
+      .map(|event| {
+        (&mut event.attributes, &mut event.dropped_attributes_count)
+      }),
+    // LINK
+    2 => target
+      .checked_sub(1)
+      .and_then(|index| span.links.links.get_mut(index as usize))
+      .map(|link| (&mut link.attributes, &mut link.dropped_attributes_count)),
     _ => None,
   }
 }
 
-#[op2(fast)]
+fn should_parse_span_attribute(
+  span: &OtelSpan,
+  location: u32,
+  target: u32,
+  limit: usize,
+) -> bool {
+  let mut state = span.0.borrow_mut();
+  let OtelSpanState::Recording(span) = &mut **state else {
+    return false;
+  };
+  let Some((attributes, dropped_attributes_count)) =
+    span_attributes(span, location, target)
+  else {
+    return false;
+  };
+  if attributes.len() >= limit {
+    *dropped_attributes_count += 1;
+    false
+  } else {
+    true
+  }
+}
+
+fn push_span_attribute(
+  span: &OtelSpan,
+  location: u32,
+  target: u32,
+  limit: usize,
+  value_length_limit: Option<usize>,
+  attr: Option<KeyValue>,
+) {
+  let mut state = span.0.borrow_mut();
+  if let OtelSpanState::Recording(span) = &mut **state {
+    let Some((attributes, dropped_attributes_count)) =
+      span_attributes(span, location, target)
+    else {
+      return;
+    };
+    push_parsed_attr(
+      attributes,
+      dropped_attributes_count,
+      limit,
+      value_length_limit,
+      attr,
+    );
+  }
+}
+
+#[op2(fast, reentrant)]
 fn op_otel_span_attribute1<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   span: v8::Local<'_, v8::Value>,
   #[smi] location: u32,
+  #[smi] target: u32,
   key: v8::Local<'s, v8::Value>,
   value: v8::Local<'s, v8::Value>,
 ) {
@@ -1899,22 +2438,27 @@ fn op_otel_span_attribute1<'s>(
   else {
     return;
   };
-  let mut state = span.0.borrow_mut();
-  if let OtelSpanState::Recording(span) = &mut **state {
-    let Some((attributes, dropped_attributes_count)) =
-      span_attributes(span, location)
-    else {
-      return;
-    };
-    attr!(scope, attributes => *dropped_attributes_count, key, value);
+  let limit = attribute_count_limit();
+  let value_length_limit = attribute_value_length_limit();
+  if should_parse_span_attribute(&span, location, target, limit) {
+    let attr = attr_raw!(scope, key, value);
+    push_span_attribute(
+      &span,
+      location,
+      target,
+      limit,
+      value_length_limit,
+      attr,
+    );
   }
 }
 
-#[op2(fast)]
+#[op2(fast, reentrant)]
 fn op_otel_span_attribute2<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   span: v8::Local<'_, v8::Value>,
   #[smi] location: u32,
+  #[smi] target: u32,
   key1: v8::Local<'s, v8::Value>,
   value1: v8::Local<'s, v8::Value>,
   key2: v8::Local<'s, v8::Value>,
@@ -1925,24 +2469,39 @@ fn op_otel_span_attribute2<'s>(
   else {
     return;
   };
-  let mut state = span.0.borrow_mut();
-  if let OtelSpanState::Recording(span) = &mut **state {
-    let Some((attributes, dropped_attributes_count)) =
-      span_attributes(span, location)
-    else {
-      return;
-    };
-    attr!(scope, attributes => *dropped_attributes_count, key1, value1);
-    attr!(scope, attributes => *dropped_attributes_count, key2, value2);
+  let limit = attribute_count_limit();
+  let value_length_limit = attribute_value_length_limit();
+  if should_parse_span_attribute(&span, location, target, limit) {
+    let attr = attr_raw!(scope, key1, value1);
+    push_span_attribute(
+      &span,
+      location,
+      target,
+      limit,
+      value_length_limit,
+      attr,
+    );
+  }
+  if should_parse_span_attribute(&span, location, target, limit) {
+    let attr = attr_raw!(scope, key2, value2);
+    push_span_attribute(
+      &span,
+      location,
+      target,
+      limit,
+      value_length_limit,
+      attr,
+    );
   }
 }
 
 #[allow(clippy::too_many_arguments, reason = "op")]
-#[op2(fast)]
+#[op2(fast, reentrant)]
 fn op_otel_span_attribute3<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   span: v8::Local<'_, v8::Value>,
   #[smi] location: u32,
+  #[smi] target: u32,
   key1: v8::Local<'s, v8::Value>,
   value1: v8::Local<'s, v8::Value>,
   key2: v8::Local<'s, v8::Value>,
@@ -1955,16 +2514,40 @@ fn op_otel_span_attribute3<'s>(
   else {
     return;
   };
-  let mut state = span.0.borrow_mut();
-  if let OtelSpanState::Recording(span) = &mut **state {
-    let Some((attributes, dropped_attributes_count)) =
-      span_attributes(span, location)
-    else {
-      return;
-    };
-    attr!(scope, attributes => *dropped_attributes_count, key1, value1);
-    attr!(scope, attributes => *dropped_attributes_count, key2, value2);
-    attr!(scope, attributes => *dropped_attributes_count, key3, value3);
+  let limit = attribute_count_limit();
+  let value_length_limit = attribute_value_length_limit();
+  if should_parse_span_attribute(&span, location, target, limit) {
+    let attr = attr_raw!(scope, key1, value1);
+    push_span_attribute(
+      &span,
+      location,
+      target,
+      limit,
+      value_length_limit,
+      attr,
+    );
+  }
+  if should_parse_span_attribute(&span, location, target, limit) {
+    let attr = attr_raw!(scope, key2, value2);
+    push_span_attribute(
+      &span,
+      location,
+      target,
+      limit,
+      value_length_limit,
+      attr,
+    );
+  }
+  if should_parse_span_attribute(&span, location, target, limit) {
+    let attr = attr_raw!(scope, key3, value3);
+    push_span_attribute(
+      &span,
+      location,
+      target,
+      limit,
+      value_length_limit,
+      attr,
+    );
   }
 }
 
@@ -1998,14 +2581,14 @@ fn op_otel_span_add_link<'s>(
   #[smi] trace_flags: u8,
   is_remote: bool,
   #[smi] dropped_attributes_count: u32,
-) -> bool {
+) -> u32 {
   let trace_id = parse_trace_id(scope, trace_id);
   if trace_id == TraceId::INVALID {
-    return false;
+    return 0;
   };
   let span_id = parse_span_id(scope, span_id);
   if span_id == SpanId::INVALID {
-    return false;
+    return 0;
   };
   let span_context = SpanContext::new(
     trace_id,
@@ -2018,7 +2601,7 @@ fn op_otel_span_add_link<'s>(
   let Some(span) =
     deno_core::_ops::try_unwrap_cppgc_object::<OtelSpan>(scope, span)
   else {
-    return true;
+    return 0;
   };
   let mut state = span.0.borrow_mut();
   if let OtelSpanState::Recording(span) = &mut **state {
@@ -2027,8 +2610,10 @@ fn op_otel_span_add_link<'s>(
       vec![],
       dropped_attributes_count,
     ));
+    span.links.links.len() as u32
+  } else {
+    0
   }
-  true
 }
 
 struct OtelMeter(opentelemetry::metrics::Meter);
@@ -2131,7 +2716,7 @@ impl OtelMeter {
     name: v8::Local<'s, v8::Value>,
     description: v8::Local<'s, v8::Value>,
     unit: v8::Local<'s, v8::Value>,
-    #[serde] boundaries: Option<Vec<f64>>,
+    #[scoped] boundaries: Option<Vec<f64>>,
   ) -> Result<Instrument, JsErrorBox> {
     let name = owned_string(
       scope,
@@ -2327,9 +2912,9 @@ fn op_otel_metric_record0(
   }
 }
 
-#[op2(fast)]
+#[op2(fast, reentrant)]
 fn op_otel_metric_record1(
-  state: &mut OpState,
+  state: Rc<RefCell<OpState>>,
   scope: &mut v8::PinScope<'_, '_>,
   instrument: v8::Local<'_, v8::Value>,
   value: f64,
@@ -2342,7 +2927,10 @@ fn op_otel_metric_record1(
   ) else {
     return;
   };
-  let mut values = state.try_take::<MetricAttributes>();
+  let mut values = {
+    let mut state = state.borrow_mut();
+    state.try_take::<MetricAttributes>()
+  };
   let attr1 = attr_raw!(scope, key1, value1);
   let attributes = match &mut values {
     Some(values) => {
@@ -2367,9 +2955,9 @@ fn op_otel_metric_record1(
 }
 
 #[allow(clippy::too_many_arguments, reason = "op")]
-#[op2(fast)]
+#[op2(fast, reentrant)]
 fn op_otel_metric_record2(
-  state: &mut OpState,
+  state: Rc<RefCell<OpState>>,
   scope: &mut v8::PinScope<'_, '_>,
   instrument: v8::Local<'_, v8::Value>,
   value: f64,
@@ -2384,7 +2972,10 @@ fn op_otel_metric_record2(
   ) else {
     return;
   };
-  let mut values = state.try_take::<MetricAttributes>();
+  let mut values = {
+    let mut state = state.borrow_mut();
+    state.try_take::<MetricAttributes>()
+  };
   let attr1 = attr_raw!(scope, key1, value1);
   let attr2 = attr_raw!(scope, key2, value2);
   let attributes = match &mut values {
@@ -2415,9 +3006,9 @@ fn op_otel_metric_record2(
 }
 
 #[allow(clippy::too_many_arguments, reason = "op")]
-#[op2(fast)]
+#[op2(fast, reentrant)]
 fn op_otel_metric_record3(
-  state: &mut OpState,
+  state: Rc<RefCell<OpState>>,
   scope: &mut v8::PinScope<'_, '_>,
   instrument: v8::Local<'_, v8::Value>,
   value: f64,
@@ -2434,7 +3025,10 @@ fn op_otel_metric_record3(
   ) else {
     return;
   };
-  let mut values = state.try_take::<MetricAttributes>();
+  let mut values = {
+    let mut state = state.borrow_mut();
+    state.try_take::<MetricAttributes>()
+  };
   let attr1 = attr_raw!(scope, key1, value1);
   let attr2 = attr_raw!(scope, key2, value2);
   let attr3 = attr_raw!(scope, key3, value3);
@@ -2486,9 +3080,9 @@ fn op_otel_metric_observable_record0(
   }
 }
 
-#[op2(fast)]
+#[op2(fast, reentrant)]
 fn op_otel_metric_observable_record1(
-  state: &mut OpState,
+  state: Rc<RefCell<OpState>>,
   scope: &mut v8::PinScope<'_, '_>,
   instrument: v8::Local<'_, v8::Value>,
   value: f64,
@@ -2501,7 +3095,10 @@ fn op_otel_metric_observable_record1(
   ) else {
     return;
   };
-  let values = state.try_take::<MetricAttributes>();
+  let values = {
+    let mut state = state.borrow_mut();
+    state.try_take::<MetricAttributes>()
+  };
   let attr1 = attr_raw!(scope, key1, value1);
   let mut attributes = values
     .map(|mut attr| {
@@ -2519,9 +3116,9 @@ fn op_otel_metric_observable_record1(
 }
 
 #[allow(clippy::too_many_arguments, reason = "op")]
-#[op2(fast)]
+#[op2(fast, reentrant)]
 fn op_otel_metric_observable_record2(
-  state: &mut OpState,
+  state: Rc<RefCell<OpState>>,
   scope: &mut v8::PinScope<'_, '_>,
   instrument: v8::Local<'_, v8::Value>,
   value: f64,
@@ -2536,15 +3133,18 @@ fn op_otel_metric_observable_record2(
   ) else {
     return;
   };
-  let values = state.try_take::<MetricAttributes>();
+  let values = {
+    let mut state = state.borrow_mut();
+    state.try_take::<MetricAttributes>()
+  };
+  let attr1 = attr_raw!(scope, key1, value1);
+  let attr2 = attr_raw!(scope, key2, value2);
   let mut attributes = values
     .map(|mut attr| {
       attr.attributes.reserve_exact(2);
       attr.attributes
     })
     .unwrap_or_else(|| Vec::with_capacity(2));
-  let attr1 = attr_raw!(scope, key1, value1);
-  let attr2 = attr_raw!(scope, key2, value2);
   if let Some(kv1) = attr1 {
     attributes.push(kv1);
   }
@@ -2558,9 +3158,9 @@ fn op_otel_metric_observable_record2(
 }
 
 #[allow(clippy::too_many_arguments, reason = "op")]
-#[op2(fast)]
+#[op2(fast, reentrant)]
 fn op_otel_metric_observable_record3(
-  state: &mut OpState,
+  state: Rc<RefCell<OpState>>,
   scope: &mut v8::PinScope<'_, '_>,
   instrument: v8::Local<'_, v8::Value>,
   value: f64,
@@ -2577,16 +3177,19 @@ fn op_otel_metric_observable_record3(
   ) else {
     return;
   };
-  let values = state.try_take::<MetricAttributes>();
+  let values = {
+    let mut state = state.borrow_mut();
+    state.try_take::<MetricAttributes>()
+  };
+  let attr1 = attr_raw!(scope, key1, value1);
+  let attr2 = attr_raw!(scope, key2, value2);
+  let attr3 = attr_raw!(scope, key3, value3);
   let mut attributes = values
     .map(|mut attr| {
       attr.attributes.reserve_exact(3);
       attr.attributes
     })
     .unwrap_or_else(|| Vec::with_capacity(3));
-  let attr1 = attr_raw!(scope, key1, value1);
-  let attr2 = attr_raw!(scope, key2, value2);
-  let attr3 = attr_raw!(scope, key3, value3);
   if let Some(kv1) = attr1 {
     attributes.push(kv1);
   }
@@ -2603,10 +3206,10 @@ fn op_otel_metric_observable_record3(
 }
 
 #[allow(clippy::too_many_arguments, reason = "op")]
-#[op2(fast)]
+#[op2(fast, reentrant)]
 fn op_otel_metric_attribute3<'s>(
   scope: &mut v8::PinScope<'s, '_>,
-  state: &mut OpState,
+  state: Rc<RefCell<OpState>>,
   #[smi] capacity: u32,
   key1: v8::Local<'s, v8::Value>,
   value1: v8::Local<'s, v8::Value>,
@@ -2615,36 +3218,31 @@ fn op_otel_metric_attribute3<'s>(
   key3: v8::Local<'s, v8::Value>,
   value3: v8::Local<'s, v8::Value>,
 ) {
-  let mut values = state.try_borrow_mut::<MetricAttributes>();
+  let values = {
+    let mut state = state.borrow_mut();
+    state.try_take::<MetricAttributes>()
+  };
+  let mut attributes = values
+    .map(|mut values| {
+      values.attributes.reserve_exact(
+        (capacity as usize).saturating_sub(values.attributes.capacity()),
+      );
+      values.attributes
+    })
+    .unwrap_or_else(|| Vec::with_capacity(capacity as usize));
   let attr1 = attr_raw!(scope, key1, value1);
   let attr2 = attr_raw!(scope, key2, value2);
   let attr3 = attr_raw!(scope, key3, value3);
-  if let Some(values) = &mut values {
-    values.attributes.reserve_exact(
-      (capacity as usize).saturating_sub(values.attributes.capacity()),
-    );
-    if let Some(kv1) = attr1 {
-      values.attributes.push(kv1);
-    }
-    if let Some(kv2) = attr2 {
-      values.attributes.push(kv2);
-    }
-    if let Some(kv3) = attr3 {
-      values.attributes.push(kv3);
-    }
-  } else {
-    let mut attributes = Vec::with_capacity(capacity as usize);
-    if let Some(kv1) = attr1 {
-      attributes.push(kv1);
-    }
-    if let Some(kv2) = attr2 {
-      attributes.push(kv2);
-    }
-    if let Some(kv3) = attr3 {
-      attributes.push(kv3);
-    }
-    state.put(MetricAttributes { attributes });
+  if let Some(kv1) = attr1 {
+    attributes.push(kv1);
   }
+  if let Some(kv2) = attr2 {
+    attributes.push(kv2);
+  }
+  if let Some(kv3) = attr3 {
+    attributes.push(kv3);
+  }
+  state.borrow_mut().put(MetricAttributes { attributes });
 }
 
 struct ObservationDone(oneshot::Sender<()>);

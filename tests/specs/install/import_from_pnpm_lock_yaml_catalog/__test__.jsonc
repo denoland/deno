@@ -1,0 +1,19 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      // No deno.lock or package-lock.json. `deno install` should seed
+      // deno.lock from pnpm-lock.yaml, resolving the `catalog:` specifier to
+      // its real version requirement via the lockfile's `catalogs:` block.
+      "args": "install",
+      "output": "install.out"
+    },
+    {
+      "args": [
+        "eval",
+        "console.log(Deno.readTextFileSync('deno.lock').trim())"
+      ],
+      "output": "deno.lock.out"
+    }
+  ]
+}

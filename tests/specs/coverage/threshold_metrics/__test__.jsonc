@@ -1,0 +1,47 @@
+{
+  "tempDir": true,
+  "tests": {
+    "config_per_metric_fails": {
+      "steps": [
+        {
+          "args": "test --quiet --coverage=cov main_test.ts",
+          "output": "[WILDCARD]",
+          "exitCode": 1
+        },
+        {
+          "args": "coverage cov",
+          "output": "metrics.out",
+          "exitCode": 1
+        }
+      ]
+    },
+    "cli_flag_applies_to_all_metrics": {
+      "steps": [
+        {
+          "args": "test --quiet --coverage=cov2 main_test.ts",
+          "output": "[WILDCARD]",
+          "exitCode": 1
+        },
+        {
+          "args": "coverage --threshold=90 cov2",
+          "output": "all_metrics.out",
+          "exitCode": 1
+        }
+      ]
+    },
+    "cli_flag_overrides_config_and_passes": {
+      "steps": [
+        {
+          "args": "test --quiet --coverage=cov3 main_test.ts",
+          "output": "[WILDCARD]",
+          "exitCode": 1
+        },
+        {
+          "args": "coverage --threshold=10 cov3",
+          "output": "[WILDCARD]",
+          "exitCode": 0
+        }
+      ]
+    }
+  }
+}

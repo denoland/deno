@@ -1,0 +1,6 @@
+{
+  "tempDir": true,
+  "args": "test --coverage=coverage foo.test.js",
+  "output": "main.out",
+  "exitCode": 1
+}

@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@denotest/not-on-registry-local-pkg": "^1.0.0"
+  }
+}

@@ -82,6 +82,14 @@ impl NpmCacheDir {
     &self.root_dir_url
   }
 
+  /// The safe local directory names (relative to `root_dir`) for every
+  /// registry url known via `.npmrc` discovery. May contain multiple path
+  /// segments when a registry url has a sub-path (e.g.
+  /// `http://mirrors.example.com/npm/` -> `mirrors.example.com/npm`).
+  pub fn known_registries_dirnames(&self) -> &[String] {
+    &self.known_registries_dirnames
+  }
+
   pub fn package_folder_for_id(
     &self,
     package_name: &str,
@@ -200,16 +208,67 @@ impl NpmCacheDir {
 pub fn mixed_case_package_name_encode(name: &str) -> String {
   // use base32 encoding because it's reversible and the character set
   // only includes the characters within 0-9 and A-Z so it can be lower cased
-  base32::encode(
-    base32::Alphabet::Rfc4648Lower { padding: false },
-    name.as_bytes(),
-  )
-  .to_lowercase()
+  const ALPHABET: &[u8; 32] = b"abcdefghijklmnopqrstuvwxyz234567";
+
+  let data = name.as_bytes();
+  let mut ret = Vec::with_capacity((data.len() * 8).div_ceil(5));
+
+  for chunk in data.chunks(5) {
+    let mut buf = [0u8; 5];
+    buf[..chunk.len()].copy_from_slice(chunk);
+
+    ret.push(ALPHABET[((buf[0] & 0xF8) >> 3) as usize]);
+    ret.push(
+      ALPHABET[(((buf[0] & 0x07) << 2) | ((buf[1] & 0xC0) >> 6)) as usize],
+    );
+    ret.push(ALPHABET[((buf[1] & 0x3E) >> 1) as usize]);
+    ret.push(
+      ALPHABET[(((buf[1] & 0x01) << 4) | ((buf[2] & 0xF0) >> 4)) as usize],
+    );
+    ret.push(ALPHABET[(((buf[2] & 0x0F) << 1) | (buf[3] >> 7)) as usize]);
+    ret.push(ALPHABET[((buf[3] & 0x7C) >> 2) as usize]);
+    ret.push(
+      ALPHABET[(((buf[3] & 0x03) << 3) | ((buf[4] & 0xE0) >> 5)) as usize],
+    );
+    ret.push(ALPHABET[(buf[4] & 0x1F) as usize]);
+  }
+
+  if !data.len().is_multiple_of(5) {
+    let num_extra = 8 - (data.len() % 5 * 8).div_ceil(5);
+    ret.truncate(ret.len() - num_extra);
+  }
+
+  String::from_utf8(ret).unwrap()
 }
 
 pub fn mixed_case_package_name_decode(name: &str) -> Option<String> {
-  base32::decode(base32::Alphabet::Rfc4648Lower { padding: false }, name)
-    .and_then(|b| String::from_utf8(b).ok())
+  fn decode_value(c: u8) -> Option<u8> {
+    match c {
+      b'a'..=b'z' => Some(c - b'a'),
+      b'2'..=b'7' => Some(c - b'2' + 26),
+      _ => None,
+    }
+  }
+
+  let data = name.as_bytes();
+  let output_length = data.len() * 5 / 8;
+  let mut ret = Vec::with_capacity(output_length.div_ceil(5) * 5);
+
+  for chunk in data.chunks(8) {
+    let mut buf = [0u8; 8];
+    for (i, &c) in chunk.iter().enumerate() {
+      buf[i] = decode_value(c)?;
+    }
+
+    ret.push((buf[0] << 3) | (buf[1] >> 2));
+    ret.push((buf[1] << 6) | (buf[2] << 1) | (buf[3] >> 4));
+    ret.push((buf[3] << 4) | (buf[4] >> 1));
+    ret.push((buf[4] << 7) | (buf[5] << 2) | (buf[6] >> 3));
+    ret.push((buf[6] << 5) | buf[7]);
+  }
+
+  ret.truncate(output_length);
+  String::from_utf8(ret).ok()
 }
 
 /// Gets a safe local directory name for the provided url.
@@ -262,6 +321,8 @@ mod test {
   use url::Url;
 
   use super::NpmCacheDir;
+  use super::mixed_case_package_name_decode;
+  use super::mixed_case_package_name_encode;
 
   #[test]
   fn should_get_package_folder() {
@@ -307,5 +368,29 @@ mod test {
         .join("_ib2hs4dfomxuuu2pjy")
         .join("2.1.5"),
     );
+  }
+
+  #[test]
+  fn should_encode_and_decode_mixed_case_package_names() {
+    let cases = [
+      ("JSON", "jjju6tq"),
+      ("@types/JSON", "ib2hs4dfomxuuu2pjy"),
+      ("Deno_123", "irsw4327gezdg"),
+    ];
+    for (name, encoded) in cases {
+      assert_eq!(mixed_case_package_name_encode(name), encoded);
+      assert_eq!(
+        mixed_case_package_name_decode(encoded).as_deref(),
+        Some(name)
+      );
+    }
+  }
+
+  #[test]
+  fn should_preserve_base32_decode_leniency() {
+    assert_eq!(mixed_case_package_name_decode("j").as_deref(), Some(""));
+    assert_eq!(mixed_case_package_name_decode("jj").as_deref(), Some("J"));
+    assert_eq!(mixed_case_package_name_decode("JJ"), None);
+    assert_eq!(mixed_case_package_name_decode("jj======"), None);
   }
 }

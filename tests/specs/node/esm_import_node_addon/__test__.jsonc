@@ -1,0 +1,5 @@
+{
+  "args": "run --no-check --quiet main.ts",
+  "output": "main.out",
+  "exitCode": 1
+}

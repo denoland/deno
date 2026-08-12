@@ -1,21 +1,17 @@
 {
+  // Disabled during the TypeScript un-fork: stock TS holds a single
+  // jsxImportSource per program, so per-workspace-member jsx config is not
+  // expressible. Re-enabled by the jsx per-member follow-up.
+  "ignore": true,
   "tempDir": true,
-  "steps": [{
-    "args": "install",
-    "output": "[WILDCARD]"
-  }, {
-    "args": "check",
-    "output": "main.out"
-  }],
-  "variants": {
-    "tsgo": {
-      "use_tsgo": "1"
+  "steps": [
+    {
+      "args": "install",
+      "output": "[WILDCARD]"
     },
-    "tsc": {
-      "use_tsgo": ""
+    {
+      "args": "check",
+      "output": "main.out"
     }
-  },
-  "envs": {
-    "DENO_UNSTABLE_TSGO": "${use_tsgo}"
-  }
+  ]
 }

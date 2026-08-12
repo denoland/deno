@@ -40,16 +40,39 @@ const command = new Deno.Command(Deno.execPath(), {
 
 const child = command.spawn();
 const reader = new StdoutReader(child.stdout!);
-await reader.waitForText("Ready");
 
-for (const signal of signals) {
-  if (signal === "SIGTERM") {
-    continue;
+// Hard timeout: if anything hangs, SIGKILL the child (uncatchable) and fail.
+// This prevents the test from hanging for 30m waiting on CI timeout, since
+// the listener intercepts all signals including SIGTERM.
+const hardTimeout = setTimeout(() => {
+  console.error("Test timed out, sending SIGKILL to child");
+  try {
+    child.kill("SIGKILL");
+  } catch {
+    // child may have already exited
   }
-  console.error("Sending", signal);
-  child.kill(signal);
-  await reader.waitForText("Received " + signal);
-}
+  Deno.exit(1);
+}, 30_000);
 
-console.error("Sending SIGTERM");
-child.kill("SIGTERM");
+try {
+  await reader.waitForText("Ready");
+
+  for (const signal of signals) {
+    if (signal === "SIGTERM") {
+      continue;
+    }
+    console.error("Sending", signal);
+    child.kill(signal);
+    await reader.waitForText("Received " + signal);
+  }
+
+  console.error("Sending SIGTERM");
+  child.kill("SIGTERM");
+  const status = await child.status;
+  if (!status.success) {
+    console.error("Child exited with code", status.code);
+    Deno.exit(1);
+  }
+} finally {
+  clearTimeout(hardTimeout);
+}

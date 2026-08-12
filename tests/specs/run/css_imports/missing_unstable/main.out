@@ -1,0 +1,4 @@
+error: The import attribute type of "css" is unsupported.
+  Specifier: file:///[WILDLINE]/style.css
+  hint: run with --unstable-raw-imports
+    at file:///[WILDLINE]/main.ts:1:19

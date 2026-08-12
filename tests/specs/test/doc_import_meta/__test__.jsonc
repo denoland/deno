@@ -1,0 +1,5 @@
+{
+  "args": "test --doc --allow-read mod.ts",
+  "exitCode": 0,
+  "output": "mod.out"
+}

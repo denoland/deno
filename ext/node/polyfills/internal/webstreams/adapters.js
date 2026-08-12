@@ -1,27 +1,42 @@
 // deno-lint-ignore-file
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { destroy } from "ext:deno_node/internal/streams/destroy.js";
-import finished from "ext:deno_node/internal/streams/end-of-stream.js";
-import {
+(function () {
+const { core } = __bootstrap;
+const { destroy, destroyer } = core.loadExtScript(
+  "ext:deno_node/internal/streams/destroy.js",
+);
+const finished =
+  core.loadExtScript("ext:deno_node/internal/streams/end-of-stream.js").default;
+const {
   isDestroyed,
   isReadable,
   isReadableEnded,
   isWritable,
   isWritableEnded,
-} from "ext:deno_node/internal/streams/utils.js";
-import { ReadableStream, WritableStream } from "node:stream/web";
-import {
+} = core.loadExtScript("ext:deno_node/internal/streams/utils.js");
+const { ReadableStream, WritableStream } = core.loadExtScript(
+  "ext:deno_node/stream/web.js",
+);
+const {
   validateBoolean,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
-import {
+  validateOneOf,
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const {
   kEmptyObject,
   normalizeEncoding,
-} from "ext:deno_node/internal/util.mjs";
-import { AbortError } from "ext:deno_node/internal/errors.ts";
-import process from "node:process";
-import { Buffer } from "node:buffer";
-import { Duplex, Readable, Writable } from "node:stream";
+} = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const {
+  AbortError,
+  ERR_INVALID_ARG_VALUE,
+  ERR_INVALID_ARG_TYPE,
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const lazyProcess = core.createLazyLoader("node:process");
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const { isAnyArrayBuffer } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
+const lazyStream = core.createLazyLoader("node:stream");
 
 function isWritableStream(object) {
   return object instanceof WritableStream;
@@ -31,7 +46,18 @@ function isReadableStream(object) {
   return object instanceof ReadableStream;
 }
 
-export function newStreamReadableFromReadableStream(
+// Normalize a `writev` completion value to the first real error, or `undefined`
+// when every write succeeded. `Promise.all` fulfils with an array (one slot per
+// chunk, holes for successes), while a rejection or synchronous throw settles
+// with a single scalar error.
+function firstWritevError(error) {
+  if (Array.isArray(error)) {
+    return error.find((e) => e);
+  }
+  return error == null ? undefined : error;
+}
+
+function newStreamReadableFromReadableStream(
   readableStream,
   options = kEmptyObject,
 ) {
@@ -59,7 +85,7 @@ export function newStreamReadableFromReadableStream(
   const reader = readableStream.getReader();
   let closed = false;
 
-  const readable = new Readable({
+  const readable = new (lazyStream().Readable)({
     objectMode,
     highWaterMark,
     encoding,
@@ -88,7 +114,7 @@ export function newStreamReadableFromReadableStream(
           // thrown we don't want those to cause an unhandled
           // rejection. Let's just escape the promise and
           // handle it separately.
-          process.nextTick(() => {
+          lazyProcess().default.nextTick(() => {
             throw error;
           });
         }
@@ -116,7 +142,7 @@ export function newStreamReadableFromReadableStream(
   return readable;
 }
 
-export function newStreamWritableFromWritableStream(
+function newStreamWritableFromWritableStream(
   writableStream,
   options = kEmptyObject,
 ) {
@@ -142,7 +168,7 @@ export function newStreamWritableFromWritableStream(
   const writer = writableStream.getWriter();
   let closed = false;
 
-  const writable = new Writable({
+  const writable = new (lazyStream().Writable)({
     highWaterMark,
     objectMode,
     decodeStrings,
@@ -150,26 +176,28 @@ export function newStreamWritableFromWritableStream(
 
     writev(chunks, callback) {
       function done(error) {
-        error = error.filter((e) => e);
         try {
-          callback(error.length === 0 ? undefined : error);
+          callback(firstWritevError(error));
         } catch (error) {
           // In a next tick because this is happening within
           // a promise context, and if there are any errors
           // thrown we don't want those to cause an unhandled
           // rejection. Let's just escape the promise and
           // handle it separately.
-          process.nextTick(() => destroy.call(writable, error));
+          lazyProcess().default.nextTick(() => destroy.call(writable, error));
         }
       }
 
+      // If the fulfillment arrow throws synchronously (e.g. `writer.write`
+      // throwing before it returns a promise), the sibling `done` rejection
+      // handler never sees it, so `.catch(done)` routes that failure too.
       writer.ready.then(
         () =>
           Promise.all(
             chunks.map((data) => writer.write(data.chunk)),
           ).then(done, done),
         done,
-      );
+      ).catch(done);
     },
 
     write(chunk, encoding, callback) {
@@ -186,7 +214,7 @@ export function newStreamWritableFromWritableStream(
         try {
           callback(error);
         } catch (error) {
-          destroy(this, duplex, error);
+          destroy.call(writable, error);
         }
       }
 
@@ -206,7 +234,7 @@ export function newStreamWritableFromWritableStream(
           // thrown we don't want those to cause an unhandled
           // rejection. Let's just escape the promise and
           // handle it separately.
-          process.nextTick(() => {
+          lazyProcess().default.nextTick(() => {
             throw error;
           });
         }
@@ -234,7 +262,7 @@ export function newStreamWritableFromWritableStream(
           // thrown we don't want those to cause an unhandled
           // rejection. Let's just escape the promise and
           // handle it separately.
-          process.nextTick(() => destroy.call(writable, error));
+          lazyProcess().default.nextTick(() => destroy.call(writable, error));
         }
       }
 
@@ -257,7 +285,7 @@ export function newStreamWritableFromWritableStream(
   return writable;
 }
 
-export function newStreamDuplexFromReadableWritablePair(
+function newStreamDuplexFromReadableWritablePair(
   pair,
   options = kEmptyObject,
 ) {
@@ -302,7 +330,7 @@ export function newStreamDuplexFromReadableWritablePair(
   let writableClosed = false;
   let readableClosed = false;
 
-  const duplex = new Duplex({
+  const duplex = new (lazyStream().Duplex)({
     allowHalfOpen,
     highWaterMark,
     objectMode,
@@ -312,26 +340,28 @@ export function newStreamDuplexFromReadableWritablePair(
 
     writev(chunks, callback) {
       function done(error) {
-        error = error.filter((e) => e);
         try {
-          callback(error.length === 0 ? undefined : error);
+          callback(firstWritevError(error));
         } catch (error) {
           // In a next tick because this is happening within
           // a promise context, and if there are any errors
           // thrown we don't want those to cause an unhandled
           // rejection. Let's just escape the promise and
           // handle it separately.
-          process.nextTick(() => destroy(duplex, error));
+          lazyProcess().default.nextTick(() => destroy.call(duplex, error));
         }
       }
 
+      // If the fulfillment arrow throws synchronously (e.g. `writer.write`
+      // throwing before it returns a promise), the sibling `done` rejection
+      // handler never sees it, so `.catch(done)` routes that failure too.
       writer.ready.then(
         () =>
           Promise.all(
             chunks.map((data) => writer.write(data.chunk)),
           ).then(done, done),
         done,
-      );
+      ).catch(done);
     },
 
     write(chunk, encoding, callback) {
@@ -348,7 +378,7 @@ export function newStreamDuplexFromReadableWritablePair(
         try {
           callback(error);
         } catch (error) {
-          destroy(duplex, error);
+          destroy.call(duplex, error);
         }
       }
 
@@ -368,7 +398,7 @@ export function newStreamDuplexFromReadableWritablePair(
           // thrown we don't want those to cause an unhandled
           // rejection. Let's just escape the promise and
           // handle it separately.
-          process.nextTick(() => destroy(duplex, error));
+          lazyProcess().default.nextTick(() => destroy.call(duplex, error));
         }
       }
 
@@ -386,7 +416,7 @@ export function newStreamDuplexFromReadableWritablePair(
             duplex.push(chunk.value);
           }
         },
-        (error) => destroy(duplex, error),
+        (error) => destroy.call(duplex, error),
       );
     },
 
@@ -400,7 +430,7 @@ export function newStreamDuplexFromReadableWritablePair(
           // thrown we don't want those to cause an unhandled
           // rejection. Let's just escape the promise and
           // handle it separately.
-          process.nextTick(() => {
+          lazyProcess().default.nextTick(() => {
             throw error;
           });
         }
@@ -437,7 +467,7 @@ export function newStreamDuplexFromReadableWritablePair(
     (error) => {
       writableClosed = true;
       readableClosed = true;
-      destroy(duplex, error);
+      destroy.call(duplex, error);
     },
   );
 
@@ -448,14 +478,14 @@ export function newStreamDuplexFromReadableWritablePair(
     (error) => {
       writableClosed = true;
       readableClosed = true;
-      destroy(duplex, error);
+      destroy.call(duplex, error);
     },
   );
 
   return duplex;
 }
 
-export function newReadableStreamFromStreamReadable(
+function newReadableStreamFromStreamReadable(
   streamReadable,
   options = kEmptyObject,
 ) {
@@ -470,6 +500,10 @@ export function newReadableStreamFromStreamReadable(
       streamReadable,
     );
   }
+  validateObject(options, "options");
+  if (options.type !== undefined) {
+    validateOneOf(options.type, "options.type", ["bytes", undefined]);
+  }
 
   if (isDestroyed(streamReadable) || !isReadable(streamReadable)) {
     const readable = new ReadableStream();
@@ -479,8 +513,15 @@ export function newReadableStreamFromStreamReadable(
 
   const objectMode = streamReadable.readableObjectMode;
   const highWaterMark = streamReadable.readableHighWaterMark;
+  const isByteStream = options?.type === "bytes";
 
   const evaluateStrategyOrFallback = (strategy) => {
+    // A byte stream already measures its queue in bytes and the spec forbids
+    // giving it a size algorithm, so only the highWaterMark applies.
+    if (isByteStream) {
+      return { highWaterMark };
+    }
+
     // If there is a strategy available, use it
     if (strategy) {
       return strategy;
@@ -492,11 +533,23 @@ export function newReadableStreamFromStreamReadable(
       return new CountQueuingStrategy({ highWaterMark });
     }
 
-    // When not running in objectMode explicitly, we just fall
-    // back to a minimal strategy that just specifies the highWaterMark
-    // and no size algorithm. Using a ByteLengthQueuingStrategy here
-    // is unnecessary.
-    return { highWaterMark };
+    // Outside of objectMode `highWaterMark` is a byte count, so the queue has
+    // to be measured in bytes as well. With the default size algorithm (1 per
+    // chunk) `controller.desiredSize` only reaches 0 after `highWaterMark`
+    // *chunks*, so `onData` below never pauses the source and the whole
+    // stream ends up buffered in memory instead of flowing with backpressure.
+    //
+    // Node uses a plain `ByteLengthQueuingStrategy` here, whose size algorithm
+    // reads `chunk.byteLength`. That is `undefined` for the strings a
+    // non-objectMode Readable emits once an encoding is set, which makes the
+    // enqueue throw `ERR_INVALID_ARG_VALUE`; fall back to the string length
+    // for those instead.
+    return {
+      highWaterMark,
+      size(chunk) {
+        return chunk.byteLength ?? chunk.length;
+      },
+    };
   };
 
   const strategy = evaluateStrategyOrFallback(options?.strategy);
@@ -518,7 +571,11 @@ export function newReadableStreamFromStreamReadable(
 
   let isCanceled = false;
 
-  const cleanup = finished(streamReadable, (error) => {
+  // Only watch the readable side: a Duplex exposed via Readable.toWeb should
+  // close the ReadableStream once its readable side ends, even if the writable
+  // side is still open (otherwise the reader would hang waiting on the writable
+  // half to finish).
+  const cleanup = finished(streamReadable, { writable: false }, (error) => {
     if (error?.code === "ERR_STREAM_PREMATURE_CLOSE") {
       const err = new AbortError(undefined, { cause: error });
       error = err;
@@ -539,7 +596,7 @@ export function newReadableStreamFromStreamReadable(
 
   streamReadable.on("data", onData);
 
-  return new ReadableStream({
+  const underlyingSource = {
     start(c) {
       controller = c;
     },
@@ -550,17 +607,25 @@ export function newReadableStreamFromStreamReadable(
 
     cancel(reason) {
       isCanceled = true;
-      destroy.call(streamReadable, reason);
+      destroyer(streamReadable, reason);
     },
-  }, strategy);
+  };
+  if (isByteStream) {
+    underlyingSource.type = "bytes";
+  }
+  return new ReadableStream(underlyingSource, strategy);
 }
 
-export function newWritableStreamFromStreamWritable(streamWritable) {
+function newWritableStreamFromStreamWritable(streamWritable) {
   // Not using the internal/streams/utils isWritableNodeStream utility
   // here because it will return false if streamWritable is a Duplex
   // whose writable option is false. For a Duplex that is not writable,
   // we want it to pass this check but return a closed WritableStream.
-  if (typeof streamWritable?._writableState !== "object") {
+  // We check if the given stream is a stream.Writable or http.OutgoingMessage
+  const checkIfWritableOrOutgoingMessage = streamWritable &&
+    typeof streamWritable?.write === "function" &&
+    typeof streamWritable?.on === "function";
+  if (!checkIfWritableOrOutgoingMessage) {
     throw new ERR_INVALID_ARG_TYPE(
       "streamWritable",
       "stream.Writable",
@@ -632,6 +697,13 @@ export function newWritableStreamFromStreamWritable(streamWritable) {
     },
 
     async write(chunk) {
+      // A non-object-mode Writable only accepts BufferSource views. Wrap a bare
+      // ArrayBuffer (or SharedArrayBuffer) in a Uint8Array so it can be written
+      // without a copy. Node only unwraps ArrayBuffer here; we also unwrap
+      // SharedArrayBuffer so both are usable.
+      if (!streamWritable.writableObjectMode && isAnyArrayBuffer(chunk)) {
+        chunk = new Uint8Array(chunk);
+      }
       if (streamWritable.writableNeedDrain || !streamWritable.write(chunk)) {
         backpressurePromise = Promise.withResolvers();
         return backpressurePromise.promise.finally(() => {
@@ -641,7 +713,7 @@ export function newWritableStreamFromStreamWritable(streamWritable) {
     },
 
     abort(reason) {
-      destroy(streamWritable, reason);
+      destroy.call(streamWritable, reason);
     },
 
     close() {
@@ -657,7 +729,12 @@ export function newWritableStreamFromStreamWritable(streamWritable) {
   }, strategy);
 }
 
-export function newReadableWritablePairFromDuplex(duplex) {
+let dep0201Warned = false;
+
+function newReadableWritablePairFromDuplex(
+  duplex,
+  options = kEmptyObject,
+) {
   // Not using the internal/streams/utils isWritableNodeStream and
   // isReadableNodestream utilities here because they will return false
   // if the duplex was created with writable or readable options set to
@@ -687,8 +764,25 @@ export function newReadableWritablePairFromDuplex(duplex) {
     writable.close();
   }
 
+  // `option.type` is a deprecated alias for `option.readableType`
+  // matches Node's `lib/internal/webstreams/adapters.js#L655` DEP0201
+  if (options.readableType == null && options.type != null) {
+    if (!dep0201Warned) {
+      dep0201Warned = true;
+      lazyProcess().default.emitWarning(
+        "Passing 'options.type' to Duplex.toWeb() is deprecated. " +
+          "To specify the ReadableStream type, use 'options.readableType'.",
+        "DeprecationWarning",
+        "DEP0201",
+      );
+    }
+  }
+
+  const readableType = options?.readableType || options?.type;
+  const readableOptions = readableType ? { type: readableType } : kEmptyObject;
+
   const readable = isReadable(duplex)
-    ? newReadableStreamFromStreamReadable(duplex)
+    ? newReadableStreamFromStreamReadable(duplex, readableOptions)
     : new ReadableStream();
 
   if (!isReadable(duplex)) {
@@ -697,3 +791,13 @@ export function newReadableWritablePairFromDuplex(duplex) {
 
   return { writable, readable };
 }
+
+return {
+  newReadableStreamFromStreamReadable,
+  newWritableStreamFromStreamWritable,
+  newStreamReadableFromReadableStream,
+  newStreamWritableFromWritableStream,
+  newStreamDuplexFromReadableWritablePair,
+  newReadableWritablePairFromDuplex,
+};
+})();

@@ -1,0 +1,3 @@
+PASS: dns.lookup did not leak a perm token
+PASS: custom lookup to 127.0.0.2 denied
+PASS: built-in lookup authorized localhost's resolved IP

@@ -1,0 +1,20 @@
+{
+  "tests": {
+    "prefixes_parallel_output": {
+      "args": "task main",
+      "output": "main.out"
+    },
+    "single_task_no_prefix": {
+      "args": "task single",
+      "output": "single.out"
+    },
+    "prefix_padding_alignment": {
+      "args": "task mixed",
+      "output": "mixed.out"
+    },
+    "no_prefix_flag_disables_prefixing": {
+      "args": "task --no-prefix mixed",
+      "output": "no_prefix.out"
+    }
+  }
+}

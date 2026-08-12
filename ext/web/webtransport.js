@@ -1,15 +1,16 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { core, primordials } from "ext:core/mod.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 import {
   connectQuic,
   webtransportAccept,
   webtransportConnect,
 } from "ext:deno_net/03_quic.js";
-import { assert } from "ext:deno_web/00_infra.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
-import {
+const { assert } = core.loadExtScript("ext:deno_web/00_infra.js");
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
+const { URLPrototype } = core.loadExtScript("ext:deno_web/00_url.js");
+const {
   getReadableStreamResourceBacking,
   getWritableStreamResourceBacking,
   ReadableStream,
@@ -17,8 +18,8 @@ import {
   WritableStream,
   WritableStreamDefaultWriter,
   writableStreamForRid,
-} from "ext:deno_web/06_streams.js";
-import { getLocationHref } from "ext:deno_web/12_location.js";
+} = core.loadExtScript("ext:deno_web/06_streams.js");
+const { getLocationHref } = core.loadExtScript("ext:deno_web/12_location.js");
 
 const {
   ArrayBuffer,
@@ -36,6 +37,7 @@ const {
   DataViewPrototypeSetUint32,
   DataViewPrototypeSetBigUint64,
   DateNow,
+  FunctionPrototypeCall,
   BigInt,
   Number,
   ObjectPrototypeIsPrototypeOf,
@@ -53,6 +55,7 @@ const {
   TypeError,
   Uint8Array,
 } = primordials;
+const URLPrototypeToString = URLPrototype.toString;
 
 const MAX_PRIORITY = 2_147_483_647;
 const BI_WEBTRANSPORT = 0x41n;
@@ -153,7 +156,7 @@ class WebTransport {
   #conn;
   #promise;
   #ready;
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   #closed = Promise.withResolvers();
   #settingsTx;
   #settingsRx;
@@ -225,8 +228,7 @@ class WebTransport {
         async (conn) => {
           const { connect, settingsTx, settingsRx } = await webtransportConnect(
             conn,
-            // deno-lint-ignore prefer-primordials
-            parsedURL.toString(),
+            FunctionPrototypeCall(URLPrototypeToString, parsedURL),
           );
 
           return {
@@ -695,7 +697,13 @@ class WebTransportDatagramDuplexStream {
   }
 
   async #receiveDatagrams() {
-    const { conn, sessionIdBuf } = await this.#promise;
+    let conn;
+    let sessionIdBuf;
+    try {
+      ({ conn, sessionIdBuf } = await this.#promise);
+    } catch {
+      return;
+    }
     while (true) {
       const queue = this.#incomingDatagramsQueue;
       const duration = this.#incomingMaxAge ?? Infinity;
@@ -713,9 +721,10 @@ class WebTransportDatagramDuplexStream {
 
       ArrayPrototypePush(queue, { datagram, timestamp: DateNow() });
 
-      const toBeRemoved = queue.length - this.#incomingHighWaterMark;
+      let toBeRemoved = queue.length - this.#incomingHighWaterMark;
       while (toBeRemoved > 0) {
         ArrayPrototypeShift(queue);
+        toBeRemoved--;
       }
 
       while (queue.length > 0) {
@@ -740,9 +749,21 @@ class WebTransportDatagramDuplexStream {
   async #sendDatagrams() {
     if (this.#sending) return;
     this.#sending = true;
-    const { conn, sessionIdBuf } = await this.#promise;
 
     const queue = this.#outgoingDatagramsQueue;
+    let conn;
+    let sessionIdBuf;
+    try {
+      ({ conn, sessionIdBuf } = await this.#promise);
+    } catch (error) {
+      while (queue.length > 0) {
+        const { promise } = ArrayPrototypeShift(queue);
+        promise.reject(error);
+      }
+      this.#sending = false;
+      return;
+    }
+
     const duration = this.#outgoingMaxAge ?? Infinity;
     while (queue.length > 0) {
       const { bytes, timestamp, promise } = ArrayPrototypeShift(queue);
@@ -862,6 +883,13 @@ class WebTransportDatagramDuplexStream {
                 // nothing
               }
             },
+            () => {
+              try {
+                controller.close();
+              } catch {
+                // nothing
+              }
+            },
           );
           this.#readableController = controller;
         },
@@ -869,7 +897,7 @@ class WebTransportDatagramDuplexStream {
           assert(this.#incomingDatagramsPullPromise === null);
           const queue = this.#incomingDatagramsQueue;
           if (queue.length === 0) {
-            // deno-lint-ignore prefer-primordials
+            // deno-lint-ignore deno-internal/prefer-primordials
             this.#incomingDatagramsPullPromise = Promise.withResolvers();
             return this.#incomingDatagramsPullPromise.promise;
           }

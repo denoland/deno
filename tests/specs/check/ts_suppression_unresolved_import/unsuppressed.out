@@ -1,0 +1,6 @@
+TS2307 [ERROR]: Cannot find module 'missing-package' or its corresponding type declarations.
+import value from "missing-package";
+                  ~~~~~~~~~~~~~~~~~
+    at file:///[WILDLINE]/unsuppressed.ts:1:19
+
+error: Type checking failed.

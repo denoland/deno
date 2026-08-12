@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install --global --root ./bins --name deno-test-bin ./main.js",
+      "output": "install.out"
+    },
+    {
+      "args": "remove --global --root ./bins deno-test-bin",
+      "output": "remove.out"
+    },
+    {
+      "args": "run -A assert_removed.js",
+      "output": ""
+    }
+  ]
+}

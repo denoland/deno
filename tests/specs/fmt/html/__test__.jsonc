@@ -10,9 +10,8 @@
       "output": "Checked 1 file\n"
     },
     "broken": {
-      "args": "fmt broken.html",
-      "output": "broken.out",
-      "exitCode": 1
+      "args": "fmt --check broken.html",
+      "output": "Checked 1 file\n"
     },
     "with_js": {
       "args": "fmt --check with_js.html",

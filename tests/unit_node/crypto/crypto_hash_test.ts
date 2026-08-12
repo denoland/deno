@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { createHash, createHmac, getHashes, hash } from "node:crypto";
 import { Buffer } from "node:buffer";
-import { Readable } from "node:stream";
+import { pipeline, Readable } from "node:stream";
 import { assert, assertEquals, assertThrows } from "@std/assert";
 
 // https://github.com/denoland/deno/issues/18140
@@ -87,6 +87,24 @@ Deno.test("[node/crypto.Hash] basic usage - base64 output", () => {
 Deno.test("[node/crypto.Hash] basic usage - base64url output", () => {
   const d = createHash("sha1").update("abc").update("def").digest("base64url");
   assertEquals(d, "H4rBDyPFtbwRZ72oS4M-XAV6d9I");
+});
+
+Deno.test("[node/crypto.Hash] sha256 base64url output", () => {
+  // FIPS 180-2 SHA-256 test vectors, base64url-encoded.
+  assertEquals(
+    createHash("sha256").update("abc").digest("base64url"),
+    "ungWv48Bz-pBQUDeXa4iI7ADYaOWF3qctBD_YfIAFa0",
+  );
+  assertEquals(
+    createHash("sha256")
+      .update("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")
+      .digest("base64url"),
+    "JI1qYdIGOLjlwCaTDD5gOaM85Flk_yFn9uzt1BnbBsE",
+  );
+  assertEquals(
+    createHash("sha256").update("").digest("base64url"),
+    "47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU",
+  );
 });
 
 Deno.test("[node/crypto.Hash] streaming usage", async () => {
@@ -249,4 +267,22 @@ Deno.test({
       "Invalid digest: unknown-algorithm",
     );
   },
+});
+
+// Regression test for https://github.com/denoland/deno/issues/33264
+Deno.test("[node/crypto.Hash] digest after stream.pipeline", async () => {
+  const input = Readable.from(["hello"]);
+  const h = createHash("sha256");
+
+  await new Promise<void>((resolve, reject) => {
+    pipeline(input, h, (err) => {
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+
+  assertEquals(
+    h.digest("hex"),
+    "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+  );
 });

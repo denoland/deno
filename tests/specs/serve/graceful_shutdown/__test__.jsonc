@@ -1,0 +1,9 @@
+{
+  "tests": {
+    "exits_cleanly_on_signal": {
+      "if": "unix",
+      "args": "run -A driver.ts",
+      "output": "driver.out"
+    }
+  }
+}

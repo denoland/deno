@@ -1,0 +1,7 @@
+error: Uncaught (in promise) Error: Cannot find module './out/isolated_vm'
+[WILDCARD]
+    info: `isolated-vm` is a native addon built directly on V8's C++ internals,
+          which Deno does not expose, so it cannot be loaded in Deno.
+    hint: To run code in a separate isolate, use a `Worker`: it executes in its
+          own isolate and thread and can be sandboxed via the `deno.permissions`
+          option. For in-process sandboxing, the `node:vm` module is also available.

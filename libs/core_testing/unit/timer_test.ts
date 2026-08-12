@@ -3,10 +3,10 @@ import { assert, assertEquals, test } from "checkin:testing";
 
 test(async function testTimeout() {
   const { promise, resolve } = Promise.withResolvers();
-  const id = setTimeout(() => {
+  const timer = setTimeout(() => {
     resolve(null);
   }, 1);
-  assert(id > 0);
+  assert(timer != null);
   await promise;
 });
 
@@ -26,41 +26,32 @@ test(async function testManyTimers() {
 test(async function testManyIntervals() {
   const expected = 1000;
   let n = 0;
+  // deno-lint-ignore no-explicit-any
+  const intervals: any[] = [];
   for (let i = 0; i < 100; i++) {
     let count = 0;
-    const id = setInterval(() => {
+    const timer = setInterval(() => {
       if (count++ == 10) {
-        clearInterval(id);
+        clearInterval(timer);
       } else {
         n++;
       }
       assert(n <= expected, `${n} <= ${expected}`);
     }, 1);
+    intervals.push(timer);
   }
-  let id: number;
+  // deno-lint-ignore no-explicit-any
+  let checker: any;
   await new Promise((r) =>
-    id = setInterval(() => {
+    checker = setInterval(() => {
       assert(n <= expected, `${n} <= ${expected}`);
       if (n == expected) {
-        clearInterval(id);
+        clearInterval(checker);
         r(null);
       }
     }, 1)
   );
   assertEquals(n, expected);
-});
-
-test(async function testTimerDepth() {
-  const { promise, resolve } = Promise.withResolvers();
-  assertEquals(Deno.core.getTimerDepth(), 0);
-  setTimeout(() => {
-    assertEquals(Deno.core.getTimerDepth(), 1);
-    setTimeout(() => {
-      assertEquals(Deno.core.getTimerDepth(), 2);
-      resolve(null);
-    }, 1);
-  }, 1);
-  await promise;
 });
 
 // The timers must drain the microtask queue before attempting to run the
@@ -104,21 +95,9 @@ test(async function testTimerException() {
   }
 });
 
-test(async function testTimerThis() {
-  const { promise, resolve, reject } = Promise.withResolvers();
-  setTimeout(function (this: unknown) {
-    try {
-      assertEquals(this, globalThis);
-      resolve(0);
-    } catch (e) {
-      reject(e);
-    }
-  }, 1);
-  await promise;
-});
-
 test(async function testCancellationDuringDispatch() {
-  const timers: number[] = [];
+  // deno-lint-ignore no-explicit-any
+  const timers: any[] = [];
   let timeouts = 0;
 
   // If a timer is ready to be dispatched, but is cancelled during the

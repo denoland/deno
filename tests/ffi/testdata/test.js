@@ -4,6 +4,7 @@
 // Run using cargo test or `--v8-flags=--allow-natives-syntax`
 
 import {
+  assertRejects,
   assertThrows,
   assert,
   assertNotEquals,
@@ -274,6 +275,12 @@ const dylib = Deno.dlopen(libPath, {
     parameters: [{ struct: Rect }],
     result: "void",
   },
+  print_rect_nested_async: {
+    name: "print_rect",
+    nonblocking: true,
+    parameters: [{ struct: RectNestedCached }],
+    result: "void",
+  },
   create_mixed: {
     parameters: ["u8", "f32", { struct: Rect }, "pointer", "buffer"],
     result: { struct: Mixed }
@@ -388,6 +395,33 @@ assertEquals(isNullBufferDeopt(externalOneBuffer), false, "isNullBufferDeopt(ext
 assertNotEquals(Deno.UnsafePointer.of(externalZeroBuffer), null, "Deno.UnsafePointer.of(externalZeroBuffer) === null");
 assertNotEquals(Deno.UnsafePointer.of(externalOneBuffer), null, "Deno.UnsafePointer.of(externalOneBuffer) === null");
 
+// ==== SharedArrayBuffer TESTS ====
+// `SharedArrayBuffer`-backed buffers go through the same `buffer` marshalling
+// path as `ArrayBuffer`-backed ones when passed to a real symbol.
+const sabBuffer = new Uint8Array(new SharedArrayBuffer(8));
+assertEquals(isNullBuffer(sabBuffer), false, "isNullBuffer(sabBuffer) !== false");
+assertEquals(
+  isNullBufferDeopt(sabBuffer),
+  false,
+  "isNullBufferDeopt(sabBuffer) !== false",
+);
+assertNotEquals(
+  Deno.UnsafePointer.of(sabBuffer),
+  null,
+  "Deno.UnsafePointer.of(sabBuffer) === null",
+);
+// A bare `SharedArrayBuffer` is also accepted by `UnsafePointer.of`.
+assertNotEquals(
+  Deno.UnsafePointer.of(new SharedArrayBuffer(8)),
+  null,
+  "Deno.UnsafePointer.of(new SharedArrayBuffer(8)) === null",
+);
+assertEquals(
+  Deno.UnsafePointer.of(new SharedArrayBuffer(0)),
+  null,
+  "Deno.UnsafePointer.of(new SharedArrayBuffer(0)) !== null",
+);
+
 const addU32Ptr = dylib.symbols.get_add_u32_ptr();
 const addU32 = new Deno.UnsafeFnPointer(addU32Ptr, {
   parameters: ["u32", "u32"],
@@ -483,6 +517,36 @@ dylib.symbols.nonblocking_buffer(buffer3, buffer3.length).then(() => {
 });
 await deferred.promise;
 
+const fixedArrayBuffer = new ArrayBuffer(8);
+new Uint8Array(fixedArrayBuffer).set([1, 2, 3, 4, 5, 6, 7, 8]);
+await dylib.symbols.nonblocking_buffer(fixedArrayBuffer, 8);
+await dylib.symbols.nonblocking_buffer(
+  new Uint8Array(fixedArrayBuffer),
+  8,
+);
+
+const resizableArrayBuffer = new ArrayBuffer(8, { maxByteLength: 16 });
+new Uint8Array(resizableArrayBuffer).set([1, 2, 3, 4, 5, 6, 7, 8]);
+const growableSharedArrayBuffer = new SharedArrayBuffer(8, {
+  maxByteLength: 16,
+});
+new Uint8Array(growableSharedArrayBuffer).set([1, 2, 3, 4, 5, 6, 7, 8]);
+assertEquals(
+  dylib.symbols.hash(resizableArrayBuffer, 8),
+  dylib.symbols.hash(fixedArrayBuffer, 8),
+);
+for (const buffer of [
+  resizableArrayBuffer,
+  new Uint8Array(resizableArrayBuffer),
+  new Uint8Array(growableSharedArrayBuffer),
+]) {
+  await assertRejects(
+    () => dylib.symbols.nonblocking_buffer(buffer, 8),
+    TypeError,
+    "Resizable backing stores are not supported for nonblocking FFI calls",
+  );
+}
+
 let start = performance.now();
 dylib.symbols.sleep_blocking(100);
 assert(performance.now() - start >= 100);
@@ -574,7 +638,9 @@ testOptimized(
     255, 65535, 4294967295, 4294967296n, 123.456, 789.876, -1n, -2, -3, -4, -1000n, 1000n,
     12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910
   ),
-  // apple silicon can't handle more than 8 args in fast calls: https://issues.chromium.org/issues/42203110
+  // V8 disables fast api for >8 args on Apple silicon (crbug.com/v8/13171).
+  // Deno's trampoline now produces a correctly-aligned wrapper on Apple
+  // silicon, so when V8 relaxes the guard this skip can be removed.
   process.platform === 'darwin' && process.arch === 'arm64' ? null : "log_many_parameters",
 );
 
@@ -597,7 +663,9 @@ function addManyU16Fast(a, b, c, d, e, f, g, h, i, j, k, l, m) {
 testOptimized(
   addManyU16Fast,
   () => addManyU16Fast(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12),
-  // apple silicon can't handle more than 8 args in fast calls: https://issues.chromium.org/issues/42203110
+  // V8 disables fast api for >8 args on Apple silicon (crbug.com/v8/13171).
+  // Deno's trampoline now produces a correctly-aligned wrapper on Apple
+  // silicon, so when V8 relaxes the guard this skip can be removed.
   process.platform === 'darwin' && process.arch === 'arm64' ? null : "add_many_u16",
 );
 
@@ -649,6 +717,18 @@ const rect_sync = dylib.symbols.make_rect(10, 20, 100, 200);
 assertInstanceOf(rect_sync, Uint8Array);
 assertEquals(rect_sync.length, 4 * 8);
 assertEquals(Array.from(new Float64Array(rect_sync.buffer)), [10, 20, 100, 200]);
+const resizableRectBuffer = new ArrayBuffer(4 * 8, {
+  maxByteLength: 8 * 8,
+});
+new Float64Array(resizableRectBuffer).set([10, 20, 100, 200]);
+await assertRejects(
+  () =>
+    dylib.symbols.print_rect_nested_async(
+      new Float64Array(resizableRectBuffer),
+    ),
+  TypeError,
+  "Resizable backing stores are not supported for nonblocking FFI calls",
+);
 // Test struct passing
 dylib.symbols.print_rect(rect_sync);
 // Test struct passing asynchronously

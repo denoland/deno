@@ -1,0 +1,14 @@
+script callback vm:script Script json
+Script script:vm:script:json
+ritc callback vm:ritc Script undefined
+runInThisContext ritc:vm:ritc:undefined
+context callback vm:context Script undefined
+runInContext context:vm:context:undefined
+new-context callback vm:new-context Script undefined
+runInNewContext new-context:vm:new-context:undefined
+function callback vm:function Function undefined
+compileFunction function:vm:function:undefined true
+context-default callback vm:context-default Script undefined
+createContext context-default:vm:context-default:undefined
+stm callback vm:stm SourceTextModule undefined
+SourceTextModule stm:vm:stm:undefined true

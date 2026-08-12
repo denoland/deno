@@ -41,6 +41,7 @@ use deno_permissions::PermissionsContainer;
 use deno_tls::SocketUse;
 use deno_tls::TlsClientConfigOptions;
 use deno_tls::TlsError;
+use deno_tls::TlsKey;
 use deno_tls::TlsKeys;
 use deno_tls::TlsKeysHolder;
 use deno_tls::create_client_config;
@@ -113,18 +114,23 @@ pub enum QuicError {
   #[error("Peer does not support WebTransport")]
   WebTransportPeerUnsupported,
   #[class(generic)]
+  #[error("WebTransport handshake frame exceeds the 64 KiB limit")]
+  WebTransportHandshakeFrameTooLarge,
+  #[class(generic)]
   #[error("{0}")]
   WebTransportSettingsError(#[from] web_transport_proto::SettingsError),
   #[class(generic)]
   #[error("{0}")]
   WebTransportConnectError(#[from] web_transport_proto::ConnectError),
+  #[class(type)]
+  #[error("Invalid WebTransport URL: {0}")]
+  WebTransportUrlParse(#[from] url::ParseError),
   #[class(inherit)]
   #[error(transparent)]
   Other(#[from] JsErrorBox),
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8)]
 struct CloseInfo {
   close_code: u64,
   reason: String,
@@ -211,10 +217,28 @@ fn apply_server_transport_config(
   Ok(())
 }
 
+// Inputs that determine the contents of the rustls `ClientConfig` used for an
+// outgoing QUIC connection. Used as a cache key so we can reuse the same
+// `Arc<ClientConfig>` for connections to the same endpoint with the same
+// parameters. rustls 0.23.28+ requires session resumption / 0-RTT to use a
+// config whose `ServerCertVerifier` and `ResolvesClientCert` are `Arc::ptr_eq`
+// to the ones that established the original session, so reusing the same
+// `Arc<ClientConfig>` is what makes 0-RTT possible across connect calls.
+#[derive(PartialEq, Eq)]
+struct ClientConfigCacheKey {
+  ca_certs: Vec<Vec<u8>>,
+  alpn_protocols: Option<Vec<Vec<u8>>>,
+  server_certificate_hashes: Option<Vec<Vec<u8>>>,
+  unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  cert_chain_and_key: Option<TlsKey>,
+}
+
 struct EndpointResource {
   endpoint: quinn::Endpoint,
   can_listen: bool,
   session_store: Arc<dyn ClientSessionStore>,
+  client_config_cache:
+    RefCell<Option<(ClientConfigCacheKey, Arc<quinn::rustls::ClientConfig>)>>,
 }
 
 // SAFETY: we're sure `EndpointResource` can be GCed
@@ -269,6 +293,7 @@ pub(crate) fn op_quic_endpoint_create(
     endpoint,
     can_listen,
     session_store: Arc::new(ClientSessionMemoryCache::new(256)),
+    client_config_cache: RefCell::new(None),
   })
 }
 
@@ -485,8 +510,7 @@ pub(crate) fn op_quic_incoming_accept_0rtt(
   }
 }
 
-#[op2]
-#[serde]
+#[op2(fast)]
 pub(crate) fn op_quic_incoming_refuse(
   #[cppgc] incoming: &IncomingResource,
 ) -> Result<(), QuicError> {
@@ -497,8 +521,7 @@ pub(crate) fn op_quic_incoming_refuse(
   Ok(())
 }
 
-#[op2]
-#[serde]
+#[op2(fast)]
 pub(crate) fn op_quic_incoming_ignore(
   #[cppgc] incoming: &IncomingResource,
 ) -> Result<(), QuicError> {
@@ -556,6 +579,14 @@ pub(crate) fn op_quic_endpoint_connect(
   let sock_addr = resolve_addr_sync(&args.addr.hostname, args.addr.port)?
     .next()
     .ok_or_else(|| QuicError::UnableToResolve)?;
+  state
+    .borrow_mut()
+    .borrow_mut::<PermissionsContainer>()
+    .check_net_resolved(
+      &sock_addr.ip(),
+      sock_addr.port(),
+      "Deno.connectQuic()",
+    )?;
 
   let root_cert_store = state
     .borrow()
@@ -574,37 +605,81 @@ pub(crate) fn op_quic_endpoint_connect(
     .map(|s| s.into_bytes())
     .collect::<Vec<_>>();
 
-  let mut tls_config = if let Some(hashes) = args.server_certificate_hashes {
-    deno_tls::rustls::ClientConfig::builder()
-      .dangerous()
-      .with_custom_certificate_verifier(Arc::new(
-        webtransport::ServerFingerprints::new(
-          hashes
-            .into_iter()
-            .filter(|h| h.algorithm.to_lowercase() == "sha-256")
-            .map(|h| h.value.to_vec())
-            .collect(),
-        ),
-      ))
-      .with_no_client_auth()
-  } else {
-    create_client_config(TlsClientConfigOptions {
-      root_cert_store,
-      ca_certs,
-      unsafely_ignore_certificate_errors,
-      unsafely_disable_hostname_verification: false,
-      cert_chain_and_key: key_pair.take(),
-      socket_use: SocketUse::GeneralSsl,
-    })?
+  let server_certificate_hashes = args.server_certificate_hashes.map(|v| {
+    v.into_iter()
+      .filter(|h| h.algorithm.to_lowercase() == "sha-256")
+      .map(|h| h.value.to_vec())
+      .collect::<Vec<_>>()
+  });
+
+  let alpn_protocols = args.alpn_protocols.map(|v| {
+    v.into_iter()
+      .map(|s| s.into_bytes())
+      .collect::<Vec<Vec<u8>>>()
+  });
+
+  // Only cache when the client cert resolver state is something we can hold and
+  // compare for equality. A `Resolver` is opaque, so skip caching in that case.
+  let (cert_chain_and_key, cache_cert_key) = match key_pair.take() {
+    TlsKeys::Null => (TlsKeys::Null, Some(None)),
+    TlsKeys::Static(key) => (TlsKeys::Static(key.clone()), Some(Some(key))),
+    other @ TlsKeys::Resolver(_) => (other, None),
   };
 
-  if let Some(alpn_protocols) = args.alpn_protocols {
-    tls_config.alpn_protocols =
-      alpn_protocols.into_iter().map(|s| s.into_bytes()).collect();
-  }
+  let cache_key =
+    cache_cert_key.map(|cert_chain_and_key| ClientConfigCacheKey {
+      ca_certs: ca_certs.clone(),
+      alpn_protocols: alpn_protocols.clone(),
+      server_certificate_hashes: server_certificate_hashes.clone(),
+      unsafely_ignore_certificate_errors: unsafely_ignore_certificate_errors
+        .clone(),
+      cert_chain_and_key,
+    });
 
-  tls_config.enable_early_data = true;
-  tls_config.resumption = Resumption::store(endpoint.session_store.clone());
+  let tls_config: Arc<quinn::rustls::ClientConfig> = {
+    let mut cache = endpoint.client_config_cache.borrow_mut();
+    match (cache.as_ref(), cache_key.as_ref()) {
+      (Some((cached_key, cached_config)), Some(new_key))
+        if cached_key == new_key =>
+      {
+        cached_config.clone()
+      }
+      _ => {
+        let mut tls_config =
+          if let Some(hashes) = server_certificate_hashes.clone() {
+            deno_tls::rustls::ClientConfig::builder()
+              .dangerous()
+              .with_custom_certificate_verifier(Arc::new(
+                webtransport::ServerFingerprints::new(hashes),
+              ))
+              .with_no_client_auth()
+          } else {
+            create_client_config(TlsClientConfigOptions {
+              root_cert_store,
+              ca_certs,
+              unsafely_ignore_certificate_errors,
+              unsafely_disable_hostname_verification: false,
+              cert_chain_and_key,
+              socket_use: SocketUse::GeneralSsl,
+            })?
+          };
+
+        if let Some(alpn_protocols) = alpn_protocols {
+          tls_config.alpn_protocols = alpn_protocols;
+        }
+
+        tls_config.enable_early_data = true;
+        tls_config.resumption =
+          Resumption::store(endpoint.session_store.clone());
+
+        let tls_config = Arc::new(tls_config);
+        if let Some(new_key) = cache_key {
+          *cache = Some((new_key, tls_config.clone()));
+        }
+        tls_config
+      }
+    }
+  };
 
   let client_config =
     QuicClientConfig::try_from(tls_config).expect("TLS13 supported");
@@ -698,7 +773,6 @@ pub(crate) fn op_quic_connection_close(
 }
 
 #[op2]
-#[serde]
 pub(crate) async fn op_quic_connection_closed(
   #[cppgc] connection: &ConnectionResource,
 ) -> Result<CloseInfo, QuicError> {
@@ -1028,8 +1102,52 @@ pub(crate) mod webtransport {
   use rustls::crypto::verify_tls13_signature;
   use sha2::Digest;
   use sha2::Sha256;
+  use x509_parser::prelude::FromDer;
+  use x509_parser::prelude::X509Certificate;
 
   use super::*;
+
+  // WebTransport setup only exchanges SETTINGS and CONNECT headers. Keep the
+  // incremental decoder bounded while allowing ample room for extensions and
+  // unusually long request URLs.
+  const MAX_HANDSHAKE_FRAME_SIZE: usize = 64 * 1024;
+
+  fn checked_handshake_buffer_len(
+    current: usize,
+    additional: usize,
+  ) -> Option<usize> {
+    current
+      .checked_add(additional)
+      .filter(|&len| len <= MAX_HANDSHAKE_FRAME_SIZE)
+  }
+
+  fn append_handshake_chunk(
+    buf: &mut Vec<u8>,
+    chunk: &[u8],
+  ) -> Result<(), QuicError> {
+    checked_handshake_buffer_len(buf.len(), chunk.len())
+      .ok_or(QuicError::WebTransportHandshakeFrameTooLarge)?;
+    buf.extend_from_slice(chunk);
+    Ok(())
+  }
+
+  async fn read_handshake_chunk(
+    rx: &mut quinn::RecvStream,
+    buf: &mut Vec<u8>,
+  ) -> Result<(), QuicError> {
+    let remaining = MAX_HANDSHAKE_FRAME_SIZE
+      .checked_sub(buf.len())
+      .ok_or(QuicError::WebTransportHandshakeFrameTooLarge)?;
+    // Read one byte beyond the remaining capacity so an oversized message is
+    // rejected without copying that byte into the accumulator.
+    let read_limit = remaining
+      .checked_add(1)
+      .ok_or(QuicError::WebTransportHandshakeFrameTooLarge)?;
+    let chunk = rx.read_chunk(read_limit, true).await?;
+    let chunk = chunk.ok_or(QuicError::WebTransportPeerUnsupported)?;
+
+    append_handshake_chunk(buf, &chunk.bytes)
+  }
 
   async fn exchange_settings(
     state: Rc<RefCell<OpState>>,
@@ -1061,9 +1179,7 @@ pub(crate) mod webtransport {
       let mut buf = Vec::new();
 
       loop {
-        let chunk = rx.read_chunk(usize::MAX, true).await?;
-        let chunk = chunk.ok_or(QuicError::WebTransportPeerUnsupported)?;
-        buf.extend_from_slice(&chunk.bytes);
+        read_handshake_chunk(&mut rx, &mut buf).await?;
 
         let mut limit = std::io::Cursor::new(&buf);
 
@@ -1105,7 +1221,7 @@ pub(crate) mod webtransport {
     use web_transport_proto::ConnectResponse;
 
     let conn = connection_resource.0.clone();
-    let url = url::Url::parse(&url).unwrap();
+    let url = url::Url::parse(&url)?;
 
     let (settings_tx_rid, settings_rx_rid) =
       exchange_settings(state.clone(), conn.clone()).await?;
@@ -1121,9 +1237,7 @@ pub(crate) mod webtransport {
 
       buf.clear();
       loop {
-        let chunk = rx.read_chunk(usize::MAX, true).await?;
-        let chunk = chunk.ok_or(QuicError::WebTransportPeerUnsupported)?;
-        buf.extend_from_slice(&chunk.bytes);
+        read_handshake_chunk(&mut rx, &mut buf).await?;
 
         let mut limit = std::io::Cursor::new(&buf);
 
@@ -1177,9 +1291,7 @@ pub(crate) mod webtransport {
       let mut buf = Vec::new();
 
       let req = loop {
-        let chunk = rx.read_chunk(usize::MAX, true).await?;
-        let chunk = chunk.ok_or(QuicError::WebTransportPeerUnsupported)?;
-        buf.extend_from_slice(&chunk.bytes);
+        read_handshake_chunk(&mut rx, &mut buf).await?;
 
         let mut limit = std::io::Cursor::new(&buf);
 
@@ -1232,6 +1344,38 @@ pub(crate) mod webtransport {
     }
   }
 
+  fn verify_certificate_validity(
+    end_entity: &rustls::pki_types::CertificateDer<'_>,
+    now: rustls::pki_types::UnixTime,
+  ) -> Result<(), rustls::Error> {
+    let (remainder, certificate) =
+      X509Certificate::from_der(end_entity.as_ref()).map_err(|_| {
+        rustls::Error::InvalidCertificate(rustls::CertificateError::BadEncoding)
+      })?;
+    if !remainder.is_empty() {
+      return Err(rustls::Error::InvalidCertificate(
+        rustls::CertificateError::BadEncoding,
+      ));
+    }
+
+    let now = i64::try_from(now.as_secs()).map_err(|_| {
+      rustls::Error::InvalidCertificate(rustls::CertificateError::Expired)
+    })?;
+    let validity = certificate.validity();
+    if now < validity.not_before.timestamp() {
+      return Err(rustls::Error::InvalidCertificate(
+        rustls::CertificateError::NotValidYet,
+      ));
+    }
+    if now > validity.not_after.timestamp() {
+      return Err(rustls::Error::InvalidCertificate(
+        rustls::CertificateError::Expired,
+      ));
+    }
+
+    Ok(())
+  }
+
   impl ServerCertVerifier for ServerFingerprints {
     fn verify_server_cert(
       &self,
@@ -1239,7 +1383,7 @@ pub(crate) mod webtransport {
       _intermediates: &[rustls::pki_types::CertificateDer<'_>],
       _server_name: &rustls::pki_types::ServerName<'_>,
       _ocsp_response: &[u8],
-      _now: rustls::pki_types::UnixTime,
+      now: rustls::pki_types::UnixTime,
     ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
       let cert_hash = Sha256::digest(end_entity);
 
@@ -1248,6 +1392,7 @@ pub(crate) mod webtransport {
         .iter()
         .any(|fingerprint| fingerprint == cert_hash.as_slice())
       {
+        verify_certificate_validity(end_entity, now)?;
         return Ok(rustls::client::danger::ServerCertVerified::assertion());
       }
 
@@ -1291,6 +1436,69 @@ pub(crate) mod webtransport {
         .provider
         .signature_verification_algorithms
         .supported_schemes()
+    }
+  }
+  #[cfg(test)]
+  mod tests {
+    use rustls::client::danger::ServerCertVerifier;
+
+    use super::*;
+
+    static CERTIFICATE: &[u8] =
+      include_bytes!("../tls/testdata/example1_cert.der");
+
+    fn verify_at(
+      timestamp: i64,
+    ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+      let certificate = rustls::pki_types::CertificateDer::from(CERTIFICATE);
+      let fingerprint = Sha256::digest(CERTIFICATE).to_vec();
+      let verifier = ServerFingerprints::new(vec![fingerprint]);
+      let server_name =
+        rustls::pki_types::ServerName::try_from("example1.com").unwrap();
+      let now = rustls::pki_types::UnixTime::since_unix_epoch(
+        Duration::from_secs(timestamp.try_into().unwrap()),
+      );
+      verifier.verify_server_cert(&certificate, &[], &server_name, &[], now)
+    }
+
+    #[test]
+    fn fingerprint_certificate_must_be_currently_valid() {
+      let (_, certificate) = X509Certificate::from_der(CERTIFICATE).unwrap();
+      let validity = certificate.validity();
+      let not_before = validity.not_before.timestamp();
+      let not_after = validity.not_after.timestamp();
+
+      verify_at(not_before + (not_after - not_before) / 2).unwrap();
+      assert!(matches!(
+        verify_at(not_before - 1),
+        Err(rustls::Error::InvalidCertificate(
+          rustls::CertificateError::NotValidYet
+        ))
+      ));
+      assert!(matches!(
+        verify_at(not_after + 1),
+        Err(rustls::Error::InvalidCertificate(
+          rustls::CertificateError::Expired
+        ))
+      ));
+    }
+
+    #[test]
+    fn handshake_buffer_length_is_bounded() {
+      let mut buf = vec![0; MAX_HANDSHAKE_FRAME_SIZE - 1];
+      append_handshake_chunk(&mut buf, &[0]).unwrap();
+      assert_eq!(buf.len(), MAX_HANDSHAKE_FRAME_SIZE);
+
+      assert!(matches!(
+        append_handshake_chunk(&mut buf, &[0]),
+        Err(QuicError::WebTransportHandshakeFrameTooLarge)
+      ));
+      assert_eq!(buf.len(), MAX_HANDSHAKE_FRAME_SIZE);
+    }
+
+    #[test]
+    fn handshake_buffer_length_rejects_overflow() {
+      assert_eq!(checked_handshake_buffer_len(usize::MAX, 1), None);
     }
   }
 }

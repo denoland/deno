@@ -1,0 +1,5 @@
+{
+  "tempDir": true,
+  "args": "run --quiet --allow-read --node-modules-dir=auto main.cjs",
+  "output": "main.out"
+}

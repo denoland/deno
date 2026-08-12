@@ -1,0 +1,14 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "publish --dry-run --no-check --log-level=debug",
+      "cwd": "subtract",
+      "output": "publish.out"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+stream stdout: 100000
+stream stderr: 
+stream consumer exit: 0
+stream producer exit: 0
+fd stdout: 100000
+fd stderr: 
+fd consumer exit: 0
+fd producer exit: 0

@@ -21,26 +21,6 @@ impl CliBundleProvider {
   }
 }
 
-impl From<RtBundleOptions> for crate::args::BundleFlags {
-  fn from(value: RtBundleOptions) -> Self {
-    Self {
-      entrypoints: value.entrypoints,
-      output_path: value.output_path,
-      output_dir: value.output_dir,
-      external: value.external,
-      format: value.format,
-      minify: value.minify,
-      keep_names: value.keep_names,
-      code_splitting: value.code_splitting,
-      platform: value.platform,
-      watch: false,
-      sourcemap: value.sourcemap,
-      inline_imports: value.inline_imports,
-      packages: value.packages,
-    }
-  }
-}
-
 fn convert_note(note: esbuild_client::protocol::Note) -> rt_bundle::Note {
   rt_bundle::Note {
     text: note.text,
@@ -141,6 +121,7 @@ impl BundleProvider for CliBundleProvider {
   async fn bundle(
     &self,
     options: RtBundleOptions,
+    permissions: deno_runtime::deno_permissions::PermissionsContainer,
   ) -> Result<rt_bundle::BuildResponse, AnyError> {
     let mut flags_clone = (*self.flags).clone();
     flags_clone.type_check_mode = crate::args::TypeCheckMode::None;
@@ -152,7 +133,13 @@ impl BundleProvider for CliBundleProvider {
     std::thread::spawn(move || {
       deno_runtime::tokio_util::create_and_run_current_thread(async move {
         let flags = Arc::new(flags_clone);
-        let bundler = match super::bundle_init(flags, &bundle_flags).await {
+        let bundler = match super::bundle_init(
+          flags,
+          &bundle_flags,
+          Some(permissions.clone()),
+        )
+        .await
+        {
           Ok(bundler) => bundler,
           Err(e) => {
             log::trace!("bundle_init error: {e:?}");
@@ -170,8 +157,8 @@ impl BundleProvider for CliBundleProvider {
           }
         };
         log::trace!("process_result");
-        if write_output {
-          super::process_result(
+        let process_result_result = if write_output {
+          match super::process_result(
             &result,
             &bundler.cwd,
             crate::tools::bundle::should_replace_require_shim(
@@ -180,15 +167,26 @@ impl BundleProvider for CliBundleProvider {
             bundle_flags.minify,
             bundler.input,
             bundle_flags.output_dir.as_ref().map(Path::new),
-          )?;
-          result.output_files = None;
+            Some(&permissions),
+          ) {
+            Ok(_) => {
+              result.output_files = None;
+              Ok(())
+            }
+            Err(err) => Err(err),
+          }
         } else {
           process_output_files(
             &bundle_flags,
             &mut result,
             &bundler.cwd,
             bundler.input,
-          )?;
+          )
+        };
+        if let Err(e) = process_result_result {
+          log::trace!("process_result error: {e:?}");
+          let _ = tx.send(Err(e));
+          return Ok(());
         }
         log::trace!("convert_build_response");
         let result = convert_build_response(result);

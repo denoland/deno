@@ -1,2 +1,2 @@
-console.log(Object.hasOwn(Object.prototype, "__proto__"));
+console.log(({}).__proto__ !== undefined);
 close();

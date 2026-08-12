@@ -1,0 +1,52 @@
+{
+  "tempDir": true,
+  "tests": {
+    // Catalog dependencies (referenced via the `catalog:` protocol) should be
+    // reported by `deno outdated`, resolving their version from the root
+    // `catalog`/`catalogs`.
+    "print_outdated_recursive": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "outdated --recursive",
+          "output": "outdated.out"
+        }
+      ]
+    },
+    // Catalogs are a workspace-root concept, so a non-recursive `deno outdated`
+    // run from the root still reports them.
+    "print_outdated_root": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "outdated",
+          "output": "outdated.out"
+        }
+      ]
+    },
+    // `deno update --latest` should write the new version requirement back to
+    // the catalog definition in the root config.
+    "update_latest_recursive": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "outdated --update --latest --recursive",
+          "output": "update.out"
+        },
+        {
+          "args": "-A print_file.ts ./deno.json",
+          "output": "deno.json.out"
+        }
+      ]
+    }
+  }
+}

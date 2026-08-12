@@ -1,0 +1,9 @@
+[WILDCARD]
+PASS: no events before enable
+PASS: requestWillBeSent with augmentation
+PASS: responseReceived without augmentation
+PASS: loadingFinished
+PASS: webSocketCreated with initiator
+PASS: no events after disable
+PASS: all Network methods exist
+ALL PASSED

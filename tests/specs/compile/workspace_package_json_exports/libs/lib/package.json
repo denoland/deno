@@ -1,0 +1,8 @@
+{
+  "name": "@repo/lib",
+  "version": "1.0.0",
+  "exports": {
+    ".": "./dist/index.js",
+    "./util": "./dist/util.js"
+  }
+}

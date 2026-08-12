@@ -3,5 +3,9 @@
 // Lazily initializes the error classes in this object.
 // This trick is necessary for avoiding circular dendencies between
 // `internal/errors` and other modules.
+(function () {
 // deno-lint-ignore no-explicit-any
-export const codes: Record<string, any> = {};
+const codes: Record<string, any> = {};
+
+return { codes };
+})();

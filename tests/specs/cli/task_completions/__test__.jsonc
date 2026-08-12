@@ -29,6 +29,18 @@
       "cwd": "./workspace/member2",
       "args": ["--", "/thing/deno", "task", ""],
       "output": "workspace_package_json.out"
+    },
+    "workspace_recursive": {
+      "envs": { "COMPLETE": "fish" },
+      "cwd": "./workspace",
+      "args": ["--", "/thing/deno", "task", "--recursive", ""],
+      "output": "workspace_recursive.out"
+    },
+    "workspace_filter": {
+      "envs": { "COMPLETE": "fish" },
+      "cwd": "./workspace",
+      "args": ["--", "/thing/deno", "task", "--filter", "member2", ""],
+      "output": "workspace_filter.out"
     }
   }
 }

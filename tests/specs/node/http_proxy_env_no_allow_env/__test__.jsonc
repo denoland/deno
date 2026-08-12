@@ -1,0 +1,16 @@
+{
+  "tests": {
+    // The proxy env vars (NODE_USE_ENV_PROXY, HTTP_PROXY, ...) are read as
+    // privileged runtime config, so node:http routes a request through the
+    // proxy even though the process is run with only --allow-net and was NOT
+    // granted --allow-env.
+    "reads_proxy_env_without_allow_env": {
+      "args": "run --allow-net main.mjs",
+      "envs": {
+        "NODE_USE_ENV_PROXY": "1",
+        "HTTP_PROXY": "http://127.0.0.1:9447"
+      },
+      "output": "main.out"
+    }
+  }
+}

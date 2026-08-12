@@ -1,0 +1,31 @@
+{
+  // Regression test for https://github.com/denoland/deno/issues/35460.
+  //
+  // Running three or more test files that each perform a SubtleCrypto
+  // operation taking a WebIDL `sequence` argument (the `keyUsages` of
+  // `importKey`) under `--no-check` used to fail from the third file onward
+  // with "Argument 5 can not be converted to a sequence" (and occasionally
+  // SIGSEGV). The native sequence converter cached the "next"/"done"/"value"
+  // property-name strings in a thread-local `v8::Eternal`, whose handles are
+  // bound to the isolate that created them. Each test file runs in its own
+  // isolate on a reused thread-pool thread, so a later file read a handle that
+  // dangled into a disposed isolate.
+  //
+  // The bug only reproduces once module transpilation is cached: a cold
+  // DENO_DIR does enough extra per-file work that the blocking-pool threads
+  // are not reused in the offending pattern. The first step below warms the
+  // cache; the second step runs against the warm cache, which is where the
+  // dangling handle was read. Both steps must report all five files passing.
+  "steps": [
+    {
+      "args": "test --no-check a.ts b.ts c.ts d.ts e.ts",
+      "exitCode": 0,
+      "output": "main.out"
+    },
+    {
+      "args": "test --no-check a.ts b.ts c.ts d.ts e.ts",
+      "exitCode": 0,
+      "output": "main.out"
+    }
+  ]
+}

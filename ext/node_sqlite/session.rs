@@ -35,7 +35,9 @@ impl FromV8<'_> for SessionOptions {
     }
 
     let obj = v8::Local::<v8::Object>::try_from(value).map_err(|_| {
-      Error::InvalidArgType("The \"options\" argument must be an object.")
+      Error::InvalidArgType(
+        "The \"options\" argument must be an object.".into(),
+      )
     })?;
 
     let mut options = SessionOptions::default();
@@ -51,13 +53,13 @@ impl FromV8<'_> for SessionOptions {
     {
       if !table_value.is_string() {
         return Err(Error::InvalidArgType(
-          "The \"options.table\" argument must be a string.",
+          "The \"options.table\" argument must be a string.".into(),
         ));
       }
       let table =
         v8::Local::<v8::String>::try_from(table_value).map_err(|_| {
           Error::InvalidArgType(
-            "The \"options.table\" argument must be a string.",
+            "The \"options.table\" argument must be a string.".into(),
           )
         })?;
       options.table = Some(table.to_rust_string_lossy(scope).to_string());
@@ -69,11 +71,13 @@ impl FromV8<'_> for SessionOptions {
     {
       if !db_value.is_string() {
         return Err(Error::InvalidArgType(
-          "The \"options.db\" argument must be a string.",
+          "The \"options.db\" argument must be a string.".into(),
         ));
       }
       let db = v8::Local::<v8::String>::try_from(db_value).map_err(|_| {
-        Error::InvalidArgType("The \"options.db\" argument must be a string.")
+        Error::InvalidArgType(
+          "The \"options.db\" argument must be a string.".into(),
+        )
       })?;
       options.db = Some(db.to_rust_string_lossy(scope).to_string());
     }

@@ -1,0 +1,6 @@
+{
+  "links": ["./foo"],
+  "imports": {
+    "@org/foo": "jsr:@org/foo"
+  }
+}

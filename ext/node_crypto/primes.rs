@@ -270,6 +270,31 @@ fn witnessexp(b: &BigInt, e: &BigInt, m: &BigInt) -> Witness {
   tmp
 }
 
+/// Minimum number of Miller-Rabin rounds to keep the false-positive
+/// probability below 2^-80, per FIPS 186-4 Appendix C.3 Table C.1.
+/// Matches the defaults OpenSSL applies inside `BN_check_prime`, which
+/// is what Node's `crypto.checkPrime` reaches when the caller leaves
+/// `checks` at its default of 0.
+fn min_miller_rabin_rounds_for_bits(bits: u64) -> usize {
+  if bits >= 3747 {
+    3
+  } else if bits >= 1345 {
+    4
+  } else if bits >= 476 {
+    5
+  } else if bits >= 400 {
+    6
+  } else if bits >= 347 {
+    7
+  } else if bits >= 308 {
+    8
+  } else if bits >= 55 {
+    27
+  } else {
+    34
+  }
+}
+
 pub(crate) fn is_probably_prime(n: &BigInt, count: usize) -> bool {
   if *n == BigInt::from(1) {
     return false;
@@ -294,8 +319,14 @@ pub(crate) fn is_probably_prime(n: &BigInt, count: usize) -> bool {
     }
   }
 
+  // Always run at least the FIPS-recommended number of Miller-Rabin
+  // rounds. Without this floor, `count == 0` would return true for any
+  // composite whose smallest prime factor exceeds the largest SMALL_PRIMES
+  // entry, since the loop below would be skipped entirely.
+  let rounds = count.max(min_miller_rabin_rounds_for_bits(n.bits()));
+
   let mut rng = rand::thread_rng();
-  for _ in 0..count {
+  for _ in 0..rounds {
     let a = rng.gen_range(BigInt::one()..n.clone());
     let we = witnessexp(&a, &(n - BigInt::one()), n);
     if we.wit != BigInt::zero() || we.pow != BigInt::one() {
@@ -499,6 +530,34 @@ mod tests {
       16
     ));
     assert!(!is_probably_prime(&BigInt::parse_bytes(b"12345678901234567890123456789012345678901234567890123456789012345678901234567890", 10).unwrap(), 16));
+  }
+
+  #[test]
+  fn detects_composite_with_factors_above_trial_division() {
+    // Two primes both strictly greater than the largest SMALL_PRIMES entry
+    // (17863); their product survives trial division, so Miller-Rabin must
+    // catch it even when the caller passes `count = 0`.
+    let p = BigInt::from(17881u32);
+    let q = BigInt::from(17891u32);
+    let composite = &p * &q;
+    assert!(!is_probably_prime(&composite, 0));
+
+    // A larger composite (two ~32-bit primes) for the same property.
+    let p = BigInt::parse_bytes(b"4294967291", 10).unwrap();
+    let q = BigInt::parse_bytes(b"4294967279", 10).unwrap();
+    let composite = &p * &q;
+    assert!(!is_probably_prime(&composite, 0));
+  }
+
+  #[test]
+  fn min_rounds_table_matches_fips_186_4() {
+    assert_eq!(min_miller_rabin_rounds_for_bits(4096), 3);
+    assert_eq!(min_miller_rabin_rounds_for_bits(2048), 4);
+    assert_eq!(min_miller_rabin_rounds_for_bits(1024), 5);
+    assert_eq!(min_miller_rabin_rounds_for_bits(512), 5);
+    assert_eq!(min_miller_rabin_rounds_for_bits(256), 27);
+    assert_eq!(min_miller_rabin_rounds_for_bits(64), 27);
+    assert_eq!(min_miller_rabin_rounds_for_bits(32), 34);
   }
 
   #[test]

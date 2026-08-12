@@ -1,0 +1,7 @@
+Check [WILDCARD]mod.ts
+Checking for slow types in the public API...
+Check [WILDCARD]mod.ts
+Simulating publish of @foo/bar@1.0.0 with files:
+   [WILDCARD]deno.json ([WILDLINE])
+   [WILDCARD]mod.ts ([WILDLINE])
+Success Dry run complete

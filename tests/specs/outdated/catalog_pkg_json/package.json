@@ -1,0 +1,13 @@
+{
+  "name": "root",
+  "catalog": {
+    "@denotest/has-patch-versions": "0.1.0"
+  },
+  "workspaces": {
+    "catalogs": {
+      "testing": {
+        "@denotest/breaking-change-between-versions": "1.0.0"
+      }
+    }
+  }
+}

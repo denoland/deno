@@ -20,12 +20,6 @@ use deno_ast::diagnostics::DiagnosticSnippetHighlight;
 use deno_ast::diagnostics::DiagnosticSnippetHighlightStyle;
 use deno_ast::diagnostics::DiagnosticSourcePos;
 use deno_ast::diagnostics::DiagnosticSourceRange;
-use deno_ast::swc::ast::Callee;
-use deno_ast::swc::ast::Expr;
-use deno_ast::swc::ast::Lit;
-use deno_ast::swc::ast::MemberProp;
-use deno_ast::swc::ast::MetaPropKind;
-use deno_ast::swc::atoms::Atom;
 use deno_ast::swc::ecma_visit::Visit;
 use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::swc::ecma_visit::noop_visit_type;
@@ -54,6 +48,11 @@ use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
 use crate::resolver::CliNpmReqResolver;
 use crate::sys::CliSys;
+use crate::tools::unfurl_utils::ImportMetaResolveCollector;
+use crate::tools::unfurl_utils::SpecifierTextContext;
+use crate::tools::unfurl_utils::dynamic_argument_prefix_range;
+use crate::tools::unfurl_utils::specifier_text_change;
+use crate::tools::unfurl_utils::to_range;
 
 #[derive(Debug, Clone)]
 pub enum SpecifierUnfurlerDiagnostic {
@@ -338,7 +337,6 @@ pub struct SpecifierUnfurler<TSys: SpecifierUnfurlerSys = CliSys> {
   pkg_json_resolver: Arc<CliPackageJsonResolver<TSys>>,
   workspace_dir: Arc<WorkspaceDirectory>,
   workspace_resolver: Arc<WorkspaceResolver<TSys>>,
-  bare_node_builtins: bool,
 }
 
 impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
@@ -348,7 +346,6 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
     pkg_json_resolver: Arc<CliPackageJsonResolver<TSys>>,
     workspace_dir: Arc<WorkspaceDirectory>,
     workspace_resolver: Arc<WorkspaceResolver<TSys>>,
-    bare_node_builtins: bool,
   ) -> Self {
     debug_assert_eq!(
       workspace_resolver.pkg_json_dep_resolution(),
@@ -360,7 +357,6 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
       pkg_json_resolver,
       workspace_dir,
       workspace_resolver,
-      bare_node_builtins,
     }
   }
 
@@ -506,16 +502,43 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
                   .ok()
                 }
               }
-              PackageJsonDepValue::Workspace(workspace_version_req) => {
-                let version_req = match workspace_version_req {
+              PackageJsonDepValue::Catalog(catalog_name) => {
+                let catalogs = self.workspace_resolver.catalogs();
+                match catalogs
+                  .get(catalog_name.as_str())
+                  .and_then(|c| c.get(alias))
+                {
+                  Some(version_req_str) => {
+                    match VersionReq::parse_from_npm(version_req_str) {
+                      Ok(version_req) => ModuleSpecifier::parse(&format!(
+                        "npm:{}@{}{}",
+                        alias,
+                        version_req,
+                        sub_path
+                          .as_ref()
+                          .map(|s| format!("/{}", s))
+                          .unwrap_or_default()
+                      ))
+                      .ok(),
+                      Err(_) => None,
+                    }
+                  }
+                  None => None,
+                }
+              }
+              PackageJsonDepValue::Workspace { name, version_req } => {
+                // The member is looked up by its own package name, which for
+                // pnpm-style aliases differs from the import alias (the key).
+                let target_name = name.as_deref().unwrap_or(alias);
+                let version_req = match version_req {
                   PackageJsonDepWorkspaceReq::VersionReq(version_req) => {
                     Cow::Borrowed(version_req)
                   }
                   PackageJsonDepWorkspaceReq::Caret => {
                     let version = self
-                      .find_workspace_npm_dep_version(alias)
+                      .find_workspace_npm_dep_version(target_name)
                       .map_err(|err| UnfurlSpecifierError::Workspace {
-                        package_name: alias.to_string(),
+                        package_name: target_name.to_string(),
                         reason: err.to_string(),
                       })?;
                     // version was validated, so ok to unwrap
@@ -526,9 +549,9 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
                   }
                   PackageJsonDepWorkspaceReq::Tilde => {
                     let version = self
-                      .find_workspace_npm_dep_version(alias)
+                      .find_workspace_npm_dep_version(target_name)
                       .map_err(|err| UnfurlSpecifierError::Workspace {
-                        package_name: alias.to_string(),
+                        package_name: target_name.to_string(),
                         reason: err.to_string(),
                       })?;
                     // version was validated, so ok to unwrap
@@ -542,7 +565,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
                 // people to map the specifiers in the import map
                 ModuleSpecifier::parse(&format!(
                   "npm:{}@{}{}",
-                  alias,
+                  target_name,
                   version_req,
                   sub_path
                     .as_ref()
@@ -564,7 +587,8 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
               PackageJsonDepValueParseErrorKind::VersionReq { .. }
               | PackageJsonDepValueParseErrorKind::JsrRequiresScope {
                 ..
-              } => {
+              }
+              | PackageJsonDepValueParseErrorKind::EmptyName => {
                 log::warn!(
                   "Ignoring failed to resolve package.json dependency. {:#}",
                   err
@@ -590,7 +614,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
     };
     let resolved = match resolved {
       Some(resolved) => resolved,
-      None if self.bare_node_builtins && is_builtin_node_module(specifier) => {
+      None if is_builtin_node_module(specifier) => {
         format!("node:{specifier}").parse().unwrap()
       }
       None => match ModuleSpecifier::options()
@@ -702,7 +726,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
     ];
     for deno_json in deno_jsons.iter().flatten() {
       let deps = deno_json
-        .dependencies()
+        .dependencies(self.workspace_dir.workspace.catalogs())
         .into_iter()
         .collect::<BTreeSet<_>>();
       for dep in deps {
@@ -797,12 +821,6 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
   ) -> bool {
     match &dep.argument {
       deno_graph::analysis::DynamicArgument::String(specifier) => {
-        let range = to_range(text_info, &dep.argument_range);
-        let maybe_relative_index =
-          text_info.text_str()[range.start..range.end].find(specifier);
-        let Some(relative_index) = maybe_relative_index else {
-          return true; // always say it's analyzable for a string
-        };
         let maybe_unfurled = self.unfurl_specifier_reporting_diagnostic(
           module_url,
           specifier,
@@ -812,11 +830,22 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
           diagnostic_reporter,
         );
         if let Some(unfurled) = maybe_unfurled {
-          let start = range.start + relative_index;
-          text_changes.push(deno_ast::TextChange {
-            range: start..start + specifier.len(),
-            new_text: unfurled,
-          });
+          let Some(range) = dynamic_argument_prefix_range(
+            text_info,
+            &dep.argument_range,
+            specifier,
+          ) else {
+            return false;
+          };
+          let Some(text_change) = specifier_text_change(
+            text_info,
+            range,
+            &unfurled,
+            SpecifierTextContext::JavaScript,
+          ) else {
+            return false;
+          };
+          text_changes.push(text_change);
         }
         true
       }
@@ -841,17 +870,22 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
             let Some(unfurled) = unfurled else {
               return true; // nothing to unfurl
             };
-            let range = to_range(text_info, &dep.argument_range);
-            let maybe_relative_index =
-              text_info.text_str()[range.start..].find(specifier);
-            let Some(relative_index) = maybe_relative_index else {
+            let Some(range) = dynamic_argument_prefix_range(
+              text_info,
+              &dep.argument_range,
+              specifier,
+            ) else {
               return false;
             };
-            let start = range.start + relative_index;
-            text_changes.push(deno_ast::TextChange {
-              range: start..start + specifier.len(),
-              new_text: unfurled,
-            });
+            let Some(text_change) = specifier_text_change(
+              text_info,
+              range,
+              &unfurled,
+              SpecifierTextContext::JavaScript,
+            ) else {
+              return false;
+            };
+            text_changes.push(text_change);
             true
           }
           Some(DynamicTemplatePart::Expr) => {
@@ -881,6 +915,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
       |specifier: &str,
        range: PositionOrSourceRangeRef,
        resolution_kind: deno_resolver::workspace::ResolutionKind,
+       context: SpecifierTextContext,
        text_changes: &mut Vec<deno_ast::TextChange>,
        diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic)| {
         if let Some(unfurled) = self.unfurl_specifier_reporting_diagnostic(
@@ -891,17 +926,19 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
           range,
           diagnostic_reporter,
         ) {
-          text_changes.push(deno_ast::TextChange {
-            range: match range {
-              PositionOrSourceRangeRef::PositionRange(position_range) => {
-                to_range(text_info, position_range)
-              }
-              PositionOrSourceRangeRef::SourceRange(source_range) => {
-                source_range.as_byte_range(parsed_source.start_pos())
-              }
-            },
-            new_text: unfurled,
-          });
+          let range = match range {
+            PositionOrSourceRangeRef::PositionRange(position_range) => {
+              to_range(text_info, position_range)
+            }
+            PositionOrSourceRangeRef::SourceRange(source_range) => {
+              source_range.as_byte_range(parsed_source.start_pos())
+            }
+          };
+          if let Some(text_change) =
+            specifier_text_change(text_info, range, &unfurled, context)
+          {
+            text_changes.push(text_change);
+          }
         }
       };
     // collect import declaration start positions to correctly insert @ts-types
@@ -918,6 +955,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
             match dep.kind {
               StaticDependencyKind::Export
               | StaticDependencyKind::Import
+              | StaticDependencyKind::ImportDefer
               | StaticDependencyKind::ImportSource
               | StaticDependencyKind::ExportEquals
               | StaticDependencyKind::ImportEquals => {
@@ -954,17 +992,20 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
                   text_info.line_start(dep.specifier_range.start.line);
                 line_start.as_byte_index(text_info.range().start)
               });
-            // use block comment so it works even with multiple imports on one line
-            text_changes.push(deno_ast::TextChange {
-              range: decl_start_byte_index..decl_start_byte_index,
-              new_text: format!("/* @ts-types=\"{}\" */ ", types_specifier),
-            });
+            if let Some(comment) = ts_types_comment(&types_specifier) {
+              // use block comment so it works even with multiple imports on one line
+              text_changes.push(deno_ast::TextChange {
+                range: decl_start_byte_index..decl_start_byte_index,
+                new_text: comment,
+              });
+            }
           }
 
           analyze_specifier(
             &dep.specifier,
             PositionOrSourceRangeRef::PositionRange(&dep.specifier_range),
             resolution_kind,
+            SpecifierTextContext::JavaScript,
             text_changes,
             diagnostic_reporter,
           );
@@ -1003,6 +1044,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
         &specifier_with_range.text,
         PositionOrSourceRangeRef::PositionRange(&specifier_with_range.range),
         deno_resolver::workspace::ResolutionKind::Types,
+        SpecifierTextContext::QuotedComment,
         text_changes,
         diagnostic_reporter,
       );
@@ -1012,6 +1054,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
         &jsdoc.specifier.text,
         PositionOrSourceRangeRef::PositionRange(&jsdoc.specifier.range),
         deno_resolver::workspace::ResolutionKind::Types,
+        SpecifierTextContext::QuotedComment,
         text_changes,
         diagnostic_reporter,
       );
@@ -1021,6 +1064,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
         &specifier_with_range.text,
         PositionOrSourceRangeRef::PositionRange(&specifier_with_range.range),
         deno_resolver::workspace::ResolutionKind::Execution,
+        SpecifierTextContext::UnquotedComment,
         text_changes,
         diagnostic_reporter,
       );
@@ -1030,6 +1074,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
         &specifier_with_range.text,
         PositionOrSourceRangeRef::PositionRange(&specifier_with_range.range),
         deno_resolver::workspace::ResolutionKind::Types,
+        SpecifierTextContext::UnquotedComment,
         text_changes,
         diagnostic_reporter,
       );
@@ -1042,6 +1087,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
         &specifier,
         PositionOrSourceRangeRef::SourceRange(range),
         deno_resolver::workspace::ResolutionKind::Execution,
+        SpecifierTextContext::JavaScript,
         text_changes,
         diagnostic_reporter,
       );
@@ -1055,6 +1101,18 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
         },
       );
     }
+  }
+}
+
+fn ts_types_comment(types_specifier: &str) -> Option<String> {
+  let cannot_represent = types_specifier.contains("*/")
+    || types_specifier.chars().any(|c| {
+      matches!(c, '\'' | '"' | '\u{2028}' | '\u{2029}') || c.is_control()
+    });
+  if cannot_represent {
+    None
+  } else {
+    Some(format!("/* @ts-types=\"{}\" */ ", types_specifier))
   }
 }
 
@@ -1075,23 +1133,6 @@ fn relative_url(
   } else {
     resolved.to_string()
   }
-}
-
-fn to_range(
-  text_info: &SourceTextInfo,
-  range: &deno_graph::PositionRange,
-) -> std::ops::Range<usize> {
-  let mut range = range
-    .as_source_range(text_info)
-    .as_byte_range(text_info.range().start);
-  let text = &text_info.text_str()[range.clone()];
-  if text.starts_with('"') || text.starts_with('\'') {
-    range.start += 1;
-  }
-  if text.ends_with('"') || text.ends_with('\'') {
-    range.end -= 1;
-  }
-  range
 }
 
 /// Collects the start position of import/export declarations for each specifier.
@@ -1123,40 +1164,6 @@ impl Visit for SpecifierStartCollector {
       let decl_start = node.range().start;
       let src_range = src.range();
       self.specifier_to_decl_start.insert(src_range, decl_start);
-    }
-  }
-}
-
-#[derive(Default)]
-struct ImportMetaResolveCollector {
-  specifiers: Vec<(SourceRange<SourcePos>, Atom)>,
-  diagnostic_ranges: Vec<SourceRange<SourcePos>>,
-}
-
-impl Visit for ImportMetaResolveCollector {
-  noop_visit_type!();
-
-  fn visit_call_expr(&mut self, node: &deno_ast::swc::ast::CallExpr) {
-    if node.args.len() == 1
-      && let Some(first_arg) = node.args.first()
-      && let Callee::Expr(callee) = &node.callee
-      && let Expr::Member(member) = &**callee
-      && let Expr::MetaProp(prop) = &*member.obj
-      && prop.kind == MetaPropKind::ImportMeta
-      && let MemberProp::Ident(ident) = &member.prop
-      && ident.sym == "resolve"
-      && first_arg.spread.is_none()
-    {
-      if let Expr::Lit(Lit::Str(arg)) = &*first_arg.expr {
-        let range = arg.range();
-        self.specifiers.push((
-          // remove quotes
-          SourceRange::new(range.start + 1, range.end - 1),
-          arg.value.to_atom_lossy().into_owned(),
-        ));
-      } else {
-        self.diagnostic_ranges.push(first_arg.expr.range());
-      }
     }
   }
 }
@@ -1194,6 +1201,25 @@ mod tests {
       text: source_code.into(),
     })
     .unwrap()
+  }
+
+  #[test]
+  fn test_ts_types_comment_safety() {
+    assert_eq!(
+      ts_types_comment("npm:@types/package@^1/path`with\\backslash"),
+      Some(
+        "/* @ts-types=\"npm:@types/package@^1/path`with\\backslash\" */ "
+          .to_string()
+      )
+    );
+    for value in [
+      "npm:@types/package@^1/sub*/path",
+      "npm:@types/package@^1/single'quote",
+      "npm:@types/package@^1/double\"quote",
+      "npm:@types/package@^1/line\nbreak",
+    ] {
+      assert_eq!(ts_types_comment(value), None);
+    }
   }
 
   #[tokio::test]
@@ -1351,6 +1377,86 @@ export type * from "./c.d.ts";
   }
 
   #[tokio::test]
+  async fn test_unfurling_dynamic_prefix_source_ranges() {
+    let cwd = get_cwd();
+    let memory_sys = InMemorySys::new_with_cwd(&cwd);
+    memory_sys.fs_insert_json(
+      cwd.join("deno.json"),
+      json!({
+        "imports": {
+          "lib/": "./lib/",
+        }
+      }),
+    );
+    let unfurler = build_unfurler(memory_sys, &cwd).await;
+
+    let source_code = r#"const escapedTemplate = await import(`\x6cib/${name}`);
+const interpolationDecoy = await import(`\x6cib/${"lib/"}${name}`);
+const concatenationDecoy = await import("\x6cib/" + "lib/" + name);
+const unchangedEscaped = await import("\x6eode:fs");
+const validTemplate = await import(`lib/${name}`);
+const validConcatenation = await import("lib/" + name);
+const laterUnrelatedText = "lib/";
+"#;
+    let (unfurled_source, diagnostics) =
+      unfurl_text_with_diagnostics(&cwd.join("mod.ts"), source_code, &unfurler);
+
+    assert_eq!(diagnostics.len(), 3);
+    assert!(diagnostics.iter().all(|diagnostic| matches!(
+      diagnostic,
+      SpecifierUnfurlerDiagnostic::UnanalyzableDynamicImport { .. }
+    )));
+    assert_eq!(
+      unfurled_source,
+      r#"const escapedTemplate = await import(`\x6cib/${name}`);
+const interpolationDecoy = await import(`\x6cib/${"lib/"}${name}`);
+const concatenationDecoy = await import("\x6cib/" + "lib/" + name);
+const unchangedEscaped = await import("\x6eode:fs");
+const validTemplate = await import(`./lib/${name}`);
+const validConcatenation = await import("./lib/" + name);
+const laterUnrelatedText = "lib/";
+"#
+    );
+  }
+
+  #[tokio::test]
+  async fn test_unfurling_escapes_generated_specifiers() {
+    let cwd = get_cwd();
+    let memory_sys = InMemorySys::new_with_cwd(&cwd);
+    memory_sys.fs_insert_json(
+      cwd.join("deno.json"),
+      json!({
+        "imports": {
+          "double": "npm:package/path\"double",
+          "single": "npm:package/path'single",
+          "templated": "npm:package/path`tick${literal}",
+        }
+      }),
+    );
+    let unfurler = build_unfurler(memory_sys, &cwd).await;
+
+    let source_code = r#"import double from "double";
+import single from 'single';
+const templated = await import(`templated`);
+import.meta.resolve("double");
+"#;
+    let unfurled_source =
+      unfurl_text(&cwd.join("mod.ts"), source_code, &unfurler);
+    assert_eq!(
+      unfurled_source,
+      r#"import double from "npm:package/path\"double";
+import single from 'npm:package/path\'single';
+const templated = await import(`npm:package/path\`tick\${literal}`);
+import.meta.resolve("npm:package/path\"double");
+"#
+    );
+    parse_ast(
+      &ModuleSpecifier::from_file_path(cwd.join("mod.ts")).unwrap(),
+      &unfurled_source,
+    );
+  }
+
+  #[tokio::test]
   async fn test_unfurling_npm_dep_workspace_specifier() {
     let cwd = get_cwd();
     let memory_sys = InMemorySys::new_with_cwd(&cwd);
@@ -1445,12 +1551,14 @@ export type * from "./c.d.ts";
           "name": "package",
           "exports": {
             ".": "./index.js",
-            "./subpath": "./subpath.js"
+            "./subpath": "./subpath.js",
+            "./*": "./*.js"
           }
         }),
       );
       memory_sys.fs_insert(cwd.join("node_modules/package/index.js"), "");
       memory_sys.fs_insert(cwd.join("node_modules/package/subpath.js"), "");
+      memory_sys.fs_insert(cwd.join("node_modules/package/sub*/path.js"), "");
       memory_sys.fs_insert_json(
         cwd.join("node_modules/@types/package/package.json"),
         json!({
@@ -1458,7 +1566,8 @@ export type * from "./c.d.ts";
           "types": "./index.d.ts",
           "exports": {
             ".": "./index.d.ts",
-            "./subpath": "./subpath.d.ts"
+            "./subpath": "./subpath.d.ts",
+            "./*": "./*.d.ts"
           }
         }),
       );
@@ -1466,13 +1575,16 @@ export type * from "./c.d.ts";
         .fs_insert(cwd.join("node_modules/@types/package/index.d.ts"), "");
       memory_sys
         .fs_insert(cwd.join("node_modules/@types/package/subpath.d.ts"), "");
+      memory_sys
+        .fs_insert(cwd.join("node_modules/@types/package/sub*/path.d.ts"), "");
       let unfurler = build_unfurler(memory_sys, &cwd).await;
 
       let source_code = r#"import { data } from "package"; import { a } from "package";
 import { helper } from "package/subpath";
+import { unsafe } from "package/sub*/path";
 // @ts-types="npm:@types/package@^1.0"
 import { other } from "package";
-export { a, data, helper, other };
+export { a, data, helper, other, unsafe };
 export { b } from "package"; export { c } from "package";
 import type { d } from "package"; import type { e } from "package";
 import type { f } from "@types/package";
@@ -1482,9 +1594,10 @@ export { d, e, f };
         unfurl_text(&cwd.join("mod.ts"), source_code, &unfurler);
       let expected_source = r#"/* @ts-types="npm:@types/package@^1" */ import { data } from "npm:package@^1.2.3"; /* @ts-types="npm:@types/package@^1" */ import { a } from "npm:package@^1.2.3";
 /* @ts-types="npm:@types/package@^1/subpath" */ import { helper } from "npm:package@^1.2.3/subpath";
+import { unsafe } from "npm:package@^1.2.3/sub*/path";
 // @ts-types="npm:@types/package@^1.0"
 import { other } from "npm:package@^1.2.3";
-export { a, data, helper, other };
+export { a, data, helper, other, unsafe };
 /* @ts-types="npm:@types/package@^1" */ export { b } from "npm:package@^1.2.3"; /* @ts-types="npm:@types/package@^1" */ export { c } from "npm:package@^1.2.3";
 /* @ts-types="npm:@types/package@^1" */ import type { d } from "npm:package@^1.2.3"; /* @ts-types="npm:@types/package@^1" */ import type { e } from "npm:package@^1.2.3";
 import type { f } from "npm:@types/package@^1";
@@ -1494,6 +1607,10 @@ export { d, e, f };
       // start, which is harmless, so ignore that in order to normalize to the
       // expected source
       assert_eq!(unfurled_source.replace("npm:/", "npm:"), expected_source);
+      parse_ast(
+        &ModuleSpecifier::from_file_path(cwd.join("mod.ts")).unwrap(),
+        &unfurled_source,
+      );
     }
 
     // these different scenarios should all have the same outcome
@@ -1741,7 +1858,10 @@ export * from "jsr:@std/semver@1";
     let workspace_factory = Arc::new(WorkspaceFactory::new(
       sys,
       cwd.to_path_buf(),
-      WorkspaceFactoryOptions::default(),
+      WorkspaceFactoryOptions {
+        maybe_custom_deno_dir_root: Some(cwd.join("deno_dir")),
+        ..Default::default()
+      },
     ));
     let resolver_factory = ResolverFactory::new(
       workspace_factory,
@@ -1764,7 +1884,6 @@ export * from "jsr:@std/semver@1";
         .unwrap()
         .clone(),
       resolver_factory.workspace_resolver().await.unwrap().clone(),
-      true,
     )
   }
 

@@ -6,6 +6,9 @@ use std::env;
 use std::ffi::OsString;
 use std::ops::ControlFlow;
 use std::sync::Arc;
+use std::sync::LazyLock;
+use std::sync::Mutex;
+use std::sync::MutexGuard;
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering;
 
@@ -70,6 +73,20 @@ impl OpExitCallbacks {
   }
 }
 
+/// Holds the main isolate's handle so that `op_exit` (i.e. `Deno.exit()`) can
+/// terminate the current isolate instead of the whole process. Installed by
+/// `deno run --watch` / `deno serve --watch` so a script calling `Deno.exit()`
+/// ends the current run without killing the file watcher. See issue #7590.
+pub struct WatcherExitHandle(pub v8::IsolateHandle);
+
+/// Marker set by `op_exit` when a [`WatcherExitHandle`] is present, recording
+/// that the script called `Deno.exit()`. The watcher reads this after the run
+/// to confirm the V8 termination it observes was caused by `Deno.exit()` rather
+/// than another error; the requested exit code is read separately from the
+/// worker's `ExitCode` (set by `Deno.exit()` before `op_exit` runs).
+#[derive(Clone, Copy, Debug)]
+pub struct WatcherExited;
+
 deno_core::extension!(
   deno_os,
   ops = [
@@ -96,7 +113,7 @@ deno_core::extension!(
     ops::signal::op_signal_unbind,
     ops::signal::op_signal_poll,
   ],
-  esm = ["30_os.js", "40_signals.js"],
+  lazy_loaded_js = ["30_os.js", "40_signals.js"],
   options = {
     exit_code: Option<ExitCode>,
   },
@@ -146,7 +163,95 @@ fn op_exec_path() -> Result<String, OsError> {
     .map_err(OsError::InvalidUtf8)
 }
 
-fn dt_change_notif(isolate: &mut v8::Isolate, key: &str) {
+static PROCESS_ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(Mutex::default);
+
+/// A guard for coordinated runtime access to the process environment.
+///
+/// Runtime environment ops, Node dotenv loading, and watched dotenv reloads
+/// use this guard. It cannot synchronize other native code that accesses the
+/// process environment directly.
+pub struct ProcessEnvGuard {
+  _guard: MutexGuard<'static, ()>,
+}
+
+impl ProcessEnvGuard {
+  pub fn lock() -> Self {
+    Self {
+      _guard: PROCESS_ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner),
+    }
+  }
+
+  pub fn var(&self, key: &str) -> Result<String, env::VarError> {
+    env::var(key)
+  }
+
+  pub fn var_os(&self, key: impl AsRef<std::ffi::OsStr>) -> Option<OsString> {
+    env::var_os(key)
+  }
+
+  pub fn vars_os(&self) -> Vec<(OsString, OsString)> {
+    env::vars_os().collect()
+  }
+
+  pub fn set_var(
+    &self,
+    key: impl AsRef<std::ffi::OsStr>,
+    value: impl AsRef<std::ffi::OsStr>,
+  ) {
+    let key = key.as_ref();
+    // SAFETY: Deno exposes process environment mutation for compatibility.
+    // This guard coordinates the runtime mutation paths with the native
+    // timezone refresh below, but cannot coordinate arbitrary native readers.
+    unsafe {
+      env::set_var(key, value);
+    }
+    if key == "TZ" {
+      refresh_timezone_from_process_env();
+    }
+  }
+
+  pub fn set_var_and_notify_timezone(
+    &self,
+    key: impl AsRef<std::ffi::OsStr>,
+    value: impl AsRef<std::ffi::OsStr>,
+    notify: impl FnOnce(),
+  ) {
+    let key = key.as_ref();
+    self.set_var(key, value);
+    if key == "TZ" {
+      notify();
+    }
+  }
+
+  pub fn remove_var(&self, key: impl AsRef<std::ffi::OsStr>) {
+    let key = key.as_ref();
+    // SAFETY: Deno exposes process environment mutation for compatibility.
+    // This guard coordinates the runtime mutation paths with the native
+    // timezone refresh below, but cannot coordinate arbitrary native readers.
+    unsafe {
+      env::remove_var(key);
+    }
+    if key == "TZ" {
+      refresh_timezone_from_process_env();
+    }
+  }
+
+  pub fn remove_var_and_notify_timezone(
+    &self,
+    key: impl AsRef<std::ffi::OsStr>,
+    notify: impl FnOnce(),
+  ) {
+    let key = key.as_ref();
+    self.remove_var(key);
+    if key == "TZ" {
+      notify();
+    }
+  }
+}
+
+fn refresh_timezone_from_process_env() {
   unsafe extern "C" {
     #[cfg(unix)]
     fn tzset();
@@ -155,20 +260,21 @@ fn dt_change_notif(isolate: &mut v8::Isolate, key: &str) {
     fn _tzset();
   }
 
-  if key == "TZ" {
-    // SAFETY: tzset/_tzset (libc) is called to update the timezone information
-    unsafe {
-      #[cfg(unix)]
-      tzset();
+  // SAFETY: The process environment guard is held while libc reloads its
+  // timezone configuration.
+  unsafe {
+    #[cfg(unix)]
+    tzset();
 
-      #[cfg(windows)]
-      _tzset();
-    }
-
-    isolate.date_time_configuration_change_notification(
-      v8::TimeZoneDetection::Redetect,
-    );
+    #[cfg(windows)]
+    _tzset();
   }
+}
+
+fn notify_date_time_configuration_change(isolate: &mut v8::Isolate) {
+  isolate.date_time_configuration_change_notification(
+    v8::TimeZoneDetection::Redetect,
+  );
 }
 
 #[op2(fast, stack_trace)]
@@ -191,14 +297,10 @@ fn op_set_env(
     return Err(OsError::EnvInvalidValue(value.to_string()));
   }
 
-  #[allow(
-    clippy::undocumented_unsafe_blocks,
-    reason = "env::set_var is unsafe since Rust 1.66"
-  )]
-  unsafe {
-    env::set_var(key, value)
-  };
-  dt_change_notif(scope, key);
+  let process_env = ProcessEnvGuard::lock();
+  process_env.set_var_and_notify_timezone(key, value, || {
+    notify_date_time_configuration_change(scope);
+  });
   Ok(())
 }
 
@@ -223,10 +325,16 @@ fn op_env(
   state: &mut OpState,
 ) -> Result<HashMap<String, String>, PermissionCheckError> {
   fn map_kv(kv: (OsString, OsString)) -> Option<(String, String)> {
-    kv.0
-      .into_string()
-      .ok()
-      .and_then(|key| kv.1.into_string().ok().map(|value| (key, value)))
+    let key = kv.0.into_string().ok()?;
+    // Skip keys that `Deno.env.get`/`set`/`delete` would reject, so that
+    // enumeration stays consistent with the rest of the API. On Windows,
+    // cmd.exe exposes hidden per-drive cwd variables such as `=C:` which
+    // contain `=` and are not meant to be surfaced to users.
+    if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
+      return None;
+    }
+    let value = kv.1.into_string().ok()?;
+    Some((key, value))
   }
 
   let permissions_container = state.borrow::<PermissionsContainer>();
@@ -242,8 +350,11 @@ fn op_env(
     },
     Err(err) => return Err(err),
   };
+  let process_env = ProcessEnvGuard::lock();
   Ok(
-    env::vars_os()
+    process_env
+      .vars_os()
+      .into_iter()
       .filter_map(|kv| {
         let (k, v) = map_kv(kv)?;
         let state = if grant_all {
@@ -274,7 +385,8 @@ fn get_env_var(key: &str) -> Result<Option<String>, OsError> {
     return Err(OsError::EnvInvalidKey(key.to_string()));
   }
 
-  let r = match env::var(key) {
+  let process_env = ProcessEnvGuard::lock();
+  let r = match process_env.var(key) {
     Err(env::VarError::NotPresent) => None,
     v => Some(v?),
   };
@@ -309,6 +421,7 @@ fn op_get_env(
 #[op2(fast, stack_trace)]
 fn op_delete_env(
   state: &mut OpState,
+  scope: &mut v8::PinScope<'_, '_>,
   #[string] key: &str,
 ) -> Result<(), OsError> {
   if check_env_with_maybe_exit(state, key)?.is_break() {
@@ -318,13 +431,10 @@ fn op_delete_env(
     return Err(OsError::EnvInvalidKey(key.to_string()));
   }
 
-  #[allow(
-    clippy::undocumented_unsafe_blocks,
-    reason = "env::remove_var is unsafe since Rust 1.66"
-  )]
-  unsafe {
-    env::remove_var(key)
-  };
+  let process_env = ProcessEnvGuard::lock();
+  process_env.remove_var_and_notify_timezone(key, || {
+    notify_date_time_configuration_change(scope);
+  });
   Ok(())
 }
 
@@ -346,6 +456,23 @@ fn op_get_exit_code(state: &mut OpState) -> i32 {
 
 #[op2(fast)]
 fn op_exit(state: &mut OpState) {
+  // Under `deno run --watch`, terminate the current V8 isolate instead of
+  // exiting the process so the file watcher survives and can restart the
+  // script on the next file change. See issue #7590.
+  //
+  // We intentionally return before running `OpExitCallbacks` here: those flush
+  // coverage/profiler data and notify the inspector as the process is about to
+  // disappear. Under a watcher the process keeps running, so that teardown is
+  // not wanted; the watcher run paths stop the coverage collector and profiler
+  // themselves after the run completes.
+  if let Some(handle) =
+    state.try_borrow::<WatcherExitHandle>().map(|h| h.0.clone())
+  {
+    state.put(WatcherExited);
+    handle.terminate_execution();
+    return;
+  }
+
   if let Some(cbs) = state.try_borrow_mut::<OpExitCallbacks>() {
     cbs.run();
   }
@@ -354,8 +481,48 @@ fn op_exit(state: &mut OpState) {
   }
 }
 
+#[cfg(test)]
+mod tests {
+  use std::sync::mpsc;
+
+  use super::PROCESS_ENV_LOCK;
+  use super::ProcessEnvGuard;
+
+  #[test]
+  fn process_env_lock_is_held_through_timezone_notification() {
+    let original_tz = ProcessEnvGuard::lock().var_os("TZ");
+    let (callback_started_tx, callback_started_rx) = mpsc::channel();
+    let (finish_callback_tx, finish_callback_rx) = mpsc::channel();
+
+    let setter = std::thread::spawn(move || {
+      let process_env = ProcessEnvGuard::lock();
+      process_env.set_var_and_notify_timezone("TZ", "UTC", || {
+        callback_started_tx.send(()).unwrap();
+        finish_callback_rx.recv().unwrap();
+      });
+    });
+
+    callback_started_rx.recv().unwrap();
+    let (reader_started_tx, reader_started_rx) = mpsc::channel();
+    let reader = std::thread::spawn(move || {
+      reader_started_tx.send(()).unwrap();
+      ProcessEnvGuard::lock().var("TZ").unwrap()
+    });
+    reader_started_rx.recv().unwrap();
+    assert!(PROCESS_ENV_LOCK.try_lock().is_err());
+    finish_callback_tx.send(()).unwrap();
+    setter.join().unwrap();
+    assert_eq!(reader.join().unwrap(), "UTC");
+
+    let process_env = ProcessEnvGuard::lock();
+    match original_tz {
+      Some(value) => process_env.set_var("TZ", value),
+      None => process_env.remove_var("TZ"),
+    }
+  }
+}
+
 #[op2(stack_trace)]
-#[serde]
 fn op_loadavg(
   state: &mut OpState,
 ) -> Result<(f64, f64, f64), PermissionCheckError> {
@@ -435,7 +602,6 @@ impl From<netif::Interface> for NetworkInterface {
 }
 
 #[op2(stack_trace)]
-#[serde]
 fn op_system_memory_info(
   state: &mut OpState,
 ) -> Result<Option<sys_info::MemInfo>, PermissionCheckError> {
@@ -495,6 +661,10 @@ fn op_uid(state: &mut OpState) -> Result<Option<u32>, PermissionCheckError> {
 
 #[op2(fast)]
 fn op_runtime_cpu_usage(#[buffer] out: &mut [f64]) {
+  if out.len() < 2 {
+    return;
+  }
+
   let (sys, user) = get_cpu_usage();
 
   out[0] = sys.as_micros() as f64;
@@ -526,13 +696,13 @@ fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
 
 #[cfg(windows)]
 fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
-  use winapi::shared::minwindef::FALSE;
-  use winapi::shared::minwindef::FILETIME;
-  use winapi::shared::minwindef::TRUE;
-  use winapi::um::minwinbase::SYSTEMTIME;
-  use winapi::um::processthreadsapi::GetCurrentProcess;
-  use winapi::um::processthreadsapi::GetProcessTimes;
-  use winapi::um::timezoneapi::FileTimeToSystemTime;
+  use windows_sys::Win32::Foundation::FALSE;
+  use windows_sys::Win32::Foundation::FILETIME;
+  use windows_sys::Win32::Foundation::SYSTEMTIME;
+  use windows_sys::Win32::Foundation::TRUE;
+  use windows_sys::Win32::System::Threading::GetCurrentProcess;
+  use windows_sys::Win32::System::Threading::GetProcessTimes;
+  use windows_sys::Win32::System::Time::FileTimeToSystemTime;
 
   fn convert_system_time(system_time: SYSTEMTIME) -> std::time::Duration {
     std::time::Duration::from_secs(
@@ -547,7 +717,7 @@ fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
   let mut kernel_time = std::mem::MaybeUninit::<FILETIME>::uninit();
   let mut user_time = std::mem::MaybeUninit::<FILETIME>::uninit();
 
-  // SAFETY: winapi calls
+  // SAFETY: Win32 calls
   let ret = unsafe {
     GetProcessTimes(
       GetCurrentProcess(),
@@ -604,6 +774,10 @@ fn op_runtime_memory_usage(
   scope: &mut v8::PinScope<'_, '_>,
   #[buffer] out: &mut [f64],
 ) {
+  if out.len() < 4 {
+    return;
+  }
+
   let s = scope.get_heap_statistics();
 
   let (rss, heap_total, heap_used, external) = (
@@ -748,13 +922,12 @@ fn rss() -> u64 {
 
 #[cfg(windows)]
 fn rss() -> u64 {
-  use winapi::shared::minwindef::DWORD;
-  use winapi::shared::minwindef::FALSE;
-  use winapi::um::processthreadsapi::GetCurrentProcess;
-  use winapi::um::psapi::GetProcessMemoryInfo;
-  use winapi::um::psapi::PROCESS_MEMORY_COUNTERS;
+  use windows_sys::Win32::Foundation::FALSE;
+  use windows_sys::Win32::System::ProcessStatus::GetProcessMemoryInfo;
+  use windows_sys::Win32::System::ProcessStatus::PROCESS_MEMORY_COUNTERS;
+  use windows_sys::Win32::System::Threading::GetCurrentProcess;
 
-  // SAFETY: winapi calls
+  // SAFETY: Win32 calls
   unsafe {
     // this handle is a constant—no need to close it
     let current_process = GetCurrentProcess();
@@ -763,7 +936,7 @@ fn rss() -> u64 {
     if GetProcessMemoryInfo(
       current_process,
       &mut pmc,
-      std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as DWORD,
+      std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32,
     ) != FALSE
     {
       pmc.WorkingSetSize as u64

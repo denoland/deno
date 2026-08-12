@@ -104,8 +104,26 @@ detest!(de_bool, bool, "true", true);
 detest!(de_char, char, "'é'", 'é');
 detest!(de_u64, u64, "32", 32);
 detest!(de_string, String, "'Hello'", "Hello".to_owned());
+defail!(
+  de_string_throwing_conversion,
+  String,
+  r#"(() => {
+    const value = new String("hello");
+    value.toString = () => { throw new Error("getter boom"); };
+    return value;
+  })()"#,
+  |e| matches!(e, Err(Error::V8Exception))
+);
 detest!(de_vec_empty, Vec<u64>, "[]", vec![0; 0]);
 detest!(de_vec_u64, Vec<u64>, "[1,2,3,4,5]", vec![1, 2, 3, 4, 5]);
+defail!(
+  de_vec_throwing_index,
+  Vec<u64>,
+  r#"Object.defineProperty([1], "0", {
+    get() { throw new Error("getter boom"); }
+  })"#,
+  |e| matches!(e, Err(Error::V8Exception))
+);
 detest!(
   de_vec_str,
   Vec<String>,
@@ -148,6 +166,22 @@ detest!(de_enum_unit_b, EnumUnit, "'B'", EnumUnit::B);
 detest!(de_enum_unit_so_b, EnumUnit, "new String('B')", EnumUnit::B);
 detest!(de_enum_unit_c, EnumUnit, "'C'", EnumUnit::C);
 detest!(de_enum_unit_so_c, EnumUnit, "new String('C')", EnumUnit::C);
+defail!(
+  de_enum_throwing_payload,
+  EnumPayloads,
+  r#"new Proxy({ UInt: 1 }, {
+    get() { throw new Error("getter boom"); }
+  })"#,
+  |e| matches!(e, Err(Error::V8Exception))
+);
+defail!(
+  de_enum_throwing_own_keys,
+  EnumPayloads,
+  r#"new Proxy({ UInt: 1 }, {
+    ownKeys() { throw new Error("getter boom"); }
+  })"#,
+  |e| matches!(e, Err(Error::V8Exception))
+);
 
 // Enums with payloads (tuples & struct)
 detest!(
@@ -201,6 +235,24 @@ fn de_map() {
     assert_eq!(map.get("nada"), None);
   })
 }
+
+defail!(
+  de_map_throwing_value,
+  std::collections::HashMap<String, u64>,
+  r#"new Proxy({ a: 1 }, {
+    get() { throw new Error("getter boom"); }
+  })"#,
+  |e| matches!(e, Err(Error::V8Exception))
+);
+
+defail!(
+  de_map_throwing_own_keys,
+  std::collections::HashMap<String, u64>,
+  r#"new Proxy({}, {
+    ownKeys() { throw new Error("getter boom"); }
+  })"#,
+  |e| matches!(e, Err(Error::V8Exception))
+);
 
 #[test]
 fn de_obj_with_numeric_keys() {
@@ -340,6 +392,15 @@ fn de_struct_hint() {
     assert_eq!(payload, StructPayload { a: 1, b: 2 })
   })
 }
+
+defail!(
+  de_struct_throwing_field,
+  MathOp,
+  r#"Object.defineProperty({ b: 2 }, "a", {
+    get() { throw new Error("getter boom"); }
+  })"#,
+  |e| matches!(e, Err(Error::V8Exception))
+);
 
 ////
 // JSON tests: serde_json::Value compatibility
@@ -622,3 +683,62 @@ detest!(
   "-170141183460469231731687303715884105728n",
   num_bigint::BigInt::from(-170141183460469231731687303715884105728i128).into()
 );
+
+// Recursion limit: deeply nested input must error, not overflow the stack.
+//
+// Builds nesting with a flat loop so the JS stack stays O(1); the depth is far
+// past serde_v8's recursion limit. Before the limit existed this overflowed the
+// Rust stack and aborted the process; now it must return an error.
+fn build_nested(scope: &mut v8::PinScope, code: &str) -> bool {
+  let v = js_exec(scope, code);
+  let res: serde_v8::Result<serde_json::Value> = serde_v8::from_v8(scope, v);
+  matches!(res, Err(Error::RecursionLimitExceeded))
+}
+
+#[test]
+fn de_deeply_nested_object_errors() {
+  dedo("({})", |scope, _| {
+    assert!(build_nested(
+      scope,
+      r#"(() => {
+        let obj = {};
+        let cur = obj;
+        for (let i = 0; i < 100000; i++) { cur.x = {}; cur = cur.x; }
+        return obj;
+      })()"#,
+    ));
+  });
+}
+
+#[test]
+fn de_deeply_nested_array_errors() {
+  dedo("({})", |scope, _| {
+    assert!(build_nested(
+      scope,
+      r#"(() => {
+        let arr = [];
+        let cur = arr;
+        for (let i = 0; i < 100000; i++) { const next = []; cur.push(next); cur = next; }
+        return arr;
+      })()"#,
+    ));
+  });
+}
+
+// Nesting within the limit must still deserialize successfully.
+#[test]
+fn de_shallow_nesting_ok() {
+  dedo("({})", |scope, _| {
+    let v = js_exec(
+      scope,
+      r#"(() => {
+        let obj = {};
+        let cur = obj;
+        for (let i = 0; i < 64; i++) { cur.x = {}; cur = cur.x; }
+        return obj;
+      })()"#,
+    );
+    let res: serde_v8::Result<serde_json::Value> = serde_v8::from_v8(scope, v);
+    assert!(res.is_ok(), "shallow nesting should deserialize: {res:?}");
+  });
+}

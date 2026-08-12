@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "tests": {
+    "pkg_json_catalog_takes_precedence": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run -A packages/a/main.js",
+          "output": "42\n"
+        }
+      ]
+    }
+  }
+}

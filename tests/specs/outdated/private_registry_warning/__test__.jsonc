@@ -1,0 +1,18 @@
+{
+  "tempDir": true,
+  "tests": {
+    // The package's current version resolves from the committed lockfile, but
+    // its registry (configured in .npmrc) is unreachable, so the update check
+    // fails. Instead of silently dropping the package, `outdated` warns.
+    "warns_about_skipped_packages": {
+      "args": "outdated",
+      "output": "warning.out"
+    },
+    // With debug logging, the warning lists each package, its registry and the
+    // failure reason.
+    "verbose_lists_skipped_packages": {
+      "args": "outdated --log-level=debug",
+      "output": "warning_verbose.out"
+    }
+  }
+}

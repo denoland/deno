@@ -1,0 +1,4 @@
+ctor-attach-limit:1
+ctor-attach:DENIED_SECRET
+setter-attach-limit:1
+setter-attach:DENIED_SECRET

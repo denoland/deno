@@ -73,8 +73,27 @@ pub(crate) fn compile_trampoline(
     .map_err(TurbocallError::IsaError)?
     .finish(flags)?;
 
+  // V8's fast API on arm64 always packs stack arguments into 8-byte slots
+  // (AAPCS64 layout), but Apple silicon's ABI requires natural alignment
+  // (e.g. 4-byte slots for i32/f32). Cranelift's default convention on
+  // aarch64-apple-darwin is `AppleAarch64`, which would read stack args at
+  // their natural offsets and pick up garbage for any args that V8 spilled.
+  // Force the wrapper itself (the function V8 calls) to use SystemV so it
+  // reads stack args at the same 8-byte-aligned offsets V8 writes them.
+  // The target signature (used to call the user's C function from within the
+  // wrapper) still uses the platform default, so the user's function is
+  // invoked per its native ABI.
+  //
+  // Upstream V8 issue: https://crbug.com/v8/13171 (chromium:42203110)
+  let wrapper_call_conv =
+    if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+      cranelift::codegen::isa::CallConv::SystemV
+    } else {
+      isa.default_call_conv()
+    };
+
   let mut wrapper_sig =
-    cranelift::codegen::ir::Signature::new(isa.default_call_conv());
+    cranelift::codegen::ir::Signature::new(wrapper_call_conv);
   let mut target_sig =
     cranelift::codegen::ir::Signature::new(isa.default_call_conv());
   let mut raise_sig =
@@ -229,7 +248,9 @@ pub(crate) fn compile_trampoline(
 
     if *TRACE_TURBO {
       let options = f.use_var(options_v);
-      let trace_fn = f.ins().iconst(ISIZE, turbocall_trace as usize as i64);
+      let trace_fn = f
+        .ins()
+        .iconst(ISIZE, turbocall_trace as *const () as usize as i64);
       f.ins().call_indirect(ab_sig, trace_fn, &[options]);
     }
 
@@ -254,8 +275,9 @@ pub(crate) fn compile_trampoline(
           f.def_var(target_v, v);
         }
         NativeType::Buffer => {
-          let callee =
-            f.ins().iconst(ISIZE, turbocall_ab_contents as usize as i64);
+          let callee = f
+            .ins()
+            .iconst(ISIZE, turbocall_ab_contents as *const () as usize as i64);
           let call = f.ins().call_indirect(ab_sig, callee, &[arg]);
           let result = f.inst_results(call)[0];
           f.def_var(target_v, result);
@@ -301,7 +323,9 @@ pub(crate) fn compile_trampoline(
     f.seal_block(error);
     if !f.is_unreachable() {
       let options = f.use_var(options_v);
-      let callee = f.ins().iconst(ISIZE, turbocall_raise as usize as i64);
+      let callee = f
+        .ins()
+        .iconst(ISIZE, turbocall_raise as *const () as usize as i64);
       f.ins().call_indirect(raise_sig, callee, &[options]);
       let rty = convert(&sym.result_type, true);
       if rty.value_type.is_invalid() {
@@ -341,6 +365,9 @@ pub(crate) fn compile_trampoline(
 }
 
 pub(crate) struct Turbocall {
+  // Held to keep the executable trampoline memory alive for V8; the fast-call
+  // pointer is read once (via `ptr()`) when building `overloads`.
+  #[allow(unused, reason = "kept alive for V8 fast API")]
   pub trampoline: Trampoline,
   // Held in a box to keep the memory alive for CFunctionInfo
   #[allow(unused, reason = "kept alive for CFunctionInfo")]
@@ -348,6 +375,33 @@ pub(crate) struct Turbocall {
   // Held in a box to keep the memory alive for V8
   #[allow(unused, reason = "kept alive for V8 fast API")]
   pub c_function_info: Box<fast_api::CFunctionInfo>,
+  // The fast-call overload handed to `FunctionTemplate::build_fast`. Boxed so
+  // the slice V8 retains has a stable address that survives moving this
+  // `Turbocall` into the cppgc-managed `FunctionData`. See `overloads()`.
+  overloads: Box<[fast_api::CFunction; 1]>,
+}
+
+impl Turbocall {
+  /// The fast-call overload slice for this trampoline.
+  ///
+  /// # Safety
+  ///
+  /// The returned slice is extended to `'static`. V8 150.x stores the raw
+  /// `CFunction`/`CFunctionInfo` pointers reachable from it directly inside the
+  /// `FunctionTemplateInfo`, so the storage must outlive the resulting
+  /// function. That holds because the backing `Box`es live in this `Turbocall`,
+  /// which is owned by the cppgc `FunctionData` set as the function's data and
+  /// is therefore dropped only after V8 has released the function. The caller
+  /// must not retain the slice past the lifetime of the owning `Turbocall`.
+  pub(crate) unsafe fn overloads(&self) -> &'static [fast_api::CFunction] {
+    // SAFETY: see the method-level contract above.
+    unsafe {
+      std::mem::transmute::<
+        &[fast_api::CFunction],
+        &'static [fast_api::CFunction],
+      >(self.overloads.as_slice())
+    }
+  }
 }
 
 pub(crate) fn make_template(sym: &Symbol, trampoline: Trampoline) -> Turbocall {
@@ -365,14 +419,34 @@ pub(crate) fn make_template(sym: &Symbol, trampoline: Trampoline) -> Turbocall {
 
   let c_function_info = Box::new(fast_api::CFunctionInfo::new(
     ret,
-    &param_info,
+    // SAFETY: `param_info` is boxed and stored in the returned `Turbocall`
+    // alongside this `CFunctionInfo`, so it outlives the pointer V8 keeps to it.
+    unsafe {
+      std::mem::transmute::<
+        &[fast_api::CTypeInfo],
+        &'static [fast_api::CTypeInfo],
+      >(&param_info)
+    },
     fast_api::Int64Representation::BigInt,
   ));
+
+  let c_function = fast_api::CFunction::new(
+    trampoline.ptr(),
+    // SAFETY: `c_function_info` is boxed and stored in the returned `Turbocall`,
+    // so the pointer stays valid for as long as the resulting `CFunction`.
+    unsafe {
+      std::mem::transmute::<
+        &fast_api::CFunctionInfo,
+        &'static fast_api::CFunctionInfo,
+      >(&c_function_info)
+    },
+  );
 
   Turbocall {
     trampoline,
     param_info,
     c_function_info,
+    overloads: Box::new([c_function]),
   }
 }
 

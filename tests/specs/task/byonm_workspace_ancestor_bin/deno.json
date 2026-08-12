@@ -1,0 +1,4 @@
+{
+  "workspace": ["./packages/child"],
+  "unstable": ["byonm"]
+}

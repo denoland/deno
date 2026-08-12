@@ -1,0 +1,20 @@
+{
+  "tests": {
+    "direct_dep": {
+      "args": "why express",
+      "output": "direct.out"
+    },
+    "scoped_direct": {
+      "args": "why @types/express",
+      "output": "scoped_direct.out"
+    },
+    "scoped_transitive": {
+      "args": "why @types/send",
+      "output": "scoped_transitive.out"
+    },
+    "transitive_dep": {
+      "args": "why ms",
+      "output": "transitive.out"
+    }
+  }
+}

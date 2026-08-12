@@ -1,0 +1,10 @@
+[UNORDERED_START]
+Download http://localhost:4260/@denotest%2fadd
+Download http://localhost:4260/@denotest%2fcjs-multiple-exports
+[UNORDERED_END]
+[UNORDERED_START]
+Download http://localhost:4260/@denotest/add/1.0.0.tgz
+Download http://localhost:4260/@denotest/cjs-multiple-exports/1.0.0.tgz
+[UNORDERED_END]
+add(2, 3) = 5
+subpath add(2, 3) = 5

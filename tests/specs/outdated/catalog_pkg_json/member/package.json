@@ -1,0 +1,8 @@
+{
+  "name": "@denotest/member",
+  "version": "0.1.0",
+  "dependencies": {
+    "@denotest/has-patch-versions": "catalog:",
+    "@denotest/breaking-change-between-versions": "catalog:testing"
+  }
+}

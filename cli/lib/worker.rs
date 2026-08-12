@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use boxed_error::Boxed;
 use deno_bundle_runtime::BundleProvider;
+use deno_core::ModuleSpecifier;
 use deno_core::error::JsError;
 use deno_node::NodeRequireLoaderRc;
 use deno_node::ops::ipc::ChildIpcSerialization;
@@ -40,7 +41,8 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_process::NpmProcessStateProviderRc;
 use deno_runtime::deno_telemetry::OtelConfig;
 use deno_runtime::deno_tls::RootCertStoreProvider;
-use deno_runtime::deno_web::BlobStore;
+use deno_runtime::deno_web::Blob;
+use deno_runtime::deno_web::BlobStoreTrait;
 use deno_runtime::deno_web::InMemoryBroadcastChannel;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
@@ -61,6 +63,8 @@ use crate::util::checksum;
 pub struct CreateModuleLoaderResult {
   pub module_loader: Rc<dyn ModuleLoader>,
   pub node_require_loader: Rc<dyn NodeRequireLoader>,
+  pub hook_registry:
+    Option<deno_runtime::deno_node::ops::module_hooks::LoaderHookRegistry>,
 }
 
 pub trait ModuleLoaderFactory: Send + Sync {
@@ -73,6 +77,7 @@ pub trait ModuleLoaderFactory: Send + Sync {
     &self,
     parent_permissions: PermissionsContainer,
     permissions: PermissionsContainer,
+    maybe_main_module_blob: Option<(ModuleSpecifier, Arc<Blob>)>,
   ) -> CreateModuleLoaderResult;
 }
 
@@ -102,6 +107,19 @@ impl StorageKeyResolver {
     Self(StorageKeyResolverStrategy::Specified(Some(url.to_string())))
   }
 
+  /// Storage key for a compiled binary. Keyed by the stable app name so each
+  /// app gets a single persistent store, independent of the main module URL
+  /// (which is not stable across differently named binaries). The `app:`
+  /// prefix namespaces this key from URL-derived keys so a compiled app and a
+  /// `deno run` of the same origin can't collide in the shared, temp-backed
+  /// `caches` directory (which is keyed by the hash of this string rather than
+  /// by the per-app data directory).
+  pub fn from_compile_app_name(app_name: &str) -> Self {
+    Self(StorageKeyResolverStrategy::Specified(Some(format!(
+      "app:{app_name}"
+    ))))
+  }
+
   pub fn new_use_main_module() -> Self {
     Self(StorageKeyResolverStrategy::UseMainModule)
   }
@@ -123,13 +141,18 @@ impl StorageKeyResolver {
   }
 }
 
-pub fn get_cache_storage_dir() -> PathBuf {
-  #[allow(
-    clippy::disallowed_methods,
-    reason = "ok because this won't ever be used by the js runtime"
-  )]
-  // Note: we currently use temp_dir() to avoid managing storage size.
-  std::env::temp_dir().join("deno_cache")
+/// Returns the persistent Cache API storage root beneath Deno's origin data
+/// directory. Each storage key uses a hashed child directory of this root.
+pub fn get_cache_storage_dir(origin_data_folder_path: &Path) -> PathBuf {
+  origin_data_folder_path.join("web_cache")
+}
+
+fn get_cache_storage_dir_for_key(
+  origin_data_folder_path: &Path,
+  key: &str,
+) -> PathBuf {
+  get_cache_storage_dir(origin_data_folder_path)
+    .join(checksum::r#gen(&[key.as_bytes()]))
 }
 
 /// By default V8 uses 1.4Gb heap limit which is meant for browser tabs.
@@ -257,6 +280,8 @@ pub struct LibMainWorkerOptions {
   pub location: Option<Url>,
   pub argv0: Option<String>,
   pub node_debug: Option<String>,
+  pub node_cluster_unique_id: Option<String>,
+  pub node_cluster_sched_policy: Option<String>,
   pub otel_config: OtelConfig,
   pub origin_data_folder_path: Option<PathBuf>,
   pub seed: Option<u64>,
@@ -265,9 +290,16 @@ pub struct LibMainWorkerOptions {
   pub node_ipc_init: Option<(i64, ChildIpcSerialization)>,
   pub no_legacy_abort: bool,
   pub startup_snapshot: Option<&'static [u8]>,
+  /// Residual `lazy_loaded_js` sources from the snapshot build script.
+  pub residual_lazy_js_sources: &'static [(&'static str, &'static str)],
+  /// Residual `lazy_loaded_esm` sources from the snapshot build script.
+  pub residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
+  pub close_on_idle: bool,
   pub maybe_initial_cwd: Option<Url>,
+  /// When true, the `OffscreenCanvas` global is removed at bootstrap.
+  pub disable_offscreen_canvas: bool,
 }
 
 #[derive(Default, Clone)]
@@ -277,7 +309,7 @@ pub struct LibWorkerFactoryRoots {
 }
 
 struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
-  blob_store: Arc<BlobStore>,
+  blob_store: Arc<dyn BlobStoreTrait>,
   broadcast_channel: InMemoryBroadcastChannel,
   code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,
   compiled_wasm_module_store: CompiledWasmModuleStore,
@@ -335,9 +367,14 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
       let CreateModuleLoaderResult {
         module_loader,
         node_require_loader,
+        hook_registry,
       } = shared.module_loader_factory.create_for_worker(
         args.parent_permissions.clone(),
         args.permissions.clone(),
+        args
+          .maybe_main_module_blob
+          .clone()
+          .map(|blob| (args.main_module.clone(), blob)),
       );
       let create_web_worker_cb =
         shared.create_web_worker_callback(stdio.clone());
@@ -345,9 +382,12 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
       let maybe_storage_key = shared
         .storage_key_resolver
         .resolve_storage_key(&args.main_module);
-      let cache_storage_dir = maybe_storage_key.map(|key| {
+      let cache_storage_dir = maybe_storage_key.as_ref().map(|key| {
         // TODO(@satyarohith): storage quota management
-        get_cache_storage_dir().join(checksum::r#gen(&[key.as_bytes()]))
+        get_cache_storage_dir_for_key(
+          shared.options.origin_data_folder_path.as_ref().unwrap(), // must be set if storage key resolver returns a value
+          key,
+        )
       });
 
       // TODO(bartlomieju): this is cruft, update FeatureChecker to spit out
@@ -452,6 +492,11 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           has_node_modules_dir: shared.options.has_node_modules_dir,
           argv0: shared.options.argv0.clone(),
           node_debug: shared.options.node_debug.clone(),
+          node_cluster_unique_id: shared.options.node_cluster_unique_id.clone(),
+          node_cluster_sched_policy: shared
+            .options
+            .node_cluster_sched_policy
+            .clone(),
           node_ipc_init: None,
           mode: WorkerExecutionMode::Worker,
           serve_port: shared.options.serve_port,
@@ -459,9 +504,12 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           otel_config: shared.options.otel_config.clone(),
           no_legacy_abort: shared.options.no_legacy_abort,
           close_on_idle: args.close_on_idle,
+          disable_offscreen_canvas: shared.options.disable_offscreen_canvas,
         },
         extensions: vec![],
         startup_snapshot: shared.options.startup_snapshot,
+        residual_lazy_js_sources: shared.options.residual_lazy_js_sources,
+        residual_lazy_esm_sources: shared.options.residual_lazy_esm_sources,
         create_params,
         unsafely_ignore_certificate_errors: shared
           .options
@@ -478,12 +526,15 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         trace_ops: shared.options.trace_ops.clone(),
         close_on_idle: args.close_on_idle,
         maybe_worker_metadata: args.maybe_worker_metadata,
+        maybe_main_module_blob: args.maybe_main_module_blob,
         maybe_coverage_dir: shared.maybe_coverage_dir.clone(),
         maybe_cpu_prof_config: shared.maybe_cpu_prof_config.clone(),
         enable_raw_imports: shared.options.enable_raw_imports,
         enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(
           &shared.sys,
         ),
+        wait_for_debugger_on_start: args.wait_for_debugger_on_start,
+        wait_for_page_wait_for_debugger: args.wait_for_page_wait_for_debugger,
       };
 
       let has_resource_limits = args.resource_limits.is_some();
@@ -498,6 +549,13 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
       }
 
       worker.bootstrap(&bootstrap_options);
+
+      // Wire the module hook registry into OpState after bootstrap so
+      // `module.registerHooks()` in worker scripts shares state with the
+      // worker's module loader (same pattern as the main worker).
+      if let Some(registry) = hook_registry {
+        worker.js_runtime.op_state().borrow_mut().put(registry);
+      }
 
       // When resource limits are set, install a near-heap-limit callback
       // that terminates the worker's isolate gracefully instead of
@@ -526,7 +584,7 @@ pub struct LibMainWorkerFactory<TSys: DenoLibSys> {
 impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
   #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
-    blob_store: Arc<BlobStore>,
+    blob_store: Arc<dyn BlobStoreTrait>,
     code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,
     deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
     feature_checker: Arc<FeatureChecker>,
@@ -608,6 +666,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     let CreateModuleLoaderResult {
       module_loader,
       node_require_loader,
+      hook_registry,
     } = shared
       .module_loader_factory
       .create_for_main(permissions.clone());
@@ -629,9 +688,12 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
           .unwrap() // must be set if storage key resolver returns a value
           .join(checksum::r#gen(&[key.as_bytes()]))
       });
-    let cache_storage_dir = maybe_storage_key.map(|key| {
+    let cache_storage_dir = maybe_storage_key.as_ref().map(|key| {
       // TODO(@satyarohith): storage quota management
-      get_cache_storage_dir().join(checksum::r#gen(&[key.as_bytes()]))
+      get_cache_storage_dir_for_key(
+        shared.options.origin_data_folder_path.as_ref().unwrap(), // must be set if storage key resolver returns a value
+        key,
+      )
     });
 
     let services = WorkerServiceOptions {
@@ -680,16 +742,24 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         has_node_modules_dir: shared.options.has_node_modules_dir,
         argv0: shared.options.argv0.clone(),
         node_debug: shared.options.node_debug.clone(),
+        node_cluster_unique_id: shared.options.node_cluster_unique_id.clone(),
+        node_cluster_sched_policy: shared
+          .options
+          .node_cluster_sched_policy
+          .clone(),
         node_ipc_init: shared.options.node_ipc_init,
         mode,
         no_legacy_abort: shared.options.no_legacy_abort,
         serve_port: shared.options.serve_port,
         serve_host: shared.options.serve_host.clone(),
         otel_config: shared.options.otel_config.clone(),
-        close_on_idle: true,
+        close_on_idle: shared.options.close_on_idle,
+        disable_offscreen_canvas: shared.options.disable_offscreen_canvas,
       },
       extensions: custom_extensions,
       startup_snapshot: shared.options.startup_snapshot,
+      residual_lazy_js_sources: shared.options.residual_lazy_js_sources,
+      residual_lazy_esm_sources: shared.options.residual_lazy_esm_sources,
       create_params: create_isolate_create_params(&shared.sys),
       unsafely_ignore_certificate_errors: shared
         .options
@@ -715,6 +785,11 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     let mut worker =
       MainWorker::bootstrap_from_options(&main_module, services, options);
     worker.setup_memory_trim_handler();
+
+    // Wire module hook registry into OpState so JS ops share it with the loader
+    if let Some(registry) = hook_registry {
+      worker.js_runtime.op_state().borrow_mut().put(registry);
+    }
 
     // Store the main inspector session sender for worker debugging
     let inspector = worker.js_runtime.inspector();
@@ -874,12 +949,36 @@ impl LibMainWorker {
 
   pub async fn execute_main_module(&mut self) -> Result<(), CoreError> {
     let id = self.worker.preload_main_module(&self.main_module).await?;
-    self.worker.evaluate_module(id).await
+    self.worker.evaluate_module(id).await?;
+
+    // After loading and evaluating all modules, trim the glibc malloc arena.
+    // Module loading/TypeScript compilation creates heavy allocation churn
+    // that glibc's allocator doesn't release back to the OS, causing RSS on
+    // Linux to be much higher than on other platforms (see #25722).
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+      // SAFETY: calling libc malloc_trim which is safe to call at any time.
+      unsafe {
+        libc::malloc_trim(0);
+      }
+    }
+
+    Ok(())
   }
 
   pub async fn execute_side_module(&mut self) -> Result<(), CoreError> {
     let id = self.worker.preload_side_module(&self.main_module).await?;
-    self.worker.evaluate_module(id).await
+    self.worker.evaluate_module(id).await?;
+
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+      // SAFETY: calling libc malloc_trim which is safe to call at any time.
+      unsafe {
+        libc::malloc_trim(0);
+      }
+    }
+
+    Ok(())
   }
 
   pub async fn execute_preload_modules(&mut self) -> Result<(), CoreError> {
@@ -898,15 +997,30 @@ impl LibMainWorker {
     Ok(())
   }
 
-  pub async fn run(&mut self) -> Result<i32, CoreError> {
-    log::debug!("main_module {}", self.main_module);
-
+  /// The "load phase": run any preload/require modules, then load and
+  /// first-evaluate the main module and fire the `load` event. This is
+  /// everything that happens before the steady-state event loop begins.
+  ///
+  /// It is factored out of [`Self::run`] so callers that need to treat
+  /// load-phase failures differently from steady-state failures (the desktop
+  /// runtime tags them as a `DesktopStartupError`) can wrap just this call
+  /// without hand-copying the rest of `run`.
+  pub async fn execute_load_phase(&mut self) -> Result<(), CoreError> {
     // Run preload modules first if they were defined
     self.execute_preload_modules().await?;
 
     self.execute_main_module().await?;
     self.worker.dispatch_load_event()?;
 
+    Ok(())
+  }
+
+  /// The "loop phase" that follows [`Self::execute_load_phase`]: drive the
+  /// event loop until the program is done, fire the unload / exit handlers,
+  /// and return the process exit code.
+  pub async fn run_event_loop_to_completion(
+    &mut self,
+  ) -> Result<i32, CoreError> {
     loop {
       self
         .worker
@@ -927,6 +1041,13 @@ impl LibMainWorker {
     self.worker.run_napi_ref_finalizers();
 
     Ok(self.worker.exit_code())
+  }
+
+  pub async fn run(&mut self) -> Result<i32, CoreError> {
+    log::debug!("main_module {}", self.main_module);
+
+    self.execute_load_phase().await?;
+    self.run_event_loop_to_completion().await
   }
 
   #[inline]
@@ -970,5 +1091,22 @@ mod test {
     // test empty
     let resolver = StorageKeyResolver::empty();
     assert_eq!(resolver.resolve_storage_key(&specifier), None);
+  }
+
+  #[test]
+  fn cache_storage_dir_is_under_origin_data() {
+    let origin_data_dir = PathBuf::from("deno_dir").join("location_data");
+    let key = "file:///project/main.ts";
+
+    assert_eq!(
+      get_cache_storage_dir(&origin_data_dir),
+      origin_data_dir.join("web_cache")
+    );
+    assert_eq!(
+      get_cache_storage_dir_for_key(&origin_data_dir, key),
+      origin_data_dir
+        .join("web_cache")
+        .join(checksum::r#gen(&[key.as_bytes()]))
+    );
   }
 }

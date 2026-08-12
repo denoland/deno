@@ -97,9 +97,13 @@ Deno.test("napi error", function () {
     "type error",
   );
 
-  // assertThrows(() => {
-  //   testError.throwSyntaxError();
-  // }, "SyntaxError: syntax error");
+  assertThrows(
+    () => {
+      testError.throwSyntaxError();
+    },
+    SyntaxError,
+    "syntax error",
+  );
 
   [42, {}, [], Symbol("xyzzy"), true, "ball", undefined, null, NaN]
     .forEach((value) => {
@@ -139,13 +143,13 @@ Deno.test("napi error", function () {
     },
   );
 
-  // assertThrowsWithCode(
-  //   () => testError.throwSyntaxErrorCode(),
-  //   {
-  //     code: "ERR_TEST_CODE",
-  //     message: "SyntaxError [syntax error]",
-  //   },
-  // );
+  assertThrowsWithCode(
+    () => testError.throwSyntaxErrorCode(),
+    {
+      code: "ERR_TEST_CODE",
+      message: "SyntaxError [syntax error]",
+    },
+  );
 
   let error = testError.createError();
   assert(
@@ -168,13 +172,12 @@ Deno.test("napi error", function () {
   );
   assertEquals(error.message, "type error");
 
-  // TODO(bartlomieju): this is experimental API
-  // error = testError.createSyntaxError();
-  // assert(
-  //   error instanceof SyntaxError,
-  //   "expected error to be an instance of SyntaxError",
-  // );
-  // assertEquals(error.message, "syntax error");
+  error = testError.createSyntaxError();
+  assert(
+    error instanceof SyntaxError,
+    "expected error to be an instance of SyntaxError",
+  );
+  assertEquals(error.message, "syntax error");
 
   error = testError.createErrorCode();
   assert(
@@ -203,13 +206,12 @@ Deno.test("napi error", function () {
   assertEquals(error.code, "ERR_TEST_CODE");
   assertEquals(error.name, "TypeError");
 
-  // TODO(bartlomieju): this is experimental API
-  // error = testError.createSyntaxErrorCode();
-  // assert(
-  //   error instanceof SyntaxError,
-  //   "expected error to be an instance of SyntaxError",
-  // );
-  // assertEquals(error.message, "SyntaxError [syntax error]");
-  // assertEquals(error.code, "ERR_TEST_CODE");
-  // assertEquals(error.name, "SyntaxError");
+  error = testError.createSyntaxErrorCode();
+  assert(
+    error instanceof SyntaxError,
+    "expected error to be an instance of SyntaxError",
+  );
+  assertEquals(error.message, "SyntaxError [syntax error]");
+  assertEquals(error.code, "ERR_TEST_CODE");
+  assertEquals(error.name, "SyntaxError");
 });

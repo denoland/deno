@@ -84,6 +84,48 @@ Deno.test({ permissions: { read: true } }, async function readDirWithUrl() {
   assertSameContent(files);
 });
 
+Deno.test(
+  { permissions: { read: true } },
+  async function readDirIterableCreatesIndependentIterators() {
+    const dir = Deno.readDir("tests/testdata");
+    const [filesA, filesB] = await Promise.all([
+      Array.fromAsync(dir),
+      Array.fromAsync(dir),
+    ]);
+
+    assertSameContent(filesA);
+    assertSameContent(filesB);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function readDirConcurrentNextRejectsWithBusy() {
+    const tempDir = await Deno.makeTempDir();
+    try {
+      await Promise.all(
+        Array.from(
+          { length: 64 },
+          (_, index) => Deno.writeTextFile(`${tempDir}/${index}.txt`, ""),
+        ),
+      );
+      const iterator = Deno.readDir(tempDir)[Symbol.asyncIterator]();
+
+      await assertRejects(
+        async () => {
+          await Promise.all(
+            Array.from({ length: 64 }, () => iterator.next()),
+          );
+        },
+        Deno.errors.Busy,
+      );
+      await iterator.return?.();
+    } finally {
+      await Deno.remove(tempDir, { recursive: true });
+    }
+  },
+);
+
 Deno.test({ permissions: { read: false } }, async function readDirPerm() {
   await assertRejects(async () => {
     await Deno.readDir("tests/")[Symbol.asyncIterator]().next();
@@ -91,7 +133,7 @@ Deno.test({ permissions: { read: false } }, async function readDirPerm() {
 });
 
 Deno.test(
-  { permissions: { read: true }, ignore: Deno.build.os == "windows" },
+  { permissions: "inherit", ignore: Deno.build.os == "windows" },
   async function readDirDevFd(): Promise<
     void
   > {
@@ -102,7 +144,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true }, ignore: Deno.build.os == "windows" },
+  { permissions: "inherit", ignore: Deno.build.os == "windows" },
   function readDirDevFdSync() {
     for (const _ of Deno.readDirSync("/dev/fd")) {
       // We don't actually care whats in here; just that we don't panic on non regular file entries

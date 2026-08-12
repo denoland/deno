@@ -1,0 +1,8 @@
+[UNORDERED_START]
+Task a echo a_output
+        [a] a_output
+Task long_name echo long_name_output
+[long_name] long_name_output
+[UNORDERED_END]
+Task mixed echo mixed_output
+mixed_output

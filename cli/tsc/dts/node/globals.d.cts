@@ -8,10 +8,6 @@ type _Response = typeof globalThis extends { onmessage: any } ? {} : import("./u
 type _FormData = typeof globalThis extends { onmessage: any } ? {} : import("./undici/index.d.ts").FormData;
 type _Headers = typeof globalThis extends { onmessage: any } ? {} : import("./undici/index.d.ts").Headers;
 type _MessageEvent = typeof globalThis extends { onmessage: any } ? {} : import("./undici/index.d.ts").MessageEvent;
-type _RequestInit = typeof globalThis extends { onmessage: any } ? {}
-    : import("./undici/index.d.ts").RequestInit;
-type _ResponseInit = typeof globalThis extends { onmessage: any } ? {}
-    : import("./undici/index.d.ts").ResponseInit;
 type _WebSocket = typeof globalThis extends { onmessage: any } ? {} : import("./undici/index.d.ts").WebSocket;
 type _EventSource = typeof globalThis extends { onmessage: any } ? {} : import("./undici/index.d.ts").EventSource;
 type _CloseEvent = typeof globalThis extends { onmessage: any } ? {} : import("./undici/index.d.ts").CloseEvent;
@@ -288,16 +284,12 @@ declare global {
     // #endregion Storage
 
     // #region fetch
-    interface RequestInit extends _RequestInit {}
-
     function fetch(
         input: string | URL | globalThis.Request,
         init?: RequestInit,
     ): Promise<Response>;
 
     interface Request extends _Request {}
-
-    interface ResponseInit extends _ResponseInit {}
 
     interface Response extends _Response {}
 

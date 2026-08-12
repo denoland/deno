@@ -1,0 +1,21 @@
+[UNORDERED_START]
+Task build (@app/server) echo 'server build'
+Task build (@app/web) echo 'web build'
+Task build (@app/shared) echo 'shared build'
+[@app/server#build] server build
+   [@app/web#build] web build
+[@app/shared#build] shared build
+[UNORDERED_END]
+[UNORDERED_START]
+Task dev (@app/server) deno run -A main.ts
+Task dev (@app/web) deno run -A main.ts
+Task dev (@app/shared) deno run -A main.ts
+  [@app/server#dev] server ready
+     [@app/web#dev] web ready
+  [@app/shared#dev] shared ready
+[UNORDERED_END]
+[UNORDERED_START]
+  [@app/server#dev] server done
+     [@app/web#dev] web done
+  [@app/shared#dev] shared done
+[UNORDERED_END]

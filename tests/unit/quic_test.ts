@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { assertEquals } from "./test_util.ts";
+import { assert, assertEquals } from "./test_util.ts";
 
 const cert = Deno.readTextFileSync("tests/testdata/tls/localhost.crt");
 const key = Deno.readTextFileSync("tests/testdata/tls/localhost.key");
@@ -10,6 +10,11 @@ interface Pair {
   server: Deno.QuicConn;
   client: Deno.QuicConn;
   endpoint: Deno.QuicEndpoint;
+}
+
+function trackedStreamResourceCount(conn: Deno.QuicConn): number {
+  // @ts-ignore Deno.internal is available to the unit test suite.
+  return Deno[Deno.internal].getQuicStreamResourceCount(conn);
 }
 
 async function pair(opt?: Deno.QuicTransportOptions): Promise<Pair> {
@@ -89,6 +94,29 @@ Deno.test("unidirectional stream", async () => {
 
   endpoint.close();
   client.close();
+});
+
+Deno.test("completed streams release connection cleanup state", async () => {
+  const { server, client, endpoint } = await pair();
+
+  const bi = await server.createBidirectionalStream();
+  assertEquals(trackedStreamResourceCount(server), 2);
+  await Promise.all([bi.readable.cancel(), bi.writable.close()]);
+  assertEquals(trackedStreamResourceCount(server), 0);
+
+  const uni = await server.createUnidirectionalStream();
+  assertEquals(trackedStreamResourceCount(server), 1);
+  await uni.close();
+  assertEquals(trackedStreamResourceCount(server), 0);
+
+  await server.createBidirectionalStream();
+  assertEquals(trackedStreamResourceCount(server), 2);
+  server.close();
+  await server.closed;
+  assertEquals(trackedStreamResourceCount(server), 0);
+
+  await client.closed;
+  endpoint.close();
 });
 
 Deno.test("datagrams", async () => {
@@ -210,25 +238,18 @@ Deno.test("0rtt", async () => {
 
   await c1.closed;
 
-  // TODO(bartlomieju|littledivy): this assertion is disabled for now, because
-  // during upgrade to rustls 0.23.28 it was found that `quinn` needs to
-  // use exactly same configuration (as in Arc-identical config) which is
-  // very hard to pass around with the current quinn API. Since QUIC API i
-  // unstable it was decided to ignore this failure for now and revisit later
-  // to unblock upgrade and other work.
-  //
-  // See https://github.com/quinn-rs/quinn/issues/2299#issuecomment-3052666623
-  //
-  // const c2 = Deno.connectQuic({
-  //   hostname: "localhost",
-  //   port: sEndpoint.addr.port,
-  //   caCerts,
-  //   alpnProtocols: ["deno-test"],
-  //   zeroRtt: true,
-  //   endpoint,
-  // });
-  // assert(!(c2 instanceof Promise), "0rtt should be accepted");
-  // await c2.closed;
+  const c2 = Deno.connectQuic({
+    hostname: "localhost",
+    port: sEndpoint.addr.port,
+    caCerts,
+    alpnProtocols: ["deno-test"],
+    zeroRtt: true,
+    endpoint,
+  });
+
+  assert(!(c2 instanceof Promise), "0rtt should be accepted");
+
+  await c2.closed;
 
   sEndpoint.close();
   endpoint.close();

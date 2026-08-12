@@ -36,7 +36,6 @@ pub use builders::TestCommandBuilder;
 pub use builders::TestCommandOutput;
 pub use builders::TestContext;
 pub use builders::TestContextBuilder;
-pub use consts::tsgo_prebuilt_path;
 pub use fs::PathRef;
 pub use fs::TempDir;
 #[cfg(feature = "lsp")]
@@ -64,6 +63,7 @@ pub static IS_CI: Lazy<bool> = Lazy::new(|| std::env::var("CI").is_ok());
 pub fn env_vars_for_npm_tests() -> Vec<(String, String)> {
   vec![
     ("NPM_CONFIG_REGISTRY".to_string(), npm_registry_url()),
+    ("NPM_CONFIG_MIN_RELEASE_AGE".to_string(), "0".to_string()),
     ("JSR_NPM_URL".to_string(), npm_jsr_registry_url()),
     ("NODEJS_ORG_MIRROR".to_string(), nodejs_org_mirror_url()),
     ("NO_COLOR".to_string(), "1".to_string()),
@@ -138,6 +138,7 @@ pub fn env_vars_for_jsr_provenance_tests() -> Vec<(String, String)> {
 pub fn env_vars_for_jsr_npm_tests() -> Vec<(String, String)> {
   vec![
     ("NPM_CONFIG_REGISTRY".to_string(), npm_registry_url()),
+    ("NPM_CONFIG_MIN_RELEASE_AGE".to_string(), "0".to_string()),
     ("JSR_NPM_URL".to_string(), npm_jsr_registry_url()),
     ("JSR_URL".to_string(), jsr_registry_url()),
     (
@@ -156,6 +157,39 @@ pub fn root_path() -> PathRef {
     p = p.parent();
   }
   p.parent()
+}
+
+/// Path to the pre-downloaded native TypeScript compiler, if present.
+///
+/// `tools/download_tsc.ts` materializes it under
+/// `<target>/.native_tsc/deno_dir/tsc/<version>/<platform>/lib/tsc`. The harness
+/// injects this per-test as `DENO_TSC_BIN` (see `TestContextBuilder::build`) so
+/// `deno check`/`run --check`/`cache --check` reuse it instead of downloading
+/// the compiler into every test's fresh `DENO_DIR`. Returns `None` when it
+/// hasn't been downloaded yet.
+pub fn native_tsc_bin_path() -> Option<PathRef> {
+  let exe = if cfg!(windows) { "tsc.exe" } else { "tsc" };
+  // `tools/download_tsc.ts` defaults its cache to `./target/.native_tsc/deno_dir`
+  // (relative to the repo root), i.e. the `target` root - not the per-profile
+  // `target/debug`|`target/release` dir that `target_dir()` returns.
+  let tsc_root = root_path()
+    .join("target")
+    .join(".native_tsc")
+    .join("deno_dir")
+    .join("tsc");
+  for version in std::fs::read_dir(tsc_root.as_path()).ok()?.flatten() {
+    for platform in std::fs::read_dir(version.path())
+      .into_iter()
+      .flatten()
+      .flatten()
+    {
+      let bin = PathRef::new(platform.path()).join("lib").join(exe);
+      if bin.exists() {
+        return Some(bin);
+      }
+    }
+  }
+  None
 }
 
 pub fn prebuilt_path() -> PathRef {
@@ -311,7 +345,7 @@ fn ensure_test_server_built() {
   }
 }
 
-pub const TEST_SERVERS_COUNT: usize = 38;
+pub const TEST_SERVERS_COUNT: usize = 39;
 
 #[derive(Default)]
 struct HttpServerCount {

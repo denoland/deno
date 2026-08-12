@@ -47,11 +47,12 @@ impl FetchHandler for FsFetchHandler {
       .borrow::<PermissionsContainer>()
       .check_open(Cow::Owned(path), OpenAccessKind::Read, Some("fetch()"))
       .map(CheckedPath::into_owned);
+    let url_string = url.to_string();
     let response_fut = async move {
       let file = fs
         .open_async(path?, OpenOptions::read())
         .await
-        .map_err(|_| super::FetchError::NetworkError)?;
+        .map_err(|err| super::FetchError::FileFetch(url_string, err))?;
       let resource = Rc::new(FileResource::new(file, "".to_owned()));
       let body = BoxBody::new(ResourceToBodyAdapter::new(resource));
       let response = http::Response::new(body);

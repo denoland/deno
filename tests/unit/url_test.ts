@@ -120,12 +120,38 @@ Deno.test(function urlHostnameParsing() {
   assertThrows(() => new URL("http://0.16777216"), TypeError, "Invalid URL");
   assertEquals(new URL("http://4294967295").hostname, "255.255.255.255");
   assertThrows(() => new URL("http://4294967296"), TypeError, "Invalid URL");
+  assertThrows(
+    () => new URL("https://0x100000000/test"),
+    TypeError,
+    "Invalid URL",
+  );
+  for (
+    const input of [
+      "http://c.0/",
+      "http://foo.123/",
+      "http://a.b.255/",
+      "http://foo.0x1/",
+    ]
+  ) {
+    assertThrows(() => new URL(input), TypeError, "Invalid URL");
+    assertEquals(URL.parse(input), null);
+    assertEquals(URL.canParse(input), false);
+  }
+  assertThrows(() => new URL("https://xn--/"), TypeError, "Invalid URL");
+
+  // Special query percent-encoding.
+  assertEquals(new URL("http://host/?'").href, "http://host/?%27");
 });
 
 Deno.test(function urlPortParsing() {
   const specialUrl = new URL("http://foo:8000");
   assertEquals(specialUrl.hostname, "foo");
   assertEquals(specialUrl.port, "8000");
+  const leadingZeroPort = new URL("http://foo:00/");
+  assertEquals(leadingZeroPort.href, "http://foo:0/");
+  assertEquals(leadingZeroPort.port, "0");
+  assertEquals(URL.parse("http://foo:01/")?.href, "http://foo:1/");
+  assertEquals(URL.parse("http://foo:080/")?.href, "http://foo/");
   assertThrows(() => new URL("file://foo:8000"), TypeError, "Invalid URL");
   const nonSpecialUrl = new URL("abcd://foo:8000");
   assertEquals(nonSpecialUrl.hostname, "foo");
@@ -203,6 +229,51 @@ Deno.test(function urlNormalize() {
   const url = new URL("http://example.com");
   assertEquals(url.pathname, "/");
   assertEquals(url.href, "http://example.com/");
+});
+
+Deno.test(function urlSimpleSpecialFastPathMatchesRustParser() {
+  for (
+    const input of [
+      "http://1.2.3.4/",
+      "http://foo:0/",
+      "http://foo/",
+      "https://foo:443/path?query#hash",
+      "http://foo:8080/a/b?x=1&y=2",
+      "http://foo.test/",
+      "http://sub.foo.test/path",
+    ]
+  ) {
+    const constructed = new URL(input);
+    const parsed = URL.parse(input);
+    assert(parsed);
+    assertEquals(constructed.href, parsed.href);
+    assertEquals(constructed.protocol, parsed.protocol);
+    assertEquals(constructed.username, parsed.username);
+    assertEquals(constructed.password, parsed.password);
+    assertEquals(constructed.host, parsed.host);
+    assertEquals(constructed.hostname, parsed.hostname);
+    assertEquals(constructed.port, parsed.port);
+    assertEquals(constructed.pathname, parsed.pathname);
+    assertEquals(constructed.search, parsed.search);
+    assertEquals(constructed.hash, parsed.hash);
+    assertEquals(constructed.origin, parsed.origin);
+  }
+});
+
+Deno.test(function urlSimpleSpecialFastPathFallsBackForNormalization() {
+  for (
+    const [input, expected] of [
+      ["http://01.2.3.4/", "http://1.2.3.4/"],
+      ["http://0xff/", "http://0.0.0.255/"],
+      ["http://foo:080/", "http://foo/"],
+      ["http://foo/a/../b", "http://foo/b"],
+    ]
+  ) {
+    assertEquals(new URL(input).href, expected);
+    const parsed = URL.parse(input);
+    assert(parsed);
+    assertEquals(parsed.href, expected);
+  }
 });
 
 Deno.test(function urlModifyPathname() {

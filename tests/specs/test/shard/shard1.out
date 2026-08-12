@@ -1,0 +1,7 @@
+running 1 test from ./a.test.ts
+test_a ... ok ([WILDCARD])
+running 1 test from ./b.test.ts
+test_b ... ok ([WILDCARD])
+
+ok | 2 passed | 0 failed ([WILDCARD])
+

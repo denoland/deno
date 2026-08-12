@@ -1,0 +1,7 @@
+connection 1
+data: hello from A
+connection 2
+data: hello from B
+connection 3
+data: hello from C
+total connections: 3

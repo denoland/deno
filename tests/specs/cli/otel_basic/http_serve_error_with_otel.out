@@ -1,0 +1,14 @@
+[WILDCARD]{
+  "spans": [
+[WILDCARD]
+        {
+          "key": "error.type",
+          "value": {
+            "stringValue": "500"
+          }
+        }
+[WILDCARD]
+  ],
+  "logs": [WILDCARD],
+  "metrics": [WILDCARD]
+}

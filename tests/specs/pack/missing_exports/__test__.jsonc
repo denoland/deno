@@ -1,0 +1,12 @@
+{
+  "tempDir": true,
+  "tests": {
+    "pack_missing_exports": {
+      "steps": [{
+        "args": "pack",
+        "exitCode": 1,
+        "output": "[WILDCARD]error: Missing 'exports' field in '[WILDCARD]deno.json'[WILDCARD]\n"
+      }]
+    }
+  }
+}

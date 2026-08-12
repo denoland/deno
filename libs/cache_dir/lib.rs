@@ -24,6 +24,7 @@ pub use cache::GlobalToLocalCopy;
 pub use cache::HttpCache;
 pub use cache::HttpCacheItemKey;
 pub use cache::HttpCacheRc;
+pub use cache::NOT_FOUND_CACHE_HEADER;
 pub use cache::SerializedCachedUrlMetadata;
 pub use cache::url_to_filename;
 pub use common::HeadersMap;

@@ -235,7 +235,6 @@ impl PathRef {
     )
     .with_context(|| format!("Failed to parse {}", self))
     .unwrap()
-    .unwrap_or_else(|| panic!("JSON file was empty for {}", self))
   }
 
   #[track_caller]

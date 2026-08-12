@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "toplevel": {
+      "args": "run main.ts",
+      "output": "main.out",
+      "exitCode": 1
+    },
+    "test_formatter": {
+      "args": "test failing_test.ts",
+      "output": "failing_test.out",
+      "exitCode": 1
+    }
+  }
+}

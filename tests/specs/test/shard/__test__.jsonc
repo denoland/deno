@@ -1,0 +1,26 @@
+{
+  "tempDir": true,
+  "tests": {
+    "shard_1_of_2": {
+      "args": "test --quiet --shard=1/2",
+      "output": "shard1.out"
+    },
+    "shard_2_of_2": {
+      "args": "test --quiet --shard=2/2",
+      "output": "shard2.out"
+    },
+    "shard_all_in_one": {
+      "args": "test --quiet --shard=1/1",
+      "output": "shard_all.out"
+    },
+    "shard_more_than_files": {
+      "args": "test --quiet --shard=1/5",
+      "output": "shard_empty.out"
+    },
+    "invalid_shard_index": {
+      "args": "test --shard=3/2 a.test.ts",
+      "output": "invalid.out",
+      "exitCode": 1
+    }
+  }
+}

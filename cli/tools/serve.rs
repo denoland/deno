@@ -10,6 +10,7 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
 use deno_lib::worker::LibWorkerFactoryRoots;
 use deno_runtime::UnconfiguredRuntime;
+use tokio_util::sync::CancellationToken;
 
 use super::run::check_permission_before_script;
 use super::run::maybe_npm_install;
@@ -30,7 +31,7 @@ pub async fn serve(
 ) -> Result<i32, AnyError> {
   check_permission_before_script(&flags);
 
-  if let Some(watch_flags) = serve_flags.watch {
+  if let Some(watch_flags) = flags.watch.clone() {
     return serve_with_watch(
       flags,
       watch_flags,
@@ -72,10 +73,7 @@ pub async fn serve(
     let _ = open::that_detached(url);
   }
 
-  let hmr = serve_flags
-    .watch
-    .map(|watch_flags| watch_flags.hmr)
-    .unwrap_or(false);
+  let hmr = cli_options.has_hmr();
   do_serve(
     worker_factory,
     main_module.clone(),
@@ -109,32 +107,42 @@ async fn do_serve(
     c => c,
   };
 
-  let main = deno_core::unsync::spawn(async move { worker.run().await });
+  // If this future is dropped before completing (e.g. the file watcher
+  // restarting on a file change), the guard cancels the token so the worker
+  // threads shut down instead of continuing to serve the old code.
+  let shutdown_token = CancellationToken::new();
+  let _shutdown_guard = shutdown_token.clone().drop_guard();
 
   let mut channels = Vec::with_capacity(worker_count);
   for i in 0..worker_count {
     let worker_factory = worker_factory.clone();
     let main_module = main_module.clone();
+    let shutdown_token = shutdown_token.clone();
     let (tx, rx) = tokio::sync::oneshot::channel();
     channels.push(rx);
     std::thread::Builder::new()
       .name(format!("serve-worker-{}", i + 1))
       .spawn(move || {
         deno_runtime::tokio_util::create_and_run_current_thread(async move {
-          let result = run_worker(i, worker_factory, main_module, hmr).await;
+          let result = tokio::select! {
+            result = run_worker(i, worker_factory, main_module, hmr) => result,
+            _ = shutdown_token.cancelled() => Ok(0),
+          };
           let _ = tx.send(result);
         });
       })?;
   }
 
+  // Poll the main worker directly instead of spawning it so that dropping
+  // this future cancels it as well.
   let (main_result, worker_results) = tokio::try_join!(
-    main.map_err(AnyError::from),
+    worker.run().map_err(AnyError::from),
     deno_core::futures::future::try_join_all(
       channels.into_iter().map(|r| r.map_err(AnyError::from))
     )
   )?;
 
-  let mut exit_code = main_result?;
+  let mut exit_code = main_result;
   for res in worker_results {
     let ret = res?;
     if ret != 0 && exit_code == 0 {
@@ -160,8 +168,7 @@ async fn run_worker(
     )
     .await?;
   if hmr {
-    worker.run_for_watcher().await?;
-    Ok(0)
+    worker.run_for_watcher().await.map_err(Into::into)
   } else {
     worker.run().await.map_err(Into::into)
   }
@@ -189,7 +196,14 @@ async fn serve_with_watch(
           watcher_communicator.clone(),
         );
         let cli_options = factory.cli_options()?;
-        let main_module = cli_options.resolve_main_module()?;
+        let workspace_resolver = factory.workspace_resolver().await?.clone();
+        let node_resolver = factory.node_resolver().await?.clone();
+        let main_module = cli_options.resolve_main_module_with_resolver(
+          Some(&WorkspaceMainModuleResolver::new(
+            workspace_resolver,
+            node_resolver,
+          )),
+        )?;
 
         maybe_npm_install(&factory).await?;
 
@@ -197,7 +211,7 @@ async fn serve_with_watch(
         let worker_factory =
           Arc::new(factory.create_cli_main_worker_factory().await?);
 
-        do_serve(
+        let exit_code = do_serve(
           worker_factory,
           main_module.clone(),
           parallelism_count,
@@ -206,7 +220,7 @@ async fn serve_with_watch(
         )
         .await?;
 
-        Ok(())
+        Ok(exit_code)
       })
     },
   )

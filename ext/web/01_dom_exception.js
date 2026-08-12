@@ -7,7 +7,8 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
 const {
   Error,
   ErrorPrototype,
@@ -24,8 +25,19 @@ const {
   SymbolFor,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "./01_console.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+
+// Lazy-load createFilteredInspectProxy from console to avoid
+// circular dependency at load time. Only needed for custom inspect.
+let _createFilteredInspectProxy;
+function getCreateFilteredInspectProxy() {
+  if (!_createFilteredInspectProxy) {
+    _createFilteredInspectProxy = core.loadExtScript(
+      "ext:deno_web/01_console.js",
+    ).createFilteredInspectProxy;
+  }
+  return _createFilteredInspectProxy;
+}
 
 const _name = Symbol("name");
 const _message = Symbol("message");
@@ -65,28 +77,34 @@ const DATA_CLONE_ERR = 25;
 // the prototype should be null, to prevent user code from looking
 // up Object.prototype properties, such as "toString"
 const nameToCodeMapping = ObjectCreate(null, {
-  IndexSizeError: { value: INDEX_SIZE_ERR },
-  HierarchyRequestError: { value: HIERARCHY_REQUEST_ERR },
-  WrongDocumentError: { value: WRONG_DOCUMENT_ERR },
-  InvalidCharacterError: { value: INVALID_CHARACTER_ERR },
-  NoModificationAllowedError: { value: NO_MODIFICATION_ALLOWED_ERR },
-  NotFoundError: { value: NOT_FOUND_ERR },
-  NotSupportedError: { value: NOT_SUPPORTED_ERR },
-  InUseAttributeError: { value: INUSE_ATTRIBUTE_ERR },
-  InvalidStateError: { value: INVALID_STATE_ERR },
-  SyntaxError: { value: SYNTAX_ERR },
-  InvalidModificationError: { value: INVALID_MODIFICATION_ERR },
-  NamespaceError: { value: NAMESPACE_ERR },
-  InvalidAccessError: { value: INVALID_ACCESS_ERR },
-  TypeMismatchError: { value: TYPE_MISMATCH_ERR },
-  SecurityError: { value: SECURITY_ERR },
-  NetworkError: { value: NETWORK_ERR },
-  AbortError: { value: ABORT_ERR },
-  URLMismatchError: { value: URL_MISMATCH_ERR },
-  QuotaExceededError: { value: QUOTA_EXCEEDED_ERR },
-  TimeoutError: { value: TIMEOUT_ERR },
-  InvalidNodeTypeError: { value: INVALID_NODE_TYPE_ERR },
-  DataCloneError: { value: DATA_CLONE_ERR },
+  IndexSizeError: { __proto__: null, value: INDEX_SIZE_ERR },
+  HierarchyRequestError: { __proto__: null, value: HIERARCHY_REQUEST_ERR },
+  WrongDocumentError: { __proto__: null, value: WRONG_DOCUMENT_ERR },
+  InvalidCharacterError: { __proto__: null, value: INVALID_CHARACTER_ERR },
+  NoModificationAllowedError: {
+    __proto__: null,
+    value: NO_MODIFICATION_ALLOWED_ERR,
+  },
+  NotFoundError: { __proto__: null, value: NOT_FOUND_ERR },
+  NotSupportedError: { __proto__: null, value: NOT_SUPPORTED_ERR },
+  InUseAttributeError: { __proto__: null, value: INUSE_ATTRIBUTE_ERR },
+  InvalidStateError: { __proto__: null, value: INVALID_STATE_ERR },
+  SyntaxError: { __proto__: null, value: SYNTAX_ERR },
+  InvalidModificationError: {
+    __proto__: null,
+    value: INVALID_MODIFICATION_ERR,
+  },
+  NamespaceError: { __proto__: null, value: NAMESPACE_ERR },
+  InvalidAccessError: { __proto__: null, value: INVALID_ACCESS_ERR },
+  TypeMismatchError: { __proto__: null, value: TYPE_MISMATCH_ERR },
+  SecurityError: { __proto__: null, value: SECURITY_ERR },
+  NetworkError: { __proto__: null, value: NETWORK_ERR },
+  AbortError: { __proto__: null, value: ABORT_ERR },
+  URLMismatchError: { __proto__: null, value: URL_MISMATCH_ERR },
+  QuotaExceededError: { __proto__: null, value: QUOTA_EXCEEDED_ERR },
+  TimeoutError: { __proto__: null, value: TIMEOUT_ERR },
+  InvalidNodeTypeError: { __proto__: null, value: INVALID_NODE_TYPE_ERR },
+  DataCloneError: { __proto__: null, value: DATA_CLONE_ERR },
 });
 
 // Defined in WebIDL 4.3.
@@ -177,7 +195,7 @@ class DOMException {
       }
     }
     return inspect(
-      createFilteredInspectProxy({
+      getCreateFilteredInspectProxy()({
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(DOMExceptionPrototype, this),
         keys: [
@@ -307,9 +325,10 @@ class QuotaExceededError extends DOMException {
 webidl.configureInterface(QuotaExceededError);
 const QuotaExceededErrorPrototype = QuotaExceededError.prototype;
 
-export {
+return {
   DOMException,
   DOMExceptionPrototype,
   QuotaExceededError,
   QuotaExceededErrorPrototype,
 };
+})();

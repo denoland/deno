@@ -1,0 +1,7 @@
+{
+  "coverage": {
+    "thresholds": {
+      "lines": "ninety"
+    }
+  }
+}

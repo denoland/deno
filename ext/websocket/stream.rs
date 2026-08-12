@@ -103,14 +103,33 @@ impl AsyncWrite for WebSocketStream {
         }
 
         send.reserve_capacity(buf.len());
-        let res = ready!(send.poll_capacity(cx));
+        match ready!(send.poll_capacity(cx)) {
+          Some(Ok(_)) => {} // capacity reserved
+          Some(Err(e)) => {
+            return Poll::Ready(Err(std::io::Error::new(
+              ErrorKind::ConnectionReset,
+              e,
+            )));
+          }
+          None => {
+            // The h2 stream is closed (typically a peer-sent
+            // RST_STREAM). Surface as a write error instead of
+            // panicking on `capacity() == 0` below. See #33953.
+            return Poll::Ready(Err(std::io::Error::new(
+              ErrorKind::ConnectionReset,
+              "h2 stream closed",
+            )));
+          }
+        }
 
-        // TODO(mmastrac): the documentation is not entirely clear what to do here, so we'll continue
-        _ = res;
-
-        // We'll try to send whatever we have capacity for
+        // We'll try to send whatever we have capacity for.
         let size = std::cmp::min(buf.len(), send.capacity());
-        assert!(size > 0);
+        if size == 0 {
+          return Poll::Ready(Err(std::io::Error::new(
+            ErrorKind::WriteZero,
+            "no h2 capacity",
+          )));
+        }
 
         let buf: Bytes = Bytes::copy_from_slice(&buf[0..size]);
         let len = buf.len();

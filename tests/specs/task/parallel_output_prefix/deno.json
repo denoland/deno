@@ -1,0 +1,17 @@
+{
+  "tasks": {
+    "foo": "echo foo_output",
+    "bar": "echo bar_output",
+    "main": {
+      "command": "echo main_output",
+      "dependencies": ["foo", "bar"]
+    },
+    "single": "echo single_output",
+    "a": "echo a_output",
+    "long_name": "echo long_name_output",
+    "mixed": {
+      "command": "echo mixed_output",
+      "dependencies": ["a", "long_name"]
+    }
+  }
+}

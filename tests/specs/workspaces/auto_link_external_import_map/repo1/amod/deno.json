@@ -1,0 +1,4 @@
+{
+  "name": "@scope/amod",
+  "exports": "./mod.ts"
+}

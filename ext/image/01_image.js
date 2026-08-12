@@ -1,12 +1,14 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { internals, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 import { ImageBitmap, op_create_image_bitmap } from "ext:core/ops";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
-import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
-import { BlobPrototype } from "ext:deno_web/09_file.js";
-import { sniffImage } from "ext:deno_web/01_mimesniff.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
+const { BlobPrototype } = core.loadExtScript("ext:deno_web/09_file.js");
+const { sniffImage } = core.loadExtScript("ext:deno_web/01_mimesniff.js");
 const {
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
@@ -21,12 +23,10 @@ const {
   RangeError,
   ArrayPrototypeJoin,
 } = primordials;
-import {
-  _data,
-  _height,
-  _width,
-  ImageDataPrototype,
-} from "ext:deno_web/16_image_data.js";
+let _imageDataMod;
+const loadImageData = () =>
+  _imageDataMod ??
+    (_imageDataMod = core.loadExtScript("ext:deno_web/16_image_data.js"));
 
 webidl.converters["ImageOrientation"] = webidl.createEnumConverter(
   "ImageOrientation",
@@ -198,6 +198,7 @@ function createImageBitmap(
 
   // 3.
   const isBlob = ObjectPrototypeIsPrototypeOf(BlobPrototype, image);
+  const { ImageDataPrototype } = loadImageData();
   const isImageData = ObjectPrototypeIsPrototypeOf(ImageDataPrototype, image);
   const isImageBitmap = ObjectPrototypeIsPrototypeOf(
     ImageBitmapPrototype,
@@ -255,10 +256,10 @@ docs: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n
         );
       }
     } else if (isImageData) {
-      width = image[_width];
-      height = image[_height];
+      width = image.width;
+      height = image.height;
       imageBitmapSource = 1;
-      let data = image[_data];
+      let data = image.data;
       switch (TypedArrayPrototypeGetSymbolToStringTag(data)) {
         case "Float16Array":
           data = float16ToUnorm8(data);

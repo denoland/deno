@@ -1,0 +1,6 @@
+running 1 test from ./pass.ts
+passes ... ok ([WILDCARD])
+
+ok | 1 passed | 0 failed ([WILDCARD])
+
+error: Test failed because the "only" option was used

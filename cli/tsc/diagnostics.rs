@@ -18,6 +18,33 @@ use crate::graph_util::resolution_error_for_tsc_diagnostic;
 
 const MAX_SOURCE_LINE_LENGTH: usize = 150;
 
+fn source_line_prefix(source_line: &str, column_utf16: u64) -> Option<String> {
+  let mut current_utf16 = 0;
+  let mut prefix = String::new();
+
+  for c in source_line.chars() {
+    if current_utf16 == column_utf16 {
+      return Some(prefix);
+    }
+
+    let next_utf16 = current_utf16 + c.len_utf16() as u64;
+    if next_utf16 > column_utf16 {
+      return None;
+    }
+
+    if c == '\t' {
+      prefix.push('\t');
+    } else {
+      for _ in 0..c.len_utf16() {
+        prefix.push(' ');
+      }
+    }
+    current_utf16 = next_utf16;
+  }
+
+  (current_utf16 == column_utf16).then_some(prefix)
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DiagnosticCategory {
   Warning,
@@ -202,7 +229,10 @@ impl Diagnostic {
     }
   }
 
-  pub fn maybe_from_resolution_error(error: &ResolutionError) -> Option<Self> {
+  pub fn maybe_from_resolution_error(
+    error: &ResolutionError,
+    bare_importable_pkg_names: &[String],
+  ) -> Option<Self> {
     /// Some node resolution errors say "imported from '...'", but it's not
     /// very useful in a tsc diagnostic because it already has the referrer
     /// context, so remove that text
@@ -224,7 +254,8 @@ impl Diagnostic {
         None,
       ))
     } else {
-      let mut message = enhanced_resolution_error_message(error);
+      let mut message =
+        enhanced_resolution_error_message(error, bare_importable_pkg_names);
       // the diagnostic already shows the location, so this is redundant
       remove_imported_from(&mut message);
       Some(Self::from_missing_error_with_message(
@@ -239,9 +270,11 @@ impl Diagnostic {
   pub fn include_when_remote(&self) -> bool {
     /// TS6133: value is declared but its value is never read (noUnusedParameters and noUnusedLocals)
     const TS6133: u64 = 6133;
+    /// TS6205: All type parameters are unused (noUnusedParameters and noUnusedLocals)
+    const TS6205: u64 = 6205;
     /// TS4114: This member must have an 'override' modifier because it overrides a member in the base class 'X'.
     const TS4114: u64 = 4114;
-    !matches!(self.code, TS6133 | TS4114)
+    !matches!(self.code, TS6133 | TS6205 | TS4114)
   }
 
   fn fmt_category_and_code(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -307,20 +340,22 @@ impl Diagnostic {
       && !source_line.is_empty()
       && source_line.len() <= MAX_SOURCE_LINE_LENGTH
     {
-      write!(f, "\n{:indent$}{}", "", source_line, indent = level)?;
-      let length = if start.line == end.line {
-        end.character - start.character
+      let same_line = start.line == end.line;
+      let length = if same_line {
+        let Some(length) = end.character.checked_sub(start.character) else {
+          return Ok(());
+        };
+        if end.character > source_line.encode_utf16().count() as u64 {
+          return Ok(());
+        }
+        length
       } else {
         1
       };
-      let mut s = String::new();
-      for i in 0..start.character {
-        s.push(if source_line.chars().nth(i as usize).unwrap() == '\t' {
-          '\t'
-        } else {
-          ' '
-        });
-      }
+      let Some(mut s) = source_line_prefix(source_line, start.character) else {
+        return Ok(());
+      };
+      write!(f, "\n{:indent$}{}", "", source_line, indent = level)?;
       // TypeScript always uses `~` when underlining, but v8 always uses `^`.
       // We will use `^` to indicate a single point, or `~` when spanning
       // multiple characters.
@@ -671,6 +706,60 @@ mod tests {
     assert_eq!(
       strip_ansi_codes(&actual),
       "TS2584 [ERROR]: Cannot find name \'console\'. Do you need to change your target library? Try changing the `lib` compiler option to include \'dom\'.\nconsole.log(\"a\");\n~~~~~~~\n    at test.ts:1:1"
+    );
+  }
+
+  #[test]
+  fn test_diagnostics_utf16_source_positions() {
+    let value = json!([
+      {
+        "start": {
+          "line": 0,
+          "character": 3
+        },
+        "end": {
+          "line": 0,
+          "character": 6
+        },
+        "fileName": "test.ts",
+        "messageText": "Example diagnostic.",
+        "sourceLine": "\t😀foo();",
+        "category": 1,
+        "code": 2322
+      }
+    ]);
+    let diagnostics: Diagnostics = serde_json::from_value(value).unwrap();
+    let actual = diagnostics.to_string();
+    assert_eq!(
+      strip_ansi_codes(&actual),
+      "TS2322 [ERROR]: Example diagnostic.\n\t😀foo();\n\t  ~~~\n    at test.ts:1:4"
+    );
+  }
+
+  #[test]
+  fn test_diagnostics_invalid_utf16_source_position() {
+    let value = json!([
+      {
+        "start": {
+          "line": 0,
+          "character": 1
+        },
+        "end": {
+          "line": 0,
+          "character": 2
+        },
+        "fileName": "test.ts",
+        "messageText": "Example diagnostic.",
+        "sourceLine": "😀foo();",
+        "category": 1,
+        "code": 2322
+      }
+    ]);
+    let diagnostics: Diagnostics = serde_json::from_value(value).unwrap();
+    let actual = diagnostics.to_string();
+    assert_eq!(
+      strip_ansi_codes(&actual),
+      "TS2322 [ERROR]: Example diagnostic.\n    at test.ts:1:2"
     );
   }
 

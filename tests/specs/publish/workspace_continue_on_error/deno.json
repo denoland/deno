@@ -1,0 +1,3 @@
+{
+  "workspace": ["./a", "./publish_fails", "./publish_fails2"]
+}

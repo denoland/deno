@@ -1,0 +1,5 @@
+{
+  "args": "--help=full",
+  "output": "main.out",
+  "exitCode": 0
+}

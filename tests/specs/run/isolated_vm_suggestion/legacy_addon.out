@@ -1,0 +1,7 @@
+error: Uncaught (in promise) Error: Cannot load native addon at [WILDCARD]isolated_vm.node: it was built against the legacy Node.js native addon API (NODE_MODULE / nan), which Deno does not support. Only Node-API (N-API) addons are supported.
+[WILDCARD]
+    info: `isolated-vm` is a native addon built directly on V8's C++ internals,
+          which Deno does not expose, so it cannot be loaded in Deno.
+    hint: To run code in a separate isolate, use a `Worker`: it executes in its
+          own isolate and thread and can be sandboxed via the `deno.permissions`
+          option. For in-process sandboxing, the `node:vm` module is also available.

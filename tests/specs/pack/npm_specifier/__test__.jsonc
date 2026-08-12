@@ -1,0 +1,19 @@
+{
+  "tempDir": true,
+  "tests": {
+    "rewrites_npm_specifier_and_records_dependency": {
+      "steps": [{
+        "args": "pack",
+        "output": "[WILDCARD]✓[WILDCARD]test-npm-specifier-1.0.0.tgz[WILDCARD]"
+      }, {
+        "if": "unix",
+        "commandName": "bash",
+        "args": [
+          "-c",
+          "tar -xzf test-npm-specifier-1.0.0.tgz && grep -q 'from \"chalk\"' package/mod.js && echo 'rewritten: true' || echo 'rewritten: false'; grep -q 'npm:chalk' package/mod.js && echo 'has-npm-prefix: true' || echo 'has-npm-prefix: false'; grep -q '\"chalk\"' package/package.json && echo 'in-deps: true' || echo 'in-deps: false'"
+        ],
+        "output": "rewritten: true\nhas-npm-prefix: false\nin-deps: true\n"
+      }]
+    }
+  }
+}

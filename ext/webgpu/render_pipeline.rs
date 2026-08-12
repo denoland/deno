@@ -14,6 +14,7 @@ use crate::error::GPUGenericError;
 use crate::sampler::GPUCompareFunction;
 use crate::shader::GPUShaderModule;
 use crate::texture::GPUTextureFormat;
+use crate::webidl::GPUColorWriteFlags;
 use crate::webidl::GPUPipelineLayoutOrGPUAutoLayoutMode;
 
 pub struct GPURenderPipeline {
@@ -196,9 +197,8 @@ pub(crate) struct GPUFragmentState {
 pub(crate) struct GPUColorTargetState {
   pub format: GPUTextureFormat,
   pub blend: Option<GPUBlendState>,
-  #[webidl(default = 0xF)]
-  #[options(enforce_range = true)]
-  pub write_mask: u32,
+  #[webidl(default = GPUColorWriteFlags(wgpu_types::ColorWrites::ALL))]
+  pub write_mask: GPUColorWriteFlags,
 }
 
 #[derive(WebIDL)]

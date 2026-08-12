@@ -510,12 +510,20 @@ Deno.test(
 
 Deno.test({ permissions: { run: false } }, function killPermissions() {
   assertThrows(() => {
-    // Unlike the other test cases, we don't have permission to spawn a
-    // subprocess we can safely kill. Instead we send SIGCONT to the current
-    // process - assuming that Deno does not have a special handler set for it
-    // and will just continue even if a signal is erroneously sent.
-    Deno.kill(Deno.pid, "SIGCONT");
+    // Signalling a process other than the current one still requires
+    // --allow-run. We use a pid that is not our own; the permission check
+    // happens before the signal is delivered, so it does not matter whether
+    // the pid refers to a live process.
+    Deno.kill(Deno.pid + 1, "SIGCONT");
   }, Deno.errors.NotCapable);
+});
+
+Deno.test({ permissions: { run: false } }, function killSelfNoPermissions() {
+  // Sending a signal to the current process is functionally equivalent to
+  // terminating yourself, which never required permissions. Signal 0 is a
+  // liveness check that does not deliver a signal, so it works cross-platform
+  // without requiring --allow-run.
+  Deno.kill(Deno.pid, 0);
 });
 
 Deno.test(

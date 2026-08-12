@@ -1,0 +1,5 @@
+@std/encoding@1.0.10
+  jsr:@oak/oak@17 > @oak/commons@1.0.1 > @std/encoding@1.0.10
+  jsr:@oak/oak@17 > @std/http@1.1.0 > @std/encoding@1.0.10
+  jsr:@oak/oak@17 > @oak/commons@1.0.1 > @std/http@1.1.0 > @std/encoding@1.0.10
+

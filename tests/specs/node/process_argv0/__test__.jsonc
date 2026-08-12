@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "argv0_equals_exec_path": {
+      "args": "run -A main.ts",
+      "output": "ok\n"
+    }
+  }
+}

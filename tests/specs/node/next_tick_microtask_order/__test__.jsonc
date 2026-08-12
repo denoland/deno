@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "esm": {
+      "args": "run -A main.mjs",
+      "output": "esm.out"
+    },
+    "cjs": {
+      "args": "run -A main.cjs",
+      "output": "cjs.out"
+    }
+  }
+}

@@ -40,7 +40,7 @@ irm https://deno.land/install.ps1 | iex
 brew install deno
 ```
 
-[Chocolatey](https://chocolatey.org/packages/deno) (Windows):
+[Chocolatey](https://community.chocolatey.org/packages/deno) (Windows):
 
 ```powershell
 choco install deno

@@ -1,0 +1,4 @@
+error: Uncaught (in promise) Error: Cannot find module '[WILDCARD]secret.json'. Please verify that the package.json has a valid "main" entry
+const sub = require("nested-pkg/evil-sub");
+[WILDCARD]
+    at [WILDCARD]main_nested_escape.cjs:1:[WILDCARD]

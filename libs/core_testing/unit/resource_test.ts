@@ -14,6 +14,7 @@ import {
 } from "checkin:object";
 
 const {
+  op_constructable_test,
   op_pipe_create,
   op_file_open,
   op_async_make_cppgc_resource,
@@ -21,6 +22,9 @@ const {
 } = Deno.core.ops;
 
 test(async function testPipe() {
+  assertEquals("prototype" in op_pipe_create, false);
+  assertEquals("prototype" in op_constructable_test, true);
+
   const [p1, p2] = op_pipe_create();
   assertEquals(3, await Deno.core.write(p1, new Uint8Array([1, 2, 3])));
   const buf = new Uint8Array(10);
@@ -111,8 +115,10 @@ test(async function testDomPoint() {
   );
   assertEquals(get.name, "get x");
   assertEquals(get.length, 0);
+  assertEquals("prototype" in get, false);
   assertEquals(set.name, "set x");
   assertEquals(set.length, 1);
+  assertEquals("prototype" in set, false);
 
   assert(p1 instanceof DOMPoint);
   assert(p1 instanceof DOMPointReadOnly);

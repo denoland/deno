@@ -52,9 +52,11 @@ use tokio::net::TcpStream;
 
 use crate::DefaultTlsOptions;
 use crate::UnsafelyIgnoreCertificateErrors;
+use crate::happy_eyeballs::connect_happy_eyeballs;
 use crate::io::TcpStreamResource;
 use crate::ops::IpAddr;
 use crate::ops::NetError;
+use crate::ops::TcpConnectOptions;
 use crate::ops::TlsHandshakeInfo;
 use crate::raw::NetworkListenerResource;
 use crate::resolve_addr::resolve_addr;
@@ -108,7 +110,11 @@ pub struct TlsStreamResource {
   inner: TlsStreamInner,
   // `None` when a TLS handshake hasn't been done.
   handshake_info: RefCell<Option<TlsHandshakeInfo>>,
-  cancel_handle: CancelHandle, // Only read and handshake ops get canceled.
+  // op_cancel_read only cancels read and handshake ops. Closing the resource
+  // cancels both halves so blocked writes don't keep the underlying socket
+  // alive.
+  read_cancel_handle: CancelHandle,
+  write_cancel_handle: CancelHandle,
 }
 
 impl TlsStreamResource {
@@ -121,7 +127,8 @@ impl TlsStreamResource {
         wr: AsyncRefCell::new(wr),
       },
       handshake_info: RefCell::new(None),
-      cancel_handle: Default::default(),
+      read_cancel_handle: Default::default(),
+      write_cancel_handle: Default::default(),
     }
   }
 
@@ -156,7 +163,7 @@ impl TlsStreamResource {
     })
     .borrow_mut()
     .await;
-    let cancel_handle = RcRef::map(&self, |r| &r.cancel_handle);
+    let cancel_handle = RcRef::map(&self, |r| &r.read_cancel_handle);
     rd.read(data).try_or_cancel(cancel_handle).await
   }
 
@@ -169,9 +176,14 @@ impl TlsStreamResource {
     })
     .borrow_mut()
     .await;
-    let nwritten = wr.write(data).await?;
-    wr.flush().await?;
-    Ok(nwritten)
+    let cancel_handle = RcRef::map(&self, |r| &r.write_cancel_handle);
+    async {
+      let nwritten = wr.write(data).await?;
+      wr.flush().await?;
+      Ok(nwritten)
+    }
+    .try_or_cancel(cancel_handle)
+    .await
   }
 
   pub async fn shutdown(self: Rc<Self>) -> Result<(), std::io::Error> {
@@ -180,7 +192,8 @@ impl TlsStreamResource {
     })
     .borrow_mut()
     .await;
-    wr.shutdown().await?;
+    let cancel_handle = RcRef::map(&self, |r| &r.write_cancel_handle);
+    wr.shutdown().try_or_cancel(cancel_handle).await?;
     Ok(())
   }
 
@@ -196,7 +209,7 @@ impl TlsStreamResource {
     })
     .borrow_mut()
     .await;
-    let cancel_handle = RcRef::map(self, |r| &r.cancel_handle);
+    let cancel_handle = RcRef::map(self, |r| &r.read_cancel_handle);
     let handshake = wr.handshake().try_or_cancel(cancel_handle).await?;
 
     let alpn_protocol = handshake.alpn.map(|alpn| alpn.into());
@@ -223,7 +236,8 @@ impl Resource for TlsStreamResource {
   }
 
   fn close(self: Rc<Self>) {
-    self.cancel_handle.cancel();
+    self.read_cancel_handle.cancel();
+    self.write_cancel_handle.cancel();
   }
 }
 
@@ -405,6 +419,7 @@ pub async fn op_net_connect_tls(
   #[scoped] addr: IpAddr,
   #[scoped] args: ConnectTlsArgs,
   #[cppgc] key_pair: &TlsKeysHolder,
+  #[serde] options: Option<TcpConnectOptions>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError> {
   let cert_file = args.cert_file.as_deref();
   let unsafely_ignore_certificate_errors = state
@@ -458,11 +473,55 @@ pub async fn op_net_connect_tls(
     ServerName::try_from(addr.hostname.clone())
   }
   .map_err(|_| NetError::InvalidHostname(addr.hostname.clone()))?;
-  let connect_addr = resolve_addr(&addr.hostname, addr.port)
-    .await?
-    .next()
-    .ok_or_else(|| NetError::NoResolvedAddress)?;
-  let tcp_stream = TcpStream::connect(connect_addr).await?;
+
+  // Resolve all addresses for Happy Eyeballs.
+  let options = options.unwrap_or_default();
+  let addrs: Vec<_> = resolve_addr(&addr.hostname, addr.port).await?.collect();
+
+  if addrs.is_empty() {
+    return Err(NetError::NoResolvedAddress);
+  }
+
+  // Happy Eyeballs races every resolved candidate, so it may connect to any of
+  // them; the non-racing path only ever connects to `addrs[0]`.
+  let use_happy_eyeballs = options.auto_select_family && addrs.len() > 1;
+
+  // Post-resolution deny check: verify the IPs we may actually connect to are
+  // not denied. This prevents bypassing IP-literal deny rules via numeric
+  // hostname aliases (e.g. 2130706433 -> 127.0.0.1). Only the candidates we may
+  // attempt are checked: all of them when Happy Eyeballs races them, otherwise
+  // just the single address that will be used.
+  {
+    let mut state_ = state.borrow_mut();
+    let permissions = state_.borrow_mut::<PermissionsContainer>();
+    let checked = if use_happy_eyeballs {
+      &addrs[..]
+    } else {
+      &addrs[..1]
+    };
+    for addr in checked {
+      permissions.check_net_resolved(
+        &addr.ip(),
+        addr.port(),
+        "Deno.connectTls()",
+      )?;
+    }
+  }
+
+  // Use Happy Eyeballs if enabled and multiple addresses available.
+  // Note: the TLS connect op has no abort resource, so no cancel handle is
+  // available here (matches the pre-Happy-Eyeballs behavior).
+  let tcp_stream = if use_happy_eyeballs {
+    let attempt_delay = std::time::Duration::from_millis(
+      options.auto_select_family_attempt_delay,
+    );
+    let result = connect_happy_eyeballs(addrs, attempt_delay, None).await?;
+    result.stream
+  } else {
+    // Single address or Happy Eyeballs disabled - use first address
+    TcpStream::connect(addrs[0]).await?
+  };
+
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 
@@ -528,6 +587,13 @@ pub fn op_net_listen_tls(
   let bind_addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or(NetError::NoResolvedAddress)?;
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_net_resolved(
+      &bind_addr.ip(),
+      bind_addr.port(),
+      "Deno.listenTls()",
+    )?;
 
   let tcp_listener = if args.load_balanced {
     TcpListener::bind_load_balanced(bind_addr, args.tcp_backlog)

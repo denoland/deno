@@ -37,7 +37,19 @@ if (Deno.args.some((a) => a === "--dry-run")) {
 }
 
 function getNextVersion(originalVersion: semver.SemVer) {
-  if (Deno.args.some((a) => a === "--patch")) {
+  const prereleaseKind = (["--alpha", "--beta", "--rc"] as const).find((a) =>
+    Deno.args.includes(a)
+  );
+  if (prereleaseKind) {
+    const tag = prereleaseKind.slice(2);
+    let v = originalVersion;
+    if (!v.prerelease?.length) {
+      v = semver.increment(v, "minor");
+    } else if (v.prerelease[0] != tag) {
+      v = { ...v, prerelease: undefined };
+    }
+    return semver.increment(v, "prerelease", { prerelease: tag });
+  } else if (Deno.args.some((a) => a === "--patch")) {
     return semver.increment(originalVersion, "patch");
   } else if (Deno.args.some((a) => a === "--minor")) {
     return semver.increment(originalVersion, "minor");
@@ -48,13 +60,20 @@ function getNextVersion(originalVersion: semver.SemVer) {
   }
 }
 
+function isPrerelease() {
+  return Deno.args.some((a) => ["--alpha", "--beta", "--rc"].includes(a));
+}
+
 function buildDenoReleaseInstructionsDoc() {
   function getMinorVersion(version: string) {
     return version.split(".").slice(0, 2).join(".");
   }
 
+  const templateFile = isPrerelease()
+    ? "prerelease_doc_template.md"
+    : "release_doc_template.md";
   const templateText = currentDirPath
-    .join("release_doc_template.md")
+    .join(templateFile)
     .readTextSync()
     .replaceAll("$BRANCH_NAME", `v${nextVersion.major}.${nextVersion.minor}`)
     .replaceAll("$VERSION", semver.format(nextVersion))

@@ -1,0 +1,10 @@
+{
+  "name": "@denotest/scripts-with-publish-date",
+  "version": "1.0.0",
+  "main": "index.js",
+  "publishDate": "2020-01-01T00:00:00.000Z",
+  "scripts": {
+    "postinstall": "echo postinstall",
+    "build": "echo build"
+  }
+}

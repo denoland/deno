@@ -60,6 +60,13 @@ use libloading::os::windows::*;
 pub use value::napi_value;
 
 pub mod function;
+// Only used to diagnose Windows addons that link against `node.exe`; on unix the
+// helpers are exercised solely by their unit tests.
+#[cfg_attr(
+  unix,
+  allow(dead_code, reason = "only used on Windows; unix runs the unit tests")
+)]
+mod pe;
 mod value;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -76,6 +83,25 @@ pub enum NApiError {
   #[class(type)]
   #[error("Unable to find register Node-API module at {}", .0.display())]
   ModuleNotFound(PathBuf),
+  #[class(type)]
+  #[error(
+    "Cannot load native addon at {}: it was built against the legacy Node.js \
+     native addon API (NODE_MODULE / nan), which Deno does not support. Only \
+     Node-API (N-API) addons are supported.",
+    .0.display()
+  )]
+  UnsupportedLegacyAddon(PathBuf),
+  #[class(type)]
+  #[error(
+    "Cannot load native addon at {}: it links directly against the Node.js \
+     binary (node.exe) and relies on the V8 C++ ABI, Node.js internals and/or \
+     libuv exported by that executable, none of which Deno provides. An addon \
+     can use Node-API (N-API) and still be unsupported when it has a regular \
+     import of node.exe. The addon must be rebuilt to avoid linking directly \
+     against node.exe, for example by using delay-loaded node.exe imports.",
+    .0.display()
+  )]
+  UnsupportedNodeBinaryAddon(PathBuf),
   #[class(inherit)]
   #[error(transparent)]
   Permission(#[from] PermissionCheckError),
@@ -147,6 +173,10 @@ pub static ERROR_MESSAGES: &[&CStr] = &[
 ];
 
 pub const NAPI_AUTO_LENGTH: usize = usize::MAX;
+
+/// `nm_version` value used by Node-API (N-API) modules. Legacy V8/nan addons
+/// registered via `node_module_register` use `NODE_MODULE_VERSION` instead.
+pub const NAPI_MODULE_VERSION: i32 = 1;
 
 thread_local! {
   pub static MODULE_TO_REGISTER: RefCell<Option<*const NapiModule>> = const { RefCell::new(None) };
@@ -313,19 +343,74 @@ impl<T> PendingNapiAsyncWork for T where T: FnOnce() + Send + 'static {}
 /// This matches Node.js's behavior of tracking references with finalize
 /// callbacks and calling them during `napi_env::DeleteMe()`.
 pub struct PendingNapiFinalizer {
+  /// Unique identity of this registration. Finalizers must be deregistered by
+  /// id, never by `data`: several live registrations can share the same `data`
+  /// pointer (addons routinely pass a null or repeated `native_object`), and
+  /// removing an arbitrary entry with a matching `data` leaves the entry whose
+  /// callback already ran behind, which then runs a second time at shutdown.
+  pub id: NapiFinalizerId,
   pub env: napi_env,
   pub cb: napi_finalize,
   pub data: *mut c_void,
   pub hint: *mut c_void,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NapiFinalizerId(u64);
+
+/// Tracked finalizer callbacks that should be called at shutdown.
+/// Matches Node.js `finalizing_reflist` / `reflist` behavior.
+#[derive(Default)]
+pub struct RefTracker {
+  next_id: u64,
+  pending: Vec<PendingNapiFinalizer>,
+}
+
+impl RefTracker {
+  /// Removes and returns all pending finalizers, leaving the tracker empty.
+  pub fn take_pending(&mut self) -> Vec<PendingNapiFinalizer> {
+    std::mem::take(&mut self.pending)
+  }
+
+  fn add(
+    &mut self,
+    env: napi_env,
+    cb: napi_finalize,
+    data: *mut c_void,
+    hint: *mut c_void,
+  ) -> NapiFinalizerId {
+    let id = NapiFinalizerId(self.next_id);
+    self.next_id += 1;
+    self.pending.push(PendingNapiFinalizer {
+      id,
+      env,
+      cb,
+      data,
+      hint,
+    });
+    id
+  }
+
+  fn remove(&mut self, id: NapiFinalizerId) {
+    if let Some(pos) = self.pending.iter().rposition(|f| f.id == id) {
+      self.pending.remove(pos);
+    }
+  }
+}
+
 pub struct NapiState {
   // Thread safe functions.
   pub env_cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
-  /// Tracked finalizer callbacks that should be called at shutdown.
-  /// Matches Node.js `finalizing_reflist` / `reflist` behavior.
-  pub ref_tracker: Rc<RefCell<Vec<PendingNapiFinalizer>>>,
+  pub ref_tracker: Rc<RefCell<RefTracker>>,
   pub env_shared_ptrs: Vec<*mut EnvShared>,
+  /// Raw Env pointers for teardown of external string finalizers.
+  pub env_ptrs: Vec<*mut Env>,
+  /// Per-isolate V8 Private key for napi_wrap/napi_unwrap.
+  /// Node.js stores this per-isolate so that objects wrapped by one addon
+  /// can be unwrapped by another. Lazily initialized on first addon load.
+  pub napi_wrap: Option<v8::Global<v8::Private>>,
+  /// Per-isolate V8 Private key for type tags.
+  pub type_tag: Option<v8::Global<v8::Private>>,
 }
 
 // SAFETY: finalizer pointers in env_shared_ptrs are only accessed during Drop
@@ -334,6 +419,16 @@ unsafe impl Send for NapiState {}
 
 impl Drop for NapiState {
   fn drop(&mut self) {
+    // External string resources can outlive their Env until V8 disposes the
+    // isolate. Stop exposing each Env to those eventual callbacks. Callbacks
+    // whose V8 resource was already disposed are completed here with their
+    // original Env; the rest keep their registry entry, which the isolate's
+    // disposal reclaims by firing the V8 destructor with a null Env. They
+    // cannot be swept here because V8 still reads their buffers.
+    for env_ptr in &self.env_ptrs {
+      crate::js_native_api::detach_external_string_env(*env_ptr);
+    }
+
     let hooks = {
       let h = self.env_cleanup_hooks.borrow_mut();
       h.clone()
@@ -438,16 +533,22 @@ pub struct Env {
   context: NonNull<v8::Context>,
   pub isolate_ptr: v8::UnsafeRawIsolatePtr,
   pub open_handle_scopes: usize,
+  pub open_callback_scopes: usize,
   pub shared: *mut EnvShared,
   pub async_work_sender: V8CrossThreadTaskSpawner,
   cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
-  ref_tracker: Rc<RefCell<Vec<PendingNapiFinalizer>>>,
+  ref_tracker: Rc<RefCell<RefTracker>>,
   external_ops_tracker: ExternalOpsTracker,
   pub last_error: napi_extended_error_info,
   pub last_exception: Option<v8::Global<v8::Value>>,
   pub global: v8::Global<v8::Object>,
   pub create_buffer: v8::Global<v8::Function>,
   pub report_error: v8::Global<v8::Function>,
+  pub async_hooks_init: v8::Global<v8::Function>,
+  pub async_hooks_before: v8::Global<v8::Function>,
+  pub async_hooks_after: v8::Global<v8::Function>,
+  pub async_hooks_destroy: v8::Global<v8::Function>,
+  pub next_async_id: i64,
 }
 
 unsafe impl Send for Env {}
@@ -461,9 +562,13 @@ impl Env {
     global: v8::Global<v8::Object>,
     create_buffer: v8::Global<v8::Function>,
     report_error: v8::Global<v8::Function>,
+    async_hooks_init: v8::Global<v8::Function>,
+    async_hooks_before: v8::Global<v8::Function>,
+    async_hooks_after: v8::Global<v8::Function>,
+    async_hooks_destroy: v8::Global<v8::Function>,
     sender: V8CrossThreadTaskSpawner,
     cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
-    ref_tracker: Rc<RefCell<Vec<PendingNapiFinalizer>>>,
+    ref_tracker: Rc<RefCell<RefTracker>>,
     external_ops_tracker: ExternalOpsTracker,
   ) -> Self {
     Self {
@@ -472,8 +577,14 @@ impl Env {
       global,
       create_buffer,
       report_error,
+      async_hooks_init,
+      async_hooks_before,
+      async_hooks_after,
+      async_hooks_destroy,
+      next_async_id: 1,
       shared: std::ptr::null_mut(),
       open_handle_scopes: 0,
+      open_callback_scopes: 0,
       async_work_sender: sender,
       cleanup_hooks,
       ref_tracker,
@@ -566,20 +677,12 @@ impl Env {
     cb: napi_finalize,
     data: *mut c_void,
     hint: *mut c_void,
-  ) {
-    self.ref_tracker.borrow_mut().push(PendingNapiFinalizer {
-      env,
-      cb,
-      data,
-      hint,
-    });
+  ) -> NapiFinalizerId {
+    self.ref_tracker.borrow_mut().add(env, cb, data, hint)
   }
 
-  pub fn remove_ref_finalizer(&self, data: *mut c_void) {
-    let mut tracker = self.ref_tracker.borrow_mut();
-    if let Some(pos) = tracker.iter().rposition(|f| f.data == data) {
-      tracker.remove(pos);
-    }
+  pub fn remove_ref_finalizer(&self, id: NapiFinalizerId) {
+    self.ref_tracker.borrow_mut().remove(id);
   }
 }
 
@@ -593,8 +696,11 @@ deno_core::extension!(deno_napi,
   state = |state, options| {
     state.put(NapiState {
       env_cleanup_hooks: Rc::new(RefCell::new(vec![])),
-      ref_tracker: Rc::new(RefCell::new(vec![])),
+      ref_tracker: Rc::new(RefCell::new(RefTracker::default())),
       env_shared_ptrs: vec![],
+      env_ptrs: vec![],
+      napi_wrap: None,
+      type_tag: None,
     });
     if let Some(loader) = options.deno_rt_native_addon_loader {
       state.put(loader);
@@ -621,6 +727,10 @@ fn op_napi_open<'scope>(
   global: v8::Local<'scope, v8::Object>,
   create_buffer: v8::Local<'scope, v8::Function>,
   report_error: v8::Local<'scope, v8::Function>,
+  async_hooks_init: v8::Local<'scope, v8::Function>,
+  async_hooks_before: v8::Local<'scope, v8::Function>,
+  async_hooks_after: v8::Local<'scope, v8::Function>,
+  async_hooks_destroy: v8::Local<'scope, v8::Function>,
 ) -> Result<v8::Local<'scope, v8::Value>, NApiError> {
   // We must limit the OpState borrow because this function can trigger a
   // re-borrow through the NAPI module.
@@ -647,13 +757,49 @@ fn op_napi_open<'scope>(
     )
   };
 
-  let napi_wrap_name = v8::String::new(scope, "napi_wrap").unwrap();
-  let napi_wrap = v8::Private::new(scope, Some(napi_wrap_name));
-  let napi_wrap = v8::Global::new(scope, napi_wrap);
+  // Register the uv_compat loop so that our libuv-ABI `uv_timer_*`
+  // polyfills bridge onto Deno's event loop instead of degrading to
+  // no-ops. The loop pointer is opaque to addons — they only pass it
+  // through to other uv_* polyfill functions, which re-resolve it from
+  // this thread-local in any case.
+  {
+    let op_state = op_state.borrow();
+    if let Some(uv_loop) =
+      op_state.try_borrow::<Box<deno_core::uv_compat::UvLoop>>()
+    {
+      let loop_ptr =
+        &**uv_loop as *const deno_core::uv_compat::UvLoop as *mut _;
+      crate::uv::register_default_uv_loop(loop_ptr);
+    }
+  }
 
-  let type_tag_name = v8::String::new(scope, "type_tag").unwrap();
-  let type_tag = v8::Private::new(scope, Some(type_tag_name));
-  let type_tag = v8::Global::new(scope, type_tag);
+  // Use per-isolate Private keys (like Node.js) so that objects wrapped by one
+  // addon can be unwrapped by another. Lazily create on first addon load.
+  let (napi_wrap, type_tag) = {
+    let mut op_state_mut = op_state.borrow_mut();
+    let napi_state = op_state_mut.borrow_mut::<NapiState>();
+    let napi_wrap = match &napi_state.napi_wrap {
+      Some(existing) => existing.clone(),
+      None => {
+        let name = v8::String::new(scope, "napi_wrap").unwrap();
+        let key = v8::Private::new(scope, Some(name));
+        let global = v8::Global::new(scope, key);
+        napi_state.napi_wrap = Some(global.clone());
+        global
+      }
+    };
+    let type_tag = match &napi_state.type_tag {
+      Some(existing) => existing.clone(),
+      None => {
+        let name = v8::String::new(scope, "type_tag").unwrap();
+        let key = v8::Private::new(scope, Some(name));
+        let global = v8::Global::new(scope, key);
+        napi_state.type_tag = Some(global.clone());
+        global
+      }
+    };
+    (napi_wrap, type_tag)
+  };
 
   #[allow(
     clippy::disallowed_methods,
@@ -671,6 +817,10 @@ fn op_napi_open<'scope>(
     v8::Global::new(scope, global),
     v8::Global::new(scope, create_buffer),
     v8::Global::new(scope, report_error),
+    v8::Global::new(scope, async_hooks_init),
+    v8::Global::new(scope, async_hooks_before),
+    v8::Global::new(scope, async_hooks_after),
+    v8::Global::new(scope, async_hooks_destroy),
     async_work_sender,
     cleanup_hooks,
     ref_tracker,
@@ -680,12 +830,16 @@ fn op_napi_open<'scope>(
   // Track the EnvShared pointer so we can call instance data finalize
   // callbacks when the runtime exits. Each op_napi_open call creates a
   // fresh EnvShared, so entries are always unique.
-  op_state
-    .borrow_mut()
-    .borrow_mut::<NapiState>()
-    .env_shared_ptrs
-    .push(env.shared);
-  let env_ptr = Box::into_raw(Box::new(env)) as _;
+  let env_ptr = Box::into_raw(Box::new(env));
+  {
+    let mut state = op_state.borrow_mut();
+    let napi_state = state.borrow_mut::<NapiState>();
+    napi_state
+      .env_shared_ptrs
+      .push(unsafe { (*env_ptr).shared });
+    napi_state.env_ptrs.push(env_ptr);
+  }
+  let env_ptr = env_ptr as _;
 
   #[cfg(unix)]
   let flags = RTLD_LAZY;
@@ -703,7 +857,28 @@ fn op_napi_open<'scope>(
 
   // SAFETY: opening a DLL calls dlopen
   #[cfg(not(unix))]
-  let library = unsafe { Library::load_with_flags(real_path.as_ref(), flags) }?;
+  let library =
+    match unsafe { Library::load_with_flags(real_path.as_ref(), flags) } {
+      Ok(library) => library,
+      Err(err) => {
+        // A `.node` that links *directly* against the Node.js binary (a regular,
+        // non delay-load import of `node.exe`) cannot be loaded into any host
+        // that isn't literally named `node.exe`: it expects V8/Node internal
+        // symbols and libuv to be provided by that executable. Detect this and
+        // surface a clear, actionable error rather than the opaque
+        // `LoadLibraryExW failed` from the Windows loader. See denoland/deno#25956.
+        use std::io::Read;
+        let mut bytes = Vec::new();
+        if std::fs::File::open(real_path.as_ref())
+          .and_then(|mut f| f.read_to_end(&mut bytes))
+          .is_ok()
+          && pe::imports_node_executable(&bytes)
+        {
+          return Err(NApiError::UnsupportedNodeBinaryAddon(path.into_owned()));
+        }
+        return Err(err.into());
+      }
+    };
 
   let maybe_module = MODULE_TO_REGISTER.with(|cell| {
     let mut slot = cell.borrow_mut();
@@ -714,13 +889,19 @@ fn op_napi_open<'scope>(
   let exports = v8::Object::new(scope);
 
   let maybe_exports = if let Some(module_to_register) = maybe_module {
+    // SAFETY: napi_register_module guarantees that `module_to_register` is valid.
+    let nm = unsafe { &*module_to_register };
+    // A version other than `NAPI_MODULE_VERSION` (1) means this is a legacy
+    // V8/nan addon registered via `node_module_register`. We can't run its
+    // register function (it uses the unsupported legacy ABI), so bail out with
+    // a clear error instead of crashing later. See denoland/deno#26656.
+    if nm.nm_version != NAPI_MODULE_VERSION {
+      return Err(NApiError::UnsupportedLegacyAddon(path.into_owned()));
+    }
     NAPI_LOADED_MODULES.write().insert(
       real_path.to_path_buf(),
       NapiModuleHandle(module_to_register),
     );
-    // SAFETY: napi_register_module guarantees that `module_to_register` is valid.
-    let nm = unsafe { &*module_to_register };
-    assert_eq!(nm.nm_version, 1);
     // SAFETY: we are going blind, calling the register function on the other side.
     unsafe { (nm.nm_register_func)(env_ptr, exports.into()) }
   } else if let Some(module_to_register) =
@@ -729,7 +910,9 @@ fn op_napi_open<'scope>(
     // SAFETY: this originated from `napi_register_module`, so the
     // pointer should still be valid.
     let nm = unsafe { &*module_to_register.0 };
-    assert_eq!(nm.nm_version, 1);
+    if nm.nm_version != NAPI_MODULE_VERSION {
+      return Err(NApiError::UnsupportedLegacyAddon(path.into_owned()));
+    }
     // SAFETY: we are going blind, calling the register function on the other side.
     unsafe { (nm.nm_register_func)(env_ptr, exports.into()) }
   } else {

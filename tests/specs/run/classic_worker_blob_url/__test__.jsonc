@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "rejects_without_testing_features": {
+      "args": "run --quiet rejects_without_testing_features.js",
+      "output": "rejects_without_testing_features.out"
+    },
+    "runs_with_testing_features": {
+      "args": "run --quiet --enable-testing-features-do-not-use runs_with_testing_features.js",
+      "output": "runs_with_testing_features.out"
+    }
+  }
+}

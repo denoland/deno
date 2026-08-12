@@ -5,7 +5,8 @@
  * Adapted from
  * https://github.com/nodejs/node/blob/3b72788afb7365e10ae1e97c71d1f60ee29f09f2/src/node.h#L728-L738
  */
-export enum Encodings {
+(function () {
+enum Encodings {
   ASCII, // 0
   UTF8, // 1
   BASE64, // 2
@@ -16,3 +17,8 @@ export enum Encodings {
   BASE64URL, // 7
   LATIN1 = 4, // 4 = BINARY
 }
+
+return {
+  Encodings,
+};
+})();

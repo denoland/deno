@@ -1,0 +1,6 @@
+running 1 test from ./cli_retry_flag.ts
+flaky ... retrying (attempt 1 failed) (Uncaught Error: not yet)
+flaky ... ok ([WILDCARD])
+
+ok | 1 passed | 0 failed | 1 flaky ([WILDCARD])
+

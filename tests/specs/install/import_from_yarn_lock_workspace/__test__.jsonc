@@ -1,0 +1,20 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      // No deno.lock, package-lock.json, or pnpm-lock.yaml. `deno install`
+      // should seed deno.lock from yarn.lock, including the workspace member's
+      // deps (yarn classic flattens every workspace dependency into the single
+      // root lockfile, so both packages are captured).
+      "args": "install",
+      "output": "install.out"
+    },
+    {
+      "args": [
+        "eval",
+        "console.log(Deno.readTextFileSync('deno.lock').trim())"
+      ],
+      "output": "deno.lock.out"
+    }
+  ]
+}

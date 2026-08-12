@@ -2,7 +2,7 @@
 
 [package]
 name = "denort"
-version = "2.7.5"
+version = "2.9.5"
 authors.workspace = true
 default-run = "denort"
 edition.workspace = true
@@ -24,40 +24,51 @@ name = "integration"
 path = "integration_tests_runner.rs"
 harness = false
 
+[features]
+default = ["v8"]
+quickjs = ["deno_core/quickjs", "v8/quickjs"]
+v8 = ["deno_core/v8", "v8/v8"]
+
 [build-dependencies]
-deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting", "only_snapshotted_js_sources"] }
-deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+deno_runtime.workspace = true
+deno_core.workspace = true
+v8.workspace = true
 
 [dependencies]
+async-trait.workspace = true
+bincode.workspace = true
+deno_ast = { workspace = true, features = ["cjs"] }
 deno_cache_dir = { workspace = true, features = ["sync"] }
 deno_config = { workspace = true, features = ["sync", "workspace"] }
-deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+deno_core.workspace = true
 deno_error.workspace = true
 deno_lib.workspace = true
 deno_media_type = { workspace = true, features = ["data_url", "decoding"] }
+deno_node.workspace = true
 deno_npm.workspace = true
+deno_npmrc.workspace = true
 deno_package_json = { workspace = true, features = ["sync"] }
 deno_path_util.workspace = true
 deno_resolver = { workspace = true, features = ["sync"] }
-deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+deno_runtime.workspace = true
 deno_semver.workspace = true
 deno_snapshots.workspace = true
 deno_terminal.workspace = true
-libsui.workspace = true
-node_resolver.workspace = true
-
-async-trait.workspace = true
-bincode.workspace = true
 import_map.workspace = true
 indexmap.workspace = true
+jsonc-parser = { workspace = true }
+libsui.workspace = true
 log = { workspace = true, features = ["serde"] }
+node_resolver.workspace = true
+notify.workspace = true
 rustls.workspace = true
-serde.workspace = true
+serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 sys_traits = { workspace = true, features = ["getrandom", "filetime", "libc", "real", "strip_unc", "winapi"] }
 thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
+v8.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 junction.workspace = true

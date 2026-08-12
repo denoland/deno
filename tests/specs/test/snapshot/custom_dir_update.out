@@ -1,0 +1,8 @@
+Check [WILDCARD]custom_dir_test.ts
+running 1 test from ./custom_dir_test.ts
+custom dir ... ok ([WILDLINE])
+
+ > 1 snapshot updated.
+
+ok | 1 passed | 0 failed ([WILDLINE])
+

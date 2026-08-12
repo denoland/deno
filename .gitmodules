@@ -15,3 +15,6 @@
 	path = tests/bench/testdata/lsp_benchdata
 	url = https://github.com/denoland/deno_lsp_benchdata.git
 	shallow = true
+[submodule "tools/lzld"]
+	path = tools/lzld
+	url = https://github.com/littledivy/lzld

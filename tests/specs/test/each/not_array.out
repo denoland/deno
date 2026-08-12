@@ -1,0 +1,15 @@
+Check [WILDCARD]not_array.ts
+Uncaught error from ./not_array.ts FAILED
+
+ ERRORS[WILDLINE]
+
+./not_array.ts (uncaught error)
+error: (in promise) TypeError: Deno.test.each: expected an array of test cases
+[WILDCARD]
+ FAILURES[WILDLINE]
+
+./not_array.ts (uncaught error)
+
+FAILED | 0 passed | 1 failed ([WILDCARD])
+
+error: Test failed

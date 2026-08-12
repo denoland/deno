@@ -8,9 +8,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use anyhow::Context;
-use clap::ArgMatches;
-use clap::builder::Arg;
-use clap::builder::Command;
+use anyhow::bail;
 use deno_core::RuntimeOptions;
 use deno_core::anyhow::Error;
 use deno_core_testing::create_runtime_from_snapshot;
@@ -28,14 +26,21 @@ fn main() -> Result<(), Error> {
     "🛑 deno_core binary is meant for development and testing purposes."
   );
 
-  let cli = build_cli();
-  let mut matches = cli.get_matches();
+  let args = match Args::parse(std::env::args().skip(1)) {
+    Ok(Some(args)) => args,
+    // `--help` was requested; usage has already been printed.
+    Ok(None) => return Ok(()),
+    Err(e) => {
+      eprintln!("error: {e}");
+      eprintln!("\n{USAGE}");
+      std::process::exit(1);
+    }
+  };
 
-  let file_path = matches.remove_one::<String>("file_path").unwrap();
+  let file_path = args.file_path.clone();
   println!("Run {file_path}");
 
-  let (maybe_inspector_addr, maybe_inspect_mode) =
-    inspect_arg_parse(&mut matches).unzip();
+  let (maybe_inspector_addr, maybe_inspect_mode) = args.inspect().unzip();
   let inspector_server = if maybe_inspector_addr.is_some() {
     // TODO(bartlomieju): make it configurable
     let host = "127.0.0.1:9229".parse::<SocketAddr>().unwrap();
@@ -44,20 +49,19 @@ fn main() -> Result<(), Error> {
     None
   };
 
-  let mut v8_flags = Vec::new();
-  if let Some(flags) = matches.remove_many("v8-flags") {
-    v8_flags = flags.collect();
-  }
+  init_v8_flags(&args.v8_flags);
 
-  init_v8_flags(&v8_flags);
+  // The tokio runtime must exist and be entered before the `JsRuntime` is
+  // created, so that delayed V8 tasks can be scheduled on it.
+  let runtime = tokio::runtime::Builder::new_current_thread()
+    .enable_all()
+    .build()?;
+  let _tokio_guard = runtime.enter();
 
   let (metrics_summary, mut js_runtime, _worker_host_side) =
-    if matches.get_flag("strace-ops") || matches.get_flag("strace-ops-summary")
-    {
-      let (summary, op_metrics_factory_fn) = create_metrics(
-        matches.get_flag("strace-ops"),
-        matches.get_flag("strace-ops-summary"),
-      );
+    if args.strace_ops || args.strace_ops_summary {
+      let (summary, op_metrics_factory_fn) =
+        create_metrics(args.strace_ops, args.strace_ops_summary);
 
       let (runtime, worker_host_side) =
         deno_core_testing::create_runtime_from_snapshot_with_options(
@@ -91,10 +95,6 @@ fn main() -> Result<(), Error> {
       .unwrap(),
     )));
 
-  let runtime = tokio::runtime::Builder::new_current_thread()
-    .enable_all()
-    .build()?;
-
   let main_module: deno_core::url::Url = deno_core::resolve_path(
     &file_path,
     &std::env::current_dir().context("Unable to get CWD")?,
@@ -121,98 +121,136 @@ fn main() -> Result<(), Error> {
   result.map_err(|e| e.into())
 }
 
-fn build_cli() -> Command {
-  Command::new("dcore")
-    .arg(
-      Arg::new("inspect")
-        .long("inspect")
-        .value_name("HOST_AND_PORT")
-        .conflicts_with_all(["inspect-brk", "inspect-wait"])
-        .help("Activate inspector on host:port (default: 127.0.0.1:9229)")
-        .num_args(0..=1)
-        .require_equals(true)
-        .value_parser(clap::value_parser!(SocketAddr)),
-    )
-    .arg(
-      Arg::new("inspect-brk")
-        .long("inspect-brk")
-        .conflicts_with_all(["inspect", "inspect-wait"])
-        .value_name("HOST_AND_PORT")
-        .help(
-          "Activate inspector on host:port, wait for debugger to connect and break at the start of user script",
-        )
-        .num_args(0..=1)
-        .require_equals(true)
-        .value_parser(clap::value_parser!(SocketAddr)),
-    )
-    .arg(
-      Arg::new("inspect-wait")
-        .long("inspect-wait")
-        .conflicts_with_all(["inspect", "inspect-brk"])
-        .value_name("HOST_AND_PORT")
-        .help(
-          "Activate inspector on host:port and wait for debugger to connect before running user code",
-        )
-        .num_args(0..=1)
-        .require_equals(true)
-        .value_parser(clap::value_parser!(SocketAddr)),
-    )
-    .arg(
-      Arg::new("file_path")
-        .help("A relative or absolute file to a file to run")
-        .value_hint(clap::ValueHint::FilePath)
-        .value_parser(clap::value_parser!(String))
-        .required(true),
-    )
-    .arg(
-      Arg::new("strace-ops")
-        .help("Output a trace of op execution on stderr")
-        .long("strace-ops")
-        .num_args(0)
-        .required(false)
-        .action(clap::ArgAction::SetTrue)
+const USAGE: &str = "\
+Usage: dcore [OPTIONS] <file_path>
 
-    ).arg(
-      Arg::new("strace-ops-summary")
-        .help("Output a summary of op execution on stderr when program exits")
-        .long("strace-ops-summary")
-        .action(clap::ArgAction::SetTrue)
-    ).arg(
-      Arg::new("v8-flags")
-        .long("v8-flags")
-        .num_args(..)
-        .use_value_delimiter(true)
-        .require_equals(true)
-        .value_name("V8_FLAGS")
-        .help("To see a list of all available flags use --v8-flags=--help
-Flags can also be set via the DCORE_V8_FLAGS environment variable.
-Any flags set with this flag are appended after the DCORE_V8_FLAGS environment variable")
-    )
-}
+Arguments:
+  <file_path>  A relative or absolute file to a file to run
+
+Options:
+      --inspect[=<HOST_AND_PORT>]
+          Activate inspector on host:port (default: 127.0.0.1:9229)
+      --inspect-brk[=<HOST_AND_PORT>]
+          Activate inspector on host:port, wait for debugger to connect and break at the start of user script
+      --inspect-wait[=<HOST_AND_PORT>]
+          Activate inspector on host:port and wait for debugger to connect before running user code
+      --strace-ops
+          Output a trace of op execution on stderr
+      --strace-ops-summary
+          Output a summary of op execution on stderr when program exits
+      --v8-flags=<V8_FLAGS>
+          To see a list of all available flags use --v8-flags=--help
+          Flags can also be set via the DCORE_V8_FLAGS environment variable.
+          Any flags set with this flag are appended after the DCORE_V8_FLAGS environment variable
+  -h, --help
+          Print help";
 
 enum InspectMode {
   Immediate,
   WaitForConnection,
 }
 
-fn inspect_arg_parse(
-  matches: &mut ArgMatches,
-) -> Option<(SocketAddr, InspectMode)> {
-  let default = || "127.0.0.1:9229".parse::<SocketAddr>().unwrap();
-  if matches.contains_id("inspect") {
-    let addr = matches
-      .remove_one::<SocketAddr>("inspect")
-      .unwrap_or_else(default);
-    return Some((addr, InspectMode::Immediate));
-  }
-  if matches.contains_id("inspect-wait") {
-    let addr = matches
-      .remove_one::<SocketAddr>("inspect-wait")
-      .unwrap_or_else(default);
-    return Some((addr, InspectMode::WaitForConnection));
+/// The three `--inspect*` flags are mutually exclusive and take an optional
+/// `=host:port` value; without one they default to `127.0.0.1:9229`.
+#[derive(Default)]
+struct Args {
+  file_path: String,
+  /// `Some(None)` means the flag was passed without an explicit address.
+  inspect: Option<Option<SocketAddr>>,
+  inspect_wait: Option<Option<SocketAddr>>,
+  strace_ops: bool,
+  strace_ops_summary: bool,
+  v8_flags: Vec<String>,
+}
+
+impl Args {
+  /// Returns `Ok(None)` when `--help` was requested (usage already printed).
+  fn parse(
+    args: impl IntoIterator<Item = String>,
+  ) -> Result<Option<Self>, Error> {
+    let mut out = Args::default();
+    let mut file_path: Option<String> = None;
+    let mut seen_inspect_flag: Option<&'static str> = None;
+
+    // `--inspect*` takes its value only via `=` (clap's `require_equals`), so
+    // `--inspect 1.2.3.4:9229` treats the address as the positional argument.
+    let parse_addr = |flag: &str, value: Option<&str>| match value {
+      None => Ok(None),
+      Some(v) => v.parse::<SocketAddr>().map(Some).map_err(|e| {
+        anyhow::anyhow!("invalid value '{v}' for '{flag}=<HOST_AND_PORT>': {e}")
+      }),
+    };
+
+    for arg in args {
+      let (name, value) = match arg.split_once('=') {
+        Some((name, value)) => (name, Some(value)),
+        None => (arg.as_str(), None),
+      };
+      match name {
+        "-h" | "--help" => {
+          println!("{USAGE}");
+          return Ok(None);
+        }
+        "--inspect" | "--inspect-brk" | "--inspect-wait" => {
+          if let Some(previous) = seen_inspect_flag {
+            bail!("the argument '{previous}' cannot be used with '{name}'");
+          }
+          seen_inspect_flag = Some(match name {
+            "--inspect" => "--inspect",
+            "--inspect-brk" => "--inspect-brk",
+            _ => "--inspect-wait",
+          });
+          let addr = parse_addr(name, value)?;
+          match name {
+            "--inspect" => out.inspect = Some(addr),
+            "--inspect-wait" => out.inspect_wait = Some(addr),
+            // `--inspect-brk` is accepted but not wired up to the inspector
+            // server, matching the previous clap-based behavior.
+            _ => {}
+          }
+        }
+        "--strace-ops" => out.strace_ops = true,
+        "--strace-ops-summary" => out.strace_ops_summary = true,
+        "--v8-flags" => {
+          let Some(value) = value else {
+            bail!("equal sign is needed when assigning values to '--v8-flags'");
+          };
+          out.v8_flags.extend(value.split(',').map(String::from));
+        }
+        _ if name.starts_with('-') && name != "-" => {
+          bail!("unexpected argument '{name}' found");
+        }
+        _ => {
+          if file_path.is_some() {
+            bail!("unexpected argument '{arg}' found");
+          }
+          file_path = Some(arg);
+        }
+      }
+    }
+
+    let Some(file_path) = file_path else {
+      bail!(
+        "the following required arguments were not provided:\n  <file_path>"
+      );
+    };
+    out.file_path = file_path;
+    Ok(Some(out))
   }
 
-  None
+  fn inspect(&self) -> Option<(SocketAddr, InspectMode)> {
+    let default = || "127.0.0.1:9229".parse::<SocketAddr>().unwrap();
+    if let Some(addr) = self.inspect {
+      return Some((addr.unwrap_or_else(default), InspectMode::Immediate));
+    }
+    if let Some(addr) = self.inspect_wait {
+      return Some((
+        addr.unwrap_or_else(default),
+        InspectMode::WaitForConnection,
+      ));
+    }
+    None
+  }
 }
 
 fn get_v8_flags_from_env() -> Vec<String> {

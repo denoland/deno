@@ -18,10 +18,10 @@ use deno_cache_dir::file_fetcher::CacheSetting;
 pub use deno_config::deno_json::BenchConfig;
 pub use deno_config::deno_json::CompilerOptions;
 pub use deno_config::deno_json::ConfigFile;
+pub use deno_config::deno_json::CoverageThresholds;
 use deno_config::deno_json::FmtConfig;
 pub use deno_config::deno_json::FmtOptionsConfig;
 pub use deno_config::deno_json::LintRulesConfig;
-use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::deno_json::PermissionConfigValue;
 use deno_config::deno_json::PermissionsObjectWithBase;
 pub use deno_config::deno_json::ProseWrap;
@@ -33,11 +33,10 @@ use deno_config::workspace::WorkspaceDirLintConfig;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDirectoryRc;
 use deno_config::workspace::WorkspaceLintConfig;
+use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::url::Url;
 use deno_graph::GraphKind;
-use deno_lib::args::CaData;
 use deno_lib::args::has_flag_env_var;
 use deno_lib::args::npm_pkg_req_ref_to_binary_command;
 use deno_lib::args::npm_process_state;
@@ -46,7 +45,6 @@ use deno_lib::worker::StorageKeyResolver;
 use deno_npm::NpmSystemInfo;
 use deno_npm_installer::LifecycleScriptsConfig;
 use deno_npm_installer::graph::NpmCachingStrategy;
-use deno_path_util::resolve_url_or_path;
 use deno_resolver::factory::resolve_jsr_url;
 use deno_runtime::deno_node::ops::ipc::ChildIpcSerialization;
 use deno_runtime::deno_permissions::AllowRunDescriptor;
@@ -62,6 +60,7 @@ use thiserror::Error;
 
 use crate::sys::CliSys;
 use crate::util::fs::canonicalize_path;
+use crate::util::path::resolve_url_or_path_normalized;
 
 pub type CliLockfile = deno_resolver::lockfile::LockfileLock<CliSys>;
 
@@ -191,6 +190,13 @@ fn resolve_fmt_options(
     options.semi_colons = Some(!no_semis);
   }
 
+  // `--no-editorconfig` takes precedence over the deno.json
+  // `useEditorConfig` field. When the flag is absent the config value
+  // (or its `None` default of "on") is left untouched.
+  if fmt_flags.no_editorconfig {
+    options.use_editor_config = Some(false);
+  }
+
   options
 }
 
@@ -202,15 +208,34 @@ pub struct WorkspaceTestOptions {
   pub permit_no_files: bool,
   pub filter: Option<String>,
   pub shuffle: Option<u64>,
+  pub retry: u32,
+  pub repeats: u32,
+  pub shard: Option<(usize, usize)>,
   pub concurrent_jobs: NonZeroUsize,
   pub trace_leaks: bool,
+  pub sanitize_ops: bool,
+  pub sanitize_resources: bool,
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
   pub hide_stacktraces: bool,
+  pub update_snapshots: bool,
 }
 
 impl WorkspaceTestOptions {
-  pub fn resolve(test_flags: &TestFlags) -> Self {
+  pub fn resolve(
+    test_flags: &TestFlags,
+    test_config: Option<&TestConfig>,
+  ) -> Self {
+    // The CLI flag, env var, and config layers are enable-only: any of them
+    // setting `true` turns the sanitizer on, and none of them can turn it
+    // back off. To disable a sanitizer that was enabled by one of these
+    // layers, opt out from JS via `Deno.test.sanitizer({ ops: false })` at
+    // the module level, or `{ sanitizeOps: false }` on the individual test.
+    let config_sanitize_ops =
+      test_config.and_then(|c| c.sanitize_ops).unwrap_or(false);
+    let config_sanitize_resources = test_config
+      .and_then(|c| c.sanitize_resources)
+      .unwrap_or(false);
     Self {
       permit_no_files: test_flags.permit_no_files,
       concurrent_jobs: parallelism_count(test_flags.parallel),
@@ -219,10 +244,23 @@ impl WorkspaceTestOptions {
       filter: test_flags.filter.clone(),
       no_run: test_flags.no_run,
       shuffle: test_flags.shuffle,
+      retry: test_flags.retry,
+      repeats: test_flags.repeats,
+      shard: test_flags.shard,
       trace_leaks: test_flags.trace_leaks,
+      sanitize_ops: test_flags.sanitize_ops
+        || std::env::var("DENO_TEST_SANITIZE_OPS").ok().as_deref() == Some("1")
+        || config_sanitize_ops,
+      sanitize_resources: test_flags.sanitize_resources
+        || std::env::var("DENO_TEST_SANITIZE_RESOURCES")
+          .ok()
+          .as_deref()
+          == Some("1")
+        || config_sanitize_resources,
       reporter: test_flags.reporter,
       junit_path: test_flags.junit_path.clone(),
       hide_stacktraces: test_flags.hide_stacktraces,
+      update_snapshots: test_flags.update_snapshots,
     }
   }
 }
@@ -234,7 +272,8 @@ pub struct TestOptions {
 
 impl TestOptions {
   pub fn resolve(test_config: TestConfig, _test_flags: &TestFlags) -> Self {
-    // this is the same, but keeping the same pattern as everywhere else for the future
+    // Sanitizer options from the config are consumed in
+    // WorkspaceTestOptions::resolve via CliOptions::resolve_workspace_test_options
     Self {
       files: test_config.files,
     }
@@ -430,11 +469,14 @@ impl WorkspaceMainModuleResolver {
               sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
             ))?
           }
-          deno_package_json::PackageJsonDepValue::Workspace(version_req) => {
+          deno_package_json::PackageJsonDepValue::Workspace {
+            name,
+            version_req,
+          } => {
             let pkg_folder = self
               .workspace_resolver
               .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
-                alias,
+                name.as_deref().unwrap_or(alias),
                 version_req,
               )?;
             self
@@ -447,6 +489,24 @@ impl WorkspaceMainModuleResolver {
                 node_resolver::NodeResolutionKind::Execution,
               )?
               .into_url()?
+          }
+          deno_package_json::PackageJsonDepValue::Catalog(catalog_name) => {
+            match self
+              .workspace_resolver
+              .resolve_catalog_dep(alias, catalog_name)
+            {
+              Some(req) => ModuleSpecifier::parse(&format!(
+                "npm:{}{}",
+                req,
+                sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
+              ))?,
+              None => {
+                return Err(deno_core::anyhow::anyhow!(
+                  "Package '{}' not found in catalog",
+                  alias
+                ));
+              }
+            }
           }
         }
       }
@@ -463,6 +523,26 @@ impl WorkspaceMainModuleResolver {
         )?
         .into_url()?,
     };
+
+    // When the workspace resolver rewrites a bare specifier like
+    // `chalk/main.ts` into `npm:chalk@5/main.ts` via an import map alias,
+    // prefer a matching local file relative to cwd. Explicit `npm:`
+    // invocations keep strict semantics because the input itself starts
+    // with `npm:`.
+    if !specifier.starts_with("npm:")
+      && url.scheme() == "npm"
+      && let Ok(npm_ref) = NpmPackageReqReference::from_specifier(&url)
+      && npm_ref.sub_path().is_some()
+      && let Ok(cwd_path) = deno_path_util::url_to_file_path(cwd)
+    {
+      let local_path = cwd_path.join(specifier);
+      if local_path.is_file()
+        && let Ok(local_url) = deno_path_util::url_from_file_path(&local_path)
+      {
+        return Ok(local_url);
+      }
+    }
+
     Ok(url)
   }
 }
@@ -537,13 +617,28 @@ impl CliOptions {
       DenoSubcommand::Add(_) => GraphKind::All,
       DenoSubcommand::Cache(_) => GraphKind::All,
       DenoSubcommand::Check(_) => GraphKind::TypesOnly,
-      DenoSubcommand::Install(InstallFlags::Local(_)) => GraphKind::All,
-      _ => self.type_check_mode().as_graph_kind(),
+      DenoSubcommand::Ci(_) => GraphKind::All,
+      DenoSubcommand::Install(InstallFlags::Local(
+        InstallFlagsLocal::Entrypoints(flags),
+        _,
+      )) if flags.production => GraphKind::CodeOnly,
+      DenoSubcommand::Install(InstallFlags::Local(_, _)) => GraphKind::All,
+      // These edit the dependency requirements and then re-resolve them into
+      // the lockfile. A code-only graph never walks `import type` edges, so
+      // the packages reached only that way would be left out of the lockfile
+      // they rewrite.
+      DenoSubcommand::Outdated(_) => GraphKind::All,
+      DenoSubcommand::Remove(_) => GraphKind::All,
+      _ => graph_kind(self.type_check_mode()),
     }
   }
 
   pub fn ts_type_lib_window(&self) -> TsTypeLib {
-    TsTypeLib::DenoWindow
+    if self.flags.internal.is_desktop {
+      TsTypeLib::DenoDesktop
+    } else {
+      TsTypeLib::DenoWindow
+    }
   }
 
   pub fn ts_type_lib_worker(&self) -> TsTypeLib {
@@ -563,7 +658,7 @@ impl CliOptions {
   }
 
   pub fn npm_system_info(&self) -> NpmSystemInfo {
-    self.sub_command().npm_system_info()
+    npm_system_info(self.sub_command())
   }
 
   /// Resolve the specifier for a specified import map.
@@ -582,30 +677,9 @@ impl CliOptions {
 
   pub fn node_ipc_init(
     &self,
+    sys: &CliSys,
   ) -> Result<Option<(i64, ChildIpcSerialization)>, AnyError> {
-    let maybe_node_channel_fd = std::env::var("NODE_CHANNEL_FD").ok();
-    let maybe_node_channel_serialization = if let Ok(serialization) =
-      std::env::var("NODE_CHANNEL_SERIALIZATION_MODE")
-    {
-      Some(serialization.parse::<ChildIpcSerialization>()?)
-    } else {
-      None
-    };
-    if let Some(node_channel_fd) = maybe_node_channel_fd {
-      // Remove so that child processes don't inherit this environment variables.
-      // SAFETY: single-threaded at this point in startup
-      unsafe {
-        std::env::remove_var("NODE_CHANNEL_FD");
-        std::env::remove_var("NODE_CHANNEL_SERIALIZATION_MODE");
-      }
-      let node_channel_fd = node_channel_fd.parse::<i64>()?;
-      Ok(Some((
-        node_channel_fd,
-        maybe_node_channel_serialization.unwrap_or(ChildIpcSerialization::Json),
-      )))
-    } else {
-      Ok(None)
-    }
+    deno_lib::args::node_ipc_init(sys)
   }
 
   pub fn serve_port(&self) -> Option<u16> {
@@ -628,6 +702,21 @@ impl CliOptions {
     self.flags.eszip
   }
 
+  /// Set by `deno compile --bundle` after rewriting the bundle's absolute
+  /// CJS paths; signals the standalone binary writer that the npm tree
+  /// must still ship alongside the bundle.
+  pub fn compile_bundle_embed_node_modules(&self) -> bool {
+    self.flags.internal.compile_bundle_embed_node_modules
+  }
+
+  /// Absolute paths the `--bundle` rewriter pointed at — the on-disk
+  /// locations the compiled binary expects to require() at runtime. The
+  /// binary writer maps these back to npm packages so it can ship only
+  /// the packages actually reached, not the whole resolved tree.
+  pub fn compile_bundle_referenced_paths(&self) -> &[PathBuf] {
+    &self.flags.internal.compile_bundle_referenced_paths
+  }
+
   pub fn node_conditions(&self) -> &[String] {
     self.flags.node_conditions.as_ref()
   }
@@ -638,6 +727,7 @@ impl CliOptions {
 
   pub fn no_legacy_abort(&self) -> bool {
     self.flags.no_legacy_abort()
+      || self.workspace().has_unstable("no-legacy-abort")
   }
 
   pub fn env_file_names(
@@ -664,13 +754,28 @@ impl CliOptions {
   }
 
   pub fn preload_modules(&self) -> Result<Vec<ModuleSpecifier>, AnyError> {
+    self.preload_modules_with_resolver(None)
+  }
+
+  pub fn preload_modules_with_resolver(
+    &self,
+    resolver: Option<&WorkspaceMainModuleResolver>,
+  ) -> Result<Vec<ModuleSpecifier>, AnyError> {
     if self.flags.preload.is_empty() {
       return Ok(vec![]);
     }
 
     let mut modules = Vec::with_capacity(self.flags.preload.len());
     for preload_specifier in self.flags.preload.iter() {
-      modules.push(resolve_url_or_path(preload_specifier, self.initial_cwd())?);
+      let default_resolve = || {
+        resolve_url_or_path_normalized(preload_specifier, self.initial_cwd())
+          .map_err(|e| e.into())
+      };
+      modules.push(self.resolve_main_module_with_resolver_if_bare(
+        preload_specifier,
+        resolver,
+        default_resolve,
+      )?);
     }
 
     Ok(modules)
@@ -683,7 +788,10 @@ impl CliOptions {
 
     let mut require = Vec::with_capacity(self.flags.require.len());
     for require_specifier in self.flags.require.iter() {
-      require.push(resolve_url_or_path(require_specifier, self.initial_cwd())?);
+      require.push(resolve_url_or_path_normalized(
+        require_specifier,
+        self.initial_cwd(),
+      )?);
     }
 
     Ok(require)
@@ -718,7 +826,16 @@ impl CliOptions {
       .get_or_init(|| {
         Ok(match &self.flags.subcommand {
           DenoSubcommand::Compile(compile_flags) => {
-            resolve_url_or_path(&compile_flags.source_file, self.initial_cwd())?
+            resolve_url_or_path_normalized(
+              &compile_flags.source_file,
+              self.initial_cwd(),
+            )?
+          }
+          DenoSubcommand::Desktop(desktop_flags) => {
+            resolve_url_or_path_normalized(
+              &desktop_flags.source_file,
+              self.initial_cwd(),
+            )?
           }
           DenoSubcommand::Eval(_) => {
             let specifier = format!(
@@ -740,8 +857,10 @@ impl CliOptions {
               deno_path_util::resolve_path(&specifier, self.initial_cwd())?
             } else {
               let default_resolve = || {
-                let url =
-                  resolve_url_or_path(&run_flags.script, self.initial_cwd())?;
+                let url = resolve_url_or_path_normalized(
+                  &run_flags.script,
+                  self.initial_cwd(),
+                )?;
                 if self.is_node_main()
                   && url.scheme() == "file"
                   && MediaType::from_specifier(&url) == MediaType::Unknown
@@ -769,8 +888,11 @@ impl CliOptions {
               &run_flags.script,
               resolver,
               || {
-                resolve_url_or_path(&run_flags.script, self.initial_cwd())
-                  .map_err(|e| e.into())
+                resolve_url_or_path_normalized(
+                  &run_flags.script,
+                  self.initial_cwd(),
+                )
+                .map_err(|e| e.into())
               },
             )?,
           _ => {
@@ -865,7 +987,7 @@ impl CliOptions {
     fmt_flags: &FmtFlags,
   ) -> Result<Vec<(WorkspaceDirectoryRc, FmtOptions)>, AnyError> {
     let cli_arg_patterns =
-      fmt_flags.files.as_file_patterns(self.initial_cwd())?;
+      resolve_file_patterns(&fmt_flags.files, self.initial_cwd())?;
     let member_configs = self
       .workspace()
       .resolve_fmt_config_for_members(&cli_arg_patterns)?;
@@ -899,7 +1021,7 @@ impl CliOptions {
     lint_flags: &LintFlags,
   ) -> Result<Vec<(WorkspaceDirectoryRc, LintOptions)>, AnyError> {
     let cli_arg_patterns =
-      lint_flags.files.as_file_patterns(self.initial_cwd())?;
+      resolve_file_patterns(&lint_flags.files, self.initial_cwd())?;
     let member_configs = self
       .workspace()
       .resolve_lint_config_for_members(&cli_arg_patterns)?;
@@ -911,11 +1033,26 @@ impl CliOptions {
     Ok(result)
   }
 
+  /// Resolves the coverage thresholds configured in `deno.json`'s `coverage`
+  /// section. CLI flags are layered on top of this by the caller.
+  pub fn resolve_coverage_thresholds(
+    &self,
+  ) -> Result<CoverageThresholds, AnyError> {
+    Ok(self.start_dir.to_coverage_config()?.thresholds)
+  }
+
   pub fn resolve_workspace_test_options(
     &self,
     test_flags: &TestFlags,
   ) -> WorkspaceTestOptions {
-    WorkspaceTestOptions::resolve(test_flags)
+    // Get sanitizer config from deno.json if available
+    let test_config = self
+      .start_dir
+      .to_test_config(FilePatterns::new_with_base(
+        self.initial_cwd().to_path_buf(),
+      ))
+      .ok();
+    WorkspaceTestOptions::resolve(test_flags, test_config.as_ref())
   }
 
   pub fn resolve_test_options_for_members(
@@ -923,7 +1060,7 @@ impl CliOptions {
     test_flags: &TestFlags,
   ) -> Result<Vec<(WorkspaceDirectoryRc, TestOptions)>, AnyError> {
     let cli_arg_patterns =
-      test_flags.files.as_file_patterns(self.initial_cwd())?;
+      resolve_file_patterns(&test_flags.files, self.initial_cwd())?;
     let workspace_dir_configs = self
       .workspace()
       .resolve_test_config_for_members(&cli_arg_patterns)?;
@@ -947,7 +1084,7 @@ impl CliOptions {
     bench_flags: &BenchFlags,
   ) -> Result<Vec<(WorkspaceDirectoryRc, BenchOptions)>, AnyError> {
     let cli_arg_patterns =
-      bench_flags.files.as_file_patterns(self.initial_cwd())?;
+      resolve_file_patterns(&bench_flags.files, self.initial_cwd())?;
     let workspace_dir_configs = self
       .workspace()
       .resolve_bench_config_for_members(&cli_arg_patterns)?;
@@ -1027,21 +1164,7 @@ impl CliOptions {
   }
 
   pub fn has_hmr(&self) -> bool {
-    if let DenoSubcommand::Run(RunFlags {
-      watch: Some(WatchFlagsWithPaths { hmr, .. }),
-      ..
-    }) = &self.flags.subcommand
-    {
-      *hmr
-    } else if let DenoSubcommand::Serve(ServeFlags {
-      watch: Some(WatchFlagsWithPaths { hmr, .. }),
-      ..
-    }) = &self.flags.subcommand
-    {
-      *hmr
-    } else {
-      false
-    }
+    self.flags.watch.as_ref().is_some_and(|watch| watch.hmr)
   }
 
   /// If the --inspect or --inspect-brk flags are used.
@@ -1101,6 +1224,39 @@ impl CliOptions {
     Ok(permissions_options)
   }
 
+  /// Permissions options holding nothing but the resolved `deny_import` rules.
+  ///
+  /// Used to build the deny-only permissions the module fetcher checks
+  /// resolved addresses against. Deliberately not `permissions_options`:
+  ///
+  /// - that augments `allow_import` from the main module, whose resolution is
+  ///   then cached in `main_module_cell`. Running before the workspace
+  ///   resolver exists would cache a bare specifier as a file path.
+  /// - `Permissions::from_options` re-resolves `allow_run`, which logs for
+  ///   each entry it cannot resolve. Keeping the other fields empty avoids
+  ///   duplicating that output.
+  ///
+  /// A permission set that cannot be resolved is an error rather than an
+  /// empty deny list: these rules decide whether code may be loaded at all, so
+  /// failing to read them has to fail the command, not quietly load the code.
+  /// Callers that build options whose config cannot see the user's `-P` set
+  /// (`deno x` generates a temp `deno.json`) are responsible for carrying the
+  /// resolved rules over themselves — see `x::resolve_import_deny_rules`.
+  pub fn import_deny_permissions_options(
+    &self,
+  ) -> Result<PermissionsOptions, AnyError> {
+    let config_permissions =
+      self.resolve_config_permissions_for_dir(&self.start_dir)?;
+    let all = flags_to_permissions_options(
+      &self.flags.permissions,
+      config_permissions,
+    )?;
+    Ok(PermissionsOptions {
+      deny_import: all.deny_import,
+      ..Default::default()
+    })
+  }
+
   fn resolve_config_permissions_for_dir<'a>(
     &self,
     dir: &'a WorkspaceDirectory,
@@ -1109,7 +1265,9 @@ impl CliOptions {
       if name.is_empty() {
         let maybe_subcommand_permissions = match &self.flags.subcommand {
           DenoSubcommand::Bench(_) => dir.to_bench_permissions_config()?,
-          DenoSubcommand::Compile(_) => dir.to_compile_permissions_config()?,
+          DenoSubcommand::Compile(_) | DenoSubcommand::Desktop(_) => {
+            dir.to_compile_permissions_config()?
+          }
           DenoSubcommand::Test(_) => dir.to_test_permissions_config()?,
           _ => None,
         };
@@ -1129,7 +1287,7 @@ impl CliOptions {
             .to_bench_permissions_config()?
             .filter(|permissions| !permissions.permissions.is_empty())
             .map(|permissions| ("Bench", &permissions.base)),
-          DenoSubcommand::Compile(_) => dir
+          DenoSubcommand::Compile(_) | DenoSubcommand::Desktop(_) => dir
             .to_compile_permissions_config()?
             .filter(|permissions| !permissions.permissions.is_empty())
             .map(|permissions| ("Compile", &permissions.base)),
@@ -1225,6 +1383,7 @@ impl CliOptions {
           .map(|url| vec![url]),
         DenoSubcommand::Install(InstallFlags::Local(
           InstallFlagsLocal::Entrypoints(flags),
+          _,
         )) => Some(files_to_urls(&flags.entrypoints)),
         DenoSubcommand::Doc(DocFlags {
           source_files: DocSourceFileFlag::Paths(paths),
@@ -1279,17 +1438,8 @@ impl CliOptions {
     self.flags.type_check_mode
   }
 
-  pub fn unstable_tsgo(&self) -> bool {
-    self.flags.unstable_config.tsgo || self.workspace().has_unstable("tsgo")
-  }
-
   pub fn unsafely_ignore_certificate_errors(&self) -> &Option<Vec<String>> {
     &self.flags.unsafely_ignore_certificate_errors
-  }
-
-  pub fn unstable_bare_node_builtins(&self) -> bool {
-    self.flags.unstable_config.bare_node_builtins
-      || self.workspace().has_unstable("bare-node-builtins")
   }
 
   pub fn unstable_detect_cjs(&self) -> bool {
@@ -1359,11 +1509,21 @@ impl CliOptions {
   }
 
   /// Returns unstable feature flags as CLI arguments (e.g., "--unstable-unsafe-proto").
-  /// This includes features from both CLI flags and config file.
+  /// This includes features from both CLI flags and config file. Features that
+  /// are only valid in `deno.json` (e.g. `fmt-component`, `fmt-sql`) and don't
+  /// have a registered CLI flag are filtered out, otherwise child processes
+  /// spawned with these args (e.g. via `deno x`) would reject them with
+  /// "unexpected argument".
   pub fn unstable_args(&self) -> Vec<String> {
+    let cli_flag_names: std::collections::HashSet<&str> =
+      deno_runtime::UNSTABLE_FEATURES
+        .iter()
+        .map(|f| f.name)
+        .collect();
     self
       .unstable_features()
       .into_iter()
+      .filter(|f| cli_flag_names.contains(*f))
       .map(|f| format!("--unstable-{}", f))
       .collect()
   }
@@ -1378,15 +1538,7 @@ impl CliOptions {
 
   pub fn watch_paths(&self) -> Vec<PathBuf> {
     let mut full_paths = Vec::new();
-    if let DenoSubcommand::Run(RunFlags {
-      watch: Some(WatchFlagsWithPaths { paths, .. }),
-      ..
-    })
-    | DenoSubcommand::Serve(ServeFlags {
-      watch: Some(WatchFlagsWithPaths { paths, .. }),
-      ..
-    }) = &self.flags.subcommand
-    {
+    if let Some(WatchFlagsWithPaths { paths, .. }) = &self.flags.watch {
       full_paths.extend(paths.iter().map(|path| self.initial_cwd.join(path)));
     }
 
@@ -1424,7 +1576,7 @@ impl CliOptions {
   pub fn lifecycle_scripts_config(&self) -> LifecycleScriptsConfig {
     LifecycleScriptsConfig {
       allowed: self.flags.allow_scripts.clone(),
-      denied: Default::default(),
+      denied: self.flags.deny_scripts.clone(),
       initial_cwd: self.initial_cwd.clone(),
       root_dir: self.workspace().root_dir_path(),
       explicit_install: matches!(
@@ -1450,8 +1602,10 @@ impl CliOptions {
           | InstallFlagsLocal::Entrypoints(InstallEntrypointsFlags {
             lockfile_only: true,
             ..
-          })
+          }),
+        _,
       )) | DenoSubcommand::Add(_)
+        | DenoSubcommand::List(_)
         | DenoSubcommand::Outdated(_)
     ) {
       NpmCachingStrategy::Manual
@@ -1537,7 +1691,11 @@ pub fn config_to_deno_graph_workspace_member(
     None => bail!("Missing 'name' field in config file."),
   };
   let version = match &config.json.version {
-    Some(name) => Some(deno_semver::Version::parse_standard(name)?),
+    Some(version) => {
+      Some(deno_semver::Version::parse_standard(version).with_context(
+        || format!("Invalid 'version' field in '{}'", config.specifier),
+      )?)
+    }
     None => None,
   };
   Ok(deno_graph::WorkspaceMember {
@@ -1552,6 +1710,7 @@ pub fn get_default_v8_flags() -> Vec<String> {
   vec![
     "--stack-size=1024".to_string(),
     "--inspector-live-edit".to_string(),
+    "--external-memory-max-reasonable-size=0".to_string(),
   ]
 }
 

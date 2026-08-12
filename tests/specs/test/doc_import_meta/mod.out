@@ -1,0 +1,13 @@
+Check [WILDCARD]mod.ts
+Check [WILDCARD]mod.ts#6-12.ts
+running 0 tests from ./mod.ts
+running 1 test from ./mod.ts#6-12.ts
+file:///[WILDCARD]/mod.ts#6-12.ts ...
+------- [WILDLINE] -------
+true
+true
+----- [WILDLINE] -----
+file:///[WILDCARD]/mod.ts#6-12.ts ... ok ([WILDLINE])
+
+ok | 1 passed | 0 failed ([WILDLINE])
+

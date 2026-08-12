@@ -1,0 +1,96 @@
+{
+  "tempDir": true,
+  "tests": {
+    "create_assert_and_noop_update": {
+      "steps": [
+        {
+          // No read/write permissions needed for the default snapshot
+          // location; creates __snapshots__/main_test.ts.snap.
+          "args": "test --update-snapshots main_test.ts",
+          "exitCode": 0,
+          "output": "main_update.out"
+        },
+        {
+          "args": "test main_test.ts",
+          "exitCode": 0,
+          "output": "main_assert.out"
+        },
+        {
+          // Nothing changed, so nothing is updated or reported.
+          "args": "test --update-snapshots main_test.ts",
+          "exitCode": 0,
+          "output": "main_update_noop.out"
+        }
+      ]
+    },
+    "missing_snapshot_file": {
+      "args": "test missing_file_test.ts",
+      "exitCode": 1,
+      "output": "missing_file.out"
+    },
+    "missing_snapshot_entry": {
+      "args": "test missing_entry_test.ts",
+      "exitCode": 1,
+      "output": "missing_entry.out"
+    },
+    "mismatch_fails_with_diff": {
+      "args": "test mismatch_test.ts",
+      "exitCode": 1,
+      "output": "mismatch.out"
+    },
+    "update_writes_and_removes_stale": {
+      "steps": [
+        {
+          "args": "test --update-snapshots mismatch_test.ts",
+          "exitCode": 0,
+          "output": "mismatch_update.out"
+        },
+        {
+          "args": "run --allow-read print_snap.ts",
+          "exitCode": 0,
+          "output": "has stale entry: false\nhas updated value: true\n"
+        },
+        {
+          "args": "test mismatch_test.ts",
+          "exitCode": 0,
+          "output": "mismatch_after_update.out"
+        }
+      ]
+    },
+    "update_with_filter_keeps_stale": {
+      "steps": [
+        {
+          // A name filter means other tests' snapshots may not have been
+          // asserted this run, so stale entries are kept.
+          "args": "test --update-snapshots --filter mismatch mismatch_test.ts",
+          "exitCode": 0,
+          "output": "mismatch_update_filter.out"
+        },
+        {
+          "args": "run --allow-read print_snap.ts",
+          "exitCode": 0,
+          "output": "has stale entry: true\nhas updated value: true\n"
+        }
+      ]
+    },
+    "custom_dir_requires_permissions": {
+      "args": "test --update-snapshots custom_dir_test.ts",
+      "exitCode": 1,
+      "output": "custom_dir_no_permission.out"
+    },
+    "custom_dir_with_permissions": {
+      "steps": [
+        {
+          "args": "test --allow-read --allow-write --update-snapshots custom_dir_test.ts",
+          "exitCode": 0,
+          "output": "custom_dir_update.out"
+        },
+        {
+          "args": "test --allow-read custom_dir_test.ts",
+          "exitCode": 0,
+          "output": "custom_dir_assert.out"
+        }
+      ]
+    }
+  }
+}

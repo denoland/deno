@@ -1,0 +1,7 @@
+{
+  "name": "min_release_age_test",
+  "version": "0.0.1",
+  "dependencies": {
+    "@denotest/add": "*"
+  }
+}

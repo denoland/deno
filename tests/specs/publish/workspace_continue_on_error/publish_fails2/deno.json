@@ -1,0 +1,5 @@
+{
+  "name": "@foo/publish-fails2",
+  "version": "1.0.0",
+  "exports": "./mod.ts"
+}

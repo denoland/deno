@@ -1,0 +1,11 @@
+running 2 tests from ./test.js
+runOnly filters subtests ...
+  this subtest is skipped ... ignored [WILDLINE]
+  this subtest is run ... ok [WILDLINE]
+runOnly filters subtests ... ok [WILDLINE]
+runOnly(false) runs every subtest ...
+  sub a ... ok [WILDLINE]
+  sub b ... ok [WILDLINE]
+runOnly(false) runs every subtest ... ok [WILDLINE]
+
+ok | 2 passed (3 steps) | 0 failed | 0 ignored (1 step) [WILDLINE]

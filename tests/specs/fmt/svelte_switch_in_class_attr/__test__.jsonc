@@ -1,0 +1,22 @@
+{
+  // Regression test for https://github.com/denoland/deno/issues/26416 —
+  // `deno fmt --unstable-component` used to panic (or produce invalid
+  // Svelte) when a Svelte interpolation inside a class attribute contained
+  // a switch statement. Verify the formatter runs without panicking and
+  // produces stable, idempotent output.
+  "tempDir": true,
+  "tests": {
+    "format_and_idempotent": {
+      "steps": [
+        {
+          "args": "fmt --unstable-component badly_formatted.svelte",
+          "output": "[WILDLINE]badly_formatted.svelte\nChecked 1 file\n"
+        },
+        {
+          "args": "fmt --unstable-component --check badly_formatted.svelte",
+          "output": "Checked 1 file\n"
+        }
+      ]
+    }
+  }
+}

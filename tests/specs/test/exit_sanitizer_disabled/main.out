@@ -1,0 +1,13 @@
+Check [WILDCARD]main.ts
+running 2 tests from [WILDCARD]main.ts
+exit ...
+------- output -------
+output before exit
+----- output end -----
+
+warning A test called Deno.exit(42) while the exit sanitizer was disabled (sanitizeExit: false). Aborting the test run.
+
+The following tests were pending:
+
+exit => [WILDCARD]main.ts:1:6
+

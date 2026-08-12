@@ -1,0 +1,8 @@
+.vml {
+  behavior: url(#default#VML);
+}
+.icon {
+  filter: url(#blur);
+  fill: url(#gradient);
+  clip-path: url(#clip);
+}

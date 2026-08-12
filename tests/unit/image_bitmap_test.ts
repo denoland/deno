@@ -23,7 +23,7 @@ Deno.test(async function imageBitmapDirect() {
 
 Deno.test(async function imageBitmapRecivesImageBitmap() {
   const imageData = new Blob(
-    [await Deno.readFile(`${prefix}/1x1-red16.png`)],
+    [await Deno.readFile(`${prefix}/squares_6.jpg`)],
   );
   const imageBitmap1 = await createImageBitmap(imageData);
   const imageBitmap2 = await createImageBitmap(imageBitmap1);

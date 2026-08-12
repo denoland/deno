@@ -1,0 +1,7 @@
+{
+  "workspaces": [
+    "./adder",
+    "./multiplier",
+    "./app"
+  ]
+}

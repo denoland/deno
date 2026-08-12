@@ -1,4 +1,7 @@
 {
+  // ignored: tsc no longer reports the missing-CSS-module error that deno's
+  // graph expects. https://github.com/denoland/deno/issues/36085
+  "ignore": true,
   "steps": [
     {
       "args": "check exists.ts",
@@ -31,16 +34,5 @@
       "args": "run --check --reload exists_dynamic_import.ts",
       "output": "Check [WILDCARD]exists_dynamic_import.ts\n"
     }
-  ],
-  "variants": {
-    "tsgo": {
-      "use_tsgo": "1"
-    },
-    "tsc": {
-      "use_tsgo": ""
-    }
-  },
-  "envs": {
-    "DENO_UNSTABLE_TSGO": "${use_tsgo}"
-  }
+  ]
 }

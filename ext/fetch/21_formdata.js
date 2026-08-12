@@ -1,32 +1,26 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// @ts-check
-/// <reference path="../webidl/internal.d.ts" />
-/// <reference path="../web/internal.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
-/// <reference path="./internal.d.ts" />
-/// <reference path="../web/06_streams_types.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_fetch.d.ts" />
-/// <reference lib="esnext" />
-
-import { core, primordials } from "ext:core/mod.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const {
   Blob,
   BlobPrototype,
   File,
   FilePrototype,
-} from "ext:deno_web/09_file.js";
+} = core.loadExtScript("ext:deno_web/09_file.js");
 const {
   ArrayPrototypePush,
   ArrayPrototypeSlice,
   ArrayPrototypeSplice,
   MapPrototypeGet,
+  MapPrototypeHas,
   MapPrototypeSet,
   MathRandom,
   ObjectFreeze,
   ObjectFromEntries,
   ObjectPrototypeIsPrototypeOf,
+  ReflectApply,
   SafeMap,
   SafeRegExp,
   Symbol,
@@ -145,11 +139,14 @@ class FormData {
     name = webidl.converters["USVString"](name, prefix, "Argument 1");
 
     const list = this[entryList];
+    let writeIdx = 0;
     for (let i = 0; i < list.length; i++) {
-      if (list[i].name === name) {
-        ArrayPrototypeSplice(list, i, 1);
-        i--;
+      if (list[i].name !== name) {
+        list[writeIdx++] = list[i];
       }
+    }
+    if (writeIdx !== list.length) {
+      ArrayPrototypeSplice(list, writeIdx);
     }
   }
 
@@ -247,20 +244,22 @@ class FormData {
     const entry = createEntry(name, valueOrBlobValue, filename);
 
     const list = this[entryList];
+    let writeIdx = 0;
     let added = false;
     for (let i = 0; i < list.length; i++) {
       if (list[i].name === name) {
         if (!added) {
-          list[i] = entry;
+          list[writeIdx++] = entry;
           added = true;
-        } else {
-          ArrayPrototypeSplice(list, i, 1);
-          i--;
         }
+      } else {
+        list[writeIdx++] = list[i];
       }
     }
     if (!added) {
       ArrayPrototypePush(list, entry);
+    } else if (writeIdx !== list.length) {
+      ArrayPrototypeSplice(list, writeIdx);
     }
   }
 
@@ -316,7 +315,7 @@ function formDataToBlob(formData) {
   const chunks = [];
   const prefix = `--${boundary}\r\nContent-Disposition: form-data; name="`;
 
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   for (const { 0: name, 1: value } of formData) {
     if (typeof value === "string") {
       ArrayPrototypePush(
@@ -388,6 +387,17 @@ function decodeLatin1StringAsUtf8(latin1String) {
 const CRLF = "\r\n";
 const LF = StringPrototypeCodePointAt(CRLF, 1);
 const CR = StringPrototypeCodePointAt(CRLF, 0);
+const DASH = StringPrototypeCodePointAt("-", 0);
+const MAX_MULTIPART_PART_HEADER_SIZE = 16 * 1024;
+const MAX_MULTIPART_PART_HEADER_COUNT = 128;
+
+/**
+ * @param {Uint8Array} bytes
+ * @returns {string}
+ */
+function decodeLatin1Bytes(bytes) {
+  return ReflectApply(StringFromCharCode, null, bytes);
+}
 
 class MultipartParser {
   /**
@@ -413,11 +423,16 @@ class MultipartParser {
   #parseHeaders(headersText) {
     const headers = new Headers();
     const rawHeaders = StringPrototypeSplit(headersText, "\r\n");
+    let headerCount = 0;
     for (let i = 0; i < rawHeaders.length; ++i) {
       const rawHeader = rawHeaders[i];
       const sepIndex = StringPrototypeIndexOf(rawHeader, ":");
       if (sepIndex < 0) {
         continue; // Skip this header
+      }
+      headerCount++;
+      if (headerCount > MAX_MULTIPART_PART_HEADER_COUNT) {
+        throw new TypeError("Multipart part has too many headers");
       }
       const key = StringPrototypeSlice(rawHeader, 0, sepIndex);
       const value = StringPrototypeSlice(rawHeader, sepIndex + 1);
@@ -429,6 +444,31 @@ class MultipartParser {
     );
 
     return { headers, disposition };
+  }
+
+  /**
+   * @param {number} index
+   * @returns {0 | 1 | 2}
+   */
+  #delimiterType(index) {
+    for (let i = 0; i < this.boundaryChars.length; i++) {
+      if (this.body[index + i] !== this.boundaryChars[i]) {
+        return 0;
+      }
+    }
+
+    const suffixIndex = index + this.boundaryChars.length;
+    if (this.body[suffixIndex] === CR && this.body[suffixIndex + 1] === LF) {
+      return 1;
+    }
+    if (
+      this.body[suffixIndex] === DASH &&
+      this.body[suffixIndex + 1] === DASH
+    ) {
+      return 2;
+    }
+
+    return 0;
   }
 
   /**
@@ -452,7 +492,7 @@ class MultipartParser {
 
     const formData = new FormData();
     let headerText = "";
-    let boundaryIndex = 0;
+    let headerStart = 0;
     let state = 0;
     let fileStart = 0;
 
@@ -461,69 +501,75 @@ class MultipartParser {
       const prevByte = this.body[i - 1];
       const isNewLine = byte === LF && prevByte === CR;
 
-      if (state === 1) {
-        headerText += StringFromCharCode(byte);
-      }
-
       if (state === 0 && isNewLine) {
         state = 1;
+        headerStart = i + 1;
       } else if (
         state === 1
       ) {
+        const headerByteLength = i - headerStart + 1;
+        if (headerByteLength > MAX_MULTIPART_PART_HEADER_SIZE) {
+          throw new TypeError("Multipart part headers are too large");
+        }
         if (
           isNewLine && this.body[i + 1] === CR &&
           this.body[i + 2] === LF
         ) {
           // end of the headers section
+          headerText = decodeLatin1Bytes(
+            TypedArrayPrototypeSubarray(this.body, headerStart, i + 1),
+          );
           state = 2;
           fileStart = i + 3; // After \r\n
         }
       } else if (state === 2) {
-        if (this.boundaryChars[boundaryIndex] !== byte) {
-          boundaryIndex = 0;
-        } else {
-          boundaryIndex++;
-        }
+        if (isNewLine) {
+          const delimiterType = this.#delimiterType(i + 1);
+          if (delimiterType === 0) {
+            continue;
+          }
 
-        if (boundaryIndex >= this.boundary.length) {
           const { headers, disposition } = this.#parseHeaders(headerText);
           const content = TypedArrayPrototypeSubarray(
             this.body,
             fileStart,
-            i - boundaryIndex - 1,
+            i - 1,
           );
           // https://fetch.spec.whatwg.org/#ref-for-dom-body-formdata
           // These are UTF-8 decoded as if it was Latin-1.
           // TODO(@andreubotella): Maybe we shouldn't be parsing entry headers
           // as Latin-1.
+          const hasFilename = MapPrototypeHas(disposition, "filename");
           const latin1Filename = MapPrototypeGet(disposition, "filename");
           const latin1Name = MapPrototypeGet(disposition, "name");
 
-          state = 3;
-          // Reset
-          boundaryIndex = 0;
           headerText = "";
 
-          if (!latin1Name) {
-            continue; // Skip, unknown name
+          // Skip nameless parts, but still advance past the matched delimiter.
+          if (latin1Name) {
+            const name = decodeLatin1StringAsUtf8(latin1Name);
+            if (hasFilename) {
+              const blob = new Blob([content], {
+                type: headers.get("Content-Type") || "application/octet-stream",
+              });
+              formData.append(
+                name,
+                blob,
+                decodeLatin1StringAsUtf8(latin1Filename),
+              );
+            } else {
+              formData.append(name, core.decode(content));
+            }
           }
 
-          const name = decodeLatin1StringAsUtf8(latin1Name);
-          if (latin1Filename) {
-            const blob = new Blob([content], {
-              type: headers.get("Content-Type") || "application/octet-stream",
-            });
-            formData.append(
-              name,
-              blob,
-              decodeLatin1StringAsUtf8(latin1Filename),
-            );
-          } else {
-            formData.append(name, core.decode(content));
+          if (delimiterType === 2) {
+            break;
           }
+
+          state = 1;
+          i += this.boundaryChars.length + 2; // Skip boundary + trailing \r\n
+          headerStart = i + 1;
         }
-      } else if (state === 3 && isNewLine) {
-        state = 1;
       }
     }
 
@@ -554,10 +600,11 @@ function formDataFromEntries(entries) {
 webidl.converters["FormData"] = webidl
   .createInterfaceConverter("FormData", FormDataPrototype);
 
-export {
+return {
   FormData,
   formDataFromEntries,
   FormDataPrototype,
   formDataToBlob,
   parseFormData,
 };
+})();

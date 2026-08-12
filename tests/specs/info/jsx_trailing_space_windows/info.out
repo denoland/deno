@@ -1,0 +1,6 @@
+local: [WILDCARD]main.tsx
+type: TSX
+dependencies: 0 unique
+size: [WILDLINE]
+
+file://[WILDCARD]/main.tsx ([WILDLINE])

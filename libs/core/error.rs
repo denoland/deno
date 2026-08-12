@@ -164,6 +164,12 @@ pub enum CoreErrorKind {
   PendingPromiseResolution,
   #[class(generic)]
   #[error(
+    "Module evaluation is still pending after multiple event loop iterations, \
+     but no stalled top-level await was found. This is a bug in Deno."
+  )]
+  ModuleEvaluationDeadlock,
+  #[class(generic)]
+  #[error(
     "Cannot evaluate dynamically imported module, because JavaScript execution has been terminated"
   )]
   EvaluateDynamicImportedModule,
@@ -262,12 +268,108 @@ pub fn throw_js_error_class(
   scope: &mut v8::PinScope,
   error: &dyn JsErrorClass,
 ) {
-  let exception = js_class_and_message_to_exception(
-    scope,
-    &error.get_class(),
-    &error.get_message(),
-  );
+  let exception = build_js_error_class_exception(scope, error);
   scope.throw_exception(exception);
+}
+
+/// Builds a JS exception for `error` using only native V8 APIs, without
+/// re-entering JavaScript.
+///
+/// This mirrors what the JS `Deno.core.buildCustomError` callback does
+/// (restoring the registered error class so `instanceof` holds, and attaching
+/// the additional properties), but never invokes user-reachable JS. That makes
+/// it safe to call from inside a V8 fast call, where re-entering JS is
+/// forbidden: the callback could run an attacker-controlled prototype setter
+/// that detaches an `ArrayBuffer` argument out from under the JIT, a
+/// use-after-free (GHSA-p4r3-6jgx-4cj5).
+///
+/// Reading data properties off the cached `errorConstructors` map and calling
+/// `SetPrototype` / `CreateDataProperty` / `DefineOwnProperty` never execute
+/// user JS, so the fast-call contract is upheld.
+fn build_js_error_class_exception<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  error: &dyn JsErrorClass,
+) -> v8::Local<'s, v8::Value> {
+  let class = error.get_class();
+  let message = v8::String::new(scope, &error.get_message()).unwrap();
+  let exception = v8::Exception::error(scope, message);
+
+  // `v8::Exception::error` always produces an object, but be defensive.
+  let Ok(exception_obj) = TryInto::<v8::Local<v8::Object>>::try_into(exception)
+  else {
+    return exception;
+  };
+
+  // Restore the exact registered error class (e.g. `RangeError`,
+  // `Deno.errors.NotFound`) by re-parenting the prototype, so that
+  // `err instanceof Deno.errors.NotFound` holds. We never call the class
+  // constructor (that would run JS); we only borrow its `.prototype`.
+  let constructors = JsRealm::exception_state_from_scope(scope)
+    .js_error_constructors
+    .borrow()
+    .clone();
+  if let Some(constructors) = constructors {
+    let constructors = v8::Local::new(scope, constructors);
+    let class_key = v8::String::new(scope, &class).unwrap();
+    if let Some(ctor) = constructors.get(scope, class_key.into())
+      && let Ok(ctor) = TryInto::<v8::Local<v8::Object>>::try_into(ctor)
+    {
+      let prototype_key = v8::String::new(scope, "prototype").unwrap();
+      if let Some(prototype) = ctor.get(scope, prototype_key.into())
+        && prototype.is_object()
+      {
+        exception_obj.set_prototype(scope, prototype);
+      }
+    }
+  }
+
+  // Set `name` explicitly. The registered classes assign `this.name` in their
+  // constructor (an own property), which the prototype swap above does not
+  // reproduce since we never run the constructor. The registration key matches
+  // that assigned name, so using the class here mirrors `new ErrorClass(...)`.
+  let name_key = v8::String::new(scope, "name").unwrap();
+  let class_value = v8::String::new(scope, &class).unwrap();
+  exception_obj.create_data_property(
+    scope,
+    name_key.into(),
+    class_value.into(),
+  );
+
+  // Copy the additional properties (e.g. `code`) and record their keys under
+  // the same symbol `buildCustomError` uses, so the error round-trips back to
+  // Rust via `JsError::from_v8_exception`.
+  let mut added_keys = vec![];
+  for (key, value) in error.get_additional_properties() {
+    let key = v8::String::new(scope, &key).unwrap();
+    // Match `buildCustomError`: don't clobber a property the class defines.
+    if exception_obj.has(scope, key.into()) == Some(true) {
+      continue;
+    }
+    let value = match value {
+      PropertyValue::String(value) => {
+        v8::String::new(scope, &value).unwrap().into()
+      }
+      PropertyValue::Number(value) => v8::Number::new(scope, value).into(),
+    };
+    exception_obj.create_data_property(scope, key.into(), value);
+    added_keys.push(v8::Local::<v8::Value>::from(key));
+  }
+  if !added_keys.is_empty() {
+    let keys_array = v8::Array::new_with_elements(scope, &added_keys);
+    let symbol_name =
+      v8::String::new(scope, "errorAdditionalPropertyKeys").unwrap();
+    let symbol = v8::Symbol::for_key(scope, symbol_name);
+    exception_obj.define_own_property(
+      scope,
+      symbol.into(),
+      keys_array.into(),
+      v8::PropertyAttribute::READ_ONLY
+        | v8::PropertyAttribute::DONT_ENUM
+        | v8::PropertyAttribute::DONT_DELETE,
+    );
+  }
+
+  exception
 }
 
 fn js_class_and_message_to_exception<'s, 'i>(
@@ -380,7 +482,15 @@ pub(crate) fn call_site_evals_key<'s, 'i>(
 /// the one defined here, that adds source map support and colorful formatting.
 /// When updating this struct, also update errors_are_equal_without_cause() in
 /// fmt_error.rs.
-#[derive(Debug, PartialEq, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(
+  Debug,
+  PartialEq,
+  Clone,
+  serde::Deserialize,
+  serde::Serialize,
+  deno_ops::FromV8,
+  deno_ops::ToV8,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct JsError {
   pub name: Option<String>,
@@ -393,6 +503,57 @@ pub struct JsError {
   pub source_line_frame_index: Option<usize>,
   pub aggregated: Option<Vec<JsError>>,
   pub additional_properties: Vec<(String, String)>,
+  /// True when the error's `.stack` was not produced by our
+  /// `prepareStackTrace` (e.g. a custom getter from libraries like Effect, or
+  /// a manually assigned value). In that case the structured `frames` are not
+  /// authoritative and formatters should preserve the custom `.stack` string.
+  #[serde(default)]
+  pub stack_is_custom: bool,
+}
+
+const MAX_ERROR_CONVERSION_DEPTH: usize = 32;
+const MAX_ERROR_CONVERSION_NODES: usize = 256;
+
+struct ErrorConversionState {
+  remaining_nodes: usize,
+  limit_marker_emitted: bool,
+}
+
+enum ErrorConversionStep {
+  Convert,
+  Truncate,
+  Omit,
+}
+
+impl ErrorConversionState {
+  fn new() -> Self {
+    Self {
+      remaining_nodes: MAX_ERROR_CONVERSION_NODES,
+      limit_marker_emitted: false,
+    }
+  }
+
+  fn enter(&mut self, depth: usize) -> ErrorConversionStep {
+    if depth < MAX_ERROR_CONVERSION_DEPTH && self.remaining_nodes > 0 {
+      self.remaining_nodes -= 1;
+      ErrorConversionStep::Convert
+    } else {
+      self.truncate()
+    }
+  }
+
+  fn is_exhausted(&self) -> bool {
+    self.remaining_nodes == 0
+  }
+
+  fn truncate(&mut self) -> ErrorConversionStep {
+    if !self.limit_marker_emitted {
+      self.limit_marker_emitted = true;
+      ErrorConversionStep::Truncate
+    } else {
+      ErrorConversionStep::Omit
+    }
+  }
 }
 
 impl JsErrorClass for JsError {
@@ -433,7 +594,16 @@ impl JsErrorClass for JsError {
   }
 }
 
-#[derive(Debug, Eq, PartialEq, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(
+  Debug,
+  Eq,
+  PartialEq,
+  Clone,
+  serde::Deserialize,
+  serde::Serialize,
+  deno_ops::FromV8,
+  deno_ops::ToV8,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct JsStackFrame {
   pub type_name: Option<String>,
@@ -446,6 +616,7 @@ pub struct JsStackFrame {
   // Warning! isToplevel has inconsistent snake<>camel case, "typo" originates in v8:
   // https://source.chromium.org/search?q=isToplevel&sq=&ss=chromium%2Fchromium%2Fsrc:v8%2F
   #[serde(rename = "isToplevel")]
+  #[v8(rename = "isToplevel")]
   pub is_top_level: Option<bool>,
   pub is_eval: bool,
   pub is_native: bool,
@@ -780,11 +951,17 @@ impl JsError {
     scope: &mut v8::PinScope<'s, 'i>,
     exception: v8::Local<'s, v8::Value>,
   ) -> Box<Self> {
-    Box::new(Self::inner_from_v8_exception(
-      scope,
-      exception,
-      Default::default(),
-    ))
+    let mut state = ErrorConversionState::new();
+    Box::new(
+      Self::inner_from_v8_exception(
+        scope,
+        exception,
+        Default::default(),
+        0,
+        &mut state,
+      )
+      .expect("the conversion budget includes the root exception"),
+    )
   }
 
   pub fn from_v8_message<'s, 'i>(
@@ -832,14 +1009,25 @@ impl JsError {
       stack: None,
       aggregated: None,
       additional_properties: vec![],
+      stack_is_custom: false,
     })
   }
 
   fn inner_from_v8_exception<'s, 'i>(
     scope: &mut v8::PinScope<'s, 'i>,
     exception: v8::Local<'s, v8::Value>,
-    mut seen: HashSet<v8::Local<'s, v8::Object>>,
-  ) -> Self {
+    seen: HashSet<v8::Local<'s, v8::Object>>,
+    depth: usize,
+    state: &mut ErrorConversionState,
+  ) -> Option<Self> {
+    match state.enter(depth) {
+      ErrorConversionStep::Convert => {}
+      ErrorConversionStep::Truncate => {
+        return Some(Self::error_conversion_limit());
+      }
+      ErrorConversionStep::Omit => return None,
+    }
+
     // Create a new HandleScope because we're creating a lot of new local
     // handles below.
     v8::scope!(let scope, scope);
@@ -883,14 +1071,21 @@ impl JsError {
           "Uncaught".to_string()
         }
       });
+      // A cycle terminates by converting the repeated error one final time and
+      // dropping its `cause` and aggregate members. Formatters rely on that
+      // repeat: `find_recursive_cause` matches it against the earlier
+      // occurrence by value to label a cycle `<ref *n>` / `[Circular *n]`, so
+      // it cannot be replaced with a placeholder. `seen` is path-local, so an
+      // error reachable by several distinct paths is not mistaken for a cycle.
+      let is_repeat = seen.contains(&exception);
       let cause = cause.and_then(|cause| {
-        if cause.is_undefined() || seen.contains(&exception) {
+        if cause.is_undefined() || is_repeat {
           None
         } else {
+          let mut seen = seen.clone();
           seen.insert(exception);
-          Some(Box::new(JsError::inner_from_v8_exception(
-            scope, cause, seen,
-          )))
+          JsError::inner_from_v8_exception(scope, cause, seen, depth + 1, state)
+            .map(Box::new)
         }
       });
 
@@ -909,6 +1104,31 @@ impl JsError {
       // Ignore non-array values
       let frames_v8: Option<v8::Local<v8::Array>> =
         frames_v8.and_then(|a| a.try_into().ok());
+
+      // If accessing `.stack` above did not populate `#callSiteEvals`, the
+      // error's stack was not produced by our `prepareStackTrace`. This happens
+      // when the user overrides `.stack` with a custom getter (e.g. Effect,
+      // fiber runtimes) or assigns a plain string. In that case the structured
+      // frames are not authoritative, so we mark the stack as custom and let
+      // formatters preserve the `.stack` string.
+      //
+      // V8's default `.stack` for a frame-less error is exactly its
+      // "name: message" string (and `message` may itself be multi-line). We
+      // only treat the stack as custom when it carries content beyond that
+      // header, so a multi-line *message* isn't mistaken for a stack.
+      let default_stack = if message_prop.is_empty() {
+        name.clone()
+      } else if name.is_empty() {
+        message_prop.clone()
+      } else {
+        format!("{name}: {message_prop}")
+      };
+      let has_structured_frames =
+        frames_v8.map(|a| a.length() > 0).unwrap_or(false);
+      let stack_is_custom = !has_structured_frames
+        && stack.as_ref().is_some_and(|s| {
+          s.lines().count() > 1 && s.trim_end() != default_stack.trim_end()
+        });
 
       // Convert them into Vec<JsStackFrame>
       let mut frames: Vec<JsStackFrame> = match frames_v8 {
@@ -974,23 +1194,70 @@ impl JsError {
       }
 
       let mut aggregated: Option<Vec<JsError>> = None;
-      if is_aggregate_error(scope, v8_exception) {
+      if is_aggregate_error(scope, v8_exception) && !is_repeat {
         // Read an array of stored errors, this is only defined for `AggregateError`
-        let aggregated_errors =
-          get_property(scope, exception, v8_static_strings::ERRORS);
-        let aggregated_errors: Option<v8::Local<v8::Array>> =
-          aggregated_errors.and_then(|a| a.try_into().ok());
-
-        if let Some(errors) = aggregated_errors
-          && errors.length() > 0
-        {
-          let mut agg = vec![];
-          for i in 0..errors.length() {
-            let error = errors.get_index(scope, i).unwrap();
-            let js_error = Self::from_v8_exception(scope, error);
-            agg.push(*js_error);
+        let (aggregated_errors, errors_getter_failed) = {
+          v8::tc_scope!(let tc_scope, scope);
+          let aggregated_errors =
+            get_property(tc_scope, exception, v8_static_strings::ERRORS)
+              .and_then(|value| value.try_cast::<v8::Array>().ok())
+              .map(|errors| v8::Global::new(tc_scope, errors));
+          let errors_getter_failed = tc_scope.has_caught();
+          if errors_getter_failed {
+            tc_scope.reset();
           }
-          aggregated = Some(agg);
+          (aggregated_errors, errors_getter_failed)
+        };
+
+        if errors_getter_failed {
+          aggregated = Some(vec![Self::aggregate_element_unavailable()]);
+        } else if let Some(errors) = aggregated_errors {
+          let errors = v8::Local::new(scope, errors);
+          if errors.length() > 0 {
+            let mut seen = seen.clone();
+            seen.insert(exception);
+            let mut agg = vec![];
+            for i in 0..errors.length() {
+              if state.is_exhausted() {
+                if matches!(state.truncate(), ErrorConversionStep::Truncate) {
+                  agg.push(Self::error_conversion_limit());
+                }
+                break;
+              }
+
+              let (error, element_getter_failed) = {
+                v8::tc_scope!(let tc_scope, scope);
+                let error = errors
+                  .get_index(tc_scope, i)
+                  .map(|error| v8::Global::new(tc_scope, error));
+                let element_getter_failed = tc_scope.has_caught();
+                if element_getter_failed {
+                  tc_scope.reset();
+                }
+                (error, element_getter_failed)
+              };
+              if element_getter_failed {
+                agg.push(Self::aggregate_element_unavailable());
+                break;
+              }
+              let Some(error) = error else {
+                agg.push(Self::aggregate_element_unavailable());
+                break;
+              };
+              let error = v8::Local::new(scope, error);
+              let Some(js_error) = Self::inner_from_v8_exception(
+                scope,
+                error,
+                seen.clone(),
+                depth + 1,
+                state,
+              ) else {
+                break;
+              };
+              agg.push(js_error);
+            }
+            aggregated = Some(agg);
+          }
         }
       };
 
@@ -1030,7 +1297,7 @@ impl JsError {
         vec![]
       };
 
-      Self {
+      Some(Self {
         name: e.name,
         message: e.message,
         exception_message,
@@ -1041,14 +1308,15 @@ impl JsError {
         stack,
         aggregated,
         additional_properties,
-      }
+        stack_is_custom,
+      })
     } else {
       let exception_message = exception_message
         .unwrap_or_else(|| v8_to_rust_string(&msg.get(scope), scope));
       // The exception is not a JS Error object.
       // Get the message given by V8::Exception::create_message(), and provide
       // empty frames.
-      Self {
+      Some(Self {
         name: None,
         message: None,
         exception_message,
@@ -1059,7 +1327,32 @@ impl JsError {
         stack: None,
         aggregated: None,
         additional_properties: vec![],
-      }
+        stack_is_custom: false,
+      })
+    }
+  }
+
+  fn error_conversion_limit() -> Self {
+    Self::conversion_placeholder("[Error details truncated]")
+  }
+
+  fn aggregate_element_unavailable() -> Self {
+    Self::conversion_placeholder("[Error details unavailable]")
+  }
+
+  fn conversion_placeholder(message: &str) -> Self {
+    Self {
+      name: None,
+      message: Some(message.to_string()),
+      exception_message: format!("Uncaught {message}"),
+      cause: None,
+      source_line: None,
+      source_line_frame_index: None,
+      frames: vec![],
+      stack: None,
+      aggregated: None,
+      additional_properties: vec![],
+      stack_is_custom: false,
     }
   }
 }
@@ -1127,19 +1420,42 @@ pub(crate) fn is_aggregate_error<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   value: v8::Local<'s, v8::Value>,
 ) -> bool {
+  // Prototype and property lookups can invoke arbitrary accessors or proxy
+  // traps. Keep exceptions raised while probing contained here: failure to
+  // classify an error should not interfere with converting the original
+  // exception.
+  v8::tc_scope!(let tc_scope, scope);
+
+  let result = is_aggregate_error_inner(tc_scope, value);
+  if tc_scope.has_caught() {
+    tc_scope.reset();
+    false
+  } else {
+    result
+  }
+}
+
+fn is_aggregate_error_inner<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  value: v8::Local<'s, v8::Value>,
+) -> bool {
   let mut maybe_prototype = Some(value);
   while let Some(prototype) = maybe_prototype {
     if !prototype.is_object() {
       return false;
     }
 
-    let prototype = prototype.to_object(scope).unwrap();
+    let Ok(prototype) = prototype.try_cast::<v8::Object>() else {
+      return false;
+    };
     let prototype_name =
       match get_property(scope, prototype, v8_static_strings::CONSTRUCTOR) {
         Some(constructor) => {
-          let ctor = constructor.to_object(scope).unwrap();
+          let Ok(ctor) = constructor.try_cast::<v8::Object>() else {
+            return false;
+          };
           get_property(scope, ctor, v8_static_strings::NAME)
-            .and_then(|v| v.to_string(scope))
+            .and_then(|v| v.try_cast::<v8::String>().ok())
             .map(|s| v8_to_rust_string(&s, scope))
         }
         None => return false,
@@ -2240,9 +2556,336 @@ pub fn throw_error_one_byte<'s, 'i>(
   scope.throw_exception(exc);
 }
 
+/// Throw a Node-flavoured `ERR_INVALID_THIS` `TypeError` -- a plain
+/// `TypeError` whose `code` own-property is `"ERR_INVALID_THIS"`. The op2
+/// macro uses this to report cppgc brand-check failures so that the thrown
+/// error matches the `webidl.assertBranded` shape expected by web platform
+/// and Node compat tests.
+pub fn throw_invalid_this_error_one_byte_info(
+  info: &v8::FunctionCallbackInfo,
+  message: &str,
+) {
+  v8::callback_scope!(unsafe scope, info);
+  throw_invalid_this_error_one_byte(scope, message);
+}
+
+pub fn throw_invalid_this_error_one_byte<'s, 'i>(
+  scope: &mut v8::PinCallbackScope<'s, 'i>,
+  message: &str,
+) {
+  let msg = deno_core::v8::String::new_from_one_byte(
+    scope,
+    message.as_bytes(),
+    deno_core::v8::NewStringType::Normal,
+  )
+  .unwrap();
+  let exc = deno_core::v8::Exception::type_error(scope, msg);
+  if let Some(exc_obj) = exc.to_object(scope) {
+    let code_key = deno_core::v8::String::new_from_one_byte(
+      scope,
+      b"code",
+      deno_core::v8::NewStringType::Normal,
+    )
+    .unwrap();
+    let code_val = deno_core::v8::String::new_from_one_byte(
+      scope,
+      b"ERR_INVALID_THIS",
+      deno_core::v8::NewStringType::Normal,
+    )
+    .unwrap();
+    exc_obj.set(scope, code_key.into(), code_val.into());
+  }
+  scope.throw_exception(exc);
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[cfg(not(miri))]
+  #[test]
+  fn test_js_error_from_v8_exception_handles_cyclic_aggregate_error() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let exception: v8::Local<v8::Object> = JsRuntime::eval(
+      scope,
+      r#"(() => {
+        const error = new AggregateError([], "boom");
+        error.errors.push(error);
+        return error;
+      })()"#,
+    )
+    .unwrap();
+
+    let error = JsError::from_v8_exception(scope, exception.into());
+    let aggregated = error.aggregated.as_ref().expect("aggregate errors");
+    assert_eq!(aggregated.len(), 1);
+    // The cycle terminates by repeating the error once with its own members
+    // dropped, rather than recursing into itself forever.
+    assert_eq!(aggregated[0].exception_message, error.exception_message);
+    assert!(aggregated[0].aggregated.is_none());
+  }
+
+  #[cfg(not(miri))]
+  #[test]
+  fn test_js_error_from_v8_exception_handles_crossed_aggregate_cycle() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let exception: v8::Local<v8::Object> = JsRuntime::eval(
+      scope,
+      r#"(() => {
+        const first = new AggregateError([], "first");
+        const second = new AggregateError([first], "second");
+        first.errors.push(second);
+        return first;
+      })()"#,
+    )
+    .unwrap();
+
+    let error = JsError::from_v8_exception(scope, exception.into());
+    let second = &error.aggregated.as_ref().unwrap()[0];
+    let repeated_first = &second.aggregated.as_ref().unwrap()[0];
+    assert_eq!(repeated_first.exception_message, error.exception_message);
+    assert!(repeated_first.aggregated.is_none());
+  }
+
+  #[cfg(not(miri))]
+  #[test]
+  fn test_js_error_from_v8_exception_truncates_deep_cause_chain() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let exception: v8::Local<v8::Object> = JsRuntime::eval(
+      scope,
+      r#"(() => {
+        let error = new Error("0");
+        for (let i = 1; i < 100; i++) {
+          error = new Error(String(i), { cause: error });
+        }
+        return error;
+      })()"#,
+    )
+    .unwrap();
+
+    let error = JsError::from_v8_exception(scope, exception.into());
+    let mut current = Some(error.as_ref());
+    let mut found_truncated = false;
+    while let Some(error) = current {
+      if error.exception_message == "Uncaught [Error details truncated]" {
+        found_truncated = true;
+        break;
+      }
+      current = error.cause.as_deref();
+    }
+    assert!(found_truncated);
+  }
+
+  #[cfg(not(miri))]
+  #[test]
+  fn test_js_error_from_v8_exception_bounds_shared_aggregate_graph() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let exception: v8::Local<v8::Object> = JsRuntime::eval(
+      scope,
+      r#"(() => {
+        globalThis.aggregateElementReads = 0;
+        let error = new Error("leaf");
+        for (let i = 0; i < 20; i++) {
+          error = new AggregateError([error, error], String(i));
+          const child = error.errors[0];
+          Object.defineProperties(error.errors, {
+            0: {
+              get() {
+                globalThis.aggregateElementReads++;
+                return child;
+              },
+            },
+            1: {
+              get() {
+                globalThis.aggregateElementReads++;
+                return child;
+              },
+            },
+          });
+        }
+        return error;
+      })()"#,
+    )
+    .unwrap();
+
+    let error = JsError::from_v8_exception(scope, exception.into());
+    let mut pending = vec![error.as_ref()];
+    let mut converted_nodes = 0;
+    let mut truncated_nodes = 0;
+    while let Some(error) = pending.pop() {
+      converted_nodes += 1;
+      if error.exception_message == "Uncaught [Error details truncated]" {
+        truncated_nodes += 1;
+      }
+      if let Some(cause) = error.cause.as_deref() {
+        pending.push(cause);
+      }
+      if let Some(aggregated) = &error.aggregated {
+        pending.extend(aggregated);
+      }
+    }
+
+    assert_eq!(truncated_nodes, 1);
+    assert!(converted_nodes <= MAX_ERROR_CONVERSION_NODES + 1);
+    let element_reads: v8::Local<v8::Integer> =
+      JsRuntime::eval(scope, "globalThis.aggregateElementReads").unwrap();
+    assert!(element_reads.value() as usize <= MAX_ERROR_CONVERSION_NODES);
+  }
+
+  #[cfg(not(miri))]
+  #[test]
+  fn test_js_error_from_v8_exception_handles_throwing_aggregate_element() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let exception: v8::Local<v8::Object> = JsRuntime::eval(
+      scope,
+      r#"(() => {
+        const error = new AggregateError([new Error("inner")], "outer");
+        Object.defineProperty(error.errors, 0, {
+          get() {
+            throw new Error("element getter failed");
+          },
+        });
+        return error;
+      })()"#,
+    )
+    .unwrap();
+
+    let error = JsError::from_v8_exception(scope, exception.into());
+    let aggregated = error.aggregated.as_ref().expect("aggregate errors");
+    assert_eq!(aggregated.len(), 1);
+    assert_eq!(
+      aggregated[0].exception_message,
+      "Uncaught [Error details unavailable]"
+    );
+
+    let result: v8::Local<v8::Integer> =
+      JsRuntime::eval(scope, "1 + 1").expect("exception was contained");
+    assert_eq!(result.value(), 2);
+  }
+
+  #[cfg(not(miri))]
+  #[test]
+  fn test_js_error_from_v8_exception_handles_throwing_aggregate_errors_getter()
+  {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let exception: v8::Local<v8::Object> = JsRuntime::eval(
+      scope,
+      r#"(() => {
+        const error = new AggregateError([], "outer");
+        Object.defineProperty(error, "errors", {
+          get() {
+            throw new Error("errors getter failed");
+          },
+        });
+        return error;
+      })()"#,
+    )
+    .unwrap();
+
+    let error = JsError::from_v8_exception(scope, exception.into());
+    let aggregated = error.aggregated.as_ref().expect("aggregate errors");
+    assert_eq!(aggregated.len(), 1);
+    assert_eq!(
+      aggregated[0].exception_message,
+      "Uncaught [Error details unavailable]"
+    );
+
+    let result: v8::Local<v8::Integer> =
+      JsRuntime::eval(scope, "1 + 1").expect("exception was contained");
+    assert_eq!(result.value(), 2);
+  }
+
+  #[cfg(not(miri))]
+  #[test]
+  fn test_is_aggregate_error_recognizes_builtin() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let exception: v8::Local<v8::Object> = JsRuntime::eval(
+      scope,
+      "new AggregateError([new Error('first')], 'combined')",
+    )
+    .unwrap();
+    let exception = exception.into();
+
+    assert!(is_aggregate_error(scope, exception));
+    let js_error = JsError::from_v8_exception(scope, exception);
+    assert_eq!(js_error.name.as_deref(), Some("AggregateError"));
+    assert_eq!(js_error.message.as_deref(), Some("combined"));
+    assert_eq!(js_error.aggregated.as_ref().map(Vec::len), Some(1));
+  }
+
+  #[cfg(not(miri))]
+  #[test]
+  fn test_is_aggregate_error_handles_malformed_constructors() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    for constructor in ["null", "undefined", "42", "'AggregateError'"] {
+      let exception: v8::Local<v8::Object> = JsRuntime::eval(
+        scope,
+        &format!(
+          "(() => {{ const error = new Error('malformed'); Object.defineProperty(error, 'constructor', {{ value: {constructor} }}); return error; }})()"
+        ),
+      )
+      .unwrap();
+      let exception = exception.into();
+
+      {
+        v8::tc_scope!(let tc_scope, scope);
+        assert!(!is_aggregate_error(tc_scope, exception));
+        assert!(!tc_scope.has_caught());
+      }
+      let js_error = JsError::from_v8_exception(scope, exception);
+      assert_eq!(js_error.message.as_deref(), Some("malformed"));
+      assert!(js_error.aggregated.is_none());
+    }
+  }
+
+  #[cfg(not(miri))]
+  #[test]
+  fn test_is_aggregate_error_handles_throwing_accessors() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    for source in [
+      "(() => { const error = new Error('constructor getter'); Object.defineProperty(error, 'constructor', { get() { throw new Error('constructor lookup failed'); } }); return error; })()",
+      "(() => { const error = new Error('name getter'); const constructor = {}; Object.defineProperty(constructor, 'name', { get() { throw new Error('name lookup failed'); } }); Object.defineProperty(error, 'constructor', { value: constructor }); return error; })()",
+    ] {
+      let exception: v8::Local<v8::Object> =
+        JsRuntime::eval(scope, source).unwrap();
+      let exception = exception.into();
+
+      {
+        v8::tc_scope!(let tc_scope, scope);
+        assert!(!is_aggregate_error(tc_scope, exception));
+        assert!(!tc_scope.has_caught());
+      }
+      let js_error = JsError::from_v8_exception(scope, exception);
+      assert!(js_error.aggregated.is_none());
+
+      // Classification must leave the isolate ready to convert the next
+      // exception normally.
+      let next_exception: v8::Local<v8::Object> =
+        JsRuntime::eval(scope, "new TypeError('next error')").unwrap();
+      let next_exception = next_exception.into();
+      let next_error = JsError::from_v8_exception(scope, next_exception);
+      assert_eq!(next_error.name.as_deref(), Some("TypeError"));
+      assert_eq!(next_error.message.as_deref(), Some("next error"));
+    }
+  }
 
   #[test]
   fn test_format_file_name() {
@@ -2454,5 +3097,118 @@ mod tests {
       .expect("should fall back to message string");
 
     assert_eq!(value.to_rust_string_lossy(scope), expected_message);
+  }
+
+  #[cfg(not(miri))]
+  #[test]
+  fn test_js_error_v8_roundtrip_preserves_shape() {
+    use crate::convert::FromV8;
+    use crate::convert::ToV8;
+
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let frame = JsStackFrame {
+      type_name: Some("Foo".to_string()),
+      function_name: Some("bar".to_string()),
+      method_name: None,
+      file_name: Some("file:///a.ts".to_string()),
+      line_number: Some(10),
+      column_number: Some(5),
+      eval_origin: None,
+      is_top_level: Some(true),
+      is_eval: false,
+      is_native: false,
+      is_constructor: false,
+      is_async: false,
+      is_promise_all: false,
+      is_wasm: false,
+      promise_index: None,
+    };
+    let cause = JsError {
+      name: Some("Error".to_string()),
+      message: Some("inner".to_string()),
+      stack: None,
+      cause: None,
+      exception_message: "Error: inner".to_string(),
+      frames: vec![],
+      source_line: None,
+      source_line_frame_index: None,
+      aggregated: None,
+      additional_properties: vec![],
+      stack_is_custom: false,
+    };
+    let err = JsError {
+      name: Some("TypeError".to_string()),
+      message: Some("boom".to_string()),
+      stack: Some(
+        "TypeError: boom\n    at Foo.bar (file:///a.ts:10:5)".to_string(),
+      ),
+      cause: Some(Box::new(cause)),
+      exception_message: "TypeError: boom".to_string(),
+      frames: vec![frame],
+      source_line: Some("throw new TypeError('boom');".to_string()),
+      source_line_frame_index: Some(0),
+      aggregated: None,
+      additional_properties: vec![("code".to_string(), "X1".to_string())],
+      stack_is_custom: false,
+    };
+
+    let v = err.clone().to_v8(scope).unwrap();
+
+    // Lock in JS-visible field names: serde-emitted shape (camelCase, with
+    // the `isToplevel` quirk preserved) must match what the derive emits.
+    let obj = v8::Local::<v8::Object>::try_from(v).expect("object");
+    let expected_keys = [
+      "name",
+      "message",
+      "stack",
+      "cause",
+      "exceptionMessage",
+      "frames",
+      "sourceLine",
+      "sourceLineFrameIndex",
+      "aggregated",
+      "additionalProperties",
+      "stackIsCustom",
+    ];
+    for key in expected_keys {
+      let key_v = v8::String::new(scope, key).unwrap();
+      assert!(
+        obj.has(scope, key_v.into()).unwrap(),
+        "JsError v8 shape missing key {key}",
+      );
+    }
+
+    let frames_key = v8::String::new(scope, "frames").unwrap();
+    let frames_v = obj.get(scope, frames_key.into()).unwrap();
+    let frames = v8::Local::<v8::Array>::try_from(frames_v).unwrap();
+    let frame0 = frames.get_index(scope, 0).unwrap();
+    let frame0 = v8::Local::<v8::Object>::try_from(frame0).unwrap();
+    let frame_keys = [
+      "typeName",
+      "functionName",
+      "fileName",
+      "lineNumber",
+      "columnNumber",
+      // serde rename for the v8 "typo"; must be `isToplevel`, not `isTopLevel`.
+      "isToplevel",
+      "isEval",
+      "isNative",
+      "isConstructor",
+      "isAsync",
+      "isPromiseAll",
+      "isWasm",
+    ];
+    for key in frame_keys {
+      let key_v = v8::String::new(scope, key).unwrap();
+      assert!(
+        frame0.has(scope, key_v.into()).unwrap(),
+        "JsStackFrame v8 shape missing key {key}",
+      );
+    }
+
+    let back = JsError::from_v8(scope, v).unwrap();
+    assert_eq!(err, back);
   }
 }

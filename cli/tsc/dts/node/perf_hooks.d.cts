@@ -756,7 +756,7 @@ declare module "perf_hooks" {
          * The maximum recorded event loop delay.
          * v17.4.0, v16.14.0
          */
-        readonly maxBigInt: number;
+        readonly maxBigInt: bigint;
         /**
          * The mean of the recorded event loop delays.
          * @since v11.10.0

@@ -1,0 +1,5 @@
+{
+  "name": "@test/slow-types",
+  "version": "1.0.0",
+  "exports": "./mod.ts"
+}

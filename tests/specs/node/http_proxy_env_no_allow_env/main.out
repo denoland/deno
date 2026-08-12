@@ -1,0 +1,3 @@
+body: hello from origin
+proxy saw requests: 1
+proxy first url: http://127.0.0.1:9448/test

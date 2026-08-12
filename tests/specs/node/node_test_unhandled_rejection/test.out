@@ -1,0 +1,7 @@
+running 2 tests from ./test.js
+rejection during await fails the test ... FAILED ([WILDLINE])
+well-behaved test still passes ... ok ([WILDLINE])
+[WILDCARD]boom during await[WILDCARD]
+FAILED | 1 passed | 1 failed ([WILDLINE])
+
+error: Test failed

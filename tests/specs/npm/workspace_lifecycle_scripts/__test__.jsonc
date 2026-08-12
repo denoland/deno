@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "tests": {
+    "postinstall": {
+      "steps": [
+        {
+          "args": "install --allow-scripts",
+          "output": "install.out"
+        }
+      ]
+    }
+  }
+}

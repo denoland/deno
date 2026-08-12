@@ -16,6 +16,7 @@ use crate::error::exception_to_err;
 use crate::fast_string::FastString;
 use crate::module_specifier::ModuleSpecifier;
 
+mod import_graph;
 mod loaders;
 mod map;
 mod module_map_data;
@@ -33,11 +34,13 @@ pub use loaders::ModuleLoadReferrer;
 pub use loaders::ModuleLoadResponse;
 pub use loaders::ModuleLoader;
 pub use loaders::ModuleLoaderError;
+pub use loaders::ModuleResolveResponse;
 pub use loaders::NoopModuleLoader;
 pub use loaders::StaticModuleLoader;
 pub(crate) use map::ModuleMap;
 pub(crate) use map::script_origin;
 pub(crate) use map::synthetic_module_evaluation_steps;
+pub use map::wrap_lazy_ext_script;
 pub(crate) use module_map_data::ModuleMapSnapshotData;
 pub(crate) use recursive_load::SideModuleKind;
 
@@ -219,10 +222,49 @@ impl From<&'static [u8]> for ModuleCodeBytes {
   }
 }
 
+/// Location of the import statement whose attributes are being validated.
+/// Used to produce error messages that point at the offending import.
+#[derive(Debug, Default, Clone)]
+pub struct ImportAttributesContext {
+  /// URL of the module that contains the import statement.
+  pub referrer: String,
+  /// The imported specifier (the string after `from`/`import`).
+  pub specifier: String,
+  /// 1-based line number of the import statement, if known. Only available
+  /// for static imports.
+  pub line_number: Option<u32>,
+  /// 1-based column number of the import statement, if known. Only available
+  /// for static imports.
+  pub column_number: Option<u32>,
+}
+
+impl ImportAttributesContext {
+  /// Formats a human-readable suffix describing where the import occurs, e.g.
+  /// `\n    at file:///main.js:1:1`.
+  ///
+  /// Only emitted for static imports (where a line/column is known). Dynamic
+  /// imports already surface the call site through the rejected promise's
+  /// stack trace, so appending a location there would just duplicate it.
+  pub fn format_location(&self) -> String {
+    let Some(line) = self.line_number else {
+      return String::new();
+    };
+    if self.referrer.is_empty() {
+      return String::new();
+    }
+    let mut s = format!("\n    at {}:{line}", self.referrer);
+    if let Some(column) = self.column_number {
+      s.push_str(&format!(":{column}"));
+    }
+    s
+  }
+}
+
 /// Callback to validate import attributes. If the validation fails and exception
 /// should be thrown using `scope.throw_exception()`.
-pub type ValidateImportAttributesCb =
-  Box<dyn Fn(&mut v8::PinScope, &HashMap<String, String>)>;
+pub type ValidateImportAttributesCb = Box<
+  dyn Fn(&mut v8::PinScope, &HashMap<String, String>, &ImportAttributesContext),
+>;
 
 /// Callback to validate import attributes. If the validation fails and exception
 /// should be thrown using `scope.throw_exception()`.
@@ -538,7 +580,7 @@ impl ModuleSource {
 pub type ModuleSourceFuture =
   dyn Future<Output = Result<ModuleSource, ModuleLoaderError>>;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResolutionKind {
   /// This kind is used in only one situation: when a module is loaded via
   /// `JsRuntime::load_main_module` and is the top-level module, ie. the one

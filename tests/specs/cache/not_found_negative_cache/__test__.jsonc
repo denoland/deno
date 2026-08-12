@@ -1,0 +1,21 @@
+{
+  // Regression test for https://github.com/denoland/deno/issues/25404.
+  // A 404 from the remote server must be cached so the URL is not
+  // re-requested on every run, until `--reload` is used or the negative
+  // cache entry expires.
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "run --allow-import main.ts",
+      "output": "first.out"
+    },
+    {
+      "args": "run --allow-import main.ts",
+      "output": "second.out"
+    },
+    {
+      "args": "run --allow-import --reload main.ts",
+      "output": "first.out"
+    }
+  ]
+}

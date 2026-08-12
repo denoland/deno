@@ -1,0 +1,37 @@
+{
+  "tempDir": true,
+  // The `caches` API is only enabled once a storage key resolves, which in a
+  // compiled binary requires a resolvable app-data dir; redirect it into the
+  // temp dir so this test controls whether the cache is available. (The cache
+  // contents themselves live under the system temp dir, not the app-data dir.)
+  "envs": {
+    "HOME": "$PWD",
+    "USERPROFILE": "$PWD",
+    "XDG_DATA_HOME": "$PWD/data",
+    "LOCALAPPDATA": "$PWD/data"
+  },
+  "steps": [
+    {
+      "if": "unix",
+      "args": "compile -A --output out main.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      "if": "unix",
+      "commandName": "./out",
+      "args": [],
+      "output": "cached body\n"
+    },
+    {
+      "if": "windows",
+      "args": "compile -A --output out.exe main.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      "if": "windows",
+      "commandName": "./out.exe",
+      "args": [],
+      "output": "cached body\n"
+    }
+  ]
+}

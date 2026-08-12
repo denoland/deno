@@ -1,0 +1,5 @@
+error: SyntaxError: Not a pattern
+  |
+2 | const test = (i, 2 * i) => console.log(i);
+  |                  ~~~~~
+    at [WILDCARD]/main.ts:2:18

@@ -3,13 +3,14 @@
 #![allow(non_upper_case_globals, reason = "native code")]
 #![deny(unsafe_op_in_unsafe_fn)]
 
-const NAPI_VERSION: u32 = 9;
+const NAPI_VERSION: u32 = 10;
 
 use std::ptr::NonNull;
 
 use libc::INT_MAX;
 use napi_sym::napi_sym;
 
+use super::util::SendPtr;
 use super::util::check_new_from_utf8;
 use super::util::check_new_from_utf8_len;
 use super::util::get_array_buffer_ptr;
@@ -20,6 +21,7 @@ use super::util::v8_name_from_property_descriptor;
 use crate::check_arg;
 use crate::check_env;
 use crate::function::CallbackInfo;
+use crate::function::CallbackInfoScope;
 use crate::function::create_function;
 use crate::function::create_function_template;
 use crate::*;
@@ -43,6 +45,9 @@ struct Reference {
   finalize_cb: Option<napi_finalize>,
   finalize_data: *mut c_void,
   finalize_hint: *mut c_void,
+  /// Identity of this reference's entry in the env's shutdown finalizer list,
+  /// as long as the finalizer hasn't run yet.
+  finalizer_id: Option<NapiFinalizerId>,
 }
 
 impl Reference {
@@ -55,6 +60,18 @@ impl Reference {
     finalize_data: *mut c_void,
     finalize_hint: *mut c_void,
   ) -> Box<Self> {
+    // Register the finalizer so that it still runs at environment shutdown for
+    // references that were never collected, the same way Node.js finalizes its
+    // remaining `reflist` entries in `napi_env::DeleteMe()`.
+    let finalizer_id = finalize_cb.map(|cb| {
+      unsafe { &*env }.add_ref_finalizer(
+        env as napi_env,
+        cb,
+        finalize_data,
+        finalize_hint,
+      )
+    });
+
     let isolate = unsafe { (*env).isolate() };
 
     let mut reference = Box::new(Reference {
@@ -65,6 +82,7 @@ impl Reference {
       finalize_cb,
       finalize_data,
       finalize_hint,
+      finalizer_id,
     });
 
     if initial_ref_count == 0 {
@@ -93,7 +111,12 @@ impl Reference {
     self.ref_count
   }
 
+  /// Drops this reference's finalizer, deregistering it from the env's
+  /// shutdown finalizer list so that it cannot be called (again) there.
   fn reset(&mut self) {
+    if let Some(id) = self.finalizer_id.take() {
+      unsafe { &*self.env }.remove_ref_finalizer(id);
+    }
     self.finalize_cb = None;
     self.finalize_data = std::ptr::null_mut();
     self.finalize_hint = std::ptr::null_mut();
@@ -123,24 +146,43 @@ impl Reference {
   fn weak_callback(reference: *mut Reference) {
     let reference = unsafe { &mut *reference };
 
+    // Copy out the callback fields before resetting; the finalize_cb may free
+    // the Reference (UAF if we kept borrowing it).
     let finalize_cb = reference.finalize_cb;
     let finalize_data = reference.finalize_data;
     let finalize_hint = reference.finalize_hint;
+    let ownership = reference.ownership;
+    let env_ptr = reference.env;
     reference.reset();
 
-    // copy this value before the finalize callback, since
-    // it might free the reference (which would be a UAF)
-    let ownership = reference.ownership;
+    // Note: we are NOT inside a V8 GC pause here. `v8::Weak::with_finalizer`
+    // (rusty_v8) schedules this closure as V8's *second-pass* weak callback,
+    // which V8 invokes after the GC cycle completes, with the isolate in a
+    // fully usable state. This is rusty_v8's equivalent of Node.js's
+    // `node_napi_env__::DrainFinalizerQueue` (driven by SetImmediate): both
+    // amount to "run the finalizer after GC, with a live Isolate." Calling
+    // user-provided `napi_finalize` callbacks here is therefore safe.
+    //
+    // History: a previous attempt (#33260) deferred this work through
+    // `V8CrossThreadTaskSpawner::spawn` under the (incorrect) belief that
+    // rusty_v8 invoked us inside a GC pause. The cross-thread spawner takes a
+    // `Mutex` and pokes a tokio `AtomicWaker` synchronously on every
+    // finalizer; doing that from V8's second-pass callback is what produced
+    // the intermittent `napi_unwrap` failure reported in #33924 / #34008
+    // ("Failed to unwrap exclusive reference of `...` type from napi value").
+    // `reset()` above already deregistered the shutdown finalizer entry, so it
+    // is not called again at env shutdown (matches Node's `Unlink` ordering in
+    // `Reference::Finalize`).
     if let Some(finalize_cb) = finalize_cb {
-      // Deregister before calling so it won't be called again at shutdown
-      let env = unsafe { &*reference.env };
-      env.remove_ref_finalizer(finalize_data);
       unsafe {
-        finalize_cb(reference.env as _, finalize_data, finalize_hint);
+        finalize_cb(env_ptr as _, finalize_data, finalize_hint);
       }
     }
 
     if ownership == ReferenceOwnership::Runtime {
+      // Runtime-owned: free the Reference now. Userland-owned references are
+      // freed by the addon via `napi_delete_reference` (or by napi-rs's
+      // REFERENCE_MAP overwrite path).
       unsafe { drop(Reference::from_raw(reference)) }
     }
   }
@@ -159,6 +201,17 @@ impl Reference {
       r.reset();
     } else {
       unsafe { drop(Reference::from_raw(r)) }
+    }
+  }
+}
+
+impl Drop for Reference {
+  fn drop(&mut self) {
+    // A reference that goes away without its finalizer having run (e.g. via
+    // `napi_delete_reference`) must not leave a dangling entry behind: Node
+    // unlinks the reference from the env's list in `~RefTracker`.
+    if let Some(id) = self.finalizer_id.take() {
+      unsafe { &*self.env }.remove_ref_finalizer(id);
     }
   }
 }
@@ -1061,6 +1114,72 @@ fn node_api_create_object_with_properties<'s>(
 }
 
 #[napi_sym]
+fn node_api_create_object_with_named_properties<'s>(
+  env_ptr: *mut Env,
+  result: *mut napi_value<'s>,
+  property_count: usize,
+  property_names: *const *const c_char,
+  property_values: *const napi_value<'s>,
+) -> napi_status {
+  let env = check_env!(env_ptr);
+  check_arg!(env, result);
+
+  if property_count > 0 {
+    check_arg!(env, property_names);
+    check_arg!(env, property_values);
+  }
+
+  unsafe {
+    v8::callback_scope!(unsafe scope, env.context());
+
+    let names = if property_count == 0 {
+      &[]
+    } else {
+      std::slice::from_raw_parts(property_names, property_count)
+    };
+
+    let values = if property_count == 0 {
+      &[]
+    } else {
+      std::slice::from_raw_parts(property_values, property_count)
+    };
+
+    let mut v8_names = Vec::with_capacity(property_count);
+    let mut v8_values = Vec::with_capacity(property_count);
+
+    for i in 0..property_count {
+      let c_str = names[i];
+      if c_str.is_null() {
+        return napi_invalid_arg;
+      }
+      let name_str = std::ffi::CStr::from_ptr(c_str);
+      let Some(v8_name) = v8::String::new_from_utf8(
+        scope,
+        name_str.to_bytes(),
+        v8::NewStringType::Internalized,
+      ) else {
+        return napi_set_last_error(env_ptr, napi_generic_failure);
+      };
+      v8_names.push(v8_name.into());
+
+      if let Some(value) = *values[i] {
+        v8_values.push(value);
+      } else {
+        return napi_invalid_arg;
+      }
+    }
+
+    let prototype = v8::null(scope).into();
+    *result = v8::Object::with_prototype_and_properties(
+      scope, prototype, &v8_names, &v8_values,
+    )
+    .into();
+  }
+
+  return napi_clear_last_error(env_ptr);
+}
+
+#[napi_sym]
 fn napi_create_array(
   env_ptr: *mut Env,
   result: *mut napi_value,
@@ -1235,6 +1354,399 @@ fn napi_create_string_utf16(
   return napi_clear_last_error(env_ptr);
 }
 
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+enum ExternalStringEncoding {
+  OneByte,
+  TwoByte,
+}
+
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+struct ExternalStringKey {
+  data: usize,
+  len: usize,
+  encoding: ExternalStringEncoding,
+}
+
+struct ExternalStringFinalizer {
+  env: Option<usize>,
+  callback: napi_finalize,
+  data: usize,
+  hint: usize,
+  sender: deno_core::V8CrossThreadTaskSpawner,
+  ready: bool,
+}
+
+#[derive(Default)]
+struct ExternalStringFinalizers {
+  next_id: u64,
+  active: std::collections::HashMap<ExternalStringKey, u64>,
+  entries: std::collections::HashMap<u64, ExternalStringFinalizer>,
+}
+
+static EXTERNAL_STRING_FINALIZERS: std::sync::LazyLock<
+  std::sync::Mutex<ExternalStringFinalizers>,
+> = std::sync::LazyLock::new(|| {
+  std::sync::Mutex::new(ExternalStringFinalizers::default())
+});
+
+fn register_external_string_finalizer(
+  key: ExternalStringKey,
+  env: *mut Env,
+  callback: napi_finalize,
+  data: *mut c_void,
+  hint: *mut c_void,
+) -> Option<u64> {
+  let mut finalizers = EXTERNAL_STRING_FINALIZERS.lock().unwrap();
+
+  // rusty_v8's raw destructor callback only identifies a resource by its
+  // data pointer and length. Copy an indistinguishable second string instead
+  // of risking delivery of the wrong callback or hint.
+  if finalizers.active.contains_key(&key) {
+    return None;
+  }
+
+  let id = finalizers.next_id;
+  finalizers.next_id = finalizers
+    .next_id
+    .checked_add(1)
+    .expect("external string finalizer id overflow");
+  finalizers.active.insert(key, id);
+  finalizers.entries.insert(
+    id,
+    ExternalStringFinalizer {
+      env: Some(env as usize),
+      callback,
+      data: data as usize,
+      hint: hint as usize,
+      sender: unsafe { &*env }.async_work_sender.clone(),
+      ready: false,
+    },
+  );
+  Some(id)
+}
+
+fn cancel_external_string_finalizer(key: ExternalStringKey, id: u64) -> bool {
+  let mut finalizers = EXTERNAL_STRING_FINALIZERS.lock().unwrap();
+  if finalizers.active.get(&key) == Some(&id) {
+    finalizers.active.remove(&key);
+    finalizers.entries.remove(&id);
+    true
+  } else {
+    false
+  }
+}
+
+fn call_external_string_finalizer(finalizer: ExternalStringFinalizer) {
+  let env = finalizer
+    .env
+    .map_or(std::ptr::null_mut(), |env| env as *mut Env as napi_env);
+  unsafe {
+    (finalizer.callback)(
+      env,
+      finalizer.data as *mut c_void,
+      finalizer.hint as *mut c_void,
+    );
+  }
+}
+
+fn complete_external_string_finalizer(id: u64) {
+  let finalizer = EXTERNAL_STRING_FINALIZERS
+    .lock()
+    .unwrap()
+    .entries
+    .remove(&id);
+  if let Some(finalizer) = finalizer {
+    call_external_string_finalizer(finalizer);
+  }
+}
+
+fn queue_external_string_finalizer(key: ExternalStringKey) {
+  let (id, sender, direct) = {
+    let mut finalizers = EXTERNAL_STRING_FINALIZERS.lock().unwrap();
+    let Some(id) = finalizers.active.remove(&key) else {
+      return;
+    };
+    let Some(finalizer) = finalizers.entries.get_mut(&id) else {
+      return;
+    };
+    finalizer.ready = true;
+    if finalizer.env.is_some() {
+      (id, Some(finalizer.sender.clone()), None)
+    } else {
+      let finalizer = finalizers.entries.remove(&id).unwrap();
+      (id, None, Some(finalizer))
+    }
+  };
+
+  if let Some(finalizer) = direct {
+    call_external_string_finalizer(finalizer);
+  } else if let Some(sender) = sender {
+    sender.spawn(move |_| complete_external_string_finalizer(id));
+  }
+}
+
+/// Stop delivering non-null Env pointers for an environment being torn down.
+/// Resources already disposed by V8 are finalized immediately with the Env
+/// they were registered with; still-live resources receive a null Env when V8
+/// disposes them later.
+///
+/// Non-ready entries stay in the registry rather than being swept: their
+/// buffers still back a live V8 string, so calling their finalizers here would
+/// free memory V8 is still reading. They are reclaimed when the isolate is
+/// disposed, which fires the destructors that drain them through
+/// `queue_external_string_finalizer`. If the isolate is never disposed the
+/// entries last until the process exits.
+pub(crate) fn detach_external_string_env(env: *mut Env) {
+  let ready = {
+    let mut finalizers = EXTERNAL_STRING_FINALIZERS.lock().unwrap();
+    let env = env as usize;
+    let ready: Vec<u64> = finalizers
+      .entries
+      .iter_mut()
+      .filter_map(|(id, finalizer)| {
+        if finalizer.env != Some(env) {
+          return None;
+        }
+        if finalizer.ready {
+          // V8 disposed this resource while the Env was still alive and its
+          // deferred completion has not drained yet. Keep the Env so this
+          // delivers what that task would have; it is removed below, so the
+          // task no-ops.
+          Some(*id)
+        } else {
+          finalizer.env = None;
+          None
+        }
+      })
+      .collect();
+    ready
+      .into_iter()
+      .filter_map(|id| finalizers.entries.remove(&id))
+      .collect::<Vec<_>>()
+  };
+
+  for finalizer in ready {
+    call_external_string_finalizer(finalizer);
+  }
+}
+
+/// V8 destructor for external one-byte strings. V8 may call this away from
+/// the runtime thread, so it only updates synchronized metadata and queues the
+/// addon callback onto the runtime task queue.
+unsafe extern "C" fn external_onebyte_destructor(
+  data: *mut std::ffi::c_char,
+  len: usize,
+) {
+  queue_external_string_finalizer(ExternalStringKey {
+    data: data as usize,
+    len,
+    encoding: ExternalStringEncoding::OneByte,
+  });
+}
+
+/// V8 destructor for external two-byte strings. This follows the same
+/// synchronized handoff as the one-byte destructor.
+unsafe extern "C" fn external_twobyte_destructor(data: *mut u16, len: usize) {
+  queue_external_string_finalizer(ExternalStringKey {
+    data: data as usize,
+    len,
+    encoding: ExternalStringEncoding::TwoByte,
+  });
+}
+
+/// The encoding-specific pieces of `node_api_create_external_string_*`. The
+/// finalizer handoff around them is shared, so the two encodings cannot drift
+/// apart.
+trait ExternalStringChar: Sized {
+  const ENCODING: ExternalStringEncoding;
+
+  /// Resolve `NAPI_AUTO_LENGTH` by finding the null terminator.
+  ///
+  /// # Safety
+  ///
+  /// `data` must point to a null-terminated sequence of `Self`.
+  unsafe fn auto_len(data: *const Self) -> usize;
+
+  /// Create a V8 string backed by `data` itself. V8 calls the encoding's
+  /// destructor once it collects the string.
+  ///
+  /// # Safety
+  ///
+  /// `data` must be valid for `len` code units and stay valid until the
+  /// destructor runs.
+  unsafe fn new_external<'s>(
+    scope: &v8::PinScope<'s, '_, ()>,
+    data: *mut Self,
+    len: usize,
+  ) -> Option<v8::Local<'s, v8::String>>;
+
+  /// Copy `data` into a V8-owned string.
+  ///
+  /// # Safety
+  ///
+  /// `data` must be valid for `length` code units and `result` must be
+  /// writable.
+  unsafe fn copy(
+    env: *mut Env,
+    data: *const Self,
+    length: usize,
+    result: *mut napi_value,
+  ) -> napi_status;
+}
+
+impl ExternalStringChar for c_char {
+  const ENCODING: ExternalStringEncoding = ExternalStringEncoding::OneByte;
+
+  unsafe fn auto_len(data: *const Self) -> usize {
+    unsafe { std::ffi::CStr::from_ptr(data).to_bytes().len() }
+  }
+
+  unsafe fn new_external<'s>(
+    scope: &v8::PinScope<'s, '_, ()>,
+    data: *mut Self,
+    len: usize,
+  ) -> Option<v8::Local<'s, v8::String>> {
+    unsafe {
+      v8::String::new_external_onebyte_raw(
+        scope,
+        data,
+        len,
+        external_onebyte_destructor,
+      )
+    }
+  }
+
+  unsafe fn copy(
+    env: *mut Env,
+    data: *const Self,
+    length: usize,
+    result: *mut napi_value,
+  ) -> napi_status {
+    unsafe { napi_create_string_latin1(env, data, length, result) }
+  }
+}
+
+impl ExternalStringChar for u16 {
+  const ENCODING: ExternalStringEncoding = ExternalStringEncoding::TwoByte;
+
+  unsafe fn auto_len(data: *const Self) -> usize {
+    let mut p = data;
+    unsafe {
+      while *p != 0 {
+        p = p.add(1);
+      }
+      p.offset_from(data) as usize
+    }
+  }
+
+  unsafe fn new_external<'s>(
+    scope: &v8::PinScope<'s, '_, ()>,
+    data: *mut Self,
+    len: usize,
+  ) -> Option<v8::Local<'s, v8::String>> {
+    unsafe {
+      v8::String::new_external_twobyte_raw(
+        scope,
+        data,
+        len,
+        external_twobyte_destructor,
+      )
+    }
+  }
+
+  unsafe fn copy(
+    env: *mut Env,
+    data: *const Self,
+    length: usize,
+    result: *mut napi_value,
+  ) -> napi_status {
+    unsafe { napi_create_string_utf16(env, data, length, result) }
+  }
+}
+
+/// Shared implementation of `node_api_create_external_string_latin1` and
+/// `node_api_create_external_string_utf16`.
+///
+/// # Safety
+///
+/// `string` must be valid for `length` code units, and `result` and `copied`
+/// must be writable or null.
+unsafe fn create_external_string<T: ExternalStringChar>(
+  env_ptr: *mut Env,
+  string: *const T,
+  length: usize,
+  nogc_finalize_callback: Option<napi_finalize>,
+  finalize_hint: *mut c_void,
+  result: *mut napi_value,
+  copied: *mut bool,
+) -> napi_status {
+  let env = check_env!(env_ptr);
+  check_arg!(env, string);
+  check_arg!(env, result);
+
+  let len = if length == NAPI_AUTO_LENGTH {
+    unsafe { T::auto_len(string) }
+  } else {
+    length
+  };
+
+  let mut finalize_on_copy = true;
+  if let Some(finalize) = nogc_finalize_callback
+    && len > 0
+  {
+    let key = ExternalStringKey {
+      data: string as usize,
+      len,
+      encoding: T::ENCODING,
+    };
+    let finalizer_id = register_external_string_finalizer(
+      key,
+      env_ptr,
+      finalize,
+      string as *mut c_void,
+      finalize_hint,
+    );
+
+    // Try zero-copy: create a V8 external string backed by the
+    // caller's buffer. V8 will call our destructor when the string
+    // is GC'd, which in turn calls the NAPI finalize callback.
+    if let Some(finalizer_id) = finalizer_id {
+      let v8_str = {
+        v8::callback_scope!(unsafe scope, env.context());
+        unsafe { T::new_external(scope, string as *mut T, len) }
+      };
+      if let Some(v8_str) = v8_str {
+        unsafe {
+          *result = v8::Local::<v8::Value>::from(v8_str).into();
+          if !copied.is_null() {
+            *copied = false;
+          }
+        }
+        return napi_clear_last_error(check_env!(env_ptr));
+      }
+      finalize_on_copy = cancel_external_string_finalizer(key, finalizer_id);
+    }
+    // V8 rejected the external string or an indistinguishable resource is
+    // already live. Fall through to the copy path.
+  }
+
+  // Fallback: copy the string and call finalize immediately
+  let status = unsafe { T::copy(env_ptr, string, length, result) };
+  if status == napi_ok {
+    unsafe {
+      if !copied.is_null() {
+        *copied = true;
+      }
+    }
+    if finalize_on_copy && let Some(finalize) = nogc_finalize_callback {
+      unsafe {
+        finalize(env_ptr as napi_env, string as *mut c_void, finalize_hint);
+      }
+    }
+  }
+  status
+}
+
 #[napi_sym]
 fn node_api_create_external_string_latin1(
   env_ptr: *mut Env,
@@ -1245,22 +1757,17 @@ fn node_api_create_external_string_latin1(
   result: *mut napi_value,
   copied: *mut bool,
 ) -> napi_status {
-  let status =
-    unsafe { napi_create_string_latin1(env_ptr, string, length, result) };
-
-  if status == napi_ok {
-    unsafe {
-      *copied = true;
-    }
-
-    if let Some(finalize) = nogc_finalize_callback {
-      unsafe {
-        finalize(env_ptr as napi_env, string as *mut c_void, finalize_hint);
-      }
-    }
+  unsafe {
+    create_external_string(
+      env_ptr,
+      string,
+      length,
+      nogc_finalize_callback,
+      finalize_hint,
+      result,
+      copied,
+    )
   }
-
-  status
 }
 
 #[napi_sym]
@@ -1273,22 +1780,17 @@ fn node_api_create_external_string_utf16(
   result: *mut napi_value,
   copied: *mut bool,
 ) -> napi_status {
-  let status =
-    unsafe { napi_create_string_utf16(env_ptr, string, length, result) };
-
-  if status == napi_ok {
-    unsafe {
-      *copied = true;
-    }
-
-    if let Some(finalize) = nogc_finalize_callback {
-      unsafe {
-        finalize(env_ptr as napi_env, string as *mut c_void, finalize_hint);
-      }
-    }
+  unsafe {
+    create_external_string(
+      env_ptr,
+      string,
+      length,
+      nogc_finalize_callback,
+      finalize_hint,
+      result,
+      copied,
+    )
   }
-
-  status
 }
 
 #[napi_sym]
@@ -1804,7 +2306,9 @@ fn napi_get_cb_info(
   let env = check_env!(env);
   check_arg!(env, cbinfo);
 
-  let cbinfo: &CallbackInfo = unsafe { &*(cbinfo as *const CallbackInfo) };
+  let cbinfo: &CallbackInfoScope =
+    unsafe { &*(cbinfo as *const CallbackInfoScope) };
+  let function_info: &CallbackInfo = unsafe { &*cbinfo.function_info };
   let args = unsafe { &*(cbinfo.args as *const v8::FunctionCallbackArguments) };
 
   if !argv.is_null() {
@@ -1832,7 +2336,7 @@ fn napi_get_cb_info(
 
   if !data.is_null() {
     unsafe {
-      *data = cbinfo.data;
+      *data = function_info.data;
     }
   }
 
@@ -1850,7 +2354,8 @@ fn napi_get_new_target(
   check_arg!(env, cbinfo);
   check_arg!(env, result);
 
-  let cbinfo: &CallbackInfo = unsafe { &*(cbinfo as *const CallbackInfo) };
+  let cbinfo: &CallbackInfoScope =
+    unsafe { &*(cbinfo as *const CallbackInfoScope) };
   let args = unsafe { &*(cbinfo.args as *const v8::FunctionCallbackArguments) };
 
   unsafe {
@@ -1922,10 +2427,14 @@ fn napi_throw(env: *mut Env, error: napi_value) -> napi_status {
     return napi_pending_exception;
   }
 
+  // Store in last_exception only. Do NOT call throw_exception() here.
+  // The NAPI callback wrapper (call_fn) checks last_exception after
+  // the callback returns and throws via V8 then. Throwing here would
+  // make it impossible to clear with napi_get_and_clear_last_exception
+  // since V8 would still have a pending exception.
   let error = {
     let error = error.unwrap();
     v8::callback_scope!(unsafe scope, env.context());
-    scope.throw_exception(error);
     v8::Global::new(scope, error)
   };
   env.last_exception = Some(error);
@@ -2531,15 +3040,6 @@ fn napi_wrap(
     finalize_hint,
   );
 
-  if let Some(cb) = finalize_cb {
-    env.add_ref_finalizer(
-      env_ptr as napi_env,
-      cb,
-      native_object,
-      finalize_hint,
-    );
-  }
-
   let reference = Reference::into_raw(reference) as *mut c_void;
 
   if !result.is_null() {
@@ -2591,7 +3091,6 @@ fn unwrap(
   }
 
   if !keep {
-    env.remove_ref_finalizer(reference.finalize_data);
     assert!(obj.delete_private(scope, napi_wrap).unwrap_or(false));
     unsafe { Reference::remove(reference) };
   }
@@ -2642,19 +3141,13 @@ fn napi_create_external<'s>(
   v8::callback_scope!(unsafe scope, env.context());
   let external = v8::External::new(scope, wrapper as _);
 
-  if let Some(finalize_cb) = finalize_cb {
-    env.add_ref_finalizer(
-      env_ptr as napi_env,
-      finalize_cb,
-      data,
-      finalize_hint,
-    );
+  if finalize_cb.is_some() {
     Reference::into_raw(Reference::new(
       env_ptr,
       external.into(),
       0,
       ReferenceOwnership::Runtime,
-      Some(finalize_cb),
+      finalize_cb,
       data,
       finalize_hint,
     ));
@@ -2940,31 +3433,55 @@ fn napi_close_handle_scope(
 #[napi_sym]
 fn napi_open_escapable_handle_scope(
   env: *mut Env,
-  _result: *mut napi_escapable_handle_scope,
+  result: *mut napi_escapable_handle_scope,
 ) -> napi_status {
   let env = check_env!(env);
+  check_arg!(env, result);
+
+  // Allocate a bool to track whether escape has been called.
+  // The pointer is cast to napi_escapable_handle_scope (opaque).
+  let escaped_flag = Box::into_raw(Box::new(false));
+  unsafe {
+    *result = escaped_flag as napi_escapable_handle_scope;
+  }
+
   napi_clear_last_error(env)
 }
 
 #[napi_sym]
 fn napi_close_escapable_handle_scope(
   env: *mut Env,
-  _scope: napi_escapable_handle_scope,
+  scope: napi_escapable_handle_scope,
 ) -> napi_status {
   let env = check_env!(env);
+
+  if !scope.is_null() {
+    // Reclaim the bool we allocated in open.
+    unsafe {
+      let _ = Box::from_raw(scope as *mut bool);
+    }
+  }
+
   napi_clear_last_error(env)
 }
 
 #[napi_sym]
 fn napi_escape_handle<'s>(
   env: *mut Env,
-  _scope: napi_escapable_handle_scope,
+  scope: napi_escapable_handle_scope,
   escapee: napi_value<'s>,
   result: *mut napi_value<'s>,
 ) -> napi_status {
   let env = check_env!(env);
+  check_arg!(env, scope);
+  check_arg!(env, result);
 
+  let escaped_flag = scope as *mut bool;
   unsafe {
+    if *escaped_flag {
+      return napi_set_last_error(env, napi_escape_called_twice);
+    }
+    *escaped_flag = true;
     *result = escapee;
   }
 
@@ -3000,7 +3517,12 @@ fn napi_new_instance<'s>(
   };
 
   v8::callback_scope!(unsafe scope, env.context());
-  let Some(value) = func.new_instance(scope, args) else {
+
+  // Native constructors are allowed to call back into JavaScript during
+  // construction. For example, zeromq's `Context` constructor calls
+  // `Object.seal(this)` while its addon is being initialized.
+  let value_opt = func.new_instance(scope, args);
+  let Some(value) = value_opt else {
     return napi_pending_exception;
   };
 
@@ -3535,8 +4057,12 @@ fn napi_resolve_deferred(
 
   let success = resolver.resolve(scope, result.unwrap()).unwrap_or(false);
 
-  // Restore policy
-  scope.set_microtasks_policy(v8::MicrotasksPolicy::Auto);
+  // Restore policy. The runtime runs with the Explicit microtask policy (see
+  // `deno_core` isolate setup); microtasks are drained deliberately on event
+  // loop turns. This used to restore `Auto` (V8's old isolate default), which
+  // permanently flipped the whole isolate to Auto and let V8 auto-drain
+  // microtasks mid-callback - the trigger for #33924.
+  scope.set_microtasks_policy(v8::MicrotasksPolicy::Explicit);
 
   if success {
     napi_ok
@@ -3697,15 +4223,6 @@ fn napi_add_finalizer(
     ReferenceOwnership::Userland
   };
 
-  if let Some(cb) = finalize_cb {
-    env.add_ref_finalizer(
-      env_ptr as napi_env,
-      cb,
-      finalize_data,
-      finalize_hint,
-    );
-  }
-
   let reference = Reference::new(
     env,
     value.into(),
@@ -3716,9 +4233,14 @@ fn napi_add_finalizer(
     finalize_hint,
   );
 
+  // Both ownership modes keep the reference alive: a runtime-owned one frees
+  // itself in its weak callback, a userland-owned one is freed by the addon
+  // through `napi_delete_reference`.
+  let reference = Reference::into_raw(reference);
+
   if !result.is_null() {
     unsafe {
-      *result = Reference::into_raw(reference) as _;
+      *result = reference as _;
     }
   }
 
@@ -3728,10 +4250,27 @@ fn napi_add_finalizer(
 #[napi_sym]
 fn node_api_post_finalizer(
   env: *mut Env,
-  _finalize_cb: napi_finalize,
-  _finalize_data: *mut c_void,
-  _finalize_hint: *mut c_void,
+  finalize_cb: napi_finalize,
+  finalize_data: *mut c_void,
+  finalize_hint: *mut c_void,
 ) -> napi_status {
+  let env = check_env!(env);
+
+  // Schedule the finalizer to run on the next event loop tick,
+  // matching Node.js behavior. This is the public API equivalent
+  // of the internal deferred-finalizer mechanism.
+  let sender = env.async_work_sender.clone();
+  let env_send = SendPtr(env as *mut Env);
+  let data_send = SendPtr(finalize_data);
+  let hint_send = SendPtr(finalize_hint);
+  sender.spawn(move |_scope| unsafe {
+    finalize_cb(
+      env_send.take() as _,
+      data_send.take() as *mut c_void,
+      hint_send.take() as *mut c_void,
+    );
+  });
+
   napi_clear_last_error(env)
 }
 

@@ -1,0 +1,38 @@
+{
+  "tempDir": true,
+  "tests": {
+    // Catalogs declared in the root package.json: a top-level `catalog` plus a
+    // `catalogs` nested under the `workspaces` object (Bun/Yarn form). Both
+    // should be reported by `deno outdated`.
+    "print_outdated_recursive": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "outdated --recursive",
+          "output": "outdated.out"
+        }
+      ]
+    },
+    // `deno update --latest` should write back to both the top-level `catalog`
+    // entry and the `workspaces`-nested `catalogs` entry.
+    "update_latest_recursive": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "outdated --update --latest --recursive",
+          "output": "update.out"
+        },
+        {
+          "args": "-A print_file.ts ./package.json",
+          "output": "package.json.out"
+        }
+      ]
+    }
+  }
+}

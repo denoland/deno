@@ -1,0 +1,19 @@
+{
+  "tests": {
+    "default_env_file": {
+      "args": "task -q --env-file show",
+      "output": "default.out",
+      "exitCode": 0
+    },
+    "specific_env_file": {
+      "args": "task -q --env-file=.env.dev show",
+      "output": "specific.out",
+      "exitCode": 0
+    },
+    "multiple_env_files": {
+      "args": "task -q --env-file=.env --env-file=.env.dev show",
+      "output": "multiple.out",
+      "exitCode": 0
+    }
+  }
+}

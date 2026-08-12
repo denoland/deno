@@ -1,0 +1,1 @@
+import "jsr:@org/foo";

@@ -1,0 +1,4 @@
+{
+  "args": "test --allow-net --no-check --quiet --reporter=dot main.ts",
+  "output": "main.out"
+}

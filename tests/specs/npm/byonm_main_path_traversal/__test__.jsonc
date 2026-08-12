@@ -1,0 +1,29 @@
+{
+  "tests": {
+    "main_path_traversal_cjs": {
+      "args": "run main.cjs",
+      "output": "main.out",
+      "exitCode": 1
+    },
+    "main_path_traversal_esm": {
+      "args": "run main.mjs",
+      "output": "main_esm.out",
+      "exitCode": 1
+    },
+    "main_nested_package_cjs": {
+      "args": "run main_nested.cjs",
+      "output": "main_nested.out",
+      "exitCode": 0
+    },
+    "main_nested_escape_cjs": {
+      "args": "run main_nested_escape.cjs",
+      "output": "main_nested_escape.out",
+      "exitCode": 1
+    },
+    "register_hooks_traversal": {
+      "args": "run main_register_hooks.mjs",
+      "output": "main_register_hooks.out",
+      "exitCode": 1
+    }
+  }
+}

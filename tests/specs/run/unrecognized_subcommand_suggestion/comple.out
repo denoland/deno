@@ -1,0 +1,4 @@
+error: unrecognized subcommand 'comple'
+
+  tip: some similar subcommands exist: 'completions', 'compile'
+

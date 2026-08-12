@@ -2,14 +2,26 @@
   "tempDir": true,
   "tests": {
     "invalid_fd": {
-      "if": "unix",
       "args": "run -A invalid_fd.ts",
       "output": "invalid_fd.out"
     },
     "open_fd": {
-      "if": "unix",
-      "args": "run -A --unstable-ffi open_fd.ts",
+      "args": "run -A open_fd.ts",
       "output": "open_fd.out"
+    },
+    "duplicate_fd": {
+      "args": "run -A duplicate_fd.ts",
+      "output": "duplicate_fd.out"
+    },
+    "main_read": {
+      "if": "unix",
+      "args": "run -A main_read.ts",
+      "output": "main_read.out"
+    },
+    "main_write": {
+      "if": "unix",
+      "args": "run -A main_write.ts",
+      "output": "main_write.out"
     }
   }
 }

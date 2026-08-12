@@ -1,0 +1,12 @@
+{
+  "nodeModulesDir": "auto",
+  "workspace": [
+    "./env"
+  ],
+  "imports": {
+    // An arbitrary import-map alias for the same member. It must NOT create a
+    // `node_modules/aliased-env` link (#25542 / #25538): only the member's real
+    // package name is linked, never an import alias.
+    "aliased-env": "npm:@workspace/env@*"
+  }
+}

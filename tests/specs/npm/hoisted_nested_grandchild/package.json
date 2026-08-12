@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "@denotest/different-nested-dep-child": "2.0.0",
+    "@denotest/hoisted-nested-grandchild-chain": "1.0.0",
+    "@denotest/hoisted-nested-grandchild-parent": "1.0.0"
+  }
+}

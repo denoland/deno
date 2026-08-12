@@ -1,0 +1,2 @@
+Download http://localhost:4545/this_module_does_not_exist.ts
+caught: [WILDLINE]

@@ -1,0 +1,14 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "link ./pkg",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "unlink @does/not-exist",
+      "exitCode": 1,
+      "output": "error.out"
+    }
+  ]
+}

@@ -5,7 +5,7 @@
       "spanId": "0000000000000001",
       "traceState": "",
       "parentSpanId": "",
-      "flags": 1,
+      "flags": 257,
       "name": "GET",
       "kind": 3,
       "startTimeUnixNano": "[WILDCARD]",
@@ -63,7 +63,7 @@
       "spanId": "0100000000000001",
       "traceState": "",
       "parentSpanId": "0000000000000001",
-      "flags": 1,
+      "flags": 257,
       "name": "GET",
       "kind": 2,
       "startTimeUnixNano": "[WILDCARD]",
@@ -121,7 +121,7 @@
       "spanId": "0100000000000002",
       "traceState": "",
       "parentSpanId": "0100000000000001",
-      "flags": 1,
+      "flags": 257,
       "name": "GET",
       "kind": 3,
       "startTimeUnixNano": "[WILDCARD]",
@@ -179,7 +179,7 @@
       "spanId": "0200000000000001",
       "traceState": "",
       "parentSpanId": "0100000000000002",
-      "flags": 1,
+      "flags": 257,
       "name": "GET",
       "kind": 2,
       "startTimeUnixNano": "[WILDCARD]",
@@ -253,7 +253,8 @@
       "droppedAttributesCount": 0,
       "flags": 1,
       "traceId": "00000000000000000000000000000001",
-      "spanId": "0100000000000001"
+      "spanId": "0100000000000001",
+      "eventName": ""
     },
     {
       "timeUnixNano": "[WILDCARD]",
@@ -274,7 +275,8 @@
       "droppedAttributesCount": 0,
       "flags": 1,
       "traceId": "00000000000000000000000000000001",
-      "spanId": "0100000000000001"
+      "spanId": "0100000000000001",
+      "eventName": ""
     },
     {
       "timeUnixNano": "[WILDCARD]",
@@ -295,7 +297,8 @@
       "droppedAttributesCount": 0,
       "flags": 1,
       "traceId": "00000000000000000000000000000001",
-      "spanId": "0200000000000001"
+      "spanId": "0200000000000001",
+      "eventName": ""
     }
   ],
   "metrics": []

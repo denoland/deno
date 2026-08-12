@@ -1,0 +1,4 @@
+[WILDCARD]callback: ok
+promise: ok
+recursive promise: ok
+sync: ok

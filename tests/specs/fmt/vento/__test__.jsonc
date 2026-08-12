@@ -8,7 +8,7 @@
     {
       "args": "fmt --unstable-component --ext=vto -",
       "input": "<h1>  {{ \"Hello, world!\" |> upper }}\n  </h1>\n",
-      "output": "<h1>\n  {{ \"Hello, world!\" |> upper }}\n</h1>\n"
+      "output": "<h1>  {{ \"Hello, world!\" |> upper }}\n  </h1>\n"
     }
   ]
 }

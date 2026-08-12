@@ -1,0 +1,2 @@
+[WILDCARD]No linked package matched '@does/not-exist'[WILDCARD]
+error: No linked packages matched the given name or path

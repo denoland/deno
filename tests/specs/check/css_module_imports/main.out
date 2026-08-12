@@ -1,0 +1,29 @@
+Check [WILDCARD]main.ts
+TS2322 [ERROR]: Type 'CSSStyleSheet' is not assignable to type 'number'.
+invalid = sheet;
+~~~~~~~
+    at file:///[WILDLINE]/main.ts[WILDLINE]
+
+TS2322 [ERROR]: Type 'CSSStyleSheet' is not assignable to type 'number'.
+invalid = dynamicSheet;
+~~~~~~~
+    at file:///[WILDLINE]/main.ts[WILDLINE]
+
+TS2322 [ERROR]: Type 'readonly CSSRule[]' is not assignable to type 'number'.
+invalid = sheet.cssRules;
+~~~~~~~
+    at file:///[WILDLINE]/main.ts[WILDLINE]
+
+TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
+invalid = rules[0].cssText;
+~~~~~~~
+    at file:///[WILDLINE]/main.ts[WILDLINE]
+
+TS2339 [ERROR]: Property 'insertRule' does not exist on type 'CSSStyleSheet'.
+sheet.insertRule("a { b: c }");
+      ~~~~~~~~~~
+    at file:///[WILDLINE]/main.ts[WILDLINE]
+
+Found 5 errors.
+
+error: Type checking failed.

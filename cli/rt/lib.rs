@@ -16,13 +16,15 @@ use indexmap::IndexMap;
 use self::binary::extract_standalone;
 use self::file_system::DenoRtSys;
 
-mod binary;
+pub mod binary;
 mod code_cache;
-mod file_system;
+pub mod desktop;
+pub mod file_system;
+pub mod hmr;
 mod node;
-mod run;
+pub mod run;
 
-pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
+pub fn unstable_exit_cb(feature: &str, api_name: &str) {
   log::error!(
     "Unstable API '{api_name}'. The `--unstable-{}` flag must be provided.",
     feature
@@ -53,7 +55,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   }
 }
 
-fn load_env_vars(env_vars: &IndexMap<String, String>) {
+pub fn load_env_vars(env_vars: &IndexMap<String, String>) {
   env_vars.iter().for_each(|env_var| {
     if env::var(env_var.0).is_err() {
       // SAFETY: called during single-threaded startup before tokio runtime
@@ -65,6 +67,13 @@ fn load_env_vars(env_vars: &IndexMap<String, String>) {
 #[inline(always)]
 pub fn main() {
   init_logging(None, None);
+
+  // Enable ANSI virtual terminal processing on Windows consoles that don't
+  // do so by default (e.g. Windows Server / classic conhost), so that
+  // compiled binaries render colored output instead of raw escape codes.
+  // This mirrors the setup done in the main `deno` binary entrypoint.
+  #[cfg(windows)]
+  colors::enable_ansi(); // For Windows 10
 
   deno_runtime::deno_permissions::mark_standalone();
 
@@ -105,7 +114,7 @@ pub fn main() {
   ));
 }
 
-fn init_logging(
+pub fn init_logging(
   maybe_level: Option<log::Level>,
   otel_config: Option<OtelConfig>,
 ) {

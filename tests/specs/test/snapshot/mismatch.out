@@ -1,0 +1,29 @@
+Check [WILDCARD]mismatch_test.ts
+running 1 test from ./mismatch_test.ts
+mismatch ... FAILED ([WILDLINE])
+
+ ERRORS 
+
+mismatch => ./mismatch_test.ts:1:6
+error: AssertionError: Snapshot does not match:
+
+    [Diff] Actual / Expected
+
+    {
++     value: 2,
+-     value: 1,
+    }
+
+To update snapshots, run
+    deno test --update-snapshots [files]...
+
+  await t.assertSnapshot({ value: 2 });
+          ^
+[WILDCARD]
+ FAILURES 
+
+mismatch => ./mismatch_test.ts:1:6
+
+FAILED | 0 passed | 1 failed ([WILDLINE])
+
+error: Test failed

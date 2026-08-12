@@ -1,0 +1,8 @@
+[WILDCARD]
+running 2 tests from ./only_each.ts
+focused a ... ok ([WILDCARD])
+focused b ... ok ([WILDCARD])
+
+ok | 2 passed | 0 failed | 1 filtered out ([WILDCARD])
+
+error: Test failed because the "only" option was used

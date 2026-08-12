@@ -1,0 +1,2 @@
+[WILDCARD]error: Failed to install '@denotest/member': found package.json in workspace, but version '2.0.0' didn't satisfy constraint '1.0.0'
+[WILDCARD]

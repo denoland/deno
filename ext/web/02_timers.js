@@ -1,21 +1,43 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
-import { op_defer } from "ext:core/ops";
+// Web timers (setTimeout/setInterval) built directly on core.createTimer.
+// Adds WHATWG-specific behavior on top:
+// - webidl type coercion
+// - string callback eval (WHATWG spec)
+// - timer nesting depth tracking (WHATWG spec)
+// - numeric timer IDs
+// - AsyncContext propagation across the callback boundary
+
+(function () {
+const { core, primordials } = __bootstrap;
+const { op_defer } = core.ops;
 const {
-  PromisePrototypeThen,
-  TypeError,
-  indirectEval,
-  ReflectApply,
-} = primordials;
-const {
+  createTimer,
+  cancelTimer,
+  refTimer: coreRefTimer,
+  unrefTimer: coreUnrefTimer,
   getAsyncContext,
   setAsyncContext,
 } = core;
+const {
+  MapPrototypeDelete,
+  MapPrototypeGet,
+  MapPrototypeSet,
+  PromisePrototypeThen,
+  ReflectApply,
+  SafeMap,
+  TypeError,
+  indirectEval,
+} = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 
-// ---------------------------------------------------------------------------
+// Map numeric timer IDs to internal core timer objects so clearTimeout /
+// clearInterval / refTimer / unrefTimer can look them up by id.
+const activeTimers = new SafeMap();
+
+// WHATWG timer nesting depth tracking.
+let timerDepth = 0;
 
 function checkThis(thisArg) {
   if (thisArg !== null && thisArg !== undefined && thisArg !== globalThis) {
@@ -28,33 +50,36 @@ function checkThis(thisArg) {
  */
 function setTimeout(callback, timeout = 0, ...args) {
   checkThis(this);
-  // If callback is a string, replace it with a function that evals the string on every timeout
   if (typeof callback !== "function") {
     const unboundCallback = webidl.converters.DOMString(callback);
     callback = () => indirectEval(unboundCallback);
   }
   const unboundCallback = callback;
   const asyncContext = getAsyncContext();
-  callback = () => {
+  const depth = timerDepth;
+  let id = 0;
+  const wrappedCallback = function () {
     const oldContext = getAsyncContext();
+    const prevDepth = timerDepth;
     try {
       setAsyncContext(asyncContext);
+      timerDepth = depth + 1;
       ReflectApply(unboundCallback, globalThis, args);
     } finally {
+      timerDepth = prevDepth;
       setAsyncContext(oldContext);
+      MapPrototypeDelete(activeTimers, id);
     }
   };
   timeout = webidl.converters.long(timeout);
-  return core.queueUserTimer(
-    core.getTimerDepth() + 1,
-    false,
-    timeout,
-    callback,
-  );
+  const timer = createTimer(wrappedCallback, timeout, undefined, false, true);
+  id = timer._timerId;
+  MapPrototypeSet(activeTimers, id, timer);
+  return id;
 }
 
 /**
- * Call a callback function after a delay.
+ * Call a callback function repeatedly at a given interval.
  */
 function setInterval(callback, timeout = 0, ...args) {
   checkThis(this);
@@ -64,22 +89,24 @@ function setInterval(callback, timeout = 0, ...args) {
   }
   const unboundCallback = callback;
   const asyncContext = getAsyncContext();
-  callback = () => {
-    const oldContext = getAsyncContext(asyncContext);
+  const depth = timerDepth;
+  const wrappedCallback = function () {
+    const oldContext = getAsyncContext();
+    const prevDepth = timerDepth;
     try {
       setAsyncContext(asyncContext);
+      timerDepth = depth + 1;
       ReflectApply(unboundCallback, globalThis, args);
     } finally {
+      timerDepth = prevDepth;
       setAsyncContext(oldContext);
     }
   };
   timeout = webidl.converters.long(timeout);
-  return core.queueUserTimer(
-    core.getTimerDepth() + 1,
-    true,
-    timeout,
-    callback,
-  );
+  const timer = createTimer(wrappedCallback, timeout, undefined, true, true);
+  const id = timer._timerId;
+  MapPrototypeSet(activeTimers, id, timer);
+  return id;
 }
 
 /**
@@ -88,7 +115,11 @@ function setInterval(callback, timeout = 0, ...args) {
 function clearTimeout(id = 0) {
   checkThis(this);
   id = webidl.converters.long(id);
-  core.cancelTimer(id);
+  const timer = MapPrototypeGet(activeTimers, id);
+  if (timer) {
+    cancelTimer(timer);
+    MapPrototypeDelete(activeTimers, id);
+  }
 }
 
 /**
@@ -97,21 +128,40 @@ function clearTimeout(id = 0) {
 function clearInterval(id = 0) {
   checkThis(this);
   id = webidl.converters.long(id);
-  core.cancelTimer(id);
+  const timer = MapPrototypeGet(activeTimers, id);
+  if (timer) {
+    cancelTimer(timer);
+    MapPrototypeDelete(activeTimers, id);
+  }
 }
 
 /**
  * Mark a timer as not blocking event loop exit.
  */
 function unrefTimer(id) {
-  core.unrefTimer(id);
+  if (typeof id !== "number") {
+    // NodeJS.Timeout (or compatible): delegate to its own unref().
+    id?.unref?.();
+    return;
+  }
+  const timer = MapPrototypeGet(activeTimers, id);
+  if (timer) {
+    coreUnrefTimer(timer);
+  }
 }
 
 /**
  * Mark a timer as blocking event loop exit.
  */
 function refTimer(id) {
-  core.refTimer(id);
+  if (typeof id !== "number") {
+    id?.ref?.();
+    return;
+  }
+  const timer = MapPrototypeGet(activeTimers, id);
+  if (timer) {
+    coreRefTimer(timer);
+  }
 }
 
 // Defer to avoid starving the event loop. Not using queueMicrotask()
@@ -121,7 +171,7 @@ function defer(go) {
   PromisePrototypeThen(op_defer(), () => go());
 }
 
-export {
+return {
   clearInterval,
   clearTimeout,
   defer,
@@ -130,3 +180,4 @@ export {
   setTimeout,
   unrefTimer,
 };
+})();

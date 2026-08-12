@@ -1,0 +1,5 @@
+{
+  "description": "separate entrypoint resolving to a sibling dist file via legacy main",
+  "private": true,
+  "main": "../dist/sub.js"
+}

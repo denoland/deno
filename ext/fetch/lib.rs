@@ -19,9 +19,14 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::task::Context;
 use std::task::Poll;
 
+use async_compression::tokio::bufread::BrotliDecoder;
+use async_compression::tokio::bufread::GzipDecoder;
 use bytes::Bytes;
 // Re-export data_url
 pub use data_url;
@@ -71,6 +76,7 @@ use http::Uri;
 use http::header::ACCEPT;
 use http::header::ACCEPT_ENCODING;
 use http::header::AUTHORIZATION;
+use http::header::CONTENT_ENCODING;
 use http::header::CONTENT_LENGTH;
 use http::header::HOST;
 use http::header::HeaderName;
@@ -78,22 +84,28 @@ use http::header::HeaderValue;
 use http::header::PROXY_AUTHORIZATION;
 use http::header::RANGE;
 use http::header::USER_AGENT;
+use http_body_util::BodyDataStream;
 use http_body_util::BodyExt;
+use http_body_util::StreamBody;
 use http_body_util::combinators::BoxBody;
 use hyper::body::Frame;
+use hyper::body::Incoming;
 use hyper_util::client::legacy::Builder as HyperClientBuilder;
+use hyper_util::client::legacy::connect::CaptureConnection;
+use hyper_util::client::legacy::connect::Connected;
 use hyper_util::client::legacy::connect::Connection;
-use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::connect::HttpInfo;
+use hyper_util::client::legacy::connect::capture_connection;
 use hyper_util::rt::TokioExecutor;
 use hyper_util::rt::TokioIo;
 use hyper_util::rt::TokioTimer;
 pub use proxy::basic_auth;
+use tokio_util::io::ReaderStream;
+use tokio_util::io::StreamReader;
 use tower::BoxError;
 use tower::Service;
 use tower::ServiceExt;
 use tower::retry;
-use tower_http::decompression::Decompression;
 
 #[derive(Clone)]
 pub struct Options {
@@ -153,7 +165,7 @@ deno_core::extension!(deno_fetch,
     op_fetch_custom_client,
     op_fetch_promise_is_settled,
   ],
-  esm = [
+  lazy_loaded_js = [
     "20_headers.js",
     "21_formdata.js",
     "22_body.js",
@@ -182,6 +194,9 @@ pub enum FetchError {
   #[class(type)]
   #[error("NetworkError when attempting to fetch resource")]
   NetworkError,
+  #[class(type)]
+  #[error("Error fetching file '{0}': {1}")]
+  FileFetch(String, deno_fs::FsError),
   #[class(type)]
   #[error("Fetching files only supports the GET method: received {0}")]
   FsNotGet(Method),
@@ -266,7 +281,7 @@ impl From<deno_fs::FsError> for FetchError {
 pub type CancelableResponseFuture =
   Pin<Box<dyn Future<Output = CancelableResponseResult>>>;
 
-pub trait FetchHandler: dyn_clone::DynClone {
+pub trait FetchHandler {
   // Return the result of the fetch request consisting of a tuple of the
   // cancelable response result, the optional fetch body resource and the
   // optional cancel handle.
@@ -276,8 +291,6 @@ pub trait FetchHandler: dyn_clone::DynClone {
     url: &Url,
   ) -> (CancelableResponseFuture, Option<Rc<CancelHandle>>);
 }
-
-dyn_clone::clone_trait_object!(FetchHandler);
 
 /// A default implementation which will error for every request.
 #[derive(Clone)]
@@ -306,8 +319,9 @@ pub fn get_or_create_client_from_state(
   if let Some(client) = state.try_borrow::<Client>() {
     Ok(client.clone())
   } else {
+    let permissions = state.borrow::<PermissionsContainer>().clone();
     let options = state.borrow::<Options>();
-    let client = create_client_from_options(options)?;
+    let client = create_client_from_options(options, Some(permissions))?;
     state.put::<Client>(client.clone());
     Ok(client)
   }
@@ -315,6 +329,7 @@ pub fn get_or_create_client_from_state(
 
 pub fn create_client_from_options(
   options: &Options,
+  permissions: Option<PermissionsContainer>,
 ) -> Result<Client, HttpClientCreateError> {
   create_http_client(
     &options.user_agent,
@@ -325,6 +340,8 @@ pub fn create_client_from_options(
       ca_certs: vec![],
       proxy: options.proxy.clone(),
       dns_resolver: options.resolver.clone(),
+      permissions,
+      resolved_deny_check_kind: dns::ResolvedDenyCheckKind::Net,
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
@@ -339,6 +356,7 @@ pub fn create_client_from_options(
       http2: true,
       local_address: None,
       client_builder_hook: options.client_builder_hook,
+      http2_max_header_list_size: None,
     },
   )
 }
@@ -519,14 +537,6 @@ pub fn op_fetch(
         }
       }
 
-      if request.headers().contains_key(RANGE) {
-        // https://fetch.spec.whatwg.org/#http-network-or-cache-fetch step 18
-        // If httpRequest’s header list contains `Range`, then append (`Accept-Encoding`, `identity`)
-        request
-          .headers_mut()
-          .insert(ACCEPT_ENCODING, HeaderValue::from_static("identity"));
-      }
-
       let options = state.borrow::<Options>();
       if let Some(request_builder_hook) = options.request_builder_hook {
         request_builder_hook(&mut request)
@@ -598,8 +608,12 @@ pub struct FetchResponse {
   pub headers: Vec<(ByteString, ByteString)>,
   pub url: String,
   pub response_rid: ResourceId,
-  #[to_v8(serde)]
   pub content_length: Option<u64>,
+  /// Whether the body was transparently decompressed, in which case the
+  /// `content-encoding`/`content-length`/`transfer-encoding` entries in
+  /// `headers` describe the encoded wire body, not the body behind
+  /// `response_rid`.
+  pub body_decoded: bool,
   /// This field is populated if some error occurred which needs to be
   /// reconstructed in the JS side to set the error _cause_.
   /// In the tuple, the first element is an error message and the second one is
@@ -624,18 +638,27 @@ pub async fn op_fetch_send(
   let res = match request.future.await {
     Ok(Ok(res)) => res,
     Ok(Err(err)) => {
-      // We're going to try and rescue the error cause from a stream and return it from this fetch.
-      // If any error in the chain is a hyper body error, return that as a special result we can use to
-      // reconstruct an error chain (eg: `new TypeError(..., { cause: new Error(...) })`).
+      // Mirror Node/undici's fetch error shape for transport failures: surface
+      // them to JS as a `TypeError: "fetch failed"` whose `.cause` carries the
+      // low-level detail, instead of leaking the raw reqwest message into
+      // `.message` with an empty `.cause`. We pass the detail back as
+      // `error: Some((detail, cause))` so JS can reconstruct the error chain
+      // (`new TypeError("fetch failed", { cause: new Error(cause) })`).
+      // Only `ClientSend` (connection refused, DNS failure, connection reset,
+      // connection closed mid-response, request body stream errors, ...) is
+      // remapped here; other errors (e.g. permission errors) keep their type.
       // TODO(mmastrac): it would be a lot easier if we just passed a v8::Global through here instead
-
-      if let FetchError::ClientSend(err_src) = &err
-        && let Some(client_err) = std::error::Error::source(&err_src.source)
-        && let Some(err_src) = client_err.downcast_ref::<hyper::Error>()
-        && let Some(err_src) = std::error::Error::source(err_src)
-      {
+      if let FetchError::ClientSend(err_src) = &err {
+        // Prefer the innermost cause (e.g. a user body-stream error, or hyper's
+        // "connection closed before message completed") for `.cause`, falling
+        // back to the full reqwest message when there's no deeper source.
+        let cause = std::error::Error::source(&err_src.source)
+          .and_then(|client_err| client_err.downcast_ref::<hyper::Error>())
+          .and_then(std::error::Error::source)
+          .map(|src| src.to_string())
+          .unwrap_or_else(|| err.to_string());
         return Ok(FetchResponse {
-          error: Some((err.to_string(), err_src.to_string())),
+          error: Some((err.to_string(), cause)),
           ..Default::default()
         });
       }
@@ -653,6 +676,7 @@ pub async fn op_fetch_send(
   }
 
   let content_length = hyper::body::Body::size_hint(res.body()).exact();
+  let body_decoded = res.extensions().get::<BodyDecoded>().is_some();
 
   let response_rid = state
     .borrow_mut()
@@ -666,6 +690,7 @@ pub async fn op_fetch_send(
     url,
     response_rid,
     content_length,
+    body_decoded,
     error: None,
   })
 }
@@ -837,6 +862,7 @@ pub struct CreateHttpClientArgs {
   #[from_v8(default)]
   allow_host: bool,
   local_address: Option<String>,
+  http2_max_header_list_size: Option<u32>,
 }
 
 #[op2(stack_trace)]
@@ -852,6 +878,11 @@ pub fn op_fetch_custom_client(
     match proxy {
       Proxy::Http { url, .. } => {
         let url = Url::parse(url)?;
+        if !matches!(url.scheme(), "http" | "https" | "socks5" | "socks5h") {
+          return Err(FetchError::ClientCreate(
+            HttpClientCreateError::InvalidProxyUrl,
+          ));
+        }
         permissions.check_net_url(&url, "Deno.createHttpClient()")?;
       }
       Proxy::Tcp { hostname, port } => {
@@ -869,17 +900,24 @@ pub fn op_fetch_custom_client(
             Some("Deno.createHttpClient()"),
           )?
           .into_path();
+        // Unix sockets are an outbound network primitive, so a Unix proxy
+        // requires an `--allow-net=unix:<path>` rule in addition to the
+        // filesystem check above, mirroring the direct Unix socket ops.
+        permissions.check_net_unix_socket(
+          &resolved_path,
+          Some("Deno.createHttpClient()"),
+        )?;
         if path != resolved_path {
           *original_path = resolved_path.to_string_lossy().into_owned();
         }
       }
       Proxy::Vsock { cid, port } => {
-        let permissions = state.borrow_mut::<PermissionsContainer>();
         permissions.check_net_vsock(*cid, *port, "Deno.createHttpClient()")?;
       }
     }
   }
 
+  let permissions = state.borrow::<PermissionsContainer>().clone();
   let options = state.borrow::<Options>();
   let ca_certs = args
     .ca_certs
@@ -896,6 +934,8 @@ pub fn op_fetch_custom_client(
       ca_certs,
       proxy: args.proxy,
       dns_resolver: dns::Resolver::default(),
+      permissions: Some(permissions),
+      resolved_deny_check_kind: dns::ResolvedDenyCheckKind::Net,
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
@@ -915,6 +955,7 @@ pub fn op_fetch_custom_client(
       http2: args.http2,
       local_address: args.local_address,
       client_builder_hook: options.client_builder_hook,
+      http2_max_header_list_size: args.http2_max_header_list_size,
     },
   )?;
 
@@ -930,6 +971,12 @@ pub struct CreateHttpClientOptions {
   pub ca_certs: Vec<Vec<u8>>,
   pub proxy: Option<Proxy>,
   pub dns_resolver: dns::Resolver,
+  /// When set, every connection runs the net-deny check against the IP it
+  /// actually connected to, mirroring `Deno.connect`.
+  pub permissions: Option<PermissionsContainer>,
+  /// Which deny list `permissions` is checked against. Clients that load
+  /// modules use `Import`; everything else uses `Net`.
+  pub resolved_deny_check_kind: dns::ResolvedDenyCheckKind,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: Option<TlsKey>,
   pub pool_max_idle_per_host: Option<usize>,
@@ -938,6 +985,7 @@ pub struct CreateHttpClientOptions {
   pub http2: bool,
   pub local_address: Option<String>,
   pub client_builder_hook: Option<fn(HyperClientBuilder) -> HyperClientBuilder>,
+  pub http2_max_header_list_size: Option<u32>,
 }
 
 impl Default for CreateHttpClientOptions {
@@ -947,6 +995,8 @@ impl Default for CreateHttpClientOptions {
       ca_certs: vec![],
       proxy: None,
       dns_resolver: dns::Resolver::default(),
+      permissions: None,
+      resolved_deny_check_kind: dns::ResolvedDenyCheckKind::default(),
       unsafely_ignore_certificate_errors: None,
       client_cert_chain_and_key: None,
       pool_max_idle_per_host: None,
@@ -955,6 +1005,7 @@ impl Default for CreateHttpClientOptions {
       http2: true,
       local_address: None,
       client_builder_hook: None,
+      http2_max_header_list_size: None,
     }
   }
 }
@@ -1015,15 +1066,21 @@ pub fn create_http_client(
   tls_config.alpn_protocols = alpn_protocols;
   let tls_config = Arc::from(tls_config);
 
-  let mut http_connector =
-    HttpConnector::new_with_resolver(options.dns_resolver.clone());
-  http_connector.enforce_http(false);
-  if let Some(local_address) = options.local_address {
-    let local_addr = local_address
-      .parse::<IpAddr>()
-      .map_err(|_| HttpClientCreateError::InvalidAddress(local_address))?;
-    http_connector.set_local_address(Some(local_addr));
-  }
+  let local_address = options
+    .local_address
+    .map(|local_address| {
+      local_address
+        .parse::<IpAddr>()
+        .map_err(|_| HttpClientCreateError::InvalidAddress(local_address))
+    })
+    .transpose()?;
+  let permissions = options.permissions.clone();
+  let http_connector = dns::PermissionedHttpConnector::new(
+    options.dns_resolver.clone(),
+    local_address,
+    options.permissions,
+    options.resolved_deny_check_kind,
+  );
 
   let user_agent = user_agent.parse::<HeaderValue>().map_err(|_| {
     HttpClientCreateError::InvalidUserAgent(user_agent.to_string())
@@ -1092,6 +1149,7 @@ pub fn create_http_client(
     tls: tls_config,
     tls_proxy: proxy_tls_config,
     user_agent: Some(user_agent.clone()),
+    permissions,
   };
 
   if let Some(pool_max_idle_per_host) = options.pool_max_idle_per_host {
@@ -1102,6 +1160,10 @@ pub fn create_http_client(
     builder.pool_idle_timeout(
       pool_idle_timeout.map(std::time::Duration::from_millis),
     );
+  }
+
+  if let Some(http2_max_header_list_size) = options.http2_max_header_list_size {
+    builder.http2_max_header_list_size(http2_max_header_list_size);
   }
 
   match (options.http1, options.http2) {
@@ -1115,9 +1177,10 @@ pub fn create_http_client(
     }
   }
 
-  let pooled_client = builder.build(connector.clone());
-  let retry_client = retry::Retry::new(FetchRetry, pooled_client);
-  let decompress = Decompression::new(retry_client).gzip(true).br(true);
+  let pooled_client = builder.build(TrackingConnector(connector.clone()));
+  let retry_client =
+    retry::Retry::new(FetchRetry, ConnectionTracker::new(pooled_client));
+  let decompress = DecompressionService::new(retry_client);
 
   Ok(Client {
     inner: decompress,
@@ -1133,14 +1196,176 @@ pub fn op_utf8_to_byte_string(#[string] input: String) -> ByteString {
 
 #[derive(Clone, Debug)]
 pub struct Client {
-  inner: Decompression<
-    retry::Retry<
-      FetchRetry,
-      hyper_util::client::legacy::Client<Connector, ReqBody>,
-    >,
-  >,
+  inner: DecompressionService<FetchClient>,
   connector: Connector,
   user_agent: HeaderValue,
+}
+
+type FetchClient = retry::Retry<
+  FetchRetry,
+  ConnectionTracker<
+    hyper_util::client::legacy::Client<TrackingConnector<Connector>, ReqBody>,
+  >,
+>;
+
+#[derive(Clone, Debug)]
+struct DecompressionService<S> {
+  inner: S,
+}
+
+impl<S> DecompressionService<S> {
+  fn new(inner: S) -> Self {
+    Self { inner }
+  }
+
+  fn into_inner(self) -> S {
+    self.inner
+  }
+}
+
+impl<S> Service<http::Request<ReqBody>> for DecompressionService<S>
+where
+  S: Service<http::Request<ReqBody>, Response = http::Response<Incoming>>
+    + 'static,
+  S::Future: Send + Sync + 'static,
+  S::Error: 'static,
+{
+  type Response = http::Response<ResBody>;
+  type Error = S::Error;
+  type Future = Pin<
+    Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + Sync>,
+  >;
+
+  fn poll_ready(
+    &mut self,
+    cx: &mut Context<'_>,
+  ) -> Poll<Result<(), Self::Error>> {
+    self.inner.poll_ready(cx)
+  }
+
+  fn call(&mut self, mut req: http::Request<ReqBody>) -> Self::Future {
+    // Range responses may contain compressed byte ranges that cannot be
+    // transparently decoded as a complete representation.
+    let skip_decompression = req.headers().contains_key(RANGE)
+      || req.headers().get(ACCEPT_ENCODING).is_some_and(|value| {
+        value.as_bytes().eq_ignore_ascii_case(b"identity")
+      });
+    if req.headers().contains_key(RANGE) {
+      req
+        .headers_mut()
+        .entry(ACCEPT_ENCODING)
+        .or_insert_with(|| HeaderValue::from_static("identity"));
+    } else {
+      req
+        .headers_mut()
+        .entry(ACCEPT_ENCODING)
+        .or_insert_with(|| HeaderValue::from_static("gzip,br"));
+    }
+
+    let fut = self.inner.call(req);
+    Box::pin(async move {
+      let resp = fut.await?;
+      Ok(decompress_response(resp, skip_decompression))
+    })
+  }
+}
+
+fn decompress_response(
+  resp: http::Response<Incoming>,
+  skip_decompression: bool,
+) -> http::Response<ResBody> {
+  if skip_decompression {
+    return resp.map(box_raw_body);
+  }
+
+  // Some servers advertise a compressed empty body. A valid gzip/br stream is
+  // never zero bytes, so pass empty bodies through instead of trying to decode.
+  let is_empty = resp
+    .headers()
+    .get(CONTENT_LENGTH)
+    .and_then(|v| v.to_str().ok())
+    .and_then(|v| v.parse::<u64>().ok())
+    == Some(0);
+  if is_empty {
+    return resp.map(box_raw_body);
+  }
+
+  match resp
+    .headers()
+    .get(CONTENT_ENCODING)
+    .and_then(content_encoding_decode_kind)
+  {
+    Some(DecodeKind::Gzip) => decode_response(resp, DecodeKind::Gzip),
+    Some(DecodeKind::Brotli) => decode_response(resp, DecodeKind::Brotli),
+    _ => resp.map(box_raw_body),
+  }
+}
+
+fn content_encoding_decode_kind(encoding: &HeaderValue) -> Option<DecodeKind> {
+  let encoding = std::str::from_utf8(encoding.as_bytes()).ok()?.trim();
+  if encoding.contains(',') {
+    return None;
+  }
+  if encoding.eq_ignore_ascii_case("gzip") {
+    Some(DecodeKind::Gzip)
+  } else if encoding.eq_ignore_ascii_case("br") {
+    Some(DecodeKind::Brotli)
+  } else {
+    None
+  }
+}
+
+enum DecodeKind {
+  Gzip,
+  Brotli,
+}
+
+/// Marker inserted into the response extensions when the body was
+/// transparently decompressed, so consumers know the `Content-Encoding`,
+/// `Content-Length` and `Transfer-Encoding` headers describe the encoded
+/// wire body rather than the body in the response.
+#[derive(Clone, Copy)]
+pub struct BodyDecoded;
+
+fn decode_response(
+  resp: http::Response<Incoming>,
+  kind: DecodeKind,
+) -> http::Response<ResBody> {
+  // Per the fetch spec, handling content codings only decodes the body; the
+  // header list keeps `Content-Encoding` and `Content-Length` as received
+  // (the latter describes the encoded body, not the decoded one). See
+  // https://github.com/denoland/deno/issues/20548.
+  let (mut parts, body) = resp.into_parts();
+  parts.extensions.insert(BodyDecoded);
+
+  let stream = BodyDataStream::new(
+    body.map_err(|err| std::io::Error::other(err.to_string())),
+  );
+  let reader = StreamReader::new(stream);
+  let body = match kind {
+    DecodeKind::Gzip => box_reader_body(GzipDecoder::new(reader)),
+    DecodeKind::Brotli => box_reader_body(BrotliDecoder::new(reader)),
+  };
+
+  http::Response::from_parts(parts, body)
+}
+
+fn box_reader_body<R>(reader: R) -> ResBody
+where
+  R: tokio::io::AsyncRead + Send + Sync + 'static,
+{
+  let stream = ReaderStream::new(reader).map(|result| {
+    result
+      .map(Frame::data)
+      .map_err(|err| JsErrorBox::generic(err.to_string()))
+  });
+  BoxBody::new(StreamBody::new(stream))
+}
+
+fn box_raw_body(body: Incoming) -> ResBody {
+  body
+    .map_err(|err| JsErrorBox::generic(err.to_string()))
+    .boxed()
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -1193,7 +1418,7 @@ impl Client {
   }
 }
 
-type Connector = proxy::ProxyConnector<HttpConnector<dns::Resolver>>;
+type Connector = proxy::ProxyConnector<dns::PermissionedHttpConnector>;
 
 #[allow(
   clippy::declare_interior_mutable_const,
@@ -1299,6 +1524,7 @@ impl Client {
     self.inject_common_headers(&mut req);
 
     req.headers_mut().entry(ACCEPT).or_insert(STAR_STAR);
+    insert_connection_reused(&mut req);
 
     let uri = req.uri().clone();
 
@@ -1307,7 +1533,7 @@ impl Client {
       .oneshot(req)
       .await
       .map_err(|e| ClientSendError { uri, source: e })?;
-    Ok(resp.map(|b| b.map_err(|e| JsErrorBox::generic(e.to_string())).boxed()))
+    Ok(resp)
   }
 
   /// Sends a request bypassing the transparent decompression middleware.
@@ -1321,18 +1547,31 @@ impl Client {
     self.inject_common_headers(&mut req);
 
     req.headers_mut().entry(ACCEPT).or_insert(STAR_STAR);
+    insert_connection_reused(&mut req);
 
     let uri = req.uri().clone();
 
-    // .into_inner() unwraps the Decompression middleware layer
+    // .into_inner() unwraps the transparent decompression layer.
     let resp = self
       .inner
       .into_inner()
       .oneshot(req)
       .await
       .map_err(|e| ClientSendError { uri, source: e })?;
-    Ok(resp.map(|b| b.map_err(|e| JsErrorBox::generic(e.to_string())).boxed()))
+    Ok(resp.map(box_raw_body))
   }
+}
+
+/// Marks a request for connection provenance tracking.
+///
+/// Streaming bodies are skipped: [`FetchRetry::clone_request`] can't clone them,
+/// so they are never retried and tracking them would only cost a
+/// `capture_connection` slot, a boxed future and two `Arc`s per request.
+fn insert_connection_reused(req: &mut http::Request<ReqBody>) {
+  if matches!(req.body(), ReqBody::Streaming(..)) {
+    return;
+  }
+  req.extensions_mut().insert(ConnectionReused::default());
 }
 
 // This is a custom enum to allow the retry policy to clone the variants that could be retried.
@@ -1436,6 +1675,279 @@ fn op_fetch_promise_is_settled(promise: v8::Local<v8::Promise>) -> bool {
   promise.state() != v8::PromiseState::Pending
 }
 
+/// Number of requests that have been dispatched on a single connection.
+///
+/// Attached to the connection's [`Connected`] metadata by [`TrackingConnector`]
+/// so that [`ConnectionTracker`] can tell whether an attempt used a freshly
+/// established connection or one checked out of the pool.
+#[derive(Clone, Debug)]
+struct ConnectionUsage(Arc<AtomicUsize>);
+
+/// Request extension recording whether the connection most recently checked out
+/// for this request was a pooled (already used) one. Read by [`FetchRetry`].
+///
+/// "Most recently" matters because `hyper_util` retries unstarted requests
+/// internally: [`CheckoutTracker`] keeps this in step with every checkout so it
+/// describes the attempt that produced the error, not the first one tried.
+///
+/// The `Arc` is shared with the clone that `tower`'s retry layer keeps around,
+/// so writes made while the request is in flight are visible to the policy.
+///
+/// Every entry point into [`Client`] must insert this extension for any request
+/// whose body can be cloned. [`FetchRetry`] reads a missing extension as
+/// [`ConnectionKind::Fresh`], which disables *all* transport retries for that
+/// request — including the stale-pool retry — with no diagnostic. Streaming
+/// bodies are the one legitimate exception, since they can never be retried.
+#[derive(Clone, Debug, Default)]
+struct ConnectionReused(Arc<AtomicBool>);
+
+/// Wraps a connector so every connection it produces carries a
+/// [`ConnectionUsage`] counter.
+#[derive(Clone, Debug)]
+struct TrackingConnector<C>(C);
+
+impl<C> Service<Uri> for TrackingConnector<C>
+where
+  C: Service<Uri>,
+{
+  type Response = TrackedIo<C::Response>;
+  type Error = C::Error;
+  type Future = deno_core::futures::future::MapOk<
+    C::Future,
+    fn(C::Response) -> TrackedIo<C::Response>,
+  >;
+
+  fn poll_ready(
+    &mut self,
+    cx: &mut Context<'_>,
+  ) -> Poll<Result<(), Self::Error>> {
+    self.0.poll_ready(cx)
+  }
+
+  fn call(&mut self, dst: Uri) -> Self::Future {
+    self.0.call(dst).map_ok(TrackedIo::new as fn(_) -> _)
+  }
+}
+
+/// An IO stream tagged with a per-connection request counter.
+struct TrackedIo<T> {
+  inner: T,
+  usage: Arc<AtomicUsize>,
+}
+
+impl<T> TrackedIo<T> {
+  fn new(inner: T) -> Self {
+    Self {
+      inner,
+      usage: Arc::new(AtomicUsize::new(0)),
+    }
+  }
+}
+
+impl<T> Connection for TrackedIo<T>
+where
+  T: Connection,
+{
+  fn connected(&self) -> Connected {
+    self
+      .inner
+      .connected()
+      .extra(ConnectionUsage(self.usage.clone()))
+  }
+}
+
+impl<T> hyper::rt::Read for TrackedIo<T>
+where
+  T: hyper::rt::Read + Unpin,
+{
+  fn poll_read(
+    mut self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+    buf: hyper::rt::ReadBufCursor<'_>,
+  ) -> Poll<Result<(), std::io::Error>> {
+    Pin::new(&mut self.inner).poll_read(cx, buf)
+  }
+}
+
+impl<T> hyper::rt::Write for TrackedIo<T>
+where
+  T: hyper::rt::Write + Unpin,
+{
+  fn poll_write(
+    mut self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+    buf: &[u8],
+  ) -> Poll<Result<usize, std::io::Error>> {
+    Pin::new(&mut self.inner).poll_write(cx, buf)
+  }
+
+  fn poll_flush(
+    mut self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+  ) -> Poll<Result<(), std::io::Error>> {
+    Pin::new(&mut self.inner).poll_flush(cx)
+  }
+
+  fn poll_shutdown(
+    mut self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+  ) -> Poll<Result<(), std::io::Error>> {
+    Pin::new(&mut self.inner).poll_shutdown(cx)
+  }
+
+  fn is_write_vectored(&self) -> bool {
+    self.inner.is_write_vectored()
+  }
+
+  fn poll_write_vectored(
+    mut self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+    bufs: &[std::io::IoSlice<'_>],
+  ) -> Poll<Result<usize, std::io::Error>> {
+    Pin::new(&mut self.inner).poll_write_vectored(cx, bufs)
+  }
+}
+
+/// Records, for each attempt, whether the connection it used had already
+/// served a request.
+#[derive(Clone, Debug)]
+struct ConnectionTracker<S> {
+  inner: S,
+}
+
+impl<S> ConnectionTracker<S> {
+  fn new(inner: S) -> Self {
+    Self { inner }
+  }
+}
+
+impl<S> Service<http::Request<ReqBody>> for ConnectionTracker<S>
+where
+  S: Service<http::Request<ReqBody>> + 'static,
+  S::Future: Send + Sync + 'static,
+  S::Error: 'static,
+{
+  type Response = S::Response;
+  type Error = S::Error;
+  type Future = Pin<
+    Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + Sync>,
+  >;
+
+  fn poll_ready(
+    &mut self,
+    cx: &mut Context<'_>,
+  ) -> Poll<Result<(), Self::Error>> {
+    self.inner.poll_ready(cx)
+  }
+
+  fn call(&mut self, mut req: http::Request<ReqBody>) -> Self::Future {
+    let Some(reused) = req.extensions().get::<ConnectionReused>().cloned()
+    else {
+      // Only streaming bodies are allowed to skip the extension: they can't be
+      // cloned, so they are never retried and don't need provenance tracked.
+      // Any other request arriving here would silently lose *all* transport
+      // retries, since `FetchRetry` reads a missing extension as `Fresh`.
+      debug_assert!(
+        matches!(req.body(), ReqBody::Streaming(..)),
+        "request reached FetchClient without a ConnectionReused extension; \
+         every entry point must insert it (see ConnectionReused)"
+      );
+      return Box::pin(self.inner.call(req));
+    };
+    let captured = capture_connection(&mut req);
+    let fut = self.inner.call(req);
+    Box::pin(async move {
+      // Re-read the capture slot after every poll of the request future rather
+      // than once, because a single `tower` attempt can span several *internal*
+      // ones: `hyper_util`'s client loops on `TrySendError::Retryable`, so a
+      // request that checks out a stale pooled connection and is recovered
+      // unstarted gets resent on a fresh connection, replacing the slot. The
+      // classification has to describe the attempt that actually produced the
+      // error -- calling it `Pooled` when the failing attempt ran on a fresh
+      // connection would let a non-idempotent request be retried and
+      // duplicated. `hyper_util` performs the checkout while polling this
+      // future, so sampling after each poll observes every one of them.
+      //
+      // A request that never gets a connection leaves the slot empty and stays
+      // `Fresh`, which disables transport retries -- the right default, since
+      // it was certainly never sent.
+      //
+      // Known limitation on HTTP/2: the counter is per connection, not per
+      // stream. A request multiplexed onto a connection that a concurrent
+      // sibling established a moment earlier observes a non-zero count and is
+      // classified as `Pooled`, so it stays retryable even though that
+      // connection was never in the pool. Bumping on response completion would
+      // err the other way — an in-flight sibling wouldn't mark the connection
+      // used, conservatively suppressing a legitimate retry — but it would
+      // also fail to mark a connection used before a second stream starts,
+      // which is the more common case. Most h2 transport failures are decided
+      // by the `h2::Error` branch in `is_error_retryable` before provenance is
+      // consulted, so the exposed window is narrow. Closing it properly needs
+      // a checkout-time snapshot distinguishing "this connection was created
+      // for me" from "created for a concurrent sibling", which the current
+      // design can't express.
+      let mut fut = std::pin::pin!(fut);
+      let mut tracker = CheckoutTracker::default();
+      std::future::poll_fn(|cx| {
+        let polled = fut.as_mut().poll(cx);
+        tracker.sample(&captured, &reused);
+        polled
+      })
+      .await
+    })
+  }
+}
+
+/// Keeps [`ConnectionReused`] describing the most recent connection checked out
+/// for a request, counting each checkout exactly once however often the request
+/// future is polled.
+#[derive(Default)]
+struct CheckoutTracker {
+  /// The counter of the connection recorded by the last sample, used to tell a
+  /// fresh checkout from a repeat sighting of the same one. Held as an `Arc`
+  /// rather than a raw pointer so the enclosing future stays `Send + Sync`.
+  last_seen: Option<Arc<AtomicUsize>>,
+}
+
+impl CheckoutTracker {
+  fn sample(
+    &mut self,
+    captured: &CaptureConnection,
+    reused: &ConnectionReused,
+  ) {
+    let metadata = captured.connection_metadata();
+    let Some(connected) = metadata.as_ref() else {
+      // No connection checked out yet.
+      return;
+    };
+    self.record(connected, reused);
+  }
+
+  /// The body of [`Self::sample`], split out so it can be driven with synthetic
+  /// [`Connected`] values instead of a live `hyper_util` capture slot.
+  fn record(&mut self, connected: &Connected, reused: &ConnectionReused) {
+    let mut extras = Extensions::new();
+    connected.get_extras(&mut extras);
+    let Some(usage) = extras.get::<ConnectionUsage>() else {
+      return;
+    };
+    if self
+      .last_seen
+      .as_ref()
+      .is_some_and(|last| Arc::ptr_eq(last, &usage.0))
+    {
+      // Still the connection we already accounted for.
+      return;
+    }
+    // `Relaxed` suffices for both: the request/response round trip already
+    // establishes the happens-before edge between this write and the retry
+    // policy's read.
+    let was_reused = usage.0.fetch_add(1, Ordering::Relaxed) > 0;
+    reused.0.store(was_reused, Ordering::Relaxed);
+    self.last_seen = Some(usage.0.clone());
+  }
+}
+
 /// Deno.fetch's retry policy.
 #[derive(Clone, Debug)]
 struct FetchRetry;
@@ -1469,7 +1981,16 @@ where
         None
       }
       Err(err) => {
-        if is_error_retryable(&*err) {
+        let connection_kind = if req
+          .extensions()
+          .get::<ConnectionReused>()
+          .is_some_and(|reused| reused.0.load(Ordering::Relaxed))
+        {
+          ConnectionKind::Pooled
+        } else {
+          ConnectionKind::Fresh
+        };
+        if is_error_retryable(&*err, connection_kind) {
           req.extensions_mut().insert(Retried);
           Some(future::ready(()))
         } else {
@@ -1498,7 +2019,25 @@ where
   }
 }
 
-fn is_error_retryable(err: &(dyn std::error::Error + 'static)) -> bool {
+/// Provenance of the connection a request attempt was sent on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ConnectionKind {
+  /// Checked out of the pool, i.e. it had already served a request.
+  Pooled,
+  /// Established for this attempt.
+  Fresh,
+}
+
+/// `connection_kind` tells whether the failed attempt was sent on a connection
+/// that had already served a request. Transport-level failures are only safe to
+/// retry on [`ConnectionKind::Pooled`] connections: the same failure on a
+/// [`ConnectionKind::Fresh`] one means the server accepted the request and may
+/// well have processed it, so resending would duplicate a non-idempotent
+/// request.
+fn is_error_retryable(
+  err: &(dyn std::error::Error + 'static),
+  connection_kind: ConnectionKind,
+) -> bool {
   // Note: hyper doesn't promise it will always be this h2 version. Keep up to date.
   if let Some(err) = find_source::<h2::Error>(err) {
     // They sent us a graceful shutdown, try with a new connection!
@@ -1519,10 +2058,17 @@ fn is_error_retryable(err: &(dyn std::error::Error + 'static)) -> bool {
     }
   }
 
+  // The remaining cases are only distinguishable from a server that accepted
+  // the request and then died halfway through by the fact that the connection
+  // came out of the pool.
+  if connection_kind == ConnectionKind::Fresh {
+    return false;
+  }
+
   // HTTP/1.1: The connection was closed before the message completed.
   // This happens when a pooled keep-alive connection is stale (e.g. the
-  // server shut down between requests). Safe to retry because the server
-  // never received/processed the request on this connection.
+  // server shut down between requests), in which case the server never
+  // received/processed the request on this connection.
   if let Some(err) = find_source::<hyper::Error>(err)
     && err.is_incomplete_message()
   {

@@ -1,0 +1,8 @@
+running 1 test from ./suite.mjs
+a suite ...
+  first ... ok ([WILDLINE])
+  second ... ok ([WILDLINE])
+a suite ... ok ([WILDLINE])
+
+ok | 1 passed (2 steps) | 0 failed ([WILDLINE])
+

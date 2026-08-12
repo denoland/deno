@@ -1,0 +1,22 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      // No deno.lock, no package-lock.json, no pnpm-lock.yaml — fall back
+      // to translating yarn.lock.
+      "args": "install",
+      "output": "install.out"
+    },
+    {
+      "args": [
+        "eval",
+        "console.log(Deno.readTextFileSync('deno.lock').trim())"
+      ],
+      "output": "deno.lock.out"
+    },
+    {
+      "args": "run --cached-only main.js",
+      "output": "3\n"
+    }
+  ]
+}

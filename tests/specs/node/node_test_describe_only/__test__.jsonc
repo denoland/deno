@@ -1,0 +1,4 @@
+{
+  "args": "test describe_only.test.js",
+  "output": "describe_only.out"
+}

@@ -1,0 +1,18 @@
+Check [WILDCARD]custom_dir_test.ts
+running 1 test from ./custom_dir_test.ts
+custom dir ... FAILED ([WILDLINE])
+
+ ERRORS 
+
+custom dir => ./custom_dir_test.ts:1:6
+error: NotCapable: Requires read access to "[WILDLINE]custom_dir_test.ts.snap", run again with the --allow-read flag
+  await t.assertSnapshot({ a: 1 }, { dir: "custom_snapshots" });
+          ^
+[WILDCARD]
+ FAILURES 
+
+custom dir => ./custom_dir_test.ts:1:6
+
+FAILED | 0 passed | 1 failed ([WILDLINE])
+
+error: Test failed

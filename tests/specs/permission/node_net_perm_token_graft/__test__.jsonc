@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "node_net_perm_token_graft": {
+      "args": "run --allow-net=localhost main.ts",
+      "output": "main.out"
+    }
+  }
+}

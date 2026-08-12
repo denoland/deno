@@ -4,12 +4,9 @@
 // Documentation liberally lifted from them too.
 // Thank you! We love Go! <3
 
-import { core, primordials } from "ext:core/mod.js";
-import {
-  op_read_create_cancel_handle,
-  op_read_with_cancel_handle,
-  op_set_raw,
-} from "ext:core/ops";
+(function () {
+const { core, primordials } = __bootstrap;
+const { op_set_raw } = core.ops;
 const {
   Uint8Array,
   ArrayPrototypePush,
@@ -17,13 +14,18 @@ const {
   TypedArrayPrototypeSubarray,
   TypedArrayPrototypeSet,
   TypedArrayPrototypeGetByteLength,
-  PromisePrototypeThen,
 } = primordials;
 
-import {
-  readableStreamForRid,
-  writableStreamForRid,
-} from "ext:deno_web/06_streams.js";
+// Defer loading the 208 KB `06_streams.js` polyfill: the two helpers below
+// are only used inside the `get readable()` / `get writable()` getters on
+// Stdin/Stdout/Stderr, so the cost can be paid the first time someone
+// accesses those streams (e.g. `process.stdout.writable`) rather than at
+// every startup.
+let _streamsImpl;
+function lazyStreams() {
+  return _streamsImpl ??
+    (_streamsImpl = core.loadExtScript("ext:deno_web/06_streams.js"));
+}
 
 // Seek whence values.
 // https://golang.org/pkg/io/#pkg-constants
@@ -116,8 +118,6 @@ const STDERR_RID = 2;
 const REF = Symbol("REF");
 const UNREF = Symbol("UNREF");
 
-const _readWithCancelHandle = Symbol("_readWithCancelHandle");
-
 class Stdin {
   #rid = STDIN_RID;
   #ref = true;
@@ -141,22 +141,6 @@ class Stdin {
     return nread === 0 ? null : nread;
   }
 
-  [_readWithCancelHandle](p) {
-    const handle = op_read_create_cancel_handle();
-    if (p.length === 0) return { cancelHandle: handle, nread: 0 };
-    this.#opPromise = op_read_with_cancel_handle(this.#rid, handle, p);
-    if (!this.#ref) {
-      core.unrefOpPromise(this.#opPromise);
-    }
-    return {
-      cancelHandle: handle,
-      nread: PromisePrototypeThen(
-        this.#opPromise,
-        (nread) => nread === 0 ? null : nread,
-      ),
-    };
-  }
-
   readSync(p) {
     return readSync(this.#rid, p);
   }
@@ -167,7 +151,7 @@ class Stdin {
 
   get readable() {
     if (this.#readable === undefined) {
-      this.#readable = readableStreamForRid(this.#rid, false);
+      this.#readable = lazyStreams().readableStreamForRid(this.#rid, false);
     }
     return this.#readable;
   }
@@ -221,7 +205,7 @@ class Stdout {
 
   get writable() {
     if (this.#writable === undefined) {
-      this.#writable = writableStreamForRid(this.#rid);
+      this.#writable = lazyStreams().writableStreamForRid(this.#rid);
     }
     return this.#writable;
   }
@@ -256,7 +240,7 @@ class Stderr {
 
   get writable() {
     if (this.#writable === undefined) {
-      this.#writable = writableStreamForRid(this.#rid);
+      this.#writable = lazyStreams().writableStreamForRid(this.#rid);
     }
     return this.#writable;
   }
@@ -270,8 +254,7 @@ const stdin = new Stdin();
 const stdout = new Stdout();
 const stderr = new Stderr();
 
-export {
-  _readWithCancelHandle,
+return {
   read,
   readAll,
   readAllSync,
@@ -290,3 +273,4 @@ export {
   write,
   writeSync,
 };
+})();

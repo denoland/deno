@@ -145,7 +145,7 @@ impl<TSys: WhichSys> Sys for WhichSysAdapter<TSys> {
       .chain(Some(0))
       .collect::<Vec<u16>>();
     let mut bt: u32 = 0;
-    // SAFETY: winapi call
+    // SAFETY: Win32 call
     unsafe {
       Ok(
         windows_sys::Win32::Storage::FileSystem::GetBinaryTypeW(

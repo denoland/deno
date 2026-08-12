@@ -1,0 +1,5 @@
+[UNORDERED_START]
+Download http://localhost:4260/@denotest%2fcjs-require-node-builtin
+Download http://localhost:4260/@denotest/cjs-require-node-builtin/1.0.0.tgz
+[UNORDERED_END]
+resolved node builtins from npm package

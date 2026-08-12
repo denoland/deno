@@ -1,0 +1,34 @@
+{
+  // Regression test for https://github.com/denoland/deno/issues/26628.
+  // When the configured npm registry url has a sub-path, the global npm cache
+  // is laid out as `<host>/<sub>/<pkg>`. Compile must flatten packages to
+  // `localhost/<pkg>` (not `localhost/<sub>/<pkg>`) so they resolve at runtime.
+  "tempDir": true,
+  "steps": [{
+    "if": "unix",
+    "args": "compile --output main main.ts",
+    "envs": {
+      "NPM_CONFIG_REGISTRY": "http://localhost:4260/sub/path/"
+    },
+    "output": "compile.out"
+  }, {
+    "if": "unix",
+    "commandName": "./main",
+    "args": [],
+    "output": "run.out",
+    "exitCode": 0
+  }, {
+    "if": "windows",
+    "args": "compile --output main.exe main.ts",
+    "envs": {
+      "NPM_CONFIG_REGISTRY": "http://localhost:4260/sub/path/"
+    },
+    "output": "compile.out"
+  }, {
+    "if": "windows",
+    "commandName": "./main.exe",
+    "args": [],
+    "output": "run.out",
+    "exitCode": 0
+  }]
+}

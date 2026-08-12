@@ -1,7 +1,13 @@
 #!/usr/bin/env -S deno run -A --lock=tools/deno.lock.json
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { DenoWorkspace } from "./deno_workspace.ts";
-import { $, GitLogOutput, semver } from "./deps.ts";
+import { $, type Crate, GitLogOutput, semver } from "./deps.ts";
+
+// Crates that the root Cargo.toml declares under a key that differs from the
+// crate name (ex. `v8 = { package = "deno_v8", ... }`). The release automation
+// finds dependency entries by matching the crate name at the start of a line,
+// so it can't see these and errors out. Bump them by hand instead.
+const renamedCrates = new Set(["deno_v8"]);
 
 const workspace = await DenoWorkspace.load();
 const repo = workspace.repo;
@@ -10,13 +16,21 @@ const denoRtCrate = workspace.getDenoRtCrate();
 const denoLibCrate = workspace.getDenoLibCrate();
 const originalCliVersion = cliCrate.version;
 
-if (Deno.args.some((a) => a === "--rc")) {
+const prereleaseKind = (["--rc", "--alpha", "--beta"] as const).find((a) =>
+  Deno.args.includes(a)
+);
+if (prereleaseKind) {
+  const tag = prereleaseKind.slice(2); // "rc", "alpha", or "beta"
   let cliVersion = semver.parse(cliCrate.version)!;
 
-  if (cliVersion.prerelease?.[0] != "rc") {
+  if (!cliVersion.prerelease?.length) {
+    // Transitioning from stable (e.g. 2.7.0 -> 2.8.0-alpha.0)
     cliVersion = semver.increment(cliVersion, "minor");
+  } else if (cliVersion.prerelease[0] != tag) {
+    // Transitioning between prerelease kinds (e.g. 3.0.0-alpha.12 -> 3.0.0-beta.0)
+    cliVersion = { ...cliVersion, prerelease: undefined };
   }
-  cliVersion = increment(cliVersion, "prerelease", { prerelease: "rc" });
+  cliVersion = increment(cliVersion, "prerelease", { prerelease: tag });
 
   const version = cliVersion.toString();
 
@@ -49,7 +63,11 @@ denoLibCrate.folderPath.join("version.txt").writeTextSync(cliCrate.version);
 
 // increment the dependency crate versions
 for (const crate of workspace.getCliDependencyCrates()) {
-  await crate.increment("minor");
+  if (renamedCrates.has(crate.name)) {
+    incrementRenamedCrateMinor(crate);
+  } else {
+    await crate.increment("minor");
+  }
 }
 
 // update the lock file
@@ -67,6 +85,51 @@ try {
       "`git log --oneline VERSION_FROM..VERSION_TO` and " +
       "use the output to update Releases.md",
   );
+}
+
+/** Bumps the minor version of a crate that's declared in the root Cargo.toml
+ * under a renamed dependency key. */
+function incrementRenamedCrateMinor(crate: Crate) {
+  const oldVersion = crate.version;
+  const newVersion = semver.format(
+    semver.increment(semver.parse(oldVersion)!, "minor"),
+  );
+  $.logStep(`Setting ${crate.name} to ${newVersion}...`);
+
+  // the dependency entry in the root Cargo.toml
+  updateFileEnsureChange(
+    workspace.repo.folderPath.join("Cargo.toml").toString(),
+    (text) =>
+      text.replace(
+        new RegExp(
+          `^(.*\\bpackage\\s*=\\s*"${crate.name}".*?\\bversion\\s*=\\s*)"[^"]+"`,
+          "m",
+        ),
+        `$1"${newVersion}"`,
+      ),
+  );
+
+  // the crate's own manifest
+  updateFileEnsureChange(
+    crate.manifestPath.toString(),
+    (text) =>
+      text.replace(
+        new RegExp(`^(version\\s*=\\s*)"${oldVersion}"$`, "m"),
+        `$1"${newVersion}"`,
+      ),
+  );
+}
+
+function updateFileEnsureChange(
+  filePath: string,
+  action: (fileText: string) => string,
+) {
+  const originalText = Deno.readTextFileSync(filePath);
+  const newText = action(originalText);
+  if (originalText === newText) {
+    throw new Error(`The file didn't change: ${filePath}`);
+  }
+  Deno.writeTextFileSync(filePath, newText);
 }
 
 async function updateReleasesMd() {
@@ -128,7 +191,7 @@ async function getGitLog() {
 
 async function bumpCiCacheVersion() {
   const generateScript = workspace.repo.folderPath.join(
-    ".github/workflows/ci.generate.ts",
+    ".github/workflows/ci.ts",
   );
   const fileText = generateScript.readTextSync();
   const cacheVersionRegex = /const cacheVersion = ([0-9]+);/;

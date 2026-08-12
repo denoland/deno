@@ -1,0 +1,4 @@
+{
+  "args": "task -q --config deno.json echo `func()`",
+  "output": "task_additional_args_no_backtick_expansion.out"
+}

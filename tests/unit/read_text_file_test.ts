@@ -37,6 +37,30 @@ Deno.test({ permissions: { read: true } }, function readTextFileSyncNotFound() {
   }, Deno.errors.NotFound);
 });
 
+// Reading a broken (dangling) symlink should report NotFound, not
+// FilesystemLoop ("Too many levels of symbolic links"). The canonicalized
+// path is opened with O_NOFOLLOW, which reports a surviving symlink tail as
+// ELOOP; that is translated to ENOENT. Regression test for
+// https://github.com/denoland/deno/issues/29139
+Deno.test(
+  {
+    permissions: { read: true, write: true },
+    ignore: Deno.build.os === "windows",
+  },
+  function readTextFileSyncBrokenSymlink() {
+    const testDir = Deno.makeTempDirSync();
+    const target = testDir + "/target.txt";
+    const link = testDir + "/link.txt";
+    Deno.writeTextFileSync(target, "hello");
+    Deno.symlinkSync(target, link);
+    // The link resolves while the target exists.
+    assertEquals(Deno.readTextFileSync(link), "hello");
+    // Once the target is gone the link is broken.
+    Deno.removeSync(target);
+    assertThrows(() => Deno.readTextFileSync(link), Deno.errors.NotFound);
+  },
+);
+
 Deno.test(
   { permissions: { read: true } },
   async function readTextFileSuccess() {

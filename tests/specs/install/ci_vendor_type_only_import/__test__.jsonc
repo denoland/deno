@@ -1,0 +1,35 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": [
+      "eval",
+      "import fs from 'node:fs'; fs.writeFileSync('deno.json', JSON.stringify({ vendor: true, imports: { 'type-only': 'jsr:@denotest/type-only-import@1.0.0' } }))"
+    ],
+    "output": ""
+  }, {
+    "args": [
+      "eval",
+      "import fs from 'node:fs'; fs.writeFileSync('main.ts', \"import { foo } from 'type-only'; console.log(foo.bar);\")"
+    ],
+    "output": ""
+  }, {
+    // create the lockfile first
+    "args": "install",
+    "output": "[WILDCARD]"
+  }, {
+    // clean vendor and cache so ci re-populates from scratch
+    "args": [
+      "eval",
+      "import fs from 'node:fs'; fs.rmSync('vendor', { recursive: true, force: true })"
+    ],
+    "output": ""
+  }, {
+    "args": "ci",
+    "output": "[WILDCARD]"
+  }, {
+    // foo.ts is referenced via `import type` from mod.ts — must still be
+    // vendored so that --cached-only / type checking can find it.
+    "args": "run --cached-only main.ts",
+    "output": "foo\n"
+  }]
+}

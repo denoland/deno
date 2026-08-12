@@ -43,7 +43,8 @@ string error with extra arg
       "droppedAttributesCount": 0,
       "flags": 0,
       "traceId": "",
-      "spanId": ""
+      "spanId": "",
+      "eventName": ""
     },
     {
       "timeUnixNano": "[WILDLINE]",
@@ -64,7 +65,8 @@ string error with extra arg
       "droppedAttributesCount": 0,
       "flags": 0,
       "traceId": "",
-      "spanId": ""
+      "spanId": "",
+      "eventName": ""
     },
     {
       "timeUnixNano": "[WILDLINE]",
@@ -103,7 +105,8 @@ string error with extra arg
       "droppedAttributesCount": 0,
       "flags": 0,
       "traceId": "",
-      "spanId": ""
+      "spanId": "",
+      "eventName": ""
     },
     {
       "timeUnixNano": "[WILDLINE]",
@@ -124,7 +127,8 @@ string error with extra arg
       "droppedAttributesCount": 0,
       "flags": 0,
       "traceId": "",
-      "spanId": ""
+      "spanId": "",
+      "eventName": ""
     }
   ],
   "metrics": []

@@ -1,0 +1,4 @@
+[WILDCARD]TypeError: value.toUppperCase is not a function
+    at [WILDCARD]transform[WILDLINE]
+[WILDCARD]second status: 200 - second request ok
+server shut down cleanly

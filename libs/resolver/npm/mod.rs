@@ -83,11 +83,37 @@ impl DenoInNpmPackageChecker {
 
 impl InNpmPackageChecker for DenoInNpmPackageChecker {
   fn in_npm_package(&self, specifier: &Url) -> bool {
+    if is_synthetic_module(specifier) {
+      return false;
+    }
     match self {
       DenoInNpmPackageChecker::Managed(c) => c.in_npm_package(specifier),
       DenoInNpmPackageChecker::Byonm(c) => c.in_npm_package(specifier),
     }
   }
+}
+
+/// Whether `specifier` names one of the synthetic modules Deno uses for code
+/// that has no file on disk, such as `deno eval` (`$deno$eval.mts`) or piped
+/// stdin (`$deno$stdin.mts`).
+///
+/// These are resolved against the cwd so that imports and the closest
+/// `package.json` resolve as if the code were a file sitting there, which means
+/// a cwd inside `node_modules` would otherwise classify them as npm package
+/// files. That routes them to the npm module loader, which reads from disk and
+/// fails, because the source only ever exists in memory. `node-gyp` hits this:
+/// it evaluates `binding.gyp` with `node -p` while cwd'd into the package being
+/// built.
+pub fn is_synthetic_module(specifier: &Url) -> bool {
+  if specifier.scheme() != "file" {
+    return false;
+  }
+  let path = specifier.path();
+  let file_name = match path.rfind('/') {
+    Some(index) => &path[index + 1..],
+    None => path,
+  };
+  file_name.starts_with("$deno$")
 }
 
 #[derive(Debug, Error, JsError)]
@@ -544,6 +570,36 @@ impl<
       resolution_kind,
     );
     match resolution_result {
+      Ok(NodeResolution::BuiltIn(builtin_name)) => {
+        // The specifier matches a Node built-in name (e.g. "events") but
+        // an npm package with the same name may be installed. Try resolving
+        // as an npm package first -- if found, the npm package takes
+        // precedence over the built-in, matching Node.js behavior where
+        // node_modules packages shadow built-ins.
+        match self.node_resolver.resolve_package(
+          specifier,
+          referrer,
+          resolution_mode,
+          resolution_kind,
+        ) {
+          Ok(res) => Ok(Some(res)),
+          Err(err) => {
+            let err_kind = err.into_kind();
+            match err_kind {
+              // If the npm package can't be found in node_modules, fall
+              // back to the built-in. Other errors (e.g. broken exports
+              // map) should propagate so the user gets a useful diagnostic.
+              NodeResolveErrorKind::PackageResolve(_) => {
+                Ok(Some(NodeResolution::BuiltIn(builtin_name)))
+              }
+              _ => Err(
+                ResolveIfForNpmPackageErrorKind::NodeResolve(err_kind.into())
+                  .into_box(),
+              ),
+            }
+          }
+        }
+      }
       Ok(res) => Ok(Some(res)),
       Err(err) => {
         let err = err.into_kind();
@@ -556,6 +612,7 @@ impl<
           | NodeResolveErrorKind::UrlToFilePath(_)
           | NodeResolveErrorKind::TypesNotFound(_)
           | NodeResolveErrorKind::UnknownBuiltInNodeModule(_)
+          | NodeResolveErrorKind::BrowserMapDisabled(_)
           | NodeResolveErrorKind::FinalizeResolution(_) => Err(
             ResolveIfForNpmPackageErrorKind::NodeResolve(err.into()).into_box(),
           ),
@@ -657,3 +714,9 @@ pub(crate) fn join_package_name_to_path(
   }
   path.into_owned()
 }
+
+// Matching a locally installed (e.g. pnpm/npm workspace) package against a
+// requirement is prerelease-inclusive. The canonical implementation lives in
+// `deno_config` so it can be shared with `NpmPackageConfig` matching; re-export
+// it here for the byonm and cache_deps callers.
+pub use deno_config::workspace::version_req_matches_including_pre;

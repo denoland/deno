@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "directory_entrypoint": {
+      "args": "run subdir",
+      "output": "error: [ERR_UNSUPPORTED_DIR_IMPORT] Directory import 'file://[WILDCARD]/subdir' is not supported resolving ES modules\n",
+      "exitCode": 1
+    },
+    "json_entrypoint": {
+      "args": "run data.json",
+      "output": "error: Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement.\n",
+      "exitCode": 1
+    }
+  }
+}

@@ -1,0 +1,4 @@
+[WILDCARD]
+timer leak allowed because module disables sanitizer ... ok [WILDCARD]
+
+ok | 1 passed | 0 failed [WILDCARD]

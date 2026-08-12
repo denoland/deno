@@ -1,0 +1,21 @@
+{
+  "name": "@denotest/trusted-publisher",
+  "version": "1.0.0",
+  "main": "index.js",
+  "publishDate": "2020-01-01T00:00:00.000Z",
+  "_npmUser": {
+    "name": "ci-bot",
+    "trustedPublisher": {
+      "id": "github",
+      "oidcConfigId": "abc123"
+    }
+  },
+  "dist": {
+    "attestations": {
+      "url": "https://example.com/attestations",
+      "provenance": {
+        "predicateType": "https://slsa.dev/provenance/v1"
+      }
+    }
+  }
+}

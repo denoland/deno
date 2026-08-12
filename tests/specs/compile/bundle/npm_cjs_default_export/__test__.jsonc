@@ -1,0 +1,30 @@
+{
+  // A CJS npm package with a `default` export, embedded into a compiled
+  // bundle. The default import resolves to the `module.exports` object (Node
+  // interop), matching `deno run`, so `cjsDefault.default()` is the callable.
+  "tempDir": true,
+  "steps": [{
+    "args": "install",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "unix",
+    "args": "compile --bundle --no-check --output main main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "unix",
+    "commandName": "./main",
+    "args": [],
+    "output": "run.out",
+    "exitCode": 0
+  }, {
+    "if": "windows",
+    "args": "compile --bundle --no-check --output main.exe main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "windows",
+    "commandName": "./main.exe",
+    "args": [],
+    "output": "run.out",
+    "exitCode": 0
+  }]
+}

@@ -1,0 +1,2 @@
+monitor unhandledRejection same-error
+uncaught unhandledRejection same-error

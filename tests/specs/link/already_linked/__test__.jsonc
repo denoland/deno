@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "link ./pkg",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "link ./pkg",
+      "output": "second.out"
+    }
+  ]
+}

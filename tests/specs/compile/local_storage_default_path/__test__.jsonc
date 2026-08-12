@@ -1,0 +1,47 @@
+{
+  "tempDir": true,
+  // Redirect the platform app-data dir into the temp dir so the persisted
+  // store does not leak into the real user directory across runs.
+  "envs": {
+    "HOME": "$PWD",
+    "USERPROFILE": "$PWD",
+    "XDG_DATA_HOME": "$PWD/data",
+    "LOCALAPPDATA": "$PWD/data"
+  },
+  "steps": [
+    {
+      "if": "unix",
+      "args": "compile -A --output out main.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      "if": "unix",
+      "commandName": "./out",
+      "args": ["set"],
+      "output": "set\n"
+    },
+    {
+      "if": "unix",
+      "commandName": "./out",
+      "args": ["get"],
+      "output": "value: hi deno team.\n"
+    },
+    {
+      "if": "windows",
+      "args": "compile -A --output out.exe main.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      "if": "windows",
+      "commandName": "./out.exe",
+      "args": ["set"],
+      "output": "set\n"
+    },
+    {
+      "if": "windows",
+      "commandName": "./out.exe",
+      "args": ["get"],
+      "output": "value: hi deno team.\n"
+    }
+  ]
+}

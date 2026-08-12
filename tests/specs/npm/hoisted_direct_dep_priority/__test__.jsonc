@@ -1,0 +1,19 @@
+{
+  "tempDir": true,
+  "tests": {
+    "direct_dep_wins_over_transitive": {
+      // Root directly depends on different-nested-dep-child@1.0.0, and
+      // transitively (via different-nested-dep@2.0.0) on
+      // different-nested-dep-child@2.0.0. The direct version must be
+      // hoisted to node_modules/, and the transitive version nested
+      // under the package that pulled it in. (issue #34460)
+      "steps": [{
+        "args": "install",
+        "output": "[WILDCARD]"
+      }, {
+        "args": "run --allow-read main.ts",
+        "output": "hoisted: 1.0.0\nnested: 2.0.0\n"
+      }]
+    }
+  }
+}

@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::ffi::OsString;
+use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -54,10 +55,16 @@ pub async fn clean(
     progress_guard.set_total_size(no_of_files.try_into().unwrap());
     let mut cleaner = FsCleaner::new(Some(progress_guard));
 
-    cleaner.rm_rf(&deno_dir.root)?;
+    // On a dry run, tally up what would be removed without deleting anything;
+    // the reported output is otherwise identical to a real clean.
+    if clean_flags.dry_run {
+      cleaner.tally(&deno_dir.root)?;
+    } else {
+      cleaner.rm_rf(&deno_dir.root)?;
+    }
 
     // Drop the guard so that progress bar disappears.
-    drop(cleaner.progress_guard);
+    drop(cleaner.progress_guard.take());
 
     log::info!(
       "{} {} {}",
@@ -69,9 +76,78 @@ pub async fn clean(
         display::human_size(cleaner.bytes_removed as f64)
       ))
     );
+
+    if clean_flags.dry_run {
+      log::info!("{}", colors::yellow("Aborting due to --dry-run flag"));
+    } else {
+      report_locked_files(&cleaner.failed);
+    }
   }
 
   Ok(())
+}
+
+/// Warns about cache files that could not be removed because another process is
+/// holding them open. On Windows this resolves the offending process(es) via
+/// the Restart Manager and points the user at a running Deno language server,
+/// which is the most common cause (see issue #33903).
+fn report_locked_files(failed: &[(PathBuf, std::io::Error)]) {
+  if failed.is_empty() {
+    return;
+  }
+  let paths = failed
+    .iter()
+    .map(|(path, _)| path.clone())
+    .collect::<Vec<_>>();
+  let processes = crate::util::windows::processes_locking_files(&paths);
+  log::warn!("{}", format_locked_files_message(&paths, &processes));
+}
+
+fn format_locked_files_message(
+  paths: &[PathBuf],
+  processes: &[crate::util::windows::LockingProcess],
+) -> String {
+  const MAX_LISTED: usize = 10;
+  let mut message = format!(
+    "{} could not be removed because they are in use by another process:",
+    if paths.len() == 1 {
+      "1 file".to_string()
+    } else {
+      format!("{} files", paths.len())
+    }
+  );
+  for path in paths.iter().take(MAX_LISTED) {
+    message.push_str(&format!("\n  {}", path.display()));
+  }
+  if paths.len() > MAX_LISTED {
+    message.push_str(&format!("\n  ... and {} more", paths.len() - MAX_LISTED));
+  }
+
+  if processes.is_empty() {
+    message.push_str(
+      "\n\nThis is usually an editor running the Deno language server holding \
+       the cache open. Close it (or any running `deno` process) and run `deno \
+       clean` again.",
+    );
+  } else {
+    message.push_str("\n\nHeld open by:");
+    for process in processes {
+      let label = match &process.exe {
+        Some(exe) => exe.display().to_string(),
+        None => process.name.clone(),
+      };
+      let hint = if process.is_deno {
+        " (a running Deno process, likely the language server in your editor)"
+      } else {
+        ""
+      };
+      message.push_str(&format!("\n  {} (PID {}){}", label, process.pid, hint));
+    }
+    message
+      .push_str("\n\nClose the process(es) above and run `deno clean` again.");
+  }
+
+  message
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -391,6 +467,11 @@ async fn clean_except(
     if let Some(dir) = options.vendor_dir_path() {
       log_stats(&vendor_cleaned, dir);
     }
+
+    let mut failed = state.failed;
+    failed.extend(node_modules_cleaned.failed);
+    failed.extend(vendor_cleaned.failed);
+    report_locked_files(&failed);
   }
 
   Ok(())
@@ -495,11 +576,62 @@ fn clean_node_modules(
   dir: &Path,
   dry_run: bool,
 ) -> Result<(), AnyError> {
-  if !dir.ends_with("node_modules") || !dir.is_dir() {
+  if !dir.ends_with("node_modules") {
     bail!("expected a node_modules directory, got: {}", dir.display());
   }
+
+  let dir_metadata = match std::fs::symlink_metadata(dir) {
+    Ok(metadata) => metadata,
+    // Keep the original error message when the path is simply missing or has a
+    // non-directory component, rather than surfacing a raw stat error.
+    Err(err)
+      if matches!(
+        err.kind(),
+        ErrorKind::NotFound | ErrorKind::NotADirectory
+      ) =>
+    {
+      bail!("expected a node_modules directory, got: {}", dir.display());
+    }
+    Err(err) => {
+      return Err(err).with_context(|| {
+        format!("failed to stat node_modules directory at {}", dir.display())
+      });
+    }
+  };
+  if dir_metadata.file_type().is_symlink() {
+    bail!(
+      "refusing to clean symlinked node_modules directory at {}",
+      dir.display()
+    );
+  }
+  if !dir_metadata.is_dir() {
+    bail!("expected a node_modules directory, got: {}", dir.display());
+  }
+
   let base = dir.join(".deno");
-  if !base.exists() {
+  let base_metadata = match std::fs::symlink_metadata(&base) {
+    Ok(metadata) => metadata,
+    Err(err)
+      if matches!(
+        err.kind(),
+        ErrorKind::NotFound | ErrorKind::NotADirectory
+      ) =>
+    {
+      return Ok(());
+    }
+    Err(err) => {
+      return Err(err).with_context(|| {
+        format!("failed to stat node_modules/.deno at {}", base.display())
+      });
+    }
+  };
+  if base_metadata.file_type().is_symlink() {
+    bail!(
+      "refusing to clean symlinked node_modules/.deno directory at {}",
+      base.display()
+    );
+  }
+  if !base_metadata.is_dir() {
     return Ok(());
   }
 
@@ -511,6 +643,9 @@ fn clean_node_modules(
   // remove the actual packages from node_modules/.deno
   let entries = match std::fs::read_dir(&base) {
     Ok(entries) => entries,
+    // `base` was confirmed to be a real directory above, so reaching this arm
+    // means it was concurrently removed (TOCTOU) between that check and here.
+    // There's nothing left to clean in that case.
     Err(err)
       if matches!(
         err.kind(),
@@ -602,9 +737,94 @@ fn clean_node_modules(
 
 #[cfg(test)]
 mod tests {
+  use std::collections::HashSet;
   use std::path::Path;
+  use std::path::PathBuf;
+
+  use test_util::TempDir;
 
   use super::Found::*;
+  use super::clean_node_modules;
+  use super::format_locked_files_message;
+  use crate::util::fs::FsCleaner;
+  use crate::util::windows::LockingProcess;
+
+  #[test]
+  fn locked_files_message_without_processes() {
+    let paths = vec![PathBuf::from("/deno/dep_analysis_cache_v2")];
+    let message = format_locked_files_message(&paths, &[]);
+    assert!(message.starts_with(
+      "1 file could not be removed because they are in use by another process:"
+    ));
+    assert!(message.contains("dep_analysis_cache_v2"));
+    assert!(message.contains("Deno language server"));
+  }
+
+  #[test]
+  fn locked_files_message_lists_holding_processes() {
+    let paths = vec![
+      PathBuf::from("/deno/dep_analysis_cache_v2"),
+      PathBuf::from("/deno/node_analysis_cache_v2"),
+    ];
+    let processes = vec![
+      LockingProcess {
+        pid: 1234,
+        name: "deno".to_string(),
+        exe: Some(PathBuf::from("C:/Program Files/deno/deno.exe")),
+        is_deno: true,
+      },
+      LockingProcess {
+        pid: 5678,
+        name: "Some Editor".to_string(),
+        exe: None,
+        is_deno: false,
+      },
+    ];
+    let message = format_locked_files_message(&paths, &processes);
+    assert!(message.starts_with("2 files could not be removed"));
+    assert!(message.contains("Held open by:"));
+    assert!(message.contains("deno.exe (PID 1234)"));
+    assert!(message.contains("likely the language server"));
+    assert!(message.contains("Some Editor (PID 5678)"));
+    assert!(message.contains("Close the process(es) above"));
+  }
+
+  #[test]
+  fn locked_files_message_truncates_long_lists() {
+    let paths = (0..15)
+      .map(|i| PathBuf::from(format!("/deno/file_{i}")))
+      .collect::<Vec<_>>();
+    let message = format_locked_files_message(&paths, &[]);
+    assert!(message.starts_with("15 files could not be removed"));
+    assert!(message.contains("... and 5 more"));
+  }
+
+  #[test]
+  fn clean_node_modules_refuses_symlinked_deno_dir() {
+    let temp_dir = TempDir::new();
+    temp_dir.create_dir_all("node_modules");
+    temp_dir.create_dir_all("victim/important_dir");
+    temp_dir.write("victim/important_dir/secret.txt", "secret");
+    temp_dir.symlink_dir("victim", "node_modules/.deno");
+
+    let mut cleaner = FsCleaner::new(None);
+    let node_modules = temp_dir.path().join("node_modules");
+    let err = clean_node_modules(
+      &mut cleaner,
+      &HashSet::new(),
+      node_modules.as_path(),
+      false,
+    )
+    .unwrap_err();
+
+    assert!(err.to_string().contains("refusing to clean symlinked"));
+    assert!(
+      temp_dir
+        .path()
+        .join("victim/important_dir/secret.txt")
+        .exists()
+    );
+  }
 
   #[test]
   fn path_trie() {

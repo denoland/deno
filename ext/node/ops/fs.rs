@@ -5,9 +5,13 @@ use std::cell::RefCell;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::atomic::AtomicI32;
+use std::sync::atomic::Ordering;
 
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_core::ToV8;
 use deno_core::op2;
 #[cfg(feature = "sync_fs")]
 use deno_core::unsync::spawn_blocking;
@@ -15,17 +19,142 @@ use deno_core::v8;
 use deno_fs::FileSystemRc;
 use deno_fs::FsFileType;
 use deno_fs::OpenOptions;
-use deno_io::fs::FileResource;
 use deno_io::fs::FsResult;
+use deno_io::fs::FsStatFs;
 use deno_permissions::CheckedPath;
 use deno_permissions::CheckedPathBuf;
 use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionsContainer;
-use serde::Serialize;
 #[cfg(feature = "sync_fs")]
 use tokio::task::JoinError;
 
 use crate::ops::constant::UV_FS_COPYFILE_EXCL;
+
+/// Virtual file descriptors for files without a real OS fd (e.g. VFS files
+/// in `deno compile` binaries). These start at a high value to avoid
+/// collisions with real OS fds.
+const VIRTUAL_FD_START: i32 = 1_000_000_000;
+static NEXT_VIRTUAL_FD: AtomicI32 = AtomicI32::new(VIRTUAL_FD_START);
+
+fn next_virtual_fd() -> i32 {
+  NEXT_VIRTUAL_FD
+    .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
+      Some(v.saturating_add(1))
+    })
+    .unwrap()
+}
+
+#[cfg(windows)]
+fn is_virtual_fd(fd: i32) -> bool {
+  fd >= VIRTUAL_FD_START
+}
+
+/// Extract the real OS file descriptor from a File trait object.
+/// On Unix, this is the raw fd (already an i32).
+/// On Windows, this duplicates the OS HANDLE and converts it to a CRT
+/// file descriptor. The duplicate ensures the CRT fd and the File trait
+/// object own independent handles, avoiding double-close on cleanup.
+/// Read CRT errno and map it to a Win32 error code for std::io::Error.
+///
+/// `open_osfhandle` (and other CRT functions) report failures via errno,
+/// NOT GetLastError(). Calling `std::io::Error::last_os_error()` after a
+/// CRT failure reads a stale Win32 error from a prior API call — e.g.
+/// ERROR_ALREADY_EXISTS (183) left over from CreateFileW(CREATE_ALWAYS),
+/// which would be misreported as EEXIST.
+#[cfg(windows)]
+fn crt_error() -> std::io::Error {
+  // SAFETY: _errno() is a standard MSVC CRT function that returns a
+  // pointer to the thread-local errno value. Always valid to call.
+  unsafe extern "C" {
+    fn _errno() -> *mut i32;
+  }
+  // SAFETY: _errno() returns a valid pointer to thread-local errno.
+  let crt_errno = unsafe { *_errno() };
+  let win32_code = match crt_errno {
+    libc::EMFILE => 4,  // ERROR_TOO_MANY_OPEN_FILES
+    libc::EBADF => 6,   // ERROR_INVALID_HANDLE
+    libc::ENOMEM => 8,  // ERROR_NOT_ENOUGH_MEMORY
+    libc::EINVAL => 87, // ERROR_INVALID_PARAMETER
+    _ => 0,             // Unmapped → maps to UV "UNKNOWN"
+  };
+  std::io::Error::from_raw_os_error(win32_code)
+}
+
+/// Convert a backing OS fd/handle into a usable file descriptor.
+/// On Unix this is a no-op. On Windows it duplicates the OS HANDLE and
+/// converts it to a CRT file descriptor.
+fn raw_fd_from_backing_fd(
+  handle_fd: deno_core::ResourceHandleFd,
+) -> Result<i32, FsError> {
+  #[cfg(unix)]
+  {
+    Ok(handle_fd)
+  }
+
+  #[cfg(windows)]
+  {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::Foundation::DUPLICATE_SAME_ACCESS;
+    use windows_sys::Win32::Foundation::DuplicateHandle;
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+
+    // Duplicate the OS handle so the CRT fd owns an independent copy.
+    // This prevents double-close: dropping the Rc<dyn File> closes the
+    // original handle, and libc::close(crt_fd) closes the duplicate.
+    let mut dup_handle = std::ptr::null_mut();
+    // SAFETY: `handle_fd` is a valid OS handle from the file. We duplicate
+    // it into the current process with the same access rights.
+    let ok = unsafe {
+      DuplicateHandle(
+        GetCurrentProcess(),
+        handle_fd as _,
+        GetCurrentProcess(),
+        &mut dup_handle,
+        0,
+        0,
+        DUPLICATE_SAME_ACCESS,
+      )
+    };
+    if ok == 0 {
+      return Err(FsError::Io(std::io::Error::last_os_error()));
+    }
+
+    // SAFETY: `dup_handle` is a valid duplicated OS handle.
+    // `open_osfhandle` associates a CRT file descriptor with it so
+    // that node:fs callers receive a POSIX-style fd.
+    let crt_fd = unsafe { libc::open_osfhandle(dup_handle as isize, 0) };
+    if crt_fd == -1 {
+      // SAFETY: Clean up the duplicated handle on failure.
+      unsafe { CloseHandle(dup_handle) };
+      return Err(FsError::Io(crt_error()));
+    }
+    Ok(crt_fd)
+  }
+}
+
+fn ebadf() -> FsError {
+  FsError::Io(std::io::Error::from_raw_os_error(
+    #[cfg(unix)]
+    libc::EBADF,
+    #[cfg(windows)]
+    {
+      // Win32 ERROR_INVALID_HANDLE, which maps to Node's EBADF
+      6
+    },
+  ))
+}
+
+/// Get the File trait object for an OS file descriptor from FdTable.
+fn file_for_fd(
+  state: &OpState,
+  fd: i32,
+) -> Result<Rc<dyn deno_io::fs::File>, FsError> {
+  state
+    .borrow::<deno_io::FdTable>()
+    .get(fd)
+    .cloned()
+    .ok_or_else(ebadf)
+}
 
 /// When `sync_fs` is enabled, `FileSystemRc` is `Arc` (Send) and we can
 /// offload work to a blocking thread. Otherwise, run inline.
@@ -54,14 +183,6 @@ pub enum FsError {
     #[inherit]
     std::io::Error,
   ),
-  #[cfg(windows)]
-  #[class(generic)]
-  #[error("Path has no root.")]
-  PathHasNoRoot,
-  #[cfg(not(any(unix, windows)))]
-  #[class(generic)]
-  #[error("Unsupported platform.")]
-  UnsupportedPlatform,
   #[class(inherit)]
   #[error(transparent)]
   Fs(
@@ -187,13 +308,19 @@ pub fn op_node_fs_exists_sync(
   state: &mut OpState,
   #[string] path: &str,
 ) -> Result<bool, deno_permissions::PermissionCheckError> {
-  let path = state.borrow_mut::<PermissionsContainer>().check_open(
+  let path_or_err = state.borrow_mut::<PermissionsContainer>().check_open(
     Cow::Borrowed(Path::new(path)),
     OpenAccessKind::ReadNoFollow,
     Some("node:fs.existsSync()"),
-  )?;
-  let fs = state.borrow::<FileSystemRc>();
-  Ok(fs.exists_sync(&path))
+  );
+  match path_or_err {
+    Ok(path) => {
+      let fs = state.borrow::<FileSystemRc>();
+      Ok(fs.exists_sync(&path))
+    }
+    Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+    Err(err) => Err(err),
+  }
 }
 
 #[op2(stack_trace)]
@@ -201,17 +328,21 @@ pub async fn op_node_fs_exists(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
 ) -> Result<bool, FsError> {
-  let (fs, path) = {
+  let (fs, path_or_err) = {
     let mut state = state.borrow_mut();
-    let path = state.borrow_mut::<PermissionsContainer>().check_open(
+    let path_or_err = state.borrow_mut::<PermissionsContainer>().check_open(
       Cow::Owned(PathBuf::from(path)),
       OpenAccessKind::ReadNoFollow,
       Some("node:fs.exists()"),
-    )?;
-    (state.borrow::<FileSystemRc>().clone(), path)
+    );
+    (state.borrow::<FileSystemRc>().clone(), path_or_err)
   };
 
-  Ok(fs.exists_async(path.into_owned()).await?)
+  match path_or_err {
+    Ok(path) => Ok(fs.exists_async(path.into_owned()).await?),
+    Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+    Err(err) => Err(FsError::Permission(err)),
+  }
 }
 
 fn get_open_options(flags: i32, mode: Option<u32>) -> OpenOptions {
@@ -237,7 +368,7 @@ pub fn op_node_open_sync(
   #[string] path: &str,
   #[smi] flags: i32,
   #[smi] mode: u32,
-) -> Result<ResourceId, FsError> {
+) -> Result<i32, FsError> {
   let path = Path::new(path);
   let options = get_open_options(flags, Some(mode));
 
@@ -247,11 +378,47 @@ pub fn op_node_open_sync(
     open_options_to_access_kind(&options),
     Some("node:fs.openSync"),
   )?;
-  let file = fs.open_sync(&path, options)?;
-  let rid = state
-    .resource_table
-    .add(FileResource::new(file, "fsFile".to_string()));
-  Ok(rid)
+
+  // On Windows, opening with create + truncate uses CREATE_ALWAYS which
+  // truncates the file to 0 bytes immediately. If the subsequent CRT fd
+  // creation (open_osfhandle) fails, the file is left at 0 bytes — causing
+  // permanent data loss. To prevent this, open without truncation first,
+  // create the fd, and then truncate.
+  #[cfg(windows)]
+  let deferred_truncate =
+    options.truncate && options.create && !options.create_new;
+  #[cfg(windows)]
+  let open_options = if deferred_truncate {
+    OpenOptions {
+      truncate: false,
+      ..options
+    }
+  } else {
+    options
+  };
+  #[cfg(not(windows))]
+  let open_options = options;
+
+  let file = fs.open_sync(&path, open_options)?;
+  // For VFS files (e.g. in deno compile), backing_fd() returns None.
+  // Assign a virtual fd so the file can still be used through FdTable.
+  let fd = match file.clone().backing_fd() {
+    Some(backing_fd) => raw_fd_from_backing_fd(backing_fd)?,
+    None => next_virtual_fd(),
+  };
+
+  #[cfg(windows)]
+  if deferred_truncate
+    && !is_virtual_fd(fd)
+    && let Err(e) = file.clone().truncate_sync(0)
+  {
+    // SAFETY: fd is a valid CRT fd just created by raw_fd_from_backing_fd.
+    unsafe { libc::close(fd) };
+    return Err(e.into());
+  }
+
+  state.borrow_mut::<deno_io::FdTable>().register(fd, file);
+  Ok(fd)
 }
 
 #[op2(stack_trace)]
@@ -261,7 +428,7 @@ pub async fn op_node_open(
   #[string] path: String,
   #[smi] flags: i32,
   #[smi] mode: u32,
-) -> Result<ResourceId, FsError> {
+) -> Result<i32, FsError> {
   let path = PathBuf::from(path);
   let options = get_open_options(flags, Some(mode));
 
@@ -276,17 +443,48 @@ pub async fn op_node_open(
       )?,
     )
   };
-  let file = fs.open_async(path.as_owned(), options).await?;
 
-  let rid = state
-    .borrow_mut()
-    .resource_table
-    .add(FileResource::new(file, "fsFile".to_string()));
-  Ok(rid)
+  // See op_node_open_sync for why we defer truncation on Windows.
+  #[cfg(windows)]
+  let deferred_truncate =
+    options.truncate && options.create && !options.create_new;
+  #[cfg(windows)]
+  let open_options = if deferred_truncate {
+    OpenOptions {
+      truncate: false,
+      ..options
+    }
+  } else {
+    options
+  };
+  #[cfg(not(windows))]
+  let open_options = options;
+
+  let file = fs.open_async(path.as_owned(), open_options).await?;
+  // For VFS files (e.g. in deno compile), backing_fd() returns None.
+  // Assign a virtual fd so the file can still be used through FdTable.
+  let fd = match file.clone().backing_fd() {
+    Some(backing_fd) => raw_fd_from_backing_fd(backing_fd)?,
+    None => next_virtual_fd(),
+  };
+
+  #[cfg(windows)]
+  if deferred_truncate
+    && !is_virtual_fd(fd)
+    && let Err(e) = file.clone().truncate_sync(0)
+  {
+    // SAFETY: fd is a valid CRT fd just created by raw_fd_from_backing_fd.
+    unsafe { libc::close(fd) };
+    return Err(e.into());
+  }
+
+  let mut state = state.borrow_mut();
+  state.borrow_mut::<deno_io::FdTable>().register(fd, file);
+  Ok(fd)
 }
-#[derive(Debug, Serialize)]
+#[derive(Debug, ToV8)]
 pub struct StatFs {
-  #[serde(rename = "type")]
+  #[to_v8(rename = "type")]
   pub typ: u64,
   pub bsize: u64,
   pub blocks: u64,
@@ -296,8 +494,21 @@ pub struct StatFs {
   pub ffree: u64,
 }
 
+impl From<FsStatFs> for StatFs {
+  fn from(s: FsStatFs) -> Self {
+    StatFs {
+      typ: s.typ,
+      bsize: s.bsize,
+      blocks: s.blocks,
+      bfree: s.bfree,
+      bavail: s.bavail,
+      files: s.files,
+      ffree: s.ffree,
+    }
+  }
+}
+
 #[op2(stack_trace)]
-#[serde]
 pub fn op_node_statfs_sync(
   state: &mut OpState,
   #[string] path: &str,
@@ -312,18 +523,17 @@ pub fn op_node_statfs_sync(
     .borrow_mut::<PermissionsContainer>()
     .check_sys("statfs", "node:fs.statfsSync")?;
 
-  statfs(path, bigint)
+  let fs = state.borrow::<FileSystemRc>();
+  Ok(fs.statfs_sync(&path, bigint)?.into())
 }
 
 #[op2(stack_trace)]
-#[serde]
-#[allow(clippy::unused_async, reason = "sometimes async")]
 pub async fn op_node_statfs(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   bigint: bool,
 ) -> Result<StatFs, FsError> {
-  let path = {
+  let (fs, path) = {
     let mut state = state.borrow_mut();
     let path = state.borrow_mut::<PermissionsContainer>().check_open(
       Cow::Owned(PathBuf::from(path)),
@@ -333,133 +543,10 @@ pub async fn op_node_statfs(
     state
       .borrow_mut::<PermissionsContainer>()
       .check_sys("statfs", "node:fs.statfs")?;
-    path
+    (state.borrow::<FileSystemRc>().clone(), path)
   };
 
-  maybe_spawn_blocking!(move || statfs(path, bigint))
-}
-
-// TODO(dsherret): move this method onto FileSystem trait as this is completely
-// bypassing the FileSystem trait.
-fn statfs(path: CheckedPath, bigint: bool) -> Result<StatFs, FsError> {
-  #[cfg(unix)]
-  {
-    use std::os::unix::ffi::OsStrExt;
-
-    let path = path.as_os_str();
-    let mut cpath = path.as_bytes().to_vec();
-    cpath.push(0);
-    if bigint {
-      #[cfg(not(any(
-        target_os = "macos",
-        target_os = "freebsd",
-        target_os = "openbsd"
-      )))]
-      // SAFETY: `cpath` is NUL-terminated and result is pointer to valid statfs memory.
-      let (code, result) = unsafe {
-        let mut result: libc::statfs64 = std::mem::zeroed();
-        (libc::statfs64(cpath.as_ptr() as _, &mut result), result)
-      };
-      #[cfg(any(
-        target_os = "macos",
-        target_os = "freebsd",
-        target_os = "openbsd"
-      ))]
-      // SAFETY: `cpath` is NUL-terminated and result is pointer to valid statfs memory.
-      let (code, result) = unsafe {
-        let mut result: libc::statfs = std::mem::zeroed();
-        (libc::statfs(cpath.as_ptr() as _, &mut result), result)
-      };
-      if code == -1 {
-        return Err(std::io::Error::last_os_error().into());
-      }
-      Ok(StatFs {
-        #[cfg(not(target_os = "openbsd"))]
-        typ: result.f_type as _,
-        #[cfg(target_os = "openbsd")]
-        typ: 0 as _,
-        bsize: result.f_bsize as _,
-        blocks: result.f_blocks as _,
-        bfree: result.f_bfree as _,
-        bavail: result.f_bavail as _,
-        files: result.f_files as _,
-        ffree: result.f_ffree as _,
-      })
-    } else {
-      // SAFETY: `cpath` is NUL-terminated and result is pointer to valid statfs memory.
-      let (code, result) = unsafe {
-        let mut result: libc::statfs = std::mem::zeroed();
-        (libc::statfs(cpath.as_ptr() as _, &mut result), result)
-      };
-      if code == -1 {
-        return Err(std::io::Error::last_os_error().into());
-      }
-      Ok(StatFs {
-        #[cfg(not(target_os = "openbsd"))]
-        typ: result.f_type as _,
-        #[cfg(target_os = "openbsd")]
-        typ: 0 as _,
-        bsize: result.f_bsize as _,
-        blocks: result.f_blocks as _,
-        bfree: result.f_bfree as _,
-        bavail: result.f_bavail as _,
-        files: result.f_files as _,
-        ffree: result.f_ffree as _,
-      })
-    }
-  }
-  #[cfg(windows)]
-  {
-    use std::ffi::OsStr;
-    use std::os::windows::ffi::OsStrExt;
-
-    use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceW;
-
-    let _ = bigint;
-    #[allow(clippy::disallowed_methods, reason = "TODO: move onto RealFs")]
-    let path = path.canonicalize()?;
-    let root = path.ancestors().last().ok_or(FsError::PathHasNoRoot)?;
-    let mut root = OsStr::new(root).encode_wide().collect::<Vec<_>>();
-    root.push(0);
-    let mut sectors_per_cluster = 0;
-    let mut bytes_per_sector = 0;
-    let mut available_clusters = 0;
-    let mut total_clusters = 0;
-    let mut code = 0;
-    let mut retries = 0;
-    // We retry here because libuv does: https://github.com/libuv/libuv/blob/fa6745b4f26470dae5ee4fcbb1ee082f780277e0/src/win/fs.c#L2705
-    while code == 0 && retries < 2 {
-      // SAFETY: Normal GetDiskFreeSpaceW usage.
-      code = unsafe {
-        GetDiskFreeSpaceW(
-          root.as_ptr(),
-          &mut sectors_per_cluster,
-          &mut bytes_per_sector,
-          &mut available_clusters,
-          &mut total_clusters,
-        )
-      };
-      retries += 1;
-    }
-    if code == 0 {
-      return Err(std::io::Error::last_os_error().into());
-    }
-    Ok(StatFs {
-      typ: 0,
-      bsize: (bytes_per_sector * sectors_per_cluster) as _,
-      blocks: total_clusters as _,
-      bfree: available_clusters as _,
-      bavail: available_clusters as _,
-      files: 0,
-      ffree: 0,
-    })
-  }
-  #[cfg(not(any(unix, windows)))]
-  {
-    let _ = path;
-    let _ = bigint;
-    Err(FsError::UnsupportedPlatform)
-  }
+  Ok(fs.statfs_async(path.into_owned(), bigint).await?.into())
 }
 
 #[op2(fast, stack_trace)]
@@ -664,50 +751,6 @@ fn temp_path_append_suffix(prefix: &str) -> String {
   format!("{}{}", prefix, suffix)
 }
 
-/// Create a file resource from a raw file descriptor.
-/// This is used for wrapping PTYs and other non-socket file descriptors
-/// that can't be wrapped as Unix streams.
-#[cfg(unix)]
-#[op2(fast)]
-#[smi]
-pub fn op_node_file_from_fd(
-  state: &mut OpState,
-  fd: i32,
-) -> Result<ResourceId, FsError> {
-  use std::fs::File as StdFile;
-  use std::os::unix::io::FromRawFd;
-
-  if fd < 0 {
-    return Err(FsError::Io(std::io::Error::new(
-      std::io::ErrorKind::InvalidInput,
-      "Invalid file descriptor",
-    )));
-  }
-
-  // SAFETY: The caller is responsible for passing a valid fd that they own.
-  // The fd will be owned by the created File from this point on.
-  let std_file = unsafe { StdFile::from_raw_fd(fd) };
-
-  let file = Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
-  let rid = state
-    .resource_table
-    .add(FileResource::new(file, "pipe".to_string()));
-  Ok(rid)
-}
-
-#[cfg(not(unix))]
-#[op2(fast)]
-#[smi]
-pub fn op_node_file_from_fd(
-  _state: &mut OpState,
-  _fd: i32,
-) -> Result<ResourceId, FsError> {
-  Err(FsError::Io(std::io::Error::new(
-    std::io::ErrorKind::Unsupported,
-    "op_node_file_from_fd is not supported on this platform",
-  )))
-}
-
 #[op2(fast, stack_trace)]
 pub fn op_node_rmdir_sync(
   state: &mut OpState,
@@ -739,6 +782,550 @@ pub async fn op_node_rmdir(
   };
   fs.rmdir_async(path.into_owned()).await?;
   Ok(())
+}
+
+/// Create an anonymous pipe pair and return (read_fd, write_fd).
+/// The returned fds are NOT registered in FdTable; the caller
+/// is responsible for registering or closing them.
+#[cfg(unix)]
+#[op2]
+#[serde]
+pub fn op_node_create_pipe() -> Result<(i32, i32), FsError> {
+  let mut fds = [0i32; 2];
+  // SAFETY: pipe() writes two valid fds into the array on success.
+  let ret = unsafe { libc::pipe(fds.as_mut_ptr()) };
+  if ret != 0 {
+    return Err(FsError::Io(std::io::Error::last_os_error()));
+  }
+  Ok((fds[0], fds[1]))
+}
+
+#[cfg(windows)]
+#[op2]
+#[serde]
+pub fn op_node_create_pipe() -> Result<(i32, i32), FsError> {
+  use windows_sys::Win32::Foundation::CloseHandle;
+  use windows_sys::Win32::System::Pipes::CreatePipe;
+
+  let mut read_handle = std::ptr::null_mut();
+  let mut write_handle = std::ptr::null_mut();
+
+  // SAFETY: CreatePipe writes valid handles on success.
+  let ok = unsafe {
+    CreatePipe(&mut read_handle, &mut write_handle, std::ptr::null(), 0)
+  };
+  if ok == 0 {
+    return Err(FsError::Io(std::io::Error::last_os_error()));
+  }
+
+  // Convert OS handles to CRT file descriptors.
+  // SAFETY: read_handle and write_handle are valid pipe handles from
+  // CreatePipe. open_osfhandle takes ownership of the handle on success.
+  let read_fd = unsafe { libc::open_osfhandle(read_handle as isize, 0) };
+  // SAFETY: Same as above for the write handle.
+  let write_fd = unsafe { libc::open_osfhandle(write_handle as isize, 0) };
+
+  if read_fd == -1 || write_fd == -1 {
+    // Clean up on failure: close whichever succeeded as a CRT fd,
+    // and close the raw OS handle for whichever failed.
+    if read_fd != -1 {
+      // SAFETY: read_fd is a valid CRT fd from open_osfhandle.
+      unsafe {
+        libc::close(read_fd);
+      }
+    } else {
+      // SAFETY: read_handle is still a valid OS handle (open_osfhandle failed).
+      unsafe {
+        CloseHandle(read_handle);
+      }
+    }
+    if write_fd != -1 {
+      // SAFETY: write_fd is a valid CRT fd from open_osfhandle.
+      unsafe {
+        libc::close(write_fd);
+      }
+    } else {
+      // SAFETY: write_handle is still a valid OS handle (open_osfhandle failed).
+      unsafe {
+        CloseHandle(write_handle);
+      }
+    }
+    return Err(ebadf());
+  }
+
+  Ok((read_fd, write_fd))
+}
+
+// ============================================================
+// fd-based ops for node:fs (accept real OS fd, not RID)
+// ============================================================
+
+/// Set blocking or non-blocking mode on an OS file descriptor.
+/// Matches libuv's `uv_stream_set_blocking`.
+#[cfg(unix)]
+#[op2(fast)]
+#[smi]
+pub fn op_node_fd_set_blocking(fd: i32, blocking: bool) -> i32 {
+  // SAFETY: fcntl with F_GETFL/F_SETFL is safe on valid fds.
+  // Returns -1 on invalid fd, which we map to UV_EBADF.
+  unsafe {
+    let flags = libc::fcntl(fd, libc::F_GETFL);
+    if flags == -1 {
+      return -libc::EBADF;
+    }
+    let flags = if blocking {
+      flags & !libc::O_NONBLOCK
+    } else {
+      flags | libc::O_NONBLOCK
+    };
+    if libc::fcntl(fd, libc::F_SETFL, flags) == -1 {
+      return -libc::EBADF;
+    }
+    0
+  }
+}
+
+#[cfg(windows)]
+#[op2(fast)]
+#[smi]
+pub fn op_node_fd_set_blocking(_fd: i32, _blocking: bool) -> i32 {
+  // On Windows, named pipes and console handles don't support
+  // toggling blocking mode via a simple flag. The Windows-specific
+  // behavior is handled at the I/O level instead.
+  0
+}
+
+#[op2(fast)]
+pub fn op_node_fs_close(state: &mut OpState, fd: i32) -> Result<(), FsError> {
+  // FdTable.remove() drops the Rc<dyn File> and cancels the cancel handle,
+  // which will abort any in-flight async reads on this fd.
+  let file = state
+    .borrow_mut::<deno_io::FdTable>()
+    .remove(fd)
+    .ok_or_else(ebadf)?;
+
+  // For stdio fds (0/1/2), also remove the corresponding resource table
+  // entry so that Deno.stdin/stdout/stderr see the fd as closed and
+  // release their Rc clone of the same File.
+  if (0..=2).contains(&fd)
+    && let Ok(resource) = state.resource_table.take_any(fd as ResourceId)
+  {
+    resource.close();
+  }
+
+  // Dropping the Rc<dyn File> will close the underlying OS file descriptor
+  // when the reference count reaches zero (via std::fs::File Drop).
+  drop(file);
+
+  // On Windows, `raw_fd_from_backing_fd` creates a CRT file descriptor via
+  // `open_osfhandle` on a duplicated OS handle. The File Drop above closes
+  // the original handle; `libc::close` closes the duplicate and frees the
+  // CRT fd slot. Skip this for virtual fds (VFS files) which have no CRT fd.
+  #[cfg(windows)]
+  if !is_virtual_fd(fd) {
+    // SAFETY: `fd` is a valid CRT file descriptor created by
+    // `open_osfhandle` in `raw_fd_from_backing_fd`.
+    unsafe {
+      libc::close(fd);
+    }
+  }
+
+  Ok(())
+}
+
+/// Read from a raw OS fd using libc. No dup, no clone -- the read uses the
+/// fd number directly, so closing the fd from another thread interrupts the
+/// Positioned read: if position >= 0, uses pread to read without moving the
+/// file cursor. If position < 0, reads from the current position.
+fn read_with_position(
+  file: Rc<dyn deno_io::fs::File>,
+  buf: &mut [u8],
+  position: i64,
+) -> Result<u32, FsError> {
+  if position >= 0 {
+    let nread = file.read_at_sync(buf, position as u64)?;
+    Ok(nread as u32)
+  } else {
+    let nread = file.read_sync(buf)?;
+    Ok(nread as u32)
+  }
+}
+
+#[op2(fast)]
+#[smi]
+pub fn op_node_fs_read_sync(
+  state: &mut OpState,
+  fd: i32,
+  #[buffer] buf: &mut [u8],
+  #[bigint] position: i64,
+) -> Result<u32, FsError> {
+  let file = file_for_fd(state, fd)?;
+  read_with_position(file, buf, position)
+}
+
+/// Async read for node:fs. Runs a blocking read on a spawned thread using
+/// the raw OS fd directly (no dup/clone). When the fd is closed via
+/// Async read for node:fs. Uses the File trait from FdTable for proper
+/// I/O through the file handle.
+#[op2]
+#[smi]
+pub async fn op_node_fs_read_deferred(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+  #[buffer] buf: JsBuffer,
+  #[bigint] position: i64,
+) -> Result<u32, FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  if position >= 0 {
+    let view = deno_core::BufMutView::from(buf);
+    let (nread, _) = file.read_at_async(view, position as u64).await?;
+    Ok(nread as u32)
+  } else {
+    let view = deno_core::BufMutView::from(buf);
+    let (nread, _) = file.read_byob(view).await?;
+    Ok(nread as u32)
+  }
+}
+
+/// Positioned write: if position >= 0, uses pwrite to write without moving
+/// the file cursor. If position < 0, writes at the current position.
+/// Handles partial writes internally by looping until all bytes are written.
+fn write_with_position(
+  file: Rc<dyn deno_io::fs::File>,
+  buf: &[u8],
+  position: i64,
+) -> Result<u32, FsError> {
+  if position >= 0 {
+    let mut total = 0usize;
+    while total < buf.len() {
+      let nwritten = file
+        .clone()
+        .write_at_sync(&buf[total..], position as u64 + total as u64)?;
+      total += nwritten;
+    }
+    Ok(total as u32)
+  } else {
+    let mut total = 0usize;
+    while total < buf.len() {
+      let nwritten = file.clone().write_sync(&buf[total..])?;
+      total += nwritten;
+    }
+    Ok(total as u32)
+  }
+}
+
+#[op2(fast)]
+#[smi]
+pub fn op_node_fs_write_sync(
+  state: &mut OpState,
+  fd: i32,
+  #[buffer] buf: &[u8],
+  #[number] position: i64,
+) -> Result<u32, FsError> {
+  let file = file_for_fd(state, fd)?;
+  write_with_position(file, buf, position)
+}
+
+/// Async write for node:fs. Performs the write synchronously but resolves
+/// the promise on the next event loop tick.
+#[allow(
+  clippy::unused_async,
+  reason = "async required for deferred op scheduling"
+)]
+#[op2(async(deferred))]
+#[smi]
+pub async fn op_node_fs_write_deferred(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+  #[buffer] buf: JsBuffer,
+  #[number] position: i64,
+) -> Result<u32, FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  write_with_position(file, &buf, position)
+}
+
+#[op2(fast)]
+#[number]
+pub fn op_node_fs_seek_sync(
+  state: &mut OpState,
+  fd: i32,
+  #[number] offset: i64,
+  #[smi] whence: i32,
+) -> Result<u64, FsError> {
+  let file = file_for_fd(state, fd)?;
+  let seek_from = match whence {
+    0 => std::io::SeekFrom::Start(offset as u64),
+    1 => std::io::SeekFrom::Current(offset),
+    2 => std::io::SeekFrom::End(offset),
+    _ => {
+      return Err(FsError::Io(std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        "invalid whence",
+      )));
+    }
+  };
+  let pos = file.seek_sync(seek_from)?;
+  Ok(pos)
+}
+
+#[op2]
+#[number]
+pub async fn op_node_fs_seek(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+  #[number] offset: i64,
+  #[smi] whence: i32,
+) -> Result<u64, FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  let seek_from = match whence {
+    0 => std::io::SeekFrom::Start(offset as u64),
+    1 => std::io::SeekFrom::Current(offset),
+    2 => std::io::SeekFrom::End(offset),
+    _ => {
+      return Err(FsError::Io(std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        "invalid whence",
+      )));
+    }
+  };
+  let pos = file.seek_async(seek_from).await?;
+  Ok(pos)
+}
+
+/// Stat result returned to JS. Uses f64 for numeric fields to ensure
+/// they always serialize as JS Number (not BigInt). BigInt conversion
+/// for the bigint stat API is handled on the JS side by CFISBIS.
+#[derive(ToV8)]
+pub struct NodeFsStat {
+  pub is_file: bool,
+  pub is_directory: bool,
+  pub is_symlink: bool,
+  pub size: f64,
+  pub mtime_ms: Option<f64>,
+  pub atime_ms: Option<f64>,
+  pub birthtime_ms: Option<f64>,
+  pub ctime_ms: Option<f64>,
+  pub dev: f64,
+  pub ino: f64,
+  pub mode: u32,
+  pub nlink: f64,
+  pub uid: u32,
+  pub gid: u32,
+  pub rdev: f64,
+  pub blksize: f64,
+  pub blocks: f64,
+  pub is_block_device: bool,
+  pub is_char_device: bool,
+  pub is_fifo: bool,
+  pub is_socket: bool,
+}
+
+impl From<deno_io::fs::FsStat> for NodeFsStat {
+  fn from(stat: deno_io::fs::FsStat) -> Self {
+    NodeFsStat {
+      is_file: stat.is_file,
+      is_directory: stat.is_directory,
+      is_symlink: stat.is_symlink,
+      size: stat.size as f64,
+      mtime_ms: stat.mtime.map(|v| v as f64),
+      atime_ms: stat.atime.map(|v| v as f64),
+      birthtime_ms: stat.birthtime.map(|v| v as f64),
+      ctime_ms: stat.ctime.map(|v| v as f64),
+      dev: stat.dev as f64,
+      ino: stat.ino.unwrap_or(0) as f64,
+      mode: stat.mode,
+      nlink: stat.nlink.unwrap_or(0) as f64,
+      uid: stat.uid,
+      gid: stat.gid,
+      rdev: stat.rdev as f64,
+      blksize: stat.blksize as f64,
+      blocks: stat.blocks.unwrap_or(0) as f64,
+      is_block_device: stat.is_block_device,
+      is_char_device: stat.is_char_device,
+      is_fifo: stat.is_fifo,
+      is_socket: stat.is_socket,
+    }
+  }
+}
+
+#[op2]
+pub fn op_node_fs_fstat_sync(
+  state: &mut OpState,
+  fd: i32,
+) -> Result<NodeFsStat, FsError> {
+  let file = file_for_fd(state, fd)?;
+  let stat = file.stat_sync()?;
+  Ok(NodeFsStat::from(stat))
+}
+
+#[op2]
+pub async fn op_node_fs_fstat(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+) -> Result<NodeFsStat, FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  let stat = file.stat_async().await?;
+  Ok(NodeFsStat::from(stat))
+}
+
+#[op2(fast)]
+pub fn op_node_fs_ftruncate_sync(
+  state: &mut OpState,
+  fd: i32,
+  #[number] len: u64,
+) -> Result<(), FsError> {
+  let file = file_for_fd(state, fd)?;
+  file.truncate_sync(len)?;
+  Ok(())
+}
+
+#[op2]
+pub async fn op_node_fs_ftruncate(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+  #[number] len: u64,
+) -> Result<(), FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  file.truncate_async(len).await?;
+  Ok(())
+}
+
+#[op2(fast)]
+pub fn op_node_fs_fsync_sync(
+  state: &mut OpState,
+  fd: i32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(state, fd)?;
+  file.sync_sync()?;
+  Ok(())
+}
+
+#[op2]
+pub async fn op_node_fs_fsync(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  file.sync_async().await?;
+  Ok(())
+}
+
+#[op2(fast)]
+pub fn op_node_fs_fdatasync_sync(
+  state: &mut OpState,
+  fd: i32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(state, fd)?;
+  file.datasync_sync()?;
+  Ok(())
+}
+
+#[op2]
+pub async fn op_node_fs_fdatasync(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  file.datasync_async().await?;
+  Ok(())
+}
+
+#[op2(fast)]
+pub fn op_node_fs_futimes_sync(
+  state: &mut OpState,
+  fd: i32,
+  #[number] atime_secs: i64,
+  #[smi] atime_nanos: u32,
+  #[number] mtime_secs: i64,
+  #[smi] mtime_nanos: u32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(state, fd)?;
+  file.utime_sync(atime_secs, atime_nanos, mtime_secs, mtime_nanos)?;
+  Ok(())
+}
+
+#[op2]
+pub async fn op_node_fs_futimes(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+  #[number] atime_secs: i64,
+  #[smi] atime_nanos: u32,
+  #[number] mtime_secs: i64,
+  #[smi] mtime_nanos: u32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  file
+    .utime_async(atime_secs, atime_nanos, mtime_secs, mtime_nanos)
+    .await?;
+  Ok(())
+}
+
+#[op2(fast)]
+pub fn op_node_fs_fchmod_sync(
+  state: &mut OpState,
+  fd: i32,
+  #[smi] mode: u32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(state, fd)?;
+  file.chmod_sync(mode)?;
+  Ok(())
+}
+
+#[op2]
+pub async fn op_node_fs_fchmod(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+  #[smi] mode: u32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  file.chmod_async(mode).await?;
+  Ok(())
+}
+
+#[op2(fast)]
+pub fn op_node_fs_fchown_sync(
+  state: &mut OpState,
+  fd: i32,
+  #[smi] uid: u32,
+  #[smi] gid: u32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(state, fd)?;
+  file.chown_sync(Some(uid), Some(gid))?;
+  Ok(())
+}
+
+#[op2]
+pub async fn op_node_fs_fchown(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+  #[smi] uid: u32,
+  #[smi] gid: u32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  file.chown_async(Some(uid), Some(gid)).await?;
+  Ok(())
+}
+
+#[op2]
+#[buffer]
+pub fn op_node_fs_read_file_sync(
+  state: &mut OpState,
+  fd: i32,
+) -> Result<Vec<u8>, FsError> {
+  let file = file_for_fd(state, fd)?;
+  let buf = file.read_all_sync()?;
+  Ok(buf.to_vec())
+}
+
+#[op2]
+#[buffer]
+pub async fn op_node_fs_read_file(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+) -> Result<Vec<u8>, FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  let buf = file.read_all_async().await?;
+  Ok(buf.to_vec())
 }
 
 const CP_IS_DEST_EXISTS_FLAG: u64 = 1u64 << 32;
@@ -812,7 +1399,7 @@ struct CpCheckPathsResult {
 }
 
 #[derive(Clone, Copy)]
-struct CpSyncOptions<'a> {
+struct CpOptions {
   dereference: bool,
   recursive: bool,
   force: bool,
@@ -820,6 +1407,11 @@ struct CpSyncOptions<'a> {
   preserve_timestamps: bool,
   verbatim_symlinks: bool,
   mode: u32,
+}
+
+#[derive(Clone, Copy)]
+struct CpSyncOptions<'a> {
+  options: CpOptions,
   filter: Option<v8::Local<'a, v8::Function>>,
 }
 
@@ -850,14 +1442,18 @@ fn call_cp_sync_filter<'a>(
 }
 
 fn cp_sync_copy_dir<'a>(
-  state: &Rc<RefCell<OpState>>,
+  permissions: &PermissionsContainer,
   fs: &FileSystemRc,
   scope: &mut v8::PinScope<'a, '_>,
   src: &str,
   dest: &str,
   opts: CpSyncOptions<'a>,
 ) -> Result<CpSyncRunStatus, FsError> {
-  let src_path = check_cp_path(state, src, OpenAccessKind::ReadNoFollow)?;
+  let src_path = check_cp_path_with_permissions(
+    permissions,
+    src,
+    OpenAccessKind::ReadNoFollow,
+  )?;
   let entries =
     fs.read_dir_sync(&src_path.as_checked_path())
       .map_err(|err| {
@@ -894,15 +1490,21 @@ fn cp_sync_copy_dir<'a>(
     }
 
     let stat_info = check_paths_impl_sync(
-      state,
+      permissions,
       fs,
       &src_item,
       &dest_item,
-      opts.dereference,
+      opts.options.dereference,
     )?;
 
     match cp_sync_dispatch(
-      state, fs, scope, &stat_info, &src_item, &dest_item, opts,
+      permissions,
+      fs,
+      scope,
+      &stat_info,
+      &src_item,
+      &dest_item,
+      opts,
     )? {
       CpSyncRunStatus::Completed => {}
       CpSyncRunStatus::JsException => return Ok(CpSyncRunStatus::JsException),
@@ -913,7 +1515,7 @@ fn cp_sync_copy_dir<'a>(
 }
 
 fn cp_sync_mkdir_and_copy<'a>(
-  state: &Rc<RefCell<OpState>>,
+  permissions: &PermissionsContainer,
   fs: &FileSystemRc,
   scope: &mut v8::PinScope<'a, '_>,
   src_mode: u32,
@@ -921,7 +1523,8 @@ fn cp_sync_mkdir_and_copy<'a>(
   dest: &str,
   opts: CpSyncOptions<'a>,
 ) -> Result<CpSyncRunStatus, FsError> {
-  let dest_path = check_cp_path(state, dest, OpenAccessKind::Write)?;
+  let dest_path =
+    check_cp_path_with_permissions(permissions, dest, OpenAccessKind::Write)?;
   fs.mkdir_sync(&dest_path.as_checked_path(), false, None)
     .map_err(|err| {
       map_fs_error_to_node_fs_error(
@@ -934,7 +1537,7 @@ fn cp_sync_mkdir_and_copy<'a>(
       )
     })?;
 
-  let result = cp_sync_copy_dir(state, fs, scope, src, dest, opts)?;
+  let result = cp_sync_copy_dir(permissions, fs, scope, src, dest, opts)?;
   if let CpSyncRunStatus::JsException = result {
     return Ok(result);
   }
@@ -944,7 +1547,7 @@ fn cp_sync_mkdir_and_copy<'a>(
 }
 
 fn cp_sync_on_dir<'a>(
-  state: &Rc<RefCell<OpState>>,
+  permissions: &PermissionsContainer,
   fs: &FileSystemRc,
   scope: &mut v8::PinScope<'a, '_>,
   stat_info: &CpCheckPathsSyncResult,
@@ -954,7 +1557,7 @@ fn cp_sync_on_dir<'a>(
 ) -> Result<CpSyncRunStatus, FsError> {
   if !stat_info.is_dest_exists {
     return cp_sync_mkdir_and_copy(
-      state,
+      permissions,
       fs,
       scope,
       stat_info.src_mode,
@@ -964,11 +1567,11 @@ fn cp_sync_on_dir<'a>(
     );
   }
 
-  cp_sync_copy_dir(state, fs, scope, src, dest, opts)
+  cp_sync_copy_dir(permissions, fs, scope, src, dest, opts)
 }
 
 fn cp_sync_dispatch<'a>(
-  state: &Rc<RefCell<OpState>>,
+  permissions: &PermissionsContainer,
   fs: &FileSystemRc,
   scope: &mut v8::PinScope<'a, '_>,
   stat_info: &CpCheckPathsSyncResult,
@@ -976,8 +1579,8 @@ fn cp_sync_dispatch<'a>(
   dest: &str,
   opts: CpSyncOptions<'a>,
 ) -> Result<CpSyncRunStatus, FsError> {
-  if stat_info.is_src_directory && opts.recursive {
-    return cp_sync_on_dir(state, fs, scope, stat_info, src, dest, opts);
+  if stat_info.is_src_directory && opts.options.recursive {
+    return cp_sync_on_dir(permissions, fs, scope, stat_info, src, dest, opts);
   } else if stat_info.is_src_directory {
     return Err(
       CpError::EIsDir {
@@ -990,18 +1593,352 @@ fn cp_sync_dispatch<'a>(
     || stat_info.is_src_char_device
     || stat_info.is_src_block_device
   {
-    op_node_cp_on_file_sync(state, fs, src, dest, stat_info, &opts)?;
+    op_node_cp_on_file_sync(
+      permissions,
+      fs,
+      src,
+      dest,
+      stat_info,
+      &opts.options,
+    )?;
     return Ok(CpSyncRunStatus::Completed);
   } else if stat_info.is_src_symlink {
     op_node_cp_on_link_sync(
-      state,
+      permissions,
+      fs,
+      src,
+      dest,
+      stat_info.is_dest_exists,
+      opts.options.verbatim_symlinks,
+    )?;
+    return Ok(CpSyncRunStatus::Completed);
+  } else if stat_info.is_src_socket {
+    return Err(
+      CpError::Socket {
+        message: format!("cannot copy a socket file: {}", dest),
+        path: dest.to_string(),
+      }
+      .into(),
+    );
+  } else if stat_info.is_src_fifo {
+    return Err(
+      CpError::Fifo {
+        message: format!("cannot copy a FIFO pipe: {}", dest),
+        path: dest.to_string(),
+      }
+      .into(),
+    );
+  }
+
+  Err(
+    CpError::Unknown {
+      message: format!("cannot copy an unknown file type: {}", dest),
+      path: dest.to_string(),
+    }
+    .into(),
+  )
+}
+
+fn cp_sync_copy_dir_no_filter(
+  permissions: &PermissionsContainer,
+  fs: &FileSystemRc,
+  src: &str,
+  dest: &str,
+  opts: CpOptions,
+) -> Result<(), FsError> {
+  let src_path = check_cp_path_with_permissions(
+    permissions,
+    src,
+    OpenAccessKind::ReadNoFollow,
+  )?;
+  let entries =
+    fs.read_dir_sync(&src_path.as_checked_path())
+      .map_err(|err| {
+        map_fs_error_to_node_fs_error(
+          err,
+          NodeFsErrorContext {
+            path: Some(src.to_string()),
+            syscall: Some("opendir".into()),
+            ..Default::default()
+          },
+        )
+      })?;
+
+  for entry in entries {
+    let src_item = Path::new(src)
+      .join(&entry.name)
+      .to_string_lossy()
+      .to_string();
+    let dest_item = Path::new(dest)
+      .join(&entry.name)
+      .to_string_lossy()
+      .to_string();
+
+    let stat_info = check_paths_impl_sync(
+      permissions,
+      fs,
+      &src_item,
+      &dest_item,
+      opts.dereference,
+    )?;
+
+    cp_sync_dispatch_no_filter(
+      permissions,
+      fs,
+      &stat_info,
+      &src_item,
+      &dest_item,
+      opts,
+    )?;
+  }
+
+  Ok(())
+}
+
+fn cp_sync_mkdir_and_copy_no_filter(
+  permissions: &PermissionsContainer,
+  fs: &FileSystemRc,
+  src_mode: u32,
+  src: &str,
+  dest: &str,
+  opts: CpOptions,
+) -> Result<(), FsError> {
+  let dest_path =
+    check_cp_path_with_permissions(permissions, dest, OpenAccessKind::Write)?;
+  fs.mkdir_sync(&dest_path.as_checked_path(), false, None)
+    .map_err(|err| {
+      map_fs_error_to_node_fs_error(
+        err,
+        NodeFsErrorContext {
+          path: Some(dest.to_string()),
+          syscall: Some("mkdir".into()),
+          ..Default::default()
+        },
+      )
+    })?;
+
+  cp_sync_copy_dir_no_filter(permissions, fs, src, dest, opts)?;
+  set_dest_mode(fs, &dest_path.as_checked_path(), src_mode)?;
+  Ok(())
+}
+
+fn cp_sync_on_dir_no_filter(
+  permissions: &PermissionsContainer,
+  fs: &FileSystemRc,
+  stat_info: &CpCheckPathsSyncResult,
+  src: &str,
+  dest: &str,
+  opts: CpOptions,
+) -> Result<(), FsError> {
+  if !stat_info.is_dest_exists {
+    if try_clone_dir_no_filter(permissions, fs, src, dest, opts)? {
+      return Ok(());
+    }
+    return cp_sync_mkdir_and_copy_no_filter(
+      permissions,
+      fs,
+      stat_info.src_mode,
+      src,
+      dest,
+      opts,
+    );
+  }
+
+  cp_sync_copy_dir_no_filter(permissions, fs, src, dest, opts)
+}
+
+#[cfg(target_os = "macos")]
+fn try_clone_dir_no_filter(
+  permissions: &PermissionsContainer,
+  fs: &FileSystemRc,
+  src: &str,
+  dest: &str,
+  opts: CpOptions,
+) -> Result<bool, FsError> {
+  if opts.dereference
+    || !opts.recursive
+    || !opts.force
+    || opts.error_on_exist
+    || opts.preserve_timestamps
+    || opts.verbatim_symlinks
+    || opts.mode != 0
+    || !cp_tree_only_regular_files_and_dirs(permissions, fs, src, dest)?
+  {
+    return Ok(false);
+  }
+
+  let src_path =
+    check_cp_path_with_permissions(permissions, src, OpenAccessKind::Read)?;
+  let dest_path =
+    check_cp_path_with_permissions(permissions, dest, OpenAccessKind::Write)?;
+
+  match clonefile_sync(
+    &src_path.as_checked_path(),
+    &dest_path.as_checked_path(),
+  ) {
+    Ok(()) => Ok(true),
+    Err(_) => {
+      if fs.exists_sync(&dest_path.as_checked_path()) {
+        fs.remove_sync(&dest_path.as_checked_path(), true)
+          .map_err(|err| {
+            map_fs_error_to_node_fs_error(
+              err,
+              NodeFsErrorContext {
+                path: Some(dest.to_string()),
+                syscall: Some("rm".into()),
+                ..Default::default()
+              },
+            )
+          })?;
+      }
+      Ok(false)
+    }
+  }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn try_clone_dir_no_filter(
+  _permissions: &PermissionsContainer,
+  _fs: &FileSystemRc,
+  _src: &str,
+  _dest: &str,
+  _opts: CpOptions,
+) -> Result<bool, FsError> {
+  Ok(false)
+}
+
+#[cfg(target_os = "macos")]
+fn cp_tree_only_regular_files_and_dirs(
+  permissions: &PermissionsContainer,
+  fs: &FileSystemRc,
+  src: &str,
+  dest: &str,
+) -> Result<bool, FsError> {
+  let src_path = check_cp_path_with_permissions(
+    permissions,
+    src,
+    OpenAccessKind::ReadNoFollow,
+  )?;
+  check_cp_path_with_permissions(permissions, dest, OpenAccessKind::Write)?;
+
+  let entries =
+    fs.read_dir_sync(&src_path.as_checked_path())
+      .map_err(|err| {
+        map_fs_error_to_node_fs_error(
+          err,
+          NodeFsErrorContext {
+            path: Some(src.to_string()),
+            syscall: Some("opendir".into()),
+            ..Default::default()
+          },
+        )
+      })?;
+
+  for entry in entries {
+    let src_item = Path::new(src)
+      .join(&entry.name)
+      .to_string_lossy()
+      .to_string();
+    let dest_item = Path::new(dest)
+      .join(&entry.name)
+      .to_string_lossy()
+      .to_string();
+
+    let stat_info =
+      check_paths_impl_sync(permissions, fs, &src_item, &dest_item, false)?;
+    if stat_info.is_src_directory {
+      if !cp_tree_only_regular_files_and_dirs(
+        permissions,
+        fs,
+        &src_item,
+        &dest_item,
+      )? {
+        return Ok(false);
+      }
+    } else if stat_info.is_src_file {
+      check_cp_path_with_permissions(
+        permissions,
+        &src_item,
+        OpenAccessKind::Read,
+      )?;
+      check_cp_path_with_permissions(
+        permissions,
+        &dest_item,
+        OpenAccessKind::Write,
+      )?;
+    } else {
+      return Ok(false);
+    }
+  }
+
+  Ok(true)
+}
+
+#[cfg(target_os = "macos")]
+fn clonefile_sync(
+  src: &CheckedPath,
+  dest: &CheckedPath,
+) -> std::io::Result<()> {
+  use std::ffi::CString;
+  use std::os::unix::ffi::OsStrExt;
+
+  let src = CString::new(src.as_os_str().as_bytes()).map_err(|err| {
+    std::io::Error::new(std::io::ErrorKind::InvalidInput, err)
+  })?;
+  let dest = CString::new(dest.as_os_str().as_bytes()).map_err(|err| {
+    std::io::Error::new(std::io::ErrorKind::InvalidInput, err)
+  })?;
+
+  // SAFETY: `src` and `dest` are valid C strings.
+  let result = unsafe { libc::clonefile(src.as_ptr(), dest.as_ptr(), 0) };
+  if result == 0 {
+    Ok(())
+  } else {
+    Err(std::io::Error::last_os_error())
+  }
+}
+
+fn cp_sync_dispatch_no_filter(
+  permissions: &PermissionsContainer,
+  fs: &FileSystemRc,
+  stat_info: &CpCheckPathsSyncResult,
+  src: &str,
+  dest: &str,
+  opts: CpOptions,
+) -> Result<(), FsError> {
+  if stat_info.is_src_directory && opts.recursive {
+    return cp_sync_on_dir_no_filter(
+      permissions,
+      fs,
+      stat_info,
+      src,
+      dest,
+      opts,
+    );
+  } else if stat_info.is_src_directory {
+    return Err(
+      CpError::EIsDir {
+        message: format!("{} is a directory (not copied)", src),
+        path: src.to_string(),
+      }
+      .into(),
+    );
+  } else if stat_info.is_src_file
+    || stat_info.is_src_char_device
+    || stat_info.is_src_block_device
+  {
+    op_node_cp_on_file_sync(permissions, fs, src, dest, stat_info, &opts)?;
+    return Ok(());
+  } else if stat_info.is_src_symlink {
+    op_node_cp_on_link_sync(
+      permissions,
       fs,
       src,
       dest,
       stat_info.is_dest_exists,
       opts.verbatim_symlinks,
     )?;
-    return Ok(CpSyncRunStatus::Completed);
+    return Ok(());
   } else if stat_info.is_src_socket {
     return Err(
       CpError::Socket {
@@ -1137,10 +2074,18 @@ fn check_cp_path(
   path: &str,
   access_kind: OpenAccessKind,
 ) -> Result<CheckedPathBuf, FsError> {
-  let mut state = state.borrow_mut();
+  let state = state.borrow();
+  let permissions = state.borrow::<PermissionsContainer>();
+  check_cp_path_with_permissions(permissions, path, access_kind)
+}
+
+fn check_cp_path_with_permissions(
+  permissions: &PermissionsContainer,
+  path: &str,
+  access_kind: OpenAccessKind,
+) -> Result<CheckedPathBuf, FsError> {
   Ok(
-    state
-      .borrow_mut::<PermissionsContainer>()
+    permissions
       .check_open(
         Cow::Owned(PathBuf::from(path)),
         access_kind,
@@ -1151,23 +2096,33 @@ fn check_cp_path(
 }
 
 fn check_paths_impl_sync(
-  state: &Rc<RefCell<OpState>>,
+  permissions: &PermissionsContainer,
   fs: &FileSystemRc,
   src: &str,
   dest: &str,
   dereference: bool,
 ) -> Result<CpCheckPathsSyncResult, FsError> {
   let (src_stat_result, dest_result, syscall) = if dereference {
-    let src_path = check_cp_path(state, src, OpenAccessKind::Read)?;
-    let dest_path = check_cp_path(state, dest, OpenAccessKind::Read)?;
+    let src_path =
+      check_cp_path_with_permissions(permissions, src, OpenAccessKind::Read)?;
+    let dest_path =
+      check_cp_path_with_permissions(permissions, dest, OpenAccessKind::Read)?;
     (
       fs.stat_sync(&src_path.as_checked_path()),
       fs.stat_sync(&dest_path.as_checked_path()),
       "stat".to_string(),
     )
   } else {
-    let src_path = check_cp_path(state, src, OpenAccessKind::ReadNoFollow)?;
-    let dest_path = check_cp_path(state, dest, OpenAccessKind::ReadNoFollow)?;
+    let src_path = check_cp_path_with_permissions(
+      permissions,
+      src,
+      OpenAccessKind::ReadNoFollow,
+    )?;
+    let dest_path = check_cp_path_with_permissions(
+      permissions,
+      dest,
+      OpenAccessKind::ReadNoFollow,
+    )?;
     (
       fs.lstat_sync(&src_path.as_checked_path()),
       fs.lstat_sync(&dest_path.as_checked_path()),
@@ -1450,16 +2405,17 @@ pub async fn op_node_cp_validate_and_prepare(
 /// parent directory exists for cpSync.
 /// Returns stat info for the source file.
 fn op_node_cp_validate_and_prepare_sync(
-  state: &Rc<RefCell<OpState>>,
+  permissions: &PermissionsContainer,
   fs: &FileSystemRc,
   src: &str,
   dest: &str,
   dereference: bool,
 ) -> Result<CpCheckPathsSyncResult, FsError> {
-  let check_result = check_paths_impl_sync(state, fs, src, dest, dereference)?;
+  let check_result =
+    check_paths_impl_sync(permissions, fs, src, dest, dereference)?;
 
   check_parent_paths_impl_sync(
-    state,
+    permissions,
     fs,
     src,
     check_result.src_dev,
@@ -1467,7 +2423,7 @@ fn op_node_cp_validate_and_prepare_sync(
     dest,
   )?;
 
-  ensure_parent_dir_impl_sync(state, fs, dest)?;
+  ensure_parent_dir_impl_sync(permissions, fs, dest)?;
 
   Ok(check_result)
 }
@@ -1487,17 +2443,25 @@ pub fn op_node_cp_sync<'a>(
   #[smi] mode: u32,
   filter: v8::Local<'a, v8::Value>,
 ) -> Result<(), FsError> {
-  let fs = {
+  let (fs, permissions) = {
     let state = state.borrow();
-    state.borrow::<FileSystemRc>().clone()
+    (
+      state.borrow::<FileSystemRc>().clone(),
+      state.borrow::<PermissionsContainer>().clone(),
+    )
   };
 
-  let stat_info =
-    op_node_cp_validate_and_prepare_sync(&state, &fs, src, dest, dereference)?;
+  let stat_info = op_node_cp_validate_and_prepare_sync(
+    &permissions,
+    &fs,
+    src,
+    dest,
+    dereference,
+  )?;
 
   let filter = v8::Local::<v8::Function>::try_from(filter).ok();
 
-  let opts = CpSyncOptions {
+  let options = CpOptions {
     dereference,
     recursive,
     force,
@@ -1505,14 +2469,69 @@ pub fn op_node_cp_sync<'a>(
     preserve_timestamps,
     verbatim_symlinks,
     mode,
-    filter,
   };
 
-  match cp_sync_dispatch(&state, &fs, scope, &stat_info, src, dest, opts)? {
+  if filter.is_none() {
+    cp_sync_dispatch_no_filter(
+      &permissions,
+      &fs,
+      &stat_info,
+      src,
+      dest,
+      options,
+    )?;
+    return Ok(());
+  }
+
+  let opts = CpSyncOptions { options, filter };
+
+  match cp_sync_dispatch(&permissions, &fs, scope, &stat_info, src, dest, opts)?
+  {
     // Treat JsException as success here so the pending V8 exception can propagate
     // naturally, preserving the original JS stack instead of rethrowing from Rust.
     CpSyncRunStatus::Completed | CpSyncRunStatus::JsException => Ok(()),
   }
+}
+
+#[op2(stack_trace)]
+#[allow(
+  clippy::unused_async,
+  reason = "maybe_spawn_blocking awaits with sync_fs"
+)]
+pub async fn op_node_cp_fast(
+  state: Rc<RefCell<OpState>>,
+  #[string] src: String,
+  #[string] dest: String,
+  recursive: bool,
+) -> Result<(), FsError> {
+  let (fs, permissions) = {
+    let state = state.borrow();
+    (
+      state.borrow::<FileSystemRc>().clone(),
+      state.borrow::<PermissionsContainer>().clone(),
+    )
+  };
+
+  let opts = CpOptions {
+    dereference: false,
+    recursive,
+    force: true,
+    error_on_exist: false,
+    preserve_timestamps: false,
+    verbatim_symlinks: false,
+    mode: 0,
+  };
+
+  maybe_spawn_blocking!(move || -> Result<(), FsError> {
+    let stat_info = op_node_cp_validate_and_prepare_sync(
+      &permissions,
+      &fs,
+      &src,
+      &dest,
+      opts.dereference,
+    )?;
+    cp_sync_dispatch_no_filter(&permissions, &fs, &stat_info, &src, &dest, opts)
+  })
 }
 
 /// Recursively check if dest parent is a subdirectory of src.
@@ -1561,7 +2580,17 @@ async fn check_parent_paths_impl(
 
     let current_str = current.to_string_lossy();
     let checked_path =
-      check_cp_path(state, &current_str, OpenAccessKind::Read)?;
+      match check_cp_path(state, &current_str, OpenAccessKind::Read) {
+        Ok(p) => p,
+        // When read permission is ignored, the check returns NotFound.
+        // Treat it like a non-existent directory: stop walking.
+        Err(FsError::Permission(e))
+          if e.kind() == std::io::ErrorKind::NotFound =>
+        {
+          return Ok(());
+        }
+        Err(e) => return Err(e),
+      };
     let stat_result = fs.stat_async(checked_path).await;
     match stat_result {
       Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -1603,7 +2632,7 @@ async fn check_parent_paths_impl(
 }
 
 fn check_parent_paths_impl_sync(
-  state: &Rc<RefCell<OpState>>,
+  permissions: &PermissionsContainer,
   fs: &FileSystemRc,
   src: &str,
   src_dev: u64,
@@ -1643,8 +2672,21 @@ fn check_parent_paths_impl_sync(
     }
 
     let current_str = current.to_string_lossy();
-    let checked_path =
-      check_cp_path(state, &current_str, OpenAccessKind::Read)?;
+    let checked_path = match check_cp_path_with_permissions(
+      permissions,
+      &current_str,
+      OpenAccessKind::Read,
+    ) {
+      Ok(p) => p,
+      // When read permission is ignored, the check returns NotFound.
+      // Treat it like a non-existent directory: stop walking.
+      Err(FsError::Permission(e))
+        if e.kind() == std::io::ErrorKind::NotFound =>
+      {
+        return Ok(());
+      }
+      Err(e) => return Err(e),
+    };
     match fs.stat_sync(&checked_path.as_checked_path()) {
       Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
       Err(e) => {
@@ -1728,7 +2770,7 @@ async fn ensure_parent_dir_impl(
 }
 
 fn ensure_parent_dir_impl_sync(
-  state: &Rc<RefCell<OpState>>,
+  permissions: &PermissionsContainer,
   fs: &FileSystemRc,
   dest: &str,
 ) -> Result<(), FsError> {
@@ -1738,12 +2780,19 @@ fn ensure_parent_dir_impl_sync(
     .unwrap_or_default();
 
   let parent_str = dest_parent.to_string_lossy();
-  let checked_parent = check_cp_path(state, &parent_str, OpenAccessKind::Read)?;
+  let checked_parent = check_cp_path_with_permissions(
+    permissions,
+    &parent_str,
+    OpenAccessKind::Read,
+  )?;
   let exists = fs.exists_sync(&checked_parent.as_checked_path());
 
   if !exists {
-    let checked_parent =
-      check_cp_path(state, &parent_str, OpenAccessKind::Write)?;
+    let checked_parent = check_cp_path_with_permissions(
+      permissions,
+      &parent_str,
+      OpenAccessKind::Write,
+    )?;
     fs.mkdir_sync(&checked_parent.as_checked_path(), true, None)
       .map_err(|err| {
         map_fs_error_to_node_fs_error(
@@ -1828,14 +2877,13 @@ fn set_dest_timestamps_and_mode(
   })?;
 
   if let (Some(atime), Some(mtime)) = (src_stat.atime, src_stat.mtime) {
-    // FsStat stores times as milliseconds since the Unix epoch.
-    // utime_async expects split values: whole seconds + nanoseconds remainder.
-    let atime_secs = (atime / 1000) as i64;
-    // Remaining milliseconds are converted to nanoseconds.
-    let atime_nanos = ((atime % 1000) * 1_000_000) as u32;
-    let mtime_secs = (mtime / 1000) as i64;
-    // Same conversion for mtime: ms remainder -> ns.
-    let mtime_nanos = ((mtime % 1000) * 1_000_000) as u32;
+    // FsStat stores times as i64 milliseconds since the Unix epoch (negative
+    // for pre-1970). Use Euclidean division so the nanosecond remainder is
+    // always non-negative, matching the POSIX timespec convention.
+    let atime_secs = atime.div_euclid(1000);
+    let atime_nanos = (atime.rem_euclid(1000) * 1_000_000) as u32;
+    let mtime_secs = mtime.div_euclid(1000);
+    let mtime_nanos = (mtime.rem_euclid(1000) * 1_000_000) as u32;
     fs.utime_sync(dest_path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
       .map_err(|err| {
         map_fs_error_to_node_fs_error(
@@ -1968,17 +3016,21 @@ pub async fn op_node_cp_on_file(
 }
 
 fn op_node_cp_on_file_sync(
-  state: &Rc<RefCell<OpState>>,
+  permissions: &PermissionsContainer,
   fs: &FileSystemRc,
   src: &str,
   dest: &str,
   stat_info: &CpCheckPathsSyncResult,
-  opts: &CpSyncOptions,
+  opts: &CpOptions,
 ) -> Result<(), FsError> {
   if stat_info.is_dest_exists {
     if opts.force {
       // Remove dest, then copy.
-      let dest_path = check_cp_path(state, dest, OpenAccessKind::Write)?;
+      let dest_path = check_cp_path_with_permissions(
+        permissions,
+        dest,
+        OpenAccessKind::Write,
+      )?;
       fs.remove_sync(&dest_path.as_checked_path(), false)
         .map_err(|err| {
           map_fs_error_to_node_fs_error(
@@ -2005,7 +3057,11 @@ fn op_node_cp_on_file_sync(
   }
 
   if cp_mode_has_copyfile_excl(opts.mode) {
-    let dest_path = check_cp_path(state, dest, OpenAccessKind::ReadNoFollow)?;
+    let dest_path = check_cp_path_with_permissions(
+      permissions,
+      dest,
+      OpenAccessKind::ReadNoFollow,
+    )?;
     match fs.lstat_sync(&dest_path.as_checked_path()) {
       Ok(_) => {
         return Err(
@@ -2030,8 +3086,10 @@ fn op_node_cp_on_file_sync(
     }
   }
 
-  let src_path = check_cp_path(state, src, OpenAccessKind::Read)?;
-  let dest_path = check_cp_path(state, dest, OpenAccessKind::Write)?;
+  let src_path =
+    check_cp_path_with_permissions(permissions, src, OpenAccessKind::Read)?;
+  let dest_path =
+    check_cp_path_with_permissions(permissions, dest, OpenAccessKind::Write)?;
 
   fs.copy_file_sync(&src_path.as_checked_path(), &dest_path.as_checked_path())
     .map_err(|err| {
@@ -2135,7 +3193,7 @@ pub async fn op_node_cp_on_link(
 
       #[cfg(windows)]
       {
-        use winapi::shared::winerror::ERROR_NOT_A_REPARSE_POINT;
+        use windows_sys::Win32::Foundation::ERROR_NOT_A_REPARSE_POINT;
 
         let os_error = e.into_io_error();
         let Some(errno) = os_error.raw_os_error() else {
@@ -2265,14 +3323,18 @@ pub async fn op_node_cp_on_link(
 }
 
 fn op_node_cp_on_link_sync(
-  state: &Rc<RefCell<OpState>>,
+  permissions: &PermissionsContainer,
   fs: &FileSystemRc,
   src: &str,
   dest: &str,
   dest_exists: bool,
   verbatim_symlinks: bool,
 ) -> Result<(), FsError> {
-  let src_path = check_cp_path(state, src, OpenAccessKind::ReadNoFollow)?;
+  let src_path = check_cp_path_with_permissions(
+    permissions,
+    src,
+    OpenAccessKind::ReadNoFollow,
+  )?;
   let resolved_src_buf = fs
     .read_link_sync(&src_path.as_checked_path())
     .map_err(|err| {
@@ -2296,15 +3358,8 @@ fn op_node_cp_on_link_sync(
   }
 
   if !dest_exists {
-    {
-      let mut state = state.borrow_mut();
-      state
-        .borrow_mut::<PermissionsContainer>()
-        .check_write_all("node:fs.symlink")?;
-      state
-        .borrow_mut::<PermissionsContainer>()
-        .check_read_all("node:fs.symlink")?;
-    }
+    permissions.check_write_all("node:fs.symlink")?;
+    permissions.check_read_all("node:fs.symlink")?;
 
     let oldpath = CheckedPathBuf::unsafe_new(PathBuf::from(&resolved_src));
     let newpath = CheckedPathBuf::unsafe_new(PathBuf::from(dest));
@@ -2329,7 +3384,11 @@ fn op_node_cp_on_link_sync(
   }
 
   // Dest exists — try to read it as a symlink.
-  let dest_path = check_cp_path(state, dest, OpenAccessKind::ReadNoFollow)?;
+  let dest_path = check_cp_path_with_permissions(
+    permissions,
+    dest,
+    OpenAccessKind::ReadNoFollow,
+  )?;
   let resolved_dest_result = fs.read_link_sync(&dest_path.as_checked_path());
   let resolved_dest = match resolved_dest_result {
     Ok(p) => {
@@ -2351,15 +3410,8 @@ fn op_node_cp_on_link_sync(
       if kind == std::io::ErrorKind::InvalidInput
         || kind == std::io::ErrorKind::Other
       {
-        {
-          let mut state = state.borrow_mut();
-          state
-            .borrow_mut::<PermissionsContainer>()
-            .check_write_all("node:fs.symlink")?;
-          state
-            .borrow_mut::<PermissionsContainer>()
-            .check_read_all("node:fs.symlink")?;
-        }
+        permissions.check_write_all("node:fs.symlink")?;
+        permissions.check_read_all("node:fs.symlink")?;
 
         let oldpath = CheckedPathBuf::unsafe_new(PathBuf::from(&resolved_src));
         let newpath = CheckedPathBuf::unsafe_new(PathBuf::from(dest));
@@ -2385,7 +3437,7 @@ fn op_node_cp_on_link_sync(
 
       #[cfg(windows)]
       {
-        use winapi::shared::winerror::ERROR_NOT_A_REPARSE_POINT;
+        use windows_sys::Win32::Foundation::ERROR_NOT_A_REPARSE_POINT;
 
         let os_error = e.into_io_error();
         let Some(errno) = os_error.raw_os_error() else {
@@ -2408,15 +3460,8 @@ fn op_node_cp_on_link_sync(
           );
         }
 
-        {
-          let mut state = state.borrow_mut();
-          state
-            .borrow_mut::<PermissionsContainer>()
-            .check_write_all("node:fs.symlink")?;
-          state
-            .borrow_mut::<PermissionsContainer>()
-            .check_read_all("node:fs.symlink")?;
-        }
+        permissions.check_write_all("node:fs.symlink")?;
+        permissions.check_read_all("node:fs.symlink")?;
 
         let oldpath = CheckedPathBuf::unsafe_new(PathBuf::from(&resolved_src));
         let newpath = CheckedPathBuf::unsafe_new(PathBuf::from(dest));
@@ -2455,7 +3500,8 @@ fn op_node_cp_on_link_sync(
   };
 
   // Check subdirectory relationships.
-  let src_path = check_cp_path(state, src, OpenAccessKind::Read)?;
+  let src_path =
+    check_cp_path_with_permissions(permissions, src, OpenAccessKind::Read)?;
   let src_stat = fs.stat_sync(&src_path.as_checked_path()).map_err(|err| {
     map_fs_error_to_node_fs_error(
       err,
@@ -2497,8 +3543,7 @@ fn op_node_cp_on_link_sync(
   }
 
   let dest_path = {
-    let mut state = state.borrow_mut();
-    state.borrow_mut::<PermissionsContainer>().check_open(
+    permissions.check_open(
       Cow::Owned(PathBuf::from(dest)),
       OpenAccessKind::Write,
       Some("node:fs.rm"),
@@ -2516,15 +3561,8 @@ fn op_node_cp_on_link_sync(
     )
   })?;
 
-  {
-    let mut state = state.borrow_mut();
-    state
-      .borrow_mut::<PermissionsContainer>()
-      .check_write_all("node:fs.symlink")?;
-    state
-      .borrow_mut::<PermissionsContainer>()
-      .check_read_all("node:fs.symlink")?;
-  }
+  permissions.check_write_all("node:fs.symlink")?;
+  permissions.check_read_all("node:fs.symlink")?;
 
   let src_path_buf = CheckedPathBuf::unsafe_new(PathBuf::from(&resolved_src));
   let dest_path_buf = CheckedPathBuf::unsafe_new(dest_path.to_path_buf());

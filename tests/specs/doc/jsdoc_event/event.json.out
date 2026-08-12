@@ -1,0 +1,128 @@
+{
+  "version": 2,
+  "nodes": {
+    "file:///[WILDCARD]/event.ts": {
+      "symbols": [
+        {
+          "name": "Conn",
+          "declarations": [
+            {
+              "location": {
+                "filename": "file:///[WILDCARD]/event.ts",
+                "line": 6,
+                "col": 0,
+                "byteIndex": [WILDLINE]
+              },
+              "declarationKind": "export",
+              "jsDoc": {
+                "doc": "A connection that fires events when its state changes.\n",
+                "tags": [
+                  {
+                    "kind": "event",
+                    "name": "open",
+                    "doc": "Fired when the connection opens."
+                  },
+                  {
+                    "kind": "event",
+                    "name": "close",
+                    "doc": "Fired when the connection closes."
+                  }
+                ]
+              },
+              "kind": "class",
+              "def": {
+                "methods": [
+                  {
+                    "jsDoc": {
+                      "doc": "Open the connection.\n",
+                      "tags": [
+                        {
+                          "kind": "fires",
+                          "name": "Conn#open"
+                        }
+                      ]
+                    },
+                    "name": "open",
+                    "kind": "method",
+                    "functionDef": {
+                      "params": [],
+                      "returnType": {
+                        "repr": "void",
+                        "kind": "keyword",
+                        "value": "void"
+                      },
+                      "hasBody": true
+                    },
+                    "location": {
+                      "filename": "file:///[WILDCARD]/event.ts",
+                      "line": 12,
+                      "col": 2,
+                      "byteIndex": [WILDLINE]
+                    }
+                  },
+                  {
+                    "jsDoc": {
+                      "doc": "Close the connection.\n",
+                      "tags": [
+                        {
+                          "kind": "fires",
+                          "name": "Conn#close"
+                        }
+                      ]
+                    },
+                    "name": "close",
+                    "kind": "method",
+                    "functionDef": {
+                      "params": [],
+                      "returnType": {
+                        "repr": "void",
+                        "kind": "keyword",
+                        "value": "void"
+                      },
+                      "hasBody": true
+                    },
+                    "location": {
+                      "filename": "file:///[WILDCARD]/event.ts",
+                      "line": 19,
+                      "col": 2,
+                      "byteIndex": [WILDLINE]
+                    }
+                  },
+                  {
+                    "jsDoc": {
+                      "doc": "Subscribe to the upstream feed.\n",
+                      "tags": [
+                        {
+                          "kind": "listens",
+                          "name": "Conn#open"
+                        }
+                      ]
+                    },
+                    "name": "subscribe",
+                    "kind": "method",
+                    "functionDef": {
+                      "params": [],
+                      "returnType": {
+                        "repr": "void",
+                        "kind": "keyword",
+                        "value": "void"
+                      },
+                      "hasBody": true
+                    },
+                    "location": {
+                      "filename": "file:///[WILDCARD]/event.ts",
+                      "line": 26,
+                      "col": 2,
+                      "byteIndex": [WILDLINE]
+                    }
+                  }
+                ],
+                "extends": "EventTarget"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

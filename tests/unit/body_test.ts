@@ -1,5 +1,21 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { assert, assertEquals, assertRejects } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertRejects,
+  assertThrows,
+} from "./test_util.ts";
+
+async function readTextStream(stream: ReadableStream<string>): Promise<string> {
+  const reader = stream.getReader();
+  let result = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    result += value;
+  }
+  return result;
+}
 
 // just a hack to get a body object
 // deno-lint-ignore no-explicit-any
@@ -31,6 +47,29 @@ Deno.test(async function arrayBufferFromByteArrays() {
     const text = new TextDecoder("utf-8").decode(await body.arrayBuffer());
     assertEquals(text, "ahoyhoy8");
   }
+});
+
+// Regression test: set/delete on a FormData with many entries sharing a name
+// must run in linear time. A quadratic implementation would take many seconds
+// (or minutes) at this size; the linear implementation finishes in
+// milliseconds. The 5s bound is intentionally loose to avoid CI flakes.
+Deno.test(function formDataSetDeleteManyDuplicatesIsLinear() {
+  const N = 20_000;
+
+  const a = new FormData();
+  for (let i = 0; i < N; i++) a.append("dup", String(i));
+  const t1 = performance.now();
+  a.delete("dup");
+  assert(performance.now() - t1 < 5_000);
+  assertEquals(a.get("dup"), null);
+
+  const b = new FormData();
+  for (let i = 0; i < N; i++) b.append("dup", String(i));
+  const t2 = performance.now();
+  b.set("dup", "final");
+  assert(performance.now() - t2 < 5_000);
+  assertEquals(b.get("dup"), "final");
+  assertEquals(b.getAll("dup").length, 1);
 });
 
 //FormData
@@ -105,6 +144,52 @@ Deno.test(
     assertEquals((formData.get("file") as File).name, "文字");
   },
 );
+
+Deno.test(async function bodyMultipartFormDataEmptyFilenameIsFile() {
+  const boundary = "AaB03x";
+  const payload = [
+    `--${boundary}`,
+    'Content-Disposition: form-data; name="files"; filename=""',
+    "Content-Type: application/octet-stream",
+    "",
+    "",
+    `--${boundary}`,
+    'Content-Disposition: form-data; name="files"; filename=""',
+    "Content-Type: text/plain",
+    "",
+    "file contents",
+    `--${boundary}--`,
+  ].join("\r\n");
+
+  const body = buildBody(
+    new TextEncoder().encode(payload),
+    new Headers({
+      "Content-Type": `multipart/form-data; boundary=${boundary}`,
+    }),
+  );
+
+  const formData = await body.formData();
+  const files = formData.getAll("files");
+  assertEquals(files.length, 2);
+
+  const emptyFile = files[0];
+  if (!(emptyFile instanceof File)) {
+    throw new Error("Expected empty filename part to parse as a File");
+  }
+  assertEquals(emptyFile.name, "");
+  assertEquals(emptyFile.size, 0);
+  assertEquals(await emptyFile.text(), "");
+
+  const fileWithContents = files[1];
+  if (!(fileWithContents instanceof File)) {
+    throw new Error(
+      "Expected empty filename part with body to parse as a File",
+    );
+  }
+  assertEquals(fileWithContents.name, "");
+  assertEquals(fileWithContents.size, 13);
+  assertEquals(await fileWithContents.text(), "file contents");
+});
 
 Deno.test(
   { permissions: { net: true } },
@@ -187,6 +272,178 @@ Deno.test(
     assertEquals(file.size, 1);
   },
 );
+
+Deno.test(async function bodyMultipartFormDataRejectsTooManyPartHeaders() {
+  const boundary = "AaB03x";
+  const partHeaders = [
+    'Content-Disposition: form-data; name="field"',
+  ];
+  for (let i = 0; i < 128; i++) {
+    partHeaders.push(`X-Deno-Test-${i}: ${i}`);
+  }
+  const payload = [
+    `--${boundary}`,
+    ...partHeaders,
+    "",
+    "value",
+    `--${boundary}--`,
+  ].join("\r\n");
+
+  const body = buildBody(
+    new TextEncoder().encode(payload),
+    new Headers({
+      "Content-Type": `multipart/form-data; boundary=${boundary}`,
+    }),
+  );
+
+  await assertRejects(
+    () => body.formData(),
+    TypeError,
+    "too many headers",
+  );
+});
+
+Deno.test(async function bodyMultipartFormDataRejectsLargePartHeaders() {
+  const boundary = "AaB03x";
+  const payload = [
+    `--${boundary}`,
+    'Content-Disposition: form-data; name="field"',
+    `X-Deno-Large: ${"a".repeat(16 * 1024)}`,
+    "",
+    "value",
+    `--${boundary}--`,
+  ].join("\r\n");
+
+  const body = buildBody(
+    new TextEncoder().encode(payload),
+    new Headers({
+      "Content-Type": `multipart/form-data; boundary=${boundary}`,
+    }),
+  );
+
+  await assertRejects(
+    () => body.formData(),
+    TypeError,
+    "headers are too large",
+  );
+});
+
+Deno.test(
+  async function bodyMultipartFormDataEmbeddedBoundaryTextInFileContent() {
+    const boundary = "AaB03x";
+    const payload = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="file"; filename="x.txt"',
+      "Content-Type: text/plain",
+      "",
+      `before--${boundary}after`,
+      `--${boundary}--`,
+    ].join("\r\n");
+
+    const body = buildBody(
+      new TextEncoder().encode(payload),
+      new Headers({
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
+      }),
+    );
+
+    const formData = await body.formData();
+    const file = formData.get("file");
+    assert(file instanceof File);
+    assertEquals(await file.text(), `before--${boundary}after`);
+  },
+);
+
+Deno.test(
+  async function bodyMultipartFormDataBoundaryPrefixLineInFileContent() {
+    const boundary = "AaB03x";
+    const payload = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="file"; filename="x.txt"',
+      "Content-Type: text/plain",
+      "",
+      "before",
+      `--${boundary}x`,
+      "after",
+      `--${boundary}--`,
+    ].join("\r\n");
+
+    const body = buildBody(
+      new TextEncoder().encode(payload),
+      new Headers({
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
+      }),
+    );
+
+    const formData = await body.formData();
+    const file = formData.get("file");
+    assert(file instanceof File);
+    assertEquals(await file.text(), `before\r\n--${boundary}x\r\nafter`);
+  },
+);
+
+Deno.test(
+  async function bodyMultipartFormDataSkipsNamelessPartAndParsesNextPart() {
+    const boundary = "AaB03x";
+    const payload = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; filename="skip.txt"',
+      "Content-Type: text/plain",
+      "",
+      "skip me",
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="field"',
+      "",
+      "value",
+      `--${boundary}--`,
+    ].join("\r\n");
+
+    const body = buildBody(
+      new TextEncoder().encode(payload),
+      new Headers({
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
+      }),
+    );
+
+    const formData = await body.formData();
+    assertEquals(formData.get("field"), "value");
+  },
+);
+
+Deno.test(async function responseTextStream() {
+  const text = "Hello 👋 wörld";
+  const stream = new Response(text).textStream();
+  assert(stream instanceof ReadableStream);
+  assertEquals(await readTextStream(stream), text);
+});
+
+Deno.test(async function requestTextStream() {
+  const text = "Hello 👋 wörld";
+  const stream = new Request("http://foo/", { method: "POST", body: text })
+    .textStream();
+  assert(stream instanceof ReadableStream);
+  assertEquals(await readTextStream(stream), text);
+});
+
+Deno.test(async function textStreamNullBody() {
+  const stream = new Response(null).textStream();
+  assert(stream instanceof ReadableStream);
+  assertEquals(await readTextStream(stream), "");
+
+  const stream2 = new Response().textStream();
+  assert(stream2 instanceof ReadableStream);
+  assertEquals(await readTextStream(stream2), "");
+});
+
+Deno.test(async function textStreamConsumedBodyThrows() {
+  const response = new Response("already consumed");
+  await response.text();
+  assertThrows(
+    () => response.textStream(),
+    TypeError,
+    "Body already consumed.",
+  );
+});
 
 Deno.test(async function bodyBadResourceError() {
   const file = await Deno.open("README.md");

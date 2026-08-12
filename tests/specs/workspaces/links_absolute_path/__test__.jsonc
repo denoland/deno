@@ -1,0 +1,18 @@
+// https://github.com/denoland/deno/issues/28763
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": [
+        "eval",
+        "const abs = Deno.cwd() + (Deno.build.os === 'windows'?'\\\\add':'/add'); await Deno.writeTextFile('workspace/deno.json', JSON.stringify({workspace: ['./my-pkg'], links: [abs]}))"
+      ],
+      "output": ""
+    },
+    {
+      "cwd": "./workspace",
+      "args": "test",
+      "output": "test.out"
+    }
+  ]
+}

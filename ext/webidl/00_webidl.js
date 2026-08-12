@@ -6,7 +6,8 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, internals, primordials } = __bootstrap;
 const {
   isArrayBuffer,
   isDataView,
@@ -16,7 +17,10 @@ const {
 const {
   ArrayBufferIsView,
   ArrayPrototypeForEach,
+  ArrayPrototypeJoin,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
+  ArrayPrototypeSlice,
   ArrayPrototypeSort,
   ArrayIteratorPrototype,
   BigInt,
@@ -47,6 +51,7 @@ const {
   ObjectCreate,
   ObjectDefineProperties,
   ObjectDefineProperty,
+  ObjectFreeze,
   ObjectGetOwnPropertyDescriptor,
   ObjectGetOwnPropertyDescriptors,
   ObjectGetPrototypeOf,
@@ -80,6 +85,7 @@ const {
   Symbol,
   SymbolIterator,
   SymbolAsyncIterator,
+  SymbolPrototypeToString,
   SymbolToStringTag,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetSymbolToStringTag,
@@ -90,10 +96,22 @@ const {
   Uint8ClampedArray,
 } = primordials;
 
-function makeException(ErrorType, message, prefix, context) {
-  return new ErrorType(
+// Shared empty options object used as the default for `opts` parameters in
+// converter functions, so callers that omit `opts` (the common case) don't
+// allocate a fresh `{ __proto__: null }` on every call. Converters only read
+// from `opts` -- never mutate -- so a shared frozen object is safe.
+const EMPTY_OPTS = ObjectFreeze({ __proto__: null });
+
+function makeException(ErrorType, message, prefix, context, code = undefined) {
+  const err = new ErrorType(
     `${prefix ? prefix + ": " : ""}${context ? context : "Value"} ${message}`,
   );
+  // Optional Node-compatible error code (e.g. ERR_INVALID_ARG_TYPE) so that
+  // node:* consumers observing `err.code` behave the same as on Node.
+  if (code !== undefined) {
+    err.code = code;
+  }
+  return err;
 }
 
 function toNumber(value) {
@@ -195,16 +213,11 @@ function createIntegerConversion(bitLength, typeOpts) {
   const twoToTheBitLength = MathPow(2, bitLength);
   const twoToOneLessThanTheBitLength = MathPow(2, bitLength - 1);
 
-  return (
-    V,
-    prefix = undefined,
-    context = undefined,
-    opts = { __proto__: null },
-  ) => {
+  return (V, prefix, context, opts) => {
     let x = toNumber(V);
     x = censorNegativeZero(x);
 
-    if (opts.enforceRange) {
+    if (opts && opts.enforceRange) {
       if (!NumberIsFinite(x)) {
         throw makeException(
           TypeError,
@@ -228,7 +241,7 @@ function createIntegerConversion(bitLength, typeOpts) {
       return x;
     }
 
-    if (!NumberIsNaN(x) && opts.clamp) {
+    if (!NumberIsNaN(x) && opts && opts.clamp) {
       x = MathMin(MathMax(x, lowerBound), upperBound);
       x = evenRound(x);
       return x;
@@ -259,16 +272,11 @@ function createLongLongConversion(bitLength, { unsigned }) {
   const lowerBound = unsigned ? 0 : NumberMIN_SAFE_INTEGER;
   const asBigIntN = unsigned ? BigIntAsUintN : BigIntAsIntN;
 
-  return (
-    V,
-    prefix = undefined,
-    context = undefined,
-    opts = { __proto__: null },
-  ) => {
+  return (V, prefix, context, opts) => {
     let x = toNumber(V);
     x = censorNegativeZero(x);
 
-    if (opts.enforceRange) {
+    if (opts && opts.enforceRange) {
       if (!NumberIsFinite(x)) {
         throw makeException(
           TypeError,
@@ -292,7 +300,7 @@ function createLongLongConversion(bitLength, { unsigned }) {
       return x;
     }
 
-    if (!NumberIsNaN(x) && opts.clamp) {
+    if (!NumberIsNaN(x) && opts && opts.clamp) {
       x = MathMin(MathMax(x, lowerBound), upperBound);
       x = evenRound(x);
       return x;
@@ -409,23 +417,17 @@ converters["unrestricted double?"] = createNullableConverter(
   converters["unrestricted double"],
 );
 
-converters.DOMString = function (
-  V,
-  prefix,
-  context,
-  opts = { __proto__: null },
-) {
+converters.DOMString = function (V, _prefix, _context, opts) {
   if (typeof V === "string") {
     return V;
-  } else if (V === null && opts.treatNullAsEmptyString) {
+  } else if (V === null && opts && opts.treatNullAsEmptyString) {
     return "";
   } else if (typeof V === "symbol") {
-    throw makeException(
-      TypeError,
-      "is a symbol, which cannot be converted to a string",
-      prefix,
-      context,
-    );
+    // V8's `String(sym)` returns the symbol description rather than throwing,
+    // so we throw explicitly to match Node and other WHATWG-conformant
+    // runtimes, which use V8's native "Cannot convert a Symbol value to a
+    // string" message (raised by ToPrimitive on Symbols).
+    throw new TypeError("Cannot convert a Symbol value to a string");
   }
 
   return String(V);
@@ -492,7 +494,7 @@ converters.ArrayBuffer = (
   V,
   prefix = undefined,
   context = undefined,
-  opts = { __proto__: null },
+  opts = EMPTY_OPTS,
 ) => {
   if (!isArrayBuffer(V)) {
     if (opts.allowShared && !isSharedArrayBuffer(V)) {
@@ -518,7 +520,7 @@ converters.DataView = (
   V,
   prefix = undefined,
   context = undefined,
-  opts = { __proto__: null },
+  opts = EMPTY_OPTS,
 ) => {
   if (!isDataView(V)) {
     throw makeException(
@@ -567,7 +569,7 @@ ArrayPrototypeForEach(
       V,
       prefix = undefined,
       context = undefined,
-      opts = { __proto__: null },
+      opts = EMPTY_OPTS,
     ) => {
       if (TypedArrayPrototypeGetSymbolToStringTag(V) !== name) {
         throw makeException(
@@ -600,7 +602,7 @@ converters.ArrayBufferView = (
   V,
   prefix = undefined,
   context = undefined,
-  opts = { __proto__: null },
+  opts = EMPTY_OPTS,
 ) => {
   if (!ArrayBufferIsView(V)) {
     throw makeException(
@@ -608,6 +610,7 @@ converters.ArrayBufferView = (
       "is not a view on an ArrayBuffer or SharedArrayBuffer",
       prefix,
       context,
+      "ERR_INVALID_ARG_TYPE",
     );
   }
   let buffer;
@@ -632,7 +635,7 @@ converters.BufferSource = (
   V,
   prefix = undefined,
   context = undefined,
-  opts = { __proto__: null },
+  opts = EMPTY_OPTS,
 ) => {
   if (ArrayBufferIsView(V)) {
     let buffer;
@@ -659,6 +662,7 @@ converters.BufferSource = (
       "is not an ArrayBuffer or a view on one",
       prefix,
       context,
+      "ERR_INVALID_ARG_TYPE",
     );
   }
   if (
@@ -671,6 +675,7 @@ converters.BufferSource = (
       "is not an ArrayBuffer, SharedArrayBuffer, or a view on one",
       prefix,
       context,
+      "ERR_INVALID_ARG_TYPE",
     );
   }
 
@@ -689,6 +694,9 @@ converters["UVString?"] = createNullableConverter(
 );
 converters["sequence<double>"] = createSequenceConverter(
   converters.double,
+);
+converters["sequence<unrestricted double>"] = createSequenceConverter(
+  converters["unrestricted double"],
 );
 converters["sequence<object>"] = createSequenceConverter(
   converters.object,
@@ -721,12 +729,37 @@ converters["sequence<DOMString>"] = createSequenceConverter(
   converters.DOMString,
 );
 
-function requiredArguments(length, required, prefix) {
+function requiredArguments(length, required, prefix, argNames) {
   if (length < required) {
+    if (argNames !== undefined) {
+      // Node-compatible error: ERR_MISSING_ARGS with a message that names the
+      // required arguments, e.g. `The "name" and "value" arguments must be
+      // specified`.
+      let formatted;
+      const n = argNames.length;
+      if (n === 1) {
+        formatted = `"${argNames[0]}"`;
+      } else if (n === 2) {
+        formatted = `"${argNames[0]}" and "${argNames[1]}"`;
+      } else {
+        let joined = "";
+        for (let i = 0; i < n - 1; i++) {
+          joined += `"${argNames[i]}", `;
+        }
+        formatted = `${joined}and "${argNames[n - 1]}"`;
+      }
+      const err = new TypeError(
+        `The ${formatted} argument${n === 1 ? "" : "s"} must be specified`,
+      );
+      err.code = "ERR_MISSING_ARGS";
+      throw err;
+    }
     const errMsg = `${prefix ? prefix + ": " : ""}${required} argument${
       required === 1 ? "" : "s"
     } required, but only ${length} present`;
-    throw new TypeError(errMsg);
+    const err = new TypeError(errMsg);
+    err.code = "ERR_MISSING_ARGS";
+    throw err;
   }
 }
 
@@ -751,19 +784,35 @@ function createDictionaryConverter(name, ...dictionaries) {
   });
 
   const defaultValues = { __proto__: null };
+  // Parallel arrays of pre-resolved primitive defaults so that the
+  // `V === undefined || V === null` fast path can skip the spec-shaped
+  // `ObjectAssign(dict, defaultValues)` -- which has to walk enumerable
+  // own properties and invoke any getter on each call -- and instead just
+  // iterate two flat arrays. A null `nonPrimitiveDefaults` means every
+  // dict member with a default has a primitive default (the common shape
+  // for almost every WebIDL dictionary in this codebase), which lets us
+  // skip the `defaultValues` getter machinery entirely on undefined input.
+  const primitiveDefaultKeys = [];
+  const primitiveDefaultValues = [];
+  let nonPrimitiveDefaults = null;
   for (let i = 0; i < allMembers.length; ++i) {
     const member = allMembers[i];
     if (ReflectHas(member, "defaultValue")) {
       const idlMemberValue = member.defaultValue;
       const imvType = typeof idlMemberValue;
-      // Copy by value types can be directly assigned, copy by reference types
-      // need to be re-created for each allocation.
+      // Copy by value types (including null) can be directly assigned. Copy
+      // by reference types need a fresh instance per call, so they go on the
+      // ObjectAssign-via-getter slow path below.
       if (
+        idlMemberValue === null ||
         imvType === "number" || imvType === "boolean" ||
         imvType === "string" || imvType === "bigint" ||
         imvType === "undefined"
       ) {
-        defaultValues[member.key] = member.converter(idlMemberValue, {});
+        const v = member.converter(idlMemberValue, {});
+        defaultValues[member.key] = v;
+        ArrayPrototypePush(primitiveDefaultKeys, member.key);
+        ArrayPrototypePush(primitiveDefaultValues, v);
       } else {
         ObjectDefineProperty(defaultValues, member.key, {
           __proto__: null,
@@ -772,62 +821,73 @@ function createDictionaryConverter(name, ...dictionaries) {
           },
           enumerable: true,
         });
+        if (nonPrimitiveDefaults === null) nonPrimitiveDefaults = [];
+        ArrayPrototypePush(nonPrimitiveDefaults, member.key);
       }
     }
   }
 
-  return function (
-    V,
-    prefix = undefined,
-    context = undefined,
-    opts = { __proto__: null },
-  ) {
-    const typeV = type(V);
-    switch (typeV) {
-      case "Undefined":
-      case "Null":
-      case "Object":
-        break;
-      default:
-        throw makeException(
+  // Pre-compute context strings for each member (avoids allocation in hot path)
+  const memberContexts = [];
+  for (let i = 0; i < allMembers.length; ++i) {
+    memberContexts[i] = `'${allMembers[i].key}' of '${name}'`;
+  }
+
+  return function (V, prefix, context, opts) {
+    if (V === undefined || V === null) {
+      if (hasRequiredKey) {
+        const err = makeException(
           TypeError,
           "can not be converted to a dictionary",
           prefix,
           context,
         );
-    }
-    const esDict = V;
-
-    const idlDict = ObjectAssign({}, defaultValues);
-
-    // NOTE: fast path Null and Undefined.
-    if ((V === undefined || V === null) && !hasRequiredKey) {
+        err.code = "ERR_INVALID_ARG_TYPE";
+        throw err;
+      }
+      const idlDict = { __proto__: null };
+      // Fast path: copy primitive defaults via explicit loop (faster than
+      // ObjectAssign over a __proto__: null source). For non-primitive
+      // defaults the getter on `defaultValues` still needs to fire to
+      // re-create the by-reference value, so fall back through ObjectAssign
+      // when any are present.
+      if (nonPrimitiveDefaults === null) {
+        for (let i = 0; i < primitiveDefaultKeys.length; ++i) {
+          idlDict[primitiveDefaultKeys[i]] = primitiveDefaultValues[i];
+        }
+      } else {
+        ObjectAssign(idlDict, defaultValues);
+      }
       return idlDict;
     }
 
+    if (typeof V !== "object" && typeof V !== "function") {
+      const err = makeException(
+        TypeError,
+        "can not be converted to a dictionary",
+        prefix,
+        context,
+      );
+      err.code = "ERR_INVALID_ARG_TYPE";
+      throw err;
+    }
+
+    const idlDict = { __proto__: null };
     for (let i = 0; i < allMembers.length; ++i) {
       const member = allMembers[i];
       const key = member.key;
-
-      let esMemberValue;
-      if (typeV === "Undefined" || typeV === "Null") {
-        esMemberValue = undefined;
-      } else {
-        esMemberValue = esDict[key];
-      }
+      const esMemberValue = V[key];
 
       if (esMemberValue !== undefined) {
-        const memberContext = `'${key}' of '${name}'${
-          context ? ` (${context})` : ""
-        }`;
-        const converter = member.converter;
-        const idlMemberValue = converter(
+        const memberContext = context
+          ? memberContexts[i] + ` (${context})`
+          : memberContexts[i];
+        idlDict[key] = member.converter(
           esMemberValue,
           prefix,
           memberContext,
           opts,
         );
-        idlDict[key] = idlMemberValue;
       } else if (member.required) {
         throw makeException(
           TypeError,
@@ -835,6 +895,8 @@ function createDictionaryConverter(name, ...dictionaries) {
           prefix,
           context,
         );
+      } else if (ReflectHas(defaultValues, key)) {
+        idlDict[key] = defaultValues[key];
       }
     }
 
@@ -850,16 +912,19 @@ function createEnumConverter(name, values) {
     V,
     prefix = undefined,
     _context = undefined,
-    _opts = { __proto__: null },
+    _opts = EMPTY_OPTS,
   ) {
     const S = String(V);
 
     if (!E.has(S)) {
-      throw new TypeError(
+      const err = new TypeError(
         `${
           prefix ? prefix + ": " : ""
         }The provided value '${S}' is not a valid enum value of type ${name}`,
       );
+      // Node attaches ERR_INVALID_ARG_VALUE to enum-validation TypeErrors.
+      err.code = "ERR_INVALID_ARG_VALUE";
+      throw err;
     }
 
     return S;
@@ -871,7 +936,7 @@ function createNullableConverter(converter) {
     V,
     prefix = undefined,
     context = undefined,
-    opts = { __proto__: null },
+    opts = EMPTY_OPTS,
   ) => {
     // FIXME: If Type(V) is not Object, and the conversion to an IDL value is
     // being performed due to V being assigned to an attribute whose type is a
@@ -890,7 +955,7 @@ function createSequenceConverter(converter) {
     V,
     prefix = undefined,
     context = undefined,
-    opts = { __proto__: null },
+    opts = EMPTY_OPTS,
   ) {
     if (type(V) !== "Object") {
       throw makeException(
@@ -933,111 +998,190 @@ function createSequenceConverter(converter) {
   };
 }
 
-function isAsyncIterable(obj) {
-  if (obj[SymbolAsyncIterator] === undefined) {
-    if (obj[SymbolIterator] === undefined) {
-      return false;
-    }
+// https://tc39.es/ecma262/#sec-getmethod
+function getMethod(V, P) {
+  const func = V[P];
+  if (func === undefined || func === null) {
+    return undefined;
   }
-
-  return true;
+  if (typeof func !== "function") {
+    // Match engine-style key formatting: Symbol(aaa), not the bare description.
+    const name = typeof P === "symbol" ? SymbolPrototypeToString(P) : P;
+    throw new TypeError(`${name} is not a function`);
+  }
+  return func;
 }
 
-const AsyncIterable = Symbol("[[asyncIterable]]");
+// Whether V is convertible to an IDL async_sequence (has a usable
+// @@asyncIterator or @@iterator method). Uses GetMethod, so non-callable
+// methods throw TypeError (same as conversion / union matching).
+function isAsyncSequence(obj) {
+  if (type(obj) !== "Object") {
+    return false;
+  }
+  if (getMethod(obj, SymbolAsyncIterator) !== undefined) {
+    return true;
+  }
+  return getMethod(obj, SymbolIterator) !== undefined;
+}
 
-function createAsyncIterableConverter(converter) {
+// https://tc39.es/ecma262/#sec-createasyncfromsynciterator
+// Manual %AsyncFromSyncIteratorPrototype% so we never go through yield* /
+// user-visible @@iterator lookup (primordials-safe).
+function createAsyncFromSyncIterator(syncIterator) {
+  // Capture [[NextMethod]] as in GetIteratorDirect / Iterator Record.
+  const nextMethod = syncIterator.next;
+  return {
+    async next() {
+      // IteratorNext(syncIteratorRecord) - sync call, may throw.
+      const iterResult = FunctionPrototypeCall(nextMethod, syncIterator);
+      if (type(iterResult) !== "Object") {
+        throw new TypeError(
+          "The iterator.next() method must return an object",
+        );
+      }
+      if (iterResult.done) {
+        return { done: true, value: undefined };
+      }
+      // AsyncFromSyncIteratorContinuation awaits the yielded value so that
+      // sync sources of promises (e.g. arrays of Promises) unwrap.
+      return {
+        done: false,
+        value: await iterResult.value,
+      };
+    },
+    async return(reason) {
+      const returnMethod = getMethod(syncIterator, "return");
+      if (returnMethod === undefined) {
+        return { done: true, value: undefined };
+      }
+      const returnResult = await FunctionPrototypeCall(
+        returnMethod,
+        syncIterator,
+        reason,
+      );
+      if (type(returnResult) !== "Object") {
+        throw new TypeError(
+          "The iterator.return() method must return an object",
+        );
+      }
+      return { done: true, value: undefined };
+    },
+    [SymbolAsyncIterator]() {
+      return this;
+    },
+  };
+}
+
+const AsyncSequence = Symbol("[[asyncSequence]]");
+
+// https://webidl.spec.whatwg.org/#js-async-iterable
+// https://webidl.spec.whatwg.org/#async-sequence-open
+function createAsyncSequenceConverter(converter) {
   return function (
     V,
     prefix = undefined,
     context = undefined,
-    opts = { __proto__: null },
+    opts = EMPTY_OPTS,
   ) {
+    // 1. If V is not an Object, then throw a TypeError.
     if (type(V) !== "Object") {
       throw makeException(
         TypeError,
-        "can not be converted to async iterable.",
+        "can not be converted to async sequence.",
         prefix,
         context,
       );
     }
 
-    let isAsync = true;
-    let method = V[SymbolAsyncIterator];
+    // 2. Let method be ? GetMethod(V, %Symbol.asyncIterator%).
+    let method = getMethod(V, SymbolAsyncIterator);
+    // 3-4. Fall back to sync iterator, or return async sequence value.
+    let sequenceType = "async";
     if (method === undefined) {
-      method = V[SymbolIterator];
-
+      method = getMethod(V, SymbolIterator);
       if (method === undefined) {
         throw makeException(
           TypeError,
-          "is not iterable.",
+          "can not be converted to async sequence.",
           prefix,
           context,
         );
       }
-
-      isAsync = false;
+      sequenceType = "sync";
     }
 
     return {
+      // Fields used by extractBody / callers.
       value: V,
-      [AsyncIterable]: AsyncIterable,
-      open(context) {
+      object: V,
+      method,
+      type: sequenceType,
+      [AsyncSequence]: AsyncSequence,
+      // https://webidl.spec.whatwg.org/#async-sequence-open
+      open(openContext = context) {
+        // 1. Let iterator be ? GetIteratorFromMethod(object, method).
         const iter = FunctionPrototypeCall(method, V);
         if (type(iter) !== "Object") {
           throw new TypeError(
-            `${context} could not be iterated because iterator method did not return object, but ${
+            `${openContext} could not be iterated because iterator method did not return object, but ${
               type(iter)
             }.`,
           );
         }
 
-        let asyncIterator = iter;
+        // 2. If type is "sync", set iterator to CreateAsyncFromSyncIterator(iterator).
+        const asyncIterator = sequenceType === "sync"
+          ? createAsyncFromSyncIterator(iter)
+          : iter;
 
-        if (!isAsync) {
-          asyncIterator = {
-            // deno-lint-ignore require-await
-            async next() {
-              // deno-lint-ignore prefer-primordials
-              return iter.next();
-            },
-          };
-        }
+        // Capture nextMethod per Iterator Record semantics.
+        const nextMethod = asyncIterator.next;
 
         return {
+          // https://webidl.spec.whatwg.org/#async-iterator-get-next-value
+          // Exposed as an async iterator protocol shape for callers.
           async next() {
-            // deno-lint-ignore prefer-primordials
-            const iterResult = await asyncIterator.next();
+            const iterResult = await FunctionPrototypeCall(
+              nextMethod,
+              asyncIterator,
+            );
             if (type(iterResult) !== "Object") {
-              throw TypeError(
-                `${context} failed to iterate next value because the next() method did not return an object, but ${
+              throw new TypeError(
+                `${openContext} failed to iterate next value because the next() method did not return an object, but ${
                   type(iterResult)
                 }.`,
               );
             }
 
             if (iterResult.done) {
-              return { done: true };
+              return { done: true, value: undefined };
             }
 
             const iterValue = converter(
               iterResult.value,
-              `${context} failed to iterate next value`,
-              `The value returned from the next() method`,
+              `${openContext} failed to iterate next value`,
+              "The value returned from the next() method",
               opts,
             );
 
             return { done: false, value: iterValue };
           },
+          // https://webidl.spec.whatwg.org/#async-iterator-close
           async return(reason) {
-            if (asyncIterator.return === undefined) {
+            const returnMethod = getMethod(asyncIterator, "return");
+            if (returnMethod === undefined) {
               return undefined;
             }
 
-            // deno-lint-ignore prefer-primordials
-            const returnPromiseResult = await asyncIterator.return(reason);
+            const returnPromiseResult = await FunctionPrototypeCall(
+              returnMethod,
+              asyncIterator,
+              reason,
+            );
             if (type(returnPromiseResult) !== "Object") {
-              throw TypeError(
-                `${context} failed to close iterator because the return() method did not return an object, but ${
+              throw new TypeError(
+                `${openContext} failed to close iterator because the return() method did not return an object, but ${
                   type(returnPromiseResult)
                 }.`,
               );
@@ -1049,6 +1193,10 @@ function createAsyncIterableConverter(converter) {
             return this;
           },
         };
+      },
+      // Allow for-await-of over the converted async sequence directly.
+      [SymbolAsyncIterator]() {
+        return this.open(context);
       },
     };
   };
@@ -1146,16 +1294,27 @@ function createBranded(Type) {
   return t;
 }
 
-function assertBranded(self, prototype) {
+function assertBranded(self, prototype, interfaceName) {
   if (
     !ObjectPrototypeIsPrototypeOf(prototype, self) || self[brand] !== brand
   ) {
-    throw new TypeError("Illegal invocation");
+    const message = interfaceName === undefined
+      ? "Illegal invocation"
+      : `Value of "this" must be of type ${interfaceName}`;
+    const err = new TypeError(message);
+    err.code = "ERR_INVALID_THIS";
+    throw err;
   }
 }
 
 function illegalConstructor() {
-  throw new TypeError("Illegal constructor");
+  const err = new TypeError("Illegal constructor");
+  // Match Node's convention of attaching `code: 'ERR_ILLEGAL_CONSTRUCTOR'`
+  // to TypeErrors thrown when end-user code attempts to construct a Web
+  // Platform interface that disallows direct construction (parallel to
+  // the `ERR_INVALID_THIS` code on `assertBranded` failures).
+  err.code = "ERR_ILLEGAL_CONSTRUCTOR";
+  throw err;
 }
 
 function define(target, source) {
@@ -1163,7 +1322,12 @@ function define(target, source) {
   for (let i = 0; i < keys.length; ++i) {
     const key = keys[i];
     const descriptor = ReflectGetOwnPropertyDescriptor(source, key);
-    if (descriptor && !ReflectDefineProperty(target, key, descriptor)) {
+    if (descriptor === undefined) {
+      continue;
+    }
+    if (
+      !ReflectDefineProperty(target, key, { __proto__: null, ...descriptor })
+    ) {
       throw new TypeError(`Cannot redefine property: ${String(key)}`);
     }
   }
@@ -1175,15 +1339,21 @@ const globalIteratorPrototype = ObjectGetPrototypeOf(ArrayIteratorPrototype);
 
 function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
   const iteratorPrototype = ObjectCreate(globalIteratorPrototype, {
-    [SymbolToStringTag]: { configurable: true, value: `${name} Iterator` },
+    [SymbolToStringTag]: {
+      __proto__: null,
+      configurable: true,
+      value: `${name} Iterator`,
+    },
   });
   define(iteratorPrototype, {
     next() {
-      const internal = this && this[_iteratorInternal];
+      const internal = this == null ? undefined : this[_iteratorInternal];
       if (!internal) {
-        throw new TypeError(
-          `next() called on a value that is not a ${name} iterator object`,
+        const err = new TypeError(
+          `Value of "this" must be of type ${name}Iterator`,
         );
+        err.code = "ERR_INVALID_THIS";
+        throw err;
       }
       const { target, kind, index } = internal;
       const values = target[dataSymbol];
@@ -1207,6 +1377,30 @@ function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
       }
       return { value: result, done: false };
     },
+    // Node-compatible inspector output (e.g. `URLSearchParams Iterator { 'a',
+    // 'b' }`). Picked up by Deno's `util.inspect` via the privateCustomInspect
+    // path so `node:util.inspect` returns the same shape.
+    [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+      const internal = this == null ? undefined : this[_iteratorInternal];
+      const label = `${name} Iterator`;
+      if (!internal) return `${label} {}`;
+      const { target, kind, index } = internal;
+      const values = target[dataSymbol];
+      const remaining = ArrayPrototypeSlice(values, index);
+      const items = ArrayPrototypeMap(remaining, (pair) => {
+        if (kind === "key") return inspect(pair[keyKey], inspectOptions);
+        if (kind === "value") return inspect(pair[valueKey], inspectOptions);
+        return inspect([pair[keyKey], pair[valueKey]], inspectOptions);
+      });
+      if (items.length === 0) return `${label} {  }`;
+      const inlined = ArrayPrototypeJoin(items, ", ");
+      const breakLength = inspectOptions?.breakLength;
+      const oneLine = `${label} { ${inlined} }`;
+      if (typeof breakLength === "number" && oneLine.length > breakLength) {
+        return `${label} {\n  ${ArrayPrototypeJoin(items, ",\n  ")} }`;
+      }
+      return oneLine;
+    },
   });
   function createDefaultIterator(target, kind) {
     const iterator = ObjectCreate(iteratorPrototype);
@@ -1218,61 +1412,87 @@ function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
     return iterator;
   }
 
-  function entries() {
-    assertBranded(this, prototype.prototype);
-    return createDefaultIterator(this, "key+value");
-  }
+  // Use object method shorthand so that the resulting functions have no own
+  // `prototype` property, matching Node's URLSearchParams.prototype methods
+  // (Node uses class methods which behave the same way). Regular function
+  // declarations would expose a `prototype` property which causes
+  // `Object.hasOwn(value, "prototype")` checks in Node tests to fail.
+  const methods = {
+    entries() {
+      assertBranded(this, prototype.prototype, name);
+      return createDefaultIterator(this, "key+value");
+    },
+    keys() {
+      assertBranded(this, prototype.prototype, name);
+      return createDefaultIterator(this, "key");
+    },
+    values() {
+      assertBranded(this, prototype.prototype, name);
+      return createDefaultIterator(this, "value");
+    },
+    forEach(idlCallback, thisArg = undefined) {
+      assertBranded(this, prototype.prototype, name);
+      // Match Node: a missing/non-function callback throws
+      // `TypeError [ERR_INVALID_ARG_TYPE]` rather than a generic
+      // `ERR_MISSING_ARGS` / "Function failed to convert" error.
+      if (typeof idlCallback !== "function") {
+        const err = new TypeError(
+          `The "callback" argument must be of type function. Received ${
+            idlCallback === null
+              ? "null"
+              : idlCallback === undefined
+              ? "undefined"
+              : typeof idlCallback
+          }`,
+        );
+        err.code = "ERR_INVALID_ARG_TYPE";
+        throw err;
+      }
+      // Bind explicitly to `thisArg` (undefined by default). WebIDL forEach
+      // should pass through the caller-provided `this`, not default to
+      // `globalThis`, and Node's test suite asserts the callback's `this`
+      // is `undefined` when no `thisArg` is given.
+      idlCallback = FunctionPrototypeBind(idlCallback, thisArg);
+      const pairs = this[dataSymbol];
+      for (let i = 0; i < pairs.length; i++) {
+        const entry = pairs[i];
+        idlCallback(entry[valueKey], entry[keyKey], this);
+      }
+    },
+  };
 
   const properties = {
     entries: {
-      value: entries,
+      __proto__: null,
+      value: methods.entries,
       writable: true,
       enumerable: true,
       configurable: true,
     },
     [SymbolIterator]: {
-      value: entries,
+      __proto__: null,
+      value: methods.entries,
       writable: true,
       enumerable: false,
       configurable: true,
     },
     keys: {
-      value: function keys() {
-        assertBranded(this, prototype.prototype);
-        return createDefaultIterator(this, "key");
-      },
+      __proto__: null,
+      value: methods.keys,
       writable: true,
       enumerable: true,
       configurable: true,
     },
     values: {
-      value: function values() {
-        assertBranded(this, prototype.prototype);
-        return createDefaultIterator(this, "value");
-      },
+      __proto__: null,
+      value: methods.values,
       writable: true,
       enumerable: true,
       configurable: true,
     },
     forEach: {
-      value: function forEach(idlCallback, thisArg = undefined) {
-        assertBranded(this, prototype.prototype);
-        const prefix = `Failed to execute 'forEach' on '${name}'`;
-        requiredArguments(arguments.length, 1, { prefix });
-        idlCallback = converters["Function"](idlCallback, {
-          prefix,
-          context: "Argument 1",
-        });
-        idlCallback = FunctionPrototypeBind(
-          idlCallback,
-          thisArg ?? globalThis,
-        );
-        const pairs = this[dataSymbol];
-        for (let i = 0; i < pairs.length; i++) {
-          const entry = pairs[i];
-          idlCallback(entry[valueKey], entry[keyKey], this);
-        }
-      },
+      __proto__: null,
+      value: methods.forEach,
       writable: true,
       enumerable: true,
       configurable: true,
@@ -1424,13 +1644,15 @@ function setlikeObjectWrap(objPrototype, readonly) {
   }
 }
 
-export {
+internals.webidlBrand = brand;
+
+return {
   assertBranded,
-  AsyncIterable,
+  AsyncSequence,
   brand,
   configureInterface,
   converters,
-  createAsyncIterableConverter,
+  createAsyncSequenceConverter,
   createBranded,
   createDictionaryConverter,
   createEnumConverter,
@@ -1441,7 +1663,7 @@ export {
   createSequenceConverter,
   illegalConstructor,
   invokeCallbackFunction,
-  isAsyncIterable,
+  isAsyncSequence,
   makeException,
   mixinPairIterable,
   requiredArguments,
@@ -1449,3 +1671,4 @@ export {
   setlikeObjectWrap,
   type,
 };
+})();

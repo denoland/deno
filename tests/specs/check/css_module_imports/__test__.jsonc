@@ -1,0 +1,18 @@
+{
+  "tests": {
+    "check": {
+      "args": "check --unstable-raw-imports main.ts",
+      "output": "main.out",
+      "exitCode": 1
+    },
+    "check_valid_only": {
+      "args": "check --unstable-raw-imports valid.ts",
+      "output": "valid.out"
+    },
+    "missing_unstable": {
+      "args": "check valid.ts",
+      "output": "missing_unstable.out",
+      "exitCode": 1
+    }
+  }
+}

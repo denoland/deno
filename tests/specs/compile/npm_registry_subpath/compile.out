@@ -1,0 +1,13 @@
+[WILDCARD]
+Compile [WILDCARD]main.ts to [WILDLINE]
+
+Embedded Files
+
+main[WILDLINE]
+├── .deno_compile_node_modules/localhost/@denotest/esm-basic/* ([WILDLINE]
+└── main.ts ([WILDLINE]
+
+Files: [WILDLINE]
+Metadata: [WILDLINE]
+Remote modules: [WILDLINE]
+[WILDCARD]

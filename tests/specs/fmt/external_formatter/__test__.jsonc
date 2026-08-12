@@ -1,4 +1,5 @@
 {
+  "tempDir": true,
   "tests": {
     "format": {
       "args": "fmt -",
@@ -15,15 +16,13 @@
       "input": "badly_formatted.in",
       "output": "well_formatted_unstable_sql.out"
     },
-    "syntax_error_in_html": {
+    "mis_nested_html_passes_through": {
       "args": "fmt syntax_error_in_html.js",
-      "output": "syntax_error_in_html.out",
-      "exitCode": 1
+      "output": "[WILDLINE]syntax_error_in_html.js\nChecked 1 file\n"
     },
-    "syntax_error_in_css": {
-      "args": "fmt syntax_error_in_css.js",
-      "output": "syntax_error_in_css.out",
-      "exitCode": 1
+    "invalid_css_passes_through": {
+      "args": "fmt --check syntax_error_in_css.js",
+      "output": "Checked 1 file\n"
     },
     "syntax_error_but_fmt_ignored": {
       "args": "fmt syntax_error_but_fmt_ignored.js",

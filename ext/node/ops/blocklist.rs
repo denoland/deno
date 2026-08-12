@@ -3,16 +3,14 @@
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::net::IpAddr;
-use std::net::Ipv4Addr;
-use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 
 use deno_core::OpState;
 use deno_core::ToV8;
 use deno_core::op2;
-use ipnetwork::IpNetwork;
-use ipnetwork::Ipv4Network;
-use ipnetwork::Ipv6Network;
+use ipnet::IpNet;
+use ipnet::Ipv4Net;
+use ipnet::Ipv6Net;
 
 pub struct BlockListResource {
   blocklist: RefCell<BlockList>,
@@ -36,7 +34,7 @@ pub enum BlocklistError {
   #[error("{0}")]
   AddrParse(#[from] std::net::AddrParseError),
   #[error("{0}")]
-  IpNetwork(#[from] ipnetwork::IpNetworkError),
+  PrefixLen(#[from] ipnet::PrefixLenError),
   #[error("Invalid address")]
   InvalidAddress,
   #[error("IP version mismatch between start and end addresses")]
@@ -124,13 +122,56 @@ pub fn op_blocklist_check(
 }
 
 struct BlockList {
-  rules: HashSet<IpNetwork>,
+  rules: HashSet<IpNet>,
+  ranges: Vec<IpRange>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum IpRange {
+  V4 { start: u32, end: u32 },
+  V6 { start: u128, end: u128 },
+}
+
+impl IpRange {
+  fn contains(&self, addr: IpAddr) -> bool {
+    match (self, addr) {
+      (IpRange::V4 { start, end }, IpAddr::V4(addr)) => {
+        let addr = u32::from(addr);
+        *start <= addr && addr <= *end
+      }
+      (IpRange::V6 { start, end }, IpAddr::V6(addr)) => {
+        let addr = u128::from(addr);
+        *start <= addr && addr <= *end
+      }
+      _ => false,
+    }
+  }
+}
+
+const IPV4_MAPPED_V6_START: u128 = 0xffff_u128 << 32;
+const IPV4_MAPPED_V6_END: u128 = IPV4_MAPPED_V6_START | u32::MAX as u128;
+
+fn ipv4_mapped_v6_addr(addr: u32) -> u128 {
+  IPV4_MAPPED_V6_START | u128::from(addr)
+}
+
+fn ipv4_mapped_v6_range_to_v4(start: u128, end: u128) -> Option<(u32, u32)> {
+  let start = start.max(IPV4_MAPPED_V6_START);
+  let end = end.min(IPV4_MAPPED_V6_END);
+  if end < start {
+    return None;
+  }
+  Some((
+    (start - IPV4_MAPPED_V6_START) as u32,
+    (end - IPV4_MAPPED_V6_START) as u32,
+  ))
 }
 
 impl BlockList {
   pub fn new() -> Self {
     BlockList {
       rules: HashSet::new(),
+      ranges: Vec::new(),
     }
   }
 
@@ -144,26 +185,26 @@ impl BlockList {
         let ipv4_prefix = prefix.unwrap_or(32);
         self
           .rules
-          .insert(IpNetwork::V4(Ipv4Network::new(addr, ipv4_prefix)?));
+          .insert(IpNet::V4(Ipv4Net::new(addr, ipv4_prefix)?));
 
         let ipv6_mapped = addr.to_ipv6_mapped();
         let ipv6_prefix = 96 + ipv4_prefix; // IPv4-mapped IPv6 address prefix starts at 96
         self
           .rules
-          .insert(IpNetwork::V6(Ipv6Network::new(ipv6_mapped, ipv6_prefix)?));
+          .insert(IpNet::V6(Ipv6Net::new(ipv6_mapped, ipv6_prefix)?));
       }
       IpAddr::V6(addr) => {
         if let Some(ipv4_mapped) = addr.to_ipv4_mapped() {
           let ipv4_prefix = prefix.map(|v| v.clamp(96, 128) - 96).unwrap_or(32);
           self
             .rules
-            .insert(IpNetwork::V4(Ipv4Network::new(ipv4_mapped, ipv4_prefix)?));
+            .insert(IpNet::V4(Ipv4Net::new(ipv4_mapped, ipv4_prefix)?));
         }
 
         let ipv6_prefix = prefix.unwrap_or(128);
         self
           .rules
-          .insert(IpNetwork::V6(Ipv6Network::new(addr, ipv6_prefix)?));
+          .insert(IpNet::V6(Ipv6Net::new(addr, ipv6_prefix)?));
       }
     };
     Ok(())
@@ -191,10 +232,14 @@ impl BlockList {
           // Indicates invalid range.
           return Ok(false);
         }
-        for ip in start_u32..=end_u32 {
-          let addr: Ipv4Addr = ip.into();
-          self.map_addr_add_network(IpAddr::V4(addr), None)?;
-        }
+        self.ranges.push(IpRange::V4 {
+          start: start_u32,
+          end: end_u32,
+        });
+        self.ranges.push(IpRange::V6 {
+          start: ipv4_mapped_v6_addr(start_u32),
+          end: ipv4_mapped_v6_addr(end_u32),
+        });
       }
       (IpAddr::V6(start), IpAddr::V6(end)) => {
         let start_u128: u128 = start.into();
@@ -203,9 +248,14 @@ impl BlockList {
           // Indicates invalid range.
           return Ok(false);
         }
-        for ip in start_u128..=end_u128 {
-          let addr: Ipv6Addr = ip.into();
-          self.map_addr_add_network(IpAddr::V6(addr), None)?;
+        self.ranges.push(IpRange::V6 {
+          start: start_u128,
+          end: end_u128,
+        });
+        if let Some((start, end)) =
+          ipv4_mapped_v6_range_to_v4(start_u128, end_u128)
+        {
+          self.ranges.push(IpRange::V4 { start, end });
         }
       }
       _ => return Err(BlocklistError::IpVersionMismatch),
@@ -232,7 +282,10 @@ impl BlockList {
     let family = r#type.to_lowercase();
     if family == "ipv4" && addr.is_ipv4() || family == "ipv6" && addr.is_ipv6()
     {
-      Ok(self.rules.iter().any(|net| net.contains(addr)))
+      Ok(
+        self.rules.iter().any(|net| net.contains(&addr))
+          || self.ranges.iter().any(|range| range.contains(addr)),
+      )
     } else {
       Err(BlocklistError::InvalidAddress)
     }
@@ -263,6 +316,8 @@ mod tests {
     // IPv4 range
     let mut block_list = BlockList::new();
     block_list.add_range("192.168.0.1", "192.168.0.3").unwrap();
+    assert!(block_list.rules.is_empty());
+    assert_eq!(block_list.ranges.len(), 2);
     assert!(block_list.check("192.168.0.1", "ipv4").unwrap());
     assert!(block_list.check("192.168.0.2", "ipv4").unwrap());
     assert!(block_list.check("192.168.0.3", "ipv4").unwrap());
@@ -271,10 +326,63 @@ mod tests {
     // IPv6 range
     let mut block_list = BlockList::new();
     block_list.add_range("2001:db8::1", "2001:db8::3").unwrap();
+    assert!(block_list.rules.is_empty());
+    assert_eq!(block_list.ranges.len(), 1);
     assert!(block_list.check("2001:db8::1", "ipv6").unwrap());
     assert!(block_list.check("2001:db8::2", "ipv6").unwrap());
     assert!(block_list.check("2001:db8::3", "ipv6").unwrap());
     assert!(!block_list.check("192.168.0.1", "ipv4").unwrap());
+  }
+
+  #[test]
+  fn test_add_large_range() {
+    // Ranges must be stored as ranges rather than expanded into each address.
+    let mut block_list = BlockList::new();
+    block_list.add_range("0.0.0.0", "255.255.255.255").unwrap();
+    assert!(block_list.check("1.2.3.4", "ipv4").unwrap());
+    assert!(block_list.check("::ffff:1.2.3.4", "ipv6").unwrap());
+
+    let mut block_list = BlockList::new();
+    block_list
+      .add_range("::", "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")
+      .unwrap();
+    assert!(block_list.check("2001:db8::1", "ipv6").unwrap());
+    assert!(block_list.check("::ffff:10.0.0.1", "ipv6").unwrap());
+    assert!(block_list.check("10.0.0.1", "ipv4").unwrap());
+  }
+
+  #[test]
+  fn test_add_ipv4_mapped_ipv6_range() {
+    let mut block_list = BlockList::new();
+    block_list
+      .add_range("::ffff:10.0.0.2", "::ffff:10.0.0.10")
+      .unwrap();
+    assert!(block_list.check("::ffff:10.0.0.5", "ipv6").unwrap());
+    assert!(block_list.check("10.0.0.5", "ipv4").unwrap());
+    assert!(!block_list.check("10.0.0.11", "ipv4").unwrap());
+  }
+
+  #[test]
+  fn test_ipv4_mapped_ipv6_range_intersection() {
+    assert_eq!(
+      ipv4_mapped_v6_range_to_v4(
+        IPV4_MAPPED_V6_START - 1,
+        IPV4_MAPPED_V6_START,
+      ),
+      Some((0, 0)),
+    );
+    assert_eq!(
+      ipv4_mapped_v6_range_to_v4(IPV4_MAPPED_V6_END, IPV4_MAPPED_V6_END + 1,),
+      Some((u32::MAX, u32::MAX)),
+    );
+    assert_eq!(
+      ipv4_mapped_v6_range_to_v4(0, IPV4_MAPPED_V6_START - 1),
+      None,
+    );
+    assert_eq!(
+      ipv4_mapped_v6_range_to_v4(IPV4_MAPPED_V6_END + 1, u128::MAX),
+      None,
+    );
   }
 
   #[test]

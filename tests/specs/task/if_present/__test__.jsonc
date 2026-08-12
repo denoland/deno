@@ -1,0 +1,17 @@
+{
+  "tests": {
+    // A missing task with --if-present exits 0 and prints nothing, mirroring
+    // npm's --if-present flag.
+    "missing_task": {
+      "args": "task --config deno.json --if-present non_existent",
+      "output": "",
+      "exitCode": 0
+    },
+    // An existing task still runs normally with --if-present.
+    "existing_task": {
+      "args": "task --config deno.json --if-present echo",
+      "output": "existing.out",
+      "exitCode": 0
+    }
+  }
+}

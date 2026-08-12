@@ -1,0 +1,18 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "install.out"
+    },
+    {
+      "args": "audit --fix",
+      "output": "audit_fix.out",
+      "exitCode": 1
+    },
+    {
+      "args": "run --allow-read verify_fix.ts",
+      "output": "verify_fix.out"
+    }
+  ]
+}

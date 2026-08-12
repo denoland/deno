@@ -2882,7 +2882,6 @@ mod tests {
         core::str::from_utf8(&content).unwrap(),
         &Default::default(),
       )
-      .unwrap()
       .unwrap(),
     )
     .unwrap();
@@ -2966,7 +2965,6 @@ mod tests {
         core::str::from_utf8(&content).unwrap(),
         &Default::default(),
       )
-      .unwrap()
       .unwrap(),
     )
     .unwrap();

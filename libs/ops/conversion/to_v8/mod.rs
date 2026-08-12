@@ -1,14 +1,17 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+mod r#enum;
 mod r#struct;
 
 use proc_macro2::TokenStream;
 use quote::ToTokens;
+use quote::format_ident;
 use quote::quote;
 use quote::quote_spanned;
 use syn::Data;
 use syn::DeriveInput;
 use syn::Error;
+use syn::Fields;
 use syn::parse2;
 use syn::spanned::Spanned;
 
@@ -16,20 +19,69 @@ pub fn to_v8(item: TokenStream) -> Result<TokenStream, Error> {
   let input = parse2::<DeriveInput>(item)?;
   let span = input.span();
   let ident = input.ident;
+  let generics = input.generics;
 
   let out = match input.data {
-    Data::Struct(data) => create_impl(ident, r#struct::get_body(span, data)?),
-    Data::Enum(_) => return Err(Error::new(span, "Enums are not supported")),
+    Data::Struct(data) => {
+      let fields = destruct_fields(&data.fields)?;
+      let body = r#struct::get_body(span, data)?;
+
+      create_impl(
+        ident,
+        &generics,
+        quote! {
+          let Self #fields = self;
+          #body
+        },
+      )
+    }
+    Data::Enum(data) => {
+      create_impl(ident, &generics, r#enum::get_body(span, input.attrs, data)?)
+    }
     Data::Union(_) => return Err(Error::new(span, "Unions are not supported")),
   };
 
   Ok(out)
 }
 
-fn convert_or_serde(
+fn destruct_fields(fields: &Fields) -> Result<TokenStream, Error> {
+  match fields {
+    Fields::Named { 0: named } => {
+      let fields = named
+        .named
+        .iter()
+        .map(|field| field.ident.as_ref().unwrap());
+
+      Ok(quote! {
+        {
+          #(#fields),*
+        }
+      })
+    }
+    Fields::Unnamed(unnamed) => {
+      let fields = unnamed.unnamed.iter().enumerate().map(|(i, field)| {
+        let idx = syn::Index::from(i);
+        let ident = format_ident!("__{i}", span = field.span());
+        quote!(#idx: #ident)
+      });
+
+      Ok(quote! {
+        {
+          #(#fields),*
+        }
+      })
+    }
+    Fields::Unit => Err(Error::new(
+      fields.span(),
+      "Unit structs cannot be destructured",
+    )),
+  }
+}
+
+fn convert_or_serde<T: quote::ToTokens>(
   serde: bool,
   span: proc_macro2::Span,
-  value: TokenStream,
+  value: T,
 ) -> TokenStream {
   if serde {
     quote_spanned! { span =>
@@ -48,15 +100,38 @@ fn convert_or_serde(
   }
 }
 
-fn create_impl(ident: impl ToTokens, body: TokenStream) -> TokenStream {
+fn create_impl(
+  ident: impl ToTokens,
+  generics: &syn::Generics,
+  body: TokenStream,
+) -> TokenStream {
+  let (_, ty_generics, where_clause) = generics.split_for_impl();
+
+  // The `ToV8<'a>` impl needs a lifetime for the produced `v8::Local<'a, _>`.
+  // If the type already declares a lifetime (e.g. it holds `v8::Local<'a, _>`
+  // fields), reuse the first one so the impl reads `impl<'a> ToV8<'a> for
+  // Ty<'a>`. Otherwise introduce a fresh `'a` in the impl generics.
+  let mut impl_generics = generics.clone();
+  let lifetime = match generics.lifetimes().next() {
+    Some(lifetime) => lifetime.lifetime.clone(),
+    None => {
+      let lifetime = syn::Lifetime::new("'a", proc_macro2::Span::call_site());
+      impl_generics
+        .params
+        .insert(0, syn::LifetimeParam::new(lifetime.clone()).into());
+      lifetime
+    }
+  };
+  let (impl_generics, _, _) = impl_generics.split_for_impl();
+
   quote! {
-    impl<'a> ::deno_core::convert::ToV8<'a> for #ident {
+    impl #impl_generics ::deno_core::convert::ToV8<#lifetime> for #ident #ty_generics #where_clause {
       type Error = ::deno_error::JsErrorBox;
 
       fn to_v8<'i>(
         self,
-        __scope: &mut ::deno_core::v8::PinScope<'a, 'i>,
-      ) -> Result<::deno_core::v8::Local<'a, ::deno_core::v8::Value>, Self::Error>
+        __scope: &mut ::deno_core::v8::PinScope<#lifetime, 'i>,
+      ) -> Result<::deno_core::v8::Local<#lifetime, ::deno_core::v8::Value>, Self::Error>
       {
         #body
       }
@@ -95,22 +170,14 @@ mod tests {
   #[testing_macros::fixture("conversion/to_v8/test_cases/*.rs")]
   fn test_proc_macro_sync(input: PathBuf) {
     crate::infra::run_macro_expansion_test(input, |file| {
-      file.items.into_iter().filter_map(|item| {
-        match item {
-          Item::Struct(struct_item) => {
-            if derives_to_v8(&struct_item.attrs) {
-              return Some(expand_to_v8(struct_item));
-            }
-          }
-          Item::Enum(enum_item) => {
-            if derives_to_v8(&enum_item.attrs) {
-              return Some(expand_to_v8(enum_item));
-            }
-          }
-          _ => {}
+      file.items.into_iter().filter_map(|item| match item {
+        Item::Struct(struct_item) if derives_to_v8(&struct_item.attrs) => {
+          Some(expand_to_v8(struct_item))
         }
-
-        None
+        Item::Enum(enum_item) if derives_to_v8(&enum_item.attrs) => {
+          Some(expand_to_v8(enum_item))
+        }
+        _ => None,
       })
     })
   }

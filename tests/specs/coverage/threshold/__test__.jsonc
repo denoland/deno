@@ -1,0 +1,36 @@
+{
+  "tempDir": true,
+  "tests": {
+    "below_threshold_fails": {
+      "steps": [
+        {
+          "args": "test --quiet --coverage=cov main_test.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "coverage --threshold=90 cov",
+          "output": "below.out",
+          "exitCode": 1
+        }
+      ]
+    },
+    "threshold_met_passes": {
+      "steps": [
+        {
+          "args": "test --quiet --coverage=cov2 main_test.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "coverage --threshold=10 cov2",
+          "output": "[WILDCARD]",
+          "exitCode": 0
+        }
+      ]
+    },
+    "test_coverage_threshold_flag_fails": {
+      "args": "test --quiet --coverage=cov3 --coverage-threshold=90 main_test.ts",
+      "output": "[WILDCARD]",
+      "exitCode": 1
+    }
+  }
+}

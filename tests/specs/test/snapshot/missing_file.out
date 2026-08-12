@@ -1,0 +1,18 @@
+Check [WILDCARD]missing_file_test.ts
+running 1 test from ./missing_file_test.ts
+missing file ... FAILED ([WILDLINE])
+
+ ERRORS 
+
+missing file => ./missing_file_test.ts:1:6
+error: AssertionError: Missing snapshot file.
+  await t.assertSnapshot(123);
+          ^
+[WILDCARD]
+ FAILURES 
+
+missing file => ./missing_file_test.ts:1:6
+
+FAILED | 0 passed | 1 failed ([WILDLINE])
+
+error: Test failed

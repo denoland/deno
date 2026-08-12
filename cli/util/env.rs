@@ -3,9 +3,10 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::env;
+use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::OnceLock;
@@ -13,6 +14,47 @@ use std::sync::OnceLock;
 use deno_terminal::colors;
 
 use crate::sys::CliSys;
+
+/// Environment variables that configure Deno's own runtime behavior and must
+/// not be settable from an `.env` file loaded via `--env` / `--env-file`.
+///
+/// An `.env` file ships alongside the code it accompanies, so letting it set
+/// Deno's own control variables would let that file change runtime behavior
+/// the user did not opt into, for example silently enabling tunnel mode
+/// (`DENO_CONNECTED`) or overriding the tunnel control endpoint
+/// (`DENO_DEPLOY_TUNNEL_ENDPOINT`). Env files are meant to provide
+/// configuration to the user's program, not to reconfigure Deno itself, so
+/// these keys are ignored when they originate from an env file.
+const ENV_FILE_DENYLIST: &[&str] =
+  &["DENO_CONNECTED", "DENO_DEPLOY_TUNNEL_ENDPOINT"];
+
+/// Whether `key` is a Deno-internal control variable that must not be set from
+/// an env file. The comparison is ASCII case-insensitive because environment
+/// variable lookups are case-insensitive on Windows.
+fn is_denied_env_file_key(key: &OsStr) -> bool {
+  match key.to_str() {
+    Some(key) => ENV_FILE_DENYLIST
+      .iter()
+      .any(|denied| key.eq_ignore_ascii_case(denied)),
+    None => false,
+  }
+}
+
+pub fn handle_denied_env_file_key(
+  key: &OsStr,
+  file_path: &Path,
+  log_level: Option<log::Level>,
+) {
+  #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
+  if log_level.map(|l| l >= log::Level::Info).unwrap_or(true) {
+    eprintln!(
+      "{} Ignoring '{}' from environment file '{}': this variable controls Deno's own runtime behavior and cannot be set from an env file.",
+      colors::yellow("Warning"),
+      key.to_string_lossy(),
+      file_path.display(),
+    )
+  }
+}
 
 pub fn resolve_cwd(
   initial_cwd: Option<&Path>,
@@ -32,6 +74,32 @@ pub fn resolve_cwd(
   }
 }
 
+/// Like `resolve_cwd`, but falls back to a sensible default (the system
+/// root) when the current working directory can't be determined — for
+/// example when it has been unlinked. This matches Node.js semantics where
+/// the REPL still starts even if the parent process's cwd was deleted.
+pub fn resolve_cwd_or_fallback(initial_cwd: Option<&Path>) -> PathBuf {
+  match resolve_cwd(initial_cwd) {
+    Ok(cwd) => cwd.into_owned(),
+    Err(_) => fallback_cwd(),
+  }
+}
+
+fn fallback_cwd() -> PathBuf {
+  if cfg!(windows) {
+    // System drive root, e.g. `C:\`.
+    std::env::var_os("SystemDrive")
+      .map(|d| {
+        let mut p = PathBuf::from(d);
+        p.push("\\");
+        p
+      })
+      .unwrap_or_else(|| PathBuf::from("C:\\"))
+  } else {
+    PathBuf::from("/")
+  }
+}
+
 #[derive(Debug, Clone)]
 struct WatchEnvTrackerInner {
   // Track all loaded variables and their values
@@ -45,7 +113,9 @@ struct WatchEnvTrackerInner {
 impl WatchEnvTrackerInner {
   fn new() -> Self {
     // Capture the original environment state
-    let original_env: HashMap<OsString, OsString> = env::vars_os().collect();
+    let process_env = deno_os::ProcessEnvGuard::lock();
+    let original_env: HashMap<OsString, OsString> =
+      process_env.vars_os().into_iter().collect();
 
     Self {
       loaded_variables: Default::default(),
@@ -95,6 +165,9 @@ impl WatchEnvTracker {
       }
     };
 
+    // Keep substitutions and the mutations they produce consistent with each
+    // other while allowing file I/O to proceed without the process-env lock.
+    let process_env = deno_os::ProcessEnvGuard::lock();
     match deno_dotenv::from_content_sanitized_iter_with_substitution(
       &CliSys::default(),
       &content,
@@ -147,12 +220,16 @@ impl WatchEnvTracker {
                 continue;
               }
 
-              // Set the environment variable
-              // SAFETY: We're setting environment variables with valid UTF-8 strings
-              // from the .env file. Both key and value are guaranteed to be valid strings.
-              unsafe {
-                env::set_var(&key_os, &value_os);
+              if is_denied_env_file_key(&key_os) {
+                handle_denied_env_file_key(&key_os, &file_path, log_level);
+                continue;
               }
+
+              // Watched env reloads run between user-code isolates. Refreshing
+              // libc here is sufficient for TZ because the replacement
+              // isolate has not been created yet and has no cached timezone to
+              // invalidate.
+              process_env.set_var(&key_os, &value_os);
 
               // Track this variable
               inner.loaded_variables.insert(key_os.clone());
@@ -175,13 +252,14 @@ impl WatchEnvTracker {
     &self,
     inner: &mut WatchEnvTrackerInner,
     log_level: Option<log::Level>,
+    process_env: &deno_os::ProcessEnvGuard,
   ) {
     for var_name in inner.unused_variables.iter() {
+      // As with loading watched env values, cleanup runs before the
+      // replacement isolate is created, so TZ changes do not need a V8
+      // notification here.
       if !inner.original_env.contains_key(var_name) {
-        // SAFETY: We're removing an environment variable that we previously set
-        unsafe {
-          env::remove_var(var_name);
-        }
+        process_env.remove_var(var_name);
 
         #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
         if log_level.map(|l| l >= log::Level::Debug).unwrap_or(false) {
@@ -193,10 +271,7 @@ impl WatchEnvTracker {
         }
       } else {
         let original_value = inner.original_env.get(var_name).unwrap();
-        // SAFETY: We're setting an environment variable to a value we control
-        unsafe {
-          env::set_var(var_name, original_value);
-        }
+        process_env.set_var(var_name, original_value);
 
         #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
         if log_level.map(|l| l >= log::Level::Debug).unwrap_or(false) {
@@ -226,7 +301,8 @@ impl WatchEnvTracker {
       self.load_env_file_inner(cwd, env_file_path, log_level, &mut inner);
     }
 
-    self._cleanup_removed_variables(&mut inner, log_level);
+    let process_env = deno_os::ProcessEnvGuard::lock();
+    self._cleanup_removed_variables(&mut inner, log_level, &process_env);
   }
 }
 
@@ -235,8 +311,14 @@ pub fn load_env_variables_from_env_files(
   env_file_names: &[String],
   flags_log_level: Option<log::Level>,
 ) {
-  let original_env_keys: HashSet<OsString> =
-    env::vars_os().map(|(key, _)| key).collect();
+  let original_env_keys: HashSet<OsString> = {
+    let process_env = deno_os::ProcessEnvGuard::lock();
+    process_env
+      .vars_os()
+      .into_iter()
+      .map(|(key, _)| key)
+      .collect()
+  };
   let mut loaded_keys = HashSet::new();
 
   for env_file_name in env_file_names.iter().rev() {
@@ -255,6 +337,9 @@ pub fn load_env_variables_from_env_files(
         continue;
       }
     };
+    // Keep substitutions and the mutations they produce consistent with each
+    // other while allowing file I/O to proceed without the process-env lock.
+    let process_env = deno_os::ProcessEnvGuard::lock();
     let iter = match deno_dotenv::from_content_sanitized_iter_with_substitution(
       &sys_traits::impls::RealSys,
       &content,
@@ -280,10 +365,12 @@ pub fn load_env_variables_from_env_files(
         continue;
       }
 
-      // SAFETY: We're setting environment variables with sanitized key/value strings from a .env file.
-      unsafe {
-        env::set_var(&key_os, value);
+      if is_denied_env_file_key(&key_os) {
+        handle_denied_env_file_key(&key_os, &env_file_path, flags_log_level);
+        continue;
       }
+
+      process_env.set_var(&key_os, value);
       loaded_keys.insert(key_os);
     }
   }

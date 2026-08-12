@@ -21,6 +21,8 @@ deno_core::extension!(
     op_bootstrap_stderr_no_color,
     op_bootstrap_unstable_args,
     op_bootstrap_is_from_unconfigured_runtime,
+    op_proto_set_attempted,
+    op_proto_get_attempted,
     op_snapshot_options,
   ],
   options = {
@@ -68,14 +70,11 @@ impl Default for SnapshotOptions {
 #[op2]
 #[serde]
 pub fn op_snapshot_options(state: &mut OpState) -> SnapshotOptions {
-  #[cfg(feature = "hmr")]
-  {
-    state.try_take::<SnapshotOptions>().unwrap_or_default()
-  }
-  #[cfg(not(feature = "hmr"))]
-  {
-    state.take::<SnapshotOptions>()
-  }
+  // `SnapshotOptions` is only placed into the op state when the runtime is
+  // bootstrapped with a startup snapshot. Embedders that bootstrap without one
+  // (`startup_snapshot: None`) never insert it, so fall back to the default
+  // instead of panicking when the value is absent.
+  state.try_take::<SnapshotOptions>().unwrap_or_default()
 }
 
 #[op2]
@@ -164,4 +163,25 @@ pub fn op_bootstrap_stderr_no_color(_state: &mut OpState) -> bool {
 #[op2(fast)]
 pub fn op_bootstrap_is_from_unconfigured_runtime(state: &mut OpState) -> bool {
   state.borrow::<IsFromUnconfiguredRuntime>().0
+}
+
+// Called (at most once) from the disabled `Object.prototype.__proto__` setter
+// in 99_main.js when user code assigns to `__proto__`. Records a process-global
+// flag so that, if the program later crashes, the uncaught-error formatter can
+// suggest `--unstable-unsafe-proto`. See `crate::fmt_errors::PROTO_SET_ATTEMPTED`.
+#[op2(fast)]
+pub fn op_proto_set_attempted() {
+  crate::fmt_errors::PROTO_SET_ATTEMPTED
+    .store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+// Called (at most once) from the disabled `Object.prototype.__proto__` getter
+// in 99_main.js when user code reads `__proto__` (the read returns `undefined`).
+// Records a process-global flag; the uncaught-error formatter only acts on it
+// when the crashing error also mentions `__proto__`, since reads are common and
+// usually harmless. See `crate::fmt_errors::PROTO_GET_ATTEMPTED`.
+#[op2(fast)]
+pub fn op_proto_get_attempted() {
+  crate::fmt_errors::PROTO_GET_ATTEMPTED
+    .store(true, std::sync::atomic::Ordering::Relaxed);
 }

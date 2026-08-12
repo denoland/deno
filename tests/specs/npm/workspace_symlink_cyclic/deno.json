@@ -1,0 +1,10 @@
+{
+  "imports": {
+    "main-project": "./packages/main-project/src/index.ts",
+    "pkg-a": "./packages/pkg-a/src/index.ts",
+    "pkg-b": "./packages/pkg-b/src/index.ts"
+  },
+  "test": {
+    "include": ["**/src/**/*.spec.ts"]
+  }
+}

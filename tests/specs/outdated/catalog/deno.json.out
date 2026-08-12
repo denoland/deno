@@ -1,0 +1,11 @@
+{
+  "workspace": ["./member"],
+  "catalog": {
+    "@denotest/has-patch-versions": "0.2.0"
+  },
+  "catalogs": {
+    "testing": {
+      "@denotest/breaking-change-between-versions": "2.0.0"
+    }
+  }
+}

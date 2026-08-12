@@ -1,0 +1,19 @@
+{
+  "version": "5",
+  "specifiers": {
+    "npm:@denotest/add@1.0.0": "1.0.0"
+  },
+  "npm": {
+    "@denotest/add@1.0.0": {
+      "integrity": "[WILDCARD]",
+      "tarball": "http://localhost:4260/@denotest/add/1.0.0.tgz"
+    }
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@denotest/add@1.0.0"
+      ]
+    }
+  }
+}

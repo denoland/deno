@@ -496,6 +496,8 @@ pub(crate) fn to_srgb_from_icc_profile(
 }
 
 /// Create an image buffer from raw bytes.
+///
+/// The `width` and `height` are expected to be non-zero.
 fn process_image_buffer_from_raw_bytes<P, S>(
   width: u32,
   height: u32,
@@ -510,7 +512,7 @@ where
   for (index, buffer) in buffer.chunks_exact(bytes_per_pixel).enumerate() {
     let pixel = P::slice_to_pixel(buffer);
 
-    out.put_pixel(index as u32, index as u32, pixel);
+    out.put_pixel((index as u32) % width, (index as u32) / width, pixel);
   }
 
   out
@@ -632,5 +634,23 @@ mod tests {
     ))
     .to_rgba16();
     assert_eq!(image.get_pixel(0, 0), &Rgba::<u16>([65535, 0, 0, 65535]));
+  }
+
+  #[test]
+  fn test_process_wide_image_buffer_from_raw_bytes() {
+    let buffer = &[
+      255, 255, 255, 128, 128, 128, 255, 255, 255, 128, 128, 128, 255, 255,
+      255, 128, 128, 128,
+    ];
+    let color = ColorType::Rgb8;
+    let bytes_per_pixel = color.bytes_per_pixel() as usize;
+    let image = DynamicImage::ImageRgb8(process_image_buffer_from_raw_bytes(
+      3,
+      2,
+      buffer,
+      bytes_per_pixel,
+    ))
+    .to_rgb8();
+    assert_eq!(image.get_pixel(2, 1), &Rgb::<u8>([128, 128, 128]));
   }
 }

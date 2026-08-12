@@ -1,0 +1,18 @@
+running 1 test from ./retry_exhausted.ts
+always fails ... retrying (attempt 1 failed) (Uncaught Error: boom)
+always fails ... retrying (attempt 2 failed) (Uncaught Error: boom)
+always fails ... FAILED ([WILDCARD])
+
+ ERRORS 
+
+always fails => ./retry_exhausted.ts:[WILDCARD]
+error: Error: boom
+[WILDCARD]
+
+ FAILURES 
+
+always fails => ./retry_exhausted.ts:[WILDCARD]
+
+FAILED | 0 passed | 1 failed ([WILDCARD])
+
+error: Test failed

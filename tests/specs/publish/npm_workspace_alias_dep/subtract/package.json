@@ -1,0 +1,7 @@
+{
+  "name": "subtract",
+  "version": "1.0.0",
+  "dependencies": {
+    "my-add": "workspace:add@^"
+  }
+}

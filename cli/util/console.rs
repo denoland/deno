@@ -14,13 +14,14 @@ use crossterm::event::KeyModifiers;
 use crossterm::terminal;
 use deno_core::parking_lot::Mutex;
 use deno_runtime::ops::tty::ConsoleSize;
+use unicode_general_category::GeneralCategory;
+use unicode_general_category::get_general_category;
 
 use super::draw_thread::DrawThread;
 
 /// Gets the console size.
 pub fn console_size() -> Option<ConsoleSize> {
-  let stderr = &deno_runtime::deno_io::STDERR_HANDLE;
-  deno_runtime::ops::tty::console_size(stderr).ok()
+  deno_runtime::ops::tty::console_size_of_stderr().ok()
 }
 
 pub fn new_console_static_text() -> ConsoleStaticText {
@@ -32,6 +33,41 @@ pub fn new_console_static_text() -> ConsoleStaticText {
       rows: size.map(|size| size.rows).map(to_u16),
     }
   })
+}
+
+/// Escapes terminal control and other non-printable characters in text that
+/// will be embedded in Deno-owned terminal output.
+///
+/// Unlike [`filter_destructive_ansi`], this does not preserve styling from the
+/// input. Control characters are rendered visibly so surrounding text remains
+/// understandable.
+pub fn escape_terminal_control_chars(text: &str) -> Cow<'_, str> {
+  if !text.contains(is_terminal_unprintable) {
+    return Cow::Borrowed(text);
+  }
+
+  let mut output = String::with_capacity(text.len());
+  for c in text.chars() {
+    if is_terminal_unprintable(c) {
+      output.extend(c.escape_debug());
+    } else {
+      output.push(c);
+    }
+  }
+  Cow::Owned(output)
+}
+
+fn is_terminal_unprintable(c: char) -> bool {
+  matches!(
+    get_general_category(c),
+    GeneralCategory::Control
+      | GeneralCategory::Format
+      | GeneralCategory::Surrogate
+      | GeneralCategory::PrivateUse
+      | GeneralCategory::Unassigned
+      | GeneralCategory::LineSeparator
+      | GeneralCategory::ParagraphSeparator
+  )
 }
 
 /// Strips destructive ANSI escape sequences from user output while preserving
@@ -131,11 +167,29 @@ fn skip_str_seq(data: &[u8]) -> usize {
 
 pub struct RawMode {
   needs_disable: bool,
+  #[cfg(windows)]
+  original_mode: Option<u32>,
 }
 
 impl RawMode {
   pub fn enable() -> io::Result<Self> {
     terminal::enable_raw_mode()?;
+
+    #[cfg(windows)]
+    {
+      // Clear ENABLE_VIRTUAL_TERMINAL_INPUT so that arrow keys and
+      // special keys are delivered as VK_* key events via
+      // ReadConsoleInput, rather than as VT escape sequences.
+      // Windows Terminal enables this flag by default, which causes
+      // crossterm to miss arrow keys, Enter, and Ctrl+C.
+      let original_mode = windows_vt_input::clear_vt_input_flag();
+      Ok(Self {
+        needs_disable: true,
+        original_mode,
+      })
+    }
+
+    #[cfg(not(windows))]
     Ok(Self {
       needs_disable: true,
     })
@@ -143,6 +197,8 @@ impl RawMode {
 
   pub fn disable(mut self) -> io::Result<()> {
     self.needs_disable = false;
+    #[cfg(windows)]
+    windows_vt_input::restore_mode(self.original_mode);
     terminal::disable_raw_mode()
   }
 }
@@ -150,7 +206,172 @@ impl RawMode {
 impl Drop for RawMode {
   fn drop(&mut self) {
     if self.needs_disable {
+      #[cfg(windows)]
+      windows_vt_input::restore_mode(self.original_mode);
       let _ = terminal::disable_raw_mode();
+    }
+  }
+}
+
+#[cfg(windows)]
+mod windows_vt_input {
+  use windows_sys::Win32::System::Console::GetConsoleMode;
+  use windows_sys::Win32::System::Console::GetStdHandle;
+  use windows_sys::Win32::System::Console::STD_INPUT_HANDLE;
+  use windows_sys::Win32::System::Console::SetConsoleMode;
+
+  const ENABLE_VIRTUAL_TERMINAL_INPUT: u32 = 0x0200;
+
+  /// Clear ENABLE_VIRTUAL_TERMINAL_INPUT on stdin and return the
+  /// original mode so it can be restored later.
+  pub fn clear_vt_input_flag() -> Option<u32> {
+    // SAFETY: GetStdHandle/GetConsoleMode/SetConsoleMode are safe
+    // Windows API calls with valid handle constants.
+    unsafe {
+      let handle = GetStdHandle(STD_INPUT_HANDLE);
+      if handle.is_null() {
+        return None;
+      }
+      let mut mode: u32 = 0;
+      if GetConsoleMode(handle, &mut mode) == 0 {
+        return None;
+      }
+      if mode & ENABLE_VIRTUAL_TERMINAL_INPUT != 0 {
+        SetConsoleMode(handle, mode & !ENABLE_VIRTUAL_TERMINAL_INPUT);
+        Some(mode)
+      } else {
+        None // flag wasn't set, nothing to restore
+      }
+    }
+  }
+
+  pub fn restore_mode(original_mode: Option<u32>) {
+    if let Some(mode) = original_mode {
+      // SAFETY: restoring previously saved console mode.
+      unsafe {
+        let handle = GetStdHandle(STD_INPUT_HANDLE);
+        if !handle.is_null() {
+          SetConsoleMode(handle, mode);
+        }
+      }
+    }
+  }
+}
+
+/// A snapshot of the terminal mode that can be restored later.
+///
+/// This is used by `deno task` so that a child process (for example a dev
+/// server like `vite`) that switches the terminal into raw mode and is then
+/// terminated (e.g. via Ctrl+C) does not leave the user's terminal in a broken
+/// state with input echo and line editing disabled.
+///
+/// On non-Windows platforms this is a no-op: there the child process belongs to
+/// the same process group and the controlling terminal's line discipline is
+/// restored by the shell, so there's nothing for `deno` to do.
+#[derive(Clone, Copy, Default)]
+pub struct SavedTerminalMode {
+  #[cfg(windows)]
+  stdin_mode: Option<u32>,
+  #[cfg(windows)]
+  stdout_mode: Option<u32>,
+}
+
+impl SavedTerminalMode {
+  /// Captures the current terminal mode so it can be restored later.
+  pub fn capture() -> Self {
+    #[cfg(windows)]
+    {
+      Self {
+        stdin_mode: windows_console_mode::get(
+          windows_sys::Win32::System::Console::STD_INPUT_HANDLE,
+        ),
+        stdout_mode: windows_console_mode::get(
+          windows_sys::Win32::System::Console::STD_OUTPUT_HANDLE,
+        ),
+      }
+    }
+    #[cfg(not(windows))]
+    {
+      Self {}
+    }
+  }
+
+  /// Restores the captured terminal mode. Safe to call multiple times.
+  pub fn restore(&self) {
+    #[cfg(windows)]
+    {
+      windows_console_mode::set(
+        windows_sys::Win32::System::Console::STD_INPUT_HANDLE,
+        self.stdin_mode,
+      );
+      windows_console_mode::set(
+        windows_sys::Win32::System::Console::STD_OUTPUT_HANDLE,
+        self.stdout_mode,
+      );
+    }
+  }
+}
+
+/// Captures the terminal mode on creation and restores it on drop, acting as a
+/// backstop so the terminal is always returned to its original state once a
+/// task and all of its children have finished. See [`SavedTerminalMode`].
+pub struct TerminalModeGuard(SavedTerminalMode);
+
+impl TerminalModeGuard {
+  pub fn acquire() -> Self {
+    Self(SavedTerminalMode::capture())
+  }
+
+  /// Returns a copy of the captured mode so it can also be restored eagerly
+  /// (for example as soon as Ctrl+C is received).
+  pub fn saved(&self) -> SavedTerminalMode {
+    self.0
+  }
+}
+
+#[cfg(windows)]
+impl Drop for TerminalModeGuard {
+  fn drop(&mut self) {
+    self.0.restore();
+  }
+}
+
+#[cfg(windows)]
+mod windows_console_mode {
+  use windows_sys::Win32::System::Console::GetConsoleMode;
+  use windows_sys::Win32::System::Console::GetStdHandle;
+  use windows_sys::Win32::System::Console::STD_HANDLE;
+  use windows_sys::Win32::System::Console::SetConsoleMode;
+
+  /// Reads the console mode for the given std handle. Returns `None` when the
+  /// handle is not a console (e.g. redirected to a pipe or file), in which case
+  /// there is no mode to restore.
+  pub fn get(std_handle: STD_HANDLE) -> Option<u32> {
+    // SAFETY: GetStdHandle/GetConsoleMode are safe Windows API calls with
+    // valid handle constants.
+    unsafe {
+      let handle = GetStdHandle(std_handle);
+      if handle.is_null() {
+        return None;
+      }
+      let mut mode: u32 = 0;
+      if GetConsoleMode(handle, &mut mode) == 0 {
+        return None;
+      }
+      Some(mode)
+    }
+  }
+
+  pub fn set(std_handle: STD_HANDLE, mode: Option<u32>) {
+    let Some(mode) = mode else {
+      return;
+    };
+    // SAFETY: restoring a previously saved console mode.
+    unsafe {
+      let handle = GetStdHandle(std_handle);
+      if !handle.is_null() {
+        SetConsoleMode(handle, mode);
+      }
     }
   }
 }
@@ -270,6 +491,69 @@ pub fn confirm(options: ConfirmOptions) -> Option<bool> {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn terminal_mode_guard_acquire_and_drop() {
+    // Should not panic whether or not a console is attached (in CI stdin is
+    // typically redirected, so the captured mode is `None` and restoring is a
+    // no-op). On a real console it captures and restores the mode. The guard
+    // is restored when it goes out of scope at the end of this block, and the
+    // captured snapshot can be restored eagerly any number of times.
+    {
+      let guard = TerminalModeGuard::acquire();
+      let saved = guard.saved();
+      saved.restore();
+      saved.restore();
+    }
+    SavedTerminalMode::capture().restore();
+  }
+
+  #[test]
+  fn escape_terminal_control_chars_preserves_printable_unicode() {
+    let input = "hello 文件 😀";
+    let result = escape_terminal_control_chars(input);
+    assert!(matches!(result, Cow::Borrowed(_)));
+    assert_eq!(result, input);
+  }
+
+  #[test]
+  fn escape_terminal_control_chars_makes_controls_visible() {
+    let input = "before\x1b[2J\x07\t\n\u{009b}31mafter";
+    let result = escape_terminal_control_chars(input);
+    assert_eq!(result, r"before\u{1b}[2J\u{7}\t\n\u{9b}31mafter");
+  }
+
+  #[test]
+  fn escape_terminal_control_chars_makes_invisible_chars_visible() {
+    let controls = [
+      '\u{061c}',
+      '\u{200e}',
+      '\u{200f}',
+      '\u{202a}',
+      '\u{202b}',
+      '\u{202c}',
+      '\u{202d}',
+      '\u{202e}',
+      '\u{2066}',
+      '\u{2067}',
+      '\u{2068}',
+      '\u{2069}',
+      '\u{2028}',
+      '\u{2029}',
+      '\u{feff}',
+      '\u{200b}',
+      '\u{e0000}',
+      '\u{e007f}',
+      '\u{e000}',
+      '\u{0378}',
+    ];
+    for control in controls {
+      let input = format!("before{control}after");
+      let result = escape_terminal_control_chars(&input);
+      assert!(!result.contains(control));
+      assert!(result.contains(&format!(r"\u{{{:x}}}", control as u32)));
+    }
+  }
 
   #[test]
   fn filter_destructive_ansi_plain_text() {

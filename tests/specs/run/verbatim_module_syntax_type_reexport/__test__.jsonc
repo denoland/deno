@@ -1,0 +1,20 @@
+{
+  "tests": {
+    // With verbatimModuleSyntax honored, the dangling `export { Foo }`
+    // crashes at runtime with a SyntaxError (the regression).
+    "verbatim_dangling_reexport_crashes": {
+      "args": "run -A --no-check main.ts",
+      "output": "crash.out",
+      "exitCode": 1
+    },
+    // DENO_DISABLE_VERBATIM_MODULE_SYNTAX makes the emit path ignore
+    // verbatimModuleSyntax, eliding the dangling type-only re-export.
+    "env_disables_verbatim_and_runs": {
+      "args": "run -A --no-check main.ts",
+      "envs": {
+        "DENO_DISABLE_VERBATIM_MODULE_SYNTAX": "1"
+      },
+      "output": "ok.out"
+    }
+  }
+}

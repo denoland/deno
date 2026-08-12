@@ -6,10 +6,14 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use deno_core::CancelFuture;
+use deno_core::DetachedBuffer;
+use deno_core::JsBuffer;
+use deno_core::JsRuntimeInspector;
 use deno_core::OpState;
 use deno_core::op2;
 use deno_web::JsMessageData;
 use deno_web::MessagePortError;
+use deno_web::RecvMessageData;
 pub use sync_fetch::SyncFetchError;
 
 use self::sync_fetch::op_worker_sync_fetch;
@@ -21,13 +25,18 @@ deno_core::extension!(
   deno_web_worker,
   ops = [
     op_worker_post_message,
+    op_worker_post_message_raw,
     op_worker_recv_message,
+    op_worker_recv_message_sync,
+    op_worker_maybe_wait_for_debugger,
     // Notify host that guest worker closes.
     op_worker_close,
     op_worker_get_type,
     op_worker_sync_fetch,
   ],
 );
+
+pub struct WaitForWorkerDebuggerOnMessage(pub bool);
 
 #[op2]
 fn op_worker_post_message(
@@ -38,11 +47,25 @@ fn op_worker_post_message(
   handle.port.send(state, data)
 }
 
+/// Fast-path post: takes a pre-serialized buffer directly, bypassing
+/// the JsMessageData serde overhead. Only for messages with no transferables.
+#[op2]
+fn op_worker_post_message_raw(
+  state: &mut OpState,
+  #[buffer(detach)] data: JsBuffer,
+) -> Result<(), MessagePortError> {
+  let handle = state.borrow::<WebWorkerInternalHandle>().clone();
+  let detached = DetachedBuffer::from_v8slice(data.into_parts());
+  if let Some(tx) = &*handle.port.tx.borrow() {
+    tx.send((detached, vec![])).ok();
+  }
+  Ok(())
+}
+
 #[op2(async(lazy), fast)]
-#[serde]
 async fn op_worker_recv_message(
   state: Rc<RefCell<OpState>>,
-) -> Result<Option<JsMessageData>, MessagePortError> {
+) -> Result<Option<RecvMessageData>, MessagePortError> {
   let handle = {
     let state = state.borrow();
     state.borrow::<WebWorkerInternalHandle>().clone()
@@ -52,6 +75,33 @@ async fn op_worker_recv_message(
     .recv(state.clone())
     .or_cancel(handle.cancel)
     .await?
+}
+
+#[op2]
+fn op_worker_recv_message_sync(
+  state: &mut OpState,
+) -> Result<Option<JsMessageData>, MessagePortError> {
+  let handle = state.borrow::<WebWorkerInternalHandle>().clone();
+  handle.port.try_recv_sync(state)
+}
+
+#[op2(fast)]
+fn op_worker_maybe_wait_for_debugger(state: &mut OpState) {
+  let should_wait = state
+    .try_borrow_mut::<WaitForWorkerDebuggerOnMessage>()
+    .map(|wait| {
+      let should_wait = wait.0;
+      wait.0 = false;
+      should_wait
+    })
+    .unwrap_or(false);
+  if !should_wait {
+    return;
+  }
+
+  if let Some(inspector) = state.try_borrow::<Rc<JsRuntimeInspector>>() {
+    inspector.wait_for_debugger_enabled_for_worker_message();
+  }
 }
 
 #[op2(fast)]
@@ -69,7 +119,6 @@ fn op_worker_close(state: &mut OpState) {
 }
 
 #[op2]
-#[serde]
 fn op_worker_get_type(state: &mut OpState) -> WorkerThreadType {
   let handle = state.borrow::<WebWorkerInternalHandle>().clone();
   handle.worker_type

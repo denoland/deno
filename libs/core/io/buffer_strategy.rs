@@ -6,6 +6,12 @@ const STANDARD_BUFFER_SIZE: usize = 64 * 1024;
 const TINY_BUFFER_SIZE: usize = 1024;
 const MAX_GROW_LEN: usize = 16 * 1024 * 1024;
 
+fn capped_next_power_of_two(n: usize) -> usize {
+  n.checked_next_power_of_two()
+    .unwrap_or(MAX_GROW_LEN)
+    .min(MAX_GROW_LEN)
+}
+
 /// Our size classes.
 enum SizeClass {
   // Zero min, no max (ie: no hint given)
@@ -52,15 +58,15 @@ impl SizeClass {
     let size = match self {
       SizeClass::Unknown => STANDARD_BUFFER_SIZE,
       SizeClass::LikelyEmpty => 0,
-      SizeClass::LikelyKnown(n) => usize::next_power_of_two(*n),
+      SizeClass::LikelyKnown(n) => capped_next_power_of_two(*n),
       SizeClass::BoundedMin(n) => {
-        std::cmp::max(STANDARD_BUFFER_SIZE, usize::next_power_of_two(*n))
+        std::cmp::max(STANDARD_BUFFER_SIZE, capped_next_power_of_two(*n))
       }
       SizeClass::BoundedMax(n) => {
-        std::cmp::min(STANDARD_BUFFER_SIZE, usize::next_power_of_two(*n))
+        std::cmp::min(STANDARD_BUFFER_SIZE, capped_next_power_of_two(*n))
       }
       SizeClass::Between(min, _max) => {
-        std::cmp::max(STANDARD_BUFFER_SIZE, usize::next_power_of_two(*min))
+        std::cmp::max(STANDARD_BUFFER_SIZE, capped_next_power_of_two(*min))
       }
     };
 
@@ -103,7 +109,9 @@ impl AdaptiveBufferStrategy {
   }
 
   pub fn new_from_hint_u64(min: u64, maybe_max: Option<u64>) -> Self {
-    Self::new_from_hint(min as _, maybe_max.map(|m| m as _))
+    let min = usize::try_from(min).unwrap_or(usize::MAX);
+    let maybe_max = maybe_max.map(|m| usize::try_from(m).unwrap_or(usize::MAX));
+    Self::new_from_hint(min, maybe_max)
   }
 
   pub fn new_from_hint(min: usize, maybe_max: Option<usize>) -> Self {
@@ -249,5 +257,34 @@ mod tests {
       let strategy = AdaptiveBufferStrategy::new_from_size_class(class);
       assert_eq!(drain_reader(strategy, reader), expected);
     }
+  }
+
+  #[test]
+  fn huge_hints_are_capped() {
+    for class in [
+      SizeClass::LikelyKnown(usize::MAX),
+      SizeClass::BoundedMin(usize::MAX),
+      SizeClass::Between(MAX_GROW_LEN + 1, usize::MAX),
+    ] {
+      let strategy = AdaptiveBufferStrategy::new_from_size_class(class);
+      assert_eq!(strategy.buffer_size(), MAX_GROW_LEN);
+    }
+
+    let strategy = AdaptiveBufferStrategy::new_from_size_class(
+      SizeClass::BoundedMax(usize::MAX),
+    );
+    assert_eq!(strategy.buffer_size(), STANDARD_BUFFER_SIZE);
+  }
+
+  #[test]
+  fn huge_u64_hints_are_saturating_and_capped() {
+    let oversized_hint = (usize::MAX as u64).saturating_add(1);
+    let strategy = AdaptiveBufferStrategy::new_from_hint_u64(
+      oversized_hint,
+      Some(oversized_hint),
+    );
+
+    assert_eq!(strategy.buffer_size(), MAX_GROW_LEN);
+    assert_eq!(strategy.expected_remaining, usize::MAX);
   }
 }

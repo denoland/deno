@@ -22,10 +22,20 @@ use crate::magic::transl8::MagicType;
 use crate::magic::transl8::visit_magic;
 use crate::payload::ValueType;
 
+// Maximum nesting depth permitted while deserializing a V8 value. serde_v8
+// recurses on the Rust stack for each nested container, so without a bound a
+// deeply nested object or array (cheaply built from untrusted JS) would
+// overflow the stack and abort the process. We return an error instead once
+// this depth is reached. Matches the default used by serde_json.
+const RECURSION_LIMIT: usize = 128;
+
 pub struct Deserializer<'b, 's, 'i> {
   input: v8::Local<'s, v8::Value>,
   scope: &'b mut v8::PinScope<'s, 'i>,
   _key_cache: Option<&'b mut KeyCache>,
+  // Remaining nesting budget. Each child deserializer is created with one less
+  // than its parent; reaching zero before descending yields an error.
+  remaining_depth: usize,
 }
 
 impl<'b, 's, 'i> Deserializer<'b, 's, 'i> {
@@ -34,11 +44,31 @@ impl<'b, 's, 'i> Deserializer<'b, 's, 'i> {
     input: v8::Local<'s, v8::Value>,
     key_cache: Option<&'b mut KeyCache>,
   ) -> Self {
+    Self::with_depth(scope, input, key_cache, RECURSION_LIMIT)
+  }
+
+  fn with_depth(
+    scope: &'b mut v8::PinScope<'s, 'i>,
+    input: v8::Local<'s, v8::Value>,
+    key_cache: Option<&'b mut KeyCache>,
+    remaining_depth: usize,
+  ) -> Self {
     Deserializer {
       input,
       scope,
       _key_cache: key_cache,
+      remaining_depth,
     }
+  }
+
+  // Returns the nesting budget to hand to a child deserializer, or an error if
+  // the recursion limit has been reached. Call once per descent into a nested
+  // container.
+  fn child_depth(&self) -> Result<usize> {
+    self
+      .remaining_depth
+      .checked_sub(1)
+      .ok_or(Error::RecursionLimitExceeded)
   }
 }
 
@@ -199,8 +229,8 @@ impl<'de> de::Deserializer<'de> for &'_ mut Deserializer<'_, '_, '_> {
     V: Visitor<'de>,
   {
     if self.input.is_string() || self.input.is_string_object() {
-      // fixme: this unwrap is not safe because stringifier could have thrown
-      let v8_string = self.input.to_string(self.scope).unwrap();
+      let v8_string =
+        self.input.to_string(self.scope).ok_or(Error::V8Exception)?;
       let string = to_utf8(v8_string, self.scope);
       visitor.visit_string(string)
     } else {
@@ -255,9 +285,15 @@ impl<'de> de::Deserializer<'de> for &'_ mut Deserializer<'_, '_, '_> {
   where
     V: Visitor<'de>,
   {
+    let depth = self.child_depth()?;
     let arr = v8::Local::<v8::Array>::try_from(self.input)
       .map_err(|_| Error::ExpectedArray(self.input.type_repr()))?;
-    visitor.visit_seq(SeqAccess::new(arr.into(), self.scope, 0..arr.length()))
+    visitor.visit_seq(SeqAccess::new(
+      arr.into(),
+      self.scope,
+      0..arr.length(),
+      depth,
+    ))
   }
 
   // Like deserialize_seq except it prefers tuple's length over input array's length
@@ -265,6 +301,7 @@ impl<'de> de::Deserializer<'de> for &'_ mut Deserializer<'_, '_, '_> {
   where
     V: Visitor<'de>,
   {
+    let depth = self.child_depth()?;
     let obj = v8::Local::<v8::Object>::try_from(self.input)
       .map_err(|_| Error::ExpectedObject(self.input.type_repr()))?;
     if let Ok(array) = v8::Local::<v8::Array>::try_from(obj) {
@@ -274,7 +311,7 @@ impl<'de> de::Deserializer<'de> for &'_ mut Deserializer<'_, '_, '_> {
         return Err(Error::LengthMismatch(array_len, len));
       }
     }
-    visitor.visit_seq(SeqAccess::new(obj, self.scope, 0..len as u32))
+    visitor.visit_seq(SeqAccess::new(obj, self.scope, 0..len as u32, depth))
   }
 
   // Tuple structs look just like sequences in JSON.
@@ -294,6 +331,7 @@ impl<'de> de::Deserializer<'de> for &'_ mut Deserializer<'_, '_, '_> {
   where
     V: de::Visitor<'de>,
   {
+    let depth = self.child_depth()?;
     // Assume object, then get_own_property_names
     let obj = v8::Local::<v8::Object>::try_from(self.input)
       .map_err(|_| Error::ExpectedObject(self.input.type_repr()))?;
@@ -305,10 +343,11 @@ impl<'de> de::Deserializer<'de> for &'_ mut Deserializer<'_, '_, '_> {
         len: pairs_array.length(),
         obj: pairs_array,
         scope: self.scope,
+        remaining_depth: depth,
       };
       visitor.visit_map(map)
     } else {
-      visitor.visit_map(MapObjectAccess::new(obj, self.scope))
+      visitor.visit_map(MapObjectAccess::new(obj, self.scope, depth)?)
     }
   }
 
@@ -351,19 +390,21 @@ impl<'de> de::Deserializer<'de> for &'_ mut Deserializer<'_, '_, '_> {
         visit_magic(visitor, AnyValue::from_v8(self.scope, self.input)?)
       }
       _ => {
+        let depth = self.child_depth()?;
         // Regular struct
         let obj = v8::Local::<v8::Object>::try_from(self.input)
           .map_err(|_| Error::ExpectedObject(self.input.type_repr()))?;
 
         // Fields names are a hint and must be inferred when not provided
         if fields.is_empty() {
-          visitor.visit_map(MapObjectAccess::new(obj, self.scope))
+          visitor.visit_map(MapObjectAccess::new(obj, self.scope, depth)?)
         } else {
           visitor.visit_map(StructAccess {
             obj,
             scope: self.scope,
             keys: fields.iter(),
             next_value: None,
+            remaining_depth: depth,
           })
         }
       }
@@ -382,6 +423,7 @@ impl<'de> de::Deserializer<'de> for &'_ mut Deserializer<'_, '_, '_> {
   where
     V: Visitor<'de>,
   {
+    let depth = self.child_depth()?;
     // Unit variant
     if self.input.is_string() || self.input.is_string_object() {
       let payload = v8::undefined(self.scope).into();
@@ -389,6 +431,7 @@ impl<'de> de::Deserializer<'de> for &'_ mut Deserializer<'_, '_, '_> {
         scope: self.scope,
         tag: self.input,
         payload,
+        remaining_depth: depth,
       })
     }
     // Struct or tuple variant
@@ -397,22 +440,22 @@ impl<'de> de::Deserializer<'de> for &'_ mut Deserializer<'_, '_, '_> {
       let tag = {
         let prop_names =
           obj.get_own_property_names(self.scope, Default::default());
-        let prop_names = prop_names
-          .ok_or_else(|| Error::ExpectedEnum(self.input.type_repr()))?;
+        let prop_names = prop_names.ok_or(Error::V8Exception)?;
         let prop_names_len = prop_names.length();
         if prop_names_len != 1 {
           return Err(Error::LengthMismatch(prop_names_len as usize, 1));
         }
-        // fixme: this unwrap  is not safe because of proxies
-        prop_names.get_index(self.scope, 0).unwrap()
+        prop_names
+          .get_index(self.scope, 0)
+          .ok_or(Error::V8Exception)?
       };
 
-      // fixme: this unwrap  is not safe because of proxies
-      let payload = obj.get(self.scope, tag).unwrap();
+      let payload = obj.get(self.scope, tag).ok_or(Error::V8Exception)?;
       visitor.visit_enum(EnumAccess {
         scope: self.scope,
         tag,
         payload,
+        remaining_depth: depth,
       })
     } else {
       Err(Error::ExpectedEnum(self.input.type_repr()))
@@ -464,22 +507,24 @@ impl<'a, 's, 'i> MapObjectAccess<'a, 's, 'i> {
   pub fn new(
     obj: v8::Local<'a, v8::Object>,
     scope: &'a mut v8::PinScope<'s, 'i>,
-  ) -> Self {
-    let keys = match obj.get_own_property_names(
-      scope,
-      v8::GetPropertyNamesArgsBuilder::new()
-        .key_conversion(v8::KeyConversionMode::ConvertToString)
-        .build(),
-    ) {
-      Some(keys) => SeqAccess::new(keys.into(), scope, 0..keys.length()),
-      None => SeqAccess::new(obj, scope, 0..0),
-    };
+    remaining_depth: usize,
+  ) -> Result<Self> {
+    let keys = obj
+      .get_own_property_names(
+        scope,
+        v8::GetPropertyNamesArgsBuilder::new()
+          .key_conversion(v8::KeyConversionMode::ConvertToString)
+          .build(),
+      )
+      .ok_or(Error::V8Exception)?;
+    let keys =
+      SeqAccess::new(keys.into(), scope, 0..keys.length(), remaining_depth);
 
-    Self {
+    Ok(Self {
       obj,
       keys,
       next_value: None,
-    }
+    })
   }
 }
 
@@ -491,14 +536,21 @@ impl<'de> de::MapAccess<'de> for MapObjectAccess<'_, '_, '_> {
     seed: K,
   ) -> Result<Option<K::Value>> {
     while let Some(key) = self.keys.next_element::<magic::Value>()? {
-      let v8_val = self.obj.get(self.keys.scope, key.v8_value).unwrap();
+      let v8_val = self
+        .obj
+        .get(self.keys.scope, key.v8_value)
+        .ok_or(Error::V8Exception)?;
       if v8_val.is_undefined() {
         // Historically keys/value pairs with undefined values are not added to the output
         continue;
       }
       self.next_value = Some(v8_val);
-      let mut deserializer =
-        Deserializer::new(self.keys.scope, key.v8_value, None);
+      let mut deserializer = Deserializer::with_depth(
+        self.keys.scope,
+        key.v8_value,
+        None,
+        self.keys.remaining_depth,
+      );
       return seed.deserialize(&mut deserializer).map(Some);
     }
     Ok(None)
@@ -512,7 +564,12 @@ impl<'de> de::MapAccess<'de> for MapObjectAccess<'_, '_, '_> {
       .next_value
       .take()
       .expect("Call next_key_seed before next_value_seed");
-    let mut deserializer = Deserializer::new(self.keys.scope, v8_val, None);
+    let mut deserializer = Deserializer::with_depth(
+      self.keys.scope,
+      v8_val,
+      None,
+      self.keys.remaining_depth,
+    );
     seed.deserialize(&mut deserializer)
   }
 
@@ -526,6 +583,7 @@ struct MapPairsAccess<'a, 's, 'i> {
   pos: u32,
   len: u32,
   scope: &'a mut v8::PinScope<'s, 'i>,
+  remaining_depth: usize,
 }
 
 impl<'de> de::MapAccess<'de> for MapPairsAccess<'_, '_, '_> {
@@ -536,9 +594,17 @@ impl<'de> de::MapAccess<'de> for MapPairsAccess<'_, '_, '_> {
     seed: K,
   ) -> Result<Option<K::Value>> {
     if self.pos < self.len {
-      let v8_key = self.obj.get_index(self.scope, self.pos).unwrap();
+      let v8_key = self
+        .obj
+        .get_index(self.scope, self.pos)
+        .ok_or(Error::V8Exception)?;
       self.pos += 1;
-      let mut deserializer = Deserializer::new(self.scope, v8_key, None);
+      let mut deserializer = Deserializer::with_depth(
+        self.scope,
+        v8_key,
+        None,
+        self.remaining_depth,
+      );
       let k = seed.deserialize(&mut deserializer)?;
       Ok(Some(k))
     } else {
@@ -551,9 +617,13 @@ impl<'de> de::MapAccess<'de> for MapPairsAccess<'_, '_, '_> {
     seed: V,
   ) -> Result<V::Value> {
     debug_assert!(self.pos < self.len);
-    let v8_val = self.obj.get_index(self.scope, self.pos).unwrap();
+    let v8_val = self
+      .obj
+      .get_index(self.scope, self.pos)
+      .ok_or(Error::V8Exception)?;
     self.pos += 1;
-    let mut deserializer = Deserializer::new(self.scope, v8_val, None);
+    let mut deserializer =
+      Deserializer::with_depth(self.scope, v8_val, None, self.remaining_depth);
     seed.deserialize(&mut deserializer)
   }
 
@@ -567,6 +637,7 @@ struct StructAccess<'a, 's, 'i> {
   scope: &'a mut v8::PinScope<'s, 'i>,
   keys: std::slice::Iter<'static, &'static str>,
   next_value: Option<v8::Local<'s, v8::Value>>,
+  remaining_depth: usize,
 }
 
 impl<'de> de::MapAccess<'de> for StructAccess<'_, '_, '_> {
@@ -578,13 +649,14 @@ impl<'de> de::MapAccess<'de> for StructAccess<'_, '_, '_> {
   {
     for field in self.keys.by_ref() {
       let key = v8_struct_key(self.scope, field).into();
-      let val = self.obj.get(self.scope, key).unwrap();
+      let val = self.obj.get(self.scope, key).ok_or(Error::V8Exception)?;
       if val.is_undefined() {
         // Historically keys/value pairs with undefined values are not added to the output
         continue;
       }
       self.next_value = Some(val);
-      let mut deserializer = Deserializer::new(self.scope, key, None);
+      let mut deserializer =
+        Deserializer::with_depth(self.scope, key, None, self.remaining_depth);
       return seed.deserialize(&mut deserializer).map(Some);
     }
     Ok(None)
@@ -598,7 +670,8 @@ impl<'de> de::MapAccess<'de> for StructAccess<'_, '_, '_> {
       .next_value
       .take()
       .expect("Call next_key_seed before next_value_seed");
-    let mut deserializer = Deserializer::new(self.scope, val, None);
+    let mut deserializer =
+      Deserializer::with_depth(self.scope, val, None, self.remaining_depth);
     seed.deserialize(&mut deserializer)
   }
 }
@@ -607,6 +680,7 @@ struct SeqAccess<'a, 's, 'i> {
   obj: v8::Local<'a, v8::Object>,
   scope: &'a mut v8::PinScope<'s, 'i>,
   range: std::ops::Range<u32>,
+  remaining_depth: usize,
 }
 
 impl<'a, 's, 'i> SeqAccess<'a, 's, 'i> {
@@ -614,8 +688,14 @@ impl<'a, 's, 'i> SeqAccess<'a, 's, 'i> {
     obj: v8::Local<'a, v8::Object>,
     scope: &'a mut v8::PinScope<'s, 'i>,
     range: std::ops::Range<u32>,
+    remaining_depth: usize,
   ) -> Self {
-    Self { obj, scope, range }
+    Self {
+      obj,
+      scope,
+      range,
+      remaining_depth,
+    }
   }
 }
 
@@ -627,9 +707,12 @@ impl<'de> de::SeqAccess<'de> for SeqAccess<'_, '_, '_> {
     seed: T,
   ) -> Result<Option<T::Value>> {
     if let Some(pos) = self.range.next() {
-      // fixme: this unwrap  is not safe because of proxies
-      let val = self.obj.get_index(self.scope, pos).unwrap();
-      let mut deserializer = Deserializer::new(self.scope, val, None);
+      let val = self
+        .obj
+        .get_index(self.scope, pos)
+        .ok_or(Error::V8Exception)?;
+      let mut deserializer =
+        Deserializer::with_depth(self.scope, val, None, self.remaining_depth);
       seed.deserialize(&mut deserializer).map(Some)
     } else {
       Ok(None)
@@ -645,6 +728,7 @@ struct EnumAccess<'b, 's, 'i> {
   tag: v8::Local<'s, v8::Value>,
   payload: v8::Local<'s, v8::Value>,
   scope: &'b mut v8::PinScope<'s, 'i>,
+  remaining_depth: usize,
   // p1: std::marker::PhantomData<&'x ()>,
 }
 
@@ -657,12 +741,18 @@ impl<'de, 'b, 's, 'i> de::EnumAccess<'de> for EnumAccess<'b, 's, 'i> {
     seed: V,
   ) -> Result<(V::Value, Self::Variant)> {
     let seed = {
-      let mut dtag = Deserializer::new(self.scope, self.tag, None);
+      let mut dtag = Deserializer::with_depth(
+        self.scope,
+        self.tag,
+        None,
+        self.remaining_depth,
+      );
       seed.deserialize(&mut dtag)
     };
     let dpayload = VariantDeserializer::<'b, 's, 'i> {
       scope: self.scope,
       value: self.payload,
+      remaining_depth: self.remaining_depth,
     };
 
     Ok((seed?, dpayload))
@@ -672,13 +762,19 @@ impl<'de, 'b, 's, 'i> de::EnumAccess<'de> for EnumAccess<'b, 's, 'i> {
 struct VariantDeserializer<'b, 's, 'i> {
   value: v8::Local<'s, v8::Value>,
   scope: &'b mut v8::PinScope<'s, 'i>,
+  remaining_depth: usize,
 }
 
 impl<'de> de::VariantAccess<'de> for VariantDeserializer<'_, '_, '_> {
   type Error = Error;
 
   fn unit_variant(self) -> Result<()> {
-    let mut d = Deserializer::new(self.scope, self.value, None);
+    let mut d = Deserializer::with_depth(
+      self.scope,
+      self.value,
+      None,
+      self.remaining_depth,
+    );
     de::Deserialize::deserialize(&mut d)
   }
 
@@ -686,7 +782,12 @@ impl<'de> de::VariantAccess<'de> for VariantDeserializer<'_, '_, '_> {
     self,
     seed: T,
   ) -> Result<T::Value> {
-    let mut d = Deserializer::new(self.scope, self.value, None);
+    let mut d = Deserializer::with_depth(
+      self.scope,
+      self.value,
+      None,
+      self.remaining_depth,
+    );
     seed.deserialize(&mut d)
   }
 
@@ -695,7 +796,12 @@ impl<'de> de::VariantAccess<'de> for VariantDeserializer<'_, '_, '_> {
     len: usize,
     visitor: V,
   ) -> Result<V::Value> {
-    let mut d = Deserializer::new(self.scope, self.value, None);
+    let mut d = Deserializer::with_depth(
+      self.scope,
+      self.value,
+      None,
+      self.remaining_depth,
+    );
     de::Deserializer::deserialize_tuple(&mut d, len, visitor)
   }
 
@@ -704,7 +810,12 @@ impl<'de> de::VariantAccess<'de> for VariantDeserializer<'_, '_, '_> {
     fields: &'static [&'static str],
     visitor: V,
   ) -> Result<V::Value> {
-    let mut d = Deserializer::new(self.scope, self.value, None);
+    let mut d = Deserializer::with_depth(
+      self.scope,
+      self.value,
+      None,
+      self.remaining_depth,
+    );
     de::Deserializer::deserialize_struct(&mut d, "", fields, visitor)
   }
 }
@@ -764,7 +875,7 @@ fn to_utf8_slow(s: v8::Local<v8::String>, scope: &mut v8::PinScope) -> String {
   let capacity = s.utf8_length(scope);
   let mut buf = Vec::with_capacity(capacity);
 
-  s.write_utf8_uninit_v2(
+  let bytes_len = s.write_utf8_uninit_v2(
     scope,
     buf.spare_capacity_mut(),
     v8::WriteFlags::kReplaceInvalidUtf8,
@@ -773,7 +884,7 @@ fn to_utf8_slow(s: v8::Local<v8::String>, scope: &mut v8::PinScope) -> String {
 
   // SAFETY: write_utf8_uninit guarantees `bytes_len` bytes are initialized & valid utf8
   unsafe {
-    buf.set_len(capacity);
+    buf.set_len(bytes_len);
     String::from_utf8_unchecked(buf)
   }
 }

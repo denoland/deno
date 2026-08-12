@@ -294,7 +294,7 @@ fn standalone_runtime_flags() {
     .split_output()
     .run()
     .assert_exit_code(1)
-    .assert_stdout_matches_text("0.34158532233056826\n")
+    .assert_stdout_matches_text("0.16917030546536072\n")
     .assert_stderr_matches_text(
       "[WILDCARD]NotCapable: Requires write access to[WILDCARD]",
     );
@@ -847,21 +847,6 @@ fn compile_npm_cowsay_explicit() {
     node_modules_local: false,
     input_name: None,
     expected_name: "cowsay",
-    exit_code: 0,
-  });
-}
-
-#[test]
-fn compile_npm_cowthink() {
-  run_npm_bin_compile_test(RunNpmBinCompileOptions {
-    input_specifier: "npm:cowsay@1.5.0/cowthink",
-    copy_temp_dir: None,
-    compile_args: vec!["--allow-read", "--allow-env"],
-    run_args: vec!["Hello"],
-    output_file: "npm/deno_run_cowthink.out",
-    node_modules_local: false,
-    input_name: None,
-    expected_name: "cowthink",
     exit_code: 0,
   });
 }

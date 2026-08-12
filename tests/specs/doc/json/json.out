@@ -1,28 +1,35 @@
 {
-  "version": 1,
-  "nodes": [
-    {
-      "name": "foo",
-      "isDefault": false,
-      "location": {
-        "filename": "file:///[WILDCARD]/types.d.ts",
-        "line": 2,
-        "col": 13,
-        "byteIndex": 39
-      },
-      "declarationKind": "export",
-      "jsDoc": {
-        "doc": "An exported value."
-      },
-      "kind": "variable",
-      "variableDef": {
-        "tsType": {
-          "repr": "string",
-          "kind": "keyword",
-          "keyword": "string"
-        },
-        "kind": "const"
-      }
+  "version": 2,
+  "nodes": {
+    "file:///[WILDCARD]/json.js": {
+      "symbols": [
+        {
+          "name": "foo",
+          "declarations": [
+            {
+              "location": {
+                "filename": "file:///[WILDCARD]/types.d.ts",
+                "line": 1,
+                "col": 13,
+                "byteIndex": 39
+              },
+              "declarationKind": "export",
+              "jsDoc": {
+                "doc": "An exported value."
+              },
+              "kind": "variable",
+              "def": {
+                "tsType": {
+                  "repr": "string",
+                  "kind": "keyword",
+                  "value": "string"
+                },
+                "kind": "const"
+              }
+            }
+          ]
+        }
+      ]
     }
-  ]
+  }
 }

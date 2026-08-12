@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "scoped_direct": {
+      "args": "why @denotest/bin",
+      "output": "scoped_direct.out"
+    },
+    "scoped_version_filter": {
+      "args": "why @denotest/bin@0.6.0",
+      "output": "scoped_version_filter.out"
+    }
+  }
+}

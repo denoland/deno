@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "steps": [{
+    // Set up a git repo with a tag, manual version change, and a conventional commit.
+    "args": "run --allow-run --allow-read --allow-write --no-config --quiet setup.ts",
+    "output": "setup.out"
+  }, {
+    // Run bump-version in dry-run mode. It should detect the manual change for
+    // @x/a (1.0.0 -> 1.2.0) and derive a patch bump for @x/b from the commit.
+    "args": "bump-version --dry-run --start v1.0.0",
+    "output": "bump.out"
+  }]
+}

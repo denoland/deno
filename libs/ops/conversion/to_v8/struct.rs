@@ -3,12 +3,14 @@
 use proc_macro2::Ident;
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
+use quote::format_ident;
 use quote::quote;
 use syn::DataStruct;
 use syn::Error;
 use syn::Field;
 use syn::Fields;
 use syn::LitStr;
+use syn::Path;
 use syn::Token;
 use syn::Type;
 use syn::ext::IdentExt;
@@ -23,12 +25,67 @@ use crate::conversion::to_v8::convert_or_serde;
 pub fn get_body(span: Span, data: DataStruct) -> Result<TokenStream, Error> {
   match data.fields {
     Fields::Named(fields) => {
-      let mut fields = fields
+      let fields = fields
         .named
         .into_iter()
         .map(TryInto::try_into)
         .collect::<Result<Vec<StructField>, Error>>()?;
-      fields.sort_by(|a, b| a.name.cmp(&b.name));
+
+      // A `skip_if = <predicate>` field is conditionally present, so its key set
+      // is only known at runtime. The fixed `with_prototype_and_properties` fast
+      // path can't express that, so fall back to pushing keys/values into vectors
+      // (preserving declaration order) when any field opts in. Otherwise keep the
+      // cheaper fixed-array path.
+      let any_skip_if = fields.iter().any(|field| field.skip_if.is_some());
+
+      if any_skip_if {
+        let len = fields.len();
+        let pushes = fields
+          .into_iter()
+          .map(|field| {
+            let key = crate::get_internalized_string(field.js_name)?;
+            let name = field.name.clone();
+            let skip_if = field.skip_if.clone();
+            let converter =
+              convert_or_serde(field.serde, field.ty.span(), field.name);
+            let push = quote! {
+              __keys.push(#key);
+              __values.push(#converter);
+            };
+            // Mirrors serde's `skip_serializing_if`: the predicate is called on
+            // a reference to the field and the field is skipped when it returns
+            // true.
+            Ok(if let Some(skip_if) = skip_if {
+              quote! {
+                if !#skip_if(&#name) {
+                  #push
+                }
+              }
+            } else {
+              push
+            })
+          })
+          .collect::<Result<Vec<_>, Error>>()?;
+
+        let body = quote! {
+          let __null = ::deno_core::v8::null(__scope).into();
+          let mut __keys: ::std::vec::Vec<::deno_core::v8::Local<::deno_core::v8::Name>> =
+            ::std::vec::Vec::with_capacity(#len);
+          let mut __values: ::std::vec::Vec<::deno_core::v8::Local<::deno_core::v8::Value>> =
+            ::std::vec::Vec::with_capacity(#len);
+
+          #(#pushes)*
+
+          Ok::<_, ::deno_error::JsErrorBox>(::deno_core::v8::Object::with_prototype_and_properties(
+            __scope,
+            __null,
+            &__keys,
+            &__values,
+          ).into())
+        };
+
+        return Ok(body);
+      }
 
       let mut names = Vec::with_capacity(fields.len());
       let mut converters = Vec::with_capacity(fields.len());
@@ -36,11 +93,10 @@ pub fn get_body(span: Span, data: DataStruct) -> Result<TokenStream, Error> {
       for field in fields {
         names.push(crate::get_internalized_string(field.js_name)?);
 
-        let field_name = field.name;
         converters.push(convert_or_serde(
           field.serde,
           field.ty.span(),
-          quote!(self.#field_name),
+          field.name,
         ));
       }
 
@@ -51,7 +107,7 @@ pub fn get_body(span: Span, data: DataStruct) -> Result<TokenStream, Error> {
         *];
         let __converters = &[#(#converters),*];
 
-        Ok(::deno_core::v8::Object::with_prototype_and_properties(
+        Ok::<_, ::deno_error::JsErrorBox>(::deno_core::v8::Object::with_prototype_and_properties(
           __scope,
           __null,
           __keys,
@@ -71,21 +127,20 @@ pub fn get_body(span: Span, data: DataStruct) -> Result<TokenStream, Error> {
 
       let value = if fields.len() == 1 {
         let field = fields.first().unwrap();
-        let converter =
-          convert_or_serde(field.serde, field.span, quote!(self.0));
-        quote!(Ok(#converter))
+        let converter = convert_or_serde(field.serde, field.span, quote!(__0));
+        quote!(Ok::<_, ::deno_error::JsErrorBox>(#converter))
       } else {
         let fields = fields
           .into_iter()
           .map(|field| {
-            let i = syn::Index::from(field.i);
-            convert_or_serde(field.serde, field.span, quote!(self.#i))
+            let i = format_ident!("__{}", field.i, span = field.span);
+            convert_or_serde(field.serde, field.span, i)
           })
           .collect::<Vec<_>>();
 
         quote! {
           let __value = &[#(#fields),*];
-          Ok(::deno_core::v8::Array::new_with_elements(__scope, __value).into())
+          Ok::<_, ::deno_error::JsErrorBox>(::deno_core::v8::Array::new_with_elements(__scope, __value).into())
         }
       };
 
@@ -97,11 +152,12 @@ pub fn get_body(span: Span, data: DataStruct) -> Result<TokenStream, Error> {
   }
 }
 
-struct StructField {
-  name: Ident,
+pub struct StructField {
+  pub name: Ident,
   serde: bool,
+  skip_if: Option<Path>,
   ty: Type,
-  js_name: Ident,
+  pub js_name: Ident,
 }
 
 impl TryFrom<Field> for StructField {
@@ -112,6 +168,7 @@ impl TryFrom<Field> for StructField {
       mut rename,
       mut serde,
     } = crate::conversion::StructFieldArgumentShared::parse(&value.attrs)?;
+    let mut skip_if = None;
 
     for attr in value.attrs {
       if attr.path().is_ident("to_v8") {
@@ -126,6 +183,7 @@ impl TryFrom<Field> for StructField {
               rename = Some(value.value())
             }
             StructFieldArgument::Serde { .. } => serde = true,
+            StructFieldArgument::SkipIf { value, .. } => skip_if = Some(value),
           }
         }
       }
@@ -140,13 +198,14 @@ impl TryFrom<Field> for StructField {
       js_name,
       name,
       serde,
+      skip_if,
       ty: value.ty,
     })
   }
 }
 
 #[allow(dead_code, reason = "unused properties")]
-enum StructFieldArgument {
+pub(crate) enum StructFieldArgument {
   Rename {
     name_token: shared_kw::rename,
     eq_token: Token![=],
@@ -154,6 +213,13 @@ enum StructFieldArgument {
   },
   Serde {
     name_token: shared_kw::serde,
+  },
+  // `skip_if = <predicate>` — mirrors serde's `skip_serializing_if` but takes an
+  // unquoted path (e.g. `Option::is_none`) rather than a string literal.
+  SkipIf {
+    name_token: shared_kw::skip_if,
+    eq_token: Token![=],
+    value: Path,
   },
 }
 
@@ -169,6 +235,12 @@ impl Parse for StructFieldArgument {
     } else if lookahead.peek(shared_kw::serde) {
       Ok(StructFieldArgument::Serde {
         name_token: input.parse()?,
+      })
+    } else if lookahead.peek(shared_kw::skip_if) {
+      Ok(StructFieldArgument::SkipIf {
+        name_token: input.parse()?,
+        eq_token: input.parse()?,
+        value: input.parse()?,
       })
     } else {
       Err(lookahead.error())

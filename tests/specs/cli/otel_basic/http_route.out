@@ -1,0 +1,20 @@
+{
+  "spans": [
+[WILDCARD]
+        {
+          "key": "http.route",
+          "value": {
+            "stringValue": "/users/:id"
+          }
+        },
+[WILDCARD]
+  "metrics": [
+[WILDCARD]
+              {
+                "key": "http.route",
+                "value": {
+                  "stringValue": "/users/:id"
+                }
+              },
+[WILDCARD]
+}

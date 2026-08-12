@@ -1,0 +1,16 @@
+{
+  "version": "5",
+  "specifiers": {
+    "npm:@acme/widget@^1.0.0": "1.0.0"
+  },
+  "npm": {
+    "@acme/widget@1.0.0": {
+      "integrity": "sha512-7NzBL0rN6fMUW+f7A6Io4h40qQlG+xGmtMxfbnH/K7TAtt8JQWVQK+6g0UXKMeVJoyV5EkkNsErQ8pVD3bLHbA=="
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "npm:@acme/widget@^1.0.0"
+    ]
+  }
+}

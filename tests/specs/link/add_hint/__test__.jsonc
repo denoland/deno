@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "tests": {
+    "add": {
+      "args": "add ./pkg",
+      "exitCode": 1,
+      "output": "hint.out"
+    },
+    "install": {
+      "args": "install ./pkg",
+      "exitCode": 1,
+      "output": "hint.out"
+    }
+  }
+}

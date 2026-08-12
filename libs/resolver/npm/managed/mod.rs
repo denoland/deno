@@ -9,6 +9,7 @@ use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_config::deno_json::NodeModulesLinkerMode;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmSystemInfo;
@@ -95,6 +96,7 @@ pub struct ManagedNpmResolverCreateOptions<TSys: ManagedNpmResolverSys> {
   pub npm_system_info: NpmSystemInfo,
   pub npmrc: ResolvedNpmRcRc,
   pub npm_resolution: NpmResolutionCellRc,
+  pub linker_mode: NodeModulesLinkerMode,
 }
 
 #[sys_traits::auto_impl]
@@ -110,6 +112,7 @@ pub struct ManagedNpmResolver<TSys: ManagedNpmResolverSys> {
   npm_cache_dir: NpmCacheDirRc,
   resolution: NpmResolutionCellRc,
   sys: NodeResolutionSys<TSys>,
+  linker_mode: NodeModulesLinkerMode,
 }
 
 impl<TSys: ManagedNpmResolverSys> ManagedNpmResolver<TSys> {
@@ -137,6 +140,7 @@ impl<TSys: ManagedNpmResolverSys> ManagedNpmResolver<TSys> {
       npm_cache_dir: options.npm_cache_dir,
       sys: options.sys,
       resolution: options.npm_resolution,
+      linker_mode: options.linker_mode,
     }
   }
 
@@ -145,12 +149,20 @@ impl<TSys: ManagedNpmResolverSys> ManagedNpmResolver<TSys> {
     self.fs_resolver.node_modules_path()
   }
 
+  pub fn linker_mode(&self) -> NodeModulesLinkerMode {
+    self.linker_mode
+  }
+
   pub fn global_cache_root_path(&self) -> &Path {
     self.npm_cache_dir.root_dir()
   }
 
   pub fn global_cache_root_url(&self) -> &Url {
     self.npm_cache_dir.root_dir_url()
+  }
+
+  pub fn known_registries_dirnames(&self) -> &[String] {
+    self.npm_cache_dir.known_registries_dirnames()
   }
 
   pub fn resolution(&self) -> &NpmResolutionCell {

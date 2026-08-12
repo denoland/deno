@@ -1,0 +1,17 @@
+running 3 tests from ./test.js
+outer ...
+  inner declared with top-level test() ... ok ([WILDLINE])
+outer ... ok ([WILDLINE])
+outer with mixed nesting ...
+  via t.test() ... ok ([WILDLINE])
+  via top-level test() ...
+    nested two levels deep ... ok ([WILDLINE])
+  via top-level test() ... ok ([WILDLINE])
+outer with mixed nesting ... ok ([WILDLINE])
+failing nested test fails its parent ...
+  nested failure ... FAILED ([WILDLINE])
+failing nested test fails its parent ... FAILED (due to 1 failed step) ([WILDLINE])
+[WILDCARD] ERRORS [WILDCARD] FAILURES [WILDCARD]
+FAILED | 2 passed (4 steps) | 1 failed (1 step) ([WILDLINE])
+
+error: Test failed

@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "static": {
+      "args": "run static.ts",
+      "output": "static.out",
+      "exitCode": 1
+    },
+    "dynamic": {
+      "args": "run dynamic.ts",
+      "output": "dynamic.out",
+      "exitCode": 1
+    }
+  }
+}

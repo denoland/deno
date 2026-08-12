@@ -6,8 +6,10 @@ export { colors };
 import { join, resolve } from "@std/path";
 export {
   assert,
+  assertAlmostEquals,
   assertEquals,
   assertFalse,
+  assertGreaterOrEqual,
   AssertionError,
   assertIsError,
   assertMatch,

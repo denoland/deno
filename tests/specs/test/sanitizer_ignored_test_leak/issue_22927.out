@@ -1,0 +1,5 @@
+[WILDCARD]
+test1 ... ok [WILDCARD]
+test2 ... ok [WILDCARD]
+
+ok | 2 passed | 0 failed [WILDCARD]

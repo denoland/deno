@@ -1,0 +1,10 @@
+{
+  "tempDir": true,
+  "tests": {
+    "no_shebang_shell_script": {
+      "if": "unix",
+      "args": "run -A main.ts",
+      "output": "main.out"
+    }
+  }
+}

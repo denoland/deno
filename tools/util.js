@@ -11,6 +11,7 @@ import {
   SEPARATOR,
   toFileUrl,
 } from "@std/path";
+import { existsSync } from "@std/fs";
 export { dirname, extname, fromFileUrl, join, resolve, SEPARATOR, toFileUrl };
 export { existsSync, expandGlobSync, walk } from "@std/fs";
 export { TextLineStream } from "@std/streams/text-line-stream";
@@ -18,14 +19,18 @@ export { delay } from "@std/async/delay";
 export { parse as parseJSONC } from "@std/jsonc/parse";
 import { createHash } from "node:crypto";
 
-// [toolName] --version output
-const versions = {
-  "dlint": "dlint 0.73.0",
-};
-
 const compressed = new Set(["ld64.lld", "rcodesign"]);
 
 export const ROOT_PATH = dirname(dirname(fromFileUrl(import.meta.url)));
+
+let isKnownJjRepo = undefined;
+function isJjRepo() {
+  if (isKnownJjRepo !== undefined) {
+    return isKnownJjRepo;
+  }
+  isKnownJjRepo = existsSync(join(ROOT_PATH, ".jj"));
+  return isKnownJjRepo;
+}
 
 async function getFilesFromGit(baseDir, args) {
   const { success, stdout } = await new Deno.Command("git", {
@@ -52,7 +57,104 @@ async function getFilesFromGit(baseDir, args) {
   return files;
 }
 
+// Translate a single git pathspec into an equivalent jj `glob:` pattern. git
+// pathspec wildcards match across `/` (fnmatch without FNM_PATHNAME) and a
+// trailing directory matches everything under it, but jj's `glob:` `*` stops at
+// `/`. So map the directory-recursive forms to `**`.
+function normalizeGitGlob(glob) {
+  // `*.ext` matches at any depth in git.
+  const extMatch = glob.match(/^\*(\..+)/);
+  if (extMatch) {
+    return "**/*" + extMatch[1];
+  }
+  // A trailing directory (`foo/`) is a recursive prefix match.
+  if (glob.endsWith("/")) {
+    return glob + "**";
+  }
+  // A trailing `foo/*` matches recursively in git (the `*` crosses `/`).
+  if (glob.endsWith("/*")) {
+    return glob.slice(0, -1) + "**";
+  }
+  return glob;
+}
+
+function gitGlobsToJjFileset(patterns) {
+  if (patterns.length === 0) {
+    return ['glob:"*"'];
+  }
+  let output = "";
+  const negative = [];
+  /** @type {string[]} */
+  const positive = [];
+  for (let i = 0; i < patterns.length; i++) {
+    if (patterns[i].startsWith(":!:")) {
+      negative.push(patterns[i].replace(/^:!:/, ""));
+    } else {
+      positive.push(patterns[i]);
+    }
+  }
+  for (let i = 0; i < positive.length; i++) {
+    const glob = normalizeGitGlob(positive[i]);
+    if (i === 0) {
+      output += `(glob-i:"${glob}"`;
+    } else {
+      output += ' | glob-i:"' + glob + '"';
+    }
+  }
+  output += ")";
+  if (negative.length) {
+    output += " ~ ";
+  }
+  for (let i = 0; i < negative.length; i++) {
+    const glob = normalizeGitGlob(negative[i]);
+    if (i === 0) {
+      output += `(glob-i:"${glob}"`;
+    } else {
+      output += ' | glob-i:"' + glob + '"';
+    }
+  }
+  if (negative.length) {
+    output += ")";
+  }
+  return [output];
+}
+
+async function getFilesFromJj(baseDir, patterns) {
+  baseDir = Deno.realPathSync(baseDir);
+  const jjPatterns = gitGlobsToJjFileset(patterns);
+  const cmd = [
+    "file",
+    "list",
+    ...jjPatterns,
+  ];
+  const { success, stdout } = await new Deno.Command(
+    "jj",
+    {
+      stderr: "inherit",
+      args: cmd,
+      cwd: baseDir,
+    },
+  ).output();
+  const output = new TextDecoder().decode(stdout);
+  if (!success) {
+    throw new Error("getFilesFromJj failed");
+  }
+  const files = output.split("\n").filter((line) => line.length > 0)
+    .map((filePath) => {
+      try {
+        return Deno.realPathSync(join(baseDir, filePath));
+      } catch {
+        return null;
+      }
+    })
+    .filter((filePath) => filePath !== null);
+  return files;
+}
+
 export function gitLsFiles(baseDir, patterns) {
+  if (isJjRepo()) {
+    return getFilesFromJj(baseDir, patterns);
+  }
   baseDir = Deno.realPathSync(baseDir);
   const cmd = [
     "-C",
@@ -167,10 +269,6 @@ export async function getPrebuilt(toolName) {
   const toolPath = getPrebuiltToolPath(toolName);
   try {
     await sanityCheckPrebuiltFile(toolPath);
-    const versionOk = await verifyVersion(toolName, toolPath);
-    if (!versionOk) {
-      throw new Error("Version mismatch");
-    }
   } catch {
     await downloadPrebuilt(toolName);
   }
@@ -182,12 +280,42 @@ const PREBUILT_PATH = join(ROOT_PATH, "third_party", "prebuilt");
 const PREBUILT_TOOL_DIR = join(PREBUILT_PATH, platformDirName);
 const PREBUILT_MINIMUM_SIZE = 16 * 1024;
 const DOWNLOAD_TASKS = {};
+const MAX_PREBUILT_DOWNLOAD_RETRY_DELAY_MS = 60_000;
+
+function isTransientDownloadStatus(status) {
+  return status === 408 || status === 429 || status >= 500;
+}
+
+async function fetchPrebuilt(url, headers) {
+  let retryDelayMs = 1_000;
+  for (;;) {
+    try {
+      const response = await fetch(url, { headers });
+      if (response.ok || !isTransientDownloadStatus(response.status)) {
+        return response;
+      }
+      response.body?.cancel();
+      console.error(
+        `Prebuilt download returned ${response.status}; retrying in ${retryDelayMs}ms`,
+      );
+    } catch (error) {
+      console.error(
+        `Prebuilt download failed: ${error.message}; retrying in ${retryDelayMs}ms`,
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+    retryDelayMs = Math.min(
+      retryDelayMs * 2,
+      MAX_PREBUILT_DOWNLOAD_RETRY_DELAY_MS,
+    );
+  }
+}
 
 export function getPrebuiltToolPath(toolName) {
   return join(PREBUILT_TOOL_DIR, toolName + executableSuffix);
 }
 
-const commitId = "aa25a37b0f2bdadc83e99e625e8a074d56d1febd";
+const commitId = "e593815dcfe5d260b27e6556cc9e44dcfcaeda3d";
 const downloadUrl =
   `https://raw.githubusercontent.com/denoland/deno_third_party/${commitId}/prebuilt/${platformDirName}`;
 
@@ -215,7 +343,7 @@ export async function downloadPrebuilt(toolName) {
       headers.append("authorization", `Bearer ${Deno.env.get("GITHUB_TOKEN")}`);
     }
 
-    const resp = await fetch(url, { headers });
+    const resp = await fetchPrebuilt(url, headers);
     if (!resp.ok) {
       throw new Error(`Non-successful response from ${url}: ${resp.status}`);
     }
@@ -235,11 +363,6 @@ export async function downloadPrebuilt(toolName) {
     }
     console.error("Checking prebuilt tool:", toolName);
     await sanityCheckPrebuiltFile(tempFile);
-    if (!await verifyVersion(toolName, tempFile)) {
-      throw new Error(
-        "Didn't get the correct version of the tool after downloading.",
-      );
-    }
     console.error("Successfully downloaded:", toolName);
     try {
       // necessary on Windows it seems
@@ -254,27 +377,6 @@ export async function downloadPrebuilt(toolName) {
   }
 
   downloadDeferred.resolve(null);
-}
-
-export async function verifyVersion(toolName, toolPath) {
-  const requiredVersion = versions[toolName];
-  if (!requiredVersion) {
-    return true;
-  }
-
-  try {
-    const cmd = new Deno.Command(toolPath, {
-      args: ["--version"],
-      stdout: "piped",
-      stderr: "inherit",
-    });
-    const output = await cmd.output();
-    const version = new TextDecoder().decode(output.stdout).trim();
-    return version == requiredVersion;
-  } catch (e) {
-    console.error(e);
-    return false;
-  }
 }
 
 /// INPUT HASHING

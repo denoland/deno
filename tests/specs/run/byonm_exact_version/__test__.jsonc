@@ -1,0 +1,10 @@
+{
+  "tests": {
+    "exact_version_in_byonm": {
+      // Import npm:@denotest/add@0.5.0 should resolve to 0.5.0
+      // even though 1.0.0 also exists in node_modules/.deno/ and is higher.
+      "args": "run -A main.ts",
+      "output": "0.5.0\n"
+    }
+  }
+}

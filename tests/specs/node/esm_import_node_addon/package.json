@@ -1,0 +1,6 @@
+{
+  "type": "module",
+  "dependencies": {
+    "native-mod": "*"
+  }
+}

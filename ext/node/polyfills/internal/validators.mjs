@@ -1,7 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
 const {
   ArrayIsArray,
   ArrayPrototypeIncludes,
@@ -15,22 +16,26 @@ const {
   NumberIsFinite,
   SafeRegExp,
   String,
+  StringPrototypeIncludes,
   StringPrototypeTrim,
   ReflectHas,
   RegExpPrototypeTest,
 } = primordials;
 
-import { codes } from "ext:deno_node/internal/error_codes.ts";
-import { hideStackFrames } from "ext:deno_node/internal/hide_stack_frames.ts";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
-import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
+const { codes } = core.loadExtScript("ext:deno_node/internal/error_codes.ts");
+const { hideStackFrames } = core.loadExtScript(
+  "ext:deno_node/internal/hide_stack_frames.ts",
+);
+const { isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
 
 /**
  * @param {number} value
  * @returns {boolean}
  */
 function isInt32(value) {
-  return value === (value | 0);
+  return typeof value === "number" && value === (value | 0);
 }
 
 /**
@@ -183,6 +188,18 @@ function validateString(value, name) {
   }
 }
 
+/** @type {typeof validateString} */
+const validateStringWithoutNullBytes = hideStackFrames((value, name) => {
+  validateString(value, name);
+  if (StringPrototypeIncludes(value, "\u0000")) {
+    throw new codes.ERR_INVALID_ARG_VALUE(
+      name,
+      value,
+      "must be a string without null bytes",
+    );
+  }
+});
+
 /** @typedef {(value: unknown, name: string, min?: number, max?: number) => asserts value is number} ValidateNumber */
 /** @type {ValidateNumber} */
 const validateNumber = hideStackFrames((value, name, min = undefined, max) => {
@@ -231,7 +248,10 @@ const validateOneOf = hideStackFrames((value, name, oneOf) => {
   }
 });
 
-export function validateEncoding(data, encoding) {
+function validateEncoding(data, encoding) {
+  const { normalizeEncoding } = core.loadExtScript(
+    "ext:deno_node/internal/normalize_encoding.ts",
+  );
   const normalizedEncoding = normalizeEncoding(encoding);
   const length = data.length;
 
@@ -257,12 +277,12 @@ function validatePort(port, name = "Port", allowZero = true) {
       StringPrototypeTrim(port).length === 0) ||
     +port !== (+port >>> 0) ||
     port > 0xFFFF ||
-    (port === 0 && !allowZero)
+    (+port === 0 && !allowZero)
   ) {
     throw new codes.ERR_SOCKET_BAD_PORT(name, port, allowZero);
   }
 
-  return port;
+  return port | 0;
 }
 
 /**
@@ -442,7 +462,33 @@ const validateLinkHeaderValue = hideStackFrames((hints) => {
   );
 });
 
-export default {
+return {
+  default: {
+    isInt32,
+    isUint32,
+    parseFileMode,
+    validateAbortSignal,
+    validateArray,
+    validateBoolean,
+    validateBooleanArray,
+    validateBuffer,
+    validateFunction,
+    validateInt32,
+    validateInteger,
+    validateNumber,
+    validateObject,
+    validateOneOf,
+    validatePort,
+    validateString,
+    validateStringArray,
+    validateStringWithoutNullBytes,
+    validateUint32,
+    validateUnion,
+    validateFiniteNumber,
+    validateLinkHeaderValue,
+    checkRangesOrGetDefault,
+  },
+  checkRangesOrGetDefault,
   isInt32,
   isUint32,
   parseFileMode,
@@ -451,31 +497,7 @@ export default {
   validateBoolean,
   validateBooleanArray,
   validateBuffer,
-  validateFunction,
-  validateInt32,
-  validateInteger,
-  validateNumber,
-  validateObject,
-  validateOneOf,
-  validatePort,
-  validateString,
-  validateStringArray,
-  validateUint32,
-  validateUnion,
-  validateFiniteNumber,
-  validateLinkHeaderValue,
-  checkRangesOrGetDefault,
-};
-export {
-  checkRangesOrGetDefault,
-  isInt32,
-  isUint32,
-  parseFileMode,
-  validateAbortSignal,
-  validateArray,
-  validateBoolean,
-  validateBooleanArray,
-  validateBuffer,
+  validateEncoding,
   validateFiniteNumber,
   validateFunction,
   validateInt32,
@@ -487,6 +509,8 @@ export {
   validatePort,
   validateString,
   validateStringArray,
+  validateStringWithoutNullBytes,
   validateUint32,
   validateUnion,
 };
+})();

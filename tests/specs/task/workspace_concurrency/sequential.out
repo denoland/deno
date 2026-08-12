@@ -1,0 +1,11 @@
+[UNORDERED_START]
+Task work (@app/a) deno run -A main.ts
+Task work (@app/b) deno run -A main.ts
+Task work (@app/c) deno run -A main.ts
+a running
+a done
+b running
+b done
+c running
+c done
+[UNORDERED_END]

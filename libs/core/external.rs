@@ -215,22 +215,31 @@ mod tests {
     }
   }
 
-  // This test fails on miri because it's actually doing bad things
-  #[cfg(not(miri))]
   #[test]
   #[should_panic]
   pub fn test_external_deref_after_take() {
     let external = ExternalPointer::new(External1(1));
-    let ptr = external.into_raw();
+    // Raw dealloc guard that frees the allocation on panic without going
+    // through validate_pointer (which would also panic on the zeroed marker).
+    struct RawDealloc(*mut ManuallyDrop<ExternalWithMarker<External1>>);
+    impl Drop for RawDealloc {
+      fn drop(&mut self) {
+        unsafe {
+          drop(Box::from_raw(self.0));
+        }
+      }
+    }
+    let _guard = RawDealloc(external.ptr);
 
-    // OK
-    let external = ExternalPointer::<External1>::from_raw(ptr);
+    // Zero the marker to simulate what unsafely_take does, but without
+    // deallocating. The previous version of this test called unsafely_take
+    // (which frees memory) then unsafely_deref on the freed pointer, which
+    // is UB and broke under newer LLVM.
     unsafe {
-      external.unsafely_take();
+      std::ptr::write(external.ptr as *mut usize, 0);
     }
 
-    // Panic!
-    let external = ExternalPointer::<External1>::from_raw(ptr);
+    // Should panic: marker is 0 which won't match the expected marker
     unsafe {
       external.unsafely_deref();
     }

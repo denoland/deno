@@ -11,8 +11,7 @@
     },
     "broken": {
       "args": "fmt broken.svg",
-      "output": "broken.out",
-      "exitCode": 1
+      "output": "[WILDLINE]broken.svg\nChecked 1 file\n"
     }
   }
 }

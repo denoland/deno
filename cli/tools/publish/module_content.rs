@@ -25,6 +25,16 @@ use super::unfurl::SpecifierUnfurler;
 use super::unfurl::SpecifierUnfurlerDiagnostic;
 use super::unfurl::SpecifierUnfurlerSys;
 use crate::sys::CliSys;
+use crate::tools::unfurl_utils::is_safe_unquoted_comment_value;
+
+fn jsx_pragma(name: &str, value: &str) -> Result<String, AnyError> {
+  if !is_safe_unquoted_comment_value(value) {
+    return Err(deno_core::anyhow::anyhow!(
+      "Cannot represent compiler option '{name}' as a generated JSX pragma."
+    ));
+  }
+  Ok(format!("/** @{name} {value} */"))
+}
 
 struct JsxFolderOptions<'a> {
   jsx_runtime: &'static str,
@@ -89,6 +99,9 @@ impl<TSys: ModuleContentProviderSys> ModuleContentProvider<TSys> {
           | MediaType::Tsx => {
             // continue
           }
+          MediaType::Wasm => {
+            return self.unfurl_wasm(specifier, &data, diagnostics_collector);
+          }
           MediaType::SourceMap
           | MediaType::Unknown
           | MediaType::Html
@@ -97,7 +110,6 @@ impl<TSys: ModuleContentProviderSys> ModuleContentProvider<TSys> {
           | MediaType::Json
           | MediaType::Jsonc
           | MediaType::Json5
-          | MediaType::Wasm
           | MediaType::Css => {
             // not unfurlable data
             return Ok(data.into_owned());
@@ -147,6 +159,38 @@ impl<TSys: ModuleContentProviderSys> ModuleContentProvider<TSys> {
       deno_ast::apply_text_changes(text_info.text_str(), text_changes);
 
     Ok(rewritten_text.into_bytes())
+  }
+
+  /// Unfurls the module specifiers found in the import section of a Wasm
+  /// module. See [`super::wasm::unfurl_wasm`].
+  fn unfurl_wasm(
+    &self,
+    specifier: &Url,
+    data: &[u8],
+    diagnostics_collector: &PublishDiagnosticsCollector,
+  ) -> Result<Vec<u8>, AnyError> {
+    log::debug!("Unfurling {}", specifier);
+    let mut reporter = |diagnostic| {
+      diagnostics_collector
+        .push(PublishDiagnostic::SpecifierUnfurl(diagnostic));
+    };
+    // Wasm modules are binary, so there is no source text to point diagnostics
+    // at. Use an empty text info with a zeroed range so any diagnostics report
+    // the referrer without a (meaningless) code frame.
+    let text_info = SourceTextInfo::from_string(String::new());
+    let zeroed_range = deno_graph::PositionRange::zeroed();
+    super::wasm::unfurl_wasm(data, &mut |module_specifier| {
+      self
+        .specifier_unfurler
+        .unfurl_specifier_reporting_diagnostic(
+          specifier,
+          module_specifier,
+          ResolutionKind::Execution,
+          &text_info,
+          PositionOrSourceRangeRef::PositionRange(&zeroed_range),
+          &mut reporter,
+        )
+    })
   }
 
   fn add_jsx_text_changes(
@@ -202,28 +246,22 @@ impl<TSys: ModuleContentProviderSys> ModuleContentProvider<TSys> {
     if module_info.jsx_import_source.is_none()
       && let Some(import_source) = jsx_options.jsx_import_source
     {
-      add_text_change(format!("/** @jsxImportSource {} */", import_source));
+      add_text_change(jsx_pragma("jsxImportSource", &import_source)?);
     }
     if module_info.jsx_import_source_types.is_none()
       && let Some(import_source) = jsx_options.jsx_import_source_types
     {
-      add_text_change(format!(
-        "/** @jsxImportSourceTypes {} */",
-        import_source
-      ));
+      add_text_change(jsx_pragma("jsxImportSourceTypes", &import_source)?);
     }
     if let Some(classic_options) = &jsx_options.jsx_classic {
       if !leading_comments_has_re(&JSX_FACTORY_RE) {
-        add_text_change(format!(
-          "/** @jsxFactory {} */",
-          classic_options.factory,
-        ));
+        add_text_change(jsx_pragma("jsxFactory", &classic_options.factory)?);
       }
       if !leading_comments_has_re(&JSX_FRAGMENT_FACTORY_RE) {
-        add_text_change(format!(
-          "/** @jsxFragmentFactory {} */",
-          classic_options.fragment_factory,
-        ));
+        add_text_change(jsx_pragma(
+          "jsxFragmentFactory",
+          &classic_options.fragment_factory,
+        )?);
       }
     }
     Ok(())
@@ -314,6 +352,22 @@ mod test {
   use sys_traits::impls::InMemorySys;
 
   use super::*;
+
+  #[test]
+  fn test_jsx_pragma_safety() {
+    assert_eq!(
+      jsx_pragma("jsxImportSource", "npm:react").unwrap(),
+      "/** @jsxImportSource npm:react */"
+    );
+    for value in [
+      "",
+      "npm:package/sub*/path",
+      "npm:package/with space",
+      "line\nbreak",
+    ] {
+      assert!(jsx_pragma("jsxImportSource", value).is_err());
+    }
+  }
 
   #[tokio::test]
   async fn test_module_content_jsx() {
@@ -422,6 +476,149 @@ mod test {
     ]).await;
   }
 
+  #[tokio::test]
+  async fn test_module_content_rejects_unrepresentable_jsx_pragma() {
+    let in_memory_sys = InMemorySys::default();
+    in_memory_sys.fs_create_dir_all(get_path("/")).unwrap();
+    in_memory_sys
+      .fs_write(
+        get_path("/deno.json"),
+        r#"{
+          "compilerOptions": {
+            "jsx": "react-jsx",
+            "jsxImportSource": "npm:package/sub*/path"
+          }
+        }"#,
+      )
+      .unwrap();
+    in_memory_sys
+      .fs_write(
+        get_path("/main.tsx"),
+        "export const component = <div></div>;",
+      )
+      .unwrap();
+
+    let provider = module_content_provider(in_memory_sys).await;
+    let path = get_path("/main.tsx");
+    let error = provider
+      .resolve_content_maybe_unfurling(
+        &ModuleGraph::new(deno_graph::GraphKind::All),
+        &Default::default(),
+        &path,
+        &url_from_file_path(&path).unwrap(),
+      )
+      .unwrap_err();
+    assert!(
+      error
+        .to_string()
+        .contains("Cannot represent compiler option 'jsxImportSource'")
+    );
+  }
+
+  #[tokio::test]
+  async fn test_module_content_wasm() {
+    let in_memory_sys = InMemorySys::default();
+    in_memory_sys.fs_create_dir_all(get_path("/")).unwrap();
+    in_memory_sys
+      .fs_write(
+        get_path("/deno.json"),
+        r#"{
+          "name": "@scope/pkg",
+          "version": "1.0.0",
+          "exports": "./main.wasm",
+          "nodeModulesDir": "manual",
+          "imports": {
+            "@std/foo": "jsr:@std/foo@1",
+            "chalk": "npm:chalk@5"
+          }
+        }"#,
+      )
+      .unwrap();
+
+    // A Wasm module importing a bare specifier (mapped via the import map), an
+    // npm specifier (mapped via the import map) and a relative specifier (left
+    // as-is).
+    let wasm = build_wasm_with_imports(&["@std/foo", "chalk", "./other.js"]);
+    in_memory_sys
+      .fs_write(get_path("/main.wasm"), &wasm)
+      .unwrap();
+
+    let provider = module_content_provider(in_memory_sys).await;
+    let path = get_path("/main.wasm");
+    let bytes = provider
+      .resolve_content_maybe_unfurling(
+        &ModuleGraph::new(deno_graph::GraphKind::All),
+        &Default::default(),
+        &path,
+        &url_from_file_path(&path).unwrap(),
+      )
+      .unwrap();
+
+    assert_eq!(
+      wasm_import_modules(&bytes),
+      vec![
+        "jsr:@std/foo@1".to_string(),
+        "npm:chalk@5".to_string(),
+        "./other.js".to_string(),
+      ]
+    );
+  }
+
+  fn build_wasm_with_imports(modules: &[&str]) -> Vec<u8> {
+    fn write_var_u32(mut value: u32, output: &mut Vec<u8>) {
+      loop {
+        let mut byte = (value & 0x7f) as u8;
+        value >>= 7;
+        if value != 0 {
+          byte |= 0x80;
+        }
+        output.push(byte);
+        if value == 0 {
+          break;
+        }
+      }
+    }
+
+    fn write_wasm_string(value: &str, output: &mut Vec<u8>) {
+      write_var_u32(value.len() as u32, output);
+      output.extend_from_slice(value.as_bytes());
+    }
+
+    fn section(id: u8, body: &[u8], output: &mut Vec<u8>) {
+      output.push(id);
+      write_var_u32(body.len() as u32, output);
+      output.extend_from_slice(body);
+    }
+
+    let mut wasm = b"\0asm\x01\0\0\0".to_vec();
+
+    let types = [0x01, 0x60, 0x00, 0x00];
+    section(1, &types, &mut wasm);
+
+    let mut imports = Vec::new();
+    write_var_u32(modules.len() as u32, &mut imports);
+    for (i, module) in modules.iter().enumerate() {
+      write_wasm_string(module, &mut imports);
+      write_wasm_string(&format!("import_{i}"), &mut imports);
+      imports.extend_from_slice(&[0x00, 0x00]);
+    }
+    section(2, &imports, &mut wasm);
+
+    wasm
+  }
+
+  fn wasm_import_modules(bytes: &[u8]) -> Vec<String> {
+    let mut modules = Vec::new();
+    for payload in wasmparser::Parser::new(0).parse_all(bytes) {
+      if let wasmparser::Payload::ImportSection(reader) = payload.unwrap() {
+        for import in reader.into_imports() {
+          modules.push(import.unwrap().module.to_string());
+        }
+      }
+    }
+    modules
+  }
+
   fn get_path(path: &str) -> PathBuf {
     PathBuf::from(if cfg!(windows) {
       format!("C:{}", path.replace('/', "\\"))
@@ -467,7 +664,10 @@ mod test {
     let workspace_factory = Arc::new(WorkspaceFactory::new(
       sys.clone(),
       cwd.to_path_buf(),
-      WorkspaceFactoryOptions::default(),
+      WorkspaceFactoryOptions {
+        maybe_custom_deno_dir_root: Some(cwd.join("deno_dir")),
+        ..Default::default()
+      },
     ));
     let resolver_factory = ResolverFactory::new(
       workspace_factory,
@@ -490,7 +690,6 @@ mod test {
         .unwrap()
         .clone(),
       resolver_factory.workspace_resolver().await.unwrap().clone(),
-      true,
     );
     ModuleContentProvider::new(
       Arc::new(ParsedSourceCache::default()),

@@ -1,0 +1,19 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_DIR": "$PWD/deno_dir"
+  },
+  "steps": [{
+    // Regression guard for #35991: with a cwd deno.json age cutoff, `deno x`
+    // installs the jsr target honoring that cutoff, so the re-run subprocess
+    // MUST honor it too. `deno run jsr:<pkg>` disables config discovery for a
+    // jsr entrypoint, so `deno x` explicitly forwards the discovered cwd config
+    // to the child — keeping the install and the run consistent (otherwise the
+    // child re-resolves under the default/`.npmrc` policy and could pick or
+    // reject a different version than was installed). The cutoff (2025-03-01)
+    // sits between the two publish dates, so 1.0.0 (2025-01-01) is selected
+    // rather than the newest 2.0.0 (2025-06-01).
+    "args": "x -y jsr:@denotest/x-min-dep-age",
+    "output": "[WILDCARD]\n1.0.0\n"
+  }]
+}

@@ -577,6 +577,13 @@ generate!(
       result_data: *mut *mut c_void,
       result: *mut napi_value,
     ) -> napi_status;
+    fn node_api_create_buffer_from_arraybuffer(
+      env: napi_env,
+      arraybuffer: napi_value,
+      byte_offset: usize,
+      byte_length: usize,
+      result: *mut napi_value,
+    ) -> napi_status;
     fn napi_is_buffer(
       env: napi_env,
       value: napi_value,
@@ -834,6 +841,31 @@ generate!(
       property_values: *const napi_value,
       property_count: usize,
       result: *mut napi_value,
+    ) -> napi_status;
+    fn node_api_create_object_with_named_properties(
+      env: napi_env,
+      result: *mut napi_value,
+      property_count: usize,
+      property_names: *const *const c_char,
+      property_values: *const napi_value,
+    ) -> napi_status;
+    fn node_api_create_external_string_latin1(
+      env: napi_env,
+      str: *const c_char,
+      length: usize,
+      finalize_callback: napi_finalize,
+      finalize_hint: *mut c_void,
+      result: *mut napi_value,
+      copied: *mut bool,
+    ) -> napi_status;
+    fn node_api_create_external_string_utf16(
+      env: napi_env,
+      str: *const u16,
+      length: usize,
+      finalize_callback: napi_finalize,
+      finalize_hint: *mut c_void,
+      result: *mut napi_value,
+      copied: *mut bool,
     ) -> napi_status;
   }
 );

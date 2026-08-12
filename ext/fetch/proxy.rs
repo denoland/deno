@@ -3,9 +3,13 @@
 //! Parts of this module should be able to be replaced with other crates
 //! eventually, once generic versions appear in hyper-util, et al.
 
+#[cfg(not(windows))]
+use std::borrow::Cow;
 use std::env;
 use std::future::Future;
 use std::net::IpAddr;
+#[cfg(not(windows))]
+use std::path::Path;
 #[cfg(not(windows))]
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -14,6 +18,9 @@ use std::task::Context;
 use std::task::Poll;
 
 use deno_core::futures::TryFutureExt;
+#[cfg(not(windows))]
+use deno_permissions::OpenAccessKind;
+use deno_permissions::PermissionsContainer;
 use deno_tls::rustls::ClientConfig as TlsConfig;
 use http::Uri;
 use http::header::HeaderValue;
@@ -39,6 +46,8 @@ use tokio_socks::tcp::Socks5Stream;
 use tokio_vsock::VsockStream;
 use tower_service::Service;
 
+use crate::dns::CheckDst;
+
 #[derive(Debug, Clone)]
 pub(crate) struct ProxyConnector<C> {
   pub(crate) http: C,
@@ -49,6 +58,7 @@ pub(crate) struct ProxyConnector<C> {
   /// Notably, does not include ALPN
   pub(crate) tls_proxy: Arc<TlsConfig>,
   pub(crate) user_agent: Option<HeaderValue>,
+  pub(crate) permissions: Option<PermissionsContainer>,
 }
 
 impl<C> ProxyConnector<C> {
@@ -67,6 +77,7 @@ impl<C> ProxyConnector<C> {
       tls: Arc::new(tls),
       tls_proxy: self.tls_proxy,
       user_agent: self.user_agent,
+      permissions: self.permissions,
     })
   }
 
@@ -85,6 +96,7 @@ impl<C> ProxyConnector<C> {
       tls: Arc::new(tls),
       tls_proxy: self.tls_proxy,
       user_agent: self.user_agent,
+      permissions: self.permissions,
     })
   }
 }
@@ -564,7 +576,7 @@ pub enum Proxied<T> {
 
 impl<C> Service<Uri> for ProxyConnector<C>
 where
-  C: Service<Uri> + Clone,
+  C: Service<Uri> + Clone + CheckDst,
   C::Response:
     hyper::rt::Read + hyper::rt::Write + Connection + Unpin + Send + 'static,
   C::Future: Send + 'static,
@@ -585,7 +597,12 @@ where
     if let Some(intercept) = self.intercept(&orig_dst).cloned() {
       let is_https = orig_dst.scheme() == Some(&Scheme::HTTPS);
       let user_agent = self.user_agent.clone();
-      return match intercept.target {
+      // The connect below opens a socket to the *proxy*, so the connector's
+      // own net-deny check only sees the proxy address. Run a best-effort
+      // check against the real destination too, so an IP-level `--deny-net`
+      // rule still applies to requests routed through a proxy.
+      let check_dst = self.http.check_dst(orig_dst.clone());
+      let proxying: Self::Future = match intercept.target {
         Target::Http {
           dst: proxy_dst,
           auth,
@@ -623,11 +640,18 @@ where
           auth,
         } => {
           let tls = TlsConnector::from(self.tls.clone());
+          let mut permissions = self.permissions.clone();
           Box::pin(async move {
             let socks_addr = (
               proxy_dst.host().unwrap(),
               proxy_dst.port().map(|p| p.as_u16()).unwrap_or(1080),
             );
+            if let Some(permissions) = permissions.as_mut() {
+              permissions.check_net(
+                &(socks_addr.0, Some(socks_addr.1)),
+                "fetch() proxy",
+              )?;
+            }
             let host = orig_dst.host().ok_or("no host in url")?;
             let host = host
               .strip_prefix('[')
@@ -681,8 +705,21 @@ where
         }
         #[cfg(not(windows))]
         Target::Unix { path } => {
-          let path = path.clone();
+          let mut path = path.clone();
+          let mut permissions = self.permissions.clone();
           Box::pin(async move {
+            if let Some(permissions) = permissions.as_mut() {
+              let resolved_path = permissions
+                .check_open(
+                  Cow::Borrowed(Path::new(&path)),
+                  OpenAccessKind::ReadWriteNoFollow,
+                  Some("fetch() proxy"),
+                )?
+                .into_path();
+              permissions
+                .check_net_unix_socket(&resolved_path, Some("fetch() proxy"))?;
+              path = resolved_path.into_owned();
+            }
             let io = UnixStream::connect(&path).await?;
             Ok(Proxied::Unix(TokioIo::new(io)))
           })
@@ -692,12 +729,22 @@ where
           target_os = "linux",
           target_os = "macos"
         ))]
-        Target::Vsock { cid, port } => Box::pin(async move {
-          let addr = tokio_vsock::VsockAddr::new(cid, port);
-          let io = VsockStream::connect(addr).await?;
-          Ok(Proxied::Vsock(TokioIo::new(io)))
-        }),
+        Target::Vsock { cid, port } => {
+          let mut permissions = self.permissions.clone();
+          Box::pin(async move {
+            if let Some(permissions) = permissions.as_mut() {
+              permissions.check_net_vsock(cid, port, "fetch() proxy")?;
+            }
+            let addr = tokio_vsock::VsockAddr::new(cid, port);
+            let io = VsockStream::connect(addr).await?;
+            Ok(Proxied::Vsock(TokioIo::new(io)))
+          })
+        }
       };
+      return Box::pin(async move {
+        check_dst.await?;
+        proxying.await
+      });
     }
 
     let mut connector =

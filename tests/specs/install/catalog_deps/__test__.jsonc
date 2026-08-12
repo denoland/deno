@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "tests": {
+    "install_catalog_dep": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run -A packages/a/main.js",
+          "output": "42\n"
+        }
+      ]
+    }
+  }
+}

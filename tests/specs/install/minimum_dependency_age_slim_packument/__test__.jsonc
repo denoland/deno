@@ -1,0 +1,20 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_DIR": "$PWD/deno_dir"
+  },
+  "steps": [
+    {
+      // minimumDependencyAge forces the full packument to be requested, since
+      // the abbreviated install manifest omits the `time` field. The full
+      // packument carries a `scripts` map for every version, which should be
+      // stripped before it is cached so the cached registry.json stays small.
+      "args": "install npm:@denotest/scripts-with-publish-date",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "run -A check.ts",
+      "output": "check.out"
+    }
+  ]
+}

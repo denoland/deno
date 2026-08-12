@@ -1,0 +1,27 @@
+{
+  "tempDir": true,
+  "tests": {
+    "embedded": {
+      "steps": [{
+        "args": "compile --allow-all --output main --include child.js main.js",
+        "output": "[WILDCARD]"
+      }, {
+        "commandName": "./main",
+        "args": [],
+        "output": "parent got: pong\n"
+      }]
+    },
+    "on_disk_fallback": {
+      "steps": [{
+        // child.js is not embedded here, so the forked child must fall back to
+        // loading it from disk relative to the cwd.
+        "args": "compile --allow-all --output main main.js",
+        "output": "[WILDCARD]"
+      }, {
+        "commandName": "./main",
+        "args": [],
+        "output": "parent got: pong\n"
+      }]
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "tests": {
+    "package_json_side_effects_false": {
+      "steps": [
+        {
+          "args": "bundle --output=out.js main.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --allow-read --no-config check.ts",
+          "output": "ok\n"
+        }
+      ]
+    }
+  }
+}

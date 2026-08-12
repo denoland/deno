@@ -1,0 +1,9 @@
+{
+  // Regression test for https://github.com/denoland/deno/issues/34404
+  "tests": {
+    "tls_write_empty_buffer": {
+      "args": "run --allow-all main.ts",
+      "output": "main.out"
+    }
+  }
+}

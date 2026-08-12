@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import CP from "node:child_process";
+import net from "node:net";
 import { Buffer } from "node:buffer";
 import {
   assert,
@@ -633,6 +634,223 @@ Deno.test(
 );
 
 Deno.test({
+  name: "[node/child_process spawn] supports Deno child fd 3 pipe",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const cmdFinished = Promise.withResolvers<void>();
+    let output = "";
+    let stderr = "";
+    const script = path.join(
+      path.dirname(path.fromFileUrl(import.meta.url)),
+      "testdata",
+      "child_process_extra_stdio_fd3.js",
+    );
+    const cp = spawn(Deno.execPath(), ["run", "-A", script], {
+      stdio: ["ignore", "ignore", "pipe", "pipe"],
+    });
+    const extra = cp.stdio[3];
+    if (!extra) {
+      throw new Error("missing fd 3 pipe");
+    }
+    extra.on("data", (data) => {
+      output += data;
+    });
+    cp.stderr?.on("data", (data) => {
+      stderr += data;
+    });
+    cp.on("close", (code) => {
+      assertEquals(code, 0, stderr);
+      assertEquals(stderr, "");
+      assertEquals(output, "hello from fd 3");
+      cmdFinished.resolve();
+    });
+    await cmdFinished.promise;
+  },
+});
+
+Deno.test({
+  name:
+    "[node/child_process spawn] concurrent spawns with extra pipe fds keep handles valid (#35994)",
+  async fn() {
+    // Playwright launches Firefox/WebKit with two extra pipe fds (3 and 4)
+    // for its "pipe" browser-protocol transport. On Windows the child end of
+    // each extra pipe used to be closed twice, which - under concurrent
+    // spawns - raced with handle-value reuse and intermittently failed a
+    // sibling spawn with "The handle is invalid. (os error 6)". Spawn a batch
+    // concurrently to stress handle reuse and assert none of them fail.
+    const isWindows = Deno.build.os === "windows";
+    const command = isWindows ? "cmd.exe" : "/bin/sh";
+    const args = isWindows ? ["/c", "exit 0"] : ["-c", "exit 0"];
+
+    const spawnOne = () =>
+      new Promise<void>((resolve, reject) => {
+        const cp = spawn(command, args, {
+          stdio: ["ignore", "pipe", "pipe", "pipe", "pipe"],
+        });
+        cp.on("error", reject);
+        // Drain every piped stream so the child's exit is observed promptly
+        // and no pipe keeps the process from closing.
+        for (const stream of cp.stdio) {
+          // deno-lint-ignore no-explicit-any
+          const s = stream as any;
+          if (s && typeof s.resume === "function") {
+            s.resume();
+          }
+        }
+        cp.on("close", (code) => {
+          if (code !== 0) {
+            reject(new Error(`child exited with code ${code}`));
+          } else {
+            resolve();
+          }
+        });
+      });
+
+    const BATCH = 24;
+    await Promise.all(Array.from({ length: BATCH }, () => spawnOne()));
+  },
+});
+
+Deno.test({
+  name:
+    "[node/child_process spawn] Deno child fd 3 stays claimable by net.Socket",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const cmdFinished = Promise.withResolvers<void>();
+    let output = "";
+    let stderr = "";
+    const script = path.join(
+      path.dirname(path.fromFileUrl(import.meta.url)),
+      "testdata",
+      "child_process_extra_stdio_fd3_socket.js",
+    );
+    const cp = spawn(Deno.execPath(), ["run", "-A", script], {
+      stdio: ["ignore", "ignore", "pipe", "pipe"],
+    });
+    const extra = cp.stdio[3];
+    if (!extra) {
+      throw new Error("missing fd 3 pipe");
+    }
+    extra.on("data", (data) => {
+      output += data;
+    });
+    cp.stderr?.on("data", (data) => {
+      stderr += data;
+    });
+    cp.on("close", (code) => {
+      assertEquals(code, 0, stderr);
+      assertEquals(stderr, "");
+      assertEquals(output, "hello from fd 3 and from fd 3 socket");
+      cmdFinished.resolve();
+    });
+    await cmdFinished.promise;
+  },
+});
+
+Deno.test({
+  name:
+    "[node/child_process spawn] Deno child adopts a TCP fd passed as extra stdio",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const cmdFinished = Promise.withResolvers<void>();
+    const received = Promise.withResolvers<string>();
+    const serverClosed = Promise.withResolvers<void>();
+    let stderr = "";
+    const script = path.join(
+      path.dirname(path.fromFileUrl(import.meta.url)),
+      "testdata",
+      "child_process_extra_stdio_fd3_tcp.js",
+    );
+    const server = net.createServer((conn) => {
+      let data = "";
+      conn.on("data", (chunk) => {
+        data += chunk;
+      });
+      conn.on("end", () => received.resolve(data));
+    });
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address() as net.AddressInfo;
+      const client = net.connect(address.port, "127.0.0.1", () => {
+        client.pause();
+        // Grab a raw duplicate of the connected TCP fd to pass through the
+        // child's stdio slot 3. The dup is intentionally left open here; only
+        // the child writes to the connection, and its shutdown() delivers the
+        // FIN to the server regardless of this process's remaining handles.
+        // deno-lint-ignore no-explicit-any
+        const rawFd = (client as any)._handle.fdForIpc();
+        assert(rawFd >= 0);
+        const cp = spawn(Deno.execPath(), ["run", "-A", script], {
+          stdio: ["ignore", "ignore", "pipe", rawFd],
+        });
+        cp.stderr?.on("data", (data) => {
+          stderr += data;
+        });
+        cp.on("close", (code) => {
+          client.destroy();
+          server.close(() => serverClosed.resolve());
+          assertEquals(code, 0, stderr);
+          assertEquals(stderr, "");
+          cmdFinished.resolve();
+        });
+      });
+    });
+    await cmdFinished.promise;
+    assertEquals(await received.promise, "hello from fd 3 tcp");
+    await serverClosed.promise;
+  },
+});
+
+Deno.test({
+  name:
+    "[node/child_process spawn] Deno child adopts a listening TCP fd passed as extra stdio",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const cmdFinished = Promise.withResolvers<void>();
+    const received = Promise.withResolvers<string>();
+    let stderr = "";
+    const script = path.join(
+      path.dirname(path.fromFileUrl(import.meta.url)),
+      "testdata",
+      "child_process_extra_stdio_fd3_tcp_listen.js",
+    );
+    // Create a listening socket, then hand a raw dup of it to the child and
+    // close our copy; the kernel keeps the socket listening through the dup
+    // (which is intentionally left open in this process).
+    const bootstrap = net.createServer();
+    bootstrap.listen(0, "127.0.0.1", () => {
+      const address = bootstrap.address() as net.AddressInfo;
+      // deno-lint-ignore no-explicit-any
+      const rawFd = (bootstrap as any)._handle.fdForIpc();
+      assert(rawFd >= 0);
+      bootstrap.close(() => {
+        const cp = spawn(Deno.execPath(), ["run", "-A", script], {
+          stdio: ["ignore", "ignore", "pipe", rawFd],
+        });
+        cp.stderr?.on("data", (data) => {
+          stderr += data;
+        });
+        cp.on("close", (code) => {
+          assertEquals(code, 0, stderr);
+          assertEquals(stderr, "");
+          cmdFinished.resolve();
+        });
+        // The kernel queues this connection on the still-listening socket
+        // until the child adopts fd 3 and accepts it.
+        const client = net.connect(address.port, "127.0.0.1");
+        let data = "";
+        client.on("data", (chunk) => {
+          data += chunk;
+        });
+        client.on("end", () => received.resolve(data));
+        client.on("error", (err) => received.reject(err));
+      });
+    });
+    await cmdFinished.promise;
+    assertEquals(await received.promise, "hello from fd 3 listener");
+  },
+});
+
+Deno.test({
   name: "[node/child_process spawn] supports SIGIOT signal",
   ignore: Deno.build.os === "windows",
   async fn() {
@@ -654,6 +872,43 @@ Deno.test({
     await pStderr.promise;
     assert(cp.killed);
     assertEquals(cp.signalCode, "SIGIOT");
+  },
+});
+
+Deno.test({
+  name:
+    "[node/child_process spawn] AbortSignal aborts the child and emits AbortError",
+  async fn() {
+    const ac = new AbortController();
+    const cp = spawn(
+      Deno.execPath(),
+      ["eval", "setInterval(() => {}, 1000)"],
+      { signal: ac.signal },
+    );
+    const error = withTimeout<Error>();
+    const exit = withTimeout<void>();
+    cp.on("error", (err) => error.resolve(err));
+    cp.on("exit", () => exit.resolve());
+    cp.on("spawn", () => ac.abort());
+    const err = await error.promise;
+    assertEquals(err.name, "AbortError");
+    await exit.promise;
+  },
+});
+
+Deno.test({
+  name:
+    "[node/child_process] kill() on an exited process returns false and does not throw",
+  async fn() {
+    // Regression for https://github.com/denoland/deno/issues/28882 — killing
+    // a process that has already exited must not surface a spurious error
+    // (PermissionError on Windows / ESRCH on Unix), it should just return
+    // false like Node.js does.
+    const cp = spawn(Deno.execPath(), ["eval", "Deno.exit(0)"]);
+    const exit = withTimeout<void>();
+    cp.on("exit", () => exit.resolve());
+    await exit.promise;
+    assertEquals(cp.kill("SIGTERM"), false);
   },
 });
 
@@ -1043,9 +1298,14 @@ Deno.test(async function ipcSerializationAdvanced() {
         true,
         null,
         new Uint8Array([1, 2, 3]),
+        // Empty typed arrays / buffers used to panic the IPC deserializer
+        // because a zero-length ArrayBuffer has a null backing store.
+        new Uint8Array([]),
+        Buffer.alloc(0),
         {
           foo: new Uint8Array([1, 2, 3]),
           bar: makeSab([4, 5, 6]),
+          baz: new Uint8Array([]),
         },
         [1, { foo: 2 }, [3, 4]],
         42n,
@@ -1078,9 +1338,12 @@ Deno.test(async function ipcSerializationAdvanced() {
     true,
     null,
     new Uint8Array([1, 2, 3]),
+    new Uint8Array([]),
+    Buffer.alloc(0),
     {
       foo: new Uint8Array([1, 2, 3]),
       bar: makeSab([4, 5, 6]),
+      baz: new Uint8Array([]),
     },
     [1, { foo: 2 }, [3, 4]],
     42n,
@@ -1343,4 +1606,103 @@ Deno.test(async function stdoutWriteMultipleChunksNotTruncated() {
   } finally {
     await Deno.remove(script);
   }
+});
+
+Deno.test(function spawnSyncShellMetacharactersEscaped() {
+  // Shell metacharacters in args should be escaped, not interpreted.
+  // On Unix, & would launch a background process; on Windows, it
+  // would chain a second command. Either way echo should print
+  // the literal string.
+  const ret = spawnSync(
+    Deno.execPath(),
+    ["eval", "console.log(Deno.args[0])", "--", "a&b|c<d>e"],
+    { shell: true, encoding: "utf-8" },
+  );
+  assertEquals(ret.status, 0);
+  assertEquals(ret.stdout.trim(), "a&b|c<d>e");
+});
+
+Deno.test({
+  name: "spawn shell preserves pre-quoted arguments",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    for (const quote of ["'", '"']) {
+      const deferred = withTimeout<number | null>();
+      const child = spawn(
+        "printf",
+        [`${quote}<%s>\\n${quote}`, `${quote}hello world${quote}`],
+        { shell: true },
+      );
+      let stdout = "";
+      child.stdout!.setEncoding("utf-8");
+      child.stdout!.on("data", (chunk) => stdout += chunk);
+      child.on("error", deferred.reject);
+      child.on("close", deferred.resolve);
+      assertEquals(await deferred.promise, 0);
+      assertEquals(stdout, "<hello world>\n");
+    }
+  },
+});
+
+Deno.test({
+  name: "spawnSync shell preserves pre-quoted arguments",
+  ignore: Deno.build.os === "windows",
+  fn() {
+    for (const quote of ["'", '"']) {
+      const ret = spawnSync(
+        "printf",
+        [`${quote}<%s>\\n${quote}`, `${quote}hello world${quote}`],
+        { shell: true, encoding: "utf-8" },
+      );
+      assertEquals(ret.status, 0);
+      assertEquals(ret.stdout, "<hello world>\n");
+    }
+
+    const breakout = spawnSync(
+      "printf",
+      ["'%s\\n'", "'safe'; printf injected; 'still-safe'"],
+      { shell: true, encoding: "utf-8" },
+    );
+    assertEquals(breakout.status, 0);
+    assertEquals(
+      breakout.stdout,
+      "safe'; printf injected; 'still-safe\n",
+    );
+  },
+});
+
+Deno.test(function spawnSyncReturnsPid() {
+  const ret = spawnSync(Deno.execPath(), ["eval", "console.log('hi')"]);
+  assertEquals(ret.status, 0);
+  assertEquals(typeof ret.pid, "number");
+  assert(ret.pid > 0);
+});
+
+Deno.test({
+  name: "spawnWithNumericFdInStdioArray",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const fs = await import("node:fs");
+    const tmpFile = Deno.makeTempFileSync();
+    try {
+      const fd = fs.openSync(tmpFile, "w");
+      const child = spawn("/bin/sh", [
+        "-c",
+        "echo hello from child >&3",
+      ], {
+        stdio: ["ignore", "pipe", "pipe", fd],
+      });
+      const { promise, resolve } = Promise.withResolvers<number>();
+      child.on("close", (code: number) => {
+        resolve(code);
+      });
+      const code = await promise;
+      fs.closeSync(fd);
+      assertEquals(code, 0);
+      const content = Deno.readTextFileSync(tmpFile);
+      assertEquals(content, "hello from child\n");
+    } finally {
+      Deno.removeSync(tmpFile);
+    }
+  },
 });

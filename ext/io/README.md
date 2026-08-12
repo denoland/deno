@@ -8,7 +8,9 @@ stdio streams and abstraction over File System files.**
 From javascript, include the extension's source:
 
 ```javascript
-import * as io from "ext:deno_io/12_io.js";
+import { core } from "ext:core/mod.js";
+
+const io = core.loadExtScript("ext:deno_io/12_io.js");
 ```
 
 Then from rust, provide: `deno_io::deno_io::init(Option<deno_io::Stdio>)` in the

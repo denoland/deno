@@ -1,0 +1,20 @@
+{
+  "tempDir": true,
+  "tests": {
+    // Unprefixed package name should resolve as npm by default
+    "install_unprefixed": {
+      "args": "install @denotest/esm-basic",
+      "output": "install_unprefixed.out"
+    },
+    // Explicit npm: prefix still works (backward compat)
+    "install_explicit_npm_prefix": {
+      "args": "install npm:@denotest/esm-basic",
+      "output": "install_unprefixed.out"
+    },
+    // --jsr flag overrides default to jsr
+    "install_jsr_flag": {
+      "args": "install --jsr @denotest/add",
+      "output": "install_jsr_flag.out"
+    }
+  }
+}

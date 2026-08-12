@@ -84,7 +84,7 @@ impl ProgressBarRenderer for BarProgressBarRenderer {
       writeln!(
         &mut text,
         "{} {}{}",
-        colors::green("Download"),
+        display_entry.prompt.as_text(),
         display_entry.message,
         bytes_text,
       )

@@ -13,5 +13,10 @@ Specific version
 
 Channel
   deno upgrade stable
+  deno upgrade alpha
+  deno upgrade beta
   deno upgrade rc
   deno upgrade canary
+
+From a pull request (requires gh CLI)
+  deno upgrade pr 12345

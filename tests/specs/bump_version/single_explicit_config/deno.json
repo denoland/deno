@@ -1,0 +1,5 @@
+{
+  "name": "@x/dual",
+  "version": "9.0.0",
+  "exports": "./mod.ts"
+}

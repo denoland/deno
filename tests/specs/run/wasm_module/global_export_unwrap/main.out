@@ -1,0 +1,5 @@
+i32val 42 number
+i64val 9000000000n bigint
+f32val 1.5 number
+f64val 3.5 number
+mutcount 7 number

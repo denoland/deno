@@ -1,0 +1,26 @@
+{
+  // Regression test for https://github.com/denoland/deno/issues/31837
+  // When a folder name matches an import-mapped npm package name,
+  // running a file in that folder without ./ prefix should resolve
+  // to the local file, not the npm package.
+  "tests": {
+    "folder_name_same_as_package": {
+      "args": "run chalk/main.ts",
+      "output": "[WILDCARD]Hello\n"
+    },
+    // Explicit `npm:` invocations must NOT silently fall back to a local
+    // file when the npm subpath does not exist in the package.
+    "explicit_npm_does_not_fallback": {
+      "args": "run npm:chalk@5/main.ts",
+      "exitCode": 1,
+      "output": "[WILDCARD]error[WILDCARD]"
+    },
+    // A bare specifier rewritten to `npm:` with no matching local file must
+    // fall through to npm resolution and surface its error, not be swallowed.
+    "no_local_file_falls_through_to_npm": {
+      "args": "run chalk/does_not_exist.ts",
+      "exitCode": 1,
+      "output": "[WILDCARD]error[WILDCARD]"
+    }
+  }
+}

@@ -14,8 +14,17 @@ pub fn otel_runtime_config() -> OtelRuntimeConfig {
 }
 
 const GIT_COMMIT_HASH: &str = env!("GIT_COMMIT_HASH");
-const TYPESCRIPT: &str = "5.9.2";
+const TYPESCRIPT: &str = "6.0.3";
 pub const DENO_VERSION: &str = env!("DENO_VERSION");
+
+/// The Node.js version that Deno reports through `process.version` /
+/// `process.versions.node`, used to enforce package.json `engines.node`
+/// constraints.
+///
+/// Re-exported from `ext/node`, which is the single source of truth shared with
+/// the `process.version` polyfill, so the engines check and the reported value
+/// can never drift.
+pub use deno_node::NODE_VERSION;
 // TODO(bartlomieju): ideally we could remove this const.
 const IS_CANARY: bool = option_env!("DENO_CANARY").is_some();
 // TODO(bartlomieju): this is temporary, to allow Homebrew to cut RC releases as well
@@ -39,7 +48,7 @@ pub static DENO_VERSION_INFO: std::sync::LazyLock<DenoVersionInfo> =
         } else if IS_RC {
           ReleaseChannel::Rc
         } else {
-          ReleaseChannel::Stable
+          release_channel_from_version_string(DENO_VERSION)
         }
       });
 
@@ -49,7 +58,7 @@ pub static DENO_VERSION_INFO: std::sync::LazyLock<DenoVersionInfo> =
     } else if IS_RC {
       ReleaseChannel::Rc
     } else {
-      ReleaseChannel::Stable
+      release_channel_from_version_string(DENO_VERSION)
     };
 
     DenoVersionInfo {
@@ -106,5 +115,15 @@ impl DenoVersionInfo {
     } else {
       DENO_VERSION
     }
+  }
+}
+
+fn release_channel_from_version_string(version: &str) -> ReleaseChannel {
+  let v = deno_semver::Version::parse_standard(version).ok();
+  match v.and_then(|v| v.pre.first().map(|s| s.as_str().to_string())) {
+    Some(ref s) if s == "alpha" => ReleaseChannel::Alpha,
+    Some(ref s) if s == "beta" => ReleaseChannel::Beta,
+    Some(ref s) if s == "rc" => ReleaseChannel::Rc,
+    _ => ReleaseChannel::Stable,
   }
 }

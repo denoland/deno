@@ -1,0 +1,28 @@
+{
+  "tests": {
+    // "maintain" keeps the source order, so an unsorted file passes --check.
+    "maintain_preserves_order": {
+      "args": "fmt --config maintain.json --check unsorted.ts",
+      "output": "Checked 1 file\n"
+    },
+    // By default (caseInsensitive) the same file would be reordered.
+    "sorts_by_default": {
+      "args": "fmt --no-config --check unsorted.ts",
+      "output": "[WILDCARD]error: Found 1 not formatted file in 1 file\n",
+      "exitCode": 1
+    },
+    // "caseSensitive" sorts uppercase before lowercase (e.g. Biome's order),
+    // so a file already in that order passes --check.
+    "case_sensitive_order": {
+      "args": "fmt --config case_sensitive.json --check case_sensitive.ts",
+      "output": "Checked 1 file\n"
+    },
+    // The default caseInsensitive sort would reorder the caseSensitive file,
+    // proving the two modes are distinct.
+    "case_sensitive_differs_from_default": {
+      "args": "fmt --no-config --check case_sensitive.ts",
+      "output": "[WILDCARD]error: Found 1 not formatted file in 1 file\n",
+      "exitCode": 1
+    }
+  }
+}

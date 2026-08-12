@@ -1,7 +1,6 @@
 error: Uncaught (in worker "") Error
   throw new Error();
         ^
-    at [WILDCARD]/drop_handle_race.js:2:9
-    at [WILDCARD]
+    at [WILDCARD]/drop_handle_race.js:2:9[WILDCARD]
 error: Uncaught (in promise) Error: Unhandled error in child worker.
     at Worker.#pollControl [WILDCARD]

@@ -1,0 +1,1 @@
+error: jsr:@denotest/add does not support the tag 'beta'. JSR has no dist-tags; use '@latest' or a version requirement instead.

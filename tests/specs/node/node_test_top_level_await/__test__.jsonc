@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "test_await": {
+      "args": "test test.mjs",
+      "output": "test.out"
+    },
+    "suite_await": {
+      "args": "test suite.mjs",
+      "output": "suite.out"
+    }
+  }
+}

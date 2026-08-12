@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "oaep_hash_validation": {
+      "args": "run -A main.mjs",
+      "output": "main.out"
+    }
+  }
+}

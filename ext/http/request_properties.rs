@@ -33,6 +33,8 @@ pub struct HttpConnectionProperties {
   pub peer_port: Option<u32>,
   pub local_port: Option<u32>,
   pub stream_type: NetworkStreamType,
+  pub scheme: &'static str,
+  pub fallback_host: Rc<str>,
 }
 
 pub struct HttpRequestProperties<'a> {
@@ -193,12 +195,16 @@ impl HttpPropertyExtractor for DefaultHttpPropertyExtractor {
     };
     let local_port = listen_properties.local_port;
     let stream_type = listen_properties.stream_type;
+    let scheme = listen_properties.scheme;
+    let fallback_host = Rc::from(listen_properties.fallback_host.as_str());
 
     HttpConnectionProperties {
       peer_address,
       peer_port,
       local_port,
       stream_type,
+      scheme,
+      fallback_host,
     }
   }
 
@@ -353,6 +359,14 @@ fn req_host<'a>(
 
   // TODO(mmastrac): Most requests will use this path and we probably will want to optimize it in the future
   if let Some(host) = headers.get(HOST) {
+    // An empty `Host` header value is treated as if no Host header was sent,
+    // so the listener's fallback authority is used and `request.url` stays a
+    // valid URL. Hyper's HTTP/1 parser already trims OWS from header values,
+    // so whitespace-only `Host:` values reach us as empty bytes.
+    // See https://github.com/denoland/deno/issues/29872.
+    if host.is_empty() {
+      return None;
+    }
     return Some(match host.to_str() {
       Ok(host) => Cow::Borrowed(host),
       Err(_) => Cow::Owned(

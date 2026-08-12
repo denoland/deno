@@ -1,0 +1,9 @@
+{
+  "tests": {
+    "pipe_fd_stdio_clears_nonblocking": {
+      "if": "unix",
+      "args": "run -A main.ts",
+      "output": "main.out"
+    }
+  }
+}

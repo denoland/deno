@@ -153,6 +153,11 @@ pub struct CreateSnapshotOutput {
   /// printed as 'cargo:rerun-if-changed' lines from your build script.
   pub files_loaded_during_snapshot: Vec<PathBuf>,
 
+  /// Specifiers of `lazy_loaded_esm` / `lazy_loaded_js` files whose source
+  /// was compiled into the snapshot during snapshot creation. Callers can use
+  /// this to avoid re-embedding those sources in the final binary.
+  pub consumed_lazy_specifiers: Vec<String>,
+
   /// The resulting snapshot file's bytes.
   pub output: Box<[u8]>,
 }
@@ -182,6 +187,15 @@ pub fn create_snapshot(
   create_snapshot_options: CreateSnapshotOptions,
   warmup_script: Option<&'static str>,
 ) -> Result<CreateSnapshotOutput, CoreError> {
+  // Snapshot creation typically runs in build scripts, outside of any
+  // tokio runtime, but creating a `JsRuntime` requires a runtime context
+  // (delayed V8 tasks are scheduled on it). Enter a private one.
+  let tokio_runtime = tokio::runtime::Builder::new_current_thread()
+    .enable_time()
+    .build()
+    .unwrap();
+  let _tokio_guard = tokio_runtime.enter();
+
   let mut mark = Instant::now();
   #[allow(
     clippy::print_stdout,
@@ -227,6 +241,7 @@ pub fn create_snapshot(
     with_runtime_cb(&mut js_runtime);
   }
 
+  let consumed_lazy_specifiers = js_runtime.consumed_lazy_specifiers();
   let mut snapshot = js_runtime.snapshot();
   if let Some(warmup_script) = warmup_script {
     let leaked_snapshot = Box::leak(snapshot);
@@ -279,6 +294,7 @@ pub fn create_snapshot(
 
   Ok(CreateSnapshotOutput {
     files_loaded_during_snapshot,
+    consumed_lazy_specifiers,
     output: snapshot,
   })
 }
@@ -306,7 +322,7 @@ pub(crate) struct SnapshottedData<'snapshot> {
 /// we hand it off to serde.
 #[derive(Serialize, Deserialize)]
 pub(crate) struct SerializableSnapshotSidecarData<'snapshot> {
-  data_count: u32,
+  pub(crate) data_count: u32,
   #[serde(borrow)]
   pub snapshot_data: SnapshottedData<'snapshot>,
 }

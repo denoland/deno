@@ -1,0 +1,4 @@
+{
+  "name": "@org/foo",
+  "exports": "./mod.ts"
+}

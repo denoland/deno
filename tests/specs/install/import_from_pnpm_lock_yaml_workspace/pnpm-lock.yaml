@@ -1,0 +1,34 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+  .:
+    dependencies:
+      '@denotest/add':
+        specifier: 1.0.0
+        version: 1.0.0
+
+  packages/app:
+    dependencies:
+      '@denotest/esm-basic':
+        specifier: 1.0.0
+        version: 1.0.0
+
+packages:
+  '@denotest/add@1.0.0':
+    resolution: {
+      integrity: sha512-uvNpnVPU/CC2Do/LNF3TkhoLGLLKC6jFDPiSnojuZCEwmoXJjS2+Sn+LYk7eUix4vsMKA9ctxaMhcfb6pdHQTQ==,
+    }
+
+  '@denotest/esm-basic@1.0.0':
+    resolution: {
+      integrity: sha512-LvAO9tXoBq0fhrWc5PdAATOZxxrd1KTeIFhUucK8w1WNKrapcjVVjqU8s8L5fm0Ppd/tMIGXcRvbfWWmOmBgWQ==,
+    }
+
+snapshots:
+  '@denotest/add@1.0.0': {}
+
+  '@denotest/esm-basic@1.0.0': {}

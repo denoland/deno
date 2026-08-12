@@ -1,0 +1,27 @@
+{
+  "tempDir": true,
+  "tests": {
+    "pack_rewrite_specifiers": {
+      "steps": [{
+        "args": "pack",
+        "output": "[WILDCARD]✓[WILDCARD]test-rewrite-1.0.0.tgz[WILDCARD]"
+      }, {
+        "if": "unix",
+        "commandName": "bash",
+        "args": [
+          "-c",
+          "tar -xzf test-rewrite-1.0.0.tgz && grep -q './utils.js' package/mod.js && echo 'Has rewritten specifier: true' || echo 'Has rewritten specifier: false'"
+        ],
+        "output": "Has rewritten specifier: true\n"
+      }, {
+        "if": "unix",
+        "commandName": "bash",
+        "args": [
+          "-c",
+          "grep -q './utils.ts' package/mod.js && echo 'Has original specifier: true' || echo 'Has original specifier: false'"
+        ],
+        "output": "Has original specifier: false\n"
+      }]
+    }
+  }
+}

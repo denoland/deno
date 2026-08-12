@@ -1,0 +1,7 @@
+[WILDCARD]Warning The following peer dependency issues were found:
+└─┬ @denotest/peer-dep-specific-constraint@1.0.0
+  └── peer @denotest/add@0.5: resolved to 1.0.0
+
+These packages were resolved to a version that does not satisfy a peer dependency constraint, which can cause runtime errors. To silence this warning, install a compatible version or add an "overrides" entry to your package.json or deno.json.
+Learn more: https://docs.deno.com/go/peer-deps
+[WILDCARD]

@@ -1,0 +1,15 @@
+[WILDCARD]deno bump-version is experimental and subject to change[WILDCARD]
+Reading commits between v1.0.0 and [WILDLINE]
+Found 1 commits.
+Detected manual version change for @x/a: 1.0.0 -> 1.2.0
+[WILDCARD]@x/a[WILDCARD]1.0.0[WILDCARD]1.2.0[WILDCARD]minor[WILDLINE]
+[WILDCARD]@x/b[WILDCARD]1.0.0[WILDCARD]1.0.1[WILDCARD]patch[WILDLINE]
+
+[dry-run] Release note:
+[WILDCARD]
+#### @x/a 1.2.0 (minor)
+[WILDCARD]
+#### @x/b 1.0.1 (patch)
+
+- fix(b): patch fix
+[WILDCARD]

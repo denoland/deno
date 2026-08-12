@@ -2,13 +2,11 @@
   "tests": {
     "basic": {
       "args": "run --quiet main.ts",
-      "output": "main.ts.out",
-      "exitCode": 1
+      "output": "feature_enabled.out"
     },
     "basic_no_config": {
       "args": "run --quiet --no-config main.ts",
-      "output": "main_no_config.out",
-      "exitCode": 1
+      "output": "feature_enabled.out"
     },
     "unstable_bare_node_builtins_enabled": {
       "args": "run --unstable-bare-node-builtins main.ts",
@@ -27,8 +25,7 @@
     },
     "unstable_node_globals_enabled_check": {
       "args": "check --unstable-node-globals node_globals.ts",
-      "output": "node_globals_check.out",
-      "exitCode": 1
+      "output": "node_globals_check.out"
     },
     "unstable_node_globals_enabled2": {
       "args": "run node_globals.ts",
@@ -42,8 +39,7 @@
       "envs": {
         "DENO_COMPAT": "1"
       },
-      "output": "node_globals_check.out",
-      "exitCode": 1
+      "output": "node_globals_check.out"
     },
     "unstable_bare_node_builtins_enabled_by_env": {
       "args": "run main.ts",
@@ -58,9 +54,8 @@
     },
     "byonm_missing": {
       "cwd": "byonm",
-      "exitCode": 1,
       "args": "run missing.ts",
-      "output": "byonm/missing.out"
+      "output": "byonm/has.out"
     },
     "byonm_has": {
       "cwd": "byonm",

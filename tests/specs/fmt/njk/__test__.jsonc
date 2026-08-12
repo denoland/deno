@@ -8,7 +8,7 @@
     {
       "args": "fmt --unstable-component --ext=njk -",
       "input": "<h1>  {{ \"Hello, world!\" |> toUpperCase }}\n  </h1>\n",
-      "output": "<h1>\n  {{ \"Hello, world!\" |> toUpperCase }}\n</h1>\n"
+      "output": "<h1>  {{ \"Hello, world!\" |> toUpperCase }}\n  </h1>\n"
     }
   ]
 }

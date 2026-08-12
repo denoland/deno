@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "watch_disabled": {
+      "args": "run -A watch_disabled.mjs",
+      "output": "watch_disabled.out"
+    },
+    "watch_restart": {
+      "args": "run -A watch_restart.mjs",
+      "output": "watch_restart.out"
+    }
+  }
+}

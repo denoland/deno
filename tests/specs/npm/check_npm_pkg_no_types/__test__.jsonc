@@ -1,0 +1,30 @@
+{
+  "tempDir": true,
+  "tests": {
+    // No nodeModulesDir flag: with package.json dependencies installed in
+    // node_modules, this exercises the byonm resolver path.
+    "byonm": {
+      // ignored: tsc can't resolve an npm package with no types (deno falls
+      // back to any). https://github.com/denoland/deno/issues/36085
+      "ignore": true,
+      "steps": [{
+        "args": "install",
+        "output": "[WILDCARD]"
+      }, {
+        "args": "check --quiet main.ts",
+        "output": ""
+      }]
+    },
+    "auto_install": {
+      // ignored: tsc can't resolve an npm package with no types (deno falls
+      // back to any). https://github.com/denoland/deno/issues/36085
+      "ignore": true,
+      "args": "check --quiet --node-modules-dir=auto main.ts",
+      "output": ""
+    },
+    "global_folder": {
+      "args": "check --quiet --node-modules-dir=none main.ts",
+      "output": ""
+    }
+  }
+}

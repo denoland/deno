@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "@oak/oak": "jsr:@oak/oak@^17",
+    "express": "npm:express@^4"
+  }
+}

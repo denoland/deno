@@ -1,0 +1,2 @@
+typeof openKv: function
+caught: Deno.openKv() failed: no KV database is attached to this app. Attach a KV database to your app in the Deno Deploy dashboard, then redeploy.

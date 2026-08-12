@@ -1,0 +1,6 @@
+{
+  "name": "@denotest/app",
+  "dependencies": {
+    "@denotest/prerelease-member": "workspace:*"
+  }
+}

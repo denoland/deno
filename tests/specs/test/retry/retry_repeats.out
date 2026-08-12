@@ -1,0 +1,7 @@
+running 1 test from ./retry_repeats.ts
+compose ... retrying (attempt 1 failed) (Uncaught Error: first attempt fails)
+compose ... retrying (attempt 1 failed) (Uncaught Error: first attempt fails)
+compose ... ok ([WILDCARD])
+
+ok | 1 passed | 0 failed | 1 flaky ([WILDCARD])
+

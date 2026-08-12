@@ -1,0 +1,5 @@
+{
+  "args": "test --no-check --related=math.ts",
+  "output": "related.out",
+  "exitCode": 0
+}

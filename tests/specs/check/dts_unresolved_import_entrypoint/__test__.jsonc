@@ -1,0 +1,30 @@
+{
+  // ignored (entrypoint*): .d.ts entrypoints not checked under skipLibCheck:true.
+  // https://github.com/denoland/deno/issues/36085
+  "tests": {
+    "entrypoint": {
+      "ignore": true,
+      "args": "check --quiet foo.d.ts",
+      "output": "entrypoint.out",
+      "exitCode": 1
+    },
+    // The unresolved import must surface for a `.d.ts` entrypoint whether or
+    // not `skipLibCheck` is set (the issue was reported with it off).
+    "entrypoint_skip_lib_check_false": {
+      "ignore": true,
+      "args": "check --quiet --config skip_lib_check_false.json foo.d.ts",
+      "output": "entrypoint.out",
+      "exitCode": 1
+    },
+    "entrypoint_default_config": {
+      "ignore": true,
+      "args": "check --quiet --no-config foo.d.ts",
+      "output": "entrypoint.out",
+      "exitCode": 1
+    },
+    "skip_lib_check_dependency": {
+      "args": "check --quiet --config deno.json main.ts",
+      "output": ""
+    }
+  }
+}

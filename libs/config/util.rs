@@ -9,22 +9,18 @@ use crate::deno_json::NewestDependencyDate;
 pub fn is_skippable_io_error(e: &std::io::Error) -> bool {
   use std::io::ErrorKind::*;
 
-  // skip over invalid filenames on windows
-  const ERROR_INVALID_NAME: i32 = 123;
-  if cfg!(windows) && e.raw_os_error() == Some(ERROR_INVALID_NAME) {
-    return true;
-  }
-
-  match e.kind() {
-    InvalidInput | PermissionDenied | NotFound => {
-      // ok keep going
-      true
-    }
-    _ => {
-      const NOT_A_DIRECTORY: i32 = 20;
-      cfg!(unix) && e.raw_os_error() == Some(NOT_A_DIRECTORY)
-    }
-  }
+  // Match `ErrorKind` directly (rather than raw errno values gated by `cfg!`)
+  // so config-file auto-discovery behaves identically on every OS — see
+  // denoland/deno#17428.
+  matches!(
+    e.kind(),
+    InvalidInput
+      | InvalidFilename
+      | PermissionDenied
+      | NotFound
+      | NotADirectory
+      | IsADirectory
+  )
 }
 
 #[derive(Debug, Error)]
@@ -37,6 +33,9 @@ pub enum ParseDateOrDurationError {
 
   #[error("expected minutes, RFC3339 datetime, or ISO-8601 duration")]
   InvalidDuration(#[source] ParseIso8601DurationError),
+
+  #[error("date or duration is out of range")]
+  OutOfRange,
 }
 
 /// Parses a string that could be an integer for number of minutes,
@@ -60,11 +59,10 @@ fn parse_enabled_minutes_duration_or_date(
   s: &str,
 ) -> Result<chrono::DateTime<chrono::Utc>, ParseDateOrDurationError> {
   if s.chars().all(|c| c.is_ascii_digit()) {
-    let now = chrono::DateTime::<chrono::Utc>::from(sys.sys_time_now());
     let minutes: i64 = s
       .parse()
       .map_err(ParseDateOrDurationError::InvalidMinutes)?;
-    return Ok(now - chrono::Duration::minutes(minutes));
+    return date_from_minutes(sys, minutes);
   }
 
   let datetime_parse_err = match DateTime::parse_from_rfc3339(s) {
@@ -83,15 +81,31 @@ fn parse_enabled_minutes_duration_or_date(
   }
   // try duration
   match parse_iso8601_duration(s) {
-    Ok(duration) => {
-      let now = chrono::DateTime::<chrono::Utc>::from(sys.sys_time_now());
-      Ok(now - duration)
-    }
+    Ok(duration) => date_from_duration(sys, duration),
     Err(ParseIso8601DurationError::MissingP) => Err(
       ParseDateOrDurationError::InvalidDateTime(datetime_parse_err),
     ),
     Err(err) => Err(ParseDateOrDurationError::InvalidDuration(err)),
   }
+}
+
+pub(crate) fn date_from_minutes(
+  sys: &impl sys_traits::SystemTimeNow,
+  minutes: i64,
+) -> Result<chrono::DateTime<chrono::Utc>, ParseDateOrDurationError> {
+  let duration = chrono::Duration::try_minutes(minutes)
+    .ok_or(ParseDateOrDurationError::OutOfRange)?;
+  date_from_duration(sys, duration)
+}
+
+fn date_from_duration(
+  sys: &impl sys_traits::SystemTimeNow,
+  duration: chrono::Duration,
+) -> Result<chrono::DateTime<chrono::Utc>, ParseDateOrDurationError> {
+  let now = chrono::DateTime::<chrono::Utc>::from(sys.sys_time_now());
+  now
+    .checked_sub_signed(duration)
+    .ok_or(ParseDateOrDurationError::OutOfRange)
 }
 
 #[derive(Debug, Error)]
@@ -177,11 +191,15 @@ fn parse_iso8601_duration(
     let weeks: i64 = num
       .parse()
       .map_err(|_| ParseIso8601DurationError::InvalidNumber)?;
-    let days = weeks
-      .checked_mul(7)
-      .ok_or(ParseIso8601DurationError::Overflow)?;
-    let d = Duration::days(days);
-    return Ok(if neg { -d } else { d });
+    let d =
+      Duration::try_weeks(weeks).ok_or(ParseIso8601DurationError::Overflow)?;
+    return if neg {
+      Duration::zero()
+        .checked_sub(&d)
+        .ok_or(ParseIso8601DurationError::Overflow)
+    } else {
+      Ok(d)
+    };
   }
 
   let bytes = s.as_bytes();
@@ -242,7 +260,8 @@ fn parse_iso8601_duration(
 
     // add to total
     let add = match (in_time, unit, frac_len) {
-      (false, 'D', 0) => Duration::days(int_val),
+      (false, 'D', 0) => Duration::try_days(int_val)
+        .ok_or(ParseIso8601DurationError::Overflow)?,
       (false, 'M', _) => {
         return Err(ParseIso8601DurationError::MonthsNotSupported);
       }
@@ -253,12 +272,15 @@ fn parse_iso8601_duration(
         return Err(ParseIso8601DurationError::WeeksMustBeAlone);
       }
 
-      (true, 'H', 0) => Duration::hours(int_val),
-      (true, 'M', 0) => Duration::minutes(int_val),
+      (true, 'H', 0) => Duration::try_hours(int_val)
+        .ok_or(ParseIso8601DurationError::Overflow)?,
+      (true, 'M', 0) => Duration::try_minutes(int_val)
+        .ok_or(ParseIso8601DurationError::Overflow)?,
 
       // Seconds may be fractional: PT1.5S
       (true, 'S', _) => {
-        let mut d = Duration::seconds(int_val);
+        let mut d = Duration::try_seconds(int_val)
+          .ok_or(ParseIso8601DurationError::Overflow)?;
         if frac_len > 0 {
           let frac_str = &s[frac_start..(frac_start + frac_len)];
           // take up to 9 digits for nanoseconds, right-pad with zeros
@@ -293,7 +315,13 @@ fn parse_iso8601_duration(
       .ok_or(ParseIso8601DurationError::Overflow)?;
   }
 
-  Ok(if neg { -total } else { total })
+  if neg {
+    Duration::zero()
+      .checked_sub(&total)
+      .ok_or(ParseIso8601DurationError::Overflow)
+  } else {
+    Ok(total)
+  }
 }
 
 #[cfg(test)]
@@ -310,6 +338,44 @@ mod tests {
   fn is_skippable_io_error_win_invalid_filename() {
     let error = std::io::Error::from_raw_os_error(123);
     assert!(super::is_skippable_io_error(&error));
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn is_skippable_io_error_unix_enotdir() {
+    let error = std::io::Error::from_raw_os_error(20);
+    assert!(super::is_skippable_io_error(&error));
+  }
+
+  #[test]
+  fn is_skippable_io_error_kinds() {
+    use std::io::Error;
+    use std::io::ErrorKind;
+
+    // these should be skipped on every platform so config discovery walks
+    // past non-directory parent components, permission-denied folders, and
+    // missing files identically on windows and unix
+    for kind in [
+      ErrorKind::InvalidInput,
+      ErrorKind::InvalidFilename,
+      ErrorKind::PermissionDenied,
+      ErrorKind::NotFound,
+      ErrorKind::NotADirectory,
+      ErrorKind::IsADirectory,
+    ] {
+      assert!(
+        super::is_skippable_io_error(&Error::from(kind)),
+        "expected {kind:?} to be skippable"
+      );
+    }
+
+    // sanity check: unrelated kinds are not skipped
+    assert!(!super::is_skippable_io_error(&Error::from(
+      ErrorKind::ConnectionRefused,
+    )));
+    assert!(!super::is_skippable_io_error(&Error::from(
+      ErrorKind::UnexpectedEof,
+    )));
   }
 
   #[test]
@@ -343,6 +409,10 @@ mod tests {
     assert!(parse_iso8601_duration("PT").is_err());
     assert!(parse_iso8601_duration("PT1.2M").is_err()); // fractional minutes rejected
     assert!(parse_iso8601_duration("P1WT1H").is_err()); // W must be alone
+    assert!(matches!(
+      parse_iso8601_duration("PT153722867280913M"),
+      Err(ParseIso8601DurationError::Overflow)
+    ));
   }
 
   #[test]
@@ -397,5 +467,17 @@ mod tests {
         Utc.with_ymd_and_hms(2025, 5, 30, 0, 0, 0).unwrap()
       )
     );
+
+    for value in [
+      "138939752218",
+      "153722867280913",
+      "9223372036854775807",
+      "P100000000D",
+    ] {
+      assert!(matches!(
+        parse_minutes_duration_or_date(&TestEnv, value),
+        Err(ParseDateOrDurationError::OutOfRange)
+      ));
+    }
   }
 }

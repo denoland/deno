@@ -1,0 +1,17 @@
+[WILDCARD]running 1 test from ./failing_test.ts
+custom stack getter ... FAILED [WILDLINE]
+
+ ERRORS 
+
+custom stack getter => ./failing_test.ts:1:6
+error: Error: boom
+    at fiberFrameA (effect://fiber:10:3)
+    at fiberFrameB (effect://fiber:20:5)
+
+ FAILURES 
+
+custom stack getter => ./failing_test.ts:1:6
+
+FAILED | 0 passed | 1 failed [WILDLINE]
+
+error: Test failed

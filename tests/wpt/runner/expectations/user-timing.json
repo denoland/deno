@@ -1,6 +1,6 @@
 {
-  "buffered-flag.any.html": false,
-  "buffered-flag.any.worker.html": false,
+  "buffered-flag.any.html": true,
+  "buffered-flag.any.worker.html": true,
   "case-sensitivity.any.html": true,
   "case-sensitivity.any.worker.html": true,
   "clear_all_marks.any.html": true,

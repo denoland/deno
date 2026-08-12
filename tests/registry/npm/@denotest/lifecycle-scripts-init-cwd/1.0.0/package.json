@@ -1,0 +1,7 @@
+{
+  "name": "@denotest/lifecycle-scripts-init-cwd",
+  "version": "1.0.0",
+  "scripts": {
+    "postinstall": "echo ran > $INIT_CWD/init-cwd-marker.txt"
+  }
+}

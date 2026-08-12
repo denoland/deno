@@ -1,0 +1,3 @@
+has time field: true
+has scripts: false
+hasInstallScript: true

@@ -1,0 +1,41 @@
+{
+  "tempDir": true,
+  "tests": {
+    "output_flag": {
+      "steps": [
+        {
+          "args": "bundle --output=out.js --declaration mod.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --no-lock --no-config --allow-read check_dts.ts out.d.ts",
+          "output": "ok\n"
+        }
+      ]
+    },
+    "outdir_flag": {
+      "steps": [
+        {
+          "args": "bundle --outdir=dist --declaration mod.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --no-lock --no-config --allow-read check_dts.ts dist/mod.d.ts",
+          "output": "ok\n"
+        }
+      ]
+    },
+    "wildcard_and_mts": {
+      "steps": [
+        {
+          "args": "bundle --output=barrel_out.js --declaration barrel_entry.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --no-lock --no-config --allow-read check_barrel.ts barrel_out.d.ts",
+          "output": "ok\n"
+        }
+      ]
+    }
+  }
+}

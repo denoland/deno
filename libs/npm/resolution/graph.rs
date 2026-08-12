@@ -5,7 +5,6 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::collections::hash_map::DefaultHasher;
 use std::future::Future;
@@ -26,11 +25,14 @@ use futures::stream::FuturesUnordered;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use log::debug;
+use rustc_hash::FxHashMap;
+use rustc_hash::FxHashSet;
 use thiserror::Error;
 
 use super::common::NpmPackageVersionResolutionError;
 use super::common::NpmPackageVersionResolver;
 use super::common::NpmVersionResolver;
+use super::common::package_info_or_link_fallback;
 use super::overrides::NpmOverrides;
 use super::snapshot::NpmResolutionSnapshot;
 use crate::NpmPackageId;
@@ -147,8 +149,8 @@ impl ResolvedId {
 /// at sharing nodes.
 #[derive(Default)]
 struct ResolvedNodeIds {
-  node_to_resolved_id: HashMap<NodeId, (ResolvedId, u64)>,
-  resolved_to_node_id: HashMap<u64, NodeId>,
+  node_to_resolved_id: FxHashMap<NodeId, (ResolvedId, u64)>,
+  resolved_to_node_id: FxHashMap<u64, NodeId>,
 }
 
 impl ResolvedNodeIds {
@@ -292,27 +294,27 @@ impl GraphPath {
 
 struct PackagesForSnapshot<'a> {
   packages: Vec<NpmResolutionPackage>,
-  packages_by_name: HashMap<PackageName, Vec<NpmPackageId>>,
-  traversed_ids: HashSet<&'a NpmPackageId>,
+  packages_by_name: FxHashMap<PackageName, Vec<NpmPackageId>>,
+  traversed_ids: FxHashSet<&'a NpmPackageId>,
 }
 
 /// Tarjan's strongly connected components algorithm.
 ///
 /// Returns SCCs in reverse topological order (leaf/sink SCCs first),
 /// which is the order we need for bottom-up ID computation.
-fn tarjan_scc(adj: &HashMap<NodeId, Vec<NodeId>>) -> Vec<Vec<NodeId>> {
+fn tarjan_scc(adj: &FxHashMap<NodeId, Vec<NodeId>>) -> Vec<Vec<NodeId>> {
   struct TarjanState {
     index_counter: usize,
     stack: Vec<NodeId>,
-    on_stack: HashSet<NodeId>,
-    indices: HashMap<NodeId, usize>,
-    lowlinks: HashMap<NodeId, usize>,
+    on_stack: FxHashSet<NodeId>,
+    indices: FxHashMap<NodeId, usize>,
+    lowlinks: FxHashMap<NodeId, usize>,
     result: Vec<Vec<NodeId>>,
   }
 
   fn strongconnect(
     node: NodeId,
-    adj: &HashMap<NodeId, Vec<NodeId>>,
+    adj: &FxHashMap<NodeId, Vec<NodeId>>,
     state: &mut TarjanState,
   ) {
     state.indices.insert(node, state.index_counter);
@@ -357,9 +359,9 @@ fn tarjan_scc(adj: &HashMap<NodeId, Vec<NodeId>>) -> Vec<Vec<NodeId>> {
   let mut state = TarjanState {
     index_counter: 0,
     stack: Vec::new(),
-    on_stack: HashSet::new(),
-    indices: HashMap::new(),
-    lowlinks: HashMap::new(),
+    on_stack: FxHashSet::default(),
+    indices: FxHashMap::default(),
+    lowlinks: FxHashMap::default(),
     result: Vec::new(),
   };
 
@@ -374,17 +376,17 @@ fn tarjan_scc(adj: &HashMap<NodeId, Vec<NodeId>>) -> Vec<Vec<NodeId>> {
 
 pub struct Graph {
   /// Each requirement is mapped to a specific name and version.
-  package_reqs: HashMap<PackageReq, Rc<PackageNv>>,
+  package_reqs: FxHashMap<PackageReq, Rc<PackageNv>>,
   /// Then each name and version is mapped to an exact node id.
   /// Note: Uses a BTreeMap in order to create some determinism
   /// when creating the snapshot.
   root_packages: BTreeMap<Rc<PackageNv>, NodeId>,
-  package_name_versions: HashMap<StackString, HashSet<Version>>,
-  nodes: HashMap<NodeId, Node>,
+  package_name_versions: FxHashMap<StackString, FxHashSet<Version>>,
+  nodes: FxHashMap<NodeId, Node>,
   resolved_node_ids: ResolvedNodeIds,
   // This will be set when creating from a snapshot, then
   // inform the final snapshot creation.
-  packages_to_copy_index: HashMap<NpmPackageId, u8>,
+  packages_to_copy_index: FxHashMap<NpmPackageId, u8>,
   moved_package_ids: IndexMap<NodeId, (ResolvedId, ResolvedId)>,
   #[cfg(feature = "tracing")]
   traces: Vec<super::tracing::TraceGraphSnapshot>,
@@ -395,8 +397,8 @@ impl Graph {
     fn get_or_create_graph_node<'a>(
       graph: &mut Graph,
       pkg_id: &NpmPackageId,
-      packages: &HashMap<NpmPackageId, NpmResolutionPackage>,
-      created_package_ids: &mut HashMap<NpmPackageId, NodeId>,
+      packages: &FxHashMap<NpmPackageId, NpmResolutionPackage>,
+      created_package_ids: &mut FxHashMap<NpmPackageId, NodeId>,
       ancestor_ids: &'a OneDirectionalLinkedList<'a, NpmPackageId>,
     ) -> NodeId {
       if let Some(id) = created_package_ids.get(pkg_id) {
@@ -503,8 +505,10 @@ impl Graph {
       #[cfg(feature = "tracing")]
       traces: Default::default(),
     };
-    let mut created_package_ids =
-      HashMap::with_capacity(snapshot.packages.len());
+    let mut created_package_ids = FxHashMap::with_capacity_and_hasher(
+      snapshot.packages.len(),
+      Default::default(),
+    );
     for (id, resolved_id) in snapshot.root_packages {
       let node_id = get_or_create_graph_node(
         &mut graph,
@@ -534,7 +538,7 @@ impl Graph {
   ///
   /// Each node's ID is computed exactly ONCE, avoiding the O(n²) expansion
   /// that occurred with the previous per-path computing HashSet approach.
-  fn compute_all_npm_pkg_ids(&self) -> HashMap<NodeId, NpmPackageId> {
+  fn compute_all_npm_pkg_ids(&self) -> FxHashMap<NodeId, NpmPackageId> {
     // Step 1: Build per-node peer info and NV-level adjacency graph.
     //
     // We need TWO levels of analysis:
@@ -544,17 +548,17 @@ impl Graph {
     //   even if the specific NodeIds involved are different.
     // - Node-level (NodeId): for computation ordering. We process nodes
     //   in topological order so non-cyclic peers are cached before use.
-    let mut node_peers: HashMap<NodeId, Vec<(NodeId, Rc<PackageNv>)>> =
-      HashMap::new();
-    let mut nv_peer_adj: HashMap<Rc<PackageNv>, HashSet<Rc<PackageNv>>> =
-      HashMap::new();
-    let mut node_adj: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
+    let mut node_peers: FxHashMap<NodeId, Vec<(NodeId, Rc<PackageNv>)>> =
+      FxHashMap::default();
+    let mut nv_peer_adj: FxHashMap<Rc<PackageNv>, FxHashSet<Rc<PackageNv>>> =
+      FxHashMap::default();
+    let mut node_adj: FxHashMap<NodeId, Vec<NodeId>> = FxHashMap::default();
 
     for (&node_id, (resolved_id, _)) in
       &self.resolved_node_ids.node_to_resolved_id
     {
       let nv_entry = nv_peer_adj.entry(resolved_id.nv.clone()).or_default();
-      let mut seen_nvs = HashSet::new();
+      let mut seen_nvs = FxHashSet::default();
       let mut peers = Vec::new();
       let mut adj = Vec::new();
 
@@ -577,13 +581,13 @@ impl Graph {
     // Map each unique NV to a pseudo NodeId for Tarjan's, which operates
     // on HashMap<NodeId, Vec<NodeId>>.
     let all_nvs: Vec<Rc<PackageNv>> = nv_peer_adj.keys().cloned().collect();
-    let nv_to_idx: HashMap<&PackageNv, usize> = all_nvs
+    let nv_to_idx: FxHashMap<&PackageNv, usize> = all_nvs
       .iter()
       .enumerate()
       .map(|(i, nv)| (nv.as_ref(), i))
       .collect();
 
-    let nv_adj_for_tarjan: HashMap<NodeId, Vec<NodeId>> = all_nvs
+    let nv_adj_for_tarjan: FxHashMap<NodeId, Vec<NodeId>> = all_nvs
       .iter()
       .enumerate()
       .map(|(i, nv)| {
@@ -605,8 +609,8 @@ impl Graph {
     let nv_sccs = tarjan_scc(&nv_adj_for_tarjan);
 
     // Build: for each NV, which SCC index is it in? And which NVs are cyclic?
-    let mut nv_scc_idx: HashMap<&PackageNv, usize> = HashMap::new();
-    let mut cyclic_nvs: HashSet<&PackageNv> = HashSet::new();
+    let mut nv_scc_idx: FxHashMap<&PackageNv, usize> = FxHashMap::default();
+    let mut cyclic_nvs: FxHashSet<&PackageNv> = FxHashSet::default();
     for (scc_idx, scc) in nv_sccs.iter().enumerate() {
       let is_cycle = scc.len() > 1
         || (scc.len() == 1
@@ -630,8 +634,8 @@ impl Graph {
     // For each node's peer deps, check if the peer's NV forms a cycle
     // with the node's own NV. If so, use flat name@version. Otherwise
     // use the cached (already computed) full ID.
-    let mut cache: HashMap<NodeId, NpmPackageId> =
-      HashMap::with_capacity(self.nodes.len());
+    let mut cache: FxHashMap<NodeId, NpmPackageId> =
+      FxHashMap::with_capacity_and_hasher(self.nodes.len(), Default::default());
 
     for scc in &node_sccs {
       for &node_id in scc {
@@ -699,7 +703,7 @@ impl Graph {
   fn get_npm_pkg_id_from_resolved_id_using_cache(
     &self,
     resolved_id: &ResolvedId,
-    cache: &HashMap<NodeId, NpmPackageId>,
+    cache: &FxHashMap<NodeId, NpmPackageId>,
   ) -> NpmPackageId {
     if let Some(node_id) = self.resolved_node_ids.get_node_id(resolved_id)
       && let Some(pkg_id) = cache.get(&node_id)
@@ -802,9 +806,10 @@ impl Graph {
     &self,
     api: &TNpmRegistryApi,
     link_packages: &HashMap<PackageName, Vec<NpmPackageVersionInfo>>,
-    packages_to_pkg_ids: &'ids HashMap<NodeId, NpmPackageId>,
+    packages_to_pkg_ids: &'ids FxHashMap<NodeId, NpmPackageId>,
   ) -> Result<Option<PackagesForSnapshot<'ids>>, NpmResolutionError> {
-    let mut traversed_ids = HashSet::with_capacity(self.nodes.len());
+    let mut traversed_ids =
+      FxHashSet::with_capacity_and_hasher(self.nodes.len(), Default::default());
     let mut pending = VecDeque::with_capacity(self.nodes.len());
     for root_id in self.root_packages.values().copied() {
       let pkg_id = packages_to_pkg_ids.get(&root_id).unwrap();
@@ -827,7 +832,9 @@ impl Graph {
       }
 
       pending_futures.push_back(async move {
-        let package_info = api.package_info(&pkg_id.nv.name).await?;
+        let package_info =
+          package_info_or_link_fallback(api, &pkg_id.nv.name, link_packages)
+            .await?;
         Ok::<_, NpmRegistryPackageInfoLoadError>((
           pkg_id,
           dependencies,
@@ -836,8 +843,8 @@ impl Graph {
       });
     }
 
-    let mut packages_by_name: HashMap<PackageName, Vec<_>> =
-      HashMap::with_capacity(self.nodes.len());
+    let mut packages_by_name: FxHashMap<PackageName, Vec<_>> =
+      FxHashMap::with_capacity_and_hasher(self.nodes.len(), Default::default());
     let mut packages: Vec<NpmResolutionPackage> =
       Vec::with_capacity(self.nodes.len());
     while let Some(result) = pending_futures.next().await {
@@ -903,7 +910,7 @@ impl Graph {
 
   fn into_snapshot_from_packages(
     mut self,
-    packages_to_pkg_ids: &HashMap<NodeId, NpmPackageId>,
+    packages_to_pkg_ids: &FxHashMap<NodeId, NpmPackageId>,
     pkgs_for_snapshot: PackagesForSnapshot<'_>,
   ) -> Result<NpmResolutionSnapshot, NpmResolutionError> {
     let PackagesForSnapshot {
@@ -1011,8 +1018,8 @@ impl Graph {
   #[cfg(debug_assertions)]
   #[allow(unused, clippy::print_stderr, reason = "debug utility")]
   fn output_node_with_ids(
-    nodes: &HashMap<NodeId, Node>,
-    pkg_ids: &HashMap<NodeId, NpmPackageId>,
+    nodes: &FxHashMap<NodeId, Node>,
+    pkg_ids: &FxHashMap<NodeId, NpmPackageId>,
     node_id: NodeId,
     show_children: bool,
   ) {
@@ -1039,7 +1046,7 @@ impl Graph {
       .keys()
       .copied()
       .collect::<Vec<_>>();
-    node_ids.sort_by(|a, b| a.0.cmp(&b.0));
+    node_ids.sort_by_key(|a| a.0);
     for node_id in node_ids {
       Self::output_node_with_ids(&self.nodes, &pkg_ids, node_id, true);
     }
@@ -1048,7 +1055,7 @@ impl Graph {
 }
 
 #[derive(Default)]
-struct DepEntryCache(HashMap<Rc<PackageNv>, Rc<Vec<NpmDependencyEntry>>>);
+struct DepEntryCache(FxHashMap<Rc<PackageNv>, Rc<Vec<NpmDependencyEntry>>>);
 
 impl DepEntryCache {
   pub fn store(
@@ -1094,20 +1101,20 @@ pub struct GraphDependencyResolver<'a, TNpmRegistryApi: NpmRegistryApi> {
   /// that have already been re-queued for processing. Uses canonical node IDs
   /// (via `node_id_mappings`) so that node copies from `add_peer_deps_to_path`
   /// share the same dedup entries as their originals.
-  visited_requeue: HashSet<(NodeId, NodeId)>,
+  visited_requeue: FxHashSet<(NodeId, NodeId)>,
   /// Maps old NodeId → new NodeId when `add_peer_deps_to_path` creates a copy.
   /// Used to canonicalize node IDs for `visited_requeue` dedup, so that copies
   /// don't bypass the dedup check.
-  node_id_mappings: HashMap<NodeId, NodeId>,
+  node_id_mappings: FxHashMap<NodeId, NodeId>,
   // --- Phase 2: Peer resolution with caching ---
   /// Packages whose entire subtree has no externally resolved peer deps.
   /// Once marked pure, subsequent encounters skip the entire subtree.
-  pure_pkgs: HashSet<Rc<PackageNv>>,
+  pure_pkgs: FxHashSet<Rc<PackageNv>>,
   /// Cache of peer resolution results per package version.
   /// Each entry records which peers were resolved and to what NodeId.
   /// `find_peers_cache_hit` checks if the current parent context
   /// matches a cached entry.
-  peers_cache: HashMap<Rc<PackageNv>, Vec<PeersResolution>>,
+  peers_cache: FxHashMap<Rc<PackageNv>, Vec<PeersResolution>>,
   /// Auto-installed peer deps as fallback, not in root_packages so they
   /// don't pollute the root scope. Phase 2 uses these when a required
   /// peer isn't found in scope.
@@ -1134,10 +1141,10 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       reporter,
       should_dedup: options.should_dedup,
       initial_overrides: Rc::new((*version_resolver.overrides).clone()),
-      visited_requeue: HashSet::new(),
-      node_id_mappings: HashMap::new(),
-      pure_pkgs: HashSet::new(),
-      peers_cache: HashMap::new(),
+      visited_requeue: FxHashSet::default(),
+      node_id_mappings: FxHashMap::default(),
+      pure_pkgs: FxHashSet::default(),
+      peers_cache: FxHashMap::default(),
       peer_fallbacks: BTreeMap::new(),
     }
   }
@@ -1508,7 +1515,13 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       }
 
       // Resolve from registry and add to fallback (not root_packages)
-      let package_info = match self.api.package_info(name.as_str()).await {
+      let package_info = match package_info_or_link_fallback(
+        self.api,
+        name.as_str(),
+        &self.version_resolver.link_packages,
+      )
+      .await
+      {
         Ok(info) => info,
         Err(_) => continue,
       };
@@ -1571,7 +1584,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       .collect();
 
     for (_nv, node_id) in &roots {
-      let mut visiting = HashSet::new();
+      let mut visiting = FxHashSet::default();
       let result = self.resolve_peers_of_node(
         *node_id,
         &root_scope,
@@ -1594,7 +1607,8 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
   fn dedup_peer_dependents(&mut self) {
     // Group NodeIds by PackageNv (name@version). Only groups with 2+
     // entries are candidates for dedup.
-    let mut nv_to_nodes: HashMap<Rc<PackageNv>, Vec<NodeId>> = HashMap::new();
+    let mut nv_to_nodes: FxHashMap<Rc<PackageNv>, Vec<NodeId>> =
+      FxHashMap::default();
     for (&node_id, (resolved_id, _)) in
       &self.graph.resolved_node_ids.node_to_resolved_id
     {
@@ -1638,8 +1652,8 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
   fn dedup_dep_paths(
     &self,
     duplicates: &[Vec<NodeId>],
-  ) -> (HashMap<NodeId, NodeId>, Vec<Vec<NodeId>>) {
-    let mut dep_paths_map: HashMap<NodeId, NodeId> = HashMap::new();
+  ) -> (FxHashMap<NodeId, NodeId>, Vec<Vec<NodeId>>) {
+    let mut dep_paths_map: FxHashMap<NodeId, NodeId> = FxHashMap::default();
     let mut remaining: Vec<Vec<NodeId>> = Vec::new();
 
     for node_ids in duplicates {
@@ -1759,7 +1773,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
 
   /// Apply dedup mappings to the entire graph.
   /// Replace all references to subset NodeIds with their superset NodeIds.
-  fn apply_dedup_mappings(&mut self, mappings: &HashMap<NodeId, NodeId>) {
+  fn apply_dedup_mappings(&mut self, mappings: &FxHashMap<NodeId, NodeId>) {
     // Update node children
     let all_node_ids: Vec<NodeId> = self.graph.nodes.keys().copied().collect();
     for node_id in &all_node_ids {
@@ -1833,7 +1847,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     &mut self,
     node_id: NodeId,
     parent_pkgs: &BTreeMap<StackString, NodeId>,
-    visiting: &mut HashSet<NodeId>,
+    visiting: &mut FxHashSet<NodeId>,
     ancestors: &[Rc<PackageNv>],
   ) -> Result<PeersResolution, NpmResolutionError> {
     let nv = self
@@ -2046,7 +2060,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     // When siblings are peers of each other, copies initially reference
     // the ORIGINAL nodes. Update them to reference copies.
     {
-      let original_to_copy: HashMap<NodeId, NodeId> = all_deps_to_recurse
+      let original_to_copy: FxHashMap<NodeId, NodeId> = all_deps_to_recurse
         .iter()
         .filter_map(|(spec, orig_id)| {
           let copy_id = resolved_children.get(spec)?;
@@ -2093,7 +2107,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
 
     // Check if there are transitive peers that would be added to identity.
     // These are peers from children that are NOT own children or own peers.
-    let original_child_names_set: HashSet<&StackString> =
+    let original_child_names_set: FxHashSet<&StackString> =
       children.iter().map(|(s, _)| s).collect();
     let has_transitive_peers = all_resolved_peers.keys().any(|name| {
       !original_child_names_set.contains(name)
@@ -2114,7 +2128,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
         let old_resolved_id =
           self.graph.resolved_node_ids.get(node_id).unwrap().clone();
         let mut new_peer_deps: Vec<NodeId> = Vec::new();
-        let mut seen_nvs: HashSet<Rc<PackageNv>> = HashSet::new();
+        let mut seen_nvs: FxHashSet<Rc<PackageNv>> = FxHashSet::default();
 
         // Add own peer deps first
         for (spec, _orig_peer_id) in &own_peer_deps {
@@ -2235,7 +2249,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     // regular deps are "consumed" here and don't bubble further up.
     // We use the original `children` vec (Phase 1 regular deps), NOT the
     // copy node's children (which includes newly-added peer deps).
-    let original_child_names: HashSet<&StackString> =
+    let original_child_names: FxHashSet<&StackString> =
       children.iter().map(|(s, _)| s).collect();
     let should_bubble = |name: &StackString| {
       !original_child_names.contains(name) && name.as_str() != nv.name.as_str()
@@ -2303,7 +2317,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     nv: &Rc<PackageNv>,
     parent_pkgs: &BTreeMap<StackString, NodeId>,
   ) -> Option<PeersResolution> {
-    let mut checking = HashSet::new();
+    let mut checking = FxHashSet::default();
     // Memoize recursive equivalence checks within this call.
     // `parent_pkgs` is constant throughout, so the result of
     // "does nv X have a matching cache entry?" is the same every
@@ -2311,7 +2325,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     // (like the AWS CDK v1 suite) cause combinatorial explosion:
     // each cache entry re-checks the same peers, each of which
     // re-checks their peers, leading to millions of redundant calls.
-    let mut memo = HashMap::new();
+    let mut memo = FxHashMap::default();
     self.find_peers_cache_hit_inner(nv, parent_pkgs, &mut checking, &mut memo)
   }
 
@@ -2319,8 +2333,8 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     &self,
     nv: &Rc<PackageNv>,
     parent_pkgs: &BTreeMap<StackString, NodeId>,
-    checking: &mut HashSet<Rc<PackageNv>>,
-    memo: &mut HashMap<Rc<PackageNv>, Option<PeersResolution>>,
+    checking: &mut FxHashSet<Rc<PackageNv>>,
+    memo: &mut FxHashMap<Rc<PackageNv>, Option<PeersResolution>>,
   ) -> Option<PeersResolution> {
     // Return memoized result if we've already fully evaluated this nv.
     if let Some(result) = memo.get(nv) {
@@ -2493,6 +2507,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       parent_id: usize,
       work: &mut FuturesUnordered<WorkFuture<'a>>,
       api: &'a (impl NpmRegistryApi + ?Sized),
+      link_packages: &'a HashMap<PackageName, Vec<NpmPackageVersionInfo>>,
     ) {
       for (dep_index, dep) in deps.iter().enumerate() {
         let name = overrides
@@ -2500,7 +2515,8 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           .cloned()
           .unwrap_or_else(|| dep.name.clone());
         work.push(Box::pin(async move {
-          let result = api.package_info(&name).await;
+          let result =
+            package_info_or_link_fallback(api, &name, link_packages).await;
           FetchEvent::DepInfo {
             parent_id,
             dep_index,
@@ -2518,6 +2534,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       work: &mut FuturesUnordered<WorkFuture<'a>>,
       trackers: &mut Vec<ParentState>,
       api: &'a (impl NpmRegistryApi + ?Sized),
+      link_packages: &'a HashMap<PackageName, Vec<NpmPackageVersionInfo>>,
     ) {
       while let Some(parent_path) = pending.pop_front() {
         let node_id = parent_path.node_id();
@@ -2540,6 +2557,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
             parent_id,
             work,
             api,
+            link_packages,
           );
           trackers.push(ParentState::Pending {
             path: parent_path,
@@ -2552,7 +2570,8 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           trackers.push(ParentState::AwaitingParentInfo);
           let nv = pkg_nv;
           work.push(Box::pin(async move {
-            let result = api.package_info(&nv.name).await;
+            let result =
+              package_info_or_link_fallback(api, &nv.name, link_packages).await;
             FetchEvent::ParentInfo {
               id: parent_id,
               path: parent_path,
@@ -2565,6 +2584,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     }
 
     let api = self.api;
+    let link_packages = &*self.version_resolver.link_packages;
     let mut work: FuturesUnordered<WorkFuture<'_>> = FuturesUnordered::new();
     let mut trackers: Vec<ParentState> = Vec::new();
     let mut next_to_retire: usize = 0;
@@ -2576,6 +2596,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       &mut work,
       &mut trackers,
       api,
+      link_packages,
     );
 
     while let Some(event) = work.next().await {
@@ -2603,6 +2624,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
               id,
               &mut work,
               api,
+              link_packages,
             );
             trackers[id] = ParentState::Pending {
               path,
@@ -2682,6 +2704,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
             &mut work,
             &mut trackers,
             api,
+            link_packages,
           );
         }
         next_to_retire += 1;
@@ -2915,7 +2938,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           .get(*node_id)
           .map(|r| r.nv.clone())
       })
-      .collect::<HashSet<_>>();
+      .collect::<FxHashSet<_>>();
     for (peer_dep, nv) in peer_deps {
       if *nv == new_resolved_id.nv {
         continue;
@@ -2995,12 +3018,17 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
   async fn run_dedup_pass(&mut self) -> Result<(), NpmResolutionError> {
     debug!("Running npm dedup pass.");
     type VersionReqsByVersion = BTreeMap<Version, Vec<VersionReq>>;
-    let mut package_version_reqs_by_version: HashMap<
+    let mut package_version_reqs_by_version: FxHashMap<
       PackageName,
       VersionReqsByVersion,
-    > = HashMap::with_capacity(self.graph.nodes.len());
-    let mut seen_nodes: HashSet<NodeId> =
-      HashSet::with_capacity(self.graph.nodes.len());
+    > = FxHashMap::with_capacity_and_hasher(
+      self.graph.nodes.len(),
+      Default::default(),
+    );
+    let mut seen_nodes: FxHashSet<NodeId> = FxHashSet::with_capacity_and_hasher(
+      self.graph.nodes.len(),
+      Default::default(),
+    );
     let mut pending_nodes: VecDeque<NodeId> = Default::default();
 
     for (req, pkg_nv) in &self.graph.package_reqs {
@@ -3033,8 +3061,10 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
           pending_dep_entries.push_back((node_id, deps.clone()));
         } else {
           let api = self.api;
+          let link_pkgs = &*self.version_resolver.link_packages;
           futures.push(async move {
-            let package_info = api.package_info(&nv.name).await?;
+            let package_info =
+              package_info_or_link_fallback(api, &nv.name, link_pkgs).await?;
             Result::<_, NpmResolutionError>::Ok((node_id, nv, package_info))
           });
         }
@@ -3123,7 +3153,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
 
     let mut consolidated_versions: BTreeMap<
       PackageName,
-      HashMap<VersionReq, Version>,
+      FxHashMap<VersionReq, Version>,
     > = Default::default();
 
     for (package_name, reqs_by_version) in package_version_reqs_by_version {
@@ -3209,7 +3239,7 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
       else {
         continue;
       };
-      let target_versions: HashSet<&Version> =
+      let target_versions: FxHashSet<&Version> =
         versions_by_req.values().collect();
       if target_versions.contains(&current_nv.version) {
         continue; // already at a target version
@@ -3286,16 +3316,22 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
     &self,
     package_name: &PackageName,
     by_version: &BTreeMap<Version, Vec<VersionReq>>,
-  ) -> HashMap<VersionReq, Version> {
+  ) -> FxHashMap<VersionReq, Version> {
     // this should already be cached
-    let package_info = self.api.package_info(package_name).await.unwrap();
+    let package_info = package_info_or_link_fallback(
+      self.api,
+      package_name,
+      &self.version_resolver.link_packages,
+    )
+    .await
+    .unwrap();
     let version_resolver = self.version_resolver.get_for_package(&package_info);
 
     // collect unique reqs across all versions
     let reqs = by_version
       .values()
       .flat_map(|rs| rs.iter())
-      .collect::<HashSet<_>>();
+      .collect::<FxHashSet<_>>();
 
     // candidate versions = keys of by_version, highest -> lowest
     let mut candidates: Vec<Version> = by_version.keys().cloned().collect();
@@ -3318,8 +3354,8 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
 
     // otherwise, use highest-first per-range
     let mut unassigned = reqs;
-    let mut assigned: HashMap<VersionReq, Version> =
-      HashMap::with_capacity(unassigned.len());
+    let mut assigned: FxHashMap<VersionReq, Version> =
+      FxHashMap::with_capacity_and_hasher(unassigned.len(), Default::default());
 
     for v in candidates.into_iter() {
       // assign all still-unassigned reqs that accept this version
@@ -3428,6 +3464,7 @@ fn build_trace_graph_snapshot(
 #[cfg(test)]
 mod test {
   use std::collections::BTreeSet;
+  use std::collections::HashSet;
   use std::sync::Arc;
 
   use pretty_assertions::assert_eq;
@@ -6085,6 +6122,32 @@ mod test {
   }
 
   #[tokio::test]
+  async fn skips_file_dep() {
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    api.ensure_package_version("package-b", "1.0.0");
+    api.add_dependency(("package-a", "1.0.0"), ("package-b", "*"));
+    api.add_dependency(
+      ("package-b", "1.0.0"),
+      ("local-pkg", "file:./local-pkg"),
+    );
+    // Should resolve successfully, skipping the file: dependency
+    let snapshot =
+      run_resolver_and_get_snapshot(api, vec!["package-a@1.0.0"]).await;
+    let packages = package_names_with_info(
+      &snapshot,
+      &NpmSystemInfo {
+        os: "darwin".into(),
+        cpu: "x86_64".into(),
+      },
+    );
+    assert_eq!(
+      packages,
+      vec!["package-a@1.0.0".to_string(), "package-b@1.0.0".to_string(),]
+    );
+  }
+
+  #[tokio::test]
   async fn peer_dep_on_self() {
     let api = TestNpmRegistryApi::default();
     api.ensure_package_version("package-a", "1.0.0");
@@ -6469,6 +6532,7 @@ mod test {
             tarball: "https://example.com/package-0@1.0.0.tgz".to_string(),
             shasum: None,
             integrity: None,
+            attestations: None,
           }),
           has_bin: false,
           has_scripts: false,
@@ -6505,6 +6569,7 @@ mod test {
             tarball: "https://example.com/package-a@1.0.0.tgz".to_string(),
             shasum: None,
             integrity: None,
+            attestations: None,
           }),
           has_bin: false,
           has_scripts: false,
@@ -6522,6 +6587,7 @@ mod test {
             tarball: "https://example.com/package-b@1.0.0.tgz".to_string(),
             shasum: None,
             integrity: None,
+            attestations: None,
           }),
           has_bin: false,
           has_scripts: false,
@@ -6641,6 +6707,142 @@ mod test {
     assert_eq!(
       package_reqs,
       vec![("package-a@1.0.0".to_string(), "package-a@1.0.0".to_string())]
+    );
+  }
+
+  #[tokio::test]
+  async fn link_package_not_on_registry() {
+    // Test that a package which only exists as a link (not published to npm)
+    // can be resolved successfully. This is the scenario from issue #33010.
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    // package-a depends on local-only-pkg which is NOT on the registry
+    api.add_dependency(("package-a", "1.0.0"), ("local-only-pkg", "^1.0.0"));
+
+    let link_packages = HashMap::from([(
+      PackageName::from_static("local-only-pkg"),
+      vec![NpmPackageVersionInfo {
+        version: Version::parse_standard("1.0.0").unwrap(),
+        ..Default::default()
+      }],
+    )]);
+
+    let (packages, package_reqs) = run_resolver_with_options_and_get_output(
+      api,
+      RunResolverOptions {
+        reqs: vec!["package-a@1.0.0"],
+        link_packages: Some(&link_packages),
+        ..Default::default()
+      },
+    )
+    .await;
+
+    assert_eq!(
+      packages,
+      vec![
+        TestNpmResolutionPackage {
+          pkg_id: "local-only-pkg@1.0.0".to_string(),
+          copy_index: 0,
+          dependencies: Default::default(),
+        },
+        TestNpmResolutionPackage {
+          pkg_id: "package-a@1.0.0".to_string(),
+          copy_index: 0,
+          dependencies: BTreeMap::from([(
+            "local-only-pkg".to_string(),
+            "local-only-pkg@1.0.0".to_string(),
+          )]),
+        },
+      ]
+    );
+    assert_eq!(
+      package_reqs,
+      vec![("package-a@1.0.0".to_string(), "package-a@1.0.0".to_string())]
+    );
+  }
+
+  #[tokio::test]
+  async fn link_package_not_on_registry_as_root() {
+    // Test that a link-only package can be resolved when it is the
+    // root/top-level package requirement.
+    let api = TestNpmRegistryApi::default();
+
+    let link_packages = HashMap::from([(
+      PackageName::from_static("my-local-pkg"),
+      vec![NpmPackageVersionInfo {
+        version: Version::parse_standard("2.0.0").unwrap(),
+        ..Default::default()
+      }],
+    )]);
+
+    let (packages, package_reqs) = run_resolver_with_options_and_get_output(
+      api,
+      RunResolverOptions {
+        reqs: vec!["my-local-pkg@^2.0.0"],
+        link_packages: Some(&link_packages),
+        ..Default::default()
+      },
+    )
+    .await;
+
+    assert_eq!(
+      packages,
+      vec![TestNpmResolutionPackage {
+        pkg_id: "my-local-pkg@2.0.0".to_string(),
+        copy_index: 0,
+        dependencies: Default::default(),
+      }]
+    );
+    assert_eq!(
+      package_reqs,
+      vec![(
+        "my-local-pkg@^2.0.0".to_string(),
+        "my-local-pkg@2.0.0".to_string()
+      )]
+    );
+  }
+
+  #[tokio::test]
+  async fn link_package_prerelease_as_root() {
+    // A link package with a prerelease version should be selected for a bare
+    // `*` requirement, even though the registry also publishes a stable
+    // version that a `*` range would normally prefer (npm semver excludes
+    // prereleases). The explicitly linked local package wins.
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("my-local-pkg", "0.1.4");
+
+    let link_packages = HashMap::from([(
+      PackageName::from_static("my-local-pkg"),
+      vec![NpmPackageVersionInfo {
+        version: Version::parse_from_npm("0.40.0-pre").unwrap(),
+        ..Default::default()
+      }],
+    )]);
+
+    let (packages, package_reqs) = run_resolver_with_options_and_get_output(
+      api,
+      RunResolverOptions {
+        reqs: vec!["my-local-pkg@*"],
+        link_packages: Some(&link_packages),
+        ..Default::default()
+      },
+    )
+    .await;
+
+    assert_eq!(
+      packages,
+      vec![TestNpmResolutionPackage {
+        pkg_id: "my-local-pkg@0.40.0-pre".to_string(),
+        copy_index: 0,
+        dependencies: Default::default(),
+      }]
+    );
+    assert_eq!(
+      package_reqs,
+      vec![(
+        "my-local-pkg".to_string(),
+        "my-local-pkg@0.40.0-pre".to_string()
+      )]
     );
   }
 
@@ -7263,6 +7465,29 @@ mod test {
               "2021-11-07T00:00:00.000Z".parse().unwrap(),
             )),
             exclude: BTreeSet::from(["b".into()]),
+            exclude_prefixes: Default::default(),
+          },
+          ..Default::default()
+        },
+      )
+      .await;
+      assert_eq!(packages.len(), 2);
+      assert_eq!(packages[0].pkg_id, "a@1.0.1");
+      assert_eq!(packages[1].pkg_id, "b@1.0.1");
+    }
+
+    {
+      // excluding by prefix (e.g. from a wildcard entry like `b*`)
+      let (packages, _package_reqs) = run_resolver_with_options_and_get_output(
+        api.clone(),
+        RunResolverOptions {
+          reqs: vec!["a@1", "b@1"],
+          newest_dependency_date: NewestDependencyDateOptions {
+            date: Some(NewestDependencyDate(
+              "2021-11-07T00:00:00.000Z".parse().unwrap(),
+            )),
+            exclude: Default::default(),
+            exclude_prefixes: vec!["b".into()],
           },
           ..Default::default()
         },
@@ -7649,7 +7874,7 @@ mod test {
         )
       })
       .collect::<Vec<_>>();
-    package_reqs.sort_by(|a, b| a.0.to_string().cmp(&b.0.to_string()));
+    package_reqs.sort_by_key(|a| a.0.to_string());
 
     let packages = packages
       .into_iter()
@@ -7751,6 +7976,7 @@ mod test {
       link_packages: link_packages.clone(),
       newest_dependency_date_options: options.newest_dependency_date,
       overrides: Arc::new(options.overrides),
+      trust_policy: Default::default(),
     };
     let mut resolver = GraphDependencyResolver::new(
       &mut graph,
@@ -7764,8 +7990,10 @@ mod test {
 
     for req in options.reqs {
       let req = PackageReq::from_str(req).unwrap();
-      resolver
-        .add_package_req(&req, &api.package_info(&req.name).await.unwrap())?;
+      let info = package_info_or_link_fallback(api, &req.name, &link_packages)
+        .await
+        .unwrap();
+      resolver.add_package_req(&req, &info)?;
     }
 
     resolver.resolve_pending().await?;
@@ -8010,6 +8238,7 @@ mod test {
       link_packages: Default::default(),
       newest_dependency_date_options: Default::default(),
       overrides: Default::default(),
+      trust_policy: Default::default(),
     };
     let mut resolver = GraphDependencyResolver::new(
       &mut graph,
@@ -8034,8 +8263,12 @@ mod test {
   fn make_overrides(
     json: serde_json::Value,
   ) -> crate::resolution::NpmOverrides {
-    crate::resolution::NpmOverrides::from_value(json, &Default::default())
-      .unwrap()
+    crate::resolution::NpmOverrides::from_value(
+      json,
+      &Default::default(),
+      &Default::default(),
+    )
+    .unwrap()
   }
 
   fn make_overrides_with_root_deps(
@@ -8045,7 +8278,12 @@ mod test {
       deno_semver::StackString,
     >,
   ) -> crate::resolution::NpmOverrides {
-    crate::resolution::NpmOverrides::from_value(json, &root_deps).unwrap()
+    crate::resolution::NpmOverrides::from_value(
+      json,
+      &root_deps,
+      &Default::default(),
+    )
+    .unwrap()
   }
 
   #[tokio::test]

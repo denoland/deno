@@ -1,0 +1,18 @@
+{
+  "tempDir": true,
+  "tests": {
+    // pnpm-style workspace layout: root has node_modules/.bin/cowsay, but
+    // packages/child has no node_modules of its own. Running a task from
+    // the child must still resolve the bin by walking ancestors.
+    "child_finds_root_bin": {
+      "steps": [{
+        "commandName": "npm",
+        "args": "install",
+        "output": "[WILDCARD]"
+      }, {
+        "args": "task -f child say",
+        "output": "child_say.out"
+      }]
+    }
+  }
+}

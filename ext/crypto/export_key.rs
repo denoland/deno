@@ -4,15 +4,14 @@ use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use const_oid::AssociatedOid;
 use const_oid::ObjectIdentifier;
-use deno_core::ToJsBuffer;
-use deno_core::op2;
+use deno_core::ToV8;
+use deno_core::convert::Uint8Array;
 use elliptic_curve::sec1::ToEncodedPoint;
 use p256::pkcs8::DecodePrivateKey;
 use rsa::pkcs1::der::Decode;
 use rsa::pkcs8::der::Encode;
 use rsa::pkcs8::der::asn1::UintRef;
 use serde::Deserialize;
-use serde::Serialize;
 use spki::AlgorithmIdentifier;
 use spki::AlgorithmIdentifierOwned;
 use spki::der::asn1;
@@ -75,12 +74,12 @@ pub enum ExportKeyAlgorithm {
   Hmac {},
 }
 
-#[derive(Serialize)]
-#[serde(untagged)]
+#[derive(ToV8)]
+#[to_v8(untagged)]
 pub enum ExportKeyResult {
-  Raw(ToJsBuffer),
-  Pkcs8(ToJsBuffer),
-  Spki(ToJsBuffer),
+  Raw(Uint8Array),
+  Pkcs8(Uint8Array),
+  Spki(Uint8Array),
   JwkSecret {
     k: String,
   },
@@ -109,11 +108,12 @@ pub enum ExportKeyResult {
   },
 }
 
-#[op2]
-#[serde]
-pub fn op_crypto_export_key(
-  #[serde] opts: ExportKeyOptions,
-  #[serde] key_data: V8RawKeyData,
+/// Rust-side entry that accepts an already-`RawKeyData` and dispatches
+/// per algorithm. Used by `getPublicKey` where the key material is owned
+/// by Rust (the `CryptoKeyHandle` lives in the cppgc heap).
+pub fn export_key_with_raw(
+  opts: ExportKeyOptions,
+  key_data: &crate::shared::RawKeyData,
 ) -> Result<ExportKeyResult, ExportKeyError> {
   match opts.algorithm {
     ExportKeyAlgorithm::RsassaPkcs1v15 {}
@@ -129,6 +129,16 @@ pub fn op_crypto_export_key(
   }
 }
 
+impl ExportKeyOptions {
+  /// Builder used by the Rust-native `getPublicKey` dispatcher.
+  pub fn new(format: ExportKeyFormat, algorithm: ExportKeyAlgorithm) -> Self {
+    Self { format, algorithm }
+  }
+}
+
+pub(crate) use export_key_ec as export_key_ec_for_subtle;
+pub(crate) use export_key_rsa as export_key_rsa_for_subtle;
+
 fn uint_to_b64(bytes: UintRef) -> String {
   BASE64_URL_SAFE_NO_PAD.encode(bytes.as_bytes())
 }
@@ -137,9 +147,9 @@ fn bytes_to_b64(bytes: &[u8]) -> String {
   BASE64_URL_SAFE_NO_PAD.encode(bytes)
 }
 
-fn export_key_rsa(
+pub(crate) fn export_key_rsa(
   format: ExportKeyFormat,
-  key_data: V8RawKeyData,
+  key_data: &RawKeyData,
 ) -> Result<ExportKeyResult, ExportKeyError> {
   match format {
     ExportKeyFormat::Spki => {
@@ -223,9 +233,9 @@ fn export_key_rsa(
   }
 }
 
-fn export_key_symmetric(
+pub(crate) fn export_key_symmetric(
   format: ExportKeyFormat,
-  key_data: V8RawKeyData,
+  key_data: &RawKeyData,
 ) -> Result<ExportKeyResult, ExportKeyError> {
   match format {
     ExportKeyFormat::JwkSecret => {
@@ -239,9 +249,9 @@ fn export_key_symmetric(
   }
 }
 
-fn export_key_ec(
+pub(crate) fn export_key_ec(
   format: ExportKeyFormat,
-  key_data: V8RawKeyData,
+  key_data: &RawKeyData,
   algorithm: ExportKeyAlgorithm,
   named_curve: EcNamedCurve,
 ) -> Result<ExportKeyResult, ExportKeyError> {

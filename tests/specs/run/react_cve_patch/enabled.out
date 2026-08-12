@@ -1,0 +1,2 @@
+keys: ["a","b"]
+then: rejected Cannot have cyclic thenables.

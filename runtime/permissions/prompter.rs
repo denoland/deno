@@ -8,22 +8,58 @@ use parking_lot::Mutex;
 fn escape_control_characters(s: &str) -> std::borrow::Cow<'_, str> {
   use deno_terminal::colors;
 
-  if !s.contains(|c: char| c.is_ascii_control() || c.is_control()) {
+  if !s.contains(is_prompt_control_character) {
     return std::borrow::Cow::Borrowed(s);
   }
   let mut output = String::with_capacity(s.len() * 2);
   for c in s.chars() {
     match c {
-      c if c.is_ascii_control() => output.push_str(
-        &colors::white_bold_on_red(c.escape_debug().to_string()).to_string(),
-      ),
-      c if c.is_control() => output.push_str(
+      c if is_prompt_control_character(c) => output.push_str(
         &colors::white_bold_on_red(c.escape_debug().to_string()).to_string(),
       ),
       c => output.push(c),
     }
   }
   output.into()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn is_prompt_control_character(c: char) -> bool {
+  c.is_ascii_control()
+    || c.is_control()
+    // Unicode formatting controls that can spoof permission prompt text. These
+    // are General_Category=Format, not `char::is_control()`, so they pass
+    // through unescaped unless we handle them explicitly. A few have legitimate
+    // uses (e.g. joiners in some scripts and emoji), but in a security-sensitive
+    // prompt we prefer to render them visibly so the label can't be forged.
+    || matches!(
+      c,
+      // Bidirectional formatting controls. Terminals may interpret these and
+      // visually reorder the text (the Trojan-Source / bidi-spoofing vector).
+      '\u{061c}' // Arabic Letter Mark
+        | '\u{200e}' // Left-to-Right Mark
+        | '\u{200f}' // Right-to-Left Mark
+        | '\u{202a}' // Left-to-Right Embedding
+        | '\u{202b}' // Right-to-Left Embedding
+        | '\u{202c}' // Pop Directional Formatting
+        | '\u{202d}' // Left-to-Right Override
+        | '\u{202e}' // Right-to-Left Override
+        | '\u{2066}' // Left-to-Right Isolate
+        | '\u{2067}' // Right-to-Left Isolate
+        | '\u{2068}' // First Strong Isolate
+        | '\u{2069}' // Pop Directional Isolate
+      // Invisible / zero-width formatting controls. These render as nothing but
+      // can conceal or fake label content without reordering it.
+        | '\u{200b}' // Zero Width Space
+        | '\u{200c}' // Zero Width Non-Joiner
+        | '\u{200d}' // Zero Width Joiner
+        | '\u{2060}' // Word Joiner
+        | '\u{2061}' // Function Application
+        | '\u{2062}' // Invisible Times
+        | '\u{2063}' // Invisible Separator
+        | '\u{2064}' // Invisible Plus
+        | '\u{feff}' // Zero Width No-Break Space (byte order mark)
+    )
 }
 
 pub const PERMISSION_EMOJI: &str = "⚠️";
@@ -42,6 +78,9 @@ type DefaultPrompter = DeniedPrompter;
 
 static PERMISSION_PROMPTER: Lazy<Mutex<Box<dyn PermissionPrompter>>> =
   Lazy::new(|| Mutex::new(Box::new(DefaultPrompter::default())));
+
+static TERMINAL_INPUT_LOCK: std::sync::OnceLock<std::sync::Mutex<()>> =
+  std::sync::OnceLock::new();
 
 static MAYBE_BEFORE_PROMPT_CALLBACK: Lazy<Mutex<Option<PromptCallback>>> =
   Lazy::new(|| Mutex::new(None));
@@ -86,6 +125,18 @@ pub fn set_prompt_callbacks(
 
 pub fn set_prompter(prompter: Box<dyn PermissionPrompter>) {
   *PERMISSION_PROMPTER.lock() = prompter;
+}
+
+/// Guards direct reads from the process terminal input.
+///
+/// Permission prompts also read from stdin directly. Holding this lock around
+/// other terminal reads prevents permission prompts from racing with
+/// user-space interactive prompts and consuming or flushing their input.
+pub fn lock_terminal_input() -> std::sync::MutexGuard<'static, ()> {
+  TERMINAL_INPUT_LOCK
+    .get_or_init(Default::default)
+    .lock()
+    .unwrap_or_else(|err| err.into_inner())
 }
 
 pub type PromptCallback = Box<dyn FnMut() + Send + Sync>;
@@ -182,23 +233,20 @@ fn clear_stdin(
   use std::io::StdinLock;
   use std::io::Write as IoWrite;
 
-  use winapi::shared::minwindef::TRUE;
-  use winapi::shared::minwindef::UINT;
-  use winapi::shared::minwindef::WORD;
-  use winapi::shared::ntdef::WCHAR;
-  use winapi::um::processenv::GetStdHandle;
-  use winapi::um::winbase::STD_INPUT_HANDLE;
-  use winapi::um::wincon::FlushConsoleInputBuffer;
-  use winapi::um::wincon::PeekConsoleInputW;
-  use winapi::um::wincon::WriteConsoleInputW;
-  use winapi::um::wincontypes::INPUT_RECORD;
-  use winapi::um::wincontypes::KEY_EVENT;
-  use winapi::um::winnt::HANDLE;
-  use winapi::um::winuser::MAPVK_VK_TO_VSC;
-  use winapi::um::winuser::MapVirtualKeyW;
-  use winapi::um::winuser::VK_RETURN;
+  use windows_sys::Win32::Foundation::HANDLE;
+  use windows_sys::Win32::Foundation::TRUE;
+  use windows_sys::Win32::System::Console::FlushConsoleInputBuffer;
+  use windows_sys::Win32::System::Console::GetStdHandle;
+  use windows_sys::Win32::System::Console::INPUT_RECORD;
+  use windows_sys::Win32::System::Console::KEY_EVENT;
+  use windows_sys::Win32::System::Console::PeekConsoleInputW;
+  use windows_sys::Win32::System::Console::STD_INPUT_HANDLE;
+  use windows_sys::Win32::System::Console::WriteConsoleInputW;
+  use windows_sys::Win32::UI::Input::KeyboardAndMouse::MAPVK_VK_TO_VSC;
+  use windows_sys::Win32::UI::Input::KeyboardAndMouse::MapVirtualKeyW;
+  use windows_sys::Win32::UI::Input::KeyboardAndMouse::VK_RETURN;
 
-  // SAFETY: winapi calls
+  // SAFETY: Win32 calls
   unsafe {
     let stdin = GetStdHandle(STD_INPUT_HANDLE);
     // emulate an enter key press to clear any line buffered console characters
@@ -219,7 +267,7 @@ fn clear_stdin(
   return Ok(());
 
   unsafe fn flush_input_buffer(stdin: HANDLE) -> Result<(), std::io::Error> {
-    // SAFETY: winapi calls
+    // SAFETY: Win32 calls
     let success = unsafe { FlushConsoleInputBuffer(stdin) };
     if success != TRUE {
       return Err(std::io::Error::other(format!(
@@ -233,18 +281,17 @@ fn clear_stdin(
   unsafe fn emulate_enter_key_press(
     stdin: HANDLE,
   ) -> Result<(), std::io::Error> {
-    // SAFETY: winapi calls
+    // SAFETY: Win32 calls
     unsafe {
       // https://github.com/libuv/libuv/blob/a39009a5a9252a566ca0704d02df8dabc4ce328f/src/win/tty.c#L1121-L1131
       let mut input_record: INPUT_RECORD = std::mem::zeroed();
-      input_record.EventType = KEY_EVENT;
-      input_record.Event.KeyEvent_mut().bKeyDown = TRUE;
-      input_record.Event.KeyEvent_mut().wRepeatCount = 1;
-      input_record.Event.KeyEvent_mut().wVirtualKeyCode = VK_RETURN as WORD;
-      input_record.Event.KeyEvent_mut().wVirtualScanCode =
-        MapVirtualKeyW(VK_RETURN as UINT, MAPVK_VK_TO_VSC) as WORD;
-      *input_record.Event.KeyEvent_mut().uChar.UnicodeChar_mut() =
-        '\r' as WCHAR;
+      input_record.EventType = KEY_EVENT as u16;
+      input_record.Event.KeyEvent.bKeyDown = TRUE;
+      input_record.Event.KeyEvent.wRepeatCount = 1;
+      input_record.Event.KeyEvent.wVirtualKeyCode = VK_RETURN;
+      input_record.Event.KeyEvent.wVirtualScanCode =
+        MapVirtualKeyW(VK_RETURN as u32, MAPVK_VK_TO_VSC) as u16;
+      input_record.Event.KeyEvent.uChar.UnicodeChar = '\r' as u16;
 
       let mut record_written = 0;
       let success =
@@ -264,7 +311,7 @@ fn clear_stdin(
   ) -> Result<bool, std::io::Error> {
     let mut buffer = Vec::with_capacity(1);
     let mut events_read = 0;
-    // SAFETY: winapi calls
+    // SAFETY: Win32 calls
     let success = unsafe {
       PeekConsoleInputW(stdin, buffer.as_mut_ptr(), 1, &mut events_read)
     };
@@ -295,6 +342,54 @@ fn clear_stdin(
 fn clear_n_lines(stderr_lock: &mut std::io::StderrLock, n: usize) {
   use std::io::Write;
   write!(stderr_lock, "\x1B[{n}A\x1B[0J").unwrap();
+}
+
+/// Returns true if stdin's terminal line discipline has been put into raw
+/// mode by something else in this process — for example a Node.js library
+/// calling `process.stdin.setRawMode(true)`.
+///
+/// When that has happened our line-oriented `read_line()` prompt loop would
+/// hang forever (Enter delivers `\r` rather than `\n`, and ECHO is off so the
+/// user can't see they're typing), so we bail out instead.
+///
+/// We require *both* canonical input and echo to be disabled, matching what
+/// `setRaw`/`setRawMode` actually does (see `runtime/ops/tty.rs`). Clearing
+/// canonical mode alone does not trigger the hang as long as newlines are
+/// still delivered, and treating that as raw would misfire on setups that
+/// disable only canonical mode (such as the test PTY harness).
+#[cfg(unix)]
+fn stdin_is_raw_mode() -> bool {
+  // SAFETY: tcgetattr on a possibly-invalid fd 0 returns -1; on any failure we
+  // conservatively report not-raw.
+  unsafe {
+    let mut termios = std::mem::MaybeUninit::<libc::termios>::uninit();
+    if libc::tcgetattr(libc::STDIN_FILENO, termios.as_mut_ptr()) != 0 {
+      return false;
+    }
+    let termios = termios.assume_init();
+    termios.c_lflag & (libc::ICANON | libc::ECHO) == 0
+  }
+}
+
+#[cfg(all(not(unix), not(target_arch = "wasm32")))]
+fn stdin_is_raw_mode() -> bool {
+  use windows_sys::Win32::System::Console::ENABLE_ECHO_INPUT;
+  use windows_sys::Win32::System::Console::ENABLE_LINE_INPUT;
+  use windows_sys::Win32::System::Console::GetConsoleMode;
+  use windows_sys::Win32::System::Console::GetStdHandle;
+  use windows_sys::Win32::System::Console::STD_INPUT_HANDLE;
+
+  // SAFETY: winapi calls. GetConsoleMode returns 0 (FALSE) for non-console
+  // handles (e.g. when stdin is a pipe), in which case we conservatively
+  // return false.
+  unsafe {
+    let handle = GetStdHandle(STD_INPUT_HANDLE);
+    let mut mode = 0u32;
+    if GetConsoleMode(handle, &mut mode) == 0 {
+      return false;
+    }
+    mode & (ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT) == 0
+  }
 }
 
 #[cfg(unix)]
@@ -340,6 +435,26 @@ impl PermissionPrompter for TtyPrompter {
       return PromptResponse::Deny;
     };
 
+    // If stdin has been put into raw mode (e.g. a Node.js library has called
+    // `process.stdin.setRawMode(true)`) our line-oriented prompt loop would
+    // hang forever waiting for a `\n` that the terminal will never deliver,
+    // and the user wouldn't see what they're typing either. Bail out with a
+    // clear message so the program doesn't appear to freeze.
+    #[allow(clippy::print_stderr, reason = "actually want to print")]
+    if stdin_is_raw_mode() {
+      // Escape the message/name since they can contain user-controlled strings
+      // (env var names, file paths) that could otherwise spoof the terminal.
+      eprintln!(
+        "❌ Cannot prompt for {}: stdin is in raw mode (a library has likely called setRawMode).",
+        escape_control_characters(message)
+      );
+      eprintln!(
+        "❌ Run again with --allow-{} to grant the permission up front, or with -A to allow all permissions.",
+        escape_control_characters(name)
+      );
+      return PromptResponse::Deny;
+    }
+
     #[allow(clippy::print_stderr, reason = "actually want to print")]
     if message.len() > MAX_PERMISSION_PROMPT_LENGTH {
       eprintln!(
@@ -358,6 +473,8 @@ impl PermissionPrompter for TtyPrompter {
 
     #[cfg(unix)]
     let metadata_before = get_stdin_metadata().unwrap();
+
+    let terminal_input_guard = lock_terminal_input();
 
     // Lock stdio streams, so no other output is written while the prompt is
     // displayed.
@@ -503,6 +620,7 @@ impl PermissionPrompter for TtyPrompter {
     drop(stdout_lock);
     drop(stderr_lock);
     drop(stdin_lock);
+    drop(terminal_input_guard);
 
     // Ensure that stdin has not changed from the beginning to the end of the prompt. We consider
     // it sufficient to check a subset of stat calls. We do not consider the likelihood of a stdin
@@ -566,5 +684,45 @@ pub mod tests {
     pub fn set(&self, value: bool) {
       STUB_PROMPT_VALUE.store(value, Ordering::SeqCst);
     }
+  }
+
+  #[cfg(not(target_arch = "wasm32"))]
+  #[test]
+  fn escape_control_characters_escapes_bidi_formatting_marks() {
+    let escaped =
+      escape_control_characters("run access to \u{202e}txt.cilbup\u{202c}");
+
+    assert!(!escaped.contains('\u{202e}'));
+    assert!(!escaped.contains('\u{202c}'));
+    assert!(escaped.contains(r"\u{202e}"));
+    assert!(escaped.contains(r"\u{202c}"));
+  }
+
+  #[cfg(not(target_arch = "wasm32"))]
+  #[test]
+  fn escape_control_characters_escapes_invisible_formatting_marks() {
+    // Zero-width / invisible formatting characters render as nothing but can
+    // conceal or fake the displayed label.
+    for c in [
+      '\u{200b}', // Zero Width Space
+      '\u{200c}', // Zero Width Non-Joiner
+      '\u{200d}', // Zero Width Joiner
+      '\u{2060}', // Word Joiner
+      '\u{feff}', // Zero Width No-Break Space (byte order mark)
+    ] {
+      let input = format!("access to secret{c}.txt");
+      let escaped = escape_control_characters(&input);
+      assert!(!escaped.contains(c), "{c:?} should not survive unescaped");
+      assert!(
+        escaped.contains(&c.escape_debug().to_string()),
+        "{c:?} should be rendered visibly"
+      );
+    }
+  }
+
+  #[cfg(not(target_arch = "wasm32"))]
+  #[test]
+  fn escape_control_characters_leaves_safe_unicode_visible() {
+    assert_eq!(escape_control_characters("文件.txt"), "文件.txt");
   }
 }

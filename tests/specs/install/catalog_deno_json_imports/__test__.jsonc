@@ -1,0 +1,34 @@
+{
+  "tempDir": true,
+  "tests": {
+    "install_catalog_imports": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "install.out"
+        },
+        {
+          // ensure the packages were materialized into node_modules
+          "args": [
+            "eval",
+            "console.log(Deno.statSync('node_modules/@denotest/esm-basic').isDirectory, Deno.statSync('node_modules/@denotest/add').isDirectory)"
+          ],
+          "output": "true true\n"
+        },
+        {
+          "args": "run -A main.js",
+          "output": "42\n"
+        }
+      ]
+    },
+    "run_catalog_imports_no_install": {
+      "steps": [
+        {
+          // no node_modules dir, resolves straight from the global cache
+          "args": "run -A --node-modules-dir=none main.js",
+          "output": "[WILDCARD]42\n"
+        }
+      ]
+    }
+  }
+}

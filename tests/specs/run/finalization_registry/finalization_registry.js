@@ -12,9 +12,9 @@ const registry = new FinalizationRegistry((value) => {
 });
 
 (function () {
-  let x = {};
-  registry.register(x, "called!");
-  x = null;
+let x = {};
+registry.register(x, "called!");
+x = null;
 })();
 
 gc();

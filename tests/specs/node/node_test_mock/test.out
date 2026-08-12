@@ -1,4 +1,4 @@
-running 16 tests from ./test.js
+running 24 tests from ./test.js
 mock.fn() creates a mock function ... ok ([WILDLINE])
 mock.fn() with implementation ... ok ([WILDLINE])
 mock.fn() with original and implementation override ... ok ([WILDLINE])
@@ -13,6 +13,14 @@ mock.restoreAll() restores all mocked methods ... ok ([WILDLINE])
 test.mock is the same as mock ... ok ([WILDLINE])
 MockFunctionContext.resetCalls() ... ok ([WILDLINE])
 mock calls have stack traces ... ok ([WILDLINE])
+mock.property() mocks a property value ... ok ([WILDLINE])
+mock.property() defaults to the original value ... ok ([WILDLINE])
+mock.property() tracks set accesses ... ok ([WILDLINE])
+mock.property() mockImplementationOnce ... ok ([WILDLINE])
+mock.property() resetAccesses ... ok ([WILDLINE])
+mock.property() throws for non-existent property ... ok ([WILDLINE])
+mock.property() supports symbol property names ... ok ([WILDLINE])
+mock.property() validates arguments ... ok ([WILDLINE])
 done callback support ... ok ([WILDLINE])
 done callback with error ... FAILED ([WILDLINE])
 
@@ -26,6 +34,6 @@ error: Error: callback error
 
 done callback with error => ./test.js[WILDCARD]
 
-FAILED | 15 passed | 1 failed ([WILDLINE])
+FAILED | 23 passed | 1 failed ([WILDLINE])
 
 error: Test failed

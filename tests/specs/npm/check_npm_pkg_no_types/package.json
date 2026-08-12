@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@denotest/cjs-multiple-exports": "1.0.0",
+    "@denotest/no-types-cjs": "1.0.0"
+  }
+}

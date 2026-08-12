@@ -48,6 +48,20 @@ Deno.test({ permissions: { env: true } }, function avoidEmptyNamedEnv() {
   assertThrows(() => Deno.env.delete("a\0a"), TypeError);
 });
 
+// Regression test for https://github.com/denoland/deno/issues/23443
+// Every key returned by `toObject()` must be one that `get()` accepts.
+// On Windows, cmd.exe injects hidden per-drive cwd variables such as `=C:`
+// that contain `=`, which used to be enumerated but were not gettable.
+Deno.test({ permissions: { env: true } }, function envToObjectKeysAreValid() {
+  for (const key of Object.keys(Deno.env.toObject())) {
+    assert(key.length > 0, "toObject() returned an empty key");
+    assert(!key.includes("="), `toObject() returned an invalid key: ${key}`);
+    assert(!key.includes("\0"), `toObject() returned an invalid key: ${key}`);
+    // Must not throw.
+    Deno.env.get(key);
+  }
+});
+
 Deno.test({ permissions: { env: false } }, function envPerm1() {
   assertThrows(() => {
     Deno.env.toObject();

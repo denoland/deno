@@ -1,0 +1,16 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "test --quiet --coverage=cov main_test.ts",
+      "output": "[WILDCARD]",
+      "exitCode": 1
+    },
+    { "args": "coverage cov", "output": "config.out", "exitCode": 1 },
+    {
+      "args": "coverage --threshold=10 cov",
+      "output": "[WILDCARD]",
+      "exitCode": 0
+    }
+  ]
+}

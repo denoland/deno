@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "default_import_uses_cjs_namespace": {
+      "args": "check main.ts",
+      "output": "main.out"
+    },
+    "default_import_at_runtime": {
+      "args": "run main.ts",
+      "output": "run.out"
+    }
+  }
+}

@@ -70,7 +70,8 @@
         "@denotest/peer-dep-test-grandchild@1.0.0_@denotest+peer-dep-test-peer@1.0.0",
         "@denotest/peer-dep-test-peer@1.0.0"
       ],
-      "registryUrl": "http://localhost:4260/"
+      "registryUrl": "http://localhost:4260/",
+      "localPath": "[WILDLINE]"
     },
     "@denotest/peer-dep-test-child@2.0.0": {
       "name": "@denotest/peer-dep-test-child",
@@ -79,7 +80,8 @@
         "@denotest/peer-dep-test-grandchild@1.0.0_@denotest+peer-dep-test-peer@2.0.0",
         "@denotest/peer-dep-test-peer@2.0.0"
       ],
-      "registryUrl": "http://localhost:4260/"
+      "registryUrl": "http://localhost:4260/",
+      "localPath": "[WILDLINE]"
     },
     "@denotest/peer-dep-test-grandchild@1.0.0_@denotest+peer-dep-test-peer@1.0.0": {
       "name": "@denotest/peer-dep-test-grandchild",
@@ -87,7 +89,8 @@
       "dependencies": [
         "@denotest/peer-dep-test-peer@1.0.0"
       ],
-      "registryUrl": "http://localhost:4260/"
+      "registryUrl": "http://localhost:4260/",
+      "localPath": "[WILDLINE]"
     },
     "@denotest/peer-dep-test-grandchild@1.0.0_@denotest+peer-dep-test-peer@2.0.0": {
       "name": "@denotest/peer-dep-test-grandchild",
@@ -95,19 +98,22 @@
       "dependencies": [
         "@denotest/peer-dep-test-peer@2.0.0"
       ],
-      "registryUrl": "http://localhost:4260/"
+      "registryUrl": "http://localhost:4260/",
+      "localPath": "[WILDLINE]"
     },
     "@denotest/peer-dep-test-peer@1.0.0": {
       "name": "@denotest/peer-dep-test-peer",
       "version": "1.0.0",
       "dependencies": [],
-      "registryUrl": "http://localhost:4260/"
+      "registryUrl": "http://localhost:4260/",
+      "localPath": "[WILDLINE]"
     },
     "@denotest/peer-dep-test-peer@2.0.0": {
       "name": "@denotest/peer-dep-test-peer",
       "version": "2.0.0",
       "dependencies": [],
-      "registryUrl": "http://localhost:4260/"
+      "registryUrl": "http://localhost:4260/",
+      "localPath": "[WILDLINE]"
     }
   }
 }

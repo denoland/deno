@@ -1,0 +1,21 @@
+{
+  // Regression test for https://github.com/denoland/deno/issues/33233
+  // Decorator polyfill helpers (e.g. SWC's `applyDecs2203R`) injected into
+  // the runtime JS must not show up in coverage stats — they don't trace
+  // back to the user's source via the source map. Before the fix, this
+  // file reported branch coverage 38.5% / function 66.7% from the
+  // injected helpers. After, it reports 100% across the board because
+  // only the user's three functions (`Example`, the static initializer,
+  // and `something`) are accounted for.
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "test --coverage=coverage",
+      "output": "[WILDCARD]1 passed[WILDCARD]"
+    },
+    {
+      "args": "coverage coverage --lcov",
+      "output": "expected_lcov.out"
+    }
+  ]
+}
