@@ -15,12 +15,6 @@ use std::ptr::null_mut;
 use std::time::Duration;
 use std::time::Instant;
 
-#[cfg(unix)]
-unsafe extern "C" {
-  fn pipe(fds: *mut i32) -> i32;
-  fn write(fd: i32, buffer: *const std::ffi::c_void, count: usize) -> isize;
-}
-
 use libuv_sys_lite::uv_async_init;
 use libuv_sys_lite::uv_async_t;
 use libuv_sys_lite::uv_close;
@@ -1051,7 +1045,7 @@ extern "C" fn test_uv_poll_init_sets_nonblocking(
     let mut loop_ = null_mut();
     assert_napi_ok!(napi_get_uv_event_loop(env, &mut loop_));
     let mut fds = [0; 2];
-    assert_eq!(pipe(fds.as_mut_ptr()), 0);
+    assert_eq!(libc::pipe(fds.as_mut_ptr()), 0);
     let poll_fd = OwnedFd::from_raw_fd(fds[0]);
     let _other_fd = OwnedFd::from_raw_fd(fds[1]);
     let flags = libc::fcntl(poll_fd.as_raw_fd(), libc::F_GETFL);
@@ -1183,7 +1177,7 @@ unsafe fn new_poll_test(env: napi_env, callback: napi_value) -> *mut PollTest {
   unsafe {
     // Create the usual pipe fixture: poll its read end and write to its peer.
     let mut fds = [0; 2];
-    assert_eq!(pipe(fds.as_mut_ptr()), 0);
+    assert_eq!(libc::pipe(fds.as_mut_ptr()), 0);
     let reader = OwnedFd::from_raw_fd(fds[0]);
     let writer = OwnedFd::from_raw_fd(fds[1]);
     new_poll_test_with_fds(env, callback, reader, writer)
@@ -1268,7 +1262,7 @@ unsafe fn poll_test_start(
 unsafe fn poll_test_write(state: *mut PollTest) {
   unsafe {
     assert_eq!(
-      write((*state).other_fd.as_raw_fd(), b"x".as_ptr().cast(), 1),
+      libc::write((*state).other_fd.as_raw_fd(), b"x".as_ptr().cast(), 1),
       1
     );
   }
@@ -1346,7 +1340,7 @@ extern "C" fn test_uv_poll_reports_actual_writable_events(
 ) -> napi_value {
   unsafe {
     let mut fds = [0; 2];
-    assert_eq!(pipe(fds.as_mut_ptr()), 0);
+    assert_eq!(libc::pipe(fds.as_mut_ptr()), 0);
     let reader = OwnedFd::from_raw_fd(fds[0]);
     let writer = OwnedFd::from_raw_fd(fds[1]);
     let state =
@@ -1370,7 +1364,7 @@ extern "C" fn test_uv_poll_dispatches_hangup_only(
 ) -> napi_value {
   unsafe {
     let mut fds = [0; 2];
-    assert_eq!(pipe(fds.as_mut_ptr()), 0);
+    assert_eq!(libc::pipe(fds.as_mut_ptr()), 0);
     let reader = OwnedFd::from_raw_fd(fds[0]);
     let writer = OwnedFd::from_raw_fd(fds[1]);
     drop(writer);
