@@ -53,8 +53,8 @@ pub enum ByonmResolvePkgFolderFromDenoReqError {
 pub struct ByonmNpmResolverCreateOptions<TSys: FsRead + FsMetadata> {
   pub root_node_modules_dir: Option<PathBuf>,
   /// When set, the ancestor walk for node_modules resolution will not
-  /// go above this directory. Used by deno_rt for self-extracting binaries
-  /// to prevent escaping the VFS root.
+  /// go above this directory. Used by deno_rt standalones to prevent
+  /// escaping the embedded workspace root.
   pub search_stop_dir: Option<PathBuf>,
   pub sys: NodeResolutionSys<TSys>,
   pub pkg_json_resolver: PackageJsonResolverRc<TSys>,
@@ -576,7 +576,12 @@ impl SearchStopDir {
       return None;
     };
     let lexical_start = normalize_boundary_path(Cow::Owned(path));
-    if !path_is_inside(&lexical_start, lexical) {
+    // A package.json found from an already-prepared referrer stores its
+    // canonical path, so internal follow-up lookups may start with either
+    // spelling of the same boundary.
+    if !path_is_inside(&lexical_start, lexical)
+      && !path_is_inside(&lexical_start, canonical)
+    {
       return None;
     }
     let canonical_start =
@@ -709,6 +714,20 @@ mod tests {
     sys: InMemorySys,
     search_stop_dir: PathBuf,
   ) -> ByonmNpmResolver<InMemorySys> {
+    ByonmNpmResolver::new(ByonmNpmResolverCreateOptions {
+      root_node_modules_dir: None,
+      search_stop_dir: Some(search_stop_dir),
+      pkg_json_resolver: deno_maybe_sync::new_rc(PackageJsonResolver::new(
+        sys.clone(),
+        None,
+      )),
+      sys: NodeResolutionSys::new(sys, None),
+    })
+  }
+
+  #[cfg(unix)]
+  fn real_test_resolver(search_stop_dir: PathBuf) -> ByonmNpmResolver<RealSys> {
+    let sys = RealSys;
     ByonmNpmResolver::new(ByonmNpmResolverCreateOptions {
       root_node_modules_dir: None,
       search_stop_dir: Some(search_stop_dir),
@@ -975,6 +994,43 @@ mod tests {
 
   #[cfg(unix)]
   #[test]
+  fn node_modules_lookup_allows_canonicalized_package_json_start() {
+    let temp_dir = TempDir::new();
+    let temp_dir_path = temp_dir.path().to_path_buf();
+    let real_vfs_dir = temp_dir_path.join("real-vfs");
+    let linked_vfs_dir = temp_dir_path.join("linked-vfs");
+    let package_dir = real_vfs_dir.join("app/node_modules/evil");
+    let sys = RealSys;
+    sys.fs_create_dir_all(&package_dir).unwrap();
+    sys
+      .fs_write(
+        real_vfs_dir.join("app/package.json"),
+        r#"{"dependencies":{"evil":"1.0.0"}}"#,
+      )
+      .unwrap();
+    sys
+      .fs_write(
+        package_dir.join("package.json"),
+        r#"{"name":"evil","version":"1.0.0"}"#,
+      )
+      .unwrap();
+    let canonical_package_dir = sys.fs_canonicalize(&package_dir).unwrap();
+    std::os::unix::fs::symlink(&real_vfs_dir, &linked_vfs_dir).unwrap();
+
+    let resolver = real_test_resolver(linked_vfs_dir.clone());
+    let referrer =
+      url_from_file_path(&linked_vfs_dir.join("app/main.js")).unwrap();
+
+    assert_eq!(
+      resolver
+        .resolve_pkg_folder_from_deno_module_req(&evil_req(), &referrer)
+        .unwrap(),
+      canonical_package_dir,
+    );
+  }
+
+  #[cfg(unix)]
+  #[test]
   fn closest_node_modules_lookup_uses_canonicalized_start() {
     let temp_dir = TempDir::new();
     let temp_dir_path = temp_dir.path().to_path_buf();
@@ -992,15 +1048,7 @@ mod tests {
       .unwrap();
     std::os::unix::fs::symlink(&real_vfs_dir, &linked_vfs_dir).unwrap();
 
-    let resolver = ByonmNpmResolver::new(ByonmNpmResolverCreateOptions {
-      root_node_modules_dir: None,
-      search_stop_dir: Some(linked_vfs_dir.clone()),
-      pkg_json_resolver: deno_maybe_sync::new_rc(PackageJsonResolver::new(
-        sys.clone(),
-        None,
-      )),
-      sys: NodeResolutionSys::new(sys, None),
-    });
+    let resolver = real_test_resolver(linked_vfs_dir.clone());
     let referrer =
       url_from_file_path(&linked_vfs_dir.join("app/main.js")).unwrap();
     let err = resolver
