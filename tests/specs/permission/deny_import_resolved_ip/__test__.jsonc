@@ -36,6 +36,33 @@
         "args": "run --quiet --cached-only --allow-import main.ts",
         "output": "3\n"
       }]
+    },
+    // A redirect target is checked too. `localhost:4546` redirects to
+    // `localhost:4545`; denying only the target's address+port leaves the entry
+    // specifier free but must still block the hop it redirects to.
+    "denied_via_redirect_target": {
+      "args": "run --quiet --allow-import --deny-import=127.0.0.1:4545,[::1]:4545 redirect.ts",
+      "output": "[WILDCARD]Requires import access[WILDCARD]",
+      "exitCode": 1
+    },
+    // Control: the redirect chain resolves and runs when nothing is denied.
+    "allowed_via_redirect_without_deny": {
+      "args": "run --quiet --allow-import redirect.ts",
+      "output": "3\n"
+    },
+    // A cached redirect must be denied as well: following it opens no
+    // connection, so the target's resolved-address check has to run at load
+    // time rather than only in the connector.
+    "denied_via_redirect_when_cached": {
+      "steps": [{
+        "args": "cache --quiet --allow-import redirect.ts",
+        "output": "",
+        "exitCode": 0
+      }, {
+        "args": "run --quiet --cached-only --allow-import --deny-import=127.0.0.1:4545,[::1]:4545 redirect.ts",
+        "output": "[WILDCARD]Requires import access[WILDCARD]",
+        "exitCode": 1
+      }]
     }
   }
 }

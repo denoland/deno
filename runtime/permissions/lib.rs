@@ -4777,16 +4777,30 @@ impl PermissionsContainer {
     let Some(port) = url.port_or_known_default() else {
       return Ok(());
     };
-    for ip in self.resolve_host(host, port) {
+    // Resolve before taking the lock: `resolve_host` may block on DNS and must
+    // not hold the permissions lock while it does.
+    let ips = self.resolve_host(host, port);
+    if ips.is_empty() {
+      return Ok(());
+    }
+    let inner = self.inner.lock();
+    for ip in ips {
       let desc =
         ImportDescriptor(NetDescriptor(Host::Ip(ip), Some(port.into())));
-      check_deny_only(&self.inner.lock().import, &desc)?;
+      check_deny_only(&inner.import, &desc)?;
     }
     Ok(())
   }
 
   /// Resolves a host for the deny check, memoized for the life of the
   /// container.
+  ///
+  /// This is a blocking `getaddrinfo` on the caller's thread — deliberately, on
+  /// a path already gated by `has_ip_deny_rules` (so it never runs unless an
+  /// IP-literal `--deny-import` rule exists) and only reached from the
+  /// synchronous [`Self::check_specifier`]. The lookup it duplicates for a live
+  /// fetch is redone by the connector anyway; its unique job is the cached
+  /// path, where no connection is opened and thus no other lookup happens.
   ///
   /// A failed lookup yields no addresses rather than an error: nothing is
   /// denied by a name that resolves to nothing, and the fetch this check
