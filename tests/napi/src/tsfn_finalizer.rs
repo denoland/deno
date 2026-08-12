@@ -13,7 +13,7 @@
 use std::ffi::c_char;
 use std::ffi::c_void;
 use std::ptr;
-use std::sync::atomic::AtomicPtr;
+use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::Duration;
@@ -31,8 +31,19 @@ const CHURN: usize = 250;
 const TICKS: usize = 150;
 const TICK: Duration = Duration::from_micros(200);
 
-static TSFN: AtomicPtr<napi_threadsafe_function__> =
-  AtomicPtr::new(ptr::null_mut());
+// Progress counters, read back from JS via `get_tsfn_wrap_finalizer_stats` so
+// the test can assert that the scenario actually ran. Without that check a
+// silently degraded repro (e.g. the threadsafe function never dispatching)
+// would pass vacuously.
+static WRAPPED: AtomicU32 = AtomicU32::new(0);
+static FINALIZED_COUNT: AtomicU32 = AtomicU32::new(0);
+
+/// `napi_threadsafe_function` is documented as safe to use from any thread;
+/// the raw pointer just isn't `Send`, so hand it to the worker thread wrapped.
+struct SendTsfn(napi_threadsafe_function);
+
+// SAFETY: see above — the NAPI contract permits cross-thread use of a tsfn.
+unsafe impl Send for SendTsfn {}
 
 // `napi_wrap` finalizer: detects a duplicate invocation for the same wrap.
 // `data` is intentionally leaked so a second call reads live (poisoned) state
@@ -53,6 +64,7 @@ unsafe extern "C" fn finalize_cb(
     }
     *state = FINALIZED;
   }
+  FINALIZED_COUNT.fetch_add(1, Ordering::Relaxed);
 }
 
 unsafe extern "C" fn noop(
@@ -87,6 +99,7 @@ extern "C" fn call_js_cb(
       ptr::null_mut(),
       ptr::null_mut(),
     ));
+    WRAPPED.fetch_add(1, Ordering::Relaxed);
   }
   // Enough allocation that GCs regularly land inside these callbacks.
   for _ in 0..CHURN {
@@ -130,13 +143,17 @@ extern "C" fn test_tsfn_wrap_finalizer(
     Some(call_js_cb),
     &mut tsfn,
   ));
-  TSFN.store(tsfn, Ordering::SeqCst);
-
   // Deliver callbacks for a while from another thread; the stream outlives the
   // synchronous test body, so the runner's teardown/settling dispatches some
-  // too. `napi_threadsafe_function` is safe to call across threads by design.
+  // too.
+  //
+  // The tsfn is created with an initial thread count of 1, held by this
+  // thread. Rather than acquiring a second count, that single count is handed
+  // off to the worker thread, which releases it when it is done — so the tsfn
+  // is closed exactly once and never outlives the worker.
+  let tsfn = SendTsfn(tsfn);
   thread::spawn(move || {
-    let tsfn = TSFN.load(Ordering::SeqCst);
+    let SendTsfn(tsfn) = tsfn;
     for _ in 0..TICKS {
       let status = unsafe {
         napi_call_threadsafe_function(
@@ -161,12 +178,45 @@ extern "C" fn test_tsfn_wrap_finalizer(
   ptr::null_mut()
 }
 
+// Returns `{ wrapped, finalized }` so the JS side can wait for the threadsafe
+// function to actually start dispatching before it finishes.
+extern "C" fn get_tsfn_wrap_finalizer_stats(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  let mut result = ptr::null_mut();
+  assert_napi_ok!(napi_create_object(env, &mut result));
+
+  for (key, value) in [
+    ("wrapped\0", WRAPPED.load(Ordering::Relaxed)),
+    ("finalized\0", FINALIZED_COUNT.load(Ordering::Relaxed)),
+  ] {
+    let mut num = ptr::null_mut();
+    assert_napi_ok!(napi_create_uint32(env, value, &mut num));
+    assert_napi_ok!(napi_set_named_property(
+      env,
+      result,
+      key.as_ptr() as *const c_char,
+      num
+    ));
+  }
+
+  result
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
-  let properties = &[crate::napi_new_property!(
-    env,
-    "test_tsfn_wrap_finalizer",
-    test_tsfn_wrap_finalizer
-  )];
+  let properties = &[
+    crate::napi_new_property!(
+      env,
+      "test_tsfn_wrap_finalizer",
+      test_tsfn_wrap_finalizer
+    ),
+    crate::napi_new_property!(
+      env,
+      "get_tsfn_wrap_finalizer_stats",
+      get_tsfn_wrap_finalizer_stats
+    ),
+  ];
 
   assert_napi_ok!(napi_define_properties(
     env,
