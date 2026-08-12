@@ -1042,9 +1042,10 @@ unsafe extern "C" fn uv_poll_start(
     if cb.is_none() && events != 0 {
       return uv_compat::UV_EINVAL;
     }
-    let env = &mut *(*poll).r#loop;
     #[cfg(unix)]
-    if !env.try_acquire_poll_fd((&*bridge_ptr).fd, poll as usize) {
+    if !(&mut *(*poll).r#loop)
+      .try_acquire_poll_fd((&*bridge_ptr).fd, poll as usize)
+    {
       return uv_compat::UV_EEXIST;
     }
     if events == 0 {
@@ -1055,7 +1056,7 @@ unsafe extern "C" fn uv_poll_start(
     if !(*poll).active {
       (*poll).active = true;
       if (*poll).refed {
-        env.external_ops_tracker.ref_op();
+        (&mut *(*poll).r#loop).external_ops_tracker.ref_op();
       }
     }
     let bridge = Arc::new(PollBridge {
@@ -1066,7 +1067,7 @@ unsafe extern "C" fn uv_poll_start(
     *bridge_ptr = bridge;
     #[cfg(unix)]
     let bridge = Arc::clone(&*bridge_ptr);
-    let sender = env.async_work_sender.clone();
+    let sender = (&mut *(*poll).r#loop).async_work_sender.clone();
     let poll_ptr = SendPtr(poll as *const uv_poll_t);
     #[cfg(unix)]
     std::thread::spawn(move || {
