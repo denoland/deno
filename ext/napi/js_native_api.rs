@@ -45,6 +45,9 @@ struct Reference {
   finalize_cb: Option<napi_finalize>,
   finalize_data: *mut c_void,
   finalize_hint: *mut c_void,
+  /// Identity of this reference's entry in the env's shutdown finalizer list,
+  /// as long as the finalizer hasn't run yet.
+  finalizer_id: Option<NapiFinalizerId>,
 }
 
 impl Reference {
@@ -57,6 +60,18 @@ impl Reference {
     finalize_data: *mut c_void,
     finalize_hint: *mut c_void,
   ) -> Box<Self> {
+    // Register the finalizer so that it still runs at environment shutdown for
+    // references that were never collected, the same way Node.js finalizes its
+    // remaining `reflist` entries in `napi_env::DeleteMe()`.
+    let finalizer_id = finalize_cb.map(|cb| {
+      unsafe { &*env }.add_ref_finalizer(
+        env as napi_env,
+        cb,
+        finalize_data,
+        finalize_hint,
+      )
+    });
+
     let isolate = unsafe { (*env).isolate() };
 
     let mut reference = Box::new(Reference {
@@ -67,6 +82,7 @@ impl Reference {
       finalize_cb,
       finalize_data,
       finalize_hint,
+      finalizer_id,
     });
 
     if initial_ref_count == 0 {
@@ -95,7 +111,12 @@ impl Reference {
     self.ref_count
   }
 
+  /// Drops this reference's finalizer, deregistering it from the env's
+  /// shutdown finalizer list so that it cannot be called (again) there.
   fn reset(&mut self) {
+    if let Some(id) = self.finalizer_id.take() {
+      unsafe { &*self.env }.remove_ref_finalizer(id);
+    }
     self.finalize_cb = None;
     self.finalize_data = std::ptr::null_mut();
     self.finalize_hint = std::ptr::null_mut();
@@ -149,11 +170,10 @@ impl Reference {
     // finalizer; doing that from V8's second-pass callback is what produced
     // the intermittent `napi_unwrap` failure reported in #33924 / #34008
     // ("Failed to unwrap exclusive reference of `...` type from napi value").
+    // `reset()` above already deregistered the shutdown finalizer entry, so it
+    // is not called again at env shutdown (matches Node's `Unlink` ordering in
+    // `Reference::Finalize`).
     if let Some(finalize_cb) = finalize_cb {
-      // Deregister before dispatching so the finalizer is not called again
-      // at env shutdown (matches Node's `Unlink` ordering in
-      // `Reference::Finalize`).
-      unsafe { &*env_ptr }.remove_ref_finalizer(finalize_data);
       unsafe {
         finalize_cb(env_ptr as _, finalize_data, finalize_hint);
       }
@@ -181,6 +201,17 @@ impl Reference {
       r.reset();
     } else {
       unsafe { drop(Reference::from_raw(r)) }
+    }
+  }
+}
+
+impl Drop for Reference {
+  fn drop(&mut self) {
+    // A reference that goes away without its finalizer having run (e.g. via
+    // `napi_delete_reference`) must not leave a dangling entry behind: Node
+    // unlinks the reference from the env's list in `~RefTracker`.
+    if let Some(id) = self.finalizer_id.take() {
+      unsafe { &*self.env }.remove_ref_finalizer(id);
     }
   }
 }
@@ -3009,15 +3040,6 @@ fn napi_wrap(
     finalize_hint,
   );
 
-  if let Some(cb) = finalize_cb {
-    env.add_ref_finalizer(
-      env_ptr as napi_env,
-      cb,
-      native_object,
-      finalize_hint,
-    );
-  }
-
   let reference = Reference::into_raw(reference) as *mut c_void;
 
   if !result.is_null() {
@@ -3069,7 +3091,6 @@ fn unwrap(
   }
 
   if !keep {
-    env.remove_ref_finalizer(reference.finalize_data);
     assert!(obj.delete_private(scope, napi_wrap).unwrap_or(false));
     unsafe { Reference::remove(reference) };
   }
@@ -3120,19 +3141,13 @@ fn napi_create_external<'s>(
   v8::callback_scope!(unsafe scope, env.context());
   let external = v8::External::new(scope, wrapper as _);
 
-  if let Some(finalize_cb) = finalize_cb {
-    env.add_ref_finalizer(
-      env_ptr as napi_env,
-      finalize_cb,
-      data,
-      finalize_hint,
-    );
+  if finalize_cb.is_some() {
     Reference::into_raw(Reference::new(
       env_ptr,
       external.into(),
       0,
       ReferenceOwnership::Runtime,
-      Some(finalize_cb),
+      finalize_cb,
       data,
       finalize_hint,
     ));
@@ -4208,15 +4223,6 @@ fn napi_add_finalizer(
     ReferenceOwnership::Userland
   };
 
-  if let Some(cb) = finalize_cb {
-    env.add_ref_finalizer(
-      env_ptr as napi_env,
-      cb,
-      finalize_data,
-      finalize_hint,
-    );
-  }
-
   let reference = Reference::new(
     env,
     value.into(),
@@ -4227,9 +4233,14 @@ fn napi_add_finalizer(
     finalize_hint,
   );
 
+  // Both ownership modes keep the reference alive: a runtime-owned one frees
+  // itself in its weak callback, a userland-owned one is freed by the addon
+  // through `napi_delete_reference`.
+  let reference = Reference::into_raw(reference);
+
   if !result.is_null() {
     unsafe {
-      *result = Reference::into_raw(reference) as _;
+      *result = reference as _;
     }
   }
 
