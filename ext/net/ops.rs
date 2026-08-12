@@ -1336,9 +1336,21 @@ pub async fn op_dns_resolve(
     .await?
   };
 
-  // Only the answer section is returned. Authority and additional records
-  // (e.g. NS records or nameserver glue addresses) are not part of the
-  // queried result set and must not leak into `Deno.resolveDns()` output.
+  lookup_to_dns_records(&lookup, record_type)
+}
+
+/// Converts a completed DNS [`Lookup`] into the records returned to JS.
+///
+/// Only the answer section (`lookup.answers()`) is used. Authority and
+/// additional records (e.g. NS records or nameserver glue addresses) are not
+/// part of the queried result set and must never be chained in here, otherwise
+/// they leak into `Deno.resolveDns()` output (most visibly for `ANY` queries,
+/// which format every record by its own type). See
+/// `resolve_dns_returns_only_answer_section` for the regression test.
+fn lookup_to_dns_records(
+  lookup: &hickory_resolver::lookup::Lookup,
+  record_type: RecordType,
+) -> Result<Vec<DnsRecordWithTtl>, NetError> {
   format_dns_records(lookup.answers(), record_type)
 }
 
@@ -1386,17 +1398,26 @@ pub fn op_net_get_system_dns_servers(
     .check_sys("networkInterfaces", "node:dns.getServers()")?;
   let (config, _opts) = system_conf::read_system_conf()
     .unwrap_or_else(|_| (ResolverConfig::default(), ResolverOpts::default()));
-  // Dedup name servers sharing the same ip and port, while preserving the
-  // configured order (callers such as `node:dns.getServers()` expect the
-  // servers in the order they were configured).
-  let mut seen = HashSet::new();
-  let servers = config
-    .name_servers()
-    .iter()
-    .flat_map(|ns| ns.connections.iter().map(|c| (ns.ip.to_string(), c.port)))
-    .filter(|server| seen.insert(server.clone()))
-    .collect();
+  let servers =
+    dedup_name_servers(config.name_servers().iter().flat_map(|ns| {
+      ns.connections.iter().map(|c| (ns.ip.to_string(), c.port))
+    }));
   Ok(servers)
+}
+
+/// Removes duplicate name servers (same ip and port) while preserving the
+/// configured order. Callers such as `node:dns.getServers()` expect the
+/// servers in the order they were configured, so this must not be replaced
+/// with an unordered collection such as a `HashSet`. See
+/// `dedup_name_servers_preserves_order` for the regression test.
+fn dedup_name_servers(
+  servers: impl IntoIterator<Item = (String, u16)>,
+) -> Vec<(String, u16)> {
+  let mut seen = HashSet::new();
+  servers
+    .into_iter()
+    .filter(|server| seen.insert(server.clone()))
+    .collect()
 }
 
 #[op2(fast)]
@@ -1749,6 +1770,69 @@ mod tests {
         "£".to_string(),
         "ã\u{81}\u{82}".to_string(),
       ]))
+    );
+  }
+
+  #[test]
+  fn resolve_dns_returns_only_answer_section() {
+    use hickory_proto::op::Query;
+    use hickory_resolver::lookup::Lookup;
+
+    // A lookup whose answer section holds the queried record, while the
+    // authority and additional sections hold unrelated records (an NS record
+    // and a nameserver glue address). Only the answer must be returned.
+    let mut lookup = Lookup::new_with_max_ttl(
+      Query::query(Name::root(), RecordType::A),
+      [Record::from_rdata(
+        Name::root(),
+        60,
+        RData::A(A(Ipv4Addr::new(1, 1, 1, 1))),
+      )],
+    );
+    lookup.extend_authorities([Record::from_rdata(
+      Name::root(),
+      60,
+      RData::NS(NS(Name::new())),
+    )]);
+    lookup.extend_additionals([Record::from_rdata(
+      Name::root(),
+      60,
+      RData::A(A(Ipv4Addr::new(3, 3, 3, 3))),
+    )]);
+
+    // Regression guard: authority/additional records must not leak into the
+    // result. An ANY query is used because it formats every record by its own
+    // type, so a leaked NS or glue A record would be observable.
+    let out = lookup_to_dns_records(&lookup, RecordType::ANY).unwrap();
+    assert_eq!(
+      out,
+      vec![DnsRecordWithTtl {
+        data: DnsRecordData::A("1.1.1.1".to_string()),
+        record_type: Some("A".to_string()),
+        ttl: 60,
+      }]
+    );
+  }
+
+  #[test]
+  fn dedup_name_servers_preserves_order() {
+    // Regression guard: duplicates are removed but the configured order is
+    // preserved (a `HashSet`-based dedup would randomize the order).
+    let input = vec![
+      ("1.1.1.1".to_string(), 53),
+      ("8.8.8.8".to_string(), 53),
+      ("1.1.1.1".to_string(), 53), // duplicate of the first
+      ("8.8.8.8".to_string(), 853), // same ip, different port -> kept
+      ("2.2.2.2".to_string(), 53),
+    ];
+    assert_eq!(
+      dedup_name_servers(input),
+      vec![
+        ("1.1.1.1".to_string(), 53),
+        ("8.8.8.8".to_string(), 53),
+        ("8.8.8.8".to_string(), 853),
+        ("2.2.2.2".to_string(), 53),
+      ]
     );
   }
 
