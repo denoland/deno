@@ -57,6 +57,25 @@ Deno.test("lookupService promise", async () => {
   assertEquals(typeof defaultImportResult.service, "string");
 });
 
+Deno.test("[node/dns] lookupService accepts string ports", async () => {
+  const stringPort = "80" as unknown as number;
+
+  const callbackResult = await new Promise<LookupServiceResult>(
+    (resolve, reject) => {
+      lookupService("127.0.0.1", stringPort, (err, hostname, service) => {
+        if (err) reject(err);
+        else resolve({ hostname, service });
+      });
+    },
+  );
+  assertEquals(typeof callbackResult.hostname, "string");
+  assertEquals(typeof callbackResult.service, "string");
+
+  const promiseResult = await lookupServicePromise("127.0.0.1", stringPort);
+  assertEquals(typeof promiseResult.hostname, "string");
+  assertEquals(typeof promiseResult.service, "string");
+});
+
 Deno.test("lookupService not found", async () => {
   const address = "10.0.0.0";
 
