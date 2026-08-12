@@ -3076,6 +3076,7 @@ dependencies = [
  "bincode",
  "boxed_error",
  "capacity_builder",
+ "deno_cache_dir",
  "deno_config",
  "deno_error",
  "deno_graph",
