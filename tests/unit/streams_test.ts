@@ -1190,17 +1190,27 @@ Deno.test(
       { type: "module" },
     );
 
+    const { promise: cancelled, resolve: onCancel } = Promise
+      .withResolvers<string>();
     const readable = new ReadableStream({
       pull(controller) {
         // Never closes, so the stream is still open when it is cancelled.
         controller.enqueue(new Uint8Array(16));
       },
+      cancel(reason) {
+        // `pipeTo` only cancels the source after the transferred port's
+        // "error" handler has run (and thus after `port.close()`), so awaiting
+        // this is a deterministic assertion on the fix rather than relying on a
+        // cross-channel race with the worker's "done" message and the sanitizer.
+        onCancel(reason);
+      },
     });
 
-    const { promise, resolve } = Promise.withResolvers<void>();
-    worker.onmessage = () => resolve();
+    const { promise: done, resolve: onDone } = Promise.withResolvers<void>();
+    worker.onmessage = () => onDone();
     worker.postMessage(readable, [readable]);
-    await promise;
+    assertEquals(await cancelled, "stop");
+    await done;
     worker.terminate();
   },
 );
