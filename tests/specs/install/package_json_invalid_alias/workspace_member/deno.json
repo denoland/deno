@@ -1,0 +1,6 @@
+{
+  "nodeModulesDir": "auto",
+  "workspace": [
+    "./member"
+  ]
+}

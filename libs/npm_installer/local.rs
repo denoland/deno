@@ -1694,7 +1694,7 @@ pub(crate) fn symlink_package_dir(
   new_path: &Path,
 ) -> Result<(), std::io::Error> {
   let sys = sys.with_paths_in_errors();
-  ensure_no_parent_dir_components(new_path)?;
+  ensure_safe_package_symlink_path(new_path)?;
   let new_parent = new_path.parent().unwrap();
   if new_parent.file_name().unwrap() != "node_modules" {
     // create the parent folder that will contain the symlink
@@ -1719,7 +1719,7 @@ pub(crate) fn symlink_package_dir(
   }
 }
 
-fn ensure_no_parent_dir_components(path: &Path) -> Result<(), std::io::Error> {
+fn ensure_safe_package_symlink_path(path: &Path) -> Result<(), std::io::Error> {
   if path
     .components()
     .any(|component| matches!(component, Component::ParentDir))
@@ -1728,6 +1728,31 @@ fn ensure_no_parent_dir_components(path: &Path) -> Result<(), std::io::Error> {
       std::io::ErrorKind::InvalidInput,
       format!(
         "refusing to create package symlink at path with parent components: {}",
+        path.display()
+      ),
+    ));
+  }
+  let mut after_node_modules = false;
+  let mut has_hidden_package_component = false;
+  for component in path.components() {
+    if component.as_os_str() == "node_modules" {
+      // Use the innermost node_modules for nested dependency trees.
+      after_node_modules = true;
+      has_hidden_package_component = false;
+    } else if after_node_modules
+      && matches!(
+        component,
+        Component::Normal(name) if name.to_string_lossy().starts_with('.')
+      )
+    {
+      has_hidden_package_component = true;
+    }
+  }
+  if has_hidden_package_component {
+    return Err(std::io::Error::new(
+      std::io::ErrorKind::InvalidInput,
+      format!(
+        "refusing to create package symlink with a hidden package component: {}",
         path.display()
       ),
     ));
@@ -2421,6 +2446,32 @@ mod test {
       sys.fs_read_to_string(outside.join("marker.txt")).unwrap(),
       "keep"
     );
+  }
+
+  #[test]
+  fn test_symlink_package_dir_rejects_hidden_path_before_removing() {
+    let temp_dir = TempDir::new();
+    let sys = sys_traits::impls::RealSys;
+    let root = temp_dir.path().to_path_buf();
+
+    let target = root.join("target");
+    let hidden = root.join("node_modules").join(".deno");
+    sys.fs_create_dir_all(&target).unwrap();
+    sys.fs_create_dir_all(&hidden).unwrap();
+    sys.fs_write(hidden.join("marker.txt"), "keep").unwrap();
+
+    let err = symlink_package_dir(&sys, &target, &hidden).unwrap_err();
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    assert_eq!(
+      sys.fs_read_to_string(hidden.join("marker.txt")).unwrap(),
+      "keep"
+    );
+
+    let hidden_scope = root.join("node_modules").join(".scope");
+    let err = symlink_package_dir(&sys, &target, &hidden_scope.join("package"))
+      .unwrap_err();
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    assert!(!sys.fs_exists(&hidden_scope).unwrap());
   }
 
   #[test]

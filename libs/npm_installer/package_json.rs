@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_config::workspace::Workspace;
+use deno_error::JsError;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
 use deno_package_json::PackageJsonDepWorkspaceReq;
@@ -109,13 +110,26 @@ impl WorkspaceMemberVersionNotSatisfiedError {
   }
 }
 
-#[derive(Debug, Error, Clone)]
-#[error("Invalid package alias '{}'\n    at {}", alias, location)]
-pub struct InvalidPackageAliasError {
-  pub location: Url,
-  pub alias: StackString,
-  #[source]
-  pub source: InvalidPackageNamePathError,
+#[derive(Debug, Error, Clone, JsError)]
+pub enum InvalidPackageNameError {
+  #[class(inherit)]
+  #[error("Invalid package alias '{alias}'\n    at {location}")]
+  Alias {
+    location: Url,
+    alias: StackString,
+    #[source]
+    #[inherit]
+    source: InvalidPackageNamePathError,
+  },
+  #[class(inherit)]
+  #[error("Invalid workspace package name '{name}'\n    at {location}")]
+  WorkspacePackage {
+    location: Url,
+    name: StackString,
+    #[source]
+    #[inherit]
+    source: InvalidPackageNamePathError,
+  },
 }
 
 /// An error surfaced while reconciling a package.json's dependencies against
@@ -125,7 +139,7 @@ pub enum EnsurePackageJsonDepsError {
   #[error(transparent)]
   DepValueParse(#[from] Box<PackageJsonDepValueParseWithLocationError>),
   #[error(transparent)]
-  InvalidPackageAlias(#[from] Box<InvalidPackageAliasError>),
+  InvalidPackageName(#[from] Box<InvalidPackageNameError>),
   #[error(transparent)]
   WorkspaceMemberVersionNotSatisfied(
     #[from] Box<WorkspaceMemberVersionNotSatisfiedError>,
@@ -139,7 +153,7 @@ pub struct NpmInstallDepsProvider {
   patch_pkgs: Vec<InstallPatchPkg>,
   workspace_pkgs: Vec<InstallWorkspacePkg>,
   pkg_json_dep_errors: Vec<PackageJsonDepValueParseWithLocationError>,
-  invalid_package_alias_errors: Vec<InvalidPackageAliasError>,
+  invalid_package_name_errors: Vec<InvalidPackageNameError>,
   workspace_member_version_errors: Vec<WorkspaceMemberVersionNotSatisfiedError>,
 }
 
@@ -183,7 +197,7 @@ impl NpmInstallDepsProvider {
     let mut patch_pkgs = Vec::new();
     let mut workspace_pkgs = Vec::new();
     let mut pkg_json_dep_errors = Vec::new();
-    let mut invalid_package_alias_errors = Vec::new();
+    let mut invalid_package_name_errors = Vec::new();
     let mut workspace_member_version_errors = Vec::new();
     let workspace_npm_pkgs = workspace.npm_packages();
 
@@ -291,7 +305,7 @@ impl NpmInstallDepsProvider {
           // only aliases that are actually materialized below `node_modules`
           // need a path-safe shape
           if let Err(err) = package_name_for_node_modules_path_parts(alias) {
-            invalid_package_alias_errors.push(InvalidPackageAliasError {
+            invalid_package_name_errors.push(InvalidPackageNameError::Alias {
               location: pkg_json.specifier(),
               alias: alias.clone(),
               source: err,
@@ -466,11 +480,13 @@ impl NpmInstallDepsProvider {
         if !is_root && let Some(name) = pkg_json.name.as_ref() {
           let alias = StackString::from_str(name);
           if let Err(err) = package_name_for_node_modules_path_parts(&alias) {
-            invalid_package_alias_errors.push(InvalidPackageAliasError {
-              location: pkg_json.specifier(),
-              alias,
-              source: err,
-            });
+            invalid_package_name_errors.push(
+              InvalidPackageNameError::WorkspacePackage {
+                location: pkg_json.specifier(),
+                name: alias,
+                source: err,
+              },
+            );
           } else {
             local_pkgs.push(InstallLocalPkg {
               alias: Some(alias),
@@ -511,7 +527,7 @@ impl NpmInstallDepsProvider {
       patch_pkgs,
       workspace_pkgs,
       pkg_json_dep_errors,
-      invalid_package_alias_errors,
+      invalid_package_name_errors,
       workspace_member_version_errors,
     }
   }
@@ -538,8 +554,8 @@ impl NpmInstallDepsProvider {
     &self.pkg_json_dep_errors
   }
 
-  pub fn invalid_package_alias_errors(&self) -> &[InvalidPackageAliasError] {
-    &self.invalid_package_alias_errors
+  pub fn invalid_package_name_errors(&self) -> &[InvalidPackageNameError] {
+    &self.invalid_package_name_errors
   }
 
   pub fn workspace_member_version_errors(

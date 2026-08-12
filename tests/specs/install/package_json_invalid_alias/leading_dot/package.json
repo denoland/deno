@@ -1,0 +1,7 @@
+{
+  "name": "leading-dot-alias-test",
+  "version": "1.0.0",
+  "dependencies": {
+    ".deno": "file:./localpkg"
+  }
+}

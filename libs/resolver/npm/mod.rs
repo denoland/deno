@@ -109,11 +109,11 @@ pub fn package_name_for_node_modules_path_parts(
   let parts = package_name.split('/').collect::<Vec<_>>();
   if parts
     .iter()
-    .any(|part| part.is_empty() || matches!(*part, "." | ".."))
+    .any(|part| part.is_empty() || part.starts_with('.'))
   {
     return Err(InvalidPackageNamePathError::new(
       package_name,
-      "package name must not contain empty, current, or parent path components",
+      "package name must not contain empty or period-prefixed components",
     ));
   }
   if parts

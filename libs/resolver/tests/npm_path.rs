@@ -54,6 +54,10 @@ fn package_name_for_node_modules_path_parts_validates_path_shape() {
     "package. ",
     "@scope./package",
     "@scope /package",
+    ".package",
+    ".deno",
+    ".bin",
+    "@scope/.package",
     "@scope/package.",
     "@scope/package ",
   ] {
