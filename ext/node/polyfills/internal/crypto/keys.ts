@@ -19,8 +19,10 @@ const {
   ObjectPrototypeIsPrototypeOf,
   StringPrototypeStartsWith,
   SymbolToStringTag,
+  TypedArrayPrototypeGetBuffer,
   TypeError,
   TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
   Uint8Array,
 } = primordials;
 
@@ -465,7 +467,16 @@ function parseKeyEncoding(
   }
 
   if (passphrase !== undefined) {
-    passphrase = getArrayBufferOrView(passphrase, "key.passphrase", encoding);
+    const view = getArrayBufferOrView(
+      passphrase,
+      "key.passphrase",
+      encoding,
+    );
+    passphrase = new Uint8Array(
+      TypedArrayPrototypeGetBuffer(view),
+      TypedArrayPrototypeGetByteOffset(view),
+      TypedArrayPrototypeGetByteLength(view),
+    );
   }
 
   return {

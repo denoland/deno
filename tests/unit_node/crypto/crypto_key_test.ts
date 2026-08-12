@@ -806,6 +806,32 @@ Deno.test("private key export preserves passphrase bytes", async (t) => {
         return new DataView(data.buffer, 1, bytes.length);
       },
     ],
+    [
+      "Int8Array",
+      () => {
+        const data = new Uint8Array([0, ...bytes, 0]);
+        const passphrase = new Int8Array(data.buffer, 1, bytes.length);
+        return passphrase;
+      },
+    ],
+    [
+      "Uint16Array",
+      () => {
+        const data = new Uint8Array(8);
+        data.set([0xff, 0xfe, 0x80, 0xc3], 2);
+        const passphrase = new Uint16Array(data.buffer, 2, 2);
+        return passphrase;
+      },
+    ],
+    [
+      "Float32Array",
+      () => {
+        const data = new Uint8Array(12);
+        data.set([0xff, 0xfe, 0x80, 0xc3], 4);
+        const passphrase = new Float32Array(data.buffer, 4, 1);
+        return passphrase;
+      },
+    ],
     ["string", () => "pässphrase"],
   ];
 
