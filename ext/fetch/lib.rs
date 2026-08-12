@@ -1018,6 +1018,12 @@ pub enum HttpClientCreateError {
   VsockProxyNotSupported,
 }
 
+/// Default `SETTINGS_MAX_HEADER_LIST_SIZE` advertised to HTTP/2 servers. Matches
+/// the value browsers use (Chrome advertises 256KB) rather than hyper's much
+/// smaller 16KB default, which rejects otherwise-valid responses with large
+/// header blocks. See https://github.com/denoland/deno/issues/36462.
+const DEFAULT_HTTP2_MAX_HEADER_LIST_SIZE: u32 = 256 * 1024;
+
 /// Create new instance of async Client. This client supports
 /// proxies and doesn't follow redirects.
 pub fn create_http_client(
@@ -1143,9 +1149,19 @@ pub fn create_http_client(
     );
   }
 
-  if let Some(http2_max_header_list_size) = options.http2_max_header_list_size {
-    builder.http2_max_header_list_size(http2_max_header_list_size);
-  }
+  // The hyper client defaults `SETTINGS_MAX_HEADER_LIST_SIZE` to 16KB, which is
+  // small enough that responses with large header blocks (e.g. long
+  // `content-security-policy` or many `set-cookie` headers) get rejected by the
+  // h2 stack with a PROTOCOL_ERROR before they ever reach JavaScript. Browsers
+  // advertise a much larger value (Chrome uses 256KB), so match that as the
+  // default to keep `fetch()` interoperable with the same servers browsers can
+  // talk to. Users can still override this via `http2MaxHeaderListSize`.
+  // https://github.com/denoland/deno/issues/36462
+  builder.http2_max_header_list_size(
+    options
+      .http2_max_header_list_size
+      .unwrap_or(DEFAULT_HTTP2_MAX_HEADER_LIST_SIZE),
+  );
 
   match (options.http1, options.http2) {
     (true, false) => {} // noop, handled by ALPN above
