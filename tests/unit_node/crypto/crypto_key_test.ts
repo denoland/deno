@@ -795,16 +795,21 @@ Deno.test("private key export preserves passphrase bytes", async (t) => {
   });
   const expected = privateKey.export({ type: "pkcs8", format: "der" });
   const bytes = [0xff, 0xfe, 0x80, 0x61, 0xc3];
-  const passphrases: [string, () => unknown][] = [
-    ["Buffer", () => Buffer.from(bytes)],
-    ["Uint8Array", () => new Uint8Array(bytes)],
-    ["ArrayBuffer", () => new Uint8Array(bytes).buffer],
+  const passphrases: [
+    string,
+    () => unknown,
+    readonly number[] | string,
+  ][] = [
+    ["Buffer", () => Buffer.from(bytes), bytes],
+    ["Uint8Array", () => new Uint8Array(bytes), bytes],
+    ["ArrayBuffer", () => new Uint8Array(bytes).buffer, bytes],
     [
       "DataView",
       () => {
         const data = new Uint8Array([0, ...bytes, 0]);
         return new DataView(data.buffer, 1, bytes.length);
       },
+      bytes,
     ],
     [
       "Int8Array",
@@ -813,6 +818,7 @@ Deno.test("private key export preserves passphrase bytes", async (t) => {
         const passphrase = new Int8Array(data.buffer, 1, bytes.length);
         return passphrase;
       },
+      bytes,
     ],
     [
       "Uint16Array",
@@ -822,6 +828,7 @@ Deno.test("private key export preserves passphrase bytes", async (t) => {
         const passphrase = new Uint16Array(data.buffer, 2, 2);
         return passphrase;
       },
+      [0xff, 0xfe, 0x80, 0xc3],
     ],
     [
       "Float32Array",
@@ -831,14 +838,16 @@ Deno.test("private key export preserves passphrase bytes", async (t) => {
         const passphrase = new Float32Array(data.buffer, 4, 1);
         return passphrase;
       },
+      [0xff, 0xfe, 0x80, 0xc3],
     ],
-    ["string", () => "pässphrase"],
+    ["string", () => "pässphrase", "pässphrase"],
   ];
 
   for (const format of ["pem", "der"] as const) {
-    for (const [name, createPassphrase] of passphrases) {
+    for (const [name, createPassphrase, expectedPassphrase] of passphrases) {
       await t.step(`${format} ${name}`, () => {
         const passphrase = createPassphrase();
+        const expectedPassphraseBytes = Buffer.from(expectedPassphrase);
         const encrypted = privateKey.export({
           type: "pkcs8",
           format,
@@ -849,15 +858,45 @@ Deno.test("private key export preserves passphrase bytes", async (t) => {
           key: encrypted,
           type: "pkcs8",
           format,
-          passphrase,
+          passphrase: expectedPassphraseBytes,
         } as any);
         assertEquals(
           imported.export({ type: "pkcs8", format: "der" }),
           expected,
         );
+
+        const importedWithOriginalView = createPrivateKey({
+          key: encrypted,
+          type: "pkcs8",
+          format,
+          passphrase,
+        } as any);
+        assertEquals(
+          importedWithOriginalView.export({ type: "pkcs8", format: "der" }),
+          expected,
+        );
       });
     }
   }
+
+  await t.step("pem sec1 Buffer", () => {
+    const passphrase = Buffer.from(bytes);
+    const encrypted = privateKey.export({
+      type: "sec1",
+      format: "pem",
+      cipher: "aes-256-cbc",
+      passphrase,
+    });
+    const imported = createPrivateKey({
+      key: encrypted,
+      format: "pem",
+      passphrase,
+    });
+    assertEquals(
+      imported.export({ type: "pkcs8", format: "der" }),
+      expected,
+    );
+  });
 });
 
 Deno.test("private key export validates passphrase options", () => {
