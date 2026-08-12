@@ -1,6 +1,9 @@
 // Regression test for https://github.com/denoland/deno/issues/22504
-// With the old blocking flock() implementation, 33+ concurrent lock waiters
-// would exhaust the tokio blocking threadpool (32 threads) and deadlock.
+// When each pending lock wait occupied a thread of the tokio blocking
+// threadpool, enough concurrent lock waiters would exhaust the pool (32 threads
+// on unix, 4 * available_parallelism() on Windows) and deadlock, because the
+// current lock holder could no longer run the fs operations it needed in order
+// to release the lock.
 
 const COUNTER_FILE = "./test.counter";
 await Deno.writeTextFile(COUNTER_FILE, "0");
@@ -17,8 +20,8 @@ async function incrementCounter() {
 
   await lockFile.lock(true);
 
-  // These file operations would deadlock with the old implementation
-  // because all 32 blocking threads were occupied by pending flock() calls.
+  // These file operations would deadlock with the old implementation because
+  // every blocking pool thread was occupied by a pending flock() call.
   const counter = +(await Deno.readTextFile(COUNTER_FILE));
   await Deno.writeTextFile(COUNTER_FILE, (counter + 1).toString());
 
@@ -28,7 +31,7 @@ async function incrementCounter() {
   return counter;
 }
 
-// 50 concurrent lock acquisitions — well above the old 32-thread limit
+// 50 concurrent lock acquisitions — well above the smallest blocking pool
 const promises = [];
 for (let i = 0; i < 50; i++) {
   promises.push(incrementCounter());
@@ -38,11 +41,3 @@ await Promise.all(promises);
 
 const finalCount = +(await Deno.readTextFile(COUNTER_FILE));
 console.log(`final count: ${finalCount}`);
-
-// Clean up
-try {
-  Deno.removeSync("./test.lock");
-  Deno.removeSync(COUNTER_FILE);
-} catch {
-  // ignore
-}
