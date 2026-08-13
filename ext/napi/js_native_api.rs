@@ -117,6 +117,8 @@ impl Reference {
   /// Returns `true` if the finalizer was still registered on the shutdown
   /// list. A `false` result means env teardown (`run_napi_ref_finalizers`)
   /// already consumed and ran it, so callers must not run it again.
+  #[must_use = "the return value decides whether the finalizer may still \
+                be run"]
   fn reset(&mut self) -> bool {
     let was_pending = match self.finalizer_id.take() {
       Some(id) => unsafe { &*self.env }.remove_ref_finalizer(id),
@@ -218,7 +220,10 @@ impl Reference {
   unsafe fn remove(r: *mut Reference) {
     let r = unsafe { &mut *r };
     if r.ownership == ReferenceOwnership::Userland {
-      r.reset();
+      // `napi_delete_reference` drops the finalizer without running it (Node
+      // does the same in `~Reference`), so the "was it still pending" answer
+      // is deliberately ignored here.
+      let _ = r.reset();
     } else {
       unsafe { drop(Reference::from_raw(r)) }
     }
@@ -231,7 +236,9 @@ impl Drop for Reference {
     // `napi_delete_reference`) must not leave a dangling entry behind: Node
     // unlinks the reference from the env's list in `~RefTracker`.
     if let Some(id) = self.finalizer_id.take() {
-      unsafe { &*self.env }.remove_ref_finalizer(id);
+      // Nothing left to run once the reference is gone, so whether the entry
+      // was still pending does not matter here.
+      let _ = unsafe { &*self.env }.remove_ref_finalizer(id);
     }
   }
 }

@@ -67,6 +67,18 @@ unsafe fn ffi_call_rtype_struct(
   }
 }
 
+fn validate_struct_out_buffer(
+  cif: &libffi::middle::Cif,
+  out_buffer: Option<OutBuffer>,
+) -> Result<OutBuffer, IRError> {
+  // SAFETY: `Cif::new` prepares a non-null result type that remains owned by
+  // `cif`. libffi populates its ABI size while preparing the CIF.
+  let expected = unsafe { (*(*cif.as_raw_ptr()).rtype).size };
+  out_buffer
+    .ok_or(IRError::MissingStructReturnBuffer)?
+    .validate_size(expected)
+}
+
 // A one-off synchronous FFI call.
 pub(crate) fn ffi_call_sync<'scope>(
   scope: &mut v8::PinScope<'scope, '_>,
@@ -208,7 +220,7 @@ where
           &symbol.cif,
           &symbol.ptr,
           call_args,
-          out_buffer.unwrap().0,
+          validate_struct_out_buffer(&symbol.cif, out_buffer)?.as_ptr(),
         ),
       },
     })
@@ -291,7 +303,14 @@ fn ffi_call(
         ))
       }
       NativeType::Struct(_) => {
-        ffi_call_rtype_struct(cif, &fun_ptr, call_args, out_buffer.unwrap().0);
+        ffi_call_rtype_struct(
+          cif,
+          &fun_ptr,
+          call_args,
+          out_buffer
+            .expect("struct return buffer was validated")
+            .as_ptr(),
+        );
         FfiValue::Null
       }
     }
@@ -323,11 +342,13 @@ where
     &def.parameters,
     &mut backing_store_holder,
   )?;
-  let out_buffer_ptr = out_buffer_as_ptr_nonblocking(
-    scope,
-    out_buffer,
-    &mut backing_store_holder,
-  )?;
+  let out_buffer =
+    out_buffer_as_ptr_nonblocking(out_buffer, &mut backing_store_holder)?;
+  let out_buffer_ptr = if matches!(&def.result, NativeType::Struct(_)) {
+    Some(validate_struct_out_buffer(&symbol.cif, out_buffer)?)
+  } else {
+    None
+  };
 
   let join_handle = spawn_blocking(move || {
     let PtrSymbol { cif, ptr } = symbol.clone();
@@ -381,11 +402,13 @@ pub fn op_ffi_call_nonblocking(
     &symbol.parameter_types,
     &mut backing_store_holder,
   )?;
-  let out_buffer_ptr = out_buffer_as_ptr_nonblocking(
-    scope,
-    out_buffer,
-    &mut backing_store_holder,
-  )?;
+  let out_buffer =
+    out_buffer_as_ptr_nonblocking(out_buffer, &mut backing_store_holder)?;
+  let out_buffer_ptr = if matches!(&symbol.result_type, NativeType::Struct(_)) {
+    Some(validate_struct_out_buffer(&symbol.cif, out_buffer)?)
+  } else {
+    None
+  };
 
   let join_handle = spawn_blocking(move || {
     let Symbol {
@@ -435,7 +458,12 @@ pub fn op_ffi_call_ptr(
   let symbol = PtrSymbol::new(pointer, &def)?;
   let call_args = ffi_parse_args(scope, parameters, &def.parameters)?;
 
-  let out_buffer_ptr = out_buffer_as_ptr(scope, out_buffer);
+  let out_buffer = out_buffer_as_ptr(out_buffer);
+  let out_buffer_ptr = if matches!(&def.result, NativeType::Struct(_)) {
+    Some(validate_struct_out_buffer(&symbol.cif, out_buffer)?)
+  } else {
+    None
+  };
 
   let result = ffi_call(
     call_args,
@@ -447,4 +475,213 @@ pub fn op_ffi_call_ptr(
   );
   // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
   Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+  use std::sync::Arc;
+  use std::sync::atomic::AtomicUsize;
+  use std::sync::atomic::Ordering;
+
+  use deno_core::JsRuntime;
+  use deno_core::RuntimeOptions;
+  use deno_permissions::PermissionsContainer;
+  use deno_permissions::RuntimePermissionDescriptorParser;
+
+  use super::op_ffi_call_ptr;
+  use super::op_ffi_call_ptr_nonblocking;
+  use crate::repr::op_ffi_ptr_create;
+
+  deno_core::extension!(
+    test_ffi_call_ops,
+    ops = [
+      op_ffi_call_ptr,
+      op_ffi_call_ptr_nonblocking,
+      op_ffi_ptr_create,
+    ],
+  );
+
+  #[derive(Clone, Copy)]
+  #[repr(C)]
+  struct Rect {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+  }
+
+  static MAKE_RECT_CALL_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+  extern "C" fn make_rect(x: f64, y: f64, width: f64, height: f64) -> Rect {
+    MAKE_RECT_CALL_COUNT.fetch_add(1, Ordering::Relaxed);
+    Rect {
+      x,
+      y,
+      width,
+      height,
+    }
+  }
+
+  #[tokio::test]
+  async fn caller_provided_struct_return_views() {
+    MAKE_RECT_CALL_COUNT.store(0, Ordering::Relaxed);
+
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![test_ffi_call_ops::init()],
+      ..Default::default()
+    });
+    let parser = Arc::new(RuntimePermissionDescriptorParser::new(
+      sys_traits::impls::RealSys,
+    ));
+    runtime
+      .op_state()
+      .borrow_mut()
+      .put(PermissionsContainer::allow_all(parser));
+
+    let function_pointer = make_rect as *const () as usize;
+    let source = r#"
+      (async () => {
+        const {
+          op_ffi_call_ptr,
+          op_ffi_call_ptr_nonblocking,
+          op_ffi_ptr_create,
+        } = Deno.core.ops;
+        const pointer = op_ffi_ptr_create(__FUNCTION_POINTER__n);
+        const definition = {
+          parameters: ["f64", "f64", "f64", "f64"],
+          result: { struct: ["f64", "f64", "f64", "f64"] },
+        };
+        const fill = 0xee;
+
+        function assertEquals(actual, expected) {
+          if (actual.length !== expected.length) {
+            throw new Error(`length mismatch: ${actual.length} !== ${expected.length}`);
+          }
+          for (let i = 0; i < actual.length; i++) {
+            if (!Object.is(actual[i], expected[i])) {
+              throw new Error(`value mismatch at ${i}: ${actual[i]} !== ${expected[i]}`);
+            }
+          }
+        }
+
+        function assertInvalidBufferError(error, actual) {
+          if (!(error instanceof TypeError)) {
+            throw new Error(`expected TypeError, got ${error?.constructor?.name}`);
+          }
+          const expected =
+            `Invalid FFI struct return buffer: expected at least 32 bytes, got ${actual}`;
+          if (error.message !== expected) {
+            throw new Error(`unexpected error: ${error.message}`);
+          }
+        }
+
+        function assertMissingBufferError(error) {
+          if (!(error instanceof TypeError)) {
+            throw new Error(`expected TypeError, got ${error?.constructor?.name}`);
+          }
+          if (error.message !== "Missing FFI struct return buffer") {
+            throw new Error(`unexpected error: ${error.message}`);
+          }
+        }
+
+        const syncBacking = new Uint8Array(64);
+        syncBacking.fill(fill);
+        const syncOut = new Uint8Array(syncBacking.buffer, 16, 32);
+        op_ffi_call_ptr(pointer, definition, [1, 2, 3, 4], syncOut);
+        assertEquals(syncBacking.subarray(0, 16), new Array(16).fill(fill));
+        assertEquals(
+          new Float64Array(syncBacking.buffer, 16, 4),
+          [1, 2, 3, 4],
+        );
+        assertEquals(syncBacking.subarray(48), new Array(16).fill(fill));
+
+        const asyncBacking = new Uint8Array(64);
+        asyncBacking.fill(fill);
+        const asyncOut = new Uint8Array(asyncBacking.buffer, 16, 32);
+        await op_ffi_call_ptr_nonblocking(
+          pointer,
+          { ...definition, nonblocking: true },
+          [5, 6, 7, 8],
+          asyncOut,
+        );
+        assertEquals(asyncBacking.subarray(0, 16), new Array(16).fill(fill));
+        assertEquals(
+          new Float64Array(asyncBacking.buffer, 16, 4),
+          [5, 6, 7, 8],
+        );
+        assertEquals(asyncBacking.subarray(48), new Array(16).fill(fill));
+
+        const undersizedOut = new Uint8Array(31);
+        try {
+          op_ffi_call_ptr(pointer, definition, [9, 10, 11, 12], undersizedOut);
+          throw new Error("synchronous call accepted an undersized buffer");
+        } catch (error) {
+          assertInvalidBufferError(error, 31);
+        }
+        try {
+          await op_ffi_call_ptr_nonblocking(
+            pointer,
+            { ...definition, nonblocking: true },
+            [9, 10, 11, 12],
+            undersizedOut,
+          );
+          throw new Error("nonblocking call accepted an undersized buffer");
+        } catch (error) {
+          assertInvalidBufferError(error, 31);
+        }
+
+        try {
+          op_ffi_call_ptr(pointer, definition, [9, 10, 11, 12]);
+          throw new Error("synchronous call accepted a missing buffer");
+        } catch (error) {
+          assertMissingBufferError(error);
+        }
+
+        try {
+          await op_ffi_call_ptr_nonblocking(
+            pointer,
+            { ...definition, nonblocking: true },
+            [9, 10, 11, 12],
+          );
+          throw new Error("nonblocking call accepted a missing buffer");
+        } catch (error) {
+          assertMissingBufferError(error);
+        }
+
+        const zeroLengthOut = new Uint8Array(new ArrayBuffer(32), 0, 0);
+        try {
+          op_ffi_call_ptr(
+            pointer,
+            definition,
+            [9, 10, 11, 12],
+            zeroLengthOut,
+          );
+          throw new Error("synchronous call accepted a zero-length buffer");
+        } catch (error) {
+          assertInvalidBufferError(error, 0);
+        }
+
+        const detachedOut = new Uint8Array(32);
+        detachedOut.buffer.transfer();
+        try {
+          await op_ffi_call_ptr_nonblocking(
+            pointer,
+            { ...definition, nonblocking: true },
+            [9, 10, 11, 12],
+            detachedOut,
+          );
+          throw new Error("nonblocking call accepted a detached buffer");
+        } catch (error) {
+          assertInvalidBufferError(error, 0);
+        }
+      })()
+    "#
+    .replace("__FUNCTION_POINTER__", &function_pointer.to_string());
+
+    let promise = runtime.execute_script("ffi_call_test.js", source).unwrap();
+    #[allow(deprecated, reason = "test code")]
+    runtime.resolve_value(promise).await.unwrap();
+
+    assert_eq!(MAKE_RECT_CALL_COUNT.load(Ordering::Relaxed), 2);
+  }
 }
