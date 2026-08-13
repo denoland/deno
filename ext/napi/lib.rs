@@ -391,9 +391,18 @@ impl RefTracker {
     id
   }
 
-  fn remove(&mut self, id: NapiFinalizerId) {
+  /// Removes the entry with `id`, returning `true` if it was still pending.
+  /// The return value lets the GC weak callback and env teardown coordinate
+  /// the "run once" contract: whichever path removes the entry first runs the
+  /// finalizer, and the other observes `false` and skips it.
+  #[must_use = "the return value decides whether the finalizer may still \
+                be run"]
+  fn remove(&mut self, id: NapiFinalizerId) -> bool {
     if let Some(pos) = self.pending.iter().rposition(|f| f.id == id) {
       self.pending.remove(pos);
+      true
+    } else {
+      false
     }
   }
 }
@@ -681,8 +690,12 @@ impl Env {
     self.ref_tracker.borrow_mut().add(env, cb, data, hint)
   }
 
-  pub fn remove_ref_finalizer(&self, id: NapiFinalizerId) {
-    self.ref_tracker.borrow_mut().remove(id);
+  /// Deregisters a shutdown finalizer entry, returning `true` if it was still
+  /// pending (see [`RefTracker::remove`]).
+  #[must_use = "the return value decides whether the finalizer may still \
+                be run"]
+  pub fn remove_ref_finalizer(&self, id: NapiFinalizerId) -> bool {
+    self.ref_tracker.borrow_mut().remove(id)
   }
 }
 
@@ -968,4 +981,76 @@ pub fn print_linker_flags(name: &str) {
     "cargo:rustc-link-arg-bin={name}=-Wl,--export-dynamic-symbol-list={}",
     symbols_path,
   );
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  unsafe extern "C" fn noop_finalize(
+    _env: napi_env,
+    _data: *mut c_void,
+    _hint: *mut c_void,
+  ) {
+  }
+
+  fn add_entry(tracker: &mut RefTracker) -> NapiFinalizerId {
+    // The tracker only stores these pointers; it never dereferences them, so
+    // nulls are fine for exercising the add/remove/drain bookkeeping.
+    tracker.add(
+      std::ptr::null_mut(),
+      noop_finalize,
+      std::ptr::null_mut(),
+      std::ptr::null_mut(),
+    )
+  }
+
+  // Deterministic guards for the run-once contract behind
+  // https://github.com/denoland/deno/issues/36499.
+  //
+  // A napi_wrap finalizer can be reached by two independent paths: env teardown
+  // (`run_napi_ref_finalizers` -> `take_pending`) and the GC weak callback
+  // (`Reference::reset` -> `remove_ref_finalizer` -> `remove`). The tracker is
+  // the single arbiter — whichever path removes the entry first runs the
+  // finalizer, and the other must observe that the entry is gone and skip it.
+  // These tests pin the "remove reports whether it was still pending" contract
+  // that `weak_callback`'s `if was_pending` guard relies on. Unlike the
+  // threadsafe-function repro, they fail 100% of the time on a regression.
+
+  #[test]
+  fn teardown_first_leaves_nothing_for_the_gc_path() {
+    let mut tracker = RefTracker::default();
+    let id = add_entry(&mut tracker);
+
+    // Teardown wins the race and drains every pending finalizer.
+    assert_eq!(tracker.take_pending().len(), 1);
+
+    // A later GC weak callback tries to remove the same entry. It must report
+    // `false` so `weak_callback` does not invoke the finalizer a second time.
+    assert!(
+      !tracker.remove(id),
+      "entry drained by teardown must no longer be pending"
+    );
+  }
+
+  #[test]
+  fn gc_first_leaves_nothing_for_teardown() {
+    let mut tracker = RefTracker::default();
+    let id = add_entry(&mut tracker);
+
+    // GC weak callback wins the race and claims the entry, running it once.
+    assert!(tracker.remove(id), "first removal owns the finalizer");
+
+    // Teardown drains afterwards and must find nothing left to run.
+    assert!(
+      tracker.take_pending().is_empty(),
+      "entry claimed by the GC path must not be drained again at teardown"
+    );
+
+    // A redundant second removal (e.g. `Drop` after `reset`) is a no-op.
+    assert!(
+      !tracker.remove(id),
+      "double removal must report not-pending"
+    );
+  }
 }
