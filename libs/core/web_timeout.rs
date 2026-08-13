@@ -38,14 +38,11 @@ impl<Tmr: ReactorTimer + 'static> MutableSleep<Tmr> {
   }
 
   fn poll_ready(&self, cx: &mut Context) -> Poll<()> {
-    if self.wake_state.ready.swap(false, Ordering::AcqRel) {
-      return Poll::Ready(());
-    }
-
+    // AtomicWaker::wake() consumes the registered waker, so register before
+    // every readiness check. In particular, a ready poll may schedule the
+    // next timer without an intervening pending poll.
     self.wake_state.external_waker.register(cx.waker());
 
-    // Check again after registering so a wake racing with registration cannot
-    // be lost.
     if self.wake_state.ready.swap(false, Ordering::AcqRel) {
       return Poll::Ready(());
     }
@@ -216,11 +213,18 @@ mod tests {
     let mut cx = Context::from_waker(&external_waker);
     assert_eq!(sleep.poll_ready(&mut cx), Poll::Ready(()));
 
-    // Once registered, an off-thread wake must notify the external task and
-    // make the timer ready.
+    // A ready poll must register the external waker for the next timer.
     let timer_waker = sleep.internal_waker.clone();
-    assert_eq!(sleep.poll_ready(&mut cx), Poll::Pending);
+    std::thread::spawn(move || timer_waker.wake())
+      .join()
+      .unwrap();
 
+    notify_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+    assert_eq!(sleep.poll_ready(&mut cx), Poll::Ready(()));
+
+    // AtomicWaker consumes its registration on wake, so the ready poll above
+    // must also have re-registered it for another wake cycle.
+    let timer_waker = sleep.internal_waker.clone();
     std::thread::spawn(move || timer_waker.wake())
       .join()
       .unwrap();
