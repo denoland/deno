@@ -113,13 +113,21 @@ impl Reference {
 
   /// Drops this reference's finalizer, deregistering it from the env's
   /// shutdown finalizer list so that it cannot be called (again) there.
-  fn reset(&mut self) {
-    if let Some(id) = self.finalizer_id.take() {
-      unsafe { &*self.env }.remove_ref_finalizer(id);
-    }
+  ///
+  /// Returns `true` if the finalizer was still registered on the shutdown
+  /// list. A `false` result means env teardown (`run_napi_ref_finalizers`)
+  /// already consumed and ran it, so callers must not run it again.
+  #[must_use = "the return value decides whether the finalizer may still \
+                be run"]
+  fn reset(&mut self) -> bool {
+    let was_pending = match self.finalizer_id.take() {
+      Some(id) => unsafe { &*self.env }.remove_ref_finalizer(id),
+      None => false,
+    };
     self.finalize_cb = None;
     self.finalize_data = std::ptr::null_mut();
     self.finalize_hint = std::ptr::null_mut();
+    was_pending
   }
 
   fn set_strong(&mut self) {
@@ -153,7 +161,7 @@ impl Reference {
     let finalize_hint = reference.finalize_hint;
     let ownership = reference.ownership;
     let env_ptr = reference.env;
-    reference.reset();
+    let was_pending = reference.reset();
 
     // Note: we are NOT inside a V8 GC pause here. `v8::Weak::with_finalizer`
     // (rusty_v8) schedules this closure as V8's *second-pass* weak callback,
@@ -172,8 +180,15 @@ impl Reference {
     // ("Failed to unwrap exclusive reference of `...` type from napi value").
     // `reset()` above already deregistered the shutdown finalizer entry, so it
     // is not called again at env shutdown (matches Node's `Unlink` ordering in
-    // `Reference::Finalize`).
-    if let Some(finalize_cb) = finalize_cb {
+    // `Reference::Finalize`). It also reports whether the entry was still
+    // pending: if env teardown (`run_napi_ref_finalizers`) already drained the
+    // list and ran this finalizer, `was_pending` is `false` and we must not run
+    // it a second time. GC and teardown are separate paths here, so the tracker
+    // is what enforces "run exactly once" — whichever removes the entry first
+    // wins. Without this guard, a wrapped object finalized at teardown but
+    // garbage-collected afterwards (e.g. the test runner keeps polling the
+    // event loop) would have its finalizer invoked twice. See #36499.
+    if was_pending && let Some(finalize_cb) = finalize_cb {
       unsafe {
         finalize_cb(env_ptr as _, finalize_data, finalize_hint);
       }
@@ -198,7 +213,10 @@ impl Reference {
   unsafe fn remove(r: *mut Reference) {
     let r = unsafe { &mut *r };
     if r.ownership == ReferenceOwnership::Userland {
-      r.reset();
+      // `napi_delete_reference` drops the finalizer without running it (Node
+      // does the same in `~Reference`), so the "was it still pending" answer
+      // is deliberately ignored here.
+      let _ = r.reset();
     } else {
       unsafe { drop(Reference::from_raw(r)) }
     }
@@ -211,7 +229,9 @@ impl Drop for Reference {
     // `napi_delete_reference`) must not leave a dangling entry behind: Node
     // unlinks the reference from the env's list in `~RefTracker`.
     if let Some(id) = self.finalizer_id.take() {
-      unsafe { &*self.env }.remove_ref_finalizer(id);
+      // Nothing left to run once the reference is gone, so whether the entry
+      // was still pending does not matter here.
+      let _ = unsafe { &*self.env }.remove_ref_finalizer(id);
     }
   }
 }
