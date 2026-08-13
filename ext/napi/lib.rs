@@ -620,8 +620,13 @@ pub struct Env {
   pub async_hooks_after: v8::Global<v8::Function>,
   pub async_hooks_destroy: v8::Global<v8::Function>,
   pub next_async_id: i64,
+  // Models libuv's uv__fd_exists registry by recording which handle has an
+  // active I/O watcher for each fd. Only poll handles currently participate
+  // here, while libuv uses the registry for other I/O watcher types as well.
+  // Addons must stop or close a poll handle before closing its fd; otherwise a
+  // reused fd number can remain registered and cause an unexpected UV_EEXIST.
   #[cfg(unix)]
-  active_poll_fds: HashMap<i32, usize>,
+  fd_watchers: HashMap<i32, usize>,
 }
 
 unsafe impl Send for Env {}
@@ -657,7 +662,7 @@ impl Env {
       async_hooks_destroy,
       next_async_id: 1,
       #[cfg(unix)]
-      active_poll_fds: HashMap::new(),
+      fd_watchers: HashMap::new(),
       shared: std::ptr::null_mut(),
       open_handle_scopes: 0,
       open_callback_scopes: 0,
@@ -875,24 +880,31 @@ fn drain_gc_finalizers(
   }
 
   #[cfg(unix)]
-  pub(crate) fn try_acquire_poll_fd(
+  pub(crate) fn get_fd_watcher(&self, fd: i32) -> Option<usize> {
+    self.fd_watchers.get(&fd).copied()
+  }
+
+  // Registration is idempotent for the same watcher and refuses to replace a
+  // different watcher already registered for the fd.
+  #[cfg(unix)]
+  pub(crate) fn register_fd_watcher(
     &mut self,
     fd: i32,
-    poll_addr: usize,
+    watcher_addr: usize,
   ) -> bool {
-    match self.active_poll_fds.get(&fd) {
-      Some(owner) if *owner != poll_addr => false,
-      _ => {
-        self.active_poll_fds.insert(fd, poll_addr);
+    match self.fd_watchers.get(&fd) {
+      Some(current) => *current == watcher_addr,
+      None => {
+        self.fd_watchers.insert(fd, watcher_addr);
         true
       }
     }
   }
 
   #[cfg(unix)]
-  pub(crate) fn release_poll_fd(&mut self, fd: i32, poll_addr: usize) {
-    if self.active_poll_fds.get(&fd) == Some(&poll_addr) {
-      self.active_poll_fds.remove(&fd);
+  pub(crate) fn unregister_fd_watcher(&mut self, fd: i32, watcher_addr: usize) {
+    if self.fd_watchers.get(&fd) == Some(&watcher_addr) {
+      self.fd_watchers.remove(&fd);
     }
   }
 }

@@ -918,6 +918,9 @@ unsafe extern "C" fn uv_poll_init_socket(
   unsafe {
     #[cfg(unix)]
     {
+      if (&*r#loop).get_fd_watcher(fd).is_some() {
+        return uv_compat::UV_EEXIST;
+      }
       let result = set_fd_nonblocking(fd);
       if result != 0 {
         return result;
@@ -1039,14 +1042,15 @@ unsafe extern "C" fn uv_poll_start(
       return uv_compat::UV_EINVAL;
     }
     #[cfg(unix)]
-    if cb.is_none() && events != 0 {
-      return uv_compat::UV_EINVAL;
+    if let Some(watcher) = (&*(*poll).r#loop).get_fd_watcher((&*bridge_ptr).fd)
+    {
+      if watcher != poll as usize {
+        return uv_compat::UV_EEXIST;
+      }
     }
     #[cfg(unix)]
-    if !(&mut *(*poll).r#loop)
-      .try_acquire_poll_fd((&*bridge_ptr).fd, poll as usize)
-    {
-      return uv_compat::UV_EEXIST;
+    if cb.is_none() && events != 0 {
+      return uv_compat::UV_EINVAL;
     }
     if events == 0 {
       return uv_poll_stop(poll);
@@ -1065,6 +1069,9 @@ unsafe extern "C" fn uv_poll_start(
       fd: (&*bridge_ptr).fd,
     });
     *bridge_ptr = bridge;
+    #[cfg(unix)]
+    (&mut *(*poll).r#loop)
+      .register_fd_watcher((&*bridge_ptr).fd, poll as usize);
     #[cfg(unix)]
     let bridge = Arc::clone(&*bridge_ptr);
     let sender = (&mut *(*poll).r#loop).async_work_sender.clone();
@@ -1160,7 +1167,8 @@ unsafe extern "C" fn uv_poll_stop(poll: *mut uv_poll_t) -> c_int {
     }
     (&*bridge_ptr).active.store(false, Ordering::Release);
     #[cfg(unix)]
-    (&mut *(*poll).r#loop).release_poll_fd((&*bridge_ptr).fd, poll as usize);
+    (&mut *(*poll).r#loop)
+      .unregister_fd_watcher((&*bridge_ptr).fd, poll as usize);
     if (*poll).active {
       (*poll).active = false;
       if (*poll).refed {

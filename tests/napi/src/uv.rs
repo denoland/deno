@@ -1655,15 +1655,27 @@ extern "C" fn test_uv_poll_allows_one_active_handle_per_fd(
     libuv_sys_lite::uv_handle_set_data(second.cast(), state.cast());
     let start_zero =
       libuv_sys_lite::uv_poll_start((*state).poll, 0, Some(poll_stale_cb));
+    let start_zero_null = libuv_sys_lite::uv_poll_start((*state).poll, 0, None);
     let first_start = libuv_sys_lite::uv_poll_start(
       (*state).poll,
       readable,
       Some(poll_stale_cb),
     );
+    let first_start_null =
+      libuv_sys_lite::uv_poll_start((*state).poll, readable, None);
+    let third = Box::into_raw(Box::new(
+      MaybeUninit::<libuv_sys_lite::uv_poll_t>::zeroed(),
+    ))
+    .cast();
+    let late_init = libuv_sys_lite::uv_poll_init(loop_.cast(), third, fd);
     let conflicting_start =
       libuv_sys_lite::uv_poll_start(second, readable, Some(poll_stale_cb));
     let conflicting_start_zero =
       libuv_sys_lite::uv_poll_start(second, 0, Some(poll_stale_cb));
+    let conflicting_start_zero_null =
+      libuv_sys_lite::uv_poll_start(second, 0, None);
+    let conflicting_start_null =
+      libuv_sys_lite::uv_poll_start(second, readable, None);
     let first_stop = libuv_sys_lite::uv_poll_stop((*state).poll);
     let second_start =
       libuv_sys_lite::uv_poll_start(second, readable, Some(poll_stale_cb));
@@ -1671,14 +1683,24 @@ extern "C" fn test_uv_poll_allows_one_active_handle_per_fd(
 
     let passed = second_init == 0
       && start_zero == 0
+      && start_zero_null == 0
       && first_start == 0
+      && first_start_null == libuv_sys_lite::uv_errno_t::UV_EINVAL.0
+      && late_init == libuv_sys_lite::uv_errno_t::UV_EEXIST.0
       && conflicting_start == libuv_sys_lite::uv_errno_t::UV_EEXIST.0
       && conflicting_start_zero == libuv_sys_lite::uv_errno_t::UV_EEXIST.0
+      && conflicting_start_zero_null == libuv_sys_lite::uv_errno_t::UV_EEXIST.0
+      && conflicting_start_null == libuv_sys_lite::uv_errno_t::UV_EEXIST.0
       && first_stop == 0
       && second_start == 0
       && second_stop == 0;
 
     libuv_sys_lite::uv_close(second.cast(), Some(duplicate_poll_close_cb));
+    if late_init == 0 {
+      libuv_sys_lite::uv_close(third.cast(), Some(duplicate_poll_close_cb));
+    } else {
+      let _ = Box::from_raw(third);
+    }
     poll_test_finish(state, passed);
   }
   null_mut()
