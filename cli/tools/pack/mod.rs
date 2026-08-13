@@ -34,6 +34,7 @@ mod unfurl;
 
 use extensions::compute_output_path;
 use extensions::media_type_extension;
+use extensions::ts_to_dts_extension;
 use npm_tarball::create_npm_tarball;
 use npm_tarball::default_tarball_filename;
 use package_json::generate_package_json;
@@ -165,7 +166,10 @@ pub async fn pack(
       parsed_source_cache.as_ref(),
       &pack_flags,
       &package.config_file,
+      &cli_factory,
+      cli_options.ts_type_lib_window(),
     )
+    .await
     .with_context(|| {
       format!("Failed to process modules for package '{}'", package.name)
     })?;
@@ -671,17 +675,25 @@ fn create_transpile_options(
   })
 }
 
-fn process_modules(
+async fn process_modules(
   graph: &ModuleGraph,
   paths: &[CollectedPath],
   parsed_source_cache: &deno_resolver::cache::ParsedSourceCache,
   pack_flags: &PackFlags,
   config_file: &deno_config::deno_json::ConfigFile,
+  cli_factory: &CliFactory,
+  ts_type_lib: crate::args::TsTypeLib,
 ) -> Result<Vec<ProcessedFile>, AnyError> {
   let mut processed = Vec::new();
 
   // Get transpile options from deno.json compiler options
   let transpile_options = create_transpile_options(config_file)?;
+
+  let dts_by_source = if pack_flags.allow_slow_types {
+    BTreeMap::new()
+  } else {
+    emit_declarations_for_pack(cli_factory, graph, paths, ts_type_lib).await?
+  };
 
   for path in paths {
     let module = graph.get(&path.specifier);
@@ -696,6 +708,7 @@ fn process_modules(
       parsed_source_cache,
       pack_flags,
       &transpile_options,
+      &dts_by_source,
     )?;
     processed.push(file);
   }
@@ -710,6 +723,7 @@ fn process_single_module(
   parsed_source_cache: &deno_resolver::cache::ParsedSourceCache,
   pack_flags: &PackFlags,
   transpile_options: &deno_ast::TranspileOptions,
+  dts_by_source: &BTreeMap<String, String>,
 ) -> Result<ProcessedFile, AnyError> {
   let media_type = js_module.media_type;
   let raw_source = js_module.source.text.as_ref();
@@ -792,7 +806,10 @@ fn process_single_module(
 
   // Extract .d.ts if available and not skipped, then unfurl its specifiers
   let dts_content = if !pack_flags.allow_slow_types {
-    let dts = extract_dts(js_module, media_type);
+    let dts = dts_by_source
+      .get(path.specifier.as_str())
+      .cloned()
+      .or_else(|| extract_dts(js_module, media_type));
     dts.map(|dts_text| unfurl_dts_content(dts_text, &path.specifier, graph))
   } else {
     None
@@ -808,6 +825,81 @@ fn process_single_module(
     dts_content,
     dependencies,
   })
+}
+
+/// Emit declarations with TypeScript so the package's public declarations use
+/// the same complete emitter as `deno transpile --declaration`.
+async fn emit_declarations_for_pack(
+  cli_factory: &CliFactory,
+  graph: &ModuleGraph,
+  paths: &[CollectedPath],
+  ts_type_lib: crate::args::TsTypeLib,
+) -> Result<BTreeMap<String, String>, AnyError> {
+  let mut source_by_dts_path = BTreeMap::new();
+  let root_names = paths
+    .iter()
+    .filter_map(|path| {
+      let Some(Module::Js(js_module)) = graph.get(&path.specifier) else {
+        return None;
+      };
+      js_module
+        .fast_check_module()
+        .and_then(|module| module.dts.as_ref())?;
+      let media_type = js_module.media_type;
+      if !matches!(
+        media_type,
+        MediaType::TypeScript
+          | MediaType::Tsx
+          | MediaType::Mts
+          | MediaType::Cts
+      ) {
+        return None;
+      }
+      let mut source_path = path.specifier.to_file_path().ok()?;
+      let file_name = source_path.file_name()?.to_str()?;
+      source_path.set_file_name(ts_to_dts_extension(file_name));
+      source_by_dts_path.insert(source_path, path.specifier.clone());
+      Some((path.specifier.clone(), media_type))
+    })
+    .collect::<Vec<_>>();
+  if root_names.is_empty() {
+    return Ok(BTreeMap::new());
+  }
+
+  let type_checker = cli_factory.type_checker().await?;
+  let result = type_checker.emit_declarations(
+    Arc::new(graph.clone()),
+    root_names,
+    ts_type_lib,
+  )?;
+  if result.diagnostics.has_diagnostic() {
+    log::warn!(
+      "TypeScript diagnostics while generating package declarations:\n{}",
+      result.diagnostics
+    );
+  }
+
+  let mut dts_by_source = BTreeMap::new();
+  for (file_name, content) in result.emitted_files {
+    let path = ModuleSpecifier::parse(&file_name)
+      .ok()
+      .and_then(|specifier| specifier.to_file_path().ok())
+      .unwrap_or_else(|| PathBuf::from(&file_name));
+    if let Some(source_specifier) = source_by_dts_path.get(&path) {
+      dts_by_source.insert(
+        source_specifier.to_string(),
+        strip_amd_module_directives(content),
+      );
+    }
+  }
+  Ok(dts_by_source)
+}
+
+fn strip_amd_module_directives(content: String) -> String {
+  content
+    .split_inclusive('\n')
+    .filter(|line| !line.trim_start().starts_with("/// <amd-module"))
+    .collect()
 }
 
 /// Parse and unfurl specifiers in generated .d.ts content.
