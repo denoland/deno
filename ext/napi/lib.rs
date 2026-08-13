@@ -44,6 +44,7 @@ use std::thread_local;
 use deno_core::ExternalOpsTracker;
 use deno_core::OpState;
 use deno_core::V8CrossThreadTaskSpawner;
+use deno_core::V8TaskSpawner;
 use deno_core::op2;
 use deno_core::parking_lot::RwLock;
 use deno_core::url::Url;
@@ -371,9 +372,9 @@ pub struct RefTracker {
   /// these are already committed to run exactly once — they must not be
   /// confused with finalizers for objects that are still alive.
   gc_ready: Vec<PendingNapiFinalizer>,
-  /// Whether a V8 interrupt has already been requested to drain `gc_ready`.
-  /// Avoids requesting one interrupt per collected object when a single GC
-  /// cycle reclaims many references at once.
+  /// Whether an event-loop task has already been scheduled to drain
+  /// `gc_ready`. Avoids scheduling one task per collected object when a single
+  /// GC cycle reclaims many references at once.
   drain_requested: bool,
 }
 
@@ -389,18 +390,18 @@ impl RefTracker {
   }
 
   /// Queues a GC-collected finalizer to run at the next JS-safe point,
-  /// returning `true` if the caller should request a fresh V8 interrupt (i.e.
+  /// returning `true` if the caller should schedule a fresh drain task (i.e.
   /// no drain was already pending).
   fn defer(&mut self, finalizer: PendingNapiFinalizer) -> bool {
     self.gc_ready.push(finalizer);
-    let need_interrupt = !self.drain_requested;
+    let need_schedule = !self.drain_requested;
     self.drain_requested = true;
-    need_interrupt
+    need_schedule
   }
 
   /// Removes and returns the GC-collected finalizers ready to run, clearing
   /// the "drain requested" flag so that finalizers queued from here on
-  /// request a new interrupt.
+  /// schedule a new drain task.
   fn take_gc_ready(&mut self) -> Vec<PendingNapiFinalizer> {
     self.drain_requested = false;
     std::mem::take(&mut self.gc_ready)
@@ -579,6 +580,11 @@ pub struct Env {
   pub open_callback_scopes: usize,
   pub shared: *mut EnvShared,
   pub async_work_sender: V8CrossThreadTaskSpawner,
+  /// Same-thread event-loop task queue, used to run GC-collected finalizers at
+  /// the next JS-safe point (see [`Env::defer_gc_finalizer`]). Only ever
+  /// touched on the isolate thread; like the `Rc` fields below it relies on the
+  /// `unsafe impl Send for Env` never actually exercising these off-thread.
+  gc_finalizer_spawner: V8TaskSpawner,
   cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
   ref_tracker: Rc<RefCell<RefTracker>>,
   external_ops_tracker: ExternalOpsTracker,
@@ -610,6 +616,7 @@ impl Env {
     async_hooks_after: v8::Global<v8::Function>,
     async_hooks_destroy: v8::Global<v8::Function>,
     sender: V8CrossThreadTaskSpawner,
+    gc_finalizer_spawner: V8TaskSpawner,
     cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
     ref_tracker: Rc<RefCell<RefTracker>>,
     external_ops_tracker: ExternalOpsTracker,
@@ -629,6 +636,7 @@ impl Env {
       open_handle_scopes: 0,
       open_callback_scopes: 0,
       async_work_sender: sender,
+      gc_finalizer_spawner,
       cleanup_hooks,
       ref_tracker,
       external_ops_tracker,
@@ -732,19 +740,26 @@ impl Env {
     self.ref_tracker.borrow_mut().remove(id)
   }
 
-  /// Queues a GC-collected reference's finalizer to run at the next point
-  /// where JavaScript execution is legal, and asks V8 to interrupt into that
-  /// point.
+  /// Queues a GC-collected reference's finalizer to run at the next JS-safe
+  /// point on the event loop, the way Node drains finalizers from a
+  /// `SetImmediate` rather than from the GC.
   ///
   /// napi finalizers are allowed to call back into JavaScript (e.g.
   /// `napi_call_function`), but V8's second-pass weak callback — where the GC
-  /// hands us collected references — runs inside a `DisallowJavascriptExecutionScope`,
-  /// so calling into JS there aborts the process. Node.js avoids this by
-  /// draining finalizers from a `SetImmediate` rather than the GC pass; this is
-  /// the equivalent, using a V8 interrupt to reach a safe point on the isolate
-  /// thread. Requesting the interrupt is a lightweight, isolate-local operation
-  /// (unlike the cross-thread task spawner, whose mutex + waker signalling from
-  /// inside the second-pass callback caused the regressions in #33924 / #34008).
+  /// hands us collected references — runs inside a
+  /// `DisallowJavascriptExecutionScope`, so calling into JS there aborts the
+  /// process (#36568). A V8 `RequestInterrupt` is not enough either: it is
+  /// serviced from the stack guard, which V8 also checks while unwinding a GC,
+  /// so the drain can still land inside the disallowed scope. The same-thread
+  /// [`V8TaskSpawner`] instead runs the drain from `dispatch_task_spawner`
+  /// during an event-loop poll, with a real context scope and a microtask
+  /// checkpoint — a genuinely JS-safe point.
+  ///
+  /// This is *not* the cross-thread spawner that #33260 used and #34023
+  /// reverted: that hazard was a finalizer running twice, which the
+  /// `reset()` / `was_pending` run-once handshake (#36499) now prevents
+  /// independently. The task only pushes onto an isolate-local queue on the
+  /// isolate thread.
   pub fn defer_gc_finalizer(
     &mut self,
     cb: napi_finalize,
@@ -752,7 +767,7 @@ impl Env {
     hint: *mut c_void,
   ) {
     let env_ptr = self as *mut Env as napi_env;
-    let need_interrupt =
+    let need_schedule =
       self.ref_tracker.borrow_mut().defer(PendingNapiFinalizer {
         // GC-ready entries never need deregistering by id.
         id: NapiFinalizerId(u64::MAX),
@@ -761,44 +776,37 @@ impl Env {
         data,
         hint,
       });
-    if need_interrupt {
-      let tracker_ptr = Rc::as_ptr(&self.ref_tracker) as *mut c_void;
-      self
-        .isolate()
-        .thread_safe_handle()
-        .request_interrupt(drain_gc_finalizers_interrupt, tracker_ptr);
+    // Only the first finalizer of a GC batch schedules a drain; the rest ride
+    // along on the same task (see `RefTracker::defer`).
+    if need_schedule {
+      let tracker = self.ref_tracker.clone();
+      self.gc_finalizer_spawner.spawn(move |scope| {
+        drain_gc_finalizers(scope, &tracker);
+      });
     }
   }
 }
 
-/// V8 interrupt callback that drains the GC-ready finalizer queue at a point
-/// where JavaScript execution is legal. Registered by [`Env::defer_gc_finalizer`].
-unsafe extern "C" fn drain_gc_finalizers_interrupt(
-  isolate: v8::UnsafeRawIsolatePtr,
-  data: *mut c_void,
+/// Runs the GC-collected finalizers queued by [`Env::defer_gc_finalizer`].
+/// Invoked from the event-loop task queue, so JavaScript execution is legal
+/// here and finalizers may call back into JS.
+fn drain_gc_finalizers(
+  scope: &mut v8::PinScope,
+  tracker: &RefCell<RefTracker>,
 ) {
-  // SAFETY: `data` is `Rc::as_ptr` of a `RefCell<RefTracker>` owned by the
-  // `NapiState` (and cloned into every `Env`), which outlives the isolate that
-  // fires this interrupt.
-  let tracker = unsafe { &*(data as *const RefCell<RefTracker>) };
-  // Release the borrow before running any finalizer: a finalizer may call
-  // `napi_delete_reference`, which re-borrows the tracker.
+  // Take the batch before running anything: a finalizer may call
+  // `napi_delete_reference` (re-borrowing the tracker) or defer more
+  // finalizers (which then schedule their own task).
   let ready = tracker.borrow_mut().take_gc_ready();
-  if ready.is_empty() {
-    return;
-  }
-
-  let mut isolate = isolate;
-  // SAFETY: the interrupt runs on the isolate thread with the isolate entered.
-  let isolate = unsafe {
-    v8::Isolate::ref_from_raw_isolate_ptr_mut_unchecked(&mut isolate)
-  };
-  // Establish a HandleScope so values created by the finalizers (each napi call
-  // reuses the active scope) live only for the duration of the drain.
-  v8::scope!(let _scope, isolate);
   for f in ready {
+    // Backstop `TryCatch`: each napi entry point already traps its callback's
+    // exceptions into `env.last_exception`, but keep one here so a finalizer
+    // that still lets a throw escape cannot corrupt the shared event-loop
+    // `HandleScope` (`V8TaskSpawner::spawn`'s contract). Recreating it per
+    // finalizer clears any caught exception before the next one runs.
+    deno_core::v8::tc_scope!(_tc, scope);
     // SAFETY: env/data/hint were captured when the addon created the reference;
-    // V8 is alive and we hold a HandleScope.
+    // V8 is alive and we hold a scope.
     unsafe {
       (f.cb)(f.env, f.data, f.hint);
     }
@@ -855,6 +863,7 @@ fn op_napi_open<'scope>(
   // re-borrow through the NAPI module.
   let (
     async_work_sender,
+    gc_finalizer_spawner,
     cleanup_hooks,
     ref_tracker,
     external_ops_tracker,
@@ -868,6 +877,7 @@ fn op_napi_open<'scope>(
     let napi_state = op_state.borrow::<NapiState>();
     (
       op_state.borrow::<V8CrossThreadTaskSpawner>().clone(),
+      op_state.borrow::<V8TaskSpawner>().clone(),
       napi_state.env_cleanup_hooks.clone(),
       napi_state.ref_tracker.clone(),
       op_state.external_ops_tracker.clone(),
@@ -941,6 +951,7 @@ fn op_napi_open<'scope>(
     v8::Global::new(scope, async_hooks_after),
     v8::Global::new(scope, async_hooks_destroy),
     async_work_sender,
+    gc_finalizer_spawner,
     cleanup_hooks,
     ref_tracker,
     external_ops_tracker,

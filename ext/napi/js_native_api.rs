@@ -173,13 +173,14 @@ impl Reference {
     // mirror that by deferring the callback to the next JS-safe point via
     // `Env::defer_gc_finalizer` instead of invoking it here.
     //
-    // Deferral must stay lightweight: a previous attempt (#33260) used
-    // `V8CrossThreadTaskSpawner::spawn`, whose mutex + tokio `AtomicWaker`
-    // signalling from inside the second-pass callback caused the intermittent
-    // `napi_unwrap` failures in #33924 / #34008 ("Failed to unwrap exclusive
-    // reference of `...` type from napi value"), and was reverted in #34023.
-    // `defer_gc_finalizer` only pushes onto an isolate-local queue and requests
-    // a V8 interrupt, avoiding that cross-thread signalling.
+    // `defer_gc_finalizer` schedules the callback on the same-thread
+    // event-loop task queue, which runs it during an event-loop poll at a
+    // genuinely JS-safe point. An earlier attempt (#33260, reverted in #34023)
+    // used the *cross-thread* spawner and reintroduced a double-run
+    // (#33924 / #34008: "Failed to unwrap exclusive reference of `...` type
+    // from napi value"); that failure mode is now prevented independently by
+    // the `reset()` / `was_pending` run-once handshake below, and the
+    // same-thread spawner only touches an isolate-local queue on this thread.
     //
     // `reset()` above already deregistered the shutdown finalizer entry, so it
     // is not called again at env shutdown (matches Node's `Unlink` ordering in
