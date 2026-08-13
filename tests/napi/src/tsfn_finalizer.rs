@@ -153,6 +153,10 @@ extern "C" fn test_tsfn_wrap_finalizer(
   // is closed exactly once and never outlives the worker.
   let tsfn = SendTsfn(tsfn);
   thread::spawn(move || {
+    // Bind the whole `SendTsfn` (which is `Send`) before projecting to its
+    // field, so RFC 2229 disjoint closure capture takes the wrapper rather than
+    // the inner non-`Send` pointer.
+    let tsfn = tsfn;
     let SendTsfn(tsfn) = tsfn;
     for _ in 0..TICKS {
       let status = unsafe {
