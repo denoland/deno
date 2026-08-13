@@ -117,9 +117,8 @@ impl Reference {
   /// Returns `true` if the finalizer was still registered on the shutdown
   /// list. A `false` result means env teardown (`run_napi_ref_finalizers`)
   /// already consumed and ran it, so callers must not run it again.
-  #[must_use = "the return value decides whether the finalizer may still be \
-                run; discard it explicitly with `let _ =` if this path never \
-                runs the finalizer"]
+  #[must_use = "the return value decides whether the finalizer may still \
+                be run"]
   fn reset(&mut self) -> bool {
     let was_pending = match self.finalizer_id.take() {
       Some(id) => unsafe { &*self.env }.remove_ref_finalizer(id),
