@@ -254,6 +254,7 @@ pub const napi_float32_array: napi_typedarray_type = 7;
 pub const napi_float64_array: napi_typedarray_type = 8;
 pub const napi_bigint64_array: napi_typedarray_type = 9;
 pub const napi_biguint64_array: napi_typedarray_type = 10;
+pub const napi_float16_array: napi_typedarray_type = 11;
 
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq)]
@@ -364,12 +365,45 @@ pub struct NapiFinalizerId(u64);
 pub struct RefTracker {
   next_id: u64,
   pending: Vec<PendingNapiFinalizer>,
+  /// Finalizers whose objects have already been collected by the GC and are
+  /// waiting to run at the next point where JavaScript execution is legal
+  /// (see [`Env::defer_gc_finalizer`]). Kept separate from `pending` because
+  /// these are already committed to run exactly once — they must not be
+  /// confused with finalizers for objects that are still alive.
+  gc_ready: Vec<PendingNapiFinalizer>,
+  /// Whether a V8 interrupt has already been requested to drain `gc_ready`.
+  /// Avoids requesting one interrupt per collected object when a single GC
+  /// cycle reclaims many references at once.
+  drain_requested: bool,
 }
 
 impl RefTracker {
-  /// Removes and returns all pending finalizers, leaving the tracker empty.
+  /// Removes and returns all finalizers still owed at environment teardown:
+  /// GC-collected finalizers that never got a chance to drain, plus
+  /// finalizers for objects that were never collected.
   pub fn take_pending(&mut self) -> Vec<PendingNapiFinalizer> {
-    std::mem::take(&mut self.pending)
+    self.drain_requested = false;
+    let mut all = std::mem::take(&mut self.gc_ready);
+    all.append(&mut self.pending);
+    all
+  }
+
+  /// Queues a GC-collected finalizer to run at the next JS-safe point,
+  /// returning `true` if the caller should request a fresh V8 interrupt (i.e.
+  /// no drain was already pending).
+  fn defer(&mut self, finalizer: PendingNapiFinalizer) -> bool {
+    self.gc_ready.push(finalizer);
+    let need_interrupt = !self.drain_requested;
+    self.drain_requested = true;
+    need_interrupt
+  }
+
+  /// Removes and returns the GC-collected finalizers ready to run, clearing
+  /// the "drain requested" flag so that finalizers queued from here on
+  /// request a new interrupt.
+  fn take_gc_ready(&mut self) -> Vec<PendingNapiFinalizer> {
+    self.drain_requested = false;
+    std::mem::take(&mut self.gc_ready)
   }
 
   fn add(
@@ -692,6 +726,78 @@ impl Env {
   /// pending (see [`RefTracker::remove`]).
   pub fn remove_ref_finalizer(&self, id: NapiFinalizerId) -> bool {
     self.ref_tracker.borrow_mut().remove(id)
+  }
+
+  /// Queues a GC-collected reference's finalizer to run at the next point
+  /// where JavaScript execution is legal, and asks V8 to interrupt into that
+  /// point.
+  ///
+  /// napi finalizers are allowed to call back into JavaScript (e.g.
+  /// `napi_call_function`), but V8's second-pass weak callback — where the GC
+  /// hands us collected references — runs inside a `DisallowJavascriptExecutionScope`,
+  /// so calling into JS there aborts the process. Node.js avoids this by
+  /// draining finalizers from a `SetImmediate` rather than the GC pass; this is
+  /// the equivalent, using a V8 interrupt to reach a safe point on the isolate
+  /// thread. Requesting the interrupt is a lightweight, isolate-local operation
+  /// (unlike the cross-thread task spawner, whose mutex + waker signalling from
+  /// inside the second-pass callback caused the regressions in #33924 / #34008).
+  pub fn defer_gc_finalizer(
+    &mut self,
+    cb: napi_finalize,
+    data: *mut c_void,
+    hint: *mut c_void,
+  ) {
+    let env_ptr = self as *mut Env as napi_env;
+    let need_interrupt =
+      self.ref_tracker.borrow_mut().defer(PendingNapiFinalizer {
+        // GC-ready entries never need deregistering by id.
+        id: NapiFinalizerId(u64::MAX),
+        env: env_ptr,
+        cb,
+        data,
+        hint,
+      });
+    if need_interrupt {
+      let tracker_ptr = Rc::as_ptr(&self.ref_tracker) as *mut c_void;
+      self
+        .isolate()
+        .thread_safe_handle()
+        .request_interrupt(drain_gc_finalizers_interrupt, tracker_ptr);
+    }
+  }
+}
+
+/// V8 interrupt callback that drains the GC-ready finalizer queue at a point
+/// where JavaScript execution is legal. Registered by [`Env::defer_gc_finalizer`].
+unsafe extern "C" fn drain_gc_finalizers_interrupt(
+  isolate: v8::UnsafeRawIsolatePtr,
+  data: *mut c_void,
+) {
+  // SAFETY: `data` is `Rc::as_ptr` of a `RefCell<RefTracker>` owned by the
+  // `NapiState` (and cloned into every `Env`), which outlives the isolate that
+  // fires this interrupt.
+  let tracker = unsafe { &*(data as *const RefCell<RefTracker>) };
+  // Release the borrow before running any finalizer: a finalizer may call
+  // `napi_delete_reference`, which re-borrows the tracker.
+  let ready = tracker.borrow_mut().take_gc_ready();
+  if ready.is_empty() {
+    return;
+  }
+
+  let mut isolate = isolate;
+  // SAFETY: the interrupt runs on the isolate thread with the isolate entered.
+  let isolate = unsafe {
+    v8::Isolate::ref_from_raw_isolate_ptr_mut_unchecked(&mut isolate)
+  };
+  // Establish a HandleScope so values created by the finalizers (each napi call
+  // reuses the active scope) live only for the duration of the drain.
+  v8::scope!(let _scope, isolate);
+  for f in ready {
+    // SAFETY: env/data/hint were captured when the addon created the reference;
+    // V8 is alive and we hold a HandleScope.
+    unsafe {
+      (f.cb)(f.env, f.data, f.hint);
+    }
   }
 }
 
