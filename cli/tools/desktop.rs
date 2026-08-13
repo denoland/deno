@@ -598,6 +598,7 @@ async fn compile_desktop(
         &deb_abs,
         &desktop_flags,
         desktop_flags.target.as_deref(),
+        config_package_version(cli_options).as_deref(),
       )?;
       deb_abs
     } else if let Some(rpm) = rpm_output.as_deref() {
@@ -607,6 +608,8 @@ async fn compile_desktop(
         &rpm_abs,
         &desktop_flags,
         desktop_flags.target.as_deref(),
+        config_package_version(cli_options).as_deref(),
+        config_package_license(cli_options).as_deref(),
       )?;
       rpm_abs
     } else if let Some(msi) = msi_output.as_deref() {
@@ -616,6 +619,7 @@ async fn compile_desktop(
         &msi_abs,
         &desktop_flags,
         desktop_flags.target.as_deref(),
+        config_package_version(cli_options).as_deref(),
       )?;
       msi_abs
     } else {
@@ -3139,6 +3143,7 @@ async fn package_macos_app_bundle(
     &bundle_id,
     &laufey_executable_name,
     desktop_flags.icon.is_some(),
+    config_package_version(cli_options).as_deref(),
   );
   std::fs::write(contents_dir.join("Info.plist"), info_plist)?;
 
@@ -3230,7 +3235,12 @@ fn render_macos_info_plist(
   bundle_id: &str,
   executable_name: &str,
   has_icon: bool,
+  config_version: Option<&str>,
 ) -> String {
+  // deno.json `version` when configured (#36503); the defaults match the
+  // Linux/Windows packaging defaults.
+  let short_version = config_version.unwrap_or("1.0");
+  let bundle_version = config_version.unwrap_or("1.0.0");
   format!(
     r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -3251,9 +3261,9 @@ fn render_macos_info_plist(
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>1.0</string>
+  <string>{short_version}</string>
   <key>CFBundleVersion</key>
-  <string>1.0.0</string>
+  <string>{bundle_version}</string>
   <key>LSMinimumSystemVersion</key>
   <string>10.15</string>
   <key>NSHighResolutionCapable</key>
@@ -3649,9 +3659,35 @@ fn debian_package_name(app_name: &str) -> String {
   }
 }
 
+/// The workspace root deno.json `version` field, used as the package version
+/// across the macOS bundle and the Linux/Windows installers (#36503).
+fn config_package_version(
+  cli_options: &crate::args::CliOptions,
+) -> Option<String> {
+  cli_options
+    .workspace()
+    .root_deno_json()
+    .and_then(|c| c.json.version.clone())
+    .filter(|v| !v.is_empty())
+}
+
+/// The workspace root deno.json `license` field (when it is a string), used
+/// for the `.rpm` License tag (#36503).
+fn config_package_license(
+  cli_options: &crate::args::CliOptions,
+) -> Option<String> {
+  cli_options
+    .workspace()
+    .root_deno_json()
+    .and_then(|c| c.json.license.as_ref())
+    .and_then(|v| v.as_str().map(str::to_string))
+    .filter(|v| !v.is_empty())
+}
+
 fn linux_package_meta(
   app_dir: &Path,
   desktop_flags: &DesktopFlags,
+  config_version: Option<&str>,
 ) -> LinuxPackageMeta {
   let app_name = app_dir
     .file_name()
@@ -3665,7 +3701,13 @@ fn linux_package_meta(
   LinuxPackageMeta {
     summary: format!("{app_name} desktop application"),
     maintainer: format!("{app_name} <noreply@deno.com>"),
-    version: LINUX_PACKAGE_VERSION.to_string(),
+    // deno.json `version` when configured (#36503); neither deb nor rpm
+    // versions may contain `-` in the upstream-version position with the
+    // meaning users expect from semver prereleases, so map it to `~`, which
+    // both formats order as "less than the release" — the semver intent.
+    version: config_version
+      .map(|v| v.replace('-', "~"))
+      .unwrap_or_else(|| LINUX_PACKAGE_VERSION.to_string()),
     package,
     app_name,
     identifier,
@@ -3743,8 +3785,9 @@ fn create_linux_deb(
   deb_path: &Path,
   desktop_flags: &DesktopFlags,
   target: Option<&str>,
+  config_version: Option<&str>,
 ) -> Result<(), AnyError> {
-  let meta = linux_package_meta(app_dir, desktop_flags);
+  let meta = linux_package_meta(app_dir, desktop_flags, config_version);
   let arch = debian_arch_for_target(target)?;
 
   let data_tar_gz = build_deb_data_tar(app_dir, &meta)?;
@@ -4037,8 +4080,10 @@ fn create_linux_rpm(
   rpm_path: &Path,
   desktop_flags: &DesktopFlags,
   target: Option<&str>,
+  config_version: Option<&str>,
+  config_license: Option<&str>,
 ) -> Result<(), AnyError> {
-  let meta = linux_package_meta(app_dir, desktop_flags);
+  let meta = linux_package_meta(app_dir, desktop_flags, config_version);
   let arch = rpm_arch_for_target(target)?;
 
   // Zstd payload (see Cargo.toml: gzip would pull flate2's zlib-rs shim, which
@@ -4052,7 +4097,10 @@ fn create_linux_rpm(
   let mut builder = rpm::PackageBuilder::new(
     &meta.package,
     &meta.version,
-    "MIT",
+    // deno.json `license` when configured; the previous hard-coded "MIT"
+    // mislabeled every package built from a differently-licensed project
+    // (#36503).
+    config_license.unwrap_or("MIT"),
     arch,
     &meta.summary,
   );
@@ -4244,11 +4292,32 @@ struct MsiFile {
 ///   denort.dll             (compiled runtime + user code)
 ///   ...                    (nested dirs preserved)
 /// ```
+/// Reduce a configured version to the numeric `major.minor.build` form MSI's
+/// ProductVersion accepts, dropping semver prerelease/build suffixes. Returns
+/// the packaging default when nothing numeric is configured.
+fn msi_product_version(config_version: Option<&str>) -> String {
+  let Some(v) = config_version else {
+    return "1.0.0".to_string();
+  };
+  let core = v.split(['-', '+']).next().unwrap_or(v);
+  let parts: Vec<&str> = core
+    .split('.')
+    .take(3)
+    .take_while(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+    .collect();
+  if parts.is_empty() {
+    "1.0.0".to_string()
+  } else {
+    parts.join(".")
+  }
+}
+
 fn create_windows_msi(
   app_dir: &Path,
   msi_path: &Path,
   desktop_flags: &DesktopFlags,
   target: Option<&str>,
+  config_version: Option<&str>,
 ) -> Result<(), AnyError> {
   use msi::CodePage;
   use msi::Column;
@@ -4261,9 +4330,13 @@ fn create_windows_msi(
     .file_name()
     .map(|s| s.to_string_lossy().into_owned())
     .unwrap_or_else(|| "App".to_string());
-  // Version default matches the macOS bundle's CFBundleVersion and the
-  // Linux package default.
-  let version = "1.0.0";
+  // deno.json `version` when configured, reduced to the numeric
+  // `major.minor.build` form MSI's ProductVersion requires (a semver
+  // prerelease/build suffix would fail MSI validation); the default matches
+  // the macOS bundle's CFBundleVersion and the Linux package default
+  // (#36503).
+  let version = msi_product_version(config_version);
+  let version = version.as_str();
   let identifier = desktop_flags
     .identifier
     .clone()
@@ -5500,6 +5573,7 @@ mod tests {
       "com.deno.demo",
       "laufey_webview",
       true,
+      None,
     );
     assert!(plist.contains("<string>LaufeyApplication</string>"));
     // The backend binary must be the CFBundleExecutable (not a shell-script
@@ -6829,8 +6903,14 @@ def456  other.zip
     let app_dir = fake_linux_app_dir(tmp.path(), "MyApp");
     let deb = tmp.path().join("MyApp.deb");
     let flags = empty_desktop_flags();
-    create_linux_deb(&app_dir, &deb, &flags, Some("x86_64-unknown-linux-gnu"))
-      .unwrap();
+    create_linux_deb(
+      &app_dir,
+      &deb,
+      &flags,
+      Some("x86_64-unknown-linux-gnu"),
+      None,
+    )
+    .unwrap();
 
     let bytes = std::fs::read(&deb).unwrap();
     assert!(bytes.starts_with(b"!<arch>\n"), "missing ar global header");
@@ -6923,6 +7003,8 @@ def456  other.zip
       &rpm_path,
       &flags,
       Some("aarch64-unknown-linux-gnu"),
+      None,
+      None,
     )
     .unwrap();
 
@@ -6958,6 +7040,48 @@ def456  other.zip
         .iter()
         .any(|f| f == "/usr/share/applications/myapp.desktop")
     );
+  }
+
+  #[test]
+  fn packaging_honors_config_version_and_license() {
+    // deno.json `version`/`license` must reach the installers instead of the
+    // hard-coded 1.0.0 / MIT defaults (#36503). Semver prereleases map to the
+    // `~` ordering both deb and rpm use for "before the release".
+    let tmp = tempfile::tempdir().unwrap();
+    let app_dir = fake_linux_app_dir(tmp.path(), "MyApp");
+    let rpm_path = tmp.path().join("MyApp.rpm");
+    create_linux_rpm(
+      &app_dir,
+      &rpm_path,
+      &empty_desktop_flags(),
+      Some("aarch64-unknown-linux-gnu"),
+      Some("2.3.4-beta.1"),
+      Some("Apache-2.0"),
+    )
+    .unwrap();
+    let bytes = std::fs::read(&rpm_path).unwrap();
+    let pkg = rpm::Package::parse(&mut &bytes[..]).unwrap();
+    assert_eq!(pkg.metadata.get_version().unwrap(), "2.3.4~beta.1");
+    assert_eq!(pkg.metadata.get_license().unwrap(), "Apache-2.0");
+
+    // The plist carries the version verbatim.
+    let plist = render_macos_info_plist(
+      "A",
+      "com.a",
+      "laufey_webview",
+      false,
+      Some("2.3.4"),
+    );
+    assert!(plist.contains(
+      "<key>CFBundleVersion</key>
+  <string>2.3.4</string>"
+    ));
+
+    // MSI's ProductVersion must stay numeric.
+    assert_eq!(msi_product_version(Some("2.3.4-beta.1")), "2.3.4");
+    assert_eq!(msi_product_version(Some("2.3")), "2.3");
+    assert_eq!(msi_product_version(Some("weird")), "1.0.0");
+    assert_eq!(msi_product_version(None), "1.0.0");
   }
 
   // --- Windows .msi packaging ---
@@ -7031,6 +7155,7 @@ def456  other.zip
       &msi_path,
       &flags,
       Some("x86_64-pc-windows-msvc"),
+      None,
     )
     .unwrap();
 
@@ -7151,6 +7276,7 @@ def456  other.zip
       &msi_path,
       &empty_desktop_flags(),
       Some("x86_64-pc-windows-msvc"),
+      None,
     )
     .unwrap();
 
@@ -7213,6 +7339,7 @@ def456  other.zip
       &msi_path,
       &empty_desktop_flags(),
       Some("x86_64-pc-windows-msvc"),
+      None,
     )
     .unwrap();
     let mut package = msi::open(&msi_path).unwrap();
