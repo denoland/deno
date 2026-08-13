@@ -4,24 +4,24 @@
 
 import domain from "node:domain";
 import { EventEmitter } from "node:events";
-import { assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 
 const processWithDomain = process as typeof process & {
-  domain: unknown | null;
+  domain: unknown;
 };
 
-function assertActiveDomain(expected: unknown | null) {
+function assertActiveDomain(expected: unknown) {
   assertEquals(processWithDomain.domain, expected);
 }
 
 function assertNoActiveDomain() {
-  assertActiveDomain(null);
+  assert(processWithDomain.domain == null);
 
   // Entering and exiting a new domain must not reveal an older stack entry.
   const probe = domain.create();
   probe.enter();
   probe.exit();
-  assertActiveDomain(null);
+  assert(processWithDomain.domain == null);
 }
 
 function checkNoDomainOnLaterTurn() {
@@ -32,6 +32,32 @@ function checkNoDomainOnLaterTurn() {
     check: deferred.promise.then(assertNoActiveDomain),
     schedule: deferred.resolve,
   };
+}
+
+async function expectUncaughtException(
+  expectedMessage: string,
+  action: () => void,
+) {
+  const deferred = Promise.withResolvers<void>();
+  process.once("uncaughtException", (error) => {
+    try {
+      assertEquals(error.message, expectedMessage);
+      deferred.resolve();
+    } catch (assertionError) {
+      deferred.reject(assertionError);
+    }
+  });
+
+  action();
+  await deferred.promise;
+}
+
+async function runFatalDomainEval(source: string) {
+  return await new Deno.Command(Deno.execPath(), {
+    args: ["eval", source],
+    stderr: "piped",
+    stdout: "piped",
+  }).output();
 }
 
 Deno.test("should work on throws", async function () {
@@ -166,7 +192,7 @@ Deno.test("errors from a nested domain handler reach its parent", async () => {
 
   parent.on("error", (error) => {
     assertEquals(error.message, "child handler failed");
-    assertActiveDomain(null);
+    assertNoActiveDomain();
     laterTurn.schedule();
   });
   child.on("error", () => {
@@ -182,6 +208,139 @@ Deno.test("errors from a nested domain handler reach its parent", async () => {
   });
 
   await laterTurn.check;
+});
+
+Deno.test("errors from a child without a handler reach its parent", async () => {
+  const parent = domain.create();
+  const child = domain.create();
+  const laterTurn = checkNoDomainOnLaterTurn();
+
+  parent.on("error", (error) => {
+    assertEquals(error.message, "child callback failed");
+    assertNoActiveDomain();
+    laterTurn.schedule();
+  });
+
+  parent.run(() => {
+    setTimeout(() => {
+      child.enter();
+      throw new Error("child callback failed");
+    }, 0);
+  });
+
+  await laterTurn.check;
+});
+
+Deno.test("handled errors clear non-adjacent repeated domains", async () => {
+  const outer = domain.create();
+  const inner = domain.create();
+  const laterTurn = checkNoDomainOnLaterTurn();
+
+  outer.on("error", (error) => {
+    assertEquals(error.message, "re-entered callback failed");
+    assertActiveDomain(inner);
+    laterTurn.schedule();
+  });
+
+  setTimeout(() => {
+    outer.enter();
+    inner.enter();
+    outer.enter();
+    throw new Error("re-entered callback failed");
+  }, 0);
+
+  await laterTurn.check;
+});
+
+Deno.test("errors traverse three nested domain handlers", async () => {
+  const grandparent = domain.create();
+  const parent = domain.create();
+  const child = domain.create();
+  const laterTurn = checkNoDomainOnLaterTurn();
+
+  grandparent.on("error", (error) => {
+    assertEquals(error.message, "parent handler failed");
+    assertNoActiveDomain();
+    laterTurn.schedule();
+  });
+  parent.on("error", (error) => {
+    assertEquals(error.message, "child handler failed");
+    assertActiveDomain(grandparent);
+    throw new Error("parent handler failed");
+  });
+  child.on("error", (error) => {
+    assertEquals(error.message, "child callback failed");
+    assertActiveDomain(parent);
+    throw new Error("child handler failed");
+  });
+
+  setTimeout(() => {
+    grandparent.enter();
+    parent.enter();
+    child.enter();
+    throw new Error("child callback failed");
+  }, 0);
+
+  await laterTurn.check;
+});
+
+Deno.test("top-level domains without handlers reach uncaughtException", async () => {
+  const topLevel = domain.create();
+
+  await expectUncaughtException("top-level callback failed", () => {
+    topLevel.run(() => {
+      setTimeout(() => {
+        throw new Error("top-level callback failed");
+      }, 0);
+    });
+  });
+
+  assertNoActiveDomain();
+});
+
+Deno.test("errors from top-level domain handlers remain fatal", async () => {
+  const output = await runFatalDomainEval(`
+    import domain from "node:domain";
+    const topLevel = domain.create();
+    topLevel.on("error", () => {
+      throw new Error("top-level handler failed");
+    });
+    topLevel.run(() => {
+      setTimeout(() => {
+        throw new Error("top-level callback failed");
+      }, 0);
+    });
+  `);
+
+  assert(!output.success);
+  assert(
+    new TextDecoder().decode(output.stderr).includes(
+      "top-level handler failed",
+    ),
+  );
+});
+
+Deno.test("disposed domains rethrow uncaught errors", async () => {
+  const output = await runFatalDomainEval(`
+    import domain from "node:domain";
+    const parent = domain.create();
+    const disposed = domain.create();
+    parent.on("error", () => console.log("parent handled"));
+    setTimeout(() => {
+      parent.enter();
+      disposed.enter();
+      disposed.dispose();
+      throw new Error("disposed callback failed");
+    }, 0);
+  `);
+
+  assert(!output.success);
+  assertEquals(new TextDecoder().decode(output.stdout), "");
+  assert(
+    new TextDecoder().decode(output.stderr).includes(
+      "disposed callback failed",
+    ),
+  );
 });
 
 Deno.test("balanced domain entries preserve their parent", () => {
