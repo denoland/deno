@@ -100,10 +100,7 @@ fn publish_rejects_invalid_identities_before_authentication() {
     let output = context.new_command().arg("publish").run();
     output.assert_exit_code(1);
     assert_contains!(output.combined_output(), "Invalid package name");
-    assert_not_contains!(
-      output.combined_output(),
-      "No means to authenticate"
-    );
+    assert_not_contains!(output.combined_output(), "No means to authenticate");
   }
 
   temp_dir.join("deno.json").write_json(&json!({
@@ -114,10 +111,7 @@ fn publish_rejects_invalid_identities_before_authentication() {
   let output = context.new_command().arg("publish").run();
   output.assert_exit_code(1);
   assert_contains!(output.combined_output(), "Invalid package version");
-  assert_not_contains!(
-    output.combined_output(),
-    "No means to authenticate"
-  );
+  assert_not_contains!(output.combined_output(), "No means to authenticate");
 }
 
 #[test]

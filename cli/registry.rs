@@ -151,9 +151,7 @@ pub fn get_package_version_api_url(
 ) -> Result<Url, AnyError> {
   let mut url = append_path_segments(
     registry_api_url,
-    &[
-      "scopes", scope, "packages", package, "versions", version,
-    ],
+    &["scopes", scope, "packages", package, "versions", version],
   )?;
   if let Some(config_path) = config_path {
     url.query_pairs_mut().append_pair("config", config_path);
@@ -214,21 +212,19 @@ pub async fn get_package(
 /// Splits a fully qualified JSR package name (e.g. `@scope/package`) into its
 /// `(scope, package)` parts.
 pub fn parse_package_name(name: &str) -> Result<(&str, &str), AnyError> {
-  let reference = JsrPackageReqReference::from_str(&format!(
-    "jsr:{name}@*"
-  ))
-  .map_err(|_| {
-    deno_core::anyhow::anyhow!(
-      "package name must use the '@<scope>/<package>' format"
-    )
-  })?;
+  // Keep the explicit path-safety checks below even if the JSR grammar changes.
+  let reference = JsrPackageReqReference::from_str(&format!("jsr:{name}@*"))
+    .map_err(|_| {
+      deno_core::anyhow::anyhow!(
+        "package name must use the '@<scope>/<package>' format"
+      )
+    })?;
   if reference.sub_path().is_some() {
     bail!("package name must not contain additional path segments");
   }
 
-  let Some((scope, package)) = name
-    .strip_prefix('@')
-    .and_then(|name| name.split_once('/'))
+  let Some((scope, package)) =
+    name.strip_prefix('@').and_then(|name| name.split_once('/'))
   else {
     bail!("package name must use the '@<scope>/<package>' format");
   };
@@ -360,8 +356,7 @@ mod test {
   #[test]
   fn package_api_urls_use_path_segments() {
     let base = Url::parse("https://registry.example/custom/api/").unwrap();
-    let package_url =
-      get_package_api_url(&base, "scope", "package").unwrap();
+    let package_url = get_package_api_url(&base, "scope", "package").unwrap();
     assert_eq!(
       package_url.as_str(),
       "https://registry.example/custom/api/scopes/scope/packages/package"
@@ -405,7 +400,10 @@ mod test {
       None,
     )
     .unwrap();
-    assert_eq!(url.origin().ascii_serialization(), "https://registry.example");
+    assert_eq!(
+      url.origin().ascii_serialization(),
+      "https://registry.example"
+    );
     assert_eq!(
       url.as_str(),
       "https://registry.example/custom/api/scopes/scope%2F..%2F..%2Fother/packages/package%3Fmode=other%23fragment/versions/1.0.0%2F..%2F..%2Fother"
