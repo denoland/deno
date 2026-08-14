@@ -353,22 +353,27 @@ pub(crate) fn request_builder_hook(
   static X_DENO_FETCH_TOKEN_VALUE: OnceLock<Option<http::HeaderValue>> =
     OnceLock::new();
   static CDN_LOOP_VALUE: OnceLock<Option<http::HeaderValue>> = OnceLock::new();
-  // Headers the egress header policy manages are left entirely to the
-  // policy: it applies after this hook (and its `forward`/`append` ops even
-  // earlier, in JS), so touching them here would clobber its values. With no
-  // policy configured both flags are false and behavior is unchanged.
-  static POLICY_MANAGED: OnceLock<(bool, bool)> = OnceLock::new();
+  // Headers the egress header policy *owns* are left entirely to the policy:
+  // it applies after this hook (and its `forward`/`append` ops even earlier,
+  // in JS), so touching them here would clobber its values. Ownership means
+  // the policy also scrubs user-supplied values — a `default` entry does not,
+  // so it does not suppress the scrub below (see
+  // `EgressHeaderPolicy::owns_header`). With no policy configured both flags
+  // are false and behavior is unchanged.
+  static POLICY_OWNED: OnceLock<(bool, bool)> = OnceLock::new();
 
-  let (policy_manages_token, policy_manages_cdn_loop) = *POLICY_MANAGED
-    .get_or_init(|| match egress_header_policy_from_env().as_deref() {
-      Some(deno_fetch::EgressHeaderPolicyState::Valid(policy)) => (
-        policy.manages_header("x-deno-fetch-token"),
-        policy.manages_header("cdn-loop"),
-      ),
-      _ => (false, false),
+  let (policy_owns_token, policy_owns_cdn_loop) =
+    *POLICY_OWNED.get_or_init(|| {
+      match egress_header_policy_from_env().as_deref() {
+        Some(deno_fetch::EgressHeaderPolicyState::Valid(policy)) => (
+          policy.owns_header("x-deno-fetch-token"),
+          policy.owns_header("cdn-loop"),
+        ),
+        _ => (false, false),
+      }
     });
 
-  if !policy_manages_token {
+  if !policy_owns_token {
     // Scrub Deno-specific headers to prevent user code from spoofing them.
     if let http::header::Entry::Occupied(entry) =
       request.headers_mut().entry(X_DENO_FETCH_TOKEN)
@@ -389,7 +394,7 @@ pub(crate) fn request_builder_hook(
     }
   }
 
-  if !policy_manages_cdn_loop {
+  if !policy_owns_cdn_loop {
     let cdn_loop_value = CDN_LOOP_VALUE.get_or_init(|| {
       std::env::var("CDN_LOOP")
         .ok()
@@ -408,9 +413,12 @@ pub(crate) fn request_builder_hook(
 /// (see `deno_fetch::EgressHeaderPolicy` for the format), read once per
 /// process at worker construction — before user code runs, so later
 /// `Deno.env.set` calls cannot alter it. The policy applies after
-/// [`request_builder_hook`] and wins for any header both manage. A value
-/// that fails to parse is kept as `Invalid`, which fails every fetch with
-/// the parse error rather than proceeding without the policy.
+/// [`request_builder_hook`] and wins for every header it owns
+/// (`remove`/`set`/`forward`/`append`), which the hook skips entirely; a
+/// `default` entry is not owned, so it only fills in a header the hook left
+/// absent. A value that fails to parse is kept as `Invalid`, which fails
+/// every fetch with the parse error rather than proceeding without the
+/// policy.
 pub(crate) fn egress_header_policy_from_env()
 -> Option<Arc<deno_fetch::EgressHeaderPolicyState>> {
   static POLICY: OnceLock<Option<Arc<deno_fetch::EgressHeaderPolicyState>>> =

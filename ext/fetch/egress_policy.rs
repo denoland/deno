@@ -16,11 +16,15 @@
 //! }
 //! ```
 //!
+//! Header values are restricted to visible ASCII (plus tab); see
+//! [`validated_value`].
+//!
 //! Semantics per outbound request:
 //!
 //! - Headers named in `remove`, `set`, `append`, or `forward` are
-//!   *policy-owned*: values supplied by user code are scrubbed before the
-//!   policy applies. Headers named in `default` are not scrubbed.
+//!   *policy-owned* ([`EgressHeaderPolicy::owns_header`]): values supplied by
+//!   user code are scrubbed before the policy applies. Headers named in
+//!   `default` are not owned and not scrubbed.
 //! - `forward`: values of these headers on the inbound HTTP request currently
 //!   being served (if any) are copied onto the outbound request.
 //! - `set`: the header is set to the given value, replacing anything present.
@@ -36,6 +40,10 @@
 //!   would duplicate appended values) and are applied exactly once per
 //!   `fetch()` call, in JS, where the inbound-request async context is
 //!   available (see `26_fetch.js`).
+//!
+//! Once a redirect crosses origins, `set`/`default` stop applying to the
+//! credential headers WHATWG fetch drops there; see
+//! [`EgressHeaderPolicy::apply_static`].
 //!
 //! A policy that fails to parse or validate is retained as
 //! [`EgressHeaderPolicyState::Invalid`]: every fetch then fails with the
@@ -99,6 +107,15 @@ const FORBIDDEN_HEADERS: [HeaderName; 4] = [
   header::CONNECTION,
 ];
 
+/// Credential-bearing headers that `httpRedirectFetch` drops when a redirect
+/// crosses origins. Must stay in sync with `REDIRECT_SENSITIVE_HEADER_NAMES`
+/// in `26_fetch.js`; see [`EgressHeaderPolicy::apply_static`].
+const REDIRECT_SENSITIVE_HEADERS: [HeaderName; 3] = [
+  header::AUTHORIZATION,
+  header::PROXY_AUTHORIZATION,
+  header::COOKIE,
+];
+
 #[derive(Debug)]
 pub struct EgressHeaderPolicy {
   set: Vec<(HeaderName, HeaderValue)>,
@@ -111,6 +128,10 @@ pub struct EgressHeaderPolicy {
   forward: Vec<String>,
   /// (lowercase name, value) pairs appended once per fetch() call, in JS.
   append: Vec<(String, String)>,
+  /// Whether any `set`/`default` entry names a [`REDIRECT_SENSITIVE_HEADERS`]
+  /// header. Almost always false, which lets [`Self::apply_static`] skip the
+  /// per-entry check entirely.
+  writes_redirect_sensitive: bool,
 }
 
 impl EgressHeaderPolicy {
@@ -168,6 +189,11 @@ impl EgressHeaderPolicy {
     let mut scrub_static = remove;
     scrub_static.extend(set.iter().map(|(n, _)| n.clone()));
 
+    let writes_redirect_sensitive = set
+      .iter()
+      .chain(set_if_absent.iter())
+      .any(|(n, _)| REDIRECT_SENSITIVE_HEADERS.contains(n));
+
     Ok(Self {
       set,
       set_if_absent,
@@ -176,26 +202,50 @@ impl EgressHeaderPolicy {
       append: append
         .into_iter()
         .map(|(n, v)| {
-          // Values originate from validated JSON strings, so `to_str`
-          // cannot fail.
-          (n.as_str().to_string(), v.to_str().unwrap().to_string())
+          // `validated_value` restricts policy values to visible ASCII, so
+          // the bytes are valid UTF-8 and this conversion is exact. It is
+          // also total: a lossy conversion cannot panic if that ever changes.
+          let value = String::from_utf8_lossy(v.as_bytes()).into_owned();
+          (n.as_str().to_string(), value)
         })
         .collect(),
+      writes_redirect_sensitive,
     })
   }
 
   /// Applies the idempotent ops (`remove`/`set` scrub, `set`, `default`).
   /// Runs in `op_fetch` for every network hop.
-  pub fn apply_static(&self, headers: &mut HeaderMap) {
+  ///
+  /// `redirect_sensitive_stripped` is set once a redirect has crossed origins
+  /// and `httpRedirectFetch` has dropped the credential headers. Per
+  /// <https://fetch.spec.whatwg.org/#http-redirect-fetch> those headers must
+  /// stay gone for the rest of the chain, so `set`/`default` entries naming
+  /// them are skipped from that hop on — otherwise an operator-injected
+  /// credential would be re-attached and delivered to the redirect target.
+  /// The scrub is unaffected: a `remove` of a credential header is an
+  /// explicit instruction that still holds after the origin change.
+  pub fn apply_static(
+    &self,
+    headers: &mut HeaderMap,
+    redirect_sensitive_stripped: bool,
+  ) {
     for name in &self.scrub_static {
       if let header::Entry::Occupied(entry) = headers.entry(name) {
         entry.remove_entry_mult();
       }
     }
+    let skip_sensitive =
+      redirect_sensitive_stripped && self.writes_redirect_sensitive;
     for (name, value) in &self.set {
+      if skip_sensitive && REDIRECT_SENSITIVE_HEADERS.contains(name) {
+        continue;
+      }
       headers.insert(name, value.clone());
     }
     for (name, value) in &self.set_if_absent {
+      if skip_sensitive && REDIRECT_SENSITIVE_HEADERS.contains(name) {
+        continue;
+      }
       if !headers.contains_key(name) {
         headers.insert(name, value.clone());
       }
@@ -209,14 +259,22 @@ impl EgressHeaderPolicy {
     (&self.forward, &self.append)
   }
 
-  /// Whether the policy names this (lowercase) header in any op. Embedders
-  /// with their own header mechanisms use this to yield to the policy — the
-  /// CLI's legacy `CDN_LOOP`/`X_DENO_FETCH_TOKEN` handling skips headers the
-  /// policy manages, since it runs after the JS-applied `forward`/`append`
-  /// ops and would otherwise clobber their values.
-  pub fn manages_header(&self, name: &str) -> bool {
+  /// Whether the policy takes *ownership* of this (lowercase) header: it
+  /// scrubs any user-supplied value and writes its own. That is `remove` ∪
+  /// `set` (scrubbed in Rust, [`Self::apply_static`]) ∪ `forward` ∪ `append`
+  /// (scrubbed in JS, `26_fetch.js`).
+  ///
+  /// Embedders with their own header mechanisms use this to yield to the
+  /// policy — the CLI's legacy `CDN_LOOP`/`X_DENO_FETCH_TOKEN` handling skips
+  /// owned headers, since it runs after the JS-applied `forward`/`append` ops
+  /// and would otherwise clobber their values.
+  ///
+  /// `default` deliberately does **not** count: it only fills the header in
+  /// when absent and never scrubs, so a legacy mechanism that scrubs and sets
+  /// must keep running — yielding to a `default` entry would drop the scrub
+  /// without replacing it and let user code spoof the header.
+  pub fn owns_header(&self, name: &str) -> bool {
     self.scrub_static.iter().any(|n| n.as_str() == name)
-      || self.set_if_absent.iter().any(|(n, _)| n.as_str() == name)
       || self.forward.iter().any(|n| n == name)
       || self.append.iter().any(|(n, _)| n == name)
   }
@@ -254,6 +312,25 @@ fn validated_name(raw: &str) -> Result<HeaderName, EgressHeaderPolicyError> {
   Ok(name)
 }
 
+/// Parses a policy header value, restricted to visible ASCII (plus tab).
+///
+/// [`HeaderValue::from_str`] alone also accepts the deprecated obs-text range
+/// (`0x80..=0xFF`), which a non-ASCII character in the policy JSON encodes
+/// to. Such a value has no single interpretation across the two application
+/// points — the Rust side would put the UTF-8 bytes on the wire while the JS
+/// side round-trips through a JS string — so it is rejected here rather than
+/// silently differing between `set` and `append`.
+fn validated_value(
+  name: &HeaderName,
+  raw: &str,
+) -> Result<HeaderValue, EgressHeaderPolicyError> {
+  let invalid =
+    || EgressHeaderPolicyError::InvalidHeaderValue(name.as_str().to_string());
+  let value = HeaderValue::from_str(raw).map_err(|_| invalid())?;
+  value.to_str().map_err(|_| invalid())?;
+  Ok(value)
+}
+
 fn parse_name_list(
   field: &'static str,
   value: &serde_json::Value,
@@ -287,9 +364,7 @@ fn parse_value_map(
       return Err(EgressHeaderPolicyError::ExpectedStringMap(field));
     };
     let name = validated_name(raw_name)?;
-    let value = HeaderValue::from_str(raw_value).map_err(|_| {
-      EgressHeaderPolicyError::InvalidHeaderValue(name.as_str().to_string())
-    })?;
+    let value = validated_value(&name, raw_value)?;
     parsed.insert(name.as_str().to_string(), (name, value));
   }
   Ok(parsed.into_values().collect())
@@ -324,7 +399,7 @@ mod tests {
     let policy = EgressHeaderPolicy::parse("{}").unwrap();
     let mut headers = HeaderMap::new();
     headers.insert("x-user", HeaderValue::from_static("1"));
-    policy.apply_static(&mut headers);
+    policy.apply_static(&mut headers, false);
     assert_eq!(headers.len(), 1);
   }
 
@@ -367,6 +442,34 @@ mod tests {
       err,
       EgressHeaderPolicyError::InvalidHeaderValue(_)
     ));
+  }
+
+  // `HeaderValue::from_str` accepts the deprecated obs-text range, which a
+  // non-ASCII character encodes to, but `to_str` does not. Every op must
+  // reject such a value rather than accept it and diverge (or panic) when the
+  // JS-applied half converts it back to a string.
+  #[test]
+  fn rejects_non_ascii_header_value() {
+    for field in ["set", "append", "default"] {
+      let json = format!(r#"{{"{field}": {{"x-a": "café"}}}}"#);
+      let err = EgressHeaderPolicy::parse(&json).unwrap_err();
+      assert!(
+        matches!(err, EgressHeaderPolicyError::InvalidHeaderValue(ref n) if n == "x-a"),
+        "expected InvalidHeaderValue for {json}, got {err:?}"
+      );
+    }
+  }
+
+  #[test]
+  fn accepts_full_visible_ascii_value() {
+    let policy =
+      EgressHeaderPolicy::parse(r#"{"append": {"x-a": "a\tb ~!$%^&*()_+-="}}"#)
+        .unwrap();
+    let (_, append) = policy.forward_config();
+    assert_eq!(
+      append,
+      &[("x-a".to_string(), "a\tb ~!$%^&*()_+-=".to_string())]
+    );
   }
 
   #[test]
@@ -431,7 +534,7 @@ mod tests {
     headers.append("x-gone", HeaderValue::from_static("b"));
     headers.insert("user-agent", HeaderValue::from_static("user/9.9"));
     headers.insert("x-kept", HeaderValue::from_static("1"));
-    policy.apply_static(&mut headers);
+    policy.apply_static(&mut headers, false);
 
     assert!(!headers.contains_key("x-gone"));
     assert_eq!(headers.get("user-agent").unwrap(), "enforced/1.0");
@@ -445,8 +548,8 @@ mod tests {
     )
     .unwrap();
     let mut headers = HeaderMap::new();
-    policy.apply_static(&mut headers);
-    policy.apply_static(&mut headers);
+    policy.apply_static(&mut headers, false);
+    policy.apply_static(&mut headers, false);
     assert_eq!(headers.get_all("x-a").iter().count(), 1);
     assert_eq!(headers.get_all("x-b").iter().count(), 1);
   }
@@ -458,11 +561,11 @@ mod tests {
         .unwrap();
     let mut headers = HeaderMap::new();
     headers.insert("user-agent", HeaderValue::from_static("user/9.9"));
-    policy.apply_static(&mut headers);
+    policy.apply_static(&mut headers, false);
     assert_eq!(headers.get("user-agent").unwrap(), "user/9.9");
 
     let mut empty = HeaderMap::new();
-    policy.apply_static(&mut empty);
+    policy.apply_static(&mut empty, false);
     assert_eq!(empty.get("user-agent").unwrap(), "fallback/1");
   }
 
@@ -473,5 +576,58 @@ mod tests {
       panic!("expected Invalid");
     };
     assert!(msg.contains("bogus"));
+  }
+
+  // Ownership drives whether an embedder's own header mechanism yields to the
+  // policy. `default` never scrubs, so it must not claim ownership — doing so
+  // would disable the embedder's scrub and replace it with nothing.
+  #[test]
+  fn owns_header_covers_scrubbing_ops_only() {
+    for (json, owned) in [
+      (r#"{"remove": ["x-a"]}"#, true),
+      (r#"{"set": {"x-a": "1"}}"#, true),
+      (r#"{"forward": ["x-a"]}"#, true),
+      (r#"{"append": {"x-a": "1"}}"#, true),
+      (r#"{"default": {"x-a": "1"}}"#, false),
+      (r#"{"set": {"x-b": "1"}}"#, false),
+    ] {
+      let policy = EgressHeaderPolicy::parse(json).unwrap();
+      assert_eq!(policy.owns_header("x-a"), owned, "for {json}");
+    }
+  }
+
+  #[test]
+  fn set_and_default_yield_to_the_cross_origin_redirect_strip() {
+    let policy = EgressHeaderPolicy::parse(
+      r#"{"set": {"authorization": "Bearer secret"},
+          "default": {"cookie": "a=1"},
+          "append": {"x-keep": "1"}}"#,
+    )
+    .unwrap();
+
+    // Before any cross-origin redirect the credentials are applied.
+    let mut headers = HeaderMap::new();
+    policy.apply_static(&mut headers, false);
+    assert_eq!(headers.get("authorization").unwrap(), "Bearer secret");
+    assert_eq!(headers.get("cookie").unwrap(), "a=1");
+
+    // Once a hop has crossed origins they stay gone.
+    let mut headers = HeaderMap::new();
+    policy.apply_static(&mut headers, true);
+    assert!(!headers.contains_key("authorization"));
+    assert!(!headers.contains_key("cookie"));
+  }
+
+  #[test]
+  fn redirect_strip_leaves_other_headers_alone() {
+    let policy = EgressHeaderPolicy::parse(
+      r#"{"set": {"user-agent": "enforced/1.0"}, "remove": ["x-gone"]}"#,
+    )
+    .unwrap();
+    let mut headers = HeaderMap::new();
+    headers.insert("x-gone", HeaderValue::from_static("1"));
+    policy.apply_static(&mut headers, true);
+    assert_eq!(headers.get("user-agent").unwrap(), "enforced/1.0");
+    assert!(!headers.contains_key("x-gone"));
   }
 }

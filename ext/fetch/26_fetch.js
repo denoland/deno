@@ -96,6 +96,9 @@ const REQUEST_BODY_HEADER_NAMES = [
   "content-type",
 ];
 
+// Dropped by `httpRedirectFetch` when a redirect crosses origins. Mirrored by
+// `REDIRECT_SENSITIVE_HEADERS` in ext/fetch/egress_policy.rs, which stops the
+// egress header policy from re-adding them on later hops - keep both in sync.
 const REDIRECT_SENSITIVE_HEADER_NAMES = [
   "authorization",
   "proxy-authorization",
@@ -382,9 +385,19 @@ function createResponseBodyStream(responseBodyRid, terminator) {
  * @param {InnerRequest} req
  * @param {boolean} recursive
  * @param {AbortSignal} terminator
+ * @param {object | null} inspectorCtx
+ * @param {boolean} redirectSensitiveStripped whether a redirect has already
+ *   crossed origins and dropped `REDIRECT_SENSITIVE_HEADER_NAMES`; sticky for
+ *   the rest of the chain so the egress header policy does not re-add them
  * @returns {Promise<InnerResponse>}
  */
-async function mainFetch(req, recursive, terminator, inspectorCtx = null) {
+async function mainFetch(
+  req,
+  recursive,
+  terminator,
+  inspectorCtx = null,
+  redirectSensitiveStripped = false,
+) {
   // https://fetch.spec.whatwg.org/#main-fetch step 5: if the request should be
   // blocked due to a bad port, return a network error before any network I/O
   // occurs. This applies to every hop, including those reached via redirects.
@@ -463,6 +476,7 @@ async function mainFetch(req, recursive, terminator, inspectorCtx = null) {
     reqBody !== null || reqRid !== null,
     reqBody,
     reqRid,
+    redirectSensitiveStripped,
   );
 
   // ---- Inspector: Network.requestWillBeSent ------------------------------
@@ -679,6 +693,7 @@ async function mainFetch(req, recursive, terminator, inspectorCtx = null) {
           inspectorRequestId !== null
             ? { requestId: inspectorRequestId, redirectResponse: cdpResponse }
             : null,
+          redirectSensitiveStripped,
         );
       case "manual":
         break;
@@ -745,9 +760,17 @@ async function mainFetch(req, recursive, terminator, inspectorCtx = null) {
  *   When present, carries the inspector requestId across the redirect so
  *   the next hop's `requestWillBeSent` keeps the same id and gets the
  *   previous response attached as `redirectResponse`.
+ * @param {boolean} redirectSensitiveStripped whether an earlier hop already
+ *   crossed origins; sticky, so headers dropped once stay dropped.
  * @returns {Promise<InnerResponse>}
  */
-function httpRedirectFetch(request, response, terminator, inspectorCtx = null) {
+function httpRedirectFetch(
+  request,
+  response,
+  terminator,
+  inspectorCtx = null,
+  redirectSensitiveStripped = false,
+) {
   const locationHeaders = ArrayPrototypeFilter(
     response.headerList,
     (entry) => byteLowerCase(entry[0]) === "location",
@@ -802,8 +825,12 @@ function httpRedirectFetch(request, response, terminator, inspectorCtx = null) {
     }
   }
 
-  // Drop redirect-sensitive headers when crossing origins.
+  // Drop redirect-sensitive headers when crossing origins. The flag is
+  // sticky: once dropped they must not reappear on a later same-origin hop,
+  // including via the egress header policy's `set`/`default` ops, which are
+  // otherwise re-applied per hop in `op_fetch`.
   if (locationURL.origin !== currentURL.origin) {
+    redirectSensitiveStripped = true;
     for (let i = 0; i < request.headerList.length; i++) {
       if (
         ArrayPrototypeIncludes(
@@ -822,7 +849,13 @@ function httpRedirectFetch(request, response, terminator, inspectorCtx = null) {
     request.body = res.body;
   }
   ArrayPrototypePush(request.urlList, () => locationURL.href);
-  return mainFetch(request, true, terminator, inspectorCtx);
+  return mainFetch(
+    request,
+    true,
+    terminator,
+    inspectorCtx,
+    redirectSensitiveStripped,
+  );
 }
 
 // The `forward`/`append` ops of the operator-provided egress header policy
@@ -870,13 +903,19 @@ function getEgressPolicy() {
  * `reqHeaders` is the flat `[name, value, ...]` array produced by
  * `op_http_get_request_headers`. Returns the previous async context; the
  * caller restores it with `core.setAsyncContext` once the handler returns.
+ *
+ * Names must be lowercased before matching: the raw HTTP/1.1 server path
+ * hands back the client's on-the-wire casing (`CDN-Loop`), while the policy's
+ * names are always lowercase. Only reached when the policy has a non-empty
+ * `forward` list.
  */
 function enterEgressForwardContext(reqHeaders) {
   const policy = getEgressPolicy();
   const captured = [];
   for (let i = 0; i < reqHeaders.length; i += 2) {
-    if (policy.forwardNames.has(reqHeaders[i])) {
-      ArrayPrototypePush(captured, [reqHeaders[i], reqHeaders[i + 1]]);
+    const name = byteLowerCase(reqHeaders[i]);
+    if (policy.forwardNames.has(name)) {
+      ArrayPrototypePush(captured, [name, reqHeaders[i + 1]]);
     }
   }
   return policy.contextVariable.enter(captured);

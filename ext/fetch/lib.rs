@@ -456,6 +456,7 @@ pub fn op_fetch(
   has_body: bool,
   data: Option<Uint8Array>,
   #[smi] resource: Option<ResourceId>,
+  redirect_sensitive_stripped: bool,
 ) -> Result<FetchReturn, FetchError> {
   let (client, allow_host) = if let Some(rid) = client_rid {
     let r = state.resource_table.get::<HttpClientResource>(rid)?;
@@ -560,7 +561,8 @@ pub fn op_fetch(
       match options.egress_header_policy.as_deref() {
         None => {}
         Some(EgressHeaderPolicyState::Valid(policy)) => {
-          policy.apply_static(request.headers_mut());
+          policy
+            .apply_static(request.headers_mut(), redirect_sensitive_stripped);
         }
         Some(EgressHeaderPolicyState::Invalid(message)) => {
           return Err(FetchError::EgressHeaderPolicy(message.clone()));

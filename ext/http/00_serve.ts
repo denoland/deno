@@ -135,6 +135,11 @@ const _upgraded = Symbol("_upgraded");
 // directly so that with no `forward` ops configured - or in an embedder
 // without deno_fetch at all - the fetch module is never evaluated on
 // serve's account.
+//
+// A non-null result also holds back the `rawNoRequest` optimization: a
+// zero-argument handler otherwise leaves the inbound headers unmaterialized,
+// so `forward` would capture nothing and the hop count would depend on the
+// handler's arity rather than on the policy.
 type EgressForwardContextEnter = (reqHeaders: string[]) => unknown;
 let egressForwardContextEnter: EgressForwardContextEnter | null | undefined =
   undefined;
@@ -1519,7 +1524,11 @@ function serveHttpOnListener(
     }
     return nativeCallback(req, undefined);
   };
-  const rawNoRequest = handler.length === 0 && nativeFastPath;
+  // A zero-argument handler skips materializing the inbound request headers,
+  // which the egress policy's `forward` op needs; see
+  // `getEgressForwardContextEnter`.
+  const rawNoRequest = handler.length === 0 && nativeFastPath &&
+    getEgressForwardContextEnter() === null;
   serverContext = new CallbackContext(
     signal,
     op_http_serve(
@@ -1572,7 +1581,11 @@ function serveHttpOnConnection(connection, signal, handler, onError, onListen) {
     }
     return nativeCallback(req, undefined);
   };
-  const rawNoRequest = handler.length === 0 && nativeFastPath;
+  // A zero-argument handler skips materializing the inbound request headers,
+  // which the egress policy's `forward` op needs; see
+  // `getEgressForwardContextEnter`.
+  const rawNoRequest = handler.length === 0 && nativeFastPath &&
+    getEgressForwardContextEnter() === null;
   const automaticCompression = op_http_serve_default_compression();
   serverContext = new CallbackContext(
     signal,
