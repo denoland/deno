@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 pub mod dns;
+mod egress_policy;
 mod fs_fetch_handler;
 mod proxy;
 #[cfg(test)]
@@ -100,6 +101,9 @@ use hyper_util::rt::TokioExecutor;
 use hyper_util::rt::TokioIo;
 use hyper_util::rt::TokioTimer;
 pub use proxy::basic_auth;
+pub use egress_policy::EgressHeaderPolicy;
+pub use egress_policy::EgressHeaderPolicyError;
+pub use egress_policy::EgressHeaderPolicyState;
 use tokio_util::io::ReaderStream;
 use tokio_util::io::StreamReader;
 use tower::BoxError;
@@ -125,6 +129,11 @@ pub struct Options {
   #[allow(clippy::type_complexity, reason = "TODO: improve")]
   pub request_builder_hook:
     Option<fn(&mut http::Request<ReqBody>) -> Result<(), JsErrorBox>>,
+  /// An operator-provided policy of headers to enforce on outbound requests,
+  /// applied after `request_builder_hook`. See [`EgressHeaderPolicy`] for the
+  /// format and semantics. [`EgressHeaderPolicyState::Invalid`] fails every
+  /// fetch with the policy's parse error (fail closed).
+  pub egress_header_policy: Option<Arc<EgressHeaderPolicyState>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: TlsKeys,
   pub file_fetch_handler: Rc<dyn FetchHandler>,
@@ -148,6 +157,7 @@ impl Default for Options {
       proxy: None,
       client_builder_hook: None,
       request_builder_hook: None,
+      egress_header_policy: None,
       unsafely_ignore_certificate_errors: None,
       client_cert_chain_and_key: TlsKeys::Null,
       file_fetch_handler: Rc::new(DefaultFileFetchHandler),
@@ -164,6 +174,7 @@ deno_core::extension!(deno_fetch,
     op_utf8_to_byte_string,
     op_fetch_custom_client,
     op_fetch_promise_is_settled,
+    op_fetch_egress_header_forward_config,
   ],
   lazy_loaded_js = [
     "20_headers.js",
@@ -248,6 +259,9 @@ pub enum FetchError {
   #[class(inherit)]
   #[error(transparent)]
   RequestBuilderHook(JsErrorBox),
+  #[class(type)]
+  #[error("egress header policy is invalid: {0}")]
+  EgressHeaderPolicy(String),
   #[class(inherit)]
   #[error(transparent)]
   Io(#[from] std::io::Error),
@@ -541,6 +555,16 @@ pub fn op_fetch(
       if let Some(request_builder_hook) = options.request_builder_hook {
         request_builder_hook(&mut request)
           .map_err(FetchError::RequestBuilderHook)?;
+      }
+
+      match options.egress_header_policy.as_deref() {
+        None => {}
+        Some(EgressHeaderPolicyState::Valid(policy)) => {
+          policy.apply_static(request.headers_mut());
+        }
+        Some(EgressHeaderPolicyState::Invalid(message)) => {
+          return Err(FetchError::EgressHeaderPolicy(message.clone()));
+        }
       }
 
       let cancel_handle = CancelHandle::new_rc();
@@ -1673,6 +1697,27 @@ pub fn extract_authority(url: &mut Url) -> Option<(String, Option<String>)> {
 #[op2(fast)]
 fn op_fetch_promise_is_settled(promise: v8::Local<v8::Promise>) -> bool {
   promise.state() != v8::PromiseState::Pending
+}
+
+/// Returns the JS-applied part of the egress header policy as
+/// `[forwardNames, appendEntries]`, both lowercase. Empty lists mean the JS
+/// fast path can skip per-request work entirely. An invalid policy also
+/// returns empty lists here — enforcement of the failure happens in
+/// `op_fetch`, the single point where every outbound request must pass.
+#[op2]
+#[serde]
+fn op_fetch_egress_header_forward_config(
+  state: &mut OpState,
+) -> (Vec<String>, Vec<(String, String)>) {
+  match state.borrow::<Options>().egress_header_policy.as_deref() {
+    Some(EgressHeaderPolicyState::Valid(policy)) => {
+      let (forward, append) = policy.forward_config();
+      (forward.to_vec(), append.to_vec())
+    }
+    Some(EgressHeaderPolicyState::Invalid(_)) | None => {
+      (Vec::new(), Vec::new())
+    }
+  }
 }
 
 /// Number of requests that have been dispatched on a single connection.

@@ -4,6 +4,7 @@
 const { core, internals, primordials } = __bootstrap;
 const {
   op_fetch,
+  op_fetch_egress_header_forward_config,
   op_fetch_promise_is_settled,
   op_fetch_send,
   op_pipe,
@@ -22,6 +23,7 @@ const {
   PromisePrototypeCatch,
   SafeArrayIterator,
   SafePromisePrototypeFinally,
+  SafeSet,
   String,
   StringPrototypeIndexOf,
   StringPrototypeSlice,
@@ -823,6 +825,91 @@ function httpRedirectFetch(request, response, terminator, inspectorCtx = null) {
   return mainFetch(request, true, terminator, inspectorCtx);
 }
 
+// The `forward`/`append` ops of the operator-provided egress header policy
+// (see ext/fetch/egress_policy.rs). The idempotent `remove`/`set`/`default`
+// ops are applied per network hop in `op_fetch`; `forward`/`append` are
+// applied here, exactly once per `fetch()` call - re-applying them on
+// redirect hops would duplicate appended values. `undefined` = not yet
+// loaded, `null` = no forward/append ops configured (the fast path: one
+// null check per fetch, no per-request work in serve).
+let egressPolicy = undefined;
+
+function getEgressPolicy() {
+  if (egressPolicy === undefined) {
+    const config = op_fetch_egress_header_forward_config();
+    const forward = config[0];
+    const append = config[1];
+    if (forward.length === 0 && append.length === 0) {
+      egressPolicy = null;
+    } else {
+      // Headers named in `forward` or `append` are policy-owned: values
+      // supplied by user code are scrubbed before the policy applies.
+      const forwardNames = new SafeSet();
+      const scrubNames = new SafeSet();
+      for (let i = 0; i < forward.length; i++) {
+        forwardNames.add(forward[i]);
+        scrubNames.add(forward[i]);
+      }
+      for (let i = 0; i < append.length; i++) {
+        scrubNames.add(append[i][0]);
+      }
+      egressPolicy = {
+        forwardNames,
+        scrubNames,
+        append,
+        contextVariable: new core.AsyncVariable(),
+      };
+    }
+  }
+  return egressPolicy;
+}
+
+/**
+ * Captures the forward-listed headers of the inbound request about to be
+ * dispatched and enters them into the async context that `fetch()` observes.
+ * `reqHeaders` is the flat `[name, value, ...]` array produced by
+ * `op_http_get_request_headers`. Returns the previous async context; the
+ * caller restores it with `core.setAsyncContext` once the handler returns.
+ */
+function enterEgressForwardContext(reqHeaders) {
+  const policy = getEgressPolicy();
+  const captured = [];
+  for (let i = 0; i < reqHeaders.length; i += 2) {
+    if (policy.forwardNames.has(reqHeaders[i])) {
+      ArrayPrototypePush(captured, [reqHeaders[i], reqHeaders[i + 1]]);
+    }
+  }
+  return policy.contextVariable.enter(captured);
+}
+
+function applyEgressHeaderPolicy(request, policy) {
+  // Scrub user-supplied values of policy-owned headers.
+  for (let i = 0; i < request.headerList.length; i++) {
+    if (policy.scrubNames.has(byteLowerCase(request.headerList[i][0]))) {
+      ArrayPrototypeSplice(request.headerList, i, 1);
+      i--;
+    }
+  }
+  // Inject the values forwarded from the inbound request being served, if
+  // this fetch runs within a captured request context.
+  const captured = policy.contextVariable.get();
+  if (captured !== undefined) {
+    for (let i = 0; i < captured.length; i++) {
+      ArrayPrototypePush(request.headerList, [
+        captured[i][0],
+        captured[i][1],
+      ]);
+    }
+  }
+  // Append the policy's own entries last.
+  for (let i = 0; i < policy.append.length; i++) {
+    ArrayPrototypePush(request.headerList, [
+      policy.append[i][0],
+      policy.append[i][1],
+    ]);
+  }
+}
+
 /**
  * @param {RequestInfo} input
  * @param {RequestInit} init
@@ -865,6 +952,12 @@ function fetch(input, init = undefined) {
 
       // 3.
       const request = toInnerRequest(requestObject);
+
+      const egress = getEgressPolicy();
+      if (egress !== null) {
+        applyEgressHeaderPolicy(request, egress);
+      }
+
       // 4.
       if (requestObject.signal.aborted) {
         if (span) {
@@ -1112,5 +1205,10 @@ function handleWasmStreaming(source, rid) {
   }
 }
 
-return { fetch, handleWasmStreaming, mainFetch };
+return {
+  enterEgressForwardContext,
+  fetch,
+  handleWasmStreaming,
+  mainFetch,
+};
 })();

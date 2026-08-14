@@ -353,37 +353,76 @@ pub(crate) fn request_builder_hook(
   static X_DENO_FETCH_TOKEN_VALUE: OnceLock<Option<http::HeaderValue>> =
     OnceLock::new();
   static CDN_LOOP_VALUE: OnceLock<Option<http::HeaderValue>> = OnceLock::new();
+  // Headers the egress header policy manages are left entirely to the
+  // policy: it applies after this hook (and its `forward`/`append` ops even
+  // earlier, in JS), so touching them here would clobber its values. With no
+  // policy configured both flags are false and behavior is unchanged.
+  static POLICY_MANAGED: OnceLock<(bool, bool)> = OnceLock::new();
 
-  // Scrub Deno-specific headers to prevent user code from spoofing them.
-  if let http::header::Entry::Occupied(entry) =
-    request.headers_mut().entry(X_DENO_FETCH_TOKEN)
-  {
-    entry.remove_entry_mult();
+  let (policy_manages_token, policy_manages_cdn_loop) =
+    *POLICY_MANAGED.get_or_init(|| {
+      match egress_header_policy_from_env().as_deref() {
+        Some(deno_fetch::EgressHeaderPolicyState::Valid(policy)) => (
+          policy.manages_header("x-deno-fetch-token"),
+          policy.manages_header("cdn-loop"),
+        ),
+        _ => (false, false),
+      }
+    });
+
+  if !policy_manages_token {
+    // Scrub Deno-specific headers to prevent user code from spoofing them.
+    if let http::header::Entry::Occupied(entry) =
+      request.headers_mut().entry(X_DENO_FETCH_TOKEN)
+    {
+      entry.remove_entry_mult();
+    }
+
+    let maybe_x_deno_fetch_token = X_DENO_FETCH_TOKEN_VALUE.get_or_init(|| {
+      std::env::var("X_DENO_FETCH_TOKEN")
+        .ok()
+        .and_then(|v| http::HeaderValue::from_str(&v).ok())
+    });
+
+    if let Some(token) = maybe_x_deno_fetch_token {
+      request
+        .headers_mut()
+        .insert(X_DENO_FETCH_TOKEN, token.clone());
+    }
   }
 
-  let maybe_x_deno_fetch_token = X_DENO_FETCH_TOKEN_VALUE.get_or_init(|| {
-    std::env::var("X_DENO_FETCH_TOKEN")
-      .ok()
-      .and_then(|v| http::HeaderValue::from_str(&v).ok())
-  });
+  if !policy_manages_cdn_loop {
+    let cdn_loop_value = CDN_LOOP_VALUE.get_or_init(|| {
+      std::env::var("CDN_LOOP")
+        .ok()
+        .and_then(|v| http::HeaderValue::from_str(&v).ok())
+    });
 
-  if let Some(token) = maybe_x_deno_fetch_token {
-    request
-      .headers_mut()
-      .insert(X_DENO_FETCH_TOKEN, token.clone());
-  }
-
-  let cdn_loop_value = CDN_LOOP_VALUE.get_or_init(|| {
-    std::env::var("CDN_LOOP")
-      .ok()
-      .and_then(|v| http::HeaderValue::from_str(&v).ok())
-  });
-
-  if let Some(cdn_loop) = cdn_loop_value {
-    request.headers_mut().insert(CDN_LOOP, cdn_loop.clone());
+    if let Some(cdn_loop) = cdn_loop_value {
+      request.headers_mut().insert(CDN_LOOP, cdn_loop.clone());
+    }
   }
 
   Ok(())
+}
+
+/// The egress header policy from the `DENO_EGRESS_HEADER_POLICY` env var
+/// (see `deno_fetch::EgressHeaderPolicy` for the format), read once per
+/// process at worker construction — before user code runs, so later
+/// `Deno.env.set` calls cannot alter it. The policy applies after
+/// [`request_builder_hook`] and wins for any header both manage. A value
+/// that fails to parse is kept as `Invalid`, which fails every fetch with
+/// the parse error rather than proceeding without the policy.
+pub(crate) fn egress_header_policy_from_env()
+-> Option<Arc<deno_fetch::EgressHeaderPolicyState>> {
+  static POLICY: OnceLock<Option<Arc<deno_fetch::EgressHeaderPolicyState>>> =
+    OnceLock::new();
+  POLICY
+    .get_or_init(|| {
+      let json = std::env::var("DENO_EGRESS_HEADER_POLICY").ok()?;
+      Some(Arc::new(deno_fetch::EgressHeaderPolicyState::from_json(&json)))
+    })
+    .clone()
 }
 
 pub fn create_op_metrics(
@@ -626,6 +665,7 @@ impl MainWorker {
           file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
           resolver: services.fetch_dns_resolver,
           request_builder_hook: Some(request_builder_hook),
+          egress_header_policy: egress_header_policy_from_env(),
           ..Default::default()
         }),
         deno_cache::deno_cache::args(create_cache),

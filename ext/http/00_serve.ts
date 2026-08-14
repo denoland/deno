@@ -127,6 +127,34 @@ const {
 
 const _upgraded = Symbol("_upgraded");
 
+// Lazily resolved entry point for the egress header policy's `forward` ops
+// (see ext/fetch/egress_policy.rs): `undefined` = not yet resolved, `null` =
+// policy forwards nothing (the common case - no per-request work), otherwise
+// the `enterEgressForwardContext` function from 26_fetch.js. Resolved on
+// first server creation, not at module load. The config op is consulted
+// directly so that with no `forward` ops configured - or in an embedder
+// without deno_fetch at all - the fetch module is never evaluated on
+// serve's account.
+type EgressForwardContextEnter = (reqHeaders: string[]) => unknown;
+let egressForwardContextEnter: EgressForwardContextEnter | null | undefined =
+  undefined;
+
+function getEgressForwardContextEnter(): EgressForwardContextEnter | null {
+  if (egressForwardContextEnter === undefined) {
+    const configOp = core.ops.op_fetch_egress_header_forward_config;
+    const forward = configOp === undefined ? [] : configOp()[0];
+    if (forward.length === 0) {
+      egressForwardContextEnter = null;
+    } else {
+      const { enterEgressForwardContext } = core.loadExtScript(
+        "ext:deno_fetch/26_fetch.js",
+      );
+      egressForwardContextEnter = enterEgressForwardContext;
+    }
+  }
+  return egressForwardContextEnter ?? null;
+}
+
 let legacyAbortWarned = false;
 
 function internalServerError() {
@@ -833,6 +861,24 @@ function mapToCallback(context, callback, onError) {
     );
   };
 
+  // Innermost wrapper: runs after the snapshot-restoring wrappers below, so
+  // the entered context flows into the handler rather than being replaced by
+  // their `restoreSnapshot(context.asyncContext)`.
+  const enterEgressForward = getEgressForwardContextEnter();
+  if (enterEgressForward !== null) {
+    const origMapped = mapped;
+    mapped = function (req, span) {
+      const previousContext = enterEgressForward(
+        op_http_get_request_headers(req),
+      );
+      try {
+        return origMapped(req, span);
+      } finally {
+        core.setAsyncContext(previousContext);
+      }
+    };
+  }
+
   if (otelState.TRACING_ENABLED) {
     const origMapped = mapped;
     mapped = function (req, _span) {
@@ -1069,7 +1115,7 @@ function mapToNativeResponseCallback(context, callback, onError) {
     return finishOrReturnNative(req, span, innerRequest, response);
   }
 
-  return function nativeMapped(req, span) {
+  function nativeMapped(req, span) {
     let innerRequest;
     let response;
     try {
@@ -1091,6 +1137,24 @@ function mapToNativeResponseCallback(context, callback, onError) {
       return finishOrReturnMaybePromise(req, span, innerRequest, response);
     } catch (error) {
       return handleError(req, span, innerRequest, error);
+    }
+  }
+
+  // The native dispatch path also invokes the user handler, so it needs the
+  // same egress-forward capture as mapToCallback - otherwise forwarded
+  // headers would depend on which dispatch path served the request.
+  const enterEgressForward = getEgressForwardContextEnter();
+  if (enterEgressForward === null) {
+    return nativeMapped;
+  }
+  return function egressForwardNativeMapped(req, span) {
+    const previousContext = enterEgressForward(
+      op_http_get_request_headers(req),
+    );
+    try {
+      return nativeMapped(req, span);
+    } finally {
+      core.setAsyncContext(previousContext);
     }
   };
 }

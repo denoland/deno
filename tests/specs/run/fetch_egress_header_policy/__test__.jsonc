@@ -1,0 +1,42 @@
+{
+  "tests": {
+    "static_ops": {
+      "args": "run -A static_ops.ts",
+      "envs": {
+        "DENO_EGRESS_HEADER_POLICY": "{\"set\":{\"user-agent\":\"enforced/1.0\"},\"remove\":[\"x-strip\"],\"default\":{\"x-def\":\"fallback\"}}"
+      },
+      "output": "static_ops.out"
+    },
+    "forward_append": {
+      "args": "run -A forward_append.ts",
+      "envs": {
+        "DENO_EGRESS_HEADER_POLICY": "{\"forward\":[\"cdn-loop\"],\"append\":{\"cdn-loop\":\"deno;d=testhash;v=2\"}}"
+      },
+      "output": "forward_append.out"
+    },
+    "legacy_precedence": {
+      "args": "run -A legacy_precedence.ts",
+      "envs": {
+        "CDN_LOOP": "legacy-value",
+        "X_DENO_FETCH_TOKEN": "legacy-token",
+        "DENO_EGRESS_HEADER_POLICY": "{\"set\":{\"cdn-loop\":\"policy-wins\"}}"
+      },
+      "output": "legacy_precedence.out"
+    },
+    "legacy_forward_suppression": {
+      "args": "run -A legacy_forward_suppression.ts",
+      "envs": {
+        "CDN_LOOP": "legacy-value",
+        "DENO_EGRESS_HEADER_POLICY": "{\"forward\":[\"cdn-loop\"],\"append\":{\"cdn-loop\":\"deno;d=testhash;v=2\"}}"
+      },
+      "output": "legacy_forward_suppression.out"
+    },
+    "invalid_policy": {
+      "args": "run -A invalid_policy.ts",
+      "envs": {
+        "DENO_EGRESS_HEADER_POLICY": "{\"bogus\": 1}"
+      },
+      "output": "invalid_policy.out"
+    }
+  }
+}
