@@ -1465,10 +1465,7 @@ fn validate_npm_tarball_urls(
   Ok(())
 }
 
-fn tarball_url_matches_registry(
-  tarball_url: &Url,
-  registry_url: &Url,
-) -> bool {
+fn tarball_url_matches_registry(tarball_url: &Url, registry_url: &Url) -> bool {
   if tarball_url.scheme() != registry_url.scheme()
     || tarball_url.host_str() != registry_url.host_str()
     || tarball_url.port_or_known_default()
