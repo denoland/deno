@@ -69,9 +69,7 @@ fn jsr_package_metadata_url(
   Some(url)
 }
 
-pub(crate) fn jsr_package_meta_url(
-  name: &str,
-) -> Option<deno_core::url::Url> {
+pub(crate) fn jsr_package_meta_url(name: &str) -> Option<deno_core::url::Url> {
   jsr_package_metadata_url(jsr_url(), name, "meta.json")
 }
 
@@ -298,12 +296,9 @@ mod tests {
       "https://registry.example:8443/jsr/root/?source=config#fragment",
     )
     .unwrap();
-    let url = jsr_package_metadata_url(
-      &registry_url,
-      "@std/assert",
-      "meta.json",
-    )
-    .unwrap();
+    let url =
+      jsr_package_metadata_url(&registry_url, "@std/assert", "meta.json")
+        .unwrap();
     assert_eq!(
       url.as_str(),
       "https://registry.example:8443/jsr/root/@std/assert/meta.json"

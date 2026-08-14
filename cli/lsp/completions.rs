@@ -1539,7 +1539,10 @@ mod tests {
         None,
       )
       .await;
-      assert_eq!(actual, None, "accepted invalid package name {package_name:?}");
+      assert_eq!(
+        actual, None,
+        "accepted invalid package name {package_name:?}"
+      );
     }
   }
 
