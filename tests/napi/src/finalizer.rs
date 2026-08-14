@@ -315,8 +315,62 @@ extern "C" fn test_shared_data_double_count(
   result
 }
 
+/// Finalizer that calls back into JavaScript, the shape of `test_finalizer`
+/// and `test_function` in the Node-API conformance suite. It must run at a
+/// point where JS execution is legal; running it in V8's GC weak callback
+/// aborts the process. See #36568.
+unsafe extern "C" fn finalize_calls_js(
+  env: napi_env,
+  _data: *mut ::std::os::raw::c_void,
+  hint: *mut ::std::os::raw::c_void,
+) {
+  let cb_ref = hint as napi_ref;
+  let mut cb = ptr::null_mut();
+  assert_napi_ok!(napi_get_reference_value(env, cb_ref, &mut cb));
+  let mut global = ptr::null_mut();
+  assert_napi_ok!(napi_get_global(env, &mut global));
+  // Release the reference before calling into JS: `cb` is a handle in the
+  // current scope and stays valid, and the callback is allowed to throw, after
+  // which every napi call on this env returns napi_pending_exception until the
+  // runtime clears it.
+  assert_napi_ok!(napi_delete_reference(env, cb_ref));
+  let mut result = ptr::null_mut();
+  // Ignore the status: the point is that calling into JS here does not abort.
+  unsafe {
+    napi_call_function(env, global, cb, 0, ptr::null(), &mut result);
+  }
+}
+
+/// Creates an external whose finalizer invokes the JS callback passed as the
+/// first argument.
+extern "C" fn test_external_finalizer_calls_js(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 1);
+  assert_eq!(argc, 1);
+
+  let mut cb_ref = ptr::null_mut();
+  assert_napi_ok!(napi_create_reference(env, args[0], 1, &mut cb_ref));
+
+  let mut result = ptr::null_mut();
+  assert_napi_ok!(napi_create_external(
+    env,
+    ptr::null_mut(),
+    Some(finalize_calls_js),
+    cb_ref as *mut ::std::os::raw::c_void,
+    &mut result
+  ));
+  result
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
+    napi_new_property!(
+      env,
+      "test_external_finalizer_calls_js",
+      test_external_finalizer_calls_js
+    ),
     napi_new_property!(env, "test_bind_finalizer", test_bind_finalizer),
     napi_new_property!(env, "test_external_finalizer", test_external_finalizer),
     napi_new_property!(env, "test_external_buffer", test_external_buffer),
