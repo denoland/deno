@@ -1016,14 +1016,22 @@ fn poll_revents_to_uv_callback_args(
     cb_events |= UV_DISCONNECT;
   }
 
-  if revents & libc::POLLNVAL != 0
-    || (revents & libc::POLLERR != 0 && revents & libc::POLLPRI == 0)
-  {
+  // Closing an active descriptor without first stopping its poll handle is
+  // invalid libuv usage. A later poll(2) call may return POLLNVAL. Although
+  // libuv's event backends do not surface it, we report it as UV_EBADF. The
+  // error path stops the poll handle and removes its fd registration.
+  if revents & libc::POLLNVAL != 0 {
     return (uv_compat::UV_EBADF, 0);
   }
+  // libuv treats POLLERR | POLLPRI as prioritized readiness. Linux and
+  // FreeBSD sysfs/kernfs polling reports this combination, unlike TCP OOB
+  // messages, so only POLLERR without POLLPRI is an EBADF error.
+  if revents & libc::POLLERR != 0 && revents & libc::POLLPRI == 0 {
+    return (uv_compat::UV_EBADF, 0);
+  }
+  // libuv reports the interests that can make progress on an error or hangup,
+  // even when poll(2) returned no ordinary readiness bits.
   if revents & (libc::POLLERR | libc::POLLHUP) != 0 {
-    // libuv reports the interests that can make progress on an error or
-    // hangup, even when poll(2) returned no ordinary readiness bits.
     cb_events |= requested_events
       & (UV_READABLE | UV_WRITABLE | UV_DISCONNECT | UV_PRIORITIZED);
   }
@@ -1912,6 +1920,13 @@ mod tests {
       uv_events_to_poll_events(UV_READABLE | UV_WRITABLE | UV_PRIORITIZED),
       libc::POLLIN | libc::POLLOUT | libc::POLLPRI
     );
+    #[cfg(any(
+      target_os = "linux",
+      target_os = "android",
+      target_os = "freebsd",
+      target_os = "illumos",
+    ))]
+    assert_eq!(uv_events_to_poll_events(UV_DISCONNECT), libc::POLLRDHUP);
   }
 
   #[cfg(unix)]
@@ -1935,6 +1950,27 @@ mod tests {
     assert_eq!(
       poll_revents_to_uv_callback_args(libc::POLLERR, UV_READABLE),
       (uv_compat::UV_EBADF, 0)
+    );
+    assert_eq!(
+      poll_revents_to_uv_callback_args(
+        libc::POLLERR | libc::POLLPRI,
+        UV_PRIORITIZED
+      ),
+      (0, UV_PRIORITIZED)
+    );
+    assert_eq!(
+      poll_revents_to_uv_callback_args(libc::POLLNVAL, UV_READABLE),
+      (uv_compat::UV_EBADF, 0)
+    );
+    #[cfg(any(
+      target_os = "linux",
+      target_os = "android",
+      target_os = "freebsd",
+      target_os = "illumos",
+    ))]
+    assert_eq!(
+      poll_revents_to_uv_callback_args(libc::POLLRDHUP, UV_DISCONNECT),
+      (0, UV_DISCONNECT)
     );
   }
 
