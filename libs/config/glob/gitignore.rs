@@ -197,10 +197,13 @@ mod test {
 
     for path in ["/before.txt", "/after.txt"] {
       let path = PathBuf::from(path);
-      let gitignore = ignore_tree
-        .get_resolved_git_ignore_for_file(&path)
-        .unwrap();
-      assert!(gitignore.is_ignored(&path, false), "Path: {}", path.display());
+      let gitignore =
+        ignore_tree.get_resolved_git_ignore_for_file(&path).unwrap();
+      assert!(
+        gitignore.is_ignored(&path, false),
+        "Path: {}",
+        path.display()
+      );
     }
   }
 
@@ -220,10 +223,13 @@ mod test {
       "/sub_dir/after.txt",
     ] {
       let path = PathBuf::from(path);
-      let gitignore = ignore_tree
-        .get_resolved_git_ignore_for_file(&path)
-        .unwrap();
-      assert!(gitignore.is_ignored(&path, false), "Path: {}", path.display());
+      let gitignore =
+        ignore_tree.get_resolved_git_ignore_for_file(&path).unwrap();
+      assert!(
+        gitignore.is_ignored(&path, false),
+        "Path: {}",
+        path.display()
+      );
     }
   }
 }
