@@ -622,6 +622,13 @@ const buildJobs = buildItems.map((rawBuildItem) => {
     : `${rawBuildItem.arch}-unknown-linux-gnu`;
   const startupOrderPath =
     `target/release/startup-order-${startupOrderTarget}.order`;
+  // The startup-order two-pass build (trace startup workloads, relink with the
+  // generated order, then verify) adds several minutes to the release build,
+  // most visibly to `release linux-x86_64` which is the only release build that
+  // runs on PRs. The ordered binary is only shipped/benchmarked from main and
+  // release tags, so restrict the extra passes to those; PRs (and anyone
+  // iterating on the ordering tooling) can opt back in with the `ci-full` label.
+  const runStartupOrder = isMainOrTag.or(hasCiFullLabel);
   const isLinux = buildItem.os.equals("linux");
   const isWindows = buildItem.os.equals("windows");
   const isMacos = buildItem.os.equals("macos");
@@ -1057,6 +1064,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             ...(usesStartupOrder
               ? [{
                 name: "Trace startup order",
+                if: runStartupOrder,
                 run: rawBuildItem.os === "macos"
                   ? [
                     "cp -p target/release/deno target/release/deno-before-startup-order",
@@ -1077,6 +1085,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 env: { NO_COLOR: 1 },
               }, {
                 name: "Relink release deno with startup order",
+                if: runStartupOrder,
                 run: cargoBuildReleaseCommand,
                 env: {
                   DENO_SNAPSHOT_MINIFY_SOURCES: "1",
@@ -1086,6 +1095,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 },
               }, {
                 name: "Verify startup order",
+                if: runStartupOrder,
                 run: [
                   "target/release/deno run -A tools/startup_order/verify_orderfile.ts \\",
                   "  --baseline-binary target/release/deno-before-startup-order \\",
@@ -1097,7 +1107,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               }, {
                 name: "Upload startup order",
                 uses: "actions/upload-artifact@v6",
-                if: conditions.status.always(),
+                if: runStartupOrder.and(conditions.status.always()),
                 with: {
                   name: `startup-order-${profileName}`,
                   path: [

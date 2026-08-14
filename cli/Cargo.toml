@@ -83,6 +83,7 @@ deno_npm.workspace = true
 deno_npm_cache.workspace = true
 deno_npm_installer = { workspace = true }
 deno_npmrc.workspace = true
+deno_os.workspace = true
 deno_package_json = { workspace = true, features = ["sync"] }
 deno_panic = { version = "0.2.1", optional = true }
 deno_path_util.workspace = true
@@ -114,9 +115,6 @@ cab.workspace = true
 capacity_builder.workspace = true
 cfb.workspace = true
 chrono = { workspace = true, features = ["now"] }
-clap = { workspace = true, features = ["env", "string", "wrap_help", "error-context"] }
-clap_complete.workspace = true
-clap_complete_fig.workspace = true
 color-print.workspace = true
 console_static_text.workspace = true
 crossterm.workspace = true
@@ -221,10 +219,15 @@ tokio-vsock.workspace = true
 [dev-dependencies]
 # unsafe_use_unprotected_platform is a workaround for a segfault that may occur
 # when running multiple v8 tests on different threads
+criterion.workspace = true
 deno_core = { workspace = true, features = ["unsafe_use_unprotected_platform"] }
 pretty_assertions.workspace = true
 sys_traits = { workspace = true, features = ["memory"] }
 test_util.workspace = true
+
+[[bench]]
+name = "flags"
+harness = false
 
 [package.metadata.winres]
 # This section defines the metadata that appears in the deno.exe PE header.

@@ -1899,7 +1899,7 @@ jobs:
           cargo build --release --locked -p denort_desktop
           df -h
       - name: Trace startup order
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'') || contains(github.event.pull_request.labels.*.name, ''ci-full''))'
         env:
           NO_COLOR: 1
         run: |-
@@ -1910,14 +1910,14 @@ jobs:
             --repeats 3 \
             --workload-profile run-first
       - name: Relink release deno with startup order
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'') || contains(github.event.pull_request.labels.*.name, ''ci-full''))'
         env:
           DENO_SNAPSHOT_MINIFY_SOURCES: '1'
           DENO_USE_STARTUP_ORDER: '1'
           DENO_STARTUP_ORDER_FILE: '${{ github.workspace }}/target/release/startup-order-aarch64-apple-darwin.order'
         run: cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
       - name: Verify startup order
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'''
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'') || contains(github.event.pull_request.labels.*.name, ''ci-full''))'
         env:
           NO_COLOR: 1
         run: |-
@@ -1928,7 +1928,7 @@ jobs:
             --output target/release/startup-order-aarch64-apple-darwin.order.verify.json
       - name: Upload startup order
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && always()'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'') || contains(github.event.pull_request.labels.*.name, ''ci-full'')) && always()'
         with:
           name: startup-order-release-macos-aarch64
           path: |-
@@ -4510,6 +4510,7 @@ jobs:
           cargo build -Zbuild-std=core,alloc,std,proc_macro,panic_abort --release --locked -p denort_desktop
           df -h
       - name: Trace startup order
+        if: 'github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'') || contains(github.event.pull_request.labels.*.name, ''ci-full'')'
         env:
           NO_COLOR: 1
         run: |-
@@ -4520,12 +4521,14 @@ jobs:
             --repeats 3 \
             --workload-profile run-first
       - name: Relink release deno with startup order
+        if: 'github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'') || contains(github.event.pull_request.labels.*.name, ''ci-full'')'
         env:
           DENO_SNAPSHOT_MINIFY_SOURCES: '1'
           DENO_USE_STARTUP_ORDER: '1'
           DENO_STARTUP_ORDER_FILE: '${{ github.workspace }}/target/release/startup-order-x86_64-unknown-linux-gnu.order'
         run: 'cargo build -Zbuild-std=core,alloc,std,proc_macro,panic_abort --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace-frame-pointer'
       - name: Verify startup order
+        if: 'github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'') || contains(github.event.pull_request.labels.*.name, ''ci-full'')'
         env:
           NO_COLOR: 1
         run: |-
@@ -4536,7 +4539,7 @@ jobs:
             --output target/release/startup-order-x86_64-unknown-linux-gnu.order.verify.json
       - name: Upload startup order
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
-        if: always()
+        if: '(github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'') || contains(github.event.pull_request.labels.*.name, ''ci-full'')) && always()'
         with:
           name: startup-order-release-linux-x86_64
           path: |-
@@ -6633,7 +6636,7 @@ jobs:
           cargo build -Zbuild-std=core,alloc,std,proc_macro,panic_abort --release --locked -p denort_desktop
           df -h
       - name: Trace startup order
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'') || contains(github.event.pull_request.labels.*.name, ''ci-full''))'
         env:
           NO_COLOR: 1
         run: |-
@@ -6644,14 +6647,14 @@ jobs:
             --repeats 3 \
             --workload-profile run-first
       - name: Relink release deno with startup order
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'') || contains(github.event.pull_request.labels.*.name, ''ci-full''))'
         env:
           DENO_SNAPSHOT_MINIFY_SOURCES: '1'
           DENO_USE_STARTUP_ORDER: '1'
           DENO_STARTUP_ORDER_FILE: '${{ github.workspace }}/target/release/startup-order-aarch64-unknown-linux-gnu.order'
         run: 'cargo build -Zbuild-std=core,alloc,std,proc_macro,panic_abort --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace-frame-pointer'
       - name: Verify startup order
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'') || contains(github.event.pull_request.labels.*.name, ''ci-full''))'
         env:
           NO_COLOR: 1
         run: |-
@@ -6662,7 +6665,7 @@ jobs:
             --output target/release/startup-order-aarch64-unknown-linux-gnu.order.verify.json
       - name: Upload startup order
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && always()'
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'') || contains(github.event.pull_request.labels.*.name, ''ci-full'')) && always()'
         with:
           name: startup-order-release-linux-aarch64
           path: |-

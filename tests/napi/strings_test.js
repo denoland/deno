@@ -1,12 +1,18 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { assertEquals, loadTestLibrary } from "./common.js";
+import { assert, assertEquals, loadTestLibrary } from "./common.js";
 
 const strings = loadTestLibrary();
 
 Deno.test("napi string utf8", function () {
   assertEquals(strings.test_utf8(""), "");
   assertEquals(strings.test_utf8("🦕"), "🦕");
+});
+
+// Regression test for #36569: a NULL `result` out-pointer to the string
+// constructors must return napi_invalid_arg instead of segfaulting.
+Deno.test("napi string null result returns invalid_arg", function () {
+  assert(strings.test_null_result_string());
 });
 
 Deno.test("napi string", function () {

@@ -1214,7 +1214,7 @@ laufey::main!(|| {
       && (env::var("NODE_CHANNEL_FD").is_ok()
         || env::var("NEXT_PRIVATE_WORKER").is_ok()));
   if is_worker {
-    run_headless_worker();
+    run_on_runtime_thread(run_headless_worker);
     return;
   }
 
@@ -1336,40 +1336,44 @@ laufey::main!(|| {
     }
   }
 
-  let rt = tokio::runtime::Builder::new_current_thread()
-    .enable_all()
-    .build()
-    .unwrap();
+  // Everything above must stay on this (still effectively single-threaded)
+  // loader thread — see the setenv comment. The runtime itself moves to a
+  // dedicated thread with a real stack; the loader thread just parks in
+  // `join` (inside `run_on_runtime_thread`) until the app exits.
+  run_on_runtime_thread(move || {
+    let rt = deno_runtime::tokio_util::create_basic_runtime();
 
-  rt.block_on(async {
-    log::debug!("[desktop] run_desktop starting");
-    match run_desktop(update_rolled_back, desktop_serve_port, data).await {
-      Ok(()) => log::debug!("[desktop] run_desktop completed OK"),
-      Err(error) => {
-        // A failure raised while the app's main module was still loading or
-        // first evaluating is tagged `DesktopStartupError` (see
-        // `denort::run`). It carries its own pre-formatted message.
-        let startup = error.downcast_ref::<denort::run::DesktopStartupError>();
-        let error_string = match startup {
-          Some(startup) => startup.message.clone(),
-          None => match js_error_downcast_ref(&error) {
-            Some(js_error) => format_js_error(js_error, None),
-            None => format!("{:?}", error),
-          },
-        };
-        let message = error_string.trim_start_matches("error: ");
-        log::error!("{}: {}", colors::red_bold("error"), message);
-        let is_startup = startup.is_some();
-        // A `DesktopStartupError` wraps the formatted message rather than the
-        // original `JsError`, so only consult `js_error_downcast_ref` for the
-        // untagged (post-load) case.
-        let is_js_error =
-          !is_startup && js_error_downcast_ref(&error).is_some();
-        if should_show_native_error_dialog(is_startup, is_js_error) {
-          laufey::alert("Application Error", message);
+    rt.block_on(async {
+      log::debug!("[desktop] run_desktop starting");
+      match run_desktop(update_rolled_back, desktop_serve_port, data).await {
+        Ok(()) => log::debug!("[desktop] run_desktop completed OK"),
+        Err(error) => {
+          // A failure raised while the app's main module was still loading or
+          // first evaluating is tagged `DesktopStartupError` (see
+          // `denort::run`). It carries its own pre-formatted message.
+          let startup =
+            error.downcast_ref::<denort::run::DesktopStartupError>();
+          let error_string = match startup {
+            Some(startup) => startup.message.clone(),
+            None => match js_error_downcast_ref(&error) {
+              Some(js_error) => format_js_error(js_error, None),
+              None => format!("{:?}", error),
+            },
+          };
+          let message = error_string.trim_start_matches("error: ");
+          log::error!("{}: {}", colors::red_bold("error"), message);
+          let is_startup = startup.is_some();
+          // A `DesktopStartupError` wraps the formatted message rather than the
+          // original `JsError`, so only consult `js_error_downcast_ref` for the
+          // untagged (post-load) case.
+          let is_js_error =
+            !is_startup && js_error_downcast_ref(&error).is_some();
+          if should_show_native_error_dialog(is_startup, is_js_error) {
+            laufey::alert("Application Error", message);
+          }
         }
       }
-    }
+    });
   });
 });
 
@@ -1389,6 +1393,31 @@ fn should_show_native_error_dialog(
   is_startup || !is_js_error
 }
 
+/// Stack size for the thread the Deno runtime runs on. Laufey invokes
+/// `laufey_runtime_start` on its RuntimeLoader thread, which gets the
+/// platform-default stack for secondary threads — only 512KB on macOS.
+/// That is far too small for the runtime: synchronous module parsing (swc)
+/// alone recurses past it on real-world module graphs (e.g. a SvelteKit
+/// dev server's graph) and kills the process with SIGBUS. 8MB matches the
+/// headroom the CLI gets from the OS main thread.
+const RUNTIME_THREAD_STACK_SIZE: usize = 8 * 1024 * 1024;
+
+/// Run `f` to completion on a dedicated thread with a stack large enough
+/// for the Deno runtime (see `RUNTIME_THREAD_STACK_SIZE`), keeping the
+/// calling (loader) thread parked until it finishes.
+fn run_on_runtime_thread<F: FnOnce() + Send + 'static>(f: F) {
+  let thread = std::thread::Builder::new()
+    .name("deno-desktop-runtime".to_string())
+    .stack_size(RUNTIME_THREAD_STACK_SIZE)
+    .spawn(f)
+    .expect("failed to spawn desktop runtime thread");
+  if thread.join().is_err() {
+    // The runtime thread panicked. The panic hook normally exits the
+    // process itself; this is a backstop in case it returned.
+    deno_runtime::exit(1);
+  }
+}
+
 /// Run as a headless worker (no Laufey window). Used when a framework dev
 /// server forks child processes that re-execute this dylib.
 fn run_headless_worker() {
@@ -1398,10 +1427,7 @@ fn run_headless_worker() {
     .install_default()
     .unwrap();
 
-  let rt = tokio::runtime::Builder::new_current_thread()
-    .enable_all()
-    .build()
-    .unwrap();
+  let rt = deno_runtime::tokio_util::create_basic_runtime();
 
   rt.block_on(async {
     let args: Vec<_> = env::args_os().collect();
@@ -1435,9 +1461,13 @@ fn run_headless_worker() {
 
     let sys = if data.metadata.self_extracting.is_some() {
       // VFS should already be extracted by the parent process.
-      // In dev mode, keep the source directory as CWD (inherited from parent).
-      // In production mode, set CWD to extraction directory.
-      if env::var("DENO_DESKTOP_DEV_URL").is_err() {
+      // In dev mode (external dev server via DENO_DESKTOP_DEV_URL or
+      // in-runtime dev server via DENO_DESKTOP_FRAMEWORK_DEV), keep the
+      // source directory as CWD (inherited from parent). In production
+      // mode, set CWD to extraction directory.
+      if env::var("DENO_DESKTOP_DEV_URL").is_err()
+        && env::var("DENO_DESKTOP_FRAMEWORK_DEV").is_err()
+      {
         let _ = std::env::set_current_dir(&data.root_path);
       }
       denort::file_system::DenoRtSys::new_self_extracting(data.vfs.clone())
@@ -1688,7 +1718,17 @@ async fn run_desktop(
 
   // Framework dev servers handle their own HMR via websocket.
   // For non-framework apps, V8-level HMR reloads the webview.
-  let is_framework_dev = env::var("DENO_DESKTOP_DEV_URL").is_ok();
+  //
+  // Two framework-dev shapes exist (see `run_desktop_hmr` in
+  // cli/tools/desktop.rs):
+  // - DENO_DESKTOP_DEV_URL: the CLI spawned an external dev-server process
+  //   and parsed its URL; navigate there directly.
+  // - DENO_DESKTOP_FRAMEWORK_DEV: the embedded entrypoint boots the dev
+  //   server inside this runtime on the desktop serve port (so server code
+  //   keeps `Deno.desktop`, #35899); use the regular serve-port poll.
+  let external_dev_url = env::var("DENO_DESKTOP_DEV_URL").ok();
+  let is_framework_dev = external_dev_url.is_some()
+    || env::var("DENO_DESKTOP_FRAMEWORK_DEV").is_ok();
 
   // In dev mode, restore CWD to the source directory so the framework
   // dev server watches the original source files, not the extracted VFS.
@@ -1837,8 +1877,9 @@ async fn run_desktop(
   // Run the Deno runtime and Laufey event loop concurrently.
   // We spawn the runtime first, wait for the server to be ready,
   // then navigate the webview.
-  let url = env::var("DENO_DESKTOP_DEV_URL")
-    .unwrap_or_else(|_| format!("http://127.0.0.1:{}", desktop_serve_port));
+  let poll_serve_port = external_dev_url.is_none();
+  let url = external_dev_url
+    .unwrap_or_else(|| format!("http://127.0.0.1:{}", desktop_serve_port));
   log::debug!("[desktop] starting runtime and laufey event loop");
   let run_fut =
     denort::run::run_with_options(Arc::new(sys.clone()), sys, data, run_opts);
@@ -1883,7 +1924,7 @@ async fn run_desktop(
     }
 
     let id = initial_window_id_for_navigate.load(Ordering::Acquire);
-    if !is_framework_dev {
+    if poll_serve_port {
       let mut server_ready = false;
       for i in 0..60 {
         if let Ok(mut stream) =

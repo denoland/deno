@@ -57,10 +57,32 @@ fn pty_multiline_dot_chain() {
 }
 
 #[test(flaky)]
+fn pty_regex_literal_with_quote() {
+  // A quote inside a character class used to leave the validator waiting for a
+  // closing string, so the REPL blocked instead of evaluating the line.
+  // https://github.com/denoland/deno/issues/24963
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("let re = /[']/;");
+    console.write_line("re.test(\"'\")");
+    console.expect("true");
+  });
+}
+
+#[test(flaky)]
 fn pty_null() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("null");
     console.expect("null");
+  });
+}
+
+#[test(flaky)]
+fn pty_primordials_protected_from_object_prototype_properties() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("Object.prototype.get = function () {}");
+    console.expect("[Function (anonymous)]");
+    console.write_line("new Deno.Command(\"whoami\")");
+    console.expect("Command");
   });
 }
 
