@@ -389,6 +389,9 @@ function createResponseBodyStream(responseBodyRid, terminator) {
  * @param {boolean} redirectSensitiveStripped whether a redirect has already
  *   crossed origins and dropped `REDIRECT_SENSITIVE_HEADER_NAMES`; sticky for
  *   the rest of the chain so the egress header policy does not re-add them
+ * @param {boolean} policyApplied whether the egress header policy's
+ *   `forward`/`append` ops already ran for this request; set on redirect hops,
+ *   which must not re-apply them
  * @returns {Promise<InnerResponse>}
  */
 async function mainFetch(
@@ -397,7 +400,18 @@ async function mainFetch(
   terminator,
   inspectorCtx = null,
   redirectSensitiveStripped = false,
+  policyApplied = false,
 ) {
+  // The policy's non-idempotent ops run once, at the outermost entry into the
+  // fetch stack: `fetch()` and `EventSource` both land here, while redirect
+  // hops arrive with `policyApplied` already set.
+  if (!policyApplied) {
+    const egress = getEgressPolicy();
+    if (egress !== null) {
+      applyEgressHeaderPolicy(req, egress);
+    }
+  }
+
   // https://fetch.spec.whatwg.org/#main-fetch step 5: if the request should be
   // blocked due to a bad port, return a network error before any network I/O
   // occurs. This applies to every hop, including those reached via redirects.
@@ -855,16 +869,16 @@ function httpRedirectFetch(
     terminator,
     inspectorCtx,
     redirectSensitiveStripped,
+    // The policy ran on the first hop; re-applying it would duplicate
+    // appended values.
+    true,
   );
 }
 
-// The `forward`/`append` ops of the operator-provided egress header policy
-// (see ext/fetch/egress_policy.rs). The idempotent `remove`/`set`/`default`
-// ops are applied per network hop in `op_fetch`; `forward`/`append` are
-// applied here, exactly once per `fetch()` call - re-applying them on
-// redirect hops would duplicate appended values. `undefined` = not yet
-// loaded, `null` = no forward/append ops configured (the fast path: one
-// null check per fetch, no per-request work in serve).
+// Cache of the JS-applied half of the operator-provided egress header policy
+// (see ext/fetch/egress_policy.rs): `undefined` = not yet loaded, `null` = no
+// `forward`/`append` ops configured. `null` is the fast path - one null check
+// per fetch and no per-request work in serve.
 let egressPolicy = undefined;
 
 function getEgressPolicy() {
@@ -991,11 +1005,6 @@ function fetch(input, init = undefined) {
 
       // 3.
       const request = toInnerRequest(requestObject);
-
-      const egress = getEgressPolicy();
-      if (egress !== null) {
-        applyEgressHeaderPolicy(request, egress);
-      }
 
       // 4.
       if (requestObject.signal.aborted) {

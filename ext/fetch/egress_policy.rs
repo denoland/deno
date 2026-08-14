@@ -37,13 +37,22 @@
 //!   every network hop, including redirect hops (see
 //!   [`EgressHeaderPolicy::apply_static`]).
 //! - `forward`/`append` are not idempotent (re-applying on a redirect hop
-//!   would duplicate appended values) and are applied exactly once per
-//!   `fetch()` call, in JS, where the inbound-request async context is
-//!   available (see `26_fetch.js`).
+//!   would duplicate appended values) and are applied in JS, where the
+//!   inbound-request async context is available: once per outermost
+//!   `mainFetch` call, which covers every entry point into the fetch stack
+//!   including `EventSource` (see `26_fetch.js`). They apply after the
+//!   default headers `fetch()` adds, so a policy may `remove` those.
 //!
 //! Once a redirect crosses origins, `set`/`default` stop applying to the
 //! credential headers WHATWG fetch drops there; see
 //! [`EgressHeaderPolicy::apply_static`].
+//!
+//! The policy is not the last writer on the wire. `Client::send` runs after
+//! it and fills in `user-agent` and `accept` when absent, so `remove` of
+//! either yields the client default rather than no header at all; it also
+//! overwrites `proxy-authorization` with credentials taken from the proxy
+//! URL, which beats a `set`. Policies covering those three headers only hold
+//! where the client leaves them alone.
 //!
 //! A policy that fails to parse or validate is retained as
 //! [`EgressHeaderPolicyState::Invalid`]: every fetch then fails with the
@@ -126,7 +135,7 @@ pub struct EgressHeaderPolicy {
   scrub_static: Vec<HeaderName>,
   /// Lowercase names whose inbound values are forwarded, applied in JS.
   forward: Vec<String>,
-  /// (lowercase name, value) pairs appended once per fetch() call, in JS.
+  /// (lowercase name, value) pairs appended once per outermost fetch, in JS.
   append: Vec<(String, String)>,
   /// Whether any `set`/`default` entry names a [`REDIRECT_SENSITIVE_HEADERS`]
   /// header. Almost always false, which lets [`Self::apply_static`] skip the
@@ -445,9 +454,9 @@ mod tests {
   }
 
   // `HeaderValue::from_str` accepts the deprecated obs-text range, which a
-  // non-ASCII character encodes to, but `to_str` does not. Every op must
-  // reject such a value rather than accept it and diverge (or panic) when the
-  // JS-applied half converts it back to a string.
+  // non-ASCII character encodes to, while `to_str` does not. Every op has to
+  // reject such a value: the JS-applied half converts it back to a string,
+  // and only visible ASCII survives that round trip intact.
   #[test]
   fn rejects_non_ascii_header_value() {
     for field in ["set", "append", "default"] {

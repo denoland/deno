@@ -1,0 +1,2 @@
+top-level: deno;d=testhash;v=2
+handler: deno;d=testhash;v=2, deno;d=testhash;v=2

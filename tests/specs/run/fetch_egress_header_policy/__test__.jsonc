@@ -52,6 +52,13 @@
       },
       "output": "forward_header_casing.out"
     },
+    "eventsource": {
+      "args": "run -A eventsource.ts",
+      "envs": {
+        "DENO_EGRESS_HEADER_POLICY": "{\"forward\":[\"cdn-loop\"],\"append\":{\"cdn-loop\":\"deno;d=testhash;v=2\"}}"
+      },
+      "output": "eventsource.out"
+    },
     "zero_arg_handler": {
       "args": "run -A zero_arg_handler.ts",
       "envs": {
