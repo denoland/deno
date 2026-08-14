@@ -150,7 +150,10 @@ pub fn validate_npm_package_name(
   let is_valid = !name.is_empty()
     && !name.starts_with(['.', '-', '_'])
     && name.trim() == name
-    && !matches!(name.to_ascii_lowercase().as_str(), "node_modules" | "favicon.ico")
+    && !matches!(
+      name.to_ascii_lowercase().as_str(),
+      "node_modules" | "favicon.ico"
+    )
     && if let Some(scoped_name) = name.strip_prefix('@') {
       let Some((scope, package)) = scoped_name.split_once('/') else {
         return Err(InvalidNpmPackageNameError {
@@ -270,8 +273,9 @@ impl PackageJsonDepValue {
       if name.is_empty() {
         return Err(PackageJsonDepValueParseErrorKind::EmptyName.into_box());
       }
-      validate_npm_package_name(&name)
-        .map_err(|err| PackageJsonDepValueParseErrorKind::from(err).into_box())?;
+      validate_npm_package_name(&name).map_err(|err| {
+        PackageJsonDepValueParseErrorKind::from(err).into_box()
+      })?;
       match VersionReq::parse_from_npm(version_req) {
         Ok(version_req) => {
           Ok(PackageJsonDepValue::Req(PackageReq { name, version_req }))
@@ -1072,8 +1076,7 @@ mod test {
       )
     );
 
-    let err =
-      PackageJsonDepValue::parse("../alias", "catalog:").unwrap_err();
+    let err = PackageJsonDepValue::parse("../alias", "catalog:").unwrap_err();
     assert!(matches!(
       err.as_kind(),
       PackageJsonDepValueParseErrorKind::InvalidNpmPackageName(_)

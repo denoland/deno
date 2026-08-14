@@ -2426,8 +2426,8 @@ mod test {
       "npm:C:\\package@1",
       "npm:@scope/../package@1",
     ] {
-      let err = parse_dep_entry_name_and_raw_version("alias", value)
-        .expect_err(value);
+      let err =
+        parse_dep_entry_name_and_raw_version("alias", value).expect_err(value);
       assert!(
         matches!(err, NpmDependencyEntryErrorSource::InvalidPackageName(_)),
         "{value}: {err}",
