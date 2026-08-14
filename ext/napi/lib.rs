@@ -350,7 +350,11 @@ pub struct PendingNapiFinalizer {
   /// pointer (addons routinely pass a null or repeated `native_object`), and
   /// removing an arbitrary entry with a matching `data` leaves the entry whose
   /// callback already ran behind, which then runs a second time at shutdown.
-  pub id: NapiFinalizerId,
+  ///
+  /// `None` for entries in [`RefTracker::gc_ready`]: those were already
+  /// deregistered by id when the GC handed them over, and are only waiting for
+  /// a JS-safe point to run, so nothing can look them up again.
+  pub id: Option<NapiFinalizerId>,
   pub env: napi_env,
   pub cb: napi_finalize,
   pub data: *mut c_void,
@@ -417,7 +421,7 @@ impl RefTracker {
     let id = NapiFinalizerId(self.next_id);
     self.next_id += 1;
     self.pending.push(PendingNapiFinalizer {
-      id,
+      id: Some(id),
       env,
       cb,
       data,
@@ -433,7 +437,7 @@ impl RefTracker {
   #[must_use = "the return value decides whether the finalizer may still \
                 be run"]
   fn remove(&mut self, id: NapiFinalizerId) -> bool {
-    if let Some(pos) = self.pending.iter().rposition(|f| f.id == id) {
+    if let Some(pos) = self.pending.iter().rposition(|f| f.id == Some(id)) {
       self.pending.remove(pos);
       true
     } else {
@@ -760,18 +764,32 @@ impl Env {
   /// `reset()` / `was_pending` run-once handshake (#36499) now prevents
   /// independently. The task only pushes onto an isolate-local queue on the
   /// isolate thread.
-  pub fn defer_gc_finalizer(
-    &mut self,
+  ///
+  /// Takes the `Env` as a raw pointer rather than `&mut self` on purpose: the
+  /// caller (the GC weak callback) already holds a `*mut Env`, and the queued
+  /// finalizer will mutate the `Env` through it long after this call returns.
+  /// Round-tripping that pointer through a reference here would hand the
+  /// finalizer a pointer derived from a borrow that has since ended.
+  ///
+  /// # Safety
+  ///
+  /// `env_ptr` must point to a live `Env` owned by this isolate's thread.
+  pub unsafe fn defer_gc_finalizer(
+    env_ptr: *mut Env,
     cb: napi_finalize,
     data: *mut c_void,
     hint: *mut c_void,
   ) {
-    let env_ptr = self as *mut Env as napi_env;
+    // SAFETY: the caller guarantees `env_ptr` is live. This shared borrow only
+    // reads the two `Rc` fields and ends before this function returns, well
+    // before the deferred finalizer can mutate the `Env`.
+    let env = unsafe { &*env_ptr };
     let need_schedule =
-      self.ref_tracker.borrow_mut().defer(PendingNapiFinalizer {
-        // GC-ready entries never need deregistering by id.
-        id: NapiFinalizerId(u64::MAX),
-        env: env_ptr,
+      env.ref_tracker.borrow_mut().defer(PendingNapiFinalizer {
+        // GC-ready entries were already deregistered by id, and nothing can
+        // look them up again.
+        id: None,
+        env: env_ptr as napi_env,
         cb,
         data,
         hint,
@@ -779,8 +797,8 @@ impl Env {
     // Only the first finalizer of a GC batch schedules a drain; the rest ride
     // along on the same task (see `RefTracker::defer`).
     if need_schedule {
-      let tracker = self.ref_tracker.clone();
-      self.gc_finalizer_spawner.spawn(move |scope| {
+      let tracker = env.ref_tracker.clone();
+      env.gc_finalizer_spawner.spawn(move |scope| {
         drain_gc_finalizers(scope, &tracker);
       });
     }
@@ -804,13 +822,45 @@ fn drain_gc_finalizers(
     // that still lets a throw escape cannot corrupt the shared event-loop
     // `HandleScope` (`V8TaskSpawner::spawn`'s contract). Recreating it per
     // finalizer clears any caught exception before the next one runs.
-    deno_core::v8::tc_scope!(_tc, scope);
+    v8::tc_scope!(tc, scope);
     // SAFETY: env/data/hint were captured when the addon created the reference;
     // V8 is alive and we hold a scope.
     unsafe {
       (f.cb)(f.env, f.data, f.hint);
     }
+    // A throw from a finalizer usually never reaches the `TryCatch` above: the
+    // napi entry point the finalizer called (e.g. `napi_call_function`)
+    // records it in `env.last_exception` and returns `napi_pending_exception`
+    // (see the `napi_wrap!` macro). Nobody is going to consume that here, and
+    // leaving it set would make *every* later napi call on this env fail with
+    // `napi_pending_exception`. Node instead reports a finalizer's uncaught
+    // exception through the uncaught-exception policy and carries on, so clear
+    // it — and, since a spawner task has no event-loop exception state to hand
+    // it to, report it rather than dropping it silently.
+    if !f.env.is_null() {
+      // SAFETY: `f.env` is the `*mut Env` recorded by `defer_gc_finalizer`,
+      // still live for the same reasons the callback above could use it.
+      let env = unsafe { &mut *(f.env as *mut Env) };
+      if let Some(exception) = env.last_exception.take() {
+        let exception = v8::Local::new(tc, &exception);
+        report_finalizer_exception(tc, exception);
+      }
+    }
+    // Backstop for a throw that escaped without being recorded.
+    if let Some(exception) = tc.exception() {
+      report_finalizer_exception(tc, exception);
+    }
   }
+}
+
+fn report_finalizer_exception(
+  scope: &v8::PinScope,
+  exception: v8::Local<v8::Value>,
+) {
+  log::error!(
+    "Uncaught exception in Node-API finalizer: {}",
+    exception.to_rust_string_lossy(scope)
+  );
 }
 
 deno_core::extension!(deno_napi,

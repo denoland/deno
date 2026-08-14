@@ -329,12 +329,16 @@ unsafe extern "C" fn finalize_calls_js(
   assert_napi_ok!(napi_get_reference_value(env, cb_ref, &mut cb));
   let mut global = ptr::null_mut();
   assert_napi_ok!(napi_get_global(env, &mut global));
+  // Release the reference before calling into JS: `cb` is a handle in the
+  // current scope and stays valid, and the callback is allowed to throw, after
+  // which every napi call on this env returns napi_pending_exception until the
+  // runtime clears it.
+  assert_napi_ok!(napi_delete_reference(env, cb_ref));
   let mut result = ptr::null_mut();
   // Ignore the status: the point is that calling into JS here does not abort.
   unsafe {
     napi_call_function(env, global, cb, 0, ptr::null(), &mut result);
   }
-  assert_napi_ok!(napi_delete_reference(env, cb_ref));
 }
 
 /// Creates an external whose finalizer invokes the JS callback passed as the

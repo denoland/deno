@@ -33,11 +33,11 @@ Deno.test("napi finalizer runs after gc", async () => {
 // be deferred to a point where JS execution is legal, as Node does.
 Deno.test("napi finalizer can call into JS", async () => {
   let ran = false;
-  (function () {
+  // Not held in a local: the external must be unreachable as soon as the call
+  // returns so the next `gc()` can collect it.
   lib.test_external_finalizer_calls_js(() => {
     ran = true;
   });
-  })();
 
   for (let i = 0; i < 100 && !ran; i++) {
     globalThis.gc();
@@ -45,4 +45,26 @@ Deno.test("napi finalizer can call into JS", async () => {
   }
 
   assert(ran);
+});
+
+// A finalizer that throws leaves the exception recorded on the env (the napi
+// entry point it called swallows the throw into `env.last_exception`). The
+// drain has to clear it the way Node's uncaught-exception policy does,
+// otherwise every later napi call on that env fails with
+// napi_pending_exception.
+Deno.test("napi finalizer that throws does not poison the env", async () => {
+  let ran = false;
+  lib.test_external_finalizer_calls_js(() => {
+    ran = true;
+    throw new Error("boom from a napi finalizer");
+  });
+
+  for (let i = 0; i < 100 && !ran; i++) {
+    globalThis.gc();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  assert(ran);
+  // Any napi call on the same env: this aborts on a napi_pending_exception.
+  assertEquals(typeof lib.test_deferred_finalizer_check(), "boolean");
 });

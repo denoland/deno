@@ -193,19 +193,29 @@ impl Reference {
     // garbage-collected afterwards (e.g. the test runner keeps polling the
     // event loop) would have its finalizer invoked twice. See #36499.
     if was_pending && let Some(finalize_cb) = finalize_cb {
-      // SAFETY: `env_ptr` is a live `Env` (separate allocation from this
-      // Reference) for the duration of the deferral.
-      unsafe { &mut *env_ptr }.defer_gc_finalizer(
-        finalize_cb,
-        finalize_data,
-        finalize_hint,
-      );
+      // SAFETY: `env_ptr` is a live `Env`, a separate allocation from this
+      // Reference, owned by this (the isolate's) thread.
+      unsafe {
+        Env::defer_gc_finalizer(
+          env_ptr,
+          finalize_cb,
+          finalize_data,
+          finalize_hint,
+        );
+      }
     }
 
     if ownership == ReferenceOwnership::Runtime {
       // Runtime-owned: free the Reference now. Userland-owned references are
       // freed by the addon via `napi_delete_reference` (or by napi-rs's
       // REFERENCE_MAP overwrite path).
+      //
+      // Note that with the deferral above this now happens *before* the
+      // finalizer runs, where Node deletes the Reference after. The finalizer
+      // only receives the (already copied) env/data/hint, and a runtime-owned
+      // Reference is by definition one the addon holds no `napi_ref` to — it
+      // passed a null `result` to `napi_wrap` / `napi_add_finalizer` — so it
+      // has no way to observe or touch the freed Reference.
       unsafe { drop(Reference::from_raw(reference)) }
     }
   }
@@ -3785,12 +3795,17 @@ fn napi_create_typedarray<'s>(
     return napi_arraybuffer_expected;
   };
 
-  // v8 150.4.0 provides the `Local<T> -> Local<Value>` upcast for every typed
-  // array except `Float16Array`. Each `Local` is a repr-transparent pointer and
-  // every typed array IS-A Value, so reinterpret uniformly — identical to what
-  // the generated `From` impls do (and to the `Context` transmute in lib.rs).
-  fn to_value<'s, T>(ta: v8::Local<'s, T>) -> v8::Local<'s, v8::Value> {
-    unsafe { std::mem::transmute_copy(&ta) }
+  // v8 150.4.0 provides the `Local<T> -> Local<Value>` upcast (`impl_from!`)
+  // for every typed array except `Float16Array`, so go through the unchecked
+  // cast uniformly instead. The `Local<'s, T>: TryFrom<Local<'s, Value>>` bound
+  // keeps this honest: it only accepts types V8 can downcast a `Value` back to,
+  // which is exactly the set for which the upcast is infallible.
+  fn to_value<'s, T>(ta: v8::Local<'s, T>) -> v8::Local<'s, v8::Value>
+  where
+    v8::Local<'s, T>: TryFrom<v8::Local<'s, v8::Value>>,
+  {
+    // SAFETY: every typed array IS-A Value.
+    unsafe { v8::Local::cast_unchecked(ta) }
   }
 
   macro_rules! create {
