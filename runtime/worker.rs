@@ -359,15 +359,13 @@ pub(crate) fn request_builder_hook(
   // policy configured both flags are false and behavior is unchanged.
   static POLICY_MANAGED: OnceLock<(bool, bool)> = OnceLock::new();
 
-  let (policy_manages_token, policy_manages_cdn_loop) =
-    *POLICY_MANAGED.get_or_init(|| {
-      match egress_header_policy_from_env().as_deref() {
-        Some(deno_fetch::EgressHeaderPolicyState::Valid(policy)) => (
-          policy.manages_header("x-deno-fetch-token"),
-          policy.manages_header("cdn-loop"),
-        ),
-        _ => (false, false),
-      }
+  let (policy_manages_token, policy_manages_cdn_loop) = *POLICY_MANAGED
+    .get_or_init(|| match egress_header_policy_from_env().as_deref() {
+      Some(deno_fetch::EgressHeaderPolicyState::Valid(policy)) => (
+        policy.manages_header("x-deno-fetch-token"),
+        policy.manages_header("cdn-loop"),
+      ),
+      _ => (false, false),
     });
 
   if !policy_manages_token {
@@ -420,7 +418,9 @@ pub(crate) fn egress_header_policy_from_env()
   POLICY
     .get_or_init(|| {
       let json = std::env::var("DENO_EGRESS_HEADER_POLICY").ok()?;
-      Some(Arc::new(deno_fetch::EgressHeaderPolicyState::from_json(&json)))
+      Some(Arc::new(deno_fetch::EgressHeaderPolicyState::from_json(
+        &json,
+      )))
     })
     .clone()
 }

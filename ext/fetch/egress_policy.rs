@@ -158,8 +158,8 @@ impl EgressHeaderPolicy {
         {
           return Err(EgressHeaderPolicyError::ConflictingOps {
             name: (*name).to_string(),
-            first: *first,
-            second: *second,
+            first,
+            second,
           });
         }
       }
@@ -243,9 +243,7 @@ fn op_names(list: &[(HeaderName, HeaderValue)]) -> Vec<&str> {
   list.iter().map(|(n, _)| n.as_str()).collect()
 }
 
-fn validated_name(
-  raw: &str,
-) -> Result<HeaderName, EgressHeaderPolicyError> {
+fn validated_name(raw: &str) -> Result<HeaderName, EgressHeaderPolicyError> {
   let name = HeaderName::from_bytes(raw.as_bytes())
     .map_err(|_| EgressHeaderPolicyError::InvalidHeaderName(raw.to_string()))?;
   if FORBIDDEN_HEADERS.contains(&name) {
@@ -283,8 +281,7 @@ fn parse_value_map(
   };
   // Keyed by the normalized (lowercase) name so differently-cased spellings
   // of one header dedupe (last wins) and output order is deterministic.
-  let mut parsed: BTreeMap<String, (HeaderName, HeaderValue)> =
-    BTreeMap::new();
+  let mut parsed: BTreeMap<String, (HeaderName, HeaderValue)> = BTreeMap::new();
   for (raw_name, raw_value) in entries {
     let serde_json::Value::String(raw_value) = raw_value else {
       return Err(EgressHeaderPolicyError::ExpectedStringMap(field));
@@ -334,7 +331,9 @@ mod tests {
   #[test]
   fn rejects_unknown_field() {
     let err = EgressHeaderPolicy::parse(r#"{"sets": {}}"#).unwrap_err();
-    assert!(matches!(err, EgressHeaderPolicyError::UnknownField(f) if f == "sets"));
+    assert!(
+      matches!(err, EgressHeaderPolicyError::UnknownField(f) if f == "sets")
+    );
   }
 
   #[test]
@@ -364,7 +363,10 @@ mod tests {
   fn rejects_invalid_header_value() {
     let err = EgressHeaderPolicy::parse(r#"{"set": {"x-a": "bad\nvalue"}}"#)
       .unwrap_err();
-    assert!(matches!(err, EgressHeaderPolicyError::InvalidHeaderValue(_)));
+    assert!(matches!(
+      err,
+      EgressHeaderPolicyError::InvalidHeaderValue(_)
+    ));
   }
 
   #[test]
@@ -390,16 +392,23 @@ mod tests {
     .unwrap_err();
     assert!(matches!(
       err,
-      EgressHeaderPolicyError::ConflictingOps { first: "set", second: "default", .. }
+      EgressHeaderPolicyError::ConflictingOps {
+        first: "set",
+        second: "default",
+        ..
+      }
     ));
 
-    let err = EgressHeaderPolicy::parse(
-      r#"{"remove": ["x-a"], "forward": ["x-a"]}"#,
-    )
-    .unwrap_err();
+    let err =
+      EgressHeaderPolicy::parse(r#"{"remove": ["x-a"], "forward": ["x-a"]}"#)
+        .unwrap_err();
     assert!(matches!(
       err,
-      EgressHeaderPolicyError::ConflictingOps { first: "remove", second: "forward", .. }
+      EgressHeaderPolicyError::ConflictingOps {
+        first: "remove",
+        second: "forward",
+        ..
+      }
     ));
   }
 
