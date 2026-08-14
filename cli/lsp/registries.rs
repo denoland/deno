@@ -921,9 +921,8 @@ impl ModuleRegistry {
             Token::Key(k) => {
               if let Some(prefix) = &k.prefix {
                 let maybe_url = registry.get_url_for_key(k);
-                let base = Url::parse(&origin).ok()?;
                 if let Some(url) = maybe_url
-                  && let Some(items) = self.get_items(url, &base).await
+                  && let Some(items) = self.get_items(url, &resolved).await
                 {
                   let (items, preselect, incomplete) = match items {
                     VariableItems::List(list) => {
@@ -937,7 +936,7 @@ impl ModuleRegistry {
                   for (idx, item) in items.into_iter().enumerate() {
                     let path = format!("{prefix}{item}");
                     let kind = Some(lsp::CompletionItemKind::FOLDER);
-                    let item_specifier = base.join(&path).ok()?;
+                    let item_specifier = resolved.join(&path).ok()?;
                     let full_text = if let Some(suffix) =
                       item_specifier.as_str().strip_prefix(resolved_str)
                     {
@@ -1082,11 +1081,7 @@ impl ModuleRegistry {
     }
   }
 
-  async fn get_items(
-    &self,
-    url: &str,
-    base: &Url,
-  ) -> Option<VariableItems> {
+  async fn get_items(&self, url: &str, base: &Url) -> Option<VariableItems> {
     let specifier = parse_url_with_base(url, base)
       .map_err(|err| {
         error!("Internal error mapping endpoint \"{}\". {}", url, err);
