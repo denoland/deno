@@ -833,6 +833,26 @@ function hash() { return dylib.symbols.hash(bytes, bytes.byteLength); };
 
 testOptimized(hash, () => hash(), "hash");
 
+const originalUint8Array = globalThis.Uint8Array;
+let replacementUint8ArrayCalls = 0;
+let rectAfterUint8ArrayOverride;
+try {
+  globalThis.Uint8Array = function () {
+    replacementUint8ArrayCalls++;
+    return new originalUint8Array(1);
+  };
+  rectAfterUint8ArrayOverride = dylib.symbols.make_rect(1, 2, 3, 4);
+} finally {
+  globalThis.Uint8Array = originalUint8Array;
+}
+assertEquals(replacementUint8ArrayCalls, 0);
+assertInstanceOf(rectAfterUint8ArrayOverride, Uint8Array);
+assertEquals(rectAfterUint8ArrayOverride.byteOffset, 0);
+assertEquals(
+  Array.from(new Float64Array(rectAfterUint8ArrayOverride.buffer)),
+  [1, 2, 3, 4],
+);
+
 (function cleanup() {
   dylib.close();
   throwCallback.close();

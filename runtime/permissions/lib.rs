@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fmt;
 use std::fmt::Debug;
@@ -3293,33 +3294,49 @@ impl UnaryPermission<NetDescriptor> {
   pub fn check_resolved_ip_deny(
     &mut self,
     desc: &NetDescriptor,
-    api_name: Option<&str>,
   ) -> Result<(), PermissionDeniedError> {
-    let info = format_display_name(desc.display_name()).into_owned();
-    let denied = || {
-      PermissionState::permission_denied_error(
-        NetDescriptor::flag_name(),
-        Some(info.as_str()),
-        PermissionState::Denied,
-      )
-    };
-    if self.flag_denied_global {
-      return Err(denied());
-    }
-    for item in self.descriptors.iter() {
-      match item {
-        UnaryPermissionDesc::FlagDenied(v)
-        | UnaryPermissionDesc::FlagIgnored(v)
-          if desc.matches_deny(v) =>
-        {
-          return Err(denied());
-        }
-        _ => {}
-      }
-    }
-    let _ = api_name;
-    Ok(())
+    check_deny_only(self, desc)
   }
+}
+
+/// Checks a descriptor against the deny rules of a permission, ignoring
+/// everything that would grant it.
+///
+/// Used by the post-DNS-resolution checks, where the allow side has already
+/// been decided by an earlier check against the hostname the user wrote and
+/// only the deny rules still have something to say about the address that
+/// hostname turned out to point at.
+fn check_deny_only<TAllow, TQuery>(
+  perm: &UnaryPermission<TAllow>,
+  desc: &TQuery,
+) -> Result<(), PermissionDeniedError>
+where
+  TAllow: AllowDescriptor,
+  TQuery: QueryDescriptor<AllowDesc = TAllow, DenyDesc = TAllow::DenyDesc>,
+{
+  let info = format_display_name(desc.display_name()).into_owned();
+  let denied = || {
+    PermissionState::permission_denied_error(
+      TQuery::flag_name(),
+      Some(info.as_str()),
+      PermissionState::Denied,
+    )
+  };
+  if perm.flag_denied_global {
+    return Err(denied());
+  }
+  for item in perm.descriptors.iter() {
+    match item {
+      UnaryPermissionDesc::FlagDenied(v)
+      | UnaryPermissionDesc::FlagIgnored(v)
+        if desc.matches_deny(v) =>
+      {
+        return Err(denied());
+      }
+      _ => {}
+    }
+  }
+  Ok(())
 }
 
 impl UnaryPermission<ImportDescriptor> {
@@ -3358,6 +3375,45 @@ impl UnaryPermission<ImportDescriptor> {
       ()
     );
     self.check_desc(None, false, None)
+  }
+
+  /// Check if a resolved IP address is explicitly denied.
+  ///
+  /// The `--deny-import` check runs against the specifier's hostname before
+  /// any DNS lookup, so a name that resolves to a denied IP (a wildcard DNS
+  /// alias like `127.0.0.1.nip.io`, or simply an attacker-controlled record
+  /// pointing at loopback) passes it. Re-checking the address the connection
+  /// actually goes to closes that gap, mirroring
+  /// `UnaryPermission<NetDescriptor>::check_resolved_ip_deny`.
+  ///
+  /// Only checks deny rules — the allow check has already been performed
+  /// against the original hostname.
+  pub fn check_resolved_ip_deny(
+    &mut self,
+    desc: &ImportDescriptor,
+  ) -> Result<(), PermissionDeniedError> {
+    check_deny_only(self, desc)
+  }
+
+  /// Whether any deny rule is written as an IP address or subnet.
+  ///
+  /// Resolving a hostname to compare it against the deny list is only ever
+  /// useful when such a rule exists, and resolving costs a DNS lookup on a
+  /// path that otherwise touches the network zero times (a cached module), so
+  /// callers use this to skip the lookup entirely for the common case of no
+  /// address-based deny rules.
+  pub fn has_ip_deny_rules(&self) -> bool {
+    self.descriptors.iter().any(|item| match item {
+      UnaryPermissionDesc::FlagDenied(ImportDescriptor(NetDescriptor(
+        host,
+        _,
+      )))
+      | UnaryPermissionDesc::FlagIgnored(ImportDescriptor(NetDescriptor(
+        host,
+        _,
+      ))) => matches!(host, Host::Ip(_) | Host::IpSubnet(_)),
+      _ => false,
+    })
   }
 }
 
@@ -3989,6 +4045,9 @@ impl PermissionCheckError {
   }
 }
 
+/// Addresses a host resolved to, keyed by the host and port asked about.
+type ResolvedHostsCache = Arc<Mutex<HashMap<(String, u16), Vec<IpAddr>>>>;
+
 /// Wrapper struct for `Permissions` that can be shared across threads.
 ///
 /// We need a way to have internal mutability for permissions as they might get
@@ -3999,6 +4058,9 @@ impl PermissionCheckError {
 pub struct PermissionsContainer {
   descriptor_parser: Arc<dyn PermissionDescriptorParser>,
   inner: Arc<Mutex<Permissions>>,
+  /// Hosts already resolved for the import deny check. See
+  /// [`PermissionsContainer::resolve_host`].
+  resolved_import_hosts: ResolvedHostsCache,
 }
 
 impl PermissionsContainer {
@@ -4009,6 +4071,7 @@ impl PermissionsContainer {
     Self {
       descriptor_parser,
       inner: Arc::new(Mutex::new(perms)),
+      resolved_import_hosts: Default::default(),
     }
   }
 
@@ -4016,6 +4079,7 @@ impl PermissionsContainer {
     Self {
       descriptor_parser: self.descriptor_parser.clone(),
       inner: Arc::new(Mutex::new(self.inner.lock().clone())),
+      resolved_import_hosts: Default::default(),
     }
   }
 
@@ -4030,6 +4094,7 @@ impl PermissionsContainer {
     Self {
       descriptor_parser: self.descriptor_parser.clone(),
       inner: Arc::new(Mutex::new(permissions)),
+      resolved_import_hosts: Default::default(),
     }
   }
 
@@ -4169,7 +4234,8 @@ impl PermissionsContainer {
           .descriptor_parser
           .parse_import_descriptor_from_url(specifier)?;
         inner.import.check(&desc, Some("import()"))?;
-        Ok(())
+        drop(inner); // the resolved check takes the lock itself, around a DNS lookup
+        self.check_import_resolved_host(specifier)
       }
     }
   }
@@ -4657,12 +4723,101 @@ impl PermissionsContainer {
     &mut self,
     resolved_ip: &std::net::IpAddr,
     port: u16,
-    api_name: &str,
+    // the denial names the resolved address rather than the API that reached
+    // it, so the API name is only here to keep call sites uniform
+    _api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     let mut inner = self.inner.lock();
     let desc = NetDescriptor(Host::Ip(*resolved_ip), Some(port.into()));
-    inner.net.check_resolved_ip_deny(&desc, Some(api_name))?;
+    inner.net.check_resolved_ip_deny(&desc)?;
     Ok(())
+  }
+
+  /// After resolving a module specifier's hostname to an IP address, check
+  /// that the resolved IP is not in the import deny list. This prevents
+  /// bypassing IP-literal `--deny-import` rules via hostname aliases that
+  /// resolve to the denied IP.
+  #[inline(always)]
+  pub fn check_import_resolved(
+    &mut self,
+    resolved_ip: &std::net::IpAddr,
+    port: u16,
+    _api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    let mut inner = self.inner.lock();
+    let desc = ImportDescriptor(NetDescriptor(
+      Host::Ip(*resolved_ip),
+      Some(port.into()),
+    ));
+    inner.import.check_resolved_ip_deny(&desc)?;
+    Ok(())
+  }
+
+  /// Checks the addresses a URL's hostname resolves to against the import
+  /// deny list.
+  ///
+  /// The deny check that runs on the specifier sees only the hostname the
+  /// user wrote, which says nothing about where that name points: a wildcard
+  /// DNS alias like `127.0.0.1.nip.io`, or any record aimed at a denied
+  /// address, passes it. The connector re-checks each address it is about to
+  /// connect to, but a module served from the HTTP cache opens no connection
+  /// at all, so the check has to happen here as well to decide whether the
+  /// module may be loaded rather than merely whether it may be fetched.
+  fn check_import_resolved_host(
+    &self,
+    url: &Url,
+  ) -> Result<(), PermissionCheckError> {
+    if !self.inner.lock().import.has_ip_deny_rules() {
+      return Ok(());
+    }
+    // an IP literal was already compared against the deny rules directly
+    let Some(url::Host::Domain(host)) = url.host() else {
+      return Ok(());
+    };
+    let Some(port) = url.port_or_known_default() else {
+      return Ok(());
+    };
+    // Resolve before taking the lock: `resolve_host` may block on DNS and must
+    // not hold the permissions lock while it does.
+    let ips = self.resolve_host(host, port);
+    if ips.is_empty() {
+      return Ok(());
+    }
+    let inner = self.inner.lock();
+    for ip in ips {
+      let desc =
+        ImportDescriptor(NetDescriptor(Host::Ip(ip), Some(port.into())));
+      check_deny_only(&inner.import, &desc)?;
+    }
+    Ok(())
+  }
+
+  /// Resolves a host for the deny check, memoized for the life of the
+  /// container.
+  ///
+  /// This is a blocking `getaddrinfo` on the caller's thread — deliberately, on
+  /// a path already gated by `has_ip_deny_rules` (so it never runs unless an
+  /// IP-literal `--deny-import` rule exists) and only reached from the
+  /// synchronous [`Self::check_specifier`]. The lookup it duplicates for a live
+  /// fetch is redone by the connector anyway; its unique job is the cached
+  /// path, where no connection is opened and thus no other lookup happens.
+  ///
+  /// A failed lookup yields no addresses rather than an error: nothing is
+  /// denied by a name that resolves to nothing, and the fetch this check
+  /// precedes will report the resolution failure with far better context.
+  /// Results are memoized because a graph commonly pulls dozens of modules
+  /// from one host, and because the connector — which runs its own lookup at
+  /// connect time — is what ultimately decides where a connection goes.
+  fn resolve_host(&self, host: &str, port: u16) -> Vec<std::net::IpAddr> {
+    let key = (host.to_string(), port);
+    if let Some(ips) = self.resolved_import_hosts.lock().get(&key) {
+      return ips.clone();
+    }
+    let ips = std::net::ToSocketAddrs::to_socket_addrs(&(host, port))
+      .map(|addrs| addrs.map(|addr| addr.ip()).collect::<Vec<_>>())
+      .unwrap_or_default();
+    self.resolved_import_hosts.lock().insert(key, ips.clone());
+    ips
   }
 
   #[inline(always)]
@@ -6155,7 +6310,7 @@ mod tests {
     let denied_ip = std::net::IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let desc = NetDescriptor(Host::Ip(denied_ip), Some(12345));
     assert!(
-      perms.net.check_resolved_ip_deny(&desc, None).is_err(),
+      perms.net.check_resolved_ip_deny(&desc).is_err(),
       "resolved 127.0.0.1 should be denied"
     );
 
@@ -6163,7 +6318,7 @@ mod tests {
     let allowed_ip = std::net::IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1));
     let desc = NetDescriptor(Host::Ip(allowed_ip), Some(12345));
     assert!(
-      perms.net.check_resolved_ip_deny(&desc, None).is_ok(),
+      perms.net.check_resolved_ip_deny(&desc).is_ok(),
       "resolved 192.168.1.1 should not be denied"
     );
   }
@@ -6189,7 +6344,7 @@ mod tests {
     let denied_ip = std::net::IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let desc = NetDescriptor(Host::Ip(denied_ip), Some(8000));
     assert!(
-      perms.net.check_resolved_ip_deny(&desc, None).is_err(),
+      perms.net.check_resolved_ip_deny(&desc).is_err(),
       "resolved 127.0.0.1 should be denied by 127.0.0.0/8 subnet rule"
     );
 
@@ -6197,7 +6352,7 @@ mod tests {
     let denied_ip2 = std::net::IpAddr::V4(Ipv4Addr::new(127, 1, 2, 3));
     let desc = NetDescriptor(Host::Ip(denied_ip2), Some(9000));
     assert!(
-      perms.net.check_resolved_ip_deny(&desc, None).is_err(),
+      perms.net.check_resolved_ip_deny(&desc).is_err(),
       "resolved 127.1.2.3 should be denied by 127.0.0.0/8 subnet rule"
     );
 
@@ -6205,7 +6360,7 @@ mod tests {
     let allowed_ip = std::net::IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1));
     let desc = NetDescriptor(Host::Ip(allowed_ip), Some(8000));
     assert!(
-      perms.net.check_resolved_ip_deny(&desc, None).is_ok(),
+      perms.net.check_resolved_ip_deny(&desc).is_ok(),
       "resolved 192.168.1.1 should not be denied by 127.0.0.0/8 subnet rule"
     );
   }
@@ -6360,6 +6515,41 @@ mod tests {
         specifier,
       );
     }
+  }
+
+  // `localhost` matches no deny rule as written, so a specifier check that
+  // stopped at the hostname would let it through — including for a module
+  // already in the cache, which never reaches the connector's own check.
+  #[test]
+  fn check_specifier_resolved_ip_deny() {
+    set_prompter(Box::new(TestPrompter));
+    let container = |deny_import: Vec<String>| {
+      let parser = TestPermissionDescriptorParser;
+      let perms = Permissions::from_options(
+        &parser,
+        &PermissionsOptions {
+          allow_import: Some(vec![]),
+          deny_import: Some(deny_import),
+          ..Default::default()
+        },
+      )
+      .unwrap();
+      PermissionsContainer::new(Arc::new(parser), perms)
+    };
+    let specifier = Url::parse("http://localhost:4545/mod.ts").unwrap();
+    let check = |perms: PermissionsContainer| {
+      perms
+        .check_specifier(&specifier, CheckSpecifierKind::Static)
+        .is_ok()
+    };
+
+    assert!(!check(container(svec!["127.0.0.1", "[::1]"])));
+    // a subnet covering the resolved address denies it just the same
+    assert!(!check(container(svec!["127.0.0.0/8", "[::1]"])));
+    // a deny rule for an address `localhost` does not resolve to
+    assert!(check(container(svec!["192.0.2.1"])));
+    // no IP-literal rule at all, so nothing is resolved
+    assert!(check(container(svec!["example.com"])));
   }
 
   #[test]

@@ -58,6 +58,8 @@ pub type CliNpmInstallerFactory = deno_npm_installer::NpmInstallerFactory<
   ProgressBar,
   CliSys,
 >;
+pub type CliNpmCacheServices =
+  deno_npm_installer::NpmCacheServices<CliNpmCacheHttpClient, CliSys>;
 pub type CliNpmInstaller =
   deno_npm_installer::NpmInstaller<CliNpmCacheHttpClient, CliSys>;
 pub type CliNpmCache = deno_npm_cache::NpmCache<CliSys>;

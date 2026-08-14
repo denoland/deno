@@ -343,18 +343,74 @@ impl<T> PendingNapiAsyncWork for T where T: FnOnce() + Send + 'static {}
 /// This matches Node.js's behavior of tracking references with finalize
 /// callbacks and calling them during `napi_env::DeleteMe()`.
 pub struct PendingNapiFinalizer {
+  /// Unique identity of this registration. Finalizers must be deregistered by
+  /// id, never by `data`: several live registrations can share the same `data`
+  /// pointer (addons routinely pass a null or repeated `native_object`), and
+  /// removing an arbitrary entry with a matching `data` leaves the entry whose
+  /// callback already ran behind, which then runs a second time at shutdown.
+  pub id: NapiFinalizerId,
   pub env: napi_env,
   pub cb: napi_finalize,
   pub data: *mut c_void,
   pub hint: *mut c_void,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NapiFinalizerId(u64);
+
+/// Tracked finalizer callbacks that should be called at shutdown.
+/// Matches Node.js `finalizing_reflist` / `reflist` behavior.
+#[derive(Default)]
+pub struct RefTracker {
+  next_id: u64,
+  pending: Vec<PendingNapiFinalizer>,
+}
+
+impl RefTracker {
+  /// Removes and returns all pending finalizers, leaving the tracker empty.
+  pub fn take_pending(&mut self) -> Vec<PendingNapiFinalizer> {
+    std::mem::take(&mut self.pending)
+  }
+
+  fn add(
+    &mut self,
+    env: napi_env,
+    cb: napi_finalize,
+    data: *mut c_void,
+    hint: *mut c_void,
+  ) -> NapiFinalizerId {
+    let id = NapiFinalizerId(self.next_id);
+    self.next_id += 1;
+    self.pending.push(PendingNapiFinalizer {
+      id,
+      env,
+      cb,
+      data,
+      hint,
+    });
+    id
+  }
+
+  /// Removes the entry with `id`, returning `true` if it was still pending.
+  /// The return value lets the GC weak callback and env teardown coordinate
+  /// the "run once" contract: whichever path removes the entry first runs the
+  /// finalizer, and the other observes `false` and skips it.
+  #[must_use = "the return value decides whether the finalizer may still \
+                be run"]
+  fn remove(&mut self, id: NapiFinalizerId) -> bool {
+    if let Some(pos) = self.pending.iter().rposition(|f| f.id == id) {
+      self.pending.remove(pos);
+      true
+    } else {
+      false
+    }
+  }
+}
+
 pub struct NapiState {
   // Thread safe functions.
   pub env_cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
-  /// Tracked finalizer callbacks that should be called at shutdown.
-  /// Matches Node.js `finalizing_reflist` / `reflist` behavior.
-  pub ref_tracker: Rc<RefCell<Vec<PendingNapiFinalizer>>>,
+  pub ref_tracker: Rc<RefCell<RefTracker>>,
   pub env_shared_ptrs: Vec<*mut EnvShared>,
   /// Raw Env pointers for teardown of external string finalizers.
   pub env_ptrs: Vec<*mut Env>,
@@ -490,7 +546,7 @@ pub struct Env {
   pub shared: *mut EnvShared,
   pub async_work_sender: V8CrossThreadTaskSpawner,
   cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
-  ref_tracker: Rc<RefCell<Vec<PendingNapiFinalizer>>>,
+  ref_tracker: Rc<RefCell<RefTracker>>,
   external_ops_tracker: ExternalOpsTracker,
   pub last_error: napi_extended_error_info,
   pub last_exception: Option<v8::Global<v8::Value>>,
@@ -521,7 +577,7 @@ impl Env {
     async_hooks_destroy: v8::Global<v8::Function>,
     sender: V8CrossThreadTaskSpawner,
     cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
-    ref_tracker: Rc<RefCell<Vec<PendingNapiFinalizer>>>,
+    ref_tracker: Rc<RefCell<RefTracker>>,
     external_ops_tracker: ExternalOpsTracker,
   ) -> Self {
     Self {
@@ -630,20 +686,16 @@ impl Env {
     cb: napi_finalize,
     data: *mut c_void,
     hint: *mut c_void,
-  ) {
-    self.ref_tracker.borrow_mut().push(PendingNapiFinalizer {
-      env,
-      cb,
-      data,
-      hint,
-    });
+  ) -> NapiFinalizerId {
+    self.ref_tracker.borrow_mut().add(env, cb, data, hint)
   }
 
-  pub fn remove_ref_finalizer(&self, data: *mut c_void) {
-    let mut tracker = self.ref_tracker.borrow_mut();
-    if let Some(pos) = tracker.iter().rposition(|f| f.data == data) {
-      tracker.remove(pos);
-    }
+  /// Deregisters a shutdown finalizer entry, returning `true` if it was still
+  /// pending (see [`RefTracker::remove`]).
+  #[must_use = "the return value decides whether the finalizer may still \
+                be run"]
+  pub fn remove_ref_finalizer(&self, id: NapiFinalizerId) -> bool {
+    self.ref_tracker.borrow_mut().remove(id)
   }
 }
 
@@ -657,7 +709,7 @@ deno_core::extension!(deno_napi,
   state = |state, options| {
     state.put(NapiState {
       env_cleanup_hooks: Rc::new(RefCell::new(vec![])),
-      ref_tracker: Rc::new(RefCell::new(vec![])),
+      ref_tracker: Rc::new(RefCell::new(RefTracker::default())),
       env_shared_ptrs: vec![],
       env_ptrs: vec![],
       napi_wrap: None,
@@ -929,4 +981,76 @@ pub fn print_linker_flags(name: &str) {
     "cargo:rustc-link-arg-bin={name}=-Wl,--export-dynamic-symbol-list={}",
     symbols_path,
   );
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  unsafe extern "C" fn noop_finalize(
+    _env: napi_env,
+    _data: *mut c_void,
+    _hint: *mut c_void,
+  ) {
+  }
+
+  fn add_entry(tracker: &mut RefTracker) -> NapiFinalizerId {
+    // The tracker only stores these pointers; it never dereferences them, so
+    // nulls are fine for exercising the add/remove/drain bookkeeping.
+    tracker.add(
+      std::ptr::null_mut(),
+      noop_finalize,
+      std::ptr::null_mut(),
+      std::ptr::null_mut(),
+    )
+  }
+
+  // Deterministic guards for the run-once contract behind
+  // https://github.com/denoland/deno/issues/36499.
+  //
+  // A napi_wrap finalizer can be reached by two independent paths: env teardown
+  // (`run_napi_ref_finalizers` -> `take_pending`) and the GC weak callback
+  // (`Reference::reset` -> `remove_ref_finalizer` -> `remove`). The tracker is
+  // the single arbiter — whichever path removes the entry first runs the
+  // finalizer, and the other must observe that the entry is gone and skip it.
+  // These tests pin the "remove reports whether it was still pending" contract
+  // that `weak_callback`'s `if was_pending` guard relies on. Unlike the
+  // threadsafe-function repro, they fail 100% of the time on a regression.
+
+  #[test]
+  fn teardown_first_leaves_nothing_for_the_gc_path() {
+    let mut tracker = RefTracker::default();
+    let id = add_entry(&mut tracker);
+
+    // Teardown wins the race and drains every pending finalizer.
+    assert_eq!(tracker.take_pending().len(), 1);
+
+    // A later GC weak callback tries to remove the same entry. It must report
+    // `false` so `weak_callback` does not invoke the finalizer a second time.
+    assert!(
+      !tracker.remove(id),
+      "entry drained by teardown must no longer be pending"
+    );
+  }
+
+  #[test]
+  fn gc_first_leaves_nothing_for_teardown() {
+    let mut tracker = RefTracker::default();
+    let id = add_entry(&mut tracker);
+
+    // GC weak callback wins the race and claims the entry, running it once.
+    assert!(tracker.remove(id), "first removal owns the finalizer");
+
+    // Teardown drains afterwards and must find nothing left to run.
+    assert!(
+      tracker.take_pending().is_empty(),
+      "entry claimed by the GC path must not be drained again at teardown"
+    );
+
+    // A redundant second removal (e.g. `Drop` after `reset`) is a no-op.
+    assert!(
+      !tracker.remove(id),
+      "double removal must report not-pending"
+    );
+  }
 }

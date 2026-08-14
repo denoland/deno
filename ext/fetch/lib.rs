@@ -19,6 +19,9 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::task::Context;
 use std::task::Poll;
 
@@ -88,8 +91,11 @@ use http_body_util::combinators::BoxBody;
 use hyper::body::Frame;
 use hyper::body::Incoming;
 use hyper_util::client::legacy::Builder as HyperClientBuilder;
+use hyper_util::client::legacy::connect::CaptureConnection;
+use hyper_util::client::legacy::connect::Connected;
 use hyper_util::client::legacy::connect::Connection;
 use hyper_util::client::legacy::connect::HttpInfo;
+use hyper_util::client::legacy::connect::capture_connection;
 use hyper_util::rt::TokioExecutor;
 use hyper_util::rt::TokioIo;
 use hyper_util::rt::TokioTimer;
@@ -335,6 +341,7 @@ pub fn create_client_from_options(
       proxy: options.proxy.clone(),
       dns_resolver: options.resolver.clone(),
       permissions,
+      resolved_deny_check_kind: dns::ResolvedDenyCheckKind::Net,
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
@@ -928,6 +935,7 @@ pub fn op_fetch_custom_client(
       proxy: args.proxy,
       dns_resolver: dns::Resolver::default(),
       permissions: Some(permissions),
+      resolved_deny_check_kind: dns::ResolvedDenyCheckKind::Net,
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
@@ -966,6 +974,9 @@ pub struct CreateHttpClientOptions {
   /// When set, every connection runs the net-deny check against the IP it
   /// actually connected to, mirroring `Deno.connect`.
   pub permissions: Option<PermissionsContainer>,
+  /// Which deny list `permissions` is checked against. Clients that load
+  /// modules use `Import`; everything else uses `Net`.
+  pub resolved_deny_check_kind: dns::ResolvedDenyCheckKind,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: Option<TlsKey>,
   pub pool_max_idle_per_host: Option<usize>,
@@ -985,6 +996,7 @@ impl Default for CreateHttpClientOptions {
       proxy: None,
       dns_resolver: dns::Resolver::default(),
       permissions: None,
+      resolved_deny_check_kind: dns::ResolvedDenyCheckKind::default(),
       unsafely_ignore_certificate_errors: None,
       client_cert_chain_and_key: None,
       pool_max_idle_per_host: None,
@@ -1067,6 +1079,7 @@ pub fn create_http_client(
     options.dns_resolver.clone(),
     local_address,
     options.permissions,
+    options.resolved_deny_check_kind,
   );
 
   let user_agent = user_agent.parse::<HeaderValue>().map_err(|_| {
@@ -1164,8 +1177,9 @@ pub fn create_http_client(
     }
   }
 
-  let pooled_client = builder.build(connector.clone());
-  let retry_client = retry::Retry::new(FetchRetry, pooled_client);
+  let pooled_client = builder.build(TrackingConnector(connector.clone()));
+  let retry_client =
+    retry::Retry::new(FetchRetry, ConnectionTracker::new(pooled_client));
   let decompress = DecompressionService::new(retry_client);
 
   Ok(Client {
@@ -1189,7 +1203,9 @@ pub struct Client {
 
 type FetchClient = retry::Retry<
   FetchRetry,
-  hyper_util::client::legacy::Client<Connector, ReqBody>,
+  ConnectionTracker<
+    hyper_util::client::legacy::Client<TrackingConnector<Connector>, ReqBody>,
+  >,
 >;
 
 #[derive(Clone, Debug)]
@@ -1508,6 +1524,7 @@ impl Client {
     self.inject_common_headers(&mut req);
 
     req.headers_mut().entry(ACCEPT).or_insert(STAR_STAR);
+    insert_connection_reused(&mut req);
 
     let uri = req.uri().clone();
 
@@ -1530,6 +1547,7 @@ impl Client {
     self.inject_common_headers(&mut req);
 
     req.headers_mut().entry(ACCEPT).or_insert(STAR_STAR);
+    insert_connection_reused(&mut req);
 
     let uri = req.uri().clone();
 
@@ -1542,6 +1560,18 @@ impl Client {
       .map_err(|e| ClientSendError { uri, source: e })?;
     Ok(resp.map(box_raw_body))
   }
+}
+
+/// Marks a request for connection provenance tracking.
+///
+/// Streaming bodies are skipped: [`FetchRetry::clone_request`] can't clone them,
+/// so they are never retried and tracking them would only cost a
+/// `capture_connection` slot, a boxed future and two `Arc`s per request.
+fn insert_connection_reused(req: &mut http::Request<ReqBody>) {
+  if matches!(req.body(), ReqBody::Streaming(..)) {
+    return;
+  }
+  req.extensions_mut().insert(ConnectionReused::default());
 }
 
 // This is a custom enum to allow the retry policy to clone the variants that could be retried.
@@ -1645,6 +1675,279 @@ fn op_fetch_promise_is_settled(promise: v8::Local<v8::Promise>) -> bool {
   promise.state() != v8::PromiseState::Pending
 }
 
+/// Number of requests that have been dispatched on a single connection.
+///
+/// Attached to the connection's [`Connected`] metadata by [`TrackingConnector`]
+/// so that [`ConnectionTracker`] can tell whether an attempt used a freshly
+/// established connection or one checked out of the pool.
+#[derive(Clone, Debug)]
+struct ConnectionUsage(Arc<AtomicUsize>);
+
+/// Request extension recording whether the connection most recently checked out
+/// for this request was a pooled (already used) one. Read by [`FetchRetry`].
+///
+/// "Most recently" matters because `hyper_util` retries unstarted requests
+/// internally: [`CheckoutTracker`] keeps this in step with every checkout so it
+/// describes the attempt that produced the error, not the first one tried.
+///
+/// The `Arc` is shared with the clone that `tower`'s retry layer keeps around,
+/// so writes made while the request is in flight are visible to the policy.
+///
+/// Every entry point into [`Client`] must insert this extension for any request
+/// whose body can be cloned. [`FetchRetry`] reads a missing extension as
+/// [`ConnectionKind::Fresh`], which disables *all* transport retries for that
+/// request — including the stale-pool retry — with no diagnostic. Streaming
+/// bodies are the one legitimate exception, since they can never be retried.
+#[derive(Clone, Debug, Default)]
+struct ConnectionReused(Arc<AtomicBool>);
+
+/// Wraps a connector so every connection it produces carries a
+/// [`ConnectionUsage`] counter.
+#[derive(Clone, Debug)]
+struct TrackingConnector<C>(C);
+
+impl<C> Service<Uri> for TrackingConnector<C>
+where
+  C: Service<Uri>,
+{
+  type Response = TrackedIo<C::Response>;
+  type Error = C::Error;
+  type Future = deno_core::futures::future::MapOk<
+    C::Future,
+    fn(C::Response) -> TrackedIo<C::Response>,
+  >;
+
+  fn poll_ready(
+    &mut self,
+    cx: &mut Context<'_>,
+  ) -> Poll<Result<(), Self::Error>> {
+    self.0.poll_ready(cx)
+  }
+
+  fn call(&mut self, dst: Uri) -> Self::Future {
+    self.0.call(dst).map_ok(TrackedIo::new as fn(_) -> _)
+  }
+}
+
+/// An IO stream tagged with a per-connection request counter.
+struct TrackedIo<T> {
+  inner: T,
+  usage: Arc<AtomicUsize>,
+}
+
+impl<T> TrackedIo<T> {
+  fn new(inner: T) -> Self {
+    Self {
+      inner,
+      usage: Arc::new(AtomicUsize::new(0)),
+    }
+  }
+}
+
+impl<T> Connection for TrackedIo<T>
+where
+  T: Connection,
+{
+  fn connected(&self) -> Connected {
+    self
+      .inner
+      .connected()
+      .extra(ConnectionUsage(self.usage.clone()))
+  }
+}
+
+impl<T> hyper::rt::Read for TrackedIo<T>
+where
+  T: hyper::rt::Read + Unpin,
+{
+  fn poll_read(
+    mut self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+    buf: hyper::rt::ReadBufCursor<'_>,
+  ) -> Poll<Result<(), std::io::Error>> {
+    Pin::new(&mut self.inner).poll_read(cx, buf)
+  }
+}
+
+impl<T> hyper::rt::Write for TrackedIo<T>
+where
+  T: hyper::rt::Write + Unpin,
+{
+  fn poll_write(
+    mut self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+    buf: &[u8],
+  ) -> Poll<Result<usize, std::io::Error>> {
+    Pin::new(&mut self.inner).poll_write(cx, buf)
+  }
+
+  fn poll_flush(
+    mut self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+  ) -> Poll<Result<(), std::io::Error>> {
+    Pin::new(&mut self.inner).poll_flush(cx)
+  }
+
+  fn poll_shutdown(
+    mut self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+  ) -> Poll<Result<(), std::io::Error>> {
+    Pin::new(&mut self.inner).poll_shutdown(cx)
+  }
+
+  fn is_write_vectored(&self) -> bool {
+    self.inner.is_write_vectored()
+  }
+
+  fn poll_write_vectored(
+    mut self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+    bufs: &[std::io::IoSlice<'_>],
+  ) -> Poll<Result<usize, std::io::Error>> {
+    Pin::new(&mut self.inner).poll_write_vectored(cx, bufs)
+  }
+}
+
+/// Records, for each attempt, whether the connection it used had already
+/// served a request.
+#[derive(Clone, Debug)]
+struct ConnectionTracker<S> {
+  inner: S,
+}
+
+impl<S> ConnectionTracker<S> {
+  fn new(inner: S) -> Self {
+    Self { inner }
+  }
+}
+
+impl<S> Service<http::Request<ReqBody>> for ConnectionTracker<S>
+where
+  S: Service<http::Request<ReqBody>> + 'static,
+  S::Future: Send + Sync + 'static,
+  S::Error: 'static,
+{
+  type Response = S::Response;
+  type Error = S::Error;
+  type Future = Pin<
+    Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + Sync>,
+  >;
+
+  fn poll_ready(
+    &mut self,
+    cx: &mut Context<'_>,
+  ) -> Poll<Result<(), Self::Error>> {
+    self.inner.poll_ready(cx)
+  }
+
+  fn call(&mut self, mut req: http::Request<ReqBody>) -> Self::Future {
+    let Some(reused) = req.extensions().get::<ConnectionReused>().cloned()
+    else {
+      // Only streaming bodies are allowed to skip the extension: they can't be
+      // cloned, so they are never retried and don't need provenance tracked.
+      // Any other request arriving here would silently lose *all* transport
+      // retries, since `FetchRetry` reads a missing extension as `Fresh`.
+      debug_assert!(
+        matches!(req.body(), ReqBody::Streaming(..)),
+        "request reached FetchClient without a ConnectionReused extension; \
+         every entry point must insert it (see ConnectionReused)"
+      );
+      return Box::pin(self.inner.call(req));
+    };
+    let captured = capture_connection(&mut req);
+    let fut = self.inner.call(req);
+    Box::pin(async move {
+      // Re-read the capture slot after every poll of the request future rather
+      // than once, because a single `tower` attempt can span several *internal*
+      // ones: `hyper_util`'s client loops on `TrySendError::Retryable`, so a
+      // request that checks out a stale pooled connection and is recovered
+      // unstarted gets resent on a fresh connection, replacing the slot. The
+      // classification has to describe the attempt that actually produced the
+      // error -- calling it `Pooled` when the failing attempt ran on a fresh
+      // connection would let a non-idempotent request be retried and
+      // duplicated. `hyper_util` performs the checkout while polling this
+      // future, so sampling after each poll observes every one of them.
+      //
+      // A request that never gets a connection leaves the slot empty and stays
+      // `Fresh`, which disables transport retries -- the right default, since
+      // it was certainly never sent.
+      //
+      // Known limitation on HTTP/2: the counter is per connection, not per
+      // stream. A request multiplexed onto a connection that a concurrent
+      // sibling established a moment earlier observes a non-zero count and is
+      // classified as `Pooled`, so it stays retryable even though that
+      // connection was never in the pool. Bumping on response completion would
+      // err the other way — an in-flight sibling wouldn't mark the connection
+      // used, conservatively suppressing a legitimate retry — but it would
+      // also fail to mark a connection used before a second stream starts,
+      // which is the more common case. Most h2 transport failures are decided
+      // by the `h2::Error` branch in `is_error_retryable` before provenance is
+      // consulted, so the exposed window is narrow. Closing it properly needs
+      // a checkout-time snapshot distinguishing "this connection was created
+      // for me" from "created for a concurrent sibling", which the current
+      // design can't express.
+      let mut fut = std::pin::pin!(fut);
+      let mut tracker = CheckoutTracker::default();
+      std::future::poll_fn(|cx| {
+        let polled = fut.as_mut().poll(cx);
+        tracker.sample(&captured, &reused);
+        polled
+      })
+      .await
+    })
+  }
+}
+
+/// Keeps [`ConnectionReused`] describing the most recent connection checked out
+/// for a request, counting each checkout exactly once however often the request
+/// future is polled.
+#[derive(Default)]
+struct CheckoutTracker {
+  /// The counter of the connection recorded by the last sample, used to tell a
+  /// fresh checkout from a repeat sighting of the same one. Held as an `Arc`
+  /// rather than a raw pointer so the enclosing future stays `Send + Sync`.
+  last_seen: Option<Arc<AtomicUsize>>,
+}
+
+impl CheckoutTracker {
+  fn sample(
+    &mut self,
+    captured: &CaptureConnection,
+    reused: &ConnectionReused,
+  ) {
+    let metadata = captured.connection_metadata();
+    let Some(connected) = metadata.as_ref() else {
+      // No connection checked out yet.
+      return;
+    };
+    self.record(connected, reused);
+  }
+
+  /// The body of [`Self::sample`], split out so it can be driven with synthetic
+  /// [`Connected`] values instead of a live `hyper_util` capture slot.
+  fn record(&mut self, connected: &Connected, reused: &ConnectionReused) {
+    let mut extras = Extensions::new();
+    connected.get_extras(&mut extras);
+    let Some(usage) = extras.get::<ConnectionUsage>() else {
+      return;
+    };
+    if self
+      .last_seen
+      .as_ref()
+      .is_some_and(|last| Arc::ptr_eq(last, &usage.0))
+    {
+      // Still the connection we already accounted for.
+      return;
+    }
+    // `Relaxed` suffices for both: the request/response round trip already
+    // establishes the happens-before edge between this write and the retry
+    // policy's read.
+    let was_reused = usage.0.fetch_add(1, Ordering::Relaxed) > 0;
+    reused.0.store(was_reused, Ordering::Relaxed);
+    self.last_seen = Some(usage.0.clone());
+  }
+}
+
 /// Deno.fetch's retry policy.
 #[derive(Clone, Debug)]
 struct FetchRetry;
@@ -1678,7 +1981,16 @@ where
         None
       }
       Err(err) => {
-        if is_error_retryable(&*err) {
+        let connection_kind = if req
+          .extensions()
+          .get::<ConnectionReused>()
+          .is_some_and(|reused| reused.0.load(Ordering::Relaxed))
+        {
+          ConnectionKind::Pooled
+        } else {
+          ConnectionKind::Fresh
+        };
+        if is_error_retryable(&*err, connection_kind) {
           req.extensions_mut().insert(Retried);
           Some(future::ready(()))
         } else {
@@ -1707,7 +2019,25 @@ where
   }
 }
 
-fn is_error_retryable(err: &(dyn std::error::Error + 'static)) -> bool {
+/// Provenance of the connection a request attempt was sent on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ConnectionKind {
+  /// Checked out of the pool, i.e. it had already served a request.
+  Pooled,
+  /// Established for this attempt.
+  Fresh,
+}
+
+/// `connection_kind` tells whether the failed attempt was sent on a connection
+/// that had already served a request. Transport-level failures are only safe to
+/// retry on [`ConnectionKind::Pooled`] connections: the same failure on a
+/// [`ConnectionKind::Fresh`] one means the server accepted the request and may
+/// well have processed it, so resending would duplicate a non-idempotent
+/// request.
+fn is_error_retryable(
+  err: &(dyn std::error::Error + 'static),
+  connection_kind: ConnectionKind,
+) -> bool {
   // Note: hyper doesn't promise it will always be this h2 version. Keep up to date.
   if let Some(err) = find_source::<h2::Error>(err) {
     // They sent us a graceful shutdown, try with a new connection!
@@ -1728,10 +2058,17 @@ fn is_error_retryable(err: &(dyn std::error::Error + 'static)) -> bool {
     }
   }
 
+  // The remaining cases are only distinguishable from a server that accepted
+  // the request and then died halfway through by the fact that the connection
+  // came out of the pool.
+  if connection_kind == ConnectionKind::Fresh {
+    return false;
+  }
+
   // HTTP/1.1: The connection was closed before the message completed.
   // This happens when a pooled keep-alive connection is stale (e.g. the
-  // server shut down between requests). Safe to retry because the server
-  // never received/processed the request on this connection.
+  // server shut down between requests), in which case the server never
+  // received/processed the request on this connection.
   if let Some(err) = find_source::<hyper::Error>(err)
     && err.is_incomplete_message()
   {

@@ -30,7 +30,10 @@ function createStorage(persistent) {
 
     defineProperty(target, key, descriptor) {
       if (typeof key === "symbol") {
-        return ReflectDefineProperty(target, key, descriptor);
+        return ReflectDefineProperty(target, key, {
+          __proto__: null,
+          ...descriptor,
+        });
       }
       target.setItem(key, descriptor.value);
       return true;
