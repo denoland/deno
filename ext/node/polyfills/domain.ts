@@ -12,6 +12,7 @@ const { AsyncHook } = core.loadExtScript(
   "ext:deno_node/internal/async_hooks.ts",
 );
 const {
+  ArrayPrototypeEvery,
   ArrayPrototypeIndexOf,
   ArrayPrototypeLastIndexOf,
   ArrayPrototypePush,
@@ -87,6 +88,9 @@ class Domain extends EventEmitter {
     super();
     patchEventEmitter();
     asyncHook.enable();
+
+    this.on("removeListener", updateExceptionCapture);
+    this.on("newListener", updateExceptionCapture);
   }
 
   add(ee) {
@@ -252,18 +256,57 @@ class Domain extends EventEmitter {
 let exceptionCaptureActive = false;
 
 function updateExceptionCapture() {
-  if (stack.length > 0 && !exceptionCaptureActive) {
+  const shouldCapture = !ArrayPrototypeEvery(
+    stack,
+    (domain) => domain.listenerCount("error") === 0,
+  );
+
+  if (shouldCapture && !exceptionCaptureActive) {
     exceptionCaptureActive = true;
     process.setUncaughtExceptionCaptureCallback(
       domainUncaughtExceptionHandler,
     );
-  } else if (stack.length === 0 && exceptionCaptureActive) {
+  } else if (!shouldCapture && exceptionCaptureActive) {
     exceptionCaptureActive = false;
     process.setUncaughtExceptionCaptureCallback(null);
   }
 }
 
+process.on("newListener", (name, listener) => {
+  if (
+    name === "uncaughtException" &&
+    listener !== domainUncaughtExceptionClear
+  ) {
+    // The first uncaughtException listener must clear the domain stack before
+    // user code runs.
+    process.removeListener(name, domainUncaughtExceptionClear);
+    process.prependListener(name, domainUncaughtExceptionClear);
+  }
+});
+
+process.on("removeListener", (name, listener) => {
+  if (
+    name === "uncaughtException" &&
+    listener !== domainUncaughtExceptionClear
+  ) {
+    const listeners = process.listeners("uncaughtException");
+    if (
+      listeners.length === 1 &&
+      listeners[0] === domainUncaughtExceptionClear
+    ) {
+      process.removeListener(name, domainUncaughtExceptionClear);
+    }
+  }
+});
+
+function domainUncaughtExceptionClear() {
+  stack.length = 0;
+  active = process.domain = null;
+  updateExceptionCapture();
+}
+
 function domainUncaughtExceptionHandler(er) {
+  let caught = false;
   const curDomain = process.domain;
   if (!curDomain || curDomain._disposed) {
     // No active domain or domain has been disposed, re-throw
@@ -281,22 +324,45 @@ function domainUncaughtExceptionHandler(er) {
     er.domainThrown = true;
   }
 
-  // Remove the errored domain from the stack. This cleans up the entry
-  // left by emitBefore when the callback threw before emitAfter could run.
-  if (stack.length === 1) {
-    active = process.domain = null;
-    stack.length = 0;
-  } else {
-    const idx = ArrayPrototypeLastIndexOf(stack, curDomain);
-    if (idx !== -1) {
-      ArrayPrototypeSplice(stack, idx, 1);
-    }
-    active = process.domain = stack.length > 0 ? stack[stack.length - 1] : null;
+  // Run the error handler outside of its domain, but within its parent.
+  // A domain may have been entered more than once, so remove all adjacent
+  // entries for the currently active domain.
+  while (active === curDomain) {
+    curDomain.exit();
   }
 
-  updateExceptionCapture();
+  if (stack.length === 0) {
+    // Without a domain error listener, leave the error for the process-level
+    // uncaughtException handler instead of emitting an error event that throws.
+    if (curDomain.listenerCount("error") > 0) {
+      process.setUncaughtExceptionCaptureCallback(null);
+      try {
+        caught = curDomain.emit("error", er);
+      } finally {
+        updateExceptionCapture();
+      }
+    }
+  } else {
+    try {
+      caught = curDomain.emit("error", er);
+    } catch (handlerError) {
+      // Let the parent domain handle errors thrown by a child domain's handler.
+      // If there is no parent, pass the error on to the process-level handler.
+      updateExceptionCapture();
+      if (stack.length > 0) {
+        active = process.domain = stack[stack.length - 1];
+        caught = domainUncaughtExceptionHandler(handlerError);
+      } else {
+        throw handlerError;
+      }
+    }
+  }
 
-  curDomain.emit("error", er);
+  // An uncaught exception ends the current turn. No entered domains should
+  // remain active when unrelated work begins on a later turn.
+  domainUncaughtExceptionClear();
+
+  return caught;
 }
 
 let patched = false;
