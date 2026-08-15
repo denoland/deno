@@ -9,5 +9,8 @@
 
 interface ErrorConstructor {
   /** See https://v8.dev/docs/stack-trace-api#stack-trace-collection-for-custom-exceptions. */
-  captureStackTrace(error: Object, constructor?: Function): void;
+  captureStackTrace(
+    error: object,
+    constructor?: (...args: never[]) => unknown,
+  ): void;
 }
