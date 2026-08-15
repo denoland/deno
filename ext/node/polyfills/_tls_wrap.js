@@ -46,6 +46,7 @@ const {
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetByteOffset,
+  Uint8Array,
 } = primordials;
 const { op_get_env_no_permission_check } = core.ops;
 const {
@@ -517,6 +518,9 @@ TLSSocket.prototype[kReinitializeHandle] = function (handle) {
   if (options.ALPNProtocols) {
     this._handle.setAlpnProtocols(options.ALPNProtocols);
   }
+  if (this._session) {
+    this._handle.setSession(this._session);
+  }
 
   this._undestroy();
   this._sockname = undefined;
@@ -852,7 +856,9 @@ TLSSocket.prototype._init = function (socket, wrap) {
     ssl.onhandshakedone = onhandshakedone;
 
     if (options.session) {
-      ssl.setSession(options.session);
+      if (syntheticSessionMatches(options.session, options)) {
+        ssl.setSession(options.session);
+      }
     }
   }
 
@@ -1107,6 +1113,11 @@ TLSSocket.prototype.setSession = function (_session) {
     this._session,
     this[kConnectOptions],
   );
+  if (this._handle) {
+    this._handle.setSession(
+      this._sessionReused ? this._session : new Uint8Array(0),
+    );
+  }
 };
 
 TLSSocket.prototype.getPeerCertificate = function (detailed) {
