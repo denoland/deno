@@ -11,4 +11,5 @@ interface ErrorConstructor {
     error: object,
     constructor?: (...args: never[]) => unknown,
   ): void;
+  stackTraceLimit: number;
 }
