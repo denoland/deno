@@ -142,4 +142,11 @@ impl GPUPowerPreference {
             Self::HighPerformance => "high-performance",
         }
     }
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "low-power" => Some(Self::LowPower),
+            "high-performance" => Some(Self::HighPerformance),
+            _ => None,
+        }
+    }
 }
