@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
+import { unstableIds } from "ext:deno_features/flags.js";
 import {
   op_bootstrap_language,
   op_bootstrap_numcpus,
@@ -22,16 +23,15 @@ const globalInterfaces = core.loadExtScript(
 );
 const loadLocks = core.createLazyLoader("ext:deno_web/locks.js");
 const { loadWebGPU } = core.loadExtScript("ext:deno_webgpu/00_init.js");
-import { unstableIds } from "ext:deno_features/flags.js";
+import {
+  NavigatorUAData,
+  navigatorUAData,
+} from "ext:runtime/97_navigator_user_agent_data.js";
 let _canvas2dMod;
 function loadCanvas2d() {
   return _canvas2dMod ??
     (_canvas2dMod = core.loadExtScript("ext:deno_web/18_canvas2d.js"));
 }
-import {
-  NavigatorUAData,
-  navigatorUAData,
-} from "ext:runtime/97_navigator_user_agent_data.js";
 
 /**
  * @param {string} arch

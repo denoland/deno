@@ -235,7 +235,7 @@ Deno.test(function offscreenCanvasGetContextDifferentIdReturnsNull() {
 Deno.test(function offscreenCanvasGetContextUnsupportedReturnsNull() {
   const canvas = new OffscreenCanvas(10, 10);
   // @ts-expect-error: testing unsupported context id
-  assertEquals(canvas.getContext("not-a-real-context"), null);
+  assertThrows(() => canvas.getContext("not-a-real-context"), TypeError);
   // After an unsupported probe, a supported id still binds.
   assert(canvas.getContext("bitmaprenderer"));
 });
