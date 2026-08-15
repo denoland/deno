@@ -1,0 +1,7 @@
+{
+  "name": "@denotest/cjs-different-nested-dep",
+  "version": "1.0.0",
+  "dependencies": {
+    "@denotest/different-nested-dep-child": ">=1.0.0"
+  }
+}
