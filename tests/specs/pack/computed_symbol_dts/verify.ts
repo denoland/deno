@@ -28,10 +28,12 @@ const text = new TextDecoder().decode(tar);
 const checks = [
   ["regular method", "regular(): number;"],
   ["inherited method", "inherited(): string;"],
+  ["class inheritance", "export declare class Resource extends Base {"],
   ["computed symbol", "[customSymbol](): boolean;"],
   ["sync dispose", "[Symbol.dispose](): void;"],
   ["async dispose", "[Symbol.asyncDispose](): Promise<void>;"],
   ["overload", "overloaded(value: string): string;"],
+  ["second overload", "overloaded(value: number): number;"],
   ["type import", 'from "./types.js"'],
   ["imported declaration", "package/types.d.ts"],
   ["types metadata", '"types": "./mod.d.ts"'],
