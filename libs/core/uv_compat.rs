@@ -49,6 +49,11 @@ const UV_HANDLE_ACTIVE: u32 = 1 << 0;
 const UV_HANDLE_REF: u32 = 1 << 1;
 const UV_HANDLE_CLOSING: u32 = 1 << 2;
 
+pub const UV_READABLE: c_int = 1;
+pub const UV_WRITABLE: c_int = 2;
+pub const UV_DISCONNECT: c_int = 4;
+pub const UV_PRIORITIZED: c_int = 8;
+
 // libuv-compatible error codes (negative errno values on unix,
 // which vary depending on platform, fixed values on windows).
 macro_rules! uv_errno {

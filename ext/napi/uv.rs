@@ -11,6 +11,10 @@ use std::time::Instant;
 
 use deno_core::parking_lot::Mutex;
 use deno_core::uv_compat;
+#[cfg(unix)]
+use deno_core::uv_compat::{
+  UV_DISCONNECT, UV_PRIORITIZED, UV_READABLE, UV_WRITABLE,
+};
 
 use crate::util::SendPtr;
 use crate::*;
@@ -954,15 +958,6 @@ unsafe extern "C" fn uv_poll_init(
 ) -> c_int {
   unsafe { uv_poll_init_socket(r#loop, poll, fd as uv_os_sock_t) }
 }
-
-#[cfg(unix)]
-const UV_READABLE: c_int = 1;
-#[cfg(unix)]
-const UV_WRITABLE: c_int = 2;
-#[cfg(unix)]
-const UV_DISCONNECT: c_int = 4;
-#[cfg(unix)]
-const UV_PRIORITIZED: c_int = 8;
 
 #[cfg(unix)]
 fn uv_events_to_poll_events(events: c_int) -> c_short {
