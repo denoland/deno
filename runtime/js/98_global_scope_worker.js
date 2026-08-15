@@ -22,6 +22,12 @@ const globalInterfaces = core.loadExtScript(
 );
 const loadLocks = core.createLazyLoader("ext:deno_web/locks.js");
 const { loadWebGPU } = core.loadExtScript("ext:deno_webgpu/00_init.js");
+import { unstableIds } from "ext:deno_features/flags.js";
+let _canvas2dMod;
+function loadCanvas2d() {
+  return _canvas2dMod ??
+    (_canvas2dMod = core.loadExtScript("ext:deno_web/18_canvas2d.js"));
+}
 import {
   NavigatorUAData,
   navigatorUAData,
@@ -198,4 +204,10 @@ const workerRuntimeGlobalProperties = {
   self: core.propGetterOnly(() => globalThis),
 };
 
-export { workerRuntimeGlobalProperties };
+const unstableForWorkerGlobalScope = { __proto__: null };
+// Worker-only `fonts`; the main global scope exposes it as `Deno.fonts`.
+unstableForWorkerGlobalScope[unstableIds.canvas2d] = {
+  fonts: core.propNonEnumerableLazyLoaded((c) => c.fonts, loadCanvas2d),
+};
+
+export { unstableForWorkerGlobalScope, workerRuntimeGlobalProperties };

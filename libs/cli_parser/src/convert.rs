@@ -942,6 +942,7 @@ fn unstable_args_parse(result: &ParseResult, flags: &mut Flags) {
     ("unstable-broadcast-channel", None),
     ("unstable-bundle", None),
     ("unstable-byonm", None),
+    ("unstable-canvas2d", None),
     ("unstable-cron", None),
     ("unstable-fs", None),
     ("unstable-http", None),
