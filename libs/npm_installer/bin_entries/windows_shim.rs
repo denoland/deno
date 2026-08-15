@@ -33,6 +33,8 @@ use crate::bin_entries::EntrySetupOutcome;
 use crate::bin_entries::bin_script_stays_in_package;
 use crate::bin_entries::relative_path;
 
+const ERROR_SHARING_VIOLATION: i32 = 32;
+
 // note: parts of logic and pretty much all of the shims ported from https://github.com/npm/cmd-shim
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct Shebang {
@@ -351,7 +353,7 @@ pub fn set_up_bin_shim<'a>(
     for _ in 0..3 {
       match sys.fs_write(&path, contents) {
         Ok(()) => return Ok(()),
-        Err(e) if e.raw_os_error() == Some(32) => {
+        Err(e) if e.raw_os_error() == Some(ERROR_SHARING_VIOLATION) => {
           last_err = Some(e);
           std::thread::sleep(std::time::Duration::from_millis(10));
         }
