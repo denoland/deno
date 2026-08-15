@@ -3,6 +3,7 @@
 mod blob;
 
 mod broadcast_channel;
+pub mod canvas2d;
 mod compression;
 mod console;
 pub mod css;
@@ -21,6 +22,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::OnceLock;
 
 pub use blob::BlobError;
 pub use compression::CompressionError;
@@ -181,6 +183,11 @@ deno_core::extension!(deno_web,
     geometry::DOMMatrix,
     image_data::ImageData,
     console::Console,
+    canvas2d::CanvasGradient,
+    canvas2d::CanvasPattern,
+    canvas2d::OffscreenCanvasRenderingContext2D,
+    canvas2d::Path2D,
+    canvas2d::TextMetrics,
   ],
   lazy_loaded_esm = [
     "locks.js",
@@ -229,7 +236,9 @@ deno_core::extension!(deno_web,
     state.put(geometry::State::new(options.enable_css_parser_features));
     state.put(options.bc);
     state.put(broadcast_channel::BroadcastSabStash::default());
+    state.put(Arc::new(OnceLock::<Option<canvas2d::DenoCanvasBackend>>::new()));
     state.put(Rc::new(RefCell::new(font::create_font_context())));
+    state.put(Rc::new(RefCell::new(parley::LayoutContext::<()>::new())));
     state.put(Rc::new(RefCell::new(font::FontRegistry::default())));
     state.put(options.shared_local_font_db);
   }
