@@ -567,6 +567,26 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.net] = {
 
 unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {};
 unstableForWindowOrWorkerGlobalScope[unstableIds.canvas2d] = {
+  OffscreenCanvasRenderingContext2D: core.propNonEnumerableLazyLoaded(
+    (c) => c.OffscreenCanvasRenderingContext2D,
+    loadCanvas2d,
+  ),
+  TextMetrics: core.propNonEnumerableLazyLoaded(
+    (c) => c.TextMetrics,
+    loadCanvas2d,
+  ),
+  Path2D: core.propNonEnumerableLazyLoaded(
+    (c) => c.Path2D,
+    loadCanvas2d,
+  ),
+  CanvasGradient: core.propNonEnumerableLazyLoaded(
+    (c) => c.CanvasGradient,
+    loadCanvas2d,
+  ),
+  CanvasPattern: core.propNonEnumerableLazyLoaded(
+    (c) => c.CanvasPattern,
+    loadCanvas2d,
+  ),
   FontData: core.propNonEnumerableLazyLoaded(
     (c) => c.FontData,
     loadCanvas2d,
