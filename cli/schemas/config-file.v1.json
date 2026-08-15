@@ -1195,6 +1195,7 @@
           "bare-node-builtins",
           "bundle",
           "byonm",
+          "canvas2d",
           "cron",
           "detect-cjs",
           "ffi",

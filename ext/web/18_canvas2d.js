@@ -18,6 +18,11 @@ const {
   op_parse_css_font_src,
   op_parse_css_font_weight,
   op_parse_css_font_width,
+  CanvasGradient,
+  CanvasPattern,
+  OffscreenCanvasRenderingContext2D,
+  Path2D,
+  TextMetrics,
 } = core.ops;
 
 const {
@@ -1517,7 +1522,91 @@ function brandEventHandlers(proto, brandProto, names) {
   }
 }
 
+webidl.configureInterface(TextMetrics);
+webidl.configureInterface(CanvasGradient);
+webidl.configureInterface(CanvasPattern);
+webidl.configureInterface(OffscreenCanvasRenderingContext2D);
+webidl.configureInterface(Path2D);
 
+ObjectDefineProperty(
+  TextMetrics.prototype,
+  SymbolFor("Deno.privateCustomInspect"),
+  {
+    __proto__: null,
+    value(inspect, inspectOptions) {
+      return inspect(
+        createFilteredInspectProxy({
+          object: this,
+          evaluate: ObjectPrototypeIsPrototypeOf(TextMetrics.prototype, this),
+          keys: [
+            "width",
+            "actualBoundingBoxLeft",
+            "actualBoundingBoxRight",
+            "fontBoundingBoxAscent",
+            "fontBoundingBoxDescent",
+            "actualBoundingBoxAscent",
+            "actualBoundingBoxDescent",
+            "emHeightAscent",
+            "emHeightDescent",
+            "hangingBaseline",
+            "alphabeticBaseline",
+            "ideographicBaseline",
+          ],
+        }),
+        inspectOptions,
+      );
+    },
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  },
+);
+
+ObjectDefineProperty(
+  OffscreenCanvasRenderingContext2D.prototype,
+  SymbolFor("Deno.privateCustomInspect"),
+  {
+    __proto__: null,
+    value(inspect, inspectOptions) {
+      return inspect(
+        createFilteredInspectProxy({
+          object: this,
+          evaluate: ObjectPrototypeIsPrototypeOf(
+            OffscreenCanvasRenderingContext2D.prototype,
+            this,
+          ),
+          keys: [
+            "canvas",
+            "fillStyle",
+            "strokeStyle",
+            "globalAlpha",
+            "font",
+            "lang",
+            "textAlign",
+            "textBaseline",
+            "globalCompositeOperation",
+            "filter",
+            "imageSmoothingEnabled",
+            "imageSmoothingQuality",
+            "lineWidth",
+            "lineCap",
+            "lineJoin",
+            "miterLimit",
+            "lineDashOffset",
+            "shadowBlur",
+            "shadowColor",
+            "shadowOffsetX",
+            "shadowOffsetY",
+          ],
+        }),
+        inspectOptions,
+      );
+    },
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  },
+);
 
 function registerLocalFonts() {
   return op_fontdb_register_all_local_fonts();
@@ -1626,6 +1715,8 @@ async function queryLocalFonts(options = { __proto__: null }) {
 const fonts = new FontFaceSet(illegalConstructorKey);
 
 return {
+  CanvasGradient,
+  CanvasPattern,
   FontData,
   FontDataPrototype,
   FontFace,
@@ -1638,8 +1729,11 @@ return {
   FontFaceSetPrototype,
   FontFaceVariationAxis,
   FontFaceVariations,
+  OffscreenCanvasRenderingContext2D,
+  Path2D,
   fonts,
   queryLocalFonts,
   registerLocalFonts,
+  TextMetrics,
 };
 })();
