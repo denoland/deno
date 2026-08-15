@@ -8,6 +8,7 @@ mod console;
 pub mod css;
 mod css_stylesheet;
 mod f64;
+mod font;
 mod geometry;
 mod image_data;
 mod message_port;
@@ -18,6 +19,7 @@ mod urlpattern;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
 
 pub use blob::BlobError;
@@ -50,6 +52,7 @@ use crate::blob::op_blob_remove_part;
 use crate::blob::op_blob_revoke_object_url;
 use crate::blob::op_blob_slice_part;
 pub use crate::broadcast_channel::InMemoryBroadcastChannel;
+pub use crate::font::SharedLocalFontDb;
 pub use crate::message_port::JsMessageData;
 pub use crate::message_port::MessagePort;
 pub use crate::message_port::RecvMessageData;
@@ -149,6 +152,22 @@ deno_core::extension!(deno_web,
     broadcast_channel::op_broadcast_free,
     broadcast_channel::op_broadcast_send,
     broadcast_channel::op_broadcast_recv,
+    font::op_fontdb_load,
+    font::op_fontdb_load_resource,
+    font::op_fontdb_load_local,
+    font::op_fontdb_load_object_url,
+    font::op_fontdb_add,
+    font::op_fontdb_remove,
+    font::op_fontdb_unload,
+    font::op_match_font_faces,
+    font::op_parse_css_font_query,
+    font::op_parse_css_font_src,
+    font::op_parse_css_font_weight,
+    font::op_parse_css_font_width,
+    font::op_normalize_font_face_family,
+    font::op_fontdb_register_all_local_fonts,
+    font::op_fontdb_query_local_fonts,
+    font::op_fontdb_local_font_data,
   ],
   objects = [
     css_stylesheet::CSSRule,
@@ -192,12 +211,14 @@ deno_core::extension!(deno_web,
     "16_image_data.js",
     "17_geometry.js",
     "18_css_stylesheet.js",
+    "18_canvas2d.js",
   ],
   options = {
     blob_store: Arc<dyn BlobStoreTrait>,
     maybe_location: Option<Url>,
     enable_css_parser_features: bool,
     bc: InMemoryBroadcastChannel,
+    shared_local_font_db: font::SharedLocalFontDb,
   },
   state = |state, options| {
     state.put(options.blob_store);
@@ -208,6 +229,9 @@ deno_core::extension!(deno_web,
     state.put(geometry::State::new(options.enable_css_parser_features));
     state.put(options.bc);
     state.put(broadcast_channel::BroadcastSabStash::default());
+    state.put(Rc::new(RefCell::new(font::create_font_context())));
+    state.put(Rc::new(RefCell::new(font::FontRegistry::default())));
+    state.put(options.shared_local_font_db);
   }
 );
 
