@@ -3,7 +3,6 @@
 // Documentation partially adapted from [MDN](https://developer.mozilla.org/),
 // by Mozilla Contributors, which is licensed under CC-BY-SA 2.5.
 
-/// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 /// <reference lib="deno.console" />
 /// <reference lib="deno.url" />

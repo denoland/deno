@@ -5,8 +5,6 @@
  * distributed `lib.dom.d.ts` file with TypeScript.
  */
 
-/// <reference no-default-lib="true"/>
-
 interface ErrorConstructor {
   /** See https://v8.dev/docs/stack-trace-api#stack-trace-collection-for-custom-exceptions. */
   captureStackTrace(

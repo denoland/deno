@@ -1223,7 +1223,7 @@ pub fn load_for_tsc<T: LoadContent, M: Mapper>(
     });
     let source: Arc<str> = match user_types_node {
       Some(spec) => format!(
-        "/// <reference no-default-lib=\"true\"/>\n/// <reference path=\"{}\" />\n",
+        "/// <reference path=\"{}\" />\n",
         spec.as_str(),
       )
       .into(),
