@@ -14,20 +14,30 @@ declare interface UIEventInit extends EventInit {
   view?: null;
 }
 
-declare class UIEvent extends Event {
-  constructor(type: string, init?: UIEventInit);
+interface UIEvent extends Event {
   readonly detail: number;
   readonly view: null;
 }
+
+declare var UIEvent: typeof globalThis extends
+  { document: any; UIEvent: infer T } ? T : {
+  new (type: string, init?: UIEventInit): UIEvent;
+  readonly prototype: UIEvent;
+};
 
 declare interface FocusEventInit extends UIEventInit {
   relatedTarget?: EventTarget | null;
 }
 
-declare class FocusEvent extends UIEvent {
-  constructor(type: string, init?: FocusEventInit);
+interface FocusEvent extends UIEvent {
   readonly relatedTarget: EventTarget | null;
 }
+
+declare var FocusEvent: typeof globalThis extends
+  { document: any; FocusEvent: infer T } ? T : {
+  new (type: string, init?: FocusEventInit): FocusEvent;
+  readonly prototype: FocusEvent;
+};
 
 declare interface KeyboardEventInit extends UIEventInit {
   key?: string;
@@ -41,8 +51,7 @@ declare interface KeyboardEventInit extends UIEventInit {
   isComposing?: boolean;
 }
 
-declare class KeyboardEvent extends UIEvent {
-  constructor(type: string, init?: KeyboardEventInit);
+interface KeyboardEvent extends UIEvent {
   readonly key: string;
   readonly code: string;
   readonly location: number;
@@ -55,6 +64,12 @@ declare class KeyboardEvent extends UIEvent {
   getModifierState(key: string): boolean;
 }
 
+declare var KeyboardEvent: typeof globalThis extends
+  { document: any; KeyboardEvent: infer T } ? T : {
+  new (type: string, init?: KeyboardEventInit): KeyboardEvent;
+  readonly prototype: KeyboardEvent;
+};
+
 declare interface MouseEventInit extends UIEventInit {
   button?: number;
   clientX?: number;
@@ -65,8 +80,7 @@ declare interface MouseEventInit extends UIEventInit {
   metaKey?: boolean;
 }
 
-declare class MouseEvent extends UIEvent {
-  constructor(type: string, init?: MouseEventInit);
+interface MouseEvent extends UIEvent {
   readonly button: number;
   readonly clientX: number;
   readonly clientY: number;
@@ -79,6 +93,12 @@ declare class MouseEvent extends UIEvent {
   getModifierState(key: string): boolean;
 }
 
+declare var MouseEvent: typeof globalThis extends
+  { document: any; MouseEvent: infer T } ? T : {
+  new (type: string, init?: MouseEventInit): MouseEvent;
+  readonly prototype: MouseEvent;
+};
+
 declare interface WheelEventInit extends MouseEventInit {
   deltaX?: number;
   deltaY?: number;
@@ -86,13 +106,18 @@ declare interface WheelEventInit extends MouseEventInit {
   deltaMode?: number;
 }
 
-declare class WheelEvent extends MouseEvent {
-  constructor(type: string, init?: WheelEventInit);
+interface WheelEvent extends MouseEvent {
   readonly deltaX: number;
   readonly deltaY: number;
   readonly deltaZ: number;
   readonly deltaMode: number;
 }
+
+declare var WheelEvent: typeof globalThis extends
+  { document: any; WheelEvent: infer T } ? T : {
+  new (type: string, init?: WheelEventInit): WheelEvent;
+  readonly prototype: WheelEvent;
+};
 
 declare type NotificationPermission = "default" | "denied" | "granted";
 declare type NotificationDirection = "auto" | "ltr" | "rtl";
@@ -178,7 +203,8 @@ declare interface Notification extends EventTarget {
  * {@linkcode Notification.icon} property) but the OS notification is
  * shown without an icon.
  */
-declare var Notification: {
+declare var Notification: typeof globalThis extends
+  { document: any; Notification: infer T } ? T : {
   prototype: Notification;
   new (title: string, options?: NotificationOptions): Notification;
   readonly permission: NotificationPermission;
@@ -228,7 +254,8 @@ declare interface PermissionStatus extends EventTarget {
   ): void;
 }
 
-declare var PermissionStatus: {
+declare var PermissionStatus: typeof globalThis extends
+  { document: any; PermissionStatus: infer T } ? T : {
   prototype: PermissionStatus;
 };
 

@@ -188,7 +188,8 @@ interface ImageBitmap {
  *
  * @category Canvas
  */
-declare var ImageBitmap: {
+declare var ImageBitmap: typeof globalThis extends
+  { document: any; ImageBitmap: infer T } ? T : {
   prototype: ImageBitmap;
   new (): ImageBitmap;
 };
@@ -222,7 +223,7 @@ interface GPUCanvasConfiguration {
   format: GPUTextureFormat;
   usage?: GPUTextureUsageFlags;
   viewFormats?: GPUTextureFormat[];
-  colorSpace?: "srgb" | "display-p3";
+  colorSpace?: PredefinedColorSpace;
   alphaMode?: GPUCanvasAlphaMode;
 
   // extended from spec
@@ -250,7 +251,8 @@ interface GPUCanvasContext {
  * than constructed directly.
  *
  * @category Canvas */
-declare var GPUCanvasContext: {
+declare var GPUCanvasContext: typeof globalThis extends
+  { document: any; GPUCanvasContext: infer T } ? T : {
   prototype: GPUCanvasContext;
 };
 
@@ -273,7 +275,8 @@ interface ImageBitmapRenderingContext {
  * rather than constructed directly.
  *
  * @category Canvas */
-declare var ImageBitmapRenderingContext: {
+declare var ImageBitmapRenderingContext: typeof globalThis extends
+  { document: any; ImageBitmapRenderingContext: infer T } ? T : {
   prototype: ImageBitmapRenderingContext;
 };
 
@@ -327,7 +330,8 @@ interface OffscreenCanvas extends EventTarget {
  * @category Canvas
  * @see https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas
  */
-declare var OffscreenCanvas: {
+declare var OffscreenCanvas: typeof globalThis extends
+  { document: any; OffscreenCanvas: infer T } ? T : {
   prototype: OffscreenCanvas;
   new (width: number, height: number): OffscreenCanvas;
 };

@@ -209,7 +209,7 @@ interface WebSocket extends EventTarget {
   /**
    * Returns the state of the WebSocket object's connection. It can have the values described below.
    */
-  readonly readyState: number;
+  readonly readyState: 0 | 1 | 2 | 3;
   /**
    * Returns the URL that was used to establish the WebSocket connection.
    */
@@ -222,10 +222,10 @@ interface WebSocket extends EventTarget {
    * Transmits data using the WebSocket connection. data can be a string, a Blob, an ArrayBuffer, or an ArrayBufferView.
    */
   send(data: string | ArrayBufferLike | Blob | ArrayBufferView): void;
-  readonly CLOSED: number;
-  readonly CLOSING: number;
-  readonly CONNECTING: number;
-  readonly OPEN: number;
+  readonly CLOSED: 3;
+  readonly CLOSING: 2;
+  readonly CONNECTING: 0;
+  readonly OPEN: 1;
   addEventListener<K extends keyof WebSocketEventMap>(
     type: K,
     listener: (this: WebSocket, ev: WebSocketEventMap[K]) => any,
