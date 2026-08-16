@@ -287,9 +287,18 @@ function hasMessageEventListener() {
   // the function name is kind of a misnomer, but we want to behave
   // as if we have message event listeners if a node message port is explicitly
   // refed (and the inverse as well)
-  return (event.listenerCount(globalThis, "message") > 0 &&
+  //
+  // Internal "message" listeners (e.g. the node:worker_threads CPU-profiling
+  // control channel) are subtracted out: they must not keep the worker alive.
+  //
+  // A worker with an active CPU profile (between `worker.startCpuProfile()`
+  // and `handle.stop()`) is kept alive so the pending `stop()` can be
+  // serviced, matching Node.js which keeps the worker running while profiling.
+  return ((event.listenerCount(globalThis, "message") -
+        messagePort.internalMessageListenerCount) > 0 &&
     !globalThis[messagePort.unrefParentPort]) ||
-    messagePort.refedMessagePortsCount > 0;
+    messagePort.refedMessagePortsCount > 0 ||
+    messagePort.activeCpuProfileCount > 0;
 }
 
 function dispatchWorkerMessage(data) {
