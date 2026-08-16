@@ -19,14 +19,18 @@ const {
   Array,
   ArrayBufferIsView,
   ArrayBufferPrototypeGetByteLength,
+  ArrayIsArray,
+  ArrayPrototype,
   ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
   ArrayPrototypePush,
   Float64Array,
   ObjectDefineProperty,
   ObjectFreeze,
+  ObjectGetPrototypeOf,
   ObjectHasOwn,
   ObjectIs,
+  ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
   Promise,
   PromiseResolve,
@@ -48,6 +52,7 @@ const {
 const {
   InterruptedPrototype,
   isArrayBuffer,
+  isProxy,
 } = core;
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 
@@ -685,6 +690,16 @@ const FAST_INT32 = 4;
 const FAST_DOUBLE = 5;
 const FAST_STRING = 6;
 const FAST_STRING_LATIN1 = 7;
+// Dense arrays whose every element is a number. `FAST_ARRAY_I32` holds elements
+// that each round-trip exactly through a signed 32-bit integer (4 bytes each);
+// `FAST_ARRAY_F64` holds any other all-number array (8 bytes each). V8's
+// ValueSerializer writes a type tag plus a (var)int per element and maintains an
+// identity map for the object graph, so for a plain number array a straight
+// typed copy in JS is markedly cheaper on both encode and decode. Payloads with
+// a non-number element, a hole, an extra own property, a non-`Array.prototype`
+// prototype, or a proxy wrapper are not fast arrays and fall back to V8.
+const FAST_ARRAY_I32 = 8;
+const FAST_ARRAY_F64 = 9;
 // Above this many code units, hand the string to V8's ValueSerializer, which
 // blits string contents with a native memcpy, rather than walking per-char in
 // the JS loops below. Measured crossover on x86_64 Linux (ping-pong vs V8):
@@ -693,6 +708,13 @@ const FAST_STRING_LATIN1 = 7;
 // The fast path targets small latency-bound messages; larger strings are
 // structured-clone-bound and better served by V8.
 const FAST_STRING_MAX = 128;
+// Longest array taken by the fast path. The per-element win is roughly constant,
+// but the `ObjectKeys` extra-property guard allocates one string per element, and
+// past a few thousand elements that allocation overtakes the serializer win
+// (measured crossover on x86_64 Linux is ~10k elements). The cap keeps the fast
+// path comfortably on the winning side while still covering the large-array
+// payloads from the ping-pong sweep (#11561).
+const FAST_ARRAY_MAX = 4096;
 
 // Scratch union buffer used to read/write the raw bytes of an f64. Sender and
 // receiver always run on the same machine, so native byte order is consistent
@@ -779,8 +801,79 @@ function fastSerialize(value) {
       return b2;
     }
     default:
-      return undefined;
+      // Arrays are `typeof "object"`; everything else here (plain objects,
+      // functions, symbols, bigints) is not a fast primitive.
+      return fastSerializeArray(value);
   }
+}
+
+// Returns a `Uint8Array` encoding `value` when it is a dense array of numbers
+// with no extra properties, or `undefined` otherwise (so the caller falls back
+// to V8's ValueSerializer). See `FAST_ARRAY_I32` for the correctness rationale.
+function fastSerializeArray(value) {
+  if (!ArrayIsArray(value)) return undefined;
+  const n = value.length;
+  // Empty arrays gain nothing over V8; the cap keeps the guard cheaper than the
+  // serializer (see `FAST_ARRAY_MAX`).
+  if (n === 0 || n > FAST_ARRAY_MAX) return undefined;
+  // A subclass (`class X extends Array`) or a proxy over an array both report
+  // `Array.isArray === true`, but V8 does not clone them like a plain array (a
+  // subclass is downgraded to a plain Array; a proxy throws `DataCloneError`).
+  // Exclude both and let V8 produce the spec-correct result.
+  if (ObjectGetPrototypeOf(value) !== ArrayPrototype) return undefined;
+  if (isProxy(value)) return undefined;
+  // Single pass: require every element be a number and note whether they all fit
+  // an int32. A hole reads as `undefined` (not a number) and bails here, so the
+  // array is guaranteed dense once the loop completes. `-0` must keep its sign,
+  // which the int32 encoding cannot represent, so it forces the f64 path.
+  let allInt32 = true;
+  for (let i = 0; i < n; i++) {
+    const x = value[i];
+    if (typeof x !== "number") return undefined;
+    if (allInt32 && ((x | 0) !== x || ObjectIs(x, -0))) allInt32 = false;
+  }
+  // Structured clone preserves an array's own enumerable non-index properties
+  // (e.g. `arr.foo = 1`). The loop above already proved indices `0..n-1` are all
+  // present, so an own-key count other than `n` means such extras exist (or the
+  // impossible-here hole); fall back to V8 to preserve them.
+  if (ObjectKeys(value).length !== n) return undefined;
+
+  if (allInt32) {
+    const b = new Uint8Array(6 + n * 4);
+    b[0] = FAST_MARKER;
+    b[1] = FAST_ARRAY_I32;
+    b[2] = n & 0xFF;
+    b[3] = (n >>> 8) & 0xFF;
+    b[4] = (n >>> 16) & 0xFF;
+    b[5] = (n >>> 24) & 0xFF;
+    for (let i = 0, j = 6; i < n; i++, j += 4) {
+      const x = value[i];
+      b[j] = x & 0xFF;
+      b[j + 1] = (x >>> 8) & 0xFF;
+      b[j + 2] = (x >>> 16) & 0xFF;
+      b[j + 3] = (x >>> 24) & 0xFF;
+    }
+    return b;
+  }
+  const b = new Uint8Array(6 + n * 8);
+  b[0] = FAST_MARKER;
+  b[1] = FAST_ARRAY_F64;
+  b[2] = n & 0xFF;
+  b[3] = (n >>> 8) & 0xFF;
+  b[4] = (n >>> 16) & 0xFF;
+  b[5] = (n >>> 24) & 0xFF;
+  for (let i = 0, j = 6; i < n; i++, j += 8) {
+    fastF64[0] = value[i];
+    b[j] = fastF64Bytes[0];
+    b[j + 1] = fastF64Bytes[1];
+    b[j + 2] = fastF64Bytes[2];
+    b[j + 3] = fastF64Bytes[3];
+    b[j + 4] = fastF64Bytes[4];
+    b[j + 5] = fastF64Bytes[5];
+    b[j + 6] = fastF64Bytes[6];
+    b[j + 7] = fastF64Bytes[7];
+  }
+  return b;
 }
 
 // Decodes a buffer previously produced by `fastSerialize`. Only call this when
@@ -829,6 +922,34 @@ function fastDeserialize(buffer) {
         codes[i] = buffer[j] | (buffer[j + 1] << 8);
       }
       return ReflectApply(StringFromCharCode, null, codes);
+    }
+    case FAST_ARRAY_I32: {
+      const length = (buffer[2] | (buffer[3] << 8) | (buffer[4] << 16) |
+        (buffer[5] << 24)) >>> 0;
+      const arr = new Array(length);
+      for (let i = 0, j = 6; i < length; i++, j += 4) {
+        // Bitwise OR yields a signed 32-bit integer, restoring negatives.
+        arr[i] = buffer[j] | (buffer[j + 1] << 8) | (buffer[j + 2] << 16) |
+          (buffer[j + 3] << 24);
+      }
+      return arr;
+    }
+    case FAST_ARRAY_F64: {
+      const length = (buffer[2] | (buffer[3] << 8) | (buffer[4] << 16) |
+        (buffer[5] << 24)) >>> 0;
+      const arr = new Array(length);
+      for (let i = 0, j = 6; i < length; i++, j += 8) {
+        fastF64Bytes[0] = buffer[j];
+        fastF64Bytes[1] = buffer[j + 1];
+        fastF64Bytes[2] = buffer[j + 2];
+        fastF64Bytes[3] = buffer[j + 3];
+        fastF64Bytes[4] = buffer[j + 4];
+        fastF64Bytes[5] = buffer[j + 5];
+        fastF64Bytes[6] = buffer[j + 6];
+        fastF64Bytes[7] = buffer[j + 7];
+        arr[i] = fastF64[0];
+      }
+      return arr;
     }
     default:
       throw new TypeError("Invalid fast message encoding");
