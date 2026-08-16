@@ -46,6 +46,7 @@ impl PackageLintRule for NoSlowTypesRule {
           range: range.range,
           description: d.range_description().map(|r| r.to_string()),
         }),
+        severity: Default::default(),
         details: LintDiagnosticDetails {
           message: d.message().to_string(),
           code: CODE.to_string(),
