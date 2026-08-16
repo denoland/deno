@@ -1,12 +1,17 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::path::PathBuf;
 
 use deno_core::error::AnyError;
 use deno_core::url::Url;
+use deno_npm::registry::NpmDependencyEntryKind;
+use deno_npm::registry::NpmPackageVersionInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::NpmVersionResolver;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageReq;
 
 use crate::http_util::HttpClientProvider;
 
@@ -114,19 +119,8 @@ impl<'a> BinNameResolver<'a> {
     &self,
     npm_ref: &NpmPackageReqReference,
   ) -> Result<Option<Vec<(String, String)>>, AnyError> {
-    let package_info = self
-      .npm_registry_api
-      .package_info(&npm_ref.req().name)
-      .await?;
-    let version_resolver =
-      self.npm_version_resolver.get_for_package(&package_info);
-    let version_info = version_resolver
-      .resolve_best_package_version_info(
-        &npm_ref.req().version_req,
-        Vec::new().into_iter(),
-      )
-      .ok();
-    let Some(version_info) = version_info else {
+    let Some(version_info) = self.resolve_npm_version_info(npm_ref).await?
+    else {
       return Ok(None);
     };
     let Some(bin_entries) = version_info.bin.as_ref() else {
@@ -142,6 +136,25 @@ impl<'a> BinNameResolver<'a> {
         data.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
       )),
     }
+  }
+
+  async fn resolve_npm_version_info(
+    &self,
+    npm_ref: &NpmPackageReqReference,
+  ) -> Result<Option<NpmPackageVersionInfo>, AnyError> {
+    let package_info = self
+      .npm_registry_api
+      .package_info(&npm_ref.req().name)
+      .await?;
+    let version_resolver =
+      self.npm_version_resolver.get_for_package(&package_info);
+    let version_info = version_resolver
+      .resolve_best_package_version_info(
+        &npm_ref.req().version_req,
+        Vec::new().into_iter(),
+      )
+      .ok();
+    Ok(version_info.cloned())
   }
 
   async fn resolve_name_from_npm(
@@ -189,6 +202,69 @@ impl<'a> BinNameResolver<'a> {
     let npm_ref = NpmPackageReqReference::from_specifier(url).ok()?;
     self.resolve_npm_bin_entries(&npm_ref).await.ok().flatten()
   }
+
+  pub async fn resolve_npm_lifecycle_scripts_package_reqs(
+    &self,
+    npm_ref: &NpmPackageReqReference,
+  ) -> Result<Vec<PackageReq>, AnyError> {
+    let mut pending = VecDeque::from([npm_ref.req().clone()]);
+    let mut seen = HashSet::new();
+    let mut package_reqs = Vec::new();
+
+    while let Some(package_req) = pending.pop_front() {
+      let package_info = self
+        .npm_registry_api
+        .package_info(&package_req.name)
+        .await?;
+      let version_resolver =
+        self.npm_version_resolver.get_for_package(&package_info);
+      let Some(version_info) = version_resolver
+        .resolve_best_package_version_info(
+          &package_req.version_req,
+          Vec::new().into_iter(),
+        )
+        .ok()
+      else {
+        continue;
+      };
+      if !seen.insert((package_req.name.clone(), version_info.version.clone()))
+      {
+        continue;
+      }
+
+      if has_lifecycle_scripts(version_info) {
+        package_reqs.push(PackageReq {
+          name: package_req.name.clone(),
+          version_req: version_info.version.clone().into_req(),
+        });
+      }
+
+      for mut dep in version_info.dependencies_as_entries(&package_req.name)? {
+        if matches!(
+          dep.kind,
+          NpmDependencyEntryKind::Dep | NpmDependencyEntryKind::Peer
+        ) {
+          pending.push_back(PackageReq {
+            name: dep.name,
+            version_req: dep
+              .peer_dep_version_req
+              .take()
+              .unwrap_or(dep.version_req),
+          });
+        }
+      }
+    }
+
+    package_reqs.sort_by_key(|req| req.to_string());
+    Ok(package_reqs)
+  }
+}
+
+fn has_lifecycle_scripts(version_info: &NpmPackageVersionInfo) -> bool {
+  version_info.has_install_script.unwrap_or(false)
+    || version_info.scripts.contains_key("preinstall")
+    || version_info.scripts.contains_key("install")
+    || version_info.scripts.contains_key("postinstall")
 }
 
 #[cfg(test)]
