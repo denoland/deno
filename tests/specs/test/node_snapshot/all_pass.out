@@ -1,0 +1,8 @@
+running 2 tests from ./main.js
+suite of snapshot tests ...
+  snapshot test ... ok ([WILDLINE])
+suite of snapshot tests ... ok ([WILDLINE])
+multiple snapshots ... ok ([WILDLINE])
+
+ok | 2 passed (1 step) | 0 failed ([WILDLINE])
+

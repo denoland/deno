@@ -328,6 +328,12 @@ pub struct SnapshotUpdateMode;
 pub struct SnapshotLocationArgs {
   dir: Option<String>,
   path: Option<String>,
+  /// When set, the default snapshot location follows Node's `node:test` layout
+  /// (`<test file>.snapshot` next to the test file) instead of Deno's
+  /// `__snapshots__/<test file>.snap`. Like the Deno default it is derived from
+  /// the trusted origin and therefore exempt from permission checks.
+  #[serde(default)]
+  node_layout: bool,
 }
 
 /// Resolves the snapshot file path for the current test origin.
@@ -362,6 +368,9 @@ fn resolve_snapshot_path(
     (Some(path), _) => (test_dir.join(path), true),
     (None, Some(dir)) => {
       (test_dir.join(dir).join(format!("{}.snap", file_name)), true)
+    }
+    (None, None) if args.node_layout => {
+      (test_dir.join(format!("{}.snapshot", file_name)), false)
     }
     (None, None) => (
       test_dir
