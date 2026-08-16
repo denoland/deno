@@ -681,6 +681,13 @@ impl Lockfile {
     }
   }
 
+  /// The JSR and npm dependency requirements recorded in the lockfile's
+  /// workspace config (root and members). Used to preserve published JSR
+  /// lockfile pins when generating the config for a global install.
+  pub fn workspace_dep_reqs(&self) -> impl Iterator<Item = &JsrDepPackageReq> {
+    self.content.workspace.get_all_dep_reqs()
+  }
+
   pub async fn new(
     opts: NewLockfileOptions<'_>,
     provider: &dyn NpmPackageInfoProvider,
