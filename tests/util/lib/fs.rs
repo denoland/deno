@@ -328,6 +328,22 @@ impl PathRef {
       .unwrap();
   }
 
+  /// Like [`copy`](Self::copy), but treats a missing source as a no-op and
+  /// returns `false` instead of panicking. Used by recursive copies to
+  /// tolerate a source file that a concurrent process removed between the
+  /// directory listing and the copy.
+  pub fn copy_if_exists(&self, to: &impl AsRef<Path>) -> bool {
+    match std::fs::copy(self.as_path(), to) {
+      Ok(_) => true,
+      Err(err) if err.kind() == std::io::ErrorKind::NotFound => false,
+      Err(err) => Err(err)
+        .with_context(|| {
+          format!("Copying {} to {}", self, to.as_ref().display())
+        })
+        .unwrap(),
+    }
+  }
+
   /// Copies this directory to another directory.
   ///
   /// Note: Does not handle symlinks.
@@ -352,7 +368,12 @@ impl PathRef {
       if file_type.is_dir() {
         new_from.copy_to_recursive(&new_to);
       } else if file_type.is_file() && !file_exclusions.contains(&new_from) {
-        new_from.copy(&new_to);
+        // `read_dir` listed this entry, so a `NotFound` here means the source
+        // was removed after the listing -- a benign race when specs run in
+        // parallel and a concurrent process regenerates a gitignored cache
+        // dir (e.g. `.deno/npm-compat`) that leaked into the source tree.
+        // Skip it rather than panicking and failing an unrelated test.
+        new_from.copy_if_exists(&new_to);
       }
     }
   }
