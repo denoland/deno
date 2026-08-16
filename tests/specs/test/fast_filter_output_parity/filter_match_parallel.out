@@ -1,0 +1,10 @@
+Check [WILDCARD]a_test.ts
+Check [WILDCARD]b_test.ts
+Check [WILDCARD]c_test.ts
+[UNORDERED_START]
+./a_test.ts => foo ... ok ([WILDLINE])
+./c_test.ts => foo ... ok ([WILDLINE])
+[UNORDERED_END]
+
+ok | 2 passed | 0 failed | 3 filtered out ([WILDCARD])
+

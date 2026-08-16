@@ -1,0 +1,5 @@
+{
+  "args": "test --filter match .",
+  "exitCode": 0,
+  "output": "main.out"
+}

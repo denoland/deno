@@ -1408,6 +1408,19 @@ impl JsRuntime {
     self.inner.main_realm.0.module_map()
   }
 
+  /// Returns `true` when a module with the given specifier has already been
+  /// registered in this runtime's module map, whether as a root module or as
+  /// a dependency of another module. Follows module specifier aliases.
+  pub fn has_module(&self, specifier: &str) -> bool {
+    self
+      .inner
+      .main_realm
+      .0
+      .module_map()
+      .get_id(specifier, RequestedModuleType::None)
+      .is_some()
+  }
+
   #[inline]
   pub fn main_context(&self) -> v8::Global<v8::Context> {
     self.inner.main_realm.0.context().clone()
