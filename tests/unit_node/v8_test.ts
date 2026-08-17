@@ -112,12 +112,21 @@ Deno.test({
       payload.copy(wrapped, prefixLength);
       wrapped.fill(0x99, prefixLength + payload.length);
 
-      const sliced = wrapped.subarray(
-        prefixLength,
-        prefixLength + payload.length,
-      );
+      const views = [
+        wrapped.subarray(
+          prefixLength,
+          prefixLength + payload.length,
+        ),
+        new DataView(
+          wrapped.buffer,
+          wrapped.byteOffset + prefixLength,
+          payload.length,
+        ),
+      ];
 
-      assertEquals(v8.deserialize(sliced), value);
+      for (const view of views) {
+        assertEquals(v8.deserialize(view), value);
+      }
     }
   },
 });
