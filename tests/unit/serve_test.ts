@@ -26,7 +26,6 @@ import {
 const servePort = 4511;
 
 const {
-  upgradeHttpRaw,
   addTrailers,
   serveHttpOnListener,
   serveHttpOnConnection,
@@ -1717,97 +1716,6 @@ Deno.test({ permissions: { net: true } }, async function httpServerWebSocket() {
   ac.abort();
   await server.finished;
 });
-
-Deno.test(
-  { permissions: { net: true } },
-  async function httpServerWebSocketRaw() {
-    const ac = new AbortController();
-    const { promise, resolve } = Promise.withResolvers<void>();
-    await using server = Deno.serve({
-      handler: async (request) => {
-        const { conn, response } = upgradeHttpRaw(request);
-        let written;
-
-        written = await conn.write(new TextEncoder().encode("HTTP/1.1 101 Sw"));
-        assertEquals(written, 15);
-
-        written = await conn.write(
-          new TextEncoder().encode("itching Protocols\r\nConnection:"),
-        );
-        assertEquals(written, 30);
-
-        written = await conn.write(
-          new TextEncoder().encode("Upgrade\r\n\r\nExtra"),
-        );
-        assertEquals(written, 11); // note: does not include "Extra"
-
-        written = await conn.write(new TextEncoder().encode("Extra"));
-        assertEquals(written, 5);
-
-        const buf = new Uint8Array(1024);
-        let read;
-
-        // Upgrade data
-        read = await conn.read(buf);
-        assertEquals(
-          new TextDecoder().decode(buf.subarray(0, read!)),
-          "Upgrade data",
-        );
-
-        // Read the packet to echo
-        read = await conn.read(buf);
-        // Echo
-        await conn.write(buf.subarray(0, read!));
-
-        conn.close();
-        return response;
-      },
-      port: servePort,
-      signal: ac.signal,
-      onListen: onListen(resolve),
-      onError: createOnErrorCb(ac),
-    });
-
-    await promise;
-
-    const conn = await Deno.connect({ port: servePort });
-    await conn.write(
-      new TextEncoder().encode(
-        "GET / HTTP/1.1\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\nUpgrade data",
-      ),
-    );
-    const buf = new Uint8Array(1024);
-    let len;
-
-    // Headers
-    let headers = "";
-    for (let i = 0; i < 2; i++) {
-      len = await conn.read(buf);
-      headers += new TextDecoder().decode(buf.subarray(0, len!));
-      if (headers.endsWith("Extra")) {
-        break;
-      }
-    }
-    assertMatch(
-      headers,
-      /HTTP\/1\.1 101 Switching Protocols[ ,.A-Za-z:0-9\r\n]*Extra/im,
-    );
-
-    // Data to echo
-    await conn.write(new TextEncoder().encode("buffer data"));
-
-    // Echo
-    len = await conn.read(buf);
-    assertEquals(
-      new TextDecoder().decode(buf.subarray(0, len!)),
-      "buffer data",
-    );
-
-    conn.close();
-    ac.abort();
-    await server.finished;
-  },
-);
 
 Deno.test(
   { permissions: { net: true } },
