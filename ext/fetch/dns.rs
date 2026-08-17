@@ -453,6 +453,7 @@ mod tests {
       Resolver::custom(Arc::new(DebugResolver(addr))),
       None,
       None,
+      ResolvedDenyCheckKind::Net,
     );
     let uri =
       Uri::from_str(&format!("http://example.com:{}", addr.port())).unwrap();
