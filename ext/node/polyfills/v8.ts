@@ -419,7 +419,11 @@ class Deserializer {
     );
   }
   _readRawBytes(length: number): number {
-    return op_v8_read_raw_bytes(this[kHandle], length);
+    const offset = op_v8_read_raw_bytes(this[kHandle], length);
+    if (offset < 0) {
+      throw new Error("ReadRawBytes() failed");
+    }
+    return offset;
   }
   getWireFormatVersion(): number {
     return op_v8_get_wire_format_version(this[kHandle]);
@@ -643,7 +647,7 @@ class DefaultDeserializer extends Deserializer {
     const bufferCopy = Buffer.allocUnsafe(byteLength);
     Buffer.from(
       getViewBuffer(view),
-      byteOffset,
+      offset,
       byteLength,
     ).copy(bufferCopy);
     return new ctor(
