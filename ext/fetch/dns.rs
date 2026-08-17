@@ -461,6 +461,9 @@ mod tests {
 
     let socket = socket2::SockRef::from(io.inner());
     assert!(socket.keepalive().unwrap());
+    // Windows exposes no getsockopt for the keepalive idle time, so socket2
+    // only provides the getter on platforms that can read it back.
+    #[cfg(not(windows))]
     assert_eq!(socket.keepalive_time().unwrap(), TCP_KEEPALIVE_TIME);
   }
 }
