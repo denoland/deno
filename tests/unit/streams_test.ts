@@ -1170,3 +1170,47 @@ Deno.test(
     await Deno.remove(outPath);
   },
 );
+
+// Cancelling a transferred ReadableStream while it is still open must close the
+// transfer's internal MessagePort. Otherwise the default resource sanitizer
+// reports a leaked message port (https://github.com/denoland/deno/issues/36015).
+Deno.test(
+  async function transferredReadableCancelWhileOpenClosesPort() {
+    const workerCode = `
+      self.onmessage = async (e) => {
+        const reader = e.data.getReader();
+        await reader.read(); // consume one chunk; the stream stays open
+        await reader.cancel("stop"); // cancel while still open
+        self.postMessage("done");
+        self.close();
+      };
+    `;
+    const worker = new Worker(
+      "data:application/javascript," + encodeURIComponent(workerCode),
+      { type: "module" },
+    );
+
+    const { promise: cancelled, resolve: onCancel } = Promise
+      .withResolvers<string>();
+    const readable = new ReadableStream({
+      pull(controller) {
+        // Never closes, so the stream is still open when it is cancelled.
+        controller.enqueue(new Uint8Array(16));
+      },
+      cancel(reason) {
+        // `pipeTo` only cancels the source after the transferred port's
+        // "error" handler has run (and thus after `port.close()`), so awaiting
+        // this is a deterministic assertion on the fix rather than relying on a
+        // cross-channel race with the worker's "done" message and the sanitizer.
+        onCancel(reason);
+      },
+    });
+
+    const { promise: done, resolve: onDone } = Promise.withResolvers<void>();
+    worker.onmessage = () => onDone();
+    worker.postMessage(readable, [readable]);
+    assertEquals(await cancelled, "stop");
+    await done;
+    worker.terminate();
+  },
+);
