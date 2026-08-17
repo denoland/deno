@@ -24,6 +24,7 @@ use node_resolver::InNpmPackageChecker;
 use regex::Regex;
 use reporter::CoverageReporter;
 use text_lines::TextLines;
+use text_size::TextSize;
 
 use self::ignore_directives::CoverageComment;
 use self::ignore_directives::has_file_ignore_directive;
@@ -39,6 +40,7 @@ use crate::factory::CliFactory;
 use crate::file_fetcher::TextDecodedFile;
 use crate::sys::CliSys;
 use crate::tools::test::is_supported_test_path;
+use crate::util::text_encoding::Utf16Map;
 use crate::util::text_encoding::source_map_from_code;
 
 mod ignore_directives;
@@ -121,6 +123,21 @@ fn line_content_end_byte_offset(
       }
     }
   }
+}
+
+/// The UTF-16 offset of `byte_offset` in the source `utf16_map` was built over.
+///
+/// V8 counts a position in a script the way JavaScript indexes a string, in
+/// UTF-16 code units, and reports its coverage range offsets in those.
+/// `TextLines` counts Unicode scalar values, one per Rust `char`, and the two
+/// part company once the source holds a scalar value outside the Basic
+/// Multilingual Plane. A line's edges are put in V8's unit through this before
+/// a range is compared against them.
+fn utf16_offset(utf16_map: &Utf16Map, byte_offset: usize) -> usize {
+  utf16_map
+    .utf8_to_utf16_offset(TextSize::from(byte_offset as u32))
+    .map(|offset| u32::from(offset) as usize)
+    .expect("a byte offset within the source has a UTF-16 offset")
 }
 
 fn generate_coverage_report(
@@ -364,13 +381,13 @@ fn generate_coverage_report(
   // TODO(caspervonb): collect uncovered ranges on the lines so that we can highlight specific
   // parts of a line in color (word diff style) instead of the entire line.
   let mut line_counts = Vec::with_capacity(runtime_text_lines.lines_count());
+  let utf16_map = Utf16Map::new(&options.script_runtime_source);
   for line_index in 0..runtime_text_lines.lines_count() {
     let (line_start_byte_offset, line_end_byte_offset) =
       runtime_text_lines.line_range(line_index);
-    let line_start_char_offset =
-      runtime_text_lines.char_index(line_start_byte_offset);
-    let line_end_char_offset =
-      runtime_text_lines.char_index(line_end_byte_offset);
+    let line_start_utf16_offset =
+      utf16_offset(&utf16_map, line_start_byte_offset);
+    let line_end_utf16_offset = utf16_offset(&utf16_map, line_end_byte_offset);
     // The line's end edge for the reset pass below is the end of its code,
     // excluding a trailing comment so a comment cannot change what the line is
     // credited with.
@@ -380,8 +397,8 @@ fn generate_coverage_report(
       line_end_byte_offset,
       &runtime_comments.comments,
     );
-    let line_content_end_char_offset =
-      runtime_text_lines.char_index(content_end_byte_offset);
+    let line_content_end_utf16_offset =
+      utf16_offset(&utf16_map, content_end_byte_offset);
     let ignore = runtime_comments.comments.iter().any(|comment| {
       comment.range.start <= line_start_byte_offset
         && comment.range.end >= line_end_byte_offset
@@ -401,8 +418,8 @@ fn generate_coverage_report(
       let mut best_range_size = usize::MAX;
       for function in &options.script_coverage.functions {
         for range in &function.ranges {
-          if range.start_char_offset <= line_start_char_offset
-            && range.end_char_offset >= line_end_char_offset
+          if range.start_char_offset <= line_start_utf16_offset
+            && range.end_char_offset >= line_end_utf16_offset
           {
             let range_size = range.end_char_offset - range.start_char_offset;
             if range_size < best_range_size {
@@ -436,31 +453,31 @@ fn generate_coverage_report(
           continue;
         }
 
-        let overlaps = range.start_char_offset < line_end_char_offset
-          && range.end_char_offset > line_start_char_offset;
+        let overlaps = range.start_char_offset < line_end_utf16_offset
+          && range.end_char_offset > line_start_utf16_offset;
         if !overlaps {
           continue;
         }
 
         // The line sits entirely inside the uncovered range: a fully uncovered
         // line, or one in the middle of a multi-line uncovered block.
-        let spans_content = range.start_char_offset <= line_start_char_offset
-          && range.end_char_offset >= line_content_end_char_offset;
+        let spans_content = range.start_char_offset <= line_start_utf16_offset
+          && range.end_char_offset >= line_content_end_utf16_offset;
         // An uncovered statement confined to this line that runs to the end of
         // its code, e.g. the never-taken `throw` in `if (!x) throw …`. A
         // multi-line block whose brace only clips a junction extends past the
         // line end and is excluded here, so the covered half survives.
         let inline_uncovered = range.start_char_offset
-          >= line_start_char_offset
-          && range.end_char_offset <= line_end_char_offset
-          && range.end_char_offset >= line_content_end_char_offset;
+          >= line_start_utf16_offset
+          && range.end_char_offset <= line_end_utf16_offset
+          && range.end_char_offset >= line_content_end_utf16_offset;
         // A never-called function is a single count-0 range (ranges[0]) covering
         // the whole function. Its signature line stays uncovered like its body,
         // even though the range starts a few characters into that line, after an
         // `export`/`async` keyword, which the span test above would miss.
         let whole_function = range_index == 0
-          && (range.start_char_offset <= line_start_char_offset
-            || range.end_char_offset >= line_content_end_char_offset);
+          && (range.start_char_offset <= line_start_utf16_offset
+            || range.end_char_offset >= line_content_end_utf16_offset);
         if spans_content || inline_uncovered || whole_function {
           count = 0;
         }
@@ -1042,5 +1059,23 @@ mod tests {
   #[test]
   fn comment_only_line_has_no_code() {
     assert_eq!(code_on_line("  // just a comment", 0), "");
+  }
+
+  #[test]
+  fn a_line_below_a_surrogate_pair_starts_where_v8_says_it_does() {
+    // The emoji is two scalar values, each one a surrogate pair, so V8 puts the
+    // second line two code units further along than its scalar-value index. A
+    // range covering the first line ends at that line's newline, UTF-16 offset
+    // 7: short of the 8 the second line starts at, but past the 6 it used to be
+    // compared against, which put the end of one line's range inside the line
+    // below it.
+    let source = "\"🕵🏻\";\nlet a;\n";
+    let text_lines = TextLines::new(source);
+    let utf16_map = Utf16Map::new(source);
+    let second_line_start = text_lines.line_start(1_usize);
+
+    assert_eq!(utf16_offset(&utf16_map, second_line_start), 8);
+    assert_eq!(text_lines.char_index(second_line_start), 6);
+    assert_eq!(utf16_offset(&utf16_map, text_lines.line_end(0_usize)), 7);
   }
 }
