@@ -9677,6 +9677,7 @@ mod test {
       );
     }
   }
+
   /// Test that NpmPackageId serialization length stays bounded.
   /// With the Expo-like pattern of many plugins with circular peer deps,
   /// no single package ID should exceed a reasonable length.
