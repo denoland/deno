@@ -5,8 +5,8 @@
 // memory and crashing the process. This test races such a worker against many
 // decodes and expects a clean exit rather than a segfault.
 
-const iterations = 10000;
-const byteLength = 1024 * 1024;
+const iterations = 50000;
+const byteLength = 64 * 1024;
 const sab = new SharedArrayBuffer(byteLength);
 const words = new Uint16Array(sab);
 words.fill(0xa9c2); // UTF-8 "©" (C2 A9): 2 input bytes -> 1 code unit.
