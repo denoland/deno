@@ -3120,14 +3120,30 @@ Deno.test(
 
     const port = (server.addr as Deno.NetAddr).port;
     const encoder = new TextEncoder();
-    async function readToEnd(conn: Deno.Conn): Promise<string> {
+    async function readToEnd(
+      conn: Deno.Conn,
+      pendingRequestBodyAfter?: number,
+    ): Promise<string> {
       const decoder = new TextDecoder();
       let raw = "";
+      let requestBodySent = false;
       while (true) {
         const chunk = new Uint8Array(1024);
         const read = await conn.read(chunk);
         if (read === null) break;
         raw += decoder.decode(chunk.subarray(0, read), { stream: true });
+        const separator = raw.indexOf("\r\n\r\n");
+        if (
+          pendingRequestBodyAfter !== undefined &&
+          !requestBodySent &&
+          separator >= 0 &&
+          raw.length >= separator + 4 + pendingRequestBodyAfter
+        ) {
+          // Keep the body pending until the response is complete so this
+          // exercises the shared writer, then unblock the server's drain.
+          await writeAll(conn, encoder.encode("x"));
+          requestBodySent = true;
+        }
       }
       return raw + decoder.decode();
     }
@@ -3156,7 +3172,10 @@ Deno.test(
     ) {
       const conn = await Deno.connect({ hostname: "127.0.0.1", port });
       await writeAll(conn, encoder.encode(request));
-      const raw = await readToEnd(conn);
+      const raw = await readToEnd(
+        conn,
+        request.startsWith("POST") ? expectedBody.length : undefined,
+      );
       conn.close();
 
       const separator = raw.indexOf("\r\n\r\n");
