@@ -9499,6 +9499,87 @@ mod test {
     }
   }
 
+  /// An `NpmPackageId` encodes each of its peers as that peer's full id,
+  /// so serializing one unfolds the peer graph into a tree: a peer
+  /// reachable by many paths is written out once per path. Ids therefore
+  /// grow exponentially in the depth of the peer graph.
+  ///
+  /// `compute_all_npm_pkg_ids` flattens a peer to a bare `name@version`
+  /// only when the two sit in the same NV-level SCC *and* that SCC is a
+  /// real cycle, which bounds the mutually-recursive case covered by
+  /// `peer_dep_id_length_bounded`. It does not bound this one: the chain
+  /// below only has forward edges, so every package is its own singleton
+  /// non-cyclic SCC and no peer is ever flattened.
+  ///
+  /// A 14-deep chain is enough to produce a ~135KB id; an 18-deep one
+  /// gives ~2.4MB and takes several seconds. This is what
+  /// `npm:@deepseek-ai/dsh` (see #36599) hits once peer resolution itself
+  /// terminates — the `@deepseek-ai/*` packages form a deep peer DAG.
+  ///
+  /// Note the ids are *not* duplicated in memory: `peer_dependencies` is
+  /// an `EcoVec`, so the cache in `compute_all_npm_pkg_ids` keeps a
+  /// properly shared DAG and cloning a peer id is a refcount bump. Only
+  /// serialization and the derived `Hash` materialize the tree, which
+  /// rules out fixing this by interning or deduplicating in memory — the
+  /// id's serialized *value* is what is exponential.
+  ///
+  /// Ignored because a fix means changing how peers are encoded into an
+  /// id, and that encoding is written to the lockfile (see the warning on
+  /// `NpmPackageId::as_serialized_with_level`), so it is a format decision
+  /// rather than a local bug fix. Run with `--ignored` to reproduce.
+  #[ignore = "known bug: peer DAGs give exponentially large ids (#36599)"]
+  #[tokio::test]
+  async fn peer_dep_id_length_bounded_for_peer_dag() {
+    let api = TestNpmRegistryApi::default();
+
+    // A chain where each package peer-depends on the next two, so every
+    // package is reachable by many paths but the peer graph stays acyclic.
+    let depth = 14;
+    let names: Vec<String> = (0..depth).map(|i| format!("h-{i}")).collect();
+    for (i, name) in names.iter().enumerate() {
+      api.ensure_package_version(name, "1.0.0");
+      for step in 1..=2 {
+        if let Some(next) = names.get(i + step) {
+          api.add_peer_dependency(
+            (name.as_str(), "1.0.0"),
+            (next.as_str(), "*"),
+          );
+        }
+      }
+    }
+
+    api.ensure_package_version("app", "1.0.0");
+    api.add_dependency(("app", "1.0.0"), ("h-0", "1"));
+
+    let (packages, _) = run_resolver_and_get_output(api, vec!["app@1"]).await;
+
+    // Check the graph really was resolved with its peers before asserting
+    // on id length — peers going missing entirely would also produce short
+    // ids, and this test doesn't run in CI to catch that separately.
+    assert_eq!(packages.len(), depth + 1);
+    let h0 = packages
+      .iter()
+      .find(|p| p.pkg_id.starts_with("h-0@1.0.0"))
+      .expect("should have resolved h-0");
+    assert!(
+      h0.pkg_id.starts_with("h-0@1.0.0_h-1@1.0.0__h-2@1.0.0"),
+      "h-0 should have h-1 and h-2 as peers, got: {}",
+      &h0.pkg_id[..60.min(h0.pkg_id.len())]
+    );
+
+    let longest = packages
+      .iter()
+      .max_by_key(|p| p.pkg_id.len())
+      .expect("should have resolved packages");
+    assert!(
+      longest.pkg_id.len() < 2000,
+      "package id is {} chars for a {} package graph: {}...",
+      longest.pkg_id.len(),
+      packages.len(),
+      &longest.pkg_id[..100.min(longest.pkg_id.len())]
+    );
+  }
+
   /// Test that NpmPackageId serialization length stays bounded.
   /// With the Expo-like pattern of many plugins with circular peer deps,
   /// no single package ID should exceed a reasonable length.
