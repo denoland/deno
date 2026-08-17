@@ -420,11 +420,15 @@ mod npm {
         continue;
       }
 
-      if adv.patched_versions.is_empty() {
-        continue;
-      }
-
-      let Some(target) = min_version_from_range(&adv.patched_versions) else {
+      let Some(target) = (if adv.patched_versions.is_empty() {
+        // The bulk advisory endpoint does not return `patched_versions`
+        // for advisories, so derive the fix target from the upper bound
+        // of the vulnerable_versions range instead (e.g. ">=1.0.0 <1.8.2"
+        // means 1.8.2 is the first patched version).
+        patched_version_from_vulnerable_range(&adv.vulnerable_versions)
+      } else {
+        min_version_from_range(&adv.patched_versions)
+      }) else {
         continue;
       };
 
@@ -490,6 +494,34 @@ mod npm {
     None
   }
 
+  /// Extract the first patched version from a npm vulnerable_versions range.
+  ///
+  /// The bulk advisory endpoint only returns `vulnerable_versions` (no
+  /// `patched_versions`) for advisories, so we derive the fix target from
+  /// the upper bound of the vulnerable range: e.g. ">=1.0.0 <1.8.2"
+  /// means 1.8.2 is the first patched version.
+  ///
+  /// Returns None when the range has no usable upper bound (e.g. ">=1.0.0"),
+  /// in which case the advisory is skipped for auto-fix.
+  fn patched_version_from_vulnerable_range(
+    range: &str,
+  ) -> Option<deno_semver::Version> {
+    let trimmed = range.trim();
+
+    // Take the portion after the last "<" (or "<=") as the upper bound.
+    let Some((_, upper)) = trimmed.rsplit_once('<') else {
+      // No upper bound — cannot determine a patched version.
+      return None;
+    };
+    let ver_str = upper.trim().split_whitespace().next()?;
+    // Ignore bounds like "=1.8.2" or anything that is not a plain version.
+    let ver_str = ver_str.trim_start_matches('=');
+    if !ver_str.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+      return None;
+    }
+    deno_semver::Version::parse_standard(ver_str).ok()
+  }
+
   fn print_report(
     vulns: &AuditVulnerabilities,
     advisories: &[AuditAdvisory],
@@ -521,7 +553,9 @@ mod npm {
         continue;
       }
 
-      let has_fix = !adv.patched_versions.is_empty();
+      let has_fix = !adv.patched_versions.is_empty()
+        || patched_version_from_vulnerable_range(&adv.vulnerable_versions)
+          .is_some();
       if !has_fix && ignore_unfixable {
         continue;
       }
