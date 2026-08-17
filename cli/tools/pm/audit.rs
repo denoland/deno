@@ -667,6 +667,79 @@ mod npm {
       assert!(!output.contains("title\x1b[2J"));
       assert!(!output.contains('\u{202e}'));
     }
+
+    #[test]
+    fn patched_version_from_vulnerable_range_extracts_upper_bound() {
+      // ">=X.Y.Z <A.B.C" -> A.B.C is the first patched version.
+      let v = patched_version_from_vulnerable_range(">=1.0.0 <1.8.2")
+        .unwrap();
+      assert_eq!(v.to_string(), "1.8.2");
+      let v = patched_version_from_vulnerable_range(">=1.7.0 <1.16.0")
+        .unwrap();
+      assert_eq!(v.to_string(), "1.16.0");
+      // Bare upper bound.
+      let v = patched_version_from_vulnerable_range("<2.0.0").unwrap();
+      assert_eq!(v.to_string(), "2.0.0");
+    }
+
+    #[test]
+    fn patched_version_from_vulnerable_range_returns_none_without_upper_bound() {
+      // No upper bound -> cannot determine a patched version.
+      assert!(patched_version_from_vulnerable_range(">=1.0.0").is_none());
+      // Non-version text.
+      assert!(patched_version_from_vulnerable_range("").is_none());
+      assert!(patched_version_from_vulnerable_range("*").is_none());
+    }
+
+    #[test]
+    fn derive_fixable_actions_uses_vulnerable_range_when_patched_missing() {
+      use std::collections::HashMap;
+
+      let vulnerabilities = HashMap::from([(
+        "axios".to_string(),
+        vec![deno_semver::Version::parse_standard("1.7.7").unwrap()],
+      )]);
+      let advisories = [AuditAdvisory {
+        title: "SSRF".to_string(),
+        severity: "high".to_string(),
+        url: "https://example.com".to_string(),
+        module_name: "axios".to_string(),
+        vulnerable_versions: ">=1.0.0 <1.8.2".to_string(),
+        // patched_versions omitted — mirrors the real bulk API response
+        patched_versions: "".to_string(),
+        cves: vec![],
+      }];
+
+      let actions =
+        derive_fixable_actions(&advisories, &vulnerabilities, AdvisorySeverity::Low);
+      assert_eq!(actions.len(), 1);
+      assert_eq!(actions[0].module_name, "axios");
+      assert_eq!(actions[0].target_version, "1.8.2");
+      assert!(!actions[0].is_major);
+    }
+
+    #[test]
+    fn derive_fixable_actions_skips_unbounded_vulnerable_range() {
+      use std::collections::HashMap;
+
+      let vulnerabilities = HashMap::from([(
+        "axios".to_string(),
+        vec![deno_semver::Version::parse_standard("1.7.7").unwrap()],
+      )]);
+      let advisories = [AuditAdvisory {
+        title: "unbounded".to_string(),
+        severity: "high".to_string(),
+        url: "https://example.com".to_string(),
+        module_name: "axios".to_string(),
+        vulnerable_versions: ">=1.0.0".to_string(),
+        patched_versions: "".to_string(),
+        cves: vec![],
+      }];
+
+      let actions =
+        derive_fixable_actions(&advisories, &vulnerabilities, AdvisorySeverity::Low);
+      assert!(actions.is_empty());
+    }
   }
 
   /// Advisory item from the bulk API response.
