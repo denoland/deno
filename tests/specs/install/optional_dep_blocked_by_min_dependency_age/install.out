@@ -1,0 +1,5 @@
+Add npm:@denotest/napi-optional-platform@1.0.0
+[WILDCARD]
+Dependencies:
++ npm:@denotest/napi-optional-platform 1.0.0
+[WILDCARD]

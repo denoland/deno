@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  // Regression test for https://github.com/denoland/deno/issues/36597.
+  // `@denotest/napi-optional-platform` lists two platform prebuilds in its
+  // `optionalDependencies`. The `linux-x64` one is old enough, but the
+  // `android-arm64` one was published after the configured minimum dependency
+  // age. Install must skip the blocked (and foreign-platform) optional dep
+  // instead of aborting the whole install.
+  "steps": [{
+    "args": "install npm:@denotest/napi-optional-platform",
+    "output": "install.out"
+  }]
+}
