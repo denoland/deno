@@ -3986,6 +3986,24 @@ impl Drop for RawResponseBodyFinishGuard {
   }
 }
 
+async fn finish_h1_stream_response_shared<I>(
+  conn: &RawH1ConnectionCell<I>,
+  trailers: &[h1::Header<'_>],
+) -> Result<(), HttpNextError>
+where
+  I: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+  let mut end = h1::SharedResponseEndWriter::new(trailers);
+  poll_fn(|cx| {
+    let mut conn = conn.borrow_mut();
+    let Some(conn) = conn.as_mut() else {
+      return Poll::Ready(Err(raw_h1_connection_closed()));
+    };
+    conn.poll_finish_response(cx, &mut end)
+  })
+  .await
+}
+
 async fn write_h1_stream_response<I>(
   conn: &mut h1::SharedConn<I>,
   scratch: &mut h1::SharedScratch,
@@ -4215,15 +4233,7 @@ where
   }
   if remaining == Some(0) {
     abort_raw_response_body(&mut body);
-    let mut end = h1::SharedResponseEndWriter::new(&[]);
-    poll_fn(|cx| {
-      let mut conn = conn.borrow_mut();
-      let Some(conn) = conn.as_mut() else {
-        return Poll::Ready(Err(raw_h1_connection_closed()));
-      };
-      conn.poll_finish_response(cx, &mut end)
-    })
-    .await?;
+    finish_h1_stream_response_shared(&conn, &[]).await?;
     finish.finish(true);
     return Ok(());
   }
@@ -4281,15 +4291,7 @@ where
         } else {
           trailers.as_slice()
         };
-        let mut end = h1::SharedResponseEndWriter::new(trailers);
-        poll_fn(|cx| {
-          let mut conn = conn.borrow_mut();
-          let Some(conn) = conn.as_mut() else {
-            return Poll::Ready(Err(raw_h1_connection_closed()));
-          };
-          conn.poll_finish_response(cx, &mut end)
-        })
-        .await?;
+        finish_h1_stream_response_shared(&conn, trailers).await?;
         finish.finish(true);
         return Ok(());
       }
@@ -4325,15 +4327,7 @@ where
         finish.record.add_otel_response_size(chunk.len());
         if fixed_body_complete {
           abort_raw_response_body(&mut body);
-          let mut end = h1::SharedResponseEndWriter::new(&[]);
-          poll_fn(|cx| {
-            let mut conn = conn.borrow_mut();
-            let Some(conn) = conn.as_mut() else {
-              return Poll::Ready(Err(raw_h1_connection_closed()));
-            };
-            conn.poll_finish_response(cx, &mut end)
-          })
-          .await?;
+          finish_h1_stream_response_shared(&conn, &[]).await?;
           finish.finish(true);
           return Ok(());
         }
