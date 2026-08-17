@@ -248,11 +248,7 @@ impl EgressHeaderPolicy {
     headers: &mut HeaderMap,
     redirect_sensitive_stripped: bool,
   ) {
-    for name in &self.scrub_static {
-      if let header::Entry::Occupied(entry) = headers.entry(name) {
-        entry.remove_entry_mult();
-      }
-    }
+    scrub_headers(headers, &self.scrub_static);
     let skip_sensitive =
       redirect_sensitive_stripped && self.writes_redirect_sensitive;
     for (name, value) in &self.set {
@@ -286,11 +282,7 @@ impl EgressHeaderPolicy {
     headers: &mut HeaderMap,
     policy_headers: &HeaderMap,
   ) {
-    for name in &self.scrub_dynamic {
-      if let header::Entry::Occupied(entry) = headers.entry(name) {
-        entry.remove_entry_mult();
-      }
-    }
+    scrub_headers(headers, &self.scrub_dynamic);
     for (name, value) in policy_headers {
       headers.append(name, value.clone());
     }
@@ -321,6 +313,14 @@ impl EgressHeaderPolicy {
     self.scrub_static.iter().any(|n| n.as_str() == name)
       || self.forward.iter().any(|n| n == name)
       || self.append.iter().any(|(n, _)| n == name)
+  }
+}
+
+fn scrub_headers(headers: &mut HeaderMap, names: &[HeaderName]) {
+  for name in names {
+    if let header::Entry::Occupied(entry) = headers.entry(name) {
+      entry.remove_entry_mult();
+    }
   }
 }
 
