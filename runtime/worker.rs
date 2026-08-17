@@ -1125,10 +1125,7 @@ impl MainWorker {
       let op_state = self.js_runtime.op_state();
       let op_state = op_state.borrow();
       match op_state.try_borrow::<deno_napi::NapiState>() {
-        Some(s) => {
-          let mut tracker = s.ref_tracker.borrow_mut();
-          std::mem::take(&mut *tracker)
-        }
+        Some(s) => s.ref_tracker.borrow_mut().take_pending(),
         None => return,
       }
     };

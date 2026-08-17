@@ -2337,6 +2337,51 @@ fn builtin_core_module() {
   runtime.module_map().set_loading_internal_modules(false);
 }
 
+#[test]
+fn safe_array_iterator_remains_done_after_array_grows() {
+  let main_specifier =
+    resolve_url("ext:///safe_array_iterator_test.js").unwrap();
+
+  let source_code = r#"
+    import { primordials } from "ext:core/mod.js";
+
+    const array = [1, 2];
+    const iterator = new primordials.SafeArrayIterator(array);
+
+    for (const value of iterator) {
+      if (value !== 1) throw new Error("unexpected first value");
+      break;
+    }
+
+    const resumed = iterator.next();
+    if (resumed.done || resumed.value !== 2) {
+      throw new Error("iterator did not resume after an early exit");
+    }
+    if (!iterator.next().done) throw new Error("iterator was not exhausted");
+
+    array.push(3);
+    if (!iterator.next().done) {
+      throw new Error("exhausted iterator resumed after the array grew");
+    }
+  "#;
+  let loader = StaticModuleLoader::new([(main_specifier.clone(), source_code)]);
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    module_loader: Some(Rc::new(loader)),
+    ..Default::default()
+  });
+  runtime.module_map().set_loading_internal_modules(true);
+
+  let main_id =
+    futures::executor::block_on(runtime.load_main_es_module(&main_specifier))
+      .unwrap();
+  let receiver = runtime.mod_evaluate(main_id);
+  futures::executor::block_on(runtime.run_event_loop(Default::default()))
+    .unwrap();
+  futures::executor::block_on(receiver).unwrap();
+  runtime.module_map().set_loading_internal_modules(false);
+}
+
 // An internal module that is lazily loaded at runtime gets its imports
 // resolved by the embedder's loader, which in Deno applies the user's import
 // map. Mapping `ext:core/mod.js` used to rewrite internal imports too and
