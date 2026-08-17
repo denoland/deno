@@ -238,6 +238,33 @@ Deno.test(async function bodyMultipartFormDataIgnoresPreamble() {
   assertEquals(formData.get("field"), "value");
 });
 
+Deno.test(async function bodyMultipartFormDataAcceptsTransportPadding() {
+  const boundary = "AaB03x";
+  const payload = [
+    `--${boundary} \t`,
+    'Content-Disposition: form-data; name="first"',
+    "",
+    "one",
+    `--${boundary}\t `,
+    'Content-Disposition: form-data; name="second"',
+    "",
+    "two",
+    `--${boundary}-- \t`,
+    "epilogue",
+  ].join("\r\n");
+
+  const body = buildBody(
+    new TextEncoder().encode(payload),
+    new Headers({
+      "Content-Type": `multipart/form-data; boundary=${boundary}`,
+    }),
+  );
+
+  const formData = await body.formData();
+  assertEquals(formData.get("first"), "one");
+  assertEquals(formData.get("second"), "two");
+});
+
 Deno.test(async function bodyMultipartFormDataInitialClosingBoundaryIsEmpty() {
   const boundary = "AaB03x";
   const payloads = [
@@ -269,6 +296,7 @@ Deno.test(async function bodyMultipartFormDataRejectsInvalidInitialBoundary() {
     `--${boundary}-\r\n`,
     `--${boundary}extra\r\n`,
     `--${boundary} \tinvalid\r\n`,
+    `x--${boundary}\r\n`,
   ];
 
   for (const payload of payloads) {
@@ -460,6 +488,7 @@ Deno.test(
       "",
       "before",
       `--${boundary}x`,
+      `--${boundary}--x`,
       "after",
       `--${boundary}--`,
     ].join("\r\n");
@@ -474,7 +503,10 @@ Deno.test(
     const formData = await body.formData();
     const file = formData.get("file");
     assert(file instanceof File);
-    assertEquals(await file.text(), `before\r\n--${boundary}x\r\nafter`);
+    assertEquals(
+      await file.text(),
+      `before\r\n--${boundary}x\r\n--${boundary}--x\r\nafter`,
+    );
   },
 );
 

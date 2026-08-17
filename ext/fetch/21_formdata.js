@@ -462,67 +462,66 @@ class MultipartParser {
   }
 
   /**
-   * @returns {{ type: 1 | 2, headerStart: number } | null}
+   * @param {number} index
+   * @returns {{ type: 1 | 2, nextIndex: number } | null}
    */
-  #findInitialDelimiter() {
-    for (let index = 0; index < this.body.length; index++) {
-      const isLineStart = index === 0 ||
-        (this.body[index - 2] === CR && this.body[index - 1] === LF);
-      if (!isLineStart || !this.#matchesBoundary(index)) {
-        continue;
-      }
+  #matchDelimiter(index) {
+    if (!this.#matchesBoundary(index)) {
+      return null;
+    }
 
-      let suffixIndex = index + this.boundaryChars.length;
-      /** @type {1 | 2} */
-      let type = 1;
-      if (
-        this.body[suffixIndex] === DASH &&
-        this.body[suffixIndex + 1] === DASH
-      ) {
-        type = 2;
-        suffixIndex += 2;
-      }
+    let suffixIndex = index + this.boundaryChars.length;
+    /** @type {1 | 2} */
+    let type = 1;
+    if (
+      this.body[suffixIndex] === DASH &&
+      this.body[suffixIndex + 1] === DASH
+    ) {
+      type = 2;
+      suffixIndex += 2;
+    }
 
-      while (
-        this.body[suffixIndex] === SPACE || this.body[suffixIndex] === TAB
-      ) {
-        suffixIndex++;
-      }
+    // RFC 2046 section 5.1.1 requires receivers to accept transport
+    // padding on every boundary delimiter line.
+    while (
+      this.body[suffixIndex] === SPACE || this.body[suffixIndex] === TAB
+    ) {
+      suffixIndex++;
+    }
 
-      if (type === 2 && suffixIndex === this.body.length) {
-        return { type, headerStart: suffixIndex };
-      }
-      if (
-        this.body[suffixIndex] === CR && this.body[suffixIndex + 1] === LF
-      ) {
-        return { type, headerStart: suffixIndex + 2 };
-      }
+    if (type === 2 && suffixIndex === this.body.length) {
+      return { type, nextIndex: suffixIndex };
+    }
+    if (
+      this.body[suffixIndex] === CR && this.body[suffixIndex + 1] === LF
+    ) {
+      return { type, nextIndex: suffixIndex + 2 };
     }
 
     return null;
   }
 
   /**
-   * @param {number} index
-   * @returns {0 | 1 | 2}
+   * @returns {{ type: 1 | 2, headerStart: number } | null}
    */
-  #delimiterType(index) {
-    if (!this.#matchesBoundary(index)) {
-      return 0;
+  #findInitialDelimiter() {
+    // RFC 2046 section 5.1.1 requires receivers to ignore the preamble.
+    // Only consider boundary delimiters at the start of a line so that
+    // boundary-looking bytes within the preamble are not accepted.
+    for (let index = 0; index < this.body.length; index++) {
+      const isLineStart = index === 0 ||
+        (this.body[index - 2] === CR && this.body[index - 1] === LF);
+      if (!isLineStart) {
+        continue;
+      }
+
+      const delimiter = this.#matchDelimiter(index);
+      if (delimiter !== null) {
+        return { type: delimiter.type, headerStart: delimiter.nextIndex };
+      }
     }
 
-    const suffixIndex = index + this.boundaryChars.length;
-    if (this.body[suffixIndex] === CR && this.body[suffixIndex + 1] === LF) {
-      return 1;
-    }
-    if (
-      this.body[suffixIndex] === DASH &&
-      this.body[suffixIndex + 1] === DASH
-    ) {
-      return 2;
-    }
-
-    return 0;
+    return null;
   }
 
   /**
@@ -567,8 +566,8 @@ class MultipartParser {
         }
       } else if (state === 2) {
         if (isNewLine) {
-          const delimiterType = this.#delimiterType(i + 1);
-          if (delimiterType === 0) {
+          const delimiter = this.#matchDelimiter(i + 1);
+          if (delimiter === null) {
             continue;
           }
 
@@ -605,13 +604,13 @@ class MultipartParser {
             }
           }
 
-          if (delimiterType === 2) {
+          if (delimiter.type === 2) {
             break;
           }
 
           state = 1;
-          i += this.boundaryChars.length + 2; // Skip boundary + trailing \r\n
-          headerStart = i + 1;
+          headerStart = delimiter.nextIndex;
+          i = headerStart - 1;
         }
       }
     }
