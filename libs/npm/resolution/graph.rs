@@ -2370,7 +2370,16 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
 
       // Check each resolved peer: is the same peer available in current scope?
       for (name, cached_id) in &entry.resolved_peers {
-        match parent_pkgs.get(name) {
+        // Look the peer up the same way `find_peer_node_id` did when the
+        // entry was built: scope first, then the auto-installed peer
+        // fallbacks. Checking only `parent_pkgs` here meant any entry
+        // whose peer came from a fallback could never match — the name is
+        // absent from every scope — so those packages were re-resolved on
+        // every path and resolution never terminated.
+        match parent_pkgs
+          .get(name)
+          .or_else(|| self.peer_fallbacks.get(name))
+        {
           Some(current_id) if current_id == cached_id => continue,
           Some(current_id) => {
             // Different NodeId. Check if same package version.
@@ -2412,7 +2421,9 @@ impl<'a, TNpmRegistryApi: NpmRegistryApi>
 
       // Check that previously missing peers are still missing
       for name in entry.missing_peers.keys() {
-        if parent_pkgs.contains_key(name) {
+        if parent_pkgs.contains_key(name)
+          || self.peer_fallbacks.contains_key(name)
+        {
           all_match = false;
           break;
         }
@@ -9543,8 +9554,8 @@ mod test {
     let (packages, _) = run_resolver_and_get_output(api, vec!["app@1"]).await;
 
     // Check the graph really was resolved with its peers before asserting
-    // on id length — peers going missing entirely would also produce short
-    // ids, and this test doesn't run in CI to catch that separately.
+    // on id length — peers going missing entirely would also produce
+    // short ids and pass the bound below for the wrong reason.
     assert_eq!(packages.len(), depth + 1);
     let h0 = packages
       .iter()
@@ -9571,6 +9582,101 @@ mod test {
     );
   }
 
+  /// Regression test for a hang resolving `npm:@deepseek-ai/dsh`.
+  ///
+  /// That package pulls in ~60 sibling packages that all peer-depend on a
+  /// shared "core" package (plus helpers that themselves peer-depend on
+  /// core), and nothing depends on those shared packages as a regular dep,
+  /// so they get auto-installed into `peer_fallbacks` instead of living in
+  /// any scope.
+  ///
+  /// `find_peer_node_id` resolves peers from the scope *or* the fallbacks,
+  /// but `find_peers_cache_hit` only looked at the scope. So every cache
+  /// entry for a package whose peer came from a fallback recorded a name
+  /// that is absent from every scope, and could never match. Each of those
+  /// packages was then re-resolved once per path through the DAG — and
+  /// because the paths grow exponentially, resolution never finished.
+  ///
+  /// Unlike `peer_deps_mutual_many_packages_no_hang`, the peers here are
+  /// NOT in the root scope, which is what routes them through the
+  /// fallbacks.
+  #[tokio::test]
+  async fn peer_deps_layered_dag_no_hang() {
+    let api = TestNpmRegistryApi::default();
+
+    // Shared packages that nearly everything peer-depends on.
+    api.ensure_package_version("core", "1.0.0");
+    api.ensure_package_version("invariants", "1.0.0");
+    api.ensure_package_version("brand", "1.0.0");
+
+    // core has optional peers back on plugins that are themselves in the
+    // graph, forming peer cycles through the shared cluster.
+    api.ensure_package_version("plugin-a", "1.0.0");
+    api.ensure_package_version("plugin-b", "1.0.0");
+    api.add_optional_peer_dependency(("core", "1.0.0"), ("plugin-a", "*"));
+    api.add_optional_peer_dependency(("core", "1.0.0"), ("plugin-b", "*"));
+    api.add_peer_dependency(("plugin-a", "1.0.0"), ("core", "*"));
+    api.add_peer_dependency(("plugin-b", "1.0.0"), ("core", "*"));
+
+    api.add_peer_dependency(("invariants", "1.0.0"), ("core", "*"));
+    api.add_peer_dependency(("brand", "1.0.0"), ("core", "*"));
+    api.add_peer_dependency(("brand", "1.0.0"), ("invariants", "*"));
+
+    // A layered DAG of packages. Each depends on the next few, so the
+    // number of distinct root->leaf paths grows exponentially in `n`
+    // while the node count stays linear.
+    let n = 24;
+    let pkg_names: Vec<String> = (0..n).map(|i| format!("pkg-{i}")).collect();
+    for (i, name) in pkg_names.iter().enumerate() {
+      api.ensure_package_version(name, "1.0.0");
+      // Every package peer-depends on the shared cluster, so none of them
+      // can be marked "pure" and short-circuited.
+      api.add_peer_dependency((name, "1.0.0"), ("core", "*"));
+      api.add_peer_dependency((name, "1.0.0"), ("brand", "*"));
+      for step in 1..=3 {
+        if let Some(next) = pkg_names.get(i + step) {
+          api.add_dependency((name, "1.0.0"), (next.as_str(), "1"));
+        }
+      }
+    }
+
+    // Root only depends on the first few packages, so the rest are reached
+    // transitively through the DAG. Nothing depends on the shared cluster
+    // as a regular dep, so those packages are auto-installed as peer
+    // fallbacks rather than living in any scope.
+    api.ensure_package_version("app", "1.0.0");
+    for name in pkg_names.iter().take(3) {
+      api.add_dependency(("app", "1.0.0"), (name.as_str(), "1"));
+    }
+
+    // Phase 2 is synchronous, so `tokio::time::timeout` can't interrupt it
+    // — assert on elapsed time instead. With the cache working this takes
+    // milliseconds; when it regresses it takes minutes.
+    let start = std::time::Instant::now();
+    let (packages, _) = run_resolver_and_get_output(api, vec!["app@1"]).await;
+    let elapsed = start.elapsed();
+    assert!(
+      elapsed < std::time::Duration::from_secs(30),
+      "resolution took {elapsed:?} — Phase 2 peer resolution is re-walking \
+       the graph once per path instead of once per distinct peer context"
+    );
+
+    // plugin-a/plugin-b are only optional peers of core, so they are not
+    // auto-installed — they exist to put an optional-peer cycle through
+    // the shared cluster.
+    for name in pkg_names.iter().map(|s| s.as_str()).chain([
+      "core",
+      "brand",
+      "invariants",
+    ]) {
+      assert!(
+        packages
+          .iter()
+          .any(|p| p.pkg_id.starts_with(&format!("{name}@"))),
+        "should have {name}"
+      );
+    }
+  }
   /// Test that NpmPackageId serialization length stays bounded.
   /// With the Expo-like pattern of many plugins with circular peer deps,
   /// no single package ID should exceed a reasonable length.
