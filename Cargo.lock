@@ -2350,9 +2350,9 @@ dependencies = [
  "ctr",
  "curve25519-dalek",
  "deno_core",
+ "deno_crypto_provider",
  "deno_error",
  "ecdsa",
- "ed448-goldilocks",
  "elliptic-curve 0.13.8",
  "fips203",
  "fips205",
@@ -2372,6 +2372,7 @@ dependencies = [
  "sha3 0.10.8",
  "signature 2.2.0",
  "spki 0.7.3",
+ "subtle",
  "thiserror 2.0.12",
  "tiny-keccak",
  "tokio",
@@ -2384,6 +2385,7 @@ name = "deno_crypto_provider"
 version = "0.51.0"
 dependencies = [
  "aws-lc-sys",
+ "ed448-goldilocks",
 ]
 
 [[package]]
