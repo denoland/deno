@@ -37,11 +37,12 @@
 //!   every network hop, including redirect hops (see
 //!   [`EgressHeaderPolicy::apply_static`]).
 //! - `forward`/`append` are not idempotent (re-applying on a redirect hop
-//!   would duplicate appended values) and are applied in JS, where the
+//!   would duplicate appended values) and are selected in JS, where the
 //!   inbound-request async context is available: once per outermost
 //!   `mainFetch` call, which covers every entry point into the fetch stack
-//!   including `EventSource` (see `26_fetch.js`). They apply after the
-//!   default headers `fetch()` adds, so a policy may `remove` those.
+//!   including `EventSource` (see `26_fetch.js`). `op_fetch` preserves those
+//!   selected values, then scrubs and restores them after URL credentials and
+//!   the embedder's request hook have run.
 //!
 //! Once a redirect crosses origins, `set`/`default` stop applying to the
 //! credential headers WHATWG fetch drops there; see
@@ -130,9 +131,11 @@ pub struct EgressHeaderPolicy {
   set: Vec<(HeaderName, HeaderValue)>,
   set_if_absent: Vec<(HeaderName, HeaderValue)>,
   /// Names scrubbed and re-managed per hop in Rust: `remove` ∪ `set`.
-  /// (`forward` ∪ `append` names are scrubbed in JS, before forwarded
-  /// values are injected.)
   scrub_static: Vec<HeaderName>,
+  /// Names whose JS-selected values are preserved while Rust finishes request
+  /// construction, then scrubbed and restored afterwards: `forward` ∪
+  /// `append`.
+  scrub_dynamic: Vec<HeaderName>,
   /// Lowercase names whose inbound values are forwarded, applied in JS.
   forward: Vec<String>,
   /// (lowercase name, value) pairs appended once per outermost fetch, in JS.
@@ -197,6 +200,12 @@ impl EgressHeaderPolicy {
 
     let mut scrub_static = remove;
     scrub_static.extend(set.iter().map(|(n, _)| n.clone()));
+    let mut scrub_dynamic = forward.clone();
+    for (name, _) in &append {
+      if !scrub_dynamic.contains(name) {
+        scrub_dynamic.push(name.clone());
+      }
+    }
 
     let writes_redirect_sensitive = set
       .iter()
@@ -207,6 +216,7 @@ impl EgressHeaderPolicy {
       set,
       set_if_absent,
       scrub_static,
+      scrub_dynamic,
       forward: forward.iter().map(|n| n.as_str().to_string()).collect(),
       append: append
         .into_iter()
@@ -261,6 +271,31 @@ impl EgressHeaderPolicy {
     }
   }
 
+  /// Whether a header carries a JS-selected `forward`/`append` value that
+  /// must be preserved separately while Rust finishes request construction.
+  pub(crate) fn owns_dynamic_header(&self, name: &HeaderName) -> bool {
+    self.scrub_dynamic.contains(name)
+  }
+
+  /// Reasserts the JS-selected `forward`/`append` values after every other
+  /// request-construction step. Values in `policy_headers` came from the
+  /// already-scrubbed JS header list, before URL credentials and the embedder
+  /// hook could add competing values.
+  pub(crate) fn apply_dynamic(
+    &self,
+    headers: &mut HeaderMap,
+    policy_headers: &HeaderMap,
+  ) {
+    for name in &self.scrub_dynamic {
+      if let header::Entry::Occupied(entry) = headers.entry(name) {
+        entry.remove_entry_mult();
+      }
+    }
+    for (name, value) in policy_headers {
+      headers.append(name, value.clone());
+    }
+  }
+
   /// The JS-applied part of the policy: header names to forward from the
   /// inbound request context and (name, value) pairs to append, both
   /// lowercase. Empty lists mean the JS fast path can skip entirely.
@@ -271,7 +306,7 @@ impl EgressHeaderPolicy {
   /// Whether the policy takes *ownership* of this (lowercase) header: it
   /// scrubs any user-supplied value and writes its own. That is `remove` ∪
   /// `set` (scrubbed in Rust, [`Self::apply_static`]) ∪ `forward` ∪ `append`
-  /// (scrubbed in JS, `26_fetch.js`).
+  /// (selected in JS and reasserted in Rust, [`Self::apply_dynamic`]).
   ///
   /// Embedders with their own header mechanisms use this to yield to the
   /// policy — the CLI's legacy `CDN_LOOP`/`X_DENO_FETCH_TOKEN` handling skips

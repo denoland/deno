@@ -425,12 +425,46 @@ pub(crate) fn egress_header_policy_from_env()
     OnceLock::new();
   POLICY
     .get_or_init(|| {
-      let json = std::env::var("DENO_EGRESS_HEADER_POLICY").ok()?;
-      Some(Arc::new(deno_fetch::EgressHeaderPolicyState::from_json(
-        &json,
-      )))
+      egress_header_policy_from_env_value(std::env::var(
+        "DENO_EGRESS_HEADER_POLICY",
+      ))
+      .map(Arc::new)
     })
     .clone()
+}
+
+fn egress_header_policy_from_env_value(
+  value: Result<String, std::env::VarError>,
+) -> Option<deno_fetch::EgressHeaderPolicyState> {
+  match value {
+    Ok(json) => Some(deno_fetch::EgressHeaderPolicyState::from_json(&json)),
+    Err(std::env::VarError::NotPresent) => None,
+    Err(std::env::VarError::NotUnicode(_)) => {
+      Some(deno_fetch::EgressHeaderPolicyState::Invalid(
+        "DENO_EGRESS_HEADER_POLICY environment variable is not valid Unicode"
+          .to_string(),
+      ))
+    }
+  }
+}
+
+#[cfg(all(test, unix))]
+mod egress_header_policy_tests {
+  use super::*;
+
+  #[test]
+  fn non_unicode_environment_policy_is_invalid() {
+    use std::os::unix::ffi::OsStringExt;
+
+    let state = egress_header_policy_from_env_value(Err(
+      std::env::VarError::NotUnicode(std::ffi::OsString::from_vec(vec![0xff])),
+    ))
+    .expect("a non-Unicode value must retain a poisoned policy state");
+    let deno_fetch::EgressHeaderPolicyState::Invalid(message) = state else {
+      panic!("expected an invalid policy state");
+    };
+    assert!(message.contains("Unicode"));
+  }
 }
 
 pub fn create_op_metrics(

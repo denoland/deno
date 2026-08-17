@@ -543,30 +543,38 @@ pub fn op_fetch(
         request.headers_mut().insert(CONTENT_LENGTH, len.into());
       }
 
+      let options = state.borrow::<Options>();
+      let valid_policy = match options.egress_header_policy.as_deref() {
+        Some(EgressHeaderPolicyState::Valid(policy)) => Some(policy),
+        Some(EgressHeaderPolicyState::Invalid(message)) => {
+          return Err(FetchError::EgressHeaderPolicy(message.clone()));
+        }
+        None => None,
+      };
+      let mut dynamic_policy_headers = HeaderMap::new();
+
       for (key, value) in headers {
         let name = HeaderName::from_bytes(&key)?;
         let v = HeaderValue::from_bytes(&value)?;
 
         if (name != HOST || allow_host) && name != CONTENT_LENGTH {
+          if valid_policy
+            .is_some_and(|policy| policy.owns_dynamic_header(&name))
+          {
+            dynamic_policy_headers.append(name.clone(), v.clone());
+          }
           request.headers_mut().append(name, v);
         }
       }
 
-      let options = state.borrow::<Options>();
       if let Some(request_builder_hook) = options.request_builder_hook {
         request_builder_hook(&mut request)
           .map_err(FetchError::RequestBuilderHook)?;
       }
 
-      match options.egress_header_policy.as_deref() {
-        None => {}
-        Some(EgressHeaderPolicyState::Valid(policy)) => {
-          policy
-            .apply_static(request.headers_mut(), redirect_sensitive_stripped);
-        }
-        Some(EgressHeaderPolicyState::Invalid(message)) => {
-          return Err(FetchError::EgressHeaderPolicy(message.clone()));
-        }
+      if let Some(policy) = valid_policy {
+        policy.apply_static(request.headers_mut(), redirect_sensitive_stripped);
+        policy.apply_dynamic(request.headers_mut(), &dynamic_policy_headers);
       }
 
       let cancel_handle = CancelHandle::new_rc();

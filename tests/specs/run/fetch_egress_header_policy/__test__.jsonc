@@ -14,6 +14,13 @@
       },
       "output": "forward_append.out"
     },
+    "post_construction_scrub": {
+      "args": "run -A post_construction_scrub.ts",
+      "envs": {
+        "DENO_EGRESS_HEADER_POLICY": "{\"append\":{\"authorization\":\"Bearer operator-secret\"}}"
+      },
+      "output": "post_construction_scrub.out"
+    },
     "legacy_precedence": {
       "args": "run -A legacy_precedence.ts",
       "envs": {
