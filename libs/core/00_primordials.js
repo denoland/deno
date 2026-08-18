@@ -144,6 +144,9 @@
 
   function copyPrototype(src, dest, prefix) {
     for (const key of ReflectOwnKeys(src)) {
+      if (key === "constructor") {
+        continue;
+      }
       const newKey = getNewKey(key);
       const desc = ReflectGetOwnPropertyDescriptor(src, key);
       if ("get" in desc) {
@@ -644,7 +647,6 @@
     "SharedArrayBufferName",
     "SharedArrayBufferPrototype",
     "SharedArrayBufferGetSymbolSpecies",
-    "SharedArrayBufferPrototypeConstructor",
     "SharedArrayBufferPrototypeGetByteLength",
     "SharedArrayBufferPrototypeGetGrowable",
     "SharedArrayBufferPrototypeGetMaxByteLength",
