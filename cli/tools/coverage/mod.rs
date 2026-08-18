@@ -140,6 +140,18 @@ fn utf16_offset(utf16_map: &Utf16Map, byte_offset: usize) -> usize {
     .expect("a byte offset within the source has a UTF-16 offset")
 }
 
+/// The byte offset of `utf16_offset` in the source `utf16_map` was built over,
+/// for reading the source a coverage range covers or locating the line it is
+/// on. Reading a range's offset as anything but a UTF-16 offset lands this far
+/// enough along the source to cross a line end, which files a branch under the
+/// line below the one it is on.
+fn byte_offset(utf16_map: &Utf16Map, utf16_offset: usize) -> usize {
+  utf16_map
+    .utf16_to_utf8_offset(TextSize::from(utf16_offset as u32))
+    .map(|offset| u32::from(offset) as usize)
+    .expect("a UTF-16 offset within the source has a byte offset")
+}
+
 fn generate_coverage_report(
   options: GenerateCoverageReportOptions,
 ) -> Result<CoverageReport, AnyError> {
@@ -190,6 +202,7 @@ fn generate_coverage_report(
   let runtime_comments =
     lex_comments(&options.script_runtime_source, MediaType::JavaScript);
   let runtime_text_lines = TextLines::new(&options.script_runtime_source);
+  let utf16_map = Utf16Map::new(&options.script_runtime_source);
   for function in &options.script_coverage.functions {
     if function.function_name.is_empty() {
       continue;
@@ -201,6 +214,7 @@ fn generate_coverage_report(
     let Some(line_index) = range_to_src_line_index(
       &function.ranges[0],
       &runtime_text_lines,
+      &utf16_map,
       &maybe_source_map,
     ) else {
       continue;
@@ -269,10 +283,8 @@ fn generate_coverage_report(
       // Skip whitespace-only "gap" ranges V8 emits between blocks (e.g. the
       // sliver between a catch's `return` and `finally`). They aren't real
       // branch arms, so counting them yields phantom branches (#35765).
-      let start_byte_offset =
-        runtime_text_lines.byte_index_from_char_index(range.start_char_offset);
-      let end_byte_offset =
-        runtime_text_lines.byte_index_from_char_index(range.end_char_offset);
+      let start_byte_offset = byte_offset(&utf16_map, range.start_char_offset);
+      let end_byte_offset = byte_offset(&utf16_map, range.end_char_offset);
       if options.script_runtime_source[start_byte_offset..end_byte_offset]
         .trim()
         .is_empty()
@@ -283,9 +295,12 @@ fn generate_coverage_report(
       // Same rationale as above: drop sub-ranges with no source mapping —
       // they belong to transformer-injected helper code, not the user's
       // source.
-      let Some(line_index) =
-        range_to_src_line_index(range, &runtime_text_lines, &maybe_source_map)
-      else {
+      let Some(line_index) = range_to_src_line_index(
+        range,
+        &runtime_text_lines,
+        &utf16_map,
+        &maybe_source_map,
+      ) else {
         continue;
       };
       branches_by_line
@@ -381,7 +396,6 @@ fn generate_coverage_report(
   // TODO(caspervonb): collect uncovered ranges on the lines so that we can highlight specific
   // parts of a line in color (word diff style) instead of the entire line.
   let mut line_counts = Vec::with_capacity(runtime_text_lines.lines_count());
-  let utf16_map = Utf16Map::new(&options.script_runtime_source);
   for line_index in 0..runtime_text_lines.lines_count() {
     let (line_start_byte_offset, line_end_byte_offset) =
       runtime_text_lines.line_range(line_index);
@@ -582,17 +596,21 @@ fn generate_coverage_report(
 fn range_to_src_line_index(
   range: &cdp::CoverageRange,
   text_lines: &TextLines,
+  utf16_map: &Utf16Map,
   maybe_source_map: &Option<SourceMap>,
 ) -> Option<usize> {
-  let source_lc = text_lines.line_and_column_index(
-    text_lines.byte_index_from_char_index(range.start_char_offset),
-  );
+  let range_start_byte_offset = byte_offset(utf16_map, range.start_char_offset);
+  let line_index = text_lines.line_index(range_start_byte_offset);
   if let Some(source_map) = maybe_source_map.as_ref() {
+    // A source map's columns are UTF-16 code units as well, so the column is
+    // the distance from the line's start in that unit.
+    let column = utf16_offset(utf16_map, range_start_byte_offset)
+      - utf16_offset(utf16_map, text_lines.line_start(line_index));
     source_map
-      .lookup_token(source_lc.line_index as u32, source_lc.column_index as u32)
+      .lookup_token(line_index as u32, column as u32)
       .map(|token| token.get_src_line() as usize)
   } else {
-    Some(source_lc.line_index)
+    Some(line_index)
   }
 }
 
@@ -1077,5 +1095,15 @@ mod tests {
     assert_eq!(utf16_offset(&utf16_map, second_line_start), 8);
     assert_eq!(text_lines.char_index(second_line_start), 6);
     assert_eq!(utf16_offset(&utf16_map, text_lines.line_end(0_usize)), 7);
+
+    // A range starting at that 7 belongs to the first line. Read as a
+    // scalar-value offset instead it reaches into the line below, which is what
+    // files a branch under the wrong line.
+    assert_eq!(byte_offset(&utf16_map, 7), text_lines.line_end(0_usize));
+    assert_eq!(text_lines.line_index(byte_offset(&utf16_map, 7)), 0);
+    assert_eq!(
+      text_lines.line_index(text_lines.byte_index_from_char_index(7)),
+      1,
+    );
   }
 }
