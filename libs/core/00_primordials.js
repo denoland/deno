@@ -636,6 +636,40 @@
     queueMicrotask = value;
   };
 
+  // Create getter and setter for `SharedArrayBuffer`, it hasn't been bound yet.
+  let sharedArrayBufferPrimordials = undefined;
+  [
+    "SharedArrayBuffer",
+    "SharedArrayBufferLength",
+    "SharedArrayBufferName",
+    "SharedArrayBufferPrototype",
+    "SharedArrayBufferGetSymbolSpecies",
+    "SharedArrayBufferPrototypeConstructor",
+    "SharedArrayBufferPrototypeGetByteLength",
+    "SharedArrayBufferPrototypeGetGrowable",
+    "SharedArrayBufferPrototypeGetMaxByteLength",
+    "SharedArrayBufferPrototypeSlice",
+    "SharedArrayBufferPrototypeGrow",
+    "SharedArrayBufferPrototypeSymbolToStringTag",
+  ].forEach((name) => {
+    ObjectDefineProperty(primordials, name, {
+      __proto__: null,
+      get() {
+        return sharedArrayBufferPrimordials?.[name];
+      },
+    });
+  });
+  primordials.setSharedArrayBuffer = (value) => {
+    if (sharedArrayBufferPrimordials !== undefined) {
+      throw new Error("SharedArrayBuffer is already defined");
+    }
+    const dest = { __proto__: null };
+    dest.SharedArrayBuffer = value;
+    copyPropsRenamed(value, dest, "SharedArrayBuffer");
+    copyPrototype(value.prototype, dest, "SharedArrayBufferPrototype");
+    sharedArrayBufferPrimordials = dest;
+  };
+
   // Renaming from `eval` is necessary because otherwise it would perform direct
   // evaluation, allowing user-land access to local variables.
   // This is because the identifier `eval` is somewhat treated as a keyword

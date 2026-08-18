@@ -17,6 +17,7 @@
     ObjectHasOwn,
     ReflectOwnKeys,
     setQueueMicrotask,
+    setSharedArrayBuffer,
     SafeMap,
     SafeWeakMap,
     StringPrototypeSlice,
@@ -64,6 +65,7 @@
     op_lazy_load_esm,
     op_load_ext_script,
     op_set_captured_bootstrap,
+    op_get_shared_array_buffer_constructor,
     op_memory_usage,
     op_op_names,
     op_print,
@@ -1321,4 +1323,7 @@
   // Direct bindings on `globalThis`
   ObjectAssign(globalThis, { queueMicrotask });
   setQueueMicrotask(queueMicrotask);
+  // SharedArrayBuffer may be hidden from the global (V8 per-context flag).
+  // The constructor still exists internally; pull it from V8 via Rust.
+  setSharedArrayBuffer(op_get_shared_array_buffer_constructor());
 })(globalThis);
