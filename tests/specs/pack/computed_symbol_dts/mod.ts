@@ -1,6 +1,10 @@
 import type { Options } from "./types.ts";
+export { looseValue } from "./member/mod.ts";
 
 export const customSymbol: unique symbol = Symbol("custom");
+export const strictValue = null;
+const rootIndex: number = 0 as number;
+export const rootValue = ["root"][rootIndex];
 
 export class Base {
   inherited(): string {

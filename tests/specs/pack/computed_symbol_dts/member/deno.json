@@ -1,0 +1,9 @@
+{
+  "name": "@test/computed-symbol-member",
+  "version": "1.0.0",
+  "exports": "./mod.ts",
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true
+  }
+}

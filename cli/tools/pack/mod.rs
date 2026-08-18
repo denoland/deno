@@ -15,6 +15,7 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
+use deno_resolver::deno_json::CompilerOptionsKey;
 use deno_terminal::colors;
 
 use crate::args::CliOptions;
@@ -835,61 +836,78 @@ async fn emit_declarations_for_pack(
   paths: &[CollectedPath],
   ts_type_lib: crate::args::TsTypeLib,
 ) -> Result<BTreeMap<String, String>, AnyError> {
-  let mut source_by_dts_path = BTreeMap::new();
-  let root_names = paths
-    .iter()
-    .filter_map(|path| {
-      let Some(Module::Js(js_module)) = graph.get(&path.specifier) else {
-        return None;
-      };
-      js_module
-        .fast_check_module()
-        .and_then(|module| module.dts.as_ref())?;
-      let media_type = js_module.media_type;
-      if !matches!(
-        media_type,
-        MediaType::TypeScript
-          | MediaType::Tsx
-          | MediaType::Mts
-          | MediaType::Cts
-      ) {
-        return None;
-      }
-      let mut source_path = path.specifier.to_file_path().ok()?;
-      let file_name = source_path.file_name()?.to_str()?;
-      source_path.set_file_name(ts_to_dts_extension(file_name));
-      source_by_dts_path.insert(source_path, path.specifier.clone());
-      Some((path.specifier.clone(), media_type))
-    })
-    .collect::<Vec<_>>();
-  if root_names.is_empty() {
+  let compiler_options_resolver = cli_factory.compiler_options_resolver()?;
+  let mut roots_by_scope: BTreeMap<CompilerOptionsKey, Vec<_>> =
+    BTreeMap::new();
+  for path in paths {
+    let Some(Module::Js(js_module)) = graph.get(&path.specifier) else {
+      continue;
+    };
+    if js_module
+      .fast_check_module()
+      .and_then(|module| module.dts.as_ref())
+      .is_none()
+    {
+      continue;
+    }
+    let media_type = js_module.media_type;
+    if !matches!(
+      media_type,
+      MediaType::TypeScript | MediaType::Tsx | MediaType::Mts | MediaType::Cts
+    ) {
+      continue;
+    }
+    let Ok(mut dts_path) = path.specifier.to_file_path() else {
+      continue;
+    };
+    let Some(file_name) = dts_path.file_name().and_then(|f| f.to_str()) else {
+      continue;
+    };
+    dts_path.set_file_name(ts_to_dts_extension(file_name));
+    let (scope, _) =
+      compiler_options_resolver.entry_for_specifier(&path.specifier);
+    roots_by_scope.entry(scope).or_default().push((
+      path.specifier.clone(),
+      media_type,
+      dts_path,
+    ));
+  }
+  if roots_by_scope.is_empty() {
     return Ok(BTreeMap::new());
   }
 
   let type_checker = cli_factory.type_checker().await?;
-  let result = type_checker.emit_declarations(
-    Arc::new(graph.clone()),
-    root_names,
-    ts_type_lib,
-  )?;
-  if result.diagnostics.has_diagnostic() {
-    log::warn!(
-      "TypeScript diagnostics while generating package declarations:\n{}",
-      result.diagnostics
-    );
-  }
-
+  let graph = Arc::new(graph.clone());
   let mut dts_by_source = BTreeMap::new();
-  for (file_name, content) in result.emitted_files {
-    let path = ModuleSpecifier::parse(&file_name)
-      .ok()
-      .and_then(|specifier| specifier.to_file_path().ok())
-      .unwrap_or_else(|| PathBuf::from(&file_name));
-    if let Some(source_specifier) = source_by_dts_path.get(&path) {
-      dts_by_source.insert(
-        source_specifier.to_string(),
-        strip_amd_module_directives(content),
+  for roots in roots_by_scope.into_values() {
+    let source_by_dts_path = roots
+      .iter()
+      .map(|(specifier, _, dts_path)| (dts_path.clone(), specifier.clone()))
+      .collect::<BTreeMap<_, _>>();
+    let root_names = roots
+      .iter()
+      .map(|(specifier, media_type, _)| (specifier.clone(), *media_type))
+      .collect();
+    let result =
+      type_checker.emit_declarations(graph.clone(), root_names, ts_type_lib)?;
+    if result.diagnostics.has_diagnostic() {
+      log::warn!(
+        "TypeScript diagnostics while generating package declarations:\n{}",
+        result.diagnostics
       );
+    }
+
+    for (file_name, content) in result.emitted_files {
+      let path = ModuleSpecifier::parse(&file_name)
+        .ok()
+        .and_then(|specifier| specifier.to_file_path().ok())
+        .unwrap_or_else(|| PathBuf::from(&file_name));
+      if let Some(source_specifier) = source_by_dts_path.get(&path) {
+        dts_by_source.insert(
+          source_specifier.to_string(),
+          strip_amd_module_directives(content),
+        );
+      }
     }
   }
   Ok(dts_by_source)

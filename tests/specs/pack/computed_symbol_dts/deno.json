@@ -2,6 +2,11 @@
   "name": "@test/computed-symbol-dts",
   "version": "1.0.0",
   "exports": "./mod.ts",
+  "workspace": ["./member"],
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": false
+  },
   "publish": {
     "exclude": ["verify.ts"]
   }
