@@ -119,6 +119,10 @@ const installPkgsCommand =
   `sudo apt-get install -y --no-install-recommends clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion}`;
 const sysRootConfig = {
   name: "Set up incremental LTO and sysroot build",
+  // This normally takes under a minute, but `apt-get update` has been seen to
+  // hang indefinitely when a mirror is unreachable, burning the job's whole
+  // timeout before a single test runs. Fail fast instead.
+  timeoutMinutes: 10,
   run: `# Setting up sysroot
 export DEBIAN_FRONTEND=noninteractive
 # Avoid running man-db triggers, which sometimes takes several minutes
