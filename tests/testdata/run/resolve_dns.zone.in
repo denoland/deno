@@ -1,3 +1,4 @@
+$TTL 3600
 @   IN  SOA     net      admin\.domain (
                             20     ; SERIAL
                             7200   ; REFRESH
