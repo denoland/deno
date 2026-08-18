@@ -180,7 +180,7 @@ function parserOnBody(b) {
     // Mark as consuming so resOnFinish does not auto-dump a
     // paused request that already had data delivered.
     stream._consuming = true;
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     const ret = stream.push(b);
     if (!ret) {
       readStop(this.socket);
@@ -204,7 +204,7 @@ function parserOnMessageComplete() {
     }
 
     // For emit end event
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore deno-internal/prefer-primordials
     stream.push(null);
   }
 

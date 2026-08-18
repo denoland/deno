@@ -446,9 +446,10 @@ declare module "ext:deno_webidl/00_webidl.js" {
   ) => T[];
 
   /**
-   * Create a converter that converts an async iterable of the inner type.
+   * Create a converter that converts an async_sequence of the inner type.
+   * https://webidl.spec.whatwg.org/#js-async-iterable
    */
-  function createAsyncIterableConverter<V, T>(
+  function createAsyncSequenceConverter<V, T>(
     converter: (
       v: V,
       prefix?: string,
@@ -460,10 +461,14 @@ declare module "ext:deno_webidl/00_webidl.js" {
     prefix?: string,
     context?: string,
     opts?: any,
-  ) => ConvertedAsyncIterable<V, T>;
+  ) => ConvertedAsyncSequence<V, T>;
 
-  interface ConvertedAsyncIterable<V, T> extends AsyncIterableIterator<T> {
+  interface ConvertedAsyncSequence<V, T> extends AsyncIterable<T> {
     value: V;
+    object: V;
+    method: (...args: any[]) => any;
+    type: "sync" | "async";
+    open(context?: string): AsyncIterableIterator<T>;
   }
 
   /**
@@ -589,7 +594,11 @@ declare module "ext:deno_webidl/00_webidl.js" {
     | "Object";
 
   /**
-   * Check whether a value is an async iterable.
+   * Check whether a value can be converted to an async_sequence
+   * (has a usable @@asyncIterator or @@iterator via GetMethod).
+   * Throws TypeError if a method is present but not callable.
    */
-  function isAsyncIterable(v: any): boolean;
+  function isAsyncSequence(v: any): boolean;
+
+  const AsyncSequence: unique symbol;
 }

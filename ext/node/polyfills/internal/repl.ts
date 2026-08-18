@@ -7,7 +7,7 @@
 // exercises is `createInternalRepl(env, opts, cb)` plus the public
 // re-exports of node:repl.
 
-// deno-lint-ignore-file no-explicit-any prefer-primordials
+// deno-lint-ignore-file no-explicit-any deno-internal/prefer-primordials
 
 import { core } from "ext:core/mod.js";
 const lazyREPL = core.createLazyLoader("node:repl");

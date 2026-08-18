@@ -85,6 +85,7 @@ const HTTPS_CLIENT_AUTH_PORT: u16 = 5552;
 const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
 const WSS2_PORT: u16 = 4249;
+const WSS2_PUSH_PORT: u16 = 4266;
 const WS_CLOSE_PORT: u16 = 4244;
 const WS_HANG_PORT: u16 = 4264;
 const WS_PING_PORT: u16 = 4245;
@@ -118,6 +119,7 @@ pub async fn run_all_servers() {
   let ws_close_server_fut = ws::run_ws_close_server(WS_CLOSE_PORT);
   let ws_hang_server_fut = ws::run_ws_hang_handshake(WS_HANG_PORT);
   let wss2_server_fut = ws::run_wss2_server(WSS2_PORT);
+  let wss2_push_server_fut = ws::run_wss2_push_server(WSS2_PUSH_PORT);
 
   let tls_server_fut = run_tls_server(TLS_PORT);
   let tls_client_auth_server_fut =
@@ -161,6 +163,7 @@ pub async fn run_all_servers() {
     ws_ping_server_fut.boxed_local(),
     wss_server_fut.boxed_local(),
     wss2_server_fut.boxed_local(),
+    wss2_push_server_fut.boxed_local(),
     tls_server_fut.boxed_local(),
     tls_client_auth_server_fut.boxed_local(),
     ws_close_server_fut.boxed_local(),

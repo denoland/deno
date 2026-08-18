@@ -10,8 +10,9 @@ use deno_terminal::colors;
 use crate::args::CheckFlags;
 use crate::args::Flags;
 use crate::args::SyncTypesFlags;
-use crate::args::TypeCheckModeExt;
+use crate::args::graph_kind;
 use crate::factory::CliFactory;
+use crate::graph_util::GraphRootsValidOptions;
 use crate::tsc::Diagnostics;
 use crate::util::file_watcher;
 
@@ -101,7 +102,7 @@ async fn native_check(
     log::warn!("{} No matching files found.", colors::yellow("Warning"));
     return Ok(());
   }
-  let graph_kind = cli_options.type_check_mode().as_graph_kind();
+  let graph_kind = graph_kind(cli_options.type_check_mode());
   let imports = factory
     .module_graph_builder()
     .await?
@@ -129,10 +130,15 @@ async fn native_check(
   // missing modules is not re-added on top of tsc's TS2307 yet; restoring it
   // additively is a follow-up. `allow_unknown_media_types: true` matches
   // `deno check`, letting tsc handle unknown types instead of erroring.
-  factory
-    .module_graph_builder()
-    .await?
-    .graph_roots_valid(&graph, &roots, true, false)?;
+  factory.module_graph_builder().await?.graph_roots_valid(
+    &graph,
+    &roots,
+    GraphRootsValidOptions {
+      allow_unknown_media_types: true,
+      allow_unknown_jsr_exports: false,
+      allow_sloppy_imports_hints_for_unreferenced_roots: true,
+    },
+  )?;
 
   // Enforce the lockfile now that the graph has resolved the project's deps:
   // under `--frozen` this errors if the lockfile is out of date, otherwise it

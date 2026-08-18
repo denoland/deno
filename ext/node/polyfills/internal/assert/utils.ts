@@ -65,18 +65,18 @@ const meta = [
 const escapeFn = (str: string) => meta[StringPrototypeCharCodeAt(str, 0)];
 
 function getErrMessage(fn: Function) {
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   const tmpLimit = Error.stackTraceLimit;
   const errorStackTraceLimitIsWritable = isErrorStackTraceLimitWritable();
   // Make sure the limit is set to 1. Otherwise it could fail (<= 0) or it
   // does too much work.
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   if (errorStackTraceLimitIsWritable) Error.stackTraceLimit = 1;
   // We only need the stack trace. To minimize the overhead use an object
   // instead of an error.
   const err = {};
   ErrorCaptureStackTrace(err, fn);
-  // deno-lint-ignore prefer-primordials
+  // deno-lint-ignore deno-internal/prefer-primordials
   if (errorStackTraceLimitIsWritable) Error.stackTraceLimit = tmpLimit;
 
   let source = getErrorSourceExpression(err as Error);

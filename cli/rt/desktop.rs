@@ -201,6 +201,7 @@ pub const DESKTOP_JS: &str = r#"
   internals.defineEventHandler(BrowserWindowPrototype, "blur");
   internals.defineEventHandler(BrowserWindowPrototype, "resize");
   internals.defineEventHandler(BrowserWindowPrototype, "move");
+  internals.defineEventHandler(BrowserWindowPrototype, "load");
   internals.defineEventHandler(BrowserWindowPrototype, "close");
   internals.defineEventHandler(BrowserWindowPrototype, "menuclick");
   internals.defineEventHandler(BrowserWindowPrototype, "contextmenuclick");
@@ -855,6 +856,12 @@ pub const DESKTOP_JS: &str = r#"
             }));
             break;
           }
+          case "pageLoad": {
+            const target = windows.get(ev.windowId);
+            if (!target) break;
+            target.dispatchEvent(new Event("load"));
+            break;
+          }
           case "closeRequested": {
             const target = windows.get(ev.windowId);
             if (!target) break;
@@ -1292,6 +1299,11 @@ mod tests {
     // The original BrowserWindow is wrapped so per-window state is
     // recorded.
     assert!(DESKTOP_JS.contains("windows.set"));
+    assert!(DESKTOP_JS.contains(
+      "internals.defineEventHandler(BrowserWindowPrototype, \"load\")"
+    ));
+    assert!(DESKTOP_JS.contains("case \"pageLoad\""));
+    assert!(DESKTOP_JS.contains("dispatchEvent(new Event(\"load\"))"));
   }
 
   #[test]

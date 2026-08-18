@@ -51,6 +51,11 @@ Deno.test(function webstorageProxy() {
   assertEquals(symbol in localStorage, true);
 });
 
+Deno.test(function webstorageConstructorName() {
+  assertEquals(localStorage.constructor.name, "Storage");
+  assertEquals(sessionStorage.constructor.name, "Storage");
+});
+
 Deno.test(function webstorageGetOwnPropertyDescriptorSymbol() {
   localStorage.clear();
   Object.getOwnPropertyDescriptor(localStorage, Symbol("foo"));

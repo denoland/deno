@@ -176,6 +176,14 @@ impl ContextState {
     self.tick_info[0] != 0
   }
 
+  /// Mirrors JS `hasRejectionToWarn()`. `tick_info[1]` is written from Rust in
+  /// the promise reject callback and cleared from JS in
+  /// `processTicksAndRejections`; both run on the event loop thread so no
+  /// synchronization is needed for this read.
+  pub(crate) fn has_rejection_to_warn(&self) -> bool {
+    self.tick_info[1] != 0
+  }
+
   pub(crate) fn new(
     op_driver: Rc<OpDriverImpl>,
     isolate_ptr: v8::UnsafeRawIsolatePtr,

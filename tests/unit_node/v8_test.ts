@@ -99,6 +99,59 @@ Deno.test({
 });
 
 Deno.test({
+  name: "deserialize host objects from nonzero-offset views",
+  fn() {
+    const cases = [
+      { prefixLength: 8, value: Buffer.from([1, 2, 3, 4]) },
+      { prefixLength: 2, value: new Uint16Array([0x0102, 0x0304]) },
+    ];
+
+    for (const { prefixLength, value } of cases) {
+      const payload = v8.serialize(value);
+      const wrapped = Buffer.alloc(prefixLength + payload.length + 16, 0x44);
+      payload.copy(wrapped, prefixLength);
+      wrapped.fill(0x99, prefixLength + payload.length);
+
+      const views = [
+        wrapped.subarray(
+          prefixLength,
+          prefixLength + payload.length,
+        ),
+        new DataView(
+          wrapped.buffer,
+          wrapped.byteOffset + prefixLength,
+          payload.length,
+        ),
+      ];
+
+      for (const view of views) {
+        assertEquals(v8.deserialize(view), value);
+      }
+    }
+  },
+});
+
+Deno.test({
+  name: "deserialize throws when host object raw bytes are truncated",
+  fn() {
+    const payload = v8.serialize(Buffer.from([1, 2, 3, 4]));
+    assertThrows(
+      () => v8.deserialize(payload.subarray(0, payload.length - 1)),
+      Error,
+      "ReadRawBytes() failed",
+    );
+  },
+});
+
+Deno.test({
+  name: "Deserializer.readRawBytes accepts an empty read at offset zero",
+  fn() {
+    const deserializer = new v8.Deserializer(Buffer.alloc(0));
+    assertEquals(deserializer.readRawBytes(0), Buffer.alloc(0));
+  },
+});
+
+Deno.test({
   name: "Deserializer keeps delegate alive across GC",
   fn() {
     v8.setFlagsFromString("--expose_gc");

@@ -15,9 +15,15 @@ name = "denort"
 path = "lib.rs"
 crate-type = ["cdylib"]
 
+[features]
+default = ["v8"]
+quickjs = ["deno_core/quickjs", "denort/quickjs", "v8/quickjs"]
+v8 = ["deno_core/v8", "denort/v8", "v8/v8"]
+
 [build-dependencies]
 deno_runtime.workspace = true
 deno_core.workspace = true
+v8.workspace = true
 
 [dependencies]
 deno_core.workspace = true
@@ -26,8 +32,8 @@ deno_lib.workspace = true
 deno_runtime.workspace = true
 deno_snapshots.workspace = true
 deno_terminal.workspace = true
-denort = { path = "../rt" }
-laufey = "0.5.0"
+denort = { path = "../rt", default-features = false }
+laufey = "0.6.1"
 libsui.workspace = true
 
 log = { workspace = true, features = ["serde"] }
@@ -35,6 +41,7 @@ raw-window-handle.workspace = true
 rustls.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
+v8.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

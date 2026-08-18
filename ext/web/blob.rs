@@ -228,7 +228,6 @@ impl BlobPart for SlicedBlobPart {
 }
 
 #[op2]
-#[serde]
 pub fn op_blob_create_part(
   state: &mut OpState,
   #[buffer] data: JsBuffer,
@@ -245,10 +244,9 @@ pub struct SliceOptions {
 }
 
 #[op2]
-#[serde]
 pub fn op_blob_slice_part(
   state: &mut OpState,
-  #[serde] id: Uuid,
+  #[scoped] id: Uuid,
   #[scoped] options: SliceOptions,
 ) -> Result<Uuid, BlobError> {
   let blob_store = state.borrow::<Arc<dyn BlobStoreTrait>>();
@@ -272,7 +270,7 @@ pub fn op_blob_slice_part(
 #[op2]
 pub async fn op_blob_read_part(
   state: Rc<RefCell<OpState>>,
-  #[serde] id: Uuid,
+  #[scoped] id: Uuid,
 ) -> Result<Uint8Array, BlobError> {
   let part = {
     let state = state.borrow();
@@ -285,7 +283,7 @@ pub async fn op_blob_read_part(
 }
 
 #[op2]
-pub fn op_blob_remove_part(state: &mut OpState, #[serde] id: Uuid) {
+pub fn op_blob_remove_part(state: &mut OpState, #[scoped] id: Uuid) {
   let blob_store = state.borrow::<Arc<dyn BlobStoreTrait>>();
   blob_store.remove_part(&id);
 }
@@ -293,7 +291,7 @@ pub fn op_blob_remove_part(state: &mut OpState, #[serde] id: Uuid) {
 #[op2]
 pub fn op_blob_clone_part(
   state: &mut OpState,
-  #[serde] id: Uuid,
+  #[scoped] id: Uuid,
 ) -> Result<ReturnBlobPart, BlobError> {
   let blob_store = state.borrow::<Arc<dyn BlobStoreTrait>>();
   let part = blob_store
@@ -309,7 +307,7 @@ pub fn op_blob_clone_part(
 pub fn op_blob_create_object_url(
   state: &mut OpState,
   #[string] media_type: String,
-  #[serde] part_ids: Vec<Uuid>,
+  #[scoped] part_ids: Vec<Uuid>,
 ) -> Result<String, BlobError> {
   let mut parts = Vec::with_capacity(part_ids.len());
   let blob_store = state.borrow::<Arc<dyn BlobStoreTrait>>();
@@ -350,7 +348,6 @@ pub struct ReturnBlob {
 
 #[derive(ToV8)]
 pub struct ReturnBlobPart {
-  #[to_v8(serde)]
   pub uuid: Uuid,
   pub size: usize,
 }

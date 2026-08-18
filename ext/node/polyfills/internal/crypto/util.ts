@@ -324,6 +324,8 @@ const hashBlockSizes: Record<string, number> = {
   rmd160: 64,
   ripemd160: 64,
   sha1: 64,
+  // Historical OpenSSL alias for sha1, also accepted by the digest ops.
+  dss1: 64,
   sha224: 64,
   sha256: 64,
   sha384: 128,

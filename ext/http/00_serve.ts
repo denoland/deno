@@ -42,7 +42,6 @@ const {
   op_http_set_response_trailers,
   op_http_try_take_full_request_body,
   op_http_try_take_full_request_body_text,
-  op_http_upgrade_raw,
   op_http_upgrade_websocket_next,
   op_http_wait,
 } = core.ops;
@@ -76,9 +75,7 @@ const {
 const { InnerBody } = core.loadExtScript("ext:deno_fetch/22_body.js");
 const {
   dropServeNativeResponse,
-  fromInnerResponse,
   getInnerResponse,
-  newInnerResponse,
   responseBodyUsed,
   ResponsePrototype,
   serveNativeResponseKey,
@@ -98,7 +95,6 @@ const {
   cacheRequestHeaders,
   fromInnerRequest,
   requestHeadersExposed,
-  toInnerRequest,
 } = core.loadExtScript("ext:deno_fetch/23_request.js");
 const { AbortController } = core.loadExtScript(
   "ext:deno_web/03_abort_signal.js",
@@ -112,7 +108,6 @@ const {
 const {
   listen,
   listenOptionApiName,
-  UpgradedConn,
 } = core.loadExtScript("ext:deno_net/01_net.js");
 const { hasTlsKeyPairOptions, listenTls } = core.loadExtScript(
   "ext:deno_net/02_tls.js",
@@ -162,20 +157,6 @@ function internalServerError() {
     ]),
     { status: 500 },
   );
-}
-
-// Used to ensure that user returns a valid response (but not a different response) from handlers that are upgraded.
-const UPGRADE_RESPONSE_SENTINEL = fromInnerResponse(
-  newInnerResponse(101),
-  "immutable",
-);
-
-function upgradeHttpRaw(req) {
-  const inner = toInnerRequest(req);
-  if (inner?._wantsUpgrade) {
-    return inner._wantsUpgrade("upgradeHttpRaw");
-  }
-  throw new TypeError("'upgradeHttpRaw' may only be used with Deno.serve");
 }
 
 function addTrailers(resp, headerList) {
@@ -250,27 +231,6 @@ class InnerRequest {
     }
     if (this.#external === null) {
       throw new Deno.errors.Http("Already closed");
-    }
-
-    if (upgradeType == "upgradeHttpRaw") {
-      const external = this.#external;
-
-      this.url();
-      this.headerList;
-      const remoteAddr = this.remoteAddr;
-      this.close();
-
-      this.#upgraded = true;
-
-      const upgradeRid = op_http_upgrade_raw(external);
-
-      const conn = new UpgradedConn(
-        upgradeRid,
-        remoteAddr,
-        this.#context.listener.addr,
-      );
-
-      return { response: UPGRADE_RESPONSE_SENTINEL, conn };
     }
 
     if (upgradeType == "upgradeWebSocket") {
@@ -835,9 +795,6 @@ function mapToCallback(context, callback, onError) {
         context.close();
         return;
       }
-      if (response === UPGRADE_RESPONSE_SENTINEL) {
-        return;
-      }
     }
 
     // Did everything shut down while we were waiting?
@@ -1000,9 +957,6 @@ function mapToNativeResponseCallback(context, callback, onError) {
         context.close();
         return undefined;
       }
-      if (response === UPGRADE_RESPONSE_SENTINEL) {
-        return undefined;
-      }
     }
 
     if (
@@ -1043,63 +997,73 @@ function mapToNativeResponseCallback(context, callback, onError) {
     return undefined;
   }
 
+  function handleOnErrorError(req, span, innerRequest, error) {
+    if (otelState.METRICS_ENABLED) {
+      op_http_metric_handle_otel_error(req);
+    }
+    internals.log(
+      "error",
+      "Exception in onError while handling exception",
+      error,
+    );
+    return finishOrReturnNative(
+      req,
+      span,
+      innerRequest,
+      internalServerError(),
+    );
+  }
+
   function handleError(req, span, innerRequest, error) {
     let response;
     try {
       response = onError(error);
     } catch (error) {
-      if (otelState.METRICS_ENABLED) {
-        op_http_metric_handle_otel_error(req);
-      }
-      internals.log(
-        "error",
-        "Exception in onError while handling exception",
-        error,
-      );
-      response = internalServerError();
+      return handleOnErrorError(req, span, innerRequest, error);
     }
     try {
-      return finishOrReturnMaybePromise(req, span, innerRequest, response);
-    } catch (error) {
-      if (otelState.METRICS_ENABLED) {
-        op_http_metric_handle_otel_error(req);
-      }
-      internals.log(
-        "error",
-        "Exception in onError while handling exception",
-        error,
-      );
-      return finishOrReturnNative(
+      return finishOrReturnMaybePromise(
         req,
         span,
         innerRequest,
-        internalServerError(),
+        response,
+        true,
       );
+    } catch (error) {
+      return handleOnErrorError(req, span, innerRequest, error);
     }
   }
 
-  function finishOrReturnMaybePromise(req, span, innerRequest, response) {
+  function finishOrReturnMaybePromise(
+    req,
+    span,
+    innerRequest,
+    response,
+    isOnErrorResponse = false,
+  ) {
     if (
-      response !== null &&
-      (typeof response === "object" || typeof response === "function") &&
-      typeof response.then === "function"
+      (
+        response !== null &&
+        (typeof response === "object" || typeof response === "function") &&
+        typeof response.then === "function"
+      ) ||
+      (
+        innerRequest?.request !== undefined &&
+        requestHeadersExposed(innerRequest.request)
+      )
     ) {
-      return PromisePrototypeThen(
+      const finished = PromisePrototypeThen(
         PromiseResolve(response),
         (response) =>
           finishOrReturnNative(req, span, innerRequest, response, true),
-        (error) => handleError(req, span, innerRequest, error),
       );
-    }
-    if (
-      innerRequest?.request !== undefined &&
-      requestHeadersExposed(innerRequest.request)
-    ) {
       return PromisePrototypeThen(
-        PromiseResolve(response),
-        (response) =>
-          finishOrReturnNative(req, span, innerRequest, response, true),
-        (error) => handleError(req, span, innerRequest, error),
+        finished,
+        undefined,
+        (error) =>
+          isOnErrorResponse
+            ? handleOnErrorError(req, span, innerRequest, error)
+            : handleError(req, span, innerRequest, error),
       );
     }
     return finishOrReturnNative(req, span, innerRequest, response);
@@ -1663,7 +1627,6 @@ function serveHttpOn(context, addr) {
 }
 
 internals.addTrailers = addTrailers;
-internals.upgradeHttpRaw = upgradeHttpRaw;
 internals.serveHttpOnListener = serveHttpOnListener;
 internals.serveHttpOnConnection = serveHttpOnConnection;
 internals.resetLegacyAbortWarning = () => {
@@ -1765,6 +1728,5 @@ return {
   serve,
   serveHttpOnConnection,
   serveHttpOnListener,
-  upgradeHttpRaw,
 };
 })();

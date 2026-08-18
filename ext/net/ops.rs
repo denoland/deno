@@ -25,6 +25,7 @@ use deno_core::op2;
 use deno_permissions::PermissionsContainer;
 use hickory_proto::ProtoError;
 use hickory_proto::ProtoErrorKind;
+use hickory_proto::rr::Record;
 use hickory_proto::rr::record_data::RData;
 use hickory_proto::rr::record_type::RecordType;
 use hickory_resolver::ResolveError;
@@ -1135,27 +1136,34 @@ pub async fn op_dns_resolve(
     lookup_fut.await
   };
 
-  lookup
-    .map_err(|e| match e.kind() {
-      ResolveErrorKind::Proto(ProtoError { kind, .. })
-        if matches!(**kind, ProtoErrorKind::NoRecordsFound { .. }) =>
-      {
-        NetError::DnsNotFound(e)
-      }
-      ResolveErrorKind::Proto(ProtoError { kind, .. })
-        if matches!(**kind, ProtoErrorKind::NoConnections) =>
-      {
-        NetError::DnsNotConnected(e)
-      }
-      ResolveErrorKind::Proto(ProtoError { kind, .. })
-        if matches!(**kind, ProtoErrorKind::Timeout) =>
-      {
-        NetError::DnsTimedOut(e)
-      }
-      _ => NetError::Dns(e),
-    })?
-    .records()
-    .iter()
+  let lookup = lookup.map_err(|e| match e.kind() {
+    ResolveErrorKind::Proto(ProtoError { kind, .. })
+      if matches!(**kind, ProtoErrorKind::NoRecordsFound { .. }) =>
+    {
+      NetError::DnsNotFound(e)
+    }
+    ResolveErrorKind::Proto(ProtoError { kind, .. })
+      if matches!(**kind, ProtoErrorKind::NoConnections) =>
+    {
+      NetError::DnsNotConnected(e)
+    }
+    ResolveErrorKind::Proto(ProtoError { kind, .. })
+      if matches!(**kind, ProtoErrorKind::Timeout) =>
+    {
+      NetError::DnsTimedOut(e)
+    }
+    _ => NetError::Dns(e),
+  })?;
+
+  format_dns_records(lookup.records(), record_type)
+}
+
+fn format_dns_records<'a>(
+  records: impl IntoIterator<Item = &'a Record>,
+  record_type: RecordType,
+) -> Result<Vec<DnsRecordWithTtl>, NetError> {
+  records
+    .into_iter()
     .filter_map(|rec| {
       let is_any = record_type == RecordType::ANY;
       // For ANY queries, use each record's actual type for formatting
@@ -1182,7 +1190,16 @@ pub async fn op_dns_resolve(
 
 #[op2]
 #[serde]
-pub fn op_net_get_system_dns_servers() -> Result<Vec<(String, u16)>, NetError> {
+pub fn op_net_get_system_dns_servers(
+  state: &mut OpState,
+) -> Result<Vec<(String, u16)>, NetError> {
+  // Reading the host resolver configuration (the system nameservers, e.g.
+  // from /etc/resolv.conf) exposes host network configuration, so gate it
+  // behind the same `sys` permission as Deno.networkInterfaces(). Reachable
+  // from JS via node:dns.getServers().
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_sys("networkInterfaces", "node:dns.getServers()")?;
   let (config, _opts) = system_conf::read_system_conf()
     .unwrap_or_else(|_| (ResolverConfig::default(), ResolverOpts::default()));
   let servers = config
@@ -1251,13 +1268,10 @@ fn format_rdata(
         .as_aname()
         .map(ToString::to_string)
         .map(DnsRecordData::Aname),
-      CAA => r.as_caa().map(|caa| {
-        DnsRecordData::Caa {
-          critical: caa.issuer_critical(),
-          tag: caa.tag().to_string(),
-          // hickory_proto now handles CAA records encoding within the CAA struct, we can assume that it's safe to unwrap here
-          value: str::from_utf8(caa.raw_value()).unwrap().to_string(),
-        }
+      CAA => r.as_caa().map(|caa| DnsRecordData::Caa {
+        critical: caa.issuer_critical(),
+        tag: caa.tag().to_string(),
+        value: String::from_utf8_lossy(caa.raw_value()).into_owned(),
       }),
       CNAME => r
         .as_cname()
@@ -1270,9 +1284,9 @@ fn format_rdata(
       NAPTR => r.as_naptr().map(|naptr| DnsRecordData::Naptr {
         order: naptr.order(),
         preference: naptr.preference(),
-        flags: String::from_utf8(naptr.flags().to_vec()).unwrap(),
-        services: String::from_utf8(naptr.services().to_vec()).unwrap(),
-        regexp: String::from_utf8(naptr.regexp().to_vec()).unwrap(),
+        flags: String::from_utf8_lossy(naptr.flags()).into_owned(),
+        services: String::from_utf8_lossy(naptr.services()).into_owned(),
+        regexp: String::from_utf8_lossy(naptr.regexp()).into_owned(),
         replacement: naptr.replacement().to_string(),
       }),
       NS => r.as_ns().map(ToString::to_string).map(DnsRecordData::Ns),
@@ -1333,6 +1347,8 @@ mod tests {
   use hickory_proto::rr::rdata::srv::SRV;
   use hickory_proto::rr::rdata::txt::TXT;
   use hickory_proto::rr::record_data::RData;
+  use hickory_proto::serialize::binary::BinDecoder;
+  use hickory_proto::serialize::binary::Restrict;
   use socket2::SockRef;
 
   use super::*;
@@ -1386,6 +1402,33 @@ mod tests {
   }
 
   #[test]
+  fn dns_records_caa_lossy_invalid_utf8_for_any_query() {
+    // Raw CAA RDATA received from the network: flags, tag, then an opaque
+    // value containing invalid UTF-8.
+    const RDATA: &[u8] = b"\x00\x05issue\xffa";
+    let rdata = RData::read(
+      &mut BinDecoder::new(RDATA),
+      RecordType::CAA,
+      Restrict::new(u16::try_from(RDATA.len()).unwrap()),
+    )
+    .unwrap();
+    let records = [Record::from_rdata(Name::new(), 60, rdata)];
+
+    assert_eq!(
+      format_dns_records(&records, RecordType::ANY).unwrap(),
+      vec![DnsRecordWithTtl {
+        data: DnsRecordData::Caa {
+          critical: false,
+          tag: "issue".to_string(),
+          value: "\u{fffd}a".to_string(),
+        },
+        record_type: Some("CAA".to_string()),
+        ttl: 60,
+      }]
+    );
+  }
+
+  #[test]
   fn rdata_to_return_record_cname() {
     let func = format_rdata(RecordType::CNAME);
     let rdata = RData::CNAME(CNAME(Name::new()));
@@ -1428,6 +1471,31 @@ mod tests {
         services: "".to_string(),
         regexp: "".to_string(),
         replacement: "".to_string()
+      })
+    );
+  }
+
+  #[test]
+  fn rdata_to_return_record_naptr_lossy_invalid_utf8() {
+    // Flags are restricted to ASCII by Hickory's wire decoder. Services and
+    // regexp remain arbitrary character strings and can contain invalid UTF-8.
+    const RDATA: &[u8] = b"\x00\x01\x00\x02\x01U\x02s\xff\x02\xffr\x00";
+    let rdata = RData::read(
+      &mut BinDecoder::new(RDATA),
+      RecordType::NAPTR,
+      Restrict::new(u16::try_from(RDATA.len()).unwrap()),
+    )
+    .unwrap();
+
+    assert_eq!(
+      format_rdata(RecordType::NAPTR)(&rdata).unwrap(),
+      Some(DnsRecordData::Naptr {
+        order: 1,
+        preference: 2,
+        flags: "U".to_string(),
+        services: "s\u{fffd}".to_string(),
+        regexp: "\u{fffd}r".to_string(),
+        replacement: ".".to_string(),
       })
     );
   }

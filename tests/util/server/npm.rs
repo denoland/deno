@@ -499,6 +499,12 @@ fn get_npm_package(
     // Tarball served from a registry that 404s the unauthenticated request
     // (and has no fixture there), to exercise the 404 auth-hint path.
     "http://localhost:4263"
+  } else if package_name == "@denotest/tarballs-npmjs" {
+    // Packument points `dist.tarball` at the public npm registry even though the
+    // package is served by a private/proxy registry (some proxies don't rewrite
+    // tarball URLs). Deno should relocate the tarball download to the configured
+    // registry rather than downloading it from `registry.npmjs.org`.
+    "https://registry.npmjs.org"
   } else {
     registry_hostname
   };

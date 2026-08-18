@@ -101,7 +101,8 @@ function createMessage(monthSummary: MonthSummary) {
     formatDiff(darwinRatioDiff)
   })\n`;
 
-  mrkdwn += `<https://node-test-viewer.deno.dev/results/${date}|(Full report)>`;
+  mrkdwn +=
+    `<https://node-test-viewer.deno.deno.net/results/${date}|(Full report)>`;
 
   return [
     {

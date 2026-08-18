@@ -109,6 +109,7 @@ pub struct WorkerThread {
   worker_type: WorkerThreadType,
   cancel_handle: Rc<CancelHandle>,
   cpu_thread_handle: Arc<AtomicU64>,
+  web_lock_client_id: Option<String>,
 
   // A WorkerThread that hasn't been explicitly terminated can only be removed
   // from the WorkersTable once close messages have been received for both the
@@ -133,7 +134,45 @@ impl WorkerThread {
 
 impl Drop for WorkerThread {
   fn drop(&mut self) {
-    self.worker_handle.clone().terminate();
+    // Promptly release the worker's Web Locks so other clients waiting on them
+    // don't stay blocked until the worker thread fully unwinds. This is a
+    // promptness optimization on top of the real backstop: the worker's held
+    // and pending lock resources live in its own op_state and
+    // release/cancel by id when its `JsRuntime` drops.
+    //
+    // `cleanup_locks_for_client_id` re-grants the worker's held locks to other
+    // clients synchronously. If the worker were still executing a callback under
+    // an exclusive lock (e.g. mutating a `SharedArrayBuffer` in a synchronous
+    // loop), the new grantee could run concurrently with it, violating mutual
+    // exclusion. `terminate()` alone doesn't prevent this: it only wakes the
+    // event loop and can't interrupt synchronous JS already in flight. So when
+    // the worker actually holds a lock we're about to hand off, we first call
+    // `terminate_execution()`, which makes the worker's isolate throw a
+    // termination exception at the next interrupt point, halting any such loop
+    // and its callback continuation/microtasks before the lock is handed off.
+    //
+    // The `client_holds_lock` gate matters: `terminate_execution()` can abort an
+    // in-progress synthetic module instantiation (e.g. a lazy `require` during
+    // boot, which panics on failure), so we must not force-halt a worker that
+    // has no held lock to protect. A worker that holds a lock is past boot and
+    // parked in — or synchronously looping inside — its lock callback.
+    //
+    // This narrows the window but can't fully close it: `terminate_execution()`
+    // returns without waiting for the isolate to stop, so a native op already in
+    // flight on the worker keeps running until it returns to JS, and a lock
+    // acquired between the `client_holds_lock` check and cleanup isn't halted.
+    // Any lock left held in that residual window is still released by the
+    // resource-drop backstop when the worker's `JsRuntime` drops.
+    let handle = self.worker_handle.clone();
+    if let Some(client_id) = &self.web_lock_client_id
+      && deno_web::locks::client_holds_lock(client_id)
+    {
+      handle.terminate_execution();
+    }
+    handle.terminate();
+    if let Some(client_id) = &self.web_lock_client_id {
+      deno_web::locks::cleanup_locks_for_client_id(client_id);
+    }
   }
 }
 
@@ -418,6 +457,13 @@ fn op_create_worker(
     worker_type: args.worker_type,
     cancel_handle: CancelHandle::new_rc(),
     cpu_thread_handle,
+    // Only Node workers get a host-assigned `worker-N` lock client id (and thus
+    // prompt cleanup on teardown). `web_worker.rs` assigns the matching id at
+    // startup for the same worker types. Classic/module Web Workers keep the
+    // default lazily-assigned numeric client id and rely on the resource-drop
+    // backstop to release their locks when their `JsRuntime` unwinds.
+    web_lock_client_id: matches!(args.worker_type, WorkerThreadType::Node)
+      .then(|| deno_web::locks::worker_lock_client_id(worker_id.as_u32())),
     ctrl_closed: false,
     message_closed: false,
     termination_requested: false,

@@ -18,11 +18,20 @@ import https from "node:https";
 import zlib from "node:zlib";
 import net, { type AddressInfo, Socket } from "node:net";
 import fs from "node:fs";
+import process from "node:process";
 import type { Duplex } from "node:stream";
 import { text } from "node:stream/consumers";
 import { channel } from "node:diagnostics_channel";
+import * as v8 from "node:v8";
+import { runInNewContext } from "node:vm";
 
-import { assert, assertEquals, assertStringIncludes, fail } from "@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertStringIncludes,
+  assertThrows,
+  fail,
+} from "@std/assert";
 import { assertSpyCalls, spy } from "@std/testing/mock";
 import { fromFileUrl, relative } from "@std/path";
 import { retry } from "@std/async/retry";
@@ -36,6 +45,35 @@ import { execCode } from "../unit/test_util.ts";
 // tests reusing the same port (e.g. 4505) don't fail with EADDRINUSE.
 Deno.test.beforeEach(() => {
   http.globalAgent.destroy();
+});
+
+Deno.test("[node/http] HTTPParser.consume keeps stream handle alive", async () => {
+  v8.setFlagsFromString("--expose_gc");
+  const gc = runInNewContext("gc") as () => void;
+
+  // @ts-ignore: untyped internal binding for direct lifecycle coverage.
+  const { HTTPParser } = process.binding("http_parser");
+  // @ts-ignore: untyped internal binding for direct lifecycle coverage.
+  const { TCP } = process.binding("tcp_wrap");
+
+  const parser = new HTTPParser();
+  parser.initialize(HTTPParser.REQUEST, {});
+
+  let weak: WeakRef<object> | undefined;
+  {
+    const tcp = new TCP(0);
+    weak = new WeakRef(tcp);
+    parser.consume(tcp);
+    tcp.close();
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  for (let i = 0; i < 5; i++) {
+    gc();
+  }
+
+  assert(weak?.deref() !== undefined);
+  parser.unconsume();
 });
 
 Deno.test("[node/http listen]", async () => {
@@ -258,6 +296,75 @@ Deno.test("[node/http] .writeHead()", async (t) => {
         assertEquals(res.status, 200);
         assertEquals(res.headers.get("foo"), "bar");
       },
+    );
+  });
+
+  await t.step("validates raw header representations", () => {
+    const cases: [unknown, string][] = [
+      [["bad name", "value"], "ERR_INVALID_HTTP_TOKEN"],
+      [["x-test", "value\r\nx-extra: value"], "ERR_INVALID_CHAR"],
+      [[["bad name", "value"]], "ERR_INVALID_HTTP_TOKEN"],
+      [[[
+        "x-test",
+        "value\r\nx-extra: value",
+      ]], "ERR_INVALID_CHAR"],
+      [{ "bad name": "value" }, "ERR_INVALID_HTTP_TOKEN"],
+      [{ "x-test": "value\r\nx-extra: value" }, "ERR_INVALID_CHAR"],
+    ];
+
+    for (const [headers, code] of cases) {
+      const response = new ServerResponse(
+        { method: "GET" } as IncomingMessage,
+      );
+      const error = assertThrows(() => {
+        response.writeHead(200, headers as Record<string, string>);
+      }) as Error & { code: string };
+      assertEquals(error.code, code);
+    }
+  });
+
+  await t.step("rejects odd-length raw header arrays", () => {
+    const response = new ServerResponse(
+      { method: "GET" } as IncomingMessage,
+    );
+    const error = assertThrows(() => {
+      response.writeHead(
+        200,
+        ["x-test", "value", "dangling"] as unknown as Record<string, string>,
+      );
+    }) as Error & { code: string };
+    assertEquals(error.code, "ERR_INVALID_ARG_VALUE");
+  });
+
+  await t.step("preserves repeated and array-valued raw headers", async () => {
+    await testWriteHead(
+      (res) =>
+        res.writeHead(200, [
+          ["x-repeated", "one"],
+          ["x-repeated", "two"],
+        ]),
+      (res) => {
+        assertEquals(res.headers.get("x-repeated"), "one, two");
+      },
+    );
+    await testWriteHead(
+      (res) => res.writeHead(200, { "x-array": ["three", "four"] }),
+      (res) => {
+        assertEquals(res.headers.get("x-array"), "three, four");
+      },
+    );
+  });
+
+  await t.step("preserves setHeader output", () => {
+    const response = new ServerResponse(
+      { method: "GET" } as IncomingMessage,
+    );
+    response.sendDate = false;
+    response.setHeader("x-test", "value");
+    response.writeHead(200);
+    assertStringIncludes(
+      (response as ServerResponse & { _header: string })._header,
+      "x-test: value\r\n",
     );
   });
 });
@@ -3714,6 +3821,50 @@ Deno.test(
       req.end();
     });
     await promise;
+  },
+);
+
+Deno.test(
+  "[node/http] proxied absolute-form target omits the default port",
+  async () => {
+    // Node builds the absolute-form target with `new URL()`, whose `href`
+    // drops the port when it is the scheme default, so port 80 must not
+    // appear on the wire while a non-default port must.
+    for (
+      const { port, expected } of [
+        { port: 80, expected: "http://example.com/foo" },
+        { port: 8080, expected: "http://example.com:8080/foo" },
+      ]
+    ) {
+      const { promise, resolve, reject } = Promise.withResolvers<void>();
+      let seenUrl: string | undefined;
+      // unreachable target - the proxy intercepts and short-circuits.
+      const proxy = http.createServer((req, res) => {
+        seenUrl = req.url;
+        res.end("via-proxy");
+      });
+      proxy.listen(0, () => {
+        const proxyPort = (proxy.address() as AddressInfo).port;
+        const req = http.request({
+          hostname: "example.com",
+          port,
+          path: "/foo",
+          agent: new http.Agent({
+            proxyEnv: { HTTP_PROXY: `http://127.0.0.1:${proxyPort}` },
+          } as ProxyAgentLike),
+        }, (res) => {
+          res.resume();
+          res.on("end", () => {
+            proxy.close();
+            resolve();
+          });
+        });
+        req.on("error", reject);
+        req.end();
+      });
+      await promise;
+      assertEquals(seenUrl, expected);
+    }
   },
 );
 

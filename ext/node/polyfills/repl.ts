@@ -1738,7 +1738,7 @@ export class REPLServer extends (Interface as any) {
             errStack = this.writer(e);
           } finally {
             for (const { key, desc } of new SafeArrayIterator(hidden)) {
-              ObjectDefineProperty(e, key, desc);
+              ObjectDefineProperty(e, key, { __proto__: null, ...desc });
             }
           }
         }
@@ -1846,7 +1846,12 @@ export class REPLServer extends (Interface as any) {
         if (SetPrototypeHas(builtinNames, name)) continue;
         try {
           const desc = ObjectGetOwnPropertyDescriptor(globalThis, name);
-          if (desc) ObjectDefineProperty(context, name, desc);
+          if (desc) {
+            ObjectDefineProperty(context, name, {
+              __proto__: null,
+              ...desc,
+            });
+          }
         } catch {
           // Non-configurable / non-writable props just get skipped.
         }
@@ -1870,7 +1875,7 @@ export class REPLServer extends (Interface as any) {
     try {
       // `path` is the node:path module, not an Array; `path.join` is the
       // path joiner.
-      // deno-lint-ignore prefer-primordials
+      // deno-lint-ignore deno-internal/prefer-primordials
       const replPath = path.join(process.cwd(), "repl");
       const replRequire = Module.createRequire(replPath);
       ObjectDefineProperty(context, "require", {

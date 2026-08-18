@@ -14,6 +14,8 @@ use crossterm::event::KeyModifiers;
 use crossterm::terminal;
 use deno_core::parking_lot::Mutex;
 use deno_runtime::ops::tty::ConsoleSize;
+use unicode_general_category::GeneralCategory;
+use unicode_general_category::get_general_category;
 
 use super::draw_thread::DrawThread;
 
@@ -33,9 +35,44 @@ pub fn new_console_static_text() -> ConsoleStaticText {
   })
 }
 
+/// Escapes terminal control and other non-printable characters in text that
+/// will be embedded in Deno-owned terminal output.
+///
+/// Unlike [`filter_destructive_ansi`], this does not preserve styling from the
+/// input. Control characters are rendered visibly so surrounding text remains
+/// understandable.
+pub fn escape_terminal_control_chars(text: &str) -> Cow<'_, str> {
+  if !text.contains(is_terminal_unprintable) {
+    return Cow::Borrowed(text);
+  }
+
+  let mut output = String::with_capacity(text.len());
+  for c in text.chars() {
+    if is_terminal_unprintable(c) {
+      output.extend(c.escape_debug());
+    } else {
+      output.push(c);
+    }
+  }
+  Cow::Owned(output)
+}
+
+fn is_terminal_unprintable(c: char) -> bool {
+  matches!(
+    get_general_category(c),
+    GeneralCategory::Control
+      | GeneralCategory::Format
+      | GeneralCategory::Surrogate
+      | GeneralCategory::PrivateUse
+      | GeneralCategory::Unassigned
+      | GeneralCategory::LineSeparator
+      | GeneralCategory::ParagraphSeparator
+  )
+}
+
 /// Strips destructive terminal control characters from user output while
-/// preserving ordinary text, whitespace (tab and newline), and SGR (color/
-/// style) sequences.
+/// preserving ordinary text, whitespace (tab and newline), and ESC-prefixed
+/// SGR (color/style) sequences. C1 CSI forms are stripped unconditionally.
 ///
 /// This covers the full C0 control range and DEL, the C1 controls (raw and
 /// UTF-8-encoded), and ANSI escape sequences (CSI/OSC/DCS/PM/APC). Only TAB,
@@ -44,11 +81,13 @@ pub fn new_console_static_text() -> ConsoleStaticText {
 /// needed.
 pub fn filter_destructive_ansi(input: &[u8]) -> Cow<'_, [u8]> {
   // Trigger the filter for any control byte other than TAB (0x09) and LF
-  // (0x0a), plus C1 controls and the `0xc2` UTF-8 C1 lead. Everything else is
-  // copied through unchanged.
-  if !input.iter().any(
-    |&b| matches!(b, 0x00..=0x08 | 0x0b..=0x1f | 0x7f | 0x80..=0x9f | 0xc2),
-  ) {
+  // (0x0a), plus raw or UTF-8-encoded C1 controls. Everything else is copied
+  // through unchanged.
+  if !input.iter().enumerate().any(|(i, &b)| {
+    matches!(b, 0x00..=0x08 | 0x0b..=0x1f | 0x7f | 0x80..=0x9f)
+      || (b == 0xc2
+        && input.get(i + 1).is_some_and(|b| (0x80..=0x9f).contains(b)))
+  }) {
     return Cow::Borrowed(input);
   }
 
@@ -72,7 +111,7 @@ pub fn filter_destructive_ansi(input: &[u8]) -> Cow<'_, [u8]> {
       0x1b => {
         match input[i + 1] {
           b'[' => {
-            let seq_end = skip_csi(&input[i..]);
+            let seq_end = skip_csi_after_intro(&input[i..], 2);
             // Keep SGR sequences (final byte 'm', no private marker '?'/'>'/'<')
             let final_byte = input.get(i + seq_end - 1);
             let has_private = input
@@ -84,7 +123,9 @@ pub fn filter_destructive_ansi(input: &[u8]) -> Cow<'_, [u8]> {
             i += seq_end;
           }
           // OSC/DCS/PM/APC: string sequences terminated by BEL/ST
-          b']' | b'P' | b'^' | b'_' => i += skip_str_seq(&input[i..]),
+          b']' | b'P' | b'^' | b'_' => {
+            i += skip_str_seq_after_intro(&input[i..], 2)
+          }
           // Two-byte ESC sequences (Fe/Fp/Fs)
           0x30..=0x7E => i += 2,
           // nF: ESC + intermediate bytes (0x20..=0x2F) + final byte
@@ -138,11 +179,6 @@ pub fn filter_destructive_ansi(input: &[u8]) -> Cow<'_, [u8]> {
   Cow::Owned(out)
 }
 
-/// Returns the length of a CSI sequence (`ESC [` params final-byte).
-fn skip_csi(data: &[u8]) -> usize {
-  skip_csi_after_intro(data, 2)
-}
-
 /// Returns the length of a CSI sequence after a one or two byte introducer.
 fn skip_csi_after_intro(data: &[u8], mut j: usize) -> usize {
   if j < data.len() && matches!(data[j], b'?' | b'>' | b'<') {
@@ -160,11 +196,6 @@ fn skip_csi_after_intro(data: &[u8], mut j: usize) -> usize {
   j
 }
 
-/// Skips an OSC/DCS/PM/APC string sequence terminated by BEL, ST (ESC \), or 0x9c.
-fn skip_str_seq(data: &[u8]) -> usize {
-  skip_str_seq_after_intro(data, 2)
-}
-
 /// Skips a string control sequence after a one or two byte introducer.
 fn skip_str_seq_after_intro(data: &[u8], mut j: usize) -> usize {
   while j < data.len() {
@@ -172,6 +203,9 @@ fn skip_str_seq_after_intro(data: &[u8], mut j: usize) -> usize {
       0x07 | 0x9c => return j + 1,
       0xc2 if data.get(j + 1) == Some(&0x9c) => return j + 2,
       0x1b if data.get(j + 1) == Some(&b'\\') => return j + 2,
+      0xc2..=0xf4 => {
+        j += utf8_sequence_len(&data[j..]).unwrap_or(1);
+      }
       _ => j += 1,
     }
   }
@@ -541,6 +575,53 @@ mod tests {
   }
 
   #[test]
+  fn escape_terminal_control_chars_preserves_printable_unicode() {
+    let input = "hello 文件 😀";
+    let result = escape_terminal_control_chars(input);
+    assert!(matches!(result, Cow::Borrowed(_)));
+    assert_eq!(result, input);
+  }
+
+  #[test]
+  fn escape_terminal_control_chars_makes_controls_visible() {
+    let input = "before\x1b[2J\x07\t\n\u{009b}31mafter";
+    let result = escape_terminal_control_chars(input);
+    assert_eq!(result, r"before\u{1b}[2J\u{7}\t\n\u{9b}31mafter");
+  }
+
+  #[test]
+  fn escape_terminal_control_chars_makes_invisible_chars_visible() {
+    let controls = [
+      '\u{061c}',
+      '\u{200e}',
+      '\u{200f}',
+      '\u{202a}',
+      '\u{202b}',
+      '\u{202c}',
+      '\u{202d}',
+      '\u{202e}',
+      '\u{2066}',
+      '\u{2067}',
+      '\u{2068}',
+      '\u{2069}',
+      '\u{2028}',
+      '\u{2029}',
+      '\u{feff}',
+      '\u{200b}',
+      '\u{e0000}',
+      '\u{e007f}',
+      '\u{e000}',
+      '\u{0378}',
+    ];
+    for control in controls {
+      let input = format!("before{control}after");
+      let result = escape_terminal_control_chars(&input);
+      assert!(!result.contains(control));
+      assert!(result.contains(&format!(r"\u{{{:x}}}", control as u32)));
+    }
+  }
+
+  #[test]
   fn filter_destructive_ansi_plain_text() {
     let input = b"hello world";
     let result = filter_destructive_ansi(input);
@@ -650,6 +731,14 @@ mod tests {
   }
 
   #[test]
+  fn filter_destructive_ansi_borrows_printable_c2_text() {
+    let input = "hello © ° \u{00a0}\n".as_bytes();
+    let result = filter_destructive_ansi(input);
+    assert!(matches!(result, Cow::Borrowed(_)));
+    assert_eq!(&*result, input);
+  }
+
+  #[test]
   fn filter_destructive_ansi_strips_standalone_cr() {
     // Standalone \r (used by progress bars to overwrite lines) is stripped
     let input = b"progress\roverwrite";
@@ -696,17 +785,36 @@ mod tests {
     let raw_c1_csi = b"before\x9b2Jafter";
     let result = filter_destructive_ansi(raw_c1_csi);
     assert_eq!(&*result, b"beforeafter");
+
+    // Unlike ESC-prefixed SGR, C1 CSI forms are stripped unconditionally.
+    let c1_sgr = b"before\xc2\x9b31mred";
+    let result = filter_destructive_ansi(c1_sgr);
+    assert_eq!(&*result, b"beforered");
   }
 
   #[test]
   fn filter_destructive_ansi_strips_c1_string_sequences() {
-    let utf8_c1_osc = b"before\xc2\x9d0;evil title\x07after";
+    // A valid UTF-8 character ending in 0x9c must not be mistaken for raw ST;
+    // the UTF-8-encoded ST at the end terminates the sequence.
+    let utf8_c1_osc = b"before\xc2\x9dtitle \xe2\x80\x9chidden\xc2\x9cafter";
     let result = filter_destructive_ansi(utf8_c1_osc);
     assert_eq!(&*result, b"beforeafter");
 
     let raw_c1_osc = b"before\x9d0;evil title\x07after";
     let result = filter_destructive_ansi(raw_c1_osc);
     assert_eq!(&*result, b"beforeafter");
+
+    for input in [
+      &b"before\xc2\x90DCS\xc2\x9cafter"[..],
+      &b"before\xc2\x9ePM\xc2\x9cafter"[..],
+      &b"before\xc2\x9fAPC\xc2\x9cafter"[..],
+      &b"before\x90DCS\x9cafter"[..],
+      &b"before\x9ePM\x9cafter"[..],
+      &b"before\x9fAPC\x9cafter"[..],
+    ] {
+      let result = filter_destructive_ansi(input);
+      assert_eq!(&*result, b"beforeafter");
+    }
   }
 
   #[test]

@@ -22,7 +22,6 @@ pub use deno_config::deno_json::CoverageThresholds;
 use deno_config::deno_json::FmtConfig;
 pub use deno_config::deno_json::FmtOptionsConfig;
 pub use deno_config::deno_json::LintRulesConfig;
-use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::deno_json::PermissionConfigValue;
 use deno_config::deno_json::PermissionsObjectWithBase;
 pub use deno_config::deno_json::ProseWrap;
@@ -37,9 +36,7 @@ use deno_config::workspace::WorkspaceLintConfig;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::url::Url;
 use deno_graph::GraphKind;
-use deno_lib::args::CaData;
 use deno_lib::args::has_flag_env_var;
 use deno_lib::args::npm_pkg_req_ref_to_binary_command;
 use deno_lib::args::npm_process_state;
@@ -632,7 +629,7 @@ impl CliOptions {
       // they rewrite.
       DenoSubcommand::Outdated(_) => GraphKind::All,
       DenoSubcommand::Remove(_) => GraphKind::All,
-      _ => self.type_check_mode().as_graph_kind(),
+      _ => graph_kind(self.type_check_mode()),
     }
   }
 
@@ -661,7 +658,7 @@ impl CliOptions {
   }
 
   pub fn npm_system_info(&self) -> NpmSystemInfo {
-    self.sub_command().npm_system_info()
+    npm_system_info(self.sub_command())
   }
 
   /// Resolve the specifier for a specified import map.
@@ -730,6 +727,7 @@ impl CliOptions {
 
   pub fn no_legacy_abort(&self) -> bool {
     self.flags.no_legacy_abort()
+      || self.workspace().has_unstable("no-legacy-abort")
   }
 
   pub fn env_file_names(
@@ -989,7 +987,7 @@ impl CliOptions {
     fmt_flags: &FmtFlags,
   ) -> Result<Vec<(WorkspaceDirectoryRc, FmtOptions)>, AnyError> {
     let cli_arg_patterns =
-      fmt_flags.files.as_file_patterns(self.initial_cwd())?;
+      resolve_file_patterns(&fmt_flags.files, self.initial_cwd())?;
     let member_configs = self
       .workspace()
       .resolve_fmt_config_for_members(&cli_arg_patterns)?;
@@ -1023,7 +1021,7 @@ impl CliOptions {
     lint_flags: &LintFlags,
   ) -> Result<Vec<(WorkspaceDirectoryRc, LintOptions)>, AnyError> {
     let cli_arg_patterns =
-      lint_flags.files.as_file_patterns(self.initial_cwd())?;
+      resolve_file_patterns(&lint_flags.files, self.initial_cwd())?;
     let member_configs = self
       .workspace()
       .resolve_lint_config_for_members(&cli_arg_patterns)?;
@@ -1062,7 +1060,7 @@ impl CliOptions {
     test_flags: &TestFlags,
   ) -> Result<Vec<(WorkspaceDirectoryRc, TestOptions)>, AnyError> {
     let cli_arg_patterns =
-      test_flags.files.as_file_patterns(self.initial_cwd())?;
+      resolve_file_patterns(&test_flags.files, self.initial_cwd())?;
     let workspace_dir_configs = self
       .workspace()
       .resolve_test_config_for_members(&cli_arg_patterns)?;
@@ -1086,7 +1084,7 @@ impl CliOptions {
     bench_flags: &BenchFlags,
   ) -> Result<Vec<(WorkspaceDirectoryRc, BenchOptions)>, AnyError> {
     let cli_arg_patterns =
-      bench_flags.files.as_file_patterns(self.initial_cwd())?;
+      resolve_file_patterns(&bench_flags.files, self.initial_cwd())?;
     let workspace_dir_configs = self
       .workspace()
       .resolve_bench_config_for_members(&cli_arg_patterns)?;
@@ -1224,6 +1222,39 @@ impl CliOptions {
       )?;
     }
     Ok(permissions_options)
+  }
+
+  /// Permissions options holding nothing but the resolved `deny_import` rules.
+  ///
+  /// Used to build the deny-only permissions the module fetcher checks
+  /// resolved addresses against. Deliberately not `permissions_options`:
+  ///
+  /// - that augments `allow_import` from the main module, whose resolution is
+  ///   then cached in `main_module_cell`. Running before the workspace
+  ///   resolver exists would cache a bare specifier as a file path.
+  /// - `Permissions::from_options` re-resolves `allow_run`, which logs for
+  ///   each entry it cannot resolve. Keeping the other fields empty avoids
+  ///   duplicating that output.
+  ///
+  /// A permission set that cannot be resolved is an error rather than an
+  /// empty deny list: these rules decide whether code may be loaded at all, so
+  /// failing to read them has to fail the command, not quietly load the code.
+  /// Callers that build options whose config cannot see the user's `-P` set
+  /// (`deno x` generates a temp `deno.json`) are responsible for carrying the
+  /// resolved rules over themselves — see `x::resolve_import_deny_rules`.
+  pub fn import_deny_permissions_options(
+    &self,
+  ) -> Result<PermissionsOptions, AnyError> {
+    let config_permissions =
+      self.resolve_config_permissions_for_dir(&self.start_dir)?;
+    let all = flags_to_permissions_options(
+      &self.flags.permissions,
+      config_permissions,
+    )?;
+    Ok(PermissionsOptions {
+      deny_import: all.deny_import,
+      ..Default::default()
+    })
   }
 
   fn resolve_config_permissions_for_dir<'a>(

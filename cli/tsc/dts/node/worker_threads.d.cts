@@ -70,6 +70,39 @@ declare module "worker_threads" {
     const SHARE_ENV: unique symbol;
     const threadId: number;
     const workerData: any;
+    type LockMode = "exclusive" | "shared";
+    interface Lock {
+        readonly name: string;
+        readonly mode: LockMode;
+    }
+    interface LockOptions {
+        mode?: LockMode | undefined;
+        ifAvailable?: boolean | undefined;
+        steal?: boolean | undefined;
+        signal?: AbortSignal | undefined;
+    }
+    interface LockInfo {
+        name: string;
+        mode: LockMode;
+        clientId: string;
+    }
+    interface LockManagerSnapshot {
+        held: LockInfo[];
+        pending: LockInfo[];
+    }
+    interface LockManager {
+        request<T>(
+            name: string,
+            callback: (lock: Lock) => T | PromiseLike<T>,
+        ): Promise<T>;
+        request<T>(
+            name: string,
+            options: LockOptions,
+            callback: (lock: Lock | null) => T | PromiseLike<T>,
+        ): Promise<T>;
+        query(): Promise<LockManagerSnapshot>;
+    }
+    const locks: LockManager;
     /**
      * Instances of the `worker.MessageChannel` class represent an asynchronous,
      * two-way communications channel.

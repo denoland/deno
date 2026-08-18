@@ -1,0 +1,53 @@
+{
+  "tempDir": true,
+  "tests": {
+    // npm packages land in package.json under the unscoped alias
+    "npm": {
+      "steps": [
+        {
+          "args": "add --unscoped npm:@denotest/esm-basic",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('package.json').trim())"
+          ],
+          "output": "package.json.out"
+        }
+      ]
+    },
+    // jsr packages prefer deno.json even when only a package.json exists
+    "jsr": {
+      "steps": [
+        {
+          "args": "add --unscoped jsr:@denotest/add",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('deno.json').trim())"
+          ],
+          "output": "jsr_deno.json.out"
+        }
+      ]
+    },
+    // a jsr package forced into package.json uses the @jsr npm alias
+    "jsr_package_json_flag": {
+      "steps": [
+        {
+          "args": "add --unscoped --package-json jsr:@denotest/add",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('package.json').trim())"
+          ],
+          "output": "jsr_package.json.out"
+        }
+      ]
+    }
+  }
+}

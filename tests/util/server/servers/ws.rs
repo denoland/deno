@@ -120,6 +120,49 @@ pub async fn run_wss2_server(port: u16) {
   }
 }
 
+// A malicious-ish wss2 server used to guard against the HTTP/2 server-push
+// assertion DoS: a client that leaves `ENABLE_PUSH` at h2's default (enabled)
+// can be crashed by a crafted PUSH_PROMISE sequence. Deno's WebSocket client
+// disables push (`enable_push(false)`), so h2 refuses this server's push
+// attempt with `PeerDisabledServerPush`. The server reports which happened as
+// the first WebSocket text frame ("push-rejected" when the client is safe),
+// then echoes like the normal wss2 server.
+pub async fn run_wss2_push_server(port: u16) {
+  let mut tls = get_tls_listener_stream(
+    "wss2 (push)",
+    port,
+    SupportedHttpVersions::Http2Only,
+  )
+  .await;
+  while let Some(Ok(tls)) = tls.next().await {
+    tokio::spawn(async move {
+      let mut h2 = h2::server::Builder::new();
+      h2.enable_connect_protocol();
+      let server: Handshake<_, Bytes> = h2.handshake(tls);
+      let mut server = match server.await {
+        Ok(server) => server,
+        Err(e) => {
+          println!("Failed to handshake h2: {e:?}");
+          return;
+        }
+      };
+      loop {
+        let Some(conn) = server.accept().await else {
+          break;
+        };
+        let (recv, send) = match conn {
+          Ok(conn) => conn,
+          Err(e) => {
+            println!("Failed to accept a connection: {e:?}");
+            break;
+          }
+        };
+        tokio::spawn(handle_wss_push_stream(recv, send));
+      }
+    });
+  }
+}
+
 async fn echo_websocket_handler(
   ws: fastwebsockets::WebSocket<TokioIo<Upgraded>>,
 ) -> Result<(), anyhow::Error> {
@@ -215,6 +258,89 @@ async fn handle_wss_stream(
   let f1 = tokio::spawn(tokio::task::unconstrained(async move {
     let ws = WebSocket::after_handshake(a, Role::Server);
     let mut ws = FragmentCollector::new(ws);
+    loop {
+      let frame = ws.read_frame().await.unwrap();
+      if frame.opcode == OpCode::Close {
+        break;
+      }
+      ws.write_frame(frame).await.unwrap();
+    }
+  }));
+  let (mut br, mut bw) = tokio::io::split(b);
+  let f2 = tokio::spawn(tokio::task::unconstrained(async move {
+    loop {
+      let Some(Ok(data)) = poll_fn(|cx| body.poll_data(cx)).await else {
+        return;
+      };
+      body.flow_control().release_capacity(data.len()).unwrap();
+      let Ok(_) = bw.write_all(&data).await else {
+        break;
+      };
+    }
+  }));
+  let f3 = tokio::spawn(tokio::task::unconstrained(async move {
+    loop {
+      let mut buf = [0; 65536];
+      let n = br.read(&mut buf).await.unwrap();
+      if n == 0 {
+        break;
+      }
+      resp.reserve_capacity(n);
+      poll_fn(|cx| resp.poll_capacity(cx)).await;
+      resp
+        .send_data(Bytes::copy_from_slice(&buf[0..n]), false)
+        .unwrap();
+    }
+    resp.send_data(Bytes::new(), true).unwrap();
+  }));
+  _ = join3(f1, f2, f3).await;
+  Ok(())
+}
+
+async fn handle_wss_push_stream(
+  recv: Request<RecvStream>,
+  mut send: SendResponse<Bytes>,
+) -> Result<(), h2::Error> {
+  if recv.method() != Method::CONNECT {
+    send.send_reset(Reason::REFUSED_STREAM);
+    return Ok(());
+  }
+  let Some(protocol) = recv.extensions().get::<h2::ext::Protocol>() else {
+    send.send_reset(Reason::REFUSED_STREAM);
+    return Ok(());
+  };
+  if protocol.as_str() != "websocket" && protocol.as_str() != "WebSocket" {
+    send.send_reset(Reason::REFUSED_STREAM);
+    return Ok(());
+  }
+
+  // Attempt a server push. h2 refuses this with `PeerDisabledServerPush` when
+  // the client advertised `SETTINGS_ENABLE_PUSH = 0`, which is exactly what a
+  // patched Deno client does. If the client left push enabled, the push
+  // succeeds instead - the unsafe configuration this test guards against.
+  let push_req = Request::builder()
+    .method(Method::GET)
+    .uri("https://localhost/pushed")
+    .body(())
+    .unwrap();
+  let push_allowed = send.push_request(push_req).is_ok();
+
+  let mut body = recv.into_body();
+  let mut response = Response::new(());
+  *response.status_mut() = StatusCode::OK;
+  let mut resp = send.send_response(response, false)?;
+  let (a, b) = tokio::io::duplex(65536);
+  let f1 = tokio::spawn(tokio::task::unconstrained(async move {
+    let ws = WebSocket::after_handshake(a, Role::Server);
+    let mut ws = FragmentCollector::new(ws);
+    let status = if push_allowed {
+      "push-allowed"
+    } else {
+      "push-rejected"
+    };
+    ws.write_frame(Frame::text(status.as_bytes().to_vec().into()))
+      .await
+      .unwrap();
     loop {
       let frame = ws.read_frame().await.unwrap();
       if frame.opcode == OpCode::Close {

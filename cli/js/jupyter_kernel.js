@@ -612,7 +612,7 @@ async function startJupyterKernel() {
         mimetype: "text/x.typescript",
         file_extension: ".ts",
         pygments_lexer: "typescript",
-        codemirror_mode: { name: "typescript" },
+        codemirror_mode: "typescript",
         nbconvert_exporter: "script",
       },
       banner: "Welcome to Deno kernel",

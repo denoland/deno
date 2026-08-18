@@ -830,7 +830,7 @@ function onParserExecuteCommon(server, socket, parser, state, ret, d) {
     parser.finish();
     freeParser(parser, req, socket);
 
-    // deno-lint-ignore prefer-primordials -- d is a Node Buffer; Buffer.prototype.slice returns a Buffer view
+    // deno-lint-ignore deno-internal/prefer-primordials -- d is a Node Buffer; Buffer.prototype.slice returns a Buffer view
     const bodyHead = d.slice(bytesParsed);
 
     socket.readableFlowing = null;
@@ -1039,11 +1039,27 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
     }
     // Create server span within extracted context, without modifying async context
     const span = builtinTracer().startSpan(req.method, { kind: 1 }, context); // SpanKind.SERVER = 1
-    const url = req.url || "/";
+    const target = req.url || "/";
     const host = req.headers?.host || "localhost";
     const scheme = socket.encrypted ? "https" : "http";
+    // Ordinary requests carry an origin-form target, but a proxy receives it
+    // in absolute-form (RFC 9112 section 3.2.2), where it is already a full
+    // URL and must not be appended to the authority a second time.
+    const isAbsoluteForm = !StringPrototypeStartsWith(target, "/") &&
+      StringPrototypeIncludes(target, "://");
+    let url = target;
+    if (isAbsoluteForm) {
+      // Reduce to the origin-form portion so path and query stay consistent
+      // with what a non-proxied request reports.
+      const authorityStart = StringPrototypeIndexOf(target, "://") + 3;
+      const pathStart = StringPrototypeIndexOf(target, "/", authorityStart);
+      url = pathStart === -1 ? "/" : StringPrototypeSlice(target, pathStart);
+    }
     span.setAttribute("http.request.method", req.method);
-    span.setAttribute("url.full", `${scheme}://${host}${url}`);
+    span.setAttribute(
+      "url.full",
+      isAbsoluteForm ? target : `${scheme}://${host}${url}`,
+    );
     span.setAttribute("url.scheme", scheme);
     span.setAttribute("url.path", StringPrototypeSplit(url, "?")[0]);
     span.setAttribute(
