@@ -16,6 +16,7 @@ use deno_lint::diagnostic::LintDiagnosticRange;
 use deno_lint::diagnostic::LintDocsUrl;
 use deno_lint::diagnostic::LintFix;
 use deno_lint::diagnostic::LintFixChange;
+use std::collections::HashMap;
 use tokio_util::sync::CancellationToken;
 
 use crate::tools::lint;
@@ -60,6 +61,38 @@ pub struct LintPluginContainer {
   pub utf_16_map: Option<Utf16Map>,
   pub specifier: Option<ModuleSpecifier>,
   pub token: CancellationToken,
+  /// Per-module source info for the graph phase, keyed by specifier. A graph
+  /// rule reports against an arbitrary module (not the "current" file), so we
+  /// need each module's text info + utf16 map to attribute the diagnostic.
+  pub graph_files: HashMap<ModuleSpecifier, (SourceTextInfo, Utf16Map)>,
+}
+
+/// Convert a [start, end) UTF-16 range into a UTF-8 `SourceRange` within the
+/// given source, shared by the per-file and graph report paths.
+fn utf16_to_utf8_range(
+  utf16_map: &Utf16Map,
+  source_text_info: &SourceTextInfo,
+  start_utf16: usize,
+  end_utf16: usize,
+) -> Result<SourceRange, LintReportError> {
+  let out_of_range = || LintReportError::IncorrectRange {
+    start: start_utf16,
+    end: end_utf16,
+    source_end: utf16_map.text_content_length_utf16().into(),
+  };
+  let Some(start) = utf16_map.utf16_to_utf8_offset((start_utf16 as u32).into())
+  else {
+    return Err(out_of_range());
+  };
+  let Some(end) = utf16_map.utf16_to_utf8_offset((end_utf16 as u32).into())
+  else {
+    return Err(out_of_range());
+  };
+  let start_pos = source_text_info.start_pos();
+  Ok(SourceRange::new(
+    start_pos + start.into(),
+    start_pos + end.into(),
+  ))
 }
 
 impl LintPluginContainer {
@@ -77,6 +110,57 @@ impl LintPluginContainer {
     self.token = maybe_token.unwrap_or_default();
   }
 
+  /// Set the per-module source info used by the graph phase.
+  pub fn set_graph_files(
+    &mut self,
+    graph_files: HashMap<ModuleSpecifier, (SourceTextInfo, Utf16Map)>,
+  ) {
+    self.diagnostics.clear();
+    self.graph_files = graph_files;
+  }
+
+  /// Report a diagnostic from a graph rule, attributed to an arbitrary module
+  /// `specifier` (not the "current" file). The range is UTF-16 offsets within
+  /// that module's source. Called from the plugin host after reading the
+  /// reports returned by the JS `runGraphRules` function.
+  pub fn report_graph(
+    &mut self,
+    specifier: String,
+    id: String,
+    message: String,
+    hint: Option<String>,
+    start_utf16: usize,
+    end_utf16: usize,
+  ) -> Result<(), LintReportError> {
+    let specifier = ModuleSpecifier::parse(&specifier)
+      .map_err(|_| LintReportError::UnknownSpecifier(specifier.clone()))?;
+    let Some((source_text_info, utf16_map)) = self.graph_files.get(&specifier)
+    else {
+      return Err(LintReportError::UnknownSpecifier(specifier.to_string()));
+    };
+    let diagnostic_range =
+      utf16_to_utf8_range(utf16_map, source_text_info, start_utf16, end_utf16)?;
+    let range = LintDiagnosticRange {
+      range: diagnostic_range,
+      description: None,
+      text_info: source_text_info.clone(),
+    };
+    let lint_diagnostic = LintDiagnostic {
+      specifier,
+      range: Some(range),
+      details: LintDiagnosticDetails {
+        message,
+        code: id,
+        hint,
+        fixes: vec![],
+        custom_docs_url: LintDocsUrl::None,
+        info: vec![],
+      },
+    };
+    self.diagnostics.push(lint_diagnostic);
+    Ok(())
+  }
+
   fn report(
     &mut self,
     id: String,
@@ -86,40 +170,6 @@ impl LintPluginContainer {
     end_utf16: usize,
     raw_fixes: Vec<LintReportFix>,
   ) -> Result<(), LintReportError> {
-    fn out_of_range_err(
-      map: &Utf16Map,
-      start_utf16: usize,
-      end_utf16: usize,
-    ) -> LintReportError {
-      LintReportError::IncorrectRange {
-        start: start_utf16,
-        end: end_utf16,
-        source_end: map.text_content_length_utf16().into(),
-      }
-    }
-
-    fn utf16_to_utf8_range(
-      utf16_map: &Utf16Map,
-      source_text_info: &SourceTextInfo,
-      start_utf16: usize,
-      end_utf16: usize,
-    ) -> Result<SourceRange, LintReportError> {
-      let Some(start) =
-        utf16_map.utf16_to_utf8_offset((start_utf16 as u32).into())
-      else {
-        return Err(out_of_range_err(utf16_map, start_utf16, end_utf16));
-      };
-      let Some(end) = utf16_map.utf16_to_utf8_offset((end_utf16 as u32).into())
-      else {
-        return Err(out_of_range_err(utf16_map, start_utf16, end_utf16));
-      };
-      let start_pos = source_text_info.start_pos();
-      Ok(SourceRange::new(
-        start_pos + start.into(),
-        start_pos + end.into(),
-      ))
-    }
-
     let source_text_info = self.source_text_info.as_ref().unwrap();
     let utf16_map = self.utf_16_map.as_ref().unwrap();
     let specifier = self.specifier.clone().unwrap();
@@ -248,6 +298,9 @@ pub enum LintReportError {
     end: usize,
     source_end: u32,
   },
+  #[class(type)]
+  #[error("Unknown specifier reported by graph rule: {0}")]
+  UnknownSpecifier(String),
 }
 
 #[op2]
@@ -263,6 +316,21 @@ fn op_lint_report(
   let container = state.borrow_mut::<LintPluginContainer>();
   container.report(id, message, hint, start_utf16, end_utf16, fix)?;
   Ok(())
+}
+
+/// A single report emitted by a graph rule, decoded from the array returned by
+/// the JS `runGraphRules` function. Using a return value (rather than an op)
+/// avoids depending on op-table binding for `40_lint.js`, which is baked into
+/// the startup snapshot.
+#[derive(Debug, FromV8)]
+pub struct GraphReport {
+  pub specifier: String,
+  pub id: String,
+  pub message: String,
+  /// Empty string means "no hint".
+  pub hint: String,
+  pub start: usize,
+  pub end: usize,
 }
 
 #[op2]
