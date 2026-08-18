@@ -4,6 +4,7 @@ use std::io;
 use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
+use std::task::Waker;
 use std::task::ready;
 
 use tokio::io::AsyncRead;
@@ -289,6 +290,14 @@ pub struct SharedConn<I> {
   protocol: Protocol,
   buffered: Vec<u8>,
   response_state: ResponseState,
+  // Waker for a task reading the request body. The request body reader and the
+  // response writer share this connection: while a streaming response is being
+  // written, the response writer polls `poll_peer_closed_with`, which reads any
+  // available bytes off the socket (to detect a client disconnect). Those bytes
+  // may belong to the request body, so they are stashed in `buffered`. This
+  // waker lets us re-wake the body reader so it drains `buffered`, instead of
+  // parking forever with its bytes stranded here.
+  body_read_waker: Option<Waker>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -325,6 +334,7 @@ impl<I> SharedConn<I> {
       protocol: Protocol::new(),
       buffered: Vec::new(),
       response_state: ResponseState::Idle,
+      body_read_waker: None,
     }
   }
 
@@ -939,6 +949,13 @@ where
         }
       }
 
+      // Record our waker so that if the response writer's `poll_peer_closed_with`
+      // reads request-body bytes off the socket while we're parked, it can wake
+      // us to drain them from `buffered`.
+      match &self.body_read_waker {
+        Some(waker) if waker.will_wake(cx.waker()) => {}
+        _ => self.body_read_waker = Some(cx.waker().clone()),
+      }
       let read = ready!(poll_read_into_scratch(&mut self.io, cx, scratch))?;
       if read == 0 {
         match body_status_from_buf(&mut self.protocol, &[])? {
@@ -1428,6 +1445,11 @@ where
     if read != 0 {
       self.buffered.extend_from_slice(&scratch.read_buf[..read]);
       cx.waker().wake_by_ref();
+      // These bytes may belong to a request body still being read on another
+      // task; wake it so it drains `buffered` instead of stalling.
+      if let Some(waker) = self.body_read_waker.take() {
+        waker.wake();
+      }
     }
     Poll::Ready(Ok(read == 0))
   }

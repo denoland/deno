@@ -1410,7 +1410,10 @@ impl RawHttpRecord {
   fn take_request_body(&self) -> Option<Rc<dyn Resource>> {
     let body = self.0.borrow_mut().request_body.take()?;
     match body {
-      RawRequestBody::Streaming(body) => Some(body as Rc<dyn Resource>),
+      RawRequestBody::Streaming(body) => {
+        body.taken.set(true);
+        Some(body as Rc<dyn Resource>)
+      }
       RawRequestBody::Prebuffered(body) => {
         self.0.borrow_mut().request_body =
           Some(RawRequestBody::Prebuffered(body));
@@ -1550,6 +1553,15 @@ struct RawH1RequestBody<I> {
   conn: RawH1ConnectionCell<I>,
   size_hint: (u64, Option<u64>),
   canceled: std::cell::Cell<bool>,
+  // Set once JS has taken this body as a resource (i.e. accessed `req.body`),
+  // meaning it is being read on a separate task.
+  taken: std::cell::Cell<bool>,
+  // Set once the JS reader is finished with the body: either it reached the end
+  // of the stream, the resource was closed/cancelled, or the read errored. The
+  // connection loop waits on this before tearing the connection down so a
+  // background body read that outlives the response isn't cut off.
+  reader_done: std::cell::Cell<bool>,
+  reader_done_waker: RefCell<Option<std::task::Waker>>,
 }
 
 impl<I> RawH1RequestBody<I> {
@@ -1558,11 +1570,52 @@ impl<I> RawH1RequestBody<I> {
       conn,
       size_hint: length.map_or((0, None), |length| (length, Some(length))),
       canceled: std::cell::Cell::new(false),
+      taken: std::cell::Cell::new(false),
+      reader_done: std::cell::Cell::new(false),
+      reader_done_waker: RefCell::new(None),
     }
   }
 
   fn cancel(&self) {
     self.canceled.set(true);
+    // A cancelled read makes no further progress; stop the connection loop from
+    // waiting on it.
+    self.mark_reader_done();
+  }
+
+  fn mark_reader_done(&self) {
+    self.reader_done.set(true);
+    if let Some(waker) = self.reader_done_waker.borrow_mut().take() {
+      waker.wake();
+    }
+  }
+
+  /// Resolves once the JS-side reader is finished with the request body. If JS
+  /// never took the body, resolves immediately (nothing is reading it).
+  fn wait_reader_done(self: &Rc<Self>) -> impl Future<Output = ()> {
+    struct WaitReaderDone<I>(Rc<RawH1RequestBody<I>>);
+
+    impl<I> Future for WaitReaderDone<I> {
+      type Output = ();
+
+      fn poll(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+      ) -> Poll<Self::Output> {
+        let body = &self.0;
+        if !body.taken.get() || body.reader_done.get() {
+          return Poll::Ready(());
+        }
+        *body.reader_done_waker.borrow_mut() = Some(cx.waker().clone());
+        // Re-check to avoid missing a wake that raced with registration.
+        if body.reader_done.get() {
+          return Poll::Ready(());
+        }
+        Poll::Pending
+      }
+    }
+
+    WaitReaderDone(self.clone())
   }
 
   fn try_take_full(&self) -> Option<Vec<u8>> {
@@ -1617,7 +1670,14 @@ where
         ),
       )));
     }
-    conn.poll_read_body(cx, this.limit)
+    let result = conn.poll_read_body(cx, this.limit);
+    // An empty read is end-of-stream: the reader is finished with the body.
+    if let Poll::Ready(Ok(buf)) = &result
+      && buf.is_empty()
+    {
+      this.body.mark_reader_done();
+    }
+    result
   }
 }
 
@@ -1656,6 +1716,10 @@ where
     }
     let buf = this.buf.as_mut().unwrap();
     let read = ready!(conn.poll_read_body_byob(cx, buf))?;
+    // A zero-length read is end-of-stream: the reader is finished with the body.
+    if read == 0 {
+      this.body.mark_reader_done();
+    }
     let buf = this.buf.take().unwrap();
     Poll::Ready(Ok((read, buf)))
   }
@@ -1699,6 +1763,12 @@ where
 
   fn size_hint(&self) -> (u64, Option<u64>) {
     self.size_hint
+  }
+
+  fn close(self: Rc<Self>) {
+    // JS is done with the body (fully read, cancelled, or errored). Let the
+    // connection loop stop waiting for the background read.
+    self.mark_reader_done();
   }
 }
 
@@ -4665,6 +4735,17 @@ async fn serve_http11_raw(
         let _ = tx.send(result);
         record_cancel_guard.disarm();
         return Ok(());
+      }
+      // The response was produced while the request body was still being read on
+      // another task (`req.body` is being piped/consumed in the background).
+      // Wait for that reader to finish before reclaiming the connection: taking
+      // `body_conn` out from under an in-flight read would fail it with a
+      // spurious "resource unavailable" error and truncate the body. Resolves
+      // immediately if JS never took the body or the read already finished.
+      if parsed.has_body
+        && let Some(request_body) = request_body_for_cancel.as_ref()
+      {
+        request_body.wait_reader_done().await;
       }
       let Some(state) = body_conn.borrow_mut().take() else {
         return Err(raw_h1_connection_closed());

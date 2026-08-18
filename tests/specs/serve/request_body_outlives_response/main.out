@@ -1,0 +1,5 @@
+facet1 status: 201
+facet1: response body drained
+facet2 status: 201
+facet2 pipe: done
+PASS
