@@ -112,6 +112,10 @@ const testJob = job("test", {
   // 6 hour default keep the job around.
   timeoutMinutes: 30,
   strategy: {
+    // The shards are independent: one of them going down says nothing about
+    // the other eight, and cancelling them throws away reports that would
+    // otherwise have been uploaded for the day's summary.
+    failFast: false,
     matrix,
   },
   steps: [
