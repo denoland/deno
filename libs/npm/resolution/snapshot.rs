@@ -1154,7 +1154,14 @@ fn validate_incomplete_lockfile_tarball_url(
     }
   })?;
   let expected_origin = default_tarball_url.origin();
-  if tarball_url.origin() != expected_origin {
+  let npm_registry_tarball =
+    NpmRegistryDefaultTarballUrlProvider.default_tarball_url(id);
+  let npm_registry_origin = Url::parse(&npm_registry_tarball)
+    .expect("default npm registry tarball URL should be valid")
+    .origin();
+  if tarball_url.origin() != expected_origin
+    && tarball_url.origin() != npm_registry_origin
+  {
     return Err(SnapshotFromLockfileError::PackageTarballOriginMismatch {
       package_nv: Box::new(id.clone()),
       tarball: tarball.to_string(),
@@ -1937,6 +1944,38 @@ mod tests {
     assert_eq!(
       package.dist.as_ref().unwrap().tarball,
       "https://scope.example.com/downloads/pkg-1.0.0.tgz"
+    );
+  }
+
+  #[tokio::test]
+  async fn test_snapshot_from_lockfile_allows_default_registry_tarball_origin()
+  {
+    let snapshot = snapshot_from_lockfile_content(
+      r#"{
+        "version": "5",
+        "specifiers": {
+          "npm:@scope/pkg@1": "1.0.0"
+        },
+        "npm": {
+          "@scope/pkg@1.0.0": {
+            "integrity": "sha512-integrity1",
+            "tarball": "https://registry.npmjs.org/@scope/pkg/1.0.0.tgz",
+            "dependencies": []
+          }
+        }
+      }"#,
+      &TestScopedRegistryTarballUrlProvider,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+      snapshot.as_serialized().packages[0]
+        .dist
+        .as_ref()
+        .unwrap()
+        .tarball,
+      "https://registry.npmjs.org/@scope/pkg/1.0.0.tgz"
     );
   }
 
