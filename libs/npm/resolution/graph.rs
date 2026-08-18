@@ -637,6 +637,20 @@ impl Graph {
     let mut cache: FxHashMap<NodeId, NpmPackageId> =
       FxHashMap::with_capacity_and_hasher(self.nodes.len(), Default::default());
 
+    // How many distinct nodes exist per name@version. A peer whose
+    // name@version resolved exactly one way in this graph can be written
+    // flat: the bare name@version already identifies it unambiguously, and
+    // its own peers are recorded on its own entry. Expanding it instead
+    // unfolds the peer graph into a tree, duplicating a peer once per path
+    // that reaches it, which makes ids exponential in the depth of the
+    // peer graph.
+    let mut nodes_per_nv: FxHashMap<Rc<PackageNv>, usize> =
+      FxHashMap::with_capacity_and_hasher(self.nodes.len(), Default::default());
+    for (resolved_id, _) in self.resolved_node_ids.node_to_resolved_id.values()
+    {
+      *nodes_per_nv.entry(resolved_id.nv.clone()).or_default() += 1;
+    }
+
     for scc in &node_sccs {
       for &node_id in scc {
         let resolved_id = match self.resolved_node_ids.get(node_id) {
@@ -672,8 +686,12 @@ impl Graph {
             && child_nv_scc == my_nv_scc
             && cyclic_nvs.contains(child_nv.as_ref());
 
-          if is_in_same_nv_cycle {
-            // Cyclic peer deps: use flat name@version (no nested peers).
+          let resolved_one_way =
+            nodes_per_nv.get(child_nv.as_ref()).copied().unwrap_or(0) <= 1;
+
+          if is_in_same_nv_cycle || resolved_one_way {
+            // Cyclic peer deps, or a peer with only one resolution: use
+            // flat name@version (no nested peers).
             npm_pkg_id.peer_dependencies.push(NpmPackageId {
               nv: (**child_nv).clone(),
               peer_dependencies: Default::default(),
@@ -4559,7 +4577,7 @@ mod test {
       packages,
       vec![
         TestNpmResolutionPackage {
-          pkg_id: "package-0@1.0.0_package-peer-a@2.0.0__package-peer-b@3.0.0_package-peer-b@3.0.0"
+          pkg_id: "package-0@1.0.0_package-peer-a@2.0.0_package-peer-b@3.0.0"
             .to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([(
@@ -4586,8 +4604,7 @@ mod test {
       package_reqs,
       vec![(
         "package-0@1.0".to_string(),
-        "package-0@1.0.0_package-peer-a@2.0.0__package-peer-b@3.0.0_package-peer-b@3.0.0"
-          .to_string()
+        "package-0@1.0.0_package-peer-a@2.0.0_package-peer-b@3.0.0".to_string()
       )]
     );
   }
@@ -4614,8 +4631,7 @@ mod test {
       packages,
       vec![
         TestNpmResolutionPackage {
-          pkg_id: "package-0@1.0.0_package-peer-a@2.0.0__package-peer-b@3.0.0"
-            .to_string(),
+          pkg_id: "package-0@1.0.0_package-peer-a@2.0.0".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([
             (
@@ -4648,8 +4664,7 @@ mod test {
       vec![
         (
           "package-0@1.0".to_string(),
-          "package-0@1.0.0_package-peer-a@2.0.0__package-peer-b@3.0.0"
-            .to_string()
+          "package-0@1.0.0_package-peer-a@2.0.0".to_string()
         ),
         (
           "package-peer-a@2".to_string(),
@@ -4713,11 +4728,11 @@ mod test {
           dependencies: BTreeMap::from([
             (
               "package-b".to_string(),
-              "package-b@2.0.0_package-peer-a@4.0.0__package-peer-b@5.4.1_package-peer-c@6.2.0_package-peer-b@5.4.1".to_string(),
+              "package-b@2.0.0_package-peer-a@4.0.0_package-peer-c@6.2.0_package-peer-b@5.4.1".to_string(),
             ),
             (
               "package-c".to_string(),
-              "package-c@3.0.0_package-peer-a@4.0.0__package-peer-b@5.4.1_package-peer-b@5.4.1".to_string(),
+              "package-c@3.0.0_package-peer-a@4.0.0_package-peer-b@5.4.1".to_string(),
             ),
             (
               "package-d".to_string(),
@@ -4731,7 +4746,7 @@ mod test {
 
         },
         TestNpmResolutionPackage {
-          pkg_id: "package-b@2.0.0_package-peer-a@4.0.0__package-peer-b@5.4.1_package-peer-c@6.2.0_package-peer-b@5.4.1".to_string(),
+          pkg_id: "package-b@2.0.0_package-peer-a@4.0.0_package-peer-c@6.2.0_package-peer-b@5.4.1".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([
             (
@@ -4745,7 +4760,7 @@ mod test {
           ])
         },
         TestNpmResolutionPackage {
-          pkg_id: "package-c@3.0.0_package-peer-a@4.0.0__package-peer-b@5.4.1_package-peer-b@5.4.1".to_string(),
+          pkg_id: "package-c@3.0.0_package-peer-a@4.0.0_package-peer-b@5.4.1".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([(
             "package-peer-a".to_string(),
@@ -4938,13 +4953,12 @@ mod test {
       packages,
       vec![
         TestNpmResolutionPackage {
-          pkg_id: "package-a@1.0.0_package-b@1.0.0__package-peer@1.0.0"
-            .to_string(),
+          pkg_id: "package-a@1.0.0_package-b@1.0.0".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([
             (
               "package-c".to_string(),
-              "package-c@1.0.0_package-b@1.0.0__package-peer@1.0.0_package-peer@1.0.0".to_string(),
+              "package-c@1.0.0_package-b@1.0.0_package-peer@1.0.0".to_string(),
             ),
             ("package-peer".to_string(), "package-peer@1.0.0".to_string(),)
           ]),
@@ -4958,7 +4972,7 @@ mod test {
           )]),
         },
         TestNpmResolutionPackage {
-          pkg_id: "package-c@1.0.0_package-b@1.0.0__package-peer@1.0.0_package-peer@1.0.0"
+          pkg_id: "package-c@1.0.0_package-b@1.0.0_package-peer@1.0.0"
             .to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([(
@@ -4978,7 +4992,7 @@ mod test {
       vec![
         (
           "package-a@1.0".to_string(),
-          "package-a@1.0.0_package-b@1.0.0__package-peer@1.0.0".to_string()
+          "package-a@1.0.0_package-b@1.0.0".to_string()
         ),
         (
           "package-b@1.0".to_string(),
@@ -5469,13 +5483,16 @@ mod test {
         TestNpmResolutionPackage {
           pkg_id: "package-0@1.0.0".to_string(),
           copy_index: 0,
-          dependencies: BTreeMap::from([(
-            "package-a".to_string(),
-            "package-a@1.0.0_package-0@1.0.0".to_string(),
-          ), (
-            "package-1".to_string(),
-            "package-1@1.0.0_package-0@1.0.0".to_string(),
-          )]),
+          dependencies: BTreeMap::from([
+            (
+              "package-a".to_string(),
+              "package-a@1.0.0_package-0@1.0.0".to_string(),
+            ),
+            (
+              "package-1".to_string(),
+              "package-1@1.0.0_package-0@1.0.0".to_string(),
+            )
+          ]),
         },
         TestNpmResolutionPackage {
           pkg_id: "package-1@1.0.0_package-0@1.0.0".to_string(),
@@ -5490,53 +5507,44 @@ mod test {
           copy_index: 0,
           dependencies: BTreeMap::from([(
             "package-b".to_string(),
-            "package-b@1.0.0_package-0@1.0.0_package-a@1.0.0__package-0@1.0.0".to_string(),
+            "package-b@1.0.0_package-0@1.0.0_package-a@1.0.0".to_string(),
           )]),
         },
         TestNpmResolutionPackage {
-          pkg_id: "package-b@1.0.0_package-0@1.0.0_package-a@1.0.0__package-0@1.0.0".to_string(),
+          pkg_id: "package-b@1.0.0_package-0@1.0.0_package-a@1.0.0".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([
-            (
-              "package-0".to_string(),
-              "package-0@1.0.0".to_string(),
-            ),
+            ("package-0".to_string(), "package-0@1.0.0".to_string(),),
             (
               "package-a".to_string(),
               "package-a@1.0.0_package-0@1.0.0".to_string(),
             ),
             (
               "package-c".to_string(),
-              "package-c@1.0.0_package-0@1.0.0_package-a@1.0.0__package-0@1.0.0".to_string(),
+              "package-c@1.0.0_package-0@1.0.0_package-a@1.0.0".to_string(),
             )
           ]),
         },
         TestNpmResolutionPackage {
-          pkg_id: "package-c@1.0.0_package-0@1.0.0_package-a@1.0.0__package-0@1.0.0".to_string(),
+          pkg_id: "package-c@1.0.0_package-0@1.0.0_package-a@1.0.0".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([
-            (
-              "package-0".to_string(),
-              "package-0@1.0.0".to_string(),
-            ),
+            ("package-0".to_string(), "package-0@1.0.0".to_string(),),
             (
               "package-a".to_string(),
               "package-a@1.0.0_package-0@1.0.0".to_string(),
             ),
             (
               "package-d".to_string(),
-              "package-d@1.0.0_package-0@1.0.0_package-a@1.0.0__package-0@1.0.0".to_string(),
+              "package-d@1.0.0_package-0@1.0.0_package-a@1.0.0".to_string(),
             )
           ]),
         },
         TestNpmResolutionPackage {
-          pkg_id: "package-d@1.0.0_package-0@1.0.0_package-a@1.0.0__package-0@1.0.0".to_string(),
+          pkg_id: "package-d@1.0.0_package-0@1.0.0_package-a@1.0.0".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([
-            (
-              "package-0".to_string(),
-              "package-0@1.0.0".to_string(),
-            ),
+            ("package-0".to_string(), "package-0@1.0.0".to_string(),),
             (
               "package-a".to_string(),
               "package-a@1.0.0_package-0@1.0.0".to_string(),
@@ -5734,11 +5742,11 @@ mod test {
           copy_index: 0,
           dependencies: BTreeMap::from([(
             "package-c".to_string(),
-            "package-c@1.0.0_package-b@1.0.0__package-a@1.0.0_package-a@1.0.0".to_string(),
+            "package-c@1.0.0_package-b@1.0.0_package-a@1.0.0".to_string(),
           )]),
         },
         TestNpmResolutionPackage {
-          pkg_id: "package-c@1.0.0_package-b@1.0.0__package-a@1.0.0_package-a@1.0.0".to_string(),
+          pkg_id: "package-c@1.0.0_package-b@1.0.0_package-a@1.0.0".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([
             (
@@ -5747,41 +5755,40 @@ mod test {
             ),
             (
               "package-d".to_string(),
-              "package-d@1.0.0_package-b@1.0.0__package-a@1.0.0".to_string(),
+              "package-d@1.0.0_package-b@1.0.0".to_string(),
             ),
             (
               "package-e".to_string(),
-              "package-e@1.0.0_package-a@1.0.0_package-b@1.0.0__package-a@1.0.0".to_string()
+              "package-e@1.0.0_package-a@1.0.0_package-b@1.0.0".to_string()
             )
           ]),
-
         },
         TestNpmResolutionPackage {
-          pkg_id: "package-d@1.0.0_package-b@1.0.0__package-a@1.0.0".to_string(),
+          pkg_id: "package-d@1.0.0_package-b@1.0.0".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([(
             "package-c".to_string(),
-            "package-c@1.0.0_package-b@1.0.0__package-a@1.0.0_package-a@1.0.0".to_string(),
+            "package-c@1.0.0_package-b@1.0.0_package-a@1.0.0".to_string(),
           )]),
         },
         TestNpmResolutionPackage {
-          pkg_id: "package-e@1.0.0_package-a@1.0.0_package-b@1.0.0__package-a@1.0.0".to_string(),
+          pkg_id: "package-e@1.0.0_package-a@1.0.0_package-b@1.0.0".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([(
             "package-f".to_string(),
-            "package-f@1.0.0_package-a@1.0.0_package-b@1.0.0__package-a@1.0.0".to_string(),
+            "package-f@1.0.0_package-a@1.0.0_package-b@1.0.0".to_string(),
           )]),
         },
         TestNpmResolutionPackage {
-          pkg_id: "package-f@1.0.0_package-a@1.0.0_package-b@1.0.0__package-a@1.0.0".to_string(),
+          pkg_id: "package-f@1.0.0_package-a@1.0.0_package-b@1.0.0".to_string(),
           copy_index: 0,
-          dependencies: BTreeMap::from([(
-            "package-a".to_string(),
-            "package-a@1.0.0".to_string(),
-          ), (
-            "package-d".to_string(),
-            "package-d@1.0.0_package-b@1.0.0__package-a@1.0.0".to_string(),
-          )]),
+          dependencies: BTreeMap::from([
+            ("package-a".to_string(), "package-a@1.0.0".to_string(),),
+            (
+              "package-d".to_string(),
+              "package-d@1.0.0_package-b@1.0.0".to_string(),
+            )
+          ]),
         },
       ]
     );
@@ -5834,14 +5841,11 @@ mod test {
           copy_index: 0,
           dependencies: BTreeMap::from([(
             "package-d".to_string(),
-            "package-d@1.0.0_package-c@1.0.0__package-a@1.0.0_package-a@1.0.0"
-              .to_string(),
+            "package-d@1.0.0_package-c@1.0.0_package-a@1.0.0".to_string(),
           )]),
         },
         TestNpmResolutionPackage {
-          pkg_id:
-            "package-d@1.0.0_package-c@1.0.0__package-a@1.0.0_package-a@1.0.0"
-              .to_string(),
+          pkg_id: "package-d@1.0.0_package-c@1.0.0_package-a@1.0.0".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([
             (
@@ -7160,26 +7164,26 @@ mod test {
           copy_index: 0,
           dependencies: BTreeMap::from([
               ("@aws-sdk/client-sso-oidc".to_string(), "@aws-sdk/client-sso-oidc@3.679.0_@aws-sdk+client-sts@3.679.0".to_string()),
-              ("@aws-sdk/credential-provider-node".to_string(), "@aws-sdk/credential-provider-node@3.679.0_@aws-sdk+client-sso-oidc@3.679.0__@aws-sdk+client-sts@3.679.0_@aws-sdk+client-sts@3.679.0".to_string()),
+              ("@aws-sdk/credential-provider-node".to_string(), "@aws-sdk/credential-provider-node@3.679.0_@aws-sdk+client-sso-oidc@3.679.0_@aws-sdk+client-sts@3.679.0".to_string()),
           ]),
       },
       TestNpmResolutionPackage {
-          pkg_id: "@aws-sdk/credential-provider-ini@3.679.0_@aws-sdk+client-sts@3.679.0_@aws-sdk+client-sso-oidc@3.679.0__@aws-sdk+client-sts@3.679.0".to_string(),
+          pkg_id: "@aws-sdk/credential-provider-ini@3.679.0_@aws-sdk+client-sts@3.679.0_@aws-sdk+client-sso-oidc@3.679.0".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([
               ("@aws-sdk/client-sts".to_string(), "@aws-sdk/client-sts@3.679.0".to_string()),
-              ("@aws-sdk/credential-provider-sso".to_string(), "@aws-sdk/credential-provider-sso@3.679.0_@aws-sdk+client-sso-oidc@3.679.0__@aws-sdk+client-sts@3.679.0_@aws-sdk+client-sts@3.679.0".to_string()),
+              ("@aws-sdk/credential-provider-sso".to_string(), "@aws-sdk/credential-provider-sso@3.679.0_@aws-sdk+client-sso-oidc@3.679.0_@aws-sdk+client-sts@3.679.0".to_string()),
           ]),
       },
       TestNpmResolutionPackage {
-          pkg_id: "@aws-sdk/credential-provider-node@3.679.0_@aws-sdk+client-sso-oidc@3.679.0__@aws-sdk+client-sts@3.679.0_@aws-sdk+client-sts@3.679.0".to_string(),
+          pkg_id: "@aws-sdk/credential-provider-node@3.679.0_@aws-sdk+client-sso-oidc@3.679.0_@aws-sdk+client-sts@3.679.0".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([
-              ("@aws-sdk/credential-provider-ini".to_string(), "@aws-sdk/credential-provider-ini@3.679.0_@aws-sdk+client-sts@3.679.0_@aws-sdk+client-sso-oidc@3.679.0__@aws-sdk+client-sts@3.679.0".to_string()),
+              ("@aws-sdk/credential-provider-ini".to_string(), "@aws-sdk/credential-provider-ini@3.679.0_@aws-sdk+client-sts@3.679.0_@aws-sdk+client-sso-oidc@3.679.0".to_string()),
           ]),
       },
       TestNpmResolutionPackage {
-          pkg_id: "@aws-sdk/credential-provider-sso@3.679.0_@aws-sdk+client-sso-oidc@3.679.0__@aws-sdk+client-sts@3.679.0_@aws-sdk+client-sts@3.679.0".to_string(),
+          pkg_id: "@aws-sdk/credential-provider-sso@3.679.0_@aws-sdk+client-sso-oidc@3.679.0_@aws-sdk+client-sts@3.679.0".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([
               ("@aws-sdk/client-sso-oidc".to_string(), "@aws-sdk/client-sso-oidc@3.679.0_@aws-sdk+client-sts@3.679.0".to_string()),
@@ -7363,56 +7367,59 @@ mod test {
       )
       .await;
       assert_eq!(
-      packages,
-      vec![
-        TestNpmResolutionPackage {
-          pkg_id: "package-a@1.0.0_package-peer@1.0.1".to_string(),
-          copy_index: 0,
-          dependencies: BTreeMap::from([(
-            "package-b".to_string(),
-            "package-b@1.0.0_package-peer@1.0.1".to_string(),
-          ), (
-            "package-c".to_string(),
-            "package-c@1.0.0_package-b@1.0.0__package-peer@1.0.1".to_string(),
-          ), (
-            "package-peer".to_string(),
-            "package-peer@1.0.1".to_string()
-          )])
-        },
-        TestNpmResolutionPackage {
-          pkg_id: "package-b@1.0.0_package-peer@1.0.1".to_string(),
-          copy_index: 0,
-          dependencies: BTreeMap::from([(
-            "package-peer".to_string(),
-            "package-peer@1.0.1".to_string(),
-          )])
-        },
-        TestNpmResolutionPackage {
-          pkg_id: "package-c@1.0.0_package-b@1.0.0__package-peer@1.0.1".to_string(),
-          copy_index: 0,
-          dependencies: BTreeMap::from([(
-            "package-d".to_string(),
-            "package-d@1.0.0_package-b@1.0.0__package-peer@1.0.1_package-peer@1.0.1".to_string(),
-          ), (
-            "package-peer".to_string(),
-            "package-peer@1.0.1".to_string(),
-          )]),
-        },
-        TestNpmResolutionPackage {
-          pkg_id: "package-d@1.0.0_package-b@1.0.0__package-peer@1.0.1_package-peer@1.0.1".to_string(),
-          copy_index: 0,
-          dependencies: BTreeMap::from([(
-            "package-b".to_string(),
-            "package-b@1.0.0_package-peer@1.0.1".to_string(),
-          )])
-        },
-        TestNpmResolutionPackage {
-          pkg_id: "package-peer@1.0.1".to_string(),
-          copy_index: 0,
-          dependencies: Default::default(),
-        },
-      ]
-    );
+        packages,
+        vec![
+          TestNpmResolutionPackage {
+            pkg_id: "package-a@1.0.0_package-peer@1.0.1".to_string(),
+            copy_index: 0,
+            dependencies: BTreeMap::from([
+              (
+                "package-b".to_string(),
+                "package-b@1.0.0_package-peer@1.0.1".to_string(),
+              ),
+              (
+                "package-c".to_string(),
+                "package-c@1.0.0_package-b@1.0.0".to_string(),
+              ),
+              ("package-peer".to_string(), "package-peer@1.0.1".to_string())
+            ])
+          },
+          TestNpmResolutionPackage {
+            pkg_id: "package-b@1.0.0_package-peer@1.0.1".to_string(),
+            copy_index: 0,
+            dependencies: BTreeMap::from([(
+              "package-peer".to_string(),
+              "package-peer@1.0.1".to_string(),
+            )])
+          },
+          TestNpmResolutionPackage {
+            pkg_id: "package-c@1.0.0_package-b@1.0.0".to_string(),
+            copy_index: 0,
+            dependencies: BTreeMap::from([
+              (
+                "package-d".to_string(),
+                "package-d@1.0.0_package-b@1.0.0_package-peer@1.0.1"
+                  .to_string(),
+              ),
+              ("package-peer".to_string(), "package-peer@1.0.1".to_string(),)
+            ]),
+          },
+          TestNpmResolutionPackage {
+            pkg_id: "package-d@1.0.0_package-b@1.0.0_package-peer@1.0.1"
+              .to_string(),
+            copy_index: 0,
+            dependencies: BTreeMap::from([(
+              "package-b".to_string(),
+              "package-b@1.0.0_package-peer@1.0.1".to_string(),
+            )])
+          },
+          TestNpmResolutionPackage {
+            pkg_id: "package-peer@1.0.1".to_string(),
+            copy_index: 0,
+            dependencies: Default::default(),
+          },
+        ]
+      );
       assert_eq!(
         package_reqs,
         vec![
@@ -7581,8 +7588,7 @@ mod test {
       packages,
       vec![
         TestNpmResolutionPackage {
-          pkg_id: "@deno/vite-plugin@1.0.4_vite@6.2.4__lightningcss@1.29.2"
-            .to_string(),
+          pkg_id: "@deno/vite-plugin@1.0.4_vite@6.2.4".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([(
             "vite".to_string(),
@@ -7590,8 +7596,7 @@ mod test {
           )])
         },
         TestNpmResolutionPackage {
-          pkg_id: "@tailwindcss/vite@4.0.17_vite@6.2.4__lightningcss@1.29.2"
-            .to_string(),
+          pkg_id: "@tailwindcss/vite@4.0.17_vite@6.2.4".to_string(),
           copy_index: 0,
           dependencies: BTreeMap::from([
             (
@@ -7624,12 +7629,11 @@ mod test {
       vec![
         (
           "@deno/vite-plugin@~1.0.4".to_string(),
-          "@deno/vite-plugin@1.0.4_vite@6.2.4__lightningcss@1.29.2".to_string()
+          "@deno/vite-plugin@1.0.4_vite@6.2.4".to_string()
         ),
         (
           "@tailwindcss/vite@~4.0.17".to_string(),
-          "@tailwindcss/vite@4.0.17_vite@6.2.4__lightningcss@1.29.2"
-            .to_string()
+          "@tailwindcss/vite@4.0.17_vite@6.2.4".to_string()
         ),
       ]
     );
@@ -9508,6 +9512,74 @@ mod test {
         name
       );
     }
+  }
+
+  /// An `NpmPackageId` used to encode every peer as that peer's full id,
+  /// which unfolds the peer graph into a tree: a peer reachable by many
+  /// paths gets written out once per path, so ids grew exponentially in
+  /// the depth of the peer graph.
+  ///
+  /// Flattening same-cycle peers bounds the mutually-recursive case in
+  /// `peer_dep_id_length_bounded`, but not this one — the chain below has
+  /// only forward edges, so every package is its own singleton non-cyclic
+  /// SCC. Before peers with a single resolution were also flattened, a
+  /// 14-deep chain produced a ~135KB id and an 18-deep one ~2.4MB.
+  ///
+  /// This is what `npm:@deepseek-ai/dsh` (#36599) hits once peer
+  /// resolution itself terminates, since the `@deepseek-ai/*` packages
+  /// form a deep peer DAG.
+  #[tokio::test]
+  async fn peer_dep_id_length_bounded_for_peer_dag() {
+    let api = TestNpmRegistryApi::default();
+
+    // A chain where each package peer-depends on the next two, so every
+    // package is reachable by many paths but the peer graph stays acyclic.
+    let depth = 14;
+    let names: Vec<String> = (0..depth).map(|i| format!("h-{i}")).collect();
+    for (i, name) in names.iter().enumerate() {
+      api.ensure_package_version(name, "1.0.0");
+      for step in 1..=2 {
+        if let Some(next) = names.get(i + step) {
+          api.add_peer_dependency(
+            (name.as_str(), "1.0.0"),
+            (next.as_str(), "*"),
+          );
+        }
+      }
+    }
+
+    api.ensure_package_version("app", "1.0.0");
+    api.add_dependency(("app", "1.0.0"), ("h-0", "1"));
+
+    let (packages, _) = run_resolver_and_get_output(api, vec!["app@1"]).await;
+
+    // Check the graph really was resolved with its peers before asserting
+    // on id length — peers going missing entirely would also produce
+    // short ids and pass the bound below for the wrong reason.
+    assert_eq!(packages.len(), depth + 1);
+    let h0 = packages
+      .iter()
+      .find(|p| p.pkg_id.starts_with("h-0@1.0.0"))
+      .expect("should have resolved h-0");
+    // Peers are recorded, but each as a flat name@version rather than as
+    // its own fully expanded id.
+    assert!(
+      h0.pkg_id.starts_with("h-0@1.0.0_h-1@1.0.0_h-2@1.0.0"),
+      "h-0 should have h-1 and h-2 as peers, got: {}",
+      &h0.pkg_id[..60.min(h0.pkg_id.len())]
+    );
+
+    let longest = packages
+      .iter()
+      .max_by_key(|p| p.pkg_id.len())
+      .expect("should have resolved packages");
+    assert!(
+      longest.pkg_id.len() < 2000,
+      "package id is {} chars for a {} package graph: {}...",
+      longest.pkg_id.len(),
+      packages.len(),
+      &longest.pkg_id[..100.min(longest.pkg_id.len())]
+    );
   }
 
   /// Regression test for a hang resolving `npm:@deepseek-ai/dsh`.
