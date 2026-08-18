@@ -78,6 +78,9 @@ fn resource_limit_mb_to_bytes(
   name: &'static str,
   value: usize,
 ) -> Result<usize, CreateWorkerError> {
+  // Node allows its floating-point-to-size conversion to truncate. Deno
+  // intentionally rejects limits that do not fit after conversion to bytes so
+  // the thread and V8 paths have one deterministic overflow policy.
   value
     .checked_mul(BYTES_PER_MB)
     .ok_or(CreateWorkerError::ResourceLimitTooLarge(name))

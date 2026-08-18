@@ -62,8 +62,13 @@ use crate::util::checksum;
 
 const BYTES_PER_MB: usize = 1024 * 1024;
 
-fn resource_limit_mb_to_bytes(value: usize) -> usize {
-  value.saturating_mul(BYTES_PER_MB)
+fn validated_resource_limit_mb_to_bytes(value: usize) -> usize {
+  // `op_create_worker` rejects overflow before invoking this callback. Keep
+  // this conversion checked so the downstream path cannot silently choose a
+  // different overflow policy.
+  value
+    .checked_mul(BYTES_PER_MB)
+    .expect("worker resource limits must be validated before worker creation")
 }
 
 pub struct CreateModuleLoaderResult {
@@ -440,19 +445,19 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           limits.max_old_generation_size_mb.filter(|&v| v > 0)
         {
           params = params.set_max_old_generation_size_in_bytes(
-            resource_limit_mb_to_bytes(max_old),
+            validated_resource_limit_mb_to_bytes(max_old),
           );
         }
         if let Some(max_young) =
           limits.max_young_generation_size_mb.filter(|&v| v > 0)
         {
           params = params.set_max_young_generation_size_in_bytes(
-            resource_limit_mb_to_bytes(max_young),
+            validated_resource_limit_mb_to_bytes(max_young),
           );
         }
         if let Some(code_range) = limits.code_range_size_mb.filter(|&v| v > 0) {
           params = params.set_code_range_size_in_bytes(
-            resource_limit_mb_to_bytes(code_range),
+            validated_resource_limit_mb_to_bytes(code_range),
           );
         }
 
