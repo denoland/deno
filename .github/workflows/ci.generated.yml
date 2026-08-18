@@ -132,6 +132,7 @@ jobs:
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - name: Set up incremental LTO and sysroot build
         if: '(contains(github.event.pull_request.labels.*.name, ''ci-bench'') || github.ref == ''refs/heads/main'') && !startsWith(github.ref, ''refs/tags/'')'
+        timeout-minutes: 10
         run: |-
           # Setting up sysroot
           export DEBIAN_FRONTEND=noninteractive
@@ -4390,6 +4391,7 @@ jobs:
           echo '*** Installed packages'
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Set up incremental LTO and sysroot build
+        timeout-minutes: 10
         run: |-
           # Setting up sysroot
           export DEBIAN_FRONTEND=noninteractive
@@ -4903,6 +4905,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
       - name: Set up incremental LTO and sysroot build
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
+        timeout-minutes: 10
         run: |-
           # Setting up sysroot
           export DEBIAN_FRONTEND=noninteractive
@@ -5296,6 +5299,7 @@ jobs:
           echo '*** Installed packages'
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Set up incremental LTO and sysroot build
+        timeout-minutes: 10
         run: |-
           # Setting up sysroot
           export DEBIAN_FRONTEND=noninteractive
@@ -5588,6 +5592,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
       - name: Set up incremental LTO and sysroot build
         if: '!startsWith(github.ref, ''refs/tags/'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
+        timeout-minutes: 10
         run: |-
           # Setting up sysroot
           export DEBIAN_FRONTEND=noninteractive
@@ -6514,6 +6519,7 @@ jobs:
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Set up incremental LTO and sysroot build
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        timeout-minutes: 10
         run: |-
           # Setting up sysroot
           export DEBIAN_FRONTEND=noninteractive
@@ -7014,6 +7020,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
       - name: Set up incremental LTO and sysroot build
         if: '!startsWith(github.ref, ''refs/tags/'') && !(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (matrix.shard_index == 0 || github.event_name == ''pull_request'')'
+        timeout-minutes: 10
         run: |-
           # Setting up sysroot
           export DEBIAN_FRONTEND=noninteractive
@@ -7408,6 +7415,7 @@ jobs:
           deno-version: v2.x
       - name: Set up incremental LTO and sysroot build
         if: '!startsWith(github.ref, ''refs/tags/'')'
+        timeout-minutes: 10
         run: |-
           # Setting up sysroot
           export DEBIAN_FRONTEND=noninteractive
