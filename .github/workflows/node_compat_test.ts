@@ -107,6 +107,10 @@ const uploadReport = step.dependsOn(gzipReport)({
 
 const testJob = job("test", {
   runsOn: matrix.runner,
+  // Shards normally finish well inside 15 minutes. A shard that blows past
+  // this is a wedged runner, not slow tests, so cap it rather than let the
+  // 6 hour default keep the job around.
+  timeoutMinutes: 30,
   strategy: {
     matrix,
   },

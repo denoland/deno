@@ -8,6 +8,7 @@ on:
 jobs:
   test:
     runs-on: '${{ matrix.runner }}'
+    timeout-minutes: 30
     strategy:
       matrix:
         include:
