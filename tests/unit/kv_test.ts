@@ -73,6 +73,7 @@ Deno.test({
 
       const open = (path: string) =>
         new Deno.Command(Deno.execPath(), {
+          clearEnv: true,
           args: [
             "run",
             "--quiet",
